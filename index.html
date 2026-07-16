@@ -285,6 +285,30 @@
   .edit-bar .save-btn{background:var(--hcps-gold);color:#141414;}
   .edit-bar .export-btn{background:#fff;color:var(--ink);}
   .edit-bar .status{opacity:.75;font-weight:500;padding-right:2px;}
+  .edit-bar .link-btn{background:#2d3138;color:#fff;}
+  .edit-bar .clean-btn{background:#5a3a10;color:#fff;}
+
+  .link-modal-overlay{
+    display:none;position:fixed;inset:0;background:rgba(11,13,15,.6);z-index:300;
+    align-items:center;justify-content:center;padding:24px;
+  }
+  .link-modal-overlay.open{display:flex;}
+  .link-modal{
+    background:#fff;border-radius:16px;max-width:680px;width:100%;max-height:80vh;
+    display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px -20px rgba(0,0,0,.5);
+  }
+  .link-modal-head{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid var(--line);}
+  .link-modal-head h3{margin:0;font-size:19px;}
+  .link-modal-head button{background:none;border:none;font-size:22px;cursor:pointer;color:#888;line-height:1;}
+  .link-modal-sub{padding:14px 24px 0;margin:0;font-size:13.5px;color:#666;}
+  .link-modal-list{padding:16px 24px;overflow-y:auto;flex-grow:1;display:flex;flex-direction:column;gap:12px;}
+  .link-row{border:1px solid var(--line);border-radius:10px;padding:12px 14px;}
+  .link-row label{display:block;font-family:'Archivo',sans-serif;font-weight:700;font-size:12.5px;color:#333;margin-bottom:6px;}
+  .link-row input{
+    width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);border-radius:7px;
+    font-size:13.5px;font-family:'Inter',sans-serif;
+  }
+  .link-modal-foot{padding:16px 24px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;}
   .fixed-toggle{
     position:fixed;bottom:22px;right:22px;z-index:199;background:var(--ink);color:#fff;border:none;
     border-radius:999px;padding:12px 20px;font-family:'Archivo',sans-serif;font-weight:700;font-size:13.5px;
@@ -383,7 +407,8 @@
       <div class="hero-copy">
         <p class="eyebrow" data-editable="true" contenteditable="false">MANUFACTURER SALES REPRESENTATION&nbsp; • DME • HME • PHARMACY</p>
         <h1 data-editable="true" contenteditable="false">Connecting <span>12 Manufacturers</span> to <span>300+ Dealers</span> Across Southern Ohio, Southern Indiana, Kentucky, Tennessee &amp; Georgia.</h1>
-        <p class="lead" data-editable="true" contenteditable="false"><p class="isSelectedEnd">Since 2016, HomeCare Provider Services has provided strategic manufacturers’ representation throughout the healthcare industry. We help introduce and promote innovative products, programs, and solutions to high-value HME providers, DME dealers, pharmacies, and other healthcare organizations serving patients every day.</p><p>Our approach is built around service, strong relationships, and practical solutions. By connecting manufacturers with the right customers and supporting providers with responsive, knowledgeable representation, we help create sustainable growth and better outcomes for manufacturers, healthcare partners, and the patients they serve.</p></p>
+        <p class="lead" data-editable="true">Since 2016, HomeCare Provider Services has provided strategic manufacturers’ representation throughout the healthcare industry. We help introduce and promote innovative products, programs, and solutions to high-value HME providers, DME dealers, pharmacies, and other healthcare organizations serving patients every day.</p>
+        <p class="lead" data-editable="true">Our approach is built around service, strong relationships, and practical solutions. By connecting manufacturers with the right customers and supporting providers with responsive, knowledgeable representation, we help create sustainable growth and better outcomes for manufacturers, healthcare partners, and the patients they serve.</p>
         <div class="hero-actions">
           <a class="btn primary" href="#become-a-dealer" data-editable="true" contenteditable="false">Become a Dealer</a>
           <a class="btn outline" href="https://goldenonlineordering.netlify.app" target="_blank" rel="noopener" data-editable="true" contenteditable="false">Explore Our Online Ordering Platform</a>
@@ -438,7 +463,8 @@
       <div class="section-head">
         <p class="eyebrow" data-editable="true" contenteditable="false">Innovative Products. Showroom Solutions. Simplified Ordering.</p>
         <h2 data-editable="true" contenteditable="false">Strong Manufacturer Partnerships. Innovative Products. Better Solutions for Dealers.</h2>
-        <p data-editable="true" contenteditable="false"><p class="isSelectedEnd">HomeCare Provider Services is the authorized sales representative for the manufacturers listed below. We carefully select innovative products and programs that help expand your product offerings, strengthen your showroom, and provide greater value to your customers.</p><p>Our team also develops practical merchandising and sales solutions to help your staff present products more effectively. With dedicated support and convenient online ordering platforms, we make it easier to review products, access dealer pricing, and place orders with our manufacturer partners.</p></p>
+        <p data-editable="true">HomeCare Provider Services is the authorized sales representative for the manufacturers listed below. We carefully select innovative products and programs that help expand your product offerings, strengthen your showroom, and provide greater value to your customers.</p>
+        <p data-editable="true">Our team also develops practical merchandising and sales solutions to help your staff present products more effectively. With dedicated support and convenient online ordering platforms, we make it easier to review products, access dealer pricing, and place orders with our manufacturer partners.</p>
       </div>
 
       <div class="manu-grid" id="manu-grid">
@@ -594,7 +620,7 @@
         <article>
           <div class="why-icon orange"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></div>
           <h3 data-editable="true" contenteditable="false">Value Based &amp; Premium Pricing</h3>
-          <p data-editable="true" contenteditable="false"><h3 data-editable="true" style="outline: rgb(22, 129, 194) dashed 2px; background: rgba(22, 129, 194, 0.06);" contenteditable="false"><br></h3><div>Offering a Balanced Product Portfolio with Affordable Options and Premium Solutions Designed to Meet a Wide Range of Customer Needs.<span style="font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;"></span></div></p>
+          <p data-editable="true" contenteditable="false">Offering a Balanced Product Portfolio with Affordable Options and Premium Solutions Designed to Meet a Wide Range of Customer Needs.</p>
         </article>
         <article>
           <div class="why-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 20.5a2.5 2.5 0 1 1-5 0V14h5z"></path><path d="M12 14V8a2.5 2.5 0 0 0-5 0v6"></path><path d="M7 20.5a2.5 2.5 0 1 1-5 0V14h5z"></path><path d="M12 8a2.5 2.5 0 0 1 5 0v6h-5"></path></svg></div>
@@ -728,7 +754,7 @@
         </aside>
 
         <div class="map-card">
-          <div id="hcps-us-map"><div style="position: relative; width: 100%; height: 100%;"><div aria-hidden="true" style="position: absolute; width: 411px; height: 380px;"><div><canvas class="am5-layer-0" width="411" height="380" style="position: absolute; top: 0px; left: 0px; width: 411px; height: 380px;"></canvas><canvas class="am5-layer-30" width="411" height="380" style="position: absolute; top: 0px; left: 0px; width: 411px; height: 380px;"></canvas></div></div><div class="am5-html-container" style="position: absolute; pointer-events: none; overflow: hidden; width: 411px; height: 380px;"></div><div class="am5-reader-container" role="alert" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(1px, 1px, 1px, 1px);"></div><div class="am5-focus-container" role="graphics-document" style="position: absolute; pointer-events: none; top: 0px; left: 0px; overflow: hidden; width: 411px; height: 380px;"></div><div class="am5-tooltip-container"><div role="tooltip" aria-hidden="false" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(1px, 1px, 1px, 1px); pointer-events: none;">South Carolina</div></div></div></div>
+          <div id="hcps-us-map"></div>
           <div class="map-legend">
             <span><i></i>Covered Territory</span>
             <span><i class="future"></i>Future Expansion</span>
@@ -738,8 +764,8 @@
 
         <aside class="state-panel">
           <p class="eyebrow">State Detail</p>
-          <h3 id="hcps-state-name">South Carolina</h3>
-          <p id="hcps-state-status">Future expansion opportunity for HCPS.</p>
+          <h3 id="hcps-state-name">Hover a State</h3>
+          <p id="hcps-state-status">Covered states are shown in blue. Future expansion opportunities are shown in orange.</p>
         </aside>
       </div>
     </div>
@@ -805,9 +831,25 @@
 <button class="fixed-toggle" id="edit-toggle" style="display: inline-flex;">✎ Edit This Page</button>
 <div class="edit-bar" id="edit-bar" style="display: none;">
   <span class="status" id="edit-status">Edit mode on — click any text to change it</span>
+  <button class="link-btn" id="links-btn">Edit Links</button>
+  <button class="clean-btn" id="clean-btn">Clean Empty</button>
   <button class="save-btn" id="save-btn">Save</button>
   <button class="export-btn" id="export-btn">Export HTML</button>
   <button class="toggle-btn" id="exit-edit-btn">Done</button>
+</div>
+
+<div class="link-modal-overlay" id="link-modal-overlay">
+  <div class="link-modal">
+    <div class="link-modal-head">
+      <h3>Edit Page Links</h3>
+      <button id="link-modal-close">×</button>
+    </div>
+    <p class="link-modal-sub">Update where any link on the page points to, then click Apply Changes.</p>
+    <div class="link-modal-list" id="link-modal-list"></div>
+    <div class="link-modal-foot">
+      <button id="link-modal-apply" class="btn primary" style="padding:11px 22px;">Apply Changes</button>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.amcharts.com/lib/5/index.js"></script>
@@ -868,6 +910,7 @@
     chart.appear(800, 100);
   }
   if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", initMap); } else { initMap(); }
+  window.hcpsInitMap = initMap;
 })();
 </script>
 
@@ -882,6 +925,12 @@
   var saveBtn = document.getElementById("save-btn");
   var exportBtn = document.getElementById("export-btn");
   var statusEl = document.getElementById("edit-status");
+  var linksBtn = document.getElementById("links-btn");
+  var cleanBtn = document.getElementById("clean-btn");
+  var linkModalOverlay = document.getElementById("link-modal-overlay");
+  var linkModalList = document.getElementById("link-modal-list");
+  var linkModalClose = document.getElementById("link-modal-close");
+  var linkModalApply = document.getElementById("link-modal-apply");
 
   function setEditMode(on){
     editOn = on;
@@ -992,10 +1041,102 @@
     input.value = "";
   });
 
-  // ---- Save / restore via localStorage (this browser only) ----
+  // ---- Force plain-text pasting into editable fields (prevents corrupted nested-tag bugs) ----
+  document.addEventListener("paste", function(e){
+    var target = e.target;
+    if (!target || !target.closest) return;
+    if (!target.closest("[data-editable]")) return;
+    e.preventDefault();
+    var text = (e.clipboardData || window.clipboardData).getData("text/plain");
+    document.execCommand("insertText", false, text);
+  });
+
+  // ---- Edit Links modal ----
+  function openLinkModal(){
+    var links = Array.prototype.slice.call(document.querySelectorAll("a[data-editable]"))
+      .filter(function(a){ return a.getAttribute("href") && a.getAttribute("href") !== "#"; });
+    linkModalList.innerHTML = "";
+    links.forEach(function(a, i){
+      var row = document.createElement("div");
+      row.className = "link-row";
+      var label = (a.textContent || "").trim().slice(0, 60) || "(link " + (i+1) + ")";
+      row.innerHTML =
+        '<label>' + label.replace(/</g,"&lt;") + '</label>' +
+        '<input type="text" data-link-index="' + i + '" value="' + a.getAttribute("href").replace(/"/g,"&quot;") + '">';
+      linkModalList.appendChild(row);
+    });
+    linkModalOverlay._links = links;
+    linkModalOverlay.classList.add("open");
+  }
+  function closeLinkModal(){ linkModalOverlay.classList.remove("open"); }
+
+  linksBtn.addEventListener("click", openLinkModal);
+  linkModalClose.addEventListener("click", closeLinkModal);
+  linkModalOverlay.addEventListener("click", function(e){ if (e.target === linkModalOverlay) closeLinkModal(); });
+  linkModalApply.addEventListener("click", function(){
+    var links = linkModalOverlay._links || [];
+    var inputs = linkModalList.querySelectorAll("input[data-link-index]");
+    var changed = 0;
+    inputs.forEach(function(input){
+      var idx = parseInt(input.getAttribute("data-link-index"), 10);
+      var link = links[idx];
+      var newHref = input.value.trim();
+      if (link && newHref && link.getAttribute("href") !== newHref){
+        link.setAttribute("href", newHref);
+        changed++;
+      }
+    });
+    closeLinkModal();
+    statusEl.textContent = changed ? ("Updated " + changed + " link" + (changed===1?"":"s") + " \u2713") : "No links changed";
+    setTimeout(function(){ statusEl.textContent = "Edit mode on — click any text to change it"; }, 2400);
+  });
+
+  // ---- Clean Empty: find and remove editable elements with no real content ----
+  cleanBtn.addEventListener("click", function(){
+    var candidates = Array.prototype.slice.call(document.querySelectorAll("[data-editable]"));
+    var empties = candidates.filter(function(el){
+      if (el.querySelector("img,svg")) return false;
+      var text = (el.textContent || "").replace(/\u00a0/g, " ").trim();
+      return text.length === 0;
+    });
+    if (empties.length === 0){
+      statusEl.textContent = "No empty blocks found \u2713";
+      setTimeout(function(){ statusEl.textContent = "Edit mode on — click any text to change it"; }, 2200);
+      return;
+    }
+    var ok = confirm("Found " + empties.length + " empty block(s) creating gaps on the page. Remove them now?");
+    if (!ok) return;
+    empties.forEach(function(el){ el.remove(); });
+    statusEl.textContent = "Removed " + empties.length + " empty block(s) \u2713";
+    setTimeout(function(){ statusEl.textContent = "Edit mode on — click any text to change it"; }, 2400);
+  });
+
+
+  // ---- Shared helper: capture a clean HTML snapshot without freezing live map/tooltip state ----
+  function getCleanPageHTML(){
+    var mapEl = document.getElementById("hcps-us-map");
+    var mapHTMLBackup = mapEl ? mapEl.innerHTML : null;
+    var stateNameEl = document.getElementById("hcps-state-name");
+    var stateStatusEl = document.getElementById("hcps-state-status");
+    var prevStateName = stateNameEl ? stateNameEl.textContent : null;
+    var prevStateStatus = stateStatusEl ? stateStatusEl.textContent : null;
+    if (mapEl) mapEl.innerHTML = "";
+    if (stateNameEl) stateNameEl.textContent = "Hover a State";
+    if (stateStatusEl) stateStatusEl.textContent = "Covered states are shown in blue. Future expansion opportunities are shown in orange.";
+
+    var html = document.documentElement.outerHTML;
+
+    if (mapEl && window.hcpsInitMap) { window.hcpsInitMap(); }
+    else if (mapEl && mapHTMLBackup !== null) { mapEl.innerHTML = mapHTMLBackup; }
+    if (stateNameEl && prevStateName !== null) stateNameEl.textContent = prevStateName;
+    if (stateStatusEl && prevStateStatus !== null) stateStatusEl.textContent = prevStateStatus;
+
+    return html;
+  }
+
   function saveEdits(){
     try {
-      localStorage.setItem(STORAGE_KEY, document.documentElement.outerHTML);
+      localStorage.setItem(STORAGE_KEY, getCleanPageHTML());
       statusEl.textContent = "Saved in this browser \u2713";
       setTimeout(function(){ statusEl.textContent = "Edit mode on — click any text to change it"; }, 2200);
     } catch(err){
@@ -1008,7 +1149,8 @@
   exportBtn.addEventListener("click", function(){
     var wasOn = editOn;
     setEditMode(false);
-    var htmlOut = "<!doctype html>\n" + document.documentElement.outerHTML;
+
+    var htmlOut = "<!doctype html>\n" + getCleanPageHTML();
     var blob = new Blob([htmlOut], { type: "text/html" });
     var url = URL.createObjectURL(blob);
     var a = document.createElement("a");
@@ -1018,6 +1160,7 @@
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+
     if (wasOn) setEditMode(true);
   });
 })();
