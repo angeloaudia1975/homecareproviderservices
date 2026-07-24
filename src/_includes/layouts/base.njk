@@ -82,5 +82,47 @@
   </div>
 </footer>
 
+<script>
+/* Graceful image fallback: any image that fails to load (e.g. a product photo
+   not uploaded yet) is replaced with a clean branded placeholder showing its
+   name, instead of a broken-image icon. */
+(function () {
+  function esc(s){return String(s).replace(/[<&>]/g,function(c){return {"<":"&lt;","&":"&amp;",">":"&gt;"}[c];});}
+  function placeholder(img){
+    if (img.dataset.ph) return; img.dataset.ph = "1";
+    var name = (img.getAttribute("alt") || "").trim();
+    var w = Math.max(img.clientWidth || 400, 260), h = Math.max(img.clientHeight || 200, 150);
+    var mn = Math.min(w, h);
+    var svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'">'
+      + '<rect width="100%" height="100%" fill="#eef2f7"/>'
+      + '<g fill="none" stroke="#bcc7d6" stroke-width="'+(mn*0.014).toFixed(2)+'" stroke-linejoin="round" stroke-linecap="round">'
+      + '<rect x="'+(w*0.33).toFixed(0)+'" y="'+(h*0.28).toFixed(0)+'" width="'+(w*0.34).toFixed(0)+'" height="'+(h*0.26).toFixed(0)+'" rx="'+(mn*0.03).toFixed(0)+'"/>'
+      + '<circle cx="'+(w*0.42).toFixed(0)+'" cy="'+(h*0.37).toFixed(0)+'" r="'+(mn*0.03).toFixed(0)+'"/>'
+      + '<path d="M'+(w*0.34).toFixed(0)+' '+(h*0.53).toFixed(0)+' L'+(w*0.45).toFixed(0)+' '+(h*0.43).toFixed(0)+' L'+(w*0.54).toFixed(0)+' '+(h*0.5).toFixed(0)+' L'+(w*0.6).toFixed(0)+' '+(h*0.45).toFixed(0)+' L'+(w*0.66).toFixed(0)+' '+(h*0.53).toFixed(0)+'"/>'
+      + '</g>'
+      + (name ? '<text x="50%" y="'+(h*0.72).toFixed(0)+'" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-weight="600" font-size="'+Math.round(Math.max(Math.min(w*0.05,17),12))+'" fill="#71829a">'+esc(name.length>34?name.slice(0,32)+"…":name)+'</text>' : '')
+      + '<text x="50%" y="'+(h*0.72+20).toFixed(0)+'" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="11" fill="#a6b2c2">Image coming soon</text>'
+      + '</svg>';
+    img.src = "data:image/svg+xml," + encodeURIComponent(svg);
+  }
+  // Catch images that fail *after* this script runs.
+  window.addEventListener("error", function (e) {
+    var t = e.target;
+    if (t && t.tagName === "IMG" && !t.dataset.ph) placeholder(t);
+  }, true);
+  // Catch images that already failed *before* this script ran (error fires once).
+  function sweep(){
+    var imgs = document.getElementsByTagName("img");
+    for (var i = 0; i < imgs.length; i++){
+      var img = imgs[i];
+      if (!img.dataset.ph && img.complete && img.naturalWidth === 0 && img.getAttribute("src")) placeholder(img);
+    }
+  }
+  sweep();
+  window.addEventListener("load", sweep);
+})();
+</script>
+
 </body>
 </html>
