@@ -1,0 +1,22 @@
+<section class="manu-hero" style="--m-accent:{{ accent }};--m-dark:{{ dark }}">
+  <div class="container"><div class="manu-hero-grid">
+    <div>
+      {% if b.eyebrow %}<p class="m-eyebrow">{{ b.eyebrow }}</p>{% endif %}
+      <h1>{{ b.headline or manu.name }}</h1>
+      <p class="lead">{{ b.lead or manu.description }}</p>
+      <div class="hero-actions">
+        <a class="btn primary" href="mailto:{{ site.contact.email }}?subject={{ manu.name | urlencode }}%20Dealer%20Pricing%20Request">Request Dealer Pricing</a>
+        {% if manu.ordering_url %}<a class="btn outline on-light" href="{{ manu.ordering_url }}" target="_blank" rel="noopener">Place Dealer Order</a>{% endif %}
+        {% if manu.website %}<a class="btn outline on-light" href="{{ manu.website }}" target="_blank" rel="noopener">Manufacturer Website</a>{% endif %}
+      </div>
+    </div>
+    <aside class="m-card">
+      {% if b.image %}<img src="{{ b.image }}" alt="{{ manu.name }}" class="m-card-img">
+      {% else %}<img src="{{ manu.logo }}" alt="{{ manu.name }}" class="m-card-logo">{% endif %}
+      {% if b.card_title %}<h2>{{ b.card_title }}</h2>{% endif %}
+      {% if b.card_intro %}<p>{{ b.card_intro }}</p>{% endif %}
+      {% if b.checklist.length %}<ul>{% for i in b.checklist %}<li>{{ i }}</li>{% endfor %}</ul>{% endif %}
+      {% if b.stats.length %}<div class="m-hero-stats">{% for s in b.stats %}<div class="m-stat"><strong>{{ s.value }}</strong><span>{{ s.label }}</span></div>{% endfor %}</div>{% endif %}
+    </aside>
+  </div></div>
+</section>

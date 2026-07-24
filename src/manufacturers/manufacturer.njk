@@ -9,66 +9,56 @@ eleventyComputed:
   title: "{{ manu.name }}"
   description: "{{ manu.description }}"
 ---
+{% set accent = manu.brand.accent or "#1681c2" %}
+{% set dark = manu.brand.dark or "#0b0d0f" %}
 
-<section class="manu-hero">
-  <div class="container">
-    <p class="eyebrow">{{ manu.category }}</p>
-    <div class="manu-hero-grid">
-      <div>
-        <h1>{{ manu.name }}</h1>
-        <p class="lead">{{ manu.description }}</p>
-        <div class="hero-actions">
-          {% if manu.ordering_url %}<a class="btn primary" href="{{ manu.ordering_url }}" target="_blank" rel="noopener">Order Online</a>{% endif %}
-          {% if manu.website %}<a class="btn outline on-light" href="{{ manu.website }}" target="_blank" rel="noopener">Manufacturer Website</a>{% endif %}
-          <a class="btn outline on-light" href="/become-a-dealer/">Become a Dealer</a>
-        </div>
-      </div>
-      <div class="manu-hero-logo"><img src="{{ manu.logo }}" alt="{{ manu.name }}"></div>
-    </div>
+{% if manu.sections.length %}
+  {% for b in manu.sections %}
+    {% include "blocks/" + b.type + ".njk" %}
+  {% endfor %}
+{% else %}
+  {% set b = { headline: manu.name, lead: manu.description } %}
+  {% include "blocks/hero.njk" %}
+{% endif %}
+
+<section><div class="container">
+  <div class="section-head">
+    <p class="eyebrow">Documents &amp; Resources</p>
+    <h2>{{ manu.name }} literature and forms</h2>
   </div>
-</section>
+  {% set manuDocs = documents.items | byManufacturer(manu.id) %}
+  {% if manuDocs.length %}
+    <div class="doc-grid">{% for doc in manuDocs %}
+      <article class="doc-card">
+        <span class="doc-type">{{ doc.type | typeLabel(documents.types) }}</span>
+        <h3>{{ doc.title }}</h3><p>{{ doc.description }}</p>
+        {% if doc.access == "public" %}
+          <a class="doc-link" href="{{ doc.url or doc.file }}" target="_blank" rel="noopener">{% if doc.format == "video" %}Watch video &rarr;{% else %}Download {{ doc.format | upper }} &rarr;{% endif %}</a>
+        {% elif doc.access == "dealer" %}<span class="doc-locked">Dealer login required</span>
+        {% else %}<span class="doc-locked">Account-specific &mdash; contact your rep</span>{% endif %}
+      </article>{% endfor %}</div>
+  {% else %}
+    <p class="doc-empty">Literature for {{ manu.name }} is being added. Contact
+      <a href="mailto:{{ site.contact.email }}">{{ site.contact.email }}</a>.</p>
+  {% endif %}
+</div></section>
 
-<section>
-  <div class="container">
-    <div class="section-head">
-      <p class="eyebrow">Documents &amp; Resources</p>
-      <h2>{{ manu.name }} literature and forms</h2>
-    </div>
-
-    {% set manuDocs = documents.items | byManufacturer(manu.id) %}
-    {% if manuDocs.length %}
-      <div class="doc-grid">
-      {% for doc in manuDocs %}
-        <article class="doc-card" data-access="{{ doc.access }}">
-          <span class="doc-type">{{ doc.type | typeLabel(documents.types) }}</span>
-          <h3>{{ doc.title }}</h3>
-          <p>{{ doc.description }}</p>
-          {% if doc.access == "public" %}
-            <a class="doc-link" href="{{ doc.file }}" target="_blank" rel="noopener">Download PDF &rarr;</a>
-          {% elif doc.access == "dealer" %}
-            <span class="doc-locked">Dealer login required</span>
-          {% else %}
-            <span class="doc-locked">Account-specific &mdash; contact your rep</span>
-          {% endif %}
-        </article>
-      {% endfor %}
-      </div>
-    {% else %}
-      <p class="doc-empty">Documents for {{ manu.name }} are being added. Contact us at
-        <a href="mailto:{{ site.contact.email }}">{{ site.contact.email }}</a> for literature.</p>
-    {% endif %}
+<section class="why"><div class="container">
+  <div class="section-head center">
+    <p class="eyebrow">HCPS Dealer Support</p>
+    <h2>Support tools for faster adoption</h2>
   </div>
-</section>
+  <div class="why-grid">{% for t in site.dealer_support_tools %}
+    <article><h3>{{ t.title }}</h3><p>{{ t.description }}</p></article>{% endfor %}</div>
+</div></section>
 
-<section class="cta">
-  <div class="container cta-grid">
-    <div>
-      <h2>Ready to add {{ manu.name }} to your showroom?</h2>
-      <p>Talk with your HCPS regional consultant about pricing, stock, and merchandising support.</p>
-    </div>
-    <div class="hero-actions">
-      <a class="btn primary" href="mailto:{{ site.contact.email }}">Contact Your Rep</a>
-      <a class="btn outline" href="/manufacturers/">All Manufacturers</a>
-    </div>
+<section class="cta"><div class="container cta-grid">
+  <div>
+    <h2>Ready to build your {{ manu.name }} showroom strategy?</h2>
+    <p>Request dealer pricing, product recommendations, showroom planning, or a training session for your team.</p>
   </div>
-</section>
+  <div class="hero-actions">
+    <a class="btn primary" href="/become-a-dealer/?manufacturer={{ manu.id }}">Contact Your Rep</a>
+    <a class="btn outline" href="/manufacturers/">All Manufacturers</a>
+  </div>
+</div></section>

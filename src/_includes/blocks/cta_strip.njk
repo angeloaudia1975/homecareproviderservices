@@ -1,0 +1,4 @@
+<div class="m-cta-strip" style="--m-accent:{{ accent }}"><div class="container">
+  <div><h2>{{ b.headline }}</h2><p>{{ b.copy }}</p></div>
+  <a class="btn primary" href="{{ b.url or manu.ordering_url }}" {% if b.url or manu.ordering_url %}target="_blank" rel="noopener"{% endif %}>{{ b.cta }}</a>
+</div></div>

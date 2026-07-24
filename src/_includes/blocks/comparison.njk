@@ -1,0 +1,9 @@
+<section style="--m-accent:{{ accent }}"><div class="container">
+  <div class="section-head center"><h2>{{ b.title }}</h2>{% if b.intro %}<p>{{ b.intro }}</p>{% endif %}</div>
+  <div class="m-compare">
+    <div class="m-compare-box"><h3>{{ b.left.title }}</h3>
+      <ul class="m-bullets">{% for i in b.left.points %}<li>{{ i }}</li>{% endfor %}</ul></div>
+    <div class="m-compare-box strong"><h3>{{ b.right.title }}</h3>
+      <ul class="m-checklist">{% for i in b.right.points %}<li>{{ i }}</li>{% endfor %}</ul></div>
+  </div>
+</div></section>

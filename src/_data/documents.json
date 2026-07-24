@@ -1,17 +1,72 @@
 {
   "accessLevels": {
-    "public": "Anyone can download. Brochures, credit applications, spec sheets.",
-    "dealer": "Requires dealer login. Standard price lists, dealer-only catalogs.",
-    "dealer-specific": "Visible only to the named dealer accounts. Custom negotiated price lists."
+    "public": "Anyone can download or view.",
+    "dealer": "Requires dealer login. Standard price lists, dealer-only material.",
+    "dealer-specific": "Visible only to the dealer IDs listed in the item's 'dealers' array."
   },
   "types": [
-    { "id": "credit-application", "label": "Credit application", "defaultAccess": "public" },
-    { "id": "brochure",           "label": "Brochure",           "defaultAccess": "public" },
-    { "id": "catalog",            "label": "Catalog",            "defaultAccess": "public" },
-    { "id": "spec-sheet",         "label": "Spec sheet",         "defaultAccess": "public" },
-    { "id": "price-list",         "label": "Standard price list","defaultAccess": "dealer" },
-    { "id": "custom-price-list",  "label": "Custom price list",  "defaultAccess": "dealer-specific" },
-    { "id": "form",               "label": "Form",               "defaultAccess": "public" }
+    {
+      "id": "credit-application",
+      "label": "Credit application",
+      "defaultAccess": "public"
+    },
+    {
+      "id": "price-list",
+      "label": "Standard price list",
+      "defaultAccess": "dealer"
+    },
+    {
+      "id": "custom-price-list",
+      "label": "Custom price list",
+      "defaultAccess": "dealer-specific"
+    },
+    {
+      "id": "brochure",
+      "label": "Brochure",
+      "defaultAccess": "public"
+    },
+    {
+      "id": "catalog",
+      "label": "Catalog",
+      "defaultAccess": "public"
+    },
+    {
+      "id": "spec-sheet",
+      "label": "Spec sheet",
+      "defaultAccess": "public"
+    },
+    {
+      "id": "service-guide",
+      "label": "Service guide",
+      "defaultAccess": "public"
+    },
+    {
+      "id": "form",
+      "label": "Form",
+      "defaultAccess": "public"
+    },
+    {
+      "id": "calculator",
+      "label": "Calculator / tool",
+      "defaultAccess": "public"
+    },
+    {
+      "id": "training-video",
+      "label": "Training video",
+      "defaultAccess": "public"
+    },
+    {
+      "id": "signage",
+      "label": "Signage / artwork",
+      "defaultAccess": "public"
+    }
+  ],
+  "formats": [
+    "pdf",
+    "xlsx",
+    "docx",
+    "video",
+    "link"
   ],
   "items": [
     {
@@ -19,33 +74,53 @@
       "title": "HCPS Dealer Credit Application",
       "type": "credit-application",
       "manufacturer": "",
+      "format": "pdf",
       "file": "/assets/docs/hcps-credit-application.pdf",
+      "url": "",
       "description": "Open a dealer account with HomeCare Provider Services.",
       "access": "public",
       "dealers": [],
       "featured": true
     },
     {
-      "id": "golden-credit-application",
-      "title": "Golden Technologies Credit Application",
-      "type": "credit-application",
+      "id": "golden-fabric-codes",
+      "title": "Golden Technologies Fabric Codes",
+      "type": "spec-sheet",
       "manufacturer": "golden-technologies",
-      "file": "/assets/docs/golden-credit-application.pdf",
-      "description": "Establish a direct account with Golden Technologies.",
+      "format": "pdf",
+      "file": "/assets/docs/golden-fabric-codes.pdf",
+      "url": "",
+      "description": "Current fabric options and codes for Golden lift chairs.",
       "access": "public",
       "dealers": [],
       "featured": false
     },
     {
-      "id": "golden-standard-price-list",
-      "title": "Golden Technologies Standard Price List",
-      "type": "price-list",
+      "id": "margin-vs-markup",
+      "title": "Margin vs. Markup",
+      "type": "calculator",
+      "manufacturer": "",
+      "format": "docx",
+      "file": "/assets/docs/margin-vs-markup.docx",
+      "url": "",
+      "description": "Understand the difference and price your showroom correctly.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
+    },
+    {
+      "id": "golden-twilight-training",
+      "title": "Golden Technologies Twilight Training Video",
+      "type": "training-video",
       "manufacturer": "golden-technologies",
-      "file": "/assets/docs/golden-standard-price-list.pdf",
-      "description": "Current dealer pricing, all product lines.",
-      "access": "dealer",
+      "format": "video",
+      "file": "",
+      "url": "https://vimeo.com/915333605/d2af5689fa",
+      "description": "Quick training walkthrough for the Twilight positioning feature.",
+      "access": "public",
       "dealers": [],
       "featured": false
     }
-  ]
+  ],
+  "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
 }

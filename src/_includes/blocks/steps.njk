@@ -1,0 +1,5 @@
+<section style="--m-accent:{{ accent }}"><div class="container">
+  <div class="section-head center"><h2>{{ b.title }}</h2>{% if b.intro %}<p>{{ b.intro }}</p>{% endif %}</div>
+  <div class="m-steps">{% for s in b.items %}
+    <div class="m-step"><h3>{{ s.title }}</h3><p>{{ s.description }}</p></div>{% endfor %}</div>
+</div></section>

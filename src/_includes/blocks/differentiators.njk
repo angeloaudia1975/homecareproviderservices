@@ -1,0 +1,8 @@
+<section class="m-why" style="--m-accent:{{ accent }};--m-dark:{{ dark }}"><div class="container">
+  <div class="section-head center">
+    {% if b.eyebrow %}<p class="eyebrow">{{ b.eyebrow }}</p>{% endif %}
+    <h2>{{ b.title }}</h2>{% if b.intro %}<p>{{ b.intro }}</p>{% endif %}
+  </div>
+  <div class="m-why-grid">{% for d in b.items %}
+    <div class="m-why-card"><h3>{{ d.title }}</h3><p>{{ d.description }}</p></div>{% endfor %}</div>
+</div></section>

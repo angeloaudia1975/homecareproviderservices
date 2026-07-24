@@ -1,0 +1,8 @@
+<section class="m-assortment" style="--m-accent:{{ accent }};--m-dark:{{ dark }}"><div class="container">
+  <div class="section-head center"><h2>{{ b.title }}</h2>{% if b.intro %}<p>{{ b.intro }}</p>{% endif %}</div>
+  <div class="m-table-wrap"><table class="m-table">
+    <thead><tr>{% for c in b.columns %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for r in b.rows %}<tr>{% for c in b.columns %}
+      <td data-label="{{ c }}">{{ r[loop.index0] }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+  </table></div>
+</div></section>

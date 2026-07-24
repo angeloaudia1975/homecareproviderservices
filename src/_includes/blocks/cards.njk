@@ -1,0 +1,14 @@
+<section style="--m-accent:{{ accent }}"><div class="container">
+  <div class="section-head center">
+    {% if b.eyebrow %}<p class="eyebrow">{{ b.eyebrow }}</p>{% endif %}
+    <h2>{{ b.title }}</h2>{% if b.intro %}<p>{{ b.intro }}</p>{% endif %}
+  </div>
+  <div class="m-cat-grid m-cols-{{ b.items.length }}">
+    {% for c in b.items %}
+    <article class="m-cat-card">
+      {% if c.image %}<img src="{{ c.image }}" alt="{{ c.name }}">{% endif %}
+      <div class="m-cat-body"><h3>{{ c.name }}</h3><p>{{ c.description }}</p>
+        {% if c.tag %}<small>{{ c.tag }}</small>{% endif %}</div>
+    </article>{% endfor %}
+  </div>
+</div></section>

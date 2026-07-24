@@ -1,0 +1,19 @@
+<section class="m-featured-band" style="--m-accent:{{ accent }}"><div class="container">
+  <div class="section-head center">
+    {% if b.eyebrow %}<p class="eyebrow">{{ b.eyebrow }}</p>{% endif %}
+    <h2>{{ b.title }}</h2>{% if b.intro %}<p>{{ b.intro }}</p>{% endif %}
+  </div>
+  <div class="m-prod-grid m-cols-{{ b.items.length }}">
+    {% for p in b.items %}
+    <article class="m-prod-card">
+      {% if p.image %}<img src="{{ p.image }}" alt="{{ p.name }}">{% endif %}
+      <div class="m-prod-body">
+        {% if p.tags.length %}<div class="m-tags">{% for t in p.tags %}<span class="m-tag">{{ t }}</span>{% endfor %}</div>{% endif %}
+        {% if p.badge %}<span class="m-badge">{{ p.badge }}</span>{% endif %}
+        <h3>{{ p.name }}</h3><p>{{ p.description }}</p>
+        {% if p.bullets.length %}<ul class="m-bullets">{% for i in p.bullets %}<li>{{ i }}</li>{% endfor %}</ul>{% endif %}
+        {% if p.url %}<a href="{{ p.url }}" target="_blank" rel="noopener">View product &rarr;</a>{% endif %}
+      </div>
+    </article>{% endfor %}
+  </div>
+</div></section>

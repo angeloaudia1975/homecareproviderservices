@@ -1,0 +1,10 @@
+<section style="--m-accent:{{ accent }}"><div class="container">
+  <div class="m-split-grid{% if b.image_side == 'left' %} reverse{% endif %}">
+    <div class="m-solution">
+      <h2>{{ b.headline }}</h2>{% if b.copy %}<p>{{ b.copy }}</p>{% endif %}
+      {% if b.checklist.length %}<ul class="m-checklist">{% for i in b.checklist %}<li>{{ i }}</li>{% endfor %}</ul>{% endif %}
+      {% if b.checks.length %}<div class="m-checks">{% for c in b.checks %}<div class="m-check">{{ c }}</div>{% endfor %}</div>{% endif %}
+    </div>
+    {% if b.image %}<div class="m-image-card"><img src="{{ b.image }}" alt="{{ b.headline }}"></div>{% endif %}
+  </div>
+</div></section>

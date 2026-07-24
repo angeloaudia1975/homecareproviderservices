@@ -8,7 +8,228 @@
     "logo": "/assets/logos/golden-technologies.jpg",
     "featured": true,
     "ordering_url": "https://goldenonlineordering.netlify.app",
-    "documents": []
+    "brand": {
+      "accent": "#d8a529",
+      "dark": "#17243b"
+    },
+    "sections": [
+      {
+        "type": "hero",
+        "eyebrow": "Advanced seating & mobility solutions",
+        "headline": "Build a stronger showroom with Golden Technologies.",
+        "lead": "Offer customers one of the most recognized names in power lift recliners, mobility scooters, power wheelchairs, and Hi-Low adjustable beds \u2014 with premium comfort technology, strong retail appeal, and category options that fit a wide range of mobility needs.",
+        "card_title": "Why dealers lead with Golden",
+        "card_intro": "Golden gives your team a complete mobility and comfort story \u2014 from the first lift chair conversation to scooters, power chairs, and sleep/recovery solutions.",
+        "checklist": [
+          "Patented comfort technologies including MaxiComfort\u00ae Positioning and Twilight Tilt.",
+          "Broad assortment across lift recliners, scooters, power wheelchairs, and Hi-Low beds.",
+          "Premium seating features such as adjustable headrest, lumbar, heat, massage, and fabric options.",
+          "Designed to help customers improve independence, safety, comfort, and daily mobility."
+        ],
+        "image": "",
+        "stats": []
+      },
+      {
+        "type": "stats",
+        "items": [
+          {
+            "value": "5",
+            "label": "Core product categories"
+          },
+          {
+            "value": "1\u20135",
+            "label": "Comfort zone chair options"
+          },
+          {
+            "value": "600 lb",
+            "label": "Heavy-duty lift chair capacity"
+          },
+          {
+            "value": "Dealer",
+            "label": "Showroom & service focused"
+          }
+        ]
+      },
+      {
+        "type": "cards",
+        "eyebrow": "Product Lines",
+        "title": "One brand. Multiple high-value sales categories.",
+        "intro": "Golden gives dealers a complete showroom pathway: comfort seating, mobility, travel independence, in-home support, and recovery-focused sleep solutions.",
+        "items": [
+          {
+            "name": "Advanced Power Recliners",
+            "tag": "Premium comfort sale",
+            "image": "/assets/products/golden/pr519-cloud-supreme.png",
+            "description": "Premium recliners with advanced positioning, customizable comfort, and wellness-driven seating features that help customers relax, recover, and rest."
+          },
+          {
+            "name": "Power Lift Chairs",
+            "tag": "Core DME category",
+            "image": "/assets/products/golden/pr515-cloud-twilight.png",
+            "description": "Lift recliners assist users with sitting, standing, reclining, and daily independence while creating a strong showroom anchor category for dealers."
+          },
+          {
+            "name": "Mobility Scooters",
+            "tag": "Retail traffic driver",
+            "image": "/assets/products/golden/buzzaround-scooter.jpg",
+            "description": "Portable, folding, full-size, and heavy-duty options help customers regain freedom at home, around town, and while traveling."
+          },
+          {
+            "name": "Power Wheelchairs",
+            "tag": "Mobility upgrade path",
+            "image": "/assets/products/golden/ally-power-chair.jpg",
+            "description": "Compact travel, center-wheel drive, and foldable power chair options allow dealers to serve customers who need tighter turning, powered mobility, and transportability."
+          },
+          {
+            "name": "Hi-Low Adjustable Beds",
+            "tag": "Home recovery solution",
+            "image": "/assets/products/golden/passport-hi-low-bed.jpg",
+            "description": "Hi-Low bed solutions support safer transfers, in-home comfort, caregiver support, and customers who need more than a standard adjustable bed."
+          }
+        ]
+      },
+      {
+        "type": "products",
+        "eyebrow": "Featured Products",
+        "title": "Products dealers can build a showroom around",
+        "intro": "",
+        "items": [
+          {
+            "name": "Cloud Supreme with Twilight",
+            "badge": "Advanced Power Recliner",
+            "image": "/assets/products/golden/pr519-cloud-supreme.png",
+            "url": "https://goldentech.com/product/lift-recliners/cloud-supreme-with-twilight/",
+            "description": "Premium Golden lift recliner positioning with Twilight Tilt and MaxiComfort\u00ae style comfort for a high-end showroom presentation."
+          },
+          {
+            "name": "Cloud with Twilight",
+            "badge": "Lift Chair",
+            "image": "/assets/products/golden/pr515-cloud-twilight.png",
+            "url": "https://goldentech.com/product/lift-recliners/cloud-with-twilight-small-medium/",
+            "description": "A strong premium lift chair story for customers looking for positioning, long-term comfort, and advanced seating technology."
+          },
+          {
+            "name": "Buzzaround Scooter Line",
+            "badge": "Mobility Scooter",
+            "image": "/assets/products/golden/buzzaround-scooter.jpg",
+            "url": "https://goldentech.com/product-category/mobility-scooters/",
+            "description": "Portable and easy-to-demonstrate scooter options help dealers serve customers who want travel, errands, and daily mobility support."
+          },
+          {
+            "name": "Golden Ally Power Chair",
+            "badge": "Power Wheelchair",
+            "image": "/assets/products/golden/ally-power-chair.jpg",
+            "url": "https://goldentech.com/product/power-wheelchairs/ally/",
+            "description": "Travel-friendly power chair positioning gives dealers an upgrade path for customers who need powered mobility and transportability."
+          },
+          {
+            "name": "LiteRider Envy",
+            "badge": "Power Wheelchair",
+            "image": "/assets/products/golden/literider-envy.jpg",
+            "url": "https://goldentech.com/product-category/power-wheelchairs/",
+            "description": "A compact power wheelchair option that helps dealers support customers needing tight turning, powered mobility, and everyday convenience."
+          },
+          {
+            "name": "Passport Hi-Low Bed",
+            "badge": "Hi-Low Bed",
+            "image": "/assets/products/golden/passport-hi-low-bed.jpg",
+            "url": "https://goldentech.com/product-category/hi-low-beds/",
+            "description": "A home recovery and caregiver-support solution that pairs well with lift chair customers, discharge planning, and aging-in-place conversations."
+          }
+        ]
+      },
+      {
+        "type": "differentiators",
+        "eyebrow": "The Golden Difference",
+        "title": "What your sales team can explain quickly",
+        "intro": "Move the conversation from price to value, comfort, safety, independence, and fit.",
+        "items": [
+          {
+            "title": "Patented comfort story",
+            "description": "Golden\u2019s MaxiComfort\u00ae and Twilight Tilt technologies create a simple, premium talking point around positioning, pressure relief, and zero-gravity comfort."
+          },
+          {
+            "title": "Built for mobility needs",
+            "description": "Lift chairs are more than furniture. They help customers safely sit, stand, recline, and maintain independence at home."
+          },
+          {
+            "title": "Strong product breadth",
+            "description": "Dealers can serve multiple customer profiles with Small-to-Tall, Heavy Duty, portable scooters, folding mobility, power chairs, and bed solutions."
+          },
+          {
+            "title": "Showroom-friendly upgrades",
+            "description": "Features such as power headrest, power lumbar, heat, massage, fabric choices, footrest extensions, and positioning options help increase ticket value."
+          },
+          {
+            "title": "Retailer support story",
+            "description": "Golden encourages customers to shop through local retailers where they can try products, confirm fit, and receive local service support."
+          },
+          {
+            "title": "Family-owned brand equity",
+            "description": "Golden\u2019s family-owned history and long-standing reputation help dealers present a trusted, established manufacturer to consumers."
+          }
+        ]
+      },
+      {
+        "type": "split",
+        "headline": "Turn the lift chair conversation into a full mobility solution.",
+        "copy": "Customers often start with one need: getting out of a chair safely, moving around the home, traveling with confidence, or recovering more comfortably. Golden gives your staff a complete product ladder to solve those needs under one trusted brand.",
+        "checks": [
+          "Lift chair showroom display",
+          "Scooter retail display",
+          "Power chair upgrade path",
+          "Hi-Low bed add-on sale",
+          "Premium comfort upgrades",
+          "Training & product education"
+        ],
+        "checklist": [],
+        "image": "/assets/products/golden/hi-low-lifestyle.jpg",
+        "image_side": "right"
+      },
+      {
+        "type": "table",
+        "title": "Suggested dealer showroom assortment",
+        "intro": "A starting point for account development, showroom planning, and training conversations.",
+        "columns": [
+          "Category",
+          "Display strategy",
+          "Customer need",
+          "Sales angle"
+        ],
+        "rows": [
+          [
+            "Premium lift recliner",
+            "Display one advanced 4-zone or 5-zone chair with headrest/lumbar and positioning features.",
+            "Comfort, recovery, pressure relief, safer sitting and standing.",
+            "Lead with comfort technology and wellness benefits."
+          ],
+          [
+            "Core lift chair",
+            "Display a strong value model in a popular size and fabric.",
+            "Everyday lift assistance and independence at home.",
+            "Best entry point for customers comparing standard recliners."
+          ],
+          [
+            "Portable scooter",
+            "Display a transportable scooter that staff can demonstrate disassembly or folding with.",
+            "Travel, errands, independence outside the home.",
+            "Show how easily it fits into daily life."
+          ],
+          [
+            "Power wheelchair",
+            "Display a compact or foldable chair for tight spaces and transport needs.",
+            "Powered mobility for customers who need maneuverability and less walking.",
+            "Position as a mobility upgrade from manual chairs or scooters."
+          ],
+          [
+            "Hi-Low adjustable bed",
+            "Use literature, video, or one floor model where space allows.",
+            "Transfers, caregiver support, recovery, and safer home positioning.",
+            "Add-on solution for lift chair, hospital discharge, and home-care customers."
+          ]
+        ]
+      }
+    ]
   },
   {
     "id": "access4u",
@@ -19,7 +240,27 @@
     "logo": "/assets/logos/access4u.jpg",
     "featured": false,
     "ordering_url": "",
-    "documents": []
+    "brand": {
+      "accent": "#1681c2",
+      "dark": "#0b0d0f"
+    },
+    "hero": {
+      "eyebrow": "",
+      "headline": "",
+      "lead": "",
+      "highlights_title": "",
+      "highlights_intro": "",
+      "highlights": []
+    },
+    "stats": [],
+    "product_categories": [],
+    "featured_products": [],
+    "differentiators": [],
+    "solution_headline": "",
+    "solution_copy": "",
+    "showroom_checks": [],
+    "assortment": [],
+    "sections": []
   },
   {
     "id": "complete-medical-supplies",
@@ -30,7 +271,27 @@
     "logo": "/assets/logos/complete-medical-supplies.jpg",
     "featured": false,
     "ordering_url": "",
-    "documents": []
+    "brand": {
+      "accent": "#1681c2",
+      "dark": "#0b0d0f"
+    },
+    "hero": {
+      "eyebrow": "",
+      "headline": "",
+      "lead": "",
+      "highlights_title": "",
+      "highlights_intro": "",
+      "highlights": []
+    },
+    "stats": [],
+    "product_categories": [],
+    "featured_products": [],
+    "differentiators": [],
+    "solution_headline": "",
+    "solution_copy": "",
+    "showroom_checks": [],
+    "assortment": [],
+    "sections": []
   },
   {
     "id": "ovation-medical",
@@ -41,7 +302,27 @@
     "logo": "/assets/logos/ovation-medical.jpg",
     "featured": false,
     "ordering_url": "",
-    "documents": []
+    "brand": {
+      "accent": "#1681c2",
+      "dark": "#0b0d0f"
+    },
+    "hero": {
+      "eyebrow": "",
+      "headline": "",
+      "lead": "",
+      "highlights_title": "",
+      "highlights_intro": "",
+      "highlights": []
+    },
+    "stats": [],
+    "product_categories": [],
+    "featured_products": [],
+    "differentiators": [],
+    "solution_headline": "",
+    "solution_copy": "",
+    "showroom_checks": [],
+    "assortment": [],
+    "sections": []
   },
   {
     "id": "climbing-steps",
@@ -52,7 +333,27 @@
     "logo": "/assets/logos/climbing-steps.jpg",
     "featured": false,
     "ordering_url": "",
-    "documents": []
+    "brand": {
+      "accent": "#1681c2",
+      "dark": "#0b0d0f"
+    },
+    "hero": {
+      "eyebrow": "",
+      "headline": "",
+      "lead": "",
+      "highlights_title": "",
+      "highlights_intro": "",
+      "highlights": []
+    },
+    "stats": [],
+    "product_categories": [],
+    "featured_products": [],
+    "differentiators": [],
+    "solution_headline": "",
+    "solution_copy": "",
+    "showroom_checks": [],
+    "assortment": [],
+    "sections": []
   },
   {
     "id": "ohio-medical",
@@ -63,7 +364,27 @@
     "logo": "/assets/logos/ohio-medical.jpg",
     "featured": false,
     "ordering_url": "",
-    "documents": []
+    "brand": {
+      "accent": "#1681c2",
+      "dark": "#0b0d0f"
+    },
+    "hero": {
+      "eyebrow": "",
+      "headline": "",
+      "lead": "",
+      "highlights_title": "",
+      "highlights_intro": "",
+      "highlights": []
+    },
+    "stats": [],
+    "product_categories": [],
+    "featured_products": [],
+    "differentiators": [],
+    "solution_headline": "",
+    "solution_copy": "",
+    "showroom_checks": [],
+    "assortment": [],
+    "sections": []
   },
   {
     "id": "medge",
@@ -74,7 +395,27 @@
     "logo": "/assets/logos/medge.jpg",
     "featured": false,
     "ordering_url": "",
-    "documents": []
+    "brand": {
+      "accent": "#1681c2",
+      "dark": "#0b0d0f"
+    },
+    "hero": {
+      "eyebrow": "",
+      "headline": "",
+      "lead": "",
+      "highlights_title": "",
+      "highlights_intro": "",
+      "highlights": []
+    },
+    "stats": [],
+    "product_categories": [],
+    "featured_products": [],
+    "differentiators": [],
+    "solution_headline": "",
+    "solution_copy": "",
+    "showroom_checks": [],
+    "assortment": [],
+    "sections": []
   },
   {
     "id": "pedifix",
@@ -85,7 +426,27 @@
     "logo": "/assets/logos/pedifix.jpg",
     "featured": false,
     "ordering_url": "",
-    "documents": []
+    "brand": {
+      "accent": "#1681c2",
+      "dark": "#0b0d0f"
+    },
+    "hero": {
+      "eyebrow": "",
+      "headline": "",
+      "lead": "",
+      "highlights_title": "",
+      "highlights_intro": "",
+      "highlights": []
+    },
+    "stats": [],
+    "product_categories": [],
+    "featured_products": [],
+    "differentiators": [],
+    "solution_headline": "",
+    "solution_copy": "",
+    "showroom_checks": [],
+    "assortment": [],
+    "sections": []
   },
   {
     "id": "corsicana",
@@ -96,7 +457,27 @@
     "logo": "/assets/logos/corsicana.jpg",
     "featured": false,
     "ordering_url": "",
-    "documents": []
+    "brand": {
+      "accent": "#1681c2",
+      "dark": "#0b0d0f"
+    },
+    "hero": {
+      "eyebrow": "",
+      "headline": "",
+      "lead": "",
+      "highlights_title": "",
+      "highlights_intro": "",
+      "highlights": []
+    },
+    "stats": [],
+    "product_categories": [],
+    "featured_products": [],
+    "differentiators": [],
+    "solution_headline": "",
+    "solution_copy": "",
+    "showroom_checks": [],
+    "assortment": [],
+    "sections": []
   },
   {
     "id": "airavant-bongorx",
@@ -107,7 +488,27 @@
     "logo": "/assets/logos/airavant-bongorx.jpg",
     "featured": false,
     "ordering_url": "",
-    "documents": []
+    "brand": {
+      "accent": "#1681c2",
+      "dark": "#0b0d0f"
+    },
+    "hero": {
+      "eyebrow": "",
+      "headline": "",
+      "lead": "",
+      "highlights_title": "",
+      "highlights_intro": "",
+      "highlights": []
+    },
+    "stats": [],
+    "product_categories": [],
+    "featured_products": [],
+    "differentiators": [],
+    "solution_headline": "",
+    "solution_copy": "",
+    "showroom_checks": [],
+    "assortment": [],
+    "sections": []
   },
   {
     "id": "bemis",
@@ -118,17 +519,265 @@
     "logo": "/assets/logos/bemis.jpg",
     "featured": false,
     "ordering_url": "",
-    "documents": []
+    "brand": {
+      "accent": "#1681c2",
+      "dark": "#0b0d0f"
+    },
+    "hero": {
+      "eyebrow": "",
+      "headline": "",
+      "lead": "",
+      "highlights_title": "",
+      "highlights_intro": "",
+      "highlights": []
+    },
+    "stats": [],
+    "product_categories": [],
+    "featured_products": [],
+    "differentiators": [],
+    "solution_headline": "",
+    "solution_copy": "",
+    "showroom_checks": [],
+    "assortment": [],
+    "sections": []
   },
   {
     "id": "strongback-mobility",
     "name": "Strongback Mobility",
-    "category": "Mobility specialty",
+    "category": "Ultra-light wheelchairs, transport chairs & rollators",
     "description": "Market-Leading Ergonomic Mobility Solutions Featuring Wheelchairs, Transport Chairs, Rollators, and Accessories Designed for Greater Comfort, Support, and Independence.",
     "website": "https://www.strongbackmobility.com/",
     "logo": "/assets/logos/strongback-mobility.jpg",
     "featured": false,
-    "ordering_url": "",
-    "documents": []
+    "ordering_url": "https://strongbackonlineordering.netlify.app/",
+    "brand": {
+      "accent": "#25aeda",
+      "dark": "#173247"
+    },
+    "hero": {
+      "eyebrow": "",
+      "headline": "",
+      "lead": "",
+      "highlights_title": "",
+      "highlights_intro": "",
+      "highlights": []
+    },
+    "stats": [],
+    "product_categories": [],
+    "featured_products": [],
+    "differentiators": [],
+    "solution_headline": "",
+    "solution_copy": "",
+    "showroom_checks": [],
+    "assortment": [],
+    "sections": [
+      {
+        "type": "hero",
+        "eyebrow": "New dealer growth opportunity",
+        "headline": "Comfort-first mobility products your customers can feel immediately.",
+        "lead": "Strongback Mobility gives dealers a premium ergonomic story across ultra-light wheelchairs, transport chairs, heavy-duty models, rollators, and the new ErgoSteel 18\" wheelchair at a powerful $399.99 MSRP price point.",
+        "card_title": "",
+        "card_intro": "",
+        "checklist": [],
+        "image": "/assets/products/strongback/hero-showroom.jpg",
+        "stats": [
+          {
+            "value": "16\"\u201322\"",
+            "label": "Seat width coverage"
+          },
+          {
+            "value": "375 lb",
+            "label": "HD model capacity"
+          },
+          {
+            "value": "$399.99",
+            "label": "ErgoSteel MSRP"
+          },
+          {
+            "value": "20 lb",
+            "label": "SEATA rollator weight"
+          }
+        ]
+      },
+      {
+        "type": "cards",
+        "eyebrow": "Dealer Opportunity",
+        "title": "A better answer than another standard wheelchair.",
+        "intro": "Strongback gives dealers a simple, high-impact message: comfort, posture support, folding convenience, premium styling, and a lineup that fits multiple customer needs.",
+        "items": [
+          {
+            "name": "Ergonomic back support",
+            "tag": "",
+            "image": "",
+            "description": "The signature Strongback backrest is designed to support the natural lumbar curve and promote a more upright seated position."
+          },
+          {
+            "name": "Easy to explain",
+            "tag": "",
+            "image": "",
+            "description": "Customers immediately understand the difference when they compare a flat-back wheelchair to a Strongback ergonomic support system."
+          },
+          {
+            "name": "Premium showroom story",
+            "tag": "",
+            "image": "",
+            "description": "Strongback creates a higher-value conversation around comfort, posture, transportability, and lifestyle \u2014 not just price."
+          }
+        ]
+      },
+      {
+        "type": "spotlight",
+        "badge": "New: ErgoSteel 18\" Wheelchair | $399.99 MSRP",
+        "headline": "ErgoSteel brings the Strongback comfort story into a high-demand price range.",
+        "copy": "The new ErgoSteel 18\" wheelchair is built to help dealers compete in the everyday wheelchair category while still offering the comfort advantage Strongback is known for.",
+        "checklist": [
+          "Ergonomic backrest and seat for practical Strongback comfort",
+          "Robust steel frame for dependable everyday use",
+          "Compact and foldable design with swing-away/removable legrests",
+          "300 lb user capacity with quick-release wheels",
+          "Positioned to be a market leader in the $399.99 MSRP price range"
+        ],
+        "image": "/assets/products/strongback/ergosteel-flyer.jpg",
+        "cta": "Add ErgoSteel to Your Lineup"
+      },
+      {
+        "type": "products",
+        "eyebrow": "Product Lineup",
+        "title": "Product lineup for dealer presentations",
+        "intro": "Use the lineup below to educate showroom teams and guide customers into the right mobility solution.",
+        "items": [
+          {
+            "name": "Strongback Comfort Wheelchairs",
+            "tags": [
+              "16\"",
+              "18\"",
+              "20\""
+            ],
+            "badge": "",
+            "image": "",
+            "url": "",
+            "description": "Ultra-light folding wheelchairs for customers who want posture support, comfort, and easy transport.",
+            "bullets": [
+              "Patented adjustable ergonomic backrest",
+              "Available in multiple seat widths",
+              "Attendant brake options on select models"
+            ]
+          },
+          {
+            "name": "Strongback Heavy Duty",
+            "tags": [
+              "22\" HD",
+              "375 lb capacity"
+            ],
+            "badge": "",
+            "image": "",
+            "url": "",
+            "description": "A premium HD option for customers who need a wider seat and higher weight capacity without losing the Strongback comfort story.",
+            "bullets": [
+              "22\" seat model",
+              "375 lb weight capacity",
+              "Strong retail upgrade opportunity"
+            ]
+          },
+          {
+            "name": "Excursion Transport Chairs",
+            "tags": [
+              "8\"",
+              "12\"",
+              "Transport"
+            ],
+            "badge": "",
+            "image": "",
+            "url": "",
+            "description": "Transport chair options for customers who need caregiver-assisted mobility with improved seating comfort.",
+            "bullets": [
+              "Ergonomic back support",
+              "Lightweight and foldable",
+              "Great add-on for travel and short outings"
+            ]
+          },
+          {
+            "name": "Strongback Rollators",
+            "tags": [
+              "Rollator",
+              "SEATA"
+            ],
+            "badge": "",
+            "image": "",
+            "url": "",
+            "description": "The SEATA rollator expands the same ergonomic comfort concept into walking support and seated rest.",
+            "bullets": [
+              "Full-size seat and ergonomic backrest",
+              "Large 9\" front and 12\" rear wheels",
+              "Height-adjustable ergonomic handles"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "comparison",
+        "title": "Give customers a visible comfort comparison.",
+        "intro": "Strongback is easy to demonstrate because the difference is visual and physical: flat-back seating versus ergonomic lumbar support.",
+        "left": {
+          "title": "Standard Wheelchair",
+          "points": [
+            "Flat backrest with limited posture support",
+            "Can encourage a forward, hunched seated position",
+            "Often sold mainly on price",
+            "Limited comfort story for retail teams"
+          ]
+        },
+        "right": {
+          "title": "Strongback Mobility",
+          "points": [
+            "Patented ergonomic backrest supports lumbar curve",
+            "Promotes a healthier, more upright seated position",
+            "Creates a premium customer experience",
+            "Helps dealers sell comfort, differentiation, and value"
+          ]
+        }
+      },
+      {
+        "type": "cta_strip",
+        "headline": "Ready to add Strongback to your product mix?",
+        "copy": "Review dealer pricing, build a starter order, or request help selecting the right assortment for your showroom.",
+        "cta": "Open Online Ordering",
+        "url": ""
+      },
+      {
+        "type": "steps",
+        "title": "Suggested dealer next steps",
+        "intro": "Make it simple for your team to evaluate the line and begin selling the comfort advantage.",
+        "items": [
+          {
+            "title": "Review the lineup",
+            "description": "Start with Comfort wheelchair sizes, HD 22\", Excursion transport chairs, SEATA rollator, and the new ErgoSteel 18\"."
+          },
+          {
+            "title": "Select your assortment",
+            "description": "Choose a showroom mix that covers standard, premium, transport, HD, and rollator customer needs."
+          },
+          {
+            "title": "Place your order",
+            "description": "Use the online ordering link to review pricing and submit your dealer order request."
+          }
+        ]
+      },
+      {
+        "type": "split",
+        "headline": "SEATA Rollator: bring ergonomic comfort to walking support.",
+        "copy": "The Strongback SEATA rollator gives dealers another differentiated cash-sale opportunity with a full-size seat, ergonomic backrest, foldable design, large wheels, and upright walking support.",
+        "checklist": [
+          "Patented Strongback ergonomic back support",
+          "Seat flips up for stable walking",
+          "Dual running/locking brake system",
+          "Height adjustable ergonomic handles from 30\" to 39\"",
+          "260 lb user capacity"
+        ],
+        "checks": [],
+        "image": "/assets/products/strongback/seata-rollator.jpg",
+        "image_side": "right"
+      }
+    ]
   }
 ]

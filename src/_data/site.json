@@ -63,5 +63,19 @@
       "title": "Free Consultations",
       "description": "Product Presentations with a Hands-On Approach\u2014We Come to You with Expert Guidance, Personalized Support, and Best-in-Class Dealer Solutions."
     }
+  ],
+  "dealer_support_tools": [
+    {
+      "title": "Showroom walkthrough",
+      "description": "Review the current floor mix and identify which models should anchor each product category."
+    },
+    {
+      "title": "Sales staff training",
+      "description": "Give staff a simple talk track for product technology, sizing, portability, and fit."
+    },
+    {
+      "title": "Marketing support",
+      "description": "Support local promotion with product education, category landing pages, showroom events, and dealer-specific campaigns."
+    }
   ]
 }
