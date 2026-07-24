@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en-US">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>HCPS Site Editor</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+
+<!-- Login -->
+<div id="login" class="login-wrap">
+  <form id="login-form" class="login-card" autocomplete="off">
+    <div class="login-brand">HomeCare Provider Services</div>
+    <h1>Site Editor</h1>
+    <p class="login-sub">Sign in to edit content and publish to the live site.</p>
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" required autocomplete="current-password">
+    <button type="submit" class="btn primary" id="login-btn">Sign in</button>
+    <p id="login-error" class="err" hidden></p>
+  </form>
+</div>
+
+<!-- App -->
+<div id="app" hidden>
+  <header class="topbar">
+    <div class="topbar-left">
+      <strong>HCPS Editor</strong>
+      <nav class="tabs">
+        <button class="tab" data-view="manufacturers">Manufacturers</button>
+        <button class="tab" data-view="documents">Documents</button>
+      </nav>
+    </div>
+    <div class="topbar-right">
+      <span id="gh-status" class="gh-status"></span>
+      <button class="btn ghost" id="logout-btn">Sign out</button>
+    </div>
+  </header>
+
+  <main id="view" class="view"></main>
+</div>
+
+<!-- Toast / status -->
+<div id="toast" class="toast" hidden></div>
+
+<!-- Busy overlay -->
+<div id="busy" class="busy" hidden><div class="spinner"></div><span id="busy-msg">Working…</span></div>
+
+<script src="/admin/admin.js"></script>
+</body>
+</html>
