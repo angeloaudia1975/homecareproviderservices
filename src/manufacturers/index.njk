@@ -1,0 +1,26 @@
+---
+layout: layouts/base.njk
+title: Manufacturers
+permalink: /manufacturers/
+description: "The 12 manufacturer partners represented by HomeCare Provider Services."
+---
+<section>
+  <div class="container">
+    <div class="section-head">
+      <p class="eyebrow">Our Manufacturing Partners</p>
+      <h2>{{ site.stats.manufacturers }} manufacturers. One representation team.</h2>
+      <p>HomeCare Provider Services is the authorized sales representative for the manufacturers below.</p>
+    </div>
+    <div class="manu-grid">
+      {% for m in manufacturers %}
+      <article class="manu-card">
+        <a href="/manufacturers/{{ m.id }}/" class="manu-logo-tile" style="background-image:url('{{ m.logo }}')" aria-label="{{ m.name }}"></a>
+        <p class="cat">{{ m.category }}</p>
+        <h3><a href="/manufacturers/{{ m.id }}/">{{ m.name }}</a></h3>
+        <p>{{ m.description }}</p>
+        <a class="visit" href="/manufacturers/{{ m.id }}/">View Products &amp; Documents &rarr;</a>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>

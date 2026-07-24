@@ -1,0 +1,80 @@
+---
+layout: layouts/base.njk
+title: Resources
+permalink: /resources/
+description: "Credit applications, brochures, catalogs, price lists and forms from all HCPS manufacturer partners."
+---
+<section>
+  <div class="container">
+    <div class="section-head">
+      <p class="eyebrow">Document Library</p>
+      <h2>Credit applications, brochures, catalogs &amp; price lists</h2>
+      <p>Filter by manufacturer or document type. Dealer pricing requires an account &mdash;
+         contact your regional consultant for access.</p>
+    </div>
+
+    <div class="doc-filters">
+      <input type="search" id="doc-search" placeholder="Search documents..." aria-label="Search documents">
+      <select id="filter-manu" aria-label="Filter by manufacturer">
+        <option value="">All manufacturers</option>
+        {% for m in manufacturers %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
+      </select>
+      <select id="filter-type" aria-label="Filter by document type">
+        <option value="">All document types</option>
+        {% for t in documents.types %}<option value="{{ t.id }}">{{ t.label }}</option>{% endfor %}
+      </select>
+      <span class="doc-count" id="doc-count"></span>
+    </div>
+
+    <div class="doc-grid" id="doc-list">
+    {% for doc in documents.items %}
+      {% set owner = manufacturers | selectattr("id", "equalto", doc.manufacturer) | first %}
+      <article class="doc-card" data-manu="{{ doc.manufacturer }}" data-type="{{ doc.type }}"
+               data-search="{{ doc.title | lower }} {{ doc.description | lower }}">
+        <span class="doc-type">{{ doc.type | typeLabel(documents.types) }}</span>
+        <h3>{{ doc.title }}</h3>
+        <p>{{ doc.description }}</p>
+        <div class="doc-meta">{% if owner %}{{ owner.name }}{% else %}HomeCare Provider Services{% endif %}</div>
+        {% if doc.access == "public" %}
+          <a class="doc-link" href="{{ doc.file }}" target="_blank" rel="noopener">Download PDF &rarr;</a>
+        {% elif doc.access == "dealer" %}
+          <span class="doc-locked">Dealer login required</span>
+        {% else %}
+          <span class="doc-locked">Account-specific &mdash; contact your rep</span>
+        {% endif %}
+      </article>
+    {% endfor %}
+    </div>
+    <p class="doc-empty" id="doc-none" hidden>No documents match those filters.</p>
+  </div>
+</section>
+
+<script>
+(function () {
+  var search = document.getElementById('doc-search');
+  var fManu = document.getElementById('filter-manu');
+  var fType = document.getElementById('filter-type');
+  var cards = Array.prototype.slice.call(document.querySelectorAll('#doc-list .doc-card'));
+  var none = document.getElementById('doc-none');
+  var count = document.getElementById('doc-count');
+
+  function apply() {
+    var q = search.value.trim().toLowerCase();
+    var m = fManu.value, t = fType.value, shown = 0;
+    cards.forEach(function (c) {
+      var ok = (!m || c.dataset.manu === m)
+            && (!t || c.dataset.type === t)
+            && (!q || c.dataset.search.indexOf(q) > -1);
+      c.hidden = !ok;
+      if (ok) shown++;
+    });
+    none.hidden = shown > 0;
+    count.textContent = shown + (shown === 1 ? ' document' : ' documents');
+  }
+  [search, fManu, fType].forEach(function (el) {
+    el.addEventListener('input', apply);
+    el.addEventListener('change', apply);
+  });
+  apply();
+})();
+</script>

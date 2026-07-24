@@ -1,0 +1,67 @@
+{
+  "name": "HomeCare Provider Services",
+  "tagline": "A Solutions Company",
+  "founded": 2016,
+  "meta_description": "HomeCare Provider Services (HCPS) represents 12 leading home medical equipment manufacturers to 300+ dealers across Southern Ohio, Southern Indiana, Kentucky, Tennessee, and Georgia.",
+  "contact": {
+    "phone_display": "937-626-5141",
+    "phone_href": "+19376265141",
+    "email": "info@homecareproviderservices.us"
+  },
+  "stats": {
+    "dealers": "300+",
+    "states": 5,
+    "manufacturers": 12
+  },
+  "territory": {
+    "states_display": "Southern Ohio \u2022 Southern Indiana \u2022 Kentucky \u2022 Tennessee \u2022 Georgia",
+    "covered_state_codes": [
+      "US-OH",
+      "US-IN",
+      "US-KY",
+      "US-TN",
+      "US-GA"
+    ],
+    "expansion_state_codes": [
+      "US-IL",
+      "US-NC",
+      "US-SC",
+      "US-AL",
+      "US-WV",
+      "US-PA",
+      "US-MI"
+    ],
+    "regions": [
+      {
+        "name": "Kentucky, S. Ohio & S. Indiana",
+        "rep": "Angelo Audia"
+      },
+      {
+        "name": "Tennessee & Georgia",
+        "rep": "Greg Campbell"
+      },
+      {
+        "name": "Inside Sales & Relations",
+        "rep": "Lori Hunt"
+      }
+    ]
+  },
+  "links": {
+    "online_ordering": "https://goldenonlineordering.netlify.app",
+    "support": "https://goldentechsupport.netlify.app"
+  },
+  "why_choose": [
+    {
+      "title": "Easy On-Boarding Process",
+      "description": "Simplify Your Ordering. Access Products, Review Pricing, and Place Orders Quickly Through Our Complete Line of Online Ordering Platforms."
+    },
+    {
+      "title": "Value Based & Premium Pricing",
+      "description": "Offering a Balanced Product Portfolio with Affordable Options and Premium Solutions Designed to Meet a Wide Range of Customer Needs."
+    },
+    {
+      "title": "Free Consultations",
+      "description": "Product Presentations with a Hands-On Approach\u2014We Come to You with Expert Guidance, Personalized Support, and Best-in-Class Dealer Solutions."
+    }
+  ]
+}

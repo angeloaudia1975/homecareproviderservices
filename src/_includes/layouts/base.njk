@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en-US">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} | {{ site.name }}</title>
+<meta name="description" content="{{ description or site.meta_description }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Archivo+Expanded:wght@700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/css/site.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="container topbar-inner">
+    <div class="topbar-left">
+      <span>{{ site.tagline }} Since {{ site.founded }}</span><span class="sep">&bull;</span>
+      <span>{{ site.stats.manufacturers }} Manufacturing Partners</span><span class="sep">&bull;</span>
+      <span>{{ site.stats.dealers }} Active Dealers</span>
+    </div>
+    <div class="topbar-right">
+      <a href="tel:{{ site.contact.phone_href }}">{{ site.contact.phone_display }}</a>
+      <a href="mailto:{{ site.contact.email }}">{{ site.contact.email }}</a>
+      <a class="topbar-cta" href="/become-a-dealer/">Become a Dealer</a>
+    </div>
+  </div>
+</div>
+
+<header class="mainnav">
+  <div class="container nav-inner">
+    <a class="brand" href="/"><img src="/assets/logo.png" alt="{{ site.name }}"></a>
+    <nav class="links" aria-label="Primary navigation">
+      <a href="/">Home</a>
+      <div class="dropdown">
+        <a href="/manufacturers/">Manufacturers</a>
+        <div class="dropdown-menu">
+          {% for m in manufacturers %}<a href="/manufacturers/{{ m.id }}/">{{ m.name }}</a>{% endfor %}
+        </div>
+      </div>
+      <a href="/resources/">Resources</a>
+      <a href="/#team">Our Team</a>
+      <a href="/#territory">Territory</a>
+      <a href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">Online Ordering</a>
+    </nav>
+  </div>
+</header>
+
+<main>{{ content | safe }}</main>
+
+<footer id="contact">
+  <div class="container footer-grid">
+    <div>
+      <img src="/assets/logo.png" alt="{{ site.name }}">
+      <p>{{ site.meta_description }}</p>
+      <div class="footer-contact">
+        <a href="tel:{{ site.contact.phone_href }}">{{ site.contact.phone_display }}</a>
+        <a href="mailto:{{ site.contact.email }}">{{ site.contact.email }}</a>
+      </div>
+    </div>
+    <nav>
+      <h3>Platform</h3>
+      <a href="/manufacturers/">Manufacturers</a>
+      <a href="/resources/">Resources</a>
+      <a href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">Online Ordering</a>
+    </nav>
+    <nav>
+      <h3>Company</h3>
+      <a href="/#team">Our Team</a>
+      <a href="/#territory">Territory</a>
+      <a href="/become-a-dealer/">Become a Dealer</a>
+    </nav>
+    <div>
+      <h3>Ready to Grow?</h3>
+      <p>Talk with HCPS about becoming a dealer, checking stock, or getting pricing access.</p>
+      <a class="btn primary" href="mailto:{{ site.contact.email }}">Become a Dealer</a>
+    </div>
+  </div>
+  <div class="container footer-bottom">
+    <span>&copy; 2026 {{ site.name }}, LLC. All rights reserved.</span>
+    <span>{{ site.tagline }} &bull; Serving Dealers Since {{ site.founded }}</span>
+  </div>
+</footer>
+
+</body>
+</html>

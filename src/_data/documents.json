@@ -1,0 +1,51 @@
+{
+  "accessLevels": {
+    "public": "Anyone can download. Brochures, credit applications, spec sheets.",
+    "dealer": "Requires dealer login. Standard price lists, dealer-only catalogs.",
+    "dealer-specific": "Visible only to the named dealer accounts. Custom negotiated price lists."
+  },
+  "types": [
+    { "id": "credit-application", "label": "Credit application", "defaultAccess": "public" },
+    { "id": "brochure",           "label": "Brochure",           "defaultAccess": "public" },
+    { "id": "catalog",            "label": "Catalog",            "defaultAccess": "public" },
+    { "id": "spec-sheet",         "label": "Spec sheet",         "defaultAccess": "public" },
+    { "id": "price-list",         "label": "Standard price list","defaultAccess": "dealer" },
+    { "id": "custom-price-list",  "label": "Custom price list",  "defaultAccess": "dealer-specific" },
+    { "id": "form",               "label": "Form",               "defaultAccess": "public" }
+  ],
+  "items": [
+    {
+      "id": "hcps-credit-application",
+      "title": "HCPS Dealer Credit Application",
+      "type": "credit-application",
+      "manufacturer": "",
+      "file": "/assets/docs/hcps-credit-application.pdf",
+      "description": "Open a dealer account with HomeCare Provider Services.",
+      "access": "public",
+      "dealers": [],
+      "featured": true
+    },
+    {
+      "id": "golden-credit-application",
+      "title": "Golden Technologies Credit Application",
+      "type": "credit-application",
+      "manufacturer": "golden-technologies",
+      "file": "/assets/docs/golden-credit-application.pdf",
+      "description": "Establish a direct account with Golden Technologies.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
+    },
+    {
+      "id": "golden-standard-price-list",
+      "title": "Golden Technologies Standard Price List",
+      "type": "price-list",
+      "manufacturer": "golden-technologies",
+      "file": "/assets/docs/golden-standard-price-list.pdf",
+      "description": "Current dealer pricing, all product lines.",
+      "access": "dealer",
+      "dealers": [],
+      "featured": false
+    }
+  ]
+}

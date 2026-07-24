@@ -1,0 +1,134 @@
+[
+  {
+    "id": "golden-technologies",
+    "name": "Golden Technologies",
+    "category": "Advanced power recliners and mobility",
+    "description": "A Premium Line of Advanced Power Recliners, Lift Chairs, Mobility Scooters, Power Wheelchairs, and Hi-Low Beds from One of the Industry\u2019s Leading Manufacturers..",
+    "website": "https://goldentech.com/",
+    "logo": "/assets/logos/golden-technologies.jpg",
+    "featured": true,
+    "ordering_url": "https://goldenonlineordering.netlify.app",
+    "documents": []
+  },
+  {
+    "id": "access4u",
+    "name": "Access4U",
+    "category": "home accessibility Solutions",
+    "description": "American-Made Modular Ramping Systems Engineered for Fast Installation, Long-Term Durability, and Reliable Accessibility\u2014Complemented by a Full Line of Portable Ramps, Threshold Ramps, Transition Solutions, and Retail Displays.",
+    "website": "https://www.rampsaccess4u.com/",
+    "logo": "/assets/logos/access4u.jpg",
+    "featured": false,
+    "ordering_url": "",
+    "documents": []
+  },
+  {
+    "id": "complete-medical-supplies",
+    "name": "Complete Medical Supplies",
+    "category": "hme & DME and Aids to daily living",
+    "description": "Access 200+ Trusted Healthcare Brands Through One of the Industry\u2019s Largest Distributors\u2014Plus Exclusive Blue Jay\u00ae Products Designed for Quality, Value, and Dealer Growth.",
+    "website": "",
+    "logo": "/assets/logos/complete-medical-supplies.jpg",
+    "featured": false,
+    "ordering_url": "",
+    "documents": []
+  },
+  {
+    "id": "ovation-medical",
+    "name": "Ovation Medical",
+    "category": "Bracing & Orthopedic",
+    "description": "Advanced Orthopedic Bracing Solutions That Help Dealers Strengthen Patient Care, Increase Reimbursement Opportunities, and Grow a More Profitable Bracing Program.",
+    "website": "",
+    "logo": "/assets/logos/ovation-medical.jpg",
+    "featured": false,
+    "ordering_url": "",
+    "documents": []
+  },
+  {
+    "id": "climbing-steps",
+    "name": "Climbing Steps",
+    "category": "Patient Lifts & portable stairlifts",
+    "description": "Innovative Patient Lifts, Portable Stairlifts, and Bath Safety Solutions That Help Dealers Expand Their Patient-Care Offering and Support Safer, More Independent Living.",
+    "website": "",
+    "logo": "/assets/logos/climbing-steps.jpg",
+    "featured": false,
+    "ordering_url": "",
+    "documents": []
+  },
+  {
+    "id": "ohio-medical",
+    "name": "Ohio Medical",
+    "category": "Respiratory & Oxygen",
+    "description": "Reliable Home Oxygen Solutions Featuring Stationary Concentrators and Portable Oxygen Equipment Designed to Help Dealers Better Serve Respiratory Care Patients.",
+    "website": "",
+    "logo": "/assets/logos/ohio-medical.jpg",
+    "featured": false,
+    "ordering_url": "",
+    "documents": []
+  },
+  {
+    "id": "medge",
+    "name": "Medge",
+    "category": "ambulatory aids",
+    "description": "A Full Line of Mobility and Bath Safety Accessories That Helps Dealers Expand Their Product Offering and Better Support Customers\u2019 Daily Living Needs.",
+    "website": "",
+    "logo": "/assets/logos/medge.jpg",
+    "featured": false,
+    "ordering_url": "",
+    "documents": []
+  },
+  {
+    "id": "pedifix",
+    "name": "PediFix",
+    "category": "Footcare accessories",
+    "description": "Professional Foot-Care Solutions That Help Dealers and Providers Support Podiatry, Pain Relief, Comfort, and Specialized Patient Care.",
+    "website": "",
+    "logo": "/assets/logos/pedifix.jpg",
+    "featured": false,
+    "ordering_url": "",
+    "documents": []
+  },
+  {
+    "id": "corsicana",
+    "name": "Corsicana",
+    "category": "hi-lo adjustable beds & patient room",
+    "description": "Offering Advanced Hi-Lo Mobility Bed That Rotates, Raises, and Assists the User into a Safer, More Comfortable Standing Position, Full line of models available",
+    "website": "",
+    "logo": "/assets/logos/corsicana.jpg",
+    "featured": false,
+    "ordering_url": "",
+    "documents": []
+  },
+  {
+    "id": "airavant-bongorx",
+    "name": "AIRAVANT / Bongorx",
+    "category": "sleep products",
+    "description": "Offering a Compact, Innovative EPAP Therapy Solution Designed for CPAP-Intolerant and Non-Compliant Patients.",
+    "website": "",
+    "logo": "/assets/logos/airavant-bongorx.jpg",
+    "featured": false,
+    "ordering_url": "",
+    "documents": []
+  },
+  {
+    "id": "bemis",
+    "name": "Bemis",
+    "category": "Bathroom Safety",
+    "description": "American-Made Raised Toilet Seats with a Versatile Modular Design and Integrated Hygiene Options for Greater Comfort, Independence, and Personal Care.",
+    "website": "",
+    "logo": "/assets/logos/bemis.jpg",
+    "featured": false,
+    "ordering_url": "",
+    "documents": []
+  },
+  {
+    "id": "strongback-mobility",
+    "name": "Strongback Mobility",
+    "category": "Mobility specialty",
+    "description": "Market-Leading Ergonomic Mobility Solutions Featuring Wheelchairs, Transport Chairs, Rollators, and Accessories Designed for Greater Comfort, Support, and Independence.",
+    "website": "https://www.strongbackmobility.com/",
+    "logo": "/assets/logos/strongback-mobility.jpg",
+    "featured": false,
+    "ordering_url": "",
+    "documents": []
+  }
+]

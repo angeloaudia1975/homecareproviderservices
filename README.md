@@ -1,27 +1,93 @@
-# HomeCare Provider Services — Website
+# HCPS Website — Phase 1
 
-Live marketing/landing page for HomeCare Provider Services (HCPS), a Golden Technologies-and-more distributor serving 300+ dealers across Southern Ohio, Southern Indiana, Kentucky, Tennessee, and Georgia.
+Static site built with Eleventy. Content lives in data files; templates generate pages.
 
-## What's in this repo
+## Deploy to Netlify
 
-- `index.html` — the entire site (single self-contained file: HTML, CSS, and JS all in one place, including 12 manufacturer logos embedded directly in the page).
+Connect this repo to Netlify. `netlify.toml` already has the settings:
+- Build command: `npm run build`
+- Publish directory: `_site`
 
-## Editing content in the browser (no code needed)
+Every push to `main` rebuilds and deploys automatically.
 
-The live page has a built-in **✎ Edit This Page** button (bottom-right corner):
+## Local commands (optional — Netlify does this for you)
 
-1. Click it to turn on edit mode.
-2. Click any text on the page to edit it directly.
-3. Add/remove manufacturer cards, team members, and testimonials with the `+` / `×` controls.
-4. Upload logos/photos directly onto any card.
-5. Click **Export HTML** to download your changes as a file — send that file back to Claude (or open a PR) to make the changes permanent on the live site.
+```
+npm install
+npm run build     # builds to _site/
+npm start         # dev server with live reload
+```
 
-⚠️ **Save** only stores edits in that one browser (not shared across devices, not permanent). **Export HTML** is the reliable way to keep changes.
+## Where content lives
 
-## Deployment
+```
+src/_data/
+  site.json           Contact info, stats, territory, regional reps
+  manufacturers.json  The 12 partners
+  documents.json      PDF library + access levels
+  team.json           Team members
+  testimonials.json   Dealer quotes
+```
 
-This repo is connected to Netlify. Every push to `main` deploys automatically — no build step required (it's a static file).
+Edit a data file, push, and every page that uses it updates.
 
-## Making bigger changes
+## Adding a document
 
-For structural changes (new sections, layout, adding fields to the manufacturer template, etc.), ask Claude to edit this repo directly rather than using the in-browser edit mode — that keeps future regenerations from overwriting one-off browser edits.
+1. Put the PDF in `src/assets/docs/`
+2. Add a record to the `items` array in `src/_data/documents.json`:
+
+```json
+{
+  "id": "golden-cloud-brochure",
+  "title": "Golden Cloud Series Brochure",
+  "type": "brochure",
+  "manufacturer": "golden-technologies",
+  "file": "/assets/docs/golden-cloud-brochure.pdf",
+  "description": "Cloud and Cloud Plus power recliners.",
+  "access": "public",
+  "dealers": [],
+  "featured": false
+}
+```
+
+It appears on the Golden Technologies page AND in the Resources library, filterable by
+manufacturer and type. No template edits.
+
+## Access levels
+
+| Level | Who sees it | Use for |
+|---|---|---|
+| `public` | Anyone | Brochures, credit applications, spec sheets |
+| `dealer` | Logged-in dealers | Standard price lists |
+| `dealer-specific` | Only accounts listed in `dealers` | Custom negotiated price lists |
+
+Public documents download directly today. `dealer` and `dealer-specific` render a locked
+state — the gate itself gets wired up when dealer login is added (Phase 2, alongside the
+dealer master record).
+
+**Never set a custom price list to `public`.** The `dealers` array holds HCPS dealer IDs,
+not manufacturer account numbers, so one custom price list can be scoped to a dealer
+regardless of which manufacturer's account number they use.
+
+## Adding a manufacturer
+
+Add one record to `manufacturers.json`, drop the logo in `src/assets/logos/`. That produces
+the homepage card, the logo strip tile, the nav dropdown entry, the manufacturers index card,
+and a full manufacturer page with its own document library.
+
+## Structure
+
+```
+src/
+  _data/                 Content (edit these)
+  _includes/layouts/     base.njk — header, nav, footer
+  assets/
+    css/site.css         Design system + page styles
+    logos/               Manufacturer logos
+    docs/                PDFs go here
+  index.njk              Homepage
+  resources.njk          Document library (filter + search)
+  manufacturers/
+    index.njk            Manufacturer index
+    manufacturer.njk     Generates all 12 manufacturer pages
+```

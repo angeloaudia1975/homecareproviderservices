@@ -1,0 +1,243 @@
+---
+layout: layouts/base.njk
+title: Manufacturer Sales Representation
+permalink: /
+---
+<section class="hero">
+  <div class="container hero-grid">
+    <div class="hero-copy">
+      <p class="eyebrow">MANUFACTURER SALES REPRESENTATION &bull; DME &bull; HME &bull; PHARMACY</p>
+      <h1>Connecting <span>{{ site.stats.manufacturers }} Manufacturers</span> to <span>{{ site.stats.dealers }} Dealers</span> Across Southern Ohio, Southern Indiana, Kentucky, Tennessee &amp; Georgia.</h1>
+      <p class="lead">Since {{ site.founded }}, HomeCare Provider Services has provided strategic manufacturers&rsquo; representation throughout the healthcare industry. We help introduce and promote innovative products, programs, and solutions to high-value HME providers, DME dealers, pharmacies, and other healthcare organizations serving patients every day.</p>
+      <p class="lead">Our approach is built around service, strong relationships, and practical solutions. By connecting manufacturers with the right customers and supporting providers with responsive, knowledgeable representation, we help create sustainable growth and better outcomes for manufacturers, healthcare partners, and the patients they serve.</p>
+      <div class="hero-actions">
+        <a class="btn primary" href="/become-a-dealer/">Become a Dealer</a>
+        <a class="btn outline" href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">Explore Our Online Ordering Platform</a>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="puzzle-strip"><span class="puzzle-dot b1"></span><span class="puzzle-dot b2"></span><span class="puzzle-dot o"></span></div>
+      <div class="kpi-grid">
+        <article><b>{{ site.stats.dealers }}</b><strong>Active Dealers</strong><span>Across our full territory.</span></article>
+        <article><b class="accent">{{ site.stats.states }}</b><strong>States Covered</strong><span>Southern Ohio, Southern Indiana, Kentucky, Tennessee, Georgia.</span></article>
+        <article><b>{{ site.stats.manufacturers }}</b><strong>Manufacturer Partners</strong><span>A wide portfolio to merchandize your showroom.</span></article>
+        <article><b class="accent">{{ site.founded }}</b><strong>{{ site.tagline }}</strong><span>Serving dealers since {{ site.founded }}.</span></article>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="credibility">
+  <div class="container row">
+    <span>&#9733; {{ site.tagline }}</span>
+    <span>Since {{ site.founded }}</span>
+    <span>{{ site.stats.dealers }} Active Dealers</span>
+    <span>{{ site.stats.manufacturers }} Manufacturing Partners</span>
+    <span>{{ site.territory.states_display }}</span>
+  </div>
+</section>
+
+<section class="manu-band">
+  <div class="container">
+    <p class="label">Our Manufacturing Partners</p>
+    <div class="logo-row">
+      {% for m in manufacturers %}
+      <a class="badge-logo" href="/manufacturers/{{ m.id }}/">
+        <span class="sw" style="background-image:url('{{ m.logo }}')"></span>
+        <span>{{ m.name }}</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section id="manufacturers">
+  <div class="container">
+    <div class="section-head">
+      <p class="eyebrow">Innovative Products. Showroom Solutions. Simplified Ordering.</p>
+      <h2>Strong Manufacturer Partnerships. Innovative Products. Better Solutions for Dealers.</h2>
+      <p>HomeCare Provider Services is the authorized sales representative for the manufacturers listed below. We carefully select innovative products and programs that help expand your product offerings, strengthen your showroom, and provide greater value to your customers.</p>
+    </div>
+    <div class="manu-grid">
+      {% for m in manufacturers %}
+      <article class="manu-card">
+        <a href="/manufacturers/{{ m.id }}/" class="manu-logo-tile" style="background-image:url('{{ m.logo }}')" aria-label="{{ m.name }}"></a>
+        <p class="cat">{{ m.category }}</p>
+        <h3><a href="/manufacturers/{{ m.id }}/">{{ m.name }}</a></h3>
+        <p>{{ m.description }}</p>
+        <a class="visit" href="/manufacturers/{{ m.id }}/">View Products &amp; Documents &rarr;</a>
+      </article>
+      {% endfor %}
+    </div>
+    <div class="manu-note">
+      <div>
+        <strong>Ready to place your order?</strong>
+        <span>Discover how easy it is to place online orders, recurring orders, and streamline your ordering process.</span>
+      </div>
+      <a class="btn primary" href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">Visit Our Online Ordering Page</a>
+    </div>
+  </div>
+</section>
+
+<section class="why">
+  <div class="container">
+    <div class="section-head center">
+      <p class="eyebrow">Choose HomeCare Provider Services as Your Partners in Healthcare</p>
+      <h2>It&rsquo;s all about customer service.</h2>
+    </div>
+    <div class="why-grid">
+      {% for card in site.why_choose %}
+      <article>
+        <div class="why-icon{% if loop.index == 2 %} orange{% endif %}"></div>
+        <h3>{{ card.title }}</h3>
+        <p>{{ card.description }}</p>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="team" id="team">
+  <div class="container">
+    <div class="section-head center">
+      <p class="eyebrow">Our Consulting Team</p>
+      <h2>Real people, ready to help your business grow.</h2>
+    </div>
+    <div class="team-grid">
+      {% for t in team %}
+      <article class="team-card">
+        <div class="team-avatar">{{ t.name[0] }}</div>
+        <h3>{{ t.name }}</h3>
+        <p class="team-role">{{ t.role }}</p>
+        <a href="tel:{{ t.phone_href }}">{{ t.phone_display }}</a>
+        <a href="mailto:{{ t.email }}">{{ t.email }}</a>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="testimonials">
+  <div class="container">
+    <div class="section-head center">
+      <p class="eyebrow">What Dealers Are Saying</p>
+      <h2>Real stories from real partners.</h2>
+    </div>
+    <div class="testimonial-grid">
+      {% for t in testimonials %}
+      <article class="testimonial-card">
+        <p class="quote">&ldquo;{{ t.quote }}&rdquo;</p>
+        <div class="testimonial-who"><strong>{{ t.name }}</strong><span>{{ t.role }}</span></div>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="territory" id="territory">
+  <div class="container">
+    <div class="section-head">
+      <p class="eyebrow">Our Territory</p>
+      <h2>{{ site.stats.states }} States. {{ site.stats.dealers }} Dealers. {{ site.stats.manufacturers }} Manufacturer Partners.</h2>
+      <p>HomeCare Provider Services serves dealers across {{ site.territory.states_display | replace(" &bull; ", ", ") }} &mdash; with regional consultants on the ground in each territory.</p>
+    </div>
+    <div class="territory-layout">
+      <aside class="territory-copy">
+        <h3>Coverage Built for Dealer Growth</h3>
+        <p>Concentrated distribution across the Ohio Valley and the Southeast &mdash; including Southern Ohio and Southern Indiana &mdash; with regional consultants who know their markets.</p>
+        <div class="territory-stats">
+          <span><strong>{{ site.stats.states }}</strong>States</span>
+          <span><strong>{{ site.stats.dealers }}</strong>Dealers</span>
+          <span><strong>{{ site.stats.manufacturers }}</strong>Manufacturers</span>
+        </div>
+        <div class="region-list">
+          <h4>Regional Coverage</h4>
+          <ul>
+            {% for r in site.territory.regions %}
+            <li><strong>{{ r.name }}</strong><span>{{ r.rep }}</span></li>
+            {% endfor %}
+          </ul>
+        </div>
+      </aside>
+      <div class="map-card">
+        <div id="hcps-us-map"></div>
+        <div class="map-legend">
+          <span><i></i>Covered Territory</span>
+          <span><i class="future"></i>Future Expansion</span>
+          <span><i class="gray"></i>Not Currently Covered</span>
+        </div>
+      </div>
+      <aside class="state-panel">
+        <p class="eyebrow">State Detail</p>
+        <h3 id="hcps-state-name">Hover a State</h3>
+        <p id="hcps-state-status">Covered states are shown in blue. Future expansion opportunities are shown in orange.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section class="cta" id="become-a-dealer">
+  <div class="container cta-grid">
+    <div>
+      <h2>Ready to upgrade your showroom &amp; strengthen your business model?</h2>
+      <p>HomeCare Provider Services is committed to the growth and success of our dealer network.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="btn primary" href="/resources/">Download Credit Application</a>
+      <a class="btn outline" href="mailto:{{ site.contact.email }}">Contact Us</a>
+    </div>
+  </div>
+</section>
+
+<script src="https://cdn.amcharts.com/lib/5/index.js"></script>
+<script src="https://cdn.amcharts.com/lib/5/map.js"></script>
+<script src="https://cdn.amcharts.com/lib/5/geodata/usaLow.js"></script>
+<script src="https://cdn.amcharts.com/lib/5/themes/Animated.js"></script>
+<script>
+(function () {
+  var covered = {{ site.territory.covered_state_codes | dump | safe }};
+  var future = {{ site.territory.expansion_state_codes | dump | safe }};
+  function initMap() {
+    var el = document.getElementById("hcps-us-map");
+    if (!el || typeof am5 === "undefined") return;
+    var root = am5.Root.new("hcps-us-map");
+    root.setThemes([am5themes_Animated.new(root)]);
+    var chart = root.container.children.push(am5map.MapChart.new(root, {
+      panX: "none", panY: "none", wheelX: "none", wheelY: "none",
+      projection: am5map.geoAlbersUsa()
+    }));
+    var series = chart.series.push(am5map.MapPolygonSeries.new(root, { geoJSON: am5geodata_usaLow }));
+    series.mapPolygons.template.setAll({
+      tooltipText: "{name}", interactive: true,
+      stroke: am5.color(0x111820), strokeWidth: 1.2,
+      fill: am5.color(0x3a4048), cursorOverStyle: "pointer"
+    });
+    series.mapPolygons.template.adapters.add("fill", function (fill, target) {
+      var id = target.dataItem && target.dataItem.dataContext && target.dataItem.dataContext.id;
+      if (covered.indexOf(id) > -1) return am5.color(0x1681c2);
+      if (future.indexOf(id) > -1) return am5.color(0xef6325);
+      return am5.color(0x3a4048);
+    });
+    series.mapPolygons.template.states.create("hover", {
+      fill: am5.color(0xfcb21e), stroke: am5.color(0xffffff), strokeWidth: 2
+    });
+    series.mapPolygons.template.events.on("pointerover", function (ev) {
+      var d = ev.target.dataItem.dataContext;
+      var status = "Not currently covered.";
+      if (covered.indexOf(d.id) > -1) {
+        status = (d.id === "US-OH" || d.id === "US-IN")
+          ? "Active HCPS territory \u2014 concentrated in southern " + d.name + "."
+          : "Active HCPS distribution territory \u2014 " + d.name + " dealers order directly through us.";
+      } else if (future.indexOf(d.id) > -1) {
+        status = "Future expansion opportunity for HCPS.";
+      }
+      document.getElementById("hcps-state-name").textContent = d.name;
+      document.getElementById("hcps-state-status").textContent = status;
+    });
+    series.events.on("datavalidated", function () { chart.goHome(); });
+    chart.appear(800, 100);
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initMap);
+  else initMap();
+})();
+</script>
