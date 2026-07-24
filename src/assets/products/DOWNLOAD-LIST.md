@@ -32,3 +32,25 @@ reference these paths. Once saved, upload the `products/` folder to
 Resize anything wider than ~1200px. Product shots display at 400px or less; a 3000px
 original costs load time for no visible benefit. Any image editor or a free online
 resizer works.
+
+## Access4U → `src/assets/products/access4u/`
+
+| Save as | Download from |
+|---|---|
+| `hero-residential-ramp.jpg` | https://static.wixstatic.com/media/3916ca_5ecaadd49fb14dbca68794d1cb1746a9~mv2.jpg |
+| `commercial-ramp.jpg` | https://static.wixstatic.com/media/540b64_483f8efecc114088bccf6d97dde0bb4a~mv2.jpg |
+| `assist-ramp.jpg` | https://static.wixstatic.com/media/7bd19b_ba820d66f2c34b9e92346351c6e96c30~mv2.jpg |
+| `threshold-ramp.jpg` | https://static.wixstatic.com/media/b6ee89_60a04e9aa849497980660f8f4b9f067b~mv2.jpg |
+
+Access4U reused the residential-ramp image for several cards on the original page.
+For the portable and accessories cards, grab distinct images from rampsaccess4u.com
+if you have them — otherwise the residential shot is fine as a placeholder.
+
+## BongoRx → `src/assets/products/bongorx/`
+
+| Save as | Download from |
+|---|---|
+| `bongorx-device.jpg` | https://6980302-860447796248001271.preview.editmysite.com/uploads/6/9/8/0/6980302/bongorx-device_orig.jpg |
+
+**Grab this one first** — same Weebly preview URL type as the Strongback flyer, and
+those expire. The BongoRx "how it works" video is a YouTube embed (no download needed).

@@ -1,0 +1,14 @@
+<section style="--m-accent:{{ accent }}"><div class="container">
+  <div class="m-split-grid{% if b.video_side == 'right' %} reverse{% endif %}">
+    <div class="m-video-wrap">
+      <iframe src="{{ b.embed }}" title="{{ b.headline }}" loading="lazy"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowfullscreen></iframe>
+    </div>
+    <div class="m-solution">
+      {% if b.eyebrow %}<p class="m-eyebrow">{{ b.eyebrow }}</p>{% endif %}
+      <h2>{{ b.headline }}</h2>{% if b.copy %}<p>{{ b.copy }}</p>{% endif %}
+      {% if b.checklist.length %}<ul class="m-checklist">{% for i in b.checklist %}<li>{{ i }}</li>{% endfor %}</ul>{% endif %}
+    </div>
+  </div>
+</div></section>

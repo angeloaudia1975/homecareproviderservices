@@ -234,15 +234,15 @@
   {
     "id": "access4u",
     "name": "Access4U",
-    "category": "home accessibility Solutions",
+    "category": "Modular, portable & threshold ramps",
     "description": "American-Made Modular Ramping Systems Engineered for Fast Installation, Long-Term Durability, and Reliable Accessibility\u2014Complemented by a Full Line of Portable Ramps, Threshold Ramps, Transition Solutions, and Retail Displays.",
     "website": "https://www.rampsaccess4u.com/",
     "logo": "/assets/logos/access4u.jpg",
     "featured": false,
     "ordering_url": "",
     "brand": {
-      "accent": "#1681c2",
-      "dark": "#0b0d0f"
+      "accent": "#2f73b8",
+      "dark": "#0f2942"
     },
     "hero": {
       "eyebrow": "",
@@ -260,7 +260,224 @@
     "solution_copy": "",
     "showroom_checks": [],
     "assortment": [],
-    "sections": []
+    "sections": [
+      {
+        "type": "hero",
+        "eyebrow": "Made in U.S.A. accessibility solutions",
+        "headline": "Help customers access their homes safely with Access4U.",
+        "lead": "Access4U gives dealers a complete ramping solution for residential, commercial, portable, mini, and threshold applications \u2014 with modular aluminum systems, accessory options, and dealer-focused support for site-specific accessibility needs.",
+        "card_title": "A dealer-friendly accessibility line",
+        "card_intro": "",
+        "image": "/assets/products/access4u/hero-residential-ramp.jpg",
+        "checklist": [
+          "Modular aluminum ramping systems for residential and commercial projects.",
+          "Portable folding, mini, supported threshold, adjustable threshold, and rubber threshold ramp options.",
+          "Accessories including stairs, gates, ground platforms, guardrails, picket railings, and landing platforms.",
+          "Designed to support dealers, home modification experts, DME providers, and access professionals."
+        ],
+        "stats": []
+      },
+      {
+        "type": "stats",
+        "items": [
+          {
+            "value": "1000 lb",
+            "label": "Modular ramp capacity"
+          },
+          {
+            "value": "600 lb",
+            "label": "Portable & threshold options"
+          },
+          {
+            "value": "36\" / 48\"",
+            "label": "Common modular widths"
+          },
+          {
+            "value": "Made in USA",
+            "label": "Access4U positioning"
+          }
+        ]
+      },
+      {
+        "type": "products",
+        "eyebrow": "Product Line",
+        "title": "Complete ramping options for every access conversation.",
+        "intro": "From temporary threshold needs to full home access projects, Access4U gives dealers an organized product ladder for real-world customer situations.",
+        "items": [
+          {
+            "name": "Residential Modular Ramps",
+            "badge": "Enable Series",
+            "image": "/assets/products/access4u/hero-residential-ramp.jpg",
+            "tags": [],
+            "bullets": [],
+            "url": "https://www.rampsaccess4u.com/modularresidentialramps",
+            "description": "Configured to the home, porch, driveway, or entryway using modular aluminum ramp runs, platforms, handrails, and accessories."
+          },
+          {
+            "name": "Commercial Ramping",
+            "badge": "Commercial",
+            "image": "/assets/products/access4u/commercial-ramp.jpg",
+            "tags": [],
+            "bullets": [],
+            "url": "https://www.rampsaccess4u.com/commercialramps",
+            "description": "Heavy-duty modular access solutions for public-access and commercial applications where ADA, IBC, and safety considerations matter."
+          },
+          {
+            "name": "Assist Ramps with Handrails",
+            "badge": "Assist Series",
+            "image": "/assets/products/access4u/assist-ramp.jpg",
+            "tags": [],
+            "bullets": [],
+            "url": "https://www.rampsaccess4u.com/assist",
+            "description": "A strong dealer option when customers need more stability than a simple threshold ramp but do not need a full modular system."
+          },
+          {
+            "name": "Threshold Ramps",
+            "badge": "Threshold",
+            "image": "/assets/products/access4u/threshold-ramp.jpg",
+            "tags": [],
+            "bullets": [],
+            "url": "https://www.rampsaccess4u.com/thresholdramps",
+            "description": "Fast solutions for doorway transitions and single-step access, including supported, adjustable, rubber, and plate-style threshold options."
+          },
+          {
+            "name": "Portable & Mini Ramps",
+            "badge": "Portable",
+            "image": "/assets/products/access4u/hero-residential-ramp.jpg",
+            "tags": [],
+            "bullets": [],
+            "url": "https://www.rampsaccess4u.com/portablefoldingmini",
+            "description": "Easy-to-position aluminum ramps for short rises, curb transitions, travel needs, and cash-sale showroom opportunities."
+          },
+          {
+            "name": "Stairs, Gates & Railings",
+            "badge": "Accessories",
+            "image": "/assets/products/access4u/hero-residential-ramp.jpg",
+            "tags": [],
+            "bullets": [],
+            "url": "https://www.rampsaccess4u.com/stairsgatespicketsguardrails",
+            "description": "Accessory options help dealers build complete projects with ground platforms, stair systems, gates, guardrails, picket railings, and landing platforms."
+          }
+        ]
+      },
+      {
+        "type": "differentiators",
+        "eyebrow": "Why Access4U",
+        "title": "Why Access4U belongs in a DME dealer\u2019s access program.",
+        "intro": "Positioned around modular access, dealer support, Made in U.S.A. manufacturing, and practical installation advantages.",
+        "items": [
+          {
+            "title": "Dealer network focus",
+            "description": "Access4U does not sell online or promote online superstores, positioning the line around authorized dealers and local service."
+          },
+          {
+            "title": "Fast modular installation",
+            "description": "Quick height adjustment points, handrail panels, H-frame systems, and square posts are presented as installation and finish advantages."
+          },
+          {
+            "title": "Custom project flexibility",
+            "description": "Dealers can support site-specific layouts with ramp runs, platforms, stairs, gates, ground platforms, guardrails, and picket railings."
+          },
+          {
+            "title": "Residential and commercial",
+            "description": "Access4U supports home accessibility projects and commercial ramping applications with standard and custom configurations."
+          },
+          {
+            "title": "Slip-resistant surfaces",
+            "description": "Aluminum slip-resistant walking surfaces and smooth transition points are emphasized throughout."
+          },
+          {
+            "title": "Showroom cash-sale options",
+            "description": "Portable, mini, threshold, and rubber ramps create smaller add-on sales opportunities for retail locations and service technicians."
+          }
+        ]
+      },
+      {
+        "type": "split",
+        "headline": "From a quick threshold fix to a complete home access project.",
+        "copy": "Access4U helps dealers serve multiple access needs instead of sending customers elsewhere. Start with a threshold or portable ramp, then support larger residential and commercial modular layouts when the customer needs a full solution.",
+        "checks": [
+          "Residential ramp evaluations",
+          "Commercial access projects",
+          "Threshold ramp cash sales",
+          "Portable ramp displays",
+          "Stairs and gate options",
+          "Custom sizing support"
+        ],
+        "checklist": [],
+        "image": "/assets/products/access4u/commercial-ramp.jpg",
+        "image_side": "left"
+      },
+      {
+        "type": "table",
+        "title": "Suggested dealer product strategy",
+        "intro": "Use this structure to present Access4U as both a retail add-on line and a larger project-based accessibility solution.",
+        "columns": [
+          "Category",
+          "Dealer use case",
+          "Key talking point",
+          "Best next step"
+        ],
+        "rows": [
+          [
+            "Threshold ramps",
+            "Doorway transitions, single steps, garage entries, and quick needs.",
+            "Simple, practical cash-sale solution for small rises.",
+            "Stock common sizes and train staff to ask about rise height."
+          ],
+          [
+            "Portable folding ramps",
+            "Temporary access, travel, loading, or customer-owned mobility equipment.",
+            "Foldable, transportable, and easy to demonstrate in the showroom.",
+            "Display one unit and create a simple sizing guide."
+          ],
+          [
+            "Assist ramps",
+            "Short exterior transitions where handrails add safety and confidence.",
+            "More stability than basic portable ramps, without a full modular layout.",
+            "Promote for porches, tiered sidewalks, and garage entries."
+          ],
+          [
+            "Residential modular ramps",
+            "Permanent or semi-permanent home access projects.",
+            "Customizable layouts with ramp runs, platforms, handrails, and accessories.",
+            "Offer site evaluations and project quote requests."
+          ],
+          [
+            "Commercial ramps",
+            "Public access, facilities, churches, clinics, and government-related opportunities.",
+            "Designed for ADA/IBC-oriented applications and heavier-duty needs.",
+            "Build referral relationships with contractors and facility managers."
+          ]
+        ]
+      },
+      {
+        "type": "cards",
+        "eyebrow": "Dealer Growth",
+        "title": "Dealer growth opportunities",
+        "intro": "Access4U gives your company a practical way to capture more home-accessibility demand from existing mobility, lift chair, hospital bed, and stairlift customers.",
+        "items": [
+          {
+            "name": "Retail showroom display",
+            "tag": "",
+            "image": "",
+            "description": "Use threshold, portable, and mini ramp samples to create instant visual education for walk-in customers."
+          },
+          {
+            "name": "In-home assessments",
+            "tag": "",
+            "image": "",
+            "description": "Add ramp evaluations to existing delivery, repair, scooter, wheelchair, and lift chair customer visits."
+          },
+          {
+            "name": "Project-based revenue",
+            "tag": "",
+            "image": "",
+            "description": "Modular ramp projects create higher-value opportunities involving layout planning, accessories, installation, and ongoing support."
+          }
+        ]
+      }
+    ]
   },
   {
     "id": "complete-medical-supplies",
@@ -481,16 +698,16 @@
   },
   {
     "id": "airavant-bongorx",
-    "name": "AIRAVANT / Bongorx",
-    "category": "sleep products",
+    "name": "AIRAVANT / BongoRx",
+    "category": "EPAP sleep apnea therapy",
     "description": "Offering a Compact, Innovative EPAP Therapy Solution Designed for CPAP-Intolerant and Non-Compliant Patients.",
-    "website": "",
+    "website": "https://bongorx.com/",
     "logo": "/assets/logos/airavant-bongorx.jpg",
     "featured": false,
-    "ordering_url": "",
+    "ordering_url": "https://bongorxonlineordering.netlify.app/",
     "brand": {
-      "accent": "#1681c2",
-      "dark": "#0b0d0f"
+      "accent": "#f3b223",
+      "dark": "#003f67"
     },
     "hero": {
       "eyebrow": "",
@@ -508,7 +725,149 @@
     "solution_copy": "",
     "showroom_checks": [],
     "assortment": [],
-    "sections": []
+    "sections": [
+      {
+        "type": "hero",
+        "eyebrow": "EPAP Therapy \u2014 Dealer Introduction",
+        "headline": "BongoRx: EPAP Sleep Apnea Therapy Without the Machine",
+        "lead": "A simple, portable CPAP alternative for mild to moderate obstructive sleep apnea patients who want freedom from machines, hoses, and power.",
+        "card_title": "Why Dealers Are Interested",
+        "card_intro": "",
+        "image": "/assets/products/bongorx/bongorx-device.jpg",
+        "checklist": [
+          "Prescription cash product \u2014 great for retail, FSA/HSA customers, and CPAP alternative inquiries.",
+          "Travel-friendly therapy \u2014 no machine, hose, or electricity required.",
+          "Built-in replenishment \u2014 the Starter Kit opens the door to recurring annual and single replacement sales."
+        ],
+        "stats": []
+      },
+      {
+        "type": "cards",
+        "eyebrow": "Dealer Opportunity",
+        "title": "A New Cash Sales Opportunity for Sleep Therapy Customers",
+        "intro": "BongoRx gives dealers a compact, clinically tested, FDA-cleared sleep apnea therapy option for patients with mild to moderate OSA who may not want, tolerate, or afford a traditional CPAP setup.",
+        "items": [
+          {
+            "name": "Ideal Patient Profile",
+            "tag": "",
+            "image": "",
+            "description": "Newly diagnosed mild to moderate OSA patients, CPAP non-compliant patients, travelers, and patients facing high deductibles or co-payments."
+          },
+          {
+            "name": "No Power Required",
+            "tag": "",
+            "image": "",
+            "description": "Uses the patient\u2019s own exhalation to create EPAP, helping keep the airway open without a machine or electricity."
+          },
+          {
+            "name": "Simple Starter Kit",
+            "tag": "",
+            "image": "",
+            "description": "The Four Sizes Starter Kit allows easy contactless setup with multiple sizes, headgear, travel case, and drying stand."
+          }
+        ]
+      },
+      {
+        "type": "video",
+        "eyebrow": "How It Works",
+        "headline": "Small, simple, and built for real-world use.",
+        "copy": "BongoRx has soft nasal seals that dilate the nasal passages. During inhalation, small valves open so the patient can breathe normally. During exhalation, valves close and direct air through vent holes to generate EPAP.",
+        "embed": "https://www.youtube.com/embed/R_tpx0i0XS4",
+        "video_side": "left",
+        "checklist": [
+          "Clinically tested for mild to moderate obstructive sleep apnea",
+          "FDA-cleared CPAP alternative with history of use",
+          "Use at home, traveling, camping, or when electricity is unavailable",
+          "No assembly required and easy to clean"
+        ]
+      },
+      {
+        "type": "steps",
+        "title": "Easy Dealer Presentation Flow",
+        "intro": "Use this as your talk track to walk dealers from patient need to product assortment.",
+        "items": [
+          {
+            "title": "Identify the Patient",
+            "description": "Mild to moderate OSA, CPAP non-compliant, traveler, or high-deductible cash customer."
+          },
+          {
+            "title": "Start With BNG500",
+            "description": "The Four Sizes Starter Kit supports at-home sizing and includes headgear, travel case, and drying stand."
+          },
+          {
+            "title": "Replenish After Trial",
+            "description": "Once the patient identifies their size, move them into annual replenishment or single replacement units."
+          },
+          {
+            "title": "Build Retail Add-On Sales",
+            "description": "Train staff to position BongoRx as a cash-pay CPAP alternative and travel backup solution."
+          }
+        ]
+      },
+      {
+        "type": "table",
+        "title": "Product Lineup",
+        "intro": "Suggested dealer assortment for a focused launch.",
+        "columns": [
+          "Part No.",
+          "Description",
+          "Dealer Positioning"
+        ],
+        "rows": [
+          [
+            "BNG500",
+            "BongoRx Four Sizes Starter Kit \u2014 includes SM, MD, LG, XL, headgear, travel case, and drying stand.",
+            "Primary first-purchase item for all new patients."
+          ],
+          [
+            "BNG501\u2013BNG505",
+            "Annual Replenishment Packs \u2014 XS\u2013XL. Four devices of one size plus headgear, travel case, and drying stand.",
+            "Recurring resupply opportunity after the Starter Kit."
+          ],
+          [
+            "BNG511\u2013BNG515",
+            "Single Replenishment Units \u2014 XS\u2013XL. One device and headgear only.",
+            "Easy replacement or add-on sale."
+          ],
+          [
+            "BNG530",
+            "Replacement Headgear.",
+            "Accessory replacement item."
+          ]
+        ]
+      },
+      {
+        "type": "cta_strip",
+        "headline": "Place an Opening Order to Get Started",
+        "copy": "Start with a small opening order so your team can test demand with CPAP alternative, cash-pay, and travel-focused customers.",
+        "cta": "Request Dealer Pricing",
+        "url": ""
+      },
+      {
+        "type": "faq",
+        "eyebrow": "Dealer FAQ",
+        "title": "Common questions to answer during the meeting",
+        "intro": "",
+        "items": [
+          {
+            "q": "Does BongoRx need a prescription?",
+            "a": "Yes. Sleep apnea treatment devices require a prescription in the United States. An existing PAP therapy prescription on file may qualify."
+          },
+          {
+            "q": "Is BongoRx reimbursed by insurance?",
+            "a": "BongoRx is generally not a covered item under medical insurance plans. Patients may be able to use FSA/HSA funds because it is a prescription device."
+          },
+          {
+            "q": "What should every new patient start with?",
+            "a": "New patients should start with BNG500, the Four Sizes Starter Kit, to determine the preferred size at home."
+          },
+          {
+            "q": "What are the key patient benefits?",
+            "a": "Freedom from machines, hoses, and power; small and discreet; useful at home or while traveling; quick startup; simple use; no assembly; easy to clean."
+          }
+        ]
+      }
+    ]
   },
   {
     "id": "bemis",

@@ -1,0 +1,14 @@
+<section class="m-featured-band" style="--m-accent:{{ accent }}"><div class="container">
+  <div class="section-head center">
+    {% if b.eyebrow %}<p class="eyebrow">{{ b.eyebrow }}</p>{% endif %}
+    <h2>{{ b.title }}</h2>{% if b.intro %}<p>{{ b.intro }}</p>{% endif %}
+  </div>
+  <div class="m-faq">
+    {% for item in b.items %}
+    <details class="m-faq-item"{% if loop.first %} open{% endif %}>
+      <summary>{{ item.q }}</summary>
+      <p>{{ item.a }}</p>
+    </details>
+    {% endfor %}
+  </div>
+</div></section>

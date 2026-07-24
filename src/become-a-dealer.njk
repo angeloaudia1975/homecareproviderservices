@@ -1,0 +1,104 @@
+---
+layout: layouts/base.njk
+title: Become a Dealer
+permalink: /become-a-dealer/
+description: "Request dealer pricing, product recommendations, and account setup with HomeCare Provider Services."
+---
+<section class="hero" style="padding-bottom:44px;">
+  <div class="container">
+    <div class="section-head">
+      <p class="eyebrow">Become a Dealer</p>
+      <h1 style="font-size:clamp(30px,4vw,46px);color:#fff;">Grow your showroom with HCPS.</h1>
+      <p class="lead">Request dealer pricing, product recommendations, showroom planning, or account setup across any of our {{ site.stats.manufacturers }} manufacturer partners. A regional consultant will follow up personally.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container" style="max-width:760px;">
+    <form id="dealer-form" class="hcps-form" novalidate>
+      <input type="text" name="company_website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;" aria-hidden="true">
+      <input type="hidden" name="manufacturer" id="form-manufacturer" value="">
+
+      <div class="form-row">
+        <div><label for="f-name">Name *</label><input id="f-name" name="name" type="text" required></div>
+        <div><label for="f-company">Company / Dealer name *</label><input id="f-company" name="company" type="text" required></div>
+      </div>
+      <div class="form-row">
+        <div><label for="f-email">Email *</label><input id="f-email" name="email" type="email" required></div>
+        <div><label for="f-phone">Phone</label><input id="f-phone" name="phone" type="tel"></div>
+      </div>
+      <div>
+        <label for="f-interest">Primary interest</label>
+        <select id="f-interest" name="interest">
+          <option value="">Select…</option>
+          {% for m in manufacturers %}<option value="{{ m.name }}">{{ m.name }}</option>{% endfor %}
+          <option value="Complete HCPS dealer program">Complete HCPS dealer program</option>
+          <option value="Training / account development">Training / account development</option>
+        </select>
+      </div>
+      <div>
+        <label for="f-message">Message</label>
+        <textarea id="f-message" name="message" placeholder="Tell us what pricing, training, or recommendations you need."></textarea>
+      </div>
+      <div>
+        <button type="submit" class="btn primary" id="f-submit">Submit Dealer Request</button>
+        <p class="form-status" id="f-status" role="status" aria-live="polite"></p>
+      </div>
+    </form>
+  </div>
+</section>
+
+<script>
+(function () {
+  var form = document.getElementById("dealer-form");
+  var status = document.getElementById("f-status");
+  var submit = document.getElementById("f-submit");
+
+  var params = new URLSearchParams(location.search);
+  var mf = params.get("manufacturer");
+  if (mf) {
+    document.getElementById("form-manufacturer").value = mf;
+    var sel = document.getElementById("f-interest");
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value.toLowerCase().replace(/[^a-z0-9]/g,"") === mf.toLowerCase().replace(/[^a-z0-9]/g,"")) {
+        sel.selectedIndex = i; break;
+      }
+    }
+  }
+
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    status.textContent = "";
+    var data = Object.fromEntries(new FormData(form).entries());
+    if (!data.name || !data.company || !data.email) {
+      status.className = "form-status error";
+      status.textContent = "Please fill in name, company, and email.";
+      return;
+    }
+    submit.disabled = true;
+    var original = submit.textContent;
+    submit.textContent = "Sending…";
+    try {
+      var res = await fetch("/.netlify/functions/contact", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data)
+      });
+      var out = await res.json();
+      if (res.ok && out.ok) {
+        form.reset();
+        status.className = "form-status ok";
+        status.textContent = "Thank you — your request has been sent. We'll be in touch shortly.";
+      } else {
+        status.className = "form-status error";
+        status.textContent = out.error || "Something went wrong. Please email info@homecareproviderservices.us.";
+      }
+    } catch {
+      status.className = "form-status error";
+      status.textContent = "Network error. Please email info@homecareproviderservices.us.";
+    } finally {
+      submit.disabled = false;
+      submit.textContent = original;
+    }
+  });
+})();
+</script>
