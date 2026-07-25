@@ -237,6 +237,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "access4u-home-access-catalog-ms0m1a1c",
+      "title": "Access4u Home Access Catalog",
+      "type": "catalog",
+      "manufacturer": "access4u",
+      "format": "pdf",
+      "file": "/assets/docs/access4u-dealer-brochure-2023-final-ms0m15kl.pdf",
+      "url": "",
+      "description": "American-Made Modular Ramping Systems Engineered for Fast Installation, Long-Term Durability, and Reliable Accessibility—Complemented by a Full Line of Portable Ramps, Threshold Ramps, Transition Solutions, and Retail Displays.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
