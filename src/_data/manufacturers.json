@@ -590,7 +590,7 @@
         "card_title": "",
         "card_intro": "",
         "checklist": [],
-        "image": "/assets/products/strongback/hero-showroom.jpg",
+        "image": "/assets/products/strongback-mobility/lifestyle-strongback-2026-ms0u2ri4.jpg",
         "stats": [
           {
             "value": "16\"–22\"",
@@ -619,13 +619,13 @@
           {
             "name": "Ergonomic back support",
             "tag": "",
-            "image": "",
+            "image": "/assets/products/strongback-mobility/strongback-lumbar-ms0u77o1.jpg",
             "description": "The signature Strongback backrest is designed to support the natural lumbar curve and promote a more upright seated position."
           },
           {
             "name": "Easy to explain",
             "tag": "",
-            "image": "",
+            "image": "/assets/products/strongback-mobility/strongback-rentals-ms0u7fxm.jpg",
             "description": "Customers immediately understand the difference when they compare a flat-back wheelchair to a Strongback ergonomic support system."
           },
           {
@@ -648,7 +648,7 @@
           "300 lb user capacity with quick-release wheels",
           "Positioned to be a market leader in the $399.99 MSRP price range"
         ],
-        "image": "/assets/products/strongback/ergosteel-flyer.jpg",
+        "image": "/assets/products/strongback-mobility/ergosteel-flyer-ms0u8xwp.jpg",
         "cta": "Add ErgoSteel to Your Lineup"
       },
       {
@@ -665,7 +665,7 @@
               "20\""
             ],
             "badge": "",
-            "image": "/assets/products/strongback/product-comfort.jpg",
+            "image": "/assets/products/strongback-mobility/strongback24flipsideleft2-ms0ub7d7.webp",
             "url": "",
             "description": "Ultra-light folding wheelchairs for customers who want posture support, comfort, and easy transport.",
             "bullets": [
@@ -681,7 +681,7 @@
               "375 lb capacity"
             ],
             "badge": "",
-            "image": "/assets/products/strongback/product-hd.jpg",
+            "image": "/assets/products/strongback-mobility/1036db-ms0uaprc.jpg",
             "url": "",
             "description": "A premium HD option for customers who need a wider seat and higher weight capacity without losing the Strongback comfort story.",
             "bullets": [
@@ -698,7 +698,7 @@
               "Transport"
             ],
             "badge": "",
-            "image": "/assets/products/strongback/lifestyle-transport.jpg",
+            "image": "/assets/products/strongback-mobility/strongback12s-absideview21024x1024-99f8b167-c3a8-4dab-93a3-8-ms0ua5ed.webp",
             "url": "",
             "description": "Transport chair options for customers who need caregiver-assisted mobility with improved seating comfort.",
             "bullets": [
@@ -714,7 +714,7 @@
               "SEATA"
             ],
             "badge": "",
-            "image": "",
+            "image": "/assets/products/strongback-mobility/seata-rollator-ms0u9hfr.jpg",
             "url": "",
             "description": "The SEATA rollator expands the same ergonomic comfort concept into walking support and seated rest.",
             "bullets": [
@@ -790,7 +790,7 @@
           "260 lb user capacity"
         ],
         "checks": [],
-        "image": "/assets/products/strongback/lifestyle-park.jpg",
+        "image": "/assets/products/strongback-mobility/seata-ms0ud423.jpg",
         "image_side": "right"
       }
     ]
