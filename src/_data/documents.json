@@ -198,6 +198,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "bongorx-epap-brochure-ms0lgog6",
+      "title": "BongoRx EPAP Brochure",
+      "type": "credit-application",
+      "manufacturer": "",
+      "format": "pdf",
+      "file": "/assets/docs/bongorx-epap-brochure-2026-ms0lgh0m.pdf",
+      "url": "",
+      "description": "Learn more about the BongoRx EPAP Device no non-compliant CPAP patients.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
