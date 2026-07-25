@@ -3,7 +3,7 @@
     "id": "golden-technologies",
     "name": "Golden Technologies",
     "category": "Advanced power recliners and mobility",
-    "description": "A Premium Line of Advanced Power Recliners, Lift Chairs, Mobility Scooters, Power Wheelchairs, and Hi-Low Beds from One of the Industry’s Leading Manufacturers..",
+    "description": "A Premium Line of Advanced Power Recliners, Lift Chairs, Mobility Scooters, Power Wheelchairs, and Hi-Low Beds from One of the Industry\u2019s Leading Manufacturers..",
     "website": "https://goldentech.com/",
     "logo": "/assets/logos/golden-technologies.jpg",
     "featured": true,
@@ -17,36 +17,36 @@
         "type": "hero",
         "eyebrow": "Advanced seating & mobility solutions",
         "headline": "Build a stronger showroom with Golden Technologies.",
-        "lead": "Offer customers one of the most recognized names in power lift recliners, mobility scooters, power wheelchairs, and Hi-Low adjustable beds — with premium comfort technology, strong retail appeal, and category options that fit a wide range of mobility needs.",
+        "lead": "Give your team one of the most recognized names in power lift recliners, mobility scooters, power wheelchairs, and Hi-Low beds \u2014 premium comfort technology, strong retail appeal, and a full product ladder that turns a single conversation into a multi-category sale.",
         "card_title": "Why dealers lead with Golden",
-        "card_intro": "Golden gives your team a complete mobility and comfort story — from the first lift chair conversation to scooters, power chairs, and sleep/recovery solutions.",
+        "card_intro": "A complete comfort and mobility story, from the first lift-chair conversation to scooters, power chairs, and sleep solutions.",
         "checklist": [
-          "Patented comfort technologies including MaxiComfort® Positioning and Twilight Tilt.",
-          "Broad assortment across lift recliners, scooters, power wheelchairs, and Hi-Low beds.",
-          "Premium seating features such as adjustable headrest, lumbar, heat, massage, and fabric options.",
-          "Designed to help customers improve independence, safety, comfort, and daily mobility."
+          "Patented MaxiComfort\u00ae positioning and Twilight\u2122 Tilt technology.",
+          "Five high-value retail categories under one trusted brand.",
+          "Family-owned and American-made since 1985.",
+          "Class II medical devices with AutoDrive\u2122 hand controls."
         ],
-        "image": "",
+        "image": "/assets/products/golden/pr519-lifestyle.jpg",
         "stats": []
       },
       {
         "type": "stats",
         "items": [
           {
-            "value": "5",
-            "label": "Core product categories"
+            "value": "Since 1985",
+            "label": "Family-owned, American-made"
           },
           {
-            "value": "1–5",
-            "label": "Comfort zone chair options"
+            "value": "5 Categories",
+            "label": "Recliners, lift chairs, scooters, power chairs, beds"
           },
           {
-            "value": "600 lb",
-            "label": "Heavy-duty lift chair capacity"
+            "value": "22% Less",
+            "label": "Lower-body pressure (Rejuvenate position)"
           },
           {
-            "value": "Dealer",
-            "label": "Showroom & service focused"
+            "value": "Class II",
+            "label": "FDA medical devices"
           }
         ]
       },
@@ -54,138 +54,150 @@
         "type": "cards",
         "eyebrow": "Product Lines",
         "title": "One brand. Multiple high-value sales categories.",
-        "intro": "Golden gives dealers a complete showroom pathway: comfort seating, mobility, travel independence, in-home support, and recovery-focused sleep solutions.",
+        "intro": "Golden gives dealers a complete showroom pathway \u2014 comfort seating, mobility, travel independence, and in-home support.",
         "items": [
           {
             "name": "Advanced Power Recliners",
             "tag": "Premium comfort sale",
-            "image": "/assets/products/golden-technologies/pr519-cloud-supreme-mrzoa8ub-mrzpmeyn.jpg",
-            "description": "Premium recliners with advanced positioning, customizable comfort, and wellness-driven seating features that help customers relax, recover, and rest."
+            "image": "/assets/products/golden/pr519.jpg",
+            "description": "Premium recliners with advanced positioning, customizable comfort, and wellness-driven seating that helps customers relax, recover, and rest."
           },
           {
             "name": "Power Lift Chairs",
             "tag": "Core DME category",
-            "image": "/assets/products/golden/pr515-cloud-twilight.png",
-            "description": "Lift recliners assist users with sitting, standing, reclining, and daily independence while creating a strong showroom anchor category for dealers."
+            "image": "/assets/products/golden/pr531.jpg",
+            "description": "Lift recliners assist with sitting, standing, and daily independence while anchoring the showroom with an inclusive small-to-tall lineup."
           },
           {
             "name": "Mobility Scooters",
             "tag": "Retail traffic driver",
-            "image": "/assets/products/golden/buzzaround-scooter.jpg",
+            "image": "/assets/products/golden/gb220.jpg",
             "description": "Portable, folding, full-size, and heavy-duty options help customers regain freedom at home, around town, and while traveling."
           },
           {
             "name": "Power Wheelchairs",
             "tag": "Mobility upgrade path",
-            "image": "/assets/products/golden/ally-power-chair.jpg",
-            "description": "Compact travel, center-wheel drive, and foldable power chair options allow dealers to serve customers who need tighter turning, powered mobility, and transportability."
+            "image": "/assets/products/golden/gp304.jpg",
+            "description": "Compact travel, folding, and app-enabled power chairs serve customers who need tighter turning, powered mobility, and transportability."
           },
           {
             "name": "Hi-Low Adjustable Beds",
             "tag": "Home recovery solution",
-            "image": "/assets/products/golden/passport-hi-low-bed.jpg",
+            "image": "",
             "description": "Hi-Low bed solutions support safer transfers, in-home comfort, caregiver support, and customers who need more than a standard adjustable bed."
           }
         ]
       },
       {
         "type": "products",
-        "eyebrow": "Featured Products",
-        "title": "Products dealers can build a showroom around",
-        "intro": "",
+        "eyebrow": "Featured Power Lift Recliners",
+        "title": "Two lift recliners that anchor a showroom.",
+        "intro": "Lead premium with the Cloud Supreme; win the value shopper with the Comforter.",
         "items": [
           {
-            "name": "Cloud Supreme with Twilight",
-            "badge": "Advanced Power Recliner",
-            "image": "/assets/products/golden/pr519-cloud-supreme.png",
+            "name": "The Cloud\u2122 Supreme \u2014 PR519",
+            "badge": "Flagship power lift recliner",
+            "image": "/assets/products/golden/pr519.jpg",
             "url": "https://goldentech.com/product/lift-recliners/cloud-supreme-with-twilight/",
-            "description": "Premium Golden lift recliner positioning with Twilight Tilt and MaxiComfort® style comfort for a high-end showroom presentation.",
+            "description": "A contoured memory-foam chaise pad paired with a 5-Zone positioning system for deeply personalized, lasting comfort.",
             "tags": [],
-            "bullets": []
+            "bullets": [
+              "5 Comfort Zones \u2014 footrest, backrest, headrest, and lumbar move independently.",
+              "Patented Twilight\u2122 Tilt + MaxiComfort\u00ae positioning via AutoDrive\u2122 control.",
+              "Rejuvenate position reduces lower-body pressure by 22%.",
+              "Butler tray table and LED reading light included; Nirvana\u2122 massage + HeatWave\u2122 optional.",
+              "Two sizes with gel-infused chaise pad; Class II medical device."
+            ]
           },
           {
-            "name": "Cloud with Twilight",
-            "badge": "Lift Chair",
-            "image": "/assets/products/golden/pr515-cloud-twilight.png",
-            "url": "https://goldentech.com/product/lift-recliners/cloud-with-twilight-small-medium/",
-            "description": "A strong premium lift chair story for customers looking for positioning, long-term comfort, and advanced seating technology.",
+            "name": "The Comforter \u2014 PR531",
+            "badge": "America's favorite lift chair for 20+ years",
+            "image": "/assets/products/golden/pr531.jpg",
+            "url": "https://goldentech.com/lift-chairs/",
+            "description": "Inclusive small-to-tall sizing and approachable comfort \u2014 the value anchor that fits nearly every customer.",
             "tags": [],
-            "bullets": []
+            "bullets": [
+              "\u201cSmall to Tall, we build them all\u201d \u2014 Petite/Small through Tall and wide sizes.",
+              "Up to 500 lb capacity on Comforter Wide; convenient 1-Zone lift & recline.",
+              "Straight & Mid Lift standard, with plush chenille fabrics.",
+              "Optional Deluxe Therapeutic Heat & Vibrating Massage."
+            ]
+          }
+        ]
+      },
+      {
+        "type": "products",
+        "eyebrow": "Featured Mobility",
+        "title": "Travel-ready mobility that drives retail traffic.",
+        "intro": "A heavy-duty folding scooter and Golden's most capable folding power chair.",
+        "items": [
+          {
+            "name": "Buzzaround\u00ae CarryOn HD \u2014 GB220",
+            "badge": "Heavy-duty folding travel scooter",
+            "image": "/assets/products/golden/gb220.jpg",
+            "url": "https://goldentech.com/mobility-scooters/",
+            "description": "A travel-ready folding scooter that goes the distance and stores easily \u2014 heavy-duty capacity in an airline-friendly package.",
+            "tags": [],
+            "bullets": [
+              "400 lb capacity with a full-size padded seat and 8.25\" drive wheels.",
+              "Up to 22-mile range (12.5Ah + free 6.5Ah EverRun\u2122 lithium battery).",
+              "Folds to 14\" with 4-point carry handles; airline- and cruise-friendly.",
+              "Front/rear LED lights, USB port, drink and cane holders."
+            ]
           },
           {
-            "name": "Buzzaround Scooter Line",
-            "badge": "Mobility Scooter",
-            "image": "/assets/products/golden/buzzaround-scooter.jpg",
-            "url": "https://goldentech.com/product-category/mobility-scooters/",
-            "description": "Portable and easy-to-demonstrate scooter options help dealers serve customers who want travel, errands, and daily mobility support.",
+            "name": "Golden Ally\u2122 Pro \u2014 GP304",
+            "badge": "Most capable folding power chair",
+            "image": "/assets/products/golden/gp304.jpg",
+            "url": "https://goldentech.com/power-wheelchairs/",
+            "description": "The most capable of Golden's app-enabled folding power wheelchairs \u2014 travel-ready portability with real everyday capability.",
             "tags": [],
-            "bullets": []
-          },
-          {
-            "name": "Golden Ally Power Chair",
-            "badge": "Power Wheelchair",
-            "image": "/assets/products/golden/ally-power-chair.jpg",
-            "url": "https://goldentech.com/product/power-wheelchairs/ally/",
-            "description": "Travel-friendly power chair positioning gives dealers an upgrade path for customers who need powered mobility and transportability.",
-            "tags": [],
-            "bullets": []
-          },
-          {
-            "name": "LiteRider Envy",
-            "badge": "Power Wheelchair",
-            "image": "/assets/products/golden/literider-envy.jpg",
-            "url": "https://goldentech.com/product-category/power-wheelchairs/",
-            "description": "A compact power wheelchair option that helps dealers support customers needing tight turning, powered mobility, and everyday convenience.",
-            "tags": [],
-            "bullets": []
-          },
-          {
-            "name": "Passport Hi-Low Bed",
-            "badge": "Hi-Low Bed",
-            "image": "/assets/products/golden/passport-hi-low-bed.jpg",
-            "url": "https://goldentech.com/product-category/hi-low-beds/",
-            "description": "A home recovery and caregiver-support solution that pairs well with lift chair customers, discharge planning, and aging-in-place conversations.",
-            "tags": [],
-            "bullets": []
+            "bullets": [
+              "330 lb capacity; up to 13-mile range; folds and stands on end.",
+              "App-enabled remote control and airline-friendly EverRun\u2122 lithium battery.",
+              "Adjustable recline back, width armrests, and leg-length footplate.",
+              "Front suspension, omni-directional wheels, and USB A & C ports."
+            ]
           }
         ]
       },
       {
         "type": "differentiators",
         "eyebrow": "The Golden Difference",
-        "title": "What your sales team can explain quickly",
-        "intro": "Move the conversation from price to value, comfort, safety, independence, and fit.",
+        "title": "What your sales team can explain in one sentence.",
+        "intro": "Move the conversation from price to value, comfort, safety, and independence.",
         "items": [
           {
-            "title": "Patented comfort story",
-            "description": "Golden’s MaxiComfort® and Twilight Tilt technologies create a simple, premium talking point around positioning, pressure relief, and zero-gravity comfort."
+            "title": "5-Zone Comfort Zones",
+            "description": "Golden's patented Comfort Zones move the footrest, backrest, headrest, and lumbar independently for fully personalized positioning."
           },
           {
-            "title": "Built for mobility needs",
-            "description": "Lift chairs are more than furniture. They help customers safely sit, stand, recline, and maintain independence at home."
+            "title": "MaxiComfort\u00ae + Twilight\u2122 Tilt",
+            "description": "Patented positioning elevates the legs above the heart and unlocks the Rejuvenate position for pressure relief and circulation."
           },
           {
-            "title": "Strong product breadth",
-            "description": "Dealers can serve multiple customer profiles with Small-to-Tall, Heavy Duty, portable scooters, folding mobility, power chairs, and bed solutions."
+            "title": "Rejuvenate Position",
+            "description": "Shifts pressure from the seat to the back \u2014 a clinically demonstrated 22% reduction in lower-body pressure versus seated."
           },
           {
-            "title": "Showroom-friendly upgrades",
-            "description": "Features such as power headrest, power lumbar, heat, massage, fabric choices, footrest extensions, and positioning options help increase ticket value."
+            "title": "Nirvana\u2122 + HeatWave\u2122",
+            "description": "Optional Swedish air massage and far-infrared heat turn a lift chair into a daily wellness experience \u2014 a strong upsell."
           },
           {
-            "title": "Retailer support story",
-            "description": "Golden encourages customers to shop through local retailers where they can try products, confirm fit, and receive local service support."
+            "title": "Small to Tall",
+            "description": "Inclusive sizing across recliners and lift chairs, with heavy-duty capacities up to 600 lbs on select models."
           },
           {
-            "title": "Family-owned brand equity",
-            "description": "Golden’s family-owned history and long-standing reputation help dealers present a trusted, established manufacturer to consumers."
+            "title": "American-made since 1985",
+            "description": "A family-owned, third-generation U.S. manufacturer building Class II medical devices with intuitive AutoDrive\u2122 controls."
           }
         ]
       },
       {
         "type": "split",
         "headline": "Turn the lift chair conversation into a full mobility solution.",
-        "copy": "Customers often start with one need: getting out of a chair safely, moving around the home, traveling with confidence, or recovering more comfortably. Golden gives your staff a complete product ladder to solve those needs under one trusted brand.",
+        "copy": "Customers usually start with one need: getting out of a chair safely, moving around the home, traveling with confidence, or recovering more comfortably. Golden gives your staff a complete product ladder to solve each of those needs under one trusted brand \u2014 so a single lead becomes a lift chair, then a scooter, a power chair, and an in-home bed solution.",
+        "checklist": [],
         "checks": [
           "Lift chair showroom display",
           "Scooter retail display",
@@ -194,50 +206,49 @@
           "Premium comfort upgrades",
           "Training & product education"
         ],
-        "checklist": [],
-        "image": "/assets/products/golden/hi-low-lifestyle.jpg",
+        "image": "/assets/products/golden/ally-lifestyle.jpg",
         "image_side": "right"
       },
       {
         "type": "table",
-        "title": "Suggested dealer showroom assortment",
-        "intro": "A starting point for account development, showroom planning, and training conversations.",
+        "title": "A suggested dealer showroom assortment.",
+        "intro": "A simple starting point for account development, showroom planning, and staff training.",
         "columns": [
           "Category",
-          "Display strategy",
+          "Lead product",
           "Customer need",
-          "Sales angle"
+          "Dealer sales angle"
         ],
         "rows": [
           [
-            "Premium lift recliner",
-            "Display one advanced 4-zone or 5-zone chair with headrest/lumbar and positioning features.",
-            "Comfort, recovery, pressure relief, safer sitting and standing.",
-            "Lead with comfort technology and wellness benefits."
+            "Advanced recliners",
+            "Cloud Supreme (PR519)",
+            "Premium comfort, wellness, recovery",
+            "Anchor the floor with a high-ticket comfort demo."
           ],
           [
-            "Core lift chair",
-            "Display a strong value model in a popular size and fabric.",
-            "Everyday lift assistance and independence at home.",
-            "Best entry point for customers comparing standard recliners."
+            "Power lift chairs",
+            "The Comforter (PR531)",
+            "Safe sit-to-stand, everyday independence",
+            "Fit nearly every customer with small-to-tall sizing."
           ],
           [
-            "Portable scooter",
-            "Display a transportable scooter that staff can demonstrate disassembly or folding with.",
-            "Travel, errands, independence outside the home.",
-            "Show how easily it fits into daily life."
+            "Mobility scooters",
+            "Buzzaround CarryOn HD (GB220)",
+            "Travel, errands, outdoor freedom",
+            "Drive retail traffic with a foldable, airline-friendly demo."
           ],
           [
-            "Power wheelchair",
-            "Display a compact or foldable chair for tight spaces and transport needs.",
-            "Powered mobility for customers who need maneuverability and less walking.",
-            "Position as a mobility upgrade from manual chairs or scooters."
+            "Power wheelchairs",
+            "Golden Ally Pro (GP304)",
+            "Tight turning, powered mobility, transport",
+            "Offer an upgrade path with an app-enabled folding chair."
           ],
           [
-            "Hi-Low adjustable bed",
-            "Use literature, video, or one floor model where space allows.",
-            "Transfers, caregiver support, recovery, and safer home positioning.",
-            "Add-on solution for lift chair, hospital discharge, and home-care customers."
+            "Hi-Low beds",
+            "Passport Hi-Low",
+            "Safer transfers, in-home recovery",
+            "Add a caregiver-support sale to discharge conversations."
           ]
         ]
       }
@@ -247,7 +258,7 @@
     "id": "access4u",
     "name": "Access4U",
     "category": "Modular, portable & threshold ramps",
-    "description": "American-Made Modular Ramping Systems Engineered for Fast Installation, Long-Term Durability, and Reliable Accessibility—Complemented by a Full Line of Portable Ramps, Threshold Ramps, Transition Solutions, and Retail Displays.",
+    "description": "American-Made Modular Ramping Systems Engineered for Fast Installation, Long-Term Durability, and Reliable Accessibility\u2014Complemented by a Full Line of Portable Ramps, Threshold Ramps, Transition Solutions, and Retail Displays.",
     "website": "https://www.rampsaccess4u.com/",
     "logo": "/assets/logos/access4u.jpg",
     "featured": false,
@@ -277,7 +288,7 @@
         "type": "hero",
         "eyebrow": "Made in U.S.A. accessibility solutions",
         "headline": "Help customers access their homes safely with Access4U.",
-        "lead": "Access4U gives dealers a complete ramping solution for residential, commercial, portable, mini, and threshold applications — with modular aluminum systems, accessory options, and dealer-focused support for site-specific accessibility needs.",
+        "lead": "Access4U gives dealers a complete ramping solution for residential, commercial, portable, mini, and threshold applications \u2014 with modular aluminum systems, accessory options, and dealer-focused support for site-specific accessibility needs.",
         "card_title": "A dealer-friendly accessibility line",
         "card_intro": "",
         "image": "/assets/products/access4u/hero-residential-ramp.jpg",
@@ -375,7 +386,7 @@
       {
         "type": "differentiators",
         "eyebrow": "Why Access4U",
-        "title": "Why Access4U belongs in a DME dealer’s access program.",
+        "title": "Why Access4U belongs in a DME dealer\u2019s access program.",
         "intro": "Positioned around modular access, dealer support, Made in U.S.A. manufacturing, and practical installation advantages.",
         "items": [
           {
@@ -494,33 +505,201 @@
   {
     "id": "complete-medical-supplies",
     "name": "Complete Medical Supplies",
-    "category": "hme & DME and Aids to daily living",
-    "description": "Access 200+ Trusted Healthcare Brands Through One of the Industry’s Largest Distributors—Plus Exclusive Blue Jay® Products Designed for Quality, Value, and Dealer Growth.",
-    "website": "",
+    "category": "Wholesale Distribution",
+    "description": "A wholesale distribution group carrying products from over 200 manufacturers \u2014 daily-living aids, bath safety, mobility, monitoring, orthopedic soft goods, and pain relief \u2014 plus the Blue Jay\u00ae house brand, with free shipping over $400 and no minimum order.",
+    "website": "https://www.completemedical.com",
     "logo": "/assets/logos/complete-medical-supplies.jpg",
     "featured": false,
     "ordering_url": "",
     "brand": {
-      "accent": "#1681c2",
-      "dark": "#0b0d0f"
+      "accent": "#ef6a1f",
+      "dark": "#2c3e50"
     },
-    "hero": {
-      "eyebrow": "",
-      "headline": "",
-      "lead": "",
-      "highlights_title": "",
-      "highlights_intro": "",
-      "highlights": []
-    },
-    "stats": [],
-    "product_categories": [],
-    "featured_products": [],
-    "differentiators": [],
-    "solution_headline": "",
-    "solution_copy": "",
-    "showroom_checks": [],
-    "assortment": [],
-    "sections": []
+    "sections": [
+      {
+        "type": "hero",
+        "eyebrow": "Wholesale Group \u2022 200+ manufacturers",
+        "headline": "One wholesale account for over 200 medical supply brands.",
+        "lead": "Complete Medical Supplies is a wholesale distributor that lets dealers stock activities-of-daily-living aids, bath safety, mobility, blood pressure, orthopedic soft goods, and pain relief from hundreds of trusted lines \u2014 plus their own Blue Jay house brand \u2014 on a single account with dealer-friendly shipping.",
+        "card_title": "Why dealers stock Complete Medical",
+        "card_intro": "",
+        "checklist": [
+          "Free shipping on orders over $400 \u2014 with no minimum order.",
+          "Online ordering across the full catalog.",
+          "Blue Jay\u00ae, their own Elite Healthcare house brand.",
+          "Exclusive distributor for ObusForme\u00ae and Battle Creek\u00ae Equipment.",
+          "Slatwall display and merchandising programs."
+        ],
+        "image": "",
+        "stats": []
+      },
+      {
+        "type": "stats",
+        "items": [
+          {
+            "value": "200+",
+            "label": "Manufacturers carried"
+          },
+          {
+            "value": "$400",
+            "label": "Free shipping threshold"
+          },
+          {
+            "value": "No min.",
+            "label": "No minimum order"
+          },
+          {
+            "value": "Blue Jay\u00ae",
+            "label": "In-house Elite Healthcare brand"
+          }
+        ]
+      },
+      {
+        "type": "cards",
+        "eyebrow": "Transform your slatwall displays",
+        "title": "Stock the everyday categories your customers ask for.",
+        "intro": "Complete Medical helps dealers build a well-rounded retail wall from a single supplier.",
+        "items": [
+          {
+            "name": "Activities of Daily Living",
+            "tag": "ADLs",
+            "image": "",
+            "description": "Reachers, dressing aids, kitchen and eating aids, and independence products for aging-in-place and post-surgery customers."
+          },
+          {
+            "name": "Bath Safety",
+            "tag": "Bath care",
+            "image": "",
+            "description": "Grab bars, transfer benches, raised seats, and bathroom safety products for fall prevention and caregiver support."
+          },
+          {
+            "name": "Mobility Aids",
+            "tag": "Mobility",
+            "image": "",
+            "description": "Canes, walkers, rollators, wheelchair accessories, and everyday mobility support items."
+          },
+          {
+            "name": "Blood Pressure & Monitoring",
+            "tag": "Monitoring",
+            "image": "",
+            "description": "Home blood-pressure monitors and health-monitoring devices from leading lines such as Omron."
+          },
+          {
+            "name": "Orthopedic Soft Goods",
+            "tag": "Bracing",
+            "image": "",
+            "description": "Supports, braces, and orthopedic soft goods for common injuries, recovery, and everyday joint support."
+          },
+          {
+            "name": "Pain Relief & Recovery",
+            "tag": "Recovery",
+            "image": "",
+            "description": "Topicals, hot/cold therapy, resistance products, and recovery items for retail and clinical add-on sales."
+          }
+        ]
+      },
+      {
+        "type": "differentiators",
+        "eyebrow": "Why open an account",
+        "title": "Built for the way dealers actually order.",
+        "intro": "Breadth, house-brand margin, and dealer-friendly terms in one wholesale relationship.",
+        "items": [
+          {
+            "title": "200+ lines, one PO",
+            "description": "Consolidate a huge range of retail categories under a single wholesale account instead of managing dozens of vendor relationships."
+          },
+          {
+            "title": "Dealer-friendly shipping",
+            "description": "Free shipping on orders over $400 with no minimum order \u2014 easy to reorder the exact mix your floor needs."
+          },
+          {
+            "title": "Blue Jay\u00ae house brand",
+            "description": "Complete Medical's own Elite Healthcare brand gives dealers a strong-margin option across ADLs, bath, mobility, and recovery."
+          },
+          {
+            "title": "Exclusive distribution",
+            "description": "The exclusive distributor for ObusForme\u00ae back support and Battle Creek\u00ae Equipment heat/cold therapy."
+          },
+          {
+            "title": "Merchandising support",
+            "description": "Slatwall display programs help dealers turn wall space into an organized, shoppable retail footcare and daily-living section."
+          },
+          {
+            "title": "Online ordering",
+            "description": "Browse the catalog and place wholesale orders online across the full range of lines."
+          }
+        ]
+      },
+      {
+        "type": "table",
+        "title": "A sample of the wholesale lines you can order.",
+        "intro": "Complete Medical carries items from over 200 manufacturers \u2014 here is a snapshot of popular lines by category.",
+        "columns": [
+          "Category",
+          "Popular wholesale lines"
+        ],
+        "rows": [
+          [
+            "Daily living & mobility",
+            "Stander, Drive, Carex, Salk, Compass Health"
+          ],
+          [
+            "Bath safety",
+            "Drive, Carex, Compass Health"
+          ],
+          [
+            "Orthopedic & bracing",
+            "Aircast, DARCO, Scott Specialties, Advanced Orthopaedics"
+          ],
+          [
+            "Pain relief & recovery",
+            "Biofreeze, TheraBand, Chattanooga, Battle Creek"
+          ],
+          [
+            "Compression & footcare",
+            "JOBST, PediFix, Brownmed"
+          ],
+          [
+            "Monitoring & wellness",
+            "Omron, Conair, Cleanis"
+          ],
+          [
+            "Back support (exclusive)",
+            "ObusForme"
+          ]
+        ]
+      },
+      {
+        "type": "steps",
+        "title": "A simple path to opening your account.",
+        "intro": "Get set up to reorder your retail wall from one wholesale supplier.",
+        "items": [
+          {
+            "title": "Request dealer pricing",
+            "description": "We'll help you open a wholesale account and share catalog access and pricing."
+          },
+          {
+            "title": "Plan your wall",
+            "description": "Use the slatwall display program to lay out ADLs, bath, mobility, monitoring, and recovery."
+          },
+          {
+            "title": "Place your first order",
+            "description": "Order online across 200+ lines \u2014 free shipping over $400, no minimum."
+          },
+          {
+            "title": "Reorder with ease",
+            "description": "Restock the exact mix your floor sells, when you need it, on one account."
+          }
+        ]
+      },
+      {
+        "type": "cta_strip",
+        "headline": "Free shipping on orders over $400 \u2014 no minimum order.",
+        "copy": "Browse the full wholesale catalog and open your Complete Medical account.",
+        "url": "https://www.completemedical.com",
+        "cta": "Visit Complete Medical"
+      }
+    ]
   },
   {
     "id": "ovation-medical",
@@ -544,7 +723,7 @@
         "card_title": "Start your account with a hero product.",
         "card_intro": "",
         "checklist": [
-          "Gen 2® Walking Boot gives dealers an immediate product story.",
+          "Gen 2\u00ae Walking Boot gives dealers an immediate product story.",
           "Premium alternative to bulky traditional walkers.",
           "Use it to open new conversations with clinical referral sources."
         ],
@@ -563,7 +742,7 @@
             "label": "Core bracing categories"
           },
           {
-            "value": "½ lb",
+            "value": "\u00bd lb",
             "label": "Lighter walker message"
           },
           {
@@ -575,7 +754,7 @@
       {
         "type": "split",
         "headline": "Dealers need products that help them stand out.",
-        "copy": "Many dealers carry bracing. Ovation Medical gives you a better bracing story, better fit solutions, and products that feel different from commodity braces — helping you create a stronger orthopedic category presentation by leading with product innovation instead of just price. Upgrade your brace offering and strengthen clinical referral conversations.",
+        "copy": "Many dealers carry bracing. Ovation Medical gives you a better bracing story, better fit solutions, and products that feel different from commodity braces \u2014 helping you create a stronger orthopedic category presentation by leading with product innovation instead of just price. Upgrade your brace offering and strengthen clinical referral conversations.",
         "checklist": [],
         "checks": [
           "Premium walking boot story",
@@ -593,7 +772,7 @@
         "intro": "The best products to open your Ovation account with.",
         "items": [
           {
-            "name": "Gen 2® Walking Boot",
+            "name": "Gen 2\u00ae Walking Boot",
             "badge": "Hero Product",
             "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/673b770b1c732adb9980daff_Gen2_WalkingBoot_ShortAir_Image9.jpeg",
             "url": "https://www.ovationmed.com/products-medical/gen-2-walking-boot-short-air/",
@@ -607,7 +786,7 @@
             ]
           },
           {
-            "name": "Versa-Fit™ Wrist Brace",
+            "name": "Versa-Fit\u2122 Wrist Brace",
             "badge": "Custom Fit",
             "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/676039a9353fe30025d2f5cd_04_-_OVATION-MEDICAL-2023-04-28-_KB_JE_2267_1_Large_9cd1382c-76d2-4dfe-8f8f-02a8e683c591.jpeg",
             "url": "https://www.ovationmed.com/products-medical/versa-fit-wrist-brace/",
@@ -621,7 +800,7 @@
             ]
           },
           {
-            "name": "Versa-Fit™ Thumb Spica",
+            "name": "Versa-Fit\u2122 Thumb Spica",
             "badge": "Custom Fit",
             "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/673b60b3516cc6e7d8ef6960_05-OVATION-MEDICAL-2023-04-28-_KB_JE_2313_1.jpeg",
             "url": "https://www.ovationmed.com/products-medical/versa-fit-thumb/",
@@ -635,7 +814,7 @@
             ]
           },
           {
-            "name": "Nu-Form™ Universal Back Brace",
+            "name": "Nu-Form\u2122 Universal Back Brace",
             "badge": "Spine Growth",
             "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/673b60b3516cc6e7d8ef697d_05-OVATIONMEDICAL-2023-04-28_KB_JE_0747Large.jpeg",
             "url": "https://www.ovationmed.com/products-medical/nu-form-universal-back-brace-l0627-l0642/",
@@ -728,7 +907,7 @@
         "type": "spotlight",
         "badge": "Get started today",
         "headline": "Ready to build a premium orthopedic bracing line?",
-        "copy": "Use this quick intro with your referral partners: “I wanted to introduce you to Ovation Medical, an orthopedic bracing line with several differentiated products that can help upgrade your walking boot, wrist/thumb, and back-brace offering. The Gen 2 Walking Boot, Versa-Fit bracing, and Nu-Form Universal Back Brace are worth reviewing for your store and referral partners.”",
+        "copy": "Use this quick intro with your referral partners: \u201cI wanted to introduce you to Ovation Medical, an orthopedic bracing line with several differentiated products that can help upgrade your walking boot, wrist/thumb, and back-brace offering. The Gen 2 Walking Boot, Versa-Fit bracing, and Nu-Form Universal Back Brace are worth reviewing for your store and referral partners.\u201d",
         "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/673b60b3516cc6e7d8ef697d_05-OVATIONMEDICAL-2023-04-28_KB_JE_0747Large.jpeg",
         "checklist": [
           "Request dealer pricing",
@@ -743,157 +922,1044 @@
   {
     "id": "climbing-steps",
     "name": "Climbing Steps",
-    "category": "Patient Lifts & portable stairlifts",
-    "description": "Innovative Patient Lifts, Portable Stairlifts, and Bath Safety Solutions That Help Dealers Expand Their Patient-Care Offering and Support Safer, More Independent Living.",
-    "website": "",
+    "category": "Stair Lifts, Patient Lifts & Hand Trucks",
+    "description": "High-performance mobility and material-handling equipment across three lines \u2014 Mobile Stairlift portable stair climbers, Mobile Patient Lift transfer and fall-recovery solutions, and Voltstair climbing hand trucks for delivery teams.",
+    "website": "https://www.climbingsteps.com",
     "logo": "/assets/logos/climbing-steps.jpg",
     "featured": false,
     "ordering_url": "",
     "brand": {
-      "accent": "#1681c2",
-      "dark": "#0b0d0f"
+      "accent": "#38a169",
+      "dark": "#1b3a63"
     },
-    "hero": {
-      "eyebrow": "",
-      "headline": "",
-      "lead": "",
-      "highlights_title": "",
-      "highlights_intro": "",
-      "highlights": []
-    },
-    "stats": [],
-    "product_categories": [],
-    "featured_products": [],
-    "differentiators": [],
-    "solution_headline": "",
-    "solution_copy": "",
-    "showroom_checks": [],
-    "assortment": [],
-    "sections": []
+    "sections": [
+      {
+        "type": "hero",
+        "eyebrow": "Empowering movement, supporting success",
+        "headline": "Portable stair lifts, patient lifts, and climbing hand trucks \u2014 from one partner.",
+        "lead": "Climbing Steps, Inc. builds high-performance mobility and material-handling equipment across three lines: Mobile Stairlift portable stair climbers, Mobile Patient Lift transfer and fall-recovery solutions, and Voltstair climbing hand trucks that help your delivery team move heavy equipment in and out of homes.",
+        "card_title": "Three lines, one partner",
+        "card_intro": "",
+        "checklist": [
+          "Mobile Stairlift\u2122 \u2014 portable, no-installation stair climbers.",
+          "Mobile Patient Lift\u2122 \u2014 transfers, bathing, and fall recovery.",
+          "Voltstair\u2122 \u2014 climbing hand trucks for delivery teams.",
+          "FDA-registered stair lifts; engineered for safety and dignity.",
+          "Built for the dealer as much as the user."
+        ],
+        "image": "/assets/products/climbing-steps/hero-care.jpg",
+        "stats": []
+      },
+      {
+        "type": "stats",
+        "items": [
+          {
+            "value": "3 Lines",
+            "label": "Stair lifts, patient lifts, hand trucks"
+          },
+          {
+            "value": "500 lb",
+            "label": "Heaviest hand-truck capacity"
+          },
+          {
+            "value": "120 Flights",
+            "label": "Per charge (top models)"
+          },
+          {
+            "value": "FDA",
+            "label": "Registered stair lifts"
+          }
+        ]
+      },
+      {
+        "type": "cards",
+        "eyebrow": "Three product lines",
+        "title": "A complete mobility and material-handling story.",
+        "intro": "Serve patients, caregivers, and your own delivery drivers from a single manufacturer relationship.",
+        "items": [
+          {
+            "name": "Mobile Stairlift\u2122",
+            "tag": "Portable stair climbers",
+            "image": "/assets/products/climbing-steps/cat-stairlift.jpg",
+            "description": "Battery-powered portable stair lift alternatives for renters, travelers, and families who can't or won't install a permanent stairlift or ramp."
+          },
+          {
+            "name": "Mobile Patient Lift\u2122",
+            "tag": "Transfers & recovery",
+            "image": "/assets/products/climbing-steps/cat-patient-lift.jpg",
+            "description": "Sling-free patient transfer lifts, sit-to-stand, shower and toilet solutions, and fall-recovery chairs for home and care environments."
+          },
+          {
+            "name": "Voltstair\u2122 Hand Trucks",
+            "tag": "For delivery teams",
+            "image": "/assets/products/climbing-steps/cat-voltstair.jpg",
+            "description": "Powered climbing hand trucks that carry appliances, lift chairs, hospital beds, and heavy equipment up and down stairs with minimal strain."
+          }
+        ]
+      },
+      {
+        "type": "products",
+        "eyebrow": "Featured products",
+        "title": "Top sellers across the lineup.",
+        "intro": "A best-in-class pick from each category.",
+        "items": [
+          {
+            "name": "Lite Stair Lift",
+            "badge": "Mobile Stairlift \u2014 lightweight",
+            "image": "/assets/products/climbing-steps/lite-stair-lift.jpg",
+            "url": "https://www.mobilestairlift.com",
+            "description": "The lightest portable stair lift, built for travel, multi-location use, and easier caregiver handling.",
+            "tags": [],
+            "bullets": [
+              "Just 44 lbs; supports up to 250 lbs.",
+              "Up to 100 flights of stair travel per charge.",
+              "Motorized auto-braking tracks \u2014 no manual lifting.",
+              "Rear foot brakes, seat belt, and manual free-wheel mode."
+            ]
+          },
+          {
+            "name": "Freedom Aqua Patient Lift",
+            "badge": "Mobile Patient Lift \u2014 bathing",
+            "image": "/assets/products/climbing-steps/freedom-aqua.jpg",
+            "url": "https://www.mobilepatientlift.com",
+            "description": "A sling-free electric transfer lift that's shower-safe for everyday transfers and bathing.",
+            "tags": [],
+            "bullets": [
+              "Sling-free seat closes around the user \u2014 no overhead lifting.",
+              "IPX5 shower-safe for wet environments.",
+              "90\u00b0 split seat slides easily under the user.",
+              "Powered seat height 19\"\u201329\"; up to 300 lbs, ~150 lifts per charge."
+            ]
+          },
+          {
+            "name": "Lift Buddy Fall Recovery Chair",
+            "badge": "Mobile Patient Lift \u2014 fall recovery",
+            "image": "/assets/products/climbing-steps/lift-buddy.jpg",
+            "url": "https://www.mobilepatientlift.com",
+            "description": "A motorized chair that lifts a fallen user from the floor to a secure seated height.",
+            "tags": [],
+            "bullets": [
+              "Raises the seat from 2.8\" to 22.4\" for controlled recovery.",
+              "Eliminates dangerous manual lifting for caregivers.",
+              "Supportive backrest and armrests keep the user balanced.",
+              "Up to 440 lbs; lightweight 44.5 lb frame."
+            ]
+          }
+        ]
+      },
+      {
+        "type": "products",
+        "eyebrow": "For your delivery team",
+        "title": "Climbing hand trucks that deliver the heavy equipment you sell.",
+        "intro": "Get lift chairs, hospital beds, and heavy equipment up and down stairs and in and out of homes \u2014 without a two-person struggle or a hand injury.",
+        "items": [
+          {
+            "name": "Voltstair Hercules",
+            "badge": "Best for heavy lifting",
+            "image": "/assets/products/climbing-steps/hercules.jpg",
+            "url": "https://www.voltstair.com",
+            "description": "Made for nearly all delivery needs \u2014 bulky, cumbersome items like appliances, safes, and large equipment.",
+            "tags": [],
+            "bullets": [
+              "Carries up to 500 lbs; low lifting platform minimizes strain.",
+              "Up to 120 flights per charge; lightweight 56 lbs.",
+              "Color-coded control panel and dual locking wheels.",
+              "Detachable security strap keeps the load on the platform."
+            ]
+          },
+          {
+            "name": "Voltstair Titan",
+            "badge": "Best for stability",
+            "image": "/assets/products/climbing-steps/titan.jpg",
+            "url": "https://www.voltstair.com",
+            "description": "Shines on the heaviest, most strenuous loads with rear handles and a professional-grade ratchet system.",
+            "tags": [],
+            "bullets": [
+              "440 lb lift capacity; 60 flights per charge.",
+              "Three speed controls to match your pace.",
+              "Foldable rear handles for flat-surface maneuvering.",
+              "Professional-grade ratchet belt and dual locking wheels."
+            ]
+          }
+        ]
+      },
+      {
+        "type": "differentiators",
+        "eyebrow": "Why choose Climbing Steps",
+        "title": "Engineered for safety. Designed for dignity.",
+        "intro": "",
+        "items": [
+          {
+            "title": "Three complementary lines",
+            "description": "Stair lifts, patient lifts, and delivery hand trucks from one partner \u2014 cover the patient, the caregiver, and your own drivers."
+          },
+          {
+            "title": "Built for the underserved market",
+            "description": "Portable stair lift alternatives reach renters, travelers, and families who can't or won't install permanent equipment."
+          },
+          {
+            "title": "A delivery-team advantage",
+            "description": "Voltstair climbing hand trucks turn heavy lift-chair and hospital-bed deliveries into a safe, one-person job."
+          },
+          {
+            "title": "FDA-registered performance",
+            "description": "The Mobile Stairlift portable lifts are FDA-registered and engineered for daily, dependable use."
+          },
+          {
+            "title": "Premium materials, modern tech",
+            "description": "Lithium-ion power, auto-braking tracks, and connected safety systems built from premium materials."
+          },
+          {
+            "title": "Dealer-focused partnership",
+            "description": "Designed with direct feedback from the field to be as reliable for the provider as for the user."
+          }
+        ]
+      }
+    ]
   },
   {
     "id": "ohio-medical",
     "name": "Ohio Medical",
-    "category": "Respiratory & Oxygen",
-    "description": "Reliable Home Oxygen Solutions Featuring Stationary Concentrators and Portable Oxygen Equipment Designed to Help Dealers Better Serve Respiratory Care Patients.",
-    "website": "",
+    "category": "Oxygen Therapy",
+    "description": "Portable and stationary oxygen concentrators from Ohio Medical (by GCE Medical) \u2014 the Zen-O\u2122 and Zen-O lite\u2122 POCs and the M50 stationary concentrator \u2014 featuring Rate Responsive Therapy\u2122 that keeps active patients saturated as breath rate changes.",
+    "website": "https://www.ohiomedical.com",
     "logo": "/assets/logos/ohio-medical.jpg",
     "featured": false,
     "ordering_url": "",
     "brand": {
-      "accent": "#1681c2",
-      "dark": "#0b0d0f"
+      "accent": "#1e6fb3",
+      "dark": "#0f3a63"
     },
-    "hero": {
-      "eyebrow": "",
-      "headline": "",
-      "lead": "",
-      "highlights_title": "",
-      "highlights_intro": "",
-      "highlights": []
-    },
-    "stats": [],
-    "product_categories": [],
-    "featured_products": [],
-    "differentiators": [],
-    "solution_headline": "",
-    "solution_copy": "",
-    "showroom_checks": [],
-    "assortment": [],
-    "sections": []
+    "sections": [
+      {
+        "type": "hero",
+        "eyebrow": "Oxygen therapy \u2014 Ohio Medical by GCE Medical",
+        "headline": "Portable and stationary oxygen concentrators with Rate Responsive Therapy\u2122.",
+        "lead": "The Ohio Medical (by GCE Medical) oxygen line gives dealers a complete respiratory story \u2014 the Zen-O\u2122 and Zen-O lite\u2122 portable concentrators and the M50 stationary concentrator \u2014 built around Rate Responsive Therapy\u2122 that keeps active patients saturated as their breath rate changes.",
+        "card_title": "Why Rate Responsive Therapy\u2122",
+        "card_intro": "",
+        "checklist": [
+          "RRT delivers a constant bolus and keeps patients saturated at higher breath rates.",
+          "Up to 44% more oxygen than some devices at 25 BPM, setting 2.",
+          "Pulse and continuous flow options across the lineup.",
+          "Easily replaceable sieve beds \u2014 no return to the factory.",
+          "Clarity connected care and a 3-year warranty."
+        ],
+        "image": "/assets/products/ohio-medical/oxygen-pair.jpg",
+        "stats": []
+      },
+      {
+        "type": "stats",
+        "items": [
+          {
+            "value": "3 Devices",
+            "label": "Zen-O, Zen-O lite, and M50"
+          },
+          {
+            "value": "44% More",
+            "label": "Oxygen vs some POCs at 25 BPM"
+          },
+          {
+            "value": "5.5 lb",
+            "label": "Lightest portable (Zen-O lite)"
+          },
+          {
+            "value": "3-Year",
+            "label": "Device warranty"
+          }
+        ]
+      },
+      {
+        "type": "products",
+        "eyebrow": "The oxygen lineup",
+        "title": "One line for home, travel, and long-term therapy.",
+        "intro": "Match the device to the patient \u2014 ultra-portable, dual-flow, or stationary.",
+        "items": [
+          {
+            "name": "Zen-O lite\u2122 Portable Concentrator",
+            "badge": "Ultra-portable POC",
+            "image": "/assets/products/ohio-medical/zen-o-lite.jpg",
+            "url": "https://www.ohiomedical.com",
+            "description": "A lightweight pulse-mode portable oxygen concentrator built for reliability and active lifestyles.",
+            "tags": [],
+            "bullets": [
+              "Pulse mode up to 1,050 mL, adjustable in 0.5 steps to setting 5.",
+              "Just 5.5 lbs; approx. 5h45 battery at pulse setting 2.",
+              "Rate Responsive Therapy\u2122, Eco Mode, and Auto Mode.",
+              "Easily replaceable sieve beds; 3-year warranty."
+            ]
+          },
+          {
+            "name": "Zen-O\u2122 Portable Concentrator",
+            "badge": "Dual-flow POC",
+            "image": "/assets/products/ohio-medical/zen-o.jpg",
+            "url": "https://www.ohiomedical.com",
+            "description": "A best-in-class portable concentrator with both pulse and continuous flow for active patients.",
+            "tags": [],
+            "bullets": [
+              "Dual flow: pulse 1.0\u20136.0 and continuous up to 2 L/min.",
+              "Up to 9h40 runtime with two batteries at 18 BPM.",
+              "Holds up to two 8-cell batteries; ships with a pull cart.",
+              "Rate Responsive Therapy\u2122; 3-year / 15,000-hour warranty."
+            ]
+          },
+          {
+            "name": "M50 Stationary Concentrator",
+            "badge": "Home / LTOT",
+            "image": "/assets/products/ohio-medical/m50.jpg",
+            "url": "https://www.ohiomedical.com",
+            "description": "A lightweight, quiet stationary concentrator for Long-Term Oxygen Therapy in the home.",
+            "tags": [],
+            "bullets": [
+              "Continuous flow, adjustable up to 5 L/min.",
+              "A mere 33 lbs, quiet operation, compact and easy to move.",
+              "Integrated oxygen sensing with a low-purity alarm.",
+              "Fire-safe oxygen outlet; 3-year warranty."
+            ]
+          }
+        ]
+      },
+      {
+        "type": "split",
+        "headline": "Rate Responsive Therapy\u2122 keeps patients saturated \u2014 automatically.",
+        "copy": "Some portable concentrators deliver a fixed volume of oxygen per minute, so the bolus shrinks and FiO\u2082 drops as a patient breathes faster \u2014 forcing the patient to turn the setting up. GCE's Rate Responsive Therapy delivers a constant bolus and automatically responds to the patient's breath rate, so oxygen delivery actually increases with activity instead of decreasing.",
+        "checklist": [
+          "Delivers a constant bolus regardless of breath rate.",
+          "Automatically increases oxygen as the patient's demand rises.",
+          "Keeps patients saturated even at high breath rates.",
+          "No need to change device settings before activity.",
+          "Up to 44% more oxygen than some devices at 25 BPM."
+        ],
+        "checks": [],
+        "image": "/assets/products/ohio-medical/rrt-lifestyle.jpg",
+        "image_side": "left"
+      },
+      {
+        "type": "table",
+        "title": "Compare the oxygen lineup.",
+        "intro": "A quick reference for matching the right device to each patient.",
+        "columns": [
+          "Device",
+          "Type",
+          "Flow",
+          "Weight",
+          "Battery runtime"
+        ],
+        "rows": [
+          [
+            "Zen-O lite\u2122",
+            "Portable (POC)",
+            "Pulse, up to 1,050 mL (to setting 5)",
+            "5.5 lb",
+            "~5h45 (1 battery)"
+          ],
+          [
+            "Zen-O\u2122",
+            "Portable (POC)",
+            "Pulse 1.0\u20136.0 + continuous to 2 L/min",
+            "10.27 lb",
+            "Up to 9h40 (2 batteries)"
+          ],
+          [
+            "M50",
+            "Stationary (LTOT)",
+            "Continuous, up to 5 L/min",
+            "33 lb",
+            "AC powered"
+          ]
+        ]
+      },
+      {
+        "type": "differentiators",
+        "eyebrow": "Why dealers choose Ohio Medical POCs",
+        "title": "Efficient. Effective. Clinically sound.",
+        "intro": "",
+        "items": [
+          {
+            "title": "Rate Responsive Therapy\u2122",
+            "description": "A constant bolus that adapts to breath rate keeps patients saturated during activity \u2014 a clear clinical talking point."
+          },
+          {
+            "title": "Dual-flow flexibility",
+            "description": "Zen-O offers both pulse and continuous delivery, so one device covers a wider range of patients."
+          },
+          {
+            "title": "Lightweight portability",
+            "description": "At 5.5 lbs, the Zen-O lite is ideal for patients who want independence outside the home."
+          },
+          {
+            "title": "Field-replaceable sieve beds",
+            "description": "Sieve beds can be replaced by most home oxygen providers without returning the device to the factory."
+          },
+          {
+            "title": "Clarity connected care",
+            "description": "Clarity-enabled POCs give providers device usage history, notifications, and remote data points."
+          },
+          {
+            "title": "3-year warranty",
+            "description": "A 3-year (or 15,000-hour) device warranty backs the portable lineup."
+          }
+        ]
+      }
+    ]
   },
   {
-    "id": "medge",
-    "name": "Medge",
-    "category": "ambulatory aids",
-    "description": "A Full Line of Mobility and Bath Safety Accessories That Helps Dealers Expand Their Product Offering and Better Support Customers’ Daily Living Needs.",
-    "website": "",
-    "logo": "/assets/logos/medge.jpg",
+    "id": "abm-respiratory-care",
+    "name": "ABM Respiratory Care",
+    "category": "Respiratory & Airway Clearance",
+    "description": "Advanced airway clearance and cough assist systems \u2014 the BiWaze\u00ae Cough (MI-E) and BiWaze\u00ae Clear (OLE) platform \u2014 engineered around respiratory physiology, with telehealth connectivity, clinical education, and home reimbursement pathways.",
+    "website": "https://abmrc.com",
+    "logo": "/assets/logos/abm-respiratory-care.webp",
     "featured": false,
     "ordering_url": "",
     "brand": {
-      "accent": "#1681c2",
-      "dark": "#0b0d0f"
+      "accent": "#1fa8c6",
+      "dark": "#3c4a52"
     },
-    "hero": {
-      "eyebrow": "",
-      "headline": "",
-      "lead": "",
-      "highlights_title": "",
-      "highlights_intro": "",
-      "highlights": []
-    },
-    "stats": [],
-    "product_categories": [],
-    "featured_products": [],
-    "differentiators": [],
-    "solution_headline": "",
-    "solution_copy": "",
-    "showroom_checks": [],
-    "assortment": [],
-    "sections": []
+    "sections": [
+      {
+        "type": "hero",
+        "eyebrow": "Airway clearance & cough assist",
+        "headline": "Breathing new life into traditional respiratory therapies.",
+        "lead": "ABM Respiratory Care builds advanced airway clearance and cough assist systems \u2014 the BiWaze\u00ae platform \u2014 for patients with compromised respiratory systems. Dealers get a differentiated, connected-care respiratory line backed by clinical education and home reimbursement pathways.",
+        "card_title": "Why dealers add ABM",
+        "card_intro": "",
+        "checklist": [
+          "Market-leading BiWaze\u00ae Cough (MI-E) and BiWaze\u00ae Clear (OLE) systems.",
+          "Patented dual-path technology keeps inhaled and exhaled air separate.",
+          "Telehealth-enabled with mobile app and provider portal.",
+          "Clinical training through the ABM Respiratory Care Institute.",
+          "New HCPCS code supports OLE therapy in the home."
+        ],
+        "image": "",
+        "stats": []
+      },
+      {
+        "type": "stats",
+        "items": [
+          {
+            "value": "2",
+            "label": "Flagship BiWaze\u00ae systems"
+          },
+          {
+            "value": "3-in-1",
+            "label": "Therapies in one BiWaze Clear session"
+          },
+          {
+            "value": "Telehealth",
+            "label": "Connected patient care"
+          },
+          {
+            "value": "Home + Hospital",
+            "label": "Acute and home care settings"
+          }
+        ]
+      },
+      {
+        "type": "products",
+        "eyebrow": "The BiWaze\u00ae platform",
+        "title": "Two market-leading systems, one respiratory story.",
+        "intro": "Differentiated airway clearance and cough assist for the patients who need it most.",
+        "items": [
+          {
+            "name": "BiWaze\u00ae Cough System",
+            "badge": "Cough Assist (MI-E)",
+            "image": "",
+            "url": "https://abmrc.com/biwaze-cough-hospital/",
+            "description": "An assisted cough (mechanical insufflation-exsufflation) device for patients who cannot cough effectively on their own.",
+            "tags": [],
+            "bullets": [
+              "Dual-path design keeps inhale and exhale flows separate to prevent mucus contamination.",
+              "Three-phase cough cycle with positive airway pressure in the pause phase.",
+              "Up to 10 customizable profiles with lung-recruitment breaths and programmable oscillation.",
+              "9 lb with internal battery and touchscreen.",
+              "Mobile app and provider portal for remote control and monitoring."
+            ]
+          },
+          {
+            "name": "BiWaze\u00ae Clear System",
+            "badge": "OLE Airway Clearance",
+            "image": "",
+            "url": "https://abmrc.com/biwaze-clear-hospital-care/",
+            "description": "An airway clearance system that combines three therapies in a single 10-minute session.",
+            "tags": [],
+            "bullets": [
+              "Oscillating Lung Expansion (OLE) plus high-frequency oscillation, alternating every 2.5 minutes.",
+              "Continuous aerosol therapy via an integrated Aerogen\u00ae Solo vibrating-mesh nebulizer.",
+              "Closed dual-lumen circuit creates expiratory flow bias to mobilize secretions.",
+              "9 lb portable with integrated battery and touchscreen.",
+              "For atelectasis, secretion mobilization, and lung expansion \u2014 with a new home HCPCS code."
+            ]
+          }
+        ]
+      },
+      {
+        "type": "differentiators",
+        "eyebrow": "Why the BiWaze platform stands out",
+        "title": "Innovation built on respiratory physiology.",
+        "intro": "ABM re-engineers traditional therapies with technology that improves the standard of care.",
+        "items": [
+          {
+            "title": "Dual-path technology",
+            "description": "Separate pathways for inhaled and exhaled air prevent mucus from contaminating the inhalation flow \u2014 a key advance over single-path systems."
+          },
+          {
+            "title": "OLE therapy in one device",
+            "description": "BiWaze Clear combines oscillating lung expansion, high-frequency oscillation, and aerosol therapy in a single 10-minute session."
+          },
+          {
+            "title": "Precision pressure control",
+            "description": "Independent testing confirmed consistent, accurate pressure delivery \u2014 stronger expiratory flow with precise control."
+          },
+          {
+            "title": "Connected, telehealth-ready",
+            "description": "Mobile app and provider portal enable remote control, monitoring, and patient-provider communication."
+          },
+          {
+            "title": "Portable for home or hospital",
+            "description": "9 lb systems with integrated batteries and touchscreens work across acute care and the home."
+          },
+          {
+            "title": "Education & reimbursement",
+            "description": "The ABM Respiratory Care Institute supports training, and a new HCPCS code supports OLE therapy in the home."
+          }
+        ]
+      },
+      {
+        "type": "spotlight",
+        "badge": "3 therapies. One 10-minute session.",
+        "headline": "BiWaze\u00ae Clear \u2014 oscillation, lung expansion, and aerosol in one device.",
+        "copy": "Instead of stacking separate treatments, BiWaze Clear alternates oscillating lung expansion with high-frequency oscillation every 2.5 minutes while an integrated Aerogen Solo nebulizer delivers continuous aerosol \u2014 all through a closed dual-lumen circuit designed to mobilize secretions toward the upper airway and contain aerosol.",
+        "image": "/assets/products/abm-respiratory-care/biwaze-clear.jpg",
+        "checklist": [
+          "Oscillating Lung Expansion + high-frequency oscillation.",
+          "Continuous aerosol via integrated Aerogen\u00ae Solo nebulizer.",
+          "Closed dual-lumen circuit with expiratory flow bias.",
+          "Portable 9 lb design for home and hospital.",
+          "Indicated for atelectasis, secretion mobilization, and lung expansion."
+        ],
+        "cta": "Request Dealer Pricing"
+      },
+      {
+        "type": "faq",
+        "eyebrow": "Dealer & clinical FAQ",
+        "title": "Common questions about the BiWaze platform.",
+        "intro": "",
+        "items": [
+          {
+            "q": "Who are these systems for?",
+            "a": "Patients with compromised airway clearance or an ineffective cough \u2014 including neuromuscular, post-surgical, and chronic respiratory conditions \u2014 across both hospital and home settings."
+          },
+          {
+            "q": "What is OLE therapy?",
+            "a": "Oscillating Lung Expansion. BiWaze Clear combines OLE with high-frequency oscillation and continuous aerosol in one 10-minute session to expand the lungs and mobilize secretions."
+          },
+          {
+            "q": "How is BiWaze Cough different from a standard cough assist?",
+            "a": "Its dual-path design keeps inhaled and exhaled air on separate pathways, preventing mucus from contaminating the inhalation flow, and it adds positive airway pressure during the pause phase."
+          },
+          {
+            "q": "Is there home reimbursement?",
+            "a": "A new HCPCS code supports OLE therapy in the home. HCPS can help you review current reimbursement pathways for your accounts."
+          },
+          {
+            "q": "Is training available?",
+            "a": "Yes \u2014 the ABM Respiratory Care Institute offers training resources and courses for healthcare professionals, patients, and caregivers."
+          }
+        ]
+      }
+    ]
   },
   {
     "id": "pedifix",
     "name": "PediFix",
-    "category": "Footcare accessories",
-    "description": "Professional Foot-Care Solutions That Help Dealers and Providers Support Podiatry, Pain Relief, Comfort, and Specialized Patient Care.",
-    "website": "",
+    "category": "Footcare & Foot Comfort",
+    "description": "A broad line of medical footcare products \u2014 toe care, bunion relief, insoles, heel and arch support, and skin and fungus care \u2014 that helps dealers add a high-need, repeat-purchase category to the retail showroom.",
+    "website": "https://www.pedifix.com/",
     "logo": "/assets/logos/pedifix.jpg",
     "featured": false,
     "ordering_url": "",
     "brand": {
-      "accent": "#1681c2",
-      "dark": "#0b0d0f"
+      "accent": "#2672b9",
+      "dark": "#123057"
     },
-    "hero": {
-      "eyebrow": "",
-      "headline": "",
-      "lead": "",
-      "highlights_title": "",
-      "highlights_intro": "",
-      "highlights": []
-    },
-    "stats": [],
-    "product_categories": [],
-    "featured_products": [],
-    "differentiators": [],
-    "solution_headline": "",
-    "solution_copy": "",
-    "showroom_checks": [],
-    "assortment": [],
-    "sections": []
+    "sections": [
+      {
+        "type": "hero",
+        "eyebrow": "Foot comfort products for healthcare retailers",
+        "headline": "Bring trusted footcare solutions into your retail showroom.",
+        "lead": "PediFix offers a broad line of medical footcare products designed around common customer needs such as hammer toes, bunions, ball-of-foot pain, heel pain, arch support, skin care, fungus care, diabetic footcare, ankle support, and dexterity assistance.",
+        "card_title": "Build a simple \u201cTell us where it hurts\u201d footcare center",
+        "card_intro": "PediFix organizes the buying conversation around common pain points, making it easy for retail staff to guide customers to the right category.",
+        "checklist": [
+          "Hammer toe relief",
+          "Bunion protection",
+          "Ball-of-foot cushioning",
+          "Corns & calluses",
+          "Arch support",
+          "Skin & fungus care"
+        ],
+        "image": "https://www.pedifix.com/cdn/shop/files/P53.jpg?v=1752597088&width=1080",
+        "stats": []
+      },
+      {
+        "type": "stats",
+        "items": [
+          {
+            "value": "5th Gen.",
+            "label": "Family-owned company"
+          },
+          {
+            "value": "Retail + Pro",
+            "label": "Doctors, retailers, and direct customers"
+          },
+          {
+            "value": "Broad Line",
+            "label": "Toe, bunion, heel, arch, and skin care"
+          },
+          {
+            "value": "Login",
+            "label": "Retailers access professional pricing online"
+          }
+        ]
+      },
+      {
+        "type": "cards",
+        "eyebrow": "Shop by need",
+        "title": "Organized by the foot problems customers ask about every day.",
+        "intro": "An easy retail add-on line for pharmacies, DME dealers, shoe stores, and healthcare retail locations.",
+        "items": [
+          {
+            "name": "Hammer Toe",
+            "tag": "Toe care",
+            "image": "",
+            "description": "Straighteners, cushions, splints, crest pads, crutches, straps, and separators that protect, support, and relieve pressure on bent toes."
+          },
+          {
+            "name": "Bunion Relief",
+            "tag": "Protection",
+            "image": "",
+            "description": "Guards, shields, sleeves, toe spacers, and nighttime regulators that protect irritated bunion areas and separate toes that rub."
+          },
+          {
+            "name": "Ball-of-Foot",
+            "tag": "Forefoot",
+            "image": "",
+            "description": "Metatarsal pads, cushions, sleeves, and forefoot products that reduce pressure and improve comfort while walking or standing."
+          },
+          {
+            "name": "Arch Support",
+            "tag": "Support",
+            "image": "",
+            "description": "Arch-support products and insoles for customers needing added support, alignment assistance, or everyday comfort in their shoes."
+          },
+          {
+            "name": "Heel Pain",
+            "tag": "Comfort",
+            "image": "",
+            "description": "Heel cups, cushions, and sleeves for common heel pain conversations and plantar fasciitis add-on opportunities."
+          },
+          {
+            "name": "Skin Care & Fungus",
+            "tag": "Skin care",
+            "image": "",
+            "description": "Cleansing bars, soaking crystals, creams, oils, and skin-focused products for dryness, cracking, odor, and fungus-related concerns."
+          }
+        ]
+      },
+      {
+        "type": "products",
+        "eyebrow": "Featured Products",
+        "title": "Featured retail-friendly product families",
+        "intro": "Easy to explain, easy to merchandise, and connected directly to common customer pain points.",
+        "items": [
+          {
+            "name": "Visco-GEL\u00ae Hammer Toe Cushion",
+            "badge": "Hammer Toe",
+            "image": "https://www.pedifix.com/cdn/shop/files/P53.jpg?v=1752597088&width=1080",
+            "url": "https://www.pedifix.com/collections/hammer-toe/products/visco-gel-hammer-toe-cushion-p53",
+            "description": "Relieves pressure on toe tips, supports bent-under toes, and helps prevent blisters, corns, and calluses.",
+            "tags": [],
+            "bullets": []
+          },
+          {
+            "name": "Visco-GEL\u00ae Bunion Relief Sleeve",
+            "badge": "Bunion Protection",
+            "image": "https://www.pedifix.com/cdn/shop/files/P1303.jpg?v=1752596579&width=1080",
+            "url": "https://www.pedifix.com/products/visco-gel-bunion-relief-sleeve-p1303",
+            "description": "Soft fabric sleeve with gel cushioning that helps protect bunions from shoe pressure and friction.",
+            "tags": [],
+            "bullets": []
+          },
+          {
+            "name": "Active Orthotics\u2122 Insoles",
+            "badge": "Arch & Heel Support",
+            "image": "https://www.pedifix.com/cdn/shop/files/P5350.jpg?v=1752597097&width=1080",
+            "url": "https://www.pedifix.com/collections/insoles/products/active-orthotics-full-length-firm-support-insoles-p5350",
+            "description": "Full-length support insoles for arch support, heel cushioning, and plantar fasciitis comfort.",
+            "tags": [],
+            "bullets": []
+          },
+          {
+            "name": "Tea Tree Ultimates\u00ae Soaking Crystals",
+            "badge": "Skin & Fungus Care",
+            "image": "https://www.pedifix.com/cdn/shop/files/P3078-2.jpg?v=1778254797&width=1080",
+            "url": "https://www.pedifix.com/products/tea-tree-ultimates-soaking-crystals-p3078",
+            "description": "A foot soak for tired, sore feet, dry skin, odors, and ongoing footcare maintenance.",
+            "tags": [],
+            "bullets": []
+          },
+          {
+            "name": "Diabetic Defense\u00ae Foot Moisturizer",
+            "badge": "Diabetic Footcare",
+            "image": "https://www.pedifix.com/cdn/shop/files/P3620.jpg?v=1752596966&width=1080",
+            "url": "https://www.pedifix.com/products/diabetic-defense-daily-therapy-foot-moisturizer-p3620",
+            "description": "A moisturizing footcare item for rough, dry, cracked skin and heel calluses.",
+            "tags": [],
+            "bullets": []
+          },
+          {
+            "name": "Pedi-Quick\u00ae 2-Sided Foot File",
+            "badge": "Corns & Calluses",
+            "image": "https://www.pedifix.com/cdn/shop/files/P3020.jpg?v=1752596782&width=1080",
+            "url": "https://www.pedifix.com/products/pedi-quick-2-sided-foot-file-p3020",
+            "description": "A retail-friendly foot file for rough, dry, or hardened skin and daily footcare maintenance.",
+            "tags": [],
+            "bullets": []
+          }
+        ]
+      },
+      {
+        "type": "differentiators",
+        "eyebrow": "Why PediFix",
+        "title": "Why PediFix works well for healthcare retail.",
+        "intro": "Easy to segment, easy to display, and easy for staff to recommend based on the customer\u2019s pain point.",
+        "items": [
+          {
+            "title": "Problem-solution selling",
+            "description": "Customers shop by condition or pain point \u2014 bunions, hammer toes, heel pain, arch support, corns, calluses, skin care, and diabetic needs."
+          },
+          {
+            "title": "Small-footprint add-ons",
+            "description": "Ideal impulse and add-on items for pharmacies, DME counters, shoe departments, and mobility retail showrooms."
+          },
+          {
+            "title": "Professional credibility",
+            "description": "Positioned as available through doctors, leading healthcare retailers, and direct from PediFix."
+          },
+          {
+            "title": "Repeat purchase potential",
+            "description": "Consumables like skin care, soaking crystals, and maintenance items create return visits and reorders."
+          },
+          {
+            "title": "Staff-friendly categories",
+            "description": "Staff can quickly ask, \u201cWhere does it hurt?\u201d and guide customers to a targeted product area."
+          },
+          {
+            "title": "Professional account pathway",
+            "description": "Medical professionals and retailers can log in to access accurate pricing and order forms."
+          }
+        ]
+      },
+      {
+        "type": "split",
+        "headline": "A simple retail line that fits next to mobility, footwear, and home medical products.",
+        "copy": "PediFix gives dealers a practical way to add lower-ticket, high-need footcare items to the showroom. It pairs naturally with shoes, compression, diabetic supplies, braces, mobility products, lift chairs, and daily living aids \u2014 building a \u201cFoot Comfort Center\u201d arranged by customer need: toes, bunions, heel, arch, forefoot, skin, fungus, and diabetic footcare.",
+        "checklist": [],
+        "checks": [
+          "Small retail footprint",
+          "Easy staff talk track",
+          "Condition-based display",
+          "Add-on sale opportunity",
+          "Repeat consumable items",
+          "Professional ordering pathway"
+        ],
+        "image": "https://www.pedifix.com/cdn/shop/files/P5350.jpg?v=1752597097&width=1080",
+        "image_side": "left"
+      },
+      {
+        "type": "table",
+        "title": "Suggested dealer merchandising strategy",
+        "intro": "Use this structure to turn PediFix into a simple footcare destination inside your store.",
+        "columns": [
+          "Display Zone",
+          "Products to Include",
+          "Customer Question",
+          "Sales Angle"
+        ],
+        "rows": [
+          [
+            "Toe Comfort",
+            "Hammer toe cushions, toe straighteners, toe wraps, toe crutches, separators.",
+            "\u201cAre your toes rubbing, curling, or hurting in your shoes?\u201d",
+            "Fast solution for common toe pain and pressure problems."
+          ],
+          [
+            "Bunion Relief",
+            "Bunion guards, sleeves, shields, toe spacers, nighttime regulators.",
+            "\u201cIs your bunion rubbing against your shoe?\u201d",
+            "Protect the painful area and separate toes that rub."
+          ],
+          [
+            "Forefoot & Heel",
+            "Ball-of-foot cushions, metatarsal pads, heel cups, heel sleeves.",
+            "\u201cDoes it hurt under the ball of your foot or heel?\u201d",
+            "Comfort for walking, standing, and daily wear."
+          ],
+          [
+            "Arch & Insoles",
+            "Arch supports, insoles, orthotic-style products.",
+            "\u201cDo your feet get tired or unsupported during the day?\u201d",
+            "Everyday comfort and support add-on next to footwear."
+          ],
+          [
+            "Skin & Fungus Care",
+            "Cleansing bars, soaking crystals, creams, oils, tapes, skin repair items.",
+            "\u201cAre you dealing with dry skin, cracking, odor, or fungus concerns?\u201d",
+            "Repeat purchase category for ongoing footcare maintenance."
+          ]
+        ]
+      },
+      {
+        "type": "cards",
+        "eyebrow": "Dealer growth",
+        "title": "Dealer growth opportunities",
+        "intro": "Position PediFix as a footcare add-on line for existing customers and a new reason for walk-in shoppers to return.",
+        "items": [
+          {
+            "name": "Pharmacy & DME retail",
+            "tag": "",
+            "image": "",
+            "description": "Add PediFix near compression, braces, diabetic supplies, mobility aids, and daily living products."
+          },
+          {
+            "name": "Mobility customer add-ons",
+            "tag": "",
+            "image": "",
+            "description": "Customers buying scooters, lift chairs, walkers, and shoes often also need foot comfort, skin care, and toe protection products."
+          },
+          {
+            "name": "Staff education display",
+            "tag": "",
+            "image": "",
+            "description": "Use \u201cTell us where it hurts\u201d signage so staff can guide customers to a category without complex clinical training."
+          }
+        ]
+      }
+    ]
   },
   {
     "id": "corsicana",
-    "name": "Corsicana",
-    "category": "hi-lo adjustable beds & patient room",
-    "description": "Offering Advanced Hi-Lo Mobility Bed That Rotates, Raises, and Assists the User into a Safer, More Comfortable Standing Position, Full line of models available",
+    "name": "Corsicana Healthcare",
+    "category": "Healthcare Sleep & Mobility",
+    "description": "The CorsicanaCare\u2122 healthcare sleep collection \u2014 led by the Mobility Bed with 180\u00b0 swivel, high/low, and tilt positioning \u2014 plus adjustable bases, clinical mattresses, and bundles engineered for care environments and up to 1,500 lbs.",
     "website": "",
     "logo": "/assets/logos/corsicana.jpg",
     "featured": false,
     "ordering_url": "",
     "brand": {
-      "accent": "#1681c2",
-      "dark": "#0b0d0f"
+      "accent": "#2fb3a8",
+      "dark": "#153a5e"
     },
-    "hero": {
-      "eyebrow": "",
-      "headline": "",
-      "lead": "",
-      "highlights_title": "",
-      "highlights_intro": "",
-      "highlights": []
-    },
-    "stats": [],
-    "product_categories": [],
-    "featured_products": [],
-    "differentiators": [],
-    "solution_headline": "",
-    "solution_copy": "",
-    "showroom_checks": [],
-    "assortment": [],
-    "sections": []
+    "sections": [
+      {
+        "type": "hero",
+        "eyebrow": "CorsicanaCare\u2122 healthcare sleep",
+        "headline": "The Mobility Bed \u2014 powered positioning that helps customers move with confidence.",
+        "lead": "The core of the CorsicanaCare\u2122 line, the Mobility Bed brings a 180\u00b0 swivel function, high/low adjustability, and tilt positioning together in a fully upholstered, residential-looking bed \u2014 a premium cash-sale opportunity alongside a full healthcare sleep collection of mattresses, adjustable bases, and bundles.",
+        "card_title": "The Mobility Bed",
+        "card_intro": "180\u00b0 swivel, high/low, and tilt positioning for easier transfers and caregiver access.",
+        "checklist": [
+          "180\u00b0 swivel function for easier seated transfers.",
+          "High/low adjustability and tilt positioning.",
+          "One-touch flat and zero-gravity remote presets.",
+          "Bonus mattress protector included."
+        ],
+        "image": "/assets/products/corsicana/mobility-bed-chair.jpg",
+        "stats": []
+      },
+      {
+        "type": "stats",
+        "items": [
+          {
+            "value": "180\u00b0",
+            "label": "Swivel function"
+          },
+          {
+            "value": "1,500 lb",
+            "label": "Weight capacity"
+          },
+          {
+            "value": "10-Year",
+            "label": "Limited warranty"
+          },
+          {
+            "value": "Made in USA",
+            "label": "Trusted 50+ year manufacturer"
+          }
+        ]
+      },
+      {
+        "type": "split",
+        "headline": "Advanced positioning that helps customers move with confidence.",
+        "copy": "The Mobility Bed features a 180\u00b0 swivel function, high/low adjustability, and tilt positioning to support easier transfers, improved caregiver access, and personalized comfort. A 10\" EcoCore\u2122 soy-based foam sleep surface delivers breathable, temperature-regulated support, while the fully upholstered frame gives the bed a softer, residential look that blends into home and modern care environments.",
+        "checklist": [
+          "180\u00b0 swivel for easier, safer egress.",
+          "High/low adjustability and tilt positioning.",
+          "10\" EcoCore\u2122 eco-friendly, temperature-regulated foam.",
+          "Fully upholstered, residential design.",
+          "Underbed lighting, zero-gravity, and one-touch flat.",
+          "OEKO-TEX\u00ae Standard 100 certified; 10-year warranty."
+        ],
+        "checks": [],
+        "image": "/assets/products/corsicana/mobility-bed.jpg",
+        "image_side": "right"
+      },
+      {
+        "type": "products",
+        "eyebrow": "The complete CorsicanaCare\u2122 line",
+        "title": "A full healthcare sleep collection behind the core product.",
+        "intro": "Round out the Mobility Bed with adjustable rests, bases, mattresses, and bundles \u2014 all engineered to support up to 1,500 lbs.",
+        "items": [
+          {
+            "name": "Bed Booster",
+            "badge": "Adjustable back/foot rest",
+            "image": "/assets/products/corsicana/bed-booster.jpg",
+            "url": "",
+            "description": "A portable adjustable back/foot rest for head-incline comfort without replacing the full bed.",
+            "tags": [],
+            "bullets": [
+              "Head-incline adjustability for acid reflux, circulation, and back pain.",
+              "Flips for dual use as a foot/leg incline.",
+              "Mesh safety covering; quick, no-tools setup.",
+              "Folds away to 5\" for easy storage; wired remote."
+            ]
+          },
+          {
+            "name": "Active Adjustable Base",
+            "badge": "Adjustable base",
+            "image": "/assets/products/corsicana/adjustable-base.jpg",
+            "url": "",
+            "description": "The essential adjustable base with head and foot incline and dealer-friendly small-parcel shipping.",
+            "tags": [],
+            "bullets": [
+              "Head + foot incline with zero-gravity, anti-snore, and flat presets.",
+              "Adjustable leg height (6\", 9\", or 12\") and zero clearance.",
+              "Sturdy frame with mattress retainer bar; no tools required."
+            ]
+          },
+          {
+            "name": "Ascend & Apex Adjustable Bases",
+            "badge": "Premium bases",
+            "image": "/assets/products/corsicana/ascend-base.jpg",
+            "url": "",
+            "description": "Premium bases that add massage, lighting, and connected controls for a higher-ticket upgrade.",
+            "tags": [],
+            "bullets": [
+              "Head + foot massage at three intensities.",
+              "Underbed LED night light and USB A+C charging ports.",
+              "Hands-free voice command; Ascend adds a wall-saving design."
+            ]
+          },
+          {
+            "name": "Healthcare Mattresses",
+            "badge": "Essentials \u00b7 Elevate \u00b7 Everest",
+            "image": "/assets/products/corsicana/healthcare-mattress.jpg",
+            "url": "",
+            "description": "Hospital-size (36\"\u00d780\"\u00d76\") mattresses engineered for clinical use and easier egress.",
+            "tags": [],
+            "bullets": [
+              "Zip-off, water/fluid-resistant, anti-bacterial, fire-code cover.",
+              "Air Grid\u2122 cooling gel with zoned support that flexes with the bed.",
+              "Elevate/Everest add copper-infused memory foam, patented edge support (20% more surface), and Lumi Bands\u2122 cooling.",
+              "CertiPUR-US\u00ae; 10-year warranty."
+            ]
+          },
+          {
+            "name": "Bed-in-Box At-Home Mattresses",
+            "badge": "At-home collection",
+            "image": "/assets/products/corsicana/bed-in-box.jpg",
+            "url": "",
+            "description": "8\" and 10\" Comfort Reactive mattresses in Twin through Cal King, shipped compressed in a box.",
+            "tags": [],
+            "bullets": [
+              "Bed-in-a-box shipping for easy delivery and storage.",
+              "Removable, quilted, washable zip-off cover.",
+              "Air Grid\u2122 cooling; pairs perfectly with the adjustable bases."
+            ]
+          },
+          {
+            "name": "Essentials Care Bundle",
+            "badge": "Bedding bundle",
+            "image": "",
+            "url": "",
+            "description": "A ready-to-add bedding bundle: one pillow, one sheet set, and one mattress protector.",
+            "tags": [],
+            "bullets": [
+              "Hypoallergenic, zippered fiber-filled pillow.",
+              "Durable, ultra-grip 100% polyester sheet set.",
+              "5-sided water-resistant mattress protector.",
+              "OEKO-TEX\u00ae Standard 100 certified."
+            ]
+          }
+        ]
+      },
+      {
+        "type": "differentiators",
+        "eyebrow": "Why Corsicana Healthcare",
+        "title": "Healthcare sleep built for clinical environments and long-term value.",
+        "intro": "",
+        "items": [
+          {
+            "title": "Made in the USA",
+            "description": "A trusted mattress manufacturer for over 50 years, producing healthcare sleep solutions domestically."
+          },
+          {
+            "title": "Fully vertically integrated",
+            "description": "Vertically integrated manufacturing supports quality control, operational speed, and quick delivery."
+          },
+          {
+            "title": "Bed-in-a-box logistics",
+            "description": "Compressed bed-in-a-box products make shipping, installation, and storage easier for dealers and facilities."
+          },
+          {
+            "title": "Clinically focused collections",
+            "description": "Product collections engineered specifically for clinical environments and patient needs."
+          },
+          {
+            "title": "Patented, proprietary components",
+            "description": "Patented edge support, Air Grid\u2122, and Lumi Bands\u2122 technologies differentiate the line."
+          },
+          {
+            "title": "Dedicated R&D team",
+            "description": "An in-house research and development team continues to advance the healthcare sleep lineup."
+          }
+        ]
+      },
+      {
+        "type": "steps",
+        "title": "A simple path to adding CorsicanaCare.",
+        "intro": "Lead with the Mobility Bed, then build out the collection for your accounts.",
+        "items": [
+          {
+            "title": "Review the Mobility Bed",
+            "description": "Focus on the 180\u00b0 swivel, high/low, tilt, and remote positioning as the premium core product."
+          },
+          {
+            "title": "Choose the collection",
+            "description": "Add the bases, mattresses, Bed Booster, and Essentials bundle that fit your customer base."
+          },
+          {
+            "title": "Train your team",
+            "description": "Give staff a simple talk track around mobility, comfort positioning, and caregiver access."
+          },
+          {
+            "title": "Start selling",
+            "description": "Add CorsicanaCare to your mobility, senior living, post-surgery, and home care conversations."
+          }
+        ]
+      }
+    ]
   },
   {
     "id": "airavant-bongorx",
@@ -927,16 +1993,16 @@
     "sections": [
       {
         "type": "hero",
-        "eyebrow": "EPAP Therapy — Dealer Introduction",
+        "eyebrow": "EPAP Therapy \u2014 Dealer Introduction",
         "headline": "BongoRx: EPAP Sleep Apnea Therapy Without the Machine",
         "lead": "A simple, portable CPAP alternative for mild to moderate obstructive sleep apnea patients who want freedom from machines, hoses, and power.",
         "card_title": "Why Dealers Are Interested",
         "card_intro": "",
         "image": "/assets/products/bongorx/bongorx-device.jpg",
         "checklist": [
-          "Prescription cash product — great for retail, FSA/HSA customers, and CPAP alternative inquiries.",
-          "Travel-friendly therapy — no machine, hose, or electricity required.",
-          "Built-in replenishment — the Starter Kit opens the door to recurring annual and single replacement sales."
+          "Prescription cash product \u2014 great for retail, FSA/HSA customers, and CPAP alternative inquiries.",
+          "Travel-friendly therapy \u2014 no machine, hose, or electricity required.",
+          "Built-in replenishment \u2014 the Starter Kit opens the door to recurring annual and single replacement sales."
         ],
         "stats": []
       },
@@ -956,7 +2022,7 @@
             "name": "No Power Required",
             "tag": "",
             "image": "",
-            "description": "Uses the patient’s own exhalation to create EPAP, helping keep the airway open without a machine or electricity."
+            "description": "Uses the patient\u2019s own exhalation to create EPAP, helping keep the airway open without a machine or electricity."
           },
           {
             "name": "Simple Starter Kit",
@@ -1015,17 +2081,17 @@
         "rows": [
           [
             "BNG500",
-            "BongoRx Four Sizes Starter Kit — includes SM, MD, LG, XL, headgear, travel case, and drying stand.",
+            "BongoRx Four Sizes Starter Kit \u2014 includes SM, MD, LG, XL, headgear, travel case, and drying stand.",
             "Primary first-purchase item for all new patients."
           ],
           [
-            "BNG501–BNG505",
-            "Annual Replenishment Packs — XS–XL. Four devices of one size plus headgear, travel case, and drying stand.",
+            "BNG501\u2013BNG505",
+            "Annual Replenishment Packs \u2014 XS\u2013XL. Four devices of one size plus headgear, travel case, and drying stand.",
             "Recurring resupply opportunity after the Starter Kit."
           ],
           [
-            "BNG511–BNG515",
-            "Single Replenishment Units — XS–XL. One device and headgear only.",
+            "BNG511\u2013BNG515",
+            "Single Replenishment Units \u2014 XS\u2013XL. One device and headgear only.",
             "Easy replacement or add-on sale."
           ],
           [
@@ -1070,34 +2136,164 @@
   },
   {
     "id": "bemis",
-    "name": "Bemis",
-    "category": "Bathroom Safety",
-    "description": "American-Made Raised Toilet Seats with a Versatile Modular Design and Integrated Hygiene Options for Greater Comfort, Independence, and Personal Care.",
-    "website": "",
+    "name": "BEMIS Assurance",
+    "category": "Bath Safety",
+    "description": "The Assurance\u00ae modular raised toilet seat system \u2014 a premium bath safety upgrade with a 3-inch raised seat, optional silver or black support arms, and a non-electric bidet add-on designed specifically for the raised seat.",
+    "website": "https://www.toiletseats.com/assurance/",
     "logo": "/assets/logos/bemis.jpg",
     "featured": false,
-    "ordering_url": "",
+    "ordering_url": "https://bemisonlineordering.netlify.app/",
     "brand": {
-      "accent": "#1681c2",
-      "dark": "#0b0d0f"
+      "accent": "#2477b3",
+      "dark": "#17324d"
     },
-    "hero": {
-      "eyebrow": "",
-      "headline": "",
-      "lead": "",
-      "highlights_title": "",
-      "highlights_intro": "",
-      "highlights": []
-    },
-    "stats": [],
-    "product_categories": [],
-    "featured_products": [],
-    "differentiators": [],
-    "solution_headline": "",
-    "solution_copy": "",
-    "showroom_checks": [],
-    "assortment": [],
-    "sections": []
+    "sections": [
+      {
+        "type": "hero",
+        "eyebrow": "BEMIS Assurance\u00ae Modular Raised Toilet Seat System",
+        "headline": "A premium modular raised toilet seat system customers can build around safety, style, and hygiene.",
+        "lead": "BEMIS Assurance gives dealers a stronger bath safety story than a standard raised toilet seat. Customers can choose the raised seat, add support arms in silver or black to better match their bathroom decor, and upgrade with a bidet option designed specifically for the Assurance raised toilet seat system.",
+        "card_title": "Premium bath safety with a modular, customer-friendly design.",
+        "card_intro": "Assurance combines a stylish 3-inch raised seat, secure installation, Clean\u00b7Shield design, optional silver or black support arms, and a non-electric bidet attachment for customers who need added hygiene support.",
+        "checklist": [],
+        "image": "https://6980302-860447796248001271.preview.editmysite.com/uploads/6/9/8/0/6980302/7ya06303twa_orig.jpg",
+        "stats": [
+          {
+            "value": "3\"",
+            "label": "Elevated seat"
+          },
+          {
+            "value": "2",
+            "label": "Arm colors"
+          },
+          {
+            "value": "Bidet",
+            "label": "Hygiene option"
+          }
+        ]
+      },
+      {
+        "type": "cards",
+        "eyebrow": "Why dealers should pay attention",
+        "title": "A premium modular solution, not a one-size-fits-all riser.",
+        "intro": "Most raised toilet seats are one-size-fits-all, look clinical, and don't address hygiene. Assurance can be built around the customer's bathroom, mobility needs, and hygiene preferences.",
+        "items": [
+          {
+            "name": "Modular retail story",
+            "tag": "Customizable",
+            "image": "",
+            "description": "A premium raised toilet seat system customers can customize with silver or black support arms to better match their bathroom decor."
+          },
+          {
+            "name": "Hygiene upgrade option",
+            "tag": "Bidet add-on",
+            "image": "",
+            "description": "Many customers struggle with hygiene after surgery, injury, limited mobility, or aging. Assurance offers a bidet designed specifically for the raised toilet seat."
+          },
+          {
+            "name": "Premium cash-pay opportunity",
+            "tag": "Higher ticket",
+            "image": "",
+            "description": "The modular design, decor-friendly arm choices, and bidet option help justify a premium recommendation versus commodity raised toilet seats."
+          }
+        ]
+      },
+      {
+        "type": "differentiators",
+        "eyebrow": "Who it's for",
+        "title": "A fit across every channel you sell.",
+        "intro": "",
+        "items": [
+          {
+            "title": "For DME dealers",
+            "description": "Add a premium bath safety product that supports aging-in-place, post-discharge needs, and hygiene concerns."
+          },
+          {
+            "title": "For pharmacies",
+            "description": "A simple cash-sale item for caregivers, seniors, surgery recovery, and fall-prevention shoppers."
+          },
+          {
+            "title": "For e-commerce",
+            "description": "A strong product-education story with modular options, arm color choices, bidet upgrade, videos, and comparison content."
+          }
+        ]
+      },
+      {
+        "type": "split",
+        "headline": "A premium hygiene upgrade designed for the Assurance raised toilet seat.",
+        "copy": "The optional Assurance bidet attachment gives dealers another premium add-on to discuss with customers who may struggle with personal hygiene due to limited mobility, surgery recovery, arthritis, balance concerns, or caregiver needs.",
+        "checklist": [
+          "Non-electric design installs quickly without the need for an outlet.",
+          "A simple twist knob controls the wash for easy customer use.",
+          "The spray angle is designed specifically for the 3-inch Assurance seat height.",
+          "An adjustable T-valve allows customizable, consistent water pressure.",
+          "Creates a stronger premium sales story when paired with the raised seat and support arms.",
+          "Helps dealers offer a more complete solution for safety, independence, comfort, and hygiene."
+        ],
+        "checks": [],
+        "image": "https://6980302-860447796248001271.preview.editmysite.com/uploads/6/9/8/0/6980302/7ya06303twa_orig.jpg",
+        "image_side": "left"
+      },
+      {
+        "type": "split",
+        "headline": "Designed for independence, safety, hygiene, and bathroom decor.",
+        "copy": "Assurance helps customers sit and stand more comfortably while giving them the ability to choose a more personalized solution for their home.",
+        "checklist": [
+          "A 3-inch elevated height helps make sitting and standing easier.",
+          "A residential-style appearance blends into the bathroom.",
+          "A secure installation system is designed to prevent loosening with use.",
+          "Optional fully weight-bearing support arms for customers needing extra assistance.",
+          "Arm options in silver and black help customers match their bathroom decor.",
+          "An optional bidet upgrade helps customers with hygiene concerns.",
+          "Clean\u00b7Shield reverse funnel design helps direct waste toward the bowl.",
+          "A smooth glossy surface is stain-resistant and wipes clean easily.",
+          "The hinged ring and cover lift upright for standing use and easier cleaning."
+        ],
+        "checks": [],
+        "image": "https://6980302-860447796248001271.preview.editmysite.com/uploads/6/9/8/0/6980302/7ya06303twa_orig.jpg",
+        "image_side": "right"
+      },
+      {
+        "type": "spotlight",
+        "badge": "Modular raised toilet seat system",
+        "headline": "BEMIS Assurance\u00ae Modular Raised Toilet Seat System",
+        "copy": "A premium elevated toilet seat system that gives customers the safety benefits of a raised seat, the ability to add decor-friendly support arms, and the option to upgrade with a bidet designed for the raised toilet seat \u2014 a stronger premium story than standard bath safety risers. Best customer fits:",
+        "image": "https://6980302-860447796248001271.preview.editmysite.com/uploads/6/9/8/0/6980302/7ya06303twa_orig.jpg",
+        "checklist": [
+          "Seniors wanting to remain independent at home.",
+          "Post-surgery or rehab customers needing temporary or long-term support.",
+          "Caregivers looking for a more stable bathroom safety solution.",
+          "Customers who dislike the look of standard raised toilet seats.",
+          "Customers who want black or silver arms to coordinate with their bathroom.",
+          "Customers with hygiene concerns who may benefit from a bidet upgrade.",
+          "Retailers wanting a premium bath safety story with modular add-ons."
+        ],
+        "cta": "Place Order / Review Pricing"
+      },
+      {
+        "type": "steps",
+        "title": "A simple path to launch",
+        "intro": "Use Assurance to start conversations with accounts that need a premium cash-sale category and a better bath safety upgrade.",
+        "items": [
+          {
+            "title": "Review the system",
+            "description": "We'll walk through the raised seat, silver and black arm options, bidet upgrade, dealer opportunity, and target customer profile."
+          },
+          {
+            "title": "Select your program",
+            "description": "Choose the best opening order, display setup, arm color mix, bidet add-on strategy, or e-commerce launch plan for your business."
+          },
+          {
+            "title": "Train your team",
+            "description": "We can provide a quick Zoom training to help staff explain the premium modular design and close cash sales."
+          },
+          {
+            "title": "Start selling",
+            "description": "Add Assurance to your bath safety, senior living, post-surgery, hygiene, and fall-prevention conversations."
+          }
+        ]
+      }
+    ]
   },
   {
     "id": "strongback-mobility",
@@ -1140,7 +2336,7 @@
         "image": "/assets/products/strongback/hero-showroom.jpg",
         "stats": [
           {
-            "value": "16\"–22\"",
+            "value": "16\"\u201322\"",
             "label": "Seat width coverage"
           },
           {
@@ -1179,7 +2375,7 @@
             "name": "Premium showroom story",
             "tag": "",
             "image": "",
-            "description": "Strongback creates a higher-value conversation around comfort, posture, transportability, and lifestyle — not just price."
+            "description": "Strongback creates a higher-value conversation around comfort, posture, transportability, and lifestyle \u2014 not just price."
           }
         ]
       },

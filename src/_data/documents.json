@@ -120,6 +120,58 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "golden-power-lift-recliner-catalog",
+      "title": "Golden Power Lift Recliner Catalog (2026)",
+      "type": "catalog",
+      "manufacturer": "golden-technologies",
+      "format": "pdf",
+      "file": "/assets/docs/golden-power-lift-recliner-catalog.pdf",
+      "url": "",
+      "description": "The full Golden power lift recliner lineup \u2014 Cloud Supreme (PR519), Cloud+, Cloud Elite, EZ Sleeper, the Comforter (PR531), and more, with Comfort Zones, Twilight Tilt, and Nirvana details.",
+      "access": "public",
+      "dealers": [],
+      "featured": true
+    },
+    {
+      "id": "golden-mobility-catalog",
+      "title": "Golden Mobility Catalog (2026)",
+      "type": "catalog",
+      "manufacturer": "golden-technologies",
+      "format": "pdf",
+      "file": "/assets/docs/golden-mobility-catalog.pdf",
+      "url": "",
+      "description": "Golden scooters and power wheelchairs \u2014 Buzzaround CarryOn HD (GB220), Buzzaround LX/EX/XL, Companion, Eagle, Ally Pro (GP304), Compass, and more.",
+      "access": "public",
+      "dealers": [],
+      "featured": true
+    },
+    {
+      "id": "corsicana-healthcare-catalog",
+      "title": "Corsicana Healthcare Catalog (2026)",
+      "type": "catalog",
+      "manufacturer": "corsicana",
+      "format": "pdf",
+      "file": "/assets/docs/corsicana-healthcare-catalog.pdf",
+      "url": "",
+      "description": "The CorsicanaCare healthcare sleep collection \u2014 the Mobility Bed core product, adjustable bases, clinical mattresses, and the Essentials Care bundle.",
+      "access": "public",
+      "dealers": [],
+      "featured": true
+    },
+    {
+      "id": "ohio-medical-gce-oxygen-catalog",
+      "title": "Ohio Medical / GCE Oxygen Product Catalog (2026)",
+      "type": "catalog",
+      "manufacturer": "ohio-medical",
+      "format": "pdf",
+      "file": "/assets/docs/ohio-medical-gce-oxygen-catalog.pdf",
+      "url": "",
+      "description": "Portable and stationary oxygen concentrators \u2014 the Zen-O and Zen-O lite POCs and the M50 stationary concentrator, featuring Rate Responsive Therapy.",
+      "access": "public",
+      "dealers": [],
+      "featured": true
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."

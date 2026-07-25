@@ -1,0 +1,177 @@
+---
+layout: layouts/base.njk
+title: Contact Us
+permalink: /contact/
+description: "Contact HomeCare Provider Services — manufacturer representation, dealer and provider support, Golden ordering portal access, and consulting."
+---
+<section class="hero" style="padding-bottom:52px;">
+  <div class="container">
+    <div class="section-head">
+      <p class="eyebrow">Contact HomeCare Provider Services</p>
+      <h1 style="font-size:clamp(30px,4.4vw,50px);color:#fff;">Let's start the right conversation.</h1>
+      <p class="lead">Whether you're a dealer needing support, a provider looking for resources, or a manufacturer looking for representation, HomeCare Provider Services can help route your request to the right place.</p>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top:56px;">
+  <div class="container">
+    <div class="section-head center">
+      <p class="eyebrow">How can we help?</p>
+      <h2>Choose the path that fits you.</h2>
+      <p>Pick a starting point below and we'll take you straight to the form with the right details.</p>
+    </div>
+
+    {% set cdn = "https://cdn.wdgtsrc.com/d6ce710083552875d6b477b255add8bc8787415/HomeCare_2026/Contact%20Page/" %}
+    <div class="contact-cards">
+      <article class="contact-card">
+        <div class="contact-card-img"><img src="{{ cdn }}Golden%20Portal.jpg" alt="Golden Technologies ordering portal" onerror="this.style.display='none';this.dataset.ph='1';"></div>
+        <div class="contact-card-body">
+          <h3>Golden Ordering Portal</h3>
+          <p>Looking for access to the new Golden Technologies ordering platform? Reach out to schedule a test drive of the system or request your login credentials.</p>
+          <button type="button" class="btn primary sm contact-jump" data-interest="Golden Technologies ordering portal access">Request portal access</button>
+        </div>
+      </article>
+
+      <article class="contact-card">
+        <div class="contact-card-img"><img src="{{ cdn }}Manufacturing%20Reps.jpg" alt="Manufacturer representation" onerror="this.style.display='none';this.dataset.ph='1';"></div>
+        <div class="contact-card-body">
+          <h3>Manufacturers</h3>
+          <p>Looking for representation, market development, dealer growth, or product-launch support? We help launch your products into our network of providers.</p>
+          <button type="button" class="btn primary sm contact-jump" data-interest="Manufacturer representation / partnership">Explore representation</button>
+        </div>
+      </article>
+
+      <article class="contact-card">
+        <div class="contact-card-img"><img src="{{ cdn }}Resources.jpg" alt="Dealer and provider resources" onerror="this.style.display='none';this.dataset.ph='1';"></div>
+        <div class="contact-card-body">
+          <h3>Dealers &amp; Providers</h3>
+          <p>Need literature, pricing access, order support, in-service scheduling, or technical support? We're here to help you sell and serve with confidence.</p>
+          <button type="button" class="btn primary sm contact-jump" data-interest="Dealer & provider support">Get dealer support</button>
+        </div>
+      </article>
+
+      <article class="contact-card">
+        <div class="contact-card-img"><img src="{{ cdn }}Consultation.jpg" alt="Consulting and showroom design" onerror="this.style.display='none';this.dataset.ph='1';"></div>
+        <div class="contact-card-body">
+          <h3>Consulting</h3>
+          <p>Interested in showroom design, business-development discussions, floorplan strategy, or product-line growth? Let us help you build strategic sales centers.</p>
+          <button type="button" class="btn primary sm contact-jump" data-interest="Consulting — showroom design & business development">Talk consulting</button>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="contact-form" style="background:#fff;">
+  <div class="container" style="max-width:780px;">
+    <div class="section-head center">
+      <p class="eyebrow">Send us a message</p>
+      <h2>Tell us what you need.</h2>
+      <p>Fill out the form and a HomeCare Provider Services team member will route your request and follow up personally.</p>
+    </div>
+
+    <form id="hcps-contact" class="hcps-form" novalidate>
+      <input type="text" name="company_website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;" aria-hidden="true">
+
+      <div class="form-row">
+        <div><label for="c-name">Name / Primary contact *</label><input id="c-name" name="name" type="text" required></div>
+        <div><label for="c-company">Company / Organization *</label><input id="c-company" name="company" type="text" required></div>
+      </div>
+      <div class="form-row">
+        <div><label for="c-email">Email *</label><input id="c-email" name="email" type="email" required></div>
+        <div><label for="c-phone">Phone</label><input id="c-phone" name="phone" type="tel"></div>
+      </div>
+      <div>
+        <label for="c-interest">I'm reaching out about *</label>
+        <select id="c-interest" name="interest">
+          <option value="">Select a topic…</option>
+          <option value="Golden Technologies ordering portal access">Golden Technologies ordering portal access</option>
+          <option value="Manufacturer representation / partnership">Manufacturer representation / partnership</option>
+          <option value="Dealer & provider support">Dealer &amp; provider support (literature, pricing, orders, in-service, technical)</option>
+          <option value="Consulting — showroom design & business development">Consulting — showroom design &amp; business development</option>
+          <option value="Something else">Something else</option>
+        </select>
+      </div>
+      <div>
+        <label for="c-message">Message</label>
+        <textarea id="c-message" name="message" placeholder="Tell us a bit about what you're looking for — products, pricing, representation, showroom support, or portal access."></textarea>
+      </div>
+      <div>
+        <button type="submit" class="btn primary" id="c-submit">Send message</button>
+        <p class="form-status" id="c-status" role="status" aria-live="polite"></p>
+      </div>
+    </form>
+
+    <p style="text-align:center;color:#5f6b7a;margin-top:26px;">
+      Prefer to reach us directly? Call
+      <a href="tel:{{ site.contact.phone_href }}" style="color:var(--hcps-blue-dark);font-weight:700;">{{ site.contact.phone_display }}</a>
+      or email
+      <a href="mailto:{{ site.contact.email }}" style="color:var(--hcps-blue-dark);font-weight:700;">{{ site.contact.email }}</a>.
+    </p>
+  </div>
+</section>
+
+<script>
+(function () {
+  var form = document.getElementById("hcps-contact");
+  var status = document.getElementById("c-status");
+  var submit = document.getElementById("c-submit");
+  var interest = document.getElementById("c-interest");
+
+  // Audience cards pre-select the topic and scroll to the form.
+  document.querySelectorAll(".contact-jump").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var val = btn.getAttribute("data-interest");
+      for (var i = 0; i < interest.options.length; i++) {
+        if (interest.options[i].value === val) { interest.selectedIndex = i; break; }
+      }
+      document.getElementById("contact-form").scrollIntoView({ behavior: "smooth" });
+      setTimeout(function () { document.getElementById("c-name").focus(); }, 400);
+    });
+  });
+
+  // Pre-select via ?topic= (e.g. from other pages).
+  var params = new URLSearchParams(location.search);
+  var topic = params.get("topic");
+  if (topic) {
+    for (var i = 0; i < interest.options.length; i++) {
+      if (interest.options[i].value.toLowerCase().indexOf(topic.toLowerCase()) !== -1) { interest.selectedIndex = i; break; }
+    }
+  }
+
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    status.textContent = "";
+    var data = Object.fromEntries(new FormData(form).entries());
+    if (!data.name || !data.company || !data.email) {
+      status.className = "form-status error";
+      status.textContent = "Please fill in name, company, and email.";
+      return;
+    }
+    submit.disabled = true;
+    var original = submit.textContent;
+    submit.textContent = "Sending…";
+    try {
+      var res = await fetch("/.netlify/functions/contact", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data)
+      });
+      var out = await res.json();
+      if (res.ok && out.ok) {
+        form.reset();
+        status.className = "form-status ok";
+        status.textContent = "Thank you — your message has been sent. We'll route it and be in touch shortly.";
+      } else {
+        status.className = "form-status error";
+        status.textContent = out.error || "Something went wrong. Please email info@homecareproviderservices.us.";
+      }
+    } catch (err) {
+      status.className = "form-status error";
+      status.textContent = "Network error. Please email info@homecareproviderservices.us.";
+    } finally {
+      submit.disabled = false;
+      submit.textContent = original;
+    }
+  });
+})();
+</script>
