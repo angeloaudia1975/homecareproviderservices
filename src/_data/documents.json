@@ -211,6 +211,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "climbing-steps-dealer-catalog-ms0ljrr0",
+      "title": "Climbing Steps Dealer Catalog",
+      "type": "catalog",
+      "manufacturer": "climbing-steps",
+      "format": "pdf",
+      "file": "",
+      "url": "",
+      "description": "Learn about the Mobile Stairlifts, Mobile Patient Lifts, and Voltstair Powered Hand Trucks.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
