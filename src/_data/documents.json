@@ -198,6 +198,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "airavant-bongorx-medical-new-dealer-credit-application-ms0lbc3f",
+      "title": "AirAvant BongoRx Medical New Dealer Credit Application",
+      "type": "credit-application",
+      "manufacturer": "airavant-bongorx",
+      "format": "pdf",
+      "file": "/assets/docs/bongo-rx-airavant-medical-new-customer-credit-application-20-ms0lb7p9.pdf",
+      "url": "",
+      "description": "Open an account to offer the BongoRx",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
