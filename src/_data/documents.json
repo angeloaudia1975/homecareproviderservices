@@ -70,19 +70,6 @@
   ],
   "items": [
     {
-      "id": "golden-fabric-codes",
-      "title": "Golden Technologies Fabric Codes",
-      "type": "spec-sheet",
-      "manufacturer": "golden-technologies",
-      "format": "pdf",
-      "file": "/assets/docs/golden-fabric-codes.pdf",
-      "url": "",
-      "description": "Current fabric options and codes for Golden lift chairs.",
-      "access": "public",
-      "dealers": [],
-      "featured": false
-    },
-    {
       "id": "margin-vs-markup",
       "title": "Margin vs. Markup",
       "type": "calculator",
