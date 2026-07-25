@@ -6,13 +6,13 @@ permalink: /
 <section class="hero">
   <div class="container hero-grid">
     <div class="hero-copy">
-      <p class="eyebrow">MANUFACTURER SALES REPRESENTATION &bull; DME &bull; HME &bull; PHARMACY</p>
-      <h1>Connecting <span>{{ site.stats.manufacturers }} Manufacturers</span> to <span>{{ site.stats.dealers }} Dealers</span> Across Southern Ohio, Southern Indiana, Kentucky, Tennessee &amp; Georgia.</h1>
-      <p class="lead">Since {{ site.founded }}, HomeCare Provider Services has provided strategic manufacturers&rsquo; representation throughout the healthcare industry. We help introduce and promote innovative products, programs, and solutions to high-value HME providers, DME dealers, pharmacies, and other healthcare organizations serving patients every day.</p>
-      <p class="lead">Our approach is built around service, strong relationships, and practical solutions. By connecting manufacturers with the right customers and supporting providers with responsive, knowledgeable representation, we help create sustainable growth and better outcomes for manufacturers, healthcare partners, and the patients they serve.</p>
+      <p class="eyebrow">{{ home.hero.eyebrow }}</p>
+      <h1>Connecting <span>{{ site.stats.manufacturers }} Manufacturers</span> to <span>{{ site.stats.dealers }} Dealers</span> Across {{ home.hero.territory }}.</h1>
+      <p class="lead">{{ home.hero.lead1 }}</p>
+      <p class="lead">{{ home.hero.lead2 }}</p>
       <div class="hero-actions">
-        <a class="btn primary" href="/become-a-dealer/">Become a Dealer</a>
-        <a class="btn outline" href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">Explore Our Online Ordering Platform</a>
+        <a class="btn primary" href="/become-a-dealer/">{{ home.hero.cta1_label }}</a>
+        <a class="btn outline" href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">{{ home.hero.cta2_label }}</a>
       </div>
     </div>
     <div class="kpi-card">
@@ -54,9 +54,9 @@ permalink: /
 <section id="manufacturers">
   <div class="container">
     <div class="section-head">
-      <p class="eyebrow">Innovative Products. Showroom Solutions. Simplified Ordering.</p>
-      <h2>Strong Manufacturer Partnerships. Innovative Products. Better Solutions for Dealers.</h2>
-      <p>HomeCare Provider Services is the authorized sales representative for the manufacturers listed below. We carefully select innovative products and programs that help expand your product offerings, strengthen your showroom, and provide greater value to your customers.</p>
+      <p class="eyebrow">{{ home.manufacturers_section.eyebrow }}</p>
+      <h2>{{ home.manufacturers_section.title }}</h2>
+      <p>{{ home.manufacturers_section.intro }}</p>
     </div>
     <div class="manu-grid">
       {% for m in manufacturers %}
@@ -71,8 +71,8 @@ permalink: /
     </div>
     <div class="manu-note">
       <div>
-        <strong>Ready to place your order?</strong>
-        <span>Discover how easy it is to place online orders, recurring orders, and streamline your ordering process.</span>
+        <strong>{{ home.manufacturers_section.order_note_title }}</strong>
+        <span>{{ home.manufacturers_section.order_note_copy }}</span>
       </div>
       <a class="btn primary" href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">Visit Our Online Ordering Page</a>
     </div>
@@ -82,8 +82,8 @@ permalink: /
 <section class="why">
   <div class="container">
     <div class="section-head center">
-      <p class="eyebrow">Choose HomeCare Provider Services as Your Partners in Healthcare</p>
-      <h2>It&rsquo;s all about customer service.</h2>
+      <p class="eyebrow">{{ home.why_section.eyebrow }}</p>
+      <h2>{{ home.why_section.title }}</h2>
     </div>
     <div class="why-grid">
       {% for card in site.why_choose %}
@@ -100,8 +100,8 @@ permalink: /
 <section class="team" id="team">
   <div class="container">
     <div class="section-head center">
-      <p class="eyebrow">Our Consulting Team</p>
-      <h2>Real people, ready to help your business grow.</h2>
+      <p class="eyebrow">{{ home.team_section.eyebrow }}</p>
+      <h2>{{ home.team_section.title }}</h2>
     </div>
     <div class="team-grid">
       {% for t in team %}
@@ -124,8 +124,8 @@ permalink: /
 <section class="testimonials">
   <div class="container">
     <div class="section-head center">
-      <p class="eyebrow">What Dealers Are Saying</p>
-      <h2>Real stories from real partners.</h2>
+      <p class="eyebrow">{{ home.testimonials_section.eyebrow }}</p>
+      <h2>{{ home.testimonials_section.title }}</h2>
     </div>
     <div class="testimonial-grid">
       {% for t in testimonials %}
@@ -141,14 +141,14 @@ permalink: /
 <section class="territory" id="territory">
   <div class="container">
     <div class="section-head">
-      <p class="eyebrow">Our Territory</p>
+      <p class="eyebrow">{{ home.territory_section.eyebrow }}</p>
       <h2>{{ site.stats.states }} States. {{ site.stats.dealers }} Dealers. {{ site.stats.manufacturers }} Manufacturer Partners.</h2>
       <p>HomeCare Provider Services serves dealers across {{ site.territory.states_display | replace(" &bull; ", ", ") }} &mdash; with regional consultants on the ground in each territory.</p>
     </div>
     <div class="territory-layout">
       <aside class="territory-copy">
-        <h3>Coverage Built for Dealer Growth</h3>
-        <p>Concentrated distribution across the Ohio Valley and the Southeast &mdash; including Southern Ohio and Southern Indiana &mdash; with regional consultants who know their markets.</p>
+        <h3>{{ home.territory_section.coverage_title }}</h3>
+        <p>{{ home.territory_section.coverage_copy }}</p>
         <div class="territory-stats">
           <span><strong>{{ site.stats.states }}</strong>States</span>
           <span><strong>{{ site.stats.dealers }}</strong>Dealers</span>
@@ -183,8 +183,8 @@ permalink: /
 <section class="cta" id="become-a-dealer">
   <div class="container cta-grid">
     <div>
-      <h2>Ready to upgrade your showroom &amp; strengthen your business model?</h2>
-      <p>HomeCare Provider Services is committed to the growth and success of our dealer network.</p>
+      <h2>{{ home.cta_section.title }}</h2>
+      <p>{{ home.cta_section.copy }}</p>
     </div>
     <div class="hero-actions">
       <a class="btn primary" href="/resources/">Download Credit Application</a>

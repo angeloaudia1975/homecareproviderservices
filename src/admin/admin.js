@@ -10,6 +10,92 @@
   var FILE = {
     manufacturers: "src/_data/manufacturers.json",
     documents: "src/_data/documents.json",
+    home: "src/_data/home.json",
+    site: "src/_data/site.json",
+    team: "src/_data/team.json",
+    testimonials: "src/_data/testimonials.json",
+  };
+
+  // ---- Schemas for the simple data editors (Home Page / Site / Team / Testimonials) ----
+  var HOME_SCHEMA = [
+    { k: "hero", label: "Hero", type: "object", full: true, item: [
+      { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+      { k: "territory", label: "Headline territory line", type: "text", full: true },
+      { k: "lead1", label: "Intro paragraph 1", type: "textarea", full: true },
+      { k: "lead2", label: "Intro paragraph 2", type: "textarea", full: true },
+      { k: "cta1_label", label: "Primary button label", type: "text" },
+      { k: "cta2_label", label: "Secondary button label", type: "text" } ] },
+    { k: "manufacturers_section", label: "Manufacturers section", type: "object", full: true, item: [
+      { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+      { k: "title", label: "Heading", type: "text", full: true },
+      { k: "intro", label: "Intro", type: "textarea", full: true },
+      { k: "order_note_title", label: "Order note — title", type: "text" },
+      { k: "order_note_copy", label: "Order note — copy", type: "textarea", full: true } ] },
+    { k: "why_section", label: "“Why choose us” heading", type: "object", full: true, item: [
+      { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+      { k: "title", label: "Heading", type: "text", full: true } ] },
+    { k: "team_section", label: "Team heading", type: "object", full: true, item: [
+      { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+      { k: "title", label: "Heading", type: "text", full: true } ] },
+    { k: "testimonials_section", label: "Testimonials heading", type: "object", full: true, item: [
+      { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+      { k: "title", label: "Heading", type: "text", full: true } ] },
+    { k: "territory_section", label: "Territory section", type: "object", full: true, item: [
+      { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+      { k: "coverage_title", label: "Coverage heading", type: "text", full: true },
+      { k: "coverage_copy", label: "Coverage copy", type: "textarea", full: true } ] },
+    { k: "cta_section", label: "Bottom call-to-action", type: "object", full: true, item: [
+      { k: "title", label: "Heading", type: "text", full: true },
+      { k: "copy", label: "Copy", type: "textarea", full: true } ] },
+  ];
+
+  var SITE_SCHEMA = [
+    { k: "tagline", label: "Tagline", type: "text" },
+    { k: "founded", label: "Founded year", type: "text" },
+    { k: "meta_description", label: "Meta description (SEO)", type: "textarea", full: true },
+    { k: "contact", label: "Contact", type: "object", full: true, item: [
+      { k: "phone_display", label: "Phone (display)", type: "text" },
+      { k: "phone_href", label: "Phone (dial, e.g. +1937…)", type: "text" },
+      { k: "email", label: "Email", type: "text" } ] },
+    { k: "stats", label: "Headline stats", type: "object", full: true, item: [
+      { k: "dealers", label: "Active dealers (e.g. 300+)", type: "text" },
+      { k: "states", label: "States covered", type: "text" },
+      { k: "manufacturers", label: "Manufacturer partners", type: "text" } ] },
+    { k: "links", label: "Links", type: "object", full: true, item: [
+      { k: "online_ordering", label: "Online ordering URL", type: "url" },
+      { k: "support", label: "Support URL", type: "url" } ] },
+    { k: "why_choose", label: "“Why choose us” cards", type: "objlist", full: true, item: [
+      { k: "title", label: "Title", type: "text" },
+      { k: "description", label: "Description", type: "textarea", full: true } ] },
+    { k: "dealer_support_tools", label: "Dealer support tools", type: "objlist", full: true, item: [
+      { k: "title", label: "Title", type: "text" },
+      { k: "description", label: "Description", type: "textarea", full: true } ] },
+  ];
+
+  var TEAM_ITEM = [
+    { k: "name", label: "Name", type: "text" },
+    { k: "role", label: "Role / region", type: "text" },
+    { k: "phone_display", label: "Phone (display)", type: "text" },
+    { k: "phone_href", label: "Phone (dial)", type: "text" },
+    { k: "email", label: "Email", type: "text" },
+    { k: "photo", label: "Photo", type: "image", dir: "team", full: true },
+  ];
+  var TESTI_ITEM = [
+    { k: "quote", label: "Quote", type: "textarea", full: true },
+    { k: "name", label: "Name", type: "text" },
+    { k: "role", label: "Role / company", type: "text" },
+  ];
+
+  // config for each simple data view
+  var DATA_VIEWS = {
+    home: { file: "home", title: "Home Page", root: "object", schema: HOME_SCHEMA,
+      note: "Edit the homepage text. The page layout and design stay fixed — you're editing the words." },
+    site: { file: "site", title: "Site Settings", root: "object", schema: SITE_SCHEMA,
+      note: "Contact info, headline stats, links, and the “why choose us” and dealer-support cards used across the site." },
+    team: { file: "team", title: "Team", root: "array", item: TEAM_ITEM, itemLabel: "Team member", dir: "team",
+      note: "Add, edit, reorder, or remove consulting team members shown on the homepage. Upload a photo for each." },
+    testimonials: { file: "testimonials", title: "Testimonials", root: "array", item: TESTI_ITEM, itemLabel: "Testimonial",
+      note: "Dealer quotes shown on the homepage." },
   };
 
   // ---- Block schemas: mirror src/_includes/blocks/*.njk ----
@@ -158,7 +244,8 @@
 
   // ---------- state ----------
   var state = { view: "manufacturers", token: null, dirty: false,
-    manufacturers: null, mSha: null, documents: null, dSha: null, editingManu: null };
+    manufacturers: null, mSha: null, documents: null, dSha: null, editingManu: null,
+    data: {}, dataSha: {} };
 
   // ---------- UI feedback ----------
   var busyEl = $("#busy"), busyMsg = $("#busy-msg"), toastEl = $("#toast"), toastTimer = null;
@@ -191,6 +278,7 @@
   function logout() {
     state.token = null; sessionStorage.removeItem(TOKEN_KEY);
     state.manufacturers = state.documents = state.editingManu = null; state.dirty = false;
+    state.data = {}; state.dataSha = {};
     $("#app").hidden = true; $("#login").hidden = false; $("#password").value = "";
   }
 
@@ -220,9 +308,49 @@
   function navigate(view) {
     if (state.dirty && !confirm("You have unsaved changes. Leave without saving?")) return;
     state.dirty = false; state.editingManu = null; state.view = view;
+    var sb = $(".savebar"); if (sb) sb.remove();
     document.querySelectorAll(".tab").forEach(function (t) { t.classList.toggle("active", t.dataset.view === view); });
     if (view === "manufacturers") renderManuIndex();
     else if (view === "documents") renderDocuments();
+    else if (DATA_VIEWS[view]) renderData(view);
+  }
+
+  // ---------- generic data editors (Home Page / Site / Team / Testimonials) ----------
+  function ensureData(view) {
+    if (state.data[view]) return Promise.resolve();
+    var cfg = DATA_VIEWS[view];
+    return api("get", { path: FILE[cfg.file] }).then(function (b) {
+      state.data[view] = JSON.parse(b.content || (cfg.root === "array" ? "[]" : "{}"));
+      state.dataSha[view] = b.sha;
+    });
+  }
+  function renderData(view) {
+    var cfg = DATA_VIEWS[view];
+    var v = $("#view"); v.innerHTML = "";
+    v.appendChild(h("div", { class: "view-head" }, [ h("h2", {}, cfg.title) ]));
+    if (cfg.note) v.appendChild(h("p", { class: "section-note" }, cfg.note));
+    var host = h("div"); v.appendChild(host);
+    busy(true, "Loading…");
+    ensureData(view).then(function () {
+      if (cfg.root === "object") {
+        host.appendChild(renderFields(cfg.schema, state.data[view], { dir: cfg.dir || "products" }));
+      } else {
+        var wrapper = { items: state.data[view] };
+        var field = { k: "items", label: cfg.itemLabel + "s", type: "objlist", full: true, item: cfg.item };
+        host.appendChild(renderFields([field], wrapper, { dir: cfg.dir || "products" }));
+      }
+      busy(false);
+      renderSaveBar(function () { saveData(view); }, false);
+    }).catch(function (e) { busy(false); toast(e.message, "bad"); });
+  }
+  function saveData(view) {
+    var cfg = DATA_VIEWS[view];
+    var content = JSON.stringify(state.data[view], null, 2) + "\n";
+    busy(true, "Publishing…");
+    api("put", { path: FILE[cfg.file], content: content, sha: state.dataSha[view], message: "Edit " + cfg.title + " via admin" })
+      .then(function (b) { state.dataSha[view] = b.sha; state.dirty = false; updateSaveBar(); busy(false);
+        toast("Published. Live site rebuilds in ~1–2 min.", "ok"); })
+      .catch(function (e) { busy(false); toast(e.message, "bad"); });
   }
 
   // ---------- Manufacturer index ----------
@@ -560,15 +688,15 @@
 
   // ---------- save (manufacturers) ----------
   function markDirty() { if (!state.dirty) { state.dirty = true; updateSaveBar(); } }
-  function renderSaveBar() {
+  function renderSaveBar(saveFn, backView) {
     var old = $(".savebar"); if (old) old.remove();
+    var actions = [];
+    if (backView !== false) actions.push(h("button", { class: "btn ghost", onclick: function () { navigate(backView || "manufacturers"); } }, "Back"));
+    actions.push(h("button", { class: "btn primary", id: "save-btn", onclick: (saveFn || saveManufacturers) }, "Publish changes"));
     var bar = h("div", { class: "savebar" }, [
       h("div", { class: "savebar-inner" }, [
         h("div", { class: "msg", id: "save-msg" }, "All changes saved."),
-        h("div", { class: "actions" }, [
-          h("button", { class: "btn ghost", onclick: function () { navigate("manufacturers"); } }, "Back"),
-          h("button", { class: "btn primary", id: "save-btn", onclick: saveManufacturers }, "Publish changes"),
-        ]),
+        h("div", { class: "actions" }, actions),
       ]),
     ]);
     document.body.appendChild(bar); updateSaveBar();
