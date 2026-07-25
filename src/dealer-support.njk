@@ -1,0 +1,119 @@
+---
+layout: layouts/base.njk
+title: Dealer Support
+permalink: /dealer-support/
+description: "Request pricing access, place an order, order literature, schedule an in-service, or get technical support from HomeCare Provider Services."
+---
+<section class="hero" style="padding-bottom:44px;">
+  <div class="container">
+    <div class="section-head">
+      <p class="eyebrow">Dealer Support</p>
+      <h1 style="font-size:clamp(28px,4vw,44px);color:#fff;">How can we support your team?</h1>
+      <p class="lead">Send a dealer support request — pricing access, orders, literature, in-services, or technical questions — and a HCPS team member will follow up quickly.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container" style="max-width:780px;">
+    <form id="support-form" class="hcps-form" novalidate>
+      <input type="text" name="company_website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;" aria-hidden="true">
+
+      <div>
+        <label for="s-request">Request type *</label>
+        <select id="s-request" name="interest">
+          <option value="Pricing Access">Pricing Access</option>
+          <option value="Place or Request an Order">Place / Request an Order</option>
+          <option value="Order Literature">Order Literature</option>
+          <option value="Request an In-Service">Request an In-Service</option>
+          <option value="Technical Support">Technical Support</option>
+          <option value="General Dealer Question">General Dealer Question</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div><label for="s-company">Dealer / Company name *</label><input id="s-company" name="company" type="text" required></div>
+        <div><label for="s-name">Contact name *</label><input id="s-name" name="name" type="text" required></div>
+      </div>
+      <div class="form-row">
+        <div><label for="s-email">Email *</label><input id="s-email" name="email" type="email" required></div>
+        <div><label for="s-phone">Phone</label><input id="s-phone" name="phone" type="tel"></div>
+      </div>
+      <div>
+        <label for="s-manu">Manufacturer (if applicable)</label>
+        <select id="s-manu" name="manufacturer">
+          <option value="">All / not sure</option>
+          {% for m in manufacturers %}<option value="{{ m.name }}">{{ m.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="s-message">Details</label>
+        <textarea id="s-message" name="message" placeholder="Give us the details — account name, product, quantities, dates, or the question you need answered."></textarea>
+      </div>
+      <div>
+        <button type="submit" class="btn primary" id="s-submit">Submit request</button>
+        <p class="form-status" id="s-status" role="status" aria-live="polite"></p>
+      </div>
+    </form>
+
+    <p style="text-align:center;color:#5f6b7a;margin-top:26px;">
+      Prefer to reach us directly? Call
+      <a href="tel:{{ site.contact.phone_href }}" style="color:var(--hcps-blue-dark);font-weight:700;">{{ site.contact.phone_display }}</a>
+      or email
+      <a href="mailto:{{ site.contact.email }}" style="color:var(--hcps-blue-dark);font-weight:700;">{{ site.contact.email }}</a>.
+    </p>
+  </div>
+</section>
+
+<script>
+(function () {
+  var form = document.getElementById("support-form");
+  var status = document.getElementById("s-status");
+  var submit = document.getElementById("s-submit");
+  var request = document.getElementById("s-request");
+
+  // Pre-select the request type from ?request=
+  var params = new URLSearchParams(location.search);
+  var req = (params.get("request") || "").toLowerCase();
+  if (req) {
+    for (var i = 0; i < request.options.length; i++) {
+      if (request.options[i].value.toLowerCase() === req ||
+          request.options[i].value.toLowerCase().indexOf(req) !== -1) { request.selectedIndex = i; break; }
+    }
+  }
+
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    status.textContent = "";
+    var data = Object.fromEntries(new FormData(form).entries());
+    if (!data.name || !data.company || !data.email) {
+      status.className = "form-status error";
+      status.textContent = "Please fill in dealer name, contact name, and email.";
+      return;
+    }
+    submit.disabled = true;
+    var original = submit.textContent;
+    submit.textContent = "Sending…";
+    try {
+      var res = await fetch("/.netlify/functions/contact", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data)
+      });
+      var out = await res.json();
+      if (res.ok && out.ok) {
+        form.reset();
+        if (req) { for (var j = 0; j < request.options.length; j++) { if (request.options[j].value.toLowerCase().indexOf(req) !== -1) { request.selectedIndex = j; break; } } }
+        status.className = "form-status ok";
+        status.textContent = "Thank you — your request has been sent. We'll be in touch shortly.";
+      } else {
+        status.className = "form-status error";
+        status.textContent = out.error || "Something went wrong. Please email info@homecareproviderservices.us.";
+      }
+    } catch (err) {
+      status.className = "form-status error";
+      status.textContent = "Network error. Please email info@homecareproviderservices.us.";
+    } finally {
+      submit.disabled = false;
+      submit.textContent = original;
+    }
+  });
+})();
+</script>

@@ -106,7 +106,11 @@ permalink: /
     <div class="team-grid">
       {% for t in team %}
       <article class="team-card">
+        {% if t.photo %}
+        <div class="team-avatar has-photo" style="background-image:url('{{ t.photo }}')" role="img" aria-label="{{ t.name }}"></div>
+        {% else %}
         <div class="team-avatar">{{ t.name[0] }}</div>
+        {% endif %}
         <h3>{{ t.name }}</h3>
         <p class="team-role">{{ t.role }}</p>
         <a href="tel:{{ t.phone_href }}">{{ t.phone_display }}</a>

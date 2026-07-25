@@ -29,7 +29,7 @@
 
 <header class="mainnav">
   <div class="container nav-inner">
-    <a class="brand" href="/"><img src="/assets/logo.png" alt="{{ site.name }}"></a>
+    <a class="brand" href="/"><img src="/assets/hcps-logo.png" alt="{{ site.name }}"></a>
     <nav class="links" aria-label="Primary navigation">
       <a href="/">Home</a>
       <div class="dropdown">
@@ -38,7 +38,18 @@
           {% for m in manufacturers %}<a href="/manufacturers/{{ m.id }}/">{{ m.name }}</a>{% endfor %}
         </div>
       </div>
-      <a href="/resources/">Resources</a>
+      <div class="dropdown">
+        <a href="/dealer-hub/">Dealer Hub</a>
+        <div class="dropdown-menu">
+          <a href="/resources/">Resource Library</a>
+          <a href="/resources/?manufacturer=golden-technologies">Golden Resource Library</a>
+          <a href="/dealer-support/?request=Pricing%20Access">Pricing Access</a>
+          <a href="/dealer-support/?request=Place%20or%20Request%20an%20Order">Dealer Order Request</a>
+          <a href="/dealer-support/?request=Order%20Literature">Order Literature</a>
+          <a href="/dealer-support/?request=Request%20an%20In-Service">Request In-Service</a>
+          <a href="/dealer-support/?request=Technical%20Support">Technical Support</a>
+        </div>
+      </div>
       <a href="/#team">Our Team</a>
       <a href="/#territory">Territory</a>
       <a href="/contact/">Contact</a>
@@ -52,7 +63,7 @@
 <footer id="contact">
   <div class="container footer-grid">
     <div>
-      <img src="/assets/logo.png" alt="{{ site.name }}">
+      <img src="/assets/hcps-logo.png" alt="{{ site.name }}">
       <p>{{ site.meta_description }}</p>
       <div class="footer-contact">
         <a href="tel:{{ site.contact.phone_href }}">{{ site.contact.phone_display }}</a>
@@ -62,7 +73,8 @@
     <nav>
       <h3>Platform</h3>
       <a href="/manufacturers/">Manufacturers</a>
-      <a href="/resources/">Resources</a>
+      <a href="/dealer-hub/">Dealer Hub</a>
+      <a href="/resources/">Resource Library</a>
       <a href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">Online Ordering</a>
     </nav>
     <nav>

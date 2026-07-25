@@ -75,6 +75,11 @@ description: "Credit applications, brochures, catalogs, price lists and forms fr
     el.addEventListener('input', apply);
     el.addEventListener('change', apply);
   });
+  // Deep-link support: /resources/?manufacturer=<id>&type=<id>
+  var qp = new URLSearchParams(location.search);
+  var mp = qp.get('manufacturer'), tp = qp.get('type');
+  if (mp) fManu.value = mp;
+  if (tp) fType.value = tp;
   apply();
 })();
 </script>
