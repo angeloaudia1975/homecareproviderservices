@@ -96,19 +96,6 @@
       "featured": false
     },
     {
-      "id": "margin-vs-markup",
-      "title": "Margin vs. Markup",
-      "type": "calculator",
-      "manufacturer": "",
-      "format": "docx",
-      "file": "/assets/docs/margin-vs-markup.docx",
-      "url": "",
-      "description": "Understand the difference and price your showroom correctly.",
-      "access": "public",
-      "dealers": [],
-      "featured": false
-    },
-    {
       "id": "golden-twilight-training",
       "title": "Golden Technologies Twilight Training Video",
       "type": "training-video",
