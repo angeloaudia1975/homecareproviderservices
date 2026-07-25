@@ -51,6 +51,47 @@
         ]
       },
       {
+        "type": "platform",
+        "eyebrow": "Golden Online Ordering Platform",
+        "headline": "Order Golden faster with live inventory, dealer pricing, and a lift chair configurator.",
+        "copy": "The Golden Online Ordering Platform is your dealer command center — see real-time available inventory by color, configure lift chairs, view contract and MSRP/EMAP pricing, track orders, and manage parts, warranty, and service in one place.",
+        "image": "/assets/products/golden/ordering-platform.jpg",
+        "cta": "Request Online Ordering Access",
+        "url": "/dealer-support/?request=Online%20Ordering%20Access&manufacturer=Golden%20Technologies",
+        "url_blank": false,
+        "cta2": "Open the Ordering Platform",
+        "url2": "https://goldenonlineordering.netlify.app",
+        "url2_blank": true,
+        "groups": [
+          {
+            "title": "Ordering, Inventory & Pricing",
+            "items": [
+              "Instant available inventory",
+              "Lift chair custom configurator",
+              "Updated contract pricing",
+              "New products available",
+              "MSRP & EMAP pricing",
+              "MSRP quote calculator",
+              "Hard-copy purchase order print",
+              "Order queue",
+              "All accessories ordering"
+            ]
+          },
+          {
+            "title": "Insights, Tracking & Support",
+            "items": [
+              "Order tracking / order status",
+              "Business revenue goals & trending sales",
+              "Suggested inventory based on top-selling items in your region",
+              "Dealer service & support",
+              "Parts pricing",
+              "Warranty repair request",
+              "Golden parts illustrations"
+            ]
+          }
+        ]
+      },
+      {
         "type": "cards",
         "eyebrow": "Product Lines",
         "title": "One brand. Multiple high-value sales categories.",
@@ -305,19 +346,19 @@
         "items": [
           {
             "value": "1000 lb",
-            "label": "Modular ramp capacity"
+            "label": "Residential ramp capacity"
           },
           {
-            "value": "600 lb",
-            "label": "Portable & threshold options"
+            "value": "7–10 days",
+            "label": "Typical lead time"
           },
           {
-            "value": "36\" / 48\"",
-            "label": "Common modular widths"
+            "value": "100%",
+            "label": "Made in U.S.A."
           },
           {
-            "value": "Made in USA",
-            "label": "Access4U positioning"
+            "value": "Dealer-only",
+            "label": "Never sold online"
           }
         ]
       },
@@ -366,7 +407,7 @@
           {
             "name": "Portable & Mini Ramps",
             "badge": "Portable",
-            "image": "/assets/products/access4u/hero-residential-ramp.jpg",
+            "image": "/assets/products/access4u/portable-mini-ramp.jpg",
             "tags": [],
             "bullets": [],
             "url": "https://www.rampsaccess4u.com/portablefoldingmini",
@@ -375,7 +416,7 @@
           {
             "name": "Stairs, Gates & Railings",
             "badge": "Accessories",
-            "image": "/assets/products/access4u/hero-residential-ramp.jpg",
+            "image": "/assets/products/access4u/stairs-gates.jpg",
             "tags": [],
             "bullets": [],
             "url": "https://www.rampsaccess4u.com/stairsgatespicketsguardrails",
@@ -387,31 +428,31 @@
         "type": "differentiators",
         "eyebrow": "Why Access4U",
         "title": "Why Access4U belongs in a DME dealer’s access program.",
-        "intro": "Positioned around modular access, dealer support, Made in U.S.A. manufacturing, and practical installation advantages.",
+        "intro": "Access4U gives dealers a protected, Made-in-U.S.A. access line with inclusive pricing, fast lead times, and installation built for one person — the kind of facts that turn a quote into a sale.",
         "items": [
           {
-            "title": "Dealer network focus",
-            "description": "Access4U does not sell online or promote online superstores, positioning the line around authorized dealers and local service."
+            "title": "Your margins are protected",
+            "description": "Access4U never sells through online retailers or superstores. The product is available only through authorized dealers — protecting your pricing and your local territory."
           },
           {
-            "title": "Fast modular installation",
-            "description": "Quick height adjustment points, handrail panels, H-frame systems, and square posts are presented as installation and finish advantages."
+            "title": "100% Made in America",
+            "description": "All-aluminum, welded construction with more than 98% U.S.-sourced materials, a 1,000 lb residential ramp capacity, and a rust-free maintenance-free design."
           },
           {
-            "title": "Custom project flexibility",
-            "description": "Dealers can support site-specific layouts with ramp runs, platforms, stairs, gates, ground platforms, guardrails, and picket railings."
+            "title": "Inclusive, quote-friendly pricing",
+            "description": "Pricing is all-in — a 5-ft ramp includes legs, feet, hardware, and entrance and exit plates. No 'cut-to-fit' parts and no surprise add-ons when you quote a job."
           },
           {
-            "title": "Residential and commercial",
-            "description": "Access4U supports home accessibility projects and commercial ramping applications with standard and custom configurations."
+            "title": "Fast 7–10 day lead times",
+            "description": "Typical lead times are 7 to 10 business days or less, shipped from Charlotte, NC via UPS, ODFL, XPO, AAA Cooper, and R&L — so you can close and install quickly."
           },
           {
-            "title": "Slip-resistant surfaces",
-            "description": "Aluminum slip-resistant walking surfaces and smooth transition points are emphasized throughout."
+            "title": "One-person installation",
+            "description": "The signature H-frame makes a solid, stable system, with quick height-adjustment points, handrail panels, and only one wrench size needed — engineered for single-person installs."
           },
           {
-            "title": "Showroom cash-sale options",
-            "description": "Portable, mini, threshold, and rubber ramps create smaller add-on sales opportunities for retail locations and service technicians."
+            "title": "Real quoting and service support",
+            "description": "A quoting team with 25,000+ quotes of experience helps you size every project, a 16+ year FSS government contract adds credibility, and when you call, they answer."
           }
         ]
       },
@@ -428,7 +469,7 @@
           "Custom sizing support"
         ],
         "checklist": [],
-        "image": "/assets/products/access4u/commercial-ramp.jpg",
+        "image": "/assets/products/access4u/home-access-ramp.jpg",
         "image_side": "left"
       },
       {
@@ -473,6 +514,15 @@
             "Build referral relationships with contractors and facility managers."
           ]
         ]
+      },
+      {
+        "type": "cta_strip",
+        "headline": "Everything you need to start selling Access4U.",
+        "copy": "Download the dealer brochure and the 20 dealer sales points, or open online ordering to build your first access order.",
+        "cta": "Download the Dealer Brochure",
+        "url": "/assets/docs/access4u-dealer-brochure-2023.pdf",
+        "cta2": "20 Dealer Sales Points",
+        "url2": "/assets/docs/access4u-20-dealer-sales-points-2025.pdf"
       },
       {
         "type": "cards",
@@ -615,7 +665,7 @@
               "20\""
             ],
             "badge": "",
-            "image": "",
+            "image": "/assets/products/strongback/product-comfort.jpg",
             "url": "",
             "description": "Ultra-light folding wheelchairs for customers who want posture support, comfort, and easy transport.",
             "bullets": [
@@ -631,7 +681,7 @@
               "375 lb capacity"
             ],
             "badge": "",
-            "image": "",
+            "image": "/assets/products/strongback/product-hd.jpg",
             "url": "",
             "description": "A premium HD option for customers who need a wider seat and higher weight capacity without losing the Strongback comfort story.",
             "bullets": [
@@ -648,7 +698,7 @@
               "Transport"
             ],
             "badge": "",
-            "image": "",
+            "image": "/assets/products/strongback/lifestyle-transport.jpg",
             "url": "",
             "description": "Transport chair options for customers who need caregiver-assisted mobility with improved seating comfort.",
             "bullets": [
@@ -696,14 +746,18 @@
             "Creates a premium customer experience",
             "Helps dealers sell comfort, differentiation, and value"
           ]
-        }
+        },
+        "image": "/assets/products/strongback/strongback-vs.jpg",
+        "image_caption": "Standard wheelchair posture vs. the patented Strongback ergonomic backrest."
       },
       {
         "type": "cta_strip",
         "headline": "Ready to add Strongback to your product mix?",
         "copy": "Review dealer pricing, build a starter order, or request help selecting the right assortment for your showroom.",
         "cta": "Open Online Ordering",
-        "url": ""
+        "url": "https://goldenonlineordering.netlify.app",
+        "cta2": "Download the 2026 Dealer Catalog",
+        "url2": "/assets/docs/strongback-dealer-catalog-2026.pdf"
       },
       {
         "type": "steps",
@@ -736,7 +790,7 @@
           "260 lb user capacity"
         ],
         "checks": [],
-        "image": "/assets/products/strongback/seata-rollator.jpg",
+        "image": "/assets/products/strongback/lifestyle-park.jpg",
         "image_side": "right"
       }
     ]
@@ -1310,7 +1364,7 @@
           "Exclusive distributor for ObusForme® and Battle Creek® Equipment.",
           "Slatwall display and merchandising programs."
         ],
-        "image": "",
+        "image": "/assets/products/complete-medical-supplies/retail-display.jpg",
         "stats": []
       },
       {
@@ -1375,6 +1429,96 @@
             "tag": "Recovery",
             "image": "",
             "description": "Topicals, hot/cold therapy, resistance products, and recovery items for retail and clinical add-on sales."
+          }
+        ]
+      },
+      {
+        "type": "split",
+        "eyebrow": "Retail Displays & Merchandising",
+        "headline": "Turn-key retail displays and planograms — merchandising made easy.",
+        "copy": "Blue Jay’s uniform, eye-catching retail packaging transforms your slatwall into a clean, professional wall. Order a combined ADL, bath care, and mobility planogram built to sell — no guesswork on what to stock.",
+        "checklist": [
+          "Uniform Blue Jay retail packaging with hang tabs",
+          "Combined 10-ft planogram — 48 facings, 172 SKUs",
+          "ADL, bath care & mobility aids in one section",
+          "Slatwall-ready, professional presentation",
+          "Merchandising and display support from HCPS"
+        ],
+        "checks": [],
+        "image": "/assets/products/complete-medical-supplies/planogram.jpg",
+        "image_side": "right"
+      },
+      {
+        "type": "products",
+        "eyebrow": "Top Products",
+        "title": "The products your customers ask for most.",
+        "intro": "A snapshot of the high-demand Blue Jay and exclusive lines dealers stock from a single Complete Medical account.",
+        "items": [
+          {
+            "name": "Bath Safety",
+            "tags": [
+              "Bath care"
+            ],
+            "badge": "",
+            "image": "/assets/products/complete-medical-supplies/bath-safety.jpg",
+            "url": "",
+            "description": "Shower chairs, transfer benches, raised toilet seats, grab bars, and commodes for fall prevention and caregiver support.",
+            "bullets": []
+          },
+          {
+            "name": "Mobility Aids",
+            "tags": [
+              "Mobility"
+            ],
+            "badge": "",
+            "image": "/assets/products/complete-medical-supplies/mobility.jpg",
+            "url": "",
+            "description": "Rollators, folding knee scooters, canes, crutches, and walker accessories that keep customers moving.",
+            "bullets": []
+          },
+          {
+            "name": "Blood Pressure Monitors",
+            "tags": [
+              "Monitoring"
+            ],
+            "badge": "",
+            "image": "/assets/products/complete-medical-supplies/blood-pressure.jpg",
+            "url": "",
+            "description": "Automatic upper-arm and wrist monitors with WHO classification and irregular-heartbeat detection.",
+            "bullets": []
+          },
+          {
+            "name": "Orthopedic Braces & Supports",
+            "tags": [
+              "Bracing"
+            ],
+            "badge": "",
+            "image": "/assets/products/complete-medical-supplies/orthopedic-brace.jpg",
+            "url": "",
+            "description": "Back belts and wrist, knee, ankle, and shoulder supports for pain relief, recovery, and post-op customers.",
+            "bullets": []
+          },
+          {
+            "name": "Compression Hosiery",
+            "tags": [
+              "Compression"
+            ],
+            "badge": "",
+            "image": "/assets/products/complete-medical-supplies/compression.jpg",
+            "url": "",
+            "description": "Anti-embolism and graduated compression legwear for tired, aching, or swollen legs.",
+            "bullets": []
+          },
+          {
+            "name": "ObusForme® Back Support",
+            "tags": [
+              "Exclusive"
+            ],
+            "badge": "Exclusive",
+            "image": "/assets/products/complete-medical-supplies/obusforme-backrest.jpg",
+            "url": "",
+            "description": "Exclusive ObusForme lowback and wideback backrests for the home, office, and car.",
+            "bullets": []
           }
         ]
       },
@@ -1477,7 +1621,9 @@
         "headline": "Free shipping on orders over $400 — no minimum order.",
         "copy": "Browse the full wholesale catalog and open your Complete Medical account.",
         "url": "https://www.completemedical.com",
-        "cta": "Visit Complete Medical"
+        "cta": "Visit Complete Medical",
+        "cta2": "Download the 2024 Catalog",
+        "url2": "/assets/docs/complete-medical-catalog-2024.pdf"
       }
     ]
   },
@@ -1707,7 +1853,8 @@
           "Bonus mattress protector included."
         ],
         "image": "/assets/products/corsicana/mobility-bed-chair.jpg",
-        "stats": []
+        "stats": [],
+        "video": "https://drive.google.com/file/d/1ZUgK2mILNyQSX-_9vmrngr2ZeHD2MErs/preview"
       },
       {
         "type": "stats",
@@ -1918,7 +2065,7 @@
           "Premium alternative to bulky traditional walkers.",
           "Use it to open new conversations with clinical referral sources."
         ],
-        "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/673b770b1c732adb9980daff_Gen2_WalkingBoot_ShortAir_Image9.jpeg",
+        "image": "/assets/products/ovation-medical/gen2-walking-boot.jpg",
         "stats": []
       },
       {
@@ -1953,97 +2100,103 @@
           "Breathable Nu-Form spine support",
           "Category expansion for clinical accounts"
         ],
-        "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/676039a9353fe30025d2f5cd_04_-_OVATION-MEDICAL-2023-04-28-_KB_JE_2267_1_Large_9cd1382c-76d2-4dfe-8f8f-02a8e683c591.jpeg",
+        "image": "/assets/products/ovation-medical/back-brace-model.jpg",
         "image_side": "right"
       },
       {
         "type": "products",
         "eyebrow": "Lead Products",
         "title": "Top sales products",
-        "intro": "The best products to open your Ovation account with.",
+        "intro": "A cross-section of Ovation's best-selling PDAC-approved bracing — walking boots, ankle, wrist, thumb, knee, and spine support that helps dealers win the orthopedic category.",
         "items": [
           {
             "name": "Gen 2® Walking Boot",
-            "badge": "Hero Product",
-            "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/673b770b1c732adb9980daff_Gen2_WalkingBoot_ShortAir_Image9.jpeg",
-            "url": "https://www.ovationmed.com/products-medical/gen-2-walking-boot-short-air/",
-            "description": "Position the Gen 2 as the premium walking boot in the industry. It creates a clear comparison against traditional bulky CAM walkers.",
-            "tags": [],
+            "tags": [
+              "PDAC L4360/L4361"
+            ],
+            "badge": "Patented",
+            "image": "/assets/products/ovation-medical/gen2-walking-boot.jpg",
+            "url": "",
+            "description": "The world's most advanced double-upright walker — ultra low profile, smooth natural gait, and incredibly light weight.",
             "bullets": [
-              "Lightweight and low-profile design.",
-              "A full half-pound lighter than the nearest competitor.",
-              "Natural-gait and easier mobility story.",
-              "Strong fit for foot/ankle, post-op, sprain, fracture, and rehab accounts."
+              "Pneumatic pump system",
+              "Sure-Grip resting surface",
+              "Shock-Pod: up to 50% less energy per heel strike"
+            ]
+          },
+          {
+            "name": "Nu-Form™ Ankle Brace",
+            "tags": [
+              "PDAC L1902"
+            ],
+            "badge": "Patented",
+            "image": "/assets/products/ovation-medical/nu-form-ankle.jpg",
+            "url": "",
+            "description": "Blends the support of a stirrup with the comfort and compressive fit of a lace-up — semi-rigid frame, ultra-breathable fabric.",
+            "bullets": [
+              "Fits all shoe categories",
+              "Multi-layer rotational protection",
+              "3D spacer fabric releases heat & moisture"
             ]
           },
           {
             "name": "Versa-Fit™ Wrist Brace",
-            "badge": "Custom Fit",
-            "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/676039a9353fe30025d2f5cd_04_-_OVATION-MEDICAL-2023-04-28-_KB_JE_2267_1_Large_9cd1382c-76d2-4dfe-8f8f-02a8e683c591.jpeg",
-            "url": "https://www.ovationmed.com/products-medical/versa-fit-wrist-brace/",
-            "description": "A simple way for dealers to solve fit issues and reduce complexity with wrist bracing.",
-            "tags": [],
+            "tags": [
+              "PDAC L3908"
+            ],
+            "badge": "",
+            "image": "/assets/products/ovation-medical/versa-fit-wrist.jpg",
+            "url": "",
+            "description": "Off-the-shelf wrist immobilization that reduces inventory space with auto-lock strap sizing.",
             "bullets": [
-              "First off-the-shelf custom-fitting wrist support.",
-              "Automatically conforms to patient anatomy.",
-              "Standard size fits over 90% of people.",
-              "Great for carpal tunnel, tendonitis, incomplete fractures, and post-cast support."
+              "Standard size fits virtually all patients",
+              "Auto-lock strap secures sizing",
+              "Cut low at the palmar crease for MP flexion"
             ]
           },
           {
             "name": "Versa-Fit™ Thumb Spica",
-            "badge": "Custom Fit",
-            "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/673b60b3516cc6e7d8ef6960_05-OVATION-MEDICAL-2023-04-28-_KB_JE_2313_1.jpeg",
-            "url": "https://www.ovationmed.com/products-medical/versa-fit-thumb/",
-            "description": "Pairs perfectly with the Versa-Fit wrist brace and gives the account a stronger upper-extremity offering.",
-            "tags": [],
+            "tags": [
+              "PDAC L3809"
+            ],
+            "badge": "",
+            "image": "/assets/products/ovation-medical/versa-fit-thumb-spica.jpg",
+            "url": "",
+            "description": "Immobilizes the wrist and thumb with a neutral thumb position for opposition — ideal for gamekeeper's thumb and tendonitis.",
             "bullets": [
-              "Custom fit straight off the shelf.",
-              "Immobilizes wrist and thumb in the proper position.",
-              "Automatically conforms to unique anatomy.",
-              "Strong fit for thumb injuries, tendonitis, scaphoid injuries, and post-cast support."
+              "Neutral thumb position",
+              "Auto-lock strap sizing",
+              "Reduces inventory space"
             ]
           },
           {
             "name": "Nu-Form™ Universal Back Brace",
-            "badge": "Spine Growth",
-            "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/673b60b3516cc6e7d8ef697d_05-OVATIONMEDICAL-2023-04-28_KB_JE_0747Large.jpeg",
-            "url": "https://www.ovationmed.com/products-medical/nu-form-universal-back-brace-l0627-l0642/",
-            "description": "Nu-Form bracing begins with comfort, ventilation, and a seamless design.",
-            "tags": [],
+            "tags": [
+              "PDAC L0631/L0637"
+            ],
+            "badge": "Patented",
+            "image": "/assets/products/ovation-medical/nu-form-back-brace.jpg",
+            "url": "",
+            "description": "First back brace with a customizable/moldable anterior panel — unmatched breathability, extremely thin and low-profile under clothing.",
             "bullets": [
-              "Fusion Form manufacturing story.",
-              "Completely breathable posterior panel.",
-              "Pressure-relief zone over the spinous process.",
-              "Low-profile, lightweight, durable design."
+              "Customizable/moldable anterior panel",
+              "Auto-adjusting pressure relief zone",
+              "Backed by a 5-year warranty"
             ]
           },
           {
-            "name": "Build the full orthopedic category",
-            "badge": "Account Expansion",
-            "image": "",
+            "name": "The Game Changer™ OA Knee Brace",
+            "tags": [
+              "PDAC L1843/L1851"
+            ],
+            "badge": "",
+            "image": "/assets/products/ovation-medical/game-changer-knee.jpg",
             "url": "",
-            "description": "Enhance your current business and expand into knee, ankle, night splints, shoulder, wrist/thumb, and med-surg.",
-            "tags": [],
+            "description": "Single upright OA brace that treats medial and lateral knee pain with easy push-button release for quick don and doffing.",
             "bullets": [
-              "Foot & ankle recovery.",
-              "Knee OA and post-op support.",
-              "Back-brace and spine programs.",
-              "Med-surg reorder opportunities."
-            ]
-          },
-          {
-            "name": "Why dealers should care",
-            "badge": "Dealer Value",
-            "image": "",
-            "url": "",
-            "description": "This isn't just another brace line. It gives you, the dealer, a more premium product story to use with referral sources and retail customers.",
-            "tags": [],
-            "bullets": [
-              "Stronger differentiation than commodity braces.",
-              "Good fit for clinical and retail channels.",
-              "Easy to train by body part and condition.",
-              "A great line to add to your business model."
+              "Universal left/right sizing",
+              "Push-button release",
+              "For moderate-to-severe compartment OA"
             ]
           }
         ]
@@ -2095,11 +2248,20 @@
         ]
       },
       {
+        "type": "cta_strip",
+        "headline": "Get the full Ovation Medical product line.",
+        "copy": "Download the coded insurance product catalog and the retail catalog to build your orthopedic bracing program.",
+        "cta": "Coded Product Catalog",
+        "url": "/assets/docs/ovation-coded-product-catalog-2026.pdf",
+        "cta2": "Retail Catalog",
+        "url2": "/assets/docs/ovation-retail-catalog-2026.pdf"
+      },
+      {
         "type": "spotlight",
         "badge": "Get started today",
         "headline": "Ready to build a premium orthopedic bracing line?",
         "copy": "Use this quick intro with your referral partners: “I wanted to introduce you to Ovation Medical, an orthopedic bracing line with several differentiated products that can help upgrade your walking boot, wrist/thumb, and back-brace offering. The Gen 2 Walking Boot, Versa-Fit bracing, and Nu-Form Universal Back Brace are worth reviewing for your store and referral partners.”",
-        "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/673b60b3516cc6e7d8ef697d_05-OVATIONMEDICAL-2023-04-28_KB_JE_0747Large.jpeg",
+        "image": "/assets/products/ovation-medical/shoulder-sling-model.jpg",
         "checklist": [
           "Request dealer pricing",
           "Review the opening assortment",

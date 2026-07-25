@@ -11,7 +11,8 @@
       </div>
     </div>
     <aside class="m-card">
-      {% if b.image %}<img src="{{ b.image }}" alt="{{ manu.name }}" class="m-card-img">
+      {% if b.video %}<div class="m-video-wrap m-card-video"><iframe src="{{ b.video }}" title="{{ b.card_title or manu.name }}" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>
+      {% elif b.image %}<img src="{{ b.image }}" alt="{{ manu.name }}" class="m-card-img">
       {% else %}<img src="{{ manu.logo }}" alt="{{ manu.name }}" class="m-card-logo">{% endif %}
       {% if b.card_title %}<h2>{{ b.card_title }}</h2>{% endif %}
       {% if b.card_intro %}<p>{{ b.card_intro }}</p>{% endif %}

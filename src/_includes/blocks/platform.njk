@@ -1,0 +1,36 @@
+<section class="m-platform" style="--m-accent:{{ accent }};--m-dark:{{ dark }}">
+  <div class="container">
+    <div class="m-platform-top">
+      <div class="m-platform-copy">
+        {% if b.eyebrow %}<p class="eyebrow">{{ b.eyebrow }}</p>{% endif %}
+        <h2>{{ b.headline }}</h2>
+        {% if b.copy %}<p class="lead">{{ b.copy }}</p>{% endif %}
+        <div class="m-platform-actions">
+          {% if b.cta %}<a class="btn primary" href="{{ b.url }}"{% if b.url_blank %} target="_blank" rel="noopener"{% endif %}>{{ b.cta }}</a>{% endif %}
+          {% if b.cta2 %}<a class="btn outline on-light" href="{{ b.url2 }}"{% if b.url2_blank %} target="_blank" rel="noopener"{% endif %}>{{ b.cta2 }}</a>{% endif %}
+        </div>
+      </div>
+      {% if b.image %}
+      <figure class="m-platform-shot">
+        <a href="{{ b.url2 or b.url }}"{% if b.url2_blank or b.url_blank %} target="_blank" rel="noopener"{% endif %} aria-label="Open the {{ manu.name }} online ordering platform">
+          <span class="m-platform-bar"><i></i><i></i><i></i></span>
+          <img src="{{ b.image }}" alt="{{ b.headline }}">
+        </a>
+      </figure>
+      {% endif %}
+    </div>
+
+    {% if b.groups.length %}
+    <div class="m-platform-groups">
+      {% for g in b.groups %}
+      <div class="m-platform-group">
+        <h3>{{ g.title }}</h3>
+        <ul class="m-feature-list">{% for f in g.items %}<li>{{ f }}</li>{% endfor %}</ul>
+      </div>
+      {% endfor %}
+    </div>
+    {% elif b.features.length %}
+    <ul class="m-feature-grid">{% for f in b.features %}<li>{{ f }}</li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+</section>
