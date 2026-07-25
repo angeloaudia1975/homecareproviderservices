@@ -185,6 +185,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "bongorx-sleep-study-review-ms0lf75l",
+      "title": "BongoRX Sleep Study Review",
+      "type": "brochure",
+      "manufacturer": "airavant-bongorx",
+      "format": "pdf",
+      "file": "/assets/docs/bongo-rx-sleep-study-review-2026-ms0lf2ij.pdf",
+      "url": "",
+      "description": "",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
