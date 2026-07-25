@@ -263,6 +263,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "ramp-rental-agreement-sample-ms0m8pqf",
+      "title": "Ramp Rental Agreement \"SAMPLE\"",
+      "type": "brochure",
+      "manufacturer": "access4u",
+      "format": "pdf",
+      "file": "/assets/docs/sample-ramp-rental-agreement-ms0m8me4.pdf",
+      "url": "",
+      "description": "Sample Ramp Rental Agreement ",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
