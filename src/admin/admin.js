@@ -459,27 +459,38 @@
     var prev = h("div", { class: "img-preview" });
     var pathInput = h("input", { type: "text", value: val, placeholder: "/assets/…" });
     pathInput.addEventListener("input", function () { set(obj, f.k, pathInput.value); setPrev(pathInput.value); markDirty(); });
+    // Preview from a path on the live site (falls back to "not live yet" if the
+    // file was just committed and hasn't deployed).
     function setPrev(u) {
       prev.innerHTML = "";
       if (u) {
         var img = h("img", { src: u, alt: "" });
-        img.addEventListener("error", function () { prev.innerHTML = ""; prev.appendChild(document.createTextNode("missing")); });
+        img.addEventListener("error", function () { prev.innerHTML = ""; prev.appendChild(h("span", { class: "img-pending" }, "not live yet")); });
         prev.appendChild(img);
       } else prev.appendChild(document.createTextNode("no image"));
+    }
+    // Preview directly from the file the user just picked — always renders, even
+    // before the new image has deployed.
+    function setPrevLocal(fileObj) {
+      prev.innerHTML = "";
+      var img = h("img", { src: URL.createObjectURL(fileObj), alt: "" });
+      prev.appendChild(img);
     }
     setPrev(val);
     var file = h("input", { type: "file", accept: "image/*", style: "display:none" });
     file.addEventListener("change", function () {
       if (!file.files[0]) return;
-      uploadMedia(file.files[0], dir).then(function (url) {
-        set(obj, f.k, url); pathInput.value = url; setPrev(url); markDirty();
-        toast("Image uploaded.", "ok");
+      var picked = file.files[0];
+      uploadMedia(picked, dir).then(function (url) {
+        set(obj, f.k, url); pathInput.value = url; setPrevLocal(picked); markDirty();
+        toast("Image uploaded — click “Publish changes” to make it live.", "ok");
       }).catch(function (e) { toast(e.message, "bad"); }).then(function () { file.value = ""; });
     });
     var btn = h("button", { class: "btn sm", onclick: function () { file.click(); } }, "⬆ Upload image");
     return h("div", { class: wrapCls }, [
       h("label", {}, f.label),
-      h("div", { class: "img-field" }, [ prev, h("div", { class: "img-ctrls" }, [ btn, pathInput, file ]) ]),
+      h("div", { class: "img-field" }, [ prev, h("div", { class: "img-ctrls" }, [ btn, pathInput, file,
+        h("div", { class: "hint" }, "Uploads commit instantly, then appear on the live site after you Publish and Netlify rebuilds (~1–2 min).") ]) ]),
     ]);
   }
 
