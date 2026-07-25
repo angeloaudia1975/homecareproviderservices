@@ -185,6 +185,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "biwaze-clear-overview-ms0kw5f5",
+      "title": "BiWaze Clear Overview",
+      "type": "training-video",
+      "manufacturer": "abm-respiratory-care",
+      "format": "link",
+      "file": "",
+      "url": "https://www.youtube.com/watch?v=u3UTWvx7fvs",
+      "description": "Learn more about the BiWaze Clear lung expansion therapy.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
