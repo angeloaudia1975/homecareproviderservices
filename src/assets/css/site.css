@@ -872,3 +872,55 @@
   .dash-v3-metrics{grid-template-columns:1fr;}
   .dash-v3-action-grid,.dash-v3-mfg-grid,.dash-v3-three-col{grid-template-columns:1fr;}
 }
+
+/* Comparison block optional image (e.g. Strongback Vs standard posture) */
+.m-compare-figure{max-width:760px;margin:0 auto 26px;text-align:center;}
+.m-compare-figure img{width:100%;height:auto;border-radius:var(--radius);border:1px solid var(--line);box-shadow:var(--shadow);}
+.m-compare-figure figcaption{margin-top:10px;font-size:13.5px;color:#6b7684;}
+
+/* ============================================================
+   Manufacturer "Online Ordering Platform" showcase block
+   ============================================================ */
+.m-platform{background:linear-gradient(180deg,#0d1013,#0b0d0f);color:#fff;padding:64px 0;}
+.m-platform-top{display:grid;grid-template-columns:1fr 1fr;gap:44px;align-items:center;}
+.m-platform-copy .eyebrow{color:var(--hcps-gold);}
+.m-platform-copy h2{color:#fff;font-size:clamp(26px,3.2vw,38px);line-height:1.08;margin:8px 0 14px;}
+.m-platform-copy .lead{color:#c9d2dc;max-width:52ch;}
+.m-platform-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:22px;}
+.m-platform-actions .btn.outline.on-light{border-color:rgba(255,255,255,.5);color:#fff;}
+.m-platform-actions .btn.outline.on-light:hover{background:rgba(255,255,255,.08);}
+.m-platform-shot{margin:0;}
+.m-platform-shot a{display:block;border-radius:14px;overflow:hidden;background:#12161b;
+  border:1px solid rgba(255,255,255,.12);box-shadow:0 40px 80px -40px rgba(0,0,0,.8);
+  transition:transform .2s ease, box-shadow .2s ease;}
+.m-platform-shot a:hover{transform:translateY(-4px);box-shadow:0 50px 90px -40px rgba(0,0,0,.9);}
+.m-platform-bar{display:flex;gap:7px;padding:12px 15px;background:#171b21;border-bottom:1px solid rgba(255,255,255,.08);}
+.m-platform-bar i{width:11px;height:11px;border-radius:50%;background:#3a424c;}
+.m-platform-bar i:first-child{background:var(--hcps-orange);}
+.m-platform-bar i:nth-child(2){background:var(--hcps-gold);}
+.m-platform-shot img{display:block;width:100%;height:420px;object-fit:cover;object-position:top center;}
+
+.m-platform-groups{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:44px;}
+.m-platform-group{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:var(--radius);padding:24px 26px;}
+.m-platform-group h3{color:#fff;font-size:18px;margin:0 0 14px;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,.10);}
+.m-feature-list{list-style:none;margin:0;padding:0;display:grid;gap:11px;}
+.m-feature-list li{position:relative;padding-left:28px;color:#d7dee6;font-size:14.5px;line-height:1.4;}
+.m-feature-list li::before{content:"";position:absolute;left:0;top:2px;width:18px;height:18px;border-radius:50%;
+  background:linear-gradient(120deg,var(--hcps-orange),var(--hcps-gold));}
+.m-feature-list li::after{content:"";position:absolute;left:6px;top:7px;width:5px;height:9px;
+  border:solid #141414;border-width:0 2px 2px 0;transform:rotate(45deg);}
+.m-feature-grid{list-style:none;margin:40px 0 0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.m-feature-grid li{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:10px;
+  padding:13px 15px 13px 40px;position:relative;color:#d7dee6;font-size:14px;}
+.m-feature-grid li::before{content:"";position:absolute;left:14px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;background:linear-gradient(120deg,var(--hcps-orange),var(--hcps-gold));}
+
+@media (max-width:900px){
+  .m-platform-top{grid-template-columns:1fr;gap:30px;}
+  .m-platform-shot{order:-1;}
+  .m-platform-groups{grid-template-columns:1fr;}
+  .m-feature-grid{grid-template-columns:1fr 1fr;}
+}
+@media (max-width:560px){ .m-feature-grid{grid-template-columns:1fr;} }
+
+/* Video embedded in a manufacturer hero card (replaces the hero image) */
+.m-card-video{border-radius:12px;margin-bottom:16px;box-shadow:0 10px 24px -16px rgba(11,13,15,.4);}
