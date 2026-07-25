@@ -70,19 +70,6 @@
   ],
   "items": [
     {
-      "id": "golden-twilight-training",
-      "title": "Golden Technologies Twilight Training Video",
-      "type": "training-video",
-      "manufacturer": "golden-technologies",
-      "format": "video",
-      "file": "",
-      "url": "https://vimeo.com/915333605/d2af5689fa",
-      "description": "Quick training walkthrough for the Twilight positioning feature.",
-      "access": "public",
-      "dealers": [],
-      "featured": false
-    },
-    {
       "id": "golden-power-lift-recliner-catalog",
       "title": "Golden Power Lift Recliner Catalog (2026)",
       "type": "catalog",
