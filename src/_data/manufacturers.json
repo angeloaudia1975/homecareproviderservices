@@ -3,7 +3,7 @@
     "id": "golden-technologies",
     "name": "Golden Technologies",
     "category": "Advanced power recliners and mobility",
-    "description": "A Premium Line of Advanced Power Recliners, Lift Chairs, Mobility Scooters, Power Wheelchairs, and Hi-Low Beds from One of the Industry’s Leading Manufacturers..",
+    "description": "A Premium Line of Advanced Power Recliners, Lift Chairs, Mobility Scooters, Power Wheelchairs, and Hi-Low Beds from One of the Industry\u2019s Leading Manufacturers..",
     "website": "https://goldentech.com/",
     "logo": "/assets/logos/golden-technologies.jpg",
     "featured": true,
@@ -17,11 +17,11 @@
         "type": "hero",
         "eyebrow": "Advanced seating & mobility solutions",
         "headline": "Build a stronger showroom with Golden Technologies.",
-        "lead": "Offer customers one of the most recognized names in power lift recliners, mobility scooters, power wheelchairs, and Hi-Low adjustable beds — with premium comfort technology, strong retail appeal, and category options that fit a wide range of mobility needs.",
+        "lead": "Offer customers one of the most recognized names in power lift recliners, mobility scooters, power wheelchairs, and Hi-Low adjustable beds \u2014 with premium comfort technology, strong retail appeal, and category options that fit a wide range of mobility needs.",
         "card_title": "Why dealers lead with Golden",
-        "card_intro": "Golden gives your team a great assortment of products to help your customers relax, recover, and regain their independence — all while adding comfort and style to your customers living space. It’s an investment in your health, your comfort, and your quality of life.",
+        "card_intro": "Golden gives your team a complete mobility and comfort story \u2014 from the first lift chair conversation to scooters, power chairs, and sleep/recovery solutions.",
         "checklist": [
-          "Patented comfort technologies including MaxiComfort® Positioning and Twilight Tilt.",
+          "Patented comfort technologies including MaxiComfort\u00ae Positioning and Twilight Tilt.",
           "Broad assortment across lift recliners, scooters, power wheelchairs, and Hi-Low beds.",
           "Premium seating features such as adjustable headrest, lumbar, heat, massage, and fabric options.",
           "Designed to help customers improve independence, safety, comfort, and daily mobility."
@@ -37,7 +37,7 @@
             "label": "Core product categories"
           },
           {
-            "value": "1–5",
+            "value": "1\u20135",
             "label": "Comfort zone chair options"
           },
           {
@@ -59,13 +59,13 @@
           {
             "name": "Advanced Power Recliners",
             "tag": "Premium comfort sale",
-            "image": "/assets/products/golden-technologies/pr519-cloud-supreme-mrzoa8ub-mrzob0cy.jpg",
+            "image": "/assets/products/golden/pr519-cloud-supreme.png",
             "description": "Premium recliners with advanced positioning, customizable comfort, and wellness-driven seating features that help customers relax, recover, and rest."
           },
           {
             "name": "Power Lift Chairs",
             "tag": "Core DME category",
-            "image": "/assets/products/golden-technologies/pr401-med-cambridge-mrzobj33.jpg",
+            "image": "/assets/products/golden/pr515-cloud-twilight.png",
             "description": "Lift recliners assist users with sitting, standing, reclining, and daily independence while creating a strong showroom anchor category for dealers."
           },
           {
@@ -99,54 +99,42 @@
             "badge": "Advanced Power Recliner",
             "image": "/assets/products/golden/pr519-cloud-supreme.png",
             "url": "https://goldentech.com/product/lift-recliners/cloud-supreme-with-twilight/",
-            "description": "Premium Golden lift recliner positioning with Twilight Tilt and MaxiComfort® style comfort for a high-end showroom presentation.",
-            "tags": [],
-            "bullets": []
+            "description": "Premium Golden lift recliner positioning with Twilight Tilt and MaxiComfort\u00ae style comfort for a high-end showroom presentation."
           },
           {
             "name": "Cloud with Twilight",
             "badge": "Lift Chair",
             "image": "/assets/products/golden/pr515-cloud-twilight.png",
             "url": "https://goldentech.com/product/lift-recliners/cloud-with-twilight-small-medium/",
-            "description": "A strong premium lift chair story for customers looking for positioning, long-term comfort, and advanced seating technology.",
-            "tags": [],
-            "bullets": []
+            "description": "A strong premium lift chair story for customers looking for positioning, long-term comfort, and advanced seating technology."
           },
           {
             "name": "Buzzaround Scooter Line",
             "badge": "Mobility Scooter",
             "image": "/assets/products/golden/buzzaround-scooter.jpg",
             "url": "https://goldentech.com/product-category/mobility-scooters/",
-            "description": "Portable and easy-to-demonstrate scooter options help dealers serve customers who want travel, errands, and daily mobility support.",
-            "tags": [],
-            "bullets": []
+            "description": "Portable and easy-to-demonstrate scooter options help dealers serve customers who want travel, errands, and daily mobility support."
           },
           {
             "name": "Golden Ally Power Chair",
             "badge": "Power Wheelchair",
             "image": "/assets/products/golden/ally-power-chair.jpg",
             "url": "https://goldentech.com/product/power-wheelchairs/ally/",
-            "description": "Travel-friendly power chair positioning gives dealers an upgrade path for customers who need powered mobility and transportability.",
-            "tags": [],
-            "bullets": []
+            "description": "Travel-friendly power chair positioning gives dealers an upgrade path for customers who need powered mobility and transportability."
           },
           {
             "name": "LiteRider Envy",
             "badge": "Power Wheelchair",
             "image": "/assets/products/golden/literider-envy.jpg",
             "url": "https://goldentech.com/product-category/power-wheelchairs/",
-            "description": "A compact power wheelchair option that helps dealers support customers needing tight turning, powered mobility, and everyday convenience.",
-            "tags": [],
-            "bullets": []
+            "description": "A compact power wheelchair option that helps dealers support customers needing tight turning, powered mobility, and everyday convenience."
           },
           {
             "name": "Passport Hi-Low Bed",
             "badge": "Hi-Low Bed",
             "image": "/assets/products/golden/passport-hi-low-bed.jpg",
             "url": "https://goldentech.com/product-category/hi-low-beds/",
-            "description": "A home recovery and caregiver-support solution that pairs well with lift chair customers, discharge planning, and aging-in-place conversations.",
-            "tags": [],
-            "bullets": []
+            "description": "A home recovery and caregiver-support solution that pairs well with lift chair customers, discharge planning, and aging-in-place conversations."
           }
         ]
       },
@@ -158,7 +146,7 @@
         "items": [
           {
             "title": "Patented comfort story",
-            "description": "Golden’s MaxiComfort® and Twilight Tilt technologies create a simple, premium talking point around positioning, pressure relief, and zero-gravity comfort."
+            "description": "Golden\u2019s MaxiComfort\u00ae and Twilight Tilt technologies create a simple, premium talking point around positioning, pressure relief, and zero-gravity comfort."
           },
           {
             "title": "Built for mobility needs",
@@ -178,7 +166,7 @@
           },
           {
             "title": "Family-owned brand equity",
-            "description": "Golden’s family-owned history and long-standing reputation help dealers present a trusted, established manufacturer to consumers."
+            "description": "Golden\u2019s family-owned history and long-standing reputation help dealers present a trusted, established manufacturer to consumers."
           }
         ]
       },
@@ -247,7 +235,7 @@
     "id": "access4u",
     "name": "Access4U",
     "category": "Modular, portable & threshold ramps",
-    "description": "American-Made Modular Ramping Systems Engineered for Fast Installation, Long-Term Durability, and Reliable Accessibility—Complemented by a Full Line of Portable Ramps, Threshold Ramps, Transition Solutions, and Retail Displays.",
+    "description": "American-Made Modular Ramping Systems Engineered for Fast Installation, Long-Term Durability, and Reliable Accessibility\u2014Complemented by a Full Line of Portable Ramps, Threshold Ramps, Transition Solutions, and Retail Displays.",
     "website": "https://www.rampsaccess4u.com/",
     "logo": "/assets/logos/access4u.jpg",
     "featured": false,
@@ -277,7 +265,7 @@
         "type": "hero",
         "eyebrow": "Made in U.S.A. accessibility solutions",
         "headline": "Help customers access their homes safely with Access4U.",
-        "lead": "Access4U gives dealers a complete ramping solution for residential, commercial, portable, mini, and threshold applications — with modular aluminum systems, accessory options, and dealer-focused support for site-specific accessibility needs.",
+        "lead": "Access4U gives dealers a complete ramping solution for residential, commercial, portable, mini, and threshold applications \u2014 with modular aluminum systems, accessory options, and dealer-focused support for site-specific accessibility needs.",
         "card_title": "A dealer-friendly accessibility line",
         "card_intro": "",
         "image": "/assets/products/access4u/hero-residential-ramp.jpg",
@@ -375,7 +363,7 @@
       {
         "type": "differentiators",
         "eyebrow": "Why Access4U",
-        "title": "Why Access4U belongs in a DME dealer’s access program.",
+        "title": "Why Access4U belongs in a DME dealer\u2019s access program.",
         "intro": "Positioned around modular access, dealer support, Made in U.S.A. manufacturing, and practical installation advantages.",
         "items": [
           {
@@ -495,7 +483,7 @@
     "id": "complete-medical-supplies",
     "name": "Complete Medical Supplies",
     "category": "hme & DME and Aids to daily living",
-    "description": "Access 200+ Trusted Healthcare Brands Through One of the Industry’s Largest Distributors—Plus Exclusive Blue Jay® Products Designed for Quality, Value, and Dealer Growth.",
+    "description": "Access 200+ Trusted Healthcare Brands Through One of the Industry\u2019s Largest Distributors\u2014Plus Exclusive Blue Jay\u00ae Products Designed for Quality, Value, and Dealer Growth.",
     "website": "",
     "logo": "/assets/logos/complete-medical-supplies.jpg",
     "featured": false,
@@ -526,32 +514,219 @@
     "id": "ovation-medical",
     "name": "Ovation Medical",
     "category": "Bracing & Orthopedic",
-    "description": "Advanced Orthopedic Bracing Solutions That Help Dealers Strengthen Patient Care, Increase Reimbursement Opportunities, and Grow a More Profitable Bracing Program.",
-    "website": "",
+    "description": "Advanced orthopedic bracing solutions that help dealers strengthen patient care, increase reimbursement opportunities, and grow a more profitable bracing program.",
+    "website": "https://www.ovationmed.com/",
     "logo": "/assets/logos/ovation-medical.jpg",
     "featured": false,
     "ordering_url": "",
     "brand": {
-      "accent": "#1681c2",
-      "dark": "#0b0d0f"
+      "accent": "#00a7df",
+      "dark": "#10263f"
     },
-    "hero": {
-      "eyebrow": "",
-      "headline": "",
-      "lead": "",
-      "highlights_title": "",
-      "highlights_intro": "",
-      "highlights": []
-    },
-    "stats": [],
-    "product_categories": [],
-    "featured_products": [],
-    "differentiators": [],
-    "solution_headline": "",
-    "solution_copy": "",
-    "showroom_checks": [],
-    "assortment": [],
-    "sections": []
+    "sections": [
+      {
+        "type": "hero",
+        "eyebrow": "Best in Orthopedic Bracing",
+        "headline": "Give your orthopedic category a stronger reason to win the business at point of sale.",
+        "lead": "Ovation Medical gives dealers a focused, premium bracing line built around products that are easy to explain, easy to fit, and easy to present to orthopedic, podiatry, urgent care, pharmacy, and DME accounts.",
+        "card_title": "Start your account with a hero product.",
+        "card_intro": "",
+        "checklist": [
+          "Gen 2\u00ae Walking Boot gives dealers an immediate product story.",
+          "Premium alternative to bulky traditional walkers.",
+          "Use it to open new conversations with clinical referral sources."
+        ],
+        "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/673b770b1c732adb9980daff_Gen2_WalkingBoot_ShortAir_Image9.jpeg",
+        "stats": []
+      },
+      {
+        "type": "stats",
+        "items": [
+          {
+            "value": "80+",
+            "label": "Patented product story"
+          },
+          {
+            "value": "6",
+            "label": "Core bracing categories"
+          },
+          {
+            "value": "\u00bd lb",
+            "label": "Lighter walker message"
+          },
+          {
+            "value": "New",
+            "label": "Market orthopedic leader"
+          }
+        ]
+      },
+      {
+        "type": "split",
+        "headline": "Dealers need products that help them stand out.",
+        "copy": "Many dealers carry bracing. Ovation Medical gives you a better bracing story, better fit solutions, and products that feel different from commodity braces \u2014 helping you create a stronger orthopedic category presentation by leading with product innovation instead of just price. Upgrade your brace offering and strengthen clinical referral conversations.",
+        "checklist": [],
+        "checks": [
+          "Premium walking boot story",
+          "Custom-fit wrist and thumb bracing",
+          "Breathable Nu-Form spine support",
+          "Category expansion for clinical accounts"
+        ],
+        "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/676039a9353fe30025d2f5cd_04_-_OVATION-MEDICAL-2023-04-28-_KB_JE_2267_1_Large_9cd1382c-76d2-4dfe-8f8f-02a8e683c591.jpeg",
+        "image_side": "right"
+      },
+      {
+        "type": "products",
+        "eyebrow": "Lead Products",
+        "title": "Top sales products",
+        "intro": "The best products to open your Ovation account with.",
+        "items": [
+          {
+            "name": "Gen 2\u00ae Walking Boot",
+            "badge": "Hero Product",
+            "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/673b770b1c732adb9980daff_Gen2_WalkingBoot_ShortAir_Image9.jpeg",
+            "url": "https://www.ovationmed.com/products-medical/gen-2-walking-boot-short-air/",
+            "description": "Position the Gen 2 as the premium walking boot in the industry. It creates a clear comparison against traditional bulky CAM walkers.",
+            "tags": [],
+            "bullets": [
+              "Lightweight and low-profile design.",
+              "A full half-pound lighter than the nearest competitor.",
+              "Natural-gait and easier mobility story.",
+              "Strong fit for foot/ankle, post-op, sprain, fracture, and rehab accounts."
+            ]
+          },
+          {
+            "name": "Versa-Fit\u2122 Wrist Brace",
+            "badge": "Custom Fit",
+            "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/676039a9353fe30025d2f5cd_04_-_OVATION-MEDICAL-2023-04-28-_KB_JE_2267_1_Large_9cd1382c-76d2-4dfe-8f8f-02a8e683c591.jpeg",
+            "url": "https://www.ovationmed.com/products-medical/versa-fit-wrist-brace/",
+            "description": "A simple way for dealers to solve fit issues and reduce complexity with wrist bracing.",
+            "tags": [],
+            "bullets": [
+              "First off-the-shelf custom-fitting wrist support.",
+              "Automatically conforms to patient anatomy.",
+              "Standard size fits over 90% of people.",
+              "Great for carpal tunnel, tendonitis, incomplete fractures, and post-cast support."
+            ]
+          },
+          {
+            "name": "Versa-Fit\u2122 Thumb Spica",
+            "badge": "Custom Fit",
+            "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/673b60b3516cc6e7d8ef6960_05-OVATION-MEDICAL-2023-04-28-_KB_JE_2313_1.jpeg",
+            "url": "https://www.ovationmed.com/products-medical/versa-fit-thumb/",
+            "description": "Pairs perfectly with the Versa-Fit wrist brace and gives the account a stronger upper-extremity offering.",
+            "tags": [],
+            "bullets": [
+              "Custom fit straight off the shelf.",
+              "Immobilizes wrist and thumb in the proper position.",
+              "Automatically conforms to unique anatomy.",
+              "Strong fit for thumb injuries, tendonitis, scaphoid injuries, and post-cast support."
+            ]
+          },
+          {
+            "name": "Nu-Form\u2122 Universal Back Brace",
+            "badge": "Spine Growth",
+            "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/673b60b3516cc6e7d8ef697d_05-OVATIONMEDICAL-2023-04-28_KB_JE_0747Large.jpeg",
+            "url": "https://www.ovationmed.com/products-medical/nu-form-universal-back-brace-l0627-l0642/",
+            "description": "Nu-Form bracing begins with comfort, ventilation, and a seamless design.",
+            "tags": [],
+            "bullets": [
+              "Fusion Form manufacturing story.",
+              "Completely breathable posterior panel.",
+              "Pressure-relief zone over the spinous process.",
+              "Low-profile, lightweight, durable design."
+            ]
+          },
+          {
+            "name": "Build the full orthopedic category",
+            "badge": "Account Expansion",
+            "image": "",
+            "url": "",
+            "description": "Enhance your current business and expand into knee, ankle, night splints, shoulder, wrist/thumb, and med-surg.",
+            "tags": [],
+            "bullets": [
+              "Foot & ankle recovery.",
+              "Knee OA and post-op support.",
+              "Back-brace and spine programs.",
+              "Med-surg reorder opportunities."
+            ]
+          },
+          {
+            "name": "Why dealers should care",
+            "badge": "Dealer Value",
+            "image": "",
+            "url": "",
+            "description": "This isn't just another brace line. It gives you, the dealer, a more premium product story to use with referral sources and retail customers.",
+            "tags": [],
+            "bullets": [
+              "Stronger differentiation than commodity braces.",
+              "Good fit for clinical and retail channels.",
+              "Easy to train by body part and condition.",
+              "A great line to add to your business model."
+            ]
+          }
+        ]
+      },
+      {
+        "type": "differentiators",
+        "eyebrow": "Why open now",
+        "title": "Three simple reasons to open your account today",
+        "intro": "Let's get started together.",
+        "items": [
+          {
+            "title": "1. Better product story",
+            "description": "Ovation gives dealers talking points around innovation, fit, comfort, breathability, and patient-friendly design."
+          },
+          {
+            "title": "2. Better clinical fit",
+            "description": "Products connect easily to common needs: sprains, fractures, post-op recovery, tendonitis, carpal tunnel, back pain, and OA knee pain."
+          },
+          {
+            "title": "3. Better category growth",
+            "description": "Start with hero products, then expand into a complete orthopedic bracing program across multiple body areas."
+          }
+        ]
+      },
+      {
+        "type": "cards",
+        "eyebrow": "Dealer fit",
+        "title": "The perfect partners",
+        "intro": "Let's transform your business together.",
+        "items": [
+          {
+            "name": "DME dealers",
+            "tag": "",
+            "image": "",
+            "description": "Build a stronger orthopedic section and add referral-friendly products beyond standard commodity braces."
+          },
+          {
+            "name": "Retail pharmacies",
+            "tag": "",
+            "image": "",
+            "description": "A great fit for customers needing walking boots, wrist braces, back braces, ankle supports, and med-surg items."
+          },
+          {
+            "name": "Clinical referral accounts",
+            "tag": "",
+            "image": "",
+            "description": "Present to orthopedic, podiatry, urgent care, sports medicine, and physical therapy accounts as a premium support line."
+          }
+        ]
+      },
+      {
+        "type": "spotlight",
+        "badge": "Get started today",
+        "headline": "Ready to build a premium orthopedic bracing line?",
+        "copy": "Use this quick intro with your referral partners: \u201cI wanted to introduce you to Ovation Medical, an orthopedic bracing line with several differentiated products that can help upgrade your walking boot, wrist/thumb, and back-brace offering. The Gen 2 Walking Boot, Versa-Fit bracing, and Nu-Form Universal Back Brace are worth reviewing for your store and referral partners.\u201d",
+        "image": "https://cdn.prod.website-files.com/670e2b1596e3d43020613330/673b60b3516cc6e7d8ef697d_05-OVATIONMEDICAL-2023-04-28_KB_JE_0747Large.jpeg",
+        "checklist": [
+          "Request dealer pricing",
+          "Review the opening assortment",
+          "Schedule a 15-minute product overview",
+          "Request samples for evaluation"
+        ],
+        "cta": "Request Dealer Pricing"
+      }
+    ]
   },
   {
     "id": "climbing-steps",
@@ -619,7 +794,7 @@
     "id": "medge",
     "name": "Medge",
     "category": "ambulatory aids",
-    "description": "A Full Line of Mobility and Bath Safety Accessories That Helps Dealers Expand Their Product Offering and Better Support Customers’ Daily Living Needs.",
+    "description": "A Full Line of Mobility and Bath Safety Accessories That Helps Dealers Expand Their Product Offering and Better Support Customers\u2019 Daily Living Needs.",
     "website": "",
     "logo": "/assets/logos/medge.jpg",
     "featured": false,
@@ -740,16 +915,16 @@
     "sections": [
       {
         "type": "hero",
-        "eyebrow": "EPAP Therapy — Dealer Introduction",
+        "eyebrow": "EPAP Therapy \u2014 Dealer Introduction",
         "headline": "BongoRx: EPAP Sleep Apnea Therapy Without the Machine",
         "lead": "A simple, portable CPAP alternative for mild to moderate obstructive sleep apnea patients who want freedom from machines, hoses, and power.",
         "card_title": "Why Dealers Are Interested",
         "card_intro": "",
         "image": "/assets/products/bongorx/bongorx-device.jpg",
         "checklist": [
-          "Prescription cash product — great for retail, FSA/HSA customers, and CPAP alternative inquiries.",
-          "Travel-friendly therapy — no machine, hose, or electricity required.",
-          "Built-in replenishment — the Starter Kit opens the door to recurring annual and single replacement sales."
+          "Prescription cash product \u2014 great for retail, FSA/HSA customers, and CPAP alternative inquiries.",
+          "Travel-friendly therapy \u2014 no machine, hose, or electricity required.",
+          "Built-in replenishment \u2014 the Starter Kit opens the door to recurring annual and single replacement sales."
         ],
         "stats": []
       },
@@ -769,7 +944,7 @@
             "name": "No Power Required",
             "tag": "",
             "image": "",
-            "description": "Uses the patient’s own exhalation to create EPAP, helping keep the airway open without a machine or electricity."
+            "description": "Uses the patient\u2019s own exhalation to create EPAP, helping keep the airway open without a machine or electricity."
           },
           {
             "name": "Simple Starter Kit",
@@ -828,17 +1003,17 @@
         "rows": [
           [
             "BNG500",
-            "BongoRx Four Sizes Starter Kit — includes SM, MD, LG, XL, headgear, travel case, and drying stand.",
+            "BongoRx Four Sizes Starter Kit \u2014 includes SM, MD, LG, XL, headgear, travel case, and drying stand.",
             "Primary first-purchase item for all new patients."
           ],
           [
-            "BNG501–BNG505",
-            "Annual Replenishment Packs — XS–XL. Four devices of one size plus headgear, travel case, and drying stand.",
+            "BNG501\u2013BNG505",
+            "Annual Replenishment Packs \u2014 XS\u2013XL. Four devices of one size plus headgear, travel case, and drying stand.",
             "Recurring resupply opportunity after the Starter Kit."
           ],
           [
-            "BNG511–BNG515",
-            "Single Replenishment Units — XS–XL. One device and headgear only.",
+            "BNG511\u2013BNG515",
+            "Single Replenishment Units \u2014 XS\u2013XL. One device and headgear only.",
             "Easy replacement or add-on sale."
           ],
           [
@@ -953,7 +1128,7 @@
         "image": "/assets/products/strongback/hero-showroom.jpg",
         "stats": [
           {
-            "value": "16\"–22\"",
+            "value": "16\"\u201322\"",
             "label": "Seat width coverage"
           },
           {
@@ -992,7 +1167,7 @@
             "name": "Premium showroom story",
             "tag": "",
             "image": "",
-            "description": "Strongback creates a higher-value conversation around comfort, posture, transportability, and lifestyle — not just price."
+            "description": "Strongback creates a higher-value conversation around comfort, posture, transportability, and lifestyle \u2014 not just price."
           }
         ]
       },
