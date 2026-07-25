@@ -129,7 +129,7 @@
       "format": "pdf",
       "file": "/assets/docs/golden-power-lift-recliner-catalog.pdf",
       "url": "",
-      "description": "The full Golden power lift recliner lineup \u2014 Cloud Supreme (PR519), Cloud+, Cloud Elite, EZ Sleeper, the Comforter (PR531), and more, with Comfort Zones, Twilight Tilt, and Nirvana details.",
+      "description": "The full Golden power lift recliner lineup — Cloud Supreme (PR519), Cloud+, Cloud Elite, EZ Sleeper, the Comforter (PR531), and more, with Comfort Zones, Twilight Tilt, and Nirvana details.",
       "access": "public",
       "dealers": [],
       "featured": true
@@ -142,7 +142,7 @@
       "format": "pdf",
       "file": "/assets/docs/golden-mobility-catalog.pdf",
       "url": "",
-      "description": "Golden scooters and power wheelchairs \u2014 Buzzaround CarryOn HD (GB220), Buzzaround LX/EX/XL, Companion, Eagle, Ally Pro (GP304), Compass, and more.",
+      "description": "Golden scooters and power wheelchairs — Buzzaround CarryOn HD (GB220), Buzzaround LX/EX/XL, Companion, Eagle, Ally Pro (GP304), Compass, and more.",
       "access": "public",
       "dealers": [],
       "featured": true
@@ -155,7 +155,7 @@
       "format": "pdf",
       "file": "/assets/docs/corsicana-healthcare-catalog.pdf",
       "url": "",
-      "description": "The CorsicanaCare healthcare sleep collection \u2014 the Mobility Bed core product, adjustable bases, clinical mattresses, and the Essentials Care bundle.",
+      "description": "The CorsicanaCare healthcare sleep collection — the Mobility Bed core product, adjustable bases, clinical mattresses, and the Essentials Care bundle.",
       "access": "public",
       "dealers": [],
       "featured": true
@@ -168,10 +168,23 @@
       "format": "pdf",
       "file": "/assets/docs/ohio-medical-gce-oxygen-catalog.pdf",
       "url": "",
-      "description": "Portable and stationary oxygen concentrators \u2014 the Zen-O and Zen-O lite POCs and the M50 stationary concentrator, featuring Rate Responsive Therapy.",
+      "description": "Portable and stationary oxygen concentrators — the Zen-O and Zen-O lite POCs and the M50 stationary concentrator, featuring Rate Responsive Therapy.",
       "access": "public",
       "dealers": [],
       "featured": true
+    },
+    {
+      "id": "biwaze-clear-brochure-ms0ktrpu",
+      "title": "BiWaze Clear Brochure",
+      "type": "brochure",
+      "manufacturer": "abm-respiratory-care",
+      "format": "pdf",
+      "file": "/assets/docs/biwaze-clear-trifold-hme-ms0ktbzm.pdf",
+      "url": "",
+      "description": "Learn more about the BiWaze Clear system with three therapies. Positive Expiratory Pressure, High Frequency Oscillations and Nebulizer.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
