@@ -70,6 +70,58 @@
   ],
   "items": [
     {
+      "id": "hcps-credit-application",
+      "title": "HCPS Dealer Credit Application",
+      "type": "credit-application",
+      "manufacturer": "",
+      "format": "pdf",
+      "file": "/assets/docs/hcps-credit-application.pdf",
+      "url": "",
+      "description": "Open a dealer account with HomeCare Provider Services.",
+      "access": "public",
+      "dealers": [],
+      "featured": true
+    },
+    {
+      "id": "golden-fabric-codes",
+      "title": "Golden Technologies Fabric Codes",
+      "type": "spec-sheet",
+      "manufacturer": "golden-technologies",
+      "format": "pdf",
+      "file": "/assets/docs/golden-fabric-codes.pdf",
+      "url": "",
+      "description": "Current fabric options and codes for Golden lift chairs.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
+    },
+    {
+      "id": "margin-vs-markup",
+      "title": "Margin vs. Markup",
+      "type": "calculator",
+      "manufacturer": "",
+      "format": "docx",
+      "file": "/assets/docs/margin-vs-markup.docx",
+      "url": "",
+      "description": "Understand the difference and price your showroom correctly.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
+    },
+    {
+      "id": "golden-twilight-training",
+      "title": "Golden Technologies Twilight Training Video",
+      "type": "training-video",
+      "manufacturer": "golden-technologies",
+      "format": "video",
+      "file": "",
+      "url": "https://vimeo.com/915333605/d2af5689fa",
+      "description": "Quick training walkthrough for the Twilight positioning feature.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
+    },
+    {
       "id": "golden-power-lift-recliner-catalog",
       "title": "Golden Power Lift Recliner Catalog (2026)",
       "type": "catalog",
@@ -77,7 +129,7 @@
       "format": "pdf",
       "file": "/assets/docs/golden-power-lift-recliner-catalog.pdf",
       "url": "",
-      "description": "The full Golden power lift recliner lineup — Cloud Supreme (PR519), Cloud+, Cloud Elite, EZ Sleeper, the Comforter (PR531), and more, with Comfort Zones, Twilight Tilt, and Nirvana details.",
+      "description": "The full Golden power lift recliner lineup \u2014 Cloud Supreme (PR519), Cloud+, Cloud Elite, EZ Sleeper, the Comforter (PR531), and more, with Comfort Zones, Twilight Tilt, and Nirvana details.",
       "access": "public",
       "dealers": [],
       "featured": true
@@ -90,7 +142,7 @@
       "format": "pdf",
       "file": "/assets/docs/golden-mobility-catalog.pdf",
       "url": "",
-      "description": "Golden scooters and power wheelchairs — Buzzaround CarryOn HD (GB220), Buzzaround LX/EX/XL, Companion, Eagle, Ally Pro (GP304), Compass, and more.",
+      "description": "Golden scooters and power wheelchairs \u2014 Buzzaround CarryOn HD (GB220), Buzzaround LX/EX/XL, Companion, Eagle, Ally Pro (GP304), Compass, and more.",
       "access": "public",
       "dealers": [],
       "featured": true
@@ -103,7 +155,7 @@
       "format": "pdf",
       "file": "/assets/docs/corsicana-healthcare-catalog.pdf",
       "url": "",
-      "description": "The CorsicanaCare healthcare sleep collection — the Mobility Bed core product, adjustable bases, clinical mattresses, and the Essentials Care bundle.",
+      "description": "The CorsicanaCare healthcare sleep collection \u2014 the Mobility Bed core product, adjustable bases, clinical mattresses, and the Essentials Care bundle.",
       "access": "public",
       "dealers": [],
       "featured": true
@@ -116,7 +168,7 @@
       "format": "pdf",
       "file": "/assets/docs/ohio-medical-gce-oxygen-catalog.pdf",
       "url": "",
-      "description": "Portable and stationary oxygen concentrators — the Zen-O and Zen-O lite POCs and the M50 stationary concentrator, featuring Rate Responsive Therapy.",
+      "description": "Portable and stationary oxygen concentrators \u2014 the Zen-O and Zen-O lite POCs and the M50 stationary concentrator, featuring Rate Responsive Therapy.",
       "access": "public",
       "dealers": [],
       "featured": true

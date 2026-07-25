@@ -39,13 +39,12 @@ permalink: /
 
 <section class="manu-band">
   <div class="container">
-    <p class="label">Our Manufacturing Partners</p>
+    <p class="label">Trusted by Leading Healthcare Manufacturers</p>
     <div class="logo-row">
       {% for m in manufacturers %}
-      <a class="badge-logo" href="/manufacturers/{{ m.id }}/">
-        <span class="sw" style="background-image:url('{{ m.logo }}')"></span>
-        <span>{{ m.name }}</span>
-      </a>
+      <div class="badge-logo" role="img" aria-label="{{ m.name }}">
+        <img src="{{ m.logo }}" alt="{{ m.name }} logo" loading="lazy">
+      </div>
       {% endfor %}
     </div>
   </div>

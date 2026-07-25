@@ -14,7 +14,7 @@
     "manufacturers": 12
   },
   "territory": {
-    "states_display": "Southern Ohio • Southern Indiana • Kentucky • Tennessee • Georgia",
+    "states_display": "Southern Ohio \u2022 Southern Indiana \u2022 Kentucky \u2022 Tennessee \u2022 Georgia",
     "covered_state_codes": [
       "US-OH",
       "US-IN",
@@ -48,7 +48,7 @@
   },
   "links": {
     "online_ordering": "https://goldenonlineordering.netlify.app",
-    "support": "https://homecareproviderservices.netlify.app/contact/"
+    "support": "https://goldentechsupport.netlify.app"
   },
   "why_choose": [
     {
@@ -61,21 +61,21 @@
     },
     {
       "title": "Free Consultations",
-      "description": "Product Presentations with a Hands-On Approach—We Come to You with Expert Guidance, Personalized Support, and Best-in-Class Dealer Solutions."
+      "description": "Product Presentations with a Hands-On Approach\u2014We Come to You with Expert Guidance, Personalized Support, and Best-in-Class Dealer Solutions."
     }
   ],
   "dealer_support_tools": [
     {
-      "title": "Showroom & Floorplan Design",
-      "description": "Help providers optimize showroom layout, category flow, product visibility, traffic patterns, and customer experience."
+      "title": "Showroom walkthrough",
+      "description": "Review the current floor mix and identify which models should anchor each product category."
     },
     {
-      "title": "Sales Training & Education",
-      "description": "Provide product presentations, dealer-facing education, showroom selling points, and in-service support for sales teams."
+      "title": "Sales staff training",
+      "description": "Give staff a simple talk track for product technology, sizing, portability, and fit."
     },
     {
-      "title": "Product Mix Strategy",
-      "description": "Help dealers evaluate category gaps, complementary products, showroom priorities, and opportunities to improve revenue."
+      "title": "Marketing support",
+      "description": "Support local promotion with product education, category landing pages, showroom events, and dealer-specific campaigns."
     }
   ]
 }

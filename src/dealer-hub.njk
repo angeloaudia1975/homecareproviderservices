@@ -2,102 +2,180 @@
 layout: layouts/base.njk
 title: Dealer Hub
 permalink: /dealer-hub/
-description: "The HCPS Dealer Hub — resources, pricing access, ordering, literature, in-services, technical support, and showroom consulting across all 12 manufacturer partners."
+description: "The HCPS Dealer Hub — a dealer dashboard for orders, pricing access, literature, in-service training, technical support, and manufacturer resource centers across all 12 manufacturer partners."
 ---
-<section class="hero" style="padding-bottom:48px;">
-  <div class="container">
-    <div class="section-head">
-      <p class="eyebrow">Dealer Hub</p>
-      <h1 style="font-size:clamp(30px,4.4vw,50px);color:#fff;">Everything you need to sell and serve — in one place.</h1>
-      <p class="lead">Your central hub for HCPS resources, pricing access, ordering, literature, in-services, technical support, and showroom consulting across all {{ site.stats.manufacturers }} manufacturer partners.</p>
+<section class="dash-v3-hero">
+  <div class="container dash-v3-hero-grid">
+    <div>
+      <p class="eyebrow">HCPS Dealer Hub</p>
+      <h1>A dealer dashboard for orders, pricing, literature, training, and manufacturer support.</h1>
+      <p class="lead">Use the Dealer Hub as your central starting point for manufacturer resources, order requests, literature, pricing access, in-service scheduling, technical support, and future dealer login tools.</p>
       <div class="hero-actions">
-        <a class="btn primary" href="/resources/">Browse the Resource Library</a>
-        <a class="btn outline on-light" href="/dealer-support/">Dealer Support</a>
+        <a class="btn primary" href="/dealer-support/?request=Place%20or%20Request%20an%20Order">Start Dealer Request</a>
+        <a class="btn outline on-light" href="#dash-request-center">Open Request Center</a>
       </div>
     </div>
+
+    <aside class="dash-v3-user-card">
+      <div class="dash-v3-user-top">
+        <span class="dash-v3-avatar">HC</span>
+        <div>
+          <strong>Dealer Portal Preview</strong>
+          <p>Future personalized login</p>
+        </div>
+      </div>
+      <div class="dash-v3-metrics">
+        <span><b>{{ site.stats.manufacturers }}</b> Manufacturer Centers</span>
+        <span><b>6</b> Dealer Workflows</span>
+        <span><b>{{ site.stats.states }}</b> Strategic States</span>
+        <span><b>{{ site.stats.dealers }}</b> Dealer Relationships</span>
+      </div>
+    </aside>
   </div>
 </section>
 
-<section>
-  <div class="container">
-    <div class="section-head center">
-      <p class="eyebrow">Dealer Support Requests</p>
-      <h2>Tell us what you need — we'll route it fast.</h2>
-      <p>Pick a request and we'll take you to a short form pre-set to the right team.</p>
-    </div>
+<section class="dash-v3-shell">
+  <div class="container dash-v3-layout">
 
-    <div class="hub-actions">
-      <a class="hub-action" href="/dealer-support/?request=Pricing%20Access">
-        <span class="hub-num">01</span><h3>Request Pricing Access</h3>
-        <p>Get dealer pricing set up for your account across any manufacturer partner.</p>
-        <span class="hub-go">Start request &rarr;</span>
-      </a>
-      <a class="hub-action" href="/dealer-support/?request=Place%20or%20Request%20an%20Order">
-        <span class="hub-num">02</span><h3>Place / Request an Order</h3>
-        <p>Submit or ask about an order, stock, lead times, or order status.</p>
-        <span class="hub-go">Start request &rarr;</span>
-      </a>
-      <a class="hub-action" href="/dealer-support/?request=Order%20Literature">
-        <span class="hub-num">03</span><h3>Order Literature</h3>
-        <p>Request brochures, catalogs, spec sheets, and point-of-sale materials.</p>
-        <span class="hub-go">Start request &rarr;</span>
-      </a>
-      <a class="hub-action" href="/dealer-support/?request=Request%20an%20In-Service">
-        <span class="hub-num">04</span><h3>Request an In-Service</h3>
-        <p>Schedule product training or an in-service for your sales and service staff.</p>
-        <span class="hub-go">Start request &rarr;</span>
-      </a>
-      <a class="hub-action" href="/dealer-support/?request=Technical%20Support">
-        <span class="hub-num">05</span><h3>Technical Support</h3>
-        <p>Ask a technical, warranty, parts, or service question about any product.</p>
-        <span class="hub-go">Start request &rarr;</span>
-      </a>
-      <a class="hub-action" href="/dealer-support/?request=General%20Dealer%20Question">
-        <span class="hub-num">06</span><h3>General Dealer Question</h3>
-        <p>Anything else? Send it over and we'll get you to the right person.</p>
-        <span class="hub-go">Start request &rarr;</span>
-      </a>
-    </div>
-  </div>
-</section>
+    <aside class="dash-v3-sidebar">
+      <p>Dealer Hub</p>
+      <a href="#dash-request-center">Request Center</a>
+      <a href="#dash-manufacturers">Manufacturers</a>
+      <a href="#dash-resources">Resources</a>
+      <a href="#dash-pricing">Pricing</a>
+      <a href="#dash-training">Training</a>
+      <a href="#dash-service">Service</a>
+      <a href="#dash-future-login">Future Login</a>
+    </aside>
 
-<section style="background:#fff;">
-  <div class="container">
-    <div class="section-head center">
-      <p class="eyebrow">Resources &amp; Tools</p>
-      <h2>Literature, catalogs, and showroom support.</h2>
-    </div>
+    <div class="dash-v3-main">
 
-    <div class="hub-cards">
-      <article class="hub-card">
-        <div class="hub-card-body">
-          <h3>Resource Library</h3>
-          <p>Every catalog, brochure, spec sheet, price list, and form across all {{ site.stats.manufacturers }} manufacturer partners — filterable by manufacturer and type.</p>
-          <a class="btn primary sm" href="/resources/">Open Resource Library</a>
+      <section class="dash-v3-panel dash-v3-welcome">
+        <div>
+          <p class="eyebrow">Dashboard</p>
+          <h2>What can HCPS help you with today?</h2>
         </div>
-      </article>
-      <article class="hub-card">
-        <div class="hub-card-body">
-          <h3>Golden Resource Library</h3>
-          <p>Golden Technologies catalogs, fabric codes, training videos, and dealer literature — the resources you'll reach for most.</p>
-          <a class="btn primary sm" href="/resources/?manufacturer=golden-technologies">Open Golden resources</a>
-        </div>
-      </article>
-      <article class="hub-card">
-        <div class="hub-card-body">
-          <h3>Showroom &amp; Consulting</h3>
-          <p>Showroom design, floorplan strategy, category placement, and business-development support to turn your floor into a stronger selling environment.</p>
-          <a class="btn primary sm" href="/contact/?topic=Consulting">Talk consulting</a>
-        </div>
-      </article>
-    </div>
+        <a class="dash-v3-help-link" href="/contact/">Contact HCPS &rarr;</a>
+      </section>
 
-    <div class="hub-note">
-      <div>
-        <strong>Not set up as an HCPS dealer yet?</strong>
-        <span>Get pricing access, account setup, and a regional consultant assigned to your territory.</span>
-      </div>
-      <a class="btn dark" href="/contact/?topic=Dealer">Become a Dealer</a>
+      <section class="dash-v3-action-grid" id="dash-request-center">
+        <a class="dash-v3-action primary" href="/dealer-support/?request=Place%20or%20Request%20an%20Order">
+          <span>&#128230;</span><strong>Dealer Order Request</strong><p>Submit order needs, PO details, special orders, quote needs, stock, lead times, or follow-up questions.</p>
+        </a>
+        <a class="dash-v3-action" href="/dealer-support/?request=Pricing%20Access">
+          <span>&#128178;</span><strong>Pricing Access</strong><p>Request dealer price sheets, MAP/MSRP files, freight terms, or protected pricing documents.</p>
+        </a>
+        <a class="dash-v3-action" href="/dealer-support/?request=Order%20Literature">
+          <span>&#128218;</span><strong>Literature Request</strong><p>Request brochures, catalogs, flyers, sell sheets, spec sheets, or patient-facing product materials.</p>
+        </a>
+        <a class="dash-v3-action" href="/dealer-support/?request=Request%20an%20In-Service">
+          <span>&#127891;</span><strong>Schedule In-Service</strong><p>Request product education, clinical training, dealer training, or sales team support.</p>
+        </a>
+        <a class="dash-v3-action" href="/dealer-support/?request=Technical%20Support">
+          <span>&#128295;</span><strong>Technical Support</strong><p>Get routed to service resources, warranty forms, parts support, or technical documentation.</p>
+        </a>
+        <a class="dash-v3-action" href="/resources/">
+          <span>&#11015;</span><strong>Resource Library</strong><p>Open the library of downloads, catalogs, forms, videos, and manufacturer materials.</p>
+        </a>
+      </section>
+
+      <section class="dash-v3-two-col">
+        <div class="dash-v3-panel" id="dash-pricing">
+          <div class="dash-v3-panel-head">
+            <div>
+              <p class="eyebrow">Pricing</p>
+              <h3>Dealer pricing center</h3>
+            </div>
+            <span class="dash-v3-badge">Future Login</span>
+          </div>
+          <div class="dash-v3-list">
+            <a href="/dealer-support/?request=Pricing%20Access&amp;topic=MAP%20Pricing"><b>MAP Pricing</b><span>Request protected manufacturer MAP files</span></a>
+            <a href="/dealer-support/?request=Pricing%20Access&amp;topic=MSRP%20Price%20Sheets"><b>MSRP Price Sheets</b><span>Request current MSRP resources</span></a>
+            <a href="/dealer-support/?request=Pricing%20Access&amp;topic=Dealer%20Price%20Sheets"><b>Dealer Price Sheets</b><span>Get dealer pricing set up for your account</span></a>
+            <a href="/dealer-support/?request=Pricing%20Access&amp;topic=Promotions"><b>Promotions</b><span>Current and future manufacturer offers</span></a>
+          </div>
+        </div>
+
+        <div class="dash-v3-panel" id="dash-training">
+          <div class="dash-v3-panel-head">
+            <div>
+              <p class="eyebrow">Training</p>
+              <h3>Education and in-service support</h3>
+            </div>
+            <span class="dash-v3-badge active">Active</span>
+          </div>
+          <div class="dash-v3-training-card">
+            <strong>Request product education</strong>
+            <p>Schedule dealer training, sales team product education, clinical support, or a manufacturer in-service.</p>
+            <a href="/dealer-support/?request=Request%20an%20In-Service">Request Training &rarr;</a>
+          </div>
+          <div class="dash-v3-mini-calendar">
+            <span>Coming Soon</span>
+            <p>Upcoming trainings, webinars, and manufacturer education events.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="dash-v3-panel" id="dash-manufacturers">
+        <div class="dash-v3-panel-head">
+          <div>
+            <p class="eyebrow">Manufacturer Centers</p>
+            <h3>Open the resource center for each manufacturer.</h3>
+          </div>
+          <a class="dash-v3-view-all" href="/manufacturers/">View Directory &rarr;</a>
+        </div>
+
+        <div class="dash-v3-mfg-grid">
+          {% for m in manufacturers %}
+          <article>
+            <a class="dash-v3-mfg-logo" href="/manufacturers/{{ m.id }}/">
+              <img src="{{ m.logo }}" alt="{{ m.name }} logo" loading="lazy">
+            </a>
+            <div class="dash-v3-mfg-body">
+              <h4>{{ m.name }}</h4>
+              <p>{{ m.category }}</p>
+              <span>Pricing, literature, tech service, training</span>
+            </div>
+            <div class="dash-v3-mfg-buttons">
+              <a href="/manufacturers/{{ m.id }}/">Open</a>
+              <a href="/dealer-support/?request=General%20Dealer%20Question&amp;manufacturer={{ m.name | urlencode }}">Support</a>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="dash-v3-three-col" id="dash-resources">
+        <article>
+          <span>&#128196;</span><h3>Downloads</h3><p>Brochures, catalogs, forms, flyers, sell sheets, and product spec documents.</p><a href="/resources/">Open Resources &rarr;</a>
+        </article>
+        <article id="dash-service">
+          <span>&#128295;</span><h3>Service</h3><p>Warranty forms, service documents, technical support routing, and parts request workflows.</p><a href="/dealer-support/?request=Technical%20Support">Request Service &rarr;</a>
+        </article>
+        <article>
+          <span>&#128226;</span><h3>Announcements</h3><p>Manufacturer promotions, product launches, training dates, and dealer updates.</p><a href="/dealer-support/?request=General%20Dealer%20Question&amp;topic=Updates">Request Updates &rarr;</a>
+        </article>
+      </section>
+
+      <section class="dash-v3-portal-preview" id="dash-future-login">
+        <div>
+          <p class="eyebrow" style="color:var(--hcps-gold);">Future Dealer Login</p>
+          <h2>Personalized access is the next evolution.</h2>
+          <p>In a future phase, dealers will be able to log in and access assigned manufacturer lines, dealer-specific pricing, protected downloads, open requests, training history, promotions, and support tickets.</p>
+          <a class="btn primary" href="/contact/?topic=Dealer">Become an HCPS Dealer</a>
+        </div>
+        <div class="dash-v3-fake-app">
+          <div class="dash-v3-window-bar"><i></i><i></i><i></i></div>
+          <div class="dash-v3-app-inner">
+            <h3>Welcome, ABC Home Medical</h3>
+            <div class="dash-v3-app-row"><b>3</b><span>New pricing files</span></div>
+            <div class="dash-v3-app-row"><b>2</b><span>Open dealer requests</span></div>
+            <div class="dash-v3-app-row"><b>1</b><span>Scheduled training</span></div>
+            <div class="dash-v3-app-row"><b>{{ site.stats.manufacturers }}</b><span>Approved manufacturer lines</span></div>
+          </div>
+        </div>
+      </section>
+
     </div>
   </div>
 </section>
