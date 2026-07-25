@@ -263,6 +263,58 @@
       "access": "public",
       "dealers": [],
       "featured": true
+    },
+    {
+      "id": "bongorx-epap-brochure-2026",
+      "title": "BongoRx EPAP Brochure (2026)",
+      "type": "brochure",
+      "manufacturer": "airavant-bongorx",
+      "format": "pdf",
+      "file": "/assets/docs/bongorx-epap-brochure-2026.pdf",
+      "url": "",
+      "description": "Effective sleep apnea therapy without the machine — how Bongo Rx works, key patient benefits, starter kit & replenishment part numbers, and the Top 8 dealer FAQs.",
+      "access": "public",
+      "dealers": [],
+      "featured": true
+    },
+    {
+      "id": "bongorx-sleep-study-review-2026",
+      "title": "BongoRx Clinical Sleep Study Review (2026)",
+      "type": "spec-sheet",
+      "manufacturer": "airavant-bongorx",
+      "format": "pdf",
+      "file": "/assets/docs/bongorx-sleep-study-review-2026.pdf",
+      "url": "",
+      "description": "A novel EPAP device for mild-to-moderate OSA — clinical study (Lankford & Kram) showing a 45% mean AHI reduction (15.7 → 7.1, p=0.0093), 83% acceptance, and no serious adverse events.",
+      "access": "public",
+      "dealers": [],
+      "featured": true
+    },
+    {
+      "id": "pedifix-catalog-2025",
+      "title": "PediFix Retail & Display Catalog (2025)",
+      "type": "catalog",
+      "manufacturer": "pedifix",
+      "format": "pdf",
+      "file": "/assets/docs/pedifix-catalog-2025.pdf",
+      "url": "",
+      "description": "The full PediFix Medical Footcare line plus the turnkey display program — 12', 8', 4', and 2'x6' mobile footcare centers, counter-top displays, 1'–3' planograms, and in-store marketing tools.",
+      "access": "public",
+      "dealers": [],
+      "featured": true
+    },
+    {
+      "id": "climbing-steps-catalog-2026",
+      "title": "Climbing Steps Catalog (2026)",
+      "type": "catalog",
+      "manufacturer": "climbing-steps",
+      "format": "pdf",
+      "file": "/assets/docs/climbing-steps-catalog-2026.pdf",
+      "url": "",
+      "description": "The full Climbing Steps lineup — Mobile Stairlift portable stair lifts, VoltStair, Freedom Aqua patient lifts, Lift Buddy fall-recovery chair, and Titan & Hercules climbing hand trucks.",
+      "access": "public",
+      "dealers": [],
+      "featured": true
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."

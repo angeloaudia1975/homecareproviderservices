@@ -1200,13 +1200,34 @@
         "lead": "A simple, portable CPAP alternative for mild to moderate obstructive sleep apnea patients who want freedom from machines, hoses, and power.",
         "card_title": "Why Dealers Are Interested",
         "card_intro": "",
-        "image": "/assets/products/bongorx/bongorx-device.jpg",
+        "image": "/assets/products/bongorx/hero-sleep.jpg",
         "checklist": [
           "Prescription cash product — great for retail, FSA/HSA customers, and CPAP alternative inquiries.",
           "Travel-friendly therapy — no machine, hose, or electricity required.",
           "Built-in replenishment — the Starter Kit opens the door to recurring annual and single replacement sales."
         ],
         "stats": []
+      },
+      {
+        "type": "stats",
+        "items": [
+          {
+            "value": "45%",
+            "label": "Mean AHI reduction in clinical study (15.7 → 7.1)"
+          },
+          {
+            "value": "83%",
+            "label": "Initial patient acceptance rate"
+          },
+          {
+            "value": "FDA",
+            "label": "Cleared for mild-to-moderate OSA"
+          },
+          {
+            "value": "0",
+            "label": "Serious adverse events in the study"
+          }
+        ]
       },
       {
         "type": "cards",
@@ -1217,19 +1238,19 @@
           {
             "name": "Ideal Patient Profile",
             "tag": "",
-            "image": "",
+            "image": "/assets/products/bongorx/couple.jpg",
             "description": "Newly diagnosed mild to moderate OSA patients, CPAP non-compliant patients, travelers, and patients facing high deductibles or co-payments."
           },
           {
             "name": "No Power Required",
             "tag": "",
-            "image": "",
+            "image": "/assets/products/bongorx/travel.jpg",
             "description": "Uses the patient’s own exhalation to create EPAP, helping keep the airway open without a machine or electricity."
           },
           {
             "name": "Simple Starter Kit",
             "tag": "",
-            "image": "",
+            "image": "/assets/products/bongorx/device-case.jpg",
             "description": "The Four Sizes Starter Kit allows easy contactless setup with multiple sizes, headgear, travel case, and drying stand."
           }
         ]
@@ -1247,6 +1268,22 @@
           "Use at home, traveling, camping, or when electricity is unavailable",
           "No assembly required and easy to clean"
         ]
+      },
+      {
+        "type": "spotlight",
+        "badge": "Clinically tested • FDA-cleared",
+        "headline": "Clinically proven EPAP therapy — no machine, hose, or power.",
+        "copy": "In a clinical study by Alan Lankford, PhD and Jerrold Kram, MD, the Bongo Rx reduced mean AHI from 15.7 to 7.1 — a 45% reduction (p=0.0093) — with an 83% patient acceptance rate and no serious adverse events. It uses the patient's own exhalation to generate EPAP and keep the airway open.",
+        "checklist": [
+          "FDA-cleared for mild-to-moderate obstructive sleep apnea",
+          "CPAP alternative — freedom from machines, hoses, and power",
+          "Four-size starter kit for easy, contactless fit at home",
+          "Replenishment packs drive recurring resupply revenue",
+          "Proudly designed and made in the USA"
+        ],
+        "image": "/assets/products/bongorx/device-case.jpg",
+        "cta": "Read the Clinical Sleep Study",
+        "cta_url": "/assets/docs/bongorx-sleep-study-review-2026.pdf"
       },
       {
         "type": "steps",
@@ -1305,10 +1342,12 @@
       },
       {
         "type": "cta_strip",
-        "headline": "Place an Opening Order to Get Started",
-        "copy": "Start with a small opening order so your team can test demand with CPAP alternative, cash-pay, and travel-focused customers.",
-        "cta": "Request Dealer Pricing",
-        "url": ""
+        "headline": "Get the BongoRx dealer resources.",
+        "copy": "Download the EPAP brochure and the clinical sleep study review, then place a small opening order to test demand.",
+        "cta": "Download the EPAP Brochure",
+        "url": "/assets/docs/bongorx-epap-brochure-2026.pdf",
+        "cta2": "Read the Clinical Sleep Study",
+        "url2": "/assets/docs/bongorx-sleep-study-review-2026.pdf"
       },
       {
         "type": "faq",
@@ -1822,6 +1861,15 @@
             "description": "Designed with direct feedback from the field to be as reliable for the provider as for the user."
           }
         ]
+      },
+      {
+        "type": "cta_strip",
+        "headline": "See the full Climbing Steps lineup.",
+        "copy": "Download the 2026 catalog for complete specs on the Mobile Stairlift, patient lifts, and climbing hand trucks — then request dealer pricing.",
+        "cta": "Download the Climbing Steps Catalog",
+        "url": "/assets/docs/climbing-steps-catalog-2026.pdf",
+        "cta2": "Request Dealer Pricing",
+        "url2": "/contact/?topic=Dealer&manufacturer=climbing-steps"
       }
     ]
   },
@@ -2462,7 +2510,7 @@
           "Arch support",
           "Skin & fungus care"
         ],
-        "image": "https://www.pedifix.com/cdn/shop/files/P53.jpg?v=1752597088&width=1080",
+        "image": "/assets/products/pedifix/display-12ft.jpg",
         "stats": []
       },
       {
@@ -2593,6 +2641,54 @@
         ]
       },
       {
+        "type": "cards",
+        "eyebrow": "Turnkey Display Program",
+        "title": "A footcare display sized for any store.",
+        "intro": "PediFix ships complete Medical Footcare Centers — fixtures, product guides, headers, and out-of-stock tags — so you can launch a professional footcare section in any footprint.",
+        "items": [
+          {
+            "name": "12' Full-Line Footcare Center",
+            "tag": "146 products",
+            "image": "/assets/products/pedifix/display-12ft.jpg",
+            "description": "Be the footcare leader in your region — the full best-selling assortment with double-sided header, product guides, and referral brochures."
+          },
+          {
+            "name": "2' x 6' Mobile Spinner",
+            "tag": "Space-saving",
+            "image": "/assets/products/pedifix/display-mobile.jpg",
+            "description": "#1 Podiatrist-recommended, space-efficient spinner on wheels — loaded with best-sellers and skin-care items on the bottom shelves."
+          },
+          {
+            "name": "Counter-Top & Shelf Displays",
+            "tag": "Impulse sales",
+            "image": "/assets/products/pedifix/countertop.jpg",
+            "description": "Impulse and repeat-purchase favorites — Tea Tree Ultimates, FungaSoap, and skin-care solutions sized for the register."
+          },
+          {
+            "name": "1'–3' Profitable Planograms",
+            "tag": "Your fixtures",
+            "image": "/assets/products/pedifix/planogram.jpg",
+            "description": "Drop proven best-sellers into your existing fixtures with 1', 2', and 3' planograms — create or expand your PediFix section, no new fixtures required."
+          }
+        ]
+      },
+      {
+        "type": "split",
+        "eyebrow": "In-Store Marketing Tools",
+        "headline": "Marketing tools that boost awareness, profits & referrals.",
+        "copy": "PediFix backs the line with free, ready-to-use marketing that pulls customers in and brings referrals from local doctors — so the section keeps selling after it is stocked.",
+        "checklist": [
+          "“Tell Us Where It Hurts” posters, display headers & window decals",
+          "Patient product guides, referral brochures & shelf hangers",
+          "Referral postcards & prescription pads to send to local DPMs, MDs, PTs & RNs",
+          "Co-op print & website advertising and physician sampling programs",
+          "Online Store Locator that sends consumers and referrals to your store"
+        ],
+        "checks": [],
+        "image": "/assets/products/pedifix/marketing-tellus.jpg",
+        "image_side": "left"
+      },
+      {
         "type": "differentiators",
         "eyebrow": "Why PediFix",
         "title": "Why PediFix works well for healthcare retail.",
@@ -2682,6 +2778,15 @@
             "Repeat purchase category for ongoing footcare maintenance."
           ]
         ]
+      },
+      {
+        "type": "cta_strip",
+        "headline": "See the full PediFix retail & display program.",
+        "copy": "Download the 2025 catalog for the complete product line, display centers, planograms, and marketing tools — then ask us to set up your footcare section.",
+        "cta": "Download the PediFix Catalog",
+        "url": "/assets/docs/pedifix-catalog-2025.pdf",
+        "cta2": "Request Dealer Pricing",
+        "url2": "/contact/?topic=Dealer&manufacturer=pedifix"
       },
       {
         "type": "cards",

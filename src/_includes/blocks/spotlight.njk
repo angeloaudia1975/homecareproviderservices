@@ -5,7 +5,8 @@
       {% if b.badge %}<span class="m-price-badge">{{ b.badge }}</span>{% endif %}
       <h2>{{ b.headline }}</h2><p>{{ b.copy }}</p>
       {% if b.checklist.length %}<ul class="m-checklist">{% for i in b.checklist %}<li>{{ i }}</li>{% endfor %}</ul>{% endif %}
-      {% if manu.ordering_url %}<div class="hero-actions"><a class="btn primary" href="{{ manu.ordering_url }}" target="_blank" rel="noopener">{{ b.cta or "Place Dealer Order" }}</a></div>{% endif %}
+      {% if b.cta_url %}<div class="hero-actions"><a class="btn primary" href="{{ b.cta_url }}" target="_blank" rel="noopener">{{ b.cta or "Learn more" }}</a></div>
+      {% elif manu.ordering_url %}<div class="hero-actions"><a class="btn primary" href="{{ manu.ordering_url }}" target="_blank" rel="noopener">{{ b.cta or "Place Dealer Order" }}</a></div>{% endif %}
     </div>
   </div>
 </div></section>
