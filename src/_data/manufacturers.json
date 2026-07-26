@@ -457,6 +457,20 @@
         ]
       },
       {
+        "type": "video",
+        "eyebrow": "See It Installed",
+        "headline": "Watch how fast a modular ramp goes together.",
+        "copy": "Access4U's Enable modular ramping system is engineered for a quick, single-person installation — the H-frame locks in a solid, stable run while quick height-adjustment points and one-size hardware do the rest. No 'cut-to-fit' parts and no special crew required.",
+        "embed": "https://www.youtube.com/embed/7h-yfR1udTI?start=26",
+        "video_side": "left",
+        "checklist": [
+          "One-person installation with only one wrench size",
+          "H-frame system creates a solid, seamless run",
+          "Quick height-adjustment points adapt to any site",
+          "No cut-to-fit parts — assembles and relocates easily"
+        ]
+      },
+      {
         "type": "split",
         "headline": "From a quick threshold fix to a complete home access project.",
         "copy": "Access4U helps dealers serve multiple access needs instead of sending customers elsewhere. Start with a threshold or portable ramp, then support larger residential and commercial modular layouts when the customer needs a full solution.",
@@ -590,7 +604,7 @@
         "card_title": "",
         "card_intro": "",
         "checklist": [],
-        "image": "/assets/products/strongback-mobility/lifestyle-strongback-2026-ms0u2ri4.jpg",
+        "image": "/assets/products/strongback/hero-showroom.jpg",
         "stats": [
           {
             "value": "16\"–22\"",
@@ -619,13 +633,13 @@
           {
             "name": "Ergonomic back support",
             "tag": "",
-            "image": "/assets/products/strongback-mobility/strongback-lumbar-ms0u77o1.jpg",
+            "image": "",
             "description": "The signature Strongback backrest is designed to support the natural lumbar curve and promote a more upright seated position."
           },
           {
             "name": "Easy to explain",
             "tag": "",
-            "image": "/assets/products/strongback-mobility/strongback-rentals-ms0u7fxm.jpg",
+            "image": "",
             "description": "Customers immediately understand the difference when they compare a flat-back wheelchair to a Strongback ergonomic support system."
           },
           {
@@ -648,7 +662,7 @@
           "300 lb user capacity with quick-release wheels",
           "Positioned to be a market leader in the $399.99 MSRP price range"
         ],
-        "image": "/assets/products/strongback-mobility/ergosteel-flyer-ms0u8xwp.jpg",
+        "image": "/assets/products/strongback/ergosteel-flyer.jpg",
         "cta": "Add ErgoSteel to Your Lineup"
       },
       {
@@ -665,7 +679,7 @@
               "20\""
             ],
             "badge": "",
-            "image": "/assets/products/strongback-mobility/strongback24flipsideleft2-ms0ub7d7.webp",
+            "image": "/assets/products/strongback/product-comfort.jpg",
             "url": "",
             "description": "Ultra-light folding wheelchairs for customers who want posture support, comfort, and easy transport.",
             "bullets": [
@@ -681,7 +695,7 @@
               "375 lb capacity"
             ],
             "badge": "",
-            "image": "/assets/products/strongback-mobility/1036db-ms0uaprc.jpg",
+            "image": "/assets/products/strongback/product-hd.jpg",
             "url": "",
             "description": "A premium HD option for customers who need a wider seat and higher weight capacity without losing the Strongback comfort story.",
             "bullets": [
@@ -698,7 +712,7 @@
               "Transport"
             ],
             "badge": "",
-            "image": "/assets/products/strongback-mobility/strongback12s-absideview21024x1024-99f8b167-c3a8-4dab-93a3-8-ms0ua5ed.webp",
+            "image": "/assets/products/strongback/lifestyle-transport.jpg",
             "url": "",
             "description": "Transport chair options for customers who need caregiver-assisted mobility with improved seating comfort.",
             "bullets": [
@@ -714,7 +728,7 @@
               "SEATA"
             ],
             "badge": "",
-            "image": "/assets/products/strongback-mobility/seata-rollator-ms0u9hfr.jpg",
+            "image": "",
             "url": "",
             "description": "The SEATA rollator expands the same ergonomic comfort concept into walking support and seated rest.",
             "bullets": [
@@ -790,7 +804,7 @@
           "260 lb user capacity"
         ],
         "checks": [],
-        "image": "/assets/products/strongback-mobility/seata-ms0ud423.jpg",
+        "image": "/assets/products/strongback/lifestyle-park.jpg",
         "image_side": "right"
       }
     ]

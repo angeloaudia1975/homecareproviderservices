@@ -14,7 +14,7 @@
     "manufacturers": 12
   },
   "territory": {
-    "states_display": "Southern Ohio • Southern Indiana • Kentucky • Tennessee • Georgia",
+    "states_display": "Southern Ohio \u2022 Southern Indiana \u2022 Kentucky \u2022 Tennessee \u2022 Georgia",
     "covered_state_codes": [
       "US-OH",
       "US-IN",
@@ -47,8 +47,8 @@
     ]
   },
   "links": {
-    "online_ordering": "https://hcpsonlineordering.netlify.app/",
-    "support": "https://homecareproviderservices.netlify.app/dealer-support/?request=Technical%20Support"
+    "online_ordering": "https://goldenonlineordering.netlify.app",
+    "support": "https://goldentechsupport.netlify.app"
   },
   "why_choose": [
     {
@@ -61,7 +61,7 @@
     },
     {
       "title": "Free Consultations",
-      "description": "Product Presentations with a Hands-On Approach—We Come to You with Expert Guidance, Personalized Support, and Best-in-Class Dealer Solutions."
+      "description": "Product Presentations with a Hands-On Approach\u2014We Come to You with Expert Guidance, Personalized Support, and Best-in-Class Dealer Solutions."
     }
   ],
   "dealer_support_tools": [
