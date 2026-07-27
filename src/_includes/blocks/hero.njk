@@ -5,8 +5,13 @@
       <h1>{{ b.headline or manu.name }}</h1>
       <p class="lead">{{ b.lead or manu.description }}</p>
       <div class="hero-actions">
+        {% if manu.id == "golden-technologies" %}
         <a class="btn primary" href="mailto:{{ site.contact.email }}?subject={{ manu.name | urlencode }}%20Dealer%20Pricing%20Request">Request Dealer Pricing</a>
         {% if manu.ordering_url %}<a class="btn outline on-light" href="{{ manu.ordering_url }}" target="_blank" rel="noopener">Place Dealer Order</a>{% endif %}
+        {% else %}
+        <a class="btn primary" href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">&#128722; Online Ordering Portal</a>
+        <a class="btn outline on-light" href="mailto:{{ site.contact.email }}?subject={{ manu.name | urlencode }}%20Dealer%20Pricing%20Request">Request Dealer Pricing</a>
+        {% endif %}
         {% if manu.website %}<a class="btn outline on-light" href="{{ manu.website }}" target="_blank" rel="noopener">Manufacturer Website</a>{% endif %}
       </div>
     </div>
