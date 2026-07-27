@@ -1,0 +1,187 @@
+---
+layout: layouts/base.njk
+title: Become a Manufacturer Partner
+permalink: /become-a-manufacturer-partner/
+description: "Partner with HomeCare Provider Services for manufacturer representation across Southern Ohio, Southern Indiana, Kentucky, Tennessee, and Georgia — dealer relationships, market development, and sales growth without adding headcount."
+eleventyExcludeFromCollections: true
+---
+<section class="hero" style="padding-bottom:52px;">
+  <div class="container">
+    <div class="section-head">
+      <p class="eyebrow">Manufacturer Partnership</p>
+      <h1 style="font-size:clamp(30px,4.4vw,50px);color:#fff;">Expand your market with a rep partner who sells <span style="color:var(--hcps-gold);">and</span> serves.</h1>
+      <p class="lead">HomeCare Provider Services represents medical equipment and device manufacturers across {{ site.stats.states }} strategic states — building dealer relationships, launching products, and driving sales growth without you adding direct headcount.</p>
+      <div class="hero-actions">
+        <a class="btn primary" href="#partner-form">Start the Conversation</a>
+        <a class="btn outline" href="#partner-territory">Explore Our Territory</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="why">
+  <div class="container">
+    <div class="section-head center">
+      <p class="eyebrow">Why Manufacturers Choose HCPS</p>
+      <h2>Representation built on relationships, market knowledge, and execution.</h2>
+    </div>
+    <div class="why-grid">
+      <article>
+        <div class="why-icon"></div>
+        <h3>Established Dealer Relationships</h3>
+        <p>{{ site.stats.dealers }} active dealer and provider relationships across {{ site.stats.states }} strategic states — HME providers, DME dealers, and pharmacies who already trust HCPS.</p>
+      </article>
+      <article>
+        <div class="why-icon orange"></div>
+        <h3>HME, DME &amp; Pharmacy Expertise</h3>
+        <p>Hands-on experience across respiratory, oxygen, sleep, mobility, bracing, bath safety, footcare, and patient-care categories — reps who can actually sell your product.</p>
+      </article>
+      <article>
+        <div class="why-icon"></div>
+        <h3>Accelerated Market Growth</h3>
+        <p>Enter new territories, build dealer relationships, and increase sales activity — with showroom support and online ordering — without adding direct field headcount.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="partner-territory" class="cta">
+  <div class="container">
+    <div class="section-head" style="max-width:760px;">
+      <p class="eyebrow" style="color:var(--hcps-gold);">Our Territory</p>
+      <h2 style="color:#fff;">{{ site.stats.states }} strategic states. Regional expertise. Manufacturer growth.</h2>
+      <p style="color:rgba(255,255,255,.85);">{{ site.territory.states_display }}</p>
+    </div>
+    <div class="why-grid" style="margin-top:26px;">
+      {% for r in site.territory.regions %}
+      <article style="background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14);">
+        <h3 style="color:#fff;">{{ r.name }}</h3>
+        <p style="color:rgba(255,255,255,.8);">Represented by <strong style="color:var(--hcps-gold);">{{ r.rep }}</strong></p>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="team">
+  <div class="container">
+    <div class="section-head center">
+      <p class="eyebrow">Leadership</p>
+      <h2>Manufacturer representation led by experienced, relationship-driven professionals.</h2>
+    </div>
+    <div class="team-grid">
+      {% for t in team %}
+      <article class="team-card">
+        {% if t.photo %}
+        <div class="team-avatar has-photo" style="background-image:url('{{ t.photo }}')" role="img" aria-label="{{ t.name }}"></div>
+        {% else %}
+        <div class="team-avatar">{{ t.name[0] }}</div>
+        {% endif %}
+        <h3>{{ t.name }}</h3>
+        <p class="team-role">{{ t.role }}</p>
+        {% if t.phone_href %}<a href="tel:{{ t.phone_href }}">{{ t.phone_display }}</a>{% endif %}
+        {% if t.email %}<a href="mailto:{{ t.email }}">{{ t.email }}</a>{% endif %}
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section id="partner-form" style="background:#fff;">
+  <div class="container" style="max-width:820px;">
+    <div class="section-head center">
+      <p class="eyebrow">Manufacturer Inquiry</p>
+      <h2>Tell us about your company and the markets you want to reach.</h2>
+      <p>Share a few details and a HomeCare Provider Services principal will follow up personally to talk representation, territory coverage, and next steps.</p>
+    </div>
+
+    <form id="partner-contact" class="hcps-form" novalidate>
+      <input type="text" name="company_website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;" aria-hidden="true">
+      <input type="hidden" name="interest" value="Manufacturer Partnership">
+
+      <div class="form-row">
+        <div><label for="p-company">Company / Manufacturer *</label><input id="p-company" name="company" type="text" required></div>
+        <div><label for="p-name">Primary contact *</label><input id="p-name" name="name" type="text" required></div>
+      </div>
+      <div class="form-row">
+        <div><label for="p-email">Email *</label><input id="p-email" name="email" type="email" required></div>
+        <div><label for="p-phone">Phone</label><input id="p-phone" name="phone" type="tel"></div>
+      </div>
+      <div class="form-row">
+        <div><label for="p-website">Company website</label><input id="p-website" name="website" type="text" placeholder="https://"></div>
+        <div><label for="p-line">Product line / category</label><input id="p-line" name="product_line" type="text" placeholder="e.g. respiratory, mobility, bracing"></div>
+      </div>
+      <div>
+        <label for="p-markets">Markets / states you'd like coverage in</label>
+        <input id="p-markets" name="markets" type="text" placeholder="e.g. Ohio, Kentucky, Tennessee — or 'open to recommendations'">
+      </div>
+      <div>
+        <label for="p-dist">Current representation in these markets</label>
+        <select id="p-dist" name="distribution">
+          <option value="">Select…</option>
+          <option value="New to the region — no current reps">New to the region — no current reps</option>
+          <option value="Self-distributed / factory direct">Self-distributed / factory direct</option>
+          <option value="Have reps but looking to expand">Have reps but looking to expand</option>
+          <option value="Replacing current representation">Replacing current representation</option>
+          <option value="Not sure yet">Not sure yet</option>
+        </select>
+      </div>
+      <div>
+        <label for="p-message">Tell us about your goals</label>
+        <textarea id="p-message" name="message" placeholder="What products would you like represented, what markets matter most, and what does success look like for this partnership?"></textarea>
+      </div>
+      <div>
+        <button type="submit" class="btn primary" id="p-submit">Submit Partnership Inquiry</button>
+        <p class="form-status" id="p-status" role="status" aria-live="polite"></p>
+      </div>
+    </form>
+
+    <p style="text-align:center;color:#5f6b7a;margin-top:26px;">
+      Prefer to reach us directly? Call
+      <a href="tel:{{ site.contact.phone_href }}" style="color:var(--hcps-blue-dark);font-weight:700;">{{ site.contact.phone_display }}</a>
+      or email
+      <a href="mailto:{{ site.contact.email }}" style="color:var(--hcps-blue-dark);font-weight:700;">{{ site.contact.email }}</a>.
+    </p>
+  </div>
+</section>
+
+<script>
+(function () {
+  var form = document.getElementById("partner-contact");
+  var status = document.getElementById("p-status");
+  var submit = document.getElementById("p-submit");
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    status.textContent = "";
+    var data = Object.fromEntries(new FormData(form).entries());
+    if (!data.company || !data.name || !data.email) {
+      status.className = "form-status error";
+      status.textContent = "Please fill in company, contact name, and email.";
+      return;
+    }
+    submit.disabled = true;
+    var original = submit.textContent;
+    submit.textContent = "Sending…";
+    try {
+      var res = await fetch("/.netlify/functions/contact", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data)
+      });
+      var out = await res.json();
+      if (res.ok && out.ok) {
+        form.reset();
+        status.className = "form-status ok";
+        status.textContent = "Thank you — your inquiry has been sent. A HCPS principal will follow up shortly.";
+      } else {
+        status.className = "form-status error";
+        status.textContent = out.error || "Something went wrong. Please email info@homecareproviderservices.us.";
+      }
+    } catch (err) {
+      status.className = "form-status error";
+      status.textContent = "Network error. Please email info@homecareproviderservices.us.";
+    } finally {
+      submit.disabled = false;
+      submit.textContent = original;
+    }
+  });
+})();
+</script>

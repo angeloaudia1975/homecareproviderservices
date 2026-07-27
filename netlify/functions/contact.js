@@ -26,6 +26,12 @@ exports.handler = async (event) => {
   const manufacturer = (data.manufacturer || "").trim();
   const interest = (data.interest || "").trim();
   const message = (data.message || "").trim();
+  // Optional manufacturer-partner fields (from the Become a Manufacturer Partner page)
+  const website = (data.website || "").trim();
+  const productLine = (data.product_line || "").trim();
+  const markets = (data.markets || "").trim();
+  const distribution = (data.distribution || "").trim();
+  const isPartner = /manufacturer partner/i.test(interest) || productLine || markets;
 
   if (!name || !email || !company) {
     return { statusCode: 400, body: JSON.stringify({ error: "Name, company, and email are required." }) };
@@ -39,17 +45,21 @@ exports.handler = async (event) => {
     return { statusCode: 500, body: JSON.stringify({ error: "Email service is not configured." }) };
   }
 
-  const subject = manufacturer
-    ? `Dealer inquiry: ${manufacturer} — ${company}`
-    : `Dealer inquiry — ${company}`;
+  const subject = isPartner
+    ? `Manufacturer partner inquiry — ${company}`
+    : (manufacturer ? `Dealer inquiry: ${manufacturer} — ${company}` : `Dealer inquiry — ${company}`);
 
   const lines = [
     `Name: ${name}`,
     `Company: ${company}`,
     `Email: ${email}`,
     phone ? `Phone: ${phone}` : null,
+    website ? `Website: ${website}` : null,
     manufacturer ? `Manufacturer: ${manufacturer}` : null,
     interest ? `Primary interest: ${interest}` : null,
+    productLine ? `Product line / category: ${productLine}` : null,
+    markets ? `Markets / coverage needed: ${markets}` : null,
+    distribution ? `Current distribution / representation: ${distribution}` : null,
     "",
     "Message:",
     message || "(none)"
@@ -57,7 +67,7 @@ exports.handler = async (event) => {
 
   const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
   const html =
-    `<h2>New dealer inquiry</h2>` +
+    `<h2>${isPartner ? "New manufacturer partner inquiry" : "New dealer inquiry"}</h2>` +
     lines.map((l) => (l === "" ? "<br>" : `<p style="margin:2px 0">${esc(l)}</p>`)).join("");
 
   try {
