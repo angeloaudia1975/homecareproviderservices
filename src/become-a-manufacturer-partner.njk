@@ -5,17 +5,31 @@ permalink: /become-a-manufacturer-partner/
 description: "Partner with HomeCare Provider Services for manufacturer representation across Southern Ohio, Southern Indiana, Kentucky, Tennessee, and Georgia — dealer relationships, market development, and sales growth without adding headcount."
 eleventyExcludeFromCollections: true
 ---
-<section class="hero" style="padding-bottom:52px;">
-  <div class="container">
-    <div class="section-head">
+<section class="hero" style="padding-bottom:56px;">
+  <div class="container hero-grid">
+    <div class="hero-copy">
       <p class="eyebrow">Manufacturer Partnership</p>
-      <h1 style="font-size:clamp(30px,4.4vw,50px);color:#fff;">Expand your market with a rep partner who sells <span style="color:var(--hcps-gold);">and</span> serves.</h1>
+      <h1 style="font-size:clamp(30px,4.2vw,48px);color:#fff;">Expand your market with a rep partner who sells <span style="color:var(--hcps-gold);">and</span> serves.</h1>
       <p class="lead">HomeCare Provider Services represents medical equipment and device manufacturers across {{ site.stats.states }} strategic states — building dealer relationships, launching products, and driving sales growth without you adding direct headcount.</p>
       <div class="hero-actions">
         <a class="btn primary" href="#partner-form">Start the Conversation</a>
         <a class="btn outline" href="#partner-territory">Explore Our Territory</a>
       </div>
     </div>
+    <aside class="m-card" style="--m-accent:var(--hcps-orange);--m-dark:var(--hcps-blue-dark);">
+      <h2>Partnership at a glance</h2>
+      <ul>
+        <li>{{ site.stats.dealers }} active dealer &amp; provider relationships</li>
+        <li>{{ site.stats.states }} strategic states with regional consultants</li>
+        <li>Reps who sell <em>and</em> serve your product line</li>
+        <li>Showroom support and online ordering built in</li>
+      </ul>
+      <div class="m-hero-stats">
+        <div class="m-stat"><strong>{{ site.stats.dealers }}</strong><span>Active Dealers</span></div>
+        <div class="m-stat"><strong>{{ site.stats.states }}</strong><span>States</span></div>
+        <div class="m-stat"><strong>{{ site.stats.manufacturers }}</strong><span>Partners</span></div>
+      </div>
+    </aside>
   </div>
 </section>
 
@@ -28,37 +42,61 @@ eleventyExcludeFromCollections: true
     <div class="why-grid">
       <article>
         <div class="why-icon"></div>
-        <h3>Established Dealer Relationships</h3>
+        <h3>A Dealer Network Ready to Buy</h3>
         <p>{{ site.stats.dealers }} active dealer and provider relationships across {{ site.stats.states }} strategic states — HME providers, DME dealers, and pharmacies who already trust HCPS.</p>
       </article>
       <article>
         <div class="why-icon orange"></div>
-        <h3>HME, DME &amp; Pharmacy Expertise</h3>
-        <p>Hands-on experience across respiratory, oxygen, sleep, mobility, bracing, bath safety, footcare, and patient-care categories — reps who can actually sell your product.</p>
+        <h3>Reps Who Know Your Category</h3>
+        <p>Hands-on experience across respiratory, oxygen, sleep, mobility, bracing, bath safety, footcare, and patient-care lines — reps who can actually sell your product.</p>
       </article>
       <article>
         <div class="why-icon"></div>
-        <h3>Accelerated Market Growth</h3>
-        <p>Enter new territories, build dealer relationships, and increase sales activity — with showroom support and online ordering — without adding direct field headcount.</p>
+        <h3>Growth Without Added Headcount</h3>
+        <p>Enter new territories, build dealer relationships, and increase sales activity — with showroom support and online ordering — without adding direct field staff.</p>
       </article>
     </div>
   </div>
 </section>
 
-<section id="partner-territory" class="cta">
+<section class="territory" id="partner-territory">
   <div class="container">
-    <div class="section-head" style="max-width:760px;">
-      <p class="eyebrow" style="color:var(--hcps-gold);">Our Territory</p>
-      <h2 style="color:#fff;">{{ site.stats.states }} strategic states. Regional expertise. Manufacturer growth.</h2>
-      <p style="color:rgba(255,255,255,.85);">{{ site.territory.states_display }}</p>
+    <div class="section-head">
+      <p class="eyebrow">Our Territory</p>
+      <h2>{{ site.stats.states }} States. {{ site.stats.dealers }} Dealers. {{ site.stats.manufacturers }} Manufacturer Partners.</h2>
+      <p>HomeCare Provider Services represents manufacturers across {{ site.territory.states_display | replace(" &bull; ", ", ") }} &mdash; with regional consultants on the ground in each territory.</p>
     </div>
-    <div class="why-grid" style="margin-top:26px;">
-      {% for r in site.territory.regions %}
-      <article style="background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14);">
-        <h3 style="color:#fff;">{{ r.name }}</h3>
-        <p style="color:rgba(255,255,255,.8);">Represented by <strong style="color:var(--hcps-gold);">{{ r.rep }}</strong></p>
-      </article>
-      {% endfor %}
+    <div class="territory-layout">
+      <aside class="territory-copy">
+        <h3>{{ home.territory_section.coverage_title }}</h3>
+        <p>{{ home.territory_section.coverage_copy }}</p>
+        <div class="territory-stats">
+          <span><strong>{{ site.stats.states }}</strong>States</span>
+          <span><strong>{{ site.stats.dealers }}</strong>Dealers</span>
+          <span><strong>{{ site.stats.manufacturers }}</strong>Manufacturers</span>
+        </div>
+        <div class="region-list">
+          <h4>Regional Coverage</h4>
+          <ul>
+            {% for r in site.territory.regions %}
+            <li><strong>{{ r.name }}</strong><span>{{ r.rep }}</span></li>
+            {% endfor %}
+          </ul>
+        </div>
+      </aside>
+      <div class="map-card">
+        <div id="hcps-us-map"></div>
+        <div class="map-legend">
+          <span><i></i>Covered Territory</span>
+          <span><i class="future"></i>Future Expansion</span>
+          <span><i class="gray"></i>Not Currently Covered</span>
+        </div>
+      </div>
+      <aside class="state-panel">
+        <p class="eyebrow">State Detail</p>
+        <h3 id="hcps-state-name">Hover a State</h3>
+        <p id="hcps-state-status">Covered states are shown in blue. Future expansion opportunities are shown in orange.</p>
+      </aside>
     </div>
   </div>
 </section>
@@ -144,6 +182,59 @@ eleventyExcludeFromCollections: true
     </p>
   </div>
 </section>
+
+<script src="https://cdn.amcharts.com/lib/5/index.js"></script>
+<script src="https://cdn.amcharts.com/lib/5/map.js"></script>
+<script src="https://cdn.amcharts.com/lib/5/geodata/usaLow.js"></script>
+<script src="https://cdn.amcharts.com/lib/5/themes/Animated.js"></script>
+<script>
+(function () {
+  var covered = {{ site.territory.covered_state_codes | dump | safe }};
+  var future = {{ site.territory.expansion_state_codes | dump | safe }};
+  function initMap() {
+    var el = document.getElementById("hcps-us-map");
+    if (!el || typeof am5 === "undefined") return;
+    var root = am5.Root.new("hcps-us-map");
+    root.setThemes([am5themes_Animated.new(root)]);
+    var chart = root.container.children.push(am5map.MapChart.new(root, {
+      panX: "none", panY: "none", wheelX: "none", wheelY: "none",
+      projection: am5map.geoAlbersUsa()
+    }));
+    var series = chart.series.push(am5map.MapPolygonSeries.new(root, { geoJSON: am5geodata_usaLow }));
+    series.mapPolygons.template.setAll({
+      tooltipText: "{name}", interactive: true,
+      stroke: am5.color(0x111820), strokeWidth: 1.2,
+      fill: am5.color(0x3a4048), cursorOverStyle: "pointer"
+    });
+    series.mapPolygons.template.adapters.add("fill", function (fill, target) {
+      var id = target.dataItem && target.dataItem.dataContext && target.dataItem.dataContext.id;
+      if (covered.indexOf(id) > -1) return am5.color(0x1681c2);
+      if (future.indexOf(id) > -1) return am5.color(0xef6325);
+      return am5.color(0x3a4048);
+    });
+    series.mapPolygons.template.states.create("hover", {
+      fill: am5.color(0xfcb21e), stroke: am5.color(0xffffff), strokeWidth: 2
+    });
+    series.mapPolygons.template.events.on("pointerover", function (ev) {
+      var d = ev.target.dataItem.dataContext;
+      var status = "Not currently covered.";
+      if (covered.indexOf(d.id) > -1) {
+        status = (d.id === "US-OH" || d.id === "US-IN")
+          ? "Active HCPS territory — concentrated in southern " + d.name + "."
+          : "Active HCPS distribution territory — " + d.name + " dealers order directly through us.";
+      } else if (future.indexOf(d.id) > -1) {
+        status = "Future expansion opportunity for HCPS.";
+      }
+      document.getElementById("hcps-state-name").textContent = d.name;
+      document.getElementById("hcps-state-status").textContent = status;
+    });
+    series.events.on("datavalidated", function () { chart.goHome(); });
+    chart.appear(800, 100);
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initMap);
+  else initMap();
+})();
+</script>
 
 <script>
 (function () {
