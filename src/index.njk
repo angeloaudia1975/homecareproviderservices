@@ -16,12 +16,25 @@ permalink: /
       </div>
     </div>
     <div class="kpi-card">
-      <div class="puzzle-strip"><span class="puzzle-dot b1"></span><span class="puzzle-dot b2"></span><span class="puzzle-dot o"></span></div>
+      <span class="kpi-eyebrow">{{ site.tagline }} &middot; Since {{ site.founded }}</span>
+      <div class="kpi-band"><img src="/assets/solutions.jpg" alt="A solutions company"></div>
       <div class="kpi-grid">
-        <article><b>{{ site.stats.dealers }}</b><strong>Active Dealers</strong><span>Across our full territory.</span></article>
-        <article><b class="accent">{{ site.stats.states }}</b><strong>States Covered</strong><span>Southern Ohio, Southern Indiana, Kentucky, Tennessee, Georgia.</span></article>
-        <article><b>{{ site.stats.manufacturers }}</b><strong>Manufacturer Partners</strong><span>A wide portfolio to merchandize your showroom.</span></article>
-        <article><b class="accent">{{ site.founded }}</b><strong>{{ site.tagline }}</strong><span>Serving dealers since {{ site.founded }}.</span></article>
+        <article class="kpi-tile">
+          <span class="kpi-ic"><svg viewBox="0 0 24 24" width="17" height="17" fill="#fff"><circle cx="9" cy="8" r="3.4"/><path d="M2.5 20c0-3.6 2.9-6.5 6.5-6.5S15.5 16.4 15.5 20z"/><circle cx="17.5" cy="9" r="2.7"/><path d="M15.6 13.9c2.4.3 4.4 2.3 4.4 6.1h-3.2c0-2.3-.5-4.3-1.2-6.1z"/></svg></span>
+          <div><b>{{ site.stats.dealers }}</b><strong>Active Dealers</strong><span>Across our full territory.</span></div>
+        </article>
+        <article class="kpi-tile accent">
+          <span class="kpi-ic"><svg viewBox="0 0 24 24" width="17" height="17" fill="#fff"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z"/></svg></span>
+          <div><b>{{ site.stats.states }}</b><strong>States Covered</strong><span>OH &middot; IN &middot; KY &middot; TN &middot; GA</span></div>
+        </article>
+        <article class="kpi-tile">
+          <span class="kpi-ic"><svg viewBox="0 0 24 24" width="17" height="17" fill="#fff"><path d="M3 21V4l8 3v14zm10 0V8l8 3v10zM6 8h2v2H6zm0 4h2v2H6zm0 4h2v2H6z"/></svg></span>
+          <div><b>{{ site.stats.manufacturers }}</b><strong>Manufacturer Partners</strong><span>A portfolio for your showroom.</span></div>
+        </article>
+        <article class="kpi-tile accent">
+          <span class="kpi-ic"><svg viewBox="0 0 24 24" width="17" height="17" fill="#fff"><path d="M12 2.5l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 18.6 6.1 21.3l1.2-6.6L2.5 9.5l6.6-.9z"/></svg></span>
+          <div><b>{{ site.founded }}</b><strong>{{ site.tagline }}</strong><span>Serving dealers since {{ site.founded }}.</span></div>
+        </article>
       </div>
     </div>
   </div>

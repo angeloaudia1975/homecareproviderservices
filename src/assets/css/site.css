@@ -218,20 +218,29 @@
   .hero .eyebrow::before{background:var(--hcps-gold);}
   .hero-actions{display:flex;gap:14px;margin-top:26px;flex-wrap:wrap;}
 
+  /* Home hero stat card — "Solutions Feature" */
   .kpi-card{
-    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
-    box-shadow:var(--shadow);padding:26px;
+    background:#fff;border:1px solid var(--line);border-radius:20px;
+    box-shadow:0 34px 70px -30px rgba(0,0,0,.6);padding:18px 18px 6px;overflow:hidden;
   }
-  .kpi-card .puzzle-strip{display:flex;gap:6px;margin-bottom:18px;}
-  .puzzle-dot{width:10px;height:10px;border-radius:3px;}
-  .puzzle-dot.b1{background:var(--hcps-blue-light);}
-  .puzzle-dot.b2{background:var(--hcps-blue);}
-  .puzzle-dot.o{background:linear-gradient(120deg,var(--hcps-orange),var(--hcps-gold));}
-  .kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
-  .kpi-grid article b{font-family:'Archivo Expanded',sans-serif;font-size:28px;display:block;color:var(--ink);}
-  .kpi-grid article b.accent{color:var(--hcps-orange);}
-  .kpi-grid article strong{display:block;font-size:13.5px;font-weight:700;margin-top:2px;}
-  .kpi-grid article span{font-size:12.5px;color:#666;}
+  .kpi-eyebrow{
+    display:inline-flex;align-items:center;gap:9px;
+    font-family:'Archivo',sans-serif;font-weight:800;font-size:11.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--hcps-blue-dark);
+  }
+  .kpi-eyebrow::before{content:"";width:22px;height:2px;background:var(--hcps-orange);display:inline-block;}
+  .kpi-band{margin:13px 0 0;height:158px;border-radius:14px;overflow:hidden;border:1px solid var(--line);}
+  .kpi-band img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;}
+  .kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px 0;}
+  .kpi-tile{display:flex;gap:11px;align-items:flex-start;background:#fff;border:1px solid var(--line);
+    border-radius:13px;padding:12px;box-shadow:0 8px 18px -14px rgba(0,0,0,.5);}
+  .kpi-ic{flex:none;width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(120deg,var(--hcps-orange),var(--hcps-gold));}
+  .kpi-tile.accent .kpi-ic{background:linear-gradient(120deg,var(--hcps-blue),var(--hcps-blue-dark));}
+  .kpi-tile b{font-family:'Archivo Expanded',sans-serif;font-weight:800;font-size:26px;display:block;color:var(--ink);line-height:1;}
+  .kpi-tile.accent b{color:var(--hcps-orange);}
+  .kpi-tile strong{display:block;font-size:13px;font-weight:700;margin-top:3px;color:var(--ink);}
+  .kpi-tile span{font-size:11.5px;color:#6b7280;}
 
   /* ---------- Credibility band ---------- */
   .credibility{background:var(--ink);color:#fff;padding:14px 0;}
