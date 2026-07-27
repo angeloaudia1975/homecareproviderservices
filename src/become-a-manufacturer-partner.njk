@@ -5,56 +5,48 @@ permalink: /become-a-manufacturer-partner/
 description: "Partner with HomeCare Provider Services for manufacturer representation across Southern Ohio, Southern Indiana, Kentucky, Tennessee, and Georgia — dealer relationships, market development, and sales growth without adding headcount."
 eleventyExcludeFromCollections: true
 ---
+{% set pg = pages.partner %}
 <section class="hero" style="padding-bottom:56px;">
   <div class="container hero-grid">
     <div class="hero-copy">
-      <p class="eyebrow">Manufacturer Partnership</p>
-      <h1 style="font-size:clamp(30px,4.2vw,48px);color:#fff;">Expand your market with a rep partner who sells <span style="color:var(--hcps-gold);">and</span> serves.</h1>
-      <p class="lead">HomeCare Provider Services represents medical equipment and device manufacturers across {{ site.stats.states }} strategic states — building dealer relationships, launching products, and driving sales growth without you adding direct headcount.</p>
+      <p class="eyebrow">{{ pg.hero.eyebrow }}</p>
+      <h1 style="font-size:clamp(30px,4.2vw,48px);color:#fff;">{{ pg.hero.headline }}</h1>
+      <p class="lead">{{ pg.hero.lead }}</p>
       <div class="hero-actions">
-        <a class="btn primary" href="#partner-form">Start the Conversation</a>
-        <a class="btn outline" href="#partner-territory">Explore Our Territory</a>
+        <a class="btn primary" href="#partner-form">{{ pg.hero.cta1_label }}</a>
+        <a class="btn outline" href="#partner-territory">{{ pg.hero.cta2_label }}</a>
       </div>
     </div>
+    {% if pg.hero.video %}
+    <aside class="m-card" style="padding:14px;"><div class="m-video-wrap m-card-video"><iframe src="{{ pg.hero.video | embed }}" title="{{ site.name }}" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div></aside>
+    {% else %}
     <aside class="m-card" style="--m-accent:var(--hcps-orange);--m-dark:var(--hcps-blue-dark);">
-      <h2>Partnership at a glance</h2>
-      <ul>
-        <li>{{ site.stats.dealers }} active dealer &amp; provider relationships</li>
-        <li>{{ site.stats.states }} strategic states with regional consultants</li>
-        <li>Reps who sell <em>and</em> serve your product line</li>
-        <li>Showroom support and online ordering built in</li>
-      </ul>
+      <h2>{{ pg.hero.card_title }}</h2>
+      <ul>{% for b in pg.hero.card_bullets %}<li>{{ b }}</li>{% endfor %}</ul>
       <div class="m-hero-stats">
         <div class="m-stat"><strong>{{ site.stats.dealers }}</strong><span>Active Dealers</span></div>
         <div class="m-stat"><strong>{{ site.stats.states }}</strong><span>States</span></div>
         <div class="m-stat"><strong>{{ site.stats.manufacturers }}</strong><span>Partners</span></div>
       </div>
     </aside>
+    {% endif %}
   </div>
 </section>
 
 <section class="why">
   <div class="container">
     <div class="section-head center">
-      <p class="eyebrow">Why Manufacturers Choose HCPS</p>
-      <h2>Representation built on relationships, market knowledge, and execution.</h2>
+      <p class="eyebrow">{{ pg.why.eyebrow }}</p>
+      <h2>{{ pg.why.title }}</h2>
     </div>
     <div class="why-grid">
+      {% for c in pg.why.cards %}
       <article>
-        <div class="why-icon"></div>
-        <h3>A Dealer Network Ready to Buy</h3>
-        <p>{{ site.stats.dealers }} active dealer and provider relationships across {{ site.stats.states }} strategic states — HME providers, DME dealers, and pharmacies who already trust HCPS.</p>
+        <div class="why-icon{% if loop.index == 2 %} orange{% endif %}"></div>
+        <h3>{{ c.title }}</h3>
+        <p>{{ c.description }}</p>
       </article>
-      <article>
-        <div class="why-icon orange"></div>
-        <h3>Reps Who Know Your Category</h3>
-        <p>Hands-on experience across respiratory, oxygen, sleep, mobility, bracing, bath safety, footcare, and patient-care lines — reps who can actually sell your product.</p>
-      </article>
-      <article>
-        <div class="why-icon"></div>
-        <h3>Growth Without Added Headcount</h3>
-        <p>Enter new territories, build dealer relationships, and increase sales activity — with showroom support and online ordering — without adding direct field staff.</p>
-      </article>
+      {% endfor %}
     </div>
   </div>
 </section>
@@ -62,9 +54,9 @@ eleventyExcludeFromCollections: true
 <section class="territory" id="partner-territory">
   <div class="container">
     <div class="section-head">
-      <p class="eyebrow">Our Territory</p>
+      <p class="eyebrow">{{ pg.territory.eyebrow }}</p>
       <h2>{{ site.stats.states }} States. {{ site.stats.dealers }} Dealers. {{ site.stats.manufacturers }} Manufacturer Partners.</h2>
-      <p>HomeCare Provider Services represents manufacturers across {{ site.territory.states_display | replace(" &bull; ", ", ") }} &mdash; with regional consultants on the ground in each territory.</p>
+      <p>{{ pg.territory.intro }}</p>
     </div>
     <div class="territory-layout">
       <aside class="territory-copy">
@@ -104,8 +96,8 @@ eleventyExcludeFromCollections: true
 <section class="team">
   <div class="container">
     <div class="section-head center">
-      <p class="eyebrow">Leadership</p>
-      <h2>Manufacturer representation led by experienced, relationship-driven professionals.</h2>
+      <p class="eyebrow">{{ pg.leadership.eyebrow }}</p>
+      <h2>{{ pg.leadership.title }}</h2>
     </div>
     <div class="team-grid">
       {% for t in team %}
@@ -128,9 +120,9 @@ eleventyExcludeFromCollections: true
 <section id="partner-form" style="background:#fff;">
   <div class="container" style="max-width:820px;">
     <div class="section-head center">
-      <p class="eyebrow">Manufacturer Inquiry</p>
-      <h2>Tell us about your company and the markets you want to reach.</h2>
-      <p>Share a few details and a HomeCare Provider Services principal will follow up personally to talk representation, territory coverage, and next steps.</p>
+      <p class="eyebrow">{{ pg.form.eyebrow }}</p>
+      <h2>{{ pg.form.title }}</h2>
+      <p>{{ pg.form.intro }}</p>
     </div>
 
     <form id="partner-contact" class="hcps-form" novalidate>

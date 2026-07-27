@@ -4,12 +4,13 @@ title: Contact Us
 permalink: /contact/
 description: "Contact HomeCare Provider Services — manufacturer representation, dealer and provider support, Golden ordering portal access, and consulting."
 ---
+{% set pg = pages.contact %}
 <section class="hero" style="padding-bottom:52px;">
   <div class="container">
     <div class="section-head">
-      <p class="eyebrow">Contact HomeCare Provider Services</p>
-      <h1 style="font-size:clamp(30px,4.4vw,50px);color:#fff;">Let's start the right conversation.</h1>
-      <p class="lead">Whether you're a dealer needing support, a provider looking for resources, or a manufacturer looking for representation, HomeCare Provider Services can help route your request to the right place.</p>
+      <p class="eyebrow">{{ pg.hero.eyebrow }}</p>
+      <h1 style="font-size:clamp(30px,4.4vw,50px);color:#fff;">{{ pg.hero.headline }}</h1>
+      <p class="lead">{{ pg.hero.lead }}</p>
     </div>
   </div>
 </section>
@@ -17,48 +18,24 @@ description: "Contact HomeCare Provider Services — manufacturer representation
 <section style="padding-top:56px;">
   <div class="container">
     <div class="section-head center">
-      <p class="eyebrow">How can we help?</p>
-      <h2>Choose the path that fits you.</h2>
-      <p>Pick a starting point below and we'll take you straight to the form with the right details.</p>
+      <p class="eyebrow">{{ pg.paths.eyebrow }}</p>
+      <h2>{{ pg.paths.title }}</h2>
+      <p>{{ pg.paths.intro }}</p>
     </div>
 
     {% set cdn = "https://cdn.wdgtsrc.com/d6ce710083552875d6b477b255add8bc8787415/HomeCare_2026/Contact%20Page/" %}
+    {% set cardImgs = ["Golden%20Portal.jpg", "Manufacturing%20Reps.jpg", "Resources.jpg", "Consultation.jpg"] %}
     <div class="contact-cards">
+      {% for c in pg.cards %}
       <article class="contact-card">
-        <div class="contact-card-img"><img src="{{ cdn }}Golden%20Portal.jpg" alt="Golden Technologies ordering portal" onerror="this.style.display='none';this.dataset.ph='1';"></div>
+        <div class="contact-card-img"><img src="{{ cdn }}{{ cardImgs[loop.index0] }}" alt="{{ c.title }}" onerror="this.style.display='none';this.dataset.ph='1';"></div>
         <div class="contact-card-body">
-          <h3>Golden Ordering Portal</h3>
-          <p>Looking for access to the new Golden Technologies ordering platform? Reach out to schedule a test drive of the system or request your login credentials.</p>
-          <button type="button" class="btn primary sm contact-jump" data-interest="Golden Technologies ordering portal access">Request portal access</button>
+          <h3>{{ c.title }}</h3>
+          <p>{{ c.description }}</p>
+          <button type="button" class="btn primary sm contact-jump" data-interest="{{ c.interest }}">{{ c.button }}</button>
         </div>
       </article>
-
-      <article class="contact-card">
-        <div class="contact-card-img"><img src="{{ cdn }}Manufacturing%20Reps.jpg" alt="Manufacturer representation" onerror="this.style.display='none';this.dataset.ph='1';"></div>
-        <div class="contact-card-body">
-          <h3>Manufacturers</h3>
-          <p>Looking for representation, market development, dealer growth, or product-launch support? We help launch your products into our network of providers.</p>
-          <button type="button" class="btn primary sm contact-jump" data-interest="Manufacturer representation / partnership">Explore representation</button>
-        </div>
-      </article>
-
-      <article class="contact-card">
-        <div class="contact-card-img"><img src="{{ cdn }}Resources.jpg" alt="Dealer and provider resources" onerror="this.style.display='none';this.dataset.ph='1';"></div>
-        <div class="contact-card-body">
-          <h3>Dealers &amp; Providers</h3>
-          <p>Need literature, pricing access, order support, in-service scheduling, or technical support? We're here to help you sell and serve with confidence.</p>
-          <button type="button" class="btn primary sm contact-jump" data-interest="Dealer & provider support">Get dealer support</button>
-        </div>
-      </article>
-
-      <article class="contact-card">
-        <div class="contact-card-img"><img src="{{ cdn }}Consultation.jpg" alt="Consulting and showroom design" onerror="this.style.display='none';this.dataset.ph='1';"></div>
-        <div class="contact-card-body">
-          <h3>Consulting</h3>
-          <p>Interested in showroom design, business-development discussions, floorplan strategy, or product-line growth? Let us help you build strategic sales centers.</p>
-          <button type="button" class="btn primary sm contact-jump" data-interest="Consulting — showroom design & business development">Talk consulting</button>
-        </div>
-      </article>
+      {% endfor %}
     </div>
   </div>
 </section>
@@ -66,9 +43,9 @@ description: "Contact HomeCare Provider Services — manufacturer representation
 <section id="contact-form" style="background:#fff;">
   <div class="container" style="max-width:780px;">
     <div class="section-head center">
-      <p class="eyebrow">Send us a message</p>
-      <h2>Tell us what you need.</h2>
-      <p>Fill out the form and a HomeCare Provider Services team member will route your request and follow up personally.</p>
+      <p class="eyebrow">{{ pg.form.eyebrow }}</p>
+      <h2>{{ pg.form.title }}</h2>
+      <p>{{ pg.form.intro }}</p>
     </div>
 
     <form id="hcps-contact" class="hcps-form" novalidate>

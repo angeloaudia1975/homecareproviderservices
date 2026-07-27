@@ -1,0 +1,151 @@
+{
+  "partner": {
+    "hero": {
+      "eyebrow": "Manufacturer Partnership",
+      "headline": "Expand your market with a rep partner who sells and serves.",
+      "lead": "HomeCare Provider Services represents medical equipment and device manufacturers across our strategic states — building dealer relationships, launching products, and driving sales growth without you adding direct headcount.",
+      "cta1_label": "Start the Conversation",
+      "cta2_label": "Explore Our Territory",
+      "video": "",
+      "card_title": "Partnership at a glance",
+      "card_bullets": [
+        "300+ active dealer & provider relationships",
+        "5 strategic states with regional consultants",
+        "Reps who sell and serve your product line",
+        "Showroom support and online ordering built in"
+      ]
+    },
+    "why": {
+      "eyebrow": "Why Manufacturers Choose HCPS",
+      "title": "Representation built on relationships, market knowledge, and execution.",
+      "cards": [
+        { "title": "A Dealer Network Ready to Buy", "description": "300+ active dealer and provider relationships across our strategic states — HME providers, DME dealers, and pharmacies who already trust HCPS." },
+        { "title": "Reps Who Know Your Category", "description": "Hands-on experience across respiratory, oxygen, sleep, mobility, bracing, bath safety, footcare, and patient-care lines — reps who can actually sell your product." },
+        { "title": "Growth Without Added Headcount", "description": "Enter new territories, build dealer relationships, and increase sales activity — with showroom support and online ordering — without adding direct field staff." }
+      ]
+    },
+    "territory": {
+      "eyebrow": "Our Territory",
+      "intro": "HomeCare Provider Services represents manufacturers across our territory — with regional consultants on the ground in each market."
+    },
+    "leadership": {
+      "eyebrow": "Leadership",
+      "title": "Manufacturer representation led by experienced, relationship-driven professionals."
+    },
+    "form": {
+      "eyebrow": "Manufacturer Inquiry",
+      "title": "Tell us about your company and the markets you want to reach.",
+      "intro": "Share a few details and a HomeCare Provider Services principal will follow up personally to talk representation, territory coverage, and next steps."
+    }
+  },
+
+  "contact": {
+    "hero": {
+      "eyebrow": "Contact HomeCare Provider Services",
+      "headline": "Let's start the right conversation.",
+      "lead": "Whether you're a dealer needing support, a provider looking for resources, or a manufacturer looking for representation, HomeCare Provider Services can help route your request to the right place."
+    },
+    "paths": {
+      "eyebrow": "How can we help?",
+      "title": "Choose the path that fits you.",
+      "intro": "Pick a starting point below and we'll take you straight to the form with the right details."
+    },
+    "cards": [
+      { "title": "Golden Ordering Portal", "description": "Looking for access to the new Golden Technologies ordering platform? Reach out to schedule a test drive of the system or request your login credentials.", "button": "Request portal access", "interest": "Golden Technologies ordering portal access" },
+      { "title": "Manufacturers", "description": "Looking for representation, market development, dealer growth, or product-launch support? We help launch your products into our network of providers.", "button": "Explore representation", "interest": "Manufacturer representation / partnership" },
+      { "title": "Dealers & Providers", "description": "Need literature, pricing access, order support, in-service scheduling, or technical support? We're here to help you sell and serve with confidence.", "button": "Get dealer support", "interest": "Dealer & provider support" },
+      { "title": "Consulting", "description": "Interested in showroom design, business-development discussions, floorplan strategy, or product-line growth? Let us help you build strategic sales centers.", "button": "Talk consulting", "interest": "Consulting — showroom design & business development" }
+    ],
+    "form": {
+      "eyebrow": "Send us a message",
+      "title": "Tell us what you need.",
+      "intro": "Fill out the form and a HomeCare Provider Services team member will route your request and follow up personally."
+    }
+  },
+
+  "consulting": {
+    "hero": {
+      "eyebrow": "Market Development & Consulting",
+      "headline": "Helping manufacturers and dealers build stronger markets.",
+      "lead": "HomeCare Provider Services supports manufacturers and providers with dealer network development, showroom strategy, product launches, sales education, floorplan design, and territory growth planning.",
+      "cta1_label": "Schedule a Consultation",
+      "cta2_label": "Dealer Hub",
+      "card_badge": "Strategic Growth Support",
+      "card_title": "Rep support beyond traditional sales.",
+      "card_copy": "We help manufacturers enter markets, support dealers, educate providers, and improve product presentation in the field."
+    },
+    "services": {
+      "eyebrow": "Services",
+      "title": "Built around manufacturer growth and dealer execution.",
+      "intro": "HomeCare Provider Services helps bridge the gap between manufacturers and dealers by supporting the activities that drive real market adoption.",
+      "items": [
+        { "title": "Dealer Network Development", "description": "Identify, qualify, onboard, and support dealers aligned with manufacturer goals, product categories, and territory strategy." },
+        { "title": "Showroom & Floorplan Design", "description": "Help providers optimize showroom layout, category flow, product visibility, traffic patterns, and customer experience." },
+        { "title": "Product Launch Strategy", "description": "Support new product introductions with dealer education, literature, in-services, launch messaging, and follow-up activity." },
+        { "title": "Territory Expansion", "description": "Help manufacturers evaluate and develop new territories through dealer relationships, market insight, and focused outreach." },
+        { "title": "Sales Training & Education", "description": "Provide product presentations, dealer-facing education, showroom selling points, and in-service support for sales teams." },
+        { "title": "Dealer Resource Planning", "description": "Organize dealer tools including literature, pricing access, product videos, order forms, service links, and support workflows." },
+        { "title": "Product Mix Strategy", "description": "Help dealers evaluate category gaps, complementary products, showroom priorities, and opportunities to improve revenue." },
+        { "title": "Trade Show & Event Support", "description": "Support manufacturer presence, product demonstrations, dealer events, regional trainings, and customer education opportunities." }
+      ]
+    },
+    "split": {
+      "eyebrow": "Showroom & Floorplan Design",
+      "title": "Turn showroom space into a stronger selling environment.",
+      "copy": "For HME, DME, mobility, accessibility, and medical equipment providers, showroom design matters. HCPS helps dealers think through category placement, lift chair presentation, mobility flow, accessibility displays, signage, and customer experience.",
+      "chips": ["Lift chair gallery layout", "Mobility product flow", "Accessibility category placement", "Retail medical equipment merchandising", "Provider staff education", "Manufacturer line presentation"],
+      "aside_title": "Floorplan Strategy",
+      "aside_copy": "Designed for dealers who want a more professional, easier-to-shop showroom that supports higher product confidence and stronger sales conversations.",
+      "aside_cta": "Request Showroom Support"
+    },
+    "process": {
+      "eyebrow": "Process",
+      "title": "Simple, practical, field-focused.",
+      "steps": [
+        { "title": "Assess", "description": "Review the manufacturer line, dealer goals, territory, showroom, product mix, and current market activity." },
+        { "title": "Plan", "description": "Create a focused strategy for dealer engagement, product positioning, showroom support, training, and market development." },
+        { "title": "Execute", "description": "Support outreach, presentations, literature, in-services, dealer onboarding, and product launch activity." },
+        { "title": "Optimize", "description": "Refine the approach based on dealer feedback, sales activity, manufacturer priorities, and market response." }
+      ]
+    },
+    "cta": {
+      "title": "Ready to build a stronger market?",
+      "copy": "Let's talk about dealer network development, showroom strategy, product line growth, training, and territory expansion.",
+      "cta1_label": "Schedule a Consultation",
+      "cta2_label": "View Manufacturers"
+    }
+  },
+
+  "dealerhub": {
+    "hero": {
+      "eyebrow": "HCPS Dealer Hub",
+      "headline": "A dealer dashboard for orders, pricing, literature, training, and manufacturer support.",
+      "lead": "Use the Dealer Hub as your central starting point for manufacturer resources, order requests, literature, pricing access, in-service scheduling, technical support, and future dealer login tools.",
+      "cta1_label": "Start Dealer Request",
+      "cta2_label": "Open Request Center"
+    },
+    "welcome": {
+      "eyebrow": "Dashboard",
+      "title": "What can HCPS help you with today?",
+      "help_label": "Contact HCPS"
+    },
+    "actions": [
+      { "icon": "📦", "title": "Dealer Order Request", "description": "Submit order needs, PO details, special orders, quote needs, stock, lead times, or follow-up questions." },
+      { "icon": "💲", "title": "Pricing Access", "description": "Request dealer price sheets, MAP/MSRP files, freight terms, or protected pricing documents." },
+      { "icon": "📚", "title": "Literature Request", "description": "Request brochures, catalogs, flyers, sell sheets, spec sheets, or patient-facing product materials." },
+      { "icon": "🎓", "title": "Schedule In-Service", "description": "Request product education, clinical training, dealer training, or sales team support." },
+      { "icon": "🔧", "title": "Technical Support", "description": "Get routed to service resources, warranty forms, parts support, or technical documentation." },
+      { "icon": "⬇", "title": "Resource Library", "description": "Open the library of downloads, catalogs, forms, videos, and manufacturer materials." }
+    ],
+    "manufacturers_heading": {
+      "eyebrow": "Manufacturer Centers",
+      "title": "Open the resource center for each manufacturer."
+    },
+    "future_login": {
+      "eyebrow": "Future Dealer Login",
+      "title": "Personalized access is the next evolution.",
+      "copy": "In a future phase, dealers will be able to log in and access assigned manufacturer lines, dealer-specific pricing, protected downloads, open requests, training history, promotions, and support tickets.",
+      "cta_label": "Become an HCPS Dealer"
+    }
+  }
+}

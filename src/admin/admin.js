@@ -14,6 +14,7 @@
     site: "src/_data/site.json",
     team: "src/_data/team.json",
     testimonials: "src/_data/testimonials.json",
+    pages: "src/_data/pages.json",
   };
 
   // ---- Schemas for the simple data editors (Home Page / Site / Team / Testimonials) ----
@@ -86,8 +87,121 @@
     { k: "role", label: "Role / company", type: "text" },
   ];
 
+  // ---- Content pages (pages.json): Partner, Contact, Consulting, Dealer Hub ----
+  var HEADING = function (extra) { return [
+    { k: "eyebrow", label: "Eyebrow (small label)", type: "text", full: true },
+    { k: "title", label: "Heading", type: "text", full: true }
+  ].concat(extra || []); };
+
+  var PAGES_SCHEMA = [
+    { k: "partner", label: "Become a Manufacturer Partner", type: "object", full: true, item: [
+      { k: "hero", label: "Hero", type: "object", full: true, item: [
+        { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+        { k: "headline", label: "Headline", type: "text", full: true },
+        { k: "lead", label: "Intro paragraph", type: "textarea", full: true },
+        { k: "cta1_label", label: "Primary button label", type: "text" },
+        { k: "cta2_label", label: "Secondary button label", type: "text" },
+        { k: "video", label: "Hero video link — YouTube/Vimeo/Drive (optional; replaces the glance card)", type: "url", full: true },
+        { k: "card_title", label: "Glance card — title", type: "text", full: true },
+        { k: "card_bullets", label: "Glance card — bullet points", type: "list", full: true } ] },
+      { k: "why", label: "“Why choose us” section", type: "object", full: true, item: [
+        { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+        { k: "title", label: "Heading", type: "text", full: true },
+        { k: "cards", label: "Cards", type: "objlist", full: true, item: [
+          { k: "title", label: "Card title", type: "text" },
+          { k: "description", label: "Card text", type: "textarea", full: true } ] } ] },
+      { k: "territory", label: "Territory section", type: "object", full: true, item: [
+        { k: "eyebrow", label: "Eyebrow", type: "text" },
+        { k: "intro", label: "Intro paragraph", type: "textarea", full: true } ] },
+      { k: "leadership", label: "Leadership section", type: "object", full: true, item: HEADING() },
+      { k: "form", label: "Inquiry form heading", type: "object", full: true, item: [
+        { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+        { k: "title", label: "Heading", type: "text", full: true },
+        { k: "intro", label: "Intro paragraph", type: "textarea", full: true } ] } ] },
+
+    { k: "contact", label: "Contact", type: "object", full: true, item: [
+      { k: "hero", label: "Hero", type: "object", full: true, item: [
+        { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+        { k: "headline", label: "Headline", type: "text", full: true },
+        { k: "lead", label: "Intro paragraph", type: "textarea", full: true } ] },
+      { k: "paths", label: "“How can we help” heading", type: "object", full: true, item: [
+        { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+        { k: "title", label: "Heading", type: "text", full: true },
+        { k: "intro", label: "Intro paragraph", type: "textarea", full: true } ] },
+      { k: "cards", label: "Audience cards", type: "objlist", full: true, item: [
+        { k: "title", label: "Card title", type: "text" },
+        { k: "description", label: "Card text", type: "textarea", full: true },
+        { k: "button", label: "Button label", type: "text" },
+        { k: "interest", label: "Form topic it selects", type: "text", full: true } ] },
+      { k: "form", label: "Form heading", type: "object", full: true, item: [
+        { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+        { k: "title", label: "Heading", type: "text", full: true },
+        { k: "intro", label: "Intro paragraph", type: "textarea", full: true } ] } ] },
+
+    { k: "consulting", label: "Consulting", type: "object", full: true, item: [
+      { k: "hero", label: "Hero", type: "object", full: true, item: [
+        { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+        { k: "headline", label: "Headline", type: "text", full: true },
+        { k: "lead", label: "Intro paragraph", type: "textarea", full: true },
+        { k: "cta1_label", label: "Primary button label", type: "text" },
+        { k: "cta2_label", label: "Secondary button label", type: "text" },
+        { k: "card_badge", label: "Side card — badge", type: "text" },
+        { k: "card_title", label: "Side card — title", type: "text", full: true },
+        { k: "card_copy", label: "Side card — copy", type: "textarea", full: true } ] },
+      { k: "services", label: "Services section", type: "object", full: true, item: [
+        { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+        { k: "title", label: "Heading", type: "text", full: true },
+        { k: "intro", label: "Intro paragraph", type: "textarea", full: true },
+        { k: "items", label: "Service cards", type: "objlist", full: true, item: [
+          { k: "title", label: "Title", type: "text" },
+          { k: "description", label: "Description", type: "textarea", full: true } ] } ] },
+      { k: "split", label: "Showroom / floorplan section", type: "object", full: true, item: [
+        { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+        { k: "title", label: "Heading", type: "text", full: true },
+        { k: "copy", label: "Copy", type: "textarea", full: true },
+        { k: "chips", label: "Chips / tags", type: "list", full: true },
+        { k: "aside_title", label: "Side card — title", type: "text" },
+        { k: "aside_copy", label: "Side card — copy", type: "textarea", full: true },
+        { k: "aside_cta", label: "Side card — button label", type: "text" } ] },
+      { k: "process", label: "Process section", type: "object", full: true, item: [
+        { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+        { k: "title", label: "Heading", type: "text", full: true },
+        { k: "steps", label: "Steps", type: "objlist", full: true, item: [
+          { k: "title", label: "Title", type: "text" },
+          { k: "description", label: "Description", type: "textarea", full: true } ] } ] },
+      { k: "cta", label: "Bottom call-to-action", type: "object", full: true, item: [
+        { k: "title", label: "Heading", type: "text", full: true },
+        { k: "copy", label: "Copy", type: "textarea", full: true },
+        { k: "cta1_label", label: "Primary button label", type: "text" },
+        { k: "cta2_label", label: "Secondary button label", type: "text" } ] } ] },
+
+    { k: "dealerhub", label: "Dealer Hub", type: "object", full: true, item: [
+      { k: "hero", label: "Hero", type: "object", full: true, item: [
+        { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+        { k: "headline", label: "Headline", type: "text", full: true },
+        { k: "lead", label: "Intro paragraph", type: "textarea", full: true },
+        { k: "cta1_label", label: "Primary button label", type: "text" },
+        { k: "cta2_label", label: "Secondary button label", type: "text" } ] },
+      { k: "welcome", label: "Welcome bar", type: "object", full: true, item: [
+        { k: "eyebrow", label: "Eyebrow", type: "text" },
+        { k: "title", label: "Heading", type: "text", full: true },
+        { k: "help_label", label: "Help link label", type: "text" } ] },
+      { k: "actions", label: "Action cards (6)", type: "objlist", full: true, item: [
+        { k: "icon", label: "Icon (emoji)", type: "text" },
+        { k: "title", label: "Title", type: "text" },
+        { k: "description", label: "Description", type: "textarea", full: true } ] },
+      { k: "manufacturers_heading", label: "Manufacturer Centers heading", type: "object", full: true, item: HEADING() },
+      { k: "future_login", label: "Future Dealer Login section", type: "object", full: true, item: [
+        { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+        { k: "title", label: "Heading", type: "text", full: true },
+        { k: "copy", label: "Copy", type: "textarea", full: true },
+        { k: "cta_label", label: "Button label", type: "text" } ] } ] },
+  ];
+
   // config for each simple data view
   var DATA_VIEWS = {
+    pages: { file: "pages", title: "Pages", root: "object", schema: PAGES_SCHEMA,
+      note: "Edit the text on the Contact, Consulting, Dealer Hub, and Become a Manufacturer Partner pages. Layout and design stay fixed — you're editing the words (and you can add a hero video link on the Partner page)." },
     home: { file: "home", title: "Home Page", root: "object", schema: HOME_SCHEMA,
       note: "Edit the homepage text. The page layout and design stay fixed — you're editing the words." },
     site: { file: "site", title: "Site Settings", root: "object", schema: SITE_SCHEMA,

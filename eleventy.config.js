@@ -6,6 +6,21 @@ module.exports = function (eleventyConfig) {
   eleventyConfig.addPassthroughCopy({ "src/admin": "admin" });
   eleventyConfig.ignores.add("src/admin/**");
 
+  // Convert a normal YouTube / Vimeo / Google Drive share link into an embeddable URL.
+  // Pass-through if it's already an embed URL or unrecognized.
+  eleventyConfig.addFilter("embed", (url) => {
+    if (!url) return "";
+    const u = String(url).trim();
+    let m;
+    if ((m = u.match(/[?&]v=([\w-]+)/)) || (m = u.match(/youtu\.be\/([\w-]+)/)) || (m = u.match(/youtube\.com\/(?:embed|shorts)\/([\w-]+)/))) {
+      const t = (u.match(/[?&#]t=(\d+)/) || [])[1];
+      return "https://www.youtube.com/embed/" + m[1] + (t ? "?start=" + t : "");
+    }
+    if ((m = u.match(/drive\.google\.com\/file\/d\/([\w-]+)/))) return "https://drive.google.com/file/d/" + m[1] + "/preview";
+    if ((m = u.match(/vimeo\.com\/(?:video\/)?(\d+)/))) return "https://player.vimeo.com/video/" + m[1];
+    return u;
+  });
+
   eleventyConfig.addFilter("byManufacturer", (docs, manuId) =>
     (docs || []).filter((d) => d.manufacturer === manuId)
   );

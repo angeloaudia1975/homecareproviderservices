@@ -4,15 +4,16 @@ title: Dealer Hub
 permalink: /dealer-hub/
 description: "The HCPS Dealer Hub — a dealer dashboard for orders, pricing access, literature, in-service training, technical support, and manufacturer resource centers across all 12 manufacturer partners."
 ---
+{% set pg = pages.dealerhub %}
 <section class="dash-v3-hero">
   <div class="container dash-v3-hero-grid">
     <div>
-      <p class="eyebrow">HCPS Dealer Hub</p>
-      <h1>A dealer dashboard for orders, pricing, literature, training, and manufacturer support.</h1>
-      <p class="lead">Use the Dealer Hub as your central starting point for manufacturer resources, order requests, literature, pricing access, in-service scheduling, technical support, and future dealer login tools.</p>
+      <p class="eyebrow">{{ pg.hero.eyebrow }}</p>
+      <h1>{{ pg.hero.headline }}</h1>
+      <p class="lead">{{ pg.hero.lead }}</p>
       <div class="hero-actions">
-        <a class="btn primary" href="/dealer-support/?request=Place%20or%20Request%20an%20Order">Start Dealer Request</a>
-        <a class="btn outline on-light" href="#dash-request-center">Open Request Center</a>
+        <a class="btn primary" href="/dealer-support/?request=Place%20or%20Request%20an%20Order">{{ pg.hero.cta1_label }}</a>
+        <a class="btn outline on-light" href="#dash-request-center">{{ pg.hero.cta2_label }}</a>
       </div>
     </div>
 
@@ -52,31 +53,19 @@ description: "The HCPS Dealer Hub — a dealer dashboard for orders, pricing acc
 
       <section class="dash-v3-panel dash-v3-welcome">
         <div>
-          <p class="eyebrow">Dashboard</p>
-          <h2>What can HCPS help you with today?</h2>
+          <p class="eyebrow">{{ pg.welcome.eyebrow }}</p>
+          <h2>{{ pg.welcome.title }}</h2>
         </div>
-        <a class="dash-v3-help-link" href="/contact/">Contact HCPS &rarr;</a>
+        <a class="dash-v3-help-link" href="/contact/">{{ pg.welcome.help_label }} &rarr;</a>
       </section>
 
+      {% set actionHrefs = ["/dealer-support/?request=Place%20or%20Request%20an%20Order", "/dealer-support/?request=Pricing%20Access", "/dealer-support/?request=Order%20Literature", "/dealer-support/?request=Request%20an%20In-Service", "/dealer-support/?request=Technical%20Support", "/resources/"] %}
       <section class="dash-v3-action-grid" id="dash-request-center">
-        <a class="dash-v3-action primary" href="/dealer-support/?request=Place%20or%20Request%20an%20Order">
-          <span>&#128230;</span><strong>Dealer Order Request</strong><p>Submit order needs, PO details, special orders, quote needs, stock, lead times, or follow-up questions.</p>
+        {% for a in pg.actions %}
+        <a class="dash-v3-action{% if loop.index == 1 %} primary{% endif %}" href="{{ actionHrefs[loop.index0] }}">
+          <span>{{ a.icon }}</span><strong>{{ a.title }}</strong><p>{{ a.description }}</p>
         </a>
-        <a class="dash-v3-action" href="/dealer-support/?request=Pricing%20Access">
-          <span>&#128178;</span><strong>Pricing Access</strong><p>Request dealer price sheets, MAP/MSRP files, freight terms, or protected pricing documents.</p>
-        </a>
-        <a class="dash-v3-action" href="/dealer-support/?request=Order%20Literature">
-          <span>&#128218;</span><strong>Literature Request</strong><p>Request brochures, catalogs, flyers, sell sheets, spec sheets, or patient-facing product materials.</p>
-        </a>
-        <a class="dash-v3-action" href="/dealer-support/?request=Request%20an%20In-Service">
-          <span>&#127891;</span><strong>Schedule In-Service</strong><p>Request product education, clinical training, dealer training, or sales team support.</p>
-        </a>
-        <a class="dash-v3-action" href="/dealer-support/?request=Technical%20Support">
-          <span>&#128295;</span><strong>Technical Support</strong><p>Get routed to service resources, warranty forms, parts support, or technical documentation.</p>
-        </a>
-        <a class="dash-v3-action" href="/resources/">
-          <span>&#11015;</span><strong>Resource Library</strong><p>Open the library of downloads, catalogs, forms, videos, and manufacturer materials.</p>
-        </a>
+        {% endfor %}
       </section>
 
       <section class="dash-v3-two-col">
@@ -119,8 +108,8 @@ description: "The HCPS Dealer Hub — a dealer dashboard for orders, pricing acc
       <section class="dash-v3-panel" id="dash-manufacturers">
         <div class="dash-v3-panel-head">
           <div>
-            <p class="eyebrow">Manufacturer Centers</p>
-            <h3>Open the resource center for each manufacturer.</h3>
+            <p class="eyebrow">{{ pg.manufacturers_heading.eyebrow }}</p>
+            <h3>{{ pg.manufacturers_heading.title }}</h3>
           </div>
           <a class="dash-v3-view-all" href="/manufacturers/">View Directory &rarr;</a>
         </div>
@@ -159,10 +148,10 @@ description: "The HCPS Dealer Hub — a dealer dashboard for orders, pricing acc
 
       <section class="dash-v3-portal-preview" id="dash-future-login">
         <div>
-          <p class="eyebrow" style="color:var(--hcps-gold);">Future Dealer Login</p>
-          <h2>Personalized access is the next evolution.</h2>
-          <p>In a future phase, dealers will be able to log in and access assigned manufacturer lines, dealer-specific pricing, protected downloads, open requests, training history, promotions, and support tickets.</p>
-          <a class="btn primary" href="/contact/?topic=Dealer">Become an HCPS Dealer</a>
+          <p class="eyebrow" style="color:var(--hcps-gold);">{{ pg.future_login.eyebrow }}</p>
+          <h2>{{ pg.future_login.title }}</h2>
+          <p>{{ pg.future_login.copy }}</p>
+          <a class="btn primary" href="/contact/?topic=Dealer">{{ pg.future_login.cta_label }}</a>
         </div>
         <div class="dash-v3-fake-app">
           <div class="dash-v3-window-bar"><i></i><i></i><i></i></div>
