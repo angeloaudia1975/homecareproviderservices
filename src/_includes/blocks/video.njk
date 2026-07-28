@@ -1,7 +1,7 @@
 <section style="--m-accent:{{ accent }}"><div class="container">
   <div class="m-split-grid{% if b.video_side == 'right' %} reverse{% endif %}">
     <div class="m-video-wrap">
-      <iframe src="{{ b.embed }}" title="{{ b.headline }}" loading="lazy"
+      <iframe src="{{ b.embed | embed }}" title="{{ b.headline }}" loading="lazy"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowfullscreen></iframe>
     </div>
