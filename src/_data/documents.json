@@ -276,6 +276,19 @@
       "access": "public",
       "dealers": [],
       "featured": true
+    },
+    {
+      "id": "biwaze-clear-prescription-form-ms4umpsl",
+      "title": "BiWaze Clear Prescription Form",
+      "type": "brochure",
+      "manufacturer": "abm-respiratory-care",
+      "format": "pdf",
+      "file": "/assets/docs/biwaze-clear-prescription-form-fillableform-ms4ulx1v.pdf",
+      "url": "",
+      "description": "",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
