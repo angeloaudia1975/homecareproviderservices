@@ -10,10 +10,14 @@ module.exports = function (eleventyConfig) {
   // Pass-through if it's already an embed URL or unrecognized.
   eleventyConfig.addFilter("embed", (url) => {
     if (!url) return "";
-    const u = String(url).trim();
+    let u = String(url).trim();
+    // Tolerate a full <iframe ...> paste: pull the src out of it first.
+    const iframeSrc = u.match(/src\s*=\s*["']([^"']+)["']/i);
+    if (iframeSrc) u = iframeSrc[1];
     let m;
+    // Start time may arrive as t= or start=
+    const t = (u.match(/[?&#](?:t|start)=(\d+)/) || [])[1];
     if ((m = u.match(/[?&]v=([\w-]+)/)) || (m = u.match(/youtu\.be\/([\w-]+)/)) || (m = u.match(/youtube\.com\/(?:embed|shorts)\/([\w-]+)/))) {
-      const t = (u.match(/[?&#]t=(\d+)/) || [])[1];
       return "https://www.youtube.com/embed/" + m[1] + (t ? "?start=" + t : "");
     }
     if ((m = u.match(/drive\.google\.com\/file\/d\/([\w-]+)/))) return "https://drive.google.com/file/d/" + m[1] + "/preview";
