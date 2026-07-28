@@ -354,6 +354,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "access4u-dealer-application-ms4v9rlz",
+      "title": "Access4u Dealer Application",
+      "type": "credit-application",
+      "manufacturer": "access4u",
+      "format": "pdf",
+      "file": "/assets/docs/credit-application-for-access4u-2023-ms4v7utn.pdf",
+      "url": "",
+      "description": "Access4u Dealer Application. Please email the application back to HomeCare Provider Services to process your new account request with Copy of State Resale Certificate.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
