@@ -380,6 +380,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "home-safety-solutions-checklist-beta-ms4vd4ug",
+      "title": "Home Safety Solutions Checklist \"Beta\"",
+      "type": "form",
+      "manufacturer": "",
+      "format": "pdf",
+      "file": "/assets/docs/home-safety-checklist-evaluation-beta-2023-ms4vbgb0.pdf",
+      "url": "",
+      "description": "Great Home Accessibility Checklist to age in place in the home, great evaluation tool to help provide another level of service.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
