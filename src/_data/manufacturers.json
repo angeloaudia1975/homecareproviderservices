@@ -341,7 +341,7 @@
         "lead": "Access4U gives dealers a complete ramping solution for residential, commercial, portable, mini, and threshold applications — with modular aluminum systems, accessory options, and dealer-focused support for site-specific accessibility needs.",
         "card_title": "A dealer-friendly accessibility line",
         "card_intro": "",
-        "image": "/assets/products/access4u/hero-residential-ramp.jpg",
+        "image": "/assets/products/access4u/update-page2e-ms4rwcv0.jpg",
         "checklist": [
           "Modular aluminum ramping systems for residential and commercial projects.",
           "Portable folding, mini, supported threshold, adjustable threshold, and rubber threshold ramp options.",
@@ -380,7 +380,7 @@
           {
             "name": "Residential Modular Ramps",
             "badge": "Enable Series",
-            "image": "/assets/products/access4u/hero-residential-ramp.jpg",
+            "image": "/assets/products/access4u/modular-ramp6-ms4rxgro.jpg",
             "tags": [],
             "bullets": [],
             "url": "https://www.rampsaccess4u.com/modularresidentialramps",
@@ -389,7 +389,7 @@
           {
             "name": "Commercial Ramping",
             "badge": "Commercial",
-            "image": "/assets/products/access4u/commercial-ramp.jpg",
+            "image": "/assets/products/access4u/commercial-modular-ramp2-ms4ry0us.jpg",
             "tags": [],
             "bullets": [],
             "url": "https://www.rampsaccess4u.com/commercialramps",
@@ -398,7 +398,7 @@
           {
             "name": "Assist Ramps with Handrails",
             "badge": "Assist Series",
-            "image": "/assets/products/access4u/assist-ramp.jpg",
+            "image": "/assets/products/access4u/assist-modular-ramp-hr3-ms4rycsx.jpg",
             "tags": [],
             "bullets": [],
             "url": "https://www.rampsaccess4u.com/assist",
@@ -407,7 +407,7 @@
           {
             "name": "Threshold Ramps",
             "badge": "Threshold",
-            "image": "/assets/products/access4u/threshold-ramp.jpg",
+            "image": "/assets/products/access4u/adjustable-threshold-rampa-ms4s2n4l.jpg",
             "tags": [],
             "bullets": [],
             "url": "https://www.rampsaccess4u.com/thresholdramps",
@@ -416,7 +416,7 @@
           {
             "name": "Portable & Mini Ramps",
             "badge": "Portable",
-            "image": "/assets/products/access4u/portable-mini-ramp.jpg",
+            "image": "/assets/products/access4u/portable-single-fold-ramp1-ms4s2znf.jpg",
             "tags": [],
             "bullets": [],
             "url": "https://www.rampsaccess4u.com/portablefoldingmini",
@@ -425,12 +425,26 @@
           {
             "name": "Stairs, Gates & Railings",
             "badge": "Accessories",
-            "image": "/assets/products/access4u/stairs-gates.jpg",
+            "image": "/assets/products/access4u/modular-steps2-ms4s3ke2.jpg",
             "tags": [],
             "bullets": [],
             "url": "https://www.rampsaccess4u.com/stairsgatespicketsguardrails",
             "description": "Accessory options help dealers build complete projects with ground platforms, stair systems, gates, guardrails, picket railings, and landing platforms."
           }
+        ]
+      },
+      {
+        "type": "video",
+        "eyebrow": "See It Installed",
+        "headline": "Watch how fast a modular ramp goes together.",
+        "copy": "Access4U's Enable modular ramping system is engineered for a quick, single-person installation — the H-frame locks in a solid, stable run while quick height-adjustment points and one-size hardware do the rest. No 'cut-to-fit' parts and no special crew required.",
+        "embed": "https://www.youtube.com/embed/7h-yfR1udTI?start=26",
+        "video_side": "left",
+        "checklist": [
+          "One-person installation with only one wrench size",
+          "H-frame system creates a solid, seamless run",
+          "Quick height-adjustment points adapt to any site",
+          "No cut-to-fit parts — assembles and relocates easily"
         ]
       },
       {
@@ -466,20 +480,6 @@
         ]
       },
       {
-        "type": "video",
-        "eyebrow": "See It Installed",
-        "headline": "Watch how fast a modular ramp goes together.",
-        "copy": "Access4U's Enable modular ramping system is engineered for a quick, single-person installation — the H-frame locks in a solid, stable run while quick height-adjustment points and one-size hardware do the rest. No 'cut-to-fit' parts and no special crew required.",
-        "embed": "https://www.youtube.com/embed/7h-yfR1udTI?start=26",
-        "video_side": "left",
-        "checklist": [
-          "One-person installation with only one wrench size",
-          "H-frame system creates a solid, seamless run",
-          "Quick height-adjustment points adapt to any site",
-          "No cut-to-fit parts — assembles and relocates easily"
-        ]
-      },
-      {
         "type": "split",
         "headline": "From a quick threshold fix to a complete home access project.",
         "copy": "Access4U helps dealers serve multiple access needs instead of sending customers elsewhere. Start with a threshold or portable ramp, then support larger residential and commercial modular layouts when the customer needs a full solution.",
@@ -492,7 +492,7 @@
           "Custom sizing support"
         ],
         "checklist": [],
-        "image": "/assets/products/access4u/home-access-ramp.jpg",
+        "image": "/assets/products/access4u/access4ulogousa2025-ms4s6nup.png",
         "image_side": "left"
       },
       {
@@ -541,7 +541,7 @@
       {
         "type": "cta_strip",
         "headline": "Everything you need to start selling Access4U.",
-        "copy": "Download the dealer brochure and the 20 dealer sales points, or open online ordering to build your first access order.",
+        "copy": "Download the dealer brochure, order a display for your showroom, and review our new Ramp Quote Configurator in our new online ordering platform. We also can schedule a hands-on modular ramp training session as well as discuss promoting and selling home access solutions to your customers today.",
         "cta": "Download the Dealer Brochure",
         "url": "/assets/docs/access4u-dealer-brochure-2023.pdf",
         "cta2": "20 Dealer Sales Points",
@@ -556,20 +556,20 @@
           {
             "name": "Retail showroom display",
             "tag": "",
-            "image": "",
+            "image": "/assets/products/access4u/display-front-ms4sbaeh.jpg",
             "description": "Use threshold, portable, and mini ramp samples to create instant visual education for walk-in customers."
           },
           {
             "name": "In-home assessments",
             "tag": "",
-            "image": "",
-            "description": "Add ramp evaluations to existing delivery, repair, scooter, wheelchair, and lift chair customer visits."
+            "image": "/assets/products/access4u/access4u-environment-ramp-survey-evaluation-form-2023-page-1-ms4sci23.jpg",
+            "description": "Add ramp evaluations to existing delivery, repair, scooter, wheelchair, and lift chair customer visits. We can provide you with the sales training tools to be successful including our Modular Ramp Configurator and Layout Generator."
           },
           {
             "name": "Project-based revenue",
             "tag": "",
-            "image": "",
-            "description": "Modular ramp projects create higher-value opportunities involving layout planning, accessories, installation, and ongoing support."
+            "image": "/assets/products/access4u/access4u-modular-ramp-layout-quote-12-inch-rise-u-turn-sampl-ms4sdziu.jpg",
+            "description": "Modular ramp projects create higher-value opportunities involving layout planning, accessories, installation, and ongoing support. Lets us help you convert more business in your market."
           }
         ]
       }
