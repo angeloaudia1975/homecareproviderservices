@@ -70,19 +70,6 @@
   ],
   "items": [
     {
-      "id": "hcps-credit-application",
-      "title": "HCPS Dealer Credit Application",
-      "type": "credit-application",
-      "manufacturer": "",
-      "format": "pdf",
-      "file": "/assets/docs/hcps-credit-application.pdf",
-      "url": "",
-      "description": "Open a dealer account with HomeCare Provider Services.",
-      "access": "public",
-      "dealers": [],
-      "featured": true
-    },
-    {
       "id": "golden-fabric-codes",
       "title": "Golden Technologies Fabric Codes",
       "type": "spec-sheet",
