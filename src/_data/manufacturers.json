@@ -26,7 +26,7 @@
           "Family-owned and American-made since 1985.",
           "Class II medical devices with AutoDrive™ hand controls."
         ],
-        "image": "/assets/products/golden/pr519-lifestyle.jpg",
+        "image": "/assets/products/golden-technologies/premium-showroom-ms4q2utg.jpg",
         "stats": []
       },
       {
@@ -41,12 +41,12 @@
             "label": "Recliners, lift chairs, scooters, power chairs, beds"
           },
           {
-            "value": "22% Less",
-            "label": "Lower-body pressure (Rejuvenate position)"
+            "value": "Maxi-Comfort Innovation",
+            "label": "Full Body Advanced Positioning"
           },
           {
-            "value": "Class II",
-            "label": "FDA medical devices"
+            "value": "Twilight Tilt Technology",
+            "label": "Elevates legs above heart & reducing pressure on the back"
           }
         ]
       },
@@ -100,32 +100,32 @@
           {
             "name": "Advanced Power Recliners",
             "tag": "Premium comfort sale",
-            "image": "/assets/products/golden/pr519.jpg",
+            "image": "/assets/products/golden-technologies/pr511-ms4qe78p.gif",
             "description": "Premium recliners with advanced positioning, customizable comfort, and wellness-driven seating that helps customers relax, recover, and rest."
           },
           {
             "name": "Power Lift Chairs",
             "tag": "Core DME category",
-            "image": "/assets/products/golden/pr531.jpg",
+            "image": "/assets/products/golden-technologies/pr104-sand-ms4qefy8.jpg",
             "description": "Lift recliners assist with sitting, standing, and daily independence while anchoring the showroom with an inclusive small-to-tall lineup."
           },
           {
             "name": "Mobility Scooters",
             "tag": "Retail traffic driver",
-            "image": "/assets/products/golden/gb220.jpg",
+            "image": "/assets/products/golden-technologies/gb152-ms4qf7fs.gif",
             "description": "Portable, folding, full-size, and heavy-duty options help customers regain freedom at home, around town, and while traveling."
           },
           {
             "name": "Power Wheelchairs",
             "tag": "Mobility upgrade path",
-            "image": "/assets/products/golden/gp304.jpg",
+            "image": "/assets/products/golden-technologies/gp130-ms4qfo0h.gif",
             "description": "Compact travel, folding, and app-enabled power chairs serve customers who need tighter turning, powered mobility, and transportability."
           },
           {
             "name": "Hi-Low Adjustable Beds",
             "tag": "Home recovery solution",
-            "image": "",
-            "description": "Hi-Low bed solutions support safer transfers, in-home comfort, caregiver support, and customers who need more than a standard adjustable bed."
+            "image": "/assets/products/golden-technologies/bd100a-tb-ms4q9tzr.jpg",
+            "description": "Hi-Low beds with built in massage solutions support safer transfers, in-home comfort, caregiver support, and customers who need more than a standard adjustable bed."
           }
         ]
       },
