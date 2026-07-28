@@ -842,7 +842,7 @@
     "category": "Respiratory & Airway Clearance",
     "description": "Advanced airway clearance and cough assist systems — the BiWaze® Cough (MI-E) and BiWaze® Clear (OLE) platform — engineered around respiratory physiology, with telehealth connectivity, clinical education, and home reimbursement pathways.",
     "website": "https://abmrc.com",
-    "logo": "/assets/logos/abm-respiratory-care.jpg",
+    "logo": "/assets/logos/action-ms4u316r.jpg",
     "featured": false,
     "ordering_url": "",
     "brand": {
@@ -860,7 +860,7 @@
         "checklist": [
           "Two market-leading systems: BiWaze® Cough (MI-E) and BiWaze® Clear (OLE).",
           "Patented dual-path design keeps inhaled and exhaled air separate.",
-          "Telehealth-enabled with mobile app and provider portal.",
+          "Market Golden Standard in Cough Assist Technology",
           "Clinical training through the ABM Respiratory Care Institute.",
           "Home reimbursement pathway with HCPCS codes E0469 and A7021."
         ],
@@ -879,14 +879,23 @@
             "label": "Therapies in one 10-minute BiWaze Clear session"
           },
           {
-            "value": "Telehealth",
-            "label": "Connected patient care"
+            "value": "Market Leader",
+            "label": "Standard Choice for Cough Assist Devices"
           },
           {
             "value": "E0469",
             "label": "Home reimbursement (13-month capped rental)"
           }
         ]
+      },
+      {
+        "type": "spotlight",
+        "badge": "Driven By Purpose",
+        "headline": "Inspired By People",
+        "copy": "ABM Respiratory Care is revolutionizing airway clearance and lung ventilation with our innovative approach to traditional therapies.",
+        "image": "/assets/products/abm-respiratory-care/abm-logo-08-ms4u4kof.webp",
+        "checklist": [],
+        "cta": ""
       },
       {
         "type": "products",
@@ -897,9 +906,9 @@
           {
             "name": "BiWaze® Cough System",
             "badge": "Cough Assist (MI-E)",
-            "image": "/assets/products/abm-respiratory-care/biwaze-cough.jpg",
-            "url": "https://abmrc.com/biwaze-cough-hospital/",
-            "description": "An assisted cough (mechanical insufflation-exsufflation) device that makes clearing secretions easier and more comfortable — at home or on the go.",
+            "image": "/assets/products/abm-respiratory-care/biwaze-cough-ms4tvmfa.webp",
+            "url": "https://abmrc.com/biwaze-cough-home/",
+            "description": "BiWaze® Cough is an advanced cough assist system that helps clear mucus from your lungs when your body can’t do it on its own.\n\nIt uses gentle air pressure to simulate a natural cough—making it easier to breathe and reduce the risk of lung infections.\n\nDesigned for both home and clinical use, BiWaze Cough helps maintain healthy lung volume during therapy with a feature called PAP on Pause. The dual-blower system keeps therapy consistent and hygienic, while the easy-to-use interface makes treatment simple and comfortable.",
             "tags": [],
             "bullets": [
               "Dual airpaths keep inhaled air clean, separated from exhaled mucus.",
@@ -911,9 +920,9 @@
           {
             "name": "BiWaze® Clear System",
             "badge": "OLE Airway Clearance",
-            "image": "/assets/products/abm-respiratory-care/biwaze-clear.jpg",
-            "url": "https://abmrc.com/biwaze-clear-hospital-care/",
-            "description": "One system, three therapies — Oscillating Lung Expansion delivered in a single 10-minute session.",
+            "image": "/assets/products/abm-respiratory-care/biwaze-clear-ms4tw1ur.webp",
+            "url": "https://abmrc.com/biwaze-clear-home-care-2/",
+            "description": "BiWaze® Clear is designed to clear mucus, open airways and help keep your lungs healthy. What makes this airway clearance therapy different?\n\nIt delivers Positive Expiratory Pressure (PEP) to help expand your airways.\nThen, gentle air pulses and vibrations work together to mobilize mucus out of your lungs.\nDuring the session, aerosol therapy can be delivered to help loosen mucus and improve clearance.\nIn addition, it provides steady, accurate pressure to support consistent airway opening.\nThe system is designed to reduce the spread of aerosol particles outside the closed circuit—helping protect both you and those around you.",
             "tags": [],
             "bullets": [
               "Positive Expiratory Pressure (PEP) + High-Frequency Oscillation (HFO) + aerosol.",
