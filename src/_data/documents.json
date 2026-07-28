@@ -289,6 +289,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "biwaze-clear-product-brochure-ms4unosv",
+      "title": "BiWaze Clear Product Brochure",
+      "type": "brochure",
+      "manufacturer": "abm-respiratory-care",
+      "format": "pdf",
+      "file": "/assets/docs/biwaze-clear-trifold-hme-ms4umzt5.pdf",
+      "url": "",
+      "description": "",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
