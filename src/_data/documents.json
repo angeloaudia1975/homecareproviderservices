@@ -371,7 +371,7 @@
     {
       "id": "ramp-rental-agreement-beta-ms4vayq7",
       "title": "Ramp Rental Agreement \"Beta\"",
-      "type": "credit-application",
+      "type": "form",
       "manufacturer": "",
       "format": "pdf",
       "file": "/assets/docs/sample-ramp-rental-agreement-ms4va972.pdf",
