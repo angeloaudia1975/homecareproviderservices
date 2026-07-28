@@ -341,6 +341,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "access4u-ramp-survey-form-ms4v708b",
+      "title": "Access4u Ramp Survey Form",
+      "type": "form",
+      "manufacturer": "access4u",
+      "format": "pdf",
+      "file": "/assets/docs/access4u-environment-ramp-survey-evaluation-form-2023-ms4v6e7h.pdf",
+      "url": "",
+      "description": "",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
