@@ -572,6 +572,15 @@
             "description": "Modular ramp projects create higher-value opportunities involving layout planning, accessories, installation, and ongoing support. Lets us help you convert more business in your market."
           }
         ]
+      },
+      {
+        "type": "video",
+        "eyebrow": "Understanding ADA Ramp Guidelines ",
+        "headline": "Great Video to Understand Layout Designs",
+        "copy": "briefly explains what a \"ramp\" is as defined by typical building codes and accessibility guidelines. It also notes typical requirements for a ramp such as slope requirements, Handrail & guardrail requirements.",
+        "embed": "https://www.youtube.com/watch?v=isMqyTSqz04",
+        "checklist": [],
+        "video_side": ""
       }
     ]
   },
