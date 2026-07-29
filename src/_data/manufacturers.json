@@ -1451,7 +1451,7 @@
     "website": "https://www.completemedical.com",
     "logo": "/assets/logos/complete-medical-supplies.jpg",
     "featured": false,
-    "ordering_url": "",
+    "ordering_url": "https://hcpsonlineordering.netlify.app/",
     "brand": {
       "accent": "#ef6a1f",
       "dark": "#2c3e50"
