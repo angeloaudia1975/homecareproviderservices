@@ -1265,10 +1265,10 @@
         "type": "hero",
         "eyebrow": "EPAP Therapy — Dealer Introduction",
         "headline": "BongoRx: EPAP Sleep Apnea Therapy Without the Machine",
-        "lead": "A simple, portable CPAP alternative for mild to moderate obstructive sleep apnea patients who want freedom from machines, hoses, and power.",
+        "lead": "A simple, portable CPAP alternative for mild to moderate obstructive sleep apnea patients who want freedom from machines, hoses, and power. This is a great alternative to non-compliant CPAP Patients. ",
         "card_title": "Why Dealers Are Interested",
         "card_intro": "",
-        "image": "/assets/products/bongorx/hero-sleep.jpg",
+        "image": "/assets/products/airavant-bongorx/bongorx-man-action-ms6kzi5t.webp",
         "checklist": [
           "Prescription cash product — great for retail, FSA/HSA customers, and CPAP alternative inquiries.",
           "Travel-friendly therapy — no machine, hose, or electricity required.",
@@ -1312,13 +1312,13 @@
           {
             "name": "No Power Required",
             "tag": "",
-            "image": "/assets/products/bongorx/travel.jpg",
+            "image": "/assets/products/airavant-bongorx/bongorx-device-ms6kq7pd.jpg",
             "description": "Uses the patient’s own exhalation to create EPAP, helping keep the airway open without a machine or electricity."
           },
           {
             "name": "Simple Starter Kit",
             "tag": "",
-            "image": "/assets/products/bongorx/device-case.jpg",
+            "image": "/assets/products/airavant-bongorx/bng500-ms6kpvmz.jpg",
             "description": "The Four Sizes Starter Kit allows easy contactless setup with multiple sizes, headgear, travel case, and drying stand."
           }
         ]
@@ -1329,7 +1329,7 @@
         "headline": "Small, simple, and built for real-world use.",
         "copy": "BongoRx has soft nasal seals that dilate the nasal passages. During inhalation, small valves open so the patient can breathe normally. During exhalation, valves close and direct air through vent holes to generate EPAP.",
         "embed": "https://www.youtube.com/embed/R_tpx0i0XS4",
-        "video_side": "left",
+        "video_side": "right",
         "checklist": [
           "Clinically tested for mild to moderate obstructive sleep apnea",
           "FDA-cleared CPAP alternative with history of use",
@@ -1349,7 +1349,7 @@
           "Replenishment packs drive recurring resupply revenue",
           "Proudly designed and made in the USA"
         ],
-        "image": "/assets/products/bongorx/device-case.jpg",
+        "image": "/assets/products/airavant-bongorx/bongorx-sleep-ms6kywjr.jfif",
         "cta": "Read the Clinical Sleep Study",
         "cta_url": "/assets/docs/bongorx-sleep-study-review-2026.pdf"
       },
