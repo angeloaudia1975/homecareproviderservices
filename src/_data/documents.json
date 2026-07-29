@@ -471,6 +471,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "bongorx-white-paper-study-ms6lp2fw",
+      "title": "BongoRx White Paper Study",
+      "type": "form",
+      "manufacturer": "airavant-bongorx",
+      "format": "pdf",
+      "file": "/assets/docs/bongo-rx-white-paper-2023-03-17-ms6lo10g.pdf",
+      "url": "",
+      "description": "A Survey of Patients using the Bongo Rx Device for Treatment of Obstructive Sleep Apnea.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
