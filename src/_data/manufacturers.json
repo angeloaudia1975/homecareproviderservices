@@ -1139,6 +1139,15 @@
         ]
       },
       {
+        "type": "video",
+        "eyebrow": "Revolutionizing Portable Oxygen Therapy",
+        "headline": "Zen-O and Zen-O-Lite Review",
+        "copy": "Learn More about RRT Therapy and how the Ohio Medical line of GCE portable concentrators can enhance your patient compliance.",
+        "embed": "https://youtu.be/hgz_gebLqfc",
+        "checklist": [],
+        "video_side": "right"
+      },
+      {
         "type": "split",
         "headline": "Rate Responsive Therapy™ keeps patients saturated — automatically.",
         "copy": "Some portable concentrators deliver a fixed volume of oxygen per minute, so the bolus shrinks and FiO₂ drops as a patient breathes faster — forcing the patient to turn the setting up. GCE's Rate Responsive Therapy delivers a constant bolus and automatically responds to the patient's breath rate, so oxygen delivery actually increases with activity instead of decreasing.",
@@ -1152,15 +1161,6 @@
         "checks": [],
         "image": "/assets/products/ohio-medical/rrt-lifestyle.jpg",
         "image_side": "left"
-      },
-      {
-        "type": "video",
-        "eyebrow": "Revolutionizing Portable Oxygen Therapy",
-        "headline": "Zen-O and Zen-O-Lite Review",
-        "copy": "Learn More about RRT Therapy and how the Ohio Medical line of GCE portable concentrators can enhance your patient compliance.",
-        "embed": "https://youtu.be/hgz_gebLqfc",
-        "checklist": [],
-        "video_side": ""
       },
       {
         "type": "table",
