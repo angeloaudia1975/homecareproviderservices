@@ -1742,7 +1742,7 @@
     "website": "https://www.climbingsteps.com",
     "logo": "/assets/logos/climbing-steps.jpg",
     "featured": false,
-    "ordering_url": "",
+    "ordering_url": "https://hcpsonlineordering.netlify.app/",
     "brand": {
       "accent": "#38a169",
       "dark": "#1b3a63"
