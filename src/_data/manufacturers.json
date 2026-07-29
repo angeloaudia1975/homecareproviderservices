@@ -1949,7 +1949,7 @@
     "website": "",
     "logo": "/assets/logos/corsicana.jpg",
     "featured": false,
-    "ordering_url": "",
+    "ordering_url": "https://hcpsonlineordering.netlify.app/",
     "brand": {
       "accent": "#2fb3a8",
       "dark": "#153a5e"
