@@ -2557,7 +2557,7 @@
     "website": "https://www.pedifix.com/",
     "logo": "/assets/logos/pedifix.jpg",
     "featured": false,
-    "ordering_url": "",
+    "ordering_url": "https://hcpsonlineordering.netlify.app/",
     "brand": {
       "accent": "#2672b9",
       "dark": "#123057"
