@@ -406,6 +406,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "ohio-medical-gce-dealer-credit-application-ms6hki3o",
+      "title": "Ohio Medical GCE Dealer Credit Application",
+      "type": "credit-application",
+      "manufacturer": "ohio-medical",
+      "format": "xlsx",
+      "file": "/assets/docs/new-account-credit-app-2023-ohio-medical-hps-ms6hj8g6.xls",
+      "url": "",
+      "description": "Please fill out the attached Credit Application to open an new account with Ohio Medical. Please submit application with State Resale Certificate back to HomeCare Provider Services to open account. ",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
