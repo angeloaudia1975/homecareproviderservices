@@ -592,7 +592,7 @@
     "website": "https://www.strongbackmobility.com/",
     "logo": "/assets/logos/strongback-mobility.jpg",
     "featured": false,
-    "ordering_url": "https://strongbackonlineordering.netlify.app/",
+    "ordering_url": "https://hcpsonlineordering.netlify.app/",
     "brand": {
       "accent": "#25aeda",
       "dark": "#173247"
