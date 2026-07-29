@@ -2163,7 +2163,7 @@
     "website": "https://www.ovationmed.com/",
     "logo": "/assets/logos/ovation-medical.jpg",
     "featured": false,
-    "ordering_url": "",
+    "ordering_url": "https://hcpsonlineordering.netlify.app/",
     "brand": {
       "accent": "#00a7df",
       "dark": "#10263f"
