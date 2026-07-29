@@ -1262,21 +1262,6 @@
     "assortment": [],
     "sections": [
       {
-        "type": "hero",
-        "eyebrow": "EPAP Therapy — Dealer Introduction",
-        "headline": "BongoRx: EPAP Sleep Apnea Therapy Without the Machine",
-        "lead": "A simple, portable CPAP alternative for mild to moderate obstructive sleep apnea patients who want freedom from machines, hoses, and power. This is a great alternative to non-compliant CPAP Patients. ",
-        "card_title": "Why Dealers Are Interested",
-        "card_intro": "",
-        "image": "/assets/products/airavant-bongorx/bongorx-man-action-ms6kzi5t.webp",
-        "checklist": [
-          "Prescription cash product — great for retail, FSA/HSA customers, and CPAP alternative inquiries.",
-          "Travel-friendly therapy — no machine, hose, or electricity required.",
-          "Built-in replenishment — the Starter Kit opens the door to recurring annual and single replacement sales."
-        ],
-        "stats": []
-      },
-      {
         "type": "stats",
         "items": [
           {
@@ -1296,6 +1281,21 @@
             "label": "Serious adverse events in the study"
           }
         ]
+      },
+      {
+        "type": "hero",
+        "eyebrow": "EPAP Therapy — Dealer Introduction",
+        "headline": "BongoRx: EPAP Sleep Apnea Therapy Without the Machine",
+        "lead": "A simple, portable CPAP alternative for mild to moderate obstructive sleep apnea patients who want freedom from machines, hoses, and power. This is a great alternative to non-compliant CPAP Patients. ",
+        "card_title": "Why Dealers Are Interested",
+        "card_intro": "",
+        "image": "/assets/products/airavant-bongorx/bongorx-man-action-ms6kzi5t.webp",
+        "checklist": [
+          "Prescription cash product — great for retail, FSA/HSA customers, and CPAP alternative inquiries.",
+          "Travel-friendly therapy — no machine, hose, or electricity required.",
+          "Built-in replenishment — the Starter Kit opens the door to recurring annual and single replacement sales."
+        ],
+        "stats": []
       },
       {
         "type": "hero",
