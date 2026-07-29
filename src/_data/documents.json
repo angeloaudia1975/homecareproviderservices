@@ -432,6 +432,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "performance-variability-of-bench-testing-of-selected-poc-uni-ms6hop8t",
+      "title": "Performance Variability of Bench Testing of Selected POC units Clinical Study",
+      "type": "form",
+      "manufacturer": "ohio-medical",
+      "format": "pdf",
+      "file": "/assets/docs/white-paper-email-version-ms6hmzci.pdf",
+      "url": "",
+      "description": "Great Clinical Study comparing Portable Oxygen Devices",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
