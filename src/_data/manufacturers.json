@@ -1064,7 +1064,7 @@
           "Easily replaceable sieve beds — no return to the factory.",
           "Clarity connected care and a 3-year warranty."
         ],
-        "image": "/assets/products/ohio-medical/oxygen-pair.jpg",
+        "image": "/assets/products/ohio-medical/gce-portable-concentrators-ms6e0l1i.jpg",
         "stats": []
       },
       {
@@ -1083,8 +1083,8 @@
             "label": "Lightest portable (Zen-O lite)"
           },
           {
-            "value": "3-Year",
-            "label": "Device warranty"
+            "value": "Ultra Quiet",
+            "label": "Best in Class"
           }
         ]
       },
@@ -1097,7 +1097,7 @@
           {
             "name": "Zen-O lite™ Portable Concentrator",
             "badge": "Ultra-portable POC",
-            "image": "/assets/products/ohio-medical/zen-o-lite.jpg",
+            "image": "/assets/products/ohio-medical/zen-o-lite-with-bag-97179-ms6e0b5b.jpg",
             "url": "https://www.ohiomedical.com",
             "description": "A lightweight pulse-mode portable oxygen concentrator built for reliability and active lifestyles.",
             "tags": [],
@@ -1105,13 +1105,13 @@
               "Pulse mode up to 1,050 mL, adjustable in 0.5 steps to setting 5.",
               "Just 5.5 lbs; approx. 5h45 battery at pulse setting 2.",
               "Rate Responsive Therapy™, Eco Mode, and Auto Mode.",
-              "Easily replaceable sieve beds; 3-year warranty."
+              "Easily replaceable sieve beds; 2-year warranty."
             ]
           },
           {
-            "name": "Zen-O™ Portable Concentrator",
+            "name": "Zen-O™ Transportable Concentrator",
             "badge": "Dual-flow POC",
-            "image": "/assets/products/ohio-medical/zen-o.jpg",
+            "image": "/assets/products/ohio-medical/zen-o-with-battery-ms6e1bi4.jpg",
             "url": "https://www.ohiomedical.com",
             "description": "A best-in-class portable concentrator with both pulse and continuous flow for active patients.",
             "tags": [],
@@ -1152,6 +1152,15 @@
         "checks": [],
         "image": "/assets/products/ohio-medical/rrt-lifestyle.jpg",
         "image_side": "left"
+      },
+      {
+        "type": "video",
+        "eyebrow": "Revolutionizing Portable Oxygen Therapy",
+        "headline": "Zen-O and Zen-O-Lite Review",
+        "copy": "Learn More about RRT Therapy and how the Ohio Medical line of GCE portable concentrators can enhance your patient compliance.",
+        "embed": "https://youtu.be/hgz_gebLqfc",
+        "checklist": [],
+        "video_side": ""
       },
       {
         "type": "table",
