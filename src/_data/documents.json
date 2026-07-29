@@ -445,6 +445,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "copd-pathophysiology-and-treatment-considerations-ms6hsvzo",
+      "title": "COPD Pathophysiology and Treatment Considerations",
+      "type": "form",
+      "manufacturer": "ohio-medical",
+      "format": "pdf",
+      "file": "/assets/docs/copd-for-ohio-medical-ms6hr2az.pdf",
+      "url": "",
+      "description": "Great Learning Course",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
