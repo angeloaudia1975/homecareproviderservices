@@ -393,6 +393,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "oxygen-delivery-cost-calculator-for-profit-and-business-deve-ms6hi3ml",
+      "title": "Oxygen Delivery Cost Calculator for Profit and Business Development",
+      "type": "calculator",
+      "manufacturer": "ohio-medical",
+      "format": "xlsx",
+      "file": "/assets/docs/oxygen-delivery-cost-calculator-2025-ohio-medical-ms6hf279.xlsx",
+      "url": "",
+      "description": "This is a great calculator to show profit and loss per patient, it reviews the initial cost and overall cost of suppling oxygen to a patient. Great tool for Portable Oxygen Concentrator Utilization. ",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
