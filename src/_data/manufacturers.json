@@ -1262,6 +1262,21 @@
     "assortment": [],
     "sections": [
       {
+        "type": "hero",
+        "eyebrow": "EPAP Therapy — Dealer Introduction",
+        "headline": "BongoRx: EPAP Sleep Apnea Therapy Without the Machine",
+        "lead": "A simple, portable CPAP alternative for mild to moderate obstructive sleep apnea patients who want freedom from machines, hoses, and power. This is a great alternative to non-compliant CPAP Patients. ",
+        "card_title": "Why Dealers Are Interested",
+        "card_intro": "",
+        "image": "/assets/products/airavant-bongorx/bongorx-man-action-ms6kzi5t.webp",
+        "checklist": [
+          "Prescription cash product — great for retail, FSA/HSA customers, and CPAP alternative inquiries.",
+          "Travel-friendly therapy — no machine, hose, or electricity required.",
+          "Built-in replenishment — the Starter Kit opens the door to recurring annual and single replacement sales."
+        ],
+        "stats": []
+      },
+      {
         "type": "stats",
         "items": [
           {
@@ -1281,32 +1296,6 @@
             "label": "Serious adverse events in the study"
           }
         ]
-      },
-      {
-        "type": "hero",
-        "eyebrow": "EPAP Therapy — Dealer Introduction",
-        "headline": "BongoRx: EPAP Sleep Apnea Therapy Without the Machine",
-        "lead": "A simple, portable CPAP alternative for mild to moderate obstructive sleep apnea patients who want freedom from machines, hoses, and power. This is a great alternative to non-compliant CPAP Patients. ",
-        "card_title": "Why Dealers Are Interested",
-        "card_intro": "",
-        "image": "/assets/products/airavant-bongorx/bongorx-man-action-ms6kzi5t.webp",
-        "checklist": [
-          "Prescription cash product — great for retail, FSA/HSA customers, and CPAP alternative inquiries.",
-          "Travel-friendly therapy — no machine, hose, or electricity required.",
-          "Built-in replenishment — the Starter Kit opens the door to recurring annual and single replacement sales."
-        ],
-        "stats": []
-      },
-      {
-        "type": "hero",
-        "eyebrow": "Sleep Apnea Therapy anytime, anwhere",
-        "headline": "The New Rhythm in Sleep",
-        "lead": "Bongo Rx was designed for patients with mild to moderate obstructive sleep apnea (OSA):\nNewly diagnosed without significant co-morbidities to use as a first line sleep apnea therapy option.\nUnable to get a CPAP, do not qualify for CPAP, or cannot afford CPAP because of high deductibles, or high co-payments.\nNo longer using their CPAP and looking for a user-friendly alternative.\nUsing their CPAP, but need a device to use while traveling, camping, or any time electricity may not be available.",
-        "card_title": "",
-        "card_intro": "",
-        "checklist": [],
-        "image": "/assets/products/airavant-bongorx/bongorx-action-ms6l841w.jfif",
-        "stats": []
       },
       {
         "type": "cards",
@@ -1333,6 +1322,17 @@
             "description": "The Four Sizes Starter Kit allows easy contactless setup with multiple sizes, headgear, travel case, and drying stand."
           }
         ]
+      },
+      {
+        "type": "hero",
+        "eyebrow": "Sleep Apnea Therapy anytime, anwhere",
+        "headline": "The New Rhythm in Sleep",
+        "lead": "Bongo Rx was designed for patients with mild to moderate obstructive sleep apnea (OSA):\nNewly diagnosed without significant co-morbidities to use as a first line sleep apnea therapy option.\nUnable to get a CPAP, do not qualify for CPAP, or cannot afford CPAP because of high deductibles, or high co-payments.\nNo longer using their CPAP and looking for a user-friendly alternative.\nUsing their CPAP, but need a device to use while traveling, camping, or any time electricity may not be available.",
+        "card_title": "",
+        "card_intro": "",
+        "checklist": [],
+        "image": "/assets/products/airavant-bongorx/bongorx-action-ms6l841w.jfif",
+        "stats": []
       },
       {
         "type": "video",
