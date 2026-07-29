@@ -1239,7 +1239,7 @@
     "website": "https://bongorx.com/",
     "logo": "/assets/logos/airavant-bongorx.jpg",
     "featured": false,
-    "ordering_url": "https://bongorxonlineordering.netlify.app/",
+    "ordering_url": "https://hcpsonlineordering.netlify.app/",
     "brand": {
       "accent": "#f3b223",
       "dark": "#003f67"
