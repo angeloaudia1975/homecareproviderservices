@@ -312,7 +312,7 @@
     "website": "https://www.rampsaccess4u.com/",
     "logo": "/assets/logos/access4u.jpg",
     "featured": false,
-    "ordering_url": "",
+    "ordering_url": "https://hcpsonlineordering.netlify.app/",
     "brand": {
       "accent": "#2f73b8",
       "dark": "#0f2942"
