@@ -1041,10 +1041,10 @@
     "name": "Ohio Medical",
     "category": "Oxygen Therapy",
     "description": "Portable and stationary oxygen concentrators from Ohio Medical (by GCE Medical) — the Zen-O™ and Zen-O lite™ POCs and the M50 stationary concentrator — featuring Rate Responsive Therapy™ that keeps active patients saturated as breath rate changes.",
-    "website": "https://www.ohiomedical.com",
+    "website": "https://www.gce-medical.com/en-us/products/zen-o-portable-oxygen-concentrator",
     "logo": "/assets/logos/ohio-medical.jpg",
     "featured": false,
-    "ordering_url": "",
+    "ordering_url": "https://hcpsonlineordering.netlify.app/",
     "brand": {
       "accent": "#1e6fb3",
       "dark": "#0f3a63"
