@@ -419,6 +419,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "rate-responsive-therapy-clinical-white-paper-ms6hmfx7",
+      "title": "Rate Responsive Therapy Clinical White Paper",
+      "type": "form",
+      "manufacturer": "ohio-medical",
+      "format": "pdf",
+      "file": "/assets/docs/rate-responsive-therapy-clinical-sheet-ms6hl3kr.pdf",
+      "url": "",
+      "description": "Learn more about the clinical benefits of RRT Therapy.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
