@@ -1298,6 +1298,17 @@
         ]
       },
       {
+        "type": "hero",
+        "eyebrow": "Sleep Apnea Therapy anytime, anwhere",
+        "headline": "The New Rhythm in Sleep",
+        "lead": "Bongo Rx was designed for patients with mild to moderate obstructive sleep apnea (OSA):\nNewly diagnosed without significant co-morbidities to use as a first line sleep apnea therapy option.\nUnable to get a CPAP, do not qualify for CPAP, or cannot afford CPAP because of high deductibles, or high co-payments.\nNo longer using their CPAP and looking for a user-friendly alternative.\nUsing their CPAP, but need a device to use while traveling, camping, or any time electricity may not be available.",
+        "card_title": "",
+        "card_intro": "",
+        "checklist": [],
+        "image": "/assets/products/airavant-bongorx/bongorx-action-ms6l841w.jfif",
+        "stats": []
+      },
+      {
         "type": "cards",
         "eyebrow": "Dealer Opportunity",
         "title": "A New Cash Sales Opportunity for Sleep Therapy Customers",
@@ -1334,7 +1345,8 @@
           "Clinically tested for mild to moderate obstructive sleep apnea",
           "FDA-cleared CPAP alternative with history of use",
           "Use at home, traveling, camping, or when electricity is unavailable",
-          "No assembly required and easy to clean"
+          "No assembly required and easy to clean",
+          "Expiratory Positive Airway Pressure (EPAP) of 4–8 mmHg (or cmH2O) "
         ]
       },
       {
