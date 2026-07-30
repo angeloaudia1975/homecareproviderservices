@@ -1529,39 +1529,39 @@
         "intro": "Complete Medical helps dealers build a well-rounded retail wall from a single supplier.",
         "items": [
           {
-            "name": "Activities of Daily Living",
+            "name": "Aids to Daily Living",
             "tag": "ADLs",
-            "image": "",
+            "image": "/assets/products/complete-medical-supplies/264-ms82vf85.jpg",
             "description": "Reachers, dressing aids, kitchen and eating aids, and independence products for aging-in-place and post-surgery customers."
           },
           {
             "name": "Bath Safety",
             "tag": "Bath care",
-            "image": "",
+            "image": "/assets/products/complete-medical-supplies/242-ms82vm80.jpg",
             "description": "Grab bars, transfer benches, raised seats, and bathroom safety products for fall prevention and caregiver support."
           },
           {
             "name": "Mobility Aids",
             "tag": "Mobility",
-            "image": "",
+            "image": "/assets/products/complete-medical-supplies/247-ms82vvc0.jpg",
             "description": "Canes, walkers, rollators, wheelchair accessories, and everyday mobility support items."
           },
           {
             "name": "Blood Pressure & Monitoring",
             "tag": "Monitoring",
-            "image": "",
+            "image": "/assets/products/complete-medical-supplies/265-ms82w1xo.jpg",
             "description": "Home blood-pressure monitors and health-monitoring devices from leading lines such as Omron."
           },
           {
-            "name": "Orthopedic Soft Goods",
-            "tag": "Bracing",
-            "image": "",
-            "description": "Supports, braces, and orthopedic soft goods for common injuries, recovery, and everyday joint support."
+            "name": "Nebulizers",
+            "tag": "Aerosol",
+            "image": "/assets/products/complete-medical-supplies/256-ms82yn47.jpg",
+            "description": "Adult and Pediatric Nebulizers, including our Mesh Style Portable Nebulizers offered in both disposable and Reusable Administration Kits."
           },
           {
             "name": "Pain Relief & Recovery",
             "tag": "Recovery",
-            "image": "",
+            "image": "/assets/products/complete-medical-supplies/252-ms82wv1t.jpg",
             "description": "Topicals, hot/cold therapy, resistance products, and recovery items for retail and clinical add-on sales."
           }
         ]
@@ -1593,8 +1593,8 @@
             "tags": [
               "Bath care"
             ],
-            "badge": "",
-            "image": "/assets/products/complete-medical-supplies/bath-safety.jpg",
+            "badge": "Blue Jay",
+            "image": "/assets/products/complete-medical-supplies/complete-medical-june-2026-flyer-page-15-image-0001-ms83341e.jpg",
             "url": "",
             "description": "Shower chairs, transfer benches, raised toilet seats, grab bars, and commodes for fall prevention and caregiver support.",
             "bullets": []
@@ -1604,8 +1604,8 @@
             "tags": [
               "Mobility"
             ],
-            "badge": "",
-            "image": "/assets/products/complete-medical-supplies/mobility.jpg",
+            "badge": "Drive Medical",
+            "image": "/assets/products/complete-medical-supplies/complete-medical-june-2026-flyer-page-09-image-0002-ms83bdp7.jpg",
             "url": "",
             "description": "Rollators, folding knee scooters, canes, crutches, and walker accessories that keep customers moving.",
             "bullets": []
@@ -1615,8 +1615,8 @@
             "tags": [
               "Monitoring"
             ],
-            "badge": "",
-            "image": "/assets/products/complete-medical-supplies/blood-pressure.jpg",
+            "badge": "Blue jay",
+            "image": "/assets/products/complete-medical-supplies/complete-medical-june-2026-flyer-page-12-image-0004-ms834btp.jpg",
             "url": "",
             "description": "Automatic upper-arm and wrist monitors with WHO classification and irregular-heartbeat detection.",
             "bullets": []
@@ -1626,32 +1626,32 @@
             "tags": [
               "Bracing"
             ],
-            "badge": "",
-            "image": "/assets/products/complete-medical-supplies/orthopedic-brace.jpg",
+            "badge": "Advanced Orthopedic",
+            "image": "/assets/products/complete-medical-supplies/complete-medical-june-2026-flyer-page-05-image-0007-ms835ftg.jpg",
             "url": "",
             "description": "Back belts and wrist, knee, ankle, and shoulder supports for pain relief, recovery, and post-op customers.",
             "bullets": []
           },
           {
-            "name": "Compression Hosiery",
+            "name": "Concentrators",
             "tags": [
-              "Compression"
+              "Respiratory"
             ],
-            "badge": "",
-            "image": "/assets/products/complete-medical-supplies/compression.jpg",
+            "badge": "Drive Devilbiss",
+            "image": "/assets/products/complete-medical-supplies/sim02ds-ms835x3m.jpg",
             "url": "",
-            "description": "Anti-embolism and graduated compression legwear for tired, aching, or swollen legs.",
+            "description": "5L and 10L Stationary Concentrators as well as Portable Oxygen Concentrators",
             "bullets": []
           },
           {
-            "name": "ObusForme® Back Support",
+            "name": "Patient Hospital Beds",
             "tags": [
-              "Exclusive"
+              "Patient Room"
             ],
-            "badge": "Exclusive",
-            "image": "/assets/products/complete-medical-supplies/obusforme-backrest.jpg",
+            "badge": "Drive Medical",
+            "image": "/assets/products/complete-medical-supplies/complete-medical-june-2026-flyer-page-11-image-0001-ms838g0z.jpg",
             "url": "",
-            "description": "Exclusive ObusForme lowback and wideback backrests for the home, office, and car.",
+            "description": "Semi-electric and Full-Electric Hospital Beds with choice of rails, patient lifts, overbed tables and much more.",
             "bullets": []
           }
         ]
