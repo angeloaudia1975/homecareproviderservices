@@ -510,6 +510,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "obusforme-catalog-ms84py7x",
+      "title": "Obusforme Catalog",
+      "type": "catalog",
+      "manufacturer": "complete-medical-supplies",
+      "format": "pdf",
+      "file": "/assets/docs/obusforme-catalog-ms84otms.pdf",
+      "url": "",
+      "description": "Obusforme product descriptions and specification Catalog from Complete Medical",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
