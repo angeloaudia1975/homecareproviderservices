@@ -1526,7 +1526,7 @@
         "type": "cards",
         "eyebrow": "Transform your slatwall displays",
         "title": "Stock the everyday categories your customers ask for.",
-        "intro": "Complete Medical helps dealers build a well-rounded retail wall from a single supplier.",
+        "intro": "Complete Medical helps dealers build a well-rounded retail portfolio from a single supplier.",
         "items": [
           {
             "name": "Aids to Daily Living",
@@ -1572,7 +1572,7 @@
         "headline": "Turn-key retail displays and planograms — merchandising made easy.",
         "copy": "Blue Jay’s uniform, eye-catching retail packaging transforms your slatwall into a clean, professional wall. Order a combined ADL, bath care, and mobility planogram built to sell — no guesswork on what to stock.",
         "checklist": [
-          "Uniform Blue Jay retail packaging with hang tabs",
+          "Uniform Blue Jay retail packaging ",
           "Combined 10-ft planogram — 48 facings, 172 SKUs",
           "ADL, bath care & mobility aids in one section",
           "Slatwall-ready, professional presentation",
@@ -1668,7 +1668,7 @@
           },
           {
             "title": "Dealer-friendly shipping",
-            "description": "Free shipping on orders over $400 with no minimum order — easy to reorder the exact mix your floor needs."
+            "description": "Free shipping on orders over $400 with no minimum order for all in stock inventory — easy to reorder the exact mix your floor needs."
           },
           {
             "title": "Blue Jay® house brand",
@@ -1730,23 +1730,31 @@
       {
         "type": "steps",
         "title": "A simple path to opening your account.",
-        "intro": "Get set up to reorder your retail wall from one wholesale supplier.",
+        "intro": "Get set up to reorder your retail portfolio and traditional DME items from one wholesale supplier.",
         "items": [
           {
-            "title": "Request dealer pricing",
-            "description": "We'll help you open a wholesale account and share catalog access and pricing."
+            "title": "Open Complete Medical Account",
+            "description": "We'll help you open a wholesale Complete Medical account and share catalog access and pricing."
           },
           {
-            "title": "Plan your wall",
+            "title": "Plan your display wall, or custom make one with our assistance",
             "description": "Use the slatwall display program to lay out ADLs, bath, mobility, monitoring, and recovery."
           },
           {
+            "title": "Visit HCPS Online Ordering Platform or Complete Medical Connect Ordering Platform",
+            "description": "We have made checking pricing and placing orders online easy. Click on the Online Ordering Portal with your username and password to access the top selling Complete Medical Products for easy ordering. Also you have access to order directly from the Complete Connect, their direct ordering platform."
+          },
+          {
             "title": "Place your first order",
-            "description": "Order online across 200+ lines — free shipping over $400, no minimum."
+            "description": "Order online across 200+ lines — free shipping over $400 with anything in-stock, no minimum."
           },
           {
             "title": "Reorder with ease",
             "description": "Restock the exact mix your floor sells, when you need it, on one account."
+          },
+          {
+            "title": "Great Monthly Specials",
+            "description": "You will receive monthly specials to take advantage of new products, enhance your current product offering, and provide you an east reminder to check your current inventory for replenishment."
           }
         ]
       },
