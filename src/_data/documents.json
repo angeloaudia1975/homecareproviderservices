@@ -497,6 +497,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "complete-medical-planogram-displays-ms84nqz5",
+      "title": "Complete Medical Planogram Displays",
+      "type": "brochure",
+      "manufacturer": "complete-medical-supplies",
+      "format": "pdf",
+      "file": "/assets/docs/complete-medical-new-planogram-displays-with-special-pricing-ms84mjhm.pdf",
+      "url": "",
+      "description": "Review a great assortment of turn key displays from Complete Medical",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
