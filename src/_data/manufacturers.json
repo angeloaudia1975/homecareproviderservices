@@ -1389,6 +1389,21 @@
         ]
       },
       {
+        "type": "spotlight",
+        "badge": "BongoRx Countertop Display",
+        "headline": "Hands On Introduction EPAP",
+        "copy": "The BongoRx countertop display gives customers an approachable, hands-on introduction to EPAP therapy. By allowing them to see the compact nasal dilators, examine the carrying case, and take home educational materials, the display helps make a new therapy option easier to understand.\n\nIts compact design communicates the primary benefits of BongoRx at the point of sale: no machine, mask, hose, electricity, or batteries. The display also gives staff a natural opportunity to start conversations with appropriate patients seeking a portable and discreet prescription therapy option for mild to moderate obstructive sleep apnea.\n\nPlaced near the checkout counter, CPAP department, or sleep-therapy consultation area, the BongoRx display can help:",
+        "image": "/assets/products/airavant-bongorx/display-ms7gvewg.jpg",
+        "checklist": [
+          "Encourage customer questions and staff interaction",
+          "Demonstrate the product’s small, travel-friendly design",
+          "Explain how EPAP uses the patient’s own exhaled breath to create therapeutic pressure",
+          "Support at-home sizing with the multi-size starter kit",
+          "Increase awareness of an alternative to traditional machine-based therapy"
+        ],
+        "cta": "BongoRx makes EPAP therapy something customers can see, touch, understand, and discuss with a knowledgeable provider."
+      },
+      {
         "type": "table",
         "title": "Product Lineup",
         "intro": "Suggested dealer assortment for a focused launch.",
