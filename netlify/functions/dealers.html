@@ -1,0 +1,267 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS — Dealer Master &amp; Merge</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,Segoe UI,Arial,sans-serif;background:#eef2f6;color:#10263f}
+.wrap{max-width:1180px;margin:0 auto;padding:20px}
+.top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #ef6a1f;padding-bottom:12px;flex-wrap:wrap;gap:10px}
+.top h1{margin:0;font-size:22px}.top .sub{color:#5b7085;font-size:13px;margin-top:3px}
+.kpis{display:flex;gap:10px;margin:16px 0;flex-wrap:wrap}
+.kpi{background:#fff;border:1px solid #dbe4ec;border-radius:11px;padding:10px 16px;min-width:120px}
+.kpi .l{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:#5b7085}
+.kpi .v{font-size:22px;font-weight:800;margin-top:3px}.kpi .v.orange{color:#ef6a1f}.kpi .v.warn{color:#b4651a}
+.tabs{display:flex;gap:6px;margin:6px 0 14px;flex-wrap:wrap}
+.tab{background:#dde6ee;border:0;border-radius:8px 8px 0 0;padding:9px 15px;font-weight:700;font-size:13px;color:#41576b;cursor:pointer}
+.tab.on{background:#10263f;color:#fff}
+.card{background:#fff;border:1px solid #dbe4ec;border-radius:12px;padding:16px 18px;margin-bottom:16px}
+.card h2{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:#1681c2}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td{padding:7px 8px;border-bottom:1px solid #eef2f6;vertical-align:middle}
+th{text-align:left;font-size:10.5px;text-transform:uppercase;color:#5b7085;padding:6px 8px;border-bottom:2px solid #e2e9f0}
+.lbl{font-weight:600}.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}.dim{color:#8496a8}
+.chip{display:inline-block;background:#eaf3fb;color:#12466e;border:1px solid #cfe2fb;border-radius:20px;padding:1px 9px;font-size:11px;margin:1px 3px 1px 0;white-space:nowrap}
+.chip.al{background:#f4f0fb;color:#5b3fa0;border-color:#e0d5f5}
+.chip.acc{background:#e9f7ef;color:#1c7a44;border-color:#bfe6cd}
+.chip.rev{background:#fff3e0;color:#a5590f;border-color:#f2d9b0}
+.link{color:#1681c2;cursor:pointer;font-weight:600}.link:hover{text-decoration:underline}
+.warn{color:#b4651a;font-weight:700}.ok{color:#1c7a44;font-weight:700}
+button.go{background:#10263f;color:#fff;border:0;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer}
+button.go.orange{background:#ef6a1f}button.go.blue{background:#1681c2}button.go[disabled]{opacity:.4;cursor:not-allowed}
+button.sm{padding:6px 12px;font-size:12px}
+input,select{font:inherit;padding:8px 10px;border:1px solid #cdd8e3;border-radius:8px;background:#fff}
+.drow:hover{background:#f4f9fe}
+.mergebar{position:sticky;top:0;z-index:5;background:#10263f;color:#fff;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.mergebar .sel{font-weight:700}
+.hint{font-size:12px;color:#5b7085;margin:-2px 0 10px}
+.gate{max-width:360px;margin:60px auto}.gate input{width:100%;margin:10px 0}
+.msg{background:#fff;border:1px solid #dbe4ec;border-radius:12px;padding:22px;text-align:center;color:#5b7085}
+.msg.err{background:#fdecec;border-color:#f3c0c0;color:#b42323}
+.backbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.fld{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}.fld label{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#5b7085}
+.accgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+.accitem{display:flex;align-items:center;gap:7px;border:1px solid #e2e9f0;border-radius:8px;padding:7px 10px;font-size:13px}
+.accitem.on{background:#e9f7ef;border-color:#bfe6cd}
+.dlg{position:fixed;inset:0;background:rgba(16,38,63,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
+.dlgbox{background:#fff;border-radius:14px;padding:20px 22px;max-width:560px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.dlgbox h3{margin:0 0 8px}.pick{display:block;padding:8px 10px;border:1px solid #e2e9f0;border-radius:8px;margin:5px 0;cursor:pointer}
+.pick.on{background:#eaf3fb;border-color:#9dc8ee}
+.st{font-size:12px;margin-left:8px}
+</style></head>
+<body><div class="wrap">
+<div style="display:flex;gap:8px;margin-bottom:12px">
+  <a href="/admin/analytics.html" style="text-decoration:none;font-weight:700;font-size:13px;padding:7px 14px;border-radius:8px;background:#dde6ee;color:#41576b">Analytics</a>
+  <a href="/admin/dealers.html" style="text-decoration:none;font-weight:700;font-size:13px;padding:7px 14px;border-radius:8px;background:#10263f;color:#fff">Dealer Manager</a>
+</div>
+<div class="top"><div><h1>HomeCare Provider Services</h1><div class="sub">Dealer master — merge duplicates &amp; manage accounts</div></div>
+  <div><input type="search" id="q" placeholder="Search dealer or alias…" oninput="render()" style="width:280px"></div></div>
+<div id="body"><div class="msg">Loading…</div></div>
+<div id="dlg"></div>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+const money=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const jesc=s=>String(s).replace(/'/g,"\\'").replace(/"/g,"&quot;");
+let DATA=null,TOKEN=null,TAB="all",SEL=new Set(),DETAIL=null;
+const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
+function jnorm(n){return String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim();}
+const COMMON=new Set(["MEDICAL","SUPPLY","SUPPLIES","PHARMACY","HOME","HEALTHCARE","HEALTH","CARE","EQUIPMENT","EQUIP","MOBILITY","DRUG","DRUGS","STORE","CENTER","SERVICES","MART","MED","OF","AND","DME","PLUS","GA","TN","KY","IN"]);
+
+async function load(){
+  try{
+    const h={}; if(TOKEN)h["x-analytics-token"]=TOKEN;
+    const r=await fetch("/.netlify/functions/dealers-api",{headers:h});
+    if(r.status===401){gate();return;}
+    const j=await r.json(); if(j.error){showErr(j.error);return;}
+    DATA=j; render();
+  }catch(e){showErr(String(e));}
+}
+function gate(){$("#body").innerHTML=`<div class="gate card"><h2>Enter access code</h2><input id="tok" type="password" placeholder="Admin passcode" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Open dealer master</button></div>`;}
+function submitTok(){TOKEN=$("#tok").value.trim();load();}
+function showErr(m){$("#body").innerHTML=`<div class="msg err"><b>Couldn't load.</b><br>${esc(m)}<br><br><button class="go" onclick="load()">Retry</button></div>`;}
+function setTab(t){TAB=t;DETAIL=null;render();}
+
+function reviewList(){return DATA.dealers.filter(d=>d.status==="review");}
+function suggestedPairs(){
+  const ds=DATA.dealers, toks=d=>new Set(jnorm(d.name).split(" ").filter(w=>w&&!COMMON.has(w)));
+  const NM=new Set(DATA.nomerge||[]);
+  const T=ds.map(toks), out=[], seen=new Set();
+  for(let i=0;i<ds.length;i++)for(let j=i+1;j<ds.length;j++){
+    const a=T[i],b=T[j]; if(a.size<1||b.size<1)continue;
+    const [sm,bg]=a.size<=b.size?[a,b]:[b,a];
+    let inter=0; sm.forEach(w=>{if(bg.has(w))inter++;});
+    const uni=new Set([...a,...b]).size, jac=inter/uni;
+    const subset = inter===sm.size;                          // all significant words of the smaller appear in the larger
+    const na=jnorm(ds[i].name), nb=jnorm(ds[j].name);
+    const prefix = na.slice(0,8)===nb.slice(0,8) && na.length>7;
+    // subset match, OR strong overlap (Jaccard) — the Jaccard bar drops "same chain,
+    // different city" pairs (e.g. VAMC Decatur vs VAMC Lexington = 0.5) as non-dupes.
+    if((subset&&inter>=1)||(inter>=2&&jac>=0.55)||(prefix&&inter>=1)){
+      const k=[ds[i].id,ds[j].id].sort().join("|"); if(seen.has(k)||NM.has(k))continue; seen.add(k);
+      out.push({a:ds[i],b:ds[j],score:inter+(subset?1:0)+(prefix?1:0)+jac});
+    }
+  }
+  return out.sort((x,y)=>y.score-x.score||(y.a.sales+y.b.sales)-(x.a.sales+x.b.sales));
+}
+function filtered(){const q=($("#q")?.value||"").toLowerCase();
+  let ds=DATA.dealers;
+  if(q) ds=ds.filter(d=>d.name.toLowerCase().includes(q)||d.aliases.some(a=>a.toLowerCase().includes(q)));
+  return ds;
+}
+function render(){
+  if(!DATA)return;
+  if(DETAIL) return renderDetail();
+  const rev=reviewList().length, dup=suggestedPairs().length;
+  const kpis=`<div class="kpis">
+    <div class="kpi"><div class="l">Dealers</div><div class="v">${DATA.dealers.length}</div></div>
+    <div class="kpi"><div class="l">Review queue</div><div class="v warn">${rev}</div></div>
+    <div class="kpi"><div class="l">Suggested dupes</div><div class="v orange">${dup}</div></div>
+    <div class="kpi"><div class="l">Unlinked sales rows</div><div class="v">${DATA.unlinked||0}</div></div></div>`;
+  const tabs=`<div class="tabs">
+    <button class="tab ${TAB==='all'?'on':''}" onclick="setTab('all')">All dealers</button>
+    <button class="tab ${TAB==='review'?'on':''}" onclick="setTab('review')">Review queue${rev?` (${rev})`:""}</button>
+    <button class="tab ${TAB==='dupes'?'on':''}" onclick="setTab('dupes')">Suggested duplicates${dup?` (${dup})`:""}</button></div>`;
+  $("#body").innerHTML=kpis+tabs+mergeBar()+`<div id="app"></div>`;
+  ({all:renderAll,review:renderReview,dupes:renderDupes}[TAB])();
+}
+function mergeBar(){
+  if(SEL.size<2) return "";
+  const names=[...SEL].map(id=>DATA.dealers.find(d=>d.id===id)?.name).filter(Boolean);
+  return `<div class="mergebar"><div><span class="sel">${SEL.size} selected</span> · ${names.map(n=>esc(n)).join(" · ")}</div>
+    <div><button class="go orange sm" onclick="openMerge()">Merge selected →</button> <button class="go blue sm" onclick="clearSel()">Clear</button></div></div>`;
+}
+function toggleSel(id){SEL.has(id)?SEL.delete(id):SEL.add(id);render();}
+function clearSel(){SEL.clear();render();}
+function renderAll(){
+  const ds=filtered();
+  let h=`<div class="card"><h2>All dealers <span class="hint" style="text-transform:none">(${ds.length} shown — tick 2+ to merge, or click a dealer to manage)</span></h2>
+    <table><thead><tr><th></th><th>Dealer</th><th>Also known as</th><th>Buys</th><th class="num">Sales</th><th>Rep</th><th>Access</th><th></th></tr></thead><tbody>`;
+  for(const d of ds){
+    h+=`<tr class="drow"><td><input type="checkbox" ${SEL.has(d.id)?"checked":""} onclick="toggleSel('${d.id}')"></td>
+      <td class="lbl">${esc(d.name)} ${d.status==="review"?`<span class="chip rev">review</span>`:""}</td>
+      <td>${d.aliases.filter(a=>a!==d.name).slice(0,4).map(a=>`<span class="chip al">${esc(a)}</span>`).join("")||`<span class="dim">—</span>`}${(d.accounts&&d.accounts.length)?`<div class="hint" style="margin:2px 0 0">acct: ${d.accounts.slice(0,6).map(esc).join(", ")}</div>`:""}</td>
+      <td>${d.buysLines.map(l=>`<span class="chip">${esc(DATA.mfrName[l]||l)}</span>`).join("")||`<span class="dim">—</span>`}</td>
+      <td class="num">${money(d.sales)}</td>
+      <td>${d.rep?esc(d.rep):`<span class="dim">—</span>`}</td>
+      <td>${d.access.length?`<span class="chip acc">${d.access.length} line${d.access.length>1?"s":""}</span>`:`<span class="dim">none</span>`}</td>
+      <td class="link" onclick="openDetail('${d.id}')">Manage →</td></tr>`;
+  }
+  h+=`</tbody></table></div>`; $("#app").innerHTML=h;
+}
+function renderReview(){
+  const ds=reviewList();
+  if(!ds.length){$("#app").innerHTML=`<div class="card"><div class="ok">✓ Review queue is empty.</div><div class="hint" style="margin-top:6px">New dealer names from future report loads land here for you to confirm or merge.</div></div>`;return;}
+  let h=`<div class="card"><h2>Review queue — new names from recent loads</h2><div class="hint">Each is a name a report used that didn't match a known dealer. Confirm it's genuinely new, or merge it into the right existing dealer (tick it plus the real dealer on the All-dealers tab).</div>
+    <table><thead><tr><th></th><th>New dealer name</th><th>Line(s)</th><th class="num">Sales</th><th></th></tr></thead><tbody>`;
+  for(const d of ds){
+    h+=`<tr><td><input type="checkbox" ${SEL.has(d.id)?"checked":""} onclick="toggleSel('${d.id}')"></td>
+      <td class="lbl">${esc(d.name)}</td><td>${d.buysLines.map(l=>`<span class="chip">${esc(DATA.mfrName[l]||l)}</span>`).join("")}</td>
+      <td class="num">${money(d.sales)}</td>
+      <td><button class="go blue sm" onclick="confirmNew('${d.id}')">Confirm as new</button> <button class="go sm" onclick="openDetail('${d.id}')">Manage</button></td></tr>`;
+  }
+  h+=`</tbody></table></div>`; $("#app").innerHTML=h;
+}
+function renderDupes(){
+  const pairs=suggestedPairs();
+  if(!pairs.length){$("#app").innerHTML=`<div class="card"><div class="ok">✓ No likely duplicates detected.</div></div>`;return;}
+  let h=`<div class="card"><h2>Suggested duplicates <span class="hint" style="text-transform:none">(${pairs.length} — review each; merges keep the bigger account and fold the other's history + aliases in)</span></h2>
+    <table><thead><tr><th>Likely same dealer</th><th class="num">Sales A / B</th><th>Merge into</th><th></th></tr></thead><tbody>`;
+  for(const p of pairs){
+    const surv=p.a.sales>=p.b.sales?p.a:p.b, loser=surv===p.a?p.b:p.a;
+    h+=`<tr><td><b>${esc(p.a.name)}</b> <span class="dim">↔</span> <b>${esc(p.b.name)}</b></td>
+      <td class="num dim">${money(p.a.sales)} / ${money(p.b.sales)}</td>
+      <td>${esc(surv.name)}</td>
+      <td><button class="go orange sm" onclick="askMerge('${surv.id}',['${loser.id}'])">Merge →</button>
+          <button class="go sm" onclick="notDup('${p.a.id}','${p.b.id}')">Not a dup</button>
+          <button class="go sm" onclick="openDetail('${p.a.id}')">A</button>
+          <button class="go sm" onclick="openDetail('${p.b.id}')">B</button></td></tr>`;
+  }
+  h+=`</tbody></table></div>`; $("#app").innerHTML=h;
+}
+function openMerge(){
+  const ids=[...SEL]; const ds=ids.map(id=>DATA.dealers.find(d=>d.id===id)).filter(Boolean);
+  const suggested=ds.slice().sort((a,b)=>b.sales-a.sales)[0];
+  let picks=ds.map(d=>`<label class="pick ${d.id===suggested.id?"on":""}" onclick="pickSurv(this,'${d.id}')"><input type="radio" name="surv" ${d.id===suggested.id?"checked":""} style="margin-right:8px">${esc(d.name)} <span class="dim">— ${money(d.sales)}, ${d.aliases.length} alias(es)</span></label>`).join("");
+  showDlg(`<h3>Merge ${ds.length} dealers</h3><div class="hint">Pick the account to keep. The others' sales, aliases, line-access and rep fold into it, and their names become aliases so future reports route here automatically.</div>
+    ${picks}<div style="margin-top:14px;text-align:right"><button class="go blue sm" onclick="closeDlg()">Cancel</button>
+    <button class="go orange sm" id="domerge" onclick="doMergeFromDlg('${suggested.id}')">Merge into selected</button></div>`);
+}
+let DLGSURV=null;
+function pickSurv(el,id){document.querySelectorAll(".pick").forEach(p=>p.classList.remove("on"));el.classList.add("on");el.querySelector("input").checked=true;DLGSURV=id;$("#domerge").setAttribute("onclick",`doMergeFromDlg('${id}')`);}
+function doMergeFromDlg(defId){const surv=DLGSURV||defId;const losers=[...SEL].filter(id=>id!==surv);closeDlg();doMerge(surv,losers);}
+function askMerge(survId,loserIds){
+  const surv=DATA.dealers.find(d=>d.id===survId), losers=loserIds.map(i=>DATA.dealers.find(d=>d.id===i));
+  showDlg(`<h3>Confirm merge</h3><div>Fold ${losers.map(l=>`<b>${esc(l.name)}</b>`).join(", ")} into <b>${esc(surv.name)}</b>?</div>
+    <div class="hint" style="margin-top:8px">Combines their sales history and aliases. Future reports using either name route to ${esc(surv.name)}. This can't be auto-undone (use Manage → Split if needed).</div>
+    <div style="margin-top:14px;text-align:right"><button class="go blue sm" onclick="closeDlg()">Cancel</button>
+    <button class="go orange sm" onclick="closeDlg();doMerge('${survId}',${JSON.stringify(loserIds).replace(/"/g,"&quot;")})">Merge</button></div>`);
+}
+async function doMerge(survId,loserIds){
+  await post({action:"merge",survivor_id:survId,loser_ids:loserIds},"Merging…");
+  SEL.clear(); await load();
+}
+async function confirmNew(id){await post({action:"confirm",dealer_id:id},"Saving…");await load();}
+async function notDup(a,b){DATA.nomerge=(DATA.nomerge||[]).concat([[a,b].sort().join("|")]);render();try{await post({action:"nomerge",id_a:a,id_b:b});}catch(e){}}
+
+function openDetail(id){DETAIL=id;window.scrollTo(0,0);render();}
+function backList(){DETAIL=null;render();}
+function renderDetail(){
+  const d=DATA.dealers.find(x=>x.id===DETAIL); if(!d){DETAIL=null;return render();}
+  const mfrs=DATA.manufacturers;
+  const accset=new Set(d.access);
+  let acc=mfrs.map(m=>`<label class="accitem ${accset.has(m.slug)?"on":""}"><input type="checkbox" value="${esc(m.slug)}" ${accset.has(m.slug)?"checked":""} onchange="this.parentNode.classList.toggle('on',this.checked)">${esc(m.name)}${d.buysLines.includes(m.slug)?` <span class="chip" style="margin-left:auto">buys</span>`:""}</label>`).join("");
+  const fld=(k,lab,val,ph)=>`<div class="fld"><label>${lab}</label><input id="f_${k}" value="${esc(val||"")}" placeholder="${ph||""}"></div>`;
+  $("#body").innerHTML=`
+   <div class="backbar"><button class="go" onclick="backList()">← All dealers</button><div class="lbl" style="font-size:18px">${esc(d.name)} ${d.status==="review"?`<span class="chip rev">review</span>`:""}</div><div></div></div>
+   <div class="grid2">
+     <div class="card"><h2>Account details</h2>
+       ${fld("business_name","Dealer name",d.name)}
+       ${fld("hcps_account","HCPS account #",d.hcps_account,"HCPS-…")}
+       ${fld("contact_name","Contact name",d.contact_name)}
+       ${fld("email","Email",d.email,"name@dealer.com")}
+       ${fld("phone","Phone",d.phone)}
+       ${fld("address","Address",d.address)}
+       <div style="display:flex;gap:8px">${fld("city","City",d.city)}${fld("state","State",d.state)}${fld("zip","ZIP",d.zip)}</div>
+       <div class="fld"><label>Owner rep</label><input list="repopts" id="f_rep" value="${esc(d.rep)}" placeholder="rep…"><datalist id="repopts">${DATA.repOptions.map(r=>`<option value="${esc(r)}">`).join("")}</datalist></div>
+       <button class="go" onclick="saveDetail('${d.id}','${jesc(d.name)}')">Save details</button> <span id="stD" class="st"></span>
+       ${d.status==="review"?`<button class="go blue sm" style="margin-left:8px" onclick="confirmNew('${d.id}')">Confirm as new dealer</button>`:""}
+     </div>
+     <div class="card"><h2>Ordering access (manufacturer lines)</h2>
+       <div class="hint">Tick the manufacturers this dealer is allowed to order on the portal. Default is none until you grant them. “buys” marks lines they already have sales with.</div>
+       <div class="accgrid" id="accgrid">${acc}</div>
+       <div style="margin-top:12px"><button class="go" onclick="saveAccess('${d.id}')">Save access</button> <span id="stA" class="st"></span></div>
+       <h2 style="margin-top:18px">History &amp; aliases</h2>
+       <div>Sales <b>${money(d.sales)}</b> · commission <b>${money(d.comm)}</b> · ${d.recs} records · active ${d.periods.length} month(s)${d.lastPeriod?` · last ${esc(d.lastPeriod)}`:""}</div>
+       <div style="margin-top:8px">${d.aliases.map(a=>`<span class="chip al">${esc(a)}</span>`).join("")||`<span class="dim">no alternate spellings</span>`}</div>
+       ${(d.accounts&&d.accounts.length)?`<h3 style="margin-top:14px">Manufacturer account numbers</h3><div>${d.accounts.map(a=>`<span class="chip">${esc(a)}</span>`).join("")}</div>`:""}
+     </div>
+   </div>`;
+}
+async function saveDetail(id,origName){
+  const g=k=>($("#f_"+k)?.value||"").trim();
+  const fields={action:"edit",dealer_id:id,business_name:g("business_name"),hcps_account:g("hcps_account"),contact_name:g("contact_name"),email:g("email"),phone:g("phone"),address:g("address"),city:g("city"),state:g("state"),zip:g("zip")};
+  await post(fields,"Saving…","#stD");
+  const rep=g("rep"); await post({action:"rep",dealer_name:g("business_name")||origName,rep_name:rep},null,"#stD");
+  $("#stD").textContent="Saved ✓";$("#stD").className="st ok";
+  await load(); // refresh aggregates (name change re-links)
+  DETAIL=id; render();
+}
+async function saveAccess(id){
+  const sel=[...document.querySelectorAll("#accgrid input:checked")].map(x=>x.value);
+  await post({action:"access",dealer_id:id,manufacturers:sel},"Saving…","#stA");
+  $("#stA").textContent="Saved ✓";$("#stA").className="st ok";
+  const d=DATA.dealers.find(x=>x.id===id); if(d)d.access=sel;
+}
+async function post(body,working,stSel){
+  const st=stSel?$(stSel):null; if(st&&working){st.textContent=working;st.className="st";}
+  const h={"content-type":"application/json"}; if(TOKEN)h["x-analytics-token"]=TOKEN;
+  const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));
+  if(!(r.ok&&j.ok)){const m="Error: "+(j.error||r.status); if(st){st.textContent=m;st.className="st warn";} else alertDlg(m); throw new Error(m);}
+  return j;
+}
+function showDlg(html){$("#dlg").innerHTML=`<div class="dlg" onclick="if(event.target===this)closeDlg()"><div class="dlgbox">${html}</div></div>`;}
+function closeDlg(){$("#dlg").innerHTML="";DLGSURV=null;}
+function alertDlg(m){showDlg(`<h3>Notice</h3><div>${esc(m)}</div><div style="margin-top:14px;text-align:right"><button class="go sm" onclick="closeDlg()">OK</button></div>`);}
+load();
+</script></body></html>
