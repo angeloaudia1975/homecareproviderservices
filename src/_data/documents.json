@@ -562,6 +562,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "bemis-assurance-display-program-details-ms97eeqe",
+      "title": "Bemis Assurance Display Program Details",
+      "type": "brochure",
+      "manufacturer": "bemis",
+      "format": "pdf",
+      "file": "/assets/docs/bemis-assurance-bath-safety-display-program-2026-new-ms97dw1r.pdf",
+      "url": "",
+      "description": "To sell “Best” level products, your customers must be able to touch, feel and sit on the products to fully understand the features and benefits. Bemis has an offer to get the Assurance seat display into your store... the Display Promo!",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
