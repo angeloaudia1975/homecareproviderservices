@@ -2240,7 +2240,7 @@
         "card_intro": "",
         "checklist": [
           "Gen 2® Walking Boot gives dealers an immediate product story.",
-          "Premium alternative to bulky traditional walkers.",
+          "Premium alternative to bulky traditional bracing.",
           "Use it to open new conversations with clinical referral sources."
         ],
         "image": "/assets/products/ovation-medical/ovation-ms88dwyo.jpg",
@@ -2250,16 +2250,16 @@
         "type": "stats",
         "items": [
           {
+            "value": "2009",
+            "label": "Ovation Medical was Born"
+          },
+          {
             "value": "80+",
-            "label": "Patented product story"
+            "label": "Patented products"
           },
           {
             "value": "6",
             "label": "Core bracing categories"
-          },
-          {
-            "value": "½ lb",
-            "label": "Lighter walker message"
           },
           {
             "value": "New",
