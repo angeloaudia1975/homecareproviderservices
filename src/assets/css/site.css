@@ -417,6 +417,7 @@
 .doc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
 .doc-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:22px;
   display:flex;flex-direction:column;gap:8px;transition:box-shadow .2s ease,transform .2s ease;}
+.doc-card[hidden]{display:none;}
 .doc-card:hover{box-shadow:var(--shadow);transform:translateY(-2px);}
 .doc-card h3{font-size:16.5px;margin-bottom:2px;}
 .doc-card p{font-size:14px;color:#555;flex-grow:1;margin-bottom:6px;}
