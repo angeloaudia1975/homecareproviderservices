@@ -2490,7 +2490,7 @@
         "card_title": "Premium bath safety with a modular, customer-friendly design.",
         "card_intro": "Assurance combines a stylish 3-inch raised seat, secure Stay·Tite installation, the Clean·Shield design, optional silver or black support arms, and a non-electric bidet attachment for customers who need added hygiene support.",
         "checklist": [],
-        "image": "/assets/products/bemis/hero.jpg",
+        "image": "/assets/products/bemis/bemis-opening-page-ms96ejmw.jpg",
         "stats": [
           {
             "value": "1,000 lb",
@@ -2503,6 +2503,10 @@
           {
             "value": "USA",
             "label": "Made in the USA"
+          },
+          {
+            "value": "Warranty",
+            "label": "Limited Lifetime"
           }
         ]
       },
@@ -2515,19 +2519,19 @@
           {
             "name": "Modular retail story",
             "tag": "Customizable",
-            "image": "/assets/products/bemis/assurance.jpg",
-            "description": "A premium raised toilet seat system customers can customize with silver or black support arms to better match their bathroom decor."
+            "image": "/assets/products/bemis/modular-design-ms96nmft.webp",
+            "description": "A premium raised toilet seat system customers can customize with silver or black support arms to better match their bathroom decor, and add a great hygiene option in the Bidet for the Assurance series raised toilet seat."
           },
           {
             "name": "Hygiene upgrade option",
             "tag": "Bidet add-on",
-            "image": "/assets/products/bemis/bidet.jpg",
+            "image": "/assets/products/bemis/bidethygenebermis-ms974v96.jpg",
             "description": "Many customers struggle with hygiene after surgery, injury, limited mobility, or aging. Assurance offers a bidet designed specifically for the raised toilet seat."
           },
           {
             "name": "Premium cash-pay opportunity",
             "tag": "Higher ticket",
-            "image": "/assets/products/bemis/support-arms.jpg",
+            "image": "/assets/products/bemis/money-ms96qztq.png",
             "description": "The modular design, decor-friendly arm choices, and bidet option help justify a premium recommendation versus commodity raised toilet seats."
           }
         ]
@@ -2546,7 +2550,7 @@
               "Universal-Fit"
             ],
             "badge": "Flagship",
-            "image": "/assets/products/bemis/assurance.jpg",
+            "image": "/assets/products/bemis/bemis-assurance-ms96yg6y.webp",
             "url": "",
             "description": "The premium 3-inch raised toilet seat and heart of the modular system. Heavy-duty oversized seat with the Clean·Shield design to keep the toilet cleaner, a larger opening, 12 stabilizing ribs, and non-corroding stainless posts. Lifts for standing and cleaning; fits both round and elongated toilets.",
             "bullets": []
@@ -2559,7 +2563,7 @@
               "500 lb"
             ],
             "badge": "",
-            "image": "/assets/products/bemis/assist.jpg",
+            "image": "/assets/products/bemis/bemis-assist-ms96xukg.webp",
             "url": "",
             "description": "A standard-height premium toilet seat with included support arms — replaces the need for wall- or toilet-mounted rails. Larger opening, Super·Grip bumpers, and self-sustaining check hinges; seat lifts for standing use and cleaning.",
             "bullets": []
@@ -2572,7 +2576,7 @@
               "300 lb"
             ],
             "badge": "",
-            "image": "/assets/products/bemis/rise.jpg",
+            "image": "/assets/products/bemis/7ya04505t-ms96unaf.jpg",
             "url": "",
             "description": "A 4.5-inch basic raised toilet seat with support arms — taller height for additional support. Ergonomic design for easier sitting and standing, Easy·Clean removable seat, coverless fixed mount. Ideal for temporary use.",
             "bullets": []
@@ -2585,7 +2589,7 @@
               "500 lb"
             ],
             "badge": "",
-            "image": "/assets/products/bemis/steadfast.jpg",
+            "image": "/assets/products/bemis/7ye82350tc-ms96vi8a.jpg",
             "url": "",
             "description": "A 3-inch raised open-front heavy-duty toilet seat — the open front provides easier access. Commercial-grade easy-to-clean plastic, non-corroding stainless posts, Super·Grip bumpers, and self-sustaining check hinges.",
             "bullets": []
@@ -2598,7 +2602,7 @@
               "Silver or black"
             ],
             "badge": "",
-            "image": "/assets/products/bemis/support-arms.jpg",
+            "image": "/assets/products/bemis/7ya05313gry-ms96yxtr.jpg",
             "url": "",
             "description": "Fully weight-bearing support arms that add to the Assurance seat. Ergonomic design better supports sitting and standing, 350 lb capacity per arm, available in silver or black to coordinate with the bathroom.",
             "bullets": []
@@ -2611,7 +2615,7 @@
               "Hygiene"
             ],
             "badge": "",
-            "image": "/assets/products/bemis/bidet.jpg",
+            "image": "/assets/products/bemis/bidet-ms96ziiz.jfif",
             "url": "",
             "description": "A non-electric bidet designed specifically for the Assurance raised seat. A simple twist knob controls the wash, an adjustable T-valve delivers consistent pressure, and the spray angle is tuned to the raised seat height.",
             "bullets": []
@@ -2631,7 +2635,7 @@
           "Proudly made in the USA"
         ],
         "checks": [],
-        "image": "/assets/products/bemis/staytite.jpg",
+        "image": "/assets/products/bemis/staytight-ms96fxsl.jpg",
         "image_side": "left"
       },
       {
@@ -2656,23 +2660,6 @@
       },
       {
         "type": "split",
-        "headline": "Designed for independence, safety, hygiene, and bathroom decor.",
-        "copy": "Assurance helps customers sit and stand more comfortably while giving them the ability to choose a more personalized solution for their home.",
-        "checklist": [
-          "A 3-inch elevated height helps make sitting and standing easier.",
-          "A residential-style appearance blends into the bathroom.",
-          "The Stay·Tite installation is designed to prevent loosening with use.",
-          "Optional fully weight-bearing support arms in silver or black.",
-          "An optional bidet upgrade helps customers with hygiene concerns.",
-          "Clean·Shield reverse funnel design helps direct waste toward the bowl.",
-          "The hinged ring and cover lift upright for standing use and easier cleaning."
-        ],
-        "checks": [],
-        "image": "/assets/products/bemis/assurance.jpg",
-        "image_side": "right"
-      },
-      {
-        "type": "split",
         "headline": "The Assurance Display Program — let customers touch, feel, and sit.",
         "copy": "“Best”-level seats sell when customers can try them. The Bemis Assurance Display Program puts a full display in your store — an Assurance display seat with support arms, a toilet and floor panel, a display bidet attachment, POP trifolds, and product-knowledge training — plus a display promo to stock the seats that go with it.",
         "checklist": [
@@ -2683,15 +2670,15 @@
           "Display promo: 4 round + 4 elongated seats, 4 support arms, 2 bidets"
         ],
         "checks": [],
-        "image": "/assets/products/bemis/display.jpg",
-        "image_side": "left"
+        "image": "/assets/products/bemis/bemis-display-ms96hg31.jpg",
+        "image_side": "right"
       },
       {
         "type": "spotlight",
         "badge": "Modular raised toilet seat system",
         "headline": "BEMIS Assurance® Modular Raised Toilet Seat System",
         "copy": "A premium elevated toilet seat system that gives customers the safety of a raised seat, the ability to add decor-friendly support arms, and the option to upgrade with a bidet — a stronger premium story than standard bath safety risers. Best customer fits:",
-        "image": "/assets/products/bemis/assurance.jpg",
+        "image": "/assets/products/bemis/7ya06303twa-ms977e12.jpg",
         "checklist": [
           "Seniors wanting to remain independent at home.",
           "Post-surgery or rehab customers needing temporary or long-term support.",
@@ -2725,7 +2712,7 @@
           },
           {
             "title": "Request pricing & order",
-            "description": "Ask HCPS for dealer pricing and place your opening order to stock the line."
+            "description": "Ask HomeCare Provider Services for access to Online Ordering Platform and place your opening order to stock the line."
           }
         ]
       }
