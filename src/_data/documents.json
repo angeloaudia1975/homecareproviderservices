@@ -536,6 +536,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "corsicana-healthcare-new-dealer-application-ms87e2ny",
+      "title": "Corsicana Healthcare New Dealer Application",
+      "type": "credit-application",
+      "manufacturer": "corsicana",
+      "format": "docx",
+      "file": "/assets/docs/corsicana-healthcare-south-bay-international-credit-applicat-ms87by1g.docx",
+      "url": "",
+      "description": "To open an account with Corsicana Healthcare please fill out the attached application and send to HomeCare Provider Services to open your account. Please send State resale certificate when submitting.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
