@@ -1898,6 +1898,24 @@
         ]
       },
       {
+        "type": "video",
+        "eyebrow": "Intorducing the Mobile Stairlift",
+        "headline": "Genesis",
+        "copy": "Introducing the Genesis Powered Stair Chair - the perfect solution for familiys needing to transport individuals up or down the stairs. This motorized lift offers a safe and efficient way to transport riders of up to 400lbs. The Genesis Powered Stair Chair is a foldable and portable design, allowing families to quickly store it in the vehicle and ready to use right out of the box. One of the main benefits of this motorized lift is that the tracks hold the person's weight, reducing the risk of injury to the family member.",
+        "embed": "https://www.youtube.com/watch?v=QhBhuuoeyd4",
+        "checklist": [],
+        "video_side": ""
+      },
+      {
+        "type": "video",
+        "eyebrow": "Freedom Transfer Patient Lift",
+        "headline": "Freedom Lift without Sling",
+        "copy": "The Freedom Transfer Patient Lift is a sling-free, seated alternative to a traditional Hoyer or patient lift - a versatile, durable device designed to help caregivers transfer loved ones safely and comfortably in home care settings.",
+        "embed": "https://www.youtube.com/watch?v=RQGHwqNyXmI",
+        "checklist": [],
+        "video_side": "right"
+      },
+      {
         "type": "products",
         "eyebrow": "For your delivery team",
         "title": "Climbing hand trucks that deliver the heavy equipment you sell.",
@@ -1932,6 +1950,15 @@
             ]
           }
         ]
+      },
+      {
+        "type": "video",
+        "eyebrow": "Voltstair Titan",
+        "headline": "Powered Handtruck",
+        "copy": "The Voltstair Titan shines when carrying strenuous loads as the rear handles and professional grade ratchet system are invaluable for the heaviest of tasks. The Voltstair lifts are great for Transporting Lift Chairs, Heavy Duty Beds and heavy loads in patient home or at work.",
+        "embed": "https://www.youtube.com/watch?v=3kvnGdlKkUM&t=14s",
+        "checklist": [],
+        "video_side": ""
       },
       {
         "type": "differentiators",
