@@ -549,6 +549,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "installation-bemis-assurance-with-clean-shield-toilet-seat-ms97cn2b",
+      "title": " Installation - Bemis Assurance® with Clean Shield™ Toilet Seat",
+      "type": "training-video",
+      "manufacturer": "bemis",
+      "format": "link",
+      "file": "https://www.youtube.com/watch?v=HIZYz0mE2Rc",
+      "url": "",
+      "description": "The Bemis Assurance® with Clean Shield seat is a 3\" elevated toilet seat. The Snap2Secure™ (Stay•Tite®) installation system means the seat is fully secure and will never loosen, guaranteed. Seat capacity is tested to 1,000 lbs. ",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
