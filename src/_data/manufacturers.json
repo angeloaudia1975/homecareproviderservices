@@ -2556,6 +2556,32 @@
             "bullets": []
           },
           {
+            "name": "Assurance™ Support Arms",
+            "tags": [
+              "Add-on",
+              "350 lb / arm",
+              "Silver or black"
+            ],
+            "badge": "",
+            "image": "/assets/products/bemis/7ya05313gry-ms96yxtr.jpg",
+            "url": "",
+            "description": "Fully weight-bearing support arms that add to the Assurance seat. Ergonomic design better supports sitting and standing, 350 lb capacity per arm, available in silver or black to coordinate with the bathroom.",
+            "bullets": []
+          },
+          {
+            "name": "Assurance™ Bidet Attachment",
+            "tags": [
+              "Add-on",
+              "Non-electric",
+              "Hygiene"
+            ],
+            "badge": "",
+            "image": "/assets/products/bemis/bidet-ms96ziiz.jfif",
+            "url": "",
+            "description": "A non-electric bidet designed specifically for the Assurance raised seat. A simple twist knob controls the wash, an adjustable T-valve delivers consistent pressure, and the spray angle is tuned to the raised seat height.",
+            "bullets": []
+          },
+          {
             "name": "Assist™ + Support Arms",
             "tags": [
               "Standard height",
@@ -2592,32 +2618,6 @@
             "image": "/assets/products/bemis/7ye82350tc-ms96vi8a.jpg",
             "url": "",
             "description": "A 3-inch raised open-front heavy-duty toilet seat — the open front provides easier access. Commercial-grade easy-to-clean plastic, non-corroding stainless posts, Super·Grip bumpers, and self-sustaining check hinges.",
-            "bullets": []
-          },
-          {
-            "name": "Assurance™ Support Arms",
-            "tags": [
-              "Add-on",
-              "350 lb / arm",
-              "Silver or black"
-            ],
-            "badge": "",
-            "image": "/assets/products/bemis/7ya05313gry-ms96yxtr.jpg",
-            "url": "",
-            "description": "Fully weight-bearing support arms that add to the Assurance seat. Ergonomic design better supports sitting and standing, 350 lb capacity per arm, available in silver or black to coordinate with the bathroom.",
-            "bullets": []
-          },
-          {
-            "name": "Assurance™ Bidet Attachment",
-            "tags": [
-              "Add-on",
-              "Non-electric",
-              "Hygiene"
-            ],
-            "badge": "",
-            "image": "/assets/products/bemis/bidet-ms96ziiz.jfif",
-            "url": "",
-            "description": "A non-electric bidet designed specifically for the Assurance raised seat. A simple twist knob controls the wash, an adjustable T-valve delivers consistent pressure, and the spray angle is tuned to the raised seat height.",
             "bullets": []
           }
         ]
