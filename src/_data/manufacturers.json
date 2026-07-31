@@ -2295,7 +2295,7 @@
             "badge": "Patented",
             "image": "/assets/products/ovation-medical/gen2-walking-boot-ms87xg3h.jpg",
             "url": "",
-            "description": "The world's most advanced double-upright walker — ultra low profile, smooth natural gait, and incredibly light weight.",
+            "description": "The world's most advanced double-upright walking boot — ultra low profile, smooth natural gait, and incredibly light weight.",
             "bullets": [
               "Pneumatic pump system",
               "Sure-Grip resting surface",
@@ -2378,6 +2378,24 @@
             ]
           }
         ]
+      },
+      {
+        "type": "video",
+        "eyebrow": "Gen2 Walking Boot",
+        "headline": "Best in class",
+        "copy": "Learn More About The world's most advanced double-upright walking boot — ultra low profile, smooth natural gait, and incredibly light weight.",
+        "embed": "https://www.youtube.com/watch?v=gIH3s2O1ya4",
+        "checklist": [],
+        "video_side": ""
+      },
+      {
+        "type": "video",
+        "eyebrow": "Nu-Form Ankle Brace",
+        "headline": "Best in Class",
+        "copy": "Blends the support of a stirrup with the comfort and compressive fit of a lace-up — semi-rigid frame, ultra-breathable fabric.",
+        "embed": "https://www.youtube.com/watch?v=WKj--migjSQ",
+        "checklist": [],
+        "video_side": "right"
       },
       {
         "type": "differentiators",
