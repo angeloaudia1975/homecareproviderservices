@@ -575,6 +575,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "bemis-raised-toilet-seats-catalog-ms97gaus",
+      "title": "Bemis Raised Toilet Seats Catalog",
+      "type": "catalog",
+      "manufacturer": "bemis",
+      "format": "pdf",
+      "file": "/assets/docs/bemis-bath-safety-catalog-2026-ms97f6in.pdf",
+      "url": "",
+      "description": "Learn more about all the great products Bemis offers for Bath Safety.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
