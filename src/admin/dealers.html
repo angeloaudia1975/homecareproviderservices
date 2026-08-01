@@ -2,7 +2,7 @@
 <title>HCPS — Dealer Master &amp; Merge</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,Segoe UI,Arial,sans-serif;background:#eef2f6;color:#10263f}
-.wrap{max-width:1180px;margin:0 auto;padding:20px}
+.wrap{max-width:min(1720px,98vw);margin:0 auto;padding:20px}
 .top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #ef6a1f;padding-bottom:12px;flex-wrap:wrap;gap:10px}
 .top h1{margin:0;font-size:22px}.top .sub{color:#5b7085;font-size:13px;margin-top:3px}
 .kpis{display:flex;gap:10px;margin:16px 0;flex-wrap:wrap}
@@ -43,12 +43,14 @@ input,select{font:inherit;padding:8px 10px;border:1px solid #cdd8e3;border-radiu
 .fld .val,.acctline{overflow-wrap:anywhere}
 .accgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
 .accitem{min-width:0}.accitem input[type=checkbox]{flex:none}
-/* All-dealers table: keep short columns on one line so names/links don't shatter vertically */
+/* All-dealers table: fills the (now wider) card; short columns stay on one line so
+   names/links don't shatter vertically. Horizontal scroll only as a last resort. */
 .dtable{overflow-x:auto}
-.dtable table{min-width:920px}
+.dtable table{width:100%}
 td.rep,td.mng,th.rep,th.mng{white-space:nowrap}
-td.rep{max-width:150px}
+td.rep{max-width:170px}
 td.mng{text-align:right}
+th.buys,td.buys{max-width:230px}
 .accitem{display:flex;align-items:center;gap:7px;border:1px solid #e2e9f0;border-radius:8px;padding:7px 10px;font-size:13px}
 .accitem.on{background:#e9f7ef;border-color:#bfe6cd}
 .dlg{position:fixed;inset:0;background:rgba(16,38,63,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
@@ -182,7 +184,7 @@ function renderAll(){
       <label class="hint" style="text-transform:none">Sort: <select onchange="setSort(this.value)">${sortSel}</select></label></div>
     <div class="dtable"><table style="margin-top:8px"><thead><tr><th><input type="checkbox" ${allSelected()?"checked":""} onclick="toggleAll(this)" title="Select all shown"></th>
       <th class="link" onclick="setSort('name')" style="cursor:pointer">Dealer${sortArrow('name')}</th>
-      <th>Address / email</th><th>Buys</th>
+      <th>Address / email</th><th class="buys">Buys</th>
       <th class="num link" onclick="setSort('sales')" style="cursor:pointer">Sales${sortArrow('sales')}</th>
       <th class="rep">Rep</th><th class="rep">Access</th><th class="mng"></th></tr></thead><tbody>`;
   for(const d of ds){
@@ -195,7 +197,7 @@ function renderAll(){
         ${d.aliases.filter(a=>a!==d.name).slice(0,3).map(a=>`<span class="chip al">${esc(a)}</span>`).join("")}
         ${(d.accounts&&d.accounts.length)?`<div class="hint" style="margin:2px 0 0">acct: ${d.accounts.slice(0,6).map(esc).join(", ")}</div>`:""}</td>
       <td>${contact}</td>
-      <td>${d.buysLines.map(l=>`<span class="chip">${esc(DATA.mfrName[l]||l)}</span>`).join("")||`<span class="dim">—</span>`}</td>
+      <td class="buys">${d.buysLines.map(l=>`<span class="chip">${esc(DATA.mfrName[l]||l)}</span>`).join("")||`<span class="dim">—</span>`}</td>
       <td class="num">${money(d.sales)}</td>
       <td class="rep">${d.rep?esc(d.rep):`<span class="dim">—</span>`}</td>
       <td class="rep">${d.access.length?`<span class="chip acc">${d.access.length} line${d.access.length>1?"s":""}</span>`:`<span class="dim">none</span>`}</td>
