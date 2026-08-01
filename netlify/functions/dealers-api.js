@@ -44,7 +44,7 @@ async function buildState(){
     sbGet("dealer_directory?select=dealer_name,rep_name,hcps_account").catch(()=>[]),
     sbGet("reps?select=name").catch(()=>[]),
     sbGet("dealer_nomerge?select=a,b").catch(()=>[]),
-    sbGet("dealer_users?select=uid,email,dealer_id,status,created_at&order=created_at.desc").catch(()=>[]),
+    sbGet("dealer_users?select=uid,email,dealer_id,status,created_at,req_company,req_contact,req_phone,req_address,req_city,req_state,req_zip&order=created_at.desc").catch(()=>[]),
   ]);
   const dcontacts = await sbGetAll("dealer_contacts?select=dealer_id,email,name,title,role,phone").catch(()=>[]);
   const contactsByDealer=new Map(); for(const x of dcontacts){(contactsByDealer.get(x.dealer_id)||contactsByDealer.set(x.dealer_id,[]).get(x.dealer_id)).push(x);}
@@ -93,7 +93,9 @@ async function buildState(){
     nomerge:(nomerge||[]).map(x=>[x.a,x.b].sort().join("|")),
     logins:(logins||[]).map(u=>{const d=dealers.find(x=>x.id===u.dealer_id);
       return {uid:u.uid,email:u.email,status:u.status,created_at:u.created_at,
-        dealer_id:u.dealer_id||"",dealer_name:d?d.business_name:""};}),
+        dealer_id:u.dealer_id||"",dealer_name:d?d.business_name:"",
+        req:{company:u.req_company||"",contact:u.req_contact||"",phone:u.req_phone||"",
+             address:u.req_address||"",city:u.req_city||"",state:u.req_state||"",zip:u.req_zip||""}};}),
   };
 }
 
@@ -155,8 +157,20 @@ exports.handler = async (event)=>{
       }
       if(act==="approve_login"){
         if(!b.uid) return json(400,{error:"uid required"});
-        await rpc("approve_dealer_login",{p_uid:b.uid,p_dealer:b.dealer_id||null,p_by:b.by||"admin"});
-        return json(200,{ok:true});
+        let dealerId=b.dealer_id||null;
+        // Approve + create a brand-new dealer from the registrant's submitted details.
+        if(!dealerId && b.new_dealer && String(b.new_dealer.business_name||"").trim()){
+          const nd=b.new_dealer;
+          const ins=await sbSend("POST","dealers",{
+            business_name:String(nd.business_name).trim(),
+            contact_name:nd.contact_name||null, email:nd.email||null, phone:nd.phone||null,
+            address:nd.address||null, city:nd.city||null, state:nd.state||null, zip:nd.zip||null,
+            active:true, status:"prospect"
+          },{Prefer:"return=representation"});
+          dealerId=ins&&ins[0]&&ins[0].id||null;
+        }
+        await rpc("approve_dealer_login",{p_uid:b.uid,p_dealer:dealerId||null,p_by:b.by||"admin"});
+        return json(200,{ok:true,dealer_id:dealerId});
       }
       if(act==="revoke_login"){
         if(!b.uid) return json(400,{error:"uid required"});

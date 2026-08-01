@@ -33,13 +33,15 @@ exports.handler = async (event)=>{
 
     if(b.action==="register"){
       const email=String(b.email||"").trim().toLowerCase(), password=String(b.password||"");
+      const company=String(b.company||"").trim();
       if(!EMAIL_RE.test(email)) return json(200,{ok:false,code:"bad_email",message:"Enter a valid email address."});
       if(password.length<8) return json(200,{ok:false,code:"weak",message:"Password must be at least 8 characters."});
-      // must match a dealer on file
-      const dealer_id = await rpc("dealer_by_email",{p_email:email});
-      if(!dealer_id) return json(200,{ok:false,code:"not_on_file",
-        message:"That email isn’t on file with HCPS yet. Ask your HCPS rep to add it, then register."});
-      // create the Supabase auth user (we vouch for the email since it's on file)
+      if(!company) return json(200,{ok:false,code:"no_company",message:"Enter your company / business name so HCPS can match your account."});
+      // Open registration: anyone may register. If the email is already on file we auto-link
+      // the dealer; otherwise it stays unlinked for HCPS to assign on approval.
+      let dealer_id=null;
+      try{ dealer_id = await rpc("dealer_by_email",{p_email:email}); }catch(e){ dealer_id=null; }
+      // create the Supabase auth user
       const r=await fetch(`${SUPABASE_URL}/auth/v1/admin/users`,{method:"POST",
         headers:{...H(),"content-type":"application/json"},
         body:JSON.stringify({email,password,email_confirm:true})});
@@ -50,8 +52,15 @@ exports.handler = async (event)=>{
         return json(500,{error:`auth ${r.status}: ${JSON.stringify(au)}`});
       }
       const uid=au.id||au.user?.id;
-      await sb("POST","dealer_users",{uid,email,dealer_id,status:"pending"},{Prefer:"resolution=merge-duplicates,return=minimal"});
-      return json(200,{ok:true,status:"pending",message:"Registration received — your account is pending HCPS approval."});
+      const row={uid,email,dealer_id,status:"pending",
+        req_company:company||null, req_contact:String(b.contact||"").trim()||null, req_phone:String(b.phone||"").trim()||null,
+        req_address:String(b.address||"").trim()||null, req_city:String(b.city||"").trim()||null,
+        req_state:String(b.state||"").trim()||null, req_zip:String(b.zip||"").trim()||null};
+      await sb("POST","dealer_users",row,{Prefer:"resolution=merge-duplicates,return=minimal"});
+      const message = dealer_id
+        ? "Registration received — we matched your email to an HCPS account. It’s pending approval; you’ll be able to order once approved."
+        : "Registration received — your request is pending HCPS review. HCPS will link it to your dealer account and approve you.";
+      return json(200,{ok:true,status:"pending",matched:!!dealer_id,message});
     }
 
     if(b.action==="me"){
