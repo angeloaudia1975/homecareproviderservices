@@ -31,6 +31,13 @@ th{text-align:left;font-size:10.5px;text-transform:uppercase;color:#5b7085;paddi
 .dot.on{background:#1681c2;color:#fff;font-weight:700}
 .drow{cursor:pointer}.drow:hover{background:#eef6fd}
 .link{color:#1681c2;cursor:pointer;font-weight:600}.link:hover{text-decoration:underline}
+.kpi.clk,.sbox.clk{cursor:pointer;transition:box-shadow .12s,border-color .12s,transform .12s}
+.kpi.clk:hover,.sbox.clk:hover{border-color:#1681c2;box-shadow:0 6px 18px rgba(22,129,194,.18);transform:translateY(-1px)}
+.sbox.clk .v small,.kpi.clk .l{position:relative}
+.bx.clk,rect.clk{cursor:pointer}.bx.clk:hover,rect.clk:hover{opacity:.82}
+.hcell.clk{cursor:pointer}.hcell.clk:hover{outline:2px solid #1681c2;outline-offset:-2px}
+.ctrls .f select{margin-left:4px}
+.drillhint{font-size:11px;color:#1681c2;font-weight:700;margin-left:6px}
 .warn{color:#b4651a;font-weight:700}.ok{color:#1c7a44;font-weight:700}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .mcard{border:1px solid #e2e9f0;border-radius:10px;padding:12px 14px}
@@ -95,7 +102,8 @@ const money=n=>"$"+Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,
 const money0=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
 const pm=p=>{const[y,m]=p.split("-").map(Number);return y*12+(m-1);};
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-let DATA=null,TOKEN=null,TAB="overview",EXP=null,DEALER=null,LT={},ASSIGN={},REPOPTS=[],ORDMODE="month";
+let DATA=null,TOKEN=null,TAB="overview",EXP=null,DEALER=null,LT={},ASSIGN={},REPOPTS=[],ORDMODE="month",DRILL=null;
+const jarg=s=>esc(String(s)).replace(/'/g,"\\'");   // safe onclick string arg
 const TABS=[["overview","Overview"],["trend","Trends & charts"],["orders","Orders"],["dealers","Dealers"],["cadence","Order cadence"],["bizdev","Business development"],["reports","Reports received"],["assign","Assignments"]];
 // Effective rep = the live assigned owner (Assignments tab) if set, else the rep the
 // manufacturer reported. This makes every rep-based view recompute the moment a dealer
@@ -121,9 +129,42 @@ async function load(){
 function gate(){$("#body").innerHTML=`<div class="gate card"><h2>Enter access code</h2><input id="tok" type="password" placeholder="Analytics passcode" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">View analytics</button></div>`;}
 function submitTok(){TOKEN=$("#tok").value.trim();load();}
 function showErr(m){$("#body").innerHTML=`<div class="msg err"><b>Couldn't load analytics.</b><br>${esc(m)}<br><br><button class="go" onclick="load()">Retry</button></div>`;}
-function setTab(t){TAB=t;EXP=null;render();}
+function setTab(t){TAB=t;EXP=null;DRILL=null;render();}
 function openDealer(n){DEALER=n;window.scrollTo(0,0);render();}
-function backToList(){DEALER=null;render();}
+function backToList(){DEALER=null;render();}   // returns to the active drill if one is set, else the tab
+/* ---------- drill-downs (click anything to hone in) ---------- */
+function backDrill(){DRILL=null;render();}
+function drillLine(l){DRILL=null;const sel=$("#line");if(sel){sel.value=l;}TAB="dealers";render();}       // e.g. click a line box → that line's dealer list
+function drillMonth(p){DRILL={type:"month",period:p};window.scrollTo(0,0);render();}                     // click a month → all orders that month
+function drillLineMonth(l,p){DRILL={type:"lineMonth",line:l,period:p};window.scrollTo(0,0);render();}     // click a matrix cell
+function drillRep(r){DRILL={type:"rep",rep:r};window.scrollTo(0,0);render();}                            // click a rep → their dealers
+function drillDealerRows(rows,title,sub){
+  const byDealer=[...gsum(rows,f=>f.dealer)].map(([name,v])=>({name,...v})).sort((a,b)=>b.sales-a.sales);
+  const tot=rows.reduce((a,b)=>a+b.sales,0),recs=rows.reduce((a,b)=>a+b.recs,0);
+  let h=`<div class="backbar"><button class="go" onclick="backDrill()">← Back</button><div class="lbl" style="font-size:16px">${title}</div><div></div></div>
+    <div class="strip"><div class="sbox tot"><div class="l">Dealers</div><div class="v">${byDealer.length}</div></div>
+      <div class="sbox"><div class="l">Order records</div><div class="v">${recs}</div></div>
+      <div class="sbox"><div class="l">Sales</div><div class="v">${money0(tot)}</div></div></div>
+    <div class="card"><h2>${sub}</h2><table><thead><tr><th>Dealer</th><th>Lines</th><th class="num">Sales</th><th class="num">Commission</th><th class="num">Orders</th></tr></thead><tbody>`+
+    byDealer.map(x=>{const dl=[...new Set(rows.filter(f=>f.dealer===x.name).map(f=>f.line))].sort();
+      return `<tr class="drow" onclick="openDealer('${jarg(x.name)}')"><td class="lbl link">${esc(x.name)}</td><td>${dl.map(y=>`<span class="chip">${esc(y)}</span>`).join("")}</td><td class="num">${money0(x.sales)}</td><td class="num comm">${money(x.comm)}</td><td class="num dim">${x.recs}</td></tr>`;}).join("")+
+    (byDealer.length?"":`<tr><td colspan="5" class="hint" style="padding:14px">No orders in scope.</td></tr>`)+
+    `</tbody></table></div>`;
+  $("#app").innerHTML=h;
+}
+function renderDrill(){
+  const d=DRILL,l=lineF();
+  if(d.type==="month"){
+    const rows=DATA.facts.filter(f=>(l==="all"||f.line===l)&&f.period===d.period);
+    drillDealerRows(rows,`Orders in ${esc(plabel(d.period))}${l==="all"?"":" — "+esc(l)}`,`Dealers who ordered in ${esc(plabel(d.period))}`);
+  } else if(d.type==="lineMonth"){
+    const rows=DATA.facts.filter(f=>f.line===d.line&&f.period===d.period);
+    drillDealerRows(rows,`${esc(d.line)} — ${esc(plabel(d.period))}`,`${esc(d.line)} dealers ordering in ${esc(plabel(d.period))}`);
+  } else if(d.type==="rep"){
+    const rows=facts().filter(f=>erep(f)===d.rep);
+    drillDealerRows(rows,`Rep: ${esc(d.rep)}`,`Dealers owned by ${esc(d.rep)} (${esc(plabel(periodF()))})`);
+  }
+}
 
 const months=()=>DATA.periods.filter(p=>p.key!=="all").map(p=>p.key);
 const plabel=p=>(DATA.periods.find(x=>x.key===p)||{}).label||p;
@@ -132,7 +173,7 @@ function facts(scope={}){const l=scope.line??lineF(),p=scope.period??periodF();r
 function gsum(rows,keyFn){const m=new Map();for(const f of rows){const k=keyFn(f);const v=m.get(k)||{sales:0,comm:0,qty:0,recs:0};v.sales+=f.sales;v.comm+=f.comm;v.qty+=f.qty;v.recs+=f.recs;m.set(k,v);}return m;}
 function cad(set){const ps=[...set].sort();const n=ps.map(pm);const g=[];for(let i=1;i<n.length;i++)g.push(n[i]-n[i-1]);const avg=g.length?g.reduce((a,b)=>a+b,0)/g.length:null;const since=DATA.latestPeriod?pm(DATA.latestPeriod)-n[n.length-1]:0;return{months:ps,avg,since,count:ps.length};}
 function dots(set){return `<span class="dots">`+months().map(p=>`<span class="dot ${set.has(p)?'on':''}" title="${esc(plabel(p))}">${esc(plabel(p).slice(0,1))}</span>`).join("")+`</span>`;}
-function barTable(head,items,vk,cls,cells){const mx=Math.max(1,...items.map(i=>i[vk]));return `<table><thead><tr>${head}</tr></thead><tbody>`+items.map(i=>`<tr><td class="lbl">${esc(i.name)}</td><td class="barcell"><div class="bar ${cls}" style="width:${i[vk]/mx*100}%"></div></td>${cells(i)}</tr>`).join("")+`</tbody></table>`;}
+function barTable(head,items,vk,cls,cells,rowClick){const mx=Math.max(1,...items.map(i=>i[vk]));return `<table><thead><tr>${head}</tr></thead><tbody>`+items.map(i=>{const oc=rowClick?rowClick(i):"";return `<tr ${oc?`class="drow" onclick="${oc}"`:""}><td class="lbl${oc?" link":""}">${esc(i.name)}</td><td class="barcell"><div class="bar ${cls}" style="width:${i[vk]/mx*100}%"></div></td>${cells(i)}</tr>`;}).join("")+`</tbody></table>`;}
 
 function render(){ if(!DATA)return;
   if(DEALER) return renderProfile();
@@ -140,18 +181,20 @@ function render(){ if(!DATA)return;
   $("#body").innerHTML=`<div id="kpis">${$("#kpis")?$("#kpis").innerHTML:""}</div>`+
     `<div class="tabs">${TABS.map(t=>`<button class="tab ${TAB===t[0]?'on':''}" onclick="setTab('${t[0]}')">${t[1]}</button>`).join("")}</div><div id="app"></div>`;
   renderKpis();
+  if(DRILL) return renderDrill();
   ({overview:renderOverview,trend:renderTrend,orders:renderOrders,dealers:renderDealers,cadence:renderCadence,bizdev:renderBizdev,reports:renderReports,assign:renderAssign}[TAB])();
 }
 function renderKpis(){
   const rows=facts();const de=new Set(),rp=new Set();let s=0,c=0,recs=0;
   for(const f of rows){s+=f.sales;c+=f.comm;recs+=f.recs;de.add(f.dealer);rp.add(erep(f));}
+  const linesOrReps=lineF()==="all"?"Lines":"Reps";
   const html=`<div class="kpis">
-    <div class="kpi"><div class="l">Sales</div><div class="v">${money0(s)}</div></div>
-    <div class="kpi"><div class="l">Commission</div><div class="v orange">${money0(c)}</div></div>
-    <div class="kpi"><div class="l">Dealers</div><div class="v blue">${de.size}</div></div>
-    <div class="kpi"><div class="l">${lineF()==="all"?"Lines":"Reps"}</div><div class="v">${lineF()==="all"?new Set(rows.map(f=>f.line)).size:rp.size}</div></div>
-    <div class="kpi"><div class="l">Records</div><div class="v">${recs}</div></div></div>
-    <div class="hint">Scope: ${lineF()==="all"?"All lines":esc(lineF())} · ${esc(plabel(periodF()))}</div>`;
+    <div class="kpi clk" title="Sales trend by month" onclick="setTab('trend')"><div class="l">Sales</div><div class="v">${money0(s)}</div></div>
+    <div class="kpi clk" title="Commission trend" onclick="setTab('trend')"><div class="l">Commission</div><div class="v orange">${money0(c)}</div></div>
+    <div class="kpi clk" title="Open the dealer list" onclick="setTab('dealers')"><div class="l">Dealers</div><div class="v blue">${de.size}</div></div>
+    <div class="kpi clk" title="${linesOrReps==='Reps'?'Rep assignments':'Line breakdown'}" onclick="setTab('${linesOrReps==='Reps'?'assign':'overview'}')"><div class="l">${linesOrReps}</div><div class="v">${lineF()==="all"?new Set(rows.map(f=>f.line)).size:rp.size}</div></div>
+    <div class="kpi clk" title="Orders by month" onclick="setTab('orders')"><div class="l">Records</div><div class="v">${recs}</div></div></div>
+    <div class="hint">Scope: ${lineF()==="all"?"All lines":esc(lineF())} · ${esc(plabel(periodF()))} · <span class="drillhint">tip: click any box, bar, row or month to drill in</span></div>`;
   if($("#kpis")) $("#kpis").outerHTML=`<div id="kpis">${html}</div>`;
 }
 function activeDealerBoxes(rows){
@@ -160,27 +203,27 @@ function activeDealerBoxes(rows){
   for(const f of rows){all.add(f.dealer); if(byL.has(f.line))byL.get(f.line).add(f.dealer);}
   const order=[...byL.entries()].sort((a,b)=>b[1].size-a[1].size);
   return `<div class="strip">
-    <div class="sbox tot"><div class="l">Total dealers</div><div class="v">${all.size}</div></div>`+
-    order.map(([l,set])=>`<div class="sbox ${set.size?'':'zero'}"><div class="l" title="${esc(l)}">${esc(l)}</div><div class="v">${set.size} <small>dealers</small></div></div>`).join("")+
-    `</div><div class="hint">Active = dealers with orders in scope (${esc(plabel(periodF()))}). Use the Line/Period filters to narrow.</div>`;
+    <div class="sbox tot clk" title="Open the full dealer list" onclick="drillLine('all')"><div class="l">Total dealers</div><div class="v">${all.size}</div></div>`+
+    order.map(([l,set])=>`<div class="sbox clk ${set.size?'':'zero'}" title="See ${esc(l)} dealers" onclick="drillLine('${jarg(l)}')"><div class="l" title="${esc(l)}">${esc(l)}</div><div class="v">${set.size} <small>dealers</small></div></div>`).join("")+
+    `</div><div class="hint">Active = dealers with orders in scope (${esc(plabel(periodF()))}). <b>Click a line</b> to see just those dealers.</div>`;
 }
 function renderOverview(){const rows=facts();let h="";
   h+=`<div class="card"><h2>Active dealers by line</h2>${activeDealerBoxes(rows)}</div>`;
   if(lineF()==="all"){const g=[...gsum(rows,f=>f.line)].map(([name,v])=>({name,...v})).sort((a,b)=>b.sales-a.sales);
-    h+=`<div class="card"><h2>By line</h2>${barTable(`<th>Line</th><th>Sales</th><th class="num">Sales</th><th class="num">Commission</th><th class="num">Recs</th>`,g,"sales","",i=>`<td class="num">${money0(i.sales)}</td><td class="num comm">${money(i.comm)}</td><td class="num dim">${i.recs}</td>`)}</div>`;}
+    h+=`<div class="card"><h2>By line <span class="hint" style="text-transform:none">(click a line for its dealers)</span></h2>${barTable(`<th>Line</th><th>Sales</th><th class="num">Sales</th><th class="num">Commission</th><th class="num">Recs</th>`,g,"sales","",i=>`<td class="num">${money0(i.sales)}</td><td class="num comm">${money(i.comm)}</td><td class="num dim">${i.recs}</td>`,i=>`drillLine('${jarg(i.name)}')`)}</div>`;}
   const gr=[...gsum(rows,f=>erep(f))].map(([name,v])=>({name,...v})).sort((a,b)=>b.comm-a.comm);
-  h+=`<div class="card"><h2>By rep <span class="hint" style="text-transform:none">(reflects live owner assignments)</span></h2><div class="hint" style="margin-top:-4px">Sales/commission roll up to each dealer's <b>assigned</b> rep (Assignments tab); dealers with no assignment fall back to the rep the manufacturer reported.</div>${barTable(`<th>Rep</th><th>Commission</th><th class="num">Commission</th><th class="num">Sales</th>`,gr,"comm","rep",i=>`<td class="num comm">${money(i.comm)}</td><td class="num dim">${money0(i.sales)}</td>`)}</div>`;
+  h+=`<div class="card"><h2>By rep <span class="hint" style="text-transform:none">(click a rep for their dealers)</span></h2><div class="hint" style="margin-top:-4px">Sales/commission roll up to each dealer's <b>assigned</b> rep (Assignments tab); dealers with no assignment fall back to the rep the manufacturer reported.</div>${barTable(`<th>Rep</th><th>Commission</th><th class="num">Commission</th><th class="num">Sales</th>`,gr,"comm","rep",i=>`<td class="num comm">${money(i.comm)}</td><td class="num dim">${money0(i.sales)}</td>`,i=>`drillRep('${jarg(i.name)}')`)}</div>`;
   const gd=[...gsum(rows,f=>f.dealer)].map(([name,v])=>({name,...v})).sort((a,b)=>b.sales-a.sales).slice(0,15);
-  h+=`<div class="card"><h2>Top dealers <span class="hint" style="text-transform:none">(full list on the Dealers tab)</span></h2>${barTable(`<th>Dealer</th><th>Sales</th><th class="num">Sales</th><th class="num">Commission</th><th class="num">Recs</th>`,gd,"sales","",i=>`<td class="num">${money0(i.sales)}</td><td class="num comm">${money(i.comm)}</td><td class="num dim">${i.recs}</td>`)}</div>`;
+  h+=`<div class="card"><h2>Top dealers <span class="hint" style="text-transform:none">(click a dealer for their profile · full list on the Dealers tab)</span></h2>${barTable(`<th>Dealer</th><th>Sales</th><th class="num">Sales</th><th class="num">Commission</th><th class="num">Recs</th>`,gd,"sales","",i=>`<td class="num">${money0(i.sales)}</td><td class="num comm">${money(i.comm)}</td><td class="num dim">${i.recs}</td>`,i=>`openDealer('${jarg(i.name)}')`)}</div>`;
   $("#app").innerHTML=h;
 }
 // ---- lightweight dependency-free SVG bar chart ----
-function svgBars(data,{color="bx",h=160,fmt=money0,avg=false}={}){
+function svgBars(data,{color="bx",h=160,fmt=money0,avg=false,onbar=null}={}){
   const n=data.length; if(!n) return `<div class="hint">No data in range.</div>`;
   const bw=46,gap=16,padL=8,padB=34,padT=16; const w=padL*2+n*bw+(n-1)*gap;
   const vals=data.map(d=>d.value),mx=Math.max(1,...vals),ch=h-padB-padT,x=i=>padL+i*(bw+gap);
-  const bars=data.map((d,i)=>{const bh=Math.max(d.value>0?2:0,d.value/mx*ch),yy=padT+ch-bh;
-    return `<rect class="${color}" x="${x(i)}" y="${yy}" width="${bw}" height="${bh}" rx="3"><title>${esc(d.label)}: ${fmt(d.value)}</title></rect>`+
+  const bars=data.map((d,i)=>{const bh=Math.max(d.value>0?2:0,d.value/mx*ch),yy=padT+ch-bh;const oc=onbar?onbar(d):"";
+    return `<rect class="${color}${oc?" clk":""}" x="${x(i)}" y="${yy}" width="${bw}" height="${bh}" rx="3"${oc?` onclick="${oc}"`:""}><title>${esc(d.label)}: ${fmt(d.value)}${oc?" · click to drill in":""}</title></rect>`+
       `<text class="vlbl" x="${x(i)+bw/2}" y="${yy-3}" text-anchor="middle">${d.value?fmt(d.value):""}</text>`+
       `<text class="axlbl" x="${x(i)+bw/2}" y="${h-padB+15}" text-anchor="middle">${esc(d.short)}</text>`;}).join("");
   let av="";
@@ -193,25 +236,27 @@ function renderTrend(){const l=lineF(),ms=months();const rows=DATA.facts.filter(
   const byM=ms.map(p=>{const fs=rows.filter(f=>f.period===p);return{p,sales:fs.reduce((a,b)=>a+b.sales,0),comm:fs.reduce((a,b)=>a+b.comm,0),recs:fs.reduce((a,b)=>a+b.recs,0),dealers:new Set(fs.map(f=>f.dealer)).size};});
   const scope=l==="all"?"All lines":esc(l);
   const active=byM.filter(m=>m.sales>0).length||1, totS=byM.reduce((a,b)=>a+b.sales,0), avgMo=totS/active;
-  const D=(k,f)=>byM.map(m=>({label:plabel(m.p),short:mo3(m.p),value:m[k]}));
-  let h=`<div class="card"><h2>${scope} — total sales by month</h2>${svgBars(D("sales"),{color:"bx",avg:true})}
+  const D=(k,f)=>byM.map(m=>({label:plabel(m.p),short:mo3(m.p),value:m[k],key:m.p}));
+  const onMonth=d=>`drillMonth('${d.key}')`;
+  let h=`<div class="card"><h2>${scope} — total sales by month <span class="hint" style="text-transform:none">(click a bar for that month's orders)</span></h2>${svgBars(D("sales"),{color:"bx",avg:true,onbar:onMonth})}
     <div class="legend">Bars = monthly sales. Dashed line = <b>average monthly sale</b>: ${money(avgMo)} across ${active} active month${active>1?"s":""}. YTD total ${money0(totS)}.</div></div>`;
   h+=`<div class="grid2">
-    <div class="card"><h2>Orders (records) by month</h2>${svgBars(D("recs"),{color:"bx o",fmt:n=>n})}<div class="legend">Order records reported each month.</div></div>
-    <div class="card"><h2>Commission by month</h2>${svgBars(D("comm"),{color:"bx g"})}<div class="legend">Commission earned each month.</div></div></div>`;
-  h+=`<div class="card"><h2>${scope} — monthly detail</h2><table><thead><tr><th>Month</th><th>Sales</th><th class="num">Sales</th><th class="num">Commission</th><th class="num">Dealers</th><th class="num">Records</th><th class="num">Avg / record</th></tr></thead><tbody>`+
-    byM.map(m=>{const mx=Math.max(1,...byM.map(x=>x.sales));return `<tr><td class="lbl">${esc(plabel(m.p))}</td><td class="barcell"><div class="bar" style="width:${m.sales/mx*100}%"></div></td><td class="num">${money0(m.sales)}</td><td class="num comm">${money(m.comm)}</td><td class="num dim">${m.dealers}</td><td class="num dim">${m.recs}</td><td class="num dim">${m.recs?money0(m.sales/m.recs):"—"}</td></tr>`;}).join("")+`</tbody></table></div>`;
+    <div class="card"><h2>Orders (records) by month</h2>${svgBars(D("recs"),{color:"bx o",fmt:n=>n,onbar:onMonth})}<div class="legend">Order records reported each month.</div></div>
+    <div class="card"><h2>Commission by month</h2>${svgBars(D("comm"),{color:"bx g",onbar:onMonth})}<div class="legend">Commission earned each month.</div></div></div>`;
+  h+=`<div class="card"><h2>${scope} — monthly detail <span class="hint" style="text-transform:none">(click a month for its orders)</span></h2><table><thead><tr><th>Month</th><th>Sales</th><th class="num">Sales</th><th class="num">Commission</th><th class="num">Dealers</th><th class="num">Records</th><th class="num">Avg / record</th></tr></thead><tbody>`+
+    byM.map(m=>{const mx=Math.max(1,...byM.map(x=>x.sales));return `<tr class="drow" onclick="drillMonth('${m.p}')"><td class="lbl link">${esc(plabel(m.p))}</td><td class="barcell"><div class="bar" style="width:${m.sales/mx*100}%"></div></td><td class="num">${money0(m.sales)}</td><td class="num comm">${money(m.comm)}</td><td class="num dim">${m.dealers}</td><td class="num dim">${m.recs}</td><td class="num dim">${m.recs?money0(m.sales/m.recs):"—"}</td></tr>`;}).join("")+`</tbody></table></div>`;
   if(l==="all"){
     const mat=DATA.lines.map(ln=>{const cells=ms.map(p=>DATA.facts.filter(f=>f.line===ln&&f.period===p).reduce((a,b)=>a+b.sales,0));return{ln,cells,tot:cells.reduce((a,b)=>a+b,0)};}).sort((a,b)=>b.tot-a.tot);
     const gmax=Math.max(1,...mat.flatMap(r=>r.cells.map(Math.abs)));
     const heat=v=>{if(!v)return "";const t=Math.min(1,Math.abs(v)/gmax);const a=(0.10+t*0.8).toFixed(2);return v<0?`background:rgba(180,35,35,${a});color:${t>0.5?'#fff':'#7a1414'}`:`background:rgba(22,129,194,${a});color:${t>0.55?'#fff':'#0b3350'}`;};
     h+=`<div class="card"><h2>Sales matrix — line × month <span class="hint" style="text-transform:none">(color = relative size; red = net negative/returns)</span></h2><div class="chartwrap"><table><thead><tr><th>Line</th>${ms.map(p=>`<th class="num">${esc(mo3(p))}</th>`).join("")}<th class="num">Total</th></tr></thead><tbody>`+
-      mat.map(r=>`<tr><td class="lbl">${esc(r.ln)}</td>${r.cells.map(c=>`<td class="hcell" style="${heat(c)}">${c?money0(c):"·"}</td>`).join("")}<td class="num" style="font-weight:700">${money0(r.tot)}</td></tr>`).join("")+
+      mat.map(r=>`<tr><td class="lbl">${esc(r.ln)}</td>${r.cells.map((c,ci)=>`<td class="hcell${c?" clk":""}" style="${heat(c)}"${c?` onclick="drillLineMonth('${jarg(r.ln)}','${ms[ci]}')" title="${esc(r.ln)} · ${esc(plabel(ms[ci]))} — click for dealers"`:""}>${c?money0(c):"·"}</td>`).join("")}<td class="num" style="font-weight:700">${money0(r.tot)}</td></tr>`).join("")+
       `<tr class="rx"><td class="lbl" style="font-weight:800">All lines</td>${ms.map(p=>{const c=mat.reduce((a,r)=>a+r.cells[ms.indexOf(p)],0);return `<td class="num" style="font-weight:700;border-top:2px solid #e2e9f0">${money0(c)}</td>`;}).join("")}<td class="num" style="font-weight:800;border-top:2px solid #e2e9f0">${money0(mat.reduce((a,r)=>a+r.tot,0))}</td></tr>`+
       `</tbody></table></div></div>`;}
   $("#app").innerHTML=h;
 }
 function setOrd(m){ORDMODE=m;render();}
+let BIZSORT="sales"; function bizSetSort(k){BIZSORT=k;render();}
 function renderOrders(){const ms=months(),l=lineF();
   const lrows=DATA.facts.filter(f=>l==="all"||f.line===l);
   const byM=ms.map(p=>{const fs=lrows.filter(f=>f.period===p);return{p,recs:fs.reduce((a,b)=>a+b.recs,0),sales:fs.reduce((a,b)=>a+b.sales,0),dealers:new Set(fs.map(f=>f.dealer)).size};});
@@ -219,9 +264,10 @@ function renderOrders(){const ms=months(),l=lineF();
   let h=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h2 style="margin:0">${scope} — orders <span class="hint" style="text-transform:none">(report records = order lines)</span></h2>
     <span class="seg"><button class="${ORDMODE==='month'?'on':''}" onclick="setOrd('month')">By month</button><button class="${ORDMODE==='total'?'on':''}" onclick="setOrd('total')">Total</button></span></div>`;
   if(ORDMODE==="month"){
-    h+=svgBars(byM.map(m=>({label:plabel(m.p),short:mo3(m.p),value:m.recs})),{color:"bx o",fmt:n=>n,h:170});
+    h+=`<div class="hint" style="margin-top:6px">Click a month (bar or row) to see every dealer that ordered that month.</div>`;
+    h+=svgBars(byM.map(m=>({label:plabel(m.p),short:mo3(m.p),value:m.recs,key:m.p})),{color:"bx o",fmt:n=>n,h:170,onbar:d=>`drillMonth('${d.key}')`});
     h+=`<table style="margin-top:8px"><thead><tr><th>Month</th><th class="num">Orders</th><th class="num">Sales</th><th class="num">Avg order</th><th class="num">Dealers</th></tr></thead><tbody>`+
-      byM.map(m=>`<tr><td class="lbl">${esc(plabel(m.p))}</td><td class="num">${m.recs}</td><td class="num">${money0(m.sales)}</td><td class="num dim">${m.recs?money0(m.sales/m.recs):"—"}</td><td class="num dim">${m.dealers}</td></tr>`).join("")+
+      byM.map(m=>`<tr class="drow" onclick="drillMonth('${m.p}')"><td class="lbl link">${esc(plabel(m.p))}</td><td class="num">${m.recs}</td><td class="num">${money0(m.sales)}</td><td class="num dim">${m.recs?money0(m.sales/m.recs):"—"}</td><td class="num dim">${m.dealers}</td></tr>`).join("")+
       `<tr class="rx"><td class="lbl" style="font-weight:800;border-top:2px solid #e2e9f0">Total</td><td class="num" style="font-weight:800;border-top:2px solid #e2e9f0">${byM.reduce((a,b)=>a+b.recs,0)}</td><td class="num" style="font-weight:700;border-top:2px solid #e2e9f0">${money0(byM.reduce((a,b)=>a+b.sales,0))}</td><td class="num dim" style="border-top:2px solid #e2e9f0"></td><td class="num dim" style="border-top:2px solid #e2e9f0"></td></tr></tbody></table>`;
   } else {
     const rows=facts(); const per=[...gsum(rows,f=>f.line)].map(([name,v])=>({name,...v})).sort((a,b)=>b.recs-a.recs);
@@ -231,7 +277,7 @@ function renderOrders(){const ms=months(),l=lineF();
       <div class="sbox"><div class="l">Avg order size</div><div class="v">${tR?money0(tS/tR):"—"}</div></div>
       <div class="sbox"><div class="l">Scope</div><div class="v" style="font-size:13px">${esc(plabel(periodF()))}</div></div></div>
       <table style="margin-top:6px"><thead><tr><th>Line</th><th>Orders</th><th class="num">Orders</th><th class="num">Sales</th><th class="num">Avg order</th></tr></thead><tbody>`+
-      per.map(i=>`<tr><td class="lbl">${esc(i.name)}</td><td class="barcell"><div class="bar o" style="width:${i.recs/mx*100}%"></div></td><td class="num">${i.recs}</td><td class="num">${money0(i.sales)}</td><td class="num dim">${i.recs?money0(i.sales/i.recs):"—"}</td></tr>`).join("")+
+      per.map(i=>`<tr class="drow" onclick="drillLine('${jarg(i.name)}')"><td class="lbl link">${esc(i.name)}</td><td class="barcell"><div class="bar o" style="width:${i.recs/mx*100}%"></div></td><td class="num">${i.recs}</td><td class="num">${money0(i.sales)}</td><td class="num dim">${i.recs?money0(i.sales/i.recs):"—"}</td></tr>`).join("")+
       `</tbody></table>`;
   }
   h+=`</div>`; $("#app").innerHTML=h;
@@ -294,12 +340,21 @@ function renderDealers(){const l=lineF();
   $("#app").innerHTML=h; filterDealerRows();
   const box=$("#ds"); if(box) box.focus();
 }
+let CADROWS=[], CADSORT={key:"since",dir:-1};
+const CAD_SORTS=[["since","Since last (high→low)"],["sales","Sales (high→low)"],["name","Name (A→Z)"],["avg","Avg gap (high→low)"],["count","Order-months (high→low)"]];
+function cadCmp(a,b){switch(CADSORT.key){case"name":return a.dealer.localeCompare(b.dealer);case"sales":return a.sales-b.sales;case"avg":return (a.avg==null?-1:a.avg)-(b.avg==null?-1:b.avg);case"count":return a.count-b.count;default:return a.since-b.since;}}
+function cadSetSort(k){CADSORT.key=k;CADSORT.dir=(k==="name")?1:-1;filterCadenceRows();}
+function cadRowHtml(d,showLines){return `<tr class="drow" onclick="openDealer('${jarg(d.dealer)}')"><td class="lbl link">${esc(d.dealer)}</td>${showLines?`<td>${d.lines.map(x=>`<span class="chip">${esc(x)}</span>`).join("")}</td>`:""}<td>${dots(new Set(d.months))}</td><td class="num">${d.count}</td><td class="num">${d.avg==null?"—":d.avg.toFixed(1)}</td><td class="num ${d.since>=2?'warn':(d.since===0?'ok':'')}">${d.since}</td></tr>`;}
+function filterCadenceRows(){const q=($("#cadq")?.value||"").toLowerCase(),showLines=lineF()==="all";
+  let rows=CADROWS.filter(d=>!q||d.dealer.toLowerCase().includes(q)).slice().sort((a,b)=>CADSORT.dir*cadCmp(a,b));
+  const b=$("#cadBody"); if(b) b.innerHTML=rows.map(d=>cadRowHtml(d,showLines)).join("")||`<tr><td colspan="6" class="hint" style="padding:14px">No dealers match.</td></tr>`;}
 function renderCadence(){const l=lineF();
-  const ds=dealerAgg(l).map(d=>({dealer:d.dealer,lines:[...d.lines].sort(),sales:d.sales,...cad(d.periods)})).sort((a,b)=>b.since-a.since||b.sales-a.sales);
-  let h=`<div class="card"><h2>Order cadence ${l==="all"?"(all lines)":"— "+esc(l)}</h2><div class="hint">${l==="all"?"Cadence across any line — pick a line to see reorder timing for that line only.":"Reorder cadence for "+esc(l)+"."} “Months since last” ≥ 2 is flagged.</div>
-    <table><thead><tr><th>Dealer</th>${l==="all"?"<th>Lines</th>":""}<th>Order months</th><th class="num">Order-months</th><th class="num">Avg gap (mo)</th><th class="num">Since last</th></tr></thead><tbody>`;
-  for(const d of ds) h+=`<tr class="drow" onclick="openDealer('${esc(d.dealer).replace(/'/g,"\\'")}')"><td class="lbl link">${esc(d.dealer)}</td>${l==="all"?`<td>${d.lines.map(x=>`<span class="chip">${esc(x)}</span>`).join("")}</td>`:""}<td>${dots(new Set(d.months))}</td><td class="num">${d.count}</td><td class="num">${d.avg==null?"—":d.avg.toFixed(1)}</td><td class="num ${d.since>=2?'warn':(d.since===0?'ok':'')}">${d.since}</td></tr>`;
-  h+=`</tbody></table></div>`; $("#app").innerHTML=h;
+  CADROWS=dealerAgg(l).map(d=>({dealer:d.dealer,lines:[...d.lines].sort(),sales:d.sales,...cad(d.periods)}));
+  const showLines=l==="all", sortSel=CAD_SORTS.map(([k,lab])=>`<option value="${k}" ${CADSORT.key===k?"selected":""}>${lab}</option>`).join("");
+  let h=`<div class="card"><h2>Order cadence ${l==="all"?"(all lines)":"— "+esc(l)}</h2><div class="hint">${l==="all"?"Cadence across any line — pick a line for one line's reorder timing.":"Reorder cadence for "+esc(l)+"."} “Months since last” ≥ 2 is flagged. Click a dealer for their profile.</div>
+    <div class="ctrls" style="margin-bottom:10px"><input type="search" id="cadq" placeholder="Search dealer…" oninput="filterCadenceRows()" style="width:240px"><label class="f">Sort <select onchange="cadSetSort(this.value)">${sortSel}</select></label></div>
+    <table><thead><tr><th>Dealer</th>${showLines?"<th>Lines</th>":""}<th>Order months</th><th class="num">Order-months</th><th class="num">Avg gap (mo)</th><th class="num">Since last</th></tr></thead><tbody id="cadBody"></tbody></table></div>`;
+  $("#app").innerHTML=h; filterCadenceRows();
 }
 
 function renderProfile(){
@@ -352,6 +407,7 @@ function renderProfile(){
       <h2 style="font-size:19px;color:#10263f;margin:0;text-transform:none;letter-spacing:0">${esc(name)}</h2>
       <div>${[...linesSet].sort().map(x=>`<span class="chip">${esc(x)}</span>`).join("")}</div></div>
       ${(ASSIGN[name]&&(ASSIGN[name].rep||ASSIGN[name].acct))?`<div class="hint" style="margin:6px 0 0">Owner rep: <b>${esc(ASSIGN[name].rep||"—")}</b> · HCPS account #: <b>${esc(ASSIGN[name].acct||"—")}</b></div>`:`<div class="hint" style="margin:6px 0 0">No rep/account assigned yet — set it on the Assignments tab.</div>`}
+      ${(()=>{const di=(DATA.dealerInfo||{})[name];if(!di)return "";const loc=[di.address,[di.city,di.state].filter(Boolean).join(", "),di.zip].map(x=>(x||"").trim()).filter(Boolean).join(" · ");const cc=[di.contact_name,di.email,di.phone].map(x=>(x||"").trim()).filter(Boolean).join(" · ");const acct=di.hcps_account?` · HCPS #: <b>${esc(di.hcps_account)}</b>`:"";if(!loc&&!cc&&!acct)return "";return `<div class="hint" style="margin:4px 0 0">${loc?`📍 ${esc(loc)}`:""}${loc&&cc?" &nbsp;•&nbsp; ":""}${cc?esc(cc):""}${acct}</div>`;})()}
       <div class="kpis" style="grid-template-columns:repeat(4,1fr);margin:14px 0 4px">
         <div class="kpi"><div class="l">Total sales</div><div class="v">${money0(s)}</div></div>
         <div class="kpi"><div class="l">Commission</div><div class="v orange">${money0(c)}</div></div>
@@ -367,8 +423,10 @@ function renderBizdev(){
   const ds=dealerAgg("all");
   const allLines=DATA.lines;
   // cross-sell: dealers by spend with their missing lines (weighted to biggest lines)
-  const xs=ds.map(d=>{const miss=allLines.filter(l=>!d.lines.has(l)).sort((a,b)=>(LT[b]||0)-(LT[a]||0));return{dealer:d.dealer,sales:d.sales,buys:[...d.lines].sort(),miss};})
-    .filter(d=>d.miss.length).sort((a,b)=>b.sales-a.sales).slice(0,25);
+  let xs=ds.map(d=>{const miss=allLines.filter(l=>!d.lines.has(l)).sort((a,b)=>(LT[b]||0)-(LT[a]||0));return{dealer:d.dealer,sales:d.sales,buys:[...d.lines].sort(),miss};})
+    .filter(d=>d.miss.length).sort((a,b)=>b.sales-a.sales).slice(0,25);   // top-25 opportunities by spend…
+  if(BIZSORT==="name") xs=xs.slice().sort((a,b)=>a.dealer.localeCompare(b.dealer));   // …re-orderable for review
+  else xs=xs.slice().sort((a,b)=>b.sales-a.sales);
   // lapsing: overall since-last >= 2
   const lap=ds.map(d=>({dealer:d.dealer,sales:d.sales,lines:[...d.lines].sort(),...cad(d.periods)})).filter(d=>d.since>=2).sort((a,b)=>b.sales-a.sales);
   // growth/decline Mar vs first active
@@ -376,8 +434,9 @@ function renderBizdev(){
   const gr=ds.map(d=>{const mt=ms.map(p=>DATA.facts.filter(f=>f.dealer===d.dealer&&f.period===p).reduce((a,b)=>a+b.sales,0));const act=mt.map((v,i)=>[v,i]).filter(x=>x[0]>0);if(act.length<2)return null;const f=act[0][0],l=act[act.length-1][0];return{dealer:d.dealer,from:f,to:l,pct:Math.round((l-f)/f*100),delta:l-f};}).filter(Boolean);
   const growth=[...gr].sort((a,b)=>b.delta-a.delta).slice(0,8);
   const decline=[...gr].sort((a,b)=>a.delta-b.delta).slice(0,8);
-  let h=`<div class="card"><h2>Cross-sell opportunities <span class="hint" style="text-transform:none">(biggest dealers not yet buying every line)</span></h2>
-    <table><thead><tr><th>Dealer</th><th class="num">Total spend</th><th>Buys</th><th>Opportunity (not buying)</th></tr></thead><tbody>`+
+  let h=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h2 style="margin:0">Cross-sell opportunities <span class="hint" style="text-transform:none">(biggest dealers not yet buying every line)</span></h2>
+    <label class="f">Sort <select onchange="bizSetSort(this.value)"><option value="sales" ${BIZSORT==="sales"?"selected":""}>Revenue (high→low)</option><option value="name" ${BIZSORT==="name"?"selected":""}>Name (A→Z)</option></select></label></div>
+    <table style="margin-top:8px"><thead><tr><th>Dealer</th><th class="num">Total spend</th><th>Buys</th><th>Opportunity (not buying)</th></tr></thead><tbody>`+
     xs.map(d=>`<tr class="drow" onclick="openDealer('${esc(d.dealer).replace(/'/g,"\\'")}')"><td class="lbl link">${esc(d.dealer)}</td><td class="num">${money0(d.sales)}</td><td>${d.buys.map(x=>`<span class="chip">${esc(x)}</span>`).join("")}</td><td>${d.miss.slice(0,4).map(x=>`<span class="chip miss">${esc(x)}</span>`).join("")}</td></tr>`).join("")+`</tbody></table></div>`;
   h+=`<div class="card"><h2>Re-engage — dealers who've gone quiet <span class="hint" style="text-transform:none">(no order in 2+ months)</span></h2>`;
   h+= lap.length? `<table><thead><tr><th>Dealer</th><th class="num">Historical sales</th><th>Lines</th><th>Last order</th></tr></thead><tbody>`+
@@ -391,22 +450,22 @@ function renderBizdev(){
       decline.map(d=>`<tr class="drow" onclick="openDealer('${esc(d.dealer).replace(/'/g,"\\'")}')"><td class="lbl link">${esc(d.dealer)}</td><td class="num dim">${money0(d.from)}→${money0(d.to)}</td><td class="num warn">${money0(d.delta)}</td></tr>`).join("")+`</tbody></table></div></div>`;
   $("#app").innerHTML=h;
 }
+function filterAssignRows(){const q=($("#as")?.value||"").toLowerCase();
+  document.querySelectorAll("#asBody tr").forEach(tr=>{const n=(tr.getAttribute("data-name")||"").toLowerCase();tr.style.display=(!q||n.includes(q))?"":"none";});}
 function renderAssign(){
-  const q=($("#as")?.value||"").toLowerCase();
-  let ds=dealerAgg("all").sort((a,b)=>b.sales-a.sales);
-  if(q) ds=ds.filter(d=>d.dealer.toLowerCase().includes(q));
+  const ds=dealerAgg("all").sort((a,b)=>b.sales-a.sales);
   const datalist=`<datalist id="repopts">${REPOPTS.map(r=>`<option value="${esc(r)}">`).join("")}</datalist>`;
   let h=`<div class="card"><h2>Assign rep &amp; HCPS account <span class="hint" style="text-transform:none">— saves live to the database</span></h2>
-    <div class="hint">Set each dealer's owning rep and HCPS account number. This is the dealer's assignment for territory/logins; it does not rewrite the commission already reported by each manufacturer.</div>
-    <input type="search" id="as" placeholder="Search dealer…" value="${esc(q)}" oninput="render()" style="width:260px;margin-bottom:10px">${datalist}
-    <table><thead><tr><th>Dealer</th><th>Reported rep(s)</th><th>Assigned rep (owner)</th><th>HCPS account #</th><th></th></tr></thead><tbody>`;
+    <div class="hint">Set each dealer's owning rep and HCPS account number. Click a dealer's name to open their full profile. This assignment does not rewrite the commission already reported by each manufacturer.</div>
+    <input type="search" id="as" placeholder="Search dealer…" oninput="filterAssignRows()" style="width:260px;margin-bottom:10px">${datalist}
+    <table><thead><tr><th>Dealer</th><th>Reported rep(s)</th><th>Assigned rep (owner)</th><th>HCPS account #</th><th></th></tr></thead><tbody id="asBody">`;
   ds.forEach((d,i)=>{
     const rr=[...new Set(DATA.facts.filter(f=>f.dealer===d.dealer).map(f=>f.rep))].sort().join(", ");
     const a=ASSIGN[d.dealer]||{rep:"",acct:""};
-    h+=`<tr><td class="lbl">${esc(d.dealer)}</td><td class="dim" style="font-size:12px">${esc(rr)}</td>
+    h+=`<tr data-name="${esc(d.dealer)}"><td class="lbl link" title="Open profile" onclick="openDealer('${jarg(d.dealer)}')">${esc(d.dealer)}</td><td class="dim" style="font-size:12px">${esc(rr)}</td>
       <td><input list="repopts" id="rep_${i}" value="${esc(a.rep)}" placeholder="rep…" style="width:150px"></td>
       <td><input id="acct_${i}" value="${esc(a.acct)}" placeholder="account #" style="width:130px"></td>
-      <td><button class="go" style="padding:6px 12px" onclick="saveAssign('${esc(d.dealer).replace(/'/g,"\\'")}',${i},this)">Save</button> <span id="st_${i}" class="hint" style="margin:0"></span></td></tr>`;
+      <td><button class="go" style="padding:6px 12px" onclick="saveAssign('${jarg(d.dealer)}',${i},this)">Save</button> <span id="st_${i}" class="hint" style="margin:0"></span></td></tr>`;
   });
   h+=`</tbody></table></div>`; $("#app").innerHTML=h;
 }
