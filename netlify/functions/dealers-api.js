@@ -16,10 +16,13 @@ async function sbGet(path){
   if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`);
   return r.json();
 }
-async function sbGetAll(base){
+// Paginate. orderCol MUST be a real column on the table — several tables (dealer_contacts,
+// dealer_addresses, dealer_aliases, dealer_manufacturers) have a composite PK and NO "id"
+// column, so ordering by "id" 400s and silently returns nothing. Always pass the right key.
+async function sbGetAll(base, orderCol="id"){
   const PAGE=1000; let from=0,out=[];
   for(;;){const sep=base.includes("?")?"&":"?";
-    const rows=await sbGet(`${base}${sep}order=id&limit=${PAGE}&offset=${from}`);
+    const rows=await sbGet(`${base}${sep}order=${orderCol}&limit=${PAGE}&offset=${from}`);
     out=out.concat(rows); if(rows.length<PAGE) break; from+=PAGE;}
   return out;
 }
@@ -39,17 +42,17 @@ const pm=p=>{const[y,m]=p.split("-").map(Number);return y*12+(m-1);};
 async function buildState(){
   const [dealers,aliases,dm,mfrs,dir,reps,nomerge,logins] = await Promise.all([
     sbGetAll("dealers?select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,status,notes,active"),
-    sbGet("dealer_aliases?select=alias_norm,raw_name,dealer_id"),
-    sbGet("dealer_manufacturers?select=dealer_id,manufacturer,active"),
+    sbGetAll("dealer_aliases?select=alias_norm,raw_name,dealer_id","alias_norm"),
+    sbGetAll("dealer_manufacturers?select=dealer_id,manufacturer,active","dealer_id,manufacturer"),
     sbGet("manufacturers?select=slug,name,active"),
     sbGet("dealer_directory?select=dealer_name,rep_name,hcps_account").catch(()=>[]),
     sbGet("reps?select=name").catch(()=>[]),
     sbGet("dealer_nomerge?select=a,b").catch(()=>[]),
     sbGet("dealer_users?select=uid,email,dealer_id,status,created_at,req_company,req_contact,req_phone,req_address,req_city,req_state,req_zip&order=created_at.desc").catch(()=>[]),
   ]);
-  const dcontacts = await sbGetAll("dealer_contacts?select=dealer_id,email,name,title,role,phone").catch(()=>[]);
+  const dcontacts = await sbGetAll("dealer_contacts?select=dealer_id,email,name,title,role,phone","dealer_id,email").catch(()=>[]);
   const contactsByDealer=new Map(); for(const x of dcontacts){(contactsByDealer.get(x.dealer_id)||contactsByDealer.set(x.dealer_id,[]).get(x.dealer_id)).push(x);}
-  const daddrs = await sbGetAll("dealer_addresses?select=dealer_id,address,city,state,zip,label,pri").catch(()=>[]);
+  const daddrs = await sbGetAll("dealer_addresses?select=dealer_id,address,city,state,zip,label,pri","dealer_id,addr_key").catch(()=>[]);
   const addrByDealer=new Map(); for(const x of daddrs){(addrByDealer.get(x.dealer_id)||addrByDealer.set(x.dealer_id,[]).get(x.dealer_id)).push(x);}
   const rows = await sbGetAll("monthly_sales?select=dealer_id,manufacturer,period,amount,commission,customer_name,customer_ref");
   const mfrName=Object.fromEntries(mfrs.map(m=>[m.slug,m.name]));
@@ -181,9 +184,16 @@ exports.handler = async (event)=>{
         const chunk=(arr,n)=>{const o=[];for(let i=0;i<arr.length;i+=n)o.push(arr.slice(i,i+n));return o;};
         const errors=[];
 
+        // Optional clean slate: wipe existing contacts/addresses so a re-import lands only
+        // on the correct (canonical) dealers — undoes any earlier mis-attached rows.
+        if(b.replace){
+          try{ await sbSend("DELETE","dealer_contacts?dealer_id=not.is.null",null,{Prefer:"return=minimal"}); }catch(e){ errors.push("wipe contacts: "+e.message); }
+          try{ await sbSend("DELETE","dealer_addresses?dealer_id=not.is.null",null,{Prefer:"return=minimal"}); }catch(e){ errors.push("wipe addresses: "+e.message); }
+        }
+
         // resolution map: normalized name/alias -> dealer_id
         const dealersAll=await sbGetAll("dealers?select=id,business_name");
-        const aliasesAll=await sbGetAll("dealer_aliases?select=alias_norm,dealer_id").catch(()=>[]);
+        const aliasesAll=await sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]);
         const norm2id=new Map();
         for(const d of dealersAll) norm2id.set(dnorm(d.business_name), d.id);
         for(const a of aliasesAll) norm2id.set(a.alias_norm, a.dealer_id);
