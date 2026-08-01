@@ -407,7 +407,14 @@ function renderProfile(){
       <h2 style="font-size:19px;color:#10263f;margin:0;text-transform:none;letter-spacing:0">${esc(name)}</h2>
       <div>${[...linesSet].sort().map(x=>`<span class="chip">${esc(x)}</span>`).join("")}</div></div>
       ${(ASSIGN[name]&&(ASSIGN[name].rep||ASSIGN[name].acct))?`<div class="hint" style="margin:6px 0 0">Owner rep: <b>${esc(ASSIGN[name].rep||"—")}</b> · HCPS account #: <b>${esc(ASSIGN[name].acct||"—")}</b></div>`:`<div class="hint" style="margin:6px 0 0">No rep/account assigned yet — set it on the Assignments tab.</div>`}
-      ${(()=>{const di=(DATA.dealerInfo||{})[name];if(!di)return "";const loc=[di.address,[di.city,di.state].filter(Boolean).join(", "),di.zip].map(x=>(x||"").trim()).filter(Boolean).join(" · ");const cc=[di.contact_name,di.email,di.phone].map(x=>(x||"").trim()).filter(Boolean).join(" · ");const acct=di.hcps_account?` · HCPS #: <b>${esc(di.hcps_account)}</b>`:"";if(!loc&&!cc&&!acct)return "";return `<div class="hint" style="margin:4px 0 0">${loc?`📍 ${esc(loc)}`:""}${loc&&cc?" &nbsp;•&nbsp; ":""}${cc?esc(cc):""}${acct}</div>`;})()}
+      ${(()=>{const di=(DATA.dealerInfo||{})[name];if(!di)return "";
+        const addrs=(di.addresses&&di.addresses.length)?di.addresses:(di.address?[{address:di.address,city:di.city,state:di.state,zip:di.zip,label:""}]:[]);
+        const primary=addrs[0]?[addrs[0].address,[addrs[0].city,addrs[0].state].filter(Boolean).join(", "),addrs[0].zip].map(x=>(x||"").trim()).filter(Boolean).join(" · "):"";
+        const cc=[di.contact_name,di.email,di.phone].map(x=>(x||"").trim()).filter(Boolean).join(" · ");
+        const acct=di.hcps_account?` · HCPS #: <b>${esc(di.hcps_account)}</b>`:"";
+        const more=addrs.length>1?`<div class="hint" style="margin:3px 0 0">Other addresses on file: ${addrs.slice(1).map(a=>`<span class="chip">${esc([a.address,[a.city,a.state].filter(Boolean).join(", ")].filter(Boolean).join(", "))}</span>`).join("")}</div>`:"";
+        if(!primary&&!cc&&!acct)return "";
+        return `<div class="hint" style="margin:4px 0 0">${primary?`📍 ${esc(primary)}`:""}${primary&&cc?" &nbsp;•&nbsp; ":""}${cc?esc(cc):""}${acct}</div>${more}`;})()}
       <div class="kpis" style="grid-template-columns:repeat(4,1fr);margin:14px 0 4px">
         <div class="kpi"><div class="l">Total sales</div><div class="v">${money0(s)}</div></div>
         <div class="kpi"><div class="l">Commission</div><div class="v orange">${money0(c)}</div></div>

@@ -38,11 +38,17 @@ input,select{font:inherit;padding:8px 10px;border:1px solid #cdd8e3;border-radiu
 .backbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
 @media(max-width:760px){.grid2{grid-template-columns:1fr}}
-.card{overflow-wrap:anywhere}
 .fld{display:flex;flex-direction:column;gap:4px;margin-bottom:8px;min-width:0}.fld label{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#5b7085}
 .fld input{width:100%;min-width:0}
+.fld .val,.acctline{overflow-wrap:anywhere}
 .accgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
 .accitem{min-width:0}.accitem input[type=checkbox]{flex:none}
+/* All-dealers table: keep short columns on one line so names/links don't shatter vertically */
+.dtable{overflow-x:auto}
+.dtable table{min-width:920px}
+td.rep,td.mng,th.rep,th.mng{white-space:nowrap}
+td.rep{max-width:150px}
+td.mng{text-align:right}
 .accitem{display:flex;align-items:center;gap:7px;border:1px solid #e2e9f0;border-radius:8px;padding:7px 10px;font-size:13px}
 .accitem.on{background:#e9f7ef;border-color:#bfe6cd}
 .dlg{position:fixed;inset:0;background:rgba(16,38,63,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
@@ -174,11 +180,11 @@ function renderAll(){
   let h=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
       <h2 style="margin:0">All dealers <span class="hint" style="text-transform:none">(${ds.length} shown — tick 2+ (or “Select all”) then “Merge selected”, or click a dealer to manage)</span></h2>
       <label class="hint" style="text-transform:none">Sort: <select onchange="setSort(this.value)">${sortSel}</select></label></div>
-    <table style="margin-top:8px"><thead><tr><th><input type="checkbox" ${allSelected()?"checked":""} onclick="toggleAll(this)" title="Select all shown"></th>
+    <div class="dtable"><table style="margin-top:8px"><thead><tr><th><input type="checkbox" ${allSelected()?"checked":""} onclick="toggleAll(this)" title="Select all shown"></th>
       <th class="link" onclick="setSort('name')" style="cursor:pointer">Dealer${sortArrow('name')}</th>
       <th>Address / email</th><th>Buys</th>
       <th class="num link" onclick="setSort('sales')" style="cursor:pointer">Sales${sortArrow('sales')}</th>
-      <th>Rep</th><th>Access</th><th></th></tr></thead><tbody>`;
+      <th class="rep">Rep</th><th class="rep">Access</th><th class="mng"></th></tr></thead><tbody>`;
   for(const d of ds){
     const loc=[d.city,d.state].filter(Boolean).join(", ");
     const contact=`<div class="hint" style="text-transform:none;line-height:1.5">
@@ -191,11 +197,11 @@ function renderAll(){
       <td>${contact}</td>
       <td>${d.buysLines.map(l=>`<span class="chip">${esc(DATA.mfrName[l]||l)}</span>`).join("")||`<span class="dim">—</span>`}</td>
       <td class="num">${money(d.sales)}</td>
-      <td>${d.rep?esc(d.rep):`<span class="dim">—</span>`}</td>
-      <td>${d.access.length?`<span class="chip acc">${d.access.length} line${d.access.length>1?"s":""}</span>`:`<span class="dim">none</span>`}</td>
-      <td class="link" onclick="openDetail('${d.id}')">Manage →</td></tr>`;
+      <td class="rep">${d.rep?esc(d.rep):`<span class="dim">—</span>`}</td>
+      <td class="rep">${d.access.length?`<span class="chip acc">${d.access.length} line${d.access.length>1?"s":""}</span>`:`<span class="dim">none</span>`}</td>
+      <td class="mng link" onclick="openDetail('${d.id}')">Manage →</td></tr>`;
   }
-  h+=`</tbody></table></div>`; $("#app").innerHTML=h;
+  h+=`</tbody></table></div></div>`; $("#app").innerHTML=h;
 }
 function renderReview(){
   const ds=reviewList();
@@ -309,6 +315,13 @@ function renderDetail(){
        <div>Sales <b>${money(d.sales)}</b> · commission <b>${money(d.comm)}</b> · ${d.recs} records · active ${d.periods.length} month(s)${d.lastPeriod?` · last ${esc(d.lastPeriod)}`:""}</div>
        <div style="margin-top:8px">${d.aliases.map(a=>`<span class="chip al">${esc(a)}</span>`).join("")||`<span class="dim">no alternate spellings</span>`}</div>
        ${(d.accounts&&d.accounts.length)?`<h3 style="margin-top:14px">Manufacturer account numbers</h3><div>${d.accounts.map(a=>`<span class="chip">${esc(a)}</span>`).join("")}</div>`:""}
+       <h2 style="margin-top:18px">Addresses on file ${(d.addresses&&d.addresses.length)?`(${d.addresses.length})`:""}</h2>
+       <div class="hint">Every location imported for this account. The top one (⭐) is the corporate/HQ address used across the app.</div>
+       ${(d.addresses&&d.addresses.length)?`<table style="margin-top:6px"><tbody>${d.addresses.map((x,i)=>`<tr>
+           <td style="width:20px">${i===0?"⭐":""}</td>
+           <td class="lbl">${esc([x.address,[x.city,x.state].filter(Boolean).join(", "),x.zip].filter(Boolean).join(" · "))}</td>
+           <td class="hint">${esc(x.label||"")}</td></tr>`).join("")}</tbody></table>`
+        :`<div class="dim" style="margin-top:6px">${d.address?`<b>${esc([d.address,[d.city,d.state].filter(Boolean).join(", "),d.zip].filter(Boolean).join(" · "))}</b><br>`:""}No additional addresses stored yet — re-run <b>Import contacts</b> after applying the dealer_addresses.sql update to load every location.</div>`}
        <h2 style="margin-top:18px">Contacts on file ${(d.contacts&&d.contacts.length)?`(${d.contacts.length})`:""}</h2>
        <div class="hint">Every person &amp; email imported for this account. Any of these emails can be used to register for the ordering portal.</div>
        ${(d.contacts&&d.contacts.length)?`<table style="margin-top:6px"><tbody>${d.contacts.map(c=>`<tr>
@@ -436,7 +449,7 @@ function importFromText(text,fname){
   for(let ri=1;ri<grid.length;ri++){ const r=grid[ri]; const company=get(r,"Company Name"); if(!company)continue;
     const key=jnorm(company); if(!groups.has(key)){groups.set(key,{first:r,rows:[]});order.push(key);} groups.get(key).rows.push(r); }
   const splitEmails=s=>String(s||"").split(/[;,|\s]+/).map(x=>x.trim()).filter(x=>/@/.test(x));
-  const out=order.map(key=>{ const g=groups.get(key), r=g.first;
+  const out=order.map(key=>{ const g=groups.get(key), r=g.first, company=get(r,"Company Name");
     const addr=[get(r,"Address 1"),get(r,"Address 2")].filter(Boolean).join(", ");
     const contact=[get(r,"Contact First"),get(r,"Contact Last")].filter(Boolean).join(" ");
     const lines=[]; for(const [slug,flag,num] of IMPORT_LINES){ const yes=get(r,flag).toLowerCase()==="yes"; const acct=num?get(r,num):""; if(yes||acct)lines.push({slug,account:acct}); }
@@ -444,8 +457,13 @@ function importFromText(text,fname){
     for(const rr of g.rows){ const nm=[get(rr,"Contact First"),get(rr,"Contact Last")].filter(Boolean).join(" ");
       const title=get(rr,"Contact Title"), role=get(rr,"Contact Role"), ph=get(rr,"Contact Phones")||get(rr,"Office Phones");
       for(const em of splitEmails(get(rr,"Contact Emails"))){ const lo=em.toLowerCase(); if(seenE.has(lo))continue; seenE.add(lo); contacts.push({email:em,name:nm,title,role,phone:ph}); } }
-    return {company:get(r,"Company Name"),address:addr,city:get(r,"City"),state:get(r,"State"),zip:get(r,"ZIP"),
-      contact,email:(contacts[0]&&contacts[0].email)||get(r,"Contact Emails"),phone:get(r,"Office Phones"),lines,contacts};
+    // every distinct address across this company's rows (label = the source company name)
+    const addresses=[], seenA=new Set();
+    for(const rr of g.rows){ const a1=[get(rr,"Address 1"),get(rr,"Address 2")].filter(Boolean).join(", ");
+      if(!a1)continue; const ak=`${a1}|${get(rr,"City")}|${get(rr,"State")}`.toLowerCase().trim(); if(seenA.has(ak))continue; seenA.add(ak);
+      addresses.push({address:a1,city:get(rr,"City"),state:get(rr,"State"),zip:get(rr,"ZIP"),label:company}); }
+    return {company,address:addr,city:get(r,"City"),state:get(r,"State"),zip:get(r,"ZIP"),
+      contact,email:(contacts[0]&&contacts[0].email)||get(r,"Contact Emails"),phone:get(r,"Office Phones"),lines,contacts,addresses};
   });
   IMPORT={rows:out,create:true,busy:false,result:null,fname};
   render();
@@ -481,7 +499,9 @@ function renderImport(){
   const lineRows=IMPORT_LINES.filter(([s])=>p.lc[s]).map(([s])=>`<tr><td>${esc(mfrName[s]||s)}</td><td class="r">${p.lc[s]}</td></tr>`).join("");
   const res=IMPORT.result;
   const resHtml=res?`<div class="msg ok" style="margin-top:14px"><b>Import complete.</b><br>
-      Matched existing: <b>${res.matched||0}</b> · Created new: <b>${res.created||0}</b> · Records updated: <b>${res.updated||0}</b> · Line-access rows set: <b>${res.entitlements||0}</b>
+      Matched existing: <b>${res.matched||0}</b> · Created new: <b>${res.created||0}</b> · Records updated: <b>${res.updated||0}</b> · Line-access rows set: <b>${res.entitlements||0}</b><br>
+      <b>${res.contacts||0}</b> contact email${res.contacts===1?"":"s"} stored · <b>${res.addresses||0}</b> address${res.addresses===1?"":"es"} stored
+      ${(res.contacts===0)?`<br><span style="color:#b42323">0 contacts stored — this usually means <b>dealer_contacts.sql</b> hasn't been applied yet. Run the SQL, then re-import.</span>`:""}
       ${(res.unmatched&&res.unmatched.length)?`<br>Skipped (not created): ${res.unmatched.length}`:""}</div>`:"";
   app.innerHTML=`<div class="card" style="padding:18px">
     <h3 style="margin:0 0 4px">Review import — ${esc(IMPORT.fname)}</h3>
