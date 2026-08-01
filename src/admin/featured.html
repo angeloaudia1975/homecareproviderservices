@@ -1,26 +1,140 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>HCPS Admin — Featured Products</title>
 <style>
- :root{--ink:#1b2733;--blue:#3B599A;--orange:#F5821F;--silver:#D8DEE4;--light:#F3F6FA;--gray:#5b6672}
+ :root{--ink:#1b2733;--blue:#3B599A;--blue-dk:#2B4071;--orange:#F5821F;--silver:#D8DEE4;--light:#F3F6FA;--gray:#5b6672;--green:#1A7A4A;--red:#B91C1C;--gold:#E4A11B}
  *{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;background:var(--light);color:var(--ink)}
  .adminnav{background:var(--ink);display:flex;align-items:center;gap:6px;padding:10px 22px;flex-wrap:wrap}
  .adminnav .bd{color:#fff;font-weight:800;font-size:15px;margin-right:16px}.adminnav .bd span{color:var(--orange)}
  .adminnav a{color:#aeb9c6;text-decoration:none;font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-radius:7px}
  .adminnav a:hover{color:#fff}.adminnav a.on{color:#fff;background:var(--blue)}
- .wrap{max-width:900px;margin:26px auto;padding:0 20px}h1{font-size:23px;margin:0 0 4px}.sub{color:var(--gray);font-size:13.5px;margin:0 0 20px}
- .panel{background:#fff;border:1px solid var(--silver);border-radius:14px;padding:26px}
- .panel h2{font-size:16px;margin:0 0 8px;color:var(--blue)}.panel p{font-size:13.5px;color:#41525f;line-height:1.6;margin:0 0 10px}
- .tag{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--orange);background:#fff3e6;border-radius:6px;padding:3px 8px;margin-bottom:12px}
- ul{margin:6px 0 0 18px}li{font-size:13px;color:#41525f;line-height:1.7}
+ .wrap{max-width:1200px;margin:22px auto;padding:0 20px}
+ h1{font-size:22px;margin:0 0 3px}.sub{color:var(--gray);font-size:13px;margin:0 0 16px}
+ .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+ select,input[type=text]{padding:9px 11px;border:1px solid var(--silver);border-radius:8px;font-size:13px;background:#fff}
+ input[type=text]{min-width:220px}
+ label.ck{display:flex;gap:6px;align-items:center;font-size:13px;color:#41525f}
+ .cols{display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start}
+ @media(max-width:880px){.cols{grid-template-columns:1fr}}
+ .kpis{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+ .kpi{background:#fff;border:1px solid var(--silver);border-radius:10px;padding:10px 16px;min-width:110px}
+ .kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray)}.kpi .v{font-size:22px;font-weight:800}
+ .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+ .pc{background:#fff;border:1px solid var(--silver);border-radius:11px;overflow:hidden;display:flex;flex-direction:column;position:relative}
+ .pc.feat{border-color:var(--gold);box-shadow:0 0 0 2px #fbe9c4}
+ .pc .img{height:130px;background:linear-gradient(135deg,#eef2f7,#e2e8f0);display:flex;align-items:center;justify-content:center}
+ .pc .img img{max-width:100%;max-height:130px;object-fit:contain}.pc .ph{color:var(--gray);font-size:12px}
+ .star{position:absolute;top:7px;right:7px;width:30px;height:30px;border-radius:50%;border:1px solid var(--silver);background:#fff;cursor:pointer;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;color:#c7ccd2}
+ .star.on{color:var(--gold);border-color:var(--gold);background:#fffaf0}
+ .pc .body{padding:10px 12px;flex:1;display:flex;flex-direction:column;gap:4px}
+ .pc .code{font-size:11px;color:var(--gray);font-weight:700}.pc .nm{font-size:13px;font-weight:600;line-height:1.25;flex:1}
+ .side{background:#fff;border:1px solid var(--silver);border-radius:12px;padding:16px;position:sticky;top:16px}
+ .side h3{font-size:14px;margin:0 0 4px;color:var(--blue-dk)}.side .hint{font-size:12px;color:var(--gray);margin:0 0 12px}
+ .frow{display:flex;gap:8px;align-items:flex-start;padding:9px 0;border-top:1px solid #eef1f5}
+ .frow:first-of-type{border-top:none}
+ .frow .fh{width:26px;height:26px;border-radius:6px;background:var(--blue);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+ .frow .fm{flex:1;min-width:0}.frow .fm .fn{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .frow .fm .fc{font-size:11px;color:var(--gray)}
+ .frow .fm input{width:100%;margin-top:4px;font-size:11.5px;padding:5px 7px}
+ .frow .up{display:flex;flex-direction:column;gap:3px}
+ .frow .up button{border:1px solid var(--silver);background:#fff;border-radius:6px;width:24px;height:18px;font-size:10px;cursor:pointer;color:var(--gray);padding:0}
+ .frow .rmx{border:none;background:none;color:var(--red);cursor:pointer;font-size:15px;padding:0 2px}
+ .empty{font-size:12.5px;color:var(--gray);text-align:center;padding:18px 8px}
+ .gate,.msg{background:#fff;border:1px solid var(--silver);border-radius:12px;padding:24px;max-width:420px;margin:30px auto;text-align:center}
+ .go{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer}
+ .err{color:var(--red)}
+ .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none}.toast.show{opacity:1}
 </style></head><body>
 <nav class="adminnav"><div class="bd">HCPS <span>Admin</span></div>
  <a href="/admin/">Home</a><a href="/admin/analytics.html">Analytics</a><a href="/admin/dealers.html">Dealer Manager</a>
- <a href="/admin/images.html" >Images</a><a href="/admin/featured.html" class="on">Featured</a></nav>
-<div class="wrap">
- <h1>⭐ Featured Products</h1><p class="sub">Curate the &ldquo;Featured for you&rdquo; strip on each dealer&rsquo;s Partner Portal home &mdash; pick promo items per line or across the whole catalog, set the order, and add a short note.</p>
- <div class="panel"><span class="tag">Launching in the next update</span>
-  <h2>This tool is being wired up now</h2>
-  <p>Featured Products is part of the current build. It needs live access to the product catalog, which is being connected. When it goes live you&rsquo;ll manage it right here, with this same nav.</p>
-  <p>In the meantime, use <a href="/admin/" style="color:var(--blue);font-weight:700">Home</a> to reach the other tools.</p>
- </div>
-</div></body></html>
+ <a href="/admin/images.html">Images</a><a href="/admin/featured.html" class="on">Featured</a></nav>
+<div class="wrap" id="wrap"><div class="msg">Loading…</div></div>
+<div class="toast" id="toast"></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const API="/.netlify/functions/featured-api";
+const ORDERING="https://hcpsonlineordering.netlify.app";
+let TOKEN=null, MFRS=[], SLUG="", PRODUCTS=[], FEAT={}, ALLFEAT=[], Q="", FEATONLY=false;
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800);}
+async function api(path,opts){const h={"content-type":"application/json"};if(TOKEN)h["x-analytics-token"]=TOKEN;
+  const r=await fetch(API+path,{...(opts||{}),headers:{...h,...((opts&&opts.headers)||{})}});
+  if(r.status===401){gate();throw new Error("unauthorized");}
+  const j=await r.json().catch(()=>({}));if(!r.ok||j.error)throw new Error(j.error||("HTTP "+r.status));return j;}
+function gate(){$("#wrap").innerHTML=`<div class="gate"><h2>Enter access code</h2><input id="tok" type="password" placeholder="Admin passcode" style="margin:12px 0;width:100%" onkeydown="if(event.key==='Enter')submitTok()"><br><button class="go" onclick="submitTok()">Open Featured</button></div>`;}
+function submitTok(){TOKEN=$("#tok").value.trim();boot();}
+async function boot(){
+  try{const j=await api("",{method:"GET"});MFRS=(j.manufacturers||[]).filter(m=>m.hasData);ALLFEAT=j.featured||[];
+    if(!MFRS.length){$("#wrap").innerHTML='<div class="msg">No manufacturers with product data found.</div>';return;}
+    SLUG=MFRS[0].slug;await loadMfr();
+  }catch(e){if(String(e.message)!=="unauthorized")$("#wrap").innerHTML=`<div class="msg err">Couldn't load: ${esc(e.message)}</div>`;}
+}
+async function loadMfr(){ const j=await api("?manufacturer="+encodeURIComponent(SLUG),{method:"GET"}); PRODUCTS=j.products||[];FEAT=j.featured||{};render(); }
+function imgFor(p){ return p.image?ORDERING+p.image:""; }
+function nameFor(mfr,code){ if(mfr===SLUG){const p=PRODUCTS.find(x=>x.code===code);if(p)return p.name;} const a=ALLFEAT.find(x=>x.manufacturer===mfr&&x.code===code);return a&&a.name?a.name:code; }
+function mfrName(slug){const m=MFRS.find(x=>x.slug===slug);return m?m.name:slug;}
+function filtered(){ const q=Q.toLowerCase();
+  return PRODUCTS.filter(p=>{ if(FEATONLY && !FEAT[p.code]) return false;
+    if(q && !(`${p.code} ${p.name} ${p.category}`.toLowerCase().includes(q))) return false; return true; }); }
+function render(){
+  const inLine=Object.keys(FEAT).length, total=ALLFEAT.length;
+  const mfrOpts=MFRS.map(m=>`<option value="${esc(m.slug)}" ${m.slug===SLUG?"selected":""}>${esc(m.name)}</option>`).join("");
+  const cards=filtered().map(p=>{const src=imgFor(p),on=!!FEAT[p.code];
+    const img=src?`<img src="${esc(src)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ph',textContent:'No image'}))">`:`<span class="ph">No image</span>`;
+    return `<div class="pc ${on?'feat':''}"><div class="img">${img}</div>
+      <button class="star ${on?'on':''}" title="${on?'Featured — click to remove':'Add to Featured'}" onclick="toggle('${esc(p.code)}')">${on?'★':'☆'}</button>
+      <div class="body"><div class="code">#${esc(p.code)}</div><div class="nm">${esc(p.name)}</div></div></div>`;
+  }).join("");
+  // sidebar = all featured across every line, in rank order
+  const sorted=[...ALLFEAT].sort((a,b)=>(a.rank-b.rank)||a.manufacturer.localeCompare(b.manufacturer));
+  const rows=sorted.map((f,i)=>`<div class="frow"><div class="fh">${i+1}</div>
+     <div class="fm"><div class="fn">${esc(nameFor(f.manufacturer,f.code))}</div>
+       <div class="fc">${esc(mfrName(f.manufacturer))} · #${esc(f.code)}</div>
+       <input type="text" value="${esc(f.note||"")}" placeholder="Promo note (optional)…" onchange="setNote('${esc(f.manufacturer)}','${esc(f.code)}',this.value)"></div>
+     <div class="up"><button onclick="move('${esc(f.manufacturer)}','${esc(f.code)}',-1)" ${i===0?"disabled":""}>▲</button>
+       <button onclick="move('${esc(f.manufacturer)}','${esc(f.code)}',1)" ${i===sorted.length-1?"disabled":""}>▼</button></div>
+     <button class="rmx" title="Remove" onclick="toggleAny('${esc(f.manufacturer)}','${esc(f.code)}')">×</button></div>`).join("");
+  $("#wrap").innerHTML=`<h1>⭐ Featured Products</h1><p class="sub">Star products to add them to the &ldquo;Featured for you&rdquo; strip on every dealer&rsquo;s Partner Portal home. Dealers only see featured items from lines they carry. Order and notes on the right.</p>
+   <div class="kpis">
+     <div class="kpi"><div class="l">Featured (all lines)</div><div class="v">${total}</div></div>
+     <div class="kpi"><div class="l">Featured in this line</div><div class="v">${inLine}</div></div>
+     <div class="kpi"><div class="l">Products in line</div><div class="v">${PRODUCTS.length}</div></div>
+   </div>
+   <div class="cols">
+    <div>
+     <div class="bar">
+       <select onchange="SLUG=this.value;loadMfr()">${mfrOpts}</select>
+       <input type="text" placeholder="Search code, name…" value="${esc(Q)}" oninput="Q=this.value;render()">
+       <label class="ck"><input type="checkbox" ${FEATONLY?"checked":""} onchange="FEATONLY=this.checked;render()"> Featured only</label>
+     </div>
+     <div class="grid">${cards||'<div class="msg">No products match.</div>'}</div>
+    </div>
+    <div class="side"><h3>Featured strip order</h3><p class="hint">Shown top-to-bottom on the dealer home (filtered to their lines). Drag with ▲▼.</p>
+      ${rows||'<div class="empty">Nothing featured yet. Star a product to add it here.</div>'}</div>
+   </div>`;
+}
+function toggle(code){ const p=PRODUCTS.find(x=>x.code===code); if(!p)return;
+  if(FEAT[code]){ toggleAny(SLUG,code); return; }
+  const rank=ALLFEAT.length; // append to end
+  api("",{method:"POST",body:JSON.stringify({action:"set",manufacturer:SLUG,code,name:p.name,rank,active:true})})
+   .then(()=>{FEAT[code]={note:"",rank,active:true};ALLFEAT.push({manufacturer:SLUG,code,name:p.name,note:"",rank,active:true});render();toast("Added to Featured");})
+   .catch(e=>toast(e.message)); }
+function toggleAny(mfr,code){
+  api("",{method:"POST",body:JSON.stringify({action:"unset",manufacturer:mfr,code})})
+   .then(()=>{ if(mfr===SLUG)delete FEAT[code]; ALLFEAT=ALLFEAT.filter(f=>!(f.manufacturer===mfr&&f.code===code)); render(); toast("Removed"); })
+   .catch(e=>toast(e.message)); }
+function setNote(mfr,code,note){
+  const f=ALLFEAT.find(x=>x.manufacturer===mfr&&x.code===code); if(!f)return; f.note=note; if(mfr===SLUG&&FEAT[code])FEAT[code].note=note;
+  api("",{method:"POST",body:JSON.stringify({action:"set",manufacturer:mfr,code,name:f.name,note,rank:f.rank,active:f.active!==false})})
+   .then(()=>toast("Note saved")).catch(e=>toast(e.message)); }
+function move(mfr,code,dir){
+  const sorted=[...ALLFEAT].sort((a,b)=>(a.rank-b.rank)||a.manufacturer.localeCompare(b.manufacturer));
+  const i=sorted.findIndex(f=>f.manufacturer===mfr&&f.code===code); const j=i+dir;
+  if(i<0||j<0||j>=sorted.length)return;
+  const tmp=sorted[i];sorted[i]=sorted[j];sorted[j]=tmp;
+  sorted.forEach((f,k)=>{f.rank=k;}); // reassign contiguous ranks
+  render();
+  api("",{method:"POST",body:JSON.stringify({action:"reorder",items:sorted.map(f=>({manufacturer:f.manufacturer,code:f.code,rank:f.rank}))})})
+   .catch(e=>toast(e.message));
+}
+boot();
+</script></body></html>
