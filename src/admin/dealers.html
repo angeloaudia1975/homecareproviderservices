@@ -490,6 +490,22 @@ async function applyImport(){
     IMPORT.busy=false; await load(); TAB="import"; IMPORT_KEEP(); render();
   }catch(e){ IMPORT.busy=false; IMPORT.result={topError:String(e.message||e)}; render(); }
 }
+async function runDiag(){
+  const out=$("#diagOut"); if(out)out.innerHTML=`<div class="muted" style="margin-top:10px">Checking…</div>`;
+  try{
+    const h={"content-type":"application/json"}; if(TOKEN)h["x-analytics-token"]=TOKEN;
+    const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify({action:"diag"})});
+    const j=await r.json().catch(()=>({}));
+    if(!(r.ok&&j.ok)){ const m=(j.error||("HTTP "+r.status));
+      out.innerHTML=`<div class="msg" style="text-align:left;margin-top:10px;background:#fdecec;border-color:#f3c0c0;color:#b42323"><b>The updated dealers-api function is NOT live yet.</b><br>The server said: <code>${esc(String(m))}</code><br>Deploy <b>netlify/functions/dealers-api.js</b> to homecareproviderservices (commit it + redeploy), then click Check setup again.</div>`; return; }
+    const c=j.dealer_contacts||{}, a=j.dealer_addresses||{};
+    const line=(nm,x)=> x.exists?`✅ <b>${nm}</b>: exists — <b>${x.count==null?"?":x.count}</b> row(s) stored`:`❌ <b>${nm}</b>: MISSING — run <b>create_tables.sql</b> in Supabase`;
+    const allGood=c.exists&&a.exists;
+    out.innerHTML=`<div class="msg" style="text-align:left;margin-top:10px;${allGood?'':'background:#fff3e0;border-color:#f2d9b0;color:#8a4b0d'}">
+      Live function: <b>${esc(j.build||"unknown")}</b><br>${line("dealer_contacts",c)}<br>${line("dealer_addresses",a)}
+      ${allGood?`<br><span class="ok">Setup looks correct — upload your CSV above and Apply import; the counts should climb.</span>`:`<br>Fix the ❌ item above, then re-import.`}</div>`;
+  }catch(e){ out.innerHTML=`<div class="msg" style="text-align:left;margin-top:10px;background:#fdecec;border-color:#f3c0c0;color:#b42323">${esc(String(e.message||e))}</div>`; }
+}
 let _IMPRES=null; function IMPORT_KEEP(){_IMPRES=IMPORT.result;}   // survive load()'s render reset
 function renderImport(){
   const app=$("#app"); if(!app)return;
@@ -500,6 +516,11 @@ function renderImport(){
       <p class="muted" style="margin:0 0 12px">Upload your master list (CSV). Each company is matched to an existing dealer by name/alias; unmatched companies are created so <b>every dealer is loaded</b>. Addresses, primary contact, phone, and per-line account numbers are filled in, and line access is turned on wherever an account exists.</p>
       <input type="file" accept=".csv,text/csv" onchange="onImportFile(this)">
       <p class="muted" style="margin:12px 0 0;font-size:12px">Expected columns: Company Name, Address 1/2, City, State, ZIP, Office Phones, Contact First/Last, Contact Emails, and the per-line “… Account / … Account Number” columns.</p>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid #eef2f6">
+        <button class="go blue sm" onclick="runDiag()">🔎 Check setup</button>
+        <span class="muted" style="font-size:12px;margin-left:8px">Not saving contacts/addresses? Click this — it tells you whether the tables exist and whether the updated function is live.</span>
+        <div id="diagOut"></div>
+      </div>
     </div>`; return;
   }
   const p=importPreview();
