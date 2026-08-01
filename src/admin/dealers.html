@@ -467,7 +467,7 @@ function importFromText(text,fname){
     return {company,address:addr,city:get(r,"City"),state:get(r,"State"),zip:get(r,"ZIP"),
       contact,email:(contacts[0]&&contacts[0].email)||get(r,"Contact Emails"),phone:get(r,"Office Phones"),lines,contacts,addresses};
   });
-  IMPORT={rows:out,create:true,busy:false,result:null,fname};
+  IMPORT={rows:out,create:true,replace:true,busy:false,result:null,fname};
   render();
 }
 function onImportFile(inp){ const f=inp.files&&inp.files[0]; if(!f)return; const rd=new FileReader();
@@ -482,7 +482,7 @@ async function applyImport(){
   if(!IMPORT.rows||IMPORT.busy)return; IMPORT.busy=true; render();
   try{
     const h={"content-type":"application/json"}; if(TOKEN)h["x-analytics-token"]=TOKEN;
-    const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify({action:"import_contacts",rows:IMPORT.rows,create:IMPORT.create})});
+    const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify({action:"import_contacts",rows:IMPORT.rows,create:IMPORT.create,replace:IMPORT.replace!==false})});
     const j=await r.json().catch(()=>({}));
     IMPORT.result = j.result || {};
     if(j.error && j.result && j.result.message) IMPORT.result.topError=j.result.message;
@@ -547,6 +547,8 @@ function renderImport(){
     <table class="tbl" style="max-width:360px"><thead><tr><th>Line access to set</th><th class="r">Dealers</th></tr></thead><tbody>${lineRows||'<tr><td colspan=2 class="muted">none</td></tr>'}</tbody></table>
     <label style="display:flex;gap:8px;align-items:center;margin:14px 0 6px;font-size:14px">
       <input type="checkbox" ${IMPORT.create?"checked":""} onchange="IMPORT.create=this.checked"> Create dealers for unmatched companies (recommended — loads all dealers)</label>
+    <label style="display:flex;gap:8px;align-items:center;margin:2px 0 6px;font-size:14px">
+      <input type="checkbox" ${IMPORT.replace!==false?"checked":""} onchange="IMPORT.replace=this.checked"> Replace existing contacts &amp; addresses first (recommended — clean re-import onto the correct dealers)</label>
     <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
       <button class="go orange" ${IMPORT.busy?"disabled":""} onclick="applyImport()">${IMPORT.busy?"Importing…":"Apply import"}</button>
       <button class="go blue sm" onclick="IMPORT={rows:null,create:true,busy:false,result:null,fname:''};render()">Choose a different file</button>
