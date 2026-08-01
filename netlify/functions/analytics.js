@@ -57,7 +57,28 @@ exports.handler = async (event) => {
     let assignments = [], repTable = [];
     try { assignments = await sbGet("dealer_directory?select=dealer_name,rep_name,hcps_account"); } catch (e) { assignments = []; }
     try { repTable = (await sbGet("reps?select=name")).map(x => x.name); } catch (e) { repTable = []; }
-    const rows = await sbGetAll("monthly_sales?select=manufacturer,period,customer_name,rep_name,product_code,product_name,qty,amount,commission");
+
+    // Dealer master + alias layer, so this page rolls raw sales names up to the SAME
+    // canonical dealers the Dealer Manager shows (post-merge, post-rename). Without this
+    // the page would count raw customer_name strings and drift from the corrected list.
+    let dealers = [], aliases = [];
+    try { dealers = await sbGet("dealers?select=id,business_name"); } catch (e) { dealers = []; }
+    try { aliases = await sbGet("dealer_aliases?select=alias_norm,dealer_id"); } catch (e) { aliases = []; }
+    const nameById = Object.fromEntries(dealers.map(d => [d.id, d.business_name]));
+    const idByAlias = Object.fromEntries(aliases.map(a => [a.alias_norm, a.dealer_id]));
+    // dealer_norm() ported to JS — MUST match the SQL/Python normalization used to seed aliases.
+    const SUF = /\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
+    const dnorm = (n) => String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim();
+    // Resolve a sales row to its canonical dealer name: prefer the stored dealer_id, else
+    // match the raw name through the alias table, else fall back to the raw name.
+    const canonDealer = (r) => {
+      if (r.dealer_id && nameById[r.dealer_id]) return nameById[r.dealer_id];
+      const id = idByAlias[dnorm(r.customer_name)];
+      if (id && nameById[id]) return nameById[id];
+      return (r.customer_name || "").trim() || "(unknown)";
+    };
+
+    const rows = await sbGetAll("monthly_sales?select=dealer_id,manufacturer,period,customer_name,rep_name,product_code,product_name,qty,amount,commission");
 
     // Aggregate to a cube: one row per (period, line, rep, dealer, product).
     const cube = new Map();
@@ -67,7 +88,7 @@ exports.handler = async (event) => {
       const period = (r.period || "").slice(0,10); if (!period) continue;
       const line = mfrName[r.manufacturer] || r.manufacturer || "(unknown)";
       const rep  = r.rep_name || "Unassigned";
-      const dealer = r.customer_name || "(unknown)";
+      const dealer = canonDealer(r);
       const prod = (r.product_code || "").trim();
       const pname = (r.product_name || "").trim();
       periods.add(period); lines.add(line); reps.add(rep);
