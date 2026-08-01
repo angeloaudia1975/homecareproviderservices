@@ -62,7 +62,7 @@ const $=s=>document.querySelector(s);
 const money=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const jesc=s=>String(s).replace(/'/g,"\\'").replace(/"/g,"&quot;");
-let DATA=null,TOKEN=null,TAB="all",SEL=new Set(),DETAIL=null;
+let DATA=null,TOKEN=null,TAB="all",SEL=new Set(),SELP=new Set(),DETAIL=null,SORT={key:"sales",dir:-1};
 const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
 function jnorm(n){return String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim();}
 const COMMON=new Set(["MEDICAL","SUPPLY","SUPPLIES","PHARMACY","HOME","HEALTHCARE","HEALTH","CARE","EQUIPMENT","EQUIP","MOBILITY","DRUG","DRUGS","STORE","CENTER","SERVICES","MART","MED","OF","AND","DME","PLUS","GA","TN","KY","IN"]);
@@ -105,41 +105,81 @@ function suggestedPairs(){
 }
 function filtered(){const q=($("#q")?.value||"").toLowerCase();
   let ds=DATA.dealers;
-  if(q) ds=ds.filter(d=>d.name.toLowerCase().includes(q)||d.aliases.some(a=>a.toLowerCase().includes(q)));
-  return ds;
+  if(q) ds=ds.filter(d=>d.name.toLowerCase().includes(q)||d.aliases.some(a=>a.toLowerCase().includes(q))
+      ||(d.email||"").toLowerCase().includes(q)||(d.city||"").toLowerCase().includes(q)||(d.state||"").toLowerCase().includes(q)||(d.address||"").toLowerCase().includes(q));
+  return sortDealers(ds);
+}
+const SORTDEF={sales:-1,name:1,state:1,email:-1,updated:1};
+const SORTLBL={sales:"Revenue (high→low)",name:"Name (A→Z)",state:"State",email:"Has email first",updated:"Recently ordered"};
+function setSort(k){ if(SORT.key===k) SORT.dir*=-1; else {SORT.key=k;SORT.dir=SORTDEF[k]||1;} render(); }
+function sortDealers(list){
+  const cmp={
+    name:(a,b)=>a.name.localeCompare(b.name),
+    sales:(a,b)=>a.sales-b.sales,
+    state:(a,b)=>(a.state||"~").localeCompare(b.state||"~")||(a.city||"").localeCompare(b.city||"")||a.name.localeCompare(b.name),
+    email:(a,b)=>((a.email?1:0)-(b.email?1:0))||a.name.localeCompare(b.name),
+    updated:(a,b)=>((a.monthsSince==null?999:a.monthsSince)-(b.monthsSince==null?999:b.monthsSince))||b.sales-a.sales,
+  }[SORT.key]||((a,b)=>a.sales-b.sales);
+  return list.slice().sort((a,b)=>SORT.dir*cmp(a,b));
 }
 function render(){
   if(!DATA)return;
   if(DETAIL) return renderDetail();
   const rev=reviewList().length, dup=suggestedPairs().length;
+  const N=DATA.dealers.length||1;
+  const withEmail=DATA.dealers.filter(d=>d.email).length, withAddr=DATA.dealers.filter(d=>d.address||d.city).length;
   const kpis=`<div class="kpis">
     <div class="kpi"><div class="l">Dealers</div><div class="v">${DATA.dealers.length}</div></div>
+    <div class="kpi"><div class="l">Emails on file</div><div class="v ${withEmail<N?'warn':''}">${withEmail}<span style="font-size:12px;color:var(--gray)">/${DATA.dealers.length}</span></div></div>
+    <div class="kpi"><div class="l">Addresses on file</div><div class="v ${withAddr<N?'warn':''}">${withAddr}<span style="font-size:12px;color:var(--gray)">/${DATA.dealers.length}</span></div></div>
     <div class="kpi"><div class="l">Review queue</div><div class="v warn">${rev}</div></div>
-    <div class="kpi"><div class="l">Suggested dupes</div><div class="v orange">${dup}</div></div>
-    <div class="kpi"><div class="l">Unlinked sales rows</div><div class="v">${DATA.unlinked||0}</div></div></div>`;
+    <div class="kpi"><div class="l">Suggested dupes</div><div class="v orange">${dup}</div></div></div>`;
+  const plog=(DATA.logins||[]).filter(l=>l.status==="pending").length;
   const tabs=`<div class="tabs">
     <button class="tab ${TAB==='all'?'on':''}" onclick="setTab('all')">All dealers</button>
     <button class="tab ${TAB==='review'?'on':''}" onclick="setTab('review')">Review queue${rev?` (${rev})`:""}</button>
-    <button class="tab ${TAB==='dupes'?'on':''}" onclick="setTab('dupes')">Suggested duplicates${dup?` (${dup})`:""}</button></div>`;
+    <button class="tab ${TAB==='dupes'?'on':''}" onclick="setTab('dupes')">Suggested duplicates${dup?` (${dup})`:""}</button>
+    <button class="tab ${TAB==='logins'?'on':''}" onclick="setTab('logins')">Pending logins${plog?` (${plog})`:""}</button>
+    <button class="tab ${TAB==='import'?'on':''}" onclick="setTab('import')">Import contacts</button></div>`;
   $("#body").innerHTML=kpis+tabs+mergeBar()+`<div id="app"></div>`;
-  ({all:renderAll,review:renderReview,dupes:renderDupes}[TAB])();
+  ({all:renderAll,review:renderReview,dupes:renderDupes,logins:renderLogins,import:renderImport}[TAB])();
 }
 function mergeBar(){
-  if(SEL.size<2) return "";
+  if(SEL.size<1) return "";
   const names=[...SEL].map(id=>DATA.dealers.find(d=>d.id===id)?.name).filter(Boolean);
-  return `<div class="mergebar"><div><span class="sel">${SEL.size} selected</span> · ${names.map(n=>esc(n)).join(" · ")}</div>
-    <div><button class="go orange sm" onclick="openMerge()">Merge selected →</button> <button class="go blue sm" onclick="clearSel()">Clear</button></div></div>`;
+  const shown=names.slice(0,6).map(n=>esc(n)).join(" · ")+(names.length>6?` · +${names.length-6} more`:"");
+  const action = SEL.size>=2
+    ? `<button class="go orange sm" onclick="openMerge()">Merge ${SEL.size} selected →</button> <button class="go blue sm" onclick="clearSel()">Clear</button>`
+    : `<span class="hint" style="margin-right:10px">Tick one more account to merge</span><button class="go blue sm" onclick="clearSel()">Clear</button>`;
+  return `<div class="mergebar" style="position:sticky;top:0;z-index:8"><div><span class="sel">${SEL.size} selected</span> · ${shown}</div><div>${action}</div></div>`;
 }
 function toggleSel(id){SEL.has(id)?SEL.delete(id):SEL.add(id);render();}
 function clearSel(){SEL.clear();render();}
+function visibleIds(){return (TAB==='review'?reviewList():filtered()).map(d=>d.id);}
+function allSelected(){const v=visibleIds();return v.length>0&&v.every(id=>SEL.has(id));}
+function toggleAll(el){const v=visibleIds();el.checked?v.forEach(id=>SEL.add(id)):v.forEach(id=>SEL.delete(id));render();}
+function sortArrow(k){return SORT.key===k?(SORT.dir>0?" ▲":" ▼"):"";}
 function renderAll(){
   const ds=filtered();
-  let h=`<div class="card"><h2>All dealers <span class="hint" style="text-transform:none">(${ds.length} shown — tick 2+ to merge, or click a dealer to manage)</span></h2>
-    <table><thead><tr><th></th><th>Dealer</th><th>Also known as</th><th>Buys</th><th class="num">Sales</th><th>Rep</th><th>Access</th><th></th></tr></thead><tbody>`;
+  const sortSel=Object.keys(SORTLBL).map(k=>`<option value="${k}" ${SORT.key===k?"selected":""}>${SORTLBL[k]}${SORT.key===k?(SORT.dir>0?" ▲":" ▼"):""}</option>`).join("");
+  let h=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <h2 style="margin:0">All dealers <span class="hint" style="text-transform:none">(${ds.length} shown — tick 2+ (or “Select all”) then “Merge selected”, or click a dealer to manage)</span></h2>
+      <label class="hint" style="text-transform:none">Sort: <select onchange="setSort(this.value)">${sortSel}</select></label></div>
+    <table style="margin-top:8px"><thead><tr><th><input type="checkbox" ${allSelected()?"checked":""} onclick="toggleAll(this)" title="Select all shown"></th>
+      <th class="link" onclick="setSort('name')" style="cursor:pointer">Dealer${sortArrow('name')}</th>
+      <th>Address / email</th><th>Buys</th>
+      <th class="num link" onclick="setSort('sales')" style="cursor:pointer">Sales${sortArrow('sales')}</th>
+      <th>Rep</th><th>Access</th><th></th></tr></thead><tbody>`;
   for(const d of ds){
+    const loc=[d.city,d.state].filter(Boolean).join(", ");
+    const contact=`<div class="hint" style="text-transform:none;line-height:1.5">
+        ${d.address?`${esc(d.address)}${loc?", "+esc(loc):""}`:(loc?`📍 ${esc(loc)}`:`<span class="chip rev">no address</span>`)}<br>
+        ${d.email?`✉ <a href="mailto:${esc(d.email)}" style="color:var(--blue)">${esc(d.email)}</a>`:`<span class="chip rev">no email</span>`}${d.phone?` · ${esc(d.phone)}`:""}</div>`;
     h+=`<tr class="drow"><td><input type="checkbox" ${SEL.has(d.id)?"checked":""} onclick="toggleSel('${d.id}')"></td>
-      <td class="lbl">${esc(d.name)} ${d.status==="review"?`<span class="chip rev">review</span>`:""}</td>
-      <td>${d.aliases.filter(a=>a!==d.name).slice(0,4).map(a=>`<span class="chip al">${esc(a)}</span>`).join("")||`<span class="dim">—</span>`}${(d.accounts&&d.accounts.length)?`<div class="hint" style="margin:2px 0 0">acct: ${d.accounts.slice(0,6).map(esc).join(", ")}</div>`:""}</td>
+      <td class="lbl">${esc(d.name)} ${d.status==="review"?`<span class="chip rev">review</span>`:""}${d.status==="prospect"?`<span class="chip al">prospect</span>`:""}
+        ${d.aliases.filter(a=>a!==d.name).slice(0,3).map(a=>`<span class="chip al">${esc(a)}</span>`).join("")}
+        ${(d.accounts&&d.accounts.length)?`<div class="hint" style="margin:2px 0 0">acct: ${d.accounts.slice(0,6).map(esc).join(", ")}</div>`:""}</td>
+      <td>${contact}</td>
       <td>${d.buysLines.map(l=>`<span class="chip">${esc(DATA.mfrName[l]||l)}</span>`).join("")||`<span class="dim">—</span>`}</td>
       <td class="num">${money(d.sales)}</td>
       <td>${d.rep?esc(d.rep):`<span class="dim">—</span>`}</td>
@@ -152,7 +192,7 @@ function renderReview(){
   const ds=reviewList();
   if(!ds.length){$("#app").innerHTML=`<div class="card"><div class="ok">✓ Review queue is empty.</div><div class="hint" style="margin-top:6px">New dealer names from future report loads land here for you to confirm or merge.</div></div>`;return;}
   let h=`<div class="card"><h2>Review queue — new names from recent loads</h2><div class="hint">Each is a name a report used that didn't match a known dealer. Confirm it's genuinely new, or merge it into the right existing dealer (tick it plus the real dealer on the All-dealers tab).</div>
-    <table><thead><tr><th></th><th>New dealer name</th><th>Line(s)</th><th class="num">Sales</th><th></th></tr></thead><tbody>`;
+    <table><thead><tr><th><input type="checkbox" ${allSelected()?"checked":""} onclick="toggleAll(this)" title="Select all shown"></th><th>New dealer name</th><th>Line(s)</th><th class="num">Sales</th><th></th></tr></thead><tbody>`;
   for(const d of ds){
     h+=`<tr><td><input type="checkbox" ${SEL.has(d.id)?"checked":""} onclick="toggleSel('${d.id}')"></td>
       <td class="lbl">${esc(d.name)}</td><td>${d.buysLines.map(l=>`<span class="chip">${esc(DATA.mfrName[l]||l)}</span>`).join("")}</td>
@@ -161,14 +201,40 @@ function renderReview(){
   }
   h+=`</tbody></table></div>`; $("#app").innerHTML=h;
 }
+function pairKey(p){return [p.a.id,p.b.id].sort().join("|");}
+function togglePair(k){SELP.has(k)?SELP.delete(k):SELP.add(k);render();}
+function allPairsSel(){const ps=suggestedPairs();return ps.length>0&&ps.every(p=>SELP.has(pairKey(p)));}
+function toggleAllPairs(el){const ps=suggestedPairs();el.checked?ps.forEach(p=>SELP.add(pairKey(p))):ps.forEach(p=>SELP.delete(pairKey(p)));render();}
+function pairsBar(){
+  if(SELP.size<1) return "";
+  return `<div class="mergebar" style="position:sticky;top:0;z-index:8"><div><span class="sel">${SELP.size} pair${SELP.size>1?"s":""} selected</span> · each folds the smaller account into the larger</div>
+    <div><button class="go orange sm" onclick="askMergePairs()">Merge ${SELP.size} pair${SELP.size>1?"s":""} →</button> <button class="go blue sm" onclick="SELP.clear();render()">Clear</button></div></div>`;
+}
+function askMergePairs(){
+  const ps=suggestedPairs().filter(p=>SELP.has(pairKey(p)));
+  if(!ps.length)return;
+  const lines=ps.map(p=>{const s=p.a.sales>=p.b.sales?p.a:p.b,l=s===p.a?p.b:p.a;return `<div>• fold <b>${esc(l.name)}</b> → <b>${esc(s.name)}</b></div>`;}).join("");
+  showDlg(`<h3>Merge ${ps.length} suggested pair${ps.length>1?"s":""}?</h3><div class="hint">Each pair keeps the bigger account; the other's sales history + aliases fold in and its name becomes an alias. This can't be auto-undone (use Manage → Split if needed).</div>
+    <div style="margin:10px 0;max-height:220px;overflow:auto;font-size:13px">${lines}</div>
+    <div style="text-align:right"><button class="go blue sm" onclick="closeDlg()">Cancel</button>
+    <button class="go orange sm" onclick="closeDlg();doMergePairs()">Merge all</button></div>`);
+}
+async function doMergePairs(){
+  const ps=suggestedPairs().filter(p=>SELP.has(pairKey(p)));
+  let done=0;
+  for(const p of ps){ const s=p.a.sales>=p.b.sales?p.a:p.b, l=s===p.a?p.b:p.a;
+    try{ await post({action:"merge",survivor_id:s.id,loser_ids:[l.id]},null); done++; }catch(e){} }
+  SELP.clear(); await load(); alertDlg(`Merged ${done} pair${done===1?"":"s"}.`);
+}
 function renderDupes(){
   const pairs=suggestedPairs();
   if(!pairs.length){$("#app").innerHTML=`<div class="card"><div class="ok">✓ No likely duplicates detected.</div></div>`;return;}
-  let h=`<div class="card"><h2>Suggested duplicates <span class="hint" style="text-transform:none">(${pairs.length} — review each; merges keep the bigger account and fold the other's history + aliases in)</span></h2>
-    <table><thead><tr><th>Likely same dealer</th><th class="num">Sales A / B</th><th>Merge into</th><th></th></tr></thead><tbody>`;
+  let h=pairsBar()+`<div class="card"><h2>Suggested duplicates <span class="hint" style="text-transform:none">(${pairs.length} — tick the pairs you agree with, then “Merge selected pairs”; each keeps the bigger account and folds the other's history + aliases in)</span></h2>
+    <table><thead><tr><th><input type="checkbox" ${allPairsSel()?"checked":""} onclick="toggleAllPairs(this)" title="Select all pairs"></th><th>Likely same dealer</th><th class="num">Sales A / B</th><th>Merge into</th><th></th></tr></thead><tbody>`;
   for(const p of pairs){
-    const surv=p.a.sales>=p.b.sales?p.a:p.b, loser=surv===p.a?p.b:p.a;
-    h+=`<tr><td><b>${esc(p.a.name)}</b> <span class="dim">↔</span> <b>${esc(p.b.name)}</b></td>
+    const surv=p.a.sales>=p.b.sales?p.a:p.b, loser=surv===p.a?p.b:p.a, k=pairKey(p);
+    h+=`<tr><td><input type="checkbox" ${SELP.has(k)?"checked":""} onclick="togglePair('${k}')"></td>
+      <td><b>${esc(p.a.name)}</b> <span class="dim">↔</span> <b>${esc(p.b.name)}</b></td>
       <td class="num dim">${money(p.a.sales)} / ${money(p.b.sales)}</td>
       <td>${esc(surv.name)}</td>
       <td><button class="go orange sm" onclick="askMerge('${surv.id}',['${loser.id}'])">Merge →</button>
@@ -263,5 +329,134 @@ async function post(body,working,stSel){
 function showDlg(html){$("#dlg").innerHTML=`<div class="dlg" onclick="if(event.target===this)closeDlg()"><div class="dlgbox">${html}</div></div>`;}
 function closeDlg(){$("#dlg").innerHTML="";DLGSURV=null;}
 function alertDlg(m){showDlg(`<h3>Notice</h3><div>${esc(m)}</div><div style="margin-top:14px;text-align:right"><button class="go sm" onclick="closeDlg()">OK</button></div>`);}
+
+/* ---------- Pending logins (dealer portal accounts) ---------- */
+function fmtDate(s){try{return new Date(s).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});}catch(e){return "";}}
+async function approveLogin(uid){
+  const inp=document.getElementById("lnk_"+uid); let did="";
+  if(inp){const m=DATA.dealers.find(d=>d.name===inp.value.trim()); if(inp.value.trim()&&!m){alertDlg("Pick a dealer from the list to link this login to.");return;} did=m?m.id:"";}
+  await post({action:"approve_login",uid,dealer_id:did||undefined},"Approving…"); await load(); TAB="logins"; render();
+}
+async function revokeLogin(uid,status){ await post({action:"revoke_login",uid,status},"Saving…"); await load(); TAB="logins"; render(); }
+function renderLogins(){
+  const app=$("#app"); const L=DATA.logins||[];
+  const pending=L.filter(l=>l.status==="pending"), approved=L.filter(l=>l.status==="approved"), revoked=L.filter(l=>l.status==="revoked");
+  const dlOpts=`<datalist id="dealerlist">${DATA.dealers.slice(0,1200).map(d=>`<option value="${esc(d.name)}">`).join("")}</datalist>`;
+  const pRows=pending.length? pending.map(l=>`<tr>
+      <td class="lbl">${esc(l.email)}</td>
+      <td>${l.dealer_name?esc(l.dealer_name):`<input id="lnk_${l.uid}" list="dealerlist" placeholder="link to dealer…" style="width:200px">`}</td>
+      <td>${fmtDate(l.created_at)}</td>
+      <td><button class="go orange sm" onclick="approveLogin('${l.uid}')">Approve</button>
+          <button class="go sm" onclick="revokeLogin('${l.uid}','revoked')">Reject</button></td></tr>`).join("")
+    : `<tr><td colspan="4" class="empty">No pending registrations.</td></tr>`;
+  const aRows=approved.map(l=>`<tr><td class="lbl">${esc(l.email)}</td><td>${esc(l.dealer_name||"—")}</td><td><span class="chip acc">approved</span></td>
+      <td><button class="go sm" onclick="revokeLogin('${l.uid}','revoked')">Revoke</button></td></tr>`).join("");
+  const rRows=revoked.map(l=>`<tr><td class="lbl">${esc(l.email)}</td><td>${esc(l.dealer_name||"—")}</td><td><span class="chip rev">revoked</span></td>
+      <td><button class="go blue sm" onclick="revokeLogin('${l.uid}','approved')">Re-approve</button></td></tr>`).join("");
+  app.innerHTML=`${dlOpts}<div class="card">
+    <h2>Pending logins <span class="hint" style="text-transform:none">— dealers who registered on the ordering portal. Approve to let them sign in and order (only their entitled lines show).</span></h2>
+    <table><thead><tr><th>Email</th><th>Dealer</th><th>Registered</th><th></th></tr></thead><tbody>${pRows}</tbody></table>
+  </div>
+  ${approved.length?`<div class="card"><h2>Active accounts (${approved.length})</h2><table><thead><tr><th>Email</th><th>Dealer</th><th>Status</th><th></th></tr></thead><tbody>${aRows}</tbody></table></div>`:""}
+  ${revoked.length?`<div class="card"><h2>Revoked (${revoked.length})</h2><table><thead><tr><th>Email</th><th>Dealer</th><th>Status</th><th></th></tr></thead><tbody>${rRows}</tbody></table></div>`:""}`;
+}
+
+/* ---------- Import contacts (master list -> dealers) ---------- */
+const IMPORT_LINES=[
+  ["complete-medical-supplies","Complete Medical Account","Complete Account Number"],
+  ["golden-technologies","Golden Account","Golden Account Number"],
+  ["access4u","Access4u Account","Access4u Account Number"],
+  ["pedifix","Pedifix Account","Pedifix Account Number"],
+  ["gce","GCE Account","GCE Account Number"],
+  ["climbing-steps","Climbing Steps Account","Climbing Steps Account Number"],
+  ["strongback-mobility","Strongback Account",null],
+  ["corsicana","Corsicana Account",null],
+  ["airavant-bongorx","Bongo RX Account",null],
+  ["bemis","Bemis Account",null],
+  ["ovation-medical","Ovation Medical",null],
+];
+let IMPORT={rows:null,create:true,busy:false,result:null,fname:""};
+// RFC-4180-ish CSV parser: quotes, escaped quotes, embedded commas + newlines.
+function parseCSV(text){
+  const rows=[]; let field="",row=[],q=false,i=0; const n=text.length;
+  const pf=()=>{row.push(field);field="";}, pr=()=>{pf();rows.push(row);row=[];};
+  if(text.charCodeAt(0)===0xFEFF) i=1;                       // strip BOM
+  for(;i<n;i++){ const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){field+='"';i++;} else q=false; } else field+=c; }
+    else { if(c==='"')q=true; else if(c===",")pf(); else if(c==="\r"){} else if(c==="\n")pr(); else field+=c; }
+  }
+  if(field.length||row.length)pr();
+  return rows;
+}
+function importFromText(text,fname){
+  const grid=parseCSV(text); if(grid.length<2){alertDlg("That file has no data rows.");return;}
+  const head=grid[0].map(h=>String(h||"").trim());
+  const col=name=>head.indexOf(name);
+  const need=col("Company Name"); if(need<0){alertDlg("Couldn't find a 'Company Name' column — is this the HCPS master list?");return;}
+  const get=(r,name)=>{const k=col(name);return k>=0?String(r[k]||"").trim():"";};
+  const seen=new Set(), out=[];
+  for(let ri=1;ri<grid.length;ri++){ const r=grid[ri]; const company=get(r,"Company Name"); if(!company)continue;
+    const key=jnorm(company); if(seen.has(key))continue; seen.add(key);
+    const addr=[get(r,"Address 1"),get(r,"Address 2")].filter(Boolean).join(", ");
+    const contact=[get(r,"Contact First"),get(r,"Contact Last")].filter(Boolean).join(" ");
+    const lines=[];
+    for(const [slug,flag,num] of IMPORT_LINES){ const yes=get(r,flag).toLowerCase()==="yes"; const acct=num?get(r,num):""; if(yes||acct)lines.push({slug,account:acct}); }
+    out.push({company,address:addr,city:get(r,"City"),state:get(r,"State"),zip:get(r,"ZIP"),
+      contact,email:get(r,"Contact Emails"),phone:get(r,"Office Phones"),lines});
+  }
+  IMPORT={rows:out,create:true,busy:false,result:null,fname};
+  render();
+}
+function onImportFile(inp){ const f=inp.files&&inp.files[0]; if(!f)return; const rd=new FileReader();
+  rd.onload=()=>importFromText(String(rd.result||""),f.name); rd.readAsText(f); }
+function importPreview(){
+  const known=new Set(); for(const d of (DATA?.dealers||[])){ known.add(jnorm(d.name)); (d.aliases||[]).forEach(a=>known.add(jnorm(a))); }
+  let match=0; const lc={};
+  for(const r of IMPORT.rows){ if(known.has(jnorm(r.company)))match++; for(const l of r.lines)lc[l.slug]=(lc[l.slug]||0)+1; }
+  return {total:IMPORT.rows.length,match,create:IMPORT.rows.length-match,lc};
+}
+async function applyImport(){
+  if(!IMPORT.rows||IMPORT.busy)return; IMPORT.busy=true; render();
+  try{ const j=await post({action:"import_contacts",rows:IMPORT.rows,create:IMPORT.create},null);
+    IMPORT.result=j.result||{}; IMPORT.busy=false; await load(); TAB="import"; IMPORT_KEEP(); render();
+  }catch(e){ IMPORT.busy=false; render(); }
+}
+let _IMPRES=null; function IMPORT_KEEP(){_IMPRES=IMPORT.result;}   // survive load()'s render reset
+function renderImport(){
+  const app=$("#app"); if(!app)return;
+  if(_IMPRES && !IMPORT.result){IMPORT.result=_IMPRES;_IMPRES=null;}
+  if(!IMPORT.rows){
+    app.innerHTML=`<div class="card" style="padding:18px">
+      <h3 style="margin:0 0 6px">Import dealer contacts &amp; addresses</h3>
+      <p class="muted" style="margin:0 0 12px">Upload your master list (CSV). Each company is matched to an existing dealer by name/alias; unmatched companies are created so <b>every dealer is loaded</b>. Addresses, primary contact, phone, and per-line account numbers are filled in, and line access is turned on wherever an account exists.</p>
+      <input type="file" accept=".csv,text/csv" onchange="onImportFile(this)">
+      <p class="muted" style="margin:12px 0 0;font-size:12px">Expected columns: Company Name, Address 1/2, City, State, ZIP, Office Phones, Contact First/Last, Contact Emails, and the per-line “… Account / … Account Number” columns.</p>
+    </div>`; return;
+  }
+  const p=importPreview();
+  const mfrName=Object.fromEntries((DATA.manufacturers||[]).map(m=>[m.slug,m.name]));
+  const lineRows=IMPORT_LINES.filter(([s])=>p.lc[s]).map(([s])=>`<tr><td>${esc(mfrName[s]||s)}</td><td class="r">${p.lc[s]}</td></tr>`).join("");
+  const res=IMPORT.result;
+  const resHtml=res?`<div class="msg ok" style="margin-top:14px"><b>Import complete.</b><br>
+      Matched existing: <b>${res.matched||0}</b> · Created new: <b>${res.created||0}</b> · Records updated: <b>${res.updated||0}</b> · Line-access rows set: <b>${res.entitlements||0}</b>
+      ${(res.unmatched&&res.unmatched.length)?`<br>Skipped (not created): ${res.unmatched.length}`:""}</div>`:"";
+  app.innerHTML=`<div class="card" style="padding:18px">
+    <h3 style="margin:0 0 4px">Review import — ${esc(IMPORT.fname)}</h3>
+    <p class="muted" style="margin:0 0 12px">${p.total} companies found.</p>
+    <div class="kpis" style="margin:0 0 12px">
+      <div class="kpi"><div class="l">Will match existing</div><div class="v">${p.match}</div></div>
+      <div class="kpi"><div class="l">Will be created</div><div class="v orange">${p.create}</div></div>
+      <div class="kpi"><div class="l">Total dealers after</div><div class="v">${(DATA.dealers.length)+p.create}</div></div>
+    </div>
+    <table class="tbl" style="max-width:360px"><thead><tr><th>Line access to set</th><th class="r">Dealers</th></tr></thead><tbody>${lineRows||'<tr><td colspan=2 class="muted">none</td></tr>'}</tbody></table>
+    <label style="display:flex;gap:8px;align-items:center;margin:14px 0 6px;font-size:14px">
+      <input type="checkbox" ${IMPORT.create?"checked":""} onchange="IMPORT.create=this.checked"> Create dealers for unmatched companies (recommended — loads all dealers)</label>
+    <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
+      <button class="go orange" ${IMPORT.busy?"disabled":""} onclick="applyImport()">${IMPORT.busy?"Importing…":"Apply import"}</button>
+      <button class="go blue sm" onclick="IMPORT={rows:null,create:true,busy:false,result:null,fname:''};render()">Choose a different file</button>
+    </div>
+    ${resHtml}
+  </div>`;
+}
 load();
 </script></body></html>
