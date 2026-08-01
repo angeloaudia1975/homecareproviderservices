@@ -54,6 +54,7 @@ input,select{font:inherit;padding:8px 10px;border:1px solid #cdd8e3;border-radiu
   <a href="/admin/dealers.html" style="text-decoration:none;font-weight:700;font-size:12.5px;padding:7px 12px;border-radius:8px;background:#3B599A;color:#fff">Dealer Manager</a>
   <a href="/admin/images.html" style="text-decoration:none;font-weight:700;font-size:12.5px;padding:7px 12px;border-radius:8px;background:#dde6ee;color:#41576b">Images</a>
   <a href="/admin/featured.html" style="text-decoration:none;font-weight:700;font-size:12.5px;padding:7px 12px;border-radius:8px;background:#dde6ee;color:#41576b">Featured</a>
+  <a href="/admin/website.html" style="text-decoration:none;font-weight:700;font-size:12.5px;padding:7px 12px;border-radius:8px;background:#dde6ee;color:#41576b">Website</a>
 </div>
 <div class="top"><div><h1>HomeCare Provider Services</h1><div class="sub">Dealer master — merge duplicates &amp; manage accounts</div></div>
   <div><input type="search" id="q" placeholder="Search dealer or alias…" oninput="render()" style="width:280px"></div></div>
@@ -65,7 +66,7 @@ const $=s=>document.querySelector(s);
 const money=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const jesc=s=>String(s).replace(/'/g,"\\'").replace(/"/g,"&quot;");
-let DATA=null,TOKEN=null,TAB="all",SEL=new Set(),SELP=new Set(),DETAIL=null,SORT={key:"sales",dir:-1};
+let DATA=null,TOKEN=null,TAB=(location.hash==="#logins"?"logins":"all"),SEL=new Set(),SELP=new Set(),DETAIL=null,SORT={key:"sales",dir:-1};
 const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
 function jnorm(n){return String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim();}
 const COMMON=new Set(["MEDICAL","SUPPLY","SUPPLIES","PHARMACY","HOME","HEALTHCARE","HEALTH","CARE","EQUIPMENT","EQUIP","MOBILITY","DRUG","DRUGS","STORE","CENTER","SERVICES","MART","MED","OF","AND","DME","PLUS","GA","TN","KY","IN"]);

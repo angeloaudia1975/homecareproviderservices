@@ -1,42 +1,60 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>HCPS Admin — Image Manager</title>
 <style>
- :root{--ink:#1b2733;--blue:#3B599A;--blue-dk:#2B4071;--orange:#F5821F;--silver:#D8DEE4;--light:#F3F6FA;--gray:#5b6672;--green:#1A7A4A;--red:#B91C1C}
- *{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;background:var(--light);color:var(--ink)}
+ :root{--ink:#1b2733;--blue:#3B599A;--blue-dk:#2B4071;--orange:#F5821F;--silver:#D8DEE4;--light:#F3F6FA;--gray:#5b6672;--green:#1A7A4A;--red:#B91C1C;--amber:#B45309}
+ *{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;background:var(--light);color:var(--ink);padding-bottom:80px}
  .adminnav{background:var(--ink);display:flex;align-items:center;gap:6px;padding:10px 22px;flex-wrap:wrap}
  .adminnav .bd{color:#fff;font-weight:800;font-size:15px;margin-right:16px}.adminnav .bd span{color:var(--orange)}
  .adminnav a{color:#aeb9c6;text-decoration:none;font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-radius:7px}
  .adminnav a:hover{color:#fff}.adminnav a.on{color:#fff;background:var(--blue)}
  .wrap{max-width:1200px;margin:22px auto;padding:0 20px}
- h1{font-size:22px;margin:0 0 3px}.sub{color:var(--gray);font-size:13px;margin:0 0 16px}
+ h1{font-size:22px;margin:0 0 3px}.sub{color:var(--gray);font-size:13px;margin:0 0 10px}
+ .infobar{background:#eaf1f8;border:1px solid #cfe0f2;color:var(--blue-dk);border-radius:9px;padding:9px 13px;font-size:12.5px;margin-bottom:14px}
  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
  select,input[type=text]{padding:9px 11px;border:1px solid var(--silver);border-radius:8px;font-size:13px;background:#fff}
- input[type=text]{min-width:240px}
+ input[type=text]{min-width:220px}
  label.ck{display:flex;gap:6px;align-items:center;font-size:13px;color:#41525f}
  .kpis{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
- .kpi{background:#fff;border:1px solid var(--silver);border-radius:10px;padding:10px 16px;min-width:120px}
- .kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray)}.kpi .v{font-size:22px;font-weight:800}.kpi .v.warn{color:var(--orange)}
+ .kpi{background:#fff;border:1px solid var(--silver);border-radius:10px;padding:10px 16px;min-width:110px}
+ .kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray)}.kpi .v{font-size:22px;font-weight:800}.kpi .v.warn{color:var(--orange)}.kpi .v.stg{color:var(--amber)}
  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
  .pc{background:#fff;border:1px solid var(--silver);border-radius:11px;overflow:hidden;display:flex;flex-direction:column}
+ .pc.staged{border-color:var(--amber);box-shadow:0 0 0 2px #fde9c7}
  .pc .img{height:150px;background:linear-gradient(135deg,#eef2f7,#e2e8f0);display:flex;align-items:center;justify-content:center;position:relative}
  .pc .img img{max-width:100%;max-height:150px;object-fit:contain}
  .pc .ph{color:var(--gray);font-size:12px}
  .badge{position:absolute;top:7px;left:7px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;padding:3px 8px;border-radius:8px}
- .badge.has{background:#e6f5ee;color:var(--green)}.badge.up{background:#eaf1f8;color:var(--blue-dk)}.badge.miss{background:#fee2e2;color:var(--red)}
+ .badge.has{background:#e6f5ee;color:var(--green)}.badge.up{background:#eaf1f8;color:var(--blue-dk)}.badge.miss{background:#fee2e2;color:var(--red)}.badge.stg{background:#fef3c7;color:var(--amber)}
  .pc .body{padding:10px 12px;flex:1;display:flex;flex-direction:column;gap:4px}
  .pc .code{font-size:11px;color:var(--gray);font-weight:700}.pc .nm{font-size:13px;font-weight:600;line-height:1.25;flex:1}
  .pc .acts{display:flex;gap:6px;margin-top:6px}
  .up{background:var(--blue);color:#fff;border:none;border-radius:7px;padding:7px 10px;font-weight:700;font-size:12px;cursor:pointer;flex:1}.up:hover{background:var(--orange)}
  .rm{background:#fff;border:1px solid var(--silver);border-radius:7px;padding:7px 9px;font-size:11px;cursor:pointer;color:var(--red)}
+ .undo{background:#fff;border:1px solid var(--amber);border-radius:7px;padding:7px 9px;font-size:11px;cursor:pointer;color:var(--amber);flex:1;font-weight:700}
  .gate,.msg{background:#fff;border:1px solid var(--silver);border-radius:12px;padding:24px;max-width:420px;margin:30px auto;text-align:center}
  .go{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer}
  .err{color:var(--red)}
- .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none}.toast.show{opacity:1}
+ /* sticky publish bar */
+ .pubbar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:2px solid var(--amber);box-shadow:0 -4px 18px rgba(0,0,0,.08);display:none;align-items:center;gap:14px;padding:12px 22px;z-index:50}
+ .pubbar.show{display:flex}
+ .pubbar .cnt{font-size:13.5px;font-weight:700;color:var(--amber)}
+ .pubbar .cnt b{color:var(--ink)}
+ .pubbar .spacer{flex:1}
+ .pubbar .discard{background:#fff;border:1px solid var(--silver);border-radius:8px;padding:9px 14px;font-size:13px;cursor:pointer;color:var(--gray);font-weight:600}
+ .pubbar .publish{background:var(--green);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-weight:800;font-size:14px;cursor:pointer}
+ .pubbar .publish:hover{background:#146138}.pubbar .publish:disabled{opacity:.6;cursor:default}
+ .toast{position:fixed;bottom:78px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:60}.toast.show{opacity:1}
 </style></head><body>
 <nav class="adminnav"><div class="bd">HCPS <span>Admin</span></div>
  <a href="/admin/">Home</a><a href="/admin/analytics.html">Analytics</a><a href="/admin/dealers.html">Dealer Manager</a>
- <a href="/admin/images.html" class="on">Images</a><a href="/admin/featured.html">Featured</a></nav>
+ <a href="/admin/images.html" class="on">Images</a><a href="/admin/featured.html">Featured</a><a href="/admin/website.html">Website</a></nav>
 <div class="wrap" id="wrap"><div class="msg">Loading…</div></div>
+<div class="pubbar" id="pubbar">
+  <span class="cnt" id="pubcnt"></span>
+  <span class="spacer"></span>
+  <button class="discard" id="discardBtn" onclick="discardStage()">Discard changes</button>
+  <button class="publish" id="publishBtn" onclick="publishAll()">Publish all changes</button>
+</div>
 <div class="toast" id="toast"></div>
 <script>
 const $=s=>document.querySelector(s);
@@ -44,6 +62,10 @@ const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",
 const API="/.netlify/functions/images-api";
 const ORDERING="https://hcpsonlineordering.netlify.app";
 let TOKEN=null, MFRS=[], SLUG="", PRODUCTS=[], OVER={}, Q="", NEEDONLY=false, BROKEN={}, PICK=null;
+// Staged (unpublished) changes across all lines, keyed "mfr::code":
+//   {kind:'upload', slug, code, name, data, contentType, filename, dataUrl}  or  {kind:'remove', slug, code}
+const STAGE=new Map();
+const skey=(slug,code)=>slug+"::"+code;
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800);}
 async function api(path,opts){const h={"content-type":"application/json"};if(TOKEN)h["x-analytics-token"]=TOKEN;
   const r=await fetch(API+path,{...(opts||{}),headers:{...h,...((opts&&opts.headers)||{})}});
@@ -58,28 +80,34 @@ async function boot(){
   }catch(e){if(String(e.message)!=="unauthorized")$("#wrap").innerHTML=`<div class="msg err">Couldn't load: ${esc(e.message)}</div>`;}
 }
 async function loadMfr(){ const j=await api("?manufacturer="+encodeURIComponent(SLUG),{method:"GET"}); PRODUCTS=j.products||[];OVER=j.overrides||{};BROKEN={};render(); }
-function imgFor(p){ if(OVER[p.code])return OVER[p.code]; if(p.image)return ORDERING+p.image; return ""; }
-function statusOf(p){ if(OVER[p.code])return "up"; if(p.image&&!BROKEN[p.code])return "has"; return "miss"; }
+function staged(code){ return STAGE.get(skey(SLUG,code)); }
+function imgFor(p){ const s=staged(p.code); if(s){ return s.kind==='upload'?s.dataUrl:""; } if(OVER[p.code])return OVER[p.code]; if(p.image)return ORDERING+p.image; return ""; }
+function statusOf(p){ const s=staged(p.code); if(s)return s.kind==='upload'?"stg":"miss"; if(OVER[p.code])return "up"; if(p.image&&!BROKEN[p.code])return "has"; return "miss"; }
 function filtered(){ const q=Q.toLowerCase();
   return PRODUCTS.filter(p=>{ if(NEEDONLY && statusOf(p)!=="miss") return false;
     if(q && !(`${p.code} ${p.name} ${p.category}`.toLowerCase().includes(q))) return false; return true; }); }
 function render(){
-  const withImg=PRODUCTS.filter(p=>statusOf(p)!=="miss").length, miss=PRODUCTS.length-withImg, up=Object.keys(OVER).length;
+  const withImg=PRODUCTS.filter(p=>statusOf(p)==="has"||statusOf(p)==="up").length, miss=PRODUCTS.filter(p=>statusOf(p)==="miss").length;
+  const stgCount=STAGE.size;
   const mfrOpts=MFRS.map(m=>`<option value="${esc(m.slug)}" ${m.slug===SLUG?"selected":""}>${esc(m.name)}</option>`).join("");
-  const cards=filtered().map(p=>{const src=imgFor(p),st=statusOf(p);
-    const badge=st==="up"?'<span class="badge up">Uploaded</span>':st==="has"?'<span class="badge has">Has photo</span>':'<span class="badge miss">Needs image</span>';
+  const cards=filtered().map(p=>{const src=imgFor(p),st=statusOf(p);const s=staged(p.code);
+    const badge=st==="stg"?'<span class="badge stg">Staged</span>':st==="up"?'<span class="badge up">Uploaded</span>':st==="has"?'<span class="badge has">Has photo</span>':'<span class="badge miss">Needs image</span>';
     const img=src?`<img src="${esc(src)}" alt="" loading="lazy" onerror="imgBroke('${esc(p.code)}')">`:`<span class="ph">No image</span>`;
-    return `<div class="pc"><div class="img">${badge}${img}</div>
+    let acts;
+    if(s){ acts=`<button class="undo" onclick="unstage('${esc(p.code)}')">Undo staged ${s.kind==='remove'?'removal':'photo'}</button>`; }
+    else { acts=`<button class="up" onclick="pick('${esc(p.code)}')">${OVER[p.code]?"Replace":"Upload"}</button>`+
+      (OVER[p.code]?`<button class="rm" onclick="stageRemove('${esc(p.code)}')">Remove</button>`:""); }
+    return `<div class="pc ${s?'staged':''}"><div class="img">${badge}${img}</div>
       <div class="body"><div class="code">#${esc(p.code)}</div><div class="nm">${esc(p.name)}</div>
-      <div class="acts"><button class="up" onclick="pick('${esc(p.code)}')">${OVER[p.code]?"Replace":"Upload"}</button>
-        ${OVER[p.code]?`<button class="rm" onclick="clearImg('${esc(p.code)}')">Remove</button>`:""}</div></div></div>`;
+      <div class="acts">${acts}</div></div></div>`;
   }).join("");
-  $("#wrap").innerHTML=`<h1>🖼️ Image Manager</h1><p class="sub">Upload product photos that publish to the portal instantly. Missing or broken images are flagged so you can close the gaps.</p>
+  $("#wrap").innerHTML=`<h1>🖼️ Image Manager</h1><p class="sub">Stage as many photo changes as you like, then <b>Publish all</b> in one go.</p>
+   <div class="infobar">✓ Photos publish to Supabase storage and go live on the portal instantly — <b>no Netlify redeploy and no build credits used</b>. Staging just lets you batch several changes into one publish.</div>
    <div class="kpis">
      <div class="kpi"><div class="l">Products</div><div class="v">${PRODUCTS.length}</div></div>
      <div class="kpi"><div class="l">Have image</div><div class="v">${withImg}</div></div>
      <div class="kpi"><div class="l">Needs image</div><div class="v ${miss?'warn':''}">${miss}</div></div>
-     <div class="kpi"><div class="l">Uploaded here</div><div class="v">${up}</div></div>
+     <div class="kpi"><div class="l">Staged (all lines)</div><div class="v ${stgCount?'stg':''}">${stgCount}</div></div>
    </div>
    <div class="bar">
      <select onchange="SLUG=this.value;loadMfr()">${mfrOpts}</select>
@@ -89,19 +117,49 @@ function render(){
    <div class="grid">${cards||'<div class="msg">No products match.</div>'}</div>
    <input type="file" id="filein" accept="image/*" style="display:none">`;
   $("#filein").onchange=onFile;
+  renderPubbar();
+}
+function renderPubbar(){
+  const n=STAGE.size, bar=$("#pubbar");
+  if(!n){bar.classList.remove("show");return;}
+  const ups=[...STAGE.values()].filter(x=>x.kind==='upload').length, rms=n-ups;
+  const parts=[]; if(ups)parts.push(`${ups} photo${ups===1?'':'s'} to upload`); if(rms)parts.push(`${rms} removal${rms===1?'':'s'}`);
+  $("#pubcnt").innerHTML=`<b>${n}</b> unpublished change${n===1?'':'s'} — ${parts.join(" · ")}`;
+  bar.classList.add("show");
 }
 function imgBroke(code){ if(!BROKEN[code]){BROKEN[code]=true; render();} }
 function pick(code){ PICK=code; $("#filein").value=""; $("#filein").click(); }
-function clearImg(code){ if(!confirm("Remove the uploaded image for "+code+"? The portal reverts to its catalog image."))return;
-  api("",{method:"POST",body:JSON.stringify({action:"clear",manufacturer:SLUG,code})}).then(()=>{delete OVER[code];render();toast("Removed");}).catch(e=>toast(e.message)); }
+function stageRemove(code){ STAGE.set(skey(SLUG,code),{kind:'remove',slug:SLUG,code}); render(); }
+function unstage(code){ STAGE.delete(skey(SLUG,code)); render(); }
+function discardStage(){ if(STAGE.size&&!confirm("Discard all "+STAGE.size+" staged change(s)?"))return; STAGE.clear(); render(); toast("Staged changes discarded"); }
 function onFile(e){ const f=e.target.files&&e.target.files[0]; if(!f||!PICK)return;
   if(f.size>5*1024*1024){toast("Image must be under 5 MB");return;}
-  const rd=new FileReader(); rd.onload=async()=>{ const data=String(rd.result).split(",")[1];
-    toast("Uploading "+PICK+"…");
-    try{const j=await api("",{method:"POST",body:JSON.stringify({action:"upload",manufacturer:SLUG,code:PICK,filename:f.name,contentType:f.type||"image/jpeg",data})});
-      OVER[PICK]=j.url; delete BROKEN[PICK]; render(); toast("Uploaded ✓");
-    }catch(err){toast("Upload failed: "+err.message);} };
+  const rd=new FileReader(); const code=PICK, slug=SLUG, p=PRODUCTS.find(x=>x.code===code)||{};
+  rd.onload=()=>{ const dataUrl=String(rd.result), data=dataUrl.split(",")[1];
+    STAGE.set(skey(slug,code),{kind:'upload',slug,code,name:p.name||"",data,contentType:f.type||"image/jpeg",filename:f.name,dataUrl});
+    render(); toast("Staged — publish when ready");
+  };
   rd.readAsDataURL(f);
+}
+async function publishAll(){
+  const items=[...STAGE.values()]; if(!items.length)return;
+  const btn=$("#publishBtn"); btn.disabled=true; const orig=btn.textContent;
+  let ok=0, fail=0;
+  for(let i=0;i<items.length;i++){ const it=items[i]; btn.textContent=`Publishing ${i+1}/${items.length}…`;
+    try{
+      if(it.kind==='upload'){
+        const j=await api("",{method:"POST",body:JSON.stringify({action:"upload",manufacturer:it.slug,code:it.code,filename:it.filename,contentType:it.contentType,data:it.data})});
+        if(it.slug===SLUG){ OVER[it.code]=j.url; delete BROKEN[it.code]; }
+      }else{
+        await api("",{method:"POST",body:JSON.stringify({action:"clear",manufacturer:it.slug,code:it.code})});
+        if(it.slug===SLUG) delete OVER[it.code];
+      }
+      STAGE.delete(skey(it.slug,it.code)); ok++;
+    }catch(e){ fail++; }
+  }
+  btn.disabled=false; btn.textContent=orig;
+  render();
+  toast(fail? `Published ${ok}, ${fail} failed — check and retry` : `Published ${ok} change${ok===1?'':'s'} ✓`);
 }
 boot();
 </script></body></html>

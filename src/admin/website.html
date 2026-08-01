@@ -1,0 +1,62 @@
+<!doctype html><html lang="en-US"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>HCPS Admin — Website Editor</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin/admin.css">
+<style>
+ /* Unified admin nav (matches the other admin tools) — namespaced so it can't clash with admin.css */
+ .adminnav{background:#1b2733;display:flex;align-items:center;gap:6px;padding:10px 22px;flex-wrap:wrap;font-family:Arial,Helvetica,sans-serif}
+ .adminnav .bd{color:#fff;font-weight:800;font-size:15px;margin-right:16px}.adminnav .bd span{color:#F5821F}
+ .adminnav a{color:#aeb9c6;text-decoration:none;font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-radius:7px}
+ .adminnav a:hover{color:#fff}.adminnav a.on{color:#fff;background:#3B599A}
+ /* Let the editor's own login card sit under the nav rather than filling the whole viewport */
+ #login.login-wrap{min-height:calc(100vh - 46px)}
+</style>
+</head><body>
+
+<nav class="adminnav"><div class="bd">HCPS <span>Admin</span></div>
+ <a href="/admin/">Home</a><a href="/admin/analytics.html">Analytics</a><a href="/admin/dealers.html">Dealer Manager</a>
+ <a href="/admin/images.html">Images</a><a href="/admin/featured.html">Featured</a><a href="/admin/website.html" class="on">Website</a></nav>
+
+<!-- Login -->
+<div id="login" class="login-wrap">
+  <form id="login-form" class="login-card" autocomplete="off">
+    <div class="login-brand">HomeCare Provider Services</div>
+    <h1>Website Editor</h1>
+    <p class="login-sub">Sign in to edit site content and publish to the live marketing site.</p>
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" required autocomplete="current-password">
+    <button type="submit" class="btn primary" id="login-btn">Sign in</button>
+    <p id="login-error" class="err" hidden></p>
+  </form>
+</div>
+
+<!-- App -->
+<div id="app" hidden>
+  <header class="topbar">
+    <div class="topbar-left">
+      <strong>Website Editor</strong>
+      <nav class="tabs">
+        <button class="tab" data-view="manufacturers">Manufacturers</button>
+        <button class="tab" data-view="documents">Documents</button>
+        <button class="tab" data-view="home">Home Page</button>
+        <button class="tab" data-view="pages">Pages</button>
+        <button class="tab" data-view="team">Team</button>
+        <button class="tab" data-view="testimonials">Testimonials</button>
+        <button class="tab" data-view="site">Site Settings</button>
+      </nav>
+    </div>
+    <div class="topbar-right">
+      <span id="gh-status" class="gh-status"></span>
+      <button class="btn ghost" id="logout-btn">Sign out</button>
+    </div>
+  </header>
+  <main id="view" class="view"></main>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+<div id="busy" class="busy" hidden><div class="spinner"></div><span id="busy-msg">Working…</span></div>
+
+<script src="/admin/admin.js"></script>
+</body></html>
