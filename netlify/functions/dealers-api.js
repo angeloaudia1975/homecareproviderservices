@@ -7,6 +7,7 @@
 //
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
+const BUILD = "dealers-api direct-write v2 (2026-08-02)";   // shown by the "Check setup" diagnostic
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 
@@ -114,6 +115,16 @@ exports.handler = async (event)=>{
     if(event.httpMethod==="POST"){
       let b; try{b=JSON.parse(event.body||"{}");}catch{return json(400,{error:"bad JSON"});}
       const act=b.action;
+      if(act==="diag"){
+        // Self-check: which code is live, do the tables exist, and how many rows are stored.
+        const probe=async(t)=>{ try{
+            const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?select=dealer_id`,{headers:{...H(),Prefer:"count=exact",Range:"0-0"}});
+            if(r.status===404||r.status===400) return {exists:false,count:0};
+            const cr=r.headers.get("content-range")||""; const cnt=cr.includes("/")?parseInt(cr.split("/")[1],10):null;
+            return {exists:(r.ok||r.status===206),count:Number.isFinite(cnt)?cnt:null};
+          }catch(e){ return {exists:false,count:0,error:String(e.message||e)}; } };
+        return json(200,{ok:true,build:BUILD,dealer_contacts:await probe("dealer_contacts"),dealer_addresses:await probe("dealer_addresses")});
+      }
       if(act==="merge"){
         if(!b.survivor_id||!Array.isArray(b.loser_ids)||!b.loser_ids.length) return json(400,{error:"survivor_id + loser_ids required"});
         await rpc("merge_dealers",{p_survivor:b.survivor_id,p_losers:b.loser_ids});
