@@ -154,10 +154,81 @@ exports.handler = async (event)=>{
         return json(200,{ok:true});
       }
       if(act==="import_contacts"){
-        if(!Array.isArray(b.rows)||!b.rows.length) return json(400,{error:"rows[] required"});
-        // resolve+enrich each company via dealer_norm/aliases; create unmatched when requested
-        const res=await sbSend("POST","rpc/import_dealer_contacts",{p_rows:b.rows,p_create:b.create!==false});
-        return json(200,{ok:true,result:res});
+        const rows=Array.isArray(b.rows)?b.rows:[];
+        if(!rows.length) return json(400,{error:"rows[] required"});
+        const create=b.create!==false;
+        // Store everything directly here (service role) instead of via a Postgres function,
+        // so nothing can be silently blocked by a function that failed to install. The ONLY
+        // requirement is that the two tables exist — probe them and say so plainly if not.
+        try{ await sbGet("dealer_contacts?select=dealer_id&limit=1"); }
+        catch(e){ return json(200,{ok:false,error:"tables_missing",result:{contacts:0,addresses:0,message:"The dealer_contacts table doesn't exist yet. Run create_tables.sql in Supabase, then re-import."}}); }
+        try{ await sbGet("dealer_addresses?select=dealer_id&limit=1"); }
+        catch(e){ return json(200,{ok:false,error:"tables_missing",result:{contacts:0,addresses:0,message:"The dealer_addresses table doesn't exist yet. Run create_tables.sql in Supabase, then re-import."}}); }
+
+        const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
+        const dnorm=n=>String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim();
+        const chunk=(arr,n)=>{const o=[];for(let i=0;i<arr.length;i+=n)o.push(arr.slice(i,i+n));return o;};
+        const errors=[];
+
+        // resolution map: normalized name/alias -> dealer_id
+        const dealersAll=await sbGetAll("dealers?select=id,business_name");
+        const aliasesAll=await sbGetAll("dealer_aliases?select=alias_norm,dealer_id").catch(()=>[]);
+        const norm2id=new Map();
+        for(const d of dealersAll) norm2id.set(dnorm(d.business_name), d.id);
+        for(const a of aliasesAll) norm2id.set(a.alias_norm, a.dealer_id);
+
+        // create unmatched companies (if allowed)
+        let matched=0, created=0; const unmatched=[]; const createSet=new Map();
+        for(const r of rows){ const nm=(r.company||"").trim(); if(!nm)continue; const k=dnorm(nm);
+          if(norm2id.has(k)) matched++;
+          else if(create){ if(!createSet.has(k)) createSet.set(k,nm); }
+          else unmatched.push(nm); }
+        if(createSet.size){
+          const batch=[...createSet.values()].map(nm=>({business_name:nm,active:true,status:"prospect"}));
+          try{
+            const ins=await sbSend("POST","dealers?on_conflict=business_name",batch,{Prefer:"resolution=merge-duplicates,return=representation"});
+            const aliasRows=[];
+            for(const row of (ins||[])){ const k=dnorm(row.business_name); norm2id.set(k,row.id); aliasRows.push({alias_norm:k,raw_name:row.business_name,dealer_id:row.id}); }
+            created=batch.length;
+            if(aliasRows.length) await sbSend("POST","dealer_aliases?on_conflict=alias_norm",aliasRows,{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{});
+          }catch(e){ errors.push("create dealers: "+e.message); }
+        }
+
+        // build de-duplicated bulk sets keyed by dealer
+        const contactMap=new Map(), addrMap=new Map(), lineMap=new Map(), dealerUpd=new Map();
+        for(const r of rows){ const nm=(r.company||"").trim(); if(!nm)continue; const id=norm2id.get(dnorm(nm)); if(!id)continue;
+          if(!dealerUpd.has(id)) dealerUpd.set(id,{});
+          const du=dealerUpd.get(id);
+          if(!du.contact_name && r.contact) du.contact_name=r.contact;
+          if(!du.email && r.email) du.email=String(r.email).trim();
+          if(!du.phone && r.phone) du.phone=r.phone;
+          for(const c of (r.contacts||[])){ const em=String(c.email||"").trim().toLowerCase(); if(!em)continue; const key=id+"|"+em;
+            if(!contactMap.has(key)) contactMap.set(key,{dealer_id:id,email:em,name:c.name||null,title:c.title||null,role:c.role||null,phone:c.phone||null}); }
+          for(const a of (r.addresses||[])){ const ad=String(a.address||"").trim(); if(!ad)continue;
+            const ak=dnorm([ad,a.city,a.state].filter(Boolean).join(" ")); const key=id+"|"+ak;
+            const lbl=String(a.label||""); const pri=/HQ/i.test(lbl)?3:(/\b(CORP|CORPORATE|HEADQUARTERS|MAIN|FLAGSHIP)\b/i.test(lbl)?2:1);
+            const prev=addrMap.get(key); if(!prev||pri>prev.pri) addrMap.set(key,{dealer_id:id,addr_key:ak,address:ad,city:a.city||null,state:a.state||null,zip:a.zip||null,label:lbl||null,pri}); }
+          for(const l of (r.lines||[])){ if(!l||!l.slug)continue; const key=id+"|"+l.slug;
+            if(!lineMap.has(key)) lineMap.set(key,{dealer_id:id,manufacturer:l.slug,active:true,account_ref:(l.account||null)}); }
+        }
+
+        const contactsArr=[...contactMap.values()], addrArr=[...addrMap.values()], lineArr=[...lineMap.values()];
+        let contactsStored=0, addressesStored=0, ents=0;
+        for(const part of chunk(contactsArr,500)){ try{ await sbSend("POST","dealer_contacts?on_conflict=dealer_id,email",part,{Prefer:"resolution=merge-duplicates,return=minimal"}); contactsStored+=part.length; }catch(e){ errors.push("contacts: "+e.message); } }
+        for(const part of chunk(addrArr,500)){ try{ await sbSend("POST","dealer_addresses?on_conflict=dealer_id,addr_key",part,{Prefer:"resolution=merge-duplicates,return=minimal"}); addressesStored+=part.length; }catch(e){ errors.push("addresses: "+e.message); } }
+        for(const part of chunk(lineArr,500)){ try{ await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",part,{Prefer:"resolution=merge-duplicates,return=minimal"}); ents+=part.length; }catch(e){ errors.push("lines: "+e.message); } }
+
+        // per-dealer: set contact/email/phone + promote the top-ranked (HQ) address
+        const primaryByDealer=new Map();
+        for(const a of addrArr){ const p=primaryByDealer.get(a.dealer_id); if(!p||a.pri>p.pri) primaryByDealer.set(a.dealer_id,a); }
+        const updates=[];
+        for(const [id,du] of dealerUpd){ const pa=primaryByDealer.get(id); const patch={updated_at:new Date().toISOString()};
+          if(du.contact_name)patch.contact_name=du.contact_name; if(du.email)patch.email=du.email; if(du.phone)patch.phone=du.phone;
+          if(pa){ patch.address=pa.address; if(pa.city)patch.city=pa.city; if(pa.state)patch.state=pa.state; if(pa.zip)patch.zip=pa.zip; }
+          updates.push({id,patch}); }
+        for(const part of chunk(updates,20)){ await Promise.all(part.map(u=> sbSend("PATCH","dealers?id=eq."+u.id,u.patch,{Prefer:"return=minimal"}).catch(e=>{ if(errors.length<8) errors.push("dealer update: "+e.message); }) )); }
+
+        return json(200,{ok:errors.length===0,result:{matched,created,updated:dealerUpd.size,entitlements:ents,contacts:contactsStored,addresses:addressesStored,unmatched,errors:errors.slice(0,6)}});
       }
       if(act==="approve_login"){
         if(!b.uid) return json(400,{error:"uid required"});
