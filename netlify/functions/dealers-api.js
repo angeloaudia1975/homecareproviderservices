@@ -46,6 +46,8 @@ async function buildState(){
     sbGet("dealer_nomerge?select=a,b").catch(()=>[]),
     sbGet("dealer_users?select=uid,email,dealer_id,status,created_at&order=created_at.desc").catch(()=>[]),
   ]);
+  const dcontacts = await sbGetAll("dealer_contacts?select=dealer_id,email,name,title,role,phone").catch(()=>[]);
+  const contactsByDealer=new Map(); for(const x of dcontacts){(contactsByDealer.get(x.dealer_id)||contactsByDealer.set(x.dealer_id,[]).get(x.dealer_id)).push(x);}
   const rows = await sbGetAll("monthly_sales?select=dealer_id,manufacturer,period,amount,commission,customer_name,customer_ref");
   const mfrName=Object.fromEntries(mfrs.map(m=>[m.slug,m.name]));
   const repByName=Object.fromEntries(dir.map(d=>[d.dealer_name,d.rep_name]));
@@ -77,6 +79,7 @@ async function buildState(){
       access:(accByDealer.get(d.id)||[]).slice().sort(),
       buysLines:[...a.lines].sort(),
       accounts:[...a.accts].sort(),
+      contacts:(contactsByDealer.get(d.id)||[]).map(c=>({email:c.email||"",name:c.name||"",title:c.title||"",role:c.role||"",phone:c.phone||""})),
       sales:Math.round(a.sales*100)/100, comm:Math.round(a.comm*100)/100, recs:a.recs,
       periods:per, monthsSince:since, lastPeriod:per[per.length-1]||null,
     };
