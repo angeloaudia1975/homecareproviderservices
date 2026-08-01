@@ -36,9 +36,13 @@ input,select{font:inherit;padding:8px 10px;border:1px solid #cdd8e3;border-radiu
 .msg{background:#fff;border:1px solid #dbe4ec;border-radius:12px;padding:22px;text-align:center;color:#5b7085}
 .msg.err{background:#fdecec;border-color:#f3c0c0;color:#b42323}
 .backbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.fld{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}.fld label{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#5b7085}
-.accgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+@media(max-width:760px){.grid2{grid-template-columns:1fr}}
+.card{overflow-wrap:anywhere}
+.fld{display:flex;flex-direction:column;gap:4px;margin-bottom:8px;min-width:0}.fld label{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#5b7085}
+.fld input{width:100%;min-width:0}
+.accgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.accitem{min-width:0}.accitem input[type=checkbox]{flex:none}
 .accitem{display:flex;align-items:center;gap:7px;border:1px solid #e2e9f0;border-radius:8px;padding:7px 10px;font-size:13px}
 .accitem.on{background:#e9f7ef;border-color:#bfe6cd}
 .dlg{position:fixed;inset:0;background:rgba(16,38,63,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
@@ -346,28 +350,49 @@ function alertDlg(m){showDlg(`<h3>Notice</h3><div>${esc(m)}</div><div style="mar
 function fmtDate(s){try{return new Date(s).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});}catch(e){return "";}}
 async function approveLogin(uid){
   const inp=document.getElementById("lnk_"+uid); let did="";
-  if(inp){const m=DATA.dealers.find(d=>d.name===inp.value.trim()); if(inp.value.trim()&&!m){alertDlg("Pick a dealer from the list to link this login to.");return;} did=m?m.id:"";}
+  if(inp){const q=inp.value.trim(); const m=DATA.dealers.find(d=>d.name.toLowerCase()===q.toLowerCase());
+    if(q&&!m){alertDlg("Pick a dealer from the list to link this registration to, or use “Create new dealer”.");return;} did=m?m.id:"";}
+  const l=(DATA.logins||[]).find(x=>x.uid===uid);
+  if(!did && !(l&&l.dealer_id)){ alertDlg("Link this registration to a dealer first (type a name and pick from the list), or use “Create new dealer”.");return; }
   await post({action:"approve_login",uid,dealer_id:did||undefined},"Approving…"); await load(); TAB="logins"; render();
 }
+async function createDealerForLogin(uid){
+  const l=(DATA.logins||[]).find(x=>x.uid===uid); if(!l)return;
+  const r=l.req||{}; const name=(r.company||"").trim();
+  if(!name){ alertDlg("This registration didn't include a company name — link it to an existing dealer instead.");return; }
+  if(!confirm(`Create a new dealer “${name}” from this registration and approve the login?`))return;
+  await post({action:"approve_login",uid,new_dealer:{
+    business_name:name, contact_name:r.contact||"", email:l.email||"", phone:r.phone||"",
+    address:r.address||"", city:r.city||"", state:r.state||"", zip:r.zip||""
+  }},"Creating dealer…"); await load(); TAB="logins"; render();
+}
 async function revokeLogin(uid,status){ await post({action:"revoke_login",uid,status},"Saving…"); await load(); TAB="logins"; render(); }
+function reqLine(r){ if(!r)return ""; const loc=[r.city,r.state].filter(Boolean).join(", ");
+  const bits=[r.contact,r.phone,r.address,loc,r.zip].map(x=>(x||"").trim()).filter(Boolean);
+  return bits.length?`<div class="hint" style="margin-top:3px">${esc(bits.join(" · "))}</div>`:""; }
 function renderLogins(){
   const app=$("#app"); const L=DATA.logins||[];
   const pending=L.filter(l=>l.status==="pending"), approved=L.filter(l=>l.status==="approved"), revoked=L.filter(l=>l.status==="revoked");
   const dlOpts=`<datalist id="dealerlist">${DATA.dealers.slice(0,1200).map(d=>`<option value="${esc(d.name)}">`).join("")}</datalist>`;
-  const pRows=pending.length? pending.map(l=>`<tr>
-      <td class="lbl">${esc(l.email)}</td>
-      <td>${l.dealer_name?esc(l.dealer_name):`<input id="lnk_${l.uid}" list="dealerlist" placeholder="link to dealer…" style="width:200px">`}</td>
+  const pRows=pending.length? pending.map(l=>{const r=l.req||{}; const company=(r.company||"").trim();
+    const linkCell = l.dealer_name
+      ? `<div><b>${esc(l.dealer_name)}</b> <span class="chip acc">matched on file</span></div>`
+      : `<input id="lnk_${l.uid}" list="dealerlist" value="${esc(company)}" placeholder="link to dealer…" style="width:230px">`;
+    return `<tr>
+      <td class="lbl">${esc(l.email)}${company?`<div class="hint" style="margin-top:3px">Registered as: <b>${esc(company)}</b></div>`:""}${reqLine(r)}</td>
+      <td>${linkCell}</td>
       <td>${fmtDate(l.created_at)}</td>
-      <td><button class="go orange sm" onclick="approveLogin('${l.uid}')">Approve</button>
-          <button class="go sm" onclick="revokeLogin('${l.uid}','revoked')">Reject</button></td></tr>`).join("")
+      <td style="white-space:nowrap"><button class="go orange sm" onclick="approveLogin('${l.uid}')">Approve</button>
+          ${l.dealer_name?"":`<button class="go blue sm" onclick="createDealerForLogin('${l.uid}')">Create new dealer</button>`}
+          <button class="go sm" onclick="revokeLogin('${l.uid}','revoked')">Reject</button></td></tr>`;}).join("")
     : `<tr><td colspan="4" class="empty">No pending registrations.</td></tr>`;
   const aRows=approved.map(l=>`<tr><td class="lbl">${esc(l.email)}</td><td>${esc(l.dealer_name||"—")}</td><td><span class="chip acc">approved</span></td>
       <td><button class="go sm" onclick="revokeLogin('${l.uid}','revoked')">Revoke</button></td></tr>`).join("");
   const rRows=revoked.map(l=>`<tr><td class="lbl">${esc(l.email)}</td><td>${esc(l.dealer_name||"—")}</td><td><span class="chip rev">revoked</span></td>
       <td><button class="go blue sm" onclick="revokeLogin('${l.uid}','approved')">Re-approve</button></td></tr>`).join("");
   app.innerHTML=`${dlOpts}<div class="card">
-    <h2>Pending logins <span class="hint" style="text-transform:none">— dealers who registered on the ordering portal. Approve to let them sign in and order (only their entitled lines show).</span></h2>
-    <table><thead><tr><th>Email</th><th>Dealer</th><th>Registered</th><th></th></tr></thead><tbody>${pRows}</tbody></table>
+    <h2>Pending logins <span class="hint" style="text-transform:none">— anyone who registered on the ordering portal. Link each to a dealer (or create one), then Approve to enable ordering (only their entitled lines show).</span></h2>
+    <table><thead><tr><th>Registrant</th><th>Dealer account</th><th>Registered</th><th></th></tr></thead><tbody>${pRows}</tbody></table>
   </div>
   ${approved.length?`<div class="card"><h2>Active accounts (${approved.length})</h2><table><thead><tr><th>Email</th><th>Dealer</th><th>Status</th><th></th></tr></thead><tbody>${aRows}</tbody></table></div>`:""}
   ${revoked.length?`<div class="card"><h2>Revoked (${revoked.length})</h2><table><thead><tr><th>Email</th><th>Dealer</th><th>Status</th><th></th></tr></thead><tbody>${rRows}</tbody></table></div>`:""}`;
