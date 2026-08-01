@@ -323,14 +323,14 @@ function renderDetail(){
            <td style="width:20px">${i===0?"⭐":""}</td>
            <td class="lbl">${esc([x.address,[x.city,x.state].filter(Boolean).join(", "),x.zip].filter(Boolean).join(" · "))}</td>
            <td class="hint">${esc(x.label||"")}</td></tr>`).join("")}</tbody></table>`
-        :`<div class="dim" style="margin-top:6px">${d.address?`<b>${esc([d.address,[d.city,d.state].filter(Boolean).join(", "),d.zip].filter(Boolean).join(" · "))}</b><br>`:""}No additional addresses stored yet — re-run <b>Import contacts</b> after applying the dealer_addresses.sql update to load every location.</div>`}
+        :`<div class="dim" style="margin-top:6px">${d.address?`<b>${esc([d.address,[d.city,d.state].filter(Boolean).join(", "),d.zip].filter(Boolean).join(" · "))}</b><br>`:""}No additional addresses stored yet — run <b>create_tables.sql</b> in Supabase, then re-run <b>Import contacts</b> to load every location.</div>`}
        <h2 style="margin-top:18px">Contacts on file ${(d.contacts&&d.contacts.length)?`(${d.contacts.length})`:""}</h2>
        <div class="hint">Every person &amp; email imported for this account. Any of these emails can be used to register for the ordering portal.</div>
        ${(d.contacts&&d.contacts.length)?`<table style="margin-top:6px"><tbody>${d.contacts.map(c=>`<tr>
            <td class="lbl">${esc(c.name||"—")}</td>
            <td>${c.email?`<a href="mailto:${esc(c.email)}" style="color:var(--blue)">${esc(c.email)}</a>`:`<span class="dim">no email</span>`}</td>
            <td class="hint">${esc([c.title,c.role].filter(Boolean).join(" · "))}${c.phone?` · ${esc(c.phone)}`:""}</td></tr>`).join("")}</tbody></table>`
-        :`<div class="dim" style="margin-top:6px">No additional contacts stored yet — re-run <b>Import contacts</b> after applying the dealer_contacts.sql update to load every email from your master list.</div>`}
+        :`<div class="dim" style="margin-top:6px">No additional contacts stored yet — run <b>create_tables.sql</b> in Supabase, then re-run <b>Import contacts</b> to load every email from your master list.</div>`}
      </div>
    </div>`;
 }
@@ -475,14 +475,20 @@ function onImportFile(inp){ const f=inp.files&&inp.files[0]; if(!f)return; const
 function importPreview(){
   const known=new Set(); for(const d of (DATA?.dealers||[])){ known.add(jnorm(d.name)); (d.aliases||[]).forEach(a=>known.add(jnorm(a))); }
   let match=0; const lc={};
-  for(const r of IMPORT.rows){ if(known.has(jnorm(r.company)))match++; for(const l of r.lines)lc[l.slug]=(lc[l.slug]||0)+1; }
+  for(const r of IMPORT.rows){ if(known.has(jnorm(r.company)))match++; for(const l of (r.lines||[]))lc[l.slug]=(lc[l.slug]||0)+1; }
   return {total:IMPORT.rows.length,match,create:IMPORT.rows.length-match,lc};
 }
 async function applyImport(){
   if(!IMPORT.rows||IMPORT.busy)return; IMPORT.busy=true; render();
-  try{ const j=await post({action:"import_contacts",rows:IMPORT.rows,create:IMPORT.create},null);
-    IMPORT.result=j.result||{}; IMPORT.busy=false; await load(); TAB="import"; IMPORT_KEEP(); render();
-  }catch(e){ IMPORT.busy=false; render(); }
+  try{
+    const h={"content-type":"application/json"}; if(TOKEN)h["x-analytics-token"]=TOKEN;
+    const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify({action:"import_contacts",rows:IMPORT.rows,create:IMPORT.create})});
+    const j=await r.json().catch(()=>({}));
+    IMPORT.result = j.result || {};
+    if(j.error && j.result && j.result.message) IMPORT.result.topError=j.result.message;
+    else if(j.error) IMPORT.result.topError=String(j.error);
+    IMPORT.busy=false; await load(); TAB="import"; IMPORT_KEEP(); render();
+  }catch(e){ IMPORT.busy=false; IMPORT.result={topError:String(e.message||e)}; render(); }
 }
 let _IMPRES=null; function IMPORT_KEEP(){_IMPRES=IMPORT.result;}   // survive load()'s render reset
 function renderImport(){
@@ -500,11 +506,15 @@ function renderImport(){
   const mfrName=Object.fromEntries((DATA.manufacturers||[]).map(m=>[m.slug,m.name]));
   const lineRows=IMPORT_LINES.filter(([s])=>p.lc[s]).map(([s])=>`<tr><td>${esc(mfrName[s]||s)}</td><td class="r">${p.lc[s]}</td></tr>`).join("");
   const res=IMPORT.result;
-  const resHtml=res?`<div class="msg ok" style="margin-top:14px"><b>Import complete.</b><br>
-      Matched existing: <b>${res.matched||0}</b> · Created new: <b>${res.created||0}</b> · Records updated: <b>${res.updated||0}</b> · Line-access rows set: <b>${res.entitlements||0}</b><br>
-      <b>${res.contacts||0}</b> contact email${res.contacts===1?"":"s"} stored · <b>${res.addresses||0}</b> address${res.addresses===1?"":"es"} stored
-      ${(res.contacts===0)?`<br><span style="color:#b42323">0 contacts stored — this usually means <b>dealer_contacts.sql</b> hasn't been applied yet. Run the SQL, then re-import.</span>`:""}
-      ${(res.unmatched&&res.unmatched.length)?`<br>Skipped (not created): ${res.unmatched.length}`:""}</div>`:"";
+  const resHtml=(()=>{ if(!res)return "";
+    if(res.topError){ return `<div class="msg" style="margin-top:14px;background:#fdecec;border-color:#f3c0c0;color:#b42323"><b>Import couldn't store contacts/addresses.</b><br>${esc(res.topError)}</div>`; }
+    const errs=(res.errors&&res.errors.length)?`<br><span style="color:#b42323">Some writes failed: ${res.errors.map(esc).join("; ")}</span>`:"";
+    const warn=(res.contacts===0&&!(res.errors&&res.errors.length))?`<br><span style="color:#b42323">0 contacts stored — make sure the two tables exist (run <b>create_tables.sql</b>), then re-import.</span>`:"";
+    return `<div class="msg ok" style="margin-top:14px"><b>Import complete.</b><br>
+      Matched existing: <b>${res.matched||0}</b> · Created new: <b>${res.created||0}</b> · Dealers updated: <b>${res.updated||0}</b> · Line-access rows set: <b>${res.entitlements||0}</b><br>
+      <b>${res.contacts||0}</b> contact email${res.contacts===1?"":"s"} stored · <b>${res.addresses||0}</b> address${res.addresses===1?"":"es"} stored${warn}${errs}
+      ${(res.unmatched&&res.unmatched.length)?`<br>Skipped (not created): ${res.unmatched.length}`:""}</div>`;
+  })();
   app.innerHTML=`<div class="card" style="padding:18px">
     <h3 style="margin:0 0 4px">Review import — ${esc(IMPORT.fname)}</h3>
     <p class="muted" style="margin:0 0 12px">${p.total} companies found.</p>
