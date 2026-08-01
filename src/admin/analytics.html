@@ -67,17 +67,18 @@ button.go{background:#10263f;color:#fff;border:0;border-radius:8px;padding:9px 1
 .cellok{background:#e9f7ef;color:#1c7a44;font-weight:700;text-align:center}
 .cellmiss{background:#fdecec;color:#b42323;font-weight:800;text-align:center}
 .cellna{background:#f2f5f8;color:#c2ccd6;text-align:center}
-@media print{.tabs,.ctrls,.backbar button,.top .sub,.seg{display:none}}
+@media print{.tabs,.ctrls,.backbar button,.top .sub,.seg,.adminnav{display:none}}
+.adminnav{background:#1b2733;display:flex;align-items:center;gap:6px;padding:10px 22px;flex-wrap:wrap}
+.adminnav .bd{color:#fff;font-weight:800;font-size:15px;margin-right:16px;letter-spacing:.3px}
+.adminnav .bd span{color:#F5821F}
+.adminnav a{color:#aeb9c6;text-decoration:none;font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-radius:7px}
+.adminnav a:hover{color:#fff}.adminnav a.on{color:#fff;background:#3B599A}
 </style></head>
-<body><div class="wrap">
-<div class="adminnav" style="display:flex;align-items:center;gap:4px;margin:-4px -4px 14px;flex-wrap:wrap">
-  <a href="/admin/" style="text-decoration:none;font-weight:700;font-size:12.5px;padding:7px 12px;border-radius:8px;color:#41576b">🏠 Home</a>
-  <a href="/admin/analytics.html" style="text-decoration:none;font-weight:700;font-size:12.5px;padding:7px 12px;border-radius:8px;background:#3B599A;color:#fff">Analytics</a>
-  <a href="/admin/dealers.html" style="text-decoration:none;font-weight:700;font-size:12.5px;padding:7px 12px;border-radius:8px;background:#dde6ee;color:#41576b">Dealer Manager</a>
-  <a href="/admin/images.html" style="text-decoration:none;font-weight:700;font-size:12.5px;padding:7px 12px;border-radius:8px;background:#dde6ee;color:#41576b">Images</a>
-  <a href="/admin/featured.html" style="text-decoration:none;font-weight:700;font-size:12.5px;padding:7px 12px;border-radius:8px;background:#dde6ee;color:#41576b">Featured</a>
-  <a href="/admin/website.html" style="text-decoration:none;font-weight:700;font-size:12.5px;padding:7px 12px;border-radius:8px;background:#dde6ee;color:#41576b">Website</a>
-</div>
+<body>
+<nav class="adminnav"><div class="bd">HCPS <span>Admin</span></div>
+ <a href="/admin/">Home</a><a href="/admin/analytics.html" class="on">Analytics</a><a href="/admin/dealers.html">Dealer Manager</a>
+ <a href="/admin/images.html">Images</a><a href="/admin/featured.html">Featured</a><a href="/admin/website.html">Website</a></nav>
+<div class="wrap">
 <div class="top">
   <div><h1>HomeCare Provider Services</h1><div class="sub">Sales &amp; Commission Analytics — business development tool</div></div>
   <div class="ctrls">

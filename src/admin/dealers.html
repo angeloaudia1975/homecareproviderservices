@@ -46,16 +46,17 @@ input,select{font:inherit;padding:8px 10px;border:1px solid #cdd8e3;border-radiu
 .dlgbox h3{margin:0 0 8px}.pick{display:block;padding:8px 10px;border:1px solid #e2e9f0;border-radius:8px;margin:5px 0;cursor:pointer}
 .pick.on{background:#eaf3fb;border-color:#9dc8ee}
 .st{font-size:12px;margin-left:8px}
+.adminnav{background:#1b2733;display:flex;align-items:center;gap:6px;padding:10px 22px;flex-wrap:wrap}
+.adminnav .bd{color:#fff;font-weight:800;font-size:15px;margin-right:16px;letter-spacing:.3px}
+.adminnav .bd span{color:#F5821F}
+.adminnav a{color:#aeb9c6;text-decoration:none;font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-radius:7px}
+.adminnav a:hover{color:#fff}.adminnav a.on{color:#fff;background:#3B599A}
 </style></head>
-<body><div class="wrap">
-<div class="adminnav" style="display:flex;align-items:center;gap:4px;margin:-4px -4px 14px;flex-wrap:wrap">
-  <a href="/admin/" style="text-decoration:none;font-weight:700;font-size:12.5px;padding:7px 12px;border-radius:8px;color:#41576b">🏠 Home</a>
-  <a href="/admin/analytics.html" style="text-decoration:none;font-weight:700;font-size:12.5px;padding:7px 12px;border-radius:8px;background:#dde6ee;color:#41576b">Analytics</a>
-  <a href="/admin/dealers.html" style="text-decoration:none;font-weight:700;font-size:12.5px;padding:7px 12px;border-radius:8px;background:#3B599A;color:#fff">Dealer Manager</a>
-  <a href="/admin/images.html" style="text-decoration:none;font-weight:700;font-size:12.5px;padding:7px 12px;border-radius:8px;background:#dde6ee;color:#41576b">Images</a>
-  <a href="/admin/featured.html" style="text-decoration:none;font-weight:700;font-size:12.5px;padding:7px 12px;border-radius:8px;background:#dde6ee;color:#41576b">Featured</a>
-  <a href="/admin/website.html" style="text-decoration:none;font-weight:700;font-size:12.5px;padding:7px 12px;border-radius:8px;background:#dde6ee;color:#41576b">Website</a>
-</div>
+<body>
+<nav class="adminnav"><div class="bd">HCPS <span>Admin</span></div>
+ <a href="/admin/">Home</a><a href="/admin/analytics.html">Analytics</a><a href="/admin/dealers.html" class="on">Dealer Manager</a>
+ <a href="/admin/images.html">Images</a><a href="/admin/featured.html">Featured</a><a href="/admin/website.html">Website</a></nav>
+<div class="wrap">
 <div class="top"><div><h1>HomeCare Provider Services</h1><div class="sub">Dealer master — merge duplicates &amp; manage accounts</div></div>
   <div><input type="search" id="q" placeholder="Search dealer or alias…" oninput="render()" style="width:280px"></div></div>
 <div id="body"><div class="msg">Loading…</div></div>
