@@ -36,7 +36,7 @@ const plabel=p=>{const[y,m]=p.split("-");return `${MONTH[+m-1]} ${y}`;};
 const pm=p=>{const[y,m]=p.split("-").map(Number);return y*12+(m-1);};
 
 async function buildState(){
-  const [dealers,aliases,dm,mfrs,dir,reps,nomerge] = await Promise.all([
+  const [dealers,aliases,dm,mfrs,dir,reps,nomerge,logins] = await Promise.all([
     sbGetAll("dealers?select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,status,notes,active"),
     sbGet("dealer_aliases?select=alias_norm,raw_name,dealer_id"),
     sbGet("dealer_manufacturers?select=dealer_id,manufacturer,active"),
@@ -44,6 +44,7 @@ async function buildState(){
     sbGet("dealer_directory?select=dealer_name,rep_name,hcps_account").catch(()=>[]),
     sbGet("reps?select=name").catch(()=>[]),
     sbGet("dealer_nomerge?select=a,b").catch(()=>[]),
+    sbGet("dealer_users?select=uid,email,dealer_id,status,created_at&order=created_at.desc").catch(()=>[]),
   ]);
   const rows = await sbGetAll("monthly_sales?select=dealer_id,manufacturer,period,amount,commission,customer_name,customer_ref");
   const mfrName=Object.fromEntries(mfrs.map(m=>[m.slug,m.name]));
@@ -87,6 +88,9 @@ async function buildState(){
     repOptions:[...new Set(reps.map(r=>r.name).filter(Boolean))].sort(),
     mfrName, unlinked, dealers:out,
     nomerge:(nomerge||[]).map(x=>[x.a,x.b].sort().join("|")),
+    logins:(logins||[]).map(u=>{const d=dealers.find(x=>x.id===u.dealer_id);
+      return {uid:u.uid,email:u.email,status:u.status,created_at:u.created_at,
+        dealer_id:u.dealer_id||"",dealer_name:d?d.business_name:""};}),
   };
 }
 
@@ -138,6 +142,22 @@ exports.handler = async (event)=>{
       if(act==="split"){
         if(!b.alias_norm||!b.new_name) return json(400,{error:"alias_norm + new_name required"});
         await rpc("split_alias",{p_alias:b.alias_norm,p_new_name:b.new_name});
+        return json(200,{ok:true});
+      }
+      if(act==="import_contacts"){
+        if(!Array.isArray(b.rows)||!b.rows.length) return json(400,{error:"rows[] required"});
+        // resolve+enrich each company via dealer_norm/aliases; create unmatched when requested
+        const res=await sbSend("POST","rpc/import_dealer_contacts",{p_rows:b.rows,p_create:b.create!==false});
+        return json(200,{ok:true,result:res});
+      }
+      if(act==="approve_login"){
+        if(!b.uid) return json(400,{error:"uid required"});
+        await rpc("approve_dealer_login",{p_uid:b.uid,p_dealer:b.dealer_id||null,p_by:b.by||"admin"});
+        return json(200,{ok:true});
+      }
+      if(act==="revoke_login"){
+        if(!b.uid) return json(400,{error:"uid required"});
+        await rpc("set_dealer_login_status",{p_uid:b.uid,p_status:b.status||"revoked"});
         return json(200,{ok:true});
       }
       return json(400,{error:"unknown action"});
