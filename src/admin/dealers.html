@@ -303,6 +303,13 @@ function renderDetail(){
        <div>Sales <b>${money(d.sales)}</b> · commission <b>${money(d.comm)}</b> · ${d.recs} records · active ${d.periods.length} month(s)${d.lastPeriod?` · last ${esc(d.lastPeriod)}`:""}</div>
        <div style="margin-top:8px">${d.aliases.map(a=>`<span class="chip al">${esc(a)}</span>`).join("")||`<span class="dim">no alternate spellings</span>`}</div>
        ${(d.accounts&&d.accounts.length)?`<h3 style="margin-top:14px">Manufacturer account numbers</h3><div>${d.accounts.map(a=>`<span class="chip">${esc(a)}</span>`).join("")}</div>`:""}
+       <h2 style="margin-top:18px">Contacts on file ${(d.contacts&&d.contacts.length)?`(${d.contacts.length})`:""}</h2>
+       <div class="hint">Every person &amp; email imported for this account. Any of these emails can be used to register for the ordering portal.</div>
+       ${(d.contacts&&d.contacts.length)?`<table style="margin-top:6px"><tbody>${d.contacts.map(c=>`<tr>
+           <td class="lbl">${esc(c.name||"—")}</td>
+           <td>${c.email?`<a href="mailto:${esc(c.email)}" style="color:var(--blue)">${esc(c.email)}</a>`:`<span class="dim">no email</span>`}</td>
+           <td class="hint">${esc([c.title,c.role].filter(Boolean).join(" · "))}${c.phone?` · ${esc(c.phone)}`:""}</td></tr>`).join("")}</tbody></table>`
+        :`<div class="dim" style="margin-top:6px">No additional contacts stored yet — re-run <b>Import contacts</b> after applying the dealer_contacts.sql update to load every email from your master list.</div>`}
      </div>
    </div>`;
 }
@@ -397,16 +404,22 @@ function importFromText(text,fname){
   const col=name=>head.indexOf(name);
   const need=col("Company Name"); if(need<0){alertDlg("Couldn't find a 'Company Name' column — is this the HCPS master list?");return;}
   const get=(r,name)=>{const k=col(name);return k>=0?String(r[k]||"").trim():"";};
-  const seen=new Set(), out=[];
+  // group EVERY row by company so we capture all contacts/emails (not just the first)
+  const groups=new Map(), order=[];
   for(let ri=1;ri<grid.length;ri++){ const r=grid[ri]; const company=get(r,"Company Name"); if(!company)continue;
-    const key=jnorm(company); if(seen.has(key))continue; seen.add(key);
+    const key=jnorm(company); if(!groups.has(key)){groups.set(key,{first:r,rows:[]});order.push(key);} groups.get(key).rows.push(r); }
+  const splitEmails=s=>String(s||"").split(/[;,|\s]+/).map(x=>x.trim()).filter(x=>/@/.test(x));
+  const out=order.map(key=>{ const g=groups.get(key), r=g.first;
     const addr=[get(r,"Address 1"),get(r,"Address 2")].filter(Boolean).join(", ");
     const contact=[get(r,"Contact First"),get(r,"Contact Last")].filter(Boolean).join(" ");
-    const lines=[];
-    for(const [slug,flag,num] of IMPORT_LINES){ const yes=get(r,flag).toLowerCase()==="yes"; const acct=num?get(r,num):""; if(yes||acct)lines.push({slug,account:acct}); }
-    out.push({company,address:addr,city:get(r,"City"),state:get(r,"State"),zip:get(r,"ZIP"),
-      contact,email:get(r,"Contact Emails"),phone:get(r,"Office Phones"),lines});
-  }
+    const lines=[]; for(const [slug,flag,num] of IMPORT_LINES){ const yes=get(r,flag).toLowerCase()==="yes"; const acct=num?get(r,num):""; if(yes||acct)lines.push({slug,account:acct}); }
+    const contacts=[], seenE=new Set();
+    for(const rr of g.rows){ const nm=[get(rr,"Contact First"),get(rr,"Contact Last")].filter(Boolean).join(" ");
+      const title=get(rr,"Contact Title"), role=get(rr,"Contact Role"), ph=get(rr,"Contact Phones")||get(rr,"Office Phones");
+      for(const em of splitEmails(get(rr,"Contact Emails"))){ const lo=em.toLowerCase(); if(seenE.has(lo))continue; seenE.add(lo); contacts.push({email:em,name:nm,title,role,phone:ph}); } }
+    return {company:get(r,"Company Name"),address:addr,city:get(r,"City"),state:get(r,"State"),zip:get(r,"ZIP"),
+      contact,email:(contacts[0]&&contacts[0].email)||get(r,"Contact Emails"),phone:get(r,"Office Phones"),lines,contacts};
+  });
   IMPORT={rows:out,create:true,busy:false,result:null,fname};
   render();
 }
