@@ -35,6 +35,17 @@ async function sbSend(method,path,body,extraHeaders){
 }
 const rpc=(fn,args)=>sbSend("POST",`rpc/${fn}`,args,{Prefer:"return=minimal"});
 
+const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Supabase Auth admin API (create/update/delete auth users). Service-role only.
+async function authAdmin(method,pathAfter,body){
+  const r=await fetch(`${SUPABASE_URL}/auth/v1/admin/${pathAfter}`,{method,
+    headers:{...H(),"content-type":"application/json"},
+    body:body!=null?JSON.stringify(body):undefined});
+  const t=await r.text();
+  if(!r.ok) throw new Error(`Auth ${r.status}: ${t}`);
+  return t?JSON.parse(t):null;
+}
+
 const MONTH=["January","February","March","April","May","June","July","August","September","October","November","December"];
 const plabel=p=>{const[y,m]=p.split("-");return `${MONTH[+m-1]} ${y}`;};
 const pm=p=>{const[y,m]=p.split("-").map(Number);return y*12+(m-1);};
@@ -271,6 +282,30 @@ exports.handler = async (event)=>{
       if(act==="revoke_login"){
         if(!b.uid) return json(400,{error:"uid required"});
         await rpc("set_dealer_login_status",{p_uid:b.uid,p_status:b.status||"revoked"});
+        return json(200,{ok:true});
+      }
+      // Change the actual portal SIGN-IN email (Supabase Auth) for a dealer login.
+      // Accepts uid directly, or dealer_id (resolves the newest dealer_users row).
+      if(act==="set_login_email"){
+        const email=String(b.email||"").trim().toLowerCase();
+        if(!EMAIL_RE.test(email)) return json(400,{error:"a valid email is required"});
+        let uid=b.uid||null;
+        if(!uid && b.dealer_id){
+          const rows=await sbGet(`dealer_users?select=uid,created_at&dealer_id=eq.${encodeURIComponent(b.dealer_id)}&order=created_at.desc&limit=1`).catch(()=>[]);
+          uid=rows&&rows[0]&&rows[0].uid||null;
+        }
+        if(!uid) return json(400,{error:"no portal login found for this dealer"});
+        // Update Supabase Auth (the credential used to sign in) then mirror into dealer_users.
+        await authAdmin("PUT",`users/${encodeURIComponent(uid)}`,{email,email_confirm:true});
+        await sbSend("PATCH",`dealer_users?uid=eq.${encodeURIComponent(uid)}`,{email},{Prefer:"return=minimal"}).catch(()=>{});
+        return json(200,{ok:true,uid,email});
+      }
+      // Delete a portal login entirely (removes the Auth user + the dealer_users row).
+      // Use to clear a mistaken registration so the dealer can register again cleanly.
+      if(act==="delete_login"){
+        if(!b.uid) return json(400,{error:"uid required"});
+        await authAdmin("DELETE",`users/${encodeURIComponent(b.uid)}`).catch(()=>{});
+        await sbSend("DELETE",`dealer_users?uid=eq.${encodeURIComponent(b.uid)}`,null,{Prefer:"return=minimal"}).catch(()=>{});
         return json(200,{ok:true});
       }
       return json(400,{error:"unknown action"});
