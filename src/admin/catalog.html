@@ -1,0 +1,189 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Catalog</title>
+<style>
+ :root{--ink:#1b2733;--blue:#3B599A;--blue-dk:#2B4071;--orange:#F5821F;--silver:#D8DEE4;--light:#F3F6FA;--gray:#5b6672;--green:#1A7A4A;--red:#B91C1C}
+ *{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;background:var(--light);color:var(--ink)}
+ .adminnav{background:var(--ink);display:flex;align-items:center;gap:6px;padding:10px 22px;flex-wrap:wrap}
+ .adminnav .bd{color:#fff;font-weight:800;font-size:15px;margin-right:16px}.adminnav .bd span{color:var(--orange)}
+ .adminnav a{color:#aeb9c6;text-decoration:none;font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-radius:7px}
+ .adminnav a:hover{color:#fff}.adminnav a.on{color:#fff;background:var(--blue)}
+ .wrap{max-width:1120px;margin:22px auto;padding:0 20px}
+ h1{font-size:22px;margin:0 0 3px}.sub{color:var(--gray);font-size:13px;margin:0 0 16px}
+ .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+ select,input[type=text],input[type=number],textarea{padding:9px 11px;border:1px solid var(--silver);border-radius:8px;font-size:13px;background:#fff;font-family:inherit}
+ textarea{resize:vertical;min-height:52px;width:100%}
+ .card{background:#fff;border:1px solid var(--silver);border-radius:14px;padding:18px;margin-bottom:18px}
+ .card h2{font-size:16px;margin:0 0 4px;color:var(--blue-dk)}.card .hint{font-size:12px;color:var(--gray);margin:0 0 14px;line-height:1.5}
+ label.fl{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:700;margin:10px 0 4px}
+ .imgrow{display:flex;gap:12px;align-items:center;margin-top:6px}
+ .thumb{width:120px;height:70px;border-radius:8px;background:#eef2f7 center/contain no-repeat;border:1px solid var(--silver);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#9aa6b2;font-size:11px}
+ .btn{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer;font-size:13px}
+ .btn.ghost{background:#fff;color:var(--blue);border:1px solid var(--silver)}.btn.sm{padding:6px 11px;font-size:12px}.btn.orange{background:var(--orange)}.btn.red{background:var(--red)}
+ .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:720px){.grid2{grid-template-columns:1fr}}
+ table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+ td,th{padding:7px 8px;border-bottom:1px solid #eef2f6;text-align:left;vertical-align:middle}
+ th{font-size:10.5px;text-transform:uppercase;color:var(--gray)}
+ .prow{display:flex;gap:8px;align-items:center;padding:9px 0;border-top:1px solid #eef2f6;flex-wrap:wrap}
+ .prow:first-of-type{border-top:none}
+ .prow .pn{flex:1;min-width:160px}.prow .pn b{font-size:13px}.prow .pn .c{font-size:11px;color:var(--gray)}
+ .prow input[type=text]{min-width:150px}
+ .haslink{color:var(--green);font-weight:700;font-size:12px}
+ .gate,.msg{background:#fff;border:1px solid var(--silver);border-radius:12px;padding:24px;max-width:420px;margin:30px auto;text-align:center}
+ .go{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer}
+ .err{color:var(--red)}.ok{color:var(--green)}
+ .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none}.toast.show{opacity:1}
+</style></head><body>
+<nav class="adminnav"><div class="bd">HCPS <span>Admin</span></div>
+ <a href="/admin/">Home</a><a href="/admin/analytics.html">Analytics</a><a href="/admin/dealers.html">Dealer Manager</a>
+ <a href="/admin/images.html">Images</a><a href="/admin/featured.html">Featured</a><a href="/admin/catalog.html" class="on">Catalog</a>
+ <a href="/admin/home-editor.html">Portal Home</a><a href="/admin/website.html">Website</a></nav>
+<div class="wrap" id="wrap"><div class="msg">Loading…</div></div>
+<div class="toast" id="toast"></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const API="/.netlify/functions/catalog-api";
+let TOKEN=null, MFRS=[], SLUG="", DETAIL=null, PQ="";
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800);}
+async function api(qs,opts){const h={"content-type":"application/json"};if(TOKEN)h["x-analytics-token"]=TOKEN;
+  const r=await fetch(API+(qs||""),{...(opts||{}),headers:{...h,...((opts&&opts.headers)||{})}});
+  if(r.status===401){gate();throw new Error("unauthorized");}
+  const j=await r.json().catch(()=>({}));if(!r.ok||j.error)throw new Error(j.error||("HTTP "+r.status));return j;}
+function gate(){$("#wrap").innerHTML=`<div class="gate"><h2>Enter access code</h2><input id="tok" type="password" placeholder="Admin passcode" style="margin:12px 0;width:100%" onkeydown="if(event.key==='Enter')submitTok()"><br><button class="go" onclick="submitTok()">Open Catalog</button></div>`;}
+function submitTok(){TOKEN=$("#tok").value.trim();boot();}
+async function boot(){
+  try{const j=await api("",{method:"GET"}); MFRS=j.manufacturers||[];
+    if(!MFRS.length){$("#wrap").innerHTML='<div class="msg">No manufacturers found.</div>';return;}
+    if(!SLUG) SLUG=(MFRS.find(m=>m.hasData)||MFRS[0]).slug;
+    await loadMfr();
+  }catch(e){if(String(e.message)!=="unauthorized")$("#wrap").innerHTML=`<div class="msg err">Couldn't load: ${esc(e.message)}</div>`;}
+}
+async function loadMfr(){ DETAIL=await api("?manufacturer="+encodeURIComponent(SLUG),{method:"GET"}); render(); }
+function fileToB64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});}
+async function upload(slot,file,maxMB,cb){
+  if(!file)return; if(file.size>(maxMB||6)*1024*1024){toast("File too large (max "+(maxMB||6)+"MB)");return;}
+  toast("Uploading…");
+  try{const data=await fileToB64(file);
+    const j=await api("",{method:"POST",body:JSON.stringify({action:"upload",slot,filename:file.name,contentType:file.type||"application/octet-stream",data})});
+    cb(j.url);toast("Uploaded ✓");
+  }catch(e){toast("Upload failed: "+e.message);}
+}
+function curMfr(){return MFRS.find(m=>m.slug===SLUG)||{};}
+
+/* ---- logo ---- */
+let LOGODRAFT="";
+async function saveLogo(){ await api("",{method:"POST",body:JSON.stringify({action:"save_logo",slug:SLUG,url:LOGODRAFT||curMfr().logo_url||""})});
+  const m=curMfr(); m.logo_url=LOGODRAFT||m.logo_url; toast("Logo saved ✓"); render(); }
+async function clearLogo(){ if(!confirm("Remove this manufacturer's logo?"))return; await api("",{method:"POST",body:JSON.stringify({action:"clear_logo",slug:SLUG})}); curMfr().logo_url=""; LOGODRAFT=""; toast("Logo removed"); render(); }
+
+/* ---- custom product ---- */
+let PDRAFT=null;
+function newProduct(){PDRAFT={code:"",name:"",category:"",base_price:"",msrp:"",image:"",description:"",active:true};render();}
+function editProduct(c){const p=(DETAIL.custom||[]).find(x=>x.code===c);PDRAFT=Object.assign({},p);render();}
+function setP(k,v){PDRAFT[k]=v;}
+async function saveProduct(){
+  if(!PDRAFT.code||!String(PDRAFT.name).trim()){toast("Code and name are required");return;}
+  await api("",{method:"POST",body:JSON.stringify({action:"save_product",manufacturer:SLUG,product:PDRAFT})});
+  PDRAFT=null; await loadMfr(); toast("Product saved ✓");
+}
+async function delProduct(c){ if(!confirm("Delete custom product "+c+"?"))return; await api("",{method:"POST",body:JSON.stringify({action:"delete_product",manufacturer:SLUG,code:c})}); await loadMfr(); toast("Deleted"); }
+
+/* ---- links ---- */
+function allProducts(){ const cat=(DETAIL.products||[]).map(p=>({code:p.code,name:p.name})); const cust=(DETAIL.custom||[]).map(p=>({code:p.code,name:p.name+" (custom)"}));
+  const seen=new Set(); const out=[]; for(const p of cust.concat(cat)){ if(seen.has(p.code))continue; seen.add(p.code); out.push(p);} return out; }
+async function saveLink(code){
+  const label=($("#lbl_"+cssid(code))?.value||"More Information").trim();
+  const url=($("#url_"+cssid(code))?.value||"").trim();
+  if(!url){toast("Enter a URL, or upload a PDF first");return;}
+  await api("",{method:"POST",body:JSON.stringify({action:"save_link",manufacturer:SLUG,code,label,url})});
+  DETAIL.links[code]={label:label||"More Information",url}; toast("Link saved ✓"); render();
+}
+async function clearLink(code){ await api("",{method:"POST",body:JSON.stringify({action:"clear_link",manufacturer:SLUG,code})}); delete DETAIL.links[code]; toast("Link removed"); render(); }
+function cssid(s){return String(s).replace(/[^A-Za-z0-9_-]/g,"_");}
+
+function render(){
+  const m=curMfr();
+  const mfrOpts=MFRS.map(x=>`<option value="${esc(x.slug)}" ${x.slug===SLUG?"selected":""}>${esc(x.name)}${x.hasData?"":" (no catalog)"}</option>`).join("");
+  const logoUrl=LOGODRAFT||m.logo_url||"";
+
+  // custom products list
+  const custRows=(DETAIL.custom||[]).map(p=>`<tr>
+     <td><b>${esc(p.name)}</b><div style="font-size:11px;color:var(--gray)">${esc(p.code)}${p.category?" · "+esc(p.category):""}</div></td>
+     <td>${p.base_price!=null?"$"+p.base_price:""}</td>
+     <td>${p.active===false?'<span style="color:var(--gray)">hidden</span>':'<span class="ok">shown</span>'}</td>
+     <td style="white-space:nowrap"><button class="btn ghost sm" onclick="editProduct('${esc(p.code)}')">Edit</button>
+       <button class="btn ghost sm" onclick="delProduct('${esc(p.code)}')">Delete</button></td></tr>`).join("")
+     ||`<tr><td colspan="4" class="hint">No custom products for this line yet.</td></tr>`;
+
+  const pform = PDRAFT ? `<div class="card" style="border-color:var(--blue)">
+     <h2>${DETAIL.custom&&DETAIL.custom.some(x=>x.code===PDRAFT.code)?"Edit":"New"} product</h2>
+     <div class="grid2">
+       <div><label class="fl">Product code / SKU *</label><input type="text" value="${esc(PDRAFT.code)}" oninput="setP('code',this.value)"></div>
+       <div><label class="fl">Name *</label><input type="text" value="${esc(PDRAFT.name)}" oninput="setP('name',this.value)"></div>
+       <div><label class="fl">Category</label><input type="text" value="${esc(PDRAFT.category)}" oninput="setP('category',this.value)"></div>
+       <div><label class="fl">Dealer price ($)</label><input type="number" step="0.01" value="${esc(PDRAFT.base_price)}" oninput="setP('base_price',this.value)"></div>
+       <div><label class="fl">MSRP ($, optional)</label><input type="number" step="0.01" value="${esc(PDRAFT.msrp)}" oninput="setP('msrp',this.value)"></div>
+       <div><label class="fl">Show on portal</label><select onchange="setP('active',this.value==='yes')"><option value="yes" ${PDRAFT.active!==false?"selected":""}>Shown</option><option value="no" ${PDRAFT.active===false?"selected":""}>Hidden</option></select></div>
+     </div>
+     <label class="fl">Description</label><textarea oninput="setP('description',this.value)">${esc(PDRAFT.description)}</textarea>
+     <label class="fl">Product image</label>
+     <div class="imgrow"><div class="thumb" style="${PDRAFT.image?`background-image:url('${esc(PDRAFT.image)}')`:""}">${PDRAFT.image?"":"no image"}</div>
+       <input type="file" accept="image/*" onchange="upload('prod',this.files[0],6,u=>{PDRAFT.image=u;render();})"></div>
+     <div style="margin-top:14px"><button class="btn orange" onclick="saveProduct()">Save product</button>
+       <button class="btn ghost" onclick="PDRAFT=null;render()">Cancel</button></div>
+   </div>` : "";
+
+  // links list — products that already have a link, plus a search to add more
+  const q=PQ.toLowerCase();
+  const withLinks=Object.keys(DETAIL.links||{});
+  const pool=allProducts();
+  const matches = q ? pool.filter(p=>(`${p.code} ${p.name}`.toLowerCase().includes(q))).slice(0,40) : [];
+  const shown = new Map();
+  withLinks.forEach(code=>{const p=pool.find(x=>x.code===code)||{code,name:code}; shown.set(code,p);});
+  matches.forEach(p=>{ if(!shown.has(p.code)) shown.set(p.code,p); });
+  const linkRows=[...shown.values()].map(p=>{const L=(DETAIL.links||{})[p.code]||{};const id=cssid(p.code);
+    return `<div class="prow">
+      <div class="pn"><b>${esc(p.name)}</b> <span class="c">${esc(p.code)}</span> ${L.url?'<span class="haslink">● linked</span>':''}</div>
+      <input type="text" id="lbl_${id}" value="${esc(L.label||"More Information")}" style="max-width:150px" placeholder="Button label">
+      <input type="text" id="url_${id}" value="${esc(L.url||"")}" placeholder="https://… or upload a PDF →">
+      <input type="file" accept="application/pdf,image/*" title="Upload a brochure" onchange="upload('doc',this.files[0],20,u=>{document.getElementById('url_${id}').value=u;})">
+      <button class="btn sm" onclick="saveLink('${esc(p.code)}')">Save</button>
+      ${L.url?`<button class="btn ghost sm" onclick="clearLink('${esc(p.code)}')">Remove</button>`:""}
+    </div>`;}).join("")||`<div class="hint">Search a product above to attach a brochure or link.</div>`;
+
+  $("#wrap").innerHTML=`
+    <h1>Catalog</h1>
+    <p class="sub">Manufacturer logos, extra products, and "More Information" brochures/links — all publish instantly to the portal, no site rebuild.</p>
+    <div class="bar"><label class="fl" style="margin:0">Manufacturer</label>
+      <select onchange="SLUG=this.value;LOGODRAFT='';PDRAFT=null;PQ='';loadMfr()">${mfrOpts}</select></div>
+
+    <div class="card">
+      <h2>Manufacturer logo</h2>
+      <p class="hint">Shows below the manufacturer name on the dealer home cards and at the top of this line's catalog page.</p>
+      <div class="imgrow">
+        <div class="thumb" style="${logoUrl?`background-image:url('${esc(logoUrl)}')`:""}">${logoUrl?"":"no logo"}</div>
+        <div><input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onchange="upload('logo-${esc(SLUG)}',this.files[0],4,u=>{LOGODRAFT=u;render();})">
+          <div style="margin-top:8px"><button class="btn orange sm" onclick="saveLogo()">Save logo</button>
+            ${m.logo_url?`<button class="btn ghost sm" onclick="clearLogo()">Remove</button>`:""}</div>
+          <div class="hint" style="margin-top:6px">PNG with transparent background looks best.</div></div>
+      </div>
+    </div>
+
+    ${pform}
+    <div class="card">
+      <h2>Custom products</h2>
+      <p class="hint">Add products that aren't in the standard catalog for this line. They appear in the portal with their image and price.</p>
+      <button class="btn sm" onclick="newProduct()">+ Add product</button>
+      <table><thead><tr><th>Product</th><th>Price</th><th>Status</th><th></th></tr></thead><tbody>${custRows}</tbody></table>
+    </div>
+
+    <div class="card">
+      <h2>"More Information" links &amp; brochures</h2>
+      <p class="hint">Attach a brochure (PDF upload) or a web link to any product. It shows as a "More Information" button on that product's card.</p>
+      <input type="text" placeholder="Search a product by name or code…" value="${esc(PQ)}" oninput="PQ=this.value;render()" style="width:100%;max-width:420px">
+      <div style="margin-top:10px">${linkRows}</div>
+    </div>`;
+}
+gate();
+</script>
+</body></html>
