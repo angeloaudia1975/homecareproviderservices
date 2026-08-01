@@ -70,7 +70,13 @@ exports.handler = async (event) => {
     const dealerInfo = {};
     for (const d of dealers) dealerInfo[d.business_name] = {
       hcps_account: d.hcps_account || "", contact_name: d.contact_name || "", email: d.email || "",
-      phone: d.phone || "", address: d.address || "", city: d.city || "", state: d.state || "", zip: d.zip || "" };
+      phone: d.phone || "", address: d.address || "", city: d.city || "", state: d.state || "", zip: d.zip || "", addresses: [] };
+    // All addresses on file per dealer (corporate HQ + branches), newest-corporate first.
+    let daddrs = [];
+    try { daddrs = await sbGet("dealer_addresses?select=dealer_id,address,city,state,zip,label,pri"); } catch (e) { daddrs = []; }
+    for (const x of daddrs) { const nm = nameById[x.dealer_id]; if (!nm || !dealerInfo[nm]) continue;
+      dealerInfo[nm].addresses.push({ address: x.address||"", city: x.city||"", state: x.state||"", zip: x.zip||"", label: x.label||"", pri: x.pri||1 }); }
+    for (const nm in dealerInfo) dealerInfo[nm].addresses.sort((a,b)=>(b.pri||1)-(a.pri||1));
     const idByAlias = Object.fromEntries(aliases.map(a => [a.alias_norm, a.dealer_id]));
     // dealer_norm() ported to JS — MUST match the SQL/Python normalization used to seed aliases.
     const SUF = /\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;

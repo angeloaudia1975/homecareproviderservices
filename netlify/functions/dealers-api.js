@@ -48,6 +48,8 @@ async function buildState(){
   ]);
   const dcontacts = await sbGetAll("dealer_contacts?select=dealer_id,email,name,title,role,phone").catch(()=>[]);
   const contactsByDealer=new Map(); for(const x of dcontacts){(contactsByDealer.get(x.dealer_id)||contactsByDealer.set(x.dealer_id,[]).get(x.dealer_id)).push(x);}
+  const daddrs = await sbGetAll("dealer_addresses?select=dealer_id,address,city,state,zip,label,pri").catch(()=>[]);
+  const addrByDealer=new Map(); for(const x of daddrs){(addrByDealer.get(x.dealer_id)||addrByDealer.set(x.dealer_id,[]).get(x.dealer_id)).push(x);}
   const rows = await sbGetAll("monthly_sales?select=dealer_id,manufacturer,period,amount,commission,customer_name,customer_ref");
   const mfrName=Object.fromEntries(mfrs.map(m=>[m.slug,m.name]));
   const repByName=Object.fromEntries(dir.map(d=>[d.dealer_name,d.rep_name]));
@@ -80,6 +82,8 @@ async function buildState(){
       buysLines:[...a.lines].sort(),
       accounts:[...a.accts].sort(),
       contacts:(contactsByDealer.get(d.id)||[]).map(c=>({email:c.email||"",name:c.name||"",title:c.title||"",role:c.role||"",phone:c.phone||""})),
+      addresses:(addrByDealer.get(d.id)||[]).map(x=>({address:x.address||"",city:x.city||"",state:x.state||"",zip:x.zip||"",label:x.label||"",pri:x.pri||1}))
+        .sort((p,q)=>(q.pri||1)-(p.pri||1)),
       sales:Math.round(a.sales*100)/100, comm:Math.round(a.comm*100)/100, recs:a.recs,
       periods:per, monthsSince:since, lastPeriod:per[per.length-1]||null,
     };
