@@ -67,7 +67,7 @@ th.buys,td.buys{max-width:230px}
 <body>
 <nav class="adminnav"><div class="bd">HCPS <span>Admin</span></div>
  <a href="/admin/">Home</a><a href="/admin/analytics.html">Analytics</a><a href="/admin/dealers.html" class="on">Dealer Manager</a>
- <a href="/admin/images.html">Images</a><a href="/admin/featured.html">Featured</a><a href="/admin/website.html">Website</a></nav>
+ <a href="/admin/images.html">Images</a><a href="/admin/featured.html">Featured</a><a href="/admin/home-editor.html">Portal Home</a><a href="/admin/website.html">Website</a></nav>
 <div class="wrap">
 <div class="top"><div><h1>HomeCare Provider Services</h1><div class="sub">Dealer master — merge duplicates &amp; manage accounts</div></div>
   <div><input type="search" id="q" placeholder="Search dealer or alias…" oninput="render()" style="width:280px"></div></div>
@@ -291,6 +291,7 @@ function backList(){DETAIL=null;render();}
 function renderDetail(){
   const d=DATA.dealers.find(x=>x.id===DETAIL); if(!d){DETAIL=null;return render();}
   const mfrs=DATA.manufacturers;
+  const dLogins=(DATA.logins||[]).filter(l=>l.dealer_id===d.id);
   const accset=new Set(d.access);
   let acc=mfrs.map(m=>`<label class="accitem ${accset.has(m.slug)?"on":""}"><input type="checkbox" value="${esc(m.slug)}" ${accset.has(m.slug)?"checked":""} onchange="this.parentNode.classList.toggle('on',this.checked)">${esc(m.name)}${d.buysLines.includes(m.slug)?` <span class="chip" style="margin-left:auto">buys</span>`:""}</label>`).join("");
   const fld=(k,lab,val,ph)=>`<div class="fld"><label>${lab}</label><input id="f_${k}" value="${esc(val||"")}" placeholder="${ph||""}"></div>`;
@@ -331,8 +332,31 @@ function renderDetail(){
            <td>${c.email?`<a href="mailto:${esc(c.email)}" style="color:var(--blue)">${esc(c.email)}</a>`:`<span class="dim">no email</span>`}</td>
            <td class="hint">${esc([c.title,c.role].filter(Boolean).join(" · "))}${c.phone?` · ${esc(c.phone)}`:""}</td></tr>`).join("")}</tbody></table>`
         :`<div class="dim" style="margin-top:6px">No additional contacts stored yet — run <b>create_tables.sql</b> in Supabase, then re-run <b>Import contacts</b> to load every email from your master list.</div>`}
+       <h2 style="margin-top:18px">Portal sign-in (login email)</h2>
+       <div class="hint">This is the email the dealer actually types to sign in to the ordering portal. It is separate from the contact email above — change it here if they registered with a typo, and it updates their real login credential.</div>
+       ${dLogins.length? dLogins.map(l=>`<div class="loginedit" style="margin-top:8px">
+           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+             <span class="chip ${l.status==='approved'?'acc':(l.status==='pending'?'':'rev')}">${esc(l.status||'—')}</span>
+             <input id="le_${l.uid}" value="${esc(l.email||"")}" placeholder="login email" style="min-width:230px;flex:1">
+             <button class="go sm" onclick="setLoginEmail('${l.uid}')">Update login email</button>
+             <button class="go sm" onclick="deleteLogin('${l.uid}','${jesc(l.email||"")}')" title="Remove this portal login entirely">Delete login</button>
+             <span id="le_st_${l.uid}" class="st"></span>
+           </div></div>`).join("")
+         :`<div class="dim" style="margin-top:6px">No portal login is linked to this dealer yet. When someone registers on the ordering portal and you approve &amp; link them here, their sign-in email will appear in this spot.</div>`}
      </div>
    </div>`;
+}
+async function setLoginEmail(uid){
+  const inp=document.getElementById("le_"+uid); if(!inp)return;
+  const email=(inp.value||"").trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ alertDlg("Enter a valid email address.");return; }
+  await post({action:"set_login_email",uid,email},"Updating…","#le_st_"+uid);
+  const st=$("#le_st_"+uid); if(st){st.textContent="Login email updated ✓";st.className="st ok";}
+  await load(); render();
+}
+async function deleteLogin(uid,email){
+  if(!confirm(`Delete the portal login ${email||"(this account)"}? This removes their sign-in entirely — they'd have to register again. This does NOT delete the dealer record.`))return;
+  await post({action:"delete_login",uid},"Deleting…"); await load(); render();
 }
 async function saveDetail(id,origName){
   const g=k=>($("#f_"+k)?.value||"").trim();
@@ -382,6 +406,21 @@ async function createDealerForLogin(uid){
   }},"Creating dealer…"); await load(); TAB="logins"; render();
 }
 async function revokeLogin(uid,status){ await post({action:"revoke_login",uid,status},"Saving…"); await load(); TAB="logins"; render(); }
+function editLoginEmail(uid,cur){
+  showDlg(`<h3>Fix login email</h3>
+    <div class="hint">This changes the email the dealer types to sign in to the ordering portal. Use it to correct a typo from registration.</div>
+    <div class="fld" style="margin-top:10px"><label>Login email</label><input id="dlg_le" value="${esc(cur||"")}" placeholder="name@dealer.com"></div>
+    <div id="dlg_le_st" class="st"></div>
+    <div style="margin-top:14px;text-align:right"><button class="go sm" onclick="closeDlg()">Cancel</button>
+      <button class="go orange sm" onclick="saveLoginEmailDlg('${uid}')">Save login email</button></div>`);
+  setTimeout(()=>{const el=$("#dlg_le");if(el){el.focus();el.select();}},50);
+}
+async function saveLoginEmailDlg(uid){
+  const email=($("#dlg_le")?.value||"").trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){const st=$("#dlg_le_st");if(st){st.textContent="Enter a valid email.";st.className="st warn";}return;}
+  await post({action:"set_login_email",uid,email},"Saving…","#dlg_le_st");
+  closeDlg(); await load(); TAB="logins"; render();
+}
 function reqLine(r){ if(!r)return ""; const loc=[r.city,r.state].filter(Boolean).join(", ");
   const bits=[r.contact,r.phone,r.address,loc,r.zip].map(x=>(x||"").trim()).filter(Boolean);
   return bits.length?`<div class="hint" style="margin-top:3px">${esc(bits.join(" · "))}</div>`:""; }
@@ -399,10 +438,14 @@ function renderLogins(){
       <td>${fmtDate(l.created_at)}</td>
       <td style="white-space:nowrap"><button class="go orange sm" onclick="approveLogin('${l.uid}')">Approve</button>
           ${l.dealer_name?"":`<button class="go blue sm" onclick="createDealerForLogin('${l.uid}')">Create new dealer</button>`}
-          <button class="go sm" onclick="revokeLogin('${l.uid}','revoked')">Reject</button></td></tr>`;}).join("")
+          <button class="go sm" onclick="editLoginEmail('${l.uid}','${jesc(l.email||"")}')">Fix email</button>
+          <button class="go sm" onclick="revokeLogin('${l.uid}','revoked')">Reject</button>
+          <button class="go sm" onclick="deleteLogin('${l.uid}','${jesc(l.email||"")}')">Delete</button></td></tr>`;}).join("")
     : `<tr><td colspan="4" class="empty">No pending registrations.</td></tr>`;
   const aRows=approved.map(l=>`<tr><td class="lbl">${esc(l.email)}</td><td>${esc(l.dealer_name||"—")}</td><td><span class="chip acc">approved</span></td>
-      <td><button class="go sm" onclick="revokeLogin('${l.uid}','revoked')">Revoke</button></td></tr>`).join("");
+      <td style="white-space:nowrap"><button class="go sm" onclick="editLoginEmail('${l.uid}','${jesc(l.email||"")}')">Fix email</button>
+      <button class="go sm" onclick="revokeLogin('${l.uid}','revoked')">Revoke</button>
+      <button class="go sm" onclick="deleteLogin('${l.uid}','${jesc(l.email||"")}')">Delete</button></td></tr>`).join("");
   const rRows=revoked.map(l=>`<tr><td class="lbl">${esc(l.email)}</td><td>${esc(l.dealer_name||"—")}</td><td><span class="chip rev">revoked</span></td>
       <td><button class="go blue sm" onclick="revokeLogin('${l.uid}','approved')">Re-approve</button></td></tr>`).join("");
   app.innerHTML=`${dlOpts}<div class="card">

@@ -1,0 +1,163 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Portal Home Editor</title>
+<style>
+ :root{--ink:#1b2733;--blue:#3B599A;--blue-dk:#2B4071;--orange:#F5821F;--silver:#D8DEE4;--light:#F3F6FA;--gray:#5b6672;--green:#1A7A4A;--red:#B91C1C}
+ *{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;background:var(--light);color:var(--ink)}
+ .adminnav{background:var(--ink);display:flex;align-items:center;gap:6px;padding:10px 22px;flex-wrap:wrap}
+ .adminnav .bd{color:#fff;font-weight:800;font-size:15px;margin-right:16px}.adminnav .bd span{color:var(--orange)}
+ .adminnav a{color:#aeb9c6;text-decoration:none;font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-radius:7px}
+ .adminnav a:hover{color:#fff}.adminnav a.on{color:#fff;background:var(--blue)}
+ .wrap{max-width:1160px;margin:22px auto;padding:0 20px}
+ h1{font-size:22px;margin:0 0 3px}.sub{color:var(--gray);font-size:13px;margin:0 0 18px}
+ .cols{display:grid;grid-template-columns:1fr 430px;gap:22px;align-items:start}
+ @media(max-width:960px){.cols{grid-template-columns:1fr}}
+ .card{background:#fff;border:1px solid var(--silver);border-radius:14px;padding:18px;margin-bottom:18px}
+ .card h2{font-size:16px;margin:0 0 4px;color:var(--blue-dk)}.card .hint{font-size:12px;color:var(--gray);margin:0 0 14px;line-height:1.5}
+ label.fl{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:700;margin:12px 0 4px}
+ input[type=text],textarea{width:100%;padding:9px 11px;border:1px solid var(--silver);border-radius:8px;font-size:13px;background:#fff;font-family:inherit}
+ textarea{resize:vertical;min-height:56px}
+ .ck{display:flex;gap:7px;align-items:center;font-size:13px;color:#41525f;margin:6px 0}
+ .imgrow{display:flex;gap:12px;align-items:center;margin-top:6px}
+ .thumb{width:120px;height:68px;border-radius:8px;background:#eef2f7 center/cover no-repeat;border:1px solid var(--silver);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#9aa6b2;font-size:11px}
+ .btn{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer;font-size:13px}
+ .btn.ghost{background:#fff;color:var(--blue);border:1px solid var(--silver)}
+ .btn.sm{padding:6px 11px;font-size:12px}
+ .btn.orange{background:var(--orange)}
+ .btn:disabled{opacity:.5;cursor:default}
+ .tile{border:1px solid var(--silver);border-radius:11px;padding:13px;margin-bottom:12px;position:relative;background:#fcfdfe}
+ .tile .rm{position:absolute;top:9px;right:9px;background:none;border:none;color:var(--red);font-size:17px;cursor:pointer}
+ .tile .th{font-weight:700;font-size:12.5px;color:var(--blue-dk);margin-bottom:2px}
+ .save{position:sticky;bottom:0;background:var(--light);padding:14px 0;margin-top:6px}
+ .gate,.msg{background:#fff;border:1px solid var(--silver);border-radius:12px;padding:24px;max-width:420px;margin:30px auto;text-align:center}
+ .go{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer}
+ .err{color:var(--red)}.ok{color:var(--green)}
+ .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none}.toast.show{opacity:1}
+ /* preview mirrors the portal */
+ .prev{position:sticky;top:16px}
+ .prevbox{background:#f6f7f5;border:1px solid var(--silver);border-radius:14px;padding:16px;overflow:hidden}
+ .pv-hero{position:relative;border-radius:14px;overflow:hidden;min-height:130px;display:flex;align-items:center;background:linear-gradient(120deg,#3B599A,#2B4071);margin-bottom:14px}
+ .pv-hero .bg{position:absolute;inset:0;background-size:cover;background-position:center}
+ .pv-hero .sc{position:absolute;inset:0;background:linear-gradient(90deg,rgba(20,35,66,.82),rgba(20,35,66,.3))}
+ .pv-hero .in{position:relative;padding:20px 22px}
+ .pv-hero .h{color:#fff;font-weight:800;font-size:22px;line-height:1.1;margin:0 0 5px}
+ .pv-hero .s{color:#eaf0f7;font-size:13px;margin:0}
+ .pv-hero .cta{display:inline-block;margin-top:11px;background:#F5821F;color:#fff;font-weight:700;padding:7px 14px;border-radius:8px;font-size:12.5px}
+ .pv-tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+ .pv-tile{background:#fff;border:1px solid #e6e2dc;border-radius:11px;overflow:hidden}
+ .pv-tile .ti{aspect-ratio:16/9;background:#eef2f7 center/cover no-repeat}
+ .pv-tile .tb{padding:9px 11px}.pv-tile .tt{font-weight:700;color:#3B599A;font-size:13px}.pv-tile .tx{color:#5b6672;font-size:11.5px;line-height:1.3}
+ .pvnote{font-size:11px;color:var(--gray);text-align:center;margin-top:10px}
+</style></head><body>
+<nav class="adminnav"><div class="bd">HCPS <span>Admin</span></div>
+ <a href="/admin/">Home</a><a href="/admin/analytics.html">Analytics</a><a href="/admin/dealers.html">Dealer Manager</a>
+ <a href="/admin/images.html">Images</a><a href="/admin/featured.html">Featured</a>
+ <a href="/admin/home-editor.html" class="on">Portal Home</a><a href="/admin/website.html">Website</a></nav>
+<div class="wrap" id="wrap"><div class="msg">Loading…</div></div>
+<div class="toast" id="toast"></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const API="/.netlify/functions/home-api";
+let TOKEN=null, HOME={hero:{},tiles:[]};
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800);}
+async function api(opts){const h={"content-type":"application/json"};if(TOKEN)h["x-analytics-token"]=TOKEN;
+  const r=await fetch(API+((opts&&opts.qs)||""),{...(opts||{}),headers:{...h,...((opts&&opts.headers)||{})}});
+  if(r.status===401){gate();throw new Error("unauthorized");}
+  const j=await r.json().catch(()=>({}));if(!r.ok||j.error)throw new Error(j.error||("HTTP "+r.status));return j;}
+function gate(){$("#wrap").innerHTML=`<div class="gate"><h2>Enter access code</h2><input id="tok" type="password" placeholder="Admin passcode" style="margin:12px 0;width:100%" onkeydown="if(event.key==='Enter')submitTok()"><br><button class="go" onclick="submitTok()">Open Portal Home</button></div>`;}
+function submitTok(){TOKEN=$("#tok").value.trim();boot();}
+async function boot(){
+  try{const j=await api({method:"GET"}); HOME=j.home||{hero:{},tiles:[]};
+    if(!HOME.hero||typeof HOME.hero!=="object")HOME.hero={}; if(!Array.isArray(HOME.tiles))HOME.tiles=[];
+    render();
+  }catch(e){if(String(e.message)!=="unauthorized")$("#wrap").innerHTML=`<div class="msg err">Couldn't load: ${esc(e.message)}</div>`;}
+}
+function fileToB64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});}
+async function uploadImg(slot,file,cb){
+  if(!file)return; if(file.size>6*1024*1024){toast("Image too large (max 6MB)");return;}
+  toast("Uploading…");
+  try{const data=await fileToB64(file);
+    const j=await api({method:"POST",body:JSON.stringify({action:"upload",slot,filename:file.name,contentType:file.type||"image/jpeg",data})});
+    cb(j.url);toast("Image uploaded ✓");render();
+  }catch(e){toast("Upload failed: "+e.message);}
+}
+function setHero(k,v){HOME.hero[k]=v;syncPreview();}
+function addTile(){HOME.tiles.push({title:"",text:"",image:"",link:"",active:true});render();}
+function rmTile(i){HOME.tiles.splice(i,1);render();}
+function setTile(i,k,v){HOME.tiles[i][k]=v;syncPreview();}
+async function saveAll(){
+  const btn=$("#saveBtn"); if(btn){btn.disabled=true;btn.textContent="Saving…";}
+  try{await api({method:"POST",body:JSON.stringify({action:"save",home:HOME})});
+    toast("Saved ✓ — live on the portal home now"); $("#saveSt").innerHTML='<span class="ok">Saved ✓ Dealers see it on their next visit.</span>';
+  }catch(e){$("#saveSt").innerHTML='<span class="err">'+esc(e.message)+'</span>';}
+  if(btn){btn.disabled=false;btn.textContent="Save & publish to portal";}
+}
+function render(){
+  const h=HOME.hero||{};
+  const tilesHtml=(HOME.tiles||[]).map((t,i)=>`
+    <div class="tile">
+      <button class="rm" title="Remove" onclick="rmTile(${i})">✕</button>
+      <div class="th">Tile ${i+1}</div>
+      <div class="imgrow">
+        <div class="thumb" style="${t.image?`background-image:url('${esc(t.image)}')`:""}">${t.image?"":"no image"}</div>
+        <div><input type="file" accept="image/*" onchange="uploadImg('tile${i}',this.files[0],u=>HOME.tiles[${i}].image=u)">
+          ${t.image?`<div><button class="btn ghost sm" style="margin-top:6px" onclick="setTile(${i},'image','');render()">Remove image</button></div>`:""}</div>
+      </div>
+      <label class="fl">Title</label><input type="text" value="${esc(t.title)}" oninput="setTile(${i},'title',this.value)">
+      <label class="fl">Text</label><textarea oninput="setTile(${i},'text',this.value)">${esc(t.text)}</textarea>
+      <label class="fl">Link — a manufacturer slug (e.g. golden-technologies) or a full https:// URL</label>
+      <input type="text" value="${esc(t.link)}" placeholder="golden-technologies or https://…" oninput="setTile(${i},'link',this.value)">
+      <label class="ck"><input type="checkbox" ${t.active!==false?"checked":""} onchange="setTile(${i},'active',this.checked);render()"> Show this tile</label>
+    </div>`).join("")||`<div class="hint">No promo tiles yet. Add one to show a clickable card row under the banner.</div>`;
+
+  $("#wrap").innerHTML=`
+  <h1>Portal Home Editor</h1>
+  <p class="sub">Add a hero banner and promotional tiles to the dealer ordering portal's home screen. Changes go live instantly — no site redeploy, so it won't burn Netlify build credits.</p>
+  <div class="cols">
+    <div>
+      <div class="card">
+        <h2>Hero banner</h2>
+        <p class="hint">The big welcome banner at the top of every signed-in dealer's home. Add a background image and a headline to spotlight a promotion or program.</p>
+        <label class="ck"><input type="checkbox" id="h_en" ${h.enabled!==false?"checked":""} onchange="setHero('enabled',this.checked);render()"> Show the hero banner</label>
+        <label class="fl">Background image (wide — about 1600×500 works best)</label>
+        <div class="imgrow">
+          <div class="thumb" style="${h.image?`background-image:url('${esc(h.image)}')`:""}">${h.image?"":"no image"}</div>
+          <div><input type="file" accept="image/*" onchange="uploadImg('hero',this.files[0],u=>HOME.hero.image=u)">
+            ${h.image?`<div><button class="btn ghost sm" style="margin-top:6px" onclick="setHero('image','');render()">Remove image</button></div>`:""}</div>
+        </div>
+        <label class="fl">Headline</label><input type="text" id="h_hl" value="${esc(h.headline)}" placeholder="e.g. New for 2026 — Golden lift chairs" oninput="setHero('headline',this.value)">
+        <label class="fl">Subhead</label><textarea id="h_sh" placeholder="A sentence of supporting detail…" oninput="setHero('subhead',this.value)">${esc(h.subhead)}</textarea>
+        <label class="fl">Button label (optional)</label><input type="text" value="${esc(h.cta_label)}" placeholder="e.g. Shop the line" oninput="setHero('cta_label',this.value)">
+        <label class="fl">Button link — a manufacturer slug or full https:// URL</label>
+        <input type="text" value="${esc(h.cta_link)}" placeholder="golden-technologies or https://…" oninput="setHero('cta_link',this.value)">
+      </div>
+      <div class="card">
+        <h2>Promo tiles</h2>
+        <p class="hint">A row of clickable cards under the banner — spotlight lines, promos, or new-account opportunities. Each can link to a catalog line or an external page.</p>
+        ${tilesHtml}
+        <button class="btn ghost sm" onclick="addTile()">+ Add tile</button>
+      </div>
+      <div class="save"><button class="btn orange" id="saveBtn" onclick="saveAll()">Save &amp; publish to portal</button> <span id="saveSt" style="margin-left:10px;font-size:13px"></span></div>
+    </div>
+    <div class="prev">
+      <div class="card" style="margin-bottom:10px"><h2 style="margin:0">Live preview</h2><p class="hint" style="margin:4px 0 0">Roughly how it appears on the dealer home.</p></div>
+      <div class="prevbox" id="prevbox">${previewHtml()}</div>
+      <div class="pvnote">Preview only — click behavior works on the real portal.</div>
+    </div>
+  </div>`;
+}
+function previewHtml(){
+  const h=HOME.hero||{}; let hero="";
+  if(h.enabled!==false && (h.headline||h.subhead||h.image)){
+    const bg=h.image?`<div class="bg" style="background-image:url('${esc(h.image)}')"></div><div class="sc"></div>`:"";
+    const cta=h.cta_label?`<span class="cta">${esc(h.cta_label)}</span>`:"";
+    hero=`<div class="pv-hero">${bg}<div class="in">${h.headline?`<div class="h">${esc(h.headline)}</div>`:""}${h.subhead?`<div class="s">${esc(h.subhead)}</div>`:""}${cta}</div></div>`;
+  }
+  const tiles=(HOME.tiles||[]).filter(t=>t.active!==false&&(t.title||t.image));
+  const tilesHtml=tiles.length?`<div class="pv-tiles">${tiles.map(t=>`<div class="pv-tile">${t.image?`<div class="ti" style="background-image:url('${esc(t.image)}')"></div>`:""}<div class="tb">${t.title?`<div class="tt">${esc(t.title)}</div>`:""}${t.text?`<div class="tx">${esc(t.text)}</div>`:""}</div></div>`).join("")}</div>`:"";
+  return (hero||tilesHtml)?hero+tilesHtml:`<div class="hint" style="text-align:center;padding:20px">Nothing to show yet — add a banner or a tile.</div>`;
+}
+function syncPreview(){const p=$("#prevbox");if(p)p.innerHTML=previewHtml();}
+gate();
+</script>
+</body></html>
