@@ -62,9 +62,15 @@ exports.handler = async (event) => {
     // canonical dealers the Dealer Manager shows (post-merge, post-rename). Without this
     // the page would count raw customer_name strings and drift from the corrected list.
     let dealers = [], aliases = [];
-    try { dealers = await sbGet("dealers?select=id,business_name"); } catch (e) { dealers = []; }
+    try { dealers = await sbGet("dealers?select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip"); } catch (e) { dealers = []; }
     try { aliases = await sbGet("dealer_aliases?select=alias_norm,dealer_id"); } catch (e) { aliases = []; }
     const nameById = Object.fromEntries(dealers.map(d => [d.id, d.business_name]));
+    // Location/contact per canonical dealer name, so the analytics profile can show the
+    // same detail the Dealer Manager does (address, contact, account #).
+    const dealerInfo = {};
+    for (const d of dealers) dealerInfo[d.business_name] = {
+      hcps_account: d.hcps_account || "", contact_name: d.contact_name || "", email: d.email || "",
+      phone: d.phone || "", address: d.address || "", city: d.city || "", state: d.state || "", zip: d.zip || "" };
     const idByAlias = Object.fromEntries(aliases.map(a => [a.alias_norm, a.dealer_id]));
     // dealer_norm() ported to JS — MUST match the SQL/Python normalization used to seed aliases.
     const SUF = /\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
@@ -111,6 +117,7 @@ exports.handler = async (event) => {
       reps: [...reps].sort(),
       repOptions: [...new Set([...repTable, ...reps])].filter(Boolean).sort(),
       assignments,
+      dealerInfo,
       facts,
     });
   } catch (e) {
