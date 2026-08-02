@@ -30,7 +30,9 @@
  .haslink{color:var(--green);font-weight:700;font-size:12px}
  .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
  .chip{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:5px;padding:1px 6px;margin-left:4px}
- .chip.cst{background:#eef2fb;color:#3b599a}.chip.ed{background:#fff3e6;color:#b4651a}
+ .chip.cst{background:#eef2fb;color:#3b599a}.chip.ed{background:#fff3e6;color:#b4651a}.chip.ft{background:#fffaf0;color:#b4820f;border:1px solid #f0dca8}
+ .star{border:1px solid var(--silver);background:#fff;border-radius:7px;width:30px;height:28px;cursor:pointer;font-size:15px;line-height:1;color:#c7ccd2;vertical-align:middle}
+ .star.on{color:#e4a11b;border-color:#e4a11b;background:#fffaf0}
  .gate,.msg{background:#fff;border:1px solid var(--silver);border-radius:12px;padding:24px;max-width:420px;margin:30px auto;text-align:center}
  .go{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer}
  .err{color:var(--red)}.ok{color:var(--green)}
@@ -90,6 +92,22 @@ function effProducts(){
   return [...map.values()];
 }
 function tiersOf(p){ return Array.isArray(p&&p.tiers)?p.tiers.map(t=>({min_qty:t.min_qty??t.minQty??1,price:t.price})):[]; }
+function isFeat(code){ return (DETAIL.featured||[]).includes(code); }
+function catList(){ return [...new Set(effProducts().map(p=>p.category).filter(Boolean))].sort(); }
+async function toggleFeatured(code){
+  const p=effProducts().find(x=>x.code===code); if(!p)return;
+  if(isFeat(code)){ await api("",{method:"POST",body:JSON.stringify({action:"unset_featured",manufacturer:SLUG,code})});
+    DETAIL.featured=(DETAIL.featured||[]).filter(c=>c!==code); toast("Removed from Featured"); }
+  else{ await api("",{method:"POST",body:JSON.stringify({action:"set_featured",manufacturer:SLUG,code,name:p.name})});
+    DETAIL.featured=[...(DETAIL.featured||[]),code]; toast("Added to Featured ★"); }
+  render();
+}
+function duplicateProduct(code){
+  const p=effProducts().find(x=>x.code===code); if(!p)return;
+  PDRAFT={kind:"custom",code:p.code+"-COPY",name:(p.name||"")+" (copy)",category:p.category||"",base_price:p.base_price??"",msrp:p.msrp??"",
+    image:p.image||"",description:p.description||"",price_note:p.price_note||"",active:true,tiers:tiersOf(p),edited:false};
+  toast("Duplicated — edit the code/name and save"); render();
+}
 function newProduct(){PDRAFT={kind:"custom",code:"",name:"",category:"",base_price:"",msrp:"",image:"",description:"",price_note:"",active:true,tiers:[]};render();}
 function editProduct(code){ const p=effProducts().find(x=>x.code===code); if(!p)return;
   PDRAFT={kind:p.kind,code:p.code,name:p.name||"",category:p.category||"",base_price:p.base_price??"",msrp:p.msrp??"",
@@ -156,14 +174,16 @@ function render(){
   const pq=PRODQ.toLowerCase();
   const eff=effProducts();
   const shownP = pq ? eff.filter(p=>(`${p.code} ${p.name} ${p.category||""}`.toLowerCase().includes(pq))) : eff.slice(0,60);
-  const prodRows=shownP.map(p=>{const tn=(p.tiers&&p.tiers.length)||0;
+  const prodRows=shownP.map(p=>{const tn=(p.tiers&&p.tiers.length)||0;const ft=isFeat(p.code);
     return `<tr>
-     <td><b>${esc(p.name)}</b> ${p.kind==="custom"?'<span class="chip cst">added</span>':(p.edited?'<span class="chip ed">edited</span>':"")}
+     <td><b>${esc(p.name)}</b> ${p.kind==="custom"?'<span class="chip cst">added</span>':(p.edited?'<span class="chip ed">edited</span>':"")}${ft?'<span class="chip ft">★ featured</span>':''}
         <div style="font-size:11px;color:var(--gray)">${esc(p.code)}${p.category?" · "+esc(p.category):""}</div></td>
      <td class="num">${p.base_price!=null&&p.base_price!==""?"$"+Number(p.base_price).toFixed(2):"—"}</td>
      <td class="num">${tn?tn+" tier"+(tn>1?"s":""):"—"}</td>
      <td>${p.active===false?'<span style="color:var(--gray)">hidden</span>':'<span class="ok">shown</span>'}</td>
-     <td style="white-space:nowrap"><button class="btn ghost sm" onclick="editProduct('${esc(p.code)}')">Edit</button>
+     <td style="white-space:nowrap"><button class="star ${ft?"on":""}" title="${ft?"Featured — click to remove":"Add to Featured"}" onclick="toggleFeatured('${esc(p.code)}')">${ft?"★":"☆"}</button>
+       <button class="btn ghost sm" onclick="editProduct('${esc(p.code)}')">Edit</button>
+       <button class="btn ghost sm" onclick="duplicateProduct('${esc(p.code)}')">Duplicate</button>
        ${p.kind==="custom"
           ? `<button class="btn ghost sm" style="color:var(--red);border-color:#f0c8c8" onclick="delProduct('${esc(p.code)}')">Delete</button>`
           : (p.active===false
@@ -185,7 +205,7 @@ function render(){
      <div class="grid2">
        <div><label class="fl">Product code / SKU ${PDRAFT.kind==="custom"?"*":""}</label><input type="text" value="${esc(PDRAFT.code)}" ${PDRAFT.kind==="catalog"?"readonly":""} oninput="setP('code',this.value)"></div>
        <div><label class="fl">Name *</label><input type="text" value="${esc(PDRAFT.name)}" oninput="setP('name',this.value)"></div>
-       <div><label class="fl">Category</label><input type="text" value="${esc(PDRAFT.category)}" oninput="setP('category',this.value)"></div>
+       <div><label class="fl">Category</label><input type="text" list="catopts" value="${esc(PDRAFT.category)}" placeholder="pick or type a new one" oninput="setP('category',this.value)"><datalist id="catopts">${catList().map(c=>`<option value="${esc(c)}">`).join("")}</datalist></div>
        <div><label class="fl">Dealer price ($)</label><input type="number" step="0.01" value="${esc(PDRAFT.base_price)}" oninput="setP('base_price',this.value)"></div>
        <div><label class="fl">MSRP ($, optional)</label><input type="number" step="0.01" value="${esc(PDRAFT.msrp)}" oninput="setP('msrp',this.value)"></div>
        <div><label class="fl">Show on portal</label><select onchange="setP('active',this.value==='yes')"><option value="yes" ${PDRAFT.active!==false?"selected":""}>Shown</option><option value="no" ${PDRAFT.active===false?"selected":""}>Hidden</option></select></div>
@@ -196,6 +216,7 @@ function render(){
      <label class="fl">Product image ${PDRAFT.kind==="catalog"?'<span style="text-transform:none;color:var(--gray);font-weight:400">— optional; overrides the catalog photo</span>':""}</label>
      <div class="imgrow"><div class="thumb" style="${PDRAFT.image?`background-image:url('${esc(PDRAFT.image)}')`:""}">${PDRAFT.image?"":"no image"}</div>
        <input type="file" accept="image/*" onchange="upload('prod',this.files[0],6,u=>{PDRAFT.image=u;render();})"></div>
+     ${DETAIL.custom&&DETAIL.custom.some(x=>x.code===PDRAFT.code)||PDRAFT.kind==="catalog"?`<label class="ck" style="margin-top:12px;display:flex;gap:7px;align-items:center;font-size:13px"><input type="checkbox" ${isFeat(PDRAFT.code)?"checked":""} onchange="toggleFeatured('${esc(PDRAFT.code)}')"> ★ Show this product in the dealer home "Featured" strip</label>`:`<div class="hint" style="margin-top:10px">Save the product first, then you can feature it.</div>`}
      <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn orange" onclick="saveProduct()">Save product</button>
        <button class="btn ghost" onclick="PDRAFT=null;render()">Cancel</button>
        ${PDRAFT.kind==="catalog"&&PDRAFT.edited?`<button class="btn ghost" onclick="resetOverride('${esc(PDRAFT.code)}')">Reset to catalog</button>`:""}
