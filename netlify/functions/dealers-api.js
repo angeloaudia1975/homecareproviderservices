@@ -163,8 +163,14 @@ exports.handler = async (event)=>{
       }
       if(act==="access"){
         if(!b.dealer_id||!Array.isArray(b.manufacturers)) return json(400,{error:"dealer_id + manufacturers[] required"});
+        // preserve existing manufacturer account numbers (account_ref) so re-saving access
+        // never wipes the dealer's account #s. Merge in any aliased slugs' refs too.
+        const existing=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,account_ref`,"dealer_id,manufacturer").catch(()=>[]);
+        const refBy={}; for(const r of (existing||[])){ if(r.account_ref) refBy[r.manufacturer]=r.account_ref; }
+        // b.refCarry: {canonicalSlug: account_ref} the UI passes when it merged duplicate rows
+        if(b.refCarry&&typeof b.refCarry==="object"){ for(const k in b.refCarry){ if(b.refCarry[k]&&!refBy[k]) refBy[k]=b.refCarry[k]; } }
         await sbSend("DELETE",`dealer_manufacturers?dealer_id=eq.${b.dealer_id}`,null,{Prefer:"return=minimal"});
-        if(b.manufacturers.length) await sbSend("POST","dealer_manufacturers",b.manufacturers.map(m=>({dealer_id:b.dealer_id,manufacturer:m,active:true})),{Prefer:"return=minimal"});
+        if(b.manufacturers.length) await sbSend("POST","dealer_manufacturers",b.manufacturers.map(m=>({dealer_id:b.dealer_id,manufacturer:m,active:true,account_ref:refBy[m]||null})),{Prefer:"return=minimal"});
         return json(200,{ok:true});
       }
       if(act==="rep"){

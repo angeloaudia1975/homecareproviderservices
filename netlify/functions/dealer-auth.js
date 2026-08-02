@@ -86,10 +86,14 @@ exports.handler = async (event)=>{
         // attach stored shipping / billing addresses (if any) so the "My account" editor can prefill
         if(dealer){
           try{
-            const addrs=await sb("GET",`dealer_addresses?dealer_id=eq.${du.dealer_id}&select=address,city,state,zip,label`).catch(()=>[]);
+            const addrs=await sb("GET",`dealer_addresses?dealer_id=eq.${du.dealer_id}&select=address,city,state,zip,label,pri`).catch(()=>[]);
             const pick=re=>{const a=(addrs||[]).find(x=>re.test(String(x.label||"")));return a?{address:a.address||"",city:a.city||"",state:a.state||"",zip:a.zip||""}:null;};
             dealer.shipping=pick(/ship/i)||{address:dealer.address,city:dealer.city,state:dealer.state,zip:dealer.zip};
             dealer.billing=pick(/bill/i)||null;
+            // full list of locations on file so the cart can offer a "ship to" picker
+            dealer.addresses=(addrs||[]).sort((a,b)=>(b.pri||1)-(a.pri||1))
+              .map(a=>({address:a.address||"",city:a.city||"",state:a.state||"",zip:a.zip||"",label:a.label||""}))
+              .filter(a=>a.address||a.city);
           }catch(e){}
         }
       }
