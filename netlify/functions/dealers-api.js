@@ -103,6 +103,8 @@ async function buildState(){
       periods:per, monthsSince:since, lastPeriod:per[per.length-1]||null,
     };
   }).sort((x,y)=>y.sales-x.sales);
+  // dealer-submitted account change requests awaiting HCPS approval
+  const changeReqs = await sbGet("dealer_change_requests?status=eq.pending&select=id,dealer_id,uid,email,changes,created_at&order=created_at.desc").catch(()=>[]);
   return {
     generatedAt:new Date().toISOString(),
     latestPeriod:latest||null,
@@ -115,6 +117,9 @@ async function buildState(){
         dealer_id:u.dealer_id||"",dealer_name:d?d.business_name:"",
         req:{company:u.req_company||"",contact:u.req_contact||"",phone:u.req_phone||"",
              address:u.req_address||"",city:u.req_city||"",state:u.req_state||"",zip:u.req_zip||""}};}),
+    changeRequests:(changeReqs||[]).map(r=>{const d=dealers.find(x=>x.id===r.dealer_id);
+      return {id:r.id,dealer_id:r.dealer_id||"",dealer_name:d?d.business_name:(r.email||""),
+        email:r.email||"",created_at:r.created_at,changes:r.changes||{}};}),
   };
 }
 
@@ -299,6 +304,36 @@ exports.handler = async (event)=>{
         await authAdmin("PUT",`users/${encodeURIComponent(uid)}`,{email,email_confirm:true});
         await sbSend("PATCH",`dealer_users?uid=eq.${encodeURIComponent(uid)}`,{email},{Prefer:"return=minimal"}).catch(()=>{});
         return json(200,{ok:true,uid,email});
+      }
+      // Approve a dealer's self-service account change → apply it to the dealer record
+      // (and store shipping/billing as labeled addresses), then mark the request done.
+      if(act==="approve_change"){
+        if(!b.id) return json(400,{error:"id required"});
+        const rows=await sbGet(`dealer_change_requests?id=eq.${encodeURIComponent(b.id)}&select=id,dealer_id,changes`).catch(()=>[]);
+        const cr=rows&&rows[0];
+        if(!cr) return json(400,{error:"change request not found"});
+        const c=cr.changes||{}; const did=cr.dealer_id;
+        if(did){
+          const patch={updated_at:new Date().toISOString()};
+          if(c.contact_name!=null) patch.contact_name=c.contact_name;
+          if(c.email!=null) patch.email=c.email;
+          if(c.phone!=null) patch.phone=c.phone;
+          if(c.shipping){ patch.address=c.shipping.address||null; patch.city=c.shipping.city||null; patch.state=c.shipping.state||null; patch.zip=c.shipping.zip||null; }
+          await sbSend("PATCH","dealers?id=eq."+encodeURIComponent(did),patch,{Prefer:"return=minimal"});
+          // store shipping / billing as labeled addresses on file too
+          const upAddr=(a,label,key)=>a?sbSend("POST","dealer_addresses?on_conflict=dealer_id,addr_key",
+            {dealer_id:did,addr_key:key,address:a.address||null,city:a.city||null,state:a.state||null,zip:a.zip||null,label,pri:label==="Shipping"?2:1},
+            {Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{}):null;
+          await upAddr(c.shipping,"Shipping","ship");
+          await upAddr(c.billing,"Billing","bill");
+        }
+        await sbSend("PATCH","dealer_change_requests?id=eq."+encodeURIComponent(b.id),{status:"approved",decided_at:new Date().toISOString(),decided_by:b.by||"admin"},{Prefer:"return=minimal"});
+        return json(200,{ok:true,dealer_id:did||null});
+      }
+      if(act==="reject_change"){
+        if(!b.id) return json(400,{error:"id required"});
+        await sbSend("PATCH","dealer_change_requests?id=eq."+encodeURIComponent(b.id),{status:"rejected",decided_at:new Date().toISOString(),decided_by:b.by||"admin"},{Prefer:"return=minimal"});
+        return json(200,{ok:true});
       }
       // Delete a portal login entirely (removes the Auth user + the dealer_users row).
       // Use to clear a mistaken registration so the dealer can register again cleanly.
