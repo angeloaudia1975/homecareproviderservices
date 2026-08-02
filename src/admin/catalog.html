@@ -28,6 +28,9 @@
  .prow .pn{flex:1;min-width:160px}.prow .pn b{font-size:13px}.prow .pn .c{font-size:11px;color:var(--gray)}
  .prow input[type=text]{min-width:150px}
  .haslink{color:var(--green);font-weight:700;font-size:12px}
+ .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+ .chip{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:5px;padding:1px 6px;margin-left:4px}
+ .chip.cst{background:#eef2fb;color:#3b599a}.chip.ed{background:#fff3e6;color:#b4651a}
  .gate,.msg{background:#fff;border:1px solid var(--silver);border-radius:12px;padding:24px;max-width:420px;margin:30px auto;text-align:center}
  .go{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer}
  .err{color:var(--red)}.ok{color:var(--green)}
@@ -76,17 +79,43 @@ async function saveLogo(){ await api("",{method:"POST",body:JSON.stringify({acti
   const m=curMfr(); m.logo_url=LOGODRAFT||m.logo_url; toast("Logo saved ✓"); render(); }
 async function clearLogo(){ if(!confirm("Remove this manufacturer's logo?"))return; await api("",{method:"POST",body:JSON.stringify({action:"clear_logo",slug:SLUG})}); curMfr().logo_url=""; LOGODRAFT=""; toast("Logo removed"); render(); }
 
-/* ---- custom product ---- */
-let PDRAFT=null;
-function newProduct(){PDRAFT={code:"",name:"",category:"",base_price:"",msrp:"",image:"",description:"",active:true};render();}
-function editProduct(c){const p=(DETAIL.custom||[]).find(x=>x.code===c);PDRAFT=Object.assign({},p);render();}
+/* ---- products (edit ANY product: catalog via overrides, or custom) ---- */
+let PDRAFT=null, PRODQ="";
+// effective product list = catalog (with any override applied) + custom products
+function effProducts(){
+  const over=DETAIL.overrides||{};
+  const cat=(DETAIL.products||[]).map(p=>{const o=over[p.code]||{}; return {...p,...o,kind:"catalog",edited:!!over[p.code]};});
+  const map=new Map(); cat.forEach(p=>map.set(p.code,p));
+  (DETAIL.custom||[]).forEach(p=>map.set(p.code,{...p,kind:"custom"}));
+  return [...map.values()];
+}
+function tiersOf(p){ return Array.isArray(p&&p.tiers)?p.tiers.map(t=>({min_qty:t.min_qty??t.minQty??1,price:t.price})):[]; }
+function newProduct(){PDRAFT={kind:"custom",code:"",name:"",category:"",base_price:"",msrp:"",image:"",description:"",price_note:"",active:true,tiers:[]};render();}
+function editProduct(code){ const p=effProducts().find(x=>x.code===code); if(!p)return;
+  PDRAFT={kind:p.kind,code:p.code,name:p.name||"",category:p.category||"",base_price:p.base_price??"",msrp:p.msrp??"",
+    image:p.image||"",description:p.description||"",price_note:p.price_note||"",active:p.active!==false,tiers:tiersOf(p),edited:!!p.edited};
+  render(); }
 function setP(k,v){PDRAFT[k]=v;}
+function addTier(){PDRAFT.tiers.push({min_qty:"",price:""});render();}
+function rmTier(i){PDRAFT.tiers.splice(i,1);render();}
+function setTier(i,k,v){PDRAFT.tiers[i][k]=v;}
 async function saveProduct(){
   if(!PDRAFT.code||!String(PDRAFT.name).trim()){toast("Code and name are required");return;}
-  await api("",{method:"POST",body:JSON.stringify({action:"save_product",manufacturer:SLUG,product:PDRAFT})});
-  PDRAFT=null; await loadMfr(); toast("Product saved ✓");
+  const tiers=(PDRAFT.tiers||[]).filter(t=>t.price!==""&&t.price!=null).map(t=>({min_qty:parseInt(t.min_qty||1,10)||1,price:Number(t.price)}));
+  if(PDRAFT.kind==="custom"){
+    await api("",{method:"POST",body:JSON.stringify({action:"save_product",manufacturer:SLUG,product:{...PDRAFT,tiers}})});
+  }else{
+    const patch={name:PDRAFT.name,category:PDRAFT.category,description:PDRAFT.description,price_note:PDRAFT.price_note,
+      base_price:PDRAFT.base_price===""?null:Number(PDRAFT.base_price),msrp:PDRAFT.msrp===""?null:Number(PDRAFT.msrp),
+      tiers,active:PDRAFT.active!==false};
+    if(PDRAFT.image) patch.image=PDRAFT.image;
+    await api("",{method:"POST",body:JSON.stringify({action:"save_override",manufacturer:SLUG,code:PDRAFT.code,patch})});
+  }
+  PDRAFT=null; await loadMfr(); toast("Product saved ✓ — live on the portal");
 }
-async function delProduct(c){ if(!confirm("Delete custom product "+c+"?"))return; await api("",{method:"POST",body:JSON.stringify({action:"delete_product",manufacturer:SLUG,code:c})}); await loadMfr(); toast("Deleted"); }
+async function delProduct(code){ if(!confirm("Delete custom product "+code+"?"))return; await api("",{method:"POST",body:JSON.stringify({action:"delete_product",manufacturer:SLUG,code})}); await loadMfr(); toast("Deleted"); }
+async function resetOverride(code){ if(!confirm("Reset this product to the standard catalog values? Your edits (name, price, tiers…) will be removed."))return;
+  await api("",{method:"POST",body:JSON.stringify({action:"clear_override",manufacturer:SLUG,code})}); PDRAFT=null; await loadMfr(); toast("Reset to catalog"); }
 
 /* ---- links ---- */
 function allProducts(){ const cat=(DETAIL.products||[]).map(p=>({code:p.code,name:p.name})); const cust=(DETAIL.custom||[]).map(p=>({code:p.code,name:p.name+" (custom)"}));
@@ -106,31 +135,47 @@ function render(){
   const mfrOpts=MFRS.map(x=>`<option value="${esc(x.slug)}" ${x.slug===SLUG?"selected":""}>${esc(x.name)}${x.hasData?"":" (no catalog)"}</option>`).join("");
   const logoUrl=LOGODRAFT||m.logo_url||"";
 
-  // custom products list
-  const custRows=(DETAIL.custom||[]).map(p=>`<tr>
-     <td><b>${esc(p.name)}</b><div style="font-size:11px;color:var(--gray)">${esc(p.code)}${p.category?" · "+esc(p.category):""}</div></td>
-     <td>${p.base_price!=null?"$"+p.base_price:""}</td>
+  // full product list (catalog + custom), searchable
+  const pq=PRODQ.toLowerCase();
+  const eff=effProducts();
+  const shownP = pq ? eff.filter(p=>(`${p.code} ${p.name} ${p.category||""}`.toLowerCase().includes(pq))) : eff.slice(0,60);
+  const prodRows=shownP.map(p=>{const tn=(p.tiers&&p.tiers.length)||0;
+    return `<tr>
+     <td><b>${esc(p.name)}</b> ${p.kind==="custom"?'<span class="chip cst">custom</span>':(p.edited?'<span class="chip ed">edited</span>':"")}
+        <div style="font-size:11px;color:var(--gray)">${esc(p.code)}${p.category?" · "+esc(p.category):""}</div></td>
+     <td class="num">${p.base_price!=null&&p.base_price!==""?"$"+Number(p.base_price).toFixed(2):"—"}</td>
+     <td class="num">${tn?tn+" tier"+(tn>1?"s":""):"—"}</td>
      <td>${p.active===false?'<span style="color:var(--gray)">hidden</span>':'<span class="ok">shown</span>'}</td>
      <td style="white-space:nowrap"><button class="btn ghost sm" onclick="editProduct('${esc(p.code)}')">Edit</button>
-       <button class="btn ghost sm" onclick="delProduct('${esc(p.code)}')">Delete</button></td></tr>`).join("")
-     ||`<tr><td colspan="4" class="hint">No custom products for this line yet.</td></tr>`;
+       ${p.kind==="custom"?`<button class="btn ghost sm" onclick="delProduct('${esc(p.code)}')">Delete</button>`:(p.edited?`<button class="btn ghost sm" onclick="resetOverride('${esc(p.code)}')">Reset</button>`:"")}</td></tr>`;}).join("")
+     ||`<tr><td colspan="5" class="hint">No products match.</td></tr>`;
+
+  const tierEditor = PDRAFT ? `<label class="fl">Quantity price tiers <span style="text-transform:none;color:var(--gray);font-weight:400">— unit price at each minimum quantity (highest qualifying tier wins; leave empty for flat price)</span></label>
+     <div>${(PDRAFT.tiers||[]).map((t,i)=>`<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+        <span class="hint" style="width:70px">min qty</span><input type="number" min="1" step="1" value="${esc(t.min_qty)}" style="width:90px" oninput="setTier(${i},'min_qty',this.value)">
+        <span class="hint" style="width:60px;text-align:right">unit $</span><input type="number" step="0.01" value="${esc(t.price)}" style="width:110px" oninput="setTier(${i},'price',this.value)">
+        <button class="btn ghost sm" onclick="rmTier(${i})">✕</button></div>`).join("")}
+       <button class="btn ghost sm" onclick="addTier()">+ Add tier</button></div>` : "";
 
   const pform = PDRAFT ? `<div class="card" style="border-color:var(--blue)">
-     <h2>${DETAIL.custom&&DETAIL.custom.some(x=>x.code===PDRAFT.code)?"Edit":"New"} product</h2>
+     <h2>${PDRAFT.kind==="custom"?(DETAIL.custom&&DETAIL.custom.some(x=>x.code===PDRAFT.code)?"Edit custom product":"New product"):"Edit catalog product"} <span class="hint" style="text-transform:none">${PDRAFT.kind==="catalog"?"— your changes save as an override on top of the standard catalog; nothing is redeployed":""}</span></h2>
      <div class="grid2">
-       <div><label class="fl">Product code / SKU *</label><input type="text" value="${esc(PDRAFT.code)}" oninput="setP('code',this.value)"></div>
+       <div><label class="fl">Product code / SKU ${PDRAFT.kind==="custom"?"*":""}</label><input type="text" value="${esc(PDRAFT.code)}" ${PDRAFT.kind==="catalog"?"readonly":""} oninput="setP('code',this.value)"></div>
        <div><label class="fl">Name *</label><input type="text" value="${esc(PDRAFT.name)}" oninput="setP('name',this.value)"></div>
        <div><label class="fl">Category</label><input type="text" value="${esc(PDRAFT.category)}" oninput="setP('category',this.value)"></div>
        <div><label class="fl">Dealer price ($)</label><input type="number" step="0.01" value="${esc(PDRAFT.base_price)}" oninput="setP('base_price',this.value)"></div>
        <div><label class="fl">MSRP ($, optional)</label><input type="number" step="0.01" value="${esc(PDRAFT.msrp)}" oninput="setP('msrp',this.value)"></div>
        <div><label class="fl">Show on portal</label><select onchange="setP('active',this.value==='yes')"><option value="yes" ${PDRAFT.active!==false?"selected":""}>Shown</option><option value="no" ${PDRAFT.active===false?"selected":""}>Hidden</option></select></div>
      </div>
+     <label class="fl">Price note (optional) <span style="text-transform:none;color:var(--gray);font-weight:400">— small line under the price, e.g. "per case"</span></label><input type="text" value="${esc(PDRAFT.price_note)}" oninput="setP('price_note',this.value)">
+     ${tierEditor}
      <label class="fl">Description</label><textarea oninput="setP('description',this.value)">${esc(PDRAFT.description)}</textarea>
-     <label class="fl">Product image</label>
+     <label class="fl">Product image ${PDRAFT.kind==="catalog"?'<span style="text-transform:none;color:var(--gray);font-weight:400">— optional; overrides the catalog photo</span>':""}</label>
      <div class="imgrow"><div class="thumb" style="${PDRAFT.image?`background-image:url('${esc(PDRAFT.image)}')`:""}">${PDRAFT.image?"":"no image"}</div>
        <input type="file" accept="image/*" onchange="upload('prod',this.files[0],6,u=>{PDRAFT.image=u;render();})"></div>
      <div style="margin-top:14px"><button class="btn orange" onclick="saveProduct()">Save product</button>
-       <button class="btn ghost" onclick="PDRAFT=null;render()">Cancel</button></div>
+       <button class="btn ghost" onclick="PDRAFT=null;render()">Cancel</button>
+       ${PDRAFT.kind==="catalog"&&PDRAFT.edited?`<button class="btn ghost" style="margin-left:8px" onclick="resetOverride('${esc(PDRAFT.code)}')">Reset to catalog</button>`:""}</div>
    </div>` : "";
 
   // links list — products that already have a link, plus a search to add more
@@ -155,7 +200,7 @@ function render(){
     <h1>Catalog</h1>
     <p class="sub">Manufacturer logos, extra products, and "More Information" brochures/links — all publish instantly to the portal, no site rebuild.</p>
     <div class="bar"><label class="fl" style="margin:0">Manufacturer</label>
-      <select onchange="SLUG=this.value;LOGODRAFT='';PDRAFT=null;PQ='';loadMfr()">${mfrOpts}</select></div>
+      <select onchange="SLUG=this.value;LOGODRAFT='';PDRAFT=null;PQ='';PRODQ='';loadMfr()">${mfrOpts}</select></div>
 
     <div class="card">
       <h2>Manufacturer logo</h2>
@@ -171,10 +216,14 @@ function render(){
 
     ${pform}
     <div class="card">
-      <h2>Custom products</h2>
-      <p class="hint">Add products that aren't in the standard catalog for this line. They appear in the portal with their image and price.</p>
-      <button class="btn sm" onclick="newProduct()">+ Add product</button>
-      <table><thead><tr><th>Product</th><th>Price</th><th>Status</th><th></th></tr></thead><tbody>${custRows}</tbody></table>
+      <h2>Products</h2>
+      <p class="hint">Edit <b>any</b> product on this line — name, category, description, price, MSRP, and quantity pricing tiers — or add a brand-new one. Standard catalog edits save as an override (no redeploy); custom products are yours to add or delete.</p>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+        <button class="btn sm" onclick="newProduct()">+ Add product</button>
+        <input type="text" placeholder="Search products by name or code…" value="${esc(PRODQ)}" oninput="PRODQ=this.value;render()" style="flex:1;min-width:220px">
+      </div>
+      <table><thead><tr><th>Product</th><th class="num">Dealer price</th><th class="num">Tiers</th><th>Status</th><th></th></tr></thead><tbody>${prodRows}</tbody></table>
+      ${!PRODQ&&eff.length>60?`<div class="hint" style="margin-top:8px">Showing first 60 of ${eff.length} — search to find any product.</div>`:""}
     </div>
 
     <div class="card">
