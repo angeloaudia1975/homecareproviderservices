@@ -113,9 +113,26 @@ async function saveProduct(){
   }
   PDRAFT=null; await loadMfr(); toast("Product saved ✓ — live on the portal");
 }
-async function delProduct(code){ if(!confirm("Delete custom product "+code+"?"))return; await api("",{method:"POST",body:JSON.stringify({action:"delete_product",manufacturer:SLUG,code})}); await loadMfr(); toast("Deleted"); }
+async function delProduct(code){ if(!confirm("Delete added product "+code+"? This removes it completely."))return; await api("",{method:"POST",body:JSON.stringify({action:"delete_product",manufacturer:SLUG,code})}); PDRAFT=null; await loadMfr(); toast("Product deleted"); }
 async function resetOverride(code){ if(!confirm("Reset this product to the standard catalog values? Your edits (name, price, tiers…) will be removed."))return;
   await api("",{method:"POST",body:JSON.stringify({action:"clear_override",manufacturer:SLUG,code})}); PDRAFT=null; await loadMfr(); toast("Reset to catalog"); }
+// Delete any product: custom products are removed outright; standard catalog products are
+// hidden from the portal (kept so you can restore them) since they live in the deployed data.
+async function removeProduct(code){
+  const p=effProducts().find(x=>x.code===code); if(!p)return;
+  if(p.kind==="custom") return delProduct(code);
+  if(!confirm("Remove “"+p.name+"” from the ordering portal? Dealers will no longer see or be able to order it. You can restore it anytime."))return;
+  const cur=(DETAIL.overrides||{})[code]||{};
+  await api("",{method:"POST",body:JSON.stringify({action:"save_override",manufacturer:SLUG,code,patch:{...cur,active:false}})});
+  PDRAFT=null; await loadMfr(); toast("Removed from portal");
+}
+async function restoreProduct(code){
+  const cur=(DETAIL.overrides||{})[code]||{};
+  const rest=Object.assign({},cur); delete rest.active;
+  if(Object.keys(rest).length){ await api("",{method:"POST",body:JSON.stringify({action:"save_override",manufacturer:SLUG,code,patch:{...rest,active:true}})}); }
+  else { await api("",{method:"POST",body:JSON.stringify({action:"clear_override",manufacturer:SLUG,code})}); }
+  await loadMfr(); toast("Restored to portal");
+}
 
 /* ---- links ---- */
 function allProducts(){ const cat=(DETAIL.products||[]).map(p=>({code:p.code,name:p.name})); const cust=(DETAIL.custom||[]).map(p=>({code:p.code,name:p.name+" (custom)"}));
@@ -141,13 +158,19 @@ function render(){
   const shownP = pq ? eff.filter(p=>(`${p.code} ${p.name} ${p.category||""}`.toLowerCase().includes(pq))) : eff.slice(0,60);
   const prodRows=shownP.map(p=>{const tn=(p.tiers&&p.tiers.length)||0;
     return `<tr>
-     <td><b>${esc(p.name)}</b> ${p.kind==="custom"?'<span class="chip cst">custom</span>':(p.edited?'<span class="chip ed">edited</span>':"")}
+     <td><b>${esc(p.name)}</b> ${p.kind==="custom"?'<span class="chip cst">added</span>':(p.edited?'<span class="chip ed">edited</span>':"")}
         <div style="font-size:11px;color:var(--gray)">${esc(p.code)}${p.category?" · "+esc(p.category):""}</div></td>
      <td class="num">${p.base_price!=null&&p.base_price!==""?"$"+Number(p.base_price).toFixed(2):"—"}</td>
      <td class="num">${tn?tn+" tier"+(tn>1?"s":""):"—"}</td>
      <td>${p.active===false?'<span style="color:var(--gray)">hidden</span>':'<span class="ok">shown</span>'}</td>
      <td style="white-space:nowrap"><button class="btn ghost sm" onclick="editProduct('${esc(p.code)}')">Edit</button>
-       ${p.kind==="custom"?`<button class="btn ghost sm" onclick="delProduct('${esc(p.code)}')">Delete</button>`:(p.edited?`<button class="btn ghost sm" onclick="resetOverride('${esc(p.code)}')">Reset</button>`:"")}</td></tr>`;}).join("")
+       ${p.kind==="custom"
+          ? `<button class="btn ghost sm" style="color:var(--red);border-color:#f0c8c8" onclick="delProduct('${esc(p.code)}')">Delete</button>`
+          : (p.active===false
+              ? `<button class="btn ghost sm" onclick="restoreProduct('${esc(p.code)}')">Restore</button>`
+              : `<button class="btn ghost sm" style="color:var(--red);border-color:#f0c8c8" onclick="removeProduct('${esc(p.code)}')">Remove</button>`)
+        }
+       ${p.kind==="catalog"&&p.edited?`<button class="btn ghost sm" onclick="resetOverride('${esc(p.code)}')">Reset</button>`:""}</td></tr>`;}).join("")
      ||`<tr><td colspan="5" class="hint">No products match.</td></tr>`;
 
   const tierEditor = PDRAFT ? `<label class="fl">Quantity price tiers <span style="text-transform:none;color:var(--gray);font-weight:400">— unit price at each minimum quantity (highest qualifying tier wins; leave empty for flat price)</span></label>
@@ -158,7 +181,7 @@ function render(){
        <button class="btn ghost sm" onclick="addTier()">+ Add tier</button></div>` : "";
 
   const pform = PDRAFT ? `<div class="card" style="border-color:var(--blue)">
-     <h2>${PDRAFT.kind==="custom"?(DETAIL.custom&&DETAIL.custom.some(x=>x.code===PDRAFT.code)?"Edit custom product":"New product"):"Edit catalog product"} <span class="hint" style="text-transform:none">${PDRAFT.kind==="catalog"?"— your changes save as an override on top of the standard catalog; nothing is redeployed":""}</span></h2>
+     <h2>${PDRAFT.kind==="custom"?(DETAIL.custom&&DETAIL.custom.some(x=>x.code===PDRAFT.code)?"Edit added product":"New product"):"Edit catalog product"} <span class="hint" style="text-transform:none">${PDRAFT.kind==="catalog"?"— your changes save as an override on top of the standard catalog; nothing is redeployed":""}</span></h2>
      <div class="grid2">
        <div><label class="fl">Product code / SKU ${PDRAFT.kind==="custom"?"*":""}</label><input type="text" value="${esc(PDRAFT.code)}" ${PDRAFT.kind==="catalog"?"readonly":""} oninput="setP('code',this.value)"></div>
        <div><label class="fl">Name *</label><input type="text" value="${esc(PDRAFT.name)}" oninput="setP('name',this.value)"></div>
@@ -173,9 +196,13 @@ function render(){
      <label class="fl">Product image ${PDRAFT.kind==="catalog"?'<span style="text-transform:none;color:var(--gray);font-weight:400">— optional; overrides the catalog photo</span>':""}</label>
      <div class="imgrow"><div class="thumb" style="${PDRAFT.image?`background-image:url('${esc(PDRAFT.image)}')`:""}">${PDRAFT.image?"":"no image"}</div>
        <input type="file" accept="image/*" onchange="upload('prod',this.files[0],6,u=>{PDRAFT.image=u;render();})"></div>
-     <div style="margin-top:14px"><button class="btn orange" onclick="saveProduct()">Save product</button>
+     <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn orange" onclick="saveProduct()">Save product</button>
        <button class="btn ghost" onclick="PDRAFT=null;render()">Cancel</button>
-       ${PDRAFT.kind==="catalog"&&PDRAFT.edited?`<button class="btn ghost" style="margin-left:8px" onclick="resetOverride('${esc(PDRAFT.code)}')">Reset to catalog</button>`:""}</div>
+       ${PDRAFT.kind==="catalog"&&PDRAFT.edited?`<button class="btn ghost" onclick="resetOverride('${esc(PDRAFT.code)}')">Reset to catalog</button>`:""}
+       <span style="flex:1"></span>
+       ${PDRAFT.kind==="custom"
+          ? (DETAIL.custom&&DETAIL.custom.some(x=>x.code===PDRAFT.code)?`<button class="btn red" onclick="delProduct('${esc(PDRAFT.code)}')">Delete product</button>`:"")
+          : (PDRAFT.active===false?`<button class="btn ghost" onclick="restoreProduct('${esc(PDRAFT.code)}')">Restore to portal</button>`:`<button class="btn red" onclick="removeProduct('${esc(PDRAFT.code)}')">Remove from portal</button>`)}</div>
    </div>` : "";
 
   // links list — products that already have a link, plus a search to add more
@@ -217,7 +244,7 @@ function render(){
     ${pform}
     <div class="card">
       <h2>Products</h2>
-      <p class="hint">Edit <b>any</b> product on this line — name, category, description, price, MSRP, and quantity pricing tiers — or add a brand-new one. Standard catalog edits save as an override (no redeploy); custom products are yours to add or delete.</p>
+      <p class="hint">Edit <b>any</b> product on this line — name, category, description, price, MSRP, and quantity pricing tiers — or add a brand-new one. Standard catalog edits save as an override (no redeploy); added products are yours to add or delete.</p>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
         <button class="btn sm" onclick="newProduct()">+ Add product</button>
         <input type="text" placeholder="Search products by name or code…" value="${esc(PRODQ)}" oninput="PRODQ=this.value;render()" style="flex:1;min-width:220px">

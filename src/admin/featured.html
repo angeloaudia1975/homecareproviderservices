@@ -69,7 +69,7 @@ async function boot(){
   }catch(e){if(String(e.message)!=="unauthorized")$("#wrap").innerHTML=`<div class="msg err">Couldn't load: ${esc(e.message)}</div>`;}
 }
 async function loadMfr(){ const j=await api("?manufacturer="+encodeURIComponent(SLUG),{method:"GET"}); PRODUCTS=j.products||[];FEAT=j.featured||{};render(); }
-function imgFor(p){ return p.image?ORDERING+p.image:""; }
+function imgFor(p){ if(!p.image) return ""; return /^https?:/i.test(p.image)?p.image:ORDERING+p.image; }
 function nameFor(mfr,code){ if(mfr===SLUG){const p=PRODUCTS.find(x=>x.code===code);if(p)return p.name;} const a=ALLFEAT.find(x=>x.manufacturer===mfr&&x.code===code);return a&&a.name?a.name:code; }
 function mfrName(slug){const m=MFRS.find(x=>x.slug===slug);return m?m.name:slug;}
 function filtered(){ const q=Q.toLowerCase();
@@ -82,7 +82,7 @@ function render(){
     const img=src?`<img src="${esc(src)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ph',textContent:'No image'}))">`:`<span class="ph">No image</span>`;
     return `<div class="pc ${on?'feat':''}"><div class="img">${img}</div>
       <button class="star ${on?'on':''}" title="${on?'Featured — click to remove':'Add to Featured'}" onclick="toggle('${esc(p.code)}')">${on?'★':'☆'}</button>
-      <div class="body"><div class="code">#${esc(p.code)}</div><div class="nm">${esc(p.name)}</div></div></div>`;
+      <div class="body"><div class="code">#${esc(p.code)}${p.added?' <span style="color:#3b599a;font-weight:800">· added</span>':''}</div><div class="nm">${esc(p.name)}</div></div></div>`;
   }).join("");
   // sidebar = all featured across every line, in rank order
   const sorted=[...ALLFEAT].sort((a,b)=>(a.rank-b.rank)||a.manufacturer.localeCompare(b.manufacturer));
