@@ -290,12 +290,33 @@ async function notDup(a,b){DATA.nomerge=(DATA.nomerge||[]).concat([[a,b].sort().
 
 function openDetail(id){DETAIL=id;window.scrollTo(0,0);render();}
 function backList(){DETAIL=null;render();}
+/* Collapse duplicate manufacturer rows in the ordering-access box. Exact-name dupes
+   (e.g. "Golden Technologies" twice) merge by normalized name; the Bongo / AIRAVANT-BongoRx
+   pair merges via an alias. Each surviving line keeps the slug with the dealer's account/buys
+   history so saving access preserves the account number. */
+function canonKey(name){ let s=String(name||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+  if(/airavant|bongo/.test(s)) return "airavant-bongorx";
+  return s; }
+function dedupeMfrs(mfrs,d){
+  const acctSlugs=new Set((d.accounts||[]).map(a=>String(a).split(":")[0]));
+  const buys=new Set(d.buysLines||[]), acc=new Set(d.access||[]);
+  const groups=new Map();
+  for(const m of (mfrs||[])){ const k=canonKey(m.name);
+    if(!groups.has(k)) groups.set(k,{names:[],slugs:[]});
+    const g=groups.get(k); g.names.push(m.name); g.slugs.push(m.slug); }
+  const out=[];
+  for(const g of groups.values()){
+    const pick=g.slugs.find(s=>acctSlugs.has(s))||g.slugs.find(s=>buys.has(s))||g.slugs.find(s=>acc.has(s))||g.slugs[0];
+    const name=g.names.slice().sort((a,b)=>String(a).localeCompare(b))[0];
+    out.push({slug:pick, name, slugs:g.slugs, checked:g.slugs.some(s=>acc.has(s)), buys:g.slugs.some(s=>buys.has(s))}); }
+  return out.sort((a,b)=>String(a.name).localeCompare(b.name));
+}
 function renderDetail(){
   const d=DATA.dealers.find(x=>x.id===DETAIL); if(!d){DETAIL=null;return render();}
-  const mfrs=DATA.manufacturers;
+  const mfrs=dedupeMfrs(DATA.manufacturers,d);   // collapse duplicate manufacturer rows (Golden ×2, Bongo/AIRAVANT…)
   const dLogins=(DATA.logins||[]).filter(l=>l.dealer_id===d.id);
   const accset=new Set(d.access);
-  let acc=mfrs.map(m=>`<label class="accitem ${accset.has(m.slug)?"on":""}"><input type="checkbox" value="${esc(m.slug)}" ${accset.has(m.slug)?"checked":""} onchange="this.parentNode.classList.toggle('on',this.checked)">${esc(m.name)}${d.buysLines.includes(m.slug)?` <span class="chip" style="margin-left:auto">buys</span>`:""}</label>`).join("");
+  let acc=mfrs.map(m=>`<label class="accitem ${m.checked?"on":""}"><input type="checkbox" value="${esc(m.slug)}" ${m.checked?"checked":""} onchange="this.parentNode.classList.toggle('on',this.checked)">${esc(m.name)}${m.buys?` <span class="chip" style="margin-left:auto">buys</span>`:""}</label>`).join("");
   const fld=(k,lab,val,ph)=>`<div class="fld"><label>${lab}</label><input id="f_${k}" value="${esc(val||"")}" placeholder="${ph||""}"></div>`;
   $("#body").innerHTML=`
    <div class="backbar"><button class="go" onclick="backList()">← All dealers</button><div class="lbl" style="font-size:18px">${esc(d.name)} ${d.status==="review"?`<span class="chip rev">review</span>`:""}</div><div></div></div>
@@ -328,8 +349,9 @@ function renderDetail(){
            <td class="hint">${esc(x.label||"")}</td></tr>`).join("")}</tbody></table>`
         :`<div class="dim" style="margin-top:6px">${d.address?`<b>${esc([d.address,[d.city,d.state].filter(Boolean).join(", "),d.zip].filter(Boolean).join(" · "))}</b><br>`:""}No additional addresses stored yet — run <b>create_tables.sql</b> in Supabase, then re-run <b>Import contacts</b> to load every location.</div>`}
        <h2 style="margin-top:18px">Contacts on file ${(d.contacts&&d.contacts.length)?`(${d.contacts.length})`:""}</h2>
-       <div class="hint">Every person &amp; email imported for this account. Any of these emails can be used to register for the ordering portal.</div>
+       <div class="hint">Every person &amp; email imported for this account. Any of these emails can be used to register for the ordering portal. Pick one as the account's <b>default email</b> — it's used on the dealer record and order emails.</div>
        ${(d.contacts&&d.contacts.length)?`<table style="margin-top:6px"><tbody>${d.contacts.map(c=>`<tr>
+           <td style="width:110px;white-space:nowrap">${c.email?(sameEmail(c.email,d.email)?`<span class="chip acc">★ default</span>`:`<button class="go sm" onclick="setDefaultEmail('${d.id}','${jesc(c.email)}')">Make default</button>`):""}</td>
            <td class="lbl">${esc(c.name||"—")}</td>
            <td>${c.email?`<a href="mailto:${esc(c.email)}" style="color:var(--blue)">${esc(c.email)}</a>`:`<span class="dim">no email</span>`}</td>
            <td class="hint">${esc([c.title,c.role].filter(Boolean).join(" · "))}${c.phone?` · ${esc(c.phone)}`:""}</td></tr>`).join("")}</tbody></table>`
@@ -369,11 +391,21 @@ async function saveDetail(id,origName){
   await load(); // refresh aggregates (name change re-links)
   DETAIL=id; render();
 }
+function sameEmail(a,b){return String(a||"").trim().toLowerCase()===String(b||"").trim().toLowerCase()&&!!String(a||"").trim();}
+async function setDefaultEmail(id,email){
+  await post({action:"edit",dealer_id:id,email},"Setting default…");
+  const d=DATA.dealers.find(x=>x.id===id); if(d)d.email=email;
+  render();
+}
 async function saveAccess(id){
+  const d=DATA.dealers.find(x=>x.id===id)||{};
   const sel=[...document.querySelectorAll("#accgrid input:checked")].map(x=>x.value);
-  await post({action:"access",dealer_id:id,manufacturers:sel},"Saving…","#stA");
+  // when we merged duplicate manufacturer rows, carry the account number onto the surviving slug
+  const canonOf={}; dedupeMfrs(DATA.manufacturers,d).forEach(g=>g.slugs.forEach(s=>canonOf[s]=g.slug));
+  const refCarry={}; (d.accounts||[]).forEach(a=>{const p=String(a).split(":");const slug=p[0],ref=p.slice(1).join(":");if(slug&&ref){refCarry[canonOf[slug]||slug]=ref;}});
+  await post({action:"access",dealer_id:id,manufacturers:sel,refCarry},"Saving…","#stA");
   $("#stA").textContent="Saved ✓";$("#stA").className="st ok";
-  const d=DATA.dealers.find(x=>x.id===id); if(d)d.access=sel;
+  if(d)d.access=sel;
 }
 async function post(body,working,stSel){
   const st=stSel?$(stSel):null; if(st&&working){st.textContent=working;st.className="st";}
