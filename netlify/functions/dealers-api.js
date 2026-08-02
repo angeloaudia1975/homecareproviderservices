@@ -105,6 +105,30 @@ async function buildState(){
   }).sort((x,y)=>y.sales-x.sales);
   // dealer-submitted account change requests awaiting HCPS approval
   const changeReqs = await sbGet("dealer_change_requests?status=eq.pending&select=id,dealer_id,uid,email,changes,created_at&order=created_at.desc").catch(()=>[]);
+  // login activity + persistent (open) carts
+  const [sessions,carts] = await Promise.all([
+    sbGet("dealer_sessions?select=dealer_id,email,login_at,last_seen_at&order=last_seen_at.desc&limit=800").catch(()=>[]),
+    sbGet("dealer_carts?select=uid,dealer_id,email,cart,updated_at").catch(()=>[]),
+  ]);
+  const dName=id=>{const d=dealers.find(x=>x.id===id);return d?d.business_name:"";};
+  const mins=(a,b)=>Math.max(0,Math.round((new Date(b)-new Date(a))/60000));
+  const NOW=Date.now();
+  const recentSessions=(sessions||[]).map(s=>({
+    dealer_id:s.dealer_id||"", dealer_name:dName(s.dealer_id)||s.email||"", email:s.email||"",
+    login_at:s.login_at, last_seen_at:s.last_seen_at, mins:mins(s.login_at,s.last_seen_at),
+    live:(NOW-new Date(s.last_seen_at).getTime())<3*60*1000    // seen in last 3 min ≈ online now
+  })).slice(0,150);
+  const actByDealer=new Map();
+  for(const s of (sessions||[])){ const k=s.dealer_id||("e:"+s.email); const a=actByDealer.get(k)||{count:0,lastSeen:null,lastLogin:null};
+    a.count++; if(!a.lastSeen||new Date(s.last_seen_at)>new Date(a.lastSeen))a.lastSeen=s.last_seen_at;
+    if(!a.lastLogin||new Date(s.login_at)>new Date(a.lastLogin))a.lastLogin=s.login_at; actByDealer.set(k,a); }
+  const openCarts=(carts||[]).map(c=>{ const items=(c.cart&&c.cart.items)||[];
+    let n=0,val=0; const lines=[];
+    for(const it of items){ const p=it.p||{},q=Number(it.qty)||0; n+=q; val+=(Number(p.base_price)||0)*q;
+      lines.push({name:p.name||p.code||"",code:p.code||"",manufacturer:p.manufacturer||"",qty:q}); }
+    return {dealer_id:c.dealer_id||"", dealer_name:dName(c.dealer_id)||c.email||"", email:c.email||"",
+      itemCount:n, value:Math.round(val*100)/100, updated_at:c.updated_at, lines};
+  }).filter(c=>c.itemCount>0).sort((a,b)=>new Date(b.updated_at)-new Date(a.updated_at));
   return {
     generatedAt:new Date().toISOString(),
     latestPeriod:latest||null,
@@ -120,6 +144,7 @@ async function buildState(){
     changeRequests:(changeReqs||[]).map(r=>{const d=dealers.find(x=>x.id===r.dealer_id);
       return {id:r.id,dealer_id:r.dealer_id||"",dealer_name:d?d.business_name:(r.email||""),
         email:r.email||"",created_at:r.created_at,changes:r.changes||{}};}),
+    recentSessions, openCarts,
   };
 }
 

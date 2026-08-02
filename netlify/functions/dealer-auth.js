@@ -24,6 +24,17 @@ async function sb(method,path,body,extra){
 const rpc=(fn,args)=>sb("POST",`rpc/${fn}`,args);
 const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Verify the caller's Supabase JWT and resolve their dealer login. Returns null if not signed in.
+async function callerFromToken(event){
+  const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
+  const tok=auth.replace(/^Bearer\s+/i,""); if(!tok) return null;
+  const ur=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${tok}`}});
+  if(!ur.ok) return null; const u=await ur.json();
+  const rows=await sb("GET",`dealer_users?uid=eq.${u.id}&select=status,dealer_id,email`).catch(()=>[]);
+  const du=rows&&rows[0];
+  return {uid:u.id, email:(du&&du.email)||u.email, dealer_id:(du&&du.dealer_id)||null, status:(du&&du.status)||"none"};
+}
+
 exports.handler = async (event)=>{
   if(event.httpMethod==="OPTIONS") return {statusCode:204,headers:CORS,body:""};
   try{
@@ -97,7 +108,40 @@ exports.handler = async (event)=>{
           }catch(e){}
         }
       }
-      return json(200,{ok:true,status:"approved",email:du.email,dealer,lines});
+      // saved cart (persists across logout/login until ordered or cleared)
+      let cart=null;
+      try{ const cr=await sb("GET",`dealer_carts?uid=eq.${uid}&select=cart`); if(cr&&cr[0]&&cr[0].cart&&Array.isArray(cr[0].cart.items)&&cr[0].cart.items.length) cart=cr[0].cart; }catch(e){}
+      return json(200,{ok:true,status:"approved",email:du.email,dealer,lines,cart});
+    }
+
+    // ---- persistent cart ----
+    if(b.action==="save_cart"){
+      const c=await callerFromToken(event); if(!c) return json(401,{ok:false,error:"not signed in"});
+      const cart=(b.cart&&typeof b.cart==="object")?b.cart:{items:[]};
+      if(!Array.isArray(cart.items)) cart.items=[];
+      await sb("POST","dealer_carts?on_conflict=uid",
+        {uid:c.uid,dealer_id:c.dealer_id,email:c.email,cart,updated_at:new Date().toISOString()},
+        {Prefer:"resolution=merge-duplicates,return=minimal"});
+      return json(200,{ok:true});
+    }
+    if(b.action==="clear_cart"){
+      const c=await callerFromToken(event); if(!c) return json(401,{ok:false,error:"not signed in"});
+      await sb("DELETE",`dealer_carts?uid=eq.${c.uid}`,null,{Prefer:"return=minimal"}).catch(()=>{});
+      return json(200,{ok:true});
+    }
+
+    // ---- login activity ----
+    if(b.action==="session_start"){
+      const c=await callerFromToken(event); if(!c) return json(401,{ok:false,error:"not signed in"});
+      const ins=await sb("POST","dealer_sessions",
+        {uid:c.uid,dealer_id:c.dealer_id,email:c.email,login_at:new Date().toISOString(),last_seen_at:new Date().toISOString(),user_agent:String(b.ua||"").slice(0,300)||null},
+        {Prefer:"return=representation"});
+      return json(200,{ok:true,session_id:(ins&&ins[0]&&ins[0].id)||null});
+    }
+    if(b.action==="session_ping"){
+      const c=await callerFromToken(event); if(!c) return json(401,{ok:false,error:"not signed in"});
+      if(b.session_id) await sb("PATCH",`dealer_sessions?id=eq.${encodeURIComponent(b.session_id)}&uid=eq.${c.uid}`,{last_seen_at:new Date().toISOString()},{Prefer:"return=minimal"}).catch(()=>{});
+      return json(200,{ok:true});
     }
 
     // A signed-in dealer requests changes to their own account. We DON'T touch the
