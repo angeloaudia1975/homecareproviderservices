@@ -26,6 +26,11 @@ async function sb(method,path,body,extra){
 }
 async function fetchJson(url){ const r=await fetch(url,{headers:{"cache-control":"no-cache"}}); if(!r.ok) throw new Error(`${url} ${r.status}`); return r.json(); }
 const num=v=>{ if(v===""||v==null) return null; const n=Number(v); return isFinite(n)?n:null; };
+// normalize a quantity-break tier list to [{min_qty:int>=1, price:number}], sorted ascending
+const cleanTiers=t=>{ if(!Array.isArray(t)) return null;
+  const out=t.map(r=>({min_qty:Math.max(1,parseInt(r.min_qty??r.minQty??1,10)||1),price:num(r.price)}))
+    .filter(r=>r.price!=null).sort((a,b)=>a.min_qty-b.min_qty);
+  return out.length?out:null; };
 
 exports.handler = async (event)=>{
   if(event.httpMethod==="OPTIONS") return {statusCode:204,headers:CORS,body:""};
@@ -46,12 +51,16 @@ exports.handler = async (event)=>{
       }
       const [prods,custom,links]=await Promise.all([
         fetchJson(`${ORDERING_BASE}/data/${slug}.json`).catch(()=>[]),
-        sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,name,category,base_price,msrp,image,description,active`).catch(()=>[]),
+        sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,name,category,base_price,msrp,image,description,active,tiers,price_note`).catch(()=>[]),
         sb("GET",`product_links?manufacturer=eq.${encodeURIComponent(slug)}&select=code,label,url`).catch(()=>[]),
       ]);
+      const overRows=await sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(slug)}&select=code,patch`).catch(()=>[]);
       const linkMap=Object.fromEntries((links||[]).map(l=>[l.code,{label:l.label||"More Information",url:l.url}]));
-      const products=(prods||[]).map(p=>({code:p.code,name:p.name,category:p.category||"",image:p.image||"",base_price:p.base_price}));
-      return json(200,{products,custom:custom||[],links:linkMap});
+      const overrides=Object.fromEntries((overRows||[]).map(o=>[o.code,o.patch||{}]));
+      // full catalog fields so the editor can show + edit everything (incl. tiers)
+      const products=(prods||[]).map(p=>({code:p.code,name:p.name,category:p.category||"",image:p.image||"",
+        base_price:p.base_price,msrp:p.msrp,description:p.description||"",tiers:p.tiers||null,price_note:p.price_note||"",group:p.group||""}));
+      return json(200,{products,custom:custom||[],links:linkMap,overrides});
     }
 
     if(event.httpMethod==="POST"){
@@ -87,8 +96,34 @@ exports.handler = async (event)=>{
           manufacturer:mfr, code:String(p.code).trim(), name:String(p.name).trim(),
           category:p.category||null, base_price:num(p.base_price), msrp:num(p.msrp),
           image:p.image||null, description:p.description||null,
+          tiers:cleanTiers(p.tiers), price_note:p.price_note||null,
           active:p.active===false?false:true, updated_at:new Date().toISOString()
         },{Prefer:"resolution=merge-duplicates,return=minimal"});
+        return json(200,{ok:true});
+      }
+
+      // Edit a STANDARD catalog product without a redeploy: store only the changed fields as
+      // an override the portal merges over the deployed catalog JSON.
+      if(b.action==="save_override"){
+        if(!b.manufacturer||!b.code) return json(400,{error:"manufacturer, code required"});
+        const p=b.patch||{}; const patch={};
+        if(p.name!=null) patch.name=String(p.name);
+        if(p.category!=null) patch.category=String(p.category);
+        if(p.description!=null) patch.description=String(p.description);
+        if(p.price_note!=null) patch.price_note=String(p.price_note);
+        if("base_price" in p) patch.base_price=num(p.base_price);
+        if("msrp" in p) patch.msrp=num(p.msrp);
+        if("tiers" in p) patch.tiers=cleanTiers(p.tiers);
+        if("active" in p) patch.active=(p.active!==false);
+        if("image" in p && p.image) patch.image=String(p.image);
+        await sb("POST","product_overrides?on_conflict=manufacturer,code",
+          {manufacturer:b.manufacturer,code:String(b.code).trim(),patch,updated_at:new Date().toISOString()},
+          {Prefer:"resolution=merge-duplicates,return=minimal"});
+        return json(200,{ok:true});
+      }
+      if(b.action==="clear_override"){
+        if(!b.manufacturer||!b.code) return json(400,{error:"manufacturer, code required"});
+        await sb("DELETE",`product_overrides?manufacturer=eq.${encodeURIComponent(b.manufacturer)}&code=eq.${encodeURIComponent(b.code)}`,null,{Prefer:"return=minimal"});
         return json(200,{ok:true});
       }
       if(b.action==="delete_product"){
