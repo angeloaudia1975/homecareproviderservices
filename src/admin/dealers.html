@@ -159,9 +159,10 @@ function render(){
     <button class="tab ${TAB==='dupes'?'on':''}" onclick="setTab('dupes')">Suggested duplicates${dup?` (${dup})`:""}</button>
     <button class="tab ${TAB==='logins'?'on':''}" onclick="setTab('logins')">Pending logins${plog?` (${plog})`:""}</button>
     <button class="tab ${TAB==='changes'?'on':''}" onclick="setTab('changes')">Account changes${pchg?` (${pchg})`:""}</button>
+    <button class="tab ${TAB==='activity'?'on':''}" onclick="setTab('activity')">Activity &amp; carts${(DATA.openCarts&&DATA.openCarts.length)?` (${DATA.openCarts.length})`:""}</button>
     <button class="tab ${TAB==='import'?'on':''}" onclick="setTab('import')">Import contacts</button></div>`;
   $("#body").innerHTML=kpis+tabs+mergeBar()+`<div id="app"></div>`;
-  ({all:renderAll,review:renderReview,dupes:renderDupes,logins:renderLogins,changes:renderChanges,import:renderImport}[TAB])();
+  ({all:renderAll,review:renderReview,dupes:renderDupes,logins:renderLogins,changes:renderChanges,activity:renderActivity,import:renderImport}[TAB])();
 }
 function mergeBar(){
   if(SEL.size<1) return "";
@@ -479,6 +480,42 @@ function renderChanges(){
     <h2>Account changes <span class="hint" style="text-transform:none">— dealers who edited their own contact, shipping, or billing details in the portal. Approve to apply the change to the dealer record (shipping/billing are also stored as addresses on file).</span></h2>
     <table><thead><tr><th>Dealer</th><th>Requested changes</th><th>Submitted</th><th></th></tr></thead><tbody>${rows}</tbody></table>
   </div>`;
+}
+/* ---------- Activity & carts (dealer logins + open/unordered carts) ---------- */
+function fmtWhen(s){ if(!s)return "—"; try{const d=new Date(s),now=Date.now(),diff=(now-d)/1000;
+  if(diff<60)return "just now"; if(diff<3600)return Math.round(diff/60)+"m ago"; if(diff<86400)return Math.round(diff/3600)+"h ago";
+  return d.toLocaleDateString("en-US",{month:"short",day:"numeric"})+" "+d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}); }catch(e){return "";} }
+function dur(m){ if(m==null)return "—"; if(m<1)return "<1 min"; if(m<60)return m+" min"; const h=Math.floor(m/60),r=m%60; return h+"h"+(r?" "+r+"m":""); }
+function renderActivity(){
+  const app=$("#app"); const S=DATA.recentSessions||[], C=DATA.openCarts||[];
+  const liveCount=S.filter(s=>s.live).length;
+  const cartVal=C.reduce((t,c)=>t+(c.value||0),0), cartItems=C.reduce((t,c)=>t+(c.itemCount||0),0);
+  const kpis=`<div class="kpis" style="margin-top:0">
+    <div class="kpi"><div class="l">Online now</div><div class="v ${liveCount?'ok':''}">${liveCount}</div></div>
+    <div class="kpi"><div class="l">Open carts</div><div class="v ${C.length?'orange':''}">${C.length}</div></div>
+    <div class="kpi"><div class="l">Items waiting</div><div class="v">${cartItems}</div></div>
+    <div class="kpi"><div class="l">Open cart value (est.)</div><div class="v">${money(cartVal)}</div></div></div>`;
+  const cartRows=C.length? C.map(c=>{const preview=(c.lines||[]).slice(0,4).map(l=>`${l.qty}× ${esc(l.name||l.code)}`).join(", ")+((c.lines||[]).length>4?` +${c.lines.length-4} more`:"");
+    return `<tr>
+      <td class="lbl">${esc(c.dealer_name||c.email||"—")}${c.email?`<div class="hint" style="margin-top:2px">${esc(c.email)}</div>`:""}</td>
+      <td class="num">${c.itemCount}</td><td class="num">${money(c.value)}</td>
+      <td class="hint">${esc(preview)}</td>
+      <td>${fmtWhen(c.updated_at)}</td>
+      <td>${c.dealer_id?`<button class="go sm" onclick="openDetail('${c.dealer_id}')">Open dealer</button>`:""}</td></tr>`;}).join("")
+    : `<tr><td colspan="6" class="empty">No open carts — every dealer's cart is empty or already ordered.</td></tr>`;
+  const sessRows=S.length? S.map(s=>`<tr>
+      <td class="lbl">${s.live?'<span class="chip acc">● live</span> ':''}${esc(s.dealer_name||s.email||"—")}</td>
+      <td>${fmtWhen(s.login_at)}</td><td>${fmtWhen(s.last_seen_at)}</td><td>${dur(s.mins)}</td>
+      <td>${s.dealer_id?`<button class="go sm" onclick="openDetail('${s.dealer_id}')">Open</button>`:""}</td></tr>`).join("")
+    : `<tr><td colspan="5" class="empty">No dealer logins recorded yet.</td></tr>`;
+  app.innerHTML=kpis+`<div class="card">
+      <h2>Open carts <span class="hint" style="text-transform:none">— dealers with products in their cart that haven't been ordered yet. Great for a follow-up call.</span></h2>
+      <table><thead><tr><th>Dealer</th><th class="num">Items</th><th class="num">Est. value</th><th>What's in it</th><th>Updated</th><th></th></tr></thead><tbody>${cartRows}</tbody></table>
+    </div>
+    <div class="card">
+      <h2>Recent logins <span class="hint" style="text-transform:none">— when each dealer signed in and how long they stayed (a heartbeat updates while their tab is open).</span></h2>
+      <table><thead><tr><th>Dealer</th><th>Logged in</th><th>Last seen</th><th>Duration</th><th></th></tr></thead><tbody>${sessRows}</tbody></table>
+    </div>`;
 }
 function renderLogins(){
   const app=$("#app"); const L=DATA.logins||[];
