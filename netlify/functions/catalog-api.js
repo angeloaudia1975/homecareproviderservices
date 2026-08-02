@@ -54,13 +54,17 @@ exports.handler = async (event)=>{
         sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,name,category,base_price,msrp,image,description,active,tiers,price_note`).catch(()=>[]),
         sb("GET",`product_links?manufacturer=eq.${encodeURIComponent(slug)}&select=code,label,url`).catch(()=>[]),
       ]);
-      const overRows=await sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(slug)}&select=code,patch`).catch(()=>[]);
+      const [overRows,featRows]=await Promise.all([
+        sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(slug)}&select=code,patch`).catch(()=>[]),
+        sb("GET",`featured_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,active`).catch(()=>[]),
+      ]);
       const linkMap=Object.fromEntries((links||[]).map(l=>[l.code,{label:l.label||"More Information",url:l.url}]));
       const overrides=Object.fromEntries((overRows||[]).map(o=>[o.code,o.patch||{}]));
+      const featured=(featRows||[]).filter(f=>f.active!==false).map(f=>f.code);
       // full catalog fields so the editor can show + edit everything (incl. tiers)
       const products=(prods||[]).map(p=>({code:p.code,name:p.name,category:p.category||"",image:p.image||"",
         base_price:p.base_price,msrp:p.msrp,description:p.description||"",tiers:p.tiers||null,price_note:p.price_note||"",group:p.group||""}));
-      return json(200,{products,custom:custom||[],links:linkMap,overrides});
+      return json(200,{products,custom:custom||[],links:linkMap,overrides,featured});
     }
 
     if(event.httpMethod==="POST"){
@@ -124,6 +128,20 @@ exports.handler = async (event)=>{
       if(b.action==="clear_override"){
         if(!b.manufacturer||!b.code) return json(400,{error:"manufacturer, code required"});
         await sb("DELETE",`product_overrides?manufacturer=eq.${encodeURIComponent(b.manufacturer)}&code=eq.${encodeURIComponent(b.code)}`,null,{Prefer:"return=minimal"});
+        return json(200,{ok:true});
+      }
+
+      // Feature / unfeature a product straight from the Catalog editor (writes the same
+      // featured_products table the Featured page uses).
+      if(b.action==="set_featured"){
+        if(!b.manufacturer||!b.code) return json(400,{error:"manufacturer, code required"});
+        let rank=0; try{ const ex=await sb("GET",`featured_products?select=rank&order=rank.desc&limit=1`); rank=(ex&&ex[0]&&(+ex[0].rank+1))||0; }catch(e){}
+        await sb("POST","featured_products",{manufacturer:b.manufacturer,code:String(b.code),name:b.name||null,rank,active:true,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
+        return json(200,{ok:true});
+      }
+      if(b.action==="unset_featured"){
+        if(!b.manufacturer||!b.code) return json(400,{error:"manufacturer, code required"});
+        await sb("DELETE",`featured_products?manufacturer=eq.${encodeURIComponent(b.manufacturer)}&code=eq.${encodeURIComponent(b.code)}`,null,{Prefer:"return=minimal"});
         return json(200,{ok:true});
       }
       if(b.action==="delete_product"){
