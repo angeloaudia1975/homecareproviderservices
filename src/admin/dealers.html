@@ -152,14 +152,16 @@ function render(){
     <div class="kpi"><div class="l">Review queue</div><div class="v warn">${rev}</div></div>
     <div class="kpi"><div class="l">Suggested dupes</div><div class="v orange">${dup}</div></div></div>`;
   const plog=(DATA.logins||[]).filter(l=>l.status==="pending").length;
+  const pchg=(DATA.changeRequests||[]).length;
   const tabs=`<div class="tabs">
     <button class="tab ${TAB==='all'?'on':''}" onclick="setTab('all')">All dealers</button>
     <button class="tab ${TAB==='review'?'on':''}" onclick="setTab('review')">Review queue${rev?` (${rev})`:""}</button>
     <button class="tab ${TAB==='dupes'?'on':''}" onclick="setTab('dupes')">Suggested duplicates${dup?` (${dup})`:""}</button>
     <button class="tab ${TAB==='logins'?'on':''}" onclick="setTab('logins')">Pending logins${plog?` (${plog})`:""}</button>
+    <button class="tab ${TAB==='changes'?'on':''}" onclick="setTab('changes')">Account changes${pchg?` (${pchg})`:""}</button>
     <button class="tab ${TAB==='import'?'on':''}" onclick="setTab('import')">Import contacts</button></div>`;
   $("#body").innerHTML=kpis+tabs+mergeBar()+`<div id="app"></div>`;
-  ({all:renderAll,review:renderReview,dupes:renderDupes,logins:renderLogins,import:renderImport}[TAB])();
+  ({all:renderAll,review:renderReview,dupes:renderDupes,logins:renderLogins,changes:renderChanges,import:renderImport}[TAB])();
 }
 function mergeBar(){
   if(SEL.size<1) return "";
@@ -424,6 +426,28 @@ async function saveLoginEmailDlg(uid){
 function reqLine(r){ if(!r)return ""; const loc=[r.city,r.state].filter(Boolean).join(", ");
   const bits=[r.contact,r.phone,r.address,loc,r.zip].map(x=>(x||"").trim()).filter(Boolean);
   return bits.length?`<div class="hint" style="margin-top:3px">${esc(bits.join(" · "))}</div>`:""; }
+/* ---------- Account changes (dealer self-service edits awaiting approval) ---------- */
+function chgLine(lbl,val){ return val?`<div><span class="dim" style="font-size:11px">${esc(lbl)}:</span> <b>${esc(val)}</b></div>`:""; }
+function addrStr(a){ if(!a)return ""; return [a.address,[a.city,a.state].filter(Boolean).join(", "),a.zip].filter(Boolean).join(" · "); }
+async function approveChange(id){ await post({action:"approve_change",id},"Applying…"); await load(); TAB="changes"; render(); }
+async function rejectChange(id){ if(!confirm("Reject this change request? The dealer's account will stay as-is."))return; await post({action:"reject_change",id},"Saving…"); await load(); TAB="changes"; render(); }
+function renderChanges(){
+  const app=$("#app"); const C=DATA.changeRequests||[];
+  const rows=C.length? C.map(r=>{const c=r.changes||{};
+    const bits=[chgLine("Contact",c.contact_name),chgLine("Phone",c.phone),chgLine("Email",c.email),
+      chgLine("Shipping",addrStr(c.shipping)),chgLine("Billing",addrStr(c.billing))].filter(Boolean).join("");
+    return `<tr>
+      <td class="lbl">${esc(r.dealer_name||r.email||"—")}${r.email?`<div class="hint" style="margin-top:2px">${esc(r.email)}</div>`:""}</td>
+      <td>${bits||'<span class="dim">no fields</span>'}</td>
+      <td>${fmtDate(r.created_at)}</td>
+      <td style="white-space:nowrap"><button class="go orange sm" onclick="approveChange('${r.id}')">Approve &amp; apply</button>
+        <button class="go sm" onclick="rejectChange('${r.id}')">Reject</button></td></tr>`;}).join("")
+    : `<tr><td colspan="4" class="empty">No account-change requests right now.</td></tr>`;
+  app.innerHTML=`<div class="card">
+    <h2>Account changes <span class="hint" style="text-transform:none">— dealers who edited their own contact, shipping, or billing details in the portal. Approve to apply the change to the dealer record (shipping/billing are also stored as addresses on file).</span></h2>
+    <table><thead><tr><th>Dealer</th><th>Requested changes</th><th>Submitted</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+  </div>`;
+}
 function renderLogins(){
   const app=$("#app"); const L=DATA.logins||[];
   const pending=L.filter(l=>l.status==="pending"), approved=L.filter(l=>l.status==="approved"), revoked=L.filter(l=>l.status==="revoked");
