@@ -34,12 +34,23 @@ exports.handler = async (event)=>{
         ]);
         return json(200,{featured:feat||[],manufacturers:(mfrs||[]).map(m=>({slug:m.slug,name:m.name,hasData:!!m.hasData}))});
       }
-      const [prods,featRows]=await Promise.all([
+      const [prods,featRows,custom,overRows,imgRows]=await Promise.all([
         fetchJson(`${ORDERING_BASE}/data/${slug}.json`).catch(()=>[]),
         sb("GET",`featured_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,note,rank,active`).catch(()=>[]),
+        sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,name,category,image,active`).catch(()=>[]),
+        sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(slug)}&select=code,patch`).catch(()=>[]),
+        sb("GET",`product_images?manufacturer=eq.${encodeURIComponent(slug)}&select=code,url`).catch(()=>[]),
       ]);
       const featured=Object.fromEntries((featRows||[]).map(f=>[f.code,{note:f.note,rank:f.rank,active:f.active}]));
-      const products=(prods||[]).map(p=>({code:p.code,name:p.name,category:p.category||"",image:p.image||""}));
+      const over=Object.fromEntries((overRows||[]).map(o=>[o.code,o.patch||{}]));
+      const imgs=Object.fromEntries((imgRows||[]).map(i=>[i.code,i.url]));
+      // catalog products with any admin edits/hides applied, then admin-added (custom) products
+      let products=(prods||[]).map(p=>{const o=over[p.code]||{};
+        return {code:p.code,name:o.name||p.name,category:o.category||p.category||"",image:o.image||imgs[p.code]||p.image||"",hidden:o.active===false};})
+        .filter(p=>!p.hidden);
+      const have=new Set(products.map(p=>p.code));
+      (custom||[]).forEach(c=>{ if(c.active===false||have.has(c.code)) return;
+        products.push({code:c.code,name:c.name,category:c.category||"",image:c.image||imgs[c.code]||"",added:true}); });
       return json(200,{products,featured});
     }
 
