@@ -9,7 +9,7 @@ description: "Request dealer pricing, product recommendations, and account setup
     <div class="section-head">
       <p class="eyebrow">Become a Dealer</p>
       <h1 style="font-size:clamp(30px,4vw,46px);color:#fff;">Grow your showroom with HCPS.</h1>
-      <p class="lead">Request dealer pricing, product recommendations, showroom planning, or account setup across any of our {{ site.stats.manufacturers }} manufacturer partners. A regional consultant will follow up personally.</p>
+      <p class="lead">Request dealer pricing, product recommendations, showroom planning, or account setup across any of our {{ activeManufacturers.length }} manufacturer partners. A regional consultant will follow up personally.</p>
     </div>
   </div>
 </section>
@@ -32,7 +32,7 @@ description: "Request dealer pricing, product recommendations, and account setup
         <label for="f-interest">Primary interest</label>
         <select id="f-interest" name="interest">
           <option value="">Select…</option>
-          {% for m in manufacturers %}<option value="{{ m.name }}">{{ m.name }}</option>{% endfor %}
+          {% for m in activeManufacturers %}<option value="{{ m.name }}">{{ m.name }}</option>{% endfor %}
           <option value="Complete HCPS dealer program">Complete HCPS dealer program</option>
           <option value="Training / account development">Training / account development</option>
         </select>

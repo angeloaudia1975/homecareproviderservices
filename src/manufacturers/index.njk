@@ -2,17 +2,17 @@
 layout: layouts/base.njk
 title: Manufacturers
 permalink: /manufacturers/
-description: "The 12 manufacturer partners represented by HomeCare Provider Services."
+description: "The manufacturer partners represented by HomeCare Provider Services."
 ---
 <section>
   <div class="container">
     <div class="section-head">
       <p class="eyebrow">Our Manufacturing Partners</p>
-      <h2>{{ site.stats.manufacturers }} manufacturers. One representation team.</h2>
+      <h2>{{ activeManufacturers.length }} manufacturers. One representation team.</h2>
       <p>HomeCare Provider Services is the authorized sales representative for the manufacturers below.</p>
     </div>
     <div class="manu-grid">
-      {% for m in manufacturers %}
+      {% for m in activeManufacturers %}
       <article class="manu-card">
         <a href="/manufacturers/{{ m.id }}/" class="manu-logo-tile" style="background-image:url('{{ m.logo }}')" aria-label="{{ m.name }}"></a>
         <p class="cat">{{ m.category }}</p>

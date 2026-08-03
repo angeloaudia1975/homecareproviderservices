@@ -16,7 +16,7 @@
   <div class="container topbar-inner">
     <div class="topbar-left">
       <span>{{ site.tagline }} Since {{ site.founded }}</span><span class="sep">&bull;</span>
-      <span>{{ site.stats.manufacturers }} Manufacturing Partners</span><span class="sep">&bull;</span>
+      <span>{{ activeManufacturers.length }} Manufacturing Partners</span><span class="sep">&bull;</span>
       <span>{{ site.stats.dealers }} Active Dealers</span>
     </div>
     <div class="topbar-right">
@@ -36,7 +36,7 @@
       <div class="dropdown">
         <a href="/manufacturers/">Manufacturers</a>
         <div class="dropdown-menu mega">
-          {% for m in manufacturers %}<a href="/manufacturers/{{ m.id }}/">{{ m.name }}</a>{% endfor %}
+          {% for m in activeManufacturers %}<a href="/manufacturers/{{ m.id }}/">{{ m.name }}</a>{% endfor %}
         </div>
       </div>
       <div class="dropdown">

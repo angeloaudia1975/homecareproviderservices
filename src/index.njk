@@ -7,7 +7,7 @@ permalink: /
   <div class="container hero-grid">
     <div class="hero-copy">
       <p class="eyebrow">{{ home.hero.eyebrow }}</p>
-      <h1>Connecting <span>{{ site.stats.manufacturers }} Manufacturers</span> to <span>{{ site.stats.dealers }} Dealers</span> Across {{ home.hero.territory }}.</h1>
+      <h1>Connecting <span>{{ activeManufacturers.length }} Manufacturers</span> to <span>{{ site.stats.dealers }} Dealers</span> Across {{ home.hero.territory }}.</h1>
       <p class="lead">{{ home.hero.lead1 }}</p>
       <p class="lead">{{ home.hero.lead2 }}</p>
       <div class="hero-actions">
@@ -29,7 +29,7 @@ permalink: /
         </article>
         <article class="kpi-tile">
           <span class="kpi-ic"><svg viewBox="0 0 24 24" width="17" height="17" fill="#fff"><path d="M3 21V4l8 3v14zm10 0V8l8 3v10zM6 8h2v2H6zm0 4h2v2H6zm0 4h2v2H6z"/></svg></span>
-          <div><b>{{ site.stats.manufacturers }}</b><strong>Manufacturer Partners</strong><span>A portfolio for your showroom.</span></div>
+          <div><b>{{ activeManufacturers.length }}</b><strong>Manufacturer Partners</strong><span>A portfolio for your showroom.</span></div>
         </article>
         <article class="kpi-tile accent">
           <span class="kpi-ic"><svg viewBox="0 0 24 24" width="17" height="17" fill="#fff"><path d="M12 2.5l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 18.6 6.1 21.3l1.2-6.6L2.5 9.5l6.6-.9z"/></svg></span>
@@ -45,7 +45,7 @@ permalink: /
     <span>&#9733; {{ site.tagline }}</span>
     <span>Since {{ site.founded }}</span>
     <span>{{ site.stats.dealers }} Active Dealers</span>
-    <span>{{ site.stats.manufacturers }} Manufacturing Partners</span>
+    <span>{{ activeManufacturers.length }} Manufacturing Partners</span>
     <span>{{ site.territory.states_display }}</span>
   </div>
 </section>
@@ -54,7 +54,7 @@ permalink: /
   <div class="container">
     <p class="label">Trusted by Leading Healthcare Manufacturers</p>
     <div class="logo-row">
-      {% for m in manufacturers %}
+      {% for m in activeManufacturers %}
       <div class="badge-logo" role="img" aria-label="{{ m.name }}">
         <img src="{{ m.logo }}" alt="{{ m.name }} logo" loading="lazy">
       </div>
@@ -71,7 +71,7 @@ permalink: /
       <p>{{ home.manufacturers_section.intro }}</p>
     </div>
     <div class="manu-grid">
-      {% for m in manufacturers %}
+      {% for m in activeManufacturers %}
       <article class="manu-card">
         <a href="/manufacturers/{{ m.id }}/" class="manu-logo-tile" style="background-image:url('{{ m.logo }}')" aria-label="{{ m.name }}"></a>
         <p class="cat">{{ m.category }}</p>
@@ -154,7 +154,7 @@ permalink: /
   <div class="container">
     <div class="section-head">
       <p class="eyebrow">{{ home.territory_section.eyebrow }}</p>
-      <h2>{{ site.stats.states }} States. {{ site.stats.dealers }} Dealers. {{ site.stats.manufacturers }} Manufacturer Partners.</h2>
+      <h2>{{ site.stats.states }} States. {{ site.stats.dealers }} Dealers. {{ activeManufacturers.length }} Manufacturer Partners.</h2>
       <p>HomeCare Provider Services serves dealers across {{ site.territory.states_display | replace(" &bull; ", ", ") }} &mdash; with regional consultants on the ground in each territory.</p>
     </div>
     <div class="territory-layout">
@@ -164,7 +164,7 @@ permalink: /
         <div class="territory-stats">
           <span><strong>{{ site.stats.states }}</strong>States</span>
           <span><strong>{{ site.stats.dealers }}</strong>Dealers</span>
-          <span><strong>{{ site.stats.manufacturers }}</strong>Manufacturers</span>
+          <span><strong>{{ activeManufacturers.length }}</strong>Manufacturers</span>
         </div>
         <div class="region-list">
           <h4>Regional Coverage</h4>

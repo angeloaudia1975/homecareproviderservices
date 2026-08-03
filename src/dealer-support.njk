@@ -43,7 +43,7 @@ description: "Request pricing access, place an order, order literature, schedule
         <label for="s-manu">Manufacturer (if applicable)</label>
         <select id="s-manu" name="manufacturer">
           <option value="">All / not sure</option>
-          {% for m in manufacturers %}<option value="{{ m.name }}">{{ m.name }}</option>{% endfor %}
+          {% for m in activeManufacturers %}<option value="{{ m.name }}">{{ m.name }}</option>{% endfor %}
         </select>
       </div>
       <div>

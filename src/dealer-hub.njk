@@ -26,7 +26,7 @@ description: "The HCPS Dealer Hub — a dealer dashboard for orders, pricing acc
         </div>
       </div>
       <div class="dash-v3-metrics">
-        <span><b>{{ site.stats.manufacturers }}</b> Manufacturer Centers</span>
+        <span><b>{{ activeManufacturers.length }}</b> Manufacturer Centers</span>
         <span><b>6</b> Dealer Workflows</span>
         <span><b>{{ site.stats.states }}</b> Strategic States</span>
         <span><b>{{ site.stats.dealers }}</b> Dealer Relationships</span>
@@ -115,7 +115,7 @@ description: "The HCPS Dealer Hub — a dealer dashboard for orders, pricing acc
         </div>
 
         <div class="dash-v3-mfg-grid">
-          {% for m in manufacturers %}
+          {% for m in activeManufacturers %}
           <article>
             <a class="dash-v3-mfg-logo" href="/manufacturers/{{ m.id }}/">
               <img src="{{ m.logo }}" alt="{{ m.name }} logo" loading="lazy">
@@ -160,7 +160,7 @@ description: "The HCPS Dealer Hub — a dealer dashboard for orders, pricing acc
             <div class="dash-v3-app-row"><b>3</b><span>New pricing files</span></div>
             <div class="dash-v3-app-row"><b>2</b><span>Open dealer requests</span></div>
             <div class="dash-v3-app-row"><b>1</b><span>Scheduled training</span></div>
-            <div class="dash-v3-app-row"><b>{{ site.stats.manufacturers }}</b><span>Approved manufacturer lines</span></div>
+            <div class="dash-v3-app-row"><b>{{ activeManufacturers.length }}</b><span>Approved manufacturer lines</span></div>
           </div>
         </div>
       </section>

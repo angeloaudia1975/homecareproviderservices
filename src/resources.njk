@@ -17,7 +17,7 @@ description: "Credit applications, brochures, catalogs, price lists and forms fr
       <input type="search" id="doc-search" placeholder="Search documents..." aria-label="Search documents">
       <select id="filter-manu" aria-label="Filter by manufacturer">
         <option value="">All manufacturers</option>
-        {% for m in manufacturers %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
+        {% for m in activeManufacturers %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
       </select>
       <select id="filter-type" aria-label="Filter by document type">
         <option value="">All document types</option>

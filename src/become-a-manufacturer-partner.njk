@@ -26,7 +26,7 @@ eleventyExcludeFromCollections: true
       <div class="m-hero-stats">
         <div class="m-stat"><strong>{{ site.stats.dealers }}</strong><span>Active Dealers</span></div>
         <div class="m-stat"><strong>{{ site.stats.states }}</strong><span>States</span></div>
-        <div class="m-stat"><strong>{{ site.stats.manufacturers }}</strong><span>Partners</span></div>
+        <div class="m-stat"><strong>{{ activeManufacturers.length }}</strong><span>Partners</span></div>
       </div>
     </aside>
     {% endif %}
@@ -55,7 +55,7 @@ eleventyExcludeFromCollections: true
   <div class="container">
     <div class="section-head">
       <p class="eyebrow">{{ pg.territory.eyebrow }}</p>
-      <h2>{{ site.stats.states }} States. {{ site.stats.dealers }} Dealers. {{ site.stats.manufacturers }} Manufacturer Partners.</h2>
+      <h2>{{ site.stats.states }} States. {{ site.stats.dealers }} Dealers. {{ activeManufacturers.length }} Manufacturer Partners.</h2>
       <p>{{ pg.territory.intro }}</p>
     </div>
     <div class="territory-layout">
@@ -65,7 +65,7 @@ eleventyExcludeFromCollections: true
         <div class="territory-stats">
           <span><strong>{{ site.stats.states }}</strong>States</span>
           <span><strong>{{ site.stats.dealers }}</strong>Dealers</span>
-          <span><strong>{{ site.stats.manufacturers }}</strong>Manufacturers</span>
+          <span><strong>{{ activeManufacturers.length }}</strong>Manufacturers</span>
         </div>
         <div class="region-list">
           <h4>Regional Coverage</h4>

@@ -471,24 +471,62 @@
   function renderManuIndex() {
     var v = $("#view"); v.innerHTML = "";
     v.appendChild(h("div", { class: "view-head" }, [ h("h2", {}, "Manufacturers") ]));
-    v.appendChild(h("p", { class: "section-note" }, "Choose a manufacturer to edit its page content and section blocks."));
+    v.appendChild(h("p", { class: "section-note" }, "Add, hide, or remove a manufacturer \u2014 or click one to edit its page. Hidden or removed manufacturers drop off the website and the homepage count updates automatically when you publish."));
+    var bar = h("div", { style: "display:flex;align-items:center;gap:12px;margin-bottom:12px" });
+    bar.appendChild(h("button", { class: "btn primary", onclick: function () { addManufacturer(); } }, "+ Add manufacturer"));
+    var countEl = h("span", { class: "section-note", style: "margin:0" }, "");
+    bar.appendChild(countEl);
+    v.appendChild(bar);
     var wrap = h("div", { class: "grid" });
     v.appendChild(wrap);
-    busy(true, "Loading…");
+    busy(true, "Loading\u2026");
     ensureManufacturers().then(function () {
+      var showing = state.manufacturers.filter(function (m) { return !m.hidden; }).length;
+      countEl.textContent = showing + " showing of " + state.manufacturers.length + " on the site";
       state.manufacturers.forEach(function (m, i) {
         var built = (m.sections || []).length;
-        wrap.appendChild(h("button", { class: "pick-card", onclick: function () { editManufacturer(i); } }, [
-          h("div", { class: "nm" }, m.name || m.id),
-          h("div", { class: "meta" }, m.category || ""),
-          h("div", {}, built
-            ? h("span", { class: "badge built" }, built + " section" + (built > 1 ? "s" : ""))
-            : h("span", { class: "badge stub" }, "Stub — needs building")),
-        ]));
+        var cell = h("div", { style: "display:flex;flex-direction:column;gap:6px" + (m.hidden ? ";opacity:.55" : "") }, [
+          h("button", { class: "pick-card", onclick: function () { editManufacturer(i); } }, [
+            h("div", { class: "nm" }, (m.name || m.id) + (m.hidden ? "  \u00b7 hidden" : "")),
+            h("div", { class: "meta" }, m.category || ""),
+            h("div", {}, built
+              ? h("span", { class: "badge built" }, built + " section" + (built > 1 ? "s" : ""))
+              : h("span", { class: "badge stub" }, "Stub \u2014 needs building")),
+          ]),
+          h("div", { style: "display:flex;gap:8px" }, [
+            h("button", { class: "btn ghost sm", onclick: function () { toggleManuHidden(i); } }, m.hidden ? "Show on site" : "Hide from site"),
+            h("button", { class: "btn ghost sm", style: "color:#b91c1c", onclick: function () { removeManufacturer(i); } }, "Remove"),
+          ]),
+        ]);
+        wrap.appendChild(cell);
       });
       busy(false);
     }).catch(function (e) { busy(false); toast(e.message, "bad"); });
   }
+  function manuSlug(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }
+  function addManufacturer() {
+    var name = prompt("New manufacturer name:");
+    if (name == null) return; name = name.trim(); if (!name) return;
+    var id = manuSlug(name);
+    if (state.manufacturers.some(function (m) { return m.id === id; })) { toast("A manufacturer with that name already exists.", "bad"); return; }
+    state.manufacturers.push({ id: id, name: name, category: "", description: "", website: "", logo: "", featured: false, ordering_url: "", brand: { accent: "#1681c2", dark: "#0b0d0f" }, sections: [] });
+    state.editingManu = state.manufacturers.length - 1;
+    saveManufacturers();
+    renderManuEditor();
+  }
+  function toggleManuHidden(i) {
+    state.manufacturers[i].hidden = !state.manufacturers[i].hidden;
+    saveManufacturers();
+    renderManuIndex();
+  }
+  function removeManufacturer(i) {
+    var m = state.manufacturers[i];
+    if (!confirm("Remove \u201c" + (m.name || m.id) + "\u201d from the website completely? This deletes its page and homepage card. To hide it temporarily instead, use \u201cHide from site.\u201d")) return;
+    state.manufacturers.splice(i, 1);
+    saveManufacturers();
+    renderManuIndex();
+  }
+
 
   // ---------- Manufacturer editor ----------
   function editManufacturer(index) {
