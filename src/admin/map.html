@@ -27,11 +27,29 @@
  .count{font-size:12.5px;color:var(--muted)}
  .legend{display:flex;gap:12px;align-items:center;font-size:12px;color:var(--muted)}
  .legend i{display:inline-block;width:11px;height:11px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25);margin-right:4px;vertical-align:-1px}
- #map{flex:1;min-height:0}
+ .wrap{flex:1;min-height:0;position:relative}
+ #map{position:absolute;inset:0}
  .pin span{display:block;width:15px;height:15px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3)}
+ .pin.inroute span{width:19px;height:19px;border-color:#2B4071;box-shadow:0 0 0 2px #2B4071}
  .pop b{font-size:13.5px} .pop .st{display:inline-block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;padding:1px 7px;border-radius:20px;margin-left:4px}
  .pop .row{font-size:12px;color:#333;margin-top:3px}.pop a{color:var(--blue);font-weight:700;font-size:12px}
+ .pop .addbtn{margin-top:7px;border:1px solid var(--blue-dk);background:var(--blue);color:#fff;border-radius:7px;padding:5px 10px;font-weight:700;font-size:12px;cursor:pointer}
  .banner{margin:0;padding:10px 18px;background:#fff7ed;border-bottom:1px solid #fed7aa;color:#9a3412;font-size:13px}
+ /* route panel */
+ .routep{position:absolute;left:14px;bottom:14px;z-index:600;width:290px;max-height:62%;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 34px rgba(16,24,40,.22);overflow:hidden}
+ .routep .rhead{display:flex;align-items:center;gap:8px;padding:11px 13px;border-bottom:1px solid var(--line);font-size:14px}
+ .routep .rhead .m{color:var(--muted);font-size:11.5px;font-weight:600}
+ .routep .rx{margin-left:auto;background:none;border:0;color:var(--danger);font-weight:700;font-size:12px;cursor:pointer}
+ .routep ol{list-style:none;margin:0;padding:6px;overflow:auto;flex:1}
+ .routep li{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;font-size:12.5px}
+ .routep li:hover{background:#f5f7fa}
+ .routep li .n{width:20px;height:20px;flex:none;border-radius:50%;background:var(--blue);color:#fff;font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center}
+ .routep li .nm{flex:1;line-height:1.25}.routep li .nm small{color:var(--muted)}
+ .routep li .del{background:none;border:0;color:#b0b8c2;cursor:pointer;font-size:14px;font-weight:800}
+ .routep li .del:hover{color:var(--danger)}
+ .routep .ractions{display:flex;gap:7px;padding:11px;border-top:1px solid var(--line);flex-wrap:wrap}
+ .routep .ractions .btn{flex:1;justify-content:center;text-align:center;padding:9px 8px;font-size:12.5px}
+ .emptyR{padding:14px;color:var(--muted);font-size:12.5px;text-align:center}
  /* gate */
  .gate{position:fixed;inset:0;z-index:1000;background:linear-gradient(135deg,#16202e,#2B4071);display:grid;place-items:center;padding:20px}
  .gate-card{background:#fff;border-radius:16px;padding:30px;width:100%;max-width:370px;box-shadow:0 24px 70px rgba(0,0,0,.35)}
@@ -74,10 +92,21 @@
   <button class="btn" id="geoBtn" onclick="geocodeAll()">Geocode addresses</button>
 </div>
 
-<div id="map"></div>
+<div class="wrap">
+  <div id="map"></div>
+  <div class="routep" id="routep" hidden>
+    <div class="rhead"><b>Route plan</b> <span class="m" id="rmeta"></span><button class="rx" onclick="clearRoute()">Clear</button></div>
+    <ol id="rlist"></ol>
+    <div class="ractions">
+      <button class="btn ghost" onclick="optimize()">Optimize order</button>
+      <button class="btn" onclick="openGmaps()">Google Maps →</button>
+    </div>
+  </div>
+</div>
+
 <div id="gate"></div>
 
-<div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:1200;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.85);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.0</div>
+<div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:1200;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.85);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.1</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
@@ -85,7 +114,7 @@
 const $=s=>document.querySelector(s);
 const TKEY="hcps_admin_token";
 let TOKEN=sessionStorage.getItem(TKEY)||null;
-let MAP=null, CLUSTER=null, POINTS=[], BOOTED=false;
+let MAP=null, CLUSTER=null, POINTS=[], BOOTED=false, ROUTE=[], ROUTELINE=null;
 
 const API="/.netlify/functions/geocode-api";
 async function api(method,body){
@@ -107,36 +136,69 @@ function lock(){ sessionStorage.removeItem(TKEY); location.reload(); }
 
 const COLORS={active:"#1f9d55",prospect:"#F5821F",review:"#d64545"};
 const colorOf=s=>COLORS[String(s||"").toLowerCase()]||"#3B599A";
-function icon(color){ return L.divIcon({className:"pin",html:`<span style="background:${color}"></span>`,iconSize:[16,16],iconAnchor:[8,8]}); }
+function icon(color,inroute){ return L.divIcon({className:"pin"+(inroute?" inroute":""),html:`<span style="background:${color}"></span>`,iconSize:[16,16],iconAnchor:[8,8]}); }
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 function initMap(){
-  MAP=L.map("map",{zoomControl:true}).setView([39.5,-98.35],4); // continental US
+  MAP=L.map("map",{zoomControl:true}).setView([39.5,-98.35],4);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap contributors"}).addTo(MAP);
   CLUSTER=L.markerClusterGroup({maxClusterRadius:45}); MAP.addLayer(CLUSTER);
 }
 function fillStateFilter(){
-  const sel=$("#fState"); const states=[...new Set(POINTS.map(p=>p.state).filter(Boolean))].sort();
-  sel.innerHTML=`<option value="">All states</option>`+states.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("");
+  const sel=$("#fState"); const cur=sel.value; const states=[...new Set(POINTS.map(p=>p.state).filter(Boolean))].sort();
+  sel.innerHTML=`<option value="">All states</option>`+states.map(s=>`<option value="${esc(s)}"${s===cur?" selected":""}>${esc(s)}</option>`).join("");
 }
+function inRoute(p){ return ROUTE.some(s=>s._i===p._i); }
 function draw(){
   if(!CLUSTER)return; CLUSTER.clearLayers();
   const fs=$("#fState").value, ft=$("#fStatus").value;
   const shown=POINTS.filter(p=>(!fs||p.state===fs)&&(!ft||String(p.status).toLowerCase()===ft));
   const markers=shown.map(p=>{
-    const m=L.marker([p.lat,p.lng],{icon:icon(colorOf(p.status))});
-    const chipC=colorOf(p.status);
-    m.bindPopup(`<div class="pop"><b>${esc(p.name)}</b>${p.status?`<span class="st" style="background:${chipC}22;color:${chipC}">${esc(p.status)}</span>`:""}
+    const m=L.marker([p.lat,p.lng],{icon:icon(colorOf(p.status),inRoute(p))});
+    const c=colorOf(p.status);
+    m.bindPopup(`<div class="pop"><b>${esc(p.name)}</b>${p.status?`<span class="st" style="background:${c}22;color:${c}">${esc(p.status)}</span>`:""}
       ${p.label?`<div class="row">${esc(p.label)}</div>`:""}
       <div class="row">${esc([p.city,p.state].filter(Boolean).join(", "))}</div>
       ${p.email?`<div class="row">${esc(p.email)}</div>`:""}
+      <button class="addbtn" onclick="addStop(${p._i})">${inRoute(p)?"✓ In route":"＋ Add to route"}</button>
       <div class="row" style="margin-top:5px"><a href="/admin/dealers.html">Open in Dealer Manager →</a></div></div>`);
     return m;
   });
   CLUSTER.addLayers(markers);
   $("#count").textContent=`${shown.length.toLocaleString()} of ${POINTS.length.toLocaleString()} locations`;
-  if(shown.length){ try{ MAP.fitBounds(L.latLngBounds(shown.map(p=>[p.lat,p.lng])).pad(0.15)); }catch(e){} }
+  if(shown.length && !ROUTE.length){ try{ MAP.fitBounds(L.latLngBounds(shown.map(p=>[p.lat,p.lng])).pad(0.15)); }catch(e){} }
 }
+
+/* ---------- route planning ---------- */
+function hav(a,b){ const R=3958.8,tr=x=>x*Math.PI/180; const dLat=tr(b.lat-a.lat),dLng=tr(b.lng-a.lng);
+  const s=Math.sin(dLat/2)**2+Math.cos(tr(a.lat))*Math.cos(tr(b.lat))*Math.sin(dLng/2)**2; return 2*R*Math.asin(Math.sqrt(s)); }
+function routeMiles(){ let m=0; for(let i=1;i<ROUTE.length;i++) m+=hav(ROUTE[i-1],ROUTE[i]); return m; }
+function addStop(i){ const p=POINTS[i]; if(!p)return; if(inRoute(p)){ ROUTE=ROUTE.filter(s=>s._i!==p._i); } else { if(ROUTE.length>=25){ alert("That's a lot of stops — keep a route under 25 for a workable day."); return; } ROUTE.push(p); } renderRoute(); draw(); if(MAP)MAP.closePopup(); }
+function removeStop(i){ ROUTE.splice(i,1); renderRoute(); draw(); }
+function clearRoute(){ ROUTE=[]; renderRoute(); draw(); }
+function optimize(){
+  if(ROUTE.length<3){ renderRoute(); return; }
+  const ordered=[ROUTE[0]]; const pool=ROUTE.slice(1); let cur=ROUTE[0];
+  while(pool.length){ let bi=0,bd=Infinity; for(let i=0;i<pool.length;i++){const d=hav(cur,pool[i]); if(d<bd){bd=d;bi=i;}} cur=pool.splice(bi,1)[0]; ordered.push(cur); }
+  ROUTE=ordered; renderRoute();
+}
+function renderRoute(){
+  const panel=$("#routep"); panel.hidden = ROUTE.length===0;
+  const list=$("#rlist");
+  if(!ROUTE.length){ list.innerHTML=""; if(ROUTELINE){MAP.removeLayer(ROUTELINE);ROUTELINE=null;} return; }
+  list.innerHTML=ROUTE.map((s,i)=>`<li><span class="n">${i+1}</span><span class="nm">${esc(s.name)}<br><small>${esc([s.city,s.state].filter(Boolean).join(", "))}</small></span><button class="del" title="Remove" onclick="removeStop(${i})">✕</button></li>`).join("");
+  $("#rmeta").textContent=`${ROUTE.length} stops · ~${Math.round(routeMiles())} mi`;
+  if(ROUTELINE){ MAP.removeLayer(ROUTELINE); ROUTELINE=null; }
+  if(ROUTE.length>=2){ ROUTELINE=L.polyline(ROUTE.map(s=>[s.lat,s.lng]),{color:"#2B4071",weight:3,opacity:.65,dashArray:"7,7"}).addTo(MAP); }
+}
+function openGmaps(){
+  if(!ROUTE.length)return;
+  let stops=ROUTE;
+  if(stops.length>10){ alert("Google Maps links support about 10 stops. Opening the first 10 — split longer trips into two."); stops=stops.slice(0,10); }
+  const url="https://www.google.com/maps/dir/"+stops.map(s=>`${s.lat},${s.lng}`).join("/");
+  window.open(url,"_blank");
+}
+
 async function refreshGeoBtn(){
   try{
     const s=await api("POST",{action:"status"});
@@ -162,7 +224,10 @@ async function loadPoints(){
   const j=await api("GET");
   if(j&&j.error==="tables_missing"){ banner(j.message); POINTS=[]; }
   else { banner(""); POINTS=(j&&j.points)||[]; }
-  fillStateFilter(); draw();
+  POINTS.forEach((p,i)=>p._i=i);
+  // keep any route stops valid (match by _i falls out of sync on reload -> rematch by name+coords)
+  if(ROUTE.length){ ROUTE=ROUTE.map(s=>POINTS.find(p=>p.name===s.name&&p.lat===s.lat&&p.lng===s.lng)).filter(Boolean); }
+  fillStateFilter(); draw(); renderRoute();
 }
 async function boot(){
   if(!TOKEN){ showGate(); return; }
@@ -171,7 +236,7 @@ async function boot(){
     await loadPoints();
     await refreshGeoBtn();
     if(!POINTS.length){ banner("No mapped locations yet — click “Geocode addresses” to plot your dealers. (If it says a table is missing, run geocode.sql in Supabase first.)"); }
-  }catch(e){ /* 401 handled in api() */ }
+  }catch(e){}
 }
 if(TOKEN) boot(); else showGate();
 </script>
