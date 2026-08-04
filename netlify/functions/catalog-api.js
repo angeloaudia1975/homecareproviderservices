@@ -42,12 +42,13 @@ exports.handler = async (event)=>{
     if(event.httpMethod==="GET"){
       const slug=(event.queryStringParameters||{}).manufacturer||"";
       if(!slug){
-        const [mfrs,logos]=await Promise.all([
+        const [mfrs,meta]=await Promise.all([
           fetchJson(`${ORDERING_BASE}/data/manufacturers.json`).catch(()=>[]),
-          sb("GET","manufacturer_meta?select=slug,logo_url").catch(()=>[]),
+          sb("GET","manufacturer_meta?select=slug,logo_url,active").catch(()=>[]),
         ]);
-        const lm=Object.fromEntries((logos||[]).map(o=>[o.slug,o.logo_url]));
-        return json(200,{manufacturers:(mfrs||[]).map(m=>({slug:m.slug,name:m.name,hasData:!!m.hasData,logo_url:lm[m.slug]||""}))});
+        const lm=Object.fromEntries((meta||[]).map(o=>[o.slug,o.logo_url]));
+        const am=Object.fromEntries((meta||[]).map(o=>[o.slug,o.active]));
+        return json(200,{manufacturers:(mfrs||[]).map(m=>({slug:m.slug,name:m.name,hasData:!!m.hasData,logo_url:lm[m.slug]||"",active:am[m.slug]!==false}))});
       }
       const [prods,custom,links]=await Promise.all([
         fetchJson(`${ORDERING_BASE}/data/${slug}.json`).catch(()=>[]),
@@ -90,6 +91,13 @@ exports.handler = async (event)=>{
       if(b.action==="clear_logo"){
         if(!b.slug) return json(400,{error:"slug required"});
         await sb("POST","manufacturer_meta?on_conflict=slug",{slug:b.slug,logo_url:null,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
+        return json(200,{ok:true});
+      }
+      // Turn a whole manufacturer on/off on the ordering platform (no redeploy). Removed
+      // manufacturers disappear from the tabs, the dealer-home cards, and the line count.
+      if(b.action==="set_active"){
+        if(!b.slug) return json(400,{error:"slug required"});
+        await sb("POST","manufacturer_meta?on_conflict=slug",{slug:b.slug,active:b.active!==false,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
         return json(200,{ok:true});
       }
 

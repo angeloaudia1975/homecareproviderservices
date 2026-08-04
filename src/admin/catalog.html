@@ -75,6 +75,14 @@ async function upload(slot,file,maxMB,cb){
 }
 function curMfr(){return MFRS.find(m=>m.slug===SLUG)||{};}
 
+/* ---- manufacturer on/off (whole line visibility on the ordering platform) ---- */
+async function setMfrActive(slug,active){
+  const m=MFRS.find(x=>x.slug===slug); if(!m)return;
+  if(!active && !confirm("Remove “"+m.name+"” from the ordering platform? Dealers will no longer see this line anywhere (tabs, home, catalog). You can restore it anytime. (This does not change the marketing website.)"))return;
+  await api("",{method:"POST",body:JSON.stringify({action:"set_active",slug,active})});
+  m.active=active; toast(active?"Restored to the platform":"Removed from the platform"); render();
+}
+
 /* ---- logo ---- */
 let LOGODRAFT="";
 async function saveLogo(){ await api("",{method:"POST",body:JSON.stringify({action:"save_logo",slug:SLUG,url:LOGODRAFT||curMfr().logo_url||""})});
@@ -251,6 +259,20 @@ function render(){
       <select onchange="SLUG=this.value;LOGODRAFT='';PDRAFT=null;PQ='';PRODQ='';loadMfr()">${mfrOpts}</select></div>
 
     <div class="card">
+      <h2>Manufacturers on the ordering platform <span class="hint" style="text-transform:none">— ${MFRS.filter(m=>m.active!==false).length} of ${MFRS.length} showing</span></h2>
+      <p class="hint">Turn a whole line on or off for dealers. Removing hides it everywhere on the ordering portal — tabs, the dealer home cards, and the catalog — instantly, with no redeploy. This controls the <b>ordering platform only</b>; the marketing website is managed separately (see the note under Website).</p>
+      <table><thead><tr><th>Manufacturer</th><th>Catalog</th><th>Status</th><th></th></tr></thead><tbody>
+      ${MFRS.map(m=>`<tr>
+        <td><b>${esc(m.name)}</b><div style="font-size:11px;color:var(--gray)">${esc(m.slug)}</div></td>
+        <td class="hint">${m.hasData?"has products":"no catalog yet"}</td>
+        <td>${m.active===false?'<span style="color:var(--red);font-weight:700">removed</span>':'<span class="ok">showing</span>'}</td>
+        <td style="white-space:nowrap">${m.active===false
+            ? `<button class="btn ghost sm" onclick="setMfrActive('${esc(m.slug)}',true)">Restore</button>`
+            : `<button class="btn ghost sm" style="color:var(--red);border-color:#f0c8c8" onclick="setMfrActive('${esc(m.slug)}',false)">Remove</button>`}</td></tr>`).join("")}
+      </tbody></table>
+    </div>
+
+    <div class="card">
       <h2>Manufacturer logo</h2>
       <p class="hint">Shows below the manufacturer name on the dealer home cards and at the top of this line's catalog page.</p>
       <div class="imgrow">
@@ -283,4 +305,5 @@ function render(){
 }
 gate();
 </script>
+<div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.1</div>
 </body></html>
