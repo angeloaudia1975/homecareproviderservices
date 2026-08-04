@@ -10,7 +10,7 @@ the new version.
 
 | Page | File | Version | Notes |
 |------|------|---------|-------|
-| Home | src/admin/index.html | 1.1 | Baseline |
+| Home | src/admin/index.html | 1.2 | Live dashboard — KPI tiles (dealers, contacts, emails, pending logins, active carts, change requests), approval callout, and passcode remembered for the browser session |
 | Catalog | src/admin/catalog.html | 1.1 | Adds "Manufacturers on the ordering platform" on/off manager (remove/restore a whole line) |
 | Analytics | src/admin/analytics.html | 1.1 | Baseline |
 | Dealers | src/admin/dealers.html | 1.2 | Adds "Contacts on file" total tile to the dashboard header |

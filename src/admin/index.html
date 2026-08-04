@@ -1,86 +1,226 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>HCPS Admin — Control Center</title>
 <style>
- :root{--ink:#1b2733;--blue:#3B599A;--blue-dk:#2B4071;--orange:#F5821F;--silver:#D8DEE4;--light:#F3F6FA;--gray:#5b6672;}
- *{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;background:var(--light);color:var(--ink)}
- .adminnav{background:var(--ink);display:flex;align-items:center;gap:6px;padding:10px 22px;flex-wrap:wrap}
+ :root{
+   --ink:#16202e; --blue:#3B599A; --blue-dk:#2B4071; --orange:#F5821F;
+   --bg:#eef2f7; --card:#fff; --line:#e3e8ef; --muted:#64707e;
+   --ok:#1f9d55; --warn:#e0850f; --danger:#d64545; --radius:14px;
+   --shadow:0 1px 2px rgba(16,24,40,.05),0 6px 20px rgba(16,24,40,.06);
+ }
+ *{box-sizing:border-box;margin:0;padding:0}
+ body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.5}
+ a{color:inherit;text-decoration:none}
+ /* nav */
+ .adminnav{background:var(--ink);display:flex;align-items:center;gap:4px;padding:10px 22px;flex-wrap:wrap;position:sticky;top:0;z-index:20;box-shadow:0 2px 12px rgba(0,0,0,.14)}
  .adminnav .bd{color:#fff;font-weight:800;font-size:15px;margin-right:16px;letter-spacing:.3px}
  .adminnav .bd span{color:var(--orange)}
- .adminnav a{color:#aeb9c6;text-decoration:none;font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-radius:7px}
- .adminnav a:hover{color:#fff}.adminnav a.on{color:#fff;background:var(--blue)}
- .wrap{max-width:1080px;margin:26px auto;padding:0 20px}
- h1{font-size:24px;margin:0 0 3px}.sub{color:var(--gray);font-size:13.5px;margin:0 0 22px}
+ .adminnav a{color:#aeb9c6;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-radius:7px;transition:.15s}
+ .adminnav a:hover{color:#fff;background:rgba(255,255,255,.07)}
+ .adminnav a.on{color:#fff;background:var(--blue)}
+ .adminnav .navright{margin-left:auto;display:flex;align-items:center;gap:10px}
+ .adminnav .who{color:#8493a6;font-size:11.5px}
+ .lock{background:transparent;border:1px solid rgba(255,255,255,.22);color:#cdd6e2;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer}
+ .lock:hover{background:rgba(255,255,255,.08);color:#fff}
+ /* layout */
+ .wrap{max-width:1120px;margin:26px auto;padding:0 20px 60px}
+ h1{font-size:25px;margin:0 0 3px;letter-spacing:-.01em}
+ .sub{color:var(--muted);font-size:13.5px;margin:0 0 22px}
+ /* KPI row */
+ .kpirow{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:13px;margin-bottom:22px}
+ .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px 16px;box-shadow:var(--shadow);display:block;transition:.15s;position:relative}
+ a.kpi:hover{border-color:var(--blue);transform:translateY(-2px)}
+ .kpi .l{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+ .kpi .v{font-size:29px;font-weight:800;line-height:1.1;margin-top:6px;letter-spacing:-.02em}
+ .kpi .s{font-size:11.5px;color:var(--muted);margin-top:2px}
+ .kpi.act{border-left:4px solid var(--orange)}
+ .kpi.act .v{color:var(--blue-dk)}
+ .kpi .flag{position:absolute;top:12px;right:12px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#9a3412;background:#fff3e6;border:1px solid #fed7aa;border-radius:20px;padding:2px 8px}
+ .kpi.dim .v{color:#b7c0cc}
+ /* callout */
+ .callout{display:flex;align-items:center;gap:12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:13px 18px;margin-bottom:22px;color:#9a3412}
+ .callout b{color:#7c2d12}
+ .callout .arrow{margin-left:auto;color:#c2410c;font-weight:800;white-space:nowrap}
+ /* section label */
+ .seclbl{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:6px 0 12px}
+ /* tool cards */
  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
- .card{background:#fff;border:1px solid var(--silver);border-radius:14px;padding:20px;text-decoration:none;color:var(--ink);display:flex;flex-direction:column;gap:8px;transition:box-shadow .2s,transform .2s,border-color .2s}
- .card:hover{box-shadow:0 10px 30px rgba(27,39,51,.12);transform:translateY(-3px);border-color:var(--blue)}
- .card .ic{width:46px;height:46px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--light)}
- .card h2{font-size:17px;margin:2px 0 0}.card p{font-size:12.5px;color:var(--gray);line-height:1.55;flex:1}
- .card .go{color:var(--blue);font-weight:800;font-size:12.5px;text-transform:uppercase;letter-spacing:.5px}
- .card .soon{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--orange);background:#fff3e6;border-radius:6px;padding:2px 7px;align-self:flex-start}
- .foot{margin-top:24px;font-size:12px;color:var(--gray)}
+ .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px;display:flex;flex-direction:column;gap:8px;box-shadow:var(--shadow);transition:.18s}
+ .card:hover{box-shadow:0 12px 32px rgba(27,39,51,.13);transform:translateY(-3px);border-color:var(--blue)}
+ .card .ic{width:46px;height:46px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:22px}
+ .card h2{font-size:17px;margin:2px 0 0}
+ .card p{font-size:12.5px;color:var(--muted);line-height:1.55;flex:1}
+ .card .stat{font-size:12px;font-weight:700;color:var(--blue-dk)}
+ .card .stat .pend{color:#c2410c}
+ .card .go{color:var(--blue);font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+ .foot{margin-top:26px;font-size:12px;color:var(--muted)}
+ /* gate */
+ .gate{position:fixed;inset:0;z-index:50;background:linear-gradient(135deg,#16202e,#2B4071);display:grid;place-items:center;padding:20px}
+ .gate-card{background:#fff;border-radius:16px;padding:30px;width:100%;max-width:370px;box-shadow:0 24px 70px rgba(0,0,0,.35)}
+ .gate-card .brand{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--orange);font-weight:800}
+ .gate-card h2{margin:6px 0 3px;font-size:22px}
+ .gate-card p{color:var(--muted);font-size:13px;margin:0 0 16px}
+ .gate-card input{width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:9px;font-size:15px;font-family:inherit}
+ .gate-card input:focus{outline:2px solid rgba(59,89,154,.35);border-color:var(--blue)}
+ .gate-card button{width:100%;margin-top:12px;padding:12px;border:0;border-radius:9px;background:var(--blue);color:#fff;font-weight:800;font-size:14px;cursor:pointer}
+ .gate-card button:hover{background:var(--blue-dk)}
+ .gate-card .er{color:var(--danger);font-size:12.5px;margin-top:10px;min-height:16px}
+ .skeleton{color:#b7c0cc}
+ @media(max-width:640px){ .wrap{padding:0 14px 50px} h1{font-size:22px} .adminnav{padding:9px 14px} }
 </style></head><body>
+
 <nav class="adminnav">
   <div class="bd">HCPS <span>Admin</span></div>
   <a href="/admin/" class="on">Home</a>
   <a href="/admin/analytics.html">Analytics</a>
   <a href="/admin/dealers.html">Dealer Manager</a>
   <a href="/admin/images.html">Images</a>
-  <a href="/admin/featured.html">Featured</a><a href="/admin/catalog.html">Catalog</a>
+  <a href="/admin/featured.html">Featured</a>
+  <a href="/admin/catalog.html">Catalog</a>
   <a href="/admin/home-editor.html">Portal Home</a>
   <a href="/admin/website.html">Website</a>
+  <div class="navright"><span class="who" id="who"></span><button class="lock" id="lockBtn" onclick="lock()" hidden>Lock</button></div>
 </nav>
+
 <div class="wrap">
   <h1>Control Center</h1>
-  <p class="sub">One place to run the HCPS Partner Portal and the marketing website — analytics, dealer accounts, product images, the featured strip, and site content.</p>
-  <a href="/admin/dealers.html#logins" id="approvalCallout" style="display:flex;align-items:center;gap:12px;text-decoration:none;background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:14px 18px;margin-bottom:20px;color:#9a3412">
-    <span style="font-size:22px">✅</span>
-    <span><b style="color:#7c2d12">Approve dealer logins</b> — dealers who register on the ordering portal wait here until you approve them. <span id="pendCount" style="font-weight:800"></span><span style="color:#c2410c;font-weight:700"> Open Dealer Manager › Pending logins →</span></span>
-  </a>
+  <p class="sub">Live overview of the HCPS Partner Portal and marketing website — accounts, contacts, logins, and carts at a glance.</p>
+
+  <div id="callout"></div>
+
+  <div class="seclbl">At a glance</div>
+  <div class="kpirow" id="kpis">
+    <div class="kpi"><div class="l">Dealers</div><div class="v skeleton">—</div></div>
+    <div class="kpi"><div class="l">Contacts on file</div><div class="v skeleton">—</div></div>
+    <div class="kpi"><div class="l">Emails on file</div><div class="v skeleton">—</div></div>
+    <div class="kpi"><div class="l">Pending logins</div><div class="v skeleton">—</div></div>
+    <div class="kpi"><div class="l">Active carts</div><div class="v skeleton">—</div></div>
+    <div class="kpi"><div class="l">Change requests</div><div class="v skeleton">—</div></div>
+  </div>
+
+  <div class="seclbl">Tools</div>
   <div class="grid">
     <a class="card" href="/admin/analytics.html">
       <div class="ic" style="background:#eaf0f8">📊</div>
       <h2>Analytics</h2>
-      <p>Sales &amp; commission trends, by-rep performance, orders by month, reports-received tracker, and active-dealer counts per line.</p>
+      <p>Sales &amp; commission trends, by-rep performance, orders by month, and active-dealer counts per line.</p>
       <div class="go">Open Analytics →</div>
     </a>
     <a class="card" href="/admin/dealers.html">
       <div class="ic" style="background:#eef2f7">🧩</div>
       <h2>Dealer Manager</h2>
-      <p>All dealer accounts with addresses &amp; emails, merge duplicates, review queue, import contacts, and approve portal logins.</p>
+      <p>All dealer accounts with addresses &amp; contacts, merge duplicates, review queue, import, and portal logins.</p>
+      <div class="stat" id="statDealers"></div>
       <div class="go">Open Dealer Manager →</div>
     </a>
     <a class="card" href="/admin/images.html">
       <div class="ic" style="background:#eef7f0">🖼️</div>
-      <h2>Image Manager <span class="soon">new</span></h2>
-      <p>See which products have photos, spot missing/broken images, and upload new product images that go live on the portal.</p>
+      <h2>Image Manager</h2>
+      <p>See which products have photos, spot missing images, and upload new product images that go live on the portal.</p>
       <div class="go">Open Image Manager →</div>
     </a>
     <a class="card" href="/admin/featured.html">
       <div class="ic" style="background:#fdf1e6">⭐</div>
-      <h2>Featured Products <span class="soon">new</span></h2>
-      <p>Curate the “Featured for you” strip on each dealer’s home — pick promo items per line or across the whole catalog.</p>
+      <h2>Featured Products</h2>
+      <p>Curate the “Featured for you” strip on each dealer’s home — pick promo items per line or across the catalog.</p>
       <div class="go">Open Featured →</div>
     </a>
     <a class="card" href="/admin/catalog.html">
       <div class="ic" style="background:#eef7f0">🏷️</div>
-      <h2>Catalog <span class="soon">new</span></h2>
-      <p>Upload manufacturer logos, add custom products with images, and attach "More Information" brochures or links to any product. Publishes instantly — no redeploy.</p>
+      <h2>Catalog</h2>
+      <p>Manufacturer logos, add/remove lines, custom products &amp; pricing tiers, and “More Information” brochures. Publishes instantly.</p>
       <div class="go">Open Catalog →</div>
     </a>
     <a class="card" href="/admin/home-editor.html">
       <div class="ic" style="background:#fdf1e6">🏠</div>
-      <h2>Portal Home <span class="soon">new</span></h2>
-      <p>Add a hero banner and clickable promo tiles to the dealer ordering portal's home screen. Publishes instantly — no redeploy, no Netlify build credits.</p>
+      <h2>Portal Home</h2>
+      <p>Add a hero banner and clickable promo tiles to the dealer ordering portal's home screen. Publishes instantly.</p>
       <div class="go">Open Portal Home →</div>
     </a>
     <a class="card" href="/admin/website.html">
       <div class="ic" style="background:#eef2f7">🌐</div>
-      <h2>Website Editor <span class="soon">new</span></h2>
-      <p>Edit the marketing site content — manufacturers, documents, home page, pages, team, testimonials, and site settings. Publishes to the live site.</p>
+      <h2>Website Editor</h2>
+      <p>Edit the marketing site — manufacturers, documents, home page, team, testimonials, and site settings.</p>
       <div class="go">Open Website Editor →</div>
     </a>
   </div>
-  <div class="foot">HomeCare Provider Services · Partner Portal admin. All tools share this nav — use <b>Home</b> to return here anytime.</div>
+
+  <div class="foot">HomeCare Provider Services · Partner Portal admin. Numbers above refresh each time you open this page.</div>
 </div>
-<div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.1</div>
+
+<div id="gate"></div>
+
+<div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.2</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const TKEY="hcps_admin_token";
+let TOKEN=sessionStorage.getItem(TKEY)||null;
+const num=n=>Number(n||0).toLocaleString();
+
+function showGate(msg){
+  $("#gate").innerHTML=`<div class="gate"><div class="gate-card">
+    <div class="brand">HomeCare Provider Services</div>
+    <h2>Admin access</h2>
+    <p>Enter your admin passcode to open the control center.</p>
+    <input id="tok" type="password" placeholder="Admin passcode" autofocus onkeydown="if(event.key==='Enter')submitTok()">
+    <button onclick="submitTok()">Unlock</button>
+    <div class="er">${msg||""}</div>
+  </div></div>`;
+  setTimeout(()=>{const t=$("#tok"); if(t)t.focus();},50);
+}
+function hideGate(){ $("#gate").innerHTML=""; }
+function submitTok(){
+  const v=($("#tok").value||"").trim();
+  if(!v){ return; }
+  TOKEN=v; sessionStorage.setItem(TKEY,v); hideGate(); load();
+}
+function lock(){ sessionStorage.removeItem(TKEY); TOKEN=null; location.reload(); }
+
+async function load(){
+  if(!TOKEN){ showGate(); return; }
+  try{
+    const r=await fetch("/.netlify/functions/dealers-api",{headers:{"x-analytics-token":TOKEN}});
+    if(r.status===401){ TOKEN=null; sessionStorage.removeItem(TKEY); showGate("That passcode didn't work — try again."); return; }
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    const d=await r.json();
+    render(d);
+  }catch(e){
+    $("#kpis").innerHTML=`<div class="kpi" style="grid-column:1/-1;border-left:4px solid var(--danger)"><div class="l">Couldn't load live numbers</div><div class="s" style="margin-top:6px">${String(e.message||e)} — the tool links below still work.</div></div>`;
+  }
+}
+
+function render(d){
+  const dealers=d.dealers||[], logins=d.logins||[], carts=d.openCarts||[], creqs=d.changeRequests||[];
+  const contacts=dealers.reduce((s,x)=>s+((x.contacts&&x.contacts.length)||0),0);
+  const emails=dealers.filter(x=>x.email).length;
+  const pending=logins.filter(l=>l.status==="pending").length;
+  const kpi=(l,v,sub,opts={})=>{
+    const cls=["kpi"]; if(opts.act)cls.push("act"); if(opts.dim)cls.push("dim");
+    const inner=`<div class="l">${l}</div><div class="v">${v}</div>${sub?`<div class="s">${sub}</div>`:""}${opts.flag?`<div class="flag">${opts.flag}</div>`:""}`;
+    return opts.href?`<a class="${cls.join(" ")}" href="${opts.href}">${inner}</a>`:`<div class="${cls.join(" ")}">${inner}</div>`;
+  };
+  $("#kpis").innerHTML=[
+    kpi("Dealers",num(dealers.length),"companies",{href:"/admin/dealers.html"}),
+    kpi("Contacts on file",num(contacts),"emails across companies",{href:"/admin/dealers.html"}),
+    kpi("Emails on file",`${num(emails)}<span style="font-size:13px;color:var(--muted)">/${num(dealers.length)}</span>`,"companies w/ a primary email",{href:"/admin/dealers.html"}),
+    kpi("Pending logins",num(pending),pending?"waiting for approval":"all clear",{href:"/admin/dealers.html#logins",act:pending>0,dim:pending===0,flag:pending>0?"action":""}),
+    kpi("Active carts",num(carts.length),"unordered carts open",{href:"/admin/dealers.html",dim:carts.length===0}),
+    kpi("Change requests",num(creqs.length),creqs.length?"dealer edits to review":"none pending",{href:"/admin/dealers.html",act:creqs.length>0,dim:creqs.length===0,flag:creqs.length>0?"review":""}),
+  ].join("");
+
+  // Dealer Manager card live stat
+  const sd=$("#statDealers");
+  if(sd){ sd.innerHTML=`${num(dealers.length)} dealers · ${num(contacts)} contacts`+(pending?` · <span class="pend">${pending} pending login${pending>1?"s":""}</span>`:""); }
+
+  // approval callout
+  $("#callout").innerHTML = pending>0
+    ? `<a class="callout" href="/admin/dealers.html#logins" style="color:#9a3412"><span style="font-size:22px">✅</span><span><b>Approve dealer logins</b> — <b>${pending}</b> dealer${pending>1?"s are":" is"} waiting for approval on the ordering portal.</span><span class="arrow">Open Pending logins →</span></a>`
+    : "";
+
+  $("#who").textContent="Signed in";
+  $("#lockBtn").hidden=false;
+}
+
+load();
+</script>
 </body></html>
