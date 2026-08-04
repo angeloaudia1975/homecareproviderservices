@@ -145,9 +145,11 @@ function render(){
   const rev=reviewList().length, dup=suggestedPairs().length;
   const N=DATA.dealers.length||1;
   const withEmail=DATA.dealers.filter(d=>d.email).length, withAddr=DATA.dealers.filter(d=>d.address||d.city).length;
+  const totContacts=DATA.dealers.reduce((s,d)=>s+((d.contacts&&d.contacts.length)||0),0);
   const kpis=`<div class="kpis">
     <div class="kpi"><div class="l">Dealers</div><div class="v">${DATA.dealers.length}</div></div>
     <div class="kpi"><div class="l">Emails on file</div><div class="v ${withEmail<N?'warn':''}">${withEmail}<span style="font-size:12px;color:var(--gray)">/${DATA.dealers.length}</span></div></div>
+    <div class="kpi"><div class="l">Contacts on file</div><div class="v">${totContacts}</div></div>
     <div class="kpi"><div class="l">Addresses on file</div><div class="v ${withAddr<N?'warn':''}">${withAddr}<span style="font-size:12px;color:var(--gray)">/${DATA.dealers.length}</span></div></div>
     <div class="kpi"><div class="l">Review queue</div><div class="v warn">${rev}</div></div>
     <div class="kpi"><div class="l">Suggested dupes</div><div class="v orange">${dup}</div></div></div>`;
@@ -693,5 +695,5 @@ function renderImport(){
   </div>`;
 }
 load();
-</script><div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.1</div>
+</script><div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.2</div>
 </body></html>

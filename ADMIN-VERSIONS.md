@@ -13,7 +13,7 @@ the new version.
 | Home | src/admin/index.html | 1.1 | Baseline |
 | Catalog | src/admin/catalog.html | 1.1 | Adds "Manufacturers on the ordering platform" on/off manager (remove/restore a whole line) |
 | Analytics | src/admin/analytics.html | 1.1 | Baseline |
-| Dealers | src/admin/dealers.html | 1.1 | Baseline |
+| Dealers | src/admin/dealers.html | 1.2 | Adds "Contacts on file" total tile to the dashboard header |
 | Featured | src/admin/featured.html | 1.1 | Baseline |
 | Home editor | src/admin/home-editor.html | 1.1 | Baseline |
 | Images | src/admin/images.html | 1.1 | Baseline |
