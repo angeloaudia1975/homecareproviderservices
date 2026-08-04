@@ -68,11 +68,29 @@ async function allAddressKeys(){
   return map; // q -> sample address parts
 }
 
+async function whoami(event){
+  const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
+  const tok=auth.replace(/^Bearer\s+/i,"").trim();
+  if(tok){
+    try{ const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${tok}`}});
+      if(r.ok){ const u=await r.json(); const email=u&&u.email&&String(u.email).toLowerCase();
+        if(email){ const s=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=*`).catch(()=>[]); const su=s&&s[0];
+          if(su&&su.active!==false) return {role:su.role||"rep",rep_name:su.rep_name||"",can_travel:!!su.can_travel,name:su.name||email}; return null; } }
+    }catch(e){}
+    return null;
+  }
+  const need=process.env.ANALYTICS_TOKEN;
+  const got=event.headers["x-analytics-token"]||event.headers["X-Analytics-Token"]||"";
+  if(!need) return {role:"president",rep_name:"",can_travel:true,name:"Admin"};
+  if(got===need) return {role:"president",rep_name:"",can_travel:true,name:"Admin"};
+  return null;
+}
+
 exports.handler = async (event)=>{
   try{
     if(!SUPABASE_URL||!SERVICE_ROLE) return json(500,{error:"Supabase env vars not set (SUPABASE_URL, SUPABASE_SERVICE_ROLE)"});
-    const need=process.env.ANALYTICS_TOKEN;
-    if(need){ const got=event.headers["x-analytics-token"]||event.headers["X-Analytics-Token"]; if(got!==need) return json(401,{error:"unauthorized"}); }
+    const me=await whoami(event);
+    if(!me) return json(401,{error:"unauthorized"});
 
     // ---- GET: map points (join geocoded addresses to their dealers) ----
     if(event.httpMethod==="GET"){
@@ -91,7 +109,13 @@ exports.handler = async (event)=>{
         points.push({lat:c.lat,lng:c.lng,name:d.business_name||"(unknown)",status:d.status||"",
           email:d.email||"",city:a.city||"",state:a.state||"",label:a.label||"",dealer_id:a.dealer_id||""});
       }
-      return json(200,{ok:true,build:BUILD,points});
+      if(me.role!=="president"){
+        const rn=String(me.rep_name||"").trim().toLowerCase();
+        const rep={}; try{ const dir=await sbGetAll("dealer_directory?select=dealer_name,rep_name","dealer_name"); for(const d of (dir||[])) rep[d.dealer_name]=d.rep_name||""; }catch(e){}
+        const scoped=points.filter(p=> !!rn && String(rep[p.name]||"").trim().toLowerCase()===rn);
+        return json(200,{ok:true,build:BUILD,role:me.role,points:scoped});
+      }
+      return json(200,{ok:true,build:BUILD,role:me.role,points});
     }
 
     if(event.httpMethod==="POST"){
@@ -99,6 +123,7 @@ exports.handler = async (event)=>{
 
       // ---- status: how many address keys still need geocoding ----
       if(b.action==="status"){
+        if(me.role!=="president") return json(403,{error:"President only"});
         let keys, cache;
         try{ keys=await allAddressKeys(); cache=await sbGetAll("geocache?select=q","q"); }
         catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run geocode.sql and create_tables.sql in Supabase first."}); }
@@ -109,6 +134,7 @@ exports.handler = async (event)=>{
 
       // ---- run: geocode up to `limit` uncached address keys ----
       if(b.action==="run"){
+        if(me.role!=="president") return json(403,{error:"President only"});
         const limit=Math.min(Math.max(parseInt(b.limit,10)||20,1),40);
         let keys, cache;
         try{ keys=await allAddressKeys(); cache=await sbGetAll("geocache?select=q","q"); }

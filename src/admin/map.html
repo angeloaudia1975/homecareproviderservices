@@ -118,14 +118,15 @@
 <div id="gate"></div>
 <div id="homeEdit"></div>
 
-<div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:1200;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.85);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.2</div>
+<div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:1200;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.85);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 2.0</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
 <script>
 const $=s=>document.querySelector(s);
-const TKEY="hcps_admin_token";
+const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
 let TOKEN=sessionStorage.getItem(TKEY)||null;
+let ME=null; try{ME=JSON.parse(sessionStorage.getItem(PKEY)||"null")}catch(e){ME=null;}
 let MAP=null, CLUSTER=null, POINTS=[], BOOTED=false, ROUTE=[], ROUTELINE=null;
 let HOMEMARKER=null, ROUNDTRIP=true;
 const DEFAULT_HOME="1003 Wilkinson Pl, Cottontown, TN 37048";
@@ -133,21 +134,29 @@ let HOME=null; try{ HOME=JSON.parse(localStorage.getItem("hcps_home_base")||"nul
 
 const API="/.netlify/functions/geocode-api";
 async function api(method,body){
-  const h={"content-type":"application/json"}; if(TOKEN)h["x-analytics-token"]=TOKEN;
+  const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
   const r=await fetch(API,{method,headers:h,body:body?JSON.stringify(body):undefined});
-  if(r.status===401){ sessionStorage.removeItem(TKEY); TOKEN=null; showGate("That passcode didn't work — try again."); throw new Error("unauthorized"); }
+  if(r.status===401){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); TOKEN=null; ME=null; showGate("Your session ended — please sign in again."); throw new Error("unauthorized"); }
   return r.json();
 }
 function showGate(msg){
   $("#gate").innerHTML=`<div class="gate"><div class="gate-card">
-    <div class="brand">HomeCare Provider Services</div><h2>Admin access</h2>
-    <p>Enter your admin passcode to open the map.</p>
-    <input id="tok" type="password" placeholder="Admin passcode" onkeydown="if(event.key==='Enter')submitTok()">
-    <button onclick="submitTok()">Unlock</button><div class="er">${msg||""}</div></div></div>`;
-  setTimeout(()=>{const t=$("#tok"); if(t)t.focus();},50);
+    <div class="brand">HomeCare Provider Services</div><h2>Staff sign-in</h2>
+    <p>Sign in with your work email and password.</p>
+    <input id="lemail" type="email" placeholder="Email" autocomplete="username" style="margin-bottom:8px">
+    <input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()">
+    <button onclick="submitTok()">Sign in</button><div class="er" id="lerr">${msg||""}</div></div></div>`;
+  setTimeout(()=>{const t=$("#lemail"); if(t)t.focus();},50);
 }
-function submitTok(){ const v=($("#tok").value||"").trim(); if(!v)return; TOKEN=v; sessionStorage.setItem(TKEY,v); $("#gate").innerHTML=""; boot(); }
-function lock(){ sessionStorage.removeItem(TKEY); location.reload(); }
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in\u2026";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ showGate((j&&j.message)||"Could not sign in."); return; }
+    TOKEN=j.token; ME=j.profile; sessionStorage.setItem(TKEY,TOKEN); sessionStorage.setItem(PKEY,JSON.stringify(ME)); $("#gate").innerHTML=""; boot();
+  }catch(err){ showGate("Could not reach the server. Try again."); }
+}
+function lock(){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); location.reload(); }
 
 const COLORS={active:"#1f9d55",prospect:"#F5821F",review:"#d64545"};
 const colorOf=s=>COLORS[String(s||"").toLowerCase()]||"#3B599A";
@@ -298,12 +307,17 @@ async function loadPoints(){
 }
 async function boot(){
   if(!TOKEN){ showGate(); return; }
+  if(TOKEN && !ME){ try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+TOKEN},body:JSON.stringify({action:"me"})}); const j=await r.json().catch(()=>({})); if(j&&j.ok){ME=j.profile; sessionStorage.setItem(PKEY,JSON.stringify(ME));} else { TOKEN=null; sessionStorage.removeItem(TKEY); showGate(); return; } }catch(e){} }
+  const canMap = !ME || ME.role==="president" || ME.can_travel;
+  if(!canMap){ const tb=document.querySelector(".toolbar"); if(tb)tb.style.display="none"; const mp=$("#map"); if(mp)mp.style.display="none"; banner("The Map & route planner are set up for travelling reps. Ask the President to enable travel access if you need them."); return; }
   try{
     if(!BOOTED){ initMap(); BOOTED=true; }
     drawHome();
     await loadPoints();
-    await refreshGeoBtn();
-    if(!POINTS.length){ banner("No mapped locations yet — click “Geocode addresses” to plot your dealers. (If it says a table is missing, run geocode.sql in Supabase first.)"); }
+    const pres = !ME || ME.role==="president";
+    const g=$("#geoBtn"); if(g) g.style.display = pres ? "" : "none";
+    if(pres) await refreshGeoBtn();
+    if(!POINTS.length){ banner(pres ? "No mapped locations yet — click Geocode addresses to plot your dealers. (If it says a table is missing, run geocode.sql in Supabase first.)" : "No mapped locations in your book yet."); }
   }catch(e){}
 }
 refreshHomeBtn();
