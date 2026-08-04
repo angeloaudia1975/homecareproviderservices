@@ -63,14 +63,17 @@ th.buys,td.buys{max-width:230px}
 .adminnav .bd span{color:#F5821F}
 .adminnav a{color:#aeb9c6;text-decoration:none;font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-radius:7px}
 .adminnav a:hover{color:#fff}.adminnav a.on{color:#fff;background:#3B599A}
-</style></head>
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
 <body>
 <nav class="adminnav"><div class="bd">HCPS <span>Admin</span></div>
  <a href="/admin/">Home</a><a href="/admin/analytics.html">Analytics</a><a href="/admin/dealers.html" class="on">Dealer Manager</a>
+  <a href="/admin/map.html">Map</a>
  <a href="/admin/images.html">Images</a><a href="/admin/featured.html">Featured</a><a href="/admin/catalog.html">Catalog</a><a href="/admin/home-editor.html">Portal Home</a><a href="/admin/website.html">Website</a></nav>
 <div class="wrap">
 <div class="top"><div><h1>HomeCare Provider Services</h1><div class="sub">Dealer master — merge duplicates &amp; manage accounts</div></div>
-  <div><input type="search" id="q" placeholder="Search dealer or alias…" oninput="render()" style="width:280px"></div></div>
+  <div><input type="search" id="q" placeholder="Search dealer or alias…" oninput="render()" style="width:280px"> <button class="go" onclick="exportPacket()" title="Export the current (filtered) list as a PDF business-review packet">⬇ Export packet</button></div></div>
 <div id="body"><div class="msg">Loading…</div></div>
 <div id="dlg"></div>
 </div>
@@ -293,6 +296,40 @@ async function notDup(a,b){DATA.nomerge=(DATA.nomerge||[]).concat([[a,b].sort().
 
 function openDetail(id){DETAIL=id;window.scrollTo(0,0);render();}
 function backList(){DETAIL=null;render();}
+/* ---------- Account business-review PDF export ---------- */
+function pdfNew(){ const J=window.jspdf&&window.jspdf.jsPDF; if(!J){ alert("PDF library is still loading — give it a second and try again."); return null; } return new J({unit:"pt",format:"letter"}); }
+function acctToDoc(doc,d,first){
+  const L=54,R=558,W=R-L; let y=56;
+  const ensure=(h)=>{ if(y+h>752){ doc.addPage(); y=56; } };
+  const para=(s,opt)=>{ opt=opt||{}; doc.setFont("helvetica",opt.b?"bold":"normal"); doc.setFontSize(opt.sz||9.5); doc.setTextColor.apply(doc,opt.color||[40,45,55]); const lines=doc.splitTextToSize(String(s==null?"":s),W); for(const ln of lines){ ensure(13); doc.text(ln,L,y); y+=13; } };
+  const heading=(s)=>{ y+=10; ensure(20); doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.setTextColor(43,64,113); doc.text(s,L,y); doc.setDrawColor(220,226,234); doc.setLineWidth(0.5); doc.line(L,y+4,R,y+4); y+=16; };
+  if(!first){ doc.addPage(); y=56; }
+  doc.setFont("helvetica","bold"); doc.setFontSize(16); doc.setTextColor(22,32,46); doc.text(String(d.name||"(unnamed)"),L,y);
+  doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(120,128,138); doc.text("HCPS Account Business Review",R,y,{align:"right"}); y+=16;
+  doc.setFontSize(9.5); doc.setTextColor(90,98,110);
+  doc.text([d.status?("Status: "+d.status):"",d.hcps_account?("HCPS #: "+d.hcps_account):"",d.rep?("Rep: "+d.rep):""].filter(Boolean).join("      "),L,y); y+=6;
+  doc.setDrawColor(43,64,113); doc.setLineWidth(1); doc.line(L,y,R,y); y+=4;
+  heading("Company");
+  para([d.address,[d.city,d.state,d.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ")||"—");
+  para("Phone: "+(d.phone||"—")+"      Email: "+(d.email||"—"));
+  heading("Sales summary");
+  para("Sales "+money(d.sales)+"      Commission "+money(d.comm)+"      "+(d.recs||0)+" records      Active "+((d.periods&&d.periods.length)||0)+" month(s)"+(d.lastPeriod?("      Last "+d.lastPeriod):""));
+  heading("Manufacturer lines & account numbers");
+  var lns=(d.buysLines||[]).map(function(l){return (DATA.mfrName&&DATA.mfrName[l])||l;});
+  para(lns.length?lns.join(", "):"No line sales on record");
+  if(d.accounts&&d.accounts.length) para("Account #s: "+d.accounts.join(", "),{color:[90,98,110]});
+  heading("Contacts on file ("+((d.contacts||[]).length)+")");
+  if(d.contacts&&d.contacts.length){ d.contacts.forEach(function(c){ para("• "+[c.name||"—",c.email||"(no email)",[c.title,c.role].filter(Boolean).join(" · "),c.phone||""].filter(Boolean).join("   ·   ")); }); }
+  else para("No contacts stored.",{color:[120,128,138]});
+  heading("Addresses on file ("+((d.addresses||[]).length)+")");
+  if(d.addresses&&d.addresses.length){ d.addresses.forEach(function(x,i){ para((i===0?"★ ":"• ")+[x.address,[x.city,x.state].filter(Boolean).join(", "),x.zip].filter(Boolean).join(" · ")+(x.label?("  ("+x.label+")"):"")); }); }
+  else para(d.address?("★ "+[d.address,[d.city,d.state].filter(Boolean).join(", "),d.zip].filter(Boolean).join(" · ")):"No addresses stored.",{color:[120,128,138]});
+  if(d.notes){ heading("Notes"); para(d.notes); }
+  doc.setFontSize(8); doc.setTextColor(150,156,164); doc.text("HomeCare Provider Services — generated "+new Date().toLocaleDateString(),L,772);
+}
+function slugName(s){ return String(s||"account").replace(/[^a-z0-9]+/gi,"_").replace(/^_+|_+$/g,"").slice(0,40)||"account"; }
+function exportDealerPDF(id){ var d=DATA.dealers.find(function(x){return x.id===id;}); if(!d)return; var doc=pdfNew(); if(!doc)return; acctToDoc(doc,d,true); doc.save("HCPS_"+slugName(d.name)+".pdf"); }
+function exportPacket(){ var ds=filtered(); if(!ds.length){ alert("No dealers in the current view to export."); return; } if(ds.length>60 && !confirm("Export a "+ds.length+"-account packet? That's a large PDF and may take a moment.")) return; var doc=pdfNew(); if(!doc)return; ds.forEach(function(d,i){ acctToDoc(doc,d,i===0); }); doc.save("HCPS_business_review_"+ds.length+"_accounts.pdf"); }
 /* Collapse duplicate manufacturer rows in the ordering-access box. Exact-name dupes
    (e.g. "Golden Technologies" twice) merge by normalized name; the Bongo / AIRAVANT-BongoRx
    pair merges via an alias. Each surviving line keeps the slug with the dealer's account/buys
@@ -322,7 +359,7 @@ function renderDetail(){
   let acc=mfrs.map(m=>`<label class="accitem ${m.checked?"on":""}"><input type="checkbox" value="${esc(m.slug)}" ${m.checked?"checked":""} onchange="this.parentNode.classList.toggle('on',this.checked)">${esc(m.name)}${m.buys?` <span class="chip" style="margin-left:auto">buys</span>`:""}</label>`).join("");
   const fld=(k,lab,val,ph)=>`<div class="fld"><label>${lab}</label><input id="f_${k}" value="${esc(val||"")}" placeholder="${ph||""}"></div>`;
   $("#body").innerHTML=`
-   <div class="backbar"><button class="go" onclick="backList()">← All dealers</button><div class="lbl" style="font-size:18px">${esc(d.name)} ${d.status==="review"?`<span class="chip rev">review</span>`:""}</div><div></div></div>
+   <div class="backbar"><button class="go" onclick="backList()">← All dealers</button><div class="lbl" style="font-size:18px">${esc(d.name)} ${d.status==="review"?`<span class="chip rev">review</span>`:""}</div><div><button class="go sm" onclick="exportDealerPDF('${d.id}')">⬇ Export profile (PDF)</button></div></div>
    <div class="grid2">
      <div class="card"><h2>Account details</h2>
        ${fld("business_name","Dealer name",d.name)}
@@ -695,5 +732,5 @@ function renderImport(){
   </div>`;
 }
 load();
-</script><div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.3</div>
+</script><div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.5</div>
 </body></html>

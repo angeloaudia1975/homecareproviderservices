@@ -31,25 +31,34 @@
  #map{position:absolute;inset:0}
  .pin span{display:block;width:15px;height:15px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3)}
  .pin.inroute span{width:19px;height:19px;border-color:#2B4071;box-shadow:0 0 0 2px #2B4071}
+ .homepin span{display:flex;align-items:center;justify-content:center;width:27px;height:27px;background:#16202e;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.4);font-size:14px}
  .pop b{font-size:13.5px} .pop .st{display:inline-block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;padding:1px 7px;border-radius:20px;margin-left:4px}
  .pop .row{font-size:12px;color:#333;margin-top:3px}.pop a{color:var(--blue);font-weight:700;font-size:12px}
  .pop .addbtn{margin-top:7px;border:1px solid var(--blue-dk);background:var(--blue);color:#fff;border-radius:7px;padding:5px 10px;font-weight:700;font-size:12px;cursor:pointer}
  .banner{margin:0;padding:10px 18px;background:#fff7ed;border-bottom:1px solid #fed7aa;color:#9a3412;font-size:13px}
  /* route panel */
- .routep{position:absolute;left:14px;bottom:14px;z-index:600;width:290px;max-height:62%;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 34px rgba(16,24,40,.22);overflow:hidden}
+ .routep{position:absolute;left:14px;bottom:14px;z-index:600;width:296px;max-height:66%;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 34px rgba(16,24,40,.22);overflow:hidden}
  .routep .rhead{display:flex;align-items:center;gap:8px;padding:11px 13px;border-bottom:1px solid var(--line);font-size:14px}
  .routep .rhead .m{color:var(--muted);font-size:11.5px;font-weight:600}
  .routep .rx{margin-left:auto;background:none;border:0;color:var(--danger);font-weight:700;font-size:12px;cursor:pointer}
+ .rtrow{padding:8px 13px;border-bottom:1px solid var(--line);font-size:12.5px;background:#f8fafc}
+ .rtrow label{display:flex;gap:7px;align-items:center;cursor:pointer}
  .routep ol{list-style:none;margin:0;padding:6px;overflow:auto;flex:1}
  .routep li{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;font-size:12.5px}
- .routep li:hover{background:#f5f7fa}
+ .routep li:hover{background:#f5f7fa} .routep li.homeli{color:var(--muted)}
  .routep li .n{width:20px;height:20px;flex:none;border-radius:50%;background:var(--blue);color:#fff;font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center}
  .routep li .nm{flex:1;line-height:1.25}.routep li .nm small{color:var(--muted)}
  .routep li .del{background:none;border:0;color:#b0b8c2;cursor:pointer;font-size:14px;font-weight:800}
  .routep li .del:hover{color:var(--danger)}
  .routep .ractions{display:flex;gap:7px;padding:11px;border-top:1px solid var(--line);flex-wrap:wrap}
  .routep .ractions .btn{flex:1;justify-content:center;text-align:center;padding:9px 8px;font-size:12.5px}
- .emptyR{padding:14px;color:var(--muted);font-size:12.5px;text-align:center}
+ /* home editor overlay */
+ .homeov{position:fixed;inset:0;z-index:1100;background:rgba(16,24,40,.45);display:grid;place-items:center;padding:20px}
+ .homecard{background:#fff;border-radius:14px;padding:20px;width:100%;max-width:430px;box-shadow:0 24px 70px rgba(0,0,0,.3)}
+ .homecard b{font-size:15px}.homecard p{color:var(--muted);font-size:12.5px;margin:4px 0 12px}
+ .homecard input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;font:inherit}
+ .homecard input:focus{outline:2px solid rgba(59,89,154,.35);border-color:var(--blue)}
+ .homecard .ha{display:flex;gap:8px;margin-top:12px}.homecard .er{color:var(--danger);font-size:12.5px;margin-top:8px;min-height:15px}
  /* gate */
  .gate{position:fixed;inset:0;z-index:1000;background:linear-gradient(135deg,#16202e,#2B4071);display:grid;place-items:center;padding:20px}
  .gate-card{background:#fff;border-radius:16px;padding:30px;width:100%;max-width:370px;box-shadow:0 24px 70px rgba(0,0,0,.35)}
@@ -89,6 +98,7 @@
   <span class="legend"><span><i style="background:#1f9d55"></i>Active</span><span><i style="background:#F5821F"></i>Prospect</span><span><i style="background:#d64545"></i>Review</span><span><i style="background:#3B599A"></i>Other</span></span>
   <span class="sp"></span>
   <span class="count" id="count"></span>
+  <button class="btn ghost" id="homeBtn" onclick="editHome()">🏠 Set home base</button>
   <button class="btn" id="geoBtn" onclick="geocodeAll()">Geocode addresses</button>
 </div>
 
@@ -96,6 +106,7 @@
   <div id="map"></div>
   <div class="routep" id="routep" hidden>
     <div class="rhead"><b>Route plan</b> <span class="m" id="rmeta"></span><button class="rx" onclick="clearRoute()">Clear</button></div>
+    <div class="rtrow" id="rtRow" style="display:none"><label><input type="checkbox" id="rtChk" checked onchange="toggleRT(this.checked)"> Round trip — start &amp; end at home base</label></div>
     <ol id="rlist"></ol>
     <div class="ractions">
       <button class="btn ghost" onclick="optimize()">Optimize order</button>
@@ -105,8 +116,9 @@
 </div>
 
 <div id="gate"></div>
+<div id="homeEdit"></div>
 
-<div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:1200;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.85);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.1</div>
+<div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:1200;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.85);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.2</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
@@ -115,6 +127,9 @@ const $=s=>document.querySelector(s);
 const TKEY="hcps_admin_token";
 let TOKEN=sessionStorage.getItem(TKEY)||null;
 let MAP=null, CLUSTER=null, POINTS=[], BOOTED=false, ROUTE=[], ROUTELINE=null;
+let HOMEMARKER=null, ROUNDTRIP=true;
+const DEFAULT_HOME="1003 Wilkinson Pl, Cottontown, TN 37048";
+let HOME=null; try{ HOME=JSON.parse(localStorage.getItem("hcps_home_base")||"null"); }catch(e){ HOME=null; }
 
 const API="/.netlify/functions/geocode-api";
 async function api(method,body){
@@ -169,32 +184,85 @@ function draw(){
   if(shown.length && !ROUTE.length){ try{ MAP.fitBounds(L.latLngBounds(shown.map(p=>[p.lat,p.lng])).pad(0.15)); }catch(e){} }
 }
 
+/* ---------- home base ---------- */
+function homeIcon(){ return L.divIcon({className:"homepin",html:`<span>🏠</span>`,iconSize:[27,27],iconAnchor:[13,13]}); }
+function refreshHomeBtn(){ const b=$("#homeBtn"); if(!b)return; b.textContent = HOME ? ("🏠 "+(HOME.short||"Home base")) : "🏠 Set home base"; }
+function drawHome(){
+  if(HOMEMARKER){ MAP.removeLayer(HOMEMARKER); HOMEMARKER=null; }
+  if(HOME && HOME.lat!=null && MAP){
+    HOMEMARKER=L.marker([HOME.lat,HOME.lng],{icon:homeIcon(),zIndexOffset:1000})
+      .bindPopup(`<div class="pop"><b>🏠 Home base</b><div class="row">${esc(HOME.q||"")}</div><div class="row" style="color:#777">Start &amp; end of your routes</div></div>`).addTo(MAP);
+  }
+  refreshHomeBtn();
+}
+function editHome(){
+  const cur = HOME ? (HOME.q||"") : DEFAULT_HOME;
+  $("#homeEdit").innerHTML=`<div class="homeov"><div class="homecard">
+    <b>Route home base</b>
+    <p>Every route can start and end here. Enter a full street address (city &amp; state required).</p>
+    <input id="homeq" value="${esc(cur)}" placeholder="123 Main St, City, ST 00000">
+    <div class="ha"><button class="btn" onclick="saveHome()">Save home base</button>
+      ${HOME?'<button class="btn ghost" onclick="clearHome()">Remove</button>':''}
+      <button class="btn ghost" onclick="closeHome()">Cancel</button></div>
+    <div class="er" id="homeErr"></div></div></div>`;
+  setTimeout(()=>{const i=$("#homeq"); if(i){i.focus();i.select();}},40);
+}
+function closeHome(){ $("#homeEdit").innerHTML=""; }
+async function saveHome(){
+  const q=($("#homeq").value||"").trim(); if(!q){ $("#homeErr").textContent="Enter an address."; return; }
+  $("#homeErr").textContent="Locating…";
+  try{
+    const r=await api("POST",{action:"geocode_one",q});
+    if(!r||!r.ok){ $("#homeErr").textContent="Couldn't find that address — include the city and state (e.g. …, Cottontown, TN 37048)."; return; }
+    const short=q.split(",").slice(-2).join(",").trim()||q;
+    HOME={q,lat:r.lat,lng:r.lng,short};
+    localStorage.setItem("hcps_home_base",JSON.stringify(HOME));
+    closeHome(); drawHome(); renderRoute();
+    if(MAP) MAP.setView([HOME.lat,HOME.lng], Math.max(MAP.getZoom(),6));
+  }catch(e){ $("#homeErr").textContent="Something went wrong — try again."; }
+}
+function clearHome(){ HOME=null; localStorage.removeItem("hcps_home_base"); closeHome(); drawHome(); renderRoute(); }
+function toggleRT(v){ ROUNDTRIP=v; renderRoute(); }
+
 /* ---------- route planning ---------- */
 function hav(a,b){ const R=3958.8,tr=x=>x*Math.PI/180; const dLat=tr(b.lat-a.lat),dLng=tr(b.lng-a.lng);
   const s=Math.sin(dLat/2)**2+Math.cos(tr(a.lat))*Math.cos(tr(b.lat))*Math.sin(dLng/2)**2; return 2*R*Math.asin(Math.sqrt(s)); }
-function routeMiles(){ let m=0; for(let i=1;i<ROUTE.length;i++) m+=hav(ROUTE[i-1],ROUTE[i]); return m; }
+function effectiveRoute(){
+  if(HOME && ROUNDTRIP && ROUTE.length){ const h={name:"Home base",lat:HOME.lat,lng:HOME.lng,_home:true}; return [h,...ROUTE,h]; }
+  return ROUTE.slice();
+}
+function routeMiles(){ const R=effectiveRoute(); let m=0; for(let i=1;i<R.length;i++) m+=hav(R[i-1],R[i]); return m; }
 function addStop(i){ const p=POINTS[i]; if(!p)return; if(inRoute(p)){ ROUTE=ROUTE.filter(s=>s._i!==p._i); } else { if(ROUTE.length>=25){ alert("That's a lot of stops — keep a route under 25 for a workable day."); return; } ROUTE.push(p); } renderRoute(); draw(); if(MAP)MAP.closePopup(); }
 function removeStop(i){ ROUTE.splice(i,1); renderRoute(); draw(); }
 function clearRoute(){ ROUTE=[]; renderRoute(); draw(); }
 function optimize(){
-  if(ROUTE.length<3){ renderRoute(); return; }
-  const ordered=[ROUTE[0]]; const pool=ROUTE.slice(1); let cur=ROUTE[0];
+  if(ROUTE.length<2){ renderRoute(); return; }
+  const pool=ROUTE.slice(); const ordered=[];
+  let cur;
+  if(HOME && ROUNDTRIP){ cur={lat:HOME.lat,lng:HOME.lng}; }          // nearest-neighbour from home
+  else { ordered.push(pool.shift()); cur=ordered[0]; }               // keep first stop fixed
   while(pool.length){ let bi=0,bd=Infinity; for(let i=0;i<pool.length;i++){const d=hav(cur,pool[i]); if(d<bd){bd=d;bi=i;}} cur=pool.splice(bi,1)[0]; ordered.push(cur); }
   ROUTE=ordered; renderRoute();
 }
 function renderRoute(){
   const panel=$("#routep"); panel.hidden = ROUTE.length===0;
+  $("#rtRow").style.display = HOME ? "block" : "none";
+  const cb=$("#rtChk"); if(cb) cb.checked=ROUNDTRIP;
   const list=$("#rlist");
   if(!ROUTE.length){ list.innerHTML=""; if(ROUTELINE){MAP.removeLayer(ROUTELINE);ROUTELINE=null;} return; }
-  list.innerHTML=ROUTE.map((s,i)=>`<li><span class="n">${i+1}</span><span class="nm">${esc(s.name)}<br><small>${esc([s.city,s.state].filter(Boolean).join(", "))}</small></span><button class="del" title="Remove" onclick="removeStop(${i})">✕</button></li>`).join("");
-  $("#rmeta").textContent=`${ROUTE.length} stops · ~${Math.round(routeMiles())} mi`;
+  const useHome = HOME && ROUNDTRIP;
+  const start = useHome?`<li class="homeli"><span class="n" style="background:#16202e">🏠</span><span class="nm"><b>Start — Home base</b><br><small>${esc(HOME.short||HOME.q||"")}</small></span></li>`:"";
+  const end   = useHome?`<li class="homeli"><span class="n" style="background:#16202e">🏠</span><span class="nm"><b>End — Home base</b><br><small>return</small></span></li>`:"";
+  list.innerHTML=start+ROUTE.map((s,i)=>`<li><span class="n">${i+1}</span><span class="nm">${esc(s.name)}<br><small>${esc([s.city,s.state].filter(Boolean).join(", "))}</small></span><button class="del" title="Remove" onclick="removeStop(${i})">✕</button></li>`).join("")+end;
+  $("#rmeta").textContent=`${ROUTE.length} stops · ~${Math.round(routeMiles())} mi${useHome?" round trip":""}`;
   if(ROUTELINE){ MAP.removeLayer(ROUTELINE); ROUTELINE=null; }
-  if(ROUTE.length>=2){ ROUTELINE=L.polyline(ROUTE.map(s=>[s.lat,s.lng]),{color:"#2B4071",weight:3,opacity:.65,dashArray:"7,7"}).addTo(MAP); }
+  const R=effectiveRoute();
+  if(R.length>=2){ ROUTELINE=L.polyline(R.map(s=>[s.lat,s.lng]),{color:"#2B4071",weight:3,opacity:.65,dashArray:"7,7"}).addTo(MAP); }
 }
 function openGmaps(){
-  if(!ROUTE.length)return;
-  let stops=ROUTE;
-  if(stops.length>10){ alert("Google Maps links support about 10 stops. Opening the first 10 — split longer trips into two."); stops=stops.slice(0,10); }
+  const R=effectiveRoute(); if(!R.length)return;
+  let stops=R;
+  if(stops.length>10){ alert("Google Maps links support about 10 points (home counts as 2). Opening the first 10 — split longer trips into two days."); stops=stops.slice(0,10); }
   const url="https://www.google.com/maps/dir/"+stops.map(s=>`${s.lat},${s.lng}`).join("/");
   window.open(url,"_blank");
 }
@@ -225,7 +293,6 @@ async function loadPoints(){
   if(j&&j.error==="tables_missing"){ banner(j.message); POINTS=[]; }
   else { banner(""); POINTS=(j&&j.points)||[]; }
   POINTS.forEach((p,i)=>p._i=i);
-  // keep any route stops valid (match by _i falls out of sync on reload -> rematch by name+coords)
   if(ROUTE.length){ ROUTE=ROUTE.map(s=>POINTS.find(p=>p.name===s.name&&p.lat===s.lat&&p.lng===s.lng)).filter(Boolean); }
   fillStateFilter(); draw(); renderRoute();
 }
@@ -233,11 +300,13 @@ async function boot(){
   if(!TOKEN){ showGate(); return; }
   try{
     if(!BOOTED){ initMap(); BOOTED=true; }
+    drawHome();
     await loadPoints();
     await refreshGeoBtn();
     if(!POINTS.length){ banner("No mapped locations yet — click “Geocode addresses” to plot your dealers. (If it says a table is missing, run geocode.sql in Supabase first.)"); }
   }catch(e){}
 }
+refreshHomeBtn();
 if(TOKEN) boot(); else showGate();
 </script>
 </body></html>

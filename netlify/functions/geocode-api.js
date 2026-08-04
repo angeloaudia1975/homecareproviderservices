@@ -126,6 +126,14 @@ exports.handler = async (event)=>{
         return json(200,{ok:true,processed:todo.length,matched,remaining:Math.max(0,remaining)});
       }
 
+      // Geocode a single typed address (used to set the route "home base").
+      if(b.action==="geocode_one"){
+        const q=String(b.q||"").trim(); if(!q) return json(400,{error:"q required"});
+        const g=await geocodeCensus(q);
+        if(!g) return json(200,{ok:false,error:"not_found"});
+        return json(200,{ok:true,lat:g.lat,lng:g.lng});
+      }
+
       return json(400,{error:"unknown action"});
     }
 

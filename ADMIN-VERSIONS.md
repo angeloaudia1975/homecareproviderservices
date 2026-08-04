@@ -10,23 +10,33 @@ the new version.
 
 | Page | File | Version | Notes |
 |------|------|---------|-------|
-| Home | src/admin/index.html | 1.3 | Live dashboard (1.2) + Map nav link & card (1.3) |
-| Territory Map | src/admin/map.html | 1.1 | OpenStreetMap pins + filters + geocoding (1.0); route planner — click pins into a trip, nearest-neighbor optimize, hand off to Google Maps (1.1). Function: netlify/functions/geocode-api.js. SQL: geocode.sql |
-| Analytics | src/admin/analytics.html | 1.2 | Remembered passcode (shared sign-in) |
-| Dealer Manager | src/admin/dealers.html | 1.3 | "Contacts on file" tile (1.2) + remembered passcode (1.3) |
-| Images | src/admin/images.html | 1.2 | Remembered passcode |
-| Featured | src/admin/featured.html | 1.2 | Remembered passcode |
-| Catalog | src/admin/catalog.html | 1.2 | Manufacturer on/off manager (1.1) + remembered passcode (1.2) |
-| Portal Home | src/admin/home-editor.html | 1.2 | Remembered passcode |
-| Website | src/admin/website.html | 1.1 | Separate GitHub-editor login (own password) — unchanged |
+| Home | src/admin/index.html | 1.5 | Live dashboard KPIs (1.2) + Map (1.3) + Territory (1.4) + Staff nav link & card (1.5) |
+| Territory | src/admin/territory.html | 1.0 | New — assign manufacturer lines by state (drives map filters, opportunity flags, targets). Function: territory-api.js. SQL: territory.sql |
+| Staff | src/admin/staff.html | 1.0 | New — team logins & roles (President/Sales Rep/Customer Relations), travel/route access, instant revoke. First sign-in on an empty table becomes President; teammates set their own password on first login. Function: staff-auth.js. SQL: staff.sql. NOTE: role-based data scoping across the other tools is the NEXT phase — this phase adds login + management only, alongside the existing passcode. |
+| Territory Map | src/admin/map.html | 1.2 | OSM pins + filters + geocoding (1.0); route planner (1.1); home base — routes start & end at a saved address, round-trip toggle, nearest-neighbor from home (1.2). Function: geocode-api.js. SQL: geocode.sql |
+| Analytics | src/admin/analytics.html | 1.3 | Remembered passcode (1.2) + Map nav link (1.3) |
+| Dealer Manager | src/admin/dealers.html | 1.5 | Contacts tile (1.2) + remembered passcode (1.3) + business-review PDF export, per-account & bulk packet (1.4) + Map nav link (1.5) |
+| Images | src/admin/images.html | 1.3 | Remembered passcode (1.2) + Map nav link (1.3) |
+| Featured | src/admin/featured.html | 1.3 | Remembered passcode (1.2) + Map nav link (1.3) |
+| Catalog | src/admin/catalog.html | 1.3 | Manufacturer on/off manager (1.1) + remembered passcode (1.2) + Map nav link (1.3) |
+| Portal Home | src/admin/home-editor.html | 1.3 | Remembered passcode (1.2) + Map nav link (1.3) |
+| Website | src/admin/website.html | 1.2 | Separate GitHub-editor login (own password); Map nav link (1.2) |
 
 ## Shared sign-in ("enter your passcode once")
 
-The six analytics-token pages (Home, Analytics, Dealer Manager, Images, Featured, Catalog,
-Portal Home) now remember your admin passcode in the browser session (`sessionStorage`,
-key `hcps_admin_token`). Enter it on any one of them and the rest stay unlocked until you
-close the browser or click **Lock** on the dashboard. A wrong/expired code clears itself
-and re-prompts. The **Website** editor uses its own separate password and is unaffected.
+The analytics-token pages (Home, Analytics, Dealer Manager, Map, Images, Featured, Catalog,
+Portal Home) remember your admin passcode in the browser session (`sessionStorage`, key
+`hcps_admin_token`). Enter it on any one and the rest stay unlocked until you close the
+browser or click **Lock** on the dashboard/map. A wrong/expired code clears itself and
+re-prompts. The **Website** editor uses its own separate password.
+
+## Territory Map — activation
+
+1. Run **geocode.sql** in Supabase (creates the `geocache` table; `create_tables.sql` must
+   already be run so `dealer_addresses` exists).
+2. Push the marketing repo (map.html, geocode-api.js, index.html).
+3. Admin → Map → **Geocode addresses** once (free US Census geocoder, no key). Coordinates
+   are cached by address text, so re-importing contacts never forces a re-geocode.
 
 ## Which repo deploys what (so changes land in the right place)
 
@@ -35,5 +45,4 @@ and re-prompts. The **Website** editor uses its own separate password and is una
   admin functions in `netlify/functions/`.
 - **Dealer ordering portal** lives in the **`homecareproviderservicesordering`** repo →
   deploys to **hcpsonlineordering.netlify.app** (`public/index.html`).
-- Both share **one Supabase project**, so a manufacturer turned off in Admin → Catalog
-  (writes `manufacturer_meta.active`) is instantly hidden on the ordering portal.
+- Both share **one Supabase project**.
