@@ -10,7 +10,8 @@ the new version.
 
 | Page | File | Version | Notes |
 |------|------|---------|-------|
-| Home | src/admin/index.html | 1.2 | Live dashboard — KPI tiles (dealers, contacts, emails, pending logins, active carts, change requests), approval callout, remembered passcode |
+| Home | src/admin/index.html | 1.3 | Live dashboard (1.2) + Map nav link & card (1.3) |
+| Territory Map | src/admin/map.html | 1.0 | New — OpenStreetMap pins by dealer location, state/status filters, one-click US Census geocoding. Function: netlify/functions/geocode-api.js. SQL: geocode.sql |
 | Analytics | src/admin/analytics.html | 1.2 | Remembered passcode (shared sign-in) |
 | Dealer Manager | src/admin/dealers.html | 1.3 | "Contacts on file" tile (1.2) + remembered passcode (1.3) |
 | Images | src/admin/images.html | 1.2 | Remembered passcode |

@@ -1,0 +1,178 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>HCPS Admin — Territory Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.min.css">
+<style>
+ :root{--ink:#16202e;--blue:#3B599A;--blue-dk:#2B4071;--orange:#F5821F;--bg:#eef2f7;--line:#e3e8ef;--muted:#64707e;--ok:#1f9d55;--warn:#e0850f;--danger:#d64545}
+ *{box-sizing:border-box;margin:0;padding:0}
+ html,body{height:100%}
+ body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);display:flex;flex-direction:column}
+ a{color:inherit;text-decoration:none}
+ .adminnav{background:var(--ink);display:flex;align-items:center;gap:4px;padding:10px 22px;flex-wrap:wrap;box-shadow:0 2px 12px rgba(0,0,0,.14);flex:none}
+ .adminnav .bd{color:#fff;font-weight:800;font-size:15px;margin-right:16px}.adminnav .bd span{color:var(--orange)}
+ .adminnav a{color:#aeb9c6;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-radius:7px}
+ .adminnav a:hover{color:#fff;background:rgba(255,255,255,.07)}.adminnav a.on{color:#fff;background:var(--blue)}
+ .adminnav .navright{margin-left:auto;display:flex;gap:10px;align-items:center}
+ .lock{background:transparent;border:1px solid rgba(255,255,255,.22);color:#cdd6e2;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer}
+ .lock:hover{background:rgba(255,255,255,.08);color:#fff}
+ .toolbar{flex:none;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 18px;background:#fff;border-bottom:1px solid var(--line)}
+ .toolbar h1{font-size:15px;font-weight:800;margin-right:6px}
+ .toolbar select{padding:7px 9px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13px;background:#fff}
+ .toolbar .sp{flex:1}
+ .btn{border:1px solid var(--blue-dk);background:var(--blue);color:#fff;border-radius:8px;padding:8px 13px;font-weight:700;font-size:13px;cursor:pointer}
+ .btn:hover{background:var(--blue-dk)} .btn:disabled{opacity:.55;cursor:not-allowed}
+ .btn.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+ .count{font-size:12.5px;color:var(--muted)}
+ .legend{display:flex;gap:12px;align-items:center;font-size:12px;color:var(--muted)}
+ .legend i{display:inline-block;width:11px;height:11px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25);margin-right:4px;vertical-align:-1px}
+ #map{flex:1;min-height:0}
+ .pin span{display:block;width:15px;height:15px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3)}
+ .pop b{font-size:13.5px} .pop .st{display:inline-block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;padding:1px 7px;border-radius:20px;margin-left:4px}
+ .pop .row{font-size:12px;color:#333;margin-top:3px}.pop a{color:var(--blue);font-weight:700;font-size:12px}
+ .banner{margin:0;padding:10px 18px;background:#fff7ed;border-bottom:1px solid #fed7aa;color:#9a3412;font-size:13px}
+ /* gate */
+ .gate{position:fixed;inset:0;z-index:1000;background:linear-gradient(135deg,#16202e,#2B4071);display:grid;place-items:center;padding:20px}
+ .gate-card{background:#fff;border-radius:16px;padding:30px;width:100%;max-width:370px;box-shadow:0 24px 70px rgba(0,0,0,.35)}
+ .gate-card .brand{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--orange);font-weight:800}
+ .gate-card h2{margin:6px 0 3px;font-size:22px}.gate-card p{color:var(--muted);font-size:13px;margin:0 0 16px}
+ .gate-card input{width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:9px;font-size:15px;font-family:inherit}
+ .gate-card input:focus{outline:2px solid rgba(59,89,154,.35);border-color:var(--blue)}
+ .gate-card button{width:100%;margin-top:12px;padding:12px;border:0;border-radius:9px;background:var(--blue);color:#fff;font-weight:800;font-size:14px;cursor:pointer}
+ .gate-card .er{color:var(--danger);font-size:12.5px;margin-top:10px;min-height:16px}
+</style></head><body>
+
+<nav class="adminnav">
+  <div class="bd">HCPS <span>Admin</span></div>
+  <a href="/admin/">Home</a>
+  <a href="/admin/analytics.html">Analytics</a>
+  <a href="/admin/dealers.html">Dealer Manager</a>
+  <a href="/admin/map.html" class="on">Map</a>
+  <a href="/admin/images.html">Images</a>
+  <a href="/admin/featured.html">Featured</a>
+  <a href="/admin/catalog.html">Catalog</a>
+  <a href="/admin/home-editor.html">Portal Home</a>
+  <a href="/admin/website.html">Website</a>
+  <div class="navright"><button class="lock" onclick="lock()">Lock</button></div>
+</nav>
+
+<div id="banner"></div>
+
+<div class="toolbar">
+  <h1>Territory Map</h1>
+  <select id="fState" onchange="draw()"><option value="">All states</option></select>
+  <select id="fStatus" onchange="draw()">
+    <option value="">All statuses</option>
+    <option value="active">Active</option>
+    <option value="prospect">Prospect</option>
+    <option value="review">Review</option>
+  </select>
+  <span class="legend"><span><i style="background:#1f9d55"></i>Active</span><span><i style="background:#F5821F"></i>Prospect</span><span><i style="background:#d64545"></i>Review</span><span><i style="background:#3B599A"></i>Other</span></span>
+  <span class="sp"></span>
+  <span class="count" id="count"></span>
+  <button class="btn" id="geoBtn" onclick="geocodeAll()">Geocode addresses</button>
+</div>
+
+<div id="map"></div>
+<div id="gate"></div>
+
+<div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:1200;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.85);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.0</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const TKEY="hcps_admin_token";
+let TOKEN=sessionStorage.getItem(TKEY)||null;
+let MAP=null, CLUSTER=null, POINTS=[], BOOTED=false;
+
+const API="/.netlify/functions/geocode-api";
+async function api(method,body){
+  const h={"content-type":"application/json"}; if(TOKEN)h["x-analytics-token"]=TOKEN;
+  const r=await fetch(API,{method,headers:h,body:body?JSON.stringify(body):undefined});
+  if(r.status===401){ sessionStorage.removeItem(TKEY); TOKEN=null; showGate("That passcode didn't work — try again."); throw new Error("unauthorized"); }
+  return r.json();
+}
+function showGate(msg){
+  $("#gate").innerHTML=`<div class="gate"><div class="gate-card">
+    <div class="brand">HomeCare Provider Services</div><h2>Admin access</h2>
+    <p>Enter your admin passcode to open the map.</p>
+    <input id="tok" type="password" placeholder="Admin passcode" onkeydown="if(event.key==='Enter')submitTok()">
+    <button onclick="submitTok()">Unlock</button><div class="er">${msg||""}</div></div></div>`;
+  setTimeout(()=>{const t=$("#tok"); if(t)t.focus();},50);
+}
+function submitTok(){ const v=($("#tok").value||"").trim(); if(!v)return; TOKEN=v; sessionStorage.setItem(TKEY,v); $("#gate").innerHTML=""; boot(); }
+function lock(){ sessionStorage.removeItem(TKEY); location.reload(); }
+
+const COLORS={active:"#1f9d55",prospect:"#F5821F",review:"#d64545"};
+const colorOf=s=>COLORS[String(s||"").toLowerCase()]||"#3B599A";
+function icon(color){ return L.divIcon({className:"pin",html:`<span style="background:${color}"></span>`,iconSize:[16,16],iconAnchor:[8,8]}); }
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function initMap(){
+  MAP=L.map("map",{zoomControl:true}).setView([39.5,-98.35],4); // continental US
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap contributors"}).addTo(MAP);
+  CLUSTER=L.markerClusterGroup({maxClusterRadius:45}); MAP.addLayer(CLUSTER);
+}
+function fillStateFilter(){
+  const sel=$("#fState"); const states=[...new Set(POINTS.map(p=>p.state).filter(Boolean))].sort();
+  sel.innerHTML=`<option value="">All states</option>`+states.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("");
+}
+function draw(){
+  if(!CLUSTER)return; CLUSTER.clearLayers();
+  const fs=$("#fState").value, ft=$("#fStatus").value;
+  const shown=POINTS.filter(p=>(!fs||p.state===fs)&&(!ft||String(p.status).toLowerCase()===ft));
+  const markers=shown.map(p=>{
+    const m=L.marker([p.lat,p.lng],{icon:icon(colorOf(p.status))});
+    const chipC=colorOf(p.status);
+    m.bindPopup(`<div class="pop"><b>${esc(p.name)}</b>${p.status?`<span class="st" style="background:${chipC}22;color:${chipC}">${esc(p.status)}</span>`:""}
+      ${p.label?`<div class="row">${esc(p.label)}</div>`:""}
+      <div class="row">${esc([p.city,p.state].filter(Boolean).join(", "))}</div>
+      ${p.email?`<div class="row">${esc(p.email)}</div>`:""}
+      <div class="row" style="margin-top:5px"><a href="/admin/dealers.html">Open in Dealer Manager →</a></div></div>`);
+    return m;
+  });
+  CLUSTER.addLayers(markers);
+  $("#count").textContent=`${shown.length.toLocaleString()} of ${POINTS.length.toLocaleString()} locations`;
+  if(shown.length){ try{ MAP.fitBounds(L.latLngBounds(shown.map(p=>[p.lat,p.lng])).pad(0.15)); }catch(e){} }
+}
+async function refreshGeoBtn(){
+  try{
+    const s=await api("POST",{action:"status"});
+    const btn=$("#geoBtn");
+    if(s&&s.ok){ btn.textContent = s.remaining>0 ? `Geocode addresses (${s.remaining} left)` : `All ${s.total} geocoded ✓`; btn.disabled=s.remaining===0; }
+    else if(s&&s.error==="tables_missing"){ banner(s.message); btn.disabled=true; }
+  }catch(e){}
+}
+async function geocodeAll(){
+  const btn=$("#geoBtn"); btn.disabled=true;
+  try{
+    for(let guard=0; guard<200; guard++){
+      const r=await api("POST",{action:"run",limit:25});
+      if(!r||!r.ok){ if(r&&r.message)banner(r.message); break; }
+      btn.textContent=`Geocoding… ${r.remaining} left`;
+      if(r.remaining<=0) break;
+    }
+    await loadPoints(); await refreshGeoBtn();
+  }catch(e){ btn.disabled=false; }
+}
+function banner(msg){ $("#banner").innerHTML = msg?`<div class="banner">${esc(msg)}</div>`:""; }
+async function loadPoints(){
+  const j=await api("GET");
+  if(j&&j.error==="tables_missing"){ banner(j.message); POINTS=[]; }
+  else { banner(""); POINTS=(j&&j.points)||[]; }
+  fillStateFilter(); draw();
+}
+async function boot(){
+  if(!TOKEN){ showGate(); return; }
+  try{
+    if(!BOOTED){ initMap(); BOOTED=true; }
+    await loadPoints();
+    await refreshGeoBtn();
+    if(!POINTS.length){ banner("No mapped locations yet — click “Geocode addresses” to plot your dealers. (If it says a table is missing, run geocode.sql in Supabase first.)"); }
+  }catch(e){ /* 401 handled in api() */ }
+}
+if(TOKEN) boot(); else showGate();
+</script>
+</body></html>
