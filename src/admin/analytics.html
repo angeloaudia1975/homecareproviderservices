@@ -102,7 +102,7 @@ const money=n=>"$"+Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,
 const money0=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
 const pm=p=>{const[y,m]=p.split("-").map(Number);return y*12+(m-1);};
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-let DATA=null,TOKEN=null,TAB="overview",EXP=null,DEALER=null,LT={},ASSIGN={},REPOPTS=[],ORDMODE="month",DRILL=null;
+let DATA=null,TOKEN=sessionStorage.getItem("hcps_admin_token")||null,TAB="overview",EXP=null,DEALER=null,LT={},ASSIGN={},REPOPTS=[],ORDMODE="month",DRILL=null;
 const jarg=s=>esc(String(s)).replace(/'/g,"\\'");   // safe onclick string arg
 const TABS=[["overview","Overview"],["trend","Trends & charts"],["orders","Orders"],["dealers","Dealers"],["cadence","Order cadence"],["bizdev","Business development"],["reports","Reports received"],["assign","Assignments"]];
 // Effective rep = the live assigned owner (Assignments tab) if set, else the rep the
@@ -114,7 +114,7 @@ async function load(){
   try{
     const h={}; if(TOKEN) h["x-analytics-token"]=TOKEN;
     const r=await fetch("/.netlify/functions/analytics",{headers:h});
-    if(r.status===401){gate();return;}
+    if(r.status===401){sessionStorage.removeItem("hcps_admin_token");gate();return;}
     const j=await r.json(); if(j.error){showErr(j.error);return;}
     DATA=j;
     LT={}; for(const f of j.facts){LT[f.line]=(LT[f.line]||0)+f.sales;}
@@ -127,7 +127,7 @@ async function load(){
   }catch(e){showErr(String(e));}
 }
 function gate(){$("#body").innerHTML=`<div class="gate card"><h2>Enter access code</h2><input id="tok" type="password" placeholder="Analytics passcode" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">View analytics</button></div>`;}
-function submitTok(){TOKEN=$("#tok").value.trim();load();}
+function submitTok(){TOKEN=$("#tok").value.trim();sessionStorage.setItem("hcps_admin_token",TOKEN);load();}
 function showErr(m){$("#body").innerHTML=`<div class="msg err"><b>Couldn't load analytics.</b><br>${esc(m)}<br><br><button class="go" onclick="load()">Retry</button></div>`;}
 function setTab(t){TAB=t;EXP=null;DRILL=null;render();}
 function openDealer(n){DEALER=n;window.scrollTo(0,0);render();}
@@ -488,5 +488,5 @@ async function saveAssign(name,i){
   }catch(e){st.textContent="Error";st.className="warn";}
 }
 load();
-</script><div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.1</div>
+</script><div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.2</div>
 </body></html>

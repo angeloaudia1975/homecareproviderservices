@@ -58,14 +58,14 @@
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const API="/.netlify/functions/home-api";
-let TOKEN=null, HOME={hero:{},tiles:[]};
+let TOKEN=sessionStorage.getItem("hcps_admin_token")||null, HOME={hero:{},tiles:[]};
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800);}
 async function api(opts){const h={"content-type":"application/json"};if(TOKEN)h["x-analytics-token"]=TOKEN;
   const r=await fetch(API+((opts&&opts.qs)||""),{...(opts||{}),headers:{...h,...((opts&&opts.headers)||{})}});
-  if(r.status===401){gate();throw new Error("unauthorized");}
+  if(r.status===401){sessionStorage.removeItem("hcps_admin_token");gate();throw new Error("unauthorized");}
   const j=await r.json().catch(()=>({}));if(!r.ok||j.error)throw new Error(j.error||("HTTP "+r.status));return j;}
 function gate(){$("#wrap").innerHTML=`<div class="gate"><h2>Enter access code</h2><input id="tok" type="password" placeholder="Admin passcode" style="margin:12px 0;width:100%" onkeydown="if(event.key==='Enter')submitTok()"><br><button class="go" onclick="submitTok()">Open Portal Home</button></div>`;}
-function submitTok(){TOKEN=$("#tok").value.trim();boot();}
+function submitTok(){TOKEN=$("#tok").value.trim();sessionStorage.setItem("hcps_admin_token",TOKEN);boot();}
 async function boot(){
   try{const j=await api({method:"GET"}); HOME=j.home||{hero:{},tiles:[]};
     if(!HOME.hero||typeof HOME.hero!=="object")HOME.hero={}; if(!Array.isArray(HOME.tiles))HOME.tiles=[];
@@ -158,7 +158,7 @@ function previewHtml(){
   return (hero||tilesHtml)?hero+tilesHtml:`<div class="hint" style="text-align:center;padding:20px">Nothing to show yet — add a banner or a tile.</div>`;
 }
 function syncPreview(){const p=$("#prevbox");if(p)p.innerHTML=previewHtml();}
-gate();
+if(TOKEN)boot();else gate();
 </script>
-<div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.1</div>
+<div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.2</div>
 </body></html>

@@ -61,7 +61,7 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const API="/.netlify/functions/images-api";
 const ORDERING="https://hcpsonlineordering.netlify.app";
-let TOKEN=null, MFRS=[], SLUG="", PRODUCTS=[], OVER={}, Q="", NEEDONLY=false, BROKEN={}, PICK=null;
+let TOKEN=sessionStorage.getItem("hcps_admin_token")||null, MFRS=[], SLUG="", PRODUCTS=[], OVER={}, Q="", NEEDONLY=false, BROKEN={}, PICK=null;
 // Staged (unpublished) changes across all lines, keyed "mfr::code":
 //   {kind:'upload', slug, code, name, data, contentType, filename, dataUrl}  or  {kind:'remove', slug, code}
 const STAGE=new Map();
@@ -69,10 +69,10 @@ const skey=(slug,code)=>slug+"::"+code;
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800);}
 async function api(path,opts){const h={"content-type":"application/json"};if(TOKEN)h["x-analytics-token"]=TOKEN;
   const r=await fetch(API+path,{...(opts||{}),headers:{...h,...((opts&&opts.headers)||{})}});
-  if(r.status===401){gate();throw new Error("unauthorized");}
+  if(r.status===401){sessionStorage.removeItem("hcps_admin_token");gate();throw new Error("unauthorized");}
   const j=await r.json().catch(()=>({}));if(!r.ok||j.error)throw new Error(j.error||("HTTP "+r.status));return j;}
 function gate(){$("#wrap").innerHTML=`<div class="gate"><h2>Enter access code</h2><input id="tok" type="password" placeholder="Admin passcode" style="margin:12px 0;width:100%" onkeydown="if(event.key==='Enter')submitTok()"><br><button class="go" onclick="submitTok()">Open Image Manager</button></div>`;}
-function submitTok(){TOKEN=$("#tok").value.trim();boot();}
+function submitTok(){TOKEN=$("#tok").value.trim();sessionStorage.setItem("hcps_admin_token",TOKEN);boot();}
 async function boot(){
   try{const j=await api("",{method:"GET"});MFRS=(j.manufacturers||[]).filter(m=>m.hasData);
     if(!MFRS.length){$("#wrap").innerHTML='<div class="msg">No manufacturers with product data found.</div>';return;}
@@ -162,5 +162,5 @@ async function publishAll(){
   toast(fail? `Published ${ok}, ${fail} failed — check and retry` : `Published ${ok} change${ok===1?'':'s'} ✓`);
 }
 boot();
-</script><div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.1</div>
+</script><div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.2</div>
 </body></html>
