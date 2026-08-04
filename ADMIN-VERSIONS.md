@@ -15,7 +15,7 @@ the new version.
 | Staff | src/admin/staff.html | 1.0 | New — team logins & roles (President/Sales Rep/Customer Relations), travel/route access, instant revoke. First sign-in on an empty table becomes President; teammates set their own password on first login. Function: staff-auth.js. SQL: staff.sql. NOTE: role-based data scoping across the other tools is the NEXT phase — this phase adds login + management only, alongside the existing passcode. |
 | Territory Map | src/admin/map.html | 1.2 | OSM pins + filters + geocoding (1.0); route planner (1.1); home base — routes start & end at a saved address, round-trip toggle, nearest-neighbor from home (1.2). Function: geocode-api.js. SQL: geocode.sql |
 | Analytics | src/admin/analytics.html | 1.3 | Remembered passcode (1.2) + Map nav link (1.3) |
-| Dealer Manager | src/admin/dealers.html | 1.5 | Contacts tile (1.2) + remembered passcode (1.3) + business-review PDF export, per-account & bulk packet (1.4) + Map nav link (1.5) |
+| Dealer Manager | src/admin/dealers.html | 2.0 | Contacts tile (1.2) + PDF export (1.4) + Map link (1.5) + **Phase 2 role scoping (2.0)**: signs in with staff email/password (not the shared passcode); reps see only their own book (scoped server-side in dealers-api, default-deny), and president-only tools (merge/import/logins/dupes) are hidden for reps and blocked in the function. Requires staff-auth.js + staff.sql. |
 | Images | src/admin/images.html | 1.3 | Remembered passcode (1.2) + Map nav link (1.3) |
 | Featured | src/admin/featured.html | 1.3 | Remembered passcode (1.2) + Map nav link (1.3) |
 | Catalog | src/admin/catalog.html | 1.3 | Manufacturer on/off manager (1.1) + remembered passcode (1.2) + Map nav link (1.3) |

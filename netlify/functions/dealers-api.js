@@ -148,17 +148,60 @@ async function buildState(){
   };
 }
 
+async function whoami(event){
+  const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
+  const tok=auth.replace(/^Bearer\s+/i,"").trim();
+  if(tok){
+    try{
+      const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${tok}`}});
+      if(r.ok){ const u=await r.json(); const email=u&&u.email&&String(u.email).toLowerCase();
+        if(email){ const s=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=*`).catch(()=>[]); const su=s&&s[0];
+          if(su&&su.active!==false) return {role:su.role||"rep",rep_name:su.rep_name||"",name:su.name||email,email}; return null; } }
+    }catch(e){}
+    return null;
+  }
+  const need=process.env.ANALYTICS_TOKEN;
+  const got=event.headers["x-analytics-token"]||(event.queryStringParameters||{}).token||"";
+  if(!need) return {role:"president",rep_name:"",name:"Admin",email:""};
+  if(got===need) return {role:"president",rep_name:"",name:"Admin",email:""};
+  return null;
+}
+async function ownsDealer(me,dealer_id){
+  if(me.role==="president") return true;
+  const rn=String(me.rep_name||"").trim().toLowerCase(); if(!rn) return false;
+  try{ const d=await sbGet(`dealers?id=eq.${encodeURIComponent(dealer_id)}&select=business_name`); const name=d&&d[0]&&d[0].business_name; if(!name) return false;
+    const dir=await sbGet(`dealer_directory?dealer_name=eq.${encodeURIComponent(name)}&select=rep_name`).catch(()=>[]); const rep=dir&&dir[0]&&dir[0].rep_name;
+    return !!rep && String(rep).trim().toLowerCase()===rn; }catch(e){ return false; }
+}
+
 exports.handler = async (event)=>{
   try{
-    const need=process.env.ANALYTICS_TOKEN;
-    if(need){const got=event.headers["x-analytics-token"]||(event.queryStringParameters||{}).token||""; if(got!==need) return json(401,{error:"unauthorized"});}
     if(!SUPABASE_URL||!SERVICE_ROLE) return json(500,{error:"Supabase env vars not set (SUPABASE_URL, SUPABASE_SERVICE_ROLE)"});
+    const me=await whoami(event);
+    if(!me) return json(401,{error:"unauthorized"});
 
-    if(event.httpMethod==="GET") return json(200, await buildState());
+    if(event.httpMethod==="GET"){
+      const state=await buildState();
+      if(me.role!=="president"){
+        const rn=String(me.rep_name||"").trim().toLowerCase();
+        const mine=new Set();
+        state.dealers=(state.dealers||[]).filter(d=>{ const keep=!!rn && String(d.rep||"").trim().toLowerCase()===rn; if(keep)mine.add(d.id); return keep; });
+        state.logins=[]; state.changeRequests=[]; state.nomerge=[];
+        state.recentSessions=(state.recentSessions||[]).filter(s=>mine.has(s.dealer_id));
+        state.openCarts=(state.openCarts||[]).filter(c=>mine.has(c.dealer_id));
+      }
+      state.me={role:me.role,name:me.name,rep_name:me.rep_name||""};
+      return json(200, state);
+    }
 
     if(event.httpMethod==="POST"){
       let b; try{b=JSON.parse(event.body||"{}");}catch{return json(400,{error:"bad JSON"});}
       const act=b.action;
+      const PRES_ONLY=new Set(["merge","confirm","rep","nomerge","split","import_contacts","approve_login","revoke_login","set_login_email","approve_change","reject_change","delete_login","diag"]);
+      if(me.role!=="president"){
+        if(PRES_ONLY.has(act)) return json(403,{error:"This action is available to the President only."});
+        if(act==="edit"||act==="access"){ if(!b.dealer_id) return json(400,{error:"dealer_id required"}); if(!(await ownsDealer(me,b.dealer_id))) return json(403,{error:"That account isn't in your book."}); }
+      }
       if(act==="diag"){
         // Self-check: which code is live, do the tables exist, and how many rows are stored.
         const probe=async(t)=>{ try{

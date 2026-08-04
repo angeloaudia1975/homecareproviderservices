@@ -73,7 +73,7 @@ th.buys,td.buys{max-width:230px}
  <a href="/admin/images.html">Images</a><a href="/admin/featured.html">Featured</a><a href="/admin/catalog.html">Catalog</a><a href="/admin/home-editor.html">Portal Home</a><a href="/admin/website.html">Website</a></nav>
 <div class="wrap">
 <div class="top"><div><h1>HomeCare Provider Services</h1><div class="sub">Dealer master — merge duplicates &amp; manage accounts</div></div>
-  <div><input type="search" id="q" placeholder="Search dealer or alias…" oninput="render()" style="width:280px"> <button class="go" onclick="exportPacket()" title="Export the current (filtered) list as a PDF business-review packet">⬇ Export packet</button></div></div>
+  <div><input type="search" id="q" placeholder="Search dealer or alias…" oninput="render()" style="width:280px"> <button class="go" onclick="exportPacket()" title="Export the current (filtered) list as a PDF business-review packet">⬇ Export packet</button> <button class="go" onclick="signOut()" title="Sign out">Sign out</button></div></div>
 <div id="body"><div class="msg">Loading…</div></div>
 <div id="dlg"></div>
 </div>
@@ -82,22 +82,25 @@ const $=s=>document.querySelector(s);
 const money=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const jesc=s=>String(s).replace(/'/g,"\\'").replace(/"/g,"&quot;");
-let DATA=null,TOKEN=sessionStorage.getItem("hcps_admin_token")||null,TAB=(location.hash==="#logins"?"logins":"all"),SEL=new Set(),SELP=new Set(),DETAIL=null,SORT={key:"sales",dir:-1};
+let DATA=null,TOKEN=sessionStorage.getItem("hcps_staff_token")||null,ME=null,TAB=(location.hash==="#logins"?"logins":"all"),SEL=new Set(),SELP=new Set(),DETAIL=null,SORT={key:"sales",dir:-1};
+try{ME=JSON.parse(sessionStorage.getItem("hcps_staff_profile")||"null")}catch(e){}
+function isPres(){return !ME||ME.role==="president";}
 const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
 function jnorm(n){return String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim();}
 const COMMON=new Set(["MEDICAL","SUPPLY","SUPPLIES","PHARMACY","HOME","HEALTHCARE","HEALTH","CARE","EQUIPMENT","EQUIP","MOBILITY","DRUG","DRUGS","STORE","CENTER","SERVICES","MART","MED","OF","AND","DME","PLUS","GA","TN","KY","IN"]);
 
 async function load(){
   try{
-    const h={}; if(TOKEN)h["x-analytics-token"]=TOKEN;
+    const h={}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
     const r=await fetch("/.netlify/functions/dealers-api",{headers:h});
-    if(r.status===401){sessionStorage.removeItem("hcps_admin_token");gate();return;}
+    if(r.status===401){sessionStorage.removeItem("hcps_staff_token");TOKEN=null;gate();return;}
     const j=await r.json(); if(j.error){showErr(j.error);return;}
-    DATA=j; render();
+    DATA=j; ME=j.me||ME; if(ME)sessionStorage.setItem("hcps_staff_profile",JSON.stringify(ME)); if(!isPres())TAB="all"; render();
   }catch(e){showErr(String(e));}
 }
-function gate(){$("#body").innerHTML=`<div class="gate card"><h2>Enter access code</h2><input id="tok" type="password" placeholder="Admin passcode" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Open dealer master</button></div>`;}
-function submitTok(){TOKEN=$("#tok").value.trim();sessionStorage.setItem("hcps_admin_token",TOKEN);load();}
+function gate(msg){$("#body").innerHTML=`<div class="gate card"><h2>Staff sign-in</h2><div class="hint" style="margin-bottom:8px">Sign in with your work email and password.</div><input id="lemail" type="email" placeholder="Email" autocomplete="username" style="margin-bottom:8px"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()" style="margin-top:10px">Sign in</button><div class="msg err" id="lerr" style="margin-top:8px">${msg||""}</div></div>`;}
+async function submitTok(){const email=(($("#lemail")||{}).value||"").trim(),password=(($("#lpass")||{}).value||"");const e=$("#lerr");if(e){e.textContent="Signing in\u2026";}try{const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});const j=await r.json().catch(()=>({}));if(!j||!j.ok){gate((j&&j.message)||"Could not sign in.");return;}TOKEN=j.token;ME=j.profile;sessionStorage.setItem("hcps_staff_token",TOKEN);sessionStorage.setItem("hcps_staff_profile",JSON.stringify(ME));load();}catch(err){gate("Could not reach the server. Try again.");}}
+function signOut(){sessionStorage.removeItem("hcps_staff_token");sessionStorage.removeItem("hcps_staff_profile");TOKEN=null;ME=null;location.reload();}
 function showErr(m){$("#body").innerHTML=`<div class="msg err"><b>Couldn't load.</b><br>${esc(m)}<br><br><button class="go" onclick="load()">Retry</button></div>`;}
 function setTab(t){TAB=t;DETAIL=null;render();}
 
@@ -154,22 +157,22 @@ function render(){
     <div class="kpi"><div class="l">Emails on file</div><div class="v ${withEmail<N?'warn':''}">${withEmail}<span style="font-size:12px;color:var(--gray)">/${DATA.dealers.length}</span></div></div>
     <div class="kpi"><div class="l">Contacts on file</div><div class="v">${totContacts}</div></div>
     <div class="kpi"><div class="l">Addresses on file</div><div class="v ${withAddr<N?'warn':''}">${withAddr}<span style="font-size:12px;color:var(--gray)">/${DATA.dealers.length}</span></div></div>
-    <div class="kpi"><div class="l">Review queue</div><div class="v warn">${rev}</div></div>
-    <div class="kpi"><div class="l">Suggested dupes</div><div class="v orange">${dup}</div></div></div>`;
+    ${isPres()?`<div class="kpi"><div class="l">Review queue</div><div class="v warn">${rev}</div></div>
+    <div class="kpi"><div class="l">Suggested dupes</div><div class="v orange">${dup}</div></div>`:""}</div>`;
   const plog=(DATA.logins||[]).filter(l=>l.status==="pending").length;
   const pchg=(DATA.changeRequests||[]).length;
-  const tabs=`<div class="tabs">
+  const tabs=isPres()?`<div class="tabs">
     <button class="tab ${TAB==='all'?'on':''}" onclick="setTab('all')">All dealers</button>
     <button class="tab ${TAB==='review'?'on':''}" onclick="setTab('review')">Review queue${rev?` (${rev})`:""}</button>
     <button class="tab ${TAB==='dupes'?'on':''}" onclick="setTab('dupes')">Suggested duplicates${dup?` (${dup})`:""}</button>
     <button class="tab ${TAB==='logins'?'on':''}" onclick="setTab('logins')">Pending logins${plog?` (${plog})`:""}</button>
     <button class="tab ${TAB==='changes'?'on':''}" onclick="setTab('changes')">Account changes${pchg?` (${pchg})`:""}</button>
     <button class="tab ${TAB==='activity'?'on':''}" onclick="setTab('activity')">Activity &amp; carts${(DATA.openCarts&&DATA.openCarts.length)?` (${DATA.openCarts.length})`:""}</button>
-    <button class="tab ${TAB==='import'?'on':''}" onclick="setTab('import')">Import contacts</button></div>`;
+    <button class="tab ${TAB==='import'?'on':''}" onclick="setTab('import')">Import contacts</button></div>`:`<div class="tabs"><button class="tab on">My accounts</button></div>`;
   $("#body").innerHTML=kpis+tabs+mergeBar()+`<div id="app"></div>`;
   ({all:renderAll,review:renderReview,dupes:renderDupes,logins:renderLogins,changes:renderChanges,activity:renderActivity,import:renderImport}[TAB])();
 }
-function mergeBar(){
+function mergeBar(){if(!isPres())return"";
   if(SEL.size<1) return "";
   const names=[...SEL].map(id=>DATA.dealers.find(d=>d.id===id)?.name).filter(Boolean);
   const shown=names.slice(0,6).map(n=>esc(n)).join(" · ")+(names.length>6?` · +${names.length-6} more`:"");
@@ -449,7 +452,7 @@ async function saveAccess(id){
 }
 async function post(body,working,stSel){
   const st=stSel?$(stSel):null; if(st&&working){st.textContent=working;st.className="st";}
-  const h={"content-type":"application/json"}; if(TOKEN)h["x-analytics-token"]=TOKEN;
+  const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
   const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify(body)});
   const j=await r.json().catch(()=>({}));
   if(!(r.ok&&j.ok)){const m="Error: "+(j.error||r.status); if(st){st.textContent=m;st.className="st warn";} else alertDlg(m); throw new Error(m);}
@@ -656,7 +659,7 @@ function importPreview(){
 async function applyImport(){
   if(!IMPORT.rows||IMPORT.busy)return; IMPORT.busy=true; render();
   try{
-    const h={"content-type":"application/json"}; if(TOKEN)h["x-analytics-token"]=TOKEN;
+    const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
     const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify({action:"import_contacts",rows:IMPORT.rows,create:IMPORT.create,replace:IMPORT.replace!==false})});
     const j=await r.json().catch(()=>({}));
     IMPORT.result = j.result || {};
@@ -668,7 +671,7 @@ async function applyImport(){
 async function runDiag(){
   const out=$("#diagOut"); if(out)out.innerHTML=`<div class="muted" style="margin-top:10px">Checking…</div>`;
   try{
-    const h={"content-type":"application/json"}; if(TOKEN)h["x-analytics-token"]=TOKEN;
+    const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
     const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify({action:"diag"})});
     const j=await r.json().catch(()=>({}));
     if(!(r.ok&&j.ok)){ const m=(j.error||("HTTP "+r.status));
@@ -732,5 +735,5 @@ function renderImport(){
   </div>`;
 }
 load();
-</script><div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.5</div>
+</script><div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 2.0</div>
 </body></html>
