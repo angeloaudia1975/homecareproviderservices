@@ -7,7 +7,7 @@
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const ORDERING_BASE = process.env.ORDERING_BASE || "https://hcpsonlineordering.netlify.app";
-const BUILD = "territory-api v1 (2026-08-04)";
+const BUILD = "territory-api v2 (2026-08-04)";
 
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
@@ -30,17 +30,39 @@ const NOT_REPRESENTED=new Set(["complete-medical-supplies"]);
 const STATES=["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
 
 function pretty(slug){ return String(slug||"").split("-").map(w=>w?w[0].toUpperCase()+w.slice(1):w).join(" "); }
-// The full set of lines we REPRESENT (broader than what's orderable on this platform):
-// orderable lines (nice names) + the Supabase manufacturers table + every line any dealer
-// actually holds an account on (dealer_manufacturers) — so account-only lines like Golden
-// (golden-technologies), sold on a separate platform, still appear for territory + targeting.
-async function manufacturers(){
-  const nameMap={};
-  try{ const j=await fetchJson(`${ORDERING_BASE}/data/manufacturers.json`); (j||[]).forEach(x=>{ if(x&&x.slug&&x.hidden!==true && !nameMap[x.slug]) nameMap[x.slug]=x.name||pretty(x.slug); }); }catch(e){}
+// Collapse the same real manufacturer that appears under more than one slug/name
+// (e.g. Golden Technologies twice; AIRAVANT / BongoRx / "Bongo"). Mirrors Dealer Manager.
+function canonKey(name){
+  let s=String(name||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+  if(/airavant|bongo/.test(s)) return "airavant-bongorx";
+  if(/golden/.test(s)) return "golden-technologies";
+  return s;
+}
+const SPECIAL=new Set(["airavant-bongorx","golden-technologies"]);
+
+// The full set of lines we REPRESENT (broader than what's orderable here), de-duplicated
+// into ONE entry per real manufacturer. Returns the picker list plus a slug->canonical map.
+async function buildCatalog(){
+  const nameMap={}; const orderable=new Set();
+  try{ const j=await fetchJson(`${ORDERING_BASE}/data/manufacturers.json`); (j||[]).forEach(x=>{ if(x&&x.slug&&x.hidden!==true){ orderable.add(x.slug); if(!nameMap[x.slug])nameMap[x.slug]=x.name||pretty(x.slug); } }); }catch(e){}
   try{ const m=await sbGet("manufacturers?select=slug,name"); (m||[]).forEach(x=>{ if(x&&x.slug&&!nameMap[x.slug]) nameMap[x.slug]=x.name||pretty(x.slug); }); }catch(e){}
   try{ const dm=await sbGetAll("dealer_manufacturers?select=manufacturer","manufacturer"); (dm||[]).forEach(x=>{ const s=x&&x.manufacturer; if(s&&!(s in nameMap)) nameMap[s]=pretty(s); }); }catch(e){}
-  const list=Object.keys(nameMap).filter(s=>!NOT_REPRESENTED.has(s)).map(slug=>({slug,name:nameMap[slug]||pretty(slug)}));
-  return list.sort((a,b)=>a.name.localeCompare(b.name));
+
+  const groups=new Map();
+  for(const slug of Object.keys(nameMap)){ const k=canonKey(nameMap[slug]||slug); if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(slug); }
+
+  const canonOf={}, membersOf={}, list=[];
+  for(const [k,slugs] of groups){
+    const canon = SPECIAL.has(k) ? k : (slugs.find(s=>orderable.has(s)) || slugs.slice().sort()[0]);
+    const members=[...new Set(slugs.concat(nameMap[canon]!==undefined && !slugs.includes(canon)?[canon]:[]))];
+    members.forEach(s=>{ canonOf[s]=canon; });
+    if(NOT_REPRESENTED.has(canon) || members.some(s=>NOT_REPRESENTED.has(s))) continue;   // retired -> not in picker
+    const name = nameMap[canon] || members.map(s=>nameMap[s]).filter(Boolean).sort()[0] || pretty(canon);
+    membersOf[canon]=members;
+    list.push({slug:canon,name});
+  }
+  list.sort((a,b)=>a.name.localeCompare(b.name));
+  return {list,canonOf,membersOf};
 }
 
 exports.handler = async (event)=>{
@@ -49,29 +71,34 @@ exports.handler = async (event)=>{
     const need=process.env.ANALYTICS_TOKEN;
     if(need){ const got=event.headers["x-analytics-token"]||event.headers["X-Analytics-Token"]; if(got!==need) return json(401,{error:"unauthorized"}); }
 
+    const cat=await buildCatalog();
+
     if(event.httpMethod==="GET"){
-      const mfrs=await manufacturers();
       let rows;
       try{ rows=await sbGetAll("territory_lines?select=state,manufacturer","state"); }
-      catch(e){ return json(200,{ok:false,error:"tables_missing",manufacturers:mfrs,states:STATES,assignments:{},message:"Run territory.sql in Supabase, then reload."}); }
-      const assignments={}; for(const r of rows){ if(NOT_REPRESENTED.has(r.manufacturer))continue; (assignments[r.state]=assignments[r.state]||[]).push(r.manufacturer); }
-      return json(200,{ok:true,build:BUILD,manufacturers:mfrs,states:STATES,assignments});
+      catch(e){ return json(200,{ok:false,error:"tables_missing",manufacturers:cat.list,states:STATES,assignments:{},message:"Run territory.sql in Supabase, then reload."}); }
+      const assignments={};
+      for(const r of rows){ const canon=cat.canonOf[r.manufacturer]||r.manufacturer; if(NOT_REPRESENTED.has(canon))continue;
+        const arr=assignments[r.state]=assignments[r.state]||[]; if(!arr.includes(canon))arr.push(canon); }
+      return json(200,{ok:true,build:BUILD,manufacturers:cat.list,states:STATES,assignments});
     }
 
     if(event.httpMethod==="POST"){
       let b; try{b=JSON.parse(event.body||"{}");}catch{return json(400,{error:"bad JSON"});}
 
       if(b.action==="set_line"){
-        const st=String(b.state||"").trim().toUpperCase(), mf=String(b.manufacturer||"").trim();
+        const st=String(b.state||"").trim().toUpperCase(); let mf=String(b.manufacturer||"").trim();
         if(!st||!mf) return json(400,{error:"state + manufacturer required"});
+        mf=cat.canonOf[mf]||mf;
         if(NOT_REPRESENTED.has(mf)) return json(200,{ok:false,message:"That line is retired (no longer represented)."});
-        if(b.on) await sbSend("POST","territory_lines?on_conflict=state,manufacturer",{state:st,manufacturer:mf},{Prefer:"resolution=merge-duplicates,return=minimal"});
-        else     await sbSend("DELETE",`territory_lines?state=eq.${encodeURIComponent(st)}&manufacturer=eq.${encodeURIComponent(mf)}`,null,{Prefer:"return=minimal"});
+        const members=cat.membersOf[mf]||[mf];
+        if(b.on){ await sbSend("POST","territory_lines?on_conflict=state,manufacturer",{state:st,manufacturer:mf},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
+        else { await sbSend("DELETE",`territory_lines?state=eq.${encodeURIComponent(st)}&manufacturer=in.(${members.map(encodeURIComponent).join(",")})`,null,{Prefer:"return=minimal"}); }
         return json(200,{ok:true});
       }
       if(b.action==="set_state"){
         const st=String(b.state||"").trim().toUpperCase(); if(!st) return json(400,{error:"state required"});
-        const slugs=Array.isArray(b.manufacturers)?b.manufacturers.filter(Boolean):[];
+        const slugs=[...new Set((Array.isArray(b.manufacturers)?b.manufacturers:[]).map(s=>cat.canonOf[s]||s).filter(s=>s&&!NOT_REPRESENTED.has(s)))];
         await sbSend("DELETE",`territory_lines?state=eq.${encodeURIComponent(st)}`,null,{Prefer:"return=minimal"});
         if(slugs.length) await sbSend("POST","territory_lines",slugs.map(s=>({state:st,manufacturer:String(s)})),{Prefer:"return=minimal"});
         return json(200,{ok:true});
