@@ -100,6 +100,7 @@
   <span class="count" id="count"></span>
   <button class="btn ghost" id="homeBtn" onclick="editHome()">🏠 Set home base</button>
   <button class="btn" id="geoBtn" onclick="geocodeAll()">Geocode addresses</button>
+  <button class="btn ghost" id="clusterBtn" onclick="togglePins()">Show all pins</button>
 </div>
 
 <div class="wrap">
@@ -127,7 +128,7 @@ const $=s=>document.querySelector(s);
 const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
 let TOKEN=sessionStorage.getItem(TKEY)||null;
 let ME=null; try{ME=JSON.parse(sessionStorage.getItem(PKEY)||"null")}catch(e){ME=null;}
-let MAP=null, CLUSTER=null, POINTS=[], BOOTED=false, ROUTE=[], ROUTELINE=null;
+let MAP=null, CLUSTER=null, PLAIN=null, LAYER=null, POINTS=[], BOOTED=false, ROUTE=[], ROUTELINE=null;
 let HOMEMARKER=null, ROUNDTRIP=true;
 const DEFAULT_HOME="1003 Wilkinson Pl, Cottontown, TN 37048";
 let HOME=null; try{ HOME=JSON.parse(localStorage.getItem("hcps_home_base")||"null"); }catch(e){ HOME=null; }
@@ -166,7 +167,18 @@ const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",
 function initMap(){
   MAP=L.map("map",{zoomControl:true}).setView([39.5,-98.35],4);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap contributors"}).addTo(MAP);
-  CLUSTER=L.markerClusterGroup({maxClusterRadius:45}); MAP.addLayer(CLUSTER);
+  CLUSTER=L.markerClusterGroup({maxClusterRadius:45});
+  PLAIN=L.layerGroup();          // every pin dropped individually (no grouping)
+  LAYER=CLUSTER; MAP.addLayer(LAYER);
+}
+// Toggle between grouped circles and all-pins-individually.
+function togglePins(){
+  if(!MAP)return;
+  MAP.removeLayer(LAYER);
+  LAYER = (LAYER===CLUSTER) ? PLAIN : CLUSTER;
+  MAP.addLayer(LAYER);
+  const b=$("#clusterBtn"); if(b) b.textContent = (LAYER===CLUSTER) ? "Show all pins" : "Group pins";
+  draw();
 }
 function fillStateFilter(){
   const sel=$("#fState"); const cur=sel.value; const states=[...new Set(POINTS.map(p=>p.state).filter(Boolean))].sort();
@@ -174,7 +186,7 @@ function fillStateFilter(){
 }
 function inRoute(p){ return ROUTE.some(s=>s._i===p._i); }
 function draw(){
-  if(!CLUSTER)return; CLUSTER.clearLayers();
+  if(!LAYER)return; LAYER.clearLayers();
   const fs=$("#fState").value, ft=$("#fStatus").value;
   const shown=POINTS.filter(p=>(!fs||p.state===fs)&&(!ft||String(p.status).toLowerCase()===ft));
   const markers=shown.map(p=>{
@@ -188,7 +200,7 @@ function draw(){
       <div class="row" style="margin-top:5px"><a href="/admin/dealers.html${p.dealer_id?`?dealer=${encodeURIComponent(p.dealer_id)}`:""}">Open in Dealer Manager →</a></div></div>`);
     return m;
   });
-  CLUSTER.addLayers(markers);
+  if(LAYER.addLayers) LAYER.addLayers(markers); else markers.forEach(m=>LAYER.addLayer(m));
   $("#count").textContent=`${shown.length.toLocaleString()} of ${POINTS.length.toLocaleString()} locations`;
   if(shown.length && !ROUTE.length){ try{ MAP.fitBounds(L.latLngBounds(shown.map(p=>[p.lat,p.lng])).pad(0.15)); }catch(e){} }
 }
