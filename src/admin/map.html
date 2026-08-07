@@ -102,18 +102,19 @@
   <h1>Territory Map</h1>
   <select id="fState" onchange="draw()"><option value="">All states</option></select>
   <select id="fStatus" onchange="draw()">
-    <option value="">All statuses</option>
-    <option value="active">Active</option>
-    <option value="prospect">Prospect</option>
-    <option value="review">Review</option>
+    <option value="">All accounts</option>
+    <option value="customer">Customers</option>
+    <option value="opportunity">Opportunities</option>
+    <option value="prospect">Prospects</option>
   </select>
-  <span class="legend"><span><i style="background:#1f9d55"></i>Active</span><span><i style="background:#F5821F"></i>Prospect</span><span><i style="background:#d64545"></i>Review</span><span><i style="background:#3B599A"></i>Other</span></span>
+  <span class="legend"><span><i style="background:#1f9d55"></i>Customer</span><span><i style="background:#2f73b8"></i>Opportunity</span><span><i style="background:#F5821F"></i>Prospect</span></span>
   <span class="sp"></span>
   <span class="count" id="count"></span>
   <button class="btn ghost" id="homeBtn" onclick="editHome()">🏠 Set home base</button>
   <button class="btn" id="geoBtn" onclick="geocodeAll()">Geocode addresses</button>
   <button class="btn ghost" id="clusterBtn" onclick="togglePins()">Show all pins</button>
   <button class="btn ghost" id="unmapBtn" onclick="toggleUnmapped()">Not on map</button>
+  <button class="btn ghost" id="savedBtn" onclick="toggleSaved()">Saved routes</button>
 </div>
 
 <div class="wrap">
@@ -123,10 +124,13 @@
     <div class="rtrow" id="rtRow" style="display:none"><label><input type="checkbox" id="rtChk" checked onchange="toggleRT(this.checked)"> Round trip — start &amp; end at home base</label></div>
     <ol id="rlist"></ol>
     <div class="ractions">
-      <button class="btn ghost" onclick="optimize()">Optimize order</button>
-      <button class="btn" onclick="openGmaps()">Google Maps →</button>
+      <button class="btn" onclick="optimize()">Optimize order</button>
+      <button class="btn" onclick="saveRouteDialog()">Save route</button>
+      <button class="btn ghost" onclick="printRoute()">Print</button>
+      <button class="btn ghost" onclick="openGmaps()">Google Maps →</button>
     </div>
   </div>
+  <div class="unmap" id="savedPanel" hidden></div>
   <div class="unmap" id="unmapPanel" hidden>
     <div class="uhead"><b>Not on map</b> <span class="m" id="umeta"></span><button class="rx" onclick="toggleUnmapped()">Close</button></div>
     <div id="ulist"></div>
@@ -147,6 +151,16 @@ let TOKEN=sessionStorage.getItem(TKEY)||null;
 let ME=null; try{ME=JSON.parse(sessionStorage.getItem(PKEY)||"null")}catch(e){ME=null;}
 let MAP=null, CLUSTER=null, PLAIN=null, LAYER=null, POINTS=[], UNMAPPED=[], BOOTED=false, ROUTE=[], ROUTELINE=null;
 let HOMEMARKER=null, ROUNDTRIP=true;
+let ROUTEGEO=null, CURRENT_ROUTE_ID=null, _routeT=null;
+let LASTROUTE={distance_m:0,duration_s:0,geometry:null};
+const jesc=s=>String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+// routes-api = OpenRouteService proxy + saved routes (separate from geocode-api).
+async function api2(body){
+  const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch("/.netlify/functions/routes-api",{method:"POST",headers:h,body:JSON.stringify(body)});
+  if(r.status===401){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); TOKEN=null; ME=null; showGate("Your session ended — please sign in again."); throw new Error("unauthorized"); }
+  return r.json();
+}
 const DEFAULT_HOME="1003 Wilkinson Pl, Cottontown, TN 37048";
 let HOME=null; try{ HOME=JSON.parse(localStorage.getItem("hcps_home_base")||"null"); }catch(e){ HOME=null; }
 
@@ -176,8 +190,11 @@ async function submitTok(){
 }
 function lock(){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); location.reload(); }
 
-const COLORS={active:"#1f9d55",prospect:"#F5821F",review:"#d64545"};
-const colorOf=s=>COLORS[String(s||"").toLowerCase()]||"#3B599A";
+// Pin classes: customer (buys everything it's eligible for), opportunity (buys some,
+// room to grow), prospect (no sales yet). Computed by geocode-api from sales + rules.
+const KLASS={customer:"#1f9d55",opportunity:"#2f73b8",prospect:"#F5821F"};
+const KLABEL={customer:"Customer",opportunity:"Opportunity",prospect:"Prospect"};
+const colorOf=p=>KLASS[(p&&p.klass)||""]||"#3B599A";
 function icon(color,inroute,approx){ return L.divIcon({className:"pin"+(inroute?" inroute":"")+(approx?" approx":""),html:`<span style="background:${color}"></span>`,iconSize:[16,16],iconAnchor:[8,8]}); }
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
@@ -205,11 +222,13 @@ function inRoute(p){ return ROUTE.some(s=>s._i===p._i); }
 function draw(){
   if(!LAYER)return; LAYER.clearLayers();
   const fs=$("#fState").value, ft=$("#fStatus").value;
-  const shown=POINTS.filter(p=>(!fs||p.state===fs)&&(!ft||String(p.status).toLowerCase()===ft));
+  const shown=POINTS.filter(p=>(!fs||p.state===fs)&&(!ft||(p.klass||"")===ft));
   const markers=shown.map(p=>{
-    const m=L.marker([p.lat,p.lng],{icon:icon(colorOf(p.status),inRoute(p),p.approx)});
-    const c=colorOf(p.status);
-    m.bindPopup(`<div class="pop"><b>${esc(p.name)}</b>${p.status?`<span class="st" style="background:${c}22;color:${c}">${esc(p.status)}</span>`:""}
+    const m=L.marker([p.lat,p.lng],{icon:icon(colorOf(p),inRoute(p),p.approx)});
+    const c=colorOf(p);
+    const kl=KLABEL[p.klass||""]||"";
+    const oppRow=(p.klass==="opportunity"&&p.opps&&p.opps.length)?`<div class="row" style="color:#2f73b8;font-size:11px">${p.opps.length} opportunity line${p.opps.length===1?"":"s"} not yet ordered</div>`:"";
+    m.bindPopup(`<div class="pop"><b>${esc(p.name)}</b>${kl?`<span class="st" style="background:${c}22;color:${c}">${esc(kl)}</span>`:""}${oppRow}
       ${p.label?`<div class="row">${esc(p.label)}</div>`:""}
       <div class="row">${esc([p.city,p.state].filter(Boolean).join(", "))}</div>
       ${p.approx?`<div class="row" style="color:#b26b00;font-size:11px">≈ approximate location (address couldn't be matched exactly — town/ZIP level)</div>`:""}
@@ -273,8 +292,18 @@ function effectiveRoute(){
 function routeMiles(){ const R=effectiveRoute(); let m=0; for(let i=1;i<R.length;i++) m+=hav(R[i-1],R[i]); return m; }
 function addStop(i){ const p=POINTS[i]; if(!p)return; if(inRoute(p)){ ROUTE=ROUTE.filter(s=>s._i!==p._i); } else { if(ROUTE.length>=25){ alert("That's a lot of stops — keep a route under 25 for a workable day."); return; } ROUTE.push(p); } renderRoute(); draw(); if(MAP)MAP.closePopup(); }
 function removeStop(i){ ROUTE.splice(i,1); renderRoute(); draw(); }
-function clearRoute(){ ROUTE=[]; renderRoute(); draw(); }
-function optimize(){
+function clearRoute(){ ROUTE=[]; CURRENT_ROUTE_ID=null; renderRoute(); draw(); }
+async function optimize(){
+  if(ROUTE.length<2){ renderRoute(); return; }
+  const home=(HOME&&ROUNDTRIP)?{lat:HOME.lat,lng:HOME.lng}:null;
+  try{
+    const r=await api2({action:"optimize",home,stops:ROUTE.map(s=>({lat:s.lat,lng:s.lng})),round_trip:!!(HOME&&ROUNDTRIP)});
+    if(r&&r.ok&&Array.isArray(r.order)&&r.order.length===ROUTE.length){ ROUTE=r.order.map(i=>ROUTE[i]); renderRoute(); draw(); return; }
+    if(r&&r.need_key){ banner(r.message); }
+  }catch(e){}
+  optimizeLocal();   // fallback: nearest-neighbour by straight-line distance
+}
+function optimizeLocal(){
   if(ROUTE.length<2){ renderRoute(); return; }
   const pool=ROUTE.slice(); const ordered=[];
   let cur;
@@ -288,15 +317,40 @@ function renderRoute(){
   $("#rtRow").style.display = HOME ? "block" : "none";
   const cb=$("#rtChk"); if(cb) cb.checked=ROUNDTRIP;
   const list=$("#rlist");
-  if(!ROUTE.length){ list.innerHTML=""; if(ROUTELINE){MAP.removeLayer(ROUTELINE);ROUTELINE=null;} return; }
+  if(!ROUTE.length){ list.innerHTML=""; if(ROUTELINE){MAP.removeLayer(ROUTELINE);ROUTELINE=null;} if(ROUTEGEO){MAP.removeLayer(ROUTEGEO);ROUTEGEO=null;} LASTROUTE={distance_m:0,duration_s:0,geometry:null}; CURRENT_ROUTE_ID=null; return; }
   const useHome = HOME && ROUNDTRIP;
   const start = useHome?`<li class="homeli"><span class="n" style="background:#16202e">🏠</span><span class="nm"><b>Start — Home base</b><br><small>${esc(HOME.short||HOME.q||"")}</small></span></li>`:"";
   const end   = useHome?`<li class="homeli"><span class="n" style="background:#16202e">🏠</span><span class="nm"><b>End — Home base</b><br><small>return</small></span></li>`:"";
   list.innerHTML=start+ROUTE.map((s,i)=>`<li><span class="n">${i+1}</span><span class="nm">${esc(s.name)}<br><small>${esc([s.city,s.state].filter(Boolean).join(", "))}</small></span><button class="del" title="Remove" onclick="removeStop(${i})">✕</button></li>`).join("")+end;
-  $("#rmeta").textContent=`${ROUTE.length} stops · ~${Math.round(routeMiles())} mi${useHome?" round trip":""}`;
+  updateRouteMeta();
   if(ROUTELINE){ MAP.removeLayer(ROUTELINE); ROUTELINE=null; }
   const R=effectiveRoute();
-  if(R.length>=2){ ROUTELINE=L.polyline(R.map(s=>[s.lat,s.lng]),{color:"#2B4071",weight:3,opacity:.65,dashArray:"7,7"}).addTo(MAP); }
+  if(R.length>=2){ ROUTELINE=L.polyline(R.map(s=>[s.lat,s.lng]),{color:"#93a2bb",weight:3,opacity:.55,dashArray:"6,8"}).addTo(MAP); }  // instant straight-line preview
+  scheduleRoute();   // then replace with the real road route from OpenRouteService (debounced)
+}
+function fmtDur(s){ s=Math.round(s||0); const h=Math.floor(s/3600),m=Math.round((s%3600)/60); return h?`${h}h ${m}m`:`${m}m`; }
+function fmtMi(m){ return Math.round((m||0)/1609.34); }
+function updateRouteMeta(){
+  const useHome=HOME&&ROUNDTRIP;
+  const drive = LASTROUTE.duration_s ? ` · ${fmtMi(LASTROUTE.distance_m)} mi · ${fmtDur(LASTROUTE.duration_s)} drive` : ` · ~${Math.round(routeMiles())} mi (as the crow flies)`;
+  const el=$("#rmeta"); if(el) el.textContent=`${ROUTE.length} stops${drive}${useHome?" · round trip":""}`;
+}
+function scheduleRoute(){ if(_routeT) clearTimeout(_routeT); _routeT=setTimeout(routeIt,600); }
+async function routeIt(){
+  const R=effectiveRoute();
+  if(R.length<2){ if(ROUTEGEO){MAP.removeLayer(ROUTEGEO);ROUTEGEO=null;} LASTROUTE={distance_m:0,duration_s:0,geometry:null}; updateRouteMeta(); return; }
+  const coords=R.map(s=>[s.lng,s.lat]);
+  try{
+    const r=await api2({action:"directions",coords});
+    if(r&&r.ok&&r.geometry&&r.geometry.length){
+      if(ROUTEGEO){MAP.removeLayer(ROUTEGEO);ROUTEGEO=null;}
+      if(ROUTELINE){MAP.removeLayer(ROUTELINE);ROUTELINE=null;}
+      ROUTEGEO=L.polyline(r.geometry.map(c=>[c[1],c[0]]),{color:"#2B4071",weight:5,opacity:.85}).addTo(MAP);
+      LASTROUTE={distance_m:r.distance_m,duration_s:r.duration_s,geometry:r.geometry};
+      updateRouteMeta();
+    } else if(r&&r.need_key){ banner(r.message||"Add your OpenRouteService key (ORS_API_KEY) in Netlify to enable live routing."); }
+    else if(r&&r.message){ banner("Routing: "+r.message); }
+  }catch(e){}
 }
 function openGmaps(){
   const R=effectiveRoute(); if(!R.length)return;
@@ -305,6 +359,81 @@ function openGmaps(){
   const url="https://www.google.com/maps/dir/"+stops.map(s=>`${s.lat},${s.lng}`).join("/");
   window.open(url,"_blank");
 }
+
+/* ---------- saved routes ---------- */
+function saveRouteDialog(){
+  if(!ROUTE.length) return;
+  $("#homeEdit").innerHTML=`<div class="homeov"><div class="homecard">
+    <b>Save route</b>
+    <p>Name this trip so you can reload, print, and reuse it.</p>
+    <input id="rname" placeholder="e.g. Kentucky loop — week of Jun 9">
+    <input id="rdate" type="date" style="margin-top:8px">
+    <div class="ha"><button class="btn" onclick="saveRouteGo()">Save</button>
+      <button class="btn ghost" onclick="closeHome()">Cancel</button></div>
+    <div class="er" id="rerr"></div></div></div>`;
+  setTimeout(()=>{const i=$("#rname"); if(i)i.focus();},40);
+}
+async function saveRouteGo(){
+  const name=(($("#rname")||{}).value||"").trim(); if(!name){ $("#rerr").textContent="Enter a name."; return; }
+  const date=(($("#rdate")||{}).value||"").trim();
+  const stops=ROUTE.map(s=>({dealer_id:s.dealer_id||"",name:s.name||"",address:s.label||"",city:s.city||"",state:s.state||"",lat:s.lat,lng:s.lng}));
+  $("#rerr").textContent="Saving…";
+  try{
+    const r=await api2({action:"save_route",id:CURRENT_ROUTE_ID||undefined,name,scheduled_date:date||null,
+      home_base:(HOME&&ROUNDTRIP)?{label:HOME.short||"",address:HOME.q||"",lat:HOME.lat,lng:HOME.lng}:null,
+      round_trip:!!(HOME&&ROUNDTRIP),stops,distance_m:LASTROUTE.distance_m,duration_s:LASTROUTE.duration_s,geometry:LASTROUTE.geometry});
+    if(r&&r.ok){ CURRENT_ROUTE_ID=r.id; closeHome(); banner("Route saved ✓"); }
+    else { $("#rerr").textContent=(r&&r.message)||"Couldn't save."; }
+  }catch(e){ $("#rerr").textContent="Couldn't save — try again."; }
+}
+function toggleSaved(){ const p=$("#savedPanel"); if(!p.hidden){ p.hidden=true; return; } p.hidden=false; refreshSaved(); }
+async function refreshSaved(){
+  const p=$("#savedPanel");
+  p.innerHTML=`<div class="uhead"><b>Saved routes</b><button class="rx" onclick="toggleSaved()">Close</button></div><div id="savedList">Loading…</div>`;
+  const bsm='padding:4px 9px;font-size:12px';
+  try{
+    const r=await api2({action:"list_routes"}); const rs=(r&&r.routes)||[];
+    $("#savedList").innerHTML = rs.length ? rs.map(x=>`<div style="display:flex;align-items:center;gap:6px;padding:7px 4px;border-bottom:1px solid #eef1f4">
+      <div style="flex:1;min-width:0"><b>${esc(x.name)}</b><br><small style="color:#6b7683">${x.scheduled_date?esc(x.scheduled_date)+" · ":""}${x.stops_count} stop${x.stops_count===1?"":"s"}${x.duration_s?" · "+fmtDur(x.duration_s):""}</small></div>
+      <button class="btn" style="${bsm}" onclick="loadSaved('${x.id}')">Open</button>
+      <button class="btn ghost" style="${bsm}" onclick="printSaved('${x.id}')">Print</button>
+      <button class="btn ghost" style="${bsm}" onclick="delSaved('${x.id}','${jesc(x.name)}')">✕</button></div>`).join("")
+      : `<div style="padding:10px;color:#6b7683">No saved routes yet. Build a route, then click “Save route”.</div>`;
+  }catch(e){ $("#savedList").innerHTML=`<div style="padding:10px;color:#b42323">Couldn't load saved routes.</div>`; }
+}
+async function loadSaved(id){
+  try{
+    const r=await api2({action:"get_route",id}); const rt=r&&r.route; if(!rt) return;
+    ROUTE=(rt.stops||[]).map((s,idx)=>({_i:"sv"+idx,dealer_id:s.dealer_id||"",name:s.name||"",city:s.city||"",state:s.state||"",lat:s.lat,lng:s.lng,label:s.address||""}));
+    CURRENT_ROUTE_ID=rt.id;
+    if(rt.home_base&&rt.home_base.lat!=null){ HOME={q:rt.home_base.address||"",lat:rt.home_base.lat,lng:rt.home_base.lng,short:rt.home_base.label||""}; ROUNDTRIP=rt.round_trip!==false; localStorage.setItem("hcps_home_base",JSON.stringify(HOME)); drawHome(); }
+    LASTROUTE={distance_m:rt.distance_m||0,duration_s:rt.duration_s||0,geometry:rt.geometry||null};
+    renderRoute(); draw();
+    if(rt.geometry&&rt.geometry.length){ if(ROUTEGEO){MAP.removeLayer(ROUTEGEO);} if(ROUTELINE){MAP.removeLayer(ROUTELINE);ROUTELINE=null;} ROUTEGEO=L.polyline(rt.geometry.map(c=>[c[1],c[0]]),{color:"#2B4071",weight:5,opacity:.85}).addTo(MAP); try{MAP.fitBounds(ROUTEGEO.getBounds().pad(0.15));}catch(e){} }
+    const sp=$("#savedPanel"); if(sp) sp.hidden=true;
+  }catch(e){}
+}
+async function delSaved(id,name){ if(!confirm('Delete route "'+name+'"?')) return; try{ await api2({action:"delete_route",id}); refreshSaved(); }catch(e){} }
+/* ---------- print route sheet (business-case packet comes next phase) ---------- */
+function routeSheetHtml(title){
+  const rows=ROUTE.map((s,i)=>`<tr><td class="n">${i+1}</td><td><b>${esc(s.name)}</b><div class="a">${esc([s.label,[s.city,s.state].filter(Boolean).join(", ")].filter(Boolean).join(" · "))}</div></td><td class="chk">▢</td></tr>`).join("");
+  const meta=`${ROUTE.length} stops${LASTROUTE.duration_s?" · "+fmtMi(LASTROUTE.distance_m)+" mi · "+fmtDur(LASTROUTE.duration_s)+" drive":""}${(HOME&&ROUNDTRIP)?" · round trip from "+esc(HOME.short||HOME.q||"home"):""}`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
+    <style>body{font:14px Arial,sans-serif;color:#1b2733;margin:28px}h1{font-size:20px;margin:0 0 2px}.m{color:#5b6672;margin:0 0 16px}
+    table{width:100%;border-collapse:collapse}td{border-bottom:1px solid #dde3e8;padding:9px 6px;vertical-align:top}
+    td.n{width:26px;font-weight:800;color:#2B4071}td.chk{width:26px;text-align:center;color:#9aa4ae;font-size:18px}.a{color:#6b7683;font-size:12px;margin-top:2px}
+    @media print{body{margin:12mm}}</style></head><body>
+    <h1>${esc(title)}</h1><p class="m">${meta}</p>
+    <table><tbody>${rows}</tbody></table>
+    <p class="m" style="margin-top:18px">HomeCare Provider Services — territory route</p>
+    <scr`+`ipt>window.onload=function(){window.print();}</scr`+`ipt></body></html>`;
+}
+function printRoute(){
+  if(!ROUTE.length) return;
+  const w=window.open("","_blank"); if(!w){ banner("Allow pop-ups to print the route."); return; }
+  w.document.write(routeSheetHtml("Route sheet")); w.document.close();
+}
+async function printSaved(id){ await loadSaved(id); printRoute(); }
 
 async function refreshGeoBtn(){
   try{

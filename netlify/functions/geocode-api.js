@@ -10,7 +10,14 @@
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
-const BUILD = "geocode-api v1 (2026-08-04)";
+const BUILD = "geocode-api v2 (pin classes)";
+
+// Territory rules — to flag each dealer's growth opportunities on the map.
+const { computeAccess } = require("./_access.js");
+// Normalize a monthly_sales manufacturer slug to the catalog/access slug so "what they buy"
+// lines up with "what they're eligible for" (reports say bongo/golden; catalog says the rest).
+const NORM_BUY={ bongo:"airavant-bongorx", airavant:"airavant-bongorx", "golden":"golden-technologies", "ohio-medical":"gce" };
+const normBuy=s=>{ s=String(s||"").toLowerCase().trim(); return NORM_BUY[s]||s; };
 
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
@@ -139,6 +146,20 @@ exports.handler = async (event)=>{
           address:a.address||"",city:a.city||"",state:a.state||"",zip:a.zip||""}); continue; }
         points.push({lat:c.lat,lng:c.lng,approx:!!c.approx,name:d.business_name||"(unknown)",status:d.status||"",
           email:d.email||"",city:a.city||"",state:a.state||"",label:a.label||"",dealer_id:a.dealer_id||""});
+      }
+      // Classify each pin: prospect (no sales), customer (buys all eligible lines), or
+      // opportunity (buys something but has eligible lines it isn't buying yet).
+      const buysByDealer=new Map();
+      try{ const sales=await sbGetAll("monthly_sales?select=dealer_id,manufacturer","id");
+        for(const r of (sales||[])){ if(!r.dealer_id||!r.manufacturer) continue;
+          const set=buysByDealer.get(r.dealer_id)||buysByDealer.set(r.dealer_id,new Set()).get(r.dealer_id); set.add(normBuy(r.manufacturer)); } }catch(e){}
+      for(const p of points){
+        const buys=buysByDealer.get(p.dealer_id)||new Set();
+        if(buys.size===0){ p.klass="prospect"; p.opps=[]; p.buys_count=0; continue; }
+        let acc; try{ acc=computeAccess({state:p.state,business_name:p.name,ovation_access:false,lat:null},[]); }catch(e){ acc={your_accounts:[],available:[]}; }
+        const eligible=new Set([...(acc.your_accounts||[]),...(acc.available||[])]);
+        const opps=[...eligible].filter(s=>!buys.has(s));
+        p.klass=opps.length?"opportunity":"customer"; p.opps=opps; p.buys_count=buys.size;
       }
       if(me.role!=="president"){
         const rn=String(me.rep_name||"").trim().toLowerCase();
