@@ -40,7 +40,6 @@
 </style></head><body>
 <nav class="adminnav"><div class="bd">HCPS <span>Admin</span></div>
  <a href="/admin/">Home</a><a href="/admin/analytics.html">Analytics</a><a href="/admin/dealers.html">Dealer Manager</a>
-  <a href="/admin/map.html">Map</a>
  <a href="/admin/images.html">Images</a><a href="/admin/featured.html">Featured</a><a href="/admin/catalog.html" class="on">Catalog</a>
  <a href="/admin/home-editor.html">Portal Home</a><a href="/admin/website.html">Website</a></nav>
 <div class="wrap" id="wrap"><div class="msg">Loading…</div></div>
@@ -49,14 +48,25 @@
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const API="/.netlify/functions/catalog-api";
-let TOKEN=sessionStorage.getItem("hcps_admin_token")||null, MFRS=[], SLUG="", DETAIL=null, PQ="";
+const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
+let ME=null; try{ME=JSON.parse(sessionStorage.getItem(PKEY)||"null")}catch(e){ME=null;}
+let TOKEN=sessionStorage.getItem(TKEY)||null, MFRS=[], SLUG="", DETAIL=null, PQ="";
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800);}
-async function api(qs,opts){const h={"content-type":"application/json"};if(TOKEN)h["x-analytics-token"]=TOKEN;
+async function api(qs,opts){const h={"content-type":"application/json"};if(TOKEN)h["authorization"]="Bearer "+TOKEN;
   const r=await fetch(API+(qs||""),{...(opts||{}),headers:{...h,...((opts&&opts.headers)||{})}});
-  if(r.status===401){sessionStorage.removeItem("hcps_admin_token");gate();throw new Error("unauthorized");}
+  if(r.status===401){gate();throw new Error("unauthorized");}
+  if(r.status===403){$("#wrap").innerHTML='<div class="msg err">President only — this tool is limited to President accounts. <button class="go" onclick="lock()">Sign in as a different user</button></div>';throw new Error("unauthorized");}
   const j=await r.json().catch(()=>({}));if(!r.ok||j.error)throw new Error(j.error||("HTTP "+r.status));return j;}
-function gate(){$("#wrap").innerHTML=`<div class="gate"><h2>Enter access code</h2><input id="tok" type="password" placeholder="Admin passcode" style="margin:12px 0;width:100%" onkeydown="if(event.key==='Enter')submitTok()"><br><button class="go" onclick="submitTok()">Open Catalog</button></div>`;}
-function submitTok(){TOKEN=$("#tok").value.trim();sessionStorage.setItem("hcps_admin_token",TOKEN);boot();}
+function gate(msg){$("#wrap").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p style="margin:2px 0 12px;color:#607089;font-size:13px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username" style="margin:0 0 8px;width:100%"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" style="margin:0 0 12px;width:100%" onkeydown="if(event.key==='Enter')submitTok()"><br><button class="go" onclick="submitTok()">Sign in</button><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{var t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  var email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  var e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    TOKEN=j.token; ME=j.profile; sessionStorage.setItem(TKEY,TOKEN); sessionStorage.setItem(PKEY,JSON.stringify(ME)); boot();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); TOKEN=null; ME=null; location.reload(); }
 async function boot(){
   try{const j=await api("",{method:"GET"}); MFRS=j.manufacturers||[];
     if(!MFRS.length){$("#wrap").innerHTML='<div class="msg">No manufacturers found.</div>';return;}
@@ -75,14 +85,6 @@ async function upload(slot,file,maxMB,cb){
   }catch(e){toast("Upload failed: "+e.message);}
 }
 function curMfr(){return MFRS.find(m=>m.slug===SLUG)||{};}
-
-/* ---- manufacturer on/off (whole line visibility on the ordering platform) ---- */
-async function setMfrActive(slug,active){
-  const m=MFRS.find(x=>x.slug===slug); if(!m)return;
-  if(!active && !confirm("Remove “"+m.name+"” from the ordering platform? Dealers will no longer see this line anywhere (tabs, home, catalog). You can restore it anytime. (This does not change the marketing website.)"))return;
-  await api("",{method:"POST",body:JSON.stringify({action:"set_active",slug,active})});
-  m.active=active; toast(active?"Restored to the platform":"Removed from the platform"); render();
-}
 
 /* ---- logo ---- */
 let LOGODRAFT="";
@@ -260,20 +262,6 @@ function render(){
       <select onchange="SLUG=this.value;LOGODRAFT='';PDRAFT=null;PQ='';PRODQ='';loadMfr()">${mfrOpts}</select></div>
 
     <div class="card">
-      <h2>Manufacturers on the ordering platform <span class="hint" style="text-transform:none">— ${MFRS.filter(m=>m.active!==false).length} of ${MFRS.length} showing</span></h2>
-      <p class="hint">Turn a whole line on or off for dealers. Removing hides it everywhere on the ordering portal — tabs, the dealer home cards, and the catalog — instantly, with no redeploy. This controls the <b>ordering platform only</b>; the marketing website is managed separately (see the note under Website).</p>
-      <table><thead><tr><th>Manufacturer</th><th>Catalog</th><th>Status</th><th></th></tr></thead><tbody>
-      ${MFRS.map(m=>`<tr>
-        <td><b>${esc(m.name)}</b><div style="font-size:11px;color:var(--gray)">${esc(m.slug)}</div></td>
-        <td class="hint">${m.hasData?"has products":"no catalog yet"}</td>
-        <td>${m.active===false?'<span style="color:var(--red);font-weight:700">removed</span>':'<span class="ok">showing</span>'}</td>
-        <td style="white-space:nowrap">${m.active===false
-            ? `<button class="btn ghost sm" onclick="setMfrActive('${esc(m.slug)}',true)">Restore</button>`
-            : `<button class="btn ghost sm" style="color:var(--red);border-color:#f0c8c8" onclick="setMfrActive('${esc(m.slug)}',false)">Remove</button>`}</td></tr>`).join("")}
-      </tbody></table>
-    </div>
-
-    <div class="card">
       <h2>Manufacturer logo</h2>
       <p class="hint">Shows below the manufacturer name on the dealer home cards and at the top of this line's catalog page.</p>
       <div class="imgrow">
@@ -304,7 +292,7 @@ function render(){
       <div style="margin-top:10px">${linkRows}</div>
     </div>`;
 }
+(function(){var b=document.createElement("button");b.textContent="Lock";b.className="go";b.style.cssText="position:fixed;top:10px;right:12px;z-index:9999;padding:5px 10px;font-size:12px";b.onclick=lock;document.body.appendChild(b);})();
 if(TOKEN)boot();else gate();
 </script>
-<div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.3</div>
 </body></html>

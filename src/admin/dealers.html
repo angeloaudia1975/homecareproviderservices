@@ -79,7 +79,10 @@ const $=s=>document.querySelector(s);
 const money=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const jesc=s=>String(s).replace(/'/g,"\\'").replace(/"/g,"&quot;");
-let DATA=null,TOKEN=null,TAB=(location.hash==="#logins"?"logins":"all"),SEL=new Set(),SELP=new Set(),DETAIL=null,SORT={key:"sales",dir:-1};
+const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
+let ME=null; try{ME=JSON.parse(sessionStorage.getItem(PKEY)||"null")}catch(e){ME=null;}
+const isPres=()=>!!(ME&&ME.role==="president");
+let DATA=null,TOKEN=sessionStorage.getItem(TKEY)||null,TAB=(location.hash==="#logins"?"logins":"all"),SEL=new Set(),SELP=new Set(),DETAIL=null,SORT={key:"sales",dir:-1};
 // Deep-link: /admin/dealers.html?dealer=<id> opens that dealer's record directly
 // (used by the Map's "Open in Dealer Manager" link). Applied once, after data loads.
 let FOCUS=new URLSearchParams(location.search).get("dealer")||null;
@@ -89,7 +92,7 @@ const COMMON=new Set(["MEDICAL","SUPPLY","SUPPLIES","PHARMACY","HOME","HEALTHCAR
 
 async function load(){
   try{
-    const h={}; if(TOKEN)h["x-analytics-token"]=TOKEN;
+    const h={}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
     const r=await fetch("/.netlify/functions/dealers-api",{headers:h});
     if(r.status===401){gate();return;}
     const j=await r.json(); if(j.error){showErr(j.error);return;}
@@ -98,8 +101,16 @@ async function load(){
     render();
   }catch(e){showErr(String(e));}
 }
-function gate(){$("#body").innerHTML=`<div class="gate card"><h2>Enter access code</h2><input id="tok" type="password" placeholder="Admin passcode" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Open dealer master</button></div>`;}
-function submitTok(){TOKEN=$("#tok").value.trim();load();}
+function gate(msg){$("#body").innerHTML=`<div class="gate card"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username" style="margin-bottom:8px"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    TOKEN=j.token; ME=j.profile; sessionStorage.setItem(TKEY,TOKEN); sessionStorage.setItem(PKEY,JSON.stringify(ME)); load();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); TOKEN=null; ME=null; location.reload(); }
 function showErr(m){$("#body").innerHTML=`<div class="msg err"><b>Couldn't load.</b><br>${esc(m)}<br><br><button class="go" onclick="load()">Retry</button></div>`;}
 function setTab(t){TAB=t;DETAIL=null;render();}
 
@@ -146,6 +157,7 @@ function sortDealers(list){
 }
 function render(){
   if(!DATA)return;
+  if(!isPres() && TAB!=='all') TAB='all';   // reps only have their own dealer list
   if(DETAIL) return renderDetail();
   const rev=reviewList().length, dup=suggestedPairs().length;
   const N=DATA.dealers.length||1;
@@ -158,14 +170,17 @@ function render(){
     <div class="kpi"><div class="l">Suggested dupes</div><div class="v orange">${dup}</div></div></div>`;
   const plog=(DATA.logins||[]).filter(l=>l.status==="pending").length;
   const pchg=(DATA.changeRequests||[]).length;
-  const tabs=`<div class="tabs">
-    <button class="tab ${TAB==='all'?'on':''}" onclick="setTab('all')">All dealers</button>
+  const roleLbl=ME&&ME.role?(ME.role==='president'?'President':ME.role==='rep'?'Sales Rep':'Customer Relations'):"";
+  const tabs=`<div class="tabs" style="display:flex;align-items:center;flex-wrap:wrap;gap:6px">
+    <button class="tab ${TAB==='all'?'on':''}" onclick="setTab('all')">${isPres()?'All dealers':'My dealers'}</button>
+    ${isPres()?`
     <button class="tab ${TAB==='review'?'on':''}" onclick="setTab('review')">Review queue${rev?` (${rev})`:""}</button>
     <button class="tab ${TAB==='dupes'?'on':''}" onclick="setTab('dupes')">Suggested duplicates${dup?` (${dup})`:""}</button>
     <button class="tab ${TAB==='logins'?'on':''}" onclick="setTab('logins')">Pending logins${plog?` (${plog})`:""}</button>
     <button class="tab ${TAB==='changes'?'on':''}" onclick="setTab('changes')">Account changes${pchg?` (${pchg})`:""}</button>
     <button class="tab ${TAB==='activity'?'on':''}" onclick="setTab('activity')">Activity &amp; carts${(DATA.openCarts&&DATA.openCarts.length)?` (${DATA.openCarts.length})`:""}</button>
-    <button class="tab ${TAB==='import'?'on':''}" onclick="setTab('import')">Import contacts</button></div>`;
+    <button class="tab ${TAB==='import'?'on':''}" onclick="setTab('import')">Import contacts</button>`:""}
+    <span style="margin-left:auto;font-size:12px;color:var(--gray);display:flex;align-items:center;gap:8px">${esc((ME&&ME.name)||"")}${roleLbl?` · ${esc(roleLbl)}`:""}<button class="go sm" onclick="lock()">Lock</button></span></div>`;
   $("#body").innerHTML=kpis+tabs+mergeBar()+`<div id="app"></div>`;
   ({all:renderAll,review:renderReview,dupes:renderDupes,logins:renderLogins,changes:renderChanges,activity:renderActivity,import:renderImport}[TAB])();
 }
@@ -430,8 +445,9 @@ async function saveAccess(id){
 }
 async function post(body,working,stSel){
   const st=stSel?$(stSel):null; if(st&&working){st.textContent=working;st.className="st";}
-  const h={"content-type":"application/json"}; if(TOKEN)h["x-analytics-token"]=TOKEN;
+  const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
   const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify(body)});
+  if(r.status===401){ lock(); throw new Error("session ended"); }
   const j=await r.json().catch(()=>({}));
   if(!(r.ok&&j.ok)){const m="Error: "+(j.error||r.status); if(st){st.textContent=m;st.className="st warn";} else alertDlg(m); throw new Error(m);}
   return j;
@@ -638,7 +654,7 @@ function importPreview(){
 async function applyImport(){
   if(!IMPORT.rows||IMPORT.busy)return; IMPORT.busy=true; render();
   try{
-    const h={"content-type":"application/json"}; if(TOKEN)h["x-analytics-token"]=TOKEN;
+    const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
     const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify({action:"import_contacts",rows:IMPORT.rows,create:IMPORT.create,replace:IMPORT.replace!==false})});
     const j=await r.json().catch(()=>({}));
     IMPORT.result = j.result || {};
@@ -650,7 +666,7 @@ async function applyImport(){
 async function runDiag(){
   const out=$("#diagOut"); if(out)out.innerHTML=`<div class="muted" style="margin-top:10px">Checking…</div>`;
   try{
-    const h={"content-type":"application/json"}; if(TOKEN)h["x-analytics-token"]=TOKEN;
+    const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
     const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify({action:"diag"})});
     const j=await r.json().catch(()=>({}));
     if(!(r.ok&&j.ok)){ const m=(j.error||("HTTP "+r.status));

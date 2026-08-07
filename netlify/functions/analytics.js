@@ -39,17 +39,31 @@ async function sbGetAll(base) {
   return out;
 }
 
+// Staff auth: email/password JWT resolved against staff_users; legacy passcode = president.
+async function whoami(event){
+  const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
+  const tok=auth.replace(/^Bearer\s+/i,"").trim();
+  if(tok){
+    try{ const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${tok}`}});
+      if(r.ok){ const u=await r.json(); const email=u&&u.email&&String(u.email).toLowerCase();
+        if(email){ const s=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=*`).catch(()=>[]); const su=s&&s[0];
+          if(su&&su.active!==false) return {role:su.role||"rep",rep_name:su.rep_name||"",name:su.name||email,email}; } } }catch(e){}
+    return null;
+  }
+  const need=process.env.ANALYTICS_TOKEN;
+  const got=event.headers["x-analytics-token"]||(event.queryStringParameters||{}).token||"";
+  if(need && got===need) return {role:"president",rep_name:"",name:"Admin",email:""};
+  return null;
+}
 const MONTH = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const label = (p) => { const [y,m] = p.split("-"); return `${MONTH[parseInt(m,10)-1]} ${y}`; };
 
 exports.handler = async (event) => {
   try {
-    const need = process.env.ANALYTICS_TOKEN;
-    if (need) {
-      const got = event.headers["x-analytics-token"] || (event.queryStringParameters||{}).token || "";
-      if (got !== need) return json(401, { error: "unauthorized" });
-    }
     if (!SUPABASE_URL || !SERVICE_ROLE) return json(500, { error: "Supabase env vars not set (SUPABASE_URL, SUPABASE_SERVICE_ROLE)" });
+    const me = await whoami(event);
+    if (!me) return json(401, { error: "unauthorized" });
+    if (me.role !== "president") return json(403, { error: "President only" });
 
     const mfrs = await sbGet("manufacturers?select=slug,name");
     const mfrName = Object.fromEntries(mfrs.map(m => [m.slug, m.name]));

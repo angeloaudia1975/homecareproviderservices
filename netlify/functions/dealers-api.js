@@ -50,6 +50,33 @@ const MONTH=["January","February","March","April","May","June","July","August","
 const plabel=p=>{const[y,m]=p.split("-");return `${MONTH[+m-1]} ${y}`;};
 const pm=p=>{const[y,m]=p.split("-").map(Number);return y*12+(m-1);};
 
+// ---- staff auth: email/password JWT resolved against staff_users. A matching legacy
+//      passcode still grants president during the transition; unset ANALYTICS_TOKEN to retire it.
+async function whoami(event){
+  const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
+  const tok=auth.replace(/^Bearer\s+/i,"").trim();
+  if(tok){
+    try{ const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${tok}`}});
+      if(r.ok){ const u=await r.json(); const email=u&&u.email&&String(u.email).toLowerCase();
+        if(email){ const s=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=*`).catch(()=>[]); const su=s&&s[0];
+          if(su&&su.active!==false) return {role:su.role||"rep",rep_name:su.rep_name||"",name:su.name||email,email}; } } }catch(e){}
+    return null;
+  }
+  const need=process.env.ANALYTICS_TOKEN;
+  const got=event.headers["x-analytics-token"]||(event.queryStringParameters||{}).token||"";
+  if(need && got===need) return {role:"president",rep_name:"",name:"Admin",email:""};
+  return null;
+}
+async function ownsDealer(me, dealer_id){
+  if(!me||!me.rep_name||!dealer_id) return false;
+  const d=await sbGet(`dealers?id=eq.${encodeURIComponent(dealer_id)}&select=business_name`).catch(()=>[]);
+  const nm=d&&d[0]&&d[0].business_name; if(!nm) return false;
+  const dir=await sbGet(`dealer_directory?dealer_name=eq.${encodeURIComponent(nm)}&select=rep_name`).catch(()=>[]);
+  return String((dir&&dir[0]&&dir[0].rep_name)||"").trim().toLowerCase()===String(me.rep_name).trim().toLowerCase();
+}
+// Structural / cross-book / login / approval tools are President-only.
+const PRESIDENT_ONLY=new Set(["merge","split","import_contacts","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep"]);
+
 async function buildState(){
   const [dealers,aliases,dm,mfrs,dir,reps,nomerge,logins] = await Promise.all([
     sbGetAll("dealers?select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,status,notes,active,parent_id"),
@@ -156,15 +183,27 @@ async function buildState(){
 
 exports.handler = async (event)=>{
   try{
-    const need=process.env.ANALYTICS_TOKEN;
-    if(need){const got=event.headers["x-analytics-token"]||(event.queryStringParameters||{}).token||""; if(got!==need) return json(401,{error:"unauthorized"});}
     if(!SUPABASE_URL||!SERVICE_ROLE) return json(500,{error:"Supabase env vars not set (SUPABASE_URL, SUPABASE_SERVICE_ROLE)"});
+    const me=await whoami(event);
+    if(!me) return json(401,{error:"unauthorized"});
 
-    if(event.httpMethod==="GET") return json(200, await buildState());
+    if(event.httpMethod==="GET"){
+      const state=await buildState();
+      state.role=me.role; state.rep_name=me.rep_name||"";
+      if(me.role!=="president"){
+        const rn=String(me.rep_name||"").trim().toLowerCase();
+        state.dealers=(state.dealers||[]).filter(d=> rn && String(d.rep||"").trim().toLowerCase()===rn);
+        // reps only see their own book — hide the president-only queues/tools entirely
+        state.logins=[]; state.changeRequests=[]; state.recentSessions=[]; state.openCarts=[]; state.nomerge=[];
+      }
+      return json(200,state);
+    }
 
     if(event.httpMethod==="POST"){
       let b; try{b=JSON.parse(event.body||"{}");}catch{return json(400,{error:"bad JSON"});}
       const act=b.action;
+      if(PRESIDENT_ONLY.has(act) && me.role!=="president") return json(403,{error:"President only"});
+      if(me.role!=="president" && (act==="edit"||act==="access") && !(await ownsDealer(me,b.dealer_id))) return json(403,{error:"Not your dealer"});
       if(act==="diag"){
         // Self-check: which code is live, do the tables exist, and how many rows are stored.
         const probe=async(t)=>{ try{

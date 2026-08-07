@@ -102,7 +102,10 @@ const money=n=>"$"+Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,
 const money0=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
 const pm=p=>{const[y,m]=p.split("-").map(Number);return y*12+(m-1);};
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-let DATA=null,TOKEN=null,TAB="overview",EXP=null,DEALER=null,LT={},ASSIGN={},REPOPTS=[],ORDMODE="month",DRILL=null;
+const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
+let ME=null; try{ME=JSON.parse(sessionStorage.getItem(PKEY)||"null")}catch(e){ME=null;}
+const isPres=()=>!!(ME&&ME.role==="president");
+let DATA=null,TOKEN=sessionStorage.getItem(TKEY)||null,TAB="overview",EXP=null,DEALER=null,LT={},ASSIGN={},REPOPTS=[],ORDMODE="month",DRILL=null;
 const jarg=s=>esc(String(s)).replace(/'/g,"\\'");   // safe onclick string arg
 const TABS=[["overview","Overview"],["trend","Trends & charts"],["orders","Orders"],["dealers","Dealers"],["masters","Master accounts"],["cadence","Order cadence"],["bizdev","Business development"],["reports","Reports received"],["assign","Assignments"]];
 // Effective rep = the live assigned owner (Assignments tab) if set, else the rep the
@@ -112,9 +115,10 @@ function erep(f){const a=ASSIGN[f.dealer];return (a&&a.rep)?a.rep:(f.rep||"Unass
 
 async function load(){
   try{
-    const h={}; if(TOKEN) h["x-analytics-token"]=TOKEN;
+    const h={}; if(TOKEN) h["authorization"]="Bearer "+TOKEN;
     const r=await fetch("/.netlify/functions/analytics",{headers:h});
     if(r.status===401){gate();return;}
+    if(r.status===403){$("#body").innerHTML=`<div class="msg err"><b>President only.</b><br>Analytics is limited to President accounts.<br><br><button class="go" onclick="lock()">Sign in as a different user</button></div>`;return;}
     const j=await r.json(); if(j.error){showErr(j.error);return;}
     DATA=j;
     LT={}; for(const f of j.facts){LT[f.line]=(LT[f.line]||0)+f.sales;}
@@ -126,8 +130,16 @@ async function load(){
     render();
   }catch(e){showErr(String(e));}
 }
-function gate(){$("#body").innerHTML=`<div class="gate card"><h2>Enter access code</h2><input id="tok" type="password" placeholder="Analytics passcode" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">View analytics</button></div>`;}
-function submitTok(){TOKEN=$("#tok").value.trim();load();}
+function gate(msg){$("#body").innerHTML=`<div class="gate card"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username" style="margin-bottom:8px"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    TOKEN=j.token; ME=j.profile; sessionStorage.setItem(TKEY,TOKEN); sessionStorage.setItem(PKEY,JSON.stringify(ME)); load();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); TOKEN=null; ME=null; location.reload(); }
 function showErr(m){$("#body").innerHTML=`<div class="msg err"><b>Couldn't load analytics.</b><br>${esc(m)}<br><br><button class="go" onclick="load()">Retry</button></div>`;}
 function setTab(t){TAB=t;EXP=null;DRILL=null;render();}
 function openDealer(n){DEALER=n;window.scrollTo(0,0);render();}
@@ -179,7 +191,7 @@ function render(){ if(!DATA)return;
   if(DEALER) return renderProfile();
   renderKpis();
   $("#body").innerHTML=`<div id="kpis">${$("#kpis")?$("#kpis").innerHTML:""}</div>`+
-    `<div class="tabs">${TABS.map(t=>`<button class="tab ${TAB===t[0]?'on':''}" onclick="setTab('${t[0]}')">${t[1]}</button>`).join("")}</div><div id="app"></div>`;
+    `<div class="tabs" style="display:flex;align-items:center">${TABS.map(t=>`<button class="tab ${TAB===t[0]?'on':''}" onclick="setTab('${t[0]}')">${t[1]}</button>`).join("")}<span style="margin-left:auto;font-size:12px;color:#607089;display:flex;align-items:center;gap:8px">${esc((ME&&ME.name)||"")}<button class="go" style="padding:5px 10px;font-size:12px" onclick="lock()">Lock</button></span></div><div id="app"></div>`;
   renderKpis();
   if(DRILL) return renderDrill();
   ({overview:renderOverview,trend:renderTrend,orders:renderOrders,dealers:renderDealers,masters:renderMasters,cadence:renderCadence,bizdev:renderBizdev,reports:renderReports,assign:renderAssign}[TAB])();
@@ -525,7 +537,7 @@ async function saveAssign(name,i){
   const rep=$("#rep_"+i).value.trim(), acct=$("#acct_"+i).value.trim(), st=$("#st_"+i);
   st.textContent="Saving…"; st.className="hint"; st.style.margin="0";
   try{
-    const h={"content-type":"application/json"}; if(TOKEN)h["x-analytics-token"]=TOKEN;
+    const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
     const r=await fetch("/.netlify/functions/assign",{method:"POST",headers:h,body:JSON.stringify({dealer_name:name,rep_name:rep,hcps_account:acct})});
     const j=await r.json().catch(()=>({}));
     if(r.ok&&j.ok){ASSIGN[name]={rep,acct};st.textContent="Saved ✓";st.className="ok";}

@@ -15,7 +15,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const ORDERING_BASE = process.env.ORDERING_BASE || "https://hcpsonlineordering.netlify.app";
 const BUCKET = "product-images";   // reuse existing public bucket
-const CORS = {"access-control-allow-origin":"*","access-control-allow-methods":"GET, POST, OPTIONS","access-control-allow-headers":"content-type, x-analytics-token"};
+const CORS = {"access-control-allow-origin":"*","access-control-allow-methods":"GET, POST, OPTIONS","access-control-allow-headers":"content-type, authorization, x-analytics-token"};
 const json=(c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store",...CORS},body:JSON.stringify(o)});
 const H=()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 const EXT={"image/jpeg":"jpg","image/jpg":"jpg","image/png":"png","image/webp":"webp","image/gif":"gif","application/pdf":"pdf"};
@@ -32,23 +32,39 @@ const cleanTiers=t=>{ if(!Array.isArray(t)) return null;
     .filter(r=>r.price!=null).sort((a,b)=>a.min_qty-b.min_qty);
   return out.length?out:null; };
 
+// Staff auth: email/password JWT resolved against staff_users; legacy passcode = president.
+async function whoami(event){
+  const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
+  const tok=auth.replace(/^Bearer\s+/i,"").trim();
+  if(tok){
+    try{ const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${tok}`}});
+      if(r.ok){ const u=await r.json(); const email=u&&u.email&&String(u.email).toLowerCase();
+        if(email){ const sr=await fetch(`${SUPABASE_URL}/rest/v1/staff_users?email=eq.${encodeURIComponent(email)}&select=*`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`}}); const s=sr.ok?await sr.json():[]; const su=s&&s[0];
+          if(su&&su.active!==false) return {role:su.role||"rep"}; } } }catch(e){}
+    return null;
+  }
+  const need=process.env.ANALYTICS_TOKEN, got=event.headers["x-analytics-token"]||(event.queryStringParameters||{}).token||"";
+  if(need&&got===need) return {role:"president"};
+  return null;
+}
+
 exports.handler = async (event)=>{
   if(event.httpMethod==="OPTIONS") return {statusCode:204,headers:CORS,body:""};
   try{
-    const need=process.env.ANALYTICS_TOKEN;
-    if(need){const got=event.headers["x-analytics-token"]||(event.queryStringParameters||{}).token||""; if(got!==need) return json(401,{error:"unauthorized"});}
     if(!SUPABASE_URL||!SERVICE_ROLE) return json(500,{error:"Supabase env vars not set (SUPABASE_URL, SUPABASE_SERVICE_ROLE)"});
+    const me = await whoami(event);
+    if(!me) return json(401,{error:"unauthorized"});
+    if(me.role!=="president") return json(403,{error:"President only"});
 
     if(event.httpMethod==="GET"){
       const slug=(event.queryStringParameters||{}).manufacturer||"";
       if(!slug){
-        const [mfrs,meta]=await Promise.all([
+        const [mfrs,logos]=await Promise.all([
           fetchJson(`${ORDERING_BASE}/data/manufacturers.json`).catch(()=>[]),
-          sb("GET","manufacturer_meta?select=slug,logo_url,active").catch(()=>[]),
+          sb("GET","manufacturer_meta?select=slug,logo_url").catch(()=>[]),
         ]);
-        const lm=Object.fromEntries((meta||[]).map(o=>[o.slug,o.logo_url]));
-        const am=Object.fromEntries((meta||[]).map(o=>[o.slug,o.active]));
-        return json(200,{manufacturers:(mfrs||[]).map(m=>({slug:m.slug,name:m.name,hasData:!!m.hasData,logo_url:lm[m.slug]||"",active:am[m.slug]!==false}))});
+        const lm=Object.fromEntries((logos||[]).map(o=>[o.slug,o.logo_url]));
+        return json(200,{manufacturers:(mfrs||[]).map(m=>({slug:m.slug,name:m.name,hasData:!!m.hasData,logo_url:lm[m.slug]||""}))});
       }
       const [prods,custom,links]=await Promise.all([
         fetchJson(`${ORDERING_BASE}/data/${slug}.json`).catch(()=>[]),
@@ -91,13 +107,6 @@ exports.handler = async (event)=>{
       if(b.action==="clear_logo"){
         if(!b.slug) return json(400,{error:"slug required"});
         await sb("POST","manufacturer_meta?on_conflict=slug",{slug:b.slug,logo_url:null,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
-        return json(200,{ok:true});
-      }
-      // Turn a whole manufacturer on/off on the ordering platform (no redeploy). Removed
-      // manufacturers disappear from the tabs, the dealer-home cards, and the line count.
-      if(b.action==="set_active"){
-        if(!b.slug) return json(400,{error:"slug required"});
-        await sb("POST","manufacturer_meta?on_conflict=slug",{slug:b.slug,active:b.active!==false,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
         return json(200,{ok:true});
       }
 

@@ -9,15 +9,29 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const json = (code, obj) => ({ statusCode: code, headers: { "content-type": "application/json", "cache-control": "no-store" }, body: JSON.stringify(obj) });
 
+// Staff auth: email/password JWT resolved against staff_users; legacy passcode = president.
+async function whoami(event){
+  const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
+  const tok=auth.replace(/^Bearer\s+/i,"").trim();
+  if(tok){
+    try{ const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${tok}`}});
+      if(r.ok){ const u=await r.json(); const email=u&&u.email&&String(u.email).toLowerCase();
+        if(email){ const sr=await fetch(`${SUPABASE_URL}/rest/v1/staff_users?email=eq.${encodeURIComponent(email)}&select=*`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`}}); const s=sr.ok?await sr.json():[]; const su=s&&s[0];
+          if(su&&su.active!==false) return {role:su.role||"rep"}; } } }catch(e){}
+    return null;
+  }
+  const need=process.env.ANALYTICS_TOKEN, got=event.headers["x-analytics-token"]||"";
+  if(need&&got===need) return {role:"president"};
+  return null;
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") return json(405, { error: "POST only" });
-    const need = process.env.ANALYTICS_TOKEN;
-    if (need) {
-      const got = event.headers["x-analytics-token"] || "";
-      if (got !== need) return json(401, { error: "unauthorized" });
-    }
     if (!SUPABASE_URL || !SERVICE_ROLE) return json(500, { error: "Supabase env vars not set" });
+    const me = await whoami(event);
+    if (!me) return json(401, { error: "unauthorized" });
+    if (me.role !== "president") return json(403, { error: "President only" });
 
     let body; try { body = JSON.parse(event.body || "{}"); } catch { return json(400, { error: "bad JSON" }); }
     const dealer_name = (body.dealer_name || "").trim();
