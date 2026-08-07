@@ -50,6 +50,33 @@ const MONTH=["January","February","March","April","May","June","July","August","
 const plabel=p=>{const[y,m]=p.split("-");return `${MONTH[+m-1]} ${y}`;};
 const pm=p=>{const[y,m]=p.split("-").map(Number);return y*12+(m-1);};
 
+// ---- territory ACCESS RULES (shared with the ordering portal's dealer-auth). ----
+const { computeAccess } = require("./_access.js");
+// Same normalized key the map's geocoder uses, to look up a governing account's latitude
+// (needed for Strongback's "south of Indianapolis" rule).
+function qkey(a){
+  const parts=[a.address,a.city,[a.state,a.zip].filter(Boolean).join(" ")].map(x=>String(x||"").trim()).filter(Boolean);
+  return parts.join(", ").toLowerCase().replace(/\s+/g," ").trim();
+}
+// Compute a single dealer's portal access EXACTLY as dealer-auth does: evaluate the
+// governing account (master HQ if a branch), pull its latitude, and split owned vs available
+// by whether the dealer actually has an ACCOUNT NUMBER for the line (account_ref).
+async function computeDealerAccess(dealer_id){
+  const d=await sbGet(`dealers?id=eq.${encodeURIComponent(dealer_id)}&select=id,business_name,address,city,state,zip,parent_id,golden_status,ovation_access`).catch(()=>[]);
+  const self=d&&d[0]; if(!self) return null;
+  let gov=self, governedBy=null;
+  if(self.parent_id){ const p=await sbGet(`dealers?id=eq.${self.parent_id}&select=business_name,address,city,state,zip`).catch(()=>[]); if(p&&p[0]){ gov=p[0]; governedBy=p[0].business_name; } }
+  let lat=null;
+  try{ const q=qkey(gov); if(q){ const gc=await sbGet(`geocache?q=eq.${encodeURIComponent(q)}&ok=eq.true&select=lat&limit=1`).catch(()=>[]); if(gc&&gc[0]) lat=gc[0].lat; } }catch(e){}
+  const dm=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(dealer_id)}&active=eq.true&select=manufacturer,account_ref`).catch(()=>[]);
+  const ownedWithAccount=(dm||[]).filter(x=>x.account_ref&&String(x.account_ref).trim()).map(x=>x.manufacturer);
+  const access=computeAccess({
+    state: gov.state||self.state, business_name: gov.business_name||self.business_name, lat,
+    golden_status: self.golden_status||"None", ovation_access: !!self.ovation_access,
+  }, ownedWithAccount);
+  return { access, gridLines:(dm||[]).map(x=>x.manufacturer).sort(), governedBy, lat_known: lat!=null };
+}
+
 // ---- staff auth: email/password JWT resolved against staff_users. A matching legacy
 //      passcode still grants president during the transition; unset ANALYTICS_TOKEN to retire it.
 async function whoami(event){
@@ -75,7 +102,7 @@ async function ownsDealer(me, dealer_id){
   return String((dir&&dir[0]&&dir[0].rep_name)||"").trim().toLowerCase()===String(me.rep_name).trim().toLowerCase();
 }
 // Structural / cross-book / login / approval tools are President-only.
-const PRESIDENT_ONLY=new Set(["merge","split","import_contacts","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep","list_contract_prices","set_contract_price","clear_contract_price"]);
+const PRESIDENT_ONLY=new Set(["merge","split","import_contacts","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep","list_contract_prices","set_contract_price","clear_contract_price","prefill_access","prefill_access_all"]);
 
 async function buildState(){
   const [dealers,aliases,dm,mfrs,dir,reps,nomerge,logins] = await Promise.all([
@@ -263,6 +290,50 @@ exports.handler = async (event)=>{
         if(!b.dealer_name) return json(400,{error:"dealer_name required"});
         await sbSend("POST","dealer_directory",{dealer_name:b.dealer_name,rep_name:(b.rep_name||"").trim()||null,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
         return json(200,{ok:true});
+      }
+      // ---- Territory access (rules engine) ----
+      // Read-only: what this dealer can actually order on the portal, computed live from the rules.
+      if(act==="portal_access"){
+        if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+        const r=await computeDealerAccess(b.dealer_id);
+        if(!r) return json(404,{error:"dealer not found"});
+        return json(200,{ok:true,...r});
+      }
+      // President-only: materialize the rule-eligible lines into this dealer's editable grid
+      // (dealer_manufacturers), preserving any account numbers already on file.
+      if(act==="prefill_access"){
+        if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+        const r=await computeDealerAccess(b.dealer_id);
+        if(!r) return json(404,{error:"dealer not found"});
+        const eligible=[...new Set([...(r.access.your_accounts||[]),...(r.access.available||[])])];
+        const existing=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,account_ref`).catch(()=>[]);
+        const refBy={}; for(const x of (existing||[])){ if(x.account_ref) refBy[x.manufacturer]=x.account_ref; }
+        if(eligible.length){
+          const rows=eligible.map(m=>({dealer_id:b.dealer_id,manufacturer:m,active:true,account_ref:refBy[m]||null}));
+          await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",rows,{Prefer:"resolution=merge-duplicates,return=minimal"});
+        }
+        return json(200,{ok:true,added:eligible.sort()});
+      }
+      // President-only: same, for EVERY dealer at once (bulk-load, compute in memory, batch upsert).
+      if(act==="prefill_access_all"){
+        const dealers=await sbGetAll("dealers?select=id,business_name,address,city,state,zip,parent_id,golden_status,ovation_access");
+        const dmAll=await sbGetAll("dealer_manufacturers?select=dealer_id,manufacturer,account_ref","dealer_id,manufacturer");
+        const gcAll=await sbGetAll("geocache?ok=eq.true&select=q,lat","q").catch(()=>[]);
+        const latByQ={}; for(const g of (gcAll||[])) latByQ[g.q]=g.lat;
+        const byId={}; for(const d of dealers) byId[d.id]=d;
+        const refByDealer=new Map();
+        for(const x of dmAll){ if(x.account_ref){ (refByDealer.get(x.dealer_id)||refByDealer.set(x.dealer_id,{}).get(x.dealer_id))[x.manufacturer]=x.account_ref; } }
+        const rows=[];
+        for(const d of dealers){
+          const gov = (d.parent_id&&byId[d.parent_id]) ? byId[d.parent_id] : d;
+          const q=qkey(gov); const lat=(q in latByQ)?latByQ[q]:null;
+          const acc=computeAccess({state:gov.state||d.state,business_name:gov.business_name||d.business_name,lat,golden_status:d.golden_status||"None",ovation_access:!!d.ovation_access},[]);
+          const eligible=[...new Set([...(acc.your_accounts||[]),...(acc.available||[])])];
+          const refs=refByDealer.get(d.id)||{};
+          for(const m of eligible) rows.push({dealer_id:d.id,manufacturer:m,active:true,account_ref:refs[m]||null});
+        }
+        let n=0; for(let i=0;i<rows.length;i+=500){ const part=rows.slice(i,i+500); await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",part,{Prefer:"resolution=merge-duplicates,return=minimal"}); n+=part.length; }
+        return json(200,{ok:true,dealers:dealers.length,lines:n});
       }
       // ---- Per-product contract pricing (dealer_contract_prices) ----
       if(act==="list_contract_prices"){

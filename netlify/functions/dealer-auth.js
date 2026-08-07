@@ -111,7 +111,9 @@ exports.handler = async (event)=>{
           access=computeAccess(
             {state:gov.state||self.state, business_name:gov.business_name||self.business_name, lat,
              golden_status:self.golden_status||"None", ovation_access:!!self.ovation_access},
-            (dm||[]).map(x=>x.manufacturer));
+            // "Your accounts" = lines the dealer actually has an account NUMBER for; lines that
+            // are merely granted in the admin grid (no account_ref) show as "Available to you".
+            (dm||[]).filter(x=>x.account_ref&&String(x.account_ref).trim()).map(x=>x.manufacturer));
           if(access) access.golden_url = self.golden_url || "";   // this dealer's specific Golden portal path
         }catch(e){}
         // Per-product contract prices (company-level): the governing/master account's prices
