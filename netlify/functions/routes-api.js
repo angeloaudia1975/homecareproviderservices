@@ -14,6 +14,10 @@
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const ORS_KEY = process.env.ORS_API_KEY || process.env.OPENROUTESERVICE_API_KEY || "";
+const { computeAccess } = require("./_access.js");
+const NORM_BUY={ bongo:"airavant-bongorx", airavant:"airavant-bongorx", "golden":"golden-technologies", "ohio-medical":"gce" };
+const normBuy=s=>{ s=String(s||"").toLowerCase().trim(); return NORM_BUY[s]||s; };
+const pretty=s=>String(s||"").split("-").map(w=>w?w[0].toUpperCase()+w.slice(1):w).join(" ");
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 
@@ -127,6 +131,55 @@ exports.handler = async (event)=>{
       if(me.role!=="president" && String(r.owner_email||"").toLowerCase()!==String(me.email||"").toLowerCase()) return json(403,{error:"not your route"});
       await sbSend("DELETE",`rep_routes?id=eq.${encodeURIComponent(b.id)}`,null,{Prefer:"return=minimal"});
       return json(200,{ok:true});
+    }
+
+    // ---------- Business-case trip packet: per-stop history, contacts, opportunities ----------
+    if(b.action==="business_case"){
+      const ids=[...new Set((Array.isArray(b.dealer_ids)?b.dealer_ids:[]).filter(Boolean))];
+      if(!ids.length) return json(200,{ok:true,cases:{}});
+      const idIn=`in.(${ids.join(",")})`;
+      const [dealers,sales,contacts,mfrs] = await Promise.all([
+        sbGet(`dealers?id=${idIn}&select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id,golden_status,ovation_access`).catch(()=>[]),
+        sbGet(`monthly_sales?dealer_id=${idIn}&select=dealer_id,manufacturer,period,amount,qty`).catch(()=>[]),
+        sbGet(`dealer_contacts?dealer_id=${idIn}&select=dealer_id,name,email,phone,cell,title,role`).catch(()=>[]),
+        sbGet("manufacturers?select=slug,name").catch(()=>[]),
+      ]);
+      // parents (for a branch's governing state/name)
+      const parentIds=[...new Set(dealers.map(d=>d.parent_id).filter(Boolean))];
+      let parents=[]; if(parentIds.length){ parents=await sbGet(`dealers?id=in.(${parentIds.join(",")})&select=id,business_name,state`).catch(()=>[]); }
+      const parById=Object.fromEntries(parents.map(p=>[p.id,p]));
+      const mfrName=Object.fromEntries((mfrs||[]).map(m=>[m.slug,m.name]));
+      const nameOf=s=>mfrName[s]||mfrName[normBuy(s)]||pretty(s);
+      // sales per dealer -> per line
+      const byDealer={};
+      for(const r of (sales||[])){
+        const did=r.dealer_id; if(!did) continue;
+        const d=byDealer[did]||(byDealer[did]={lines:{},total:0,buys:new Set()});
+        const slug=normBuy(r.manufacturer); const amt=Number(r.amount)||0;
+        const L=d.lines[slug]||(d.lines[slug]={name:nameOf(slug),amount:0,qty:0,orders:0,last:""});
+        L.amount+=amt; L.qty+=Number(r.qty)||0; L.orders+=1;
+        const per=(r.period||"").slice(0,10); if(per>L.last) L.last=per;
+        d.total+=amt; if(r.manufacturer) d.buys.add(slug);
+      }
+      const contactsByDealer={};
+      for(const c of (contacts||[])){ (contactsByDealer[c.dealer_id]||(contactsByDealer[c.dealer_id]=[])).push(c); }
+      const cases={};
+      for(const d of dealers){
+        const gov = d.parent_id&&parById[d.parent_id] ? parById[d.parent_id] : d;
+        let acc; try{ acc=computeAccess({state:gov.state||d.state,business_name:gov.business_name||d.business_name,ovation_access:!!d.ovation_access,lat:null},[]); }catch(e){ acc={your_accounts:[],available:[]}; }
+        const eligible=[...new Set([...(acc.your_accounts||[]),...(acc.available||[])])];
+        const s=byDealer[d.id]||{lines:{},total:0,buys:new Set()};
+        const opps=eligible.filter(x=>!s.buys.has(x)).map(x=>({slug:x,name:nameOf(x)}));
+        const lines=Object.entries(s.lines).map(([slug,v])=>({slug,name:v.name,amount:Math.round(v.amount*100)/100,orders:v.orders,last:v.last})).sort((a,b)=>b.amount-a.amount);
+        cases[d.id]={
+          name:d.business_name||"", account:d.hcps_account||"", contact_name:d.contact_name||"", email:d.email||"", phone:d.phone||"",
+          address:d.address||"", city:d.city||"", state:d.state||"", zip:d.zip||"",
+          total:Math.round((s.total||0)*100)/100, lines, opps,
+          golden:d.golden_status||"None", ovation:!!d.ovation_access,
+          contacts:(contactsByDealer[d.id]||[]).map(c=>({name:c.name||"",email:c.email||"",phone:c.phone||"",cell:c.cell||"",title:c.title||"",role:c.role||""})),
+        };
+      }
+      return json(200,{ok:true,cases});
     }
 
     return json(400,{error:"unknown action"});

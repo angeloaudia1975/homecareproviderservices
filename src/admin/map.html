@@ -126,7 +126,8 @@
     <div class="ractions">
       <button class="btn" onclick="optimize()">Optimize order</button>
       <button class="btn" onclick="saveRouteDialog()">Save route</button>
-      <button class="btn ghost" onclick="printRoute()">Print</button>
+      <button class="btn ghost" onclick="printRoute()">Print sheet</button>
+      <button class="btn ghost" onclick="printPacket()">Business case</button>
       <button class="btn ghost" onclick="openGmaps()">Google Maps →</button>
     </div>
   </div>
@@ -154,6 +155,7 @@ let HOMEMARKER=null, ROUNDTRIP=true;
 let ROUTEGEO=null, CURRENT_ROUTE_ID=null, _routeT=null;
 let LASTROUTE={distance_m:0,duration_s:0,geometry:null};
 const jesc=s=>String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+const fmtUsd=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
 // routes-api = OpenRouteService proxy + saved routes (separate from geocode-api).
 async function api2(body){
   const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
@@ -434,6 +436,49 @@ function printRoute(){
   w.document.write(routeSheetHtml("Route sheet")); w.document.close();
 }
 async function printSaved(id){ await loadSaved(id); printRoute(); }
+
+/* ---------- business-case trip packet ---------- */
+async function printPacket(){
+  if(!ROUTE.length) return;
+  const w=window.open("","_blank"); if(!w){ banner("Allow pop-ups to print the business case."); return; }
+  w.document.write('<!doctype html><meta charset="utf-8"><title>Business case</title><body style="font:15px Arial;margin:28px;color:#5b6672">Building your business-case packet…</body>');
+  w.document.close();
+  const ids=[...new Set(ROUTE.map(s=>s.dealer_id).filter(Boolean))];
+  let cases={};
+  try{ const r=await api2({action:"business_case",dealer_ids:ids}); cases=(r&&r.cases)||{}; }catch(e){}
+  try{ w.document.open(); w.document.write(packetHtml(cases)); w.document.close(); }catch(e){}
+}
+function packetHtml(cases){
+  const useHome=HOME&&ROUNDTRIP;
+  const meta=`${ROUTE.length} stops${LASTROUTE.duration_s?" · "+fmtMi(LASTROUTE.distance_m)+" mi · "+fmtDur(LASTROUTE.duration_s)+" drive":""}`;
+  const stops=ROUTE.map((s,i)=>{
+    const c=cases[s.dealer_id]||{};
+    const addr=esc([s.label,[s.city,s.state].filter(Boolean).join(", ")].filter(Boolean).join(" · "));
+    const lines=(c.lines&&c.lines.length)?`<table class="t"><thead><tr><th>Line</th><th class="r">Sales</th><th class="r">Orders</th><th>Last</th></tr></thead><tbody>${c.lines.map(l=>`<tr><td>${esc(l.name)}</td><td class="r">${fmtUsd(l.amount)}</td><td class="r">${l.orders}</td><td>${esc(l.last||"")}</td></tr>`).join("")}</tbody></table>`:`<div class="dim">No purchase history on file.</div>`;
+    const opps=(c.opps&&c.opps.length)?`<div class="opps"><b>Opportunities to pitch:</b> ${c.opps.map(o=>`<span class="chip">${esc(o.name)}</span>`).join(" ")}</div>`:`<div class="dim" style="margin-top:6px">No open opportunities — already buys every eligible line.</div>`;
+    const contacts=(c.contacts&&c.contacts.length)?c.contacts.slice(0,6).map(ct=>`<div class="ct">${esc(ct.name||"—")}${ct.title?" · "+esc(ct.title):""}${ct.email?" · "+esc(ct.email):""}${ct.phone?" · ☎ "+esc(ct.phone):""}${ct.cell?" · 📱 "+esc(ct.cell):""}</div>`).join(""):`<div class="dim">No contacts on file.</div>`;
+    const gold=(c.golden&&c.golden!=="None")?` · Golden: ${esc(c.golden)}`:"";
+    return `<section class="stop">
+      <div class="sh"><span class="num">${i+1}</span><div><h2>${esc(c.name||s.name||"")}</h2><div class="a">${addr}${c.account?" · Acct "+esc(c.account):""}${gold}</div></div><div class="tot">${fmtUsd(c.total)}<small>lifetime</small></div></div>
+      <div class="grid"><div><h3>Buying history</h3>${lines}</div><div><h3>Contacts</h3>${contacts}${opps}</div></div>
+    </section>`;
+  }).join("");
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Business case — route</title><style>
+    body{font:13px Arial,sans-serif;color:#1b2733;margin:24px}h1{font-size:20px;margin:0 0 2px}.m{color:#5b6672;margin:0 0 14px}
+    .stop{border:1px solid #dde3e8;border-radius:10px;padding:12px 14px;margin:0 0 12px;page-break-inside:avoid}
+    .sh{display:flex;align-items:center;gap:10px}.sh h2{font-size:16px;margin:0}.num{background:#2B4071;color:#fff;font-weight:800;min-width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px}
+    .a{color:#6b7683;font-size:12px}.tot{margin-left:auto;font-weight:800;color:#1f9d55;text-align:right}.tot small{display:block;color:#9aa4ae;font-weight:400;font-size:10px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px}h3{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#5b6672;margin:0 0 6px}
+    table.t{width:100%;border-collapse:collapse}table.t th,table.t td{border-bottom:1px solid #eef1f4;padding:4px 6px;text-align:left;font-size:12px}.r{text-align:right}
+    .ct{font-size:12px;padding:2px 0;border-bottom:1px dotted #eef1f4}.opps{margin-top:8px}.chip{display:inline-block;background:#eaf0f8;color:#2f73b8;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;margin:2px}
+    .dim{color:#9aa4ae;font-size:12px}
+    @media print{body{margin:12mm}.stop{border-color:#ccc}}
+    </style></head><body>
+    <h1>Route business case</h1><p class="m">${esc(meta)}${useHome?" · round trip":""} · territory development plan</p>
+    ${stops}
+    <p class="m">HomeCare Provider Services — confidential territory planning</p>
+    <scr`+`ipt>window.onload=function(){window.print();}</scr`+`ipt></body></html>`;
+}
 
 async function refreshGeoBtn(){
   try{
