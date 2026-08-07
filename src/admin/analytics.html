@@ -84,7 +84,6 @@ button.go{background:#10263f;color:#fff;border:0;border-radius:8px;padding:9px 1
 <body>
 <nav class="adminnav"><div class="bd">HCPS <span>Admin</span></div>
  <a href="/admin/">Home</a><a href="/admin/analytics.html" class="on">Analytics</a><a href="/admin/dealers.html">Dealer Manager</a>
-  <a href="/admin/map.html">Map</a>
  <a href="/admin/images.html">Images</a><a href="/admin/featured.html">Featured</a><a href="/admin/catalog.html">Catalog</a><a href="/admin/home-editor.html">Portal Home</a><a href="/admin/website.html">Website</a></nav>
 <div class="wrap">
 <div class="top">
@@ -103,9 +102,9 @@ const money=n=>"$"+Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,
 const money0=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
 const pm=p=>{const[y,m]=p.split("-").map(Number);return y*12+(m-1);};
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-let DATA=null,TOKEN=sessionStorage.getItem("hcps_admin_token")||null,TAB="overview",EXP=null,DEALER=null,LT={},ASSIGN={},REPOPTS=[],ORDMODE="month",DRILL=null;
+let DATA=null,TOKEN=null,TAB="overview",EXP=null,DEALER=null,LT={},ASSIGN={},REPOPTS=[],ORDMODE="month",DRILL=null;
 const jarg=s=>esc(String(s)).replace(/'/g,"\\'");   // safe onclick string arg
-const TABS=[["overview","Overview"],["trend","Trends & charts"],["orders","Orders"],["dealers","Dealers"],["cadence","Order cadence"],["bizdev","Business development"],["reports","Reports received"],["assign","Assignments"]];
+const TABS=[["overview","Overview"],["trend","Trends & charts"],["orders","Orders"],["dealers","Dealers"],["masters","Master accounts"],["cadence","Order cadence"],["bizdev","Business development"],["reports","Reports received"],["assign","Assignments"]];
 // Effective rep = the live assigned owner (Assignments tab) if set, else the rep the
 // manufacturer reported. This makes every rep-based view recompute the moment a dealer
 // is reassigned, without reloading.
@@ -115,7 +114,7 @@ async function load(){
   try{
     const h={}; if(TOKEN) h["x-analytics-token"]=TOKEN;
     const r=await fetch("/.netlify/functions/analytics",{headers:h});
-    if(r.status===401){sessionStorage.removeItem("hcps_admin_token");gate();return;}
+    if(r.status===401){gate();return;}
     const j=await r.json(); if(j.error){showErr(j.error);return;}
     DATA=j;
     LT={}; for(const f of j.facts){LT[f.line]=(LT[f.line]||0)+f.sales;}
@@ -128,7 +127,7 @@ async function load(){
   }catch(e){showErr(String(e));}
 }
 function gate(){$("#body").innerHTML=`<div class="gate card"><h2>Enter access code</h2><input id="tok" type="password" placeholder="Analytics passcode" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">View analytics</button></div>`;}
-function submitTok(){TOKEN=$("#tok").value.trim();sessionStorage.setItem("hcps_admin_token",TOKEN);load();}
+function submitTok(){TOKEN=$("#tok").value.trim();load();}
 function showErr(m){$("#body").innerHTML=`<div class="msg err"><b>Couldn't load analytics.</b><br>${esc(m)}<br><br><button class="go" onclick="load()">Retry</button></div>`;}
 function setTab(t){TAB=t;EXP=null;DRILL=null;render();}
 function openDealer(n){DEALER=n;window.scrollTo(0,0);render();}
@@ -183,7 +182,7 @@ function render(){ if(!DATA)return;
     `<div class="tabs">${TABS.map(t=>`<button class="tab ${TAB===t[0]?'on':''}" onclick="setTab('${t[0]}')">${t[1]}</button>`).join("")}</div><div id="app"></div>`;
   renderKpis();
   if(DRILL) return renderDrill();
-  ({overview:renderOverview,trend:renderTrend,orders:renderOrders,dealers:renderDealers,cadence:renderCadence,bizdev:renderBizdev,reports:renderReports,assign:renderAssign}[TAB])();
+  ({overview:renderOverview,trend:renderTrend,orders:renderOrders,dealers:renderDealers,masters:renderMasters,cadence:renderCadence,bizdev:renderBizdev,reports:renderReports,assign:renderAssign}[TAB])();
 }
 function renderKpis(){
   const rows=facts();const de=new Set(),rp=new Set();let s=0,c=0,recs=0;
@@ -310,6 +309,51 @@ function renderReports(){const ms=months();
 function dealerAgg(l){const rows=DATA.facts.filter(f=>l==="all"||f.line===l);const m=new Map();
   for(const f of rows){const d=m.get(f.dealer)||{dealer:f.dealer,sales:0,comm:0,recs:0,lines:new Set(),periods:new Set()};d.sales+=f.sales;d.comm+=f.comm;d.recs+=f.recs;d.lines.add(f.line);d.periods.add(f.period);m.set(f.dealer,d);}
   return [...m.values()];}
+
+/* ---------- Master accounts: company-wide totals with per-branch breakdown ---------- */
+function masterAgg(l){const rows=DATA.facts.filter(f=>l==="all"||f.line===l);const M=new Map();
+  for(const f of rows){
+    let m=M.get(f.master); if(!m){m={master:f.master,sales:0,comm:0,recs:0,lines:new Set(),periods:new Set(),branches:new Map()};M.set(f.master,m);}
+    m.sales+=f.sales;m.comm+=f.comm;m.recs+=f.recs;m.lines.add(f.line);m.periods.add(f.period);
+    let b=m.branches.get(f.dealer); if(!b){b={dealer:f.dealer,sales:0,comm:0,lines:new Set(),periods:new Set()};m.branches.set(f.dealer,b);}
+    b.sales+=f.sales;b.comm+=f.comm;b.lines.add(f.line);b.periods.add(f.period);}
+  // only true multi-location companies (a standalone dealer is already on the Dealers tab)
+  return [...M.values()].map(m=>({...m,branchList:[...m.branches.values()].sort((a,b)=>b.sales-a.sales)})).filter(m=>m.branchList.length>1);}
+let MASTERROWS=[], MASTEROPEN=new Set(), MSSORT={key:"sales",dir:-1};
+const MS_SORTS=[["sales","Company revenue (high→low)"],["comm","Commission (high→low)"],["locs","Locations (most)"],["name","Name (A→Z)"]];
+function toggleMaster(name){ if(MASTEROPEN.has(name))MASTEROPEN.delete(name); else MASTEROPEN.add(name); filterMasterRows(); }
+function msCmp(a,b){switch(MSSORT.key){case"name":return a.master.localeCompare(b.master);case"comm":return a.comm-b.comm;case"locs":return a.branchList.length-b.branchList.length;default:return a.sales-b.sales;}}
+function msSetSort(k){MSSORT.key=k;MSSORT.dir=(k==="name")?1:-1;filterMasterRows();}
+function masterRowHtml(m){const open=MASTEROPEN.has(m.master);
+  let h=`<tr class="drow" style="background:#f6f8fc" onclick="toggleMaster('${jarg(m.master)}')">
+    <td class="lbl"><b>${open?"▾":"▸"} ${esc(m.master)}</b> <span class="hint" style="text-transform:none">${m.branchList.length} locations</span></td>
+    <td>${[...m.lines].sort().map(x=>`<span class="chip">${esc(x)}</span>`).join("")}</td>
+    <td class="num"><b>${money0(m.sales)}</b></td><td class="num comm">${money(m.comm)}</td>
+    <td class="link">${open?"Hide":"Branches"}</td></tr>`;
+  if(open){ for(const b of m.branchList){
+    h+=`<tr class="drow" onclick="openDealer('${jarg(b.dealer)}')">
+      <td class="lbl" style="padding-left:30px">${esc(b.dealer)}${b.dealer===m.master?' <span class="chip">HQ</span>':''}</td>
+      <td>${[...b.lines].sort().map(x=>`<span class="chip">${esc(x)}</span>`).join("")}</td>
+      <td class="num">${money0(b.sales)}</td><td class="num comm">${money(b.comm)}</td>
+      <td class="link">View →</td></tr>`;} }
+  return h;}
+function filterMasterRows(){
+  const q=($("#ms")?.value||"").toLowerCase();
+  let rows=MASTERROWS.filter(m=>!q||m.master.toLowerCase().includes(q)||m.branchList.some(b=>b.dealer.toLowerCase().includes(q)));
+  rows=rows.slice().sort((a,b)=>MSSORT.dir*msCmp(a,b));
+  const body=$("#msBody"); if(body) body.innerHTML=rows.map(masterRowHtml).join("")||`<tr><td colspan="5" class="muted" style="padding:14px">No master companies match “${esc(q)}”.</td></tr>`;
+  const cnt=$("#msCount"); if(cnt) cnt.textContent=rows.length;}
+function renderMasters(){const l=lineF();
+  MASTERROWS=masterAgg(l);
+  const totalRev=MASTERROWS.reduce((a,m)=>a+m.sales,0);
+  const sortSel=MS_SORTS.map(([k,lab])=>`<option value="${k}" ${MSSORT.key===k?"selected":""}>${lab}</option>`).join("");
+  $("#app").innerHTML=`<div class="card"><h2>Master accounts ${l==="all"?"":"— "+esc(l)} <span class="hint" style="text-transform:none">(<span id="msCount">${MASTERROWS.length}</span> multi-location companies · ${money0(totalRev)} rolled-up revenue — click a company to expand its branches)</span></h2>
+    <div class="ctrls" style="margin-bottom:10px">
+      <input type="search" id="ms" placeholder="Search company or branch…" oninput="filterMasterRows()" style="width:280px">
+      <label class="f">Sort <select onchange="msSetSort(this.value)">${sortSel}</select></label>
+    </div>
+    <table><thead><tr><th>Company / branch</th><th>Lines</th><th class="num">Revenue</th><th class="num">Commission</th><th></th></tr></thead><tbody id="msBody"></tbody></table></div>`;
+  filterMasterRows();}
 // Cached dealer aggregate for the Dealers tab so typing filters/sorts without a full
 // re-render (which would destroy the search box and drop focus — the old bug).
 let DEALERROWS=[], DSSORT={key:"sales",dir:-1};
@@ -489,5 +533,4 @@ async function saveAssign(name,i){
   }catch(e){st.textContent="Error";st.className="warn";}
 }
 load();
-</script><div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.3</div>
-</body></html>
+</script></body></html>

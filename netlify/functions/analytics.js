@@ -62,9 +62,13 @@ exports.handler = async (event) => {
     // canonical dealers the Dealer Manager shows (post-merge, post-rename). Without this
     // the page would count raw customer_name strings and drift from the corrected list.
     let dealers = [], aliases = [];
-    try { dealers = await sbGet("dealers?select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip"); } catch (e) { dealers = []; }
+    try { dealers = await sbGet("dealers?select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id"); } catch (e) { dealers = []; }
     try { aliases = await sbGet("dealer_aliases?select=alias_norm,dealer_id"); } catch (e) { aliases = []; }
     const nameById = Object.fromEntries(dealers.map(d => [d.id, d.business_name]));
+    // Master (HQ) name per dealer, so reports can roll branch sales up to the company.
+    // A branch -> its parent's name; a master or standalone -> its own name.
+    const masterByName = {};
+    for (const d of dealers) masterByName[d.business_name] = (d.parent_id && nameById[d.parent_id]) ? nameById[d.parent_id] : d.business_name;
     // Location/contact per canonical dealer name, so the analytics profile can show the
     // same detail the Dealer Manager does (address, contact, account #).
     const dealerInfo = {};
@@ -101,11 +105,12 @@ exports.handler = async (event) => {
       const line = mfrName[r.manufacturer] || r.manufacturer || "(unknown)";
       const rep  = r.rep_name || "Unassigned";
       const dealer = canonDealer(r);
+      const master = masterByName[dealer] || dealer;
       const prod = (r.product_code || "").trim();
       const pname = (r.product_name || "").trim();
       periods.add(period); lines.add(line); reps.add(rep);
       const key = [period, line, rep, dealer, prod, pname].join("|~|");
-      const cur = cube.get(key) || { period, line, rep, dealer, product: prod, productName: pname, sales: 0, comm: 0, qty: 0, recs: 0 };
+      const cur = cube.get(key) || { period, line, rep, dealer, master, product: prod, productName: pname, sales: 0, comm: 0, qty: 0, recs: 0 };
       cur.sales += Number(r.amount) || 0;
       cur.comm  += Number(r.commission) || 0;
       cur.qty   += Number(r.qty) || 0;
