@@ -23,6 +23,13 @@ async function sb(method,path,body,extra){
 }
 const rpc=(fn,args)=>sb("POST",`rpc/${fn}`,args);
 const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const { computeAccess } = require("./_access.js");
+// Same normalized key the map's geocoder uses, to look up a dealer's latitude
+// (needed for Strongback's "south of Indianapolis" territory rule).
+function qkey(a){
+  const parts=[a.address,a.city,[a.state,a.zip].filter(Boolean).join(" ")].map(x=>String(x||"").trim()).filter(Boolean);
+  return parts.join(", ").toLowerCase().replace(/\s+/g," ").trim();
+}
 
 // Verify the caller's Supabase JWT and resolve their dealer login. Returns null if not signed in.
 async function callerFromToken(event){
@@ -87,13 +94,25 @@ exports.handler = async (event)=>{
       if(!du) return json(200,{ok:true,status:"none",email:u.email});
       if(du.status!=="approved") return json(200,{ok:true,status:du.status,email:du.email});
       // approved -> return dealer profile + entitled lines for gating + cart prefill
-      let dealer=null, lines=[];
+      let dealer=null, lines=[], access=null;
       if(du.dealer_id){
-        const d=await sb("GET",`dealers?id=eq.${du.dealer_id}&select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip`);
+        const d=await sb("GET",`dealers?id=eq.${du.dealer_id}&select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id,golden_status,ovation_access`);
         dealer=d&&d[0]?{id:d[0].id,name:d[0].business_name,hcps_account:d[0].hcps_account||"",contact_name:d[0].contact_name||"",
           email:d[0].email||du.email,phone:d[0].phone||"",address:d[0].address||"",city:d[0].city||"",state:d[0].state||"",zip:d[0].zip||""}:null;
         const dm=await sb("GET",`dealer_manufacturers?dealer_id=eq.${du.dealer_id}&active=eq.true&select=manufacturer,account_ref`);
         lines=(dm||[]).map(x=>({slug:x.manufacturer,account:x.account_ref||""}));
+        // company-level access decision (a branch inherits its HQ's territory)
+        try{
+          const self=d[0];
+          let gov=self;
+          if(self.parent_id){ const p=await sb("GET",`dealers?id=eq.${self.parent_id}&select=business_name,address,city,state,zip`); if(p&&p[0]) gov=p[0]; }
+          let lat=null;
+          try{ const q=qkey(gov); if(q){ const gc=await sb("GET",`geocache?q=eq.${encodeURIComponent(q)}&ok=eq.true&select=lat&limit=1`); if(gc&&gc[0]) lat=gc[0].lat; } }catch(e){}
+          access=computeAccess(
+            {state:gov.state||self.state, business_name:gov.business_name||self.business_name, lat,
+             golden_status:self.golden_status||"None", ovation_access:!!self.ovation_access},
+            (dm||[]).map(x=>x.manufacturer));
+        }catch(e){}
         // attach stored shipping / billing addresses (if any) so the "My account" editor can prefill
         if(dealer){
           try{
@@ -111,7 +130,7 @@ exports.handler = async (event)=>{
       // saved cart (persists across logout/login until ordered or cleared)
       let cart=null;
       try{ const cr=await sb("GET",`dealer_carts?uid=eq.${uid}&select=cart`); if(cr&&cr[0]&&cr[0].cart&&Array.isArray(cr[0].cart.items)&&cr[0].cart.items.length) cart=cr[0].cart; }catch(e){}
-      return json(200,{ok:true,status:"approved",email:du.email,dealer,lines,cart});
+      return json(200,{ok:true,status:"approved",email:du.email,dealer,lines,access,cart});
     }
 
     // ---- persistent cart ----
