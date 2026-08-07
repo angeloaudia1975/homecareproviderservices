@@ -1,0 +1,226 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Import Commissions</title>
+<style>
+ :root{--ink:#1b2733;--blue:#3B599A;--blue-dk:#2B4071;--orange:#F5821F;--silver:#D8DEE4;--light:#F3F6FA;--gray:#5b6672;}
+ *{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;background:var(--light);color:var(--ink)}
+ .adminnav{background:var(--ink);display:flex;align-items:center;gap:6px;padding:10px 22px;flex-wrap:wrap}
+ .adminnav .bd{color:#fff;font-weight:800;font-size:15px;margin-right:16px}.adminnav .bd span{color:var(--orange)}
+ .adminnav a{color:#aeb9c6;text-decoration:none;font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-radius:7px}
+ .adminnav a:hover{color:#fff}
+ .wrap{max-width:1000px;margin:24px auto;padding:0 20px}
+ h1{font-size:23px;margin:0 0 3px}.sub{color:var(--gray);font-size:13.5px;margin:0 0 18px}
+ .card{background:#fff;border:1px solid var(--silver);border-radius:12px;padding:18px 20px;margin-bottom:16px}
+ label{font-size:13px;color:var(--gray);font-weight:600}
+ select,input{padding:9px 10px;border:1px solid var(--silver);border-radius:8px;font-size:14px;background:#fff}
+ .row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}.fld{display:flex;flex-direction:column;gap:4px}
+ .go{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer}
+ .go.dk{background:var(--blue-dk)}.go.gray{background:#e7ebf1;color:var(--ink)}.go:disabled{opacity:.5;cursor:default}
+ table{width:100%;border-collapse:collapse;font-size:13px}th,td{border-bottom:1px solid #eef1f4;padding:6px 8px;text-align:left}th{color:var(--gray);font-size:11px;text-transform:uppercase}
+ .map{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+ .mrow{display:flex;flex-direction:column;gap:3px}.mrow b{font-size:12px}
+ .st{font-size:13px;margin-left:8px}.st.ok{color:#1f7a44}.st.warn{color:#b42323}
+ .gate{max-width:400px;margin:60px auto;background:#fff;border:1px solid var(--silver);border-radius:14px;padding:26px 24px}
+ .gate h2{margin:0 0 4px}.gate p{color:var(--gray);font-size:13px;margin:0 0 12px}.gate input{width:100%;margin-bottom:9px}
+ .dim{color:#9aa4ae}.pill{display:inline-block;background:#eef2f7;border-radius:10px;padding:2px 9px;font-size:12px;margin:2px}
+ .warn{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;color:#9a3412;font-size:13px;margin-top:8px}
+</style></head><body>
+<nav class="adminnav">
+  <div class="bd">HCPS <span>Admin</span></div>
+  <a href="/admin/">Home</a><a href="/admin/analytics.html">Analytics</a><a href="/admin/dealers.html">Dealer Manager</a>
+  <a href="/admin/map.html">Map &amp; Routes</a><a href="/admin/import-commissions.html" style="color:#fff">Import Commissions</a>
+  <span style="margin-left:auto"><button class="go gray" onclick="lock()">Lock</button></span>
+</nav>
+<div id="app" class="wrap" style="display:none">
+  <h1>Import commission reports</h1>
+  <p class="sub">Upload a manufacturer's monthly report (Excel, CSV, or PDF), map its columns once, and it loads into your analytics. The mapping is remembered per manufacturer for next month.</p>
+
+  <div class="card">
+    <div class="row">
+      <div class="fld"><label>Manufacturer / line</label><select id="mfr" onchange="applyTemplate()"></select></div>
+      <div class="fld"><label>Report month</label><input type="month" id="period"></div>
+      <div class="fld"><label>Report file</label><input type="file" id="file" accept=".xlsx,.xls,.csv,.pdf" onchange="onFile()"></div>
+      <div class="fld"><label>Header row</label><input type="number" id="hrow" value="1" min="1" style="width:80px" onchange="reparse()"></div>
+    </div>
+    <div id="fmsg" class="st"></div>
+  </div>
+
+  <div class="card" id="mapCard" style="display:none">
+    <h2 style="font-size:16px;margin:0 0 4px">Map the columns</h2>
+    <p class="sub" style="margin:0 0 12px">Tell us which column holds each value. Blank = not in this report.</p>
+    <div class="map" id="mapGrid"></div>
+    <div style="margin-top:14px"><button class="go gray" onclick="saveTemplate()">Save mapping for this manufacturer</button> <span id="tmsg" class="st"></span></div>
+  </div>
+
+  <div class="card" id="prevCard" style="display:none">
+    <h2 style="font-size:16px;margin:0 0 4px">Preview</h2>
+    <div id="prevMeta" class="sub"></div>
+    <div style="overflow:auto"><table id="prevTable"></table></div>
+    <div style="margin-top:14px"><button class="go dk" id="importBtn" onclick="doImport()">Import into analytics</button> <span id="imsg" class="st"></span></div>
+    <div id="importResult"></div>
+  </div>
+</div>
+<div id="gate"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
+let TOKEN=sessionStorage.getItem(TKEY)||null, ME=null; try{ME=JSON.parse(sessionStorage.getItem(PKEY)||"null")}catch(e){}
+try{ if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; }catch(e){}
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const usd=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:2});
+const numv=v=>{ if(v==null||v==="") return null; const n=Number(String(v).replace(/[$,\s]/g,"")); return isFinite(n)?n:null; };
+
+const FIELDS=[
+  {k:"customer_name",label:"Dealer / customer name",req:true},
+  {k:"customer_ref",label:"Account number"},
+  {k:"product_code",label:"Product code"},
+  {k:"product_name",label:"Product / description"},
+  {k:"qty",label:"Quantity"},
+  {k:"amount",label:"Sales amount ($)"},
+  {k:"commission",label:"Commission ($)"},
+  {k:"cost",label:"Cost ($)"},
+  {k:"rep_name",label:"Rep name"},
+];
+let CONFIG={manufacturers:[],templates:{}}, GRID=[], HEADERS=[], MAP={}, FILENAME="";
+
+async function api(body){
+  const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch("/.netlify/functions/commissions-api",{method:"POST",headers:h,body:JSON.stringify(body)});
+  if(r.status===401){ lock(); throw new Error("unauthorized"); }
+  if(r.status===403){ $("#app").style.display="none"; $("#gate").innerHTML='<div class="gate"><h2>President only</h2><p>The commission importer is limited to President accounts.</p><button class="go" onclick="lock()">Sign in as a different user</button></div>'; throw new Error("forbidden"); }
+  return r.json();
+}
+function gate(msg){ $("#app").style.display="none";
+  $("#gate").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p>Sign in with your work email and password.</p>
+    <input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()">
+    <button class="go" onclick="submitTok()">Sign in</button><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;
+  setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);
+}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    TOKEN=j.token; ME=j.profile; sessionStorage.setItem(TKEY,TOKEN); sessionStorage.setItem(PKEY,JSON.stringify(ME)); $("#gate").innerHTML=""; boot();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); TOKEN=null; ME=null; location.reload(); }
+
+async function boot(){
+  $("#app").style.display="block";
+  try{ CONFIG=await api({action:"config"}); }catch(e){ if(String(e.message)==="forbidden"||String(e.message)==="unauthorized")return; }
+  const sel=$("#mfr"); sel.innerHTML=`<option value="">Choose…</option>`+(CONFIG.manufacturers||[]).map(m=>`<option value="${esc(m.slug)}">${esc(m.name)}</option>`).join("");
+}
+
+async function onFile(){
+  const f=$("#file").files[0]; if(!f) return;
+  FILENAME=f.name; $("#fmsg").textContent="Reading "+f.name+"…"; $("#fmsg").className="st";
+  try{ RAW=await parseFile(f); reparse(); $("#fmsg").textContent=`Loaded ${RAW.length} rows from ${f.name}`; $("#fmsg").className="st ok"; }
+  catch(e){ $("#fmsg").textContent="Couldn't read that file: "+(e.message||e); $("#fmsg").className="st warn"; }
+}
+let RAW=[];
+async function parseFile(file){
+  const name=file.name.toLowerCase();
+  if(name.endsWith(".pdf")) return parsePdf(file);
+  const buf=await file.arrayBuffer();
+  const wb=XLSX.read(buf,{type:"array"});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  return XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:false});
+}
+async function parsePdf(file){
+  const buf=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  const lines=[];
+  for(let pg=1;pg<=pdf.numPages;pg++){
+    const page=await pdf.getPage(pg); const tc=await page.getTextContent();
+    const byY={}; tc.items.forEach(it=>{ const y=Math.round(it.transform[5]); (byY[y]||(byY[y]=[])).push({x:it.transform[4],s:it.str}); });
+    Object.keys(byY).map(Number).sort((a,b)=>b-a).forEach(y=>lines.push(byY[y].sort((a,b)=>a.x-b.x)));
+  }
+  const xs=[]; lines.forEach(r=>r.forEach(c=>xs.push(c.x))); xs.sort((a,b)=>a-b);
+  const cols=[]; let prev=-1e9; xs.forEach(x=>{ if(x-prev>18) cols.push(x); prev=x; });
+  const colOf=x=>{ let bi=0,bd=1e9; cols.forEach((c,i)=>{const d=Math.abs(c-x); if(d<bd){bd=d;bi=i;}}); return bi; };
+  return lines.map(r=>{ const row=new Array(Math.max(1,cols.length)).fill(""); r.forEach(c=>{ const i=colOf(c.x); row[i]=(row[i]?row[i]+" ":"")+c.s; }); return row; });
+}
+function reparse(){
+  if(!RAW.length){ return; }
+  const hr=Math.max(1,parseInt($("#hrow").value,10)||1)-1;
+  HEADERS=(RAW[hr]||[]).map((h,i)=>String(h||"").trim()||("Column "+(i+1)));
+  DATA=RAW.slice(hr+1);
+  applyTemplate();
+  renderMap();
+  renderPreview();
+}
+let DATA=[];
+function applyTemplate(){
+  const slug=$("#mfr").value; const tpl=(CONFIG.templates||{})[slug]||{};
+  MAP={}; FIELDS.forEach(f=>{ if(tpl[f.k] && HEADERS.includes(tpl[f.k])) MAP[f.k]=tpl[f.k]; });
+  // light auto-guess when no template
+  if(!Object.keys(MAP).length && HEADERS.length){
+    const find=re=>HEADERS.find(h=>re.test(h.toLowerCase()));
+    MAP.customer_name=find(/dealer|customer|account name|sold to|name/)||"";
+    MAP.customer_ref=find(/acct|account/)||"";
+    MAP.product_code=find(/item|sku|part|product (code|#)|code/)||"";
+    MAP.product_name=find(/desc|product name|item name|description/)||"";
+    MAP.qty=find(/qty|quantity|units/)||"";
+    MAP.amount=find(/sales|net|invoice|amount|revenue|total/)||"";
+    MAP.commission=find(/commission|comm\b/)||"";
+    MAP.cost=find(/cost/)||"";
+    MAP.rep_name=find(/rep|sales ?rep|agent/)||"";
+    Object.keys(MAP).forEach(k=>{ if(!MAP[k]) delete MAP[k]; });
+  }
+  renderMap(); renderPreview();
+}
+function renderMap(){
+  if(!HEADERS.length){ $("#mapCard").style.display="none"; return; }
+  $("#mapCard").style.display="block";
+  $("#mapGrid").innerHTML=FIELDS.map(f=>{
+    const cur=MAP[f.k]||"";
+    const opts=`<option value="">— none —</option>`+HEADERS.map(h=>`<option value="${esc(h)}"${h===cur?" selected":""}>${esc(h)}</option>`).join("");
+    return `<div class="mrow"><b>${esc(f.label)}${f.req?' <span style="color:#b42323">*</span>':""}</b><select onchange="MAP['${f.k}']=this.value; renderPreview();">${opts}</select></div>`;
+  }).join("");
+}
+function mappedRows(){
+  const idx={}; FIELDS.forEach(f=>{ idx[f.k]= MAP[f.k]?HEADERS.indexOf(MAP[f.k]):-1; });
+  return (DATA||[]).map(r=>{ const o={}; FIELDS.forEach(f=>{ if(idx[f.k]>=0) o[f.k]=r[idx[f.k]]; }); return o; })
+    .filter(o=>String(o.customer_name||"").trim());
+}
+function renderPreview(){
+  const rows=mappedRows();
+  if(!rows.length){ $("#prevCard").style.display="none"; return; }
+  $("#prevCard").style.display="block";
+  const amt=rows.reduce((a,r)=>a+(numv(r.amount)||0),0), com=rows.reduce((a,r)=>a+(numv(r.commission)||0),0);
+  $("#prevMeta").innerHTML=`${rows.length} rows · sales ${usd(amt)} · commission ${usd(com)}`;
+  const cols=FIELDS.filter(f=>MAP[f.k]);
+  $("#prevTable").innerHTML=`<thead><tr>${cols.map(f=>`<th>${esc(f.label)}</th>`).join("")}</tr></thead><tbody>`+
+    rows.slice(0,8).map(r=>`<tr>${cols.map(f=>`<td>${esc(r[f.k]||"")}</td>`).join("")}</tr>`).join("")+`</tbody>`;
+}
+async function saveTemplate(){
+  const slug=$("#mfr").value; if(!slug){ $("#tmsg").textContent="Pick a manufacturer first."; $("#tmsg").className="st warn"; return; }
+  const mapping={}; FIELDS.forEach(f=>{ if(MAP[f.k]) mapping[f.k]=MAP[f.k]; });
+  try{ await api({action:"save_template",manufacturer:slug,mapping}); CONFIG.templates=CONFIG.templates||{}; CONFIG.templates[slug]=mapping; $("#tmsg").textContent="Mapping saved for next time ✓"; $("#tmsg").className="st ok"; }
+  catch(e){ $("#tmsg").textContent="Couldn't save: "+(e.message||e); $("#tmsg").className="st warn"; }
+}
+async function doImport(){
+  const slug=$("#mfr").value, period=($("#period").value||"").trim();
+  if(!slug){ $("#imsg").textContent="Pick a manufacturer."; $("#imsg").className="st warn"; return; }
+  if(!/^\d{4}-\d{2}$/.test(period)){ $("#imsg").textContent="Pick the report month."; $("#imsg").className="st warn"; return; }
+  if(!MAP.customer_name){ $("#imsg").textContent="Map the Dealer / customer name column."; $("#imsg").className="st warn"; return; }
+  const rows=mappedRows(); if(!rows.length){ $("#imsg").textContent="No rows to import."; $("#imsg").className="st warn"; return; }
+  const btn=$("#importBtn"); btn.disabled=true; $("#imsg").textContent="Importing "+rows.length+" rows…"; $("#imsg").className="st";
+  try{
+    const r=await api({action:"import",manufacturer:slug,period,source_file:FILENAME,rows});
+    if(r&&r.ok){
+      $("#imsg").textContent=`Imported ${r.inserted} rows ✓`; $("#imsg").className="st ok";
+      $("#importResult").innerHTML=`<div class="warn" style="background:#eefaf0;border-color:#bfe3ca;color:#1f7a44">
+        <b>${r.inserted}</b> rows loaded · <b>${r.matched}</b> matched to existing dealers · <b>${r.unmatched_count||0}</b> names didn't match.
+        ${(r.unmatched&&r.unmatched.length)?`<div style="margin-top:6px;color:#9a3412">Unmatched (add or merge these in Dealer Manager → Review): ${r.unmatched.slice(0,40).map(n=>`<span class="pill">${esc(n)}</span>`).join(" ")}</div>`:""}</div>`;
+    } else { $("#imsg").textContent=(r&&r.error)||"Import failed."; $("#imsg").className="st warn"; }
+  }catch(e){ $("#imsg").textContent="Import failed: "+(e.message||e); $("#imsg").className="st warn"; }
+  finally{ btn.disabled=false; }
+}
+
+if(TOKEN) boot(); else gate();
+</script>
+</body></html>
