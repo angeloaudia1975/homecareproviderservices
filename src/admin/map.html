@@ -615,6 +615,12 @@ function handoutHtml(c){
   const growLines=opps.length?opps.map(n=>`<span class="pill">${n}</span>`).join(" "):`<span class="dim">You're already set up across everything available in your area.</span>`;
   const updates=(HANDOUT.updates||HANDOUT_UPDATES).map(u=>`<li>${esc(u)}</li>`).join("");
   const ordUrl=(HANDOUT.ordering_url||ORDERING_URL);
+  const ytd=Number(c.ytd)||0, life=Number(c.total)||0, rec=Number(c.recent60)||0, retail=Number(c.retail_value)||0;
+  const stat=(l,v,col)=>`<div class="stat"><div class="sv"${col?` style="color:${col}"`:""}>${fmtUsd(v)}</div><div class="sl">${l}</div></div>`;
+  const stats=`<div class="stats">${stat("This year (YTD)",ytd,"#1f7a44")}${stat("Lifetime with HCPS",life)}${rec?stat("Last 60 days",rec,"#2f73b8"):""}${retail?stat("Retail value purchased",retail,"#F5821F"):""}</div>`;
+  const cut=new Date(Date.now()-70*864e5).toISOString().slice(0,10);
+  const recentProds=(c.products||[]).filter(p=>p.last&&p.last>=cut).slice(0,8);
+  const recentHtml=recentProds.length?`<h2>Recent purchases (last 60 days)</h2><div>${recentProds.map(p=>`<span class="pill">${esc(p.name)}${p.qty?` ×${p.qty}`:""}</span>`).join(" ")}</div>`:"";
   return `<!doctype html><html><head><meta charset="utf-8"><title>Your HCPS Partnership — ${esc(c.name||"")}</title><style>
     body{font:14px Arial,sans-serif;color:#1b2733;margin:0}
     .hero{background:#10263f;color:#fff;padding:24px 28px}.hero .b{color:#F5821F;font-weight:800;letter-spacing:.5px;font-size:13px;text-transform:uppercase}
@@ -622,6 +628,8 @@ function handoutHtml(c){
     .wrap{padding:22px 28px}h2{font-size:15px;color:#2B4071;margin:18px 0 8px;border-bottom:2px solid #eef1f4;padding-bottom:4px}
     .pill{display:inline-block;border:1px solid #cfd6de;border-radius:14px;padding:3px 11px;margin:3px;font-size:12px;color:#333c47}
     .pill.on{background:#eaf7ee;border-color:#bfe3ca;color:#1f7a44;font-weight:700}
+    .stats{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0}.stat{background:#f4f7fb;border:1px solid #e2e8f1;border-radius:10px;padding:10px 14px;min-width:118px}
+    .sv{font-size:20px;font-weight:800}.sl{font-size:11px;color:#6b7683;margin-top:2px}.note{font-size:11px;color:#9aa4ae;margin:4px 0 0}
     ul{margin:6px 0;padding-left:18px}li{margin:4px 0}
     .cta{margin-top:16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:14px 16px}.cta b{color:#9a3412}
     .foot{margin-top:20px;border-top:1px solid #eef1f4;padding-top:12px;color:#5b6672;font-size:13px}.dim{color:#9aa4ae}
@@ -629,6 +637,8 @@ function handoutHtml(c){
     </style></head><body>
     <div class="hero"><div class="b">HomeCare Provider Services</div><h1>Your Partnership Snapshot</h1><p>${esc(c.name||"")}${c.city?" · "+esc([c.city,c.state].filter(Boolean).join(", ")):""}</p></div>
     <div class="wrap">
+      <h2>Your business with HCPS</h2>${stats}${retail?`<p class="note">Retail value = MSRP of the products you've purchased through us — your selling-revenue potential.</p>`:""}
+      ${recentHtml}
       <h2>Lines you carry with us</h2><div>${yourLines}</div>
       <h2>Ways we can help you grow</h2><p style="margin:2px 0 6px;color:#5b6672">Products approved for your territory that you're not carrying yet — new revenue we can help you add:</p><div>${growLines}</div>
       <h2>What's new at HCPS</h2><ul>${updates}</ul>

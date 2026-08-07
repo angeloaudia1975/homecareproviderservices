@@ -21,6 +21,8 @@ const pretty=s=>String(s||"").split("-").map(w=>w?w[0].toUpperCase()+w.slice(1):
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 
+const ORDERING_BASE = process.env.ORDERING_BASE || "https://hcpsonlineordering.netlify.app";
+async function fetchJson(url){ const r=await fetch(url); if(!r.ok) throw new Error("fetch "+r.status); return r.json(); }
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
 async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); const t=await r.text(); return t?JSON.parse(t):null; }
 
@@ -145,9 +147,10 @@ exports.handler = async (event)=>{
         sbGet("manufacturers?select=slug,name").catch(()=>[]),
         sbGet(`dealer_manufacturers?dealer_id=${idIn}&select=dealer_id,manufacturer,account_ref,active`).catch(()=>[]),
       ]);
-      // manufacturer accounts on file per dealer (the lines they carry + account numbers)
+      // REAL accounts on file per dealer = only lines with an actual account number.
+      // (Lines merely granted in the access grid, with no account_ref, are NOT "carried".)
       const acctByDealer={};
-      for(const x of (dm||[])){ if(x.active===false) continue; (acctByDealer[x.dealer_id]||(acctByDealer[x.dealer_id]=[])).push({manufacturer:x.manufacturer,account_ref:x.account_ref||""}); }
+      for(const x of (dm||[])){ if(x.active===false) continue; if(!(x.account_ref&&String(x.account_ref).trim())) continue; (acctByDealer[x.dealer_id]||(acctByDealer[x.dealer_id]=[])).push({manufacturer:x.manufacturer,account_ref:x.account_ref}); }
       // parents (for a branch's governing state/name)
       const parentIds=[...new Set(dealers.map(d=>d.parent_id).filter(Boolean))];
       let parents=[]; if(parentIds.length){ parents=await sbGet(`dealers?id=in.(${parentIds.join(",")})&select=id,business_name,state`).catch(()=>[]); }
@@ -155,14 +158,16 @@ exports.handler = async (event)=>{
       const mfrName=Object.fromEntries((mfrs||[]).map(m=>[m.slug,m.name]));
       const nameOf=s=>mfrName[s]||mfrName[normBuy(s)]||pretty(s);
       // sales per dealer -> per line AND per product (line item)
+      const YR=String(new Date().getFullYear());
+      const cutoff60=new Date(Date.now()-60*864e5).toISOString().slice(0,10);   // "last 60 days" boundary
       const byDealer={}; const prodByDealer={};
       for(const r of (sales||[])){
         const did=r.dealer_id; if(!did) continue;
-        const d=byDealer[did]||(byDealer[did]={lines:{},total:0,buys:new Set()});
+        const d=byDealer[did]||(byDealer[did]={lines:{},total:0,ytd:0,recent:0,buys:new Set()});
         const slug=normBuy(r.manufacturer); const amt=Number(r.amount)||0; const per=(r.period||"").slice(0,10);
         const L=d.lines[slug]||(d.lines[slug]={name:nameOf(slug),amount:0,qty:0,orders:0,last:""});
         L.amount+=amt; L.qty+=Number(r.qty)||0; L.orders+=1; if(per>L.last) L.last=per;
-        d.total+=amt; if(r.manufacturer) d.buys.add(slug);
+        d.total+=amt; if(per.startsWith(YR)) d.ytd+=amt; if(per>=cutoff60) d.recent+=amt; if(r.manufacturer) d.buys.add(slug);
         // line-item detail: exactly which products they order
         const pcode=String(r.product_code||"").trim(), pname=String(r.product_name||"").trim();
         if(pcode||pname){
@@ -174,6 +179,13 @@ exports.handler = async (event)=>{
       }
       const contactsByDealer={};
       for(const c of (contacts||[])){ (contactsByDealer[c.dealer_id]||(contactsByDealer[c.dealer_id]=[])).push(c); }
+      // MSRP by product code, pulled from the catalogs of the lines these dealers actually buy,
+      // so we can show the retail value of what they've purchased through HCPS.
+      const buySlugs=new Set(); for(const did in byDealer){ byDealer[did].buys.forEach(s=>buySlugs.add(s)); }
+      const msrpByCode={};
+      await Promise.all([...buySlugs].map(async slug=>{
+        try{ const cat=await fetchJson(`${ORDERING_BASE}/data/${slug}.json`); (cat||[]).forEach(p=>{ if(p&&p.code){ const ms=Number(p.msrp)||0; if(ms>0) msrpByCode[String(p.code).toUpperCase()]=ms; } }); }catch(e){}
+      }));
       const cases={};
       for(const d of dealers){
         const gov = d.parent_id&&parById[d.parent_id] ? parById[d.parent_id] : d;
@@ -187,10 +199,14 @@ exports.handler = async (event)=>{
         const products_more=Math.max(0,allProds.length-products.length);
         const accounts=(acctByDealer[d.id]||[]).map(a=>({slug:a.manufacturer,name:nameOf(a.manufacturer),account:a.account_ref})).sort((a,b)=>a.name.localeCompare(b.name));
         const carried=[...new Set(accounts.map(a=>a.slug))].map(sl=>({slug:sl,name:nameOf(sl)}));
+        let retail=0; const pd=prodByDealer[d.id]||{};
+        for(const k in pd){ const P=pd[k]; const ms=msrpByCode[String(P.code||"").toUpperCase()]; if(ms&&P.qty) retail+=ms*P.qty; }
         cases[d.id]={
           name:d.business_name||"", account:d.hcps_account||"", contact_name:d.contact_name||"", email:d.email||"", phone:d.phone||"",
           address:d.address||"", city:d.city||"", state:d.state||"", zip:d.zip||"",
-          total:Math.round((s.total||0)*100)/100, lines, opps, accounts, carried, products, products_more,
+          total:Math.round((s.total||0)*100)/100, ytd:Math.round((s.ytd||0)*100)/100, recent60:Math.round((s.recent||0)*100)/100,
+          retail_value:Math.round(retail*100)/100,
+          lines, opps, accounts, carried, products, products_more,
           golden:d.golden_status||"None", ovation:!!d.ovation_access,
           contacts:(contactsByDealer[d.id]||[]).map(c=>({name:c.name||"",email:c.email||"",phone:c.phone||"",cell:c.cell||"",title:c.title||"",role:c.role||""})),
         };
