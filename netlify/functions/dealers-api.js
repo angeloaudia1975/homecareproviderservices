@@ -34,6 +34,8 @@ async function sbSend(method,path,body,extraHeaders){
   const t=await r.text(); return t?JSON.parse(t):null;
 }
 const rpc=(fn,args)=>sbSend("POST",`rpc/${fn}`,args,{Prefer:"return=minimal"});
+// Manufacturer lines retired from the ordering platform — never offered in the access grid.
+const RETIRED=new Set(["complete-medical-supplies"]);
 
 const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Supabase Auth admin API (create/update/delete auth users). Service-role only.
@@ -192,7 +194,7 @@ async function buildState(){
   return {
     generatedAt:new Date().toISOString(),
     latestPeriod:latest||null,
-    manufacturers:mfrs.map(m=>({slug:m.slug,name:m.name})).sort((a,b)=>a.name.localeCompare(b.name)),
+    manufacturers:mfrs.filter(m=>m.active!==false && !RETIRED.has(m.slug)).map(m=>({slug:m.slug,name:m.name})).sort((a,b)=>a.name.localeCompare(b.name)),
     repOptions:[...new Set(reps.map(r=>r.name).filter(Boolean))].sort(),
     mfrName, unlinked, dealers:out,
     nomerge:(nomerge||[]).map(x=>[x.a,x.b].sort().join("|")),
