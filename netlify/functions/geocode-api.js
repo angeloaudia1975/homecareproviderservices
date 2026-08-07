@@ -149,17 +149,23 @@ exports.handler = async (event)=>{
       }
       // Classify each pin: prospect (no sales), customer (buys all eligible lines), or
       // opportunity (buys something but has eligible lines it isn't buying yet).
-      const buysByDealer=new Map();
-      try{ const sales=await sbGetAll("monthly_sales?select=dealer_id,manufacturer","id");
-        for(const r of (sales||[])){ if(!r.dealer_id||!r.manufacturer) continue;
-          const set=buysByDealer.get(r.dealer_id)||buysByDealer.set(r.dealer_id,new Set()).get(r.dealer_id); set.add(normBuy(r.manufacturer)); } }catch(e){}
+      const buysByDealer=new Map(); const salesTot=new Map();
+      try{ const sales=await sbGetAll("monthly_sales?select=dealer_id,manufacturer,amount","id");
+        for(const r of (sales||[])){ if(!r.dealer_id) continue;
+          if(r.manufacturer){ const set=buysByDealer.get(r.dealer_id)||buysByDealer.set(r.dealer_id,new Set()).get(r.dealer_id); set.add(normBuy(r.manufacturer)); }
+          salesTot.set(r.dealer_id,(salesTot.get(r.dealer_id)||0)+(Number(r.amount)||0)); } }catch(e){}
+      const lastVisit=new Map();
+      try{ const vis=await sbGetAll("dealer_visits?select=dealer_id,visited_at","visited_at");
+        for(const v of (vis||[])){ if(!v.dealer_id) continue; const cur=lastVisit.get(v.dealer_id); if(!cur||v.visited_at>cur) lastVisit.set(v.dealer_id,v.visited_at); } }catch(e){}
       for(const p of points){
         const buys=buysByDealer.get(p.dealer_id)||new Set();
-        if(buys.size===0){ p.klass="prospect"; p.opps=[]; p.buys_count=0; continue; }
+        p.sales=Math.round((salesTot.get(p.dealer_id)||0)*100)/100;
+        p.last_visit=lastVisit.get(p.dealer_id)||null;
+        if(buys.size===0){ p.klass="prospect"; p.opps=[]; p.buys_count=0; p.opps_count=0; continue; }
         let acc; try{ acc=computeAccess({state:p.state,business_name:p.name,ovation_access:false,lat:null},[]); }catch(e){ acc={your_accounts:[],available:[]}; }
         const eligible=new Set([...(acc.your_accounts||[]),...(acc.available||[])]);
         const opps=[...eligible].filter(s=>!buys.has(s));
-        p.klass=opps.length?"opportunity":"customer"; p.opps=opps; p.buys_count=buys.size;
+        p.klass=opps.length?"opportunity":"customer"; p.opps=opps; p.buys_count=buys.size; p.opps_count=opps.length;
       }
       if(me.role!=="president"){
         const rn=String(me.rep_name||"").trim().toLowerCase();

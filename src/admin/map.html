@@ -108,6 +108,7 @@
     <option value="prospect">Prospects</option>
   </select>
   <span class="legend"><span><i style="background:#1f9d55"></i>Customer</span><span><i style="background:#2f73b8"></i>Opportunity</span><span><i style="background:#F5821F"></i>Prospect</span></span>
+  <label style="font-size:12px;display:inline-flex;align-items:center;gap:4px;color:#5b6672"><input type="checkbox" id="fDue" onchange="draw()"> Due for visit (90d+)</label>
   <span class="sp"></span>
   <span class="count" id="count"></span>
   <button class="btn ghost" id="homeBtn" onclick="editHome()">🏠 Set home base</button>
@@ -115,6 +116,7 @@
   <button class="btn ghost" id="clusterBtn" onclick="togglePins()">Show all pins</button>
   <button class="btn ghost" id="unmapBtn" onclick="toggleUnmapped()">Not on map</button>
   <button class="btn ghost" id="savedBtn" onclick="toggleSaved()">Saved routes</button>
+  <button class="btn ghost" id="scoreBtn" onclick="toggleScore()">Scorecard</button>
 </div>
 
 <div class="wrap">
@@ -133,6 +135,7 @@
     </div>
   </div>
   <div class="unmap" id="savedPanel" hidden></div>
+  <div class="unmap" id="scorePanel" hidden></div>
   <div class="unmap" id="unmapPanel" hidden>
     <div class="uhead"><b>Not on map</b> <span class="m" id="umeta"></span><button class="rx" onclick="toggleUnmapped()">Close</button></div>
     <div id="ulist"></div>
@@ -164,6 +167,57 @@ const HANDOUT_UPDATES=[
   "New manufacturer lines added to our catalog — ask your rep what's now available in your territory.",
   "Freight programs & volume pricing on select lines — we'll help you reach free-freight thresholds."
 ];
+// Live handout config (loaded from app_settings; President can edit without a code push).
+let HANDOUT={ordering_url:ORDERING_URL, updates:HANDOUT_UPDATES.slice()};
+const MFRNAMES={access4u:"Access4U","airavant-bongorx":"AIRAVANT / BongoRx",corsicana:"Corsicana Healthcare","climbing-steps":"Climbing Steps",bemis:"BEMIS Assurance",pedifix:"PediFix",gce:"Ohio Medical / GCE","strongback-mobility":"Strongback Mobility","ovation-medical":"Ovation Medical"};
+const mfrLabelSlug=s=>MFRNAMES[s]||String(s||"").split("-").map(w=>w?w[0].toUpperCase()+w.slice(1):w).join(" ");
+function isDue(p){ if(!p||!p.last_visit) return true; return (Date.now()-new Date(p.last_visit).getTime())>90*864e5; }
+async function markVisited(id,i){
+  try{ const r=await api2({action:"log_visit",dealer_id:id}); if(r&&r.ok){ if(POINTS[i])POINTS[i].last_visit=r.visited_at; banner("Visit logged ✓"); MAP&&MAP.closePopup(); draw(); } }catch(e){ banner("Couldn't log visit."); }
+}
+async function loadSettings(){
+  try{ const r=await api2({action:"get_settings",key:"handout"}); if(r&&r.ok&&r.value){ HANDOUT={ordering_url:r.value.ordering_url||ORDERING_URL, updates:Array.isArray(r.value.updates)&&r.value.updates.length?r.value.updates:HANDOUT_UPDATES.slice()}; } }catch(e){}
+}
+/* ---------- territory scorecard ---------- */
+function toggleScore(){ const p=$("#scorePanel"); if(!p.hidden){p.hidden=true;return;} p.hidden=false; p.innerHTML=scorecardHtml(); }
+function scorecardHtml(){
+  const P=POINTS||[];
+  const cust=P.filter(p=>p.klass==="customer").length, opp=P.filter(p=>p.klass==="opportunity").length, pros=P.filter(p=>p.klass==="prospect").length;
+  const sales=P.reduce((a,p)=>a+(Number(p.sales)||0),0);
+  const oppLines=P.reduce((a,p)=>a+(Number(p.opps_count)||0),0);
+  const dueN=P.filter(isDue).length, neverN=P.filter(p=>!p.last_visit).length;
+  const lc={}; P.forEach(p=>(p.opps||[]).forEach(s=>{lc[s]=(lc[s]||0)+1;}));
+  const top=Object.entries(lc).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([slug,c])=>`<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #eef1f4"><span>${esc(mfrLabelSlug(slug))}</span><b>${c} account${c===1?"":"s"}</b></div>`).join("");
+  const box=(l,v,c)=>`<div style="background:#f4f7fb;border:1px solid #e2e8f1;border-radius:8px;padding:8px 10px"><div style="font-size:18px;font-weight:800;color:${c||"#1b2733"}">${v}</div><div style="font-size:11px;color:#6b7683">${l}</div></div>`;
+  const pres=(ME&&ME.role==="president");
+  return `<div class="uhead"><b>Territory scorecard</b><button class="rx" onclick="toggleScore()">Close</button></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0">
+      ${box("Accounts",P.length)}${box("Territory sales",fmtUsd(sales),"#1f9d55")}
+      ${box("Customers",cust,"#1f9d55")}${box("Opportunities",opp,"#2f73b8")}
+      ${box("Prospects",pros,"#F5821F")}${box("Open opp. lines",oppLines,"#2f73b8")}
+      ${box("Due for visit",dueN,"#b26b00")}${box("Never visited",neverN,"#b26b00")}
+    </div>
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#5b6672;margin:6px 0 4px">Most common un-pitched lines</div>
+    <div>${top||'<div class="dim">No open opportunities.</div>'}</div>
+    ${pres?`<button class="btn ghost" style="margin-top:12px;width:100%" onclick="editHandout()">Edit dealer-handout “What's new” →</button>`:""}`;
+}
+function editHandout(){
+  if(!(ME&&ME.role==="president")) return;
+  $("#homeEdit").innerHTML=`<div class="homeov"><div class="homecard">
+    <b>Edit “What's new” (dealer handout)</b>
+    <p>One item per line. This is the customer-facing news on the handout you print for dealers.</p>
+    <textarea id="hupd" style="width:100%;height:120px;font:13px Arial">${esc((HANDOUT.updates||[]).join("\n"))}</textarea>
+    <input id="hurl" style="width:100%;margin-top:8px" value="${esc(HANDOUT.ordering_url||ORDERING_URL)}" placeholder="Ordering URL">
+    <div class="ha"><button class="btn" onclick="saveHandout()">Save</button><button class="btn ghost" onclick="closeHome()">Cancel</button></div>
+    <div class="er" id="herr"></div></div></div>`;
+  setTimeout(()=>{const t=$("#hupd"); if(t)t.focus();},40);
+}
+async function saveHandout(){
+  const updates=(($("#hupd")||{}).value||"").split("\n").map(s=>s.trim()).filter(Boolean);
+  const url=(($("#hurl")||{}).value||"").trim()||ORDERING_URL;
+  const e=$("#herr"); if(e)e.textContent="Saving…";
+  try{ const r=await api2({action:"set_settings",key:"handout",value:{ordering_url:url,updates}}); if(r&&r.ok){ HANDOUT={ordering_url:url,updates}; closeHome(); banner("Handout news updated ✓"); } else { if(e)e.textContent=(r&&r.error)||"Couldn't save."; } }catch(err){ if(e)e.textContent="Couldn't save."; }
+}
 // routes-api = OpenRouteService proxy + saved routes (separate from geocode-api).
 async function api2(body){
   const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
@@ -231,8 +285,8 @@ function fillStateFilter(){
 function inRoute(p){ return ROUTE.some(s=>s._i===p._i); }
 function draw(){
   if(!LAYER)return; LAYER.clearLayers();
-  const fs=$("#fState").value, ft=$("#fStatus").value;
-  const shown=POINTS.filter(p=>(!fs||p.state===fs)&&(!ft||(p.klass||"")===ft));
+  const fs=$("#fState").value, ft=$("#fStatus").value, due=$("#fDue")&&$("#fDue").checked;
+  const shown=POINTS.filter(p=>(!fs||p.state===fs)&&(!ft||(p.klass||"")===ft)&&(!due||isDue(p)));
   const markers=shown.map(p=>{
     const m=L.marker([p.lat,p.lng],{icon:icon(colorOf(p),inRoute(p),p.approx)});
     const c=colorOf(p);
@@ -243,7 +297,9 @@ function draw(){
       <div class="row">${esc([p.city,p.state].filter(Boolean).join(", "))}</div>
       ${p.approx?`<div class="row" style="color:#b26b00;font-size:11px">≈ approximate location (address couldn't be matched exactly — town/ZIP level)</div>`:""}
       ${p.email?`<div class="row">${esc(p.email)}</div>`:""}
+      ${p.last_visit?`<div class="row" style="font-size:11px;color:#5b6672">Last visit: ${new Date(p.last_visit).toLocaleDateString()}</div>`:`<div class="row" style="font-size:11px;color:#b26b00">No visit logged yet</div>`}
       <button class="addbtn" onclick="addStop(${p._i})">${inRoute(p)?"✓ In route":"＋ Add to route"}</button>
+      ${p.dealer_id?`<button class="addbtn" style="background:#1f9d55;margin-top:5px" onclick="markVisited('${p.dealer_id}',${p._i})">✓ Mark visited today</button>`:""}
       ${p.dealer_id?`<button class="addbtn" style="background:#F5821F;margin-top:5px" onclick="printDealerHandout('${p.dealer_id}')">🖨 Dealer handout</button>`:""}
       <div class="row" style="margin-top:5px"><a href="/admin/dealers.html${p.dealer_id?`?dealer=${encodeURIComponent(p.dealer_id)}`:""}">Open in Dealer Manager →</a></div></div>`);
     return m;
@@ -498,6 +554,7 @@ function packetHtml(cases){
     const showSet=[]; const seen=new Set();
     (c.carried||[]).concat(c.opps||[]).forEach(x=>{ if(x&&x.name&&!seen.has(x.name)){ seen.add(x.name); showSet.push(x.name); } });
     const shownBoxes=showSet.length?showSet.map(n=>`<span class="cb">▢ ${esc(n)}</span>`).join(""):`<span class="dim">—</span>`;
+    const prods=(c.products&&c.products.length)?`<div class="prod"><h3>Products ordered <span class="dim" style="text-transform:none;font-weight:400">— reorder these &amp; spot adjacent products to add</span></h3><table class="t"><thead><tr><th>Product</th><th>Line</th><th class="r">Qty</th><th class="r">Sales</th><th>Last</th></tr></thead><tbody>${c.products.slice(0,20).map(pr=>`<tr><td>${esc(pr.name)}${pr.code?` <span class="dim">${esc(pr.code)}</span>`:""}</td><td>${esc(pr.line)}</td><td class="r">${pr.qty}</td><td class="r">${fmtUsd(pr.amount)}</td><td>${esc(pr.last||"")}</td></tr>`).join("")}</tbody></table>${((c.products.length>20)||c.products_more)?`<div class="dim">+${Math.max(0,c.products.length-20)+(c.products_more||0)} more products on file</div>`:""}</div>`:"";
     const opps=(c.opps&&c.opps.length)?`<div class="opps"><b>Opportunities to pitch:</b> ${c.opps.map(o=>`<span class="chip">${esc(o.name)}</span>`).join(" ")}</div>`:`<div class="dim" style="margin-top:6px">No open opportunities — already buys every eligible line.</div>`;
     const contacts=(c.contacts&&c.contacts.length)?c.contacts.slice(0,6).map(ct=>`<div class="ct">${esc(ct.name||"—")}${ct.title?" · "+esc(ct.title):""}${ct.email?" · "+esc(ct.email):""}${ct.phone?" · ☎ "+esc(ct.phone):""}${ct.cell?" · 📱 "+esc(ct.cell):""}</div>`).join(""):`<div class="dim">No contacts on file.</div>`;
     const gold=(c.golden&&c.golden!=="None")?` · Golden: ${esc(c.golden)}`:"";
@@ -507,6 +564,7 @@ function packetHtml(cases){
         <div><h3>Buying history</h3>${lines}<h3 style="margin-top:10px">Accounts on file</h3>${accts}</div>
         <div><h3>Contacts</h3>${contacts}${opps}<div class="nba"><b>Next best action:</b> ${nba}</div></div>
       </div>
+      ${prods}
       <div class="field">
         <div class="fl"><b>Purpose of visit:</b> <span class="ln"></span></div>
         <div class="fl"><b>Lines shown:</b> ${shownBoxes}</div>
@@ -525,6 +583,7 @@ function packetHtml(cases){
     .dim{color:#9aa4ae;font-size:12px}
     .acct .ai{display:inline-block;background:#f4f7fb;border:1px solid #e2e8f1;border-radius:6px;padding:2px 7px;font-size:11px;margin:2px 3px 0 0}
     .nba{margin-top:10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:7px;padding:7px 9px;font-size:12px;color:#9a3412}
+    .prod{margin-top:12px}.prod h3{margin-bottom:6px}
     .field{margin-top:12px;border-top:1px dashed #cfd6de;padding-top:10px}.fl{font-size:12px;margin:6px 0;color:#333c47}
     .ln{display:inline-block;border-bottom:1px solid #b9c2cc;min-width:60%;height:14px}
     .cb{display:inline-block;font-size:12px;margin:2px 10px 2px 0;color:#333c47}
@@ -554,7 +613,8 @@ function handoutHtml(c){
   const opps=(c.opps||[]).map(x=>esc(x.name));
   const yourLines=carried.length?carried.map(n=>`<span class="pill on">${n}</span>`).join(" "):`<span class="dim">Let's get your first line set up.</span>`;
   const growLines=opps.length?opps.map(n=>`<span class="pill">${n}</span>`).join(" "):`<span class="dim">You're already set up across everything available in your area.</span>`;
-  const updates=HANDOUT_UPDATES.map(u=>`<li>${esc(u)}</li>`).join("");
+  const updates=(HANDOUT.updates||HANDOUT_UPDATES).map(u=>`<li>${esc(u)}</li>`).join("");
+  const ordUrl=(HANDOUT.ordering_url||ORDERING_URL);
   return `<!doctype html><html><head><meta charset="utf-8"><title>Your HCPS Partnership — ${esc(c.name||"")}</title><style>
     body{font:14px Arial,sans-serif;color:#1b2733;margin:0}
     .hero{background:#10263f;color:#fff;padding:24px 28px}.hero .b{color:#F5821F;font-weight:800;letter-spacing:.5px;font-size:13px;text-transform:uppercase}
@@ -572,7 +632,7 @@ function handoutHtml(c){
       <h2>Lines you carry with us</h2><div>${yourLines}</div>
       <h2>Ways we can help you grow</h2><p style="margin:2px 0 6px;color:#5b6672">Products approved for your territory that you're not carrying yet — new revenue we can help you add:</p><div>${growLines}</div>
       <h2>What's new at HCPS</h2><ul>${updates}</ul>
-      <div class="cta"><b>Order online, anytime.</b> Your account, your lines, your pricing — at <b>${esc(ORDERING_URL.replace(/^https?:\/\//,""))}</b>. Ask your rep to get you logged in.</div>
+      <div class="cta"><b>Order online, anytime.</b> Your account, your lines, your pricing — at <b>${esc(ordUrl.replace(/^https?:\/\//,""))}</b>. Ask your rep to get you logged in.</div>
       <div class="foot"><b>${esc(rep)}</b>${repEmail?" · "+esc(repEmail):""}<br>HomeCare Provider Services · Your partner in mobility &amp; home medical equipment.</div>
     </div>
     <scr`+`ipt>window.onload=function(){window.print();}</scr`+`ipt></body></html>`;
@@ -632,6 +692,7 @@ async function boot(){
   try{
     if(!BOOTED){ initMap(); BOOTED=true; }
     drawHome();
+    loadSettings();
     await loadPoints();
     const pres = !ME || ME.role==="president";
     const g=$("#geoBtn"); if(g) g.style.display = pres ? "" : "none";

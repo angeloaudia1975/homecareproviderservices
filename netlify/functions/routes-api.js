@@ -140,7 +140,7 @@ exports.handler = async (event)=>{
       const idIn=`in.(${ids.join(",")})`;
       const [dealers,sales,contacts,mfrs,dm] = await Promise.all([
         sbGet(`dealers?id=${idIn}&select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id,golden_status,ovation_access,golden_url`).catch(()=>[]),
-        sbGet(`monthly_sales?dealer_id=${idIn}&select=dealer_id,manufacturer,period,amount,qty`).catch(()=>[]),
+        sbGet(`monthly_sales?dealer_id=${idIn}&select=dealer_id,manufacturer,period,amount,qty,product_code,product_name`).catch(()=>[]),
         sbGet(`dealer_contacts?dealer_id=${idIn}&select=dealer_id,name,email,phone,cell,title,role`).catch(()=>[]),
         sbGet("manufacturers?select=slug,name").catch(()=>[]),
         sbGet(`dealer_manufacturers?dealer_id=${idIn}&select=dealer_id,manufacturer,account_ref,active`).catch(()=>[]),
@@ -154,16 +154,23 @@ exports.handler = async (event)=>{
       const parById=Object.fromEntries(parents.map(p=>[p.id,p]));
       const mfrName=Object.fromEntries((mfrs||[]).map(m=>[m.slug,m.name]));
       const nameOf=s=>mfrName[s]||mfrName[normBuy(s)]||pretty(s);
-      // sales per dealer -> per line
-      const byDealer={};
+      // sales per dealer -> per line AND per product (line item)
+      const byDealer={}; const prodByDealer={};
       for(const r of (sales||[])){
         const did=r.dealer_id; if(!did) continue;
         const d=byDealer[did]||(byDealer[did]={lines:{},total:0,buys:new Set()});
-        const slug=normBuy(r.manufacturer); const amt=Number(r.amount)||0;
+        const slug=normBuy(r.manufacturer); const amt=Number(r.amount)||0; const per=(r.period||"").slice(0,10);
         const L=d.lines[slug]||(d.lines[slug]={name:nameOf(slug),amount:0,qty:0,orders:0,last:""});
-        L.amount+=amt; L.qty+=Number(r.qty)||0; L.orders+=1;
-        const per=(r.period||"").slice(0,10); if(per>L.last) L.last=per;
+        L.amount+=amt; L.qty+=Number(r.qty)||0; L.orders+=1; if(per>L.last) L.last=per;
         d.total+=amt; if(r.manufacturer) d.buys.add(slug);
+        // line-item detail: exactly which products they order
+        const pcode=String(r.product_code||"").trim(), pname=String(r.product_name||"").trim();
+        if(pcode||pname){
+          const pk=(pcode||pname).toLowerCase();
+          const pd=prodByDealer[did]||(prodByDealer[did]={});
+          const P=pd[pk]||(pd[pk]={code:pcode,name:pname||pcode,line:nameOf(slug),qty:0,amount:0,orders:0,last:""});
+          P.qty+=Number(r.qty)||0; P.amount+=amt; P.orders+=1; if(per>P.last) P.last=per;
+        }
       }
       const contactsByDealer={};
       for(const c of (contacts||[])){ (contactsByDealer[c.dealer_id]||(contactsByDealer[c.dealer_id]=[])).push(c); }
@@ -175,17 +182,40 @@ exports.handler = async (event)=>{
         const s=byDealer[d.id]||{lines:{},total:0,buys:new Set()};
         const opps=eligible.filter(x=>!s.buys.has(x)).map(x=>({slug:x,name:nameOf(x)}));
         const lines=Object.entries(s.lines).map(([slug,v])=>({slug,name:v.name,amount:Math.round(v.amount*100)/100,orders:v.orders,last:v.last})).sort((a,b)=>b.amount-a.amount);
+        const allProds=Object.values(prodByDealer[d.id]||{}).sort((a,b)=>b.amount-a.amount);
+        const products=allProds.slice(0,40).map(p=>({code:p.code,name:p.name,line:p.line,qty:p.qty,amount:Math.round(p.amount*100)/100,orders:p.orders,last:p.last}));
+        const products_more=Math.max(0,allProds.length-products.length);
         const accounts=(acctByDealer[d.id]||[]).map(a=>({slug:a.manufacturer,name:nameOf(a.manufacturer),account:a.account_ref})).sort((a,b)=>a.name.localeCompare(b.name));
         const carried=[...new Set(accounts.map(a=>a.slug))].map(sl=>({slug:sl,name:nameOf(sl)}));
         cases[d.id]={
           name:d.business_name||"", account:d.hcps_account||"", contact_name:d.contact_name||"", email:d.email||"", phone:d.phone||"",
           address:d.address||"", city:d.city||"", state:d.state||"", zip:d.zip||"",
-          total:Math.round((s.total||0)*100)/100, lines, opps, accounts, carried,
+          total:Math.round((s.total||0)*100)/100, lines, opps, accounts, carried, products, products_more,
           golden:d.golden_status||"None", ovation:!!d.ovation_access,
           contacts:(contactsByDealer[d.id]||[]).map(c=>({name:c.name||"",email:c.email||"",phone:c.phone||"",cell:c.cell||"",title:c.title||"",role:c.role||""})),
         };
       }
       return json(200,{ok:true,cases});
+    }
+
+    // ---------- Visited log ----------
+    if(b.action==="log_visit"){
+      if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+      const ins=await sbSend("POST","dealer_visits",{dealer_id:b.dealer_id,rep_name:me.rep_name||null,owner_email:me.email||null,visited_at:new Date().toISOString(),notes:(b.notes!=null?String(b.notes):null)},{Prefer:"return=representation"});
+      return json(200,{ok:true,visited_at:(ins&&ins[0]&&ins[0].visited_at)||new Date().toISOString()});
+    }
+
+    // ---------- Editable app settings (e.g. the dealer-handout news) ----------
+    if(b.action==="get_settings"){
+      const key=String(b.key||"").trim(); if(!key) return json(400,{error:"key required"});
+      const rows=await sbGet(`app_settings?key=eq.${encodeURIComponent(key)}&select=value`).catch(()=>[]);
+      return json(200,{ok:true,value:(rows&&rows[0]&&rows[0].value)||null});
+    }
+    if(b.action==="set_settings"){
+      if(me.role!=="president") return json(403,{error:"President only"});
+      const key=String(b.key||"").trim(); if(!key) return json(400,{error:"key required"});
+      await sbSend("POST","app_settings?on_conflict=key",{key,value:b.value||{},updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
+      return json(200,{ok:true});
     }
 
     return json(400,{error:"unknown action"});
