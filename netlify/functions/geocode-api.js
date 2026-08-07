@@ -144,7 +144,7 @@ exports.handler = async (event)=>{
         let keys, cache;
         try{ keys=await allAddressKeys(); cache=await sbGetAll("geocache?select=q,ok","q"); }
         catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run geocode.sql and create_tables.sql in Supabase first."}); }
-        const done=new Set(cache.filter(c=>c.ok).map(c=>c.q));   // only SUCCESSES count as done; failures retry
+        const done=new Set(cache.map(c=>c.q));   // matches the run action: cached = done
         let remaining=0; for(const q of keys.keys()) if(!done.has(q)) remaining++;
         return json(200,{ok:true,build:BUILD,total:keys.size,cached:done.size,remaining});
       }
@@ -156,7 +156,7 @@ exports.handler = async (event)=>{
         let keys, cache;
         try{ keys=await allAddressKeys(); cache=await sbGetAll("geocache?select=q,ok","q"); }
         catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run geocode.sql and create_tables.sql in Supabase first."}); }
-        const done=new Set(cache.filter(c=>c.ok).map(c=>c.q));   // retry previously-failed addresses (with the fallback)
+        const done=new Set(cache.map(c=>c.q));   // once cached (success OR failure) it's done — no infinite retry
         const todo=[...keys.keys()].filter(q=>!done.has(q)).slice(0,limit);
         if(!todo.length) return json(200,{ok:true,processed:0,matched:0,remaining:0});
         const rows=await pool(todo,5,async(q)=>{
