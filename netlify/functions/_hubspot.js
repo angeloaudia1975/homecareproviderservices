@@ -38,4 +38,28 @@ async function upsert(objectType, idProperty, idValue, properties){
   return { ...up, mode:"error" };
 }
 
-module.exports = { hs, upsert, hasToken };
+// Ensure a custom UNIQUE text property exists on an object (idempotent). We key our syncs on
+// these (e.g. hcps_dealer_id) so re-running updates the same record instead of duplicating.
+async function ensureUniqueProp(objectType, name, label, groupName){
+  const check = await hs("GET", `/crm/v3/properties/${objectType}/${encodeURIComponent(name)}`);
+  if(check.ok) return { ok:true, existed:true };
+  const create = await hs("POST", `/crm/v3/properties/${objectType}`, {
+    name, label, type:"string", fieldType:"text", groupName, hasUniqueValue:true, hidden:false,
+  });
+  return { ok:create.ok, existed:false, status:create.status, error: create.ok ? undefined : (create.json && create.json.message) };
+}
+
+// Batch upsert by a unique idProperty. records = [{id, properties}]. Chunks of 100 (HubSpot cap).
+// Returns {processed, errors:[{batch,status,message}]}.
+async function batchUpsert(objectType, idProperty, records){
+  const out = { processed:0, errors:[] };
+  for(let i=0;i<records.length;i+=100){
+    const inputs = records.slice(i,i+100).map(r=>({ idProperty, id:String(r.id), properties:r.properties }));
+    const res = await hs("POST", `/crm/v3/objects/${objectType}/batch/upsert`, { inputs });
+    if(res.ok){ out.processed += ((res.json && res.json.results) || inputs).length; }
+    else out.errors.push({ batch:i/100, status:res.status, message:(res.json && (res.json.message || JSON.stringify(res.json).slice(0,200))) || "error" });
+  }
+  return out;
+}
+
+module.exports = { hs, upsert, ensureUniqueProp, batchUpsert, hasToken };

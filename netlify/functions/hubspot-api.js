@@ -8,11 +8,14 @@
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
-const { hs, hasToken } = require("./_hubspot.js");
+const { hs, hasToken, ensureUniqueProp, batchUpsert } = require("./_hubspot.js");
 
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}`); return r.json(); }
+async function sbGetAll(base, orderCol="id"){ const PAGE=1000; let from=0,out=[]; for(;;){ const sep=base.includes("?")?"&":"?"; const rows=await sbGet(`${base}${sep}order=${orderCol}&limit=${PAGE}&offset=${from}`); out=out.concat(rows); if(rows.length<PAGE) break; from+=PAGE; } return out; }
+const clean=v=>{ const s=(v==null?"":String(v)).trim(); return s||undefined; };
+const domainFrom=email=>{ const m=String(email||"").trim().match(/@([^@\s]+)$/); return m?m[1].toLowerCase():undefined; };
 
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -56,6 +59,37 @@ exports.handler = async (event)=>{
           ? "Connected to HubSpot."
           : "Token is set but HubSpot rejected it — check the Service Key value and scopes.",
       });
+    }
+
+    // One-time (idempotent) setup: create the unique keys our syncs match on.
+    if(b.action==="setup"){
+      if(!hasToken()) return json(200,{ok:false,configured:false,message:"HUBSPOT_ACCESS_TOKEN is not set yet."});
+      const comp=await ensureUniqueProp("companies","hcps_dealer_id","HCPS Dealer ID","companyinformation");
+      const cont=await ensureUniqueProp("contacts","hcps_contact_id","HCPS Contact ID","contactinformation");
+      return json(200,{ok:(comp.ok&&cont.ok), properties:{ company_key:comp, contact_key:cont },
+        message:(comp.ok&&cont.ok)?"HubSpot is set up for syncing.":"Couldn't create one or more sync keys — check scopes (crm.schemas.companies.write / crm.schemas.contacts.write may be required)."});
+    }
+
+    // Push every dealer into HubSpot as a Company, matched by hcps_dealer_id (so re-runs update,
+    // never duplicate). Maps the core fields; the CRM sync foundation for contacts/deals follows.
+    if(b.action==="sync_companies"){
+      if(!hasToken()) return json(200,{ok:false,configured:false,message:"HUBSPOT_ACCESS_TOKEN is not set yet."});
+      // make sure the unique key exists first (safe if it already does)
+      await ensureUniqueProp("companies","hcps_dealer_id","HCPS Dealer ID","companyinformation");
+      const dealers=await sbGetAll("dealers?select=id,business_name,city,state,zip,phone,address,email,parent_id,golden_status","id");
+      const byId={}; for(const d of dealers) byId[d.id]=d;
+      const records=dealers.map(d=>({
+        id:d.id,
+        properties:{
+          hcps_dealer_id:String(d.id),
+          name:clean(d.business_name),
+          city:clean(d.city), state:clean(d.state), zip:clean(d.zip),
+          phone:clean(d.phone), address:clean(d.address),
+          domain:domainFrom(d.email),
+        },
+      }));
+      const res=await batchUpsert("companies","hcps_dealer_id",records);
+      return json(200,{ok:res.errors.length===0, total:dealers.length, processed:res.processed, errors:res.errors.slice(0,5)});
     }
 
     return json(400,{error:"unknown action"});
