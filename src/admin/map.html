@@ -31,6 +31,7 @@
  #map{position:absolute;inset:0}
  .pin span{display:block;width:15px;height:15px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3)}
  .pin.inroute span{width:19px;height:19px;border-color:#2B4071;box-shadow:0 0 0 2px #2B4071}
+ .pin.approx span{border-style:dashed;border-color:#e6a23c;opacity:.75}
  .homepin span{display:flex;align-items:center;justify-content:center;width:27px;height:27px;background:#16202e;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.4);font-size:14px}
  .pop b{font-size:13.5px} .pop .st{display:inline-block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;padding:1px 7px;border-radius:20px;margin-left:4px}
  .pop .row{font-size:12px;color:#333;margin-top:3px}.pop a{color:var(--blue);font-weight:700;font-size:12px}
@@ -161,7 +162,7 @@ function lock(){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY
 
 const COLORS={active:"#1f9d55",prospect:"#F5821F",review:"#d64545"};
 const colorOf=s=>COLORS[String(s||"").toLowerCase()]||"#3B599A";
-function icon(color,inroute){ return L.divIcon({className:"pin"+(inroute?" inroute":""),html:`<span style="background:${color}"></span>`,iconSize:[16,16],iconAnchor:[8,8]}); }
+function icon(color,inroute,approx){ return L.divIcon({className:"pin"+(inroute?" inroute":"")+(approx?" approx":""),html:`<span style="background:${color}"></span>`,iconSize:[16,16],iconAnchor:[8,8]}); }
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 function initMap(){
@@ -190,11 +191,12 @@ function draw(){
   const fs=$("#fState").value, ft=$("#fStatus").value;
   const shown=POINTS.filter(p=>(!fs||p.state===fs)&&(!ft||String(p.status).toLowerCase()===ft));
   const markers=shown.map(p=>{
-    const m=L.marker([p.lat,p.lng],{icon:icon(colorOf(p.status),inRoute(p))});
+    const m=L.marker([p.lat,p.lng],{icon:icon(colorOf(p.status),inRoute(p),p.approx)});
     const c=colorOf(p.status);
     m.bindPopup(`<div class="pop"><b>${esc(p.name)}</b>${p.status?`<span class="st" style="background:${c}22;color:${c}">${esc(p.status)}</span>`:""}
       ${p.label?`<div class="row">${esc(p.label)}</div>`:""}
       <div class="row">${esc([p.city,p.state].filter(Boolean).join(", "))}</div>
+      ${p.approx?`<div class="row" style="color:#b26b00;font-size:11px">≈ approximate location (address couldn't be matched exactly — town/ZIP level)</div>`:""}
       ${p.email?`<div class="row">${esc(p.email)}</div>`:""}
       <button class="addbtn" onclick="addStop(${p._i})">${inRoute(p)?"✓ In route":"＋ Add to route"}</button>
       <div class="row" style="margin-top:5px"><a href="/admin/dealers.html${p.dealer_id?`?dealer=${encodeURIComponent(p.dealer_id)}`:""}">Open in Dealer Manager →</a></div></div>`);

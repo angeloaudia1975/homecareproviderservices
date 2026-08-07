@@ -51,6 +51,23 @@ async function geocodeCensus(q){
     return {lat:Number(m.coordinates.y), lng:Number(m.coordinates.x)};
   }catch(e){ return null; }
 }
+// City/state/ZIP key — the fallback when a full street address won't match.
+function cityKey(a){
+  const parts=[a.city,[a.state,a.zip].filter(Boolean).join(" ")].map(x=>String(x||"").trim()).filter(Boolean);
+  return parts.join(", ").toLowerCase().replace(/\s+/g," ").trim();
+}
+// Geocode a dealer address: exact street first; if the Census geocoder can't match it,
+// fall back to city/state/ZIP (and then the bare ZIP) so EVERY dealer still gets a pin.
+// approx=true means the pin is town-level, not the exact street.
+async function geocodeParts(a){
+  const exact=await geocodeCensus(qkey(a));
+  if(exact) return {...exact, approx:false};
+  const ck=cityKey(a);
+  if(ck){ const c=await geocodeCensus(ck); if(c) return {...c, approx:true}; }
+  const zip=String(a.zip||"").trim();
+  if(zip){ const z=await geocodeCensus(zip); if(z) return {...z, approx:true}; }
+  return null;
+}
 // Run promises with a small concurrency cap (keeps us well under the function timeout).
 async function pool(items, n, fn){
   const out=[]; let i=0;
@@ -97,7 +114,7 @@ exports.handler = async (event)=>{
       let addrs, cache;
       try{
         addrs=await sbGetAll("dealer_addresses?select=dealer_id,address,city,state,zip,label,dealers(business_name,status,email)","dealer_id");
-        cache=await sbGetAll("geocache?select=q,lat,lng,ok","q");
+        cache=await sbGetAll("geocache?select=q,lat,lng,ok,approx","q");
       }catch(e){
         return json(200,{ok:false,error:"tables_missing",points:[],message:"Run geocode.sql (and create_tables.sql) in Supabase, then reload."});
       }
@@ -106,7 +123,7 @@ exports.handler = async (event)=>{
       for(const a of addrs){
         const c=cmap.get(qkey(a)); if(!c) continue;
         const d=a.dealers||{};
-        points.push({lat:c.lat,lng:c.lng,name:d.business_name||"(unknown)",status:d.status||"",
+        points.push({lat:c.lat,lng:c.lng,approx:!!c.approx,name:d.business_name||"(unknown)",status:d.status||"",
           email:d.email||"",city:a.city||"",state:a.state||"",label:a.label||"",dealer_id:a.dealer_id||""});
       }
       if(me.role!=="president"){
@@ -125,9 +142,9 @@ exports.handler = async (event)=>{
       if(b.action==="status"){
         if(me.role!=="president") return json(403,{error:"President only"});
         let keys, cache;
-        try{ keys=await allAddressKeys(); cache=await sbGetAll("geocache?select=q","q"); }
+        try{ keys=await allAddressKeys(); cache=await sbGetAll("geocache?select=q,ok","q"); }
         catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run geocode.sql and create_tables.sql in Supabase first."}); }
-        const done=new Set(cache.map(c=>c.q));
+        const done=new Set(cache.filter(c=>c.ok).map(c=>c.q));   // only SUCCESSES count as done; failures retry
         let remaining=0; for(const q of keys.keys()) if(!done.has(q)) remaining++;
         return json(200,{ok:true,build:BUILD,total:keys.size,cached:done.size,remaining});
       }
@@ -137,14 +154,14 @@ exports.handler = async (event)=>{
         if(me.role!=="president") return json(403,{error:"President only"});
         const limit=Math.min(Math.max(parseInt(b.limit,10)||20,1),40);
         let keys, cache;
-        try{ keys=await allAddressKeys(); cache=await sbGetAll("geocache?select=q","q"); }
+        try{ keys=await allAddressKeys(); cache=await sbGetAll("geocache?select=q,ok","q"); }
         catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run geocode.sql and create_tables.sql in Supabase first."}); }
-        const done=new Set(cache.map(c=>c.q));
+        const done=new Set(cache.filter(c=>c.ok).map(c=>c.q));   // retry previously-failed addresses (with the fallback)
         const todo=[...keys.keys()].filter(q=>!done.has(q)).slice(0,limit);
         if(!todo.length) return json(200,{ok:true,processed:0,matched:0,remaining:0});
         const rows=await pool(todo,5,async(q)=>{
-          const g=await geocodeCensus(q);
-          return {q,lat:g?g.lat:null,lng:g?g.lng:null,ok:!!g,geocoded_at:new Date().toISOString()};
+          const a=keys.get(q)||{}; const g=await geocodeParts(a);
+          return {q,lat:g?g.lat:null,lng:g?g.lng:null,ok:!!g,approx:g?!!g.approx:false,geocoded_at:new Date().toISOString()};
         });
         await sbSend("POST","geocache?on_conflict=q",rows,{Prefer:"resolution=merge-duplicates,return=minimal"});
         const matched=rows.filter(r=>r.ok).length;
