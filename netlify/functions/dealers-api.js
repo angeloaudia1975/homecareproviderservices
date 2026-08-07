@@ -52,7 +52,7 @@ const pm=p=>{const[y,m]=p.split("-").map(Number);return y*12+(m-1);};
 
 async function buildState(){
   const [dealers,aliases,dm,mfrs,dir,reps,nomerge,logins] = await Promise.all([
-    sbGetAll("dealers?select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,status,notes,active"),
+    sbGetAll("dealers?select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,status,notes,active,parent_id"),
     sbGetAll("dealer_aliases?select=alias_norm,raw_name,dealer_id","alias_norm"),
     sbGetAll("dealer_manufacturers?select=dealer_id,manufacturer,active","dealer_id,manufacturer"),
     sbGet("manufacturers?select=slug,name,active"),
@@ -83,6 +83,10 @@ async function buildState(){
   }
   const periodsAll=[...new Set(rows.map(r=>(r.period||"").slice(0,10)).filter(Boolean))].sort();
   const latest=periodsAll[periodsAll.length-1];
+  // master/branch structure (parent_id): a branch -> its HQ name; an HQ -> its branch list
+  const nameById=Object.fromEntries(dealers.map(d=>[d.id,d.business_name]));
+  const branchesByParent=new Map();
+  for(const d of dealers){ if(d.parent_id){ (branchesByParent.get(d.parent_id)||branchesByParent.set(d.parent_id,[]).get(d.parent_id)).push(d.business_name); } }
   const out=dealers.map(d=>{
     const a=agg.get(d.id)||{sales:0,comm:0,recs:0,lines:new Set(),periods:new Set(),accts:new Set()};
     const per=[...a.periods].sort();
@@ -92,6 +96,8 @@ async function buildState(){
       contact_name:d.contact_name||"", email:d.email||"", phone:d.phone||"",
       address:d.address||"", city:d.city||"", state:d.state||"", zip:d.zip||"", notes:d.notes||"",
       rep: repByName[d.business_name]||"",
+      master: d.parent_id ? (nameById[d.parent_id]||"") : "",
+      branches:(branchesByParent.get(d.id)||[]).slice().sort(),
       aliases:(aliByDealer.get(d.id)||[]).filter((v,i,s)=>s.indexOf(v)===i).sort(),
       access:(accByDealer.get(d.id)||[]).slice().sort(),
       buysLines:[...a.lines].sort(),

@@ -295,6 +295,7 @@ async function confirmNew(id){await post({action:"confirm",dealer_id:id},"Saving
 async function notDup(a,b){DATA.nomerge=(DATA.nomerge||[]).concat([[a,b].sort().join("|")]);render();try{await post({action:"nomerge",id_a:a,id_b:b});}catch(e){}}
 
 function openDetail(id){DETAIL=id;window.scrollTo(0,0);render();}
+function openDealerByName(name){const x=DATA.dealers.find(d=>d.name===name); if(x)openDetail(x.id);}
 function backList(){DETAIL=null;render();}
 /* Collapse duplicate manufacturer rows in the ordering-access box. Exact-name dupes
    (e.g. "Golden Technologies" twice) merge by normalized name; the Bongo / AIRAVANT-BongoRx
@@ -324,8 +325,15 @@ function renderDetail(){
   const accset=new Set(d.access);
   let acc=mfrs.map(m=>`<label class="accitem ${m.checked?"on":""}"><input type="checkbox" value="${esc(m.slug)}" ${m.checked?"checked":""} onchange="this.parentNode.classList.toggle('on',this.checked)">${esc(m.name)}${m.buys?` <span class="chip" style="margin-left:auto">buys</span>`:""}</label>`).join("");
   const fld=(k,lab,val,ph)=>`<div class="fld"><label>${lab}</label><input id="f_${k}" value="${esc(val||"")}" placeholder="${ph||""}"></div>`;
+  const relStyle="margin:8px 0 0;padding:9px 12px;border-radius:8px;font-size:13px;background:#eef3fb;border:1px solid #d8e3f4";
+  const relBanner = d.master
+    ? `<div style="${relStyle}">↳ Branch of <a onclick="openDealerByName('${jesc(d.master)}')" style="cursor:pointer;color:var(--blue);font-weight:700">${esc(d.master)}</a> <span class="hint" style="text-transform:none">— revenue rolls up to this HQ</span></div>`
+    : ((d.branches&&d.branches.length)
+       ? `<div style="${relStyle}">🏢 <b>Headquarters</b> · ${d.branches.length} branch location${d.branches.length===1?"":"s"} roll up here: ${d.branches.map(bn=>`<span class="chip" style="cursor:pointer" onclick="openDealerByName('${jesc(bn)}')">${esc(bn)}</span>`).join(" ")}</div>`
+       : "");
   $("#body").innerHTML=`
    <div class="backbar"><button class="go" onclick="backList()">← All dealers</button><div class="lbl" style="font-size:18px">${esc(d.name)} ${d.status==="review"?`<span class="chip rev">review</span>`:""}</div><div></div></div>
+   ${relBanner}
    <div class="grid2">
      <div class="card"><h2>Account details</h2>
        ${fld("business_name","Dealer name",d.name)}
