@@ -24,6 +24,30 @@ async function sb(method,path,body,extra){
 const rpc=(fn,args)=>sb("POST",`rpc/${fn}`,args);
 const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const { computeAccess } = require("./_access.js");
+
+// ---- Email via Resend (same service the ordering portal uses for order emails) ----
+// Requires RESEND_API_KEY in this site's Netlify env (the homecareproviderservices.us domain
+// is already verified in Resend, so the same key works here). If it's not set, we skip the
+// send silently so registration/approval never break.
+const MAIL_FROM = process.env.HCPS_MAIL_FROM || "HCPS Partner Portal <orders@homecareproviderservices.us>";
+const REGISTER_NOTIFY_TO = process.env.REGISTER_NOTIFY_TO || "angelo@homecareproviderservices.us";
+const PORTAL_URL = process.env.ORDERING_BASE || "https://hcpsonlineordering.netlify.app";
+const ADMIN_LOGINS_URL = "https://homecareproviderservices.netlify.app/admin/dealers.html#logins";
+async function sendMail({to,subject,html,text,replyTo}){
+  const apiKey=process.env.RESEND_API_KEY;
+  if(!apiKey){ console.error("RESEND_API_KEY not set — skipping email:",subject); return {ok:false,skipped:true}; }
+  const toList=(Array.isArray(to)?to:String(to||"").split(",")).map(s=>String(s).trim()).filter(Boolean);
+  if(!toList.length) return {ok:false,skipped:true};
+  const payload={from:MAIL_FROM,to:toList,subject,html,text};
+  if(replyTo&&EMAIL_RE.test(String(replyTo))) payload.reply_to=replyTo;
+  try{
+    const res=await fetch("https://api.resend.com/emails",{method:"POST",
+      headers:{Authorization:`Bearer ${apiKey}`,"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    if(!res.ok){ console.error("Resend error",res.status,await res.text().catch(()=>"")); return {ok:false}; }
+    return {ok:true};
+  }catch(e){ console.error("Resend send failed",e&&e.message); return {ok:false}; }
+}
+const esc=s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 // Same normalized key the map's geocoder uses, to look up a dealer's latitude
 // (needed for Strongback's "south of Indianapolis" territory rule).
 function qkey(a){
@@ -75,6 +99,25 @@ exports.handler = async (event)=>{
         req_address:String(b.address||"").trim()||null, req_city:String(b.city||"").trim()||null,
         req_state:String(b.state||"").trim()||null, req_zip:String(b.zip||"").trim()||null};
       await sb("POST","dealer_users",row,{Prefer:"resolution=merge-duplicates,return=minimal"});
+      // Notify HCPS that a new dealer registered so they can review + set up the account.
+      try{
+        const loc=[String(b.city||"").trim(),String(b.state||"").trim()].filter(Boolean).join(", ");
+        const rowsHtml=[["Company",company],["Contact",String(b.contact||"").trim()],["Email",email],
+          ["Phone",String(b.phone||"").trim()],["Address",String(b.address||"").trim()],["City / State",loc],
+          ["ZIP",String(b.zip||"").trim()],["Matched to a dealer on file?",dealer_id?"Yes — auto-linked":"No — needs assignment"]]
+          .filter(([,v])=>v).map(([k,v])=>`<tr><td style="padding:4px 12px 4px 0;color:#6b7280;font-size:13px">${esc(k)}</td><td style="padding:4px 0;font-weight:600;font-size:13px">${esc(v)}</td></tr>`).join("");
+        await sendMail({
+          to:REGISTER_NOTIFY_TO, replyTo:email,
+          subject:`New dealer registration — ${company}`,
+          html:`<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:560px">
+            <h2 style="color:#2B4071;margin:0 0 4px">New dealer registration</h2>
+            <p style="color:#5b6672;font-size:13px;margin:0 0 12px">Someone just registered for the HCPS Partner Portal and is waiting for review.</p>
+            <table style="border-collapse:collapse;margin:0 0 16px">${rowsHtml}</table>
+            <a href="${ADMIN_LOGINS_URL}" style="display:inline-block;background:#F5821F;color:#fff;text-decoration:none;font-weight:700;padding:10px 16px;border-radius:8px;font-size:14px">Review &amp; set up in Dealer Manager →</a>
+            <p style="color:#9aa4ae;font-size:11px;margin:16px 0 0">HCPS Partner Portal (beta) · they stay locked out until you approve them.</p></div>`,
+          text:`New dealer registration — ${company}\nContact: ${b.contact||""}\nEmail: ${email}\nPhone: ${b.phone||""}\nLocation: ${loc}\nMatched on file: ${dealer_id?"yes":"no"}\n\nReview: ${ADMIN_LOGINS_URL}`
+        });
+      }catch(e){ console.error("register notify failed",e&&e.message); }
       const message = dealer_id
         ? "Registration received — we matched your email to an HCPS account. It’s pending approval; you’ll be able to order once approved."
         : "Registration received — your request is pending HCPS review. HCPS will link it to your dealer account and approve you.";

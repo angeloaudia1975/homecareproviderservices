@@ -590,6 +590,17 @@ async function createDealerForLogin(uid){
   }},"Creating dealer…"); await load(); TAB="logins"; render();
 }
 async function revokeLogin(uid,status){ await post({action:"revoke_login",uid,status},"Saving…"); await load(); TAB="logins"; render(); }
+// Re-point an already-approved login to the correct dealer (no re-send of the welcome email).
+async function reassignLogin(uid){
+  const inp=document.getElementById("re_"+uid); if(!inp)return;
+  const q=inp.value.trim(); const m=DATA.dealers.find(d=>d.name.toLowerCase()===q.toLowerCase());
+  if(!q){ alertDlg("Type a dealer name and pick from the list to assign this account.");return; }
+  if(!m){ alertDlg("Pick a dealer from the list (exact name) to assign, or use “Create new dealer”.");return; }
+  const cur=(DATA.logins||[]).find(x=>x.uid===uid);
+  if(cur&&cur.dealer_id===m.id){ alertDlg("That account is already assigned to “"+m.name+"”.");return; }
+  if(!confirm(`Assign ${inp.getAttribute('data-email')||'this login'} to “${m.name}”? They'll immediately see that dealer's lines and pricing.`))return;
+  await post({action:"approve_login",uid,dealer_id:m.id},"Assigning…"); await load(); TAB="logins"; render();
+}
 function editLoginEmail(uid,cur){
   showDlg(`<h3>Fix login email</h3>
     <div class="hint">This changes the email the dealer types to sign in to the ordering portal. Use it to correct a typo from registration.</div>
@@ -684,17 +695,23 @@ function renderLogins(){
           <button class="go sm" onclick="revokeLogin('${l.uid}','revoked')">Reject</button>
           <button class="go sm" onclick="deleteLogin('${l.uid}','${jesc(l.email||"")}')">Delete</button></td></tr>`;}).join("")
     : `<tr><td colspan="4" class="empty">No pending registrations.</td></tr>`;
-  const aRows=approved.map(l=>`<tr><td class="lbl">${esc(l.email)}</td><td>${esc(l.dealer_name||"—")}</td><td><span class="chip acc">approved</span></td>
-      <td style="white-space:nowrap"><button class="go sm" onclick="editLoginEmail('${l.uid}','${jesc(l.email||"")}')">Fix email</button>
+  const aRows=approved.map(l=>{const r=l.req||{}; const company=(r.company||"").trim();
+    return `<tr>
+      <td class="lbl">${esc(l.email)}${company?`<div class="hint" style="margin-top:3px">Registered as: <b>${esc(company)}</b></div>`:""}${reqLine(r)}</td>
+      <td><input id="re_${l.uid}" data-email="${jesc(l.email||"")}" list="dealerlist" value="${esc(l.dealer_name||"")}" placeholder="assign a dealer…" style="width:220px">${l.dealer_name?"":`<div class="hint" style="margin-top:3px;color:#b45309">No dealer assigned</div>`}</td>
+      <td><span class="chip acc">approved</span></td>
+      <td style="white-space:nowrap"><button class="go orange sm" onclick="reassignLogin('${l.uid}')">Save dealer</button>
+      ${company?`<button class="go blue sm" onclick="createDealerForLogin('${l.uid}')">Create new dealer</button>`:""}
+      <button class="go sm" onclick="editLoginEmail('${l.uid}','${jesc(l.email||"")}')">Fix email</button>
       <button class="go sm" onclick="revokeLogin('${l.uid}','revoked')">Revoke</button>
-      <button class="go sm" onclick="deleteLogin('${l.uid}','${jesc(l.email||"")}')">Delete</button></td></tr>`).join("");
+      <button class="go sm" onclick="deleteLogin('${l.uid}','${jesc(l.email||"")}')">Delete</button></td></tr>`;}).join("");
   const rRows=revoked.map(l=>`<tr><td class="lbl">${esc(l.email)}</td><td>${esc(l.dealer_name||"—")}</td><td><span class="chip rev">revoked</span></td>
       <td><button class="go blue sm" onclick="revokeLogin('${l.uid}','approved')">Re-approve</button></td></tr>`).join("");
   app.innerHTML=`${dlOpts}<div class="card">
     <h2>Pending logins <span class="hint" style="text-transform:none">— anyone who registered on the ordering portal. Link each to a dealer (or create one), then Approve to enable ordering (only their entitled lines show).</span></h2>
     <table><thead><tr><th>Registrant</th><th>Dealer account</th><th>Registered</th><th></th></tr></thead><tbody>${pRows}</tbody></table>
   </div>
-  ${approved.length?`<div class="card"><h2>Active accounts (${approved.length})</h2><table><thead><tr><th>Email</th><th>Dealer</th><th>Status</th><th></th></tr></thead><tbody>${aRows}</tbody></table></div>`:""}
+  ${approved.length?`<div class="card"><h2>Active accounts (${approved.length}) <span class="hint" style="text-transform:none">— reassign any account to the correct dealer (or create one from their registration). Changes apply immediately; the welcome email is only sent on first approval.</span></h2><table><thead><tr><th>Registrant</th><th>Dealer account</th><th>Status</th><th></th></tr></thead><tbody>${aRows}</tbody></table></div>`:""}
   ${revoked.length?`<div class="card"><h2>Revoked (${revoked.length})</h2><table><thead><tr><th>Email</th><th>Dealer</th><th>Status</th><th></th></tr></thead><tbody>${rRows}</tbody></table></div>`:""}`;
 }
 

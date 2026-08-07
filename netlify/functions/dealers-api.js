@@ -48,6 +48,42 @@ async function authAdmin(method,pathAfter,body){
   return t?JSON.parse(t):null;
 }
 
+// ---- Email via Resend (same service the ordering portal uses). Needs RESEND_API_KEY in this
+// site's Netlify env (homecareproviderservices.us is already verified in Resend). If unset,
+// the send is skipped silently so approvals never break. ----
+const MAIL_FROM = process.env.HCPS_MAIL_FROM || "HCPS Partner Portal <orders@homecareproviderservices.us>";
+const PORTAL_URL = process.env.ORDERING_BASE || "https://hcpsonlineordering.netlify.app";
+const emailEsc=s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+async function sendMail({to,subject,html,text,replyTo}){
+  const apiKey=process.env.RESEND_API_KEY;
+  if(!apiKey){ console.error("RESEND_API_KEY not set — skipping email:",subject); return {ok:false,skipped:true}; }
+  const toList=(Array.isArray(to)?to:String(to||"").split(",")).map(s=>String(s).trim()).filter(Boolean);
+  if(!toList.length) return {ok:false,skipped:true};
+  const payload={from:MAIL_FROM,to:toList,subject,html,text};
+  if(replyTo&&EMAIL_RE.test(String(replyTo))) payload.reply_to=replyTo;
+  try{
+    const res=await fetch("https://api.resend.com/emails",{method:"POST",
+      headers:{Authorization:`Bearer ${apiKey}`,"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    if(!res.ok){ console.error("Resend error",res.status,await res.text().catch(()=>"")); return {ok:false}; }
+    return {ok:true};
+  }catch(e){ console.error("Resend send failed",e&&e.message); return {ok:false}; }
+}
+// The dealer welcome email, sent the first time an account is approved.
+async function sendWelcomeEmail(toEmail, dealerName){
+  if(!toEmail||!EMAIL_RE.test(String(toEmail))) return;
+  const hi=dealerName?`, <b>${emailEsc(dealerName)}</b>`:"";
+  await sendMail({
+    to:toEmail, subject:"Welcome to the HCPS Partner Portal — you're approved",
+    html:`<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:560px">
+      <h2 style="color:#2B4071;margin:0 0 4px">You're approved${hi}</h2>
+      <p style="font-size:13.5px;line-height:1.6;color:#374151;margin:0 0 12px">Your HCPS Partner Portal account is active. You can now sign in to browse your manufacturer lines, see your pricing, and place orders 24/7.</p>
+      <a href="${PORTAL_URL}" style="display:inline-block;background:#F5821F;color:#fff;text-decoration:none;font-weight:700;padding:11px 18px;border-radius:8px;font-size:14px">Sign in to your portal →</a>
+      <p style="font-size:12.5px;line-height:1.6;color:#6b7280;margin:16px 0 0">The portal is currently in <b>beta</b> — we're still adding features, and a step-by-step tutorial is on the way. If anything looks off or you have questions, just reply to this email or reach your HCPS representative.</p>
+      <p style="font-size:12px;color:#9aa4ae;margin:14px 0 0">HomeCare Provider Services · Your partner in mobility &amp; home medical equipment.</p></div>`,
+    text:`You're approved${dealerName?", "+dealerName:""}!\n\nYour HCPS Partner Portal account is active. Sign in to browse your lines, see your pricing, and order 24/7:\n${PORTAL_URL}\n\nThe portal is in beta — more features and a tutorial are coming. Reply to this email with any questions.\n\nHomeCare Provider Services`
+  });
+}
+
 const MONTH=["January","February","March","April","May","June","July","August","September","October","November","December"];
 const plabel=p=>{const[y,m]=p.split("-");return `${MONTH[+m-1]} ${y}`;};
 const pm=p=>{const[y,m]=p.split("-").map(Number);return y*12+(m-1);};
@@ -457,6 +493,10 @@ exports.handler = async (event)=>{
       }
       if(act==="approve_login"){
         if(!b.uid) return json(400,{error:"uid required"});
+        // Was this login already approved? (reassigning an existing account shouldn't re-send
+        // the welcome email — only the first approval does.)
+        let prevStatus=null, loginEmail=null;
+        try{ const cur=await sbGet(`dealer_users?uid=eq.${encodeURIComponent(b.uid)}&select=status,email`); if(cur&&cur[0]){ prevStatus=cur[0].status||null; loginEmail=cur[0].email||null; } }catch(e){}
         let dealerId=b.dealer_id||null;
         // Approve + create a brand-new dealer from the registrant's submitted details.
         if(!dealerId && b.new_dealer && String(b.new_dealer.business_name||"").trim()){
@@ -470,7 +510,13 @@ exports.handler = async (event)=>{
           dealerId=ins&&ins[0]&&ins[0].id||null;
         }
         await rpc("approve_dealer_login",{p_uid:b.uid,p_dealer:dealerId||null,p_by:b.by||"admin"});
-        return json(200,{ok:true,dealer_id:dealerId});
+        // Auto-send the welcome email on the first approval only (not on later reassignments).
+        if(prevStatus!=="approved"){
+          let dealerName=null;
+          if(dealerId){ try{ const dn=await sbGet(`dealers?id=eq.${encodeURIComponent(dealerId)}&select=business_name`); dealerName=dn&&dn[0]&&dn[0].business_name||null; }catch(e){} }
+          try{ await sendWelcomeEmail(loginEmail, dealerName); }catch(e){ console.error("welcome email failed",e&&e.message); }
+        }
+        return json(200,{ok:true,dealer_id:dealerId,welcomed:prevStatus!=="approved"});
       }
       if(act==="revoke_login"){
         if(!b.uid) return json(400,{error:"uid required"});
