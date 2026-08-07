@@ -648,8 +648,17 @@ function handoutHtml(c){
   const rep=(ME&&ME.name)||"Your HCPS Representative";
   const repEmail=(ME&&ME.email)||"";
   const tile=(x,on)=>`<div class="ltile${on?" on":""}">${x.logo?`<img src="${esc(x.logo)}" alt="${esc(x.name)}" onerror="this.style.display='none'">`:""}<span class="ln">${esc(x.name)}</span></div>`;
-  const yourLines=(c.carried&&c.carried.length)?`<div class="tiles">${c.carried.map(x=>tile(x,true)).join("")}</div>`:`<span class="dim">Let's get your first line set up.</span>`;
-  const growLines=(c.opps&&c.opps.length)?`<div class="tiles">${c.opps.map(x=>tile(x,false)).join("")}</div>`:`<span class="dim">You're already set up across everything available in your area.</span>`;
+  // Golden isn't an orderable line here, so it never appears in carried/opps — surface it as a
+  // tile from the dealer's Golden status: a Golden account joins "lines you carry", a Golden
+  // prospect (e.g. every KY dealer) joins "approved for your territory".
+  const goldenTile=(c.golden==="Account"||c.golden==="Prospect")
+    ? tile({name:"Golden Technologies",logo:c.golden_logo||""}, c.golden==="Account") : "";
+  const carriedTiles=(c.carried||[]).map(x=>tile(x,true));
+  if(c.golden==="Account"&&goldenTile) carriedTiles.push(goldenTile);
+  const growTiles=(c.opps||[]).map(x=>tile(x,false));
+  if(c.golden==="Prospect"&&goldenTile) growTiles.push(goldenTile);
+  const yourLines=carriedTiles.length?`<div class="tiles">${carriedTiles.join("")}</div>`:`<span class="dim">Let's get your first line set up.</span>`;
+  const growLines=growTiles.length?`<div class="tiles">${growTiles.join("")}</div>`:`<span class="dim">You're already set up across everything available in your area.</span>`;
   const updates=(HANDOUT.updates||HANDOUT_UPDATES).map(u=>`<li>${esc(u)}</li>`).join("");
   const ordUrl=(HANDOUT.ordering_url||ORDERING_URL);
   const ytd=Number(c.ytd)||0, life=Number(c.total)||0, rec=Number(c.recent60)||0, retail=Number(c.retail_value)||0;
@@ -663,7 +672,8 @@ function handoutHtml(c){
   const recentHtml=recentProds.length?`<h2>Recent purchases (last 60 days)</h2><div>${recentProds.map(p=>`<span class="pill">${esc(p.name)}${p.qty?` ×${p.qty}`:""}</span>`).join(" ")}</div>`:"";
   return `<!doctype html><html><head><meta charset="utf-8"><title>Your HCPS Partnership — ${esc(c.name||"")}</title><style>
     body{font:14px Arial,sans-serif;color:#1b2733;margin:0}
-    .hero{background:#10263f;color:#fff;padding:24px 28px}.hero .b{color:#F5821F;font-weight:800;letter-spacing:.5px;font-size:13px;text-transform:uppercase}
+    .hero{position:relative;background:#10263f;color:#fff;padding:24px 28px}.hero .b{color:#F5821F;font-weight:800;letter-spacing:.5px;font-size:13px;text-transform:uppercase}
+    .hero .herologo{position:absolute;top:20px;right:28px;max-height:52px;max-width:180px;object-fit:contain;background:#fff;border-radius:8px;padding:6px 10px}
     .hero h1{font-size:24px;margin:6px 0 2px}.hero p{margin:0;color:#c9d4e2;font-size:13px}
     .wrap{padding:22px 28px}h2{font-size:15px;color:#2B4071;margin:18px 0 8px;border-bottom:2px solid #eef1f4;padding-bottom:4px}
     .pill{display:inline-block;border:1px solid #cfd6de;border-radius:14px;padding:3px 11px;margin:3px;font-size:12px;color:#333c47}
@@ -680,7 +690,7 @@ function handoutHtml(c){
     .foot{margin-top:20px;border-top:1px solid #eef1f4;padding-top:12px;color:#5b6672;font-size:13px}.dim{color:#9aa4ae}
     @media print{.hero{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
     </style></head><body>
-    <div class="hero"><div class="b">HomeCare Provider Services</div><h1>Your Partnership Snapshot</h1><p>${esc(c.name||"")}${c.city?" · "+esc([c.city,c.state].filter(Boolean).join(", ")):""}</p>${(c.is_branch&&c.company&&c.company!==c.name)?`<p style="margin-top:2px;color:#c9d4e2;font-size:11px">A location of ${esc(c.company)}</p>`:""}${(c.accounts&&c.accounts.length)?`<p style="margin-top:6px;color:#eaf0f8;font-size:12px">Your accounts: ${c.accounts.map(a=>esc(a.name)+(a.account?` #${esc(a.account)}`:"")).join("&nbsp;·&nbsp;")}</p>`:""}</div>
+    <div class="hero"><img class="herologo" src="https://homecareproviderservices.netlify.app/assets/hcps-logo.png" alt="HomeCare Provider Services" onerror="this.style.display='none'"><div class="b">HomeCare Provider Services</div><h1>Your Partnership Snapshot</h1><p>${esc(c.name||"")}${c.city?" · "+esc([c.city,c.state].filter(Boolean).join(", ")):""}</p>${(c.is_branch&&c.company&&c.company!==c.name)?`<p style="margin-top:2px;color:#c9d4e2;font-size:11px">A location of ${esc(c.company)}</p>`:""}${(c.accounts&&c.accounts.length)?`<p style="margin-top:6px;color:#eaf0f8;font-size:12px">Your accounts: ${c.accounts.map(a=>esc(a.name)+(a.account?` #${esc(a.account)}`:"")).join("&nbsp;·&nbsp;")}</p>`:""}</div>
     <div class="wrap">
       <h2>Your business with HCPS</h2>${stats}${retail?`<p class="note">Retail value = MSRP of the products you've purchased through us — your selling-revenue potential.</p>`:""}
       ${recentHtml}

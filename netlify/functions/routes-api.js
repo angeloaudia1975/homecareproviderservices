@@ -197,7 +197,7 @@ exports.handler = async (event)=>{
       for(const id of ids){
         const d=byId[id]; if(!d) continue;
         const cid=companyOf(id); const master=byId[cid]||d;   // company-level governing account
-        let acc; try{ acc=computeAccess({state:master.state||d.state,business_name:master.business_name||d.business_name,ovation_access:!!(master.ovation_access||d.ovation_access),lat:null},[]); }catch(e){ acc={your_accounts:[],available:[]}; }
+        let acc; try{ acc=computeAccess({state:master.state||d.state,business_name:master.business_name||d.business_name,ovation_access:!!(master.ovation_access||d.ovation_access),golden_status:(master.golden_status||d.golden_status||"None"),lat:null},[]); }catch(e){ acc={your_accounts:[],available:[],golden:"None"}; }
         const eligible=[...new Set([...(acc.your_accounts||[]),...(acc.available||[])])];
         const s=byDealer[id]||{lines:{},total:0,ytd:0,recent:0,buys:new Set()};
         const coBuySet=coBuys[cid]||new Set();
@@ -219,7 +219,7 @@ exports.handler = async (event)=>{
           company_total:Math.round((coTotal[cid]||0)*100)/100, company_ytd:Math.round((coYtd[cid]||0)*100)/100,
           retail_value:Math.round(retail*100)/100,
           lines, opps, accounts, carried, products, products_more,
-          golden:(master.golden_status||d.golden_status||"None"), ovation:!!(master.ovation_access||d.ovation_access),
+          golden:(acc.golden||master.golden_status||d.golden_status||"None"), golden_logo:(logoBySlug["golden-technologies"]||""), ovation:!!(master.ovation_access||d.ovation_access),
           contacts:(contactsByDealer[id]||[]).map(c=>({name:c.name||"",email:c.email||"",phone:c.phone||"",cell:c.cell||"",title:c.title||"",role:c.role||""})),
         };
       }

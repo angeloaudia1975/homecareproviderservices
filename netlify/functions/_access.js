@@ -49,10 +49,17 @@ function computeAccess(gov, ownedSlugs){
 
   const your_accounts = [...eligible].filter(s => owned.has(s)).sort();
   const available     = [...eligible].filter(s => !owned.has(s)).sort();
+
+  // Golden status: a dealer with a current Golden account stays "Account". Otherwise, every
+  // Kentucky dealer is treated as a Golden PROSPECT (HCPS actively develops Golden across KY),
+  // so Golden shows as an approved territory line for them. Elsewhere, use the stored status.
+  let golden = gov.golden_status || "None";
+  if (golden !== "Account" && st === "KY") golden = "Prospect";
+
   return {
     your_accounts,
     available,
-    golden: gov.golden_status || "None",
+    golden,
     ovation: !!gov.ovation_access,
   };
 }
