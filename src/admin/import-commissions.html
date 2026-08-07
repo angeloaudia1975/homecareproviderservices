@@ -22,6 +22,10 @@
  .gate{max-width:400px;margin:60px auto;background:#fff;border:1px solid var(--silver);border-radius:14px;padding:26px 24px}
  .gate h2{margin:0 0 4px}.gate p{color:var(--gray);font-size:13px;margin:0 0 12px}.gate input{width:100%;margin-bottom:9px}
  .dim{color:#9aa4ae}.pill{display:inline-block;background:#eef2f7;border-radius:10px;padding:2px 9px;font-size:12px;margin:2px}
+ .mchip{display:inline-block;width:19px;text-align:center;border-radius:4px;font-size:10px;font-weight:700;margin:1px;padding:2px 0}
+ .mchip.on{background:#eefaf0;color:#1f7a44;border:1px solid #bfe3ca}.mchip.off{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa}
+ .recvrow{display:flex;align-items:center;gap:10px;padding:3px 0;border-bottom:1px solid #f0f2f5}.rname{flex:1;min-width:170px;font-size:13px}
+ .rzrow{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eef1f4;flex-wrap:wrap}.rzrow .rn{flex:1;min-width:230px;font-size:13px}
  .warn{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;color:#9a3412;font-size:13px;margin-top:8px}
 </style></head><body>
 <nav class="adminnav">
@@ -42,6 +46,11 @@
       <div class="fld"><label>Header row</label><input type="number" id="hrow" value="1" min="1" style="width:80px" onchange="reparse()"></div>
     </div>
     <div id="fmsg" class="st"></div>
+  </div>
+
+  <div class="card" id="recvCard">
+    <h2 style="font-size:16px;margin:0 0 4px">Reports on file <span class="sub" style="font-weight:400;text-transform:none">— green = received, amber = still needed this year (through this month)</span></h2>
+    <div id="recvBody" class="sub">Loading…</div>
   </div>
 
   <div class="card" id="mapCard" style="display:none">
@@ -75,6 +84,8 @@ const numv=v=>{ if(v==null||v==="") return null; const n=Number(String(v).replac
 const FIELDS=[
   {k:"customer_name",label:"Dealer / customer name",req:true},
   {k:"customer_ref",label:"Account number"},
+  {k:"ship_city",label:"Ship-to city (helps matching)"},
+  {k:"ship_state",label:"Ship-to state"},
   {k:"product_code",label:"Product code"},
   {k:"product_name",label:"Product / description"},
   {k:"qty",label:"Quantity"},
@@ -112,6 +123,42 @@ async function boot(){
   $("#app").style.display="block";
   try{ CONFIG=await api({action:"config"}); }catch(e){ if(String(e.message)==="forbidden"||String(e.message)==="unauthorized")return; }
   const sel=$("#mfr"); sel.innerHTML=`<option value="">Choose…</option>`+(CONFIG.manufacturers||[]).map(m=>`<option value="${esc(m.slug)}">${esc(m.name)}</option>`).join("");
+  renderReceived();
+}
+function renderReceived(){
+  const el=$("#recvBody"); if(!el) return;
+  const rec=CONFIG.received||{}; const now=new Date(), yr=now.getFullYear(), cm=now.getMonth()+1;
+  const ML=["J","F","M","A","M","J","J","A","S","O","N","D"];
+  const mfrs=(CONFIG.manufacturers||[]);
+  if(!mfrs.length){ el.textContent="No manufacturers configured."; return; }
+  el.innerHTML=`<div style="margin:2px 0 6px;font-weight:700">${yr}</div>`+mfrs.map(mf=>{
+    const got=new Set(rec[mf.slug]||[]); const chips=[];
+    for(let m=1;m<=cm;m++){ const mm=yr+"-"+String(m).padStart(2,"0"); chips.push(`<span class="mchip ${got.has(mm)?"on":"off"}" title="${mm}">${ML[m-1]}</span>`); }
+    return `<div class="recvrow"><div class="rname">${esc(mf.name)}</div><div>${chips.join("")}</div></div>`;
+  }).join("");
+}
+function locByName(){ const m={}; mappedRows().forEach(r=>{ const n=String(r.customer_name||"").trim(); if(n&&!m[n]) m[n]={city:r.ship_city||"",state:r.ship_state||""}; }); return m; }
+function renderResolver(unmatched){
+  if(!unmatched||!unmatched.length) return "";
+  const loc=locByName();
+  const dopts=`<option value="">— pick the dealer —</option>`+(CONFIG.dealers||[]).slice().sort((a,b)=>a.name.localeCompare(b.name)).map(d=>`<option value="${esc(d.id)}">${esc(d.name)}${d.city?` — ${esc(d.city)}, ${esc(d.state)}`:""}</option>`).join("");
+  const rows=unmatched.map((u,i)=>{ const l=loc[u.name]||{};
+    return `<div class="rzrow"><div class="rn"><b>${esc(u.name)}</b>${(l.city||l.state)?` <span class="dim">(${esc([l.city,l.state].filter(Boolean).join(", "))})</span>`:""}${u.account?` <span class="dim">· acct ${esc(u.account)}</span>`:""} <span class="dim">· ${u.count} row${u.count===1?"":"s"}</span></div><select data-rz="${i}" data-name="${esc(u.name)}" data-acct="${esc(u.account||"")}">${dopts}</select></div>`;
+  }).join("");
+  return `<div class="card" style="margin-top:12px;border-color:#fed7aa"><h2 style="font-size:15px;margin:0 0 4px">Match these to a dealer <span class="sub" style="font-weight:400;text-transform:none">— learns for next time</span></h2>
+    <p class="sub" style="margin:0 0 8px">Pick the right dealer for each. Saving links these rows now, remembers the name as an alias, and stores the account number so future reports match automatically.</p>
+    ${rows}
+    <div style="margin-top:10px"><button class="go" onclick="resolveUnmatched()">Save &amp; link</button> <span id="rzmsg" class="st"></span></div></div>`;
+}
+async function resolveUnmatched(){
+  const sels=[...document.querySelectorAll('[data-rz]')];
+  const mappings=sels.map(s=>({name:s.getAttribute('data-name'),dealer_id:s.value||"",account_ref:s.getAttribute('data-acct')||""})).filter(m=>m.dealer_id);
+  if(!mappings.length){ $("#rzmsg").textContent="Pick at least one dealer first."; $("#rzmsg").className="st warn"; return; }
+  $("#rzmsg").textContent="Linking…"; $("#rzmsg").className="st";
+  try{ const r=await api({action:"resolve",manufacturer:$("#mfr").value,mappings});
+    if(r&&r.ok){ $("#rzmsg").textContent=`Linked ${r.relinked} rows to ${r.resolved} dealer${r.resolved===1?"":"s"} ✓ — these will auto-match next time.`; $("#rzmsg").className="st ok"; try{ CONFIG=await api({action:"config"}); renderReceived(); }catch(e){} }
+    else { $("#rzmsg").textContent=(r&&r.error)||"Couldn't save."; $("#rzmsg").className="st warn"; }
+  }catch(e){ $("#rzmsg").textContent="Error: "+(e.message||e); $("#rzmsg").className="st warn"; }
 }
 
 async function onFile(){
@@ -159,15 +206,17 @@ function applyTemplate(){
   // light auto-guess when no template
   if(!Object.keys(MAP).length && HEADERS.length){
     const find=re=>HEADERS.find(h=>re.test(h.toLowerCase()));
-    MAP.customer_name=find(/dealer|customer|account name|sold to|name/)||"";
-    MAP.customer_ref=find(/acct|account/)||"";
-    MAP.product_code=find(/item|sku|part|product (code|#)|code/)||"";
-    MAP.product_name=find(/desc|product name|item name|description/)||"";
-    MAP.qty=find(/qty|quantity|units/)||"";
-    MAP.amount=find(/sales|net|invoice|amount|revenue|total/)||"";
-    MAP.commission=find(/commission|comm\b/)||"";
-    MAP.cost=find(/cost/)||"";
-    MAP.rep_name=find(/rep|sales ?rep|agent/)||"";
+    MAP.customer_name=find(/customer name|dealer|sold ?to|store name|bill ?to/)||"";
+    MAP.customer_ref=find(/customer ?#|cust.*#|customer no|acct|account/)||"";
+    MAP.ship_city=find(/store city|ship.*city|city/)||"";
+    MAP.ship_state=find(/store state|ship.*state|state/)||"";
+    MAP.product_code=find(/part ?#|item ?#|sku|product code|catalog|part/)||"";
+    MAP.product_name=find(/description|product name|item name/)||"";
+    MAP.qty=find(/quantity|qty|units/)||"";
+    MAP.amount=find(/extended|line total|net sales|sales amount|invoice amount/)||"";
+    MAP.commission=find(/commission amount|commission ?\$|commission/)||"";
+    MAP.cost=find(/\bcost\b/)||"";
+    MAP.rep_name=find(/rep name|sales ?rep|agent/)||"";
     Object.keys(MAP).forEach(k=>{ if(!MAP[k]) delete MAP[k]; });
   }
   renderMap(); renderPreview();
@@ -213,9 +262,11 @@ async function doImport(){
     const r=await api({action:"import",manufacturer:slug,period,source_file:FILENAME,rows});
     if(r&&r.ok){
       $("#imsg").textContent=`Imported ${r.inserted} rows ✓`; $("#imsg").className="st ok";
+      const nun=r.unmatched_count||0;
       $("#importResult").innerHTML=`<div class="warn" style="background:#eefaf0;border-color:#bfe3ca;color:#1f7a44">
-        <b>${r.inserted}</b> rows loaded · <b>${r.matched}</b> matched to existing dealers · <b>${r.unmatched_count||0}</b> names didn't match.
-        ${(r.unmatched&&r.unmatched.length)?`<div style="margin-top:6px;color:#9a3412">Unmatched (add or merge these in Dealer Manager → Review): ${r.unmatched.slice(0,40).map(n=>`<span class="pill">${esc(n)}</span>`).join(" ")}</div>`:""}</div>`;
+        <b>${r.inserted}</b> rows loaded · <b>${r.matched}</b> matched to existing dealers · <b>${nun}</b> ${nun===1?"name":"names"} still need${nun===1?"s":""} a dealer.${nun?" Match them below so they count and auto-match next time.":""}</div>`
+        +renderResolver(r.unmatched||[]);
+      try{ renderReceived(); }catch(e){}
     } else { $("#imsg").textContent=(r&&r.error)||"Import failed."; $("#imsg").className="st warn"; }
   }catch(e){ $("#imsg").textContent="Import failed: "+(e.message||e); $("#imsg").className="st warn"; }
   finally{ btn.disabled=false; }

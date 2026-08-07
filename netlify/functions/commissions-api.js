@@ -55,7 +55,14 @@ exports.handler = async (event)=>{
       const manufacturers=Object.entries(nameMap).map(([slug,name])=>({slug,name})).sort((a,b)=>a.name.localeCompare(b.name));
       let templates={};
       try{ const rows=await sbGet("app_settings?key=like.ctpl:*&select=key,value"); (rows||[]).forEach(r=>{ templates[String(r.key).slice(5)]=r.value||{}; }); }catch(e){}
-      return json(200,{ok:true,manufacturers,templates});
+      // Lightweight dealer list (for the "resolve unmatched" picker) + reports already on file.
+      let dealers=[];
+      try{ dealers=(await sbGetAll("dealers?select=id,business_name,city,state","business_name")).map(d=>({id:d.id,name:d.business_name,city:d.city||"",state:d.state||""})); }catch(e){}
+      let received={};
+      try{ const rows=await sbGetAll("monthly_sales?select=manufacturer,period","id");
+        const acc={}; for(const r of (rows||[])){ const p=(r.period||"").slice(0,7); if(!r.manufacturer||!p) continue; (acc[r.manufacturer]||(acc[r.manufacturer]=new Set())).add(p); }
+        for(const k in acc) received[k]=[...acc[k]].sort(); }catch(e){}
+      return json(200,{ok:true,manufacturers,templates,dealers,received});
     }
 
     if(b.action==="save_template"){
@@ -72,14 +79,20 @@ exports.handler = async (event)=>{
       if(!slug||!/^\d{4}-\d{2}$/.test(period)) return json(400,{error:"manufacturer + period (YYYY-MM) required"});
       if(!rows.length) return json(400,{error:"no rows"});
       const per=`${period}-01`;
-      // alias map for dealer resolution
+      // alias map for dealer resolution (by normalized name)
       const aliases=await sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]);
       const idByAlias={}; for(const a of (aliases||[])) idByAlias[a.alias_norm]=a.dealer_id;
-      const out=[]; const unmatched=new Set(); let matched=0;
+      // account-number map for THIS manufacturer (match by the report's Customer # — most reliable)
+      const idByAccount={};
+      try{ const dmr=await sbGetAll(`dealer_manufacturers?manufacturer=eq.${encodeURIComponent(slug)}&select=dealer_id,account_ref`,"dealer_id,manufacturer");
+        for(const x of (dmr||[])){ if(x.account_ref) idByAccount[String(x.account_ref).trim()]=x.dealer_id; } }catch(e){}
+      const out=[]; const unmatched=new Map(); let matched=0;   // name -> {name, account, count}
       for(const r of rows){
         const cname=String(r.customer_name||"").trim();
-        const did = cname ? idByAlias[dnorm(cname)] : null;
-        if(did) matched++; else if(cname) unmatched.add(cname);
+        const cref=String(r.customer_ref||"").trim();
+        const did = (cref && idByAccount[cref]) || (cname ? idByAlias[dnorm(cname)] : null) || null;
+        if(did) matched++;
+        else if(cname){ const u=unmatched.get(cname)||{name:cname,account:cref||"",count:0}; u.count++; if(!u.account&&cref)u.account=cref; unmatched.set(cname,u); }
         out.push({
           manufacturer:slug, period:per, dealer_id:did||null,
           customer_name:cname||null, customer_ref:(r.customer_ref!=null&&String(r.customer_ref).trim())?String(r.customer_ref).trim():null,
@@ -98,7 +111,30 @@ exports.handler = async (event)=>{
       }catch(e){}
       let inserted=0;
       for(let i=0;i<out.length;i+=500){ const part=out.slice(i,i+500); await sbSend("POST","monthly_sales",part,{Prefer:"return=minimal"}); inserted+=part.length; }
-      return json(200,{ok:true,inserted,matched,unmatched:[...unmatched].slice(0,200),unmatched_count:unmatched.size});
+      return json(200,{ok:true,inserted,matched,unmatched:[...unmatched.values()].slice(0,200),unmatched_count:unmatched.size});
+    }
+
+    // Resolve unmatched names to dealers: learn the alias, relink the imported rows, and
+    // (optionally) store the manufacturer account number so future reports match by number.
+    if(b.action==="resolve"){
+      const slug=String(b.manufacturer||"").trim();
+      const maps=Array.isArray(b.mappings)?b.mappings:[];
+      if(!slug) return json(400,{error:"manufacturer required"});
+      let resolved=0, relinked=0;
+      for(const m of maps){
+        const name=String(m.name||"").trim(); const did=m.dealer_id;
+        if(!name||!did) continue;
+        // 1) learn the alias so this name auto-matches next time
+        await sbSend("POST","dealer_aliases?on_conflict=alias_norm",{alias_norm:dnorm(name),raw_name:name,dealer_id:did},{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{});
+        // 2) relink every still-unmatched sales row for this line + name
+        const patched=await sbSend("PATCH",`monthly_sales?manufacturer=eq.${encodeURIComponent(slug)}&customer_name=eq.${encodeURIComponent(name)}&dealer_id=is.null`,{dealer_id:did},{Prefer:"return=representation"}).catch(()=>null);
+        if(Array.isArray(patched)) relinked+=patched.length;
+        // 3) store the account number on that dealer's line (so future reports match by number)
+        const acct=String(m.account_ref||"").trim();
+        if(acct){ await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",{dealer_id:did,manufacturer:slug,account_ref:acct,active:true},{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{}); }
+        resolved++;
+      }
+      return json(200,{ok:true,resolved,relinked});
     }
 
     return json(400,{error:"unknown action"});
