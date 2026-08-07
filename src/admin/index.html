@@ -1,120 +1,194 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>HCPS Admin — Control Center</title>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HCPS Admin — Operating System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
- :root{--ink:#1b2733;--blue:#3B599A;--blue-dk:#2B4071;--orange:#F5821F;--silver:#D8DEE4;--light:#F3F6FA;--gray:#5b6672;}
- *{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;background:var(--light);color:var(--ink)}
- .adminnav{background:var(--ink);display:flex;align-items:center;gap:6px;padding:10px 22px;flex-wrap:wrap}
- .adminnav .bd{color:#fff;font-weight:800;font-size:15px;margin-right:16px;letter-spacing:.3px}
- .adminnav .bd span{color:var(--orange)}
- .adminnav a{color:#aeb9c6;text-decoration:none;font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-radius:7px}
- .adminnav a:hover{color:#fff}.adminnav a.on{color:#fff;background:var(--blue)}
- .adminnav .who{margin-left:auto;color:#aeb9c6;font-size:12px;display:flex;align-items:center;gap:10px}
- .adminnav .who button{background:var(--blue);color:#fff;border:0;border-radius:7px;padding:6px 12px;font-weight:700;font-size:12px;cursor:pointer}
- .wrap{max-width:1080px;margin:26px auto;padding:0 20px}
- h1{font-size:24px;margin:0 0 3px}.sub{color:var(--gray);font-size:13.5px;margin:0 0 22px}
- .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
- .card{background:#fff;border:1px solid var(--silver);border-radius:14px;padding:20px;text-decoration:none;color:var(--ink);display:flex;flex-direction:column;gap:8px;transition:box-shadow .2s,transform .2s,border-color .2s}
- .card:hover{box-shadow:0 10px 30px rgba(27,39,51,.12);transform:translateY(-3px);border-color:var(--blue)}
- .card .ic{width:46px;height:46px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--light)}
- .card h2{font-size:17px;margin:2px 0 0}.card p{font-size:12.5px;color:var(--gray);line-height:1.55;flex:1}
- .card .go{color:var(--blue);font-weight:800;font-size:12.5px;text-transform:uppercase;letter-spacing:.5px}
- .card .soon{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--orange);background:#fff3e6;border-radius:6px;padding:2px 7px;align-self:flex-start}
- .foot{margin-top:24px;font-size:12px;color:var(--gray)}
- /* staff sign-in gate */
- .gatewrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--ink)}
- .gatebox{background:#fff;border-radius:14px;padding:26px 24px;width:100%;max-width:400px;box-shadow:0 10px 40px rgba(0,0,0,.25)}
- .gatebox .bd{color:var(--orange);font-weight:800;font-size:12px;letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px}
- .gatebox h2{font-size:21px;margin:0 0 4px}
- .gatebox p{color:var(--gray);font-size:13px;margin:0 0 14px}
- .gatebox input{width:100%;padding:11px 12px;border:1px solid var(--silver);border-radius:9px;font-size:15px;margin:0 0 10px}
- .gatebox button{background:var(--blue);color:#fff;border:0;border-radius:9px;padding:11px 18px;font-weight:800;font-size:15px;cursor:pointer}
- .gatebox button:hover{background:var(--blue-dk)}
- .gatebox a{color:var(--ink);font-weight:600;font-size:13px;text-decoration:none;margin-left:8px}
- .gatebox a:hover{text-decoration:underline}
- .gatebox .er{color:#b42323;font-size:13px;margin-top:8px;min-height:16px}
-</style></head><body>
+  :root{
+    --navy:#10263f; --navy2:#2B4071; --navy3:#3B599A;
+    --orange:#F5821F; --orange-d:#d96f14; --gold:#fcb21e;
+    --blue:#1681c2; --green:#2d7d46; --hub4:#5b4b9a;
+    --paper:#eef1f4; --card:#ffffff; --ink:#1b2733; --gray:#6b7280; --line:#e2e6ea;
+    --shadow:0 10px 30px rgba(16,38,63,.08);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Barlow',system-ui,sans-serif;background:var(--paper);color:var(--ink);}
+  h1,h2,h3,.cond{font-family:'Barlow Condensed','Barlow',sans-serif;}
+  a{text-decoration:none;color:inherit;}
+
+  /* ---- header + hub nav ---- */
+  header{background:linear-gradient(120deg,var(--navy) 0%,var(--navy2) 100%);color:#fff;padding:20px 30px 0;}
+  .hwrap{max-width:1180px;margin:0 auto;}
+  .htop{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand .mark{width:42px;height:42px;border-radius:11px;background:var(--orange);display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed';font-weight:800;font-size:21px;color:#fff;box-shadow:0 6px 18px rgba(245,130,31,.4);}
+  .brand b{font-family:'Barlow Condensed';font-weight:800;font-size:22px;letter-spacing:.3px;display:block;line-height:1;}
+  .brand span{font-size:10.5px;text-transform:uppercase;letter-spacing:2px;color:#aebdd0;font-weight:600;}
+  .who{display:flex;align-items:center;gap:12px;color:#c4d1e0;font-size:13px;}
+  .who b{color:#fff;}
+  .who button{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:7px 13px;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;}
+  .who button:hover{background:rgba(255,255,255,.22);}
+  .hubnav{max-width:1180px;margin:16px auto 0;display:flex;gap:4px;flex-wrap:wrap;}
+  .hubnav a{color:#aebdd0;font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;padding:11px 14px;border-bottom:3px solid transparent;}
+  .hubnav a:hover{color:#fff;}
+  .hubnav a.on{color:#fff;border-color:var(--orange);}
+
+  .hero{background:linear-gradient(120deg,var(--navy) 0%,var(--navy2) 100%);color:#fff;padding:6px 30px 26px;}
+  .herowrap{max-width:1180px;margin:0 auto;}
+  .hero h1{margin:14px 0 6px;font-size:29px;font-weight:800;letter-spacing:.4px;}
+  .hero p{margin:0;color:#c4d1e0;font-size:14.5px;max-width:720px;line-height:1.5;}
+
+  /* ---- body ---- */
+  main{max-width:1180px;margin:0 auto;padding:24px 30px 60px;}
+  .callout{display:flex;align-items:center;gap:12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:14px 18px;margin:0 0 22px;color:#9a3412;}
+  .callout b{color:#7c2d12;}
+  .callout .cta{color:#c2410c;font-weight:800;white-space:nowrap;}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
+  @media(max-width:880px){.grid{grid-template-columns:1fr;}}
+  .hub{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;scroll-margin-top:150px;}
+  .hub .top{padding:18px 20px 14px;border-top:5px solid var(--accent);}
+  .hub .hd{display:flex;align-items:center;gap:12px;}
+  .hub .icon{width:44px;height:44px;border-radius:12px;background:color-mix(in srgb,var(--accent) 14%,#fff);display:flex;align-items:center;justify-content:center;font-size:22px;flex:0 0 auto;}
+  .hub h2{margin:0;font-size:22px;font-weight:800;color:var(--navy);letter-spacing:.3px;line-height:1.05;}
+  .hub .purpose{margin:3px 0 0;font-size:12.5px;color:var(--gray);line-height:1.4;}
+  .hub .tools{padding:6px 14px 16px;display:flex;flex-direction:column;gap:2px;}
+  .tool{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:11px;transition:background .12s,transform .12s;}
+  a.tool:hover{background:color-mix(in srgb,var(--accent) 8%,#fff);transform:translateX(2px);}
+  .tool .ti{width:34px;height:34px;border-radius:9px;background:color-mix(in srgb,var(--accent) 12%,#fff);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:16px;flex:0 0 auto;}
+  .tool .tb{flex:1;min-width:0;}
+  .tool .tn{font-weight:700;font-size:14px;color:var(--navy);line-height:1.15;}
+  .tool .td{font-size:11.5px;color:var(--gray);line-height:1.3;margin-top:1px;}
+  .tool .arw{color:var(--accent);font-weight:800;opacity:0;transition:opacity .12s;}
+  a.tool:hover .arw{opacity:1;}
+  .tag{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;padding:3px 7px;border-radius:6px;white-space:nowrap;}
+  .tag.live{background:#e7f6ec;color:#1f7a44;border:1px solid #bfe3ca;}
+  .tag.plan{background:#eef1f4;color:#8a94a1;border:1px solid #dde3e9;}
+  .tag.hub{background:#fdeee0;color:#b45309;border:1px solid #f6d5ad;}
+  .tool.planned{opacity:.72;}.tool.planned .tn{color:#5b6672;}
+  .note{margin:22px 0 0;padding:16px 20px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--orange);border-radius:12px;color:#374151;font-size:13px;line-height:1.6;}
+  .note b{color:var(--navy);}
+  .foot{margin-top:22px;color:#9aa4ae;font-size:12px;}
+
+  /* ---- sign-in gate ---- */
+  .gatewrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--navy);}
+  .gatebox{background:#fff;border-radius:16px;padding:28px 26px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.35);}
+  .gatebox .bd{color:var(--orange);font-weight:800;font-size:12px;letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px;}
+  .gatebox h2{font-size:22px;margin:0 0 4px;color:var(--navy);}
+  .gatebox p{color:var(--gray);font-size:13px;margin:0 0 16px;}
+  .gatebox input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;font-size:15px;margin:0 0 10px;font-family:inherit;}
+  .gatebox .row{display:flex;align-items:center;gap:10px;}
+  .gatebox button{background:var(--orange);color:#fff;border:0;border-radius:9px;padding:11px 20px;font-weight:800;font-size:15px;cursor:pointer;font-family:inherit;}
+  .gatebox button:hover{background:var(--orange-d);}
+  .gatebox a{color:var(--navy);font-weight:600;font-size:13px;}
+  .gatebox a:hover{text-decoration:underline;}
+  .gatebox .er{color:#b42323;font-size:13px;margin-top:8px;min-height:16px;}
+</style>
+</head>
+<body>
 
 <div id="gate"></div>
 
 <div id="app" style="display:none">
-<nav class="adminnav">
-  <div class="bd">HCPS <span>Admin</span></div>
-  <a href="/admin/" class="on">Home</a>
-  <a href="/admin/analytics.html">Analytics</a>
-  <a href="/admin/import-commissions.html">Import Commissions</a>
-  <a href="/admin/dealers.html">Dealer Manager</a>
-  <a href="/admin/map.html">Map &amp; Routes</a>
-  <a href="/admin/images.html">Images</a>
-  <a href="/admin/featured.html">Featured</a><a href="/admin/catalog.html">Catalog</a>
-  <a href="/admin/home-editor.html">Portal Home</a>
-  <a href="/admin/website.html">Website</a>
-  <span class="who"><span id="whoName"></span><button onclick="lock()">Lock</button></span>
-</nav>
-<div class="wrap">
-  <h1>Control Center</h1>
-  <p class="sub">One place to run the HCPS Partner Portal and the marketing website — analytics, dealer accounts, product images, the featured strip, and site content.</p>
-  <a href="/admin/dealers.html#logins" id="approvalCallout" style="display:flex;align-items:center;gap:12px;text-decoration:none;background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:14px 18px;margin-bottom:20px;color:#9a3412">
-    <span style="font-size:22px">✅</span>
-    <span><b style="color:#7c2d12">Approve dealer logins</b> — dealers who register on the ordering portal wait here until you approve them. <span id="pendCount" style="font-weight:800"></span><span style="color:#c2410c;font-weight:700"> Open Dealer Manager › Pending logins →</span></span>
-  </a>
-  <div class="grid">
-    <a class="card" href="/admin/analytics.html">
-      <div class="ic" style="background:#eaf0f8">📊</div>
-      <h2>Analytics</h2>
-      <p>Sales &amp; commission trends, by-rep performance, orders by month, reports-received tracker, and active-dealer counts per line.</p>
-      <div class="go">Open Analytics →</div>
+  <header>
+    <div class="hwrap htop">
+      <div class="brand"><div class="mark">H</div><div><b>HCPS Admin</b><span>Operating System</span></div></div>
+      <div class="who"><span id="whoName"></span><button onclick="lock()">Lock</button></div>
+    </div>
+    <nav class="hubnav">
+      <a href="#top" class="on">Dashboard</a>
+      <a href="#ordering">Online Ordering</a>
+      <a href="#website">Website</a>
+      <a href="#sales">Sales &amp; Marketing</a>
+      <a href="#analytics">Sales Data &amp; Analytics</a>
+    </nav>
+  </header>
+  <div class="hero"><div class="herowrap" id="top">
+    <h1>The control center for HomeCare Provider Services</h1>
+    <p>Manage your ordering platforms, website, sales &amp; marketing, and business analytics — organized around what you run, all from one place.</p>
+  </div></div>
+
+  <main>
+    <a class="callout" href="/admin/dealers.html#logins">
+      <span style="font-size:22px">✅</span>
+      <span><b>Approve dealer logins</b> — dealers who register on the ordering portal wait here until you approve them. <span id="pendCount" style="font-weight:800"></span></span>
+      <span class="cta" style="margin-left:auto">Pending logins →</span>
     </a>
-    <a class="card" href="/admin/dealers.html">
-      <div class="ic" style="background:#eef2f7">🧩</div>
-      <h2>Dealer Manager</h2>
-      <p>All dealer accounts with addresses &amp; emails, merge duplicates, review queue, import contacts, and approve portal logins.</p>
-      <div class="go">Open Dealer Manager →</div>
-    </a>
-    <a class="card" href="/admin/import-commissions.html">
-      <div class="ic" style="background:#eaf0f8">📥</div>
-      <h2>Import Commissions <span class="soon">new</span></h2>
-      <p>Upload each manufacturer's monthly report (Excel, CSV, or PDF). Map the columns once per manufacturer and it remembers — future months load in a click, matched to your dealers.</p>
-      <div class="go">Open Importer →</div>
-    </a>
-    <a class="card" href="/admin/map.html">
-      <div class="ic" style="background:#eef2f7">🗺️</div>
-      <h2>Territory Map &amp; Routes</h2>
-      <p>Every dealer pinned by territory, pin clustering, a fixer for un-mappable addresses, and route/trip planning for reps who travel.</p>
-      <div class="go">Open Map →</div>
-    </a>
-    <a class="card" href="/admin/images.html">
-      <div class="ic" style="background:#eef7f0">🖼️</div>
-      <h2>Image Manager <span class="soon">new</span></h2>
-      <p>See which products have photos, spot missing/broken images, and upload new product images that go live on the portal.</p>
-      <div class="go">Open Image Manager →</div>
-    </a>
-    <a class="card" href="/admin/featured.html">
-      <div class="ic" style="background:#fdf1e6">⭐</div>
-      <h2>Featured Products <span class="soon">new</span></h2>
-      <p>Curate the “Featured for you” strip on each dealer’s home — pick promo items per line or across the whole catalog.</p>
-      <div class="go">Open Featured →</div>
-    </a>
-    <a class="card" href="/admin/catalog.html">
-      <div class="ic" style="background:#eef7f0">🏷️</div>
-      <h2>Catalog <span class="soon">new</span></h2>
-      <p>Upload manufacturer logos, add custom products with images, and attach "More Information" brochures or links to any product. Publishes instantly — no redeploy.</p>
-      <div class="go">Open Catalog →</div>
-    </a>
-    <a class="card" href="/admin/home-editor.html">
-      <div class="ic" style="background:#fdf1e6">🏠</div>
-      <h2>Portal Home <span class="soon">new</span></h2>
-      <p>Add a hero banner and clickable promo tiles to the dealer ordering portal's home screen. Publishes instantly — no redeploy, no Netlify build credits.</p>
-      <div class="go">Open Portal Home →</div>
-    </a>
-    <a class="card" href="/admin/website.html">
-      <div class="ic" style="background:#eef2f7">🌐</div>
-      <h2>Website Editor <span class="soon">new</span></h2>
-      <p>Edit the marketing site content — manufacturers, documents, home page, pages, team, testimonials, and site settings. Publishes to the live site.</p>
-      <div class="go">Open Website Editor →</div>
-    </a>
-  </div>
-  <div class="foot">HomeCare Provider Services · Partner Portal admin. All tools share this nav — use <b>Home</b> to return here anytime. Signed in with your staff email &amp; password.</div>
-</div>
+
+    <div class="grid">
+
+      <!-- ORDERING -->
+      <section class="hub" id="ordering" style="--accent:var(--orange)">
+        <div class="top"><div class="hd"><div class="icon">🛒</div>
+          <div><h2>HCPS Online Ordering</h2><p class="purpose">Run the dealer ordering platform — products, pricing, content &amp; portal access.</p></div>
+        </div></div>
+        <div class="tools">
+          <a class="tool" href="/admin/catalog.html"><div class="ti">📦</div><div class="tb"><div class="tn">Product Catalog</div><div class="td">Products, SKUs, categories &amp; descriptions per line</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
+          <a class="tool" href="/admin/images.html"><div class="ti">🖼️</div><div class="tb"><div class="tn">Product Images</div><div class="td">Upload &amp; manage product photography</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
+          <a class="tool" href="/admin/featured.html"><div class="ti">⭐</div><div class="tb"><div class="tn">Featured Products</div><div class="td">Curate the promoted items dealers see first</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
+          <a class="tool" href="/admin/home-editor.html"><div class="ti">🏠</div><div class="tb"><div class="tn">Portal Home Content</div><div class="td">Hero banner, promos &amp; the "what's new" tiles</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
+          <a class="tool" href="/admin/dealers.html"><div class="ti">💲</div><div class="tb"><div class="tn">Contract Pricing</div><div class="td">Per-dealer negotiated pricing by product</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
+          <a class="tool" href="/admin/dealers.html#logins"><div class="ti">🔑</div><div class="tb"><div class="tn">Dealer Portal Accounts</div><div class="td">Registrations, approvals &amp; ordering access</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
+          <div class="tool planned"><div class="ti">🚚</div><div class="tb"><div class="tn">Manufacturer Lines &amp; Freight</div><div class="td">Line setup, freight rules &amp; territory eligibility</div></div><span class="tag plan">Planned</span></div>
+          <div class="tool planned"><div class="ti">🧾</div><div class="tb"><div class="tn">Order Review &amp; Fulfillment</div><div class="td">See, confirm &amp; track submitted dealer orders</div></div><span class="tag plan">Planned</span></div>
+        </div>
+      </section>
+
+      <!-- WEBSITE -->
+      <section class="hub" id="website" style="--accent:var(--blue)">
+        <div class="top"><div class="hd"><div class="icon">🌐</div>
+          <div><h2>HCPS Website</h2><p class="purpose">Manage the public homecareproviderservices.us site &amp; its content.</p></div>
+        </div></div>
+        <div class="tools">
+          <a class="tool" href="/admin/website.html"><div class="ti">📝</div><div class="tb"><div class="tn">Website Content</div><div class="td">Manufacturers, documents, pages, team &amp; settings</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
+          <div class="tool planned"><div class="ti">🏭</div><div class="tb"><div class="tn">Manufacturer Pages</div><div class="td">Partner logos, profiles &amp; catalog links</div></div><span class="tag plan">Planned</span></div>
+          <div class="tool planned"><div class="ti">📄</div><div class="tb"><div class="tn">Landing Pages</div><div class="td">Campaign &amp; program landing pages</div></div><span class="tag plan">Planned</span></div>
+          <div class="tool planned"><div class="ti">🎞️</div><div class="tb"><div class="tn">Site Images &amp; Media</div><div class="td">Hero images, banners &amp; downloadable assets</div></div><span class="tag plan">Planned</span></div>
+          <div class="tool planned"><div class="ti">🔗</div><div class="tb"><div class="tn">Links &amp; Navigation</div><div class="td">Menus, footer links &amp; redirects</div></div><span class="tag plan">Planned</span></div>
+        </div>
+      </section>
+
+      <!-- SALES & MARKETING -->
+      <section class="hub" id="sales" style="--accent:var(--green)">
+        <div class="top"><div class="hd"><div class="icon">🧭</div>
+          <div><h2>Sales &amp; Marketing</h2><p class="purpose">Territories, dealers, reps, CRM &amp; the programs that grow accounts.</p></div>
+        </div></div>
+        <div class="tools">
+          <a class="tool" href="/admin/map.html"><div class="ti">🗺️</div><div class="tb"><div class="tn">Territory Map &amp; Routing</div><div class="td">Dealer map, drive routes &amp; saved trips</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
+          <a class="tool" href="/admin/dealers.html"><div class="ti">🏢</div><div class="tb"><div class="tn">Dealer Records</div><div class="td">Master dealer database, locations &amp; hierarchy</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
+          <a class="tool" href="/admin/staff.html"><div class="ti">👥</div><div class="tb"><div class="tn">Sales Reps &amp; Staff</div><div class="td">Team accounts, roles &amp; territory ownership</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
+          <a class="tool" href="/admin/map.html"><div class="ti">📋</div><div class="tb"><div class="tn">Partnership Snapshots</div><div class="td">Printable dealer business-case handouts</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
+          <div class="tool planned"><div class="ti">🔗</div><div class="tb"><div class="tn">HubSpot CRM Sync</div><div class="td">Dealers &amp; contacts → HubSpot companies &amp; contacts</div></div><span class="tag hub">HubSpot</span></div>
+          <div class="tool planned"><div class="ti">✉️</div><div class="tb"><div class="tn">Email &amp; Marketing Automation</div><div class="td">HubSpot workflows, sequences &amp; nurture campaigns</div></div><span class="tag hub">HubSpot</span></div>
+          <div class="tool planned"><div class="ti">🌱</div><div class="tb"><div class="tn">Dealer Development</div><div class="td">Prospects, pipeline &amp; onboarding checklist</div></div><span class="tag plan">Planned</span></div>
+        </div>
+      </section>
+
+      <!-- SALES DATA & ANALYTICS -->
+      <section class="hub" id="analytics" style="--accent:var(--navy3)">
+        <div class="top"><div class="hd"><div class="icon">📊</div>
+          <div><h2>Sales Data &amp; Analytics</h2><p class="purpose">The single source of truth for sales, cadence, opportunities &amp; performance.</p></div>
+        </div></div>
+        <div class="tools">
+          <a class="tool" href="/admin/analytics.html"><div class="ti">📈</div><div class="tb"><div class="tn">Analytics Dashboard</div><div class="td">Dealer activity &amp; sales performance overview</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
+          <a class="tool" href="/admin/import-commissions.html"><div class="ti">📥</div><div class="tb"><div class="tn">Commission Report Import</div><div class="td">Load manufacturer reports &amp; reconcile sales</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
+          <div class="tool planned"><div class="ti">🏭</div><div class="tb"><div class="tn">Manufacturer Sales Performance</div><div class="td">Revenue by line, location &amp; period</div></div><span class="tag plan">Planned</span></div>
+          <div class="tool planned"><div class="ti">🔁</div><div class="tb"><div class="tn">Dealer Activity &amp; Cadence</div><div class="td">Who's buying, who's lapsing, who's due</div></div><span class="tag plan">Planned</span></div>
+          <div class="tool planned"><div class="ti">💡</div><div class="tb"><div class="tn">Opportunities &amp; Account Trends</div><div class="td">Growth openings &amp; at-risk accounts</div></div><span class="tag plan">Planned</span></div>
+          <div class="tool planned"><div class="ti">📤</div><div class="tb"><div class="tn">Reports &amp; Exports</div><div class="td">Scheduled reports &amp; data exports</div></div><span class="tag plan">Planned</span></div>
+        </div>
+      </section>
+
+    </div>
+
+    <div class="note">
+      <b>How this is organized.</b> Every tool now lives inside the business function it serves, so you navigate by what you're doing. Your <b>Dealer Records</b> are the shared spine — the same database powers Contract Pricing &amp; Portal Accounts (Ordering), Dealer Records (Sales &amp; Marketing), and activity metrics (Analytics). Tiles marked <span class="tag hub">HubSpot</span> are the CRM &amp; email-automation integrations we'll wire next, syncing from Dealer Records so the platform stays the source of truth and HubSpot drives outreach. <span class="tag plan">Planned</span> tiles are mapped into the architecture and built in turn.
+    </div>
+    <div class="foot">HomeCare Provider Services · Admin Operating System · signed in with your staff email &amp; password.</div>
+  </main>
 </div>
 
 <script>
@@ -122,13 +196,15 @@ const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
 let TOKEN=sessionStorage.getItem(TKEY)||null, ME=null;
 try{ ME=JSON.parse(sessionStorage.getItem(PKEY)||"null"); }catch(e){ ME=null; }
 const $=s=>document.querySelector(s);
-const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 function showApp(){
   $("#gate").style.display="none";
   $("#app").style.display="block";
-  const wn=$("#whoName"); if(wn) wn.textContent=(ME&&ME.name)?ME.name+(ME.role?" · "+ME.role:""):"";
+  const wn=$("#whoName"); if(wn) wn.innerHTML=(ME&&ME.name)?("Hi, <b>"+esc(ME.name)+"</b>"+(ME.role?" · "+esc(ME.role):"")):"";
+  loadPending();
+  wireNav();
 }
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function gate(msg){
   $("#app").style.display="none";
   const g=$("#gate"); g.style.display="block";
@@ -138,7 +214,7 @@ function gate(msg){
     <p>Sign in with your work email and password.</p>
     <input id="lemail" type="email" placeholder="Email" autocomplete="username">
     <input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()">
-    <div><button onclick="submitTok()">Sign in</button><a href="reset.html">Forgot password?</a></div>
+    <div class="row"><button onclick="submitTok()">Sign in</button><a href="reset.html">Forgot password?</a></div>
     <div class="er" id="lerr">${msg||""}</div>
   </div></div>`;
   setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);
@@ -157,6 +233,26 @@ async function submitTok(){
 }
 function lock(){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); TOKEN=null; ME=null; location.reload(); }
 
+// live count of dealers waiting for approval
+async function loadPending(){
+  try{
+    const r=await fetch("/.netlify/functions/dealers-api",{headers:{authorization:"Bearer "+TOKEN}});
+    if(!r.ok) return; const j=await r.json();
+    const n=(j.logins||[]).filter(l=>l.status==="pending").length;
+    const el=$("#pendCount"); if(el) el.textContent = n? `${n} waiting.` : "None waiting right now.";
+  }catch(e){}
+}
+// smooth-scroll hub nav + active highlight
+function wireNav(){
+  const links=[...document.querySelectorAll(".hubnav a")];
+  links.forEach(a=>a.addEventListener("click",e=>{
+    const id=a.getAttribute("href"); if(id&&id.startsWith("#")){ e.preventDefault();
+      const t=document.querySelector(id==="#top"?"#top":id); if(t) t.scrollIntoView({behavior:"smooth",block:"start"});
+      links.forEach(x=>x.classList.remove("on")); a.classList.add("on"); }
+  }));
+}
+
 if(TOKEN) showApp(); else gate();
 </script>
-</body></html>
+</body>
+</html>
