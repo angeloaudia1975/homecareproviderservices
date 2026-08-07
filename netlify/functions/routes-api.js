@@ -138,12 +138,16 @@ exports.handler = async (event)=>{
       const ids=[...new Set((Array.isArray(b.dealer_ids)?b.dealer_ids:[]).filter(Boolean))];
       if(!ids.length) return json(200,{ok:true,cases:{}});
       const idIn=`in.(${ids.join(",")})`;
-      const [dealers,sales,contacts,mfrs] = await Promise.all([
-        sbGet(`dealers?id=${idIn}&select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id,golden_status,ovation_access`).catch(()=>[]),
+      const [dealers,sales,contacts,mfrs,dm] = await Promise.all([
+        sbGet(`dealers?id=${idIn}&select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id,golden_status,ovation_access,golden_url`).catch(()=>[]),
         sbGet(`monthly_sales?dealer_id=${idIn}&select=dealer_id,manufacturer,period,amount,qty`).catch(()=>[]),
         sbGet(`dealer_contacts?dealer_id=${idIn}&select=dealer_id,name,email,phone,cell,title,role`).catch(()=>[]),
         sbGet("manufacturers?select=slug,name").catch(()=>[]),
+        sbGet(`dealer_manufacturers?dealer_id=${idIn}&select=dealer_id,manufacturer,account_ref,active`).catch(()=>[]),
       ]);
+      // manufacturer accounts on file per dealer (the lines they carry + account numbers)
+      const acctByDealer={};
+      for(const x of (dm||[])){ if(x.active===false) continue; (acctByDealer[x.dealer_id]||(acctByDealer[x.dealer_id]=[])).push({manufacturer:x.manufacturer,account_ref:x.account_ref||""}); }
       // parents (for a branch's governing state/name)
       const parentIds=[...new Set(dealers.map(d=>d.parent_id).filter(Boolean))];
       let parents=[]; if(parentIds.length){ parents=await sbGet(`dealers?id=in.(${parentIds.join(",")})&select=id,business_name,state`).catch(()=>[]); }
@@ -171,10 +175,12 @@ exports.handler = async (event)=>{
         const s=byDealer[d.id]||{lines:{},total:0,buys:new Set()};
         const opps=eligible.filter(x=>!s.buys.has(x)).map(x=>({slug:x,name:nameOf(x)}));
         const lines=Object.entries(s.lines).map(([slug,v])=>({slug,name:v.name,amount:Math.round(v.amount*100)/100,orders:v.orders,last:v.last})).sort((a,b)=>b.amount-a.amount);
+        const accounts=(acctByDealer[d.id]||[]).map(a=>({slug:a.manufacturer,name:nameOf(a.manufacturer),account:a.account_ref})).sort((a,b)=>a.name.localeCompare(b.name));
+        const carried=[...new Set(accounts.map(a=>a.slug))].map(sl=>({slug:sl,name:nameOf(sl)}));
         cases[d.id]={
           name:d.business_name||"", account:d.hcps_account||"", contact_name:d.contact_name||"", email:d.email||"", phone:d.phone||"",
           address:d.address||"", city:d.city||"", state:d.state||"", zip:d.zip||"",
-          total:Math.round((s.total||0)*100)/100, lines, opps,
+          total:Math.round((s.total||0)*100)/100, lines, opps, accounts, carried,
           golden:d.golden_status||"None", ovation:!!d.ovation_access,
           contacts:(contactsByDealer[d.id]||[]).map(c=>({name:c.name||"",email:c.email||"",phone:c.phone||"",cell:c.cell||"",title:c.title||"",role:c.role||""})),
         };

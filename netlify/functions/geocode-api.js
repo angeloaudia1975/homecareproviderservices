@@ -145,7 +145,7 @@ exports.handler = async (event)=>{
         if(!c){ unmapped.push({dealer_id:a.dealer_id||"",name:d.business_name||"(unknown)",status:d.status||"",
           address:a.address||"",city:a.city||"",state:a.state||"",zip:a.zip||""}); continue; }
         points.push({lat:c.lat,lng:c.lng,approx:!!c.approx,name:d.business_name||"(unknown)",status:d.status||"",
-          email:d.email||"",city:a.city||"",state:a.state||"",label:a.label||"",dealer_id:a.dealer_id||""});
+          email:d.email||"",address:a.address||"",city:a.city||"",state:a.state||"",zip:a.zip||"",label:a.label||"",dealer_id:a.dealer_id||""});
       }
       // Classify each pin: prospect (no sales), customer (buys all eligible lines), or
       // opportunity (buys something but has eligible lines it isn't buying yet).
