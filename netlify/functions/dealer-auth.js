@@ -96,7 +96,7 @@ exports.handler = async (event)=>{
       // approved -> return dealer profile + entitled lines for gating + cart prefill
       let dealer=null, lines=[], access=null;
       if(du.dealer_id){
-        const d=await sb("GET",`dealers?id=eq.${du.dealer_id}&select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id,golden_status,ovation_access`);
+        const d=await sb("GET",`dealers?id=eq.${du.dealer_id}&select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id,golden_status,ovation_access,golden_url`);
         dealer=d&&d[0]?{id:d[0].id,name:d[0].business_name,hcps_account:d[0].hcps_account||"",contact_name:d[0].contact_name||"",
           email:d[0].email||du.email,phone:d[0].phone||"",address:d[0].address||"",city:d[0].city||"",state:d[0].state||"",zip:d[0].zip||""}:null;
         const dm=await sb("GET",`dealer_manufacturers?dealer_id=eq.${du.dealer_id}&active=eq.true&select=manufacturer,account_ref`);
@@ -112,6 +112,7 @@ exports.handler = async (event)=>{
             {state:gov.state||self.state, business_name:gov.business_name||self.business_name, lat,
              golden_status:self.golden_status||"None", ovation_access:!!self.ovation_access},
             (dm||[]).map(x=>x.manufacturer));
+          if(access) access.golden_url = self.golden_url || "";   // this dealer's specific Golden portal path
         }catch(e){}
         // attach stored shipping / billing addresses (if any) so the "My account" editor can prefill
         if(dealer){
