@@ -94,7 +94,7 @@ exports.handler = async (event)=>{
       if(!du) return json(200,{ok:true,status:"none",email:u.email});
       if(du.status!=="approved") return json(200,{ok:true,status:du.status,email:du.email});
       // approved -> return dealer profile + entitled lines for gating + cart prefill
-      let dealer=null, lines=[], access=null;
+      let dealer=null, lines=[], access=null, prices={};
       if(du.dealer_id){
         const d=await sb("GET",`dealers?id=eq.${du.dealer_id}&select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id,golden_status,ovation_access,golden_url`);
         dealer=d&&d[0]?{id:d[0].id,name:d[0].business_name,hcps_account:d[0].hcps_account||"",contact_name:d[0].contact_name||"",
@@ -114,6 +114,16 @@ exports.handler = async (event)=>{
             (dm||[]).map(x=>x.manufacturer));
           if(access) access.golden_url = self.golden_url || "";   // this dealer's specific Golden portal path
         }catch(e){}
+        // Per-product contract prices (company-level): the governing/master account's prices
+        // apply to all its branches; a branch's own rows override. Keyed "slug::code" for the
+        // portal's unitPrice(). Read with service_role (table has no public RLS policy).
+        try{
+          const rec=d&&d[0]; const ids=[du.dealer_id]; if(rec&&rec.parent_id) ids.push(rec.parent_id);
+          const pr=await sb("GET",`dealer_contract_prices?dealer_id=in.(${ids.join(",")})&active=eq.true&select=dealer_id,manufacturer,code,price`).catch(()=>[]);
+          // apply the master's rows first, then the dealer's own so branch overrides win
+          (pr||[]).sort((a,b)=>(a.dealer_id===du.dealer_id?1:0)-(b.dealer_id===du.dealer_id?1:0));
+          for(const r of (pr||[])){ if(r.manufacturer&&r.code&&r.price!=null) prices[`${r.manufacturer}::${r.code}`]=Number(r.price); }
+        }catch(e){}
         // attach stored shipping / billing addresses (if any) so the "My account" editor can prefill
         if(dealer){
           try{
@@ -131,7 +141,7 @@ exports.handler = async (event)=>{
       // saved cart (persists across logout/login until ordered or cleared)
       let cart=null;
       try{ const cr=await sb("GET",`dealer_carts?uid=eq.${uid}&select=cart`); if(cr&&cr[0]&&cr[0].cart&&Array.isArray(cr[0].cart.items)&&cr[0].cart.items.length) cart=cr[0].cart; }catch(e){}
-      return json(200,{ok:true,status:"approved",email:du.email,dealer,lines,access,cart});
+      return json(200,{ok:true,status:"approved",email:du.email,dealer,lines,access,cart,prices});
     }
 
     // ---- persistent cart ----

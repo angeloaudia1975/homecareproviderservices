@@ -75,7 +75,7 @@ async function ownsDealer(me, dealer_id){
   return String((dir&&dir[0]&&dir[0].rep_name)||"").trim().toLowerCase()===String(me.rep_name).trim().toLowerCase();
 }
 // Structural / cross-book / login / approval tools are President-only.
-const PRESIDENT_ONLY=new Set(["merge","split","import_contacts","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep"]);
+const PRESIDENT_ONLY=new Set(["merge","split","import_contacts","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep","list_contract_prices","set_contract_price","clear_contract_price"]);
 
 async function buildState(){
   const [dealers,aliases,dm,mfrs,dir,reps,nomerge,logins] = await Promise.all([
@@ -262,6 +262,29 @@ exports.handler = async (event)=>{
       if(act==="rep"){
         if(!b.dealer_name) return json(400,{error:"dealer_name required"});
         await sbSend("POST","dealer_directory",{dealer_name:b.dealer_name,rep_name:(b.rep_name||"").trim()||null,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
+        return json(200,{ok:true});
+      }
+      // ---- Per-product contract pricing (dealer_contract_prices) ----
+      if(act==="list_contract_prices"){
+        if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+        const rows=await sbGet(`dealer_contract_prices?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,code,name,price,note,active&order=manufacturer,code`).catch(()=>[]);
+        return json(200,{ok:true,prices:rows||[]});
+      }
+      if(act==="set_contract_price"){
+        if(!b.dealer_id||!b.manufacturer||!b.code) return json(400,{error:"dealer_id, manufacturer, code required"});
+        const price=Number(b.price);
+        if(!isFinite(price)||price<0) return json(400,{error:"valid price required"});
+        const row={dealer_id:b.dealer_id,manufacturer:String(b.manufacturer),code:String(b.code),
+          name:(b.name!=null&&String(b.name).trim())?String(b.name).trim().slice(0,200):null,
+          price:Math.round(price*100)/100,
+          note:(b.note!=null&&String(b.note).trim())?String(b.note).trim().slice(0,200):null,
+          active:true,updated_at:new Date().toISOString()};
+        await sbSend("POST","dealer_contract_prices?on_conflict=dealer_id,manufacturer,code",row,{Prefer:"resolution=merge-duplicates,return=minimal"});
+        return json(200,{ok:true});
+      }
+      if(act==="clear_contract_price"){
+        if(!b.dealer_id||!b.manufacturer||!b.code) return json(400,{error:"dealer_id, manufacturer, code required"});
+        await sbSend("DELETE",`dealer_contract_prices?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&manufacturer=eq.${encodeURIComponent(b.manufacturer)}&code=eq.${encodeURIComponent(b.code)}`,null,{Prefer:"return=minimal"});
         return json(200,{ok:true});
       }
       if(act==="nomerge"){

@@ -397,7 +397,81 @@ function renderDetail(){
            </div></div>`).join("")
          :`<div class="dim" style="margin-top:6px">No portal login is linked to this dealer yet. When someone registers on the ordering portal and you approve &amp; link them here, their sign-in email will appear in this spot.</div>`}
      </div>
+   </div>
+   <div class="card" style="margin-top:14px">
+     <h2>Contract pricing <span class="hint" style="text-transform:none">— set this dealer's negotiated per-product prices; they override list pricing in the portal for this dealer only. Prices set on a headquarters apply to its branches too.</span></h2>
+     ${(d.access&&d.access.length)
+        ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0 4px">
+             <label class="hint" style="text-transform:none">Line</label>
+             <select id="cpline" onchange="cpLoadLine('${d.id}')">
+               <option value="">Choose a manufacturer line…</option>
+               ${cpLineOptions(d)}
+             </select>
+             <input id="cpfilter" placeholder="Filter by code or name…" oninput="cpRender()" style="flex:1;min-width:180px">
+             <span id="cpst" class="st"></span>
+           </div>
+           <div id="cptable"><div class="hint" style="margin-top:8px">Pick a line to load its products and set contract prices.</div></div>`
+        : `<div class="dim" style="margin-top:6px">Grant this dealer at least one manufacturer line (in “Ordering access” above) before setting contract prices.</div>`}
    </div>`;
+}
+// ---- Contract pricing panel ----
+let CP={dealerId:null,slug:"",products:[],over:{}};
+function mfrNameBySlug(slug){ const m=(DATA.manufacturers||[]).find(x=>x.slug===slug); return m?m.name:slug; }
+function cpLineOptions(d){ return (d.access||[]).map(s=>`<option value="${esc(s)}">${esc(mfrNameBySlug(s))}</option>`).join(""); }
+function cpCssId(code){ return String(code).replace(/[^a-zA-Z0-9_-]/g,"_"); }
+async function cpLoadLine(dealerId){
+  const slug=(($("#cpline")||{}).value||""); const st=$("#cpst");
+  CP={dealerId,slug,products:[],over:{}};
+  const host=$("#cptable");
+  if(!slug){ if(host)host.innerHTML=`<div class="hint" style="margin-top:8px">Pick a line to load its products.</div>`; return; }
+  if(st){st.textContent="Loading…";st.className="st";}
+  try{
+    const h={}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+    const cr=await fetch("/.netlify/functions/catalog-api?manufacturer="+encodeURIComponent(slug),{headers:h});
+    if(cr.status===401){ lock(); return; }
+    const cj=await cr.json().catch(()=>({}));
+    const prods=[...(cj.products||[]),...((cj.custom||[]).map(c=>({code:c.code,name:c.name,base_price:c.base_price})))].filter(p=>p&&p.code);
+    const pj=await post({action:"list_contract_prices",dealer_id:dealerId});
+    const over={}; (pj.prices||[]).filter(r=>r.manufacturer===slug).forEach(r=>over[r.code]=Number(r.price));
+    CP.products=prods; CP.over=over;
+    if(st){st.textContent="";st.className="st";}
+    cpRender();
+  }catch(e){ if(st){st.textContent="Couldn't load — "+(e.message||e);st.className="st warn";} }
+}
+function cpRender(){
+  const host=$("#cptable"); if(!host)return;
+  const f=(($("#cpfilter")||{}).value||"").trim().toLowerCase();
+  let list=CP.products;
+  if(f) list=list.filter(p=>String(p.code).toLowerCase().includes(f)||String(p.name||"").toLowerCase().includes(f));
+  const nOver=Object.keys(CP.over).length;
+  if(!CP.products.length){ host.innerHTML=`<div class="hint" style="margin-top:8px">No catalog products found for this line.</div>`; return; }
+  if(!list.length){ host.innerHTML=`<div class="hint" style="margin:8px 0 4px">${nOver} contract price${nOver===1?"":"s"} set on this line.</div><div class="hint">No products match that filter.</div>`; return; }
+  const rows=list.map(p=>{
+    const listTxt=(p.base_price!=null&&isFinite(Number(p.base_price)))?money(Number(p.base_price)):"—";
+    const has=CP.over[p.code]!=null; const val=has?CP.over[p.code]:"";
+    const cid=cpCssId(p.code);
+    return `<tr${has?' style="background:#eefaf0"':''}>
+      <td class="lbl">${esc(p.name||p.code)}<div class="hint">${esc(p.code)}</div></td>
+      <td class="hint" style="white-space:nowrap">List ${listTxt}</td>
+      <td style="white-space:nowrap"><span class="hint">$</span> <input id="cp_${cid}" type="number" min="0" step="0.01" value="${val}" placeholder="—" style="width:90px" onkeydown="if(event.key==='Enter')cpSave('${jesc(p.code)}')"></td>
+      <td style="white-space:nowrap"><button class="go sm" onclick="cpSave('${jesc(p.code)}')">Save</button>${has?` <button class="go sm" onclick="cpClear('${jesc(p.code)}')">Clear</button>`:""} <span id="cpst_${cid}" class="st"></span></td>
+    </tr>`;
+  }).join("");
+  host.innerHTML=`<div class="hint" style="margin:8px 0 4px">${nOver} contract price${nOver===1?"":"s"} set on this line for this dealer. Blank = they pay list/tier price.</div>
+    <table><thead><tr><th>Product</th><th>List</th><th>Contract $</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+async function cpSave(code){
+  const inp=document.getElementById("cp_"+cpCssId(code)); if(!inp)return;
+  const raw=(inp.value||"").trim(); const st=$("#cpst_"+cpCssId(code));
+  if(raw===""){ if(st){st.textContent="Enter a price or Clear";st.className="st warn";} return; }
+  const price=Number(raw); if(!isFinite(price)||price<0){ if(st){st.textContent="Bad price";st.className="st warn";} return; }
+  const prod=CP.products.find(p=>String(p.code)===String(code));
+  await post({action:"set_contract_price",dealer_id:CP.dealerId,manufacturer:CP.slug,code,name:prod?prod.name:"",price});
+  CP.over[code]=Math.round(price*100)/100; cpRender();
+}
+async function cpClear(code){
+  await post({action:"clear_contract_price",dealer_id:CP.dealerId,manufacturer:CP.slug,code});
+  delete CP.over[code]; cpRender();
 }
 async function setLoginEmail(uid){
   const inp=document.getElementById("le_"+uid); if(!inp)return;
