@@ -353,7 +353,6 @@ function renderDetail(){
    <div class="grid2">
      <div class="card"><h2>Account details</h2>
        ${fld("business_name","Dealer name",d.name)}
-       ${fld("hcps_account","HCPS account #",d.hcps_account,"HCPS-…")}
        ${fld("contact_name","Contact name",d.contact_name)}
        ${fld("email","Email",d.email,"name@dealer.com")}
        ${fld("phone","Phone",d.phone)}
@@ -527,7 +526,7 @@ async function deleteLogin(uid,email){
 }
 async function saveDetail(id,origName){
   const g=k=>($("#f_"+k)?.value||"").trim();
-  const fields={action:"edit",dealer_id:id,business_name:g("business_name"),hcps_account:g("hcps_account"),contact_name:g("contact_name"),email:g("email"),phone:g("phone"),address:g("address"),city:g("city"),state:g("state"),zip:g("zip")};
+  const fields={action:"edit",dealer_id:id,business_name:g("business_name"),contact_name:g("contact_name"),email:g("email"),phone:g("phone"),address:g("address"),city:g("city"),state:g("state"),zip:g("zip")};
   await post(fields,"Saving…","#stD");
   const rep=g("rep"); await post({action:"rep",dealer_name:g("business_name")||origName,rep_name:rep},null,"#stD");
   $("#stD").textContent="Saved ✓";$("#stD").className="st ok";

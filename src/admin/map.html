@@ -103,11 +103,11 @@
   <select id="fState" onchange="draw()"><option value="">All states</option></select>
   <select id="fStatus" onchange="draw()">
     <option value="">All accounts</option>
-    <option value="customer">Customers</option>
-    <option value="opportunity">Opportunities</option>
+    <option value="active">Active customers</option>
+    <option value="lapsed">Lapsed (3 mo+)</option>
     <option value="prospect">Prospects</option>
   </select>
-  <span class="legend"><span><i style="background:#1f9d55"></i>Customer</span><span><i style="background:#2f73b8"></i>Opportunity</span><span><i style="background:#F5821F"></i>Prospect</span></span>
+  <span class="legend"><span><i style="background:#1f9d55"></i>Active</span><span><i style="background:#E8971E"></i>Lapsed 3mo+</span><span><i style="background:#2f73b8"></i>Prospect</span></span>
   <label style="font-size:12px;display:inline-flex;align-items:center;gap:4px;color:#5b6672"><input type="checkbox" id="fDue" onchange="draw()"> Due for visit (90d+)</label>
   <span class="sp"></span>
   <span class="count" id="count"></span>
@@ -184,7 +184,7 @@ async function loadSettings(){
 function toggleScore(){ const p=$("#scorePanel"); if(!p.hidden){p.hidden=true;return;} p.hidden=false; p.innerHTML=scorecardHtml(); }
 function scorecardHtml(){
   const P=POINTS||[];
-  const cust=P.filter(p=>p.klass==="customer").length, opp=P.filter(p=>p.klass==="opportunity").length, pros=P.filter(p=>p.klass==="prospect").length;
+  const cust=P.filter(p=>p.klass==="active").length, opp=P.filter(p=>p.klass==="lapsed").length, pros=P.filter(p=>p.klass==="prospect").length;
   const sales=P.reduce((a,p)=>a+(Number(p.sales)||0),0);
   const oppLines=P.reduce((a,p)=>a+(Number(p.opps_count)||0),0);
   const dueN=P.filter(isDue).length, neverN=P.filter(p=>!p.last_visit).length;
@@ -195,8 +195,8 @@ function scorecardHtml(){
   return `<div class="uhead"><b>Territory scorecard</b><button class="rx" onclick="toggleScore()">Close</button></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0">
       ${box("Accounts",P.length)}${box("Territory sales",fmtUsd(sales),"#1f9d55")}
-      ${box("Customers",cust,"#1f9d55")}${box("Opportunities",opp,"#2f73b8")}
-      ${box("Prospects",pros,"#F5821F")}${box("Open opp. lines",oppLines,"#2f73b8")}
+      ${box("Active customers",cust,"#1f9d55")}${box("Lapsed 3mo+",opp,"#E8971E")}
+      ${box("Prospects",pros,"#2f73b8")}${box("Open opp. lines",oppLines,"#2f73b8")}
       ${box("Due for visit",dueN,"#b26b00")}${box("Never visited",neverN,"#b26b00")}
     </div>
     <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#5b6672;margin:6px 0 4px">Most common un-pitched lines</div>
@@ -293,8 +293,8 @@ function lock(){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY
 
 // Pin classes: customer (buys everything it's eligible for), opportunity (buys some,
 // room to grow), prospect (no sales yet). Computed by geocode-api from sales + rules.
-const KLASS={customer:"#1f9d55",opportunity:"#2f73b8",prospect:"#F5821F"};
-const KLABEL={customer:"Customer",opportunity:"Opportunity",prospect:"Prospect"};
+const KLASS={active:"#1f9d55",lapsed:"#E8971E",prospect:"#2f73b8"};
+const KLABEL={active:"Active · ordered ≤3 mo",lapsed:"Lapsed · 3 mo+ — reach out",prospect:"Prospect"};
 const colorOf=p=>KLASS[(p&&p.klass)||""]||"#3B599A";
 function icon(color,inroute,approx){ return L.divIcon({className:"pin"+(inroute?" inroute":"")+(approx?" approx":""),html:`<span style="background:${color}"></span>`,iconSize:[16,16],iconAnchor:[8,8]}); }
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -328,8 +328,9 @@ function draw(){
     const m=L.marker([p.lat,p.lng],{icon:icon(colorOf(p),inRoute(p),p.approx)});
     const c=colorOf(p);
     const kl=KLABEL[p.klass||""]||"";
-    const oppRow=(p.klass==="opportunity"&&p.opps&&p.opps.length)?`<div class="row" style="color:#2f73b8;font-size:11px">${p.opps.length} opportunity line${p.opps.length===1?"":"s"} not yet ordered</div>`:"";
-    m.bindPopup(`<div class="pop"><b>${esc(p.name)}</b>${kl?`<span class="st" style="background:${c}22;color:${c}">${esc(kl)}</span>`:""}${oppRow}
+    const lastOrderRow=p.last_order?`<div class="row" style="font-size:11px;color:#5b6672">Last order: ${esc(String(p.last_order).slice(0,7))}</div>`:(p.klass==="prospect"?"":`<div class="row" style="font-size:11px;color:#b26b00">No orders on file</div>`);
+    const oppRow=(p.opps&&p.opps.length)?`<div class="row" style="color:#2f73b8;font-size:11px">${p.opps.length} line${p.opps.length===1?"":"s"} available to grow</div>`:"";
+    m.bindPopup(`<div class="pop"><b>${esc(p.name)}</b>${kl?`<span class="st" style="background:${c}22;color:${c}">${esc(kl)}</span>`:""}${lastOrderRow}${oppRow}
       ${p.label?`<div class="row">${esc(p.label)}</div>`:""}
       <div class="row">${esc([p.city,p.state].filter(Boolean).join(", "))}</div>
       ${p.approx?`<div class="row" style="color:#b26b00;font-size:11px">≈ approximate location (address couldn't be matched exactly — town/ZIP level)</div>`:""}
@@ -676,7 +677,7 @@ function handoutHtml(c){
     .foot{margin-top:20px;border-top:1px solid #eef1f4;padding-top:12px;color:#5b6672;font-size:13px}.dim{color:#9aa4ae}
     @media print{.hero{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
     </style></head><body>
-    <div class="hero"><div class="b">HomeCare Provider Services</div><h1>Your Partnership Snapshot</h1><p>${esc(c.name||"")}${c.city?" · "+esc([c.city,c.state].filter(Boolean).join(", ")):""}</p></div>
+    <div class="hero"><div class="b">HomeCare Provider Services</div><h1>Your Partnership Snapshot</h1><p>${esc(c.name||"")}${c.city?" · "+esc([c.city,c.state].filter(Boolean).join(", ")):""}</p>${(c.accounts&&c.accounts.length)?`<p style="margin-top:6px;color:#eaf0f8;font-size:12px">Your accounts: ${c.accounts.map(a=>esc(a.name)+(a.account?` #${esc(a.account)}`:"")).join("&nbsp;·&nbsp;")}</p>`:""}</div>
     <div class="wrap">
       <h2>Your business with HCPS</h2>${stats}${retail?`<p class="note">Retail value = MSRP of the products you've purchased through us — your selling-revenue potential.</p>`:""}
       ${recentHtml}

@@ -186,9 +186,11 @@ exports.handler = async (event)=>{
       await Promise.all([...buySlugs].map(async slug=>{
         try{ const cat=await fetchJson(`${ORDERING_BASE}/data/${slug}.json`); (cat||[]).forEach(p=>{ if(p&&p.code){ const ms=Number(p.msrp)||0; if(ms>0) msrpByCode[String(p.code).toUpperCase()]=ms; } }); }catch(e){}
       }));
-      // manufacturer logos (for the visual dealer handout)
+      // manufacturer logos (for the visual dealer handout). Primary source is the logo you
+      // upload in the Catalog tool (manufacturer_meta.logo_url); fall back to any static path.
       let logoBySlug={};
-      try{ const mm=await fetchJson(`${ORDERING_BASE}/data/manufacturers.json`); (mm||[]).forEach(m=>{ if(m&&m.slug&&m.logo) logoBySlug[m.slug]=String(m.logo).startsWith("http")?m.logo:(ORDERING_BASE+m.logo); }); }catch(e){}
+      try{ const meta=await sbGet("manufacturer_meta?select=slug,logo_url"); (meta||[]).forEach(m=>{ if(m&&m.slug&&m.logo_url) logoBySlug[m.slug]=String(m.logo_url); }); }catch(e){}
+      try{ const mm=await fetchJson(`${ORDERING_BASE}/data/manufacturers.json`); (mm||[]).forEach(m=>{ if(m&&m.slug&&m.logo&&!logoBySlug[m.slug]){ const p=String(m.logo); logoBySlug[m.slug]=p.startsWith("http")?p:(ORDERING_BASE+p); } }); }catch(e){}
       const cases={};
       for(const d of dealers){
         const gov = d.parent_id&&parById[d.parent_id] ? parById[d.parent_id] : d;

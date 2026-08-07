@@ -149,11 +149,18 @@ exports.handler = async (event)=>{
       }
       // Classify each pin: prospect (no sales), customer (buys all eligible lines), or
       // opportunity (buys something but has eligible lines it isn't buying yet).
-      const buysByDealer=new Map(); const salesTot=new Map();
-      try{ const sales=await sbGetAll("monthly_sales?select=dealer_id,manufacturer,amount","id");
+      const buysByDealer=new Map(); const salesTot=new Map(); const lastOrder=new Map(); let maxPeriod="";
+      try{ const sales=await sbGetAll("monthly_sales?select=dealer_id,manufacturer,amount,period","id");
         for(const r of (sales||[])){ if(!r.dealer_id) continue;
           if(r.manufacturer){ const set=buysByDealer.get(r.dealer_id)||buysByDealer.set(r.dealer_id,new Set()).get(r.dealer_id); set.add(normBuy(r.manufacturer)); }
-          salesTot.set(r.dealer_id,(salesTot.get(r.dealer_id)||0)+(Number(r.amount)||0)); } }catch(e){}
+          salesTot.set(r.dealer_id,(salesTot.get(r.dealer_id)||0)+(Number(r.amount)||0));
+          const per=(r.period||"").slice(0,10); if(per){ if(per>(lastOrder.get(r.dealer_id)||"")) lastOrder.set(r.dealer_id,per); if(per>maxPeriod) maxPeriod=per; } } }catch(e){}
+      // which dealers have a real partner account number on file
+      const hasAccount=new Set();
+      try{ const dm=await sbGetAll("dealer_manufacturers?select=dealer_id,account_ref","dealer_id,manufacturer");
+        for(const x of (dm||[])){ if(x.account_ref&&String(x.account_ref).trim()) hasAccount.add(x.dealer_id); } }catch(e){}
+      // "active" = ordered within ~3 months of the most recent month in the data (robust to report lag)
+      let cutoff=""; if(maxPeriod){ const d=new Date(maxPeriod); d.setMonth(d.getMonth()-3); cutoff=d.toISOString().slice(0,10); }
       const lastVisit=new Map();
       try{ const vis=await sbGetAll("dealer_visits?select=dealer_id,visited_at","visited_at");
         for(const v of (vis||[])){ if(!v.dealer_id) continue; const cur=lastVisit.get(v.dealer_id); if(!cur||v.visited_at>cur) lastVisit.set(v.dealer_id,v.visited_at); } }catch(e){}
@@ -161,11 +168,18 @@ exports.handler = async (event)=>{
         const buys=buysByDealer.get(p.dealer_id)||new Set();
         p.sales=Math.round((salesTot.get(p.dealer_id)||0)*100)/100;
         p.last_visit=lastVisit.get(p.dealer_id)||null;
-        if(buys.size===0){ p.klass="prospect"; p.opps=[]; p.buys_count=0; p.opps_count=0; continue; }
+        p.last_order=lastOrder.get(p.dealer_id)||null;
+        // opportunities (eligible lines they're not buying) — kept for focus + filter
         let acc; try{ acc=computeAccess({state:p.state,business_name:p.name,ovation_access:false,lat:null},[]); }catch(e){ acc={your_accounts:[],available:[]}; }
         const eligible=new Set([...(acc.your_accounts||[]),...(acc.available||[])]);
         const opps=[...eligible].filter(s=>!buys.has(s));
-        p.klass=opps.length?"opportunity":"customer"; p.opps=opps; p.buys_count=buys.size; p.opps_count=opps.length;
+        p.opps=opps; p.opps_count=opps.length; p.buys_count=buys.size;
+        // account + cadence class: prospect (no account & no sales) / active (recent order) / lapsed
+        const isCustomer=hasAccount.has(p.dealer_id)||buys.size>0;
+        const lo=p.last_order||"";
+        if(!isCustomer) p.klass="prospect";
+        else if(cutoff && lo && lo>=cutoff) p.klass="active";
+        else p.klass="lapsed";
       }
       if(me.role!=="president"){
         const rn=String(me.rep_name||"").trim().toLowerCase();
