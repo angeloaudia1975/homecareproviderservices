@@ -653,8 +653,11 @@ function handoutHtml(c){
   const updates=(HANDOUT.updates||HANDOUT_UPDATES).map(u=>`<li>${esc(u)}</li>`).join("");
   const ordUrl=(HANDOUT.ordering_url||ORDERING_URL);
   const ytd=Number(c.ytd)||0, life=Number(c.total)||0, rec=Number(c.recent60)||0, retail=Number(c.retail_value)||0;
+  const coLife=Number(c.company_total)||0, coYtd=Number(c.company_ytd)||0;
   const stat=(l,v,col)=>`<div class="stat"><div class="sv"${col?` style="color:${col}"`:""}>${fmtUsd(v)}</div><div class="sl">${l}</div></div>`;
-  const stats=`<div class="stats">${stat("This year (YTD)",ytd,"#1f7a44")}${stat("Lifetime with HCPS",life)}${rec?stat("Last 60 days",rec,"#2f73b8"):""}${retail?stat("Retail value purchased",retail,"#F5821F"):""}</div>`;
+  const stats = c.multi_location
+    ? `<div class="stats">${stat("This location — YTD",ytd,"#1f7a44")}${stat("This location — lifetime",life)}${stat("Company-wide — YTD",coYtd,"#2f73b8")}${stat("Company-wide — lifetime",coLife,"#2f73b8")}${retail?stat("Retail value (this location)",retail,"#F5821F"):""}</div>`
+    : `<div class="stats">${stat("This year (YTD)",ytd,"#1f7a44")}${stat("Lifetime with HCPS",life)}${rec?stat("Last 60 days",rec,"#2f73b8"):""}${retail?stat("Retail value purchased",retail,"#F5821F"):""}</div>`;
   const cut=new Date(Date.now()-70*864e5).toISOString().slice(0,10);
   const recentProds=(c.products||[]).filter(p=>p.last&&p.last>=cut).slice(0,8);
   const recentHtml=recentProds.length?`<h2>Recent purchases (last 60 days)</h2><div>${recentProds.map(p=>`<span class="pill">${esc(p.name)}${p.qty?` ×${p.qty}`:""}</span>`).join(" ")}</div>`:"";
@@ -677,7 +680,7 @@ function handoutHtml(c){
     .foot{margin-top:20px;border-top:1px solid #eef1f4;padding-top:12px;color:#5b6672;font-size:13px}.dim{color:#9aa4ae}
     @media print{.hero{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
     </style></head><body>
-    <div class="hero"><div class="b">HomeCare Provider Services</div><h1>Your Partnership Snapshot</h1><p>${esc(c.name||"")}${c.city?" · "+esc([c.city,c.state].filter(Boolean).join(", ")):""}</p>${(c.accounts&&c.accounts.length)?`<p style="margin-top:6px;color:#eaf0f8;font-size:12px">Your accounts: ${c.accounts.map(a=>esc(a.name)+(a.account?` #${esc(a.account)}`:"")).join("&nbsp;·&nbsp;")}</p>`:""}</div>
+    <div class="hero"><div class="b">HomeCare Provider Services</div><h1>Your Partnership Snapshot</h1><p>${esc(c.name||"")}${c.city?" · "+esc([c.city,c.state].filter(Boolean).join(", ")):""}</p>${(c.is_branch&&c.company&&c.company!==c.name)?`<p style="margin-top:2px;color:#c9d4e2;font-size:11px">A location of ${esc(c.company)}</p>`:""}${(c.accounts&&c.accounts.length)?`<p style="margin-top:6px;color:#eaf0f8;font-size:12px">Your accounts: ${c.accounts.map(a=>esc(a.name)+(a.account?` #${esc(a.account)}`:"")).join("&nbsp;·&nbsp;")}</p>`:""}</div>
     <div class="wrap">
       <h2>Your business with HCPS</h2>${stats}${retail?`<p class="note">Retail value = MSRP of the products you've purchased through us — your selling-revenue potential.</p>`:""}
       ${recentHtml}

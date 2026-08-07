@@ -139,27 +139,26 @@ exports.handler = async (event)=>{
     if(b.action==="business_case"){
       const ids=[...new Set((Array.isArray(b.dealer_ids)?b.dealer_ids:[]).filter(Boolean))];
       if(!ids.length) return json(200,{ok:true,cases:{}});
-      const idIn=`in.(${ids.join(",")})`;
-      const [dealers,sales,contacts,mfrs,dm] = await Promise.all([
-        sbGet(`dealers?id=${idIn}&select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id,golden_status,ovation_access,golden_url`).catch(()=>[]),
-        sbGet(`monthly_sales?dealer_id=${idIn}&select=dealer_id,manufacturer,period,amount,qty,product_code,product_name`).catch(()=>[]),
-        sbGet(`dealer_contacts?dealer_id=${idIn}&select=dealer_id,name,email,phone,cell,title,role`).catch(()=>[]),
+      // Load ALL dealers so a branch rolls up to its whole company (master HQ + all branches).
+      const allDealers=await sbGet("dealers?select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id,golden_status,ovation_access,golden_url").catch(()=>[]);
+      const byId=Object.fromEntries(allDealers.map(d=>[d.id,d]));
+      const companyOf=id=>{ const d=byId[id]; return (d&&d.parent_id)?d.parent_id:id; };   // master id (self if HQ/standalone)
+      const membersOfCompany={}; for(const d of allDealers){ const cid=d.parent_id||d.id; (membersOfCompany[cid]||(membersOfCompany[cid]=[])).push(d.id); }
+      const reqCompanies=[...new Set(ids.map(companyOf))];
+      const memberIds=[...new Set(reqCompanies.flatMap(cid=>membersOfCompany[cid]||[cid]))];
+      const memIn=`in.(${memberIds.join(",")})`, reqIn=`in.(${ids.join(",")})`;
+      const [sales,contacts,mfrs,dm] = await Promise.all([
+        sbGet(`monthly_sales?dealer_id=${memIn}&select=dealer_id,manufacturer,period,amount,qty,product_code,product_name`).catch(()=>[]),
+        sbGet(`dealer_contacts?dealer_id=${reqIn}&select=dealer_id,name,email,phone,cell,title,role`).catch(()=>[]),
         sbGet("manufacturers?select=slug,name").catch(()=>[]),
-        sbGet(`dealer_manufacturers?dealer_id=${idIn}&select=dealer_id,manufacturer,account_ref,active`).catch(()=>[]),
+        sbGet(`dealer_manufacturers?dealer_id=${memIn}&select=dealer_id,manufacturer,account_ref,active`).catch(()=>[]),
       ]);
-      // REAL accounts on file per dealer = only lines with an actual account number.
-      // (Lines merely granted in the access grid, with no account_ref, are NOT "carried".)
-      const acctByDealer={};
-      for(const x of (dm||[])){ if(x.active===false) continue; if(!(x.account_ref&&String(x.account_ref).trim())) continue; (acctByDealer[x.dealer_id]||(acctByDealer[x.dealer_id]=[])).push({manufacturer:x.manufacturer,account_ref:x.account_ref}); }
-      // parents (for a branch's governing state/name)
-      const parentIds=[...new Set(dealers.map(d=>d.parent_id).filter(Boolean))];
-      let parents=[]; if(parentIds.length){ parents=await sbGet(`dealers?id=in.(${parentIds.join(",")})&select=id,business_name,state`).catch(()=>[]); }
-      const parById=Object.fromEntries(parents.map(p=>[p.id,p]));
       const mfrName=Object.fromEntries((mfrs||[]).map(m=>[m.slug,m.name]));
       const nameOf=s=>mfrName[s]||mfrName[normBuy(s)]||pretty(s);
-      // sales per dealer -> per line AND per product (line item)
       const YR=String(new Date().getFullYear());
-      const cutoff60=new Date(Date.now()-60*864e5).toISOString().slice(0,10);   // "last 60 days" boundary
+      const cutoff60=new Date(Date.now()-60*864e5).toISOString().slice(0,10);
+      // aggregate sales + products per LOCATION (the primary figures), then roll totals up to
+      // the company so a handout can show "this location vs the whole company".
       const byDealer={}; const prodByDealer={};
       for(const r of (sales||[])){
         const did=r.dealer_id; if(!did) continue;
@@ -168,54 +167,60 @@ exports.handler = async (event)=>{
         const L=d.lines[slug]||(d.lines[slug]={name:nameOf(slug),amount:0,qty:0,orders:0,last:""});
         L.amount+=amt; L.qty+=Number(r.qty)||0; L.orders+=1; if(per>L.last) L.last=per;
         d.total+=amt; if(per.startsWith(YR)) d.ytd+=amt; if(per>=cutoff60) d.recent+=amt; if(r.manufacturer) d.buys.add(slug);
-        // line-item detail: exactly which products they order
         const pcode=String(r.product_code||"").trim(), pname=String(r.product_name||"").trim();
-        if(pcode||pname){
-          const pk=(pcode||pname).toLowerCase();
-          const pd=prodByDealer[did]||(prodByDealer[did]={});
+        if(pcode||pname){ const pk=(pcode||pname).toLowerCase(); const pd=prodByDealer[did]||(prodByDealer[did]={});
           const P=pd[pk]||(pd[pk]={code:pcode,name:pname||pcode,line:nameOf(slug),qty:0,amount:0,orders:0,last:""});
-          P.qty+=Number(r.qty)||0; P.amount+=amt; P.orders+=1; if(per>P.last) P.last=per;
-        }
+          P.qty+=Number(r.qty)||0; P.amount+=amt; P.orders+=1; if(per>P.last) P.last=per; }
       }
+      // company rollup: sum every location's totals + union their buys (for the comparison figure and opportunities)
+      const coTotal={}, coYtd={}, coBuys={};
+      for(const did in byDealer){ const cid=companyOf(did); const s=byDealer[did];
+        coTotal[cid]=(coTotal[cid]||0)+s.total; coYtd[cid]=(coYtd[cid]||0)+s.ytd;
+        const set=coBuys[cid]||(coBuys[cid]=new Set()); s.buys.forEach(x=>set.add(x)); }
+      // real accounts on file BY COMPANY (union of account numbers across all locations)
+      const acctByCo={};
+      for(const x of (dm||[])){ if(x.active===false) continue; if(!(x.account_ref&&String(x.account_ref).trim())) continue;
+        const cid=companyOf(x.dealer_id); const arr=acctByCo[cid]||(acctByCo[cid]=[]);
+        if(!arr.some(a=>a.manufacturer===x.manufacturer&&a.account_ref===x.account_ref)) arr.push({manufacturer:x.manufacturer,account_ref:x.account_ref}); }
       const contactsByDealer={};
       for(const c of (contacts||[])){ (contactsByDealer[c.dealer_id]||(contactsByDealer[c.dealer_id]=[])).push(c); }
-      // MSRP by product code, pulled from the catalogs of the lines these dealers actually buy,
-      // so we can show the retail value of what they've purchased through HCPS.
       const buySlugs=new Set(); for(const did in byDealer){ byDealer[did].buys.forEach(s=>buySlugs.add(s)); }
       const msrpByCode={};
       await Promise.all([...buySlugs].map(async slug=>{
         try{ const cat=await fetchJson(`${ORDERING_BASE}/data/${slug}.json`); (cat||[]).forEach(p=>{ if(p&&p.code){ const ms=Number(p.msrp)||0; if(ms>0) msrpByCode[String(p.code).toUpperCase()]=ms; } }); }catch(e){}
       }));
-      // manufacturer logos (for the visual dealer handout). Primary source is the logo you
-      // upload in the Catalog tool (manufacturer_meta.logo_url); fall back to any static path.
       let logoBySlug={};
       try{ const meta=await sbGet("manufacturer_meta?select=slug,logo_url"); (meta||[]).forEach(m=>{ if(m&&m.slug&&m.logo_url) logoBySlug[m.slug]=String(m.logo_url); }); }catch(e){}
       try{ const mm=await fetchJson(`${ORDERING_BASE}/data/manufacturers.json`); (mm||[]).forEach(m=>{ if(m&&m.slug&&m.logo&&!logoBySlug[m.slug]){ const p=String(m.logo); logoBySlug[m.slug]=p.startsWith("http")?p:(ORDERING_BASE+p); } }); }catch(e){}
-      // Lines that live outside the ordering catalog (Golden is on its own platform) — hosted logo assets.
       if(!logoBySlug["golden-technologies"]) logoBySlug["golden-technologies"]=ORDERING_BASE+"/assets/logos/golden-technologies.jpg";
       const cases={};
-      for(const d of dealers){
-        const gov = d.parent_id&&parById[d.parent_id] ? parById[d.parent_id] : d;
-        let acc; try{ acc=computeAccess({state:gov.state||d.state,business_name:gov.business_name||d.business_name,ovation_access:!!d.ovation_access,lat:null},[]); }catch(e){ acc={your_accounts:[],available:[]}; }
+      for(const id of ids){
+        const d=byId[id]; if(!d) continue;
+        const cid=companyOf(id); const master=byId[cid]||d;   // company-level governing account
+        let acc; try{ acc=computeAccess({state:master.state||d.state,business_name:master.business_name||d.business_name,ovation_access:!!(master.ovation_access||d.ovation_access),lat:null},[]); }catch(e){ acc={your_accounts:[],available:[]}; }
         const eligible=[...new Set([...(acc.your_accounts||[]),...(acc.available||[])])];
-        const s=byDealer[d.id]||{lines:{},total:0,buys:new Set()};
-        const opps=eligible.filter(x=>!s.buys.has(x)).map(x=>({slug:x,name:nameOf(x),logo:logoBySlug[x]||""}));
+        const s=byDealer[id]||{lines:{},total:0,ytd:0,recent:0,buys:new Set()};
+        const coBuySet=coBuys[cid]||new Set();
+        const opps=eligible.filter(x=>!coBuySet.has(x)).map(x=>({slug:x,name:nameOf(x),logo:logoBySlug[x]||""}));
         const lines=Object.entries(s.lines).map(([slug,v])=>({slug,name:v.name,amount:Math.round(v.amount*100)/100,orders:v.orders,last:v.last})).sort((a,b)=>b.amount-a.amount);
-        const allProds=Object.values(prodByDealer[d.id]||{}).sort((a,b)=>b.amount-a.amount);
+        const allProds=Object.values(prodByDealer[id]||{}).sort((a,b)=>b.amount-a.amount);
         const products=allProds.slice(0,40).map(p=>({code:p.code,name:p.name,line:p.line,qty:p.qty,amount:Math.round(p.amount*100)/100,orders:p.orders,last:p.last}));
         const products_more=Math.max(0,allProds.length-products.length);
-        const accounts=(acctByDealer[d.id]||[]).map(a=>({slug:a.manufacturer,name:nameOf(a.manufacturer),account:a.account_ref})).sort((a,b)=>a.name.localeCompare(b.name));
+        const accounts=(acctByCo[cid]||[]).map(a=>({slug:a.manufacturer,name:nameOf(a.manufacturer),account:a.account_ref})).sort((a,b)=>a.name.localeCompare(b.name));
         const carried=[...new Set(accounts.map(a=>a.slug))].map(sl=>({slug:sl,name:nameOf(sl),logo:logoBySlug[sl]||""}));
-        let retail=0; const pd=prodByDealer[d.id]||{};
+        let retail=0; const pd=prodByDealer[id]||{};
         for(const k in pd){ const P=pd[k]; const ms=msrpByCode[String(P.code||"").toUpperCase()]; if(ms&&P.qty) retail+=ms*P.qty; }
-        cases[d.id]={
+        const multiLoc=(membersOfCompany[cid]||[]).length>1;
+        cases[id]={
           name:d.business_name||"", account:d.hcps_account||"", contact_name:d.contact_name||"", email:d.email||"", phone:d.phone||"",
           address:d.address||"", city:d.city||"", state:d.state||"", zip:d.zip||"",
+          company:(master.business_name||d.business_name||""), is_branch:!!d.parent_id, multi_location:multiLoc,
           total:Math.round((s.total||0)*100)/100, ytd:Math.round((s.ytd||0)*100)/100, recent60:Math.round((s.recent||0)*100)/100,
+          company_total:Math.round((coTotal[cid]||0)*100)/100, company_ytd:Math.round((coYtd[cid]||0)*100)/100,
           retail_value:Math.round(retail*100)/100,
           lines, opps, accounts, carried, products, products_more,
-          golden:d.golden_status||"None", ovation:!!d.ovation_access,
-          contacts:(contactsByDealer[d.id]||[]).map(c=>({name:c.name||"",email:c.email||"",phone:c.phone||"",cell:c.cell||"",title:c.title||"",role:c.role||""})),
+          golden:(master.golden_status||d.golden_status||"None"), ovation:!!(master.ovation_access||d.ovation_access),
+          contacts:(contactsByDealer[id]||[]).map(c=>({name:c.name||"",email:c.email||"",phone:c.phone||"",cell:c.cell||"",title:c.title||"",role:c.role||""})),
         };
       }
       return json(200,{ok:true,cases});
