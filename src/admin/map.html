@@ -648,15 +648,18 @@ function handoutHtml(c){
   const rep=(ME&&ME.name)||"Your HCPS Representative";
   const repEmail=(ME&&ME.email)||"";
   const tile=(x,on)=>`<div class="ltile${on?" on":""}">${x.logo?`<img src="${esc(x.logo)}" alt="${esc(x.name)}" onerror="this.style.display='none'">`:""}<span class="ln">${esc(x.name)}</span></div>`;
-  // Golden isn't an orderable line here, so it never appears in carried/opps — surface it as a
-  // tile from the dealer's Golden status: a Golden account joins "lines you carry", a Golden
-  // prospect (e.g. every KY dealer) joins "approved for your territory".
-  const goldenTile=(c.golden==="Account"||c.golden==="Prospect")
-    ? tile({name:"Golden Technologies",logo:c.golden_logo||""}, c.golden==="Account") : "";
-  const carriedTiles=(c.carried||[]).map(x=>tile(x,true));
-  if(c.golden==="Account"&&goldenTile) carriedTiles.push(goldenTile);
-  const growTiles=(c.opps||[]).map(x=>tile(x,false));
-  if(c.golden==="Prospect"&&goldenTile) growTiles.push(goldenTile);
+  // Golden can reach the handout two ways — a real Golden account already sits in `carried`
+  // (from dealer_manufacturers), and/or the dealer is a Golden prospect via golden status. To
+  // avoid a double logo, strip any Golden entry out of carried/opps and render Golden exactly
+  // ONCE: in "lines you carry" if they have an account, otherwise in "approved for your territory".
+  const isGolden=s=>String(s||"").toLowerCase().includes("golden");
+  const hasGoldenAcct=(c.golden==="Account")||(c.carried||[]).some(x=>isGolden(x.slug));
+  const showGolden=hasGoldenAcct||c.golden==="Prospect";
+  const goldenTile=showGolden?tile({name:"Golden Technologies",logo:c.golden_logo||""}, hasGoldenAcct):"";
+  const carriedTiles=(c.carried||[]).filter(x=>!isGolden(x.slug)).map(x=>tile(x,true));
+  if(hasGoldenAcct&&goldenTile) carriedTiles.push(goldenTile);
+  const growTiles=(c.opps||[]).filter(x=>!isGolden(x.slug)).map(x=>tile(x,false));
+  if(!hasGoldenAcct&&c.golden==="Prospect"&&goldenTile) growTiles.push(goldenTile);
   const yourLines=carriedTiles.length?`<div class="tiles">${carriedTiles.join("")}</div>`:`<span class="dim">Let's get your first line set up.</span>`;
   const growLines=growTiles.length?`<div class="tiles">${growTiles.join("")}</div>`:`<span class="dim">You're already set up across everything available in your area.</span>`;
   const updates=(HANDOUT.updates||HANDOUT_UPDATES).map(u=>`<li>${esc(u)}</li>`).join("");
