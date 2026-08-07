@@ -191,6 +191,8 @@ exports.handler = async (event)=>{
       let logoBySlug={};
       try{ const meta=await sbGet("manufacturer_meta?select=slug,logo_url"); (meta||[]).forEach(m=>{ if(m&&m.slug&&m.logo_url) logoBySlug[m.slug]=String(m.logo_url); }); }catch(e){}
       try{ const mm=await fetchJson(`${ORDERING_BASE}/data/manufacturers.json`); (mm||[]).forEach(m=>{ if(m&&m.slug&&m.logo&&!logoBySlug[m.slug]){ const p=String(m.logo); logoBySlug[m.slug]=p.startsWith("http")?p:(ORDERING_BASE+p); } }); }catch(e){}
+      // Lines that live outside the ordering catalog (Golden is on its own platform) — hosted logo assets.
+      if(!logoBySlug["golden-technologies"]) logoBySlug["golden-technologies"]=ORDERING_BASE+"/assets/logos/golden-technologies.jpg";
       const cases={};
       for(const d of dealers){
         const gov = d.parent_id&&parById[d.parent_id] ? parById[d.parent_id] : d;
