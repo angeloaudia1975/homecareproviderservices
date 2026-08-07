@@ -186,19 +186,22 @@ exports.handler = async (event)=>{
       await Promise.all([...buySlugs].map(async slug=>{
         try{ const cat=await fetchJson(`${ORDERING_BASE}/data/${slug}.json`); (cat||[]).forEach(p=>{ if(p&&p.code){ const ms=Number(p.msrp)||0; if(ms>0) msrpByCode[String(p.code).toUpperCase()]=ms; } }); }catch(e){}
       }));
+      // manufacturer logos (for the visual dealer handout)
+      let logoBySlug={};
+      try{ const mm=await fetchJson(`${ORDERING_BASE}/data/manufacturers.json`); (mm||[]).forEach(m=>{ if(m&&m.slug&&m.logo) logoBySlug[m.slug]=String(m.logo).startsWith("http")?m.logo:(ORDERING_BASE+m.logo); }); }catch(e){}
       const cases={};
       for(const d of dealers){
         const gov = d.parent_id&&parById[d.parent_id] ? parById[d.parent_id] : d;
         let acc; try{ acc=computeAccess({state:gov.state||d.state,business_name:gov.business_name||d.business_name,ovation_access:!!d.ovation_access,lat:null},[]); }catch(e){ acc={your_accounts:[],available:[]}; }
         const eligible=[...new Set([...(acc.your_accounts||[]),...(acc.available||[])])];
         const s=byDealer[d.id]||{lines:{},total:0,buys:new Set()};
-        const opps=eligible.filter(x=>!s.buys.has(x)).map(x=>({slug:x,name:nameOf(x)}));
+        const opps=eligible.filter(x=>!s.buys.has(x)).map(x=>({slug:x,name:nameOf(x),logo:logoBySlug[x]||""}));
         const lines=Object.entries(s.lines).map(([slug,v])=>({slug,name:v.name,amount:Math.round(v.amount*100)/100,orders:v.orders,last:v.last})).sort((a,b)=>b.amount-a.amount);
         const allProds=Object.values(prodByDealer[d.id]||{}).sort((a,b)=>b.amount-a.amount);
         const products=allProds.slice(0,40).map(p=>({code:p.code,name:p.name,line:p.line,qty:p.qty,amount:Math.round(p.amount*100)/100,orders:p.orders,last:p.last}));
         const products_more=Math.max(0,allProds.length-products.length);
         const accounts=(acctByDealer[d.id]||[]).map(a=>({slug:a.manufacturer,name:nameOf(a.manufacturer),account:a.account_ref})).sort((a,b)=>a.name.localeCompare(b.name));
-        const carried=[...new Set(accounts.map(a=>a.slug))].map(sl=>({slug:sl,name:nameOf(sl)}));
+        const carried=[...new Set(accounts.map(a=>a.slug))].map(sl=>({slug:sl,name:nameOf(sl),logo:logoBySlug[sl]||""}));
         let retail=0; const pd=prodByDealer[d.id]||{};
         for(const k in pd){ const P=pd[k]; const ms=msrpByCode[String(P.code||"").toUpperCase()]; if(ms&&P.qty) retail+=ms*P.qty; }
         cases[d.id]={

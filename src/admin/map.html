@@ -646,10 +646,9 @@ async function printDealerHandout(id){
 function handoutHtml(c){
   const rep=(ME&&ME.name)||"Your HCPS Representative";
   const repEmail=(ME&&ME.email)||"";
-  const carried=(c.carried||[]).map(x=>esc(x.name));
-  const opps=(c.opps||[]).map(x=>esc(x.name));
-  const yourLines=carried.length?carried.map(n=>`<span class="pill on">${n}</span>`).join(" "):`<span class="dim">Let's get your first line set up.</span>`;
-  const growLines=opps.length?opps.map(n=>`<span class="pill">${n}</span>`).join(" "):`<span class="dim">You're already set up across everything available in your area.</span>`;
+  const tile=(x,on)=>`<div class="ltile${on?" on":""}">${x.logo?`<img src="${esc(x.logo)}" alt="${esc(x.name)}" onerror="this.style.display='none'">`:""}<span class="ln">${esc(x.name)}</span></div>`;
+  const yourLines=(c.carried&&c.carried.length)?`<div class="tiles">${c.carried.map(x=>tile(x,true)).join("")}</div>`:`<span class="dim">Let's get your first line set up.</span>`;
+  const growLines=(c.opps&&c.opps.length)?`<div class="tiles">${c.opps.map(x=>tile(x,false)).join("")}</div>`:`<span class="dim">You're already set up across everything available in your area.</span>`;
   const updates=(HANDOUT.updates||HANDOUT_UPDATES).map(u=>`<li>${esc(u)}</li>`).join("");
   const ordUrl=(HANDOUT.ordering_url||ORDERING_URL);
   const ytd=Number(c.ytd)||0, life=Number(c.total)||0, rec=Number(c.recent60)||0, retail=Number(c.retail_value)||0;
@@ -665,6 +664,11 @@ function handoutHtml(c){
     .wrap{padding:22px 28px}h2{font-size:15px;color:#2B4071;margin:18px 0 8px;border-bottom:2px solid #eef1f4;padding-bottom:4px}
     .pill{display:inline-block;border:1px solid #cfd6de;border-radius:14px;padding:3px 11px;margin:3px;font-size:12px;color:#333c47}
     .pill.on{background:#eaf7ee;border-color:#bfe3ca;color:#1f7a44;font-weight:700}
+    .tiles{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0}
+    .ltile{border:1px solid #cfd6de;border-radius:10px;padding:8px 10px;min-width:96px;text-align:center;background:#fff}
+    .ltile.on{border-color:#bfe3ca;background:#f6fbf7}
+    .ltile img{max-height:34px;max-width:120px;object-fit:contain;display:block;margin:0 auto 5px}
+    .ltile .ln{font-size:11px;color:#333c47;font-weight:600}
     .stats{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0}.stat{background:#f4f7fb;border:1px solid #e2e8f1;border-radius:10px;padding:10px 14px;min-width:118px}
     .sv{font-size:20px;font-weight:800}.sl{font-size:11px;color:#6b7683;margin-top:2px}.note{font-size:11px;color:#9aa4ae;margin:4px 0 0}
     ul{margin:6px 0;padding-left:18px}li{margin:4px 0}
