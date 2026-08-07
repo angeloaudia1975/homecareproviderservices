@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Password reset</title>
+<style>
+  :root{--blue:#10263f;--orange:#ef6325;--silver:#d8dee8;}
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:var(--blue);background:#eef2f7;display:flex;min-height:100vh;align-items:center;justify-content:center}
+  .wrap{width:100%;max-width:440px;padding:20px}
+  .card{background:#fff;border:1px solid var(--silver);border-radius:14px;padding:26px 24px;box-shadow:0 6px 24px rgba(16,38,63,.08)}
+  h1{font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:#607089;margin:0 0 14px}
+  h2{font-size:20px;margin:0 0 6px}
+  p{margin:6px 0 14px;color:#3b4a60}
+  input{width:100%;padding:11px 12px;border:1px solid var(--silver);border-radius:9px;font-size:15px;margin:0 0 10px}
+  button{background:var(--blue);color:#fff;border:0;border-radius:9px;padding:11px 18px;font-weight:700;font-size:15px;cursor:pointer}
+  button:hover{background:#173456}
+  a{color:var(--blue);font-weight:600;text-decoration:none}
+  a:hover{text-decoration:underline}
+  .note{margin-top:10px;font-size:14px;color:#3b4a60;min-height:18px}
+  .err{color:#b42323}
+  .ok{color:#0a7f3f;font-weight:700}
+  .back{margin-top:16px;font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>HCPS Admin</h1>
+    <div id="card"><div class="note">Loading…</div></div>
+  </div>
+</div>
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+const $=s=>document.querySelector(s);
+const host=$('#card');
+const show=h=>{host.innerHTML=h;};
+let sb=null;
+
+async function boot(){
+  let cfg=null;
+  try{
+    const r=await fetch('/.netlify/functions/staff-auth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'public_config'})});
+    cfg=await r.json();
+  }catch(e){ cfg=null; }
+  if(!cfg||!cfg.ok||!cfg.url||!cfg.anon){
+    show(`<h2>Reset isn’t configured</h2><p>The reset service needs <b>SUPABASE_ANON_KEY</b> set in Netlify. Ask your administrator, or reset from the Supabase dashboard.</p><div class="back"><a href="dealers.html">← Back to sign‑in</a></div>`);
+    return;
+  }
+  sb=createClient(cfg.url,cfg.anon,{auth:{detectSessionInUrl:true,persistSession:false,autoRefreshToken:false}});
+
+  // A recovery link can arrive three ways depending on the Supabase project:
+  //   ?token_hash=..&type=recovery   (verify here)
+  //   #access_token=..&type=recovery (the SDK creates the session automatically)
+  //   ?code=..                       (the SDK exchanges it automatically)
+  const qs=new URLSearchParams(location.search);
+  const token_hash=qs.get('token_hash'), qtype=qs.get('type');
+  if(token_hash && qtype){
+    try{ const {error}=await sb.auth.verifyOtp({type:qtype, token_hash}); if(!error){ return renderSet(); } }catch(e){}
+  }
+  // give the SDK a moment to process a hash/code in the URL
+  await new Promise(r=>setTimeout(r,500));
+  try{
+    const { data:{ session } } = await sb.auth.getSession();
+    const looksLikeRecovery = /type=recovery/.test(location.hash) || qs.has('code') || (session && session.user);
+    if(looksLikeRecovery) return renderSet();
+  }catch(e){}
+  renderRequest();
+}
+
+function renderRequest(){
+  show(`<h2>Reset your password</h2>
+    <p>Enter your work email and we’ll send you a reset link.</p>
+    <input id="em" type="email" placeholder="you@homecareproviderservices.us" autocomplete="username">
+    <button id="go">Send reset link</button>
+    <div id="m" class="note"></div>
+    <div class="back"><a href="dealers.html">← Back to sign‑in</a></div>`);
+  const send=async()=>{
+    const email=(($('#em')||{}).value||'').trim(); const m=$('#m');
+    m.className='note'; m.textContent='Sending…';
+    try{
+      const r=await fetch('/.netlify/functions/staff-auth',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({action:'forgot',email,redirect_to:location.origin+'/admin/reset.html'})});
+      const j=await r.json().catch(()=>({}));
+      m.className='note'+(j.ok?' ok':' err'); m.textContent=j.message||'If that email is a staff account, a reset link is on its way.';
+    }catch(e){ m.className='note err'; m.textContent='Could not send — please try again.'; }
+  };
+  $('#go').onclick=send;
+  $('#em').addEventListener('keydown',e=>{ if(e.key==='Enter') send(); });
+  $('#em').focus();
+}
+
+function renderSet(){
+  show(`<h2>Set a new password</h2>
+    <p>Choose a new password — at least 8 characters.</p>
+    <input id="p1" type="password" placeholder="New password" autocomplete="new-password">
+    <input id="p2" type="password" placeholder="Confirm new password" autocomplete="new-password">
+    <button id="save">Save new password</button>
+    <div id="m" class="note"></div>`);
+  const save=async()=>{
+    const p1=(($('#p1')||{}).value||''), p2=(($('#p2')||{}).value||''); const m=$('#m');
+    if(p1.length<8){ m.className='note err'; m.textContent='Use at least 8 characters.'; return; }
+    if(p1!==p2){ m.className='note err'; m.textContent='Passwords don’t match.'; return; }
+    m.className='note'; m.textContent='Saving…';
+    try{
+      const { error }=await sb.auth.updateUser({password:p1});
+      if(error){ m.className='note err'; m.textContent='Could not save: '+error.message; return; }
+      show(`<h2 class="ok">Password updated ✓</h2><p>Your password has been reset. You can sign in now.</p><div class="back"><a href="dealers.html">→ Go to sign‑in</a></div>`);
+    }catch(e){ m.className='note err'; m.textContent='Could not save — the reset link may have expired. Request a new one.'; }
+  };
+  $('#save').onclick=save;
+  $('#p2').addEventListener('keydown',e=>{ if(e.key==='Enter') save(); });
+  $('#p1').focus();
+}
+
+boot();
+</script>
+</body>
+</html>

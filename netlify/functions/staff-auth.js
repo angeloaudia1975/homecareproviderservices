@@ -84,6 +84,28 @@ exports.handler = async (event)=>{
       return json(200,{ok:true,token:g.access_token,profile:pubProfile(staff)});
     }
 
+    // Public config for the reset page. Returns ONLY the publishable anon key (never the
+    // service_role). If SUPABASE_ANON_KEY isn't set, the reset page shows a helpful message.
+    if(b.action==="public_config"){
+      return json(200,{ok:true,url:SUPABASE_URL,anon:process.env.SUPABASE_ANON_KEY||""});
+    }
+
+    // Forgot password: email a Supabase recovery link — but only if the address is a known,
+    // active staff member. Always returns the same message so we never reveal which emails exist.
+    if(b.action==="forgot"){
+      const email=String(b.email||"").trim().toLowerCase();
+      const redirect_to=String(b.redirect_to||"").trim();
+      const generic={ok:true,message:"If that email is a staff account, a reset link is on its way. Check your inbox (and spam)."};
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(200,{ok:false,message:"Enter a valid email."});
+      const s=await getStaff(email);
+      if(!s || s.active===false) return json(200,generic);   // don't reveal non-accounts
+      try{
+        const u=`${SUPABASE_URL}/auth/v1/recover${redirect_to?`?redirect_to=${encodeURIComponent(redirect_to)}`:""}`;
+        await fetch(u,{method:"POST",headers:{apikey:ANON,"content-type":"application/json"},body:JSON.stringify({email})});
+      }catch(e){}
+      return json(200,generic);
+    }
+
     if(b.action==="me"){
       const s=await caller(event); if(!s) return json(200,{ok:false,message:"not signed in"});
       return json(200,{ok:true,profile:pubProfile(s)});
