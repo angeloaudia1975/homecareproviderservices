@@ -451,7 +451,7 @@ async function prefillAccess(id){
 }
 async function prefillAll(){
   if(!confirm("Apply your territory rules to EVERY dealer's ordering-access grid?\n\nThis checks each dealer's eligible lines (account numbers preserved). It does NOT change what dealers can order on the portal — that's already rule-driven — it just makes the admin grids match the rules."))return;
-  try{ const r=await post({action:"prefill_access_all"}); PACCESS={}; alertDlg(`Applied territory rules to ${r.dealers} dealers (${r.lines} line grants).`); await load(); render(); }
+  try{ const r=await post({action:"prefill_access_all"}); for(const k in PACCESS) delete PACCESS[k]; alertDlg(`Applied territory rules to ${r.dealers} dealers (${r.lines} line grants).`); await load(); render(); }
   catch(e){ alertDlg("Error: "+(e.message||e)); }
 }
 // ---- Contract pricing panel ----
