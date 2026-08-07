@@ -357,7 +357,7 @@ function renderDetail(){
        <h2 style="margin-top:18px">Contacts on file ${(d.contacts&&d.contacts.length)?`(${d.contacts.length})`:""}</h2>
        <div class="hint">Every person &amp; email imported for this account. Any of these emails can be used to register for the ordering portal. Pick one as the account's <b>default email</b> — it's used on the dealer record and order emails.</div>
        ${(d.contacts&&d.contacts.length)?`<table style="margin-top:6px"><tbody>${d.contacts.map(c=>`<tr>
-           <td style="width:110px;white-space:nowrap">${c.email?(sameEmail(c.email,d.email)?`<span class="chip acc">★ default</span>`:`<button class="go sm" onclick="setDefaultEmail('${d.id}','${jesc(c.email)}')">Make default</button>`):""}</td>
+           <td style="width:110px;white-space:nowrap">${c.email?(sameEmail(c.email,d.email)?`<span class="chip acc">★ default</span>`:`<button class="go sm" onclick="setDefaultEmail('${d.id}','${jesc(c.email)}','${jesc(c.name||'')}','${jesc(c.phone||'')}')">Make default</button>`):""}</td>
            <td class="lbl">${esc(c.name||"—")}</td>
            <td>${c.email?`<a href="mailto:${esc(c.email)}" style="color:var(--blue)">${esc(c.email)}</a>`:`<span class="dim">no email</span>`}</td>
            <td class="hint">${esc([c.title,c.role].filter(Boolean).join(" · "))}${c.phone?` · ${esc(c.phone)}`:""}</td></tr>`).join("")}</tbody></table>`
@@ -398,9 +398,16 @@ async function saveDetail(id,origName){
   DETAIL=id; render();
 }
 function sameEmail(a,b){return String(a||"").trim().toLowerCase()===String(b||"").trim().toLowerCase()&&!!String(a||"").trim();}
-async function setDefaultEmail(id,email){
-  await post({action:"edit",dealer_id:id,email},"Setting default…");
-  const d=DATA.dealers.find(x=>x.id===id); if(d)d.email=email;
+async function setDefaultEmail(id,email,name,phone){
+  // Making a contact the default sets it as the account's primary contact: email,
+  // and also the contact name + phone (only when that contact has them, so we never
+  // blank an existing value).
+  const patch={action:"edit",dealer_id:id,email};
+  if(name) patch.contact_name=name;
+  if(phone) patch.phone=phone;
+  await post(patch,"Setting default…");
+  const d=DATA.dealers.find(x=>x.id===id);
+  if(d){ d.email=email; if(name)d.contact_name=name; if(phone)d.phone=phone; }
   render();
 }
 async function saveAccess(id){

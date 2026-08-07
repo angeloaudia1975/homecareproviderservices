@@ -51,21 +51,33 @@ async function geocodeCensus(q){
     return {lat:Number(m.coordinates.y), lng:Number(m.coordinates.x)};
   }catch(e){ return null; }
 }
-// City/state/ZIP key — the fallback when a full street address won't match.
-function cityKey(a){
-  const parts=[a.city,[a.state,a.zip].filter(Boolean).join(" ")].map(x=>String(x||"").trim()).filter(Boolean);
-  return parts.join(", ").toLowerCase().replace(/\s+/g," ").trim();
+// OpenStreetMap Nominatim — geocodes the valid streets AND the city/ZIP lookups that
+// the Census geocoder returns nothing for. Light, incremental use here; sends a
+// descriptive User-Agent per OSM's usage policy. Called sequentially (see run) so we
+// stay within ~1 request/second.
+async function geocodeNominatim(q){
+  if(!q) return null;
+  try{
+    const url=`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=${encodeURIComponent(q)}`;
+    const r=await fetch(url,{headers:{"User-Agent":"HCPS-DealerMap/1.0 (admin@homecareproviderservices.us)","Accept":"application/json"}});
+    if(!r.ok) return null;
+    const j=await r.json();
+    if(Array.isArray(j)&&j[0]&&j[0].lat&&j[0].lon) return {lat:Number(j[0].lat),lng:Number(j[0].lon)};
+  }catch(e){}
+  return null;
 }
-// Geocode a dealer address: exact street first; if the Census geocoder can't match it,
-// fall back to city/state/ZIP (and then the bare ZIP) so EVERY dealer still gets a pin.
+// Geocode a dealer address: exact street via Census first (fast); if it can't match,
+// fall back to Nominatim for the full street, then the city/state/ZIP (town-level).
 // approx=true means the pin is town-level, not the exact street.
 async function geocodeParts(a){
   const exact=await geocodeCensus(qkey(a));
   if(exact) return {...exact, approx:false};
-  const ck=cityKey(a);
-  if(ck){ const c=await geocodeCensus(ck); if(c) return {...c, approx:true}; }
-  const zip=String(a.zip||"").trim();
-  if(zip){ const z=await geocodeCensus(zip); if(z) return {...z, approx:true}; }
+  const full=[a.address,a.city,a.state,a.zip].map(x=>String(x||"").trim()).filter(Boolean).join(", ");
+  const n=await geocodeNominatim(full);
+  if(n) return {...n, approx:false};
+  const city=[a.city,a.state,a.zip].map(x=>String(x||"").trim()).filter(Boolean).join(", ");
+  const c=await geocodeNominatim(city);
+  if(c) return {...c, approx:true};
   return null;
 }
 // Run promises with a small concurrency cap (keeps us well under the function timeout).
@@ -159,14 +171,20 @@ exports.handler = async (event)=>{
         const done=new Set(cache.map(c=>c.q));   // once cached (success OR failure) it's done — no infinite retry
         const todo=[...keys.keys()].filter(q=>!done.has(q)).slice(0,limit);
         if(!todo.length) return json(200,{ok:true,processed:0,matched:0,remaining:0});
-        const rows=await pool(todo,5,async(q)=>{
+        // Process SEQUENTIALLY within a time budget: Census is fast, but its misses fall
+        // back to Nominatim (rate-limited to ~1/sec). We stop before the function timeout
+        // and only persist what we actually attempted; anything we didn't reach stays
+        // uncached and the client's loop picks it up on the next run.
+        const rows=[]; const t0=Date.now();
+        for(const q of todo){
+          if(rows.length && Date.now()-t0>7000) break;   // leave slack for the write
           const a=keys.get(q)||{}; const g=await geocodeParts(a);
-          return {q,lat:g?g.lat:null,lng:g?g.lng:null,ok:!!g,approx:g?!!g.approx:false,geocoded_at:new Date().toISOString()};
-        });
-        await sbSend("POST","geocache?on_conflict=q",rows,{Prefer:"resolution=merge-duplicates,return=minimal"});
+          rows.push({q,lat:g?g.lat:null,lng:g?g.lng:null,ok:!!g,approx:g?!!g.approx:false,geocoded_at:new Date().toISOString()});
+        }
+        if(rows.length) await sbSend("POST","geocache?on_conflict=q",rows,{Prefer:"resolution=merge-duplicates,return=minimal"});
         const matched=rows.filter(r=>r.ok).length;
-        const remaining=[...keys.keys()].filter(q=>!done.has(q)).length - todo.length;
-        return json(200,{ok:true,processed:todo.length,matched,remaining:Math.max(0,remaining)});
+        const remaining=[...keys.keys()].filter(q=>!done.has(q)).length - rows.length;
+        return json(200,{ok:true,processed:rows.length,matched,remaining:Math.max(0,remaining)});
       }
 
       // Geocode a single typed address (used to set the route "home base").
