@@ -360,7 +360,7 @@ function renderDetail(){
            <td style="width:110px;white-space:nowrap">${c.email?(sameEmail(c.email,d.email)?`<span class="chip acc">★ default</span>`:`<button class="go sm" onclick="setDefaultEmail('${d.id}','${jesc(c.email)}','${jesc(c.name||'')}','${jesc(c.phone||'')}')">Make default</button>`):""}</td>
            <td class="lbl">${esc(c.name||"—")}</td>
            <td>${c.email?`<a href="mailto:${esc(c.email)}" style="color:var(--blue)">${esc(c.email)}</a>`:`<span class="dim">no email</span>`}</td>
-           <td class="hint">${esc([c.title,c.role].filter(Boolean).join(" · "))}${c.phone?` · ${esc(c.phone)}`:""}</td></tr>`).join("")}</tbody></table>`
+           <td class="hint">${esc([c.title,c.role].filter(Boolean).join(" · "))}${c.phone?` · ☎ ${esc(c.phone)}`:""}${c.cell?` · 📱 ${esc(c.cell)}`:""}</td></tr>`).join("")}</tbody></table>`
         :`<div class="dim" style="margin-top:6px">No additional contacts stored yet — run <b>create_tables.sql</b> in Supabase, then re-run <b>Import contacts</b> to load every email from your master list.</div>`}
        <h2 style="margin-top:18px">Portal sign-in (login email)</h2>
        <div class="hint">This is the email the dealer actually types to sign in to the ordering portal. It is separate from the contact email above — change it here if they registered with a typo, and it updates their real login credential.</div>
@@ -605,8 +605,9 @@ function importFromText(text,fname){
     const lines=[]; for(const [slug,flag,num] of IMPORT_LINES){ const yes=get(r,flag).toLowerCase()==="yes"; const acct=num?get(r,num):""; if(yes||acct)lines.push({slug,account:acct}); }
     const contacts=[], seenE=new Set();
     for(const rr of g.rows){ const nm=[get(rr,"Contact First"),get(rr,"Contact Last")].filter(Boolean).join(" ");
-      const title=get(rr,"Contact Title"), role=get(rr,"Contact Role"), ph=get(rr,"Contact Phones")||get(rr,"Office Phones");
-      for(const em of splitEmails(get(rr,"Contact Emails"))){ const lo=em.toLowerCase(); if(seenE.has(lo))continue; seenE.add(lo); contacts.push({email:em,name:nm,title,role,phone:ph}); } }
+      const title=get(rr,"Contact Title"), role=get(rr,"Contact Role"),
+            ph=get(rr,"Direct Phones")||get(rr,"Contact Phones")||get(rr,"Office Phones"), cell=get(rr,"Cell Phone");
+      for(const em of splitEmails(get(rr,"Contact Emails"))){ const lo=em.toLowerCase(); if(seenE.has(lo))continue; seenE.add(lo); contacts.push({email:em,name:nm,title,role,phone:ph,cell}); } }
     // every distinct address across this company's rows (label = the source company name)
     const addresses=[], seenA=new Set();
     for(const rr of g.rows){ const a1=[get(rr,"Address 1"),get(rr,"Address 2")].filter(Boolean).join(", ");

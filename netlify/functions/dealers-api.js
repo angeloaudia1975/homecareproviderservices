@@ -61,7 +61,7 @@ async function buildState(){
     sbGet("dealer_nomerge?select=a,b").catch(()=>[]),
     sbGet("dealer_users?select=uid,email,dealer_id,status,created_at,req_company,req_contact,req_phone,req_address,req_city,req_state,req_zip&order=created_at.desc").catch(()=>[]),
   ]);
-  const dcontacts = await sbGetAll("dealer_contacts?select=dealer_id,email,name,title,role,phone","dealer_id,email").catch(()=>[]);
+  const dcontacts = await sbGetAll("dealer_contacts?select=dealer_id,email,name,title,role,phone,cell","dealer_id,email").catch(()=>[]);
   const contactsByDealer=new Map(); for(const x of dcontacts){(contactsByDealer.get(x.dealer_id)||contactsByDealer.set(x.dealer_id,[]).get(x.dealer_id)).push(x);}
   const daddrs = await sbGetAll("dealer_addresses?select=dealer_id,address,city,state,zip,label,pri","dealer_id,addr_key").catch(()=>[]);
   const addrByDealer=new Map(); for(const x of daddrs){(addrByDealer.get(x.dealer_id)||addrByDealer.set(x.dealer_id,[]).get(x.dealer_id)).push(x);}
@@ -96,7 +96,7 @@ async function buildState(){
       access:(accByDealer.get(d.id)||[]).slice().sort(),
       buysLines:[...a.lines].sort(),
       accounts:[...a.accts].sort(),
-      contacts:(contactsByDealer.get(d.id)||[]).map(c=>({email:c.email||"",name:c.name||"",title:c.title||"",role:c.role||"",phone:c.phone||""})),
+      contacts:(contactsByDealer.get(d.id)||[]).map(c=>({email:c.email||"",name:c.name||"",title:c.title||"",role:c.role||"",phone:c.phone||"",cell:c.cell||""})),
       addresses:(addrByDealer.get(d.id)||[]).map(x=>({address:x.address||"",city:x.city||"",state:x.state||"",zip:x.zip||"",label:x.label||"",pri:x.pri||1}))
         .sort((p,q)=>(q.pri||1)-(p.pri||1)),
       sales:Math.round(a.sales*100)/100, comm:Math.round(a.comm*100)/100, recs:a.recs,
@@ -148,60 +148,17 @@ async function buildState(){
   };
 }
 
-async function whoami(event){
-  const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
-  const tok=auth.replace(/^Bearer\s+/i,"").trim();
-  if(tok){
-    try{
-      const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${tok}`}});
-      if(r.ok){ const u=await r.json(); const email=u&&u.email&&String(u.email).toLowerCase();
-        if(email){ const s=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=*`).catch(()=>[]); const su=s&&s[0];
-          if(su&&su.active!==false) return {role:su.role||"rep",rep_name:su.rep_name||"",name:su.name||email,email}; return null; } }
-    }catch(e){}
-    return null;
-  }
-  const need=process.env.ANALYTICS_TOKEN;
-  const got=event.headers["x-analytics-token"]||(event.queryStringParameters||{}).token||"";
-  if(!need) return {role:"president",rep_name:"",name:"Admin",email:""};
-  if(got===need) return {role:"president",rep_name:"",name:"Admin",email:""};
-  return null;
-}
-async function ownsDealer(me,dealer_id){
-  if(me.role==="president") return true;
-  const rn=String(me.rep_name||"").trim().toLowerCase(); if(!rn) return false;
-  try{ const d=await sbGet(`dealers?id=eq.${encodeURIComponent(dealer_id)}&select=business_name`); const name=d&&d[0]&&d[0].business_name; if(!name) return false;
-    const dir=await sbGet(`dealer_directory?dealer_name=eq.${encodeURIComponent(name)}&select=rep_name`).catch(()=>[]); const rep=dir&&dir[0]&&dir[0].rep_name;
-    return !!rep && String(rep).trim().toLowerCase()===rn; }catch(e){ return false; }
-}
-
 exports.handler = async (event)=>{
   try{
+    const need=process.env.ANALYTICS_TOKEN;
+    if(need){const got=event.headers["x-analytics-token"]||(event.queryStringParameters||{}).token||""; if(got!==need) return json(401,{error:"unauthorized"});}
     if(!SUPABASE_URL||!SERVICE_ROLE) return json(500,{error:"Supabase env vars not set (SUPABASE_URL, SUPABASE_SERVICE_ROLE)"});
-    const me=await whoami(event);
-    if(!me) return json(401,{error:"unauthorized"});
 
-    if(event.httpMethod==="GET"){
-      const state=await buildState();
-      if(me.role!=="president"){
-        const rn=String(me.rep_name||"").trim().toLowerCase();
-        const mine=new Set();
-        state.dealers=(state.dealers||[]).filter(d=>{ const keep=!!rn && String(d.rep||"").trim().toLowerCase()===rn; if(keep)mine.add(d.id); return keep; });
-        state.logins=[]; state.changeRequests=[]; state.nomerge=[];
-        state.recentSessions=(state.recentSessions||[]).filter(s=>mine.has(s.dealer_id));
-        state.openCarts=(state.openCarts||[]).filter(c=>mine.has(c.dealer_id));
-      }
-      state.me={role:me.role,name:me.name,rep_name:me.rep_name||""};
-      return json(200, state);
-    }
+    if(event.httpMethod==="GET") return json(200, await buildState());
 
     if(event.httpMethod==="POST"){
       let b; try{b=JSON.parse(event.body||"{}");}catch{return json(400,{error:"bad JSON"});}
       const act=b.action;
-      const PRES_ONLY=new Set(["merge","confirm","rep","nomerge","split","import_contacts","approve_login","revoke_login","set_login_email","approve_change","reject_change","delete_login","diag"]);
-      if(me.role!=="president"){
-        if(PRES_ONLY.has(act)) return json(403,{error:"This action is available to the President only."});
-        if(act==="edit"||act==="access"){ if(!b.dealer_id) return json(400,{error:"dealer_id required"}); if(!(await ownsDealer(me,b.dealer_id))) return json(403,{error:"That account isn't in your book."}); }
-      }
       if(act==="diag"){
         // Self-check: which code is live, do the tables exist, and how many rows are stored.
         const probe=async(t)=>{ try{
@@ -314,7 +271,7 @@ exports.handler = async (event)=>{
           if(!du.email && r.email) du.email=String(r.email).trim();
           if(!du.phone && r.phone) du.phone=r.phone;
           for(const c of (r.contacts||[])){ const em=String(c.email||"").trim().toLowerCase(); if(!em)continue; const key=id+"|"+em;
-            if(!contactMap.has(key)) contactMap.set(key,{dealer_id:id,email:em,name:c.name||null,title:c.title||null,role:c.role||null,phone:c.phone||null}); }
+            if(!contactMap.has(key)) contactMap.set(key,{dealer_id:id,email:em,name:c.name||null,title:c.title||null,role:c.role||null,phone:c.phone||null,cell:c.cell||null}); }
           for(const a of (r.addresses||[])){ const ad=String(a.address||"").trim(); if(!ad)continue;
             const ak=dnorm([ad,a.city,a.state].filter(Boolean).join(" ")); const key=id+"|"+ak;
             const lbl=String(a.label||""); const pri=/HQ/i.test(lbl)?3:(/\b(CORP|CORPORATE|HEADQUARTERS|MAIN|FLAGSHIP)\b/i.test(lbl)?2:1);
