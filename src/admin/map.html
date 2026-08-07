@@ -117,6 +117,7 @@
   <button class="btn ghost" id="unmapBtn" onclick="toggleUnmapped()">Not on map</button>
   <button class="btn ghost" id="savedBtn" onclick="toggleSaved()">Saved routes</button>
   <button class="btn ghost" id="scoreBtn" onclick="toggleScore()">Scorecard</button>
+  <button class="btn ghost" id="weekBtn" onclick="toggleWeek()">This week</button>
 </div>
 
 <div class="wrap">
@@ -136,6 +137,7 @@
   </div>
   <div class="unmap" id="savedPanel" hidden></div>
   <div class="unmap" id="scorePanel" hidden></div>
+  <div class="unmap" id="weekPanel" hidden></div>
   <div class="unmap" id="unmapPanel" hidden>
     <div class="uhead"><b>Not on map</b> <span class="m" id="umeta"></span><button class="rx" onclick="toggleUnmapped()">Close</button></div>
     <div id="ulist"></div>
@@ -217,6 +219,41 @@ async function saveHandout(){
   const url=(($("#hurl")||{}).value||"").trim()||ORDERING_URL;
   const e=$("#herr"); if(e)e.textContent="Saving…";
   try{ const r=await api2({action:"set_settings",key:"handout",value:{ordering_url:url,updates}}); if(r&&r.ok){ HANDOUT={ordering_url:url,updates}; closeHome(); banner("Handout news updated ✓"); } else { if(e)e.textContent=(r&&r.error)||"Couldn't save."; } }catch(err){ if(e)e.textContent="Couldn't save."; }
+}
+/* ---------- weekly schedule ---------- */
+function ymd(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function mondayOf(d){ const x=new Date(d); const wd=(x.getDay()+6)%7; x.setDate(x.getDate()-wd); x.setHours(0,0,0,0); return x; }
+let WEEKSTART=mondayOf(new Date());
+function toggleWeek(){ const p=$("#weekPanel"); if(!p.hidden){p.hidden=true;return;} p.hidden=false; refreshWeek(); }
+function shiftWeek(n){ WEEKSTART=new Date(WEEKSTART.getTime()+n*7*864e5); refreshWeek(); }
+async function refreshWeek(){
+  const p=$("#weekPanel");
+  p.innerHTML=`<div class="uhead"><b>Weekly schedule</b><button class="rx" onclick="toggleWeek()">Close</button></div><div id="weekBody">Loading…</div>`;
+  let routes=[]; try{ const r=await api2({action:"list_routes"}); routes=(r&&r.routes)||[]; }catch(e){}
+  const byDate={}, unscheduled=[];
+  routes.forEach(rt=>{ if(rt.scheduled_date){ (byDate[rt.scheduled_date]||(byDate[rt.scheduled_date]=[])).push(rt); } else unscheduled.push(rt); });
+  const dayName=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+  const todayS=ymd(new Date()); let totStops=0,totSec=0;
+  const days=[]; for(let i=0;i<7;i++) days.push(new Date(WEEKSTART.getTime()+i*864e5));
+  const wkLabel=`${WEEKSTART.toLocaleDateString(undefined,{month:"short",day:"numeric"})} – ${days[6].toLocaleDateString(undefined,{month:"short",day:"numeric"})}`;
+  const rtRow=rt=>`<div style="display:flex;align-items:center;gap:6px;padding:3px 0"><div style="flex:1;min-width:0"><b>${esc(rt.name)}</b><br><small style="color:#6b7683">${rt.stops_count} stop${rt.stops_count===1?"":"s"}${rt.duration_s?" · "+fmtDur(rt.duration_s):""}</small></div><button class="btn" style="padding:3px 8px;font-size:11px" onclick="loadSaved('${rt.id}')">Open</button><button class="btn ghost" style="padding:3px 8px;font-size:11px" onclick="printSaved('${rt.id}')">Sheet</button></div>`;
+  const dayHtml=days.map((d,i)=>{
+    const ds=ymd(d); const list=byDate[ds]||[]; list.forEach(rt=>{ totStops+=rt.stops_count||0; totSec+=rt.duration_s||0; });
+    const today=ds===todayS;
+    const inner=list.length?list.map(rtRow).join(""):`<div style="color:#9aa4ae;font-size:11px;padding:3px 0">—</div>`;
+    return `<div style="border:1px solid ${today?"#2B4071":"#eef1f4"};background:${today?"#f4f7fb":"#fff"};border-radius:8px;padding:6px 9px;margin:5px 0">
+      <div style="font-weight:700;font-size:12px;color:#2B4071;margin-bottom:2px">${dayName[i]} <span style="color:#9aa4ae;font-weight:400">${d.toLocaleDateString(undefined,{month:"short",day:"numeric"})}</span></div>${inner}</div>`;
+  }).join("");
+  const uns=unscheduled.length?`<div style="margin-top:10px"><div style="font-weight:700;font-size:12px;color:#6b7683">Unscheduled</div>${unscheduled.map(rtRow).join("")}</div>`:"";
+  $("#weekBody").innerHTML=`
+    <div style="display:flex;align-items:center;gap:8px;margin:6px 0">
+      <button class="btn ghost" style="padding:4px 10px" onclick="shiftWeek(-1)">‹</button>
+      <b style="flex:1;text-align:center">${wkLabel}</b>
+      <button class="btn ghost" style="padding:4px 10px" onclick="shiftWeek(1)">›</button>
+    </div>${dayHtml}
+    <div style="color:#6b7683;margin-top:8px;font-size:12px">Week total: ${totStops} stop${totStops===1?"":"s"}${totSec?" · "+fmtDur(totSec)+" drive":""}</div>
+    ${uns}
+    <div style="color:#9aa4ae;margin-top:8px;font-size:11px">Set a route's date when you Save it. To reschedule, open a route and Save again with a new date.</div>`;
 }
 // routes-api = OpenRouteService proxy + saved routes (separate from geocode-api).
 async function api2(body){
