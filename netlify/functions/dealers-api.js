@@ -179,6 +179,22 @@ exports.handler = async (event)=>{
         const f={}; for(const k of ["contact_name","email","phone","address","city","state","zip","hcps_account","notes","business_name"]) if(k in b) f[k]=(b[k]===""?null:b[k]);
         f.updated_at=new Date().toISOString();
         await sbSend("PATCH",`dealers?id=eq.${b.dealer_id}`,f,{Prefer:"return=minimal"});
+        // Keep the MAP in sync: it pins from dealer_addresses, so mirror an address edit
+        // onto this dealer's primary (highest-pri) address row — or create one if none.
+        if(["address","city","state","zip"].some(k=>k in b)){
+          try{
+            const cur=await sbGet(`dealers?id=eq.${b.dealer_id}&select=address,city,state,zip`);
+            const d=(cur&&cur[0])||{};
+            const payload={address:d.address||null,city:d.city||null,state:d.state||null,zip:d.zip||null};
+            const rows=await sbGet(`dealer_addresses?dealer_id=eq.${b.dealer_id}&select=addr_key&order=pri.desc.nullslast&limit=1`).catch(()=>[]);
+            if(rows&&rows[0]&&rows[0].addr_key){
+              await sbSend("PATCH",`dealer_addresses?dealer_id=eq.${b.dealer_id}&addr_key=eq.${encodeURIComponent(rows[0].addr_key)}`,payload,{Prefer:"return=minimal"});
+            } else {
+              const ak=(String(d.address||"").toLowerCase().replace(/[^a-z0-9]+/g,"")).slice(0,120)||"primary";
+              await sbSend("POST","dealer_addresses",{dealer_id:b.dealer_id,addr_key:ak,label:"Primary",pri:3,...payload},{Prefer:"resolution=merge-duplicates,return=minimal"});
+            }
+          }catch(e){}
+        }
         return json(200,{ok:true});
       }
       if(act==="confirm"){
