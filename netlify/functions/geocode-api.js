@@ -131,20 +131,22 @@ exports.handler = async (event)=>{
         return json(200,{ok:false,error:"tables_missing",points:[],message:"Run geocode.sql (and create_tables.sql) in Supabase, then reload."});
       }
       const cmap=new Map(); for(const c of cache){ if(c.ok&&c.lat!=null) cmap.set(c.q,c); }
-      const points=[];
+      const points=[]; const unmapped=[];
       for(const a of addrs){
-        const c=cmap.get(qkey(a)); if(!c) continue;
         const d=a.dealers||{};
+        const c=cmap.get(qkey(a));
+        if(!c){ unmapped.push({dealer_id:a.dealer_id||"",name:d.business_name||"(unknown)",status:d.status||"",
+          address:a.address||"",city:a.city||"",state:a.state||"",zip:a.zip||""}); continue; }
         points.push({lat:c.lat,lng:c.lng,approx:!!c.approx,name:d.business_name||"(unknown)",status:d.status||"",
           email:d.email||"",city:a.city||"",state:a.state||"",label:a.label||"",dealer_id:a.dealer_id||""});
       }
       if(me.role!=="president"){
         const rn=String(me.rep_name||"").trim().toLowerCase();
         const rep={}; try{ const dir=await sbGetAll("dealer_directory?select=dealer_name,rep_name","dealer_name"); for(const d of (dir||[])) rep[d.dealer_name]=d.rep_name||""; }catch(e){}
-        const scoped=points.filter(p=> !!rn && String(rep[p.name]||"").trim().toLowerCase()===rn);
-        return json(200,{ok:true,build:BUILD,role:me.role,points:scoped});
+        const mine=p=> !!rn && String(rep[p.name]||"").trim().toLowerCase()===rn;
+        return json(200,{ok:true,build:BUILD,role:me.role,points:points.filter(mine),unmapped:unmapped.filter(mine)});
       }
-      return json(200,{ok:true,build:BUILD,role:me.role,points});
+      return json(200,{ok:true,build:BUILD,role:me.role,points,unmapped});
     }
 
     if(event.httpMethod==="POST"){

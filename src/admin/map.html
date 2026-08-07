@@ -32,6 +32,17 @@
  .pin span{display:block;width:15px;height:15px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3)}
  .pin.inroute span{width:19px;height:19px;border-color:#2B4071;box-shadow:0 0 0 2px #2B4071}
  .pin.approx span{border-style:dashed;border-color:#e6a23c;opacity:.75}
+ .unmap{position:absolute;right:14px;top:14px;z-index:650;width:312px;max-height:74%;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 34px rgba(16,24,40,.22);overflow:hidden}
+ .unmap .uhead{display:flex;align-items:center;gap:8px;padding:11px 13px;border-bottom:1px solid var(--line);font-size:14px}
+ .unmap .uhead .m{color:var(--muted);font-size:11.5px;font-weight:600}
+ .unmap .uhead .rx{margin-left:auto;background:none;border:0;color:var(--blue);font-weight:700;font-size:12px;cursor:pointer}
+ .unmap #ulist{overflow:auto;padding:4px 6px 8px}
+ .unmap .ustate{padding:8px 9px 3px;font-weight:800;color:var(--muted);font-size:11px;letter-spacing:.3px}
+ .unmap .uitem{padding:8px 9px;border-radius:8px;border-bottom:1px solid #f0f2f5}
+ .unmap .uitem:hover{background:#f7f9fb}
+ .unmap .uitem .un{font-weight:700;font-size:12.5px}
+ .unmap .uitem .ua{color:var(--muted);font-size:11.5px;margin:1px 0 3px}
+ .unmap .uitem a{color:var(--blue);font-weight:700;text-decoration:none;font-size:11.5px}
  .homepin span{display:flex;align-items:center;justify-content:center;width:27px;height:27px;background:#16202e;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.4);font-size:14px}
  .pop b{font-size:13.5px} .pop .st{display:inline-block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;padding:1px 7px;border-radius:20px;margin-left:4px}
  .pop .row{font-size:12px;color:#333;margin-top:3px}.pop a{color:var(--blue);font-weight:700;font-size:12px}
@@ -102,6 +113,7 @@
   <button class="btn ghost" id="homeBtn" onclick="editHome()">🏠 Set home base</button>
   <button class="btn" id="geoBtn" onclick="geocodeAll()">Geocode addresses</button>
   <button class="btn ghost" id="clusterBtn" onclick="togglePins()">Show all pins</button>
+  <button class="btn ghost" id="unmapBtn" onclick="toggleUnmapped()">Not on map</button>
 </div>
 
 <div class="wrap">
@@ -114,6 +126,10 @@
       <button class="btn ghost" onclick="optimize()">Optimize order</button>
       <button class="btn" onclick="openGmaps()">Google Maps →</button>
     </div>
+  </div>
+  <div class="unmap" id="unmapPanel" hidden>
+    <div class="uhead"><b>Not on map</b> <span class="m" id="umeta"></span><button class="rx" onclick="toggleUnmapped()">Close</button></div>
+    <div id="ulist"></div>
   </div>
 </div>
 
@@ -129,7 +145,7 @@ const $=s=>document.querySelector(s);
 const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
 let TOKEN=sessionStorage.getItem(TKEY)||null;
 let ME=null; try{ME=JSON.parse(sessionStorage.getItem(PKEY)||"null")}catch(e){ME=null;}
-let MAP=null, CLUSTER=null, PLAIN=null, LAYER=null, POINTS=[], BOOTED=false, ROUTE=[], ROUTELINE=null;
+let MAP=null, CLUSTER=null, PLAIN=null, LAYER=null, POINTS=[], UNMAPPED=[], BOOTED=false, ROUTE=[], ROUTELINE=null;
 let HOMEMARKER=null, ROUNDTRIP=true;
 const DEFAULT_HOME="1003 Wilkinson Pl, Cottontown, TN 37048";
 let HOME=null; try{ HOME=JSON.parse(localStorage.getItem("hcps_home_base")||"null"); }catch(e){ HOME=null; }
@@ -313,12 +329,29 @@ async function geocodeAll(){
 function banner(msg){ $("#banner").innerHTML = msg?`<div class="banner">${esc(msg)}</div>`:""; }
 async function loadPoints(){
   const j=await api("GET");
-  if(j&&j.error==="tables_missing"){ banner(j.message); POINTS=[]; }
-  else { banner(""); POINTS=(j&&j.points)||[]; }
+  if(j&&j.error==="tables_missing"){ banner(j.message); POINTS=[]; UNMAPPED=[]; }
+  else { banner(""); POINTS=(j&&j.points)||[]; UNMAPPED=(j&&j.unmapped)||[]; }
   POINTS.forEach((p,i)=>p._i=i);
   if(ROUTE.length){ ROUTE=ROUTE.map(s=>POINTS.find(p=>p.name===s.name&&p.lat===s.lat&&p.lng===s.lng)).filter(Boolean); }
-  fillStateFilter(); draw(); renderRoute();
+  fillStateFilter(); draw(); renderRoute(); renderUnmapped();
 }
+function renderUnmapped(){
+  const b=$("#unmapBtn"); if(b) b.textContent = UNMAPPED.length ? `⚠ Not on map (${UNMAPPED.length})` : "All on map ✓";
+  const meta=$("#umeta"); if(meta) meta.textContent = `${UNMAPPED.length} location${UNMAPPED.length===1?"":"s"}`;
+  const list=$("#ulist"); if(!list) return;
+  if(!UNMAPPED.length){ list.innerHTML=`<div class="uitem"><div class="ua">Every location is geocoded. 🎉</div></div>`; return; }
+  const byState={}; UNMAPPED.forEach(u=>{ (byState[u.state||"—"]=byState[u.state||"—"]||[]).push(u); });
+  list.innerHTML=Object.keys(byState).sort().map(st=>{
+    const items=byState[st].slice().sort((a,b)=>String(a.name).localeCompare(b.name)).map(u=>`
+      <div class="uitem">
+        <div class="un">${esc(u.name)}</div>
+        <div class="ua">${esc([u.address,[u.city,u.state].filter(Boolean).join(", "),u.zip].filter(Boolean).join(" · "))}</div>
+        <div><a href="/admin/dealers.html?dealer=${encodeURIComponent(u.dealer_id)}" target="_blank" rel="noopener">Fix address in Dealer Manager →</a></div>
+      </div>`).join("");
+    return `<div class="ustate">${esc(st)}</div>${items}`;
+  }).join("");
+}
+function toggleUnmapped(){ const p=$("#unmapPanel"); if(p) p.hidden=!p.hidden; }
 async function boot(){
   if(!TOKEN){ showGate(); return; }
   if(TOKEN && !ME){ try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+TOKEN},body:JSON.stringify({action:"me"})}); const j=await r.json().catch(()=>({})); if(j&&j.ok){ME=j.profile; sessionStorage.setItem(PKEY,JSON.stringify(ME));} else { TOKEN=null; sessionStorage.removeItem(TKEY); showGate(); return; } }catch(e){} }
