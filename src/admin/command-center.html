@@ -149,7 +149,9 @@ function render(){
   </div>`;
 
   // monthly trend (SVG) — current year vs prior year over Jan–Dec
-  const trend = trendCard(byMonth, years);
+  const cur=(YEAR==="all"?years[years.length-1]:YEAR), prev=years.includes(String(Number(cur)-1))?String(Number(cur)-1):null;
+  let byMonthAll={}; for(const f of (A.facts||[])){ byMonthAll[ym(f.period)]=(byMonthAll[ym(f.period)]||0)+(f.sales||0); }
+  const trend = trendCard(cur, prev);
 
   const html=kpis+trend+`
     <div class="cc-grid">
@@ -168,23 +170,20 @@ function render(){
       <div class="hint" style="margin-top:10px">Declining accounts are your save-the-business calls; pair this with <a class="link" href="/admin/call-list.html">Who to Call</a>.</div>
     </div>`;
   $("#body").innerHTML=html;
-  wireTrend(byMonth, years);
+  wireTrend(byMonthAll, cur, prev);
 }
 
-function trendCard(byMonth, years){
-  const has2=years.length>=2;
-  const cur=years[years.length-1], prev=years[years.length-2];
-  const leg=`<div class="legend"><span class="lk"><span class="sw" style="background:${C.cur}"></span>${cur}</span>${has2?`<span class="lk"><span class="sw" style="background:${C.prev}"></span>${prev}</span>`:""}</div>`;
-  return `<div class="card"><h2>Monthly sales <span class="side">by month of year</span></h2>${leg}
+function trendCard(cur, prev){
+  const leg=`<div class="legend"><span class="lk"><span class="sw" style="background:${C.cur}"></span>${cur}</span>${prev?`<span class="lk"><span class="sw" style="background:${C.prev}"></span>${prev}</span>`:""}</div>`;
+  return `<div class="card"><h2>Monthly sales <span class="side">${cur}${prev?" vs "+prev:""}, by month</span></h2>${leg}
     <div class="chartwrap"><svg id="trend" viewBox="0 0 900 300" preserveAspectRatio="none" style="width:100%;height:300px;display:block"></svg><div class="cctip" id="cctip"></div></div></div>`;
 }
 
 function seriesFor(byMonth, year){ const a=[]; for(let m=1;m<=12;m++){ const k=year+"-"+String(m).padStart(2,"0"); a.push(k in byMonth?byMonth[k]:null); } return a; }
 
-function wireTrend(byMonth, years){
+function wireTrend(byMonthAll, cur, prev){
   const svg=document.getElementById("trend"); if(!svg) return;
-  const cur=years[years.length-1], prev=years[years.length-2];
-  const sCur=seriesFor(byMonth,cur), sPrev=prev?seriesFor(byMonth,prev):[];
+  const sCur=seriesFor(byMonthAll,cur), sPrev=prev?seriesFor(byMonthAll,prev):[];
   const allVals=[...sCur,...sPrev].filter(v=>v!=null);
   const max=Math.max(1,...allVals);
   const W=900,H=300,padL=64,padR=16,padT=14,padB=28;
