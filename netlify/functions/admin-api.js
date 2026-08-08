@@ -122,6 +122,21 @@ async function handleGet(body) {
   return json(200, { content, sha: data.sha });
 }
 
+// List a directory's files (for the media library). Returns [] if the folder doesn't exist.
+async function handleList(body) {
+  const { repo, branch, ok } = githubConfig();
+  if (!ok) return json(500, { error: "GitHub is not configured (set GITHUB_REPO and GITHUB_TOKEN)." });
+  const path = body.path;
+  if (!path) return json(400, { error: "Missing path." });
+  const res = await gh(`/repos/${repo}/contents/${encodeURIComponent(path).replace(/%2F/g, "/")}?ref=${encodeURIComponent(branch)}`);
+  if (res.status === 404) return json(200, { files: [] });
+  if (!res.ok) return json(502, { error: `GitHub list failed (${res.status}).` });
+  const data = await res.json();
+  const arr = Array.isArray(data) ? data : [];
+  const files = arr.filter(x => x.type === "file").map(x => ({ name: x.name, path: x.path, size: x.size }));
+  return json(200, { files });
+}
+
 async function handlePut(body, isBinary) {
   const { repo, branch, ok } = githubConfig();
   if (!ok) return json(500, { error: "GitHub is not configured (set GITHUB_REPO and GITHUB_TOKEN)." });
@@ -201,6 +216,8 @@ exports.handler = async (event) => {
         return json(200, { ok: true, github: githubConfig().ok });
       case "get":
         return await handleGet(body);
+      case "list":
+        return await handleList(body);
       case "put":
         return await handlePut(body, false);
       case "upload":

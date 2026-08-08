@@ -17,6 +17,7 @@
     pages: "src/_data/pages.json",
     seo: "src/_data/seo.json",
     redirects: "src/_data/redirects.json",
+    landing: "src/_data/landing.json",
   };
 
   // ---- Schemas for the simple data editors (Home Page / Site / Team / Testimonials) ----
@@ -73,6 +74,10 @@
     { k: "dealer_support_tools", label: "Dealer support tools", type: "objlist", full: true, item: [
       { k: "title", label: "Title", type: "text" },
       { k: "description", label: "Description", type: "textarea", full: true } ] },
+    { k: "analytics", label: "Website analytics", type: "object", full: true, item: [
+      { k: "provider", label: "Provider — type ga4 or plausible (blank = off)", type: "text" },
+      { k: "ga4_id", label: "GA4 Measurement ID (G-XXXXXXXXXX)", type: "text" },
+      { k: "plausible_domain", label: "Plausible domain (e.g. homecareproviderservices.us)", type: "text" } ] },
   ];
 
   var TEAM_ITEM = [
@@ -97,6 +102,21 @@
     { k: "from", label: "From path (e.g. /old-page/)", type: "text" },
     { k: "to", label: "To path or full URL", type: "text" },
     { k: "status", label: "Status — 301 permanent, 302 temporary", type: "text" },
+  ];
+  var LANDING_ITEM = [
+    { k: "slug", label: "URL slug (e.g. spring-promo → /l/spring-promo/)", type: "text" },
+    { k: "published", label: "Published (live on the site)", type: "bool" },
+    { k: "title", label: "Page title", type: "text", full: true },
+    { k: "description", label: "SEO description", type: "textarea", full: true },
+    { k: "hero", label: "Hero", type: "object", full: true, item: [
+      { k: "eyebrow", label: "Eyebrow (small label)", type: "text" },
+      { k: "headline", label: "Headline", type: "text", full: true },
+      { k: "lead", label: "Lead paragraph", type: "textarea", full: true },
+      { k: "cta_label", label: "Button label", type: "text" },
+      { k: "cta_url", label: "Button URL", type: "url" } ] },
+    { k: "sections", label: "Content sections", type: "objlist", full: true, item: [
+      { k: "heading", label: "Heading", type: "text" },
+      { k: "body", label: "Body (HTML allowed)", type: "textarea", full: true } ] },
   ];
 
   // ---- Content pages (pages.json): Partner, Contact, Consulting, Dealer Hub ----
@@ -226,6 +246,8 @@
       note: "Per-page search title and meta description. Path must match the live URL exactly (with leading and trailing slash, e.g. /contact/). Pages without an entry keep their default title and the site description." },
     redirects: { file: "redirects", title: "Redirects", root: "array", item: REDIR_ITEM, itemLabel: "Redirect",
       note: "Send an old or moved URL to a new one (great for SEO when a page changes address). From is a path on this site (/old/); To is a path or full URL. Use 301 for a permanent move. Takes effect on the next publish." },
+    landing: { file: "landing", title: "Landing Pages", root: "array", item: LANDING_ITEM, itemLabel: "Landing page",
+      note: "Build standalone campaign pages at /l/<slug>/. Give each a slug, hero, and content sections, then tick Published to make it live. Unpublished pages stay as drafts and never appear on the site." },
   };
 
   // ---- Block schemas: mirror src/_includes/blocks/*.njk ----
@@ -442,6 +464,7 @@
     document.querySelectorAll(".tab").forEach(function (t) { t.classList.toggle("active", t.dataset.view === view); });
     if (view === "manufacturers") renderManuIndex();
     else if (view === "documents") renderDocuments();
+    else if (view === "media") renderMedia();
     else if (DATA_VIEWS[view]) renderData(view);
   }
 
@@ -852,6 +875,46 @@
       return api("upload", { path: repoPath, contentBase64: b64, message: "Upload " + fname + " via admin" });
     }).then(function () { busy(false); return publicUrl; })
       .catch(function (e) { busy(false); throw e; });
+  }
+
+  // ---------- media library ----------
+  var MEDIA_DIR = "media";
+  function renderMedia() {
+    var v = $("#view"); v.innerHTML = "";
+    v.appendChild(h("div", { class: "view-head" }, [ h("h2", {}, "Media Library") ]));
+    v.appendChild(h("p", { class: "section-note" }, "Upload and browse images you can reuse anywhere on the site. Click “Copy path” and paste it into any image field (manufacturer images, page content, SEO share image)."));
+    var up = h("div", { style: "margin:0 0 14px" }, [
+      h("label", { class: "btn primary", style: "cursor:pointer" }, [
+        "↑ Upload image",
+        h("input", { type: "file", accept: "image/*", style: "display:none", onchange: function (e) {
+          var f = e.target.files && e.target.files[0]; if (!f) return;
+          uploadMedia(f, MEDIA_DIR).then(function () { toast("Uploaded.", "ok"); renderMedia(); }).catch(function (er) { toast(er.message || "Upload failed", "bad"); });
+        } })
+      ])
+    ]);
+    v.appendChild(up);
+    var grid = h("div", { style: "display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px" });
+    v.appendChild(grid);
+    busy(true, "Loading media…");
+    api("list", { path: "src/assets/" + MEDIA_DIR }).then(function (b) {
+      busy(false);
+      var files = (b && b.files) || [];
+      if (!files.length) { grid.appendChild(h("p", { class: "section-note" }, "No images yet — upload one above to start your library.")); return; }
+      files.forEach(function (f) {
+        var url = "/assets/" + MEDIA_DIR + "/" + f.name;
+        var card = h("div", { style: "border:1px solid #e2e6ea;border-radius:10px;overflow:hidden;background:#fff" }, [
+          h("div", { style: "height:110px;background:#f4f7fa url('" + url + "') center/contain no-repeat" }),
+          h("div", { style: "padding:7px 9px" }, [
+            h("div", { style: "font-size:11px;color:#41576b;word-break:break-all;margin-bottom:5px" }, f.name),
+            h("button", { class: "btn sm", onclick: function () {
+              if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function () { toast("Path copied: " + url, "ok"); });
+              else { window.prompt("Copy this path:", url); }
+            } }, "Copy path")
+          ])
+        ]);
+        grid.appendChild(card);
+      });
+    }).catch(function (e) { busy(false); toast(e.message || "Couldn't load media", "bad"); });
   }
 
   // ---------- save (manufacturers) ----------

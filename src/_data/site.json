@@ -2,6 +2,11 @@
   "name": "HomeCare Provider Services",
   "tagline": "A Solutions Company",
   "founded": 2016,
+  "analytics": {
+    "provider": "",
+    "ga4_id": "",
+    "plausible_domain": ""
+  },
   "meta_description": "HomeCare Provider Services represents 12 leading home medical equipment manufacturers to 300+ dealers across Southern Ohio, Southern Indiana, Kentucky, Tennessee, and Georgia.",
   "contact": {
     "phone_display": "937-626-5141",

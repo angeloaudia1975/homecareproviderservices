@@ -1,0 +1,29 @@
+---
+layout: layouts/base.njk
+pagination:
+  data: landingPublished
+  size: 1
+  alias: lp
+permalink: "/l/{{ lp.slug }}/"
+eleventyComputed:
+  title: "{{ lp.title }}"
+  description: "{{ lp.description }}"
+---
+<section class="hero">
+  <div class="container">
+    {% if lp.hero.eyebrow %}<p class="eyebrow">{{ lp.hero.eyebrow }}</p>{% endif %}
+    <h1>{{ lp.hero.headline or lp.title }}</h1>
+    {% if lp.hero.lead %}<p class="lead">{{ lp.hero.lead }}</p>{% endif %}
+    {% if lp.hero.cta_label and lp.hero.cta_url %}
+      <p><a class="btn primary" href="{{ lp.hero.cta_url }}">{{ lp.hero.cta_label }}</a></p>
+    {% endif %}
+  </div>
+</section>
+{% for s in lp.sections %}
+<section class="section">
+  <div class="container">
+    {% if s.heading %}<h2>{{ s.heading }}</h2>{% endif %}
+    {% if s.body %}<div class="prose">{{ s.body | safe }}</div>{% endif %}
+  </div>
+</section>
+{% endfor %}

@@ -16,6 +16,12 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Archivo+Expanded:wght@700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/css/site.css?v={{ asset.cssVersion }}">
+{%- if site.analytics and site.analytics.provider == "ga4" and site.analytics.ga4_id %}
+<script async src="https://www.googletagmanager.com/gtag/js?id={{ site.analytics.ga4_id }}"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','{{ site.analytics.ga4_id }}');</script>
+{%- elif site.analytics and site.analytics.provider == "plausible" and site.analytics.plausible_domain %}
+<script defer data-domain="{{ site.analytics.plausible_domain }}" src="https://plausible.io/js/script.js"></script>
+{%- endif %}
 </head>
 <body>
 
