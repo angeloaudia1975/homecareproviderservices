@@ -1,0 +1,176 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Who to Call</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .why{display:flex;flex-wrap:wrap;gap:4px}
+ .rz{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;border-radius:20px;padding:2px 9px;white-space:nowrap;border:1px solid transparent}
+ .rz.cart{background:#e7f6ec;color:#1f7a44;border-color:#bfe3ca}
+ .rz.login{background:#eaf3fb;color:#12466e;border-color:#cfe2fb}
+ .rz.overdue{background:#fdeee0;color:#b45309;border-color:#f6d5ad}
+ .rz.dormant{background:#f3eef9;color:#5b3fa0;border-color:#e0d5f5}
+ .rz.new{background:#fff7e6;color:#8a6d0f;border-color:#f0dca8}
+ .filt{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 14px}
+ .seg{display:inline-flex;background:#e3e9f0;border-radius:9px;padding:2px;gap:2px}
+ .seg button{background:none;border:0;border-radius:7px;padding:7px 12px;font-weight:700;font-size:12.5px;color:#41576b;cursor:pointer;font-family:inherit}
+ .seg button.on{background:#fff;color:var(--navy);box-shadow:0 1px 3px rgba(16,38,63,.12)}
+ td.dl a{color:var(--navy);font-weight:700}td.dl a:hover{color:var(--blue)}
+ td.dl .meta{font-size:11px;color:var(--gray)}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1>Who to Call Today</h1><div class="sub">A daily worklist — dealers showing buying intent, overdue to reorder, or going dormant. Built from ordering activity and sales cadence.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
+const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), LIST=[], FTYPE="all", FREP="all", REPS=[];
+const MONTH=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const pmOf=p=>{const s=String(p||"").slice(0,7);const[y,m]=s.split("-").map(Number);return (y*12+(m-1));};
+const pmLabel=pm=>MONTH[((pm%12)+12)%12]+" "+Math.floor(pm/12);
+const median=a=>{if(!a.length)return null;const b=[...a].sort((x,y)=>x-y);const m=Math.floor(b.length/2);return b.length%2?b[m]:(b[m-1]+b[m])/2;};
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button> <a href="reset.html" style="margin-left:6px;color:#10263f;font-weight:600;font-size:13px">Forgot password?</a><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+function showErr(m){$("#body").innerHTML=`<div class="msg err"><b>Couldn't load.</b><br>${esc(m)}<br><br><button class="go" onclick="load()">Retry</button></div>`;}
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  $("#body").innerHTML=`<div class="msg">Building today's call list…</div>`;
+  try{
+    const h={authorization:"Bearer "+TOKEN};
+    const [aRes,dRes]=await Promise.all([
+      fetch("/.netlify/functions/analytics",{headers:h}),
+      fetch("/.netlify/functions/dealers-api",{headers:h}).catch(()=>null)
+    ]);
+    if(aRes.status===401){ gate("Your session ended — sign in again."); return; }
+    if(aRes.status===403){ $("#body").innerHTML=`<div class="msg err"><b>President only.</b><br>This worklist is limited to President accounts. <button class="go" onclick="lock()">Sign in as a different user</button></div>`; return; }
+    const A=await aRes.json(); if(A.error){ showErr(A.error); return; }
+    let D={}; try{ D=dRes?await dRes.json():{}; }catch(e){ D={}; }
+    LIST=build(A,D);
+    render();
+  }catch(e){ showErr(String(e.message||e)); }
+}
+
+// Build the ranked worklist from the analytics cube (A.facts) + dealer activity (D).
+function build(A, D){
+  const facts=A.facts||[];
+  const info=A.dealerInfo||{};
+  const assign={}; (A.assignments||[]).forEach(x=>{ if(x.dealer_name) assign[x.dealer_name]=x.rep_name||""; });
+  // latest month across the whole dataset = "now" for cadence math
+  let latest=0; for(const f of facts){ const pm=pmOf(f.period); if(pm>latest) latest=pm; }
+  // per dealer: sales, first/last month, per-line month sets + line sales, reported rep tally
+  const DL=new Map();
+  for(const f of facts){
+    const d=f.dealer; if(!d) continue; const pm=pmOf(f.period);
+    let o=DL.get(d); if(!o){ o={sales:0,first:pm,last:pm,lines:new Map(),reps:{}}; DL.set(d,o); }
+    o.sales+=f.sales||0; if(pm<o.first)o.first=pm; if(pm>o.last)o.last=pm;
+    let ln=o.lines.get(f.line); if(!ln){ ln={pms:new Set(),sales:0}; o.lines.set(f.line,ln); }
+    ln.pms.add(pm); ln.sales+=f.sales||0;
+    const rp=f.rep||"Unassigned"; o.reps[rp]=(o.reps[rp]||0)+(f.sales||0);
+  }
+  // activity signals
+  const cartBy={}, seenBy={};
+  for(const c of (D.openCarts||[])){ if(c.dealer_name && c.itemCount>0){ const p=cartBy[c.dealer_name]; if(!p||c.value>p.value) cartBy[c.dealer_name]={value:c.value||0,items:c.itemCount||0,at:c.updated_at}; } }
+  for(const s of (D.recentSessions||[])){ if(!s.dealer_name) continue; const t=new Date(s.last_seen_at).getTime(); const p=seenBy[s.dealer_name]; if(!p||t>p.t) seenBy[s.dealer_name]={t,live:!!s.live}; }
+  const repset=new Set();
+  const out=[];
+  for(const [d,o] of DL){
+    const reasons=[]; let score=0;
+    // rep: assigned dealer_directory wins, else the rep with the most reported sales
+    let rep=assign[d]||"";
+    if(!rep){ let best="",bv=-1; for(const k in o.reps){ if(o.reps[k]>bv){bv=o.reps[k];best=k;} } rep=best||"Unassigned"; }
+    if(rep) repset.add(rep);
+    // buying intent — open cart
+    const cart=cartBy[d];
+    if(cart){ reasons.push({t:"cart",label:"🛒 Open cart "+money(cart.value)+(cart.items?` · ${cart.items} item${cart.items===1?"":"s"}`:"")}); score+=100000+(cart.value||0); }
+    // buying intent — recent login (last 21 days)
+    const seen=seenBy[d];
+    if(seen && (Date.now()-seen.t) < 21*864e5){ const days=Math.max(0,Math.round((Date.now()-seen.t)/864e5)); reasons.push({t:"login",label:(seen.live?"🟢 Online now":"👤 Logged in "+(days===0?"today":days+"d ago"))}); score+=50000-(days*100); }
+    // overdue reorder — per line with an established cadence
+    const overdue=[];
+    for(const [line,ln] of o.lines){
+      const pms=[...ln.pms].sort((a,b)=>a-b); if(pms.length<2) continue;
+      const gaps=[]; for(let i=1;i<pms.length;i++) gaps.push(pms[i]-pms[i-1]);
+      const interval=median(gaps); if(interval==null||interval<=0) continue;
+      const sinceLine=latest-pms[pms.length-1];
+      const due=interval+Math.max(1,Math.round(interval*0.5));   // 50% past the usual cycle
+      if(sinceLine>=due){ overdue.push({line,sinceLine,interval,sales:ln.sales}); }
+    }
+    overdue.sort((a,b)=>b.sales-a.sales);
+    for(const ov of overdue.slice(0,3)){ reasons.push({t:"overdue",label:`⏰ ${ov.line}: ${ov.sinceLine}mo (usually ~${Math.round(ov.interval)}mo)`}); score+=ov.sales; }
+    // dormant — nothing at all recently, but had a history
+    const monthsSince=latest-o.last;
+    if(monthsSince>=3){ reasons.push({t:"dormant",label:`💤 Dormant ${monthsSince}mo`}); score+=o.sales*(monthsSince>=6?0.5:0.3); }
+    // new — first order within the last 2 months
+    if((latest-o.first)<=2){ reasons.push({t:"new",label:"✨ New account"}); score+=20000; }
+    if(!reasons.length) continue;
+    out.push({ dealer:d, id:(info[d]&&info[d].id)||null, rep, sales:o.sales, lastPm:o.last, monthsSince, reasons, score,
+      types:new Set(reasons.map(r=>r.t)) });
+  }
+  REPS=[...repset].filter(Boolean).sort();
+  out.sort((a,b)=>b.score-a.score);
+  return out;
+}
+
+function render(){
+  const rows=LIST.filter(x=> (FTYPE==="all"||x.types.has(FTYPE)) && (FREP==="all"||x.rep===FREP) );
+  const c={cart:0,login:0,overdue:0,dormant:0,new:0};
+  for(const x of LIST){ for(const t of x.types) if(t in c) c[t]++; }
+  const kpi=(l,v,cls)=>`<div class="kpi"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div></div>`;
+  const kpis=`<div class="kpis">
+    ${kpi("On the list",LIST.length,"blue")}
+    ${kpi("Buying intent",c.cart+c.login,"")}
+    ${kpi("Overdue reorder",c.overdue,"orange")}
+    ${kpi("Dormant",c.dormant,"")}
+    ${kpi("New accounts",c.new,"")}
+  </div>`;
+  const seg=(v,l)=>`<button class="${FTYPE===v?'on':''}" onclick="setType('${v}')">${l}</button>`;
+  const filt=`<div class="filt">
+    <div class="seg">${seg("all","All")}${seg("cart","🛒 Cart")}${seg("login","👤 Login")}${seg("overdue","⏰ Overdue")}${seg("dormant","💤 Dormant")}${seg("new","✨ New")}</div>
+    <select onchange="setRep(this.value)"><option value="all">All reps</option>${REPS.map(r=>`<option value="${esc(r)}"${FREP===r?" selected":""}>${esc(r)}</option>`).join("")}</select>
+    <span class="hint" style="margin:0">${rows.length} dealer${rows.length===1?"":"s"} to work</span>
+  </div>`;
+  let body;
+  if(!rows.length){ body=`<div class="msg">Nothing matches this filter. 🎉</div>`; }
+  else{
+    const tr=rows.map(x=>{
+      const link=x.id?`/admin/dealers.html?dealer=${encodeURIComponent(x.id)}`:`/admin/dealers.html`;
+      const why=x.reasons.map(r=>`<span class="rz ${r.t}">${esc(r.label)}</span>`).join("");
+      const last=x.lastPm?pmLabel(x.lastPm):"—";
+      return `<tr>
+        <td class="dl"><a href="${link}">${esc(x.dealer)}</a></td>
+        <td><div class="why">${why}</div></td>
+        <td class="num">${esc(last)}<div class="meta">${x.monthsSince}mo ago</div></td>
+        <td class="num">${money(x.sales)}</td>
+        <td>${esc(x.rep||"—")}</td>
+        <td class="num"><a class="link" href="${link}">Open →</a></td>
+      </tr>`;
+    }).join("");
+    body=`<div class="card" style="padding:6px 10px"><table>
+      <thead><tr><th>Dealer</th><th>Why call</th><th class="num">Last order</th><th class="num">Total sales</th><th>Rep</th><th></th></tr></thead>
+      <tbody>${tr}</tbody></table></div>`;
+  }
+  $("#body").innerHTML=kpis+filt+body;
+}
+function setType(t){ FTYPE=t; render(); }
+function setRep(r){ FREP=r; render(); }
+
+load();
+</script>
+</body></html>

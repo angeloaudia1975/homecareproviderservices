@@ -87,6 +87,7 @@ exports.handler = async (event) => {
     // same detail the Dealer Manager does (address, contact, account #).
     const dealerInfo = {};
     for (const d of dealers) dealerInfo[d.business_name] = {
+      id: d.id,
       hcps_account: d.hcps_account || "", contact_name: d.contact_name || "", email: d.email || "",
       phone: d.phone || "", address: d.address || "", city: d.city || "", state: d.state || "", zip: d.zip || "", addresses: [] };
     // All addresses on file per dealer (corporate HQ + branches), newest-corporate first.
