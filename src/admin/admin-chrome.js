@@ -23,6 +23,7 @@
         { href:"/admin/map.html",       label:"Territory Map" }
     ]},
     { id:"analytics", label:"Sales Data & Analytics", href:"/admin/#analytics", tools:[
+        { href:"/admin/command-center.html",     label:"Command Center" },
         { href:"/admin/analytics.html",          label:"Analytics" },
         { href:"/admin/import-commissions.html", label:"Import Commissions" }
     ]}

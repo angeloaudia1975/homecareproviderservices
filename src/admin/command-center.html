@@ -1,0 +1,221 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Command Center</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .cc-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+ @media(max-width:820px){.cc-grid{grid-template-columns:1fr}}
+ .card h2 .side{float:right;font-size:11px;color:var(--gray);font-weight:600;text-transform:none;letter-spacing:0}
+ .bars{display:flex;flex-direction:column;gap:7px}
+ .brow{display:grid;grid-template-columns:150px 1fr auto;align-items:center;gap:10px;font-size:12.5px}
+ .brow .bl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--navy);font-weight:600}
+ .brow .bt{background:#eef2f6;border-radius:5px;height:16px;position:relative;overflow:hidden}
+ .brow .bf{position:absolute;left:0;top:0;bottom:0;border-radius:0 5px 5px 0;min-width:2px}
+ .brow .bv{white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy)}
+ .brow.neg .bt{background:#f6eef0}
+ .legend{display:flex;gap:16px;align-items:center;font-size:12px;color:var(--gray);margin:2px 0 8px}
+ .legend .lk{display:inline-flex;align-items:center;gap:6px}
+ .legend .sw{width:22px;height:3px;border-radius:2px;display:inline-block}
+ .chartwrap{position:relative}
+ .cctip{position:absolute;pointer-events:none;background:var(--navy);color:#fff;font-size:12px;padding:7px 10px;border-radius:8px;box-shadow:var(--shadow);opacity:0;transition:opacity .12s;white-space:nowrap;z-index:5;transform:translate(-50%,-120%)}
+ .cctip b{font-family:'Barlow Condensed';font-size:13px}
+ .split{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+ @media(max-width:640px){.split{grid-template-columns:1fr}}
+ .split h3{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--gray);margin:0 0 8px}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1>Command Center</h1><div class="sub">Where the business is growing and slowing — sales by line, rep, state, and momentum, from the commission data.</div></div>
+    <div><select id="yr" onchange="render()"></select></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), A=null, YEAR="all";
+const MONTH=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const C={bar:"#1681c2",cur:"#1681c2",prev:"#c4ccd4",up:"#1f7a44",down:"#c2410c"};
+const money=n=>"$"+Math.round(Number(n||0)).toLocaleString("en-US");
+const short=n=>{n=Number(n||0);const a=Math.abs(n);if(a>=1e6)return "$"+(n/1e6).toFixed(a>=1e7?0:1)+"M";if(a>=1e3)return "$"+Math.round(n/1e3)+"k";return "$"+Math.round(n);};
+const ym=p=>String(p||"").slice(0,7);
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button> <a href="reset.html" style="margin-left:6px;color:#10263f;font-weight:600;font-size:13px">Forgot password?</a><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  try{
+    const r=await fetch("/.netlify/functions/analytics",{headers:{authorization:"Bearer "+TOKEN}});
+    if(r.status===401){ gate("Your session ended — sign in again."); return; }
+    if(r.status===403){ $("#body").innerHTML=`<div class="msg err"><b>President only.</b> <button class="go" onclick="lock()">Sign in as a different user</button></div>`; return; }
+    A=await r.json(); if(A.error){ $("#body").innerHTML=`<div class="msg err">${esc(A.error)}</div>`; return; }
+    // year picker from the data
+    const years=[...new Set((A.facts||[]).map(f=>ym(f.period).slice(0,4)))].filter(Boolean).sort();
+    YEAR=years[years.length-1]||"all";
+    $("#yr").innerHTML=`<option value="all">All time</option>`+years.map(y=>`<option value="${y}"${y===YEAR?" selected":""}>${y}</option>`).join("");
+    render();
+  }catch(e){ $("#body").innerHTML=`<div class="msg err">Couldn't load: ${esc(String(e.message||e))}<br><br><button class="go" onclick="load()">Retry</button></div>`; }
+}
+
+// --- horizontal single-hue magnitude bars (value always labeled) ---
+function bars(data, color, neg){
+  if(!data.length) return `<div class="hint">No data.</div>`;
+  const max=Math.max(...data.map(d=>Math.abs(d.value)))||1;
+  return `<div class="bars">`+data.map(d=>{
+    const w=Math.max(2,Math.round(Math.abs(d.value)/max*100));
+    return `<div class="brow ${neg&&d.value<0?'neg':''}"><span class="bl" title="${esc(d.label)}">${esc(d.label)}</span>`
+      +`<span class="bt"><span class="bf" style="width:${w}%;background:${d.color||color}" title="${esc(d.label)}: ${money(d.value)}"></span></span>`
+      +`<span class="bv">${money(d.value)}</span></div>`;
+  }).join("")+`</div>`;
+}
+
+function render(){
+  if(!A) return;
+  YEAR=$("#yr").value||YEAR;
+  const info=A.dealerInfo||{};
+  const assign={}; (A.assignments||[]).forEach(x=>{ if(x.dealer_name) assign[x.dealer_name]=x.rep_name||""; });
+  const inYear=f=> YEAR==="all" || ym(f.period).slice(0,4)===YEAR;
+  const F=(A.facts||[]).filter(inYear);
+
+  // effective rep per dealer (assigned wins, else most-reported)
+  const repTally={}; for(const f of A.facts||[]){ const d=f.dealer; if(!d)continue; (repTally[d]=repTally[d]||{})[f.rep||"Unassigned"]=(repTally[d]?.[f.rep||"Unassigned"]||0)+(f.sales||0); }
+  const repOf=d=>{ if(assign[d])return assign[d]; const t=repTally[d]||{}; let b="",v=-1; for(const k in t){if(t[k]>v){v=t[k];b=k;}} return b||"Unassigned"; };
+
+  let total=0, byLine={}, byRep={}, byState={}, byCo={}, byMonth={};
+  for(const f of F){
+    const s=f.sales||0; total+=s;
+    byLine[f.line]=(byLine[f.line]||0)+s;
+    byRep[repOf(f.dealer)]=(byRep[repOf(f.dealer)]||0)+s;
+    const st=(info[f.dealer]&&info[f.dealer].state)||"—"; byState[st]=(byState[st]||0)+s;
+    const co=f.master||f.dealer; byCo[co]=(byCo[co]||0)+s;
+    byMonth[ym(f.period)]=(byMonth[ym(f.period)]||0)+s;
+  }
+  const months=Object.keys(byMonth).length||1;
+  const activeDealers=new Set(F.map(f=>f.master||f.dealer)).size;
+
+  // YoY: this year vs previous year, comparable months only
+  const years=[...new Set((A.facts||[]).map(f=>ym(f.period).slice(0,4)))].sort();
+  let yoy=null;
+  if(YEAR!=="all"){
+    const py=String(Number(YEAR)-1);
+    if(years.includes(py)){
+      const curMonths=new Set(F.map(f=>ym(f.period).slice(5,7)));
+      let cur=0, prev=0;
+      for(const f of A.facts||[]){ const y=ym(f.period).slice(0,4), mo=ym(f.period).slice(5,7);
+        if(!curMonths.has(mo))continue;
+        if(y===YEAR)cur+=f.sales||0; else if(y===py)prev+=f.sales||0; }
+      if(prev>0) yoy={pct:(cur-prev)/prev*100, cur, prev, py};
+    }
+  }
+
+  const top=(obj,n)=>Object.entries(obj).map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value).slice(0,n);
+
+  // momentum: last 3 months vs prior 3 months (within scope), by company
+  const sortedMonths=Object.keys(byMonth).sort();
+  const recent=sortedMonths.slice(-3), prior=sortedMonths.slice(-6,-3);
+  const rSet=new Set(recent), pSet=new Set(prior);
+  const mv={};
+  if(recent.length&&prior.length){
+    for(const f of F){ const m=ym(f.period); const co=f.master||f.dealer;
+      if(rSet.has(m)) mv[co]=(mv[co]||{r:0,p:0}), mv[co].r+=f.sales||0;
+      else if(pSet.has(m)) mv[co]=(mv[co]||{r:0,p:0}), mv[co].p+=f.sales||0; }
+  }
+  const deltas=Object.entries(mv).map(([label,o])=>({label,value:(o.r||0)-(o.p||0)})).filter(d=>Math.abs(d.value)>50);
+  const growing=deltas.filter(d=>d.value>0).sort((a,b)=>b.value-a.value).slice(0,8);
+  const declining=deltas.filter(d=>d.value<0).sort((a,b)=>a.value-b.value).slice(0,8);
+
+  const kpi=(l,v,cls,sub)=>`<div class="kpi"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div>${sub?`<div class="l" style="margin-top:2px;text-transform:none;letter-spacing:0;font-weight:600">${sub}</div>`:""}</div>`;
+  const yoyTile = yoy ? kpi("YoY growth",(yoy.pct>=0?"+":"")+yoy.pct.toFixed(0)+"%", yoy.pct>=0?"":"warn", `${YEAR} vs ${yoy.py}, same months`)
+                      : kpi("YoY growth","—","","need prior-year data");
+  const kpis=`<div class="kpis" style="margin-bottom:16px">
+    ${kpi("Total sales",short(total),"blue",YEAR==="all"?"all time":YEAR)}
+    ${yoyTile}
+    ${kpi("Active dealers",activeDealers,"")}
+    ${kpi("Avg / month",short(total/months),"orange",months+" month"+(months===1?"":"s"))}
+    ${kpi("Manufacturer lines",Object.keys(byLine).length,"")}
+  </div>`;
+
+  // monthly trend (SVG) — current year vs prior year over Jan–Dec
+  const trend = trendCard(byMonth, years);
+
+  const html=kpis+trend+`
+    <div class="cc-grid">
+      <div class="card"><h2>Sales by manufacturer</h2>${bars(top(byLine,12),C.bar)}</div>
+      <div class="card"><h2>Sales by rep</h2>${bars(top(byRep,12),C.bar)}</div>
+    </div>
+    <div class="cc-grid">
+      <div class="card"><h2>Sales by state</h2>${bars(top(byState,12),C.bar)}</div>
+      <div class="card"><h2>Top companies <span class="side">branches rolled into HQ</span></h2>${bars(top(byCo,12),C.bar)}</div>
+    </div>
+    <div class="card"><h2>Momentum <span class="side">last 3 months vs the 3 before</span></h2>
+      <div class="split">
+        <div><h3>▲ Growing</h3>${bars(growing,C.up)||""}</div>
+        <div><h3>▼ Declining</h3>${bars(declining.map(d=>({label:d.label,value:d.value})),C.down,true)||""}</div>
+      </div>
+      <div class="hint" style="margin-top:10px">Declining accounts are your save-the-business calls; pair this with <a class="link" href="/admin/call-list.html">Who to Call</a>.</div>
+    </div>`;
+  $("#body").innerHTML=html;
+  wireTrend(byMonth, years);
+}
+
+function trendCard(byMonth, years){
+  const has2=years.length>=2;
+  const cur=years[years.length-1], prev=years[years.length-2];
+  const leg=`<div class="legend"><span class="lk"><span class="sw" style="background:${C.cur}"></span>${cur}</span>${has2?`<span class="lk"><span class="sw" style="background:${C.prev}"></span>${prev}</span>`:""}</div>`;
+  return `<div class="card"><h2>Monthly sales <span class="side">by month of year</span></h2>${leg}
+    <div class="chartwrap"><svg id="trend" viewBox="0 0 900 300" preserveAspectRatio="none" style="width:100%;height:300px;display:block"></svg><div class="cctip" id="cctip"></div></div></div>`;
+}
+
+function seriesFor(byMonth, year){ const a=[]; for(let m=1;m<=12;m++){ const k=year+"-"+String(m).padStart(2,"0"); a.push(k in byMonth?byMonth[k]:null); } return a; }
+
+function wireTrend(byMonth, years){
+  const svg=document.getElementById("trend"); if(!svg) return;
+  const cur=years[years.length-1], prev=years[years.length-2];
+  const sCur=seriesFor(byMonth,cur), sPrev=prev?seriesFor(byMonth,prev):[];
+  const allVals=[...sCur,...sPrev].filter(v=>v!=null);
+  const max=Math.max(1,...allVals);
+  const W=900,H=300,padL=64,padR=16,padT=14,padB=28;
+  const x=i=>padL+(i)/(11)*(W-padL-padR);
+  const y=v=>padT+(1-(v/max))*(H-padT-padB);
+  const short=n=>{n=Number(n||0);if(n>=1e6)return "$"+(n/1e6).toFixed(1)+"M";if(n>=1e3)return "$"+Math.round(n/1e3)+"k";return "$"+Math.round(n);};
+  let g="";
+  // gridlines + y labels (4 steps)
+  for(let i=0;i<=4;i++){ const v=max*i/4, yy=y(v); g+=`<line x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}" stroke="#eef2f6" stroke-width="1"/><text x="${padL-8}" y="${yy+4}" text-anchor="end" font-size="11" fill="#8a96a3">${short(v)}</text>`; }
+  // x labels
+  for(let m=0;m<12;m++){ g+=`<text x="${x(m)}" y="${H-8}" text-anchor="middle" font-size="11" fill="#8a96a3">${MONTH[m]}</text>`; }
+  const path=(arr,color,w,dash)=>{ let d="",pts=""; let started=false;
+    arr.forEach((v,i)=>{ if(v==null)return; const cx=x(i),cy=y(v); d+=(started?"L":"M")+cx+" "+cy+" "; started=true; pts+=`<circle cx="${cx}" cy="${cy}" r="3.5" fill="${color}"><title>${MONTH[i]}: ${money(v)}</title></circle>`; });
+    return (d?`<path d="${d}" fill="none" stroke="${color}" stroke-width="${w}" ${dash?`stroke-dasharray="5 5"`:""} stroke-linejoin="round" stroke-linecap="round"/>`:"")+pts; };
+  if(prev) g+=path(sPrev,C.prev,2,true);
+  g+=path(sCur,C.cur,2.5,false);
+  svg.innerHTML=g;
+  // hover crosshair + tooltip
+  const tip=document.getElementById("cctip"), wrap=svg.parentElement;
+  svg.addEventListener("mousemove",ev=>{
+    const rc=svg.getBoundingClientRect(); const px=(ev.clientX-rc.left)/rc.width*W;
+    let m=Math.round((px-padL)/((W-padL-padR)/11)); m=Math.max(0,Math.min(11,m));
+    const vc=sCur[m], vp=prev?sPrev[m]:null;
+    if(vc==null&&vp==null){ tip.style.opacity=0; return; }
+    const left=(x(m)/W)*rc.width, topPx=(y(vc!=null?vc:vp)/H)*rc.height;
+    tip.style.left=left+"px"; tip.style.top=topPx+"px"; tip.style.opacity=1;
+    tip.innerHTML=`<b>${MONTH[m]}</b><br>${cur}: ${vc!=null?money(vc):"—"}${prev?`<br>${prev}: ${vp!=null?money(vp):"—"}`:""}`;
+  });
+  svg.addEventListener("mouseleave",()=>{ tip.style.opacity=0; });
+}
+
+load();
+</script>
+</body></html>
