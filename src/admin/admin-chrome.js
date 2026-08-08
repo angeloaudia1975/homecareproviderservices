@@ -31,6 +31,7 @@
         { href:"/admin/command-center.html",     label:"Command Center" },
         { href:"/admin/reps.html",               label:"Rep Performance" },
         { href:"/admin/pipeline.html",           label:"Pipeline & Forecast" },
+        { href:"/admin/traffic.html",            label:"Website Traffic" },
         { href:"/admin/analytics.html",          label:"Analytics" },
         { href:"/admin/import-commissions.html", label:"Import Commissions" }
     ]}

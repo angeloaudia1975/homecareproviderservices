@@ -1,0 +1,94 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Website Traffic</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .chartwrap{position:relative}
+ .seg{display:inline-flex;background:#e3e9f0;border-radius:9px;padding:2px;gap:2px}
+ .seg button{background:none;border:0;border-radius:7px;padding:7px 12px;font-weight:700;font-size:12.5px;color:#41576b;cursor:pointer;font-family:inherit}
+ .seg button.on{background:#fff;color:var(--navy);box-shadow:0 1px 3px rgba(16,38,63,.12)}
+ .tt{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+ .tt th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:700;padding:9px 11px;border-bottom:2px solid var(--line)}
+ .tt td{padding:8px 11px;border-bottom:1px solid #eef2f6}
+ .tt tr:last-child td{border-bottom:0}
+ .tt .num{text-align:right;font-variant-numeric:tabular-nums}
+ .tgrid{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+ @media(max-width:760px){.tgrid{grid-template-columns:1fr}}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1>Website Traffic</h1><div class="sub">Live visits to the public site, from Plausible Analytics.</div></div>
+    <div class="seg" id="periodseg"></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), PERIOD="30d", DATA=null;
+const num=n=>Number(n||0).toLocaleString("en-US");
+const dur=s=>{ s=Math.round(Number(s||0)); const m=Math.floor(s/60), r=s%60; return m+"m "+String(r).padStart(2,"0")+"s"; };
+const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const PERIODS=[["7d","7 days"],["30d","30 days"],["6mo","6 months"],["12mo","12 months"]];
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+async function api(payload){ const r=await fetch("/.netlify/functions/traffic-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
+
+function periodBar(){ $("#periodseg").innerHTML=PERIODS.map(p=>`<button class="${PERIOD===p[0]?'on':''}" onclick="setPeriod('${p[0]}')">${p[1]}</button>`).join(""); }
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  periodBar();
+  $("#body").innerHTML=`<div class="msg">Loading…</div>`;
+  const r=await api({action:"stats",period:PERIOD});
+  if(r.status===401){ gate("Your session ended — sign in again."); return; }
+  const j=r.body;
+  if(j&&j.configured===false){ $("#body").innerHTML=`<div class="msg"><b>Not connected yet.</b><br>Add your Plausible domain in <a class="link" href="/admin/website.html">Website → Site Settings</a> to start tracking, then set <code>PLAUSIBLE_API_KEY</code> and <code>PLAUSIBLE_SITE_ID</code> in Netlify to show the numbers here.</div>`; return; }
+  if(!j||!j.ok){ $("#body").innerHTML=`<div class="msg err">Couldn't load traffic: ${esc((j&&j.error)||"error")}</div>`; return; }
+  DATA=j; render();
+}
+function setPeriod(p){ PERIOD=p; load(); }
+
+function trend(ts){
+  const pts=(ts||[]).map(x=>({d:x.date,v:Number(x.visitors)||0}));
+  if(pts.length<2) return `<div class="card"><h2>Visitors</h2><div class="hint">Not enough data yet for a trend.</div></div>`;
+  const W=900,H=240,padL=52,padR=14,padT=12,padB=26; const max=Math.max(1,...pts.map(p=>p.v));
+  const x=i=>padL+i/(pts.length-1)*(W-padL-padR); const y=v=>padT+(1-v/max)*(H-padT-padB);
+  let g=""; for(let i=0;i<=4;i++){ const val=max*i/4,yy=y(val); g+=`<line x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}" stroke="#eef2f6"/><text x="${padL-8}" y="${yy+4}" text-anchor="end" font-size="11" fill="#8a96a3">${Math.round(val)}</text>`; }
+  let d=""; pts.forEach((p,i)=>{ d+=(i?"L":"M")+x(i)+" "+y(p.v)+" "; });
+  g+=`<path d="${d}" fill="none" stroke="#1681c2" stroke-width="2.5" stroke-linejoin="round"/>`;
+  // sparse x labels
+  const step=Math.ceil(pts.length/8);
+  pts.forEach((p,i)=>{ if(i%step===0){ const lab=(p.d||"").slice(5); g+=`<text x="${x(i)}" y="${H-8}" text-anchor="middle" font-size="10" fill="#8a96a3">${lab}</text>`; } });
+  return `<div class="card"><h2>Visitors <span class="hint" style="font-weight:600">by day</span></h2><div class="chartwrap"><svg viewBox="0 0 ${W} ${H}" style="width:100%;height:240px;display:block">${g}</svg></div></div>`;
+}
+function tbl(title, rows, keyLabel, keyField){
+  const body=(rows||[]).length?rows.map(r=>`<tr><td>${esc(r[keyField]||"(none)")}</td><td class="num">${num(r.visitors)}</td>${r.pageviews!=null?`<td class="num">${num(r.pageviews)}</td>`:""}</tr>`).join(""):`<tr><td colspan="3"><span class="hint">No data.</span></td></tr>`;
+  const head=`<th>${keyLabel}</th><th class="num">Visitors</th>${(rows&&rows[0]&&rows[0].pageviews!=null)?'<th class="num">Views</th>':""}`;
+  return `<div class="card"><h2>${title}</h2><table class="tt"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+function render(){
+  if(!DATA) return; const k=DATA.kpis||{};
+  const kpi=(l,v,cls)=>`<div class="kpi"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div></div>`;
+  const kpis=`<div class="kpis" style="margin-bottom:16px">
+    ${kpi("Visitors",num(k.visitors),"blue")}
+    ${kpi("Page views",num(k.pageviews),"")}
+    ${kpi("Avg. visit",dur(k.visit_duration),"orange")}
+    ${kpi("Bounce rate",(Math.round(Number(k.bounce_rate)||0))+"%","")}
+  </div>`;
+  $("#body").innerHTML=kpis+trend(DATA.timeseries)+`<div class="tgrid">${tbl("Top pages",DATA.pages,"Page","page")}${tbl("Top sources",DATA.sources,"Source","source")}</div>`;
+}
+load();
+</script>
+</body></html>
