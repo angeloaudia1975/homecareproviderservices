@@ -8,7 +8,7 @@
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
-const { hs, hasToken, ensureUniqueProp, batchUpsert } = require("./_hubspot.js");
+const { hs, hasToken, ensureUniqueProp, batchUpsert, companyIdByDealer, batchAssociateDefault } = require("./_hubspot.js");
 
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
@@ -90,6 +90,43 @@ exports.handler = async (event)=>{
       }));
       const res=await batchUpsert("companies","hcps_dealer_id",records);
       return json(200,{ok:res.errors.length===0, total:dealers.length, processed:res.processed, errors:res.errors.slice(0,5)});
+    }
+
+    // Push dealer people into HubSpot as Contacts (email is the identity), then associate each
+    // to its dealer Company. These are what email automation runs on. Only contacts WITH an
+    // email are synced — a contact with no email can't be marketed to.
+    if(b.action==="sync_contacts"){
+      if(!hasToken()) return json(200,{ok:false,configured:false,message:"HUBSPOT_ACCESS_TOKEN is not set yet."});
+      await ensureUniqueProp("contacts","hcps_contact_id","HCPS Contact ID","contactinformation");
+      const splitName=n=>{ const p=String(n||"").trim().split(/\s+/).filter(Boolean); if(!p.length) return {first:"",last:""}; return { first:p.slice(0,-1).join(" ")||p[0], last:p.length>1?p[p.length-1]:"" }; };
+      const people=[];
+      // dedicated contacts on file
+      const dc=await sbGetAll("dealer_contacts?select=id,dealer_id,name,email,phone,title","id").catch(()=>[]);
+      for(const c of (dc||[])){ const email=clean(c.email); if(!email) continue; const nm=splitName(c.name);
+        people.push({ cid:"c"+c.id, dealer_id:c.dealer_id, email, first:nm.first, last:nm.last, phone:clean(c.phone), title:clean(c.title) }); }
+      // each dealer's own primary contact/email
+      const dealers=await sbGetAll("dealers?select=id,contact_name,email","id");
+      for(const d of (dealers||[])){ const email=clean(d.email); if(!email) continue; const nm=splitName(d.contact_name);
+        people.push({ cid:"d"+d.id, dealer_id:d.id, email, first:nm.first, last:nm.last }); }
+      // one record per email (first wins)
+      const seen=new Set(), uniq=[];
+      for(const p of people){ const k=p.email.toLowerCase(); if(seen.has(k)) continue; seen.add(k); uniq.push(p); }
+      const records=uniq.map(p=>({ id:p.email, properties:{
+        hcps_contact_id:p.cid, email:p.email,
+        firstname:clean(p.first), lastname:clean(p.last), phone:p.phone, jobtitle:p.title,
+      }}));
+      const up=await batchUpsert("contacts","email",records);
+      // map email -> contact internal id, then associate to the dealer's company
+      const idByEmail={}; for(const r of up.results){ if(r.idValue) idByEmail[String(r.idValue).toLowerCase()]=r.id; }
+      const compMap=await companyIdByDealer();
+      const pairs=[]; for(const p of uniq){ const cId=idByEmail[p.email.toLowerCase()], coId=compMap[String(p.dealer_id)]; if(cId&&coId) pairs.push({ fromId:cId, toId:coId }); }
+      const assoc=await batchAssociateDefault("contacts","companies",pairs);
+      return json(200,{
+        ok: up.errors.length===0 && assoc.errors.length===0,
+        contacts_total: uniq.length, contacts_processed: up.processed,
+        associated_to_company: assoc.done,
+        upsert_errors: up.errors.slice(0,3), assoc_errors: assoc.errors.slice(0,3),
+      });
     }
 
     return json(400,{error:"unknown action"});

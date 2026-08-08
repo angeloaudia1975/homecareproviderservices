@@ -50,16 +50,47 @@ async function ensureUniqueProp(objectType, name, label, groupName){
 }
 
 // Batch upsert by a unique idProperty. records = [{id, properties}]. Chunks of 100 (HubSpot cap).
-// Returns {processed, errors:[{batch,status,message}]}.
+// Returns {processed, errors:[...], results:[{id, idValue}]} — results give the HubSpot internal
+// id per record so callers can build associations afterwards.
 async function batchUpsert(objectType, idProperty, records){
-  const out = { processed:0, errors:[] };
+  const out = { processed:0, errors:[], results:[] };
   for(let i=0;i<records.length;i+=100){
     const inputs = records.slice(i,i+100).map(r=>({ idProperty, id:String(r.id), properties:r.properties }));
     const res = await hs("POST", `/crm/v3/objects/${objectType}/batch/upsert`, { inputs });
-    if(res.ok){ out.processed += ((res.json && res.json.results) || inputs).length; }
+    if(res.ok){
+      const rows = (res.json && res.json.results) || [];
+      out.processed += rows.length || inputs.length;
+      for(const row of rows){ out.results.push({ id:row.id, idValue: row.properties && row.properties[idProperty] }); }
+    }
     else out.errors.push({ batch:i/100, status:res.status, message:(res.json && (res.json.message || JSON.stringify(res.json).slice(0,200))) || "error" });
   }
   return out;
 }
 
-module.exports = { hs, upsert, ensureUniqueProp, batchUpsert, hasToken };
+// Build a map of our hcps_dealer_id -> HubSpot company internal id (for associating contacts).
+async function companyIdByDealer(){
+  const map={}; let after=null;
+  for(;;){
+    const q=`/crm/v3/objects/companies?limit=100&properties=hcps_dealer_id${after?`&after=${encodeURIComponent(after)}`:""}`;
+    const r=await hs("GET", q); if(!r.ok) break;
+    const rows=(r.json && r.json.results) || [];
+    for(const c of rows){ const k=c.properties && c.properties.hcps_dealer_id; if(k) map[String(k)]=c.id; }
+    after = r.json && r.json.paging && r.json.paging.next && r.json.paging.next.after;
+    if(!after) break;
+  }
+  return map;
+}
+
+// Associate using the default (primary) label. pairs=[{fromId,toId}], chunks of 100.
+async function batchAssociateDefault(fromType, toType, pairs){
+  const out={ done:0, errors:[] };
+  for(let i=0;i<pairs.length;i+=100){
+    const inputs = pairs.slice(i,i+100).map(p=>({ from:{ id:String(p.fromId) }, to:{ id:String(p.toId) } }));
+    const res = await hs("POST", `/crm/v4/associations/${fromType}/${toType}/batch/associate/default`, { inputs });
+    if(res.ok) out.done += inputs.length;
+    else out.errors.push({ batch:i/100, status:res.status, message:(res.json && (res.json.message || JSON.stringify(res.json).slice(0,200))) || "error" });
+  }
+  return out;
+}
+
+module.exports = { hs, upsert, ensureUniqueProp, batchUpsert, companyIdByDealer, batchAssociateDefault, hasToken };
