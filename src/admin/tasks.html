@@ -1,0 +1,102 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — My Tasks</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .tkrow{display:grid;grid-template-columns:26px 1fr auto;gap:11px;align-items:start;padding:11px 13px;border:1px solid var(--line);border-radius:11px;background:#fff;margin-bottom:8px}
+ .tkrow.hi{border-left:4px solid var(--orange)}
+ .tkchk{background:none;border:0;font-size:19px;line-height:1;cursor:pointer;color:var(--blue);padding:0}
+ .tkrow .t{font-size:14px;font-weight:700;color:var(--navy)}
+ .tkrow .d{font-size:12.5px;color:#41576b;margin-top:1px}
+ .tkrow .meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:5px;font-size:11.5px;color:var(--gray)}
+ .tkrow .right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;white-space:nowrap}
+ .pl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:6px;padding:2px 7px}
+ .pl.high{background:#fdeee0;color:#b45309}.pl.auto{background:#eaf3fb;color:#12466e}.pl.manual{background:#eef2f6;color:#5b6672}
+ .filt{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 14px}
+ .seg{display:inline-flex;background:#e3e9f0;border-radius:9px;padding:2px;gap:2px}
+ .seg button{background:none;border:0;border-radius:7px;padding:7px 12px;font-weight:700;font-size:12.5px;color:#41576b;cursor:pointer;font-family:inherit}
+ .seg button.on{background:#fff;color:var(--navy);box-shadow:0 1px 3px rgba(16,38,63,.12)}
+ .dismiss{background:none;border:0;color:var(--gray);font-size:12px;cursor:pointer;text-decoration:underline}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1>My Tasks</h1><div class="sub">Your follow-up queue — manual tasks plus the ones the follow-up engine builds from dealer signals.</div></div>
+    <div id="runbox"></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), TASKS=[], ROLE="", FSRC="all", FREP="all", REPS=[];
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+async function crm(payload){ const r=await fetch("/.netlify/functions/crm-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  const r=await crm({action:"my_tasks",status:"open"});
+  if(r.status===401){ gate("Your session ended — sign in again."); return; }
+  const j=r.body;
+  if(j&&j.error==="tables_missing"){ $("#body").innerHTML=`<div class="msg">Run <b>supabase/crm.sql</b> in Supabase to turn on tasks, then reload.</div>`; return; }
+  TASKS=(j&&j.tasks)||[]; ROLE=(j&&j.role)||"";
+  REPS=[...new Set(TASKS.map(t=>t.assigned_rep).filter(Boolean))].sort();
+  // president gets the engine trigger
+  $("#runbox").innerHTML = ROLE==="president" ? `<button class="btn orange" id="runbtn" onclick="runEngine()">▶ Run follow-up engine</button>` : "";
+  render();
+}
+
+async function runEngine(){
+  const b=$("#runbtn"); if(b){ b.disabled=true; b.textContent="Scanning signals…"; }
+  const r=await crm({action:"run_followups"});
+  const j=r.body||{};
+  if(j.ok){ if(b){ b.textContent=`✓ ${j.created} new · ${j.dismissed} cleared`; } await load(); }
+  else { if(b){ b.disabled=false; b.textContent="▶ Run follow-up engine"; } alert("Couldn't run: "+(j.error||j.message||r.status)); }
+}
+
+function render(){
+  let rows=TASKS.filter(t=> (FSRC==="all"||t.source===FSRC) && (FREP==="all"||t.assigned_rep===FREP) );
+  const c={open:TASKS.length,high:TASKS.filter(t=>t.priority==="high").length,auto:TASKS.filter(t=>t.source==="auto").length,manual:TASKS.filter(t=>t.source==="manual").length};
+  const kpi=(l,v,cls)=>`<div class="kpi"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div></div>`;
+  const kpis=`<div class="kpis" style="margin-bottom:14px">${kpi("Open tasks",c.open,"blue")}${kpi("High priority",c.high,"orange")}${kpi("Auto-generated",c.auto,"")}${kpi("Manual",c.manual,"")}</div>`;
+  const seg=(v,l)=>`<button class="${FSRC===v?'on':''}" onclick="setSrc('${v}')">${l}</button>`;
+  const repSel = ROLE==="president" ? `<select onchange="setRep(this.value)"><option value="all">All reps</option>${REPS.map(r=>`<option value="${esc(r)}"${FREP===r?" selected":""}>${esc(r)}</option>`).join("")}</select>` : "";
+  const filt=`<div class="filt"><div class="seg">${seg("all","All")}${seg("auto","🤖 Auto")}${seg("manual","✍️ Manual")}</div>${repSel}<span class="hint" style="margin:0">${rows.length} task${rows.length===1?"":"s"}</span></div>`;
+  let body;
+  if(!rows.length){ body=`<div class="msg">No open tasks${FSRC!=="all"||FREP!=="all"?" for this filter":""}. ${ROLE==="president"&&!TASKS.length?'Click <b>Run follow-up engine</b> to build the queue from dealer signals.':'🎉'}</div>`; }
+  else{
+    body=rows.map(t=>{
+      const link=t.dealer_id?`/admin/dealer.html?id=${encodeURIComponent(t.dealer_id)}`:null;
+      const dealer=link?`<a class="link" href="${link}">${esc(t.dealer_name||"dealer")}</a>`:esc(t.dealer_name||"");
+      const meta=[dealer, t.due_date?"due "+esc(t.due_date):"", t.assigned_rep?"· "+esc(t.assigned_rep):""].filter(Boolean).join(" ");
+      return `<div class="tkrow ${t.priority==='high'?'hi':''}">
+        <button class="tkchk" title="Mark done" onclick="act('${t.id}','complete_task')">○</button>
+        <div><div class="t">${esc(t.title)}</div>${t.detail?`<div class="d">${esc(t.detail)}</div>`:''}
+          <div class="meta">${meta}</div></div>
+        <div class="right">${t.priority==='high'?'<span class="pl high">High</span>':''}<span class="pl ${t.source==='auto'?'auto':'manual'}">${t.source==='auto'?'Auto':'Manual'}</span>
+          <button class="dismiss" onclick="act('${t.id}','dismiss_task')">dismiss</button></div>
+      </div>`;
+    }).join("");
+  }
+  $("#body").innerHTML=kpis+filt+body;
+}
+function setSrc(v){ FSRC=v; render(); }
+function setRep(v){ FREP=v; render(); }
+async function act(id,action){ await crm({action,id}); TASKS=TASKS.filter(t=>t.id!==id); render(); }
+
+load();
+</script>
+</body></html>
