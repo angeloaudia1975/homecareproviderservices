@@ -17,7 +17,7 @@ create table if not exists email_queue (
   template     text not null,          -- overdue | dormant | cart | new | crosssell | campaign
   reason       text,                   -- signal key, e.g. overdue:golden
   priority     text default 'normal',  -- high | normal
-  window       text default 'behavior',-- primary | behavior | remaining
+  send_window  text default 'behavior',-- primary | behavior | remaining
   payload      jsonb default '{}'::jsonb,
   status       text default 'queued',  -- queued | sent | skipped | failed | expired | canceled
   detail       text,                   -- human summary for the admin queue view

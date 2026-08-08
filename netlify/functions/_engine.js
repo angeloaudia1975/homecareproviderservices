@@ -175,7 +175,7 @@ async function enqueueEmails(sig,cfg){
       if(opted.has(to.toLowerCase())){ skipped++; break; }
       if(live.has(key)||sentRecent.has(key)){ skipped++; continue; }
       const win=WIN_FOR[g.template]||"behavior";
-      insert.push({dealer_id:id,contact_email:to,template:g.template,reason:g.reason,priority:g.priority,window:win,payload:g.payload||{},detail:`${d.name||""}: ${g.detail}`,send_after:nextWindowAt(cfg,win),status:"queued"});
+      insert.push({dealer_id:id,contact_email:to,template:g.template,reason:g.reason,priority:g.priority,send_window:win,payload:g.payload||{},detail:`${d.name||""}: ${g.detail}`,send_after:nextWindowAt(cfg,win),status:"queued"});
       break; // at most one queued email per dealer per run; the cap enforces the rest
     }
   }
@@ -207,7 +207,7 @@ async function sendMail({to,subject,html,text}){
 async function drainQueue(cfg,winKey){
   cfg=cfg||await getConfig();
   const nowIso=new Date().toISOString();
-  const filt=winKey?`&window=eq.${winKey}`:"";
+  const filt=winKey?`&send_window=eq.${winKey}`:"";
   const due=await sbGet(`email_queue?status=eq.queued&send_after=lte.${nowIso}${filt}&select=*&order=priority.asc,enqueued_at.asc&limit=60`).catch(()=>[]);
   let sent=0,capped=0,failed=0,skipped=0;
   if(!cfg.email_enabled){ return {dry_run:true,due:(due||[]).length,sent:0}; }
