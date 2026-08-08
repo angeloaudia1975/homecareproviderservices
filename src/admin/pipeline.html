@@ -1,0 +1,127 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Pipeline & Forecast</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .chartwrap{position:relative}
+ .legend{display:flex;gap:16px;align-items:center;font-size:12px;color:var(--gray);margin:2px 0 6px;flex-wrap:wrap}
+ .legend .lk{display:inline-flex;align-items:center;gap:6px}.legend .sw{width:12px;height:12px;border-radius:3px;display:inline-block}
+ .pt{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+ .pt th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:700;padding:9px 11px;border-bottom:2px solid var(--line)}
+ .pt td{padding:8px 11px;border-bottom:1px solid #eef2f6;vertical-align:middle}
+ .pt tr:last-child td{border-bottom:0}
+ .pt .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+ .stsel{padding:4px 6px;border:1px solid var(--line);border-radius:7px;font-family:inherit;font-size:12px;font-weight:700}
+ .st-identified{color:#5b6672}.st-contacted{color:#1681c2}.st-quoted{color:#5b4b9a}.st-won{color:#2d7d46}.st-lost{color:#b42323}
+ .addbar{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin:12px 0 0;background:#fbfcfd;border:1px solid var(--line);border-radius:11px;padding:11px 12px}
+ .addbar input,.addbar select{padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-family:inherit;font-size:12.5px}
+ .addbar input.t{flex:1;min-width:150px}
+ .vin{width:96px;text-align:right}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1>Pipeline &amp; Forecast</h1><div class="sub">Open deals plus a 6-month revenue forecast — projected reorders from each dealer's cadence, layered with stage-weighted pipeline.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), DATA=null;
+const money=n=>"$"+Math.round(Number(n||0)).toLocaleString("en-US");
+const short=n=>{n=Number(n||0);const a=Math.abs(n);if(a>=1e6)return "$"+(n/1e6).toFixed(1)+"M";if(a>=1e3)return "$"+Math.round(n/1e3)+"k";return "$"+Math.round(n);};
+const C={actual:"#c4ccd4",reorder:"#1681c2",pipeline:"#F5821F"};
+const STG={identified:"Identified",contacted:"Contacted",quoted:"Quoted",won:"Won",lost:"Lost"};
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+async function api(payload){ const r=await fetch("/.netlify/functions/pipeline-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  const r=await api({action:"board"});
+  if(r.status===401){ gate("Your session ended — sign in again."); return; }
+  const j=r.body;
+  if(j&&j.error==="tables_missing"){ $("#body").innerHTML=`<div class="msg">Run <b>supabase/pipeline.sql</b> in Supabase, then reload.</div>`; return; }
+  if(!j||!j.ok){ $("#body").innerHTML=`<div class="msg err">${esc((j&&j.error)||"Couldn't load.")}</div>`; return; }
+  DATA=j; render();
+}
+
+function forecastChart(history, forecast){
+  const hist=history.slice(-6); // last 6 actual months for context
+  const bars=[...hist.map(h=>({label:h.label,actual:h.actual,reorder:0,pipeline:0,fc:false})),
+              ...forecast.map(f=>({label:f.label,actual:0,reorder:f.reorder,pipeline:f.pipeline,fc:true}))];
+  const max=Math.max(1,...bars.map(b=>Math.max(b.actual,b.reorder+b.pipeline)));
+  const W=900,Hh=260,padL=60,padR=12,padT=12,padB=42, n=bars.length;
+  const bw=(W-padL-padR)/n*0.62, gap=(W-padL-padR)/n;
+  const y=v=>padT+(1-v/max)*(Hh-padT-padB);
+  let g="";
+  for(let i=0;i<=4;i++){ const v=max*i/4,yy=y(v); g+=`<line x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}" stroke="#eef2f6"/><text x="${padL-8}" y="${yy+4}" text-anchor="end" font-size="11" fill="#8a96a3">${short(v)}</text>`; }
+  const firstFc=bars.findIndex(b=>b.fc);
+  if(firstFc>0){ const dx=padL+firstFc*gap - gap*0.19; g+=`<line x1="${dx}" y1="${padT}" x2="${dx}" y2="${Hh-padB}" stroke="#c9d2db" stroke-dasharray="4 4"/><text x="${dx+4}" y="${padT+10}" font-size="10" fill="#8a96a3">forecast →</text>`; }
+  bars.forEach((b,i)=>{ const x=padL+i*gap+(gap-bw)/2;
+    if(b.fc){ const rH=(Hh-padB)-y(b.reorder), pH=(Hh-padB)-y(b.reorder+b.pipeline)+ (rH>0?0:0);
+      const reY=y(b.reorder), topY=y(b.reorder+b.pipeline);
+      g+=`<rect x="${x}" y="${reY}" width="${bw}" height="${Math.max(0,(Hh-padB)-reY)}" fill="${C.reorder}" rx="2"><title>${b.label} reorder: ${money(b.reorder)}</title></rect>`;
+      if(b.pipeline>0) g+=`<rect x="${x}" y="${topY}" width="${bw}" height="${Math.max(0,reY-topY)}" fill="${C.pipeline}" rx="2"><title>${b.label} pipeline: ${money(b.pipeline)}</title></rect>`;
+    } else { const yy=y(b.actual); g+=`<rect x="${x}" y="${yy}" width="${bw}" height="${Math.max(0,(Hh-padB)-yy)}" fill="${C.actual}" rx="2"><title>${b.label} actual: ${money(b.actual)}</title></rect>`; }
+    g+=`<text x="${x+bw/2}" y="${Hh-padB+15}" text-anchor="middle" font-size="10" fill="#8a96a3">${b.label.split(" ")[0]}</text>`;
+  });
+  return `<div class="card"><h2>Revenue forecast <span class="hint" style="font-weight:600">6 months back · 6 months projected</span></h2>
+    <div class="legend"><span class="lk"><span class="sw" style="background:${C.actual}"></span>Actual</span><span class="lk"><span class="sw" style="background:${C.reorder}"></span>Projected reorders</span><span class="lk"><span class="sw" style="background:${C.pipeline}"></span>Weighted pipeline</span></div>
+    <div class="chartwrap"><svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:260px;display:block">${g}</svg></div></div>`;
+}
+
+function render(){
+  if(!DATA) return;
+  const s=DATA.summary||{}, opps=DATA.opportunities||[], stages=DATA.stages||["identified","contacted","quoted","won","lost"];
+  const kpi=(l,v,cls,sub)=>`<div class="kpi"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div>${sub?`<div class="l" style="margin-top:2px;text-transform:none;letter-spacing:0;font-weight:600">${sub}</div>`:""}</div>`;
+  const kpis=`<div class="kpis" style="margin-bottom:16px">
+    ${kpi("Forecast · 90 days",short(s.forecast_90),"blue","reorders + pipeline")}
+    ${kpi("Projected reorders · 90d",short(s.reorder_90),"","from cadence")}
+    ${kpi("Open pipeline",short(s.open_value),"orange",s.open_count+" deal"+(s.open_count===1?"":"s"))}
+    ${kpi("Weighted pipeline",short(s.weighted_value),"","by stage probability")}
+  </div>`;
+  const chart=forecastChart(DATA.history||[], DATA.forecast||[]);
+  // opportunities table
+  const stSel=(o)=>`<select class="stsel st-${o.stage}" onchange="setStage('${o.id}',this.value)">${stages.map(st=>`<option value="${st}"${o.stage===st?" selected":""}>${STG[st]||st}</option>`).join("")}</select>`;
+  const rowsHtml=opps.length?opps.map(o=>`<tr>
+      <td>${o.dealer_id?`<a class="link" href="/admin/dealer.html?id=${encodeURIComponent(o.dealer_id)}">${esc(o.dealer_name||o.title)}</a>`:esc(o.title)}${o.line?`<div class="hint" style="margin:0">${esc(o.line)}</div>`:""}</td>
+      <td>${stSel(o)}</td>
+      <td class="num">${money(o.value)}</td>
+      <td class="num">${o.probability!=null?Math.round(o.probability*100)+"%":"—"}</td>
+      <td>${o.expected_close?esc(o.expected_close):'<span class="hint">—</span>'}</td>
+      <td>${esc(o.owner_rep||"")}</td>
+    </tr>`).join(""):`<tr><td colspan="6"><div class="msg" style="margin:0">No opportunities yet. Add one below, or create them from a dealer's cross-sell card.</div></td></tr>`;
+  const table=`<div class="card" style="margin-top:16px"><h2>Open opportunities</h2>
+    <table class="pt"><thead><tr><th>Deal</th><th>Stage</th><th class="num">Value</th><th class="num">Prob.</th><th>Expected close</th><th>Owner</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+    <div class="addbar">
+      <input class="t" id="oTitle" placeholder="New opportunity — e.g. Golden lift chairs at Alpha Medical">
+      <input id="oLine" placeholder="Line (optional)" style="width:130px">
+      <input id="oVal" class="vin" type="number" placeholder="Value $">
+      <select id="oStage" class="stsel">${stages.map(st=>`<option value="${st}">${STG[st]}</option>`).join("")}</select>
+      <input id="oClose" type="date" title="Expected close">
+      <button class="btn orange" onclick="addOpp()">Add</button>
+    </div></div>`;
+  $("#body").innerHTML=kpis+chart+table;
+}
+async function setStage(id,stage){ await api({action:"update",id,stage}); await load(); }
+async function addOpp(){
+  const title=(($("#oTitle")||{}).value||"").trim(); if(!title){ alert("Give the opportunity a title."); return; }
+  await api({action:"add",title,line:($("#oLine")||{}).value||"",value:Number(($("#oVal")||{}).value||0),stage:($("#oStage")||{}).value||"identified",expected_close:($("#oClose")||{}).value||""});
+  await load();
+}
+load();
+</script>
+</body></html>

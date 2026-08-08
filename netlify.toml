@@ -18,3 +18,8 @@
 
 [functions."engine-nightly"]
   schedule = "0 6 * * *"
+
+# Weekly executive summary + per-rep digests, Mondays ~12:00 UTC (7–8am ET). Gated by
+# automation_config.reports_enabled (off by default), so nothing sends until you enable it.
+[functions."report-weekly"]
+  schedule = "0 12 * * 1"

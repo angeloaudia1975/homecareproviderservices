@@ -1,0 +1,114 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Rep Performance</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .rt{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+ .rt th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:700;padding:10px 12px;border-bottom:2px solid var(--line);white-space:nowrap}
+ .rt td{padding:10px 12px;border-bottom:1px solid #eef2f6;vertical-align:middle}
+ .rt tr:last-child td{border-bottom:0}
+ .rt tr:hover td{background:#f7fafd}
+ .rt .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+ .rk{width:26px;height:26px;border-radius:8px;background:var(--paper);display:inline-flex;align-items:center;justify-content:center;font-weight:800;color:var(--navy);font-size:12px}
+ .rk.g1{background:#fef3d7;color:#a76a00}.rk.g2{background:#eceff3;color:#5b6672}.rk.g3{background:#f6e6da;color:#9a5a2a}
+ .repn{font-weight:800;color:var(--navy)}
+ .att{min-width:120px}
+ .attbar{height:14px;border-radius:7px;background:#eef2f6;overflow:hidden;position:relative;border:1px solid var(--line)}
+ .attfill{position:absolute;left:0;top:0;bottom:0;border-radius:7px}
+ .attlab{font-size:11px;font-weight:800;color:var(--navy);margin-top:2px}
+ .yoy.up{color:#1f7a44;font-weight:800}.yoy.down{color:#c2410c;font-weight:800}.yoy.flat{color:#8a96a3;font-weight:700}
+ .mini{font-size:11px;color:var(--gray)}
+ .tin{width:96px;padding:5px 7px;border:1px solid var(--line);border-radius:7px;font-family:inherit;font-size:12.5px;text-align:right}
+ .hbadge{font-size:11px;font-weight:800;border-radius:6px;padding:1px 6px}
+ .risk{color:#c2410c;font-weight:800}
+ @media(max-width:820px){.hide-sm{display:none}}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1>Rep Performance</h1><div class="sub">Each rep's book at a glance — sales vs. target, growth, pipeline health, and momentum. Set annual goals to track attainment.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), DATA=null;
+const money=n=>"$"+Math.round(Number(n||0)).toLocaleString("en-US");
+const short=n=>{n=Number(n||0);const a=Math.abs(n);if(a>=1e6)return "$"+(n/1e6).toFixed(1)+"M";if(a>=1e3)return "$"+Math.round(n/1e3)+"k";return "$"+Math.round(n);};
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+async function api(payload){ const r=await fetch("/.netlify/functions/reps-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  const r=await api({action:"scorecards"});
+  if(r.status===401){ gate("Your session ended — sign in again."); return; }
+  const j=r.body;
+  if(j&&j.error==="tables_missing"){ $("#body").innerHTML=`<div class="msg">Run the health + targets SQL, then reload.</div>`; return; }
+  if(!j||!j.ok){ $("#body").innerHTML=`<div class="msg err">${esc((j&&j.error)||"Couldn't load.")}</div>`; return; }
+  DATA=j; render();
+}
+
+function attColor(pct){ return pct>=100?"#2d7d46":pct>=75?"#1681c2":pct>=50?"#F5821F":"#c2410c"; }
+function render(){
+  if(!DATA) return;
+  const reps=DATA.reps||[], pres=DATA.role==="president", yr=DATA.year, py=DATA.prev_year, s=DATA.summary||{};
+  const teamAtt = s.team_target>0?Math.round(s.team_ytd/s.team_target*100):null;
+  const teamYoY = s.team_prev_ytd>0?Math.round((s.team_ytd-s.team_prev_ytd)/s.team_prev_ytd*100):null;
+  const kpi=(l,v,cls,sub)=>`<div class="kpi"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div>${sub?`<div class="l" style="margin-top:2px;text-transform:none;letter-spacing:0;font-weight:600">${sub}</div>`:""}</div>`;
+  const kpis=`<div class="kpis" style="margin-bottom:16px">
+    ${kpi("Team sales "+yr,short(s.team_ytd),"blue","year to date")}
+    ${kpi("Team attainment", teamAtt!=null?teamAtt+"%":"—", teamAtt!=null&&teamAtt<100?"orange":"", s.team_target?("target "+short(s.team_target)):"set targets below")}
+    ${kpi("Team YoY", teamYoY!=null?((teamYoY>=0?"+":"")+teamYoY+"%"):"—", teamYoY!=null&&teamYoY<0?"warn":"", "vs "+py)}
+    ${kpi("Reps", s.rep_count||reps.length,"")}
+  </div>`;
+  const medal=i=>i===0?"g1":i===1?"g2":i===2?"g3":"";
+  const rowsHtml = reps.map((r,i)=>{
+    const att=r.attainment;
+    const attCell = pres
+      ? `<div class="att"><div class="attbar">${att!=null?`<span class="attfill" style="width:${Math.min(100,att)}%;background:${attColor(att)}"></span>`:""}</div>
+           <div class="attlab">${att!=null?att+"% of ":""}<input class="tin" type="number" min="0" step="1000" value="${r.target||""}" placeholder="set target" onchange="setTarget('${esc(r.rep)}',this.value)"></div></div>`
+      : `<div class="att"><div class="attbar">${att!=null?`<span class="attfill" style="width:${Math.min(100,att)}%;background:${attColor(att)}"></span>`:""}</div>
+           <div class="attlab">${att!=null?att+"% of "+short(r.target):(r.target?short(r.target):"—")}</div></div>`;
+    const yoyCell = r.yoy==null?`<span class="mini">—</span>`:`<span class="yoy ${r.yoy>0?'up':r.yoy<0?'down':'flat'}">${r.yoy>0?'+':''}${r.yoy}%</span>`;
+    const mom = r.momentum>0?`<span class="yoy up">+${short(r.momentum)}</span>`:r.momentum<0?`<span class="yoy down">${short(r.momentum)}</span>`:`<span class="mini">flat</span>`;
+    const hColor=r.avg_health>=65?"#2d7d46":r.avg_health>=40?"#F5821F":"#c2410c";
+    return `<tr>
+      <td><span class="rk ${medal(i)}">${i+1}</span></td>
+      <td><span class="repn">${esc(r.rep)}</span><div class="mini">${r.dealers} dealer${r.dealers===1?"":"s"} · ${r.open_tasks} task${r.open_tasks===1?"":"s"}</div></td>
+      <td class="num">${money(r.sales_ytd)}<div class="mini">${money(r.sales_mtd)} this mo</div></td>
+      <td>${attCell}</td>
+      <td class="num">${yoyCell}</td>
+      <td class="num hide-sm">${mom}</td>
+      <td class="num hide-sm"><span class="hbadge" style="background:${hColor}22;color:${hColor}">${r.avg_health}</span></td>
+      <td class="num hide-sm">${r.at_risk?`<span class="risk">${r.at_risk}</span>`:`<span class="mini">0</span>`}<div class="mini">${r.dormant} dormant</div></td>
+    </tr>`;
+  }).join("");
+  const table=`<table class="rt"><thead><tr>
+      <th>#</th><th>Rep</th><th class="num">Sales ${yr}</th><th>Target / attainment</th><th class="num">YoY</th>
+      <th class="num hide-sm">Momentum</th><th class="num hide-sm">Avg health</th><th class="num hide-sm">At-risk</th>
+    </tr></thead><tbody>${rowsHtml||`<tr><td colspan="8"><div class="msg">No rep sales found.</div></td></tr>`}</tbody></table>`;
+  const note = pres ? `<div class="hint" style="margin-top:10px">Type a rep's annual target to track attainment. Momentum = last 3 months of sales vs the 3 before. Avg health &amp; at-risk come from <a class="link" href="/admin/health.html">Dealer Health</a>.</div>` :
+    `<div class="hint" style="margin-top:10px">Momentum = last 3 months vs the 3 before. Health &amp; at-risk come from <a class="link" href="/admin/health.html">Dealer Health</a>.</div>`;
+  $("#body").innerHTML=kpis+table+note;
+}
+async function setTarget(rep,val){
+  const target=Number(val)||0;
+  await api({action:"set_target",rep_name:rep,year:Number(DATA.year),target});
+  await load();
+}
+load();
+</script>
+</body></html>

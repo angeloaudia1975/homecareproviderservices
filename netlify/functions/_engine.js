@@ -26,7 +26,8 @@ const DEFAULTS={engine_enabled:true,email_enabled:false,cap_per_7d:2,min_gap_hou
   dormant_months:3,overdue_mult:0.5,overdue_min_gap_months:1,quiet_weekends:true,
   business_hours:[7,19],timezone:"America/New_York",
   windows:{primary:[9,10],behavior:[12,13],remaining:[15,16]},
-  templates_enabled:{overdue:true,dormant:true,cart:true,new:true,crosssell:true},queue_ttl_hours:72};
+  templates_enabled:{overdue:true,dormant:true,cart:true,new:true,crosssell:true},queue_ttl_hours:72,
+  reports_enabled:false,report_recipients:[]};
 async function getConfig(){
   try{ const rows=await sbGet("app_settings?key=eq.automation_config&select=value");
     const v=(rows&&rows[0]&&rows[0].value)||{}; return {...DEFAULTS,...v,

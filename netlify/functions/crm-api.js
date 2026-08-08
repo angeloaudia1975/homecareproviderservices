@@ -78,14 +78,15 @@ exports.handler = async (event)=>{
     if(b.action==="list"){
       if(!b.dealer_id) return json(400,{error:"dealer_id required"});
       const did=encodeURIComponent(b.dealer_id);
-      const [notes,tasks,activity,crosssell,health]=await Promise.all([
+      const [notes,tasks,activity,crosssell,health,opportunities]=await Promise.all([
         sbGet(`dealer_notes?dealer_id=eq.${did}&select=*&order=created_at.desc&limit=200`).catch(()=>[]),
         sbGet(`dealer_tasks?dealer_id=eq.${did}&select=*&order=status.asc,due_date.asc.nullslast,created_at.desc&limit=200`).catch(()=>[]),
         sbGet(`dealer_activity?dealer_id=eq.${did}&select=*&order=created_at.desc&limit=50`).catch(()=>[]),
         sbGet(`cross_sell?dealer_id=eq.${did}&select=rank,rec_name,basis_name,score,support&order=rank.asc&limit=3`).catch(()=>[]),
         sbGet(`dealer_engagement?dealer_id=eq.${did}&select=status,score,trend,churn_score,months_since,last_period,recent_sales,total_sales,lines`).catch(()=>[]),
+        sbGet(`opportunities?dealer_id=eq.${did}&status=eq.open&select=id,title,line,stage,value,probability,expected_close,owner_rep&order=value.desc`).catch(()=>[]),
       ]);
-      return json(200,{ok:true,notes:notes||[],tasks:tasks||[],activity:activity||[],crosssell:crosssell||[],health:(health&&health[0])||null});
+      return json(200,{ok:true,notes:notes||[],tasks:tasks||[],activity:activity||[],crosssell:crosssell||[],health:(health&&health[0])||null,opportunities:opportunities||[]});
     }
 
     // Lightweight open-task count for the masthead badge (the caller's own, rep-scoped).
@@ -191,7 +192,7 @@ exports.handler = async (event)=>{
     // master switches (engine_enabled / email_enabled) and thresholds are set from the UI.
     if(b.action==="set_automation_config"){
       if(me.role!=="president") return json(403,{error:"President only"});
-      const patch=b.patch||{}; const allow=new Set(["engine_enabled","email_enabled","cap_per_7d","min_gap_hours","dormant_months","overdue_mult","overdue_min_gap_months","quiet_weekends","business_hours","timezone","windows","templates_enabled","queue_ttl_hours","exclude_manufacturers","exclude_dealers"]);
+      const patch=b.patch||{}; const allow=new Set(["engine_enabled","email_enabled","cap_per_7d","min_gap_hours","dormant_months","overdue_mult","overdue_min_gap_months","quiet_weekends","business_hours","timezone","windows","templates_enabled","queue_ttl_hours","exclude_manufacturers","exclude_dealers","reports_enabled","report_recipients"]);
       const cur=await engine.getConfig();
       const next={...cur}; for(const k of Object.keys(patch)){ if(allow.has(k)) next[k]=patch[k]; }
       await sbSend("POST","app_settings?on_conflict=key",{key:"automation_config",value:next,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});

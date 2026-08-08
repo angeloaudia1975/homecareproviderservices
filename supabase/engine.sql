@@ -79,6 +79,8 @@ values ('automation_config', jsonb_build_object(
      'overdue', true, 'dormant', true, 'cart', true, 'new', true),
   'exclude_manufacturers', jsonb_build_array(),  -- lines we no longer represent (by slug or name)
   'exclude_dealers', jsonb_build_array(),         -- dealer ids to skip entirely
-  'queue_ttl_hours', 72
+  'queue_ttl_hours', 72,
+  'reports_enabled', false,                        -- weekly exec + rep digest emails (off until enabled)
+  'report_recipients', jsonb_build_array()         -- extra leadership emails beyond staff president/relations
 ), now())
 on conflict (key) do nothing;

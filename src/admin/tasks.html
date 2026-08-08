@@ -102,7 +102,10 @@ function renderAuto(s){
       <div class="sc">
         <div class="sw"><button class="toggle ${engineOn?'on':''}" onclick="flip('engine_enabled',${!engineOn})" title="Master engine on/off"></button><div class="lab">Engine<small>${engineOn?'running hourly':'paused'}</small></div></div>
         <div class="sw"><button class="toggle ${emailOn?'on warn':''}" onclick="flipEmail(${!emailOn})" title="Send emails vs dry-run"></button><div class="lab">Send emails<small>${emailOn?'LIVE — sending':'dry-run — queue only'}</small></div></div>
+        <div class="sw"><button class="toggle ${c.reports_enabled?'on':''}" onclick="flip('reports_enabled',${!c.reports_enabled})" title="Weekly exec + rep digest emails"></button><div class="lab">Weekly reports<small>${c.reports_enabled?'Mondays — on':'off'}</small></div></div>
         <button class="btn orange" id="runnow" onclick="runNow()" style="align-self:center">▶ Run engine now</button>
+        <button class="btn ghost" id="reportbtn" onclick="sendReportsNow()" style="align-self:center">✉ Send reports now</button>
+        <button class="btn ghost" onclick="previewReport()" style="align-self:center">👁 Preview</button>
       </div>
       <div class="cfgrid">
         ${cfgCell("Queued now", s.queued)}
@@ -127,6 +130,19 @@ async function runNow(){
   const r=await crm({action:"run_engine_now"}); const j=r.body||{};
   if(j.ok){ const d=j.delivery||{}; const sent=d.sent||0; const msg=`✓ ${j.tasks?j.tasks.created:0} tasks · ${j.emails?j.emails.queued:0} queued${d.dry_run?' (dry-run)':' · '+sent+' sent'}`; if(b){ b.textContent=msg; } await load(); }
   else { if(b){ b.disabled=false; b.textContent="▶ Run engine now"; } alert("Couldn't run: "+(j.error||j.message||r.status)); }
+}
+async function repsApi(payload){ const r=await fetch("/.netlify/functions/reps-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
+async function sendReportsNow(){
+  const b=$("#reportbtn"); if(b){ b.disabled=true; b.textContent="Sending…"; }
+  const r=await repsApi({action:"send_reports_now"}); const j=r.body||{};
+  if(b){ b.disabled=false; b.textContent="✉ Send reports now"; }
+  if(j.ok){ alert(`Reports sent.\nExec summary → ${j.exec_sent} recipient(s)\nRep digests → ${j.rep_digests}${j.resend?"":"\n\n(Note: RESEND_API_KEY not set — nothing actually delivered.)"}`); }
+  else alert("Couldn't send: "+(j.error||r.status));
+}
+async function previewReport(){
+  const r=await repsApi({action:"preview_report"}); const j=r.body||{};
+  if(j.ok&&j.html){ const w=window.open("","_blank"); if(w){ w.document.write(j.html); w.document.title=j.subject||"Report preview"; } else alert("Allow pop-ups to preview."); }
+  else alert("Couldn't build preview: "+(j.error||r.status));
 }
 let QOPEN=false;
 async function toggleQueue(){

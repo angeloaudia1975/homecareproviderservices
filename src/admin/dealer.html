@@ -197,7 +197,7 @@ async function loadCRM(){
   const el=$("#crm"); if(!el||!CUR) return;
   let j; try{ j=await crm({action:"list",dealer_id:CUR}); }catch(e){ el.innerHTML=`<div class="hint">Couldn't load notes.</div>`; return; }
   if(j&&j.error==="tables_missing"){ el.innerHTML=`<div class="note-ph">Run <b>supabase/crm.sql</b> in Supabase to turn on notes &amp; tasks.</div>`; return; }
-  const tasks=(j&&j.tasks)||[], nts=(j&&j.notes)||[], acts=(j&&j.activity)||[], xs=(j&&j.crosssell)||[], hp=(j&&j.health)||null;
+  const tasks=(j&&j.tasks)||[], nts=(j&&j.notes)||[], acts=(j&&j.activity)||[], xs=(j&&j.crosssell)||[], hp=(j&&j.health)||null, ops=(j&&j.opportunities)||[];
   const open=tasks.filter(t=>t.status==="open"), done=tasks.filter(t=>t.status!=="open");
   let hpBlock="";
   if(hp){
@@ -213,7 +213,12 @@ async function loadCRM(){
   }
   const xsBlock = xs.length ? `<div style="border:1px solid var(--line);border-left:3px solid var(--purple);border-radius:10px;background:#faf9fd;padding:10px 12px;margin-bottom:12px">
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--purple);font-weight:800;margin-bottom:4px">✨ Cross-sell opportunities</div>
-      ${xs.map(x=>`<div style="font-size:13px;color:var(--navy);margin:3px 0"><b>${esc(x.rec_name)}</b>${x.basis_name?` <span class="hint" style="margin:0">— buys ${esc(x.basis_name)}; similar dealers stock ${esc(x.rec_name)}</span>`:''}</div>`).join("")}
+      ${xs.map(x=>`<div style="font-size:13px;color:var(--navy);margin:3px 0;display:flex;align-items:center;gap:8px"><b>${esc(x.rec_name)}</b>${x.basis_name?` <span class="hint" style="margin:0;flex:1">— buys ${esc(x.basis_name)}; similar dealers stock ${esc(x.rec_name)}</span>`:'<span style="flex:1"></span>'}<button class="btn sm" onclick="startOpp('${esc(x.rec_name)}')">+ opportunity</button></div>`).join("")}
+    </div>` : "";
+  const opBlock = ops.length ? `<div style="border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:10px;background:#f6fafd;padding:10px 12px;margin-bottom:12px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--blue);font-weight:800;margin-bottom:4px">🔮 Open opportunities</div>
+      ${ops.map(o=>`<div style="font-size:13px;color:var(--navy);margin:3px 0"><b>${esc(o.title)}</b> <span class="hint" style="margin:0">— ${esc(o.stage)}${o.value?` · $${Number(o.value).toLocaleString()}`:""}</span></div>`).join("")}
+      <div style="margin-top:4px"><a class="link" href="/admin/pipeline.html">Manage in Pipeline →</a></div>
     </div>` : "";
   const tRow=t=>`<div class="tk ${t.priority==='high'?'hi':''}">
     <button class="tkchk" title="${t.status==='open'?'Mark done':'Reopen'}" onclick="taskAction('${t.id}','${t.status==='open'?'complete_task':'reopen_task'}')">${t.status==='open'?'○':'●'}</button>
@@ -221,7 +226,7 @@ async function loadCRM(){
       ${t.due_date?`<div class="hint" style="margin:0">due ${esc(t.due_date)}</div>`:''}${t.detail?`<div class="hint" style="margin:0">${esc(t.detail)}</div>`:''}</div></div>`;
   const nRow=n=>`<div class="nt"><div class="ntb">${esc(n.body)}</div><div class="hint" style="margin:2px 0 0">${esc(n.author_name||n.author_email||"")}${n.created_at?" · "+new Date(n.created_at).toLocaleString():""}</div></div>`;
   const aRow=a=>{ const ic=a.kind==="campaign"?"📣":a.kind==="call"?"📞":a.kind==="system"?"•":"📧"; return `<div class="nt"><div class="ntb">${ic} ${esc(a.subject||a.kind)}</div><div class="hint" style="margin:2px 0 0">${esc(a.contact_email||"")}${a.created_at?" · "+new Date(a.created_at).toLocaleString():""}</div></div>`; };
-  el.innerHTML=`${hpBlock}${xsBlock}<div class="tasks">
+  el.innerHTML=`${hpBlock}${opBlock}${xsBlock}<div class="tasks">
       ${open.length?open.map(tRow).join(""):'<div class="hint">No open tasks.</div>'}
       <div class="tkadd"><input id="ntitle" placeholder="Add a task…" onkeydown="if(event.key==='Enter')addTask()"><input id="ndue" type="date" title="Due date" style="width:auto"><button class="btn sm" onclick="addTask()">Add</button></div>
       ${done.length?`<div class="hint" style="margin:8px 0 2px">Done (${done.length})</div>`+done.slice(0,6).map(tRow).join(""):''}
@@ -237,6 +242,12 @@ async function loadCRM(){
 }
 async function addTask(){ const t=(($("#ntitle")||{}).value||"").trim(); if(!t)return; const due=($("#ndue")||{}).value||""; await crm({action:"add_task",dealer_id:CUR,title:t,due_date:due}); loadCRM(); }
 async function addNote(){ const b=(($("#nbody")||{}).value||"").trim(); if(!b)return; await crm({action:"add_note",dealer_id:CUR,body:b}); loadCRM(); }
+async function startOpp(line){
+  const t=(prompt("New opportunity for this dealer:", line?(line+" adoption"):"")||"").trim(); if(!t) return;
+  const val=prompt("Estimated annual value ($)? (optional)","");
+  await fetch("/.netlify/functions/pipeline-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action:"add",dealer_id:CUR,title:t,line:line||"",value:Number(val)||0,source:"crosssell"})});
+  loadCRM();
+}
 async function taskAction(id,act){ await crm({action:act,id}); loadCRM(); }
 async function sendReengage(){
   if(!CUR) return;
