@@ -1,12 +1,18 @@
-# HCPS — Netlify config. Build/publish come from the site's dashboard settings; this
-# file only registers the automation engine's scheduled functions.
+# HCPS — Netlify config.
 #
-# engine-hourly runs every hour and self-gates to weekday ET business hours (it returns
-# immediately otherwise), so it decides tasks/emails hourly and only DELIVERS inside the
-# configured send windows. engine-nightly runs once overnight (06:00 UTC ≈ 1–2am ET) to
-# recompute engagement/dormant status and expire stale queued emails. All cadences and
-# thresholds live in the app_settings 'automation_config' row, editable in the admin panel.
+# IMPORTANT: once a netlify.toml exists, Netlify stops falling back to the dashboard's
+# build/publish settings, so those must be declared here. This site is Eleventy: the
+# build command runs eleventy and the compiled site lands in _site (which contains the
+# passthrough-copied /admin app). Functions live in the default netlify/functions dir.
+[build]
+  command = "npm run build"
+  publish = "_site"
 
+# Automation engine scheduled functions. engine-hourly self-gates to weekday ET business
+# hours (returns immediately otherwise) and only DELIVERS inside the configured send
+# windows. engine-nightly runs once overnight (06:00 UTC ≈ 1–2am ET) to recompute
+# engagement/dormant status and expire stale queued emails. All cadences and thresholds
+# live in the app_settings 'automation_config' row, editable in the admin panel.
 [functions."engine-hourly"]
   schedule = "0 * * * *"
 
