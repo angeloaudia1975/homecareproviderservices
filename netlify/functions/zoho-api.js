@@ -144,6 +144,38 @@ exports.handler = async (event)=>{
       return json(200,{ ok:res.errors.length===0, total:uniq.length, processed:res.processed, inserted:res.inserted, updated:res.updated, linked_to_account:linked, errors:res.errors.slice(0,5) });
     }
 
+    // Bulk-load Accounts from an uploaded master list (rows passed in the body). Upserts by
+    // Account_Name so existing accounts get the website/address updated instead of duplicated.
+    if(b.action==="zoho_import_accounts"){
+      const c=await connect(); if(!c.ok) return json(200,{ok:false,message:"Not connected.",reason:c.reason});
+      const rows=Array.isArray(b.rows)?b.rows:[];
+      const records=rows.map(r=>({ key:r.name, record:{
+        Account_Name:(clean(r.name)||"Account").slice(0,255),
+        Website:clean(r.website), Phone:clean(r.phone),
+        Billing_Street:clean(r.street), Billing_City:clean(r.city), Billing_State:clean(r.state), Billing_Code:clean(r.zip),
+      }})).filter(x=>x.record.Account_Name);
+      const res=await upsertRecords(c.apiDomain,c.token,"Accounts",records,["Account_Name"]);
+      return json(200,{ ok:res.errors.length===0, processed:res.processed, inserted:res.inserted, updated:res.updated, errors:res.errors.slice(0,5) });
+    }
+
+    // Bulk-load Contacts from the master list (rows in the body). Matches on Email, links each to
+    // its company's Account by name. Reports how many couldn't be linked.
+    if(b.action==="zoho_import_contacts"){
+      const c=await connect(); if(!c.ok) return json(200,{ok:false,message:"Not connected.",reason:c.reason});
+      const rows=Array.isArray(b.rows)?b.rows:[];
+      const accts=await getAllRecords(c.apiDomain,c.token,"Accounts","Account_Name");
+      const acctIdByName={}; for(const a of (accts||[])){ if(a.Account_Name) acctIdByName[String(a.Account_Name)]=a.id; }
+      const records=rows.map(r=>{
+        const rec={ Last_Name:(clean(r.last)||clean(r.first)||"Contact").slice(0,80), First_Name:clean(r.first), Email:clean(r.email), Phone:clean(r.phone), Title:clean(r.title) };
+        const acctId=acctIdByName[(clean(r.company)||"").slice(0,255)];
+        if(acctId) rec.Account_Name={ id:acctId };
+        return { key:r.email, record:rec };
+      }).filter(x=>x.record.Email);
+      const res=await upsertRecords(c.apiDomain,c.token,"Contacts",records,["Email"]);
+      const linked=records.filter(x=>x.record.Account_Name).length;
+      return json(200,{ ok:res.errors.length===0, processed:res.processed, inserted:res.inserted, updated:res.updated, linked, unlinked:records.length-linked, errors:res.errors.slice(0,5) });
+    }
+
     return json(400,{error:"unknown action"});
   }catch(e){ return json(500,{error:String(e.message||e)}); }
 };
