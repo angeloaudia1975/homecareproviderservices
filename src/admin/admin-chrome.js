@@ -29,9 +29,17 @@
     ]}
   ];
 
+  // Detail/child pages that belong to a hub but aren't top-level tools (so the hub still
+  // highlights and its sub-nav shows). e.g. the per-dealer 360 profile lives in Sales & Marketing.
+  var DETAIL = { "/admin/dealer.html": "sales" };
+
   function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
   function curPath(){ var p=location.pathname; return /\/admin\/(index\.html)?$/.test(p) ? "/admin/" : p; }
-  function hubOf(path){ for(var i=0;i<HUBS.length;i++){ for(var j=0;j<HUBS[i].tools.length;j++){ if(HUBS[i].tools[j].href===path) return HUBS[i]; } } return null; }
+  function hubOf(path){
+    for(var i=0;i<HUBS.length;i++){ for(var j=0;j<HUBS[i].tools.length;j++){ if(HUBS[i].tools[j].href===path) return HUBS[i]; } }
+    if(DETAIL[path]){ for(var k=0;k<HUBS.length;k++){ if(HUBS[k].id===DETAIL[path]) return HUBS[k]; } }
+    return null;
+  }
 
   function render(){
     var host = document.getElementById("ac-head"); if(!host) return;

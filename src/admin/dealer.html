@@ -1,0 +1,203 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Dealer 360</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .d360{display:grid;grid-template-columns:1fr 340px;gap:15px;align-items:start}
+ @media(max-width:900px){.d360{grid-template-columns:1fr}}
+ .idrow{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:#41576b;margin:6px 0 0}
+ .idrow b{color:var(--navy)}
+ .spark{width:100%;height:70px;display:block}
+ .stat{display:flex;gap:10px;flex-wrap:wrap;margin:2px 0 0}
+ .stat .s{background:#f5f8fb;border:1px solid var(--line);border-radius:10px;padding:8px 13px;min-width:96px}
+ .stat .s .l{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:600}
+ .stat .s .v{font-size:19px;font-weight:800;font-family:'Barlow Condensed';color:var(--navy)}
+ .sig{display:flex;flex-direction:column;gap:8px}
+ .sig .row{display:flex;align-items:center;gap:8px;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fff}
+ .sig .row.hot{background:#e7f6ec;border-color:#bfe3ca}
+ .sig .row.warn{background:#fdeee0;border-color:#f6d5ad}
+ .sig .row.cool{background:#f3eef9;border-color:#e0d5f5}
+ .pill2{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:6px;padding:2px 7px}
+ .pill2.ok{background:#e7f6ec;color:#1f7a44}.pill2.due{background:#fdeee0;color:#b45309}.pill2.dorm{background:#f3eef9;color:#5b3fa0}
+ .note-ph{border:1px dashed var(--line);border-radius:10px;padding:14px;color:var(--gray);font-size:13px;text-align:center;background:#fafbfc}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="backbar"><a class="btn ghost sm" href="/admin/dealers.html">← All dealers</a>
+    <span class="hint" style="margin:0"><a class="link" href="/admin/call-list.html">Who to Call</a> · <a class="link" href="/admin/command-center.html">Command Center</a></span></div>
+  <div id="body"><div class="msg">Loading dealer…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money=n=>"$"+Math.round(Number(n||0)).toLocaleString("en-US");
+const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token();
+const Q=new URLSearchParams(location.search); const QID=Q.get("id"); const QNAME=Q.get("name");
+const MONTH=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const pmOf=p=>{const s=String(p||"").slice(0,7);const[y,m]=s.split("-").map(Number);return y*12+(m-1);};
+const pmLabel=pm=>MONTH[((pm%12)+12)%12]+" "+Math.floor(pm/12);
+const median=a=>{if(!a.length)return null;const b=[...a].sort((x,y)=>x-y);const m=Math.floor(b.length/2);return b.length%2?b[m]:(b[m-1]+b[m])/2;};
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  try{
+    const h={authorization:"Bearer "+TOKEN};
+    const [dRes,aRes]=await Promise.all([
+      fetch("/.netlify/functions/dealers-api",{headers:h}),
+      fetch("/.netlify/functions/analytics",{headers:h}).catch(()=>null)
+    ]);
+    if(dRes.status===401){ gate("Your session ended — sign in again."); return; }
+    if(dRes.status===403){ $("#body").innerHTML=`<div class="msg err"><b>President only.</b> <button class="go" onclick="lock()">Sign in as a different user</button></div>`; return; }
+    const D=await dRes.json(); if(D.error){ $("#body").innerHTML=`<div class="msg err">${esc(D.error)}</div>`; return; }
+    let A={}; try{ A=aRes?await aRes.json():{}; }catch(e){ A={}; }
+    render(D,A);
+  }catch(e){ $("#body").innerHTML=`<div class="msg err">Couldn't load: ${esc(String(e.message||e))}<br><br><button class="go" onclick="load()">Retry</button></div>`; }
+}
+
+function render(D,A){
+  const dealers=D.dealers||[];
+  let d = QID ? dealers.find(x=>x.id===QID) : null;
+  if(!d && QNAME) d = dealers.find(x=>x.name===QNAME);
+  if(!d){ $("#body").innerHTML=`<div class="msg">Dealer not found. <a class="link" href="/admin/dealers.html">Back to all dealers</a></div>`; return; }
+
+  // per-line order history from the analytics cube (facts for this dealer)
+  const facts=(A.facts||[]).filter(f=>f.dealer===d.name);
+  let latest=0; for(const f of (A.facts||[])){ const pm=pmOf(f.period); if(pm>latest) latest=pm; }
+  const byLine=new Map(); const byMonth={};
+  for(const f of facts){ const pm=pmOf(f.period);
+    let o=byLine.get(f.line); if(!o){ o={pms:new Set(),sales:0,comm:0}; byLine.set(f.line,o); }
+    o.pms.add(pm); o.sales+=f.sales||0; o.comm+=f.comm||0;
+    byMonth[pm]=(byMonth[pm]||0)+(f.sales||0);
+  }
+  const lines=[...byLine.entries()].map(([line,o])=>{
+    const pms=[...o.pms].sort((a,b)=>a-b);
+    const gaps=[]; for(let i=1;i<pms.length;i++)gaps.push(pms[i]-pms[i-1]);
+    const cycle=median(gaps);
+    const last=pms[pms.length-1], since=latest-last;
+    let status="ok";
+    if(pms.length>=2 && cycle!=null && cycle>0 && since>=cycle+Math.max(1,Math.round(cycle*0.5))) status="due";
+    else if(since>=3) status="dorm";
+    return {line,orders:pms.length,first:pms[0],last,cycle,since,sales:o.sales,status};
+  }).sort((a,b)=>b.sales-a.sales);
+
+  // activity signals
+  const sess=(D.recentSessions||[]).filter(s=>s.dealer_id===d.id).sort((a,b)=>new Date(b.last_seen_at)-new Date(a.last_seen_at))[0];
+  const cart=(D.openCarts||[]).filter(c=>c.dealer_id===d.id).sort((a,b)=>b.value-a.value)[0];
+
+  const info=(A.dealerInfo&&A.dealerInfo[d.name])||{};
+  const website=info.website||d.website||"";
+  const totalSales=d.sales||0, totalComm=d.comm||0;
+  const lastPm = lines.length?Math.max(...lines.map(l=>l.last)):null;
+  const monthsSince = lastPm!=null?(latest-lastPm):null;
+
+  // ---- left column ----
+  const status = d.status==="review"?`<span class="chip rev">review</span>`:(d.status?`<span class="chip">${esc(d.status)}</span>`:"");
+  const rel = d.master?`Branch of <a class="link" href="/admin/dealer.html?name=${encodeURIComponent(d.master)}">${esc(d.master)}</a>`
+            : (d.branches&&d.branches.length?`HQ · ${d.branches.length} branch${d.branches.length===1?"":"es"}`:"Standalone");
+  const header=`<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+      <div><h1 style="margin:0;font-size:25px">${esc(d.name)} ${status}</h1>
+        <div class="hint" style="margin:3px 0 0">${rel}</div>
+        <div class="idrow">
+          ${d.rep?`<span>Rep: <b>${esc(d.rep)}</b></span>`:""}
+          ${d.hcps_account?`<span>HCPS #: <b>${esc(d.hcps_account)}</b></span>`:""}
+          ${d.phone?`<span>☎ ${esc(d.phone)}</span>`:""}
+          ${d.email?`<span>✉ <a class="link" href="mailto:${esc(d.email)}">${esc(d.email)}</a></span>`:""}
+          ${website?`<span>🌐 <a class="link" href="${esc(/^https?:/i.test(website)?website:'https://'+website)}" target="_blank">${esc(website.replace(/^https?:\/\//,''))}</a></span>`:""}
+        </div>
+        <div class="idrow">${[d.address,d.city,[d.state,d.zip].filter(Boolean).join(" ")].filter(Boolean).map(esc).join(", ")}</div>
+      </div>
+      <a class="btn ghost sm" href="/admin/dealers.html?dealer=${encodeURIComponent(d.id)}">Edit in Dealer Manager →</a>
+    </div>
+    <div class="stat">
+      <div class="s"><div class="l">Total sales</div><div class="v">${money(totalSales)}</div></div>
+      <div class="s"><div class="l">Commission</div><div class="v">${money(totalComm)}</div></div>
+      <div class="s"><div class="l">Last order</div><div class="v">${lastPm!=null?pmLabel(lastPm):"—"}</div></div>
+      <div class="s"><div class="l">Lines bought</div><div class="v">${lines.length}</div></div>
+      <div class="s"><div class="l">Contacts</div><div class="v">${(d.contacts||[]).length}</div></div>
+    </div>
+  </div>`;
+
+  // per-line history table
+  const lrows=lines.map(l=>{
+    const badge=l.status==="due"?`<span class="pill2 due">Overdue</span>`:l.status==="dorm"?`<span class="pill2 dorm">Dormant</span>`:`<span class="pill2 ok">On track</span>`;
+    return `<tr><td class="lbl">${esc(l.line)}</td><td class="num">${l.orders}</td>
+      <td>${pmLabel(l.first)} → ${pmLabel(l.last)}</td>
+      <td class="num">${l.cycle!=null?"~"+Math.round(l.cycle)+"mo":"—"}</td>
+      <td class="num">${l.since}mo</td>
+      <td class="num">${money(l.sales)}</td><td>${badge}</td></tr>`;
+  }).join("");
+  const history=`<div class="card"><h2>Order history by line</h2>
+    ${lines.length?`<table><thead><tr><th>Manufacturer</th><th class="num">Orders</th><th>Span</th><th class="num">Cycle</th><th class="num">Since</th><th class="num">Sales</th><th>Status</th></tr></thead><tbody>${lrows}</tbody></table>`:`<div class="hint">No commission history on file for this dealer yet.</div>`}
+    <div style="margin-top:12px">${sparkline(byMonth,latest)}</div>
+  </div>`;
+
+  // contacts
+  const contacts=(d.contacts||[]);
+  const crows=contacts.map(c=>`<tr><td class="lbl">${esc(c.name||"—")}</td>
+    <td>${esc([c.title,c.role].filter(Boolean).join(" · "))}</td>
+    <td>${c.email?`<a class="link" href="mailto:${esc(c.email)}">${esc(c.email)}</a>`:""}</td>
+    <td class="num">${esc(c.phone||c.cell||"")}</td></tr>`).join("");
+  const contactsCard=`<div class="card"><h2>Contacts <span style="float:right;font-size:11px;color:var(--gray);font-weight:600">${contacts.length}</span></h2>
+    ${contacts.length?`<table><thead><tr><th>Name</th><th>Title / role</th><th>Email</th><th class="num">Phone</th></tr></thead><tbody>${crows}</tbody></table>`:`<div class="hint">No contacts on file.</div>`}</div>`;
+
+  // ---- right column ----
+  const sig=[];
+  if(cart&&cart.itemCount>0) sig.push(`<div class="row hot">🛒 <div><b>Open cart ${money(cart.value)}</b> · ${cart.itemCount} item${cart.itemCount===1?"":"s"}<div class="hint" style="margin:0">${cart.updated_at?"updated "+new Date(cart.updated_at).toLocaleDateString():""}</div></div></div>`);
+  if(sess) sig.push(`<div class="row ${sess.live?'hot':''}">${sess.live?"🟢":"👤"} <div><b>${sess.live?"Online now":"Last login"}</b><div class="hint" style="margin:0">${sess.last_seen_at?new Date(sess.last_seen_at).toLocaleString():""}</div></div></div>`);
+  const due=lines.filter(l=>l.status==="due");
+  if(due.length) sig.push(`<div class="row warn">⏰ <div><b>${due.length} line${due.length===1?"":"s"} overdue to reorder</b><div class="hint" style="margin:0">${esc(due.slice(0,3).map(l=>l.line).join(", "))}</div></div></div>`);
+  if(monthsSince!=null && monthsSince>=3) sig.push(`<div class="row cool">💤 <div><b>Dormant ${monthsSince} months</b><div class="hint" style="margin:0">no orders since ${pmLabel(lastPm)}</div></div></div>`);
+  if(!sig.length) sig.push(`<div class="row">✅ <div>No follow-up flags right now.</div></div>`);
+  const signals=`<div class="card"><h2>Signals</h2><div class="sig">${sig.join("")}</div></div>`;
+
+  // addresses
+  const addrs=(info.addresses||d.addresses||[]);
+  const addrCard=addrs.length?`<div class="card"><h2>Addresses <span style="float:right;font-size:11px;color:var(--gray);font-weight:600">${addrs.length}</span></h2>
+    ${addrs.map(a=>`<div style="font-size:13px;padding:6px 0;border-bottom:1px solid #eef2f6">${a.pri>=3?"⭐ ":""}${esc([a.address,a.city,[a.state,a.zip].filter(Boolean).join(" ")].filter(Boolean).join(", "))}${a.label?` <span class="chip">${esc(a.label)}</span>`:""}</div>`).join("")}</div>`:"";
+
+  // notes (Phase 2 placeholder)
+  const notes=`<div class="card"><h2>Notes &amp; tasks</h2>
+    <div class="note-ph">📝 Rep notes, tasks, and follow-up reminders land here in <b>Phase 2</b>.<br>The intelligent follow-up engine will auto-add tasks from the signals above.</div></div>`;
+
+  $("#body").innerHTML=`${header}
+    <div class="d360">
+      <div>${history}${contactsCard}</div>
+      <div>${signals}${addrCard}${notes}</div>
+    </div>`;
+}
+
+// tiny monthly sales sparkline (single series, this dealer)
+function sparkline(byMonth,latest){
+  const keys=Object.keys(byMonth).map(Number).sort((a,b)=>a-b);
+  if(keys.length<2) return "";
+  const min=keys[0], max=latest||keys[keys.length-1];
+  const span=Math.max(1,max-min);
+  const vmax=Math.max(1,...keys.map(k=>byMonth[k]));
+  const W=680,H=70,pad=4;
+  const x=pm=>pad+((pm-min)/span)*(W-2*pad);
+  const y=v=>H-pad-(v/vmax)*(H-2*pad);
+  let dd="",started=false,pts="";
+  for(let pm=min;pm<=max;pm++){ const v=byMonth[pm]; if(v==null){ started=false; continue; } const cx=x(pm),cy=y(v); dd+=(started?"L":"M")+cx.toFixed(1)+" "+cy.toFixed(1)+" "; started=true; pts+=`<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="2.5" fill="#1681c2"><title>${pmLabel(pm)}: ${money(v)}</title></circle>`; }
+  return `<div class="hint" style="margin:0 0 4px">Monthly sales</div><svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><path d="${dd}" fill="none" stroke="#1681c2" stroke-width="2" stroke-linejoin="round"/>${pts}</svg>`;
+}
+
+load();
+</script>
+</body></html>

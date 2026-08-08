@@ -150,7 +150,7 @@ function render(){
   if(!rows.length){ body=`<div class="msg">Nothing matches this filter. 🎉</div>`; }
   else{
     const tr=rows.map(x=>{
-      const link=x.id?`/admin/dealers.html?dealer=${encodeURIComponent(x.id)}`:`/admin/dealers.html`;
+      const link=x.id?`/admin/dealer.html?id=${encodeURIComponent(x.id)}`:`/admin/dealers.html`;
       const why=x.reasons.map(r=>`<span class="rz ${r.t}">${esc(r.label)}</span>`).join("");
       const last=x.lastPm?pmLabel(x.lastPm):"—";
       return `<tr>

@@ -286,7 +286,7 @@ function renderDetail(){
        ? `<div style="${relStyle}">🏢 <b>Headquarters</b> · ${d.branches.length} branch location${d.branches.length===1?"":"s"} roll up here: ${d.branches.map(bn=>`<span class="chip" style="cursor:pointer" onclick="openDealerByName('${jesc(bn)}')">${esc(bn)}</span>`).join(" ")}</div>`
        : "");
   $("#body").innerHTML=`
-   <div class="backbar"><button class="go" onclick="backList()">← All dealers</button><div class="lbl" style="font-size:18px">${esc(d.name)} ${d.status==="review"?`<span class="chip rev">review</span>`:""}</div><div></div></div>
+   <div class="backbar"><button class="go" onclick="backList()">← All dealers</button><div class="lbl" style="font-size:18px">${esc(d.name)} ${d.status==="review"?`<span class="chip rev">review</span>`:""}</div><a class="go sm blue" href="/admin/dealer.html?id=${d.id}">📇 360 Profile</a></div>
    ${relBanner}
    <div class="grid2">
      <div class="card"><h2>Account details</h2>
