@@ -43,6 +43,7 @@ const C={bar:"#1681c2",cur:"#1681c2",prev:"#c4ccd4",up:"#1f7a44",down:"#c2410c"}
 const money=n=>"$"+Math.round(Number(n||0)).toLocaleString("en-US");
 const short=n=>{n=Number(n||0);const a=Math.abs(n);if(a>=1e6)return "$"+(n/1e6).toFixed(a>=1e7?0:1)+"M";if(a>=1e3)return "$"+Math.round(n/1e3)+"k";return "$"+Math.round(n);};
 const ym=p=>String(p||"").slice(0,7);
+const mnorm=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
 
 function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button> <a href="reset.html" style="margin-left:6px;color:#10263f;font-weight:600;font-size:13px">Forgot password?</a><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
 async function submitTok(){
@@ -89,6 +90,9 @@ function render(){
   const assign={}; (A.assignments||[]).forEach(x=>{ if(x.dealer_name) assign[x.dealer_name]=x.rep_name||""; });
   const inYear=f=> YEAR==="all" || ym(f.period).slice(0,4)===YEAR;
   const F=(A.facts||[]).filter(inYear);
+  // Retired lines: kept in historical totals (tagged), excluded from active/run-rate views.
+  const RET=new Set(A.retired||[]);
+  const isRetired=line=>RET.has(mnorm(line));
 
   // effective rep per dealer (assigned wins, else most-reported)
   const repTally={}; for(const f of A.facts||[]){ const d=f.dealer; if(!d)continue; (repTally[d]=repTally[d]||{})[f.rep||"Unassigned"]=(repTally[d]?.[f.rep||"Unassigned"]||0)+(f.sales||0); }
@@ -105,6 +109,9 @@ function render(){
   }
   const months=Object.keys(byMonth).length||1;
   const activeDealers=new Set(F.map(f=>f.master||f.dealer)).size;
+  const lineKeys=Object.keys(byLine);
+  const retiredLines=lineKeys.filter(isRetired);
+  const activeLinesN=lineKeys.length-retiredLines.length;
 
   // YoY: this year vs previous year, comparable months only
   const years=[...new Set((A.facts||[]).map(f=>ym(f.period).slice(0,4)))].sort();
@@ -129,7 +136,7 @@ function render(){
   const rSet=new Set(recent), pSet=new Set(prior);
   const mv={};
   if(recent.length&&prior.length){
-    for(const f of F){ const m=ym(f.period); const co=f.master||f.dealer;
+    for(const f of F){ if(isRetired(f.line))continue; const m=ym(f.period); const co=f.master||f.dealer;
       if(rSet.has(m)) mv[co]=(mv[co]||{r:0,p:0}), mv[co].r+=f.sales||0;
       else if(pSet.has(m)) mv[co]=(mv[co]||{r:0,p:0}), mv[co].p+=f.sales||0; }
   }
@@ -145,7 +152,7 @@ function render(){
     ${yoyTile}
     ${kpi("Active dealers",activeDealers,"")}
     ${kpi("Avg / month",short(total/months),"orange",months+" month"+(months===1?"":"s"))}
-    ${kpi("Manufacturer lines",Object.keys(byLine).length,"")}
+    ${kpi("Active lines",activeLinesN,"",retiredLines.length?`+${retiredLines.length} retired in history`:null)}
   </div>`;
 
   // monthly trend (SVG) — current year vs prior year over Jan–Dec
@@ -155,7 +162,7 @@ function render(){
 
   const html=kpis+trend+`
     <div class="cc-grid">
-      <div class="card"><h2>Sales by manufacturer</h2>${bars(top(byLine,12),C.bar)}</div>
+      <div class="card"><h2>Sales by manufacturer</h2>${bars(top(byLine,12).map(d=>isRetired(d.label)?{label:d.label+" · retired",value:d.value,color:"#9aa4ae"}:d),C.bar)}${retiredLines.length?`<div class="hint" style="margin-top:9px">Retired lines (no longer represented) stay in historical totals — tagged <b>· retired</b> — but are excluded from momentum and the active-line count.</div>`:""}</div>
       <div class="card"><h2>Sales by rep</h2>${bars(top(byRep,12),C.bar)}</div>
     </div>
     <div class="cc-grid">

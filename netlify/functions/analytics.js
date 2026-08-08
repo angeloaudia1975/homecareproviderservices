@@ -67,6 +67,16 @@ exports.handler = async (event) => {
 
     const mfrs = await sbGet("manufacturers?select=slug,name");
     const mfrName = Object.fromEntries(mfrs.map(m => [m.slug, m.name]));
+    // Retired lines (no longer represented) — from the automation_config exclusion list.
+    // Returned normalized so the UI can keep them in historical totals but tag them and
+    // drop them from active/run-rate numbers. Matches whether a fact's line is a slug or name.
+    const mnorm = s => String(s||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+    let retiredNorm = [];
+    try {
+      const cfgRows = await sbGet("app_settings?key=eq.automation_config&select=value");
+      const ex = (cfgRows && cfgRows[0] && cfgRows[0].value && cfgRows[0].value.exclude_manufacturers) || [];
+      retiredNorm = [...new Set(ex.map(mnorm))];
+    } catch (e) { retiredNorm = []; }
     // Optional (present after the dealer_directory migration): saved rep/account assignments + rep list.
     let assignments = [], repTable = [];
     try { assignments = await sbGet("dealer_directory?select=dealer_name,rep_name,hcps_account"); } catch (e) { assignments = []; }
@@ -142,6 +152,7 @@ exports.handler = async (event) => {
       lines: [...lines].sort(),
       reps: [...reps].sort(),
       repOptions: [...new Set([...repTable, ...reps])].filter(Boolean).sort(),
+      retired: retiredNorm,
       assignments,
       dealerInfo,
       facts,
