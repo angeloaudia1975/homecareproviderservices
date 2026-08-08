@@ -10,7 +10,8 @@
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
-const { hasCreds, exchangeCode, accessToken, zoho, ACCOUNTS } = require("./_zoho.js");
+const { hasCreds, exchangeCode, accessToken, zoho, ensureTextField, upsertRecords, ACCOUNTS } = require("./_zoho.js");
+const clean = v => { const s=(v==null?"":String(v)).trim(); return s||undefined; };
 
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
@@ -20,6 +21,9 @@ async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_U
 // Zoho auth config (refresh token + api domain) is stored under app_settings key "zoho_auth".
 async function getZohoAuth(){ try{ const rows=await sbGet("app_settings?key=eq.zoho_auth&select=value"); return (rows&&rows[0]&&rows[0].value)||null; }catch(e){ return null; } }
 async function setZohoAuth(value){ await sbSend("POST","app_settings?on_conflict=key",{key:"zoho_auth",value,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
+// The Zoho api_names of our match fields (auto-generated from the labels) are cached here.
+async function getZohoFields(){ try{ const rows=await sbGet("app_settings?key=eq.zoho_fields&select=value"); return (rows&&rows[0]&&rows[0].value)||{}; }catch(e){ return {}; } }
+async function setZohoFields(value){ await sbSend("POST","app_settings?on_conflict=key",{key:"zoho_fields",value,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
 
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -81,6 +85,39 @@ exports.handler = async (event)=>{
       return json(200,{ ok:org.ok||mods.ok, connected:true, api_domain:c.apiDomain,
         org: orgName || null, modules_read: mods.ok ? "ok" : ("http "+mods.status),
         message: (org.ok||mods.ok) ? "Connected to Zoho CRM." : "Token works but CRM read failed — check the Self Client scopes." });
+    }
+
+    // One-time (idempotent) setup: create the match fields our syncs upsert against.
+    if(b.action==="setup"){
+      const c=await connect();
+      if(!c.ok) return json(200,{ok:false,message: c.reason==="not_connected"?"Not connected yet — finish the Self Client step.":"Couldn't refresh the Zoho token — reconnect.",reason:c.reason});
+      const acc=await ensureTextField(c.apiDomain,c.token,"Accounts","HCPS Dealer ID",120);
+      const con=await ensureTextField(c.apiDomain,c.token,"Contacts","HCPS Contact ID",120);
+      const fields={}; if(acc.ok) fields.account_key=acc.api_name; if(con.ok) fields.contact_key=con.api_name;
+      if(Object.keys(fields).length) await setZohoFields(fields);
+      return json(200,{ ok:(acc.ok&&con.ok), account_key:acc, contact_key:con,
+        message:(acc.ok&&con.ok)?"Zoho is set up for syncing.":"Couldn't create a match field — check the ZohoCRM.settings.ALL scope on your Self Client." });
+    }
+
+    // Push every dealer into Zoho as an Account, matched by our HCPS Dealer ID field so re-runs
+    // update instead of duplicate.
+    if(b.action==="sync_accounts"){
+      const c=await connect();
+      if(!c.ok) return json(200,{ok:false,message:"Not connected.",reason:c.reason});
+      let fields=await getZohoFields();
+      if(!fields.account_key){ const acc=await ensureTextField(c.apiDomain,c.token,"Accounts","HCPS Dealer ID",120);
+        if(!acc.ok) return json(200,{ok:false,message:"Couldn't ensure the match field.",detail:acc.error});
+        fields.account_key=acc.api_name; await setZohoFields(fields); }
+      const key=fields.account_key;
+      const dealers=await sbGetAll("dealers?select=id,business_name,city,state,zip,phone,address","id");
+      const records=dealers.map(d=>({ key:String(d.id), record:{
+        Account_Name:(clean(d.business_name)||("Dealer "+d.id)).slice(0,255),
+        [key]:String(d.id),
+        Phone:clean(d.phone),
+        Billing_Street:clean(d.address), Billing_City:clean(d.city), Billing_State:clean(d.state), Billing_Code:clean(d.zip),
+      }}));
+      const res=await upsertRecords(c.apiDomain,c.token,"Accounts",records,[key]);
+      return json(200,{ ok:res.errors.length===0, total:dealers.length, processed:res.processed, inserted:res.inserted, updated:res.updated, errors:res.errors.slice(0,5) });
     }
 
     return json(400,{error:"unknown action"});

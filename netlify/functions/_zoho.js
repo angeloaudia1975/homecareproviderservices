@@ -49,4 +49,46 @@ async function zoho(method, apiDomain, token, path, body){
   return { ok:r.ok, status:r.status, json };
 }
 
-module.exports = { hasCreds, exchangeCode, accessToken, zoho, ACCOUNTS };
+// List a module's fields (used to find a custom field's auto-generated api_name).
+async function getFields(apiDomain, token, module){
+  const r = await zoho("GET", apiDomain, token, `/crm/v8/settings/fields?module=${encodeURIComponent(module)}&type=all`);
+  return (r.ok && r.json && Array.isArray(r.json.fields)) ? r.json.fields : [];
+}
+
+// Ensure a custom text field exists on a module; returns its api_name. Zoho auto-generates the
+// api_name from the label, so after creating we re-read the fields to capture it. Idempotent.
+async function ensureTextField(apiDomain, token, module, label, length){
+  let fields = await getFields(apiDomain, token, module);
+  let f = fields.find(x => x.field_label === label);
+  if(f) return { ok:true, api_name:f.api_name, existed:true };
+  const cr = await zoho("POST", apiDomain, token, `/crm/v8/settings/fields?module=${encodeURIComponent(module)}`,
+    { fields:[{ field_label:label, data_type:"text", length:length||120 }] });
+  const created = cr.ok || (cr.json && Array.isArray(cr.json.fields) && cr.json.fields[0] && cr.json.fields[0].code==="SUCCESS");
+  if(!created) return { ok:false, error:(cr.json && JSON.stringify(cr.json).slice(0,200)) || ("http "+cr.status) };
+  fields = await getFields(apiDomain, token, module);
+  f = fields.find(x => x.field_label === label);
+  return f ? { ok:true, api_name:f.api_name, existed:false } : { ok:false, error:"created but api_name not found" };
+}
+
+// Upsert records into a module, matched by duplicate_check_fields. records = [{key, record}]
+// where key is our own id (so we can map key -> Zoho id afterward for associations). Chunks of 100.
+async function upsertRecords(apiDomain, token, module, records, dupFields){
+  const out = { processed:0, inserted:0, updated:0, errors:[], idByKey:{} };
+  for(let i=0;i<records.length;i+=100){
+    const chunk = records.slice(i, i+100);
+    const r = await zoho("POST", apiDomain, token, `/crm/v8/${encodeURIComponent(module)}/upsert`,
+      { data: chunk.map(x=>x.record), duplicate_check_fields: dupFields });
+    if(r.ok && r.json && Array.isArray(r.json.data)){
+      r.json.data.forEach((row, idx)=>{
+        if(row && row.code==="SUCCESS"){
+          out.processed++; if(row.action==="insert") out.inserted++; else out.updated++;
+          const key = chunk[idx] && chunk[idx].key, id = row.details && row.details.id;
+          if(key && id) out.idByKey[key] = id;
+        } else if(out.errors.length<8){ out.errors.push({ code:row&&row.code, message:row&&row.message }); }
+      });
+    } else out.errors.push({ batch:i/100, status:r.status, message:(r.json && JSON.stringify(r.json).slice(0,200)) || "error" });
+  }
+  return out;
+}
+
+module.exports = { hasCreds, exchangeCode, accessToken, zoho, getFields, ensureTextField, upsertRecords, ACCOUNTS };
