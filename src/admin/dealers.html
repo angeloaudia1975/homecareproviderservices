@@ -1,73 +1,8 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>HCPS — Dealer Master &amp; Merge</title>
-<style>
-*{box-sizing:border-box}body{margin:0;font-family:-apple-system,Segoe UI,Arial,sans-serif;background:#eef2f6;color:#10263f}
-.wrap{max-width:min(1720px,98vw);margin:0 auto;padding:20px}
-.top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #ef6a1f;padding-bottom:12px;flex-wrap:wrap;gap:10px}
-.top h1{margin:0;font-size:22px}.top .sub{color:#5b7085;font-size:13px;margin-top:3px}
-.kpis{display:flex;gap:10px;margin:16px 0;flex-wrap:wrap}
-.kpi{background:#fff;border:1px solid #dbe4ec;border-radius:11px;padding:10px 16px;min-width:120px}
-.kpi .l{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:#5b7085}
-.kpi .v{font-size:22px;font-weight:800;margin-top:3px}.kpi .v.orange{color:#ef6a1f}.kpi .v.warn{color:#b4651a}
-.tabs{display:flex;gap:6px;margin:6px 0 14px;flex-wrap:wrap}
-.tab{background:#dde6ee;border:0;border-radius:8px 8px 0 0;padding:9px 15px;font-weight:700;font-size:13px;color:#41576b;cursor:pointer}
-.tab.on{background:#10263f;color:#fff}
-.card{background:#fff;border:1px solid #dbe4ec;border-radius:12px;padding:16px 18px;margin-bottom:16px}
-.card h2{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:#1681c2}
-table{width:100%;border-collapse:collapse;font-size:13px}
-td{padding:7px 8px;border-bottom:1px solid #eef2f6;vertical-align:middle}
-th{text-align:left;font-size:10.5px;text-transform:uppercase;color:#5b7085;padding:6px 8px;border-bottom:2px solid #e2e9f0}
-.lbl{font-weight:600}.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}.dim{color:#8496a8}
-.chip{display:inline-block;background:#eaf3fb;color:#12466e;border:1px solid #cfe2fb;border-radius:20px;padding:1px 9px;font-size:11px;margin:1px 3px 1px 0;white-space:nowrap}
-.chip.al{background:#f4f0fb;color:#5b3fa0;border-color:#e0d5f5}
-.chip.acc{background:#e9f7ef;color:#1c7a44;border-color:#bfe6cd}
-.chip.rev{background:#fff3e0;color:#a5590f;border-color:#f2d9b0}
-.link{color:#1681c2;cursor:pointer;font-weight:600}.link:hover{text-decoration:underline}
-.warn{color:#b4651a;font-weight:700}.ok{color:#1c7a44;font-weight:700}
-button.go{background:#10263f;color:#fff;border:0;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer}
-button.go.orange{background:#ef6a1f}button.go.blue{background:#1681c2}button.go[disabled]{opacity:.4;cursor:not-allowed}
-button.sm{padding:6px 12px;font-size:12px}
-input,select{font:inherit;padding:8px 10px;border:1px solid #cdd8e3;border-radius:8px;background:#fff}
-.drow:hover{background:#f4f9fe}
-.mergebar{position:sticky;top:0;z-index:5;background:#10263f;color:#fff;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
-.mergebar .sel{font-weight:700}
-.hint{font-size:12px;color:#5b7085;margin:-2px 0 10px}
-.gate{max-width:360px;margin:60px auto}.gate input{width:100%;margin:10px 0}
-.msg{background:#fff;border:1px solid #dbe4ec;border-radius:12px;padding:22px;text-align:center;color:#5b7085}
-.msg.err{background:#fdecec;border-color:#f3c0c0;color:#b42323}
-.backbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
-@media(max-width:760px){.grid2{grid-template-columns:1fr}}
-.fld{display:flex;flex-direction:column;gap:4px;margin-bottom:8px;min-width:0}.fld label{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#5b7085}
-.fld input{width:100%;min-width:0}
-.fld .val,.acctline{overflow-wrap:anywhere}
-.accgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
-.accitem{min-width:0}.accitem input[type=checkbox]{flex:none}
-/* All-dealers table: fills the (now wider) card; short columns stay on one line so
-   names/links don't shatter vertically. Horizontal scroll only as a last resort. */
-.dtable{overflow-x:auto}
-.dtable table{width:100%}
-td.rep,td.mng,th.rep,th.mng{white-space:nowrap}
-td.rep{max-width:170px}
-td.mng{text-align:right}
-th.buys,td.buys{max-width:230px}
-.accitem{display:flex;align-items:center;gap:7px;border:1px solid #e2e9f0;border-radius:8px;padding:7px 10px;font-size:13px}
-.accitem.on{background:#e9f7ef;border-color:#bfe6cd}
-.dlg{position:fixed;inset:0;background:rgba(16,38,63,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
-.dlgbox{background:#fff;border-radius:14px;padding:20px 22px;max-width:560px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25)}
-.dlgbox h3{margin:0 0 8px}.pick{display:block;padding:8px 10px;border:1px solid #e2e9f0;border-radius:8px;margin:5px 0;cursor:pointer}
-.pick.on{background:#eaf3fb;border-color:#9dc8ee}
-.st{font-size:12px;margin-left:8px}
-.adminnav{background:#1b2733;display:flex;align-items:center;gap:6px;padding:10px 22px;flex-wrap:wrap}
-.adminnav .bd{color:#fff;font-weight:800;font-size:15px;margin-right:16px;letter-spacing:.3px}
-.adminnav .bd span{color:#F5821F}
-.adminnav a{color:#aeb9c6;text-decoration:none;font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-radius:7px}
-.adminnav a:hover{color:#fff}.adminnav a.on{color:#fff;background:#3B599A}
-</style></head>
+<link rel="stylesheet" href="/admin/admin-shell.css"></head>
 <body>
-<nav class="adminnav"><div class="bd">HCPS <span>Admin</span></div>
- <a href="/admin/">Home</a><a href="/admin/analytics.html">Analytics</a><a href="/admin/dealers.html" class="on">Dealer Manager</a>
- <a href="/admin/images.html">Images</a><a href="/admin/featured.html">Featured</a><a href="/admin/catalog.html">Catalog</a><a href="/admin/home-editor.html">Portal Home</a><a href="/admin/website.html">Website</a></nav>
+<header id="ac-head"></header>
 <div class="wrap">
 <div class="top"><div><h1>HomeCare Provider Services</h1><div class="sub">Dealer master — merge duplicates &amp; manage accounts</div></div>
   <div><input type="search" id="q" placeholder="Search dealer or alias…" oninput="render()" style="width:280px"></div></div>
@@ -75,6 +10,7 @@ th.buys,td.buys{max-width:230px}
 <div id="dlg"></div>
 </div>
 <script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const money=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
