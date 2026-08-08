@@ -3,8 +3,8 @@
   "tagline": "A Solutions Company",
   "founded": 2016,
   "analytics": {
-    "provider": "",
-    "cloudflare_token": "",
+    "provider": "cloudflare",
+    "cloudflare_token": "a916c577ea2d42dc828a1dda05195e45",
     "plausible_domain": "",
     "ga4_id": ""
   },
