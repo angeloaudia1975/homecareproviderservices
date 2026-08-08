@@ -31,6 +31,7 @@ const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAIL_FROM=process.env.HCPS_MAIL_FROM||"HCPS Partner Portal <orders@homecareproviderservices.us>";
 const ORDERING=process.env.ORDERING_BASE||"https://hcpsonlineordering.netlify.app";
 const SITE_BASE=process.env.SITE_BASE||"https://homecareproviderservices.netlify.app";
+const engine=require("./_engine");   // shared automation core (tasks + email queue + delivery)
 const eesc=s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 async function sendMail({to,subject,html,text}){
   const key=process.env.RESEND_API_KEY; if(!key) return {ok:false,skipped:true};
@@ -140,49 +141,57 @@ exports.handler = async (event)=>{
     // signals and dismisses auto-tasks whose signal no longer applies (e.g. the dealer reordered).
     if(b.action==="run_followups"){
       if(me.role!=="president") return json(403,{error:"President only"});
-      const [mfrs,dealers,aliases,dir]=await Promise.all([
-        sbGet("manufacturers?select=slug,name").catch(()=>[]),
-        sbGetAll("dealers?select=id,business_name,parent_id"),
-        sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]),
-        sbGet("dealer_directory?select=dealer_name,rep_name").catch(()=>[]),
+      const out=await engine.runTasks();   // same signal logic the scheduled engine uses
+      return json(200,out);
+    }
+
+    // Manual "run the engine now" (President) — decide tasks + queue eligible emails, and
+    // deliver if we're inside a send window. Mirrors exactly what the hourly cron does.
+    if(b.action==="run_engine_now"){
+      if(me.role!=="president") return json(403,{error:"President only"});
+      const cfg=await engine.getConfig();
+      const sig=await engine.computeSignals();
+      const tasks=await engine.runTasks(sig);
+      const emails=await engine.enqueueEmails(sig,cfg);
+      const w=engine.currentWindow(cfg);
+      const delivery=w?await engine.drainQueue(cfg,w):{skipped:"no send window right now"};
+      return json(200,{ok:true,window:w||null,tasks,emails,delivery});
+    }
+
+    // Automation control panel data (President): current config + queue/send counters.
+    if(b.action==="automation_status"){
+      if(me.role!=="president") return json(403,{error:"President only"});
+      const cfg=await engine.getConfig();
+      const cut7=new Date(Date.now()-7*864e5).toISOString();
+      const [q,sent7,eng]=await Promise.all([
+        sbGet("email_queue?status=eq.queued&select=id,template&limit=2000").catch(()=>[]),
+        sbGet(`email_sends?sent_at=gte.${cut7}&select=id,template`).catch(()=>[]),
+        sbGet("dealer_engagement?select=status").catch(()=>[]),
       ]);
-      const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
-      const nameById={}; for(const d of dealers) nameById[d.id]=d.business_name;
-      const idByAlias={}; for(const a of aliases) idByAlias[a.alias_norm]=a.dealer_id;
-      const repByName={}; for(const x of dir) repByName[x.dealer_name]=x.rep_name||"";
-      const rows=await sbGetAll("monthly_sales?select=dealer_id,manufacturer,period,customer_name,amount");
-      const resolve=r=>{ if(r.dealer_id && nameById[r.dealer_id]) return r.dealer_id; const id=idByAlias[dnorm(r.customer_name)]; return (id&&nameById[id])?id:null; };
-      let latest=0; const DL=new Map();
-      for(const r of rows){ const id=resolve(r); if(!id) continue; const pm=pmOf(r.period); if(!pm) continue; if(pm>latest)latest=pm;
-        let o=DL.get(id); if(!o){o={sales:0,first:pm,last:pm,lines:new Map()};DL.set(id,o);}
-        const amt=Number(r.amount)||0; o.sales+=amt; if(pm<o.first)o.first=pm; if(pm>o.last)o.last=pm;
-        let ln=o.lines.get(r.manufacturer); if(!ln){ln={pms:new Set(),sales:0};o.lines.set(r.manufacturer,ln);}
-        ln.pms.add(pm); ln.sales+=amt; }
-      let sessions=[],carts=[];
-      try{ sessions=await sbGet("dealer_sessions?select=dealer_id,last_seen_at&order=last_seen_at.desc&limit=800"); }catch(e){}
-      try{ carts=await sbGet("dealer_carts?select=dealer_id,cart,updated_at"); }catch(e){}
-      const seenBy={}; for(const s of (sessions||[])){ if(!s.dealer_id)continue; const t=new Date(s.last_seen_at).getTime(); if(!seenBy[s.dealer_id]||t>seenBy[s.dealer_id])seenBy[s.dealer_id]=t; }
-      const cartBy={}; for(const c of (carts||[])){ if(!c.dealer_id)continue; const items=(c.cart&&c.cart.items)||[]; let n=0,val=0; for(const it of items){const q=Number(it.qty)||0;n+=q;val+=(Number(it.p&&it.p.base_price)||0)*q;} if(n>0){ const p=cartBy[c.dealer_id]; if(!p||val>p.val)cartBy[c.dealer_id]={val,items:n}; } }
-      const NOW=Date.now(); const desired=new Map();
-      for(const [id,o] of DL){
-        const rep=repByName[nameById[id]]||null; const sig=new Map();
-        const ov=[]; for(const [slug,ln] of o.lines){ const pms=[...ln.pms].sort((a,b)=>a-b); if(pms.length<2)continue; const gaps=[]; for(let i=1;i<pms.length;i++)gaps.push(pms[i]-pms[i-1]); const cyc=median(gaps); if(cyc==null||cyc<=0)continue; const since=latest-pms[pms.length-1]; if(since>=cyc+Math.max(1,Math.round(cyc*0.5))) ov.push({slug,since,cyc,sales:ln.sales}); }
-        ov.sort((a,b)=>b.sales-a.sales);
-        for(const x of ov.slice(0,3)){ const line=mfrName[x.slug]||x.slug; sig.set("overdue:"+x.slug,{title:`Reorder due — ${line}`,detail:`Usually orders ~${Math.round(x.cyc)}mo; ${x.since}mo since last ${line} order.`,priority:x.sales>20000?"high":"normal",rep}); }
-        const monthsSince=latest-o.last;
-        if(monthsSince>=3) sig.set("dormant",{title:"Dormant account — re-engage",detail:`No orders in ${monthsSince} months.`,priority:o.sales>50000?"high":"normal",rep});
-        const cart=cartBy[id]; if(cart) sig.set("intent_cart",{title:"Open cart — follow up",detail:`${cart.items} item(s), ~$${Math.round(cart.val)} in cart on the portal.`,priority:"high",rep});
-        const seen=seenBy[id]; if(seen && (NOW-seen)<21*864e5) sig.set("intent_login",{title:"Recent login — reach out",detail:`Logged in ${new Date(seen).toISOString().slice(0,10)}.`,priority:"normal",rep});
-        if((latest-o.first)<=2) sig.set("new",{title:"New account — onboard",detail:"First order in the last 2 months.",priority:"normal",rep});
-        if(sig.size) desired.set(id,sig);
-      }
-      const existing=await sbGetAll("dealer_tasks?source=eq.auto&status=eq.open&select=id,dealer_id,reason","id").catch(()=>[]);
-      const existKey=new Set(); for(const t of existing) existKey.add(t.dealer_id+"|"+t.reason);
-      const toCreate=[];
-      for(const [id,sig] of desired){ for(const [reason,f] of sig){ if(!existKey.has(id+"|"+reason)) toCreate.push({dealer_id:id,title:f.title,detail:f.detail,priority:f.priority,source:"auto",reason,assigned_rep:f.rep||null,created_by:"Follow-up engine",status:"open"}); } }
-      let created=0; for(let i=0;i<toCreate.length;i+=200){ const part=toCreate.slice(i,i+200); try{ await sbSend("POST","dealer_tasks",part,{Prefer:"return=minimal"}); created+=part.length; }catch(e){} }
-      let closed=0; for(const t of existing){ const sig=desired.get(t.dealer_id); if(!(sig&&sig.has(t.reason))){ try{ await sbSend("PATCH",`dealer_tasks?id=eq.${encodeURIComponent(t.id)}`,{status:"dismissed",done_at:new Date().toISOString()},{Prefer:"return=minimal"}); closed++; }catch(e){} } }
-      return json(200,{ok:true,dealers_flagged:desired.size,created,dismissed:closed,open_auto:(existing.length-closed)+created});
+      const byTmpl={}; for(const r of (q||[])) byTmpl[r.template]=(byTmpl[r.template]||0)+1;
+      const byStatus={}; for(const r of (eng||[])) byStatus[r.status]=(byStatus[r.status]||0)+1;
+      return json(200,{ok:true,config:cfg,queued:(q||[]).length,queued_by_template:byTmpl,sent_7d:(sent7||[]).length,engagement:byStatus});
+    }
+
+    // Recent queue + sends for the admin visibility list (President).
+    if(b.action==="automation_recent"){
+      if(me.role!=="president") return json(403,{error:"President only"});
+      const [queue,sends]=await Promise.all([
+        sbGet("email_queue?select=*&order=enqueued_at.desc&limit=60").catch(()=>[]),
+        sbGet("email_sends?select=*&order=sent_at.desc&limit=40").catch(()=>[]),
+      ]);
+      return json(200,{ok:true,queue,sends});
+    }
+
+    // Update tunable parameters (President). Merges a patch into automation_config so the
+    // master switches (engine_enabled / email_enabled) and thresholds are set from the UI.
+    if(b.action==="set_automation_config"){
+      if(me.role!=="president") return json(403,{error:"President only"});
+      const patch=b.patch||{}; const allow=new Set(["engine_enabled","email_enabled","cap_per_7d","min_gap_hours","dormant_months","overdue_mult","overdue_min_gap_months","quiet_weekends","business_hours","timezone","windows","templates_enabled","queue_ttl_hours"]);
+      const cur=await engine.getConfig();
+      const next={...cur}; for(const k of Object.keys(patch)){ if(allow.has(k)) next[k]=patch[k]; }
+      await sbSend("POST","app_settings?on_conflict=key",{key:"automation_config",value:next,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
+      return json(200,{ok:true,config:next});
     }
 
     // Rep-triggered re-engagement email to a dealer's contact. Respects the opt-out list,

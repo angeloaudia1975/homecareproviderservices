@@ -16,12 +16,33 @@
  .seg button{background:none;border:0;border-radius:7px;padding:7px 12px;font-weight:700;font-size:12.5px;color:#41576b;cursor:pointer;font-family:inherit}
  .seg button.on{background:#fff;color:var(--navy);box-shadow:0 1px 3px rgba(16,38,63,.12)}
  .dismiss{background:none;border:0;color:var(--gray);font-size:12px;cursor:pointer;text-decoration:underline}
+ .autopanel{border:1px solid var(--line);border-radius:14px;background:#fff;padding:15px 16px;margin:0 0 16px}
+ .autopanel h3{margin:0 0 3px;font-size:14.5px;color:var(--navy);display:flex;align-items:center;gap:8px}
+ .autopanel .sc{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0}
+ .sw{display:flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:10px;padding:9px 12px;background:#fbfcfd}
+ .sw .lab{font-size:12.5px;font-weight:700;color:var(--navy);line-height:1.2}
+ .sw .lab small{display:block;font-weight:500;color:var(--gray);font-size:10.5px}
+ .toggle{position:relative;width:42px;height:23px;border-radius:99px;border:0;background:#c6ced7;cursor:pointer;flex:none;transition:background .15s}
+ .toggle.on{background:var(--green)}.toggle.on.warn{background:var(--orange)}
+ .toggle::after{content:"";position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:#fff;transition:left .15s}
+ .toggle.on::after{left:21px}
+ .cfgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:10px}
+ .cfg{border:1px solid var(--line);border-radius:9px;padding:8px 10px;background:#fbfcfd}
+ .cfg .k{font-size:10.5px;color:var(--gray);text-transform:uppercase;letter-spacing:.4px}
+ .cfg .v{font-size:14px;font-weight:800;color:var(--navy)}
+ .qtbl{width:100%;border-collapse:collapse;margin-top:8px;font-size:12px}
+ .qtbl th{text-align:left;color:var(--gray);font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;padding:5px 7px;border-bottom:1px solid var(--line)}
+ .qtbl td{padding:5px 7px;border-bottom:1px solid #eef1f4;color:#33475a}
+ .badge2{font-size:10px;font-weight:800;border-radius:6px;padding:1px 6px;text-transform:uppercase}
+ .b-queued{background:#eaf3fb;color:#12466e}.b-sent{background:#e6f4ec;color:#1f7a44}.b-skipped{background:#eef2f6;color:#5b6672}.b-failed{background:#fdeaea;color:#b42323}
+ .drylab{font-size:11px;font-weight:800;color:var(--orange);background:#fdeee0;border-radius:6px;padding:2px 8px}
 </style>
 </head><body>
 <header id="ac-head"></header>
 <div class="wrap">
   <div class="top"><div><h1>My Tasks</h1><div class="sub">Your follow-up queue — manual tasks plus the ones the follow-up engine builds from dealer signals.</div></div>
     <div id="runbox"></div></div>
+  <div id="autopanel"></div>
   <div id="body"><div class="msg">Loading…</div></div>
 </div>
 <script src="/admin/staff-session.js"></script>
@@ -54,9 +75,73 @@ async function load(){
   if(j&&j.error==="tables_missing"){ $("#body").innerHTML=`<div class="msg">Run <b>supabase/crm.sql</b> in Supabase to turn on tasks, then reload.</div>`; return; }
   TASKS=(j&&j.tasks)||[]; ROLE=(j&&j.role)||"";
   REPS=[...new Set(TASKS.map(t=>t.assigned_rep).filter(Boolean))].sort();
-  // president gets the engine trigger
-  $("#runbox").innerHTML = ROLE==="president" ? `<button class="btn orange" id="runbtn" onclick="runEngine()">▶ Run follow-up engine</button> <button class="btn ghost" id="mirbtn" onclick="mirrorZoho()">⤴ Mirror to Zoho</button>` : "";
+  // president gets the engine console + Zoho mirror
+  $("#runbox").innerHTML = ROLE==="president" ? `<button class="btn ghost" id="mirbtn" onclick="mirrorZoho()">⤴ Mirror to Zoho</button>` : "";
+  if(ROLE==="president") loadAutomation(); else $("#autopanel").innerHTML="";
   render();
+}
+
+// ---- Automation console (President) ----------------------------------------
+let ACFG=null;
+async function loadAutomation(){
+  const r=await crm({action:"automation_status"});
+  if(r.status!==200||!r.body||!r.body.ok){ $("#autopanel").innerHTML=""; return; }
+  const s=r.body; ACFG=s.config||{}; renderAuto(s);
+}
+function renderAuto(s){
+  const c=s.config||{}; const w=c.windows||{};
+  const emailOn=c.email_enabled===true, engineOn=c.engine_enabled!==false;
+  const qbt=s.queued_by_template||{}; const qparts=Object.keys(qbt).map(k=>`${qbt[k]} ${k}`).join(" · ")||"none";
+  const eng=s.engagement||{};
+  const win=k=>Array.isArray(w[k])?`${w[k][0]}:00`:"—";
+  const cfgCell=(k,v)=>`<div class="cfg"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  $("#autopanel").innerHTML=`
+    <div class="autopanel">
+      <h3>⚙️ Automation engine ${emailOn?'':'<span class="drylab" title="Emails are queued but not sent">DRY-RUN · not sending</span>'}</h3>
+      <div class="sub" style="margin:0">The engine runs hourly (weekday business hours) to refresh tasks and queue eligible emails. Delivery happens in send windows, capped at ${c.cap_per_7d}/dealer/7-days with a ${c.min_gap_hours}h gap.</div>
+      <div class="sc">
+        <div class="sw"><button class="toggle ${engineOn?'on':''}" onclick="flip('engine_enabled',${!engineOn})" title="Master engine on/off"></button><div class="lab">Engine<small>${engineOn?'running hourly':'paused'}</small></div></div>
+        <div class="sw"><button class="toggle ${emailOn?'on warn':''}" onclick="flipEmail(${!emailOn})" title="Send emails vs dry-run"></button><div class="lab">Send emails<small>${emailOn?'LIVE — sending':'dry-run — queue only'}</small></div></div>
+        <button class="btn orange" id="runnow" onclick="runNow()" style="align-self:center">▶ Run engine now</button>
+      </div>
+      <div class="cfgrid">
+        ${cfgCell("Queued now", s.queued)}
+        ${cfgCell("Sent (7d)", s.sent_7d)}
+        ${cfgCell("Dormant", eng.dormant||0)}
+        ${cfgCell("Overdue", eng.overdue||0)}
+        ${cfgCell("Windows ET", `${win('primary')} · ${win('behavior')} · ${win('remaining')}`)}
+        ${cfgCell("Dormant after", (c.dormant_months||3)+"mo")}
+      </div>
+      <div style="font-size:11.5px;color:var(--gray);margin-top:7px">Queue: ${qparts}</div>
+      <div style="margin-top:9px"><button class="dismiss" id="qtoggle" onclick="toggleQueue()">show recent queue &amp; sends ▾</button></div>
+      <div id="qview"></div>
+    </div>`;
+}
+async function flip(key,val){ ACFG=null; await crm({action:"set_automation_config",patch:{[key]:val}}); loadAutomation(); }
+async function flipEmail(val){
+  if(val && !confirm("Turn ON live email sending?\n\nThe engine will begin sending automated re-engagement emails to dealers (capped at "+(ACFG&&ACFG.cap_per_7d||2)+" per dealer per 7 days, respecting unsubscribes). Queued emails will start going out in the next send window.\n\nContinue?")) return;
+  flip("email_enabled",val);
+}
+async function runNow(){
+  const b=$("#runnow"); if(b){ b.disabled=true; b.textContent="Running…"; }
+  const r=await crm({action:"run_engine_now"}); const j=r.body||{};
+  if(j.ok){ const d=j.delivery||{}; const sent=d.sent||0; const msg=`✓ ${j.tasks?j.tasks.created:0} tasks · ${j.emails?j.emails.queued:0} queued${d.dry_run?' (dry-run)':' · '+sent+' sent'}`; if(b){ b.textContent=msg; } await load(); }
+  else { if(b){ b.disabled=false; b.textContent="▶ Run engine now"; } alert("Couldn't run: "+(j.error||j.message||r.status)); }
+}
+let QOPEN=false;
+async function toggleQueue(){
+  QOPEN=!QOPEN; const t=$("#qtoggle"); const v=$("#qview");
+  if(!QOPEN){ v.innerHTML=""; if(t)t.innerHTML="show recent queue &amp; sends ▾"; return; }
+  if(t)t.innerHTML="hide recent queue &amp; sends ▴";
+  v.innerHTML=`<div class="msg" style="margin-top:8px">Loading…</div>`;
+  const r=await crm({action:"automation_recent"}); const j=r.body||{};
+  const q=(j.queue||[]).slice(0,20), sn=(j.sends||[]).slice(0,12);
+  const st=x=>`<span class="badge2 b-${x}">${x}</span>`;
+  const qrows=q.map(x=>`<tr><td>${st(x.status)}</td><td>${esc(x.template)}</td><td>${esc(x.detail||"").slice(0,60)}</td><td>${esc((x.send_after||"").slice(5,16).replace("T"," "))}</td></tr>`).join("")||`<tr><td colspan="4">Queue is empty.</td></tr>`;
+  const srows=sn.map(x=>`<tr><td>${esc(x.template)}</td><td>${esc(x.contact_email||"")}</td><td>${esc((x.sent_at||"").slice(5,16).replace("T"," "))}</td></tr>`).join("")||`<tr><td colspan="3">No sends yet.</td></tr>`;
+  v.innerHTML=`<table class="qtbl"><thead><tr><th>Status</th><th>Template</th><th>Dealer / detail</th><th>Send after</th></tr></thead><tbody>${qrows}</tbody></table>
+    <div style="font-size:11px;color:var(--gray);margin:10px 0 3px;font-weight:700">RECENT SENDS</div>
+    <table class="qtbl"><thead><tr><th>Template</th><th>To</th><th>Sent</th></tr></thead><tbody>${srows}</tbody></table>`;
 }
 
 async function runEngine(){
