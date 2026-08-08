@@ -176,6 +176,37 @@ exports.handler = async (event)=>{
       return json(200,{ ok:res.errors.length===0, processed:res.processed, inserted:res.inserted, updated:res.updated, linked, unlinked:records.length-linked, errors:res.errors.slice(0,5) });
     }
 
+    // Load the bundled master list into Zoho in controlled slices (avoids function timeouts and
+    // keeps contact data out of the browser). {stage:"accounts"|"contacts", offset, limit}.
+    if(b.action==="zoho_load_master"){
+      const c=await connect(); if(!c.ok) return json(200,{ok:false,message:"Not connected.",reason:c.reason});
+      const master=require("./_zoho_master_data.js");
+      const stage=b.stage||"accounts", off=Number(b.offset)||0, lim=Number(b.limit)|| (stage==="contacts"?150:200);
+      if(stage==="accounts"){
+        const slice=(master.accounts||[]).slice(off,off+lim);
+        const records=slice.map(r=>({ key:r.name, record:{
+          Account_Name:(clean(r.name)||"Account").slice(0,255), Website:clean(r.website), Phone:clean(r.phone),
+          Billing_Street:clean(r.street), Billing_City:clean(r.city), Billing_State:clean(r.state), Billing_Code:clean(r.zip),
+        }})).filter(x=>x.record.Account_Name);
+        const res=await upsertRecords(c.apiDomain,c.token,"Accounts",records,["Account_Name"]);
+        return json(200,{ ok:res.errors.length===0, stage, offset:off, count:slice.length, total:(master.accounts||[]).length, inserted:res.inserted, updated:res.updated, errors:res.errors.slice(0,5) });
+      }
+      // contacts: map each to its Account by company name, carry both phones + mailing address
+      const accts=await getAllRecords(c.apiDomain,c.token,"Accounts","Account_Name");
+      const acctIdByName={}; for(const a of (accts||[])){ if(a.Account_Name) acctIdByName[String(a.Account_Name)]=a.id; }
+      const slice=(master.contacts||[]).slice(off,off+lim);
+      const records=slice.map(r=>{
+        const rec={ Last_Name:(clean(r.last)||clean(r.first)||"Contact").slice(0,80), First_Name:clean(r.first), Email:clean(r.email),
+          Phone:clean(r.phone), Mobile:clean(r.mobile), Title:clean(r.title), Department:clean(r.dept),
+          Mailing_Street:clean(r.street), Mailing_City:clean(r.city), Mailing_State:clean(r.state), Mailing_Zip:clean(r.zip) };
+        const id=acctIdByName[(clean(r.company)||"").slice(0,255)]; if(id) rec.Account_Name={ id };
+        return { key:r.email, record:rec };
+      }).filter(x=>x.record.Email);
+      const res=await upsertRecords(c.apiDomain,c.token,"Contacts",records,["Email"]);
+      const linked=records.filter(x=>x.record.Account_Name).length;
+      return json(200,{ ok:res.errors.length===0, stage, offset:off, count:slice.length, total:(master.contacts||[]).length, inserted:res.inserted, updated:res.updated, linked, unlinked:records.length-linked, errors:res.errors.slice(0,5) });
+    }
+
     return json(400,{error:"unknown action"});
   }catch(e){ return json(500,{error:String(e.message||e)}); }
 };
