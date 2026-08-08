@@ -88,9 +88,14 @@ async function computeSignals(){
   const cartBy={}; for(const c of (carts||[])){ if(!c.dealer_id)continue; const items=(c.cart&&c.cart.items)||[]; let n=0,val=0; for(const it of items){const q=Number(it.qty)||0;n+=q;val+=(Number(it.p&&it.p.base_price)||0)*q;} if(n>0){ const p=cartBy[c.dealer_id]; if(!p||val>p.val)cartBy[c.dealer_id]={val,items:n}; } }
   const NOW=Date.now(); const out=new Map();
   const DORM=Number(cfg.dormant_months)||3, MULT=Number(cfg.overdue_mult)||0.5, MING=Number(cfg.overdue_min_gap_months)||1;
+  // Lines/dealers we no longer represent — never generate tasks or emails for these.
+  const mnorm=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+  const exMfr=new Set((cfg.exclude_manufacturers||[]).map(mnorm));
+  const exDealer=new Set((cfg.exclude_dealers||[]).map(String));
   for(const [id,o] of DL){
+    if(exDealer.has(id)) continue;
     const rep=repByName[nameById[id]]||null; const signals=[];
-    const ov=[]; for(const [slug,ln] of o.lines){ const pms=[...ln.pms].sort((a,b)=>a-b); if(pms.length<2)continue; const gaps=[]; for(let i=1;i<pms.length;i++)gaps.push(pms[i]-pms[i-1]); const cyc=median(gaps); if(cyc==null||cyc<=0)continue; const since=latest-pms[pms.length-1]; if(since>=cyc+Math.max(MING,Math.round(cyc*MULT))) ov.push({slug,since,cyc,sales:ln.sales}); }
+    const ov=[]; for(const [slug,ln] of o.lines){ if(exMfr.has(mnorm(slug))||exMfr.has(mnorm(mfrName[slug]))) continue; const pms=[...ln.pms].sort((a,b)=>a-b); if(pms.length<2)continue; const gaps=[]; for(let i=1;i<pms.length;i++)gaps.push(pms[i]-pms[i-1]); const cyc=median(gaps); if(cyc==null||cyc<=0)continue; const since=latest-pms[pms.length-1]; if(since>=cyc+Math.max(MING,Math.round(cyc*MULT))) ov.push({slug,since,cyc,sales:ln.sales}); }
     ov.sort((a,b)=>b.sales-a.sales);
     for(const x of ov.slice(0,3)){ const line=mfrName[x.slug]||x.slug; signals.push({reason:"overdue:"+x.slug,title:`Reorder due — ${line}`,detail:`Usually orders ~${Math.round(x.cyc)}mo; ${x.since}mo since last ${line} order.`,priority:x.sales>20000?"high":"normal",template:"overdue",payload:{line,slug:x.slug,cyc:Math.round(x.cyc),since:x.since}}); }
     const monthsSince=latest-o.last;

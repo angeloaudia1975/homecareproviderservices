@@ -77,6 +77,8 @@ values ('automation_config', jsonb_build_object(
      'remaining',jsonb_build_array(15,16)),
   'templates_enabled', jsonb_build_object(
      'overdue', true, 'dormant', true, 'cart', true, 'new', true),
+  'exclude_manufacturers', jsonb_build_array(),  -- lines we no longer represent (by slug or name)
+  'exclude_dealers', jsonb_build_array(),         -- dealer ids to skip entirely
   'queue_ttl_hours', 72
 ), now())
 on conflict (key) do nothing;

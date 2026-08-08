@@ -187,7 +187,7 @@ exports.handler = async (event)=>{
     // master switches (engine_enabled / email_enabled) and thresholds are set from the UI.
     if(b.action==="set_automation_config"){
       if(me.role!=="president") return json(403,{error:"President only"});
-      const patch=b.patch||{}; const allow=new Set(["engine_enabled","email_enabled","cap_per_7d","min_gap_hours","dormant_months","overdue_mult","overdue_min_gap_months","quiet_weekends","business_hours","timezone","windows","templates_enabled","queue_ttl_hours"]);
+      const patch=b.patch||{}; const allow=new Set(["engine_enabled","email_enabled","cap_per_7d","min_gap_hours","dormant_months","overdue_mult","overdue_min_gap_months","quiet_weekends","business_hours","timezone","windows","templates_enabled","queue_ttl_hours","exclude_manufacturers","exclude_dealers"]);
       const cur=await engine.getConfig();
       const next={...cur}; for(const k of Object.keys(patch)){ if(allow.has(k)) next[k]=patch[k]; }
       await sbSend("POST","app_settings?on_conflict=key",{key:"automation_config",value:next,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
