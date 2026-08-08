@@ -140,7 +140,7 @@ async function ownsDealer(me, dealer_id){
   return String((dir&&dir[0]&&dir[0].rep_name)||"").trim().toLowerCase()===String(me.rep_name).trim().toLowerCase();
 }
 // Structural / cross-book / login / approval tools are President-only.
-const PRESIDENT_ONLY=new Set(["merge","split","import_contacts","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep","list_contract_prices","set_contract_price","clear_contract_price","prefill_access","prefill_access_all"]);
+const PRESIDENT_ONLY=new Set(["merge","split","import_contacts","backfill_master","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep","list_contract_prices","set_contract_price","clear_contract_price","prefill_access","prefill_access_all"]);
 
 async function buildState(){
   const [dealers,aliases,dm,mfrs,dir,reps,nomerge,logins] = await Promise.all([
@@ -153,6 +153,9 @@ async function buildState(){
     sbGet("dealer_nomerge?select=a,b").catch(()=>[]),
     sbGet("dealer_users?select=uid,email,dealer_id,status,created_at,req_company,req_contact,req_phone,req_address,req_city,req_state,req_zip&order=created_at.desc").catch(()=>[]),
   ]);
+  // Websites live in dealers.website (added by supabase/master_backfill.sql). Fetched
+  // decoupled + tolerant so the whole page still loads if the column isn't there yet.
+  let webById={}; try{ const w=await sbGetAll("dealers?select=id,website"); for(const x of (w||[])) if(x.website) webById[x.id]=x.website; }catch(e){}
   const dcontacts = await sbGetAll("dealer_contacts?select=dealer_id,email,name,title,role,phone,cell","dealer_id,email").catch(()=>[]);
   const contactsByDealer=new Map(); for(const x of dcontacts){(contactsByDealer.get(x.dealer_id)||contactsByDealer.set(x.dealer_id,[]).get(x.dealer_id)).push(x);}
   const daddrs = await sbGetAll("dealer_addresses?select=dealer_id,address,city,state,zip,label,pri","dealer_id,addr_key").catch(()=>[]);
@@ -185,7 +188,7 @@ async function buildState(){
     const since = (latest&&per.length)? pm(latest)-pm(per[per.length-1]) : null;
     return {
       id:d.id, name:d.business_name, hcps_account:d.hcps_account||"", status:d.status||"",
-      contact_name:d.contact_name||"", email:d.email||"", phone:d.phone||"",
+      contact_name:d.contact_name||"", email:d.email||"", phone:d.phone||"", website:webById[d.id]||"",
       address:d.address||"", city:d.city||"", state:d.state||"", zip:d.zip||"", notes:d.notes||"",
       rep: repByName[d.business_name]||"",
       master: d.parent_id ? (nameById[d.parent_id]||"") : "",
@@ -286,9 +289,12 @@ exports.handler = async (event)=>{
       }
       if(act==="edit"){
         if(!b.dealer_id) return json(400,{error:"dealer_id required"});
-        const f={}; for(const k of ["contact_name","email","phone","address","city","state","zip","hcps_account","notes","business_name"]) if(k in b) f[k]=(b[k]===""?null:b[k]);
+        const f={}; for(const k of ["contact_name","email","phone","website","address","city","state","zip","hcps_account","notes","business_name"]) if(k in b) f[k]=(b[k]===""?null:b[k]);
         f.updated_at=new Date().toISOString();
-        await sbSend("PATCH",`dealers?id=eq.${b.dealer_id}`,f,{Prefer:"return=minimal"});
+        try{ await sbSend("PATCH",`dealers?id=eq.${b.dealer_id}`,f,{Prefer:"return=minimal"}); }
+        catch(e){ // tolerate the website column not existing yet (run master_backfill.sql to add it)
+          if(/website/i.test(String(e.message||"")) && ("website" in f)){ delete f.website; await sbSend("PATCH",`dealers?id=eq.${b.dealer_id}`,f,{Prefer:"return=minimal"}); }
+          else throw e; }
         // Keep the MAP in sync: it pins from dealer_addresses, so mirror an address edit
         // onto this dealer's primary (highest-pri) address row — or create one if none.
         if(["address","city","state","zip"].some(k=>k in b)){
@@ -576,6 +582,82 @@ exports.handler = async (event)=>{
         await authAdmin("DELETE",`users/${encodeURIComponent(b.uid)}`).catch(()=>{});
         await sbSend("DELETE",`dealer_users?uid=eq.${encodeURIComponent(b.uid)}`,null,{Prefer:"return=minimal"}).catch(()=>{});
         return json(200,{ok:true});
+      }
+      // Backfill the bundled master list (the same source that populated Zoho) into the
+      // platform DB so it stays the source of truth. Two stages, sliced by offset/limit to
+      // stay under the function timeout — mirrors the Zoho loader:
+      //   {action:"backfill_master", stage:"accounts", offset, limit}  -> websites (+ fill
+      //        empty phone/address) for matched dealers; creates missing companies as prospects.
+      //   {action:"backfill_master", stage:"contacts", offset, limit}  -> the full contact
+      //        roster into dealer_contacts, matched to its dealer by name.
+      if(act==="backfill_master"){
+        const master=require("./_zoho_master_data.js");
+        const stage=b.stage||"accounts";
+        const off=Number(b.offset)||0, lim=Number(b.limit)|| (stage==="contacts"?200:150);
+        const create=b.create!==false;
+        const chunk=(arr,n)=>{const o=[];for(let i=0;i<arr.length;i+=n)o.push(arr.slice(i,i+n));return o;};
+        const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
+        const dnorm=n=>String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim();
+        const clean=v=>{ const s=(v==null?"":String(v)).trim(); return s||null; };
+        const errors=[];
+        // resolution map: normalized business name / alias -> dealer_id (+ current fields)
+        const dealersAll=await sbGetAll("dealers?select=id,business_name,phone,address,city,state,zip");
+        const aliasesAll=await sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]);
+        const norm2id=new Map(), byId=new Map();
+        for(const d of dealersAll){ norm2id.set(dnorm(d.business_name),d.id); byId.set(d.id,d); }
+        for(const a of aliasesAll){ if(!norm2id.has(a.alias_norm)) norm2id.set(a.alias_norm,a.dealer_id); }
+
+        if(stage==="accounts"){
+          // The website column must exist first (supabase/master_backfill.sql).
+          const probe=await fetch(`${SUPABASE_URL}/rest/v1/dealers?select=website&limit=1`,{headers:H()});
+          if(probe.status>=400) return json(200,{ok:false,error:"column_missing",message:"Run supabase/master_backfill.sql in Supabase first (it adds the dealers.website column), then retry."});
+          const slice=(master.accounts||[]).slice(off,off+lim);
+          // create missing companies as prospects so their website/contacts have a home
+          const toCreate=new Map();
+          for(const a of slice){ const nm=(a.name||"").trim(); if(!nm)continue; const k=dnorm(nm);
+            if(!norm2id.has(k) && create && !toCreate.has(k)) toCreate.set(k,nm); }
+          let created=0;
+          if(toCreate.size){
+            const batch=[...toCreate.values()].map(nm=>({business_name:nm,active:true,status:"prospect"}));
+            try{
+              const ins=await sbSend("POST","dealers?on_conflict=business_name",batch,{Prefer:"resolution=merge-duplicates,return=representation"});
+              const aliasRows=[];
+              for(const row of (ins||[])){ const k=dnorm(row.business_name); norm2id.set(k,row.id); byId.set(row.id,{id:row.id,business_name:row.business_name}); aliasRows.push({alias_norm:k,raw_name:row.business_name,dealer_id:row.id}); }
+              created=(ins||[]).length;
+              if(aliasRows.length) await sbSend("POST","dealer_aliases?on_conflict=alias_norm",aliasRows,{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{});
+            }catch(e){ errors.push("create: "+e.message); }
+          }
+          // patch website (always) + fill only-empty phone/address/city/state/zip
+          let matched=0, websitesSet=0, filled=0; const updates=[];
+          for(const a of slice){ const nm=(a.name||"").trim(); if(!nm)continue; const id=norm2id.get(dnorm(nm)); if(!id)continue; matched++;
+            const cur=byId.get(id)||{}; const patch={};
+            if(clean(a.website)){ patch.website=clean(a.website); websitesSet++; }
+            if(clean(a.phone) && !cur.phone) patch.phone=clean(a.phone);
+            if(clean(a.street) && !cur.address) patch.address=clean(a.street);
+            if(clean(a.city) && !cur.city) patch.city=clean(a.city);
+            if(clean(a.state) && !cur.state) patch.state=clean(a.state);
+            if(clean(a.zip) && !cur.zip) patch.zip=clean(a.zip);
+            if(patch.phone||patch.address||patch.city||patch.state||patch.zip) filled++;
+            if(Object.keys(patch).length){ patch.updated_at=new Date().toISOString(); updates.push({id,patch}); }
+          }
+          for(const part of chunk(updates,20)){ await Promise.all(part.map(u=> sbSend("PATCH","dealers?id=eq."+u.id,u.patch,{Prefer:"return=minimal"}).catch(e=>{ if(errors.length<8)errors.push("patch: "+e.message); }))); }
+          return json(200,{ok:errors.length===0,stage,offset:off,count:slice.length,total:(master.accounts||[]).length,matched,created,websitesSet,filled,errors:errors.slice(0,6)});
+        }
+
+        // contacts stage — the full roster into dealer_contacts (match by company name)
+        try{ await sbGet("dealer_contacts?select=dealer_id&limit=1"); }
+        catch(e){ return json(200,{ok:false,error:"tables_missing",message:"dealer_contacts doesn't exist yet — run create_tables.sql, then retry."}); }
+        const slice=(master.contacts||[]).slice(off,off+lim);
+        const contactMap=new Map(); let unmatched=0;
+        for(const c of slice){ const nm=(c.company||"").trim(); if(!nm)continue; const id=norm2id.get(dnorm(nm)); if(!id){unmatched++;continue;}
+          const em=String(c.email||"").trim().toLowerCase(); if(!em)continue;
+          const name=[c.first,c.last].filter(Boolean).join(" ").trim()||null;
+          const key=id+"|"+em;
+          if(!contactMap.has(key)) contactMap.set(key,{dealer_id:id,email:em,name,title:clean(c.title),role:clean(c.dept),phone:clean(c.phone),cell:clean(c.mobile)});
+        }
+        const arr=[...contactMap.values()]; let stored=0;
+        for(const part of chunk(arr,500)){ try{ await sbSend("POST","dealer_contacts?on_conflict=dealer_id,email",part,{Prefer:"resolution=merge-duplicates,return=minimal"}); stored+=part.length; }catch(e){ errors.push("contacts: "+e.message); } }
+        return json(200,{ok:errors.length===0,stage,offset:off,count:slice.length,total:(master.contacts||[]).length,stored,unmatched,errors:errors.slice(0,6)});
       }
       return json(400,{error:"unknown action"});
     }

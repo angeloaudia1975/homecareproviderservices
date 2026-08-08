@@ -358,6 +358,7 @@ function renderDetail(){
        ${fld("contact_name","Contact name",d.contact_name)}
        ${fld("email","Email",d.email,"name@dealer.com")}
        ${fld("phone","Phone",d.phone)}
+       ${fld("website","Website",d.website,"https://…")}
        ${fld("address","Address",d.address)}
        <div style="display:flex;gap:8px">${fld("city","City",d.city)}${fld("state","State",d.state)}${fld("zip","ZIP",d.zip)}</div>
        <div class="fld"><label>Owner rep</label><input list="repopts" id="f_rep" value="${esc(d.rep)}" placeholder="rep…"><datalist id="repopts">${DATA.repOptions.map(r=>`<option value="${esc(r)}">`).join("")}</datalist></div>
@@ -528,7 +529,7 @@ async function deleteLogin(uid,email){
 }
 async function saveDetail(id,origName){
   const g=k=>($("#f_"+k)?.value||"").trim();
-  const fields={action:"edit",dealer_id:id,business_name:g("business_name"),contact_name:g("contact_name"),email:g("email"),phone:g("phone"),address:g("address"),city:g("city"),state:g("state"),zip:g("zip")};
+  const fields={action:"edit",dealer_id:id,business_name:g("business_name"),contact_name:g("contact_name"),email:g("email"),phone:g("phone"),website:g("website"),address:g("address"),city:g("city"),state:g("state"),zip:g("zip")};
   await post(fields,"Saving…","#stD");
   const rep=g("rep"); await post({action:"rep",dealer_name:g("business_name")||origName,rep_name:rep},null,"#stD");
   $("#stD").textContent="Saved ✓";$("#stD").className="st ok";
