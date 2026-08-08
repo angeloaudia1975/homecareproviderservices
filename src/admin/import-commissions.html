@@ -72,10 +72,12 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="/admin/staff-session.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
-let TOKEN=sessionStorage.getItem(TKEY)||null, ME=null; try{ME=JSON.parse(sessionStorage.getItem(PKEY)||"null")}catch(e){}
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){}
 try{ if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; }catch(e){}
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const usd=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:2});
@@ -114,10 +116,10 @@ async function submitTok(){
   const e=$("#lerr"); if(e)e.textContent="Signing in…";
   try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
     const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
-    TOKEN=j.token; ME=j.profile; sessionStorage.setItem(TKEY,TOKEN); sessionStorage.setItem(PKEY,JSON.stringify(ME)); $("#gate").innerHTML=""; boot();
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; $("#gate").innerHTML=""; boot();
   }catch(err){ gate("Could not reach the server. Try again."); }
 }
-function lock(){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); TOKEN=null; ME=null; location.reload(); }
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
 
 async function boot(){
   $("#app").style.display="block";

@@ -385,12 +385,12 @@
   // ---------- auth ----------
   function login(pw) {
     return api("login", { password: pw }).then(function (b) {
-      state.token = b.token; sessionStorage.setItem(TOKEN_KEY, b.token);
+      state.token = b.token; localStorage.setItem(TOKEN_KEY, b.token);
       showApp(b.github);
     });
   }
   function logout() {
-    state.token = null; sessionStorage.removeItem(TOKEN_KEY);
+    state.token = null; localStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(TOKEN_KEY);
     state.manufacturers = state.documents = state.editingManu = null; state.dirty = false;
     state.data = {}; state.dataSha = {};
     $("#app").hidden = true; $("#login").hidden = false; $("#password").value = "";
@@ -1022,7 +1022,7 @@
   window.addEventListener("beforeunload", function (e) { if (state.dirty) { e.preventDefault(); e.returnValue = ""; } });
 
   // resume session
-  var saved = sessionStorage.getItem(TOKEN_KEY);
+  var saved = localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
   if (saved) {
     state.token = saved;
     api("ping").then(function (b) { showApp(b.github); }).catch(function () { logout(); });

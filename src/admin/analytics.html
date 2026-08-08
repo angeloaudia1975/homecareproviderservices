@@ -96,6 +96,7 @@ button.go{background:#10263f;color:#fff;border:0;border-radius:8px;padding:9px 1
 <div id="body"><div class="msg">Loading…</div></div>
 <div class="foot" id="foot"></div>
 </div>
+<script src="/admin/staff-session.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const money=n=>"$"+Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -103,9 +104,10 @@ const money0=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0
 const pm=p=>{const[y,m]=p.split("-").map(Number);return y*12+(m-1);};
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
-let ME=null; try{ME=JSON.parse(sessionStorage.getItem(PKEY)||"null")}catch(e){ME=null;}
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 const isPres=()=>!!(ME&&ME.role==="president");
-let DATA=null,TOKEN=sessionStorage.getItem(TKEY)||null,TAB="overview",EXP=null,DEALER=null,LT={},ASSIGN={},REPOPTS=[],ORDMODE="month",DRILL=null;
+let DATA=null,TOKEN=HCPS.token(),TAB="overview",EXP=null,DEALER=null,LT={},ASSIGN={},REPOPTS=[],ORDMODE="month",DRILL=null;
 const jarg=s=>esc(String(s)).replace(/'/g,"\\'");   // safe onclick string arg
 const TABS=[["overview","Overview"],["trend","Trends & charts"],["orders","Orders"],["dealers","Dealers"],["masters","Master accounts"],["cadence","Order cadence"],["bizdev","Business development"],["reports","Reports received"],["assign","Assignments"]];
 // Effective rep = the live assigned owner (Assignments tab) if set, else the rep the
@@ -136,10 +138,10 @@ async function submitTok(){
   const e=$("#lerr"); if(e)e.textContent="Signing in…";
   try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
     const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
-    TOKEN=j.token; ME=j.profile; sessionStorage.setItem(TKEY,TOKEN); sessionStorage.setItem(PKEY,JSON.stringify(ME)); load();
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
   }catch(err){ gate("Could not reach the server. Try again."); }
 }
-function lock(){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); TOKEN=null; ME=null; location.reload(); }
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
 function showErr(m){$("#body").innerHTML=`<div class="msg err"><b>Couldn't load analytics.</b><br>${esc(m)}<br><br><button class="go" onclick="load()">Retry</button></div>`;}
 function setTab(t){TAB=t;EXP=null;DRILL=null;render();}
 function openDealer(n){DEALER=n;window.scrollTo(0,0);render();}

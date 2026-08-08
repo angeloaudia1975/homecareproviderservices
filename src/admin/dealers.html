@@ -74,15 +74,17 @@ th.buys,td.buys{max-width:230px}
 <div id="body"><div class="msg">Loading…</div></div>
 <div id="dlg"></div>
 </div>
+<script src="/admin/staff-session.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const money=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const jesc=s=>String(s).replace(/'/g,"\\'").replace(/"/g,"&quot;");
 const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
-let ME=null; try{ME=JSON.parse(sessionStorage.getItem(PKEY)||"null")}catch(e){ME=null;}
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 const isPres=()=>!!(ME&&ME.role==="president");
-let DATA=null,TOKEN=sessionStorage.getItem(TKEY)||null,TAB=(location.hash==="#logins"?"logins":"all"),SEL=new Set(),SELP=new Set(),DETAIL=null,SORT={key:"sales",dir:-1};
+let DATA=null,TOKEN=HCPS.token(),TAB=(location.hash==="#logins"?"logins":"all"),SEL=new Set(),SELP=new Set(),DETAIL=null,SORT={key:"sales",dir:-1};
 // Deep-link: /admin/dealers.html?dealer=<id> opens that dealer's record directly
 // (used by the Map's "Open in Dealer Manager" link). Applied once, after data loads.
 let FOCUS=new URLSearchParams(location.search).get("dealer")||null;
@@ -107,10 +109,10 @@ async function submitTok(){
   const e=$("#lerr"); if(e)e.textContent="Signing in…";
   try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
     const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
-    TOKEN=j.token; ME=j.profile; sessionStorage.setItem(TKEY,TOKEN); sessionStorage.setItem(PKEY,JSON.stringify(ME)); load();
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
   }catch(err){ gate("Could not reach the server. Try again."); }
 }
-function lock(){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); TOKEN=null; ME=null; location.reload(); }
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
 function showErr(m){$("#body").innerHTML=`<div class="msg err"><b>Couldn't load.</b><br>${esc(m)}<br><br><button class="go" onclick="load()">Retry</button></div>`;}
 function setTab(t){TAB=t;DETAIL=null;render();}
 

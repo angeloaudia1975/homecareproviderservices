@@ -56,14 +56,16 @@
   <button class="publish" id="publishBtn" onclick="publishAll()">Publish all changes</button>
 </div>
 <div class="toast" id="toast"></div>
+<script src="/admin/staff-session.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const API="/.netlify/functions/images-api";
 const ORDERING="https://hcpsonlineordering.netlify.app";
 const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
-let ME=null; try{ME=JSON.parse(sessionStorage.getItem(PKEY)||"null")}catch(e){ME=null;}
-let TOKEN=sessionStorage.getItem(TKEY)||null, MFRS=[], SLUG="", PRODUCTS=[], OVER={}, Q="", NEEDONLY=false, BROKEN={}, PICK=null;
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), MFRS=[], SLUG="", PRODUCTS=[], OVER={}, Q="", NEEDONLY=false, BROKEN={}, PICK=null;
 // Staged (unpublished) changes across all lines, keyed "mfr::code":
 //   {kind:'upload', slug, code, name, data, contentType, filename, dataUrl}  or  {kind:'remove', slug, code}
 const STAGE=new Map();
@@ -80,10 +82,10 @@ async function submitTok(){
   var e=$("#lerr"); if(e)e.textContent="Signing in…";
   try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
     const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
-    TOKEN=j.token; ME=j.profile; sessionStorage.setItem(TKEY,TOKEN); sessionStorage.setItem(PKEY,JSON.stringify(ME)); boot();
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; boot();
   }catch(err){ gate("Could not reach the server. Try again."); }
 }
-function lock(){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); TOKEN=null; ME=null; location.reload(); }
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
 async function boot(){
   try{const j=await api("",{method:"GET"});MFRS=(j.manufacturers||[]).filter(m=>m.hasData);
     if(!MFRS.length){$("#wrap").innerHTML='<div class="msg">No manufacturers with product data found.</div>';return;}

@@ -191,10 +191,12 @@
   </main>
 </div>
 
+<script src="/admin/staff-session.js"></script>
 <script>
 const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
-let TOKEN=sessionStorage.getItem(TKEY)||null, ME=null;
-try{ ME=JSON.parse(sessionStorage.getItem(PKEY)||"null"); }catch(e){ ME=null; }
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), ME=null;
+try{ ME=HCPS.profile(); }catch(e){ ME=null; }
 const $=s=>document.querySelector(s);
 
 function showApp(){
@@ -226,12 +228,11 @@ async function submitTok(){
     const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
     const j=await r.json().catch(()=>({}));
     if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
-    TOKEN=j.token; ME=j.profile;
-    sessionStorage.setItem(TKEY,TOKEN); sessionStorage.setItem(PKEY,JSON.stringify(ME));
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile;
     showApp();
   }catch(err){ gate("Could not reach the server. Try again."); }
 }
-function lock(){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); TOKEN=null; ME=null; location.reload(); }
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
 
 // live count of dealers waiting for approval
 async function loadPending(){

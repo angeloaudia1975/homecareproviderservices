@@ -151,11 +151,13 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+<script src="/admin/staff-session.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
-let TOKEN=sessionStorage.getItem(TKEY)||null;
-let ME=null; try{ME=JSON.parse(sessionStorage.getItem(PKEY)||"null")}catch(e){ME=null;}
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token();
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 let MAP=null, CLUSTER=null, PLAIN=null, LAYER=null, POINTS=[], UNMAPPED=[], BOOTED=false, ROUTE=[], ROUTELINE=null;
 let HOMEMARKER=null, ROUNDTRIP=true;
 let ROUTEGEO=null, CURRENT_ROUTE_ID=null, _routeT=null;
@@ -259,7 +261,7 @@ async function refreshWeek(){
 async function api2(body){
   const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
   const r=await fetch("/.netlify/functions/routes-api",{method:"POST",headers:h,body:JSON.stringify(body)});
-  if(r.status===401){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); TOKEN=null; ME=null; showGate("Your session ended — please sign in again."); throw new Error("unauthorized"); }
+  if(r.status===401){ HCPS.signOut(); TOKEN=null; ME=null; showGate("Your session ended — please sign in again."); throw new Error("unauthorized"); }
   return r.json();
 }
 const DEFAULT_HOME="1003 Wilkinson Pl, Cottontown, TN 37048";
@@ -269,7 +271,7 @@ const API="/.netlify/functions/geocode-api";
 async function api(method,body){
   const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
   const r=await fetch(API,{method,headers:h,body:body?JSON.stringify(body):undefined});
-  if(r.status===401){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); TOKEN=null; ME=null; showGate("Your session ended — please sign in again."); throw new Error("unauthorized"); }
+  if(r.status===401){ HCPS.signOut(); TOKEN=null; ME=null; showGate("Your session ended — please sign in again."); throw new Error("unauthorized"); }
   return r.json();
 }
 function showGate(msg){
@@ -286,10 +288,10 @@ async function submitTok(){
   const e=$("#lerr"); if(e)e.textContent="Signing in\u2026";
   try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
     const j=await r.json().catch(()=>({})); if(!j||!j.ok){ showGate((j&&j.message)||"Could not sign in."); return; }
-    TOKEN=j.token; ME=j.profile; sessionStorage.setItem(TKEY,TOKEN); sessionStorage.setItem(PKEY,JSON.stringify(ME)); $("#gate").innerHTML=""; boot();
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; $("#gate").innerHTML=""; boot();
   }catch(err){ showGate("Could not reach the server. Try again."); }
 }
-function lock(){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); location.reload(); }
+function lock(){ HCPS.signOut(); location.reload(); }
 
 // Pin classes: customer (buys everything it's eligible for), opportunity (buys some,
 // room to grow), prospect (no sales yet). Computed by geocode-api from sales + rules.
@@ -753,8 +755,9 @@ function renderUnmapped(){
 }
 function toggleUnmapped(){ const p=$("#unmapPanel"); if(p) p.hidden=!p.hidden; }
 async function boot(){
+  TOKEN=await HCPS.ensureFresh();   // renew an expired access token before the first call
   if(!TOKEN){ showGate(); return; }
-  if(TOKEN && !ME){ try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+TOKEN},body:JSON.stringify({action:"me"})}); const j=await r.json().catch(()=>({})); if(j&&j.ok){ME=j.profile; sessionStorage.setItem(PKEY,JSON.stringify(ME));} else { TOKEN=null; sessionStorage.removeItem(TKEY); showGate(); return; } }catch(e){} }
+  if(TOKEN && !ME){ try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+TOKEN},body:JSON.stringify({action:"me"})}); const j=await r.json().catch(()=>({})); if(j&&j.ok){ME=j.profile; HCPS.setSession({profile:ME});} else { HCPS.signOut(); TOKEN=null; showGate(); return; } }catch(e){} }
   const canMap = !ME || ME.role==="president" || ME.can_travel;
   if(!canMap){ const tb=document.querySelector(".toolbar"); if(tb)tb.style.display="none"; const mp=$("#map"); if(mp)mp.style.display="none"; banner("The Map & route planner are set up for travelling reps. Ask the President to enable travel access if you need them."); return; }
   try{

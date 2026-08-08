@@ -49,14 +49,16 @@
  <a href="/admin/images.html">Images</a><a href="/admin/featured.html" class="on">Featured</a><a href="/admin/catalog.html">Catalog</a><a href="/admin/home-editor.html">Portal Home</a><a href="/admin/website.html">Website</a></nav>
 <div class="wrap" id="wrap"><div class="msg">Loading…</div></div>
 <div class="toast" id="toast"></div>
+<script src="/admin/staff-session.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const API="/.netlify/functions/featured-api";
 const ORDERING="https://hcpsonlineordering.netlify.app";
 const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
-let ME=null; try{ME=JSON.parse(sessionStorage.getItem(PKEY)||"null")}catch(e){ME=null;}
-let TOKEN=sessionStorage.getItem(TKEY)||null, MFRS=[], SLUG="", PRODUCTS=[], FEAT={}, ALLFEAT=[], Q="", FEATONLY=false;
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), MFRS=[], SLUG="", PRODUCTS=[], FEAT={}, ALLFEAT=[], Q="", FEATONLY=false;
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800);}
 async function api(path,opts){const h={"content-type":"application/json"};if(TOKEN)h["authorization"]="Bearer "+TOKEN;
   const r=await fetch(API+path,{...(opts||{}),headers:{...h,...((opts&&opts.headers)||{})}});
@@ -69,10 +71,10 @@ async function submitTok(){
   var e=$("#lerr"); if(e)e.textContent="Signing in…";
   try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
     const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
-    TOKEN=j.token; ME=j.profile; sessionStorage.setItem(TKEY,TOKEN); sessionStorage.setItem(PKEY,JSON.stringify(ME)); boot();
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; boot();
   }catch(err){ gate("Could not reach the server. Try again."); }
 }
-function lock(){ sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); TOKEN=null; ME=null; location.reload(); }
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
 async function boot(){
   try{const j=await api("",{method:"GET"});MFRS=(j.manufacturers||[]).filter(m=>m.hasData);ALLFEAT=j.featured||[];
     if(!MFRS.length){$("#wrap").innerHTML='<div class="msg">No manufacturers with product data found.</div>';return;}

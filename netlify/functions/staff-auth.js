@@ -26,7 +26,7 @@ async function tokenGrant(email,password){
   try{
     const r=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`,{method:"POST",headers:{apikey:ANON,"content-type":"application/json"},body:JSON.stringify({email,password})});
     const j=await r.json().catch(()=>({}));
-    if(r.ok && j.access_token) return {ok:true,access_token:j.access_token};
+    if(r.ok && j.access_token) return {ok:true,access_token:j.access_token,refresh_token:j.refresh_token,expires_in:j.expires_in};
     return {ok:false,status:r.status,error:(j.error_description||j.msg||j.error||"")};
   }catch(e){ return {ok:false,error:String(e.message||e)}; }
 }
@@ -81,7 +81,28 @@ exports.handler = async (event)=>{
         staff={email,name:(String(b.name||"").trim()||email.split("@")[0]),role:"president",rep_name:null,can_travel:true,active:true};
         await sbSend("POST","staff_users?on_conflict=email",staff,{Prefer:"resolution=merge-duplicates,return=minimal"});
       }
-      return json(200,{ok:true,token:g.access_token,profile:pubProfile(staff)});
+      return json(200,{ok:true,token:g.access_token,refresh:g.refresh_token,expires_in:g.expires_in,profile:pubProfile(staff)});
+    }
+
+    // Silent session renewal. The browser trades its rotating refresh token for a fresh
+    // 1-hour access token so staff aren't signed out mid-work. The refresh token itself is
+    // the credential here (no Bearer needed). We re-derive + re-check the staff account so a
+    // deactivated user can't keep renewing. Supabase rotates the refresh token on each use,
+    // so we hand back the new one (falling back to the old if none is returned).
+    if(b.action==="refresh"){
+      const rt=String(b.refresh_token||"").trim();
+      if(!rt) return json(200,{ok:false,message:"missing refresh token"});
+      let j;
+      try{
+        const r=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`,{method:"POST",headers:{apikey:ANON,"content-type":"application/json"},body:JSON.stringify({refresh_token:rt})});
+        j=await r.json().catch(()=>({}));
+        if(!r.ok || !j.access_token) return json(200,{ok:false,message:"session expired"});
+      }catch(e){ return json(200,{ok:false,message:"could not renew session"}); }
+      let email=null;
+      try{ const u=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${j.access_token}`}}); if(u.ok){ const uj=await u.json(); email=uj&&uj.email&&String(uj.email).toLowerCase(); } }catch(e){}
+      const staff=email?await getStaff(email):null;
+      if(!staff || staff.active===false) return json(200,{ok:false,message:"account inactive"});
+      return json(200,{ok:true,token:j.access_token,refresh:j.refresh_token||rt,expires_in:j.expires_in,profile:pubProfile(staff)});
     }
 
     // Public config for the reset page. Returns ONLY the publishable anon key (never the
