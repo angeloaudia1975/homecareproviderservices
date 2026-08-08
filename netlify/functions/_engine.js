@@ -26,7 +26,7 @@ const DEFAULTS={engine_enabled:true,email_enabled:false,cap_per_7d:2,min_gap_hou
   dormant_months:3,overdue_mult:0.5,overdue_min_gap_months:1,quiet_weekends:true,
   business_hours:[7,19],timezone:"America/New_York",
   windows:{primary:[9,10],behavior:[12,13],remaining:[15,16]},
-  templates_enabled:{overdue:true,dormant:true,cart:true,new:true},queue_ttl_hours:72};
+  templates_enabled:{overdue:true,dormant:true,cart:true,new:true,crosssell:true},queue_ttl_hours:72};
 async function getConfig(){
   try{ const rows=await sbGet("app_settings?key=eq.automation_config&select=value");
     const v=(rows&&rows[0]&&rows[0].value)||{}; return {...DEFAULTS,...v,
@@ -84,6 +84,8 @@ async function computeSignals(){
   let sessions=[],carts=[];
   try{ sessions=await sbGet("dealer_sessions?select=dealer_id,last_seen_at&order=last_seen_at.desc&limit=800"); }catch(e){}
   try{ carts=await sbGet("dealer_carts?select=dealer_id,cart,updated_at"); }catch(e){}
+  let xsell=[]; try{ xsell=await sbGet("cross_sell?rank=eq.1&select=dealer_id,rec_name,basis_name,score"); }catch(e){}
+  const xsBy={}; for(const x of (xsell||[])){ if(x&&x.dealer_id) xsBy[x.dealer_id]=x; }
   const seenBy={}; for(const s of (sessions||[])){ if(!s.dealer_id)continue; const t=new Date(s.last_seen_at).getTime(); if(!seenBy[s.dealer_id]||t>seenBy[s.dealer_id])seenBy[s.dealer_id]=t; }
   const cartBy={}; for(const c of (carts||[])){ if(!c.dealer_id)continue; const items=(c.cart&&c.cart.items)||[]; let n=0,val=0; for(const it of items){const q=Number(it.qty)||0;n+=q;val+=(Number(it.p&&it.p.base_price)||0)*q;} if(n>0){ const p=cartBy[c.dealer_id]; if(!p||val>p.val)cartBy[c.dealer_id]={val,items:n}; } }
   const NOW=Date.now(); const out=new Map();
@@ -103,6 +105,9 @@ async function computeSignals(){
     const cart=cartBy[id]; if(cart) signals.push({reason:"intent_cart",title:"Open cart — follow up",detail:`${cart.items} item(s), ~$${Math.round(cart.val)} in cart on the portal.`,priority:"high",template:"cart",payload:{items:cart.items,val:Math.round(cart.val)}});
     const seen=seenBy[id]; if(seen && (NOW-seen)<21*864e5) signals.push({reason:"intent_login",title:"Recent login — reach out",detail:`Logged in ${new Date(seen).toISOString().slice(0,10)}.`,priority:"normal"}); // task only, no email
     if((latest-o.first)<=2) signals.push({reason:"new",title:"New account — onboard",detail:"First order in the last 2 months.",priority:"normal",template:"new",payload:{}});
+    // Cross-sell (email-only): "buys X, similar dealers also stock Y". noTask keeps it out
+    // of the rep worklist (it's a marketing nudge) while still surfacing on Dealer 360.
+    const xs=xsBy[id]; if(xs&&xs.rec_name) signals.push({reason:"crosssell",title:`Cross-sell — ${xs.rec_name}`,detail:`Buys ${xs.basis_name||"other lines"}; similar dealers also stock ${xs.rec_name}.`,priority:"normal",template:"crosssell",noTask:true,payload:{rec:xs.rec_name,basis:xs.basis_name||""}});
     if(signals.length) out.set(id,{name:nameById[id],email:emailById[id],rep,sales:o.sales,first:o.first,last:o.last,monthsSince,signals});
   }
   return {latest,dealers:out,mfrName};
@@ -113,7 +118,7 @@ async function computeSignals(){
 // even after a task was completed/dismissed, and dismisses auto-tasks that no longer apply.
 async function runTasks(sig){
   const s=sig||await computeSignals(); const desired=new Map();
-  for(const [id,d] of s.dealers){ const m=new Map(); for(const g of d.signals) m.set(g.reason,{title:g.title,detail:g.detail,priority:g.priority,rep:d.rep}); desired.set(id,m); }
+  for(const [id,d] of s.dealers){ const m=new Map(); for(const g of d.signals){ if(g.noTask)continue; m.set(g.reason,{title:g.title,detail:g.detail,priority:g.priority,rep:d.rep}); } if(m.size) desired.set(id,m); }
   const existing=await sbGetAll("dealer_tasks?source=eq.auto&status=eq.open&select=id,dealer_id,reason","id").catch(()=>[]);
   const existKey=new Set(); for(const t of existing) existKey.add(t.dealer_id+"|"+t.reason);
   // Cooldown: recently-closed auto-tasks (last 7d) suppress immediate re-creation.
@@ -197,6 +202,8 @@ function tmpl(template,dealer,payload,unsub){
     return {subject:`Time to restock ${payload&&payload.line?payload.line:"your line"}?`, ...wrap(`Ready for a reorder${hi}?`,`It's been about ${payload&&payload.since||"a few"} months since your last ${line} order — right around when you usually restock. Your pricing is loaded and you can reorder in a couple of clicks, 24/7.`,"Reorder now")}; }
   if(template==="cart"){ return {subject:"You left items in your cart", ...wrap(`Still thinking it over${hi}?`,`You've got ${payload&&payload.items||"a few"} item(s) waiting in your cart on the HCPS portal. Everything's saved — pick up right where you left off whenever you're ready.`,"Finish your order")}; }
   if(template==="new"){ return {subject:"Welcome to HomeCare Provider Services", ...wrap(`Welcome aboard${hi}!`,`Thanks for your first order with HomeCare Provider Services. Your account is set up with your manufacturer lines and pricing — browse anytime and reorder in a couple of clicks. We're glad to have you.`,"Browse your lines")}; }
+  if(template==="crosssell"){ const rec=eesc(payload&&payload.rec||"a complementary line"); const basis=eesc(payload&&payload.basis||"your current lines");
+    return {subject:`A line that pairs well with what you stock`, ...wrap(`An idea for your shelves${hi}`,`Dealers who carry ${basis} often do well adding ${rec} to the mix. It's already available on your HCPS account at your pricing — worth a look next time you order.`,`Explore ${rec}`)}; }
   // dormant (default)
   return {subject:"We've missed you at HomeCare Provider Services", ...wrap(`We've missed you${hi}`,`It's been a little while since your last order with HomeCare Provider Services. Your account is active and ready — browse your lines, see your pricing, and reorder in a couple of clicks, 24/7.`,"Sign in & reorder")};
 }
@@ -263,4 +270,41 @@ function pmToStr(pm){ if(pm==null)return null; const y=Math.floor(pm/12), m=(pm%
 function monthsAgo(n){ const d=new Date(); d.setMonth(d.getMonth()-n); return d; }
 function isoDate(d){ return d.toISOString().slice(0,10); }
 
-module.exports={getConfig,computeSignals,runTasks,enqueueEmails,drainQueue,recomputeEngagement,currentWindow,inBusiness,etHour,DEFAULTS};
+// ---- Cross-sell (nightly) — "bought this -> look at this" -------------------
+// Manufacturer-line market basket: for each line pair (A,B), confidence(A->B) =
+// dealers who buy both / dealers who buy A. For each dealer, recommend the lines they
+// DON'T buy that their current lines most point to. Retired lines are never recommended.
+// Writes the top 2 recommendations per dealer to cross_sell; stale rows are pruned.
+async function computeCrossSell(){
+  const cfg=await getConfig();
+  const [dealers,aliases,mfrs]=await Promise.all([
+    sbGetAll("dealers?select=id,business_name,parent_id"),
+    sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]),
+    sbGet("manufacturers?select=slug,name").catch(()=>[]),
+  ]);
+  const nameById={}; for(const d of dealers) nameById[d.id]=d.business_name;
+  const idByAlias={}; for(const a of aliases) idByAlias[a.alias_norm]=a.dealer_id;
+  const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
+  const mnorm=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+  const exMfr=new Set((cfg.exclude_manufacturers||[]).map(mnorm));
+  const isEx=slug=>exMfr.has(mnorm(slug))||exMfr.has(mnorm(mfrName[slug]));
+  const rows=await sbGetAll("monthly_sales?select=dealer_id,manufacturer,customer_name,amount");
+  const resolve=r=>{ if(r.dealer_id && nameById[r.dealer_id]) return r.dealer_id; const id=idByAlias[dnorm(r.customer_name)]; return (id&&nameById[id])?id:null; };
+  const DL=new Map(); // dealer_id -> Map(slug -> $)
+  for(const r of rows){ const id=resolve(r); if(!id)continue; const slug=r.manufacturer; if(!slug||isEx(slug))continue; let m=DL.get(id); if(!m){m=new Map();DL.set(id,m);} m.set(slug,(m.get(slug)||0)+(Number(r.amount)||0)); }
+  const cnt={}, co={};
+  for(const [,m] of DL){ const lines=[...m.keys()]; for(const a of lines){ cnt[a]=(cnt[a]||0)+1; for(const b of lines){ if(a===b)continue; (co[a]=co[a]||{})[b]=(co[a][b]||0)+1; } } }
+  const MINSUP=3; // a pair must co-occur in at least 3 dealers to count (kills noise)
+  const stamp=new Date().toISOString(); const recs=[];
+  for(const [id,m] of DL){ const S=new Set(m.keys()); const sc={};
+    for(const A of S){ const row=co[A]||{}; for(const B in row){ if(S.has(B)||isEx(B))continue; if(row[B]<MINSUP)continue; const conf=row[B]/(cnt[A]||1);
+      const e=sc[B]||(sc[B]={score:0,basis:null,bs:0,support:0}); e.score+=conf; if(conf>e.bs){e.bs=conf;e.basis=A;} if(row[B]>e.support)e.support=row[B]; } }
+    const ranked=Object.entries(sc).sort((a,b)=>b[1].score-a[1].score).slice(0,2);
+    ranked.forEach(([B,e],i)=>{ recs.push({dealer_id:id,rank:i+1,rec_slug:B,rec_name:mfrName[B]||B,basis_slug:e.basis,basis_name:mfrName[e.basis]||e.basis,score:Math.round(e.score*100)/100,support:e.support,computed_at:stamp}); });
+  }
+  let up=0; for(let i=0;i<recs.length;i+=200){ const part=recs.slice(i,i+200); try{ await sbSend("POST","cross_sell?on_conflict=dealer_id,rec_slug",part,{Prefer:"resolution=merge-duplicates,return=minimal"}); up+=part.length; }catch(e){} }
+  try{ await sbSend("DELETE",`cross_sell?computed_at=lt.${stamp}`,null,{Prefer:"return=minimal"}); }catch(e){}
+  return {dealers:DL.size,recs:up,lines:Object.keys(cnt).length};
+}
+
+module.exports={getConfig,computeSignals,runTasks,enqueueEmails,drainQueue,recomputeEngagement,computeCrossSell,currentWindow,inBusiness,etHour,DEFAULTS};

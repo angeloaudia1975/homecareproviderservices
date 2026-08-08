@@ -5,8 +5,9 @@
 const E=require("./_engine");
 exports.handler=async()=>{
   try{
-    const sig=await E.computeSignals();
+    const xs=await E.computeCrossSell();                 // refresh "bought this -> look at this"
+    const sig=await E.computeSignals();                  // now includes fresh cross-sell recs
     const r=await E.recomputeEngagement(sig);
-    return {statusCode:200,headers:{"content-type":"application/json"},body:JSON.stringify({ok:true,...r})};
+    return {statusCode:200,headers:{"content-type":"application/json"},body:JSON.stringify({ok:true,crosssell:xs,...r})};
   }catch(e){ return {statusCode:500,body:String(e&&e.message||e)}; }
 };

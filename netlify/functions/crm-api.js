@@ -78,12 +78,13 @@ exports.handler = async (event)=>{
     if(b.action==="list"){
       if(!b.dealer_id) return json(400,{error:"dealer_id required"});
       const did=encodeURIComponent(b.dealer_id);
-      const [notes,tasks,activity]=await Promise.all([
+      const [notes,tasks,activity,crosssell]=await Promise.all([
         sbGet(`dealer_notes?dealer_id=eq.${did}&select=*&order=created_at.desc&limit=200`).catch(()=>[]),
         sbGet(`dealer_tasks?dealer_id=eq.${did}&select=*&order=status.asc,due_date.asc.nullslast,created_at.desc&limit=200`).catch(()=>[]),
         sbGet(`dealer_activity?dealer_id=eq.${did}&select=*&order=created_at.desc&limit=50`).catch(()=>[]),
+        sbGet(`cross_sell?dealer_id=eq.${did}&select=rank,rec_name,basis_name,score,support&order=rank.asc&limit=3`).catch(()=>[]),
       ]);
-      return json(200,{ok:true,notes:notes||[],tasks:tasks||[],activity:activity||[]});
+      return json(200,{ok:true,notes:notes||[],tasks:tasks||[],activity:activity||[],crosssell:crosssell||[]});
     }
 
     // Lightweight open-task count for the masthead badge (the caller's own, rep-scoped).
@@ -150,12 +151,13 @@ exports.handler = async (event)=>{
     if(b.action==="run_engine_now"){
       if(me.role!=="president") return json(403,{error:"President only"});
       const cfg=await engine.getConfig();
+      let crosssell=null; try{ crosssell=await engine.computeCrossSell(); }catch(e){}
       const sig=await engine.computeSignals();
       const tasks=await engine.runTasks(sig);
       const emails=await engine.enqueueEmails(sig,cfg);
       const w=engine.currentWindow(cfg);
       const delivery=w?await engine.drainQueue(cfg,w):{skipped:"no send window right now"};
-      return json(200,{ok:true,window:w||null,tasks,emails,delivery});
+      return json(200,{ok:true,window:w||null,crosssell,tasks,emails,delivery});
     }
 
     // Automation control panel data (President): current config + queue/send counters.
