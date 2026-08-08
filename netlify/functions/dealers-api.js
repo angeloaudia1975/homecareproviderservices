@@ -140,7 +140,7 @@ async function ownsDealer(me, dealer_id){
   return String((dir&&dir[0]&&dir[0].rep_name)||"").trim().toLowerCase()===String(me.rep_name).trim().toLowerCase();
 }
 // Structural / cross-book / login / approval tools are President-only.
-const PRESIDENT_ONLY=new Set(["merge","split","import_contacts","backfill_master","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep","list_contract_prices","set_contract_price","clear_contract_price","prefill_access","prefill_access_all"]);
+const PRESIDENT_ONLY=new Set(["merge","split","import_contacts","backfill_master","attribution_breakdown","reattribute","clear_order_refs","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep","list_contract_prices","set_contract_price","clear_contract_price","prefill_access","prefill_access_all"]);
 
 async function buildState(){
   const [dealers,aliases,dm,mfrs,dir,reps,nomerge,logins] = await Promise.all([
@@ -658,6 +658,61 @@ exports.handler = async (event)=>{
         const arr=[...contactMap.values()]; let stored=0;
         for(const part of chunk(arr,500)){ try{ await sbSend("POST","dealer_contacts?on_conflict=dealer_id,email",part,{Prefer:"resolution=merge-duplicates,return=minimal"}); stored+=part.length; }catch(e){ errors.push("contacts: "+e.message); } }
         return json(200,{ok:errors.length===0,stage,offset:off,count:slice.length,total:(master.contacts||[]).length,stored,unmatched,errors:errors.slice(0,6)});
+      }
+      // ---- Sales attribution tools (fix sold-to vs ship-to / branch roll-up) ----
+      // Read: break a dealer's stored sales into assignable groups — one per
+      // (manufacturer, account #, reported name) — with $ + record counts, plus this
+      // dealer's branch records as reassignment targets. Drives the "which location got
+      // this order?" workflow.
+      if(act==="attribution_breakdown"){
+        if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+        const rows=await sbGetAll(`monthly_sales?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,customer_ref,customer_name,amount`,"id").catch(()=>[]);
+        const g=new Map();
+        for(const r of (rows||[])){ const key=(r.manufacturer||"")+"|"+(r.customer_ref||"")+"|"+(r.customer_name||"");
+          const o=g.get(key)||{manufacturer:r.manufacturer||"",account_ref:r.customer_ref||"",customer_name:r.customer_name||"",sales:0,records:0};
+          o.sales+=Number(r.amount)||0; o.records++; g.set(key,o); }
+        const groups=[...g.values()].map(o=>({...o,sales:Math.round(o.sales*100)/100})).sort((a,b)=>b.sales-a.sales);
+        const self=await sbGet(`dealers?id=eq.${encodeURIComponent(b.dealer_id)}&select=id,business_name,parent_id`).catch(()=>[]);
+        const s=(self&&self[0])||{};
+        // targets: this dealer's branches, plus (if it is itself a branch) its HQ and siblings
+        let targets=await sbGet(`dealers?parent_id=eq.${encodeURIComponent(b.dealer_id)}&select=id,business_name`).catch(()=>[]);
+        if(s.parent_id){ const fam=await sbGet(`dealers?or=(id.eq.${encodeURIComponent(s.parent_id)},parent_id.eq.${encodeURIComponent(s.parent_id)})&select=id,business_name`).catch(()=>[]); targets=(targets||[]).concat(fam||[]); }
+        const seen=new Set(); const branches=(targets||[]).filter(x=>x.id!==b.dealer_id && !seen.has(x.id) && seen.add(x.id)).map(x=>({id:x.id,name:x.business_name}));
+        return json(200,{ok:true,dealer:{id:b.dealer_id,name:s.business_name||"",parent_id:s.parent_id||null},branches,groups});
+      }
+      // Write: move a group of sales (matched by account #, reported name, or source dealer)
+      // onto the branch that actually received the order, optionally carrying the manufacturer
+      // account number with it (and clearing it off any other record).
+      if(act==="reattribute"){
+        const slug=String(b.manufacturer||"").trim(); const to=b.to_dealer_id;
+        if(!slug||!to) return json(400,{error:"manufacturer + to_dealer_id required"});
+        let filt=`monthly_sales?manufacturer=eq.${encodeURIComponent(slug)}`;
+        const ref=(b.account_ref!=null)?String(b.account_ref).trim():"";
+        if(ref) filt+=`&customer_ref=eq.${encodeURIComponent(ref)}`;
+        else if(b.customer_name) filt+=`&customer_name=eq.${encodeURIComponent(String(b.customer_name))}`;
+        else if(b.from_dealer_id) filt+=`&dealer_id=eq.${encodeURIComponent(b.from_dealer_id)}`;
+        else return json(400,{error:"one of account_ref, customer_name, or from_dealer_id required"});
+        const patched=await sbSend("PATCH",filt,{dealer_id:to},{Prefer:"return=representation"}).catch(()=>null);
+        const moved=Array.isArray(patched)?patched.length:0;
+        if(b.move_account_ref && ref){
+          await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",{dealer_id:to,manufacturer:slug,account_ref:ref,active:true},{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{});
+          await sbSend("PATCH",`dealer_manufacturers?manufacturer=eq.${encodeURIComponent(slug)}&account_ref=eq.${encodeURIComponent(ref)}&dealer_id=neq.${encodeURIComponent(to)}`,{account_ref:null},{Prefer:"return=minimal"}).catch(()=>{});
+        }
+        return json(200,{ok:true,moved});
+      }
+      // Clear order-number values wrongly stored in the account-number field for a line
+      // (e.g. Strongback), and remember the line so imports match it by NAME only from now on.
+      if(act==="clear_order_refs"){
+        const slug=String(b.manufacturer||"").trim(); if(!slug) return json(400,{error:"manufacturer required"});
+        const patched=await sbSend("PATCH",`dealer_manufacturers?manufacturer=eq.${encodeURIComponent(slug)}&account_ref=not.is.null`,{account_ref:null},{Prefer:"return=representation"}).catch(()=>null);
+        const cleared=Array.isArray(patched)?patched.length:0;
+        try{
+          const cur=await sbGet(`app_settings?key=eq.commission_config&select=value`).catch(()=>[]);
+          const val=(cur&&cur[0]&&cur[0].value)||{};
+          const set=new Set(val.order_number_lines||[]); set.add(slug); val.order_number_lines=[...set];
+          await sbSend("POST","app_settings?on_conflict=key",{key:"commission_config",value:val,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
+        }catch(e){}
+        return json(200,{ok:true,cleared});
       }
       return json(400,{error:"unknown action"});
     }

@@ -86,11 +86,16 @@ exports.handler = async (event)=>{
       const idByAccount={};
       try{ const dmr=await sbGetAll(`dealer_manufacturers?manufacturer=eq.${encodeURIComponent(slug)}&select=dealer_id,account_ref`,"dealer_id,manufacturer");
         for(const x of (dmr||[])){ if(x.account_ref) idByAccount[String(x.account_ref).trim()]=x.dealer_id; } }catch(e){}
+      // Lines whose report "customer #" is really a per-order number (e.g. Strongback) match by
+      // NAME only — never treat their customer_ref as a dealer account number.
+      let orderLines=new Set();
+      try{ const cc=await sbGet("app_settings?key=eq.commission_config&select=value"); orderLines=new Set(((cc&&cc[0]&&cc[0].value&&cc[0].value.order_number_lines))||[]); }catch(e){}
+      const refMatch = !orderLines.has(slug);
       const out=[]; const unmatched=new Map(); let matched=0;   // name -> {name, account, count}
       for(const r of rows){
         const cname=String(r.customer_name||"").trim();
         const cref=String(r.customer_ref||"").trim();
-        const did = (cref && idByAccount[cref]) || (cname ? idByAlias[dnorm(cname)] : null) || null;
+        const did = (refMatch && cref && idByAccount[cref]) || (cname ? idByAlias[dnorm(cname)] : null) || null;
         if(did) matched++;
         else if(cname){ const u=unmatched.get(cname)||{name:cname,account:cref||"",count:0}; u.count++; if(!u.account&&cref)u.account=cref; unmatched.set(cname,u); }
         out.push({
@@ -120,6 +125,9 @@ exports.handler = async (event)=>{
       const slug=String(b.manufacturer||"").trim();
       const maps=Array.isArray(b.mappings)?b.mappings:[];
       if(!slug) return json(400,{error:"manufacturer required"});
+      // Don't promote a report "customer #" to a stored account number for order-number lines.
+      let orderLines=new Set();
+      try{ const cc=await sbGet("app_settings?key=eq.commission_config&select=value"); orderLines=new Set(((cc&&cc[0]&&cc[0].value&&cc[0].value.order_number_lines))||[]); }catch(e){}
       let resolved=0, relinked=0;
       for(const m of maps){
         const name=String(m.name||"").trim(); const did=m.dealer_id;
@@ -131,7 +139,7 @@ exports.handler = async (event)=>{
         if(Array.isArray(patched)) relinked+=patched.length;
         // 3) store the account number on that dealer's line (so future reports match by number)
         const acct=String(m.account_ref||"").trim();
-        if(acct){ await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",{dealer_id:did,manufacturer:slug,account_ref:acct,active:true},{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{}); }
+        if(acct && !orderLines.has(slug)){ await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",{dealer_id:did,manufacturer:slug,account_ref:acct,active:true},{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{}); }
         resolved++;
       }
       return json(200,{ok:true,resolved,relinked});
