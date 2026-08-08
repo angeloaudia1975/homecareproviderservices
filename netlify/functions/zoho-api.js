@@ -104,11 +104,10 @@ exports.handler = async (event)=>{
       const dealers=await sbGetAll("dealers?select=id,business_name,city,state,zip,phone,address","id");
       const records=dealers.map(d=>({ key:String(d.id), record:{
         Account_Name:(clean(d.business_name)||("Dealer "+d.id)).slice(0,255),
-        Account_Number:String(d.id),
         Phone:clean(d.phone),
         Billing_Street:clean(d.address), Billing_City:clean(d.city), Billing_State:clean(d.state), Billing_Code:clean(d.zip),
       }}));
-      const res=await upsertRecords(c.apiDomain,c.token,"Accounts",records,["Account_Number"]);
+      const res=await upsertRecords(c.apiDomain,c.token,"Accounts",records,["Account_Name"]);
       return json(200,{ ok:res.errors.length===0, total:dealers.length, processed:res.processed, inserted:res.inserted, updated:res.updated, errors:res.errors.slice(0,5) });
     }
 
