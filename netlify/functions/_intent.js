@@ -23,6 +23,7 @@ const pmOf=p=>{ const s=String(p||"").slice(0,7); const[y,m]=s.split("-").map(Nu
 const pmToStr=pm=>{ if(pm==null)return null; const y=Math.floor(pm/12), m=(pm%12)+1; return `${y}-${String(m).padStart(2,"0")}`; };
 const mnorm=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
 const isoDate=d=>d.toISOString().slice(0,10);
+const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function monthsAgo(n){ const d=new Date(); d.setMonth(d.getMonth()-n); return d; }
 
 // ---- config -----------------------------------------------------------------
@@ -187,4 +188,52 @@ async function syncIntentTasks(){
   return {opportunity:desired.size,created,dismissed:closed};
 }
 
-module.exports={ getConfig,computeIntent,computeLineStatus,syncIntentTasks,ALLOWED_EVENTS,weightFor,tierFor,INTENT_DEFAULTS };
+// ---- 4. Product-Interest Follow-up (automation #6) -------------------------
+// Queues ONE "still interested?" email to dealers in the interested/high intent
+// tier about the line they were viewing. Opportunity-tier is deliberately
+// excluded (those go to a rep, not another email). Rows land in email_queue and
+// are delivered by _engine.drainQueue under the SAME frequency caps + opt-out +
+// dry-run switch as every other automated email — nothing new sends on its own.
+async function enqueueIntentEmails(){
+  const cfg=await getConfig();
+  if(cfg.intent_enabled===false) return {skipped:"intent disabled"};
+  if(cfg.templates_enabled && cfg.templates_enabled.product===false) return {skipped:"product template off"};
+  let hot=await sbGet("dealer_intent?tier=in.(interested,high)&select=dealer_id,score_total,top_manufacturer,top_product").catch(()=>[]);
+  if(!hot||!hot.length) return {considered:0,queued:0};
+  const exMfr=new Set((cfg.exclude_manufacturers||[]).map(mnorm));
+  const [optRows,liveRows,mfrs,dealers]=await Promise.all([
+    sbGet("email_optout?select=email").catch(()=>[]),
+    sbGet("email_queue?status=eq.queued&template=eq.product&select=dealer_id").catch(()=>[]),
+    sbGet("manufacturers?select=slug,name").catch(()=>[]),
+    sbGetAll("dealers?select=id,business_name,email"),
+  ]);
+  const opted=new Set((optRows||[]).map(r=>String(r.email||"").toLowerCase()));
+  const live=new Set((liveRows||[]).map(r=>r.dealer_id));
+  const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
+  const nameById={},emailById={}; for(const d of dealers){ nameById[d.id]=d.business_name; emailById[d.id]=d.email||null; }
+  const cut=new Date(Date.now()-7*864e5).toISOString();
+  const sentRows=await sbGet(`email_sends?template=eq.product&sent_at=gte.${cut}&select=dealer_id`).catch(()=>[]);
+  const sentRecent=new Set((sentRows||[]).map(r=>r.dealer_id));
+  // recent-order guard: don't nudge someone who just ordered the line they're viewing
+  const ids=[...new Set(hot.map(h=>h.dealer_id))]; const lineMs={};
+  for(let i=0;i<ids.length;i+=100){ const part=ids.slice(i,i+100); if(!part.length)break;
+    const ls=await sbGet(`dealer_line_status?dealer_id=in.(${part.join(",")})&select=dealer_id,manufacturer,months_since`).catch(()=>[]);
+    for(const r of (ls||[])) (lineMs[r.dealer_id]=lineMs[r.dealer_id]||{})[r.manufacturer]=r.months_since; }
+  const insert=[]; let considered=0;
+  for(const h of hot){ considered++; const id=h.dealer_id; const mfr=h.top_manufacturer;
+    if(live.has(id)||sentRecent.has(id)) continue;
+    if(mfr && (exMfr.has(mnorm(mfr))||exMfr.has(mnorm(mfrName[mfr])))) continue;
+    const ms=(mfr&&lineMs[id])?lineMs[id][mfr]:null; if(ms!=null && ms<1) continue; // just ordered — skip
+    let to=String(emailById[id]||"").trim();
+    if(!EMAIL_RE.test(to)){ try{ const c=await sbGet(`dealer_contacts?dealer_id=eq.${encodeURIComponent(id)}&select=email&limit=1`); to=String((c&&c[0]&&c[0].email)||"").trim(); }catch(e){} }
+    if(!EMAIL_RE.test(to) || opted.has(to.toLowerCase())) continue;
+    const line=mfr?(mfrName[mfr]||mfr):null; const name=nameById[id]||"";
+    insert.push({dealer_id:id,contact_email:to,template:"product",reason:"product"+(mfr?":"+mfr:""),priority:"normal",
+      send_window:"behavior",payload:{line,code:h.top_product||null},
+      detail:`${name}: interest score ${Math.round(h.score_total)}${line?" · "+line:""}`,
+      send_after:new Date().toISOString(),status:"queued"}); }
+  let queued=0; for(const row of insert){ try{ await sbSend("POST","email_queue",row,{Prefer:"return=minimal"}); queued++; }catch(e){/* live-unique race → already queued */} }
+  return {considered,queued};
+}
+
+module.exports={ getConfig,computeIntent,computeLineStatus,syncIntentTasks,enqueueIntentEmails,ALLOWED_EVENTS,weightFor,tierFor,INTENT_DEFAULTS };

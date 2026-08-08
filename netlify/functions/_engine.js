@@ -26,7 +26,7 @@ const DEFAULTS={engine_enabled:true,email_enabled:false,cap_per_7d:2,min_gap_hou
   dormant_months:3,overdue_mult:0.5,overdue_min_gap_months:1,quiet_weekends:true,
   business_hours:[7,19],timezone:"America/New_York",
   windows:{primary:[9,10],behavior:[12,13],remaining:[15,16]},
-  templates_enabled:{overdue:true,dormant:true,cart:true,new:true,crosssell:true},queue_ttl_hours:72,
+  templates_enabled:{overdue:true,dormant:true,cart:true,new:true,crosssell:true,product:true},queue_ttl_hours:72,
   reports_enabled:false,report_recipients:[]};
 async function getConfig(){
   try{ const rows=await sbGet("app_settings?key=eq.automation_config&select=value");
@@ -134,7 +134,7 @@ async function runTasks(sig){
 }
 
 // ---- Email queueing (DECIDE) ------------------------------------------------
-const WIN_FOR={overdue:"behavior",cart:"behavior",dormant:"remaining",new:"primary",crosssell:"remaining",campaign:"primary"};
+const WIN_FOR={overdue:"behavior",cart:"behavior",dormant:"remaining",new:"primary",crosssell:"remaining",product:"behavior",campaign:"primary"};
 // Next window start (ISO) from now, honoring quiet weekends. Simple: same day if the
 // window is still ahead, else search forward up to 8 days.
 function nextWindowAt(cfg,winKey){
@@ -205,6 +205,8 @@ function tmpl(template,dealer,payload,unsub){
   if(template==="new"){ return {subject:"Welcome to HomeCare Provider Services", ...wrap(`Welcome aboard${hi}!`,`Thanks for your first order with HomeCare Provider Services. Your account is set up with your manufacturer lines and pricing — browse anytime and reorder in a couple of clicks. We're glad to have you.`,"Browse your lines")}; }
   if(template==="crosssell"){ const rec=eesc(payload&&payload.rec||"a complementary line"); const basis=eesc(payload&&payload.basis||"your current lines");
     return {subject:`A line that pairs well with what you stock`, ...wrap(`An idea for your shelves${hi}`,`Dealers who carry ${basis} often do well adding ${rec} to the mix. It's already available on your HCPS account at your pricing — worth a look next time you order.`,`Explore ${rec}`)}; }
+  if(template==="product"){ const line=eesc(payload&&payload.line||"the products you were viewing"); const code=payload&&payload.code?` (${eesc(payload.code)})`:"";
+    return {subject:`Questions about ${payload&&payload.line?payload.line:"what you were viewing"}?`, ...wrap(`Happy to help${hi}`,`We noticed you were taking a look at ${line}${code} on the portal. Your pricing is already loaded, and your HCPS rep is glad to answer any questions or help you place an order — whenever the timing's right.`,payload&&payload.line?`View ${eesc(payload.line)}`:"Take another look")}; }
   // dormant (default)
   return {subject:"We've missed you at HomeCare Provider Services", ...wrap(`We've missed you${hi}`,`It's been a little while since your last order with HomeCare Provider Services. Your account is active and ready — browse your lines, see your pricing, and reorder in a couple of clicks, 24/7.`,"Sign in & reorder")};
 }

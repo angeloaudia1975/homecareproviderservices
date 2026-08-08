@@ -14,12 +14,13 @@ exports.handler=async()=>{
     const sig=await E.computeSignals();
     const tasks=await E.runTasks(sig);
     const emails=await E.enqueueEmails(sig,cfg);
+    // Intent refresh + high-intent rep tasks + product-interest emails (isolated so it
+    // can never break the engine). Runs BEFORE delivery so queued product emails drain.
+    let intent=null;
+    try{ const sc=await I.computeIntent(); const it=await I.syncIntentTasks(); const pe=await I.enqueueIntentEmails(); intent={score:sc,tasks:it,emails:pe}; }
+    catch(e){ intent={error:String(e&&e.message||e)}; }
     const w=E.currentWindow(cfg);
     const delivery=w?await E.drainQueue(cfg,w):{skipped:"no send window this hour"};
-    // Intent refresh + high-intent rep tasks (isolated so it can never break the engine).
-    let intent=null;
-    try{ const sc=await I.computeIntent(); const it=await I.syncIntentTasks(); intent={score:sc,tasks:it}; }
-    catch(e){ intent={error:String(e&&e.message||e)}; }
     return ok({ran:true,window:w||null,tasks,emails,delivery,intent});
   }catch(e){ return {statusCode:500,body:String(e&&e.message||e)}; }
 };
