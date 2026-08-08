@@ -1,0 +1,128 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Dealer Health</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .dist{display:flex;height:14px;border-radius:7px;overflow:hidden;border:1px solid var(--line);margin:2px 0 4px}
+ .dist span{display:block;height:100%}
+ .distleg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--gray);margin-top:8px}
+ .distleg .lk{display:inline-flex;align-items:center;gap:6px}
+ .distleg .sw{width:11px;height:11px;border-radius:3px;display:inline-block}
+ .hrow{display:grid;grid-template-columns:34px 1fr auto;gap:12px;align-items:center;padding:11px 13px;border:1px solid var(--line);border-radius:11px;background:#fff;margin-bottom:8px}
+ .hrow.risk{border-left:4px solid #c2410c}.hrow.watch{border-left:4px solid var(--orange)}
+ .score{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#fff;font-variant-numeric:tabular-nums}
+ .hrow .nm{font-size:14px;font-weight:700;color:var(--navy)}
+ .hrow .mt{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:3px;font-size:11.5px;color:var(--gray)}
+ .hrow .right{display:flex;flex-direction:column;align-items:flex-end;gap:4px;white-space:nowrap}
+ .tpill{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:6px;padding:2px 7px}
+ .t-healthy{background:#e6f4ec;color:#1f7a44}.t-watch{background:#fdeee0;color:#b45309}.t-at_risk{background:#fdeaea;color:#b42323}.t-dormant{background:#eef1f4;color:#5b6672}.t-new{background:#eaf3fb;color:#12466e}
+ .trend{font-weight:800}.tr-up{color:#1f7a44}.tr-down{color:#c2410c}.tr-flat{color:#8a96a3}
+ .val{font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);font-size:13px}
+ .filt{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 14px}
+ .seg{display:inline-flex;background:#e3e9f0;border-radius:9px;padding:2px;gap:2px}
+ .seg button{background:none;border:0;border-radius:7px;padding:7px 12px;font-weight:700;font-size:12.5px;color:#41576b;cursor:pointer;font-family:inherit}
+ .seg button.on{background:#fff;color:var(--navy);box-shadow:0 1px 3px rgba(16,38,63,.12)}
+ .sec{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--gray);font-weight:800;margin:20px 0 10px}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1>Dealer Health</h1><div class="sub">Every dealer scored on recency, ordering rhythm, and trend — so you can catch accounts slipping <i>before</i> they lapse.</div></div>
+    <div id="repbox"></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), DATA=null, FREP="all", FTIER="risk";
+const money=n=>"$"+Math.round(Number(n||0)).toLocaleString("en-US");
+const short=n=>{n=Number(n||0);const a=Math.abs(n);if(a>=1e6)return "$"+(n/1e6).toFixed(1)+"M";if(a>=1e3)return "$"+Math.round(n/1e3)+"k";return "$"+Math.round(n);};
+const TIER={healthy:{c:"#2d7d46",l:"Healthy"},watch:{c:"#F5821F",l:"Watch"},at_risk:{c:"#c2410c",l:"At-risk"},dormant:{c:"#8a96a3",l:"Dormant"},new:{c:"#1681c2",l:"New"}};
+const scoreColor=s=> s>=65?"#2d7d46" : s>=40?"#F5821F" : "#c2410c";
+const trendArrow=t=> t==="up"?'<span class="trend tr-up">▲</span>':t==="down"?'<span class="trend tr-down">▼</span>':'<span class="trend tr-flat">▬</span>';
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  try{
+    const r=await fetch("/.netlify/functions/health-api",{headers:{authorization:"Bearer "+TOKEN}});
+    if(r.status===401){ gate("Your session ended — sign in again."); return; }
+    const j=await r.json();
+    if(j&&j.error==="tables_missing"){ $("#body").innerHTML=`<div class="msg">Run <b>supabase/engine.sql</b> + <b>supabase/health.sql</b>, then open Tasks → <b>Run engine now</b> to build the scores.</div>`; return; }
+    if(!j||!j.ok){ $("#body").innerHTML=`<div class="msg err">${esc((j&&j.error)||"Couldn't load.")}</div>`; return; }
+    DATA=j;
+    if(!j.seeded||!(j.rows||[]).length){ $("#body").innerHTML=`<div class="msg">No health scores yet. Open <a class="link" href="/admin/tasks.html">Tasks</a> and click <b>▶ Run engine now</b> (or wait for tonight's run) to build them.</div>`; return; }
+    $("#repbox").innerHTML = (j.role==="president" && j.summary.reps.length) ? `<select onchange="setRep(this.value)"><option value="all">All reps</option>${j.summary.reps.map(rp=>`<option value="${esc(rp)}">${esc(rp)}</option>`).join("")}</select>` : "";
+    render();
+  }catch(e){ $("#body").innerHTML=`<div class="msg err">Couldn't load: ${esc(String(e.message||e))} <button class="go" onclick="load()">Retry</button></div>`; }
+}
+
+function render(){
+  if(!DATA) return;
+  let rows=DATA.rows.slice();
+  if(FREP!=="all") rows=rows.filter(r=>r.rep_name===FREP);
+  const t={healthy:0,watch:0,at_risk:0,dormant:0,new:0}; let sSum=0, atRev=0;
+  rows.forEach(r=>{ if(r.status in t)t[r.status]++; sSum+=Number(r.score)||0; if(r.status==="watch"||r.status==="at_risk")atRev+=Number(r.total_sales)||0; });
+  const total=rows.length||1;
+  // KPIs
+  const kpi=(l,v,cls,sub)=>`<div class="kpi"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div>${sub?`<div class="l" style="margin-top:2px;text-transform:none;letter-spacing:0;font-weight:600">${sub}</div>`:""}</div>`;
+  const kpis=`<div class="kpis" style="margin-bottom:14px">
+    ${kpi("Avg health",rows.length?Math.round(sSum/rows.length):0,"blue","0–100 score")}
+    ${kpi("At-risk",t.watch+t.at_risk,"orange","watch + at-risk")}
+    ${kpi("At-risk revenue",short(atRev),"","annual, these accounts")}
+    ${kpi("Dormant",t.dormant,"","already lapsed")}
+    ${kpi("Healthy",t.healthy,"")}
+  </div>`;
+  // distribution bar
+  const order=["healthy","watch","at_risk","dormant","new"];
+  const dist=`<div class="card"><h2>Health distribution <span class="hint" style="font-weight:600">${rows.length} dealers</span></h2>
+    <div class="dist">${order.map(k=>t[k]?`<span title="${TIER[k].l}: ${t[k]}" style="width:${t[k]/total*100}%;background:${TIER[k].c}"></span>`:"").join("")}</div>
+    <div class="distleg">${order.map(k=>`<span class="lk"><span class="sw" style="background:${TIER[k].c}"></span>${TIER[k].l} <b style="color:var(--navy)">${t[k]}</b></span>`).join("")}</div></div>`;
+  // segmented filter
+  const seg=(v,l)=>`<button class="${FTIER===v?'on':''}" onclick="setTier('${v}')">${l}</button>`;
+  const filt=`<div class="filt"><div class="seg">${seg("risk","⚠ At-risk (save these)")}${seg("healthy","Healthy")}${seg("dormant","Dormant")}${seg("all","All")}</div></div>`;
+  // list per filter
+  let list=rows.slice();
+  if(FTIER==="risk") list=rows.filter(r=>r.status==="watch"||r.status==="at_risk"); // pre-lapse, savable
+  else if(FTIER==="healthy") list=rows.filter(r=>r.status==="healthy"||r.status==="new");
+  else if(FTIER==="dormant") list=rows.filter(r=>r.status==="dormant");
+  if(FTIER==="risk") list.sort((a,b)=>(b.churn_score||0)-(a.churn_score||0)||(b.total_sales||0)-(a.total_sales||0));
+  else list.sort((a,b)=>(b.score||0)-(a.score||0));
+  const lead = FTIER==="risk" ? `<div class="sec">⚠ At-risk before they lapse — ranked by urgency × value</div>` :
+               FTIER==="dormant" ? `<div class="sec">Dormant accounts — already lapsed, win-back candidates</div>` :
+               FTIER==="healthy" ? `<div class="sec">Healthy &amp; new accounts</div>` : `<div class="sec">All dealers</div>`;
+  const hrow=r=>{
+    const link=`/admin/dealer.html?id=${encodeURIComponent(r.dealer_id)}`;
+    const cls=r.status==="at_risk"?"risk":r.status==="watch"?"watch":"";
+    const meta=[ r.rep_name?esc(r.rep_name):"Unassigned",
+      r.last_period?"last order "+esc(r.last_period):"", (r.months_since!=null?r.months_since+"mo ago":""),
+      r.lines?r.lines+" line"+(r.lines===1?"":"s"):"" ].filter(Boolean).join(" · ");
+    return `<div class="hrow ${cls}">
+      <div class="score" style="background:${scoreColor(r.score)}">${Number(r.score)||0}</div>
+      <div><div class="nm"><a class="link" href="${link}">${esc(r.name)}</a> ${trendArrow(r.trend)}</div>
+        <div class="mt">${meta}</div></div>
+      <div class="right"><span class="tpill t-${r.status}">${(TIER[r.status]||{}).l||r.status}</span>
+        <span class="val">${short(r.total_sales)}${r.status!=="dormant"&&r.churn_score?` · <span style="color:#c2410c">urgency ${r.churn_score}</span>`:""}</span></div>
+    </div>`;
+  };
+  const body = list.length ? list.slice(0,150).map(hrow).join("") + (list.length>150?`<div class="hint" style="margin-top:8px">Showing top 150 of ${list.length}.</div>`:"") : `<div class="msg">None in this view.</div>`;
+  $("#body").innerHTML=kpis+dist+filt+lead+body;
+}
+function setRep(v){ FREP=v; render(); }
+function setTier(v){ FTIER=v; render(); }
+load();
+</script>
+</body></html>

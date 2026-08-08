@@ -197,8 +197,20 @@ async function loadCRM(){
   const el=$("#crm"); if(!el||!CUR) return;
   let j; try{ j=await crm({action:"list",dealer_id:CUR}); }catch(e){ el.innerHTML=`<div class="hint">Couldn't load notes.</div>`; return; }
   if(j&&j.error==="tables_missing"){ el.innerHTML=`<div class="note-ph">Run <b>supabase/crm.sql</b> in Supabase to turn on notes &amp; tasks.</div>`; return; }
-  const tasks=(j&&j.tasks)||[], nts=(j&&j.notes)||[], acts=(j&&j.activity)||[], xs=(j&&j.crosssell)||[];
+  const tasks=(j&&j.tasks)||[], nts=(j&&j.notes)||[], acts=(j&&j.activity)||[], xs=(j&&j.crosssell)||[], hp=(j&&j.health)||null;
   const open=tasks.filter(t=>t.status==="open"), done=tasks.filter(t=>t.status!=="open");
+  let hpBlock="";
+  if(hp){
+    const TL={healthy:["Healthy","#2d7d46"],watch:["Watch","#F5821F"],at_risk:["At-risk","#c2410c"],dormant:["Dormant","#8a96a3"],new:["New","#1681c2"]};
+    const tl=TL[hp.status]||["—","#8a96a3"]; const sc=Number(hp.score)||0;
+    const scColor=sc>=65?"#2d7d46":sc>=40?"#F5821F":"#c2410c";
+    const tr=hp.trend==="up"?'<span style="color:#2d7d46;font-weight:800">▲ rising</span>':hp.trend==="down"?'<span style="color:#c2410c;font-weight:800">▼ falling</span>':'<span style="color:#8a96a3;font-weight:800">▬ steady</span>';
+    hpBlock=`<div style="display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;background:#fff;padding:11px 13px;margin-bottom:12px">
+      <div style="width:44px;height:44px;border-radius:11px;background:${scColor};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex:none">${sc}</div>
+      <div style="flex:1"><div style="font-size:13px;font-weight:800;color:var(--navy)">Health <span style="font-size:10px;text-transform:uppercase;letter-spacing:.4px;background:${tl[1]}22;color:${tl[1]};border-radius:6px;padding:2px 7px;margin-left:4px">${tl[0]}</span></div>
+        <div class="hint" style="margin:2px 0 0">${tr} · ${hp.months_since!=null?hp.months_since+"mo since last order":""}${hp.status!=="dormant"&&hp.churn_score?` · <b style="color:#c2410c">urgency ${hp.churn_score}</b>`:""}</div></div>
+    </div>`;
+  }
   const xsBlock = xs.length ? `<div style="border:1px solid var(--line);border-left:3px solid var(--purple);border-radius:10px;background:#faf9fd;padding:10px 12px;margin-bottom:12px">
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--purple);font-weight:800;margin-bottom:4px">✨ Cross-sell opportunities</div>
       ${xs.map(x=>`<div style="font-size:13px;color:var(--navy);margin:3px 0"><b>${esc(x.rec_name)}</b>${x.basis_name?` <span class="hint" style="margin:0">— buys ${esc(x.basis_name)}; similar dealers stock ${esc(x.rec_name)}</span>`:''}</div>`).join("")}
@@ -209,7 +221,7 @@ async function loadCRM(){
       ${t.due_date?`<div class="hint" style="margin:0">due ${esc(t.due_date)}</div>`:''}${t.detail?`<div class="hint" style="margin:0">${esc(t.detail)}</div>`:''}</div></div>`;
   const nRow=n=>`<div class="nt"><div class="ntb">${esc(n.body)}</div><div class="hint" style="margin:2px 0 0">${esc(n.author_name||n.author_email||"")}${n.created_at?" · "+new Date(n.created_at).toLocaleString():""}</div></div>`;
   const aRow=a=>{ const ic=a.kind==="campaign"?"📣":a.kind==="call"?"📞":a.kind==="system"?"•":"📧"; return `<div class="nt"><div class="ntb">${ic} ${esc(a.subject||a.kind)}</div><div class="hint" style="margin:2px 0 0">${esc(a.contact_email||"")}${a.created_at?" · "+new Date(a.created_at).toLocaleString():""}</div></div>`; };
-  el.innerHTML=`${xsBlock}<div class="tasks">
+  el.innerHTML=`${hpBlock}${xsBlock}<div class="tasks">
       ${open.length?open.map(tRow).join(""):'<div class="hint">No open tasks.</div>'}
       <div class="tkadd"><input id="ntitle" placeholder="Add a task…" onkeydown="if(event.key==='Enter')addTask()"><input id="ndue" type="date" title="Due date" style="width:auto"><button class="btn sm" onclick="addTask()">Add</button></div>
       ${done.length?`<div class="hint" style="margin:8px 0 2px">Done (${done.length})</div>`+done.slice(0,6).map(tRow).join(""):''}

@@ -20,6 +20,7 @@
     ]},
     { id:"sales", label:"Sales & Marketing", href:"/admin/#sales", tools:[
         { href:"/admin/dealers.html",   label:"Dealer Manager" },
+        { href:"/admin/health.html",    label:"Dealer Health" },
         { href:"/admin/call-list.html", label:"Who to Call" },
         { href:"/admin/tasks.html",     label:"My Tasks" },
         { href:"/admin/map.html",       label:"Territory Map" }

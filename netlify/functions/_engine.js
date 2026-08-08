@@ -248,23 +248,65 @@ async function drainQueue(cfg,winKey){
   return {dry_run:false,due:(due||[]).length,sent,capped,failed,skipped};
 }
 
-// ---- Nightly engagement recompute + queue housekeeping ----------------------
-async function recomputeEngagement(sig){
-  const cfg=await getConfig(); const s=sig||await computeSignals(); const rows=[];
-  for(const [id,d] of s.dealers){
-    const ms=d.monthsSince; let status="active";
-    if(d.first!=null && (s.latest-d.first)<=2) status="new";
-    else if(ms>=Number(cfg.dormant_months||3)) status="dormant";
-    else if(d.signals.some(g=>g.reason&&g.reason.startsWith("overdue"))) status="overdue";
-    else if(ms>=2) status="slipping";
-    const rec=Math.max(0,100-ms*12);
-    rows.push({dealer_id:id,status,score:Math.round(rec),months_since:ms,last_period:pmToStr(d.last),dormant_since:status==="dormant"?isoDate(monthsAgo(ms)):null,cycle_json:{},computed_at:new Date().toISOString()});
+// ---- Nightly dealer-health recompute + queue housekeeping -------------------
+// A real health model for EVERY dealer (not just those with active signals):
+//   score  = 0.5*recency + 0.3*frequency + 0.2*trend  (0..100)
+//   tier   = new | healthy | watch | at_risk | dormant
+//   churn  = urgency to intervene BEFORE they lapse (0..100), from overdue-ness,
+//            a declining trend, and a low score — only meaningful pre-dormant.
+// Retired lines are excluded so health reflects the active book. clamp helper local.
+const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+async function recomputeEngagement(){
+  const cfg=await getConfig();
+  const [mfrs,dealers,aliases,dir]=await Promise.all([
+    sbGet("manufacturers?select=slug,name").catch(()=>[]),
+    sbGetAll("dealers?select=id,business_name,parent_id"),
+    sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]),
+    sbGet("dealer_directory?select=dealer_name,rep_name").catch(()=>[]),
+  ]);
+  const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
+  const nameById={}; for(const d of dealers) nameById[d.id]=d.business_name;
+  const idByAlias={}; for(const a of aliases) idByAlias[a.alias_norm]=a.dealer_id;
+  const repByName={}; for(const x of dir) repByName[x.dealer_name]=x.rep_name||"";
+  const mnorm=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+  const exMfr=new Set((cfg.exclude_manufacturers||[]).map(mnorm));
+  const isEx=slug=>exMfr.has(mnorm(slug))||exMfr.has(mnorm(mfrName[slug]));
+  const rows=await sbGetAll("monthly_sales?select=dealer_id,manufacturer,period,customer_name,amount");
+  const resolve=r=>{ if(r.dealer_id && nameById[r.dealer_id]) return r.dealer_id; const id=idByAlias[dnorm(r.customer_name)]; return (id&&nameById[id])?id:null; };
+  let latest=0; const DL=new Map();
+  for(const r of rows){ const id=resolve(r); if(!id)continue; const slug=r.manufacturer; if(isEx(slug))continue; const pm=pmOf(r.period); if(!pm)continue; if(pm>latest)latest=pm;
+    let o=DL.get(id); if(!o){o={total:0,first:pm,last:pm,months:new Map(),lines:new Set()};DL.set(id,o);}
+    const amt=Number(r.amount)||0; o.total+=amt; if(pm<o.first)o.first=pm; if(pm>o.last)o.last=pm; o.lines.add(slug); o.months.set(pm,(o.months.get(pm)||0)+amt); }
+  const DORM=Number(cfg.dormant_months)||3; const now=new Date();
+  const out=[];
+  for(const [id,o] of DL){
+    const ms=latest-o.last; const span=Math.max(1,latest-o.first+1); const active=o.months.size;
+    let recent3=0,prior3=0; for(const [pm,v] of o.months){ if(pm>=latest-2)recent3+=v; else if(pm>=latest-5&&pm<=latest-3)prior3+=v; }
+    const trend = recent3>prior3*1.1?"up" : recent3<prior3*0.9?"down" : "flat";
+    // cadence (median gap) for overdue-ness
+    const pms=[...o.months.keys()].sort((a,b)=>a-b); let cyc=null; if(pms.length>=2){ const g=[]; for(let i=1;i<pms.length;i++)g.push(pms[i]-pms[i-1]); cyc=median(g); }
+    const recencyScore=clamp(100-ms*14,0,100);
+    const freqScore=clamp((active/span)*140,0,100);
+    const trendScore= trend==="up"?100 : trend==="flat"?60 : 30;
+    const score=Math.round(0.5*recencyScore+0.3*freqScore+0.2*trendScore);
+    let tier; if((latest-o.first)<=2) tier="new"; else if(ms>=DORM) tier="dormant"; else tier= score>=65?"healthy" : score>=40?"watch" : "at_risk";
+    const overdueness = cyc&&cyc>0 ? clamp((ms-cyc)/cyc,0,3) : (ms>=2?1:0);
+    const churn = (tier==="dormant"||tier==="new") ? (tier==="dormant"?100:0)
+      : Math.round(100*(0.55*(overdueness/3) + 0.3*(trend==="down"?1:trend==="flat"?0.4:0) + 0.15*(1-score/100)));
+    // Churn-aware tier: a pre-dormant account that's overdue/declining shouldn't read "healthy".
+    if(tier==="healthy" && churn>=45) tier="watch";
+    if(tier==="watch"   && churn>=72) tier="at_risk";
+    out.push({dealer_id:id,status:tier,score,months_since:ms,last_period:pmToStr(o.last),
+      dormant_since: tier==="dormant"?isoDate(monthsAgo(ms)):null,
+      trend,churn_score:churn,recent_sales:Math.round(recent3),total_sales:Math.round(o.total),
+      lines:o.lines.size,rep_name:repByName[nameById[id]]||null,cycle_json:{cyc:cyc?Math.round(cyc):null},
+      computed_at:now.toISOString()});
   }
-  let up=0; for(let i=0;i<rows.length;i+=200){ const part=rows.slice(i,i+200); try{ await sbSend("POST","dealer_engagement?on_conflict=dealer_id",part,{Prefer:"resolution=merge-duplicates,return=minimal"}); up+=part.length; }catch(e){} }
+  let up=0; for(let i=0;i<out.length;i+=200){ const part=out.slice(i,i+200); try{ await sbSend("POST","dealer_engagement?on_conflict=dealer_id",part,{Prefer:"resolution=merge-duplicates,return=minimal"}); up+=part.length; }catch(e){} }
   // Housekeeping: expire stale queued emails past TTL.
   const ttl=new Date(Date.now()-(Number(cfg.queue_ttl_hours)||72)*3600e3).toISOString();
   let expired=0; try{ const r=await sbSend("PATCH",`email_queue?status=eq.queued&send_after=lt.${ttl}`,{status:"expired"},{Prefer:"return=representation"}); expired=(r&&r.length)||0; }catch(e){}
-  return {engagement_rows:up,expired};
+  return {engagement_rows:up,dealers:DL.size,expired};
 }
 function pmToStr(pm){ if(pm==null)return null; const y=Math.floor(pm/12), m=(pm%12)+1; return `${y}-${String(m).padStart(2,"0")}`; }
 function monthsAgo(n){ const d=new Date(); d.setMonth(d.getMonth()-n); return d; }
