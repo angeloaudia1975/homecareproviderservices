@@ -169,7 +169,7 @@ function previewHtml(){
   return (hero||tilesHtml)?hero+tilesHtml:`<div class="hint" style="text-align:center;padding:20px">Nothing to show yet — add a banner or a tile.</div>`;
 }
 function syncPreview(){const p=$("#prevbox");if(p)p.innerHTML=previewHtml();}
-(function(){var b=document.createElement("button");b.textContent="Lock";b.className="go";b.style.cssText="position:fixed;top:10px;right:12px;z-index:9999;padding:5px 10px;font-size:12px";b.onclick=lock;document.body.appendChild(b);})();
+/* masthead provides Lock */
 if(TOKEN)boot();else gate();
 </script>
 </body></html>

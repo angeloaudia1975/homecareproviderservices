@@ -148,6 +148,6 @@ function move(mfr,code,dir){
   api("",{method:"POST",body:JSON.stringify({action:"reorder",items:sorted.map(f=>({manufacturer:f.manufacturer,code:f.code,rank:f.rank}))})})
    .catch(e=>toast(e.message));
 }
-(function(){var b=document.createElement("button");b.textContent="Lock";b.className="go";b.style.cssText="position:fixed;top:10px;right:12px;z-index:9999;padding:5px 10px;font-size:12px";b.onclick=lock;document.body.appendChild(b);})();
+/* masthead provides Lock */
 if(TOKEN)boot();else gate();
 </script></body></html>

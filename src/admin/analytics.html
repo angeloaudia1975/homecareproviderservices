@@ -192,7 +192,7 @@ function render(){ if(!DATA)return;
   if(DEALER) return renderProfile();
   renderKpis();
   $("#body").innerHTML=`<div id="kpis">${$("#kpis")?$("#kpis").innerHTML:""}</div>`+
-    `<div class="tabs" style="display:flex;align-items:center">${TABS.map(t=>`<button class="tab ${TAB===t[0]?'on':''}" onclick="setTab('${t[0]}')">${t[1]}</button>`).join("")}<span style="margin-left:auto;font-size:12px;color:#607089;display:flex;align-items:center;gap:8px">${esc((ME&&ME.name)||"")}<button class="go" style="padding:5px 10px;font-size:12px" onclick="lock()">Lock</button></span></div><div id="app"></div>`;
+    `<div class="tabs" style="display:flex;align-items:center">${TABS.map(t=>`<button class="tab ${TAB===t[0]?'on':''}" onclick="setTab('${t[0]}')">${t[1]}</button>`).join("")}</div><div id="app"></div>`;
   renderKpis();
   if(DRILL) return renderDrill();
   ({overview:renderOverview,trend:renderTrend,orders:renderOrders,dealers:renderDealers,masters:renderMasters,cadence:renderCadence,bizdev:renderBizdev,reports:renderReports,assign:renderAssign}[TAB])();
