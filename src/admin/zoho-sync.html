@@ -1,0 +1,118 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Zoho Sync</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .syncgrid{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+ @media(max-width:760px){.syncgrid{grid-template-columns:1fr}}
+ .srow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #eef2f6}
+ .srow:last-child{border-bottom:0}
+ .srow .t{flex:1}.srow .t b{color:var(--navy);font-size:13.5px}.srow .t .d{font-size:11.5px;color:var(--gray)}
+ .srow .when{font-size:11px;color:var(--gray);white-space:nowrap}
+ .dot{width:9px;height:9px;border-radius:50%;display:inline-block}.dot.on{background:#2d7d46}.dot.off{background:#c2410c}
+ .log{background:#0f1b2b;color:#d7e2ee;border-radius:10px;padding:12px 14px;font:12px/1.6 ui-monospace,Menlo,Consolas,monospace;max-height:230px;overflow:auto;margin-top:14px;white-space:pre-wrap}
+ .rev{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+ .rev th{text-align:left;color:var(--gray);font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:5px 7px;border-bottom:1px solid var(--line)}
+ .rev td{padding:5px 7px;border-bottom:1px solid #eef2f6}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1>Zoho Sync</h1><div class="sub">Two-way sync between the portal and Zoho CRM. The portal stays the system of record; Zoho carries the CRM &amp; marketing weight. Every action here is manual — nothing syncs on its own.</div></div>
+    <div id="conn"></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), STATE=null, BUSY=false;
+const when=t=>{ if(!t) return "never"; try{ return new Date(t).toLocaleString(); }catch(e){ return t; } };
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+async function z(payload){ const r=await fetch("/.netlify/functions/zoho-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
+function logln(s){ const el=$("#log"); if(el){ el.textContent += (el.textContent?"\n":"")+s; el.scrollTop=el.scrollHeight; } }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  const r=await z({action:"sync_state"});
+  if(r.status===401){ gate("Your session ended — sign in again."); return; }
+  if(r.status===403){ $("#body").innerHTML=`<div class="msg err"><b>President only.</b></div>`; return; }
+  STATE=r.body||{};
+  render();
+}
+function render(){
+  const st=STATE.last||{}, conn=STATE.connected, opp=STATE.opportunities||{};
+  $("#conn").innerHTML=`<span class="chip"><span class="dot ${conn?'on':'off'}"></span> ${conn?'Connected to Zoho':'Not connected'}</span>`;
+  const row=(icon,title,desc,btn,whenKey)=>`<div class="srow"><div style="font-size:20px">${icon}</div><div class="t"><b>${title}</b><div class="d">${desc}</div></div><div style="text-align:right"><div class="when">${st[whenKey]?("last: "+when(st[whenKey])):""}</div>${btn}</div></div>`;
+  const btn=(id,label,fn)=>`<button class="btn sm" id="${id}" onclick="${fn}" ${conn?'':'disabled'}>${label}</button>`;
+  const push=`<div class="card"><h2>Push · portal → Zoho</h2>
+    ${row("🏢","Accounts","Every dealer → Zoho Accounts (matched on name).",btn("b_acc","Push accounts","run('sync_accounts','b_acc')"),"accounts_pushed_at")}
+    ${row("📇","Contacts","Dealer contacts → Zoho Contacts (matched on email), linked to their account.",btn("b_con","Push contacts","run('sync_contacts','b_con')"),"contacts_pushed_at")}
+    ${row("🔮","Pipeline deals",("Open opportunities → Zoho Deals. "+(opp.total?(opp.linked+"/"+opp.total+" linked"):"")),btn("b_opp","Push pipeline","run('sync_opportunities','b_opp')"),"opportunities_pushed_at")}
+    ${row("💰","Sales as deals","Historical sales → closed-won Deals per dealer &amp; line (runs in slices).",btn("b_deal","Push sales","runDeals()"),"deals_pushed_at")}
+    ${row("📝","Notes &amp; tasks","Portal CRM notes &amp; tasks → Zoho (only new ones).",btn("b_mir","Mirror now","run('mirror_to_zoho','b_mir')"),"mirror_at")}
+  </div>`;
+  const pull=`<div class="card"><h2>Pull · Zoho → portal</h2>
+    ${row("🔄","Deal changes","Zoho deal stage / amount / close-date edits → back onto matching opportunities.",btn("b_pd","Pull deals","run('pull_deals','b_pd')"),"deals_pulled_at")}
+    ${row("📞","Account updates","Zoho phone / address edits → matching dealers. Zoho-only accounts listed for review.",btn("b_pa","Pull accounts","run('pull_accounts','b_pa')"),"accounts_pulled_at")}
+    <div class="hint" style="margin-top:8px">Pulls are conservative: linked records update in place; brand-new Zoho records are shown for review, never auto-created, so the portal stays the source of truth.</div>
+  </div>`;
+  $("#body").innerHTML=`<div class="syncgrid">${push}${pull}</div><div id="review"></div><div class="log" id="log">Ready.${conn?"":" Connect to Zoho first (Zoho CRM Sync setup)."}</div>`;
+}
+async function run(action,btnId){
+  if(BUSY) return; BUSY=true; const b=$("#"+btnId); const label=b?b.textContent:""; if(b){b.disabled=true;b.textContent="Working…";}
+  logln("→ "+action+" …");
+  const r=await z({action}); const j=r.body||{};
+  if(j.ok){ logln("✓ "+action+": "+summarize(action,j)); }
+  else logln("✗ "+action+": "+(j.message||j.error||("http "+r.status)));
+  if(action==="pull_accounts" && j.new_in_zoho) renderReview(j.new_in_zoho);
+  if(b){b.disabled=false;b.textContent=label;}
+  BUSY=false; load();
+}
+function summarize(a,j){
+  if(a==="sync_accounts") return `${j.inserted||0} new, ${j.updated||0} updated of ${j.total||0}`;
+  if(a==="sync_contacts") return `${j.inserted||0} new, ${j.updated||0} updated, ${j.linked_to_account||0} linked`;
+  if(a==="sync_opportunities") return `${j.created||0} created, ${j.updated||0} updated of ${j.total||0}`;
+  if(a==="mirror_to_zoho") return `${j.notes_pushed||0} notes, ${j.tasks_pushed||0} tasks`;
+  if(a==="pull_deals") return `${j.changed||0} of ${j.linked||0} linked deals updated`;
+  if(a==="pull_accounts") return `${j.updated||0} dealers updated, ${(j.new_in_zoho||[]).length} new in Zoho`;
+  return JSON.stringify(j).slice(0,120);
+}
+function renderReview(list){
+  const el=$("#review"); if(!el) return;
+  if(!list.length){ el.innerHTML=""; return; }
+  el.innerHTML=`<div class="card" style="margin-top:15px"><h2>New in Zoho — review <span class="hint" style="font-weight:600">${list.length} account(s) not in the portal</span></h2>
+    <table class="rev"><thead><tr><th>Account</th><th>City</th><th>State</th><th>Phone</th></tr></thead><tbody>
+    ${list.map(a=>`<tr><td>${esc(a.name)}</td><td>${esc(a.city)}</td><td>${esc(a.state)}</td><td>${esc(a.phone)}</td></tr>`).join("")}</tbody></table>
+    <div class="hint" style="margin-top:8px">These exist in Zoho but not in the portal. Add them in Dealer Manager if they should be tracked here.</div></div>`;
+}
+async function runDeals(){
+  if(BUSY) return; BUSY=true; const b=$("#b_deal"); if(b){b.disabled=true;b.textContent="Working…";}
+  let off=0, total=null, ins=0, upd=0;
+  logln("→ sync_deals (sliced) …");
+  for(let i=0;i<40;i++){
+    const r=await z({action:"sync_deals",offset:off,limit:150}); const j=r.body||{};
+    if(!j.ok){ logln("✗ sync_deals: "+(j.message||j.error||r.status)); break; }
+    ins+=j.inserted||0; upd+=j.updated||0; total=j.total; off+=j.count||0;
+    logln(`  … ${off}/${total} (${ins} new, ${upd} updated)`);
+    if(!j.count || off>=total) break;
+  }
+  logln(`✓ sync_deals done: ${ins} new, ${upd} updated of ${total}`);
+  if(b){b.disabled=false;b.textContent="Push sales";}
+  BUSY=false; load();
+}
+load();
+</script>
+</body></html>

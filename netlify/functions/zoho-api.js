@@ -29,6 +29,12 @@ async function setZohoAuth(value){ await sbSend("POST","app_settings?on_conflict
 // The Zoho api_names of our match fields (auto-generated from the labels) are cached here.
 async function getZohoFields(){ try{ const rows=await sbGet("app_settings?key=eq.zoho_fields&select=value"); return (rows&&rows[0]&&rows[0].value)||{}; }catch(e){ return {}; } }
 async function setZohoFields(value){ await sbSend("POST","app_settings?on_conflict=key",{key:"zoho_fields",value,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
+// Last-sync timestamps (per action) for the sync dashboard.
+async function getSyncState(){ try{ const rows=await sbGet("app_settings?key=eq.zoho_sync&select=value"); return (rows&&rows[0]&&rows[0].value)||{}; }catch(e){ return {}; } }
+async function stampSync(k){ try{ const v=await getSyncState(); v[k]=new Date().toISOString(); await sbSend("POST","app_settings?on_conflict=key",{key:"zoho_sync",value:v,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); }catch(e){} }
+// Pipeline stage <-> Zoho Deal stage.
+const STAGE_TO_ZOHO={identified:"Qualification",contacted:"Needs Analysis",quoted:"Proposal/Price Quote",won:"Closed Won",lost:"Closed Lost"};
+const ZOHO_TO_STAGE={"Qualification":"identified","Needs Analysis":"contacted","Value Proposition":"contacted","Identify Decision Makers":"contacted","Proposal/Price Quote":"quoted","Negotiation/Review":"quoted","Closed Won":"won","Closed Lost":"lost","Closed-Lost":"lost","Closed Lost to Competition":"lost"};
 
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -264,6 +270,89 @@ exports.handler = async (event)=>{
         else if(errors.length<5){ errors.push({task:t.id,msg:(r.json&&JSON.stringify(r.json).slice(0,160))||("http "+r.status)}); }
       }
       return json(200,{ok:errors.length===0,notes_pushed:notesPushed,notes_skipped:notesSkipped,tasks_pushed:tasksPushed,tasks_skipped:tasksSkipped,errors});
+    }
+
+    // Sync state for the dashboard: connection + last-sync times + pipeline link coverage.
+    if(b.action==="sync_state"){
+      const cfg=await getZohoAuth(); const st=await getSyncState();
+      let opps=[]; try{ opps=await sbGetAll("opportunities?select=id,zoho_id","id"); }catch(e){}
+      const linked=(opps||[]).filter(o=>o.zoho_id).length;
+      return json(200,{ ok:true, connected:!!(cfg&&cfg.refresh_token), last:st,
+        opportunities:{ total:(opps||[]).length, linked, unlinked:(opps||[]).length-linked } });
+    }
+
+    // PUSH pipeline opportunities -> Zoho Deals. Each opp stores its Zoho Deal id (zoho_id) so
+    // re-runs update the same deal. New deals are created and stamped back.
+    if(b.action==="sync_opportunities"){
+      const c=await connect(); if(!c.ok) return json(200,{ok:false,message:"Not connected.",reason:c.reason});
+      let opps=[]; try{ opps=await sbGetAll("opportunities?select=id,dealer_id,title,line,stage,value,expected_close,zoho_id","id"); }
+      catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run supabase/pipeline.sql + zoho_sync.sql first."}); }
+      const dealers=await sbGetAll("dealers?select=id,business_name","id"); const nameById={}; for(const d of dealers) nameById[d.id]=d.business_name;
+      const accts=await getAllRecords(c.apiDomain,c.token,"Accounts","Account_Name"); const acctIdByName={}; for(const a of (accts||[])){ if(a.Account_Name) acctIdByName[String(a.Account_Name)]=a.id; }
+      const today=new Date().toISOString().slice(0,10);
+      let created=0, updated=0; const errors=[];
+      for(const o of opps){
+        const rec={ Deal_Name:String(o.title||"Opportunity").slice(0,255), Amount:Number(o.value)||0,
+          Stage:STAGE_TO_ZOHO[o.stage]||"Qualification", Closing_Date:/^\d{4}-\d{2}-\d{2}$/.test(String(o.expected_close||""))?o.expected_close:today };
+        const acctId=o.dealer_id?acctIdByName[nameById[o.dealer_id]]:null; if(acctId) rec.Account_Name={id:acctId};
+        if(o.line) rec.Description=("Line: "+o.line);
+        let r;
+        if(o.zoho_id){ r=await zoho("PUT",c.apiDomain,c.token,"/crm/v8/Deals",{data:[{id:o.zoho_id,...rec}]}); }
+        else { r=await zoho("POST",c.apiDomain,c.token,"/crm/v8/Deals",{data:[rec]}); }
+        const row=r.ok&&r.json&&Array.isArray(r.json.data)&&r.json.data[0];
+        if(row&&row.code==="SUCCESS"){ if(o.zoho_id){updated++;} else { created++; const id=row.details&&row.details.id; if(id){ await sbSend("PATCH",`opportunities?id=eq.${encodeURIComponent(o.id)}`,{zoho_id:id},{Prefer:"return=minimal"}).catch(()=>{}); } } }
+        else if(errors.length<6){ errors.push({opp:o.id,msg:(r.json&&JSON.stringify(r.json).slice(0,160))||("http "+r.status)}); }
+      }
+      await stampSync("opportunities_pushed_at");
+      return json(200,{ ok:errors.length===0, total:opps.length, created, updated, errors });
+    }
+
+    // PULL Zoho Deal stage/amount/close changes back into our pipeline (matched by zoho_id).
+    // Zoho wins for linked deals so a rep editing in Zoho reflects in the portal.
+    if(b.action==="pull_deals"){
+      const c=await connect(); if(!c.ok) return json(200,{ok:false,message:"Not connected.",reason:c.reason});
+      let opps=[]; try{ opps=await sbGetAll("opportunities?select=id,zoho_id,stage,value,expected_close,updated_at&zoho_id=not.is.null","id"); }catch(e){ opps=[]; }
+      const byZoho={}; for(const o of opps) byZoho[o.zoho_id]=o;
+      const deals=await getAllRecords(c.apiDomain,c.token,"Deals","Deal_Name,Stage,Amount,Closing_Date,Modified_Time");
+      let changed=0; const changes=[]; const errors=[];
+      for(const d of (deals||[])){ const o=byZoho[d.id]; if(!o) continue;
+        const mapped=ZOHO_TO_STAGE[d.Stage]||null; const patch={};
+        if(mapped && mapped!==o.stage) patch.stage=mapped;
+        if(d.Amount!=null && Math.round(Number(d.Amount))!==Math.round(Number(o.value||0))) patch.value=Number(d.Amount)||0;
+        if(d.Closing_Date && d.Closing_Date!==o.expected_close) patch.expected_close=d.Closing_Date;
+        if(Object.keys(patch).length){
+          if(patch.stage){ patch.status=patch.stage==="won"?"won":patch.stage==="lost"?"lost":"open"; const P={identified:0.1,contacted:0.3,quoted:0.6,won:1,lost:0}; patch.probability=P[patch.stage]; }
+          patch.updated_at=new Date().toISOString();
+          try{ await sbSend("PATCH",`opportunities?id=eq.${encodeURIComponent(o.id)}`,patch,{Prefer:"return=minimal"}); changed++; if(changes.length<12)changes.push({id:o.id,deal:d.Deal_Name,to:patch.stage||o.stage}); }
+          catch(e){ if(errors.length<5)errors.push({opp:o.id,msg:String(e.message||e)}); }
+        }
+      }
+      await stampSync("deals_pulled_at");
+      return json(200,{ ok:errors.length===0, linked:opps.length, changed, changes, errors });
+    }
+
+    // PULL Zoho Account contact-info updates (phone / address) back onto matched dealers, and
+    // surface Zoho-only accounts (not in our dealer list) as a review list — never auto-created,
+    // so Supabase stays the system of record.
+    if(b.action==="pull_accounts"){
+      const c=await connect(); if(!c.ok) return json(200,{ok:false,message:"Not connected.",reason:c.reason});
+      const dealers=await sbGetAll("dealers?select=id,business_name,phone,address,city,state,zip","id");
+      const byName={}; for(const d of dealers) byName[String(d.business_name||"").trim().toLowerCase()]=d;
+      const accts=await getAllRecords(c.apiDomain,c.token,"Accounts","Account_Name,Phone,Billing_Street,Billing_City,Billing_State,Billing_Code,Modified_Time");
+      let updated=0; const newInZoho=[]; const changes=[]; const errors=[];
+      for(const a of (accts||[])){ const nm=String(a.Account_Name||"").trim(); if(!nm) continue; const d=byName[nm.toLowerCase()];
+        if(!d){ if(newInZoho.length<100) newInZoho.push({name:nm,phone:a.Phone||"",city:a.Billing_City||"",state:a.Billing_State||""}); continue; }
+        const patch={}; const set=(col,val)=>{ const v=(val==null?"":String(val)).trim(); if(v && v!==String(d[col]||"").trim()) patch[col]=v.slice(0,180); };
+        set("phone",a.Phone); set("address",a.Billing_Street); set("city",a.Billing_City); set("state",a.Billing_State); set("zip",a.Billing_Code);
+        if(Object.keys(patch).length){
+          try{ await sbSend("PATCH",`dealers?id=eq.${encodeURIComponent(d.id)}`,patch,{Prefer:"return=minimal"});
+            await sbSend("POST","dealer_activity",{dealer_id:d.id,kind:"system",subject:"Updated from Zoho ("+Object.keys(patch).join(", ")+")",actor:"Zoho sync"},{Prefer:"return=minimal"}).catch(()=>{});
+            updated++; if(changes.length<12)changes.push({dealer:nm,fields:Object.keys(patch)}); }
+          catch(e){ if(errors.length<5)errors.push({dealer:nm,msg:String(e.message||e)}); }
+        }
+      }
+      await stampSync("accounts_pulled_at");
+      return json(200,{ ok:errors.length===0, accounts:(accts||[]).length, updated, changes, new_in_zoho:newInZoho, errors });
     }
 
     return json(400,{error:"unknown action"});

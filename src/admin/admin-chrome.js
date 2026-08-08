@@ -23,6 +23,8 @@
         { href:"/admin/health.html",    label:"Dealer Health" },
         { href:"/admin/call-list.html", label:"Who to Call" },
         { href:"/admin/tasks.html",     label:"My Tasks" },
+        { href:"/admin/pipeline.html",  label:"Pipeline" },
+        { href:"/admin/zoho-sync.html", label:"Zoho Sync" },
         { href:"/admin/map.html",       label:"Territory Map" }
     ]},
     { id:"analytics", label:"Sales Data & Analytics", href:"/admin/#analytics", tools:[
