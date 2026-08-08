@@ -4,6 +4,7 @@
 // hours it returns immediately after one tiny config read. Delivery still respects the
 // master email_enabled switch (dry-run) and the per-dealer frequency cap.
 const E=require("./_engine");
+const I=require("./_intent");
 const ok=o=>({statusCode:200,headers:{"content-type":"application/json"},body:JSON.stringify(o)});
 exports.handler=async()=>{
   try{
@@ -15,6 +16,10 @@ exports.handler=async()=>{
     const emails=await E.enqueueEmails(sig,cfg);
     const w=E.currentWindow(cfg);
     const delivery=w?await E.drainQueue(cfg,w):{skipped:"no send window this hour"};
-    return ok({ran:true,window:w||null,tasks,emails,delivery});
+    // Intent refresh + high-intent rep tasks (isolated so it can never break the engine).
+    let intent=null;
+    try{ const sc=await I.computeIntent(); const it=await I.syncIntentTasks(); intent={score:sc,tasks:it}; }
+    catch(e){ intent={error:String(e&&e.message||e)}; }
+    return ok({ran:true,window:w||null,tasks,emails,delivery,intent});
   }catch(e){ return {statusCode:500,body:String(e&&e.message||e)}; }
 };
