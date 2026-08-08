@@ -9,6 +9,7 @@
 
   var HUBS = [
     { id:"ordering", label:"Online Ordering",       href:"/admin/#ordering", tools:[
+        { href:"/admin/order-fulfillment.html", label:"Order Fulfillment" },
         { href:"/admin/catalog.html",     label:"Catalog" },
         { href:"/admin/images.html",      label:"Images" },
         { href:"/admin/featured.html",    label:"Featured" },
@@ -64,7 +65,7 @@
       '<div class="ac-wrap ac-top">'
         + '<a class="ac-brand" href="/admin/"><span class="ac-mark">H</span>'
         + '<span class="ac-bt"><b>HCPS Admin</b><span>Operating System</span></span></a>'
-        + '<div class="ac-who">' + who + '<button type="button" id="ac-lock">Lock</button></div>'
+        + '<div class="ac-who">' + who + '<a id="ac-taskbadge" href="/admin/tasks.html" class="ac-badge" style="display:none" title="Your open tasks">0</a><button type="button" id="ac-lock">Lock</button></div>'
       + '</div>'
       + '<nav class="ac-nav ac-wrap">' + tier1 + '</nav>'
       + tier2;
@@ -75,6 +76,15 @@
       if(window.HCPS && HCPS.signOut) HCPS.signOut();
       location.reload();
     });
+    loadBadge();
+  }
+  // Masthead open-task badge — the caller's own count, links to My Tasks. Silent if none/not signed in.
+  function loadBadge(){
+    if(!(window.HCPS && HCPS.token && HCPS.token())) return;
+    fetch("/.netlify/functions/crm-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+HCPS.token()},body:JSON.stringify({action:"task_count"})})
+      .then(function(r){return r.json();})
+      .then(function(j){ var el=document.getElementById("ac-taskbadge"); if(el&&j&&j.ok){ el.textContent="✓ "+j.count; el.style.display=(j.count>0)?"inline-flex":"none"; } })
+      .catch(function(){});
   }
 
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", render); else render();

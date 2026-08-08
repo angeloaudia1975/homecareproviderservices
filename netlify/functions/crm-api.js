@@ -64,6 +64,18 @@ exports.handler = async (event)=>{
       return json(200,{ok:true,notes:notes||[],tasks:tasks||[],activity:activity||[]});
     }
 
+    // Lightweight open-task count for the masthead badge (the caller's own, rep-scoped).
+    if(b.action==="task_count"){
+      if(me.role==="president"){
+        try{ const r=await fetch(`${SUPABASE_URL}/rest/v1/dealer_tasks?status=eq.open&select=id`,{headers:{...H(),Prefer:"count=exact",Range:"0-0"}}); const cr=r.headers.get("content-range")||""; const n=cr.includes("/")?parseInt(cr.split("/")[1],10):0; return json(200,{ok:true,count:Number.isFinite(n)?n:0}); }
+        catch(e){ return json(200,{ok:true,count:0}); }
+      }
+      const rn=(me.rep_name||"").toLowerCase();
+      const rows=await sbGet(`dealer_tasks?status=eq.open&select=assigned_rep`).catch(()=>[]);
+      const n=(rows||[]).filter(t=>String(t.assigned_rep||"").toLowerCase()===rn).length;
+      return json(200,{ok:true,count:n});
+    }
+
     if(b.action==="add_note"){
       if(!b.dealer_id||!clean(b.body)) return json(400,{error:"dealer_id + body required"});
       const row={dealer_id:b.dealer_id,author_email:me.email||null,author_name:me.name||null,body:clean(b.body,4000)};

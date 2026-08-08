@@ -1,0 +1,117 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Order Fulfillment</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .filt{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 14px}
+ .seg{display:inline-flex;background:#e3e9f0;border-radius:9px;padding:2px;gap:2px;flex-wrap:wrap}
+ .seg button{background:none;border:0;border-radius:7px;padding:7px 12px;font-weight:700;font-size:12.5px;color:#41576b;cursor:pointer;font-family:inherit}
+ .seg button.on{background:#fff;color:var(--navy);box-shadow:0 1px 3px rgba(16,38,63,.12)}
+ .st{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:6px;padding:2px 8px;white-space:nowrap}
+ .st.submitted{background:#eaf3fb;color:#12466e}.st.confirmed{background:#f3eef9;color:#5b3fa0}.st.shipped{background:#fdeee0;color:#b45309}.st.completed{background:#e7f6ec;color:#1f7a44}.st.cancelled{background:#eef2f6;color:#8a94a1}
+ .exp{background:#f7fafd;border-top:1px solid #eef2f6}
+ .exp td{padding:12px 14px}
+ .itbl{width:100%;font-size:12.5px;margin-top:4px}
+ .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+ .caret{cursor:pointer;color:var(--gray);font-weight:700;user-select:none}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1>Order Review &amp; Fulfillment</h1><div class="sub">Dealer orders submitted on the ordering portal — confirm, ship, and complete them here.</div></div></div>
+  <div id="body"><div class="msg">Loading orders…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money=n=>"$"+Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), ORDERS=[], STATS={}, MANAGE=false, FILT="open", OPEN=new Set();
+const ST=["submitted","confirmed","shipped","completed","cancelled"];
+const LBL={submitted:"New",confirmed:"Confirmed",shipped:"Shipped",completed:"Completed",cancelled:"Cancelled"};
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+async function api(payload){ const r=await fetch("/.netlify/functions/orders-admin",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  const r=await api({action:"list"});
+  if(r.status===401){ gate("Your session ended — sign in again."); return; }
+  const j=r.body;
+  if(j&&j.error==="tables_missing"){ $("#body").innerHTML=`<div class="msg">No orders yet. The order queue fills in as dealers submit orders on the portal.</div>`; return; }
+  if(!j||!j.ok){ $("#body").innerHTML=`<div class="msg err">${esc((j&&(j.error||j.message))||"Couldn't load.")}</div>`; return; }
+  ORDERS=j.orders||[]; STATS=j.stats||{}; MANAGE=!!j.manage;
+  render();
+}
+
+function render(){
+  const openStatuses=new Set(["submitted","confirmed","shipped"]);
+  let rows = FILT==="open" ? ORDERS.filter(o=>openStatuses.has(o.status)) : (FILT==="all"?ORDERS:ORDERS.filter(o=>o.status===FILT));
+  const kpi=(l,v,cls)=>`<div class="kpi"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div></div>`;
+  const kpis=`<div class="kpis" style="margin-bottom:14px">
+    ${kpi("New",STATS.submitted||0,"blue")}${kpi("Confirmed",STATS.confirmed||0,"")}${kpi("Shipped",STATS.shipped||0,"orange")}${kpi("Completed",STATS.completed||0,"")}${kpi("Cancelled",STATS.cancelled||0,"")}
+  </div>`;
+  const seg=(v,l)=>`<button class="${FILT===v?'on':''}" onclick="setFilt('${v}')">${l}</button>`;
+  const filt=`<div class="filt"><div class="seg">${seg("open","Open")}${seg("submitted","New")}${seg("confirmed","Confirmed")}${seg("shipped","Shipped")}${seg("completed","Completed")}${seg("cancelled","Cancelled")}${seg("all","All")}</div><span class="hint" style="margin:0">${rows.length} order${rows.length===1?"":"s"}</span></div>`;
+  let body;
+  if(!rows.length){ body=`<div class="msg">No orders in this view${ORDERS.length?"":" yet — the queue fills as dealers submit orders on the portal"}.</div>`; }
+  else{
+    const trs=rows.map(o=>{
+      const open=OPEN.has(o.id);
+      const acts=MANAGE?actions(o):`<span class="hint" style="margin:0">${esc(o.tracking||"")}</span>`;
+      const main=`<tr>
+        <td><span class="caret" onclick="toggle('${o.id}')">${open?"▾":"▸"}</span></td>
+        <td class="lbl"><a class="link" href="/admin/dealer.html?id=${encodeURIComponent(o.dealer_id||"")}">${esc(o.dealer)}</a>
+          <div class="hint" style="margin:0">${esc(o.manufacturer)}${o.po?" · PO "+esc(o.po):""}${o.rep?" · "+esc(o.rep):""}</div></td>
+        <td class="num">${o.item_count}</td>
+        <td class="num">${money(o.subtotal)}</td>
+        <td>${o.submitted_at?new Date(o.submitted_at).toLocaleDateString():""}</td>
+        <td><span class="st ${o.status}">${LBL[o.status]||o.status}</span>${o.tracking?`<div class="hint" style="margin:0">📦 ${esc(o.tracking)}</div>`:""}</td>
+        <td><div class="acts">${acts}</div></td></tr>`;
+      const exp=open?`<tr class="exp"><td></td><td colspan="6">
+        <div class="hint" style="margin:0 0 6px">Ship to: ${esc(o.ship||"—")} · ${esc(o.contact.name||"")} ${o.contact.phone?"· ☎ "+esc(o.contact.phone):""} ${o.contact.email?"· "+esc(o.contact.email):""}</div>
+        <table class="itbl"><thead><tr><th>Code</th><th>Item</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Line</th></tr></thead>
+        <tbody>${(o.items||[]).map(i=>`<tr><td>${esc(i.code||"")}</td><td>${esc(i.name||"")}</td><td class="num">${i.qty}</td><td class="num">${money(i.unit)}</td><td class="num">${money(i.line)}</td></tr>`).join("")||`<tr><td colspan="5" class="hint">No line items recorded.</td></tr>`}</tbody></table>
+        ${o.notes?`<div class="hint" style="margin:6px 0 0">Dealer note: ${esc(o.notes)}</div>`:""}${o.admin_notes?`<div class="hint" style="margin:2px 0 0">Admin note: ${esc(o.admin_notes)}</div>`:""}</td></tr>`:"";
+      return main+exp;
+    }).join("");
+    body=`<div class="card" style="padding:6px 10px"><table>
+      <thead><tr><th></th><th>Dealer / line</th><th class="num">Items</th><th class="num">Subtotal</th><th>Submitted</th><th>Status</th><th></th></tr></thead>
+      <tbody>${trs}</tbody></table></div>`;
+  }
+  $("#body").innerHTML=kpis+filt+body;
+}
+function actions(o){
+  const btn=(l,s,cls)=>`<button class="btn sm ${cls||''}" onclick="setStatus('${o.id}','${s}')">${l}</button>`;
+  if(o.status==="submitted") return btn("Confirm","confirmed","blue")+btn("Cancel","cancelled","ghost");
+  if(o.status==="confirmed") return btn("Ship","shipped","orange")+btn("Cancel","cancelled","ghost");
+  if(o.status==="shipped")   return btn("Complete","completed","");
+  return `<span class="hint" style="margin:0">${esc(o.tracking||"—")}</span>`;
+}
+function toggle(id){ if(OPEN.has(id))OPEN.delete(id); else OPEN.add(id); render(); }
+function setFilt(v){ FILT=v; render(); }
+async function setStatus(id,status){
+  let tracking;
+  if(status==="shipped"){ tracking=window.prompt("Tracking number (optional):",""); if(tracking===null) return; }
+  const payload={action:"set_status",id,status}; if(tracking) payload.tracking_number=tracking;
+  const r=await api(payload);
+  if(r.body&&r.body.ok){ const o=ORDERS.find(x=>x.id===id); if(o){ o.status=status; if(tracking)o.tracking=tracking; } recomputeStats(); render(); }
+  else alert("Couldn't update: "+((r.body&&(r.body.error||r.body.message))||r.status));
+}
+function recomputeStats(){ const s={}; for(const k of ST)s[k]=0; for(const o of ORDERS)s[o.status]=(s[o.status]||0)+1; STATS=s; }
+
+load();
+</script>
+</body></html>
