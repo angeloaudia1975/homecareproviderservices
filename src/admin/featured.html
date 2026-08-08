@@ -43,13 +43,12 @@
  .go{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer}
  .err{color:var(--red)}
  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none}.toast.show{opacity:1}
-</style></head><body>
-<nav class="adminnav"><div class="bd">HCPS <span>Admin</span></div>
- <a href="/admin/">Home</a><a href="/admin/analytics.html">Analytics</a><a href="/admin/dealers.html">Dealer Manager</a>
- <a href="/admin/images.html">Images</a><a href="/admin/featured.html" class="on">Featured</a><a href="/admin/catalog.html">Catalog</a><a href="/admin/home-editor.html">Portal Home</a><a href="/admin/website.html">Website</a></nav>
+</style><link rel="stylesheet" href="/admin/admin-shell.css"></head><body>
+<header id="ac-head"></header>
 <div class="wrap" id="wrap"><div class="msg">Loading…</div></div>
 <div class="toast" id="toast"></div>
 <script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));

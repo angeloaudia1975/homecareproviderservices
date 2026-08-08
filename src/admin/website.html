@@ -3,6 +3,7 @@
 <meta name="robots" content="noindex, nofollow">
 <title>HCPS Admin — Website Editor</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Barlow:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/admin/admin.css">
 <style>
  /* Unified admin nav (matches the other admin tools) — namespaced so it can't clash with admin.css */
@@ -11,14 +12,32 @@
  .adminnav a{color:#aeb9c6;text-decoration:none;font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-radius:7px}
  .adminnav a:hover{color:#fff}.adminnav a.on{color:#fff;background:#3B599A}
  /* Let the editor's own login card sit under the nav rather than filling the whole viewport */
- #login.login-wrap{min-height:calc(100vh - 46px)}
+ #login.login-wrap{min-height:calc(100vh - 96px)}
+ /* shared masthead (self-contained so it doesn't disturb the editor's own admin.css design) */
+ .ac-head{background:linear-gradient(120deg,#10263f,#2B4071);color:#fff;padding:16px 26px 0;font-family:'Barlow',system-ui,sans-serif;}
+ .ac-wrap{max-width:min(1680px,96vw);margin:0 auto;}
+ .ac-top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+ .ac-brand{display:flex;align-items:center;gap:11px;text-decoration:none;}
+ .ac-mark{width:38px;height:38px;border-radius:10px;background:#F5821F;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed';font-weight:800;font-size:19px;color:#fff;box-shadow:0 6px 16px rgba(245,130,31,.4);}
+ .ac-bt b{font-family:'Barlow Condensed';font-weight:800;font-size:20px;letter-spacing:.3px;display:block;line-height:1;color:#fff;}
+ .ac-bt span{font-size:9.5px;text-transform:uppercase;letter-spacing:2px;color:#aebdd0;font-weight:600;}
+ .ac-who{display:flex;align-items:center;gap:12px;color:#c4d1e0;font-size:13px;}
+ .ac-who b{color:#fff;}
+ .ac-who button{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 13px;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;}
+ .ac-who button:hover{background:rgba(255,255,255,.22);}
+ .ac-nav{display:flex;gap:2px;flex-wrap:wrap;margin-top:12px;}
+ .ac-nav a{color:#aebdd0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:10px 12px;border-bottom:3px solid transparent;white-space:nowrap;text-decoration:none;}
+ .ac-nav a:hover{color:#fff;}
+ .ac-nav a.on{color:#fff;border-color:#F5821F;}
+ .ac-sub{display:flex;gap:3px;flex-wrap:wrap;align-items:center;margin-top:2px;padding-bottom:12px;}
+ .ac-sub-lbl{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#8aa0bd;font-weight:800;margin-right:8px;}
+ .ac-sub a{color:#c4d1e0;font-size:12px;font-weight:600;padding:6px 11px;border-radius:8px;white-space:nowrap;text-decoration:none;}
+ .ac-sub a:hover{color:#fff;background:rgba(255,255,255,.08);}
+ .ac-sub a.on{color:#fff;background:#F5821F;}
 </style>
 </head><body>
 
-<nav class="adminnav"><div class="bd">HCPS <span>Admin</span></div>
- <a href="/admin/">Home</a><a href="/admin/analytics.html">Analytics</a><a href="/admin/dealers.html">Dealer Manager</a>
-  <a href="/admin/map.html">Map</a>
- <a href="/admin/images.html">Images</a><a href="/admin/featured.html">Featured</a><a href="/admin/catalog.html">Catalog</a><a href="/admin/home-editor.html">Portal Home</a><a href="/admin/website.html" class="on">Website</a></nav>
+<header id="ac-head"></header>
 
 <!-- Login -->
 <div id="login" class="login-wrap">
@@ -59,6 +78,7 @@
 <div id="toast" class="toast" hidden></div>
 <div id="busy" class="busy" hidden><div class="spinner"></div><span id="busy-msg">Working…</span></div>
 
+<script>window.lock=function(){var b=document.getElementById("logout-btn");if(b){b.click();}else{location.reload();}};</script>
+<script src="/admin/admin-chrome.js"></script>
 <script src="/admin/admin.js"></script>
-<div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.2</div>
 </body></html>

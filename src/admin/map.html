@@ -80,21 +80,9 @@
  .gate-card input:focus{outline:2px solid rgba(59,89,154,.35);border-color:var(--blue)}
  .gate-card button{width:100%;margin-top:12px;padding:12px;border:0;border-radius:9px;background:var(--blue);color:#fff;font-weight:800;font-size:14px;cursor:pointer}
  .gate-card .er{color:var(--danger);font-size:12.5px;margin-top:10px;min-height:16px}
-</style></head><body>
+</style><link rel="stylesheet" href="/admin/admin-shell.css"></head><body>
 
-<nav class="adminnav">
-  <div class="bd">HCPS <span>Admin</span></div>
-  <a href="/admin/">Home</a>
-  <a href="/admin/analytics.html">Analytics</a>
-  <a href="/admin/dealers.html">Dealer Manager</a>
-  <a href="/admin/map.html" class="on">Map</a>
-  <a href="/admin/images.html">Images</a>
-  <a href="/admin/featured.html">Featured</a>
-  <a href="/admin/catalog.html">Catalog</a>
-  <a href="/admin/home-editor.html">Portal Home</a>
-  <a href="/admin/website.html">Website</a>
-  <div class="navright"><button class="lock" onclick="lock()">Lock</button></div>
-</nav>
+<header id="ac-head"></header>
 
 <div id="banner"></div>
 
@@ -152,6 +140,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
 <script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";

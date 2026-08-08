@@ -80,11 +80,9 @@ button.go{background:#10263f;color:#fff;border:0;border-radius:8px;padding:9px 1
 .adminnav .bd span{color:#F5821F}
 .adminnav a{color:#aeb9c6;text-decoration:none;font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-radius:7px}
 .adminnav a:hover{color:#fff}.adminnav a.on{color:#fff;background:#3B599A}
-</style></head>
+</style><link rel="stylesheet" href="/admin/admin-shell.css"></head>
 <body>
-<nav class="adminnav"><div class="bd">HCPS <span>Admin</span></div>
- <a href="/admin/">Home</a><a href="/admin/analytics.html" class="on">Analytics</a><a href="/admin/dealers.html">Dealer Manager</a>
- <a href="/admin/images.html">Images</a><a href="/admin/featured.html">Featured</a><a href="/admin/catalog.html">Catalog</a><a href="/admin/home-editor.html">Portal Home</a><a href="/admin/website.html">Website</a></nav>
+<header id="ac-head"></header>
 <div class="wrap">
 <div class="top">
   <div><h1>HomeCare Provider Services</h1><div class="sub">Sales &amp; Commission Analytics — business development tool</div></div>
@@ -97,6 +95,7 @@ button.go{background:#10263f;color:#fff;border:0;border-radius:8px;padding:9px 1
 <div class="foot" id="foot"></div>
 </div>
 <script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const money=n=>"$"+Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});

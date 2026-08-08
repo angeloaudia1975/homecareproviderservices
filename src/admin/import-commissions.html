@@ -27,13 +27,8 @@
  .recvrow{display:flex;align-items:center;gap:10px;padding:3px 0;border-bottom:1px solid #f0f2f5}.rname{flex:1;min-width:170px;font-size:13px}
  .rzrow{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eef1f4;flex-wrap:wrap}.rzrow .rn{flex:1;min-width:230px;font-size:13px}
  .warn{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;color:#9a3412;font-size:13px;margin-top:8px}
-</style></head><body>
-<nav class="adminnav">
-  <div class="bd">HCPS <span>Admin</span></div>
-  <a href="/admin/">Home</a><a href="/admin/analytics.html">Analytics</a><a href="/admin/dealers.html">Dealer Manager</a>
-  <a href="/admin/map.html">Map &amp; Routes</a><a href="/admin/import-commissions.html" style="color:#fff">Import Commissions</a>
-  <span style="margin-left:auto"><button class="go gray" onclick="lock()">Lock</button></span>
-</nav>
+</style><link rel="stylesheet" href="/admin/admin-shell.css"></head><body>
+<header id="ac-head"></header>
 <div id="app" class="wrap" style="display:none">
   <h1>Import commission reports</h1>
   <p class="sub">Upload a manufacturer's monthly report (Excel, CSV, or PDF), map its columns once, and it loads into your analytics. The mapping is remembered per manufacturer for next month.</p>
@@ -73,6 +68,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";

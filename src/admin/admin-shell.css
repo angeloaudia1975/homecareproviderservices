@@ -34,6 +34,12 @@ a{text-decoration:none;color:inherit;}
 .ac-nav a{color:#aebdd0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:10px 12px;border-bottom:3px solid transparent;white-space:nowrap;}
 .ac-nav a:hover{color:#fff;}
 .ac-nav a.on{color:#fff;border-color:var(--orange);}
+/* second tier: the tools inside the current hub */
+.ac-sub{display:flex;gap:3px;flex-wrap:wrap;align-items:center;margin-top:2px;padding-bottom:12px;}
+.ac-sub-lbl{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#8aa0bd;font-weight:800;margin-right:8px;}
+.ac-sub a{color:#c4d1e0;font-size:12px;font-weight:600;padding:6px 11px;border-radius:8px;white-space:nowrap;}
+.ac-sub a:hover{color:#fff;background:rgba(255,255,255,.08);}
+.ac-sub a.on{color:#fff;background:var(--orange);}
 
 /* ---------- page shell ---------- */
 .wrap{max-width:min(1680px,96vw);margin:0 auto;padding:20px 26px 60px;}
