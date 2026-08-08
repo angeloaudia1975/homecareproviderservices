@@ -207,6 +207,33 @@ exports.handler = async (event)=>{
       return json(200,{ ok:res.errors.length===0, stage, offset:off, count:slice.length, total:(master.contacts||[]).length, inserted:res.inserted, updated:res.updated, linked, unlinked:records.length-linked, errors:res.errors.slice(0,5) });
     }
 
+    // Sync sales into Zoho as Deals — one closed-won deal per (dealer, manufacturer) with the
+    // total amount, linked to the Account. Sliced by {offset, limit} to avoid timeouts.
+    if(b.action==="sync_deals"){
+      const c=await connect(); if(!c.ok) return json(200,{ok:false,message:"Not connected.",reason:c.reason});
+      const accts=await getAllRecords(c.apiDomain,c.token,"Accounts","Account_Name");
+      const acctIdByName={}; for(const a of (accts||[])){ if(a.Account_Name) acctIdByName[String(a.Account_Name)]=a.id; }
+      const dealers=await sbGetAll("dealers?select=id,business_name","id");
+      const nameByDealer={}; for(const d of dealers) nameByDealer[String(d.id)]=(clean(d.business_name)||("Dealer "+d.id)).slice(0,255);
+      const sales=await sbGetAll("monthly_sales?select=dealer_id,manufacturer,amount,period&dealer_id=not.is.null","id");
+      const agg={};
+      for(const s of (sales||[])){ if(!s.dealer_id||!s.manufacturer) continue; const k=s.dealer_id+"|"+s.manufacturer;
+        const a=agg[k]||(agg[k]={amount:0,last:null,dealer_id:s.dealer_id,manufacturer:s.manufacturer});
+        a.amount+=Number(s.amount)||0; const p=(s.period||"").slice(0,10); if(p&&(!a.last||p>a.last)) a.last=p; }
+      const all=Object.values(agg).sort((x,y)=>(x.dealer_id+x.manufacturer<y.dealer_id+y.manufacturer?-1:1));
+      const off=Number(b.offset)||0, lim=Number(b.limit)||150;
+      const today=new Date().toISOString().slice(0,10);
+      const records=all.slice(off,off+lim).map(a=>{
+        const acctName=nameByDealer[String(a.dealer_id)]; const acctId=acctIdByName[acctName];
+        const rec={ Deal_Name:((acctName||"Dealer")+" — "+a.manufacturer).slice(0,255), Amount:Math.round(a.amount*100)/100, Stage:"Closed Won", Closing_Date:a.last||today };
+        if(acctId) rec.Account_Name={ id:acctId };
+        return { key:a.dealer_id+"|"+a.manufacturer, record:rec };
+      });
+      const res=await upsertRecords(c.apiDomain,c.token,"Deals",records,["Deal_Name"]);
+      const linked=records.filter(r=>r.record.Account_Name).length;
+      return json(200,{ ok:res.errors.length===0, offset:off, count:records.length, total:all.length, inserted:res.inserted, updated:res.updated, linked, errors:res.errors.slice(0,5) });
+    }
+
     return json(400,{error:"unknown action"});
   }catch(e){ return json(500,{error:String(e.message||e)}); }
 };
