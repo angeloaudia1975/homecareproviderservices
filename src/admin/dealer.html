@@ -172,7 +172,9 @@ function render(D,A){
   if(due.length) sig.push(`<div class="row warn">⏰ <div><b>${due.length} line${due.length===1?"":"s"} overdue to reorder</b><div class="hint" style="margin:0">${esc(due.slice(0,3).map(l=>l.line).join(", "))}</div></div></div>`);
   if(monthsSince!=null && monthsSince>=3) sig.push(`<div class="row cool">💤 <div><b>Dormant ${monthsSince} months</b><div class="hint" style="margin:0">no orders since ${pmLabel(lastPm)}</div></div></div>`);
   if(!sig.length) sig.push(`<div class="row">✅ <div>No follow-up flags right now.</div></div>`);
-  const signals=`<div class="card"><h2>Signals</h2><div class="sig">${sig.join("")}</div></div>`;
+  const signals=`<div class="card"><h2>Signals</h2><div class="sig">${sig.join("")}</div>
+    <button class="btn sm orange" style="margin-top:10px;width:100%" onclick="sendReengage()">✉ Send re-engagement email</button>
+    <div id="reMsg" class="hint" style="margin:6px 0 0"></div></div>`;
 
   // addresses
   const addrs=(info.addresses||d.addresses||[]);
@@ -220,6 +222,14 @@ async function loadCRM(){
 async function addTask(){ const t=(($("#ntitle")||{}).value||"").trim(); if(!t)return; const due=($("#ndue")||{}).value||""; await crm({action:"add_task",dealer_id:CUR,title:t,due_date:due}); loadCRM(); }
 async function addNote(){ const b=(($("#nbody")||{}).value||"").trim(); if(!b)return; await crm({action:"add_note",dealer_id:CUR,body:b}); loadCRM(); }
 async function taskAction(id,act){ await crm({action:act,id}); loadCRM(); }
+async function sendReengage(){
+  if(!CUR) return;
+  if(!confirm("Send the 'we've missed you — come back and reorder' email to this dealer's contact?")) return;
+  const el=$("#reMsg"); if(el) el.textContent="Sending…";
+  const j=await crm({action:"send_reengagement",dealer_id:CUR});
+  if(el) el.textContent = j.ok ? ("✓ Sent to "+j.to) : ("⚠ "+(j.message||j.error||"couldn't send"));
+  if(j.ok) loadCRM();
+}
 
 // tiny monthly sales sparkline (single series, this dealer)
 function sparkline(byMonth,latest){

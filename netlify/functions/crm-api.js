@@ -26,6 +26,27 @@ const pmOf=p=>{ const s=String(p||"").slice(0,7); const[y,m]=s.split("-").map(Nu
 // Resolve dealer_id -> business_name for a set of ids (chunked to keep URLs short).
 async function namesFor(ids){ const out={}; const u=[...new Set(ids.filter(Boolean))]; for(let i=0;i<u.length;i+=150){ const part=u.slice(i,i+150).map(encodeURIComponent).join(","); try{ const ds=await sbGet(`dealers?id=in.(${part})&select=id,business_name`); for(const d of ds) out[d.id]=d.business_name; }catch(e){} } return out; }
 
+// ---- Re-engagement email (Resend) ----
+const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAIL_FROM=process.env.HCPS_MAIL_FROM||"HCPS Partner Portal <orders@homecareproviderservices.us>";
+const ORDERING=process.env.ORDERING_BASE||"https://hcpsonlineordering.netlify.app";
+const SITE_BASE=process.env.SITE_BASE||"https://homecareproviderservices.netlify.app";
+const eesc=s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+async function sendMail({to,subject,html,text}){
+  const key=process.env.RESEND_API_KEY; if(!key) return {ok:false,skipped:true};
+  try{ const r=await fetch("https://api.resend.com/emails",{method:"POST",headers:{Authorization:`Bearer ${key}`,"Content-Type":"application/json"},body:JSON.stringify({from:MAIL_FROM,to:[to],subject,html,text})}); return {ok:r.ok}; }
+  catch(e){ return {ok:false}; }
+}
+function reengageHtml(dealer,unsub){
+  const hi=dealer?(", "+eesc(dealer)):"";
+  return `<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:560px">
+    <h2 style="color:#2B4071;margin:0 0 6px">We've missed you${hi}</h2>
+    <p style="font-size:13.5px;line-height:1.6;color:#374151;margin:0 0 12px">It's been a little while since your last order with HomeCare Provider Services. Your account is active and ready — browse your manufacturer lines, see your pricing, and reorder in a couple of clicks, 24/7.</p>
+    <a href="${ORDERING}" style="display:inline-block;background:#F5821F;color:#fff;text-decoration:none;font-weight:700;padding:11px 18px;border-radius:8px;font-size:14px">Sign in &amp; reorder →</a>
+    <p style="font-size:12.5px;line-height:1.6;color:#6b7280;margin:16px 0 0">Questions, or want a hand with a reorder? Reply to this email or reach your HCPS rep — glad to help.</p>
+    <p style="font-size:12px;color:#9aa4ae;margin:14px 0 0">HomeCare Provider Services · Your partner in mobility &amp; home medical equipment.<br><a href="${unsub}" style="color:#9aa4ae">Unsubscribe from these emails</a></p></div>`;
+}
+
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
   const tok=auth.replace(/^Bearer\s+/i,"").trim();
@@ -162,6 +183,26 @@ exports.handler = async (event)=>{
       let created=0; for(let i=0;i<toCreate.length;i+=200){ const part=toCreate.slice(i,i+200); try{ await sbSend("POST","dealer_tasks",part,{Prefer:"return=minimal"}); created+=part.length; }catch(e){} }
       let closed=0; for(const t of existing){ const sig=desired.get(t.dealer_id); if(!(sig&&sig.has(t.reason))){ try{ await sbSend("PATCH",`dealer_tasks?id=eq.${encodeURIComponent(t.id)}`,{status:"dismissed",done_at:new Date().toISOString()},{Prefer:"return=minimal"}); closed++; }catch(e){} } }
       return json(200,{ok:true,dealers_flagged:desired.size,created,dismissed:closed,open_auto:(existing.length-closed)+created});
+    }
+
+    // Rep-triggered re-engagement email to a dealer's contact. Respects the opt-out list,
+    // sends via Resend with an unsubscribe link, and logs the send to the activity timeline.
+    if(b.action==="send_reengagement"){
+      if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+      const did=encodeURIComponent(b.dealer_id);
+      const drows=await sbGet(`dealers?id=eq.${did}&select=business_name,email`).catch(()=>[]); const d=drows&&drows[0];
+      if(!d) return json(404,{error:"dealer not found"});
+      let to=clean(b.contact_email,180)||d.email||null;
+      if(!to){ const c=await sbGet(`dealer_contacts?dealer_id=eq.${did}&select=email&limit=1`).catch(()=>[]); to=(c&&c[0]&&c[0].email)||null; }
+      to=String(to||"").trim(); if(!EMAIL_RE.test(to)) return json(200,{ok:false,message:"No valid contact email on file for this dealer."});
+      const opt=await sbGet(`email_optout?email=eq.${encodeURIComponent(to.toLowerCase())}&select=email`).catch(()=>[]);
+      if(opt&&opt[0]) return json(200,{ok:false,message:"That contact has unsubscribed from marketing emails."});
+      const unsub=`${SITE_BASE}/.netlify/functions/unsubscribe?e=${encodeURIComponent(to)}&d=${encodeURIComponent(b.dealer_id)}`;
+      const res=await sendMail({to,subject:"We've missed you at HomeCare Provider Services",html:reengageHtml(d.business_name,unsub),text:`We've missed you${d.business_name?", "+d.business_name:""}!\n\nIt's been a while since your last order with HomeCare Provider Services. Your account is active — sign in to browse your lines, see pricing, and reorder 24/7:\n${ORDERING}\n\nReply to this email or reach your HCPS rep for a hand.\n\nUnsubscribe: ${unsub}`});
+      if(res.skipped) return json(200,{ok:false,message:"Email isn't configured yet (RESEND_API_KEY not set)."});
+      if(!res.ok) return json(200,{ok:false,message:"The email failed to send — please try again."});
+      try{ await sbSend("POST","dealer_activity",{dealer_id:b.dealer_id,kind:"campaign",subject:"Re-engagement email sent",contact_email:to,actor:me.name||"staff"},{Prefer:"return=minimal"}); }catch(e){}
+      return json(200,{ok:true,to});
     }
 
     return json(400,{error:"unknown action"});
