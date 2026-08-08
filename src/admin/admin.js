@@ -15,6 +15,8 @@
     team: "src/_data/team.json",
     testimonials: "src/_data/testimonials.json",
     pages: "src/_data/pages.json",
+    seo: "src/_data/seo.json",
+    redirects: "src/_data/redirects.json",
   };
 
   // ---- Schemas for the simple data editors (Home Page / Site / Team / Testimonials) ----
@@ -85,6 +87,16 @@
     { k: "quote", label: "Quote", type: "textarea", full: true },
     { k: "name", label: "Name", type: "text" },
     { k: "role", label: "Role / company", type: "text" },
+  ];
+  var SEO_ITEM = [
+    { k: "path", label: "Page path (e.g. / or /contact/)", type: "text" },
+    { k: "title", label: "SEO / browser title", type: "text", full: true },
+    { k: "description", label: "Meta description (~150–160 characters)", type: "textarea", full: true },
+  ];
+  var REDIR_ITEM = [
+    { k: "from", label: "From path (e.g. /old-page/)", type: "text" },
+    { k: "to", label: "To path or full URL", type: "text" },
+    { k: "status", label: "Status — 301 permanent, 302 temporary", type: "text" },
   ];
 
   // ---- Content pages (pages.json): Partner, Contact, Consulting, Dealer Hub ----
@@ -210,6 +222,10 @@
       note: "Add, edit, reorder, or remove consulting team members shown on the homepage. Upload a photo for each." },
     testimonials: { file: "testimonials", title: "Testimonials", root: "array", item: TESTI_ITEM, itemLabel: "Testimonial",
       note: "Dealer quotes shown on the homepage." },
+    seo: { file: "seo", title: "SEO", root: "array", item: SEO_ITEM, itemLabel: "Page",
+      note: "Per-page search title and meta description. Path must match the live URL exactly (with leading and trailing slash, e.g. /contact/). Pages without an entry keep their default title and the site description." },
+    redirects: { file: "redirects", title: "Redirects", root: "array", item: REDIR_ITEM, itemLabel: "Redirect",
+      note: "Send an old or moved URL to a new one (great for SEO when a page changes address). From is a path on this site (/old/); To is a path or full URL. Use 301 for a permanent move. Takes effect on the next publish." },
   };
 
   // ---- Block schemas: mirror src/_includes/blocks/*.njk ----

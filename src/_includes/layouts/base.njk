@@ -3,8 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ title }} | {{ site.name }}</title>
-<meta name="description" content="{{ description or site.meta_description }}">
+{%- set pageseo = false -%}
+{%- for s in seo -%}{%- if s.path == page.url -%}{%- set pageseo = s -%}{%- endif -%}{%- endfor -%}
+{%- set metaTitle = pageseo.title if (pageseo and pageseo.title) else (title + " | " + site.name) -%}
+{%- set metaDesc = (pageseo.description if pageseo else "") or description or site.meta_description -%}
+<title>{{ metaTitle }}</title>
+<meta name="description" content="{{ metaDesc }}">
+<meta property="og:title" content="{{ metaTitle }}">
+<meta property="og:description" content="{{ metaDesc }}">
+<meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Archivo+Expanded:wght@700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
