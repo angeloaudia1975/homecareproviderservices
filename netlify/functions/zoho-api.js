@@ -234,6 +234,38 @@ exports.handler = async (event)=>{
       return json(200,{ ok:res.errors.length===0, offset:off, count:records.length, total:all.length, inserted:res.inserted, updated:res.updated, linked, errors:res.errors.slice(0,5) });
     }
 
+    // One-way mirror: push the portal's CRM notes + tasks up to the matching Zoho Account as
+    // Zoho Notes + Tasks. Idempotent — only records with zoho_synced_at IS NULL are pushed, and
+    // each is stamped on success. Supabase stays the system of record; Zoho gets a live copy.
+    if(b.action==="mirror_to_zoho"){
+      const c=await connect(); if(!c.ok) return json(200,{ok:false,message:"Not connected to Zoho.",reason:c.reason});
+      const dealers=await sbGetAll("dealers?select=id,business_name","id");
+      const nameById={}; for(const d of dealers) nameById[d.id]=d.business_name;
+      const accts=await getAllRecords(c.apiDomain,c.token,"Accounts","Account_Name");
+      const acctIdByName={}; for(const a of (accts||[])){ if(a.Account_Name) acctIdByName[String(a.Account_Name)]=a.id; }
+      let notesPushed=0, notesSkipped=0, tasksPushed=0, tasksSkipped=0; const errors=[];
+      // notes
+      let notes=[]; try{ notes=await sbGetAll("dealer_notes?zoho_synced_at=is.null&select=id,dealer_id,body,author_name,created_at","id"); }catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run supabase/crm.sql + crm2.sql first."}); }
+      for(const n of notes){ const acc=acctIdByName[nameById[n.dealer_id]]; if(!acc){ notesSkipped++; continue; }
+        const r=await zoho("POST",c.apiDomain,c.token,"/crm/v8/Notes",{data:[{Note_Title:("Note — "+(n.author_name||"HCPS")).slice(0,120),Note_Content:String(n.body||"").slice(0,32000),Parent_Id:acc,se_module:"Accounts"}]});
+        const ok=r.ok && r.json && Array.isArray(r.json.data) && r.json.data[0] && r.json.data[0].code==="SUCCESS";
+        if(ok){ await sbSend("PATCH",`dealer_notes?id=eq.${encodeURIComponent(n.id)}`,{zoho_synced_at:new Date().toISOString()},{Prefer:"return=minimal"}).catch(()=>{}); notesPushed++; }
+        else if(errors.length<5){ errors.push({note:n.id,msg:(r.json&&JSON.stringify(r.json).slice(0,160))||("http "+r.status)}); }
+      }
+      // tasks
+      let tasks=[]; try{ tasks=await sbGetAll("dealer_tasks?zoho_synced_at=is.null&select=id,dealer_id,title,detail,due_date,status","id"); }catch(e){ tasks=[]; }
+      for(const t of tasks){ const acc=acctIdByName[nameById[t.dealer_id]]; if(!acc){ tasksSkipped++; continue; }
+        const rec={Subject:String(t.title||"Task").slice(0,255),Status:t.status==="done"?"Completed":t.status==="dismissed"?"Deferred":"Not Started",What_Id:acc,$se_module:"Accounts"};
+        if(/^\d{4}-\d{2}-\d{2}$/.test(String(t.due_date||""))) rec.Due_Date=t.due_date;
+        if(t.detail) rec.Description=String(t.detail).slice(0,30000);
+        const r=await zoho("POST",c.apiDomain,c.token,"/crm/v8/Tasks",{data:[rec]});
+        const ok=r.ok && r.json && Array.isArray(r.json.data) && r.json.data[0] && r.json.data[0].code==="SUCCESS";
+        if(ok){ await sbSend("PATCH",`dealer_tasks?id=eq.${encodeURIComponent(t.id)}`,{zoho_synced_at:new Date().toISOString()},{Prefer:"return=minimal"}).catch(()=>{}); tasksPushed++; }
+        else if(errors.length<5){ errors.push({task:t.id,msg:(r.json&&JSON.stringify(r.json).slice(0,160))||("http "+r.status)}); }
+      }
+      return json(200,{ok:errors.length===0,notes_pushed:notesPushed,notes_skipped:notesSkipped,tasks_pushed:tasksPushed,tasks_skipped:tasksSkipped,errors});
+    }
+
     return json(400,{error:"unknown action"});
   }catch(e){ return json(500,{error:String(e.message||e)}); }
 };

@@ -55,7 +55,7 @@ async function load(){
   TASKS=(j&&j.tasks)||[]; ROLE=(j&&j.role)||"";
   REPS=[...new Set(TASKS.map(t=>t.assigned_rep).filter(Boolean))].sort();
   // president gets the engine trigger
-  $("#runbox").innerHTML = ROLE==="president" ? `<button class="btn orange" id="runbtn" onclick="runEngine()">▶ Run follow-up engine</button>` : "";
+  $("#runbox").innerHTML = ROLE==="president" ? `<button class="btn orange" id="runbtn" onclick="runEngine()">▶ Run follow-up engine</button> <button class="btn ghost" id="mirbtn" onclick="mirrorZoho()">⤴ Mirror to Zoho</button>` : "";
   render();
 }
 
@@ -67,6 +67,13 @@ async function runEngine(){
   else { if(b){ b.disabled=false; b.textContent="▶ Run follow-up engine"; } alert("Couldn't run: "+(j.error||j.message||r.status)); }
 }
 
+async function mirrorZoho(){
+  const b=$("#mirbtn"); if(b){ b.disabled=true; b.textContent="Mirroring to Zoho…"; }
+  const r=await fetch("/.netlify/functions/zoho-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action:"mirror_to_zoho"})});
+  const j=await r.json().catch(()=>({}));
+  if(b){ b.disabled=false; b.textContent = j.ok ? `✓ ${j.notes_pushed} notes · ${j.tasks_pushed} tasks → Zoho` : "⤴ Mirror to Zoho"; }
+  if(!j.ok) alert("Mirror to Zoho: "+(j.message||j.error||r.status));
+}
 function render(){
   let rows=TASKS.filter(t=> (FSRC==="all"||t.source===FSRC) && (FREP==="all"||t.assigned_rep===FREP) );
   const c={open:TASKS.length,high:TASKS.filter(t=>t.priority==="high").length,auto:TASKS.filter(t=>t.source==="auto").length,manual:TASKS.filter(t=>t.source==="manual").length};

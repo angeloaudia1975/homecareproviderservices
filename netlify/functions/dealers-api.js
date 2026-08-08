@@ -524,6 +524,7 @@ exports.handler = async (event)=>{
           let dealerName=null;
           if(dealerId){ try{ const dn=await sbGet(`dealers?id=eq.${encodeURIComponent(dealerId)}&select=business_name`); dealerName=dn&&dn[0]&&dn[0].business_name||null; }catch(e){} }
           try{ await sendWelcomeEmail(loginEmail, dealerName); }catch(e){ console.error("welcome email failed",e&&e.message); }
+          if(dealerId&&loginEmail){ try{ await sbSend("POST","dealer_activity",{dealer_id:dealerId,kind:"email",subject:"Welcome email sent",contact_email:loginEmail,actor:me.name||"admin"},{Prefer:"return=minimal"}); }catch(e){} }
         }
         return json(200,{ok:true,dealer_id:dealerId,welcomed:prevStatus!=="approved"});
       }

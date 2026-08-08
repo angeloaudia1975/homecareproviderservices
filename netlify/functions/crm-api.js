@@ -56,11 +56,12 @@ exports.handler = async (event)=>{
     if(b.action==="list"){
       if(!b.dealer_id) return json(400,{error:"dealer_id required"});
       const did=encodeURIComponent(b.dealer_id);
-      const [notes,tasks]=await Promise.all([
+      const [notes,tasks,activity]=await Promise.all([
         sbGet(`dealer_notes?dealer_id=eq.${did}&select=*&order=created_at.desc&limit=200`).catch(()=>[]),
         sbGet(`dealer_tasks?dealer_id=eq.${did}&select=*&order=status.asc,due_date.asc.nullslast,created_at.desc&limit=200`).catch(()=>[]),
+        sbGet(`dealer_activity?dealer_id=eq.${did}&select=*&order=created_at.desc&limit=50`).catch(()=>[]),
       ]);
-      return json(200,{ok:true,notes:notes||[],tasks:tasks||[]});
+      return json(200,{ok:true,notes:notes||[],tasks:tasks||[],activity:activity||[]});
     }
 
     if(b.action==="add_note"){
