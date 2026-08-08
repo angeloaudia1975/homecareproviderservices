@@ -91,4 +91,17 @@ async function upsertRecords(apiDomain, token, module, records, dupFields){
   return out;
 }
 
-module.exports = { hasCreds, exchangeCode, accessToken, zoho, getFields, ensureTextField, upsertRecords, ACCOUNTS };
+// Read all records of a module (paginated, 200/page) with the given comma-separated fields.
+async function getAllRecords(apiDomain, token, module, fields){
+  const out=[]; let page=1;
+  for(;;){
+    const r = await zoho("GET", apiDomain, token, `/crm/v8/${encodeURIComponent(module)}?fields=${encodeURIComponent(fields)}&per_page=200&page=${page}`);
+    if(!r.ok || !r.json || !Array.isArray(r.json.data)) break;
+    out.push(...r.json.data);
+    if(!(r.json.info && r.json.info.more_records)) break;
+    page++; if(page>60) break;   // safety cap
+  }
+  return out;
+}
+
+module.exports = { hasCreds, exchangeCode, accessToken, zoho, getFields, ensureTextField, upsertRecords, getAllRecords, ACCOUNTS };

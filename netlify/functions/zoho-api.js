@@ -10,8 +10,12 @@
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
-const { hasCreds, exchangeCode, accessToken, zoho, ensureTextField, upsertRecords, ACCOUNTS } = require("./_zoho.js");
+const { hasCreds, exchangeCode, accessToken, zoho, ensureTextField, upsertRecords, getAllRecords, ACCOUNTS } = require("./_zoho.js");
 const clean = v => { const s=(v==null?"":String(v)).trim(); return s||undefined; };
+// Derive a website from a business email domain; skip common personal providers.
+const PERSONAL = new Set(["gmail.com","yahoo.com","hotmail.com","aol.com","outlook.com","icloud.com","comcast.net","att.net","msn.com","live.com","sbcglobal.net","bellsouth.net","ymail.com","me.com","cox.net","verizon.net","charter.net","windstream.net"]);
+const websiteFrom = email => { const m=String(email||"").trim().toLowerCase().match(/@([^@\s]+)$/); if(!m) return undefined; const dom=m[1]; return PERSONAL.has(dom)?undefined:("https://"+dom); };
+const splitName = n => { const p=String(n||"").trim().split(/\s+/).filter(Boolean); if(!p.length) return {first:"",last:""}; return { first:p.slice(0,-1).join(" ")||p[0], last:p.length>1?p[p.length-1]:p[0] }; };
 
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
@@ -101,14 +105,43 @@ exports.handler = async (event)=>{
     if(b.action==="sync_accounts"){
       const c=await connect();
       if(!c.ok) return json(200,{ok:false,message:"Not connected.",reason:c.reason});
-      const dealers=await sbGetAll("dealers?select=id,business_name,city,state,zip,phone,address","id");
+      const dealers=await sbGetAll("dealers?select=id,business_name,city,state,zip,phone,address,email","id");
       const records=dealers.map(d=>({ key:String(d.id), record:{
         Account_Name:(clean(d.business_name)||("Dealer "+d.id)).slice(0,255),
-        Phone:clean(d.phone),
+        Phone:clean(d.phone), Website:websiteFrom(d.email),
         Billing_Street:clean(d.address), Billing_City:clean(d.city), Billing_State:clean(d.state), Billing_Code:clean(d.zip),
       }}));
       const res=await upsertRecords(c.apiDomain,c.token,"Accounts",records,["Account_Name"]);
       return json(200,{ ok:res.errors.length===0, total:dealers.length, processed:res.processed, inserted:res.inserted, updated:res.updated, errors:res.errors.slice(0,5) });
+    }
+
+    // Push dealer people into Zoho as Contacts (matched on Email), each linked to its dealer's
+    // Account via the native Account lookup — which is the association. Only emailed contacts sync.
+    if(b.action==="sync_contacts"){
+      const c=await connect();
+      if(!c.ok) return json(200,{ok:false,message:"Not connected.",reason:c.reason});
+      // map each dealer to its Zoho Account id (accounts were matched on Account_Name = business_name)
+      const accts=await getAllRecords(c.apiDomain,c.token,"Accounts","Account_Name");
+      const acctIdByName={}; for(const a of (accts||[])){ if(a.Account_Name) acctIdByName[a.Account_Name]=a.id; }
+      const dealers=await sbGetAll("dealers?select=id,business_name,contact_name,email","id");
+      const nameByDealer={}; for(const d of dealers) nameByDealer[String(d.id)]=(clean(d.business_name)||("Dealer "+d.id)).slice(0,255);
+      const people=[];
+      const dc=await sbGetAll("dealer_contacts?select=id,dealer_id,name,email,phone,title","id").catch(()=>[]);
+      for(const x of (dc||[])){ const email=clean(x.email); if(!email) continue; const nm=splitName(x.name);
+        people.push({ dealer_id:String(x.dealer_id), email, first:nm.first, last:nm.last, phone:clean(x.phone), title:clean(x.title) }); }
+      for(const d of dealers){ const email=clean(d.email); if(!email) continue; const nm=splitName(d.contact_name);
+        people.push({ dealer_id:String(d.id), email, first:nm.first, last:nm.last }); }
+      const seen=new Set(), uniq=[];
+      for(const p of people){ const k=p.email.toLowerCase(); if(seen.has(k)) continue; seen.add(k); uniq.push(p); }
+      const records=uniq.map(p=>{
+        const acctId=acctIdByName[nameByDealer[p.dealer_id]];
+        const rec={ Last_Name:(p.last||p.first||nameByDealer[p.dealer_id]||"Contact").slice(0,80), First_Name:clean(p.first), Email:p.email, Phone:p.phone, Title:p.title };
+        if(acctId) rec.Account_Name={ id:acctId };
+        return { key:p.email, record:rec };
+      });
+      const res=await upsertRecords(c.apiDomain,c.token,"Contacts",records,["Email"]);
+      const linked=records.filter(r=>r.record.Account_Name).length;
+      return json(200,{ ok:res.errors.length===0, total:uniq.length, processed:res.processed, inserted:res.inserted, updated:res.updated, linked_to_account:linked, errors:res.errors.slice(0,5) });
     }
 
     return json(400,{error:"unknown action"});
