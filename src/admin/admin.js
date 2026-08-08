@@ -75,9 +75,10 @@
       { k: "title", label: "Title", type: "text" },
       { k: "description", label: "Description", type: "textarea", full: true } ] },
     { k: "analytics", label: "Website analytics", type: "object", full: true, item: [
-      { k: "provider", label: "Provider — type ga4 or plausible (blank = off)", type: "text" },
-      { k: "ga4_id", label: "GA4 Measurement ID (G-XXXXXXXXXX)", type: "text" },
-      { k: "plausible_domain", label: "Plausible domain (e.g. homecareproviderservices.us)", type: "text" } ] },
+      { k: "provider", label: "Provider — type cloudflare, plausible, or ga4 (blank = off)", type: "text" },
+      { k: "cloudflare_token", label: "Cloudflare site token (from Web Analytics → your site → snippet)", type: "text" },
+      { k: "plausible_domain", label: "Plausible domain (e.g. homecareproviderservices.org)", type: "text" },
+      { k: "ga4_id", label: "GA4 Measurement ID (G-XXXXXXXXXX)", type: "text" } ] },
   ];
 
   var TEAM_ITEM = [

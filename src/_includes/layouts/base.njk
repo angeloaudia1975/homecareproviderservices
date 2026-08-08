@@ -21,6 +21,8 @@
 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','{{ site.analytics.ga4_id }}');</script>
 {%- elif site.analytics and site.analytics.provider == "plausible" and site.analytics.plausible_domain %}
 <script defer data-domain="{{ site.analytics.plausible_domain }}" src="https://plausible.io/js/script.js"></script>
+{%- elif site.analytics and site.analytics.provider == "cloudflare" and site.analytics.cloudflare_token %}
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "{{ site.analytics.cloudflare_token }}"}'></script>
 {%- endif %}
 </head>
 <body>

@@ -54,7 +54,7 @@ async function load(){
   const r=await api({action:"stats",period:PERIOD});
   if(r.status===401){ gate("Your session ended — sign in again."); return; }
   const j=r.body;
-  if(j&&j.configured===false){ $("#body").innerHTML=`<div class="msg"><b>Not connected yet.</b><br>Add your Plausible domain in <a class="link" href="/admin/website.html">Website → Site Settings</a> to start tracking, then set <code>PLAUSIBLE_API_KEY</code> and <code>PLAUSIBLE_SITE_ID</code> in Netlify to show the numbers here.</div>`; return; }
+  if(j&&j.configured===false){ $("#body").innerHTML=`<div class="msg"><b>Not connected yet.</b><br>Pick <b>cloudflare</b> in <a class="link" href="/admin/website.html">Website → Site Settings → Website analytics</a> and paste your Cloudflare site token to start tracking, then set <code>CLOUDFLARE_API_TOKEN</code>, <code>CLOUDFLARE_ACCOUNT_ID</code>, and <code>CLOUDFLARE_SITE_TAG</code> in Netlify to show the numbers here.</div>`; return; }
   if(!j||!j.ok){ $("#body").innerHTML=`<div class="msg err">Couldn't load traffic: ${esc((j&&j.error)||"error")}</div>`; return; }
   DATA=j; render();
 }
@@ -81,13 +81,15 @@ function tbl(title, rows, keyLabel, keyField){
 function render(){
   if(!DATA) return; const k=DATA.kpis||{};
   const kpi=(l,v,cls)=>`<div class="kpi"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div></div>`;
-  const kpis=`<div class="kpis" style="margin-bottom:16px">
-    ${kpi("Visitors",num(k.visitors),"blue")}
-    ${kpi("Page views",num(k.pageviews),"")}
-    ${kpi("Avg. visit",dur(k.visit_duration),"orange")}
-    ${kpi("Bounce rate",(Math.round(Number(k.bounce_rate)||0))+"%","")}
-  </div>`;
-  $("#body").innerHTML=kpis+trend(DATA.timeseries)+`<div class="tgrid">${tbl("Top pages",DATA.pages,"Page","page")}${tbl("Top sources",DATA.sources,"Source","source")}</div>`;
+  const tiles=[ kpi("Visitors",num(k.visitors),"blue"), kpi("Page views",num(k.pageviews),"") ];
+  const vpv=(Number(k.visitors)>0)?(Number(k.pageviews)/Number(k.visitors)).toFixed(1):"—";
+  tiles.push(kpi("Views / visitor",vpv,"orange"));
+  if(k.visit_duration!=null) tiles.push(kpi("Avg. visit",dur(k.visit_duration),""));
+  if(k.bounce_rate!=null) tiles.push(kpi("Bounce rate",(Math.round(Number(k.bounce_rate)||0))+"%",""));
+  const kpis=`<div class="kpis" style="margin-bottom:8px">${tiles.join("")}</div>`;
+  const src=DATA.provider==="cloudflare"?"Source: Cloudflare Web Analytics · figures are sampled (approximate)":"Source: Plausible · exact counts";
+  const note=`<div class="hint" style="margin:0 0 14px">${src}</div>`;
+  $("#body").innerHTML=kpis+note+trend(DATA.timeseries)+`<div class="tgrid">${tbl("Top pages",DATA.pages,"Page","page")}${tbl("Top sources",DATA.sources,"Source","source")}</div>`;
 }
 load();
 </script>
