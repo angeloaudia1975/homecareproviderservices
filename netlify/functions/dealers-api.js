@@ -161,6 +161,9 @@ async function buildState(){
   const daddrs = await sbGetAll("dealer_addresses?select=dealer_id,address,city,state,zip,label,pri","dealer_id,addr_key").catch(()=>[]);
   const addrByDealer=new Map(); for(const x of daddrs){(addrByDealer.get(x.dealer_id)||addrByDealer.set(x.dealer_id,[]).get(x.dealer_id)).push(x);}
   const rows = await sbGetAll("monthly_sales?select=dealer_id,manufacturer,period,amount,commission,customer_name,customer_ref");
+  // Lines whose report "customer #" is really a per-order number don't have real account
+  // numbers — don't surface those order numbers as if they were account numbers.
+  let orderLines=new Set(); try{ const cc=await sbGet("app_settings?key=eq.commission_config&select=value"); orderLines=new Set(((cc&&cc[0]&&cc[0].value&&cc[0].value.order_number_lines))||[]); }catch(e){}
   const mfrName=Object.fromEntries(mfrs.map(m=>[m.slug,m.name]));
   const repByName=Object.fromEntries(dir.map(d=>[d.dealer_name,d.rep_name]));
   const aliByDealer=new Map(); for(const a of aliases){(aliByDealer.get(a.dealer_id)||aliByDealer.set(a.dealer_id,[]).get(a.dealer_id)).push(a.raw_name);}
@@ -173,7 +176,7 @@ async function buildState(){
     const a=agg.get(r.dealer_id)||{sales:0,comm:0,recs:0,lines:new Set(),periods:new Set(),accts:new Set()};
     a.sales+=Number(r.amount)||0; a.comm+=Number(r.commission)||0; a.recs+=1;
     if(r.manufacturer)a.lines.add(r.manufacturer); if(r.period)a.periods.add(r.period.slice(0,10));
-    if(r.customer_ref&&String(r.customer_ref).trim())a.accts.add(`${r.manufacturer}:${String(r.customer_ref).trim()}`);
+    if(r.customer_ref&&String(r.customer_ref).trim()&&!orderLines.has(r.manufacturer))a.accts.add(`${r.manufacturer}:${String(r.customer_ref).trim()}`);
     agg.set(r.dealer_id,a);
   }
   const periodsAll=[...new Set(rows.map(r=>(r.period||"").slice(0,10)).filter(Boolean))].sort();

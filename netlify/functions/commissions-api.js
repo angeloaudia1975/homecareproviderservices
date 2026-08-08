@@ -91,16 +91,31 @@ exports.handler = async (event)=>{
       let orderLines=new Set();
       try{ const cc=await sbGet("app_settings?key=eq.commission_config&select=value"); orderLines=new Set(((cc&&cc[0]&&cc[0].value&&cc[0].value.order_number_lines))||[]); }catch(e){}
       const refMatch = !orderLines.has(slug);
-      const out=[]; const unmatched=new Map(); let matched=0;   // name -> {name, account, count}
+      // Branch attribution: route each line to the location that RECEIVED it (ship-to), not just
+      // the sold-to / name match. Index every dealer "family" (an HQ + its branches) by city/state.
+      const famDealers=await sbGetAll("dealers?select=id,business_name,city,state,parent_id","business_name").catch(()=>[]);
+      const rootOf=new Map(), byRoot=new Map();
+      for(const d of (famDealers||[])){ const root=d.parent_id||d.id; rootOf.set(d.id,root); (byRoot.get(root)||byRoot.set(root,[]).get(root)).push(d); }
+      const ncity=s=>String(s||"").toUpperCase().replace(/[^A-Z ]/g," ").replace(/\s+/g," ").trim();
+      const nstate=s=>String(s||"").toUpperCase().replace(/[^A-Z]/g,"").slice(0,2);
+      const branchFor=(did,shipCity,shipState)=>{ if(!did) return did; const c=ncity(shipCity); if(!c) return did;
+        const root=rootOf.get(did)||did; const fam=byRoot.get(root)||[]; if(fam.length<=1) return did; const st=nstate(shipState);
+        const m=fam.find(x=>ncity(x.city)===c && (!st||nstate(x.state)===st)) || fam.find(x=>ncity(x.city)===c); return m?m.id:did; };
+      // Persist ship-to only if the columns exist (supabase/attribution.sql). Routing works regardless.
+      let hasShip=true; try{ const p=await fetch(`${SUPABASE_URL}/rest/v1/monthly_sales?select=ship_city&limit=1`,{headers:H()}); hasShip=p.ok; }catch(e){ hasShip=false; }
+      const out=[]; const unmatched=new Map(); let matched=0, rerouted=0;   // name -> {name, account, count}
       for(const r of rows){
         const cname=String(r.customer_name||"").trim();
         const cref=String(r.customer_ref||"").trim();
-        const did = (refMatch && cref && idByAccount[cref]) || (cname ? idByAlias[dnorm(cname)] : null) || null;
-        if(did) matched++;
+        const shipCity=(r.ship_city!=null)?String(r.ship_city).trim():"";
+        const shipState=(r.ship_state!=null)?String(r.ship_state).trim():"";
+        let did = (refMatch && cref && idByAccount[cref]) || (cname ? idByAlias[dnorm(cname)] : null) || null;
+        if(did){ const b2=branchFor(did,shipCity,shipState); if(b2!==did) rerouted++; did=b2; matched++; }
         else if(cname){ const u=unmatched.get(cname)||{name:cname,account:cref||"",count:0}; u.count++; if(!u.account&&cref)u.account=cref; unmatched.set(cname,u); }
         out.push({
           manufacturer:slug, period:per, dealer_id:did||null,
           customer_name:cname||null, customer_ref:(r.customer_ref!=null&&String(r.customer_ref).trim())?String(r.customer_ref).trim():null,
+          ...(hasShip?{ship_city:shipCity||null, ship_state:shipState||null}:{}),
           product_code:(r.product_code!=null&&String(r.product_code).trim())?String(r.product_code).trim():null,
           product_name:(r.product_name!=null&&String(r.product_name).trim())?String(r.product_name).trim():null,
           qty:num(r.qty), amount:num(r.amount), commission:num(r.commission), cost:num(r.cost),
@@ -116,7 +131,7 @@ exports.handler = async (event)=>{
       }catch(e){}
       let inserted=0;
       for(let i=0;i<out.length;i+=500){ const part=out.slice(i,i+500); await sbSend("POST","monthly_sales",part,{Prefer:"return=minimal"}); inserted+=part.length; }
-      return json(200,{ok:true,inserted,matched,unmatched:[...unmatched.values()].slice(0,200),unmatched_count:unmatched.size});
+      return json(200,{ok:true,inserted,matched,rerouted,unmatched:[...unmatched.values()].slice(0,200),unmatched_count:unmatched.size});
     }
 
     // Resolve unmatched names to dealers: learn the alias, relink the imported rows, and
