@@ -186,6 +186,27 @@ async function handlePut(body, isBinary) {
   });
 }
 
+// Delete a file (used by the media library to remove an unused image).
+async function handleDelete(body) {
+  const { repo, branch, ok } = githubConfig();
+  if (!ok) return json(500, { error: "GitHub is not configured (set GITHUB_REPO and GITHUB_TOKEN)." });
+  const path = body.path;
+  if (!path) return json(400, { error: "Missing path." });
+  let sha = body.sha;
+  if (!sha) {
+    try { sha = await getSha(repo, path, branch); } catch (e) { return json(502, { error: e.message }); }
+  }
+  if (!sha) return json(404, { error: "File not found." });
+  const message = body.message || `Delete ${path} via admin`;
+  const res = await gh(`/repos/${repo}/contents/${encodeURIComponent(path).replace(/%2F/g, "/")}`, {
+    method: "DELETE",
+    body: JSON.stringify({ message, sha, branch }),
+  });
+  if (res.status === 409) return json(409, { error: "This file changed since you loaded it. Reload and try again." });
+  if (!res.ok) { const detail = await res.text(); console.error("GitHub delete failed:", res.status, detail); return json(502, { error: `GitHub delete failed (${res.status}).` }); }
+  return json(200, { ok: true, path });
+}
+
 // ---------- entry ----------
 
 exports.handler = async (event) => {
@@ -222,6 +243,8 @@ exports.handler = async (event) => {
         return await handlePut(body, false);
       case "upload":
         return await handlePut(body, true);
+      case "delete":
+        return await handleDelete(body);
       default:
         return json(400, { error: `Unknown action: ${action}` });
     }

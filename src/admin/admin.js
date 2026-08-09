@@ -18,6 +18,7 @@
     seo: "src/_data/seo.json",
     redirects: "src/_data/redirects.json",
     landing: "src/_data/landing.json",
+    nav: "src/_data/nav.json",
   };
 
   // ---- Schemas for the simple data editors (Home Page / Site / Team / Testimonials) ----
@@ -98,6 +99,25 @@
     { k: "path", label: "Page path (e.g. / or /contact/)", type: "text" },
     { k: "title", label: "SEO / browser title", type: "text", full: true },
     { k: "description", label: "Meta description (~150–160 characters)", type: "textarea", full: true },
+    { k: "image", label: "Social share image (paste a media path or full URL — shown when the page is shared)", type: "image", dir: "media", full: true },
+    { k: "canonical", label: "Canonical URL (optional — the preferred full URL for this page)", type: "text", full: true },
+  ];
+  // ---- Site navigation (nav.json): header menu + footer columns ----
+  var NAV_LINK = [
+    { k: "label", label: "Label", type: "text" },
+    { k: "url", label: "URL (/path/ or https://…)", type: "text" },
+    { k: "external", label: "Open in new tab", type: "bool" },
+  ];
+  var NAV_SCHEMA = [
+    { k: "primary", label: "Header menu", type: "objlist", full: true, item: [
+      { k: "label", label: "Label", type: "text" },
+      { k: "url", label: "URL", type: "text" },
+      { k: "external", label: "Open in new tab", type: "bool" },
+      { k: "dropdown", label: "Auto-dropdown (leave blank; type 'manufacturers' to show the live partner list)", type: "text", full: true },
+      { k: "children", label: "Dropdown links (optional — a manual sub-menu)", type: "objlist", full: true, item: NAV_LINK } ] },
+    { k: "footer", label: "Footer columns", type: "objlist", full: true, item: [
+      { k: "heading", label: "Column heading", type: "text", full: true },
+      { k: "links", label: "Links", type: "objlist", full: true, item: NAV_LINK } ] },
   ];
   var REDIR_ITEM = [
     { k: "from", label: "From path (e.g. /old-page/)", type: "text" },
@@ -249,6 +269,8 @@
       note: "Send an old or moved URL to a new one (great for SEO when a page changes address). From is a path on this site (/old/); To is a path or full URL. Use 301 for a permanent move. Takes effect on the next publish." },
     landing: { file: "landing", title: "Landing Pages", root: "array", item: LANDING_ITEM, itemLabel: "Landing page",
       note: "Build standalone campaign pages at /l/<slug>/. Give each a slug, hero, and content sections, then tick Published to make it live. Unpublished pages stay as drafts and never appear on the site." },
+    nav: { file: "nav", title: "Navigation", root: "object", schema: NAV_SCHEMA,
+      note: "Edit the site's header menu and footer link columns. Reorder or rename items; add a manual dropdown by giving a header item sub-links. The Manufacturers menu stays automatic — its dropdown is the live list of active partners. Changes go live on the next publish." },
   };
 
   // ---- Block schemas: mirror src/_includes/blocks/*.njk ----
@@ -910,7 +932,15 @@
             h("button", { class: "btn sm", onclick: function () {
               if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function () { toast("Path copied: " + url, "ok"); });
               else { window.prompt("Copy this path:", url); }
-            } }, "Copy path")
+            } }, "Copy path"),
+            document.createTextNode(" "),
+            h("button", { class: "btn danger sm", onclick: function () {
+              if (!confirm('Delete "' + f.name + '"? If any page still uses this image it will show the placeholder. This publishes immediately.')) return;
+              busy(true, "Deleting…");
+              api("delete", { path: "src/assets/" + MEDIA_DIR + "/" + f.name, message: "Delete media " + f.name + " via admin" })
+                .then(function () { busy(false); toast("Deleted.", "ok"); renderMedia(); })
+                .catch(function (er) { busy(false); toast(er.message || "Delete failed", "bad"); });
+            } }, "Delete")
           ])
         ]);
         grid.appendChild(card);

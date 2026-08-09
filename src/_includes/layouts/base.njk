@@ -9,9 +9,15 @@
 {%- set metaDesc = (pageseo.description if pageseo else "") or description or site.meta_description -%}
 <title>{{ metaTitle }}</title>
 <meta name="description" content="{{ metaDesc }}">
+{%- if pageseo and pageseo.canonical %}<link rel="canonical" href="{{ pageseo.canonical }}">{%- endif %}
 <meta property="og:title" content="{{ metaTitle }}">
 <meta property="og:description" content="{{ metaDesc }}">
 <meta property="og:type" content="website">
+{%- if pageseo and pageseo.image %}
+<meta property="og:image" content="{{ pageseo.image }}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="{{ pageseo.image }}">
+{%- endif %}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Archivo+Expanded:wght@700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -47,6 +53,27 @@
     <a class="brand" href="/"><img src="/assets/hcps-logo.png" alt="{{ site.name }}"></a>
     <a class="nav-order-btn" href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">&#128722; Online Ordering Portal</a>
     <nav class="links" aria-label="Primary navigation">
+      {%- if nav and nav.primary and nav.primary.length -%}
+      {%- for item in nav.primary -%}
+      {%- if item.dropdown == "manufacturers" -%}
+      <div class="dropdown">
+        <a href="{{ item.url }}">{{ item.label }}</a>
+        <div class="dropdown-menu mega">
+          {% for m in activeManufacturers %}<a href="/manufacturers/{{ m.id }}/">{{ m.name }}</a>{% endfor %}
+        </div>
+      </div>
+      {%- elif item.children and item.children.length -%}
+      <div class="dropdown">
+        <a href="{{ item.url }}">{{ item.label }}</a>
+        <div class="dropdown-menu">
+          {% for c in item.children %}<a href="{{ c.url }}"{% if c.external %} target="_blank" rel="noopener"{% endif %}>{{ c.label }}</a>{% endfor %}
+        </div>
+      </div>
+      {%- else -%}
+      <a href="{{ item.url }}"{% if item.external %} target="_blank" rel="noopener"{% endif %}>{{ item.label }}</a>
+      {%- endif -%}
+      {%- endfor -%}
+      {%- else -%}
       <a href="/">Home</a>
       <div class="dropdown">
         <a href="/manufacturers/">Manufacturers</a>
@@ -70,6 +97,7 @@
       <a href="/#team">Our Team</a>
       <a href="/#territory">Territory</a>
       <a href="/contact/">Contact</a>
+      {%- endif -%}
     </nav>
   </div>
 </header>
@@ -86,6 +114,14 @@
         <a href="mailto:{{ site.contact.email }}">{{ site.contact.email }}</a>
       </div>
     </div>
+    {%- if nav and nav.footer and nav.footer.length -%}
+    {%- for col in nav.footer -%}
+    <nav>
+      <h3>{{ col.heading }}</h3>
+      {% for l in col.links %}<a href="{{ l.url }}"{% if l.external %} target="_blank" rel="noopener"{% endif %}>{{ l.label }}</a>{% endfor %}
+    </nav>
+    {%- endfor -%}
+    {%- else -%}
     <nav>
       <h3>Platform</h3>
       <a href="/manufacturers/">Manufacturers</a>
@@ -100,6 +136,7 @@
       <a href="/#territory">Territory</a>
       <a href="/become-a-dealer/">Become a Dealer</a>
     </nav>
+    {%- endif -%}
     <div>
       <h3>Ready to Grow?</h3>
       <p>Talk with HCPS about becoming a dealer, checking stock, or getting pricing access.</p>

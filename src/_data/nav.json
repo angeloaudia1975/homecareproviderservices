@@ -1,0 +1,33 @@
+{
+  "primary": [
+    { "label": "Home", "url": "/", "external": false, "dropdown": "", "children": [] },
+    { "label": "Manufacturers", "url": "/manufacturers/", "external": false, "dropdown": "manufacturers", "children": [] },
+    { "label": "Dealer Hub", "url": "/dealer-hub/", "external": false, "dropdown": "", "children": [
+      { "label": "Resource Library", "url": "/resources/", "external": false },
+      { "label": "Golden Resource Library", "url": "/resources/?manufacturer=golden-technologies", "external": false },
+      { "label": "Pricing Access", "url": "/dealer-support/?request=Pricing%20Access", "external": false },
+      { "label": "Dealer Order Request", "url": "/dealer-support/?request=Place%20or%20Request%20an%20Order", "external": false },
+      { "label": "Order Literature", "url": "/dealer-support/?request=Order%20Literature", "external": false },
+      { "label": "Request In-Service", "url": "/dealer-support/?request=Request%20an%20In-Service", "external": false },
+      { "label": "Technical Support", "url": "/dealer-support/?request=Technical%20Support", "external": false }
+    ] },
+    { "label": "Consulting", "url": "/consulting/", "external": false, "dropdown": "", "children": [] },
+    { "label": "Our Team", "url": "/#team", "external": false, "dropdown": "", "children": [] },
+    { "label": "Territory", "url": "/#territory", "external": false, "dropdown": "", "children": [] },
+    { "label": "Contact", "url": "/contact/", "external": false, "dropdown": "", "children": [] }
+  ],
+  "footer": [
+    { "heading": "Platform", "links": [
+      { "label": "Manufacturers", "url": "/manufacturers/", "external": false },
+      { "label": "Dealer Hub", "url": "/dealer-hub/", "external": false },
+      { "label": "Resource Library", "url": "/resources/", "external": false },
+      { "label": "Consulting", "url": "/consulting/", "external": false },
+      { "label": "Online Ordering Portal", "url": "https://hcpsonlineordering.netlify.app/", "external": true }
+    ] },
+    { "heading": "Company", "links": [
+      { "label": "Our Team", "url": "/#team", "external": false },
+      { "label": "Territory", "url": "/#territory", "external": false },
+      { "label": "Become a Dealer", "url": "/become-a-dealer/", "external": false }
+    ] }
+  ]
+}
