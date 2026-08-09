@@ -371,7 +371,8 @@ async function saveHome(){
     const r=await api("POST",{action:"geocode_one",q});
     if(!r||!r.ok){ $("#homeErr").textContent="Couldn't find that address — include the city and state (e.g. …, Cottontown, TN 37048)."; return; }
     const short=q.split(",").slice(-2).join(",").trim()||q;
-    HOME={q,lat:r.lat,lng:r.lng,short};
+    const state=String(r.state||stateFromAddr(q)||"").toUpperCase();
+    HOME={q,lat:r.lat,lng:r.lng,short,state};
     localStorage.setItem("hcps_home_base",JSON.stringify(HOME));
     closeHome(); drawHome(); renderRoute();
     if(MAP) MAP.setView([HOME.lat,HOME.lng], Math.max(MAP.getZoom(),6));
@@ -384,7 +385,7 @@ function toggleRT(v){ ROUNDTRIP=v; renderRoute(); }
 function hav(a,b){ const R=3958.8,tr=x=>x*Math.PI/180; const dLat=tr(b.lat-a.lat),dLng=tr(b.lng-a.lng);
   const s=Math.sin(dLat/2)**2+Math.cos(tr(a.lat))*Math.cos(tr(b.lat))*Math.sin(dLng/2)**2; return 2*R*Math.asin(Math.sqrt(s)); }
 function effectiveRoute(){
-  if(HOME && ROUNDTRIP && ROUTE.length){ const h={name:"Home base",lat:HOME.lat,lng:HOME.lng,_home:true}; return [h,...ROUTE,h]; }
+  if(HOME && ROUNDTRIP && ROUTE.length){ const h={name:"Home base",state:(HOME.state||stateFromAddr(HOME.q)),lat:HOME.lat,lng:HOME.lng,_home:true}; return [h,...ROUTE,h]; }
   return ROUTE.slice();
 }
 function routeMiles(){ const R=effectiveRoute(); let m=0; for(let i=1;i<R.length;i++) m+=hav(R[i-1],R[i]); return m; }
@@ -423,8 +424,15 @@ function tzForStop(state,lng){
   if(st==="TN") return (lng!=null&&lng<-85.4)?TZ_C:TZ_E;   // ~Chattanooga/Knoxville east = Eastern
   if(st==="KY") return (lng!=null&&lng<-85.9)?TZ_C:TZ_E;
   if(st==="IN") return (lng!=null&&lng<-87.3)?TZ_C:TZ_E;   // Evansville corner = Central
-  return TZ_STATE[st]||TZ_E;
+  if(TZ_STATE[st]) return TZ_STATE[st];
+  // Unknown/blank state (e.g. a home base saved before we captured its state):
+  // infer from longitude so it isn't silently defaulted to Eastern. The Central/
+  // Eastern line through the region we cover sits near -85.7°.
+  if(lng!=null&&isFinite(lng)) return lng<-85.7?TZ_C:TZ_E;
+  return TZ_E;
 }
+// Pull a 2-letter US state code from a free-form address ("…, Cottontown, TN 37048").
+function stateFromAddr(q){ const m=String(q||"").toUpperCase().match(/,\s*([A-Z]{2})\b(?:\s+\d{5}(?:-\d{4})?)?\s*$/); return m?m[1]:""; }
 function tzOffMin(tz,d){ // minutes east of UTC for tz at instant d (negative in the US)
   try{ const p=new Intl.DateTimeFormat("en-US",{timeZone:tz,hour12:false,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}).formatToParts(d).reduce((a,x)=>{a[x.type]=x.value;return a;},{});
     let hh=parseInt(p.hour,10); if(hh===24)hh=0;
@@ -562,6 +570,7 @@ function itineraryListHtml(){
         +` &nbsp;<label style="${mut}"><input type="checkbox" ${node.overnight?"checked":""} onchange="toggleOvernight(${ri},this.checked)"> 🌙 overnight</label>`
         +(node.dealer_id?` &nbsp;<a href="#" onclick="notifyDealer('${jesc(node.dealer_id)}','${jesc(node.name||"")}');return false" style="${mut};text-decoration:none" title="Email this dealer that you'll be in their area">✉ notify</a>`:"")
         +(node.dealer_id?` &nbsp;<a href="#" onclick="openVisitNotes('${jesc(node.dealer_id)}','${jesc(node.name||"")}');return false" style="${mut};text-decoration:none" title="Log the visit &amp; generate a follow-up">📝 log visit</a>`:"")
+        +(node.dealer_id?` &nbsp;<a href="#" onclick="printDealerHandout('${jesc(node.dealer_id)}');return false" style="${mut};text-decoration:none" title="Print this dealer's leave-behind handout">🖨 handout</a>`:"")
         +`</div>`
         +`</span><button class="del" title="Remove" onclick="removeStop(${ri})">✕</button></li>`;
       if(node.overnight){ html+=`<li style="list-style:none;margin:2px 0 5px 34px;font-size:11.5px;color:#8a5d12;background:#fdf4e6;border-radius:6px;padding:4px 8px">🌙 Overnight near ${esc(node.city||node.name)} — next day starts <input type="time" value="${minToTimeVal(node.next_start_min!=null?node.next_start_min:480)}" style="width:auto" onchange="updateNextStart(${ri},this.value)"></li>`; }
