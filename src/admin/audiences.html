@@ -22,6 +22,8 @@
  .ct.unsub{opacity:.55}
  .exp{margin-left:auto;font-size:12px;color:var(--gray)}
  .saved{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 8px;background:#fff;display:flex;gap:10px;align-items:center}
+ .perf{font-size:12.5px;color:#5c6b7a;border-top:1px dotted #eef2f6;padding-top:6px}
+ .perf .pk{font-weight:800;color:var(--navy)}
  .hint2{font-size:12px;color:var(--gray)}
 </style>
 </head><body>
@@ -53,6 +55,9 @@ async function submitTok(){
   }catch(err){ gate("Could not reach the server. Try again."); }
 }
 async function api(payload){ const r=await fetch("/.netlify/functions/audiences-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
+// Campaign Studio API — used here to show per-audience send performance.
+async function capi(payload){ try{ const r=await fetch("/.netlify/functions/campaign-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return {status:r.status,body:await r.json().catch(()=>({}))}; }catch(e){ return {status:0,body:{}}; } }
+const pct=x=>(x==null?"—":`${Math.round(x*1000)/10}%`);
 
 async function boot(){
   if(!TOKEN){ gate(); return; }
@@ -157,14 +162,26 @@ function bannerMsg(t){ let el=$("#abanner"); if(!el){ el=document.createElement(
 
 async function renderSaved(){
   $("#body").innerHTML=`<div class="msg">Loading saved audiences…</div>`;
-  const r=await api({action:"list"}); const rows=(r.body&&r.body.audiences)||[];
-  $("#body").innerHTML = rows.length ? rows.map(a=>`<div class="saved">
-      <div style="flex:1;min-width:0"><b style="color:var(--navy)">${esc(a.name||"(untitled)")}</b> <span class="bdg">${a.type==="dynamic"?"dynamic":"static"}</span>
-        <div class="meta">${num(a.company_count)} companies · ${num(a.contact_count)} contacts · by ${esc(a.created_by||"—")} · ${esc((a.updated_at||"").slice(0,10))}</div></div>
-      <button class="btn2 ghost" onclick="useInCampaign('${a.id}')">Use in Campaign</button>
-      <button class="btn2 ghost" onclick="dupAud('${a.id}')">Duplicate</button>
-      <button class="btn2 ghost" onclick="delAud('${a.id}','${esc((a.name||"").replace(/'/g,""))}')">✕</button>
-    </div>`).join("") : `<div class="hint2" style="padding:12px">No saved audiences yet. Build one in the builder and click “Create Target Audience.”</div>`;
+  const [r,sr]=await Promise.all([api({action:"list"}), capi({action:"audience_stats"})]);
+  const rows=(r.body&&r.body.audiences)||[];
+  const stats={}; ((sr.body&&sr.body.stats)||[]).forEach(s=>{ stats[s.id]=s; });
+  $("#body").innerHTML = rows.length ? rows.map(a=>{
+    const s=stats[a.id];
+    const perf = s
+      ? `<div class="perf">${ s.haveMetrics
+          ? `<span class="pk">📤 ${num(s.totals.sent)}</span> sent · <span class="pk">${pct(s.open_rate)}</span> open · <span class="pk">${pct(s.click_rate)}</span> click · <span class="pk">${pct(s.reply_rate)}</span> reply · ${num(s.campaign_count)} campaign${s.campaign_count===1?"":"s"}`
+          : `${num(s.campaign_count)} campaign${s.campaign_count===1?"":"s"} · <span class="hint2">no results yet</span>`}${s.last?` · last ${esc((s.last||"").slice(0,10))}`:""}</div>`
+      : `<div class="perf" style="color:#9aa4ae">Not used in a campaign yet</div>`;
+    return `<div class="saved" style="flex-direction:column;align-items:stretch;gap:6px">
+      <div style="display:flex;gap:10px;align-items:center">
+        <div style="flex:1;min-width:0"><b style="color:var(--navy)">${esc(a.name||"(untitled)")}</b> <span class="bdg">${a.type==="dynamic"?"dynamic":"static"}</span>
+          <div class="meta">${num(a.company_count)} companies · ${num(a.contact_count)} contacts · by ${esc(a.created_by||"—")} · ${esc((a.updated_at||"").slice(0,10))}</div></div>
+        <button class="btn2 ghost" onclick="useInCampaign('${a.id}')">Use in Campaign</button>
+        <button class="btn2 ghost" onclick="dupAud('${a.id}')">Duplicate</button>
+        <button class="btn2 ghost" onclick="delAud('${a.id}','${esc((a.name||"").replace(/'/g,""))}')">✕</button>
+      </div>
+      ${perf}</div>`;
+  }).join("") : `<div class="hint2" style="padding:12px">No saved audiences yet. Build one in the builder and click “Create Target Audience.”</div>`;
 }
 function useInCampaign(id){ location.href="/admin/campaigns.html?audience="+encodeURIComponent(id); }
 async function dupAud(id){ const r=await api({action:"duplicate",id}); if(r.body&&r.body.ok){ renderSaved(); } }
