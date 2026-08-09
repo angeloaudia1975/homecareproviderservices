@@ -24,6 +24,38 @@ async function sb(method,path,body,extra){
 }
 const num = (v)=>{ const n=Number(v); return Number.isFinite(n)?n:0; };
 
+// ---- dealer order confirmation (transactional email, via Resend) ------------
+const MAIL_FROM=process.env.HCPS_MAIL_FROM||"HCPS Partner Portal <orders@homecareproviderservices.us>";
+const PORTAL_URL=process.env.ORDERING_BASE||"https://hcpsonlineordering.netlify.app";
+const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const esc=s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const money=n=>"$"+(Math.round(num(n)*100)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+async function sendMail({to,subject,html,text}){
+  const apiKey=process.env.RESEND_API_KEY;
+  if(!apiKey){ console.error("RESEND_API_KEY not set — skipping order confirmation:",subject); return {ok:false,skipped:true}; }
+  try{ const res=await fetch("https://api.resend.com/emails",{method:"POST",
+    headers:{Authorization:`Bearer ${apiKey}`,"Content-Type":"application/json"},
+    body:JSON.stringify({from:MAIL_FROM,to:[to],subject,html,text})});
+    return {ok:res.ok}; }catch(e){ return {ok:false}; }
+}
+function orderConfirmation(to,d,summaries){
+  const blocks=summaries.map(s=>{
+    const rows=(s.items||[]).map(it=>`<tr><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px">${esc(it.name||it.code||"Item")}${it.code?` <span style="color:#9aa4ae">(${esc(it.code)})</span>`:""}</td><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:center">${num(it.qty)}</td><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:right">${money(it.unit_price)}</td><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:right">${money(it.line_total)}</td></tr>`).join("");
+    return `<div style="margin:0 0 16px"><div style="font-weight:700;color:#2B4071;font-size:14px;margin:0 0 6px">${esc(s.line)}${s.po?` &middot; PO ${esc(s.po)}`:""}</div><table style="border-collapse:collapse;width:100%"><thead><tr><th style="text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#8a96a3;padding:0 10px 4px">Item</th><th style="font-size:10px;color:#8a96a3;padding:0 10px 4px">Qty</th><th style="text-align:right;font-size:10px;color:#8a96a3;padding:0 10px 4px">Unit</th><th style="text-align:right;font-size:10px;color:#8a96a3;padding:0 10px 4px">Total</th></tr></thead><tbody>${rows}</tbody></table><div style="text-align:right;font-size:13px;font-weight:700;color:#1b2733;margin:6px 10px 0">Subtotal: ${money(s.subtotal)}</div></div>`;
+  }).join("");
+  const html=`<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:600px">
+    <h2 style="color:#2B4071;margin:0 0 4px">Order received${d.business?", "+esc(d.business):""}</h2>
+    <p style="font-size:13.5px;line-height:1.6;color:#374151;margin:0 0 14px">Thanks for ordering through the HomeCare Provider Services portal. We've received the following and it's on its way to the manufacturer for fulfillment. You can view this anytime in your order history.</p>
+    ${blocks}
+    <a href="${PORTAL_URL}" style="display:inline-block;background:#F5821F;color:#fff;text-decoration:none;font-weight:700;padding:11px 18px;border-radius:8px;font-size:14px;margin-top:4px">View your order history &rarr;</a>
+    <p style="font-size:12.5px;line-height:1.6;color:#6b7280;margin:16px 0 0">Pricing shown is your contract pricing; the manufacturer's invoice is the final billing document. Questions about this order? Reply to this email or reach your HCPS rep.</p>
+    <p style="font-size:12px;color:#9aa4ae;margin:14px 0 0">HomeCare Provider Services &middot; Your partner in mobility &amp; home medical equipment.</p></div>`;
+  const text=`Order received${d.business?", "+d.business:""}\n\nThanks for ordering through the HomeCare Provider Services portal. We've received your order and it's on its way to the manufacturer.\n\n`
+    +summaries.map(s=>`${s.line}${s.po?" (PO "+s.po+")":""}\n`+(s.items||[]).map(it=>`  ${num(it.qty)} x ${it.name||it.code||"Item"} @ ${money(it.unit_price)} = ${money(it.line_total)}`).join("\n")+`\n  Subtotal: ${money(s.subtotal)}`).join("\n\n")
+    +`\n\nView your order history: ${PORTAL_URL}`;
+  return {to,subject:"Your HCPS order confirmation",html,text};
+}
+
 // Resolve the caller's JWT to an APPROVED dealer_id (or null).
 async function dealerFromToken(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -51,16 +83,17 @@ exports.handler = async (event)=>{
       const orders=Array.isArray(b.orders)?b.orders:[];
       if(!orders.length) return json(400,{error:"no orders"});
       const d=b.dealer||{};
-      // validate manufacturer slugs against the real table so the FK-free text stays clean
-      let known=new Set();
-      try{ known=new Set((await sb("GET","manufacturers?select=slug")).map(m=>m.slug)); }catch(e){}
-      let saved=0;
+      // validate manufacturer slugs against the real table; keep names for the confirmation email
+      let known=new Set(), mfrName={};
+      try{ const ms=await sb("GET","manufacturers?select=slug,name"); for(const m of (ms||[])){ known.add(m.slug); mfrName[m.slug]=m.name||m.slug; } }catch(e){}
+      let saved=0; const summaries=[]; const slugs=new Set();
       for(const o of orders){
         const slug=o.manufacturer_slug||o.manufacturer||null;
+        const cleanSlug=(slug&&known.has(slug))?slug:null;
         const row={
           dealer_id:who.dealer_id,
           hcps_account:d.account||null,
-          manufacturer:(slug&&known.has(slug))?slug:null,
+          manufacturer:cleanSlug,
           status:"submitted",
           po_number:o.po||null,
           notes:o.notes||null,
@@ -79,7 +112,20 @@ exports.handler = async (event)=>{
           unit_price:num(it.unit), line_total:Math.round(num(it.unit)*num(it.qty)*100)/100,
         }));
         if(items.length){ try{ await sb("POST","order_items",items,{Prefer:"return=minimal"}); }catch(e){} }
+        summaries.push({slug:cleanSlug, line:cleanSlug?(mfrName[cleanSlug]||cleanSlug):(slug||"Order"), po:o.po||"", items, subtotal:row.subtotal});
+        if(cleanSlug) slugs.add(cleanSlug);
         saved++;
+      }
+      if(saved>0){
+        // Dealer-facing order confirmation — TRANSACTIONAL: always sends, never counts
+        // against the marketing frequency caps, and not gated by the dry-run switch.
+        // Best-effort: a mail hiccup never fails the saved order.
+        const to=String(d.email||who.email||"").trim();
+        if(EMAIL_RE.test(to)){ try{ await sendMail(orderConfirmation(to,d,summaries)); }catch(e){ console.error("order confirm email failed",e&&e.message); } }
+        // Order placed = conversion. Clear the browsing intent for the lines just ordered
+        // so we never email a dealer about what they just bought online. (The monthly
+        // commission upload can't see a same-day online order, so this IS the real reset.)
+        for(const slug of slugs){ try{ await sb("DELETE",`intent_events?dealer_id=eq.${who.dealer_id}&manufacturer=eq.${encodeURIComponent(slug)}`,null,{Prefer:"return=minimal"}); }catch(e){} }
       }
       return json(200,{ok:true,saved});
     }
