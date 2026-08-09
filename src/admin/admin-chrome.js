@@ -20,6 +20,7 @@
     ]},
     { id:"sales", label:"Sales & Marketing", href:"/admin/#sales", tools:[
         { href:"/admin/opportunities.html", label:"Today's Opportunities" },
+        { href:"/admin/campaigns.html", label:"Campaign Studio" },
         { href:"/admin/dealers.html",   label:"Dealer Manager" },
         { href:"/admin/health.html",    label:"Dealer Health" },
         { href:"/admin/call-list.html", label:"Who to Call" },

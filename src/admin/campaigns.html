@@ -1,0 +1,166 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Campaign Studio</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:820px){.grid2{grid-template-columns:1fr}}
+ .fld{display:block;margin:8px 0}.fld label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700;margin:0 0 3px}
+ .fld input,.fld select,.fld textarea{width:100%;box-sizing:border-box;font-family:inherit;font-size:13.5px;padding:7px 9px;border:1px solid var(--line);border-radius:8px}
+ .btn2{background:var(--navy);color:#fff;border:0;border-radius:9px;padding:9px 15px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
+ .btn2.ghost{background:#eef2f6;color:var(--navy)}.btn2[disabled]{opacity:.5;cursor:default}
+ .conn{border-radius:12px;padding:12px 15px;margin:0 0 16px;font-size:13.5px}
+ .conn.ok{background:#e7f4ee;color:#166b45;border:1px solid #bfe4cf}
+ .conn.no{background:#fdf7ec;color:#8a5d12;border:1px solid #f0dcae}
+ .scopes{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:#fff;border:1px solid var(--line);border-radius:7px;padding:7px 9px;margin:6px 0;user-select:all}
+ .subj{display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 0;border-bottom:1px dotted var(--line)}
+ .subj .v{background:#eef3f8;border-radius:6px;padding:2px 7px;font-size:11px;color:var(--gray)}
+ .prev{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fff;max-height:340px;overflow:auto}
+ .tt{width:100%;border-collapse:collapse;font-size:13px}.tt th{text-align:left;font-size:10px;text-transform:uppercase;color:var(--gray);padding:7px 9px;border-bottom:2px solid var(--line)}.tt td{padding:8px 9px;border-bottom:1px solid #eef2f6}
+ .bdg{display:inline-block;font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px;background:#eef2f6;color:#5c6b7a}
+ .bdg.pushed{background:#e7f1f9;color:#1568a6}.bdg.draft{background:#fdf4e6;color:#8a5d12}
+ .hint2{font-size:12px;color:var(--gray)}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1>Campaign Studio</h1><div class="sub">Give a brief; the portal builds the audience, copy &amp; sequence, then drafts it into Zoho for your review.</div></div></div>
+  <div id="conn"></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), STATUS=null, SEGS=[], MFRS=[], CUR=null;
+const num=n=>Number(n||0).toLocaleString("en-US");
+const GOALS=[["manufacturer_intro","Manufacturer introduction"],["launch","New product launch"],["promo","Promotion / offer"],["cross_sell","Cross-sell"],["reactivation","Reactivation"],["acquisition","Dealer acquisition"]];
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; boot();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+async function api(payload){ const r=await fetch("/.netlify/functions/campaign-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
+
+async function boot(){
+  if(!TOKEN){ gate(); return; }
+  const [st,sg]=await Promise.all([api({action:"zoho_status"}),api({action:"segments"})]);
+  if(st.status===401){ gate("Your session ended — sign in again."); return; }
+  STATUS=st.body||{}; SEGS=(sg.body&&sg.body.segments)||[]; MFRS=(sg.body&&sg.body.manufacturers)||[];
+  renderConn(); renderBuilder(); loadList();
+}
+function renderConn(){
+  const c=$("#conn");
+  if(STATUS.ready){ c.className=""; c.innerHTML=`<div class="conn ok">✓ Connected to Zoho Campaigns — drafts can be pushed for review.</div>`; return; }
+  const scopes=(STATUS.scopes||[]).join(",");
+  c.innerHTML=`<div class="conn no">
+    <b>Zoho Campaigns isn't connected yet.</b> ${STATUS.creds_set?"":"First set <code>ZOHO_CLIENT_ID</code> and <code>ZOHO_CLIENT_SECRET</code> in Netlify. Then, "}in the Zoho <a href="https://api-console.zoho.com/" target="_blank" rel="noopener">API Console</a> → your Self Client → <b>Generate Code</b>, use these scopes:
+    <div class="scopes">${esc(scopes)}</div>
+    Pick a 10-minute duration, generate the code, and paste it here:
+    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><input id="zcode" placeholder="Paste the Self Client code" style="flex:1;min-width:220px;padding:7px 9px;border:1px solid #e0cfa0;border-radius:8px;font-family:inherit">
+      <button class="btn2" onclick="connectZoho()">Connect</button></div>
+    <div id="zmsg" class="hint2" style="margin-top:6px"></div></div>`;
+}
+async function connectZoho(){
+  const code=(($("#zcode")||{}).value||"").trim(); const m=$("#zmsg"); if(!code){ if(m)m.textContent="Paste the code first."; return; }
+  if(m)m.textContent="Connecting…";
+  const r=await api({action:"connect_zoho",code});
+  if(r.body&&r.body.ok){ if(m)m.textContent="Connected ✓"; STATUS.ready=true; renderConn(); }
+  else if(m) m.textContent=(r.body&&r.body.message)||"Couldn't connect.";
+}
+function renderBuilder(){
+  const goalOpts=GOALS.map(g=>`<option value="${g[0]}">${g[1]}</option>`).join("");
+  const segOpts=SEGS.map(s=>`<option value="${esc(s.key)}" data-mfr="${s.needs_mfr?1:0}">${esc(s.label)}${s.count!=null?` (${num(s.count)})`:""}</option>`).join("");
+  const mfrOpts=`<option value="">— pick a manufacturer —</option>`+MFRS.map(m=>`<option value="${esc(m.slug)}">${esc(m.name)}</option>`).join("");
+  $("#body").innerHTML=`<div class="grid2">
+    <div class="card"><h2>New campaign</h2>
+      <div class="fld"><label>Campaign name</label><input id="c_name" placeholder="e.g. Bemis prospects — Q3"></div>
+      <div class="fld"><label>Goal</label><select id="c_goal">${goalOpts}</select></div>
+      <div class="fld"><label>Audience segment</label><select id="c_seg" onchange="segChange()">${segOpts}</select></div>
+      <div class="fld" id="mfrWrap"><label>Manufacturer / line</label><select id="c_mfr">${mfrOpts}</select></div>
+      <div class="fld"><label>Offer / message <span class="hint2">(optional)</span></label><input id="c_offer" placeholder="e.g. intro pricing through Q3"></div>
+      <button class="btn2" id="genBtn" onclick="generate()">Generate campaign →</button>
+      <div id="genMsg" class="hint2" style="margin-top:6px"></div>
+    </div>
+    <div class="card"><h2>Saved campaigns</h2><div id="list"><div class="hint2">Loading…</div></div></div>
+  </div>
+  <div id="review"></div>`;
+  segChange();
+}
+function segChange(){ const sel=$("#c_seg"); const needs=sel&&sel.options[sel.selectedIndex]&&sel.options[sel.selectedIndex].getAttribute("data-mfr")==="1"; const w=$("#mfrWrap"); if(w)w.style.display=needs?"block":"none"; }
+async function generate(){
+  const brief={ name:(($("#c_name")||{}).value||"").trim(), goal:($("#c_goal")||{}).value, segment:($("#c_seg")||{}).value,
+    manufacturer:($("#c_mfr")||{}).value||"", offer:(($("#c_offer")||{}).value||"").trim() };
+  const m=$("#genMsg"), btn=$("#genBtn"); if(btn)btn.disabled=true; if(m)m.textContent="Building audience & copy…";
+  const r=await api({action:"generate",brief});
+  if(btn)btn.disabled=false;
+  if(r.body&&r.body.ok){ CUR=r.body.campaign; if(m)m.textContent=""; renderReview(); loadList(); window.scrollTo({top:document.body.scrollHeight,behavior:"smooth"}); }
+  else if(m) m.textContent=(r.body&&r.body.error)||"Couldn't generate.";
+}
+function renderReview(){
+  if(!CUR){ $("#review").innerHTML=""; return; }
+  const g=CUR.generated||{}, a=CUR.audience||{};
+  const subs=(g.subjects||[]).map((s,i)=>`<div class="subj"><span class="v">${i===0?"primary":"alt"}</span> ${esc(s)}</div>`).join("");
+  const seq=(g.sequence||[]).map(x=>`<tr><td>Step ${x.step}</td><td>${x.wait_days===0?"immediately":`+${x.wait_days} days`}</td><td>${esc(x.subject||"")}${x.note?`<div class="hint2">${esc(x.note)}</div>`:""}</td></tr>`).join("");
+  const pushed=!!CUR.zoho_campaign_key;
+  $("#review").innerHTML=`<div class="card" style="margin-top:16px">
+    <h2>${esc(CUR.name||"Campaign")} <span class="bdg ${pushed?"pushed":"draft"}">${pushed?"pushed to Zoho":"draft"}</span></h2>
+    <div class="hint2" style="margin:-4px 0 12px">Audience: <b>${num(a.count||0)}</b> dealers with email · segment: ${esc(CUR.segment||"")}${CUR.manufacturer?` · ${esc(CUR.manufacturer)}`:""}</div>
+    <div class="grid2">
+      <div>
+        <label class="hint2" style="font-weight:700">Subject lines <span style="font-weight:400">(first is primary)</span></label>
+        <div class="fld"><input id="r_subject" value="${esc((g.subjects||[])[0]||"")}"></div>
+        ${(g.subjects||[]).slice(1).map(s=>`<div class="subj"><span class="v">alt</span> ${esc(s)}</div>`).join("")}
+        <div class="fld" style="margin-top:10px"><label>Preheader</label><input id="r_pre" value="${esc(g.preheader||"")}"></div>
+        <h3 style="font-size:12px;text-transform:uppercase;color:var(--gray);margin:14px 0 4px">Sequence</h3>
+        <table class="tt"><tbody>${seq}</tbody></table>
+        <div class="hint2" style="margin-top:8px">Suggested send: ${esc((g.schedule&&g.schedule.recommended)||"")}</div>
+      </div>
+      <div>
+        <label class="hint2" style="font-weight:700">Email preview</label>
+        <div class="prev" id="r_prev">${g.body_html||""}</div>
+        <details style="margin-top:8px"><summary class="hint2" style="cursor:pointer">Edit HTML</summary>
+          <textarea id="r_body" rows="8" style="width:100%;box-sizing:border-box;font-family:ui-monospace,monospace;font-size:11.5px;margin-top:6px" oninput="document.getElementById('r_prev').innerHTML=this.value">${esc(g.body_html||"")}</textarea></details>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+      <button class="btn2 ghost" onclick="saveCampaign()">Save edits</button>
+      <button class="btn2" onclick="pushZoho()" ${STATUS.ready?"":"disabled title='Connect Zoho first'"}>Push draft to Zoho →</button>
+      ${pushed?`<button class="btn2 ghost" onclick="getResults()">Refresh results</button>`:""}
+    </div>
+    <div id="rmsg" class="hint2" style="margin-top:8px"></div></div>`;
+}
+async function saveCampaign(){
+  if(!CUR) return; const m=$("#rmsg"); if(m)m.textContent="Saving…";
+  const g=Object.assign({},CUR.generated||{});
+  const s0=(($("#r_subject")||{}).value||"").trim(); if(s0){ g.subjects=[s0].concat((g.subjects||[]).slice(1)); }
+  g.preheader=(($("#r_pre")||{}).value||"").trim();
+  const bd=$("#r_body"); if(bd) g.body_html=bd.value;
+  const nm=(($("#c_name")||{}).value||"").trim();
+  const r=await api({action:"update",id:CUR.id,patch:{generated:g,name:CUR.name}});
+  if(r.body&&r.body.ok){ CUR.generated=g; if(m)m.textContent="Saved ✓"; } else if(m) m.textContent="Couldn't save.";
+}
+async function pushZoho(){
+  if(!CUR) return; const m=$("#rmsg"); if(m)m.textContent="Pushing draft to Zoho…";
+  await saveCampaign();
+  const r=await api({action:"push_to_zoho",id:CUR.id});
+  if(r.body&&r.body.ok){ if(m)m.textContent="Draft created in Zoho ✓ — open Zoho Campaigns to review and send."; CUR.zoho_campaign_key=r.body.zoho_campaign_key; renderReview(); loadList(); }
+  else if(r.body&&r.body.not_configured){ if(m)m.textContent="Connect Zoho Campaigns first (panel at the top)."; }
+  else if(m) m.textContent=(r.body&&r.body.message)||"Couldn't push.";
+}
+async function getResults(){ if(!CUR)return; const m=$("#rmsg"); if(m)m.textContent="Fetching results…"; const r=await api({action:"results",id:CUR.id}); if(m)m.textContent=(r.body&&r.body.ok)?"Results updated.":((r.body&&r.body.message)||"No results yet."); }
+async function openCampaign(id){ const r=await api({action:"get",id}); if(r.body&&r.body.ok){ CUR=r.body.campaign; renderReview(); window.scrollTo({top:document.body.scrollHeight,behavior:"smooth"}); } }
+async function loadList(){
+  const r=await api({action:"list"}); const rows=(r.body&&r.body.campaigns)||[];
+  const el=$("#list"); if(!el) return;
+  el.innerHTML = rows.length ? `<table class="tt"><tbody>${rows.map(c=>`<tr><td><a href="#" onclick="openCampaign('${c.id}');return false" style="font-weight:700;color:var(--navy);text-decoration:none">${esc(c.name||"(untitled)")}</a><div class="hint2">${esc(c.segment||"")} · ${num(c.audience_count)} dealers</div></td><td><span class="bdg ${c.pushed?"pushed":"draft"}">${c.pushed?"pushed":esc(c.status||"draft")}</span></td></tr>`).join("")}</tbody></table>` : `<div class="hint2">No campaigns yet — build one on the left.</div>`;
+}
+boot();
+</script>
+</body></html>

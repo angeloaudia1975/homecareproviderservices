@@ -24,6 +24,7 @@ const esc=s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;","
 const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const P=require("./_platform.js");
 const ZC=require("./_zohocampaigns.js");
+const { exchangeCode, hasCreds } = require("./_zoho.js");   // reuse the CRM Self-Client token exchange
 
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -122,11 +123,23 @@ exports.handler=async(event)=>{
     let b; try{b=JSON.parse(event.body||"{}");}catch{b={};}
     const act=b.action||"list";
 
-    if(act==="zoho_status"){ return json(200,{ok:true,ready:await ZC.ready(),scopes:ZC.SCOPES,from:CAMPAIGN_FROM}); }
+    if(act==="zoho_status"){ return json(200,{ok:true,creds_set:hasCreds(),ready:await ZC.ready(),scopes:ZC.SCOPES,from:CAMPAIGN_FROM}); }
+
+    // Exchange a Zoho Campaigns Self-Client code for a refresh token, stored under
+    // app_settings 'zoho_campaigns_auth' (separate from the CRM's 'zoho_auth').
+    if(act==="connect_zoho"){
+      if(me.role!=="president") return json(403,{error:"President only"});
+      const code=String(b.code||"").trim(); if(!code) return json(400,{error:"code required"});
+      const ex=await exchangeCode(code);
+      if(!ex.ok) return json(200,{ok:false,message:"Zoho rejected the code — it may have expired (they last only a few minutes) or the scopes were off. Generate a fresh code with the three Campaigns scopes and try again.",detail:ex.error});
+      await sbSend("POST","app_settings?on_conflict=key",{key:"zoho_campaigns_auth",value:{refresh_token:ex.refresh_token,api_domain:ex.api_domain,connected_at:new Date().toISOString()},updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
+      return json(200,{ok:true,connected:true});
+    }
 
     if(act==="segments"){
       const out=[]; for(const s of SEGMENTS){ let count=null; if(!s.needs_mfr){ try{ count=(await dealerIdsFor(s.key,null)).length; }catch(e){} } out.push({...s,count}); }
-      return json(200,{ok:true,segments:out});
+      const mfrs=await sbGet("manufacturers?select=slug,name&order=name").catch(()=>[]);
+      return json(200,{ok:true,segments:out,manufacturers:(mfrs||[]).map(m=>({slug:m.slug,name:m.name||m.slug}))});
     }
 
     if(act==="generate"){
