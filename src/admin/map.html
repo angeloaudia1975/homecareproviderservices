@@ -115,13 +115,13 @@
   <div class="routep" id="routep" hidden>
     <div class="rhead"><b>Route plan</b> <span class="m" id="rmeta"></span><button class="rx" onclick="clearRoute()">Clear</button></div>
     <div class="rtrow" id="rtRow" style="display:none"><label><input type="checkbox" id="rtChk" checked onchange="toggleRT(this.checked)"> Round trip — start &amp; end at home base</label></div>
-    <div class="rtrow"><label style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">Depart <input type="time" id="startTime" value="08:00" style="width:auto" onchange="renderRoute()"> · Visit <input type="number" id="visitMin" value="30" min="0" step="5" style="width:56px" onchange="renderRoute()"> min each</label></div>
+    <div class="rtrow"><label style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">Start <input type="date" id="startDate" style="width:auto" onchange="renderRoute()"> at <input type="time" id="startTime" value="08:00" style="width:auto" onchange="renderRoute()"> · default visit <input type="number" id="visitMin" value="30" min="0" step="5" style="width:52px" onchange="renderRoute()"> min</label></div>
     <ol id="rlist"></ol>
     <div class="ractions">
       <button class="btn" onclick="optimize()">Optimize order</button>
       <button class="btn" onclick="saveRouteDialog()">Save route</button>
       <button class="btn ghost" onclick="printRoute()">Print sheet</button>
-      <button class="btn ghost" onclick="printPacket()">Business case</button>
+      <button class="btn ghost" onclick="printPacket()">Visit package</button>
       <button class="btn ghost" onclick="openGmaps()">Google Maps →</button>
     </div>
   </div>
@@ -410,16 +410,101 @@ function optimizeLocal(){
   while(pool.length){ let bi=0,bd=Infinity; for(let i=0;i<pool.length;i++){const d=hav(cur,pool[i]); if(d<bd){bd=d;bi=i;}} cur=pool.splice(bi,1)[0]; ordered.push(cur); }
   ROUTE=ordered; renderRoute();
 }
+/* ---------- time-zone-aware itinerary (Phase 1) ----------
+   Each stop's IANA zone comes from its US state, with a longitude split for the
+   states that straddle Central/Eastern (TN, KY, IN). Offsets come from Intl, so
+   they're DST-correct. Everything is computed on one absolute timeline, then each
+   stop is displayed in its own local time — so crossing CST↔EST is handled. */
+const TZ_E="America/New_York", TZ_C="America/Chicago";
+const TZ_STATE={OH:TZ_E,GA:TZ_E,NC:TZ_E,SC:TZ_E,WV:TZ_E,PA:TZ_E,VA:TZ_E,FL:TZ_E,MD:TZ_E,DE:TZ_E,NJ:TZ_E,NY:TZ_E,MI:TZ_E,
+  AL:TZ_C,IL:TZ_C,MS:TZ_C,MO:TZ_C,WI:TZ_C,IA:TZ_C,MN:TZ_C,AR:TZ_C,LA:TZ_C,TX:TZ_C,KS:TZ_C,OK:TZ_C,NE:TZ_C};
+function tzForStop(state,lng){
+  const st=String(state||"").toUpperCase().trim();
+  if(st==="TN") return (lng!=null&&lng<-85.4)?TZ_C:TZ_E;   // ~Chattanooga/Knoxville east = Eastern
+  if(st==="KY") return (lng!=null&&lng<-85.9)?TZ_C:TZ_E;
+  if(st==="IN") return (lng!=null&&lng<-87.3)?TZ_C:TZ_E;   // Evansville corner = Central
+  return TZ_STATE[st]||TZ_E;
+}
+function tzOffMin(tz,d){ // minutes east of UTC for tz at instant d (negative in the US)
+  try{ const p=new Intl.DateTimeFormat("en-US",{timeZone:tz,hour12:false,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}).formatToParts(d).reduce((a,x)=>{a[x.type]=x.value;return a;},{});
+    let hh=parseInt(p.hour,10); if(hh===24)hh=0;
+    return Math.round((Date.UTC(+p.year,+p.month-1,+p.day,hh,+p.minute)-d.getTime())/60000);
+  }catch(e){ return -300; }
+}
+function tzShort(tz,d){ try{ const s=new Intl.DateTimeFormat("en-US",{timeZone:tz,timeZoneName:"short"}).formatToParts(d||new Date()).find(x=>x.type==="timeZoneName"); return (s&&s.value)||""; }catch(e){ return ""; } }
+function localToAbs(y,mo,dd,minutes,tz){ const guess=new Date(Date.UTC(y,mo,dd,12,0,0)); const off=tzOffMin(tz,guess); return Date.UTC(y,mo,dd,0,0,0)+minutes*60000-off*60000; }
+function fmtAbs(ms,tz){ const d=new Date(ms); const t=new Intl.DateTimeFormat("en-US",{timeZone:tz,hour:"numeric",minute:"2-digit"}).format(d); const z=tzShort(tz,d); return t+(z?" "+z:""); }
+function fmtAbsDay(ms,tz){ return new Intl.DateTimeFormat("en-US",{timeZone:tz,weekday:"short",month:"short",day:"numeric"}).format(new Date(ms)); }
+function minToTimeVal(min){ min=Math.max(0,Math.min(1439,Math.round(min||0))); return String(Math.floor(min/60)).padStart(2,"0")+":"+String(min%60).padStart(2,"0"); }
+function defaultVisit(){ return Math.max(0,parseInt((($("#visitMin")||{}).value),10)||0); }
+function stopVisit(node){ return (node&&node.visit_min!=null)?(Math.max(0,Number(node.visit_min)||0)):defaultVisit(); }
+function routeStartParts(){
+  const dv=(($("#startDate")||{}).value||"").trim();
+  const minutes=parseTimeMin((($("#startTime")||{}).value));
+  let y,mo,dd;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(dv)){ const p=dv.split("-").map(Number); y=p[0];mo=p[1]-1;dd=p[2]; }
+  else { const n=new Date(); y=n.getFullYear();mo=n.getMonth();dd=n.getDate(); }
+  return {y,mo,dd,minutes};
+}
+// Full itinerary over effectiveRoute(): arrival/departure on one absolute timeline,
+// each shown in its own zone; overnight ends the day and resumes next morning.
+function computeItinerary(){
+  const R=effectiveRoute(); const legs=(LASTROUTE.legs||[]);
+  const hasLegs = R.length>=2 && legs.length>=R.length-1;
+  const {y,mo,dd,minutes}=routeStartParts();
+  const firstTz=tzForStop(R[0]&&R[0].state,R[0]&&R[0].lng);
+  let absMs=localToAbs(y,mo,dd,minutes,firstTz), dayIndex=0; const items=[];
+  for(let i=0;i<R.length;i++){
+    const node=R[i], tz=tzForStop(node.state,node.lng);
+    if(i>0 && hasLegs){ absMs += (legs[i-1].duration_s||0)*1000; }
+    const arriveAbs=absMs, isStop=!node._home, visit=isStop?stopVisit(node):0, departAbs=arriveAbs+visit*60000;
+    const overnight=!!(isStop&&node.overnight);
+    items.push({node,isStop,tz,arriveAbs,departAbs,visit,legIn:(i>0&&hasLegs)?legs[i-1]:null,dayIndex,overnight});
+    absMs=departAbs;
+    if(overnight){ dayIndex++;
+      const base=new Date(Date.UTC(y,mo,dd,12)); base.setUTCDate(base.getUTCDate()+dayIndex);
+      const nextMin=(node.next_start_min!=null)?Number(node.next_start_min):480;
+      absMs=localToAbs(base.getUTCFullYear(),base.getUTCMonth(),base.getUTCDate(),nextMin,tz);
+    }
+  }
+  return items;
+}
+function updateVisit(i,v){ if(ROUTE[i]){ ROUTE[i].visit_min=Math.max(0,parseInt(v,10)||0); renderRoute(); } }
+function toggleOvernight(i,c){ if(ROUTE[i]){ ROUTE[i].overnight=!!c; renderRoute(); } }
+function updateNextStart(i,v){ if(ROUTE[i]){ ROUTE[i].next_start_min=parseTimeMin(v); renderRoute(); } }
+function itineraryListHtml(){
+  const items=computeItinerary(); const hasTimes=(LASTROUTE.legs||[]).length>0;
+  const mut="color:#6b7683;font-size:11px"; let html="",stopNo=0,routeIdx=-1,lastDay=0;
+  for(let k=0;k<items.length;k++){
+    const it=items[k],node=it.node;
+    if(it.dayIndex>lastDay){ lastDay=it.dayIndex; html+=`<li style="list-style:none;margin:7px 0 2px"><span style="display:inline-block;background:#eef2f6;color:#2B4071;font-weight:700;font-size:11px;border-radius:6px;padding:2px 8px">Day ${it.dayIndex+1}${hasTimes?" · "+esc(fmtAbsDay(it.arriveAbs,it.tz)):""}</span></li>`; }
+    if(it.legIn){ const mi=Math.round((it.legIn.distance_m||0)/1609.34),mn=Math.round((it.legIn.duration_s||0)/60); html+=`<li style="list-style:none;margin:0 0 0 34px;${mut}">↓ ${mn} min · ${mi} mi</li>`; }
+    if(!it.isStop){
+      const isStart=(k===0), t=hasTimes?(isStart?" · leave "+fmtAbs(it.arriveAbs,it.tz):" · arrive "+fmtAbs(it.arriveAbs,it.tz)):"";
+      html+=`<li class="homeli"><span class="n" style="background:#16202e">🏠</span><span class="nm"><b>${isStart?"Start — Home base":"Return — Home base"}</b><br><small>${esc(HOME?(HOME.short||HOME.q||""):"")}${t}</small></span></li>`;
+    } else {
+      stopNo++; routeIdx++; const ri=routeIdx, vv=(node.visit_min!=null?node.visit_min:defaultVisit());
+      const arr=hasTimes?`<b style="color:#2B4071">${esc(fmtAbs(it.arriveAbs,it.tz))}</b>`:"";
+      const dep=hasTimes?`<span style="${mut}"> · departs ${esc(fmtAbs(it.departAbs,it.tz))}</span>`:"";
+      html+=`<li><span class="n">${stopNo}</span><span class="nm"><b>${esc(node.name)}</b> ${arr}<br><small>${esc([node.city,node.state].filter(Boolean).join(", "))}</small>`
+        +`<div style="margin-top:3px;font-size:12px">Visit <input type="number" min="0" step="5" value="${vv}" style="width:52px" onchange="updateVisit(${ri},this.value)"> min${dep}`
+        +` &nbsp;<label style="${mut}"><input type="checkbox" ${node.overnight?"checked":""} onchange="toggleOvernight(${ri},this.checked)"> 🌙 overnight</label></div>`
+        +`</span><button class="del" title="Remove" onclick="removeStop(${ri})">✕</button></li>`;
+      if(node.overnight){ html+=`<li style="list-style:none;margin:2px 0 5px 34px;font-size:11.5px;color:#8a5d12;background:#fdf4e6;border-radius:6px;padding:4px 8px">🌙 Overnight near ${esc(node.city||node.name)} — next day starts <input type="time" value="${minToTimeVal(node.next_start_min!=null?node.next_start_min:480)}" style="width:auto" onchange="updateNextStart(${ri},this.value)"></li>`; }
+    }
+  }
+  return html;
+}
+
+(function(){ try{ const sd=document.getElementById("startDate"); if(sd && !sd.value){ const n=new Date(); sd.value=`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}-${String(n.getDate()).padStart(2,"0")}`; } }catch(e){} })();
+
 function renderRoute(){
   const panel=$("#routep"); panel.hidden = ROUTE.length===0;
   $("#rtRow").style.display = HOME ? "block" : "none";
   const cb=$("#rtChk"); if(cb) cb.checked=ROUNDTRIP;
   const list=$("#rlist");
   if(!ROUTE.length){ list.innerHTML=""; if(ROUTELINE){MAP.removeLayer(ROUTELINE);ROUTELINE=null;} if(ROUTEGEO){MAP.removeLayer(ROUTEGEO);ROUTEGEO=null;} LASTROUTE={distance_m:0,duration_s:0,geometry:null}; CURRENT_ROUTE_ID=null; return; }
-  const useHome = HOME && ROUNDTRIP;
-  const start = useHome?`<li class="homeli"><span class="n" style="background:#16202e">🏠</span><span class="nm"><b>Start — Home base</b><br><small>${esc(HOME.short||HOME.q||"")}</small></span></li>`:"";
-  const end   = useHome?`<li class="homeli"><span class="n" style="background:#16202e">🏠</span><span class="nm"><b>End — Home base</b><br><small>return</small></span></li>`:"";
-  list.innerHTML=start+ROUTE.map((s,i)=>`<li><span class="n">${i+1}</span><span class="nm">${esc(s.name)}<br><small>${esc([s.city,s.state].filter(Boolean).join(", "))}</small></span><button class="del" title="Remove" onclick="removeStop(${i})">✕</button></li>`).join("")+end;
+  list.innerHTML=itineraryListHtml();
   updateRouteMeta();
   if(ROUTELINE){ MAP.removeLayer(ROUTELINE); ROUTELINE=null; }
   const R=effectiveRoute();
@@ -446,6 +531,7 @@ async function routeIt(){
       ROUTEGEO=L.polyline(r.geometry.map(c=>[c[1],c[0]]),{color:"#2B4071",weight:5,opacity:.85}).addTo(MAP);
       LASTROUTE={distance_m:r.distance_m,duration_s:r.duration_s,geometry:r.geometry,legs:r.legs||[]};
       updateRouteMeta();
+      { const _l=$("#rlist"); if(_l) _l.innerHTML=itineraryListHtml(); }   // fill in real arrival times
     } else if(r&&r.need_key){ banner(r.message||"Add your OpenRouteService key (ORS_API_KEY) in Netlify to enable live routing."); }
     else if(r&&r.message){ banner("Routing: "+r.message); }
   }catch(e){}
@@ -473,12 +559,12 @@ function saveRouteDialog(){
 }
 async function saveRouteGo(){
   const name=(($("#rname")||{}).value||"").trim(); if(!name){ $("#rerr").textContent="Enter a name."; return; }
-  const date=(($("#rdate")||{}).value||"").trim();
-  const stops=ROUTE.map(s=>({dealer_id:s.dealer_id||"",name:s.name||"",address:s.address||"",city:s.city||"",state:s.state||"",zip:s.zip||"",lat:s.lat,lng:s.lng}));
+  const date=(($("#rdate")||{}).value||"").trim()||(($("#startDate")||{}).value||"").trim();
+  const stops=ROUTE.map(s=>({dealer_id:s.dealer_id||"",name:s.name||"",address:s.address||"",city:s.city||"",state:s.state||"",zip:s.zip||"",lat:s.lat,lng:s.lng,visit_min:(s.visit_min!=null?s.visit_min:null),overnight:!!s.overnight,next_start_min:(s.next_start_min!=null?s.next_start_min:null)}));
   $("#rerr").textContent="Saving…";
   try{
     const r=await api2({action:"save_route",id:CURRENT_ROUTE_ID||undefined,name,scheduled_date:date||null,
-      home_base:(HOME&&ROUNDTRIP)?{label:HOME.short||"",address:HOME.q||"",lat:HOME.lat,lng:HOME.lng}:null,
+      home_base:(HOME&&ROUNDTRIP)?{label:HOME.short||"",address:HOME.q||"",lat:HOME.lat,lng:HOME.lng,depart_time:(($("#startTime")||{}).value||"08:00")}:null,
       round_trip:!!(HOME&&ROUNDTRIP),stops,distance_m:LASTROUTE.distance_m,duration_s:LASTROUTE.duration_s,geometry:LASTROUTE.geometry});
     if(r&&r.ok){ CURRENT_ROUTE_ID=r.id; closeHome(); banner("Route saved ✓"); }
     else { $("#rerr").textContent=(r&&r.message)||"Couldn't save."; }
@@ -502,8 +588,9 @@ async function refreshSaved(){
 async function loadSaved(id){
   try{
     const r=await api2({action:"get_route",id}); const rt=r&&r.route; if(!rt) return;
-    ROUTE=(rt.stops||[]).map((s,idx)=>({_i:"sv"+idx,dealer_id:s.dealer_id||"",name:s.name||"",address:s.address||"",city:s.city||"",state:s.state||"",zip:s.zip||"",lat:s.lat,lng:s.lng}));
+    ROUTE=(rt.stops||[]).map((s,idx)=>({_i:"sv"+idx,dealer_id:s.dealer_id||"",name:s.name||"",address:s.address||"",city:s.city||"",state:s.state||"",zip:s.zip||"",lat:s.lat,lng:s.lng,visit_min:(s.visit_min!=null?s.visit_min:undefined),overnight:!!s.overnight,next_start_min:(s.next_start_min!=null?s.next_start_min:undefined)}));
     CURRENT_ROUTE_ID=rt.id;
+    { const _sd=$("#startDate"); if(_sd) _sd.value=rt.scheduled_date||_sd.value||""; const _st=$("#startTime"); if(_st && rt.home_base && rt.home_base.depart_time) _st.value=rt.home_base.depart_time; }
     if(rt.home_base&&rt.home_base.lat!=null){ HOME={q:rt.home_base.address||"",lat:rt.home_base.lat,lng:rt.home_base.lng,short:rt.home_base.label||""}; ROUNDTRIP=rt.round_trip!==false; localStorage.setItem("hcps_home_base",JSON.stringify(HOME)); drawHome(); }
     LASTROUTE={distance_m:rt.distance_m||0,duration_s:rt.duration_s||0,geometry:rt.geometry||null};
     renderRoute(); draw();
@@ -518,32 +605,28 @@ function parseTimeMin(v){ const m=/^(\d{1,2}):(\d{2})$/.exec(String(v||"").trim(
 function fmtClock(min){ min=Math.round(((min%1440)+1440)%1440); let h=Math.floor(min/60),m=min%60; const ap=h<12?"AM":"PM"; let hh=h%12; if(hh===0)hh=12; return `${hh}:${String(m).padStart(2,"0")} ${ap}`; }
 function nowStamp(){ const d=new Date(); return d.toLocaleDateString(undefined,{weekday:"short",year:"numeric",month:"short",day:"numeric"})+" · "+d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}); }
 function routeSheetHtml(title){
-  const R=effectiveRoute();
-  const legs=(LASTROUTE.legs||[]);
-  const start=parseTimeMin((($("#startTime")||{}).value));
-  const dwell=Math.max(0, parseInt((($("#visitMin")||{}).value),10)||0);
-  const hasLegs = R.length>=2 && legs.length>=R.length-1;
-  let cum=start; const rows=[]; let stopNo=0;
-  for(let i=0;i<R.length;i++){
-    const node=R[i];
-    if(i>0 && hasLegs){ cum += (legs[i-1].duration_s||0)/60; }
-    const arrive=cum;
-    const legNext = (i<R.length-1 && hasLegs) ? legs[i] : null;
-    const nextMi = legNext? Math.round((legNext.distance_m||0)/1609.34) : null;
-    const nextMin= legNext? Math.round((legNext.duration_s||0)/60) : null;
-    if(node._home){
-      rows.push(`<tr class="home"><td class="n">🏠</td><td><b>${i===0?"Depart — Home base":"Return — Home base"}</b><div class="a">${esc(HOME?(HOME.q||HOME.short||""):"")}</div></td><td class="tm">${hasLegs?fmtClock(arrive):""}</td><td class="leg">${legNext?`${nextMi} mi<br>${nextMin} min`:""}</td></tr>`);
+  const items=computeItinerary();
+  const hasTimes=(LASTROUTE.legs||[]).length>0;
+  const {minutes:startMin}=routeStartParts();
+  const rows=[]; let stopNo=0,lastDay=0,endItem=null;
+  for(let k=0;k<items.length;k++){
+    const it=items[k],node=it.node; endItem=it;
+    if(it.dayIndex>lastDay){ lastDay=it.dayIndex; rows.push(`<tr class="home"><td class="n">📅</td><td colspan="3"><b>Day ${it.dayIndex+1}</b>${hasTimes?` — ${esc(fmtAbsDay(it.arriveAbs,it.tz))}`:""}</td></tr>`); }
+    const legNext=(items[k+1]&&items[k+1].legIn)?items[k+1].legIn:null;
+    const nextMi=legNext?Math.round((legNext.distance_m||0)/1609.34):null;
+    const nextMin=legNext?Math.round((legNext.duration_s||0)/60):null;
+    if(!it.isStop){
+      rows.push(`<tr class="home"><td class="n">🏠</td><td><b>${k===0?"Depart — Home base":"Return — Home base"}</b><div class="a">${esc(HOME?(HOME.q||HOME.short||""):"")}</div></td><td class="tm">${hasTimes?esc(fmtAbs(it.arriveAbs,it.tz)):""}</td><td class="leg">${legNext?`${nextMi} mi<br>${nextMin} min`:""}</td></tr>`);
     } else {
       stopNo++;
       const addr=esc([node.address,[node.city,node.state].filter(Boolean).join(", "),node.zip].filter(Boolean).join(" "))||esc([node.city,node.state].filter(Boolean).join(", "));
-      rows.push(`<tr><td class="n">${stopNo}</td><td><b>${esc(node.name)}</b><div class="a">${addr}</div><div class="appt">Appt time ____:____ &nbsp; ▢ arrived &nbsp; ▢ met &nbsp; notes ________________________________</div></td><td class="tm">${hasLegs?fmtClock(arrive):""}</td><td class="leg">${legNext?`${nextMi} mi<br>${nextMin} min`:"—"}</td></tr>`);
-      if(dwell && i<R.length-1) cum += dwell;
+      rows.push(`<tr><td class="n">${stopNo}</td><td><b>${esc(node.name)}</b><div class="a">${addr}</div><div class="appt">Visit ${it.visit} min · departs ${hasTimes?esc(fmtAbs(it.departAbs,it.tz)):"____"} &nbsp; ▢ met &nbsp; notes ____________________________</div>${node.overnight?`<div class="a" style="color:#8a5d12">🌙 Overnight near ${esc(node.city||node.name)}</div>`:""}</td><td class="tm">${hasTimes?esc(fmtAbs(it.arriveAbs,it.tz)):""}</td><td class="leg">${legNext?`${nextMi} mi<br>${nextMin} min`:"—"}</td></tr>`);
     }
   }
   const totMi=LASTROUTE.distance_m?fmtMi(LASTROUTE.distance_m):Math.round(routeMiles());
   const totTime=LASTROUTE.duration_s?fmtDur(LASTROUTE.duration_s):"";
-  const endTime = hasLegs? fmtClock(cum) : "";
-  const meta=`${ROUTE.length} stops · ${totMi} mi${totTime?" · "+totTime+" drive":""}${dwell?` · ${dwell} min/visit`:""} · depart ${fmtClock(start)}${endTime?` · back ~${endTime}`:""}`;
+  const endTime=(hasTimes&&endItem)?fmtAbs(endItem.arriveAbs,endItem.tz):"";
+  const meta=`${ROUTE.length} stops · ${totMi} mi${totTime?" · "+totTime+" drive":""} · depart ${fmtClock(startMin)}${endTime?` · ends ~${endTime}`:""}`;
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
     <style>body{font:13px Arial,sans-serif;color:#1b2733;margin:24px}h1{font-size:20px;margin:0 0 2px}.m{color:#5b6672;margin:0 0 4px}.stamp{color:#9aa4ae;font-size:11px;margin:0 0 14px}
     table{width:100%;border-collapse:collapse}th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#5b6672;border-bottom:2px solid #dde3e8;padding:4px 6px}
@@ -565,13 +648,33 @@ async function printSaved(id){ await loadSaved(id); printRoute(); }
 /* ---------- business-case trip packet ---------- */
 async function printPacket(){
   if(!ROUTE.length) return;
-  const w=window.open("","_blank"); if(!w){ banner("Allow pop-ups to print the business case."); return; }
-  w.document.write('<!doctype html><meta charset="utf-8"><title>Business case</title><body style="font:15px Arial;margin:28px;color:#5b6672">Building your business-case packet…</body>');
+  const w=window.open("","_blank"); if(!w){ banner("Allow pop-ups to print the visit package."); return; }
+  w.document.write('<!doctype html><meta charset="utf-8"><title>Visit package</title><body style="font:15px Arial;margin:28px;color:#5b6672">Preparing your visit package…</body>');
   w.document.close();
   const ids=[...new Set(ROUTE.map(s=>s.dealer_id).filter(Boolean))];
   let cases={};
   try{ const r=await api2({action:"business_case",dealer_ids:ids}); cases=(r&&r.cases)||{}; }catch(e){}
   try{ w.document.open(); w.document.write(packetHtml(cases)); w.document.close(); }catch(e){}
+}
+// Cover page for the visit package: the time-zone itinerary + territory promotions.
+function packetCover(){
+  const items=computeItinerary(); const hasTimes=(LASTROUTE.legs||[]).length>0;
+  let rows="",stopNo=0,lastDay=0;
+  for(let k=0;k<items.length;k++){ const it=items[k],node=it.node;
+    if(it.dayIndex>lastDay){ lastDay=it.dayIndex; rows+=`<tr class="dy"><td colspan="4">Day ${it.dayIndex+1}${hasTimes?" — "+esc(fmtAbsDay(it.arriveAbs,it.tz)):""}</td></tr>`; }
+    if(!it.isStop){ rows+=`<tr class="hm"><td class="c">🏠</td><td>${k===0?"Depart — Home base":"Return — Home base"}</td><td class="c">${hasTimes?esc(fmtAbs(it.arriveAbs,it.tz)):""}</td><td></td></tr>`; }
+    else { stopNo++; rows+=`<tr><td class="c">${stopNo}</td><td><b>${esc(node.name)}</b><div class="sub">${esc([node.city,node.state].filter(Boolean).join(", "))}</div></td><td class="c">${hasTimes?esc(fmtAbs(it.arriveAbs,it.tz)):"—"}</td><td class="c">${it.visit} min${node.overnight?" · 🌙":""}</td></tr>`; }
+  }
+  const promos=(HANDOUT&&HANDOUT.updates&&HANDOUT.updates.length)?`<div class="promo"><h3>Promotions &amp; What's New</h3><ul>${HANDOUT.updates.map(u=>`<li>${esc(u)}</li>`).join("")}</ul></div>`:"";
+  const dv=(($("#startDate")||{}).value||""), tv=(($("#startTime")||{}).value||"");
+  const when = dv?`${esc(dv)}${tv?" · depart "+esc(fmtClock(parseTimeMin(tv))):""}`:"";
+  const totMi=LASTROUTE.distance_m?fmtMi(LASTROUTE.distance_m):Math.round(routeMiles());
+  return `<section class="cover">
+    <h1>Visit Package</h1>
+    <p class="m">${ROUTE.length} stops · ${totMi} mi${LASTROUTE.duration_s?" · "+fmtDur(LASTROUTE.duration_s)+" drive":""}${when?" · "+when:""}${(HOME&&ROUNDTRIP)?" · round trip":""}</p>
+    <h3>Itinerary</h3>
+    <table class="itin"><thead><tr><th>#</th><th>Stop</th><th>Arrive</th><th>Visit</th></tr></thead><tbody>${rows}</tbody></table>
+    ${promos}</section>`;
 }
 function packetHtml(cases){
   const useHome=HOME&&ROUNDTRIP;
@@ -619,9 +722,17 @@ function packetHtml(cases){
     .ln{display:inline-block;border-bottom:1px solid #b9c2cc;min-width:60%;height:14px}
     .cb{display:inline-block;font-size:12px;margin:2px 10px 2px 0;color:#333c47}
     .nbox{height:60px;border:1px solid #dde3e8;border-radius:7px;margin-top:3px}
+    .cover{border:1px solid #dde3e8;border-radius:10px;padding:14px 16px;margin:0 0 14px;page-break-after:always}
+    .cover h1{font-size:22px;margin:0 0 2px}.cover h3{margin:12px 0 6px}
+    .itin{width:100%;border-collapse:collapse}.itin th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#5b6672;text-align:left;border-bottom:2px solid #dde3e8;padding:4px 7px}
+    .itin td{border-bottom:1px solid #eef1f4;padding:5px 7px;font-size:12px;text-align:left}.itin td.c{text-align:center;white-space:nowrap}.itin .sub{color:#9aa4ae;font-size:11px}
+    .itin tr.dy td{background:#eef2f6;font-weight:700;color:#2B4071}.itin tr.hm td{background:#f7f9fb;color:#5b6672}
+    .promo{margin-top:12px;background:#f0f7ff;border:1px solid #d6e6f5;border-radius:8px;padding:8px 12px}.promo h3{margin:0}.promo ul{margin:6px 0 0;padding-left:18px}.promo li{margin:3px 0;font-size:12.5px}
+    .secttl{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:#5b6672;margin:0 0 10px}
     @media print{body{margin:12mm}.stop{border-color:#ccc}}
     </style></head><body>
-    <h1>Route business case</h1><p class="m">${esc(meta)}${useHome?" · round trip":""} · territory development plan</p>
+    ${packetCover()}
+    <h2 class="secttl">Dealer handouts — in stop order</h2>
     ${stops}
     <p class="m">HomeCare Provider Services — confidential territory planning</p>
     <scr`+`ipt>window.onload=function(){window.print();}</scr`+`ipt></body></html>`;
