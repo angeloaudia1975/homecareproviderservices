@@ -236,4 +236,44 @@ async function enqueueIntentEmails(){
   return {considered,queued};
 }
 
-module.exports={ getConfig,computeIntent,computeLineStatus,syncIntentTasks,enqueueIntentEmails,ALLOWED_EVENTS,weightFor,tierFor,INTENT_DEFAULTS };
+// ---- 5. Post-Order Check-in (automation #12) -------------------------------
+// A friendly "how did it go?" 7–11 days after an ONLINE order — rewards the
+// behavior we want (ordering on the portal) with a touch, and opens the door to
+// the next order. Keys off the orders table, so on first run it only ever sees
+// the small 7–11-day-old window, never the whole back-catalog. Queues through
+// the same caps + dry-run as everything else.
+async function enqueuePostOrder(){
+  const cfg=await getConfig();
+  if(cfg.templates_enabled && cfg.templates_enabled.postorder===false) return {skipped:"postorder off"};
+  const now=Date.now();
+  const older=new Date(now-11*864e5).toISOString(), newer=new Date(now-7*864e5).toISOString();
+  const orders=await sbGet(`orders?submitted_at=gte.${encodeURIComponent(older)}&submitted_at=lte.${encodeURIComponent(newer)}&select=dealer_id,manufacturer,contact_email,submitted_at&order=submitted_at.desc`).catch(()=>[]);
+  if(!orders||!orders.length) return {considered:0,queued:0};
+  const perDealer=new Map(); for(const o of orders){ if(o.dealer_id && !perDealer.has(o.dealer_id)) perDealer.set(o.dealer_id,o); } // most recent per dealer
+  const [optRows,liveRows,mfrs,dealers]=await Promise.all([
+    sbGet("email_optout?select=email").catch(()=>[]),
+    sbGet("email_queue?status=eq.queued&template=eq.postorder&select=dealer_id").catch(()=>[]),
+    sbGet("manufacturers?select=slug,name").catch(()=>[]),
+    sbGetAll("dealers?select=id,business_name,email"),
+  ]);
+  const opted=new Set((optRows||[]).map(r=>String(r.email||"").toLowerCase()));
+  const live=new Set((liveRows||[]).map(r=>r.dealer_id));
+  const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
+  const nameById={},emailById={}; for(const d of dealers){ nameById[d.id]=d.business_name; emailById[d.id]=d.email||null; }
+  const cut=new Date(now-30*864e5).toISOString();
+  const sentRows=await sbGet(`email_sends?template=eq.postorder&sent_at=gte.${cut}&select=dealer_id`).catch(()=>[]);
+  const sentRecent=new Set((sentRows||[]).map(r=>r.dealer_id));
+  const insert=[]; let considered=0;
+  for(const [id,o] of perDealer){ considered++;
+    if(live.has(id)||sentRecent.has(id)) continue;
+    let to=String(o.contact_email||emailById[id]||"").trim();
+    if(!EMAIL_RE.test(to)||opted.has(to.toLowerCase())) continue;
+    const line=o.manufacturer?(mfrName[o.manufacturer]||o.manufacturer):null; const name=nameById[id]||"";
+    insert.push({dealer_id:id,contact_email:to,template:"postorder",reason:"postorder",priority:"normal",
+      send_window:"primary",payload:{line},detail:`${name}: post-order check-in`,
+      send_after:new Date().toISOString(),status:"queued"}); }
+  let queued=0; for(const row of insert){ try{ await sbSend("POST","email_queue",row,{Prefer:"return=minimal"}); queued++; }catch(e){/* live-unique race */} }
+  return {considered,queued};
+}
+
+module.exports={ getConfig,computeIntent,computeLineStatus,syncIntentTasks,enqueueIntentEmails,enqueuePostOrder,ALLOWED_EVENTS,weightFor,tierFor,INTENT_DEFAULTS };
