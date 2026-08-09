@@ -67,7 +67,7 @@ function toggleView(){ VIEW=(VIEW==="build")?"saved":"build"; $("#viewBtn").text
 
 function filtered(){
   const st=($("#f_state")||{}).value||"", rep=($("#f_rep")||{}).value||"", mfr=($("#f_mfr")||{}).value||"", rel=($("#f_rel")||{}).value||"", q=(($("#f_q")||{}).value||"").toLowerCase().trim();
-  return COMPANIES.filter(c=>{
+  const arr=COMPANIES.filter(c=>{
     if(st && c.state!==st) return false;
     if(rep && c.rep!==rep) return false;
     if(mfr){ if(!c.relationships.some(r=>r.slug===mfr && (!rel||r.relationship===rel))) return false; }
@@ -75,6 +75,16 @@ function filtered(){
     if(q){ const hay=(c.company+" "+c.city+" "+c.rep+" "+c.contacts.map(x=>x.name+" "+x.email).join(" ")).toLowerCase(); if(!hay.includes(q)) return false; }
     return true;
   });
+  const sort=($("#f_sort")||{}).value||"az";
+  const cmp=(a,b)=>String(a.company||"").localeCompare(String(b.company||""),"en",{sensitivity:"base"});
+  arr.sort((a,b)=>{
+    if(sort==="za") return -cmp(a,b);
+    if(sort==="state") return String(a.state||"").localeCompare(String(b.state||""))||cmp(a,b);
+    if(sort==="rep") return String(a.rep||"").localeCompare(String(b.rep||""))||cmp(a,b);
+    if(sort==="recent") return String(b.last_order||"").localeCompare(String(a.last_order||""))||cmp(a,b);
+    return cmp(a,b);
+  });
+  return arr;
 }
 function render(){
   const m=META;
@@ -85,6 +95,7 @@ function render(){
       <select id="f_mfr" onchange="paint()"><option value="">All lines</option>${m.manufacturers.map(x=>`<option value="${esc(x.slug)}">${esc(x.name)}</option>`).join("")}</select>
       <select id="f_rel" onchange="paint()"><option value="">Any relationship</option><option value="active">Active</option><option value="prospect">Prospect</option><option value="dormant">Dormant</option></select>
       <input class="search" id="f_q" placeholder="Search company, contact, email…" oninput="paint()">
+      <select id="f_sort" onchange="paint()"><option value="az">Sort: Company A–Z</option><option value="za">Company Z–A</option><option value="state">State</option><option value="rep">Rep</option><option value="recent">Last order</option></select>
     </div>
     <div class="sumbar">
       <span><span class="n" id="selCo">0</span> companies · <span class="n" id="selCt">0</span> contacts selected</span>
