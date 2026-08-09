@@ -1,0 +1,163 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Target Audience Builder</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
+ .bar select,.bar input{font-family:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:8px}
+ .bar input.search{flex:1;min-width:180px}
+ .sumbar{position:sticky;top:0;z-index:5;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 12px}
+ .sumbar .n{font-weight:800;color:var(--navy)}
+ .btn2{background:var(--navy);color:#fff;border:0;border-radius:8px;padding:8px 13px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
+ .btn2.ghost{background:#eef2f6;color:var(--navy)}.btn2[disabled]{opacity:.5;cursor:default}
+ .co{border:1px solid var(--line);border-radius:10px;margin:0 0 8px;background:#fff;overflow:hidden}
+ .cohd{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer}
+ .cohd:hover{background:#fafcfe}
+ .cohd .nm{font-weight:700;color:var(--navy)}
+ .meta{font-size:11.5px;color:var(--gray)}
+ .bdg{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px;background:#eef2f6;color:#5c6b7a;margin-left:3px}
+ .b-active{background:#e7f4ee;color:#1f8f5f}.b-prospect{background:#eef0fb;color:#6b4bb4}.b-dormant{background:#fdf4e6;color:#8a5d12}
+ .cts{border-top:1px solid #eef2f6;padding:4px 12px 8px 40px}
+ .ct{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;border-bottom:1px dotted #eef2f6}
+ .ct:last-child{border-bottom:0}.ct .em{color:var(--gray);font-size:12px}
+ .ct.unsub{opacity:.55}
+ .exp{margin-left:auto;font-size:12px;color:var(--gray)}
+ .saved{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 8px;background:#fff;display:flex;gap:10px;align-items:center}
+ .hint2{font-size:12px;color:var(--gray)}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1>Target Audience Builder</h1><div class="sub">Build campaign lists from your dealer &amp; contact data — filter, pick companies or people, save. Lists live in HCPS.</div></div>
+    <div><button class="btn2 ghost" id="viewBtn" onclick="toggleView()">Saved audiences</button></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token();
+let COMPANIES=[], META={states:[],reps:[],manufacturers:[]}, BYID={}, SEL=new Map(), VIEW="build", EXPANDED=new Set();
+const num=n=>Number(n||0).toLocaleString("en-US");
+const relClass={active:"b-active",prospect:"b-prospect",dormant:"b-dormant"};
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; boot();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+async function api(payload){ const r=await fetch("/.netlify/functions/audiences-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
+
+async function boot(){
+  if(!TOKEN){ gate(); return; }
+  $("#body").innerHTML=`<div class="msg">Loading dealer &amp; contact data…</div>`;
+  const r=await api({action:"contacts"});
+  if(r.status===401){ gate("Your session ended — sign in again."); return; }
+  if(!r.body||!r.body.ok){ $("#body").innerHTML=`<div class="msg err">Couldn't load: ${esc((r.body&&r.body.error)||"error")}</div>`; return; }
+  COMPANIES=r.body.companies||[]; META=r.body.meta||META; BYID={}; COMPANIES.forEach(c=>BYID[c.dealer_id]=c);
+  render();
+}
+function toggleView(){ VIEW=(VIEW==="build")?"saved":"build"; $("#viewBtn").textContent=(VIEW==="build")?"Saved audiences":"← Back to builder"; if(VIEW==="saved") renderSaved(); else render(); }
+
+function filtered(){
+  const st=($("#f_state")||{}).value||"", rep=($("#f_rep")||{}).value||"", mfr=($("#f_mfr")||{}).value||"", rel=($("#f_rel")||{}).value||"", q=(($("#f_q")||{}).value||"").toLowerCase().trim();
+  return COMPANIES.filter(c=>{
+    if(st && c.state!==st) return false;
+    if(rep && c.rep!==rep) return false;
+    if(mfr){ if(!c.relationships.some(r=>r.slug===mfr && (!rel||r.relationship===rel))) return false; }
+    else if(rel){ if(!c.relationships.some(r=>r.relationship===rel)) return false; }
+    if(q){ const hay=(c.company+" "+c.city+" "+c.rep+" "+c.contacts.map(x=>x.name+" "+x.email).join(" ")).toLowerCase(); if(!hay.includes(q)) return false; }
+    return true;
+  });
+}
+function render(){
+  const m=META;
+  $("#body").innerHTML=`
+    <div class="bar">
+      <select id="f_state" onchange="paint()"><option value="">All states</option>${m.states.map(s=>`<option>${esc(s)}</option>`).join("")}</select>
+      <select id="f_rep" onchange="paint()"><option value="">All reps</option>${m.reps.map(r=>`<option>${esc(r)}</option>`).join("")}</select>
+      <select id="f_mfr" onchange="paint()"><option value="">All lines</option>${m.manufacturers.map(x=>`<option value="${esc(x.slug)}">${esc(x.name)}</option>`).join("")}</select>
+      <select id="f_rel" onchange="paint()"><option value="">Any relationship</option><option value="active">Active</option><option value="prospect">Prospect</option><option value="dormant">Dormant</option></select>
+      <input class="search" id="f_q" placeholder="Search company, contact, email…" oninput="paint()">
+    </div>
+    <div class="sumbar">
+      <span><span class="n" id="selCo">0</span> companies · <span class="n" id="selCt">0</span> contacts selected</span>
+      <button class="btn2 ghost" onclick="selectAllFiltered(true)">Select all filtered</button>
+      <button class="btn2 ghost" onclick="selectAllFiltered(false)">Clear</button>
+      <span style="flex:1"></span>
+      <button class="btn2" onclick="createAudience()">Create Target Audience</button>
+      <button class="btn2 ghost" onclick="createDynamic()" title="Auto-updating list from the current filters">Save filters as dynamic</button>
+    </div>
+    <div class="hint2" id="fcount" style="margin:-4px 0 8px"></div>
+    <div id="list"></div>`;
+  paint();
+}
+function paint(){
+  const F=filtered(); const el=$("#list"); if(!el) return;
+  $("#fcount").textContent=`${num(F.length)} companies match`;
+  el.innerHTML=F.slice(0,600).map(c=>{
+    const selCts=c.contacts.filter(ct=>SEL.has(ct.email)).length;
+    const coChecked=c.contacts.length&&selCts===c.contacts.length;
+    const rels=c.relationships.slice(0,4).map(r=>`<span class="bdg ${relClass[r.relationship]||''}">${esc(r.name)}</span>`).join("");
+    const exp=EXPANDED.has(c.dealer_id);
+    const cts=exp?`<div class="cts">${c.contacts.length?c.contacts.map(ct=>`<label class="ct ${ct.unsub?'unsub':''}"><input type="checkbox" ${SEL.has(ct.email)?"checked":""} onchange="toggleContact('${esc(ct.email)}','${c.dealer_id}')"> <span>${esc(ct.name||"—")}</span> <span class="em">${esc(ct.email)}${ct.title?" · "+esc(ct.title):""}${ct.unsub?" · unsubscribed":""}</span></label>`).join(""):`<div class="hint2">No email contacts on file.</div>`}</div>`:"";
+    return `<div class="co">
+      <div class="cohd">
+        <input type="checkbox" ${coChecked?"checked":""} onclick="event.stopPropagation();toggleCompany('${c.dealer_id}')">
+        <div onclick="toggleExp('${c.dealer_id}')" style="flex:1;min-width:0">
+          <div class="nm">${esc(c.company)} ${rels}</div>
+          <div class="meta">${esc([c.city,c.state].filter(Boolean).join(", "))}${c.rep?" · "+esc(c.rep):""}${c.status?" · "+esc(c.status):""}${c.last_order?" · last order "+esc(c.last_order):""}</div>
+        </div>
+        <span class="exp" onclick="toggleExp('${c.dealer_id}')">${c.contacts.length} contact${c.contacts.length===1?"":"s"}${selCts?` · ${selCts} ✓`:""} ${exp?"▲":"▼"}</span>
+      </div>${cts}</div>`;
+  }).join("")+(F.length>600?`<div class="hint2">Showing first 600 of ${num(F.length)} — narrow with filters.</div>`:"");
+  updateSummary();
+}
+function toggleExp(id){ if(EXPANDED.has(id))EXPANDED.delete(id); else EXPANDED.add(id); paint(); }
+function toggleContact(email,did){ if(SEL.has(email))SEL.delete(email); else { const c=BYID[did], ct=c&&c.contacts.find(x=>x.email===email); if(ct) SEL.set(email,{dealer_id:did,company:c.company,contact_name:ct.name,contact_email:email}); } paint(); }
+function toggleCompany(did){ const c=BYID[did]; if(!c)return; const all=c.contacts.length&&c.contacts.every(ct=>SEL.has(ct.email));
+  c.contacts.forEach(ct=>{ if(all) SEL.delete(ct.email); else SEL.set(ct.email,{dealer_id:did,company:c.company,contact_name:ct.name,contact_email:ct.email}); }); paint(); }
+function selectAllFiltered(on){ const F=filtered(); if(!on){ SEL.clear(); } else { F.forEach(c=>c.contacts.forEach(ct=>SEL.set(ct.email,{dealer_id:c.dealer_id,company:c.company,contact_name:ct.name,contact_email:ct.email}))); } paint(); }
+function updateSummary(){ const cos=new Set(); SEL.forEach(m=>cos.add(m.dealer_id)); const a=$("#selCo"),b=$("#selCt"); if(a)a.textContent=num(cos.size); if(b)b.textContent=num(SEL.size); }
+
+async function createAudience(){
+  if(!SEL.size){ bannerMsg("Select some companies or contacts first."); return; }
+  const name=prompt(`Name this audience (${SEL.size} contacts):`,""); if(!name) return;
+  const members=[...SEL.values()];
+  const r=await api({action:"create",name:name.trim(),type:"static",members});
+  if(r.body&&r.body.ok){ bannerMsg(`Saved "${name}" ✓ (${members.length} contacts)`); SEL.clear(); paint(); }
+  else bannerMsg((r.body&&r.body.error)||"Couldn't save.");
+}
+async function createDynamic(){
+  const rules={ state:($("#f_state")||{}).value||"", rep:($("#f_rep")||{}).value||"", manufacturer:($("#f_mfr")||{}).value||"", relationship:($("#f_rel")||{}).value||"" };
+  if(!rules.state&&!rules.rep&&!rules.manufacturer&&!rules.relationship){ bannerMsg("Set at least one filter to make a dynamic audience."); return; }
+  const name=prompt("Name this dynamic (auto-updating) audience:",""); if(!name) return;
+  const r=await api({action:"create",name:name.trim(),type:"dynamic",rules});
+  if(r.body&&r.body.ok){ bannerMsg(`Saved dynamic audience "${name}" ✓`); }
+  else bannerMsg((r.body&&r.body.error)||"Couldn't save.");
+}
+function bannerMsg(t){ let el=$("#abanner"); if(!el){ el=document.createElement("div"); el.id="abanner"; el.style.cssText="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#10263f;color:#fff;padding:9px 16px;border-radius:9px;font-size:13px;z-index:50;box-shadow:0 4px 14px rgba(0,0,0,.2)"; document.body.appendChild(el);} el.textContent=t; el.style.display="block"; clearTimeout(window._abt); window._abt=setTimeout(()=>{el.style.display="none";},3200); }
+
+async function renderSaved(){
+  $("#body").innerHTML=`<div class="msg">Loading saved audiences…</div>`;
+  const r=await api({action:"list"}); const rows=(r.body&&r.body.audiences)||[];
+  $("#body").innerHTML = rows.length ? rows.map(a=>`<div class="saved">
+      <div style="flex:1;min-width:0"><b style="color:var(--navy)">${esc(a.name||"(untitled)")}</b> <span class="bdg">${a.type==="dynamic"?"dynamic":"static"}</span>
+        <div class="meta">${num(a.company_count)} companies · ${num(a.contact_count)} contacts · by ${esc(a.created_by||"—")} · ${esc((a.updated_at||"").slice(0,10))}</div></div>
+      <button class="btn2 ghost" onclick="useInCampaign('${a.id}')">Use in Campaign</button>
+      <button class="btn2 ghost" onclick="dupAud('${a.id}')">Duplicate</button>
+      <button class="btn2 ghost" onclick="delAud('${a.id}','${esc((a.name||"").replace(/'/g,""))}')">✕</button>
+    </div>`).join("") : `<div class="hint2" style="padding:12px">No saved audiences yet. Build one in the builder and click “Create Target Audience.”</div>`;
+}
+function useInCampaign(id){ location.href="/admin/campaigns.html?audience="+encodeURIComponent(id); }
+async function dupAud(id){ const r=await api({action:"duplicate",id}); if(r.body&&r.body.ok){ renderSaved(); } }
+async function delAud(id,name){ if(!confirm(`Delete audience "${name}"?`)) return; const r=await api({action:"delete",id}); if(r.body&&r.body.ok){ renderSaved(); } }
+boot();
+</script>
+</body></html>
