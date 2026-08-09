@@ -91,6 +91,39 @@ const pm=p=>{const[y,m]=p.split("-").map(Number);return y*12+(m-1);};
 // ---- territory ACCESS RULES (shared with the ordering portal's dealer-auth). ----
 const { computeAccess } = require("./_access.js");
 const P = require("./_platform.js");
+const ACT_ORDERING = process.env.ORDERING_BASE || "https://hcpsonlineordering.netlify.app";
+// #2 Manufacturer Activated — when a dealer is newly approved to order a line, queue a
+// one-time "you can order this now" email (ordering instructions & pricing) through the
+// same email_queue the engine drains (caps + opt-out + go-live gating all still apply),
+// and log the activation on the dealer timeline. Once-ever per dealer×line: prior
+// activation emails' `reason` records which slugs were already covered. Live-only, so
+// pre-launch setup never emails real dealers.
+async function enqueueActivation(dealer_id, newSlugs){
+  try{
+    const st=await P.getState(); if(st.mode!=="live") return;                 // no premature sends before go-live
+    if(!Array.isArray(newSlugs)||!newSlugs.length) return;
+    const [dealers,mfrs,priorQ,opt]=await Promise.all([
+      sbGet(`dealers?id=eq.${encodeURIComponent(dealer_id)}&select=business_name,email`).catch(()=>[]),
+      sbGet("manufacturers?select=slug,name").catch(()=>[]),
+      sbGet(`email_queue?dealer_id=eq.${encodeURIComponent(dealer_id)}&template=eq.activation&select=reason`).catch(()=>[]),
+      sbGet("email_optout?select=email").catch(()=>[]),
+    ]);
+    const d=dealers&&dealers[0]; if(!d) return;
+    const mfrName={}; for(const m of (mfrs||[])) mfrName[m.slug]=m.name||m.slug;
+    const done=new Set(); for(const r of (priorQ||[])){ String(r.reason||"").replace(/^activation:/,"").split(",").forEach(s=>{ if(s) done.add(s); }); }
+    const slugs=newSlugs.filter(s=>s && !done.has(s)); if(!slugs.length) return;
+    let to=String(d.email||"").trim();
+    if(!EMAIL_RE.test(to)){ const c=await sbGet(`dealer_contacts?dealer_id=eq.${encodeURIComponent(dealer_id)}&select=email&limit=1`).catch(()=>[]); to=String((c&&c[0]&&c[0].email)||"").trim(); }
+    if(!EMAIL_RE.test(to)) return;
+    const opted=new Set((opt||[]).map(r=>String(r.email||"").toLowerCase())); if(opted.has(to.toLowerCase())) return;
+    const lines=slugs.map(s=>mfrName[s]||s);
+    await sbSend("POST","email_queue",{dealer_id,contact_email:to,template:"activation",reason:"activation:"+slugs.join(","),
+      priority:"normal",send_window:"primary",payload:{lines,slugs},
+      detail:`${d.business_name||""}: line(s) activated — ${lines.join(", ")}`,
+      send_after:new Date().toISOString(),status:"queued",env:P.envFor(st.mode,false)},{Prefer:"return=minimal"}).catch(()=>{});
+    await sbSend("POST","dealer_activity",{dealer_id,kind:"system",subject:`Line(s) activated: ${lines.join(", ")}`,actor:"Access grant"},{Prefer:"return=minimal"}).catch(()=>{});
+  }catch(e){/* activation email is best-effort; never block the access save */}
+}
 // Same normalized key the map's geocoder uses, to look up a governing account's latitude
 // (needed for Strongback's "south of Indianapolis" rule).
 function qkey(a){
@@ -332,6 +365,10 @@ exports.handler = async (event)=>{
         if(b.refCarry&&typeof b.refCarry==="object"){ for(const k in b.refCarry){ if(b.refCarry[k]&&!refBy[k]) refBy[k]=b.refCarry[k]; } }
         await sbSend("DELETE",`dealer_manufacturers?dealer_id=eq.${b.dealer_id}`,null,{Prefer:"return=minimal"});
         if(b.manufacturers.length) await sbSend("POST","dealer_manufacturers",b.manufacturers.map(m=>({dealer_id:b.dealer_id,manufacturer:m,active:true,account_ref:refBy[m]||null})),{Prefer:"return=minimal"});
+        // #2 Manufacturer Activated: fire for lines that weren't in the grid before this save.
+        const hadBefore=new Set((existing||[]).map(r=>r.manufacturer));
+        const newlyGranted=b.manufacturers.filter(m=>!hadBefore.has(m));
+        if(newlyGranted.length) await enqueueActivation(b.dealer_id,newlyGranted);
         return json(200,{ok:true});
       }
       if(act==="rep"){

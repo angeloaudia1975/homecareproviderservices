@@ -27,7 +27,7 @@ const DEFAULTS={engine_enabled:true,email_enabled:false,cap_per_7d:2,min_gap_hou
   dormant_months:3,overdue_mult:0.5,overdue_min_gap_months:1,quiet_weekends:true,
   business_hours:[7,19],timezone:"America/New_York",
   windows:{primary:[9,10],behavior:[12,13],remaining:[15,16]},
-  templates_enabled:{overdue:true,dormant:true,cart:true,new:true,crosssell:true,product:true,postorder:true},queue_ttl_hours:72,
+  templates_enabled:{overdue:true,dormant:true,cart:true,new:true,crosssell:true,product:true,postorder:true,activation:true,reengage:true},queue_ttl_hours:72,
   reports_enabled:false,report_recipients:[]};
 async function getConfig(){
   try{ const rows=await sbGet("app_settings?key=eq.automation_config&select=value");
@@ -135,7 +135,7 @@ async function runTasks(sig){
 }
 
 // ---- Email queueing (DECIDE) ------------------------------------------------
-const WIN_FOR={overdue:"behavior",cart:"behavior",dormant:"remaining",new:"primary",crosssell:"remaining",product:"behavior",postorder:"primary",campaign:"primary"};
+const WIN_FOR={overdue:"behavior",cart:"behavior",dormant:"remaining",new:"primary",crosssell:"remaining",product:"behavior",postorder:"primary",campaign:"primary",activation:"primary",reengage:"remaining"};
 // Next window start (ISO) from now, honoring quiet weekends. Simple: same day if the
 // window is still ahead, else search forward up to 8 days.
 function nextWindowAt(cfg,winKey){
@@ -210,6 +210,16 @@ function tmpl(template,dealer,payload,unsub){
     return {subject:`Questions about ${payload&&payload.line?payload.line:"what you were viewing"}?`, ...wrap(`Happy to help${hi}`,`We noticed you were taking a look at ${line}${code} on the portal. Your pricing is already loaded, and your HCPS rep is glad to answer any questions or help you place an order — whenever the timing's right.`,payload&&payload.line?`View ${eesc(payload.line)}`:"Take another look")}; }
   if(template==="postorder"){ const line=payload&&payload.line?eesc(payload.line)+" ":"";
     return {subject:`How did your recent order go?`, ...wrap(`Thanks for your order${hi}`,`We wanted to check in on your recent ${line}order through the HCPS portal. If everything arrived as expected, wonderful — and if anything needs attention, just reply and we'll jump on it. When you're ready for the next one, your pricing is loaded and reordering takes a couple of clicks.`,"Reorder or browse")}; }
+  if(template==="activation"){ // #2 Manufacturer Activated — ordering instructions & pricing for a newly-approved line
+    const arr=(payload&&Array.isArray(payload.lines)&&payload.lines.length)?payload.lines:(payload&&payload.line?[payload.line]:[]);
+    const names=arr.map(eesc); const one=names.length===1;
+    const list=one?names[0]:(names.slice(0,-1).join(", ")+" and "+names[names.length-1]);
+    const label=one?`You're set up to order ${list}`:`New lines added to your account`;
+    return {subject:one?`You can now order ${arr[0]} through HCPS`:`New manufacturer lines on your HCPS account`,
+      ...wrap(`${label}${hi}`,`Good news — ${list} ${one?"is":"are"} now active on your HomeCare Provider Services account. Your dealer pricing is loaded, and you can browse the catalog and place orders on the portal 24/7. If you'd like a hand getting the first order in, just reply and your HCPS rep will walk you through it.`,one?`Order ${arr[0]}`:"Browse your new lines")}; }
+  if(template==="reengage"){ // #13 Email Re-engagement — light "still want to hear from us?" touch
+    return {subject:`Still want product updates from HCPS?`,
+      ...wrap(`We'd love to stay useful${hi}`,`We haven't seen you open our recent notes, and we don't want to clutter your inbox. If our reorder reminders, pricing, and new-line updates are still helpful, no action is needed — you'll keep getting them. If not, you can unsubscribe below anytime. Either way, your portal and pricing are always a click away when you need to order.`,"Visit your portal")}; }
   // dormant (default)
   return {subject:"We've missed you at HomeCare Provider Services", ...wrap(`We've missed you${hi}`,`It's been a little while since your last order with HomeCare Provider Services. Your account is active and ready — browse your lines, see your pricing, and reorder in a couple of clicks, 24/7.`,"Sign in & reorder")};
 }

@@ -282,4 +282,63 @@ async function enqueuePostOrder(){
   return {considered,queued};
 }
 
-module.exports={ getConfig,computeIntent,computeLineStatus,syncIntentTasks,enqueueIntentEmails,enqueuePostOrder,ALLOWED_EVENTS,weightFor,tierFor,INTENT_DEFAULTS };
+// ---- 6. Email Re-engagement (automation #13) -------------------------------
+// Dealers we actively email who have gone quiet on email specifically (no opens or
+// clicks in 60d) get one light "still want these?" touch, at most 1 per 30d. After
+// two attempts with no engagement we stop emailing and flag them low-engagement for
+// list hygiene (a rep task), rather than emailing into the void. SAFETY: if there is
+// no open/click tracking at all yet, every emailed dealer would look "cold" — so we
+// skip entirely until real email-engagement events exist.
+async function enqueueReengagement(){
+  const cfg=await getConfig();
+  if(cfg.templates_enabled && cfg.templates_enabled.reengage===false) return {skipped:"reengage off"};
+  const st=await P.getState(); if(st.mode!=="live") return {skipped:"platform not live"};
+  const now=Date.now();
+  const d30=new Date(now-30*864e5).toISOString(), d60=new Date(now-60*864e5).toISOString(),
+        d90=new Date(now-90*864e5).toISOString(), d180=new Date(now-180*864e5).toISOString();
+  const anyOpens=await sbGet(`intent_events?event_type=in.(email_open,email_click)&occurred_at=gte.${encodeURIComponent(d180)}&select=dealer_id&limit=1`).catch(()=>[]);
+  if(!anyOpens||!anyOpens.length) return {skipped:"no email open/click tracking yet"};
+  const engaged=new Set((await sbGetAll(`intent_events?event_type=in.(email_open,email_click)&occurred_at=gte.${encodeURIComponent(d60)}&select=dealer_id`,"dealer_id").catch(()=>[])).map(r=>r.dealer_id));
+  const sends=await sbGetAll(`email_sends?sent_at=gte.${encodeURIComponent(d90)}&select=dealer_id,template,sent_at`,"dealer_id").catch(()=>[]);
+  const sentCount={}, re30=new Set();
+  for(const s of (sends||[])){ sentCount[s.dealer_id]=(sentCount[s.dealer_id]||0)+1;
+    if(s.template==="reengage" && s.sent_at>=d30) re30.add(s.dealer_id); }
+  const re180rows=await sbGet(`email_sends?template=eq.reengage&sent_at=gte.${encodeURIComponent(d180)}&select=dealer_id`).catch(()=>[]);
+  const re180={}; for(const r of (re180rows||[])) re180[r.dealer_id]=(re180[r.dealer_id]||0)+1;
+  const dormant=new Set((await sbGet("dealer_engagement?status=eq.dormant&select=dealer_id").catch(()=>[])).map(r=>r.dealer_id));
+  const candidates=Object.keys(sentCount).filter(id=> sentCount[id]>=2 && !engaged.has(id) && !dormant.has(id));
+  if(!candidates.length) return {considered:0,queued:0,flagged:0};
+  const [optRows,liveRows,dealers,dir]=await Promise.all([
+    sbGet("email_optout?select=email").catch(()=>[]),
+    sbGet("email_queue?status=eq.queued&template=eq.reengage&select=dealer_id").catch(()=>[]),
+    sbGetAll("dealers?select=id,business_name,email"),
+    sbGet("dealer_directory?select=dealer_name,rep_name").catch(()=>[]),
+  ]);
+  const opted=new Set((optRows||[]).map(r=>String(r.email||"").toLowerCase()));
+  const live=new Set((liveRows||[]).map(r=>r.dealer_id));
+  const nameById={},emailById={}; for(const d of dealers){ nameById[d.id]=d.business_name; emailById[d.id]=d.email||null; }
+  const repBy={}; for(const x of (dir||[])) repBy[x.dealer_name]=x.rep_name||"";
+  const insert=[]; const flagTasks=[]; let considered=0;
+  for(const id of candidates){ considered++;
+    if(re30.has(id)||live.has(id)) continue;                        // 1 per 30d
+    if((re180[id]||0)>=2){                                          // rested after 2 tries → flag, stop emailing
+      flagTasks.push({dealer_id:id,title:`Email-cold — ${nameById[id]||"dealer"}`,detail:`No email opens/clicks in 60+ days after ${re180[id]} re-engagement attempts. Consider a call or pausing marketing to this dealer.`,priority:"normal",source:"auto",reason:"low_engagement",assigned_rep:repBy[nameById[id]]||null,created_by:"Re-engagement",status:"open",env:P.envFor(st.mode,false)});
+      continue;
+    }
+    let to=String(emailById[id]||"").trim();
+    if(!EMAIL_RE.test(to)){ try{ const c=await sbGet(`dealer_contacts?dealer_id=eq.${encodeURIComponent(id)}&select=email&limit=1`); to=String((c&&c[0]&&c[0].email)||"").trim(); }catch(e){} }
+    if(!EMAIL_RE.test(to) || opted.has(to.toLowerCase())) continue;
+    insert.push({dealer_id:id,contact_email:to,template:"reengage",reason:"reengage",priority:"normal",
+      send_window:"remaining",payload:{},detail:`${nameById[id]||""}: no email engagement in 60d`,
+      send_after:new Date().toISOString(),status:"queued",env:"live"}); }
+  let queued=0; for(const row of insert){ try{ await sbSend("POST","email_queue",row,{Prefer:"return=minimal"}); queued++; }catch(e){} }
+  let flagged=0;
+  if(flagTasks.length){
+    const existing=new Set((await sbGet("dealer_tasks?source=eq.auto&reason=eq.low_engagement&status=eq.open&select=dealer_id").catch(()=>[])).map(t=>t.dealer_id));
+    const fresh=flagTasks.filter(t=>!existing.has(t.dealer_id));
+    for(let i=0;i<fresh.length;i+=200){ const part=fresh.slice(i,i+200); try{ await sbSend("POST","dealer_tasks",part,{Prefer:"return=minimal"}); flagged+=part.length; }catch(e){} }
+  }
+  return {considered,queued,flagged};
+}
+
+module.exports={ getConfig,computeIntent,computeLineStatus,syncIntentTasks,enqueueIntentEmails,enqueuePostOrder,enqueueReengagement,ALLOWED_EVENTS,weightFor,tierFor,INTENT_DEFAULTS };
