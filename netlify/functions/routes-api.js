@@ -45,6 +45,32 @@ function visitEmail(to,d,dateStr,repName,repEmail){
   const text=`We'll be in your area${when?", "+when:""}\n\nHi ${d.business_name||d.contact_name||"there"}, this is ${repName} with HomeCare Provider Services. I'm planning to be near you${when?" on "+when:" soon"} and would love to stop by. Reply with a good time and I'll make it work.\n\n${repName}${repEmail?" · "+repEmail:""}\nHomeCare Provider Services`;
   return {to,subject:`HCPS will be in your area${when?" — "+when:""}`,html,text,replyTo:repEmail};
 }
+// ---- visit follow-up (Phase 4) ----
+function followupList(v){ if(Array.isArray(v)) return v.map(x=>String(x)); if(v==null) return []; return String(v).split(/\r?\n|;/).map(s=>s.trim()).filter(Boolean); }
+function firstFew(s){ return String(s||"").split(/[,;\n]/)[0].split(/\s+/).slice(0,4).join(" "); }
+function buildFollowup(dealerName,repName,details){
+  const parts=[];
+  parts.push(`Hi ${dealerName||"there"},`);
+  parts.push(`Thank you for taking the time to meet — it was great to connect and talk through how things are going.`);
+  const b=[];
+  if(details.products) b.push(`Products we discussed: ${details.products}`);
+  if(details.pricing) b.push(`Pricing: ${details.pricing}`);
+  if(details.samples) b.push(`Samples to send over: ${details.samples}`);
+  if(details.opportunities) b.push(`Lines/opportunities to explore: ${details.opportunities}`);
+  if(details.orders_expected) b.push(`Order we talked about: ${details.orders_expected}`);
+  const fups=followupList(details.follow_ups);
+  if(fups.length) b.push(`Next steps on my side: ${fups.join("; ")}`);
+  if(b.length){ parts.push("To recap what we covered:"); parts.push(b.map(x=>"• "+x).join("\n")); }
+  if(details.next_visit) parts.push(`I'll plan to check back in around ${prettyDate(details.next_visit)}.`);
+  parts.push(`If anything comes up in the meantime, just reply here or give me a call — always happy to help.`);
+  parts.push(`Best,\n${repName}\nHomeCare Provider Services`);
+  const subject=`Great connecting${details.products?` about ${firstFew(details.products)}`:""} — HCPS follow-up`;
+  return {subject,body:parts.join("\n\n")};
+}
+function followupHtml(text,repName){
+  const safe=esc2(text).replace(/\n/g,"<br>");
+  return `<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:560px;font-size:13.5px;line-height:1.6">${safe}<p style="font-size:12px;color:#9aa4ae;margin:18px 0 0">HomeCare Provider Services · Your partner in mobility &amp; home medical equipment.</p></div>`;
+}
 async function fetchJson(url){ const r=await fetch(url); if(!r.ok) throw new Error("fetch "+r.status); return r.json(); }
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
 async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); const t=await r.text(); return t?JSON.parse(t):null; }
@@ -267,6 +293,54 @@ exports.handler = async (event)=>{
       const key=String(b.key||"").trim(); if(!key) return json(400,{error:"key required"});
       await sbSend("POST","app_settings?on_conflict=key",{key,value:b.value||{},updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
       return json(200,{ok:true});
+    }
+
+    // ---------- Visit notes → tasks + opportunities (Phase 4) ----------
+    if(b.action==="save_visit"){
+      const dealer_id=b.dealer_id; if(!dealer_id) return json(400,{error:"dealer_id required"});
+      const details=(b.details&&typeof b.details==="object")?b.details:{};
+      const summary=String(b.summary||details.summary||"").trim()||null;
+      const dr=await sbGet(`dealers?id=eq.${encodeURIComponent(dealer_id)}&select=business_name,is_test`).catch(()=>[]);
+      const d=(dr&&dr[0])||{};
+      const st=await P.getState(); const env=P.envFor(st.mode,d.is_test);
+      const repName=me.name||me.rep_name||"HCPS rep";
+      try{ await sbSend("POST","dealer_visits",{dealer_id,rep_name:me.rep_name||null,owner_email:me.email||null,visited_at:new Date().toISOString(),notes:summary,details,env},{Prefer:"return=minimal"}); }catch(e){}
+      // follow-up items -> tasks; order-expected & next-visit -> tasks
+      const tasks=[];
+      for(const f of followupList(details.follow_ups)){ const t=String(f).trim(); if(t) tasks.push({dealer_id,title:`Follow-up: ${t.slice(0,120)}`,detail:"From dealer visit",source:"visit",reason:"visit_followup",priority:"normal",assigned_rep:me.rep_name||null,created_by:repName,status:"open",env}); }
+      if(String(details.orders_expected||"").trim()) tasks.push({dealer_id,title:`Expected order — ${d.business_name||"dealer"}`,detail:String(details.orders_expected).slice(0,200),source:"visit",reason:"visit_order",priority:"high",assigned_rep:me.rep_name||null,created_by:repName,status:"open",env});
+      if(/^\d{4}-\d{2}-\d{2}$/.test(String(details.next_visit||""))) tasks.push({dealer_id,title:`Next visit — ${d.business_name||"dealer"}`,detail:"Scheduled from visit notes",due_date:details.next_visit,source:"visit",reason:"visit_next",priority:"normal",assigned_rep:me.rep_name||null,created_by:repName,status:"open",env});
+      let tCreated=0; if(tasks.length){ try{ await sbSend("POST","dealer_tasks",tasks,{Prefer:"return=minimal"}); tCreated=tasks.length; }catch(e){} }
+      // manufacturer opportunities -> opportunities (pipeline)
+      const oppRows=followupList(details.opportunities).map(x=>String(x).trim()).filter(Boolean).map(x=>({dealer_id,title:x.slice(0,140),stage:"identified",source:"visit",owner_rep:me.rep_name||null,created_by:repName,notes:"From dealer visit",status:"open"}));
+      let oCreated=0; if(oppRows.length){ try{ await sbSend("POST","opportunities",oppRows,{Prefer:"return=minimal"}); oCreated=oppRows.length; }catch(e){} }
+      return json(200,{ok:true,tasks:tCreated,opportunities:oCreated});
+    }
+    if(b.action==="generate_followup"){
+      const details=(b.details&&typeof b.details==="object")?b.details:{};
+      let dealerName="there";
+      if(b.dealer_id){ const dr=await sbGet(`dealers?id=eq.${encodeURIComponent(b.dealer_id)}&select=business_name,contact_name`).catch(()=>[]); if(dr&&dr[0]) dealerName=dr[0].contact_name||dr[0].business_name||"there"; }
+      const fu=buildFollowup(dealerName,me.name||me.rep_name||"your HCPS rep",details);
+      return json(200,{ok:true,subject:fu.subject,body:fu.body});
+    }
+    if(b.action==="send_followup"){
+      const dealer_id=b.dealer_id; if(!dealer_id) return json(400,{error:"dealer_id required"});
+      const subject=String(b.subject||"").trim()||"Following up from your HCPS visit";
+      const body=String(b.body||"").trim(); if(!body) return json(400,{error:"empty message"});
+      const dr=await sbGet(`dealers?id=eq.${encodeURIComponent(dealer_id)}&select=business_name,email,is_test`).catch(()=>[]);
+      const d=dr&&dr[0]; if(!d) return json(404,{error:"dealer not found"});
+      const to=String(d.email||"").trim(); if(!EMAIL_RE.test(to)) return json(200,{ok:false,message:"No email on file for this dealer."});
+      const opt=await sbGet(`email_optout?email=eq.${encodeURIComponent(to.toLowerCase())}&select=email`).catch(()=>[]);
+      if(opt&&opt[0]) return json(200,{ok:false,message:"This dealer has opted out of emails."});
+      const st=await P.getState();
+      if(!P.allowTransactional(st.mode,d.is_test)) return json(200,{ok:true,held:true,message:`Prepared — this will send once the platform is Live (currently ${st.mode}).`});
+      const res=await sendMail({to,subject,html:followupHtml(body,me.name||me.rep_name||""),text:body,replyTo:me.email||""});
+      if(res&&res.ok){
+        try{ await sbSend("POST","email_sends",{dealer_id,contact_email:to,template:"visit_followup",env:P.envFor(st.mode,d.is_test)},{Prefer:"return=minimal"}); }catch(e){}
+        try{ await sbSend("POST","dealer_activity",{dealer_id,kind:"email",subject:"Visit follow-up sent",contact_email:to,actor:me.name||me.rep_name||"rep"},{Prefer:"return=minimal"}); }catch(e){}
+        return json(200,{ok:true,sent:true});
+      }
+      return json(200,{ok:false,message:(res&&res.skipped)?"Email isn't configured yet (RESEND_API_KEY).":"Couldn't send — try again."});
     }
 
     // ---------- Dealer visit notification (optional, rep-initiated) ----------

@@ -482,6 +482,67 @@ async function notifyDealer(id,name){
     else banner((r&&r.message)||"Couldn't send the notice.");
   }catch(e){ banner("Couldn't send the notice."); }
 }
+/* ---------- visit notes & follow-up (Phase 4) ---------- */
+function openVisitNotes(id,name){
+  if(!id){ banner("This stop has no linked dealer."); return; }
+  window._vnDealer=id;
+  $("#homeEdit").innerHTML=`<div class="homeov"><div class="homecard vnbox" style="max-width:560px;max-height:90vh;overflow:auto">
+    <style>.vnbox textarea,.vnbox input{width:100%;box-sizing:border-box;font-family:inherit;font-size:12.5px;padding:5px 7px;border:1px solid #dde3e8;border-radius:6px;margin:0}.vnbox input[type=date]{width:auto}.vnl{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:#5b6672;margin:8px 0 2px;font-weight:700}.vngrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}</style>
+    <b>Visit notes — ${esc(name||"")}</b>
+    <p style="margin:4px 0 8px;color:#6b7683;font-size:12.5px">Saving creates follow-up tasks (and opportunities) on the dealer. You can then generate a follow-up email to review and send.</p>
+    <label class="vnl">What happened / summary</label><textarea id="vn_summary" rows="2"></textarea>
+    <div class="vngrid">
+      <div><label class="vnl">Products discussed</label><textarea id="vn_products" rows="2"></textarea></div>
+      <div><label class="vnl">Pricing discussed</label><textarea id="vn_pricing" rows="2"></textarea></div>
+      <div><label class="vnl">Samples requested</label><textarea id="vn_samples" rows="2"></textarea></div>
+      <div><label class="vnl">Manufacturer opportunities <span style="color:#9aa4ae">(1/line → opportunity)</span></label><textarea id="vn_opps" rows="2"></textarea></div>
+    </div>
+    <label class="vnl">Follow-up items <span style="color:#9aa4ae">(one per line → each becomes a task)</span></label><textarea id="vn_followups" rows="3"></textarea>
+    <div class="vngrid">
+      <div><label class="vnl">Order expected</label><textarea id="vn_orders" rows="2"></textarea></div>
+      <div><label class="vnl">Concerns</label><textarea id="vn_concerns" rows="2"></textarea></div>
+    </div>
+    <label class="vnl">Next visit</label><input type="date" id="vn_next">
+    <div class="ha" style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn" onclick="saveVisit()">Save visit &amp; create tasks</button>
+      <button class="btn ghost" onclick="genFollowup()">Generate follow-up email</button>
+      <button class="btn ghost" onclick="closeHome()">Close</button></div>
+    <div id="vn_msg" style="color:#2B4071;margin-top:6px;font-size:12.5px"></div>
+    <div id="fu_wrap" style="display:none;margin-top:12px;border-top:1px dashed #cfd6de;padding-top:10px">
+      <label class="vnl">Follow-up subject</label><input id="fu_subject">
+      <label class="vnl" style="margin-top:6px">Follow-up email — review &amp; edit</label><textarea id="fu_body" rows="10"></textarea>
+      <div class="ha" style="margin-top:8px;display:flex;gap:6px"><button class="btn" onclick="sendFollowup()">Send follow-up</button>
+        <button class="btn ghost" onclick="copyFollowup()">Copy</button></div>
+      <div id="fu_msg" style="color:#2B4071;margin-top:6px;font-size:12.5px"></div>
+    </div>
+  </div></div>`;
+  setTimeout(()=>{const t=$("#vn_summary"); if(t)t.focus();},40);
+}
+function vnVal(id){ const e=document.getElementById(id); return e?String(e.value||"").trim():""; }
+function collectVisitDetails(){ return {summary:vnVal("vn_summary"),products:vnVal("vn_products"),pricing:vnVal("vn_pricing"),samples:vnVal("vn_samples"),opportunities:vnVal("vn_opps"),follow_ups:vnVal("vn_followups"),orders_expected:vnVal("vn_orders"),concerns:vnVal("vn_concerns"),next_visit:vnVal("vn_next")}; }
+async function saveVisit(){
+  const id=window._vnDealer; if(!id) return; const details=collectVisitDetails(); const m=$("#vn_msg"); if(m)m.textContent="Saving…";
+  try{ const r=await api2({action:"save_visit",dealer_id:id,summary:details.summary,details});
+    if(r&&r.ok){ if(m)m.textContent=`Saved ✓ — ${r.tasks||0} task(s)${r.opportunities?`, ${r.opportunities} opportunity(ies)`:""} created.`; }
+    else if(m) m.textContent=(r&&r.message)||"Couldn't save.";
+  }catch(e){ if(m)m.textContent="Couldn't save — try again."; }
+}
+async function genFollowup(){
+  const id=window._vnDealer; if(!id) return; const details=collectVisitDetails(); const m=$("#vn_msg"); if(m)m.textContent="Generating…";
+  try{ const r=await api2({action:"generate_followup",dealer_id:id,details});
+    if(r&&r.ok){ const s=$("#fu_subject"); if(s)s.value=r.subject||""; const bd=$("#fu_body"); if(bd)bd.value=r.body||""; const w=$("#fu_wrap"); if(w)w.style.display="block"; if(m)m.textContent="Draft ready below — review, edit, then send."; }
+    else if(m) m.textContent=(r&&r.message)||"Couldn't generate.";
+  }catch(e){ if(m)m.textContent="Couldn't generate."; }
+}
+async function sendFollowup(){
+  const id=window._vnDealer; if(!id) return;
+  const subject=($("#fu_subject")||{}).value||""; const body=($("#fu_body")||{}).value||""; const m=$("#fu_msg"); if(m)m.textContent="Sending…";
+  try{ const r=await api2({action:"send_followup",dealer_id:id,subject,body});
+    if(r&&r.ok&&r.sent){ if(m)m.textContent="Follow-up sent ✓"; }
+    else if(r&&r.ok&&r.held){ if(m)m.textContent=r.message||"Prepared — held until go-live."; }
+    else if(m) m.textContent=(r&&r.message)||"Couldn't send.";
+  }catch(e){ if(m)m.textContent="Couldn't send."; }
+}
+function copyFollowup(){ const t=($("#fu_body")||{}).value||""; try{ navigator.clipboard.writeText(t); banner("Copied ✓"); }catch(e){ banner("Select the text to copy."); } }
 function itineraryListHtml(){
   const items=computeItinerary(); const hasTimes=(LASTROUTE.legs||[]).length>0;
   const mut="color:#6b7683;font-size:11px"; let html="",stopNo=0,routeIdx=-1,lastDay=0;
@@ -500,6 +561,7 @@ function itineraryListHtml(){
         +`<div style="margin-top:3px;font-size:12px">Visit <input type="number" min="0" step="5" value="${vv}" style="width:52px" onchange="updateVisit(${ri},this.value)"> min${dep}`
         +` &nbsp;<label style="${mut}"><input type="checkbox" ${node.overnight?"checked":""} onchange="toggleOvernight(${ri},this.checked)"> 🌙 overnight</label>`
         +(node.dealer_id?` &nbsp;<a href="#" onclick="notifyDealer('${jesc(node.dealer_id)}','${jesc(node.name||"")}');return false" style="${mut};text-decoration:none" title="Email this dealer that you'll be in their area">✉ notify</a>`:"")
+        +(node.dealer_id?` &nbsp;<a href="#" onclick="openVisitNotes('${jesc(node.dealer_id)}','${jesc(node.name||"")}');return false" style="${mut};text-decoration:none" title="Log the visit &amp; generate a follow-up">📝 log visit</a>`:"")
         +`</div>`
         +`</span><button class="del" title="Remove" onclick="removeStop(${ri})">✕</button></li>`;
       if(node.overnight){ html+=`<li style="list-style:none;margin:2px 0 5px 34px;font-size:11.5px;color:#8a5d12;background:#fdf4e6;border-radius:6px;padding:4px 8px">🌙 Overnight near ${esc(node.city||node.name)} — next day starts <input type="time" value="${minToTimeVal(node.next_start_min!=null?node.next_start_min:480)}" style="width:auto" onchange="updateNextStart(${ri},this.value)"></li>`; }
