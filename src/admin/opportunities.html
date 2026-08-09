@@ -1,0 +1,79 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Today's Sales Opportunities</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:0 0 16px}
+ @media(max-width:900px){.kpis{grid-template-columns:repeat(3,1fr)}}
+ @media(max-width:520px){.kpis{grid-template-columns:repeat(2,1fr)}}
+ .kpi2{background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px 13px}
+ .kpi2 .l{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:700}
+ .kpi2 .v{font-size:22px;font-weight:800;color:var(--navy);margin-top:2px;font-variant-numeric:tabular-nums}
+ .tt{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+ .tt th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:700;padding:9px 12px;border-bottom:2px solid var(--line)}
+ .tt td{padding:10px 12px;border-bottom:1px solid #eef2f6;vertical-align:middle}
+ .tt tr:last-child td{border-bottom:0}
+ .tt tr:hover td{background:#fafcfe}
+ .bdg{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.4px;padding:3px 8px;border-radius:20px;white-space:nowrap}
+ .b-HOT{background:#fdecec;color:#b42323}.b-INTEREST{background:#fdf4e6;color:#b8791b}.b-REORDER{background:#e7f1f9;color:#1568a6}
+ .b-RISK{background:#efeafb;color:#6b4bb4}.b-CROSS{background:#e7f4ee;color:#1f8f5f}.b-DORMANT{background:#eef1f4;color:#5c6b7a}
+ .dn{font-weight:700;color:var(--navy)}.rep{font-size:11px;color:var(--gray)}
+ .ev{color:#41576b}.act{font-weight:700;color:var(--navy);white-space:nowrap}
+ .aq{display:inline-flex;gap:6px}.aq a{font-size:11px;text-decoration:none;color:#1568a6}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1>Today's Sales Opportunities</h1><div class="sub">The next best action for every dealer — ranked by urgency, from live intelligence.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), DATA=null;
+const num=n=>Number(n||0).toLocaleString("en-US");
+const usd=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
+const BCLASS={HOT:"b-HOT",INTEREST:"b-INTEREST","REORDER DUE":"b-REORDER","AT RISK":"b-RISK","CROSS-SELL":"b-CROSS",DORMANT:"b-DORMANT"};
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+async function api(payload){ const r=await fetch("/.netlify/functions/marketing-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  $("#body").innerHTML=`<div class="msg">Loading…</div>`;
+  const r=await api({action:"today"});
+  if(r.status===401){ gate("Your session ended — sign in again."); return; }
+  if(!r.body||!r.body.ok){ $("#body").innerHTML=`<div class="msg err">Couldn't load: ${esc((r.body&&r.body.error)||"error")}</div>`; return; }
+  DATA=r.body; render();
+}
+function kpi(l,v){ return `<div class="kpi2"><div class="l">${l}</div><div class="v">${v}</div></div>`; }
+function render(){
+  const m=DATA.metrics||{}, ops=DATA.opportunities||[];
+  const tiles=kpi("Hot (call now)",num(m.hot))+kpi("Interested",num(m.interested))+kpi("Reorder due",num(m.reorder_due))
+    +kpi("Cross-sell",num(m.cross_sell))+kpi("Open tasks",num(m.open_tasks))+kpi("Open pipeline",usd(m.opps_value));
+  const secondary=`<div class="hint" style="margin:-6px 0 14px">Dormant: <b>${num(m.dormant)}</b> · Emails sent (7d): <b>${num(m.emails_7d)}</b> to <b>${num(m.dealers_emailed_7d)}</b> dealers · Open opportunities: <b>${num(m.opps_open)}</b></div>`;
+  const rows = ops.length ? ops.map(o=>`<tr>
+      <td><span class="bdg ${BCLASS[o.badge]||"b-DORMANT"}">${esc(o.badge)}</span></td>
+      <td><a class="dn" href="/admin/dealer.html?id=${encodeURIComponent(o.dealer_id)}" style="text-decoration:none">${esc(o.name)}</a>${o.rep?`<div class="rep">${esc(o.rep)}</div>`:""}</td>
+      <td class="ev">${esc(o.evidence)}</td>
+      <td class="act">${esc(o.action)}</td>
+      <td><span class="aq"><a href="/admin/dealer.html?id=${encodeURIComponent(o.dealer_id)}">Open&nbsp;360→</a></span></td>
+    </tr>`).join("") : `<tr><td colspan="5"><div class="hint" style="padding:8px">No open opportunities right now — everyone's current. As dealers browse, order, and hit reorder windows, they'll surface here.</div></td></tr>`;
+  $("#body").innerHTML=`<div class="kpis">${tiles}</div>${secondary}
+    <table class="tt"><thead><tr><th>Status</th><th>Dealer</th><th>Why</th><th>Recommended</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="hint" style="margin:12px 0 0">Ranked most-urgent first: hot buying intent → reorder due → at risk → cross-sell → dormant. ${DATA.role==="president"?"Showing all reps.":"Showing your accounts."}</div>`;
+}
+load();
+</script>
+</body></html>
