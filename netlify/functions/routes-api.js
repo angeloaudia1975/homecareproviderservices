@@ -22,6 +22,29 @@ const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","c
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 
 const ORDERING_BASE = process.env.ORDERING_BASE || "https://hcpsonlineordering.netlify.app";
+const MAIL_FROM = process.env.HCPS_MAIL_FROM || "HCPS Partner Portal <orders@homecareproviderservices.us>";
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const P = require("./_platform.js");
+const esc2 = s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+function prettyDate(s){ try{ const p=String(s).split("-").map(Number); const d=new Date(p[0],p[1]-1,p[2]); return d.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"}); }catch(e){ return String(s||""); } }
+async function sendMail({to,subject,html,text,replyTo}){
+  const key=process.env.RESEND_API_KEY; if(!key) return {ok:false,skipped:true};
+  try{ const p={from:MAIL_FROM,to:[to],subject,html,text}; if(replyTo&&EMAIL_RE.test(String(replyTo))) p.reply_to=replyTo;
+    const r=await fetch("https://api.resend.com/emails",{method:"POST",headers:{Authorization:`Bearer ${key}`,"Content-Type":"application/json"},body:JSON.stringify(p)}); return {ok:r.ok};
+  }catch(e){ return {ok:false}; }
+}
+function visitEmail(to,d,dateStr,repName,repEmail){
+  const name=esc2(d.business_name||d.contact_name||"there");
+  const when=dateStr?prettyDate(dateStr):"";
+  const html=`<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:560px">
+    <h2 style="color:#2B4071;margin:0 0 4px">We'll be in your area${when?", "+esc2(when):""}</h2>
+    <p style="font-size:13.5px;line-height:1.6;color:#374151;margin:0 0 12px">Hi ${name}, this is ${esc2(repName)} with HomeCare Provider Services. I'm planning to be near you${when?" on <b>"+esc2(when)+"</b>":" soon"} and would love to stop by — catch up on how things are going, share what's new, and make sure your lines and pricing are set up the way you need them.</p>
+    <p style="font-size:13.5px;line-height:1.6;color:#374151;margin:0 0 12px">If there's a good time that works, just reply and let me know. If it's not a good week, no problem — we'll find another time.</p>
+    <a href="${ORDERING_BASE}" style="display:inline-block;background:#F5821F;color:#fff;text-decoration:none;font-weight:700;padding:11px 18px;border-radius:8px;font-size:14px">Browse your portal &rarr;</a>
+    <p style="font-size:12.5px;color:#6b7280;margin:16px 0 0">${esc2(repName)}${repEmail?` · <a href="mailto:${esc2(repEmail)}" style="color:#2B4071">${esc2(repEmail)}</a>`:""}<br>HomeCare Provider Services</p></div>`;
+  const text=`We'll be in your area${when?", "+when:""}\n\nHi ${d.business_name||d.contact_name||"there"}, this is ${repName} with HomeCare Provider Services. I'm planning to be near you${when?" on "+when:" soon"} and would love to stop by. Reply with a good time and I'll make it work.\n\n${repName}${repEmail?" · "+repEmail:""}\nHomeCare Provider Services`;
+  return {to,subject:`HCPS will be in your area${when?" — "+when:""}`,html,text,replyTo:repEmail};
+}
 async function fetchJson(url){ const r=await fetch(url); if(!r.ok) throw new Error("fetch "+r.status); return r.json(); }
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
 async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); const t=await r.text(); return t?JSON.parse(t):null; }
@@ -244,6 +267,29 @@ exports.handler = async (event)=>{
       const key=String(b.key||"").trim(); if(!key) return json(400,{error:"key required"});
       await sbSend("POST","app_settings?on_conflict=key",{key,value:b.value||{},updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
       return json(200,{ok:true});
+    }
+
+    // ---------- Dealer visit notification (optional, rep-initiated) ----------
+    if(b.action==="notify_visit"){
+      const dealer_id=b.dealer_id; if(!dealer_id) return json(400,{error:"dealer_id required"});
+      const dateStr=String(b.date||"").trim();
+      const rows=await sbGet(`dealers?id=eq.${encodeURIComponent(dealer_id)}&select=business_name,contact_name,email,is_test`).catch(()=>[]);
+      const d=rows&&rows[0]; if(!d) return json(404,{error:"dealer not found"});
+      const toEmail=String(d.email||"").trim();
+      if(!EMAIL_RE.test(toEmail)) return json(200,{ok:false,message:"No email on file for this dealer — add one in Dealer Manager."});
+      const opt=await sbGet(`email_optout?email=eq.${encodeURIComponent(toEmail.toLowerCase())}&select=email`).catch(()=>[]);
+      if(opt&&opt[0]) return json(200,{ok:false,message:"This dealer has opted out of emails."});
+      // Mode gate: reaches a real dealer only when Live; before that it's prepared, not sent.
+      const st=await P.getState();
+      if(!P.allowTransactional(st.mode,d.is_test)) return json(200,{ok:true,held:true,message:`Prepared — this will send once the platform is Live (currently ${st.mode}).`});
+      const repName=me.name||me.rep_name||"your HCPS representative";
+      const res=await sendMail(visitEmail(toEmail,d,dateStr,repName,me.email));
+      if(res&&res.ok){
+        try{ await sbSend("POST","email_sends",{dealer_id,contact_email:toEmail,template:"visit_notice",env:P.envFor(st.mode,d.is_test)},{Prefer:"return=minimal"}); }catch(e){}
+        try{ await sbSend("POST","dealer_activity",{dealer_id,kind:"email",subject:"Upcoming-visit notice sent",contact_email:toEmail,actor:repName},{Prefer:"return=minimal"}); }catch(e){}
+        return json(200,{ok:true,sent:true});
+      }
+      return json(200,{ok:false,message:(res&&res.skipped)?"Email isn't configured yet (RESEND_API_KEY).":"Couldn't send — try again."});
     }
 
     return json(400,{error:"unknown action"});

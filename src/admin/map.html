@@ -472,6 +472,16 @@ function computeItinerary(){
 function updateVisit(i,v){ if(ROUTE[i]){ ROUTE[i].visit_min=Math.max(0,parseInt(v,10)||0); renderRoute(); } }
 function toggleOvernight(i,c){ if(ROUTE[i]){ ROUTE[i].overnight=!!c; renderRoute(); } }
 function updateNextStart(i,v){ if(ROUTE[i]){ ROUTE[i].next_start_min=parseTimeMin(v); renderRoute(); } }
+async function notifyDealer(id,name){
+  if(!id){ banner("This stop has no linked dealer to notify."); return; }
+  const date=(($("#startDate")||{}).value||"");
+  if(!confirm(`Send an "upcoming visit" email to ${name||"this dealer"}${date?" for "+date:""}?`)) return;
+  try{ const r=await api2({action:"notify_visit",dealer_id:id,date});
+    if(r&&r.ok&&r.sent) banner("Visit notice sent ✓");
+    else if(r&&r.ok&&r.held) banner(r.message||"Prepared — held until go-live.");
+    else banner((r&&r.message)||"Couldn't send the notice.");
+  }catch(e){ banner("Couldn't send the notice."); }
+}
 function itineraryListHtml(){
   const items=computeItinerary(); const hasTimes=(LASTROUTE.legs||[]).length>0;
   const mut="color:#6b7683;font-size:11px"; let html="",stopNo=0,routeIdx=-1,lastDay=0;
@@ -488,7 +498,9 @@ function itineraryListHtml(){
       const dep=hasTimes?`<span style="${mut}"> · departs ${esc(fmtAbs(it.departAbs,it.tz))}</span>`:"";
       html+=`<li><span class="n">${stopNo}</span><span class="nm"><b>${esc(node.name)}</b> ${arr}<br><small>${esc([node.city,node.state].filter(Boolean).join(", "))}</small>`
         +`<div style="margin-top:3px;font-size:12px">Visit <input type="number" min="0" step="5" value="${vv}" style="width:52px" onchange="updateVisit(${ri},this.value)"> min${dep}`
-        +` &nbsp;<label style="${mut}"><input type="checkbox" ${node.overnight?"checked":""} onchange="toggleOvernight(${ri},this.checked)"> 🌙 overnight</label></div>`
+        +` &nbsp;<label style="${mut}"><input type="checkbox" ${node.overnight?"checked":""} onchange="toggleOvernight(${ri},this.checked)"> 🌙 overnight</label>`
+        +(node.dealer_id?` &nbsp;<a href="#" onclick="notifyDealer('${jesc(node.dealer_id)}','${jesc(node.name||"")}');return false" style="${mut};text-decoration:none" title="Email this dealer that you'll be in their area">✉ notify</a>`:"")
+        +`</div>`
         +`</span><button class="del" title="Remove" onclick="removeStop(${ri})">✕</button></li>`;
       if(node.overnight){ html+=`<li style="list-style:none;margin:2px 0 5px 34px;font-size:11.5px;color:#8a5d12;background:#fdf4e6;border-radius:6px;padding:4px 8px">🌙 Overnight near ${esc(node.city||node.name)} — next day starts <input type="time" value="${minToTimeVal(node.next_start_min!=null?node.next_start_min:480)}" style="width:auto" onchange="updateNextStart(${ri},this.value)"></li>`; }
     }
