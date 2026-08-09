@@ -13,6 +13,7 @@ const CORS = {
 };
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store",...CORS},body:JSON.stringify(o)});
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
+const P = require("./_platform.js");
 
 async function sb(method,path,body,extra){
   const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,
@@ -83,6 +84,10 @@ exports.handler = async (event)=>{
       const orders=Array.isArray(b.orders)?b.orders:[];
       if(!orders.length) return json(400,{error:"no orders"});
       const d=b.dealer||{};
+      // Operating env for this order (test account, or the current platform mode).
+      const st=await P.getState();
+      let isTest=false; try{ const dt=await sb("GET",`dealers?id=eq.${encodeURIComponent(who.dealer_id)}&select=is_test`); isTest=!!(dt&&dt[0]&&dt[0].is_test); }catch(e){}
+      const env=P.envFor(st.mode,isTest);
       // validate manufacturer slugs against the real table; keep names for the confirmation email
       let known=new Set(), mfrName={};
       try{ const ms=await sb("GET","manufacturers?select=slug,name"); for(const m of (ms||[])){ known.add(m.slug); mfrName[m.slug]=m.name||m.slug; } }catch(e){}
@@ -101,6 +106,7 @@ exports.handler = async (event)=>{
           ship_state:d.state||null, ship_zip:d.zip||null,
           contact_name:d.contact||null, contact_email:d.email||null, contact_phone:d.phone||null,
           subtotal:num(o.items_subtotal!=null?o.items_subtotal:o.estimated_total),
+          env,
         };
         let ins;
         try{ ins=await sb("POST","orders",row,{Prefer:"return=representation"}); }
@@ -121,7 +127,7 @@ exports.handler = async (event)=>{
         // against the marketing frequency caps, and not gated by the dry-run switch.
         // Best-effort: a mail hiccup never fails the saved order.
         const to=String(d.email||who.email||"").trim();
-        if(EMAIL_RE.test(to)){ try{ await sendMail(orderConfirmation(to,d,summaries)); }catch(e){ console.error("order confirm email failed",e&&e.message); } }
+        if(EMAIL_RE.test(to) && P.allowTransactional(st.mode,isTest)){ try{ await sendMail(orderConfirmation(to,d,summaries)); }catch(e){ console.error("order confirm email failed",e&&e.message); } }
         // Order placed = conversion. Clear the browsing intent for the lines just ordered
         // so we never email a dealer about what they just bought online. (The monthly
         // commission upload can't see a same-day online order, so this IS the real reset.)

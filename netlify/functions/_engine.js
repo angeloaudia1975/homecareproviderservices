@@ -20,6 +20,7 @@ const eesc=s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",
 const MAIL_FROM=process.env.HCPS_MAIL_FROM||"HCPS Partner Portal <orders@homecareproviderservices.us>";
 const ORDERING=process.env.ORDERING_BASE||"https://hcpsonlineordering.netlify.app";
 const SITE_BASE=process.env.SITE_BASE||"https://homecareproviderservices.netlify.app";
+const P=require("./_platform.js");
 
 // ---- Config -----------------------------------------------------------------
 const DEFAULTS={engine_enabled:true,email_enabled:false,cap_per_7d:2,min_gap_hours:48,
@@ -227,7 +228,10 @@ async function drainQueue(cfg,winKey){
   const filt=winKey?`&send_window=eq.${winKey}`:"";
   const due=await sbGet(`email_queue?status=eq.queued&send_after=lte.${nowIso}${filt}&select=*&order=priority.asc,enqueued_at.asc&limit=60`).catch(()=>[]);
   let sent=0,capped=0,failed=0,skipped=0;
-  if(!cfg.email_enabled){ return {dry_run:true,due:(due||[]).length,sent:0}; }
+  // Real marketing/automation email goes out ONLY when the platform is Live and the
+  // email master switch is on. Development/Sandbox stay a full dry-run.
+  const state=await P.getState();
+  if(!cfg.email_enabled || state.mode!=="live"){ return {dry_run:true,mode:state.mode,due:(due||[]).length,sent:0}; }
   const capN=Number(cfg.cap_per_7d)||2, gapMs=(Number(cfg.min_gap_hours)||48)*3600e3;
   const cut7=new Date(Date.now()-7*864e5).toISOString();
   for(const q of (due||[])){
@@ -243,7 +247,7 @@ async function drainQueue(cfg,winKey){
     const t=tmpl(q.template,q.detail?String(q.detail).split(":")[0]:"",q.payload||{},unsub);
     const res=await sendMail({to:q.contact_email,subject:t.subject,html:t.html,text:t.subject});
     if(res&&res.ok){
-      await sbSend("POST","email_sends",{dealer_id:q.dealer_id,contact_email:q.contact_email,template:q.template},{Prefer:"return=minimal"}).catch(()=>{});
+      await sbSend("POST","email_sends",{dealer_id:q.dealer_id,contact_email:q.contact_email,template:q.template,env:"live"},{Prefer:"return=minimal"}).catch(()=>{});
       await sbSend("POST","dealer_activity",{dealer_id:q.dealer_id,kind:"campaign",subject:`Auto email: ${q.template}`,contact_email:q.contact_email,actor:"Automation engine"},{Prefer:"return=minimal"}).catch(()=>{});
       await sbSend("PATCH",`email_queue?id=eq.${encodeURIComponent(q.id)}`,{status:"sent",sent_at:new Date().toISOString()},{Prefer:"return=minimal"}).catch(()=>{});
       sent++;

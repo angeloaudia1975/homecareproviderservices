@@ -90,6 +90,7 @@ const pm=p=>{const[y,m]=p.split("-").map(Number);return y*12+(m-1);};
 
 // ---- territory ACCESS RULES (shared with the ordering portal's dealer-auth). ----
 const { computeAccess } = require("./_access.js");
+const P = require("./_platform.js");
 // Same normalized key the map's geocoder uses, to look up a governing account's latitude
 // (needed for Strongback's "south of Indianapolis" rule).
 function qkey(a){
@@ -521,9 +522,11 @@ exports.handler = async (event)=>{
         await rpc("approve_dealer_login",{p_uid:b.uid,p_dealer:dealerId||null,p_by:b.by||"admin"});
         // Auto-send the welcome email on the first approval only (not on later reassignments).
         if(prevStatus!=="approved"){
-          let dealerName=null;
-          if(dealerId){ try{ const dn=await sbGet(`dealers?id=eq.${encodeURIComponent(dealerId)}&select=business_name`); dealerName=dn&&dn[0]&&dn[0].business_name||null; }catch(e){} }
-          try{ await sendWelcomeEmail(loginEmail, dealerName); }catch(e){ console.error("welcome email failed",e&&e.message); }
+          let dealerName=null, dealerIsTest=false;
+          if(dealerId){ try{ const dn=await sbGet(`dealers?id=eq.${encodeURIComponent(dealerId)}&select=business_name,is_test`); if(dn&&dn[0]){ dealerName=dn[0].business_name||null; dealerIsTest=!!dn[0].is_test; } }catch(e){} }
+          // Welcome reaches a real dealer only when Live; before that, test accounts only.
+          const pst=await P.getState();
+          if(P.allowTransactional(pst.mode,dealerIsTest)){ try{ await sendWelcomeEmail(loginEmail, dealerName); }catch(e){ console.error("welcome email failed",e&&e.message); } }
           if(dealerId&&loginEmail){ try{ await sbSend("POST","dealer_activity",{dealer_id:dealerId,kind:"email",subject:"Welcome email sent",contact_email:loginEmail,actor:me.name||"admin"},{Prefer:"return=minimal"}); }catch(e){} }
         }
         return json(200,{ok:true,dealer_id:dealerId,welcomed:prevStatus!=="approved"});

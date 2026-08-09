@@ -15,6 +15,8 @@ async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}
 async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); const t=await r.text(); return t?JSON.parse(t):null; }
 async function sbGetAll(base, orderCol="id"){ const PAGE=1000; let from=0,out=[]; for(;;){ const sep=base.includes("?")?"&":"?"; const rows=await sbGet(`${base}${sep}order=${orderCol}&limit=${PAGE}&offset=${from}`); out=out.concat(rows); if(rows.length<PAGE) break; from+=PAGE; } return out; }
 
+const P=require("./_platform.js");
+
 // ---- helpers (mirrors _engine.js so behavior matches) -----------------------
 const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
 const dnorm=n=>String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim();
@@ -54,11 +56,12 @@ function tierFor(score,tiers){ const s=Number(score)||0; const t=tiers||INTENT_D
 async function computeIntent(){
   const cfg=await getConfig();
   if(cfg.intent_enabled===false) return {skipped:"intent disabled"};
+  const st=await P.getState();                       // when Live, score ONLY env='live' data
   const windowDays=Number(cfg.intent_window_days)||30;
   const decay=Math.min(0.95,Math.max(0,Number(cfg.intent_decay_pct_per_week)||0));
   const now=Date.now(); const stamp=new Date(now).toISOString();
   const sinceIso=new Date(now-windowDays*864e5).toISOString();
-  let ev=[]; try{ ev=await sbGetAll(`intent_events?occurred_at=gte.${encodeURIComponent(sinceIso)}&select=dealer_id,manufacturer,product_code,weight,occurred_at`,"id"); }catch(e){ return {error:String(e&&e.message||e)}; }
+  let ev=[]; try{ ev=await sbGetAll(`intent_events?occurred_at=gte.${encodeURIComponent(sinceIso)}${P.scoringEnvClause(st.mode)}&select=dealer_id,manufacturer,product_code,weight,occurred_at`,"id"); }catch(e){ return {error:String(e&&e.message||e)}; }
   const DL=new Map();
   for(const e of ev){ if(!e.dealer_id) continue;
     const w=Number(e.weight)||0; if(w===0) continue;
@@ -150,6 +153,7 @@ async function syncIntentTasks(){
   if(cfg.intent_enabled===false) return {skipped:"intent disabled"};
   const th=Number(cfg.intent_task_threshold)||30;
   const coolDays=Number(cfg.intent_task_cooldown_days)||7;
+  const st=await P.getState();
   const [hot,dealers,mfrs,dir]=await Promise.all([
     sbGet(`dealer_intent?score_total=gte.${th}&select=dealer_id,score_total,by_manufacturer,top_manufacturer,top_product,last_event_at`).catch(()=>[]),
     sbGetAll("dealers?select=id,business_name"),
@@ -181,7 +185,7 @@ async function syncIntentTasks(){
   const cooldown=new Set((recentClosed||[]).map(t=>t.dealer_id));
   const toCreate=[];
   for(const [id,f] of desired){ if(existBy.has(id)||cooldown.has(id)) continue;
-    toCreate.push({dealer_id:id,title:f.title,detail:f.detail,priority:f.priority,source:"intent",reason:"intent",assigned_rep:f.rep||null,created_by:"Intent engine",status:"open"}); }
+    toCreate.push({dealer_id:id,title:f.title,detail:f.detail,priority:f.priority,source:"intent",reason:"intent",assigned_rep:f.rep||null,created_by:"Intent engine",status:"open",env:P.envFor(st.mode,false)}); }
   let created=0; for(let i=0;i<toCreate.length;i+=200){ const part=toCreate.slice(i,i+200); try{ await sbSend("POST","dealer_tasks",part,{Prefer:"return=minimal"}); created+=part.length; }catch(e){} }
   // retire open intent tasks whose dealer is no longer opportunity-tier
   let closed=0; for(const t of (existing||[])){ if(!desired.has(t.dealer_id)){ try{ await sbSend("PATCH",`dealer_tasks?id=eq.${encodeURIComponent(t.id)}`,{status:"dismissed",done_at:new Date().toISOString()},{Prefer:"return=minimal"}); closed++; }catch(e){} } }
@@ -198,6 +202,7 @@ async function enqueueIntentEmails(){
   const cfg=await getConfig();
   if(cfg.intent_enabled===false) return {skipped:"intent disabled"};
   if(cfg.templates_enabled && cfg.templates_enabled.product===false) return {skipped:"product template off"};
+  const st=await P.getState(); if(st.mode!=="live") return {skipped:"platform not live"};   // no real-dealer marketing before go-live
   let hot=await sbGet("dealer_intent?tier=in.(interested,high)&select=dealer_id,score_total,top_manufacturer,top_product").catch(()=>[]);
   if(!hot||!hot.length) return {considered:0,queued:0};
   const exMfr=new Set((cfg.exclude_manufacturers||[]).map(mnorm));
@@ -231,7 +236,7 @@ async function enqueueIntentEmails(){
     insert.push({dealer_id:id,contact_email:to,template:"product",reason:"product"+(mfr?":"+mfr:""),priority:"normal",
       send_window:"behavior",payload:{line,code:h.top_product||null},
       detail:`${name}: interest score ${Math.round(h.score_total)}${line?" · "+line:""}`,
-      send_after:new Date().toISOString(),status:"queued"}); }
+      send_after:new Date().toISOString(),status:"queued",env:"live"}); }
   let queued=0; for(const row of insert){ try{ await sbSend("POST","email_queue",row,{Prefer:"return=minimal"}); queued++; }catch(e){/* live-unique race → already queued */} }
   return {considered,queued};
 }
@@ -245,9 +250,10 @@ async function enqueueIntentEmails(){
 async function enqueuePostOrder(){
   const cfg=await getConfig();
   if(cfg.templates_enabled && cfg.templates_enabled.postorder===false) return {skipped:"postorder off"};
+  const st=await P.getState(); if(st.mode!=="live") return {skipped:"platform not live"};   // production-only follow-up
   const now=Date.now();
   const older=new Date(now-11*864e5).toISOString(), newer=new Date(now-7*864e5).toISOString();
-  const orders=await sbGet(`orders?submitted_at=gte.${encodeURIComponent(older)}&submitted_at=lte.${encodeURIComponent(newer)}&select=dealer_id,manufacturer,contact_email,submitted_at&order=submitted_at.desc`).catch(()=>[]);
+  const orders=await sbGet(`orders?submitted_at=gte.${encodeURIComponent(older)}&submitted_at=lte.${encodeURIComponent(newer)}&env=eq.live&select=dealer_id,manufacturer,contact_email,submitted_at&order=submitted_at.desc`).catch(()=>[]);
   if(!orders||!orders.length) return {considered:0,queued:0};
   const perDealer=new Map(); for(const o of orders){ if(o.dealer_id && !perDealer.has(o.dealer_id)) perDealer.set(o.dealer_id,o); } // most recent per dealer
   const [optRows,liveRows,mfrs,dealers]=await Promise.all([
@@ -271,7 +277,7 @@ async function enqueuePostOrder(){
     const line=o.manufacturer?(mfrName[o.manufacturer]||o.manufacturer):null; const name=nameById[id]||"";
     insert.push({dealer_id:id,contact_email:to,template:"postorder",reason:"postorder",priority:"normal",
       send_window:"primary",payload:{line},detail:`${name}: post-order check-in`,
-      send_after:new Date().toISOString(),status:"queued"}); }
+      send_after:new Date().toISOString(),status:"queued",env:"live"}); }
   let queued=0; for(const row of insert){ try{ await sbSend("POST","email_queue",row,{Prefer:"return=minimal"}); queued++; }catch(e){/* live-unique race */} }
   return {considered,queued};
 }

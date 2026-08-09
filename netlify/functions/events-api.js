@@ -23,6 +23,7 @@ async function sb(method,path,body,extra){
   const t=await r.text(); if(!r.ok) throw new Error(`Supabase ${r.status}: ${t}`); return t?JSON.parse(t):null;
 }
 const { ALLOWED_EVENTS, weightFor, getConfig } = require("./_intent.js");
+const P = require("./_platform.js");
 
 // Resolve the signed-in dealer from their Supabase JWT (same shape dealer-auth uses).
 async function callerFromToken(event){
@@ -54,6 +55,11 @@ exports.handler=async(event)=>{
     const list=Array.isArray(b.events)?b.events : (b.event?[b.event] : (b.type?[{type:b.type,manufacturer:b.manufacturer,product:b.product,meta:b.meta}] : []));
     if(!list.length) return json(200,{ok:true,logged:0});
     const cfg=await getConfig();
+    // Stamp the operating env so test/dev activity never contaminates production
+    // intelligence: 'test' for flagged accounts, otherwise the current platform mode.
+    const st=await P.getState();
+    let isTest=false; try{ const d=await sb("GET",`dealers?id=eq.${encodeURIComponent(c.dealer_id)}&select=is_test`); isTest=!!(d&&d[0]&&d[0].is_test); }catch(e){}
+    const env=P.envFor(st.mode,isTest);
     const nowIso=new Date().toISOString();
     const rows=[];
     for(const e of list.slice(0,25)){    // hard cap per call — no floods
@@ -66,6 +72,7 @@ exports.handler=async(event)=>{
         event_type:type,
         weight:weightFor(type,cfg),        // server-side; client value ignored
         source:clip(e.source,20)||"ordering",
+        env,
         meta:(e.meta&&typeof e.meta==="object")?e.meta:{},
         occurred_at:nowIso
       });

@@ -1,0 +1,133 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Activation &amp; Go-Live</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .modewrap{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:6px 0 4px}
+ @media(max-width:760px){.modewrap{grid-template-columns:1fr}}
+ .mode{border:2px solid var(--line);border-radius:14px;padding:16px 16px 14px;background:#fff;cursor:pointer;transition:.12s;position:relative}
+ .mode:hover{border-color:#c7d4e2}
+ .mode.on{border-color:var(--navy);box-shadow:0 2px 10px rgba(16,38,63,.10)}
+ .mode .nm{font-weight:800;font-size:15px;color:var(--navy);display:flex;align-items:center;gap:8px}
+ .mode .dot{width:10px;height:10px;border-radius:50%}
+ .dot.dev{background:#8a96a3}.dot.sand{background:#c9871f}.dot.live{background:#1f8f5f}
+ .mode .ds{font-size:12.5px;color:var(--gray);margin:7px 0 0;line-height:1.5}
+ .mode .cur{position:absolute;top:12px;right:12px;font-size:10px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#1f8f5f}
+ .banner{border-radius:14px;padding:16px 18px;margin:0 0 16px;display:flex;align-items:center;gap:14px}
+ .banner .bdot{width:14px;height:14px;border-radius:50%;flex:none}
+ .banner .bt{font-weight:800;font-size:16px}.banner .bs{font-size:12.5px;opacity:.85}
+ .b-dev{background:#eef1f5;color:#41576b}.b-dev .bdot{background:#8a96a3}
+ .b-sand{background:#fdf4e6;color:#8a5d12}.b-sand .bdot{background:#c9871f}
+ .b-live{background:#e7f4ee;color:#166b45}.b-live .bdot{background:#1f8f5f}
+ .glv{font-variant-numeric:tabular-nums}
+ .confirm{border:1px solid #f0c9c9;background:#fdeeee;border-radius:12px;padding:14px 16px;margin:12px 0 0}
+ .confirm b{color:#8a1c1c}
+ .btn{background:var(--navy);color:#fff;border:0;border-radius:9px;padding:10px 16px;font-weight:700;font-size:13.5px;cursor:pointer;font-family:inherit}
+ .btn.go{background:#1f8f5f}.btn.ghost{background:#eef2f6;color:var(--navy)}
+ .btn[disabled]{opacity:.5;cursor:default}
+ .steps{font-size:12.5px;color:var(--gray);line-height:1.7;margin:8px 0 0;padding-left:18px}
+ .flowline{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 0}
+ .flowline span{background:#eef3f8;border:1px solid #dde6ef;border-radius:7px;padding:4px 8px;font-size:11.5px;color:var(--navy2)}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1>Activation &amp; Go-Live</h1><div class="sub">The master switch for the whole HCPS intelligence platform.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), STATE=null, PENDING=null;
+
+const MODES=[
+  {k:"development",cls:"dev",nm:"Development",ds:"Build and configure everything. No emails send to real dealers, and all activity is marked non-production so it never contaminates your live analytics."},
+  {k:"sandbox",cls:"sand",nm:"Testing / Sandbox",ds:"Validate emails, triggers, CRM workflows and tracking using flagged test accounts. Test activity stays separate from production data."},
+  {k:"live",cls:"live",nm:"Live / Production",ds:"Activate the full ecosystem. From this moment the platform records the real behavioral history that powers sales & marketing intelligence."},
+];
+function fmtDate(iso){ if(!iso) return null; try{ const d=new Date(iso); return d.toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}); }catch(e){ return iso; } }
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+async function api(payload){ const r=await fetch("/.netlify/functions/platform-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  $("#body").innerHTML=`<div class="msg">Loading…</div>`;
+  const r=await api({action:"get"});
+  if(r.status===401){ gate("Your session ended — sign in again."); return; }
+  if(!r.body||!r.body.ok){ $("#body").innerHTML=`<div class="msg err">Couldn't load platform state.</div>`; return; }
+  STATE=r.body; PENDING=null; render();
+}
+function pick(mode){
+  if(mode===STATE.mode){ PENDING=null; render(); return; }
+  PENDING=mode; render();
+}
+async function apply(){
+  if(!PENDING) return;
+  const btn=$("#applybtn"); if(btn){ btn.disabled=true; btn.textContent="Applying…"; }
+  const r=await api({action:"set",mode:PENDING});
+  if(r.body&&r.body.ok){ STATE=Object.assign({},STATE,r.body); PENDING=null; load(); }
+  else{ const m=(r.body&&r.body.message)||"Could not change mode."; const e=$("#applyerr"); if(e){e.textContent=m;} if(btn){btn.disabled=false;btn.textContent="Apply change";} }
+}
+
+function render(){
+  if(!STATE) return;
+  const cur=MODES.find(m=>m.k===STATE.mode)||MODES[0];
+  const isPres=(STATE.role==="president");
+  const banner=`<div class="banner b-${cur.cls}"><div class="bdot"></div><div><div class="bt">Platform is in ${cur.nm} mode</div><div class="bs">${STATE.go_live_at?("Went live "+esc(fmtDate(STATE.go_live_at))):"Not yet activated — production tracking has not started."}</div></div></div>`;
+
+  const cards=MODES.map(m=>{
+    const on=(PENDING?m.k===PENDING:m.k===STATE.mode);
+    const isCur=m.k===STATE.mode;
+    return `<div class="mode ${on?'on':''}" onclick="pick('${m.k}')">
+      ${isCur?'<div class="cur">Current</div>':''}
+      <div class="nm"><span class="dot ${m.cls}"></span>${m.nm}</div>
+      <div class="ds">${m.ds}</div></div>`;
+  }).join("");
+
+  let action="";
+  if(PENDING){
+    const goingLive=PENDING==="live";
+    if(goingLive && !isPres){
+      action=`<div class="confirm"><b>President approval required.</b> Only the president can activate Live mode, since it starts the official production record. Ask them to make this change.</div>`;
+    }else if(goingLive){
+      action=`<div class="confirm">
+        <b>You're about to take HCPS Live.</b> This stamps the official go-live date and, from this moment, the intelligence engine will only count real dealer activity — all development and test data is retained but excluded from production analytics. Real dealers will begin receiving automated emails (subject to your email settings and frequency caps).
+        <div style="margin-top:10px"><button class="btn go" id="applybtn" onclick="apply()">Activate Live &rarr;</button> <button class="btn ghost" onclick="pick('${STATE.mode}')">Cancel</button></div>
+        <div class="er" id="applyerr" style="color:#b42323;margin-top:8px"></div></div>`;
+    }else{
+      action=`<div style="margin:12px 0 0"><button class="btn" id="applybtn" onclick="apply()">Switch to ${esc((MODES.find(x=>x.k===PENDING)||{}).nm)}</button> <button class="btn ghost" onclick="pick('${STATE.mode}')">Cancel</button><div class="er" id="applyerr" style="color:#b42323;margin-top:8px"></div></div>`;
+    }
+  }
+
+  const flow=`<div class="card"><h2>What Live activates</h2><div class="hint" style="margin:0 0 6px">From go-live forward, production data flows through the whole pipeline:</div>
+    <div class="flowline">${["Dealer activity","Product views","Portal logins","Order activity","Email engagement","CRM updates","Intent scoring","Reorder tracking","Sales opportunities","Marketing automations","Analytics"].map(s=>`<span>${s}</span>`).join("")}</div></div>`;
+
+  const meta=`<div class="card"><h2>Record</h2>
+    <div class="kv" style="font-size:13px;line-height:1.9">
+      <div><b>Current mode:</b> ${esc(cur.nm)}</div>
+      <div><b>Official go-live date:</b> <span class="glv">${STATE.go_live_at?esc(fmtDate(STATE.go_live_at)):"— not activated —"}</span></div>
+      <div><b>This mode since:</b> ${STATE.mode_since?esc(fmtDate(STATE.mode_since)):"—"}</div>
+      <div><b>Last changed by:</b> ${esc(STATE.changed_by||"—")}</div>
+    </div>
+    <div class="hint" style="margin:10px 0 0">Historical sales &amp; order imports are always usable for revenue reporting, in any mode — only <i>behavioral</i> data is separated by environment.</div></div>`;
+
+  $("#body").innerHTML=banner
+    +`<div class="card"><h2>Operating mode</h2><div class="hint" style="margin:0 0 10px">Choose how the platform behaves. Build safely in Development, rehearse in Sandbox, then go Live when everything is ready.</div><div class="modewrap">${cards}</div>${action}</div>`
+    +`<div class="tgrid" style="display:grid;grid-template-columns:1fr 1fr;gap:15px">${meta}${flow}</div>`;
+  const tg=document.querySelector(".tgrid"); if(tg&&window.matchMedia("(max-width:760px)").matches){ tg.style.gridTemplateColumns="1fr"; }
+}
+load();
+</script>
+</body></html>
