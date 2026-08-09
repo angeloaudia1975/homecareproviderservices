@@ -58,7 +58,7 @@ async function boot(){
   if(st.status===401){ gate("Your session ended — sign in again."); return; }
   STATUS=st.body||{}; SEGS=(sg.body&&sg.body.segments)||[]; MFRS=(sg.body&&sg.body.manufacturers)||[]; REPS=(sg.body&&sg.body.reps)||[]; STATES=(sg.body&&sg.body.states)||[];
   AUDS=(au.body&&au.body.audiences)||[];
-  renderConn(); renderBuilder(); loadList();
+  renderConn(); renderBuilder(); loadList(); loadAudStats();
   const pre=qparam("audience"); if(pre){ const sel=$("#c_aud"); if(sel){ sel.value=pre; audChange(); } }
 }
 function renderConn(){
@@ -105,6 +105,7 @@ function renderBuilder(){
     </div>
     <div class="card"><h2>Saved campaigns</h2><div id="list"><div class="hint2">Loading…</div></div></div>
   </div>
+  <div id="audstats" style="margin-top:16px"></div>
   <div id="review"></div>`;
   segChange();
 }
@@ -263,6 +264,45 @@ async function pushZoho(){
 }
 async function getResults(){ if(!CUR)return; const m=$("#rmsg"); if(m)m.textContent="Fetching results…"; const r=await api({action:"results",id:CUR.id}); if(m)m.textContent=(r.body&&r.body.ok)?"Results updated.":((r.body&&r.body.message)||"No results yet."); }
 async function openCampaign(id){ const r=await api({action:"get",id}); if(r.body&&r.body.ok){ CUR=r.body.campaign; renderReview(); window.scrollTo({top:document.body.scrollHeight,behavior:"smooth"}); } }
+// ---- Per-audience performance -------------------------------------------------
+let ASTATS=[], ASOPEN=null;
+const pct=x=>(x==null?'<span class="hint2">—</span>':`${Math.round(x*1000)/10}%`);
+async function loadAudStats(refresh){
+  const host=$("#audstats"); if(!host) return;
+  if(refresh){ host.innerHTML=`<div class="card"><h2>Audience performance</h2><div class="hint2">Refreshing from Zoho…</div></div>`; }
+  const r=await api({action:"audience_stats",refresh:!!refresh});
+  ASTATS=(r.body&&r.body.stats)||[];
+  renderAudStats();
+}
+function renderAudStats(){
+  const host=$("#audstats"); if(!host) return;
+  if(!ASTATS.length){ host.innerHTML=`<div class="card"><h2>Audience performance</h2><div class="hint2">No saved-audience campaigns yet. Build a campaign from a Target Audience and its results will roll up here per audience.</div></div>`; return; }
+  const rows=ASTATS.map(s=>{
+    const open=ASOPEN===s.id;
+    const metrics = s.haveMetrics
+      ? `<td class="num">${num(s.totals.sent)}</td><td class="num">${pct(s.open_rate)}</td><td class="num">${pct(s.click_rate)}</td><td class="num">${pct(s.reply_rate)}</td>`
+      : `<td class="num hint2" colspan="4" style="text-align:center">no results yet</td>`;
+    const detail = open ? `<tr><td colspan="6" style="background:#f8fafc;padding:0">
+      <table class="tt" style="margin:0"><tbody>${s.campaigns.map(c=>{ const m=c.metrics;
+        return `<tr><td style="padding-left:18px"><a href="#" onclick="openCampaign('${c.id}');return false" style="color:var(--navy);font-weight:600;text-decoration:none">${esc(c.name||"(untitled)")}</a> <span class="bdg ${c.pushed?"pushed":"draft"}">${c.pushed?"pushed":esc(c.status||"draft")}</span></td>
+          <td class="num">${m?num(m.sent):`<span class="hint2">${num(c.intended)} intended</span>`}</td>
+          <td class="num">${m?pct(m.sent?m.opens/m.sent:null):'<span class="hint2">—</span>'}</td>
+          <td class="num">${m?pct(m.sent?m.clicks/m.sent:null):'<span class="hint2">—</span>'}</td>
+          <td class="num">${m?pct(m.sent?m.replies/m.sent:null):'<span class="hint2">—</span>'}</td></tr>`;
+      }).join("")}</tbody></table></td></tr>` : "";
+    return `<tr style="cursor:pointer" onclick="toggleAud('${s.id}')" title="Show campaigns">
+      <td><b>${esc(s.name)}</b> <span class="hint2">${open?"▾":"▸"}</span><div class="hint2">${s.type==="dynamic"?"dynamic · ":""}${num(s.campaign_count)} campaign${s.campaign_count===1?"":"s"} · ${num(s.contact_count)} contacts</div></td>
+      ${metrics}<td class="hint2" style="white-space:nowrap">${s.last?fmtDate(s.last):""}</td></tr>${detail}`;
+  }).join("");
+  host.innerHTML=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <h2 style="margin:0">Audience performance</h2>
+      <button class="btn2 ghost" onclick="loadAudStats(true)" ${STATUS.ready?"":"disabled title='Connect Zoho to pull live results'"}>↻ Refresh from Zoho</button></div>
+    <div class="hint2" style="margin:4px 0 8px">Opens, clicks &amp; replies rolled up per saved audience across every campaign it was used in. Click an audience to see its campaigns.</div>
+    <table class="tt"><thead><tr><th>Audience</th><th class="num">Sent</th><th class="num">Open</th><th class="num">Click</th><th class="num">Reply</th><th>Last</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+function toggleAud(id){ ASOPEN=(ASOPEN===id?null:id); renderAudStats(); }
+function fmtDate(s){ try{ return new Date(s).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); }catch(e){ return ""; } }
 async function loadList(){
   const r=await api({action:"list"}); const rows=(r.body&&r.body.campaigns)||[];
   const el=$("#list"); if(!el) return;

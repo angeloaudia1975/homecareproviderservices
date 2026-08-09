@@ -150,6 +150,34 @@ function sequenceFor(goal,subjects,line,offer){
   return steps.map(s=>({...s,note:s.step>1?"Send to non-openers; stop on reply or order.":""}));
 }
 
+// ---- results normalization + per-audience rollup ---------------------------
+// Zoho Campaigns' report JSON shape varies; scan it for the numbers we care about
+// by key pattern so a rename doesn't silently zero a metric. Returns null when the
+// campaign has no results yet.
+function pickNum(obj,patterns){
+  let found=null;
+  const walk=o=>{ if(!o||typeof o!=="object")return;
+    for(const k in o){ const v=o[k], kl=String(k).toLowerCase();
+      if(typeof v==="number" || (typeof v==="string" && /^\d+(\.\d+)?$/.test(v))){
+        for(const p of patterns){ if(p.test(kl)){ if(found===null) found=Number(v); break; } }
+      } else if(v&&typeof v==="object") walk(v);
+    } };
+  walk(obj); return found;
+}
+function normalizeResults(raw){
+  if(!raw||typeof raw!=="object"||Array.isArray(raw)) { if(!raw) return null; }
+  const r=raw||{};
+  const sent   = pickNum(r,[/emails?_?sent/,/^sent$/,/no_?of_?emails/,/totalsent/,/recipients?/,/delivered/]);
+  const opens  = pickNum(r,[/unique_?open/,/uniqueopen/,/total_?open/,/^opens?$/,/opened/]);
+  const clicks = pickNum(r,[/unique_?click/,/uniqueclick/,/total_?click/,/^clicks?$/,/clicked/]);
+  const replies= pickNum(r,[/repl/]);
+  const bounces= pickNum(r,[/bounce/,/hardbounce/,/softbounce/]);
+  const unsub  = pickNum(r,[/unsub/,/optout/]);
+  const any=[sent,opens,clicks,replies,bounces,unsub].some(x=>x!=null);
+  if(!any) return null;
+  return {sent:sent||0,opens:opens||0,clicks:clicks||0,replies:replies||0,bounces:bounces||0,unsub:unsub||0};
+}
+
 exports.handler=async(event)=>{
   try{
     if(event.httpMethod!=="POST") return json(405,{error:"POST only"});
@@ -284,6 +312,39 @@ exports.handler=async(event)=>{
       await sbSend("PATCH",`marketing_campaigns?id=eq.${encodeURIComponent(b.id)}`,{status:"pushed",zoho_list_key:res.zoho_list_key||null,zoho_campaign_key:res.zoho_campaign_key||null,updated_at:new Date().toISOString()},{Prefer:"return=minimal"});
       return json(200,{ok:true,zoho_campaign_key:res.zoho_campaign_key});
     }
+    // Per-audience performance: roll up every campaign built from each saved audience.
+    // Pass {refresh:true} to pull fresh numbers from Zoho for pushed campaigns first.
+    if(act==="audience_stats"){
+      const auds=await sbGet("audiences?select=id,name,type,company_count,contact_count&order=name").catch(()=>[]);
+      const camps=await sbGet("marketing_campaigns?select=id,name,status,audience,results,zoho_campaign_key,updated_at&order=updated_at.desc&limit=500").catch(()=>[]);
+      // Only campaigns that were built from a saved audience roll up here.
+      const used=camps.filter(c=>c.audience&&c.audience.audience_id);
+      if(b.refresh){
+        for(const c of used){ if(c.zoho_campaign_key){ try{ const r=await ZC.getResults(c.zoho_campaign_key);
+          if(r&&r.ok){ c.results=r.results||{}; await sbSend("PATCH",`marketing_campaigns?id=eq.${encodeURIComponent(c.id)}`,{results:c.results,updated_at:new Date().toISOString()},{Prefer:"return=minimal"}); } }catch(e){} } }
+      }
+      const byAud={};
+      for(const c of used){ const aid=c.audience.audience_id; (byAud[aid]=byAud[aid]||[]).push(c); }
+      const stats=auds.map(a=>{
+        const cs=byAud[a.id]||[];
+        let sent=0,opens=0,clicks=0,replies=0,bounces=0,unsub=0,haveMetrics=false,pushed=0,last=null;
+        const campaigns=cs.map(c=>{
+          const nr=normalizeResults(c.results);
+          if(c.zoho_campaign_key) pushed++;
+          if(!last || String(c.updated_at||"")>last) last=c.updated_at||null;
+          if(nr){ haveMetrics=true; sent+=nr.sent; opens+=nr.opens; clicks+=nr.clicks; replies+=nr.replies; bounces+=nr.bounces; unsub+=nr.unsub; }
+          const intended=(c.audience&&((c.audience.breakdown&&c.audience.breakdown.send)||c.audience.count))||0;
+          return {id:c.id,name:c.name,status:c.status,pushed:!!c.zoho_campaign_key,updated_at:c.updated_at,intended,metrics:nr};
+        });
+        return {id:a.id,name:a.name,type:a.type,contact_count:a.contact_count||0,
+          campaign_count:cs.length,pushed,haveMetrics,
+          totals:{sent,opens,clicks,replies,bounces,unsub},
+          open_rate:sent?opens/sent:null, click_rate:sent?clicks/sent:null, reply_rate:sent?replies/sent:null,
+          last, campaigns};
+      }).filter(s=>s.campaign_count>0).sort((x,y)=>(y.totals.sent-x.totals.sent)||(y.campaign_count-x.campaign_count));
+      return json(200,{ok:true,stats});
+    }
+
     if(act==="results"){
       if(!b.id) return json(400,{error:"id required"});
       const rows=await sbGet(`marketing_campaigns?id=eq.${encodeURIComponent(b.id)}&select=zoho_campaign_key`).catch(()=>[]);
