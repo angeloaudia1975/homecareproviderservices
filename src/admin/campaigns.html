@@ -34,6 +34,10 @@ const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",
 window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
 let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 let TOKEN=HCPS.token(), STATUS=null, SEGS=[], MFRS=[], REPS=[], STATES=[], CUR=null, SEQ=[];
+let AUDS=[], APREV=null;   // saved Target Audiences + the live breakdown of the selected one
+let EXCL=new Set(), RQ="";  // pre-send review: excluded recipient emails + list filter
+const jesc=s=>String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+function qparam(k){ try{ return new URLSearchParams(location.search).get(k)||""; }catch(e){ return ""; } }
 const num=n=>Number(n||0).toLocaleString("en-US");
 const GOALS=[["manufacturer_intro","Manufacturer introduction"],["launch","New product launch"],["promo","Promotion / offer"],["cross_sell","Cross-sell"],["reactivation","Reactivation"],["acquisition","Dealer acquisition"]];
 
@@ -50,10 +54,12 @@ async function api(payload){ const r=await fetch("/.netlify/functions/campaign-a
 
 async function boot(){
   if(!TOKEN){ gate(); return; }
-  const [st,sg]=await Promise.all([api({action:"zoho_status"}),api({action:"segments"})]);
+  const [st,sg,au]=await Promise.all([api({action:"zoho_status"}),api({action:"segments"}),api({action:"audiences"})]);
   if(st.status===401){ gate("Your session ended — sign in again."); return; }
   STATUS=st.body||{}; SEGS=(sg.body&&sg.body.segments)||[]; MFRS=(sg.body&&sg.body.manufacturers)||[]; REPS=(sg.body&&sg.body.reps)||[]; STATES=(sg.body&&sg.body.states)||[];
+  AUDS=(au.body&&au.body.audiences)||[];
   renderConn(); renderBuilder(); loadList();
+  const pre=qparam("audience"); if(pre){ const sel=$("#c_aud"); if(sel){ sel.value=pre; audChange(); } }
 }
 function renderConn(){
   const c=$("#conn");
@@ -78,14 +84,19 @@ function renderBuilder(){
   const goalOpts=GOALS.map(g=>`<option value="${g[0]}">${g[1]}</option>`).join("");
   const segOpts=SEGS.map(s=>`<option value="${esc(s.key)}" data-mfr="${s.needs_mfr?1:0}">${esc(s.label)}${s.count!=null?` (${num(s.count)})`:""}</option>`).join("");
   const mfrOpts=`<option value="">— pick a manufacturer —</option>`+MFRS.map(m=>`<option value="${esc(m.slug)}">${esc(m.name)}</option>`).join("");
+  const audOpts=`<option value="">— none: build a live segment below —</option>`+AUDS.map(a=>`<option value="${esc(a.id)}">${esc(a.name)} · ${num(a.contact_count||0)} contacts${a.type==="dynamic"?" (dynamic)":""}</option>`).join("");
   $("#body").innerHTML=`<div class="grid2">
     <div class="card"><h2>New campaign</h2>
       <div class="fld"><label>Campaign name</label><input id="c_name" placeholder="e.g. Bemis prospects — Q3"></div>
       <div class="fld"><label>Goal</label><select id="c_goal">${goalOpts}</select></div>
-      <div class="fld"><label>Audience segment</label><select id="c_seg" onchange="segChange()">${segOpts}</select></div>
+      <div class="fld"><label>Saved Target Audience <span class="hint2">(from the Audience Builder)</span></label><select id="c_aud" onchange="audChange()">${audOpts}</select></div>
+      <div id="audPrev"></div>
+      <div id="segWrap">
+        <div class="fld"><label>Audience segment</label><select id="c_seg" onchange="segChange()">${segOpts}</select></div>
+      </div>
       <div class="fld" id="mfrWrap"><label>Manufacturer / line</label><select id="c_mfr">${mfrOpts}</select></div>
       <div class="fld"><label>Offer / message <span class="hint2">(optional)</span></label><input id="c_offer" placeholder="e.g. intro pricing through Q3"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div id="narrowWrap" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div class="fld"><label>Narrow by state <span class="hint2">(optional)</span></label><select id="c_state"><option value="">— all states —</option>${STATES.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("")}</select></div>
         <div class="fld"><label>Narrow by rep <span class="hint2">(optional)</span></label><select id="c_rep"><option value="">— all reps —</option>${REPS.map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join("")}</select></div>
       </div>
@@ -97,9 +108,41 @@ function renderBuilder(){
   <div id="review"></div>`;
   segChange();
 }
-function segChange(){ const sel=$("#c_seg"); const needs=sel&&sel.options[sel.selectedIndex]&&sel.options[sel.selectedIndex].getAttribute("data-mfr")==="1"; const w=$("#mfrWrap"); if(w)w.style.display=needs?"block":"none"; }
+function audId(){ return (($("#c_aud")||{}).value||"").trim(); }
+function segChange(){
+  const w=$("#mfrWrap"); if(!w) return;
+  // With a saved audience the recipients are fixed, but the line still drives the
+  // copy & product images — so keep manufacturer available.
+  if(audId()){ w.style.display="block"; return; }
+  const sel=$("#c_seg"); const needs=sel&&sel.options[sel.selectedIndex]&&sel.options[sel.selectedIndex].getAttribute("data-mfr")==="1";
+  w.style.display=needs?"block":"none";
+}
+async function audChange(){
+  const id=audId(); const seg=$("#segWrap"), nar=$("#narrowWrap"), pv=$("#audPrev"); const on=!!id;
+  // A saved audience already defines who receives it — hide the live-segment controls.
+  if(seg) seg.style.display=on?"none":"block";
+  if(nar) nar.style.display=on?"none":"grid";
+  segChange();
+  if(!on){ APREV=null; if(pv)pv.innerHTML=""; return; }
+  if(pv) pv.innerHTML=`<div class="hint2" style="margin:2px 0 10px">Resolving audience…</div>`;
+  const r=await api({action:"preview_audience",audience_id:id});
+  if(r.body&&r.body.ok){ APREV=r.body; renderAudPrev(); } else { APREV=null; if(pv)pv.innerHTML=`<div class="hint2" style="color:#b42323">Couldn't resolve this audience.</div>`; }
+}
+function renderAudPrev(){
+  const pv=$("#audPrev"); if(!pv||!APREV) return; const bd=APREV.breakdown||{};
+  pv.innerHTML=`<div style="background:#f6f9fc;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:2px 0 12px">
+    <div style="font-size:12px;color:var(--gray);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Send audience — ${esc(APREV.audience.name||"")}</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px">
+      <span><b>${num(bd.companies||0)}</b> companies</span>
+      <span><b>${num(bd.contacts||0)}</b> contacts</span>
+      <span style="color:#166b45"><b>${num(bd.valid||0)}</b> will send</span>
+      ${bd.unsubscribed?`<span style="color:#8a5d12"><b>${num(bd.unsubscribed)}</b> unsubscribed</span>`:""}
+      ${bd.invalid?`<span style="color:#b42323"><b>${num(bd.invalid)}</b> invalid</span>`:""}
+    </div></div>`;
+}
 async function generate(){
   const brief={ name:(($("#c_name")||{}).value||"").trim(), goal:($("#c_goal")||{}).value, segment:($("#c_seg")||{}).value,
+    audience_id:audId()||"",
     manufacturer:($("#c_mfr")||{}).value||"", offer:(($("#c_offer")||{}).value||"").trim(),
     state:($("#c_state")||{}).value||"", rep:($("#c_rep")||{}).value||"" };
   const m=$("#genMsg"), btn=$("#genBtn"); if(btn)btn.disabled=true; if(m)m.textContent="Building audience & copy…";
@@ -108,13 +151,19 @@ async function generate(){
   if(r.body&&r.body.ok){ CUR=r.body.campaign; if(m)m.textContent=""; renderReview(); loadList(); window.scrollTo({top:document.body.scrollHeight,behavior:"smooth"}); }
   else if(m) m.textContent=(r.body&&r.body.error)||"Couldn't generate.";
 }
+function sampleContact(){ const s=((CUR&&CUR.audience&&CUR.audience.sample)||[])[0]||{}; return {first:(String(s.name||"").trim().split(/\s+/)[0]||"there"), company:(s.company||s.name||"your dealership")}; }
+function personalize(html){ const s=sampleContact(); return String(html||"").split("{{first_name}}").join(esc(s.first)).split("{{company}}").join(esc(s.company)); }
 function renderReview(){
   if(!CUR){ $("#review").innerHTML=""; return; }
-  const g=CUR.generated||{}, a=CUR.audience||{};
+  const g=CUR.generated||{}, a=CUR.audience||{}; const bd=a.breakdown||null;
   const pushed=!!CUR.zoho_campaign_key;
+  EXCL=new Set(((a.exclusions)||[]).map(e=>String(e||"").toLowerCase())); RQ="";
+  const audLine = bd
+    ? `Audience: <b>${num(bd.send||a.count||0)}</b> will send · ${num(bd.companies||0)} companies · ${num(bd.contacts||0)} contacts${a.audience_name?` · “${esc(a.audience_name)}”`:""}${bd.unsubscribed?` · ${num(bd.unsubscribed)} unsubscribed`:""}${bd.invalid?` · ${num(bd.invalid)} invalid`:""}`
+    : `Audience: <b>${num(a.count||0)}</b> dealers with email · segment: ${esc(CUR.segment||"")}${CUR.manufacturer?` · ${esc(CUR.manufacturer)}`:""}`;
   $("#review").innerHTML=`<div class="card" style="margin-top:16px">
     <h2>${esc(CUR.name||"Campaign")} <span class="bdg ${pushed?"pushed":"draft"}">${pushed?"pushed to Zoho":"draft"}</span></h2>
-    <div class="hint2" style="margin:-4px 0 12px">Audience: <b>${num(a.count||0)}</b> dealers with email · segment: ${esc(CUR.segment||"")}${CUR.manufacturer?` · ${esc(CUR.manufacturer)}`:""}</div>
+    <div class="hint2" style="margin:-4px 0 12px">${audLine}</div>
     <div class="grid2">
       <div>
         <label class="hint2" style="font-weight:700">Subject lines <span style="font-weight:400">(first is primary)</span></label>
@@ -126,19 +175,59 @@ function renderReview(){
         <div class="hint2" style="margin-top:8px">Suggested send: ${esc((g.schedule&&g.schedule.recommended)||"")}</div>
       </div>
       <div>
-        <label class="hint2" style="font-weight:700">Email preview</label>
-        <div class="prev" id="r_prev">${g.body_html||""}</div>
+        <label class="hint2" style="font-weight:700">Email preview <span style="font-weight:400">— sample for ${esc(sampleContact().company)}</span></label>
+        <div class="prev" id="r_prev">${personalize(g.body_html||"")}</div>
+        <div class="hint2" style="margin:6px 0 0">✎ Personalized per dealer: <code>{{first_name}}</code> and <code>{{company}}</code> merge to each recipient's name &amp; dealership at send. Preview shows one sample.</div>
         <details style="margin-top:8px"><summary class="hint2" style="cursor:pointer">Edit HTML</summary>
-          <textarea id="r_body" rows="8" style="width:100%;box-sizing:border-box;font-family:ui-monospace,monospace;font-size:11.5px;margin-top:6px" oninput="document.getElementById('r_prev').innerHTML=this.value">${esc(g.body_html||"")}</textarea></details>
+          <textarea id="r_body" rows="8" style="width:100%;box-sizing:border-box;font-family:ui-monospace,monospace;font-size:11.5px;margin-top:6px" oninput="document.getElementById('r_prev').innerHTML=personalize(this.value)">${esc(g.body_html||"")}</textarea></details>
       </div>
     </div>
+    <div id="recips" style="margin-top:14px"></div>
     <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
       <button class="btn2 ghost" onclick="saveCampaign()">Save edits</button>
       <button class="btn2" onclick="pushZoho()" ${STATUS.ready?"":"disabled title='Connect Zoho first'"}>Push draft to Zoho →</button>
       ${pushed?`<button class="btn2 ghost" onclick="getResults()">Refresh results</button>`:""}
     </div>
     <div id="rmsg" class="hint2" style="margin-top:8px"></div></div>`;
-  SEQ=((CUR.generated||{}).sequence||[]).slice(); renderSeq();
+  SEQ=((CUR.generated||{}).sequence||[]).slice(); renderSeq(); renderRecips();
+}
+// ---- Pre-send contact review: view the send list, exclude individual recipients ----
+function effCount(){ const t=((CUR&&CUR.audience&&CUR.audience.sample)||[]).length; return Math.max(0,t-EXCL.size); }
+function recipSummary(){ return `Review recipients — <b>${num(effCount())}</b> will send${EXCL.size?` · ${num(EXCL.size)} excluded`:""}`; }
+function renderRecips(){
+  const host=$("#recips"); if(!host) return;
+  const list=((CUR&&CUR.audience&&CUR.audience.sample)||[]);
+  if(!list.length){ host.innerHTML=`<div class="hint2">Individual recipient review isn't available for this campaign — regenerate it to load the contact list.</div>`; return; }
+  host.innerHTML=`<details><summary style="cursor:pointer;font-weight:700;font-size:13px;color:var(--navy)">${recipSummary()}</summary>
+    <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+        <input id="rq" placeholder="Filter by company, name or email…" value="${esc(RQ)}" oninput="RQ=this.value;paintRecips()" style="flex:1;min-width:200px;padding:6px 9px;border:1px solid var(--line);border-radius:8px;font-family:inherit">
+        <button class="btn2 ghost" onclick="saveExcl()" title="Save which contacts to skip before pushing">Save recipient list</button>
+      </div>
+      <div class="hint2" style="margin-bottom:6px">Uncheck anyone you don't want to email. Excluded contacts are skipped when the draft is pushed to Zoho.</div>
+      <div id="recipRows" style="max-height:320px;overflow:auto"></div>
+    </div></details>`;
+  paintRecips();
+}
+function paintRecips(){
+  const box=$("#recipRows"); if(!box) return;
+  const q=RQ.trim().toLowerCase();
+  const list=((CUR&&CUR.audience&&CUR.audience.sample)||[]);
+  const rows=list.filter(s=>!q||[s.company,s.name,s.email].some(v=>String(v||"").toLowerCase().includes(q)));
+  box.innerHTML=`<table class="tt"><tbody>${rows.map(s=>{ const ex=EXCL.has(String(s.email||"").toLowerCase());
+    return `<tr style="${ex?"opacity:.5":""}"><td style="width:22px"><input type="checkbox" ${ex?"":"checked"} onclick="toggleExcl('${jesc(s.email)}')" title="Uncheck to exclude"></td>
+      <td><b>${esc(s.company||"")}</b>${s.name?`<div class="hint2">${esc(s.name)}</div>`:""}</td>
+      <td class="hint2" style="${ex?"text-decoration:line-through":""}">${esc(s.email||"")}</td></tr>`;
+  }).join("")}</tbody></table>${rows.length?"":'<div class="hint2" style="padding:6px 0">No contacts match that filter.</div>'}`;
+}
+function toggleExcl(email){ const lo=String(email||"").toLowerCase(); if(EXCL.has(lo))EXCL.delete(lo); else EXCL.add(lo);
+  const s=document.querySelector("#recips summary"); if(s) s.innerHTML=recipSummary(); paintRecips();
+}
+async function saveExcl(){ if(!CUR) return {body:{}}; const m=$("#rmsg"); if(m)m.textContent="Saving recipient list…";
+  const r=await api({action:"exclude",id:CUR.id,emails:[...EXCL]});
+  if(r.body&&r.body.ok){ if(CUR.audience)CUR.audience.exclusions=[...EXCL]; if(m)m.textContent=`Recipient list saved — ${num(r.body.will_send)} will send.`; }
+  else if(m)m.textContent="Couldn't save the recipient list.";
+  return r;
 }
 function renderSeq(){
   const box=$("#seqBox"); if(!box) return;
@@ -162,8 +251,11 @@ async function saveCampaign(){
   if(r.body&&r.body.ok){ CUR.generated=g; if(m)m.textContent="Saved ✓"; } else if(m) m.textContent="Couldn't save.";
 }
 async function pushZoho(){
-  if(!CUR) return; const m=$("#rmsg"); if(m)m.textContent="Pushing draft to Zoho…";
+  if(!CUR) return; const m=$("#rmsg");
+  if(EXCL.size && !confirm(`${num(EXCL.size)} contact${EXCL.size===1?"":"s"} excluded — push the draft to Zoho for the remaining ${num(effCount())}?`)) return;
+  if(m)m.textContent="Saving & pushing draft to Zoho…";
   await saveCampaign();
+  await saveExcl();   // persist any pre-send exclusions so the push skips them
   const r=await api({action:"push_to_zoho",id:CUR.id});
   if(r.body&&r.body.ok){ if(m)m.textContent="Draft created in Zoho ✓ — open Zoho Campaigns to review and send."; CUR.zoho_campaign_key=r.body.zoho_campaign_key; renderReview(); loadList(); }
   else if(r.body&&r.body.not_configured){ if(m)m.textContent="Connect Zoho Campaigns first (panel at the top)."; }

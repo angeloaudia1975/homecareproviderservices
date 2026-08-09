@@ -24,6 +24,7 @@ const esc=s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;","
 const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const P=require("./_platform.js");
 const ZC=require("./_zohocampaigns.js");
+const A=require("./_audiences.js");                        // saved Target Audiences (Builder)
 const { exchangeCode, hasCreds } = require("./_zoho.js");   // reuse the CRM Self-Client token exchange
 
 async function whoami(event){
@@ -113,24 +114,28 @@ function buildContent(brief,line,products){
   const prodGrid = (products&&products.length)
     ? `<table role="presentation" width="100%" style="border-collapse:collapse;margin:12px 0"><tr>${products.slice(0,3).map(p=>`<td valign="top" style="width:33%;padding:5px;text-align:center">${p.image?`<img src="${esc(p.image)}" alt="${esc(p.name)}" width="130" style="max-width:130px;height:auto;border-radius:8px;border:1px solid #eef1f4" onerror="this.style.display='none'">`:`<div style="height:90px;background:#f4f7fb;border-radius:8px"></div>`}<div style="font-size:12px;color:#374151;margin-top:5px;line-height:1.3">${esc(p.name)}${p.code?`<br><span style="color:#9aa4ae">${esc(p.code)}</span>`:""}</div></td>`).join("")}</tr></table>`
     : "";
+  // Personalization tokens — {{first_name}} and {{company}} are merged per recipient
+  // (Zoho merge tags at push; sample-filled for on-screen preview). Each dealer gets
+  // a private, unique message addressed to their name and dealership.
   const intros={
-    manufacturer_intro:`Dealers with your product mix do well adding ${esc(line||"this line")} — and it's already available on your HCPS account at your pricing.`,
-    launch:`There's something new from ${esc(line||"one of our partners")} worth a look on your next order.`,
-    promo:`${offer?esc(offer)+" ":""}on ${esc(line||"select lines")} — a good moment to stock up.`,
-    reactivation:`It's been a little while since your last order. Here's what's new, and we'd love to help you restock.`,
-    acquisition:`HomeCare Provider Services represents leading home-medical-equipment manufacturers with dealer pricing, easy online ordering, and hands-on support.`,
-    cross_sell:`You already do well with your current lines — ${esc(line||"this one")} is a natural add that your customers are asking for.`,
+    manufacturer_intro:`Dealers with {{company}}'s product mix do well adding ${esc(line||"this line")} — and it's already available on your HCPS account at your pricing.`,
+    launch:`There's something new from ${esc(line||"one of our partners")} worth a look on {{company}}'s next order.`,
+    promo:`${offer?esc(offer)+" ":""}on ${esc(line||"select lines")} — a good moment for {{company}} to stock up.`,
+    reactivation:`It's been a little while since {{company}}'s last order. Here's what's new, and we'd love to help you restock.`,
+    acquisition:`HomeCare Provider Services represents leading home-medical-equipment manufacturers with dealer pricing, easy online ordering, and hands-on support — a strong fit for {{company}}.`,
+    cross_sell:`{{company}} already does well with your current lines — ${esc(line||"this one")} is a natural add that your customers are asking for.`,
   };
   const cta = {label: goal==="acquisition"?"Become a dealer":(line?`Explore ${line}`:"Browse your portal"), url:`${ORDERING}${brief.manufacturer?`/?line=${encodeURIComponent(brief.manufacturer)}`:""}`};
   const body_html=`<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:560px">
     <h2 style="color:#2B4071;margin:0 0 6px">${esc(subjects[0])}</h2>
+    <p style="font-size:13.5px;line-height:1.6;color:#374151;margin:0 0 4px">Hi {{first_name}},</p>
     <p style="font-size:13.5px;line-height:1.6;color:#374151;margin:0 0 10px">${intros[goal]||intros.manufacturer_intro}</p>
     ${prodGrid}
     <p style="margin:14px 0 12px"><a href="${cta.url}" style="display:inline-block;background:#F5821F;color:#fff;text-decoration:none;font-weight:700;padding:11px 18px;border-radius:8px;font-size:14px">${esc(cta.label)} &rarr;</a></p>
     <p style="font-size:12.5px;line-height:1.6;color:#6b7280;margin:14px 0 0">Questions, or want pricing on something specific? Just reply — your HCPS rep is glad to help.</p>
     <p style="font-size:12px;color:#9aa4ae;margin:14px 0 0">HomeCare Provider Services · Your partner in mobility &amp; home medical equipment.</p></div>`;
   const sequence=sequenceFor(goal,subjects,line,offer);
-  return {subjects,preheader,body_html,ctas:[cta],sequence,schedule:{recommended:"a weekday mid-morning (Tue–Thu, ~10am ET)",note:"5 touches over ~4 weeks — the rule of thumb to convert a dealer or open a new line. Respects quiet weekends."}};
+  return {subjects,preheader,body_html,ctas:[cta],sequence,tokens:["{{first_name}}","{{company}}"],schedule:{recommended:"a weekday mid-morning (Tue–Thu, ~10am ET)",note:"5 touches over ~4 weeks — the rule of thumb to convert a dealer or open a new line. Respects quiet weekends."}};
 }
 // A 5-touch sequence (the rule of thumb to convert a company / open a new line).
 function sequenceFor(goal,subjects,line,offer){
@@ -177,26 +182,53 @@ exports.handler=async(event)=>{
       return json(200,{ok:true,segments:out,manufacturers:(mfrs||[]).map(m=>({slug:m.slug,name:m.name||m.slug})),reps,states});
     }
 
+    // Saved Target Audiences (from the Builder) — list them for the campaign selector.
+    if(act==="audiences"){
+      const rows=await sbGet("audiences?select=id,name,type,company_count,contact_count,notes,updated_at&order=updated_at.desc&limit=200").catch(()=>[]);
+      return json(200,{ok:true,audiences:rows||[]});
+    }
+    // Resolve one saved audience to its send breakdown (companies/contacts/valid/…) for preview.
+    if(act==="preview_audience"){
+      if(!b.audience_id) return json(400,{error:"audience_id required"});
+      const r=await A.resolveById(b.audience_id).catch(()=>null);
+      if(!r) return json(404,{error:"audience not found"});
+      return json(200,{ok:true,audience:{id:r.audience.id,name:r.audience.name,type:r.audience.type},breakdown:r.breakdown,sample:r.send.slice(0,3)});
+    }
+
     if(act==="generate"){
       const brief=(b.brief&&typeof b.brief==="object")?b.brief:{};
-      const segment=String(brief.segment||"").trim();
-      if(!SEGMENTS.find(s=>s.key===segment)) return json(400,{error:"pick a valid segment"});
-      const mfrSlug=String(brief.manufacturer||"").trim()||null;
+      const audienceId=String(brief.audience_id||"").trim()||null;
       const mfrs=await sbGet("manufacturers?select=slug,name").catch(()=>[]);
+      const mfrSlug=String(brief.manufacturer||"").trim()||null;
       const line=mfrSlug?((mfrs.find(m=>m.slug===mfrSlug)||{}).name||mfrSlug):"";
-      const audience=await resolveAudience(segment,mfrSlug,{state:brief.state||"",rep:brief.rep||""});
       const products=await topProducts(mfrSlug);
       const generated=buildContent(brief,line,products);
       const st=await P.getState();
+
+      let segment, audienceBlock, name;
+      if(audienceId){
+        // A saved Target Audience is the source of truth: resolve to its clean send list.
+        const r=await A.resolveById(audienceId).catch(()=>null);
+        if(!r) return json(400,{error:"saved audience not found"});
+        segment="saved";
+        const send=(r.send||[]).map(s=>({dealer_id:s.dealer_id,name:s.name,email:s.email,company:s.company}));
+        audienceBlock={ source:"audience", audience_id:audienceId, audience_name:r.audience.name||"",
+          count:r.breakdown.send, breakdown:r.breakdown,
+          dealer_ids:[...new Set(send.map(s=>s.dealer_id))], sample:send.slice(0,3000) };
+        name=String(brief.name||`${r.audience.name||"Audience"} — ${line||"HCPS"}`).slice(0,120);
+      } else {
+        segment=String(brief.segment||"").trim();
+        if(!SEGMENTS.find(s=>s.key===segment)) return json(400,{error:"pick a valid segment or a saved audience"});
+        const audience=await resolveAudience(segment,mfrSlug,{state:brief.state||"",rep:brief.rep||""});
+        audienceBlock={ source:"segment", count:audience.count, dealer_ids:audience.dealer_ids, sample:audience.sample };
+        name=String(brief.name||`${line||"HCPS"} — ${segment}`).slice(0,120);
+      }
       const row={
-        name:String(brief.name||`${line||"HCPS"} — ${segment}`).slice(0,120),
-        goal:brief.goal||"manufacturer_intro", manufacturer:mfrSlug, segment,
-        brief, generated, audience:{count:audience.count,sample:audience.sample.slice(0,200),dealer_ids:audience.dealer_ids},
+        name, goal:brief.goal||"manufacturer_intro", manufacturer:mfrSlug, segment,
+        brief, generated, audience:audienceBlock,
         status:"draft", env:P.envFor(st.mode,false), created_by:me.name||me.email,
         updated_at:new Date().toISOString(),
       };
-      // keep the full send-list separately in audience.sample for the Zoho push (cap 2000)
-      row.audience.sample=audience.sample;
       const ins=await sbSend("POST","marketing_campaigns",row,{Prefer:"return=representation"});
       return json(200,{ok:true,campaign:ins&&ins[0]});
     }
@@ -221,11 +253,32 @@ exports.handler=async(event)=>{
       return json(200,{ok:true});
     }
 
+    // Pre-send contact review: exclude specific recipients from a campaign before it
+    // pushes to Zoho. Excluded emails are kept on the campaign's audience JSON (no new
+    // column) and filtered out of the send list at push time.
+    if(act==="exclude"){
+      if(!b.id) return json(400,{error:"id required"});
+      const emails=(Array.isArray(b.emails)?b.emails:[]).map(e=>String(e||"").trim().toLowerCase()).filter(Boolean);
+      const rows=await sbGet(`marketing_campaigns?id=eq.${encodeURIComponent(b.id)}&select=audience`).catch(()=>[]);
+      const c=rows&&rows[0]; if(!c) return json(404,{error:"not found"});
+      const aud=c.audience||{}; aud.exclusions=[...new Set(emails)];
+      await sbSend("PATCH",`marketing_campaigns?id=eq.${encodeURIComponent(b.id)}`,{audience:aud,updated_at:new Date().toISOString()},{Prefer:"return=minimal"});
+      const total=((aud.sample||[]).length)||(aud.count||0);
+      return json(200,{ok:true,excluded:aud.exclusions.length,will_send:Math.max(0,total-aud.exclusions.length)});
+    }
+
     if(act==="push_to_zoho"){
       if(!b.id) return json(400,{error:"id required"});
       if(!(await ZC.ready())) return json(200,{ok:false,not_configured:true,scopes:ZC.SCOPES,message:"Zoho Campaigns isn't connected yet — finish the OAuth step to enable pushing drafts."});
       const rows=await sbGet(`marketing_campaigns?id=eq.${encodeURIComponent(b.id)}&select=*`).catch(()=>[]);
       const c=rows&&rows[0]; if(!c) return json(404,{error:"not found"});
+      // Apply the pre-send review: drop any excluded recipients from the send list.
+      const excl=new Set(((c.audience&&c.audience.exclusions)||[]).map(e=>String(e||"").toLowerCase()));
+      if(excl.size && c.audience && Array.isArray(c.audience.sample)){
+        c.audience.sample=c.audience.sample.filter(s=>!excl.has(String(s.email||"").toLowerCase()));
+        c.audience.count=c.audience.sample.length;
+      }
+      if(c.audience && !(c.audience.sample&&c.audience.sample.length)) return json(200,{ok:false,message:"No recipients left to send — every contact was excluded."});
       const res=await ZC.pushCampaign(c,CAMPAIGN_FROM);
       if(!res.ok) return json(200,{ok:false,message:res.error||"Zoho push failed",step:res.step||null});
       await sbSend("PATCH",`marketing_campaigns?id=eq.${encodeURIComponent(b.id)}`,{status:"pushed",zoho_list_key:res.zoho_list_key||null,zoho_campaign_key:res.zoho_campaign_key||null,updated_at:new Date().toISOString()},{Prefer:"return=minimal"});

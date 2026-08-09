@@ -24,6 +24,16 @@ const CAMP_HOST=process.env.ZOHO_CAMPAIGNS_DOMAIN||"campaigns.zoho.com";
 const BASE=`https://${CAMP_HOST}/api/v1.1`;
 const SCOPES=["ZohoCampaigns.campaign.ALL","ZohoCampaigns.contact.ALL"];   // reports read via campaign scope
 
+// ── Personalization ──────────────────────────────────────────────────────────
+// The portal writes body copy with neutral tokens ({{first_name}}, {{company}});
+// at push we swap them for Zoho Campaigns merge tags so every recipient sees their
+// own name and dealership. Adjust the right-hand side if a list uses different
+// field labels — Zoho derives the tag from the list column name (spaces→no spaces,
+// upper-cased): "First Name" -> $[FIRSTNAME]$, a "Company" column -> $[COMPANY]$.
+const MERGE={ "{{first_name}}":"$[FIRSTNAME]$", "{{company}}":"$[COMPANY]$" };
+function toMergeTags(html){ let s=String(html||""); for(const k in MERGE) s=s.split(k).join(MERGE[k]); return s; }
+function firstName(name){ const w=String(name||"").trim().split(/\s+/)[0]||""; return /@/.test(w)?"":w; }
+
 async function sbGet(path){ try{ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`}}); return r.ok?r.json():[]; }catch(e){ return []; } }
 async function refreshToken(){
   if(process.env.ZOHO_CAMPAIGNS_REFRESH_TOKEN) return process.env.ZOHO_CAMPAIGNS_REFRESH_TOKEN;
@@ -59,8 +69,14 @@ async function zget(path,token){
 
 // Create a mailing list and seed it with the resolved audience.
 async function createListWithContacts(token,listName,contacts){
-  // contacts: [{email, name}]  → Zoho "Contact Info" JSON keyed by column.
-  const info=JSON.stringify((contacts||[]).slice(0,5000).map(c=>({"Contact Email":c.email,"First Name":c.name||""})));
+  // contacts: [{email, name, company}] → Zoho "Contact Info" JSON keyed by column.
+  // First Name + Company are what the merge tags ($[FIRSTNAME]$ / $[COMPANY]$) fill
+  // per recipient. We pre-fill friendly fallbacks so no email reads "Hi ,".
+  const info=JSON.stringify((contacts||[]).slice(0,5000).map(c=>({
+    "Contact Email":c.email,
+    "First Name":firstName(c.name)||"there",
+    "Company":c.company||"your dealership"
+  })));
   const res=await zpost("/addlistandcontacts",token,{
     resfmt:"JSON", listname:listName, signupform:"public", mode:"newlist", emailyn:"false", contactinfo:info
   });
@@ -85,15 +101,15 @@ async function getReport(token,campaignKey){
 async function pushCampaign(campaign,fromEmail){
   const at=await accessToken(); if(!at.ok) return at;
   const token=at.access_token;
-  const contacts=((campaign.audience&&campaign.audience.sample)||[]).map(s=>({email:s.email,name:s.name}));
+  const contacts=((campaign.audience&&campaign.audience.sample)||[]).map(s=>({email:s.email,name:s.name,company:s.company}));
   let listKey=campaign.zoho_list_key||null;
   if(!listKey && contacts.length){
     const lr=await createListWithContacts(token,`HCPS · ${campaign.name||"Campaign"}`.slice(0,60),contacts);
     if(lr.ok) listKey=lr.listkey; else return {ok:false,step:"list",error:(lr.raw&&lr.raw.message)||"list create failed",raw:lr.raw};
   }
   const g=campaign.generated||{};
-  const subject=(g.subjects&&g.subjects[0])||campaign.name||"HCPS";
-  const cr=await createCampaign(token,{name:campaign.name||"HCPS Campaign",subject,fromEmail,html:g.body_html||"",listKey});
+  const subject=toMergeTags((g.subjects&&g.subjects[0])||campaign.name||"HCPS");
+  const cr=await createCampaign(token,{name:campaign.name||"HCPS Campaign",subject,fromEmail,html:toMergeTags(g.body_html||""),listKey});
   if(!cr.ok) return {ok:false,step:"campaign",error:(cr.raw&&cr.raw.message)||"campaign create failed",raw:cr.raw,zoho_list_key:listKey};
   return {ok:true,zoho_list_key:listKey,zoho_campaign_key:cr.campaignkey};
 }

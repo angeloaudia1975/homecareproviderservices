@@ -154,8 +154,8 @@ function renderAll(){
     const contact=`<div class="hint" style="text-transform:none;line-height:1.5">
         ${d.address?`${esc(d.address)}${loc?", "+esc(loc):""}`:(loc?`📍 ${esc(loc)}`:`<span class="chip rev">no address</span>`)}<br>
         ${d.email?`✉ <a href="mailto:${esc(d.email)}" style="color:var(--blue)">${esc(d.email)}</a>`:`<span class="chip rev">no email</span>`}${d.phone?` · ${esc(d.phone)}`:""}</div>`;
-    h+=`<tr class="drow"><td><input type="checkbox" ${SEL.has(d.id)?"checked":""} onclick="toggleSel('${d.id}')"></td>
-      <td class="lbl">${esc(d.name)} ${d.status==="review"?`<span class="chip rev">review</span>`:""}${d.status==="prospect"?`<span class="chip al">prospect</span>`:""}
+    h+=`<tr class="drow" style="cursor:pointer" onclick="if(!event.target.closest('input,a,button,select,label'))openDetail('${d.id}')" title="Click to manage ${esc(d.name)}"><td><input type="checkbox" ${SEL.has(d.id)?"checked":""} onclick="toggleSel('${d.id}')"></td>
+      <td class="lbl"><a class="link" style="cursor:pointer" onclick="openDetail('${d.id}')">${esc(d.name)}</a> ${d.status==="review"?`<span class="chip rev">review</span>`:""}${d.status==="prospect"?`<span class="chip al">prospect</span>`:""}
         ${d.aliases.filter(a=>a!==d.name).slice(0,3).map(a=>`<span class="chip al">${esc(a)}</span>`).join("")}
         ${(d.accounts&&d.accounts.length)?`<div class="hint" style="margin:2px 0 0">acct: ${d.accounts.slice(0,6).map(esc).join(", ")}</div>`:""}</td>
       <td>${contact}</td>
