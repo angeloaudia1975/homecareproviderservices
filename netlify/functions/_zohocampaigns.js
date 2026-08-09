@@ -4,9 +4,8 @@
 // so it never disturbs the CRM connection.
 //
 // ── OAuth scopes to authorize (this is the exact list for the API Console step) ──
-//     ZohoCampaigns.campaign.ALL
+//     ZohoCampaigns.campaign.ALL     (create lists, contacts & campaign drafts; read campaign details)
 //     ZohoCampaigns.contact.ALL
-//     ZohoCampaigns.reports.ALL
 //
 // ── Where the refresh token lives (checked in this order) ──
 //     1) env  ZOHO_CAMPAIGNS_REFRESH_TOKEN
@@ -23,7 +22,7 @@ const ACCOUNTS=process.env.ZOHO_ACCOUNTS_DOMAIN||"accounts.zoho.com";
 const CID=process.env.ZOHO_CLIENT_ID, CSECRET=process.env.ZOHO_CLIENT_SECRET;
 const CAMP_HOST=process.env.ZOHO_CAMPAIGNS_DOMAIN||"campaigns.zoho.com";
 const BASE=`https://${CAMP_HOST}/api/v1.1`;
-const SCOPES=["ZohoCampaigns.campaign.ALL","ZohoCampaigns.contact.ALL","ZohoCampaigns.reports.ALL"];
+const SCOPES=["ZohoCampaigns.campaign.ALL","ZohoCampaigns.contact.ALL"];   // reports read via campaign scope
 
 async function sbGet(path){ try{ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`}}); return r.ok?r.json():[]; }catch(e){ return []; } }
 async function refreshToken(){

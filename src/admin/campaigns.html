@@ -33,7 +33,7 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
 let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
-let TOKEN=HCPS.token(), STATUS=null, SEGS=[], MFRS=[], CUR=null;
+let TOKEN=HCPS.token(), STATUS=null, SEGS=[], MFRS=[], REPS=[], STATES=[], CUR=null, SEQ=[];
 const num=n=>Number(n||0).toLocaleString("en-US");
 const GOALS=[["manufacturer_intro","Manufacturer introduction"],["launch","New product launch"],["promo","Promotion / offer"],["cross_sell","Cross-sell"],["reactivation","Reactivation"],["acquisition","Dealer acquisition"]];
 
@@ -52,7 +52,7 @@ async function boot(){
   if(!TOKEN){ gate(); return; }
   const [st,sg]=await Promise.all([api({action:"zoho_status"}),api({action:"segments"})]);
   if(st.status===401){ gate("Your session ended — sign in again."); return; }
-  STATUS=st.body||{}; SEGS=(sg.body&&sg.body.segments)||[]; MFRS=(sg.body&&sg.body.manufacturers)||[];
+  STATUS=st.body||{}; SEGS=(sg.body&&sg.body.segments)||[]; MFRS=(sg.body&&sg.body.manufacturers)||[]; REPS=(sg.body&&sg.body.reps)||[]; STATES=(sg.body&&sg.body.states)||[];
   renderConn(); renderBuilder(); loadList();
 }
 function renderConn(){
@@ -85,6 +85,10 @@ function renderBuilder(){
       <div class="fld"><label>Audience segment</label><select id="c_seg" onchange="segChange()">${segOpts}</select></div>
       <div class="fld" id="mfrWrap"><label>Manufacturer / line</label><select id="c_mfr">${mfrOpts}</select></div>
       <div class="fld"><label>Offer / message <span class="hint2">(optional)</span></label><input id="c_offer" placeholder="e.g. intro pricing through Q3"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="fld"><label>Narrow by state <span class="hint2">(optional)</span></label><select id="c_state"><option value="">— all states —</option>${STATES.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("")}</select></div>
+        <div class="fld"><label>Narrow by rep <span class="hint2">(optional)</span></label><select id="c_rep"><option value="">— all reps —</option>${REPS.map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join("")}</select></div>
+      </div>
       <button class="btn2" id="genBtn" onclick="generate()">Generate campaign →</button>
       <div id="genMsg" class="hint2" style="margin-top:6px"></div>
     </div>
@@ -96,7 +100,8 @@ function renderBuilder(){
 function segChange(){ const sel=$("#c_seg"); const needs=sel&&sel.options[sel.selectedIndex]&&sel.options[sel.selectedIndex].getAttribute("data-mfr")==="1"; const w=$("#mfrWrap"); if(w)w.style.display=needs?"block":"none"; }
 async function generate(){
   const brief={ name:(($("#c_name")||{}).value||"").trim(), goal:($("#c_goal")||{}).value, segment:($("#c_seg")||{}).value,
-    manufacturer:($("#c_mfr")||{}).value||"", offer:(($("#c_offer")||{}).value||"").trim() };
+    manufacturer:($("#c_mfr")||{}).value||"", offer:(($("#c_offer")||{}).value||"").trim(),
+    state:($("#c_state")||{}).value||"", rep:($("#c_rep")||{}).value||"" };
   const m=$("#genMsg"), btn=$("#genBtn"); if(btn)btn.disabled=true; if(m)m.textContent="Building audience & copy…";
   const r=await api({action:"generate",brief});
   if(btn)btn.disabled=false;
@@ -106,8 +111,6 @@ async function generate(){
 function renderReview(){
   if(!CUR){ $("#review").innerHTML=""; return; }
   const g=CUR.generated||{}, a=CUR.audience||{};
-  const subs=(g.subjects||[]).map((s,i)=>`<div class="subj"><span class="v">${i===0?"primary":"alt"}</span> ${esc(s)}</div>`).join("");
-  const seq=(g.sequence||[]).map(x=>`<tr><td>Step ${x.step}</td><td>${x.wait_days===0?"immediately":`+${x.wait_days} days`}</td><td>${esc(x.subject||"")}${x.note?`<div class="hint2">${esc(x.note)}</div>`:""}</td></tr>`).join("");
   const pushed=!!CUR.zoho_campaign_key;
   $("#review").innerHTML=`<div class="card" style="margin-top:16px">
     <h2>${esc(CUR.name||"Campaign")} <span class="bdg ${pushed?"pushed":"draft"}">${pushed?"pushed to Zoho":"draft"}</span></h2>
@@ -118,8 +121,8 @@ function renderReview(){
         <div class="fld"><input id="r_subject" value="${esc((g.subjects||[])[0]||"")}"></div>
         ${(g.subjects||[]).slice(1).map(s=>`<div class="subj"><span class="v">alt</span> ${esc(s)}</div>`).join("")}
         <div class="fld" style="margin-top:10px"><label>Preheader</label><input id="r_pre" value="${esc(g.preheader||"")}"></div>
-        <h3 style="font-size:12px;text-transform:uppercase;color:var(--gray);margin:14px 0 4px">Sequence</h3>
-        <table class="tt"><tbody>${seq}</tbody></table>
+        <h3 style="font-size:12px;text-transform:uppercase;color:var(--gray);margin:14px 0 4px">Sequence <span style="font-weight:400;text-transform:none;color:var(--gray)">— 5 touches to convert (edit or add)</span></h3>
+        <div id="seqBox"></div>
         <div class="hint2" style="margin-top:8px">Suggested send: ${esc((g.schedule&&g.schedule.recommended)||"")}</div>
       </div>
       <div>
@@ -135,14 +138,26 @@ function renderReview(){
       ${pushed?`<button class="btn2 ghost" onclick="getResults()">Refresh results</button>`:""}
     </div>
     <div id="rmsg" class="hint2" style="margin-top:8px"></div></div>`;
+  SEQ=((CUR.generated||{}).sequence||[]).slice(); renderSeq();
 }
+function renderSeq(){
+  const box=$("#seqBox"); if(!box) return;
+  box.innerHTML=(SEQ||[]).map((x,i)=>`<div style="display:flex;gap:6px;align-items:center;margin:4px 0">
+    <span class="bdg" style="min-width:56px;text-align:center">Touch ${i+1}</span>
+    <input type="number" min="0" value="${Number(x.wait_days)||0}" title="days after start" style="width:60px;padding:5px 7px;border:1px solid var(--line);border-radius:6px" onchange="SEQ[${i}].wait_days=Math.max(0,parseInt(this.value,10)||0)"><span class="hint2">days</span>
+    <input value="${esc(x.subject||"")}" placeholder="Subject line" style="flex:1;min-width:0;padding:5px 7px;border:1px solid var(--line);border-radius:6px" onchange="SEQ[${i}].subject=this.value">
+    <button class="btn2 ghost" style="padding:5px 9px" title="Remove touch" onclick="removeTouch(${i})">✕</button></div>`).join("")
+    +`<button class="btn2 ghost" style="margin-top:6px" onclick="addTouch()">+ Add touch</button>`;
+}
+function addTouch(){ const last=(SEQ&&SEQ.length)?SEQ[SEQ.length-1]:{wait_days:0}; SEQ.push({step:SEQ.length+1,wait_days:(Number(last.wait_days)||0)+7,purpose:"Follow-up",subject:""}); renderSeq(); }
+function removeTouch(i){ SEQ.splice(i,1); SEQ.forEach((s,k)=>s.step=k+1); renderSeq(); }
 async function saveCampaign(){
   if(!CUR) return; const m=$("#rmsg"); if(m)m.textContent="Saving…";
   const g=Object.assign({},CUR.generated||{});
   const s0=(($("#r_subject")||{}).value||"").trim(); if(s0){ g.subjects=[s0].concat((g.subjects||[]).slice(1)); }
   g.preheader=(($("#r_pre")||{}).value||"").trim();
   const bd=$("#r_body"); if(bd) g.body_html=bd.value;
-  const nm=(($("#c_name")||{}).value||"").trim();
+  if(SEQ&&SEQ.length) g.sequence=SEQ.map((s,i)=>({...s,step:i+1}));
   const r=await api({action:"update",id:CUR.id,patch:{generated:g,name:CUR.name}});
   if(r.body&&r.body.ok){ CUR.generated=g; if(m)m.textContent="Saved ✓"; } else if(m) m.textContent="Couldn't save.";
 }

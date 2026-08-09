@@ -56,23 +56,43 @@ async function dealerIdsFor(segment,mfr){
   if(segment==="all")             return (await sbGetAll("dealers?select=id","id")).map(r=>r.id);
   return [];
 }
-async function resolveAudience(segment,mfr){
-  const ids=[...new Set(await dealerIdsFor(segment,mfr))];
+async function resolveAudience(segment,mfr,filters){
+  filters=filters||{};
+  let ids=[...new Set(await dealerIdsFor(segment,mfr))];
   if(!ids.length) return {count:0,dealer_ids:[],sample:[]};
-  const opt=new Set((await sbGet("email_optout?select=email").catch(()=>[])).map(r=>String(r.email||"").toLowerCase()));
-  const dealers=await sbGetAll("dealers?select=id,business_name,email","id");
+  const dealers=await sbGetAll("dealers?select=id,business_name,email,state","id");
   const byId={}; dealers.forEach(d=>byId[d.id]=d);
-  const withEmail=[];
-  for(const id of ids){ const d=byId[id]; if(!d)continue; const em=String(d.email||"").trim(); if(EMAIL_RE.test(em)&&!opt.has(em.toLowerCase())) withEmail.push({dealer_id:id,name:d.business_name||"",email:em}); }
-  return {count:withEmail.length,dealer_ids:withEmail.map(x=>x.dealer_id),sample:withEmail.slice(0,2000)};
+  // Company-level targeting: narrow by state and/or rep.
+  const st=String(filters.state||"").toUpperCase().trim();
+  let repById={};
+  if(filters.rep){ const eng=await sbGetAll("dealer_engagement?select=dealer_id,rep_name","dealer_id").catch(()=>[]); eng.forEach(e=>repById[e.dealer_id]=e.rep_name||""); }
+  ids=ids.filter(id=>{ const d=byId[id]; if(!d)return false; if(st && String(d.state||"").toUpperCase()!==st) return false; if(filters.rep && repById[id]!==filters.rep) return false; return true; });
+  if(!ids.length) return {count:0,dealer_ids:[],sample:[]};
+  // Full email list on file = dealers.email + every dealer_contacts email, deduped.
+  const opt=new Set((await sbGet("email_optout?select=email").catch(()=>[])).map(r=>String(r.email||"").toLowerCase()));
+  const contactsByDealer={};
+  for(let i=0;i<ids.length;i+=200){ const part=ids.slice(i,i+200); if(!part.length)break;
+    const cs=await sbGet(`dealer_contacts?dealer_id=in.(${part.join(",")})&select=dealer_id,name,email`).catch(()=>[]);
+    for(const c of (cs||[])) (contactsByDealer[c.dealer_id]=contactsByDealer[c.dealer_id]||[]).push(c);
+  }
+  const seen=new Set(); const list=[];
+  for(const id of ids){ const d=byId[id]; if(!d)continue;
+    const cand=[]; if(d.email) cand.push({name:d.business_name||"",email:d.email});
+    (contactsByDealer[id]||[]).forEach(c=>{ if(c.email) cand.push({name:c.name||d.business_name||"",email:c.email}); });
+    for(const e of cand){ const em=String(e.email||"").trim(); const lo=em.toLowerCase(); if(!EMAIL_RE.test(em)||opt.has(lo)||seen.has(lo))continue; seen.add(lo); list.push({dealer_id:id,name:e.name,email:em}); }
+  }
+  return {count:list.length,dealer_ids:[...new Set(list.map(x=>x.dealer_id))],sample:list.slice(0,3000)};
 }
 
 // ---- content generation (templated; an LLM can replace buildContent later) ----
 async function topProducts(mfrSlug){
   if(!mfrSlug) return [];
+  // catalog images + any product_images overrides on file
+  let overrides={};
+  try{ const io=await sbGet(`product_images?manufacturer=eq.${encodeURIComponent(mfrSlug)}&select=code,url`).catch(()=>[]); (io||[]).forEach(i=>{ if(i.code&&i.url) overrides[String(i.code).toUpperCase()]=i.url; }); }catch(e){}
   try{ const r=await fetch(`${ORDERING}/data/${mfrSlug}.json`); if(!r.ok)return[]; const arr=await r.json();
     return (arr||[]).filter(p=>p&&(p.name||p.code)).sort((a,b)=>(Number(b.msrp)||0)-(Number(a.msrp)||0)).slice(0,4)
-      .map(p=>({code:p.code||"",name:p.name||p.code||""})); }catch(e){ return []; }
+      .map(p=>{ let img=overrides[String(p.code||"").toUpperCase()]||String(p.image||"").trim(); if(img&&!/^https?:/i.test(img)) img=ORDERING+(img.startsWith("/")?"":"/")+img; return {code:p.code||"",name:p.name||p.code||"",image:img||""}; }); }catch(e){ return []; }
 }
 function subjectsFor(goal,line,offer){
   const L=line||"our lines"; const O=offer?` — ${offer}`:"";
@@ -90,8 +110,8 @@ function buildContent(brief,line,products){
   const goal=brief.goal||"manufacturer_intro"; const offer=(brief.offer||"").trim();
   const subjects=subjectsFor(goal,line,offer);
   const preheader = offer? offer : (line?`${line} — available now at your HCPS pricing`:"An update from your HCPS team");
-  const prodList = (products&&products.length)
-    ? `<ul style="margin:8px 0 0;padding-left:18px;font-size:13.5px;color:#374151">${products.map(p=>`<li>${esc(p.name)}${p.code?` <span style="color:#9aa4ae">(${esc(p.code)})</span>`:""}</li>`).join("")}</ul>`
+  const prodGrid = (products&&products.length)
+    ? `<table role="presentation" width="100%" style="border-collapse:collapse;margin:12px 0"><tr>${products.slice(0,3).map(p=>`<td valign="top" style="width:33%;padding:5px;text-align:center">${p.image?`<img src="${esc(p.image)}" alt="${esc(p.name)}" width="130" style="max-width:130px;height:auto;border-radius:8px;border:1px solid #eef1f4" onerror="this.style.display='none'">`:`<div style="height:90px;background:#f4f7fb;border-radius:8px"></div>`}<div style="font-size:12px;color:#374151;margin-top:5px;line-height:1.3">${esc(p.name)}${p.code?`<br><span style="color:#9aa4ae">${esc(p.code)}</span>`:""}</div></td>`).join("")}</tr></table>`
     : "";
   const intros={
     manufacturer_intro:`Dealers with your product mix do well adding ${esc(line||"this line")} — and it's already available on your HCPS account at your pricing.`,
@@ -105,15 +125,24 @@ function buildContent(brief,line,products){
   const body_html=`<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:560px">
     <h2 style="color:#2B4071;margin:0 0 6px">${esc(subjects[0])}</h2>
     <p style="font-size:13.5px;line-height:1.6;color:#374151;margin:0 0 10px">${intros[goal]||intros.manufacturer_intro}</p>
-    ${prodList}
+    ${prodGrid}
     <p style="margin:14px 0 12px"><a href="${cta.url}" style="display:inline-block;background:#F5821F;color:#fff;text-decoration:none;font-weight:700;padding:11px 18px;border-radius:8px;font-size:14px">${esc(cta.label)} &rarr;</a></p>
     <p style="font-size:12.5px;line-height:1.6;color:#6b7280;margin:14px 0 0">Questions, or want pricing on something specific? Just reply — your HCPS rep is glad to help.</p>
     <p style="font-size:12px;color:#9aa4ae;margin:14px 0 0">HomeCare Provider Services · Your partner in mobility &amp; home medical equipment.</p></div>`;
-  const sequence=[
-    {step:1, wait_days:0, subject:subjects[0]},
-    {step:2, wait_days:5, subject:`Following up: ${subjects[1]||subjects[0]}`, note:"Send only to non-openers; stop on reply or click."},
+  const sequence=sequenceFor(goal,subjects,line,offer);
+  return {subjects,preheader,body_html,ctas:[cta],sequence,schedule:{recommended:"a weekday mid-morning (Tue–Thu, ~10am ET)",note:"5 touches over ~4 weeks — the rule of thumb to convert a dealer or open a new line. Respects quiet weekends."}};
+}
+// A 5-touch sequence (the rule of thumb to convert a company / open a new line).
+function sequenceFor(goal,subjects,line,offer){
+  const L=line||"the line";
+  const steps=[
+    {step:1,wait_days:0, purpose:"Introduce",        subject:subjects[0]},
+    {step:2,wait_days:4, purpose:"Value / benefits", subject:`Why dealers are adding ${L}`},
+    {step:3,wait_days:9, purpose:"Products / proof", subject:`A closer look at ${L}`},
+    {step:4,wait_days:16,purpose:"Offer / nudge",    subject:offer?`${offer} — ${L}`:`Ready to bring in ${L}?`},
+    {step:5,wait_days:25,purpose:"Final check-in",   subject:`Anything I can answer on ${L}?`},
   ];
-  return {subjects,preheader,body_html,ctas:[cta],sequence,schedule:{recommended:"a weekday mid-morning (Tue–Thu, ~10am ET)",note:"Respects quiet weekends; avoid overlapping with a triggered send window."}};
+  return steps.map(s=>({...s,note:s.step>1?"Send to non-openers; stop on reply or order.":""}));
 }
 
 exports.handler=async(event)=>{
@@ -138,8 +167,14 @@ exports.handler=async(event)=>{
 
     if(act==="segments"){
       const out=[]; for(const s of SEGMENTS){ let count=null; if(!s.needs_mfr){ try{ count=(await dealerIdsFor(s.key,null)).length; }catch(e){} } out.push({...s,count}); }
-      const mfrs=await sbGet("manufacturers?select=slug,name&order=name").catch(()=>[]);
-      return json(200,{ok:true,segments:out,manufacturers:(mfrs||[]).map(m=>({slug:m.slug,name:m.name||m.slug}))});
+      const [mfrs,eng,dst]=await Promise.all([
+        sbGet("manufacturers?select=slug,name&order=name").catch(()=>[]),
+        sbGet("dealer_engagement?select=rep_name&limit=2000").catch(()=>[]),
+        sbGet("dealers?select=state&limit=2000").catch(()=>[]),
+      ]);
+      const reps=[...new Set((eng||[]).map(e=>e.rep_name).filter(Boolean))].sort();
+      const states=[...new Set((dst||[]).map(d=>String(d.state||"").toUpperCase().trim()).filter(Boolean))].sort();
+      return json(200,{ok:true,segments:out,manufacturers:(mfrs||[]).map(m=>({slug:m.slug,name:m.name||m.slug})),reps,states});
     }
 
     if(act==="generate"){
@@ -149,7 +184,7 @@ exports.handler=async(event)=>{
       const mfrSlug=String(brief.manufacturer||"").trim()||null;
       const mfrs=await sbGet("manufacturers?select=slug,name").catch(()=>[]);
       const line=mfrSlug?((mfrs.find(m=>m.slug===mfrSlug)||{}).name||mfrSlug):"";
-      const audience=await resolveAudience(segment,mfrSlug);
+      const audience=await resolveAudience(segment,mfrSlug,{state:brief.state||"",rep:brief.rep||""});
       const products=await topProducts(mfrSlug);
       const generated=buildContent(brief,line,products);
       const st=await P.getState();
