@@ -640,6 +640,32 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "strongback-consumer-product-claim-form-msnhx8o9",
+      "title": "Strongback Consumer Product Claim Form",
+      "type": "form",
+      "manufacturer": "strongback-mobility",
+      "format": "link",
+      "file": "",
+      "url": "https://www.strongbackmobility.com/pages/warranty-claim-form",
+      "description": "Strongback Mobility is committed to exceptional customer service, and we want to give our customers the easiest claim process possible. Please submit the form below to begin. Please allow 2-3 business days for your claim process to be reviewed. \n\nWe kindly ask that you provide all the necessary details from the start, so that we can handle your claim quickly and thoroughly.\n\nIf you purchased your wheelchair or rollator through a local Dealer, please return to that Dealer and they will submit this form for you.\n\nThis warranty does NOT apply to used, purchased wheelchairs or rollators, nor does it apply to wheelchairs or rollators that are used as rentals.\n\nPlease note: Failure to complete the claim form in its entirety will delay or possibly void the claim.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
+    },
+    {
+      "id": "strongback-return-authorization-request-msnhyqd4",
+      "title": "Strongback Return Authorization Request",
+      "type": "form",
+      "manufacturer": "strongback-mobility",
+      "format": "link",
+      "file": "",
+      "url": "https://www.strongbackmobility.com/pages/return-authorization-request-form",
+      "description": "Strongback Mobility is committed to exceptional customer service, and we want to give our customers the easiest return claim process possible. Please submit the form below to begin if you purchased directly from StrongbackMobility.com. Please allow 2-3 business days for your claim process to be reviewed. \nReturn Policy Details:\nEASY RETURNS\nIf you received a chair that is in perfect condition but want to return it for a different reason you have a full 30 days to do so. In these instances, you will need to pay for return shipping and submit the form below to request a return authorization. Any returns received in our warehouse without an issued return authorization will be ineligible for a refund and will be returned to you at your expense.\n\nREQUEST A RETURN AUTHORIZATION\nStrongback Mobility is committed to exceptional customer service and we want to give our customers the easiest return process possible. Please submit the form below to request a return authorization. Once we have received your request, we will send you a confirmation email with your return authorization number (which must be included with your wheelchair to return) and the address where you can mail your returned item.\n\nPLEASE NOTE\nReturns submitted more than 30 days after delivery will not be authorized for return. Products must be returned in their original packaging, and have no cracks, scratches, or any indications of use. A return authorization must be requested and the return authorization number must be included with your return. Customer is responsible for return shipping costs.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
