@@ -23,6 +23,8 @@
  .itile .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700}
  .itile .v{font-size:16px;font-weight:800;color:var(--navy);line-height:1.1;margin-top:1px}
  .ihd{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:800;margin:8px 0 4px}
+ .prow2{display:block;padding:9px 10px;border-bottom:1px solid #eef2f6;text-decoration:none;color:var(--navy)}
+ .prow2:hover{background:#f6fafd}.prow2 b{font-weight:700}
  .tasks{display:flex;flex-direction:column;gap:6px}
  .tk{display:flex;gap:9px;align-items:flex-start;padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:#fff}
  .tk.hi{border-left:3px solid var(--orange)}
@@ -85,7 +87,10 @@ function render(D,A){
   const dealers=D.dealers||[];
   let d = QID ? dealers.find(x=>x.id===QID) : null;
   if(!d && QNAME) d = dealers.find(x=>x.name===QNAME);
-  if(!d){ $("#body").innerHTML=`<div class="msg">Dealer not found. <a class="link" href="/admin/dealers.html">Back to all dealers</a></div>`; return; }
+  if(!d){
+    if(!QID && !QNAME) return renderPicker(dealers);   // opened with no dealer → show the 360 picker
+    $("#body").innerHTML=`<div class="msg">Dealer not found. <a class="link" href="/admin/dealer.html">Choose a dealer</a></div>`; return;
+  }
 
   // per-line order history from the analytics cube (facts for this dealer)
   const facts=(A.facts||[]).filter(f=>f.dealer===d.name);
@@ -242,7 +247,25 @@ async function saveCompany(){
   load();
 }
 // ---- Contacts & account-number management ----
-let CDATA=null, CEDIT=null, DOBJ=null;
+let CDATA=null, CEDIT=null, DOBJ=null, PICKER=[];
+// Dealer 360 opened without a specific dealer → a searchable list that jumps into each profile.
+function renderPicker(dealers){
+  PICKER=[...(dealers||[])].sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"en",{sensitivity:"base"}));
+  $("#body").innerHTML=`<div class="card">
+    <h1 style="margin:0 0 4px;font-size:24px">Dealer 360 &amp; CRM</h1>
+    <div class="hint" style="margin:0 0 12px">Open a dealer for their full command center — activity, interest, contacts, tasks &amp; next best action.</div>
+    <input id="dq" placeholder="Search dealer by name, city, state, or rep…" style="width:100%;max-width:440px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;margin-bottom:10px" oninput="filterPicker()" autofocus>
+    <div id="plist"></div></div>`;
+  filterPicker();
+}
+function filterPicker(){
+  const el=$("#plist"); if(!el) return;
+  const q=(($("#dq")||{}).value||"").toLowerCase().trim();
+  const rows=(PICKER||[]).filter(d=>!q||`${d.name||""} ${d.city||""} ${d.state||""} ${d.rep||""}`.toLowerCase().includes(q)).slice(0,400);
+  el.innerHTML=rows.map(d=>`<a class="prow2" href="/admin/dealer.html?id=${encodeURIComponent(d.id)}">
+    <b>${esc(d.name)}</b> <span class="hint" style="margin:0">${esc([d.city,d.state].filter(Boolean).join(", "))}${d.rep?" · "+esc(d.rep):""}${d.sales?" · "+money(d.sales):""}</span></a>`).join("")
+    || '<div class="hint">No dealers match.</div>';
+}
 async function loadContacts(){ const el=$("#contacts"); if(!el||!CUR) return;
   const j=await crm({action:"contacts",dealer_id:CUR}); CDATA=(j&&j.ok)?j:{contacts:[],primary_email:"",accounts:[]}; renderContacts(); }
 function contactForm(c){ c=c||{}; const editing=!!c.email;
