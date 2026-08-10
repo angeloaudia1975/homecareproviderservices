@@ -89,6 +89,56 @@ exports.handler = async (event)=>{
       return json(200,{ok:true,notes:notes||[],tasks:tasks||[],activity:activity||[],crosssell:crosssell||[],health:(health&&health[0])||null,opportunities:opportunities||[]});
     }
 
+    // Unified per-dealer digital-activity intelligence: email engagement, ordering-portal
+    // logins, product/line interest (incl. lines they DON'T buy but are researching),
+    // carts, orders — the "what are they interested in right now" picture.
+    if(b.action==="intel"){
+      if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+      const did=encodeURIComponent(b.dealer_id);
+      const d30=new Date(Date.now()-30*864e5).toISOString(), d90=new Date(Date.now()-90*864e5).toISOString();
+      const [events,intentRows,lines,sends,sessions,orders,carts,mfrs]=await Promise.all([
+        sbGet(`intent_events?dealer_id=eq.${did}&occurred_at=gte.${encodeURIComponent(d90)}&select=event_type,manufacturer,product_code,meta,occurred_at&order=occurred_at.desc&limit=800`).catch(()=>[]),
+        sbGet(`dealer_intent?dealer_id=eq.${did}&select=score_total,tier,by_manufacturer,top_manufacturer,top_product,last_event_at`).catch(()=>[]),
+        sbGet(`dealer_line_status?dealer_id=eq.${did}&select=manufacturer,relationship,months_since`).catch(()=>[]),
+        sbGet(`email_sends?dealer_id=eq.${did}&select=template,sent_at&order=sent_at.desc&limit=100`).catch(()=>[]),
+        sbGet(`dealer_sessions?dealer_id=eq.${did}&select=last_seen_at&order=last_seen_at.desc&limit=200`).catch(()=>[]),
+        sbGet(`orders?dealer_id=eq.${did}&select=manufacturer,status,subtotal,submitted_at&order=submitted_at.desc&limit=15`).catch(()=>[]),
+        sbGet(`dealer_carts?dealer_id=eq.${did}&select=cart,updated_at`).catch(()=>[]),
+        sbGet("manufacturers?select=slug,name").catch(()=>[]),
+      ]);
+      const mfrName={}; (mfrs||[]).forEach(m=>mfrName[m.slug]=m.name||m.slug);
+      const rel={}; (lines||[]).forEach(l=>rel[l.manufacturer]=l.relationship);
+      const d30ms=Date.now()-30*864e5;
+      const evByMfr={}, prodViews={}; let opens=0,clicks=0,opens30=0,clicks30=0;
+      for(const e of (events||[])){ const t=e.event_type, mfr=e.manufacturer, ts=new Date(e.occurred_at).getTime();
+        if(t==="email_open"){ opens++; if(ts>=d30ms)opens30++; continue; }
+        if(t==="email_click"){ clicks++; if(ts>=d30ms)clicks30++; continue; }
+        if(mfr){ const g=evByMfr[mfr]=evByMfr[mfr]||{views:0,pricing:0,order:0};
+          if(t==="product_view"||t==="product_view_repeat") g.views++;
+          else if(t==="pricing_view") g.pricing++;
+          else if(t==="order_page"||t==="order_started") g.order++; }
+        if((t==="product_view"||t==="product_view_repeat"||t==="pricing_view") && e.product_code){
+          const k=(mfr||"")+"|"+e.product_code; const p=prodViews[k]=prodViews[k]||{code:e.product_code,manufacturer:mfrName[mfr]||mfr||"",count:0,last:e.occurred_at};
+          p.count++; if(e.occurred_at>p.last)p.last=e.occurred_at; } }
+      const byM=(intentRows&&intentRows[0]&&intentRows[0].by_manufacturer)||{};
+      const mfrSet=new Set([...Object.keys(evByMfr),...Object.keys(byM)]);
+      const interest=[...mfrSet].map(slug=>{ const g=evByMfr[slug]||{views:0,pricing:0,order:0}; const sc=Number(byM[slug])||0; const r=rel[slug]||"none";
+        return {slug,name:mfrName[slug]||slug,relationship:r,views:g.views,pricing:g.pricing,order_activity:g.order,intent:Math.round(sc),
+          emerging:(r!=="active") && (g.views>0||g.pricing>0||g.order>0||sc>0)}; })
+        .sort((a,b)=>(b.emerging?1:0)-(a.emerging?1:0) || (b.pricing*3+b.views+b.intent)-(a.pricing*3+a.views+a.intent));
+      const sess=sessions||[]; const logins30=sess.filter(s=>new Date(s.last_seen_at).getTime()>=d30ms).length;
+      const cartList=(carts||[]).map(c=>{ const items=(c.cart&&c.cart.items)||[]; let n=0,val=0; for(const it of items){const q=Number(it.qty)||0;n+=q;val+=(Number(it.p&&it.p.base_price)||0)*q;}
+        return {items:n,value:Math.round(val),updated_at:c.updated_at,mfr:mfrName[(c.cart&&c.cart.mfr)]||((c.cart&&c.cart.mfr)||"")}; }).filter(c=>c.items>0);
+      const topProducts=Object.values(prodViews).sort((a,b)=>b.count-a.count).slice(0,8);
+      return json(200,{ok:true,intel:{
+        email:{opens,clicks,opens_30d:opens30,clicks_30d:clicks30,sent:(sends||[]).length,last_sent:(sends&&sends[0]&&sends[0].sent_at)||null},
+        logins:{count:sess.length,count_30d:logins30,last_login:(sess[0]&&sess[0].last_seen_at)||null,lines_browsed:[...new Set(Object.keys(evByMfr))].map(s=>mfrName[s]||s)},
+        interest, products_viewed:topProducts, carts:cartList, orders:orders||[],
+        intent:{score:Math.round((intentRows&&intentRows[0]&&intentRows[0].score_total)||0),tier:(intentRows&&intentRows[0]&&intentRows[0].tier)||"normal",
+          top_manufacturer:mfrName[(intentRows&&intentRows[0]&&intentRows[0].top_manufacturer)]||null,top_product:(intentRows&&intentRows[0]&&intentRows[0].top_product)||null}
+      }});
+    }
+
     // Lightweight open-task count for the masthead badge (the caller's own, rep-scoped).
     if(b.action==="task_count"){
       if(me.role==="president"){
@@ -106,6 +156,25 @@ exports.handler = async (event)=>{
       const row={dealer_id:b.dealer_id,author_email:me.email||null,author_name:me.name||null,body:clean(b.body,4000)};
       const ins=await sbSend("POST","dealer_notes",row,{Prefer:"return=representation"});
       return json(200,{ok:true,note:(ins&&ins[0])||row});
+    }
+
+    // Log a real touch — call / visit / email / meeting / note — into the timeline,
+    // optionally creating a follow-up task in the same step.
+    if(b.action==="log_activity"){
+      if(!b.dealer_id||!clean(b.summary)) return json(400,{error:"dealer_id + summary required"});
+      const kind=["call","visit","email","meeting","note"].includes(b.kind)?b.kind:"note";
+      const row={dealer_id:b.dealer_id,kind,subject:clean(b.summary,300),detail:clean(b.detail,4000)||null,
+        contact_email:clean(b.contact_email,200)||null,actor:me.name||me.email||null,created_at:new Date().toISOString()};
+      const ins=await sbSend("POST","dealer_activity",row,{Prefer:"return=representation"});
+      let task=null;
+      if(clean(b.followup_title)){
+        const trow={dealer_id:b.dealer_id,title:clean(b.followup_title,200),detail:clean(b.followup_detail||b.summary,2000),
+          due_date:/^\d{4}-\d{2}-\d{2}$/.test(String(b.followup_due||""))?b.followup_due:null,
+          priority:["low","normal","high"].includes(b.followup_priority)?b.followup_priority:"normal",
+          source:"manual",assigned_rep:me.rep_name||null,created_by:me.name||me.email||null,status:"open"};
+        const ti=await sbSend("POST","dealer_tasks",trow,{Prefer:"return=representation"}); task=(ti&&ti[0])||trow;
+      }
+      return json(200,{ok:true,activity:(ins&&ins[0])||row,task});
     }
 
     if(b.action==="add_task"){
