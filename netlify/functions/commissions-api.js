@@ -64,7 +64,10 @@ async function buildCtx(slug){
   const fam=await sbGetAll("dealers?select=id,business_name,city,state,zip,parent_id","business_name").catch(()=>[]);
   const rootOf=new Map(), byRoot=new Map(), nameById=new Map();
   for(const d of (fam||[])){ const root=d.parent_id||d.id; rootOf.set(d.id,root); (byRoot.get(root)||byRoot.set(root,[]).get(root)).push(d); nameById.set(d.id,d.business_name); }
-  return {idByAlias,idByAccount,orderLines,rootOf,byRoot,nameById};
+  // Saved ZIP→branch assignments (from the review screen) — resolve ambiguous/assigned ZIPs deterministically.
+  let zipmap={};
+  try{ const zm=await sbGet(`app_settings?key=eq.zipmap:${encodeURIComponent(slug)}&select=value`); if(zm&&zm[0]&&zm[0].value&&typeof zm[0].value==="object") zipmap=zm[0].value; }catch(e){}
+  return {idByAlias,idByAccount,orderLines,rootOf,byRoot,nameById,zipmap};
 }
 
 // Map raw report rows to monthly_sales rows AND compute a review report. Pure (no DB writes) so the
@@ -73,10 +76,11 @@ async function buildCtx(slug){
 // match = corporate drop-ship. (Falls back to city/state for lines that supply them, e.g. non-Golden.)
 function mapRows(slug, per, source_file, rows, ctx){
   const {idByAlias,idByAccount,orderLines,rootOf,byRoot,nameById}=ctx;
+  const zipmap=ctx.zipmap||{};
   const refMatch=!orderLines.has(slug);
   const out=[]; const unmatched=new Map();
   let matched=0, physical=0, dropship=0, physAmt=0, dropAmt=0, credits=0, amtTot=0, commTot=0;
-  const newAcct=new Map(), noZip=new Map(), ambiguous=[], models=new Set();
+  const newAcct=new Map(), noZip=new Map(), ambiguous=[], ambSeen=new Set(), models=new Set();
   for(const r of rows){
     const acct=(r.customer_ref!=null)?String(r.customer_ref).trim():"";
     const name=stripC(r.customer_name);
@@ -97,9 +101,14 @@ function mapRows(slug, per, source_file, rows, ctx){
       const root=rootOf.get(did)||did;
       const famArr=byRoot.get(root)||[];
       const famZips=famArr.map(d=>znorm(d.zip)).filter(Boolean);
-      if(shipZip && famZips.length){
+      // A saved ZIP→branch assignment (from the review screen) wins, when it points into this family.
+      const assigned = (shipZip && zipmap[shipZip] && (rootOf.get(zipmap[shipZip])===root)) ? zipmap[shipZip] : null;
+      if(assigned){ did=assigned; channel="physical"; }
+      else if(shipZip && famZips.length){
         const hit=famArr.filter(d=>znorm(d.zip)===shipZip);
-        if(hit.length){ did=hit[0].id; channel="physical"; if(hit.length>1) ambiguous.push({zip:shipZip,dealers:hit.map(d=>nameById.get(d.id)||d.id)}); }
+        if(hit.length===1){ did=hit[0].id; channel="physical"; }
+        else if(hit.length>1){ did=hit[0].id; channel="physical";
+          if(!ambSeen.has(shipZip)){ ambSeen.add(shipZip); ambiguous.push({zip:shipZip,dealers:hit.map(d=>({id:d.id,name:nameById.get(d.id)||d.id}))}); } }
         else { did=root; channel="dropship"; }
       } else if(shipCity){
         const c=ncity(shipCity), st=nstate(shipState);
@@ -238,6 +247,38 @@ exports.handler = async (event)=>{
         resolved++;
       }
       return json(200,{ok:true,resolved,relinked});
+    }
+
+    // Pre-commit correction from the review screen: learn a name→dealer alias and (optionally) store
+    // the manufacturer account number, so this and future reports auto-match. No monthly_sales writes.
+    if(b.action==="learn_match"){
+      const slug=String(b.manufacturer||"").trim();
+      const name=String(b.name||"").trim();
+      const did=b.dealer_id;
+      if(!slug||!did) return json(400,{error:"manufacturer + dealer_id required"});
+      if(name) await sbSend("POST","dealer_aliases?on_conflict=alias_norm",{alias_norm:dnorm(name),raw_name:name,dealer_id:did},{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{});
+      const acct=String(b.account_ref||"").trim();
+      if(acct){
+        let orderLines=new Set();
+        try{ const cc=await sbGet("app_settings?key=eq.commission_config&select=value"); orderLines=new Set(((cc&&cc[0]&&cc[0].value&&cc[0].value.order_number_lines))||[]); }catch(e){}
+        if(!orderLines.has(slug)) await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",{dealer_id:did,manufacturer:slug,account_ref:acct,active:true},{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{});
+      }
+      return json(200,{ok:true});
+    }
+
+    // Assign a ship-to ZIP to a specific branch (resolves ambiguous/dropship ZIPs). Stored per line
+    // in app_settings zipmap:<slug> and applied by every future analyze/import for this manufacturer.
+    if(b.action==="assign_zip"){
+      const slug=String(b.manufacturer||"").trim();
+      const zraw=String(b.zip||"").replace(/[^0-9]/g,"");
+      const zip=zraw? (zraw.length>5?zraw.slice(0,5):zraw.padStart(5,"0")) : "";
+      const did=b.dealer_id;
+      if(!slug||!zip||!did) return json(400,{error:"manufacturer + zip + dealer_id required"});
+      const key="zipmap:"+slug;
+      let cur={}; try{ const r=await sbGet(`app_settings?key=eq.${encodeURIComponent(key)}&select=value`); if(r&&r[0]&&r[0].value&&typeof r[0].value==="object") cur=r[0].value; }catch(e){}
+      cur[zip]=did;
+      await sbSend("POST","app_settings?on_conflict=key",{key,value:cur,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
+      return json(200,{ok:true});
     }
 
     return json(400,{error:"unknown action"});

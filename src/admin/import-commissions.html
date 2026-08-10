@@ -169,6 +169,7 @@ async function resolveUnmatched(){
 
 async function onFile(){
   const f=$("#file").files[0]; if(!f) return;
+  RVAPPROVED.clear(); LASTREVIEW=null; const rc=$("#reviewCard"); if(rc) rc.innerHTML=""; const ir=$("#importResult"); if(ir) ir.innerHTML="";
   FILENAME=f.name; $("#fmsg").textContent="Reading "+f.name+"…"; $("#fmsg").className="st";
   try{ RAW=await parseFile(f); reparse(); $("#fmsg").textContent=`Loaded ${RAW.length} rows from ${f.name}`; $("#fmsg").className="st ok"; }
   catch(e){ $("#fmsg").textContent="Couldn't read that file: "+(e.message||e); $("#fmsg").className="st warn"; }
@@ -284,48 +285,85 @@ async function doAnalyze(){
   }catch(e){ $("#imsg").textContent="Analyze failed: "+(e.message||e); $("#imsg").className="st warn"; }
   finally{ btn.disabled=false; }
 }
-function reviewList(title,items,fmt,tone){
-  if(!items||!items.length) return "";
-  const rows=items.slice(0,40).map(fmt).join("");
-  const more=items.length>40?`<div class="sub" style="margin-top:4px">+${items.length-40} more</div>`:"";
-  const col=tone==="warn"?"#9a3412":tone==="bad"?"#b42323":"#1b2733";
-  return `<div style="margin-top:10px"><div style="font-weight:700;color:${col};font-size:13px">${esc(title)}</div>${rows}${more}</div>`;
-}
+let LASTREVIEW=null; const RVAPPROVED=new Set();
+async function dealersApi(body){ const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify(body)}); return r.json().catch(()=>({})); }
+function rvDealerOpts(sel){ return `<option value="">— choose dealer / branch —</option>`+(CONFIG.dealers||[]).slice().sort((a,b)=>String(a.name).localeCompare(String(b.name))).map(d=>`<option value="${esc(d.id)}"${d.id===sel?" selected":""}>${esc(d.name)}${d.city?` — ${esc(d.city)}, ${esc(d.state||"")}`:""}</option>`).join(""); }
+function tileHtml(l,v,sub,tone){ return `<div style="flex:1;min-width:118px;border:1px solid var(--silver);border-radius:10px;padding:9px 11px;background:${tone==='warn'?'#fff7ed':tone==='bad'?'#fef2f2':'#f7fafc'}">
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700">${l}</div>
+  <div style="font-size:19px;font-weight:800;color:var(--ink)">${v}</div>${sub?`<div class="sub" style="margin:0">${sub}</div>`:""}</div>`; }
+function secHead(t,tone){ const c=tone==='warn'?'#9a3412':tone==='bad'?'#b42323':'#1b2733'; return `<div style="font-weight:700;color:${c};font-size:13px;margin:14px 0 4px">${esc(t)}</div>`; }
 function renderReview(rv){
-  const el=$("#reviewCard"); if(!el||!rv) return;
+  LASTREVIEW=rv; const el=$("#reviewCard"); if(!el||!rv) return;
   const tot=rv.total||0, m=rv.matched||0, un=rv.unmatched_count||0;
   const physPct=rv.amount_total?Math.round(100*rv.physical_amount/rv.amount_total):0;
-  const tile=(l,v,sub,tone)=>`<div style="flex:1;min-width:120px;border:1px solid var(--silver);border-radius:10px;padding:9px 11px;background:${tone==='warn'?'#fff7ed':tone==='bad'?'#fef2f2':'#f7fafc'}">
-    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700">${l}</div>
-    <div style="font-size:19px;font-weight:800;color:var(--ink)">${v}</div>${sub?`<div class="sub" style="margin:0">${sub}</div>`:""}</div>`;
   const tiles=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px">
-    ${tile("Rows",tot,`${usd(rv.amount_total)} sales · ${usd(rv.commission_total)} comm`)}
-    ${tile("Matched",`${m}/${tot}`,`${un} unmatched`,un?"warn":"")}
-    ${tile("Physical",usd(rv.physical_amount),`${physPct}% · ${rv.physical_rows} rows`)}
-    ${tile("Drop-ship",usd(rv.dropship_amount),`${100-physPct}% · ${rv.dropship_rows} rows`)}
-    ${tile("Products",rv.distinct_products,"distinct models")}
-    ${tile("Credits",rv.credits,"return/credit lines",rv.credits?"warn":"")}</div>`;
-  const unmatchedBlock=reviewList(
-    `⚠ ${un} dealer name${un===1?"":"s"} not matched — will import unassigned until you link them below`,
-    rv.unmatched, u=>`<div class="sub" style="margin:2px 0">• <b>${esc(u.name)}</b>${u.account?` · acct ${esc(u.account)}`:""}${u.zip?` · ${esc(u.zip)}`:""} · ${u.count} row${u.count===1?"":"s"}</div>`, "warn");
-  const newAcctBlock=reviewList(
-    `${(rv.new_accounts||[]).length} known dealer${(rv.new_accounts||[]).length===1?"":"s"} with a new account number in this file`,
-    rv.new_accounts, a=>`<div class="sub" style="margin:2px 0">• <b>${esc(a.name)}</b> → account ${esc(a.account_ref)}</div>`);
-  const noZipBlock=reviewList(
-    `${(rv.no_zip_dealers||[]).length} matched dealer${(rv.no_zip_dealers||[]).length===1?"":"s"} have no ZIP on file — credited to the dealer, but can't be split physical vs drop-ship`,
-    rv.no_zip_dealers, d=>`<div class="sub" style="margin:2px 0">• <b>${esc(d.name)}</b> · ${d.count} row${d.count===1?"":"s"}</div>`, "warn");
-  const ambigBlock=(rv.ambiguous_zips&&rv.ambiguous_zips.length)?reviewList(
-    `${rv.ambiguous_zips.length} ship-to ZIP${rv.ambiguous_zips.length===1?"":"s"} matched more than one branch — verify`,
-    rv.ambiguous_zips, a=>`<div class="sub" style="margin:2px 0">• ${esc(a.zip)} → ${esc((a.dealers||[]).join(" / "))}</div>`, "bad"):"";
+    ${tileHtml("Rows",tot,`${usd(rv.amount_total)} sales · ${usd(rv.commission_total)} comm`)}
+    ${tileHtml("Matched",`${m}/${tot}`,`${un} unmatched`,un?"warn":"")}
+    ${tileHtml("Physical",usd(rv.physical_amount),`${physPct}% · ${rv.physical_rows} rows`)}
+    ${tileHtml("Drop-ship",usd(rv.dropship_amount),`${100-physPct}% · ${rv.dropship_rows} rows`)}
+    ${tileHtml("Products",rv.distinct_products,"distinct models")}
+    ${tileHtml("Credits",rv.credits,"return/credit lines",rv.credits?"warn":"")}</div>`;
+  // Unmatched dealers → match / create / approve
+  const unm=(rv.unmatched||[]).filter(u=>!RVAPPROVED.has("unm:"+u.name));
+  let unmHtml=unm.length?secHead(`⚠ ${unm.length} unmatched dealer${unm.length===1?"":"s"} — match to an existing dealer, create a new one, or approve as unassigned`,"warn")+
+    unm.map((u,i)=>`<div class="rzrow"><div class="rn"><b>${esc(u.name)}</b>${u.account?` <span class="dim">· acct ${esc(u.account)}</span>`:""}${u.zip?` <span class="dim">· ${esc(u.zip)}</span>`:""} <span class="dim">· ${u.count} row${u.count===1?"":"s"}</span></div>
+      <select id="unm_sel_${i}" style="min-width:210px">${rvDealerOpts()}</select>
+      <button class="go sm" onclick="rvMatch(${i})">Match</button>
+      <button class="go gray sm" onclick="rvCreate(${i})">Create dealer</button>
+      <button class="go gray sm" onclick="rvApprove('unm',${i})" title="Import these rows unassigned">Approve</button></div>`).join(""):"";
+  // Matched dealers missing a ZIP → update ZIP / approve
+  const nz=(rv.no_zip_dealers||[]).filter(d=>!RVAPPROVED.has("zip:"+d.dealer_id));
+  let nzHtml=nz.length?secHead(`${nz.length} matched dealer${nz.length===1?"":"s"} with no ZIP on file — add a ZIP so physical vs. drop-ship can split`,"warn")+
+    nz.map((d,i)=>`<div class="rzrow"><div class="rn"><b>${esc(d.name)}</b> <span class="dim">· ${d.count} row${d.count===1?"":"s"}</span></div>
+      <input id="nz_zip_${i}" placeholder="ZIP" style="width:90px">
+      <button class="go sm" onclick="rvUpdateZip(${i})">Update ZIP</button>
+      <button class="go gray sm" onclick="rvApprove('zip',${i})" title="Leave dealer-level (treats as drop-ship)">Approve</button></div>`).join(""):"";
+  // Ambiguous ZIP → pick the branch / approve
+  const amb=(rv.ambiguous_zips||[]).filter(a=>!RVAPPROVED.has("amb:"+a.zip));
+  let ambHtml=amb.length?secHead(`${amb.length} ship-to ZIP${amb.length===1?"":"s"} match more than one branch — choose the correct location`,"bad")+
+    amb.map((a,i)=>`<div class="rzrow"><div class="rn"><b>${esc(a.zip)}</b> <span class="dim">→ ${esc((a.dealers||[]).map(x=>x.name).join(" / "))}</span></div>
+      <select id="amb_sel_${i}" style="min-width:210px">${(a.dealers||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}</select>
+      <button class="go sm" onclick="rvAssignZip(${i})">Assign branch</button>
+      <button class="go gray sm" onclick="rvApprove('amb',${i})">Approve</button></div>`).join(""):"";
+  // Known dealer, new account number → store / ignore
+  const na=(rv.new_accounts||[]).filter(a=>!RVAPPROVED.has("acct:"+a.dealer_id+"|"+a.account_ref));
+  let naHtml=na.length?secHead(`${na.length} known dealer${na.length===1?"":"s"} with a new account number — store it so future reports auto-match`)+
+    na.map((a,i)=>`<div class="rzrow"><div class="rn"><b>${esc(a.name)}</b> <span class="dim">→ account ${esc(a.account_ref)}</span></div>
+      <button class="go sm" onclick="rvStoreAcct(${i})">Store account #</button>
+      <button class="go gray sm" onclick="rvApprove('acct',${i})">Ignore</button></div>`).join(""):"";
+  const clean = !unm.length && !nz.length && !amb.length && !na.length;
   el.innerHTML=`<div class="card" style="margin-top:14px;border-color:#c7d7ef;background:#fbfdff">
-    <h2 style="font-size:16px;margin:0 0 2px">Review before committing <span class="sub" style="font-weight:400;text-transform:none">— nothing has been written yet</span></h2>
-    ${tiles}${unmatchedBlock}${newAcctBlock}${noZipBlock}${ambigBlock}
-    <div style="margin-top:14px;display:flex;align-items:center;gap:10px">
+    <h2 style="font-size:16px;margin:0 0 2px">Review &amp; correct before committing <span class="sub" style="font-weight:400;text-transform:none">— nothing is written until you commit; fixes here are saved as rules for next month</span></h2>
+    ${tiles}${unmHtml}${nzHtml}${ambHtml}${naHtml}
+    <div style="margin-top:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <button class="go dk" id="commitBtn" onclick="doImport()">✓ Commit import — write ${tot} rows</button>
-      <button class="go gray" onclick="$('#reviewCard').innerHTML=''">Cancel</button>
-      <span id="cmsg" class="st"></span></div>
+      <button class="go gray" onclick="doAnalyze()">↻ Re-check</button>
+      <button class="go gray" onclick="$('#reviewCard').innerHTML='';RVAPPROVED.clear();">Cancel</button>
+      <span id="cmsg" class="st">${clean?"All exceptions resolved — ready to commit ✓":""}</span></div>
   </div>`;
 }
+// Each correction persists to platform data, then re-runs analyze so totals & warnings recalculate live.
+async function rvMatch(i){ const u=LASTREVIEW.unmatched[i]; const did=(($("#unm_sel_"+i)||{}).value)||""; if(!did){ alert("Choose a dealer to match first."); return; }
+  await api({action:"learn_match",manufacturer:$("#mfr").value,name:u.name,dealer_id:did,account_ref:u.account||""}); await doAnalyze(); }
+async function rvCreate(i){ const u=LASTREVIEW.unmatched[i];
+  const zip=(prompt(`Create dealer “${u.name}”.\nEnter its ZIP (or leave blank if online / drop-ship only):`,"")||"").trim();
+  const r=await dealersApi({action:"create_dealer",business_name:u.name,zip,accounts:[{manufacturer:$("#mfr").value,account_ref:u.account||""}]});
+  if(r&&r.dealer_id){ await api({action:"learn_match",manufacturer:$("#mfr").value,name:u.name,dealer_id:r.dealer_id,account_ref:u.account||""});
+    try{ CONFIG=await api({action:"config"}); }catch(e){} await doAnalyze(); }
+  else alert((r&&r.error)||"Couldn't create the dealer."); }
+async function rvUpdateZip(i){ const d=LASTREVIEW.no_zip_dealers[i]; const zip=((($("#nz_zip_"+i)||{}).value)||"").trim(); if(!zip){ alert("Enter a ZIP."); return; }
+  await dealersApi({action:"edit",dealer_id:d.dealer_id,zip}); try{ CONFIG=await api({action:"config"}); }catch(e){} await doAnalyze(); }
+async function rvAssignZip(i){ const a=LASTREVIEW.ambiguous_zips[i]; const did=(($("#amb_sel_"+i)||{}).value)||""; if(!did) return;
+  await api({action:"assign_zip",manufacturer:$("#mfr").value,zip:a.zip,dealer_id:did}); await doAnalyze(); }
+async function rvStoreAcct(i){ const a=LASTREVIEW.new_accounts[i];
+  await api({action:"learn_match",manufacturer:$("#mfr").value,name:a.name,dealer_id:a.dealer_id,account_ref:a.account_ref}); await doAnalyze(); }
+function rvApprove(kind,i){ const rv=LASTREVIEW; if(!rv) return;
+  if(kind==='unm') RVAPPROVED.add("unm:"+rv.unmatched[i].name);
+  else if(kind==='zip') RVAPPROVED.add("zip:"+rv.no_zip_dealers[i].dealer_id);
+  else if(kind==='amb') RVAPPROVED.add("amb:"+rv.ambiguous_zips[i].zip);
+  else if(kind==='acct'){ const a=rv.new_accounts[i]; RVAPPROVED.add("acct:"+a.dealer_id+"|"+a.account_ref); }
+  renderReview(rv); }
 // Step 2 — commit: write the rows (replacing any prior load of this file+month), then resolve unmatched.
 async function doImport(){
   const v=validImport(); if(!v) return;
