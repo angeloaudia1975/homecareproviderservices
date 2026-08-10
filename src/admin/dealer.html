@@ -36,7 +36,7 @@
 </head><body>
 <header id="ac-head"></header>
 <div class="wrap">
-  <div class="backbar"><a class="btn ghost sm" href="/admin/dealers.html">← All dealers</a>
+  <div class="backbar"><a class="btn ghost sm" href="/admin/dealer.html" onclick="return backToPicker(event)">← All dealers</a>
     <span class="hint" style="margin:0"><a class="link" href="/admin/call-list.html">Who to Call</a> · <a class="link" href="/admin/command-center.html">Command Center</a></span></div>
   <div id="body"><div class="msg">Loading dealer…</div></div>
 </div>
@@ -49,7 +49,7 @@ const money=n=>"$"+Math.round(Number(n||0)).toLocaleString("en-US");
 const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
 window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
 let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
-let TOKEN=HCPS.token(), CUR=null;
+let TOKEN=HCPS.token(), CUR=null, ALLD=[];
 const Q=new URLSearchParams(location.search); const QID=Q.get("id"); const QNAME=Q.get("name");
 const MONTH=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const pmOf=p=>{const s=String(p||"").slice(0,7);const[y,m]=s.split("-").map(Number);return y*12+(m-1);};
@@ -85,6 +85,7 @@ async function load(){
 
 function render(D,A){
   const dealers=D.dealers||[];
+  ALLD=dealers;   // keep the full list so "← All dealers" can show the 360 picker instantly
   let d = QID ? dealers.find(x=>x.id===QID) : null;
   if(!d && QNAME) d = dealers.find(x=>x.name===QNAME);
   if(!d){
@@ -251,6 +252,17 @@ async function saveCompany(){
 }
 // ---- Contacts & account-number management ----
 let CDATA=null, CEDIT=null, DOBJ=null, PICKER=[];
+// "← All dealers" inside Dealer 360 returns to the 360 picker (not the Dealer Manager). Renders
+// instantly from the already-loaded list; falls back to a normal navigation if it isn't ready yet.
+function backToPicker(e){
+  if(!ALLD||!ALLD.length) return true;   // let the href load /admin/dealer.html
+  if(e&&e.preventDefault) e.preventDefault();
+  CUR=null;
+  try{ history.replaceState({}, "", "/admin/dealer.html"); }catch(_){}
+  renderPicker(ALLD);
+  try{ window.scrollTo(0,0); }catch(_){}
+  return false;
+}
 // Dealer 360 opened without a specific dealer → a searchable list that jumps into each profile.
 function renderPicker(dealers){
   PICKER=[...(dealers||[])].sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"en",{sensitivity:"base"}));
