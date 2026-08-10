@@ -59,7 +59,8 @@
     <h2 style="font-size:16px;margin:0 0 4px">Preview</h2>
     <div id="prevMeta" class="sub"></div>
     <div style="overflow:auto"><table id="prevTable"></table></div>
-    <div style="margin-top:14px"><button class="go dk" id="importBtn" onclick="doImport()">Import into analytics</button> <span id="imsg" class="st"></span></div>
+    <div style="margin-top:14px"><button class="go dk" id="importBtn" onclick="doAnalyze()">Analyze &amp; review →</button> <span id="imsg" class="st"></span></div>
+    <div id="reviewCard"></div>
     <div id="importResult"></div>
   </div>
 </div>
@@ -82,14 +83,21 @@ const numv=v=>{ if(v==null||v==="") return null; const n=Number(String(v).replac
 const FIELDS=[
   {k:"customer_name",label:"Dealer / customer name",req:true},
   {k:"customer_ref",label:"Account number"},
-  {k:"ship_city",label:"Ship-to city (helps matching)"},
+  {k:"ship_zip",label:"Ship-to ZIP (branch match key)"},
+  {k:"ship_city",label:"Ship-to city"},
   {k:"ship_state",label:"Ship-to state"},
-  {k:"product_code",label:"Product code"},
+  {k:"product_code",label:"Product code / model"},
   {k:"product_name",label:"Product / description"},
+  {k:"item_no",label:"Item / configured SKU"},
   {k:"qty",label:"Quantity"},
   {k:"amount",label:"Sales amount ($)"},
   {k:"commission",label:"Commission ($)"},
+  {k:"commission_rate",label:"Commission rate"},
   {k:"cost",label:"Cost ($)"},
+  {k:"order_date",label:"Order date"},
+  {k:"line_type",label:"Line type (I / C)"},
+  {k:"credit_reason",label:"Credit reason"},
+  {k:"invoice_no",label:"Invoice #"},
   {k:"rep_name",label:"Rep name"},
 ];
 let CONFIG={manufacturers:[],templates:{}}, GRID=[], HEADERS=[], MAP={}, FILENAME="";
@@ -204,17 +212,24 @@ function applyTemplate(){
   // light auto-guess when no template
   if(!Object.keys(MAP).length && HEADERS.length){
     const find=re=>HEADERS.find(h=>re.test(h.toLowerCase()));
-    MAP.customer_name=find(/customer name|dealer|sold ?to|store name|bill ?to/)||"";
-    MAP.customer_ref=find(/customer ?#|cust.*#|customer no|acct|account/)||"";
-    MAP.ship_city=find(/store city|ship.*city|city/)||"";
-    MAP.ship_state=find(/store state|ship.*state|state/)||"";
-    MAP.product_code=find(/part ?#|item ?#|sku|product code|catalog|part/)||"";
+    MAP.customer_name=find(/^customername$|customer name|dealer|sold ?to|store name|bill ?to/)||"";
+    MAP.customer_ref=find(/^customerno$|customer ?#|cust.*#|customer no|acct|account/)||"";
+    MAP.ship_zip=find(/postal|zip/)||"";
+    MAP.ship_city=find(/store city|ship.*city|^city$/)||"";
+    MAP.ship_state=find(/store state|ship.*state|^state$/)||"";
+    MAP.product_code=find(/^model$|part ?#|item ?#|sku|product code|catalog/)||"";
     MAP.product_name=find(/description|product name|item name/)||"";
-    MAP.qty=find(/quantity|qty|units/)||"";
-    MAP.amount=find(/extended|line total|net sales|sales amount|invoice amount/)||"";
-    MAP.commission=find(/commission amount|commission ?\$|commission/)||"";
+    MAP.item_no=find(/^itemno$|item ?no|configured/)||"";
+    MAP.qty=find(/^qty$|quantity|units/)||"";
+    MAP.amount=find(/extendedprice|extended|line total|net sales|sales amount|invoice amount/)||"";
+    MAP.commission=find(/commissionamount|commission amount|commission ?\$|^commission$/)||"";
+    MAP.commission_rate=find(/commissionrate|commission rate|comm.*rate/)||"";
     MAP.cost=find(/\bcost\b/)||"";
-    MAP.rep_name=find(/rep name|sales ?rep|agent/)||"";
+    MAP.order_date=find(/soorderdate|order ?date|orderdate/)||"";
+    MAP.line_type=find(/^type$/)||"";
+    MAP.credit_reason=find(/creditreason|credit reason/)||"";
+    MAP.invoice_no=find(/^invoice$|invoice ?#|invoiceno/)||"";
+    MAP.rep_name=find(/salesrepname|rep name|sales ?rep|agent/)||"";
     Object.keys(MAP).forEach(k=>{ if(!MAP[k]) delete MAP[k]; });
   }
   renderMap(); renderPreview();
@@ -249,25 +264,85 @@ async function saveTemplate(){
   try{ await api({action:"save_template",manufacturer:slug,mapping}); CONFIG.templates=CONFIG.templates||{}; CONFIG.templates[slug]=mapping; $("#tmsg").textContent="Mapping saved for next time ✓"; $("#tmsg").className="st ok"; }
   catch(e){ $("#tmsg").textContent="Couldn't save: "+(e.message||e); $("#tmsg").className="st warn"; }
 }
-async function doImport(){
+function validImport(){
   const slug=$("#mfr").value, period=($("#period").value||"").trim();
-  if(!slug){ $("#imsg").textContent="Pick a manufacturer."; $("#imsg").className="st warn"; return; }
-  if(!/^\d{4}-\d{2}$/.test(period)){ $("#imsg").textContent="Pick the report month."; $("#imsg").className="st warn"; return; }
-  if(!MAP.customer_name){ $("#imsg").textContent="Map the Dealer / customer name column."; $("#imsg").className="st warn"; return; }
-  const rows=mappedRows(); if(!rows.length){ $("#imsg").textContent="No rows to import."; $("#imsg").className="st warn"; return; }
-  const btn=$("#importBtn"); btn.disabled=true; $("#imsg").textContent="Importing "+rows.length+" rows…"; $("#imsg").className="st";
+  if(!slug){ $("#imsg").textContent="Pick a manufacturer."; $("#imsg").className="st warn"; return null; }
+  if(!/^\d{4}-\d{2}$/.test(period)){ $("#imsg").textContent="Pick the report month."; $("#imsg").className="st warn"; return null; }
+  if(!MAP.customer_name){ $("#imsg").textContent="Map the Dealer / customer name column."; $("#imsg").className="st warn"; return null; }
+  const rows=mappedRows(); if(!rows.length){ $("#imsg").textContent="No rows to load."; $("#imsg").className="st warn"; return null; }
+  return {slug,period,rows};
+}
+// Step 1 — dry run: score the file and show the review gate WITHOUT writing anything.
+async function doAnalyze(){
+  const v=validImport(); if(!v) return;
+  const btn=$("#importBtn"); btn.disabled=true; $("#imsg").textContent="Analyzing "+v.rows.length+" rows…"; $("#imsg").className="st";
+  $("#importResult").innerHTML="";
   try{
-    const r=await api({action:"import",manufacturer:slug,period,source_file:FILENAME,rows});
+    const r=await api({action:"analyze",manufacturer:v.slug,period:v.period,source_file:FILENAME,rows:v.rows});
+    if(r&&r.ok){ $("#imsg").textContent="Reviewed — nothing written yet."; $("#imsg").className="st ok"; renderReview(r.review); }
+    else { $("#imsg").textContent=(r&&r.error)||"Analyze failed."; $("#imsg").className="st warn"; }
+  }catch(e){ $("#imsg").textContent="Analyze failed: "+(e.message||e); $("#imsg").className="st warn"; }
+  finally{ btn.disabled=false; }
+}
+function reviewList(title,items,fmt,tone){
+  if(!items||!items.length) return "";
+  const rows=items.slice(0,40).map(fmt).join("");
+  const more=items.length>40?`<div class="sub" style="margin-top:4px">+${items.length-40} more</div>`:"";
+  const col=tone==="warn"?"#9a3412":tone==="bad"?"#b42323":"#1b2733";
+  return `<div style="margin-top:10px"><div style="font-weight:700;color:${col};font-size:13px">${esc(title)}</div>${rows}${more}</div>`;
+}
+function renderReview(rv){
+  const el=$("#reviewCard"); if(!el||!rv) return;
+  const tot=rv.total||0, m=rv.matched||0, un=rv.unmatched_count||0;
+  const physPct=rv.amount_total?Math.round(100*rv.physical_amount/rv.amount_total):0;
+  const tile=(l,v,sub,tone)=>`<div style="flex:1;min-width:120px;border:1px solid var(--silver);border-radius:10px;padding:9px 11px;background:${tone==='warn'?'#fff7ed':tone==='bad'?'#fef2f2':'#f7fafc'}">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700">${l}</div>
+    <div style="font-size:19px;font-weight:800;color:var(--ink)">${v}</div>${sub?`<div class="sub" style="margin:0">${sub}</div>`:""}</div>`;
+  const tiles=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px">
+    ${tile("Rows",tot,`${usd(rv.amount_total)} sales · ${usd(rv.commission_total)} comm`)}
+    ${tile("Matched",`${m}/${tot}`,`${un} unmatched`,un?"warn":"")}
+    ${tile("Physical",usd(rv.physical_amount),`${physPct}% · ${rv.physical_rows} rows`)}
+    ${tile("Drop-ship",usd(rv.dropship_amount),`${100-physPct}% · ${rv.dropship_rows} rows`)}
+    ${tile("Products",rv.distinct_products,"distinct models")}
+    ${tile("Credits",rv.credits,"return/credit lines",rv.credits?"warn":"")}</div>`;
+  const unmatchedBlock=reviewList(
+    `⚠ ${un} dealer name${un===1?"":"s"} not matched — will import unassigned until you link them below`,
+    rv.unmatched, u=>`<div class="sub" style="margin:2px 0">• <b>${esc(u.name)}</b>${u.account?` · acct ${esc(u.account)}`:""}${u.zip?` · ${esc(u.zip)}`:""} · ${u.count} row${u.count===1?"":"s"}</div>`, "warn");
+  const newAcctBlock=reviewList(
+    `${(rv.new_accounts||[]).length} known dealer${(rv.new_accounts||[]).length===1?"":"s"} with a new account number in this file`,
+    rv.new_accounts, a=>`<div class="sub" style="margin:2px 0">• <b>${esc(a.name)}</b> → account ${esc(a.account_ref)}</div>`);
+  const noZipBlock=reviewList(
+    `${(rv.no_zip_dealers||[]).length} matched dealer${(rv.no_zip_dealers||[]).length===1?"":"s"} have no ZIP on file — credited to the dealer, but can't be split physical vs drop-ship`,
+    rv.no_zip_dealers, d=>`<div class="sub" style="margin:2px 0">• <b>${esc(d.name)}</b> · ${d.count} row${d.count===1?"":"s"}</div>`, "warn");
+  const ambigBlock=(rv.ambiguous_zips&&rv.ambiguous_zips.length)?reviewList(
+    `${rv.ambiguous_zips.length} ship-to ZIP${rv.ambiguous_zips.length===1?"":"s"} matched more than one branch — verify`,
+    rv.ambiguous_zips, a=>`<div class="sub" style="margin:2px 0">• ${esc(a.zip)} → ${esc((a.dealers||[]).join(" / "))}</div>`, "bad"):"";
+  el.innerHTML=`<div class="card" style="margin-top:14px;border-color:#c7d7ef;background:#fbfdff">
+    <h2 style="font-size:16px;margin:0 0 2px">Review before committing <span class="sub" style="font-weight:400;text-transform:none">— nothing has been written yet</span></h2>
+    ${tiles}${unmatchedBlock}${newAcctBlock}${noZipBlock}${ambigBlock}
+    <div style="margin-top:14px;display:flex;align-items:center;gap:10px">
+      <button class="go dk" id="commitBtn" onclick="doImport()">✓ Commit import — write ${tot} rows</button>
+      <button class="go gray" onclick="$('#reviewCard').innerHTML=''">Cancel</button>
+      <span id="cmsg" class="st"></span></div>
+  </div>`;
+}
+// Step 2 — commit: write the rows (replacing any prior load of this file+month), then resolve unmatched.
+async function doImport(){
+  const v=validImport(); if(!v) return;
+  const btn=$("#commitBtn"); if(btn)btn.disabled=true; const cm=$("#cmsg"); if(cm){cm.textContent="Writing "+v.rows.length+" rows…";cm.className="st";}
+  try{
+    const r=await api({action:"import",manufacturer:v.slug,period:v.period,source_file:FILENAME,rows:v.rows});
     if(r&&r.ok){
-      $("#imsg").textContent=`Imported ${r.inserted} rows ✓`; $("#imsg").className="st ok";
+      if(cm){cm.textContent=`Imported ${r.inserted} rows ✓`;cm.className="st ok";}
       const nun=r.unmatched_count||0;
+      $("#reviewCard").innerHTML="";
       $("#importResult").innerHTML=`<div class="warn" style="background:#eefaf0;border-color:#bfe3ca;color:#1f7a44">
         <b>${r.inserted}</b> rows loaded · <b>${r.matched}</b> matched to existing dealers · <b>${nun}</b> ${nun===1?"name":"names"} still need${nun===1?"s":""} a dealer.${nun?" Match them below so they count and auto-match next time.":""}</div>`
         +renderResolver(r.unmatched||[]);
-      try{ renderReceived(); }catch(e){}
-    } else { $("#imsg").textContent=(r&&r.error)||"Import failed."; $("#imsg").className="st warn"; }
-  }catch(e){ $("#imsg").textContent="Import failed: "+(e.message||e); $("#imsg").className="st warn"; }
-  finally{ btn.disabled=false; }
+      try{ CONFIG=await api({action:"config"}); renderReceived(); }catch(e){}
+    } else { if(cm){cm.textContent=(r&&r.error)||"Import failed.";cm.className="st warn";} }
+  }catch(e){ if(cm){cm.textContent="Import failed: "+(e.message||e);cm.className="st warn";} }
+  finally{ if(btn)btn.disabled=false; }
 }
 
 if(TOKEN) boot(); else gate();

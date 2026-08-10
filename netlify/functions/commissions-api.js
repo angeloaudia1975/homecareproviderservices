@@ -23,6 +23,18 @@ async function fetchJson(url){ const r=await fetch(url); if(!r.ok) throw new Err
 const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
 const dnorm=n=>String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim();
 const num=v=>{ if(v==null||v==="") return null; const n=Number(String(v).replace(/[$,\s]/g,"")); return isFinite(n)?n:null; };
+// ZIP normalizer — Golden stores some ZIPs as numbers, so Northeast codes lose their leading
+// zero (1532 -> 01532). Reduce to the 5-digit base and re-pad.
+const znorm=z=>{ if(z==null||z==="") return ""; const s=String(z).split("-")[0].replace(/[^0-9]/g,""); if(!s) return ""; return s.length>5?s.slice(0,5):s.padStart(5,"0"); };
+// Golden appends " <C>" to the customer name on credit memos — same dealer, strip it before matching.
+const stripC=n=>String(n||"").replace(/\s*<\s*C\s*>\s*$/i,"").trim();
+// Normalize an order date to YYYY-MM-DD (handles "2025-01-23 00:00:00", "1/23/2025", Date objects).
+const toDate=v=>{ if(v==null||v==="") return null; const s=String(v).trim();
+  let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/); if(m) return `${m[3]}-${String(m[1]).padStart(2,"0")}-${String(m[2]).padStart(2,"0")}`;
+  const d=new Date(s); return isNaN(d.getTime())?null:d.toISOString().slice(0,10); };
+const ncity=s=>String(s||"").toUpperCase().replace(/[^A-Z ]/g," ").replace(/\s+/g," ").trim();
+const nstate=s=>String(s||"").toUpperCase().replace(/[^A-Z]/g,"").slice(0,2);
 
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -37,6 +49,97 @@ async function whoami(event){
   const need=process.env.ANALYTICS_TOKEN, got=event.headers["x-analytics-token"]||"";
   if(need && got===need) return {role:"president",email:"",name:"Admin"};
   return null;
+}
+
+// Build the matching context once: name aliases, this line's account#→dealer map, the order-number
+// lines, and every dealer "family" (an HQ + its branches) indexed by root.
+async function buildCtx(slug){
+  const aliases=await sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]);
+  const idByAlias={}; for(const a of (aliases||[])) idByAlias[a.alias_norm]=a.dealer_id;
+  const idByAccount={};
+  try{ const dmr=await sbGetAll(`dealer_manufacturers?manufacturer=eq.${encodeURIComponent(slug)}&select=dealer_id,account_ref`,"dealer_id,manufacturer");
+    for(const x of (dmr||[])){ if(x.account_ref) idByAccount[String(x.account_ref).trim()]=x.dealer_id; } }catch(e){}
+  let orderLines=new Set();
+  try{ const cc=await sbGet("app_settings?key=eq.commission_config&select=value"); orderLines=new Set(((cc&&cc[0]&&cc[0].value&&cc[0].value.order_number_lines))||[]); }catch(e){}
+  const fam=await sbGetAll("dealers?select=id,business_name,city,state,zip,parent_id","business_name").catch(()=>[]);
+  const rootOf=new Map(), byRoot=new Map(), nameById=new Map();
+  for(const d of (fam||[])){ const root=d.parent_id||d.id; rootOf.set(d.id,root); (byRoot.get(root)||byRoot.set(root,[]).get(root)).push(d); nameById.set(d.id,d.business_name); }
+  return {idByAlias,idByAccount,orderLines,rootOf,byRoot,nameById};
+}
+
+// Map raw report rows to monthly_sales rows AND compute a review report. Pure (no DB writes) so the
+// same code powers the dry-run "analyze" and the real "import". Dealer match: account# first, then
+// name alias. Branch attribution: ship-to ZIP → a branch/corporate ZIP on file = physical; no ZIP
+// match = corporate drop-ship. (Falls back to city/state for lines that supply them, e.g. non-Golden.)
+function mapRows(slug, per, source_file, rows, ctx){
+  const {idByAlias,idByAccount,orderLines,rootOf,byRoot,nameById}=ctx;
+  const refMatch=!orderLines.has(slug);
+  const out=[]; const unmatched=new Map();
+  let matched=0, physical=0, dropship=0, physAmt=0, dropAmt=0, credits=0, amtTot=0, commTot=0;
+  const newAcct=new Map(), noZip=new Map(), ambiguous=[], models=new Set();
+  for(const r of rows){
+    const acct=(r.customer_ref!=null)?String(r.customer_ref).trim():"";
+    const name=stripC(r.customer_name);
+    const shipZip=znorm(r.ship_zip!=null?r.ship_zip:(r.postal!=null?r.postal:""));
+    const shipCity=(r.ship_city!=null)?String(r.ship_city).trim():"";
+    const shipState=(r.ship_state!=null)?String(r.ship_state).trim():"";
+    const amount=num(r.amount), commission=num(r.commission);
+    amtTot+=amount||0; commTot+=commission||0;
+    const type=(r.line_type!=null)?String(r.line_type).trim().toUpperCase():"";
+    if(type==="C"||(amount!=null&&amount<0)) credits++;
+    const model=(r.product_code!=null&&String(r.product_code).trim())?String(r.product_code).trim():"";
+    if(model) models.add(model);
+    const byAcct=refMatch&&acct&&idByAccount[acct];
+    const byName=name?idByAlias[dnorm(name)]:null;
+    let did=byAcct||byName||null; let channel=null;
+    if(did){
+      matched++;
+      const root=rootOf.get(did)||did;
+      const famArr=byRoot.get(root)||[];
+      const famZips=famArr.map(d=>znorm(d.zip)).filter(Boolean);
+      if(shipZip && famZips.length){
+        const hit=famArr.filter(d=>znorm(d.zip)===shipZip);
+        if(hit.length){ did=hit[0].id; channel="physical"; if(hit.length>1) ambiguous.push({zip:shipZip,dealers:hit.map(d=>nameById.get(d.id)||d.id)}); }
+        else { did=root; channel="dropship"; }
+      } else if(shipCity){
+        const c=ncity(shipCity), st=nstate(shipState);
+        const mm = famArr.length<=1 ? famArr[0] : (famArr.find(x=>ncity(x.city)===c&&(!st||nstate(x.state)===st))||famArr.find(x=>ncity(x.city)===c));
+        did=(mm&&mm.id)||root; channel="physical";
+      } else if(famZips.length){
+        did=root; channel="dropship";                 // ZIP branches exist but this line has no ZIP → can't place
+      } else {
+        did=root; channel="physical"; const n0=noZip.get(root)||{dealer_id:root,name:nameById.get(root)||name,count:0}; n0.count++; noZip.set(root,n0);
+      }
+      if(channel==="physical"){ physical++; physAmt+=amount||0; } else { dropship++; dropAmt+=amount||0; }
+      if(byName && !byAcct && acct && !idByAccount[acct] && !orderLines.has(slug)){
+        const k=root+"|"+acct; if(!newAcct.has(k)) newAcct.set(k,{dealer_id:root,name:nameById.get(root)||name,account_ref:acct}); }
+    } else if(name){
+      const u=unmatched.get(name)||{name,account:acct||"",zip:shipZip||"",count:0}; u.count++; if(!u.account&&acct)u.account=acct; unmatched.set(name,u);
+    }
+    out.push({
+      manufacturer:slug, period:per, dealer_id:did||null, channel:channel||null,
+      customer_name:name||null, customer_ref:acct||null,
+      ship_city:shipCity||null, ship_state:shipState||null, ship_zip:shipZip||null,
+      order_date:toDate(r.order_date),
+      product_code:model||null,
+      product_name:(r.product_name!=null&&String(r.product_name).trim())?String(r.product_name).trim():null,
+      item_no:(r.item_no!=null&&String(r.item_no).trim())?String(r.item_no).trim():null,
+      qty:num(r.qty), amount, commission, commission_rate:num(r.commission_rate), cost:num(r.cost),
+      line_type:type||null,
+      credit_reason:(r.credit_reason!=null&&String(r.credit_reason).trim())?String(r.credit_reason).trim():null,
+      invoice_no:(r.invoice_no!=null&&String(r.invoice_no).trim())?String(r.invoice_no).trim():null,
+      rep_name:(r.rep_name!=null&&String(r.rep_name).trim())?String(r.rep_name).trim():null,
+      source_file, imported_at:new Date().toISOString(),
+    });
+  }
+  const review={ total:rows.length, matched, unmatched_count:unmatched.size,
+    unmatched:[...unmatched.values()].sort((a,b)=>b.count-a.count).slice(0,300),
+    physical_rows:physical, dropship_rows:dropship,
+    physical_amount:Math.round(physAmt*100)/100, dropship_amount:Math.round(dropAmt*100)/100,
+    new_accounts:[...newAcct.values()].slice(0,300), no_zip_dealers:[...noZip.values()].slice(0,300),
+    ambiguous_zips:ambiguous.slice(0,100), distinct_products:models.size, credits,
+    amount_total:Math.round(amtTot*100)/100, commission_total:Math.round(commTot*100)/100 };
+  return {out, review};
 }
 
 exports.handler = async (event)=>{
@@ -71,6 +174,19 @@ exports.handler = async (event)=>{
       return json(200,{ok:true});
     }
 
+    // Dry run: map + score the rows and return the review report WITHOUT writing anything.
+    if(b.action==="analyze"){
+      const slug=String(b.manufacturer||"").trim();
+      const period=String(b.period||"").trim();
+      const rows=Array.isArray(b.rows)?b.rows:[];
+      if(!slug||!/^\d{4}-\d{2}$/.test(period)) return json(400,{error:"manufacturer + period (YYYY-MM) required"});
+      if(!rows.length) return json(400,{error:"no rows"});
+      const ctx=await buildCtx(slug);
+      const {review}=mapRows(slug,`${period}-01`,String(b.source_file||"").trim()||null,rows,ctx);
+      return json(200,{ok:true,review});
+    }
+
+    // Commit: map the rows and write them to monthly_sales (replacing any prior load of this file+month).
     if(b.action==="import"){
       const slug=String(b.manufacturer||"").trim();
       const period=String(b.period||"").trim();          // expect YYYY-MM
@@ -79,59 +195,23 @@ exports.handler = async (event)=>{
       if(!slug||!/^\d{4}-\d{2}$/.test(period)) return json(400,{error:"manufacturer + period (YYYY-MM) required"});
       if(!rows.length) return json(400,{error:"no rows"});
       const per=`${period}-01`;
-      // alias map for dealer resolution (by normalized name)
-      const aliases=await sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]);
-      const idByAlias={}; for(const a of (aliases||[])) idByAlias[a.alias_norm]=a.dealer_id;
-      // account-number map for THIS manufacturer (match by the report's Customer # — most reliable)
-      const idByAccount={};
-      try{ const dmr=await sbGetAll(`dealer_manufacturers?manufacturer=eq.${encodeURIComponent(slug)}&select=dealer_id,account_ref`,"dealer_id,manufacturer");
-        for(const x of (dmr||[])){ if(x.account_ref) idByAccount[String(x.account_ref).trim()]=x.dealer_id; } }catch(e){}
-      // Lines whose report "customer #" is really a per-order number (e.g. Strongback) match by
-      // NAME only — never treat their customer_ref as a dealer account number.
-      let orderLines=new Set();
-      try{ const cc=await sbGet("app_settings?key=eq.commission_config&select=value"); orderLines=new Set(((cc&&cc[0]&&cc[0].value&&cc[0].value.order_number_lines))||[]); }catch(e){}
-      const refMatch = !orderLines.has(slug);
-      // Branch attribution: route each line to the location that RECEIVED it (ship-to), not just
-      // the sold-to / name match. Index every dealer "family" (an HQ + its branches) by city/state.
-      const famDealers=await sbGetAll("dealers?select=id,business_name,city,state,parent_id","business_name").catch(()=>[]);
-      const rootOf=new Map(), byRoot=new Map();
-      for(const d of (famDealers||[])){ const root=d.parent_id||d.id; rootOf.set(d.id,root); (byRoot.get(root)||byRoot.set(root,[]).get(root)).push(d); }
-      const ncity=s=>String(s||"").toUpperCase().replace(/[^A-Z ]/g," ").replace(/\s+/g," ").trim();
-      const nstate=s=>String(s||"").toUpperCase().replace(/[^A-Z]/g,"").slice(0,2);
-      const branchFor=(did,shipCity,shipState)=>{ if(!did) return did; const c=ncity(shipCity); if(!c) return did;
-        const root=rootOf.get(did)||did; const fam=byRoot.get(root)||[]; if(fam.length<=1) return did; const st=nstate(shipState);
-        const m=fam.find(x=>ncity(x.city)===c && (!st||nstate(x.state)===st)) || fam.find(x=>ncity(x.city)===c); return m?m.id:did; };
-      // Persist ship-to only if the columns exist (supabase/attribution.sql). Routing works regardless.
-      let hasShip=true; try{ const p=await fetch(`${SUPABASE_URL}/rest/v1/monthly_sales?select=ship_city&limit=1`,{headers:H()}); hasShip=p.ok; }catch(e){ hasShip=false; }
-      const out=[]; const unmatched=new Map(); let matched=0, rerouted=0;   // name -> {name, account, count}
-      for(const r of rows){
-        const cname=String(r.customer_name||"").trim();
-        const cref=String(r.customer_ref||"").trim();
-        const shipCity=(r.ship_city!=null)?String(r.ship_city).trim():"";
-        const shipState=(r.ship_state!=null)?String(r.ship_state).trim():"";
-        let did = (refMatch && cref && idByAccount[cref]) || (cname ? idByAlias[dnorm(cname)] : null) || null;
-        if(did){ const b2=branchFor(did,shipCity,shipState); if(b2!==did) rerouted++; did=b2; matched++; }
-        else if(cname){ const u=unmatched.get(cname)||{name:cname,account:cref||"",count:0}; u.count++; if(!u.account&&cref)u.account=cref; unmatched.set(cname,u); }
-        out.push({
-          manufacturer:slug, period:per, dealer_id:did||null,
-          customer_name:cname||null, customer_ref:(r.customer_ref!=null&&String(r.customer_ref).trim())?String(r.customer_ref).trim():null,
-          ...(hasShip?{ship_city:shipCity||null, ship_state:shipState||null}:{}),
-          product_code:(r.product_code!=null&&String(r.product_code).trim())?String(r.product_code).trim():null,
-          product_name:(r.product_name!=null&&String(r.product_name).trim())?String(r.product_name).trim():null,
-          qty:num(r.qty), amount:num(r.amount), commission:num(r.commission), cost:num(r.cost),
-          rep_name:(r.rep_name!=null&&String(r.rep_name).trim())?String(r.rep_name).trim():null,
-          source_file, imported_at:new Date().toISOString(),
-        });
-      }
-      // Replace any prior load of this exact file+line+month so re-importing never double-counts.
-      try{
-        let del=`monthly_sales?manufacturer=eq.${encodeURIComponent(slug)}&period=eq.${encodeURIComponent(per)}`;
+      const ctx=await buildCtx(slug);
+      const {out,review}=mapRows(slug,per,source_file,rows,ctx);
+      // Column-existence probes: enrichment cols (golden_import.sql) + ship cols (attribution.sql).
+      let hasEnrich=true; try{ const p=await fetch(`${SUPABASE_URL}/rest/v1/monthly_sales?select=channel&limit=1`,{headers:H()}); hasEnrich=p.ok; }catch(e){ hasEnrich=false; }
+      let hasShip=true;   try{ const p=await fetch(`${SUPABASE_URL}/rest/v1/monthly_sales?select=ship_city&limit=1`,{headers:H()}); hasShip=p.ok; }catch(e){ hasShip=false; }
+      const ENRICH=["channel","item_no","line_type","credit_reason","invoice_no","ship_zip","commission_rate","order_date"];
+      const clean=out.map(o=>{ const row={...o};
+        if(!hasEnrich) ENRICH.forEach(k=>delete row[k]);
+        if(!hasShip){ delete row.ship_city; delete row.ship_state; delete row.ship_zip; }
+        return row; });
+      try{ let del=`monthly_sales?manufacturer=eq.${encodeURIComponent(slug)}&period=eq.${encodeURIComponent(per)}`;
         if(source_file) del+=`&source_file=eq.${encodeURIComponent(source_file)}`;
-        await sbSend("DELETE",del,null,{Prefer:"return=minimal"});
-      }catch(e){}
+        await sbSend("DELETE",del,null,{Prefer:"return=minimal"}); }catch(e){}
       let inserted=0;
-      for(let i=0;i<out.length;i+=500){ const part=out.slice(i,i+500); await sbSend("POST","monthly_sales",part,{Prefer:"return=minimal"}); inserted+=part.length; }
-      return json(200,{ok:true,inserted,matched,rerouted,unmatched:[...unmatched.values()].slice(0,200),unmatched_count:unmatched.size});
+      for(let i=0;i<clean.length;i+=500){ const part=clean.slice(i,i+500); await sbSend("POST","monthly_sales",part,{Prefer:"return=minimal"}); inserted+=part.length; }
+      return json(200,{ok:true,inserted,review,
+        matched:review.matched, unmatched:review.unmatched.slice(0,200), unmatched_count:review.unmatched_count});
     }
 
     // Resolve unmatched names to dealers: learn the alias, relink the imported rows, and
