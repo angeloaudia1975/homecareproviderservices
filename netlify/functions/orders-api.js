@@ -118,7 +118,7 @@ exports.handler = async (event)=>{
           unit_price:num(it.unit), line_total:Math.round(num(it.unit)*num(it.qty)*100)/100,
         }));
         if(items.length){ try{ await sb("POST","order_items",items,{Prefer:"return=minimal"}); }catch(e){} }
-        summaries.push({slug:cleanSlug, line:cleanSlug?(mfrName[cleanSlug]||cleanSlug):(slug||"Order"), po:o.po||"", items, subtotal:row.subtotal});
+        summaries.push({slug:cleanSlug, line:cleanSlug?(mfrName[cleanSlug]||cleanSlug):(slug||"Order"), po:o.po||"", items, subtotal:row.subtotal, order_id:oid});
         if(cleanSlug) slugs.add(cleanSlug);
         saved++;
       }
@@ -128,6 +128,26 @@ exports.handler = async (event)=>{
         // Best-effort: a mail hiccup never fails the saved order.
         const to=String(d.email||who.email||"").trim();
         if(EMAIL_RE.test(to) && P.allowTransactional(st.mode,isTest)){ try{ await sendMail(orderConfirmation(to,d,summaries)); }catch(e){ console.error("order confirm email failed",e&&e.message); } }
+        // Email→revenue attribution: credit this order to a recent email touch, if any.
+        // A campaign CLICK for the line in the last 7d wins (strongest signal); otherwise
+        // any automated marketing SEND to the dealer in the last 14d. Runs BEFORE the intent
+        // reset below so a same-session campaign click is still visible. Best-effort.
+        try{
+          const now=Date.now();
+          const clickCut=new Date(now-7*864e5).toISOString(), sendCut=new Date(now-14*864e5).toISOString();
+          const sends=await sb("GET",`email_sends?dealer_id=eq.${encodeURIComponent(who.dealer_id)}&sent_at=gte.${encodeURIComponent(sendCut)}&select=template,sent_at&order=sent_at.desc&limit=1`).catch(()=>[]);
+          const lastSend=sends&&sends[0];
+          for(const su of summaries){
+            const amt=num(su.subtotal); if(!su.slug||!su.order_id||amt<=0) continue;
+            let kind=null,ref=null,touch=null;
+            const clk=await sb("GET",`intent_events?dealer_id=eq.${encodeURIComponent(who.dealer_id)}&manufacturer=eq.${encodeURIComponent(su.slug)}&event_type=eq.email_click&source=eq.campaign&occurred_at=gte.${encodeURIComponent(clickCut)}&select=occurred_at,meta&order=occurred_at.desc&limit=1`).catch(()=>[]);
+            if(clk&&clk[0]){ kind="campaign"; ref=(clk[0].meta&&clk[0].meta.campaign_id)||null; touch=clk[0].occurred_at; }
+            else if(lastSend){ kind="automation"; ref=lastSend.template||null; touch=lastSend.sent_at; }
+            if(kind){ try{ await sb("POST","email_attribution?on_conflict=order_id,manufacturer",
+              {dealer_id:who.dealer_id,order_id:su.order_id,manufacturer:su.slug,amount:Math.round(amt*100)/100,kind,ref,touch_at:touch,env},
+              {Prefer:"resolution=merge-duplicates,return=minimal"}); }catch(e){} }
+          }
+        }catch(e){}
         // Order placed = conversion. Clear the browsing intent for the lines just ordered
         // so we never email a dealer about what they just bought online. (The monthly
         // commission upload can't see a same-day online order, so this IS the real reset.)

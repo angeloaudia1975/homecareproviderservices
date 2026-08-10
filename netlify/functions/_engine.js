@@ -24,6 +24,7 @@ const P=require("./_platform.js");
 
 // ---- Config -----------------------------------------------------------------
 const DEFAULTS={engine_enabled:true,email_enabled:false,cap_per_7d:2,min_gap_hours:48,
+  intent_suppress_marketing:true,   // pause broad marketing to high/opportunity-intent dealers (route to a rep instead)
   dormant_months:3,overdue_mult:0.5,overdue_min_gap_months:1,quiet_weekends:true,
   business_hours:[7,19],timezone:"America/New_York",
   windows:{primary:[9,10],behavior:[12,13],remaining:[15,16]},
@@ -171,8 +172,16 @@ async function enqueueEmails(sig,cfg){
   const cut=new Date(Date.now()-7*864e5).toISOString();
   const sentRows=await sbGet(`email_sends?sent_at=gte.${cut}&select=dealer_id,template`).catch(()=>[]);
   const sentRecent=new Set((sentRows||[]).map(r=>r.dealer_id+"|"+r.template));
-  const insert=[]; let considered=0,skipped=0;
+  // Intent overrides pressure: a dealer at High Intent or Sales-Opportunity tier is
+  // handled by a rep (a "call dealer" task), so we PAUSE broad automated marketing to
+  // them — selling pressure converts to human attention exactly when it matters most.
+  let intentHot=new Set();
+  if(cfg.intent_suppress_marketing!==false){
+    try{ const hi=await sbGet("dealer_intent?tier=in.(high,opportunity)&select=dealer_id"); intentHot=new Set((hi||[]).map(r=>r.dealer_id)); }catch(e){}
+  }
+  const insert=[]; let considered=0,skipped=0,intentPaused=0;
   for(const [id,d] of s.dealers){
+    if(intentHot.has(id)){ intentPaused++; continue; }   // hot on intent → rep call, not a blast
     // one best signal→email per dealer per run, highest priority first
     const emailSignals=d.signals.filter(g=>g.template && cfg.templates_enabled[g.template]);
     if(!emailSignals.length) continue;
@@ -193,7 +202,7 @@ async function enqueueEmails(sig,cfg){
   }
   let queued=0;
   for(const row of insert){ try{ await sbSend("POST","email_queue",row,{Prefer:"return=minimal"}); queued++; }catch(e){/* unique index race -> already queued */} }
-  return {considered,queued,skipped};
+  return {considered,queued,skipped,intent_paused:intentPaused};
 }
 
 // ---- Email templates --------------------------------------------------------

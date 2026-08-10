@@ -81,13 +81,29 @@ exports.handler=async(event)=>{
 
     // ---- metrics ----
     const cut7=new Date(Date.now()-7*864e5).toISOString();
+    const cut30=new Date(Date.now()-30*864e5).toISOString();
     const taskFilt = meRep ? `&assigned_rep=eq.${encodeURIComponent(meRep)}` : "";
     const oppFilt  = meRep ? `&owner_rep=eq.${encodeURIComponent(meRep)}` : "";
-    const [tasks,sends,opps]=await Promise.all([
+    const [tasks,sends,opps,attr,cfgRow]=await Promise.all([
       sbGet(`dealer_tasks?status=eq.open&select=id${taskFilt}`).catch(()=>[]),
       sbGet(`email_sends?sent_at=gte.${cut7}&select=dealer_id`).catch(()=>[]),
       sbGet(`opportunities?status=eq.open&select=value${oppFilt}`).catch(()=>[]),
+      sbGet(`email_attribution?env=eq.live&created_at=gte.${cut30}&select=amount,kind,manufacturer&limit=5000`).catch(()=>[]),
+      sbGet(`app_settings?key=eq.automation_config&select=value`).catch(()=>[]),
     ]);
+    // Marketing-pressure indicator (§6): marketing sends per dealer this rolling week.
+    // email_sends only holds automated/marketing sends (order confirmations bypass the
+    // queue), so a straight count is the pressure. PAUSED = at/over the weekly cap.
+    const CAP = Number(cfgRow&&cfgRow[0]&&cfgRow[0].value&&cfgRow[0].value.cap_per_7d) || 2;
+    const sendCount={}; for(const s of (sends||[])) sendCount[s.dealer_id]=(sendCount[s.dealer_id]||0)+1;
+    const pressureOf = n => n>=CAP ? "PAUSED" : (n>=2 ? "HIGH" : (n===1 ? "NORMAL" : "LOW"));
+    opportunities.forEach(o=>{ o.pressure = pressureOf(sendCount[o.dealer_id]||0); });
+    let pausedDealers=0, highPressure=0; for(const id in sendCount){ const n=sendCount[id]; if(n>=CAP) pausedDealers++; else if(n>=2) highPressure++; }
+    // Revenue attributed to email in the last 30 days (overall, by source, by line).
+    const emailRevByMfr={}; let emailRev=0, emailRevCampaign=0, emailRevAuto=0;
+    for(const a of (attr||[])){ const v=Number(a.amount)||0; emailRev+=v;
+      if(a.kind==="campaign") emailRevCampaign+=v; else emailRevAuto+=v;
+      if(a.manufacturer) emailRevByMfr[a.manufacturer]=(emailRevByMfr[a.manufacturer]||0)+v; }
     const metrics={
       hot: Object.values(intentById).filter(it=>it.tier==="opportunity"&&inScope(it.dealer_id)).length,
       interested: Object.values(intentById).filter(it=>it.tier==="high"&&inScope(it.dealer_id)).length,
@@ -99,6 +115,13 @@ exports.handler=async(event)=>{
       dealers_emailed_7d: new Set((sends||[]).map(s=>s.dealer_id)).size,
       opps_open: (opps||[]).length,
       opps_value: Math.round((opps||[]).reduce((n,o)=>n+(Number(o.value)||0),0)),
+      email_revenue_30d: Math.round(emailRev),
+      email_revenue_campaign_30d: Math.round(emailRevCampaign),
+      email_revenue_automation_30d: Math.round(emailRevAuto),
+      email_revenue_by_mfr_30d: Object.fromEntries(Object.entries(emailRevByMfr).map(([k,v])=>[k,Math.round(v)])),
+      paused_dealers: pausedDealers,
+      high_pressure_dealers: highPressure,
+      weekly_cap: CAP,
     };
     return json(200,{ok:true,role:me.role,opportunities,metrics});
   }catch(e){ return json(500,{error:String(e&&e.message||e)}); }

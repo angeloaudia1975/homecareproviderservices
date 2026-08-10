@@ -14,6 +14,7 @@
 //   All require a staff Bearer token.
 const SUPABASE_URL=process.env.SUPABASE_URL, SERVICE_ROLE=process.env.SUPABASE_SERVICE_ROLE;
 const ORDERING=process.env.ORDERING_BASE||"https://hcpsonlineordering.netlify.app";
+const SITE=process.env.SITE_BASE||"https://homecareproviderservices.netlify.app";
 const CAMPAIGN_FROM=process.env.ZOHO_CAMPAIGN_FROM||process.env.HCPS_MAIL_FROM||"info@homecareproviderservices.us";
 const json=(c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H=()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
@@ -107,10 +108,49 @@ function subjectsFor(goal,line,offer){
   };
   return map[goal]||[`An update from HomeCare Provider Services`,`Something worth a look — ${L}`,`${L} at HCPS`];
 }
-function buildContent(brief,line,products){
+// Optional AI copywriter. When a provider key is configured, generates the subject
+// lines, preheader, and intro paragraph from the brief + catalog; otherwise (or on any
+// error) buildContent falls back to the deterministic templated copy. The HTML shell —
+// greeting, {{tokens}}, product grid, tracked CTA — stays deterministic so personalization
+// and click tracking are never at the mercy of the model.
+const AI_KEY=process.env.ANTHROPIC_API_KEY||"";
+const AI_MODEL=process.env.HCPS_AI_MODEL||"claude-3-5-sonnet-latest";
+function aiAvailable(){ return !!AI_KEY; }
+async function aiCopy(brief,line,products){
+  if(!AI_KEY) return null;
   const goal=brief.goal||"manufacturer_intro"; const offer=(brief.offer||"").trim();
-  const subjects=subjectsFor(goal,line,offer);
-  const preheader = offer? offer : (line?`${line} — available now at your HCPS pricing`:"An update from your HCPS team");
+  const prod=(products||[]).map(p=>p.name).filter(Boolean).slice(0,4).join(", ");
+  const prompt=`You are writing a short, warm B2B email for HomeCare Provider Services (HCPS), a rep group that sells home-medical-equipment lines to durable-medical-equipment dealers. Write copy for this campaign.
+Goal: ${goal}
+Manufacturer line: ${line||"(none specified)"}
+Offer (optional): ${offer||"(none)"}
+Featured products: ${prod||"(none)"}
+Audience: existing/prospective HCPS dealers (businesses, not consumers).
+Return ONLY a JSON object with exactly these keys:
+  "subjects": array of 3 subject lines, each <= 55 characters, no emojis
+  "preheader": one line <= 90 characters
+  "intro_html": 1–2 short paragraphs of plain HTML (<p>…</p>), professional and benefit-focused, NO links, NO greeting, NO signature. You MAY use the literal placeholder {{company}} where the dealer's business name should appear.
+Do not include markdown or any text outside the JSON.`;
+  try{
+    const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
+      headers:{"x-api-key":AI_KEY,"anthropic-version":"2023-06-01","content-type":"application/json"},
+      body:JSON.stringify({model:AI_MODEL,max_tokens:700,messages:[{role:"user",content:prompt}]})});
+    if(!r.ok) return null;
+    const j=await r.json().catch(()=>null);
+    let text=(j&&j.content&&j.content[0]&&j.content[0].text)||"";
+    const s=text.indexOf("{"), e=text.lastIndexOf("}"); if(s<0||e<0) return null;
+    const obj=JSON.parse(text.slice(s,e+1));
+    const subjects=Array.isArray(obj.subjects)?obj.subjects.filter(x=>typeof x==="string"&&x.trim()).slice(0,5):[];
+    if(!subjects.length) return null;
+    let intro=String(obj.intro_html||"").trim();
+    if(intro && !/^</.test(intro)) intro=`<p>${esc(intro)}</p>`;      // wrap plain text defensively
+    return {subjects, preheader:String(obj.preheader||"").trim()||null, intro_html:intro||null};
+  }catch(e){ return null; }
+}
+function buildContent(brief,line,products,ai){
+  const goal=brief.goal||"manufacturer_intro"; const offer=(brief.offer||"").trim();
+  const subjects=(ai&&ai.subjects&&ai.subjects.length)?ai.subjects:subjectsFor(goal,line,offer);
+  const preheader = (ai&&ai.preheader) || (offer? offer : (line?`${line} — available now at your HCPS pricing`:"An update from your HCPS team"));
   const prodGrid = (products&&products.length)
     ? `<table role="presentation" width="100%" style="border-collapse:collapse;margin:12px 0"><tr>${products.slice(0,3).map(p=>`<td valign="top" style="width:33%;padding:5px;text-align:center">${p.image?`<img src="${esc(p.image)}" alt="${esc(p.name)}" width="130" style="max-width:130px;height:auto;border-radius:8px;border:1px solid #eef1f4" onerror="this.style.display='none'">`:`<div style="height:90px;background:#f4f7fb;border-radius:8px"></div>`}<div style="font-size:12px;color:#374151;margin-top:5px;line-height:1.3">${esc(p.name)}${p.code?`<br><span style="color:#9aa4ae">${esc(p.code)}</span>`:""}</div></td>`).join("")}</tr></table>`
     : "";
@@ -125,11 +165,16 @@ function buildContent(brief,line,products){
     acquisition:`HomeCare Provider Services represents leading home-medical-equipment manufacturers with dealer pricing, easy online ordering, and hands-on support — a strong fit for {{company}}.`,
     cross_sell:`{{company}} already does well with your current lines — ${esc(line||"this one")} is a natural add that your customers are asking for.`,
   };
-  const cta = {label: goal==="acquisition"?"Become a dealer":(line?`Explore ${line}`:"Browse your portal"), url:`${ORDERING}${brief.manufacturer?`/?line=${encodeURIComponent(brief.manufacturer)}`:""}`};
+  // Tracked, dealer-tagged CTA: routes through the click tracker so a click lands in
+  // intent_events (email_click) for that dealer, then redirects to the portal. {{dealer_id}}
+  // is merged per-recipient by Zoho; {{campaign_id}} is stamped server-side after save.
+  const dest=`${ORDERING}${brief.manufacturer?`/?line=${encodeURIComponent(brief.manufacturer)}`:""}`;
+  const trackedUrl=`${SITE}/.netlify/functions/click?d={{dealer_id}}&c={{campaign_id}}${brief.manufacturer?`&m=${encodeURIComponent(brief.manufacturer)}`:""}&u=${encodeURIComponent(dest)}`;
+  const cta = {label: goal==="acquisition"?"Become a dealer":(line?`Explore ${line}`:"Browse your portal"), url:trackedUrl};
   const body_html=`<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:560px">
     <h2 style="color:#2B4071;margin:0 0 6px">${esc(subjects[0])}</h2>
     <p style="font-size:13.5px;line-height:1.6;color:#374151;margin:0 0 4px">Hi {{first_name}},</p>
-    <p style="font-size:13.5px;line-height:1.6;color:#374151;margin:0 0 10px">${intros[goal]||intros.manufacturer_intro}</p>
+    ${(ai&&ai.intro_html)? ai.intro_html.replace(/<p(\s|>)/gi,'<p style="font-size:13.5px;line-height:1.6;color:#374151;margin:0 0 10px"$1') : `<p style="font-size:13.5px;line-height:1.6;color:#374151;margin:0 0 10px">${intros[goal]||intros.manufacturer_intro}</p>`}
     ${prodGrid}
     <p style="margin:14px 0 12px"><a href="${cta.url}" style="display:inline-block;background:#F5821F;color:#fff;text-decoration:none;font-weight:700;padding:11px 18px;border-radius:8px;font-size:14px">${esc(cta.label)} &rarr;</a></p>
     <p style="font-size:12.5px;line-height:1.6;color:#6b7280;margin:14px 0 0">Questions, or want pricing on something specific? Just reply — your HCPS rep is glad to help.</p>
@@ -185,7 +230,7 @@ exports.handler=async(event)=>{
     let b; try{b=JSON.parse(event.body||"{}");}catch{b={};}
     const act=b.action||"list";
 
-    if(act==="zoho_status"){ return json(200,{ok:true,creds_set:hasCreds(),ready:await ZC.ready(),scopes:ZC.SCOPES,from:CAMPAIGN_FROM}); }
+    if(act==="zoho_status"){ return json(200,{ok:true,creds_set:hasCreds(),ready:await ZC.ready(),scopes:ZC.SCOPES,from:CAMPAIGN_FROM,ai_available:aiAvailable()}); }
 
     // Exchange a Zoho Campaigns Self-Client code for a refresh token, stored under
     // app_settings 'zoho_campaigns_auth' (separate from the CRM's 'zoho_auth').
@@ -230,7 +275,10 @@ exports.handler=async(event)=>{
       const mfrSlug=String(brief.manufacturer||"").trim()||null;
       const line=mfrSlug?((mfrs.find(m=>m.slug===mfrSlug)||{}).name||mfrSlug):"";
       const products=await topProducts(mfrSlug);
-      const generated=buildContent(brief,line,products);
+      let ai=null;
+      if(aiAvailable() && brief.use_ai!==false){ try{ ai=await aiCopy(brief,line,products); }catch(e){ ai=null; } }
+      const generated=buildContent(brief,line,products,ai);
+      generated.ai_used=!!ai;
       const st=await P.getState();
 
       let segment, audienceBlock, name;
@@ -257,7 +305,13 @@ exports.handler=async(event)=>{
         status:"draft", env:P.envFor(st.mode,false), created_by:me.name||me.email,
         updated_at:new Date().toISOString(),
       };
-      const ins=await sbSend("POST","marketing_campaigns",row,{Prefer:"return=representation"});
+      let ins=await sbSend("POST","marketing_campaigns",row,{Prefer:"return=representation"});
+      // Stamp the real campaign id into the tracked CTA links now that we have it.
+      const cid=ins&&ins[0]&&ins[0].id;
+      if(cid && ins[0].generated && typeof ins[0].generated.body_html==="string" && ins[0].generated.body_html.includes("{{campaign_id}}")){
+        const g2=ins[0].generated; g2.body_html=g2.body_html.split("{{campaign_id}}").join(encodeURIComponent(cid));
+        try{ await sbSend("PATCH",`marketing_campaigns?id=eq.${encodeURIComponent(cid)}`,{generated:g2},{Prefer:"return=minimal"}); ins[0].generated=g2; }catch(e){}
+      }
       return json(200,{ok:true,campaign:ins&&ins[0]});
     }
 

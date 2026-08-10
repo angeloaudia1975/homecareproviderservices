@@ -96,6 +96,7 @@ function renderBuilder(){
       </div>
       <div class="fld" id="mfrWrap"><label>Manufacturer / line</label><select id="c_mfr">${mfrOpts}</select></div>
       <div class="fld"><label>Offer / message <span class="hint2">(optional)</span></label><input id="c_offer" placeholder="e.g. intro pricing through Q3"></div>
+      ${STATUS&&STATUS.ai_available?`<div class="fld"><label style="display:flex;align-items:center;gap:7px;text-transform:none;font-weight:600;color:var(--navy)"><input type="checkbox" id="c_ai" checked style="width:auto"> Write copy with AI <span class="hint2">(falls back to templates if it can't)</span></label></div>`:""}
       <div id="narrowWrap" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div class="fld"><label>Narrow by state <span class="hint2">(optional)</span></label><select id="c_state"><option value="">— all states —</option>${STATES.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("")}</select></div>
         <div class="fld"><label>Narrow by rep <span class="hint2">(optional)</span></label><select id="c_rep"><option value="">— all reps —</option>${REPS.map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join("")}</select></div>
@@ -145,7 +146,8 @@ async function generate(){
   const brief={ name:(($("#c_name")||{}).value||"").trim(), goal:($("#c_goal")||{}).value, segment:($("#c_seg")||{}).value,
     audience_id:audId()||"",
     manufacturer:($("#c_mfr")||{}).value||"", offer:(($("#c_offer")||{}).value||"").trim(),
-    state:($("#c_state")||{}).value||"", rep:($("#c_rep")||{}).value||"" };
+    state:($("#c_state")||{}).value||"", rep:($("#c_rep")||{}).value||"",
+    use_ai: $("#c_ai")? !!$("#c_ai").checked : undefined };
   const m=$("#genMsg"), btn=$("#genBtn"); if(btn)btn.disabled=true; if(m)m.textContent="Building audience & copy…";
   const r=await api({action:"generate",brief});
   if(btn)btn.disabled=false;
@@ -163,7 +165,7 @@ function renderReview(){
     ? `Audience: <b>${num(bd.send||a.count||0)}</b> will send · ${num(bd.companies||0)} companies · ${num(bd.contacts||0)} contacts${a.audience_name?` · “${esc(a.audience_name)}”`:""}${bd.unsubscribed?` · ${num(bd.unsubscribed)} unsubscribed`:""}${bd.invalid?` · ${num(bd.invalid)} invalid`:""}`
     : `Audience: <b>${num(a.count||0)}</b> dealers with email · segment: ${esc(CUR.segment||"")}${CUR.manufacturer?` · ${esc(CUR.manufacturer)}`:""}`;
   $("#review").innerHTML=`<div class="card" style="margin-top:16px">
-    <h2>${esc(CUR.name||"Campaign")} <span class="bdg ${pushed?"pushed":"draft"}">${pushed?"pushed to Zoho":"draft"}</span></h2>
+    <h2>${esc(CUR.name||"Campaign")} <span class="bdg ${pushed?"pushed":"draft"}">${pushed?"pushed to Zoho":"draft"}</span>${(g.ai_used)?` <span class="bdg" style="background:#efe9fb;color:#6b4bb4">✦ AI-written</span>`:""}</h2>
     <div class="hint2" style="margin:-4px 0 12px">${audLine}</div>
     <div class="grid2">
       <div>

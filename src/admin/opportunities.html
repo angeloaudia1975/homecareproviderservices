@@ -2,7 +2,7 @@
 <title>HCPS Admin — Today's Sales Opportunities</title>
 <link rel="stylesheet" href="/admin/admin-shell.css">
 <style>
- .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:0 0 16px}
+ .kpis{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin:0 0 16px}
  @media(max-width:900px){.kpis{grid-template-columns:repeat(3,1fr)}}
  @media(max-width:520px){.kpis{grid-template-columns:repeat(2,1fr)}}
  .kpi2{background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px 13px}
@@ -17,6 +17,8 @@
  .b-HOT{background:#fdecec;color:#b42323}.b-INTEREST{background:#fdf4e6;color:#b8791b}.b-REORDER{background:#e7f1f9;color:#1568a6}
  .b-RISK{background:#efeafb;color:#6b4bb4}.b-CROSS{background:#e7f4ee;color:#1f8f5f}.b-DORMANT{background:#eef1f4;color:#5c6b7a}
  .dn{font-weight:700;color:var(--navy)}.rep{font-size:11px;color:var(--gray)}
+ .pch{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.4px;padding:2px 6px;border-radius:5px;margin-left:6px;vertical-align:middle}
+ .pch.PAUSED{background:#fdecec;color:#b42323}.pch.HIGH{background:#fdf4e6;color:#b8791b}
  .ev{color:#41576b}.act{font-weight:700;color:var(--navy);white-space:nowrap}
  .aq{display:inline-flex;gap:6px}.aq a{font-size:11px;text-decoration:none;color:#1568a6}
 </style>
@@ -61,11 +63,13 @@ function kpi(l,v){ return `<div class="kpi2"><div class="l">${l}</div><div class
 function render(){
   const m=DATA.metrics||{}, ops=DATA.opportunities||[];
   const tiles=kpi("Hot (call now)",num(m.hot))+kpi("Interested",num(m.interested))+kpi("Reorder due",num(m.reorder_due))
-    +kpi("Cross-sell",num(m.cross_sell))+kpi("Open tasks",num(m.open_tasks))+kpi("Open pipeline",usd(m.opps_value));
-  const secondary=`<div class="hint" style="margin:-6px 0 14px">Dormant: <b>${num(m.dormant)}</b> · Emails sent (7d): <b>${num(m.emails_7d)}</b> to <b>${num(m.dealers_emailed_7d)}</b> dealers · Open opportunities: <b>${num(m.opps_open)}</b></div>`;
+    +kpi("Cross-sell",num(m.cross_sell))+kpi("Open tasks",num(m.open_tasks))+kpi("Open pipeline",usd(m.opps_value))
+    +kpi("Email rev (30d)",usd(m.email_revenue_30d));
+  const er=(m.email_revenue_30d||0), erc=(m.email_revenue_campaign_30d||0), era=(m.email_revenue_automation_30d||0);
+  const secondary=`<div class="hint" style="margin:-6px 0 14px">Dormant: <b>${num(m.dormant)}</b> · Emails sent (7d): <b>${num(m.emails_7d)}</b> to <b>${num(m.dealers_emailed_7d)}</b> dealers · Open opportunities: <b>${num(m.opps_open)}</b>${er?` · Email-attributed revenue (30d): <b>${usd(er)}</b> <span style="color:var(--gray)">(campaign ${usd(erc)} · automation ${usd(era)})</span>`:""}${m.paused_dealers?` · <b>${num(m.paused_dealers)}</b> dealer${m.paused_dealers===1?"":"s"} at the weekly email cap (paused)`:""}</div>`;
   const rows = ops.length ? ops.map(o=>`<tr>
       <td><span class="bdg ${BCLASS[o.badge]||"b-DORMANT"}">${esc(o.badge)}</span></td>
-      <td><a class="dn" href="/admin/dealer.html?id=${encodeURIComponent(o.dealer_id)}" style="text-decoration:none">${esc(o.name)}</a>${o.rep?`<div class="rep">${esc(o.rep)}</div>`:""}</td>
+      <td><a class="dn" href="/admin/dealer.html?id=${encodeURIComponent(o.dealer_id)}" style="text-decoration:none">${esc(o.name)}</a>${(o.pressure==="PAUSED"||o.pressure==="HIGH")?`<span class="pch ${o.pressure}" title="Marketing pressure this week — ${o.pressure==="PAUSED"?"at the weekly email cap; don't add more email, call instead":"already 2 emails this week"}">${o.pressure==="PAUSED"?"✋ PAUSED":"HIGH"}</span>`:""}${o.rep?`<div class="rep">${esc(o.rep)}</div>`:""}</td>
       <td class="ev">${esc(o.evidence)}</td>
       <td class="act">${esc(o.action)}</td>
       <td><span class="aq"><a href="/admin/dealer.html?id=${encodeURIComponent(o.dealer_id)}">Open&nbsp;360→</a></span></td>

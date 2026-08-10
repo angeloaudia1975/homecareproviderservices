@@ -30,7 +30,7 @@ const SCOPES=["ZohoCampaigns.campaign.ALL","ZohoCampaigns.contact.ALL"];   // re
 // own name and dealership. Adjust the right-hand side if a list uses different
 // field labels — Zoho derives the tag from the list column name (spaces→no spaces,
 // upper-cased): "First Name" -> $[FIRSTNAME]$, a "Company" column -> $[COMPANY]$.
-const MERGE={ "{{first_name}}":"$[FIRSTNAME]$", "{{company}}":"$[COMPANY]$" };
+const MERGE={ "{{first_name}}":"$[FIRSTNAME]$", "{{company}}":"$[COMPANY]$", "{{dealer_id}}":"$[DEALERREF]$" };
 function toMergeTags(html){ let s=String(html||""); for(const k in MERGE) s=s.split(k).join(MERGE[k]); return s; }
 function firstName(name){ const w=String(name||"").trim().split(/\s+/)[0]||""; return /@/.test(w)?"":w; }
 
@@ -75,7 +75,8 @@ async function createListWithContacts(token,listName,contacts){
   const info=JSON.stringify((contacts||[]).slice(0,5000).map(c=>({
     "Contact Email":c.email,
     "First Name":firstName(c.name)||"there",
-    "Company":c.company||"your dealership"
+    "Company":c.company||"your dealership",
+    "Dealer Ref":c.dealer_id||""     // merged into tracked CTA links ($[DEALERREF]$) for per-dealer click→intent
   })));
   const res=await zpost("/addlistandcontacts",token,{
     resfmt:"JSON", listname:listName, signupform:"public", mode:"newlist", emailyn:"false", contactinfo:info
@@ -101,7 +102,7 @@ async function getReport(token,campaignKey){
 async function pushCampaign(campaign,fromEmail){
   const at=await accessToken(); if(!at.ok) return at;
   const token=at.access_token;
-  const contacts=((campaign.audience&&campaign.audience.sample)||[]).map(s=>({email:s.email,name:s.name,company:s.company}));
+  const contacts=((campaign.audience&&campaign.audience.sample)||[]).map(s=>({email:s.email,name:s.name,company:s.company,dealer_id:s.dealer_id}));
   let listKey=campaign.zoho_list_key||null;
   if(!listKey && contacts.length){
     const lr=await createListWithContacts(token,`HCPS · ${campaign.name||"Campaign"}`.slice(0,60),contacts);
