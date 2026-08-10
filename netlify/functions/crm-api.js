@@ -158,6 +158,49 @@ exports.handler = async (event)=>{
       return json(200,{ok:true,note:(ins&&ins[0])||row});
     }
 
+    // ---- Contacts + manufacturer account numbers (managed right from Dealer 360) ----
+    // dealer_contacts is keyed by (dealer_id, email); "primary" is the dealers.email convention.
+    if(b.action==="contacts"){
+      if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+      const did=encodeURIComponent(b.dealer_id);
+      const [contacts,dealer,lines,mfrs]=await Promise.all([
+        sbGet(`dealer_contacts?dealer_id=eq.${did}&select=email,name,title,role,phone,cell&order=name`).catch(()=>[]),
+        sbGet(`dealers?id=eq.${did}&select=email,contact_name,phone`).catch(()=>[]),
+        sbGet(`dealer_manufacturers?dealer_id=eq.${did}&select=manufacturer,account_ref,active`).catch(()=>[]),
+        sbGet("manufacturers?select=slug,name").catch(()=>[]),
+      ]);
+      const mfrName={}; (mfrs||[]).forEach(m=>mfrName[m.slug]=m.name||m.slug);
+      const accounts=(lines||[]).map(l=>({slug:l.manufacturer,name:mfrName[l.manufacturer]||l.manufacturer,account_ref:l.account_ref||"",active:l.active!==false}))
+        .sort((a,b)=>a.name.localeCompare(b.name));
+      return json(200,{ok:true,contacts:contacts||[],primary_email:String((dealer&&dealer[0]&&dealer[0].email)||"").toLowerCase(),accounts});
+    }
+    if(b.action==="save_contact"){
+      const email=String(b.email||"").trim().toLowerCase();
+      if(!b.dealer_id||!EMAIL_RE.test(email)) return json(400,{error:"dealer_id + a valid email are required"});
+      const old=String(b.old_email||"").trim().toLowerCase();
+      if(old && old!==email){ try{ await sbSend("DELETE",`dealer_contacts?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&email=eq.${encodeURIComponent(old)}`,null,{Prefer:"return=minimal"}); }catch(e){} }
+      const row={dealer_id:b.dealer_id,email,name:clean(b.name,160),title:clean(b.title,120),role:clean(b.role,120),phone:clean(b.phone,60),cell:clean(b.cell,60)};
+      await sbSend("POST","dealer_contacts?on_conflict=dealer_id,email",row,{Prefer:"resolution=merge-duplicates,return=minimal"});
+      return json(200,{ok:true});
+    }
+    if(b.action==="delete_contact"){
+      if(!b.dealer_id||!b.email) return json(400,{error:"dealer_id + email required"});
+      await sbSend("DELETE",`dealer_contacts?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&email=eq.${encodeURIComponent(String(b.email).toLowerCase())}`,null,{Prefer:"return=minimal"});
+      return json(200,{ok:true});
+    }
+    if(b.action==="set_primary_contact"){
+      const email=String(b.email||"").trim().toLowerCase();
+      if(!b.dealer_id||!EMAIL_RE.test(email)) return json(400,{error:"valid email required"});
+      const patch={email}; const nm=clean(b.name,160), ph=clean(b.phone,60); if(nm)patch.contact_name=nm; if(ph)patch.phone=ph;
+      await sbSend("PATCH",`dealers?id=eq.${encodeURIComponent(b.dealer_id)}`,patch,{Prefer:"return=minimal"});
+      return json(200,{ok:true});
+    }
+    if(b.action==="save_account_ref"){
+      if(!b.dealer_id||!b.manufacturer) return json(400,{error:"dealer_id + manufacturer required"});
+      await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",{dealer_id:b.dealer_id,manufacturer:String(b.manufacturer),account_ref:clean(b.account_ref,60)},{Prefer:"resolution=merge-duplicates,return=minimal"});
+      return json(200,{ok:true});
+    }
+
     // Log a real touch — call / visit / email / meeting / note — into the timeline,
     // optionally creating a follow-up task in the same step.
     if(b.action==="log_activity"){

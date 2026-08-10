@@ -159,14 +159,8 @@ function render(D,A){
     <div style="margin-top:12px">${sparkline(byMonth,latest)}</div>
   </div>`;
 
-  // contacts
-  const contacts=(d.contacts||[]);
-  const crows=contacts.map(c=>`<tr><td class="lbl">${esc(c.name||"—")}</td>
-    <td>${esc([c.title,c.role].filter(Boolean).join(" · "))}</td>
-    <td>${c.email?`<a class="link" href="mailto:${esc(c.email)}">${esc(c.email)}</a>`:""}</td>
-    <td class="num">${esc(c.phone||c.cell||"")}</td></tr>`).join("");
-  const contactsCard=`<div class="card"><h2>Contacts <span style="float:right;font-size:11px;color:var(--gray);font-weight:600">${contacts.length}</span></h2>
-    ${contacts.length?`<table><thead><tr><th>Name</th><th>Title / role</th><th>Email</th><th class="num">Phone</th></tr></thead><tbody>${crows}</tbody></table>`:`<div class="hint">No contacts on file.</div>`}</div>`;
+  // contacts + account numbers — managed live via crm-api (loadContacts)
+  const contactsCard=`<div class="card"><h2>Contacts &amp; account numbers</h2><div id="contacts"><div class="hint">Loading…</div></div></div>`;
 
   // ---- right column ----
   const sig=[];
@@ -194,8 +188,50 @@ function render(D,A){
       <div>${intelCard}${history}${contactsCard}</div>
       <div>${signals}${addrCard}${notes}</div>
     </div>`;
-  CUR=d.id; loadCRM(); loadIntel();
+  CUR=d.id; loadCRM(); loadIntel(); loadContacts();
 }
+// ---- Contacts & account-number management ----
+let CDATA=null, CEDIT=null;
+async function loadContacts(){ const el=$("#contacts"); if(!el||!CUR) return;
+  const j=await crm({action:"contacts",dealer_id:CUR}); CDATA=(j&&j.ok)?j:{contacts:[],primary_email:"",accounts:[]}; renderContacts(); }
+function contactForm(c){ c=c||{}; const editing=!!c.email;
+  return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px;background:#fafbfc;margin-bottom:10px">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:800;margin-bottom:6px">${editing?"Edit contact":"Add contact"}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+      <input id="c_name" placeholder="Name" value="${esc(c.name||"")}">
+      <input id="c_email" placeholder="Email *" value="${esc(c.email||"")}">
+      <input id="c_title" placeholder="Title" value="${esc(c.title||"")}">
+      <input id="c_role" placeholder="Role" value="${esc(c.role||"")}">
+      <input id="c_phone" placeholder="Office phone" value="${esc(c.phone||"")}">
+      <input id="c_cell" placeholder="Mobile" value="${esc(c.cell||"")}">
+    </div>
+    <input type="hidden" id="c_old" value="${esc(c.email||"")}">
+    <div style="margin-top:6px;display:flex;gap:6px"><button class="btn sm orange" onclick="saveContact()">${editing?"Save changes":"Add contact"}</button>${editing?`<button class="btn sm" onclick="CEDIT=null;renderContacts()">Cancel</button>`:""}</div>
+  </div>`; }
+function renderContacts(){ const el=$("#contacts"); if(!el||!CDATA) return;
+  const prim=CDATA.primary_email||""; const cs=CDATA.contacts||[];
+  const rows=cs.map(c=>{ const isP=c.email&&c.email.toLowerCase()===prim; const je=esc(String(c.email||"").replace(/'/g,""));
+    return `<div style="padding:7px 0;border-bottom:1px solid #eef2f6"><div style="display:flex;align-items:center;gap:8px">
+      <div style="flex:1;min-width:0"><b>${esc(c.name||"—")}</b>${isP?' <span style="font-size:10px;font-weight:800;color:#b45309;background:#fdeee0;border-radius:6px;padding:1px 6px">★ primary</span>':""}
+        <div class="hint" style="margin:0">${esc([c.title,c.role].filter(Boolean).join(" · "))}</div>
+        <div class="hint" style="margin:0">${c.email?"✉ "+esc(c.email):""}${c.phone?" · ☎ "+esc(c.phone):""}${c.cell?" · 📱 "+esc(c.cell):""}</div></div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">${isP?"":`<button class="btn sm" title="Make primary" onclick="makePrimary('${je}','${esc(String(c.name||'').replace(/'/g,''))}','${esc(String(c.phone||'').replace(/'/g,''))}')">★</button>`}
+        <button class="btn sm" onclick="editContact('${je}')">Edit</button>
+        <button class="btn sm" style="color:var(--red)" onclick="delContact('${je}')">✕</button></div>
+    </div></div>`; }).join("")||'<div class="hint">No contacts yet — add one below.</div>';
+  const editing = CEDIT!=null ? cs.find(c=>c.email===CEDIT) : null;
+  const accts=CDATA.accounts||[];
+  const acctBlock = accts.length ? `<div style="margin-top:12px"><div class="ihd">Manufacturer account numbers</div>
+    ${accts.map(a=>`<div style="display:flex;align-items:center;gap:6px;margin:4px 0"><span style="flex:1;font-size:13px">${esc(a.name)}${a.active?"":' <span class="hint">(inactive)</span>'}</span>
+       <input id="acct_${esc(a.slug)}" value="${esc(a.account_ref||"")}" placeholder="account #" style="width:130px"><button class="btn sm" onclick="saveAcct('${esc(a.slug)}')">Save</button></div>`).join("")}</div>` : "";
+  el.innerHTML = `${rows}${editing?contactForm(editing):contactForm(null)}${acctBlock}`;
+}
+async function saveContact(){ const email=(($("#c_email")||{}).value||"").trim(); if(!email){ alert("Email is required for a contact."); return; }
+  await crm({action:"save_contact",dealer_id:CUR,old_email:($("#c_old")||{}).value||"",email,name:($("#c_name")||{}).value||"",title:($("#c_title")||{}).value||"",role:($("#c_role")||{}).value||"",phone:($("#c_phone")||{}).value||"",cell:($("#c_cell")||{}).value||""}); CEDIT=null; loadContacts(); }
+function editContact(email){ CEDIT=email; renderContacts(); const f=$("#c_name"); if(f)f.focus(); }
+async function delContact(email){ if(!confirm("Remove contact "+email+"?")) return; await crm({action:"delete_contact",dealer_id:CUR,email}); loadContacts(); }
+async function makePrimary(email,name,phone){ await crm({action:"set_primary_contact",dealer_id:CUR,email,name,phone}); loadContacts(); }
+async function saveAcct(slug){ const v=(($("#acct_"+slug)||{}).value||"").trim(); await crm({action:"save_account_ref",dealer_id:CUR,manufacturer:slug,account_ref:v}); }
 function idate(s){ try{ return new Date(s).toLocaleDateString(); }catch(e){ return ""; } }
 async function loadIntel(){
   const el=$("#intel"); if(!el||!CUR) return;
