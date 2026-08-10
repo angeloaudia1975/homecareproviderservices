@@ -93,7 +93,27 @@ async function saveLogo(){ await api("",{method:"POST",body:JSON.stringify({acti
 async function clearLogo(){ if(!confirm("Remove this manufacturer's logo?"))return; await api("",{method:"POST",body:JSON.stringify({action:"clear_logo",slug:SLUG})}); curMfr().logo_url=""; LOGODRAFT=""; toast("Logo removed"); render(); }
 
 /* ---- products (edit ANY product: catalog via overrides, or custom) ---- */
-let PDRAFT=null, PRODQ="";
+let PDRAFT=null, PRODQ="", PCAT="", PSTAT="", PSORT="name", PLIMIT=60;
+// full filter + sort + paginate pipeline over the effective product list
+function filteredSortedProducts(){
+  let arr=effProducts();
+  const q=PRODQ.toLowerCase().trim();
+  if(q) arr=arr.filter(p=>(`${p.code} ${p.name} ${p.category||""}`.toLowerCase().includes(q)));
+  if(PCAT) arr=arr.filter(p=>(p.category||"")===PCAT);
+  if(PSTAT==="shown") arr=arr.filter(p=>p.active!==false);
+  else if(PSTAT==="hidden") arr=arr.filter(p=>p.active===false);
+  else if(PSTAT==="featured") arr=arr.filter(p=>isFeat(p.code));
+  else if(PSTAT==="added") arr=arr.filter(p=>p.kind==="custom");
+  else if(PSTAT==="edited") arr=arr.filter(p=>p.edited);
+  const price=p=>(p.base_price!=null&&p.base_price!=="")?Number(p.base_price):Infinity;
+  const nm=(a,b)=>String(a.name||"").localeCompare(String(b.name||""),"en",{sensitivity:"base"});
+  const cmp={ name:nm, code:(a,b)=>String(a.code||"").localeCompare(String(b.code||""),"en",{sensitivity:"base"}),
+    category:(a,b)=>String(a.category||"~").localeCompare(String(b.category||"~"),"en",{sensitivity:"base"})||nm(a,b),
+    price_asc:(a,b)=>price(a)-price(b), price_desc:(a,b)=>price(b)-price(a),
+    status:(a,b)=>((a.active===false?1:0)-(b.active===false?1:0))||nm(a,b) }[PSORT]||nm;
+  return arr.slice().sort(cmp);
+}
+function setFilter(k,v){ if(k==="cat")PCAT=v; else if(k==="stat")PSTAT=v; else if(k==="sort")PSORT=v; else if(k==="q")PRODQ=v; PLIMIT=60; render(); }
 // effective product list = catalog (with any override applied) + custom products
 function effProducts(){
   const over=DETAIL.overrides||{};
@@ -176,15 +196,34 @@ async function saveLink(code){
 async function clearLink(code){ await api("",{method:"POST",body:JSON.stringify({action:"clear_link",manufacturer:SLUG,code})}); delete DETAIL.links[code]; toast("Link removed"); render(); }
 function cssid(s){return String(s).replace(/[^A-Za-z0-9_-]/g,"_");}
 
+/* ---- media gallery (multiple images / videos / brochures / links per product) ---- */
+function mediaOf(code){ return (DETAIL.media||{})[code]||[]; }
+async function addMedia(kind,url,title){
+  url=String(url||"").trim(); if(!url){toast("Provide a URL or upload a file first");return;}
+  if(!PDRAFT||!PDRAFT.code){toast("Save the product first");return;}
+  const j=await api("",{method:"POST",body:JSON.stringify({action:"add_media",manufacturer:SLUG,code:PDRAFT.code,kind,url,title:title||null})});
+  DETAIL.media=DETAIL.media||{}; (DETAIL.media[PDRAFT.code]=DETAIL.media[PDRAFT.code]||[]).push((j&&j.item)||{id:null,kind,url,title:title||"",sort:999});
+  toast(kind.charAt(0).toUpperCase()+kind.slice(1)+" added ✓"); render();
+}
+async function delMedia(id){ if(!id)return; await api("",{method:"POST",body:JSON.stringify({action:"delete_media",id})});
+  DETAIL.media[PDRAFT.code]=mediaOf(PDRAFT.code).filter(m=>m.id!==id); toast("Removed"); render(); }
+async function moveMedia(id,dir){ const arr=mediaOf(PDRAFT.code); const i=arr.findIndex(m=>m.id===id); const j=i+dir;
+  if(i<0||j<0||j>=arr.length)return; const t=arr[i];arr[i]=arr[j];arr[j]=t;
+  await api("",{method:"POST",body:JSON.stringify({action:"reorder_media",ids:arr.map(m=>m.id).filter(Boolean)})}); render(); }
+async function saveMediaTitle(id,val){ if(!id)return; try{ await api("",{method:"POST",body:JSON.stringify({action:"update_media",id,title:val})}); const m=mediaOf(PDRAFT.code).find(x=>x.id===id); if(m)m.title=val; }catch(e){} }
+function mediaIcon(m){ return m.kind==="image"
+  ? `<div class="thumb" style="width:74px;height:74px;margin:0;background-image:url('${esc(m.url)}')">${m.url?"":"img"}</div>`
+  : `<div class="thumb" style="width:74px;height:74px;margin:0;display:flex;align-items:center;justify-content:center;font-size:24px">${m.kind==="video"?"▶":m.kind==="brochure"?"📄":"🔗"}</div>`; }
+
 function render(){
   const m=curMfr();
   const mfrOpts=MFRS.map(x=>`<option value="${esc(x.slug)}" ${x.slug===SLUG?"selected":""}>${esc(x.name)}${x.hasData?"":" (no catalog)"}</option>`).join("");
   const logoUrl=LOGODRAFT||m.logo_url||"";
 
-  // full product list (catalog + custom), searchable
-  const pq=PRODQ.toLowerCase();
+  // full product list (catalog + custom) → filter + sort + paginate
   const eff=effProducts();
-  const shownP = pq ? eff.filter(p=>(`${p.code} ${p.name} ${p.category||""}`.toLowerCase().includes(pq))) : eff.slice(0,60);
+  const allP=filteredSortedProducts();
+  const shownP=allP.slice(0,PLIMIT);
   const prodRows=shownP.map(p=>{const tn=(p.tiers&&p.tiers.length)||0;const ft=isFeat(p.code);
     return `<tr>
      <td><b>${esc(p.name)}</b> ${p.kind==="custom"?'<span class="chip cst">added</span>':(p.edited?'<span class="chip ed">edited</span>':"")}${ft?'<span class="chip ft">★ featured</span>':''}
@@ -227,7 +266,38 @@ function render(){
      <label class="fl">Product image ${PDRAFT.kind==="catalog"?'<span style="text-transform:none;color:var(--gray);font-weight:400">— optional; overrides the catalog photo</span>':""}</label>
      <div class="imgrow"><div class="thumb" style="${PDRAFT.image?`background-image:url('${esc(PDRAFT.image)}')`:""}">${PDRAFT.image?"":"no image"}</div>
        <input type="file" accept="image/*" onchange="upload('prod',this.files[0],6,u=>{PDRAFT.image=u;render();})"></div>
-     ${DETAIL.custom&&DETAIL.custom.some(x=>x.code===PDRAFT.code)||PDRAFT.kind==="catalog"?`<label class="ck" style="margin-top:12px;display:flex;gap:7px;align-items:center;font-size:13px"><input type="checkbox" ${isFeat(PDRAFT.code)?"checked":""} onchange="toggleFeatured('${esc(PDRAFT.code)}')"> ★ Show this product in the dealer home "Featured" strip</label>`:`<div class="hint" style="margin-top:10px">Save the product first, then you can feature it.</div>`}
+     ${(PDRAFT.kind==="catalog"||(DETAIL.custom&&DETAIL.custom.some(x=>x.code===PDRAFT.code))) ? (function(){ const L=(DETAIL.links||{})[PDRAFT.code]||{}; const id=cssid(PDRAFT.code); return `
+     <label class="fl" style="margin-top:14px">More Information / Brochure <span style="text-transform:none;color:var(--gray);font-weight:400">— a web link or an uploaded PDF; shows as a button on the product card</span></label>
+     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+       <input type="text" id="lbl_${id}" value="${esc(L.label||"More Information")}" placeholder="Button label" style="max-width:170px">
+       <input type="text" id="url_${id}" value="${esc(L.url||"")}" placeholder="https://… or upload a PDF →" style="flex:1;min-width:200px">
+       <input type="file" accept="application/pdf,image/*" title="Upload a brochure (PDF)" onchange="upload('doc',this.files[0],20,u=>{document.getElementById('url_${id}').value=u;})">
+       <button class="btn sm" onclick="saveLink('${esc(PDRAFT.code)}')">Save link</button>
+       ${L.url?`<button class="btn ghost sm" onclick="clearLink('${esc(PDRAFT.code)}')">Remove</button>`:""}
+     </div>`; })() : `<div class="hint" style="margin-top:12px">Save the product first, then you can attach a More Information link or brochure.</div>`}
+     ${(PDRAFT.kind==="catalog"||(DETAIL.custom&&DETAIL.custom.some(x=>x.code===PDRAFT.code))) ? (function(){ const media=mediaOf(PDRAFT.code); return `
+     <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px">
+       <label class="fl" style="margin:0">Media gallery <span style="text-transform:none;color:var(--gray);font-weight:400">— extra images, videos &amp; documents shown on the product page (the primary photo above stays the card image)</span></label>
+       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
+         <div><span class="hint">Add image</span><input type="file" accept="image/*" onchange="upload('media',this.files[0],8,u=>addMedia('image',u))" style="display:block;margin-top:3px">
+           <div style="display:flex;gap:6px;margin-top:5px"><input type="text" id="mi_img" placeholder="…or paste an image URL" style="flex:1"><button class="btn ghost sm" onclick="addMedia('image',document.getElementById('mi_img').value);document.getElementById('mi_img').value=''">Add</button></div></div>
+         <div><span class="hint">Add video (YouTube / Vimeo / Drive URL)</span>
+           <div style="display:flex;gap:6px;margin-top:3px"><input type="text" id="mi_vid" placeholder="https://youtu.be/…" style="flex:1"><button class="btn ghost sm" onclick="addMedia('video',document.getElementById('mi_vid').value);document.getElementById('mi_vid').value=''">Add</button></div></div>
+         <div><span class="hint">Add brochure (PDF)</span><input type="text" id="mi_br" placeholder="Brochure label (optional)" style="width:100%;margin:3px 0">
+           <input type="file" accept="application/pdf" onchange="upload('doc',this.files[0],20,u=>{addMedia('brochure',u,(document.getElementById('mi_br').value||'Brochure'));document.getElementById('mi_br').value='';})"></div>
+         <div><span class="hint">Add link</span><input type="text" id="mi_ll" placeholder="Link label" style="width:100%;margin:3px 0">
+           <div style="display:flex;gap:6px"><input type="text" id="mi_lu" placeholder="https://…" style="flex:1"><button class="btn ghost sm" onclick="addMedia('link',document.getElementById('mi_lu').value,(document.getElementById('mi_ll').value||'Link'));document.getElementById('mi_lu').value=''">Add</button></div></div>
+       </div>
+       <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px">
+         ${media.map(m=>`<div style="border:1px solid var(--line);border-radius:10px;padding:8px;width:158px">
+            ${mediaIcon(m)}
+            <input type="text" value="${esc(m.title||"")}" placeholder="${esc(m.kind)} title" style="width:100%;margin-top:6px;font-size:11px" onchange="saveMediaTitle('${esc(m.id||"")}',this.value)">
+            <div class="hint" style="font-size:10px;word-break:break-all;margin:3px 0">${esc(String(m.url||"").slice(0,44))}</div>
+            <div style="display:flex;gap:4px">${m.id?`<button class="btn ghost sm" title="Up" onclick="moveMedia('${esc(m.id)}',-1)">↑</button><button class="btn ghost sm" title="Down" onclick="moveMedia('${esc(m.id)}',1)">↓</button><button class="btn ghost sm" style="color:var(--red)" title="Remove" onclick="delMedia('${esc(m.id)}')">✕</button>`:`<span class="hint">saving…</span>`}</div>
+          </div>`).join("")||`<div class="hint">No extra media yet — add images, a video, or documents above.</div>`}
+       </div>
+     </div>`; })() : `<div class="hint" style="margin-top:12px">Save the product first, then you can build its media gallery.</div>`}
+     ${(PDRAFT.kind==="catalog"||(DETAIL.custom&&DETAIL.custom.some(x=>x.code===PDRAFT.code)))?`<label class="ck" style="margin-top:14px;display:flex;gap:7px;align-items:center;font-size:13px"><input type="checkbox" ${isFeat(PDRAFT.code)?"checked":""} onchange="toggleFeatured('${esc(PDRAFT.code)}')"> ★ Show this product in the dealer home "Featured" strip</label>`:`<div class="hint" style="margin-top:10px">Save the product first, then you can feature it.</div>`}
      <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn orange" onclick="saveProduct()">Save product</button>
        <button class="btn ghost" onclick="PDRAFT=null;render()">Cancel</button>
        ${PDRAFT.kind==="catalog"&&PDRAFT.edited?`<button class="btn ghost" onclick="resetOverride('${esc(PDRAFT.code)}')">Reset to catalog</button>`:""}
@@ -237,29 +307,11 @@ function render(){
           : (PDRAFT.active===false?`<button class="btn ghost" onclick="restoreProduct('${esc(PDRAFT.code)}')">Restore to portal</button>`:`<button class="btn red" onclick="removeProduct('${esc(PDRAFT.code)}')">Remove from portal</button>`)}</div>
    </div>` : "";
 
-  // links list — products that already have a link, plus a search to add more
-  const q=PQ.toLowerCase();
-  const withLinks=Object.keys(DETAIL.links||{});
-  const pool=allProducts();
-  const matches = q ? pool.filter(p=>(`${p.code} ${p.name}`.toLowerCase().includes(q))).slice(0,40) : [];
-  const shown = new Map();
-  withLinks.forEach(code=>{const p=pool.find(x=>x.code===code)||{code,name:code}; shown.set(code,p);});
-  matches.forEach(p=>{ if(!shown.has(p.code)) shown.set(p.code,p); });
-  const linkRows=[...shown.values()].map(p=>{const L=(DETAIL.links||{})[p.code]||{};const id=cssid(p.code);
-    return `<div class="prow">
-      <div class="pn"><b>${esc(p.name)}</b> <span class="c">${esc(p.code)}</span> ${L.url?'<span class="haslink">● linked</span>':''}</div>
-      <input type="text" id="lbl_${id}" value="${esc(L.label||"More Information")}" style="max-width:150px" placeholder="Button label">
-      <input type="text" id="url_${id}" value="${esc(L.url||"")}" placeholder="https://… or upload a PDF →">
-      <input type="file" accept="application/pdf,image/*" title="Upload a brochure" onchange="upload('doc',this.files[0],20,u=>{document.getElementById('url_${id}').value=u;})">
-      <button class="btn sm" onclick="saveLink('${esc(p.code)}')">Save</button>
-      ${L.url?`<button class="btn ghost sm" onclick="clearLink('${esc(p.code)}')">Remove</button>`:""}
-    </div>`;}).join("")||`<div class="hint">Search a product above to attach a brochure or link.</div>`;
-
   $("#wrap").innerHTML=`
     <h1>Catalog</h1>
     <p class="sub">Manufacturer logos, extra products, and "More Information" brochures/links — all publish instantly to the portal, no site rebuild.</p>
     <div class="bar"><label class="fl" style="margin:0">Manufacturer</label>
-      <select onchange="SLUG=this.value;LOGODRAFT='';PDRAFT=null;PQ='';PRODQ='';loadMfr()">${mfrOpts}</select></div>
+      <select onchange="SLUG=this.value;LOGODRAFT='';PDRAFT=null;PQ='';PRODQ='';PCAT='';PSTAT='';PSORT='name';PLIMIT=60;loadMfr()">${mfrOpts}</select></div>
 
     <div class="card">
       <h2>Manufacturer logo</h2>
@@ -276,20 +328,26 @@ function render(){
     ${pform}
     <div class="card">
       <h2>Products</h2>
-      <p class="hint">Edit <b>any</b> product on this line — name, category, description, price, MSRP, and quantity pricing tiers — or add a brand-new one. Standard catalog edits save as an override (no redeploy); added products are yours to add or delete.</p>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+      <p class="hint">Filter, sort, and page through the whole line. Click <b>Edit</b> to manage everything about a product in one place — details, pricing, category, image, its More Information link/brochure, status &amp; featured. Standard catalog edits save as an override (no redeploy); added products are yours to add or delete.</p>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
         <button class="btn sm" onclick="newProduct()">+ Add product</button>
-        <input type="text" placeholder="Search products by name or code…" value="${esc(PRODQ)}" oninput="PRODQ=this.value;render()" style="flex:1;min-width:220px">
+        <input type="text" placeholder="Search name, code / SKU, category…" value="${esc(PRODQ)}" oninput="setFilter('q',this.value)" style="flex:1;min-width:200px">
+        <select onchange="setFilter('cat',this.value)" title="Filter by category"><option value="">All categories</option>${catList().map(c=>`<option value="${esc(c)}" ${PCAT===c?"selected":""}>${esc(c)}</option>`).join("")}</select>
+        <select onchange="setFilter('stat',this.value)" title="Filter by status"><option value="" ${PSTAT===""?"selected":""}>All statuses</option><option value="shown" ${PSTAT==="shown"?"selected":""}>Shown</option><option value="hidden" ${PSTAT==="hidden"?"selected":""}>Hidden</option><option value="featured" ${PSTAT==="featured"?"selected":""}>Featured</option><option value="added" ${PSTAT==="added"?"selected":""}>Added</option><option value="edited" ${PSTAT==="edited"?"selected":""}>Edited</option></select>
+        <select onchange="setFilter('sort',this.value)" title="Sort">
+          <option value="name" ${PSORT==="name"?"selected":""}>Sort: Name A–Z</option>
+          <option value="code" ${PSORT==="code"?"selected":""}>Code / SKU</option>
+          <option value="category" ${PSORT==="category"?"selected":""}>Category</option>
+          <option value="price_asc" ${PSORT==="price_asc"?"selected":""}>Price low→high</option>
+          <option value="price_desc" ${PSORT==="price_desc"?"selected":""}>Price high→low</option>
+          <option value="status" ${PSORT==="status"?"selected":""}>Status</option>
+        </select>
       </div>
       <table><thead><tr><th>Product</th><th class="num">Dealer price</th><th class="num">Tiers</th><th>Status</th><th></th></tr></thead><tbody>${prodRows}</tbody></table>
-      ${!PRODQ&&eff.length>60?`<div class="hint" style="margin-top:8px">Showing first 60 of ${eff.length} — search to find any product.</div>`:""}
-    </div>
-
-    <div class="card">
-      <h2>"More Information" links &amp; brochures</h2>
-      <p class="hint">Attach a brochure (PDF upload) or a web link to any product. It shows as a "More Information" button on that product's card.</p>
-      <input type="text" placeholder="Search a product by name or code…" value="${esc(PQ)}" oninput="PQ=this.value;render()" style="width:100%;max-width:420px">
-      <div style="margin-top:10px">${linkRows}</div>
+      <div class="hint" style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <span>Showing <b>${shownP.length}</b> of <b>${allP.length}</b>${allP.length!==eff.length?` (filtered from ${eff.length})`:""}</span>
+        ${allP.length>shownP.length?`<button class="btn ghost sm" onclick="PLIMIT+=60;render()">Load more</button><button class="btn ghost sm" onclick="PLIMIT=999999;render()">Show all</button>`:""}
+      </div>
     </div>`;
 }
 /* masthead provides Lock */

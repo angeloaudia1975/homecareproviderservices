@@ -71,17 +71,20 @@ exports.handler = async (event)=>{
         sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,name,category,base_price,msrp,image,description,active,tiers,price_note`).catch(()=>[]),
         sb("GET",`product_links?manufacturer=eq.${encodeURIComponent(slug)}&select=code,label,url`).catch(()=>[]),
       ]);
-      const [overRows,featRows]=await Promise.all([
+      const [overRows,featRows,mediaRows]=await Promise.all([
         sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(slug)}&select=code,patch`).catch(()=>[]),
         sb("GET",`featured_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,active`).catch(()=>[]),
+        sb("GET",`product_media?manufacturer=eq.${encodeURIComponent(slug)}&select=id,code,kind,url,title,sort&order=sort`).catch(()=>[]),
       ]);
       const linkMap=Object.fromEntries((links||[]).map(l=>[l.code,{label:l.label||"More Information",url:l.url}]));
       const overrides=Object.fromEntries((overRows||[]).map(o=>[o.code,o.patch||{}]));
       const featured=(featRows||[]).filter(f=>f.active!==false).map(f=>f.code);
+      // media gallery keyed by product code (additional images, videos, brochures, links)
+      const media={}; for(const r of (mediaRows||[])){ (media[r.code]=media[r.code]||[]).push({id:r.id,kind:r.kind,url:r.url,title:r.title||"",sort:r.sort||0}); }
       // full catalog fields so the editor can show + edit everything (incl. tiers)
       const products=(prods||[]).map(p=>({code:p.code,name:p.name,category:p.category||"",image:p.image||"",
         base_price:p.base_price,msrp:p.msrp,description:p.description||"",tiers:p.tiers||null,price_note:p.price_note||"",group:p.group||""}));
-      return json(200,{products,custom:custom||[],links:linkMap,overrides,featured});
+      return json(200,{products,custom:custom||[],links:linkMap,overrides,featured,media});
     }
 
     if(event.httpMethod==="POST"){
@@ -179,6 +182,33 @@ exports.handler = async (event)=>{
       if(b.action==="clear_link"){
         if(!b.manufacturer||!b.code) return json(400,{error:"manufacturer, code required"});
         await sb("DELETE",`product_links?manufacturer=eq.${encodeURIComponent(b.manufacturer)}&code=eq.${encodeURIComponent(b.code)}`,null,{Prefer:"return=minimal"});
+        return json(200,{ok:true});
+      }
+
+      // ---- product media gallery (additional images / videos / brochures / links) ----
+      if(b.action==="add_media"){
+        const kind=String(b.kind||"").trim(); const url=String(b.url||"").trim();
+        if(!b.manufacturer||!b.code||!url) return json(400,{error:"manufacturer, code, url required"});
+        if(!["image","video","brochure","link"].includes(kind)) return json(400,{error:"kind must be image|video|brochure|link"});
+        let sort=0; try{ const ex=await sb("GET",`product_media?manufacturer=eq.${encodeURIComponent(b.manufacturer)}&code=eq.${encodeURIComponent(b.code)}&select=sort&order=sort.desc&limit=1`); sort=(ex&&ex[0]&&(+ex[0].sort+1))||0; }catch(e){}
+        const ins=await sb("POST","product_media",{manufacturer:b.manufacturer,code:String(b.code).trim(),kind,url,title:(b.title!=null?String(b.title):null),sort},{Prefer:"return=representation"});
+        return json(200,{ok:true,item:ins&&ins[0]});
+      }
+      if(b.action==="update_media"){
+        if(!b.id) return json(400,{error:"id required"});
+        const patch={}; if(b.title!=null) patch.title=String(b.title); if(b.sort!=null) patch.sort=parseInt(b.sort,10)||0;
+        if(!Object.keys(patch).length) return json(400,{error:"nothing to update"});
+        await sb("PATCH",`product_media?id=eq.${encodeURIComponent(b.id)}`,patch,{Prefer:"return=minimal"});
+        return json(200,{ok:true});
+      }
+      if(b.action==="delete_media"){
+        if(!b.id) return json(400,{error:"id required"});
+        await sb("DELETE",`product_media?id=eq.${encodeURIComponent(b.id)}`,null,{Prefer:"return=minimal"});
+        return json(200,{ok:true});
+      }
+      if(b.action==="reorder_media"){
+        const ids=Array.isArray(b.ids)?b.ids:[];
+        for(let i=0;i<ids.length;i++){ try{ await sb("PATCH",`product_media?id=eq.${encodeURIComponent(ids[i])}`,{sort:i},{Prefer:"return=minimal"}); }catch(e){} }
         return json(200,{ok:true});
       }
 
