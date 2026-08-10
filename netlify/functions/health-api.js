@@ -32,8 +32,8 @@ exports.handler=async(event)=>{
     catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run supabase/engine.sql + supabase/health.sql, then click Run engine now."}); }
     if(!eng.length) return json(200,{ok:true,rows:[],summary:emptySummary(),role:me.role,seeded:false});
     // dealer display info
-    let dealers=[]; try{ dealers=await sbGetAll("dealers?select=id,business_name,city,state,email,phone"); }catch(e){}
-    const info={}; for(const d of dealers) info[d.id]={name:d.business_name,city:d.city||"",state:d.state||"",email:d.email||"",phone:d.phone||""};
+    let dealers=[]; try{ dealers=await sbGetAll("dealers?select=id,business_name,contact_name,hcps_account,city,state,email,phone","id"); }catch(e){}
+    const info={}; for(const d of dealers) info[d.id]={name:(d.business_name||d.contact_name||d.hcps_account||""),city:d.city||"",state:d.state||"",email:d.email||"",phone:d.phone||""};
     let rows=eng.map(e=>({...e, name:(info[e.dealer_id]&&info[e.dealer_id].name)||"(dealer)",
       city:(info[e.dealer_id]&&info[e.dealer_id].city)||"", state:(info[e.dealer_id]&&info[e.dealer_id].state)||"",
       email:(info[e.dealer_id]&&info[e.dealer_id].email)||"" }));
