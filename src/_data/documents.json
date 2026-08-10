@@ -640,6 +640,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "strongback-consumer-product-claim-form-msnhx8o9",
+      "title": "Strongback Consumer Product Claim Form",
+      "type": "form",
+      "manufacturer": "strongback-mobility",
+      "format": "link",
+      "file": "",
+      "url": "https://www.strongbackmobility.com/pages/warranty-claim-form",
+      "description": "Strongback Mobility is committed to exceptional customer service, and we want to give our customers the easiest claim process possible. Please submit the form below to begin. Please allow 2-3 business days for your claim process to be reviewed. \n\nWe kindly ask that you provide all the necessary details from the start, so that we can handle your claim quickly and thoroughly.\n\nIf you purchased your wheelchair or rollator through a local Dealer, please return to that Dealer and they will submit this form for you.\n\nThis warranty does NOT apply to used, purchased wheelchairs or rollators, nor does it apply to wheelchairs or rollators that are used as rentals.\n\nPlease note: Failure to complete the claim form in its entirety will delay or possibly void the claim.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
