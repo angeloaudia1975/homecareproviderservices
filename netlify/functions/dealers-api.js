@@ -174,7 +174,7 @@ async function ownsDealer(me, dealer_id){
   return String((dir&&dir[0]&&dir[0].rep_name)||"").trim().toLowerCase()===String(me.rep_name).trim().toLowerCase();
 }
 // Structural / cross-book / login / approval tools are President-only.
-const PRESIDENT_ONLY=new Set(["merge","split","import_contacts","backfill_master","attribution_breakdown","reattribute","clear_order_refs","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep","list_contract_prices","set_contract_price","clear_contract_price","prefill_access","prefill_access_all"]);
+const PRESIDENT_ONLY=new Set(["merge","split","import_contacts","backfill_master","attribution_breakdown","reattribute","clear_order_refs","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep","list_contract_prices","set_contract_price","clear_contract_price","prefill_access","prefill_access_all","create_dealer"]);
 
 async function buildState(){
   const [dealers,aliases,dm,mfrs,dir,reps,nomerge,logins] = await Promise.all([
@@ -354,6 +354,44 @@ exports.handler = async (event)=>{
         if(!b.dealer_id) return json(400,{error:"dealer_id required"});
         await sbSend("PATCH",`dealers?id=eq.${b.dealer_id}`,{status:null,updated_at:new Date().toISOString()},{Prefer:"return=minimal"});
         return json(200,{ok:true});
+      }
+      // Create a brand-new dealer from scratch — a standalone/corporate account, or a branch of an
+      // existing dealer when parent_id is passed. Seeds a primary address (so it pins on the map) and
+      // optionally stores per-manufacturer account #s so commission imports auto-match by number.
+      if(act==="create_dealer"){
+        const name=String(b.business_name||"").trim();
+        if(!name) return json(400,{error:"A business name is required"});
+        let parent_id=b.parent_id||null;
+        if(parent_id){ // validate the parent exists (and is itself a top-level dealer, not a branch)
+          const p=await sbGet(`dealers?id=eq.${encodeURIComponent(parent_id)}&select=id,parent_id`).catch(()=>[]);
+          if(!p||!p[0]) return json(400,{error:"The chosen parent dealer was not found"});
+          if(p[0].parent_id) parent_id=p[0].parent_id;   // never nest branches — attach to the root
+        }
+        const clean=v=>(v!=null&&String(v).trim())?String(v).trim():null;
+        const rec={
+          business_name:name,
+          contact_name:clean(b.contact_name), email:clean(b.email), phone:clean(b.phone),
+          address:clean(b.address), city:clean(b.city), state:clean(b.state), zip:clean(b.zip),
+          hcps_account:clean(b.hcps_account), notes:clean(b.notes),
+          parent_id, active:true, status:(b.status!==undefined?b.status:null)
+        };
+        const ins=await sbSend("POST","dealers",rec,{Prefer:"return=representation"});
+        const dealer_id=(ins&&ins[0]&&ins[0].id)||null;
+        if(!dealer_id) return json(500,{error:"Dealer insert failed"});
+        // Seed the primary address row the map pins from.
+        if(rec.address||rec.city||rec.state||rec.zip){
+          try{ const ak=(String(rec.address||"").toLowerCase().replace(/[^a-z0-9]+/g,"")).slice(0,120)||"primary";
+            await sbSend("POST","dealer_addresses",{dealer_id,addr_key:ak,label:"Primary",pri:3,address:rec.address,city:rec.city,state:rec.state,zip:rec.zip},{Prefer:"resolution=merge-duplicates,return=minimal"});
+          }catch(e){}
+        }
+        // Optional manufacturer account #s so future imports match by number.
+        if(Array.isArray(b.accounts)&&b.accounts.length){
+          const rows=b.accounts.filter(a=>a&&a.manufacturer&&clean(a.account_ref))
+            .map(a=>({dealer_id,manufacturer:String(a.manufacturer).trim(),account_ref:clean(a.account_ref),active:true}));
+          if(rows.length) try{ await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",rows,{Prefer:"resolution=merge-duplicates,return=minimal"}); }catch(e){}
+        }
+        try{ await sbSend("POST","dealer_activity",{dealer_id,kind:"system",subject:parent_id?"Branch location added":"Dealer added",detail:name,actor:me.name||"admin"},{Prefer:"return=minimal"}); }catch(e){}
+        return json(200,{ok:true,dealer_id});
       }
       if(act==="access"){
         if(!b.dealer_id||!Array.isArray(b.manufacturers)) return json(400,{error:"dealer_id + manufacturers[] required"});

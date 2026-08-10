@@ -118,6 +118,7 @@ function render(){
     <button class="tab ${TAB==='changes'?'on':''}" onclick="setTab('changes')">Account changes${pchg?` (${pchg})`:""}</button>
     <button class="tab ${TAB==='activity'?'on':''}" onclick="setTab('activity')">Activity &amp; carts${(DATA.openCarts&&DATA.openCarts.length)?` (${DATA.openCarts.length})`:""}</button>
     <button class="tab ${TAB==='import'?'on':''}" onclick="setTab('import')">Import contacts</button>
+    <button class="go sm orange" style="margin-left:auto" onclick="openAddDealer()" title="Create a new dealer or branch location">＋ Add dealer</button>
     <button class="go sm" style="background:#2B4071" onclick="prefillAll()" title="Check each dealer's territory-rule lines into their access grid (account numbers preserved)">Apply access rules to all</button>`:""}
     </div>`;
   $("#body").innerHTML=kpis+tabs+mergeBar()+`<div id="app"></div>`;
@@ -286,7 +287,7 @@ function renderDetail(){
        ? `<div style="${relStyle}">🏢 <b>Headquarters</b> · ${d.branches.length} branch location${d.branches.length===1?"":"s"} roll up here: ${d.branches.map(bn=>`<span class="chip" style="cursor:pointer" onclick="openDealerByName('${jesc(bn)}')">${esc(bn)}</span>`).join(" ")}</div>`
        : "");
   $("#body").innerHTML=`
-   <div class="backbar"><button class="go" onclick="backList()">← All dealers</button><div class="lbl" style="font-size:18px">${esc(d.name)} ${d.status==="review"?`<span class="chip rev">review</span>`:""}</div><a class="go sm blue" href="/admin/dealer.html?id=${d.id}">📇 360 Profile</a></div>
+   <div class="backbar"><button class="go" onclick="backList()">← All dealers</button><div class="lbl" style="font-size:18px">${esc(d.name)} ${d.status==="review"?`<span class="chip rev">review</span>`:""}</div>${(isPres()&&!d.master)?`<button class="go sm orange" onclick="addBranchTo('${d.id}')" title="Add a branch location under this dealer">＋ Add branch</button>`:""}<a class="go sm blue" href="/admin/dealer.html?id=${d.id}">📇 360 Profile</a></div>
    ${relBanner}
    <div class="grid2">
      <div class="card"><h2>Account details</h2>
@@ -507,6 +508,66 @@ async function post(body,working,stSel){
 function showDlg(html){$("#dlg").innerHTML=`<div class="dlg" onclick="if(event.target===this)closeDlg()"><div class="dlgbox">${html}</div></div>`;}
 function closeDlg(){$("#dlg").innerHTML="";DLGSURV=null;}
 function alertDlg(m){showDlg(`<h3>Notice</h3><div>${esc(m)}</div><div style="margin-top:14px;text-align:right"><button class="go sm" onclick="closeDlg()">OK</button></div>`);}
+
+/* ---------- Add a new dealer / branch ---------- */
+function openAddDealer(parentId,parentName){
+  const dl=(DATA.dealers||[]).slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const parentOpts=`<option value="">— none (this is a standalone / corporate account) —</option>`+
+    dl.map(d=>`<option value="${esc(d.id)}"${d.id===parentId?" selected":""}>${esc(d.name)}</option>`).join("");
+  const mfrs=(DATA.manufacturers||[]).slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  const mfrOpts=mfrs.map(m=>`<option value="${esc(m.slug)}"${m.slug==="golden-technologies"?" selected":""}>${esc(m.name)}</option>`).join("");
+  showDlg(`<h3>${parentId?`Add a branch of “${esc(parentName||"")}”`:"Add a new dealer"}</h3>
+    <div class="hint" style="margin-bottom:10px">Create a dealer or a branch location. The <b>ZIP code</b> is what commission imports use to route Golden orders to the right branch, so add it for every physical location.</div>
+    <div class="fld"><label>Business name <span style="color:#b42323">*</span></label><input id="ad_name" placeholder="e.g. Queen City Med Mart"></div>
+    <div class="fld" style="margin-top:8px"><label>Branch of (leave as “none” for a standalone or corporate account)</label>
+      <select id="ad_parent">${parentOpts}</select></div>
+    <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+      <div class="fld"><label>Contact name</label><input id="ad_contact"></div>
+      <div class="fld"><label>Phone</label><input id="ad_phone"></div>
+      <div class="fld"><label>Email</label><input id="ad_email" type="email"></div>
+      <div class="fld"><label>HCPS account #</label><input id="ad_hcps"></div>
+    </div>
+    <div class="fld" style="margin-top:8px"><label>Street address</label><input id="ad_address"></div>
+    <div class="grid3" style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-top:8px">
+      <div class="fld"><label>City</label><input id="ad_city"></div>
+      <div class="fld"><label>State</label><input id="ad_state" maxlength="2" placeholder="OH" style="text-transform:uppercase"></div>
+      <div class="fld"><label>ZIP <span style="color:#b42323">*</span> <span class="hint" style="text-transform:none">(branch match key)</span></label><input id="ad_zip" placeholder="45241"></div>
+    </div>
+    <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+      <div class="fld"><label>Manufacturer account (optional — auto-matches imports)</label><select id="ad_mfr">${mfrOpts}</select></div>
+      <div class="fld"><label>Account # with that manufacturer</label><input id="ad_acct" placeholder="e.g. 230206"></div>
+    </div>
+    <div class="fld" style="margin-top:8px"><label>Notes</label><input id="ad_notes"></div>
+    <div id="ad_st" class="st"></div>
+    <div style="margin-top:14px;text-align:right">
+      <button class="go sm" onclick="closeDlg()">Cancel</button>
+      <button class="go orange sm" id="ad_save" onclick="submitAddDealer()">Create dealer</button></div>`);
+  setTimeout(()=>{const el=$("#ad_name");if(el)el.focus();},60);
+}
+async function submitAddDealer(){
+  const v=id=>((document.getElementById(id)||{}).value||"").trim();
+  const name=v("ad_name");
+  const st=$("#ad_st");
+  if(!name){ if(st){st.textContent="Enter a business name.";st.className="st warn";} return; }
+  const parent_id=v("ad_parent")||null;
+  const zip=v("ad_zip");
+  if(!zip && !confirm("No ZIP code entered. Commission imports won't be able to route orders to this location by ZIP. Add it anyway without a ZIP?")) return;
+  const accounts=[]; const mfr=v("ad_mfr"), acct=v("ad_acct");
+  if(mfr && acct) accounts.push({manufacturer:mfr,account_ref:acct});
+  const payload={action:"create_dealer",business_name:name,parent_id,
+    contact_name:v("ad_contact"),email:v("ad_email"),phone:v("ad_phone"),
+    address:v("ad_address"),city:v("ad_city"),state:v("ad_state").toUpperCase(),zip,
+    hcps_account:v("ad_hcps"),notes:v("ad_notes"),accounts};
+  const btn=$("#ad_save"); if(btn)btn.disabled=true;
+  try{
+    const r=await post(payload,"Creating…","#ad_st");
+    closeDlg(); await load();
+    if(r&&r.dealer_id){ DETAIL=r.dealer_id; TAB='all'; render(); }
+    else render();
+  }catch(e){ if(btn)btn.disabled=false; }
+}
+// Add a branch straight from a dealer's detail view (parent pre-filled).
+function addBranchTo(id){ const d=(DATA.dealers||[]).find(x=>x.id===id); openAddDealer(id, d&&d.name); }
 
 /* ---------- Pending logins (dealer portal accounts) ---------- */
 function fmtDate(s){try{return new Date(s).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});}catch(e){return "";}}
