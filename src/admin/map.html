@@ -298,6 +298,8 @@ function initMap(){
   CLUSTER=L.markerClusterGroup({maxClusterRadius:45});
   PLAIN=L.layerGroup();          // every pin dropped individually (no grouping)
   LAYER=CLUSTER; MAP.addLayer(LAYER);
+  // Always-available close: Escape closes any open dealer popup no matter where it is.
+  document.addEventListener("keydown",function(e){ if(e.key==="Escape" && MAP) MAP.closePopup(); });
 }
 // Toggle between grouped circles and all-pins-individually.
 function togglePins(){
@@ -314,7 +316,7 @@ function fillStateFilter(){
 }
 function inRoute(p){ return ROUTE.some(s=>s._i===p._i); }
 function draw(){
-  if(!LAYER)return; LAYER.clearLayers();
+  if(!LAYER)return; if(MAP)MAP.closePopup(); LAYER.clearLayers();   // avoid a stale popup with a dead close button after a redraw
   const fs=$("#fState").value, ft=$("#fStatus").value, due=$("#fDue")&&$("#fDue").checked;
   const shown=POINTS.filter(p=>(!fs||p.state===fs)&&(!ft||(p.klass||"")===ft)&&(!due||isDue(p)));
   const markers=shown.map(p=>{
@@ -332,7 +334,8 @@ function draw(){
       <button class="addbtn" onclick="addStop(${p._i})">${inRoute(p)?"✓ In route":"＋ Add to route"}</button>
       ${p.dealer_id?`<button class="addbtn" style="background:#1f9d55;margin-top:5px" onclick="markVisited('${p.dealer_id}',${p._i})">✓ Mark visited today</button>`:""}
       ${p.dealer_id?`<button class="addbtn" style="background:#F5821F;margin-top:5px" onclick="printDealerHandout('${p.dealer_id}')">🖨 Dealer handout</button>`:""}
-      <div class="row" style="margin-top:5px"><a href="/admin/dealers.html${p.dealer_id?`?dealer=${encodeURIComponent(p.dealer_id)}`:""}">Open in Dealer Manager →</a></div></div>`);
+      <div class="row" style="margin-top:5px"><a href="/admin/dealers.html${p.dealer_id?`?dealer=${encodeURIComponent(p.dealer_id)}`:""}">Open in Dealer Manager →</a></div></div>`,
+      {keepInView:true, autoPan:true, autoPanPadding:[50,60], maxHeight:340});
     return m;
   });
   if(LAYER.addLayers) LAYER.addLayers(markers); else markers.forEach(m=>LAYER.addLayer(m));
@@ -347,7 +350,7 @@ function drawHome(){
   if(HOMEMARKER){ MAP.removeLayer(HOMEMARKER); HOMEMARKER=null; }
   if(HOME && HOME.lat!=null && MAP){
     HOMEMARKER=L.marker([HOME.lat,HOME.lng],{icon:homeIcon(),zIndexOffset:1000})
-      .bindPopup(`<div class="pop"><b>🏠 Home base</b><div class="row">${esc(HOME.q||"")}</div><div class="row" style="color:#777">Start &amp; end of your routes</div></div>`).addTo(MAP);
+      .bindPopup(`<div class="pop"><b>🏠 Home base</b><div class="row">${esc(HOME.q||"")}</div><div class="row" style="color:#777">Start &amp; end of your routes</div></div>`,{keepInView:true,autoPanPadding:[50,60]}).addTo(MAP);
   }
   refreshHomeBtn();
 }
