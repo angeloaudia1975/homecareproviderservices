@@ -117,11 +117,12 @@ function render(D,A){
   const lastPm = lines.length?Math.max(...lines.map(l=>l.last)):null;
   const monthsSince = lastPm!=null?(latest-lastPm):null;
 
+  DOBJ=d;
   // ---- left column ----
   const status = d.status==="review"?`<span class="chip rev">review</span>`:(d.status?`<span class="chip">${esc(d.status)}</span>`:"");
   const rel = d.master?`Branch of <a class="link" href="/admin/dealer.html?name=${encodeURIComponent(d.master)}">${esc(d.master)}</a>`
             : (d.branches&&d.branches.length?`HQ · ${d.branches.length} branch${d.branches.length===1?"":"es"}`:"Standalone");
-  const header=`<div class="card">
+  const header=`<div class="card" id="hdrCard">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
       <div><h1 style="margin:0;font-size:25px">${esc(d.name)} ${status}</h1>
         <div class="hint" style="margin:3px 0 0">${rel}</div>
@@ -134,7 +135,7 @@ function render(D,A){
         </div>
         <div class="idrow">${[d.address,d.city,[d.state,d.zip].filter(Boolean).join(" ")].filter(Boolean).map(esc).join(", ")}</div>
       </div>
-      <a class="btn ghost sm" href="/admin/dealers.html?dealer=${encodeURIComponent(d.id)}">Edit in Dealer Manager →</a>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost sm" onclick="editCompany()">✎ Edit company info</button><a class="btn ghost sm" href="/admin/dealers.html?dealer=${encodeURIComponent(d.id)}">Dealer Manager →</a></div>
     </div>
     <div class="stat">
       <div class="s"><div class="l">Total sales</div><div class="v">${money(totalSales)}</div></div>
@@ -183,15 +184,65 @@ function render(D,A){
   const notes=`<div class="card"><h2>Notes &amp; tasks</h2><div id="crm"><div class="hint">Loading…</div></div></div>`;
   const intelCard=`<div class="card"><h2>Digital activity &amp; interest</h2><div id="intel"><div class="hint">Loading activity…</div></div></div>`;
 
-  $("#body").innerHTML=`${header}
+  // Next best action — synthesized from what we already know (upgraded once intent loads).
+  const nba=nextBestAction(d,lines,monthsSince,cart,sess);
+  const terr=[d.state,d.city].filter(Boolean).join(" · ");
+  const nextBanner=`<div class="card" style="border-left:3px solid #F5821F;background:#fff8ef">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#b45309;font-weight:800">Next best action</div>
+        <div id="nbaText" style="font-size:14px;color:var(--navy);margin-top:2px">${nba.ic} ${esc(nba.t)}</div>
+        <div class="hint" style="margin:3px 0 0">${d.rep?`Rep ${esc(d.rep)}`:"Unassigned"}${terr?` · Territory ${esc(terr)}`:""}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn sm orange" onclick="var e=document.getElementById('la_sum');if(e){e.scrollIntoView({behavior:'smooth',block:'center'});e.focus();}">✎ Log a touch</button>
+        <a class="btn sm" href="/admin/map.html">🗺 Territory map</a>
+      </div>
+    </div></div>`;
+
+  $("#body").innerHTML=`${header}${nextBanner}
     <div class="d360">
       <div>${intelCard}${history}${contactsCard}</div>
       <div>${signals}${addrCard}${notes}</div>
     </div>`;
   CUR=d.id; loadCRM(); loadIntel(); loadContacts();
 }
+function nextBestAction(d,lines,monthsSince,cart,sess){
+  const due=(lines||[]).filter(l=>l.status==="due");
+  if(cart&&cart.itemCount>0) return {ic:"🛒",t:`Follow up on an open cart (${cart.itemCount} item${cart.itemCount===1?"":"s"}) — they're mid-order.`};
+  if(due.length) return {ic:"⏰",t:`Reorder due on ${due.slice(0,2).map(l=>l.line).join(", ")} — send a reorder or call.`};
+  if(monthsSince!=null && monthsSince>=3) return {ic:"💤",t:`Dormant ${monthsSince} months — time to reactivate this account.`};
+  if(sess) return {ic:"👤",t:`Recently active on the portal — a good moment to check in.`};
+  return {ic:"✅",t:`Relationship looks healthy — a routine check-in keeps it warm.`};
+}
+async function editCompany(){
+  const d=DOBJ||{}; const card=$("#hdrCard"); if(!card) return;
+  const F=(id,ph,v)=>`<input id="${id}" placeholder="${ph}" value="${esc(v||"")}" style="width:100%">`;
+  card.innerHTML=`<h2 style="margin:0 0 10px">Edit company info</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <label class="hint">Dealer name${F("e_name","Name",d.name)}</label>
+      <label class="hint">Owner rep${F("e_rep","Rep",d.rep)}</label>
+      <label class="hint">Phone${F("e_phone","Phone",d.phone)}</label>
+      <label class="hint">Primary email${F("e_email","name@dealer.com",d.email)}</label>
+      <label class="hint" style="grid-column:1/3">Website${F("e_website","https://…",d.website||"")}</label>
+      <label class="hint" style="grid-column:1/3">Address${F("e_address","Street address",d.address)}</label>
+      <label class="hint">City${F("e_city","City",d.city)}</label>
+      <label class="hint">State${F("e_state","ST",d.state)}</label>
+      <label class="hint">ZIP${F("e_zip","ZIP",d.zip)}</label>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px"><button class="btn orange sm" onclick="saveCompany()">Save company info</button><button class="btn ghost sm" onclick="load()">Cancel</button><span id="e_msg" class="hint"></span></div>`;
+  const f=$("#e_name"); if(f)f.focus();
+}
+async function dapi(payload){ const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return r.json().catch(()=>({})); }
+async function saveCompany(){
+  const d=DOBJ||{}; const g=id=>(($("#"+id)||{}).value||"").trim(); const m=$("#e_msg"); if(m)m.textContent="Saving…";
+  const name=g("e_name")||d.name;
+  await dapi({action:"edit",dealer_id:d.id,business_name:name,email:g("e_email"),phone:g("e_phone"),website:g("e_website"),address:g("e_address"),city:g("e_city"),state:g("e_state"),zip:g("e_zip")});
+  const rep=g("e_rep"); if(rep!==String(d.rep||"")) await dapi({action:"rep",dealer_name:name,rep_name:rep});
+  load();
+}
 // ---- Contacts & account-number management ----
-let CDATA=null, CEDIT=null;
+let CDATA=null, CEDIT=null, DOBJ=null;
 async function loadContacts(){ const el=$("#contacts"); if(!el||!CUR) return;
   const j=await crm({action:"contacts",dealer_id:CUR}); CDATA=(j&&j.ok)?j:{contacts:[],primary_email:"",accounts:[]}; renderContacts(); }
 function contactForm(c){ c=c||{}; const editing=!!c.email;
@@ -259,6 +310,10 @@ async function loadIntel(){
   const cb=(it.carts||[]).length?`<div style="margin-top:10px"><div class="ihd">Cart</div>${it.carts.map(c=>`<div class="hint" style="margin:2px 0">🛒 ${c.items} item${c.items===1?"":"s"}${c.value?" · $"+c.value.toLocaleString():""}${c.mfr?" · "+esc(c.mfr):""}${c.updated_at?" · "+idate(c.updated_at):""}</div>`).join("")}</div>`:"";
   const ob=(it.orders||[]).length?`<div style="margin-top:10px"><div class="ihd">Recent portal orders</div>${it.orders.slice(0,6).map(o=>`<div class="hint" style="margin:2px 0">${o.submitted_at?idate(o.submitted_at):""} · ${esc(o.manufacturer||"")} · ${esc(o.status||"")}${o.subtotal?" · $"+Number(o.subtotal).toLocaleString():""}</div>`).join("")}</div>`:"";
   el.innerHTML=`${tiles}${banner}<div class="ihd">Interest by manufacturer</div>${intRows}${pvBlock}${cb}${ob}`;
+  // Upgrade the "Next best action" banner with live intent, if stronger than the sync default.
+  const nbt=document.getElementById("nbaText");
+  if(nbt){ if(iq.tier==="opportunity") nbt.innerHTML="📞 "+esc("High buying intent"+(iq.score?` (score ${iq.score})`:"")+(iq.top_manufacturer?` on ${iq.top_manufacturer}`:"")+" — call now.");
+    else if(emerging.length) nbt.innerHTML="⚡ "+esc("Researching "+emerging.map(m=>m.name).join(", ")+" without an active account — introduce the line."); }
 }
 
 async function crm(payload){ const r=await fetch("/.netlify/functions/crm-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return r.json().catch(()=>({})); }
