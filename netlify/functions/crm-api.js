@@ -32,6 +32,7 @@ const MAIL_FROM=process.env.HCPS_MAIL_FROM||"HCPS Partner Portal <orders@homecar
 const ORDERING=process.env.ORDERING_BASE||"https://hcpsonlineordering.netlify.app";
 const SITE_BASE=process.env.SITE_BASE||"https://homecareproviderservices.netlify.app";
 const engine=require("./_engine");   // shared automation core (tasks + email queue + delivery)
+const orgAccounts=require("./_accountorg.js")(sbGet,sbSend); // org-level manufacturer account numbers
 const eesc=s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 async function sendMail({to,subject,html,text}){
   const key=process.env.RESEND_API_KEY; if(!key) return {ok:false,skipped:true};
@@ -212,7 +213,9 @@ exports.handler = async (event)=>{
     }
     if(b.action==="save_account_ref"){
       if(!b.dealer_id||!b.manufacturer) return json(400,{error:"dealer_id + manufacturer required"});
-      await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",{dealer_id:b.dealer_id,manufacturer:String(b.manufacturer),account_ref:clean(b.account_ref,60)},{Prefer:"resolution=merge-duplicates,return=minimal"});
+      // Account numbers are organization-level: set it here and fill it across the dealer's family
+      // (parent + branches) wherever a branch has none yet — a branch with its own number is left alone.
+      await orgAccounts.propagateAccountRef(String(b.manufacturer), b.dealer_id, clean(b.account_ref,60));
       return json(200,{ok:true});
     }
 

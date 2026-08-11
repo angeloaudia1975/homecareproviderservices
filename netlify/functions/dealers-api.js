@@ -387,10 +387,21 @@ exports.handler = async (event)=>{
           }catch(e){}
         }
         // Optional manufacturer account #s so future imports match by number.
+        const ownAcct=new Set();
         if(Array.isArray(b.accounts)&&b.accounts.length){
           const rows=b.accounts.filter(a=>a&&a.manufacturer&&clean(a.account_ref))
-            .map(a=>({dealer_id,manufacturer:String(a.manufacturer).trim(),account_ref:clean(a.account_ref),active:true}));
+            .map(a=>{ ownAcct.add(String(a.manufacturer).trim()); return {dealer_id,manufacturer:String(a.manufacturer).trim(),account_ref:clean(a.account_ref),active:true}; });
           if(rows.length) try{ await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",rows,{Prefer:"resolution=merge-duplicates,return=minimal"}); }catch(e){}
+        }
+        // A branch inherits its parent organization's manufacturer account numbers (they are org-level).
+        // Fill only the lines the branch wasn't just given its own number for.
+        if(parent_id){
+          try{
+            const pdm=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(parent_id)}&select=manufacturer,account_ref`).catch(()=>[]);
+            const inherit=(pdm||[]).filter(x=>x&&x.account_ref&&String(x.account_ref).trim()&&!ownAcct.has(x.manufacturer))
+              .map(x=>({dealer_id,manufacturer:x.manufacturer,account_ref:x.account_ref,active:true}));
+            if(inherit.length) await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",inherit,{Prefer:"resolution=merge-duplicates,return=minimal"});
+          }catch(e){}
         }
         try{ await sbSend("POST","dealer_activity",{dealer_id,kind:"system",subject:parent_id?"Branch location added":"Dealer added",detail:name,actor:me.name||"admin"},{Prefer:"return=minimal"}); }catch(e){}
         return json(200,{ok:true,dealer_id});

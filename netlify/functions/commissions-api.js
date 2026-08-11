@@ -21,6 +21,8 @@ async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}
 async function sbGetAll(base, orderCol){ const PAGE=1000; let from=0,out=[]; for(;;){ const sep=base.includes("?")?"&":"?"; const rows=await sbGet(`${base}${sep}order=${orderCol}&limit=${PAGE}&offset=${from}`); out=out.concat(rows); if(rows.length<PAGE) break; from+=PAGE; } return out; }
 async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); const t=await r.text(); return t?JSON.parse(t):null; }
 async function fetchJson(url){ const r=await fetch(url); if(!r.ok) throw new Error("fetch "+r.status); return r.json(); }
+// Organization-level manufacturer account numbers (parent + branches share one number, fill-blanks).
+const orgAccounts=require("./_accountorg.js")(sbGet,sbSend);
 
 // dealer name normalizer — MUST match the alias seeding used elsewhere.
 const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
@@ -248,20 +250,22 @@ exports.handler = async (event)=>{
         await sbSend("DELETE",del,null,{Prefer:"return=minimal"}); }catch(e){}
       let inserted=0;
       for(let i=0;i<clean.length;i+=500){ const part=clean.slice(i,i+500); await sbSend("POST","monthly_sales",part,{Prefer:"return=minimal"}); inserted+=part.length; }
-      // Name-as-account lines (Access4u): the report company name IS the account number. Store it as
-      // the manufacturer account_ref on every matched dealer AND its whole family, so an HQ and all its
-      // branches share one Access4u account number. Idempotent (updates existing rows).
+      // Manufacturer account numbers are ORGANIZATION-level. For every matched dealer, capture the
+      // account number this report carries for it — the report company name for name-as-account lines
+      // (Access4u), otherwise the customer # — store it on that dealer, and fill it across the dealer's
+      // family (parent + branches) wherever a branch has none yet (never overwriting a branch that holds
+      // its own distinct number). Skipped for order-number lines, where the "customer #" is an order #.
       let accounts_set=0;
-      if(NAME_AS_ACCOUNT.has(slug)){
+      if(!(ctx.orderLines&&ctx.orderLines.has(slug))){
         const acctByDealer=new Map();
-        for(const o of out){ if(o.dealer_id && o.customer_name && !acctByDealer.has(o.dealer_id)) acctByDealer.set(o.dealer_id,o.customer_name); }
-        const dmRows=[], seen=new Set();
-        for(const [dealerId,acctName] of acctByDealer){
-          const root=ctx.rootOf.get(dealerId)||dealerId;
-          const fam=ctx.byRoot.get(root)||[{id:dealerId}];
-          for(const fd of fam){ if(seen.has(fd.id)) continue; seen.add(fd.id); dmRows.push({dealer_id:fd.id,manufacturer:slug,account_ref:acctName,active:true}); }
+        for(const o of out){
+          if(!o.dealer_id) continue;
+          const ref = NAME_AS_ACCOUNT.has(slug) ? String(o.customer_name||"").trim() : String(o.customer_ref||"").trim();
+          if(ref && !acctByDealer.has(o.dealer_id)) acctByDealer.set(o.dealer_id, ref);
         }
-        if(dmRows.length){ try{ await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",dmRows,{Prefer:"resolution=merge-duplicates,return=minimal"}); accounts_set=dmRows.length; }catch(e){} }
+        for(const [dealerId,ref] of acctByDealer){
+          try{ await orgAccounts.propagateAccountRef(slug, dealerId, ref); accounts_set++; }catch(e){}
+        }
       }
       return json(200,{ok:true,inserted,review,accounts_set,
         matched:review.matched, unmatched:review.unmatched.slice(0,200), unmatched_count:review.unmatched_count});
@@ -285,9 +289,10 @@ exports.handler = async (event)=>{
         // 2) relink every still-unmatched sales row for this line + name
         const patched=await sbSend("PATCH",`monthly_sales?manufacturer=eq.${encodeURIComponent(slug)}&customer_name=eq.${encodeURIComponent(name)}&dealer_id=is.null`,{dealer_id:did},{Prefer:"return=representation"}).catch(()=>null);
         if(Array.isArray(patched)) relinked+=patched.length;
-        // 3) store the account number on that dealer's line (so future reports match by number)
+        // 3) store the account number on that dealer's line, and fill it across the org's family
+        //    (parent + branches) wherever a branch has none yet — so future reports match by number.
         const acct=String(m.account_ref||"").trim();
-        if(acct && !orderLines.has(slug)){ await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",{dealer_id:did,manufacturer:slug,account_ref:acct,active:true},{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{}); }
+        if(acct && !orderLines.has(slug)){ await orgAccounts.propagateAccountRef(slug,did,acct).catch(()=>{}); }
         resolved++;
       }
       return json(200,{ok:true,resolved,relinked});
@@ -305,7 +310,7 @@ exports.handler = async (event)=>{
       if(acct){
         let orderLines=new Set();
         try{ const cc=await sbGet("app_settings?key=eq.commission_config&select=value"); orderLines=new Set(((cc&&cc[0]&&cc[0].value&&cc[0].value.order_number_lines))||[]); }catch(e){}
-        if(!orderLines.has(slug)) await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",{dealer_id:did,manufacturer:slug,account_ref:acct,active:true},{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{});
+        if(!orderLines.has(slug)) await orgAccounts.propagateAccountRef(slug,did,acct).catch(()=>{});
       }
       return json(200,{ok:true});
     }
