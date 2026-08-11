@@ -11,6 +11,9 @@
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const ORDERING_BASE = process.env.ORDERING_BASE || "https://hcpsonlineordering.netlify.app";
+// Manufacturers with no numeric account #: the report's company name IS the account number, and it is
+// shared across a dealer's whole family (HQ + branches). The importer stores it on the family on commit.
+const NAME_AS_ACCOUNT = new Set(["access4u"]);
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 
@@ -245,7 +248,22 @@ exports.handler = async (event)=>{
         await sbSend("DELETE",del,null,{Prefer:"return=minimal"}); }catch(e){}
       let inserted=0;
       for(let i=0;i<clean.length;i+=500){ const part=clean.slice(i,i+500); await sbSend("POST","monthly_sales",part,{Prefer:"return=minimal"}); inserted+=part.length; }
-      return json(200,{ok:true,inserted,review,
+      // Name-as-account lines (Access4u): the report company name IS the account number. Store it as
+      // the manufacturer account_ref on every matched dealer AND its whole family, so an HQ and all its
+      // branches share one Access4u account number. Idempotent (updates existing rows).
+      let accounts_set=0;
+      if(NAME_AS_ACCOUNT.has(slug)){
+        const acctByDealer=new Map();
+        for(const o of out){ if(o.dealer_id && o.customer_name && !acctByDealer.has(o.dealer_id)) acctByDealer.set(o.dealer_id,o.customer_name); }
+        const dmRows=[], seen=new Set();
+        for(const [dealerId,acctName] of acctByDealer){
+          const root=ctx.rootOf.get(dealerId)||dealerId;
+          const fam=ctx.byRoot.get(root)||[{id:dealerId}];
+          for(const fd of fam){ if(seen.has(fd.id)) continue; seen.add(fd.id); dmRows.push({dealer_id:fd.id,manufacturer:slug,account_ref:acctName,active:true}); }
+        }
+        if(dmRows.length){ try{ await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",dmRows,{Prefer:"resolution=merge-duplicates,return=minimal"}); accounts_set=dmRows.length; }catch(e){} }
+      }
+      return json(200,{ok:true,inserted,review,accounts_set,
         matched:review.matched, unmatched:review.unmatched.slice(0,200), unmatched_count:review.unmatched_count});
     }
 

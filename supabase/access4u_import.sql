@@ -13,7 +13,6 @@ alter table monthly_sales add column if not exists memo          text;     -- Qu
 create index if not exists monthly_sales_linetype_idx on monthly_sales(manufacturer, line_type);
 create index if not exists monthly_sales_invno_idx     on monthly_sales(manufacturer, invoice_no);
 
--- After loading Access4u, standardize the "account number" to the dealer's business name
--- (Access4u has no numeric account — the business name IS the account). Safe to re-run.
---   update dealer_manufacturers dm set account_ref = d.business_name
---   from dealers d where d.id = dm.dealer_id and dm.manufacturer = 'access4u';
+-- NOTE: Access4u has no numeric account — the report's COMPANY NAME is the account number, shared
+-- across a dealer's whole family (HQ + branches). The importer now stores that automatically on commit.
+-- To backfill account numbers for reports already loaded, run supabase/access4u_accounts.sql.
