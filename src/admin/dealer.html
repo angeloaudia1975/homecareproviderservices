@@ -314,9 +314,10 @@ function renderContacts(){ const el=$("#contacts"); if(!el||!CDATA) return;
   // Manufacturer account numbers render in their own card (right column, under Notes & tasks).
   const accts=CDATA.accounts||[];
   const ael=$("#acctcard");
+  const acctHint='<div class="hint" style="margin-top:8px">Account numbers are organization-level — saving one here also fills every branch in this dealer group that doesn’t already have its own number for that manufacturer.</div>';
   if(ael) ael.innerHTML = accts.length
     ? accts.map(a=>`<div style="display:flex;align-items:center;gap:6px;margin:4px 0"><span style="flex:1;font-size:13px">${esc(a.name)}${a.active?"":' <span class="hint">(inactive)</span>'}</span>
-       <input id="acct_${esc(a.slug)}" value="${esc(a.account_ref||"")}" placeholder="account #" style="width:130px"><button class="btn sm" onclick="saveAcct('${esc(a.slug)}')">Save</button></div>`).join("")
+       <input id="acct_${esc(a.slug)}" value="${esc(a.account_ref||"")}" placeholder="account #" style="width:130px"><button class="btn sm" onclick="saveAcct('${esc(a.slug)}')">Save</button></div>`).join("")+acctHint
     : '<div class="hint">No manufacturer accounts on file for this dealer yet.</div>';
 }
 async function saveContact(){ const email=(($("#c_email")||{}).value||"").trim(); if(!email){ alert("Email is required for a contact."); return; }
