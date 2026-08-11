@@ -462,7 +462,8 @@
     var gh = $("#gh-status");
     if (githubOk === false) { gh.className = "gh-status bad"; gh.textContent = "GitHub not configured"; }
     else { gh.className = "gh-status ok"; gh.textContent = "Publishing live"; }
-    navigate("manufacturers");
+    var _hv=(location.hash||"").replace(/^#/,"").replace(/[^a-z]/gi,"");
+    navigate(document.querySelector('.tab[data-view="'+_hv+'"]') ? _hv : "manufacturers");
   }
 
   // ---------- data loading ----------
