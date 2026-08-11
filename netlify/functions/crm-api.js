@@ -96,7 +96,7 @@ exports.handler = async (event)=>{
       if(!b.dealer_id) return json(400,{error:"dealer_id required"});
       const did=encodeURIComponent(b.dealer_id);
       const d30=new Date(Date.now()-30*864e5).toISOString(), d90=new Date(Date.now()-90*864e5).toISOString();
-      const [events,intentRows,lines,sends,sessions,orders,carts,mfrs]=await Promise.all([
+      const [events,intentRows,lines,sends,sessions,orders,carts,mfrs,salesRows]=await Promise.all([
         sbGet(`intent_events?dealer_id=eq.${did}&occurred_at=gte.${encodeURIComponent(d90)}&select=event_type,manufacturer,product_code,meta,occurred_at&order=occurred_at.desc&limit=800`).catch(()=>[]),
         sbGet(`dealer_intent?dealer_id=eq.${did}&select=score_total,tier,by_manufacturer,top_manufacturer,top_product,last_event_at`).catch(()=>[]),
         sbGet(`dealer_line_status?dealer_id=eq.${did}&select=manufacturer,relationship,months_since`).catch(()=>[]),
@@ -105,6 +105,7 @@ exports.handler = async (event)=>{
         sbGet(`orders?dealer_id=eq.${did}&select=manufacturer,status,subtotal,submitted_at&order=submitted_at.desc&limit=15`).catch(()=>[]),
         sbGet(`dealer_carts?dealer_id=eq.${did}&select=cart,updated_at`).catch(()=>[]),
         sbGet("manufacturers?select=slug,name").catch(()=>[]),
+        sbGet(`monthly_sales?dealer_id=eq.${did}&select=manufacturer,line_type,amount,commission,commission_rate,billed_amount,invoice_no,order_date,memo&limit=8000`).catch(()=>[]),
       ]);
       const mfrName={}; (mfrs||[]).forEach(m=>mfrName[m.slug]=m.name||m.slug);
       const rel={}; (lines||[]).forEach(l=>rel[l.manufacturer]=l.relationship);
@@ -130,7 +131,21 @@ exports.handler = async (event)=>{
       const cartList=(carts||[]).map(c=>{ const items=(c.cart&&c.cart.items)||[]; let n=0,val=0; for(const it of items){const q=Number(it.qty)||0;n+=q;val+=(Number(it.p&&it.p.base_price)||0)*q;}
         return {items:n,value:Math.round(val),updated_at:c.updated_at,mfr:mfrName[(c.cart&&c.cart.mfr)]||((c.cart&&c.cart.mfr)||"")}; }).filter(c=>c.items>0);
       const topProducts=Object.values(prodViews).sort((a,b)=>b.count-a.count).slice(0,8);
-      return json(200,{ok:true,intel:{
+      // Commission ledger — paid (realized) vs outstanding (invoiced, awaiting payment). Outstanding
+      // comes from Access4u invoice rows whose R-##### has no matching payment; est. pending commission
+      // applies the dealer's own paid rate to that backlog.
+      const ms=salesRows||[]; let paidComm=0, realized=0, rateSum=0, rateN=0; const paidRefs=new Set();
+      for(const r of ms){ if(r.commission!=null) paidComm+=Number(r.commission)||0; if(r.amount!=null) realized+=Number(r.amount)||0;
+        if(String(r.line_type||"").toLowerCase()==="payment"){ if(r.invoice_no) paidRefs.add(String(r.invoice_no).toUpperCase()); if(r.commission_rate!=null){ rateSum+=Number(r.commission_rate)||0; rateN++; } } }
+      const openInv=ms.filter(r=>String(r.line_type||"").toLowerCase()==="invoice" && !(r.invoice_no && paidRefs.has(String(r.invoice_no).toUpperCase())));
+      const outstanding=openInv.reduce((a,r)=>a+(Number(r.billed_amount)||0),0);
+      const estRate=rateN?(rateSum/rateN):0.05;
+      const openList=openInv.slice().sort((a,b)=>(Number(b.billed_amount)||0)-(Number(a.billed_amount)||0)).slice(0,12)
+        .map(r=>({invoice_no:r.invoice_no,billed:Math.round((Number(r.billed_amount)||0)*100)/100,date:r.order_date,memo:r.memo,manufacturer:mfrName[r.manufacturer]||r.manufacturer}));
+      const commission={ paid:Math.round(paidComm*100)/100, realized_sales:Math.round(realized*100)/100,
+        outstanding_sales:Math.round(outstanding*100)/100, open_invoices:openInv.length,
+        est_rate:Math.round(estRate*10000)/10000, est_pending:Math.round(outstanding*estRate*100)/100, open_list:openList };
+      return json(200,{ok:true,intel:{ commission,
         email:{opens,clicks,opens_30d:opens30,clicks_30d:clicks30,sent:(sends||[]).length,last_sent:(sends&&sends[0]&&sends[0].sent_at)||null},
         logins:{count:sess.length,count_30d:logins30,last_login:(sess[0]&&sess[0].last_seen_at)||null,lines_browsed:[...new Set(Object.keys(evByMfr))].map(s=>mfrName[s]||s)},
         interest, products_viewed:topProducts, carts:cartList, orders:orders||[],

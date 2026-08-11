@@ -35,7 +35,7 @@
 
   <div class="card">
     <div class="row">
-      <div class="fld"><label>Manufacturer / line</label><select id="mfr" onchange="applyTemplate()"></select></div>
+      <div class="fld"><label>Manufacturer / line</label><select id="mfr" onchange="reparse()"></select></div>
       <div class="fld"><label>Report month</label><input type="month" id="period"></div>
       <div class="fld"><label>Report file</label><input type="file" id="file" accept=".xlsx,.xls,.csv,.pdf" onchange="onFile()"></div>
       <div class="fld"><label>Header row</label><input type="number" id="hrow" value="1" min="1" style="width:80px" onchange="reparse()"></div>
@@ -197,8 +197,47 @@ async function parsePdf(file){
   const colOf=x=>{ let bi=0,bd=1e9; cols.forEach((c,i)=>{const d=Math.abs(c-x); if(d<bd){bd=d;bi=i;}}); return bi; };
   return lines.map(r=>{ const row=new Array(Math.max(1,cols.length)).fill(""); r.forEach(c=>{ const i=colOf(c.x); row[i]=(row[i]?row[i]+" ":"")+c.s; }); return row; });
 }
+// Manufacturers whose reports are QuickBooks "Transaction List by Client" ledgers (grouped by dealer,
+// Invoice/Payment lines) rather than a flat column table. These use the dedicated grouped parser.
+const GROUPED_LINES=new Set(["access4u"]);
+let A4U=false, GROUPED=[];
+const A4U_PO=/\bPO\s*#?\s*\d+/i, A4U_RREF=/R-?\d+/i;
+function parseGrouped(RAW){
+  let hdr=-1,H=null;
+  for(let i=0;i<RAW.length;i++){ const v=(RAW[i]||[]).map(x=>String(x==null?"":x).trim().toLowerCase());
+    if(v.indexOf("date")>=0 && v.indexOf("commission")>=0){ hdr=i; H=RAW[i]; break; } }
+  if(hdr<0) return [];
+  const col={}; H.forEach((h,j)=>{ const k=String(h==null?"":h).trim().toLowerCase(); if(k) col[k]=j; });
+  const cD=col["date"], cT=(col["type"]!=null?col["type"]:col["transaction type"]), cN=col["num"],
+        cM=col["memo/description"], cA=col["amount"], cNet=col["net sale"], cP=col["%"], cC=col["commission"];
+  const cR=(cC!=null)?cC+1:null; const T=v=>String(v==null?"":v).trim();
+  const out=[]; let cur="";
+  for(let i=hdr+1;i<RAW.length;i++){
+    const r=RAW[i]||[]; const c0=T(r[0]); const dt=(cD!=null)?T(r[cD]):"";
+    if(c0 && !dt){ const lc=c0.toLowerCase(); if(lc.indexOf("total for")===0||lc.indexOf("homecare provider s")===0) continue; cur=c0; continue; }
+    if(!dt) continue;
+    let client=cur; const lc0=c0.toLowerCase();
+    if(c0 && lc0.indexOf("total")!==0 && lc0.indexOf("homecare provider s")!==0) client=c0;
+    if(!client) continue;
+    const typ=(cT!=null?T(r[cT]):"").toLowerCase(); if(typ!=="invoice" && typ!=="payment") continue;
+    const memo=(cM!=null)?T(r[cM]):""; const num=(cN!=null)?T(r[cN]).toUpperCase():"";
+    const amt=(cA!=null)?numv(r[cA]):null, net=(cNet!=null)?numv(r[cNet]):null,
+          pct=(cP!=null)?numv(r[cP]):null, comm=(cC!=null)?numv(r[cC]):null, rep=(cR!=null)?T(r[cR]):"";
+    if(typ==="payment"){ const mm=memo.match(A4U_RREF); const inv=mm?mm[0].toUpperCase():num;
+      out.push({customer_name:client,customer_ref:client,line_type:"payment",amount:(net!=null?net:amt),commission:comm,commission_rate:pct,invoice_no:inv,order_date:dt,memo,rep_name:rep}); }
+    else { out.push({customer_name:client,customer_ref:client,line_type:"invoice",amount:null,billed_amount:amt,commission:null,commission_rate:pct,invoice_no:num,order_date:dt,memo,rep_name:rep}); }
+  }
+  return out;
+}
 function reparse(){
   if(!RAW.length){ return; }
+  A4U = GROUPED_LINES.has($("#mfr").value);
+  if(A4U){                                   // grouped ledger — no column mapping needed
+    GROUPED = parseGrouped(RAW);
+    const mc=$("#mapCard"); if(mc) mc.style.display="none";
+    renderPreview();
+    return;
+  }
   const hr=Math.max(1,parseInt($("#hrow").value,10)||1)-1;
   HEADERS=(RAW[hr]||[]).map((h,i)=>String(h||"").trim()||("Column "+(i+1)));
   DATA=RAW.slice(hr+1);
@@ -245,6 +284,7 @@ function renderMap(){
   }).join("");
 }
 function mappedRows(){
+  if(A4U) return GROUPED;
   const idx={}; FIELDS.forEach(f=>{ idx[f.k]= MAP[f.k]?HEADERS.indexOf(MAP[f.k]):-1; });
   return (DATA||[]).map(r=>{ const o={}; FIELDS.forEach(f=>{ if(idx[f.k]>=0) o[f.k]=r[idx[f.k]]; }); return o; })
     .filter(o=>String(o.customer_name||"").trim());
@@ -253,6 +293,16 @@ function renderPreview(){
   const rows=mappedRows();
   if(!rows.length){ $("#prevCard").style.display="none"; return; }
   $("#prevCard").style.display="block";
+  if(A4U){   // grouped ledger preview: payments (realized) vs invoices (outstanding)
+    const pays=rows.filter(r=>r.line_type==="payment"), invs=rows.filter(r=>r.line_type==="invoice");
+    const real=pays.reduce((a,r)=>a+(numv(r.amount)||0),0), com=pays.reduce((a,r)=>a+(numv(r.commission)||0),0);
+    const billed=invs.reduce((a,r)=>a+(numv(r.billed_amount)||0),0);
+    $("#prevMeta").innerHTML=`${rows.length} ledger lines · <b>${pays.length}</b> payments (realized ${usd(real)} · commission ${usd(com)}) · <b>${invs.length}</b> invoices (billed ${usd(billed)})`;
+    const cols=["line_type","order_date","customer_name","invoice_no","amount","billed_amount","commission","memo"];
+    $("#prevTable").innerHTML=`<thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>`+
+      rows.slice(0,10).map(r=>`<tr>${cols.map(c=>`<td>${esc(r[c]==null?"":r[c])}</td>`).join("")}</tr>`).join("")+`</tbody>`;
+    return;
+  }
   const amt=rows.reduce((a,r)=>a+(numv(r.amount)||0),0), com=rows.reduce((a,r)=>a+(numv(r.commission)||0),0);
   $("#prevMeta").innerHTML=`${rows.length} rows · sales ${usd(amt)} · commission ${usd(com)}`;
   const cols=FIELDS.filter(f=>MAP[f.k]);
@@ -269,7 +319,7 @@ function validImport(){
   const slug=$("#mfr").value, period=($("#period").value||"").trim();
   if(!slug){ $("#imsg").textContent="Pick a manufacturer."; $("#imsg").className="st warn"; return null; }
   if(!/^\d{4}-\d{2}$/.test(period)){ $("#imsg").textContent="Pick the report month."; $("#imsg").className="st warn"; return null; }
-  if(!MAP.customer_name){ $("#imsg").textContent="Map the Dealer / customer name column."; $("#imsg").className="st warn"; return null; }
+  if(!A4U && !MAP.customer_name){ $("#imsg").textContent="Map the Dealer / customer name column."; $("#imsg").className="st warn"; return null; }
   const rows=mappedRows(); if(!rows.length){ $("#imsg").textContent="No rows to load."; $("#imsg").className="st warn"; return null; }
   return {slug,period,rows};
 }
@@ -297,13 +347,16 @@ function renderReview(rv){
   LASTREVIEW=rv; const el=$("#reviewCard"); if(!el||!rv) return;
   const tot=rv.total||0, m=rv.matched||0, un=rv.unmatched_count||0;
   const physPct=rv.amount_total?Math.round(100*rv.physical_amount/rv.amount_total):0;
+  const ledger = (rv.payment_rows||0)+(rv.invoice_rows||0) > 0;   // Access4u payment/invoice ledger
   const tiles=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px">
-    ${tileHtml("Rows",tot,`${usd(rv.amount_total)} sales · ${usd(rv.commission_total)} comm`)}
+    ${tileHtml("Rows",tot,`${usd(rv.amount_total)} realized · ${usd(rv.commission_total)} comm`)}
     ${tileHtml("Matched",`${m}/${tot}`,`${un} unmatched`,un?"warn":"")}
+    ${ledger
+      ? tileHtml("Payments",rv.payment_rows||0,`${usd(rv.amount_total)} realized · ${usd(rv.commission_total)} paid`)
+        +tileHtml("Invoices",rv.invoice_rows||0,`${usd(rv.billed_total)} billed (awaiting pay)`,"warn")
+      : tileHtml("Products",rv.distinct_products,"distinct models")+tileHtml("Credits",rv.credits,"return/credit lines",rv.credits?"warn":"")}
     ${tileHtml("Physical",usd(rv.physical_amount),`${physPct}% · ${rv.physical_rows} rows`)}
-    ${tileHtml("Drop-ship",usd(rv.dropship_amount),`${100-physPct}% · ${rv.dropship_rows} rows`)}
-    ${tileHtml("Products",rv.distinct_products,"distinct models")}
-    ${tileHtml("Credits",rv.credits,"return/credit lines",rv.credits?"warn":"")}</div>`;
+    ${tileHtml("Drop-ship",usd(rv.dropship_amount),`${100-physPct}% · ${rv.dropship_rows} rows`)}</div>`;
   // Unmatched dealers → match / create / approve
   const unm=(rv.unmatched||[]).filter(u=>!RVAPPROVED.has("unm:"+u.name));
   let unmHtml=unm.length?secHead(`⚠ ${unm.length} unmatched dealer${unm.length===1?"":"s"} — match to an existing dealer, create a new one, or approve as unassigned`,"warn")+

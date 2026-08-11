@@ -67,7 +67,12 @@ async function buildCtx(slug){
   // Saved ZIP→branch assignments (from the review screen) — resolve ambiguous/assigned ZIPs deterministically.
   let zipmap={};
   try{ const zm=await sbGet(`app_settings?key=eq.zipmap:${encodeURIComponent(slug)}&select=value`); if(zm&&zm[0]&&zm[0].value&&typeof zm[0].value==="object") zipmap=zm[0].value; }catch(e){}
-  return {idByAlias,idByAccount,orderLines,rootOf,byRoot,nameById,zipmap};
+  // Access4u: channel (physical/drop-ship) is decided on the invoice; a later payment inherits it via
+  // the R-##### reference. Preload already-imported invoice channels so cross-month payments classify.
+  const invChannel={};
+  try{ const iv=await sbGetAll(`monthly_sales?manufacturer=eq.${encodeURIComponent(slug)}&line_type=eq.invoice&select=invoice_no,channel`,"invoice_no").catch(()=>[]);
+    for(const x of (iv||[])){ if(x.invoice_no) invChannel[String(x.invoice_no).toUpperCase()]=x.channel; } }catch(e){}
+  return {idByAlias,idByAccount,orderLines,rootOf,byRoot,nameById,zipmap,invChannel};
 }
 
 // Map raw report rows to monthly_sales rows AND compute a review report. Pure (no DB writes) so the
@@ -76,11 +81,16 @@ async function buildCtx(slug){
 // match = corporate drop-ship. (Falls back to city/state for lines that supply them, e.g. non-Golden.)
 function mapRows(slug, per, source_file, rows, ctx){
   const {idByAlias,idByAccount,orderLines,rootOf,byRoot,nameById}=ctx;
-  const zipmap=ctx.zipmap||{};
+  const zipmap=ctx.zipmap||{}, invChannel=ctx.invChannel||{};
   const refMatch=!orderLines.has(slug);
   const out=[]; const unmatched=new Map();
   let matched=0, physical=0, dropship=0, physAmt=0, dropAmt=0, credits=0, amtTot=0, commTot=0;
   const newAcct=new Map(), noZip=new Map(), ambiguous=[], ambSeen=new Set(), models=new Set();
+  // Access4u ledger metrics + a same-file invoice→channel map (Med Mart PO = drop-ship) so payments
+  // in this same file inherit their order's channel even before it's in the database.
+  let invRows=0, payRows=0, billedTot=0; const localInv={};
+  const poDropOf=m=>/\bPO\s*#?\s*\d+/i.test(String(m||""));
+  for(const r of rows){ if(String(r.line_type||"").toLowerCase()==="invoice"){ const inv=String(r.invoice_no||"").toUpperCase(); if(inv) localInv[inv]=poDropOf(r.memo)?"dropship":"physical"; } }
   for(const r of rows){
     const acct=(r.customer_ref!=null)?String(r.customer_ref).trim():"";
     const name=stripC(r.customer_name);
@@ -93,6 +103,13 @@ function mapRows(slug, per, source_file, rows, ctx){
     if(type==="C"||(amount!=null&&amount<0)) credits++;
     const model=(r.product_code!=null&&String(r.product_code).trim())?String(r.product_code).trim():"";
     if(model) models.add(model);
+    // Access4u ledger fields (blank/absent for other lines)
+    const lineType=type.toLowerCase();
+    const billed=num(r.billed_amount);
+    const memo=(r.memo!=null)?String(r.memo).trim():"";
+    const invRef=(r.invoice_no!=null&&String(r.invoice_no).trim())?String(r.invoice_no).trim().toUpperCase():"";
+    if(lineType==="invoice"){ invRows++; if(billed!=null) billedTot+=billed; }
+    else if(lineType==="payment"){ payRows++; }
     const byAcct=refMatch&&acct&&idByAccount[acct];
     const byName=name?idByAlias[dnorm(name)]:null;
     let did=byAcct||byName||null; let channel=null;
@@ -101,23 +118,31 @@ function mapRows(slug, per, source_file, rows, ctx){
       const root=rootOf.get(did)||did;
       const famArr=byRoot.get(root)||[];
       const famZips=famArr.map(d=>znorm(d.zip)).filter(Boolean);
-      // A saved ZIP→branch assignment (from the review screen) wins, when it points into this family.
-      const assigned = (shipZip && zipmap[shipZip] && (rootOf.get(zipmap[shipZip])===root)) ? zipmap[shipZip] : null;
-      if(assigned){ did=assigned; channel="physical"; }
-      else if(shipZip && famZips.length){
-        const hit=famArr.filter(d=>znorm(d.zip)===shipZip);
-        if(hit.length===1){ did=hit[0].id; channel="physical"; }
-        else if(hit.length>1){ did=hit[0].id; channel="physical";
-          if(!ambSeen.has(shipZip)){ ambSeen.add(shipZip); ambiguous.push({zip:shipZip,dealers:hit.map(d=>({id:d.id,name:nameById.get(d.id)||d.id}))}); } }
-        else { did=root; channel="dropship"; }
-      } else if(shipCity){
-        const c=ncity(shipCity), st=nstate(shipState);
-        const mm = famArr.length<=1 ? famArr[0] : (famArr.find(x=>ncity(x.city)===c&&(!st||nstate(x.state)===st))||famArr.find(x=>ncity(x.city)===c));
-        did=(mm&&mm.id)||root; channel="physical";
-      } else if(famZips.length){
-        did=root; channel="dropship";                 // ZIP branches exist but this line has no ZIP → can't place
+      if(lineType==="invoice"||lineType==="payment"){
+        // Access4u ledger: no ZIP. Channel comes from the order's memo (PO = drop-ship); a payment
+        // inherits its invoice's channel via the R-##### reference (same file, then the database).
+        did=root;
+        const linked = lineType==="payment" ? (localInv[invRef]||invChannel[invRef]) : null;
+        channel = (poDropOf(memo) || linked==="dropship") ? "dropship" : "physical";
       } else {
-        did=root; channel="physical"; const n0=noZip.get(root)||{dealer_id:root,name:nameById.get(root)||name,count:0}; n0.count++; noZip.set(root,n0);
+        // A saved ZIP→branch assignment (from the review screen) wins, when it points into this family.
+        const assigned = (shipZip && zipmap[shipZip] && (rootOf.get(zipmap[shipZip])===root)) ? zipmap[shipZip] : null;
+        if(assigned){ did=assigned; channel="physical"; }
+        else if(shipZip && famZips.length){
+          const hit=famArr.filter(d=>znorm(d.zip)===shipZip);
+          if(hit.length===1){ did=hit[0].id; channel="physical"; }
+          else if(hit.length>1){ did=hit[0].id; channel="physical";
+            if(!ambSeen.has(shipZip)){ ambSeen.add(shipZip); ambiguous.push({zip:shipZip,dealers:hit.map(d=>({id:d.id,name:nameById.get(d.id)||d.id}))}); } }
+          else { did=root; channel="dropship"; }
+        } else if(shipCity){
+          const c=ncity(shipCity), st=nstate(shipState);
+          const mm = famArr.length<=1 ? famArr[0] : (famArr.find(x=>ncity(x.city)===c&&(!st||nstate(x.state)===st))||famArr.find(x=>ncity(x.city)===c));
+          did=(mm&&mm.id)||root; channel="physical";
+        } else if(famZips.length){
+          did=root; channel="dropship";                 // ZIP branches exist but this line has no ZIP → can't place
+        } else {
+          did=root; channel="physical"; const n0=noZip.get(root)||{dealer_id:root,name:nameById.get(root)||name,count:0}; n0.count++; noZip.set(root,n0);
+        }
       }
       if(channel==="physical"){ physical++; physAmt+=amount||0; } else { dropship++; dropAmt+=amount||0; }
       if(byName && !byAcct && acct && !idByAccount[acct] && !orderLines.has(slug)){
@@ -134,7 +159,7 @@ function mapRows(slug, per, source_file, rows, ctx){
       product_name:(r.product_name!=null&&String(r.product_name).trim())?String(r.product_name).trim():null,
       item_no:(r.item_no!=null&&String(r.item_no).trim())?String(r.item_no).trim():null,
       qty:num(r.qty), amount, commission, commission_rate:num(r.commission_rate), cost:num(r.cost),
-      line_type:type||null,
+      line_type:type||null, billed_amount:billed, memo:memo||null,
       credit_reason:(r.credit_reason!=null&&String(r.credit_reason).trim())?String(r.credit_reason).trim():null,
       invoice_no:(r.invoice_no!=null&&String(r.invoice_no).trim())?String(r.invoice_no).trim():null,
       rep_name:(r.rep_name!=null&&String(r.rep_name).trim())?String(r.rep_name).trim():null,
@@ -147,6 +172,7 @@ function mapRows(slug, per, source_file, rows, ctx){
     physical_amount:Math.round(physAmt*100)/100, dropship_amount:Math.round(dropAmt*100)/100,
     new_accounts:[...newAcct.values()].slice(0,300), no_zip_dealers:[...noZip.values()].slice(0,300),
     ambiguous_zips:ambiguous.slice(0,100), distinct_products:models.size, credits,
+    invoice_rows:invRows, payment_rows:payRows, billed_total:Math.round(billedTot*100)/100,
     amount_total:Math.round(amtTot*100)/100, commission_total:Math.round(commTot*100)/100 };
   return {out, review};
 }
@@ -209,7 +235,7 @@ exports.handler = async (event)=>{
       // Column-existence probes: enrichment cols (golden_import.sql) + ship cols (attribution.sql).
       let hasEnrich=true; try{ const p=await fetch(`${SUPABASE_URL}/rest/v1/monthly_sales?select=channel&limit=1`,{headers:H()}); hasEnrich=p.ok; }catch(e){ hasEnrich=false; }
       let hasShip=true;   try{ const p=await fetch(`${SUPABASE_URL}/rest/v1/monthly_sales?select=ship_city&limit=1`,{headers:H()}); hasShip=p.ok; }catch(e){ hasShip=false; }
-      const ENRICH=["channel","item_no","line_type","credit_reason","invoice_no","ship_zip","commission_rate","order_date"];
+      const ENRICH=["channel","item_no","line_type","credit_reason","invoice_no","ship_zip","commission_rate","order_date","billed_amount","memo"];
       const clean=out.map(o=>{ const row={...o};
         if(!hasEnrich) ENRICH.forEach(k=>delete row[k]);
         if(!hasShip){ delete row.ship_city; delete row.ship_state; delete row.ship_zip; }

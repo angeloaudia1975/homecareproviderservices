@@ -191,6 +191,7 @@ function render(D,A){
   const notesCard=`<div class="card"><h2>Notes</h2><div id="notes"><div class="hint">Loading…</div></div></div>`;
   const acctCard=`<div class="card"><h2>Manufacturer account numbers</h2><div id="acctcard"><div class="hint">Loading…</div></div></div>`;
   const intelCard=`<div class="card"><h2>Digital activity &amp; interest</h2><div id="intel"><div class="hint">Loading activity…</div></div></div>`;
+  const commCard=`<div class="card"><h2>Commission — paid vs. outstanding</h2><div id="commled"><div class="hint">Loading…</div></div></div>`;
 
   // Next best action — synthesized from what we already know (upgraded once intent loads).
   const nba=nextBestAction(d,lines,monthsSince,cart,sess);
@@ -211,7 +212,7 @@ function render(D,A){
 
   $("#body").innerHTML=`${header}${nextBanner}
     <div class="d360">
-      <div>${intelCard}${history}${notesCard}${contactsCard}</div>
+      <div>${intelCard}${history}${commCard}${notesCard}${contactsCard}</div>
       <div>${signals}${addrCard}${tasksCard}${acctCard}</div>
     </div>`;
   CUR=d.id; loadCRM(); loadIntel(); loadContacts();
@@ -328,7 +329,8 @@ function idate(s){ try{ return new Date(s).toLocaleDateString(); }catch(e){ retu
 async function loadIntel(){
   const el=$("#intel"); if(!el||!CUR) return;
   let j; try{ j=await crm({action:"intel",dealer_id:CUR}); }catch(e){ el.innerHTML='<div class="hint">Couldn\'t load activity.</div>'; return; }
-  const it=j&&j.intel; if(!it){ el.innerHTML='<div class="hint">No digital activity yet — it appears here once the dealer logs into the ordering portal or engages with email.</div>'; return; }
+  const it=j&&j.intel; if(!it){ el.innerHTML='<div class="hint">No digital activity yet — it appears here once the dealer logs into the ordering portal or engages with email.</div>'; renderCommission(null); return; }
+  renderCommission(it.commission);
   const em=it.email||{}, lg=it.logins||{}, iq=it.intent||{};
   const tiles=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
     <div class="itile"><div class="l">Intent</div><div class="v">${iq.score||0}</div><div class="hint" style="margin:0">${esc(iq.tier||"normal")}</div></div>
@@ -357,6 +359,20 @@ async function loadIntel(){
     else if(emerging.length) nbt.innerHTML="⚡ "+esc("Researching "+emerging.map(m=>m.name).join(", ")+" without an active account — introduce the line."); }
 }
 
+function renderCommission(c){
+  const el=$("#commled"); if(!el) return;
+  if(!c || (!c.paid && !c.open_invoices && !c.realized_sales)){ el.innerHTML='<div class="hint">No commission on file yet — it appears here once commission reports are imported.</div>'; return; }
+  const tiles=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+    <div class="itile"><div class="l">Commission paid</div><div class="v">${money(c.paid)}</div><div class="hint" style="margin:0">realized</div></div>
+    <div class="itile"><div class="l">Outstanding</div><div class="v">${money(c.outstanding_sales)}</div><div class="hint" style="margin:0">${c.open_invoices||0} invoice${c.open_invoices===1?"":"s"} awaiting pay</div></div>
+    <div class="itile"><div class="l">Est. pending comm.</div><div class="v">${money(c.est_pending)}</div><div class="hint" style="margin:0">@ ${((c.est_rate||0)*100).toFixed(1)}%</div></div>
+  </div>`;
+  const list=(c.open_list&&c.open_list.length) ? `<div class="ihd" style="margin-top:10px">Open invoices — awaiting payment</div>`+
+    c.open_list.map(o=>`<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid #eef2f6;font-size:12.5px">
+      <span style="flex:1;min-width:0">${esc(o.memo||o.invoice_no||"")}${o.manufacturer?` <span class="hint" style="margin:0">· ${esc(o.manufacturer)}</span>`:""}</span>
+      <span class="hint" style="margin:0">${o.date?idate(o.date):""}</span><b>${money(o.billed)}</b></div>`).join("") : "";
+  el.innerHTML=tiles+list;
+}
 async function crm(payload){ const r=await fetch("/.netlify/functions/crm-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return r.json().catch(()=>({})); }
 async function loadCRM(){
   const el=$("#crm"); if(!el||!CUR) return;
