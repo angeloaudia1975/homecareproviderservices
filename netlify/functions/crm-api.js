@@ -155,6 +155,58 @@ exports.handler = async (event)=>{
       }});
     }
 
+    // Deep sales drill-down for Dealer 360 — combined monthly $ plus, per manufacturer:
+    // monthly $/qty, the actual products ordered, quantities, order count, AOV, buying
+    // cadence, top products, and a recent-vs-prior trend. All computed from monthly_sales.
+    if(b.action==="sales"){
+      if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+      const did=encodeURIComponent(b.dealer_id);
+      const [rows,mfrs]=await Promise.all([
+        sbGetAll(`monthly_sales?dealer_id=eq.${did}&select=manufacturer,period,product,sku,description,qty,amount,commission,invoice_no`,"period").catch(()=>[]),
+        sbGet("manufacturers?select=slug,name").catch(()=>[]),
+      ]);
+      const mfrName={}; for(const m of (mfrs||[])) mfrName[m.slug]=m.name||m.slug;
+      const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      const pmOf=p=>{ const s=String(p||"").slice(0,7); const a=s.split("-"); const y=Number(a[0]),mo=Number(a[1]); return (y&&mo)?y*12+(mo-1):null; };
+      const pmLabel=pm=>MON[((pm%12)+12)%12]+" "+String(Math.floor(pm/12)).slice(2);
+      const combined=new Map(); const byMfr=new Map(); let minPm=Infinity,maxPm=-Infinity;
+      for(const r of (rows||[])){
+        const pm=pmOf(r.period); if(pm==null) continue;
+        const amt=Number(r.amount)||0, qty=Number(r.qty)||0, comm=Number(r.commission)||0;
+        if(pm<minPm)minPm=pm; if(pm>maxPm)maxPm=pm;
+        combined.set(pm,(combined.get(pm)||0)+amt);
+        const slug=r.manufacturer||"(unknown)";
+        let M=byMfr.get(slug); if(!M){ M={months:new Map(),products:new Map(),total:0,comm:0,qty:0,orders:new Set(),pms:new Set()}; byMfr.set(slug,M); }
+        M.total+=amt; M.comm+=comm; M.qty+=qty; M.pms.add(pm); if(r.invoice_no) M.orders.add(String(r.invoice_no));
+        const mm=M.months.get(pm)||{amount:0,qty:0}; mm.amount+=amt; mm.qty+=qty; M.months.set(pm,mm);
+        const pname=String(r.product||r.description||r.sku||"").trim();
+        if(pname){ const key=String(r.sku||pname).trim().toLowerCase();
+          const P=M.products.get(key)||{name:pname,sku:r.sku||"",qty:0,amount:0,orders:new Set(),last:null};
+          P.qty+=qty; P.amount+=amt; if(r.invoice_no)P.orders.add(String(r.invoice_no)); if(P.last==null||pm>P.last)P.last=pm;
+          M.products.set(key,P);
+        }
+      }
+      const combinedSeries=[]; if(isFinite(minPm)){ for(let pm=minPm;pm<=maxPm;pm++) combinedSeries.push({pm,label:pmLabel(pm),amount:Math.round((combined.get(pm)||0)*100)/100}); }
+      const manufacturers=[...byMfr.entries()].map(([slug,M])=>{
+        const pms=[...M.pms].sort((a,b)=>a-b);
+        const months=[]; for(let pm=pms[0];pm<=pms[pms.length-1];pm++){ const mm=M.months.get(pm); months.push({pm,label:pmLabel(pm),amount:Math.round(((mm&&mm.amount)||0)*100)/100,qty:(mm&&mm.qty)||0}); }
+        const orders=M.orders.size||pms.length;
+        const aov=orders?Math.round((M.total/orders)*100)/100:0;
+        const spanMo=pms.length?(pms[pms.length-1]-pms[0]+1):0;
+        const cadence=(orders>1&&spanMo>1)?Math.round((spanMo/orders)*10)/10:null;
+        const active=pms.map(pm=>((M.months.get(pm)||{amount:0}).amount));
+        const recent=active.slice(-3).reduce((s,x)=>s+x,0), prior=active.slice(-6,-3).reduce((s,x)=>s+x,0);
+        const pct=prior>0?Math.round(((recent-prior)/prior)*100):(recent>0?null:0);
+        const trend={recent:Math.round(recent*100)/100,prior:Math.round(prior*100)/100,pct,dir:pct==null?"flat":(pct>5?"up":pct<-5?"down":"flat")};
+        const products=[...M.products.values()].map(p=>({name:p.name,sku:p.sku,qty:p.qty,amount:Math.round(p.amount*100)/100,orders:p.orders.size,last:p.last!=null?pmLabel(p.last):null})).sort((a,b)=>b.amount-a.amount);
+        return { slug, name:mfrName[slug]||slug, total:Math.round(M.total*100)/100, commission:Math.round(M.comm*100)/100,
+          qty:M.qty, orders, aov, months_active:pms.length, cadence, first:pms.length?pmLabel(pms[0]):null, last:pms.length?pmLabel(pms[pms.length-1]):null,
+          months, products, trend };
+      }).sort((a,b)=>b.total-a.total);
+      const grand=Math.round([...combined.values()].reduce((s,x)=>s+x,0)*100)/100;
+      return json(200,{ok:true, sales:{ currency:"USD", total:grand, combined:combinedSeries, manufacturers, has_products:manufacturers.some(m=>m.products.length>0) }});
+    }
+
     // Lightweight open-task count for the masthead badge (the caller's own, rep-scoped).
     if(b.action==="task_count"){
       if(me.role==="president"){

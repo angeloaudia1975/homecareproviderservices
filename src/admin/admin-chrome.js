@@ -28,6 +28,7 @@
         { href:"/admin/tasks.html",     label:"My Tasks" },
         { href:"/admin/pipeline.html",  label:"Pipeline" },
         { href:"/admin/zoho-sync.html", label:"Zoho Sync" },
+        { href:"/admin/cardchamp.html", label:"CardChamp" },
         { href:"/admin/map.html",       label:"Territory Map" }
     ]},
     { id:"analytics", label:"Sales Data & Analytics", href:"/admin/#analytics", tools:[

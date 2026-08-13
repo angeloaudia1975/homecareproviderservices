@@ -61,9 +61,18 @@ exports.handler=async(event)=>{
     let isTest=false; try{ const d=await sb("GET",`dealers?id=eq.${encodeURIComponent(c.dealer_id)}&select=is_test`); isTest=!!(d&&d[0]&&d[0].is_test); }catch(e){}
     const env=P.envFor(st.mode,isTest);
     const nowIso=new Date().toISOString();
-    const rows=[];
+    const rows=[]; const svc=[];
     for(const e of list.slice(0,25)){    // hard cap per call — no floods
       const type=String(e&&e.type||"").trim();
+      // Dealer-Services partner interest (CardChamp etc.) — kept OUT of intent_events so it
+      // never pollutes manufacturer intent, and stored per-dealer for partner reporting.
+      if(type.indexOf("service_")===0){
+        const service=clip((e.meta&&e.meta.service)||type.replace(/^service_/,"").replace(/_click$/,""),40)||"cardchamp";
+        svc.push({ service, dealer_id:c.dealer_id, event_type:type,
+          source:clip(e.source,20)||"ordering", surface:clip(e.meta&&(e.meta.Surface||e.meta.surface),60),
+          env, meta:(e.meta&&typeof e.meta==="object")?e.meta:{}, occurred_at:nowIso });
+        continue;
+      }
       if(!ALLOWED_EVENTS.includes(type)) continue;
       rows.push({
         dealer_id:c.dealer_id,
@@ -77,9 +86,10 @@ exports.handler=async(event)=>{
         occurred_at:nowIso
       });
     }
-    if(!rows.length) return json(200,{ok:true,logged:0});
+    if(svc.length){ try{ await sb("POST","partner_activity",svc,{Prefer:"return=minimal"}); }catch(e){/* table may not exist yet */} }
+    if(!rows.length) return json(200,{ok:true,logged:svc.length});
     try{ await sb("POST","intent_events",rows,{Prefer:"return=minimal"}); }
-    catch(e){ return json(200,{ok:false,logged:0,error:"log failed"}); }
-    return json(200,{ok:true,logged:rows.length});
+    catch(e){ return json(200,{ok:false,logged:svc.length,error:"log failed"}); }
+    return json(200,{ok:true,logged:rows.length+svc.length});
   }catch(e){ return json(500,{error:String(e&&e.message||e)}); }
 };

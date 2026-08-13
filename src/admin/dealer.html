@@ -23,6 +23,24 @@
  .itile .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700}
  .itile .v{font-size:16px;font-weight:800;color:var(--navy);line-height:1.1;margin-top:1px}
  .ihd{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:800;margin:8px 0 4px}
+ .schips{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 12px}
+ .schip{font-size:12px;font-weight:700;color:var(--navy);background:#f5f8fb;border:1px solid var(--line);border-radius:999px;padding:5px 11px;cursor:pointer;font-family:inherit}
+ .schip:hover{background:#eef3f8}
+ .schip.on{background:#1681c2;border-color:#1681c2;color:#fff}
+ .schip .scnt{font-weight:600;opacity:.65;margin-left:5px;font-size:11px}
+ .schip.on .scnt{opacity:.9}
+ .chwrap{position:relative;margin:2px 0 0}
+ .chart{width:100%;height:auto;display:block;overflow:visible}
+ .chttl{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:800;margin:4px 0 2px}
+ .cyt{font-size:10px;fill:var(--gray);font-variant-numeric:tabular-nums}
+ .cxt{font-size:10px;fill:var(--gray)}
+ .cend{font-size:11px;fill:var(--navy);font-weight:800}
+ .chtip{position:absolute;pointer-events:none;background:#0f1b2b;color:#fff;border-radius:7px;padding:5px 8px;font-size:12px;box-shadow:0 6px 18px rgba(0,0,0,.18);z-index:5}
+ .chtip .chtv{font-weight:800;font-size:13px}
+ .chtip .chtl{font-size:10.5px;color:#aebccd;margin-top:1px}
+ .stbl{overflow-x:auto;margin-top:2px}
+ .stbl table{width:100%}
+ td.lbl a.link{cursor:pointer}
  .prow2{display:block;padding:9px 10px;border-bottom:1px solid #eef2f6;text-decoration:none;color:var(--navy)}
  .prow2:hover{background:#f6fafd}.prow2 b{font-weight:700}
  .tasks{display:flex;flex-direction:column;gap:6px}
@@ -155,7 +173,7 @@ function render(D,A){
   // per-line history table
   const lrows=lines.map(l=>{
     const badge=l.status==="due"?`<span class="pill2 due">Overdue</span>`:l.status==="dorm"?`<span class="pill2 dorm">Dormant</span>`:`<span class="pill2 ok">On track</span>`;
-    return `<tr><td class="lbl">${esc(l.line)}</td><td class="num">${l.orders}</td>
+    return `<tr><td class="lbl"><a class="link" href="javascript:void(0)" data-mfr="${esc(l.line)}" onclick="salesSelectByName(this.getAttribute('data-mfr'))">${esc(l.line)}</a></td><td class="num">${l.orders}</td>
       <td>${pmLabel(l.first)} → ${pmLabel(l.last)}</td>
       <td class="num">${l.cycle!=null?"~"+Math.round(l.cycle)+"mo":"—"}</td>
       <td class="num">${l.since}mo</td>
@@ -191,6 +209,7 @@ function render(D,A){
   const notesCard=`<div class="card"><h2>Notes</h2><div id="notes"><div class="hint">Loading…</div></div></div>`;
   const acctCard=`<div class="card"><h2>Manufacturer account numbers</h2><div id="acctcard"><div class="hint">Loading…</div></div></div>`;
   const intelCard=`<div class="card"><h2>Digital activity &amp; interest</h2><div id="intel"><div class="hint">Loading activity…</div></div></div>`;
+  const salesCard=`<div class="card" id="salesCard"><h2>Monthly sales &amp; product detail</h2><div id="sales"><div class="hint">Loading sales…</div></div></div>`;
   const commCard=`<div class="card"><h2>Commission — paid vs. outstanding</h2><div id="commled"><div class="hint">Loading…</div></div></div>`;
 
   // Next best action — synthesized from what we already know (upgraded once intent loads).
@@ -212,10 +231,10 @@ function render(D,A){
 
   $("#body").innerHTML=`${header}${nextBanner}
     <div class="d360">
-      <div>${intelCard}${history}${commCard}${notesCard}${contactsCard}</div>
+      <div>${intelCard}${history}${salesCard}${commCard}${notesCard}${contactsCard}</div>
       <div>${signals}${addrCard}${tasksCard}${acctCard}</div>
     </div>`;
-  CUR=d.id; loadCRM(); loadIntel(); loadContacts();
+  CUR=d.id; loadCRM(); loadIntel(); loadContacts(); loadSales();
 }
 function nextBestAction(d,lines,monthsSince,cart,sess){
   const due=(lines||[]).filter(l=>l.status==="due");
@@ -326,6 +345,124 @@ function editContact(email){ CEDIT=email; renderContacts(); const f=$("#c_name")
 async function delContact(email){ if(!confirm("Remove contact "+email+"?")) return; await crm({action:"delete_contact",dealer_id:CUR,email}); loadContacts(); }
 async function makePrimary(email,name,phone){ await crm({action:"set_primary_contact",dealer_id:CUR,email,name,phone}); loadContacts(); }
 async function saveAcct(slug){ const v=(($("#acct_"+slug)||{}).value||"").trim(); await crm({action:"save_account_ref",dealer_id:CUR,manufacturer:slug,account_ref:v}); }
+
+/* ===== Dealer 360 — monthly sales & product drill-down ===== */
+var SALES=null, SSEL=null, SCHART=null;
+async function loadSales(){
+  const el=$("#sales"); if(!el||!CUR) return;
+  let j; try{ j=await crm({action:"sales",dealer_id:CUR}); }catch(e){ el.innerHTML='<div class="hint">Couldn\'t load sales.</div>'; return; }
+  if(j&&j.error==="tables_missing"){ el.innerHTML='<div class="hint">Sales data isn\'t available yet.</div>'; return; }
+  if(!j||!j.ok||!j.sales){ el.innerHTML='<div class="hint">Couldn\'t load sales.</div>'; return; }
+  SALES=j.sales; SSEL=null;
+  if(!(SALES.combined&&SALES.combined.length) && !(SALES.manufacturers&&SALES.manufacturers.length)){
+    el.innerHTML='<div class="hint">No monthly sales on file for this dealer yet — this fills in once sales are imported.</div>'; return; }
+  renderSales();
+}
+function salesSel(slug){ SSEL=slug; renderSales(); }
+function salesSelectByName(name){
+  if(!SALES){ return; }
+  const m=(SALES.manufacturers||[]).find(x=>String(x.name).toLowerCase()===String(name||"").toLowerCase());
+  SSEL=m?m.slug:null; renderSales();
+  const c=$("#salesCard"); if(c) c.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function stile(l,v){ return `<div class="s"><div class="l">${l}</div><div class="v">${v}</div></div>`; }
+function moneyShort(v){ v=Number(v)||0; const a=Math.abs(v);
+  if(a>=1e6) return "$"+(v/1e6).toFixed(a>=1e7?0:1).replace(/\.0$/,"")+"M";
+  if(a>=1e3) return "$"+(v/1e3).toFixed(a>=1e4?0:1).replace(/\.0$/,"")+"k";
+  return "$"+Math.round(v); }
+function niceMax(v){ if(!(v>0)) return 1; const p=Math.pow(10,Math.floor(Math.log10(v))); const n=v/p;
+  const m=n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10; return m*p; }
+function renderSales(){
+  const el=$("#sales"); if(!el||!SALES) return; const S=SALES;
+  let chips=`<button class="schip${SSEL==null?' on':''}" onclick="salesSel(null)">All manufacturers</button>`;
+  for(const m of (S.manufacturers||[])){
+    chips+=`<button class="schip${SSEL===m.slug?' on':''}" data-slug="${esc(m.slug)}" onclick="salesSel(this.getAttribute('data-slug'))">${esc(m.name)}<span class="scnt">${money(m.total)}</span></button>`;
+  }
+  const chipRow=`<div class="schips">${chips}</div>`;
+  let body;
+  if(SSEL==null){
+    const series=S.combined||[];
+    const tiles=`<div class="stat" style="margin:2px 0 10px">
+      ${stile("Total sales", money(S.total))}
+      ${stile("Manufacturers", String((S.manufacturers||[]).length))}
+      ${stile("Months", String(series.length))}
+      ${stile("Latest month", series.length?esc(series[series.length-1].label):"—")}</div>`;
+    body=`${tiles}<div class="chwrap">${chartHTML(series,"Combined monthly sales — all manufacturers")}</div>
+      <div class="hint" style="margin-top:8px">Click a manufacturer above (or in the order-history table) to see its monthly purchasing graph and the products this dealer is buying.</div>`;
+  } else {
+    const m=(S.manufacturers||[]).find(x=>x.slug===SSEL); if(!m){ SSEL=null; return renderSales(); }
+    const t=m.trend||{dir:"flat",pct:null};
+    const arrow=t.dir==="up"?"▲":t.dir==="down"?"▼":"▬", tcol=t.dir==="up"?"#1f7a44":t.dir==="down"?"#c2410c":"#8a96a3";
+    const trendTxt=(t.pct==null)?"n/a":((t.pct>0?"+":"")+t.pct+"%");
+    const tiles=`<div class="stat" style="margin:2px 0 10px">
+      ${stile("Total sales", money(m.total))}
+      ${stile("Orders", String(m.orders))}
+      ${stile("Avg order", money(m.aov))}
+      ${stile("Units", m.qty?Number(m.qty).toLocaleString():"—")}
+      ${stile("Cadence", m.cadence?("~"+m.cadence+" mo"):"—")}
+      ${stile("Recent trend", `<span style="color:${tcol}">${arrow} ${trendTxt}</span>`)}</div>`;
+    const prods=m.products||[];
+    const ptable=prods.length
+      ? `<div class="ihd" style="margin-top:12px">Products ordered <span class="hint" style="margin:0;text-transform:none;letter-spacing:0;font-weight:600">(${prods.length}) — by sales</span></div>
+         <div class="stbl"><table><thead><tr><th>Product</th><th class="num">Units</th><th class="num">Orders</th><th class="num">Sales</th><th>Last</th></tr></thead><tbody>
+         ${prods.slice(0,50).map(p=>`<tr><td>${esc(p.name)}${(p.sku&&String(p.sku).toLowerCase()!==String(p.name).toLowerCase())?` <span class="hint" style="margin:0">${esc(p.sku)}</span>`:""}</td><td class="num">${p.qty?Number(p.qty).toLocaleString():"—"}</td><td class="num">${p.orders||"—"}</td><td class="num">${money(p.amount)}</td><td>${esc(p.last||"—")}</td></tr>`).join("")}
+         </tbody></table></div>${prods.length>50?`<div class="hint">Showing the top 50 of ${prods.length} products by sales.</div>`:""}`
+      : `<div class="hint" style="margin-top:10px">No product-level detail on file for ${esc(m.name)} — that import carried monthly totals without itemized products.</div>`;
+    const trendBanner=(t.pct!=null)?`<div class="hint" style="margin:8px 0 0">Recent 3 months <b>${money(t.recent)}</b> vs prior 3 <b>${money(t.prior)}</b> — <span style="color:${tcol};font-weight:800">${arrow} ${trendTxt}</span></div>`:"";
+    body=`${tiles}<div class="chwrap">${chartHTML(m.months||[],esc(m.name)+" — monthly sales")}</div>${trendBanner}${ptable}`;
+  }
+  el.innerHTML=chipRow+body;
+  attachChartHover();
+}
+function chartHTML(series,title){
+  const W=560,H=210, ml=54,mr=16,mt=26,mb=26, iw=W-ml-mr, ih=H-mt-mb;
+  const pts=(series||[]).map(d=>({label:d.label,amount:Number(d.amount)||0}));
+  if(!pts.length) return `<div class="hint">No monthly data.</div>`;
+  const vmax=niceMax(Math.max(1,...pts.map(p=>p.amount))), n=pts.length;
+  const X=i=> n===1? ml+iw/2 : ml+(iw*i/(n-1));
+  const Y=v=> mt+ih-(ih*(v/vmax));
+  let grid="",ylab=""; [0,vmax/2,vmax].forEach(tv=>{ const gy=Y(tv);
+    grid+=`<line x1="${ml}" y1="${gy.toFixed(1)}" x2="${W-mr}" y2="${gy.toFixed(1)}" stroke="#e7edf3" stroke-width="1"/>`;
+    ylab+=`<text x="${ml-8}" y="${(gy+3).toFixed(1)}" text-anchor="end" class="cyt">${moneyShort(tv)}</text>`; });
+  const geo=[]; let line="";
+  pts.forEach((p,i)=>{ const x=X(i),y=Y(p.amount); geo.push({x,y,label:p.label,amount:p.amount}); line+=(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)+" "; });
+  const area=`M${X(0).toFixed(1)} ${Y(0).toFixed(1)} `+geo.map(g=>`L${g.x.toFixed(1)} ${g.y.toFixed(1)} `).join("")+`L${X(n-1).toFixed(1)} ${Y(0).toFixed(1)} Z`;
+  const step=Math.max(1,Math.ceil(n/6)); let xlab="";
+  for(let i=0;i<n;i+=step){ xlab+=`<text x="${X(i).toFixed(1)}" y="${H-8}" text-anchor="middle" class="cxt">${esc(pts[i].label)}</text>`; }
+  if((n-1)%step!==0){ xlab+=`<text x="${X(n-1).toFixed(1)}" y="${H-8}" text-anchor="middle" class="cxt">${esc(pts[n-1].label)}</text>`; }
+  const last=geo[geo.length-1];
+  const endDot=`<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="#1681c2" stroke="#fff" stroke-width="2"/>`;
+  const endLab=`<text x="${last.x.toFixed(1)}" y="${Math.max(mt-6,last.y-9).toFixed(1)}" text-anchor="${last.x>W-70?"end":"middle"}" class="cend">${money(last.amount)}</text>`;
+  SCHART={geo,W,H,ml,mr,mt,ih};
+  return `<div class="chttl">${esc(title)}</div>
+  <svg id="salesSvg" viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="${esc(title)}">
+    ${grid}${ylab}
+    <path d="${area}" fill="#1681c2" fill-opacity="0.10"/>
+    <path d="${line}" fill="none" stroke="#1681c2" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${endDot}${endLab}${xlab}
+    <line id="chCross" x1="0" y1="${mt}" x2="0" y2="${mt+ih}" stroke="#98a6b5" stroke-width="1" stroke-dasharray="3 3" style="display:none"/>
+    <circle id="chDot" r="4" fill="#1681c2" stroke="#fff" stroke-width="2" style="display:none"/>
+    <rect id="chOv" x="${ml}" y="${mt}" width="${iw}" height="${ih}" fill="transparent" style="cursor:crosshair"/>
+  </svg><div id="chTip" class="chtip" style="display:none"></div>`;
+}
+function attachChartHover(){
+  const svg=document.getElementById("salesSvg"); if(!svg||!SCHART) return;
+  const ov=document.getElementById("chOv"), cross=document.getElementById("chCross"), dot=document.getElementById("chDot"), tip=document.getElementById("chTip");
+  const wrap=svg.closest(".chwrap"), geo=SCHART.geo;
+  function move(e){
+    const r=svg.getBoundingClientRect(); const sx=(e.clientX-r.left)/r.width*SCHART.W;
+    let best=geo[0],bd=1e9; for(const g of geo){ const d=Math.abs(g.x-sx); if(d<bd){bd=d;best=g;} }
+    cross.setAttribute("x1",best.x); cross.setAttribute("x2",best.x); cross.style.display="";
+    dot.setAttribute("cx",best.x); dot.setAttribute("cy",best.y); dot.style.display="";
+    if(tip&&wrap){ const wr=wrap.getBoundingClientRect();
+      const px=(best.x/SCHART.W)*r.width+(r.left-wr.left), py=(best.y/SCHART.H)*r.height+(r.top-wr.top);
+      tip.innerHTML=""; const a=document.createElement("div"); a.className="chtv"; a.textContent=money(best.amount);
+      const bq=document.createElement("div"); bq.className="chtl"; bq.textContent=best.label; tip.appendChild(a); tip.appendChild(bq);
+      tip.style.display=""; tip.style.left=Math.max(2,Math.min(px+8,wr.width-96))+"px"; tip.style.top=Math.max(0,py-40)+"px"; }
+  }
+  function leave(){ cross.style.display="none"; dot.style.display="none"; if(tip)tip.style.display="none"; }
+  ov.addEventListener("pointermove",move); ov.addEventListener("pointerleave",leave);
+}
 function idate(s){ try{ return new Date(s).toLocaleDateString(); }catch(e){ return ""; } }
 async function loadIntel(){
   const el=$("#intel"); if(!el||!CUR) return;
