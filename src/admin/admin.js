@@ -19,6 +19,7 @@
     redirects: "src/_data/redirects.json",
     landing: "src/_data/landing.json",
     nav: "src/_data/nav.json",
+    dealerServices: "src/_data/dealerServices.json",
   };
 
   // ---- Schemas for the simple data editors (Home Page / Site / Team / Testimonials) ----
@@ -251,8 +252,34 @@
         { k: "cta_label", label: "Button label", type: "text" } ] } ] },
   ];
 
+  // ---- Dealer Services (dealerServices.json): value-added, non-manufacturer partners ----
+  var DEALER_SERVICES_SCHEMA = [
+    { k: "eyebrow", label: "Section eyebrow (small label above the title)", type: "text", full: true },
+    { k: "headline", label: "Page headline", type: "text", full: true },
+    { k: "lead", label: "Intro paragraph", type: "textarea", full: true },
+    { k: "services", label: "Service partners", type: "objlist", full: true, item: [
+      { k: "name", label: "Service / partner name", type: "text" },
+      { k: "slug", label: "Slug (lowercase id, e.g. cardchamp)", type: "text" },
+      { k: "status", label: "Status — active shows it live, coming hides it", type: "select", options: ["active", "coming"] },
+      { k: "category", label: "Category label (e.g. Payments & Cash Flow)", type: "text", full: true },
+      { k: "tagline", label: "Headline / tagline", type: "text", full: true },
+      { k: "sub", label: "Sub-headline", type: "textarea", full: true },
+      { k: "summary", label: "Summary paragraph", type: "textarea", full: true },
+      { k: "benefits", label: "Benefit bullet points", type: "list", full: true },
+      { k: "cta_label", label: "Button label", type: "text" },
+      { k: "url", label: "Button / partner URL", type: "url" },
+      { k: "cta_secondary", label: "Text shown next to the button (optional)", type: "textarea", full: true },
+      { k: "logo", label: "Logo (upload, or paste a full logo URL)", type: "image", dir: "logos", full: true },
+      { k: "accent", label: "Accent color (buttons, checkmarks)", type: "color" },
+      { k: "accent_ink", label: "Dark accent color (headings, side panel)", type: "color" },
+      { k: "tracking_key", label: "Tracking key for analytics/UTM (usually the slug)", type: "text" },
+      { k: "referral_note", label: "Referral note (small line at the foot of the card)", type: "textarea", full: true } ] },
+  ];
+
   // config for each simple data view
   var DATA_VIEWS = {
+    dealerServices: { file: "dealerServices", title: "Dealer Services", root: "object", schema: DEALER_SERVICES_SCHEMA,
+      note: "Edit the Dealer Services page — the hero text and the value-added service partners (like CardChamp). Each partner is its own branded card; set Status to “active” to show it live or “coming” to keep it hidden while you prepare it. Add a new partner here to grow the page without touching the manufacturer lines. Changes go live on the next publish." },
     pages: { file: "pages", title: "Pages", root: "object", schema: PAGES_SCHEMA,
       note: "Edit the text on the Contact, Consulting, Dealer Hub, and Become a Manufacturer Partner pages. Layout and design stay fixed — you're editing the words (and you can add a hero video link on the Partner page)." },
     home: { file: "home", title: "Home Page", root: "object", schema: HOME_SCHEMA,
