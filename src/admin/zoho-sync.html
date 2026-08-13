@@ -67,6 +67,7 @@ function render(){
   const pull=`<div class="card"><h2>Pull · Zoho → portal</h2>
     ${row("🔄","Deal changes","Zoho deal stage / amount / close-date edits → back onto matching opportunities.",btn("b_pd","Pull deals","run('pull_deals','b_pd')"),"deals_pulled_at")}
     ${row("📞","Account updates","Zoho phone / address edits → matching dealers. Zoho-only accounts listed for review.",btn("b_pa","Pull accounts","run('pull_accounts','b_pa')"),"accounts_pulled_at")}
+    ${row("🔢","Account numbers","Zoho manufacturer Acct # fields → the portal, then propagated to satellites. A blank in Zoho never clears a number.",btn("b_pan","Pull account #s","run('pull_account_numbers','b_pan')"),"account_numbers_pulled_at")}
     <div class="hint" style="margin-top:8px">Pulls are conservative: linked records update in place; brand-new Zoho records are shown for review, never auto-created, so the portal stays the source of truth.</div>
   </div>`;
   $("#body").innerHTML=`<div class="syncgrid">${push}${pull}</div><div id="review"></div><div class="log" id="log">Ready.${conn?"":" Connect to Zoho first (Zoho CRM Sync setup)."}</div>`;
@@ -88,6 +89,7 @@ function summarize(a,j){
   if(a==="mirror_to_zoho") return `${j.notes_pushed||0} notes, ${j.tasks_pushed||0} tasks`;
   if(a==="pull_deals") return `${j.changed||0} of ${j.linked||0} linked deals updated`;
   if(a==="pull_accounts") return `${j.updated||0} dealers updated, ${(j.new_in_zoho||[]).length} new in Zoho`;
+  if(a==="pull_account_numbers") return `${j.lines_updated||0} account #s updated, ${j.unmatched_accounts||0} accounts unmatched`;
   return JSON.stringify(j).slice(0,120);
 }
 function renderReview(list){

@@ -10,7 +10,7 @@
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
-const { hasCreds, exchangeCode, accessToken, zoho, ensureTextField, upsertRecords, getAllRecords, ACCOUNTS } = require("./_zoho.js");
+const { hasCreds, exchangeCode, accessToken, zoho, getFields, ensureTextField, upsertRecords, getAllRecords, ACCOUNTS } = require("./_zoho.js");
 const clean = v => { const s=(v==null?"":String(v)).trim(); return s||undefined; };
 // Derive a website from a business email domain; skip common personal providers.
 const PERSONAL = new Set(["gmail.com","yahoo.com","hotmail.com","aol.com","outlook.com","icloud.com","comcast.net","att.net","msn.com","live.com","sbcglobal.net","bellsouth.net","ymail.com","me.com","cox.net","verizon.net","charter.net","windstream.net"]);
@@ -22,6 +22,26 @@ const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}`); return r.json(); }
 async function sbGetAll(base, orderCol="id"){ const PAGE=1000; let from=0,out=[]; for(;;){ const sep=base.includes("?")?"&":"?"; const rows=await sbGet(`${base}${sep}order=${orderCol}&limit=${PAGE}&offset=${from}`); out=out.concat(rows); if(rows.length<PAGE) break; from+=PAGE; } return out; }
 async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); const t=await r.text(); return t?JSON.parse(t):null; }
+// Call a Postgres function via PostgREST (used for org-level account-number propagation).
+async function rpc(fn,args){ const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`,{method:"POST",headers:{...H(),"content-type":"application/json"},body:JSON.stringify(args||{})}); if(!r.ok) throw new Error(`rpc ${fn} ${r.status}: ${await r.text()}`); const t=await r.text(); return t?JSON.parse(t):null; }
+// Same business-name normalization the rest of the app uses (dnorm) so Zoho account
+// names resolve to the same dealers — plus the dealer_aliases table for known variants.
+const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
+const dnorm=n=>String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim();
+// Manufacturer account-number fields on the Zoho Accounts module — matched by their
+// LABEL (the api_name is auto-discovered at run time) -> our dealer_manufacturers slug.
+const ACCT_FIELD_MAP=[
+  {label:"Golden Acct #",slug:"golden-technologies"},
+  {label:"Access4U Acct #",slug:"access4u"},
+  {label:"Pedifix Acct #",slug:"pedifix"},
+  {label:"GCE Acct #",slug:"gce"},
+  {label:"Climbing Steps Acct #",slug:"climbing-steps"},
+  {label:"Strongback Acct #",slug:"strongback-mobility"},
+  {label:"Corsicana Acct #",slug:"corsicana"},
+  {label:"BongoRx Acct #",slug:"airavant-bongorx"},
+  {label:"Bemis Acct #",slug:"bemis"},
+  {label:"Ovation Acct #",slug:"ovation-medical"},
+];
 
 // Zoho auth config (refresh token + api domain) is stored under app_settings key "zoho_auth".
 async function getZohoAuth(){ try{ const rows=await sbGet("app_settings?key=eq.zoho_auth&select=value"); return (rows&&rows[0]&&rows[0].value)||null; }catch(e){ return null; } }
@@ -353,6 +373,48 @@ exports.handler = async (event)=>{
       }
       await stampSync("accounts_pulled_at");
       return json(200,{ ok:errors.length===0, accounts:(accts||[]).length, updated, changes, new_in_zoho:newInZoho, errors });
+    }
+
+    // PULL manufacturer ACCOUNT NUMBERS from Zoho back into the portal. Reads the Acct # fields
+    // off each Zoho Account, resolves the account to a dealer (dnorm(name) + dealer_aliases),
+    // writes changed numbers into dealer_manufacturers, then fans org-level numbers out to
+    // satellite locations. A blank in Zoho never clears a number here — Supabase keeps the last
+    // known value — so an accidental blank can't wipe the portal.
+    if(b.action==="pull_account_numbers"){
+      const c=await connect(); if(!c.ok) return json(200,{ok:false,message:"Not connected.",reason:c.reason});
+      // Discover the api_names of the Acct # fields from their labels (import may name them anything).
+      const fields=await getFields(c.apiDomain,c.token,"Accounts");
+      const apiByLabel={}; for(const f of (fields||[])){ if(f&&f.field_label) apiByLabel[String(f.field_label).trim().toLowerCase()]=f.api_name; }
+      const map=[], missing=[];
+      for(const m of ACCT_FIELD_MAP){ const api=apiByLabel[m.label.toLowerCase()]; if(api) map.push({api,slug:m.slug,label:m.label}); else missing.push(m.label); }
+      if(!map.length) return json(200,{ok:false,message:"No account-number fields found on the Zoho Accounts module. Confirm the Acct # fields exist (labels like 'Golden Acct #').",fields_missing:missing});
+      // Pull every account with its name + the discovered number fields.
+      const accts=await getAllRecords(c.apiDomain,c.token,"Accounts",["Account_Name",...map.map(m=>m.api)].join(","));
+      // Build the dealer resolver: dnorm(business_name) and dealer_aliases.alias_norm -> dealer_id.
+      const dealers=await sbGetAll("dealers?select=id,business_name","id");
+      const norm2id=new Map(); for(const d of dealers) norm2id.set(dnorm(d.business_name), d.id);
+      const aliases=await sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]);
+      for(const a of (aliases||[])){ if(a&&a.alias_norm&&!norm2id.has(a.alias_norm)) norm2id.set(a.alias_norm, a.dealer_id); }
+      // Resolve each account and collect one number per (dealer, line); a numeric ref wins if two
+      // account names collide onto the same dealer with different values.
+      const want=new Map(); const unmatched=[]; let cells=0;
+      for(const a of (accts||[])){ const nm=String(a.Account_Name||"").trim(); if(!nm) continue;
+        const id=norm2id.get(dnorm(nm)); if(!id){ if(unmatched.length<300) unmatched.push(nm); continue; }
+        for(const m of map){ const v=clean(a[m.api]); if(!v) continue; cells++;
+          const key=id+"|"+m.slug, prev=want.get(key);
+          if(prev==null || (/[0-9]/.test(v)&&!/[0-9]/.test(prev))) want.set(key, v);
+        }
+      }
+      // Only write lines whose value actually changed (keeps writes + activity minimal).
+      const existing=await sbGetAll("dealer_manufacturers?select=dealer_id,manufacturer,account_ref","dealer_id,manufacturer");
+      const curr=new Map(); for(const x of (existing||[])) curr.set(x.dealer_id+"|"+x.manufacturer, x.account_ref==null?"":String(x.account_ref));
+      const rows=[]; for(const [key,ref] of want){ if((curr.get(key)||"")===ref) continue; const i=key.indexOf("|"); rows.push({dealer_id:key.slice(0,i),manufacturer:key.slice(i+1),account_ref:ref,active:true}); }
+      for(let i=0;i<rows.length;i+=500){ await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",rows.slice(i,i+500),{Prefer:"resolution=merge-duplicates,return=minimal"}); }
+      // Fan org-level numbers out to satellites (fills blanks, never overwrites a branch's own number).
+      let propagated=true; try{ await rpc("propagate_org_account_numbers",{}); }catch(e){ propagated=String(e.message||e); }
+      await stampSync("account_numbers_pulled_at");
+      return json(200,{ ok:true, accounts:(accts||[]).length, fields_found:map.map(m=>m.label), fields_missing:missing,
+        numbers_seen:cells, lines_updated:rows.length, unmatched_accounts:unmatched.length, unmatched_sample:unmatched.slice(0,25), propagated });
     }
 
     return json(400,{error:"unknown action"});
