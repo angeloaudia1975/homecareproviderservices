@@ -1,0 +1,115 @@
+---
+layout: layouts/base.njk
+title: Dealer Services
+permalink: /dealer-services/
+description: "HCPS Dealer Services — value-added business services for HCPS dealers, beyond the product lines. Featuring CardChamp: turn credit card fees into cash flow with fully compliant surcharging."
+---
+<style>
+  .dsvc-hero{background:linear-gradient(180deg,#0E2A47,#123457);color:#fff;padding:52px 0 46px;}
+  .dsvc-hero h1{font-size:clamp(30px,4.4vw,50px);line-height:1.08;margin:0 0 14px;font-weight:800;}
+  .dsvc-hero .lead{max-width:760px;color:rgba(255,255,255,.82);font-size:16px;margin:0;}
+  .dsvc-wrap{padding:44px 0 60px;}
+  .dsvc-sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 0 22px;flex-wrap:wrap;}
+  .dsvc-sec-head h2{font-size:22px;margin:0;color:#0E2A47;}
+  .dsvc-sec-head span{font-size:13px;color:#5b6b7b;}
+  .dsvc-card{background:#fff;border:1px solid #e4e9ef;border-radius:18px;overflow:hidden;box-shadow:0 10px 30px rgba(14,42,71,.06);margin-bottom:26px;}
+  .dsvc-top{display:grid;grid-template-columns:1.35fr 1fr;}
+  @media(max-width:840px){.dsvc-top{grid-template-columns:1fr;}}
+  .dsvc-main{padding:30px 30px 26px;}
+  .dsvc-cat{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;padding:5px 11px;border-radius:999px;margin:0 0 16px;}
+  .dsvc-logo{height:34px;margin:0 0 14px;display:block;}
+  .dsvc-tag{font-size:clamp(22px,2.8vw,30px);font-weight:800;line-height:1.12;margin:0 0 8px;}
+  .dsvc-sub{font-size:15px;color:#5b6b7b;margin:0 0 16px;}
+  .dsvc-summary{font-size:14.5px;color:#1f2a37;margin:0 0 18px;}
+  .dsvc-benefits{list-style:none;padding:0;margin:0 0 22px;display:grid;gap:9px;}
+  .dsvc-benefits li{position:relative;padding-left:28px;font-size:14px;}
+  .dsvc-benefits .dsvc-chk{position:absolute;left:0;top:2px;width:18px;height:18px;border-radius:50%;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><path d='M20 6L9 17l-5-5'/></svg>");
+    background-size:12px;background-repeat:no-repeat;background-position:center;}
+  .dsvc-cta-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+  .dsvc-cta{display:inline-block;color:#fff;text-decoration:none;font-weight:800;font-size:15px;padding:13px 26px;border-radius:10px;}
+  .dsvc-cta:hover{filter:brightness(.96);}
+  .dsvc-cta-2{font-size:13px;color:#5b6b7b;max-width:260px;line-height:1.4;}
+  .dsvc-rail{color:#fff;padding:30px;display:flex;flex-direction:column;justify-content:center;gap:14px;}
+  .dsvc-rail .stat{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:14px 16px;}
+  .dsvc-rail .stat b{display:block;font-size:24px;color:#fff;}
+  .dsvc-rail .stat span{font-size:12px;color:rgba(255,255,255,.72);}
+  .dsvc-foot{border-top:1px solid #e4e9ef;padding:14px 30px;font-size:12.5px;color:#5b6b7b;background:#fbfcfe;}
+  .dsvc-soon{background:#fff;border:1px dashed #c8d3df;border-radius:18px;padding:26px 30px;display:flex;align-items:center;gap:18px;color:#5b6b7b;}
+  .dsvc-soon .badge{font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#0E2A47;background:#eef2f7;border:1px solid #e4e9ef;padding:5px 11px;border-radius:999px;white-space:nowrap;}
+  .dsvc-soon h3{margin:0 0 3px;color:#0E2A47;font-size:16px;}
+  .dsvc-soon p{margin:0;font-size:13.5px;}
+</style>
+
+<section class="dsvc-hero">
+  <div class="container">
+    <p class="eyebrow" style="color:var(--hcps-gold,#C8981A);">{{ dealerServices.eyebrow }}</p>
+    <h1>{{ dealerServices.headline }}</h1>
+    <p class="lead">{{ dealerServices.lead }}</p>
+  </div>
+</section>
+
+<section class="dsvc-wrap">
+  <div class="container">
+    <div class="dsvc-sec-head">
+      <h2>Available now</h2>
+      <span>HCPS is credited for every referral</span>
+    </div>
+
+    {% for s in dealerServices.services %}{% if s.status == "active" %}
+    <article class="dsvc-card">
+      <div class="dsvc-top">
+        <div class="dsvc-main">
+          <span class="dsvc-cat" style="color:{{ s.accent }};background:{{ s.accent }}18;border:1px solid {{ s.accent }}44;">&#9679; {{ s.category }}</span>
+          {% if s.logo %}<img class="dsvc-logo" src="{{ s.logo }}" alt="{{ s.name }}" loading="lazy">{% else %}<div class="dsvc-logo" style="font-weight:900;font-size:22px;color:{{ s.accent_ink }};">{{ s.name }}</div>{% endif %}
+          <h3 class="dsvc-tag" style="color:{{ s.accent_ink }};">{{ s.tagline }}</h3>
+          {% if s.sub %}<p class="dsvc-sub">{{ s.sub }}</p>{% endif %}
+          <p class="dsvc-summary">{{ s.summary }}</p>
+          <ul class="dsvc-benefits">
+            {% for b in s.benefits %}<li><span class="dsvc-chk" style="background-color:{{ s.accent }};"></span>{{ b }}</li>{% endfor %}
+          </ul>
+          <div class="dsvc-cta-row">
+            <a class="dsvc-cta" style="background:{{ s.accent }};box-shadow:0 6px 16px {{ s.accent }}55;"
+               href="{{ s.url }}?utm_source=hcps&utm_medium=website&utm_campaign=dealer-services&utm_content={{ s.tracking_key }}"
+               target="_blank" rel="noopener" data-svc-cta="{{ s.tracking_key }}">{{ s.cta_label }} &rarr;</a>
+            {% if s.cta_secondary %}<span class="dsvc-cta-2">{{ s.cta_secondary }}</span>{% endif %}
+          </div>
+        </div>
+        <aside class="dsvc-rail" style="background:linear-gradient(160deg,{{ s.accent_ink }},#28356b);">
+          <div class="stat"><b>0%</b><span>Credit card processing with compliant surcharging</span></div>
+          <div class="stat"><b>&lt;15 min</b><span>To set up your account</span></div>
+          <div class="stat"><b>Month&#8209;to&#8209;month</b><span>No cancellation penalty, ever</span></div>
+        </aside>
+      </div>
+      {% if s.referral_note %}<div class="dsvc-foot">{{ s.referral_note }} An HCPS service partner &mdash; not a manufacturer line.</div>{% endif %}
+    </article>
+    {% endif %}{% endfor %}
+
+    <div class="dsvc-sec-head" style="margin-top:34px;">
+      <h2>More services coming</h2>
+      <span>The framework is built to add partners over time</span>
+    </div>
+    <div class="dsvc-soon">
+      <span class="badge">Coming soon</span>
+      <div>
+        <h3>Additional HCPS dealer services</h3>
+        <p>New non-manufacturer partners (financing, insurance, operations, marketing) will appear here as they're added &mdash; each as its own branded card, without touching the manufacturer portfolio.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+/* Dealer-service CTA tracking: log outbound partner clicks into SalesIQ (so the
+   visitor's interest joins their CRM activity) and any analytics dataLayer. */
+(function(){
+  var ctas = document.querySelectorAll('[data-svc-cta]');
+  for (var i=0;i<ctas.length;i++){
+    ctas[i].addEventListener('click', function(){
+      var key = this.getAttribute('data-svc-cta');
+      try { if (window.HCPSChat && HCPSChat.event) HCPSChat.event('service:' + key + ':click', { Service: key, Surface: 'Website' }); } catch(e){}
+      try { window.dataLayer = window.dataLayer || []; window.dataLayer.push({ event:'service_click', service:key, surface:'website' }); } catch(e){}
+    });
+  }
+})();
+</script>

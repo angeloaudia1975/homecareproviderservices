@@ -11,6 +11,7 @@
       { "label": "Request In-Service", "url": "/dealer-support/?request=Request%20an%20In-Service", "external": false },
       { "label": "Technical Support", "url": "/dealer-support/?request=Technical%20Support", "external": false }
     ] },
+    { "label": "Dealer Services", "url": "/dealer-services/", "external": false, "dropdown": "", "children": [] },
     { "label": "Consulting", "url": "/consulting/", "external": false, "dropdown": "", "children": [] },
     { "label": "Our Team", "url": "/#team", "external": false, "dropdown": "", "children": [] },
     { "label": "Territory", "url": "/#territory", "external": false, "dropdown": "", "children": [] },
@@ -20,6 +21,7 @@
     { "heading": "Platform", "links": [
       { "label": "Manufacturers", "url": "/manufacturers/", "external": false },
       { "label": "Dealer Hub", "url": "/dealer-hub/", "external": false },
+      { "label": "Dealer Services", "url": "/dealer-services/", "external": false },
       { "label": "Resource Library", "url": "/resources/", "external": false },
       { "label": "Consulting", "url": "/consulting/", "external": false },
       { "label": "Online Ordering Portal", "url": "https://hcpsonlineordering.netlify.app/", "external": true }

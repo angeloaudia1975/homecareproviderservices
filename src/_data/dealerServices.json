@@ -1,0 +1,30 @@
+{
+  "eyebrow": "HCPS Business Services",
+  "headline": "Dealer Services",
+  "lead": "Value-added business services for HCPS dealers — beyond the product lines. Vetted partners and tools that strengthen how you run your business, from payments and cash flow to operations. Separate from our manufacturer portfolio, exclusive to HCPS dealers.",
+  "services": [
+    {
+      "slug": "cardchamp",
+      "name": "CardChamp",
+      "category": "Payments & Cash Flow",
+      "status": "active",
+      "tagline": "Turn Credit Card Fees into Cash Flow",
+      "sub": "Offset credit card processing costs with fully compliant surcharging.",
+      "summary": "Most HCPS dealers are overpaying on credit card processing. CardChamp shows you how much — and helps you keep it — with fully compliant surcharging built for small-to-medium businesses.",
+      "benefits": [
+        "0% credit card processing with compliant surcharging",
+        "Set up your account in under 15 minutes",
+        "Month-to-month agreements — no cancellation penalty, ever",
+        "Personal support you can depend on"
+      ],
+      "cta_label": "Start Saving Today",
+      "cta_secondary": "Discover how much your business is overpaying in processing fees.",
+      "url": "https://www.cardchamp.com/homecareproviderservices",
+      "logo": "https://www.cardchamp.com/hubfs/_website-logos/cardchamp.svg",
+      "accent": "#EE5A5A",
+      "accent_ink": "#1E2A55",
+      "tracking_key": "cardchamp",
+      "referral_note": "Applications and enrollment are completed on the CardChamp page, and HCPS is credited for every referral."
+    }
+  ]
+}
