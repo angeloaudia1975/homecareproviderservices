@@ -128,75 +128,85 @@ exports.handler = async (event)=>{
     }
 
     if(b.action==="sync"){
-      // table present?
       try{ await sbGet("email_messages?select=id&limit=1"); }
       catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run supabase/email_intelligence.sql first."}); }
       const R=await buildResolver();
       const days=Math.min(Math.max(parseInt(b.days||30,10)||30,1),120);
-      let kept=0, matched=0, learned=0, candidates=0, scanned=0; const perMailbox=[];
+      const PER_FOLDER=Math.min(Math.max(parseInt(b.per_folder||120,10)||120,10),400);  // bound Graph pulls
+      const CAP=Math.min(Math.max(parseInt(b.cap||500,10)||500,50),1200);                // bound DB work per run
+
+      // 1) GATHER (Graph only) — a handful of requests, no DB writes yet.
+      const gathered=[]; const perMailbox=[];
       for(const mbox of MAILBOXES){
-        let mk=0,mm=0;
+        let got=0;
         for(const folder of ["inbox","sentitems"]){
           const direction = folder==="sentitems" ? "outbound" : "inbound";
-          let msgs=[]; try{ msgs=await listFolder(mbox,folder,days,200); }catch(e){ perMailbox.push({mailbox:mbox,folder,error:String(e.message||e)}); continue; }
-          for(const m of msgs){
-            scanned++;
-            const fromAddr=(m.from&&m.from.emailAddress&&m.from.emailAddress.address)||"";
-            const fromName=(m.from&&m.from.emailAddress&&m.from.emailAddress.name)||"";
-            const parts=[]; const push=(role,ea)=>{ if(ea&&ea.address) parts.push({role,address:String(ea.address).toLowerCase(),name:ea.name||"",domain:domainOf(ea.address)}); };
-            push("from",m.from&&m.from.emailAddress);
-            (m.toRecipients||[]).forEach(r=>push("to",r.emailAddress));
-            (m.ccRecipients||[]).forEach(r=>push("cc",r.emailAddress));
-            // external counterparties (not our own mailboxes/domain)
-            const externals=parts.filter(p=>p.domain && !INTERNAL_DOMAINS.includes(p.domain) && p.role!=="cc")
-                                  .concat(parts.filter(p=>p.domain && !INTERNAL_DOMAINS.includes(p.domain) && p.role==="cc"));
-            const primary = direction==="inbound"
-              ? externals.find(p=>p.role==="from")||externals[0]
-              : externals.find(p=>p.role==="to")||externals[0];
-            if(!primary) continue;                                   // internal-only → skip
-            // relevance: known dealer domain, or matches a dealer by name, or business signal, drop pure-consumer noise
-            let dealer_id = R.byDomain(primary.domain) || R.byName(primary.name) || null;
-            const bizSignal = BIZ.test(`${m.subject||""} ${m.bodyPreview||""}`);
-            const consumer = CONSUMER.has(primary.domain);
-            if(!dealer_id && consumer && !bizSignal) continue;       // personal/consumer, no business signal → drop
-            // learn: matched by name but domain unknown → remember domain→dealer
-            if(dealer_id && primary.domain && !R.knownDomain(primary.domain) && !consumer){
-              try{ await sbSend("POST","dealer_domains?on_conflict=domain",{domain:primary.domain,dealer_id,source:"email",confidence:0.8,verified:false},{Prefer:"resolution=merge-duplicates,return=minimal"}); learned++; }catch(e){}
-            }
-            const conf = R.byDomain(primary.domain)?"high":(dealer_id?"medium":"low");
-            // upsert message (idempotent on mailbox_upn+graph_id)
-            let row;
-            try{
-              row=await sbSend("POST","email_messages?on_conflict=mailbox_upn,graph_id",[{
-                graph_id:m.id, internet_message_id:clean(m.internetMessageId,300), mailbox_upn:mbox, direction,
-                subject:clean(m.subject,500), snippet:clean(m.bodyPreview,500),
-                from_address:clean(fromAddr,200), from_name:clean(fromName,200),
-                sent_at:m.sentDateTime||null, received_at:m.receivedDateTime||null,
-                dealer_id:dealer_id||null, manufacturer:null, thread_id:clean(m.conversationId,300),
-                has_attachments:!!m.hasAttachments, relevance_score:bizSignal?1:0.5, match_confidence:conf, folder,
-              }],{Prefer:"resolution=merge-duplicates,return=representation"});
-            }catch(e){ perMailbox.push({mailbox:mbox,folder,error:String(e.message||e)}); continue; }
-            const mid=row&&row[0]&&row[0].id;
-            if(mid){
-              // replace participants for this message
-              try{ await sbSend("DELETE",`email_participants?message_id=eq.${mid}`,null,{Prefer:"return=minimal"}); }catch(e){}
-              try{ await sbSend("POST","email_participants",parts.map(p=>({message_id:mid,role:p.role,address:p.address,display_name:clean(p.name,200),domain:p.domain})),{Prefer:"return=minimal"}); }catch(e){}
-            }
-            kept++; mk++;
-            if(dealer_id){ matched++; mm++; }
-            // contact candidate: an external person tied to a matched dealer
-            if(dealer_id && primary.address && !consumer){
-              try{
-                const ex=await sbGet(`contact_candidates?select=id,msg_count&email=eq.${encodeURIComponent(primary.address)}`).catch(()=>[]);
-                if(ex&&ex[0]){ await sbSend("PATCH",`contact_candidates?id=eq.${ex[0].id}`,{last_seen:new Date().toISOString(),msg_count:(ex[0].msg_count||1)+1},{Prefer:"return=minimal"}); }
-                else{ await sbSend("POST","contact_candidates",{email:primary.address,name:clean(primary.name,200),domain:primary.domain,dealer_id,suggested_reason:"seen in dealer email",status:"pending"},{Prefer:"return=minimal"}); candidates++; }
-              }catch(e){}
-            }
-          }
+          let msgs=[]; try{ msgs=await listFolder(mbox,folder,days,PER_FOLDER); }catch(e){ perMailbox.push({mailbox:mbox,folder,error:String(e.message||e)}); continue; }
+          got+=msgs.length; for(const m of msgs) gathered.push({m,mbox,direction,folder});
         }
-        perMailbox.push({mailbox:mbox,kept:mk,matched:mm});
+        perMailbox.push({mailbox:mbox,pulled:got});
       }
-      return json(200,{ok:true, scanned, kept, matched, learned_domains:learned, new_candidates:candidates, per_mailbox:perMailbox});
+      gathered.sort((a,b)=>String((b.m.receivedDateTime||b.m.sentDateTime)||"").localeCompare(String((a.m.receivedDateTime||a.m.sentDateTime)||"")));
+      const truncated = gathered.length>CAP; const work = truncated?gathered.slice(0,CAP):gathered;
+
+      // 2) BUILD records in memory (no I/O).
+      const recs=[]; const partsByKey=new Map(); const learn=new Map(); const cand=new Map();
+      let kept=0, matched=0;
+      for(const g of work){
+        const m=g.m, mbox=g.mbox, direction=g.direction;
+        const fromAddr=(m.from&&m.from.emailAddress&&m.from.emailAddress.address)||"";
+        const fromName=(m.from&&m.from.emailAddress&&m.from.emailAddress.name)||"";
+        const parts=[]; const push=(role,ea)=>{ if(ea&&ea.address) parts.push({role,address:String(ea.address).toLowerCase(),name:ea.name||"",domain:domainOf(ea.address)}); };
+        push("from",m.from&&m.from.emailAddress);
+        (m.toRecipients||[]).forEach(r=>push("to",r.emailAddress));
+        (m.ccRecipients||[]).forEach(r=>push("cc",r.emailAddress));
+        const externals=parts.filter(p=>p.domain&&!INTERNAL_DOMAINS.includes(p.domain)&&p.role!=="cc")
+                             .concat(parts.filter(p=>p.domain&&!INTERNAL_DOMAINS.includes(p.domain)&&p.role==="cc"));
+        const primary = direction==="inbound" ? (externals.find(p=>p.role==="from")||externals[0]) : (externals.find(p=>p.role==="to")||externals[0]);
+        if(!primary) continue;
+        let dealer_id = R.byDomain(primary.domain) || R.byName(primary.name) || null;
+        const bizSignal = BIZ.test(`${m.subject||""} ${m.bodyPreview||""}`);
+        const consumer = CONSUMER.has(primary.domain);
+        if(!dealer_id && consumer && !bizSignal) continue;
+        if(dealer_id && primary.domain && !R.knownDomain(primary.domain) && !consumer && !learn.has(primary.domain)) learn.set(primary.domain,dealer_id);
+        const conf = R.byDomain(primary.domain)?"high":(dealer_id?"medium":"low");
+        const key = mbox+"|"+m.id;
+        recs.push({ graph_id:m.id, internet_message_id:clean(m.internetMessageId,300), mailbox_upn:mbox, direction,
+          subject:clean(m.subject,500), snippet:clean(m.bodyPreview,500),
+          from_address:clean(fromAddr,200), from_name:clean(fromName,200),
+          sent_at:m.sentDateTime||null, received_at:m.receivedDateTime||null,
+          dealer_id:dealer_id||null, thread_id:clean(m.conversationId,300),
+          has_attachments:!!m.hasAttachments, relevance_score:bizSignal?1:0.5, match_confidence:conf, folder:g.folder });
+        partsByKey.set(key, parts);
+        if(dealer_id && primary.address && !consumer && !cand.has(primary.address))
+          cand.set(primary.address,{email:primary.address,name:clean(primary.name,200),domain:primary.domain,dealer_id,suggested_reason:"seen in dealer email",status:"pending"});
+        kept++; if(dealer_id) matched++;
+      }
+
+      // 3) BULK upsert messages → map (mailbox|graph_id)→id.
+      const idByKey=new Map();
+      for(let i=0;i<recs.length;i+=500){
+        const rows=await sbSend("POST","email_messages?on_conflict=mailbox_upn,graph_id",recs.slice(i,i+500),{Prefer:"resolution=merge-duplicates,return=representation"});
+        for(const r of (rows||[])) idByKey.set(r.mailbox_upn+"|"+r.graph_id, r.id);
+      }
+      // 4) learned domains — plain insert; `learn` only holds domains the resolver didn't already know.
+      if(learn.size){ const arr=[...learn.entries()].map(([domain,dealer_id])=>({domain,dealer_id,source:"email",confidence:0.8,verified:false}));
+        for(let i=0;i<arr.length;i+=500){ try{ await sbSend("POST","dealer_domains",arr.slice(i,i+500),{Prefer:"return=minimal"}); }catch(e){} } }
+      // 5) participants — delete for touched messages, then bulk insert.
+      const ids=[...idByKey.values()];
+      for(let i=0;i<ids.length;i+=200){ const chunk=ids.slice(i,i+200); try{ await sbSend("DELETE",`email_participants?message_id=in.(${chunk.join(",")})`,null,{Prefer:"return=minimal"}); }catch(e){} }
+      const allParts=[];
+      for(const [key,parts] of partsByKey){ const id=idByKey.get(key); if(!id) continue; for(const p of parts) allParts.push({message_id:id,role:p.role,address:p.address,display_name:clean(p.name,200),domain:p.domain}); }
+      for(let i=0;i<allParts.length;i+=500){ try{ await sbSend("POST","email_participants",allParts.slice(i,i+500),{Prefer:"return=minimal"}); }catch(e){} }
+      // 6) contact candidates — insert only genuinely new emails (preserve any approved/rejected status).
+      let newCands=0;
+      if(cand.size){ let existing=new Set();
+        try{ const ex=await sbGetAll("contact_candidates?select=email","email"); for(const r of (ex||[])) existing.add(String(r.email||"").toLowerCase()); }catch(e){}
+        const toAdd=[...cand.values()].filter(c=>!existing.has(String(c.email).toLowerCase()));
+        for(let i=0;i<toAdd.length;i+=500){ try{ await sbSend("POST","contact_candidates",toAdd.slice(i,i+500),{Prefer:"return=minimal"}); newCands+=toAdd.slice(i,i+500).length; }catch(e){} } }
+
+      return json(200,{ok:true, scanned:work.length, kept, matched, learned_domains:learn.size, new_candidates:newCands,
+        truncated: truncated?`capped at ${CAP} of ${gathered.length} — run again or narrow days to get the rest`:false, per_mailbox:perMailbox});
     }
 
     return json(400,{error:"unknown action"});
