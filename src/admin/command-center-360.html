@@ -149,7 +149,7 @@ function render(){
     <input class="search" id="coSearch" placeholder="Search all companies…" oninput="renderCo()">
     <div class="scrollbox" id="coList"></div></div>`;
   // intelligence tiles
-  const html=kpis+trend+predictCard(F)+`<div class="grid2">${mfrCard}${stateCard}</div>`+coCard+productsCard()+intelSection()+intelSection2();
+  const html=kpis+insightsCard(F)+trend+predictCard(F)+`<div class="grid2">${mfrCard}${stateCard}</div>`+`<div class="grid2">${territoryCard(F)}${whitespaceCard(F)}</div>`+coCard+productsCard()+intelSection()+intelSection2();
   $("#body").innerHTML=html;
   drawFC(ser,fc.proj,"trendMain");
   renderCo(); renderProd();
@@ -242,6 +242,7 @@ function drill(type,key,push){ openHost(); if(push!==false && type!=='dealerProd
   else if(type==="state") b.innerHTML=drillState(key);
   else if(type==="company") b.innerHTML=drillCompany(key);
   else if(type==="product") b.innerHTML=drillProduct(key);
+  else if(type==="region") b.innerHTML=drillRegion(key);
   else if(type==="dealerProducts") loadProducts(key);
   const sv=b.querySelector("svg[data-fc]"); if(sv) hydrateHover(sv);
 }
@@ -325,6 +326,50 @@ function intelSection(){
   return `<div class="grid2" style="margin-top:14px">${growTile}${actTile}</div><div class="grid2" style="margin-top:14px">${oppTile}${repTile}</div>`;
 }
 function engRows(list,cls){ return (list||[]).slice(0,6).map(r=>`<div class="drow" data-drill="company" data-key="${esc(r.name)}" style="cursor:pointer"><div class="nm" title="${esc(r.name)}">${esc(r.name)}</div><div class="track"></div><div class="val">${short(r.total)}</div><span class="pill ${cls}">${cls==='dorm'?(r.months_since||'')+'mo':cls}</span></div>`).join("")||'<div class="hint" style="margin:0">None.</div>'; }
+
+/* ===== Phase 3: insights, cross-sell white-space, territory ===== */
+const REGION={}; (function(){ const R={Northeast:["CT","ME","MA","NH","RI","VT","NJ","NY","PA"],Midwest:["IL","IN","MI","OH","WI","IA","KS","MN","MO","NE","ND","SD"],South:["DE","FL","GA","MD","NC","SC","VA","DC","WV","AL","KY","MS","TN","AR","LA","OK","TX"],West:["AZ","CO","ID","MT","NV","NM","UT","WY","AK","CA","HI","OR","WA"]}; for(const k in R)for(const a of R[k])REGION[a]=k; })();
+const NAME2AB={ALABAMA:"AL",ALASKA:"AK",ARIZONA:"AZ",ARKANSAS:"AR",CALIFORNIA:"CA",COLORADO:"CO",CONNECTICUT:"CT",DELAWARE:"DE",FLORIDA:"FL",GEORGIA:"GA",HAWAII:"HI",IDAHO:"ID",ILLINOIS:"IL",INDIANA:"IN",IOWA:"IA",KANSAS:"KS",KENTUCKY:"KY",LOUISIANA:"LA",MAINE:"ME",MARYLAND:"MD",MASSACHUSETTS:"MA",MICHIGAN:"MI",MINNESOTA:"MN",MISSISSIPPI:"MS",MISSOURI:"MO",MONTANA:"MT",NEBRASKA:"NE",NEVADA:"NV","NEW HAMPSHIRE":"NH","NEW JERSEY":"NJ","NEW MEXICO":"NM","NEW YORK":"NY","NORTH CAROLINA":"NC","NORTH DAKOTA":"ND",OHIO:"OH",OKLAHOMA:"OK",OREGON:"OR",PENNSYLVANIA:"PA","RHODE ISLAND":"RI","SOUTH CAROLINA":"SC","SOUTH DAKOTA":"SD",TENNESSEE:"TN",TEXAS:"TX",UTAH:"UT",VERMONT:"VT",VIRGINIA:"VA",WASHINGTON:"WA","WEST VIRGINIA":"WV",WISCONSIN:"WI",WYOMING:"WY"};
+function abbr(st){ st=String(st||"").trim().toUpperCase(); return st.length>2?(NAME2AB[st]||st):st; }
+function regionOf(st){ return REGION[abbr(st)]||"Other"; }
+function moversBy(F,keyFn){ const keys=[...new Set(F.map(keyFn))]; return keys.map(k=>{ const s=series(F.filter(f=>keyFn(f)===k)); const l3=s.slice(-3).reduce((a,p)=>a+p.v,0), p3=s.slice(-6,-3).reduce((a,p)=>a+p.v,0); return {k,l3,p3,delta:Math.round((l3-p3)*100)/100,pct:p3>0?Math.round((l3-p3)/p3*100):null}; }).filter(x=>x.l3>0||x.p3>0); }
+function whitespace(F){ const lines=[...new Set(F.map(f=>f.line))]; const buyers={}, tot={};
+  for(const f of F){ (buyers[f.line]||(buyers[f.line]=new Set())).add(f.dealer); tot[f.line]=(tot[f.line]||0)+(f.sales||0); }
+  const avg={}; for(const l of lines) avg[l]=buyers[l].size?tot[l]/buyers[l].size:0;
+  const out=[]; for(const A of lines) for(const B of lines){ if(A===B||!buyers[A]||!buyers[B])continue; const only=[...buyers[A]].filter(d=>!buyers[B].has(d)); if(only.length>=3) out.push({A,B,count:only.length,potential:Math.round(only.length*(avg[B]||0))}); }
+  return out.sort((a,b)=>b.potential-a.potential); }
+function ins(icon,text,action,dt,key){ const clk=dt?` data-drill="${dt}" data-key="${esc(key)}" style="cursor:pointer"`:""; return `<div class="drow"${clk} style="align-items:flex-start;padding:8px 6px;border-bottom:1px solid #eef2f6"><div style="font-size:17px">${icon}</div><div style="flex:1"><div style="font-size:13.5px;color:var(--navy)">${text}</div><div class="hint" style="margin:2px 0 0"><b style="color:#1f7a44">Action:</b> ${esc(action)}</div></div>${dt?'<span class="arw" style="align-self:center">›</span>':""}</div>`; }
+function insightsCard(F){
+  const mv=moversBy(F,f=>f.line).filter(x=>x.pct!=null).sort((a,b)=>b.delta-a.delta); const up=mv[0], down=mv[mv.length-1];
+  const dDown=moversBy(F,f=>f.dealer).filter(x=>x.p3>0).sort((a,b)=>a.delta-b.delta)[0];
+  const s=series(F), fc=forecast(s,3); const nextQ=fc.proj.reduce((a,p)=>a+p.v,0), last3=s.slice(-3).reduce((a,p)=>a+p.v,0);
+  const eng=(I&&I.engagement)||{}; const risk=[].concat(eng.dormant||[],eng.declining||[]); const riskVal=risk.reduce((a,r)=>a+(r.total||0),0);
+  const ws=whitespace(F)[0]; const rows=[];
+  rows.push(ins("📈",`Overall sales are projected to <b>${nextQ>=last3?"rise":"fall"} ${last3>0?Math.abs(Math.round((nextQ-last3)/last3*100)):0}%</b> next quarter to <b>${short(nextQ)}</b>.`, nextQ>=last3?"Keep momentum — ensure inventory & rep coverage.":"Headwind — prioritize re-orders and at-risk accounts.", null,null));
+  if(up&&up.delta>0) rows.push(ins("🟢",`<b>${esc(up.k)}</b> is the top grower — up <b>${up.pct>=0?"+":""}${up.pct}%</b> (${short(up.delta)}) last 3 months.`,"Double down: feature it, confirm stock, target look-alike dealers.","mfr",up.k));
+  if(down&&down.delta<0) rows.push(ins("🔴",`<b>${esc(down.k)}</b> is slipping — down <b>${down.pct}%</b> (${short(down.delta)}) last 3 months.`,"Investigate: call its top dealers, check pricing & supply.","mfr",down.k));
+  if(dDown&&dDown.delta<0) rows.push(ins("⚠️",`<b>${esc(dDown.k)}</b> dropped <b>${short(dDown.delta)}</b> vs the prior quarter.`,"Follow up this week — open its 360 and log a touch.","company",dDown.k));
+  if(risk.length) rows.push(ins("💤",`<b>${risk.length} dealers</b> are dormant or declining — <b>${short(riskVal)}</b> in relationship value at risk.`,"Run a re-engagement pass (see the momentum panel below).",null,null));
+  if(ws) rows.push(ins("🎯",`<b>${ws.count} dealers</b> buy <b>${esc(ws.A)}</b> but not <b>${esc(ws.B)}</b> — ~<b>${short(ws.potential)}</b> cross-sell potential.`,`Target them with ${esc(ws.B)}.`,"mfr",ws.B));
+  return `<div class="card" style="border-left:4px solid #10263f"><h2>Insights &amp; recommended actions <span class="side">what changed · why · what to do</span></h2>${rows.join("")||'<div class="hint">Not enough history yet for insights.</div>'}</div>`;
+}
+function territoryCard(F){ const m=[...agg(F,f=>regionOf(stateOf(f.dealer))).entries()].map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v);
+  return `<div class="card"><h2>Sales by territory <span class="side">region · click to drill</span></h2>${barRows(m,'region',m[0]&&m[0].v)}</div>`; }
+function drillRegion(region){ const F=facts().filter(f=>regionOf(stateOf(f.dealer))===region); const total=F.reduce((s,f)=>s+(f.sales||0),0);
+  const states=[...agg(F,f=>stateOf(f.dealer)).entries()].map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v);
+  const cos=[...agg(F,f=>f.dealer).entries()].map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v);
+  const mfr=[...agg(F,f=>f.line).entries()].map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v);
+  return `<h2 style="margin:0 0 8px">${esc(region)} region</h2>
+   <div class="stat">${st("Region sales",short(total))}${st("States",states.length)}${st("Dealers",cos.length)}</div>
+   ${miniChart(F,esc(region)+" — monthly sales + forecast")}
+   <div class="ihd">States</div>${barRows(states,'state',states[0]&&states[0].v)}
+   <div class="ihd">Manufacturers</div>${barRows(mfr.slice(0,12),'mfr',mfr[0]&&mfr[0].v)}
+   <div class="ihd">Dealers (${cos.length})</div><div class="scrollbox">${barRows(cos.slice(0,120),'company',cos[0]&&cos[0].v)}</div>`; }
+function whitespaceCard(F){ const ws=whitespace(F).slice(0,10);
+  if(!ws.length) return `<div class="card"><h2>Cross-sell white-space</h2><div class="hint">Not enough multi-line dealers yet to surface cross-sell gaps.</div></div>`;
+  return `<div class="card"><h2>Cross-sell white-space <span class="side">buys A, not B → target B</span></h2>
+   ${ws.map(o=>`<div class="drow" data-drill="mfr" data-key="${esc(o.B)}" style="cursor:pointer"><div class="nm" style="width:auto;flex:1;white-space:normal">Buy <b>${esc(o.A)}</b>, not <b>${esc(o.B)}</b></div><div class="val" style="width:64px">${o.count} dlrs</div><div class="val">${short(o.potential)}</div><span class="arw">›</span></div>`).join("")}
+   <div class="hint" style="margin-top:6px">Potential = prospect count × the missing line's average sales per dealer.</div></div>`; }
 
 function hydrateHover(){}
 boot();
