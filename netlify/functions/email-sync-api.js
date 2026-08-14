@@ -69,15 +69,21 @@ async function whoami(event){
 
 // ---- dealer resolver: learned domains + dnorm name/alias ----
 async function buildResolver(){
-  const [dealers,aliases,domains]=await Promise.all([
-    sbGetAll("dealers?select=id,business_name,parent_id","id").catch(()=>[]),
+  const [dealers,aliases,domains,contacts]=await Promise.all([
+    sbGetAll("dealers?select=id,business_name,parent_id,email","id").catch(()=>[]),
     sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]),
     sbGetAll("dealer_domains?select=domain,dealer_id","domain").catch(()=>[]),
+    sbGetAll("dealer_contacts?select=dealer_id,email","dealer_id").catch(()=>[]),
   ]);
   const norm2id=new Map(); for(const d of dealers) norm2id.set(dnorm(d.business_name), d.id);
   for(const a of aliases){ if(a&&a.alias_norm&&!norm2id.has(a.alias_norm)) norm2id.set(a.alias_norm, a.dealer_id); }
   const dom2id=new Map(); for(const x of domains){ if(x&&x.domain) dom2id.set(String(x.domain).toLowerCase(), x.dealer_id); }
+  // exact contact-email → dealer (handles ISP/personal addresses like name@bbtel.com precisely)
+  const email2id=new Map();
+  for(const d of dealers){ if(d.email) email2id.set(String(d.email).toLowerCase(), d.id); }
+  for(const c of contacts){ if(c.email&&c.dealer_id&&!email2id.has(String(c.email).toLowerCase())) email2id.set(String(c.email).toLowerCase(), c.dealer_id); }
   return {
+    byEmail:a=>email2id.get(String(a||"").toLowerCase())||null,
     byDomain:d=>dom2id.get(String(d||"").toLowerCase())||null,
     byName:n=>norm2id.get(dnorm(n))||null,
     knownDomain:d=>dom2id.has(String(d||"").toLowerCase()),
@@ -113,6 +119,29 @@ exports.handler = async (event)=>{
       return json(200,{ok:true, mailboxes:MAILBOXES, internal_domains:INTERNAL_DOMAINS,
         env:{ graph_tenant:!!G_TENANT, graph_client:!!G_CLIENT, graph_secret:!!G_SECRET, mailbox_count:MAILBOXES.length,
               supabase:!!(SUPABASE_URL&&SERVICE_ROLE) } });
+    }
+
+    // Seed dealer_domains from emails already on file (dealers.email + dealer_contacts).
+    // High precision: only map a domain when every dealer using it belongs to ONE family (HQ root).
+    if(b.action==="seed_domains"){
+      try{ await sbGet("dealer_domains?select=domain&limit=1"); }
+      catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run supabase/email_intelligence.sql first."}); }
+      const [dealers,contacts]=await Promise.all([
+        sbGetAll("dealers?select=id,business_name,parent_id,email","id").catch(()=>[]),
+        sbGetAll("dealer_contacts?select=dealer_id,email","dealer_id").catch(()=>[]),
+      ]);
+      const byId=new Map(); for(const d of dealers) byId.set(d.id,d);
+      const rootOf=id=>{ const d=byId.get(id); return (d&&d.parent_id)?d.parent_id:id; };
+      const domRoots=new Map();
+      const add=(email,dealer_id)=>{ const dom=domainOf(email); if(!dom||CONSUMER.has(dom)||INTERNAL_DOMAINS.includes(dom)) return;
+        const root=rootOf(dealer_id); (domRoots.get(dom)||domRoots.set(dom,new Set()).get(dom)).add(root); };
+      for(const d of dealers){ if(d.email) add(d.email,d.id); }
+      for(const c of contacts){ if(c.email&&c.dealer_id) add(c.email,c.dealer_id); }
+      let existing=new Set(); try{ existing=new Set((await sbGetAll("dealer_domains?select=domain","domain")).map(r=>String(r.domain).toLowerCase())); }catch(e){}
+      const toAdd=[]; let ambiguous=0;
+      for(const [dom,roots] of domRoots){ if(roots.size!==1){ ambiguous++; continue; } if(existing.has(dom)) continue; toAdd.push({domain:dom,dealer_id:[...roots][0],source:"seed",confidence:0.9,verified:false}); }
+      let added=0; for(let i=0;i<toAdd.length;i+=500){ try{ await sbSend("POST","dealer_domains",toAdd.slice(i,i+500),{Prefer:"return=minimal"}); added+=toAdd.slice(i,i+500).length; }catch(e){} }
+      return json(200,{ok:true, domains_added:added, skipped_ambiguous:ambiguous, already_had:existing.size, total_domains_seen:domRoots.size});
     }
 
     if(!G_TENANT||!G_CLIENT||!G_SECRET) return json(200,{ok:false,error:"graph_env_missing",message:"Set GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET in Netlify."});
@@ -164,12 +193,14 @@ exports.handler = async (event)=>{
                              .concat(parts.filter(p=>p.domain&&!INTERNAL_DOMAINS.includes(p.domain)&&p.role==="cc"));
         const primary = direction==="inbound" ? (externals.find(p=>p.role==="from")||externals[0]) : (externals.find(p=>p.role==="to")||externals[0]);
         if(!primary) continue;
-        let dealer_id = R.byDomain(primary.domain) || R.byName(primary.name) || null;
+        const exact = R.byEmail(primary.address);
+        let dealer_id = exact || R.byDomain(primary.domain) || R.byName(primary.name) || null;
         const bizSignal = BIZ.test(`${m.subject||""} ${m.bodyPreview||""}`);
         const consumer = CONSUMER.has(primary.domain);
         if(!dealer_id && consumer && !bizSignal) continue;
-        if(dealer_id && primary.domain && !R.knownDomain(primary.domain) && !consumer && !learn.has(primary.domain)) learn.set(primary.domain,dealer_id);
-        const conf = R.byDomain(primary.domain)?"high":(dealer_id?"medium":"low");
+        // learn domain→dealer only for matches by NAME on a real business domain (never for exact-email/ISP hits)
+        if(dealer_id && !exact && primary.domain && !R.knownDomain(primary.domain) && !consumer && !learn.has(primary.domain)) learn.set(primary.domain,dealer_id);
+        const conf = (exact||R.byDomain(primary.domain))?"high":(dealer_id?"medium":"low");
         const key = mbox+"|"+m.id;
         recs.push({ graph_id:m.id, internet_message_id:clean(m.internetMessageId,300), mailbox_upn:mbox, direction,
           subject:clean(m.subject,500), snippet:clean(m.bodyPreview,500),

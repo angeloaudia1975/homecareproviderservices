@@ -44,6 +44,7 @@ function render(){ if(!TOKEN){ gate(); return; }
     <div class="row">
       <button class="btn sm" onclick="doStatus()">Status</button>
       <button class="btn sm" onclick="doTest()">Test connection</button>
+      <button class="btn sm" onclick="doSeed()">Seed domains from CRM</button>
       <button class="btn orange" onclick="doSync()">Sync now</button>
       <span class="hint">days <input id="days" value="30" style="width:56px;padding:5px 7px;border:1px solid var(--line);border-radius:7px"></span>
       <span id="msg" class="hint" style="margin:0"></span>
@@ -72,6 +73,13 @@ async function doTest(){ if(BUSY)return; busy("Connecting to Graph…"); const j
     <h3 style="margin:10px 0 2px">Inbox sample</h3><table><thead><tr><th>From</th><th>Subject</th><th>When</th></tr></thead><tbody>${rows(j.inbox_sample)}</tbody></table>
     <h3 style="margin:12px 0 2px">Sent sample</h3><table><thead><tr><th>From</th><th>Subject</th><th>When</th></tr></thead><tbody>${rows(j.sent_sample)}</tbody></table>`; }
 
+async function doSeed(){ if(BUSY)return; busy("Seeding domains from CRM…"); const j=await api({action:"seed_domains"}); done();
+  if(!j.ok){ $("#out").innerHTML=`<div class="hint warn">Seed failed: ${esc(j.message||j.error||"error")}</div>`; return; }
+  $("#out").innerHTML=`<div class="kpis">
+    <div class="kpi g"><div class="l">Domains added</div><div class="v">${j.domains_added}</div></div>
+    <div class="kpi"><div class="l">Already had</div><div class="v">${j.already_had}</div></div>
+    <div class="kpi ${j.skipped_ambiguous?'w':''}"><div class="l">Skipped (shared domain)</div><div class="v">${j.skipped_ambiguous}</div></div>
+  </div><div class="hint">Mapped each dealer's business email domain to that dealer. Shared/ISP domains used by more than one dealer were skipped on purpose. Now click <b>Sync now</b> — matches should jump.</div>`; }
 async function doSync(){ if(BUSY)return; const days=parseInt(($("#days")||{}).value,10)||30; busy("Syncing "+days+" days…"); const j=await api({action:"sync",days}); done();
   if(!j.ok){ $("#out").innerHTML=`<div class="hint warn">Sync failed: ${esc(j.message||j.error||"error")}</div>`; return; }
   $("#out").innerHTML=`<div class="kpis">

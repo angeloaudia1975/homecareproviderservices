@@ -417,6 +417,34 @@ exports.handler = async (event)=>{
         numbers_seen:cells, lines_updated:rows.length, unmatched_accounts:unmatched.length, unmatched_sample:unmatched.slice(0,25), propagated });
     }
 
+    // PULL Zoho CONTACTS back into the portal. Maps each contact to its dealer via the parent
+    // Account (dnorm(name) + dealer_aliases, same as the account-number pull), then upserts into
+    // dealer_contacts (dealer_id,email). This gives the email matcher the full Zoho address book —
+    // every on-file email auto-attributes incoming mail to the right dealer.
+    if(b.action==="pull_contacts"){
+      const c=await connect(); if(!c.ok) return json(200,{ok:false,message:"Not connected.",reason:c.reason});
+      const dealers=await sbGetAll("dealers?select=id,business_name","id");
+      const norm2id=new Map(); for(const d of dealers) norm2id.set(dnorm(d.business_name), d.id);
+      const aliases=await sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]);
+      for(const a of (aliases||[])){ if(a&&a.alias_norm&&!norm2id.has(a.alias_norm)) norm2id.set(a.alias_norm,a.dealer_id); }
+      const contacts=await getAllRecords(c.apiDomain,c.token,"Contacts","Email,First_Name,Last_Name,Account_Name,Phone,Title");
+      const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const rows=[]; const seen=new Set(); let withEmail=0; const unmatched=new Set();
+      for(const ct of (contacts||[])){
+        const email=String(ct.Email||"").trim().toLowerCase(); if(!EMAIL_RE.test(email)) continue; withEmail++;
+        const acctName=(ct.Account_Name && (ct.Account_Name.name||ct.Account_Name))||"";
+        const id=acctName?norm2id.get(dnorm(acctName)):null;
+        if(!id){ if(acctName) unmatched.add(acctName); continue; }
+        const key=id+"|"+email; if(seen.has(key)) continue; seen.add(key);
+        const name=[clean(ct.First_Name),clean(ct.Last_Name)].filter(Boolean).join(" ").slice(0,120)||null;
+        rows.push({dealer_id:id,email,name,title:clean(ct.Title)||null,phone:clean(ct.Phone)||null});
+      }
+      let written=0; for(let i=0;i<rows.length;i+=500){ try{ await sbSend("POST","dealer_contacts?on_conflict=dealer_id,email",rows.slice(i,i+500),{Prefer:"resolution=merge-duplicates,return=minimal"}); written+=rows.slice(i,i+500).length; }catch(e){} }
+      try{ await stampSync("contacts_pulled_at"); }catch(e){}
+      return json(200,{ ok:true, zoho_contacts:(contacts||[]).length, with_email:withEmail, matched_to_dealer:rows.length, written,
+        unmatched_accounts:unmatched.size, unmatched_sample:[...unmatched].slice(0,20) });
+    }
+
     return json(400,{error:"unknown action"});
   }catch(e){ return json(500,{error:String(e.message||e)}); }
 };
