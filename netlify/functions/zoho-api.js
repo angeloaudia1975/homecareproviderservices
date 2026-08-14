@@ -297,8 +297,16 @@ exports.handler = async (event)=>{
       const cfg=await getZohoAuth(); const st=await getSyncState();
       let opps=[]; try{ opps=await sbGetAll("opportunities?select=id,zoho_id","id"); }catch(e){}
       const linked=(opps||[]).filter(o=>o.zoho_id).length;
+      // Portal record counts (context for the health dashboard).
+      let dealers=0, contacts=0;
+      try{ dealers=(await sbGetAll("dealers?select=id","id")).length; }catch(e){}
+      try{ contacts=(await sbGetAll("dealer_contacts?select=email","email")).length; }catch(e){}
+      // Pending / failed from the sync queue if it exists yet (auto-sync phase); silent 0 otherwise.
+      let pending=0, failed=0, autosync=false;
+      try{ const q=await sbGetAll("zoho_sync_queue?select=id,status","id"); pending=q.filter(x=>x.status==="pending").length; failed=q.filter(x=>x.status==="failed").length; autosync=true; }catch(e){}
       return json(200,{ ok:true, connected:!!(cfg&&cfg.refresh_token), last:st,
-        opportunities:{ total:(opps||[]).length, linked, unlinked:(opps||[]).length-linked } });
+        opportunities:{ total:(opps||[]).length, linked, unlinked:(opps||[]).length-linked },
+        counts:{ dealers, contacts }, queue:{ pending, failed }, autosync });
     }
 
     // PUSH pipeline opportunities -> Zoho Deals. Each opp stores its Zoho Deal id (zoho_id) so
