@@ -126,6 +126,43 @@ exports.handler = async (event)=>{
         return json(200,{ok:true});
       }
 
+      // Rename a product's SKU/code. A standard catalog product can't be renamed in place — its
+      // code is the join key into the deployed catalog JSON — so a rename forks it into a
+      // custom_products row under the NEW code carrying every field, re-points its link / media /
+      // featured rows to the new code, and retires the OLD code (hides the catalog original with
+      // an active:false override, or deletes the old row if it was already a custom product).
+      if(b.action==="rename_code"){
+        const mfr=b.manufacturer, oldCode=String(b.old_code||"").trim(), newCode=String(b.new_code||"").trim();
+        const p=b.product||{};
+        if(!mfr||!oldCode||!newCode) return json(400,{error:"manufacturer, old_code and new_code are required"});
+        if(oldCode===newCode) return json(400,{error:"new_code matches old_code"});
+        // don't clobber an existing added product that already uses the new code
+        const clash=await sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(newCode)}&select=code`).catch(()=>[]);
+        if(clash&&clash.length) return json(409,{error:`SKU "${newCode}" is already in use`});
+        // 1) create the product under the new code with all fields carried from the client
+        await sb("POST","custom_products?on_conflict=manufacturer,code",{
+          manufacturer:mfr, code:newCode, name:String(p.name||"").trim()||newCode,
+          category:p.category||null, base_price:num(p.base_price), msrp:num(p.msrp),
+          image:p.image||null, description:p.description||null,
+          tiers:cleanTiers(p.tiers), price_note:p.price_note||null,
+          active:p.active===false?false:true, updated_at:new Date().toISOString()
+        },{Prefer:"resolution=merge-duplicates,return=minimal"});
+        // 2) move link / media / featured rows from the old code to the new code (best-effort)
+        for(const tbl of ["product_links","product_media","featured_products"]){
+          try{ await sb("PATCH",`${tbl}?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(oldCode)}`,{code:newCode},{Prefer:"return=minimal"}); }catch(e){}
+        }
+        // 3) retire the old code
+        if(b.was_custom){
+          try{ await sb("DELETE",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(oldCode)}`,null,{Prefer:"return=minimal"}); }catch(e){}
+          try{ await sb("DELETE",`product_overrides?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(oldCode)}`,null,{Prefer:"return=minimal"}); }catch(e){}
+        }else{
+          await sb("POST","product_overrides?on_conflict=manufacturer,code",
+            {manufacturer:mfr,code:oldCode,patch:{active:false},updated_at:new Date().toISOString()},
+            {Prefer:"resolution=merge-duplicates,return=minimal"});
+        }
+        return json(200,{ok:true});
+      }
+
       // Edit a STANDARD catalog product without a redeploy: store only the changed fields as
       // an override the portal merges over the deployed catalog JSON.
       if(b.action==="save_override"){

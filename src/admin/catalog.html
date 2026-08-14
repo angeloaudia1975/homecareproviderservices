@@ -135,13 +135,15 @@ async function toggleFeatured(code){
 }
 function duplicateProduct(code){
   const p=effProducts().find(x=>x.code===code); if(!p)return;
-  PDRAFT={kind:"custom",code:p.code+"-COPY",name:(p.name||"")+" (copy)",category:p.category||"",base_price:p.base_price??"",msrp:p.msrp??"",
+  PDRAFT={kind:"custom",code:p.code+"-COPY",orig_code:null,name:(p.name||"")+" (copy)",category:p.category||"",base_price:p.base_price??"",msrp:p.msrp??"",
     image:p.image||"",description:p.description||"",price_note:p.price_note||"",active:true,tiers:tiersOf(p),edited:false};
   toast("Duplicated — edit the code/name and save"); render();
 }
-function newProduct(){PDRAFT={kind:"custom",code:"",name:"",category:"",base_price:"",msrp:"",image:"",description:"",price_note:"",active:true,tiers:[]};render();}
+function newProduct(){PDRAFT={kind:"custom",code:"",orig_code:null,name:"",category:"",base_price:"",msrp:"",image:"",description:"",price_note:"",active:true,tiers:[]};render();}
+// orig_code = the SKU this draft was opened under; if the code field is changed before saving,
+// saveProduct treats it as a rename (see rename_code). New/duplicate drafts have orig_code=null.
 function editProduct(code){ const p=effProducts().find(x=>x.code===code); if(!p)return;
-  PDRAFT={kind:p.kind,code:p.code,name:p.name||"",category:p.category||"",base_price:p.base_price??"",msrp:p.msrp??"",
+  PDRAFT={kind:p.kind,code:p.code,orig_code:p.code,name:p.name||"",category:p.category||"",base_price:p.base_price??"",msrp:p.msrp??"",
     image:p.image||"",description:p.description||"",price_note:p.price_note||"",active:p.active!==false,tiers:tiersOf(p),edited:!!p.edited};
   render(); }
 function setP(k,v){PDRAFT[k]=v;}
@@ -151,6 +153,17 @@ function setTier(i,k,v){PDRAFT.tiers[i][k]=v;}
 async function saveProduct(){
   if(!PDRAFT.code||!String(PDRAFT.name).trim()){toast("Code and name are required");return;}
   const tiers=(PDRAFT.tiers||[]).filter(t=>t.price!==""&&t.price!=null).map(t=>({min_qty:parseInt(t.min_qty||1,10)||1,price:Number(t.price)}));
+  // SKU change on an existing product = a rename: fork to the new code, carry price/featured/
+  // link/images across, retire the old code. New/duplicated drafts (orig_code=null) skip this.
+  const newCode=String(PDRAFT.code).trim(), oldCode=PDRAFT.orig_code;
+  if(oldCode && newCode!==oldCode){
+    if(effProducts().some(p=>p.code===newCode && p.code!==oldCode)){ toast("That SKU is already used by another product — pick a unique one"); return; }
+    if(!confirm("Change SKU from “"+oldCode+"” to “"+newCode+"”?\n\nThe product’s price, featured status, More-Information link and images move to the new SKU, and the old SKU is retired from the portal.")) return;
+    await api("",{method:"POST",body:JSON.stringify({action:"rename_code",manufacturer:SLUG,old_code:oldCode,new_code:newCode,was_custom:PDRAFT.kind==="custom",
+      product:{code:newCode,name:PDRAFT.name,category:PDRAFT.category,description:PDRAFT.description,price_note:PDRAFT.price_note,
+        base_price:PDRAFT.base_price===""?null:Number(PDRAFT.base_price),msrp:PDRAFT.msrp===""?null:Number(PDRAFT.msrp),image:PDRAFT.image||null,tiers,active:PDRAFT.active!==false}})});
+    PDRAFT=null; await loadMfr(); toast("SKU changed ✓ — live on the portal"); return;
+  }
   if(PDRAFT.kind==="custom"){
     await api("",{method:"POST",body:JSON.stringify({action:"save_product",manufacturer:SLUG,product:{...PDRAFT,tiers}})});
   }else{
@@ -262,7 +275,7 @@ function render(){
   const pform = PDRAFT ? `<div class="card" style="border-color:var(--blue)">
      <h2>${PDRAFT.kind==="custom"?(DETAIL.custom&&DETAIL.custom.some(x=>x.code===PDRAFT.code)?"Edit added product":"New product"):"Edit catalog product"} <span class="hint" style="text-transform:none">${PDRAFT.kind==="catalog"?"— your changes save as an override on top of the standard catalog; nothing is redeployed":""}</span></h2>
      <div class="grid2">
-       <div><label class="fl">Product code / SKU ${PDRAFT.kind==="custom"?"*":""}</label><input type="text" value="${esc(PDRAFT.code)}" ${PDRAFT.kind==="catalog"?"readonly":""} oninput="setP('code',this.value)"></div>
+       <div><label class="fl">Product code / SKU ${PDRAFT.kind==="custom"?"*":""}</label><input type="text" value="${esc(PDRAFT.code)}" oninput="setP('code',this.value)">${PDRAFT.orig_code?`<div class="hint" style="margin-top:3px;text-transform:none">Changing this renames the product to a new SKU — its price, featured status, link &amp; images move with it.</div>`:""}</div>
        <div><label class="fl">Name *</label><input type="text" value="${esc(PDRAFT.name)}" oninput="setP('name',this.value)"></div>
        <div><label class="fl">Category</label><input type="text" list="catopts" value="${esc(PDRAFT.category)}" placeholder="pick or type a new one" oninput="setP('category',this.value)"><datalist id="catopts">${catList().map(c=>`<option value="${esc(c)}">`).join("")}</datalist></div>
        <div><label class="fl">Dealer price ($)</label><input type="number" step="0.01" value="${esc(PDRAFT.base_price)}" oninput="setP('base_price',this.value)"></div>
