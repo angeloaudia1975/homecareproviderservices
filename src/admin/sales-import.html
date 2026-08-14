@@ -38,7 +38,7 @@ const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",
 const money=n=>(n==null||n==="")?"—":"$"+Math.round(Number(n)||0).toLocaleString("en-US");
 window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
 let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
-let TOKEN=HCPS.token(), MFRS=[], HEADERS=[], ROWS=[], MAP={}, PREVIEW=null, FILENAME="", BUSY=false;
+let TOKEN=HCPS.token(), MFRS=[], HEADERS=[], ROWS=[], MAP={}, PREVIEW=null, FILENAME="", BUSY=false, DEALERS=[];
 const TARGETS=[
  {k:"order_number",label:"Order #",req:true},{k:"date",label:"Order date",req:true},
  {k:"company",label:"Dealer / company",req:true},{k:"account_ref",label:"Account username / ref"},
@@ -196,7 +196,19 @@ async function doPreview(){
   const r=await si({action:"preview",manufacturer:mfr,commission_rate:rate,rows}); BUSY=false; $("#pmsg").textContent="";
   if(r.body&&r.body.error==="tables_missing"){ $("#out").innerHTML=`<div class="card"><div class="msg">Run <b>supabase/sales_import.sql</b> in Supabase first, then reload.</div></div>`; return; }
   if(!r.body||!r.body.ok){ $("#out").innerHTML=`<div class="card"><div class="hint warn">Preview failed: ${esc((r.body&&(r.body.error||r.body.message))||"error")}</div></div>`; return; }
-  PREVIEW=r.body.preview; renderPreview();
+  PREVIEW=r.body.preview;
+  if(PREVIEW.unmatched&&PREVIEW.unmatched.length&&!DEALERS.length){ const d=await si({action:"dealers"}); if(d.body&&d.body.ok) DEALERS=d.body.dealers||[]; }
+  renderPreview();
+}
+// Assign an unmatched report company to a dealer and remember it (dealer_alias) for future imports.
+async function assignAlias(i){
+  const sel=$("#um_"+i), ok=$("#umok_"+i); const dealer_id=sel&&sel.value;
+  const company=(PREVIEW.unmatched||[])[i];
+  if(!dealer_id){ if(ok) ok.innerHTML='<span class="warn">pick a dealer first</span>'; return; }
+  if(!company) return; if(ok) ok.textContent="saving…";
+  const r=await si({action:"add_alias",company,dealer_id});
+  if(r.body&&r.body.ok){ if(ok) ok.innerHTML='<span class="ok">✓ remembered</span>'; }
+  else if(ok) ok.innerHTML='<span class="warn">failed</span>';
 }
 function renderPreview(){
   const p=PREVIEW;
@@ -211,7 +223,16 @@ function renderPreview(){
   const pd=(p.per_dealer||[]).length?`<div class="step"><h3>By dealer branch</h3><div style="max-height:340px;overflow:auto"><table><thead><tr><th>Dealer / branch</th><th class="num">Orders</th><th class="num">Lines</th><th class="num">Sales</th><th class="num">Commission</th></tr></thead><tbody>
     ${p.per_dealer.map(d=>`<tr><td><a class="link" href="/admin/dealer.html?id=${encodeURIComponent(d.dealer_id)}">${esc(d.name)}</a></td><td class="num">${d.orders}</td><td class="num">${d.lines}</td><td class="num">${money(d.sales)}</td><td class="num">${money(d.commission)}</td></tr>`).join("")}
     </tbody></table></div></div>`:"";
-  const un=(p.unmatched||[]).length?`<div class="step"><h3 class="warn">Unmatched companies (${p.unmatched.length}) — still loaded, recorded by name</h3><div class="hint">${p.unmatched.map(esc).join(" · ")}</div><div class="hint" style="margin-top:4px">Fix these by adding the dealer or an alias, then re-import (idempotent — it won't duplicate).</div></div>`:"";
+  const opts='<option value="">— choose dealer —</option>'+DEALERS.map(d=>`<option value="${esc(d.id)}">${esc(d.name)}${d.branch?" (branch)":""}</option>`).join("");
+  const un=(p.unmatched||[]).length?`<div class="step"><h3 class="warn">Unmatched companies (${p.unmatched.length})</h3>
+    <div class="hint" style="margin-bottom:6px">Pick the dealer each one belongs to — I'll remember the name so this report and every future import match it automatically. Then click <b>Re-check matches</b>.</div>
+    <table><tbody>${p.unmatched.map((nm,i)=>`<tr>
+      <td style="padding:5px 10px 5px 0;font-weight:600;color:var(--navy)">${esc(nm)}</td>
+      <td style="padding:5px 0"><select id="um_${i}" style="min-width:240px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-family:inherit;font-size:12.5px">${opts}</select></td>
+      <td style="padding:5px 0 5px 8px;white-space:nowrap"><button class="btn ghost sm" onclick="assignAlias(${i})">Assign</button> <span id="umok_${i}" class="hint"></span></td>
+    </tr>`).join("")}</tbody></table>
+    <div style="margin-top:8px"><button class="btn sm" onclick="doPreview()">Re-check matches</button> <span class="hint">— re-runs the match after your assignments</span></div>
+    ${DEALERS.length?"":'<div class="hint warn" style="margin-top:4px">Dealer list didn\'t load — reload and try again.</div>'}</div>`:"";
   $("#out").innerHTML=`<div class="card">${kpis}
     <div style="display:flex;gap:8px;align-items:center;margin:4px 0 2px"><button class="btn orange" onclick="doImport()">Load ${p.rows} lines into the platform</button><span id="imsg" class="hint" style="margin:0"></span></div>
     ${pd}${un}</div>`;

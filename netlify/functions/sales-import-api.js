@@ -110,6 +110,22 @@ exports.handler = async (event)=>{
     const me=await whoami(event);
     if(!me) return json(401,{error:"unauthorized"});
     let b; try{ b=JSON.parse(event.body||"{}"); }catch{ return json(400,{error:"bad JSON"}); }
+
+    // Dealer list for the "assign unmatched company" dropdown.
+    if(b.action==="dealers"){
+      const ds=await sbGetAll("dealers?select=id,business_name,parent_id","id").catch(()=>[]);
+      const list=ds.map(d=>({id:d.id,name:d.business_name||"",branch:!!d.parent_id})).filter(d=>d.name).sort((a,b)=>a.name.localeCompare(b.name));
+      return json(200,{ok:true,dealers:list});
+    }
+    // Remember an unmatched report name → dealer, so this and future imports match it.
+    if(b.action==="add_alias"){
+      const company=clean(b.company,180), dealer_id=clean(b.dealer_id,80);
+      if(!company||!dealer_id) return json(400,{error:"company and dealer_id required"});
+      const alias_norm=dnorm(company); if(!alias_norm) return json(400,{error:"empty name"});
+      await sbSend("POST","dealer_aliases?on_conflict=alias_norm",{alias_norm,raw_name:company,dealer_id},{Prefer:"resolution=merge-duplicates,return=minimal"});
+      return json(200,{ok:true,alias_norm,dealer_id});
+    }
+
     if(b.action!=="preview"&&b.action!=="import") return json(400,{error:"unknown action"});
 
     const slug=clean(b.manufacturer,60); if(!slug) return json(400,{error:"manufacturer required"});
