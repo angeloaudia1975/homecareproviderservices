@@ -44,13 +44,21 @@ async function whoami(event){
 // Build the dealer resolver: account_ref (per manufacturer) + name/alias, with
 // branch selection by shipping zip/city inside the dealer family.
 async function buildResolver(slug){
-  const [dealers,dms,aliases]=await Promise.all([
+  const [dealers,dms,aliases,dir]=await Promise.all([
     sbGetAll("dealers?select=id,business_name,parent_id,city,zip","id").catch(()=>[]),
     sbGetAll(`dealer_manufacturers?manufacturer=eq.${encodeURIComponent(slug)}&select=dealer_id,account_ref`,"dealer_id").catch(()=>[]),
     sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]),
+    sbGetAll("dealer_directory?select=dealer_name,rep_name","dealer_name").catch(()=>[]),
   ]);
   const byId=new Map(); for(const d of dealers) byId.set(d.id,d);
   const rootOf=id=>{ const d=byId.get(id); return (d&&d.parent_id)?d.parent_id:id; };
+  // rep assignment lives in dealer_directory (dealer_name -> rep_name); match by normalized name,
+  // and fall back to the family HQ's assignment for branches without their own directory row.
+  const repByName=new Map(); for(const x of (dir||[])){ if(x&&x.dealer_name){ const rn=String(x.rep_name||"").trim(); if(rn) repByName.set(dnorm(x.dealer_name), rn); } }
+  function repOf(id){ if(!id) return null; const d=byId.get(id); if(!d) return null;
+    let r=repByName.get(dnorm(d.business_name));
+    if(!r){ const rt=byId.get(rootOf(id)); if(rt) r=repByName.get(dnorm(rt.business_name)); }
+    return r||null; }
   const familyByRoot=new Map();
   for(const d of dealers){ const r=rootOf(d.id); (familyByRoot.get(r)||familyByRoot.set(r,[]).get(r)).push(d); }
   const refToIds=new Map(); for(const x of dms){ const k=String(x.account_ref||"").trim().toLowerCase(); if(!k) continue; (refToIds.get(k)||refToIds.set(k,[]).get(k)).push(x.dealer_id); }
@@ -74,7 +82,7 @@ async function buildResolver(slug){
     if(!cands||!cands.length) return null;
     const d=pickBranch(cands,row); return d?d.id:null;
   }
-  return { resolve, byId };
+  return { resolve, byId, repOf };
 }
 
 function mapRow(slug, rate, source_file, row, idx){
@@ -113,8 +121,8 @@ exports.handler = async (event)=>{
     try{ await sbGet("monthly_sales?select=external_ref&limit=1"); }
     catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run supabase/sales_import.sql in Supabase, then reload."}); }
 
-    const { resolve, byId } = await buildResolver(slug);
-    const mapped=rows.map((r,i)=>({ rec:mapRow(slug,rate,clean(b.source_file,200),r,i), dealer_id:resolve(r), raw:r }));
+    const { resolve, byId, repOf } = await buildResolver(slug);
+    const mapped=rows.map((r,i)=>{ const dealer_id=resolve(r); const rec=mapRow(slug,rate,clean(b.source_file,200),r,i); rec.rep_name=repOf(dealer_id); return { rec, dealer_id, raw:r }; });
     // aggregate
     let total=0, comm=0, matchedLines=0; const byDealer=new Map(); const unmatchedNames=new Set();
     for(const m of mapped){ total+=m.rec.amount; comm+=m.rec.commission;
