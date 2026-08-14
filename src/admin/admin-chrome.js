@@ -32,7 +32,7 @@
         { href:"/admin/map.html",       label:"Territory Map" }
     ]},
     { id:"analytics", label:"Sales Data & Analytics", href:"/admin/#analytics", tools:[
-        { href:"/admin/command-center.html",     label:"Command Center" },
+        { href:"/admin/command-center-360.html", label:"Command Center 360" },
         { href:"/admin/reps.html",               label:"Rep Performance" },
         { href:"/admin/pipeline.html",           label:"Pipeline & Forecast" },
         { href:"/admin/traffic.html",            label:"Website Traffic" },

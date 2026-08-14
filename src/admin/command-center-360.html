@@ -1,0 +1,293 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Command Center 360</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .cc-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+ .cc-yr{display:flex;gap:5px;flex-wrap:wrap}
+ .cc-yr button{font-size:12px;font-weight:700;border:1px solid var(--line);background:#f5f8fb;color:var(--navy);border-radius:999px;padding:5px 11px;cursor:pointer}
+ .cc-yr button.on{background:#10263f;border-color:#10263f;color:#fff}
+ .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:2px 0 14px}
+ .kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px 13px}
+ .kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700}
+ .kpi .v{font-size:23px;font-weight:800;color:var(--navy);font-family:'Barlow Condensed',sans-serif;margin-top:2px}
+ .kpi .s{font-size:11px;color:var(--gray);margin-top:1px}
+ .kpi .v.up{color:#1f7a44}.kpi .v.down{color:#c2410c}
+ .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+ @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+ .card h2{display:flex;align-items:center;justify-content:space-between;gap:8px}
+ .card h2 .side{font-size:11px;color:var(--gray);font-weight:600}
+ .drow{display:flex;align-items:center;gap:10px;padding:5px 6px;border-radius:8px;cursor:pointer}
+ .drow:hover{background:#f2f7fb}
+ .drow .nm{width:150px;min-width:110px;font-size:12.5px;color:var(--navy);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .drow .track{flex:1;background:#eef2f6;border-radius:5px;height:14px;overflow:hidden}
+ .drow .fill{height:100%;background:#1681c2;border-radius:5px}
+ .drow .val{width:88px;text-align:right;font-size:12.5px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
+ .drow .arw{color:#9aa4ae;font-size:12px}
+ .search{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;margin:2px 0 8px;font-family:inherit}
+ .scrollbox{max-height:420px;overflow:auto}
+ .chartwrap{position:relative}
+ .cctip{position:absolute;pointer-events:none;background:#0f1b2b;color:#fff;border-radius:7px;padding:5px 8px;font-size:12px;opacity:0;transition:opacity .1s;z-index:5}
+ .cctip b{font-size:13px}
+ .drill{position:fixed;inset:0;background:rgba(12,22,34,.42);z-index:50;display:flex;justify-content:flex-end}
+ .drill .panel{width:min(760px,96vw);background:var(--paper,#f4f6f9);height:100%;overflow:auto;box-shadow:-12px 0 40px rgba(0,0,0,.25);padding:0 0 40px}
+ .drill .dhead{position:sticky;top:0;background:#10263f;color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;z-index:2}
+ .crumbs{font-size:12px;color:#aebdd0}.crumbs a{color:#fff;cursor:pointer;text-decoration:underline}
+ .drill .dbody{padding:16px 20px}
+ .drill .x{background:rgba(255,255,255,.15);border:0;color:#fff;font-size:18px;border-radius:8px;width:30px;height:30px;cursor:pointer}
+ .stat{display:flex;gap:10px;flex-wrap:wrap;margin:2px 0 12px}
+ .stat .s{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 13px;min-width:96px}
+ .stat .s .l{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:600}
+ .stat .s .v{font-size:18px;font-weight:800;color:var(--navy)}
+ table{width:100%;border-collapse:collapse;font-size:13px}
+ th{text-align:left;color:var(--gray);font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:5px 7px;border-bottom:1px solid var(--line)}
+ td{padding:6px 7px;border-bottom:1px solid #eef2f6}
+ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+ .lnk{color:#1681c2;cursor:pointer;font-weight:600}
+ .pill{font-size:10px;font-weight:800;text-transform:uppercase;border-radius:6px;padding:2px 7px}
+ .pill.up{background:#e7f6ec;color:#1f7a44}.pill.down{background:#fdecec;color:#b42323}.pill.flat{background:#eef2f7;color:#5b6b7b}
+ .pill.dorm{background:#f3eef9;color:#5b3fa0}
+ .ihd{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:800;margin:10px 0 4px}
+ .chttl{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:800;margin:4px 0 2px}
+ .chart{width:100%;height:auto;display:block;overflow:visible}
+ .cyt{font-size:10px;fill:var(--gray);font-variant-numeric:tabular-nums}.cxt{font-size:10px;fill:var(--gray)}.cend{font-size:11px;fill:var(--navy);font-weight:800}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top cc-top"><div><h1 style="margin:0">Command Center 360</h1>
+    <div class="sub">Every number is clickable. Summary → manufacturer → dealer → branch → product → order, with trend forecasts. Sales from commission &amp; sales imports; intelligence from Dealer 360, ordering activity &amp; CRM.</div></div>
+    <div class="cc-yr" id="yr"></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<div id="drillHost"></div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money=n=>"$"+Math.round(Number(n)||0).toLocaleString("en-US");
+const short=n=>{n=Number(n)||0;const a=Math.abs(n);if(a>=1e6)return "$"+(n/1e6).toFixed(1).replace(/\.0$/,"")+"M";if(a>=1e3)return "$"+(n/1e3).toFixed(1).replace(/\.0$/,"")+"k";return "$"+Math.round(n);};
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), A=null, I=null, YEAR="all", NAMEID={}, INFO={}, ENG={}, BUSY=false;
+const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const ym=p=>String(p||"").slice(0,7);
+const pmOf=p=>{const s=ym(p);const a=s.split("-");return (Number(a[0])||0)*12+((Number(a[1])||1)-1);};
+const pmLabel=pm=>MON[((pm%12)+12)%12]+" "+String(Math.floor(pm/12)).slice(2);
+const norm=s=>String(s||"").toUpperCase().replace(/[^A-Z0-9]+/g," ").trim();
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; boot();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+
+async function boot(){
+  if(!TOKEN){ gate(); return; }
+  try{
+    const h={authorization:"Bearer "+TOKEN};
+    const [ar,ir]=await Promise.all([
+      fetch("/.netlify/functions/analytics",{headers:h}),
+      fetch("/.netlify/functions/command360-api",{method:"POST",headers:{...h,"content-type":"application/json"},body:"{}"})
+    ]);
+    if(ar.status===401){ gate("Your session ended — sign in again."); return; }
+    if(ar.status===403){ $("#body").innerHTML='<div class="msg err"><b>President only.</b></div>'; return; }
+    A=await ar.json(); I=await ir.json().catch(()=>({}));
+    INFO=A.dealerInfo||{};
+    (I.dealers||[]).forEach(d=>{ NAMEID[norm(d.name)]=d.id; });
+    (I.engagement&&[].concat(I.engagement.dormant||[],I.engagement.declining||[],I.engagement.growing||[])||[]).forEach(e=>{ ENG[norm(e.name)]=e; });
+    buildYears(); render();
+  }catch(e){ $("#body").innerHTML=`<div class="msg err">Couldn't load: ${esc(String(e.message||e))}</div>`; }
+}
+function buildYears(){
+  const ys=[...new Set((A.facts||[]).map(f=>ym(f.period).slice(0,4)))].filter(Boolean).sort();
+  $("#yr").innerHTML=[`<button class="${YEAR==='all'?'on':''}" onclick="setYear('all')">All</button>`].concat(ys.map(y=>`<button class="${YEAR===y?'on':''}" onclick="setYear('${y}')">${y}</button>`)).join("");
+}
+function setYear(y){ YEAR=y; buildYears(); render(); }
+function facts(){ return (A.facts||[]).filter(f=>YEAR==="all"||ym(f.period).slice(0,4)===YEAR); }
+
+/* ---------- aggregation helpers ---------- */
+function agg(F,keyFn){ const m=new Map(); for(const f of F){ const k=keyFn(f); if(k==null)continue; m.set(k,(m.get(k)||0)+(f.sales||0)); } return m; }
+function series(F){ const m=new Map(); for(const f of F){ const pm=pmOf(f.period); m.set(pm,(m.get(pm)||0)+(f.sales||0)); } const pms=[...m.keys()].sort((a,b)=>a-b); return pms.length?Array.from({length:pms[pms.length-1]-pms[0]+1},(_,i)=>({pm:pms[0]+i,v:Math.round((m.get(pms[0]+i)||0)*100)/100})):[]; }
+function stateOf(name){ const i=INFO[name]; return (i&&i.state)||"—"; }
+function forecast(pts,n){ n=n||3; if(pts.length<2) return {proj:[],dir:"flat",pct:null}; const N=pts.length; let sx=0,sy=0,sxx=0,sxy=0; pts.forEach((p,i)=>{sx+=i;sy+=p.v;sxx+=i*i;sxy+=i*p.v;}); const d=N*sxx-sx*sx; const m=d?(N*sxy-sx*sy)/d:0; const b=(sy-m*sx)/N; const proj=[]; const lastPm=pts[N-1].pm; for(let i=1;i<=n;i++){ proj.push({pm:lastPm+i,v:Math.max(0,Math.round((m*(N-1+i)+b)*100)/100)}); } const lastv=pts[N-1].v||0; const projLast=proj[proj.length-1].v; const pct=lastv>0?Math.round(((projLast-lastv)/lastv)*100):null; const dir=pct!=null?(pct>2?"up":pct<-2?"down":"flat"):(m>0.5?"up":m<-0.5?"down":"flat"); return {proj,dir,pct}; }
+
+/* ---------- render ---------- */
+function render(){
+  const F=facts();
+  const total=F.reduce((s,f)=>s+(f.sales||0),0);
+  const comm=F.reduce((s,f)=>s+(f.comm||0),0);
+  const months=new Set(F.map(f=>ym(f.period))).size||1;
+  const dealers=new Set(F.map(f=>f.dealer)).size;
+  const ser=series(F); const fc=forecast(ser,3);
+  const yoy=computeYoY();
+  const opps=(I.opportunities||{});
+  const kpis=`<div class="kpis">
+    ${kpi("Total sales",short(total),YEAR==="all"?"all time":YEAR)}
+    ${kpi("YoY growth",yoy?((yoy.pct>=0?"+":"")+yoy.pct+"%"):"—",yoy?`${yoy.cur} vs ${yoy.prev}`:"need prior year",yoy?(yoy.pct>=0?"up":"down"):"")}
+    ${kpi("Commission",short(comm),"~"+(total?Math.round(comm/total*1000)/10:0)+"% of sales")}
+    ${kpi("Active dealers",dealers,YEAR==="all"?"with sales":"this year")}
+    ${kpi("Avg / month",short(total/months),months+" mo")}
+    ${kpi("Forecast trend",fc.pct==null?"—":((fc.pct>=0?"+":"")+fc.pct+"%"),"next 3 mo projection",fc.dir)}
+  </div>`;
+  // trend + forecast chart
+  const trend=`<div class="card"><h2>Monthly sales <span class="side">history + ${fc.dir==="up"?"▲ rising":fc.dir==="down"?"▼ falling":"flat"} forecast</span></h2>
+    <div class="chartwrap">${lineFC(ser,fc.proj,"Total monthly sales — solid = actual, dashed = projected")}</div></div>`;
+  // interactive: manufacturers + states
+  const byMfr=[...agg(F,f=>f.line).entries()].map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v);
+  const byState=[...agg(F,f=>stateOf(f.dealer)).entries()].map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v);
+  const mfrCard=`<div class="card"><h2>Manufacturer sales <span class="side">click to isolate</span></h2>${barRows(byMfr.slice(0,14),'mfr',byMfr[0]&&byMfr[0].v)}</div>`;
+  const stateCard=`<div class="card"><h2>Sales by state <span class="side">click to see the breakdown</span></h2>${barRows(byState.slice(0,14),'state',byState[0]&&byState[0].v)}</div>`;
+  // companies — full scrollable/searchable
+  const byCo=[...agg(F,f=>f.dealer).entries()].map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v);
+  window._CO=byCo;
+  const coCard=`<div class="card"><h2>Companies <span class="side">${byCo.length} with sales · click any</span></h2>
+    <input class="search" id="coSearch" placeholder="Search all companies…" oninput="renderCo()">
+    <div class="scrollbox" id="coList"></div></div>`;
+  // intelligence tiles
+  const html=kpis+trend+`<div class="grid2">${mfrCard}${stateCard}</div>`+coCard+intelSection();
+  $("#body").innerHTML=html;
+  drawFC(ser,fc.proj,"trendMain");
+  renderCo();
+}
+function kpi(l,v,s,cls){ return `<div class="kpi"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div><div class="s">${esc(s||"")}</div></div>`; }
+function barRows(items,dt,max){ max=max||(items[0]&&items[0].v)||1; return items.map(d=>{
+    const clk=dt?` data-drill="${dt}" data-key="${esc(d.k)}" style="cursor:pointer"`:' style="cursor:default"';
+    return `<div class="drow"${clk}><div class="nm" title="${esc(d.k)}">${esc(d.k)}</div><div class="track"><div class="fill" style="width:${Math.max(2,Math.round((d.v/max)*100))}%"></div></div><div class="val">${short(d.v)}</div>${dt?'<span class="arw">›</span>':''}</div>`;
+  }).join("")||'<div class="hint">No data.</div>'; }
+// One delegated handler for every clickable row/button (avoids quoting names into onclick).
+document.addEventListener("click",function(ev){ const el=ev.target.closest&&ev.target.closest("[data-drill]"); if(!el)return; ev.preventDefault(); drill(el.getAttribute("data-drill"), el.getAttribute("data-key")); });
+function renderCo(){ const q=norm(($("#coSearch")||{}).value||""); const rows=(window._CO||[]).filter(d=>!q||norm(d.k).includes(q)).slice(0,500); const max=(window._CO&&window._CO[0]&&window._CO[0].v)||1;
+  const el=$("#coList"); if(el) el.innerHTML=barRows(rows,'company',max)+((window._CO||[]).length>500?'<div class="hint">Showing first 500 — search to narrow.</div>':""); }
+function computeYoY(){ const yrs=[...new Set((A.facts||[]).map(f=>ym(f.period).slice(0,4)))].sort(); if(yrs.length<2)return null; const cur=YEAR==="all"?yrs[yrs.length-1]:YEAR; const ci=yrs.indexOf(cur); if(ci<1)return null; const prev=yrs[ci-1];
+  const mc=new Set((A.facts||[]).filter(f=>ym(f.period).slice(0,4)===cur).map(f=>ym(f.period).slice(5,7)));
+  let c=0,p=0; for(const f of (A.facts||[])){ const y=ym(f.period).slice(0,4),mo=ym(f.period).slice(5,7); if(!mc.has(mo))continue; if(y===cur)c+=f.sales||0; else if(y===prev)p+=f.sales||0; }
+  return p>0?{cur,prev,pct:Math.round((c-p)/p*100)}:null; }
+
+/* ---------- charts ---------- */
+function niceMax(v){ if(!(v>0))return 1; const p=Math.pow(10,Math.floor(Math.log10(v))); const n=v/p; const m=n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10; return m*p; }
+function lineFC(hist,proj,title){
+  const all=hist.concat(proj); if(!all.length) return '<div class="hint">No monthly data.</div>';
+  const W=880,Hh=250,ml=58,mr=18,mt=24,mb=26,iw=W-ml-mr,ih=Hh-mt-mb;
+  const vmax=niceMax(Math.max(1,...all.map(p=>p.v))); const n=all.length;
+  const X=i=>n===1?ml+iw/2:ml+iw*i/(n-1); const Y=v=>mt+ih-ih*(v/vmax);
+  let grid="",yl=""; [0,vmax/2,vmax].forEach(tv=>{const gy=Y(tv);grid+=`<line x1="${ml}" y1="${gy.toFixed(1)}" x2="${W-mr}" y2="${gy.toFixed(1)}" stroke="#e7edf3"/>`;yl+=`<text x="${ml-8}" y="${(gy+3).toFixed(1)}" text-anchor="end" class="cyt">${short(tv)}</text>`;});
+  const geo=all.map((p,i)=>({x:X(i),y:Y(p.v),v:p.v,pm:p.pm}));
+  const hn=hist.length;
+  let hp="",pp="";
+  geo.forEach((g,i)=>{ if(i<hn) hp+=(i?"L":"M")+g.x.toFixed(1)+" "+g.y.toFixed(1)+" "; });
+  if(proj.length){ const start=geo[hn-1]; pp="M"+start.x.toFixed(1)+" "+start.y.toFixed(1)+" "+geo.slice(hn).map(g=>"L"+g.x.toFixed(1)+" "+g.y.toFixed(1)).join(" "); }
+  const area=`M${geo[0].x.toFixed(1)} ${Y(0).toFixed(1)} `+geo.slice(0,hn).map(g=>`L${g.x.toFixed(1)} ${g.y.toFixed(1)} `).join("")+`L${geo[hn-1].x.toFixed(1)} ${Y(0).toFixed(1)} Z`;
+  const step=Math.max(1,Math.ceil(n/8)); let xl=""; for(let i=0;i<n;i+=step) xl+=`<text x="${X(i).toFixed(1)}" y="${Hh-8}" text-anchor="middle" class="cxt">${pmLabel(all[i].pm)}</text>`;
+  window._FCGEO={geo,W,Hh};
+  return `<div class="chttl">${esc(title)}</div><svg id="trendMain" viewBox="0 0 ${W} ${Hh}" class="chart">
+    ${grid}${yl}<path d="${area}" fill="#1681c2" fill-opacity="0.09"/>
+    <path d="${hp}" fill="none" stroke="#1681c2" stroke-width="2" stroke-linejoin="round"/>
+    ${proj.length?`<path d="${pp}" fill="none" stroke="#EE5A5A" stroke-width="2" stroke-dasharray="5 4"/>`:""}
+    ${geo[hn-1]?`<circle cx="${geo[hn-1].x.toFixed(1)}" cy="${geo[hn-1].y.toFixed(1)}" r="3.5" fill="#1681c2"/>`:""}
+    ${proj.length?`<circle cx="${geo[n-1].x.toFixed(1)}" cy="${geo[n-1].y.toFixed(1)}" r="3.5" fill="#EE5A5A"/><text x="${geo[n-1].x.toFixed(1)}" y="${Math.max(mt-6,geo[n-1].y-9).toFixed(1)}" text-anchor="end" class="cend" fill="#EE5A5A">${short(all[n-1].v)}</text>`:""}
+    ${xl}</svg>`;
+}
+function drawFC(){/* static SVG already inlined */}
+
+/* ---------- drill-down ---------- */
+let CRUMB=[];
+function openHost(){ if(!$("#drillHost").innerHTML){ $("#drillHost").innerHTML=`<div class="drill" onclick="if(event.target===this)closeDrill()"><div class="panel"><div class="dhead"><div class="crumbs" id="crumbs"></div><button class="x" onclick="closeDrill()">×</button></div><div class="dbody" id="dbody"></div></div></div>`; } }
+function closeDrill(){ $("#drillHost").innerHTML=""; CRUMB=[]; }
+function drill(type,key,push){ openHost(); if(push!==false && type!=='dealerProducts') CRUMB.push({type,key}); renderCrumbs();
+  const b=$("#dbody"); if(!b)return;
+  if(type==="mfr") b.innerHTML=drillMfr(key);
+  else if(type==="state") b.innerHTML=drillState(key);
+  else if(type==="company") b.innerHTML=drillCompany(key);
+  else if(type==="dealerProducts") loadProducts(key);
+  const sv=b.querySelector("svg[data-fc]"); if(sv) hydrateHover(sv);
+}
+function crumbGo(i){ const c=CRUMB[i]; CRUMB=CRUMB.slice(0,i); drill(c.type,c.key); }
+function renderCrumbs(){ const el=$("#crumbs"); if(!el)return; el.innerHTML=`<a onclick="closeDrill()">Summary</a>`+CRUMB.map((c,i)=>` › <a onclick="crumbGo(${i})">${esc(String(c.key).slice(0,28))}</a>`).join(""); }
+
+function miniChart(F,title){ const s=series(F); const fc=forecast(s,3); return `<div class="chartwrap">${lineFC(s,fc.proj,title)}</div>`; }
+function drillMfr(mfr){ const F=facts().filter(f=>f.line===mfr); const total=F.reduce((s,f)=>s+(f.sales||0),0); const s=series(F); const fc=forecast(s,3);
+  const dealers=[...agg(F,f=>f.dealer).entries()].map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v);
+  const states=[...agg(F,f=>stateOf(f.dealer)).entries()].map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v).slice(0,8);
+  return `<h2 style="margin:0 0 8px">${esc(mfr)}</h2>
+   <div class="stat">${st("Total sales",short(total))}${st("Dealers",dealers.length)}${st("Trend",(fc.dir==="up"?"▲ ":fc.dir==="down"?"▼ ":"")+(fc.pct==null?"—":(fc.pct>=0?"+":"")+fc.pct+"%"))}${st("Months",s.length)}</div>
+   ${lineFC(s,fc.proj,esc(mfr)+" — monthly sales + forecast")}
+   <div class="ihd">Top dealers buying ${esc(mfr)}</div>${barRows(dealers.slice(0,15),'company',dealers[0]&&dealers[0].v)}
+   <div class="ihd">By state</div>${barRows(states,'state',states[0]&&states[0].v)}`;
+}
+function drillState(stName){ const F=facts().filter(f=>stateOf(f.dealer)===stName); const total=F.reduce((s,f)=>s+(f.sales||0),0);
+  const cos=[...agg(F,f=>f.dealer).entries()].map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v);
+  const mfr=[...agg(F,f=>f.line).entries()].map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v);
+  return `<h2 style="margin:0 0 8px">${esc(stName)} <span class="hint">how this total is built</span></h2>
+   <div class="stat">${st("State sales",short(total))}${st("Dealers",cos.length)}${st("Lines",mfr.length)}</div>
+   ${miniChart(F,esc(stName)+" — monthly sales + forecast")}
+   <div class="ihd">Manufacturers in ${esc(stName)}</div>${barRows(mfr.slice(0,12),'mfr',mfr[0]&&mfr[0].v)}
+   <div class="ihd">Dealers &amp; branches in ${esc(stName)} (${cos.length})</div><div class="scrollbox">${barRows(cos.slice(0,120),'company',cos[0]&&cos[0].v)}</div>`;
+}
+function drillCompany(co){ const F=facts().filter(f=>f.dealer===co); const total=F.reduce((s,f)=>s+(f.sales||0),0); const comm=F.reduce((s,f)=>s+(f.comm||0),0);
+  const mfr=[...agg(F,f=>f.line).entries()].map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v);
+  const s=series(F); const fc=forecast(s,3); const id=NAMEID[norm(co)]; const e=ENG[norm(co)];
+  const engLine=e?`<div class="ihd">Engagement</div><div class="hint" style="margin:0"><span class="pill ${e.bucket==='dormant'?'dorm':e.bucket==='declining'?'down':e.bucket==='growing'?'up':'flat'}">${esc(e.bucket||'—')}</span> ${e.months_since!=null?e.months_since+' mo since last order · ':''}recent ${short(e.recent)} · lifetime ${short(e.total)}${e.rep?' · rep '+esc(e.rep):''}</div>`:"";
+  return `<h2 style="margin:0 0 8px">${esc(co)}</h2>
+   <div class="stat">${st("Total sales",short(total))}${st("Commission",short(comm))}${st("Lines",mfr.length)}${st("Trend",(fc.dir==="up"?"▲ ":fc.dir==="down"?"▼ ":"")+(fc.pct==null?"—":(fc.pct>=0?"+":"")+fc.pct+"%"))}</div>
+   ${engLine}
+   ${lineFC(s,fc.proj,esc(co)+" — monthly sales + forecast")}
+   <div class="ihd">Sales by manufacturer</div>${barRows(mfr,'mfr',mfr[0]&&mfr[0].v)}
+   <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+     ${id?`<a class="btn sm" href="/admin/dealer.html?id=${encodeURIComponent(id)}">Open Dealer 360 →</a><button class="btn sm orange" data-drill="dealerProducts" data-key="${esc(id)}">Products &amp; orders ↓</button>`:'<span class="hint">Link this company to a dealer record to see product/order detail.</span>'}
+   </div>
+   <div id="prodBox" style="margin-top:12px"></div>`;
+}
+async function loadProducts(id){ const box=$("#prodBox"); if(box)box.innerHTML='<div class="hint">Loading products &amp; orders…</div>';
+  let j; try{ j=await fetch("/.netlify/functions/crm-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action:"sales",dealer_id:id})}).then(r=>r.json()); }catch(e){ if(box)box.innerHTML='<div class="hint">Couldn\'t load products.</div>'; return; }
+  const S=j&&j.sales; if(!box)return; if(!S||!S.manufacturers||!S.manufacturers.length){ box.innerHTML='<div class="hint">No product-level detail on file for this dealer yet (loads once product-level sales are imported).</div>'; return; }
+  box.innerHTML=`<div class="ihd">Products ordered — all lines</div>`+S.manufacturers.map(m=>{
+    const prods=(m.products||[]).slice(0,25);
+    if(!prods.length) return "";
+    return `<div style="margin-bottom:10px"><b style="font-size:13px">${esc(m.name)}</b> <span class="hint" style="margin:0">${short(m.total)} · ${m.orders} orders</span>
+      <table><thead><tr><th>Product</th><th class="num">Units</th><th class="num">Orders</th><th class="num">Sales</th><th>Last</th></tr></thead><tbody>
+      ${prods.map(p=>`<tr><td>${esc(p.name)}${p.sku&&String(p.sku).toLowerCase()!==String(p.name).toLowerCase()?` <span class="hint" style="margin:0">${esc(p.sku)}</span>`:""}</td><td class="num">${p.qty?Number(p.qty).toLocaleString():"—"}</td><td class="num">${p.orders||"—"}</td><td class="num">${money(p.amount)}</td><td>${esc(p.last||"—")}</td></tr>`).join("")}
+      </tbody></table></div>`;
+  }).join("")||'<div class="hint">No itemized products for this dealer.</div>';
+}
+function st(l,v){ return `<div class="s"><div class="l">${l}</div><div class="v">${v}</div></div>`; }
+
+/* ---------- intelligence tiles ---------- */
+function intelSection(){
+  if(!I||!I.ok) return `<div class="card"><div class="hint">Intelligence layer unavailable.</div></div>`;
+  const e=I.engagement||{buckets:{}}, b=e.buckets||{};
+  const growTile=`<div class="card"><h2>Dealer momentum <span class="side">growth · decline · dormant</span></h2>
+    <div class="stat">${st("Growing",b.growing||0)}${st("Declining",b.declining||0)}${st("Dormant",b.dormant||0)}${st("Steady",b.steady||0)}</div>
+    <div class="ihd">⚠ Dormant — biggest at risk</div>${engRows(e.dormant,"dorm")}
+    <div class="ihd">▼ Declining</div>${engRows(e.declining,"down")}
+    <div class="ihd">▲ Growing</div>${engRows(e.growing,"up")}</div>`;
+  const act=I.activity||{}; const actTile=`<div class="card"><h2>Engagement &amp; activity <span class="side">last 30 days</span></h2>
+    <div class="stat">${st("Active dealers",act.active_30d||0)}${st("Portal logins",act.logins_30d||0)}${st("Scored dealers",e.scored||0)}</div>
+    <div class="ihd">Line interest (research + orders)</div>${barRows((act.interest||[]).map(x=>({k:x.name,v:x.events})),null,(act.interest&&act.interest[0]&&act.interest[0].events)||1)}</div>`;
+  const o=I.opportunities||{}, f=I.followups||{}, x=I.crosssell||[];
+  const oppTile=`<div class="card"><h2>Opportunities, follow-up &amp; cross-sell</h2>
+    <div class="stat">${st("Open opps",o.count||0)}${st("Pipeline",short(o.value||0))}${st("Open tasks",f.open||0)}</div>
+    <div class="ihd">Top open opportunities</div><div class="scrollbox" style="max-height:150px">${(o.top||[]).slice(0,12).map(t=>`<div class="drow" data-drill="company" data-key="${esc(t.name)}" style="cursor:pointer"><div class="nm">${esc(t.name)}</div><div class="track"></div><div class="val">${short(t.value)}</div></div>`).join("")||'<div class="hint">None.</div>'}</div>
+    <div class="ihd">Dealers needing follow-up</div><div class="scrollbox" style="max-height:130px">${(f.top||[]).slice(0,12).map(t=>`<div class="hint" style="margin:2px 0">${esc(t.name)} — ${esc(t.title||t.reason||'follow up')}${t.due?' · due '+esc(t.due):''}</div>`).join("")||'<div class="hint">None.</div>'}</div>
+    <div class="ihd">Cross-sell openings</div><div class="scrollbox" style="max-height:130px">${x.slice(0,12).map(c=>`<div class="hint" style="margin:2px 0"><b>${esc(c.name)}</b> → ${esc(c.rec||'')}${c.basis?' <span class="hint" style="margin:0">(buys '+esc(c.basis)+')</span>':''}</div>`).join("")||'<div class="hint">None.</div>'}</div></div>`;
+  // rep + channel
+  const F=facts(); const byRep=[...agg(F,f=>f.rep||"Unassigned").entries()].map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v);
+  const ch=I.channel||{physical:0,dropship:0}; const cht=ch.physical+ch.dropship||1;
+  const repTile=`<div class="card"><h2>Rep performance &amp; channel</h2>
+    <div class="ihd">Sales by rep</div>${barRows(byRep.slice(0,10),null,byRep[0]&&byRep[0].v)}
+    <div class="ihd">Branch (physical) vs drop-ship</div>
+    <div class="stat">${st("Physical / branch",short(ch.physical))}${st("Drop-ship",short(ch.dropship))}${st("Drop-ship %",Math.round(ch.dropship/cht*100)+"%")}</div>
+    <div class="track" style="height:16px;margin-top:4px"><div class="fill" style="width:${Math.round(ch.physical/cht*100)}%;background:#1681c2"></div></div>
+    <div class="ihd">By manufacturer</div><table><thead><tr><th>Line</th><th class="num">Branch</th><th class="num">Drop-ship</th></tr></thead><tbody>${(ch.by_mfr||[]).slice(0,10).map(m=>`<tr><td>${esc(m.name)}</td><td class="num">${short(m.physical)}</td><td class="num">${short(m.dropship)}</td></tr>`).join("")}</tbody></table></div>`;
+  return `<div class="grid2" style="margin-top:14px">${growTile}${actTile}</div><div class="grid2" style="margin-top:14px">${oppTile}${repTile}</div>`;
+}
+function engRows(list,cls){ return (list||[]).slice(0,6).map(r=>`<div class="drow" data-drill="company" data-key="${esc(r.name)}" style="cursor:pointer"><div class="nm" title="${esc(r.name)}">${esc(r.name)}</div><div class="track"></div><div class="val">${short(r.total)}</div><span class="pill ${cls}">${cls==='dorm'?(r.months_since||'')+'mo':cls}</span></div>`).join("")||'<div class="hint" style="margin:0">None.</div>'; }
+
+function hydrateHover(){}
+boot();
+</script>
+</body></html>
