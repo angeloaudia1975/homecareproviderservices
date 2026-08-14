@@ -215,12 +215,9 @@ function mediaIcon(m){ return m.kind==="image"
   ? `<div class="thumb" style="width:74px;height:74px;margin:0;background-image:url('${esc(m.url)}')">${m.url?"":"img"}</div>`
   : `<div class="thumb" style="width:74px;height:74px;margin:0;display:flex;align-items:center;justify-content:center;font-size:24px">${m.kind==="video"?"▶":m.kind==="brochure"?"📄":"🔗"}</div>`; }
 
-function render(){
-  const m=curMfr();
-  const mfrOpts=MFRS.map(x=>`<option value="${esc(x.slug)}" ${x.slug===SLUG?"selected":""}>${esc(x.name)}${x.hasData?"":" (no catalog)"}</option>`).join("");
-  const logoUrl=LOGODRAFT||m.logo_url||"";
-
-  // full product list (catalog + custom) → filter + sort + paginate
+// Product list markup only — recomputed on every keystroke without re-rendering the
+// whole page, so the search box keeps focus. Reads PRODQ/PLIMIT/filters live.
+function prodListHtml(){
   const eff=effProducts();
   const allP=filteredSortedProducts();
   const shownP=allP.slice(0,PLIMIT);
@@ -242,6 +239,18 @@ function render(){
         }
        ${p.kind==="catalog"&&p.edited?`<button class="btn ghost sm" onclick="resetOverride('${esc(p.code)}')">Reset</button>`:""}</td></tr>`;}).join("")
      ||`<tr><td colspan="5" class="hint">No products match.</td></tr>`;
+  return `      <table><thead><tr><th>Product</th><th class="num">Dealer price</th><th class="num">Tiers</th><th>Status</th><th></th></tr></thead><tbody>${prodRows}</tbody></table>
+      <div class="hint" style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <span>Showing <b>${shownP.length}</b> of <b>${allP.length}</b>${allP.length!==eff.length?` (filtered from ${eff.length})`:""}</span>
+        ${allP.length>shownP.length?`<button class="btn ghost sm" onclick="PLIMIT+=60;render()">Load more</button><button class="btn ghost sm" onclick="PLIMIT=999999;render()">Show all</button>`:""}
+      </div>`;
+}
+// Live search: update PRODQ and swap only the list, leaving the focused input in place.
+function searchProducts(v){ PRODQ=v; PLIMIT=60; var el=document.getElementById('prodlistwrap'); if(el) el.innerHTML=prodListHtml(); }
+function render(){
+  const m=curMfr();
+  const mfrOpts=MFRS.map(x=>`<option value="${esc(x.slug)}" ${x.slug===SLUG?"selected":""}>${esc(x.name)}${x.hasData?"":" (no catalog)"}</option>`).join("");
+  const logoUrl=LOGODRAFT||m.logo_url||"";
 
   const tierEditor = PDRAFT ? `<label class="fl">Quantity price tiers <span style="text-transform:none;color:var(--gray);font-weight:400">— unit price at each minimum quantity (highest qualifying tier wins; leave empty for flat price)</span></label>
      <div>${(PDRAFT.tiers||[]).map((t,i)=>`<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
@@ -331,7 +340,7 @@ function render(){
       <p class="hint">Filter, sort, and page through the whole line. Click <b>Edit</b> to manage everything about a product in one place — details, pricing, category, image, its More Information link/brochure, status &amp; featured. Standard catalog edits save as an override (no redeploy); added products are yours to add or delete.</p>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
         <button class="btn sm" onclick="newProduct()">+ Add product</button>
-        <input type="text" placeholder="Search name, code / SKU, category…" value="${esc(PRODQ)}" oninput="setFilter('q',this.value)" style="flex:1;min-width:200px">
+        <input type="text" placeholder="Search name, code / SKU, category…" value="${esc(PRODQ)}" id="prodsearch" oninput="searchProducts(this.value)" style="flex:1;min-width:200px">
         <select onchange="setFilter('cat',this.value)" title="Filter by category"><option value="">All categories</option>${catList().map(c=>`<option value="${esc(c)}" ${PCAT===c?"selected":""}>${esc(c)}</option>`).join("")}</select>
         <select onchange="setFilter('stat',this.value)" title="Filter by status"><option value="" ${PSTAT===""?"selected":""}>All statuses</option><option value="shown" ${PSTAT==="shown"?"selected":""}>Shown</option><option value="hidden" ${PSTAT==="hidden"?"selected":""}>Hidden</option><option value="featured" ${PSTAT==="featured"?"selected":""}>Featured</option><option value="added" ${PSTAT==="added"?"selected":""}>Added</option><option value="edited" ${PSTAT==="edited"?"selected":""}>Edited</option></select>
         <select onchange="setFilter('sort',this.value)" title="Sort">
@@ -343,11 +352,7 @@ function render(){
           <option value="status" ${PSORT==="status"?"selected":""}>Status</option>
         </select>
       </div>
-      <table><thead><tr><th>Product</th><th class="num">Dealer price</th><th class="num">Tiers</th><th>Status</th><th></th></tr></thead><tbody>${prodRows}</tbody></table>
-      <div class="hint" style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <span>Showing <b>${shownP.length}</b> of <b>${allP.length}</b>${allP.length!==eff.length?` (filtered from ${eff.length})`:""}</span>
-        ${allP.length>shownP.length?`<button class="btn ghost sm" onclick="PLIMIT+=60;render()">Load more</button><button class="btn ghost sm" onclick="PLIMIT=999999;render()">Show all</button>`:""}
-      </div>
+      <div id="prodlistwrap">${prodListHtml()}</div>
     </div>`;
 }
 /* masthead provides Lock */
