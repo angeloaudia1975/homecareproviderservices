@@ -110,6 +110,10 @@ exports.handler = async (event) => {
     // dealer_norm() ported to JS — MUST match the SQL/Python normalization used to seed aliases.
     const SUF = /\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
     const dnorm = (n) => String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim();
+    // Live rep assignment from the president portal (dealer_directory), keyed by normalized
+    // dealer name — this, NOT the static rep_name stamped on each sale, is the source of truth.
+    const repByNorm = {};
+    for (const a of (assignments||[])) { const k = dnorm(a.dealer_name); if (k && a.rep_name && !(k in repByNorm)) repByNorm[k] = a.rep_name; }
     // Resolve a sales row to its canonical dealer name: prefer the stored dealer_id, else
     // match the raw name through the alias table, else fall back to the raw name.
     const canonDealer = (r) => {
@@ -128,9 +132,11 @@ exports.handler = async (event) => {
     for (const r of rows) {
       const period = (r.period || "").slice(0,10); if (!period) continue;
       const line = mfrName[r.manufacturer] || r.manufacturer || "(unknown)";
-      const rep  = r.rep_name || "Unassigned";
       const dealer = canonDealer(r);
       const master = masterByName[dealer] || dealer;
+      // Rep from the LIVE assignment (dealer_directory), by dealer or its HQ; the sale's stored
+      // rep_name is only a last-resort fallback for dealers not in the directory.
+      const rep  = repByNorm[dnorm(dealer)] || repByNorm[dnorm(master)] || r.rep_name || "Unassigned";
       const prod = (r.product_code || "").trim();
       const pname = (r.product_name || "").trim();
       periods.add(period); lines.add(line); reps.add(rep);
