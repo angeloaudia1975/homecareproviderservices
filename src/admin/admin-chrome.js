@@ -39,6 +39,7 @@
         { href:"/admin/analytics.html",          label:"Analytics" },
         { href:"/admin/import-commissions.html", label:"Import Commissions" },
         { href:"/admin/sales-import.html",       label:"Sales Report Import" },
+        { href:"/admin/email-sync.html",         label:"Email Sync" },
         { href:"/admin/activation.html",         label:"Activation & Go-Live" }
     ]}
   ];

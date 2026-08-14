@@ -1,0 +1,91 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Email Sync (Phase 0)</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:8px 0}
+ .kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px 13px}
+ .kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700}
+ .kpi .v{font-size:22px;font-weight:800;color:var(--navy);font-family:'Barlow Condensed',sans-serif;margin-top:2px}
+ table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+ th{text-align:left;color:var(--gray);font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;border-bottom:1px solid var(--line)}
+ td{padding:6px 8px;border-bottom:1px solid #eef2f6}
+ .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
+ pre{background:#0e1b2b;color:#d6e4f0;padding:12px;border-radius:10px;overflow:auto;font-size:12px;max-height:340px}
+ .ok{color:#1f7a44}.warn{color:#b45309}
+ .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
+ .pill.y{background:#e7f6ee;color:#1f7a44}.pill.n{background:#fdecec;color:#b42323}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Email Sync <span class="hint" style="font-weight:400">— Phase 0</span></h1>
+    <div class="sub">Pulls Inbox + Sent Items for your connected mailboxes via Microsoft Graph, matches each message to a dealer, and stores it for Dealer 360. Start with <b>Status</b>, then <b>Test connection</b>, then <b>Sync</b>.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;} let BUSY=false;
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; render();
+  }catch(err){ gate("Could not reach the server. Try again."); } }
+function lock(){ HCPS.signOut(); TOKEN=null; location.reload(); }
+async function api(payload){ const r=await fetch("/.netlify/functions/email-sync-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return r.json().catch(()=>({error:"bad response ("+r.status+")"})); }
+
+function render(){ if(!TOKEN){ gate(); return; }
+  $("#body").innerHTML=`<div class="card">
+    <div class="row">
+      <button class="btn sm" onclick="doStatus()">Status</button>
+      <button class="btn sm" onclick="doTest()">Test connection</button>
+      <button class="btn orange" onclick="doSync()">Sync now</button>
+      <span class="hint">days <input id="days" value="30" style="width:56px;padding:5px 7px;border:1px solid var(--line);border-radius:7px"></span>
+      <span id="msg" class="hint" style="margin:0"></span>
+    </div>
+    <div id="out"></div>
+  </div>`; }
+
+function busy(m){ BUSY=true; $("#msg").textContent=m||"Working…"; }
+function done(){ BUSY=false; $("#msg").textContent=""; }
+const pill=b=>`<span class="pill ${b?'y':'n'}">${b?'set':'missing'}</span>`;
+
+async function doStatus(){ if(BUSY)return; busy("Checking config…"); const j=await api({action:"status"}); done();
+  if(!j.ok){ $("#out").innerHTML=`<div class="hint warn">${esc(j.error||"error")}</div>`; return; }
+  $("#out").innerHTML=`<div class="kpis">
+    <div class="kpi"><div class="l">Mailboxes</div><div class="v">${j.mailboxes.length}</div></div>
+    <div class="kpi"><div class="l">Tenant ID</div><div class="v">${pill(j.env.graph_tenant)}</div></div>
+    <div class="kpi"><div class="l">Client ID</div><div class="v">${pill(j.env.graph_client)}</div></div>
+    <div class="kpi"><div class="l">Secret</div><div class="v">${pill(j.env.graph_secret)}</div></div>
+  </div>
+  <div class="hint">Mailboxes: ${j.mailboxes.map(esc).join(" · ")||"<span class='warn'>none set</span>"}</div>`; }
+
+async function doTest(){ if(BUSY)return; busy("Connecting to Graph…"); const j=await api({action:"test"}); done();
+  if(!j.ok){ $("#out").innerHTML=`<div class="hint warn">Test failed: ${esc(j.message||j.error||"error")}</div>`; return; }
+  const rows=a=>a.map(m=>`<tr><td>${esc(m.from)}</td><td>${esc(m.subject)||"<span class='hint'>(no subject)</span>"}</td><td class="hint">${esc((m.when||"").slice(0,16).replace("T"," "))}</td></tr>`).join("")||`<tr><td colspan="3" class="hint">none in range</td></tr>`;
+  $("#out").innerHTML=`<div class="ok" style="margin:6px 0">✓ Connected to ${esc(j.mailbox)} — ${j.inbox_count} inbox, ${j.sent_count} sent (last 14 days).</div>
+    <h3 style="margin:10px 0 2px">Inbox sample</h3><table><thead><tr><th>From</th><th>Subject</th><th>When</th></tr></thead><tbody>${rows(j.inbox_sample)}</tbody></table>
+    <h3 style="margin:12px 0 2px">Sent sample</h3><table><thead><tr><th>From</th><th>Subject</th><th>When</th></tr></thead><tbody>${rows(j.sent_sample)}</tbody></table>`; }
+
+async function doSync(){ if(BUSY)return; const days=parseInt(($("#days")||{}).value,10)||30; busy("Syncing "+days+" days…"); const j=await api({action:"sync",days}); done();
+  if(!j.ok){ $("#out").innerHTML=`<div class="hint warn">Sync failed: ${esc(j.message||j.error||"error")}</div>`; return; }
+  $("#out").innerHTML=`<div class="kpis">
+    <div class="kpi"><div class="l">Scanned</div><div class="v">${j.scanned}</div></div>
+    <div class="kpi"><div class="l">Kept (relevant)</div><div class="v">${j.kept}</div></div>
+    <div class="kpi"><div class="l">Matched to dealer</div><div class="v">${j.matched}</div></div>
+    <div class="kpi"><div class="l">Domains learned</div><div class="v">${j.learned_domains}</div></div>
+    <div class="kpi"><div class="l">New contacts</div><div class="v">${j.new_candidates}</div></div>
+  </div>
+  <table><thead><tr><th>Mailbox</th><th>Kept</th><th>Matched</th><th>Note</th></tr></thead><tbody>
+    ${(j.per_mailbox||[]).map(p=>`<tr><td>${esc(p.mailbox||p.folder||"")}</td><td>${p.kept??"—"}</td><td>${p.matched??"—"}</td><td class="hint">${esc(p.error||"")}</td></tr>`).join("")}
+  </tbody></table>
+  <div class="hint" style="margin-top:6px">Matched messages are now on those dealers' 360 timelines. Unmatched business mail is stored and will match once its domain is confirmed.</div>`; }
+
+render();
+</script>
+</body></html>
