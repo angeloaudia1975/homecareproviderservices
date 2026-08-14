@@ -149,15 +149,53 @@ function render(){
     <input class="search" id="coSearch" placeholder="Search all companies…" oninput="renderCo()">
     <div class="scrollbox" id="coList"></div></div>`;
   // intelligence tiles
-  const html=kpis+trend+`<div class="grid2">${mfrCard}${stateCard}</div>`+coCard+intelSection();
+  const html=kpis+trend+predictCard(F)+`<div class="grid2">${mfrCard}${stateCard}</div>`+coCard+productsCard()+intelSection()+intelSection2();
   $("#body").innerHTML=html;
   drawFC(ser,fc.proj,"trendMain");
-  renderCo();
+  renderCo(); renderProd();
 }
+function pmFromLabel(l){ const a=String(l||"").split(" "); const mo=MON.indexOf(a[0]); const y=2000+(Number(a[1])||0); return mo<0?0:y*12+mo; }
+function predictCard(F){
+  const s=series(F); const fc=forecast(s,3); const nextQ=fc.proj.reduce((a,p)=>a+p.v,0); const last3=s.slice(-3).reduce((a,p)=>a+p.v,0);
+  const lines=[...new Set(F.map(f=>f.line))];
+  const rows=lines.map(m=>{ const fm=F.filter(f=>f.line===m); const ms=series(fm); const mfc=forecast(ms,3); return {m,proj:mfc.proj.reduce((a,p)=>a+p.v,0),l3:ms.slice(-3).reduce((a,p)=>a+p.v,0),dir:mfc.dir,pct:mfc.pct}; }).sort((a,b)=>b.proj-a.proj).slice(0,8);
+  return `<div class="card"><h2>Predicted sales <span class="side">next 3 months, from trend</span></h2>
+    <div class="stat">${st("Projected next 3 mo",short(nextQ))}${st("vs last 3 mo",(nextQ>=last3?"▲ +":"▼ ")+(last3>0?Math.round((nextQ-last3)/last3*100):0)+"%")}${st("Direction",nextQ>last3?"▲ Rising":nextQ<last3?"▼ Falling":"Flat")}</div>
+    <table><thead><tr><th>Manufacturer</th><th class="num">Last 3 mo</th><th class="num">Next 3 mo (proj)</th><th>Trend</th></tr></thead><tbody>
+    ${rows.map(r=>`<tr data-drill="mfr" data-key="${esc(r.m)}" style="cursor:pointer"><td>${esc(r.m)}</td><td class="num">${short(r.l3)}</td><td class="num">${short(r.proj)}</td><td><span class="pill ${r.dir}">${r.dir==="up"?"▲":r.dir==="down"?"▼":"▬"} ${r.pct==null?"—":(r.pct>=0?"+":"")+r.pct+"%"}</span></td></tr>`).join("")}
+    </tbody></table>
+    <div class="hint" style="margin-top:6px">Straight-line projection from monthly history — a directional guide, not a guarantee.</div></div>`;
+}
+function productsCard(){ const P=(I&&I.products)||{top:[]}; if(!P.top||!P.top.length) return `<div class="card"><h2>Top products</h2><div class="hint">No product-level sales imported yet — this fills in once sales reports with line items are loaded (e.g. Strongback).</div></div>`;
+  return `<div class="card"><h2>Top products <span class="side">${P.count} products · click any</span></h2>
+    <input class="search" id="pSearch" placeholder="Search products…" oninput="renderProd()"><div class="scrollbox" id="pList"></div></div>`; }
+function renderProd(){ const P=(I&&I.products)||{top:[]}; if(!P.top||!P.top.length)return; const q=norm(($("#pSearch")||{}).value||"");
+  const rows=P.top.map((p,i)=>({p,i})).filter(x=>!q||norm(x.p.name+" "+x.p.mfr).includes(q)); const max=(P.top[0]&&P.top[0].amount)||1;
+  const el=$("#pList"); if(el) el.innerHTML=rows.map(x=>`<div class="drow" data-drill="product" data-key="${x.i}" style="cursor:pointer"><div class="nm" title="${esc(x.p.name)}">${esc(x.p.name)}</div><div class="track"><div class="fill" style="width:${Math.max(2,Math.round(x.p.amount/max*100))}%"></div></div><div class="val">${short(x.p.amount)}</div><span class="arw">›</span></div>`).join("")||'<div class="hint">No match.</div>'; }
+function drillProduct(idx){ const p=(I.products&&I.products.top[idx]); if(!p) return '<div class="hint">Product not found.</div>';
+  const pts=(p.months||[]).map(m=>({pm:pmFromLabel(m.label),v:m.amount})); const fc=forecast(pts,3);
+  return `<h2 style="margin:0 0 4px">${esc(p.name)}</h2><div class="hint" style="margin:0 0 8px">${esc(p.mfr)}${p.sku&&String(p.sku).toLowerCase()!==String(p.name).toLowerCase()?" · "+esc(p.sku):""}</div>
+   <div class="stat">${st("Total sales",short(p.amount))}${st("Units",Number(p.qty).toLocaleString())}${st("Dealers",p.dealers)}${st("Trend",(fc.dir==="up"?"▲ ":fc.dir==="down"?"▼ ":"")+(fc.pct==null?"—":(fc.pct>=0?"+":"")+fc.pct+"%"))}</div>
+   ${lineFC(pts,fc.proj,esc(p.name)+" — monthly sales + forecast")}
+   <div class="ihd">Top dealers buying this</div>${barRows((p.topDealers||[]).map(d=>({k:d.name,v:d.amount})),'company',(p.topDealers&&p.topDealers[0]&&p.topDealers[0].amount)||1)}`;
+}
+function intelSection2(){ return `<div class="grid2" style="margin-top:14px">${marketingCard()}${coverageCard()}</div>`; }
+function marketingCard(){ const m=(I&&I.marketing)||{campaigns:[],send_volume:{}}; const sv=m.send_volume||{}; const svK=Object.keys(sv).sort((a,b)=>sv[b]-sv[a]);
+  return `<div class="card"><h2>Marketing &amp; email engagement <span class="side">Zoho campaigns</span></h2>
+   <div class="stat">${st("Emails sent",(m.sent||0).toLocaleString())}${st("Open rate",(m.open_rate||0)+"%")}${st("Click rate",(m.click_rate||0)+"%")}</div>
+   <div class="ihd">Campaigns by volume</div>
+   ${(m.campaigns||[]).length?`<div class="scrollbox" style="max-height:190px"><table><thead><tr><th>Campaign</th><th class="num">Sent</th><th class="num">Open%</th><th class="num">Click%</th></tr></thead><tbody>${m.campaigns.map(c=>`<tr><td>${esc(c.name)}${c.status?` <span class="hint" style="margin:0">${esc(c.status)}</span>`:""}</td><td class="num">${(c.sent||0).toLocaleString()}</td><td class="num">${c.open_rate}%</td><td class="num">${c.click_rate}%</td></tr>`).join("")}</tbody></table></div>`:'<div class="hint">No campaign results yet — they appear once campaigns run and metrics sync from Zoho.</div>'}
+   <div class="ihd">Emails sent (last 90 days, by type)</div>${svK.length?barRows(svK.map(k=>({k,v:sv[k]})),null,sv[svK[0]],'count'):'<div class="hint">No sends recorded.</div>'}</div>`; }
+function coverageCard(){ const cov=(I&&I.coverage)||[]; if(!cov.length) return `<div class="card"><h2>Manufacturer account coverage</h2><div class="hint">No manufacturer accounts on file yet.</div></div>`;
+  const max=cov[0].dealers||1;
+  return `<div class="card"><h2>Manufacturer account coverage <span class="side">dealers per line · penetration</span></h2>
+   <table><thead><tr><th>Manufacturer</th><th class="num">Dealers</th><th class="num">With acct #</th><th>Penetration</th></tr></thead><tbody>
+   ${cov.map(c=>`<tr data-drill="mfr" data-key="${esc(c.name)}" style="cursor:pointer"><td>${esc(c.name)}</td><td class="num">${c.dealers}</td><td class="num">${c.with_account}</td><td><span class="track" style="width:110px;display:inline-block;vertical-align:middle;height:12px"><span class="fill" style="display:block;height:100%;width:${Math.max(2,Math.round(c.dealers/max*100))}%"></span></span> <span class="hint" style="margin:0">${c.penetration}%</span></td></tr>`).join("")}
+   </tbody></table></div>`; }
 function kpi(l,v,s,cls){ return `<div class="kpi"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div><div class="s">${esc(s||"")}</div></div>`; }
-function barRows(items,dt,max){ max=max||(items[0]&&items[0].v)||1; return items.map(d=>{
+function barRows(items,dt,max,fmt){ max=max||(items[0]&&items[0].v)||1; return items.map(d=>{
     const clk=dt?` data-drill="${dt}" data-key="${esc(d.k)}" style="cursor:pointer"`:' style="cursor:default"';
-    return `<div class="drow"${clk}><div class="nm" title="${esc(d.k)}">${esc(d.k)}</div><div class="track"><div class="fill" style="width:${Math.max(2,Math.round((d.v/max)*100))}%"></div></div><div class="val">${short(d.v)}</div>${dt?'<span class="arw">›</span>':''}</div>`;
+    return `<div class="drow"${clk}><div class="nm" title="${esc(d.k)}">${esc(d.k)}</div><div class="track"><div class="fill" style="width:${Math.max(2,Math.round((d.v/max)*100))}%"></div></div><div class="val">${fmt==='count'?Number(d.v).toLocaleString():short(d.v)}</div>${dt?'<span class="arw">›</span>':''}</div>`;
   }).join("")||'<div class="hint">No data.</div>'; }
 // One delegated handler for every clickable row/button (avoids quoting names into onclick).
 document.addEventListener("click",function(ev){ const el=ev.target.closest&&ev.target.closest("[data-drill]"); if(!el)return; ev.preventDefault(); drill(el.getAttribute("data-drill"), el.getAttribute("data-key")); });
@@ -203,11 +241,12 @@ function drill(type,key,push){ openHost(); if(push!==false && type!=='dealerProd
   if(type==="mfr") b.innerHTML=drillMfr(key);
   else if(type==="state") b.innerHTML=drillState(key);
   else if(type==="company") b.innerHTML=drillCompany(key);
+  else if(type==="product") b.innerHTML=drillProduct(key);
   else if(type==="dealerProducts") loadProducts(key);
   const sv=b.querySelector("svg[data-fc]"); if(sv) hydrateHover(sv);
 }
 function crumbGo(i){ const c=CRUMB[i]; CRUMB=CRUMB.slice(0,i); drill(c.type,c.key); }
-function renderCrumbs(){ const el=$("#crumbs"); if(!el)return; el.innerHTML=`<a onclick="closeDrill()">Summary</a>`+CRUMB.map((c,i)=>` › <a onclick="crumbGo(${i})">${esc(String(c.key).slice(0,28))}</a>`).join(""); }
+function renderCrumbs(){ const el=$("#crumbs"); if(!el)return; el.innerHTML=`<a onclick="closeDrill()">Summary</a>`+CRUMB.map((c,i)=>{ const lbl=(c.type==="product"&&I.products&&I.products.top[c.key])?I.products.top[c.key].name:c.key; return ` › <a onclick="crumbGo(${i})">${esc(String(lbl).slice(0,28))}</a>`; }).join(""); }
 
 function miniChart(F,title){ const s=series(F); const fc=forecast(s,3); return `<div class="chartwrap">${lineFC(s,fc.proj,title)}</div>`; }
 function drillMfr(mfr){ const F=facts().filter(f=>f.line===mfr); const total=F.reduce((s,f)=>s+(f.sales||0),0); const s=series(F); const fc=forecast(s,3);
@@ -267,7 +306,7 @@ function intelSection(){
     <div class="ihd">▲ Growing</div>${engRows(e.growing,"up")}</div>`;
   const act=I.activity||{}; const actTile=`<div class="card"><h2>Engagement &amp; activity <span class="side">last 30 days</span></h2>
     <div class="stat">${st("Active dealers",act.active_30d||0)}${st("Portal logins",act.logins_30d||0)}${st("Scored dealers",e.scored||0)}</div>
-    <div class="ihd">Line interest (research + orders)</div>${barRows((act.interest||[]).map(x=>({k:x.name,v:x.events})),null,(act.interest&&act.interest[0]&&act.interest[0].events)||1)}</div>`;
+    <div class="ihd">Line interest (research + orders)</div>${barRows((act.interest||[]).map(x=>({k:x.name,v:x.events})),null,(act.interest&&act.interest[0]&&act.interest[0].events)||1,'count')}</div>`;
   const o=I.opportunities||{}, f=I.followups||{}, x=I.crosssell||[];
   const oppTile=`<div class="card"><h2>Opportunities, follow-up &amp; cross-sell</h2>
     <div class="stat">${st("Open opps",o.count||0)}${st("Pipeline",short(o.value||0))}${st("Open tasks",f.open||0)}</div>
