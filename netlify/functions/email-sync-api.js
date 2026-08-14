@@ -93,6 +93,85 @@ async function buildResolver(){
 const BIZ=/(order|invoice|\bpo\b|purchase|quote|pricing|backorder|\brma\b|return|ship|tracking|catalog|reorder|net ?30|account|wholesale|dealer|bng\d|strongback|airavant|bongo|pedifix|golden)/i;
 function isInternal(addr){ const d=domainOf(addr); return INTERNAL_DOMAINS.includes(d); }
 
+// Core sync — gather from Graph, match, bulk-write. Called by the API handler AND the cron.
+async function runSync(opts){
+  opts=opts||{};
+  try{ await sbGet("email_messages?select=id&limit=1"); }
+  catch(e){ return {ok:false,error:"tables_missing",message:"Run supabase/email_intelligence.sql first."}; }
+  const R=await buildResolver();
+  const days=Math.min(Math.max(parseInt(opts.days||30,10)||30,1),120);
+  const PER_FOLDER=Math.min(Math.max(parseInt(opts.per_folder||120,10)||120,10),400);
+  const CAP=Math.min(Math.max(parseInt(opts.cap||500,10)||500,50),1200);
+
+  const gathered=[]; const perMailbox=[];
+  for(const mbox of MAILBOXES){
+    let got=0;
+    for(const folder of ["inbox","sentitems"]){
+      const direction = folder==="sentitems" ? "outbound" : "inbound";
+      let msgs=[]; try{ msgs=await listFolder(mbox,folder,days,PER_FOLDER); }catch(e){ perMailbox.push({mailbox:mbox,folder,error:String(e.message||e)}); continue; }
+      got+=msgs.length; for(const m of msgs) gathered.push({m,mbox,direction,folder});
+    }
+    perMailbox.push({mailbox:mbox,pulled:got});
+  }
+  gathered.sort((a,b)=>String((b.m.receivedDateTime||b.m.sentDateTime)||"").localeCompare(String((a.m.receivedDateTime||a.m.sentDateTime)||"")));
+  const truncated = gathered.length>CAP; const work = truncated?gathered.slice(0,CAP):gathered;
+
+  const recs=[]; const partsByKey=new Map(); const learn=new Map(); const cand=new Map();
+  let kept=0, matched=0;
+  for(const g of work){
+    const m=g.m, mbox=g.mbox, direction=g.direction;
+    const fromAddr=(m.from&&m.from.emailAddress&&m.from.emailAddress.address)||"";
+    const fromName=(m.from&&m.from.emailAddress&&m.from.emailAddress.name)||"";
+    const parts=[]; const push=(role,ea)=>{ if(ea&&ea.address) parts.push({role,address:String(ea.address).toLowerCase(),name:ea.name||"",domain:domainOf(ea.address)}); };
+    push("from",m.from&&m.from.emailAddress);
+    (m.toRecipients||[]).forEach(r=>push("to",r.emailAddress));
+    (m.ccRecipients||[]).forEach(r=>push("cc",r.emailAddress));
+    const externals=parts.filter(p=>p.domain&&!INTERNAL_DOMAINS.includes(p.domain)&&p.role!=="cc")
+                         .concat(parts.filter(p=>p.domain&&!INTERNAL_DOMAINS.includes(p.domain)&&p.role==="cc"));
+    const primary = direction==="inbound" ? (externals.find(p=>p.role==="from")||externals[0]) : (externals.find(p=>p.role==="to")||externals[0]);
+    if(!primary) continue;
+    const exact = R.byEmail(primary.address);
+    let dealer_id = exact || R.byDomain(primary.domain) || R.byName(primary.name) || null;
+    const bizSignal = BIZ.test(`${m.subject||""} ${m.bodyPreview||""}`);
+    const consumer = CONSUMER.has(primary.domain);
+    if(!dealer_id && consumer && !bizSignal) continue;
+    if(dealer_id && !exact && primary.domain && !R.knownDomain(primary.domain) && !consumer && !learn.has(primary.domain)) learn.set(primary.domain,dealer_id);
+    const conf = (exact||R.byDomain(primary.domain))?"high":(dealer_id?"medium":"low");
+    const key = mbox+"|"+m.id;
+    recs.push({ graph_id:m.id, internet_message_id:clean(m.internetMessageId,300), mailbox_upn:mbox, direction,
+      subject:clean(m.subject,500), snippet:clean(m.bodyPreview,500),
+      from_address:clean(fromAddr,200), from_name:clean(fromName,200),
+      sent_at:m.sentDateTime||null, received_at:m.receivedDateTime||null,
+      dealer_id:dealer_id||null, thread_id:clean(m.conversationId,300),
+      has_attachments:!!m.hasAttachments, relevance_score:bizSignal?1:0.5, match_confidence:conf, folder:g.folder });
+    partsByKey.set(key, parts);
+    if(dealer_id && primary.address && !consumer && !cand.has(primary.address))
+      cand.set(primary.address,{email:primary.address,name:clean(primary.name,200),domain:primary.domain,dealer_id,suggested_reason:"seen in dealer email",status:"pending"});
+    kept++; if(dealer_id) matched++;
+  }
+
+  const idByKey=new Map();
+  for(let i=0;i<recs.length;i+=500){
+    const rows=await sbSend("POST","email_messages?on_conflict=mailbox_upn,graph_id",recs.slice(i,i+500),{Prefer:"resolution=merge-duplicates,return=representation"});
+    for(const r of (rows||[])) idByKey.set(r.mailbox_upn+"|"+r.graph_id, r.id);
+  }
+  if(learn.size){ const arr=[...learn.entries()].map(([domain,dealer_id])=>({domain,dealer_id,source:"email",confidence:0.8,verified:false}));
+    for(let i=0;i<arr.length;i+=500){ try{ await sbSend("POST","dealer_domains",arr.slice(i,i+500),{Prefer:"return=minimal"}); }catch(e){} } }
+  const ids=[...idByKey.values()];
+  for(let i=0;i<ids.length;i+=200){ const chunk=ids.slice(i,i+200); try{ await sbSend("DELETE",`email_participants?message_id=in.(${chunk.join(",")})`,null,{Prefer:"return=minimal"}); }catch(e){} }
+  const allParts=[];
+  for(const [key,parts] of partsByKey){ const id=idByKey.get(key); if(!id) continue; for(const p of parts) allParts.push({message_id:id,role:p.role,address:p.address,display_name:clean(p.name,200),domain:p.domain}); }
+  for(let i=0;i<allParts.length;i+=500){ try{ await sbSend("POST","email_participants",allParts.slice(i,i+500),{Prefer:"return=minimal"}); }catch(e){} }
+  let newCands=0;
+  if(cand.size){ let existing=new Set();
+    try{ const ex=await sbGetAll("contact_candidates?select=email","email"); for(const r of (ex||[])) existing.add(String(r.email||"").toLowerCase()); }catch(e){}
+    const toAdd=[...cand.values()].filter(c=>!existing.has(String(c.email).toLowerCase()));
+    for(let i=0;i<toAdd.length;i+=500){ try{ await sbSend("POST","contact_candidates",toAdd.slice(i,i+500),{Prefer:"return=minimal"}); newCands+=toAdd.slice(i,i+500).length; }catch(e){} } }
+  return {ok:true, scanned:work.length, kept, matched, learned_domains:learn.size, new_candidates:newCands,
+    truncated: truncated?`capped at ${CAP} of ${gathered.length} — run again or narrow days to get the rest`:false, per_mailbox:perMailbox};
+}
+exports.runSync = runSync;
+
 exports.handler = async (event)=>{
   try{
     if(event.httpMethod!=="POST") return json(405,{error:"POST only"});
@@ -157,87 +236,39 @@ exports.handler = async (event)=>{
     }
 
     if(b.action==="sync"){
-      try{ await sbGet("email_messages?select=id&limit=1"); }
-      catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run supabase/email_intelligence.sql first."}); }
-      const R=await buildResolver();
-      const days=Math.min(Math.max(parseInt(b.days||30,10)||30,1),120);
-      const PER_FOLDER=Math.min(Math.max(parseInt(b.per_folder||120,10)||120,10),400);  // bound Graph pulls
-      const CAP=Math.min(Math.max(parseInt(b.cap||500,10)||500,50),1200);                // bound DB work per run
+      const r=await runSync({days:b.days, per_folder:b.per_folder, cap:b.cap});
+      return json(200,r);
+    }
 
-      // 1) GATHER (Graph only) — a handful of requests, no DB writes yet.
-      const gathered=[]; const perMailbox=[];
-      for(const mbox of MAILBOXES){
-        let got=0;
-        for(const folder of ["inbox","sentitems"]){
-          const direction = folder==="sentitems" ? "outbound" : "inbound";
-          let msgs=[]; try{ msgs=await listFolder(mbox,folder,days,PER_FOLDER); }catch(e){ perMailbox.push({mailbox:mbox,folder,error:String(e.message||e)}); continue; }
-          got+=msgs.length; for(const m of msgs) gathered.push({m,mbox,direction,folder});
-        }
-        perMailbox.push({mailbox:mbox,pulled:got});
-      }
-      gathered.sort((a,b)=>String((b.m.receivedDateTime||b.m.sentDateTime)||"").localeCompare(String((a.m.receivedDateTime||a.m.sentDateTime)||"")));
-      const truncated = gathered.length>CAP; const work = truncated?gathered.slice(0,CAP):gathered;
+    // Dealer list for the unmatched-sender assignment dropdown.
+    if(b.action==="dealers"){
+      const ds=await sbGetAll("dealers?select=id,business_name,parent_id","id").catch(()=>[]);
+      const list=ds.map(d=>({id:d.id,name:d.business_name||"",branch:!!d.parent_id})).filter(d=>d.name).sort((a,b)=>a.name.localeCompare(b.name));
+      return json(200,{ok:true,dealers:list});
+    }
 
-      // 2) BUILD records in memory (no I/O).
-      const recs=[]; const partsByKey=new Map(); const learn=new Map(); const cand=new Map();
-      let kept=0, matched=0;
-      for(const g of work){
-        const m=g.m, mbox=g.mbox, direction=g.direction;
-        const fromAddr=(m.from&&m.from.emailAddress&&m.from.emailAddress.address)||"";
-        const fromName=(m.from&&m.from.emailAddress&&m.from.emailAddress.name)||"";
-        const parts=[]; const push=(role,ea)=>{ if(ea&&ea.address) parts.push({role,address:String(ea.address).toLowerCase(),name:ea.name||"",domain:domainOf(ea.address)}); };
-        push("from",m.from&&m.from.emailAddress);
-        (m.toRecipients||[]).forEach(r=>push("to",r.emailAddress));
-        (m.ccRecipients||[]).forEach(r=>push("cc",r.emailAddress));
-        const externals=parts.filter(p=>p.domain&&!INTERNAL_DOMAINS.includes(p.domain)&&p.role!=="cc")
-                             .concat(parts.filter(p=>p.domain&&!INTERNAL_DOMAINS.includes(p.domain)&&p.role==="cc"));
-        const primary = direction==="inbound" ? (externals.find(p=>p.role==="from")||externals[0]) : (externals.find(p=>p.role==="to")||externals[0]);
-        if(!primary) continue;
-        const exact = R.byEmail(primary.address);
-        let dealer_id = exact || R.byDomain(primary.domain) || R.byName(primary.name) || null;
-        const bizSignal = BIZ.test(`${m.subject||""} ${m.bodyPreview||""}`);
-        const consumer = CONSUMER.has(primary.domain);
-        if(!dealer_id && consumer && !bizSignal) continue;
-        // learn domain→dealer only for matches by NAME on a real business domain (never for exact-email/ISP hits)
-        if(dealer_id && !exact && primary.domain && !R.knownDomain(primary.domain) && !consumer && !learn.has(primary.domain)) learn.set(primary.domain,dealer_id);
-        const conf = (exact||R.byDomain(primary.domain))?"high":(dealer_id?"medium":"low");
-        const key = mbox+"|"+m.id;
-        recs.push({ graph_id:m.id, internet_message_id:clean(m.internetMessageId,300), mailbox_upn:mbox, direction,
-          subject:clean(m.subject,500), snippet:clean(m.bodyPreview,500),
-          from_address:clean(fromAddr,200), from_name:clean(fromName,200),
-          sent_at:m.sentDateTime||null, received_at:m.receivedDateTime||null,
-          dealer_id:dealer_id||null, thread_id:clean(m.conversationId,300),
-          has_attachments:!!m.hasAttachments, relevance_score:bizSignal?1:0.5, match_confidence:conf, folder:g.folder });
-        partsByKey.set(key, parts);
-        if(dealer_id && primary.address && !consumer && !cand.has(primary.address))
-          cand.set(primary.address,{email:primary.address,name:clean(primary.name,200),domain:primary.domain,dealer_id,suggested_reason:"seen in dealer email",status:"pending"});
-        kept++; if(dealer_id) matched++;
-      }
+    // Distinct unmatched senders — emails we captured but couldn't place with a dealer.
+    if(b.action==="unmatched"){
+      let rows; try{ rows=await sbGetAll("email_messages?dealer_id=is.null&select=from_address,from_name,subject,received_at,direction","received_at"); }
+      catch(e){ return json(200,{ok:false,error:"tables_missing"}); }
+      const by=new Map();
+      for(const r of (rows||[])){ const a=String(r.from_address||"").toLowerCase(); if(!a) continue;
+        if(INTERNAL_DOMAINS.includes(domainOf(a))) continue;               // skip our own sent-from
+        const o=by.get(a)||{email:a,name:r.from_name||"",domain:domainOf(a),count:0,last_subject:"",last:""};
+        o.count++; if(!o.last || String(r.received_at||"")>o.last){ o.last=r.received_at||""; o.last_subject=r.subject||""; } if(!o.name&&r.from_name)o.name=r.from_name;
+        by.set(a,o); }
+      const list=[...by.values()].sort((a,b)=>b.count-a.count).slice(0,300);
+      return json(200,{ok:true, unmatched:list, total_addresses:by.size});
+    }
 
-      // 3) BULK upsert messages → map (mailbox|graph_id)→id.
-      const idByKey=new Map();
-      for(let i=0;i<recs.length;i+=500){
-        const rows=await sbSend("POST","email_messages?on_conflict=mailbox_upn,graph_id",recs.slice(i,i+500),{Prefer:"resolution=merge-duplicates,return=representation"});
-        for(const r of (rows||[])) idByKey.set(r.mailbox_upn+"|"+r.graph_id, r.id);
-      }
-      // 4) learned domains — plain insert; `learn` only holds domains the resolver didn't already know.
-      if(learn.size){ const arr=[...learn.entries()].map(([domain,dealer_id])=>({domain,dealer_id,source:"email",confidence:0.8,verified:false}));
-        for(let i=0;i<arr.length;i+=500){ try{ await sbSend("POST","dealer_domains",arr.slice(i,i+500),{Prefer:"return=minimal"}); }catch(e){} } }
-      // 5) participants — delete for touched messages, then bulk insert.
-      const ids=[...idByKey.values()];
-      for(let i=0;i<ids.length;i+=200){ const chunk=ids.slice(i,i+200); try{ await sbSend("DELETE",`email_participants?message_id=in.(${chunk.join(",")})`,null,{Prefer:"return=minimal"}); }catch(e){} }
-      const allParts=[];
-      for(const [key,parts] of partsByKey){ const id=idByKey.get(key); if(!id) continue; for(const p of parts) allParts.push({message_id:id,role:p.role,address:p.address,display_name:clean(p.name,200),domain:p.domain}); }
-      for(let i=0;i<allParts.length;i+=500){ try{ await sbSend("POST","email_participants",allParts.slice(i,i+500),{Prefer:"return=minimal"}); }catch(e){} }
-      // 6) contact candidates — insert only genuinely new emails (preserve any approved/rejected status).
-      let newCands=0;
-      if(cand.size){ let existing=new Set();
-        try{ const ex=await sbGetAll("contact_candidates?select=email","email"); for(const r of (ex||[])) existing.add(String(r.email||"").toLowerCase()); }catch(e){}
-        const toAdd=[...cand.values()].filter(c=>!existing.has(String(c.email).toLowerCase()));
-        for(let i=0;i<toAdd.length;i+=500){ try{ await sbSend("POST","contact_candidates",toAdd.slice(i,i+500),{Prefer:"return=minimal"}); newCands+=toAdd.slice(i,i+500).length; }catch(e){} } }
-
-      return json(200,{ok:true, scanned:work.length, kept, matched, learned_domains:learn.size, new_candidates:newCands,
-        truncated: truncated?`capped at ${CAP} of ${gathered.length} — run again or narrow days to get the rest`:false, per_mailbox:perMailbox});
+    // Assign an unmatched sender to a dealer: save as a contact AND back-fill past messages.
+    if(b.action==="assign_email"){
+      const email=String(b.email||"").trim().toLowerCase(), dealer_id=clean(b.dealer_id,80);
+      if(!email||!dealer_id) return json(400,{error:"email and dealer_id required"});
+      try{ await sbSend("POST","dealer_contacts?on_conflict=dealer_id,email",{dealer_id,email,name:clean(b.name,120)||null},{Prefer:"resolution=merge-duplicates,return=minimal"}); }catch(e){}
+      let updated=0;
+      try{ const r=await sbSend("PATCH",`email_messages?from_address=eq.${encodeURIComponent(email)}&dealer_id=is.null`,{dealer_id,match_confidence:"high"},{Prefer:"return=representation"}); updated=(r||[]).length; }catch(e){}
+      return json(200,{ok:true, email, dealer_id, messages_updated:updated});
     }
 
     return json(400,{error:"unknown action"});

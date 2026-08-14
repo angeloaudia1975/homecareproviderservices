@@ -148,8 +148,14 @@ function render(){
   const coCard=`<div class="card"><h2>Companies <span class="side">${byCo.length} with sales · click any</span></h2>
     <input class="search" id="coSearch" placeholder="Search all companies…" oninput="renderCo()">
     <div class="scrollbox" id="coList"></div></div>`;
+  // Outlook email reminder — surfaces senders captured but not yet linked to a dealer.
+  const eu=(I.email_unmatched||{});
+  const emailBanner = eu.senders ? `<div class="card" style="border-left:3px solid #F5821F;background:#fff8ef;display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+    <div style="flex:1;min-width:220px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#b45309;font-weight:800">Email needs attention</div>
+    <div style="font-size:14px;color:var(--navy);margin-top:2px">✉ <b>${eu.senders}</b> unmatched email sender${eu.senders===1?"":"s"} (${eu.messages} message${eu.messages===1?"":"s"}) aren't linked to a dealer yet.</div></div>
+    <a class="btn sm orange" href="/admin/email-sync.html">Review &amp; assign →</a></div>` : "";
   // intelligence tiles
-  const html=kpis+insightsCard(F)+trend+predictCard(F)+`<div class="grid2">${mfrCard}${stateCard}</div>`+`<div class="grid2">${territoryCard(F)}${whitespaceCard(F)}</div>`+coCard+productsCard()+intelSection()+intelSection2();
+  const html=emailBanner+kpis+insightsCard(F)+trend+predictCard(F)+`<div class="grid2">${mfrCard}${stateCard}</div>`+`<div class="grid2">${territoryCard(F)}${whitespaceCard(F)}</div>`+coCard+productsCard()+intelSection()+intelSection2();
   $("#body").innerHTML=html;
   drawFC(ser,fc.proj,"trendMain");
   renderCo(); renderProd();

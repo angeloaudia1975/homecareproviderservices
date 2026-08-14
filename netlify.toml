@@ -23,3 +23,9 @@
 # automation_config.reports_enabled (off by default), so nothing sends until you enable it.
 [functions."report-weekly"]
   schedule = "0 12 * * 1"
+
+# Outlook email auto-sync — keeps Dealer 360 email current in the background, hourly.
+# Pulls only a short recent window each run (idempotent), so it stays cheap. Does nothing
+# until the GRAPH_* env vars + GRAPH_MAILBOXES are set.
+[functions."email-sync-cron"]
+  schedule = "0 * * * *"

@@ -39,18 +39,44 @@ async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), p
 function lock(){ HCPS.signOut(); TOKEN=null; location.reload(); }
 async function api(payload){ const r=await fetch("/.netlify/functions/email-sync-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return r.json().catch(()=>({error:"bad response ("+r.status+")"})); }
 
+let DEALERS=[];
 function render(){ if(!TOKEN){ gate(); return; }
   $("#body").innerHTML=`<div class="card">
     <div class="row">
       <button class="btn sm" onclick="doStatus()">Status</button>
       <button class="btn sm" onclick="doTest()">Test connection</button>
       <button class="btn sm" onclick="doSeed()">Seed domains from CRM</button>
+      <button class="btn sm" onclick="doUnmatched()">Review unmatched</button>
       <button class="btn orange" onclick="doSync()">Sync now</button>
       <span class="hint">days <input id="days" value="30" style="width:56px;padding:5px 7px;border:1px solid var(--line);border-radius:7px"></span>
       <span id="msg" class="hint" style="margin:0"></span>
     </div>
+    <div class="hint" style="margin-top:6px">Email auto-syncs in the background every hour — these buttons are for on-demand runs and cleanup.</div>
     <div id="out"></div>
-  </div>`; }
+  </div>`;
+  doUnmatched();  // show what needs attention as soon as the page opens
+}
+async function ensureDealers(){ if(DEALERS.length) return; const d=await api({action:"dealers"}); if(d&&d.ok) DEALERS=d.dealers||[]; }
+async function doUnmatched(){ if(BUSY)return; busy("Loading unmatched…"); await ensureDealers(); const j=await api({action:"unmatched"}); done();
+  if(!j||!j.ok){ return; }
+  if(!j.unmatched||!j.unmatched.length){ $("#out").innerHTML=`<div class="hint ok" style="margin-top:8px">✓ No unmatched senders — every captured email is assigned to a dealer.</div>`; return; }
+  const opts='<option value="">— assign to dealer —</option>'+DEALERS.map(d=>`<option value="${esc(d.id)}">${esc(d.name)}${d.branch?" (branch)":""}</option>`).join("");
+  $("#out").innerHTML=`<div class="step" style="margin-top:10px"><h3 class="warn">Unmatched senders (${j.unmatched.length})</h3>
+    <div class="hint" style="margin-bottom:6px">These emailed you but didn't match a dealer. Assign one and it's saved as that dealer's contact — this email and all future mail from it attach automatically, and it joins your contact list for campaigns.</div>
+    <table><thead><tr><th>Sender</th><th>Emails</th><th>Latest subject</th><th>Assign to dealer</th></tr></thead><tbody>
+    ${j.unmatched.map((u,i)=>`<tr id="ur_${i}">
+      <td><b>${esc(u.email)}</b>${u.name?`<div class="hint">${esc(u.name)}</div>`:""}</td>
+      <td class="num">${u.count}</td>
+      <td class="hint" style="max-width:280px">${esc(u.last_subject||"")}</td>
+      <td style="white-space:nowrap"><select id="us_${i}" style="min-width:220px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-family:inherit;font-size:12.5px">${opts}</select>
+        <button class="btn ghost sm" onclick="assignUnmatched(${i},'${esc(u.email)}','${esc((u.name||'').replace(/'/g,''))}')">Assign</button> <span id="uok_${i}" class="hint"></span></td>
+    </tr>`).join("")}</tbody></table></div>`; }
+async function assignUnmatched(i,email,name){ const sel=$("#us_"+i), ok=$("#uok_"+i); const dealer_id=sel&&sel.value;
+  if(!dealer_id){ if(ok) ok.innerHTML='<span class="warn">pick a dealer</span>'; return; }
+  if(ok) ok.textContent="saving…";
+  const r=await api({action:"assign_email",email,dealer_id,name});
+  if(r&&r.ok){ const row=$("#ur_"+i); if(row){ row.style.opacity=.5; } if(ok) ok.innerHTML=`<span class="ok">✓ assigned (${r.messages_updated} email${r.messages_updated===1?"":"s"})</span>`; }
+  else if(ok) ok.innerHTML='<span class="warn">failed</span>'; }
 
 function busy(m){ BUSY=true; $("#msg").textContent=m||"Working…"; }
 function done(){ BUSY=false; $("#msg").textContent=""; }

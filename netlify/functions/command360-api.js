@@ -37,7 +37,7 @@ exports.handler = async (event)=>{
     if(me.role!=="president") return json(403,{error:"President only"});
 
     const d30=new Date(Date.now()-30*864e5).toISOString(), d90=new Date(Date.now()-90*864e5).toISOString();
-    const [dealers,mfrs,eng,opps,tasks,xsell,ms,intent,evs,camps,sends,dm]=await Promise.all([
+    const [dealers,mfrs,eng,opps,tasks,xsell,ms,intent,evs,camps,sends,dm,emUn]=await Promise.all([
       sbGetAll("dealers?select=id,business_name,state,parent_id","id").catch(()=>[]),
       sbGet("manufacturers?select=slug,name").catch(()=>[]),
       sbGetAll("dealer_engagement?select=dealer_id,rep_name,status,score,churn_score,months_since,total_sales,recent_sales,trend","dealer_id").catch(()=>[]),
@@ -50,7 +50,11 @@ exports.handler = async (event)=>{
       sbGet("marketing_campaigns?select=name,status,manufacturer,segment,results,updated_at&order=updated_at.desc.nullslast&limit=200").catch(()=>[]),
       sbGet(`email_sends?sent_at=gte.${encodeURIComponent(d90)}&select=template&limit=30000`).catch(()=>[]),
       sbGetAll("dealer_manufacturers?select=manufacturer,account_ref,dealer_id","dealer_id").catch(()=>[]),
+      sbGetAll("email_messages?dealer_id=is.null&select=from_address","from_address").catch(()=>[]),
     ]);
+    // unmatched Outlook email — distinct external senders we captured but couldn't place with a dealer
+    const _emSenders=new Set(); for(const r of (emUn||[])){ const a=String(r.from_address||"").toLowerCase(); if(a) _emSenders.add(a); }
+    const emailUnmatched={ senders:_emSenders.size, messages:(emUn||[]).length };
     const chan=ms;  // channel split reuses the monthly_sales scan below
     const nameOf={}, stateOf={}; for(const d of dealers){ nameOf[d.id]=d.business_name||""; stateOf[d.id]=d.state||""; }
     const mfrName={}; for(const m of (mfrs||[])) mfrName[m.slug]=m.name||m.slug;
@@ -134,7 +138,8 @@ exports.handler = async (event)=>{
       activity:{ active_30d:actDealers.size, logins_30d:loginDealers.size, interest:topInterest },
       products:{ count:prodMap.size, top:topProducts },
       marketing:{ sent:mkSent, opens:mkOpens, clicks:mkClicks, open_rate:mkSent?Math.round(mkOpens/mkSent*100):0, click_rate:mkSent?Math.round(mkClicks/mkSent*100):0, campaigns:campList, send_volume:sendVol },
-      coverage
+      coverage,
+      email_unmatched:emailUnmatched
     });
   }catch(e){ return json(500,{error:String(e&&e.message||e)}); }
 };
