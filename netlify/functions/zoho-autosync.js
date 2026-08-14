@@ -29,6 +29,11 @@ const websiteFrom = email => { const m=String(email||"").trim().toLowerCase().ma
 const splitName = n => { const p=String(n||"").trim().split(/\s+/).filter(Boolean); if(!p.length) return {first:"",last:""}; return { first:p.slice(0,-1).join(" ")||p[0], last:p.length>1?p[p.length-1]:p[0] }; };
 const STAGE_TO_ZOHO={identified:"Qualification",contacted:"Needs Analysis",quoted:"Proposal/Price Quote",won:"Closed Won",lost:"Closed Lost"};
 const ZOHO_TO_STAGE={"Qualification":"identified","Needs Analysis":"contacted","Value Proposition":"contacted","Identify Decision Makers":"contacted","Proposal/Price Quote":"quoted","Negotiation/Review":"quoted","Closed Won":"won","Closed Lost":"lost","Closed-Lost":"lost","Closed Lost to Competition":"lost"};
+// Business-name normalization (same dnorm the rest of the app uses) so a Zoho Account name on an
+// inbound webhook event resolves to the same dealer; + the email shape used everywhere.
+const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
+const dnorm=n=>String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim();
+const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Stable content hash (key-order-independent) — lets us skip records that haven't changed.
 function hashOf(obj){
@@ -146,6 +151,50 @@ async function run(){
       }
     }
   }catch(e){ summary.errors.push({phase:"pull_deals",msg:String(e.message||e)}); }
+
+  // ---- INBOUND webhook queue: process the real-time Zoho change events captured by zoho-webhook.js.
+  // Ownership-safe: we NEVER overwrite Dealer-360-owned profile fields from here. For each event we
+  //   (1) resolve the dealer (by the webhook's email match, else by the Account name),
+  //   (2) grow the address book — a known dealer + a business email we don't have yet becomes a
+  //       dealer_contact (which also improves inbound email auto-matching), and
+  //   (3) drop a touch-point on the dealer timeline so reps see Zoho-side activity,
+  // then mark the queue row done so it never re-processes. Bounded per run to stay well inside the
+  // function budget; leftover rows drain on the next heartbeat.
+  try{
+    const pend=await sbGetAll("zoho_sync_queue?select=id,entity,entity_id,dealer_id,payload,attempts&direction=eq.in&status=eq.pending&order=id.asc&limit=400","id").catch(()=>[]);
+    if(pend.length){
+      const dealers=await sbGetAll("dealers?select=id,business_name","id");
+      const norm2id=new Map(); for(const d of dealers) norm2id.set(dnorm(d.business_name), d.id);
+      const aliases=await sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]);
+      for(const a of (aliases||[])){ if(a&&a.alias_norm&&!norm2id.has(a.alias_norm)) norm2id.set(a.alias_norm,a.dealer_id); }
+      let processed=0, touched=0, newContacts=0;
+      for(const q of pend){
+        const p=q.payload||{};
+        const email=String(p.Email||p.email||"").trim().toLowerCase();
+        const account=String(p["Account Name"]||p.Account_Name||p.account_name||p.Account||"").trim();
+        let dealer_id=q.dealer_id||null;
+        if(!dealer_id && account){ const id=norm2id.get(dnorm(account)); if(id) dealer_id=id; }
+        // Grow the address book (known dealer + new business email).
+        if(dealer_id && email && EMAIL_RE.test(email)){
+          try{
+            const ex=await sbGet(`dealer_contacts?dealer_id=eq.${encodeURIComponent(dealer_id)}&email=eq.${encodeURIComponent(email)}&select=id&limit=1`);
+            if(!(Array.isArray(ex)&&ex.length)){
+              const nm=[clean(p.First_Name),clean(p.Last_Name)].filter(Boolean).join(" ")||undefined;
+              await sbSend("POST","dealer_contacts?on_conflict=dealer_id,email",prune({dealer_id,email,name:nm}),{Prefer:"resolution=merge-duplicates,return=minimal"});
+              newContacts++;
+            }
+          }catch(e){}
+        }
+        // Timeline touch-point (visible to reps; leaves owned profile fields untouched).
+        if(dealer_id){
+          const subj=("Zoho "+(q.entity||"record")+" updated"+(email?(" — "+email):account?(" — "+account):"")).slice(0,180);
+          try{ await sbSend("POST","dealer_activity",{dealer_id,kind:"system",subject:subj,actor:"Zoho sync"},{Prefer:"return=minimal"}); touched++; }catch(e){}
+        }
+        try{ await sbSend("PATCH",`zoho_sync_queue?id=eq.${encodeURIComponent(q.id)}`,{status:"synced",dealer_id,processed_at:new Date().toISOString(),updated_at:new Date().toISOString()},{Prefer:"return=minimal"}); processed++; }catch(e){}
+      }
+      summary.inbound={processed,touched,new_contacts:newContacts};
+    }
+  }catch(e){ summary.errors.push({phase:"inbound_queue",msg:String(e.message||e)}); }
 
   await setHashes(next);
   await stampSync("autosync_at");
