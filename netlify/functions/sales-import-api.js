@@ -22,7 +22,8 @@ const num=v=>{ if(v==null||v==="") return null; const n=Number(String(v).replace
 const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
 const dnorm=n=>String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim();
 const znorm=z=>{ const m=String(z||"").match(/\d{5}/); return m?m[0]:""; };
-const period=d=>{ const s=String(d||""); const m=s.match(/(\d{4})-(\d{2})/); if(m) return m[1]+"-"+m[2]; const dt=new Date(s); return isNaN(dt)?null:(dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")); };
+// monthly_sales.period is a DATE column — store the first of the month (YYYY-MM-01), matching the commission importer.
+const period=d=>{ const s=String(d||""); const m=s.match(/(\d{4})-(\d{2})/); if(m) return m[1]+"-"+m[2]+"-01"; const dt=new Date(s); return isNaN(dt)?null:(dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-01"); };
 const dateOnly=d=>{ const s=String(d||""); const m=s.match(/\d{4}-\d{2}-\d{2}/); if(m) return m[0]; const dt=new Date(s); return isNaN(dt)?null:dt.toISOString().slice(0,10); };
 
 async function whoami(event){
