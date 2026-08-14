@@ -162,7 +162,7 @@ exports.handler = async (event)=>{
       if(!b.dealer_id) return json(400,{error:"dealer_id required"});
       const did=encodeURIComponent(b.dealer_id);
       const [rows,mfrs]=await Promise.all([
-        sbGetAll(`monthly_sales?dealer_id=eq.${did}&select=manufacturer,period,product,sku,description,qty,amount,commission,invoice_no`,"period").catch(()=>[]),
+        sbGetAll(`monthly_sales?dealer_id=eq.${did}&select=manufacturer,period,product_code,product_name,qty,amount,commission,invoice_no`,"period").catch(()=>[]),
         sbGet("manufacturers?select=slug,name").catch(()=>[]),
       ]);
       const mfrName={}; for(const m of (mfrs||[])) mfrName[m.slug]=m.name||m.slug;
@@ -179,9 +179,9 @@ exports.handler = async (event)=>{
         let M=byMfr.get(slug); if(!M){ M={months:new Map(),products:new Map(),total:0,comm:0,qty:0,orders:new Set(),pms:new Set()}; byMfr.set(slug,M); }
         M.total+=amt; M.comm+=comm; M.qty+=qty; M.pms.add(pm); if(r.invoice_no) M.orders.add(String(r.invoice_no));
         const mm=M.months.get(pm)||{amount:0,qty:0}; mm.amount+=amt; mm.qty+=qty; M.months.set(pm,mm);
-        const pname=String(r.product||r.description||r.sku||"").trim();
-        if(pname){ const key=String(r.sku||pname).trim().toLowerCase();
-          const P=M.products.get(key)||{name:pname,sku:r.sku||"",qty:0,amount:0,orders:new Set(),last:null};
+        const pname=String(r.product_name||r.product_code||"").trim();
+        if(pname){ const key=String(r.product_code||pname).trim().toLowerCase();
+          const P=M.products.get(key)||{name:pname,sku:(r.product_code&&String(r.product_code)!==pname)?r.product_code:"",qty:0,amount:0,orders:new Set(),last:null};
           P.qty+=qty; P.amount+=amt; if(r.invoice_no)P.orders.add(String(r.invoice_no)); if(P.last==null||pm>P.last)P.last=pm;
           M.products.set(key,P);
         }

@@ -38,6 +38,7 @@
         { href:"/admin/traffic.html",            label:"Website Traffic" },
         { href:"/admin/analytics.html",          label:"Analytics" },
         { href:"/admin/import-commissions.html", label:"Import Commissions" },
+        { href:"/admin/sales-import.html",       label:"Sales Report Import" },
         { href:"/admin/activation.html",         label:"Activation & Go-Live" }
     ]}
   ];

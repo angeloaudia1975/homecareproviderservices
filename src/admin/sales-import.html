@@ -1,0 +1,152 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Sales Report Import</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+ .setup{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end}
+ .setup label{font-size:11px;color:var(--gray);font-weight:600;display:block;margin-bottom:3px}
+ .setup select,.setup input{width:100%;padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-family:inherit}
+ .map{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-top:6px}
+ .map .m label{font-size:10.5px;color:var(--gray);font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+ .map .m select{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;font-family:inherit}
+ .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:4px 0}
+ .kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px 13px}
+ .kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700}
+ .kpi .v{font-size:22px;font-weight:800;color:var(--navy);font-family:'Barlow Condensed',sans-serif;margin-top:2px}
+ .kpi.g{border-left:4px solid #1f7a44}.kpi.w{border-left:4px solid #b45309}
+ table{width:100%;border-collapse:collapse;font-size:13px}
+ th{text-align:left;color:var(--gray);font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;border-bottom:1px solid var(--line)}
+ td{padding:6px 8px;border-bottom:1px solid #eef2f6}
+ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+ .empty{border:1px dashed var(--line);border-radius:10px;padding:16px;color:var(--gray);font-size:13px;background:#fafbfc}
+ .step{margin-top:14px}.step h3{font-size:13px;margin:0 0 6px;color:var(--navy)}
+ .warn{color:#b45309}.ok{color:#1f7a44}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Sales Report Import</h1>
+    <div class="sub">Load a manufacturer's order/sales report into the platform — sales, products, quantities, and the specific dealer branch. Commission is computed at the rate you set (Strongback = 9%). Re-importing the same report updates rows instead of duplicating.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money=n=>(n==null||n==="")?"—":"$"+Math.round(Number(n)||0).toLocaleString("en-US");
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), MFRS=[], HEADERS=[], ROWS=[], MAP={}, PREVIEW=null, FILENAME="", BUSY=false;
+const TARGETS=[
+ {k:"order_number",label:"Order #",req:true},{k:"date",label:"Order date",req:true},
+ {k:"company",label:"Dealer / company",req:true},{k:"account_ref",label:"Account username / ref"},
+ {k:"product_name",label:"Product name"},{k:"product_code",label:"SKU / code"},
+ {k:"qty",label:"Quantity"},{k:"unit_price",label:"Unit price"},{k:"line_amount",label:"Line total (if given)"},
+ {k:"ship_name",label:"Ship-to name"},{k:"ship_city",label:"Ship city"},{k:"ship_state",label:"Ship state"},{k:"ship_zip",label:"Ship ZIP"},
+ {k:"email",label:"Email"}];
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; boot();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+async function si(payload){ const r=await fetch("/.netlify/functions/sales-import-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
+
+async function boot(){
+  if(!TOKEN){ gate(); return; }
+  try{ const r=await fetch("/.netlify/functions/dealers-api",{headers:{authorization:"Bearer "+TOKEN}}); if(r.status===401){gate();return;} const d=await r.json(); MFRS=(d.manufacturers||[]).slice().sort((a,b)=>String(a.name).localeCompare(b.name)); }catch(e){ MFRS=[]; }
+  render();
+}
+function render(){
+  const mopts=MFRS.map(m=>`<option value="${esc(m.slug)}"${/strongback/.test(m.slug)?" selected":""}>${esc(m.name)}</option>`).join("");
+  $("#body").innerHTML=`
+  <div class="card">
+    <div class="setup">
+      <div><label>Manufacturer</label><select id="mfr">${mopts||'<option value="strongback-mobility">Strongback Mobility</option>'}</select></div>
+      <div><label>Commission %</label><input id="rate" value="9" inputmode="decimal"></div>
+      <div><label>Report file (.xlsx / .csv)</label><input type="file" id="file" accept=".xlsx,.xls,.csv" onchange="onFile(this)"></div>
+    </div>
+    <div id="mapbox"></div>
+  </div>
+  <div id="out"></div>`;
+}
+function onFile(input){
+  const f=input.files&&input.files[0]; if(!f) return; FILENAME=f.name;
+  const rd=new FileReader();
+  rd.onload=()=>{ try{
+      const wb=XLSX.read(rd.result,{type:"array"}); const ws=wb.Sheets[wb.SheetNames[0]];
+      const aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:""});
+      const nonEmpty=aoa.filter(r=>r.some(c=>String(c).trim()!==""));
+      if(nonEmpty.length<2){ $("#mapbox").innerHTML='<div class="hint warn">Couldn\'t read data rows from that file.</div>'; return; }
+      HEADERS=nonEmpty[0].map(h=>String(h||"").trim()); ROWS=nonEmpty.slice(1);
+      autoMap(); renderMap();
+    }catch(e){ $("#mapbox").innerHTML='<div class="hint warn">Couldn\'t parse the file: '+esc(String(e.message||e))+'</div>'; }
+  };
+  rd.readAsArrayBuffer(f);
+}
+function autoMap(){
+  MAP={}; const used=new Set();
+  const pat={ order_number:/order.*num|^number$|order.?#|^po$|invoice/i, date:/created date|order date|^date$|invoice date/i,
+    company:/company name|^company$|account name|dealer|^customer name$/i, account_ref:/customer username|username|account ?ref|customer id/i,
+    product_name:/line item name|product name|item name|^description$|^product$/i, product_code:/line item sku|^sku$|item.?no|^model$|product code/i,
+    qty:/line item quantity|^quantity$|^qty$/i, unit_price:/wholesale pric|unit price|dealer price|^price$/i, line_amount:/line total|line amount|extended|ext price/i,
+    ship_name:/shipping name/i, ship_city:/shipping city|ship city/i, ship_state:/shipping state|ship state/i, ship_zip:/shipping zip|ship zip|shipping postal/i, email:/e-?mail/i };
+  for(const t of TARGETS){ const re=pat[t.k]; if(!re) continue;
+    for(let i=0;i<HEADERS.length;i++){ if(used.has(i)) continue; if(re.test(HEADERS[i])){ MAP[t.k]=i; used.add(i); break; } } }
+}
+function renderMap(){
+  const opt=(sel)=>`<option value="-1">— none —</option>`+HEADERS.map((h,i)=>`<option value="${i}"${sel===i?" selected":""}>${esc(h)||("Col "+(i+1))}</option>`).join("");
+  const cells=TARGETS.map(t=>`<div class="m"><label>${t.label}${t.req?' <span class="warn">*</span>':''}</label><select data-t="${t.k}" onchange="MAP['${t.k}']=parseInt(this.value,10)">${opt(MAP[t.k]==null?-1:MAP[t.k])}</select></div>`).join("");
+  $("#mapbox").innerHTML=`<div class="step"><h3>Map columns <span class="hint" style="font-weight:400;text-transform:none">— ${ROWS.length} rows from ${esc(FILENAME)}. Auto-mapped; adjust if needed.</span></h3>
+    <div class="map">${cells}</div>
+    <div style="margin-top:10px;display:flex;gap:8px;align-items:center"><button class="btn sm" onclick="doPreview()">Preview import</button><span id="pmsg" class="hint" style="margin:0"></span></div></div>`;
+}
+function buildRows(){
+  const g=(row,k)=>{ const i=MAP[k]; return (i==null||i<0)?"":row[i]; };
+  return ROWS.map(row=>({ order_number:g(row,"order_number"), date:g(row,"date"), company:g(row,"company"), account_ref:g(row,"account_ref"),
+    product_name:g(row,"product_name"), product_code:g(row,"product_code"), qty:g(row,"qty"), unit_price:g(row,"unit_price"), line_amount:g(row,"line_amount"),
+    ship_name:g(row,"ship_name"), ship_city:g(row,"ship_city"), ship_state:g(row,"ship_state"), ship_zip:g(row,"ship_zip"), email:g(row,"email") }))
+    .filter(r=>String(r.order_number).trim()||String(r.company).trim());
+}
+async function doPreview(){
+  if(BUSY)return; if(MAP.company==null||MAP.company<0||MAP.order_number==null||MAP.order_number<0){ $("#pmsg").innerHTML='<span class="warn">Map at least Order # and Dealer/company.</span>'; return; }
+  BUSY=true; $("#pmsg").textContent="Analyzing…";
+  const rows=buildRows(); const mfr=($("#mfr")||{}).value, rate=($("#rate")||{}).value;
+  const r=await si({action:"preview",manufacturer:mfr,commission_rate:rate,rows}); BUSY=false; $("#pmsg").textContent="";
+  if(r.body&&r.body.error==="tables_missing"){ $("#out").innerHTML=`<div class="card"><div class="msg">Run <b>supabase/sales_import.sql</b> in Supabase first, then reload.</div></div>`; return; }
+  if(!r.body||!r.body.ok){ $("#out").innerHTML=`<div class="card"><div class="hint warn">Preview failed: ${esc((r.body&&(r.body.error||r.body.message))||"error")}</div></div>`; return; }
+  PREVIEW=r.body.preview; renderPreview();
+}
+function renderPreview(){
+  const p=PREVIEW;
+  const kpis=`<div class="kpis">
+    <div class="kpi"><div class="l">Lines</div><div class="v">${p.rows}</div></div>
+    <div class="kpi g"><div class="l">Matched to a branch</div><div class="v">${p.matched_lines}</div></div>
+    <div class="kpi ${p.unmatched_lines?'w':''}"><div class="l">Unmatched lines</div><div class="v">${p.unmatched_lines}</div></div>
+    <div class="kpi"><div class="l">Total sales</div><div class="v">${money(p.total_sales)}</div></div>
+    <div class="kpi g"><div class="l">Commission @ ${Math.round(p.commission_rate*1000)/10}%</div><div class="v">${money(p.total_commission)}</div></div>
+    <div class="kpi"><div class="l">Dealers</div><div class="v">${p.dealers}</div></div>
+  </div>`;
+  const pd=(p.per_dealer||[]).length?`<div class="step"><h3>By dealer branch</h3><div style="max-height:340px;overflow:auto"><table><thead><tr><th>Dealer / branch</th><th class="num">Orders</th><th class="num">Lines</th><th class="num">Sales</th><th class="num">Commission</th></tr></thead><tbody>
+    ${p.per_dealer.map(d=>`<tr><td><a class="link" href="/admin/dealer.html?id=${encodeURIComponent(d.dealer_id)}">${esc(d.name)}</a></td><td class="num">${d.orders}</td><td class="num">${d.lines}</td><td class="num">${money(d.sales)}</td><td class="num">${money(d.commission)}</td></tr>`).join("")}
+    </tbody></table></div></div>`:"";
+  const un=(p.unmatched||[]).length?`<div class="step"><h3 class="warn">Unmatched companies (${p.unmatched.length}) — still loaded, recorded by name</h3><div class="hint">${p.unmatched.map(esc).join(" · ")}</div><div class="hint" style="margin-top:4px">Fix these by adding the dealer or an alias, then re-import (idempotent — it won't duplicate).</div></div>`:"";
+  $("#out").innerHTML=`<div class="card">${kpis}
+    <div style="display:flex;gap:8px;align-items:center;margin:4px 0 2px"><button class="btn orange" onclick="doImport()">Load ${p.rows} lines into the platform</button><span id="imsg" class="hint" style="margin:0"></span></div>
+    ${pd}${un}</div>`;
+}
+async function doImport(){
+  if(BUSY)return; BUSY=true; $("#imsg").textContent="Importing…";
+  const rows=buildRows(); const mfr=($("#mfr")||{}).value, rate=($("#rate")||{}).value;
+  const r=await si({action:"import",manufacturer:mfr,commission_rate:rate,source_file:FILENAME,rows}); BUSY=false;
+  if(r.body&&r.body.ok){ const s=r.body.summary||{}; $("#imsg").innerHTML=`<span class="ok">✓ Loaded ${r.body.imported} lines — ${money(s.total_sales)} sales, ${money(s.total_commission)} commission, ${s.matched_lines} matched to a branch.</span> Open a dealer's 360 to see it.`; }
+  else $("#imsg").innerHTML=`<span class="warn">Import failed: ${esc((r.body&&(r.body.error||r.body.message))||"error")}</span>`;
+}
+boot();
+</script>
+</body></html>
