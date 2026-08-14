@@ -211,6 +211,7 @@ function render(D,A){
   const intelCard=`<div class="card"><h2>Digital activity &amp; interest</h2><div id="intel"><div class="hint">Loading activity…</div></div></div>`;
   const salesCard=`<div class="card" id="salesCard"><h2>Monthly sales &amp; product detail</h2><div id="sales"><div class="hint">Loading sales…</div></div></div>`;
   const commCard=`<div class="card"><h2>Commission — paid vs. outstanding</h2><div id="commled"><div class="hint">Loading…</div></div></div>`;
+  const emailCard=`<div class="card" id="emailCard"><h2>Outlook email <span id="emailCount" style="float:right;font-size:11px;color:var(--gray);font-weight:600"></span></h2><div id="emails"><div class="hint">Loading email…</div></div></div>`;
 
   // Next best action — synthesized from what we already know (upgraded once intent loads).
   const nba=nextBestAction(d,lines,monthsSince,cart,sess);
@@ -231,10 +232,10 @@ function render(D,A){
 
   $("#body").innerHTML=`${header}${nextBanner}
     <div class="d360">
-      <div>${intelCard}${history}${salesCard}${commCard}${notesCard}${contactsCard}</div>
+      <div>${intelCard}${history}${salesCard}${emailCard}${commCard}${notesCard}${contactsCard}</div>
       <div>${signals}${addrCard}${tasksCard}${acctCard}</div>
     </div>`;
-  CUR=d.id; loadCRM(); loadIntel(); loadContacts(); loadSales();
+  CUR=d.id; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails();
 }
 function nextBestAction(d,lines,monthsSince,cart,sess){
   const due=(lines||[]).filter(l=>l.status==="due");
@@ -357,6 +358,28 @@ async function loadSales(){
   if(!(SALES.combined&&SALES.combined.length) && !(SALES.manufacturers&&SALES.manufacturers.length)){
     el.innerHTML='<div class="hint">No monthly sales on file for this dealer yet — this fills in once sales are imported.</div>'; return; }
   renderSales();
+}
+async function esapi(payload){ const r=await fetch("/.netlify/functions/email-sync-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return r.json().catch(()=>({})); }
+async function loadEmails(){
+  const el=$("#emails"); if(!el||!CUR) return;
+  let j; try{ j=await esapi({action:"dealer",dealer_id:CUR}); }catch(e){ el.innerHTML='<div class="hint">Couldn\'t load email.</div>'; return; }
+  const cnt=$("#emailCount");
+  if(j&&j.error==="tables_missing"){ el.innerHTML='<div class="hint">Email capture isn\'t set up yet.</div>'; return; }
+  if(!j||!j.ok){ el.innerHTML='<div class="hint">No email yet.</div>'; return; }
+  if(cnt) cnt.textContent=j.count?`${j.count} · ${j.inbound}↓ ${j.outbound}↑`:"";
+  if(!j.messages||!j.messages.length){ el.innerHTML='<div class="hint">No captured email for this dealer yet — messages appear here after a sync once one matches this account.</div>'; return; }
+  el.innerHTML=j.messages.map(m=>{
+    const out=m.direction==="outbound"; const icon=out?"↑":"↓"; const col=out?"#1f6fb2":"#1f7a44";
+    const when=String(m.when||"").slice(0,16).replace("T"," ");
+    const who=out?("To "+esc(m.counter||"—")):("From "+esc(m.who||m.counter||"—"));
+    return `<div style="display:flex;gap:8px;padding:7px 0;border-bottom:1px solid #eef2f6">
+      <div style="font-weight:800;color:${col};width:14px;flex:none" title="${out?'sent':'received'}">${icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;color:var(--navy);font-weight:600">${esc(m.subject)||"<span class='hint' style='font-weight:400'>(no subject)</span>"}${m.attach?" 📎":""}</div>
+        <div class="hint" style="margin:1px 0 0">${who} · ${esc(when)}${(m.conf&&m.conf!=="high")?" · "+esc(m.conf)+" match":""}</div>
+        ${m.snippet?`<div class="hint" style="margin:2px 0 0">${esc(m.snippet)}</div>`:""}
+      </div></div>`;
+  }).join("");
 }
 function salesSel(slug){ SSEL=slug; renderSales(); }
 function salesSelectByName(name){

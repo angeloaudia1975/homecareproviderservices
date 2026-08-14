@@ -91,8 +91,23 @@ exports.handler = async (event)=>{
   try{
     if(event.httpMethod!=="POST") return json(405,{error:"POST only"});
     const me=await whoami(event); if(!me) return json(401,{error:"unauthorized"});
-    if(me.role!=="president") return json(403,{error:"president only"});
     let b; try{ b=JSON.parse(event.body||"{}"); }catch{ return json(400,{error:"bad JSON"}); }
+
+    // Read a dealer's captured emails for the Dealer 360 timeline — any signed-in staff.
+    if(b.action==="dealer"){
+      const id=String(b.dealer_id||"").trim(); if(!id) return json(400,{error:"dealer_id required"});
+      let rows;
+      try{ rows=await sbGet(`email_messages?dealer_id=eq.${encodeURIComponent(id)}&select=id,direction,subject,snippet,from_address,from_name,sent_at,received_at,thread_id,mailbox_upn,has_attachments,match_confidence,folder&order=received_at.desc.nullslast&limit=${Math.min(parseInt(b.limit||60,10)||60,200)}`); }
+      catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run supabase/email_intelligence.sql first."}); }
+      const msgs=(rows||[]).map(r=>({ id:r.id, direction:r.direction, subject:r.subject||"", snippet:r.snippet||"",
+        who:(r.direction==="outbound")?(r.mailbox_upn||""):(r.from_name||r.from_address||""),
+        counter:(r.direction==="outbound")?"":(r.from_address||""),
+        when:r.received_at||r.sent_at||null, thread:r.thread_id||"", attach:!!r.has_attachments, conf:r.match_confidence||"" }));
+      const inbound=msgs.filter(m=>m.direction==="inbound").length;
+      return json(200,{ ok:true, count:msgs.length, inbound, outbound:msgs.length-inbound, messages:msgs });
+    }
+
+    if(me.role!=="president") return json(403,{error:"president only"});
 
     if(b.action==="status"){
       return json(200,{ok:true, mailboxes:MAILBOXES, internal_domains:INTERNAL_DOMAINS,
