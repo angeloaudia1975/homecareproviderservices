@@ -29,3 +29,12 @@
 # until the GRAPH_* env vars + GRAPH_MAILBOXES are set.
 [functions."email-sync-cron"]
   schedule = "0 * * * *"
+
+# Zoho two-way auto-sync — the outbound (portal→Zoho) engine + inbound pipeline-stage pull.
+# Every 15 min it pushes ONLY the dealers / contacts / opportunities whose content changed
+# since the last run (per-record hashes in app_settings.zoho_push_hashes), so it's cheap and
+# never churns unchanged records. Ownership-safe: pushes profile/pipeline fields, pulls Zoho
+# Deal stages back; never touches Zoho-owned engagement/score/campaign fields. Does nothing
+# until Zoho is connected (app_settings.zoho_auth).
+[functions."zoho-autosync"]
+  schedule = "*/15 * * * *"
