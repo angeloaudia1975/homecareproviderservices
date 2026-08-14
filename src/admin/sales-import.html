@@ -2,6 +2,7 @@
 <title>HCPS Admin — Sales Report Import</title>
 <link rel="stylesheet" href="/admin/admin-shell.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
  .setup{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end}
  .setup label{font-size:11px;color:var(--gray);font-weight:600;display:block;margin-bottom:3px}
@@ -26,7 +27,7 @@
 <header id="ac-head"></header>
 <div class="wrap">
   <div class="top"><div><h1 style="margin:0">Sales Report Import</h1>
-    <div class="sub">Load a manufacturer's order/sales report into the platform — sales, products, quantities, and the specific dealer branch. Commission is computed at the rate you set (Strongback = 9%). Re-importing the same report updates rows instead of duplicating.</div></div></div>
+    <div class="sub">Load a manufacturer's order/sales report into the platform — sales, products, quantities, and the specific dealer branch. Upload a spreadsheet (.xlsx/.csv) or an AirAvant / BongoRx commission PDF. Commission is computed at the rate you set (Strongback = 9%, AirAvant/Bongo = 15%). Re-importing the same report updates rows instead of duplicating.</div></div></div>
   <div id="body"><div class="msg">Loading…</div></div>
 </div>
 <script src="/admin/staff-session.js"></script>
@@ -69,7 +70,7 @@ function render(){
     <div class="setup">
       <div><label>Manufacturer</label><select id="mfr">${mopts||'<option value="strongback-mobility">Strongback Mobility</option>'}</select></div>
       <div><label>Commission %</label><input id="rate" value="9" inputmode="decimal"></div>
-      <div><label>Report file (.xlsx / .csv)</label><input type="file" id="file" accept=".xlsx,.xls,.csv" onchange="onFile(this)"></div>
+      <div><label>Report file (.xlsx / .csv / .pdf)</label><input type="file" id="file" accept=".xlsx,.xls,.csv,.pdf" onchange="onFile(this)"></div>
     </div>
     <div id="mapbox"></div>
   </div>
@@ -77,6 +78,7 @@ function render(){
 }
 function onFile(input){
   const f=input.files&&input.files[0]; if(!f) return; FILENAME=f.name;
+  if(/\.pdf$/i.test(f.name)||f.type==="application/pdf"){ onPdf(f); return; }
   const rd=new FileReader();
   rd.onload=()=>{ try{
       const wb=XLSX.read(rd.result,{type:"array"}); const ws=wb.Sheets[wb.SheetNames[0]];
@@ -88,6 +90,80 @@ function onFile(input){
     }catch(e){ $("#mapbox").innerHTML='<div class="hint warn">Couldn\'t parse the file: '+esc(String(e.message||e))+'</div>'; }
   };
   rd.readAsArrayBuffer(f);
+}
+
+// ---- AirAvant / BongoRx commission report (QuickBooks "Commissions - Cash Basis" PDF) ----
+// A flat table with grouping/subtotal lines. Columns: Type | Date | Num | Name | Ship To City |
+// Ship To State | Item | Qty | Sales Price | Original Amount | Paid Amount, with a "Commission at
+// N%:" subtotal per group. Company/city can be multi-word, so we anchor the fixed fields by
+// content (type, date, num, item, and the trailing numbers) and use the header column geometry
+// only to split the free-text Name / City / State middle. Cash-basis commission is on Paid Amount.
+async function onPdf(f){
+  $("#mapbox").innerHTML='<div class="hint">Reading PDF…</div>';
+  try{
+    if(!window.pdfjsLib){ $("#mapbox").innerHTML='<div class="hint warn">PDF reader didn\'t load — check your connection and retry.</div>'; return; }
+    pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    const buf=await f.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+    let items=[];
+    for(let pn=1;pn<=pdf.numPages;pn++){ const pg=await pdf.getPage(pn); const tc=await pg.getTextContent();
+      for(const it of tc.content||tc.items||[]){ const s=(it.str||"").trim(); if(!s) continue;
+        const tr=it.transform||it.transformMatrix||[1,0,0,1,0,0]; items.push({str:s,x:tr[4],w:it.width||0,y:tr[5]+pn*100000}); } }
+    const {rows,rate}=parseAiravant(items);
+    if(!rows.length){ $("#mapbox").innerHTML='<div class="hint warn">No invoice lines found. This importer expects an AirAvant / BongoRx “Commissions – Cash Basis” report. For a spreadsheet report, upload the .xlsx/.csv instead.</div>'; return; }
+    // feed the existing preview/import flow via canonical headers + a direct column map
+    HEADERS=["Num","Date","Company","Ship City","Ship State","Item","Qty","Sales price","Paid amount"];
+    ROWS=rows.map(r=>[r.order_number,r.date,r.company,r.ship_city,r.ship_state,r.product_code,r.qty,r.unit_price,r.line_amount]);
+    MAP={order_number:0,date:1,company:2,ship_city:3,ship_state:4,product_code:5,product_name:5,qty:6,unit_price:7,line_amount:8};
+    // auto-select AirAvant/BongoRx + its 15% rate
+    const sel=$("#mfr"); if(sel){ const opt=[...sel.options].find(o=>/airavant|bongo/i.test(o.value)||/airavant|bongo/i.test(o.text)); if(opt) sel.value=opt.value; }
+    if(rate!=null){ const ri=$("#rate"); if(ri) ri.value=rate; }
+    renderMap();
+    const note=document.createElement("div"); note.className="hint"; note.style.marginTop="6px";
+    note.innerHTML=`Parsed <b>${rows.length}</b> invoice line${rows.length===1?"":"s"} from the AirAvant / BongoRx report${rate!=null?` · commission ${rate}%`:""}. Review the mapping, then Preview.`;
+    $("#mapbox").prepend(note);
+  }catch(e){ $("#mapbox").innerHTML='<div class="hint warn">Couldn\'t read that PDF: '+esc(String(e&&e.message||e))+'</div>'; }
+}
+// Works at TEXT-ITEM granularity so it's robust to how the PDF engine chunks a row: pdf.js
+// returns one run per column (and may merge "Date Num"); other extractors give one word per item.
+// Fixed fields are anchored by content; header geometry only splits the Name / City / State middle.
+function parseAiravant(items){
+  const byY=new Map();
+  for(const it of items){ const key=Math.round(it.y); (byY.get(key)||byY.set(key,[]).get(key)).push(it); }
+  const lines=[...byY.entries()].sort((a,b)=>b[0]-a[0]).map(e=>e[1].sort((p,q)=>p.x-q.x));
+  let splitX=325, rate=null;
+  for(const ln of lines){ const txt=ln.map(t=>t.str).join(" ");
+    if(/\bName\b/.test(txt)&&/\bShip\b/.test(txt)&&/\bItem\b/.test(txt)){
+      const ni=ln.findIndex(t=>/\bName\b/.test(t.str)); const si=ln.findIndex((t,i)=>i>ni&&/\bShip\b/.test(t.str));
+      if(ni>=0&&si>ni) splitX=((ln[ni].x+ln[ni].w)+ln[si].x)/2; }
+    const rm=txt.match(/Commission at\s*([\d.]+)\s*%/i); if(rm) rate=parseFloat(rm[1]); }
+  const DATE=/\b(\d{1,2}\/\d{1,2}\/\d{4})\b/;
+  const TYPES=/^(Invoice|Credit Memo|Credit|Sales Receipt|Payment|Refund)\b/;
+  const isNumItem=s=>/^-?[\$(]?[\d,]+(\.\d+)?\)?$/.test(String(s).trim());
+  const money=s=>{ const n=Number(String(s).replace(/[^0-9.\-]/g,"")); return Number.isFinite(n)?n:null; };
+  const out=[];
+  for(const ln of lines){
+    const txt=ln.map(t=>t.str).join(" ");
+    if(!TYPES.test(txt.trim())) continue;
+    const di=ln.findIndex(t=>DATE.test(t.str)); if(di<0) continue;
+    const dm=ln[di].str.match(DATE); const date=dm[1];
+    const rest=ln[di].str.replace(DATE,"").trim();
+    let num, midStart;
+    if(rest){ num=rest.split(/\s+/)[0]; midStart=di+1; }
+    else { num=(ln[di+1]&&ln[di+1].str)||""; midStart=di+2; }
+    let j=ln.length-1; const nums=[]; while(j>=midStart&&isNumItem(ln[j].str)){ nums.unshift(ln[j].str.trim()); j--; }
+    const item=(j>=midStart&&ln[j])?ln[j].str.trim():""; const itemI=j;
+    const mid=ln.slice(midStart,itemI); let state="";
+    if(mid.length&&/^[A-Z]{2}$/.test(mid[mid.length-1].str.trim())){ state=mid[mid.length-1].str.trim(); mid.pop(); }
+    const name=mid.filter(t=>t.x<splitX).map(t=>t.str.trim()).join(" ").trim();
+    const city=mid.filter(t=>t.x>=splitX).map(t=>t.str.trim()).join(" ").trim();
+    const qty=nums.length>=4?money(nums[nums.length-4]):(nums.length?money(nums[0]):null);
+    const unit=nums.length>=3?money(nums[nums.length-3]):null;
+    const paid=nums.length?money(nums[nums.length-1]):null;
+    if(!name&&!num) continue;
+    out.push({order_number:num,date,company:name,product_code:item,product_name:item,
+      qty,unit_price:unit,line_amount:paid,ship_city:city,ship_state:state}); }
+  return {rows:out,rate};
 }
 function autoMap(){
   MAP={}; const used=new Set();
