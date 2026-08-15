@@ -1,68 +1,71 @@
-/* HCPS Admin — shared masthead + 4-hub navigation. Renders the same header on every
- * backend page and organizes navigation exactly around the dashboard's four hubs:
- *   Online Ordering → Website → Sales & Marketing → Sales Data & Analytics.
- * Top tier = the four hubs (link to the dashboard sections); second tier = the tools
- * inside the hub you're currently in, with the active tool highlighted. Pages include
- * this after staff-session.js and drop <header id="ac-head"></header>. */
+/* HCPS Admin — shared masthead + hub navigation. Top tier = the four category hubs (each opens its
+ * own card-based LANDING PAGE, hub.html?cat=<id>); second tier = EVERY tool inside the current hub.
+ * Non-admin staff (sales reps + the Customer Relations Director) get a focused Rep Workspace instead.
+ * Pages include this after staff-session.js and drop <header id="ac-head"></header>.
+ * HUBS is the single source of truth — the sub-nav AND the landing-page cards both read it. */
 (function () {
   "use strict";
 
-  // Each hub's `href` is its WORKSPACE landing (its primary tool), not the dashboard — so clicking a
-  // top category drops you straight into that section with its sub-nav showing, and you can move
-  // between all of its pages without bouncing back to the dashboard. tools[] = the second-tier nav.
   var HUBS = [
-    { id:"ordering", label:"Online Ordering",       href:"/admin/catalog.html", tools:[
-        { href:"/admin/catalog.html",     label:"Catalog" },
-        { href:"/admin/images.html",      label:"Images" },
-        { href:"/admin/featured.html",    label:"Featured" },
-        { href:"/admin/home-editor.html", label:"Portal Home" },
-        { href:"/admin/order-fulfillment.html", label:"Order Fulfillment" }
+    { id:"ordering", label:"Online Ordering", icon:"🛒", accent:"#e07b00",
+      purpose:"Run the dealer ordering platform — products, pricing, content & portal access.",
+      href:"/admin/hub.html?cat=ordering", tools:[
+        { href:"/admin/catalog.html",            label:"Catalog",                    icon:"📦", desc:"Products, SKUs, categories & descriptions per line" },
+        { href:"/admin/images.html",             label:"Product Images",             icon:"🖼️", desc:"Upload & manage product photography" },
+        { href:"/admin/featured.html",           label:"Featured Products",          icon:"⭐", desc:"Curate the promoted items dealers see first" },
+        { href:"/admin/home-editor.html",        label:"Portal Home Content",        icon:"🏠", desc:"Hero banner, promos & the “what's new” tiles" },
+        { href:"/admin/dealers.html",            label:"Contract Pricing",           icon:"💲", desc:"Per-dealer negotiated pricing by product" },
+        { href:"/admin/dealers.html#logins",     label:"Dealer Portal Accounts",     icon:"🔑", desc:"Registrations, approvals & ordering access" },
+        { href:"/admin/order-fulfillment.html",  label:"Order Review & Fulfillment", icon:"🧾", desc:"See, confirm & track submitted dealer orders" }
     ]},
-    { id:"website", label:"Website", href:"/admin/website.html", tools:[
-        { href:"/admin/website.html", label:"Website Editor" },
-        { href:"/admin/traffic.html", label:"Website Traffic" }
+    { id:"website", label:"Website", icon:"🌐", accent:"#2f6bd8",
+      purpose:"Manage the public homecareproviderservices.us site & its content.",
+      href:"/admin/hub.html?cat=website", tools:[
+        { href:"/admin/website.html",               label:"Website Content",     icon:"📝", desc:"Manufacturers, documents, pages, team & settings" },
+        { href:"/admin/website.html#manufacturers", label:"Manufacturer Pages",  icon:"🏭", desc:"Partner logos, profiles & catalog links" },
+        { href:"/admin/website.html#landing",       label:"Landing Pages",       icon:"📄", desc:"Campaign & program landing pages" },
+        { href:"/admin/website.html#media",         label:"Site Images & Media", icon:"🎞️", desc:"Hero images, banners & downloadable assets" },
+        { href:"/admin/website.html#nav",           label:"Links & Navigation",  icon:"🔗", desc:"Menus, footer links & redirects" },
+        { href:"/admin/traffic.html",               label:"Website Traffic",     icon:"📈", desc:"Live visits, top pages & sources (Plausible)" }
     ]},
-    { id:"sales", label:"Sales & Marketing", href:"/admin/opportunities.html", tools:[
-        { href:"/admin/opportunities.html", label:"Today's Opportunities" },
-        { href:"/admin/campaigns.html", label:"Campaign Studio" },
-        { href:"/admin/audiences.html", label:"Target Audiences" },
-        { href:"/admin/dealers.html",   label:"Dealer Manager" },
-        { href:"/admin/health.html",    label:"Dealer Health" },
-        { href:"/admin/call-list.html", label:"Who to Call" },
-        { href:"/admin/tasks.html",     label:"My Tasks" },
-        { href:"/admin/pipeline.html",  label:"Pipeline" },
-        { href:"/admin/zoho-sync.html", label:"Zoho Sync" },
-        { href:"/admin/cardchamp.html", label:"CardChamp" },
-        { href:"/admin/map.html",       label:"Territory Map" }
+    { id:"sales", label:"Sales & Marketing", icon:"🧭", accent:"#1f9d57",
+      purpose:"Territories, dealers, reps, CRM & the programs that grow accounts.",
+      href:"/admin/hub.html?cat=sales", tools:[
+        { href:"/admin/opportunities.html", label:"Today's Opportunities", icon:"💡", desc:"The next best action for every dealer" },
+        { href:"/admin/call-list.html",     label:"Who to Call",           icon:"📞", desc:"Daily worklist — intent, overdue reorders & dormant" },
+        { href:"/admin/health.html",        label:"Dealer Health",         icon:"❤️", desc:"Every dealer scored on recency, rhythm & trend" },
+        { href:"/admin/dealers.html",       label:"Dealer Manager",        icon:"🏢", desc:"Master dealer database, locations & hierarchy" },
+        { href:"/admin/dealer.html",        label:"Dealer 360 & CRM",      icon:"📇", desc:"Full account command center — activity, contacts, tasks" },
+        { href:"/admin/map.html",           label:"Territory Map",         icon:"🗺️", desc:"Dealer map, drive routes & saved trips" },
+        { href:"/admin/staff.html",         label:"Sales Reps & Staff",    icon:"👥", desc:"Team accounts, roles & territory ownership" },
+        { href:"/admin/tasks.html",         label:"My Tasks",              icon:"✅", desc:"Your task queue from dealer signals + manual tasks" },
+        { href:"/admin/pipeline.html",      label:"Pipeline",              icon:"🔮", desc:"Open deals & weighted pipeline" },
+        { href:"/admin/zoho-sync.html",     label:"Zoho Sync",             icon:"🔗", desc:"Two-way CRM sync — accounts, contacts, pipeline, notes" },
+        { href:"/admin/cardchamp.html",     label:"CardChamp",             icon:"💳", desc:"Referral activity, conversions & commission" },
+        { href:"/admin/audiences.html",     label:"Target Audiences",      icon:"🎯", desc:"Build campaign lists from dealers & contacts" },
+        { href:"/admin/campaigns.html",     label:"Campaign Studio",       icon:"✉️", desc:"Brief → audience, copy & sequence → Zoho Campaigns" }
     ]},
-    { id:"analytics", label:"Sales Data & Analytics", href:"/admin/command-center-360.html", tools:[
-        { href:"/admin/command-center-360.html", label:"Command Center 360" },
-        { href:"/admin/reps.html",               label:"Rep Performance" },
-        { href:"/admin/pipeline.html",           label:"Pipeline & Forecast" },
-        { href:"/admin/analytics.html",          label:"Analytics" },
-        { href:"/admin/import-commissions.html", label:"Import Commissions" },
-        { href:"/admin/sales-import.html",       label:"Sales Report Import" },
-        { href:"/admin/email-sync.html",         label:"Email Sync" },
-        { href:"/admin/activation.html",         label:"Activation & Go-Live" }
+    { id:"analytics", label:"Sales Data & Analytics", icon:"📊", accent:"#3B599A",
+      purpose:"The single source of truth for sales, cadence, opportunities & performance.",
+      href:"/admin/hub.html?cat=analytics", tools:[
+        { href:"/admin/command-center-360.html", label:"Command Center 360",      icon:"📊", desc:"Interactive BI — drill Summary → Dealer → Product → Order" },
+        { href:"/admin/reps.html",               label:"Rep Performance & Goals", icon:"🏆", desc:"Scorecards, sales vs. target, YoY & leaderboard" },
+        { href:"/admin/pipeline.html",           label:"Pipeline & Forecast",     icon:"🔮", desc:"Open deals & a 6-month revenue forecast" },
+        { href:"/admin/analytics.html",          label:"Analytics Deep Dive",     icon:"📈", desc:"Cadence, orders, master accounts & rep assignments" },
+        { href:"/admin/command-center.html",     label:"Manufacturer Performance",icon:"🏭", desc:"Revenue by line, rep, state & company" },
+        { href:"/admin/traffic.html",            label:"Website Traffic",         icon:"🌐", desc:"Live visits, top pages & sources" },
+        { href:"/admin/import-commissions.html", label:"Commission Import",       icon:"📥", desc:"Load manufacturer reports & reconcile sales" },
+        { href:"/admin/sales-import.html",       label:"Sales Report Import",     icon:"📄", desc:"Load order/sales reports — products, qty, branches" },
+        { href:"/admin/email-sync.html",         label:"Email Sync",              icon:"📧", desc:"Outlook email → matched to dealers for Dealer 360" },
+        { href:"/admin/activation.html",         label:"Activation & Go-Live",    icon:"🚦", desc:"Dev / Sandbox / Live switch & go-live date" }
     ]}
   ];
 
-  // Detail/child pages that belong to a hub but aren't top-level tools (so the hub still
-  // highlights and its sub-nav shows). e.g. the per-dealer 360 profile lives in Sales & Marketing.
-  var DETAIL = { "/admin/dealer.html": "sales" };
+  // Detail/child pages that belong to a hub but aren't listed tools.
+  var DETAIL = { "/admin/dealer.html":"sales", "/admin/my-commissions.html":"analytics" };
 
-  function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
-  function curPath(){ var p=location.pathname; return /\/admin\/(index\.html)?$/.test(p) ? "/admin/" : p; }
-  function hubOf(path){
-    for(var i=0;i<HUBS.length;i++){ for(var j=0;j<HUBS[i].tools.length;j++){ if(HUBS[i].tools[j].href===path) return HUBS[i]; } }
-    if(DETAIL[path]){ for(var k=0;k<HUBS.length;k++){ if(HUBS[k].id===DETAIL[path]) return HUBS[k]; } }
-    return null;
-  }
-
-  // Sales reps + the Customer Relations Director get a FOCUSED workspace (only the tools they use)
-  // instead of the full admin portal. This is the MENU layer — it changes what each role sees in the
-  // nav. Server-side data scoping (each rep sees only their own dealers + commissions) is the next
-  // phase and is what actually restricts the data; until then this is presentation only.
+  // Sales reps + Customer Relations Director get a FOCUSED workspace (menu layer only; server-side
+  // data scoping restricts what they can actually see).
   var REP_TOOLS = [
     { href:"/admin/command-center-360.html", label:"Command Center 360" },
     { href:"/admin/dealers.html",            label:"Dealer 360" },
@@ -76,6 +79,16 @@
   ];
   var ADMIN_ROLES = { president:1, admin:1, owner:1 };
   function isAdmin(me){ return !!(me && ADMIN_ROLES[String((me&&me.role)||"").toLowerCase()]); }
+
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+  function curPath(){ var p=location.pathname; return /\/admin\/(index\.html)?$/.test(p) ? "/admin/" : p; }
+  function hubById(id){ for(var i=0;i<HUBS.length;i++){ if(HUBS[i].id===id) return HUBS[i]; } return null; }
+  function hubOf(path){
+    if(path==="/admin/hub.html"){ try{ return hubById(new URLSearchParams(location.search).get("cat")); }catch(e){ return null; } }
+    for(var i=0;i<HUBS.length;i++){ for(var j=0;j<HUBS[i].tools.length;j++){ if(HUBS[i].tools[j].href===path) return HUBS[i]; } }
+    if(DETAIL[path]) return hubById(DETAIL[path]);
+    return null;
+  }
 
   function render(){
     var host = document.getElementById("ac-head"); if(!host) return;
@@ -128,5 +141,5 @@
 
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", render); else render();
   window.addEventListener("hcps-token", render);   // refresh the name after sign-in
-  window.ACAdmin = { render: render, HUBS: HUBS };
+  window.ACAdmin = { render: render, HUBS: HUBS, hubById: hubById, isAdmin: isAdmin };
 })();

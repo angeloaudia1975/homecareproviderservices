@@ -1,0 +1,83 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS — Workspace</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ /* Category landing page — a mini-dashboard of every tool in one hub. Card look matches the
+    main /admin/ dashboard so the three levels (Dashboard → Category → Tool) feel like one system. */
+ .hubhero{background:linear-gradient(120deg,var(--navy) 0%,var(--navy2) 100%);color:#fff;padding:22px 26px 26px;border-top:5px solid var(--accent,#F5821F);}
+ .hubhero .hw{max-width:min(1680px,96vw);margin:0 auto;}
+ .hubhero .crumb{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#aebdd0;font-weight:700;margin-bottom:10px;}
+ .hubhero .crumb a{color:#aebdd0;}.hubhero .crumb a:hover{color:#fff;}
+ .hubhero .hd{display:flex;align-items:center;gap:15px;}
+ .hubhero .icon{width:54px;height:54px;border-radius:14px;background:color-mix(in srgb,var(--accent,#F5821F) 30%,#0e2138);display:flex;align-items:center;justify-content:center;font-size:28px;flex:0 0 auto;box-shadow:0 8px 22px rgba(0,0,0,.25);}
+ .hubhero h1{margin:0;font-size:30px;font-weight:800;letter-spacing:.4px;line-height:1;}
+ .hubhero p{margin:5px 0 0;color:#c4d1e0;font-size:14px;max-width:760px;line-height:1.5;}
+ .hubwrap{max-width:min(1680px,96vw);margin:0 auto;padding:22px 26px 60px;}
+ .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;}
+ a.tool{display:flex;align-items:center;gap:13px;padding:15px 16px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);transition:transform .12s,box-shadow .12s,border-color .12s;}
+ a.tool:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(16,38,63,.14);border-color:color-mix(in srgb,var(--accent,#F5821F) 45%,var(--line));}
+ .tool .ti{width:46px;height:46px;border-radius:12px;background:color-mix(in srgb,var(--accent,#F5821F) 14%,#fff);color:var(--accent,#F5821F);display:flex;align-items:center;justify-content:center;font-size:22px;flex:0 0 auto;}
+ .tool .tb{flex:1;min-width:0;}
+ .tool .tn{font-weight:800;font-size:15.5px;color:var(--navy);line-height:1.15;font-family:'Barlow Condensed','Barlow',sans-serif;letter-spacing:.2px;}
+ .tool .td{font-size:12px;color:var(--gray);line-height:1.35;margin-top:2px;}
+ .tool .arw{color:var(--accent,#F5821F);font-weight:800;font-size:17px;opacity:0;transition:opacity .12s,transform .12s;flex:0 0 auto;}
+ a.tool:hover .arw{opacity:1;transform:translateX(2px);}
+ .msg{margin:40px auto;max-width:520px;}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<section class="hubhero" id="hero" style="display:none">
+  <div class="hw">
+    <div class="crumb"><a href="/admin/">Dashboard</a> &nbsp;›&nbsp; <span id="crumbHub"></span></div>
+    <div class="hd"><div class="icon" id="heroIcon"></div>
+      <div><h1 id="heroTitle"></h1><p id="heroPurpose"></p></div></div>
+  </div>
+</section>
+<div class="hubwrap"><div id="cards" class="cards"></div><div id="empty"></div></div>
+
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+(function(){
+  var esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});};
+  function go(url){ location.replace(url); }
+
+  function build(){
+    var me=null; try{ me=(window.HCPS&&HCPS.profile&&HCPS.profile())||null; }catch(e){ me=null; }
+    // Not signed in → send to the dashboard, which owns the sign-in gate.
+    if(!(window.HCPS&&HCPS.token&&HCPS.token())){ go("/admin/"); return; }
+    // Category landing pages are the admin workspace. Reps/relations use their focused workspace.
+    if(!(window.ACAdmin&&ACAdmin.isAdmin&&ACAdmin.isAdmin(me))){ go("/admin/command-center-360.html"); return; }
+
+    var cat=""; try{ cat=new URLSearchParams(location.search).get("cat")||""; }catch(e){ cat=""; }
+    var hub=(window.ACAdmin&&ACAdmin.hubById)?ACAdmin.hubById(cat):null;
+    if(!hub){ go("/admin/"); return; }
+
+    document.title="HCPS — "+hub.label;
+    var hero=document.getElementById("hero");
+    hero.style.setProperty("--accent", hub.accent||"#F5821F");
+    document.getElementById("heroIcon").textContent=hub.icon||"";
+    document.getElementById("heroTitle").textContent=hub.label;
+    document.getElementById("heroPurpose").textContent=hub.purpose||"";
+    document.getElementById("crumbHub").textContent=hub.label;
+    hero.style.display="block";
+
+    var cards=document.getElementById("cards");
+    cards.style.setProperty("--accent", hub.accent||"#F5821F");
+    var tools=hub.tools||[];
+    if(!tools.length){ document.getElementById("empty").innerHTML='<div class="msg">No tools in this category yet.</div>'; return; }
+    cards.innerHTML=tools.map(function(t){
+      return '<a class="tool" href="'+esc(t.href)+'">'
+        + '<span class="ti">'+esc(t.icon||"•")+'</span>'
+        + '<span class="tb"><span class="tn">'+esc(t.label)+'</span>'
+        + (t.desc?'<span class="td">'+esc(t.desc)+'</span>':'')+'</span>'
+        + '<span class="arw">→</span></a>';
+    }).join("");
+  }
+
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", build); else build();
+  // If the profile arrives after first paint (token event), re-evaluate once.
+  window.addEventListener("hcps-token", build);
+})();
+</script>
+</body></html>
