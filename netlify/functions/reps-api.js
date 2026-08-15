@@ -107,7 +107,7 @@ exports.handler=async(event)=>{
         avg_health: h.n?Math.round(h.scoreSum/h.n):0,
         momentum: Math.round(r3-p3), open_tasks: taskBy[rep]||0 };
     });
-    if(me.role!=="president"){ const rn=(me.rep_name||"").toLowerCase(); reps=reps.filter(r=>String(r.rep).toLowerCase()===rn); }
+    if(me.role==="rep"){ const rn=(me.rep_name||"").toLowerCase(); reps=reps.filter(r=>String(r.rep).toLowerCase()===rn); }
     reps.sort((a,b)=>b.sales_ytd-a.sales_ytd);
     const summary={ year:curYear, prev_year:prevYear,
       team_ytd:reps.reduce((s,r)=>s+r.sales_ytd,0),

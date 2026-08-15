@@ -28,16 +28,20 @@ async function whoami(event){
 // Robust trend sign from a value that may be a number ('12.4') or a word ('up'/'down').
 function trendSign(t){ const n=Number(t); if(Number.isFinite(n)&&String(t).trim()!=="") return n>0.5?1:(n<-0.5?-1:0); const s=String(t||"").toLowerCase(); if(/up|grow|rising|\+/.test(s))return 1; if(/down|declin|falling|-/.test(s))return -1; return 0; }
 
+const { dealerScope } = require("./_scope.js");
+
 exports.handler = async (event)=>{
   try{
     if(!SUPABASE_URL||!SERVICE_ROLE) return json(500,{error:"Supabase env vars not set"});
     if(event.httpMethod!=="POST") return json(405,{error:"POST only"});
     const me=await whoami(event);
     if(!me) return json(401,{error:"unauthorized"});
-    if(me.role!=="president") return json(403,{error:"President only"});
+    // Available to every signed-in staff member, scoped to what they may see: president + Customer
+    // Relations Director get the whole book; a sales rep gets only their assigned dealers.
+    const scope=await dealerScope(me, sbGet);
 
     const d30=new Date(Date.now()-30*864e5).toISOString(), d90=new Date(Date.now()-90*864e5).toISOString();
-    const [dealers,mfrs,eng,opps,tasks,xsell,ms,intent,evs,camps,sends,dm,emUn]=await Promise.all([
+    let [dealers,mfrs,eng,opps,tasks,xsell,ms,intent,evs,camps,sends,dm,emUn]=await Promise.all([
       sbGetAll("dealers?select=id,business_name,state,parent_id","id").catch(()=>[]),
       sbGet("manufacturers?select=slug,name").catch(()=>[]),
       sbGetAll("dealer_engagement?select=dealer_id,rep_name,status,score,churn_score,months_since,total_sales,recent_sales,trend","dealer_id").catch(()=>[]),
@@ -52,6 +56,16 @@ exports.handler = async (event)=>{
       sbGetAll("dealer_manufacturers?select=manufacturer,account_ref,dealer_id","dealer_id").catch(()=>[]),
       sbGetAll("email_messages?dealer_id=is.null&select=from_address","from_address").catch(()=>[]),
     ]);
+    // Apply rep scope: a rep only sees rows for their own dealers across every array below.
+    if(!scope.isAll){
+      const ids=scope.ids||new Set(); const keep=id=>ids.has(id);
+      dealers=dealers.filter(d=>keep(d.id));
+      eng=eng.filter(x=>keep(x.dealer_id)); opps=opps.filter(x=>keep(x.dealer_id));
+      tasks=tasks.filter(x=>keep(x.dealer_id)); xsell=xsell.filter(x=>keep(x.dealer_id));
+      ms=ms.filter(x=>keep(x.dealer_id)); intent=intent.filter(x=>keep(x.dealer_id));
+      evs=(evs||[]).filter(x=>keep(x.dealer_id)); dm=dm.filter(x=>keep(x.dealer_id));
+      emUn=[];   // unmatched-email review is an admin-only concern
+    }
     // unmatched Outlook email — distinct external senders we captured but couldn't place with a dealer
     const _emSenders=new Set(); for(const r of (emUn||[])){ const a=String(r.from_address||"").toLowerCase(); if(a) _emSenders.add(a); }
     const emailUnmatched={ senders:_emSenders.size, messages:(emUn||[]).length };

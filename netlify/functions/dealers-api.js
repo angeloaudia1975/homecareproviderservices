@@ -300,10 +300,13 @@ exports.handler = async (event)=>{
     if(event.httpMethod==="GET"){
       const state=await buildState();
       state.role=me.role; state.rep_name=me.rep_name||"";
-      if(me.role!=="president"){
+      if(me.role==="rep"){
+        // A sales rep sees only their own book of dealers. (Customer Relations Director + president see all.)
         const rn=String(me.rep_name||"").trim().toLowerCase();
         state.dealers=(state.dealers||[]).filter(d=> rn && String(d.rep||"").trim().toLowerCase()===rn);
-        // reps only see their own book — hide the president-only queues/tools entirely
+      }
+      if(me.role!=="president"){
+        // Non-president roles don't manage the admin queues/tools — hide them.
         state.logins=[]; state.changeRequests=[]; state.recentSessions=[]; state.openCarts=[]; state.nomerge=[];
       }
       return json(200,state);
@@ -313,7 +316,7 @@ exports.handler = async (event)=>{
       let b; try{b=JSON.parse(event.body||"{}");}catch{return json(400,{error:"bad JSON"});}
       const act=b.action;
       if(PRESIDENT_ONLY.has(act) && me.role!=="president") return json(403,{error:"President only"});
-      if(me.role!=="president" && (act==="edit"||act==="access") && !(await ownsDealer(me,b.dealer_id))) return json(403,{error:"Not your dealer"});
+      if(me.role==="rep" && (act==="edit"||act==="access"||act==="verify_email") && !(await ownsDealer(me,b.dealer_id))) return json(403,{error:"Not your dealer"});
       if(act==="diag"){
         // Self-check: which code is live, do the tables exist, and how many rows are stored.
         const probe=async(t)=>{ try{

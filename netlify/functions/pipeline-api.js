@@ -85,7 +85,7 @@ exports.handler=async(event)=>{
     const mnorm=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
     const exSet=new Set((((cfg&&cfg[0]&&cfg[0].value&&cfg[0].value.exclude_manufacturers)||[])).map(mnorm));
     const isEx=slug=>exSet.has(mnorm(slug))||exSet.has(mnorm(mfrName[slug]));
-    const isRep = me.role!=="president"; const myRep=(me.rep_name||"").toLowerCase();
+    const isRep = me.role==="rep"; const myRep=(me.rep_name||"").toLowerCase();
     const repOfDealer=id=>repByName[nameById[id]]||null;
 
     // reorder projection from monthly_sales cadence

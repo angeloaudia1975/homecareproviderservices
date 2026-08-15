@@ -64,6 +64,8 @@ async function whoami(event){
   return null;
 }
 
+const { dealerScope } = require("./_scope.js");
+
 exports.handler = async (event)=>{
   try{
     if(!SUPABASE_URL||!SERVICE_ROLE) return json(500,{error:"Supabase env vars not set"});
@@ -75,6 +77,13 @@ exports.handler = async (event)=>{
     // Tables present? (friendly message if the migration hasn't run yet.)
     try{ await sbGet("dealer_tasks?select=id&limit=1"); }
     catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run supabase/crm.sql in Supabase, then reload."}); }
+
+    // Rep data scope: a sales rep may only touch dealers in their own book. President + Customer
+    // Relations Director see every dealer, so they skip the check.
+    if(me.role==="rep" && b.dealer_id){
+      const sc=await dealerScope(me, sbGet);
+      if(!(sc.ids && sc.ids.has(String(b.dealer_id)))) return json(403,{error:"Not your dealer"});
+    }
 
     if(b.action==="list"){
       if(!b.dealer_id) return json(400,{error:"dealer_id required"});
