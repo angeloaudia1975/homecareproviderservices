@@ -60,6 +60,7 @@ async function load(){
   if(r.status===401){ gate("Your session ended — sign in again."); return; }
   if(r.status===403){ $("#body").innerHTML=`<div class="msg err"><b>President only.</b></div>`; return; }
   STATE=r.body||{};
+  try{ const iv=await z({action:"invalid_emails"}); if(iv.status===200 && iv.body && iv.body.ok) STATE._invalid=iv.body; }catch(e){}
   render();
 }
 function tile(label,val,cls){ return `<div class="tile ${cls||''}"><div class="tl">${label}</div><div class="tv">${val}</div></div>`; }
@@ -73,8 +74,17 @@ function feed(){
     ${rows.map(r=>`<tr><td class="when" title="${esc(when(r.created_at))}">${esc(rel(r.created_at))}</td><td>${dirlbl(r.direction)}</td><td>${esc(r.entity||"")}${r.action?(' · '+esc(r.action)):''}</td><td><span class="dot ${rescls(r.result)}"></span> ${esc(r.result||"")}</td><td class="d" style="max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.detail||"")}">${esc(String(r.detail||"").slice(0,140))}</td></tr>`).join("")}
     </tbody></table></div>`;
 }
+function fixEmails(){
+  const iv=(STATE&&STATE._invalid); if(!iv||!iv.count) return "";
+  const rows=iv.invalid||[];
+  return `<div class="card"><h2>Emails to fix <span class="hint" style="font-weight:600">— ${iv.count} address${iv.count===1?"":"es"} Zoho won't accept</span></h2>
+    <div class="hint" style="margin:2px 0 10px">These have a typo — a missing ".com", a stray space, or two addresses in one field. Auto-sync skips them so nothing breaks; correct the address on the dealer and the next 15-min run syncs it — and their mail starts matching to the dealer too.</div>
+    <table class="rev"><thead><tr><th>Dealer</th><th>Contact</th><th>Bad email</th><th>Where</th><th></th></tr></thead><tbody>
+    ${rows.map(r=>`<tr><td>${esc(r.dealer||"")}</td><td>${esc(r.name||"—")}</td><td style="color:#b42323;font-family:ui-monospace,Menlo,Consolas,monospace">${esc(r.email||"")}</td><td class="d">${r.source==="primary"?"Primary":"Contact"}</td><td style="text-align:right"><a class="btn sm" href="/admin/dealer.html?id=${encodeURIComponent(r.dealer_id||"")}">Fix →</a></td></tr>`).join("")}
+    </tbody></table></div>`;
+}
 function render(){
-  const st=STATE.last||{}, conn=STATE.connected, opp=STATE.opportunities||{}, cnt=STATE.counts||{}, q=STATE.queue||{}, auto=STATE.autosync||{}, wh=STATE.webhooks||{};
+  const st=STATE.last||{}, conn=STATE.connected, opp=STATE.opportunities||{}, cnt=STATE.counts||{}, q=STATE.queue||{}, auto=STATE.autosync||{}, wh=STATE.webhooks||{}, iv=STATE._invalid||{count:0};
   $("#conn").innerHTML=`<span class="chip"><span class="dot ${conn?'on':'off'}"></span> ${conn?'Connected to Zoho':'Not connected'}</span>`;
   const ago=t=>{ if(!t) return {txt:"never",cls:"off"}; const ms=Date.now()-new Date(t).getTime(); const h=ms/3.6e6;
     const txt = h<1?Math.max(1,Math.round(ms/6e4))+"m ago" : h<48?Math.round(h)+"h ago" : Math.round(h/24)+"d ago";
@@ -96,6 +106,7 @@ function render(){
     ${tile("Inbound queued",wh.pending||0,wh.pending?"w":"")}
     ${tile("Pending updates",q.pending||0,q.pending?"w":"")}
     ${tile("Failed syncs",q.failed||0,q.failed?"w":"")}
+    ${tile("Emails to fix",iv.count||0,iv.count?"w":"")}
     ${tile("Pipeline linked",(opp.linked||0)+"/"+(opp.total||0))}
   </div>`;
   // 3) per-area freshness
@@ -125,7 +136,7 @@ function render(){
         ${row("✉️","Contacts","Zoho contacts → portal + email matcher.",btn("b_pc","Run","run('pull_contacts','b_pc')"))}</div>
     </div>
     <div class="hint" style="margin-top:8px">Pulls stay conservative: linked records update in place; brand-new Zoho records are listed for review, never auto-created.</div></div>`;
-  $("#body").innerHTML=connCard+tiles+fresh+feed()+force+`<div id="review"></div><div class="log" id="log">Ready.${conn?"":" Connect to Zoho first (Zoho CRM Sync setup)."}</div>`;
+  $("#body").innerHTML=connCard+tiles+fixEmails()+fresh+feed()+force+`<div id="review"></div><div class="log" id="log">Ready.${conn?"":" Connect to Zoho first (Zoho CRM Sync setup)."}</div>`;
 }
 async function run(action,btnId){
   if(BUSY) return; BUSY=true; const b=$("#"+btnId); const label=b?b.textContent:""; if(b){b.disabled=true;b.textContent="Working…";}

@@ -467,6 +467,22 @@ exports.handler = async (event)=>{
         unmatched_accounts:unmatched.size, unmatched_sample:[...unmatched].slice(0,20) });
     }
 
+    // DATA QUALITY: list contacts/dealers whose email is present but malformed. Zoho rejects these
+    // on push (INVALID_DATA), so the auto-sync skips them — this surfaces them so you can correct
+    // the address on the dealer; the next sync then pushes it and the email matcher starts using it
+    // too. Two bulk reads (dealers + dealer_contacts), so it's cheap even at full size.
+    if(b.action==="invalid_emails"){
+      const OK=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const bad=[];
+      const dealers=await sbGetAll("dealers?select=id,business_name,email,contact_name","id");
+      const nameById={}; for(const d of dealers) nameById[d.id]=(d.business_name||("Dealer "+d.id));
+      for(const d of dealers){ const e=String(d.email==null?"":d.email).trim(); if(e && !OK.test(e)) bad.push({source:"primary",dealer_id:d.id,dealer:nameById[d.id],name:clean(d.contact_name)||null,email:e}); }
+      let dc=[]; try{ dc=await sbGetAll("dealer_contacts?select=id,dealer_id,name,email","id"); }catch(e){}
+      for(const x of (dc||[])){ const e=String(x.email==null?"":x.email).trim(); if(e && !OK.test(e)) bad.push({source:"contact",dealer_id:x.dealer_id,dealer:nameById[x.dealer_id]||("Dealer "+x.dealer_id),name:clean(x.name)||null,email:e}); }
+      bad.sort((a,b2)=>String(a.dealer||"").localeCompare(String(b2.dealer||"")));
+      return json(200,{ ok:true, count:bad.length, invalid:bad.slice(0,300) });
+    }
+
     return json(400,{error:"unknown action"});
   }catch(e){ return json(500,{error:String(e.message||e)}); }
 };
