@@ -181,7 +181,8 @@ exports.handler = async (event)=>{
         else if(cutoff && lo && lo>=cutoff) p.klass="active";
         else p.klass="lapsed";
       }
-      if(me.role!=="president"){
+      if(me.role==="rep"){
+        // A sales rep sees only their own dealers on the map. (Relations Director + president see all.)
         const rn=String(me.rep_name||"").trim().toLowerCase();
         const rep={}; try{ const dir=await sbGetAll("dealer_directory?select=dealer_name,rep_name","dealer_name"); for(const d of (dir||[])) rep[d.dealer_name]=d.rep_name||""; }catch(e){}
         const mine=p=> !!rn && String(rep[p.name]||"").trim().toLowerCase()===rn;

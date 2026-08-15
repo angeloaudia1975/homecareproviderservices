@@ -70,6 +70,7 @@
     { href:"/admin/health.html",             label:"Dealer Health" },
     { href:"/admin/call-list.html",          label:"Who to Call" },
     { href:"/admin/reps.html",               label:"My Performance" },
+    { href:"/admin/my-commissions.html",     label:"My Commissions" },
     { href:"/admin/pipeline.html",           label:"Pipeline" },
     { href:"/admin/tasks.html",              label:"My Tasks" }
   ];

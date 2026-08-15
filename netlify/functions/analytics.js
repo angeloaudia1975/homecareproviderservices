@@ -63,7 +63,8 @@ exports.handler = async (event) => {
     if (!SUPABASE_URL || !SERVICE_ROLE) return json(500, { error: "Supabase env vars not set (SUPABASE_URL, SUPABASE_SERVICE_ROLE)" });
     const me = await whoami(event);
     if (!me) return json(401, { error: "unauthorized" });
-    if (me.role !== "president") return json(403, { error: "President only" });
+    // Available to all staff. A sales rep is scoped to their own facts below, and no non-president
+    // ever sees another rep's commissions (comm is zeroed on rows that aren't the caller's own).
 
     const mfrs = await sbGet("manufacturers?select=slug,name");
     const mfrName = Object.fromEntries(mfrs.map(m => [m.slug, m.name]));
@@ -148,16 +149,27 @@ exports.handler = async (event) => {
       cur.recs  += 1;
       cube.set(key, cur);
     }
-    const facts = [...cube.values()].map(f => ({ ...f, sales: money(f.sales), comm: money(f.comm) }));
+    let facts = [...cube.values()].map(f => ({ ...f, sales: money(f.sales), comm: money(f.comm) }));
     const periodList = [...periods].sort();
+
+    // Rep scoping. president: everything. relations (Customer Relations Director): all dealers' sales
+    // but only their OWN commissions. rep: only their own dealers + their own commissions.
+    let repsOut = [...reps].sort();
+    let repOptionsOut = [...new Set([...repTable, ...reps])].filter(Boolean).sort();
+    if (me.role !== "president") {
+      const rn = String(me.rep_name || "").trim().toLowerCase();
+      if (me.role === "rep") facts = facts.filter(f => String(f.rep || "").toLowerCase() === rn);
+      facts = facts.map(f => (String(f.rep || "").toLowerCase() === rn ? f : { ...f, comm: 0 }));
+      if (me.role === "rep") { repsOut = [...new Set(facts.map(f => f.rep))].filter(Boolean); repOptionsOut = repsOut.slice(); }
+    }
 
     return json(200, {
       generatedAt: new Date().toISOString(),
       latestPeriod: periodList[periodList.length - 1] || null,
       periods: [{ key: "all", label: "All periods" }, ...periodList.map(p => ({ key: p, label: label(p) }))],
       lines: [...lines].sort(),
-      reps: [...reps].sort(),
-      repOptions: [...new Set([...repTable, ...reps])].filter(Boolean).sort(),
+      reps: repsOut,
+      repOptions: repOptionsOut,
       retired: retiredNorm,
       assignments,
       dealerInfo,

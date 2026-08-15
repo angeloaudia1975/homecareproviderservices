@@ -1,0 +1,87 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS — My Commissions</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:10px 0 4px}
+ .kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+ .kpi.big{border-left:4px solid var(--orange,#e07b00)}
+ .kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700}
+ .kpi .v{font-size:24px;font-weight:800;color:var(--navy);font-family:'Barlow Condensed',sans-serif;margin-top:2px}
+ table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+ th{text-align:left;color:var(--gray);font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;border-bottom:1px solid var(--line)}
+ td{padding:6px 8px;border-bottom:1px solid #eef2f6}
+ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+ .grid2{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+ @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+ .bar{height:7px;border-radius:5px;background:var(--orange,#e07b00);opacity:.85}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">My Commissions</h1>
+    <div class="sub">Your commissions and sales — by month, manufacturer line, and dealer. Figures reflect only your assigned accounts.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+const money=n=>"$"+Math.round(Number(n)||0).toLocaleString();
+const monthLbl=p=>{ const m=String(p||"").slice(0,7); if(!/^\d{4}-\d{2}$/.test(m)) return m; const [y,mo]=m.split("-"); return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][(+mo)-1]+" "+y; };
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); } }
+function lock(){ HCPS.signOut(); TOKEN=null; location.reload(); }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  let j; try{ const r=await fetch("/.netlify/functions/analytics",{headers:{authorization:"Bearer "+TOKEN}});
+    if(r.status===401){ gate("Your session ended — sign in again."); return; }
+    j=await r.json(); }catch(e){ $("#body").innerHTML=`<div class="msg err">Couldn't load your commissions.</div>`; return; }
+  const facts=(j&&j.facts)||[];
+  const yr=new Date().getFullYear();
+  let commAll=0, salesAll=0, commYTD=0, salesYTD=0;
+  const byMonth={}, byLine={}, byDealer={};
+  for(const f of facts){
+    const c=Number(f.comm)||0, s=Number(f.sales)||0;
+    commAll+=c; salesAll+=s;
+    const m=String(f.period||"").slice(0,7);
+    if(String(f.period||"").slice(0,4)===String(yr)){ commYTD+=c; salesYTD+=s; }
+    byMonth[m]=(byMonth[m]||0)+c;
+    if(f.line){ byLine[f.line]=(byLine[f.line]||0)+c; }
+    const dl=f.master||f.dealer; if(dl){ byDealer[dl]=(byDealer[dl]||0)+c; }
+  }
+  if(!facts.length){ $("#body").innerHTML=`<div class="hint" style="margin-top:10px">No commission data is attributed to your accounts yet. If you believe this is wrong, confirm your rep name is assigned to your dealers in the directory.</div>`; return; }
+  const rate = salesAll>0 ? (commAll/salesAll*100) : 0;
+  const kpis=`<div class="kpis">
+    <div class="kpi big"><div class="l">Commission — YTD ${yr}</div><div class="v">${money(commYTD)}</div></div>
+    <div class="kpi"><div class="l">Sales — YTD ${yr}</div><div class="v">${money(salesYTD)}</div></div>
+    <div class="kpi"><div class="l">Commission — all time</div><div class="v">${money(commAll)}</div></div>
+    <div class="kpi"><div class="l">Effective rate</div><div class="v">${rate.toFixed(1)}%</div></div>
+  </div>`;
+  const months=Object.keys(byMonth).filter(m=>/^\d{4}-\d{2}$/.test(m)).sort().slice(-12);
+  const maxM=Math.max(1,...months.map(m=>byMonth[m]));
+  const monthRows=months.map(m=>`<tr><td>${esc(monthLbl(m))}</td><td class="n">${money(byMonth[m])}</td>
+      <td style="width:45%"><div class="bar" style="width:${Math.max(2,Math.round(byMonth[m]/maxM*100))}%"></div></td></tr>`).join("")
+      ||`<tr><td colspan="3" class="hint">No monthly data.</td></tr>`;
+  const lineRows=Object.entries(byLine).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${money(v)}</td></tr>`).join("")||`<tr><td colspan="2" class="hint">—</td></tr>`;
+  const dealerRows=Object.entries(byDealer).sort((a,b)=>b[1]-a[1]).slice(0,15).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${money(v)}</td></tr>`).join("")||`<tr><td colspan="2" class="hint">—</td></tr>`;
+  $("#body").innerHTML=kpis
+    +`<div class="card"><h2>By month <span class="hint" style="font-weight:600">— last 12</span></h2>
+        <table><thead><tr><th>Month</th><th class="n">Commission</th><th></th></tr></thead><tbody>${monthRows}</tbody></table></div>
+      <div class="grid2">
+        <div class="card"><h2>By manufacturer line</h2><table><thead><tr><th>Line</th><th class="n">Commission</th></tr></thead><tbody>${lineRows}</tbody></table></div>
+        <div class="card"><h2>Top dealers</h2><table><thead><tr><th>Dealer</th><th class="n">Commission</th></tr></thead><tbody>${dealerRows}</tbody></table></div>
+      </div>
+      <div class="hint" style="margin-top:10px">These are your own commissions only. Questions about a figure? Check the underlying sales in Rep Performance, or ask the President.</div>`;
+}
+load();
+</script>
+</body></html>
