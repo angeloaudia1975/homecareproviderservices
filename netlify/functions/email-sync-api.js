@@ -93,6 +93,26 @@ async function buildResolver(){
 const BIZ=/(order|invoice|\bpo\b|purchase|quote|pricing|backorder|\brma\b|return|ship|tracking|catalog|reorder|net ?30|account|wholesale|dealer|bng\d|strongback|airavant|bongo|pedifix|golden)/i;
 function isInternal(addr){ const d=domainOf(addr); return INTERNAL_DOMAINS.includes(d); }
 
+// ---- Unmatched-sender noise controls: always-on automatic patterns + admin rules ----
+// Automatic: any sender whose local-part contains one of these is hidden without a stored rule,
+// so obvious machine senders never clutter the queue. Kept deliberately conservative (only clearly
+// automated prefixes) so a real person like info@ or sales@ is never auto-hidden.
+const AUTO_LOCAL=["noreply","no-reply","no_reply","no.reply","donotreply","do-not-reply","notification","notifications","mailer-daemon","mailer_daemon","postmaster","bounce","autoreply","auto-reply","automated"];
+const autoHidden=email=>{ email=String(email||"").toLowerCase(); const at=email.indexOf("@"); const local=at>=0?email.slice(0,at):email; return AUTO_LOCAL.some(p=>local.includes(p)); };
+async function loadSenderRules(){ try{ return await sbGetAll("email_sender_rules?select=id,kind,value,action,reason,created_by,created_at","id"); }catch(e){ return []; } }
+// Returns a matcher: "rule" (admin-hidden), "auto" (pattern-hidden), or null (show it).
+function buildHider(rules){
+  const emails=new Set(), domains=new Set(), patterns=[];
+  for(const r of (rules||[])){ const v=String(r.value||"").toLowerCase(); if(!v) continue;
+    if(r.kind==="email") emails.add(v); else if(r.kind==="domain") domains.add(v); else if(r.kind==="pattern") patterns.push(v); }
+  return email=>{ email=String(email||"").toLowerCase(); const at=email.indexOf("@"); const local=at>=0?email.slice(0,at):email; const dom=at>=0?email.slice(at+1):"";
+    if(emails.has(email)) return "rule";
+    if(dom&&domains.has(dom)) return "rule";
+    if(patterns.some(p=>p&&(local.includes(p)||dom.includes(p)))) return "rule";
+    if(autoHidden(email)) return "auto";
+    return null; };
+}
+
 // Core sync — gather from Graph, match, bulk-write. Called by the API handler AND the cron.
 async function runSync(opts){
   opts=opts||{};
@@ -251,14 +271,17 @@ exports.handler = async (event)=>{
     if(b.action==="unmatched"){
       let rows; try{ rows=await sbGetAll("email_messages?dealer_id=is.null&select=from_address,from_name,subject,received_at,direction","received_at"); }
       catch(e){ return json(200,{ok:false,error:"tables_missing"}); }
+      const hide=buildHider(await loadSenderRules());
       const by=new Map();
       for(const r of (rows||[])){ const a=String(r.from_address||"").toLowerCase(); if(!a) continue;
         if(INTERNAL_DOMAINS.includes(domainOf(a))) continue;               // skip our own sent-from
         const o=by.get(a)||{email:a,name:r.from_name||"",domain:domainOf(a),count:0,last_subject:"",last:""};
         o.count++; if(!o.last || String(r.received_at||"")>o.last){ o.last=r.received_at||""; o.last_subject=r.subject||""; } if(!o.name&&r.from_name)o.name=r.from_name;
         by.set(a,o); }
-      const list=[...by.values()].sort((a,b)=>b.count-a.count).slice(0,300);
-      return json(200,{ok:true, unmatched:list, total_addresses:by.size});
+      const active=[]; let hiddenAuto=0, hiddenRule=0;
+      for(const o of by.values()){ const h=hide(o.email); if(h==="rule"){hiddenRule++;continue;} if(h==="auto"){hiddenAuto++;continue;} active.push(o); }
+      active.sort((a,b)=>b.count-a.count);
+      return json(200,{ok:true, unmatched:active.slice(0,300), total_addresses:active.length, hidden:{auto:hiddenAuto, rule:hiddenRule}});
     }
 
     // Assign an unmatched sender to a dealer: save as a contact AND back-fill past messages.
@@ -269,6 +292,36 @@ exports.handler = async (event)=>{
       let updated=0;
       try{ const r=await sbSend("PATCH",`email_messages?from_address=eq.${encodeURIComponent(email)}&dealer_id=is.null`,{dealer_id,match_confidence:"high"},{Prefer:"return=representation"}); updated=(r||[]).length; }catch(e){}
       return json(200,{ok:true, email, dealer_id, messages_updated:updated});
+    }
+
+    // Hide a noisy sender from the unmatched queue (reversible). Accepts an exact {email}, a whole
+    // {domain}, or a {pattern} substring. classify is 'ignore' (default) or 'not_important'.
+    if(b.action==="ignore_sender"){
+      let kind, value;
+      if(b.pattern){ kind="pattern"; value=String(b.pattern).toLowerCase().trim(); }
+      else if(b.domain){ kind="domain"; value=String(b.domain).toLowerCase().trim().replace(/^@/,""); }
+      else if(b.email){ kind="email"; value=String(b.email).toLowerCase().trim(); }
+      else return json(400,{error:"email, domain, or pattern required"});
+      if(!value) return json(400,{error:"empty value"});
+      const classify=(b.classify==="not_important")?"not_important":"ignore";
+      try{ await sbSend("POST","email_sender_rules?on_conflict=kind,value",{kind,value,action:classify,reason:clean(b.reason,200)||null,created_by:me.email||null},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
+      catch(e){ if(/relation|does not exist|email_sender_rules/i.test(String(e.message||e))) return json(200,{ok:false,error:"tables_missing",message:"Run supabase/email_sender_rules.sql first."}); return json(500,{error:String(e.message||e)}); }
+      return json(200,{ok:true, kind, value, action:classify});
+    }
+
+    // Restore an ignored sender/domain/pattern back into the queue — delete the rule (by id, or kind+value).
+    if(b.action==="restore_sender"){
+      try{
+        if(b.id!=null&&b.id!=="") await sbSend("DELETE",`email_sender_rules?id=eq.${encodeURIComponent(b.id)}`,null,{Prefer:"return=minimal"});
+        else if(b.kind&&b.value) await sbSend("DELETE",`email_sender_rules?kind=eq.${encodeURIComponent(b.kind)}&value=eq.${encodeURIComponent(String(b.value).toLowerCase())}`,null,{Prefer:"return=minimal"});
+        else return json(400,{error:"id or kind+value required"});
+      }catch(e){ return json(500,{error:String(e.message||e)}); }
+      return json(200,{ok:true});
+    }
+
+    // The Ignored Senders list (admin rules) + the always-on automatic patterns (for display).
+    if(b.action==="ignored_list"){
+      return json(200,{ok:true, rules:await loadSenderRules(), auto_patterns:AUTO_LOCAL});
     }
 
     return json(400,{error:"unknown action"});
