@@ -68,6 +68,7 @@
   .tag.live{background:#e7f6ec;color:#1f7a44;border:1px solid #bfe3ca;}
   .tag.plan{background:#eef1f4;color:#8a94a1;border:1px solid #dde3e9;}
   .tag.hub{background:#fdeee0;color:#b45309;border:1px solid #f6d5ad;}
+  .tag.new{background:#fff4d6;color:#8a5a00;border:1px solid #f3d27a;}
   .tool.planned{opacity:.72;}.tool.planned .tn{color:#5b6672;}
   .note{margin:22px 0 0;padding:16px 20px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--orange);border-radius:12px;color:#374151;font-size:13px;line-height:1.6;}
   .note b{color:var(--navy);}
@@ -170,6 +171,7 @@
           <a class="tool" href="/admin/cardchamp.html"><div class="ti">💳</div><div class="tb"><div class="tn">CardChamp — Dealer Services</div><div class="td">Referral activity, conversions &amp; commission for the CardChamp partnership</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
           <a class="tool" href="/admin/audiences.html"><div class="ti">🎯</div><div class="tb"><div class="tn">Target Audience Builder</div><div class="td">Build campaign lists from dealers &amp; contacts — filter, pick, save. Static or dynamic.</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
           <a class="tool" href="/admin/campaigns.html"><div class="ti">✉️</div><div class="tb"><div class="tn">Campaign Studio</div><div class="td">Brief → generated audience, copy &amp; sequence → drafted into Zoho Campaigns for review</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
+          <a class="tool" href="/admin/product-interest.html"><div class="ti">🎯</div><div class="tb"><div class="tn">Product Interest → Audience</div><div class="td">Dealers showing product intent — viewed, searched or carted but haven't ordered — turned into a one-click campaign audience</div></div><span class="tag new">New</span><span class="arw">→</span></a>
         </div>
       </section>
 
@@ -183,12 +185,14 @@
           <a class="tool" href="/admin/reps.html"><div class="ti">🏆</div><div class="tb"><div class="tn">Rep Performance &amp; Goals</div><div class="td">Scorecards, sales vs. target, YoY, book health &amp; leaderboard</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
           <a class="tool" href="/admin/pipeline.html"><div class="ti">🔮</div><div class="tb"><div class="tn">Pipeline &amp; Forecast</div><div class="td">Open deals &amp; a 6-month revenue forecast from reorder cadence + weighted pipeline</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
           <a class="tool" href="/admin/traffic.html"><div class="ti">🌐</div><div class="tb"><div class="tn">Website Traffic</div><div class="td">Live visits, top pages &amp; sources from Plausible — visitors, views, bounce rate</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
+          <a class="tool" href="/admin/golden-activity.html"><div class="ti">🟡</div><div class="tb"><div class="tn">Golden Activity</div><div class="td">Live Golden ordering-platform behavior — logins, product views, searches, carts, abandoned carts &amp; orders, fed in real time and matched to each HCPS dealer</div></div><span class="tag new">New</span><span class="arw">→</span></a>
           <a class="tool" href="/admin/analytics.html"><div class="ti">📈</div><div class="tb"><div class="tn">Analytics Deep Dive</div><div class="td">Cadence, orders, master accounts &amp; rep assignments</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
           <a class="tool" href="/admin/command-center.html"><div class="ti">🏭</div><div class="tb"><div class="tn">Manufacturer Sales Performance</div><div class="td">Revenue by line, rep, state &amp; company</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
           <a class="tool" href="/admin/call-list.html"><div class="ti">🔁</div><div class="tb"><div class="tn">Dealer Activity &amp; Cadence</div><div class="td">Who's buying, who's lapsing, who's due to reorder</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
           <a class="tool" href="/admin/command-center.html"><div class="ti">💡</div><div class="tb"><div class="tn">Opportunities &amp; Account Trends</div><div class="td">Growth openings &amp; at-risk (declining) accounts</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
           <a class="tool" href="/admin/import-commissions.html"><div class="ti">📥</div><div class="tb"><div class="tn">Commission Report Import</div><div class="td">Load manufacturer reports &amp; reconcile sales</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
           <a class="tool" href="/admin/sales-import.html"><div class="ti">📄</div><div class="tb"><div class="tn">Sales Report Import</div><div class="td">Load manufacturer order/sales reports — products, quantities, branches &amp; monthly sales (auto-dated)</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
+          <a class="tool" href="/admin/email-sync.html"><div class="ti">📧</div><div class="tb"><div class="tn">Email Sync</div><div class="td">Outlook email matched to dealers — conversations surface on the Dealer 360 timeline</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
           <a class="tool" href="/admin/activation.html"><div class="ti">🚦</div><div class="tb"><div class="tn">Activation &amp; Go-Live</div><div class="td">Development / Sandbox / Live master switch &amp; official go-live date</div></div><span class="tag live">Live</span><span class="arw">→</span></a>
           <div class="tool planned"><div class="ti">📤</div><div class="tb"><div class="tn">Reports &amp; Exports</div><div class="td">Scheduled reports &amp; data exports</div></div><span class="tag plan">Planned</span></div>
         </div>
@@ -197,7 +201,7 @@
     </div>
 
     <div class="note">
-      <b>How this is organized.</b> Every tool lives inside the business function it serves, so you navigate by what you're doing. Your <b>Dealer Records</b> are the shared spine — the same database powers Contract Pricing &amp; Portal Accounts (Ordering), Dealer 360 &amp; CRM (Sales &amp; Marketing), and the Command Center metrics (Analytics). Tiles marked <span class="tag hub">Next</span> are being built now — the portal's own notes, tasks &amp; follow-up engine drive daily sales work, while <b>Zoho</b> holds the CRM sync and, soon, email &amp; marketing. <span class="tag plan">Planned</span> tiles are mapped into the architecture and built in turn.
+      <b>How this is organized.</b> Every tool lives inside the business function it serves, so you navigate by what you're doing. Your <b>Dealer Records</b> are the shared spine — the same database powers Contract Pricing &amp; Portal Accounts (Ordering), Dealer 360 &amp; CRM (Sales &amp; Marketing), and the Command Center metrics (Analytics). The <b>Golden</b> ordering platform now feeds dealer behavior in live through the federation connector — watch it in <b>Golden Activity</b> (Analytics), turn it into campaigns from <b>Product Interest</b> (Sales &amp; Marketing), and see the same touches land on the <b>Dealer 360</b> timeline and Who-to-Call. Tiles marked <span class="tag hub">Next</span> are being built now — the portal's own notes, tasks &amp; follow-up engine drive daily sales work, while <b>Zoho</b> holds the CRM sync and, soon, email &amp; marketing. <span class="tag plan">Planned</span> tiles are mapped into the architecture and built in turn.
     </div>
     <div class="foot">HomeCare Provider Services · Admin Operating System · signed in with your staff email &amp; password.</div>
   </main>
