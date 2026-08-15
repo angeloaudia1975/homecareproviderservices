@@ -51,6 +51,7 @@ const EVENT_TO_INTENT = {
   "order.created":"order_created",
   "order.completed":"order_completed",
   "product.purchased":"product_purchased",
+  "dealer.interest.updated":"partner_signal",   // Golden's task engine forwarding a computed follow-up signal
 };
 const ORDER_EVENTS = new Set(["order.created","order.completed"]);
 
@@ -132,6 +133,7 @@ function timelineSubject(evt, data, product){
     case "order.created": return `Placed an order${data&&data.total?` — ${money(data.total)}`:""}${data&&data.order_id?` (#${clip(data.order_id,40)})`:""}`;
     case "order.completed": return `Order completed${data&&data.total?` — ${money(data.total)}`:""}${data&&data.order_id?` (#${clip(data.order_id,40)})`:""}`;
     case "product.purchased": return p?`Purchased ${p}${data&&data.qty?` ×${data.qty}`:""}`:"Purchased a product";
+    case "dealer.interest.updated": return data&&data.label?`Golden follow-up signal: ${clip(data.label,80)}`:"Golden follow-up signal";
     default: return `Golden: ${clip(evt,60)}`;
   }
 }
@@ -210,7 +212,7 @@ exports.handler = async (event) => {
 
     // 2. dealer_activity — Dealer 360 timeline. Verbosity is config-driven (default 'all').
     let verbosity="all"; try{ const c=await sbGet("app_settings?key=eq.automation_config&select=value"); verbosity=(c&&c[0]&&c[0].value&&c[0].value.federation_timeline_verbosity)||"all"; }catch(e){}
-    const HIGH=new Set(["dealer.login","cart.abandoned","order.created","order.completed","product.purchased"]);
+    const HIGH=new Set(["dealer.login","cart.abandoned","order.created","order.completed","product.purchased","dealer.interest.updated"]);
     const wantTimeline = verbosity==="all" || (verbosity==="high" && HIGH.has(evt)) || (verbosity==="rollup" && HIGH.has(evt));
     if(wantTimeline){
       const subj=timelineSubject(evt, data, product);
