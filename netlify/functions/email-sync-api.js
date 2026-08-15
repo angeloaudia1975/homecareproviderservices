@@ -160,7 +160,7 @@ async function runSync(opts){
     const key = mbox+"|"+m.id;
     recs.push({ graph_id:m.id, internet_message_id:clean(m.internetMessageId,300), mailbox_upn:mbox, direction,
       subject:clean(m.subject,500), snippet:clean(m.bodyPreview,500),
-      from_address:clean(fromAddr,200), from_name:clean(fromName,200),
+      from_address:((clean(fromAddr,200)||"").toLowerCase()||null), from_name:clean(fromName,200),
       sent_at:m.sentDateTime||null, received_at:m.receivedDateTime||null,
       dealer_id:dealer_id||null, thread_id:clean(m.conversationId,300),
       has_attachments:!!m.hasAttachments, relevance_score:bizSignal?1:0.5, match_confidence:conf, folder:g.folder });
@@ -289,8 +289,18 @@ exports.handler = async (event)=>{
       const email=String(b.email||"").trim().toLowerCase(), dealer_id=clean(b.dealer_id,80);
       if(!email||!dealer_id) return json(400,{error:"email and dealer_id required"});
       try{ await sbSend("POST","dealer_contacts?on_conflict=dealer_id,email",{dealer_id,email,name:clean(b.name,120)||null},{Prefer:"resolution=merge-duplicates,return=minimal"}); }catch(e){}
+      // Back-fill this sender's past unmatched messages. from_address was historically stored with its
+      // ORIGINAL casing while the queue groups and looks it up lowercased — so the old case-sensitive
+      // `from_address=eq.<lowercased>` filter matched 0 rows ("assigned (0 emails)"). Match
+      // case-insensitively by pulling the unmatched ids and comparing lowercased, then PATCH by id.
       let updated=0;
-      try{ const r=await sbSend("PATCH",`email_messages?from_address=eq.${encodeURIComponent(email)}&dealer_id=is.null`,{dealer_id,match_confidence:"high"},{Prefer:"return=representation"}); updated=(r||[]).length; }catch(e){}
+      try{
+        const cands=await sbGetAll("email_messages?dealer_id=is.null&select=id,from_address").catch(()=>[]);
+        const ids=(cands||[]).filter(r=>String(r.from_address||"").trim().toLowerCase()===email).map(r=>r.id);
+        for(let i=0;i<ids.length;i+=200){ const slice=ids.slice(i,i+200);
+          await sbSend("PATCH",`email_messages?id=in.(${slice.join(",")})`,{dealer_id,match_confidence:"high"},{Prefer:"return=minimal"}); }
+        updated=ids.length;
+      }catch(e){}
       return json(200,{ok:true, email, dealer_id, messages_updated:updated});
     }
 
