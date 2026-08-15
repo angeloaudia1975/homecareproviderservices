@@ -15,6 +15,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const ORS_KEY = process.env.ORS_API_KEY || process.env.OPENROUTESERVICE_API_KEY || "";
 const { computeAccess } = require("./_access.js");
+const { dnorm } = require("./_scope.js");
 const NORM_BUY={ bongo:"airavant-bongorx", airavant:"airavant-bongorx", "golden":"golden-technologies", "ohio-medical":"gce" };
 const normBuy=s=>{ s=String(s||"").toLowerCase().trim(); return NORM_BUY[s]||s; };
 const pretty=s=>String(s||"").split("-").map(w=>w?w[0].toUpperCase()+w.slice(1):w).join(" ");
@@ -206,6 +207,8 @@ exports.handler = async (event)=>{
       const nameOf=s=>mfrName[s]||mfrName[normBuy(s)]||pretty(s);
       const YR=String(new Date().getFullYear());
       const cutoff60=new Date(Date.now()-60*864e5).toISOString().slice(0,10);
+      const cutoff120=new Date(Date.now()-120*864e5).toISOString().slice(0,10);
+      const cutoff180=new Date(Date.now()-180*864e5).toISOString().slice(0,10);
       // aggregate sales + products per LOCATION (the primary figures), then roll totals up to
       // the company so a handout can show "this location vs the whole company".
       const byDealer={}; const prodByDealer={};
@@ -213,13 +216,15 @@ exports.handler = async (event)=>{
         const did=r.dealer_id; if(!did) continue;
         const d=byDealer[did]||(byDealer[did]={lines:{},total:0,ytd:0,recent:0,buys:new Set()});
         const slug=normBuy(r.manufacturer); const amt=Number(r.amount)||0; const per=(r.period||"").slice(0,10);
-        const L=d.lines[slug]||(d.lines[slug]={name:nameOf(slug),amount:0,qty:0,orders:0,last:""});
+        const L=d.lines[slug]||(d.lines[slug]={name:nameOf(slug),amount:0,qty:0,orders:0,last:"",d60:0,d120:0,d180:0});
         L.amount+=amt; L.qty+=Number(r.qty)||0; L.orders+=1; if(per>L.last) L.last=per;
+        if(per>=cutoff180){ L.d180+=amt; if(per>=cutoff120){ L.d120+=amt; if(per>=cutoff60) L.d60+=amt; } }
         d.total+=amt; if(per.startsWith(YR)) d.ytd+=amt; if(per>=cutoff60) d.recent+=amt; if(r.manufacturer) d.buys.add(slug);
         const pcode=String(r.product_code||"").trim(), pname=String(r.product_name||"").trim();
         if(pcode||pname){ const pk=(pcode||pname).toLowerCase(); const pd=prodByDealer[did]||(prodByDealer[did]={});
-          const P=pd[pk]||(pd[pk]={code:pcode,name:pname||pcode,line:nameOf(slug),qty:0,amount:0,orders:0,last:""});
-          P.qty+=Number(r.qty)||0; P.amount+=amt; P.orders+=1; if(per>P.last) P.last=per; }
+          const P=pd[pk]||(pd[pk]={code:pcode,name:pname||pcode,line:nameOf(slug),qty:0,amount:0,orders:0,last:"",d60:0,d120:0,d180:0});
+          P.qty+=Number(r.qty)||0; P.amount+=amt; P.orders+=1; if(per>P.last) P.last=per;
+          if(per>=cutoff180){ P.d180+=amt; if(per>=cutoff120){ P.d120+=amt; if(per>=cutoff60) P.d60+=amt; } } }
       }
       // company rollup: sum every location's totals + union their buys (for the comparison figure and opportunities)
       const coTotal={}, coYtd={}, coBuys={};
@@ -242,6 +247,38 @@ exports.handler = async (event)=>{
       try{ const meta=await sbGet("manufacturer_meta?select=slug,logo_url"); (meta||[]).forEach(m=>{ if(m&&m.slug&&m.logo_url) logoBySlug[m.slug]=String(m.logo_url); }); }catch(e){}
       try{ const mm=await fetchJson(`${ORDERING_BASE}/data/manufacturers.json`); (mm||[]).forEach(m=>{ if(m&&m.slug&&m.logo&&!logoBySlug[m.slug]){ const p=String(m.logo); logoBySlug[m.slug]=p.startsWith("http")?p:(ORDERING_BASE+p); } }); }catch(e){}
       if(!logoBySlug["golden-technologies"]) logoBySlug["golden-technologies"]=ORDERING_BASE+"/assets/logos/golden-technologies.jpg";
+      // Fallback logos from the public HCPS site (which this repo deploys) so lines missing a logo
+      // in the ordering-site data — Access4U in particular — still render on the handout. The <img>
+      // has onerror-hide, so a bad path degrades gracefully rather than showing a broken image.
+      const PUBLIC_BASE=process.env.PUBLIC_SITE_BASE||"https://homecareproviderservices.netlify.app";
+      const PUBLIC_LOGOS={access4u:"access4u.jpg","strongback-mobility":"strongback-mobility.jpg","airavant-bongorx":"airavant-bongorx.jpg",corsicana:"corsicana.jpg","ovation-medical":"ovation-medical.jpg",bemis:"bemis.jpg",pedifix:"pedifix.jpg","climbing-steps":"climbing-steps.jpg",gce:"ohio-medical.jpg","golden-technologies":"golden-technologies.jpg"};
+      for(const sl in PUBLIC_LOGOS){ if(!logoBySlug[sl]) logoBySlug[sl]=`${PUBLIC_BASE}/assets/logos/${PUBLIC_LOGOS[sl]}`; }
+
+      // ---- Regional sales trends (drives the per-visit crossover recommendation) ----
+      // Aggregate the trailing-180-day sales of EVERY dealer by (state, manufacturer), split into a
+      // recent 90-day half and the prior 90 so we can tell what's selling — and rising — in a dealer's
+      // own state. Paged so a busy 6-month window isn't silently truncated at PostgREST's 1000-row cap.
+      const cutoff90=new Date(Date.now()-90*864e5).toISOString().slice(0,10);
+      const stateById=Object.fromEntries(allDealers.map(d=>[d.id,String(d.state||"").toUpperCase().trim()]));
+      let recentRegion=[];
+      try{ let from=0; for(;;){ const rows=await sbGet(`monthly_sales?period=gte.${cutoff180}&select=dealer_id,manufacturer,amount,period&order=id&limit=1000&offset=${from}`); recentRegion=recentRegion.concat(rows); if(rows.length<1000) break; from+=1000; if(from>=80000) break; } }catch(e){ recentRegion=[]; }
+      const regRecent={}, regPrior={}, regTot={};
+      for(const r of recentRegion){ const st=stateById[r.dealer_id]; if(!st) continue; const sl=normBuy(r.manufacturer); const amt=Number(r.amount)||0; const per=(r.period||"").slice(0,10); const k=st+"|"+sl;
+        regTot[k]=(regTot[k]||0)+amt; if(per>=cutoff90) regRecent[k]=(regRecent[k]||0)+amt; else regPrior[k]=(regPrior[k]||0)+amt; }
+
+      // ---- Assigned rep + email (dealer_directory dealer->rep, staff_users rep->email) ----
+      let directory=[], staffU=[];
+      try{ directory=await sbGet("dealer_directory?select=dealer_name,rep_name&limit=100000"); }catch(e){ directory=[]; }
+      try{ staffU=await sbGet("staff_users?select=email,name,rep_name,active"); }catch(e){ staffU=[]; }
+      const repByNorm={}; for(const x of (directory||[])){ const k=dnorm(x.dealer_name); if(k && x.rep_name && !(k in repByNorm)) repByNorm[k]=x.rep_name; }
+      const repInfoByName={}; for(const s of (staffU||[])){ if(s.active===false) continue; const rn=String(s.rep_name||"").trim().toLowerCase(); if(rn && !(rn in repInfoByName)) repInfoByName[rn]={email:s.email||"",name:s.name||""}; }
+
+      // Rotation seed: ISO week number — the crossover pick cycles through the top candidates over
+      // successive visits (a different lead line week to week) while staying stable within one visit.
+      const isoWeek=dt=>{ const t=new Date(Date.UTC(dt.getUTCFullYear(),dt.getUTCMonth(),dt.getUTCDate())); const day=(t.getUTCDay()+6)%7; t.setUTCDate(t.getUTCDate()-day+3); const f=new Date(Date.UTC(t.getUTCFullYear(),0,4)); const fd=(f.getUTCDay()+6)%7; f.setUTCDate(f.getUTCDate()-fd+3); return 1+Math.round((t-f)/(7*864e5)); };
+      const weekSeed=isoWeek(new Date());
+      const dhash=s=>{ s=String(s); let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return h; };
+
       const cases={};
       for(const id of ids){
         const d=byId[id]; if(!d) continue;
@@ -251,12 +288,44 @@ exports.handler = async (event)=>{
         const s=byDealer[id]||{lines:{},total:0,ytd:0,recent:0,buys:new Set()};
         const coBuySet=coBuys[cid]||new Set();
         const opps=eligible.filter(x=>!coBuySet.has(x)).map(x=>({slug:x,name:nameOf(x),logo:logoBySlug[x]||""}));
-        const lines=Object.entries(s.lines).map(([slug,v])=>({slug,name:v.name,amount:Math.round(v.amount*100)/100,orders:v.orders,last:v.last})).sort((a,b)=>b.amount-a.amount);
+        const r2=n=>Math.round((n||0)*100)/100;
+        const lines=Object.entries(s.lines).map(([slug,v])=>({slug,name:v.name,amount:r2(v.amount),orders:v.orders,last:v.last,d60:r2(v.d60),d120:r2(v.d120),d180:r2(v.d180)})).sort((a,b)=>b.amount-a.amount);
         const allProds=Object.values(prodByDealer[id]||{}).sort((a,b)=>b.amount-a.amount);
-        const products=allProds.slice(0,40).map(p=>({code:p.code,name:p.name,line:p.line,qty:p.qty,amount:Math.round(p.amount*100)/100,orders:p.orders,last:p.last}));
+        const products=allProds.slice(0,40).map(p=>({code:p.code,name:p.name,line:p.line,qty:p.qty,amount:r2(p.amount),orders:p.orders,last:p.last,d60:r2(p.d60),d120:r2(p.d120),d180:r2(p.d180)}));
         const products_more=Math.max(0,allProds.length-products.length);
         const accounts=(acctByCo[cid]||[]).map(a=>({slug:a.manufacturer,name:nameOf(a.manufacturer),account:a.account_ref})).sort((a,b)=>a.name.localeCompare(b.name));
         const carried=[...new Set(accounts.map(a=>a.slug))].map(sl=>({slug:sl,name:nameOf(sl),logo:logoBySlug[sl]||""}));
+
+        // ---- One crossover recommendation for this visit ----
+        // Primary: a line the dealer is approved for but nobody in the company buys, ranked by how
+        // strongly it's selling in the dealer's own state, then rotated by week so the rep leads with
+        // a different opportunity across visits. Fallback: a carried line that's moving regionally but
+        // the dealer has gone quiet on (no order in 60 days) — a timely re-stock.
+        const stCode=String(master.state||d.state||"").toUpperCase().trim();
+        const rScore=sl=>(regRecent[stCode+"|"+sl]||0), rTot=sl=>(regTot[stCode+"|"+sl]||0), rPrior=sl=>(regPrior[stCode+"|"+sl]||0);
+        let crossover=null;
+        const oppRanked=opps.map(o=>({...o,score:rScore(o.slug),tot:rTot(o.slug)})).sort((a,b)=>b.score-a.score||b.tot-a.tot||String(a.name).localeCompare(String(b.name)));
+        if(oppRanked.length){
+          const pool=oppRanked.slice(0,Math.min(5,oppRanked.length));
+          const pick=pool[(weekSeed+dhash(id))%pool.length];
+          const rising=rScore(pick.slug)>rPrior(pick.slug);
+          crossover={ kind:"new_line", name:pick.name, slug:pick.slug, logo:pick.logo||logoBySlug[pick.slug]||"",
+            region_amt:r2(pick.score),
+            reason: pick.score>0
+              ? `Dealers across ${stCode||"your area"} are ordering ${pick.name}${rising?" — and demand is trending up":""}. You're approved to carry it but aren't stocking it yet.`
+              : `Approved for your territory and a natural complement to the lines you already carry — a strong candidate to add next.` };
+        }
+        if(!crossover){
+          const gaps=lines.filter(L=>(L.d60||0)===0 && rScore(L.slug)>0).map(L=>({...L,score:rScore(L.slug)})).sort((a,b)=>b.score-a.score);
+          if(gaps.length){ const g=gaps.slice(0,Math.min(5,gaps.length))[(weekSeed+dhash(id))%Math.min(5,gaps.length)];
+            crossover={ kind:"reorder", name:g.name, slug:g.slug, logo:logoBySlug[g.slug]||"", region_amt:r2(g.score),
+              reason:`${g.name} is moving across ${stCode||"your area"} right now, but you haven't reordered in 60+ days — a timely re-stock while demand is up.` }; }
+        }
+
+        // ---- Assigned rep for THIS dealer (may differ from whoever prints the handout) ----
+        const assignedRep=repByNorm[dnorm(master.business_name||"")]||repByNorm[dnorm(d.business_name||"")]||"";
+        const repInfo=assignedRep?(repInfoByName[assignedRep.toLowerCase()]||null):null;
+
         let retail=0; const pd=prodByDealer[id]||{};
         for(const k in pd){ const P=pd[k]; const ms=msrpByCode[String(P.code||"").toUpperCase()]; if(ms&&P.qty) retail+=ms*P.qty; }
         const multiLoc=(membersOfCompany[cid]||[]).length>1;
@@ -267,7 +336,8 @@ exports.handler = async (event)=>{
           total:Math.round((s.total||0)*100)/100, ytd:Math.round((s.ytd||0)*100)/100, recent60:Math.round((s.recent||0)*100)/100,
           company_total:Math.round((coTotal[cid]||0)*100)/100, company_ytd:Math.round((coYtd[cid]||0)*100)/100,
           retail_value:Math.round(retail*100)/100,
-          lines, opps, accounts, carried, products, products_more,
+          lines, opps, accounts, carried, products, products_more, crossover,
+          rep_name:assignedRep||"", rep_email:(repInfo&&repInfo.email)||"",
           golden:(acc.golden||master.golden_status||d.golden_status||"None"), golden_logo:(logoBySlug["golden-technologies"]||""), ovation:!!(master.ovation_access||d.ovation_access),
           contacts:(contactsByDealer[id]||[]).map(c=>({name:c.name||"",email:c.email||"",phone:c.phone||"",cell:c.cell||"",title:c.title||"",role:c.role||""})),
         };
