@@ -1,27 +1,47 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>HCPS — Workspace</title>
+<title>HCPS Connect 360 — Workspace</title>
 <link rel="stylesheet" href="/admin/admin-shell.css">
 <style>
- /* Category landing page — a mini-dashboard of every tool in one hub. Card look matches the
-    main /admin/ dashboard so the three levels (Dashboard → Category → Tool) feel like one system. */
- .hubhero{background:linear-gradient(120deg,var(--navy) 0%,var(--navy2) 100%);color:#fff;padding:22px 26px 26px;border-top:5px solid var(--accent,#F5821F);}
+ /* Category landing page = navigation + education. A quick-nav row gives one-click access to every
+    tool; below it, each tool gets a detailed feature-guide card (title on top, full explanation beneath). */
+ .hubhero{background:linear-gradient(120deg,var(--navy) 0%,var(--navy2) 100%);color:#fff;padding:22px 26px 24px;border-top:5px solid var(--accent,#F5821F);}
  .hubhero .hw{max-width:min(1680px,96vw);margin:0 auto;}
  .hubhero .crumb{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#aebdd0;font-weight:700;margin-bottom:10px;}
  .hubhero .crumb a{color:#aebdd0;}.hubhero .crumb a:hover{color:#fff;}
  .hubhero .hd{display:flex;align-items:center;gap:15px;}
  .hubhero .icon{width:54px;height:54px;border-radius:14px;background:color-mix(in srgb,var(--accent,#F5821F) 30%,#0e2138);display:flex;align-items:center;justify-content:center;font-size:28px;flex:0 0 auto;box-shadow:0 8px 22px rgba(0,0,0,.25);}
  .hubhero h1{margin:0;font-size:30px;font-weight:800;letter-spacing:.4px;line-height:1;}
- .hubhero p{margin:5px 0 0;color:#c4d1e0;font-size:14px;max-width:760px;line-height:1.5;}
- .hubwrap{max-width:min(1680px,96vw);margin:0 auto;padding:22px 26px 60px;}
- .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;}
- a.tool{display:flex;align-items:center;gap:13px;padding:15px 16px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);transition:transform .12s,box-shadow .12s,border-color .12s;}
- a.tool:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(16,38,63,.14);border-color:color-mix(in srgb,var(--accent,#F5821F) 45%,var(--line));}
- .tool .ti{width:46px;height:46px;border-radius:12px;background:color-mix(in srgb,var(--accent,#F5821F) 14%,#fff);color:var(--accent,#F5821F);display:flex;align-items:center;justify-content:center;font-size:22px;flex:0 0 auto;}
- .tool .tb{flex:1;min-width:0;}
- .tool .tn{font-weight:800;font-size:15.5px;color:var(--navy);line-height:1.15;font-family:'Barlow Condensed','Barlow',sans-serif;letter-spacing:.2px;}
- .tool .td{font-size:12px;color:var(--gray);line-height:1.35;margin-top:2px;}
- .tool .arw{color:var(--accent,#F5821F);font-weight:800;font-size:17px;opacity:0;transition:opacity .12s,transform .12s;flex:0 0 auto;}
- a.tool:hover .arw{opacity:1;transform:translateX(2px);}
+ .hubhero p{margin:5px 0 0;color:#c4d1e0;font-size:14px;max-width:820px;line-height:1.5;}
+ .hubwrap{max-width:min(1680px,96vw);margin:0 auto;padding:20px 26px 60px;}
+
+ /* Quick nav — immediate access to every tool in this category */
+ .qbar{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 16px;box-shadow:var(--shadow);margin-bottom:20px;}
+ .qbar .ql{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--gray);font-weight:800;margin-bottom:9px;}
+ .qchips{display:flex;flex-wrap:wrap;gap:8px;}
+ a.qchip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:22px;padding:7px 13px;font-size:12.5px;font-weight:700;color:var(--navy);background:#fff;transition:background .12s,border-color .12s,transform .12s;}
+ a.qchip:hover{background:color-mix(in srgb,var(--accent,#F5821F) 10%,#fff);border-color:color-mix(in srgb,var(--accent,#F5821F) 45%,var(--line));transform:translateY(-1px);}
+ a.qchip .qi{font-size:14px;}
+
+ /* Feature-guide cards */
+ .fcard{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent,#F5821F);border-radius:14px;box-shadow:var(--shadow);padding:18px 20px;margin-bottom:16px;scroll-margin-top:20px;}
+ .fhead{display:flex;align-items:flex-start;gap:14px;}
+ .ficon{width:46px;height:46px;border-radius:12px;background:color-mix(in srgb,var(--accent,#F5821F) 14%,#fff);color:var(--accent,#F5821F);display:flex;align-items:center;justify-content:center;font-size:23px;flex:0 0 auto;}
+ .fht{flex:1;min-width:0;}
+ .fht h2{margin:0;font-size:21px;font-weight:800;color:var(--navy);letter-spacing:.3px;line-height:1.1;}
+ .ftag{margin:4px 0 0;font-size:13.5px;font-weight:600;color:color-mix(in srgb,var(--accent,#F5821F) 65%,#3a4654);line-height:1.4;}
+ a.fopen{flex:0 0 auto;align-self:center;background:var(--accent,#F5821F);color:#fff;font-weight:800;font-size:13px;border-radius:9px;padding:9px 15px;white-space:nowrap;box-shadow:0 4px 12px color-mix(in srgb,var(--accent,#F5821F) 35%,transparent);transition:filter .12s,transform .12s;}
+ a.fopen:hover{filter:brightness(1.06);transform:translateY(-1px);}
+ .fwhat{margin:12px 0 0;font-size:13.5px;line-height:1.6;color:#37424e;}
+ .fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px 22px;margin-top:14px;}
+ .fsec h4{margin:0 0 5px;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;font-weight:800;color:var(--navy2);}
+ .fsec ul{margin:0;padding-left:17px;}
+ .fsec li{font-size:12.5px;line-height:1.45;color:#3a4654;margin:3px 0;}
+ .fsec p{margin:0;font-size:12.5px;line-height:1.5;color:#3a4654;}
+ .fnotes{margin-top:14px;display:flex;flex-direction:column;gap:8px;}
+ .fnote{font-size:12.5px;line-height:1.5;border-radius:9px;padding:9px 12px;}
+ .fnote b{font-weight:800;}
+ .fwhy{background:color-mix(in srgb,var(--accent,#F5821F) 8%,#fff);border:1px solid color-mix(in srgb,var(--accent,#F5821F) 30%,var(--line));color:#4a3520;}
+ .fflow{background:#f4f7fb;border:1px solid #e2e8f1;color:#37424e;}
  .msg{margin:40px auto;max-width:520px;}
 </style>
 </head><body>
@@ -33,27 +53,69 @@
       <div><h1 id="heroTitle"></h1><p id="heroPurpose"></p></div></div>
   </div>
 </section>
-<div class="hubwrap"><div id="cards" class="cards"></div><div id="empty"></div></div>
+<div class="hubwrap"><div id="qbar"></div><div id="cards"></div><div id="empty"></div></div>
 
 <script src="/admin/staff-session.js"></script>
+<script>
+  /* Declare which hub this page is BEFORE the masthead renders, so its sub-nav loads on the first
+     paint regardless of whether Netlify served /admin/hub or /admin/hub.html. */
+  try{ window.ACHUB = new URLSearchParams(location.search).get("cat") || ""; }catch(e){}
+</script>
 <script src="/admin/admin-chrome.js"></script>
+<script src="/admin/hub-guide.js"></script>
 <script>
 (function(){
   var esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});};
+  var GUIDE=window.HUB_GUIDE||{};
   function go(url){ location.replace(url); }
+
+  function listSec(title, arr){
+    if(!arr||!arr.length) return "";
+    return '<div class="fsec"><h4>'+esc(title)+'</h4><ul>'+arr.map(function(x){return '<li>'+esc(x)+'</li>';}).join("")+'</ul></div>';
+  }
+  function textSec(title, str){
+    if(!str) return "";
+    return '<div class="fsec"><h4>'+esc(title)+'</h4><p>'+esc(str)+'</p></div>';
+  }
+
+  function card(t){
+    var g=GUIDE[t.label]||{};
+    var tagline=g.tagline||t.desc||"";
+    var grid=[
+      listSec("Main features", g.features),
+      textSec("Data it uses", g.data),
+      listSec("What you can do", g.actions),
+      listSec("Reports & analytics", g.reports),
+      listSec("Connects with", g.connects),
+      textSec("Automation & intelligence", g.intelligence)
+    ].join("");
+    var notes="";
+    if(g.problems) notes+='<div class="fnote fwhy"><b>Why use it:</b> '+esc(g.problems)+'</div>';
+    if(g.workflow) notes+='<div class="fnote fflow"><b>In your workflow:</b> '+esc(g.workflow)+'</div>';
+    return '<article class="fcard" id="'+esc(slug(t.label))+'">'
+      + '<div class="fhead"><span class="ficon">'+esc(t.icon||"•")+'</span>'
+      +   '<div class="fht"><h2>'+esc(t.label)+'</h2>'+(tagline?'<div class="ftag">'+esc(tagline)+'</div>':'')+'</div>'
+      +   '<a class="fopen" href="'+esc(t.href)+'">Open '+esc(t.label.split(" ")[0])+' →</a></div>'
+      + (g.what?'<p class="fwhat">'+esc(g.what)+'</p>':'')
+      + (grid?'<div class="fgrid">'+grid+'</div>':'')
+      + (notes?'<div class="fnotes">'+notes+'</div>':'')
+      + '</article>';
+  }
+  function slug(s){ return "tool-"+String(s||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""); }
 
   function build(){
     var me=null; try{ me=(window.HCPS&&HCPS.profile&&HCPS.profile())||null; }catch(e){ me=null; }
-    // Not signed in → send to the dashboard, which owns the sign-in gate.
     if(!(window.HCPS&&HCPS.token&&HCPS.token())){ go("/admin/"); return; }
-    // Category landing pages are the admin workspace. Reps/relations use their focused workspace.
     if(!(window.ACAdmin&&ACAdmin.isAdmin&&ACAdmin.isAdmin(me))){ go("/admin/command-center-360.html"); return; }
 
     var cat=""; try{ cat=new URLSearchParams(location.search).get("cat")||""; }catch(e){ cat=""; }
     var hub=(window.ACAdmin&&ACAdmin.hubById)?ACAdmin.hubById(cat):null;
     if(!hub){ go("/admin/"); return; }
 
-    document.title="HCPS — "+hub.label;
+    // Make sure the masthead reflects this hub (loads its full sub-nav on the first paint).
+    try{ window.ACHUB=hub.id; if(window.ACAdmin&&ACAdmin.render) ACAdmin.render(); }catch(e){}
+
+    document.title="HCPS Connect 360 — "+hub.label;
     var hero=document.getElementById("hero");
     hero.style.setProperty("--accent", hub.accent||"#F5821F");
     document.getElementById("heroIcon").textContent=hub.icon||"";
@@ -62,21 +124,26 @@
     document.getElementById("crumbHub").textContent=hub.label;
     hero.style.display="block";
 
-    var cards=document.getElementById("cards");
-    cards.style.setProperty("--accent", hub.accent||"#F5821F");
     var tools=hub.tools||[];
+    var wrapAccent=hub.accent||"#F5821F";
+    var qbar=document.getElementById("qbar");
+    qbar.style.setProperty("--accent", wrapAccent);
+    var cards=document.getElementById("cards");
+    cards.style.setProperty("--accent", wrapAccent);
+
     if(!tools.length){ document.getElementById("empty").innerHTML='<div class="msg">No tools in this category yet.</div>'; return; }
-    cards.innerHTML=tools.map(function(t){
-      return '<a class="tool" href="'+esc(t.href)+'">'
-        + '<span class="ti">'+esc(t.icon||"•")+'</span>'
-        + '<span class="tb"><span class="tn">'+esc(t.label)+'</span>'
-        + (t.desc?'<span class="td">'+esc(t.desc)+'</span>':'')+'</span>'
-        + '<span class="arw">→</span></a>';
-    }).join("");
+
+    // Quick-nav: one-click access to every tool (jumps to its detailed card below).
+    qbar.innerHTML='<div class="ql">'+esc(tools.length)+' tools in '+esc(hub.label)+' — jump to any</div>'
+      + '<div class="qchips">'+tools.map(function(t){
+          return '<a class="qchip" href="#'+esc(slug(t.label))+'"><span class="qi">'+esc(t.icon||"•")+'</span>'+esc(t.label)+'</a>';
+        }).join("")+'</div>';
+
+    // Detailed feature-guide cards.
+    cards.innerHTML=tools.map(card).join("");
   }
 
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", build); else build();
-  // If the profile arrives after first paint (token event), re-evaluate once.
   window.addEventListener("hcps-token", build);
 })();
 </script>
