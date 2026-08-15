@@ -138,6 +138,64 @@ function timelineSubject(evt, data, product){
   }
 }
 
+// Fan a RESOLVED event out into the shared intelligence tables (intent_events →
+// engagement/intent/tasks/handout; dealer_activity → Dealer 360 timeline; federation_orders
+// for order signals) and record it in the idempotency inbox. Reused by the live receiver AND
+// by the admin re-resolve pass (federation-api) so the matching + write logic lives in ONE place.
+async function ingestResolved(env, res){
+  const evt = clip(env.event, 60);
+  const eventId = clip(env.event_id || env.idempotency_key, 120);
+  const occurredAt = env.occurred_at || new Date().toISOString();
+  const manufacturer = clip(env.manufacturer_id, 60) || "golden-technologies";
+  const product = env.product||null;
+  const productCode = product ? clip(product.product_id||product.code, 60) : null;
+  const data = (env.data&&typeof env.data==="object")?env.data:{};
+  const dealerBlk = env.dealer||{};
+  const src = clip(env.source&&env.source.system, 40)||"golden";
+  const tenant = clip(env.source&&env.source.tenant_id, 40)||"hcps";
+  const dealerId = res.dealer_id;
+  const auditBase = {
+    event_id:eventId, event:evt, source_system:src, tenant_id:tenant,
+    external_dealer_id:clip(dealerBlk.dealer_id,120), customer_no:clip(dealerBlk.customer_no,60),
+    manufacturer, occurred_at:occurredAt, raw:env,
+  };
+
+  // Env stamp so dev/test activity never contaminates live intelligence (mirrors events-api).
+  let mode="development"; try{ mode=(await P.getState()).mode; }catch(e){}
+  const evStamp = P.envFor(mode, res.is_test);
+
+  // 1. intent_events — feeds engagement/intent/tasks/handout via the existing cron.
+  let intentType = EVENT_TO_INTENT[evt];
+  if(intentType==="product_view" && data && data.repeat) intentType="product_view_repeat";
+  const cfg=await getConfig();
+  const intentRow={ dealer_id:dealerId, manufacturer, product_code:productCode, event_type:intentType,
+    weight:weightFor(intentType,cfg), source:src, env:evStamp,
+    meta:{...data, event:evt, branch_id:clip(dealerBlk.branch_id||env.branch_id,60)}, occurred_at:occurredAt };
+  try{ await sbSend("POST","intent_events",[intentRow],{Prefer:"return=minimal"}); }catch(e){}
+
+  // 2. dealer_activity — Dealer 360 timeline. Verbosity is config-driven (default 'all').
+  let verbosity="all"; try{ const c=await sbGet("app_settings?key=eq.automation_config&select=value"); verbosity=(c&&c[0]&&c[0].value&&c[0].value.federation_timeline_verbosity)||"all"; }catch(e){}
+  const HIGH=new Set(["dealer.login","cart.abandoned","order.created","order.completed","product.purchased","dealer.interest.updated"]);
+  const wantTimeline = verbosity==="all" || (verbosity==="high" && HIGH.has(evt)) || (verbosity==="rollup" && HIGH.has(evt));
+  if(wantTimeline){
+    const subj=timelineSubject(evt, data, product);
+    const detailBits=[product&&(product.name||product.product_id)?("Product: "+clip(product.name||product.product_id,80)):"", data&&data.query?("Search: "+clip(data.query,80)):"", dealerBlk.branch_id||env.branch_id?("Branch: "+clip(dealerBlk.branch_id||env.branch_id,40)):""].filter(Boolean);
+    try{ await sbSend("POST","dealer_activity",{dealer_id:dealerId,kind:"golden",subject:subj,detail:detailBits.join(" · ")||null,actor:"Golden portal",created_at:occurredAt},{Prefer:"return=minimal"}); }catch(e){}
+  }
+
+  // 3. Order/purchase SIGNAL mirror (never monthly_sales). Deduped by event_id.
+  if(ORDER_EVENTS.has(evt)){
+    const lines=Array.isArray(data.lines)?data.lines.slice(0,200).map(l=>({product_id:clip(l.product_id||l.sku||l.code,60),name:clip(l.name,120),qty:Number(l.qty)||null,value:Number(l.value||l.total||l.amount)||null})):[];
+    try{ await sbSend("POST","federation_orders?on_conflict=event_id",
+      {event_id:eventId,dealer_id:dealerId,manufacturer,external_order_id:clip(data.order_id,80),order_total:Number(data.total)||null,line_count:lines.length||(Number(data.line_count)||null),lines,status:evt==="order.completed"?"completed":"created",occurred_at:occurredAt},
+      {Prefer:"resolution=merge-duplicates,return=minimal"}); }catch(e){}
+  }
+
+  // 4. Record in the idempotency inbox LAST — only after the durable fan-out above.
+  try{ await sbSend("POST","federation_events?on_conflict=event_id",{...auditBase,dealer_id:dealerId,status:"processed"},{Prefer:"resolution=ignore-duplicates,return=minimal"}); }catch(e){}
+  return dealerId;
+}
+
 exports.handler = async (event) => {
   if(event.httpMethod==="OPTIONS") return {statusCode:204,headers:CORS,body:""};
   try{
@@ -195,43 +253,14 @@ exports.handler = async (event) => {
       try{ await sbSend("POST","federation_events?on_conflict=event_id",{...auditBase,dealer_id:null,status:"unmatched"},{Prefer:"resolution=ignore-duplicates,return=minimal"}); }catch(e){}
       return json(200,{ok:true,matched:false,dealer_id:null});
     }
-    const dealerId = res.dealer_id;
-
-    // Env stamp so dev/test activity never contaminates live intelligence (mirrors events-api).
-    let mode="development"; try{ mode=(await P.getState()).mode; }catch(e){}
-    const evStamp = P.envFor(mode, res.is_test);
-
-    // 1. intent_events — feeds engagement/intent/tasks/handout via the existing cron.
-    let intentType = EVENT_TO_INTENT[evt];
-    if(intentType==="product_view" && data && data.repeat) intentType="product_view_repeat";
-    const cfg=await getConfig();
-    const intentRow={ dealer_id:dealerId, manufacturer, product_code:productCode, event_type:intentType,
-      weight:weightFor(intentType,cfg), source:src, env:evStamp,
-      meta:{...data, event:evt, branch_id:clip(dealerBlk.branch_id||env.branch_id,60)}, occurred_at:occurredAt };
-    try{ await sbSend("POST","intent_events",[intentRow],{Prefer:"return=minimal"}); }catch(e){}
-
-    // 2. dealer_activity — Dealer 360 timeline. Verbosity is config-driven (default 'all').
-    let verbosity="all"; try{ const c=await sbGet("app_settings?key=eq.automation_config&select=value"); verbosity=(c&&c[0]&&c[0].value&&c[0].value.federation_timeline_verbosity)||"all"; }catch(e){}
-    const HIGH=new Set(["dealer.login","cart.abandoned","order.created","order.completed","product.purchased","dealer.interest.updated"]);
-    const wantTimeline = verbosity==="all" || (verbosity==="high" && HIGH.has(evt)) || (verbosity==="rollup" && HIGH.has(evt));
-    if(wantTimeline){
-      const subj=timelineSubject(evt, data, product);
-      const detailBits=[product&&(product.name||product.product_id)?("Product: "+clip(product.name||product.product_id,80)):"", data&&data.query?("Search: "+clip(data.query,80)):"", dealerBlk.branch_id||env.branch_id?("Branch: "+clip(dealerBlk.branch_id||env.branch_id,40)):""].filter(Boolean);
-      try{ await sbSend("POST","dealer_activity",{dealer_id:dealerId,kind:"golden",subject:subj,detail:detailBits.join(" · ")||null,actor:"Golden portal",created_at:occurredAt},{Prefer:"return=minimal"}); }catch(e){}
-    }
-
-    // 3. Order/purchase SIGNAL mirror (never monthly_sales). Deduped by event_id.
-    if(ORDER_EVENTS.has(evt)){
-      const lines=Array.isArray(data.lines)?data.lines.slice(0,200).map(l=>({product_id:clip(l.product_id||l.sku||l.code,60),name:clip(l.name,120),qty:Number(l.qty)||null,value:Number(l.value||l.total||l.amount)||null})):[];
-      try{ await sbSend("POST","federation_orders?on_conflict=event_id",
-        {event_id:eventId,dealer_id:dealerId,manufacturer,external_order_id:clip(data.order_id,80),order_total:Number(data.total)||null,line_count:lines.length||(Number(data.line_count)||null),lines,status:evt==="order.completed"?"completed":"created",occurred_at:occurredAt},
-        {Prefer:"resolution=merge-duplicates,return=minimal"}); }catch(e){}
-    }
-
-    // 4. Record in the idempotency inbox LAST — only after the durable fan-out above.
-    try{ await sbSend("POST","federation_events?on_conflict=event_id",{...auditBase,dealer_id:dealerId,status:"processed"},{Prefer:"resolution=ignore-duplicates,return=minimal"}); }catch(e){}
+    // Fan the resolved event out into the shared intelligence tables + idempotency inbox.
+    const dealerId = await ingestResolved(env, res);
 
     // Echo the resolved dealer_id so Golden can back-fill hcps_dealer_id (§5.4/§8.5).
     return json(200,{ok:true,matched:true,dealer_id:dealerId,hcps_dealer_id:dealerId});
   }catch(e){ return json(500,{error:String(e&&e.message||e)}); }
 };
+
+// Reused by the admin re-resolve pass (federation-api) — one source of truth for matching + fan-out.
+exports.resolveDealer = resolveDealer;
+exports.ingestResolved = ingestResolved;

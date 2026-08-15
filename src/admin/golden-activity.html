@@ -34,6 +34,7 @@ const num=n=>Number(n||0).toLocaleString();
 const when=s=>{ if(!s) return "—"; try{ return new Date(s).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}); }catch(e){ return String(s).slice(0,16); } };
 window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
 let TOKEN=HCPS.token();
+let RESOLVE_MSG="";
 function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
 async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
   try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
@@ -42,6 +43,15 @@ async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), p
 function lock(){ HCPS.signOut(); TOKEN=null; location.reload(); }
 
 async function api(action, extra){ const r=await fetch("/.netlify/functions/federation-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action,...(extra||{})})}); if(r.status===401){ throw {gate:true}; } return r.json(); }
+
+// Re-run the matcher over the unmatched queue — attaches anything that now maps to a dealer.
+async function reresolve(btn){
+  if(!TOKEN) return; if(btn){ btn.disabled=true; btn.textContent="Re-checking…"; }
+  try{ const j=await api("resolve_unmatched");
+    if(j&&j.ok){ RESOLVE_MSG=`Re-checked ${j.scanned} event(s): ${j.resolved} matched to a dealer, ${j.still_unmatched} still unmatched.`; load(); }
+    else { if(btn){ btn.disabled=false; btn.textContent="↻ Re-check unmatched"; } RESOLVE_MSG=(j&&j.error)||"Could not re-check."; load(); }
+  }catch(e){ if(e&&e.gate){ gate("Your session ended — sign in again."); return; } if(btn){ btn.disabled=false; btn.textContent="↻ Re-check unmatched"; } RESOLVE_MSG="Could not re-check unmatched."; load(); }
+}
 
 async function load(){
   if(!TOKEN){ gate(); return; }
@@ -60,10 +70,11 @@ async function load(){
   const rl=(j.recent_logins||[]).map(o=>`<tr><td>${esc(o.dealer)}</td><td>${esc(o.acct||"")}</td><td class="when">${when(o.at)}</td></tr>`).join("")||`<tr><td colspan="3" class="hint">No logins yet.</td></tr>`;
   const ac=(j.abandoned_carts||[]).map(o=>`<tr><td>${esc(o.dealer)}</td><td class="n">${o.value?money(o.value):"—"}</td><td class="when">${when(o.at)}</td></tr>`).join("")||`<tr><td colspan="3" class="hint">No abandoned carts.</td></tr>`;
   const um=(j.unmatched||[]);
-  const umHtml=(!j.rep_scoped&&um.length)?`<div class="card"><h2>Unmatched — needs a dealer</h2>
-      <p class="hint" style="margin:-2px 0 8px">These arrived from Golden but didn't match an HCPS dealer (test accounts, or events before an account was linked). <a class="link" href="/admin/product-interest.html">Assign later</a>.</p>
+  const umHtml=(!j.rep_scoped&&um.length)?`<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><h2 style="margin:0">Unmatched — needs a dealer</h2><button class="btn ghost" onclick="reresolve(this)">↻ Re-check unmatched</button></div>
+      <p class="hint" style="margin:6px 0 8px">These arrived from Golden but didn't match an HCPS dealer — usually events that landed before the account was linked. <b>Re-check unmatched</b> re-runs matching now that accounts are linked and clears anything that resolves.</p>
       <table><thead><tr><th>Account</th><th>Name</th><th>Event</th><th class="n">When</th></tr></thead><tbody>${um.map(u=>`<tr><td>${esc(u.customer_no||"")}</td><td>${esc(u.dealer_name||"")}</td><td>${esc(u.event||"")}</td><td class="when">${when(u.occurred_at)}</td></tr>`).join("")}</tbody></table></div>`:"";
-  $("#body").innerHTML=kpis
+  const banner=RESOLVE_MSG?`<div class="card" style="border-left:4px solid #2d7d46;background:#f2faf5;font-weight:600;color:#245a37">${esc(RESOLVE_MSG)}</div>`:""; RESOLVE_MSG="";
+  $("#body").innerHTML=banner+kpis
     +`<div class="card"><h2>Top products viewed <span class="pill">by dealers</span></h2>
         <table><thead><tr><th>Product (SKU)</th><th>Line</th><th class="n">Views</th><th class="n">Dealers</th><th class="n">Last</th></tr></thead><tbody>${tp}</tbody></table>
         <div class="hint" style="margin-top:8px">Want to work these? <a class="link" href="/admin/product-interest.html">Build a campaign audience →</a></div></div>

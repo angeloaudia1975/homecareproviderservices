@@ -9,6 +9,8 @@
 //   POST { action:"product_interest", product?, manufacturer?, window_days?, signals? }
 //                                                -> dealers showing intent who haven't ordered
 //   POST { action:"build_audience", name, dealer_ids[], meta? } -> { audience_id }
+//   POST { action:"provision_test_dealer", account?, email?, name? } -> president: is_test sandbox dealer
+//   POST { action:"resolve_unmatched" }         -> president: re-run matching on the unmatched queue
 //   POST { action:"purge_test" }                -> president-only: remove PR505M live-test rows
 // All require a staff Bearer token. Reps are scoped to their own dealers.
 const SUPABASE_URL=process.env.SUPABASE_URL, SERVICE_ROLE=process.env.SUPABASE_SERVICE_ROLE;
@@ -46,14 +48,17 @@ exports.handler=async(event)=>{
 
     // Canonical dealer master + rep, shared by several actions.
     async function dealerMap(){
-      const dealers=await sbGetAll("dealers?select=id,business_name,city,state,hcps_account,parent_id");
+      const dealers=await sbGetAll("dealers?select=id,business_name,city,state,hcps_account,parent_id,is_test");
       let dir=[]; try{ dir=await sbGet("dealer_directory?select=dealer_name,rep_name&limit=100000"); }catch(e){}
       const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
       const dn=n=>String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim();
       const repByNorm={}; for(const x of dir){ const k=dn(x.dealer_name); if(k&&x.rep_name&&!(k in repByNorm)) repByNorm[k]=x.rep_name; }
-      const m={}; for(const d of dealers) m[d.id]={id:d.id,name:d.business_name||"",city:d.city||"",state:d.state||"",acct:d.hcps_account||"",parent_id:d.parent_id||null,rep:repByNorm[dn(d.business_name)]||""};
+      const m={}; for(const d of dealers) m[d.id]={id:d.id,name:d.business_name||"",city:d.city||"",state:d.state||"",acct:d.hcps_account||"",parent_id:d.parent_id||null,is_test:!!d.is_test,rep:repByNorm[dn(d.business_name)]||""};
       return m;
     }
+    // Dealers flagged is_test (sandbox/QA) — excluded from the real audience builders so test
+    // activity can never land in a live campaign. The Golden Activity dashboard still shows them.
+    async function testDealerIds(){ try{ const rows=await sbGet("dealers?is_test=eq.true&select=id"); return new Set((rows||[]).map(r=>String(r.id))); }catch(e){ return new Set(); } }
 
     // ---------- Golden Activity dashboard ----------
     if(b.action==="dashboard"){
@@ -95,8 +100,9 @@ exports.handler=async(event)=>{
       const since=iso(Number(b.window_days)||90);
       const ev=await sbGetAll(`intent_events?occurred_at=gte.${encodeURIComponent(since)}&select=dealer_id,event_type,manufacturer,product_code`,"id").catch(()=>[]);
       const mfrs=await sbGet("manufacturers?select=slug,name").catch(()=>[]); const mfrName={}; (mfrs||[]).forEach(m=>mfrName[m.slug]=m.name||m.slug);
+      const testIds=await testDealerIds();
       const prod={}, line={};
-      for(const e of ev){ if(!e.dealer_id||!inScope(e.dealer_id)) continue; const t=e.event_type; if(!(VIEW_TYPES.has(t)||CART_TYPES.has(t))) continue;
+      for(const e of ev){ if(!e.dealer_id||!inScope(e.dealer_id)||testIds.has(String(e.dealer_id))) continue; const t=e.event_type; if(!(VIEW_TYPES.has(t)||CART_TYPES.has(t))) continue;
         if(e.manufacturer){ const L=line[e.manufacturer]=line[e.manufacturer]||{manufacturer:e.manufacturer,name:mfrName[e.manufacturer]||e.manufacturer,signals:0,dealers:new Set()}; L.signals++; L.dealers.add(e.dealer_id); }
         if(e.product_code){ const k=(e.manufacturer||"")+"|"+e.product_code; const P=prod[k]=prod[k]||{product:e.product_code,manufacturer:e.manufacturer||"",line:mfrName[e.manufacturer]||e.manufacturer||"",signals:0,dealers:new Set()}; P.signals++; P.dealers.add(e.dealer_id); } }
       return json(200,{ok:true,
@@ -115,8 +121,9 @@ exports.handler=async(event)=>{
       if(product) q+=`&product_code=eq.${encodeURIComponent(product)}`;
       else q+=`&manufacturer=eq.${encodeURIComponent(manufacturer)}`;
       const ev=await sbGetAll(q,"id").catch(()=>[]);
+      const testIds=await testDealerIds();
       const per={};
-      for(const e of ev){ if(!e.dealer_id||!inScope(e.dealer_id)) continue; const t=e.event_type;
+      for(const e of ev){ if(!e.dealer_id||!inScope(e.dealer_id)||testIds.has(String(e.dealer_id))) continue; const t=e.event_type;
         const isView=VIEW_TYPES.has(t), isCart=CART_TYPES.has(t), isSearch=!!(e.meta&&e.meta.query);
         if(!( (sig.views&&isView) || (sig.carts&&isCart) || (sig.searches&&isSearch) )) continue;
         const o=per[e.dealer_id]=per[e.dealer_id]||{dealer_id:e.dealer_id,views:0,carts:0,searches:0,last:e.occurred_at};
@@ -154,13 +161,67 @@ exports.handler=async(event)=>{
       return json(200,{ok:true,audience_id,count:rows.length,name});
     }
 
-    // ---------- One-off cleanup of the PR505M live-test rows (president) ----------
+    // ---------- Provision (or refresh) the sandbox test dealer (president) ----------
+    // Creates ONE is_test dealer bound to the Golden test account so QA activity flows through
+    // the whole pipeline (Golden Activity → Dealer 360 → campaigns) but is env-stamped test and
+    // excluded from every live surface. Idempotent — re-running just refreshes the contact email.
+    if(b.action==="provision_test_dealer"){
+      if(me.role!=="president") return json(403,{error:"president only"});
+      const acct=clip(b.account,60)||"111111";
+      const email=clip(b.email,160)||"angelo@homecareproviderservices.us";
+      const name=clip(b.name,120)||"TEST — Golden Sandbox";
+      let dealer_id=null, created=false;
+      try{ const ex=await sbGet(`dealers?hcps_account=eq.${encodeURIComponent(acct)}&is_test=eq.true&select=id&limit=1`); if(ex&&ex[0]) dealer_id=ex[0].id; }catch(e){}
+      if(!dealer_id){
+        try{ const ins=await sbSend("POST","dealers",{business_name:name,hcps_account:acct,email,contact_name:"Sandbox (Angelo)",city:"Batesville",state:"IN",is_test:true,active:true,status:null},{Prefer:"return=representation"});
+          dealer_id=ins&&ins[0]&&ins[0].id; created=true; }
+        catch(e){ return json(500,{error:"could not create test dealer: "+String(e.message||e)}); }
+      } else {
+        try{ await sbSend("PATCH",`dealers?id=eq.${dealer_id}`,{email,business_name:name},{Prefer:"return=minimal"}); }catch(e){}
+      }
+      if(!dealer_id) return json(500,{error:"test dealer not created"});
+      // Contact row so campaign sends reach the test inbox (best-effort — dealer.email is also set).
+      try{ await sbSend("POST","dealer_contacts",{dealer_id,name:"Sandbox (Angelo)",email},{Prefer:"return=minimal"}); }catch(e){}
+      return json(200,{ok:true,dealer_id,account:acct,email,created,note:"Golden events on account "+acct+" now match this test dealer (env-stamped test)."});
+    }
+
+    // ---------- Re-resolve the unmatched queue (president) ----------
+    // Historical events that arrived before an account was linked (or before a matching fix
+    // deployed) sit in federation_unmatched. Re-run the SAME matcher the receiver uses; anything
+    // that now maps to a dealer is fanned out into intent_events / dealer_activity and cleared
+    // from the queue. Idempotent — resolved rows are skipped on the next run.
+    if(b.action==="resolve_unmatched"){
+      if(me.role!=="president") return json(403,{error:"president only"});
+      const fed=require("./federation-events.js");
+      const rows=await sbGet("federation_unmatched?resolved_dealer_id=is.null&select=id,customer_no,dealer_name,event,raw,occurred_at&order=created_at.asc&limit=1000").catch(()=>[]);
+      let resolved=0, still=0, errors=0;
+      for(const row of rows){
+        const fenv=row.raw;
+        if(!fenv||typeof fenv!=="object"){ still++; continue; }
+        let res=null; try{ res=await fed.resolveDealer(fenv); }catch(e){ res=null; }
+        if(res&&res.dealer_id){
+          try{
+            await fed.ingestResolved(fenv,res);
+            const eid=fenv.event_id||fenv.idempotency_key;
+            if(eid) await sbSend("PATCH",`federation_events?event_id=eq.${encodeURIComponent(String(eid))}`,{dealer_id:res.dealer_id,status:"processed"},{Prefer:"return=minimal"}).catch(()=>{});
+            await sbSend("PATCH",`federation_unmatched?id=eq.${row.id}`,{resolved_dealer_id:res.dealer_id,resolved_at:new Date().toISOString()},{Prefer:"return=minimal"});
+            resolved++;
+          }catch(e){ errors++; }
+        } else still++;
+      }
+      return json(200,{ok:true,scanned:rows.length,resolved,still_unmatched:still,errors});
+    }
+
+    // ---------- One-off cleanup of the PR505M / test rows (president) ----------
     if(b.action==="purge_test"){
       if(me.role!=="president") return json(403,{error:"president only"});
       let removed={};
       try{ await sbSend("DELETE","intent_events?product_code=eq.PR505M",null,{Prefer:"return=minimal"}); removed.intent="ok"; }catch(e){ removed.intent=String(e.message||e); }
+      try{ await sbSend("DELETE","dealer_activity?subject=ilike.*PR505M*",null,{Prefer:"return=minimal"}); }catch(e){}
       try{ await sbSend("DELETE","dealer_activity?subject=ilike.*federation*test*",null,{Prefer:"return=minimal"}); removed.activity="ok"; }catch(e){ removed.activity=String(e.message||e); }
       try{ await sbSend("DELETE","federation_orders?event_id=like.gtest*",null,{Prefer:"return=minimal"}); }catch(e){}
+      try{ await sbSend("DELETE","federation_events?event_id=like.gtest*",null,{Prefer:"return=minimal"}); }catch(e){}
+      removed.pr505m="cleared";
       return json(200,{ok:true,removed});
     }
 
