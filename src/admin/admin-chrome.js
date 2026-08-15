@@ -59,28 +59,50 @@
     return null;
   }
 
+  // Sales reps + the Customer Relations Director get a FOCUSED workspace (only the tools they use)
+  // instead of the full admin portal. This is the MENU layer — it changes what each role sees in the
+  // nav. Server-side data scoping (each rep sees only their own dealers + commissions) is the next
+  // phase and is what actually restricts the data; until then this is presentation only.
+  var REP_TOOLS = [
+    { href:"/admin/command-center-360.html", label:"Command Center 360" },
+    { href:"/admin/dealers.html",            label:"Dealer 360" },
+    { href:"/admin/map.html",                label:"Territory Map" },
+    { href:"/admin/health.html",             label:"Dealer Health" },
+    { href:"/admin/call-list.html",          label:"Who to Call" },
+    { href:"/admin/reps.html",               label:"My Performance" },
+    { href:"/admin/pipeline.html",           label:"Pipeline" },
+    { href:"/admin/tasks.html",              label:"My Tasks" }
+  ];
+  var ADMIN_ROLES = { president:1, admin:1, owner:1 };
+  function isAdmin(me){ return !!(me && ADMIN_ROLES[String((me&&me.role)||"").toLowerCase()]); }
+
   function render(){
     var host = document.getElementById("ac-head"); if(!host) return;
     var me = (window.HCPS && HCPS.profile && HCPS.profile()) || null;
     var path = curPath();
-    var hub = hubOf(path);
+    var admin = isAdmin(me);
     var who = me ? ('Hi, <b>'+esc(me.name||me.email||"")+'</b>'+(me.role?' · '+esc(me.role):'')) : '';
 
-    var tier1 = '<a href="/admin/"'+(path==="/admin/"?' class="on"':'')+'>Dashboard</a>'
-      + HUBS.map(function(h){ var on = hub && hub.id===h.id; return '<a href="'+h.href+'"'+(on?' class="on"':'')+'>'+esc(h.label)+'</a>'; }).join("");
-
-    var tier2 = '';
-    if(hub){
-      tier2 = '<nav class="ac-sub ac-wrap"><span class="ac-sub-lbl">'+esc(hub.label)+'</span>'
-        + hub.tools.map(function(t){ var on = t.href===path; return '<a href="'+t.href+'"'+(on?' class="on"':'')+'>'+esc(t.label)+'</a>'; }).join("")
-        + '</nav>';
+    var tier1, tier2='';
+    if(admin){
+      var hub = hubOf(path);
+      tier1 = '<a href="/admin/"'+(path==="/admin/"?' class="on"':'')+'>Dashboard</a>'
+        + HUBS.map(function(h){ var on = hub && hub.id===h.id; return '<a href="'+h.href+'"'+(on?' class="on"':'')+'>'+esc(h.label)+'</a>'; }).join("");
+      if(hub){
+        tier2 = '<nav class="ac-sub ac-wrap"><span class="ac-sub-lbl">'+esc(hub.label)+'</span>'
+          + hub.tools.map(function(t){ var on = t.href===path; return '<a href="'+t.href+'"'+(on?' class="on"':'')+'>'+esc(t.label)+'</a>'; }).join("")
+          + '</nav>';
+      }
+    } else {
+      // Focused rep workspace — one clean row of the rep's tools, active one highlighted.
+      tier1 = REP_TOOLS.map(function(t){ var on = t.href===path; return '<a href="'+t.href+'"'+(on?' class="on"':'')+'>'+esc(t.label)+'</a>'; }).join("");
     }
 
     host.className = "ac-head";
     host.innerHTML =
       '<div class="ac-wrap ac-top">'
-        + '<a class="ac-brand" href="/admin/"><span class="ac-mark">H</span>'
-        + '<span class="ac-bt"><b>HCPS Admin</b><span>Operating System</span></span></a>'
+        + '<a class="ac-brand" href="'+(admin?'/admin/':'/admin/command-center-360.html')+'"><span class="ac-mark">H</span>'
+        + '<span class="ac-bt"><b>HCPS '+(admin?'Admin':'Sales')+'</b><span>'+(admin?'Operating System':'Rep Workspace')+'</span></span></a>'
         + '<div class="ac-who">' + who + '<a id="ac-taskbadge" href="/admin/tasks.html" class="ac-badge" style="display:none" title="Your open tasks">0</a><button type="button" id="ac-lock">Lock</button></div>'
       + '</div>'
       + '<nav class="ac-nav ac-wrap">' + tier1 + '</nav>'
