@@ -31,7 +31,8 @@ function monthsAgo(n){ const d=new Date(); d.setMonth(d.getMonth()-n); return d;
 // ---- config -----------------------------------------------------------------
 const INTENT_DEFAULTS={
   intent_enabled:true, intent_window_days:30, intent_decay_pct_per_week:0.20,
-  intent_weights:{login:2,product_view:3,product_view_repeat:5,pricing_view:8,order_page:10,order_started:15,email_open:1,email_click:4},
+  intent_weights:{login:2,product_view:3,product_view_repeat:5,pricing_view:8,order_page:10,order_started:15,email_open:1,email_click:4,
+    product_clicked:4,cart_add:9,cart_abandoned:12,order_created:18,order_completed:20,product_purchased:16},
   intent_tiers:{interested:10,high:20,opportunity:30},
   intent_task_threshold:30, intent_task_cooldown_days:7,
   dormant_months:3, exclude_manufacturers:[]
@@ -45,7 +46,8 @@ async function getConfig(){
   catch(e){ return {...INTENT_DEFAULTS}; }
 }
 // Allowed event types + the server-side weight for each (client-supplied weights ignored).
-const ALLOWED_EVENTS=["login","product_view","product_view_repeat","pricing_view","order_page","order_started","email_open","email_click"];
+const ALLOWED_EVENTS=["login","product_view","product_view_repeat","pricing_view","order_page","order_started","email_open","email_click",
+  "product_clicked","cart_add","cart_abandoned","order_created","order_completed","product_purchased"];
 function weightFor(type,cfg){ const w=(cfg&&cfg.intent_weights)||INTENT_DEFAULTS.intent_weights; return Number(w[type])||0; }
 function tierFor(score,tiers){ const s=Number(score)||0; const t=tiers||INTENT_DEFAULTS.intent_tiers;
   if(s>=t.opportunity) return "opportunity"; if(s>=t.high) return "high"; if(s>=t.interested) return "interested"; return "normal"; }
