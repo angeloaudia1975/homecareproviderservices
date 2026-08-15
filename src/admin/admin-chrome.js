@@ -43,7 +43,8 @@
         { href:"/admin/zoho-sync.html",     label:"Zoho Sync",             icon:"🔗", desc:"Two-way CRM sync — accounts, contacts, pipeline, notes" },
         { href:"/admin/cardchamp.html",     label:"CardChamp",             icon:"💳", desc:"Referral activity, conversions & commission" },
         { href:"/admin/audiences.html",     label:"Target Audiences",      icon:"🎯", desc:"Build campaign lists from dealers & contacts" },
-        { href:"/admin/campaigns.html",     label:"Campaign Studio",       icon:"✉️", desc:"Brief → audience, copy & sequence → Zoho Campaigns" }
+        { href:"/admin/campaigns.html",     label:"Campaign Studio",       icon:"✉️", desc:"Brief → audience, copy & sequence → Zoho Campaigns" },
+        { href:"/admin/product-interest.html", label:"Product Interest",    icon:"🎯", desc:"Dealers showing product intent who haven't ordered — build a campaign audience" }
     ]},
     { id:"analytics", label:"Sales Data & Analytics", icon:"📊", accent:"#3B599A",
       purpose:"The single source of truth for sales, cadence, opportunities & performance.",
@@ -57,6 +58,7 @@
         { href:"/admin/import-commissions.html", label:"Commission Import",       icon:"📥", desc:"Load manufacturer reports & reconcile sales" },
         { href:"/admin/sales-import.html",       label:"Sales Report Import",     icon:"📄", desc:"Load order/sales reports — products, qty, branches" },
         { href:"/admin/email-sync.html",         label:"Email Sync",              icon:"📧", desc:"Outlook email → matched to dealers for Dealer 360" },
+        { href:"/admin/golden-activity.html",    label:"Golden Activity",         icon:"🟡", desc:"Live Golden portal behavior — logins, product interest, carts & orders" },
         { href:"/admin/activation.html",         label:"Activation & Go-Live",    icon:"🚦", desc:"Dev / Sandbox / Live switch & go-live date" }
     ]}
   ];

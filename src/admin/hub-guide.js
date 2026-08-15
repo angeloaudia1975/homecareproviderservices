@@ -270,6 +270,30 @@ window.HUB_GUIDE = {
     problems: "Go from an idea to a ready-to-send, well-targeted campaign in minutes.",
     intelligence: "AI-generated audience, copy, and send sequence from a short brief."
   },
+  "Product Interest": {
+    tagline: "Turn portal browsing into targeted campaigns — dealers who show intent but haven't ordered.",
+    what: "Reads the behavioral signals flowing in from the ordering and Golden portals and answers the campaign question directly: for any product or manufacturer line, which dealers viewed, searched, or carted it recently but haven't actually ordered it? Select them and build a ready-to-use campaign audience in one click.",
+    features: ["Pick a specific product (SKU) or a whole manufacturer line", "Window control (30 / 60 / 90 days)", "Signal toggles — views & clicks, cart activity, searches", "Automatically excludes dealers who already ordered it", "Per-dealer intent score, signal breakdown & last-touch", "One-click audience → Campaign Studio / Target Audiences"],
+    data: "intent_events (portal behavior from all sources incl. the Golden federation), monthly_sales (to exclude buyers), and the dealer master + rep directory.",
+    actions: ["Choose a product or line and window", "Review the ranked dealer list", "Select dealers and build a named audience", "Hand off to Campaign Studio to send"],
+    reports: ["Interested-but-not-buying list per product or line", "Intent breakdown (views / carts / searches) per dealer"],
+    connects: ["Consumes the same intent stream that powers Dealer 360 and Command Center", "Writes a static audience into Target Audiences", "Feeds Campaign Studio for a Golden-branded send"],
+    problems: "Converts real buying signals into precise re-marketing — pitch the exact line a dealer has been eyeing, not a generic blast.",
+    workflow: "Weekly: pick a line you want to grow, pull the interested non-buyers, and launch a targeted campaign.",
+    intelligence: "Behavioral intent scoring with automatic buyer exclusion."
+  },
+  "Golden Activity": {
+    tagline: "A live window into the Golden ordering platform — every dealer touch, in one dashboard.",
+    what: "The portfolio view of what's happening inside the HCPS-owned Golden ordering platform right now: who logged in, which products are being viewed, what's sitting in carts, what's been abandoned, and what's being ordered — fed in real time through the federation connector and attributed to the right HCPS dealer.",
+    features: ["30-day KPIs — logins, views, searches, cart adds, abandoned carts, orders, order value", "Top products viewed across dealers", "Recent orders with value and line count", "Recent logins and abandoned carts", "Unmatched-event visibility (events that didn't map to a dealer)"],
+    data: "The federation tables (federation_events, federation_orders) and intent_events tagged source='golden'.",
+    actions: ["Monitor live Golden dealer behavior", "Spot the products drawing the most interest", "Jump into a dealer or into the audience builder"],
+    reports: ["Activity KPIs", "Top products", "Recent orders / logins / abandoned carts"],
+    connects: ["The same signals that update Dealer 360, engagement, and Who-to-Call", "Links straight into the Product-Interest audience builder"],
+    problems: "A single trustworthy read on Golden portal engagement without logging into Golden — and it turns that read into sales action.",
+    workflow: "A daily glance to see momentum, catch abandoned carts worth a call, and find products to campaign on.",
+    intelligence: "Real-time federated ingestion with per-dealer identity resolution."
+  },
 
   /* ---------------- ONLINE ORDERING ---------------- */
   "Catalog": {

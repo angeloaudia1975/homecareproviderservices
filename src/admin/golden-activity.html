@@ -1,0 +1,79 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Connect 360 — Golden Activity</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px;margin:14px 0}
+ .kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow)}
+ .kpi.g{border-left:4px solid #d8a529}
+ .kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700}
+ .kpi .v{font-size:23px;font-weight:800;color:var(--navy);font-family:'Barlow Condensed',sans-serif;margin-top:2px}
+ .grid2{display:grid;grid-template-columns:1fr 1fr;gap:15px}@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+ table{width:100%;border-collapse:collapse;font-size:13px}
+ th{text-align:left;color:var(--gray);font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;border-bottom:2px solid var(--line)}
+ td{padding:6px 8px;border-bottom:1px solid #eef2f6}
+ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+ .sku{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:700;color:var(--navy)}
+ .when{color:#8496a8;white-space:nowrap;font-size:12px}
+ .pill{display:inline-block;background:#fdf4dc;color:#8a6400;border:1px solid #e6d493;border-radius:20px;padding:1px 9px;font-size:11px;font-weight:700}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Golden Activity</h1>
+    <div class="sub">Live dealer behavior from the Golden ordering platform — logins, product interest, carts &amp; orders (last 30 days). Fed in real time via the federation connector.</div></div>
+    <div><button class="btn ghost" onclick="load()">↻ Refresh</button></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money=n=>"$"+Math.round(Number(n)||0).toLocaleString();
+const num=n=>Number(n||0).toLocaleString();
+const when=s=>{ if(!s) return "—"; try{ return new Date(s).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}); }catch(e){ return String(s).slice(0,16); } };
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token();
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; } HCPS.setSession(j); TOKEN=j.token; load();
+  }catch(err){ gate("Could not reach the server."); } }
+function lock(){ HCPS.signOut(); TOKEN=null; location.reload(); }
+
+async function api(action, extra){ const r=await fetch("/.netlify/functions/federation-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action,...(extra||{})})}); if(r.status===401){ throw {gate:true}; } return r.json(); }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  $("#body").innerHTML=`<div class="msg">Loading…</div>`;
+  let j; try{ j=await api("dashboard"); }catch(e){ if(e&&e.gate){ gate("Your session ended — sign in again."); return; } $("#body").innerHTML=`<div class="msg err">Couldn't load Golden activity.</div>`; return; }
+  if(!j||!j.ok){ $("#body").innerHTML=`<div class="msg err">${esc((j&&j.error)||"Couldn't load.")}</div>`; return; }
+  const k=j.kpis||{};
+  const kpi=(l,v,g)=>`<div class="kpi${g?" g":""}"><div class="l">${l}</div><div class="v">${v}</div></div>`;
+  const kpis=`<div class="kpis">
+    ${kpi("Logins",num(k.logins),1)}${kpi("Product views",num(k.product_views))}${kpi("Searches",num(k.searches))}
+    ${kpi("Cart adds",num(k.cart_adds))}${kpi("Abandoned carts",num(k.carts_abandoned))}${kpi("Orders",num(k.orders),1)}
+    ${kpi("Order value",money(k.order_value),1)}${j.rep_scoped?"":kpi("Unmatched",num(k.unmatched))}
+  </div>`;
+  const tp=(j.top_products||[]).map(p=>`<tr><td class="sku">${esc(p.code)}</td><td>${esc(p.line)}</td><td class="n">${num(p.views)}</td><td class="n">${num(p.dealers)}</td><td class="when">${when(p.last)}</td></tr>`).join("")||`<tr><td colspan="5" class="hint">No product views yet.</td></tr>`;
+  const ro=(j.recent_orders||[]).map(o=>`<tr><td>${esc(o.dealer)}</td><td class="n">${money(o.total)}</td><td class="n">${num(o.lines)}</td><td>${esc(o.status||"")}</td><td class="when">${when(o.at)}</td></tr>`).join("")||`<tr><td colspan="5" class="hint">No orders yet.</td></tr>`;
+  const rl=(j.recent_logins||[]).map(o=>`<tr><td>${esc(o.dealer)}</td><td>${esc(o.acct||"")}</td><td class="when">${when(o.at)}</td></tr>`).join("")||`<tr><td colspan="3" class="hint">No logins yet.</td></tr>`;
+  const ac=(j.abandoned_carts||[]).map(o=>`<tr><td>${esc(o.dealer)}</td><td class="n">${o.value?money(o.value):"—"}</td><td class="when">${when(o.at)}</td></tr>`).join("")||`<tr><td colspan="3" class="hint">No abandoned carts.</td></tr>`;
+  const um=(j.unmatched||[]);
+  const umHtml=(!j.rep_scoped&&um.length)?`<div class="card"><h2>Unmatched — needs a dealer</h2>
+      <p class="hint" style="margin:-2px 0 8px">These arrived from Golden but didn't match an HCPS dealer (test accounts, or events before an account was linked). <a class="link" href="/admin/product-interest.html">Assign later</a>.</p>
+      <table><thead><tr><th>Account</th><th>Name</th><th>Event</th><th class="n">When</th></tr></thead><tbody>${um.map(u=>`<tr><td>${esc(u.customer_no||"")}</td><td>${esc(u.dealer_name||"")}</td><td>${esc(u.event||"")}</td><td class="when">${when(u.occurred_at)}</td></tr>`).join("")}</tbody></table></div>`:"";
+  $("#body").innerHTML=kpis
+    +`<div class="card"><h2>Top products viewed <span class="pill">by dealers</span></h2>
+        <table><thead><tr><th>Product (SKU)</th><th>Line</th><th class="n">Views</th><th class="n">Dealers</th><th class="n">Last</th></tr></thead><tbody>${tp}</tbody></table>
+        <div class="hint" style="margin-top:8px">Want to work these? <a class="link" href="/admin/product-interest.html">Build a campaign audience →</a></div></div>
+      <div class="grid2">
+        <div class="card"><h2>Recent orders</h2><table><thead><tr><th>Dealer</th><th class="n">Total</th><th class="n">Lines</th><th>Status</th><th class="n">When</th></tr></thead><tbody>${ro}</tbody></table></div>
+        <div class="card"><h2>Abandoned carts</h2><table><thead><tr><th>Dealer</th><th class="n">Value</th><th class="n">When</th></tr></thead><tbody>${ac}</tbody></table></div>
+      </div>
+      <div class="card"><h2>Recent logins</h2><table><thead><tr><th>Dealer</th><th>Account</th><th class="n">When</th></tr></thead><tbody>${rl}</tbody></table></div>
+      ${umHtml}`;
+}
+load();
+</script>
+</body></html>

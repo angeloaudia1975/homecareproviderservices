@@ -1,0 +1,113 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Connect 360 — Product Interest</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .pick{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+ .pick .fld{min-width:180px}
+ .sigs{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+ .sigs label{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--navy);font-weight:600}
+ table{width:100%;border-collapse:collapse;font-size:13px}
+ th{text-align:left;color:var(--gray);font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;border-bottom:2px solid var(--line)}
+ td{padding:6px 8px;border-bottom:1px solid #eef2f6}
+ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+ .when{color:#8496a8;white-space:nowrap;font-size:12px}
+ .bar{position:sticky;bottom:0;background:var(--navy);color:#fff;border-radius:10px;padding:11px 15px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px;box-shadow:var(--shadow-lg)}
+ .bar .sel{font-weight:700}
+ .chip{display:inline-block;background:#eaf7ee;color:#1f7a44;border:1px solid #bfe3ca;border-radius:20px;padding:1px 9px;font-size:11px;font-weight:700}
+ .ok{color:#1f7a44;font-weight:700}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Product Interest → Campaign Audience</h1>
+    <div class="sub">Pick a product or line, see every dealer showing intent (viewed, searched, or carted) who <b>hasn't ordered it</b>, then build a campaign audience.</div></div></div>
+
+  <div class="card" id="pickcard"><div class="msg">Loading products…</div></div>
+  <div id="body"></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const when=s=>{ if(!s) return "—"; try{ return new Date(s).toLocaleDateString("en-US",{month:"short",day:"numeric"}); }catch(e){ return String(s).slice(0,10); } };
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), RESULTS=[], PICK=null;
+function gate(msg){$("#pickcard").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; } HCPS.setSession(j); TOKEN=j.token; init();
+  }catch(err){ gate("Could not reach the server."); } }
+function lock(){ HCPS.signOut(); TOKEN=null; location.reload(); }
+async function api(action, extra){ const r=await fetch("/.netlify/functions/federation-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action,...(extra||{})})}); if(r.status===401) throw {gate:true}; return r.json(); }
+
+async function init(){
+  if(!TOKEN){ gate(); return; }
+  let j; try{ j=await api("products",{window_days:90}); }catch(e){ if(e&&e.gate){ gate("Your session ended — sign in again."); return; } $("#pickcard").innerHTML=`<div class="msg err">Couldn't load products.</div>`; return; }
+  const lines=(j&&j.lines)||[], products=(j&&j.products)||[];
+  if(!lines.length&&!products.length){ $("#pickcard").innerHTML=`<div class="hint">No portal product interest captured yet. Once dealers browse the Golden or ordering portal, their views/searches/carts show up here to target.</div>`; return; }
+  const lineOpts=`<option value="">— any line —</option>`+lines.map(l=>`<option value="${esc(l.manufacturer)}">${esc(l.name)} · ${l.dealers} dealers</option>`).join("");
+  const prodOpts=`<option value="">— any product —</option>`+products.map(p=>`<option value="${esc(p.product)}" data-mfr="${esc(p.manufacturer)}">${esc(p.product)}${p.line?" · "+esc(p.line):""} · ${p.dealers} dealers</option>`).join("");
+  $("#pickcard").innerHTML=`
+    <div class="pick">
+      <div class="fld"><label>Manufacturer line</label><select id="fLine">${lineOpts}</select></div>
+      <div class="fld"><label>Or a specific product (SKU)</label><select id="fProd">${prodOpts}</select></div>
+      <div class="fld"><label>Window</label><select id="fWin"><option value="30">Last 30 days</option><option value="60">Last 60 days</option><option value="90">Last 90 days</option></select></div>
+      <button class="go orange" onclick="find()">Find dealers →</button>
+    </div>
+    <div class="sigs" style="margin-top:10px">
+      <span class="hint" style="margin:0">Signals:</span>
+      <label><input type="checkbox" id="sV" checked> Views &amp; clicks</label>
+      <label><input type="checkbox" id="sC" checked> Cart activity</label>
+      <label><input type="checkbox" id="sS" checked> Searches</label>
+      <span class="hint" style="margin:0">· excludes dealers who already ordered it</span>
+    </div>`;
+}
+
+async function find(){
+  const product=($("#fProd")||{}).value||"", line=($("#fLine")||{}).value||"";
+  const window_days=Number(($("#fWin")||{}).value||30);
+  const signals={views:$("#sV").checked,carts:$("#sC").checked,searches:$("#sS").checked};
+  if(!product && !line){ $("#body").innerHTML=`<div class="msg">Pick a line or a product first.</div>`; return; }
+  PICK={product,line,window_days};
+  $("#body").innerHTML=`<div class="msg">Finding dealers…</div>`;
+  let j; try{ j=await api("product_interest",{product:product||undefined,manufacturer:product?undefined:line,window_days,signals}); }catch(e){ if(e&&e.gate){ gate("Session ended."); return; } $("#body").innerHTML=`<div class="msg err">Couldn't run the search.</div>`; return; }
+  if(!j||!j.ok){ $("#body").innerHTML=`<div class="msg err">${esc((j&&j.error)||"Search failed.")}</div>`; return; }
+  RESULTS=j.dealers||[];
+  const label = product?("product "+product):("line "+(($("#fLine option:checked")||{}).textContent||line).split(" · ")[0]);
+  if(!RESULTS.length){ $("#body").innerHTML=`<div class="card"><div class="hint">No dealers are showing intent on ${esc(label)} without having ordered it (in the last ${window_days} days).${j.excluded_buyers?` ${j.excluded_buyers} interested dealer(s) were excluded because they already ordered.`:""}</div></div>`; return; }
+  const rows=RESULTS.map((d,i)=>`<tr>
+     <td><input type="checkbox" class="rk" data-i="${i}" checked></td>
+     <td><b>${esc(d.name)}</b></td><td>${esc([d.city,d.state].filter(Boolean).join(", "))}</td><td>${esc(d.rep||"—")}</td>
+     <td class="n">${d.views||0}</td><td class="n">${d.carts||0}</td><td class="n">${d.searches||0}</td>
+     <td class="n"><b>${d.intent}</b></td><td class="when">${when(d.last)}</td></tr>`).join("");
+  $("#body").innerHTML=`<div class="card">
+      <h2>Dealers showing intent on ${esc(label)} <span class="chip">${RESULTS.length}</span>
+        <span class="hint" style="font-weight:600">— haven't ordered it${j.excluded_buyers?` · ${j.excluded_buyers} buyer(s) excluded`:""}</span></h2>
+      <table><thead><tr><th><input type="checkbox" id="rall" checked onchange="toggleAll(this.checked)"></th><th>Dealer</th><th>Location</th><th>Rep</th><th class="n">Views</th><th class="n">Carts</th><th class="n">Searches</th><th class="n">Intent</th><th class="n">Last</th></tr></thead><tbody>${rows}</tbody></table>
+    </div>
+    <div class="bar"><span class="sel" id="selcount"></span>
+      <span><button class="btn orange" onclick="buildAud()">Build campaign audience →</button></span></div>
+    <div id="built"></div>`;
+  updCount();
+  document.querySelectorAll(".rk").forEach(c=>c.addEventListener("change",updCount));
+}
+function toggleAll(on){ document.querySelectorAll(".rk").forEach(c=>c.checked=on); updCount(); }
+function selected(){ return [...document.querySelectorAll(".rk")].filter(c=>c.checked).map(c=>RESULTS[+c.dataset.i]).filter(Boolean); }
+function updCount(){ const n=selected().length; const el=$("#selcount"); if(el) el.textContent=`${n} dealer${n===1?"":"s"} selected`; }
+
+async function buildAud(){
+  const sel=selected(); if(!sel.length){ alert("Select at least one dealer."); return; }
+  const def=(PICK&&PICK.product?("Interest: "+PICK.product):("Interest: "+(($("#fLine option:checked")||{}).textContent||"line").split(" · ")[0]))+" — "+new Date().toISOString().slice(0,10);
+  const name=prompt("Name this audience:", def); if(name===null) return;
+  $("#built").innerHTML=`<div class="hint" style="margin-top:8px">Building audience…</div>`;
+  let j; try{ j=await api("build_audience",{name:name||def,dealer_ids:sel.map(d=>d.dealer_id),notes:"Product-Interest: "+(PICK&&(PICK.product||PICK.line)||"")}); }catch(e){ $("#built").innerHTML=`<div class="msg err">Couldn't build the audience.</div>`; return; }
+  if(!j||!j.ok){ $("#built").innerHTML=`<div class="msg err">${esc((j&&j.message)||j&&j.error||"Failed.")}</div>`; return; }
+  $("#built").innerHTML=`<div class="card" style="border-left:4px solid var(--green)">
+     <span class="ok">✓ Audience “${esc(j.name)}” created with ${j.count} dealer${j.count===1?"":"s"}.</span>
+     <div style="margin-top:8px"><a class="btn orange" href="/admin/campaigns.html">Open Campaign Studio →</a>
+       <a class="btn ghost" href="/admin/audiences.html" style="margin-left:6px">View in Target Audiences</a></div></div>`;
+}
+init();
+</script>
+</body></html>
