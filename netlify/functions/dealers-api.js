@@ -192,6 +192,9 @@ async function buildState(){
   // Websites live in dealers.website (added by supabase/master_backfill.sql). Fetched
   // decoupled + tolerant so the whole page still loads if the column isn't there yet.
   let webById={}; try{ const w=await sbGetAll("dealers?select=id,website"); for(const x of (w||[])) if(x.website) webById[x.id]=x.website; }catch(e){}
+  // Email-verification status (dealers.email_verified, added by supabase/dealer_email_verification.sql).
+  // Decoupled + tolerant: if the column doesn't exist yet the page still loads and no badges show.
+  let evById={}, evSupported=false; try{ const ev=await sbGetAll("dealers?select=id,email_verified"); evSupported=true; for(const x of (ev||[])) evById[x.id]=!!x.email_verified; }catch(e){}
   const dcontacts = await sbGetAll("dealer_contacts?select=dealer_id,email,name,title,role,phone,cell","dealer_id,email").catch(()=>[]);
   const contactsByDealer=new Map(); for(const x of dcontacts){(contactsByDealer.get(x.dealer_id)||contactsByDealer.set(x.dealer_id,[]).get(x.dealer_id)).push(x);}
   const daddrs = await sbGetAll("dealer_addresses?select=dealer_id,address,city,state,zip,label,pri","dealer_id,addr_key").catch(()=>[]);
@@ -227,7 +230,7 @@ async function buildState(){
     const since = (latest&&per.length)? pm(latest)-pm(per[per.length-1]) : null;
     return {
       id:d.id, name:d.business_name, hcps_account:d.hcps_account||"", status:d.status||"",
-      contact_name:d.contact_name||"", email:d.email||"", phone:d.phone||"", website:webById[d.id]||"",
+      contact_name:d.contact_name||"", email:d.email||"", email_verified: evSupported?!!evById[d.id]:null, phone:d.phone||"", website:webById[d.id]||"",
       address:d.address||"", city:d.city||"", state:d.state||"", zip:d.zip||"", notes:d.notes||"",
       rep: repByName[d.business_name]||"",
       master: d.parent_id ? (nameById[d.parent_id]||"") : "",
@@ -284,7 +287,7 @@ async function buildState(){
     changeRequests:(changeReqs||[]).map(r=>{const d=dealers.find(x=>x.id===r.dealer_id);
       return {id:r.id,dealer_id:r.dealer_id||"",dealer_name:d?d.business_name:(r.email||""),
         email:r.email||"",created_at:r.created_at,changes:r.changes||{}};}),
-    recentSessions, openCarts,
+    recentSessions, openCarts, email_verified_supported:evSupported,
   };
 }
 
@@ -330,9 +333,15 @@ exports.handler = async (event)=>{
         if(!b.dealer_id) return json(400,{error:"dealer_id required"});
         const f={}; for(const k of ["contact_name","email","phone","website","address","city","state","zip","hcps_account","notes","business_name"]) if(k in b) f[k]=(b[k]===""?null:b[k]);
         f.updated_at=new Date().toISOString();
+        // If the email ADDRESS actually changed, drop it back to Pending verification.
+        if("email" in b){ try{ const cur=await sbGet(`dealers?id=eq.${encodeURIComponent(b.dealer_id)}&select=email,email_verified`); const c=cur&&cur[0];
+          if(c && String(c.email||"")!==String(f.email||"")) f.email_verified=false; }catch(e){} }
         try{ await sbSend("PATCH",`dealers?id=eq.${b.dealer_id}`,f,{Prefer:"return=minimal"}); }
-        catch(e){ // tolerate the website column not existing yet (run master_backfill.sql to add it)
-          if(/website/i.test(String(e.message||"")) && ("website" in f)){ delete f.website; await sbSend("PATCH",`dealers?id=eq.${b.dealer_id}`,f,{Prefer:"return=minimal"}); }
+        catch(e){ // tolerate columns not existing yet (website / email_verified migrations)
+          const msg=String(e.message||""); let retry=false;
+          if(/email_verified/i.test(msg) && ("email_verified" in f)){ delete f.email_verified; retry=true; }
+          if(/website/i.test(msg) && ("website" in f)){ delete f.website; retry=true; }
+          if(retry){ await sbSend("PATCH",`dealers?id=eq.${b.dealer_id}`,f,{Prefer:"return=minimal"}); }
           else throw e; }
         // Keep the MAP in sync: it pins from dealer_addresses, so mirror an address edit
         // onto this dealer's primary (highest-pri) address row — or create one if none.
@@ -356,6 +365,17 @@ exports.handler = async (event)=>{
         if(!b.dealer_id) return json(400,{error:"dealer_id required"});
         await sbSend("PATCH",`dealers?id=eq.${b.dealer_id}`,{status:null,updated_at:new Date().toISOString()},{Prefer:"return=minimal"});
         return json(200,{ok:true});
+      }
+      // Mark a dealer's email verified (or un-verify), without recreating the dealer. Can also update
+      // the address in the same call ({email}). Reversible; available to any signed-in staff.
+      if(act==="verify_email"){
+        if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+        const verified=(b.verified!==false);
+        const patch={ email_verified:verified, email_verified_at:verified?new Date().toISOString():null, updated_at:new Date().toISOString() };
+        if(b.email!==undefined){ const em=String(b.email||"").trim(); patch.email=em||null; }
+        try{ await sbSend("PATCH",`dealers?id=eq.${encodeURIComponent(b.dealer_id)}`,patch,{Prefer:"return=minimal"}); }
+        catch(e){ if(/email_verified/i.test(String(e.message||""))) return json(200,{ok:false,error:"needs_migration",message:"Run supabase/dealer_email_verification.sql in Supabase first."}); throw e; }
+        return json(200,{ok:true, verified});
       }
       // Create a brand-new dealer from scratch — a standalone/corporate account, or a branch of an
       // existing dealer when parent_id is passed. Seeds a primary address (so it pins on the map) and

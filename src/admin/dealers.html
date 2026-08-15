@@ -74,11 +74,30 @@ function suggestedPairs(){
   }
   return out.sort((x,y)=>y.score-x.score||(y.a.sales+y.b.sales)-(x.a.sales+x.b.sales));
 }
-function filtered(){const q=($("#q")?.value||"").toLowerCase();
-  let ds=DATA.dealers;
-  if(q) ds=ds.filter(d=>d.name.toLowerCase().includes(q)||d.aliases.some(a=>a.toLowerCase().includes(q))
-      ||(d.email||"").toLowerCase().includes(q)||(d.city||"").toLowerCase().includes(q)||(d.state||"").toLowerCase().includes(q)||(d.address||"").toLowerCase().includes(q));
-  return sortDealers(ds);
+function filtered(){const q=($("#q")?.value||"").trim().toLowerCase();
+  const ds=DATA.dealers;
+  if(!q) return sortDealers(ds);
+  // Relevance rank so a single keystroke surfaces the accounts that START with it: name-prefix first,
+  // then a word in the name starting with it, then name-contains, then alias / other fields.
+  const score=d=>{ const n=(d.name||"").toLowerCase();
+    if(n.startsWith(q)) return 6;
+    if(n.split(/\s+/).some(w=>w.startsWith(q))) return 5;
+    if(n.includes(q)) return 4;
+    if((d.aliases||[]).some(a=>String(a).toLowerCase().startsWith(q))) return 3;
+    if((d.aliases||[]).some(a=>String(a).toLowerCase().includes(q))) return 2;
+    if([d.email,d.city,d.state,d.address].some(x=>String(x||"").toLowerCase().includes(q))) return 1;
+    return 0; };
+  return ds.map(d=>[score(d),d]).filter(x=>x[0]>0).sort((a,b)=>b[0]-a[0]||a[1].name.localeCompare(b[1].name)).map(x=>x[1]);
+}
+function emailStatus(d){
+  if(!DATA||DATA.email_verified_supported!==true||!d.email) return "";
+  if(d.email_verified) return ` <span class="chip acc" title="Email confirmed">✓ verified</span>`;
+  return ` <span class="chip rev" title="Email not verified yet">pending verification</span> <a class="link" style="cursor:pointer;font-size:11px" onclick="event.stopPropagation();verifyEmail('${d.id}')" title="Mark this email verified">✓ verify</a>`;
+}
+async function verifyEmail(id){
+  const r=await post({action:"verify_email",dealer_id:id,verified:true},"Verifying…");
+  if(r&&r.ok){ await load(); render(); }
+  else if(r&&(r.message||r.error)){ alertDlg(r.message||r.error); }
 }
 const SORTDEF={sales:-1,name:1,state:1,email:-1,updated:1};
 const SORTLBL={sales:"Revenue (high→low)",name:"Name (A→Z)",state:"State",email:"Has email first",updated:"Recently ordered"};
@@ -154,7 +173,7 @@ function renderAll(){
     const loc=[d.city,d.state].filter(Boolean).join(", ");
     const contact=`<div class="hint" style="text-transform:none;line-height:1.5">
         ${d.address?`${esc(d.address)}${loc?", "+esc(loc):""}`:(loc?`📍 ${esc(loc)}`:`<span class="chip rev">no address</span>`)}<br>
-        ${d.email?`✉ <a href="mailto:${esc(d.email)}" style="color:var(--blue)">${esc(d.email)}</a>`:`<span class="chip rev">no email</span>`}${d.phone?` · ${esc(d.phone)}`:""}</div>`;
+        ${d.email?`✉ <a href="mailto:${esc(d.email)}" style="color:var(--blue)">${esc(d.email)}</a>${emailStatus(d)}`:`<span class="chip rev">no email</span>`}${d.phone?` · ${esc(d.phone)}`:""}</div>`;
     h+=`<tr class="drow" style="cursor:pointer" onclick="if(!event.target.closest('input,a,button,select,label'))openDetail('${d.id}')" title="Click to manage ${esc(d.name)}"><td><input type="checkbox" ${SEL.has(d.id)?"checked":""} onclick="toggleSel('${d.id}')"></td>
       <td class="lbl"><a class="link" style="cursor:pointer" onclick="openDetail('${d.id}')">${esc(d.name)}</a> ${d.status==="review"?`<span class="chip rev">review</span>`:""}${d.status==="prospect"?`<span class="chip al">prospect</span>`:""}
         ${d.aliases.filter(a=>a!==d.name).slice(0,3).map(a=>`<span class="chip al">${esc(a)}</span>`).join("")}
@@ -524,7 +543,7 @@ function openAddDealer(parentId,parentName){
     <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
       <div class="fld"><label>Contact name</label><input id="ad_contact"></div>
       <div class="fld"><label>Phone</label><input id="ad_phone"></div>
-      <div class="fld"><label>Email</label><input id="ad_email" type="email"></div>
+      <div class="fld"><label>Email <span class="hint" style="text-transform:none">— unverified is fine, verify later</span></label><input id="ad_email" type="email"></div>
       <div class="fld"><label>HCPS account #</label><input id="ad_hcps"></div>
     </div>
     <div class="fld" style="margin-top:8px"><label>Street address</label><input id="ad_address"></div>
