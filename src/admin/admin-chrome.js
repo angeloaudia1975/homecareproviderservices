@@ -7,18 +7,22 @@
 (function () {
   "use strict";
 
+  // Each hub's `href` is its WORKSPACE landing (its primary tool), not the dashboard — so clicking a
+  // top category drops you straight into that section with its sub-nav showing, and you can move
+  // between all of its pages without bouncing back to the dashboard. tools[] = the second-tier nav.
   var HUBS = [
-    { id:"ordering", label:"Online Ordering",       href:"/admin/#ordering", tools:[
-        { href:"/admin/order-fulfillment.html", label:"Order Fulfillment" },
+    { id:"ordering", label:"Online Ordering",       href:"/admin/catalog.html", tools:[
         { href:"/admin/catalog.html",     label:"Catalog" },
         { href:"/admin/images.html",      label:"Images" },
         { href:"/admin/featured.html",    label:"Featured" },
-        { href:"/admin/home-editor.html", label:"Portal Home" }
+        { href:"/admin/home-editor.html", label:"Portal Home" },
+        { href:"/admin/order-fulfillment.html", label:"Order Fulfillment" }
     ]},
-    { id:"website", label:"Website", href:"/admin/#website", tools:[
-        { href:"/admin/website.html", label:"Website Editor" }
+    { id:"website", label:"Website", href:"/admin/website.html", tools:[
+        { href:"/admin/website.html", label:"Website Editor" },
+        { href:"/admin/traffic.html", label:"Website Traffic" }
     ]},
-    { id:"sales", label:"Sales & Marketing", href:"/admin/#sales", tools:[
+    { id:"sales", label:"Sales & Marketing", href:"/admin/opportunities.html", tools:[
         { href:"/admin/opportunities.html", label:"Today's Opportunities" },
         { href:"/admin/campaigns.html", label:"Campaign Studio" },
         { href:"/admin/audiences.html", label:"Target Audiences" },
@@ -31,11 +35,10 @@
         { href:"/admin/cardchamp.html", label:"CardChamp" },
         { href:"/admin/map.html",       label:"Territory Map" }
     ]},
-    { id:"analytics", label:"Sales Data & Analytics", href:"/admin/#analytics", tools:[
+    { id:"analytics", label:"Sales Data & Analytics", href:"/admin/command-center-360.html", tools:[
         { href:"/admin/command-center-360.html", label:"Command Center 360" },
         { href:"/admin/reps.html",               label:"Rep Performance" },
         { href:"/admin/pipeline.html",           label:"Pipeline & Forecast" },
-        { href:"/admin/traffic.html",            label:"Website Traffic" },
         { href:"/admin/analytics.html",          label:"Analytics" },
         { href:"/admin/import-commissions.html", label:"Import Commissions" },
         { href:"/admin/sales-import.html",       label:"Sales Report Import" },
