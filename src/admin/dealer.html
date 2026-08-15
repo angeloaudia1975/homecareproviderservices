@@ -286,21 +286,69 @@ function backToPicker(e){
 }
 // Dealer 360 opened without a specific dealer → a searchable list that jumps into each profile.
 function renderPicker(dealers){
-  PICKER=[...(dealers||[])].sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"en",{sensitivity:"base"}));
+  // Build a per-dealer search index ONCE so every keystroke is instant. We index everything a person
+  // might type: business name, aliases, every contact's name & email, the primary email, the account
+  // number, city, state, rep and phone — so the box finds a dealer by ANY of them, from the 1st letter.
+  PICKER=[...(dealers||[])].map(d=>{
+    const contacts=d.contacts||[];
+    const cnames=contacts.map(c=>String(c.name||"")).filter(Boolean);
+    const cemails=contacts.map(c=>String(c.email||"")).filter(Boolean);
+    d._name=String(d.name||"").toLowerCase();
+    d._acct=String(d.hcps_account||"").toLowerCase();
+    d._cnames=cnames; d._cemails=cemails;
+    d._hay=[d.name,d.contact_name].concat(d.aliases||[]).concat(cnames).concat(cemails)
+      .concat([d.email,d.hcps_account,d.city,d.state,d.rep,d.phone]).filter(Boolean).join("  ").toLowerCase();
+    return d;
+  }).sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"en",{sensitivity:"base"}));
   $("#body").innerHTML=`<div class="card">
     <h1 style="margin:0 0 4px;font-size:24px">Dealer 360 &amp; CRM</h1>
-    <div class="hint" style="margin:0 0 12px">Open a dealer for their full command center — activity, interest, contacts, tasks &amp; next best action.</div>
-    <input id="dq" placeholder="Search dealer by name, city, state, or rep…" style="width:100%;max-width:440px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;margin-bottom:10px" oninput="filterPicker()" autofocus>
+    <div class="hint" style="margin:0 0 10px">Open a dealer for their full command center — activity, interest, contacts, tasks &amp; next best action.</div>
+    <input id="dq" placeholder="Search by business, contact name, account #, email, city, state or rep — type any part…" style="width:100%;max-width:520px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;margin-bottom:6px;font-size:15px" oninput="filterPicker()" autofocus>
+    <div id="pmeta" class="hint" style="margin:0 0 10px"></div>
     <div id="plist"></div></div>`;
   filterPicker();
+}
+// Score one dealer against the query. Prefix matches on the business name rank highest, then account #
+// and contact-name prefixes, then "contains" matches — so typing "m" surfaces businesses starting with
+// M first, and a contact name or account number finds its dealer. Returns null if nothing matches.
+function pickerScore(d,q){
+  const toks=q.split(/\s+/).filter(Boolean);
+  for(const t of toks){ if(d._hay.indexOf(t)===-1) return null; }   // every word must appear somewhere
+  const n=d._name;
+  if(n.indexOf(q)===0) return {score:100,why:""};                    // business name starts with query
+  for(const w of n.split(/\s+/)){ if(w.indexOf(q)===0) return {score:86,why:""}; }  // a name word starts with it
+  if(d._acct && d._acct.indexOf(q)===0) return {score:80,why:"acct #"+d.hcps_account};
+  for(const c of d._cnames){ if(c.toLowerCase().indexOf(q)===0) return {score:72,why:"contact: "+c}; }
+  if(n.indexOf(q)!==-1) return {score:60,why:""};                    // business name contains query
+  for(const c of d._cnames){ if(c.toLowerCase().indexOf(q)!==-1) return {score:52,why:"contact: "+c}; }
+  if(d._acct && d._acct.indexOf(q)!==-1) return {score:50,why:"acct #"+d.hcps_account};
+  for(const e of d._cemails){ if(e.toLowerCase().indexOf(q)!==-1) return {score:46,why:e}; }
+  if(String(d.email||"").toLowerCase().indexOf(q)!==-1) return {score:45,why:d.email};
+  for(const a of (d.aliases||[])){ if(String(a).toLowerCase().indexOf(q)!==-1) return {score:40,why:"aka "+a}; }
+  if(String(d.rep||"").toLowerCase().indexOf(q)!==-1) return {score:30,why:"rep: "+d.rep};
+  return {score:20,why:""};   // matched on city/state/phone, or across several words
+}
+function pickerRow(d,why){
+  const sub=[[d.city,d.state].filter(Boolean).join(", "), d.rep, d.sales?money(d.sales):""].filter(Boolean).join(" · ");
+  const whyHtml=why?` <span style="font-size:11px;color:#b45309;background:#fdeee0;border:1px solid #f6d5ad;border-radius:6px;padding:1px 6px;margin-left:4px;white-space:nowrap">${esc(why)}</span>`:"";
+  return `<a class="prow2" href="/admin/dealer.html?id=${encodeURIComponent(d.id)}"><b>${esc(d.name)}</b> <span class="hint" style="margin:0">${esc(sub)}</span>${whyHtml}</a>`;
 }
 function filterPicker(){
   const el=$("#plist"); if(!el) return;
   const q=(($("#dq")||{}).value||"").toLowerCase().trim();
-  const rows=(PICKER||[]).filter(d=>!q||`${d.name||""} ${d.city||""} ${d.state||""} ${d.rep||""}`.toLowerCase().includes(q)).slice(0,400);
-  el.innerHTML=rows.map(d=>`<a class="prow2" href="/admin/dealer.html?id=${encodeURIComponent(d.id)}">
-    <b>${esc(d.name)}</b> <span class="hint" style="margin:0">${esc([d.city,d.state].filter(Boolean).join(", "))}${d.rep?" · "+esc(d.rep):""}${d.sales?" · "+money(d.sales):""}</span></a>`).join("")
-    || '<div class="hint">No dealers match.</div>';
+  const meta=$("#pmeta");
+  if(!q){
+    el.innerHTML=(PICKER||[]).slice(0,200).map(d=>pickerRow(d,"")).join("");
+    if(meta) meta.textContent=`${(PICKER||[]).length} dealers — start typing to find one by business, contact, account # or email.`;
+    return;
+  }
+  const scored=[];
+  for(const d of (PICKER||[])){ const r=pickerScore(d,q); if(r) scored.push({d,score:r.score,why:r.why}); }
+  scored.sort((a,b)=>b.score-a.score || String(a.d.name||"").localeCompare(String(b.d.name||""),"en",{sensitivity:"base"}));
+  const shown=scored.slice(0,300);
+  el.innerHTML=shown.map(x=>pickerRow(x.d,x.why)).join("")
+    || `<div class="hint">No match for “${esc(q)}”. Try a business name, contact name, account #, or email.</div>`;
+  if(meta) meta.textContent=scored.length?`${scored.length} match${scored.length===1?"":"es"}${scored.length>300?" — showing top 300":""}`:"";
 }
 async function loadContacts(){ const el=$("#contacts"); if(!el||!CUR) return;
   const j=await crm({action:"contacts",dealer_id:CUR}); CDATA=(j&&j.ok)?j:{contacts:[],primary_email:"",accounts:[]}; renderContacts(); }
