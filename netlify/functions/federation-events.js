@@ -27,6 +27,18 @@ const { dnorm } = require("./_scope.js");
 const P = require("./_platform.js");
 
 const clip=(s,n)=>{ s=String(s==null?"":s).trim(); return s?s.slice(0,n||300):null; };
+
+// Staff auth for the observability GET (president-only) — resolve the Supabase JWT to a staff row.
+async function whoami(event){
+  const auth=(event.headers&&(event.headers.authorization||event.headers.Authorization))||"";
+  const tok=auth.replace(/^Bearer\s+/i,"").trim(); if(!tok) return null;
+  try{ const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${tok}`}});
+    if(!r.ok) return null; const u=await r.json(); const email=u&&u.email&&String(u.email).toLowerCase(); if(!email) return null;
+    const s=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=role,active`).catch(()=>[]); const su=s&&s[0];
+    if(su&&su.active!==false) return {email,role:su.role||"rep"};
+  }catch(e){}
+  return null;
+}
 const money=n=>"$"+Math.round(Number(n)||0).toLocaleString("en-US");
 
 // Canonical Golden event  ->  HCPS intent event_type (see plan / §5.3).
@@ -80,9 +92,15 @@ async function resolveDealer(env){
     }
   }catch(e){}
 
-  // 3. Account number == HCPS account.
-  if(cust){ try{ const d=await sbGet(`dealers?hcps_account=eq.${encodeURIComponent(cust)}&select=id,is_test&limit=2`);
-    if(d&&d.length===1){ await cacheMap(src,ten,ext,cust,d[0].id,"account"); return {dealer_id:d[0].id,is_test:!!d[0].is_test,confidence:"account"}; } }catch(e){} }
+  // 3. Account number == HCPS account. Account numbers are ORGANIZATION-level (§3.5), so a
+  // multi-branch dealer (e.g. Georges Pharmacy) carries the SAME number on several rows. Resolve
+  // to the organization HQ (parent_id null) instead of refusing a non-unique match; a single match
+  // uses that row directly. This attaches the org's portal activity to the record Dealer 360 rolls
+  // branches up into.
+  if(cust){ try{ const d=await sbGet(`dealers?hcps_account=eq.${encodeURIComponent(cust)}&select=id,parent_id,is_test`);
+    if(d&&d.length){ const pick = d.length===1 ? d[0] : (d.find(x=>!x.parent_id)||d[0]);
+      const conf = d.length===1?"account":"account_org";
+      await cacheMap(src,ten,ext,cust,pick.id,conf); return {dealer_id:pick.id,is_test:!!pick.is_test,confidence:conf}; } }catch(e){} }
 
   // 4. Name (+ optional zip) alias match, normalized the same way as the rest of HCPS.
   if(name){ try{
@@ -122,6 +140,18 @@ exports.handler = async (event) => {
   if(event.httpMethod==="OPTIONS") return {statusCode:204,headers:CORS,body:""};
   try{
     if(!SUPABASE_URL||!SERVICE_ROLE) return json(500,{error:"Supabase env vars not set"});
+
+    // ---- Observability (president-only): watch federation ingestion live ----
+    if(event.httpMethod==="GET"){
+      const me=await whoami(event); if(!me||me.role!=="president") return json(401,{error:"unauthorized"});
+      const out={ok:true,counts:{},recent:[],unmatched:[]};
+      try{ const rows=await sbGet("federation_events?select=status&limit=100000"); const c={}; for(const r of rows) c[r.status]=(c[r.status]||0)+1; out.counts=c; out.total=rows.length; }
+      catch(e){ if(/relation|does not exist|federation_events/i.test(String(e&&e.message||e))) return json(200,{ok:false,error:"tables_missing",message:"Run supabase/federation.sql in Supabase first."}); }
+      try{ out.recent=await sbGet("federation_events?select=event,status,dealer_id,customer_no,external_dealer_id,occurred_at,received_at&order=received_at.desc&limit=25"); }catch(e){}
+      try{ out.unmatched=await sbGet("federation_unmatched?resolved_dealer_id=is.null&select=customer_no,dealer_name,event,occurred_at&order=created_at.desc&limit=25"); }catch(e){}
+      return json(200,out);
+    }
+
     if(!SECRET) return json(500,{error:"FEDERATION_SECRET not configured"});
     if(event.httpMethod!=="POST") return json(405,{error:"method not allowed"});
 
