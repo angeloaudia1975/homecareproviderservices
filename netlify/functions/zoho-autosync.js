@@ -89,8 +89,8 @@ async function run(){
     const nameByDealer={}; for(const d of dealers) nameByDealer[String(d.id)]=(clean(d.business_name)||("Dealer "+d.id)).slice(0,255);
     const people=[];
     const dc=await sbGetAll("dealer_contacts?select=id,dealer_id,name,email,phone,title","id").catch(()=>[]);
-    for(const x of (dc||[])){ const email=clean(x.email); if(!email) continue; const nm=splitName(x.name); people.push({dealer_id:String(x.dealer_id), email, first:nm.first, last:nm.last, phone:clean(x.phone), title:clean(x.title)}); }
-    for(const d of dealers){ const email=clean(d.email); if(!email) continue; const nm=splitName(d.contact_name); people.push({dealer_id:String(d.id), email, first:nm.first, last:nm.last}); }
+    for(const x of (dc||[])){ const email=clean(x.email); if(!email||!EMAIL_RE.test(email)) continue; const nm=splitName(x.name); people.push({dealer_id:String(x.dealer_id), email, first:nm.first, last:nm.last, phone:clean(x.phone), title:clean(x.title)}); }
+    for(const d of dealers){ const email=clean(d.email); if(!email||!EMAIL_RE.test(email)) continue; const nm=splitName(d.contact_name); people.push({dealer_id:String(d.id), email, first:nm.first, last:nm.last}); }
     const seen=new Set(), uniq=[];
     for(const p of people){ const k=p.email.toLowerCase(); if(seen.has(k)) continue; seen.add(k); uniq.push(p); }
     const changed=[];
