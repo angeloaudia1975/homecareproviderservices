@@ -292,7 +292,8 @@ exports.handler = async (event)=>{
       return json(200,{ok:errors.length===0,notes_pushed:notesPushed,notes_skipped:notesSkipped,tasks_pushed:tasksPushed,tasks_skipped:tasksSkipped,errors});
     }
 
-    // Sync state for the dashboard: connection + last-sync times + pipeline link coverage.
+    // Sync state for the dashboard: connection + last-sync times + pipeline link coverage +
+    // live automatic-sync heartbeat, inbound webhook activity, and a recent-events feed.
     if(b.action==="sync_state"){
       const cfg=await getZohoAuth(); const st=await getSyncState();
       let opps=[]; try{ opps=await sbGetAll("opportunities?select=id,zoho_id","id"); }catch(e){}
@@ -301,12 +302,25 @@ exports.handler = async (event)=>{
       let dealers=0, contacts=0;
       try{ dealers=(await sbGetAll("dealers?select=id","id")).length; }catch(e){}
       try{ contacts=(await sbGetAll("dealer_contacts?select=email","email")).length; }catch(e){}
-      // Pending / failed from the sync queue if it exists yet (auto-sync phase); silent 0 otherwise.
-      let pending=0, failed=0, autosync=false;
-      try{ const q=await sbGetAll("zoho_sync_queue?select=id,status","id"); pending=q.filter(x=>x.status==="pending").length; failed=q.filter(x=>x.status==="failed").length; autosync=true; }catch(e){}
+      // Queue health — overall pending/failed plus inbound-specific (webhook events awaiting drain).
+      let pending=0, failed=0, inPending=0, inSynced=0, haveQueue=false;
+      try{ const q=await sbGetAll("zoho_sync_queue?select=direction,status","direction"); haveQueue=true;
+        for(const x of (q||[])){ if(x.status==="pending"){ pending++; if(x.direction==="in") inPending++; } else if(x.status==="failed") failed++; else if(x.status==="synced" && x.direction==="in") inSynced++; } }catch(e){}
+      // Automatic-sync heartbeat + inbound webhook activity + last-20 event feed (all best-effort;
+      // the log/queue tables come from supabase/zoho_sync.sql — silent, empty until that's run).
+      const autosync_at = st.autosync_at || null;
+      const since24 = new Date(Date.now()-864e5).toISOString();
+      let wh_in_24h=0, wh_last=null, auto_last=null, recent=[];
+      try{ const rows=await sbGet(`zoho_sync_log?select=created_at&direction=eq.in&action=eq.webhook&created_at=gte.${encodeURIComponent(since24)}&limit=2000`); wh_in_24h=(rows||[]).length; }catch(e){}
+      try{ const rows=await sbGet("zoho_sync_log?select=created_at&direction=eq.in&action=eq.webhook&order=created_at.desc&limit=1"); wh_last=(rows&&rows[0]&&rows[0].created_at)||null; }catch(e){}
+      try{ const rows=await sbGet("zoho_sync_log?select=result,detail,created_at&entity=eq.autosync&order=created_at.desc&limit=1"); auto_last=(rows&&rows[0])||null; }catch(e){}
+      try{ recent=await sbGet("zoho_sync_log?select=direction,entity,action,result,detail,created_at&order=created_at.desc&limit=20"); }catch(e){ recent=[]; }
       return json(200,{ ok:true, connected:!!(cfg&&cfg.refresh_token), last:st,
         opportunities:{ total:(opps||[]).length, linked, unlinked:(opps||[]).length-linked },
-        counts:{ dealers, contacts }, queue:{ pending, failed }, autosync });
+        counts:{ dealers, contacts }, queue:{ pending, failed, in_pending:inPending, in_synced:inSynced },
+        autosync:{ on:!!autosync_at, at:autosync_at, last:auto_last }, have_queue:haveQueue,
+        webhooks:{ in_24h:wh_in_24h, last:wh_last, pending:inPending, synced:inSynced },
+        recent:(recent||[]) });
     }
 
     // PUSH pipeline opportunities -> Zoho Deals. Each opp stores its Zoho Deal id (zoho_id) so

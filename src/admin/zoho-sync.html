@@ -26,7 +26,7 @@
 </head><body>
 <header id="ac-head"></header>
 <div class="wrap">
-  <div class="top"><div><h1>Zoho Sync <span class="hint" style="font-weight:400">— health dashboard</span></h1><div class="sub">Connection health, freshness, and record counts between the portal and Zoho CRM. The portal is the system of record; Zoho carries the CRM &amp; marketing weight. Automatic background sync is coming — the buttons below are the on-demand / troubleshooting controls.</div></div>
+  <div class="top"><div><h1>Zoho Sync <span class="hint" style="font-weight:400">— health dashboard</span></h1><div class="sub">Connection health, freshness, and record counts between the portal and Zoho CRM. The portal is the system of record; Zoho carries the CRM &amp; marketing weight. Automatic two-way sync runs every 15 minutes and drains real-time webhook events; the buttons below are on-demand / troubleshooting controls.</div></div>
     <div id="conn"></div></div>
   <div id="body"><div class="msg">Loading…</div></div>
 </div>
@@ -39,6 +39,7 @@ window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}}
 let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 let TOKEN=HCPS.token(), STATE=null, BUSY=false;
 const when=t=>{ if(!t) return "never"; try{ return new Date(t).toLocaleString(); }catch(e){ return t; } };
+const rel=t=>{ if(!t) return "—"; const ms=Date.now()-new Date(t).getTime(); const h=ms/3.6e6; return h<1?Math.max(1,Math.round(ms/6e4))+"m ago":h<48?Math.round(h)+"h ago":Math.round(h/24)+"d ago"; };
 
 function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
 async function submitTok(){
@@ -62,30 +63,44 @@ async function load(){
   render();
 }
 function tile(label,val,cls){ return `<div class="tile ${cls||''}"><div class="tl">${label}</div><div class="tv">${val}</div></div>`; }
+function feed(){
+  const rows=(STATE&&STATE.recent)||[];
+  if(!rows.length) return `<div class="card"><h2>Recent sync activity</h2><div class="hint" style="margin-top:6px">No events yet. This lights up as the auto-sync runs every 15 min and as Zoho webhooks fire.</div></div>`;
+  const dirlbl=d=>d==="in"?'⬅ in':d==="out"?'➡ out':esc(d||"");
+  const rescls=r=>r==="ok"?"on":(r==="fail"?"off":"warn");
+  return `<div class="card"><h2>Recent sync activity <span class="hint" style="font-weight:600">— last ${rows.length} events</span></h2>
+    <table class="rev"><thead><tr><th>When</th><th>Dir</th><th>Area</th><th>Result</th><th>Detail</th></tr></thead><tbody>
+    ${rows.map(r=>`<tr><td class="when" title="${esc(when(r.created_at))}">${esc(rel(r.created_at))}</td><td>${dirlbl(r.direction)}</td><td>${esc(r.entity||"")}${r.action?(' · '+esc(r.action)):''}</td><td><span class="dot ${rescls(r.result)}"></span> ${esc(r.result||"")}</td><td class="d" style="max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.detail||"")}">${esc(String(r.detail||"").slice(0,140))}</td></tr>`).join("")}
+    </tbody></table></div>`;
+}
 function render(){
-  const st=STATE.last||{}, conn=STATE.connected, opp=STATE.opportunities||{}, cnt=STATE.counts||{}, q=STATE.queue||{}, auto=STATE.autosync;
+  const st=STATE.last||{}, conn=STATE.connected, opp=STATE.opportunities||{}, cnt=STATE.counts||{}, q=STATE.queue||{}, auto=STATE.autosync||{}, wh=STATE.webhooks||{};
   $("#conn").innerHTML=`<span class="chip"><span class="dot ${conn?'on':'off'}"></span> ${conn?'Connected to Zoho':'Not connected'}</span>`;
   const ago=t=>{ if(!t) return {txt:"never",cls:"off"}; const ms=Date.now()-new Date(t).getTime(); const h=ms/3.6e6;
     const txt = h<1?Math.max(1,Math.round(ms/6e4))+"m ago" : h<48?Math.round(h)+"h ago" : Math.round(h/24)+"d ago";
     return {txt, cls: h<24?"on": h<168?"warn":"off"}; };
   // 1) connection + automation health
+  const aAgo=ago(auto.at), wAgo=ago(wh.last);
   const connCard=`<div class="card">
     <div class="hstat">
       <div><div class="hlabel">Zoho connection</div><div class="hval"><span class="dot ${conn?'on':'off'}"></span> ${conn?'Connected':'Not connected'}</div></div>
-      <div><div class="hlabel">Automatic sync</div><div class="hval">${auto?'<span class="dot on"></span> On':'<span class="dot warn"></span> Manual — auto-sync coming'}</div></div>
-      <div><div class="hlabel">Inbound (Zoho → portal)</div><div class="hval"><span class="dot warn"></span> Polling planned · webhooks off</div></div>
+      <div><div class="hlabel">Automatic sync</div><div class="hval">${auto.on?`<span class="dot ${aAgo.cls}"></span> On · ${aAgo.txt}`:'<span class="dot warn"></span> Deploying — first run pending'}</div></div>
+      <div><div class="hlabel">Inbound webhooks (Zoho → portal)</div><div class="hval">${wh.last?`<span class="dot ${wAgo.cls}"></span> Live · ${wh.in_24h||0} in 24h`:'<span class="dot warn"></span> Live · awaiting first event'}</div></div>
     </div>
-    <div class="hint" style="margin-top:8px">${auto?'Changes sync automatically in the background; the controls below are for on-demand troubleshooting.':'Sync currently runs when you press a button below. Automatic background sync is the next phase — this dashboard is built to light up its pending / failed / conflict metrics when it turns on.'}</div></div>`;
+    <div class="hint" style="margin-top:8px">${auto.on?'Two-way sync runs automatically every 15 minutes and drains real-time webhook events; the controls below are for on-demand troubleshooting.':'Automatic sync is deploying — every 15 min it pushes changed records up to Zoho and drains inbound webhook events. These metrics light up after its first run.'}</div></div>`;
   // 2) record + health tiles
   const tiles=`<div class="tiles">
     ${tile("Dealers on file",cnt.dealers==null?"—":cnt.dealers)}
     ${tile("Contacts on file",cnt.contacts==null?"—":cnt.contacts)}
+    ${tile("Webhook events · 24h",wh.in_24h||0)}
+    ${tile("Inbound queued",wh.pending||0,wh.pending?"w":"")}
     ${tile("Pending updates",q.pending||0,q.pending?"w":"")}
     ${tile("Failed syncs",q.failed||0,q.failed?"w":"")}
     ${tile("Pipeline linked",(opp.linked||0)+"/"+(opp.total||0))}
   </div>`;
   // 3) per-area freshness
   const areas=[
+    ["🔁","Auto-sync last run","autosync_at"],
     ["🏢","Accounts pushed","accounts_pushed_at"],["📇","Contacts pushed","contacts_pushed_at"],
     ["📝","Notes & tasks mirrored","mirror_at"],["🔮","Pipeline pushed","opportunities_pushed_at"],
     ["📞","Account updates pulled","accounts_pulled_at"],["🔢","Account #s pulled","account_numbers_pulled_at"],
@@ -110,7 +125,7 @@ function render(){
         ${row("✉️","Contacts","Zoho contacts → portal + email matcher.",btn("b_pc","Run","run('pull_contacts','b_pc')"))}</div>
     </div>
     <div class="hint" style="margin-top:8px">Pulls stay conservative: linked records update in place; brand-new Zoho records are listed for review, never auto-created.</div></div>`;
-  $("#body").innerHTML=connCard+tiles+fresh+force+`<div id="review"></div><div class="log" id="log">Ready.${conn?"":" Connect to Zoho first (Zoho CRM Sync setup)."}</div>`;
+  $("#body").innerHTML=connCard+tiles+fresh+feed()+force+`<div id="review"></div><div class="log" id="log">Ready.${conn?"":" Connect to Zoho first (Zoho CRM Sync setup)."}</div>`;
 }
 async function run(action,btnId){
   if(BUSY) return; BUSY=true; const b=$("#"+btnId); const label=b?b.textContent:""; if(b){b.disabled=true;b.textContent="Working…";}
