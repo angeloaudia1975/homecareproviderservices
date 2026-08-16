@@ -30,23 +30,26 @@ async function whoami(event){
 
 // Build every company with its marketing contacts + attributes.
 async function assembleContacts(){
-  const [dealers,contacts,eng,lines,mfrs,opt]=await Promise.all([
+  const [dealers,contacts,eng,lines,mfrs,opt,relRows]=await Promise.all([
     sbGetAll("dealers?select=id,business_name,email,state,city,parent_id","id"),
     sbGetAll("dealer_contacts?select=dealer_id,name,email,title,role","dealer_id").catch(()=>[]),
     sbGetAll("dealer_engagement?select=dealer_id,status,rep_name,last_period,months_since","dealer_id").catch(()=>[]),
     sbGetAll("dealer_line_status?select=dealer_id,manufacturer,relationship","dealer_id").catch(()=>[]),
     sbGet("manufacturers?select=slug,name").catch(()=>[]),
     sbGet("email_optout?select=email").catch(()=>[]),
+    sbGetAll("dealer_relationships?select=dealer_id,manufacturer,status","dealer_id").catch(()=>[]),
   ]);
   const mfrName={}; mfrs.forEach(m=>mfrName[m.slug]=m.name||m.slug);
   const engById={}; eng.forEach(e=>engById[e.dealer_id]=e);
   const optSet=new Set((opt||[]).map(o=>String(o.email||"").toLowerCase()));
+  // Canonical MRE status overlays the sales-only relationship so 'restricted' is visible to the rules.
+  const relByD={}; (relRows||[]).forEach(r=>{ (relByD[r.dealer_id]=relByD[r.dealer_id]||{})[r.manufacturer]=r.status; });
   const cByD={}; (contacts||[]).forEach(c=>{ (cByD[c.dealer_id]=cByD[c.dealer_id]||[]).push(c); });
   const lByD={}; (lines||[]).forEach(l=>{ (lByD[l.dealer_id]=lByD[l.dealer_id]||[]).push(l); });
   const companies=[];
   for(const d of dealers){
     const e=engById[d.id]||{};
-    const rels=(lByD[d.id]||[]).map(l=>({slug:l.manufacturer,name:mfrName[l.manufacturer]||l.manufacturer,relationship:l.relationship}));
+    const rels=(lByD[d.id]||[]).map(l=>({slug:l.manufacturer,name:mfrName[l.manufacturer]||l.manufacturer,relationship:(relByD[d.id]&&relByD[d.id][l.manufacturer])||l.relationship}));
     const seen=new Set(), cs=[];
     const add=(name,email,title,role,source)=>{ const em=String(email||"").trim(); if(!EMAIL_RE.test(em))return; const lo=em.toLowerCase(); if(seen.has(lo))return; seen.add(lo); cs.push({name:name||"",email:em,title:title||"",role:role||"",unsub:optSet.has(lo),source}); };
     add(d.business_name,d.email,"","Company","company");
@@ -64,8 +67,9 @@ function applyRules(companies,rules){
   rules=rules||{}; let out=companies;
   if(rules.state) out=out.filter(c=>c.state===String(rules.state).toUpperCase());
   if(rules.rep) out=out.filter(c=>c.rep===rules.rep);
-  if(rules.manufacturer) out=out.filter(c=>c.relationships.some(r=>r.slug===rules.manufacturer && (!rules.relationship||r.relationship===rules.relationship)));
-  else if(rules.relationship) out=out.filter(c=>c.relationships.some(r=>r.relationship===rules.relationship));
+  // 'restricted' is never targetable — exclude it from a manufacturer-scoped audience.
+  if(rules.manufacturer) out=out.filter(c=>c.relationships.some(r=>r.slug===rules.manufacturer && r.relationship!=="restricted" && (!rules.relationship||r.relationship===rules.relationship)));
+  else if(rules.relationship && rules.relationship!=="restricted") out=out.filter(c=>c.relationships.some(r=>r.relationship===rules.relationship));
   return out;
 }
 function flattenMembers(companies){
