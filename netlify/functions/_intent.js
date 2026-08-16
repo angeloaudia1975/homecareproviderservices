@@ -157,8 +157,8 @@ async function computeRelationships(){
   const cfg=await getConfig();
   const key=(d,s)=>String(d)+"|"+s;
   const [lineStatus,dealerMfrs,mfrs,dealers]=await Promise.all([
-    sbGetAll("dealer_line_status?select=dealer_id,manufacturer,relationship,months_since,last_order_period,status_since").catch(()=>[]),
-    sbGetAll("dealer_manufacturers?select=dealer_id,manufacturer,account_ref,active").catch(()=>[]),
+    sbGetAll("dealer_line_status?select=dealer_id,manufacturer,relationship,months_since,last_order_period,status_since","dealer_id").catch(()=>[]),
+    sbGetAll("dealer_manufacturers?select=dealer_id,manufacturer,account_ref,active","dealer_id").catch(()=>[]),
     sbGet("manufacturers?select=slug,name").catch(()=>[]),
     sbGetAll("dealers?select=id,parent_id").catch(()=>[]),
   ]);
@@ -198,7 +198,7 @@ async function computeRelationships(){
   // Emit dealer.status.changed on a real transition (prior row existed with a different status).
   let changes=0;
   try{
-    const prev=await sbGetAll("dealer_relationships?select=dealer_id,manufacturer,status").catch(()=>[]);
+    const prev=await sbGetAll("dealer_relationships?select=dealer_id,manufacturer,status","dealer_id").catch(()=>[]);
     const prevMap=new Map(); for(const p of prev) prevMap.set(key(p.dealer_id,p.manufacturer),p.status);
     const acts=[];
     for(const r of out){ const before=prevMap.get(key(r.dealer_id,r.manufacturer));

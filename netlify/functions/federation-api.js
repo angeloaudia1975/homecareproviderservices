@@ -361,7 +361,7 @@ exports.handler=async(event)=>{
 
     // ---------- Relationship summary + restricted list (staff) ----------
     if(b.action==="relationships_summary"){
-      let rows=[]; try{ rows=await sbGetAll("dealer_relationships?select=dealer_id,manufacturer,status"); }catch(e){ if(/relation|does not exist|dealer_relationships/i.test(String(e&&e.message||e))) return json(200,{ok:false,error:"tables_missing",message:"Run supabase/relationships.sql first."}); }
+      let rows=[]; try{ rows=await sbGetAll("dealer_relationships?select=dealer_id,manufacturer,status","dealer_id"); }catch(e){ if(/relation|does not exist|schema cache|dealer_relationships/i.test(String(e&&e.message||e))) return json(200,{ok:false,error:"tables_missing",message:"Run supabase/relationships.sql first."}); }
       const counts={active:0,prospect:0,dormant:0,restricted:0};
       const restricted=[];
       const dm=await dealerMap();
