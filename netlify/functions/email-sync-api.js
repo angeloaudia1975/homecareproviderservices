@@ -212,6 +212,29 @@ exports.handler = async (event)=>{
       return json(200,{ ok:true, count:msgs.length, inbound, outbound:msgs.length-inbound, messages:msgs });
     }
 
+    // Read the FULL body of one captured message on demand — fetched live from Outlook via Graph and
+    // never stored. Looks the message up in email_messages first, so staff can only open messages that
+    // were already captured onto a dealer timeline (not arbitrary mailbox content). Same access as the
+    // dealer timeline above (any signed-in staff), so it sits before the president-only gate.
+    if(b.action==="message"){
+      const id=String(b.id||"").trim(); if(!id) return json(400,{error:"id required"});
+      let row; try{ const rows=await sbGet(`email_messages?id=eq.${encodeURIComponent(id)}&select=id,graph_id,mailbox_upn,subject,from_address,from_name,direction,sent_at,received_at,has_attachments`); row=rows&&rows[0]; }
+      catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run supabase/email_intelligence.sql first."}); }
+      if(!row) return json(404,{ok:false,error:"not_found"});
+      if(!G_TENANT||!G_CLIENT||!G_SECRET) return json(200,{ok:false,error:"graph_env_missing",message:"Set GRAPH_TENANT_ID / GRAPH_CLIENT_ID / GRAPH_CLIENT_SECRET in Netlify to read full email bodies."});
+      if(!row.graph_id||!row.mailbox_upn) return json(200,{ok:false,error:"no_source",message:"This message has no Outlook reference to open."});
+      let m; try{ m=await graphGet(`/users/${encodeURIComponent(row.mailbox_upn)}/messages/${encodeURIComponent(row.graph_id)}?$select=subject,body,from,toRecipients,ccRecipients,sentDateTime,receivedDateTime`); }
+      catch(e){ return json(200,{ok:false,error:"fetch_failed",message:"Couldn't open this message in Outlook — it may have been moved or deleted."}); }
+      const bt=((m.body&&m.body.contentType)||"").toLowerCase();
+      const to=(m.toRecipients||[]).map(r=>r.emailAddress&&r.emailAddress.address).filter(Boolean);
+      const cc=(m.ccRecipients||[]).map(r=>r.emailAddress&&r.emailAddress.address).filter(Boolean);
+      return json(200,{ ok:true, id:row.id, subject:m.subject||row.subject||"", direction:row.direction,
+        from:row.from_address||((m.from&&m.from.emailAddress&&m.from.emailAddress.address)||""),
+        from_name:row.from_name||((m.from&&m.from.emailAddress&&m.from.emailAddress.name)||""),
+        to, cc, when:row.received_at||row.sent_at||null, has_attachments:!!row.has_attachments,
+        body_html: bt==="html"?((m.body&&m.body.content)||""):"", body_text: bt!=="html"?((m.body&&m.body.content)||""):"" });
+    }
+
     if(me.role!=="president") return json(403,{error:"president only"});
 
     if(b.action==="status"){
