@@ -330,7 +330,11 @@ exports.handler=async(event)=>{
       const did=clip(b.dealer_id,60); if(!did) return json(400,{error:"dealer_id required"});
       if(!inScope(did)) return json(403,{error:"out of scope"});
       let slug=null;
+      // 1. Identity cache (fast path when present).
       try{ const m=await sbGet(`partner_dealer_map?source_system=eq.golden&dealer_id=eq.${encodeURIComponent(did)}&external_dealer_id=not.is.null&select=external_dealer_id&limit=1`); if(m&&m[0]&&m[0].external_dealer_id) slug=m[0].external_dealer_id; }catch(e){}
+      // 2. The federation audit trail always carries the Golden slug on processed events — reliable.
+      if(!slug){ try{ const fe=await sbGet(`federation_events?source_system=eq.golden&dealer_id=eq.${encodeURIComponent(did)}&external_dealer_id=not.is.null&select=external_dealer_id&order=received_at.desc&limit=1`); if(fe&&fe[0]&&fe[0].external_dealer_id) slug=fe[0].external_dealer_id; }catch(e){} }
+      // 3. Fall back to a golden_url on the dealer record.
       if(!slug){ try{ const d=await sbGet(`dealers?id=eq.${encodeURIComponent(did)}&select=golden_url`); const u=d&&d[0]&&d[0].golden_url; if(u){ const mm=String(u).match(/\/portal\/([^\/?#]+)/); slug=mm?mm[1]:(/^[a-z0-9][a-z0-9-]*$/i.test(String(u).trim())?String(u).trim():null); } }catch(e){} }
       if(!slug) return json(400,{error:"no_golden_slug",message:"No linked Golden portal for this dealer (no Golden slug on file)."});
       const secret=process.env.FEDERATION_SECRET||""; if(!secret) return json(500,{error:"FEDERATION_SECRET not set"});
