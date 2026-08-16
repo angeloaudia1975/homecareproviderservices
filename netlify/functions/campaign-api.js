@@ -70,6 +70,17 @@ async function resolveAudience(segment,mfr,filters){
   if(filters.rep){ const eng=await sbGetAll("dealer_engagement?select=dealer_id,rep_name","dealer_id").catch(()=>[]); eng.forEach(e=>repById[e.dealer_id]=e.rep_name||""); }
   ids=ids.filter(id=>{ const d=byId[id]; if(!d)return false; if(st && String(d.state||"").toUpperCase()!==st) return false; if(filters.rep && repById[id]!==filters.rep) return false; return true; });
   if(!ids.length) return {count:0,dealer_ids:[],sample:[]};
+  // Manufacturer Relationship Engine: 'restricted' is never targeted. A manufacturer-scoped campaign
+  // drops dealers restricted for that line; every campaign drops the global do-not-target list. This
+  // only ever REMOVES recipients — a safety filter that can't widen the audience.
+  try{
+    const drop=new Set();
+    if(mfr){ const rr=await sbGetAll(`dealer_relationships?status=eq.restricted&manufacturer=eq.${encodeURIComponent(mfr)}&select=dealer_id`,"dealer_id").catch(()=>[]); (rr||[]).forEach(r=>drop.add(String(r.dealer_id))); }
+    const cfgRow=await sbGet("app_settings?key=eq.automation_config&select=value").catch(()=>[]);
+    const exD=(cfgRow&&cfgRow[0]&&cfgRow[0].value&&cfgRow[0].value.exclude_dealers)||[];
+    (exD||[]).forEach(id=>drop.add(String(id)));
+    if(drop.size){ ids=ids.filter(id=>!drop.has(String(id))); if(!ids.length) return {count:0,dealer_ids:[],sample:[]}; }
+  }catch(e){}
   // Full email list on file = dealers.email + every dealer_contacts email, deduped.
   const opt=new Set((await sbGet("email_optout?select=email").catch(()=>[])).map(r=>String(r.email||"").toLowerCase()));
   const contactsByDealer={};

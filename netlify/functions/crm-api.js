@@ -106,7 +106,7 @@ exports.handler = async (event)=>{
       if(!b.dealer_id) return json(400,{error:"dealer_id required"});
       const did=encodeURIComponent(b.dealer_id);
       const d30=new Date(Date.now()-30*864e5).toISOString(), d90=new Date(Date.now()-90*864e5).toISOString();
-      const [events,intentRows,lines,sends,sessions,orders,carts,mfrs,salesRows]=await Promise.all([
+      const [events,intentRows,lines,sends,sessions,orders,carts,mfrs,salesRows,relStatus]=await Promise.all([
         sbGet(`intent_events?dealer_id=eq.${did}&occurred_at=gte.${encodeURIComponent(d90)}&select=event_type,manufacturer,product_code,meta,occurred_at&order=occurred_at.desc&limit=800`).catch(()=>[]),
         sbGet(`dealer_intent?dealer_id=eq.${did}&select=score_total,tier,by_manufacturer,top_manufacturer,top_product,last_event_at`).catch(()=>[]),
         sbGet(`dealer_line_status?dealer_id=eq.${did}&select=manufacturer,relationship,months_since`).catch(()=>[]),
@@ -116,9 +116,13 @@ exports.handler = async (event)=>{
         sbGet(`dealer_carts?dealer_id=eq.${did}&select=cart,updated_at`).catch(()=>[]),
         sbGet("manufacturers?select=slug,name").catch(()=>[]),
         sbGet(`monthly_sales?dealer_id=eq.${did}&select=manufacturer,line_type,amount,commission,commission_rate,billed_amount,invoice_no,order_date,memo&limit=8000`).catch(()=>[]),
+        sbGet(`dealer_relationships?dealer_id=eq.${did}&select=manufacturer,status`).catch(()=>[]),
       ]);
       const mfrName={}; (mfrs||[]).forEach(m=>mfrName[m.slug]=m.name||m.slug);
       const rel={}; (lines||[]).forEach(l=>rel[l.manufacturer]=l.relationship);
+      // Canonical Manufacturer Relationship status (MRE) overrides the sales-only relationship — it adds
+      // 'restricted' and account-on-file 'prospect'. Falls back to line status if the matrix isn't built yet.
+      (relStatus||[]).forEach(r=>{ if(r&&r.manufacturer&&r.status) rel[r.manufacturer]=r.status; });
       const d30ms=Date.now()-30*864e5;
       const evByMfr={}, prodViews={}; let opens=0,clicks=0,opens30=0,clicks30=0;
       for(const e of (events||[])){ const t=e.event_type, mfr=e.manufacturer, ts=new Date(e.occurred_at).getTime();

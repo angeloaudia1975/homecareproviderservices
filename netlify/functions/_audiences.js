@@ -8,23 +8,27 @@ async function sbGetAll(base,col="id"){ const PAGE=1000; let from=0,out=[]; for(
 const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 async function assembleContacts(){
-  const [dealers,contacts,eng,lines,mfrs,opt]=await Promise.all([
+  const [dealers,contacts,eng,lines,mfrs,opt,relRows]=await Promise.all([
     sbGetAll("dealers?select=id,business_name,email,state,city,parent_id","id"),
     sbGetAll("dealer_contacts?select=dealer_id,name,email,title,role","dealer_id").catch(()=>[]),
     sbGetAll("dealer_engagement?select=dealer_id,status,rep_name,last_period,months_since","dealer_id").catch(()=>[]),
     sbGetAll("dealer_line_status?select=dealer_id,manufacturer,relationship","dealer_id").catch(()=>[]),
     sbGet("manufacturers?select=slug,name").catch(()=>[]),
     sbGet("email_optout?select=email").catch(()=>[]),
+    sbGetAll("dealer_relationships?select=dealer_id,manufacturer,status","dealer_id").catch(()=>[]),
   ]);
   const mfrName={}; mfrs.forEach(m=>mfrName[m.slug]=m.name||m.slug);
   const engById={}; eng.forEach(e=>engById[e.dealer_id]=e);
   const optSet=new Set((opt||[]).map(o=>String(o.email||"").toLowerCase()));
+  // Canonical MRE status per (dealer, manufacturer) — overlays the sales-only relationship so
+  // 'restricted' is visible to the rules and can be suppressed.
+  const relByD={}; (relRows||[]).forEach(r=>{ (relByD[r.dealer_id]=relByD[r.dealer_id]||{})[r.manufacturer]=r.status; });
   const cByD={}; (contacts||[]).forEach(c=>{ (cByD[c.dealer_id]=cByD[c.dealer_id]||[]).push(c); });
   const lByD={}; (lines||[]).forEach(l=>{ (lByD[l.dealer_id]=lByD[l.dealer_id]||[]).push(l); });
   const companies=[];
   for(const d of dealers){
     const e=engById[d.id]||{};
-    const rels=(lByD[d.id]||[]).map(l=>({slug:l.manufacturer,name:mfrName[l.manufacturer]||l.manufacturer,relationship:l.relationship}));
+    const rels=(lByD[d.id]||[]).map(l=>({slug:l.manufacturer,name:mfrName[l.manufacturer]||l.manufacturer,relationship:(relByD[d.id]&&relByD[d.id][l.manufacturer])||l.relationship}));
     const seen=new Set(), cs=[];
     const add=(name,email,title,role,source)=>{ const em=String(email||"").trim(); if(!EMAIL_RE.test(em))return; const lo=em.toLowerCase(); if(seen.has(lo))return; seen.add(lo); cs.push({name:name||"",email:em,title:title||"",role:role||"",unsub:optSet.has(lo),source}); };
     add(d.business_name,d.email,"","Company","company");
@@ -41,8 +45,9 @@ function applyRules(companies,rules){
   rules=rules||{}; let out=companies;
   if(rules.state) out=out.filter(c=>c.state===String(rules.state).toUpperCase());
   if(rules.rep) out=out.filter(c=>c.rep===rules.rep);
-  if(rules.manufacturer) out=out.filter(c=>c.relationships.some(r=>r.slug===rules.manufacturer && (!rules.relationship||r.relationship===rules.relationship)));
-  else if(rules.relationship) out=out.filter(c=>c.relationships.some(r=>r.relationship===rules.relationship));
+  // 'restricted' is never targetable — a manufacturer-scoped audience excludes dealers restricted for that line.
+  if(rules.manufacturer) out=out.filter(c=>c.relationships.some(r=>r.slug===rules.manufacturer && r.relationship!=="restricted" && (!rules.relationship||r.relationship===rules.relationship)));
+  else if(rules.relationship && rules.relationship!=="restricted") out=out.filter(c=>c.relationships.some(r=>r.relationship===rules.relationship));
   return out;
 }
 function flattenMembers(companies){
@@ -55,9 +60,13 @@ async function resolveById(id){
   if(a.type==="static") members=await sbGetAll(`audience_members?audience_id=eq.${encodeURIComponent(id)}&select=dealer_id,company,contact_name,contact_email`,"contact_email").catch(()=>[]);
   else { const {companies}=await assembleContacts(); members=flattenMembers(applyRules(companies,a.rules||{})); }
   const opt=new Set((await sbGet("email_optout?select=email").catch(()=>[])).map(o=>String(o.email||"").toLowerCase()));
-  const send=[]; let valid=0,unsub=0,invalid=0; const cos=new Set();
-  for(const m of members){ const em=String(m.contact_email||"").trim(); const lo=em.toLowerCase(); cos.add(m.dealer_id);
+  // Global do-not-target list (whole-dealer restriction) — never receives any send.
+  let exD=new Set(); try{ const cr=await sbGet("app_settings?key=eq.automation_config&select=value"); exD=new Set(((cr&&cr[0]&&cr[0].value&&cr[0].value.exclude_dealers)||[]).map(String)); }catch(e){}
+  const send=[]; let valid=0,unsub=0,invalid=0,restricted=0; const cos=new Set();
+  for(const m of members){ const em=String(m.contact_email||"").trim(); const lo=em.toLowerCase();
+    if(exD.has(String(m.dealer_id))){ restricted++; continue; }
+    cos.add(m.dealer_id);
     if(!EMAIL_RE.test(em)){invalid++;continue;} if(opt.has(lo)){unsub++;continue;} valid++; send.push({dealer_id:m.dealer_id,company:m.company||"",name:m.contact_name||"",email:em}); }
-  return {audience:a, breakdown:{companies:cos.size,contacts:members.length,valid,unsubscribed:unsub,invalid,send:send.length}, send};
+  return {audience:a, breakdown:{companies:cos.size,contacts:members.length,valid,unsubscribed:unsub,invalid,restricted,send:send.length}, send};
 }
 module.exports={assembleContacts,applyRules,flattenMembers,resolveById};

@@ -35,7 +35,7 @@ const INTENT_DEFAULTS={
     product_clicked:4,cart_add:9,cart_abandoned:12,order_created:18,order_completed:20,product_purchased:16,partner_signal:7},
   intent_tiers:{interested:10,high:20,opportunity:30},
   intent_task_threshold:30, intent_task_cooldown_days:7,
-  dormant_months:3, exclude_manufacturers:[]
+  dormant_months:3, exclude_manufacturers:[], exclude_dealers:[], restricted_relationships:[]
 };
 async function getConfig(){
   try{ const rows=await sbGet("app_settings?key=eq.automation_config&select=value");
@@ -144,6 +144,73 @@ async function computeLineStatus(){
     try{ await sbSend("POST","dealer_line_status?on_conflict=dealer_id,manufacturer",part,{Prefer:"resolution=merge-duplicates,return=minimal"}); up+=part.length; }catch(e){} }
   try{ await sbSend("DELETE",`dealer_line_status?computed_at=lt.${encodeURIComponent(stamp)}`,null,{Prefer:"return=minimal"}); }catch(e){}
   return {rows:up,dealers:DL.size};
+}
+
+// ---- 3b. Manufacturer Relationship Engine (MRE) -----------------------------
+// One canonical status per (dealer × manufacturer): active | prospect | dormant |
+// restricted (§3.5/§6.3). Layered on the freshly-computed dealer_line_status
+// (sales-derived active/dormant/prospect) + dealer_manufacturers (account on file)
+// + config restriction lists. 'restricted' OVERRIDES everything (never targeted).
+// Additive: reads existing signals, writes only the new dealer_relationships cache,
+// and emits dealer.status.changed to the timeline on a real transition (not first run).
+async function computeRelationships(){
+  const cfg=await getConfig();
+  const key=(d,s)=>String(d)+"|"+s;
+  const [lineStatus,dealerMfrs,mfrs,dealers]=await Promise.all([
+    sbGetAll("dealer_line_status?select=dealer_id,manufacturer,relationship,months_since,last_order_period,status_since").catch(()=>[]),
+    sbGetAll("dealer_manufacturers?select=dealer_id,manufacturer,account_ref,active").catch(()=>[]),
+    sbGet("manufacturers?select=slug,name").catch(()=>[]),
+    sbGetAll("dealers?select=id,parent_id").catch(()=>[]),
+  ]);
+  const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
+  const realDealer=new Set(dealers.map(d=>d.id));
+  // Restriction sources — all config-driven, additive. 'restricted' overrides all.
+  const exDealers=new Set((cfg.exclude_dealers||[]).map(String));           // whole dealer, every line
+  const exMfr=new Set((cfg.exclude_manufacturers||[]).map(mnorm));          // whole line, every dealer
+  const isExMfr=slug=>exMfr.has(mnorm(slug))||exMfr.has(mnorm(mfrName[slug]));
+  const restrictedPairs=new Set();                                          // one (dealer × manufacturer)
+  for(const r of (cfg.restricted_relationships||[])){
+    if(typeof r==="string") restrictedPairs.add(r);
+    else if(r&&r.dealer_id&&r.manufacturer) restrictedPairs.add(String(r.dealer_id)+"|"+mnorm(r.manufacturer));
+  }
+  const isRestricted=(did,slug)=> exDealers.has(String(did)) || isExMfr(slug) || restrictedPairs.has(String(did)+"|"+mnorm(slug));
+
+  // account-on-file grid
+  const hasAcct=new Set();
+  for(const dm of dealerMfrs){ if(dm.active===false) continue; if(!dm.account_ref||!String(dm.account_ref).trim()) continue; hasAcct.add(key(dm.dealer_id,dm.manufacturer)); }
+  // base commercial status from the freshly-computed line matrix
+  const acc=new Map();
+  for(const ls of lineStatus){ if(!realDealer.has(ls.dealer_id)) continue;
+    acc.set(key(ls.dealer_id,ls.manufacturer),{dealer_id:ls.dealer_id,manufacturer:ls.manufacturer,base:ls.relationship||"none",
+      has_account:hasAcct.has(key(ls.dealer_id,ls.manufacturer)),months_since:ls.months_since,last:ls.last_order_period,since:ls.status_since}); }
+  // account on file but no ordered line yet → prospect (eligible, no active relationship)
+  for(const k of hasAcct){ if(!acc.has(k)){ const i=k.indexOf("|"); const did=k.slice(0,i), slug=k.slice(i+1);
+    if(!realDealer.has(did)) continue; acc.set(k,{dealer_id:did,manufacturer:slug,base:"prospect",has_account:true,months_since:null,last:null,since:null}); } }
+
+  const stamp=new Date().toISOString(); const out=[];
+  for(const [,v] of acc){
+    const status = isRestricted(v.dealer_id,v.manufacturer) ? "restricted" : (v.base||"none");
+    if(status==="none") continue;   // keep the cache lean (mirrors dealer_line_status)
+    out.push({dealer_id:v.dealer_id,manufacturer:v.manufacturer,status,has_account:!!v.has_account,
+      months_since:v.months_since!=null?v.months_since:null,last_order_period:v.last||null,
+      status_since:v.since||null,reason:status==="restricted"?"config":null,computed_at:stamp}); }
+
+  // Emit dealer.status.changed on a real transition (prior row existed with a different status).
+  let changes=0;
+  try{
+    const prev=await sbGetAll("dealer_relationships?select=dealer_id,manufacturer,status").catch(()=>[]);
+    const prevMap=new Map(); for(const p of prev) prevMap.set(key(p.dealer_id,p.manufacturer),p.status);
+    const acts=[];
+    for(const r of out){ const before=prevMap.get(key(r.dealer_id,r.manufacturer));
+      if(before && before!==r.status){ changes++;
+        acts.push({dealer_id:r.dealer_id,kind:"system",subject:`Relationship: ${mfrName[r.manufacturer]||r.manufacturer} ${before} → ${r.status}`,actor:"Relationship Engine",created_at:stamp}); } }
+    for(let i=0;i<acts.length;i+=200){ try{ await sbSend("POST","dealer_activity",acts.slice(i,i+200),{Prefer:"return=minimal"}); }catch(e){} }
+  }catch(e){}
+
+  let up=0; for(let i=0;i<out.length;i+=200){ const part=out.slice(i,i+200);
+    try{ await sbSend("POST","dealer_relationships?on_conflict=dealer_id,manufacturer",part,{Prefer:"resolution=merge-duplicates,return=minimal"}); up+=part.length; }catch(e){} }
+  try{ await sbSend("DELETE",`dealer_relationships?computed_at=lt.${encodeURIComponent(stamp)}`,null,{Prefer:"return=minimal"}); }catch(e){}
+  return {rows:up,restricted:out.filter(r=>r.status==="restricted").length,changes};
 }
 
 // ---- 3. high-intent rep tasks ----------------------------------------------
@@ -343,4 +410,4 @@ async function enqueueReengagement(){
   return {considered,queued,flagged};
 }
 
-module.exports={ getConfig,computeIntent,computeLineStatus,syncIntentTasks,enqueueIntentEmails,enqueuePostOrder,enqueueReengagement,ALLOWED_EVENTS,weightFor,tierFor,INTENT_DEFAULTS };
+module.exports={ getConfig,computeIntent,computeLineStatus,computeRelationships,syncIntentTasks,enqueueIntentEmails,enqueuePostOrder,enqueueReengagement,ALLOWED_EVENTS,weightFor,tierFor,INTENT_DEFAULTS };

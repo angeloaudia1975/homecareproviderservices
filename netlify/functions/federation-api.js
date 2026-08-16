@@ -346,6 +346,26 @@ exports.handler=async(event)=>{
       return json(200,{ok:true,url:base+"/sso?t="+encodeURIComponent(payload+"."+sig),slug,expires_in:120});
     }
 
+    // ---------- Recompute the Manufacturer Relationship matrix on demand (president) ----------
+    // Runs the same job the nightly engine runs — refresh the line matrix, then the canonical
+    // (dealer × manufacturer) status incl. 'restricted'. Lets you apply a restriction immediately.
+    if(b.action==="recompute_relationships"){
+      if(me.role!=="president") return json(403,{error:"president only"});
+      try{ const I=require("./_intent.js"); const ls=await I.computeLineStatus(); const rel=await I.computeRelationships(); return json(200,{ok:true,line_status:ls,relationships:rel}); }
+      catch(e){ return json(500,{error:String(e&&e.message||e)}); }
+    }
+
+    // ---------- Relationship summary + restricted list (staff) ----------
+    if(b.action==="relationships_summary"){
+      let rows=[]; try{ rows=await sbGetAll("dealer_relationships?select=dealer_id,manufacturer,status"); }catch(e){ if(/relation|does not exist|dealer_relationships/i.test(String(e&&e.message||e))) return json(200,{ok:false,error:"tables_missing",message:"Run supabase/relationships.sql first."}); }
+      const counts={active:0,prospect:0,dormant:0,restricted:0};
+      const restricted=[];
+      const dm=await dealerMap();
+      for(const r of rows){ if(!inScope(r.dealer_id)) continue; if(counts[r.status]!=null) counts[r.status]++;
+        if(r.status==="restricted") restricted.push({dealer_id:r.dealer_id,name:(dm[r.dealer_id]||{}).name||"",manufacturer:r.manufacturer}); }
+      return json(200,{ok:true,counts,restricted:restricted.slice(0,200)});
+    }
+
     return json(400,{error:"unknown action"});
   }catch(e){ return json(500,{error:String(e&&e.message||e)}); }
 };

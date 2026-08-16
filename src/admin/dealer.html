@@ -550,7 +550,7 @@ async function loadIntel(){
     <div class="itile"><div class="l">Logins 30d</div><div class="v">${lg.count_30d||0}</div><div class="hint" style="margin:0">${lg.last_login?"last "+idate(lg.last_login):"never"}</div></div>
     <div class="itile"><div class="l">Email 30d</div><div class="v">${em.opens_30d||0}·${em.clicks_30d||0}</div><div class="hint" style="margin:0">opens · clicks</div></div>
   </div>`;
-  const relBadge=r=>{ const map={active:["Customer","#2d7d46","#e7f6ec"],prospect:["Prospect","#6b4bb4","#efe9fb"],dormant:["Dormant","#8a5d12","#fdf4e6"],none:["Not a customer","#b45309","#fdeee0"]}; const m=map[r]||map.none; return `<span style="font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;background:${m[2]};color:${m[1]}">${m[0]}</span>`; };
+  const relBadge=r=>{ const map={active:["Customer","#2d7d46","#e7f6ec"],prospect:["Prospect","#6b4bb4","#efe9fb"],dormant:["Dormant","#8a5d12","#fdf4e6"],restricted:["⛔ Restricted","#b91c1c","#fde8e8"],none:["Not a customer","#b45309","#fdeee0"]}; const m=map[r]||map.none; return `<span style="font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;background:${m[2]};color:${m[1]}">${m[0]}</span>`; };
   const interest=(it.interest||[]).slice(0,10);
   const emerging=interest.filter(m=>m.emerging).slice(0,3);
   const banner=emerging.length?`<div style="border:1px solid #f6d5ad;border-left:3px solid #F5821F;background:#fff8ef;border-radius:10px;padding:9px 11px;margin-bottom:10px">
