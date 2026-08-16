@@ -48,6 +48,7 @@ function render(){ if(!TOKEN){ gate(); return; }
       <button class="btn sm" onclick="doSeed()">Seed domains from CRM</button>
       <button class="btn sm" onclick="doUnmatched()">Review unmatched</button>
       <button class="btn sm" onclick="doIgnored()">Ignored senders</button>
+      <button class="btn sm" onclick="doDeliverability()">📶 Deliverability</button>
       <button class="btn orange" onclick="doSync()">Sync now</button>
       <span class="hint">days <input id="days" value="30" style="width:56px;padding:5px 7px;border:1px solid var(--line);border-radius:7px"></span>
       <span id="msg" class="hint" style="margin:0"></span>
@@ -105,6 +106,28 @@ async function doIgnored(){ if(BUSY)return; busy("Loading ignored…"); const j=
     <div class="hint" style="margin-top:10px"><b>Automatic patterns</b> (always hidden, no setup needed): ${(j.auto_patterns||[]).map(p=>`<code>${esc(p)}</code>`).join(" · ")}</div>
     </div>`; }
 async function restoreSender(id){ const r=await api({action:"restore_sender",id}); if(r&&r.ok) doIgnored(); }
+
+// Email deliverability — SPF/DKIM/DMARC pass rates + sending sources from Postmark DMARC monitoring.
+async function doDeliverability(){ if(BUSY)return; busy("Loading deliverability…"); const j=await api({action:"deliverability"}); done();
+  if(!j){ $("#out").innerHTML=`<div class="hint warn">Couldn't load deliverability.</div>`; return; }
+  if(!j.ok){ $("#out").innerHTML=`<div class="step" style="margin-top:10px"><h3>Email deliverability</h3>
+      <div class="hint warn">${esc(j.message||j.error||"Not available")}</div>
+      ${j.error==="not_configured"?`<div class="hint" style="margin-top:6px">Add <code>POSTMARK_DMARC_API_TOKEN</code> in Netlify (from your Postmark DMARC account) and this shows your live SPF/DKIM/DMARC pass rates and every source sending as your domain.</div>`:""}</div>`; return; }
+  const t=j.totals||{};
+  const clr=p=>p==null?"#8a94a1":(p>=95?"#1f7a44":p>=80?"#b45309":"#b42323");
+  const pctv=p=>`<span style="color:${clr(p)};font-weight:800">${p==null?"—":p+"%"}</span>`;
+  const verified=j.verified===true?'<span class="pill y">DNS verified</span>':j.verified===false?'<span class="pill n">DNS not verified yet</span>':'<span class="pill">checking…</span>';
+  const rows=(j.sources||[]).map(s=>`<tr><td>${esc(s.source)}</td><td class="num">${(s.messages||0).toLocaleString()}</td><td class="num">${pctv(s.spf_pct)}</td><td class="num">${pctv(s.dkim_pct)}</td></tr>`).join("")
+    ||`<tr><td colspan="4" class="hint">No report data yet — the mailbox providers start sending DMARC reports a few days after the DNS record goes live. Check back soon.</td></tr>`;
+  $("#out").innerHTML=`<div class="step" style="margin-top:10px"><h3>Email deliverability <span class="hint" style="font-weight:400">— DMARC monitoring, last 30 days</span> ${verified}</h3>
+    <div class="kpis">
+      <div class="kpi"><div class="l">Messages seen</div><div class="v">${(t.messages||0).toLocaleString()}</div></div>
+      <div class="kpi"><div class="l">SPF pass</div><div class="v">${pctv(t.spf_pct)}</div></div>
+      <div class="kpi"><div class="l">DKIM pass</div><div class="v">${pctv(t.dkim_pct)}</div></div>
+      <div class="kpi"><div class="l">DMARC pass</div><div class="v">${pctv(t.dmarc_pct)}</div></div>
+    </div>
+    <div class="hint" style="margin:2px 0 6px">Independent view from the mailbox providers (Gmail, Microsoft, Yahoo…) via Postmark — a plain-English weekly summary also lands in admin@.${j.report_count?` ${j.report_count} report${j.report_count===1?"":"s"} in range.`:""}</div>
+    <table><thead><tr><th>Sending source</th><th>Messages</th><th>SPF</th><th>DKIM</th></tr></thead><tbody>${rows}</tbody></table></div>`; }
 
 function busy(m){ BUSY=true; $("#msg").textContent=m||"Working…"; }
 function done(){ BUSY=false; $("#msg").textContent=""; }

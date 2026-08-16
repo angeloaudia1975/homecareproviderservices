@@ -118,15 +118,15 @@ window.HUB_GUIDE = {
     intelligence: "Automatic period-dating and fuzzy customer matching to canonical dealers."
   },
   "Email Sync": {
-    tagline: "Outlook email, matched to dealers and surfaced inside Dealer 360.",
-    what: "Pulls staff Outlook mail through Microsoft Graph and automatically attaches each message to the right dealer — building a shared communication history on every account, and flagging senders it couldn't place for a one-click assign.",
-    features: ["Microsoft Graph inbox + sent ingestion", "Auto-match by contact email, domain, and name", "Unmatched-sender queue with one-click assign", "Noise controls: Not important / Ignore / Ignore whole domain", "Automatic no-reply / notification hiding", "Domain learning that grows over time"],
-    data: "email_messages, dealer_contacts, dealer_domains, and the dealer alias layer.",
-    actions: ["Run or schedule the sync", "Assign an unmatched sender to a dealer (and back-fill their past mail)", "Ignore noise reversibly", "Let contacts grow automatically"],
-    reports: ["Unmatched senders", "Ignored / hidden lists", "Per-dealer email timeline"],
-    connects: ["Writes the email history shown in Dealer 360 & CRM", "Grows dealer_contacts used by matching and Campaign Studio"],
-    problems: "Every rep sees the full email thread with a dealer, and no conversation stays siloed in one person's inbox.",
-    intelligence: "Automatic dealer matching, domain learning, and no-reply/notification auto-hiding."
+    tagline: "Outlook email matched to dealers in Dealer 360 — plus live SPF/DKIM/DMARC deliverability monitoring.",
+    what: "Pulls staff Outlook mail through Microsoft Graph and automatically attaches each message to the right dealer — building a shared communication history on every account, flagging senders it couldn't place for a one-click assign. It also carries a Deliverability panel that pulls DMARC monitoring data (via Postmark) so you can see, from the mailbox providers' own reports, how much of your outbound mail is passing SPF, DKIM, and DMARC — and which sources are sending as your domain.",
+    features: ["Microsoft Graph inbox + sent ingestion", "Auto-match by contact email, domain, and name", "Unmatched-sender queue with one-click assign", "Noise controls: Not important / Ignore / Ignore whole domain", "Automatic no-reply / notification hiding", "Domain learning that grows over time", "Deliverability: SPF/DKIM/DMARC pass rates & sending-source breakdown from DMARC monitoring"],
+    data: "email_messages, dealer_contacts, dealer_domains, the dealer alias layer, and Postmark DMARC reports.",
+    actions: ["Run or schedule the sync", "Assign an unmatched sender to a dealer (and back-fill their past mail)", "Ignore noise reversibly", "Watch email deliverability (SPF/DKIM/DMARC) and catch spoofing or misconfiguration"],
+    reports: ["Unmatched senders", "Ignored / hidden lists", "Per-dealer email timeline", "Deliverability — SPF/DKIM/DMARC pass rates and every source sending as your domain"],
+    connects: ["Writes the email history shown in Dealer 360 & CRM", "Grows dealer_contacts used by matching and Campaign Studio", "Protects the campaigns sent from Campaign Studio by keeping authentication healthy"],
+    problems: "Every rep sees the full email thread with a dealer, no conversation stays siloed — and you finally have eyes on whether your email is authenticating and landing instead of getting marked as spam.",
+    intelligence: "Automatic dealer matching, domain learning, no-reply/notification auto-hiding, and independent DMARC-based deliverability monitoring."
   },
   "Activation & Go-Live": {
     tagline: "The master switch — Development / Sandbox / Live — and your official go-live date.",

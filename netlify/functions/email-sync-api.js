@@ -217,7 +217,36 @@ exports.handler = async (event)=>{
     if(b.action==="status"){
       return json(200,{ok:true, mailboxes:MAILBOXES, internal_domains:INTERNAL_DOMAINS,
         env:{ graph_tenant:!!G_TENANT, graph_client:!!G_CLIENT, graph_secret:!!G_SECRET, mailbox_count:MAILBOXES.length,
-              supabase:!!(SUPABASE_URL&&SERVICE_ROLE) } });
+              supabase:!!(SUPABASE_URL&&SERVICE_ROLE), postmark_dmarc:!!process.env.POSTMARK_DMARC_API_TOKEN } });
+    }
+
+    // Email deliverability — Postmark DMARC monitoring. Reads SPF/DKIM/DMARC pass rates + the
+    // sending sources seen for your domain, so deliverability lives next to the email sync it protects.
+    // Env: POSTMARK_DMARC_API_TOKEN (from dmarc.postmarkapp.com). No-op with a clear message if unset.
+    if(b.action==="deliverability"){
+      const TOK=process.env.POSTMARK_DMARC_API_TOKEN;
+      if(!TOK) return json(200,{ok:false,error:"not_configured",message:"Add POSTMARK_DMARC_API_TOKEN in Netlify (from dmarc.postmarkapp.com) to turn on deliverability monitoring."});
+      const BASE="https://dmarc.postmarkapp.com", PH={"X-Api-Token":TOK,"Accept":"application/json"};
+      const out={ok:true};
+      try{ const r=await fetch(`${BASE}/records/my/verify`,{method:"POST",headers:PH}); const j=await r.json().catch(()=>({})); out.verified=(typeof j.verified==="boolean")?j.verified:null; }catch(e){ out.verified=null; }
+      const isoDay=d=>new Date(Date.now()-d*864e5).toISOString().slice(0,10);
+      const from=isoDay(30), to=isoDay(0);
+      let reports=[]; try{ const r=await fetch(`${BASE}/records/my/reports?from_date=${from}&to_date=${to}&limit=100`,{headers:PH}); const j=await r.json().catch(()=>({})); reports=j.reports||j.entries||j.data||(Array.isArray(j)?j:[]); }catch(e){}
+      out.window={from,to}; out.report_count=Array.isArray(reports)?reports.length:0;
+      let total=0,spf=0,dkim=0,dmarc=0; const src={};
+      for(const rep of (Array.isArray(reports)?reports.slice(0,20):[])){ const id=rep&&rep.id; if(!id) continue;
+        try{ const r=await fetch(`${BASE}/records/my/reports/${encodeURIComponent(id)}`,{headers:PH}); const d=await r.json().catch(()=>({})); const recs=d.records||[];
+          for(const rec of recs){ const c=Number(rec.count)||0; if(!c) continue; total+=c;
+            const sp=/pass/i.test(rec.policy_evaluated_spf||""), dk=/pass/i.test(rec.policy_evaluated_dkim||"");
+            if(sp)spf+=c; if(dk)dkim+=c; if(sp||dk)dmarc+=c;   // DMARC passes when SPF OR DKIM is aligned
+            const key=rec.host_name||rec.source_ip||"unknown"; const s=src[key]=src[key]||{source:key,total:0,spf:0,dkim:0}; s.total+=c; if(sp)s.spf+=c; if(dk)s.dkim+=c; }
+        }catch(e){}
+      }
+      const pct=n=>total?Math.round(n/total*100):null;
+      out.totals={messages:total, spf_pct:pct(spf), dkim_pct:pct(dkim), dmarc_pct:pct(dmarc)};
+      out.sources=Object.values(src).sort((a,b)=>b.total-a.total).slice(0,12)
+        .map(s=>({source:s.source, messages:s.total, spf_pct:s.total?Math.round(s.spf/s.total*100):0, dkim_pct:s.total?Math.round(s.dkim/s.total*100):0}));
+      return json(200,out);
     }
 
     // Seed dealer_domains from emails already on file (dealers.email + dealer_contacts).
