@@ -351,7 +351,11 @@ exports.handler=async(event)=>{
     // (dealer × manufacturer) status incl. 'restricted'. Lets you apply a restriction immediately.
     if(b.action==="recompute_relationships"){
       if(me.role!=="president") return json(403,{error:"president only"});
-      try{ const I=require("./_intent.js"); const ls=await I.computeLineStatus(); const rel=await I.computeRelationships(); return json(200,{ok:true,line_status:ls,relationships:rel}); }
+      // Re-layer the canonical (dealer × manufacturer) status from the nightly line matrix. Fast:
+      // it reads dealer_line_status (maintained nightly), it does NOT rebuild it. Guard the table.
+      try{ await sbGet("dealer_relationships?select=dealer_id&limit=1"); }
+      catch(e){ if(/relation|does not exist|dealer_relationships/i.test(String(e&&e.message||e))) return json(200,{ok:false,error:"tables_missing",message:"Run supabase/relationships.sql first."}); }
+      try{ const I=require("./_intent.js"); const rel=await I.computeRelationships(); return json(200,{ok:true,relationships:rel}); }
       catch(e){ return json(500,{error:String(e&&e.message||e)}); }
     }
 
