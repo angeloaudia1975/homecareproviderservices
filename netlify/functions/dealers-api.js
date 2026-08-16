@@ -195,6 +195,9 @@ async function buildState(){
   // Email-verification status (dealers.email_verified, added by supabase/dealer_email_verification.sql).
   // Decoupled + tolerant: if the column doesn't exist yet the page still loads and no badges show.
   let evById={}, evSupported=false; try{ const ev=await sbGetAll("dealers?select=id,email_verified"); evSupported=true; for(const x of (ev||[])) evById[x.id]=!!x.email_verified; }catch(e){}
+  // Golden portal linkage (dealers.golden_url / golden_status) — powers the "Open Golden portal" deep
+  // link on Dealer 360. Decoupled + tolerant so the page still loads if the columns aren't present.
+  let goldById={}; try{ const g=await sbGetAll("dealers?select=id,golden_url,golden_status"); for(const x of (g||[])) goldById[x.id]={url:x.golden_url||"",status:x.golden_status||""}; }catch(e){}
   const dcontacts = await sbGetAll("dealer_contacts?select=dealer_id,email,name,title,role,phone,cell","dealer_id,email").catch(()=>[]);
   const contactsByDealer=new Map(); for(const x of dcontacts){(contactsByDealer.get(x.dealer_id)||contactsByDealer.set(x.dealer_id,[]).get(x.dealer_id)).push(x);}
   const daddrs = await sbGetAll("dealer_addresses?select=dealer_id,address,city,state,zip,label,pri","dealer_id,addr_key").catch(()=>[]);
@@ -231,6 +234,7 @@ async function buildState(){
     return {
       id:d.id, name:d.business_name, hcps_account:d.hcps_account||"", status:d.status||"",
       contact_name:d.contact_name||"", email:d.email||"", email_verified: evSupported?!!evById[d.id]:null, phone:d.phone||"", website:webById[d.id]||"",
+      golden_url:(goldById[d.id]&&goldById[d.id].url)||"", golden_status:(goldById[d.id]&&goldById[d.id].status)||"",
       address:d.address||"", city:d.city||"", state:d.state||"", zip:d.zip||"", notes:d.notes||"",
       rep: repByName[d.business_name]||"",
       master: d.parent_id ? (nameById[d.parent_id]||"") : "",

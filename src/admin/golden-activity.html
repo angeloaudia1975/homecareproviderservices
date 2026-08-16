@@ -35,6 +35,8 @@ const when=s=>{ if(!s) return "—"; try{ return new Date(s).toLocaleString("en-
 window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
 let TOKEN=HCPS.token();
 let RESOLVE_MSG="";
+let ACT_MSG="", ACT_AUD="", ACT_LIST=null;
+let DEALER_OPTS=null, LABEL2ID={};
 function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
 async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
   try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
@@ -53,6 +55,39 @@ async function reresolve(btn){
   }catch(e){ if(e&&e.gate){ gate("Your session ended — sign in again."); return; } if(btn){ btn.disabled=false; btn.textContent="↻ Re-check unmatched"; } RESOLVE_MSG="Could not re-check unmatched."; load(); }
 }
 
+// Dealer picker options for the manual-assign control (loaded once, on demand).
+function dlabel(d){ return (d.name||"")+(d.acct?" — #"+d.acct:"")+(d.state?" ("+d.state+")":""); }
+async function ensureDealers(){
+  if(DEALER_OPTS) return;
+  try{ const j=await api("dealer_options"); DEALER_OPTS=(j&&j.dealers)||[]; }catch(e){ DEALER_OPTS=[]; }
+  LABEL2ID={}; for(const d of DEALER_OPTS){ LABEL2ID[dlabel(d)]=d.id; }
+  const dl=document.getElementById("dealerdl");
+  if(dl) dl.innerHTML=DEALER_OPTS.map(d=>`<option value="${esc(dlabel(d))}"></option>`).join("");
+}
+// Manually assign every unmatched event on an account to the chosen dealer (and cache it for next time).
+async function assignUnmatched(cust, idx, btn){
+  const inp=document.getElementById("asg_"+idx); if(!inp) return;
+  const id=LABEL2ID[(inp.value||"").trim()];
+  if(!id){ inp.style.borderColor="#b42323"; inp.focus(); return; }
+  if(btn){ btn.disabled=true; btn.textContent="Assigning…"; }
+  try{ const j=await api("assign_unmatched",{customer_no:cust,dealer_id:id});
+    if(j&&j.ok){ RESOLVE_MSG=`Assigned ${j.assigned} event(s) on account ${cust} — future events from it now resolve automatically.`; load(); }
+    else { if(btn){ btn.disabled=false; btn.textContent="Assign"; } RESOLVE_MSG=(j&&j.error)||"Could not assign."; load(); }
+  }catch(e){ if(e&&e.gate){ gate("Your session ended — sign in again."); return; } if(btn){ btn.disabled=false; btn.textContent="Assign"; } RESOLVE_MSG="Could not assign."; load(); }
+}
+// Activation audience — Golden-access dealers who have never logged in. preview=true just lists them.
+async function activation(preview, btn){
+  const old=btn?btn.textContent:""; if(btn){ btn.disabled=true; btn.textContent=preview?"Checking…":"Building…"; }
+  try{ const j=await api("activation_audience", preview?{preview:true}:{});
+    if(j&&j.ok){
+      if(preview){ ACT_LIST=j.dealers||[]; ACT_AUD=""; ACT_MSG=`${j.count} Golden-access dealer(s) have never logged in.`; }
+      else if(j.built){ ACT_AUD=j.audience_id||""; ACT_MSG=`Built audience “${j.name}” — ${j.count} dealer(s).`; }
+      else { ACT_AUD=""; ACT_MSG=j.message||"No dealers to build."; }
+    } else { ACT_MSG=(j&&j.message)||(j&&j.error)||"Could not run."; }
+  }catch(e){ if(e&&e.gate){ gate("Your session ended — sign in again."); return; } ACT_MSG="Could not run the activation audience."; }
+  load();
+}
+
 async function load(){
   if(!TOKEN){ gate(); return; }
   $("#body").innerHTML=`<div class="msg">Loading…</div>`;
@@ -69,10 +104,22 @@ async function load(){
   const ro=(j.recent_orders||[]).map(o=>`<tr><td>${esc(o.dealer)}</td><td class="n">${money(o.total)}</td><td class="n">${num(o.lines)}</td><td>${esc(o.status||"")}</td><td class="when">${when(o.at)}</td></tr>`).join("")||`<tr><td colspan="5" class="hint">No orders yet.</td></tr>`;
   const rl=(j.recent_logins||[]).map(o=>`<tr><td>${esc(o.dealer)}</td><td>${esc(o.acct||"")}</td><td class="when">${when(o.at)}</td></tr>`).join("")||`<tr><td colspan="3" class="hint">No logins yet.</td></tr>`;
   const ac=(j.abandoned_carts||[]).map(o=>`<tr><td>${esc(o.dealer)}</td><td class="n">${o.value?money(o.value):"—"}</td><td class="when">${when(o.at)}</td></tr>`).join("")||`<tr><td colspan="3" class="hint">No abandoned carts.</td></tr>`;
+  // Unmatched — grouped by account so one assignment links every event from that account at once.
   const um=(j.unmatched||[]);
+  const grp={}; for(const u of um){ const key=u.customer_no||"(none)"; const g=grp[key]=grp[key]||{cust:u.customer_no||"",name:u.dealer_name||"",events:0,last:u.occurred_at}; g.events++; if(!g.name&&u.dealer_name)g.name=u.dealer_name; if(u.occurred_at>g.last)g.last=u.occurred_at; }
+  const groups=Object.values(grp);
   const umHtml=(!j.rep_scoped&&um.length)?`<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><h2 style="margin:0">Unmatched — needs a dealer</h2><button class="btn ghost" onclick="reresolve(this)">↻ Re-check unmatched</button></div>
-      <p class="hint" style="margin:6px 0 8px">These arrived from Golden but didn't match an HCPS dealer — usually events that landed before the account was linked. <b>Re-check unmatched</b> re-runs matching now that accounts are linked and clears anything that resolves.</p>
-      <table><thead><tr><th>Account</th><th>Name</th><th>Event</th><th class="n">When</th></tr></thead><tbody>${um.map(u=>`<tr><td>${esc(u.customer_no||"")}</td><td>${esc(u.dealer_name||"")}</td><td>${esc(u.event||"")}</td><td class="when">${when(u.occurred_at)}</td></tr>`).join("")}</tbody></table></div>`:"";
+      <p class="hint" style="margin:6px 0 8px">Golden events that didn't match an HCPS dealer. <b>Re-check unmatched</b> auto-matches known account numbers; for the rest, pick the right dealer and <b>Assign</b> — it links the account so future events resolve on their own.</p>
+      <datalist id="dealerdl"></datalist>
+      <table><thead><tr><th>Account</th><th>Name from Golden</th><th class="n">Events</th><th class="n">Latest</th><th>Assign to dealer</th></tr></thead><tbody>${groups.map((g,i)=>`<tr><td><b>${esc(g.cust)}</b></td><td>${esc(g.name)}</td><td class="n">${g.events}</td><td class="when">${when(g.last)}</td><td style="white-space:nowrap"><input id="asg_${i}" list="dealerdl" placeholder="Search dealer…" style="padding:5px 8px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;min-width:180px"> <button class="btn ghost sm" onclick="assignUnmatched('${esc(g.cust)}',${i},this)">Assign</button></td></tr>`).join("")}</tbody></table></div>`:"";
+  // Activation — Golden-access dealers who have never logged in.
+  const actCard=(!j.rep_scoped)?`<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><h2 style="margin:0">Activation — never logged in</h2>
+      <div style="display:flex;gap:6px"><button class="btn ghost" onclick="activation(true,this)">Find them</button><button class="btn" onclick="activation(false,this)">Build audience →</button></div></div>
+      <p class="hint" style="margin:6px 0 8px">Dealers with Golden portal access who have <b>never signed in</b>. Build a static audience, then launch an activation campaign from Campaign Studio.</p>
+      ${ACT_MSG?`<div style="font-weight:600;color:var(--navy);margin-bottom:6px">${esc(ACT_MSG)}${ACT_AUD?` &nbsp;<a class="link" href="/admin/campaigns.html?audience=${encodeURIComponent(ACT_AUD)}">Open in Campaign Studio →</a>`:""}</div>`:""}
+      ${(ACT_LIST&&ACT_LIST.length)?`<table><thead><tr><th>Dealer</th><th>Account</th><th>State</th><th>Golden</th></tr></thead><tbody>${ACT_LIST.slice(0,25).map(d=>`<tr><td>${esc(d.name)}</td><td>${esc(d.acct||"")}</td><td>${esc(d.state||"")}</td><td>${esc(d.golden_status||"")}</td></tr>`).join("")}</tbody></table>${ACT_LIST.length>25?`<div class="hint" style="margin-top:6px">…and ${ACT_LIST.length-25} more.</div>`:""}`:""}
+    </div>`:"";
+  ACT_MSG=""; ACT_AUD=""; ACT_LIST=null;
   const banner=RESOLVE_MSG?`<div class="card" style="border-left:4px solid #2d7d46;background:#f2faf5;font-weight:600;color:#245a37">${esc(RESOLVE_MSG)}</div>`:""; RESOLVE_MSG="";
   $("#body").innerHTML=banner+kpis
     +`<div class="card"><h2>Top products viewed <span class="pill">by dealers</span></h2>
@@ -83,7 +130,9 @@ async function load(){
         <div class="card"><h2>Abandoned carts</h2><table><thead><tr><th>Dealer</th><th class="n">Value</th><th class="n">When</th></tr></thead><tbody>${ac}</tbody></table></div>
       </div>
       <div class="card"><h2>Recent logins</h2><table><thead><tr><th>Dealer</th><th>Account</th><th class="n">When</th></tr></thead><tbody>${rl}</tbody></table></div>
+      ${actCard}
       ${umHtml}`;
+  if(!j.rep_scoped && um.length) ensureDealers();
 }
 load();
 </script>

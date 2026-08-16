@@ -12,6 +12,11 @@
 //   POST { action:"provision_test_dealer", account?, email?, name? } -> president: is_test sandbox dealer
 //   POST { action:"resolve_unmatched" }         -> president: re-run matching on the unmatched queue
 //   POST { action:"purge_test" }                -> president-only: remove PR505M live-test rows
+//   POST { action:"dealer_options" }            -> compact dealer list for the assign picker
+//   POST { action:"assign_unmatched", dealer_id, customer_no|unmatched_id } -> president: manual assign
+//   POST { action:"activation_audience", preview? } -> Golden-access dealers who never logged in → audience
+//   POST { action:"dealer_score", dealer_id }   -> composite Activation & Engagement score (0–100)
+//   POST { action:"golden_sso_link", dealer_id } -> signed one-click deep-link into the Golden portal
 // All require a staff Bearer token. Reps are scoped to their own dealers.
 const SUPABASE_URL=process.env.SUPABASE_URL, SERVICE_ROLE=process.env.SUPABASE_SERVICE_ROLE;
 const json=(c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
@@ -59,6 +64,22 @@ exports.handler=async(event)=>{
     // Dealers flagged is_test (sandbox/QA) — excluded from the real audience builders so test
     // activity can never land in a live campaign. The Golden Activity dashboard still shows them.
     async function testDealerIds(){ try{ const rows=await sbGet("dealers?is_test=eq.true&select=id"); return new Set((rows||[]).map(r=>String(r.id))); }catch(e){ return new Set(); } }
+    // Create a static audience from a dealer-id list + seed members with each dealer's primary contact
+    // email. Shared by build_audience (Product-Interest) and activation_audience. Excludes out-of-scope.
+    async function buildStaticAudience(name, dealerIds, notes){
+      const ids=[...new Set((dealerIds||[]).map(String).filter(Boolean))].filter(inScope);
+      if(!ids.length) return {audience_id:null,count:0};
+      let env="development"; try{ const P=require("./_platform.js"); env=(await P.getState()).mode; }catch(e){}
+      let aud; try{ aud=await sbSend("POST","audiences",{name,type:"static",notes:notes||"Built from federation",env,created_by:me.email||me.name||"staff"},{Prefer:"return=representation"}); }
+      catch(e){ if(/relation|does not exist|audiences/i.test(String(e.message||e))){ const err=new Error("tables_missing"); err.tables_missing=true; throw err; } throw e; }
+      const audience_id=aud&&aud[0]&&aud[0].id; if(!audience_id) throw new Error("audience not created");
+      const dm=await dealerMap();
+      let contacts=[]; try{ contacts=await sbGet(`dealer_contacts?dealer_id=in.(${ids.slice(0,300).join(",")})&select=dealer_id,email,name`); }catch(e){}
+      const emailBy={}; for(const c of (contacts||[])){ if(!emailBy[c.dealer_id]&&c.email) emailBy[c.dealer_id]={email:c.email,name:c.name||""}; }
+      const rows=ids.map(id=>{ const d=dm[id]||{}; const c=emailBy[id]||{}; return {audience_id,dealer_id:id,company:d.name||"",contact_name:c.name||"",contact_email:c.email||""}; });
+      for(let i=0;i<rows.length;i+=500){ try{ await sbSend("POST","audience_members",rows.slice(i,i+500),{Prefer:"return=minimal"}); }catch(e){} }
+      return {audience_id,count:rows.length};
+    }
 
     // ---------- Golden Activity dashboard ----------
     if(b.action==="dashboard"){
@@ -148,17 +169,8 @@ exports.handler=async(event)=>{
       const ids=[...new Set((Array.isArray(b.dealer_ids)?b.dealer_ids:[]).map(String).filter(Boolean))].filter(inScope);
       if(!ids.length) return json(400,{error:"no dealers in scope to add"});
       const name=clip(b.name,120)||("Product interest — "+new Date().toISOString().slice(0,10));
-      let env="development"; try{ const P=require("./_platform.js"); env=(await P.getState()).mode; }catch(e){}
-      let aud; try{ aud=await sbSend("POST","audiences",{name,type:"static",notes:clip(b.notes,500)||"Built from Product-Interest (federation)",env,created_by:me.email||me.name||"staff"},{Prefer:"return=representation"}); }
-      catch(e){ if(/relation|does not exist|audiences/i.test(String(e.message||e))) return json(200,{ok:false,error:"tables_missing",message:"Run supabase/audiences.sql first."}); throw e; }
-      const audience_id=aud&&aud[0]&&aud[0].id; if(!audience_id) return json(500,{error:"audience not created"});
-      // members: dealer + its primary contact email (best-effort)
-      const dm=await dealerMap();
-      let contacts=[]; try{ contacts=await sbGet(`dealer_contacts?dealer_id=in.(${ids.slice(0,300).join(",")})&select=dealer_id,email,name`); }catch(e){}
-      const emailBy={}; for(const c of (contacts||[])){ if(!emailBy[c.dealer_id]&&c.email) emailBy[c.dealer_id]={email:c.email,name:c.name||""}; }
-      const rows=ids.map(id=>{ const d=dm[id]||{}; const c=emailBy[id]||{}; return {audience_id,dealer_id:id,company:d.name||"",contact_name:c.name||"",contact_email:c.email||""}; });
-      for(let i=0;i<rows.length;i+=500){ try{ await sbSend("POST","audience_members",rows.slice(i,i+500),{Prefer:"return=minimal"}); }catch(e){} }
-      return json(200,{ok:true,audience_id,count:rows.length,name});
+      try{ const r=await buildStaticAudience(name, ids, clip(b.notes,500)||"Built from Product-Interest (federation)"); return json(200,{ok:true,audience_id:r.audience_id,count:r.count,name}); }
+      catch(e){ if(e&&e.tables_missing) return json(200,{ok:false,error:"tables_missing",message:"Run supabase/audiences.sql first."}); return json(500,{error:String(e&&e.message||e)}); }
     }
 
     // ---------- Provision (or refresh) the sandbox test dealer (president) ----------
@@ -223,6 +235,111 @@ exports.handler=async(event)=>{
       try{ await sbSend("DELETE","federation_events?event_id=like.gtest*",null,{Prefer:"return=minimal"}); }catch(e){}
       removed.pr505m="cleared";
       return json(200,{ok:true,removed});
+    }
+
+    // ---------- Compact dealer list for pickers (assign screen, etc.) ----------
+    if(b.action==="dealer_options"){
+      const dm=await dealerMap();
+      const list=Object.values(dm).filter(d=>scope.isAll||inScope(d.id))
+        .map(d=>({id:d.id,name:d.name,acct:d.acct,state:d.state}))
+        .sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+      return json(200,{ok:true,dealers:list});
+    }
+
+    // ---------- Manually assign unmatched event(s) to a dealer (president) ----------
+    // Handles the genuinely ambiguous cases the auto re-check can't. Caches the identity so future
+    // events from that account resolve automatically, then replays the stored event(s) to the dealer.
+    if(b.action==="assign_unmatched"){
+      if(me.role!=="president") return json(403,{error:"president only"});
+      const did=clip(b.dealer_id,60), cust=clip(b.customer_no,60), uid=clip(b.unmatched_id,60);
+      if(!did||(!cust&&!uid)) return json(400,{error:"dealer_id and (customer_no or unmatched_id) required"});
+      const dch=await sbGet(`dealers?id=eq.${encodeURIComponent(did)}&select=id,is_test`).catch(()=>[]);
+      if(!dch||!dch[0]) return json(404,{error:"dealer not found"});
+      const isTest=!!dch[0].is_test;
+      const q = cust
+        ? `federation_unmatched?resolved_dealer_id=is.null&customer_no=eq.${encodeURIComponent(cust)}&select=id,customer_no,external_dealer_id,raw&limit=500`
+        : `federation_unmatched?id=eq.${encodeURIComponent(uid)}&select=id,customer_no,external_dealer_id,raw&limit=1`;
+      const rows=await sbGet(q).catch(()=>[]);
+      if(!rows.length) return json(404,{error:"no matching unmatched rows"});
+      const fed=require("./federation-events.js");
+      const f0=rows[0].raw||{}; const src=(f0.source&&f0.source.system)||"golden", ten=(f0.source&&f0.source.tenant_id)||"hcps";
+      // Cache identity (find-or-update — partial unique index makes on_conflict unreliable).
+      try{
+        const cno=cust||rows[0].customer_no||null, ext=rows[0].external_dealer_id||null;
+        let ex=[]; if(cno) ex=await sbGet(`partner_dealer_map?source_system=eq.${encodeURIComponent(src)}&tenant_id=eq.${encodeURIComponent(ten)}&customer_no=eq.${encodeURIComponent(cno)}&select=id&limit=1`).catch(()=>[]);
+        if(ex&&ex[0]) await sbSend("PATCH",`partner_dealer_map?id=eq.${ex[0].id}`,{dealer_id:did,external_dealer_id:ext,confidence:"manual",updated_at:new Date().toISOString()},{Prefer:"return=minimal"});
+        else await sbSend("POST","partner_dealer_map",{source_system:src,tenant_id:ten,external_dealer_id:ext,customer_no:cno,dealer_id:did,confidence:"manual",updated_at:new Date().toISOString()},{Prefer:"return=minimal"});
+      }catch(e){}
+      let assigned=0;
+      for(const row of rows){
+        const fenv=row.raw; if(!fenv||typeof fenv!=="object") continue;
+        try{ await fed.ingestResolved(fenv,{dealer_id:did,is_test:isTest});
+          const eid=fenv.event_id||fenv.idempotency_key;
+          if(eid) await sbSend("PATCH",`federation_events?event_id=eq.${encodeURIComponent(String(eid))}`,{dealer_id:did,status:"processed"},{Prefer:"return=minimal"}).catch(()=>{});
+          await sbSend("PATCH",`federation_unmatched?id=eq.${row.id}`,{resolved_dealer_id:did,resolved_at:new Date().toISOString()},{Prefer:"return=minimal"});
+          assigned++;
+        }catch(e){}
+      }
+      return json(200,{ok:true,assigned,dealer_id:did});
+    }
+
+    // ---------- "Never logged in" activation audience ----------
+    // Golden-access dealers (golden_status Account/Prospect, or KY) who have never had a Golden login.
+    // preview:true returns the list; otherwise builds a static audience for Campaign Studio.
+    if(b.action==="activation_audience"){
+      const gd=await sbGetAll("dealers?or=(golden_status.eq.Account,golden_status.eq.Prospect,state.eq.KY)&select=id,business_name,city,state,hcps_account,golden_status,golden_url,parent_id,is_test");
+      const loginRows=await sbGetAll("intent_events?source=eq.golden&event_type=eq.login&select=dealer_id","id").catch(()=>[]);
+      const loggedIn=new Set((loginRows||[]).map(r=>String(r.dealer_id)));
+      const never=(gd||[]).filter(d=>!d.is_test && inScope(d.id) && !loggedIn.has(String(d.id)));
+      const list=never.map(d=>({dealer_id:d.id,name:d.business_name||"",city:d.city||"",state:d.state||"",acct:d.hcps_account||"",golden_status:d.golden_status||"",has_portal:!!d.golden_url}));
+      if(b.preview) return json(200,{ok:true,dealers:list,count:list.length});
+      if(!list.length) return json(200,{ok:true,built:false,count:0,message:"No never-logged-in Golden dealers found."});
+      const name=clip(b.name,120)||("Golden activation — never logged in ("+new Date().toISOString().slice(0,10)+")");
+      try{ const r=await buildStaticAudience(name, list.map(d=>d.dealer_id), "Golden portal access, never logged in — activation campaign target."); return json(200,{ok:true,built:true,audience_id:r.audience_id,count:r.count,name}); }
+      catch(e){ if(e&&e.tables_missing) return json(200,{ok:false,error:"tables_missing",message:"Run supabase/audiences.sql first."}); return json(500,{error:String(e&&e.message||e)}); }
+    }
+
+    // ---------- Dealer Activation & Engagement Score (composite, on-demand) ----------
+    // Blends Golden login recency/frequency + product-interest (dealer_intent) + order cadence
+    // (dealer_engagement). 0–100, tiered cold/warming/active/champion.
+    if(b.action==="dealer_score"){
+      const did=clip(b.dealer_id,60); if(!did) return json(400,{error:"dealer_id required"});
+      if(!inScope(did)) return json(403,{error:"out of scope"});
+      const now=Date.now();
+      const logins=await sbGet(`intent_events?dealer_id=eq.${encodeURIComponent(did)}&source=eq.golden&event_type=eq.login&select=occurred_at&order=occurred_at.desc&limit=200`).catch(()=>[]);
+      const loginCount90=(logins||[]).filter(l=>now-new Date(l.occurred_at).getTime()<=90*864e5).length;
+      const lastLogin=(logins&&logins[0])?logins[0].occurred_at:null;
+      const daysSinceLogin=lastLogin?Math.floor((now-new Date(lastLogin).getTime())/864e5):null;
+      let intent=null; try{ const di=await sbGet(`dealer_intent?dealer_id=eq.${encodeURIComponent(did)}&select=score_total,tier,top_manufacturer,top_product&limit=1`); intent=di&&di[0]; }catch(e){}
+      let eng=null; try{ const de=await sbGet(`dealer_engagement?dealer_id=eq.${encodeURIComponent(did)}&select=score,months_since,status&limit=1`); eng=de&&de[0]; }catch(e){}
+      const recency = lastLogin==null?0:(daysSinceLogin<=7?100:daysSinceLogin<=30?80:daysSinceLogin<=60?55:daysSinceLogin<=90?30:10);
+      const freq = Math.max(0,Math.min(100, loginCount90*20));           // 5+ logins in 90d = 100
+      const login = Math.round(0.6*recency + 0.4*freq);
+      const interest = Math.max(0,Math.min(100, Math.round((intent&&Number(intent.score_total)||0)*2))); // intent 50 → 100
+      const cadence = Math.max(0,Math.min(100, Math.round(eng&&eng.score!=null?Number(eng.score):0)));
+      const score = Math.round(0.35*login + 0.35*interest + 0.30*cadence);
+      const tier = score>=75?"champion":score>=50?"active":score>=25?"warming":"cold";
+      return json(200,{ok:true,score,tier,components:{login,interest,cadence},
+        detail:{last_login:lastLogin,days_since_login:daysSinceLogin,logins_90d:loginCount90,intent_tier:(intent&&intent.tier)||null,order_status:(eng&&eng.status)||null}});
+    }
+
+    // ---------- Generate a signed one-click SSO deep-link into the dealer's Golden portal ----------
+    // Staff-authenticated. Signs {slug,exp} with FEDERATION_SECRET (shared with Golden); the Golden
+    // /sso endpoint verifies, mints a portal session, and lands the rep in the dealer's portal.
+    if(b.action==="golden_sso_link"){
+      const did=clip(b.dealer_id,60); if(!did) return json(400,{error:"dealer_id required"});
+      if(!inScope(did)) return json(403,{error:"out of scope"});
+      let slug=null;
+      try{ const m=await sbGet(`partner_dealer_map?source_system=eq.golden&dealer_id=eq.${encodeURIComponent(did)}&external_dealer_id=not.is.null&select=external_dealer_id&limit=1`); if(m&&m[0]&&m[0].external_dealer_id) slug=m[0].external_dealer_id; }catch(e){}
+      if(!slug){ try{ const d=await sbGet(`dealers?id=eq.${encodeURIComponent(did)}&select=golden_url`); const u=d&&d[0]&&d[0].golden_url; if(u){ const mm=String(u).match(/\/portal\/([^\/?#]+)/); slug=mm?mm[1]:(/^[a-z0-9][a-z0-9-]*$/i.test(String(u).trim())?String(u).trim():null); } }catch(e){} }
+      if(!slug) return json(400,{error:"no_golden_slug",message:"No linked Golden portal for this dealer (no Golden slug on file)."});
+      const secret=process.env.FEDERATION_SECRET||""; if(!secret) return json(500,{error:"FEDERATION_SECRET not set"});
+      const crypto=require("crypto");
+      const exp=Math.floor(Date.now()/1000)+120;   // 2-minute link
+      const payload=Buffer.from(JSON.stringify({slug:String(slug),exp}),"utf8").toString("base64url");
+      const sig=crypto.createHmac("sha256",secret).update(payload,"utf8").digest("hex");
+      const base=String(process.env.GOLDEN_PORTAL_BASE||"https://goldenonlineordering.netlify.app").replace(/\/$/,"");
+      return json(200,{ok:true,url:base+"/sso?t="+encodeURIComponent(payload+"."+sig),slug,expires_in:120});
     }
 
     return json(400,{error:"unknown action"});

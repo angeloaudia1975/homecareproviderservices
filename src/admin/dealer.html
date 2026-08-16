@@ -159,7 +159,7 @@ function render(D,A){
         </div>
         <div class="idrow">${[d.address,d.city,[d.state,d.zip].filter(Boolean).join(" ")].filter(Boolean).map(esc).join(", ")}</div>
       </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost sm" onclick="editCompany()">✎ Edit company info</button><a class="btn ghost sm" href="/admin/dealers.html?dealer=${encodeURIComponent(d.id)}">Dealer Manager →</a></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost sm" onclick="editCompany()">✎ Edit company info</button>${(d.golden_url||d.golden_status==='Account'||d.golden_status==='Prospect')?`<button class="btn ghost sm" onclick="openGolden(this)" title="Open this dealer's Golden ordering portal (signed one-click sign-in)">🟡 Open Golden portal →</button>`:""}<a class="btn ghost sm" href="/admin/dealers.html?dealer=${encodeURIComponent(d.id)}">Dealer Manager →</a></div>
     </div>
     <div class="stat">
       <div class="s"><div class="l">Total sales</div><div class="v">${money(totalSales)}</div></div>
@@ -541,7 +541,11 @@ async function loadIntel(){
   const it=j&&j.intel; if(!it){ el.innerHTML='<div class="hint">No digital activity yet — it appears here once the dealer logs into the ordering portal or engages with email.</div>'; renderCommission(null); return; }
   renderCommission(it.commission);
   const em=it.email||{}, lg=it.logins||{}, iq=it.intent||{};
-  const tiles=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
+  const sc=await fapi({action:"dealer_score",dealer_id:CUR}).catch(()=>null);
+  const scOk=sc&&sc.ok, scScore=scOk?sc.score:null, scTier=scOk?sc.tier:"";
+  const scColor={champion:"#2d7d46",active:"#1f7a44",warming:"#b45309",cold:"#8a94a1"}[scTier]||"#3B599A";
+  const tiles=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px">
+    <div class="itile" title="Activation & Engagement — Golden logins + product interest + order cadence (0–100)"><div class="l">Activation</div><div class="v" style="color:${scColor}">${scScore!=null?scScore:"—"}</div><div class="hint" style="margin:0">${scOk?esc(scTier):"no data"}</div></div>
     <div class="itile"><div class="l">Intent</div><div class="v">${iq.score||0}</div><div class="hint" style="margin:0">${esc(iq.tier||"normal")}</div></div>
     <div class="itile"><div class="l">Logins 30d</div><div class="v">${lg.count_30d||0}</div><div class="hint" style="margin:0">${lg.last_login?"last "+idate(lg.last_login):"never"}</div></div>
     <div class="itile"><div class="l">Email 30d</div><div class="v">${em.opens_30d||0}·${em.clicks_30d||0}</div><div class="hint" style="margin:0">opens · clicks</div></div>
@@ -583,6 +587,21 @@ function renderCommission(c){
   el.innerHTML=tiles+list;
 }
 async function crm(payload){ const r=await fetch("/.netlify/functions/crm-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return r.json().catch(()=>({})); }
+async function fapi(payload){ const r=await fetch("/.netlify/functions/federation-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return r.json().catch(()=>({})); }
+// One-click into the dealer's Golden portal. Opens the tab inside the click gesture (avoids pop-up
+// blocking), then points it at the short-lived signed SSO URL minted server-side.
+async function openGolden(btn){
+  if(!CUR) return;
+  const w=window.open("about:blank","_blank");
+  const old=btn?btn.textContent:"";
+  if(btn){ btn.disabled=true; btn.textContent="Opening…"; }
+  try{
+    const j=await fapi({action:"golden_sso_link",dealer_id:CUR});
+    if(j&&j.ok&&j.url){ if(w) w.location.href=j.url; else window.location.href=j.url; }
+    else { if(w) w.close(); if(btn){ btn.textContent=(j&&j.error==="no_golden_slug")?"No Golden portal on file":"Couldn't open"; setTimeout(()=>{ if(btn) btn.textContent=old; },2600); } }
+  }catch(e){ if(w) w.close(); if(btn){ btn.textContent="Couldn't open"; setTimeout(()=>{ if(btn) btn.textContent=old; },2600); } }
+  finally{ if(btn) btn.disabled=false; }
+}
 async function loadCRM(){
   const el=$("#crm"); if(!el||!CUR) return;
   let j; try{ j=await crm({action:"list",dealer_id:CUR}); }catch(e){ el.innerHTML=`<div class="hint">Couldn't load tasks.</div>`; const n0=$("#notes"); if(n0)n0.innerHTML=`<div class="hint">Couldn't load notes.</div>`; return; }
