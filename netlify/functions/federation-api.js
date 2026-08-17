@@ -104,7 +104,9 @@ exports.handler=async(event)=>{
         if(e.meta&&e.meta.query) searches++;
         if((VIEW_TYPES.has(t)||t==="cart_add") && e.product_code){ const k=e.product_code; const p=prod[k]=prod[k]||{code:e.product_code,line:mfrName[e.manufacturer]||e.manufacturer||"",views:0,dealers:new Set(),last:e.occurred_at}; p.views++; p.dealers.add(e.dealer_id); if(e.occurred_at>p.last)p.last=e.occurred_at; } }
       const logins=fed.filter(r=>r.event==="dealer.login" && r.status==="processed" && (scope.isAll|| (r.dealer_id&&inScope(r.dealer_id))));
-      const topProducts=Object.values(prod).map(p=>({code:p.code,line:p.line,views:p.views,dealers:p.dealers.size,last:p.last})).sort((a,b)=>b.views-a.views).slice(0,15);
+      const topProducts=Object.values(prod).map(p=>({code:p.code,line:p.line,views:p.views,dealers:p.dealers.size,
+        dealer_names:[...p.dealers].map(id=>(dm[id]||{}).name).filter(Boolean).sort((a,b)=>String(a).localeCompare(String(b))),
+        last:p.last})).sort((a,b)=>b.views-a.views).slice(0,15);
       const orderVal=ordS.reduce((a,r)=>a+(Number(r.order_total)||0),0);
       const recentOrders=ordS.sort((a,b)=>String(b.occurred_at).localeCompare(String(a.occurred_at))).slice(0,15).map(r=>({dealer:(dm[r.dealer_id]||{}).name||"",total:Number(r.order_total)||0,lines:r.line_count,status:r.status,at:r.occurred_at}));
       const recentLogins=logins.sort((a,b)=>String(b.occurred_at).localeCompare(String(a.occurred_at))).slice(0,15).map(r=>({dealer:(dm[r.dealer_id]||{}).name||"",acct:r.customer_no,at:r.occurred_at}));
@@ -284,14 +286,20 @@ exports.handler=async(event)=>{
     }
 
     // ---------- "Never logged in" activation audience ----------
-    // Golden-access dealers (golden_status Account/Prospect, or KY) who have never had a Golden login.
+    // A dealer can only sign into Golden if they have a Golden portal account — i.e. a golden_url
+    // (their Golden account identifier). Prospects and dealers with no Golden account number CANNOT
+    // log in, so they're excluded. This is the ONLY gate: has a golden_url, and no login on record.
     // preview:true returns the list; otherwise builds a static audience for Campaign Studio.
     if(b.action==="activation_audience"){
-      const gd=await sbGetAll("dealers?or=(golden_status.eq.Account,golden_status.eq.Prospect,state.eq.KY)&select=id,business_name,city,state,hcps_account,golden_status,golden_url,parent_id,is_test");
-      const loginRows=await sbGetAll("intent_events?source=eq.golden&event_type=eq.login&select=dealer_id","id").catch(()=>[]);
-      const loggedIn=new Set((loginRows||[]).map(r=>String(r.dealer_id)));
-      const never=(gd||[]).filter(d=>!d.is_test && inScope(d.id) && !loggedIn.has(String(d.id)));
-      const list=never.map(d=>({dealer_id:d.id,name:d.business_name||"",city:d.city||"",state:d.state||"",acct:d.hcps_account||"",golden_status:d.golden_status||"",has_portal:!!d.golden_url}));
+      const gd=await sbGetAll("dealers?golden_url=not.is.null&select=id,business_name,city,state,hcps_account,golden_status,golden_url,parent_id,is_test");
+      // "Logged in" = ever signed into Golden, from either signal we capture (intent + federation events).
+      const [li1, li2] = await Promise.all([
+        sbGetAll("intent_events?source=eq.golden&event_type=eq.login&select=dealer_id","id").catch(()=>[]),
+        sbGetAll("federation_events?source_system=eq.golden&event=eq.dealer.login&select=dealer_id","event_id").catch(()=>[]),
+      ]);
+      const loggedIn=new Set([...(li1||[]),...(li2||[])].map(r=>String(r.dealer_id)).filter(Boolean));
+      const never=(gd||[]).filter(d=> String(d.golden_url||"").trim() && !d.is_test && inScope(d.id) && !loggedIn.has(String(d.id)));
+      const list=never.map(d=>({dealer_id:d.id,name:d.business_name||"",city:d.city||"",state:d.state||"",acct:d.hcps_account||"",golden_status:d.golden_status||"",golden_acct:d.golden_url||"",has_portal:!!d.golden_url})).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
       if(b.preview) return json(200,{ok:true,dealers:list,count:list.length});
       if(!list.length) return json(200,{ok:true,built:false,count:0,message:"No never-logged-in Golden dealers found."});
       const name=clip(b.name,120)||("Golden activation — never logged in ("+new Date().toISOString().slice(0,10)+")");

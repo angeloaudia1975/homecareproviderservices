@@ -100,7 +100,11 @@ async function load(){
     ${kpi("Cart adds",num(k.cart_adds))}${kpi("Abandoned carts",num(k.carts_abandoned))}${kpi("Orders",num(k.orders),1)}
     ${kpi("Order value",money(k.order_value),1)}${j.rep_scoped?"":kpi("Unmatched",num(k.unmatched))}
   </div>`;
-  const tp=(j.top_products||[]).map(p=>`<tr><td class="sku">${esc(p.code)}</td><td>${esc(p.line)}</td><td class="n">${num(p.views)}</td><td class="n">${num(p.dealers)}</td><td class="when">${when(p.last)}</td></tr>`).join("")||`<tr><td colspan="5" class="hint">No product views yet.</td></tr>`;
+  const tp=(j.top_products||[]).map(p=>{
+    const names=p.dealer_names||[];
+    const chips=names.length?`<tr><td colspan="5" style="padding:0 8px 9px"><span class="hint" style="margin-right:4px">viewed by:</span>${names.map(n=>`<span style="display:inline-block;background:#eef2f7;border:1px solid #dfe6ee;border-radius:12px;padding:1px 8px;font-size:11.5px;margin:2px 3px 0 0;color:#2b3a4d">${esc(n)}</span>`).join("")}</td></tr>`:"";
+    return `<tr><td class="sku">${esc(p.code)}</td><td>${esc(p.line)}</td><td class="n">${num(p.views)}</td><td class="n">${num(p.dealers)}</td><td class="when">${when(p.last)}</td></tr>${chips}`;
+  }).join("")||`<tr><td colspan="5" class="hint">No product views yet.</td></tr>`;
   const ro=(j.recent_orders||[]).map(o=>`<tr><td>${esc(o.dealer)}</td><td class="n">${money(o.total)}</td><td class="n">${num(o.lines)}</td><td>${esc(o.status||"")}</td><td class="when">${when(o.at)}</td></tr>`).join("")||`<tr><td colspan="5" class="hint">No orders yet.</td></tr>`;
   const rl=(j.recent_logins||[]).map(o=>`<tr><td>${esc(o.dealer)}</td><td>${esc(o.acct||"")}</td><td class="when">${when(o.at)}</td></tr>`).join("")||`<tr><td colspan="3" class="hint">No logins yet.</td></tr>`;
   const ac=(j.abandoned_carts||[]).map(o=>`<tr><td>${esc(o.dealer)}</td><td class="n">${o.value?money(o.value):"—"}</td><td class="when">${when(o.at)}</td></tr>`).join("")||`<tr><td colspan="3" class="hint">No abandoned carts.</td></tr>`;
@@ -117,7 +121,7 @@ async function load(){
       <div style="display:flex;gap:6px"><button class="btn ghost" onclick="activation(true,this)">Find them</button><button class="btn" onclick="activation(false,this)">Build audience →</button></div></div>
       <p class="hint" style="margin:6px 0 8px">Dealers with Golden portal access who have <b>never signed in</b>. Build a static audience, then launch an activation campaign from Campaign Studio.</p>
       ${ACT_MSG?`<div style="font-weight:600;color:var(--navy);margin-bottom:6px">${esc(ACT_MSG)}${ACT_AUD?` &nbsp;<a class="link" href="/admin/campaigns.html?audience=${encodeURIComponent(ACT_AUD)}">Open in Campaign Studio →</a>`:""}</div>`:""}
-      ${(ACT_LIST&&ACT_LIST.length)?`<table><thead><tr><th>Dealer</th><th>Account</th><th>State</th><th>Golden</th></tr></thead><tbody>${ACT_LIST.slice(0,25).map(d=>`<tr><td>${esc(d.name)}</td><td>${esc(d.acct||"")}</td><td>${esc(d.state||"")}</td><td>${esc(d.golden_status||"")}</td></tr>`).join("")}</tbody></table>${ACT_LIST.length>25?`<div class="hint" style="margin-top:6px">…and ${ACT_LIST.length-25} more.</div>`:""}`:""}
+      ${(ACT_LIST&&ACT_LIST.length)?`<div style="max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:10px"><table><thead><tr><th>Dealer</th><th>HCPS acct</th><th>Golden acct #</th><th>State</th></tr></thead><tbody>${ACT_LIST.map(d=>`<tr><td>${esc(d.name)}</td><td>${esc(d.acct||"")}</td><td>${esc(d.golden_acct||"")}</td><td>${esc(d.state||"")}</td></tr>`).join("")}</tbody></table></div><div class="hint" style="margin-top:6px">${ACT_LIST.length} dealer${ACT_LIST.length===1?"":"s"} with a Golden account, never signed in.</div>`:""}
     </div>`:"";
   ACT_MSG=""; ACT_AUD=""; ACT_LIST=null;
   const banner=RESOLVE_MSG?`<div class="card" style="border-left:4px solid #2d7d46;background:#f2faf5;font-weight:600;color:#245a37">${esc(RESOLVE_MSG)}</div>`:""; RESOLVE_MSG="";
