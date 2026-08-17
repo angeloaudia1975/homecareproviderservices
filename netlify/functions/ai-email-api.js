@@ -152,7 +152,9 @@ Do not include markdown or any text outside the JSON.`;
       if(!r.ok){ const t=await r.text().catch(()=>""); let hint=""; try{ const ej=JSON.parse(t); hint=(ej&&ej.error&&ej.error.message)?` (${ej.error.message})`:""; }catch(_){}
         return json(200,{ok:false,error:"ai_error",message:`The AI service returned an error${hint}. Try again.`,detail:t.slice(0,200),model:AI_MODEL,signature}); }
       const j=await r.json().catch(()=>null);
-      let text=(j&&j.content&&j.content[0]&&j.content[0].text)||"";
+      // Pull the text block(s) — newer models can return a reasoning block before the text, so never
+      // assume content[0] is the answer; concatenate every text block.
+      let text=""; for(const c of ((j&&j.content)||[])){ if(c&&typeof c.text==="string") text+=c.text; }
       const s=text.indexOf("{"), e=text.lastIndexOf("}");
       if(s>=0&&e>=0){ const obj=JSON.parse(text.slice(s,e+1)); subject=String(obj.subject||"").trim(); body=String(obj.body||"").trim(); }
     }catch(e){ return json(200,{ok:false,error:"ai_error",message:"Couldn't reach the AI service.",signature}); }

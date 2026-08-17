@@ -85,7 +85,8 @@ Do not include markdown or any text outside the JSON.`;
   const t=await r.text(); if(!r.ok){ let hint=""; try{ const ej=JSON.parse(t); hint=ej&&ej.error&&ej.error.message?` (${ej.error.message})`:""; }catch(_){}
     throw new Error(`ai_error${hint}`); }
   let j={}; try{ j=JSON.parse(t); }catch(_){}
-  let text=(j&&j.content&&j.content[0]&&j.content[0].text)||"";
+  // Concatenate every text block — newer models may emit a reasoning block before the text one.
+  let text=""; for(const c of ((j&&j.content)||[])){ if(c&&typeof c.text==="string") text+=c.text; }
   const s=text.indexOf("{"), e=text.lastIndexOf("}");
   if(s<0||e<0) return null;
   try{ return JSON.parse(text.slice(s,e+1)); }catch(_){ return null; }

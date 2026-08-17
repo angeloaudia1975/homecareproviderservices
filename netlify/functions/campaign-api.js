@@ -149,7 +149,7 @@ Do not include markdown or any text outside the JSON.`;
       body:JSON.stringify({model:AI_MODEL,max_tokens:700,messages:[{role:"user",content:prompt}]})});
     if(!r.ok) return null;
     const j=await r.json().catch(()=>null);
-    let text=(j&&j.content&&j.content[0]&&j.content[0].text)||"";
+    let text=""; for(const c of ((j&&j.content)||[])){ if(c&&typeof c.text==="string") text+=c.text; }
     const s=text.indexOf("{"), e=text.lastIndexOf("}"); if(s<0||e<0) return null;
     const obj=JSON.parse(text.slice(s,e+1));
     const subjects=Array.isArray(obj.subjects)?obj.subjects.filter(x=>typeof x==="string"&&x.trim()).slice(0,5):[];
