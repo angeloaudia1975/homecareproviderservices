@@ -222,6 +222,7 @@ function render(D,A){
     <div id="emails"><div class="hint">Loading email…</div></div></div>`;
   const callCard=`<div class="card"><h2>Make a call</h2><div id="callbox"><div class="hint">Loading…</div></div></div>`;
   const touchCard=`<div class="card"><h2>Log a touch</h2><div id="touch"><div class="hint">Loading…</div></div></div>`;
+  const handoutCard=`<div class="card" id="handoutCard"><h2>Dealer handout</h2><div id="handout"><div class="hint">Loading…</div></div></div>`;
 
   // Next best action — synthesized from what we already know (upgraded once intent loads).
   const nba=nextBestAction(d,lines,monthsSince,cart,sess);
@@ -244,10 +245,10 @@ function render(D,A){
   // Touch → Signals & Analytics. Reference sidebar (right): tasks/timeline, contacts, addresses, accounts.
   $("#body").innerHTML=`${header}${nextBanner}
     <div class="d360">
-      <div>${notesCard}${emailCard}${callCard}${touchCard}${signals}${intelCard}${history}${salesCard}${commCard}</div>
+      <div>${notesCard}${emailCard}${callCard}${touchCard}${signals}${handoutCard}${intelCard}${history}${salesCard}${commCard}</div>
       <div>${tasksCard}${contactsCard}${addrCard}${acctCard}</div>
     </div>`;
-  CUR=d.id; DPHONE=d.phone||""; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails();
+  CUR=d.id; DPHONE=d.phone||""; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails(); loadHandout();
 }
 function nextBestAction(d,lines,monthsSince,cart,sess){
   const due=(lines||[]).filter(l=>l.status==="due");
@@ -918,6 +919,53 @@ async function printDealerHandout(id){
   try{ w.document.open(); w.document.write(handoutHtml(c)); w.document.close(); }catch(e){}
 }
 function handoutHtml(c){ return DealerHandout.html(c, {HANDOUT:HANDOUT, ME:ME}); }
+
+/* ---------- Handout curation: featured-pick preview + per-manufacturer exclude toggles ---------- */
+let HBC=null;
+async function loadHandout(){
+  const el=$("#handout"); if(!el||!CUR) return;
+  el.innerHTML='<div class="hint">Loading…</div>';
+  let c={}; try{ const r=await rapi({action:"business_case",dealer_ids:[CUR]}); c=(r&&r.cases&&r.cases[CUR])||{}; }catch(e){}
+  HBC=c; renderHandout();
+}
+function renderHandout(){
+  const el=$("#handout"); if(!el) return;
+  const c=HBC||{}; const cx=c.crossover;
+  const basisLabel={engagement:"Portal engagement",regional:"Regional demand",fit:"Product fit",reorder:"Re-stock"};
+  const feat = cx
+    ? `<div style="border:1px solid #fed7aa;background:#fff8f0;border-radius:10px;padding:10px 12px;margin-bottom:10px">
+        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:#b45309;font-weight:800">Featured on the handout${cx.basis?` · ${esc(basisLabel[cx.basis]||cx.basis)}`:""}</div>
+        <div style="font-weight:800;color:var(--navy);margin-top:2px">${esc(cx.name||"")}</div>
+        <div class="hint" style="margin-top:2px">${esc(cx.reason||"")}</div>
+      </div>`
+    : `<div class="hint" style="margin-bottom:10px">No featured opportunity right now — every approved line is either already stocked or excluded.</div>`;
+  const opps=(c.opps||[]), excluded=(c.excluded||[]), featSlug=cx&&cx.slug;
+  const row=(m,isEx)=>`<label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
+      <input type="checkbox" ${isEx?"checked":""} onchange="toggleExclude('${esc(String(m.slug).replace(/'/g,"\\'"))}',this.checked,this)">
+      <span style="flex:1">${esc(m.name||m.slug)}${(!isEx&&m.slug===featSlug)?` <span style="font-size:10px;color:#b45309;font-weight:800">★ featured</span>`:""}</span>
+      <span class="hint">${isEx?"excluded":"eligible"}</span>
+    </label>`;
+  const list = (opps.length||excluded.length)
+    ? `<div style="font-size:12px;color:var(--gray);margin:2px 0 4px">Tick a manufacturer to exclude it from this dealer's handout — poor fits won't be featured or suggested. Affects the handout only; the account's lines and CRM are unchanged.</div>${opps.map(m=>row(m,false)).join("")}${excluded.map(m=>row(m,true)).join("")}`
+    : `<div class="hint">No opportunity lines to curate for this dealer yet.</div>`;
+  el.innerHTML=`${feat}${list}
+    <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+      <button class="btn sm" onclick="printDealerHandout(CUR)">🖨 Print handout</button>
+      <span id="hox_msg" class="hint"></span>
+    </div>`;
+}
+async function toggleExclude(slug,on,elm){
+  const msg=$("#hox_msg"); if(msg)msg.textContent="Saving…";
+  if(elm) elm.disabled=true;
+  try{
+    const r=await rapi({action:"set_handout_exclusion",dealer_id:CUR,manufacturer:slug,excluded:on});
+    if(!(r&&r.ok)) throw new Error((r&&r.error)||"failed");
+    await loadHandout();   // refresh so the featured pick re-computes live
+  }catch(e){
+    if(elm){ elm.checked=!on; elm.disabled=false; }
+    if(msg) msg.textContent = /not your account/.test(String(e.message))?"You can only exclude on your own accounts.":"Couldn't save.";
+  }
+}
 
 load();
 </script>

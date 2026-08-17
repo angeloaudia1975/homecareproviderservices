@@ -203,8 +203,31 @@ exports.handler = async (event)=>{
         sbGet("manufacturers?select=slug,name").catch(()=>[]),
         sbGet(`dealer_manufacturers?dealer_id=${memIn}&select=dealer_id,manufacturer,account_ref,active`).catch(()=>[]),
       ]);
+      // ---- Handout intelligence signals ----
+      // (a) rep-set poor-fit exclusions (per LOCATION), (b) decayed engagement/intent per manufacturer
+      // from the ordering portal (product views, repeat views, pricing views, order-page hits — already
+      // rolled into dealer_intent.by_manufacturer), (c) fit-based cross-sell recommendations. All loaded
+      // tolerantly so a missing table never breaks the handout.
+      let exRows=[], intentRows=[], xsRows=[];
+      try{ exRows=await sbGet(`dealer_handout_exclusions?dealer_id=${reqIn}&select=dealer_id,manufacturer`); }catch(e){ exRows=[]; }
+      try{ intentRows=await sbGet(`dealer_intent?dealer_id=${memIn}&select=dealer_id,by_manufacturer`); }catch(e){ intentRows=[]; }
+      try{ xsRows=await sbGet(`cross_sell?dealer_id=${memIn}&select=dealer_id,rec_slug,score`); }catch(e){ xsRows=[]; }
       const mfrName=Object.fromEntries((mfrs||[]).map(m=>[m.slug,m.name]));
       const nameOf=s=>mfrName[s]||mfrName[normBuy(s)]||pretty(s);
+      // Exclusions: matched set (normalized + raw) for filtering, plus the raw list to echo back to the UI.
+      const exSetByDealer={}, exListByDealer={};
+      for(const r of (exRows||[])){ const s=exSetByDealer[r.dealer_id]||(exSetByDealer[r.dealer_id]=new Set()); s.add(normBuy(r.manufacturer)); s.add(String(r.manufacturer||"").toLowerCase());
+        (exListByDealer[r.dealer_id]||(exListByDealer[r.dealer_id]=[])).push(r.manufacturer); }
+      // Engagement/intent per manufacturer — this location and rolled up to the company.
+      const intentByDealer={}, intentByCo={};
+      for(const r of (intentRows||[])){ const bm=(r&&r.by_manufacturer)||{}; const m=intentByDealer[r.dealer_id]||(intentByDealer[r.dealer_id]={});
+        const cid=companyOf(r.dealer_id); const cm=intentByCo[cid]||(intentByCo[cid]={});
+        for(const k in bm){ const sl=normBuy(k); const v=Number(bm[k])||0; if(v<=0) continue; m[sl]=(m[sl]||0)+v; cm[sl]=(cm[sl]||0)+v; } }
+      // Fit-based cross-sell score per manufacturer — this location and rolled up to the company.
+      const xsByDealer={}, xsByCo={};
+      for(const r of (xsRows||[])){ if(!r||!r.rec_slug) continue; const sl=normBuy(r.rec_slug); const v=Number(r.score)||0;
+        const m=xsByDealer[r.dealer_id]||(xsByDealer[r.dealer_id]={}); m[sl]=Math.max(m[sl]||0,v);
+        const cid=companyOf(r.dealer_id); const cm=xsByCo[cid]||(xsByCo[cid]={}); cm[sl]=Math.max(cm[sl]||0,v); }
       const YR=String(new Date().getFullYear());
       const cutoff60=new Date(Date.now()-60*864e5).toISOString().slice(0,10);
       const cutoff120=new Date(Date.now()-120*864e5).toISOString().slice(0,10);
@@ -287,7 +310,11 @@ exports.handler = async (event)=>{
         const eligible=[...new Set([...(acc.your_accounts||[]),...(acc.available||[])])];
         const s=byDealer[id]||{lines:{},total:0,ytd:0,recent:0,buys:new Set()};
         const coBuySet=coBuys[cid]||new Set();
-        const opps=eligible.filter(x=>!coBuySet.has(x)).map(x=>({slug:x,name:nameOf(x),logo:logoBySlug[x]||""}));
+        // Poor-fit manufacturers the rep excluded for THIS location never appear on the handout —
+        // not as a featured pick, not in "ways to grow". CRM/access are untouched (this is display only).
+        const exSet=exSetByDealer[id]||new Set();
+        const isExcluded=sl=>exSet.has(normBuy(sl))||exSet.has(String(sl).toLowerCase());
+        const opps=eligible.filter(x=>!coBuySet.has(x)&&!isExcluded(x)).map(x=>({slug:x,name:nameOf(x),logo:logoBySlug[x]||""}));
         const r2=n=>Math.round((n||0)*100)/100;
         const lines=Object.entries(s.lines).map(([slug,v])=>({slug,name:v.name,amount:r2(v.amount),orders:v.orders,last:v.last,d60:r2(v.d60),d120:r2(v.d120),d180:r2(v.d180)})).sort((a,b)=>b.amount-a.amount);
         const allProds=Object.values(prodByDealer[id]||{}).sort((a,b)=>b.amount-a.amount);
@@ -303,22 +330,45 @@ exports.handler = async (event)=>{
         // the dealer has gone quiet on (no order in 60 days) — a timely re-stock.
         const stCode=String(master.state||d.state||"").toUpperCase().trim();
         const rScore=sl=>(regRecent[stCode+"|"+sl]||0), rTot=sl=>(regTot[stCode+"|"+sl]||0), rPrior=sl=>(regPrior[stCode+"|"+sl]||0);
+        // Blended opportunity score: the dealer's OWN engagement with a line (viewed/priced but not
+        // bought) weighs highest, then fit-based cross-sell, then regional demand. All normalized within
+        // this dealer's candidate pool so one big number can't dominate; rotates weekly among the top few.
+        const intentM=sl=>{ const n=normBuy(sl); return (intentByDealer[id]&&intentByDealer[id][n])||(intentByCo[cid]&&intentByCo[cid][n])||0; };
+        const xsM=sl=>{ const n=normBuy(sl); return (xsByDealer[id]&&xsByDealer[id][n])||(xsByCo[cid]&&xsByCo[cid][n])||0; };
+        const maxI=Math.max(1e-9,...opps.map(o=>intentM(o.slug)));
+        const maxX=Math.max(1e-9,...opps.map(o=>xsM(o.slug)));
+        const maxR=Math.max(1e-9,...opps.map(o=>rScore(o.slug)));
+        const WI=0.45, WX=0.30, WR=0.25;
+        const blendedOf=o=>WI*(intentM(o.slug)/maxI)+WX*(xsM(o.slug)/maxX)+WR*(rScore(o.slug)/maxR);
         let crossover=null;
-        const oppRanked=opps.map(o=>({...o,score:rScore(o.slug),tot:rTot(o.slug)})).sort((a,b)=>b.score-a.score||b.tot-a.tot||String(a.name).localeCompare(String(b.name)));
+        const oppRanked=opps.map(o=>({...o,score:rScore(o.slug),tot:rTot(o.slug),intent:intentM(o.slug),xs:xsM(o.slug),blended:blendedOf(o)}))
+          .sort((a,b)=>b.blended-a.blended||b.score-a.score||b.tot-a.tot||String(a.name).localeCompare(String(b.name)));
         if(oppRanked.length){
           const pool=oppRanked.slice(0,Math.min(5,oppRanked.length));
           const pick=pool[(weekSeed+dhash(id))%pool.length];
           const rising=rScore(pick.slug)>rPrior(pick.slug);
+          const nI=pick.intent/maxI, nX=pick.xs/maxX, nR=pick.score/maxR;
+          let reason, basis;
+          if(pick.intent>0 && nI>=nX && nI>=nR){
+            basis="engagement";
+            reason=`Your team keeps looking at ${pick.name} on the ordering portal but hasn't ordered it yet — a timely opening to bring it up.`;
+          } else if(pick.score>0 && nR>=nX){
+            basis="regional";
+            reason=`Dealers across ${stCode||"your area"} are ordering ${pick.name}${rising?" — and demand is trending up":""}. You're approved to carry it but aren't stocking it yet.`;
+          } else if(pick.xs>0){
+            basis="fit";
+            reason=`${pick.name} is a natural fit alongside the lines you already carry — a strong cross-sell to add next.`;
+          } else {
+            basis="fit";
+            reason=`Approved for your territory and a natural complement to the lines you already carry — a strong candidate to add next.`;
+          }
           crossover={ kind:"new_line", name:pick.name, slug:pick.slug, logo:pick.logo||logoBySlug[pick.slug]||"",
-            region_amt:r2(pick.score),
-            reason: pick.score>0
-              ? `Dealers across ${stCode||"your area"} are ordering ${pick.name}${rising?" — and demand is trending up":""}. You're approved to carry it but aren't stocking it yet.`
-              : `Approved for your territory and a natural complement to the lines you already carry — a strong candidate to add next.` };
+            region_amt:r2(pick.score), basis, reason };
         }
         if(!crossover){
-          const gaps=lines.filter(L=>(L.d60||0)===0 && rScore(L.slug)>0).map(L=>({...L,score:rScore(L.slug)})).sort((a,b)=>b.score-a.score);
+          const gaps=lines.filter(L=>(L.d60||0)===0 && rScore(L.slug)>0 && !isExcluded(L.slug)).map(L=>({...L,score:rScore(L.slug)})).sort((a,b)=>b.score-a.score);
           if(gaps.length){ const g=gaps.slice(0,Math.min(5,gaps.length))[(weekSeed+dhash(id))%Math.min(5,gaps.length)];
-            crossover={ kind:"reorder", name:g.name, slug:g.slug, logo:logoBySlug[g.slug]||"", region_amt:r2(g.score),
+            crossover={ kind:"reorder", name:g.name, slug:g.slug, logo:logoBySlug[g.slug]||"", region_amt:r2(g.score), basis:"reorder",
               reason:`${g.name} is moving across ${stCode||"your area"} right now, but you haven't reordered in 60+ days — a timely re-stock while demand is up.` }; }
         }
 
@@ -337,6 +387,7 @@ exports.handler = async (event)=>{
           company_total:Math.round((coTotal[cid]||0)*100)/100, company_ytd:Math.round((coYtd[cid]||0)*100)/100,
           retail_value:Math.round(retail*100)/100,
           lines, opps, accounts, carried, products, products_more, crossover,
+          excluded:(exListByDealer[id]||[]).map(sl=>({slug:sl,name:nameOf(sl),logo:logoBySlug[sl]||logoBySlug[normBuy(sl)]||""})),
           rep_name:assignedRep||"", rep_email:(repInfo&&repInfo.email)||"",
           golden:(acc.golden||master.golden_status||d.golden_status||"None"), golden_logo:(logoBySlug["golden-technologies"]||""), ovation:!!(master.ovation_access||d.ovation_access),
           contacts:(contactsByDealer[id]||[]).map(c=>({name:c.name||"",email:c.email||"",phone:c.phone||"",cell:c.cell||"",title:c.title||"",role:c.role||""})),
@@ -363,6 +414,30 @@ exports.handler = async (event)=>{
       const key=String(b.key||"").trim(); if(!key) return json(400,{error:"key required"});
       await sbSend("POST","app_settings?on_conflict=key",{key,value:b.value||{},updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
       return json(200,{ok:true});
+    }
+
+    // ---------- Dealer-handout manufacturer exclusions ----------
+    // A rep (on their own accounts) or management can mark a manufacturer as a POOR FIT for a
+    // specific dealer location, so it never appears as the handout's featured pick or in "ways to
+    // grow" — WITHOUT touching the CRM relationship or the dealer's line access. Per-location only.
+    const MGMT_ROLES=new Set(["president","admin","owner","relations"]);
+    if(b.action==="list_handout_exclusions"){
+      const did=String(b.dealer_id||"").trim(); if(!did) return json(400,{error:"dealer_id required"});
+      const rows=await sbGet(`dealer_handout_exclusions?dealer_id=eq.${encodeURIComponent(did)}&select=manufacturer`).catch(()=>[]);
+      return json(200,{ok:true,excluded:(rows||[]).map(r=>r.manufacturer)});
+    }
+    if(b.action==="set_handout_exclusion"){
+      const did=String(b.dealer_id||"").trim(); const slug=String(b.manufacturer||"").trim(); const on=!!b.excluded;
+      if(!did||!slug) return json(400,{error:"dealer_id and manufacturer required"});
+      // Permission: management anywhere, or the rep this dealer is assigned to (dealers.rep_name).
+      const dr=await sbGet(`dealers?id=eq.${encodeURIComponent(did)}&select=id,rep_name`).catch(()=>[]);
+      const dealer=dr&&dr[0]; if(!dealer) return json(404,{error:"dealer not found"});
+      const mgr=MGMT_ROLES.has(String(me.role||"").toLowerCase());
+      const ownsIt=!!me.rep_name && String(dealer.rep_name||"").trim().toLowerCase()===String(me.rep_name).trim().toLowerCase();
+      if(!mgr && !ownsIt) return json(403,{error:"not your account"});
+      if(on){ await sbSend("POST","dealer_handout_exclusions?on_conflict=dealer_id,manufacturer",{dealer_id:did,manufacturer:slug,created_by:me.email||me.name||null,created_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
+      else { await sbSend("DELETE",`dealer_handout_exclusions?dealer_id=eq.${encodeURIComponent(did)}&manufacturer=eq.${encodeURIComponent(slug)}`,null,{Prefer:"return=minimal"}); }
+      return json(200,{ok:true,excluded:on});
     }
 
     // ---------- Visit notes → tasks + opportunities (Phase 4) ----------
