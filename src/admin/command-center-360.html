@@ -155,10 +155,34 @@ function render(){
     <div style="font-size:14px;color:var(--navy);margin-top:2px">✉ <b>${eu.senders}</b> unmatched email sender${eu.senders===1?"":"s"} (${eu.messages} message${eu.messages===1?"":"s"}) aren't linked to a dealer yet.</div></div>
     <a class="btn sm orange" href="/admin/email-sync.html">Review &amp; assign →</a></div>` : "";
   // intelligence tiles
-  const html=emailBanner+kpis+insightsCard(F)+trend+predictCard(F)+`<div class="grid2">${mfrCard}${stateCard}</div>`+`<div class="grid2">${territoryCard(F)}${whitespaceCard(F)}</div>`+coCard+productsCard()+intelSection()+intelSection2();
+  // Claude AI spend panel — management only (reps use this page too, scoped to their book).
+  const _adminMe=["president","admin","owner"].includes(String((HCPS.profile()||{}).role||"").toLowerCase());
+  const html=emailBanner+kpis+insightsCard(F)+trend+predictCard(F)+`<div class="grid2">${mfrCard}${stateCard}</div>`+`<div class="grid2">${territoryCard(F)}${whitespaceCard(F)}</div>`+coCard+productsCard()+intelSection()+intelSection2()+(_adminMe?aiUsageCard():"");
   $("#body").innerHTML=html;
   drawFC(ser,fc.proj,"trendMain");
-  renderCo(); renderProd();
+  renderCo(); renderProd(); if(_adminMe) fillAiUsage();
+}
+// ---- Claude AI usage & credits panel (calls ai-usage-api; cached so year toggles don't re-hit it) ----
+var AIU=null, AIUloading=false;
+function aiUsageCard(){ return `<div class="card" id="aiUsageCard"><h2>Claude AI usage &amp; credits <span class="side"><a class="link" href="/admin/ai-usage.html">full detail &amp; settings →</a></span></h2><div id="aiuBody"><div class="hint">Loading spend…</div></div></div>`; }
+async function fillAiUsage(){
+  const host=$("#aiuBody"); if(!host) return;
+  if(AIU){ paintAiUsage(AIU); return; }
+  if(AIUloading) return; AIUloading=true;
+  try{ const r=await fetch("/.netlify/functions/ai-usage-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action:"report"})}); AIU=await r.json().catch(()=>({ok:false})); }
+  catch(e){ AIU={ok:false,message:"Couldn't load AI usage."}; }
+  AIUloading=false; paintAiUsage(AIU);
+}
+function paintAiUsage(j){
+  const host=$("#aiuBody"); if(!host) return;
+  const m=n=>"$"+(Number(n)||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+  if(!j||!j.ok){ host.innerHTML=`<div class="hint">${esc((j&&j.message)||"Live AI spend isn't set up yet.")} <a class="link" href="/admin/ai-usage.html">Set it up →</a></div>`; return; }
+  let t="";
+  if(j.balance!=null) t+=kpi("Running balance",m(j.balance),m(j.purchased)+" purchased − "+m(j.spend_since)+" spent");
+  t+=kpi("Spend this month",m(j.spend_month),"month to date");
+  t+=kpi("Last 7 days",m(j.spend_7),"");
+  t+=kpi("Since "+esc(String(j.since||"")),m(j.spend_since),"AI · Claude Code · Workbench");
+  host.innerHTML=`<div class="kpis">${t}</div>`;
 }
 function pmFromLabel(l){ const a=String(l||"").split(" "); const mo=MON.indexOf(a[0]); const y=2000+(Number(a[1])||0); return mo<0?0:y*12+mo; }
 function predictCard(F){

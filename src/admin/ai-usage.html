@@ -1,0 +1,119 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>HCPS — Claude AI Usage</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:10px 0 4px}
+ .kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+ .kpi.bal{border-left:4px solid #1c7a44;background:#f3faf5}
+ .kpi.bal.low{border-left-color:#c2410c;background:#fdf2ee}
+ .kpi.mo{border-left:4px solid #3B599A}
+ .kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:700}
+ .kpi .v{font-size:27px;font-weight:800;color:var(--navy);font-family:'Barlow Condensed',sans-serif;margin-top:2px}
+ .kpi .s{font-size:11.5px;color:var(--gray);margin-top:2px}
+ .chart{display:flex;align-items:flex-end;gap:3px;height:120px;margin-top:8px}
+ .bar{flex:1;background:#3B599A;border-radius:3px 3px 0 0;min-height:2px;opacity:.85;position:relative}
+ .bar:hover{opacity:1}
+ .fl{display:block;font-size:12px;font-weight:700;color:var(--gray);margin:0 0 4px}
+ .in{padding:9px 11px;border:1px solid var(--line);border-radius:9px;font:inherit;font-size:14px;background:#fff}
+ .setup{background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:16px 18px;color:#7a3d12}
+ .setup code{background:#fff;border:1px solid #f0cba0;border-radius:5px;padding:1px 5px;font-size:12.5px}
+ .setup ol{margin:8px 0 0;padding-left:20px}.setup li{margin:5px 0;font-size:13.5px;line-height:1.5}
+ .mut{color:var(--gray);font-size:12.5px}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Claude AI Usage &amp; Credits</h1>
+    <div class="sub">Live spend on your Anthropic organization — the HCPS AI features, Claude Code &amp; Workbench — with a running balance against the credits you've purchased.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+const usd=n=>"$"+(Number(n)||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+const dlbl=d=>{ const [y,m,da]=String(d||"").split("-"); return m?["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][(+m)-1]+" "+(+da):d; };
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+  const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+  HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+}
+function lock(){ HCPS.signOut(); TOKEN=null; location.reload(); }
+async function api(payload){ const r=await fetch("/.netlify/functions/ai-usage-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
+
+let LAST=null;
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  const {status,body:j}=await api({action:"report"});
+  if(status===401){ gate("Your session ended — sign in again."); return; }
+  if(status===403){ $("#body").innerHTML=`<div class="msg err"><b>President only.</b> This page is limited to President/Admin accounts.</div>`; return; }
+  LAST=j; render(j);
+}
+
+function settingsCard(j){
+  return `<div class="card"><h2>Credit settings</h2>
+    <div class="mut" style="margin-bottom:8px">Anthropic has no live-balance API, so the running balance = <b>credits purchased</b> − <b>spend since a start date</b>. Enter your total purchased credits and the date to start counting from (e.g., when you first added funds). Update the purchased total whenever you top up.</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+      <div><label class="fl">Total credits purchased ($)</label><input class="in" id="cx_pur" type="number" min="0" step="1" value="${j&&j.purchased!=null?esc(j.purchased):""}" placeholder="e.g. 20" style="width:150px"></div>
+      <div><label class="fl">Counting spend since</label><input class="in" id="cx_since" type="date" value="${j&&j.since?esc(j.since):""}"></div>
+      <button class="go" onclick="saveCredits()">Save</button>
+      <span id="cx_msg" class="mut"></span>
+    </div></div>`;
+}
+async function saveCredits(){
+  const purchased=($("#cx_pur")||{}).value||"";
+  const since=($("#cx_since")||{}).value||"";
+  const m=$("#cx_msg"); if(m){ m.style.color=""; m.textContent="Saving…"; }
+  const {body:j}=await api({action:"set_credits",purchased,since});
+  if(j&&j.ok){ if(m){ m.style.color="#1c7a44"; m.textContent="Saved."; } load(); }
+  else if(m){ m.style.color="#b42323"; m.textContent=(j&&j.message)||"Couldn't save."; }
+}
+
+function setupCard(j){
+  return `<div class="setup"><b>Turn on live spend tracking</b>
+    <div style="margin-top:4px;font-size:13.5px">${esc((j&&j.message)||"Add an Anthropic Admin API key to show live spend.")}</div>
+    <ol>
+      <li>In the <b>Claude Console</b> → <b>Settings → Admin keys</b>, create an <b>Admin API key</b> (it starts with <code>sk-ant-admin…</code> — this is different from, and more powerful than, your normal API key).</li>
+      <li>In <b>Netlify → Environment variables</b>, add <code>ANTHROPIC_ADMIN_KEY</code> = that key.</li>
+      <li><b>Redeploy</b>, then reload this page.</li>
+    </ol>
+    <div class="mut" style="margin-top:8px;color:#7a3d12">The admin key is used server-side only and never sent to the browser. You can always see the authoritative balance in the <a class="link" href="https://platform.claude.com/settings/billing" target="_blank" rel="noopener">Claude Console billing page</a>.</div>
+  </div>`;
+}
+
+function render(j){
+  // Not-yet-configured / error states still let you set the credits config.
+  if(!j || !j.ok){
+    const err = j&&j.error ? (j.error==="admin_key_missing"?setupCard(j)
+      :`<div class="setup"><b>Couldn't load live spend.</b><div style="margin-top:4px;font-size:13.5px">${esc(j.message||j.error)}</div>${j.error&&/admin_key/.test(j.error)?setupCardInner():""}</div>`) : `<div class="msg err">Couldn't load.</div>`;
+    $("#body").innerHTML=`${err}${settingsCard(j)}`;
+    return;
+  }
+  const bal=j.balance;
+  const low = bal!=null && j.purchased ? (bal < j.purchased*0.15) : false;
+  const kpis=`<div class="kpis">
+    ${bal!=null?`<div class="kpi bal ${low?'low':''}"><div class="l">Running balance</div><div class="v">${usd(bal)}</div><div class="s">${usd(j.purchased)} purchased − ${usd(j.spend_since)} spent</div></div>`
+              :`<div class="kpi"><div class="l">Running balance</div><div class="v">—</div><div class="s">Enter purchased credits below</div></div>`}
+    <div class="kpi mo"><div class="l">Spend this month</div><div class="v">${usd(j.spend_month)}</div><div class="s">month to date</div></div>
+    <div class="kpi"><div class="l">Spend last 7 days</div><div class="v">${usd(j.spend_7)}</div></div>
+    <div class="kpi"><div class="l">Spend since ${esc(dlbl(j.since))}</div><div class="v">${usd(j.spend_since)}</div><div class="s">all AI, Claude Code &amp; Workbench</div></div>
+  </div>`;
+  const daily=j.daily||[];
+  const mx=Math.max(0.0001,...daily.map(d=>d.usd));
+  const bars=daily.map(d=>`<div class="bar" style="height:${Math.max(2,Math.round(d.usd/mx*118))}px" title="${esc(dlbl(d.date))}: ${usd(d.usd)}"></div>`).join("")||`<div class="hint">No spend recorded yet.</div>`;
+  const chart=`<div class="card"><h2>Daily spend <span class="hint" style="font-weight:600">— last ${daily.length} day${daily.length===1?"":"s"}</span></h2>
+    <div class="chart">${bars}</div>
+    <div class="mut" style="display:flex;justify-content:space-between;margin-top:6px">${daily.length?`<span>${esc(dlbl(daily[0].date))}</span><span>${esc(dlbl(daily[daily.length-1].date))}</span>`:""}</div></div>`;
+  $("#body").innerHTML=kpis+chart+settingsCard(j)+`<div class="mut" style="margin-top:10px">Updated ${j.updated?new Date(j.updated).toLocaleString():""}. Figures come from Anthropic's organization Cost API. The authoritative remaining balance is always in the <a class="link" href="https://platform.claude.com/settings/billing" target="_blank" rel="noopener">Claude Console</a>.</div>`;
+}
+function setupCardInner(){ return `<ol><li>Create an Admin key (<code>sk-ant-admin…</code>) in Claude Console → Settings → Admin keys.</li><li>Add <code>ANTHROPIC_ADMIN_KEY</code> in Netlify and redeploy.</li></ol>`; }
+
+load();
+</script>
+</body></html>

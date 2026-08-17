@@ -45,7 +45,7 @@ async function boot(){
     cfg=await r.json();
   }catch(e){ cfg=null; }
   if(!cfg||!cfg.ok||!cfg.url||!cfg.anon){
-    show(`<h2>Reset isn’t configured</h2><p>The reset service needs <b>SUPABASE_ANON_KEY</b> set in Netlify. Ask your administrator, or reset from the Supabase dashboard.</p><div class="back"><a href="dealers.html">← Back to sign‑in</a></div>`);
+    show(`<h2>Reset isn’t configured</h2><p>The reset service needs <b>SUPABASE_ANON_KEY</b> set in Netlify. Ask your administrator, or reset from the Supabase dashboard.</p><div class="back"><a href="rep-login.html">← Back to sign‑in</a></div>`);
     return;
   }
   sb=createClient(cfg.url,cfg.anon,{auth:{detectSessionInUrl:true,persistSession:false,autoRefreshToken:false}});
@@ -75,7 +75,7 @@ function renderRequest(){
     <input id="em" type="email" placeholder="you@homecareproviderservices.us" autocomplete="username">
     <button id="go">Send reset link</button>
     <div id="m" class="note"></div>
-    <div class="back"><a href="dealers.html">← Back to sign‑in</a></div>`);
+    <div class="back"><a href="rep-login.html">← Back to sign‑in</a></div>`);
   const send=async()=>{
     const email=(($('#em')||{}).value||'').trim(); const m=$('#m');
     m.className='note'; m.textContent='Sending…';
@@ -106,7 +106,7 @@ function renderSet(){
     try{
       const { error }=await sb.auth.updateUser({password:p1});
       if(error){ m.className='note err'; m.textContent='Could not save: '+error.message; return; }
-      show(`<h2 class="ok">Password updated ✓</h2><p>Your password has been reset. You can sign in now.</p><div class="back"><a href="dealers.html">→ Go to sign‑in</a></div>`);
+      show(`<h2 class="ok">Password updated ✓</h2><p>Your password has been reset. You can sign in now.</p><div class="back"><a href="rep-login.html">→ Go to sign‑in</a></div>`);
     }catch(e){ m.className='note err'; m.textContent='Could not save — the reset link may have expired. Request a new one.'; }
   };
   $('#save').onclick=save;

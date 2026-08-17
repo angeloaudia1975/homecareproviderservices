@@ -67,9 +67,9 @@ async function forgot(){
   const email=($("#email").value||"").trim(), err=$("#err");
   if(!email){ err.className="err"; err.textContent="Enter your email above first, then tap Forgot password."; return; }
   try{
-    await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"forgot",email})});
+    await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"forgot",email,redirect_to:location.origin+"/admin/reset.html"})});
   }catch(e){}
-  err.className="ok"; err.textContent="If that email has an account, a reset link is on its way. Check your inbox.";
+  err.className="ok"; err.textContent="If that email has an account, a reset link is on its way. Check your inbox (and spam).";
 }
 </script>
 </body></html>
