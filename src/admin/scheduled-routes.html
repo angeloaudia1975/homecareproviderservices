@@ -75,6 +75,7 @@ const jesc=s=>String(s==null?"":s).replace(/'/g,"\\'").replace(/"/g,"&quot;");
 window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
 let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 let DAY=null, DATE=todayStr(), HANDOUT={ordering_url:DealerHandout.ORDERING_URL,updates:DealerHandout.UPDATES.slice()};
+let VSTRUCT={}, VTX={}, REC={};   // per-stop AI structured data, transcript, and recorder state
 function todayStr(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function toast(m){ const t=document.createElement("div"); t.className="toast"; t.textContent=m; document.body.appendChild(t); setTimeout(()=>t.remove(),2200); }
 
@@ -162,7 +163,13 @@ async function loadVisitForm(i){
   const g=(k,v)=>v==null?"":Array.isArray(v)?v.join(", "):String(v);
   const done = rep&&rep.completed_at;
   b.innerHTML=`
-    <div class="voice">🎤 <b>Voice summary</b> — activates once Deepgram is connected. For now, type your notes below (or dictate with your keyboard mic).</div>
+    <div class="voice" id="voice_${i}">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <button class="btn go" id="rec_${i}" onclick="toggleRec(${i})">🎤 Record summary</button>
+        <span id="recmsg_${i}" class="hint">Speak your visit summary after you leave — it fills the fields below for you to review.</span>
+      </div>
+      <div id="tx_${i}" style="display:none;margin-top:8px"></div>
+    </div>
     <label class="fl">Purpose of visit</label><input class="in" id="f_purpose_${i}" value="${esc(g('p',f.purpose))}" placeholder="e.g. Quarterly check-in, present new line">
     <label class="fl">Manufacturers discussed</label><input class="in" id="f_manu_${i}" value="${esc(g('m',f.manufacturers))}" placeholder="Strongback, Corsicana…">
     <label class="fl">Products presented</label><input class="in" id="f_prod_${i}" value="${esc(g('p',f.products))}" placeholder="ErgoSteel, ErgoBed…">
@@ -186,6 +193,52 @@ function collect(i){ const v=id=>(($("#f_"+id+"_"+i)||{}).value||"").trim();
     concerns:v("conc"), competitive:v("comp"), opportunities:v("opp"), followups:v("fu"),
     notes:v("notes"), next_action:v("na"), next_action_date:v("nad") }; }
 
+// ---- Voice: record → Deepgram transcribe → Claude structures → prefill form for review ----
+function blobToB64(blob){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).replace(/^data:[^;]+;base64,/,"")); r.onerror=rej; r.readAsDataURL(blob); }); }
+async function voiceApi(body){ const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch("/.netlify/functions/visit-voice-api",{method:"POST",headers:h,body:JSON.stringify(body)}); return r.json().catch(()=>({})); }
+function toggleRec(i){ const r=REC[i]; if(r&&r.mr&&r.mr.state==="recording"){ stopRec(i); } else { startRec(i); } }
+async function startRec(i){
+  const btn=$("#rec_"+i), msg=$("#recmsg_"+i);
+  if(!navigator.mediaDevices||!window.MediaRecorder){ if(msg)msg.textContent="This device can't record here — type your notes below."; return; }
+  let stream; try{ stream=await navigator.mediaDevices.getUserMedia({audio:true}); }
+  catch(e){ if(msg)msg.textContent="Microphone blocked — allow mic access, or type your notes."; return; }
+  const mime = (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/webm"))?"audio/webm":((MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported("audio/mp4"))?"audio/mp4":"");
+  let mr; try{ mr = mime?new MediaRecorder(stream,{mimeType:mime}):new MediaRecorder(stream); }catch(e){ mr=new MediaRecorder(stream); }
+  const chunks=[]; mr.ondataavailable=e=>{ if(e.data&&e.data.size) chunks.push(e.data); };
+  mr.onstop=async()=>{ try{ stream.getTracks().forEach(t=>t.stop()); }catch(e){} const blob=new Blob(chunks,{type:mr.mimeType||mime||"audio/webm"}); await processAudio(i,blob); };
+  const t0=Date.now(); const timer=setInterval(()=>{ const sec=Math.floor((Date.now()-t0)/1000); const m=$("#recmsg_"+i); if(m)m.textContent="● Recording "+Math.floor(sec/60)+":"+String(sec%60).padStart(2,"0")+" — tap Stop"; if(sec>=240) stopRec(i); },500);
+  REC[i]={mr,stream,timer};
+  mr.start();
+  if(btn){ btn.textContent="■ Stop"; btn.classList.remove("go"); btn.classList.add("pri"); }
+}
+function stopRec(i){ const r=REC[i]; if(!r) return; if(r.timer) clearInterval(r.timer); try{ r.mr.stop(); }catch(e){}
+  const btn=$("#rec_"+i); if(btn){ btn.textContent="🎤 Record summary"; btn.classList.add("go"); btn.classList.remove("pri"); }
+  const msg=$("#recmsg_"+i); if(msg) msg.textContent="Transcribing…"; }
+async function processAudio(i,blob){
+  const s=DAY.stops[i], msg=$("#recmsg_"+i);
+  if(!blob||!blob.size){ if(msg)msg.textContent="Nothing recorded — try again."; return; }
+  if(blob.size>9*1024*1024){ if(msg)msg.textContent="That recording's too long — keep it under ~4 minutes."; return; }
+  let b64; try{ b64=await blobToB64(blob); }catch(e){ if(msg)msg.textContent="Couldn't read the recording."; return; }
+  let j; try{ j=await voiceApi({action:"transcribe",dealer_id:s.dealer_id,audio_base64:b64,mime:blob.type||"audio/webm"}); }catch(e){ j=null; }
+  handleVoiceResult(i,j);
+}
+function handleVoiceResult(i,j){
+  const msg=$("#recmsg_"+i), tx=$("#tx_"+i);
+  if(!j){ if(msg)msg.textContent="Couldn't reach transcription — type your notes."; return; }
+  if(j.ok===false && j.error){ if(msg)msg.textContent=j.message||"Transcription unavailable — type your notes."; return; }
+  const f=j.fields||{};
+  const setv=(id,val)=>{ if(val==null||val==="") return; const el=$("#f_"+id+"_"+i); if(el && !el.value.trim()) el.value=val; };
+  setv("purpose",f.purpose); setv("manu",f.manufacturers); setv("prod",f.products); setv("int",f.interest);
+  setv("conc",f.concerns); setv("comp",f.competitive); setv("opp",f.opportunities); setv("fu",f.followups);
+  setv("notes",f.notes); setv("na",f.next_action); setv("nad",f.next_action_date);
+  VSTRUCT[i]=j.structured||{}; VTX[i]=j.transcript||"";
+  if(msg) msg.textContent = j.message || "✓ Filled from your voice note — review & edit below.";
+  if(tx){ tx.style.display="block"; const poor=(j.structured&&j.structured.poor_fit_slugs)||[];
+    tx.innerHTML=`<details><summary class="hint">Transcript</summary><div style="font-size:13px;color:#42505f;margin-top:4px;white-space:pre-wrap">${esc(j.transcript||"")}</div></details>`
+      +(poor.length?`<div class="hint" style="margin-top:6px">Will flag as poor-fit on save: <b>${poor.map(esc).join(", ")}</b></div>`:""); }
+}
+
 async function checkIn(i){
   const s=DAY.stops[i];
   try{ const j=await rapi({action:"visit_checkin",route_id:DAY.route.id,dealer_id:s.dealer_id});
@@ -195,7 +248,10 @@ async function checkIn(i){
 async function saveVisit(i,status){
   const s=DAY.stops[i], m=$("#vmsg_"+i); if(m)m.textContent="Saving…";
   const fields=collect(i);
-  try{ const j=await rapi({action:"visit_report_save",route_id:DAY.route.id,dealer_id:s.dealer_id,fields,status});
+  const payload={action:"visit_report_save",route_id:DAY.route.id,dealer_id:s.dealer_id,fields,status};
+  if(VSTRUCT[i]) payload.structured=VSTRUCT[i];
+  if(VTX[i]) payload.transcript=VTX[i];
+  try{ const j=await rapi(payload);
     if(j&&j.ok){ s.visit=Object.assign({},s.visit,{status,completed_at:j.completed_at});
       if(status==="completed"){ toast(`Visit saved ✓ ${j.tasks?`· ${j.tasks} task${j.tasks===1?'':'s'}`:''}`); render(); }
       else if(m){ m.style.color="var(--ok)"; m.textContent="Draft saved."; } }

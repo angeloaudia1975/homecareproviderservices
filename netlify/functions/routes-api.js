@@ -538,6 +538,13 @@ exports.handler = async (event)=>{
         if(tasks.length){ try{ await sbSend("POST","dealer_tasks",tasks,{Prefer:"return=minimal"}); tCreated=tasks.length; }catch(e){} }
         const oppRows=followupList(fields.opportunities).map(x=>String(x).trim()).filter(Boolean).map(x=>({dealer_id:did,title:x.slice(0,140),stage:"identified",source:"visit",owner_rep:me.rep_name||null,created_by:repName,notes:"From dealer visit",status:"open"}));
         if(oppRows.length){ try{ await sbSend("POST","opportunities",oppRows,{Prefer:"return=minimal"}); oCreated=oppRows.length; }catch(e){} }
+        // Structured intelligence from a voice/AI-parsed visit: feed product-interest signals and
+        // set poor-fit handout exclusions (both keyed to manufacturer slugs the rep reviewed).
+        const S=(b.structured&&typeof b.structured==="object")?b.structured:{};
+        const interestSlugs=Array.isArray(S.interest_slugs)?[...new Set(S.interest_slugs.map(x=>String(x||"").trim()).filter(Boolean))]:[];
+        if(interestSlugs.length){ const evRows=interestSlugs.map(sl=>({dealer_id:did,manufacturer:sl,product_code:null,event_type:"visit_interest",weight:10,source:"visit",env,meta:{via:"scheduled_routes"},occurred_at:now})); try{ await sbSend("POST","intent_events",evRows,{Prefer:"return=minimal"}); }catch(e){} }
+        const poorSlugs=Array.isArray(S.poor_fit_slugs)?[...new Set(S.poor_fit_slugs.map(x=>String(x||"").trim()).filter(Boolean))]:[];
+        if(poorSlugs.length){ const exRows=poorSlugs.map(sl=>({dealer_id:did,manufacturer:sl,created_by:me.email||me.name||null,created_at:now})); try{ await sbSend("POST","dealer_handout_exclusions?on_conflict=dealer_id,manufacturer",exRows,{Prefer:"resolution=merge-duplicates,return=minimal"}); }catch(e){} }
       }
       return json(200,{ok:true,status,completed_at:completed?now:null,tasks:tCreated,opportunities:oCreated});
     }
