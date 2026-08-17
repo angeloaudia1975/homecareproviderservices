@@ -49,6 +49,21 @@ function visitEmail(to,d,dateStr,repName,repEmail){
 // ---- visit follow-up (Phase 4) ----
 function followupList(v){ if(Array.isArray(v)) return v.map(x=>String(x)); if(v==null) return []; return String(v).split(/\r?\n|;/).map(s=>s.trim()).filter(Boolean); }
 function firstFew(s){ return String(s||"").split(/[,;\n]/)[0].split(/\s+/).slice(0,4).join(" "); }
+// Compose a readable CRM note from a structured field-visit report (Scheduled Routes).
+function visitNotesSummary(f){
+  f=f||{}; const arr=v=>Array.isArray(v)?v.filter(Boolean).join(", "):String(v||"").trim(); const L=[];
+  if(f.purpose) L.push(`Purpose: ${f.purpose}`);
+  if(arr(f.manufacturers)) L.push(`Manufacturers discussed: ${arr(f.manufacturers)}`);
+  if(arr(f.products)) L.push(`Products presented: ${arr(f.products)}`);
+  if(arr(f.interest)) L.push(`Interested in: ${arr(f.interest)}`);
+  if(f.concerns) L.push(`Questions/concerns: ${f.concerns}`);
+  if(f.competitive) L.push(`Competitive: ${f.competitive}`);
+  if(arr(f.opportunities)) L.push(`Opportunities: ${arr(f.opportunities)}`);
+  if(arr(f.followups)) L.push(`Follow-ups: ${arr(f.followups)}`);
+  if(f.next_action) L.push(`Next action: ${f.next_action}${f.next_action_date?` (by ${f.next_action_date})`:""}`);
+  if(f.notes) L.push(`Notes: ${f.notes}`);
+  return L.join("\n")||null;
+}
 function buildFollowup(dealerName,repName,details){
   const parts=[];
   parts.push(`Hi ${dealerName||"there"},`);
@@ -438,6 +453,93 @@ exports.handler = async (event)=>{
       if(on){ await sbSend("POST","dealer_handout_exclusions?on_conflict=dealer_id,manufacturer",{dealer_id:did,manufacturer:slug,created_by:me.email||me.name||null,created_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
       else { await sbSend("DELETE",`dealer_handout_exclusions?dealer_id=eq.${encodeURIComponent(did)}&manufacturer=eq.${encodeURIComponent(slug)}`,null,{Prefer:"return=minimal"}); }
       return json(200,{ok:true,excluded:on});
+    }
+
+    // ---------- Scheduled Routes: mobile field-visit day view + per-dealer visit reports ----------
+    // route_day returns the rep's route for a date (or a specific route) with stops enriched with
+    // dealer contact info and the current visit status per stop. visit_checkin stamps arrival.
+    // visit_report_save upserts the structured report and, on completion, writes through to the CRM
+    // (touch + tasks + opportunities) exactly like save_visit. Reps see only their own routes.
+    const ownsRoute=r=> me.role==="president" || String((r&&r.owner_email)||"").toLowerCase()===String(me.email||"").toLowerCase();
+    if(b.action==="route_day"){
+      let route=null;
+      if(b.route_id){
+        const rows=await sbGet(`rep_routes?id=eq.${encodeURIComponent(b.route_id)}&select=*`).catch(()=>[]);
+        route=(rows&&rows[0])||null;
+        if(route && !ownsRoute(route)) return json(403,{error:"not your route"});
+      } else {
+        const date=(b.date&&/^\d{4}-\d{2}-\d{2}$/.test(b.date))?b.date:new Date().toISOString().slice(0,10);
+        const own=me.role!=="president"?`&owner_email=eq.${encodeURIComponent(me.email||"~none~")}`:"";
+        const rows=await sbGet(`rep_routes?scheduled_date=eq.${date}${own}&select=*&order=updated_at.desc&limit=1`).catch(()=>[]);
+        route=(rows&&rows[0])||null;
+      }
+      if(!route) return json(200,{ok:true,route:null,stops:[]});
+      const stops=Array.isArray(route.stops)?route.stops:[];
+      const ids=[...new Set(stops.map(s=>s.dealer_id).filter(Boolean))];
+      let dmap={},cmap={},vmap={};
+      if(ids.length){
+        try{ const ds=await sbGet(`dealers?id=in.(${ids.join(",")})&select=id,business_name,contact_name,email,phone,address,city,state,zip`); for(const d of (ds||[])) dmap[d.id]=d; }catch(e){}
+        try{ const cs=await sbGet(`dealer_contacts?dealer_id=in.(${ids.join(",")})&select=dealer_id,name,email,phone,cell`); for(const c of (cs||[])){ if(!cmap[c.dealer_id]) cmap[c.dealer_id]=c; } }catch(e){}
+      }
+      try{ const vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(route.id)}&select=dealer_id,status,checkin_at,completed_at`); for(const v of (vr||[])) vmap[v.dealer_id]=v; }catch(e){}
+      const outStops=stops.map((s,i)=>{ const d=dmap[s.dealer_id]||{}, c=cmap[s.dealer_id]||{}, v=vmap[s.dealer_id]||null;
+        return { order:i, dealer_id:s.dealer_id||"", name:s.name||d.business_name||"",
+          address:s.address||d.address||"", city:s.city||d.city||"", state:s.state||d.state||"", zip:s.zip||d.zip||"",
+          lat:s.lat, lng:s.lng, visit_min:(s.visit_min!=null?s.visit_min:null),
+          contact_name:(c.name||d.contact_name||""), contact_email:(c.email||d.email||""), contact_phone:(c.phone||c.cell||d.phone||""),
+          visit: v?{status:v.status,checkin_at:v.checkin_at,completed_at:v.completed_at}:null }; });
+      return json(200,{ok:true, route:{id:route.id,name:route.name,scheduled_date:route.scheduled_date,home_base:route.home_base,round_trip:route.round_trip,distance_m:route.distance_m,duration_s:route.duration_s,geometry:route.geometry}, stops:outStops});
+    }
+    if(b.action==="visit_checkin"){
+      const rid=String(b.route_id||"").trim()||null, did=String(b.dealer_id||"").trim();
+      if(!did) return json(400,{error:"dealer_id required"});
+      let sd=null;
+      if(rid){ const rr=await sbGet(`rep_routes?id=eq.${encodeURIComponent(rid)}&select=scheduled_date,owner_email`).catch(()=>[]); const r=rr&&rr[0]; if(r){ if(!ownsRoute(r)) return json(403,{error:"not your route"}); sd=r.scheduled_date||null; } }
+      const now=new Date().toISOString();
+      const row={ route_id:rid, dealer_id:did, rep_email:me.email||null, rep_name:me.rep_name||null, scheduled_date:sd, checkin_at:now, status:"checked_in", updated_at:now };
+      if(rid){ await sbSend("POST","dealer_visit_reports?on_conflict=route_id,dealer_id",row,{Prefer:"resolution=merge-duplicates,return=minimal"}); }
+      else { await sbSend("POST","dealer_visit_reports",row,{Prefer:"return=minimal"}); }
+      return json(200,{ok:true,checkin_at:now});
+    }
+    if(b.action==="visit_report_get"){
+      const rid=String(b.route_id||"").trim(), did=String(b.dealer_id||"").trim();
+      if(!did) return json(400,{error:"dealer_id required"});
+      const path = rid
+        ? `dealer_visit_reports?route_id=eq.${encodeURIComponent(rid)}&dealer_id=eq.${encodeURIComponent(did)}&select=*&limit=1`
+        : `dealer_visit_reports?dealer_id=eq.${encodeURIComponent(did)}&select=*&order=updated_at.desc&limit=1`;
+      const rows=await sbGet(path).catch(()=>[]);
+      return json(200,{ok:true,report:(rows&&rows[0])||null});
+    }
+    if(b.action==="visit_report_save"){
+      const rid=String(b.route_id||"").trim()||null, did=String(b.dealer_id||"").trim();
+      if(!did) return json(400,{error:"dealer_id required"});
+      const fields=(b.fields&&typeof b.fields==="object")?b.fields:{};
+      const status=String(b.status||"in_progress");
+      const completed = status==="completed";
+      const now=new Date().toISOString();
+      let sd=null;
+      if(rid){ const rr=await sbGet(`rep_routes?id=eq.${encodeURIComponent(rid)}&select=scheduled_date,owner_email`).catch(()=>[]); const r=rr&&rr[0]; if(r){ if(!ownsRoute(r)) return json(403,{error:"not your route"}); sd=r.scheduled_date||null; } }
+      const row={ route_id:rid, dealer_id:did, rep_email:me.email||null, rep_name:me.rep_name||null, scheduled_date:sd, status, fields, updated_at:now };
+      if(b.transcript!=null) row.transcript=String(b.transcript);
+      if(b.structured&&typeof b.structured==="object") row.structured=b.structured;
+      if(completed) row.completed_at=now;
+      if(rid){ await sbSend("POST","dealer_visit_reports?on_conflict=route_id,dealer_id",row,{Prefer:"resolution=merge-duplicates,return=minimal"}); }
+      else { await sbSend("POST","dealer_visit_reports",row,{Prefer:"return=minimal"}); }
+      let tCreated=0,oCreated=0;
+      if(completed){
+        const dr=await sbGet(`dealers?id=eq.${encodeURIComponent(did)}&select=business_name,is_test`).catch(()=>[]);
+        const d=(dr&&dr[0])||{}; const st=await P.getState(); const env=P.envFor(st.mode,d.is_test);
+        const repName=me.name||me.rep_name||"HCPS rep";
+        try{ await sbSend("POST","dealer_visits",{dealer_id:did,rep_name:me.rep_name||null,owner_email:me.email||null,visited_at:now,notes:visitNotesSummary(fields),details:fields,env},{Prefer:"return=minimal"}); }catch(e){}
+        const tasks=[];
+        for(const f of followupList(fields.followups)){ const t=String(f).trim(); if(t) tasks.push({dealer_id:did,title:`Follow-up: ${t.slice(0,120)}`,detail:"From dealer visit",source:"visit",reason:"visit_followup",priority:"normal",assigned_rep:me.rep_name||null,created_by:repName,status:"open",env}); }
+        const na=String(fields.next_action||"").trim();
+        if(na){ const t={dealer_id:did,title:`Next action: ${na.slice(0,120)}`,detail:"From dealer visit",source:"visit",reason:"visit_next_action",priority:"normal",assigned_rep:me.rep_name||null,created_by:repName,status:"open",env}; if(/^\d{4}-\d{2}-\d{2}$/.test(String(fields.next_action_date||""))) t.due_date=fields.next_action_date; tasks.push(t); }
+        if(tasks.length){ try{ await sbSend("POST","dealer_tasks",tasks,{Prefer:"return=minimal"}); tCreated=tasks.length; }catch(e){} }
+        const oppRows=followupList(fields.opportunities).map(x=>String(x).trim()).filter(Boolean).map(x=>({dealer_id:did,title:x.slice(0,140),stage:"identified",source:"visit",owner_rep:me.rep_name||null,created_by:repName,notes:"From dealer visit",status:"open"}));
+        if(oppRows.length){ try{ await sbSend("POST","opportunities",oppRows,{Prefer:"return=minimal"}); oCreated=oppRows.length; }catch(e){} }
+      }
+      return json(200,{ok:true,status,completed_at:completed?now:null,tasks:tCreated,opportunities:oCreated});
     }
 
     // ---------- Visit notes → tasks + opportunities (Phase 4) ----------

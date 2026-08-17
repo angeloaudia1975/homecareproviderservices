@@ -1,0 +1,274 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#10263f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Routes">
+<link rel="manifest" href="/admin/scheduled-routes.webmanifest">
+<link rel="apple-touch-icon" href="/assets/hcps-logo.png">
+<title>HCPS — Scheduled Routes</title>
+<style>
+  :root{--navy:#10263f;--blue:#2f73b8;--orange:#F5821F;--line:#e4e8ee;--gray:#6b7683;--ok:#1f7a44;--bg:#f4f6f9}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:#1b2733;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;-webkit-text-size-adjust:100%}
+  header{position:sticky;top:0;z-index:10;background:var(--navy);color:#fff;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0));padding-top:calc(10px + env(safe-area-inset-top,0))}
+  header .row{display:flex;align-items:center;gap:10px}
+  header h1{font-size:17px;margin:0;font-weight:800;letter-spacing:.2px;flex:1}
+  header .b{color:var(--orange);font-weight:800;font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+  header a.full{color:#c9d4e2;font-size:12px;text-decoration:none;border:1px solid #33465f;border-radius:8px;padding:4px 8px}
+  header input[type=date]{margin-top:8px;font:inherit;font-size:14px;padding:7px 9px;border-radius:9px;border:0;width:100%;background:#fff}
+  .wrap{padding:12px 12px 40px;max-width:640px;margin:0 auto}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 14px;margin:0 0 12px;box-shadow:0 1px 2px rgba(16,38,63,.04)}
+  .rsum{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .rsum .nm{font-weight:800;font-size:16px;color:var(--navy)}
+  .rsum .mt{color:var(--gray);font-size:12.5px}
+  .stop{position:relative;border:1px solid var(--line);border-radius:14px;background:#fff;margin:0 0 12px;overflow:hidden}
+  .stop.done{opacity:.72}
+  .sh{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;cursor:pointer}
+  .ord{flex:0 0 auto;width:30px;height:30px;border-radius:50%;background:var(--navy);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:14px}
+  .stop.done .ord{background:var(--ok)}
+  .stop.here .ord{background:var(--orange)}
+  .sh .mid{flex:1;min-width:0}
+  .sh .nm{font-weight:700;color:var(--navy);font-size:15.5px;line-height:1.3}
+  .sh .sub{color:var(--gray);font-size:12.5px;margin-top:1px}
+  .eta{flex:0 0 auto;text-align:right}
+  .eta .t{font-weight:800;color:var(--blue);font-size:15px}
+  .eta .l{font-size:10px;color:var(--gray);text-transform:uppercase;letter-spacing:.4px}
+  .chip{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.3px;padding:2px 7px;border-radius:6px;text-transform:uppercase;vertical-align:middle}
+  .chip.plan{background:#eef2f6;color:#5b6672}.chip.here{background:#fff1e3;color:#b45309}.chip.done{background:#e7f6ee;color:var(--ok)}
+  .acts{display:flex;gap:7px;flex-wrap:wrap;padding:0 14px 13px}
+  .btn{appearance:none;border:1px solid var(--line);background:#fff;color:var(--navy);font:inherit;font-size:13.5px;font-weight:700;padding:9px 12px;border-radius:10px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+  .btn:active{transform:translateY(1px)}
+  .btn.pri{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .btn.go{background:var(--orange);color:#fff;border-color:var(--orange)}
+  .btn.wide{flex:1;justify-content:center}
+  .body{border-top:1px solid var(--line);padding:13px 14px;display:none;background:#fbfcfd}
+  .body.open{display:block}
+  label.fl{display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);margin:10px 0 3px}
+  input.in,textarea.in,select.in{width:100%;font:inherit;font-size:15px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#fff}
+  textarea.in{min-height:58px;resize:vertical}
+  .voice{border:1px dashed #cdd6e0;border-radius:10px;background:#f7f9fc;padding:10px 11px;margin:4px 0 2px;font-size:12.5px;color:var(--gray)}
+  .save-row{display:flex;gap:8px;margin-top:12px}
+  .hint{color:var(--gray);font-size:12.5px}
+  .msg{padding:16px;text-align:center;color:var(--gray)}
+  .gate{max-width:360px;margin:40px auto;background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px}
+  .gate input{width:100%;font:inherit;font-size:16px;padding:11px;border:1px solid var(--line);border-radius:10px;margin-bottom:9px}
+  .modal{position:fixed;inset:0;background:rgba(16,38,63,.5);display:flex;align-items:flex-end;justify-content:center;z-index:50}
+  .sheet{background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:640px;max-height:88vh;overflow:auto;padding:16px}
+  .sheet h3{margin:0 0 8px;color:var(--navy)}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;background:var(--navy);color:#fff;padding:10px 16px;border-radius:24px;font-size:13.5px;z-index:60;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+</style>
+</head><body>
+<header>
+  <div class="row"><span class="b">HCPS Field</span><h1>Scheduled Routes</h1><a class="full" href="/admin/hub.html?cat=sales">Full portal</a></div>
+  <input type="date" id="dpick" onchange="pickDate(this.value)">
+</header>
+<div class="wrap"><div id="app"><div class="msg">Loading…</div></div></div>
+
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/dealer-handout.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const jesc=s=>String(s==null?"":s).replace(/'/g,"\\'").replace(/"/g,"&quot;");
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let DAY=null, DATE=todayStr(), HANDOUT={ordering_url:DealerHandout.ORDERING_URL,updates:DealerHandout.UPDATES.slice()};
+function todayStr(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function toast(m){ const t=document.createElement("div"); t.className="toast"; t.textContent=m; document.body.appendChild(t); setTimeout(()=>t.remove(),2200); }
+
+async function rapi(body){ const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch("/.netlify/functions/routes-api",{method:"POST",headers:h,body:JSON.stringify(body)});
+  if(r.status===401){ TOKEN=null; gate("Session ended — sign in again."); throw new Error("401"); }
+  return r.json().catch(()=>({})); }
+async function esapi(body){ const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch("/.netlify/functions/email-sync-api",{method:"POST",headers:h,body:JSON.stringify(body)}); return r.json().catch(()=>({})); }
+
+function gate(msg){ $("#app").innerHTML=`<div class="gate"><h3 style="margin:0 0 4px;color:var(--navy)">Sign in</h3><p class="hint" style="margin:0 0 12px">Your HCPS work email and password.</p>
+  <input id="lemail" type="email" placeholder="Email" autocomplete="username">
+  <input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()">
+  <button class="btn pri wide" onclick="submitTok()">Sign in</button>
+  <div id="lerr" style="color:#b42323;margin-top:8px;font-size:13px">${msg||""}</div></div>`;
+  setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},60); }
+async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+  const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+  HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load(); }
+
+function pickDate(v){ if(v){ DATE=v; load(); } }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  const dp=$("#dpick"); if(dp) dp.value=DATE;
+  $("#app").innerHTML=`<div class="msg">Loading today's route…</div>`;
+  let j; try{ j=await rapi({action:"route_day",date:DATE}); }catch(e){ return; }
+  if(!j||!j.ok){ $("#app").innerHTML=`<div class="msg">Couldn't load. Pull down to retry.</div>`; return; }
+  DAY=j;
+  if(!j.route){ renderEmpty(); return; }
+  render();
+  computeEtas();  // async: fills ETAs once directions return
+}
+
+function renderEmpty(){
+  const nice=new Date(DATE+"T00:00:00").toLocaleDateString([], {weekday:"long",month:"long",day:"numeric"});
+  $("#app").innerHTML=`<div class="card"><div class="rsum"><span class="nm">No route for ${esc(nice)}</span></div>
+    <p class="hint" style="margin:8px 0 0">Build a route on the Territory Map and set its date to see it here as your day's plan.</p>
+    <a class="btn pri wide" style="margin-top:12px" href="/admin/map.html">🗺 Open Territory Map</a></div>`;
+}
+
+function statusOf(s){ const v=s.visit; if(v&&v.completed_at) return "done"; if(v&&(v.status==="checked_in"||v.checkin_at)) return "here"; return "plan"; }
+function render(){
+  const r=DAY.route, stops=DAY.stops||[];
+  const nice=new Date((r.scheduled_date||DATE)+"T00:00:00").toLocaleDateString([], {weekday:"long",month:"long",day:"numeric"});
+  const drive=r.duration_s?` · ${Math.round(r.duration_s/60)} min drive`:"";
+  const done=stops.filter(s=>statusOf(s)==="done").length;
+  let h=`<div class="card"><div class="rsum"><span class="nm">${esc(r.name||"Route")}</span><span class="mt">${esc(nice)}</span></div>
+    <div class="mt" style="margin-top:4px;color:var(--gray)">${stops.length} stop${stops.length===1?"":"s"}${drive} · ${done}/${stops.length} visited</div></div>`;
+  h+=stops.map((s,i)=>stopCard(s,i)).join("");
+  $("#app").innerHTML=h;
+}
+function stopCard(s,i){
+  const st=statusOf(s), cls=st==="done"?"done":(st==="here"?"here":"");
+  const chip=st==="done"?`<span class="chip done">visited</span>`:(st==="here"?`<span class="chip here">on site</span>`:`<span class="chip plan">planned</span>`);
+  const loc=[s.city,s.state].filter(Boolean).join(", ");
+  const navQ=(isFinite(s.lat)&&isFinite(s.lng))?`${s.lat},${s.lng}`:encodeURIComponent([s.address,s.city,s.state,s.zip].filter(Boolean).join(", "));
+  const navUrl=`https://www.google.com/maps/dir/?api=1&destination=${navQ}`;
+  return `<div class="stop ${cls}" id="stop_${i}">
+    <div class="sh" onclick="toggleBody(${i})">
+      <div class="ord">${i+1}</div>
+      <div class="mid"><div class="nm">${esc(s.name)} ${chip}</div>
+        <div class="sub">${loc?esc(loc):""}${s.contact_name?` · ${esc(s.contact_name)}`:""}</div></div>
+      <div class="eta"><div class="t" id="eta_${i}">—</div><div class="l">ETA</div></div>
+    </div>
+    <div class="acts">
+      <a class="btn" href="${navUrl}" target="_blank" rel="noopener">🧭 Navigate</a>
+      ${s.contact_phone?`<a class="btn" href="tel:${esc(String(s.contact_phone).replace(/[^0-9+]/g,''))}">📞 Call</a>`:""}
+      <button class="btn" onclick="openHandout('${jesc(s.dealer_id)}','${jesc(s.name)}')">📄 Visit package</button>
+      ${st==="plan"?`<button class="btn go" onclick="checkIn(${i})">▶ Start visit</button>`:`<button class="btn ${st==='done'?'':'pri'}" onclick="toggleBody(${i})">${st==='done'?'View':'✎ Log visit'}</button>`}
+    </div>
+    <div class="body" id="body_${i}"></div>
+  </div>`;
+}
+
+function toggleBody(i){ const b=$("#body_"+i); if(!b) return; if(b.classList.contains("open")){ b.classList.remove("open"); return; }
+  b.classList.add("open"); if(!b.dataset.loaded){ loadVisitForm(i); } }
+
+async function loadVisitForm(i){
+  const s=DAY.stops[i], b=$("#body_"+i); b.dataset.loaded="1";
+  b.innerHTML=`<div class="hint">Loading…</div>`;
+  let rep=null; try{ const j=await rapi({action:"visit_report_get",route_id:DAY.route.id,dealer_id:s.dealer_id}); rep=(j&&j.report)||null; }catch(e){}
+  const f=(rep&&rep.fields)||{};
+  const g=(k,v)=>v==null?"":Array.isArray(v)?v.join(", "):String(v);
+  const done = rep&&rep.completed_at;
+  b.innerHTML=`
+    <div class="voice">🎤 <b>Voice summary</b> — activates once Deepgram is connected. For now, type your notes below (or dictate with your keyboard mic).</div>
+    <label class="fl">Purpose of visit</label><input class="in" id="f_purpose_${i}" value="${esc(g('p',f.purpose))}" placeholder="e.g. Quarterly check-in, present new line">
+    <label class="fl">Manufacturers discussed</label><input class="in" id="f_manu_${i}" value="${esc(g('m',f.manufacturers))}" placeholder="Strongback, Corsicana…">
+    <label class="fl">Products presented</label><input class="in" id="f_prod_${i}" value="${esc(g('p',f.products))}" placeholder="ErgoSteel, ErgoBed…">
+    <label class="fl">Products they're interested in</label><input class="in" id="f_int_${i}" value="${esc(g('i',f.interest))}" placeholder="What they want to bring in">
+    <label class="fl">Questions / concerns</label><textarea class="in" id="f_conc_${i}" placeholder="Pricing, lead times, objections…">${esc(g('c',f.concerns))}</textarea>
+    <label class="fl">Competitive info</label><input class="in" id="f_comp_${i}" value="${esc(g('c',f.competitive))}" placeholder="What competitors they use">
+    <label class="fl">Opportunities identified</label><input class="in" id="f_opp_${i}" value="${esc(g('o',f.opportunities))}" placeholder="e.g. 2 ErgoSteel chairs">
+    <label class="fl">Follow-up requirements</label><textarea class="in" id="f_fu_${i}" placeholder="One per line — each becomes a task">${esc(g('f',f.followups))}</textarea>
+    <label class="fl">General notes</label><textarea class="in" id="f_notes_${i}" placeholder="Anything else worth capturing">${esc(g('n',f.notes))}</textarea>
+    <label class="fl">Next action</label><input class="in" id="f_na_${i}" value="${esc(g('na',f.next_action))}" placeholder="e.g. Send pricing + literature">
+    <label class="fl">Follow-up date</label><input class="in" type="date" id="f_nad_${i}" value="${esc(f.next_action_date||'')}">
+    <div class="save-row">
+      <button class="btn wide" onclick="saveVisit(${i},'in_progress')">Save draft</button>
+      <button class="btn go wide" onclick="saveVisit(${i},'completed')">✓ Complete visit</button>
+    </div>
+    <div class="save-row"><button class="btn wide" onclick="draftFollowup(${i})">✉️ Draft follow-up email</button></div>
+    <div id="vmsg_${i}" class="hint" style="margin-top:8px"></div>`;
+}
+function collect(i){ const v=id=>(($("#f_"+id+"_"+i)||{}).value||"").trim();
+  return { purpose:v("purpose"), manufacturers:v("manu"), products:v("prod"), interest:v("int"),
+    concerns:v("conc"), competitive:v("comp"), opportunities:v("opp"), followups:v("fu"),
+    notes:v("notes"), next_action:v("na"), next_action_date:v("nad") }; }
+
+async function checkIn(i){
+  const s=DAY.stops[i];
+  try{ const j=await rapi({action:"visit_checkin",route_id:DAY.route.id,dealer_id:s.dealer_id});
+    if(j&&j.ok){ s.visit=Object.assign({},s.visit,{status:"checked_in",checkin_at:j.checkin_at}); toast("Arrival logged ✓"); render(); computeEtas(); setTimeout(()=>toggleBody(i),60); } }
+  catch(e){ toast("Couldn't log arrival"); }
+}
+async function saveVisit(i,status){
+  const s=DAY.stops[i], m=$("#vmsg_"+i); if(m)m.textContent="Saving…";
+  const fields=collect(i);
+  try{ const j=await rapi({action:"visit_report_save",route_id:DAY.route.id,dealer_id:s.dealer_id,fields,status});
+    if(j&&j.ok){ s.visit=Object.assign({},s.visit,{status,completed_at:j.completed_at});
+      if(status==="completed"){ toast(`Visit saved ✓ ${j.tasks?`· ${j.tasks} task${j.tasks===1?'':'s'}`:''}`); render(); }
+      else if(m){ m.style.color="var(--ok)"; m.textContent="Draft saved."; } }
+    else if(m){ m.style.color="#b42323"; m.textContent=(j&&j.error)||"Couldn't save."; }
+  }catch(e){ if(m){ m.style.color="#b42323"; m.textContent="Couldn't save."; } }
+}
+async function draftFollowup(i){
+  const s=DAY.stops[i], m=$("#vmsg_"+i); if(m){ m.style.color=""; m.textContent="Drafting…"; }
+  const details=collect(i);
+  let j; try{ j=await rapi({action:"generate_followup",dealer_id:s.dealer_id,details}); }catch(e){ j=null; }
+  if(!j||!j.ok||!(j.subject||j.body)){ if(m){ m.style.color="#b42323"; m.textContent=(j&&j.message)||"Couldn't draft the email."; } return; }
+  if(m)m.textContent="";
+  openDraft(s, j.subject||"", j.body||"", j.signature||"");
+}
+function openDraft(s,subject,body,signature){
+  const to=s.contact_email||"";
+  const full=body+(signature?`\n\n${signature}`:"");
+  const wrap=document.createElement("div"); wrap.className="modal"; wrap.onclick=e=>{ if(e.target===wrap) wrap.remove(); };
+  wrap.innerHTML=`<div class="sheet">
+    <h3>Follow-up email — review before sending</h3>
+    <label class="fl">To</label><input class="in" id="d_to" value="${esc(to)}" placeholder="dealer contact email">
+    <label class="fl">Subject</label><input class="in" id="d_sub" value="${esc(subject)}">
+    <label class="fl">Message</label><textarea class="in" id="d_body" style="min-height:200px">${esc(full)}</textarea>
+    <div class="hint" style="margin-top:6px">Nothing sends until you tap Send. It goes from your Outlook.</div>
+    <div class="save-row" style="margin-top:12px">
+      <button class="btn wide" onclick="this.closest('.modal').remove()">Close</button>
+      <button class="btn go wide" onclick="sendDraft('${jesc(s.dealer_id)}',this)">Send from my Outlook</button>
+    </div>
+    <div id="d_msg" class="hint" style="margin-top:8px"></div></div>`;
+  document.body.appendChild(wrap);
+}
+async function sendDraft(dealer_id,btn){
+  const to=($("#d_to")||{}).value||"", subject=($("#d_sub")||{}).value||"", body=($("#d_body")||{}).value||"";
+  const m=$("#d_msg"); if(!to){ if(m){m.style.color="#b42323";m.textContent="Add a recipient email.";} return; }
+  if(m){ m.style.color=""; m.textContent="Sending…"; } if(btn) btn.disabled=true;
+  let j; try{ j=await esapi({action:"send",dealer_id,to,subject,body_text:body}); }catch(e){ j=null; }
+  if(j&&j.ok){ toast("Email sent ✓"); const md=$("#d_msg"); const modal=document.querySelector(".modal"); if(modal) modal.remove(); }
+  else { if(m){ m.style.color="#b42323"; m.textContent=(j&&j.message)||"Couldn't send — you can also send from Dealer 360."; } if(btn) btn.disabled=false; }
+}
+
+// ---- Dealer handout (visit package) — reuse the shared template ----
+async function openHandout(dealer_id,name){
+  const w=window.open("","_blank"); if(!w){ toast("Allow pop-ups for the visit package"); return; }
+  w.document.write('<!doctype html><meta charset="utf-8"><body style="font:15px Arial;margin:28px;color:#5b6672">Preparing visit package…</body>'); w.document.close();
+  try{ const s=await rapi({action:"get_settings",key:"handout"}); if(s&&s.ok&&s.value){ HANDOUT={ordering_url:s.value.ordering_url||DealerHandout.ORDERING_URL, updates:Array.isArray(s.value.updates)&&s.value.updates.length?s.value.updates:DealerHandout.UPDATES.slice()}; } }catch(e){}
+  let c={}; try{ const r=await rapi({action:"business_case",dealer_ids:[dealer_id]}); c=(r&&r.cases&&r.cases[dealer_id])||{}; }catch(e){}
+  try{ w.document.open(); w.document.write(DealerHandout.html(c,{HANDOUT,ME})); w.document.close(); }catch(e){}
+}
+
+// ---- ETAs: one directions call, then compute clock arrival per stop ----
+async function computeEtas(){
+  const r=DAY.route, stops=DAY.stops||[];
+  const useHome = r.round_trip && r.home_base && isFinite(r.home_base.lat) && isFinite(r.home_base.lng);
+  if(!stops.length || stops.some(s=>!(isFinite(s.lat)&&isFinite(s.lng)))) return; // need coords on every stop
+  const coords=[]; if(useHome) coords.push([r.home_base.lng,r.home_base.lat]);
+  stops.forEach(s=>coords.push([s.lng,s.lat]));
+  if(coords.length<2) return;
+  let legs=[]; try{ const d=await rapi({action:"directions",coords}); legs=(d&&d.legs)||[]; }catch(e){}
+  if(legs.length<coords.length-1) return;
+  const depart=(r.home_base&&r.home_base.depart_time)||"08:00";
+  let base=Date.parse((r.scheduled_date||DATE)+"T"+(/^\d{1,2}:\d{2}$/.test(depart)?depart:"08:00")+":00");
+  if(!isFinite(base)) return;
+  let clock=base, ci=0;
+  if(useHome){ /* coords[0] is home; leg[0] home->stop0 */ }
+  for(let k=0;k<stops.length;k++){
+    const coordIdx = k + (useHome?1:0);
+    if(coordIdx>0) clock += (legs[coordIdx-1].duration_s||0)*1000;
+    const el=$("#eta_"+k); if(el) el.textContent=new Date(clock).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"});
+    const vmin=(stops[k].visit_min!=null?stops[k].visit_min:30);
+    clock += vmin*60000;
+  }
+}
+
+load();
+</script>
+</body></html>
