@@ -104,6 +104,10 @@
 
 <main>{{ content | safe }}</main>
 
+<style>
+  .footer-grid .rep-login{display:inline-flex;align-items:center;gap:8px;margin-top:16px;color:#fff;font-weight:800;font-size:13.5px;text-decoration:none;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-left:3px solid #e07b00;border-radius:10px;padding:9px 16px;transition:background .15s}
+  .footer-grid .rep-login:hover{background:rgba(255,255,255,.12)}
+</style>
 <footer id="contact">
   <div class="container footer-grid">
     <div>
@@ -113,6 +117,7 @@
         <a href="tel:{{ site.contact.phone_href }}">{{ site.contact.phone_display }}</a>
         <a href="mailto:{{ site.contact.email }}">{{ site.contact.email }}</a>
       </div>
+      <a class="rep-login" href="/admin/rep-login.html" rel="nofollow">🔑 Rep Login</a>
     </div>
     {%- if nav and nav.footer and nav.footer.length -%}
     {%- for col in nav.footer -%}

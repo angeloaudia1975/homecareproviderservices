@@ -8,6 +8,15 @@
   command = "npm run build"
   publish = "_site"
 
+# Keep the internal admin / rep portal out of search engines — it's staff-only, reached via the
+# footer "Rep Login" link, not Google. X-Robots-Tag is authoritative: pages carry noindex even if
+# something links to them, so they never appear in search results. Access is unchanged (login still
+# works); this only controls indexing.
+[[headers]]
+  for = "/admin/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
 # Automation engine scheduled functions. engine-hourly self-gates to weekday ET business
 # hours (returns immediately otherwise) and only DELIVERS inside the configured send
 # windows. engine-nightly runs once overnight (06:00 UTC ≈ 1–2am ET) to recompute
