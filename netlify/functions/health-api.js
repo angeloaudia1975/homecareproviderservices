@@ -37,8 +37,11 @@ exports.handler=async(event)=>{
     let rows=eng.map(e=>({...e, name:(info[e.dealer_id]&&info[e.dealer_id].name)||"(dealer)",
       city:(info[e.dealer_id]&&info[e.dealer_id].city)||"", state:(info[e.dealer_id]&&info[e.dealer_id].state)||"",
       email:(info[e.dealer_id]&&info[e.dealer_id].email)||"" }));
-    // rep scope
-    if(me.role==="rep"){ const rn=(me.rep_name||"").toLowerCase(); rows=rows.filter(r=>String(r.rep_name||"").toLowerCase()===rn); }
+    // Dealer health scope: management + a Relations Manager see the whole territory (they work every
+    // account). A sales rep sees only their own book.
+    const role=String(me.role||"").toLowerCase();
+    const seesAll=({president:1,admin:1,owner:1,relations:1})[role];
+    if(!seesAll){ const rn=(me.rep_name||"").toLowerCase(); rows=rows.filter(r=>String(r.rep_name||"").toLowerCase()===rn); }
     // summary
     const tiers={healthy:0,watch:0,at_risk:0,dormant:0,new:0};
     let scoreSum=0, atRiskRev=0;

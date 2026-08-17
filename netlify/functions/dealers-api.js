@@ -300,17 +300,22 @@ exports.handler = async (event)=>{
     if(!SUPABASE_URL||!SERVICE_ROLE) return json(500,{error:"Supabase env vars not set (SUPABASE_URL, SUPABASE_SERVICE_ROLE)"});
     const me=await whoami(event);
     if(!me) return json(401,{error:"unauthorized"});
+    // Two tiers. seesAll = who may see/work every dealer (management + a Relations Manager who
+    // covers the whole territory). isAdminRole = who manages the admin queues (management only).
+    const role=String(me.role||"").toLowerCase();
+    const isAdminRole=!!({president:1,admin:1,owner:1})[role];
+    const seesAll=isAdminRole || role==="relations";
 
     if(event.httpMethod==="GET"){
       const state=await buildState();
       state.role=me.role; state.rep_name=me.rep_name||"";
-      if(me.role==="rep"){
-        // A sales rep sees only their own book of dealers. (Customer Relations Director + president see all.)
+      if(!seesAll){
+        // A sales rep sees only their own book of dealers.
         const rn=String(me.rep_name||"").trim().toLowerCase();
         state.dealers=(state.dealers||[]).filter(d=> rn && String(d.rep||"").trim().toLowerCase()===rn);
       }
-      if(me.role!=="president"){
-        // Non-president roles don't manage the admin queues/tools — hide them.
+      if(!isAdminRole){
+        // Non-management roles don't manage the admin queues/tools — hide them.
         state.logins=[]; state.changeRequests=[]; state.recentSessions=[]; state.openCarts=[]; state.nomerge=[];
       }
       return json(200,state);
@@ -320,7 +325,7 @@ exports.handler = async (event)=>{
       let b; try{b=JSON.parse(event.body||"{}");}catch{return json(400,{error:"bad JSON"});}
       const act=b.action;
       if(PRESIDENT_ONLY.has(act) && me.role!=="president") return json(403,{error:"President only"});
-      if(me.role==="rep" && (act==="edit"||act==="access"||act==="verify_email") && !(await ownsDealer(me,b.dealer_id))) return json(403,{error:"Not your dealer"});
+      if(!seesAll && (act==="edit"||act==="access"||act==="verify_email") && !(await ownsDealer(me,b.dealer_id))) return json(403,{error:"Not your dealer"});
       if(act==="diag"){
         // Self-check: which code is live, do the tables exist, and how many rows are stored.
         const probe=async(t)=>{ try{

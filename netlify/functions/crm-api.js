@@ -64,7 +64,7 @@ async function whoami(event){
   return null;
 }
 
-const { dealerScope } = require("./_scope.js");
+const { dealerScope, isAdmin } = require("./_scope.js");
 
 exports.handler = async (event)=>{
   try{
@@ -78,11 +78,11 @@ exports.handler = async (event)=>{
     try{ await sbGet("dealer_tasks?select=id&limit=1"); }
     catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run supabase/crm.sql in Supabase, then reload."}); }
 
-    // Rep data scope: a sales rep may only touch dealers in their own book. President + Customer
-    // Relations Director see every dealer, so they skip the check.
-    if(me.role==="rep" && b.dealer_id){
+    // Data scope: management and a Relations Manager may work any dealer (dealerScope.isAll). A sales
+    // rep may only touch dealers in their own book.
+    if(!isAdmin(me) && b.dealer_id){
       const sc=await dealerScope(me, sbGet);
-      if(!(sc.ids && sc.ids.has(String(b.dealer_id)))) return json(403,{error:"Not your dealer"});
+      if(!sc.isAll && !(sc.ids && sc.ids.has(String(b.dealer_id)))) return json(403,{error:"Not your dealer"});
     }
 
     if(b.action==="list"){

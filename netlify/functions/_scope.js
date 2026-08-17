@@ -1,11 +1,15 @@
 // HCPS rep/role data scoping — the single source of truth for "which dealers may this staff
 // member see". Keeps the Sales Rep Portal's access rules consistent across every endpoint.
 //
-//   president  -> ALL dealers, ALL commissions (full admin)
-//   relations  -> ALL dealers (Customer Relations Director oversees the whole book),
-//                 but only their OWN commissions
+//   president / admin / owner -> ALL dealers, ALL commissions, full team reporting (management)
+//   relations  -> ALL dealers (a Relations Manager works the whole territory operationally —
+//                 accounts, notes, tasks, health, map), BUT only their OWN commissions, and NO
+//                 team-performance leaderboard. Ranking + pay stay private; management-only.
 //   rep        -> ONLY their assigned dealers (dealer_directory.rep_name === their rep_name),
 //                 and only their OWN commissions
+//
+// Two tiers: seesAllDealers (operational reach = management + relations) is separate from isAdmin
+// / seesAllCommissions (team performance + pay = management only). Keep them distinct.
 //
 // Dealer assignment is read from dealer_directory (dealer_name -> rep_name), matched to dealers by
 // the same dnorm() the rest of the app uses, and extended across a dealer family (an owned HQ's
@@ -15,8 +19,13 @@ const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|d
 function dnorm(n){ return String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim(); }
 
 function roleOf(me){ return String((me&&me.role)||"").toLowerCase(); }
-function seesAllDealers(me){ const r=roleOf(me); return r==="president"||r==="relations"; }
-function seesAllCommissions(me){ return roleOf(me)==="president"; }
+// Management roles: full team performance, all commissions, admin queues. ONE definition.
+const ADMIN_ROLES = new Set(["president","admin","owner"]);
+function isAdmin(me){ return ADMIN_ROLES.has(roleOf(me)); }
+// Operational dealer reach: management PLUS a Relations Manager (works the whole territory).
+function seesAllDealers(me){ return isAdmin(me) || roleOf(me)==="relations"; }
+// Commissions/pay stay management-only — a Relations Manager sees only their own.
+function seesAllCommissions(me){ return isAdmin(me); }
 
 // Resolve the caller's dealer scope. Returns { isAll, ids:Set<id>|null, repName }.
 // isAll === true  -> no filtering (president / relations).
@@ -41,4 +50,4 @@ async function dealerScope(me, sbGet){
   return { isAll:false, ids, repName };
 }
 
-module.exports = { dnorm, roleOf, seesAllDealers, seesAllCommissions, dealerScope };
+module.exports = { dnorm, roleOf, isAdmin, seesAllDealers, seesAllCommissions, dealerScope };

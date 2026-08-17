@@ -61,8 +61,11 @@ async function gather(){
     dormant:dhealth.filter(d=>d.status==="dormant").length, dealers:dhealth.length,
     open_tasks:tasks.length };
   team.yoy = team.prevYtd>0?Math.round((team.ytd-team.prevYtd)/team.prevYtd*100):null;
-  const leadership=(staff||[]).filter(s=>s.active!==false && (s.role==="president"||s.role==="relations") && /@/.test(s.email||"")).map(s=>s.email);
-  const repStaff=(staff||[]).filter(s=>s.active!==false && s.role==="rep" && /@/.test(s.email||"") && s.rep_name);
+  // The full-team executive summary goes ONLY to management (president/admin/owner). Every other
+  // role — including a Relations Manager — gets a per-rep digest scoped to their own book instead.
+  const ADMIN_ROLES=new Set(["president","admin","owner"]);
+  const leadership=(staff||[]).filter(s=>s.active!==false && ADMIN_ROLES.has(String(s.role||"").toLowerCase()) && /@/.test(s.email||"")).map(s=>s.email);
+  const repStaff=(staff||[]).filter(s=>s.active!==false && !ADMIN_ROLES.has(String(s.role||"").toLowerCase()) && /@/.test(s.email||"") && s.rep_name);
   return {curYear,prevYear,reps,team,atRiskAll,leadership,repStaff};
 }
 

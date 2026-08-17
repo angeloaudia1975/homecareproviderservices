@@ -152,15 +152,24 @@ exports.handler = async (event) => {
     let facts = [...cube.values()].map(f => ({ ...f, sales: money(f.sales), comm: money(f.comm) }));
     const periodList = [...periods].sort();
 
-    // Rep scoping. president: everything. relations (Customer Relations Director): all dealers' sales
-    // but only their OWN commissions. rep: only their own dealers + their own commissions.
+    // Rep scoping. Management (president/admin/owner): everything. Relations Manager: sees the whole
+    // territory's SALES (so they can support every account) but only their OWN commissions. Sales
+    // rep: only their own dealers' sales + their own commissions.
+    const ADMIN_ROLES = { president:1, admin:1, owner:1 };
+    const role = String(me.role || "").toLowerCase();
+    const admin = !!ADMIN_ROLES[role];
+    const seesAllDealers = admin || role === "relations";
     let repsOut = [...reps].sort();
     let repOptionsOut = [...new Set([...repTable, ...reps])].filter(Boolean).sort();
-    if (me.role !== "president") {
+    if (!seesAllDealers) {
       const rn = String(me.rep_name || "").trim().toLowerCase();
-      if (me.role === "rep") facts = facts.filter(f => String(f.rep || "").toLowerCase() === rn);
+      facts = facts.filter(f => String(f.rep || "").toLowerCase() === rn);   // own dealers only
+      repsOut = [...new Set(facts.map(f => f.rep))].filter(Boolean);
+      repOptionsOut = repsOut.slice();
+    } else if (!admin) {
+      // Relations Manager: keep all dealers' sales, but zero out commissions that aren't their own.
+      const rn = String(me.rep_name || "").trim().toLowerCase();
       facts = facts.map(f => (String(f.rep || "").toLowerCase() === rn ? f : { ...f, comm: 0 }));
-      if (me.role === "rep") { repsOut = [...new Set(facts.map(f => f.rep))].filter(Boolean); repOptionsOut = repsOut.slice(); }
     }
 
     // Rep commission splits. A single app_settings row keyed by lowercased rep name holds each

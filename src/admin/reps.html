@@ -62,17 +62,76 @@ async function load(){
 }
 
 function attColor(pct){ return pct>=100?"#2d7d46":pct>=75?"#1681c2":pct>=50?"#F5821F":"#c2410c"; }
+
+// A Relations Manager isn't measured on a personal sales quota — they cover the whole territory and
+// their goal is relationship health. Show a territory-relationship scorecard (from Dealer Health)
+// instead of the sales leaderboard.
+async function renderRelations(){
+  const first=String((ME&&(ME.name||ME.rep_name||ME.email))||"there").split(/[\s@]/)[0];
+  $("#body").innerHTML=`<div class="msg">Loading your territory…</div>`;
+  let H={}; try{ const r=await fetch("/.netlify/functions/health-api",{headers:{authorization:"Bearer "+TOKEN}}); H=await r.json().catch(()=>({})); }catch(e){}
+  const sum=(H&&H.summary)||{}; const t=sum.tiers||{}; const rows=(H&&H.rows)||[];
+  const total=sum.total||rows.length||0;
+  const avg=Math.round(sum.avg_score||0);
+  const atRisk=(t.at_risk||0)+(t.watch||0);
+  const dormant=t.dormant||0;
+  const healthy=t.healthy||0;
+  const atRiskRev=sum.at_risk_revenue||0;
+  const mine=(DATA&&DATA.reps&&DATA.reps[0])||{};
+  const openTasks=mine.open_tasks||0;
+  // Goal status helpers (green = on target).
+  const avgCls=avg>=65?"g":avg>=50?"o":"r";
+  const riskCls=atRisk===0?"g":atRisk<=3?"o":"r";
+  const col={g:"#2d7d46",o:"#F5821F",r:"#c2410c"};
+  const kpi=(l,v,c,sub,goal)=>`<div class="kpi"><div class="l">${l}</div><div class="v" style="${c?`color:${c}`:""}">${v}</div>${sub?`<div class="l" style="margin-top:2px;text-transform:none;letter-spacing:0;font-weight:600">${sub}</div>`:""}${goal?`<div class="l" style="margin-top:1px;text-transform:none;letter-spacing:0;color:#8a96a3">${goal}</div>`:""}</div>`;
+  const statusChip=s=>{ const m={healthy:["#e6f6ec","#1c7a44"],watch:["#fff4e0","#a65b00"],at_risk:["#fdeaea","#b42323"],dormant:["#eef0f3","#5b6672"],new:["#e8f0fe","#2c5cc5"]}[String(s||"").toLowerCase()]||["#eef0f3","#5b6672"]; return `<span style="background:${m[0]};color:${m[1]};border-radius:6px;padding:1px 7px;font-size:11px;font-weight:800;text-transform:capitalize">${esc(String(s||"").replace("_"," "))}</span>`; };
+  // Accounts that need her — anything not healthy, most urgent first (health-api already sorts by churn).
+  const needs=rows.filter(r=>["watch","at_risk","dormant"].includes(String(r.status||"").toLowerCase())).slice(0,25);
+  const needRows=needs.map(r=>`<tr>
+      <td><a class="link" href="/admin/dealer.html?id=${encodeURIComponent(r.dealer_id)}"><b>${esc(r.name||"(dealer)")}</b></a><div class="mini">${esc([r.city,r.state].filter(Boolean).join(", "))}</div></td>
+      <td>${statusChip(r.status)}</td>
+      <td class="num"><span class="hbadge" style="background:${(Number(r.score)>=65?"#2d7d46":Number(r.score)>=40?"#F5821F":"#c2410c")}22;color:${(Number(r.score)>=65?"#2d7d46":Number(r.score)>=40?"#F5821F":"#c2410c")}">${Math.round(Number(r.score)||0)}</span></td>
+      <td class="num hide-sm">${money(r.total_sales)}</td>
+    </tr>`).join("")||`<tr><td colspan="4"><div class="hint">Nothing needs attention right now — the territory's healthy. 🎉</div></td></tr>`;
+  $("#body").innerHTML=`
+    <div class="kpis" style="margin-bottom:16px">
+      ${kpi("Accounts you support", total, "", "across the territory","")}
+      ${kpi("Avg dealer health", avg, col[avgCls], "goal: keep it green", "target ≥ 65")}
+      ${kpi("Need attention", atRisk, col[riskCls], "watch + at-risk", "goal: 0")}
+      ${kpi("Dormant to reactivate", dormant, dormant===0?col.g:col.o, atRiskRev?`${money(atRiskRev)} at stake`:"", "goal: bring back")}
+    </div>
+    <div class="card" style="background:#f3faf5;border-color:#cde8d8">
+      <div style="display:flex;gap:10px;align-items:flex-start">
+        <div style="font-size:22px">🤝</div>
+        <div><b style="color:var(--navy)">Welcome, ${esc(first)} — this is your relationship scorecard.</b>
+        <div class="hint" style="margin-top:3px">You cover the whole territory, so your goals are relationship goals — keeping accounts healthy, catching at-risk dealers early, and reactivating dormant ones — not a personal sales quota. Open tasks: <b>${openTasks}</b>. Work the list below, and log every touch in Dealer 360 so nothing slips.</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2 style="margin:0 0 2px">Accounts that need you <span class="hint" style="font-weight:600">— most urgent first</span></h2>
+      <table class="rt"><thead><tr><th>Dealer</th><th>Status</th><th class="num">Health</th><th class="num hide-sm">Sales</th></tr></thead>
+        <tbody>${needRows}</tbody></table>
+      <div class="hint" style="margin-top:10px">Health &amp; status come from <a class="link" href="/admin/health.html">Dealer Health</a>. Plan your week on the <a class="link" href="/admin/map.html">Territory Map</a> and check <a class="link" href="/admin/call-list.html">Who to Call</a> each morning.</div>
+    </div>`;
+}
+
 function render(){
   if(!DATA) return;
-  const reps=DATA.reps||[], pres=DATA.role==="president", yr=DATA.year, py=DATA.prev_year, s=DATA.summary||{};
+  if(String(DATA.role||"").toLowerCase()==="relations"){ renderRelations(); return; }
+  const reps=DATA.reps||[], yr=DATA.year, py=DATA.prev_year, s=DATA.summary||{};
+  // Management (president/admin/owner) sees the whole team; everyone else sees only their own book,
+  // so the headline metrics read "My …" and the team-count tile is replaced with their open tasks.
+  const admin=["president","admin","owner"].includes(String(DATA.role||"").toLowerCase());
+  const pres=admin;
   const teamAtt = s.team_target>0?Math.round(s.team_ytd/s.team_target*100):null;
   const teamYoY = s.team_prev_ytd>0?Math.round((s.team_ytd-s.team_prev_ytd)/s.team_prev_ytd*100):null;
+  const P=admin?"Team":"My";
   const kpi=(l,v,cls,sub)=>`<div class="kpi"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div>${sub?`<div class="l" style="margin-top:2px;text-transform:none;letter-spacing:0;font-weight:600">${sub}</div>`:""}</div>`;
   const kpis=`<div class="kpis" style="margin-bottom:16px">
-    ${kpi("Team sales "+yr,short(s.team_ytd),"blue","year to date")}
-    ${kpi("Team attainment", teamAtt!=null?teamAtt+"%":"—", teamAtt!=null&&teamAtt<100?"orange":"", s.team_target?("target "+short(s.team_target)):"set targets below")}
-    ${kpi("Team YoY", teamYoY!=null?((teamYoY>=0?"+":"")+teamYoY+"%"):"—", teamYoY!=null&&teamYoY<0?"warn":"", "vs "+py)}
-    ${kpi("Reps", s.rep_count||reps.length,"")}
+    ${kpi(P+" sales "+yr,short(s.team_ytd),"blue","year to date")}
+    ${kpi(P+" attainment", teamAtt!=null?teamAtt+"%":"—", teamAtt!=null&&teamAtt<100?"orange":"", s.team_target?("target "+short(s.team_target)):(admin?"set targets below":"no target set"))}
+    ${kpi(P+" YoY", teamYoY!=null?((teamYoY>=0?"+":"")+teamYoY+"%"):"—", teamYoY!=null&&teamYoY<0?"warn":"", "vs "+py)}
+    ${admin?kpi("Reps", s.rep_count||reps.length,""):kpi("Open tasks", (reps[0]&&reps[0].open_tasks)||0,"")}
   </div>`;
   const medal=i=>i===0?"g1":i===1?"g2":i===2?"g3":"";
   const rowsHtml = reps.map((r,i)=>{

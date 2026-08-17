@@ -130,7 +130,11 @@ exports.handler=async(event)=>{
         avg_health: h.n?Math.round(h.scoreSum/h.n):0,
         momentum: Math.round(r3-p3), open_tasks: taskBy[rep]||0 };
     });
-    if(me.role==="rep"){ const rn=(me.rep_name||"").toLowerCase(); reps=reps.filter(r=>String(r.rep).toLowerCase()===rn); }
+    // Team-wide performance is management-only. Any non-admin role (rep, relations, …) sees only
+    // their own scorecard — never another teammate's sales, attainment, or momentum.
+    const ADMIN_ROLES={president:1,admin:1,owner:1};
+    const admin=!!ADMIN_ROLES[String(me.role||"").toLowerCase()];
+    if(!admin){ const rn=(me.rep_name||"").toLowerCase(); reps=reps.filter(r=>String(r.rep).toLowerCase()===rn); }
     reps.sort((a,b)=>b.sales_ytd-a.sales_ytd);
     const summary={ year:curYear, prev_year:prevYear,
       team_ytd:reps.reduce((s,r)=>s+r.sales_ytd,0),
