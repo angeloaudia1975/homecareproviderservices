@@ -154,4 +154,8 @@
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", render); else render();
   window.addEventListener("hcps-token", render);   // refresh the name after sign-in
   window.ACAdmin = { render: render, HUBS: HUBS, hubById: hubById, isAdmin: isAdmin };
+
+  // Usage capture (Phase 3): load the silent rep tracker once per page. Best-effort — a no-op if the
+  // user isn't signed in or the capture endpoint/tables aren't set up yet.
+  try{ if(!window.__hcpsTrack){ window.__hcpsTrack=1; var _t=document.createElement("script"); _t.src="/admin/rep-track.js"; _t.defer=true; (document.head||document.documentElement).appendChild(_t); } }catch(e){}
 })();
