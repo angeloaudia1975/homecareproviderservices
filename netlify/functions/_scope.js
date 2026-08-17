@@ -36,15 +36,30 @@ async function dealerScope(me, sbGet){
   const ids=new Set();
   if(repName){
     try{
-      const dealers=await sbGet("dealers?select=id,business_name,parent_id&limit=100000");
-      const dir=await sbGet("dealer_directory?select=dealer_name,rep_name&limit=100000");
+      // rep_name is now stored directly on the dealer (the durable source of truth). Load it tolerantly:
+      // if the column isn't present yet, fall back to matching the legacy name-keyed directory.
+      let dealers;
+      try{ dealers=await sbGet("dealers?select=id,business_name,parent_id,rep_name&limit=100000"); }
+      catch(e){ dealers=await sbGet("dealers?select=id,business_name,parent_id&limit=100000"); }
       const rn=repName.toLowerCase();
-      const mine=new Set();
-      for(const x of (dir||[])){ if(String(x.rep_name||"").trim().toLowerCase()===rn) mine.add(dnorm(x.dealer_name)); }
-      for(const d of (dealers||[])){ if(mine.has(dnorm(d.business_name))) ids.add(d.id); }
-      // keep a dealer family together: branches of an owned HQ, and the HQ of an owned branch
-      for(const d of (dealers||[])){ if(d.parent_id && ids.has(d.parent_id)) ids.add(d.id); }
-      for(const d of (dealers||[])){ if(d.parent_id && ids.has(d.id)) ids.add(d.parent_id); }
+      // Primary: the explicit assignment stored on the dealer.
+      const explicit=new Map(); // id -> lowercased assigned rep (blank if none)
+      for(const d of (dealers||[])){
+        const er=String(d.rep_name||"").trim().toLowerCase();
+        explicit.set(d.id, er);
+        if(er===rn) ids.add(d.id);
+      }
+      // Back-compat: honor the legacy directory for any dealer that has no stored rep yet.
+      try{
+        const dir=await sbGet("dealer_directory?select=dealer_name,rep_name&limit=100000");
+        const mine=new Set();
+        for(const x of (dir||[])){ if(String(x.rep_name||"").trim().toLowerCase()===rn) mine.add(dnorm(x.dealer_name)); }
+        for(const d of (dealers||[])){ if(!explicit.get(d.id) && mine.has(dnorm(d.business_name))) ids.add(d.id); }
+      }catch(e){}
+      // Keep a dealer family together — but never pull in a member explicitly assigned to a DIFFERENT rep
+      // (branches are assigned independently, so an explicit assignment always wins).
+      for(const d of (dealers||[])){ const er=explicit.get(d.id)||""; if(d.parent_id && ids.has(d.parent_id) && (er===""||er===rn)) ids.add(d.id); }
+      for(const d of (dealers||[])){ if(d.parent_id && ids.has(d.id)){ const per=explicit.get(d.parent_id)||""; if(per===""||per===rn) ids.add(d.parent_id); } }
     }catch(e){}
   }
   return { isAll:false, ids, repName };

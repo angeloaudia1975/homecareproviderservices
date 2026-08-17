@@ -176,7 +176,7 @@ async function ownsDealer(me, dealer_id){
   return String((dir&&dir[0]&&dir[0].rep_name)||"").trim().toLowerCase()===String(me.rep_name).trim().toLowerCase();
 }
 // Structural / cross-book / login / approval tools are President-only.
-const PRESIDENT_ONLY=new Set(["merge","split","import_contacts","backfill_master","attribution_breakdown","reattribute","clear_order_refs","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep","list_contract_prices","set_contract_price","clear_contract_price","prefill_access","prefill_access_all","create_dealer"]);
+const PRESIDENT_ONLY=new Set(["merge","split","import_contacts","backfill_master","attribution_breakdown","reattribute","clear_order_refs","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep","rep_bulk","list_contract_prices","set_contract_price","clear_contract_price","prefill_access","prefill_access_all","create_dealer"]);
 
 async function buildState(){
   const [dealers,aliases,dm,mfrs,dir,reps,nomerge,logins] = await Promise.all([
@@ -198,6 +198,10 @@ async function buildState(){
   // Golden portal linkage (dealers.golden_url / golden_status) — powers the "Open Golden portal" deep
   // link on Dealer 360. Decoupled + tolerant so the page still loads if the columns aren't present.
   let goldById={}; try{ const g=await sbGetAll("dealers?select=id,golden_url,golden_status"); for(const x of (g||[])) goldById[x.id]={url:x.golden_url||"",status:x.golden_status||""}; }catch(e){}
+  // Assigned sales rep is now stored directly on the dealer (dealers.rep_name, keyed by dealer id) —
+  // the durable source of truth that survives renames/merges. Decoupled + tolerant: if the column
+  // isn't present yet the page still loads and we fall back to the legacy name-keyed directory below.
+  let repById={}; try{ const rp=await sbGetAll("dealers?select=id,rep_name"); for(const x of (rp||[])) if(x.rep_name) repById[x.id]=x.rep_name; }catch(e){}
   const dcontacts = await sbGetAll("dealer_contacts?select=dealer_id,email,name,title,role,phone,cell","dealer_id,email").catch(()=>[]);
   const contactsByDealer=new Map(); for(const x of dcontacts){(contactsByDealer.get(x.dealer_id)||contactsByDealer.set(x.dealer_id,[]).get(x.dealer_id)).push(x);}
   const daddrs = await sbGetAll("dealer_addresses?select=dealer_id,address,city,state,zip,label,pri","dealer_id,addr_key").catch(()=>[]);
@@ -236,7 +240,7 @@ async function buildState(){
       contact_name:d.contact_name||"", email:d.email||"", email_verified: evSupported?!!evById[d.id]:null, phone:d.phone||"", website:webById[d.id]||"",
       golden_url:(goldById[d.id]&&goldById[d.id].url)||"", golden_status:(goldById[d.id]&&goldById[d.id].status)||"",
       address:d.address||"", city:d.city||"", state:d.state||"", zip:d.zip||"", notes:d.notes||"",
-      rep: repByName[d.business_name]||"",
+      rep: repById[d.id]||repByName[d.business_name]||"",
       master: d.parent_id ? (nameById[d.parent_id]||"") : "",
       branches:(branchesByParent.get(d.id)||[]).slice().sort(),
       aliases:(aliByDealer.get(d.id)||[]).filter((v,i,s)=>s.indexOf(v)===i).sort(),
@@ -455,9 +459,28 @@ exports.handler = async (event)=>{
         return json(200,{ok:true});
       }
       if(act==="rep"){
-        if(!b.dealer_name) return json(400,{error:"dealer_name required"});
-        await sbSend("POST","dealer_directory",{dealer_name:b.dealer_name,rep_name:(b.rep_name||"").trim()||null,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
+        const rep=(b.rep_name||"").trim()||null;
+        // Preferred path: store the assignment on the dealer record itself (durable, survives renames).
+        if(b.dealer_id){
+          await sbSend("PATCH",`dealers?id=eq.${encodeURIComponent(b.dealer_id)}`,{rep_name:rep},{Prefer:"return=minimal"});
+          // Keep the legacy name-keyed directory in sync so older lookups + rep-portal fallback stay consistent.
+          if(b.dealer_name){ await sbSend("POST","dealer_directory",{dealer_name:b.dealer_name,rep_name:rep,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{}); }
+          return json(200,{ok:true});
+        }
+        if(!b.dealer_name) return json(400,{error:"dealer_id or dealer_name required"});
+        await sbSend("POST","dealer_directory",{dealer_name:b.dealer_name,rep_name:rep,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
         return json(200,{ok:true});
+      }
+      if(act==="rep_bulk"){
+        const rep=(b.rep_name||"").trim()||null;
+        const ids=Array.isArray(b.dealer_ids)?[...new Set(b.dealer_ids.filter(Boolean))]:[];
+        if(!ids.length) return json(400,{error:"dealer_ids required"});
+        // One PATCH for the whole selection via an in.() filter (chunked to keep the URL sane).
+        for(let i=0;i<ids.length;i+=100){
+          const chunk=ids.slice(i,i+100).map(encodeURIComponent).join(",");
+          await sbSend("PATCH",`dealers?id=in.(${chunk})`,{rep_name:rep},{Prefer:"return=minimal"});
+        }
+        return json(200,{ok:true,updated:ids.length});
       }
       // ---- Territory access (rules engine) ----
       // Read-only: what this dealer can actually order on the portal, computed live from the rules.

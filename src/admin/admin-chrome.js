@@ -35,6 +35,7 @@
         { href:"/admin/call-list.html",     label:"Who to Call",           icon:"📞", desc:"Daily worklist — intent, overdue reorders & dormant" },
         { href:"/admin/health.html",        label:"Dealer Health",         icon:"❤️", desc:"Every dealer scored on recency, rhythm & trend" },
         { href:"/admin/dealers.html",       label:"Dealer Manager",        icon:"🏢", desc:"Master dealer database, locations & hierarchy" },
+        { href:"/admin/account-assignment.html", label:"Account Assignment", icon:"🧑‍💼", desc:"Assign every dealer to a sales rep — bulk & fast" },
         { href:"/admin/dealer.html",        label:"Dealer 360 & CRM",      icon:"📇", desc:"Full account command center — activity, contacts, tasks" },
         { href:"/admin/map.html",           label:"Territory Map",         icon:"🗺️", desc:"Dealer map, drive routes & saved trips" },
         { href:"/admin/territory.html",     label:"Territory Lines",       icon:"📍", desc:"Which manufacturer lines you represent in each state" },

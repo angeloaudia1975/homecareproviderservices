@@ -171,6 +171,31 @@ function visibleIds(){return (TAB==='review'?reviewList():filtered()).map(d=>d.i
 function allSelected(){const v=visibleIds();return v.length>0&&v.every(id=>SEL.has(id));}
 function toggleAll(el){const v=visibleIds();el.checked?v.forEach(id=>SEL.add(id)):v.forEach(id=>SEL.delete(id));render();}
 function sortArrow(k){return SORT.key===k?(SORT.dir>0?" ▲":" ▼"):"";}
+// ---- Inline "Assigned Rep" column (admin only) ----
+function repOptionList(){
+  const s=new Set((DATA.repOptions||[]).filter(Boolean));
+  for(const d of (DATA.dealers||[])) if(d.rep) s.add(d.rep);
+  return [...s].sort((a,b)=>a.localeCompare(b));
+}
+function repCell(d){
+  if(!isPres()) return d.rep?esc(d.rep):`<span class="dim">—</span>`;
+  const opts=repOptionList();
+  return `<select onchange="setRepInline('${d.id}',this.value,this)" onclick="event.stopPropagation()" title="Assign a sales rep" style="font:inherit;font-size:12px;padding:3px 5px;border:1px solid var(--line);border-radius:6px;max-width:120px;${d.rep?'':'color:var(--gray)'}">`
+    +`<option value="">— unassigned —</option>`
+    +opts.map(r=>`<option value="${esc(r)}"${String(d.rep||"")===r?" selected":""}>${esc(r)}</option>`).join("")
+    +`</select>`;
+}
+async function setRepInline(id,rep,el){
+  const d=(DATA.dealers||[]).find(x=>x.id===id); if(!d) return;
+  const prev=d.rep||"";
+  if(el) el.disabled=true;
+  try{
+    await post({action:"rep",dealer_id:id,dealer_name:d.name,rep_name:rep});
+    d.rep=rep;
+    if(el){ el.style.color=rep?"":"var(--gray)"; el.style.outline="2px solid #1c7a44"; setTimeout(()=>{if(el)el.style.outline="";},800); }
+  }catch(e){ if(el) el.value=prev; alertDlg("Couldn't save the rep: "+(e.message||e)); }
+  finally{ if(el) el.disabled=false; }
+}
 function renderAll(){
   const ds=filtered();
   const sortSel=Object.keys(SORTLBL).map(k=>`<option value="${k}" ${SORT.key===k?"selected":""}>${SORTLBL[k]}${SORT.key===k?(SORT.dir>0?" ▲":" ▼"):""}</option>`).join("");
@@ -194,7 +219,7 @@ function renderAll(){
       <td>${contact}</td>
       <td class="buys">${d.buysLines.map(l=>`<span class="chip">${esc(DATA.mfrName[l]||l)}</span>`).join("")||`<span class="dim">—</span>`}</td>
       <td class="num">${money(d.sales)}</td>
-      <td class="rep">${d.rep?esc(d.rep):`<span class="dim">—</span>`}</td>
+      <td class="rep">${repCell(d)}</td>
       <td class="rep">${d.access.length?`<span class="chip acc">${d.access.length} line${d.access.length>1?"s":""}</span>`:`<span class="dim">none</span>`}</td>
       <td class="mng link" onclick="openDetail('${d.id}')">Manage →</td></tr>`;
   }
@@ -500,7 +525,7 @@ async function saveDetail(id,origName){
   const g=k=>($("#f_"+k)?.value||"").trim();
   const fields={action:"edit",dealer_id:id,business_name:g("business_name"),contact_name:g("contact_name"),email:g("email"),phone:g("phone"),website:g("website"),address:g("address"),city:g("city"),state:g("state"),zip:g("zip")};
   await post(fields,"Saving…","#stD");
-  const rep=g("rep"); await post({action:"rep",dealer_name:g("business_name")||origName,rep_name:rep},null,"#stD");
+  const rep=g("rep"); await post({action:"rep",dealer_id:id,dealer_name:g("business_name")||origName,rep_name:rep},null,"#stD");
   $("#stD").textContent="Saved ✓";$("#stD").className="st ok";
   await load(); // refresh aggregates (name change re-links)
   DETAIL=id; render();
