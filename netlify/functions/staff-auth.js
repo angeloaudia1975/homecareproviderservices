@@ -74,7 +74,7 @@ async function verifyMagic(g,email){
   }
   return null;
 }
-function pubProfile(s){ return s?{email:s.email,name:s.name||"",role:s.role||"rep",rep_name:s.rep_name||"",can_travel:!!s.can_travel,active:s.active!==false}:null; }
+function pubProfile(s){ return s?{email:s.email,name:s.name||"",role:s.role||"rep",rep_name:s.rep_name||"",can_travel:!!s.can_travel,active:s.active!==false,email_signature:s.email_signature||""}:null; }
 async function caller(event){ const email=await emailFromToken(event); if(!email) return null; const s=await getStaff(email); return (s&&s.active!==false)?s:null; }
 
 exports.handler = async (event)=>{
@@ -218,6 +218,7 @@ exports.handler = async (event)=>{
       if("rep_name" in p) patch.rep_name=(String(p.rep_name||"").trim())||null;
       if("can_travel" in p) patch.can_travel=!!p.can_travel;
       if("active" in p) patch.active=!!p.active;
+      if("email_signature" in p) patch.email_signature=String(p.email_signature||"").slice(0,2000)||null;
       if(!Object.keys(patch).length) return json(200,{ok:true});
       await sbSend("PATCH",`staff_users?email=eq.${encodeURIComponent(email)}`,patch,{Prefer:"return=minimal"});
       return json(200,{ok:true});

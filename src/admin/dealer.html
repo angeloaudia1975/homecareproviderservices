@@ -207,13 +207,20 @@ function render(D,A){
     ${addrs.map(a=>`<div style="font-size:13px;padding:6px 0;border-bottom:1px solid #eef2f6">${a.pri>=3?"⭐ ":""}${esc([a.address,a.city,[a.state,a.zip].filter(Boolean).join(" ")].filter(Boolean).join(", "))}${a.label?` <span class="chip">${esc(a.label)}</span>`:""}</div>`).join("")}</div>`:"";
 
   // Notes & tasks (right column) and a standalone Notes card (left, under order history).
-  const tasksCard=`<div class="card"><h2>Notes &amp; tasks</h2><div id="crm"><div class="hint">Loading…</div></div></div>`;
+  const tasksCard=`<div class="card"><h2>Tasks &amp; timeline</h2><div id="crm"><div class="hint">Loading…</div></div></div>`;
   const notesCard=`<div class="card"><h2>Notes</h2><div id="notes"><div class="hint">Loading…</div></div></div>`;
   const acctCard=`<div class="card"><h2>Manufacturer account numbers</h2><div id="acctcard"><div class="hint">Loading…</div></div></div>`;
   const intelCard=`<div class="card"><h2>Digital activity &amp; interest</h2><div id="intel"><div class="hint">Loading activity…</div></div></div>`;
   const salesCard=`<div class="card" id="salesCard"><h2>Monthly sales &amp; product detail</h2><div id="sales"><div class="hint">Loading sales…</div></div></div>`;
   const commCard=`<div class="card"><h2>Commission — paid vs. outstanding</h2><div id="commled"><div class="hint">Loading…</div></div></div>`;
-  const emailCard=`<div class="card" id="emailCard"><h2>Outlook email <span id="emailCount" style="float:right;font-size:11px;color:var(--gray);font-weight:600"></span></h2><div id="emails"><div class="hint">Loading email…</div></div></div>`;
+  const emailCard=`<div class="card" id="emailCard"><h2>Outlook email <span id="emailCount" style="float:right;font-size:11px;color:var(--gray);font-weight:600"></span></h2>
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:800;margin:2px 0 6px">✨ AI compose</div>
+    <div id="compose"><div class="hint">Loading compose…</div></div>
+    <div style="height:1px;background:var(--line);margin:12px 0"></div>
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:800;margin:0 0 4px">Recent messages</div>
+    <div id="emails"><div class="hint">Loading email…</div></div></div>`;
+  const callCard=`<div class="card"><h2>Make a call</h2><div id="callbox"><div class="hint">Loading…</div></div></div>`;
+  const touchCard=`<div class="card"><h2>Log a touch</h2><div id="touch"><div class="hint">Loading…</div></div></div>`;
 
   // Next best action — synthesized from what we already know (upgraded once intent loads).
   const nba=nextBestAction(d,lines,monthsSince,cart,sess);
@@ -232,12 +239,14 @@ function render(D,A){
       </div>
     </div></div>`;
 
+  // Rep workstation order (left column, top→bottom): Notes → Outlook Email → Make a Call → Log a
+  // Touch → Signals & Analytics. Reference sidebar (right): tasks/timeline, contacts, addresses, accounts.
   $("#body").innerHTML=`${header}${nextBanner}
     <div class="d360">
-      <div>${intelCard}${history}${salesCard}${emailCard}${commCard}${notesCard}${contactsCard}</div>
-      <div>${signals}${addrCard}${tasksCard}${acctCard}</div>
+      <div>${notesCard}${emailCard}${callCard}${touchCard}${signals}${intelCard}${history}${salesCard}${commCard}</div>
+      <div>${tasksCard}${contactsCard}${addrCard}${acctCard}</div>
     </div>`;
-  CUR=d.id; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails();
+  CUR=d.id; DPHONE=d.phone||""; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails();
 }
 function nextBestAction(d,lines,monthsSince,cart,sess){
   const due=(lines||[]).filter(l=>l.status==="due");
@@ -401,7 +410,96 @@ function filterPicker(){
   if(meta) meta.textContent=scored.length?`${scored.length} match${scored.length===1?"":"es"}${scored.length>300?" — showing top 300":""}`:"";
 }
 async function loadContacts(){ const el=$("#contacts"); if(!el||!CUR) return;
-  const j=await crm({action:"contacts",dealer_id:CUR}); CDATA=(j&&j.ok)?j:{contacts:[],primary_email:"",accounts:[]}; renderContacts(); }
+  const j=await crm({action:"contacts",dealer_id:CUR}); CDATA=(j&&j.ok)?j:{contacts:[],primary_email:"",accounts:[]}; renderContacts(); renderCompose(); renderCall(); }
+
+/* ===== AI email composer — suggest-and-approve ===== */
+var DPHONE="";
+var COMPOSE={to:"",name:"",sig:""};
+const TPLS=[["follow_up","Follow-up"],["reorder_reminder","Reorder reminder"],["dormant_account","Dormant account"],["product_opportunity","Product opportunity"],["cross_sell","Cross-sell"],["new_product","New product"],["portal_activation","Portal activation"]];
+function renderCompose(){
+  const el=$("#compose"); if(!el) return;
+  const cs=(CDATA&&CDATA.contacts)||[]; const prim=(CDATA&&CDATA.primary_email)||"";
+  const opts=cs.filter(c=>c.email).map(c=>`<option value="${esc(c.email)}" data-name="${esc(c.name||"")}"${c.email===prim?" selected":""}>${esc(c.name||c.email)}${c.name?` — ${esc(c.email)}`:""}</option>`).join("");
+  el.innerHTML=`
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+      <label class="hint" style="margin:0;min-width:64px">To</label>
+      <select id="cx_to" style="flex:1;min-width:180px">${opts||`<option value="">No contacts on file — add one under Contacts</option>`}</select>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+      <label class="hint" style="margin:0;min-width:64px">Situation</label>
+      <select id="cx_tpl" style="flex:1;min-width:150px">${TPLS.map(t=>`<option value="${t[0]}">${t[1]}</option>`).join("")}</select>
+      <button class="btn sm orange" id="cx_gen" onclick="genEmail()">✨ Generate draft</button>
+    </div>
+    <div id="cx_status" class="hint" style="margin:0 0 4px"></div>
+    <div id="cx_draft" style="display:none">
+      <input id="cx_subj" placeholder="Subject" style="width:100%;margin-bottom:6px;font-weight:600">
+      <textarea id="cx_body" rows="10" placeholder="The AI draft appears here — review and edit before sending." style="width:100%"></textarea>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+        <button class="btn sm orange" id="cx_send" onclick="sendEmail()">✅ Approve &amp; send</button>
+        <button class="btn sm" onclick="genEmail()">↻ Regenerate</button>
+        <button class="btn sm" onclick="openInOutlook()">↗ Open in Outlook</button>
+        <span id="cx_msg" class="hint" style="margin:0"></span>
+      </div>
+      <div class="hint" style="margin-top:4px">Review &amp; edit above, then Approve &amp; send — it goes from your Outlook and logs to the timeline.</div>
+    </div>`;
+}
+async function genEmail(){
+  const sel=$("#cx_to"); const to=(sel&&sel.value)||"";
+  const name=(sel&&sel.selectedOptions&&sel.selectedOptions[0]&&sel.selectedOptions[0].getAttribute("data-name"))||"";
+  const tpl=($("#cx_tpl")||{}).value||"follow_up";
+  const st=$("#cx_status"); const gen=$("#cx_gen");
+  if(st){ st.style.color=""; st.textContent="Drafting with AI…"; } if(gen) gen.disabled=true;
+  let j; try{ j=await fetch("/.netlify/functions/ai-email-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action:"draft",dealer_id:CUR,template:tpl,contact_email:to,contact_name:name})}).then(r=>r.json()); }catch(e){ j=null; }
+  if(gen) gen.disabled=false;
+  if(!j||!j.ok){ if(st){ st.style.color="#b45309"; st.textContent=(j&&j.message)||"Couldn't generate a draft — try again."; } return; }
+  if(st) st.textContent="";
+  COMPOSE.to=to; COMPOSE.name=name; COMPOSE.sig=j.signature||"";
+  const subj=$("#cx_subj"); if(subj) subj.value=j.subject||"";
+  const body=$("#cx_body"); if(body) body.value=(j.body||"")+(j.signature?("\n\n"+j.signature):"");
+  const dr=$("#cx_draft"); if(dr) dr.style.display="";
+}
+async function sendEmail(){
+  const to=($("#cx_to")||{}).value||COMPOSE.to;
+  const subject=($("#cx_subj")||{}).value||"";
+  const body=($("#cx_body")||{}).value||"";
+  const msg=$("#cx_msg");
+  if(!to){ if(msg){ msg.style.color="#b42323"; msg.textContent="Pick a contact to send to."; } return; }
+  if(!confirm("Send this email to "+to+" from your Outlook?")) return;
+  if(msg){ msg.style.color=""; msg.textContent="Sending from your Outlook…"; }
+  const btn=$("#cx_send"); if(btn) btn.disabled=true;
+  let j; try{ j=await esapi({action:"send",dealer_id:CUR,to,subject,body_text:body}); }catch(e){ j=null; }
+  if(btn) btn.disabled=false;
+  if(j&&j.ok){ if(msg){ msg.style.color="#1f7a44"; msg.textContent="✓ Sent to "+j.to+" — logged to the timeline."; } const dr=$("#cx_draft"); if(dr) dr.style.display="none"; loadCRM(); loadEmails(); return; }
+  if(j&&j.fallback){ if(msg){ msg.style.color="#b45309"; msg.textContent=(j.message||"Couldn't send from Outlook.")+" Use ‘Open in Outlook’ to send it manually."; } return; }
+  if(msg){ msg.style.color="#b42323"; msg.textContent=(j&&j.message)||"Couldn't send."; }
+}
+function openInOutlook(){
+  const to=($("#cx_to")||{}).value||"";
+  const subject=($("#cx_subj")||{}).value||"";
+  const body=($("#cx_body")||{}).value||"";
+  window.location.href="mailto:"+encodeURIComponent(to)+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
+  // Still capture it on the timeline, since the send happens in Outlook.
+  if(CUR&&to) crm({action:"log_activity",dealer_id:CUR,kind:"email",summary:subject||"Email",detail:"Composed in Dealer 360, sent via Outlook to "+to});
+  const msg=$("#cx_msg"); if(msg){ msg.style.color="#1f7a44"; msg.textContent="Opened in Outlook — logged to the timeline."; }
+  setTimeout(loadCRM,1200);
+}
+
+/* ===== Make a call — click-to-call + auto-log ===== */
+function telLink(num,label){ const c=String(num).replace(/[^0-9+]/g,""); if(!c) return ""; return `<a class="btn sm" href="tel:${c}" data-lbl="${esc(label)} — ${esc(num)}" onclick="prefillCall(this)" style="justify-content:flex-start">📞 ${esc(label)}: ${esc(num)}</a>`; }
+function renderCall(){
+  const el=$("#callbox"); if(!el) return;
+  const rows=[]; if(DPHONE) rows.push(telLink(DPHONE,"Main line"));
+  ((CDATA&&CDATA.contacts)||[]).forEach(c=>{ if(c.phone) rows.push(telLink(c.phone,c.name||"Contact")); if(c.cell) rows.push(telLink(c.cell,(c.name||"Contact")+" cell")); });
+  el.innerHTML = rows.length
+    ? `<div style="display:flex;flex-direction:column;gap:6px">${rows.join("")}</div>
+       <div class="hint" style="margin-top:8px">Click a number to dial on your phone — or via Phone Link / Teams on your desktop. A call log opens so you capture notes &amp; a follow-up when you hang up.</div>`
+    : `<div class="hint">No phone numbers on file yet — add one under Contacts and it'll appear here.</div>`;
+}
+function prefillCall(a){
+  const label=(a&&a.getAttribute)?a.getAttribute("data-lbl"):String(a||"");
+  const k=$("#la_kind"); if(k) k.value="call";
+  const s=$("#la_sum"); if(s){ if(!s.value) s.value="Called "+label; setTimeout(function(){ s.scrollIntoView({behavior:"smooth",block:"center"}); s.focus(); },60); }
+}
 function contactForm(c){ c=c||{}; const editing=!!c.email;
   return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px;background:#fafbfc;margin-bottom:10px">
     <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:800;margin-bottom:6px">${editing?"Edit contact":"Add contact"}</div>
@@ -740,9 +838,12 @@ async function loadCRM(){
       <div class="tkadd"><input id="ntitle" placeholder="Add a task…" onkeydown="if(event.key==='Enter')addTask()"><input id="ndue" type="date" title="Due date" style="width:auto"><button class="btn sm" onclick="addTask()">Add</button></div>
       ${done.length?`<div class="hint" style="margin:8px 0 2px">Done (${done.length})</div>`+done.slice(0,6).map(tRow).join(""):''}
     </div>
-    <div style="height:1px;background:var(--line);margin:12px 0"></div>
-    <div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:800;margin-bottom:6px">Log a touch</div>
-    <div style="border:1px solid var(--line);border-radius:10px;padding:10px;background:#fafbfc">
+    ${acts.length?`<div style="height:1px;background:var(--line);margin:12px 0"></div>
+    <div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:800;margin-bottom:6px">Activity timeline</div>
+    <div>${acts.map(aRow).join("")}</div>`:''}`;
+  // Log a touch lives in its own card (left column, above Signals & Analytics).
+  const tel=$("#touch");
+  if(tel) tel.innerHTML=`<div style="border:1px solid var(--line);border-radius:10px;padding:10px;background:#fafbfc">
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
         <select id="la_kind" style="width:auto"><option value="call">📞 Call</option><option value="visit">🚗 Visit</option><option value="email">✉ Email</option><option value="meeting">👥 Meeting</option><option value="note">📝 Note</option></select>
         <input id="la_sum" placeholder="What happened? (e.g. Called about Strongback pricing)" style="flex:1;min-width:200px">
@@ -751,11 +852,8 @@ async function loadCRM(){
       <label class="hint" style="display:flex;align-items:center;gap:6px;margin:4px 0"><input type="checkbox" id="la_fu" style="width:auto" onchange="var b=document.getElementById('la_fubox');if(b)b.style.display=this.checked?'flex':'none'"> Add a follow-up task</label>
       <div id="la_fubox" style="display:none;gap:6px;flex-wrap:wrap"><input id="la_futitle" placeholder="Follow-up task…" style="flex:1;min-width:180px"><input id="la_fudue" type="date" style="width:auto"></div>
       <button class="btn sm orange" style="margin-top:6px" onclick="logActivity()">Log activity</button>
-    </div>
-    ${acts.length?`<div style="height:1px;background:var(--line);margin:12px 0"></div>
-    <div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:800;margin-bottom:6px">Activity timeline</div>
-    <div>${acts.map(aRow).join("")}</div>`:''}`;
-  // Notes live in their own card (left column, under order history).
+    </div>`;
+  // Notes live in their own card (left column, top).
   const nel=$("#notes");
   if(nel) nel.innerHTML=`<textarea id="nbody" rows="3" placeholder="Add a note about this dealer…" style="width:100%"></textarea>
     <button class="btn sm" style="margin-top:6px" onclick="addNote()">Post note</button>

@@ -128,13 +128,15 @@ async function editUser(email){
       <div><label class="fl">Account book (rep name)</label><input class="in" id="e_rep" value="${esc(u.rep_name||"")}"></div>
     </div>
     <label class="cbrow"><input type="checkbox" id="e_travel" style="width:auto" ${u.can_travel?"checked":""}> Can plan &amp; save routes (travels)</label>
+    <div style="margin-top:12px"><label class="fl">Email signature <span class="mut" style="font-weight:600">— appended to their AI-composed Dealer 360 emails</span></label>
+      <textarea id="e_sig" rows="5" class="in" placeholder="e.g.\nGreg Campbell\nSales Representative · HomeCare Provider Services\n(937) 626-5141 · greg@homecareproviderservices.us">${esc(u.email_signature||"")}</textarea></div>
     <div style="margin-top:14px;display:flex;gap:8px">
       <button class="go" onclick="saveEdit('${esc(u.email)}')">Save</button>
       <button class="go" style="background:#fff;color:var(--navy)" onclick="load()">Cancel</button></div>
     <div class="msg" id="editMsg"></div></div>`;
 }
 async function saveEdit(email){
-  const patch={name:$("#e_name").value,role:$("#e_role").value,rep_name:$("#e_rep").value,can_travel:$("#e_travel").checked};
+  const patch={name:$("#e_name").value,role:$("#e_role").value,rep_name:$("#e_rep").value,can_travel:$("#e_travel").checked,email_signature:($("#e_sig")||{}).value||""};
   const m=$("#editMsg"); m.className="msg"; m.textContent="Saving…";
   const j=await api({action:"update_user",email,patch},true);
   if(!j||!j.ok){ m.className="msg err"; m.textContent=(j&&j.message)||"Couldn't save."; return; }

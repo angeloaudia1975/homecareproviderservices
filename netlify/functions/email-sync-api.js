@@ -29,6 +29,12 @@ const clean=(v,n)=>{ const s=(v==null?"":String(v)).trim(); return s?s.slice(0,n
 const domainOf=a=>{ const m=String(a||"").toLowerCase().match(/@([^>\s]+)$/); return m?m[1]:""; };
 const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
 const dnorm=n=>String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim();
+// Render the rep's plain-text draft (body + signature) into safe HTML for the outbound email.
+function emailHtml(text){
+  const e=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+  const safe=e(text).replace(/\r\n/g,"\n").replace(/\n/g,"<br>");
+  return `<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.55">${safe}</div>`;
+}
 
 // ---- Microsoft Graph (app-only) ----
 let _tok=null, _tokExp=0;
@@ -233,6 +239,44 @@ exports.handler = async (event)=>{
         from_name:row.from_name||((m.from&&m.from.emailAddress&&m.from.emailAddress.name)||""),
         to, cc, when:row.received_at||row.sent_at||null, has_attachments:!!row.has_attachments,
         body_html: bt==="html"?((m.body&&m.body.content)||""):"", body_text: bt!=="html"?((m.body&&m.body.content)||""):"" });
+    }
+
+    // Send an approved AI-drafted email FROM the rep's own Outlook mailbox (Graph sendMail), then log
+    // it to the Dealer 360 timeline. Any signed-in staff may send from their own mailbox. If the Graph
+    // app doesn't yet have the Mail.Send permission, we return a clear fallback signal (the UI then
+    // offers "open in Outlook") — nothing is silently dropped.
+    if(b.action==="send"){
+      const dealerId=String(b.dealer_id||"").trim();
+      const to=String(b.to||"").trim().toLowerCase();
+      const cc=Array.isArray(b.cc)?b.cc.map(x=>String(x||"").trim()).filter(Boolean):[];
+      const subject=String(b.subject||"").trim();
+      const bodyText=String(b.body_text||b.body||"");
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return json(200,{ok:false,error:"bad_to",message:"Enter a valid recipient email."});
+      if(!subject) return json(200,{ok:false,error:"no_subject",message:"Add a subject line."});
+      if(!bodyText.trim()) return json(200,{ok:false,error:"no_body",message:"The email body is empty."});
+      const fromMailbox=String(me.email||"").toLowerCase();   // the rep's login email == their Outlook mailbox
+      if(!fromMailbox) return json(200,{ok:false,error:"no_sender",message:"Your account has no email on file to send from."});
+      if(!G_TENANT||!G_CLIENT||!G_SECRET) return json(200,{ok:false,error:"graph_env_missing",fallback:true,to,message:"Sending from Outlook isn't set up yet (Graph credentials)."});
+      const msg={ message:{ subject, body:{contentType:"HTML", content:emailHtml(bodyText)},
+        toRecipients:[{emailAddress:{address:to}}],
+        ccRecipients:cc.map(a=>({emailAddress:{address:a}})) }, saveToSentItems:true };
+      let sendErr=null;
+      try{
+        const tok=await graphToken();
+        const r=await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(fromMailbox)}/sendMail`,
+          {method:"POST",headers:{Authorization:`Bearer ${tok}`,"content-type":"application/json"},body:JSON.stringify(msg)});
+        if(r.status!==202){
+          const t=await r.text().catch(()=>"");
+          if(r.status===403||/ErrorAccessDenied|Access is denied|Authorization_Request|does not have permission/i.test(t))
+            sendErr={error:"mail_send_denied",message:"The Microsoft Graph app can't send yet — grant it the Mail.Send permission (admin consent in Azure) to send from Outlook."};
+          else if(r.status===404) sendErr={error:"mailbox_not_found",message:`No Outlook mailbox found for ${fromMailbox}.`};
+          else sendErr={error:"send_failed",message:"Outlook couldn't send this message.",detail:String(t).slice(0,200)};
+        }
+      }catch(e){ sendErr={error:"send_failed",message:String(e.message||e).slice(0,200)}; }
+      if(sendErr) return json(200,{ok:false,fallback:true,to,...sendErr});
+      // Sent — log it to the Dealer 360 timeline (best-effort; never blocks the success).
+      if(dealerId){ try{ await sbSend("POST","dealer_activity",{dealer_id:dealerId,kind:"email",subject:subject,detail:"Sent to "+to,contact_email:to,actor:fromMailbox},{Prefer:"return=minimal"}); }catch(e){} }
+      return json(200,{ok:true,to});
     }
 
     if(me.role!=="president") return json(403,{error:"president only"});
