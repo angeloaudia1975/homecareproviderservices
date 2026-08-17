@@ -74,6 +74,18 @@ window.HUB_GUIDE = {
     workflow: "Check it after each commission import, and before a territory review, to know your best accounts and lines.",
     intelligence: "Figures reflect only your assigned accounts; if something's missing, confirm your rep name is assigned to that dealer in the directory."
   },
+  "Rep Usage & Adoption": {
+    tagline: "President's view of how each rep is actually using the platform — adoption, not just logins.",
+    what: "Shows, per rep, when they last signed in, how many days they were active, real active time (counted only while the app is in front of them), which tools and dealer accounts they opened, and the meaningful work they logged — touches, notes, tasks completed, routes, and opportunities — rolled into one engagement score.",
+    features: ["Last login, active days, and real active time", "Tools used and dealer accounts opened", "Touches, notes, tasks, routes & opportunities per rep", "Engagement score that rewards work over minutes", "A 'logged in, no activity' flag", "Per-rep activity timeline drill-down"],
+    data: "Login/active time and tool/dealer views from staff_sessions + rep_activity (usage capture), combined with the rep-attributed CRM, visit, route and pipeline records already on file.",
+    actions: ["Switch the window (7 / 30 / 90 days)", "Click a rep to see their full activity timeline", "Spot reps who log in but don't work the tools", "Confirm the platform is part of the daily routine"],
+    reports: ["Per-rep adoption table", "Engagement leaderboard", "Idle-but-logged-in flags", "Individual activity timeline"],
+    connects: ["Reads the same rep records that power Dealer 360, Territory Map, and Tasks", "Complements Rep Performance & Goals (sales outcomes) with adoption (behavior)"],
+    problems: "Answers 'are my reps actually using this, and using it well' with evidence — so training and coaching target the right people.",
+    workflow: "Check weekly to confirm adoption, catch a rep who's drifted off the platform, and reward the ones working it hardest.",
+    intelligence: "President-only. Active time counts foreground use, so leaving the portal open doesn't inflate the numbers."
+  },
   "Pipeline & Forecast": {
     tagline: "Open deals plus a data-driven six-month revenue forecast.",
     what: "Combines your open opportunities (weighted by stage) with reorder-cadence projections to forecast the next six months of revenue — so you can see what's committed, what's likely, and where the gaps are.",

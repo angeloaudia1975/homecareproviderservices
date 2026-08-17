@@ -1,0 +1,150 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS — Rep Usage & Adoption</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:10px 0 6px}
+ .kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+ .kpi.big{border-left:4px solid var(--orange,#e07b00)}
+ .kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700}
+ .kpi .v{font-size:24px;font-weight:800;color:var(--navy);font-family:'Barlow Condensed',sans-serif;margin-top:2px}
+ .ctl{display:flex;align-items:center;gap:10px;margin:10px 0}
+ .ctl select{border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-size:13px}
+ table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px;background:#fff}
+ th{text-align:left;color:var(--gray);font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#fff}
+ td{padding:8px;border-bottom:1px solid #eef2f6;vertical-align:middle}
+ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+ tr.rep{cursor:pointer}tr.rep:hover td{background:#f6f9fc}
+ .name{font-weight:700;color:var(--navy)}
+ .sub{font-size:11px;color:var(--gray)}
+ .chip{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:6px;padding:2px 7px}
+ .score-wrap{display:flex;align-items:center;gap:8px;min-width:120px}
+ .score-bar{flex:1;height:7px;border-radius:5px;background:#eef2f6;overflow:hidden}
+ .score-bar>i{display:block;height:100%;border-radius:5px}
+ .flag{color:#c2410c;font-size:11px;font-weight:700}
+ .banner{background:#fff7ec;border:1px solid #f3d27a;color:#8a5a00;border-radius:10px;padding:11px 13px;font-size:13px;margin:10px 0}
+ /* drill-down modal */
+ #ov{display:none;position:fixed;inset:0;z-index:9999;background:rgba(15,27,43,.55);padding:24px;overflow:auto}
+ .panel{max-width:760px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden}
+ .ph{display:flex;align-items:flex-start;gap:10px;padding:15px 17px;border-bottom:1px solid var(--line)}
+ .ph .x{margin-left:auto;border:1px solid var(--line);background:#f6f8fa;border-radius:8px;width:30px;height:30px;font-size:15px;cursor:pointer;color:var(--gray)}
+ .mtiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:9px;padding:14px 17px}
+ .mt{background:#f7fafd;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+ .mt .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.3px;color:var(--gray);font-weight:700}
+ .mt .v{font-size:18px;font-weight:800;color:var(--navy);font-family:'Barlow Condensed',sans-serif}
+ .tl{padding:4px 17px 17px}
+ .tlrow{display:flex;gap:9px;padding:7px 0;border-bottom:1px solid #eef2f6}
+ .tlrow .ic{width:20px;flex:none;text-align:center}
+ .tlrow .tx{flex:1;min-width:0}
+ .tlrow .tt{font-size:13px;color:var(--navy);font-weight:600}
+ .tlrow .td{font-size:12px;color:var(--gray)}
+ .tlrow .tw{font-size:11px;color:var(--gray);flex:none;white-space:nowrap}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Rep Usage &amp; Adoption</h1>
+    <div class="sub">Who's signing in, how actively they're working, and whether they're using the tools — not just leaving the portal open.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<div id="ov"><div class="panel">
+  <div class="ph"><div><div id="pname" class="name" style="font-size:16px"></div><div id="psub" class="sub"></div></div><button class="x" onclick="closeRep()">✕</button></div>
+  <div id="ptiles" class="mtiles"></div>
+  <div style="padding:2px 17px"><div class="l" style="font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700">Activity timeline</div></div>
+  <div id="ptl" class="tl"></div>
+</div></div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), ME=null, DAYS=30; try{ME=HCPS.profile()}catch(e){ME=null;}
+const TIER={strong:["Strong","#2d7d46"],active:["Active","#1681c2"],light:["Light","#F5821F"],idle:["Idle","#c2410c"],none:["No sign-in","#8a96a3"]};
+const fmtDate=t=>{ if(!t) return "—"; const d=new Date(t); if(isNaN(d)) return "—"; return d.toLocaleDateString(undefined,{month:"short",day:"numeric"})+" "+d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}); };
+const ago=t=>{ if(!t) return "never"; const s=(Date.now()-new Date(t).getTime())/1000; if(s<3600)return Math.max(1,Math.round(s/60))+"m ago"; if(s<86400)return Math.round(s/3600)+"h ago"; return Math.round(s/86400)+"d ago"; };
+const mins=m=>{ m=Number(m)||0; if(m<60) return m+"m"; return Math.floor(m/60)+"h "+(m%60)+"m"; };
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); } }
+function lock(){ HCPS.signOut(); TOKEN=null; location.reload(); }
+
+async function api(body){ const r=await fetch("/.netlify/functions/rep-usage-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(body)}); return {status:r.status, j:await r.json().catch(()=>({}))}; }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  $("#body").innerHTML='<div class="msg">Loading…</div>';
+  const {status,j}=await api({action:"overview",days:DAYS});
+  if(status===401){ gate("Your session ended — sign in again."); return; }
+  if(status===403){ $("#body").innerHTML='<div class="banner">This dashboard is for the President. Ask the President for rep adoption reports.</div>'; return; }
+  if(!j||!j.ok){ $("#body").innerHTML='<div class="msg err">Couldn\'t load usage.</div>'; return; }
+  render(j);
+}
+
+function scoreBar(s,tier){ const t=TIER[tier]||TIER.none; return `<div class="score-wrap"><div class="score-bar"><i style="width:${Math.max(3,s)}%;background:${t[1]}"></i></div><span class="chip" style="background:${t[1]}1a;color:${t[1]}">${s}</span></div>`; }
+
+function render(j){
+  const reps=j.reps||[];
+  const withSess=reps.filter(r=>r.sessions>0);
+  const avg=reps.length?Math.round(reps.reduce((a,r)=>a+r.score,0)/reps.length):0;
+  const idle=reps.filter(r=>r.flag==="logged_in_no_activity").length;
+  const banner = j.capture_on ? "" : `<div class="banner"><b>Usage capture isn't recording yet.</b> Run <b>supabase/rep_activity.sql</b> in Supabase and redeploy — then logins, active time and tool/dealer views start filling in. The action counts below (touches, notes, tasks, routes) already work from your existing data.</div>`;
+  const kpis=`<div class="kpis">
+    <div class="kpi big"><div class="l">Reps tracked</div><div class="v">${reps.length}</div></div>
+    <div class="kpi"><div class="l">Signed in (${DAYS}d)</div><div class="v">${withSess.length}</div></div>
+    <div class="kpi"><div class="l">Avg engagement</div><div class="v">${avg}</div></div>
+    <div class="kpi"><div class="l">Logged in, idle</div><div class="v" style="color:${idle?'#c2410c':'inherit'}">${idle}</div></div>
+  </div>`;
+  const rows=reps.map(r=>{
+    const t=TIER[r.tier]||TIER.none;
+    return `<tr class="rep" onclick="openRep('${esc(r.email)}')">
+      <td><div class="name">${esc(r.name)}</div><div class="sub">${esc(r.rep_name||r.role)}${r.flag==="logged_in_no_activity"?' · <span class="flag">logged in, no activity</span>':''}</div></td>
+      <td>${r.last_login?fmtDate(r.last_login):'<span class="sub">never</span>'}<div class="sub">${r.last_login?ago(r.last_login):''}</div></td>
+      <td class="n">${r.active_days}</td>
+      <td class="n">${mins(r.active_minutes)}</td>
+      <td class="n">${r.dealers_accessed}</td>
+      <td class="n">${r.touches}</td>
+      <td class="n">${r.tasks_completed}</td>
+      <td class="n">${r.routes}</td>
+      <td class="n">${r.opportunities}</td>
+      <td>${scoreBar(r.score,r.tier)}</td>
+    </tr>`;
+  }).join("")||`<tr><td colspan="10" class="hint">No staff accounts found.</td></tr>`;
+  $("#body").innerHTML=banner+kpis+`
+    <div class="ctl"><label class="sub">Window</label>
+      <select id="win" onchange="DAYS=+this.value;load()">
+        <option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option>
+      </select>
+      <span class="sub" style="margin-left:auto">Click a rep for their timeline. Engagement rewards real work — reviewing accounts, logging touches, planning routes, closing tasks — not just minutes logged in.</span>
+    </div>
+    <div class="card" style="padding:6px 8px;overflow:auto">
+      <table><thead><tr><th>Rep</th><th>Last login</th><th class="n">Active days</th><th class="n">Active time</th><th class="n">Dealers</th><th class="n">Touches</th><th class="n">Tasks ✓</th><th class="n">Routes</th><th class="n">Opps</th><th>Engagement</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>`;
+  const w=$("#win"); if(w) w.value=String(DAYS);
+}
+
+const ICON={login:"🔑",view:"🧭",dealer:"📇",touch:"📝",note:"🗒️",task:"✅",done:"☑️",visit:"📍",route:"🗺️",opp:"🔮"};
+async function openRep(email){
+  $("#ov").style.display="block"; $("#pname").textContent="Loading…"; $("#psub").textContent=""; $("#ptiles").innerHTML=""; $("#ptl").innerHTML='<div class="hint" style="padding:14px 0">Loading timeline…</div>';
+  const {j}=await api({action:"rep",email,days:DAYS});
+  if(!j||!j.ok){ $("#pname").textContent="Couldn't load rep"; $("#ptl").innerHTML=""; return; }
+  const r=j.rep; const t=TIER[r.tier]||TIER.none;
+  $("#pname").textContent=r.name;
+  $("#psub").innerHTML=`${esc(r.rep_name||r.role)} · <span class="chip" style="background:${t[1]}1a;color:${t[1]}">${t[0]} · ${r.score}</span> · last login ${r.last_login?fmtDate(r.last_login):"never"}`;
+  const tile=(l,v)=>`<div class="mt"><div class="l">${l}</div><div class="v">${v}</div></div>`;
+  $("#ptiles").innerHTML=tile("Active days",r.active_days)+tile("Active time",mins(r.active_minutes))+tile("Tools used",r.tools_used)+tile("Dealers",r.dealers_accessed)+tile("Touches",r.touches)+tile("Notes",r.notes)+tile("Tasks ✓",r.tasks_completed)+tile("Routes",r.routes)+tile("Opps",r.opportunities);
+  const tl=(j.timeline||[]);
+  $("#ptl").innerHTML = tl.length ? tl.map(e=>`<div class="tlrow"><div class="ic">${ICON[e.kind]||"•"}</div><div class="tx"><div class="tt">${esc(e.text)}</div>${e.detail?`<div class="td">${esc(e.detail)}</div>`:""}</div><div class="tw">${fmtDate(e.at)}</div></div>`).join("")
+    : '<div class="hint" style="padding:14px 0">No activity recorded in this window yet.</div>';
+}
+function closeRep(){ $("#ov").style.display="none"; }
+$("#ov").addEventListener("click",e=>{ if(e.target.id==="ov") closeRep(); });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeRep(); });
+
+load();
+</script>
+</body></html>

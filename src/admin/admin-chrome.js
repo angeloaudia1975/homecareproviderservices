@@ -51,6 +51,7 @@
       href:"/admin/hub.html?cat=analytics", tools:[
         { href:"/admin/command-center-360.html", label:"Command Center 360",      icon:"📊", desc:"Interactive BI — drill Summary → Dealer → Product → Order" },
         { href:"/admin/reps.html",               label:"Rep Performance & Goals", icon:"🏆", desc:"Scorecards, sales vs. target, YoY & leaderboard" },
+        { href:"/admin/rep-usage.html",          label:"Rep Usage & Adoption",    icon:"🧑‍💻", desc:"Who's signing in, how actively & whether they're using the tools" },
         { href:"/admin/pipeline.html",           label:"Pipeline & Forecast",     icon:"🔮", desc:"Open deals & a 6-month revenue forecast" },
         { href:"/admin/analytics.html",          label:"Analytics Deep Dive",     icon:"📈", desc:"Cadence, orders, master accounts & rep assignments" },
         { href:"/admin/command-center.html",     label:"Manufacturer Performance",icon:"🏭", desc:"Revenue by line, rep, state & company" },
