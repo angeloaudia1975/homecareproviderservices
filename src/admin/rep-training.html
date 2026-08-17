@@ -1,0 +1,175 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS — Rep Training Center</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .hero{background:linear-gradient(135deg,#1f2b45,#2c3e66);color:#fff;border-radius:16px;padding:22px 24px;margin:12px 0 14px}
+ .hero h1{margin:0;color:#fff;font-size:25px}
+ .hero .sub{color:#c9d4ea;margin-top:5px;font-size:14px;max-width:760px;line-height:1.5}
+ .chips{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 4px}
+ .chip{background:#fff;border:1px solid var(--line);border-radius:20px;padding:7px 13px;font-size:12.5px;font-weight:700;color:var(--navy);text-decoration:none}
+ .chip:hover{border-color:#c9d6e8;background:#f7fafd}
+ .sec-h{display:flex;align-items:baseline;gap:10px;margin:24px 0 10px;scroll-margin-top:110px}
+ .sec-h h2{margin:0;font-size:17px;color:var(--navy)}
+ .sec-h .hint{margin:0}
+ .rhythm{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+ .rc{background:#fff;border:1px solid var(--line);border-radius:13px;padding:14px 15px;border-top:3px solid var(--orange,#e07b00)}
+ .rc h3{margin:0 0 6px;font-size:14px;color:var(--navy)}
+ .rc ul{margin:0;padding-left:16px}.rc li{font-size:12.5px;color:#2b3a4d;line-height:1.5;margin:3px 0}
+ .plays{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+ @media(max-width:860px){.plays{grid-template-columns:1fr}.tref{grid-template-columns:1fr}}
+ .play{background:#fff;border:1px solid var(--line);border-radius:13px;padding:15px 16px}
+ .play h3{margin:0 0 3px;font-size:15px;color:var(--navy);display:flex;align-items:center;gap:8px}
+ .play .goal{color:var(--gray);font-size:12.5px;font-style:italic;margin-bottom:9px}
+ .play ol{margin:0;padding-left:19px}.play ol li{font-size:13px;color:#2b3a4d;line-height:1.55;margin:5px 0}
+ .play .why{margin-top:9px;font-size:12px;color:#5a6b7d;background:#f6f9fc;border-radius:8px;padding:8px 10px;line-height:1.5}
+ .play .open{display:inline-block;margin-top:10px;font-size:12.5px;font-weight:700;color:var(--orange,#e07b00);text-decoration:none}
+ .tref{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+ .tcard{background:#fff;border:1px solid var(--line);border-radius:13px;padding:15px 16px;scroll-margin-top:110px}
+ .tcard h3{margin:0 0 2px;font-size:15px;color:var(--navy);display:flex;align-items:center;gap:8px}
+ .tcard .tag{color:var(--gray);font-size:12.5px;font-style:italic;margin-bottom:8px}
+ .tcard p{margin:0 0 8px;font-size:13px;color:#2b3a4d;line-height:1.5}
+ .tcard .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700;margin:9px 0 3px}
+ .tcard ul{margin:2px 0 8px;padding-left:17px}.tcard li{font-size:12.5px;color:#2b3a4d;line-height:1.5;margin:2px 0}
+ .tcard .open{display:inline-block;margin-top:4px;font-size:12.5px;font-weight:700;color:var(--orange,#e07b00);text-decoration:none}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script src="/admin/hub-guide.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+
+const TOOLS=[
+  {href:"/admin/dealers.html",             label:"Dealer 360",             icon:"📇", guide:"Dealer 360 & CRM"},
+  {href:"/admin/map.html",                 label:"Territory Map & Routing",icon:"🗺️", guide:"Territory Map"},
+  {href:"/admin/call-list.html",           label:"Who to Call Today",      icon:"📞", guide:"Who to Call"},
+  {href:"/admin/health.html",              label:"Dealer Health",          icon:"❤️", guide:"Dealer Health"},
+  {href:"/admin/command-center-360.html",  label:"Command Center 360",     icon:"📊", guide:"Command Center 360"},
+  {href:"/admin/pipeline.html",            label:"Pipeline",               icon:"🔮", guide:"Pipeline"},
+  {href:"/admin/tasks.html",               label:"My Tasks",               icon:"✅", guide:"My Tasks"},
+  {href:"/admin/reps.html",                label:"My Performance",         icon:"🏆", guide:"Rep Performance & Goals"},
+  {href:"/admin/my-commissions.html",      label:"My Commissions",         icon:"💰", guide:"My Commissions"}
+];
+
+// Task-based playbooks — the day-to-day "how do I actually do X" the tool cards don't spell out.
+const PLAYS=[
+  {icon:"📇", title:"Manage an account end to end", href:"/admin/dealers.html", goal:"Walk into every call or visit already knowing the account.",
+   steps:["Open <b>Dealer 360</b> and search for the dealer, or click them from any list.",
+     "Read the top of the record: sales history, health score, open tasks, recent activity, contacts, and product interest — the whole relationship on one screen.",
+     "Note what's changed since last time (a new order, a dropped line, a cart they abandoned).",
+     "Make your call or visit informed — then log the touch (next playbook) before you move on."],
+   why:"Dealer 360 is your home base. Everything else — routes, calls, tasks — should start and end here so the account's story stays complete."},
+  {icon:"📝", title:"Log a dealer touch", href:"/admin/dealers.html", goal:"Every call, visit, and meaningful email recorded — so nothing slips and follow-ups get created.",
+   steps:["In the dealer's <b>Dealer 360</b>, use <b>Log activity</b> (or log the visit from <b>Territory Map</b> after a stop).",
+     "Pick the type — call, visit, email, or meeting.",
+     "Add a one-line detail: what happened and what's next.",
+     "Save. It's stamped with your name and the date, and shows on the account timeline."],
+   why:"Logging touches is how your work becomes visible and how the platform knows to prompt the next follow-up. Log it while it's fresh — the same day."},
+  {icon:"🗒️", title:"Add notes & keep contacts current", href:"/admin/dealers.html", goal:"Capture what you learn and who the players are.",
+   steps:["In <b>Dealer 360</b> → <b>Notes</b>, jot what you want to remember — preferences, timing, competitive intel. Notes are dated and attributed to you.",
+     "In <b>Contacts</b>, add or update the people: name, title, email, cell. ",
+     "Save. Accurate contacts feed your routes, campaigns, and everyone else who touches the account."],
+   why:"A dealer's people move and priorities shift. Two minutes of notes and contact upkeep now saves a cold call later."},
+  {icon:"🗺️", title:"Plan and run your week's route", href:"/admin/map.html", goal:"Spend windshield time on the right dealers, in the shortest drive.",
+   steps:["Open <b>Territory Map</b> to see all your dealers plotted.",
+     "Pick the stops for the day or week — prioritize at-risk accounts and open opportunities.",
+     "<b>Optimize</b> the route for the shortest drive, then <b>save the trip</b> with a date.",
+     "Take the turn-by-turn directions and the printable business-case handout for each stop.",
+     "After each visit, <b>log the visit</b> right from the map so the touch is captured."],
+   why:"A planned route means more quality face-time and less driving. Saved trips also become part of your activity record."},
+  {icon:"📞", title:"Find who to follow up with next", href:"/admin/call-list.html", goal:"Never wonder who to contact — the platform ranks it for you.",
+   steps:["Start each day in <b>Who to Call Today</b> — a ranked worklist of carts, overdue reorders, dormant accounts, and new dealers.",
+     "Work the top of the list; open each in Dealer 360 and log the touch.",
+     "Check <b>My Tasks</b> for anything due, and <b>Pipeline</b> for open deals to advance.",
+     "Between the three, your follow-up list builds itself."],
+   why:"These lists turn 'who should I call?' into 'here's exactly who needs me, in order.' That's the difference between busy and effective."},
+  {icon:"❤️", title:"Keep your book out of the red", href:"/admin/health.html", goal:"Catch a slipping account before it shows up as lost revenue.",
+   steps:["Open <b>Dealer Health</b> — every account scored on recency, rhythm, and trend.",
+     "Watch the <b>at-risk</b> and <b>dormant</b> tiers: those are accounts cooling off.",
+     "Reach out before they go cold — a call, a visit, a reason to reorder.",
+     "Re-check weekly and aim to move accounts up a tier."],
+   why:"Health is your early-warning system. A dealer who was healthy last quarter and is now at-risk is a save you can still make."},
+  {icon:"📊", title:"Know your numbers", href:"/admin/reps.html", goal:"Own your performance the way leadership sees it.",
+   steps:["Check <b>My Performance</b> — sales vs. goal, year-over-year, momentum, and book-health mix.",
+     "Review <b>My Commissions</b> to see what you're earning, by line and by dealer.",
+     "Use <b>Command Center 360</b> to drill your territory: manufacturer → dealer → product → order.",
+     "Do this weekly so there are no surprises at review time."],
+   why:"When you know your own numbers, every territory conversation is a plan, not a report card."}
+];
+
+function render(){
+  const G=(window.HUB_GUIDE)||{};
+  const gid=t=>"g-"+t.href.replace(/[^a-z0-9]+/gi,"-");
+
+  const rhythm=`<div class="rhythm">
+    <div class="rc"><h3>☀️ Every morning (10 min)</h3><ul>
+      <li>Open the portal → <b>Who to Call Today</b> and work the top of the list.</li>
+      <li>Check <b>My Tasks</b> for anything due today.</li>
+      <li>Glance at <b>Dealer Health</b> for new at-risk accounts.</li></ul></div>
+    <div class="rc"><h3>🚗 As you work</h3><ul>
+      <li><b>Log every touch</b> in Dealer 360 the moment it happens.</li>
+      <li>Add a quick <b>note</b> and update <b>contacts</b> while it's fresh.</li>
+      <li>Turn a real opportunity into a <b>task</b> or a <b>pipeline</b> deal.</li></ul></div>
+    <div class="rc"><h3>🗓️ Each week</h3><ul>
+      <li>Plan next week's <b>route</b> in Territory Map and save it.</li>
+      <li>Review <b>My Performance</b> vs. goal and clear stale tasks.</li>
+      <li>Pick 3 at-risk accounts to personally save this week.</li></ul></div>
+  </div>`;
+
+  const plays=PLAYS.map(p=>`<div class="play">
+    <h3>${p.icon} ${esc(p.title)}</h3>
+    <div class="goal">${esc(p.goal)}</div>
+    <ol>${p.steps.map(s=>`<li>${s}</li>`).join("")}</ol>
+    ${p.why?`<div class="why">${p.why}</div>`:""}
+    <a class="open" href="${p.href}">Open the tool ▸</a>
+  </div>`).join("");
+
+  const chips=`<a class="chip" href="#rhythm">Daily rhythm</a><a class="chip" href="#plays">Playbooks</a><a class="chip" href="#ref">Tool reference</a>`
+    + TOOLS.filter(t=>G[t.guide]).map(t=>`<a class="chip" href="#${gid(t)}">${esc(t.label)}</a>`).join("");
+
+  const refs=TOOLS.map(t=>{
+    const g=G[t.guide]; if(!g) return "";
+    const list=(arr)=>arr&&arr.length?`<ul>${arr.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:"";
+    return `<div class="tcard" id="${gid(t)}">
+      <h3>${t.icon} ${esc(t.label)}</h3>
+      ${g.tagline?`<div class="tag">${esc(g.tagline)}</div>`:""}
+      ${g.what?`<p>${esc(g.what)}</p>`:""}
+      ${g.features&&g.features.length?`<div class="lbl">What it gives you</div>${list(g.features)}`:""}
+      ${g.actions&&g.actions.length?`<div class="lbl">What you can do</div>${list(g.actions)}`:""}
+      ${g.workflow?`<div class="lbl">How to work it</div><p>${esc(g.workflow)}</p>`:""}
+      ${g.intelligence?`<div class="lbl">Good to know</div><p>${esc(g.intelligence)}</p>`:""}
+      <a class="open" href="${t.href}">Open ${esc(t.label)} ▸</a>
+    </div>`;
+  }).join("");
+
+  $("#body").innerHTML=`
+    <div class="hero">
+      <h1>Rep Training Center</h1>
+      <div class="sub">Everything you need to work the platform and grow your territory — a recommended daily rhythm, step-by-step playbooks for the things you do every day, and a full reference for each tool. Bookmark this and come back to it.</div>
+    </div>
+    <div class="chips">${chips}</div>
+
+    <div class="sec-h" id="rhythm"><h2>Your daily rhythm</h2><span class="hint">— a simple routine that compounds</span></div>
+    ${rhythm}
+
+    <div class="sec-h" id="plays"><h2>Playbooks</h2><span class="hint">— how to actually do the everyday things</span></div>
+    <div class="plays">${plays}</div>
+
+    <div class="sec-h" id="ref"><h2>Tool reference</h2><span class="hint">— the deeper "what & how" for every tool in your workspace</span></div>
+    <div class="tref">${refs||'<div class="hint">Reference is loading — refresh if this stays empty.</div>'}</div>
+
+    <div class="hint" style="margin:16px 0 6px">Ready to work? <a href="/admin/rep-home.html" style="font-weight:700;color:var(--orange,#e07b00);text-decoration:none">← Back to your portal</a></div>
+  `;
+}
+
+if(!TOKEN){ location.replace("/admin/rep-login.html"); }
+else { render(); }
+</script>
+</body></html>

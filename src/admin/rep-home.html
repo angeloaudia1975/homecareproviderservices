@@ -94,13 +94,14 @@ function render(){
         <a class="tpill" href="/admin/tasks.html"><b id="tk">·</b> <span>Open tasks</span></a>
         <a class="tpill" href="/admin/map.html">🗺️ <span>Plan a route</span></a>
         <a class="tpill" href="/admin/health.html">❤️ <span>Review dealer health</span></a>
+        <a class="tpill" href="/admin/rep-training.html">🎓 <span>Training center</span></a>
       </div>
     </div>
 
     <div class="sec-h"><h2>Your tools</h2><span class="hint">— everything below is scoped to your assigned accounts</span></div>
     <div class="tiles">${tiles}</div>
 
-    <div class="sec-h"><h2>Training &amp; how-to</h2><span class="hint">— how each tool helps you grow your territory</span></div>
+    <div class="sec-h"><h2>Training &amp; how-to</h2><span class="hint">— how each tool helps you grow your territory</span><a href="/admin/rep-training.html" style="margin-left:auto;font-size:12.5px;font-weight:700;color:var(--orange,#e07b00);text-decoration:none">Open full Training Center ▸</a></div>
     <div class="hint" style="margin:-2px 0 12px">New here? Read these top to bottom. The short version: review <b>Who to Call</b> each morning, open accounts in <b>Dealer 360</b> to log touches, add notes and contacts, plan your week in <b>Territory Map</b>, keep <b>Dealer Health</b> out of the red, and close the loop in <b>My Tasks</b>.</div>
     <div class="train">${cards||'<div class="hint">Training content is loading — refresh if this stays empty.</div>'}</div>
   `;
