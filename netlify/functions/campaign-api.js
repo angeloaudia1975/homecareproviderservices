@@ -126,7 +126,7 @@ function subjectsFor(goal,line,offer){
 // greeting, {{tokens}}, product grid, tracked CTA — stays deterministic so personalization
 // and click tracking are never at the mercy of the model.
 const AI_KEY=process.env.ANTHROPIC_API_KEY||"";
-const AI_MODEL=process.env.HCPS_AI_MODEL||"claude-3-5-sonnet-latest";
+const AI_MODEL=process.env.HCPS_AI_MODEL||"claude-sonnet-5";
 function aiAvailable(){ return !!AI_KEY; }
 async function aiCopy(brief,line,products){
   if(!AI_KEY) return null;

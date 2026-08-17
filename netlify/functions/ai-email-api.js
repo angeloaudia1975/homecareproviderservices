@@ -11,7 +11,7 @@
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const AI_KEY = process.env.ANTHROPIC_API_KEY || "";
-const AI_MODEL = process.env.HCPS_AI_MODEL || "claude-3-5-sonnet-latest";
+const AI_MODEL = process.env.HCPS_AI_MODEL || "claude-sonnet-5";
 const ORDERING_BASE = process.env.ORDERING_BASE || "https://hcpsonlineordering.netlify.app";
 
 const json=(c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
@@ -149,7 +149,8 @@ Do not include markdown or any text outside the JSON.`;
       const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
         headers:{"x-api-key":AI_KEY,"anthropic-version":"2023-06-01","content-type":"application/json"},
         body:JSON.stringify({model:AI_MODEL,max_tokens:900,messages:[{role:"user",content:prompt}]})});
-      if(!r.ok){ const t=await r.text().catch(()=>""); return json(200,{ok:false,error:"ai_error",message:"The AI service returned an error. Try again.",detail:t.slice(0,200),signature}); }
+      if(!r.ok){ const t=await r.text().catch(()=>""); let hint=""; try{ const ej=JSON.parse(t); hint=(ej&&ej.error&&ej.error.message)?` (${ej.error.message})`:""; }catch(_){}
+        return json(200,{ok:false,error:"ai_error",message:`The AI service returned an error${hint}. Try again.`,detail:t.slice(0,200),model:AI_MODEL,signature}); }
       const j=await r.json().catch(()=>null);
       let text=(j&&j.content&&j.content[0]&&j.content[0].text)||"";
       const s=text.indexOf("{"), e=text.lastIndexOf("}");
