@@ -188,7 +188,7 @@ function render(D,A){
   </div>`;
 
   // contacts + account numbers — managed live via crm-api (loadContacts)
-  const contactsCard=`<div class="card"><h2>Contacts &amp; account numbers</h2><div id="contacts"><div class="hint">Loading…</div></div></div>`;
+  const contactsCard=`<div class="card"><h2>Contacts</h2><div id="contacts"><div class="hint">Loading…</div></div></div>`;
 
   // ---- right column ----
   const sig=[];
@@ -245,8 +245,8 @@ function render(D,A){
   // Touch → Signals & Analytics. Reference sidebar (right): tasks/timeline, contacts, addresses, accounts.
   $("#body").innerHTML=`${header}${nextBanner}
     <div class="d360">
-      <div>${notesCard}${emailCard}${callCard}${touchCard}${signals}${handoutCard}${intelCard}${history}${salesCard}${commCard}</div>
-      <div>${tasksCard}${contactsCard}${addrCard}${acctCard}</div>
+      <div>${notesCard}${emailCard}${callCard}${touchCard}${contactsCard}${handoutCard}${intelCard}${history}${salesCard}${commCard}</div>
+      <div>${tasksCard}${signals}${addrCard}${acctCard}</div>
     </div>`;
   CUR=d.id; DPHONE=d.phone||""; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails(); loadHandout();
 }
