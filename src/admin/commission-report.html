@@ -1,0 +1,260 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS — Commission Report</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px 0 4px}
+ .toolbar select{padding:7px 10px;border:1px solid var(--line);border-radius:9px;font:inherit;font-size:13px;background:#fff}
+ .toolbar .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700}
+ .trio{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:6px 0 2px}
+ .card3{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+ .card3.tot{border-left:4px solid #3B599A}
+ .card3.rep{border-left:4px solid var(--orange,#e07b00);background:#fffaf3}
+ .card3.pres{border-left:4px solid #1c7a44;background:#f3faf5}
+ .card3 .l{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:700}
+ .card3 .v{font-size:27px;font-weight:800;color:var(--navy);font-family:'Barlow Condensed',sans-serif;margin-top:2px}
+ .card3 .s{font-size:11.5px;color:var(--gray);margin-top:2px}
+ .flow{display:flex;align-items:center;gap:8px;color:var(--gray);font-size:12px;margin:2px 0 6px;flex-wrap:wrap}
+ .flow b{color:var(--navy)}
+ table{width:100%;border-collapse:collapse;font-size:13px}
+ th{text-align:left;color:var(--gray);font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:7px 9px;border-bottom:2px solid var(--line);white-space:nowrap}
+ td{padding:7px 9px;border-bottom:1px solid #eef2f6;vertical-align:middle}
+ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+ tr:hover td{background:#f7fafd}
+ tbody tr.totrow td{border-top:2px solid var(--line);font-weight:800;background:#f4f7fb}
+ tbody tr.totrow:hover td{background:#eef3f9}
+ td.you{color:#a85400;font-weight:700}
+ td.pres{color:#1c7a44;font-weight:700}
+ .repn{font-weight:800;color:var(--navy)}
+ .pct{display:inline-block;font-size:11px;font-weight:800;color:#5b6672;background:#eef2f6;border-radius:6px;padding:1px 7px;margin-left:6px}
+ .pill{display:inline-flex;gap:2px;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+ .pill button{border:0;background:#fff;color:var(--navy);font:inherit;font-size:12.5px;font-weight:700;padding:6px 12px;cursor:pointer}
+ .pill button.on{background:var(--navy);color:#fff}
+ .warn{background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:10px 13px;font-size:12.5px;color:#9a3412;margin:8px 0}
+ .mtx{overflow-x:auto}
+ .mtx table{min-width:640px}
+ .mtx td.rep,.mtx th.rep{position:sticky;left:0;background:#fff;z-index:1}
+ .mtx tr:hover td.rep{background:#f7fafd}
+ .setgrid{display:grid;grid-template-columns:1fr auto auto auto;gap:8px 12px;align-items:center;max-width:560px}
+ .setgrid .hd{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700}
+ .setgrid input{width:70px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13px;text-align:right}
+ .setgrid .save{background:var(--navy);color:#fff;border:0;border-radius:8px;padding:6px 12px;font-weight:700;font-size:12.5px;cursor:pointer}
+ .setgrid .rm{background:#fff;color:#b42323;border:1px solid #f2c9c9;border-radius:8px;padding:6px 10px;font-weight:700;font-size:12.5px;cursor:pointer}
+ .setrow-name{font-weight:700;color:var(--navy)}
+ .addrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+ .addrow input,.addrow select{padding:7px 9px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13px}
+ details.setwrap{margin-top:16px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:0 16px}
+ details.setwrap summary{cursor:pointer;font-weight:800;color:var(--navy);padding:14px 0;list-style:none}
+ details.setwrap summary::-webkit-details-marker{display:none}
+ details.setwrap[open] summary{border-bottom:1px solid var(--line);margin-bottom:14px}
+ .setbody{padding-bottom:16px}
+ .msgline{font-size:12.5px;margin-left:8px}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Commission Report</h1>
+    <div class="sub">Total commission generated → each rep's earned share → the company / President share it leaves you — by rep and by month.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+const money=n=>"$"+Math.round(Number(n)||0).toLocaleString();
+const rkey=s=>String(s||"").trim().toLowerCase();
+const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const monthLbl=p=>{ const m=String(p||"").slice(0,7); if(!/^\d{4}-\d{2}$/.test(m)) return m; const [y,mo]=m.split("-"); return MONTHS[(+mo)-1]+" "+y.slice(2); };
+
+let DATA=null, SPLITS={}, ASSIGN={};
+let PERIOD="all";          // summary + by-rep table scope
+let MATRIX_VIEW="pres";    // pres | rep | total
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); } }
+function lock(){ HCPS.signOut(); TOKEN=null; location.reload(); }
+
+// Effective rep = the assigned owner (directory) if set, else the rep the manufacturer reported.
+function erep(f){ const a=ASSIGN[f.dealer]; return (a&&a.rep)?a.rep:(f.rep||"Unassigned"); }
+function splitOf(rep){ const e=SPLITS[rkey(rep)]; if(!e||!isFinite(e.rep_pct)) return null; return {name:e.name||rep, rep_pct:e.rep_pct, company_pct:100-e.rep_pct}; }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  let j; try{ const r=await fetch("/.netlify/functions/analytics",{headers:{authorization:"Bearer "+TOKEN}});
+    if(r.status===401){ gate("Your session ended — sign in again."); return; }
+    j=await r.json(); }catch(e){ $("#body").innerHTML=`<div class="msg err">Couldn't load commission data.</div>`; return; }
+  // Server only returns commissionSplits to a President — treat its absence as "not authorized".
+  if(!j || j.commissionSplits==null){
+    $("#body").innerHTML=`<div class="msg err"><b>President only.</b><br>This report is limited to President accounts.<br><br><button class="go" onclick="lock()">Sign in as a different user</button></div>`;
+    return;
+  }
+  DATA=j; SPLITS=j.commissionSplits||{};
+  ASSIGN={}; (j.assignments||[]).forEach(a=>{ if(a && a.dealer_name) ASSIGN[a.dealer_name]={rep:a.rep_name||""}; });
+  render();
+}
+
+// Build byRep[rep] = { total, byMonth:{p:amt} } over commission, plus the sorted period list.
+function build(){
+  const facts=(DATA.facts)||[];
+  const byRep={}, periods=new Set();
+  for(const f of facts){
+    const rep=erep(f); const p=String(f.period||"").slice(0,7); if(!p) continue;
+    periods.add(p);
+    const r=byRep[rep]||(byRep[rep]={total:0,byMonth:{}});
+    const c=Number(f.comm)||0; r.total+=c; r.byMonth[p]=(r.byMonth[p]||0)+c;
+  }
+  const plist=[...periods].sort();
+  return {byRep, plist};
+}
+
+function render(){
+  const {byRep, plist}=build();
+  const periodOptions=`<option value="all">All periods</option>`+plist.slice().reverse().map(p=>`<option value="${p}"${PERIOD===p?" selected":""}>${esc(monthLbl(p))}</option>`).join("");
+
+  // Rep rows for the selected period. commTot = commission in scope; rep/company shares where configured.
+  const inScope=p=> PERIOD==="all" ? true : (p===PERIOD);
+  let rows=Object.keys(byRep).map(rep=>{
+    const r=byRep[rep];
+    let comm=0; for(const p in r.byMonth){ if(inScope(p)) comm+=r.byMonth[p]; }
+    const sp=splitOf(rep);
+    return { rep, comm, sp,
+      repShare: sp? comm*sp.rep_pct/100 : null,
+      presShare: sp? comm*sp.company_pct/100 : null };
+  }).filter(r=>r.comm>0.5 || splitOf(r.rep));
+  rows.sort((a,b)=>b.comm-a.comm);
+
+  // Totals across configured reps + any unsplit commission.
+  let totComm=0, totRep=0, totPres=0, unsplit=0, anyUnset=false;
+  for(const r of rows){ totComm+=r.comm; if(r.sp){ totRep+=r.repShare; totPres+=r.presShare; } else { unsplit+=r.comm; if(r.comm>0.5) anyUnset=true; } }
+
+  const scopeLbl = PERIOD==="all" ? "all periods" : monthLbl(PERIOD);
+
+  const trio=`<div class="flow">Flow for <b>${esc(scopeLbl)}</b>: Total commissions generated <b>→</b> Rep share <b>→</b> President / company share.</div>
+  <div class="trio">
+    <div class="card3 tot"><div class="l">Total commissions generated</div><div class="v">${money(totComm)}</div><div class="s">Across ${rows.length} rep${rows.length===1?"":"s"} · ${esc(scopeLbl)}</div></div>
+    <div class="card3 rep"><div class="l">Rep share (paid out)</div><div class="v">${money(totRep)}</div><div class="s">Earned by your reps</div></div>
+    <div class="card3 pres"><div class="l">President / company share</div><div class="v">${money(totPres)}</div><div class="s">Income the company retains</div></div>
+  </div>`;
+
+  // By-rep table.
+  const repRows=rows.map(r=>{
+    if(r.sp){
+      return `<tr><td class="repn">${esc(r.rep)}<span class="pct">${r.sp.rep_pct}/${r.sp.company_pct}</span></td>
+        <td class="n">${money(r.comm)}</td>
+        <td class="n you">${money(r.repShare)}</td>
+        <td class="n pres">${money(r.presShare)}</td></tr>`;
+    }
+    return `<tr><td class="repn">${esc(r.rep)} <span class="hint" style="font-weight:600">— split not set</span></td>
+      <td class="n">${money(r.comm)}</td>
+      <td class="n" colspan="2"><a class="link" href="#splitset" onclick="openSettings()">Set split ▸</a></td></tr>`;
+  }).join("")||`<tr><td colspan="4" class="hint">No commission in this period.</td></tr>`;
+  const repTable=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <h2 style="margin:0">By rep <span class="hint" style="font-weight:600">— ${esc(scopeLbl)}</span></h2>
+      <div><span class="lbl" style="margin-right:6px">Period</span><select onchange="PERIOD=this.value;render()">${periodOptions}</select></div></div>
+    <table><thead><tr><th>Rep <span class="hint" style="font-weight:600">(rep%/co%)</span></th><th class="n">Total commission</th><th class="n">Rep share</th><th class="n">President share</th></tr></thead>
+    <tbody>${repRows}
+      <tr class="totrow"><td>All reps</td><td class="n">${money(totComm)}</td><td class="n">${money(totRep)}</td><td class="n">${money(totPres)}</td></tr>
+    </tbody></table>
+    ${anyUnset?`<div class="warn">Some reps don't have a split configured yet, so their commission isn't broken out above. Set their split in <a class="link" href="#splitset" onclick="openSettings()">Split settings</a> below.</div>`:""}
+  </div>`;
+
+  // Monthly matrix — every rep's chosen share, month by month.
+  const cols=plist.slice(-12);
+  const viewFrac=(rep)=>{ const sp=splitOf(rep);
+    if(MATRIX_VIEW==="total") return 1;
+    if(!sp) return null;                        // rep/pres views need a configured split
+    return MATRIX_VIEW==="rep" ? sp.rep_pct/100 : sp.company_pct/100; };
+  const mRows=rows.map(r=>{
+    const frac=viewFrac(r.rep);
+    const cells=cols.map(p=>{
+      const base=(byRep[r.rep].byMonth[p]||0);
+      if(frac==null) return `<td class="n hint">—</td>`;
+      return `<td class="n">${base>0.5?money(base*frac):"·"}</td>`;
+    }).join("");
+    let rowTot=0; for(const p of cols){ rowTot+=(byRep[r.rep].byMonth[p]||0); }
+    const totCell = frac==null ? `<td class="n hint">—</td>` : `<td class="n" style="font-weight:800">${money(rowTot*frac)}</td>`;
+    return `<tr><td class="rep repn">${esc(r.rep)}</td>${cells}${totCell}</tr>`;
+  }).join("");
+  // Column totals for the current view.
+  const colTot=cols.map(p=>{ let s=0; for(const r of rows){ const frac=viewFrac(r.rep); if(frac==null) continue; s+=(byRep[r.rep].byMonth[p]||0)*frac; } return s; });
+  let grand=0; colTot.forEach(v=>grand+=v);
+  const totRowCells=colTot.map(v=>`<td class="n">${v>0.5?money(v):"·"}</td>`).join("");
+  const matrixHead=cols.map(p=>`<th class="n">${esc(monthLbl(p))}</th>`).join("");
+  const viewName={pres:"President / company share",rep:"Rep share",total:"Total commission"}[MATRIX_VIEW];
+  const matrix=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <h2 style="margin:0">Monthly — ${esc(viewName)} <span class="hint" style="font-weight:600">— last ${cols.length} month${cols.length===1?"":"s"} by rep</span></h2>
+      <div class="pill">
+        <button class="${MATRIX_VIEW==="pres"?"on":""}" onclick="MATRIX_VIEW='pres';render()">President share</button>
+        <button class="${MATRIX_VIEW==="rep"?"on":""}" onclick="MATRIX_VIEW='rep';render()">Rep share</button>
+        <button class="${MATRIX_VIEW==="total"?"on":""}" onclick="MATRIX_VIEW='total';render()">Total</button>
+      </div></div>
+    <div class="mtx"><table><thead><tr><th class="rep">Rep</th>${matrixHead}<th class="n">Total</th></tr></thead>
+      <tbody>${mRows||`<tr><td class="hint" colspan="${cols.length+2}">No data.</td></tr>`}
+        <tr class="totrow"><td class="rep">All reps</td>${totRowCells}<td class="n">${money(grand)}</td></tr>
+      </tbody></table></div>
+    <div class="hint" style="margin-top:8px">${MATRIX_VIEW==="pres"?"This is the income your company keeps from each rep's territory each month.":MATRIX_VIEW==="rep"?"This is what each rep earned each month.":"Total commission each rep's territory generated each month (before the split)."} A “·” means no commission that month; “—” means that rep has no split configured.</div>
+  </div>`;
+
+  $("#body").innerHTML=trio+repTable+matrix+settingsPanel();
+}
+
+// ---------- Split settings ----------
+function openSettings(){ const d=$("#setwrap"); if(d){ d.open=true; d.scrollIntoView({behavior:"smooth"}); } }
+function settingsPanel(){
+  const opts=(DATA.repOptions&&DATA.repOptions.length?DATA.repOptions:(DATA.reps||[])).filter(r=>r&&r!=="Unassigned");
+  const configured=Object.keys(SPLITS).map(k=>({key:k,...SPLITS[k]})).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  const rowsHtml=configured.map(s=>`
+    <div class="setrow-name">${esc(s.name)}</div>
+    <div><input id="pct-${esc(s.key)}" type="number" min="0" max="100" step="1" value="${Number(s.rep_pct)}"> <span class="hint">% rep</span></div>
+    <div class="hint">${100-Number(s.rep_pct)}% co.</div>
+    <div><button class="save" onclick="saveSplit('${esc(s.name).replace(/'/g,"\\'")}',document.getElementById('pct-${esc(s.key)}').value)">Save</button>
+         <button class="rm" onclick="removeSplit('${esc(s.name).replace(/'/g,"\\'")}')">Remove</button></div>`).join("")
+    ||`<div class="hint" style="grid-column:1/-1">No splits configured yet. Add one below.</div>`;
+  const addOpts=opts.filter(r=>!SPLITS[rkey(r)]).map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join("");
+  return `<details class="setwrap" id="setwrap"><summary>⚙️ Split settings <span class="hint" style="font-weight:600">— set each rep's % (company keeps the rest)</span></summary>
+    <div class="setbody" id="splitset">
+      <div class="setgrid">
+        <div class="hd">Rep</div><div class="hd">Rep %</div><div class="hd">Company %</div><div class="hd"></div>
+        ${rowsHtml}
+      </div>
+      <div class="addrow">
+        <select id="addrep">${addOpts||`<option value="">All reps configured</option>`}</select>
+        <input id="addpct" type="number" min="0" max="100" step="1" placeholder="% rep" style="width:90px">
+        <button class="save" onclick="addSplit()">Add split</button>
+        <input id="addname" placeholder="…or type a rep name" style="min-width:180px">
+        <span id="setmsg" class="msgline"></span>
+      </div>
+      <div class="hint" style="margin-top:10px">Changes take effect immediately for this report and each rep's My Commissions page. Enter the rep's own percentage; the company/President share is the remaining amount.</div>
+    </div></details>`;
+}
+async function apiSplit(payload){
+  const r=await fetch("/.netlify/functions/reps-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)});
+  return {status:r.status, body:await r.json().catch(()=>({}))};
+}
+function setMsg(t,ok){ const el=$("#setmsg"); if(el){ el.textContent=t; el.style.color=ok?"#1c7a44":"#b42323"; } }
+async function saveSplit(name,pct){
+  const rp=Number(pct); if(!isFinite(rp)||rp<0||rp>100){ setMsg("Enter 0–100.",false); return; }
+  const {status,body}=await apiSplit({action:"set_split",rep_name:name,rep_pct:rp});
+  if(status===200&&body.ok){ SPLITS=body.splits||SPLITS; setMsg("Saved.",true); render(); openSettings(); }
+  else setMsg(body.error||"Couldn't save.",false);
+}
+async function addSplit(){
+  const name=($("#addname").value||"").trim() || ($("#addrep").value||"").trim();
+  const pct=$("#addpct").value;
+  if(!name){ setMsg("Pick or type a rep.",false); return; }
+  await saveSplit(name,pct);
+}
+async function removeSplit(name){
+  const {status,body}=await apiSplit({action:"set_split",rep_name:name,remove:true});
+  if(status===200&&body.ok){ SPLITS=body.splits||SPLITS; setMsg("Removed.",true); render(); openSettings(); }
+  else setMsg(body.error||"Couldn't remove.",false);
+}
+load();
+</script>
+</body></html>

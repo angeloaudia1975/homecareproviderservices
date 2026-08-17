@@ -63,9 +63,9 @@ window.HUB_GUIDE = {
     intelligence: "Rep-scoped automatically: a rep sees only their own numbers; leadership sees the full team."
   },
   "My Commissions": {
-    tagline: "Your own commissions and sales — by month, manufacturer line, and dealer.",
-    what: "Your personal earnings view. It totals the commissions and sales attributed to your assigned accounts, then breaks them down by month, by manufacturer line, and by dealer so you can see exactly where your income comes from and which accounts drive it.",
-    features: ["Commission YTD and all-time", "Sales YTD and effective commission rate", "Commission by month (last 12)", "Commission by manufacturer line", "Top dealers by commission"],
+    tagline: "Your own commissions and sales — total territory commission and your earned share, by month, line, and dealer.",
+    what: "Your personal earnings view. It totals the commission your assigned accounts generated, then shows both the total and your earned share based on your commission split (the remainder is retained by HCPS/President), broken down by month, by manufacturer line, and by dealer so you can see exactly where your income comes from.",
+    features: ["Total territory commission and your earned share", "Company/President share for full transparency", "Commission by month (last 12)", "Commission by manufacturer line", "Top dealers by commission"],
     data: "The same sales cube as the rest of the portal, filtered to the accounts assigned to you in the directory — nobody else's numbers.",
     actions: ["Review your monthly commission trend", "See which lines and dealers pay you most", "Cross-check a figure against Rep Performance"],
     reports: ["Commission by month", "Commission by line", "Top dealers by commission"],
@@ -73,6 +73,18 @@ window.HUB_GUIDE = {
     problems: "Answers “what am I earning and from where” without waiting on a report — and flags if an account you own isn't showing up (a sign your assignment needs fixing).",
     workflow: "Check it after each commission import, and before a territory review, to know your best accounts and lines.",
     intelligence: "Figures reflect only your assigned accounts; if something's missing, confirm your rep name is assigned to that dealer in the directory."
+  },
+  "Commission Report": {
+    tagline: "President's monthly view of commission income: total generated, each rep's share, and the company's share.",
+    what: "The company-side commission picture. For any period it shows the total commission each rep's territory generated, the share paid out to the rep, and the share the company/President retains — then lays out the President/company share for every rep, month by month, so you can see the income each territory produces over time.",
+    features: ["Total → rep share → President share summary", "Per-rep table with each rep's split %", "Monthly matrix of company share by rep", "Toggle the matrix to rep share or total commission", "Editable split settings per rep"],
+    data: "The same sales cube as the rest of the portal (all reps, since this is President-only), combined with each rep's commission split from settings.",
+    actions: ["Pick a period to see total, rep, and company shares", "Read the month-by-month company income per rep", "Set or adjust a rep's commission split"],
+    reports: ["Total / rep / President share by period", "Company share by rep by month", "Rep share and total-commission matrix views"],
+    connects: ["Splits also drive each rep's My Commissions page", "Rep attribution matches Rep Performance and Analytics"],
+    problems: "Answers “how much does the company actually make from each rep's territory, each month” — and keeps the rep-facing numbers honest by using the same splits.",
+    workflow: "Review after each commission import to see the month's rep and company shares; adjust a split here whenever an arrangement changes.",
+    intelligence: "President-only. Reps without a split set are shown but not broken out until you configure their percentage."
   },
   "Rep Usage & Adoption": {
     tagline: "President's view of how each rep is actually using the platform — adoption, not just logins.",

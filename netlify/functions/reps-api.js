@@ -45,6 +45,29 @@ exports.handler=async(event)=>{
       return json(200,{ok:true});
     }
 
+    // ---- commission splits (President) ----
+    // Read the single config row of rep→percentage splits.
+    if(b.action==="get_splits"){
+      if(me.role!=="president") return json(403,{error:"President only"});
+      let val={}; try{ const r=await sbGet("app_settings?key=eq.commission_splits&select=value"); if(r&&r[0]&&r[0].value&&typeof r[0].value==="object") val=r[0].value; }catch(e){}
+      return json(200,{ok:true,splits:val});
+    }
+    // Set (or remove) one rep's split. rep_pct is the rep's own share; company share is the remainder.
+    if(b.action==="set_split"){
+      if(me.role!=="president") return json(403,{error:"President only"});
+      const name=String(b.rep_name||"").trim(); if(!name) return json(400,{error:"rep_name required"});
+      const key=name.toLowerCase();
+      let val={}; try{ const r=await sbGet("app_settings?key=eq.commission_splits&select=value"); if(r&&r[0]&&r[0].value&&typeof r[0].value==="object") val=r[0].value; }catch(e){}
+      if(b.remove===true){ delete val[key]; }
+      else {
+        let rp=Number(b.rep_pct); if(!isFinite(rp)) return json(400,{error:"rep_pct (0-100) required"});
+        rp=Math.max(0,Math.min(100,Math.round(rp)));
+        val[key]={name,rep_pct:rp};
+      }
+      await sbSend("POST","app_settings?on_conflict=key",{key:"commission_splits",value:val,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
+      return json(200,{ok:true,splits:val});
+    }
+
     // Preview the executive report HTML without sending (President).
     if(b.action==="preview_report"){
       if(me.role!=="president") return json(403,{error:"President only"});

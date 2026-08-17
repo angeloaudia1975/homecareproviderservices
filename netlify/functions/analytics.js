@@ -163,6 +163,22 @@ exports.handler = async (event) => {
       if (me.role === "rep") { repsOut = [...new Set(facts.map(f => f.rep))].filter(Boolean); repOptionsOut = repsOut.slice(); }
     }
 
+    // Rep commission splits. A single app_settings row keyed by lowercased rep name holds each
+    // rep's percentage share of the commission their territory generates; the company/President
+    // share is the remainder. The caller always gets their own split (mySplit); the President
+    // also gets the full map so the Commission Report can compute company share per rep.
+    const rkey = s => String(s || "").trim().toLowerCase();
+    const clampPct = n => { n = Number(n); if (!isFinite(n)) return null; return Math.max(0, Math.min(100, Math.round(n))); };
+    let splitsRaw = {};
+    try { const sr = await sbGet("app_settings?key=eq.commission_splits&select=value"); if (sr && sr[0] && sr[0].value && typeof sr[0].value === "object") splitsRaw = sr[0].value; } catch (e) {}
+    const splitOf = repName => { const e = splitsRaw[rkey(repName)]; if (!e) return null; const rp = clampPct(e.rep_pct); if (rp == null) return null; return { name: e.name || repName, rep_pct: rp, company_pct: 100 - rp }; };
+    const mySplit = me.rep_name ? splitOf(me.rep_name) : null;
+    let commissionSplits = null;
+    if (me.role === "president") {
+      commissionSplits = {};
+      for (const k in splitsRaw) { const e = splitsRaw[k]; const rp = clampPct(e && e.rep_pct); if (rp == null) continue; commissionSplits[k] = { name: (e && e.name) || k, rep_pct: rp, company_pct: 100 - rp }; }
+    }
+
     return json(200, {
       generatedAt: new Date().toISOString(),
       latestPeriod: periodList[periodList.length - 1] || null,
@@ -174,6 +190,8 @@ exports.handler = async (event) => {
       assignments,
       dealerInfo,
       facts,
+      mySplit,
+      commissionSplits,
     });
   } catch (e) {
     return json(500, { error: String(e.message || e) });
