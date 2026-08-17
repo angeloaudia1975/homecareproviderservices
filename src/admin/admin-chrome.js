@@ -37,6 +37,7 @@
         { href:"/admin/dealers.html",       label:"Dealer Manager",        icon:"🏢", desc:"Master dealer database, locations & hierarchy" },
         { href:"/admin/dealer.html",        label:"Dealer 360 & CRM",      icon:"📇", desc:"Full account command center — activity, contacts, tasks" },
         { href:"/admin/map.html",           label:"Territory Map",         icon:"🗺️", desc:"Dealer map, drive routes & saved trips" },
+        { href:"/admin/territory.html",     label:"Territory Lines",       icon:"📍", desc:"Which manufacturer lines you represent in each state" },
         { href:"/admin/staff.html",         label:"Sales Reps & Staff",    icon:"👥", desc:"Team accounts, roles & territory ownership" },
         { href:"/admin/tasks.html",         label:"My Tasks",              icon:"✅", desc:"Your task queue from dealer signals + manual tasks" },
         { href:"/admin/pipeline.html",      label:"Pipeline",              icon:"🔮", desc:"Open deals & weighted pipeline" },
@@ -86,6 +87,42 @@
   var ADMIN_ROLES = { president:1, admin:1, owner:1 };
   function isAdmin(me){ return !!(me && ADMIN_ROLES[String((me&&me.role)||"").toLowerCase()]); }
 
+  // ---- View as Rep (impersonation) ----
+  // When active, the browser holds a real rep session (minted server-side) and the admin's own
+  // session is stashed so it can be restored on exit. A persistent banner shows on every page.
+  var IMP_KEY = "hcps_impersonation";      // marker + meta {by_name, rep_name, rep_email, at}
+  var IMP_STASH = "hcps_imp_admin";        // the admin's own session, stashed for restore
+  var SESS_KEYS = ["hcps_staff_token","hcps_staff_profile","hcps_staff_refresh","hcps_staff_expires"];
+  function lget(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+  function lset(k,v){ try{ if(v==null) localStorage.removeItem(k); else localStorage.setItem(k,v); }catch(e){} }
+  function impGet(){ try{ return JSON.parse(lget(IMP_KEY)||"null"); }catch(e){ return null; } }
+  window.ACImpersonate = {
+    active: impGet,
+    // Begin viewing as a rep: stash the admin session, mark impersonation, activate the rep session.
+    start: function(session, meta){
+      var stash={}; SESS_KEYS.forEach(function(k){ stash[k]=lget(k); });
+      lset(IMP_STASH, JSON.stringify(stash));
+      lset(IMP_KEY, JSON.stringify(meta||{}));
+      if(window.HCPS && HCPS.setSession) HCPS.setSession(session);   // activate rep session
+      location.href = "/admin/rep-home.html";
+    },
+    // Exit: restore the admin session, clear the markers, log the end, return to Staff.
+    exit: function(){
+      var meta=impGet();
+      try{
+        var stash=JSON.parse(lget(IMP_STASH)||"null");
+        if(stash){ SESS_KEYS.forEach(function(k){ lset(k, stash[k]); }); }
+      }catch(e){}
+      lset(IMP_KEY, null); lset(IMP_STASH, null);
+      // Best-effort end-of-session audit, using the now-restored admin token.
+      try{
+        var tok=lget("hcps_staff_token");
+        if(tok && meta){ fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+tok},body:JSON.stringify({action:"impersonate_end",email:meta.rep_email,target_name:meta.rep_name})}).catch(function(){}); }
+      }catch(e){}
+      location.href = "/admin/staff.html";
+    }
+  };
+
   function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
   // Netlify serves "clean URLs" (/admin/foo, no .html), so every path comparison strips a trailing
   // .html and any #anchor before matching — otherwise the sub-nav vanishes on link-clicked pages.
@@ -104,8 +141,15 @@
     return null;
   }
 
+  function ensureImpStyles(){
+    if(document.getElementById("ac-imp-css")) return;
+    var s=document.createElement("style"); s.id="ac-imp-css";
+    s.textContent=".ac-imp{display:flex;align-items:center;gap:10px;background:#7a1f1f;color:#fff;padding:7px 16px;font-size:13px;font-weight:600}.ac-imp b{color:#ffe0a3}.ac-imp-tx{flex:1;min-width:0}.ac-imp-dot{font-size:15px}.ac-imp button{background:#fff;color:#7a1f1f;border:0;border-radius:7px;padding:5px 12px;font-weight:800;font-size:12px;cursor:pointer;white-space:nowrap}.ac-imp button:hover{background:#ffe9e9}";
+    (document.head||document.documentElement).appendChild(s);
+  }
   function render(){
     var host = document.getElementById("ac-head"); if(!host) return;
+    ensureImpStyles();
     var me = (window.HCPS && HCPS.profile && HCPS.profile()) || null;
     var path = curPath();
     var admin = isAdmin(me);
@@ -126,18 +170,32 @@
       tier1 = REP_TOOLS.map(function(t){ var on = samePage(t.href,path); return '<a href="'+t.href+'"'+(on?' class="on"':'')+'>'+esc(t.label)+'</a>'; }).join("");
     }
 
+    // While viewing as a rep, a persistent banner sits above the masthead on every page.
+    var imp = impGet();
+    var banner = imp
+      ? '<div class="ac-imp"><span class="ac-imp-dot">🔎</span>'
+        + '<span class="ac-imp-tx">Viewing as <b>'+esc(imp.rep_name||imp.rep_email||"rep")+'</b> — admin session'
+        + (imp.by_name?' started by '+esc(imp.by_name):'')+'.</span>'
+        + '<button type="button" id="ac-imp-exit">Exit view-as</button></div>'
+      : '';
+
     host.className = "ac-head";
     host.innerHTML =
-      '<div class="ac-wrap ac-top">'
+      banner
+      + '<div class="ac-wrap ac-top">'
         + '<a class="ac-brand" href="'+(admin?'/admin/':'/admin/rep-home.html')+'"><span class="ac-mark">H</span>'
         + '<span class="ac-bt"><b>'+(admin?'HCPS Connect 360':'HCPS Sales')+'</b><span>'+(admin?'Operating System':'Rep Workspace')+'</span></span></a>'
-        + '<div class="ac-who">' + who + '<a id="ac-taskbadge" href="/admin/tasks.html" class="ac-badge" style="display:none" title="Your open tasks">0</a><button type="button" id="ac-lock">Lock</button></div>'
+        + '<div class="ac-who">' + who + '<a id="ac-taskbadge" href="/admin/tasks.html" class="ac-badge" style="display:none" title="Your open tasks">0</a><button type="button" id="ac-lock">'+(imp?'Exit view-as':'Lock')+'</button></div>'
       + '</div>'
       + '<nav class="ac-nav ac-wrap">' + tier1 + '</nav>'
       + tier2;
 
+    var exitBtn = document.getElementById("ac-imp-exit");
+    if(exitBtn) exitBtn.addEventListener("click", function(){ window.ACImpersonate.exit(); });
+
     var lb = document.getElementById("ac-lock");
     if(lb) lb.addEventListener("click", function(){
+      if(impGet()){ window.ACImpersonate.exit(); return; }   // don't sign the admin out — just exit view-as
       if(typeof window.lock === "function") { window.lock(); return; }
       if(window.HCPS && HCPS.signOut) HCPS.signOut();
       location.reload();

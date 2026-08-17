@@ -1,120 +1,84 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>HCPS Admin — Territory</title>
+<title>HCPS — Territory Lines</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
 <style>
- :root{--ink:#16202e;--blue:#3B599A;--blue-dk:#2B4071;--orange:#F5821F;--bg:#eef2f7;--line:#e3e8ef;--muted:#64707e;--ok:#1f9d55;--danger:#d64545;--card:#fff}
- *{box-sizing:border-box;margin:0;padding:0}
- body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.5}
- a{color:inherit;text-decoration:none}
- .adminnav{background:var(--ink);display:flex;align-items:center;gap:4px;padding:10px 22px;flex-wrap:wrap;position:sticky;top:0;z-index:20;box-shadow:0 2px 12px rgba(0,0,0,.14)}
- .adminnav .bd{color:#fff;font-weight:800;font-size:15px;margin-right:16px}.adminnav .bd span{color:var(--orange)}
- .adminnav a{color:#aeb9c6;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-radius:7px}
- .adminnav a:hover{color:#fff;background:rgba(255,255,255,.07)}.adminnav a.on{color:#fff;background:var(--blue)}
- .adminnav .navright{margin-left:auto;display:flex;gap:10px;align-items:center}
- .lock{background:transparent;border:1px solid rgba(255,255,255,.22);color:#cdd6e2;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer}
- .wrap{max-width:1000px;margin:24px auto;padding:0 20px 60px}
- h1{font-size:24px;margin:0 0 3px}.sub{color:var(--muted);font-size:13.5px;margin:0 0 20px}
- .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:0 1px 2px rgba(16,24,40,.05),0 6px 20px rgba(16,24,40,.06);margin-bottom:18px}
- .card h2{font-size:16px;margin:0 0 4px}
- .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+ .row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+ .fl{display:block;font-size:12px;font-weight:700;color:var(--gray);margin:0 0 4px}
  select,input{padding:9px 11px;border:1px solid var(--line);border-radius:9px;font:inherit;font-size:14px;background:#fff}
- .btn{border:1px solid var(--blue-dk);background:var(--blue);color:#fff;border-radius:8px;padding:8px 12px;font-weight:700;font-size:13px;cursor:pointer}
- .btn.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
- .saved{color:var(--ok);font-size:12.5px;font-weight:700;opacity:0;transition:opacity .2s}.saved.show{opacity:1}
+ .saved{color:#1f9d55;font-size:12.5px;font-weight:700;opacity:0;transition:opacity .2s;align-self:center}.saved.show{opacity:1}
  .mfrgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-top:14px}
  .mfr{display:flex;align-items:center;gap:9px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;cursor:pointer;font-size:14px;transition:.12s}
- .mfr:hover{border-color:var(--blue)} .mfr.on{background:#eef4fb;border-color:var(--blue)}
+ .mfr:hover{border-color:#3B599A}.mfr.on{background:#eef4fb;border-color:#3B599A}
  .mfr input{width:auto}
- .hint{color:var(--muted);font-size:12.5px}
  .sumtable{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:8px}
  .sumtable th,.sumtable td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
- .sumtable th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+ .sumtable th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray)}
  .chip{display:inline-block;background:#eef2f7;border:1px solid #dfe6ee;border-radius:20px;padding:2px 9px;font-size:11.5px;margin:2px 3px 0 0}
- .stcode{font-weight:800;color:var(--blue-dk)}
+ .stcode{font-weight:800;color:#2B4071}
  .banner{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:10px;padding:12px 14px;font-size:13.5px;margin-bottom:16px}
- .gate{position:fixed;inset:0;z-index:50;background:linear-gradient(135deg,#16202e,#2B4071);display:grid;place-items:center;padding:20px}
- .gate-card{background:#fff;border-radius:16px;padding:30px;width:100%;max-width:370px;box-shadow:0 24px 70px rgba(0,0,0,.35)}
- .gate-card .brand{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--orange);font-weight:800}
- .gate-card h2{margin:6px 0 3px;font-size:22px}.gate-card p{color:var(--muted);font-size:13px;margin:0 0 16px}
- .gate-card input{width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:9px;font-size:15px}
- .gate-card button{width:100%;margin-top:12px;padding:12px;border:0;border-radius:9px;background:var(--blue);color:#fff;font-weight:800;font-size:14px;cursor:pointer}
- .gate-card .er{color:var(--danger);font-size:12.5px;margin-top:10px;min-height:16px}
-</style></head><body>
-
-<nav class="adminnav">
-  <div class="bd">HCPS <span>Admin</span></div>
-  <a href="/admin/">Home</a>
-  <a href="/admin/analytics.html">Analytics</a>
-  <a href="/admin/dealers.html">Dealer Manager</a>
-  <a href="/admin/map.html">Map</a>
-  <a href="/admin/territory.html" class="on">Territory</a>
-  <a href="/admin/images.html">Images</a>
-  <a href="/admin/featured.html">Featured</a>
-  <a href="/admin/catalog.html">Catalog</a>
-  <a href="/admin/home-editor.html">Portal Home</a>
-  <a href="/admin/website.html">Website</a>
-  <div class="navright"><button class="lock" onclick="lock()">Lock</button></div>
-</nav>
-
+</style>
+</head><body>
+<header id="ac-head"></header>
 <div class="wrap">
-  <h1>Territory</h1>
-  <p class="sub">Set which manufacturer lines you represent in each state. This drives the map/route filters, the “opportunity” flags on each account, and your target list.</p>
-  <div id="banner"></div>
-
-  <div class="card">
-    <div class="row">
-      <div><label class="hint" style="display:block;margin-bottom:4px">State</label>
-        <select id="stateSel" onchange="renderState()"></select></div>
-      <div style="align-self:flex-end;display:flex;gap:8px">
-        <button class="btn ghost" onclick="allState(true)">Select all</button>
-        <button class="btn ghost" onclick="allState(false)">Clear</button>
-        <span class="saved" id="saved">Saved ✓</span>
-      </div>
-    </div>
-    <div class="mfrgrid" id="mfrgrid"></div>
-  </div>
-
-  <div class="card">
-    <h2>Your territory at a glance</h2>
-    <p class="hint">Every state you've assigned lines to.</p>
-    <div id="summary"></div>
-  </div>
+  <div class="top"><div><h1 style="margin:0">Territory Lines</h1>
+    <div class="sub">Set which manufacturer lines you represent in each state. This drives the map/route filters, the “opportunity” flags on each account, and your target list.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
 </div>
-
-<div id="gate"></div>
-<div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:99999;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.78);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 1.0</div>
-
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
 <script>
 const $=s=>document.querySelector(s);
-const TKEY="hcps_admin_token";
-let TOKEN=sessionStorage.getItem(TKEY)||null;
-let MFRS=[], STATES=[], ASN={}, MNAME={};
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 const API="/.netlify/functions/territory-api";
+let MFRS=[], STATES=[], ASN={}, MNAME={};
 
 async function api(method,body){
-  const h={"content-type":"application/json"}; if(TOKEN)h["x-analytics-token"]=TOKEN;
+  const h={}; if(TOKEN) h["authorization"]="Bearer "+TOKEN; if(body) h["content-type"]="application/json";
   const r=await fetch(API,{method,headers:h,body:body?JSON.stringify(body):undefined});
-  if(r.status===401){ sessionStorage.removeItem(TKEY); TOKEN=null; showGate("That passcode didn't work — try again."); throw new Error("unauthorized"); }
-  return r.json();
+  return {status:r.status, body:await r.json().catch(()=>({}))};
 }
-function showGate(msg){
-  $("#gate").innerHTML=`<div class="gate"><div class="gate-card"><div class="brand">HomeCare Provider Services</div>
-    <h2>Admin access</h2><p>Enter your admin passcode.</p>
-    <input id="tok" type="password" placeholder="Admin passcode" onkeydown="if(event.key==='Enter')submitTok()">
-    <button onclick="submitTok()">Unlock</button><div class="er">${msg||""}</div></div></div>`;
-  setTimeout(()=>{const t=$("#tok");if(t)t.focus();},50);
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button> <a href="reset.html" style="margin-left:6px;font-size:13px;font-weight:600;color:var(--navy)">Forgot password?</a><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+  const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+  HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
 }
-function submitTok(){ const v=($("#tok").value||"").trim(); if(!v)return; TOKEN=v; sessionStorage.setItem(TKEY,v); $("#gate").innerHTML=""; boot(); }
-function lock(){ sessionStorage.removeItem(TKEY); location.reload(); }
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
 
-function flashSaved(){ const s=$("#saved"); s.classList.add("show"); clearTimeout(flashSaved._t); flashSaved._t=setTimeout(()=>s.classList.remove("show"),1200); }
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  const {status,body:j}=await api("GET");
+  if(status===401){ gate("Your session ended — sign in again."); return; }
+  if(status===403){ $("#body").innerHTML=`<div class="card"><h2>Territory setup is admin-only</h2><p class="hint">This configures which manufacturer lines HCPS represents by state. <a class="link" href="/admin/rep-home.html">Go to your workspace →</a></p></div>`; return; }
+  const banner = (j&&j.error==="tables_missing") ? `<div class="banner">${esc(j.message||"Run territory.sql in Supabase, then reload.")}</div>` : "";
+  MFRS=(j&&j.manufacturers)||[]; STATES=(j&&j.states)||[]; ASN=(j&&j.assignments)||{};
+  MNAME={}; MFRS.forEach(m=>MNAME[m.slug]=m.name);
+  $("#body").innerHTML=`${banner}
+    <div class="card">
+      <div class="row">
+        <div><label class="fl">State</label><select id="stateSel" onchange="renderState()"></select></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="go sm" style="background:#fff;color:var(--navy)" onclick="allState(true)">Select all</button>
+          <button class="go sm" style="background:#fff;color:var(--navy)" onclick="allState(false)">Clear</button>
+          <span class="saved" id="saved">Saved ✓</span>
+        </div>
+      </div>
+      <div class="mfrgrid" id="mfrgrid"></div>
+    </div>
+    <div class="card"><h2>Your territory at a glance</h2>
+      <p class="hint">Every state you've assigned lines to.</p>
+      <div id="summary"></div>
+    </div>`;
+  fillStates(); renderState(); renderSummary();
+}
 
+function flashSaved(){ const s=$("#saved"); if(!s)return; s.classList.add("show"); clearTimeout(flashSaved._t); flashSaved._t=setTimeout(()=>s.classList.remove("show"),1200); }
 function stateLabel(st){ const n=(ASN[st]||[]).length; return st+(n?` — ${n} line${n>1?"s":""}`:""); }
-function fillStates(){
-  const sel=$("#stateSel"); const cur=sel.value||"TN";
-  sel.innerHTML=STATES.map(st=>`<option value="${st}"${st===cur?" selected":""}>${stateLabel(st)}</option>`).join("");
-}
+function fillStates(){ const sel=$("#stateSel"); if(!sel)return; const cur=sel.value||"TN"; sel.innerHTML=STATES.map(st=>`<option value="${st}"${st===cur?" selected":""}>${stateLabel(st)}</option>`).join(""); }
 function renderState(){
   const st=$("#stateSel").value; const have=new Set(ASN[st]||[]);
   $("#mfrgrid").innerHTML=MFRS.map(m=>`<label class="mfr ${have.has(m.slug)?"on":""}">
@@ -125,12 +89,14 @@ async function toggle(slug,on,el){
   el.closest(".mfr").classList.toggle("on",on);
   ASN[st]=ASN[st]||[];
   if(on){ if(!ASN[st].includes(slug))ASN[st].push(slug); } else { ASN[st]=ASN[st].filter(x=>x!==slug); }
-  try{ await api("POST",{action:"set_line",state:st,manufacturer:slug,on}); flashSaved(); fillStates(); renderSummary(); }catch(e){}
+  const {body:j}=await api("POST",{action:"set_line",state:st,manufacturer:slug,on});
+  if(j&&j.ok){ flashSaved(); fillStates(); renderSummary(); }
 }
 async function allState(on){
   const st=$("#stateSel").value;
   ASN[st]= on ? MFRS.map(m=>m.slug) : [];
-  try{ await api("POST",{action:"set_state",state:st,manufacturers:ASN[st]}); flashSaved(); renderState(); fillStates(); renderSummary(); }catch(e){}
+  const {body:j}=await api("POST",{action:"set_state",state:st,manufacturers:ASN[st]});
+  if(j&&j.ok){ flashSaved(); renderState(); fillStates(); renderSummary(); }
 }
 function renderSummary(){
   const sts=Object.keys(ASN).filter(st=>(ASN[st]||[]).length).sort();
@@ -139,16 +105,6 @@ function renderSummary(){
     sts.map(st=>`<tr><td class="stcode">${st}</td><td>${(ASN[st]||[]).slice().sort((a,b)=>(MNAME[a]||a).localeCompare(MNAME[b]||b)).map(s=>`<span class="chip">${esc(MNAME[s]||s)}</span>`).join("")}</td></tr>`).join("")+
     `</tbody></table>`;
 }
-async function boot(){
-  if(!TOKEN){ showGate(); return; }
-  try{
-    const j=await api("GET");
-    if(j&&j.error==="tables_missing"){ $("#banner").innerHTML=`<div class="banner">${esc(j.message)}</div>`; }
-    MFRS=(j&&j.manufacturers)||[]; STATES=(j&&j.states)||[]; ASN=(j&&j.assignments)||{};
-    MNAME={}; MFRS.forEach(m=>MNAME[m.slug]=m.name);
-    fillStates(); renderState(); renderSummary();
-  }catch(e){}
-}
-if(TOKEN) boot(); else showGate();
+load();
 </script>
 </body></html>

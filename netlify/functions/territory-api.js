@@ -24,6 +24,24 @@ async function sbSend(method,path,body,extraHeaders){
 }
 async function fetchJson(url){ const r=await fetch(url); if(!r.ok) throw new Error("fetch "+r.status); return r.json(); }
 
+// Auth: accept a President/admin staff Bearer (the shared session used across the portal) OR the
+// legacy x-analytics-token passcode. Territory config is admin-only — reps don't manage it.
+const ADMIN_ROLES=new Set(["president","admin","owner"]);
+async function whoami(event){
+  const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
+  const tok=auth.replace(/^Bearer\s+/i,"").trim();
+  if(tok){
+    try{ const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${tok}`}});
+      if(r.ok){ const u=await r.json(); const email=u&&u.email&&String(u.email).toLowerCase();
+        if(email){ const s=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=role,active`).catch(()=>[]); const su=s&&s[0];
+          if(su&&su.active!==false) return {role:su.role||"rep",email}; } } }catch(e){}
+  }
+  const need=process.env.ANALYTICS_TOKEN, got=event.headers["x-analytics-token"]||event.headers["X-Analytics-Token"]||"";
+  if(need){ if(got===need) return {role:"president",email:""}; }
+  else { return {role:"president",email:""}; }   // no passcode configured → preserve legacy open behavior
+  return null;
+}
+
 // Lines we NO LONGER represent — excluded from the Territory picker AND from business-
 // development targeting. Add a slug here to retire a line company-wide (rep-facing tools).
 const NOT_REPRESENTED=new Set(["complete-medical-supplies"]);
@@ -68,8 +86,9 @@ async function buildCatalog(){
 exports.handler = async (event)=>{
   try{
     if(!SUPABASE_URL||!SERVICE_ROLE) return json(500,{error:"Supabase env vars not set (SUPABASE_URL, SUPABASE_SERVICE_ROLE)"});
-    const need=process.env.ANALYTICS_TOKEN;
-    if(need){ const got=event.headers["x-analytics-token"]||event.headers["X-Analytics-Token"]; if(got!==need) return json(401,{error:"unauthorized"}); }
+    const me=await whoami(event);
+    if(!me) return json(401,{error:"unauthorized"});
+    if(!ADMIN_ROLES.has(String(me.role||"").toLowerCase())) return json(403,{error:"Admin only"});
 
     const cat=await buildCatalog();
 

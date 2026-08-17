@@ -45,6 +45,35 @@ async function emailFromToken(event){
   try{ const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${tok}`}}); if(!r.ok) return null; const u=await r.json(); return (u&&u.email)?String(u.email).toLowerCase():null; }catch(e){ return null; }
 }
 async function getStaff(email){ const rows=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=*`).catch(()=>[]); return (rows&&rows[0])||null; }
+
+// ---- Impersonation ("View as Rep") ----
+// Mint a real, rep-scoped session for an admin WITHOUT the rep's password, using Supabase's
+// admin magic-link generator + verify. The admin endpoint returns the link/OTP directly, so NO
+// email is sent to the rep. The rep must already have an auth account (i.e. have signed in at
+// least once) — brand-new reps who've never logged in can't be viewed until they do.
+async function adminGenerateLink(email){
+  try{
+    const r=await fetch(`${SUPABASE_URL}/auth/v1/admin/generate_link`,{method:"POST",headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`,"content-type":"application/json"},body:JSON.stringify({type:"magiclink",email})});
+    const t=await r.text(); let j={}; try{ j=JSON.parse(t); }catch(e){}
+    if(!r.ok) return {ok:false,status:r.status,text:t};
+    const p=(j&&j.properties)||j||{};
+    return {ok:true, hashed:(p.hashed_token||j.hashed_token||""), otp:(p.email_otp||j.email_otp||"")};
+  }catch(e){ return {ok:false,error:String(e.message||e)}; }
+}
+async function verifyMagic(g,email){
+  // Try token_hash (self-contained) first, then OTP + email. Returns a session JSON or null.
+  const attempts=[];
+  if(g.hashed) attempts.push({type:"magiclink",token_hash:g.hashed});
+  if(g.otp)    attempts.push({type:"magiclink",token:g.otp,email});
+  for(const body of attempts){
+    try{
+      const r=await fetch(`${SUPABASE_URL}/auth/v1/verify`,{method:"POST",headers:{apikey:ANON,"content-type":"application/json"},body:JSON.stringify(body)});
+      const j=await r.json().catch(()=>({}));
+      if(r.ok && j.access_token) return j;
+    }catch(e){}
+  }
+  return null;
+}
 function pubProfile(s){ return s?{email:s.email,name:s.name||"",role:s.role||"rep",rep_name:s.rep_name||"",can_travel:!!s.can_travel,active:s.active!==false}:null; }
 async function caller(event){ const email=await emailFromToken(event); if(!email) return null; const s=await getStaff(email); return (s&&s.active!==false)?s:null; }
 
@@ -140,6 +169,36 @@ exports.handler = async (event)=>{
     if(b.action==="list_users"){
       const users=await sbGet("staff_users?select=*&order=role,name").catch(()=>[]);
       return json(200,{ok:true,users:(users||[]).map(pubProfile)});
+    }
+
+    // View as Rep — return a real rep session to the President's browser, audit-logged. President-only.
+    if(b.action==="impersonate"){
+      const email=String(b.email||"").trim().toLowerCase();
+      if(!email) return json(400,{error:"email required"});
+      if(email===me.email) return json(200,{ok:false,message:"You're already signed in as yourself."});
+      const target=await getStaff(email);
+      if(!target || target.active===false) return json(200,{ok:false,message:"That teammate isn't an active staff account."});
+      if(target.role==="president") return json(200,{ok:false,message:"View-as is for reps and staff — not other President accounts."});
+      const g=await adminGenerateLink(email);
+      const sess=g.ok ? await verifyMagic(g,email) : null;
+      if(!sess || !sess.access_token){
+        return json(200,{ok:false,message:`${target.name||email} needs to sign in at least once before you can view their portal (they set their own password on first sign-in).`});
+      }
+      // Audit — best effort; never blocks the session.
+      try{ await sbSend("POST","impersonation_log",{admin_email:me.email,admin_name:me.name||me.email,target_email:email,target_name:target.name||email,action:"start",user_agent:String(event.headers["user-agent"]||"").slice(0,300)},{Prefer:"return=minimal"}); }catch(e){}
+      return json(200,{ok:true,token:sess.access_token,refresh:sess.refresh_token,expires_in:sess.expires_in,
+        profile:pubProfile(target),
+        impersonation:{by:me.email,by_name:me.name||me.email,at:new Date().toISOString()}});
+    }
+    // Log the end of a View-as session (called after the admin session is restored, so `me` is the admin).
+    if(b.action==="impersonate_end"){
+      try{ await sbSend("POST","impersonation_log",{admin_email:me.email,admin_name:me.name||me.email,target_email:String(b.email||"").trim().toLowerCase()||null,target_name:String(b.target_name||"").trim()||null,action:"end",user_agent:String(event.headers["user-agent"]||"").slice(0,300)},{Prefer:"return=minimal"}); }catch(e){}
+      return json(200,{ok:true});
+    }
+    // President-only view of the audit trail (most recent first).
+    if(b.action==="impersonation_log"){
+      const rows=await sbGet("impersonation_log?select=*&order=created_at.desc&limit=100").catch(()=>[]);
+      return json(200,{ok:true,rows:rows||[]});
     }
     if(b.action==="add_user"){
       const email=String(b.email||"").trim().toLowerCase();
