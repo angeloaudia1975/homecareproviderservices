@@ -159,4 +159,8 @@
   // Usage capture (Phase 3): load the silent rep tracker once per page. Best-effort — a no-op if the
   // user isn't signed in or the capture endpoint/tables aren't set up yet.
   try{ if(!window.__hcpsTrack){ window.__hcpsTrack=1; var _t=document.createElement("script"); _t.src="/admin/rep-track.js"; _t.defer=true; (document.head||document.documentElement).appendChild(_t); } }catch(e){}
+
+  // Guided page tours ("Take a tour"): load the tour engine once per page. It self-gates — a floating
+  // launcher only appears on pages that actually have a tour defined.
+  try{ if(!window.__hcpsTour){ window.__hcpsTour=1; var _u=document.createElement("script"); _u.src="/admin/rep-tour.js"; _u.defer=true; (document.head||document.documentElement).appendChild(_u); } }catch(e){}
 })();

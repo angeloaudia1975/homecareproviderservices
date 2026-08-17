@@ -9,6 +9,13 @@
  .tpill{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:11px;padding:9px 13px;color:#fff;text-decoration:none;font-size:13px;display:flex;align-items:center;gap:8px}
  .tpill:hover{background:rgba(255,255,255,.2)}
  .tpill b{font-size:17px;font-family:'Barlow Condensed',sans-serif}
+ .flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+ .fstep{background:#fff;border:1px solid var(--line);border-radius:12px;padding:13px 14px}
+ .fstep .num{width:24px;height:24px;border-radius:50%;background:var(--orange,#e07b00);color:#fff;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;margin-bottom:7px}
+ .fstep .ft{font-weight:700;color:var(--navy);font-size:13.5px;margin-bottom:2px}
+ .fstep .fd{color:var(--gray);font-size:12.5px;line-height:1.45}
+ .tourbtn{background:#fff;color:#1f2b45;border:0;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:800;cursor:pointer}
+ .tourbtn:hover{background:#eef2f6}
  .sec-h{display:flex;align-items:baseline;gap:10px;margin:22px 0 10px}
  .sec-h h2{margin:0;font-size:16px;color:var(--navy)}
  .sec-h .hint{margin:0}
@@ -96,6 +103,17 @@ function render(){
         <a class="tpill" href="/admin/health.html">❤️ <span>Review dealer health</span></a>
         <a class="tpill" href="/admin/rep-training.html">🎓 <span>Training center</span></a>
       </div>
+      <div style="margin-top:14px"><button class="tourbtn" onclick="startTour()">🧭 Take the 2-minute tour</button></div>
+    </div>
+
+    <div class="sec-h"><h2>How it all works</h2><span class="hint">— your day, in the platform</span></div>
+    <div class="flow">
+      <div class="fstep"><div class="num">1</div><div class="ft">Sign in → land here</div><div class="fd">Your portal opens to everything for your territory — all scoped to your accounts.</div></div>
+      <div class="fstep"><div class="num">2</div><div class="ft">Start with Who to Call</div><div class="fd">A ranked list of who needs you today: carts, overdue reorders, dormant and new accounts.</div></div>
+      <div class="fstep"><div class="num">3</div><div class="ft">Work accounts in Dealer 360</div><div class="fd">Open each dealer, log the touch, add notes, keep contacts current. Your home base.</div></div>
+      <div class="fstep"><div class="num">4</div><div class="ft">Plan your week on the map</div><div class="fd">Territory Map optimizes your drive, saves the trip, and logs visits as you go.</div></div>
+      <div class="fstep"><div class="num">5</div><div class="ft">Keep health out of the red</div><div class="fd">Dealer Health flags accounts slipping — reach out before they go cold.</div></div>
+      <div class="fstep"><div class="num">6</div><div class="ft">Close the loop &amp; track results</div><div class="fd">Finish tasks, move pipeline deals, and watch your numbers in My Performance &amp; Commissions.</div></div>
     </div>
 
     <div class="sec-h"><h2>Your tools</h2><span class="hint">— everything below is scoped to your assigned accounts</span></div>
@@ -108,6 +126,7 @@ function render(){
   loadToday();
 }
 
+function startTour(){ var n=0; (function t(){ if(window.HCPSTour){ HCPSTour.start("rep-home"); } else if(n++<25){ setTimeout(t,150); } })(); }
 function loadToday(){
   if(!TOKEN) return;
   fetch("/.netlify/functions/crm-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action:"task_count"})})
