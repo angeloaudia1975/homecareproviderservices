@@ -69,6 +69,8 @@ window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}}
 let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 let TOKEN=HCPS.token(), CUR=null, ALLD=[];
 const Q=new URLSearchParams(location.search); const QID=Q.get("id"); const QNAME=Q.get("name");
+let SORTKEY="sales_desc";   // Dealer 360 picker sort — default: highest sales first
+let HEALTH=null;            // dealer_id -> {score, churn, status} from health-api (loaded lazily for the picker)
 const MONTH=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const pmOf=p=>{const s=String(p||"").slice(0,7);const[y,m]=s.split("-").map(Number);return y*12+(m-1);};
 const pmLabel=pm=>MONTH[((pm%12)+12)%12]+" "+Math.floor(pm/12);
@@ -303,10 +305,51 @@ function renderPicker(dealers){
   $("#body").innerHTML=`<div class="card">
     <h1 style="margin:0 0 4px;font-size:24px">Dealer 360 &amp; CRM</h1>
     <div class="hint" style="margin:0 0 10px">Open a dealer for their full command center — activity, interest, contacts, tasks &amp; next best action.</div>
-    <input id="dq" placeholder="Search by business, contact name, account #, email, city, state or rep — type any part…" style="width:100%;max-width:520px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;margin-bottom:6px;font-size:15px" oninput="filterPicker()" autofocus>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px">
+      <input id="dq" placeholder="Search by business, contact name, account #, email, city, state or rep — type any part…" style="flex:1;min-width:280px;max-width:520px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;font-size:15px" oninput="filterPicker()" autofocus>
+      <label class="hint" style="display:flex;align-items:center;gap:6px;margin:0;white-space:nowrap">Sort by
+        <select id="dsort" onchange="SORTKEY=this.value;filterPicker()" style="padding:9px 10px;border:1px solid var(--line);border-radius:9px;font-size:14px;background:#fff">
+          <option value="sales_desc">Sales — high to low</option>
+          <option value="sales_asc">Sales — low to high</option>
+          <option value="health_risk">Dealer health — needs attention first</option>
+          <option value="last_recent">Last order — most recent</option>
+          <option value="last_overdue">Last order — longest ago</option>
+          <option value="name_asc">Name — A to Z</option>
+        </select>
+      </label>
+    </div>
     <div id="pmeta" class="hint" style="margin:0 0 10px"></div>
     <div id="plist"></div></div>`;
+  ensureHealth();   // pull dealer health/priority in the background so those sorts are ready
   filterPicker();
+}
+// Load dealer_engagement (health score, churn/urgency, status) once, scoped to the caller, then re-render.
+async function ensureHealth(){
+  if(HEALTH) return;
+  try{
+    const r=await fetch("/.netlify/functions/health-api",{headers:{authorization:"Bearer "+TOKEN}});
+    const j=await r.json().catch(()=>({}));
+    HEALTH={};
+    if(j&&j.rows){ for(const x of j.rows){ if(x.dealer_id!=null) HEALTH[x.dealer_id]={score:Number(x.score)||0,churn:Number(x.churn_score)||0,status:x.status||""}; } }
+  }catch(e){ HEALTH={}; }
+  if($("#plist")) filterPicker();   // health-based sort/labels fill in once loaded
+}
+// Compare two picker dealers by the active sort. Falls back to sales, then name, for stable ordering.
+function pickerCmp(a,b){
+  const H=HEALTH||{};
+  const ha=H[a.id]||{}, hb=H[b.id]||{};
+  const lp=d=>d.lastPeriod?String(d.lastPeriod).slice(0,10):"";
+  const byName=()=>String(a.name||"").localeCompare(String(b.name||""),"en",{sensitivity:"base"});
+  const bySalesDesc=()=>(b.sales||0)-(a.sales||0);
+  switch(SORTKEY){
+    case "sales_asc":   return (a.sales||0)-(b.sales||0) || byName();
+    case "name_asc":    return byName();
+    case "health_risk": return (hb.churn||0)-(ha.churn||0) || (ha.score||0)-(hb.score||0) || bySalesDesc();
+    case "last_recent": { const A=lp(a),B=lp(b); if(A!==B) return A<B?1:-1; return bySalesDesc(); }        // newest first; blanks last
+    case "last_overdue":{ const A=lp(a)||"",B=lp(b)||""; if(A!==B) return A<B?-1:1; return bySalesDesc(); }               // never-ordered first, then oldest→newest
+    case "sales_desc":
+    default:            return bySalesDesc() || byName();
+  }
 }
 // Score one dealer against the query. Prefix matches on the business name rank highest, then account #
 // and contact-name prefixes, then "contains" matches — so typing "m" surfaces businesses starting with
@@ -328,18 +371,25 @@ function pickerScore(d,q){
   if(String(d.rep||"").toLowerCase().indexOf(q)!==-1) return {score:30,why:"rep: "+d.rep};
   return {score:20,why:""};   // matched on city/state/phone, or across several words
 }
+function sortLabel(){ return {sales_desc:"highest sales",sales_asc:"lowest sales",health_risk:"needs attention",last_recent:"most recent order",last_overdue:"longest since last order",name_asc:"name (A–Z)"}[SORTKEY]||"highest sales"; }
+function lastOrderLabel(d){ const p=d.lastPeriod; if(!p) return "no orders yet"; const s=String(p).slice(0,7); const [y,m]=s.split("-"); const mi=(+m)-1; if(mi<0||mi>11) return ""; return "last order "+MONTH[mi]+" '"+String(y).slice(2); }
+function healthChip(status){ const map={active:["#e6f6ec","#1c7a44","Active"],slipping:["#fff4e0","#a65b00","Slipping"],overdue:["#fdeaea","#b42323","Overdue"],dormant:["#eef0f3","#5b6672","Dormant"],inactive:["#eef0f3","#5b6672","Inactive"],new:["#e8f0fe","#2c5cc5","New"]}; const m=map[String(status||"").toLowerCase()]; if(!m) return ""; return ` <span style="font-size:11px;color:${m[1]};background:${m[0]};border:1px solid ${m[1]}33;border-radius:6px;padding:1px 6px;margin-left:4px;white-space:nowrap">${m[2]}</span>`; }
 function pickerRow(d,why){
-  const sub=[[d.city,d.state].filter(Boolean).join(", "), d.rep, d.sales?money(d.sales):""].filter(Boolean).join(" · ");
+  const loc=[d.city,d.state].filter(Boolean).join(", ");
+  const sub=[loc, d.rep, d.sales?money(d.sales):"", lastOrderLabel(d)].filter(Boolean).join(" · ");
+  const h=(HEALTH||{})[d.id];
+  const chip=h&&h.status?healthChip(h.status):"";
   const whyHtml=why?` <span style="font-size:11px;color:#b45309;background:#fdeee0;border:1px solid #f6d5ad;border-radius:6px;padding:1px 6px;margin-left:4px;white-space:nowrap">${esc(why)}</span>`:"";
-  return `<a class="prow2" href="/admin/dealer.html?id=${encodeURIComponent(d.id)}"><b>${esc(d.name)}</b> <span class="hint" style="margin:0">${esc(sub)}</span>${whyHtml}</a>`;
+  return `<a class="prow2" href="/admin/dealer.html?id=${encodeURIComponent(d.id)}"><b>${esc(d.name)}</b> <span class="hint" style="margin:0">${esc(sub)}</span>${chip}${whyHtml}</a>`;
 }
 function filterPicker(){
   const el=$("#plist"); if(!el) return;
   const q=(($("#dq")||{}).value||"").toLowerCase().trim();
   const meta=$("#pmeta");
   if(!q){
-    el.innerHTML=(PICKER||[]).slice(0,200).map(d=>pickerRow(d,"")).join("");
-    if(meta) meta.textContent=`${(PICKER||[]).length} dealers — start typing to find one by business, contact, account # or email.`;
+    const list=[...(PICKER||[])].sort(pickerCmp);
+    el.innerHTML=list.slice(0,300).map(d=>pickerRow(d,"")).join("");
+    if(meta) meta.textContent=`${(PICKER||[]).length} dealers · sorted by ${sortLabel()} — start typing to find one by business, contact, account # or email.`;
     return;
   }
   const scored=[];

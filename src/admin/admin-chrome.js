@@ -74,7 +74,7 @@
     { href:"/admin/rep-home.html",           label:"Portal Home" },
     { href:"/admin/rep-training.html",       label:"Training" },
     { href:"/admin/command-center-360.html", label:"Command Center 360" },
-    { href:"/admin/dealers.html",            label:"Dealer 360" },
+    { href:"/admin/dealer.html",             label:"Dealer 360 & CRM" },
     { href:"/admin/map.html",                label:"Territory Map" },
     { href:"/admin/health.html",             label:"Dealer Health" },
     { href:"/admin/call-list.html",          label:"Who to Call" },

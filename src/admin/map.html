@@ -337,7 +337,7 @@ function draw(){
       <button class="addbtn" onclick="addStop(${p._i})">${inRoute(p)?"✓ In route":"＋ Add to route"}</button>
       ${p.dealer_id?`<button class="addbtn" style="background:#1f9d55;margin-top:5px" onclick="markVisited('${p.dealer_id}',${p._i})">✓ Mark visited today</button>`:""}
       ${p.dealer_id?`<button class="addbtn" style="background:#F5821F;margin-top:5px" onclick="printDealerHandout('${p.dealer_id}')">🖨 Dealer handout</button>`:""}
-      <div class="row" style="margin-top:5px"><a href="/admin/dealers.html${p.dealer_id?`?dealer=${encodeURIComponent(p.dealer_id)}`:""}">Open in Dealer Manager →</a></div></div>`,
+      <div class="row" style="margin-top:5px"><a href="/admin/dealer.html${p.dealer_id?`?id=${encodeURIComponent(p.dealer_id)}`:""}">Open in Dealer 360 →</a></div></div>`,
       {keepInView:true, autoPan:true, autoPanPadding:[50,60], maxHeight:340});
     return m;
   });
@@ -994,7 +994,7 @@ function renderUnmapped(){
       <div class="uitem">
         <div class="un">${esc(u.name)}</div>
         <div class="ua">${esc([u.address,[u.city,u.state].filter(Boolean).join(", "),u.zip].filter(Boolean).join(" · "))}</div>
-        <div><a href="/admin/dealers.html?dealer=${encodeURIComponent(u.dealer_id)}" target="_blank" rel="noopener">Fix address in Dealer Manager →</a></div>
+        <div><a href="/admin/dealer.html?id=${encodeURIComponent(u.dealer_id)}" target="_blank" rel="noopener">Open dealer →</a></div>
       </div>`).join("");
     return `<div class="ustate">${esc(st)}</div>${items}`;
   }).join("");

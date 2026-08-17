@@ -22,7 +22,9 @@
       { el:"#ac-head .ac-nav", title:"Work from here", body:"Open an account before every call or visit, then log your touch there so nothing slips." }
     ]},
     "dealer": { steps: [
-      { el:"h1", title:"The full account picture", body:"Everything about this dealer in one place — history, health, contacts, tasks, notes, activity, and matched email." },
+      { el:"h1", title:"Dealer 360 & CRM — your workspace", body:"This is where you work your book. From the account list, use <b>Sort by</b> to rank your dealers by sales, dealer health, or last order date, then open one for the full picture." },
+      { el:"#dsort", title:"Prioritize your day", body:"Sort accounts highest-to-lowest sales to focus on your biggest dealers, or by “needs attention” to catch at-risk accounts first." },
+      { el:"h1", title:"The full account picture", body:"Open a dealer and you get everything in one place — history, health, contacts, tasks, notes, activity, and matched email." },
       { el:"#emailCard", title:"Their email, right here", body:"Outlook messages matched to this dealer show on the timeline. Click any message to read the whole thing while you're on the phone." },
       { el:null, title:"Log as you go", body:"Log a touch (call / visit / email), add a note, and keep contacts current while you're in the account — that's how follow-ups get created." }
     ]},

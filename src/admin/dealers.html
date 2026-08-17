@@ -20,6 +20,9 @@ const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
 window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
 let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 const isPres=()=>!!(ME&&ME.role==="president");
+// Dealer Manager is an admin tool. Sales reps (and other non-admin roles) work in Dealer 360 & CRM.
+const ADMIN_ROLES={president:1,admin:1,owner:1};
+const isAdminRole=()=>!!(ME&&ADMIN_ROLES[String(ME.role||"").toLowerCase()]);
 let DATA=null,TOKEN=HCPS.token(),TAB=(location.hash==="#logins"?"logins":"all"),SEL=new Set(),SELP=new Set(),DETAIL=null,SORT={key:"sales",dir:-1};
 // Deep-link: /admin/dealers.html?dealer=<id> opens that dealer's record directly
 // (used by the Map's "Open in Dealer Manager" link). Applied once, after data loads.
@@ -114,6 +117,16 @@ function sortDealers(list){
 }
 function render(){
   if(!DATA)return;
+  // Dealer Manager is admin-only. A rep who lands here (old link, bookmark) is sent to their workspace.
+  if(ME && !isAdminRole()){
+    $("#body").innerHTML=`<div class="msg"><div class="card" style="max-width:520px;margin:24px auto;text-align:center">
+      <div style="font-size:34px;margin-bottom:6px">🔒</div>
+      <h2 style="margin:0 0 6px">Dealer Manager is admin-only</h2>
+      <p class="hint" style="margin:0 0 14px">This page manages the master dealer database (merging, locations, portal accounts). Your account workspace is <b>Dealer 360 &amp; CRM</b> — open any assigned dealer for their full record, and sort your book by sales, health or last order.</p>
+      <a class="go orange" href="/admin/dealer.html">Go to Dealer 360 &amp; CRM →</a>
+    </div></div>`;
+    return;
+  }
   if(!isPres() && TAB!=='all') TAB='all';   // reps only have their own dealer list
   if(DETAIL) return renderDetail();
   const rev=reviewList().length, dup=suggestedPairs().length;

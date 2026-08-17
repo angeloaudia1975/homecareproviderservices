@@ -47,7 +47,7 @@ window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
 let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 
 const TOOLS=[
-  {href:"/admin/dealers.html",             label:"Dealer 360",             icon:"📇", guide:"Dealer 360 & CRM"},
+  {href:"/admin/dealer.html",              label:"Dealer 360 & CRM",       icon:"📇", guide:"Dealer 360 & CRM"},
   {href:"/admin/map.html",                 label:"Territory Map & Routing",icon:"🗺️", guide:"Territory Map"},
   {href:"/admin/call-list.html",           label:"Who to Call Today",      icon:"📞", guide:"Who to Call"},
   {href:"/admin/health.html",              label:"Dealer Health",          icon:"❤️", guide:"Dealer Health"},
@@ -60,19 +60,19 @@ const TOOLS=[
 
 // Task-based playbooks — the day-to-day "how do I actually do X" the tool cards don't spell out.
 const PLAYS=[
-  {icon:"📇", title:"Manage an account end to end", href:"/admin/dealers.html", goal:"Walk into every call or visit already knowing the account.",
+  {icon:"📇", title:"Manage an account end to end", href:"/admin/dealer.html", goal:"Walk into every call or visit already knowing the account.",
    steps:["Open <b>Dealer 360</b> and search for the dealer, or click them from any list.",
      "Read the top of the record: sales history, health score, open tasks, recent activity, contacts, and product interest — the whole relationship on one screen.",
      "Note what's changed since last time (a new order, a dropped line, a cart they abandoned).",
      "Make your call or visit informed — then log the touch (next playbook) before you move on."],
    why:"Dealer 360 is your home base. Everything else — routes, calls, tasks — should start and end here so the account's story stays complete."},
-  {icon:"📝", title:"Log a dealer touch", href:"/admin/dealers.html", goal:"Every call, visit, and meaningful email recorded — so nothing slips and follow-ups get created.",
+  {icon:"📝", title:"Log a dealer touch", href:"/admin/dealer.html", goal:"Every call, visit, and meaningful email recorded — so nothing slips and follow-ups get created.",
    steps:["In the dealer's <b>Dealer 360</b>, use <b>Log activity</b> (or log the visit from <b>Territory Map</b> after a stop).",
      "Pick the type — call, visit, email, or meeting.",
      "Add a one-line detail: what happened and what's next.",
      "Save. It's stamped with your name and the date, and shows on the account timeline."],
    why:"Logging touches is how your work becomes visible and how the platform knows to prompt the next follow-up. Log it while it's fresh — the same day."},
-  {icon:"🗒️", title:"Add notes & keep contacts current", href:"/admin/dealers.html", goal:"Capture what you learn and who the players are.",
+  {icon:"🗒️", title:"Add notes & keep contacts current", href:"/admin/dealer.html", goal:"Capture what you learn and who the players are.",
    steps:["In <b>Dealer 360</b> → <b>Notes</b>, jot what you want to remember — preferences, timing, competitive intel. Notes are dated and attributed to you.",
      "In <b>Contacts</b>, add or update the people: name, title, email, cell. ",
      "Save. Accurate contacts feed your routes, campaigns, and everyone else who touches the account."],
