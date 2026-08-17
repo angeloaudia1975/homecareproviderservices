@@ -146,6 +146,7 @@ function stopCard(s,i){
       <a class="btn" href="${navUrl}" target="_blank" rel="noopener">🧭 Navigate</a>
       ${s.contact_phone?`<a class="btn" href="tel:${esc(String(s.contact_phone).replace(/[^0-9+]/g,''))}">📞 Call</a>`:""}
       <button class="btn" onclick="openHandout('${jesc(s.dealer_id)}','${jesc(s.name)}')">📄 Visit package</button>
+      <button class="btn" onclick="headsUp(${i})">📣 Heads-up</button>
       ${st==="plan"?`<button class="btn go" onclick="checkIn(${i})">▶ Start visit</button>`:`<button class="btn ${st==='done'?'':'pri'}" onclick="toggleBody(${i})">${st==='done'?'View':'✎ Log visit'}</button>`}
     </div>
     <div class="body" id="body_${i}"></div>
@@ -264,14 +265,22 @@ async function draftFollowup(i){
   let j; try{ j=await rapi({action:"generate_followup",dealer_id:s.dealer_id,details}); }catch(e){ j=null; }
   if(!j||!j.ok||!(j.subject||j.body)){ if(m){ m.style.color="#b42323"; m.textContent=(j&&j.message)||"Couldn't draft the email."; } return; }
   if(m)m.textContent="";
-  openDraft(s, j.subject||"", j.body||"", j.signature||"");
+  openDraft(s, j.subject||"", j.body||"", j.signature||"", "Follow-up email — review before sending");
 }
-function openDraft(s,subject,body,signature){
+async function headsUp(i){
+  const s=DAY.stops[i];
+  const etaEl=$("#eta_"+i); const eta=(etaEl&&etaEl.textContent||"").trim(); const etaTxt=(eta&&eta!=="—")?eta:"";
+  toast("Preparing heads-up…");
+  let j; try{ j=await rapi({action:"previsit_draft",dealer_id:s.dealer_id,date:(DAY.route&&DAY.route.scheduled_date)||DATE,eta:etaTxt}); }catch(e){ j=null; }
+  if(!j||!j.ok){ toast((j&&j.message)||"Couldn't prepare the heads-up"); return; }
+  openDraft(s, j.subject||"", j.body||"", j.signature||"", "Pre-visit heads-up — review before sending");
+}
+function openDraft(s,subject,body,signature,title){
   const to=s.contact_email||"";
   const full=body+(signature?`\n\n${signature}`:"");
   const wrap=document.createElement("div"); wrap.className="modal"; wrap.onclick=e=>{ if(e.target===wrap) wrap.remove(); };
   wrap.innerHTML=`<div class="sheet">
-    <h3>Follow-up email — review before sending</h3>
+    <h3>${esc(title||"Email — review before sending")}</h3>
     <label class="fl">To</label><input class="in" id="d_to" value="${esc(to)}" placeholder="dealer contact email">
     <label class="fl">Subject</label><input class="in" id="d_sub" value="${esc(subject)}">
     <label class="fl">Message</label><textarea class="in" id="d_body" style="min-height:200px">${esc(full)}</textarea>

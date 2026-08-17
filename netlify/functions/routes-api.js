@@ -620,6 +620,31 @@ exports.handler = async (event)=>{
       return json(200,{ok:false,message:(res&&res.skipped)?"Email isn't configured yet (RESEND_API_KEY).":"Couldn't send — try again."});
     }
 
+    // ---------- Pre-visit heads-up DRAFT (review-before-send) ----------
+    // Builds the "we'll be in your area" note — scheduled date, estimated arrival, rep contact, a
+    // low-pressure reason, and (optionally) a relevant opportunity — and RETURNS it for the rep to
+    // review and send from their own Outlook. Nothing is sent here.
+    if(b.action==="previsit_draft"){
+      const dealer_id=b.dealer_id; if(!dealer_id) return json(400,{error:"dealer_id required"});
+      const rows=await sbGet(`dealers?id=eq.${encodeURIComponent(dealer_id)}&select=business_name,contact_name,email`).catch(()=>[]);
+      const d=rows&&rows[0]; if(!d) return json(404,{error:"dealer not found"});
+      const repName=me.name||me.rep_name||"your HCPS representative";
+      const dateStr=String(b.date||"").trim();
+      const when = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? prettyDate(dateStr) : "";
+      const eta = String(b.eta||"").trim();
+      const opp = String(b.opportunity||"").trim();
+      const first = String(d.contact_name||"").split(/\s+/)[0]||"";
+      const greet = first?`Hi ${first},`:"Hi there,";
+      const arrive = eta
+        ? `I expect to be in your area${when?` on ${when}`:""} around ${eta}`
+        : (when?`I'm planning to be in your area on ${when}`:"I'm planning to be in your area soon");
+      const oppLine = opp ? `\n\nWhile I'm there I'd also like to show you ${opp} — I think it could be a good fit for your business.` : "";
+      const body = `${greet}\n\nThis is ${repName} with HomeCare Provider Services. ${arrive}, and I'd love to stop by for a few minutes to review how things are going and make sure your lines and pricing are set up the way you need.${oppLine}\n\nThe arrival time is an estimate — I'll be moving between accounts that day — but I'll do my best to reach you close to then. If a different time works better, just reply and let me know.\n\nLooking forward to seeing you.`;
+      const subject = `HCPS will be in your area${when?` — ${when}`:""}`;
+      const signature = `${repName}${me.email?` · ${me.email}`:""}\nHomeCare Provider Services`;
+      return json(200,{ok:true, to:String(d.email||""), subject, body, signature});
+    }
+
     return json(400,{error:"unknown action"});
   }catch(e){ return json(500,{error:String(e.message||e)}); }
 };
