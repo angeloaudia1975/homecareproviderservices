@@ -106,7 +106,7 @@
   function build(){
     var me=null; try{ me=(window.HCPS&&HCPS.profile&&HCPS.profile())||null; }catch(e){ me=null; }
     if(!(window.HCPS&&HCPS.token&&HCPS.token())){ go("/admin/"); return; }
-    if(!(window.ACAdmin&&ACAdmin.isAdmin&&ACAdmin.isAdmin(me))){ go("/admin/command-center-360.html"); return; }
+    if(!(window.ACAdmin&&ACAdmin.isAdmin&&ACAdmin.isAdmin(me))){ go("/admin/rep-home.html"); return; }
 
     var cat=""; try{ cat=new URLSearchParams(location.search).get("cat")||""; }catch(e){ cat=""; }
     var hub=(window.ACAdmin&&ACAdmin.hubById)?ACAdmin.hubById(cat):null;

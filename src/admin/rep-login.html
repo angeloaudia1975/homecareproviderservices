@@ -1,0 +1,75 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS — Sales Rep Login</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+   background:linear-gradient(135deg,#1f2b45,#2c3e66);padding:24px}
+ .box{width:100%;max-width:380px;background:#fff;border-radius:18px;box-shadow:0 24px 60px rgba(0,0,0,.35);padding:30px 28px}
+ .brand{display:flex;align-items:center;gap:11px;margin-bottom:18px}
+ .mark{width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#e07b00,#f2a03d);color:#fff;
+   display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;font-family:'Barlow Condensed',sans-serif;flex:none}
+ .brand b{display:block;font-size:16px;color:var(--navy);line-height:1.1}
+ .brand span{font-size:12px;color:var(--gray)}
+ h1{font-size:19px;color:var(--navy);margin:2px 0 3px}
+ .lead{font-size:13px;color:var(--gray);margin:0 0 16px;line-height:1.45}
+ label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700;margin:10px 0 4px}
+ input{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14px}
+ input:focus{outline:none;border-color:#e07b00;box-shadow:0 0 0 3px rgba(224,123,0,.15)}
+ .go{width:100%;margin-top:16px;background:#e07b00;color:#fff;border:0;border-radius:10px;padding:12px;font-size:15px;font-weight:700;cursor:pointer}
+ .go:hover{background:#c96e00}.go:disabled{opacity:.6;cursor:default}
+ .err{color:#b42323;font-size:13px;margin-top:10px;min-height:16px}
+ .ok{color:#2d7d46;font-size:13px;margin-top:10px}
+ .row{display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+ .link{background:none;border:0;color:var(--orange,#e07b00);font-size:12.5px;cursor:pointer;padding:0;text-decoration:underline}
+ .fine{font-size:11.5px;color:var(--gray);margin-top:16px;line-height:1.5;border-top:1px solid var(--line);padding-top:12px}
+</style>
+</head><body>
+<div class="box">
+  <div class="brand"><div class="mark">H</div><div><b>HCPS Sales</b><span>Rep Workspace</span></div></div>
+  <h1>Sales Rep Login</h1>
+  <p class="lead">Sign in with your work email and password to reach your sales workspace.</p>
+  <form id="f" onsubmit="return false">
+    <label for="email">Work email</label>
+    <input id="email" type="email" autocomplete="username" placeholder="you@homecareproviderservices.us">
+    <label for="pass">Password</label>
+    <input id="pass" type="password" autocomplete="current-password" placeholder="Password" onkeydown="if(event.key==='Enter')submitLogin()">
+    <button class="go" id="btn" type="submit" onclick="submitLogin()">Sign in</button>
+    <div class="err" id="err"></div>
+    <div class="row"><button type="button" class="link" onclick="forgot()">Forgot password?</button></div>
+  </form>
+  <div class="fine">First time signing in? Enter your assigned email and choose a password — that becomes your password going forward. Trouble getting in? Ask the President to confirm your account.</div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const DEST="/admin/rep-home.html";
+// Already signed in? Go straight to the portal.
+try{ if(window.HCPS&&HCPS.token&&HCPS.token()){ location.replace(DEST); } }catch(e){}
+
+async function submitLogin(){
+  const email=($("#email").value||"").trim(), password=$("#pass").value||"";
+  const err=$("#err"), btn=$("#btn");
+  err.className="err"; err.textContent="";
+  if(!email||!password){ err.textContent="Enter your email and password."; return; }
+  btn.disabled=true; btn.textContent="Signing in…";
+  try{
+    const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({}));
+    if(!j||!j.ok){ err.textContent=(j&&j.message)||"Could not sign in. Check your email and password."; btn.disabled=false; btn.textContent="Sign in"; return; }
+    HCPS.setSession(j);
+    // Admins land on the full operating system; reps land on their portal.
+    const role=String((j.profile&&j.profile.role)||"").toLowerCase();
+    location.replace((role==="president"||role==="admin"||role==="owner")?"/admin/":DEST);
+  }catch(e){ err.textContent="Couldn't reach the server. Try again."; btn.disabled=false; btn.textContent="Sign in"; }
+}
+
+async function forgot(){
+  const email=($("#email").value||"").trim(), err=$("#err");
+  if(!email){ err.className="err"; err.textContent="Enter your email above first, then tap Forgot password."; return; }
+  try{
+    await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"forgot",email})});
+  }catch(e){}
+  err.className="ok"; err.textContent="If that email has an account, a reset link is on its way. Check your inbox.";
+}
+</script>
+</body></html>

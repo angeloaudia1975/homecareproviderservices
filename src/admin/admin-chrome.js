@@ -69,6 +69,7 @@
   // Sales reps + Customer Relations Director get a FOCUSED workspace (menu layer only; server-side
   // data scoping restricts what they can actually see).
   var REP_TOOLS = [
+    { href:"/admin/rep-home.html",           label:"Portal Home" },
     { href:"/admin/command-center-360.html", label:"Command Center 360" },
     { href:"/admin/dealers.html",            label:"Dealer 360" },
     { href:"/admin/map.html",                label:"Territory Map" },
@@ -125,7 +126,7 @@
     host.className = "ac-head";
     host.innerHTML =
       '<div class="ac-wrap ac-top">'
-        + '<a class="ac-brand" href="'+(admin?'/admin/':'/admin/command-center-360.html')+'"><span class="ac-mark">H</span>'
+        + '<a class="ac-brand" href="'+(admin?'/admin/':'/admin/rep-home.html')+'"><span class="ac-mark">H</span>'
         + '<span class="ac-bt"><b>'+(admin?'HCPS Connect 360':'HCPS Sales')+'</b><span>'+(admin?'Operating System':'Rep Workspace')+'</span></span></a>'
         + '<div class="ac-who">' + who + '<a id="ac-taskbadge" href="/admin/tasks.html" class="ac-badge" style="display:none" title="Your open tasks">0</a><button type="button" id="ac-lock">Lock</button></div>'
       + '</div>'

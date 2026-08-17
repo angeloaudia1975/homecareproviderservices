@@ -62,6 +62,18 @@ window.HUB_GUIDE = {
     workflow: "Weekly 1:1s and quarterly reviews — and spotting a rep whose book is slipping before it shows up in revenue.",
     intelligence: "Rep-scoped automatically: a rep sees only their own numbers; leadership sees the full team."
   },
+  "My Commissions": {
+    tagline: "Your own commissions and sales — by month, manufacturer line, and dealer.",
+    what: "Your personal earnings view. It totals the commissions and sales attributed to your assigned accounts, then breaks them down by month, by manufacturer line, and by dealer so you can see exactly where your income comes from and which accounts drive it.",
+    features: ["Commission YTD and all-time", "Sales YTD and effective commission rate", "Commission by month (last 12)", "Commission by manufacturer line", "Top dealers by commission"],
+    data: "The same sales cube as the rest of the portal, filtered to the accounts assigned to you in the directory — nobody else's numbers.",
+    actions: ["Review your monthly commission trend", "See which lines and dealers pay you most", "Cross-check a figure against Rep Performance"],
+    reports: ["Commission by month", "Commission by line", "Top dealers by commission"],
+    connects: ["Scoped by the same rep assignment as every other tool", "Underlying sales detail lives in Rep Performance and Command Center 360"],
+    problems: "Answers “what am I earning and from where” without waiting on a report — and flags if an account you own isn't showing up (a sign your assignment needs fixing).",
+    workflow: "Check it after each commission import, and before a territory review, to know your best accounts and lines.",
+    intelligence: "Figures reflect only your assigned accounts; if something's missing, confirm your rep name is assigned to that dealer in the directory."
+  },
   "Pipeline & Forecast": {
     tagline: "Open deals plus a data-driven six-month revenue forecast.",
     what: "Combines your open opportunities (weighted by stage) with reorder-cadence projections to forecast the next six months of revenue — so you can see what's committed, what's likely, and where the gaps are.",
