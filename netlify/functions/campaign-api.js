@@ -16,6 +16,7 @@ const SUPABASE_URL=process.env.SUPABASE_URL, SERVICE_ROLE=process.env.SUPABASE_S
 const ORDERING=process.env.ORDERING_BASE||"https://hcpsonlineordering.netlify.app";
 const SITE=process.env.SITE_BASE||"https://homecareproviderservices.netlify.app";
 const CAMPAIGN_FROM=process.env.ZOHO_CAMPAIGN_FROM||process.env.HCPS_MAIL_FROM||"info@homecareproviderservices.us";
+const CAMPAIGN_FROM_NAME=process.env.ZOHO_CAMPAIGN_FROM_NAME||"Angelo at HomeCare Provider Services";
 const json=(c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H=()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
@@ -241,7 +242,7 @@ exports.handler=async(event)=>{
     let b; try{b=JSON.parse(event.body||"{}");}catch{b={};}
     const act=b.action||"list";
 
-    if(act==="zoho_status"){ return json(200,{ok:true,creds_set:hasCreds(),ready:await ZC.ready(),scopes:ZC.SCOPES,from:CAMPAIGN_FROM,ai_available:aiAvailable()}); }
+    if(act==="zoho_status"){ return json(200,{ok:true,creds_set:hasCreds(),ready:await ZC.ready(),scopes:ZC.SCOPES,from:CAMPAIGN_FROM,from_name:CAMPAIGN_FROM_NAME,ai_available:aiAvailable()}); }
 
     // Exchange a Zoho Campaigns Self-Client code for a refresh token, stored under
     // app_settings 'zoho_campaigns_auth' (separate from the CRM's 'zoho_auth').
@@ -372,7 +373,7 @@ exports.handler=async(event)=>{
         c.audience.count=c.audience.sample.length;
       }
       if(c.audience && !(c.audience.sample&&c.audience.sample.length)) return json(200,{ok:false,message:"No recipients left to send — every contact was excluded."});
-      const res=await ZC.pushCampaign(c,CAMPAIGN_FROM);
+      const res=await ZC.pushCampaign(c,CAMPAIGN_FROM,CAMPAIGN_FROM_NAME);
       if(!res.ok) return json(200,{ok:false,message:res.error||"Zoho push failed",step:res.step||null});
       await sbSend("PATCH",`marketing_campaigns?id=eq.${encodeURIComponent(b.id)}`,{status:"pushed",zoho_list_key:res.zoho_list_key||null,zoho_campaign_key:res.zoho_campaign_key||null,updated_at:new Date().toISOString()},{Prefer:"return=minimal"});
       return json(200,{ok:true,zoho_campaign_key:res.zoho_campaign_key});

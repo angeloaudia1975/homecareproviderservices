@@ -85,9 +85,9 @@ async function createListWithContacts(token,listName,contacts){
   return {ok:res.ok&&!!key, listkey:key||null, raw:res.json, status:res.status};
 }
 // Create the campaign as a DRAFT (not sent — the user launches it in Zoho after review).
-async function createCampaign(token,{name,subject,fromEmail,html,listKey}){
+async function createCampaign(token,{name,subject,fromEmail,fromName,html,listKey}){
   const res=await zpost("/createcampaign",token,{
-    resfmt:"JSON", campaignname:name, from_email:fromEmail||"", subject:subject||name,
+    resfmt:"JSON", campaignname:name, from_email:fromEmail||"", from_name:fromName||"", subject:subject||name,
     list_details:JSON.stringify(listKey?{[listKey]:[]}:{}), content:html||""
   });
   const key=res.json&&(res.json.campaignkey||res.json.campaign_key||(res.json.data&&res.json.data.campaignkey));
@@ -99,7 +99,7 @@ async function getReport(token,campaignKey){
 }
 
 // High-level: push a stored campaign to Zoho as a reviewable draft.
-async function pushCampaign(campaign,fromEmail){
+async function pushCampaign(campaign,fromEmail,fromName){
   const at=await accessToken(); if(!at.ok) return at;
   const token=at.access_token;
   const contacts=((campaign.audience&&campaign.audience.sample)||[]).map(s=>({email:s.email,name:s.name,company:s.company,dealer_id:s.dealer_id}));
@@ -110,7 +110,7 @@ async function pushCampaign(campaign,fromEmail){
   }
   const g=campaign.generated||{};
   const subject=toMergeTags((g.subjects&&g.subjects[0])||campaign.name||"HCPS");
-  const cr=await createCampaign(token,{name:campaign.name||"HCPS Campaign",subject,fromEmail,html:toMergeTags(g.body_html||""),listKey});
+  const cr=await createCampaign(token,{name:campaign.name||"HCPS Campaign",subject,fromEmail,fromName,html:toMergeTags(g.body_html||""),listKey});
   if(!cr.ok) return {ok:false,step:"campaign",error:(cr.raw&&cr.raw.message)||"campaign create failed",raw:cr.raw,zoho_list_key:listKey};
   return {ok:true,zoho_list_key:listKey,zoho_campaign_key:cr.campaignkey};
 }
