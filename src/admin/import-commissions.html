@@ -174,12 +174,13 @@ async function onFile(){
   try{ RAW=await parseFile(f); reparse(); $("#fmsg").textContent=`Loaded ${RAW.length} rows from ${f.name}`; $("#fmsg").className="st ok"; }
   catch(e){ $("#fmsg").textContent="Couldn't read that file: "+(e.message||e); $("#fmsg").className="st warn"; }
 }
-let RAW=[];
+let RAW=[], WB=null;
 async function parseFile(file){
   const name=file.name.toLowerCase();
-  if(name.endsWith(".pdf")) return parsePdf(file);
+  if(name.endsWith(".pdf")){ WB=null; return parsePdf(file); }
   const buf=await file.arrayBuffer();
   const wb=XLSX.read(buf,{type:"array"});
+  WB=wb;                                   // kept for multi-tab parsers (e.g. GCE open + paid tabs)
   const ws=wb.Sheets[wb.SheetNames[0]];
   return XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:false});
 }
@@ -229,11 +230,52 @@ function parseGrouped(RAW){
   }
   return out;
 }
+// Manufacturers whose report is a TWO-TAB open/paid ledger (invoiced pipeline on one sheet, the
+// invoices paid this month on another). GCE / Ohio Medical: rep is paid on PAID invoices, so the
+// "Current month payment" tab drives the payout; the "Sales-Commission Data" tab supplies the OPEN
+// (unpaid) pipeline. Both feed the same invoice/payment ledger the access4u path already uses.
+const LEDGER_TWO_TAB=new Set(["ohio-medical"]);
+// GCE reader — pulls the two named sheets straight from the workbook (no column mapping needed),
+// tagging paid-tab rows as 'payment' (amount + earned commission) and unpaid invoiced-tab rows as
+// 'invoice' (billed_amount, no commission yet). Rows already marked "Invoice Paid = Yes" on the
+// invoiced tab are skipped there — they surface as payments in the month they actually paid.
+function parseGce(wb){
+  if(!wb) return [];
+  const out=[];
+  const norm=s=>String(s==null?"":s).trim().toLowerCase().replace(/\s+/g," ");
+  const readSheet=(sheetName, lineType)=>{
+    const ws=wb.Sheets[sheetName]; if(!ws) return;
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:false});
+    let hr=-1;
+    for(let i=0;i<Math.min(rows.length,10);i++){ const v=(rows[i]||[]).map(norm); if(v.includes("customer name") && v.some(x=>x==="cust #"||x==="cust#"||x.indexOf("cust")===0)){ hr=i; break; } }
+    if(hr<0) return;
+    const H=(rows[hr]||[]).map(x=>String(x==null?"":x)); const col={}; H.forEach((h,j)=>{ const k=norm(h); if(k&&col[k]==null) col[k]=j; });
+    const pick=(r,...keys)=>{ for(const k of keys){ const j=col[norm(k)]; if(j!=null && r[j]!=null && String(r[j]).trim()!=="") return r[j]; } return ""; };
+    for(let i=hr+1;i<rows.length;i++){ const r=rows[i]||[];
+      const cn=String(pick(r,"customer name")).trim(); if(!cn) continue;
+      const sales=pick(r,"sales $","sales$");
+      const rec={ customer_name:cn, customer_ref:String(pick(r,"cust #","cust#","cust")).trim(),
+        ship_city:pick(r,"city"), ship_state:pick(r,"state"), ship_zip:pick(r,"zip"),
+        product_code:pick(r,"part number"), product_name:pick(r,"part description"), qty:pick(r,"quantity","qty"),
+        commission_rate:pick(r,"comm %","comm  %","comm%"), order_date:pick(r,"order date","invoice date"),
+        invoice_no:String(pick(r,"inv number","invoice number","inv #")).trim(), rep_name:pick(r,"sales rep"), line_type:lineType };
+      if(lineType==="invoice"){
+        if(String(pick(r,"invoice paid")).trim().toLowerCase()==="yes") continue;   // open pipeline only
+        rec.billed_amount=sales; rec.amount=null; rec.commission=null;
+      } else { rec.amount=sales; rec.commission=pick(r,"earned commission $","earned commission"); }
+      out.push(rec);
+    }
+  };
+  readSheet("Sales-Commission Data","invoice");   // open / invoiced pipeline (unpaid)
+  readSheet("Current month payment","payment");   // paid this month → rep payout
+  return out;
+}
 function reparse(){
   if(!RAW.length){ return; }
-  A4U = GROUPED_LINES.has($("#mfr").value);
-  if(A4U){                                   // grouped ledger — no column mapping needed
-    GROUPED = parseGrouped(RAW);
+  const slug=$("#mfr").value;
+  A4U = GROUPED_LINES.has(slug) || LEDGER_TWO_TAB.has(slug);
+  if(A4U){                                   // ledger (grouped or two-tab) — no column mapping needed
+    GROUPED = LEDGER_TWO_TAB.has(slug) ? parseGce(WB) : parseGrouped(RAW);
     const mc=$("#mapCard"); if(mc) mc.style.display="none";
     renderPreview();
     return;

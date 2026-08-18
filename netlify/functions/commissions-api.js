@@ -195,6 +195,9 @@ exports.handler = async (event)=>{
       const nameMap={};
       try{ const j=await fetchJson(`${ORDERING_BASE}/data/manufacturers.json`); (j||[]).forEach(x=>{ if(x&&x.slug) nameMap[x.slug]=x.name||x.slug; }); }catch(e){}
       try{ const m=await sbGet("manufacturers?select=slug,name"); (m||[]).forEach(x=>{ if(x&&x.slug&&!nameMap[x.slug]) nameMap[x.slug]=x.name||x.slug; }); }catch(e){}
+      // GCE / Ohio Medical is a two-tab open/paid commission source — always offer it in the picker,
+      // labeled so it's recognizable as the GCE report (its parser reads the two GCE tabs directly).
+      nameMap["ohio-medical"]="Ohio Medical / GCE";
       const manufacturers=Object.entries(nameMap).map(([slug,name])=>({slug,name})).sort((a,b)=>a.name.localeCompare(b.name));
       let templates={};
       try{ const rows=await sbGet("app_settings?key=like.ctpl:*&select=key,value"); (rows||[]).forEach(r=>{ templates[String(r.key).slice(5)]=r.value||{}; }); }catch(e){}
