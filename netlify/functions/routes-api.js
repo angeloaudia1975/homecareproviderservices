@@ -91,6 +91,18 @@ async function fetchJson(url){ const r=await fetch(url); if(!r.ok) throw new Err
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
 async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); const t=await r.text(); return t?JSON.parse(t):null; }
 
+// ---- Microsoft Graph (Outlook calendar write) — app-only, same creds as email-sync ----
+const G_TENANT=process.env.GRAPH_TENANT_ID, G_CLIENT=process.env.GRAPH_CLIENT_ID, G_SECRET=process.env.GRAPH_CLIENT_SECRET;
+async function graphToken(){
+  const body=new URLSearchParams({client_id:G_CLIENT,client_secret:G_SECRET,scope:"https://graph.microsoft.com/.default",grant_type:"client_credentials"});
+  const r=await fetch(`https://login.microsoftonline.com/${G_TENANT}/oauth2/v2.0/token`,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body});
+  const j=await r.json().catch(()=>({})); if(!r.ok||!j.access_token) throw new Error("graph_token:"+((j&&j.error_description)||r.status)); return j.access_token;
+}
+async function graphReq(tok,method,path,body){
+  const r=await fetch(`https://graph.microsoft.com/v1.0${path}`,{method,headers:{Authorization:`Bearer ${tok}`,"content-type":"application/json"},body:body!=null?JSON.stringify(body):undefined});
+  const t=await r.text(); let j={}; try{ j=t?JSON.parse(t):{}; }catch(e){} return {ok:r.ok,status:r.status,json:j,text:t};
+}
+
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
   const tok=auth.replace(/^Bearer\s+/i,"").trim();
@@ -669,6 +681,83 @@ exports.handler = async (event)=>{
       const res=await sendMail({to,subject:"Your HCPS Scheduled Routes — add to your phone",html,text});
       if(res&&res.ok) return json(200,{ok:true,sent:true,to});
       return json(200,{ok:false,message:(res&&res.skipped)?"Email isn't configured yet (RESEND_API_KEY).":"Couldn't send — try again."});
+    }
+
+    // ---------- Direct Outlook calendar write (create/update master + per-dealer visit events) ----------
+    // Writes into the route owner's Outlook calendar and stores the Graph event IDs on the route, so a
+    // later re-sync PATCHes the same events (reschedules stay in sync) and removed stops are deleted.
+    // Needs the Graph app to have Calendars.ReadWrite (admin consent). `times` = {dealer_id: epoch_ms}.
+    if(b.action==="route_calendar_sync"){
+      const rid=String(b.route_id||"").trim(); if(!rid) return json(400,{error:"route_id required"});
+      const rows=await sbGet(`rep_routes?id=eq.${encodeURIComponent(rid)}&select=*`).catch(()=>[]);
+      const route=rows&&rows[0]; if(!route) return json(404,{error:"route not found"});
+      if(!ownsRoute(route)) return json(403,{error:"not your route"});
+      if(!G_TENANT||!G_CLIENT||!G_SECRET) return json(200,{ok:false,error:"graph_env_missing",message:"Outlook isn't configured yet (GRAPH_* env vars)."});
+      const mailbox=String(route.owner_email||me.email||"").toLowerCase().trim();
+      if(!EMAIL_RE.test(mailbox)) return json(200,{ok:false,message:"No Outlook mailbox on file for this route's owner."});
+      const stops=Array.isArray(route.stops)?route.stops:[];
+      const times=(b.times&&typeof b.times==="object")?b.times:{};
+      const base=process.env.PUBLIC_SITE_BASE||"https://homecareproviderservices.netlify.app";
+      const routeLink=base+"/admin/scheduled-routes.html?route="+encodeURIComponent(rid);
+      const dealerLink=id=>base+"/admin/dealer.html?dealer="+encodeURIComponent(id);
+      const ids=[...new Set(stops.map(s=>s.dealer_id).filter(Boolean))];
+      let dmap={},cmap={},rmap={};
+      if(ids.length){
+        try{ const ds=await sbGet(`dealers?id=in.(${ids.join(",")})&select=id,business_name,contact_name,email,phone,address,city,state,zip`); for(const d of (ds||[])) dmap[d.id]=d; }catch(e){}
+        try{ const cs=await sbGet(`dealer_contacts?dealer_id=in.(${ids.join(",")})&select=dealer_id,name,email,phone,cell`); for(const c of (cs||[])){ if(!cmap[c.dealer_id]) cmap[c.dealer_id]=c; } }catch(e){}
+        try{ const vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(rid)}&select=dealer_id,fields`); for(const v of (vr||[])) rmap[v.dealer_id]=v.fields||{}; }catch(e){}
+      }
+      const fmt=ms=>new Date(ms).toISOString().slice(0,19);           // UTC instant, paired with timeZone:"UTC"
+      const nextDay=ds=>{ const d=new Date(ds+"T00:00:00Z"); d.setUTCDate(d.getUTCDate()+1); return d.toISOString().slice(0,10); };
+      const arr=v=>Array.isArray(v)?v.filter(Boolean).join(", "):String(v||"");
+      const addrOf=(s,d)=>[s.address||d.address,s.city||d.city,(s.state||d.state),(s.zip||d.zip)].filter(Boolean).join(", ");
+      function visitBody(s,i){ const d=dmap[s.dealer_id]||{},c=cmap[s.dealer_id]||{},f=rmap[s.dealer_id]||{};
+        const contact=(c.name||d.contact_name||""), phone=(c.phone||c.cell||d.phone||""); const p=[];
+        p.push(`<b>Stop ${i+1} of ${stops.length}</b> · ${esc2(route.name||"route")}`);
+        if(contact) p.push(`Contact: ${esc2(contact)}${phone?" · "+esc2(phone):""}`);
+        const ad=addrOf(s,d); if(ad) p.push(`Address: ${esc2(ad)}`);
+        if(f.purpose) p.push(`Purpose: ${esc2(f.purpose)}`);
+        const md=[arr(f.manufacturers),arr(f.products)].filter(Boolean).join(" — "); if(md) p.push(`To discuss: ${esc2(md)}`);
+        if(arr(f.opportunities)) p.push(`Opportunity: ${esc2(arr(f.opportunities))}`);
+        p.push(`<a href="${dealerLink(s.dealer_id)}">Open Dealer 360</a> · <a href="${routeLink}">Open route</a>`);
+        return p.join("<br>");
+      }
+      let tok; try{ tok=await graphToken(); }catch(e){ return json(200,{ok:false,error:"graph_token",message:"Couldn't authenticate to Outlook — check the Graph app credentials."}); }
+      const prev=(route.calendar&&typeof route.calendar==="object"&&String(route.calendar.mailbox||"").toLowerCase()===mailbox)?route.calendar:{mailbox,master_id:null,events:{}};
+      const newCal={mailbox,master_id:prev.master_id||null,events:{},updated_at:new Date().toISOString()};
+      const denied=res=>res&&res.status===403;
+      // ---- master route event ----
+      const tlist=stops.map(s=>times[s.dealer_id]).filter(x=>x);
+      const summary=stops.map((s,i)=>`${i+1}. ${esc2((dmap[s.dealer_id]&&dmap[s.dealer_id].business_name)||s.name||"")}`).join("<br>");
+      const master={ subject:"Route: "+(route.name||"Sales route"),
+        body:{contentType:"HTML",content:`${route.round_trip?"Round trip. ":""}${route.duration_s?Math.round(route.duration_s/60)+" min driving. ":""}${stops.length} stops.<br><br>${summary}${route.notes?"<br><br>Notes: "+esc2(route.notes):""}<br><br><a href="${routeLink}">Open route</a>`} };
+      if(tlist.length){ const start=Math.min.apply(null,tlist); const lastArr=Math.max.apply(null,tlist);
+        const lastVisit=(stops[stops.length-1]&&stops[stops.length-1].visit_min!=null?stops[stops.length-1].visit_min:30);
+        master.start={dateTime:fmt(start),timeZone:"UTC"}; master.end={dateTime:fmt(lastArr+lastVisit*60000),timeZone:"UTC"}; }
+      else { const ds=route.scheduled_date||new Date().toISOString().slice(0,10); master.isAllDay=true; master.start={dateTime:ds+"T00:00:00",timeZone:"UTC"}; master.end={dateTime:nextDay(ds)+"T00:00:00",timeZone:"UTC"}; }
+      let mres;
+      if(prev.master_id){ mres=await graphReq(tok,"PATCH",`/users/${encodeURIComponent(mailbox)}/events/${prev.master_id}`,master); if(mres.status===404) mres=await graphReq(tok,"POST",`/users/${encodeURIComponent(mailbox)}/events`,master); }
+      else mres=await graphReq(tok,"POST",`/users/${encodeURIComponent(mailbox)}/events`,master);
+      if(!mres.ok){ if(denied(mres)) return json(200,{ok:false,error:"calendar_denied",message:"The Graph app can't write to Outlook yet — grant it Calendars.ReadWrite with admin consent in Azure, then try again."});
+        return json(200,{ok:false,error:"calendar_error",message:"Outlook error: "+String((mres.json&&mres.json.error&&mres.json.error.message)||mres.text||"").slice(0,180)}); }
+      newCal.master_id=(mres.json&&mres.json.id)||prev.master_id;
+      // ---- per-dealer visit events (timed only) ----
+      let created=0,updated=0;
+      for(let i=0;i<stops.length;i++){ const s=stops[i]; if(!s.dealer_id) continue; const t=times[s.dealer_id]; if(!t) continue;
+        const d=dmap[s.dealer_id]||{}; const vis=(s.visit_min!=null?s.visit_min:30);
+        const ev={ subject:"Visit: "+((d.business_name||s.name||"Dealer")),
+          location:{displayName:addrOf(s,d)}, start:{dateTime:fmt(t),timeZone:"UTC"}, end:{dateTime:fmt(t+vis*60000),timeZone:"UTC"},
+          body:{contentType:"HTML",content:visitBody(s,i)} };
+        const pid=prev.events&&prev.events[s.dealer_id]; let r2;
+        if(pid){ r2=await graphReq(tok,"PATCH",`/users/${encodeURIComponent(mailbox)}/events/${pid}`,ev); if(r2.status===404) r2=await graphReq(tok,"POST",`/users/${encodeURIComponent(mailbox)}/events`,ev); updated++; }
+        else { r2=await graphReq(tok,"POST",`/users/${encodeURIComponent(mailbox)}/events`,ev); created++; }
+        if(r2.ok && r2.json && r2.json.id) newCal.events[s.dealer_id]=r2.json.id; else if(pid) newCal.events[s.dealer_id]=pid;
+      }
+      // ---- delete events for dealers no longer on the route ----
+      const cur=new Set(stops.map(s=>s.dealer_id));
+      for(const did in (prev.events||{})){ if(!cur.has(did)){ try{ await graphReq(tok,"DELETE",`/users/${encodeURIComponent(mailbox)}/events/${prev.events[did]}`); }catch(e){} } }
+      try{ await sbSend("PATCH",`rep_routes?id=eq.${encodeURIComponent(rid)}`,{calendar:newCal},{Prefer:"return=minimal"}); }catch(e){}
+      return json(200,{ok:true,mailbox,master:!!newCal.master_id,events:Object.keys(newCal.events).length,created,updated});
     }
 
     return json(400,{error:"unknown action"});

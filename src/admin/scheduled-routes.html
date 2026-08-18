@@ -199,7 +199,8 @@ function renderDay(){
   let h=`<div style="margin:0 0 10px"><button class="btn sm" onclick="showList()">‹ All routes</button></div>`;
   h+=`<div class="card"><div class="rsum"><span class="nm">${esc(r.name||"Route")}</span><span class="mt">${esc(fmtDate(r.scheduled_date))}</span></div>
     <div class="mt" style="margin:4px 0 10px;color:var(--gray)">${stops.length} stop${stops.length===1?"":"s"}${drive} · ${done}/${stops.length} visited</div>
-    <button class="btn sm" onclick="addToCalendar()">📆 Add to Outlook calendar</button></div>`;
+    <button class="btn sm" onclick="syncCalendar()">📆 Sync to Outlook</button>
+    <button class="btn sm" onclick="addToCalendar()">⬇︎ .ics file</button></div>`;
   h+=stops.map((s,i)=>stopCard(s,i)).join("");
   $("#app").innerHTML=h;
 }
@@ -413,6 +414,18 @@ async function computeEtas(){
   }
 }
 
+// ---- Direct Outlook sync (Graph); falls back to the .ics download if not permitted yet ----
+async function syncCalendar(){
+  const r=DAY.route, stops=DAY.stops||[];
+  if(!navigator.onLine){ toast("Calendar sync needs a connection"); return; }
+  if(!stops.some(s=>s._arrive)){ try{ await computeEtas(); }catch(e){} }
+  const times={}; stops.forEach(s=>{ if(s.dealer_id && s._arrive) times[s.dealer_id]=s._arrive; });
+  toast("Syncing to Outlook…");
+  let j; try{ j=await rapi({action:"route_calendar_sync",route_id:r.id,times}); }catch(e){ j=null; }
+  if(j&&j.ok){ toast(`Synced to Outlook ✓ · ${j.events} visit${j.events===1?"":"s"}`); return; }
+  toast((j&&j.message)||"Outlook not ready — downloading a calendar file instead");
+  addToCalendar();
+}
 // ---- Calendar export (.ics): master route event + one event per dealer visit ----
 function icsEsc(s){ return String(s==null?"":s).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\r?\n/g,"\\n"); }
 function icsStamp(ms){ const d=new Date(ms); const p=n=>String(n).padStart(2,"0"); return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+"T"+p(d.getHours())+p(d.getMinutes())+"00"; }
