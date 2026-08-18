@@ -12,23 +12,23 @@
   :root{--navy:#10263f;--blue:#2f73b8;--orange:#F5821F;--line:#e4e8ee;--gray:#6b7683;--ok:#1f7a44;--bg:#f4f6f9}
   *{box-sizing:border-box}
   html,body{margin:0;background:var(--bg);color:#1b2733;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;-webkit-text-size-adjust:100%}
-  header{position:sticky;top:0;z-index:10;background:var(--navy);color:#fff;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0));padding-top:calc(10px + env(safe-area-inset-top,0))}
+  header{position:sticky;top:0;z-index:10;background:var(--navy);color:#fff;padding:calc(10px + env(safe-area-inset-top,0)) 14px 10px}
   header .row{display:flex;align-items:center;gap:10px}
   header h1{font-size:17px;margin:0;font-weight:800;letter-spacing:.2px;flex:1}
   header .b{color:var(--orange);font-weight:800;font-size:10px;text-transform:uppercase;letter-spacing:.5px}
   header a.full{color:#c9d4e2;font-size:12px;text-decoration:none;border:1px solid #33465f;border-radius:8px;padding:4px 8px}
-  header input[type=date]{margin-top:8px;font:inherit;font-size:14px;padding:7px 9px;border-radius:9px;border:0;width:100%;background:#fff}
   .wrap{padding:12px 12px 40px;max-width:640px;margin:0 auto}
   .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 14px;margin:0 0 12px;box-shadow:0 1px 2px rgba(16,38,63,.04)}
+  .grouplbl{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);margin:6px 2px 8px}
   .rsum{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
   .rsum .nm{font-weight:800;font-size:16px;color:var(--navy)}
   .rsum .mt{color:var(--gray);font-size:12.5px}
   .stop{position:relative;border:1px solid var(--line);border-radius:14px;background:#fff;margin:0 0 12px;overflow:hidden}
-  .stop.done{opacity:.72}
+  .stop.done{opacity:.72}.stop.clk{cursor:pointer}
   .sh{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;cursor:pointer}
   .ord{flex:0 0 auto;width:30px;height:30px;border-radius:50%;background:var(--navy);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:14px}
-  .stop.done .ord{background:var(--ok)}
-  .stop.here .ord{background:var(--orange)}
+  .stop.done .ord{background:var(--ok)}.stop.here .ord{background:var(--orange)}
+  .ord.cal{background:#eef2f6;color:#2B4071;font-size:15px}
   .sh .mid{flex:1;min-width:0}
   .sh .nm{font-weight:700;color:var(--navy);font-size:15.5px;line-height:1.3}
   .sh .sub{color:var(--gray);font-size:12.5px;margin-top:1px}
@@ -43,10 +43,11 @@
   .btn.pri{background:var(--navy);color:#fff;border-color:var(--navy)}
   .btn.go{background:var(--orange);color:#fff;border-color:var(--orange)}
   .btn.wide{flex:1;justify-content:center}
+  .btn.sm{font-size:12.5px;padding:7px 10px}
   .body{border-top:1px solid var(--line);padding:13px 14px;display:none;background:#fbfcfd}
   .body.open{display:block}
   label.fl{display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);margin:10px 0 3px}
-  input.in,textarea.in,select.in{width:100%;font:inherit;font-size:15px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#fff}
+  input.in,textarea.in{width:100%;font:inherit;font-size:15px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#fff}
   textarea.in{min-height:58px;resize:vertical}
   .voice{border:1px dashed #cdd6e0;border-radius:10px;background:#f7f9fc;padding:10px 11px;margin:4px 0 2px;font-size:12.5px;color:var(--gray)}
   .save-row{display:flex;gap:8px;margin-top:12px}
@@ -54,6 +55,11 @@
   .msg{padding:16px;text-align:center;color:var(--gray)}
   .gate{max-width:360px;margin:40px auto;background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px}
   .gate input{width:100%;font:inherit;font-size:16px;padding:11px;border:1px solid var(--line);border-radius:10px;margin-bottom:9px}
+  .phone{background:#0f2138;color:#fff;border:1px solid #22364f;border-radius:14px;padding:13px 14px;margin:0 0 14px}
+  .phone .t{font-weight:800}.phone .u{font-size:12px;color:#9db4d0;word-break:break-all;margin:4px 0 8px}
+  .phone .btn{background:#1b3352;color:#fff;border-color:#33507a}
+  .steps{background:#0b1a2e;border-radius:10px;padding:10px 12px;margin-top:10px;font-size:13px;color:#cdd9e8}
+  .steps b{color:#fff}
   .modal{position:fixed;inset:0;background:rgba(16,38,63,.5);display:flex;align-items:flex-end;justify-content:center;z-index:50}
   .sheet{background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:640px;max-height:88vh;overflow:auto;padding:16px}
   .sheet h3{margin:0 0 8px;color:var(--navy)}
@@ -62,7 +68,6 @@
 </head><body>
 <header>
   <div class="row"><span class="b">HCPS Field</span><h1>Scheduled Routes</h1><span id="netstat" style="font-size:11px;font-weight:700;color:#9fd6b0"></span><a class="full" href="/admin/hub.html?cat=sales">Full portal</a></div>
-  <input type="date" id="dpick" onchange="pickDate(this.value)">
 </header>
 <div class="wrap"><div id="app"><div class="msg">Loading…</div></div></div>
 
@@ -74,10 +79,12 @@ const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",
 const jesc=s=>String(s==null?"":s).replace(/'/g,"\\'").replace(/"/g,"&quot;");
 window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
 let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
-let DAY=null, DATE=todayStr(), HANDOUT={ordering_url:DealerHandout.ORDERING_URL,updates:DealerHandout.UPDATES.slice()};
-let VSTRUCT={}, VTX={}, REC={};   // per-stop AI structured data, transcript, and recorder state
+let ROUTES=null, DAY=null, HANDOUT={ordering_url:DealerHandout.ORDERING_URL,updates:DealerHandout.UPDATES.slice()};
+let VSTRUCT={}, VTX={}, REC={};
 function todayStr(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function fmtDate(ds){ if(!ds) return "Unscheduled"; const d=new Date(ds+"T00:00:00"); return d.toLocaleDateString([], {weekday:"long",month:"long",day:"numeric",year:"numeric"}); }
 function toast(m){ const t=document.createElement("div"); t.className="toast"; t.textContent=m; document.body.appendChild(t); setTimeout(()=>t.remove(),2200); }
+function qparam(k){ try{ return new URLSearchParams(location.search).get(k); }catch(e){ return null; } }
 
 async function rapi(body){ const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
   const r=await fetch("/.netlify/functions/routes-api",{method:"POST",headers:h,body:JSON.stringify(body)});
@@ -85,6 +92,8 @@ async function rapi(body){ const h={"content-type":"application/json"}; if(TOKEN
   return r.json().catch(()=>({})); }
 async function esapi(body){ const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
   const r=await fetch("/.netlify/functions/email-sync-api",{method:"POST",headers:h,body:JSON.stringify(body)}); return r.json().catch(()=>({})); }
+async function voiceApi(body){ const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch("/.netlify/functions/visit-voice-api",{method:"POST",headers:h,body:JSON.stringify(body)}); return r.json().catch(()=>({})); }
 
 function gate(msg){ $("#app").innerHTML=`<div class="gate"><h3 style="margin:0 0 4px;color:var(--navy)">Sign in</h3><p class="hint" style="margin:0 0 12px">Your HCPS work email and password.</p>
   <input id="lemail" type="email" placeholder="Email" autocomplete="username">
@@ -95,13 +104,13 @@ function gate(msg){ $("#app").innerHTML=`<div class="gate"><h3 style="margin:0 0
 async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
   const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
   const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
-  HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load(); }
+  HCPS.setSession(j); TOKEN=j.token; ME=j.profile; boot(); }
 
-function pickDate(v){ if(v){ DATE=v; load(); } }
-
-// ---- Offline cache + write outbox (localStorage) so the day works with no signal ----
-function cacheDay(date,j){ try{ localStorage.setItem("sr_day_"+date, JSON.stringify(j)); }catch(e){} }
-function loadCachedDay(date){ try{ const s=localStorage.getItem("sr_day_"+date); return s?JSON.parse(s):null; }catch(e){ return null; } }
+// ---- Offline cache + write outbox (localStorage) ----
+function cacheDay(id,j){ try{ localStorage.setItem("sr_day_"+id, JSON.stringify(j)); }catch(e){} }
+function loadCachedDay(id){ try{ const s=localStorage.getItem("sr_day_"+id); return s?JSON.parse(s):null; }catch(e){ return null; } }
+function cacheRoutes(j){ try{ localStorage.setItem("sr_routes", JSON.stringify(j)); }catch(e){} }
+function loadCachedRoutes(){ try{ const s=localStorage.getItem("sr_routes"); return s?JSON.parse(s):null; }catch(e){ return null; } }
 function outbox(){ try{ return JSON.parse(localStorage.getItem("sr_outbox")||"[]"); }catch(e){ return []; } }
 function setOutbox(a){ try{ localStorage.setItem("sr_outbox",JSON.stringify(a)); }catch(e){} updateStatus(); }
 function enqueue(body){ const a=outbox(); a.push({id:Date.now()+"_"+Math.random().toString(36).slice(2,7),body}); setOutbox(a); }
@@ -111,43 +120,86 @@ async function flushOutbox(){ if(!navigator.onLine) return; let a=outbox(); if(!
   setStatusText("↻ Syncing…"); const remain=[];
   for(const item of a){ try{ const r=await rapi(item.body); if(!(r&&r.ok)) remain.push(item); }catch(e){ remain.push(item); if(!TOKEN) break; } }
   setOutbox(remain); }
-function setStatusText(txt,color){ const el=$("#netstat"); if(el){ el.textContent=txt; el.style.color=color||"#ffd7b0"; } }
+function setStatusText(t,c){ const el=$("#netstat"); if(el){ el.textContent=t; el.style.color=c||"#ffd7b0"; } }
 function updateStatus(){ const n=outbox().length;
   if(!navigator.onLine) setStatusText("● Offline"+(n?` · ${n} to sync`:""),"#ffd7b0");
-  else if(n) setStatusText(`↻ ${n} to sync`,"#ffd7b0");
-  else setStatusText("● Online","#9fd6b0"); }
+  else if(n) setStatusText(`↻ ${n} to sync`,"#ffd7b0"); else setStatusText("● Online","#9fd6b0"); }
 
-async function load(){
+// ---- Boot: deep-link ?route=<id> opens a route; otherwise show the route list ----
+function boot(){ if(!TOKEN){ gate(); return; } const rid=qparam("route"); if(rid){ openRoute(rid); } else { showList(); } }
+
+async function showList(){
   if(!TOKEN){ gate(); return; }
-  const dp=$("#dpick"); if(dp) dp.value=DATE;
-  $("#app").innerHTML=`<div class="msg">Loading today's route…</div>`;
+  $("#app").innerHTML=`<div class="msg">Loading your routes…</div>`;
+  let j=null;
+  try{ j=await rapi({action:"list_routes"}); }catch(e){ if(!TOKEN) return; j=null; }
+  if(j&&j.ok){ ROUTES=j.routes||[]; cacheRoutes(ROUTES); }
+  else { const c=loadCachedRoutes(); if(c){ ROUTES=c; setStatusText("● Offline (cached)","#ffd7b0"); } }
+  if(!ROUTES){ $("#app").innerHTML=`<div class="msg">Couldn't load your routes${navigator.onLine?"":" — you're offline"}.</div>`; updateStatus(); return; }
+  renderList();
+  if(navigator.onLine){ updateStatus(); flushOutbox().then(updateStatus); }
+}
+function renderList(){
+  const today=todayStr();
+  const rs=(ROUTES||[]).slice();
+  const upcoming=rs.filter(r=>!r.scheduled_date||r.scheduled_date>=today).sort((a,b)=>String(a.scheduled_date||"9999").localeCompare(String(b.scheduled_date||"9999")));
+  const past=rs.filter(r=>r.scheduled_date&&r.scheduled_date<today).sort((a,b)=>String(b.scheduled_date).localeCompare(String(a.scheduled_date)));
+  const card=r=>{ const done=r.visited||0, n=r.stops_count||0; const prog=n?`${done}/${n}`:"—";
+    const drive=r.duration_s?` · ${Math.round(r.duration_s/60)} min`:"";
+    return `<div class="stop clk" onclick="openRoute('${jesc(r.id)}')"><div class="sh">
+      <div class="ord cal">📅</div>
+      <div class="mid"><div class="nm">${esc(r.name||"Route")}</div><div class="sub">${esc(fmtDate(r.scheduled_date))} · ${n} stop${n===1?"":"s"}${drive}</div></div>
+      <div class="eta"><div class="t">${prog}</div><div class="l">visited</div></div>
+    </div></div>`; };
+  const phone=`<div class="phone">
+    <div class="t">📲 Add to your phone</div>
+    <div class="u" id="mlink">${esc(location.origin)}/admin/scheduled-routes.html</div>
+    <button class="btn sm" onclick="emailLink(this)">✉️ Email me the link</button>
+    <button class="btn sm" onclick="toggleInstall()">How to install</button>
+    <div id="installBox" hidden>
+      <div class="steps"><b>iPhone (Safari):</b> open the link in Safari → tap the <b>Share</b> button → <b>Add to Home Screen</b>.</div>
+      <div class="steps"><b>Android (Chrome):</b> open the link in Chrome → tap the <b>⋮</b> menu → <b>Add to Home screen</b> / <b>Install app</b>.</div>
+    </div>
+    <div id="linkmsg" class="hint" style="color:#9db4d0;margin-top:8px"></div>
+  </div>`;
+  let h=phone;
+  h+=`<div class="grouplbl">Upcoming</div>`+(upcoming.length?upcoming.map(card).join(""):`<div class="card hint">No upcoming routes. Build one on the Territory Map and set its date. <a href="/admin/map.html">Open map →</a></div>`);
+  if(past.length) h+=`<div class="grouplbl" style="margin-top:14px">Earlier</div>`+past.map(card).join("");
+  $("#app").innerHTML=h;
+  updateStatus();
+}
+function toggleInstall(){ const b=$("#installBox"); if(b) b.hidden=!b.hidden; }
+async function emailLink(btn){
+  const m=$("#linkmsg"); if(m)m.textContent="Sending…"; if(btn)btn.disabled=true;
+  let j; try{ j=await rapi({action:"email_mobile_link"}); }catch(e){ j=null; }
+  if(m) m.textContent = (j&&j.ok)?("✓ Sent to "+(j.to||"your email")+" — open it on your phone."):((j&&j.message)||"Couldn't send — try again.");
+  if(btn)btn.disabled=false;
+}
+
+async function openRoute(id){
+  if(!TOKEN){ gate(); return; }
+  $("#app").innerHTML=`<div class="msg">Loading route…</div>`;
   let j=null, offline=false;
-  try{ j=await rapi({action:"route_day",date:DATE}); }catch(e){ if(!TOKEN) return; j=null; }
-  if(j&&j.ok){ cacheDay(DATE,j); }
-  else { const c=loadCachedDay(DATE); if(c){ j=c; offline=true; } }
-  if(!j){ $("#app").innerHTML=`<div class="msg">Couldn't load${navigator.onLine?"":" — you're offline"}, and no cached copy for this day.</div>`; updateStatus(); return; }
+  try{ j=await rapi({action:"route_day",route_id:id}); }catch(e){ if(!TOKEN) return; j=null; }
+  if(j&&j.ok){ cacheDay(id,j); }
+  else { const c=loadCachedDay(id); if(c){ j=c; offline=true; } }
+  if(!j){ $("#app").innerHTML=`<div class="msg">Couldn't load this route${navigator.onLine?"":" — you're offline"}, and no cached copy.</div><div style="text-align:center"><button class="btn" onclick="showList()">‹ All routes</button></div>`; return; }
   DAY=j;
-  if(!j.route){ renderEmpty(); updateStatus(); return; }
-  render();
+  if(!j.route){ $("#app").innerHTML=`<div class="msg">This route is empty.</div><div style="text-align:center"><button class="btn" onclick="showList()">‹ All routes</button></div>`; return; }
+  renderDay();
   if(offline) setStatusText("● Offline (showing cached)","#ffd7b0"); else updateStatus();
   if(navigator.onLine){ computeEtas(); flushOutbox().then(updateStatus); }
 }
 
-function renderEmpty(){
-  const nice=new Date(DATE+"T00:00:00").toLocaleDateString([], {weekday:"long",month:"long",day:"numeric"});
-  $("#app").innerHTML=`<div class="card"><div class="rsum"><span class="nm">No route for ${esc(nice)}</span></div>
-    <p class="hint" style="margin:8px 0 0">Build a route on the Territory Map and set its date to see it here as your day's plan.</p>
-    <a class="btn pri wide" style="margin-top:12px" href="/admin/map.html">🗺 Open Territory Map</a></div>`;
-}
-
 function statusOf(s){ const v=s.visit; if(v&&v.completed_at) return "done"; if(v&&(v.status==="checked_in"||v.checkin_at)) return "here"; return "plan"; }
-function render(){
+function renderDay(){
   const r=DAY.route, stops=DAY.stops||[];
-  const nice=new Date((r.scheduled_date||DATE)+"T00:00:00").toLocaleDateString([], {weekday:"long",month:"long",day:"numeric"});
   const drive=r.duration_s?` · ${Math.round(r.duration_s/60)} min drive`:"";
   const done=stops.filter(s=>statusOf(s)==="done").length;
-  let h=`<div class="card"><div class="rsum"><span class="nm">${esc(r.name||"Route")}</span><span class="mt">${esc(nice)}</span></div>
-    <div class="mt" style="margin-top:4px;color:var(--gray)">${stops.length} stop${stops.length===1?"":"s"}${drive} · ${done}/${stops.length} visited</div></div>`;
+  let h=`<div style="margin:0 0 10px"><button class="btn sm" onclick="showList()">‹ All routes</button></div>`;
+  h+=`<div class="card"><div class="rsum"><span class="nm">${esc(r.name||"Route")}</span><span class="mt">${esc(fmtDate(r.scheduled_date))}</span></div>
+    <div class="mt" style="margin:4px 0 10px;color:var(--gray)">${stops.length} stop${stops.length===1?"":"s"}${drive} · ${done}/${stops.length} visited</div>
+    <button class="btn sm" onclick="addToCalendar()">📆 Add to Outlook calendar</button></div>`;
   h+=stops.map((s,i)=>stopCard(s,i)).join("");
   $("#app").innerHTML=h;
 }
@@ -167,7 +219,7 @@ function stopCard(s,i){
     <div class="acts">
       <a class="btn" href="${navUrl}" target="_blank" rel="noopener">🧭 Navigate</a>
       ${s.contact_phone?`<a class="btn" href="tel:${esc(String(s.contact_phone).replace(/[^0-9+]/g,''))}">📞 Call</a>`:""}
-      <button class="btn" onclick="openHandout('${jesc(s.dealer_id)}','${jesc(s.name)}')">📄 Visit package</button>
+      <button class="btn" onclick="openHandout('${jesc(s.dealer_id)}')">📄 Visit package</button>
       <button class="btn" onclick="headsUp(${i})">📣 Heads-up</button>
       ${st==="plan"?`<button class="btn go" onclick="checkIn(${i})">▶ Start visit</button>`:`<button class="btn ${st==='done'?'':'pri'}" onclick="toggleBody(${i})">${st==='done'?'View':'✎ Log visit'}</button>`}
     </div>
@@ -177,32 +229,30 @@ function stopCard(s,i){
 
 function toggleBody(i){ const b=$("#body_"+i); if(!b) return; if(b.classList.contains("open")){ b.classList.remove("open"); return; }
   b.classList.add("open"); if(!b.dataset.loaded){ loadVisitForm(i); } }
-
 async function loadVisitForm(i){
   const s=DAY.stops[i], b=$("#body_"+i); b.dataset.loaded="1";
   b.innerHTML=`<div class="hint">Loading…</div>`;
   let rep=null; try{ const j=await rapi({action:"visit_report_get",route_id:DAY.route.id,dealer_id:s.dealer_id}); rep=(j&&j.report)||null; }catch(e){}
   const f=(rep&&rep.fields)||{};
-  const g=(k,v)=>v==null?"":Array.isArray(v)?v.join(", "):String(v);
-  const done = rep&&rep.completed_at;
+  const g=(v)=>v==null?"":Array.isArray(v)?v.join(", "):String(v);
   b.innerHTML=`
     <div class="voice" id="voice_${i}">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <button class="btn go" id="rec_${i}" onclick="toggleRec(${i})">🎤 Record summary</button>
-        <span id="recmsg_${i}" class="hint">Speak your visit summary after you leave — it fills the fields below for you to review.</span>
+        <span id="recmsg_${i}" class="hint">Speak your summary after you leave — it fills the fields below for you to review.</span>
       </div>
       <div id="tx_${i}" style="display:none;margin-top:8px"></div>
     </div>
-    <label class="fl">Purpose of visit</label><input class="in" id="f_purpose_${i}" value="${esc(g('p',f.purpose))}" placeholder="e.g. Quarterly check-in, present new line">
-    <label class="fl">Manufacturers discussed</label><input class="in" id="f_manu_${i}" value="${esc(g('m',f.manufacturers))}" placeholder="Strongback, Corsicana…">
-    <label class="fl">Products presented</label><input class="in" id="f_prod_${i}" value="${esc(g('p',f.products))}" placeholder="ErgoSteel, ErgoBed…">
-    <label class="fl">Products they're interested in</label><input class="in" id="f_int_${i}" value="${esc(g('i',f.interest))}" placeholder="What they want to bring in">
-    <label class="fl">Questions / concerns</label><textarea class="in" id="f_conc_${i}" placeholder="Pricing, lead times, objections…">${esc(g('c',f.concerns))}</textarea>
-    <label class="fl">Competitive info</label><input class="in" id="f_comp_${i}" value="${esc(g('c',f.competitive))}" placeholder="What competitors they use">
-    <label class="fl">Opportunities identified</label><input class="in" id="f_opp_${i}" value="${esc(g('o',f.opportunities))}" placeholder="e.g. 2 ErgoSteel chairs">
-    <label class="fl">Follow-up requirements</label><textarea class="in" id="f_fu_${i}" placeholder="One per line — each becomes a task">${esc(g('f',f.followups))}</textarea>
-    <label class="fl">General notes</label><textarea class="in" id="f_notes_${i}" placeholder="Anything else worth capturing">${esc(g('n',f.notes))}</textarea>
-    <label class="fl">Next action</label><input class="in" id="f_na_${i}" value="${esc(g('na',f.next_action))}" placeholder="e.g. Send pricing + literature">
+    <label class="fl">Purpose of visit</label><input class="in" id="f_purpose_${i}" value="${esc(g(f.purpose))}" placeholder="e.g. Quarterly check-in, present new line">
+    <label class="fl">Manufacturers discussed</label><input class="in" id="f_manu_${i}" value="${esc(g(f.manufacturers))}" placeholder="Strongback, Corsicana…">
+    <label class="fl">Products presented</label><input class="in" id="f_prod_${i}" value="${esc(g(f.products))}" placeholder="ErgoSteel, ErgoBed…">
+    <label class="fl">Products they're interested in</label><input class="in" id="f_int_${i}" value="${esc(g(f.interest))}" placeholder="What they want to bring in">
+    <label class="fl">Questions / concerns</label><textarea class="in" id="f_conc_${i}" placeholder="Pricing, lead times, objections…">${esc(g(f.concerns))}</textarea>
+    <label class="fl">Competitive info</label><input class="in" id="f_comp_${i}" value="${esc(g(f.competitive))}" placeholder="What competitors they use">
+    <label class="fl">Opportunities identified</label><input class="in" id="f_opp_${i}" value="${esc(g(f.opportunities))}" placeholder="e.g. 2 ErgoSteel chairs">
+    <label class="fl">Follow-up requirements</label><textarea class="in" id="f_fu_${i}" placeholder="One per line — each becomes a task">${esc(g(f.followups))}</textarea>
+    <label class="fl">General notes</label><textarea class="in" id="f_notes_${i}" placeholder="Anything else worth capturing">${esc(g(f.notes))}</textarea>
+    <label class="fl">Next action</label><input class="in" id="f_na_${i}" value="${esc(g(f.next_action))}" placeholder="e.g. Send pricing + literature">
     <label class="fl">Follow-up date</label><input class="in" type="date" id="f_nad_${i}" value="${esc(f.next_action_date||'')}">
     <div class="save-row">
       <button class="btn wide" onclick="saveVisit(${i},'in_progress')">Save draft</button>
@@ -216,10 +266,8 @@ function collect(i){ const v=id=>(($("#f_"+id+"_"+i)||{}).value||"").trim();
     concerns:v("conc"), competitive:v("comp"), opportunities:v("opp"), followups:v("fu"),
     notes:v("notes"), next_action:v("na"), next_action_date:v("nad") }; }
 
-// ---- Voice: record → Deepgram transcribe → Claude structures → prefill form for review ----
+// ---- Voice ----
 function blobToB64(blob){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).replace(/^data:[^;]+;base64,/,"")); r.onerror=rej; r.readAsDataURL(blob); }); }
-async function voiceApi(body){ const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
-  const r=await fetch("/.netlify/functions/visit-voice-api",{method:"POST",headers:h,body:JSON.stringify(body)}); return r.json().catch(()=>({})); }
 function toggleRec(i){ const r=REC[i]; if(r&&r.mr&&r.mr.state==="recording"){ stopRec(i); } else { startRec(i); } }
 async function startRec(i){
   const btn=$("#rec_"+i), msg=$("#recmsg_"+i);
@@ -227,8 +275,8 @@ async function startRec(i){
   if(!navigator.mediaDevices||!window.MediaRecorder){ if(msg)msg.textContent="This device can't record here — type your notes below."; return; }
   let stream; try{ stream=await navigator.mediaDevices.getUserMedia({audio:true}); }
   catch(e){ if(msg)msg.textContent="Microphone blocked — allow mic access, or type your notes."; return; }
-  const mime = (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/webm"))?"audio/webm":((MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported("audio/mp4"))?"audio/mp4":"");
-  let mr; try{ mr = mime?new MediaRecorder(stream,{mimeType:mime}):new MediaRecorder(stream); }catch(e){ mr=new MediaRecorder(stream); }
+  const mime=(MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported("audio/webm"))?"audio/webm":((MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported("audio/mp4"))?"audio/mp4":"");
+  let mr; try{ mr=mime?new MediaRecorder(stream,{mimeType:mime}):new MediaRecorder(stream); }catch(e){ mr=new MediaRecorder(stream); }
   const chunks=[]; mr.ondataavailable=e=>{ if(e.data&&e.data.size) chunks.push(e.data); };
   mr.onstop=async()=>{ try{ stream.getTracks().forEach(t=>t.stop()); }catch(e){} const blob=new Blob(chunks,{type:mr.mimeType||mime||"audio/webm"}); await processAudio(i,blob); };
   const t0=Date.now(); const timer=setInterval(()=>{ const sec=Math.floor((Date.now()-t0)/1000); const m=$("#recmsg_"+i); if(m)m.textContent="● Recording "+Math.floor(sec/60)+":"+String(sec%60).padStart(2,"0")+" — tap Stop"; if(sec>=240) stopRec(i); },500);
@@ -265,8 +313,8 @@ function handleVoiceResult(i,j){
 
 async function checkIn(i){
   const s=DAY.stops[i]; const now=new Date().toISOString();
-  s.visit=Object.assign({},s.visit,{status:"checked_in",checkin_at:now});   // optimistic
-  render(); cacheDay(DATE,DAY); if(navigator.onLine) computeEtas(); setTimeout(()=>toggleBody(i),60);
+  s.visit=Object.assign({},s.visit,{status:"checked_in",checkin_at:now});
+  renderDay(); cacheDay(DAY.route.id,DAY); if(navigator.onLine) computeEtas(); setTimeout(()=>toggleBody(i),60);
   const sent=await tryOrQueue({action:"visit_checkin",route_id:DAY.route.id,dealer_id:s.dealer_id});
   toast(sent?"Arrival logged ✓":"Saved offline — will sync"); updateStatus();
 }
@@ -277,14 +325,14 @@ async function saveVisit(i,status){
   if(VSTRUCT[i]) payload.structured=VSTRUCT[i];
   if(VTX[i]) payload.transcript=VTX[i];
   s.visit=Object.assign({},s.visit,{status,completed_at:status==="completed"?new Date().toISOString():((s.visit&&s.visit.completed_at)||null)});
-  cacheDay(DATE,DAY);
+  cacheDay(DAY.route.id,DAY);
   if(!navigator.onLine){ enqueue(payload); updateStatus();
-    if(status==="completed"){ toast("Saved offline — will sync ✓"); render(); } else if(m){ m.style.color="var(--ok)"; m.textContent="Saved offline — will sync."; }
+    if(status==="completed"){ toast("Saved offline — will sync ✓"); renderDay(); } else if(m){ m.style.color="var(--ok)"; m.textContent="Saved offline — will sync."; }
     return; }
   try{ const j=await rapi(payload);
-    if(j&&j.ok){ if(status==="completed"){ toast(`Visit saved ✓ ${j.tasks?`· ${j.tasks} task${j.tasks===1?'':'s'}`:''}`); render(); } else if(m){ m.style.color="var(--ok)"; m.textContent="Draft saved."; } }
+    if(j&&j.ok){ if(status==="completed"){ toast(`Visit saved ✓ ${j.tasks?`· ${j.tasks} task${j.tasks===1?'':'s'}`:''}`); renderDay(); } else if(m){ m.style.color="var(--ok)"; m.textContent="Draft saved."; } }
     else if(m){ m.style.color="#b42323"; m.textContent=(j&&j.error)||"Couldn't save."; }
-  }catch(e){ enqueue(payload); updateStatus(); if(status==="completed"){ toast("Saved offline — will sync ✓"); render(); } else if(m){ m.style.color="var(--ok)"; m.textContent="Saved offline — will sync."; } }
+  }catch(e){ enqueue(payload); updateStatus(); if(status==="completed"){ toast("Saved offline — will sync ✓"); renderDay(); } else if(m){ m.style.color="var(--ok)"; m.textContent="Saved offline — will sync."; } }
 }
 async function draftFollowup(i){
   const s=DAY.stops[i], m=$("#vmsg_"+i);
@@ -301,7 +349,7 @@ async function headsUp(i){
   const s=DAY.stops[i];
   const etaEl=$("#eta_"+i); const eta=(etaEl&&etaEl.textContent||"").trim(); const etaTxt=(eta&&eta!=="—")?eta:"";
   toast("Preparing heads-up…");
-  let j; try{ j=await rapi({action:"previsit_draft",dealer_id:s.dealer_id,date:(DAY.route&&DAY.route.scheduled_date)||DATE,eta:etaTxt}); }catch(e){ j=null; }
+  let j; try{ j=await rapi({action:"previsit_draft",dealer_id:s.dealer_id,date:(DAY.route&&DAY.route.scheduled_date)||"",eta:etaTxt}); }catch(e){ j=null; }
   if(!j||!j.ok){ toast((j&&j.message)||"Couldn't prepare the heads-up"); return; }
   openDraft(s, j.subject||"", j.body||"", j.signature||"", "Pre-visit heads-up — review before sending");
 }
@@ -327,12 +375,12 @@ async function sendDraft(dealer_id,btn){
   const m=$("#d_msg"); if(!to){ if(m){m.style.color="#b42323";m.textContent="Add a recipient email.";} return; }
   if(m){ m.style.color=""; m.textContent="Sending…"; } if(btn) btn.disabled=true;
   let j; try{ j=await esapi({action:"send",dealer_id,to,subject,body_text:body}); }catch(e){ j=null; }
-  if(j&&j.ok){ toast("Email sent ✓"); const md=$("#d_msg"); const modal=document.querySelector(".modal"); if(modal) modal.remove(); }
+  if(j&&j.ok){ toast("Email sent ✓"); const modal=document.querySelector(".modal"); if(modal) modal.remove(); }
   else { if(m){ m.style.color="#b42323"; m.textContent=(j&&j.message)||"Couldn't send — you can also send from Dealer 360."; } if(btn) btn.disabled=false; }
 }
 
-// ---- Dealer handout (visit package) — reuse the shared template ----
-async function openHandout(dealer_id,name){
+// ---- Visit package (shared handout) ----
+async function openHandout(dealer_id){
   if(!navigator.onLine){ toast("Visit package needs a connection"); return; }
   const w=window.open("","_blank"); if(!w){ toast("Allow pop-ups for the visit package"); return; }
   w.document.write('<!doctype html><meta charset="utf-8"><body style="font:15px Arial;margin:28px;color:#5b6672">Preparing visit package…</body>'); w.document.close();
@@ -341,37 +389,71 @@ async function openHandout(dealer_id,name){
   try{ w.document.open(); w.document.write(DealerHandout.html(c,{HANDOUT,ME})); w.document.close(); }catch(e){}
 }
 
-// ---- ETAs: one directions call, then compute clock arrival per stop ----
+// ---- ETAs (also stores arrival ms per stop for the calendar export) ----
 async function computeEtas(){
   const r=DAY.route, stops=DAY.stops||[];
   const useHome = r.round_trip && r.home_base && isFinite(r.home_base.lat) && isFinite(r.home_base.lng);
-  if(!stops.length || stops.some(s=>!(isFinite(s.lat)&&isFinite(s.lng)))) return; // need coords on every stop
+  if(!stops.length || stops.some(s=>!(isFinite(s.lat)&&isFinite(s.lng)))) return;
   const coords=[]; if(useHome) coords.push([r.home_base.lng,r.home_base.lat]);
   stops.forEach(s=>coords.push([s.lng,s.lat]));
   if(coords.length<2) return;
   let legs=[]; try{ const d=await rapi({action:"directions",coords}); legs=(d&&d.legs)||[]; }catch(e){}
   if(legs.length<coords.length-1) return;
   const depart=(r.home_base&&r.home_base.depart_time)||"08:00";
-  let base=Date.parse((r.scheduled_date||DATE)+"T"+(/^\d{1,2}:\d{2}$/.test(depart)?depart:"08:00")+":00");
+  let base=Date.parse((r.scheduled_date||todayStr())+"T"+(/^\d{1,2}:\d{2}$/.test(depart)?depart:"08:00")+":00");
   if(!isFinite(base)) return;
-  let clock=base, ci=0;
-  if(useHome){ /* coords[0] is home; leg[0] home->stop0 */ }
+  let clock=base;
   for(let k=0;k<stops.length;k++){
-    const coordIdx = k + (useHome?1:0);
+    const coordIdx=k+(useHome?1:0);
     if(coordIdx>0) clock += (legs[coordIdx-1].duration_s||0)*1000;
+    stops[k]._arrive=clock;
     const el=$("#eta_"+k); if(el) el.textContent=new Date(clock).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"});
     const vmin=(stops[k].visit_min!=null?stops[k].visit_min:30);
     clock += vmin*60000;
   }
 }
 
-// ---- Connectivity: sync the outbox and refresh when the signal returns ----
-window.addEventListener("online", ()=>{ updateStatus(); flushOutbox().then(()=>{ if(navigator.onLine && TOKEN) load(); }); });
+// ---- Calendar export (.ics): master route event + one event per dealer visit ----
+function icsEsc(s){ return String(s==null?"":s).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\r?\n/g,"\\n"); }
+function icsStamp(ms){ const d=new Date(ms); const p=n=>String(n).padStart(2,"0"); return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+"T"+p(d.getHours())+p(d.getMinutes())+"00"; }
+function icsDay(ds){ return String(ds||todayStr()).replace(/-/g,""); }
+function nextDayStr(ds){ const d=new Date((ds||todayStr())+"T00:00:00"); d.setDate(d.getDate()+1); const p=n=>String(n).padStart(2,"0"); return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate()); }
+function routeUrl(id){ return location.origin+"/admin/scheduled-routes.html?route="+encodeURIComponent(id); }
+function addToCalendar(){
+  const r=DAY.route, stops=DAY.stops||[];
+  const uid=(r.id||"route")+"@hcps";
+  const times=stops.map(s=>s._arrive).filter(x=>x);
+  const L=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//HCPS//Scheduled Routes//EN","CALSCALE:GREGORIAN","METHOD:PUBLISH"];
+  // Master route event
+  L.push("BEGIN:VEVENT","UID:"+uid+"-master","SUMMARY:"+icsEsc("Route: "+(r.name||"Sales route")));
+  if(times.length){ const start=Math.min.apply(null,times);
+    const lastArrive=Math.max.apply(null,times); const lastVisit=(stops[stops.length-1]&&stops[stops.length-1].visit_min!=null?stops[stops.length-1].visit_min:30);
+    L.push("DTSTART:"+icsStamp(start),"DTEND:"+icsStamp(lastArrive+lastVisit*60000)); }
+  else { L.push("DTSTART;VALUE=DATE:"+icsDay(r.scheduled_date),"DTEND;VALUE=DATE:"+nextDayStr(r.scheduled_date)); }
+  const summaryList=stops.map((s,i)=>`${i+1}. ${s.name}${s._arrive?" — "+new Date(s._arrive).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}):""}${s.city?", "+s.city+(s.state?" "+s.state:""):""}`).join("\n");
+  const masterDesc=(r.round_trip?"Round trip. ":"")+(r.duration_s?Math.round(r.duration_s/60)+" min driving. ":"")+stops.length+" stops.\n\n"+summaryList+"\n\nOpen route: "+routeUrl(r.id);
+  L.push("DESCRIPTION:"+icsEsc(masterDesc),"END:VEVENT");
+  // Per-dealer visit events (only when we have arrival times)
+  stops.forEach((s,i)=>{ if(!s._arrive) return; const vis=(s.visit_min!=null?s.visit_min:30);
+    const desc=(s.contact_name?"Contact: "+s.contact_name+(s.contact_phone?" · "+s.contact_phone:"")+"\n":"")+"Stop "+(i+1)+" of "+stops.length+" on "+(r.name||"route")+"\nOpen route: "+routeUrl(r.id);
+    L.push("BEGIN:VEVENT","UID:"+uid+"-"+i,"SUMMARY:"+icsEsc("Visit: "+s.name),
+      "DTSTART:"+icsStamp(s._arrive),"DTEND:"+icsStamp(s._arrive+vis*60000),
+      "LOCATION:"+icsEsc([s.address,s.city,s.state,s.zip].filter(Boolean).join(", ")),
+      "DESCRIPTION:"+icsEsc(desc),"END:VEVENT"); });
+  L.push("END:VCALENDAR");
+  const blob=new Blob([L.join("\r\n")],{type:"text/calendar;charset=utf-8"});
+  const url=URL.createObjectURL(blob); const a=document.createElement("a");
+  a.href=url; a.download=(r.name||"route").replace(/[^a-z0-9]+/gi,"_").replace(/^_|_$/g,"")+".ics";
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000);
+  toast(times.length?"Calendar file ready — open it to add to Outlook":"Added route (all-day) — open to add to Outlook");
+}
+
+// ---- Connectivity ----
+window.addEventListener("online", ()=>{ updateStatus(); flushOutbox().then(()=>{ if(navigator.onLine && TOKEN){ if(DAY&&DAY.route) openRoute(DAY.route.id); else showList(); } }); });
 window.addEventListener("offline", ()=>updateStatus());
-// ---- Service worker: makes the app shell open with no signal (data/queue handled in-page) ----
 if("serviceWorker" in navigator){ try{ navigator.serviceWorker.register("/admin/sr-sw.js").catch(()=>{}); }catch(e){} }
 
 updateStatus();
-load();
+boot();
 </script>
 </body></html>

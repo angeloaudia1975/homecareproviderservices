@@ -180,8 +180,12 @@ exports.handler = async (event)=>{
       let path="rep_routes?select=id,name,scheduled_date,stops,distance_m,duration_s,round_trip,updated_at&order=scheduled_date.desc.nullslast,updated_at.desc";
       if(me.role!=="president") path+=`&owner_email=eq.${encodeURIComponent(me.email||"~none~")}`;
       const rows=await sbGet(path).catch(()=>[]);
+      // visited-progress per route (completed visit reports) so the route cards can show 2/5 done.
+      const ids=(rows||[]).map(r=>r.id);
+      let doneBy={};
+      if(ids.length){ try{ const vr=await sbGet(`dealer_visit_reports?route_id=in.(${ids.join(",")})&completed_at=not.is.null&select=route_id`); for(const v of (vr||[])) doneBy[v.route_id]=(doneBy[v.route_id]||0)+1; }catch(e){} }
       const routes=(rows||[]).map(r=>({id:r.id,name:r.name,scheduled_date:r.scheduled_date,stops_count:(r.stops||[]).length,
-        distance_m:r.distance_m,duration_s:r.duration_s,round_trip:r.round_trip,updated_at:r.updated_at}));
+        visited:doneBy[r.id]||0, distance_m:r.distance_m,duration_s:r.duration_s,round_trip:r.round_trip,updated_at:r.updated_at}));
       return json(200,{ok:true,routes});
     }
     if(b.action==="get_route"){
@@ -643,6 +647,28 @@ exports.handler = async (event)=>{
       const subject = `HCPS will be in your area${when?` — ${when}`:""}`;
       const signature = `${repName}${me.email?` · ${me.email}`:""}\nHomeCare Provider Services`;
       return json(200,{ok:true, to:String(d.email||""), subject, body, signature});
+    }
+
+    // ---------- Email the rep the mobile Scheduled Routes link (for add-to-home-screen) ----------
+    if(b.action==="email_mobile_link"){
+      const to=String(me.email||"").trim();
+      if(!EMAIL_RE.test(to)) return json(200,{ok:false,message:"No email on file for your account — ask an admin to add it."});
+      const base=process.env.PUBLIC_SITE_BASE||"https://homecareproviderservices.netlify.app";
+      const url=base+"/admin/scheduled-routes.html";
+      const html=`<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:560px;font-size:14px;line-height:1.6">
+        <h2 style="color:#2B4071;margin:0 0 6px">Your HCPS Scheduled Routes</h2>
+        <p style="margin:0 0 12px">Open this on your phone and add it to your home screen so your day's dealer visits are one tap away:</p>
+        <p style="margin:0 0 16px"><a href="${url}" style="display:inline-block;background:#F5821F;color:#fff;text-decoration:none;font-weight:700;padding:11px 18px;border-radius:8px">Open Scheduled Routes &rarr;</a></p>
+        <p style="margin:0 0 4px;font-weight:700;color:#2B4071">iPhone (Safari)</p>
+        <p style="margin:0 0 12px;color:#374151">Open the link in <b>Safari</b> &rarr; tap the <b>Share</b> button &rarr; <b>Add to Home Screen</b>.</p>
+        <p style="margin:0 0 4px;font-weight:700;color:#2B4071">Android (Chrome)</p>
+        <p style="margin:0 0 12px;color:#374151">Open the link in <b>Chrome</b> &rarr; tap the <b>⋮</b> menu &rarr; <b>Add to Home screen</b> / <b>Install app</b>.</p>
+        <p style="margin:0 0 0;color:#6b7280;font-size:12.5px">You'll sign in once with your HCPS email and password; after that it stays signed in. — HomeCare Provider Services</p>
+      </div>`;
+      const text=`Your HCPS Scheduled Routes\n\nOpen on your phone and add to your home screen:\n${url}\n\niPhone (Safari): open in Safari, tap Share, then Add to Home Screen.\nAndroid (Chrome): open in Chrome, tap the menu, then Add to Home screen / Install app.\n\nSign in once with your HCPS email and password.`;
+      const res=await sendMail({to,subject:"Your HCPS Scheduled Routes — add to your phone",html,text});
+      if(res&&res.ok) return json(200,{ok:true,sent:true,to});
+      return json(200,{ok:false,message:(res&&res.skipped)?"Email isn't configured yet (RESEND_API_KEY).":"Couldn't send — try again."});
     }
 
     return json(400,{error:"unknown action"});
