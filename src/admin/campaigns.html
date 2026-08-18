@@ -39,7 +39,15 @@ let EXCL=new Set(), RQ="";  // pre-send review: excluded recipient emails + list
 const jesc=s=>String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'");
 function qparam(k){ try{ return new URLSearchParams(location.search).get(k)||""; }catch(e){ return ""; } }
 const num=n=>Number(n||0).toLocaleString("en-US");
-const GOALS=[["manufacturer_intro","Manufacturer introduction"],["launch","New product launch"],["promo","Promotion / offer"],["cross_sell","Cross-sell"],["reactivation","Reactivation"],["acquisition","Dealer acquisition"]];
+// Goals are grouped: conversion-measured OBJECTIVES (a real completed action) first, then creative templates.
+const GOALS=[
+  ["golden_first_login","★ Activate Golden Ordering Portal (goal: first login)"],
+  ["hcps_registration","★ Introduce HCPS Website & Online Ordering (goal: registration)"],
+  ["first_online_order","★ Place First Online Order (goal: first order)"],
+  ["reorder_reactivate","★ Reorder / Reactivate Dormant Dealer"],
+  ["schedule_rep_visit","★ Schedule Rep Visit"],
+  ["manufacturer_inquiry","★ Manufacturer Account Inquiry"],
+  ["manufacturer_intro","Manufacturer introduction"],["launch","New product launch"],["promo","Promotion / offer"],["cross_sell","Cross-sell"],["reactivation","Reactivation"],["acquisition","Dealer acquisition"]];
 
 function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
 async function submitTok(){
@@ -134,12 +142,13 @@ function renderAudPrev(){
   const pv=$("#audPrev"); if(!pv||!APREV) return; const bd=APREV.breakdown||{};
   pv.innerHTML=`<div style="background:#f6f9fc;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:2px 0 12px">
     <div style="font-size:12px;color:var(--gray);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Send audience — ${esc(APREV.audience.name||"")}</div>
-    <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px">
+    <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px;align-items:center">
       <span><b>${num(bd.companies||0)}</b> companies</span>
       <span><b>${num(bd.contacts||0)}</b> contacts</span>
       <span style="color:#166b45"><b>${num(bd.valid||0)}</b> will send</span>
       ${bd.unsubscribed?`<span style="color:#8a5d12"><b>${num(bd.unsubscribed)}</b> unsubscribed</span>`:""}
       ${bd.invalid?`<span style="color:#b42323"><b>${num(bd.invalid)}</b> invalid</span>`:""}
+      <a class="link" style="margin-left:auto;font-weight:700" href="/admin/audience-review.html?audience=${encodeURIComponent((APREV.audience&&APREV.audience.id)||audId()||"")}">Review &amp; fix contacts →</a>
     </div></div>`;
 }
 async function generate(){

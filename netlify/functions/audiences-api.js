@@ -171,6 +171,69 @@ exports.handler=async(event)=>{
       return json(200,{ok:true});
     }
 
+    // ---- Audience review: per-dealer contact-selection table (account-anchored) ----
+    // Returns one row per dealer in the audience with: company, account #, branch/location,
+    // the currently selected campaign email, EVERY available email (dealer record + contacts),
+    // marketing eligibility, last Golden login + last activity, and inclusion status. This is the
+    // data the Campaign Studio review UI uses to let a human pick/correct the right email per dealer.
+    if(act==="review"){
+      const id=String(b.id||b.audience_id||"").trim(); if(!id) return json(400,{error:"id required"});
+      const rows0=await sbGet(`audiences?id=eq.${encodeURIComponent(id)}&select=*`).catch(()=>[]);
+      const a=rows0&&rows0[0]; if(!a) return json(404,{error:"not found"});
+      let members=[];
+      if(a.type==="static") members=await sbGetAll(`audience_members?audience_id=eq.${encodeURIComponent(id)}&select=dealer_id,company,contact_name,contact_email,account_no`,"contact_email").catch(()=>[]);
+      else { const {companies}=await assembleContacts(); members=flattenMembers(applyRules(companies,a.rules||{})); }
+      const memberBy={}; for(const m of members){ if(m.dealer_id && !memberBy[m.dealer_id]) memberBy[m.dealer_id]={email:m.contact_email||"",account_no:m.account_no||""}; }
+      const ids=Object.keys(memberBy);
+      const dealerById={}, contactsBy={}, lastLoginBy={}, lastActBy={};
+      const optSet=new Set((await sbGet("email_optout?select=email").catch(()=>[])).map(o=>String(o.email||"").toLowerCase()));
+      for(let i=0;i<ids.length;i+=200){ const part=ids.slice(i,i+200); if(!part.length) break;
+        try{ const ds=await sbGet(`dealers?id=in.(${part.join(",")})&select=id,business_name,hcps_account,email,city,state,golden_url`); for(const d of (ds||[])) dealerById[d.id]=d; }catch(e){}
+        try{ const cs=await sbGet(`dealer_contacts?dealer_id=in.(${part.join(",")})&select=dealer_id,name,email,title,role`); for(const c of (cs||[])) (contactsBy[c.dealer_id]=contactsBy[c.dealer_id]||[]).push(c); }catch(e){}
+        try{ const li=await sbGet(`intent_events?source=eq.golden&event_type=eq.login&dealer_id=in.(${part.join(",")})&select=dealer_id,occurred_at&order=occurred_at.desc`); for(const l of (li||[])){ if(!lastLoginBy[l.dealer_id]) lastLoginBy[l.dealer_id]=l.occurred_at; } }catch(e){}
+        try{ const ac=await sbGet(`dealer_activity?dealer_id=in.(${part.join(",")})&select=dealer_id,created_at&order=created_at.desc`); for(const x of (ac||[])){ if(!lastActBy[x.dealer_id]) lastActBy[x.dealer_id]=x.created_at; } }catch(e){}
+      }
+      const out=ids.map(did=>{ const d=dealerById[did]||{}; const mem=memberBy[did]||{}; const sel=String(mem.email||"").trim(); const selLo=sel.toLowerCase();
+        const emails=[]; const seen=new Set();
+        const addE=(name,email,source)=>{ const em=String(email||"").trim(); if(!EMAIL_RE.test(em)) return; const lo=em.toLowerCase(); if(seen.has(lo)) return; seen.add(lo); emails.push({name:name||"",email:em,source,opted_out:optSet.has(lo),selected:lo===selLo}); };
+        addE(d.business_name,d.email,"dealer");
+        (contactsBy[did]||[]).forEach(c=>addE(c.name,c.email,"contact"));
+        const selValid=EMAIL_RE.test(sel), selOpt=optSet.has(selLo);
+        const selName=(emails.find(e=>e.selected)||{}).name||"";
+        return { dealer_id:did, company:d.business_name||"", account_no:mem.account_no||d.hcps_account||"",
+          branch:[d.city||"",String(d.state||"").toUpperCase()].filter(Boolean).join(", "),
+          primary_contact:selName, available_emails:emails, selected_email:sel,
+          eligibility:(!selValid?"no_email":(selOpt?"opted_out":"eligible")),
+          last_login:lastLoginBy[did]||null, last_activity:lastActBy[did]||null,
+          included:(selValid&&!selOpt) };
+      }).sort((x,y)=>String(x.company).localeCompare(String(y.company)));
+      return json(200,{ok:true, audience:{id:a.id,name:a.name,type:a.type,count:out.length},
+        summary:{dealers:out.length, included:out.filter(r=>r.included).length, opted_out:out.filter(r=>r.eligibility==="opted_out").length, no_email:out.filter(r=>r.eligibility==="no_email").length},
+        rows:out });
+    }
+
+    // ---- Correct the campaign email for one dealer, and (by default) write the fix back to Dealer 360
+    // so the underlying contact data improves instead of being re-fixed every campaign. ----
+    if(act==="set_contact"){
+      const id=String(b.id||b.audience_id||"").trim(); const did=String(b.dealer_id||"").trim();
+      const email=String(b.email||"").trim(); const name=String(b.name||"").trim();
+      if(!id||!did) return json(400,{error:"id and dealer_id required"});
+      if(!EMAIL_RE.test(email)) return json(400,{error:"valid email required"});
+      let acct="", company="";
+      try{ const dr=await sbGet(`dealers?id=eq.${encodeURIComponent(did)}&select=hcps_account,business_name`); acct=(dr&&dr[0]&&dr[0].hcps_account)||""; company=(dr&&dr[0]&&dr[0].business_name)||""; }catch(e){}
+      // Replace this dealer's member row with the chosen email (PK is audience_id,contact_email).
+      try{ await sbSend("DELETE",`audience_members?audience_id=eq.${encodeURIComponent(id)}&dealer_id=eq.${encodeURIComponent(did)}`,null,{Prefer:"return=minimal"}); }catch(e){}
+      try{ await sbSend("POST","audience_members?on_conflict=audience_id,contact_email",[{audience_id:id,dealer_id:did,company,contact_name:name||company,contact_email:email,account_no:acct}],{Prefer:"resolution=merge-duplicates,return=minimal"}); }catch(e){}
+      let wroteBack=false;
+      if(b.write_back!==false){
+        try{ await sbSend("POST","dealer_contacts?on_conflict=dealer_id,email",[{dealer_id:did,name:name||company,email}],{Prefer:"resolution=merge-duplicates,return=minimal"}); wroteBack=true; }catch(e){}
+        try{ await sbSend("PATCH",`dealers?id=eq.${encodeURIComponent(did)}`,{email},{Prefer:"return=minimal"}); }catch(e){}
+        try{ await sbSend("POST","dealer_activity",[{dealer_id:did,kind:"system",subject:"Campaign contact corrected",detail:`Primary marketing email set to ${email}${name?(" ("+name+")"):""} from audience review.`,contact_email:email,actor:me.name||me.email}],{Prefer:"return=minimal"}); }catch(e){}
+      }
+      try{ const mem=await sbGetAll(`audience_members?audience_id=eq.${encodeURIComponent(id)}&select=dealer_id`,"dealer_id"); await sbSend("PATCH",`audiences?id=eq.${encodeURIComponent(id)}`,{contact_count:mem.length,company_count:new Set(mem.map(m=>m.dealer_id)).size,updated_at:new Date().toISOString()},{Prefer:"return=minimal"}); }catch(e){}
+      return json(200,{ok:true,dealer_id:did,email,account_no:acct,wrote_back:wroteBack});
+    }
+
     return json(400,{error:"unknown action"});
   }catch(e){ return json(500,{error:String(e&&e.message||e)}); }
 };

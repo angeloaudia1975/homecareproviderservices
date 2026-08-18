@@ -103,9 +103,11 @@ async function buildAud(){
   $("#built").innerHTML=`<div class="hint" style="margin-top:8px">Building audience…</div>`;
   let j; try{ j=await api("build_audience",{name:name||def,dealer_ids:sel.map(d=>d.dealer_id),notes:"Product-Interest: "+(PICK&&(PICK.product||PICK.line)||"")}); }catch(e){ $("#built").innerHTML=`<div class="msg err">Couldn't build the audience.</div>`; return; }
   if(!j||!j.ok){ $("#built").innerHTML=`<div class="msg err">${esc((j&&j.message)||j&&j.error||"Failed.")}</div>`; return; }
+  const diag=[]; if(j.emailable!=null) diag.push(`${j.emailable} emailable contact${j.emailable===1?"":"s"} from ${j.dealers!=null?j.dealers:j.count} dealer${(j.dealers||j.count)===1?"":"s"}`); if(j.no_email) diag.push(`${j.no_email} had no email on file`); if(j.opted_out) diag.push(`${j.opted_out} opted out`);
   $("#built").innerHTML=`<div class="card" style="border-left:4px solid var(--green)">
-     <span class="ok">✓ Audience “${esc(j.name)}” created with ${j.count} dealer${j.count===1?"":"s"}.</span>
-     <div style="margin-top:8px"><a class="btn orange" href="/admin/campaigns.html">Open Campaign Studio →</a>
+     <span class="ok">✓ Audience “${esc(j.name)}” created${diag.length?" — "+esc(diag.join(" · ")):` with ${j.count} dealer${j.count===1?"":"s"}`}.</span>
+     <div style="margin-top:8px"><a class="btn orange" href="/admin/audience-review.html?audience=${encodeURIComponent(j.audience_id||"")}">Review &amp; fix contacts →</a>
+       <a class="btn ghost" href="/admin/campaigns.html?audience=${encodeURIComponent(j.audience_id||"")}" style="margin-left:6px">Open Campaign Studio</a>
        <a class="btn ghost" href="/admin/audiences.html" style="margin-left:6px">View in Target Audiences</a></div></div>`;
 }
 init();

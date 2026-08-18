@@ -99,6 +99,13 @@ exports.handler = async (event)=>{
         req_address:String(b.address||"").trim()||null, req_city:String(b.city||"").trim()||null,
         req_state:String(b.state||"").trim()||null, req_zip:String(b.zip||"").trim()||null};
       await sb("POST","dealer_users",row,{Prefer:"resolution=merge-duplicates,return=minimal"});
+      // Conversion signal: a completed HCPS online-ordering registration (goal = hcps_registration).
+      // Measures the "Introduce HCPS Website & Online Ordering" campaign outcome — an actual
+      // registration, not just an email open/click. Once per dealer; safe if the table isn't there yet.
+      try{
+        await sb("POST","campaign_conversions?on_conflict=dealer_id,goal",[{dealer_id:dealer_id||null,goal:"hcps_registration",event_type:"registration",source:"hcps",meta:{company,email},occurred_at:new Date().toISOString()}],{Prefer:"resolution=ignore-duplicates,return=minimal"});
+        if(dealer_id) await sb("POST","dealer_activity",{dealer_id,kind:"system",subject:"Registered for HCPS online ordering",detail:`${company} completed HCPS Partner Portal registration (${email}).`,contact_email:email,actor:"HCPS registration",created_at:new Date().toISOString()},{Prefer:"return=minimal"});
+      }catch(e){}
       // Notify HCPS that a new dealer registered so they can review + set up the account.
       try{
         const loc=[String(b.city||"").trim(),String(b.state||"").trim()].filter(Boolean).join(", ");

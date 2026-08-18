@@ -167,10 +167,16 @@ async function ingestResolved(env, res){
   // 1. intent_events — feeds engagement/intent/tasks/handout via the existing cron.
   let intentType = EVENT_TO_INTENT[evt];
   if(intentType==="product_view" && data && data.repeat) intentType="product_view_repeat";
+  // First-login detection: is this the dealer's FIRST-ever Golden sign-in? Drives the
+  // "Activate Golden Ordering Portal" conversion + auto-removal from the never-logged-in audience.
+  let isFirstLogin=false;
+  if(evt==="dealer.login" && dealerId){
+    try{ const prior=await sbGet(`intent_events?dealer_id=eq.${encodeURIComponent(dealerId)}&source=eq.golden&event_type=eq.login&occurred_at=lt.${encodeURIComponent(occurredAt)}&select=dealer_id&limit=1`); isFirstLogin=!(prior&&prior.length); }catch(e){ isFirstLogin=false; }
+  }
   const cfg=await getConfig();
   const intentRow={ dealer_id:dealerId, manufacturer, product_code:productCode, event_type:intentType,
     weight:weightFor(intentType,cfg), source:src, env:evStamp,
-    meta:{...data, event:evt, branch_id:clip(dealerBlk.branch_id||env.branch_id,60)}, occurred_at:occurredAt };
+    meta:{...data, event:evt, first_login:isFirstLogin||undefined, branch_id:clip(dealerBlk.branch_id||env.branch_id,60)}, occurred_at:occurredAt };
   try{ await sbSend("POST","intent_events",[intentRow],{Prefer:"return=minimal"}); }catch(e){}
 
   // 2. dealer_activity — Dealer 360 timeline. Verbosity is config-driven (default 'all').
@@ -193,7 +199,28 @@ async function ingestResolved(env, res){
 
   // 4. Record in the idempotency inbox LAST — only after the durable fan-out above.
   try{ await sbSend("POST","federation_events?on_conflict=event_id",{...auditBase,dealer_id:dealerId,status:"processed"},{Prefer:"resolution=ignore-duplicates,return=minimal"}); }catch(e){}
+
+  // 5. Activation conversion: on the dealer's FIRST Golden login, drop them from every
+  // "never logged in" activation audience and record a once-per-dealer conversion.
+  if(isFirstLogin && dealerId){ try{ await activateOnFirstLogin(dealerId, clip(dealerBlk.customer_no,60), occurredAt, evStamp); }catch(e){} }
   return dealerId;
+}
+
+// First Golden sign-in → remove the dealer from any never-logged-in activation audience and
+// count the activation as a conversion (goal: golden_first_login). Activation audiences are
+// identified by the notes buildStaticAudience stamps ("…never logged in…") so we never touch
+// unrelated static lists. Idempotent: the conversion is unique per (dealer_id, goal).
+async function activateOnFirstLogin(dealerId, customerNo, occurredAt, evStamp){
+  try{
+    const auds=await sbGet(`audiences?type=eq.static&notes=ilike.*never%20logged%20in*&select=id`).catch(()=>[]);
+    for(const a of (auds||[])){
+      try{ await sbSend("DELETE",`audience_members?audience_id=eq.${encodeURIComponent(a.id)}&dealer_id=eq.${encodeURIComponent(dealerId)}`,null,{Prefer:"return=minimal"}); }catch(e){}
+      try{ const mem=await sbGet(`audience_members?audience_id=eq.${encodeURIComponent(a.id)}&select=dealer_id`).catch(()=>[]);
+        await sbSend("PATCH",`audiences?id=eq.${encodeURIComponent(a.id)}`,{contact_count:(mem||[]).length,company_count:new Set((mem||[]).map(m=>m.dealer_id)).size,updated_at:new Date().toISOString()},{Prefer:"return=minimal"}); }catch(e){}
+    }
+  }catch(e){}
+  try{ await sbSend("POST","campaign_conversions?on_conflict=dealer_id,goal",[{dealer_id:dealerId,account_no:customerNo||null,goal:"golden_first_login",event_type:"login",source:"golden",env:evStamp,occurred_at:occurredAt}],{Prefer:"resolution=ignore-duplicates,return=minimal"}); }catch(e){}
+  try{ await sbSend("POST","dealer_activity",{dealer_id:dealerId,kind:"system",subject:"Activated — first Golden sign-in",detail:"Signed into the Golden portal for the first time. Removed from the never-logged-in audience and counted as an activation conversion.",actor:"Golden portal",created_at:occurredAt},{Prefer:"return=minimal"}); }catch(e){}
 }
 
 exports.handler = async (event) => {

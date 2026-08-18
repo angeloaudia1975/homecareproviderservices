@@ -49,6 +49,22 @@ const SEGMENTS=[
   {key:"reorder_due",label:"Reorder due — past their usual window",                 needs_mfr:false},
   {key:"all",        label:"All dealers with an email on file",                     needs_mfr:false},
 ];
+// Campaign GOALS are organized around the completed dealer ACTION we want — a real conversion
+// event — not an email open/click. `conversion` is the goal event recorded in campaign_conversions
+// (milestones) or intent_events (behaviors); `funnel` is the ordered engagement→conversion path.
+const GOALS=[
+  {key:"golden_first_login",  label:"Activate Golden Ordering Portal",         conversion:"golden_first_login", desc:"Golden dealers with portal access who've never logged in → first login.", funnel:["email_open","email_click","golden_first_login"]},
+  {key:"hcps_registration",   label:"Introduce HCPS Website & Online Ordering", conversion:"hcps_registration",  desc:"Introduce the HCPS site and drive online-ordering registration.",          funnel:["email_open","email_click","hcps_registration"]},
+  {key:"product_interest",    label:"Product Interest / Product Page Visit",    conversion:"product_view",       desc:"Get dealers onto a product/line page.",                                     funnel:["email_open","email_click","product_view"]},
+  {key:"first_online_order",  label:"Place First Online Order",                 conversion:"order_created",      desc:"Convert to a first online order.",                                          funnel:["email_open","email_click","order_started","order_created"]},
+  {key:"reorder_reactivate",  label:"Reorder / Reactivate Dormant Dealer",      conversion:"order_created",      desc:"Bring a lapsed dealer back to ordering.",                                   funnel:["email_open","email_click","order_created"]},
+  {key:"manufacturer_inquiry",label:"Manufacturer Account Inquiry",             conversion:"partner_signal",     desc:"Prompt an inquiry about a manufacturer line/account.",                      funnel:["email_open","email_click","partner_signal"]},
+  {key:"schedule_rep_visit",  label:"Schedule Rep Visit",                       conversion:"visit_interest",     desc:"Book time with the territory rep.",                                         funnel:["email_open","email_click","visit_interest"]},
+  {key:"cross_sell_mfr",      label:"Cross-Sell Manufacturer Opportunity",      conversion:"order_created",      desc:"Add an adjacent line to the dealer's mix.",                                 funnel:["email_open","email_click","product_view","order_created"]},
+];
+// Engagement ladder — an open is engagement, a click is stronger, a first login/registration is a
+// conversion, a first order is revenue. Lets Campaign Studio grade whether a campaign changed behavior.
+const CONVERSION_TIERS={email_open:"engagement",email_click:"engagement",hcps_website_visit:"engagement",product_view:"engagement",product_view_repeat:"engagement",visit_interest:"intent",partner_signal:"intent",order_started:"intent",golden_first_login:"conversion",hcps_registration:"conversion",order_created:"revenue",order_completed:"revenue",product_purchased:"revenue"};
 async function dealerIdsFor(segment,mfr){
   const enc=encodeURIComponent;
   if(segment==="prospect"&&mfr)   return (await sbGetAll(`dealer_line_status?relationship=eq.prospect&manufacturer=eq.${enc(mfr)}&select=dealer_id`,"dealer_id")).map(r=>r.dealer_id);
@@ -117,6 +133,12 @@ function subjectsFor(goal,line,offer){
     reactivation:[`We've missed you at HCPS`,`It's been a while — here's what's new`,`Come back to ${L}, ${offer||"we'd love to help"}`],
     acquisition:[`Partner with HomeCare Provider Services`,`Better lines, better pricing — let's talk`,`Grow your dealership with HCPS`],
     cross_sell:[`${L} pairs well with what you stock`,`Round out your mix with ${L}`,`Dealers like you are adding ${L}`],
+    golden_first_login:[`Your Golden ordering portal is ready`,`Activate your Golden online ordering`,`Log in to Golden — your account's set up`],
+    hcps_registration:[`Meet the new HCPS website & online ordering`,`Order from HCPS online — get registered`,`Introducing HCPS online ordering`],
+    first_online_order:[`Place your first order online with HCPS`,`Ordering just got easier — try it online`,`Your online ordering account is open`],
+    reorder_reactivate:[`Time for a reorder?`,`We've missed you — here's what's new`,`Restock ${L} in a couple clicks`],
+    schedule_rep_visit:[`Let's find time to connect`,`Your HCPS rep would love to stop by`,`A quick visit to review your lines?`],
+    manufacturer_inquiry:[`Questions about ${L}? Let's talk`,`Your ${L} account, explained`,`More on ${L} for your dealership`],
   };
   return map[goal]||[`An update from HomeCare Provider Services`,`Something worth a look — ${L}`,`${L} at HCPS`];
 }
@@ -253,6 +275,26 @@ exports.handler=async(event)=>{
       if(!ex.ok) return json(200,{ok:false,message:"Zoho rejected the code — it may have expired (they last only a few minutes) or the scopes were off. Generate a fresh code with the three Campaigns scopes and try again.",detail:ex.error});
       await sbSend("POST","app_settings?on_conflict=key",{key:"zoho_campaigns_auth",value:{refresh_token:ex.refresh_token,api_domain:ex.api_domain,connected_at:new Date().toISOString()},updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
       return json(200,{ok:true,connected:true});
+    }
+
+    // Campaign goal taxonomy (objective + its conversion event + funnel tiers) for the UI picker.
+    if(act==="goal_options"){ return json(200,{ok:true,goals:GOALS,tiers:CONVERSION_TIERS}); }
+
+    // Conversion scoreboard — completed dealer actions (first login, registration, first order…),
+    // graded engagement → intent → conversion → revenue. Optionally scoped to one campaign's recipients.
+    if(act==="conversions"){
+      let rows=[];
+      try{ rows=await sbGetAll("campaign_conversions?select=goal,dealer_id,campaign_id,occurred_at","occurred_at"); }
+      catch(e){ if(/relation|does not exist|campaign_conversions/i.test(String(e&&e.message||e))) return json(200,{ok:false,error:"tables_missing",message:"Run supabase/campaign_conversions.sql first, then redeploy."}); throw e; }
+      let scoped=rows||[];
+      if(b.campaign_id){ // attribute to a campaign's frozen recipients (by dealer membership)
+        try{ const c=await sbGet(`marketing_campaigns?id=eq.${encodeURIComponent(b.campaign_id)}&select=audience`); const ids=new Set((((c&&c[0]&&c[0].audience)||{}).dealer_ids||[]).map(String));
+          if(ids.size) scoped=scoped.filter(r=>r.campaign_id===b.campaign_id || ids.has(String(r.dealer_id))); else scoped=scoped.filter(r=>r.campaign_id===b.campaign_id); }catch(e){}
+      }
+      const labelByConv={}; GOALS.forEach(g=>labelByConv[g.conversion]=g.label);
+      const byGoal={}; for(const r of scoped){ const g=byGoal[r.goal]=byGoal[r.goal]||{goal:r.goal,total:0,last:null}; g.total++; if(!g.last||r.occurred_at>g.last) g.last=r.occurred_at; }
+      const out=Object.values(byGoal).map(x=>({...x,label:labelByConv[x.goal]||x.goal,tier:CONVERSION_TIERS[x.goal]||"conversion"})).sort((a,b2)=>b2.total-a.total);
+      return json(200,{ok:true,conversions:out,total:scoped.length});
     }
 
     if(act==="segments"){
