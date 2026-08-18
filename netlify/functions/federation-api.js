@@ -64,21 +64,58 @@ exports.handler=async(event)=>{
     // Dealers flagged is_test (sandbox/QA) — excluded from the real audience builders so test
     // activity can never land in a live campaign. The Golden Activity dashboard still shows them.
     async function testDealerIds(){ try{ const rows=await sbGet("dealers?is_test=eq.true&select=id"); return new Set((rows||[]).map(r=>String(r.id))); }catch(e){ return new Set(); } }
-    // Create a static audience from a dealer-id list + seed members with each dealer's primary contact
-    // email. Shared by build_audience (Product-Interest) and activation_audience. Excludes out-of-scope.
+    // Create a static audience from a dealer-id list and resolve each dealer to ONE eligible email.
+    // ACCOUNT-ANCHORED chain: Dealer Activity → Account Number → Dealer Account → Correct Contacts →
+    // Eligible Email. Shared by build_audience (Product-Interest) and activation_audience.
+    //   * Email source order: dealers.email (the 'primary' convention) → first valid dealer_contacts email.
+    //   * Filters: invalid emails and the opt-out list are dropped (marketing eligibility).
+    //   * No 300-dealer cap; contacts are fetched for every dealer in 200-id batches.
+    //   * Collision-safe upsert (on_conflict) so a shared/blank email can never abort the whole insert.
+    //   * Returns a DIAGNOSTIC: how many resolved to an email vs. had none vs. were opted out — so a
+    //     "166 dealers → 0 contacts" result is explained instead of silently swallowed.
     async function buildStaticAudience(name, dealerIds, notes){
+      const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       const ids=[...new Set((dealerIds||[]).map(String).filter(Boolean))].filter(inScope);
-      if(!ids.length) return {audience_id:null,count:0};
+      if(!ids.length) return {audience_id:null,count:0,dealers:0,emailable:0,no_email:0,opted_out:0,no_email_dealers:[]};
       let env="development"; try{ const P=require("./_platform.js"); env=(await P.getState()).mode; }catch(e){}
+      const dm=await dealerMap();
+      // Eligibility inputs.
+      const opt=new Set((await sbGet("email_optout?select=email").catch(()=>[])).map(r=>String(r.email||"").toLowerCase()));
+      const dEmail={}, contactsBy={};
+      for(let i=0;i<ids.length;i+=200){ const part=ids.slice(i,i+200); if(!part.length) break;
+        try{ const ds=await sbGet(`dealers?id=in.(${part.join(",")})&select=id,email`); for(const d of (ds||[])) dEmail[d.id]=d.email||""; }catch(e){}
+        try{ const cs=await sbGet(`dealer_contacts?dealer_id=in.(${part.join(",")})&select=dealer_id,name,email`); for(const c of (cs||[])) (contactsBy[c.dealer_id]=contactsBy[c.dealer_id]||[]).push(c); }catch(e){}
+      }
+      // Resolve one eligible primary email per dealer.
+      const rows=[]; const noEmail=[]; let optedOut=0;
+      for(const id of ids){ const d=dm[id]||{};
+        const cand=[]; const de=String(dEmail[id]||"").trim(); if(de) cand.push({name:d.name||"",email:de});
+        (contactsBy[id]||[]).forEach(c=>{ if(c.email) cand.push({name:c.name||d.name||"",email:String(c.email).trim()}); });
+        const valid=cand.filter(e=>EMAIL_RE.test(e.email));
+        const eligible=valid.filter(e=>!opt.has(e.email.toLowerCase()));
+        if(eligible.length){ const p=eligible[0];
+          rows.push({dealer_id:id, account_no:d.acct||"", company:d.name||"", contact_name:p.name||"", contact_email:p.email}); }
+        else { if(valid.length && !eligible.length) optedOut++;      // had an email, but all opted out
+          noEmail.push({dealer_id:id, name:d.name||"", acct:d.acct||""}); }
+      }
+      // Dedup on contact_email — audience_members PK is (audience_id, contact_email), and you never
+      // want to email the same address twice even if two dealers share it.
+      const dedup=[]; const seen=new Set();
+      for(const r of rows){ const lo=r.contact_email.toLowerCase(); if(seen.has(lo)) continue; seen.add(lo); dedup.push(r); }
+      // Create the audience row now so counts can be stamped after insert.
       let aud; try{ aud=await sbSend("POST","audiences",{name,type:"static",notes:notes||"Built from federation",env,created_by:me.email||me.name||"staff"},{Prefer:"return=representation"}); }
       catch(e){ if(/relation|does not exist|audiences/i.test(String(e.message||e))){ const err=new Error("tables_missing"); err.tables_missing=true; throw err; } throw e; }
       const audience_id=aud&&aud[0]&&aud[0].id; if(!audience_id) throw new Error("audience not created");
-      const dm=await dealerMap();
-      let contacts=[]; try{ contacts=await sbGet(`dealer_contacts?dealer_id=in.(${ids.slice(0,300).join(",")})&select=dealer_id,email,name`); }catch(e){}
-      const emailBy={}; for(const c of (contacts||[])){ if(!emailBy[c.dealer_id]&&c.email) emailBy[c.dealer_id]={email:c.email,name:c.name||""}; }
-      const rows=ids.map(id=>{ const d=dm[id]||{}; const c=emailBy[id]||{}; return {audience_id,dealer_id:id,company:d.name||"",contact_name:c.name||"",contact_email:c.email||""}; });
-      for(let i=0;i<rows.length;i+=500){ try{ await sbSend("POST","audience_members",rows.slice(i,i+500),{Prefer:"return=minimal"}); }catch(e){} }
-      return {audience_id,count:rows.length};
+      const members=dedup.map(r=>({audience_id, ...r}));
+      let insertErr="";
+      for(let i=0;i<members.length;i+=500){
+        try{ await sbSend("POST",`audience_members?on_conflict=audience_id,contact_email`,members.slice(i,i+500),{Prefer:"resolution=merge-duplicates,return=minimal"}); }
+        catch(e){ insertErr=String(e&&e.message||e).slice(0,180); }
+      }
+      const companies=new Set(dedup.map(r=>r.dealer_id)).size;
+      try{ await sbSend("PATCH",`audiences?id=eq.${audience_id}`,{company_count:companies,contact_count:dedup.length,updated_at:new Date().toISOString()},{Prefer:"return=minimal"}); }catch(e){}
+      return {audience_id, count:dedup.length, dealers:ids.length, emailable:dedup.length, companies,
+        no_email:noEmail.length, opted_out:optedOut, no_email_dealers:noEmail.slice(0,50), insert_error:insertErr||null};
     }
 
     // ---------- Golden Activity dashboard ----------
@@ -171,7 +208,7 @@ exports.handler=async(event)=>{
       const ids=[...new Set((Array.isArray(b.dealer_ids)?b.dealer_ids:[]).map(String).filter(Boolean))].filter(inScope);
       if(!ids.length) return json(400,{error:"no dealers in scope to add"});
       const name=clip(b.name,120)||("Product interest — "+new Date().toISOString().slice(0,10));
-      try{ const r=await buildStaticAudience(name, ids, clip(b.notes,500)||"Built from Product-Interest (federation)"); return json(200,{ok:true,audience_id:r.audience_id,count:r.count,name}); }
+      try{ const r=await buildStaticAudience(name, ids, clip(b.notes,500)||"Built from Product-Interest (federation)"); return json(200,{ok:true,audience_id:r.audience_id,count:r.count,name,dealers:r.dealers,emailable:r.emailable,companies:r.companies,no_email:r.no_email,opted_out:r.opted_out,no_email_dealers:r.no_email_dealers,insert_error:r.insert_error}); }
       catch(e){ if(e&&e.tables_missing) return json(200,{ok:false,error:"tables_missing",message:"Run supabase/audiences.sql first."}); return json(500,{error:String(e&&e.message||e)}); }
     }
 
@@ -303,7 +340,7 @@ exports.handler=async(event)=>{
       if(b.preview) return json(200,{ok:true,dealers:list,count:list.length});
       if(!list.length) return json(200,{ok:true,built:false,count:0,message:"No never-logged-in Golden dealers found."});
       const name=clip(b.name,120)||("Golden activation — never logged in ("+new Date().toISOString().slice(0,10)+")");
-      try{ const r=await buildStaticAudience(name, list.map(d=>d.dealer_id), "Golden portal access, never logged in — activation campaign target."); return json(200,{ok:true,built:true,audience_id:r.audience_id,count:r.count,name}); }
+      try{ const r=await buildStaticAudience(name, list.map(d=>d.dealer_id), "Golden portal access, never logged in — activation campaign target."); return json(200,{ok:true,built:true,audience_id:r.audience_id,count:r.count,name,dealers:r.dealers,emailable:r.emailable,companies:r.companies,no_email:r.no_email,opted_out:r.opted_out,no_email_dealers:r.no_email_dealers,insert_error:r.insert_error}); }
       catch(e){ if(e&&e.tables_missing) return json(200,{ok:false,error:"tables_missing",message:"Run supabase/audiences.sql first."}); return json(500,{error:String(e&&e.message||e)}); }
     }
 

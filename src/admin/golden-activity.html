@@ -81,7 +81,12 @@ async function activation(preview, btn){
   try{ const j=await api("activation_audience", preview?{preview:true}:{});
     if(j&&j.ok){
       if(preview){ ACT_LIST=j.dealers||[]; ACT_AUD=""; ACT_MSG=`${j.count} Golden-access dealer(s) have never logged in.`; }
-      else if(j.built){ ACT_AUD=j.audience_id||""; ACT_MSG=`Built audience “${j.name}” — ${j.count} dealer(s).`; }
+      else if(j.built){ ACT_AUD=j.audience_id||"";
+        const parts=[`Built audience “${j.name}” — ${j.emailable!=null?j.emailable:j.count} emailable contact(s) from ${j.dealers!=null?j.dealers:j.count} dealer(s).`];
+        if(j.no_email) parts.push(`${j.no_email} had no email on file`);
+        if(j.opted_out) parts.push(`${j.opted_out} opted out of marketing`);
+        if(j.insert_error) parts.push(`save warning: ${j.insert_error}`);
+        ACT_MSG=parts.join(" · "); }
       else { ACT_AUD=""; ACT_MSG=j.message||"No dealers to build."; }
     } else { ACT_MSG=(j&&j.message)||(j&&j.error)||"Could not run."; }
   }catch(e){ if(e&&e.gate){ gate("Your session ended — sign in again."); return; } ACT_MSG="Could not run the activation audience."; }
