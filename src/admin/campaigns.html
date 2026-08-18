@@ -165,6 +165,35 @@ async function generate(){
 }
 function sampleContact(){ const s=((CUR&&CUR.audience&&CUR.audience.sample)||[])[0]||{}; return {first:(String(s.name||"").trim().split(/\s+/)[0]||"there"), company:(s.company||s.name||"your dealership")}; }
 function personalize(html){ const s=sampleContact(); return String(html||"").split("{{first_name}}").join(esc(s.first)).split("{{company}}").join(esc(s.company)); }
+// ---- Conversion funnel: sent → opened → clicked → completed action (the campaign's goal) ----
+let GOALCONV=null;
+async function goalConv(){ if(GOALCONV) return GOALCONV; GOALCONV={}; try{ const r=await api({action:'goal_options'}); (r.body&&r.body.goals||[]).forEach(g=>GOALCONV[g.key]=g); }catch(e){} return GOALCONV; }
+function resultMetric(res,keys){ if(!res||typeof res!=="object")return 0; for(const k of keys){ if(res[k]!=null&&!isNaN(Number(res[k]))) return Number(res[k]); } return 0; }
+async function renderFunnel(){
+  const host=$("#funnel"); if(!host||!CUR) return;
+  const gmap=await goalConv(); const gdef=gmap[CUR.goal]||null;
+  const a=CUR.audience||{}, bd=a.breakdown||{};
+  const sent=Number(bd.send||a.count||((a.sample&&a.sample.length)||0))||0;
+  const res=CUR.results||{};
+  const opens=resultMetric(res,['opens','unique_opens','open','opened']);
+  const clicks=resultMetric(res,['clicks','unique_clicks','click','clicked']);
+  let conv=0; const convEvent=gdef?gdef.conversion:null;
+  if(convEvent){ try{ const r=await api({action:'conversions',campaign_id:CUR.id}); const rows=(r.body&&r.body.conversions)||[]; const hit=rows.find(x=>x.goal===convEvent); conv=hit?hit.total:0; }catch(e){} }
+  const stages=[{label:'Sent',v:sent,tier:'sent'},{label:'Opened',v:opens,tier:'engagement'},{label:'Clicked',v:clicks,tier:'engagement'}];
+  if(convEvent) stages.push({label:gdef.label+' ✓',v:conv,tier:'conversion'});
+  const max=Math.max(sent,opens,clicks,conv,1);
+  const color={sent:'#2B4071',engagement:'#3f7cc0',intent:'#8a6400',conversion:'#2d7d46',revenue:'#1f5d34'};
+  host.innerHTML=`<div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:2px 0 14px;background:#fbfcfe">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700;margin-bottom:9px">Conversion funnel${gdef?` — goal: ${esc(gdef.label)}`:""}</div>
+    ${stages.map(s=>{ const w=Math.max(2,Math.round(s.v/max*100)); const rate=sent?Math.round(s.v/sent*1000)/10:0;
+      return `<div style="display:flex;align-items:center;gap:10px;margin:5px 0">
+        <div style="width:190px;font-size:12px;color:var(--navy);font-weight:600;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.label)}</div>
+        <div style="flex:1;background:#eef2f6;border-radius:6px;overflow:hidden;height:22px"><div style="width:${w}%;height:100%;background:${color[s.tier]||'#3f7cc0'}"></div></div>
+        <div style="width:104px;font-size:12px;font-variant-numeric:tabular-nums"><b>${num(s.v)}</b>${s.tier!=='sent'?` <span class="hint2">${rate}%</span>`:""}</div>
+      </div>`; }).join("")}
+    <div class="hint2" style="margin-top:7px">${!convEvent?"Pick a ★ objective goal when building the campaign to track completed actions here.":(!CUR.zoho_campaign_key?"Open/click rates fill in after the campaign is pushed &amp; sent; conversions accrue as dealers take the action.":"Engagement → conversion: opens are interest, clicks are stronger, the goal action is the real conversion.")}</div>
+  </div>`;
+}
 function renderReview(){
   if(!CUR){ $("#review").innerHTML=""; return; }
   const g=CUR.generated||{}, a=CUR.audience||{}; const bd=a.breakdown||null;
@@ -176,6 +205,7 @@ function renderReview(){
   $("#review").innerHTML=`<div class="card" style="margin-top:16px">
     <h2>${esc(CUR.name||"Campaign")} <span class="bdg ${pushed?"pushed":"draft"}">${pushed?"pushed to Zoho":"draft"}</span>${(g.ai_used)?` <span class="bdg" style="background:#efe9fb;color:#6b4bb4">✦ AI-written</span>`:""}</h2>
     <div class="hint2" style="margin:-4px 0 12px">${audLine}</div>
+    <div id="funnel"></div>
     <div class="grid2">
       <div>
         <label class="hint2" style="font-weight:700">Subject lines <span style="font-weight:400">(first is primary)</span></label>
@@ -201,7 +231,7 @@ function renderReview(){
       ${pushed?`<button class="btn2 ghost" onclick="getResults()">Refresh results</button>`:""}
     </div>
     <div id="rmsg" class="hint2" style="margin-top:8px"></div></div>`;
-  SEQ=((CUR.generated||{}).sequence||[]).slice(); renderSeq(); renderRecips();
+  SEQ=((CUR.generated||{}).sequence||[]).slice(); renderSeq(); renderRecips(); renderFunnel();
 }
 // ---- Pre-send contact review: view the send list, exclude individual recipients ----
 function effCount(){ const t=((CUR&&CUR.audience&&CUR.audience.sample)||[]).length; return Math.max(0,t-EXCL.size); }
@@ -273,7 +303,7 @@ async function pushZoho(){
   else if(r.body&&r.body.not_configured){ if(m)m.textContent="Connect Zoho Campaigns first (panel at the top)."; }
   else if(m) m.textContent=(r.body&&r.body.message)||"Couldn't push.";
 }
-async function getResults(){ if(!CUR)return; const m=$("#rmsg"); if(m)m.textContent="Fetching results…"; const r=await api({action:"results",id:CUR.id}); if(m)m.textContent=(r.body&&r.body.ok)?"Results updated.":((r.body&&r.body.message)||"No results yet."); }
+async function getResults(){ if(!CUR)return; const m=$("#rmsg"); if(m)m.textContent="Fetching results…"; const r=await api({action:"results",id:CUR.id}); if(r.body&&r.body.ok&&r.body.results) CUR.results=r.body.results; if(m)m.textContent=(r.body&&r.body.ok)?"Results updated.":((r.body&&r.body.message)||"No results yet."); renderFunnel(); }
 async function openCampaign(id){ const r=await api({action:"get",id}); if(r.body&&r.body.ok){ CUR=r.body.campaign; renderReview(); window.scrollTo({top:document.body.scrollHeight,behavior:"smooth"}); } }
 // ---- Per-audience performance -------------------------------------------------
 let ASTATS=[], ASOPEN=null;
