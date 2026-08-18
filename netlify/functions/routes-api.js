@@ -733,8 +733,8 @@ exports.handler = async (event)=>{
         body:{contentType:"HTML",content:`${route.round_trip?"Round trip. ":""}${route.duration_s?Math.round(route.duration_s/60)+" min driving. ":""}${stops.length} stops.<br><br>${summary}${route.notes?"<br><br>Notes: "+esc2(route.notes):""}<br><br><a href="${routeLink}">Open route</a>`} };
       if(tlist.length){ const start=Math.min.apply(null,tlist); const lastArr=Math.max.apply(null,tlist);
         const lastVisit=(stops[stops.length-1]&&stops[stops.length-1].visit_min!=null?stops[stops.length-1].visit_min:30);
-        master.start={dateTime:fmt(start),timeZone:"UTC"}; master.end={dateTime:fmt(lastArr+lastVisit*60000),timeZone:"UTC"}; }
-      else { const ds=route.scheduled_date||new Date().toISOString().slice(0,10); master.isAllDay=true; master.start={dateTime:ds+"T00:00:00",timeZone:"UTC"}; master.end={dateTime:nextDay(ds)+"T00:00:00",timeZone:"UTC"}; }
+        master.isAllDay=false; master.start={dateTime:fmt(start),timeZone:"UTC"}; master.end={dateTime:fmt(lastArr+lastVisit*60000),timeZone:"UTC"}; }
+      else { const ds=route.scheduled_date||new Date().toISOString().slice(0,10); master.isAllDay=true; master.start={dateTime:ds+"T00:00:00.0000000",timeZone:"UTC"}; master.end={dateTime:nextDay(ds)+"T00:00:00.0000000",timeZone:"UTC"}; }
       let mres;
       if(prev.master_id){ mres=await graphReq(tok,"PATCH",`/users/${encodeURIComponent(mailbox)}/events/${prev.master_id}`,master); if(mres.status===404) mres=await graphReq(tok,"POST",`/users/${encodeURIComponent(mailbox)}/events`,master); }
       else mres=await graphReq(tok,"POST",`/users/${encodeURIComponent(mailbox)}/events`,master);
@@ -745,7 +745,7 @@ exports.handler = async (event)=>{
       let created=0,updated=0;
       for(let i=0;i<stops.length;i++){ const s=stops[i]; if(!s.dealer_id) continue; const t=times[s.dealer_id]; if(!t) continue;
         const d=dmap[s.dealer_id]||{}; const vis=(s.visit_min!=null?s.visit_min:30);
-        const ev={ subject:"Visit: "+((d.business_name||s.name||"Dealer")),
+        const ev={ subject:"Visit: "+((d.business_name||s.name||"Dealer")), isAllDay:false,
           location:{displayName:addrOf(s,d)}, start:{dateTime:fmt(t),timeZone:"UTC"}, end:{dateTime:fmt(t+vis*60000),timeZone:"UTC"},
           body:{contentType:"HTML",content:visitBody(s,i)} };
         const pid=prev.events&&prev.events[s.dealer_id]; let r2;

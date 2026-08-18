@@ -40,9 +40,10 @@ async function deepgramTranscribe(buf, mime, keyterms){
   const qs=new URLSearchParams({model:"nova-3",smart_format:"true",punctuate:"true"});
   let url="https://api.deepgram.com/v1/listen?"+qs.toString();
   for(const k of (keyterms||[]).slice(0,90)){ const t=String(k||"").trim(); if(t) url+="&keyterm="+encodeURIComponent(t); }
-  const r=await fetch(url,{method:"POST",headers:{Authorization:"Token "+DG_KEY,"Content-Type":mime||"audio/webm"},body:buf});
+  const ct=String(mime||"audio/webm").split(";")[0].trim()||"audio/webm";   // Deepgram wants a bare mime (no ;codecs=…)
+  const r=await fetch(url,{method:"POST",headers:{Authorization:"Token "+DG_KEY,"Content-Type":ct},body:buf});
   const j=await r.json().catch(()=>null);
-  if(!r.ok){ const m=(j&&(j.err_msg||j.error||j.reason))||`HTTP ${r.status}`; throw new Error("deepgram: "+String(m).slice(0,180)); }
+  if(!r.ok){ const m=(j&&(j.err_msg||j.error||j.reason))||`HTTP ${r.status}`; throw new Error("deepgram: "+String(m).slice(0,180)+` [${buf.length} bytes as ${ct}]`); }
   const alt=j&&j.results&&j.results.channels&&j.results.channels[0]&&j.results.channels[0].alternatives&&j.results.channels[0].alternatives[0];
   return (alt&&alt.transcript)||"";
 }
@@ -117,7 +118,7 @@ exports.handler=async(event)=>{
 
     if(b.action==="transcribe"){
       if(!DG_KEY) return json(200,{ok:false,error:"deepgram_unavailable",message:"Voice transcription isn't enabled yet — add DEEPGRAM_API_KEY in Netlify and redeploy. You can still type notes."});
-      const b64=String(b.audio_base64||"").replace(/^data:[^;]+;base64,/,"");
+      const b64=String(b.audio_base64||"").replace(/^data:[^,]*,/,"");   // strip the whole data-URL header (mime may include ;codecs=…)
       if(!b64) return json(400,{error:"audio_base64 required"});
       let buf; try{ buf=Buffer.from(b64,"base64"); }catch(e){ return json(400,{error:"bad audio"}); }
       if(!buf.length) return json(400,{error:"empty audio"});

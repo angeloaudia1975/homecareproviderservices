@@ -268,7 +268,7 @@ function collect(i){ const v=id=>(($("#f_"+id+"_"+i)||{}).value||"").trim();
     notes:v("notes"), next_action:v("na"), next_action_date:v("nad") }; }
 
 // ---- Voice ----
-function blobToB64(blob){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).replace(/^data:[^;]+;base64,/,"")); r.onerror=rej; r.readAsDataURL(blob); }); }
+function blobToB64(blob){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).replace(/^data:[^,]*,/,"")); r.onerror=rej; r.readAsDataURL(blob); }); }
 function toggleRec(i){ const r=REC[i]; if(r&&r.mr&&r.mr.state==="recording"){ stopRec(i); } else { startRec(i); } }
 async function startRec(i){
   const btn=$("#rec_"+i), msg=$("#recmsg_"+i);
