@@ -61,7 +61,7 @@
 </style>
 </head><body>
 <header>
-  <div class="row"><span class="b">HCPS Field</span><h1>Scheduled Routes</h1><a class="full" href="/admin/hub.html?cat=sales">Full portal</a></div>
+  <div class="row"><span class="b">HCPS Field</span><h1>Scheduled Routes</h1><span id="netstat" style="font-size:11px;font-weight:700;color:#9fd6b0"></span><a class="full" href="/admin/hub.html?cat=sales">Full portal</a></div>
   <input type="date" id="dpick" onchange="pickDate(this.value)">
 </header>
 <div class="wrap"><div id="app"><div class="msg">Loading…</div></div></div>
@@ -99,16 +99,38 @@ async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), p
 
 function pickDate(v){ if(v){ DATE=v; load(); } }
 
+// ---- Offline cache + write outbox (localStorage) so the day works with no signal ----
+function cacheDay(date,j){ try{ localStorage.setItem("sr_day_"+date, JSON.stringify(j)); }catch(e){} }
+function loadCachedDay(date){ try{ const s=localStorage.getItem("sr_day_"+date); return s?JSON.parse(s):null; }catch(e){ return null; } }
+function outbox(){ try{ return JSON.parse(localStorage.getItem("sr_outbox")||"[]"); }catch(e){ return []; } }
+function setOutbox(a){ try{ localStorage.setItem("sr_outbox",JSON.stringify(a)); }catch(e){} updateStatus(); }
+function enqueue(body){ const a=outbox(); a.push({id:Date.now()+"_"+Math.random().toString(36).slice(2,7),body}); setOutbox(a); }
+async function tryOrQueue(body){ if(!navigator.onLine){ enqueue(body); return false; }
+  try{ const r=await rapi(body); if(r&&r.ok) return true; enqueue(body); return false; }catch(e){ enqueue(body); return false; } }
+async function flushOutbox(){ if(!navigator.onLine) return; let a=outbox(); if(!a.length){ updateStatus(); return; }
+  setStatusText("↻ Syncing…"); const remain=[];
+  for(const item of a){ try{ const r=await rapi(item.body); if(!(r&&r.ok)) remain.push(item); }catch(e){ remain.push(item); if(!TOKEN) break; } }
+  setOutbox(remain); }
+function setStatusText(txt,color){ const el=$("#netstat"); if(el){ el.textContent=txt; el.style.color=color||"#ffd7b0"; } }
+function updateStatus(){ const n=outbox().length;
+  if(!navigator.onLine) setStatusText("● Offline"+(n?` · ${n} to sync`:""),"#ffd7b0");
+  else if(n) setStatusText(`↻ ${n} to sync`,"#ffd7b0");
+  else setStatusText("● Online","#9fd6b0"); }
+
 async function load(){
   if(!TOKEN){ gate(); return; }
   const dp=$("#dpick"); if(dp) dp.value=DATE;
   $("#app").innerHTML=`<div class="msg">Loading today's route…</div>`;
-  let j; try{ j=await rapi({action:"route_day",date:DATE}); }catch(e){ return; }
-  if(!j||!j.ok){ $("#app").innerHTML=`<div class="msg">Couldn't load. Pull down to retry.</div>`; return; }
+  let j=null, offline=false;
+  try{ j=await rapi({action:"route_day",date:DATE}); }catch(e){ if(!TOKEN) return; j=null; }
+  if(j&&j.ok){ cacheDay(DATE,j); }
+  else { const c=loadCachedDay(DATE); if(c){ j=c; offline=true; } }
+  if(!j){ $("#app").innerHTML=`<div class="msg">Couldn't load${navigator.onLine?"":" — you're offline"}, and no cached copy for this day.</div>`; updateStatus(); return; }
   DAY=j;
-  if(!j.route){ renderEmpty(); return; }
+  if(!j.route){ renderEmpty(); updateStatus(); return; }
   render();
-  computeEtas();  // async: fills ETAs once directions return
+  if(offline) setStatusText("● Offline (showing cached)","#ffd7b0"); else updateStatus();
+  if(navigator.onLine){ computeEtas(); flushOutbox().then(updateStatus); }
 }
 
 function renderEmpty(){
@@ -201,6 +223,7 @@ async function voiceApi(body){ const h={"content-type":"application/json"}; if(T
 function toggleRec(i){ const r=REC[i]; if(r&&r.mr&&r.mr.state==="recording"){ stopRec(i); } else { startRec(i); } }
 async function startRec(i){
   const btn=$("#rec_"+i), msg=$("#recmsg_"+i);
+  if(!navigator.onLine){ if(msg)msg.textContent="Voice transcription needs a connection — type your notes for now; they'll sync."; return; }
   if(!navigator.mediaDevices||!window.MediaRecorder){ if(msg)msg.textContent="This device can't record here — type your notes below."; return; }
   let stream; try{ stream=await navigator.mediaDevices.getUserMedia({audio:true}); }
   catch(e){ if(msg)msg.textContent="Microphone blocked — allow mic access, or type your notes."; return; }
@@ -241,26 +264,32 @@ function handleVoiceResult(i,j){
 }
 
 async function checkIn(i){
-  const s=DAY.stops[i];
-  try{ const j=await rapi({action:"visit_checkin",route_id:DAY.route.id,dealer_id:s.dealer_id});
-    if(j&&j.ok){ s.visit=Object.assign({},s.visit,{status:"checked_in",checkin_at:j.checkin_at}); toast("Arrival logged ✓"); render(); computeEtas(); setTimeout(()=>toggleBody(i),60); } }
-  catch(e){ toast("Couldn't log arrival"); }
+  const s=DAY.stops[i]; const now=new Date().toISOString();
+  s.visit=Object.assign({},s.visit,{status:"checked_in",checkin_at:now});   // optimistic
+  render(); cacheDay(DATE,DAY); if(navigator.onLine) computeEtas(); setTimeout(()=>toggleBody(i),60);
+  const sent=await tryOrQueue({action:"visit_checkin",route_id:DAY.route.id,dealer_id:s.dealer_id});
+  toast(sent?"Arrival logged ✓":"Saved offline — will sync"); updateStatus();
 }
 async function saveVisit(i,status){
-  const s=DAY.stops[i], m=$("#vmsg_"+i); if(m)m.textContent="Saving…";
+  const s=DAY.stops[i], m=$("#vmsg_"+i); if(m){ m.style.color=""; m.textContent="Saving…"; }
   const fields=collect(i);
   const payload={action:"visit_report_save",route_id:DAY.route.id,dealer_id:s.dealer_id,fields,status};
   if(VSTRUCT[i]) payload.structured=VSTRUCT[i];
   if(VTX[i]) payload.transcript=VTX[i];
+  s.visit=Object.assign({},s.visit,{status,completed_at:status==="completed"?new Date().toISOString():((s.visit&&s.visit.completed_at)||null)});
+  cacheDay(DATE,DAY);
+  if(!navigator.onLine){ enqueue(payload); updateStatus();
+    if(status==="completed"){ toast("Saved offline — will sync ✓"); render(); } else if(m){ m.style.color="var(--ok)"; m.textContent="Saved offline — will sync."; }
+    return; }
   try{ const j=await rapi(payload);
-    if(j&&j.ok){ s.visit=Object.assign({},s.visit,{status,completed_at:j.completed_at});
-      if(status==="completed"){ toast(`Visit saved ✓ ${j.tasks?`· ${j.tasks} task${j.tasks===1?'':'s'}`:''}`); render(); }
-      else if(m){ m.style.color="var(--ok)"; m.textContent="Draft saved."; } }
+    if(j&&j.ok){ if(status==="completed"){ toast(`Visit saved ✓ ${j.tasks?`· ${j.tasks} task${j.tasks===1?'':'s'}`:''}`); render(); } else if(m){ m.style.color="var(--ok)"; m.textContent="Draft saved."; } }
     else if(m){ m.style.color="#b42323"; m.textContent=(j&&j.error)||"Couldn't save."; }
-  }catch(e){ if(m){ m.style.color="#b42323"; m.textContent="Couldn't save."; } }
+  }catch(e){ enqueue(payload); updateStatus(); if(status==="completed"){ toast("Saved offline — will sync ✓"); render(); } else if(m){ m.style.color="var(--ok)"; m.textContent="Saved offline — will sync."; } }
 }
 async function draftFollowup(i){
-  const s=DAY.stops[i], m=$("#vmsg_"+i); if(m){ m.style.color=""; m.textContent="Drafting…"; }
+  const s=DAY.stops[i], m=$("#vmsg_"+i);
+  if(!navigator.onLine){ if(m){ m.style.color="#b42323"; m.textContent="Needs a connection to draft the email — your notes are saved."; } return; }
+  if(m){ m.style.color=""; m.textContent="Drafting…"; }
   const details=collect(i);
   let j; try{ j=await rapi({action:"generate_followup",dealer_id:s.dealer_id,details}); }catch(e){ j=null; }
   if(!j||!j.ok||!(j.subject||j.body)){ if(m){ m.style.color="#b42323"; m.textContent=(j&&j.message)||"Couldn't draft the email."; } return; }
@@ -268,6 +297,7 @@ async function draftFollowup(i){
   openDraft(s, j.subject||"", j.body||"", j.signature||"", "Follow-up email — review before sending");
 }
 async function headsUp(i){
+  if(!navigator.onLine){ toast("Heads-up needs a connection"); return; }
   const s=DAY.stops[i];
   const etaEl=$("#eta_"+i); const eta=(etaEl&&etaEl.textContent||"").trim(); const etaTxt=(eta&&eta!=="—")?eta:"";
   toast("Preparing heads-up…");
@@ -303,6 +333,7 @@ async function sendDraft(dealer_id,btn){
 
 // ---- Dealer handout (visit package) — reuse the shared template ----
 async function openHandout(dealer_id,name){
+  if(!navigator.onLine){ toast("Visit package needs a connection"); return; }
   const w=window.open("","_blank"); if(!w){ toast("Allow pop-ups for the visit package"); return; }
   w.document.write('<!doctype html><meta charset="utf-8"><body style="font:15px Arial;margin:28px;color:#5b6672">Preparing visit package…</body>'); w.document.close();
   try{ const s=await rapi({action:"get_settings",key:"handout"}); if(s&&s.ok&&s.value){ HANDOUT={ordering_url:s.value.ordering_url||DealerHandout.ORDERING_URL, updates:Array.isArray(s.value.updates)&&s.value.updates.length?s.value.updates:DealerHandout.UPDATES.slice()}; } }catch(e){}
@@ -334,6 +365,13 @@ async function computeEtas(){
   }
 }
 
+// ---- Connectivity: sync the outbox and refresh when the signal returns ----
+window.addEventListener("online", ()=>{ updateStatus(); flushOutbox().then(()=>{ if(navigator.onLine && TOKEN) load(); }); });
+window.addEventListener("offline", ()=>updateStatus());
+// ---- Service worker: makes the app shell open with no signal (data/queue handled in-page) ----
+if("serviceWorker" in navigator){ try{ navigator.serviceWorker.register("/admin/sr-sw.js").catch(()=>{}); }catch(e){} }
+
+updateStatus();
 load();
 </script>
 </body></html>
