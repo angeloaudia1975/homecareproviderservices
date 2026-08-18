@@ -39,10 +39,11 @@ exports.handler = async (event)=>{
     // Available to every signed-in staff member, scoped to what they may see: president + Customer
     // Relations Director get the whole book; a sales rep gets only their assigned dealers.
     const scope=await dealerScope(me, sbGet);
+    let b={}; try{ b=JSON.parse(event.body||"{}"); }catch(e){}
 
     const d30=new Date(Date.now()-30*864e5).toISOString(), d90=new Date(Date.now()-90*864e5).toISOString();
     let [dealers,mfrs,eng,opps,tasks,xsell,ms,intent,evs,camps,sends,dm,emUn]=await Promise.all([
-      sbGetAll("dealers?select=id,business_name,state,parent_id","id").catch(()=>[]),
+      sbGetAll("dealers?select=id,business_name,state,parent_id,rep_name,is_test","id").catch(()=>[]),
       sbGet("manufacturers?select=slug,name").catch(()=>[]),
       sbGetAll("dealer_engagement?select=dealer_id,rep_name,status,score,churn_score,months_since,total_sales,recent_sales,trend","dealer_id").catch(()=>[]),
       sbGetAll("opportunities?status=eq.open&select=dealer_id,title,line,stage,value,expected_close,owner_rep","dealer_id").catch(()=>[]),
@@ -56,16 +57,29 @@ exports.handler = async (event)=>{
       sbGetAll("dealer_manufacturers?select=manufacturer,account_ref,dealer_id","dealer_id").catch(()=>[]),
       sbGetAll("email_messages?dealer_id=is.null&select=from_address","from_address").catch(()=>[]),
     ]);
-    // Apply rep scope: a rep only sees rows for their own dealers across every array below.
-    if(!scope.isAll){
-      const ids=scope.ids||new Set(); const keep=id=>ids.has(id);
+    // Base excludes test dealers. Build the rep-view options (admins) from the assigned reps.
+    dealers=(dealers||[]).filter(d=>!d.is_test);
+    const repOptions=[...new Set(dealers.map(d=>String(d.rep_name||"").trim()).filter(Boolean))].sort((a,z)=>a.localeCompare(z));
+    // Which dealers is this view about? A rep sees only their own book. A President/Admin sees ALL,
+    // or — when a rep is chosen in the Command Center selector (b.rep) — just that rep's assigned dealers.
+    let idSet=null, repView="all";
+    if(!scope.isAll){ idSet=scope.ids||new Set(); }
+    else { const rv=String(b.rep||"").trim(); if(rv && rv.toLowerCase()!=="all"){ repView=rv;
+      idSet=new Set(dealers.filter(d=>String(d.rep_name||"").trim().toLowerCase()===rv.toLowerCase()).map(d=>d.id)); } }
+    if(idSet){ const keep=id=>idSet.has(id);
       dealers=dealers.filter(d=>keep(d.id));
       eng=eng.filter(x=>keep(x.dealer_id)); opps=opps.filter(x=>keep(x.dealer_id));
       tasks=tasks.filter(x=>keep(x.dealer_id)); xsell=xsell.filter(x=>keep(x.dealer_id));
       ms=ms.filter(x=>keep(x.dealer_id)); intent=intent.filter(x=>keep(x.dealer_id));
       evs=(evs||[]).filter(x=>keep(x.dealer_id)); dm=dm.filter(x=>keep(x.dealer_id));
-      emUn=[];   // unmatched-email review is an admin-only concern
+      emUn=[];   // unmatched-email review is an admin-only, company-level concern
     }
+    // ---- Dealer penetration: assigned base, active (ordered in last 180 days), and the % ----
+    const cut180=new Date(Date.now()-180*864e5).toISOString().slice(0,10);
+    const dealerIdSet=new Set(dealers.map(d=>d.id)); const activeSet=new Set();
+    for(const r of (ms||[])){ if(!r.dealer_id||!dealerIdSet.has(r.dealer_id)) continue;
+      if(String(r.period||"").slice(0,10)>=cut180 && (Number(r.amount)||0)>0) activeSet.add(r.dealer_id); }
+    const penTotal=dealers.length, penActive=activeSet.size, penPct=penTotal?Math.round(penActive/penTotal*1000)/10:0;
     // unmatched Outlook email — distinct external senders we captured but couldn't place with a dealer
     const _emSenders=new Set(); for(const r of (emUn||[])){ const a=String(r.from_address||"").toLowerCase(); if(a) _emSenders.add(a); }
     const emailUnmatched={ senders:_emSenders.size, messages:(emUn||[]).length };
@@ -143,6 +157,8 @@ exports.handler = async (event)=>{
     const coverage=Object.entries(covMap).map(([slug,o])=>({slug,name:mfrName[slug]||slug,dealers:o.lines.size,with_account:o.withAcct.size,penetration:Math.round(o.lines.size/totalDealers*100)})).sort((a,b)=>b.dealers-a.dealers).slice(0,20);
 
     return json(200,{ ok:true,
+      penetration:{ total:penTotal, active:penActive, pct:penPct, window_days:180 },
+      rep_options:repOptions, rep_view:repView,
       dealers: dealers.map(d=>({id:d.id,name:d.business_name||"",state:d.state||"",parent_id:d.parent_id||null})),
       engagement:{ buckets, dormant, declining, growing, scored:engRows.length },
       opportunities:{ count:oppList.length, value:oppTotal, top:oppList.slice(0,40) },

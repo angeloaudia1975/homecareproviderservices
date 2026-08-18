@@ -56,6 +56,7 @@
 <div class="wrap">
   <div class="top cc-top"><div><h1 style="margin:0">Command Center 360</h1>
     <div class="sub">Every number is clickable. Summary → manufacturer → dealer → branch → product → order, with trend forecasts. Sales from commission &amp; sales imports; intelligence from Dealer 360, ordering activity &amp; CRM.</div></div>
+    <div class="cc-yr" id="repsel" style="margin-bottom:6px"></div>
     <div class="cc-yr" id="yr"></div></div>
   <div id="body"><div class="msg">Loading…</div></div>
 </div>
@@ -69,7 +70,7 @@ const money=n=>"$"+Math.round(Number(n)||0).toLocaleString("en-US");
 const short=n=>{n=Number(n)||0;const a=Math.abs(n);if(a>=1e6)return "$"+(n/1e6).toFixed(1).replace(/\.0$/,"")+"M";if(a>=1e3)return "$"+(n/1e3).toFixed(1).replace(/\.0$/,"")+"k";return "$"+Math.round(n);};
 window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
 let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
-let TOKEN=HCPS.token(), A=null, I=null, YEAR="all", NAMEID={}, INFO={}, ENG={}, BUSY=false;
+let TOKEN=HCPS.token(), A=null, I=null, YEAR="all", REPVIEW="all", NAMEID={}, INFO={}, ENG={}, BUSY=false;
 const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const ym=p=>String(p||"").slice(0,7);
 const pmOf=p=>{const s=ym(p);const a=s.split("-");return (Number(a[0])||0)*12+((Number(a[1])||1)-1);};
@@ -100,15 +101,31 @@ async function boot(){
     INFO=A.dealerInfo||{};
     (I.dealers||[]).forEach(d=>{ NAMEID[norm(d.name)]=d.id; });
     (I.engagement&&[].concat(I.engagement.dormant||[],I.engagement.declining||[],I.engagement.growing||[])||[]).forEach(e=>{ ENG[norm(e.name)]=e; });
-    buildYears(); render();
+    buildYears(); buildRepSel(); render();
   }catch(e){ $("#body").innerHTML=`<div class="msg err">Couldn't load: ${esc(String(e.message||e))}</div>`; }
+}
+function isAdminMe(){ return ["president","admin","owner"].includes(String((ME||{}).role||"").toLowerCase()); }
+function buildRepSel(){ const host=$("#repsel"); if(!host) return;
+  if(!isAdminMe() || !(I&&I.rep_options&&I.rep_options.length)){ host.innerHTML=""; return; }
+  const opts=["all"].concat(I.rep_options);
+  host.innerHTML=`<span style="font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700;margin-right:6px">Territory view</span>`
+    + opts.map(r=>`<button class="${REPVIEW===r?'on':''}" onclick="setRepView('${String(r).replace(/'/g,"\\'")}')">${r==="all"?"All accounts":esc(r)}</button>`).join("");
+}
+async function setRepView(v){ if(BUSY) return; REPVIEW=v; BUSY=true; buildRepSel();
+  try{ const h={authorization:"Bearer "+TOKEN};
+    const ir=await fetch("/.netlify/functions/command360-api",{method:"POST",headers:{...h,"content-type":"application/json"},body:JSON.stringify({rep:v})});
+    if(ir.ok){ const nj=await ir.json().catch(()=>null); if(nj&&nj.ok){ I=nj; NAMEID={}; ENG={};
+      (I.dealers||[]).forEach(d=>{ NAMEID[norm(d.name)]=d.id; });
+      (I.engagement&&[].concat(I.engagement.dormant||[],I.engagement.declining||[],I.engagement.growing||[])||[]).forEach(e=>{ ENG[norm(e.name)]=e; }); } }
+  }catch(e){}
+  BUSY=false; buildRepSel(); render();
 }
 function buildYears(){
   const ys=[...new Set((A.facts||[]).map(f=>ym(f.period).slice(0,4)))].filter(Boolean).sort();
   $("#yr").innerHTML=[`<button class="${YEAR==='all'?'on':''}" onclick="setYear('all')">All</button>`].concat(ys.map(y=>`<button class="${YEAR===y?'on':''}" onclick="setYear('${y}')">${y}</button>`)).join("");
 }
 function setYear(y){ YEAR=y; buildYears(); render(); }
-function facts(){ return (A.facts||[]).filter(f=>YEAR==="all"||ym(f.period).slice(0,4)===YEAR); }
+function facts(){ return (A.facts||[]).filter(f=>(YEAR==="all"||ym(f.period).slice(0,4)===YEAR)&&(REPVIEW==="all"||String(f.rep||"")===REPVIEW)); }
 
 /* ---------- aggregation helpers ---------- */
 function agg(F,keyFn){ const m=new Map(); for(const f of F){ const k=keyFn(f); if(k==null)continue; m.set(k,(m.get(k)||0)+(f.sales||0)); } return m; }
@@ -126,11 +143,15 @@ function render(){
   const ser=series(F); const fc=forecast(ser,3);
   const yoy=computeYoY();
   const opps=(I.opportunities||{});
+  const pen=(I&&I.penetration)||null;
+  const penLbl=REPVIEW==="all"?"assigned base":esc(REPVIEW);
   const kpis=`<div class="kpis">
+    ${pen?kpi("Dealers assigned",pen.total,penLbl):""}
+    ${pen?kpi("Active dealers",pen.active,"ordered in last 6 mo"):""}
+    ${pen?kpi("Market penetration",pen.pct+"%",pen.active+" of "+pen.total+" active",pen.pct>=60?"up":(pen.pct<40?"down":"")):""}
     ${kpi("Total sales",short(total),YEAR==="all"?"all time":YEAR)}
     ${kpi("YoY growth",yoy?((yoy.pct>=0?"+":"")+yoy.pct+"%"):"—",yoy?`${yoy.cur} vs ${yoy.prev}`:"need prior year",yoy?(yoy.pct>=0?"up":"down"):"")}
     ${kpi("Commission",short(comm),"~"+(total?Math.round(comm/total*1000)/10:0)+"% of sales")}
-    ${kpi("Active dealers",dealers,YEAR==="all"?"with sales":"this year")}
     ${kpi("Avg / month",short(total/months),months+" mo")}
     ${kpi("Forecast trend",fc.pct==null?"—":((fc.pct>=0?"+":"")+fc.pct+"%"),"next 3 mo projection",fc.dir)}
   </div>`;
