@@ -63,11 +63,13 @@ function verifySig(rawBuf, sigHex){
   return a.length===b.length && crypto.timingSafeEqual(a,b);
 }
 
-// Resolve the source dealer to a canonical HCPS dealer_id (§3.10). Order:
-//   1. hcps_dealer_id on the event (already linked)      -> exact
-//   2. partner_dealer_map cache (by external id or acct) -> cached
-//   3. dealers.hcps_account === customer_no              -> account
-//   4. dnorm(name) [+ zip] alias match                  -> alias
+// Resolve the source dealer to a canonical HCPS dealer_id (§3.10). The ACCOUNT NUMBER is the
+// identity anchor, so it is tried FIRST and overrides a stale cache or a mismatched hcps_dealer_id.
+// Order:
+//   1. dealers.hcps_account === customer_no              -> account   (PRIMARY anchor)
+//   2. hcps_dealer_id on the event (already linked)      -> exact
+//   3. partner_dealer_map cache (by external id or acct) -> cached
+//   4. dnorm(name) [+ zip] alias match                  -> alias     (last resort)
 // Returns { dealer_id, is_test, confidence } or { dealer_id:null } if unmatched.
 async function resolveDealer(env){
   const dealer = env.dealer||{};
@@ -78,11 +80,21 @@ async function resolveDealer(env){
   const src = clip(env.source&&env.source.system, 40)||"golden";
   const ten = clip(env.source&&env.source.tenant_id, 40)||"hcps";
 
-  // 1. Already-linked hcps_dealer_id — trust only if it's a real dealer.
+  // 1. Account number == HCPS account — the PRIMARY identity anchor. Account numbers are
+  // ORGANIZATION-level (§3.5), so a multi-branch dealer carries the SAME number on several rows;
+  // resolve to the org HQ (parent_id null) rather than refusing a non-unique match, a single match
+  // uses that row directly. Matching here refreshes the cache (cacheMap), which self-heals a stale
+  // or wrong mapping so a correct account number always wins.
+  if(cust){ try{ const d=await sbGet(`dealers?hcps_account=eq.${encodeURIComponent(cust)}&select=id,parent_id,is_test`);
+    if(d&&d.length){ const pick = d.length===1 ? d[0] : (d.find(x=>!x.parent_id)||d[0]);
+      const conf = d.length===1?"account":"account_org";
+      await cacheMap(src,ten,ext,cust,pick.id,conf); return {dealer_id:pick.id,is_test:!!pick.is_test,confidence:conf}; } }catch(e){} }
+
+  // 2. Already-linked hcps_dealer_id — trust only if it's a real dealer (used when no account # matched).
   const hid = clip(dealer.hcps_dealer_id, 60);
   if(hid){ try{ const d=await sbGet(`dealers?id=eq.${encodeURIComponent(hid)}&select=id,is_test`); if(d&&d[0]) return {dealer_id:d[0].id,is_test:!!d[0].is_test,confidence:"exact"}; }catch(e){} }
 
-  // 2. Cache.
+  // 3. Cache (external id or account number → dealer), for events with no account # match above.
   try{
     const clauses=[];
     if(ext) clauses.push(`external_dealer_id.eq.${encodeURIComponent(ext)}`);
@@ -92,16 +104,6 @@ async function resolveDealer(env){
       if(m&&m[0]&&m[0].dealer_id){ let isTest=false; try{ const d=await sbGet(`dealers?id=eq.${encodeURIComponent(m[0].dealer_id)}&select=is_test`); isTest=!!(d&&d[0]&&d[0].is_test); }catch(e){} return {dealer_id:m[0].dealer_id,is_test:isTest,confidence:"cached"}; }
     }
   }catch(e){}
-
-  // 3. Account number == HCPS account. Account numbers are ORGANIZATION-level (§3.5), so a
-  // multi-branch dealer (e.g. Georges Pharmacy) carries the SAME number on several rows. Resolve
-  // to the organization HQ (parent_id null) instead of refusing a non-unique match; a single match
-  // uses that row directly. This attaches the org's portal activity to the record Dealer 360 rolls
-  // branches up into.
-  if(cust){ try{ const d=await sbGet(`dealers?hcps_account=eq.${encodeURIComponent(cust)}&select=id,parent_id,is_test`);
-    if(d&&d.length){ const pick = d.length===1 ? d[0] : (d.find(x=>!x.parent_id)||d[0]);
-      const conf = d.length===1?"account":"account_org";
-      await cacheMap(src,ten,ext,cust,pick.id,conf); return {dealer_id:pick.id,is_test:!!pick.is_test,confidence:conf}; } }catch(e){} }
 
   // 4. Name (+ optional zip) alias match, normalized the same way as the rest of HCPS.
   if(name){ try{
