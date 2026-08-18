@@ -477,6 +477,20 @@
       showApp(b.github);
     });
   }
+  // Single sign-on: if the user is already signed into the HCPS admin portal, exchange that staff
+  // session for an editor token so the Website Editor never asks for a second password.
+  function staffToken() { try { return localStorage.getItem("hcps_staff_token") || ""; } catch (e) { return ""; } }
+  function loginStaff() {
+    var st = staffToken();
+    if (!st) return Promise.reject(new Error("no admin session"));
+    return fetch(API, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + st }, body: JSON.stringify({ action: "login_staff" }) })
+      .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
+      .then(function (res) {
+        if (res.status >= 400 || !res.body || !res.body.token) throw new Error((res.body && res.body.error) || "Admin single sign-on failed.");
+        state.token = res.body.token; localStorage.setItem(TOKEN_KEY, res.body.token);
+        showApp(res.body.github);
+      });
+  }
   function logout() {
     state.token = null; localStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(TOKEN_KEY);
     state.manufacturers = state.documents = state.editingManu = null; state.dirty = false;
@@ -1159,10 +1173,16 @@
   $("#logout-btn").addEventListener("click", logout);
   window.addEventListener("beforeunload", function (e) { if (state.dirty) { e.preventDefault(); e.returnValue = ""; } });
 
-  // resume session
+  // resume session — prefer an existing editor token; otherwise fall back to the admin-portal
+  // (staff) session via single sign-on, so signed-in admins skip the password entirely.
   var saved = localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
   if (saved) {
     state.token = saved;
-    api("ping").then(function (b) { showApp(b.github); }).catch(function () { logout(); });
+    api("ping").then(function (b) { showApp(b.github); }).catch(function () {
+      // editor token expired — try the admin session before showing the password form
+      loginStaff().catch(function () { logout(); });
+    });
+  } else if (staffToken()) {
+    loginStaff().catch(function () { /* no valid admin session — leave the password form visible */ });
   }
 })();

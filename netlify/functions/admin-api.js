@@ -76,6 +76,32 @@ function bearer(event) {
   return raw.startsWith("Bearer ") ? raw.slice(7) : "";
 }
 
+// Single sign-on from the admin portal: a staff member already signed into the HCPS admin portal
+// (staff-auth session) can open the Website Editor without a second password. We validate their
+// Supabase session token and confirm they're an active admin-level staff user; if so they get the
+// same short-lived editor token the password login issues. Website publishing is management-level,
+// so reps are excluded here (widen STAFF_EDIT_ROLES to grant more roles).
+const STAFF_EDIT_ROLES = new Set(["president", "management"]);
+async function staffWhoami(token) {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_ANON_KEY;
+  if (!token || !url || !key) return null;
+  try {
+    const r = await fetch(`${url}/auth/v1/user`, { headers: { apikey: key, Authorization: `Bearer ${token}` } });
+    if (!r.ok) return null;
+    const u = await r.json();
+    const email = u && u.email && String(u.email).toLowerCase();
+    if (!email) return null;
+    const svc = process.env.SUPABASE_SERVICE_ROLE || key;
+    const sr = await fetch(`${url}/rest/v1/staff_users?email=eq.${encodeURIComponent(email)}&select=role,active`, { headers: { apikey: svc, Authorization: `Bearer ${svc}` } });
+    if (!sr.ok) return null;
+    const s = await sr.json();
+    const su = s && s[0];
+    if (su && su.active !== false) return { email, role: su.role || "rep" };
+  } catch (e) {}
+  return null;
+}
+
 function githubConfig() {
   const repo = process.env.GITHUB_REPO || "";
   const token = process.env.GITHUB_TOKEN || "";
@@ -225,6 +251,16 @@ exports.handler = async (event) => {
   if (action === "login") {
     if (!process.env.ADMIN_PASSWORD) return json(500, { error: "Admin password is not configured." });
     if (!passwordMatches(body.password)) return json(401, { error: "Incorrect password." });
+    return json(200, { token: makeToken(), expiresIn: TOKEN_TTL_SECONDS, github: githubConfig().ok });
+  }
+
+  // Single sign-on from the admin portal — exchange a valid staff session for an editor token (no
+  // second password). Authenticated by the staff Bearer token, not the editor token, so it sits
+  // alongside "login" as a bootstrap action.
+  if (action === "login_staff") {
+    const me = await staffWhoami(bearer(event) || body.staff_token || "");
+    if (!me) return json(401, { error: "Not signed in to the admin portal." });
+    if (!STAFF_EDIT_ROLES.has(me.role)) return json(403, { error: "Your admin role doesn't have website-editing access." });
     return json(200, { token: makeToken(), expiresIn: TOKEN_TTL_SECONDS, github: githubConfig().ok });
   }
 
