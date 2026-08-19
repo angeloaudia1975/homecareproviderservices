@@ -40,6 +40,34 @@ const toDate=v=>{ if(v==null||v==="") return null; const s=String(v).trim();
   const d=new Date(s); return isNaN(d.getTime())?null:d.toISOString().slice(0,10); };
 const ncity=s=>String(s||"").toUpperCase().replace(/[^A-Z ]/g," ").replace(/\s+/g," ").trim();
 const nstate=s=>String(s||"").toUpperCase().replace(/[^A-Z]/g,"").slice(0,2);
+// Street-address normalizer for branch matching — strip suite/unit qualifiers so "245 Northridge Dr
+// Suite F" and "245 NORTHRIDGE DR" match the same branch.
+const naddr=a=>String(a||"").toUpperCase().replace(/[^A-Z0-9 ]/g," ").replace(/\b(SUITE|STE|UNIT|APT|BLDG|BLD|FL|FLOOR|RM|ROOM|DEPT|#)\b.*$/,"").replace(/\s+/g," ").trim();
+// Distinguish a NEW dealer BRANCH ship-to from a one-off patient/drop-ship consignee. A ship-to whose
+// name carries a business marker, or shares a significant word with the dealer, is treated as a branch
+// (held for review/creation); a bare person name ("Smith, John") is a patient drop-ship (sale → dealer).
+const BIZ=/\b(inc|llc|corp|co|medical|health|healthcare|pharmacy|dme|supply|supplies|home|equipment|hospital|hosp|services|center|centre|clinic|homecare|rehab|mobility|oxygen|respiratory|surgical|drug|care)\b/i;
+const STOPW=new Set(["THE","AND","FOR","INC","LLC","CORP","COMPANY","HOME","MEDICAL","EQUIPMENT","HEALTHCARE","HEALTH","CARE","SERVICES","SERVICE","SUPPLY","SUPPLIES","PHARMACY","HOSPITAL","CENTER","GROUP"]);
+const sigTokens=s=>dnorm(s).split(" ").filter(t=>t.length>=4 && !STOPW.has(t));
+function looksLikeBranch(shipName, custName){
+  const sn=String(shipName||"").trim(); if(!sn) return false;
+  if(/,/.test(sn) && !BIZ.test(sn)) return false;                 // "Last, First" with no business marker → patient
+  const st=sigTokens(sn), ct=new Set(sigTokens(custName));
+  if(st.some(t=>ct.has(t))) return true;                          // shares a distinctive word with the dealer
+  return BIZ.test(sn);                                            // a business-named consignee is a candidate branch
+}
+// Resolve a ship-to to a specific branch within the dealer family (root + branches). Order: saved
+// ZIP→branch override, exact ZIP, street address, then unique city/state. Returns {id} or null.
+function resolveBranchFn(root, famArr, ship, zipmap, rootOf, ambiguous, ambSeen, nameById){
+  const zip=ship.zip, addr=ship.addr, city=ship.city, state=ship.state;
+  if(zip && zipmap[zip] && rootOf.get(zipmap[zip])===root) return {id:zipmap[zip]};
+  if(zip){ const hit=famArr.filter(d=>znorm(d.zip)===zip);
+    if(hit.length===1) return {id:hit[0].id};
+    if(hit.length>1){ if(!ambSeen.has(zip)){ ambSeen.add(zip); ambiguous.push({zip,dealers:hit.map(d=>({id:d.id,name:nameById.get(d.id)||d.id}))}); } return {id:hit[0].id}; } }
+  if(addr){ const hit=famArr.filter(d=>{ const a=naddr(d.address); return a && a===addr; }); if(hit.length>=1) return {id:hit[0].id}; }
+  if(city){ const c=ncity(city), st=nstate(state); const hit=famArr.filter(d=>ncity(d.city)===c && (!st||nstate(d.state)===st)); if(hit.length===1) return {id:hit[0].id}; }
+  return null;
+}
 
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -66,7 +94,7 @@ async function buildCtx(slug){
     for(const x of (dmr||[])){ if(x.account_ref) idByAccount[String(x.account_ref).trim()]=x.dealer_id; } }catch(e){}
   let orderLines=new Set();
   try{ const cc=await sbGet("app_settings?key=eq.commission_config&select=value"); orderLines=new Set(((cc&&cc[0]&&cc[0].value&&cc[0].value.order_number_lines))||[]); }catch(e){}
-  const fam=await sbGetAll("dealers?select=id,business_name,city,state,zip,parent_id","business_name").catch(()=>[]);
+  const fam=await sbGetAll("dealers?select=id,business_name,city,state,zip,address,parent_id","business_name").catch(()=>[]);
   const rootOf=new Map(), byRoot=new Map(), nameById=new Map();
   for(const d of (fam||[])){ const root=d.parent_id||d.id; rootOf.set(d.id,root); (byRoot.get(root)||byRoot.set(root,[]).get(root)).push(d); nameById.set(d.id,d.business_name); }
   // Saved ZIP→branch assignments (from the review screen) — resolve ambiguous/assigned ZIPs deterministically.
@@ -89,8 +117,8 @@ function mapRows(slug, per, source_file, rows, ctx){
   const zipmap=ctx.zipmap||{}, invChannel=ctx.invChannel||{};
   const refMatch=!orderLines.has(slug);
   const out=[]; const unmatched=new Map();
-  let matched=0, physical=0, dropship=0, physAmt=0, dropAmt=0, credits=0, amtTot=0, commTot=0;
-  const newAcct=new Map(), noZip=new Map(), ambiguous=[], ambSeen=new Set(), models=new Set();
+  let matched=0, physical=0, dropship=0, physAmt=0, dropAmt=0, credits=0, amtTot=0, commTot=0, heldRows=0;
+  const newAcct=new Map(), noZip=new Map(), ambiguous=[], ambSeen=new Set(), models=new Set(), unknownBranch=new Map();
   // Access4u ledger metrics + a same-file invoice→channel map (Med Mart PO = drop-ship) so payments
   // in this same file inherit their order's channel even before it's in the database.
   let invRows=0, payRows=0, billedTot=0; const localInv={};
@@ -102,6 +130,9 @@ function mapRows(slug, per, source_file, rows, ctx){
     const shipZip=znorm(r.ship_zip!=null?r.ship_zip:(r.postal!=null?r.postal:""));
     const shipCity=(r.ship_city!=null)?String(r.ship_city).trim():"";
     const shipState=(r.ship_state!=null)?String(r.ship_state).trim():"";
+    const shipName=(r.ship_name!=null)?String(r.ship_name).trim():"";
+    const shipAddr=(r.ship_address!=null)?String(r.ship_address).trim():"";
+    const shipAddrN=naddr(shipAddr);
     const amount=num(r.amount), commission=num(r.commission);
     amtTot+=amount||0; commTot+=commission||0;
     const type=(r.line_type!=null)?String(r.line_type).trim().toUpperCase():"";
@@ -119,39 +150,44 @@ function mapRows(slug, per, source_file, rows, ctx){
     const byName=name?idByAlias[dnorm(name)]:null;
     let did=byAcct||byName||null; let channel=null;
     if(did){
-      matched++;
       const root=rootOf.get(did)||did;
       const famArr=byRoot.get(root)||[];
       const famZips=famArr.map(d=>znorm(d.zip)).filter(Boolean);
-      if(lineType==="invoice"||lineType==="payment"){
-        // Access4u ledger: no ZIP. Channel comes from the order's memo (PO = drop-ship); a payment
-        // inherits its invoice's channel via the R-##### reference (same file, then the database).
+      const hasShip = !!(shipZip||shipAddrN||shipCity);
+      if(hasShip){
+        // BRANCH-AWARE routing (GCE + any line with ship-to). Resolve the ship-to to a branch within
+        // the dealer family; assign the sale to the ACTUAL location, never bundled onto corporate.
+        const rb = resolveBranchFn(root, famArr, {zip:shipZip, addr:shipAddrN, city:shipCity, state:shipState}, zipmap, rootOf, ambiguous, ambSeen, nameById);
+        if(rb && rb.id){ did=rb.id; channel="physical"; }
+        else if(looksLikeBranch(shipName, name||nameById.get(root))){
+          // A dealer LOCATION we don't have on file yet → HOLD (do not assign to corporate). Surfaced
+          // in Review & Correct so the operator can create the branch under this corporate, or reassign.
+          did=null; heldRows++;
+          const key=root+"|"+shipZip+"|"+shipAddrN;
+          const g=unknownBranch.get(key)||{corporate_id:root, corporate_name:nameById.get(root)||name||"", account_ref:acct||"",
+            ship_name:shipName, ship_address:shipAddr, ship_city:shipCity, ship_state:shipState, ship_zip:shipZip, count:0, amount:0};
+          g.count++; g.amount+=amount||0; unknownBranch.set(key,g);
+        } else {
+          // A patient / one-off consignee → drop-ship. The SALE belongs to the dealer; keep the ship-to
+          // on the row for history, but don't invent a branch for a person.
+          did=root; channel="dropship";
+        }
+      } else if(lineType==="invoice"||lineType==="payment"){
+        // Ledger line with no ship-to (access4u): channel from the order memo / linked payment.
         did=root;
         const linked = lineType==="payment" ? (localInv[invRef]||invChannel[invRef]) : null;
         channel = (poDropOf(memo) || linked==="dropship") ? "dropship" : "physical";
+      } else if(famZips.length){
+        did=root; channel="dropship";                   // branch ZIPs exist but this line has no ship-to
       } else {
-        // A saved ZIP→branch assignment (from the review screen) wins, when it points into this family.
-        const assigned = (shipZip && zipmap[shipZip] && (rootOf.get(zipmap[shipZip])===root)) ? zipmap[shipZip] : null;
-        if(assigned){ did=assigned; channel="physical"; }
-        else if(shipZip && famZips.length){
-          const hit=famArr.filter(d=>znorm(d.zip)===shipZip);
-          if(hit.length===1){ did=hit[0].id; channel="physical"; }
-          else if(hit.length>1){ did=hit[0].id; channel="physical";
-            if(!ambSeen.has(shipZip)){ ambSeen.add(shipZip); ambiguous.push({zip:shipZip,dealers:hit.map(d=>({id:d.id,name:nameById.get(d.id)||d.id}))}); } }
-          else { did=root; channel="dropship"; }
-        } else if(shipCity){
-          const c=ncity(shipCity), st=nstate(shipState);
-          const mm = famArr.length<=1 ? famArr[0] : (famArr.find(x=>ncity(x.city)===c&&(!st||nstate(x.state)===st))||famArr.find(x=>ncity(x.city)===c));
-          did=(mm&&mm.id)||root; channel="physical";
-        } else if(famZips.length){
-          did=root; channel="dropship";                 // ZIP branches exist but this line has no ZIP → can't place
-        } else {
-          did=root; channel="physical"; const n0=noZip.get(root)||{dealer_id:root,name:nameById.get(root)||name,count:0}; n0.count++; noZip.set(root,n0);
-        }
+        did=root; channel="physical"; const n0=noZip.get(root)||{dealer_id:root,name:nameById.get(root)||name,count:0}; n0.count++; noZip.set(root,n0);
       }
-      if(channel==="physical"){ physical++; physAmt+=amount||0; } else { dropship++; dropAmt+=amount||0; }
-      if(byName && !byAcct && acct && !idByAccount[acct] && !orderLines.has(slug)){
-        const k=root+"|"+acct; if(!newAcct.has(k)) newAcct.set(k,{dealer_id:root,name:nameById.get(root)||name,account_ref:acct}); }
+      if(did){
+        matched++;
+        if(channel==="physical"){ physical++; physAmt+=amount||0; } else { dropship++; dropAmt+=amount||0; }
+        if(byName && !byAcct && acct && !idByAccount[acct] && !orderLines.has(slug)){
+          const k=root+"|"+acct; if(!newAcct.has(k)) newAcct.set(k,{dealer_id:root,name:nameById.get(root)||name,account_ref:acct}); }
+      }
     } else if(name){
       const u=unmatched.get(name)||{name,account:acct||"",zip:shipZip||"",count:0}; u.count++; if(!u.account&&acct)u.account=acct; unmatched.set(name,u);
     }
@@ -159,6 +195,7 @@ function mapRows(slug, per, source_file, rows, ctx){
       manufacturer:slug, period:per, dealer_id:did||null, channel:channel||null,
       customer_name:name||null, customer_ref:acct||null,
       ship_city:shipCity||null, ship_state:shipState||null, ship_zip:shipZip||null,
+      ship_name:shipName||null, ship_address:shipAddr||null,
       order_date:toDate(r.order_date),
       product_code:model||null,
       product_name:(r.product_name!=null&&String(r.product_name).trim())?String(r.product_name).trim():null,
@@ -176,6 +213,7 @@ function mapRows(slug, per, source_file, rows, ctx){
     physical_rows:physical, dropship_rows:dropship,
     physical_amount:Math.round(physAmt*100)/100, dropship_amount:Math.round(dropAmt*100)/100,
     new_accounts:[...newAcct.values()].slice(0,300), no_zip_dealers:[...noZip.values()].slice(0,300),
+    unknown_branches:[...unknownBranch.values()].sort((a,b)=>b.count-a.count).slice(0,400), held_rows:heldRows,
     ambiguous_zips:ambiguous.slice(0,100), distinct_products:models.size, credits,
     invoice_rows:invRows, payment_rows:payRows, billed_total:Math.round(billedTot*100)/100,
     amount_total:Math.round(amtTot*100)/100, commission_total:Math.round(commTot*100)/100 };
@@ -197,7 +235,9 @@ exports.handler = async (event)=>{
       try{ const m=await sbGet("manufacturers?select=slug,name"); (m||[]).forEach(x=>{ if(x&&x.slug&&!nameMap[x.slug]) nameMap[x.slug]=x.name||x.slug; }); }catch(e){}
       // GCE / Ohio Medical is a two-tab open/paid commission source — always offer it in the picker,
       // labeled so it's recognizable as the GCE report (its parser reads the two GCE tabs directly).
+      // Consolidated onto ONE slug: drop the legacy duplicate 'gce' so only 'ohio-medical' shows.
       nameMap["ohio-medical"]="Ohio Medical / GCE";
+      delete nameMap["gce"];
       const manufacturers=Object.entries(nameMap).map(([slug,name])=>({slug,name})).sort((a,b)=>a.name.localeCompare(b.name));
       let templates={};
       try{ const rows=await sbGet("app_settings?key=like.ctpl:*&select=key,value"); (rows||[]).forEach(r=>{ templates[String(r.key).slice(5)]=r.value||{}; }); }catch(e){}
@@ -243,10 +283,12 @@ exports.handler = async (event)=>{
       // Column-existence probes: enrichment cols (golden_import.sql) + ship cols (attribution.sql).
       let hasEnrich=true; try{ const p=await fetch(`${SUPABASE_URL}/rest/v1/monthly_sales?select=channel&limit=1`,{headers:H()}); hasEnrich=p.ok; }catch(e){ hasEnrich=false; }
       let hasShip=true;   try{ const p=await fetch(`${SUPABASE_URL}/rest/v1/monthly_sales?select=ship_city&limit=1`,{headers:H()}); hasShip=p.ok; }catch(e){ hasShip=false; }
+      let hasShipNA=true; try{ const p=await fetch(`${SUPABASE_URL}/rest/v1/monthly_sales?select=ship_name&limit=1`,{headers:H()}); hasShipNA=p.ok; }catch(e){ hasShipNA=false; }
       const ENRICH=["channel","item_no","line_type","credit_reason","invoice_no","ship_zip","commission_rate","order_date","billed_amount","memo"];
       const clean=out.map(o=>{ const row={...o};
         if(!hasEnrich) ENRICH.forEach(k=>delete row[k]);
         if(!hasShip){ delete row.ship_city; delete row.ship_state; delete row.ship_zip; }
+        if(!hasShipNA){ delete row.ship_name; delete row.ship_address; }   // pre-migration safety
         return row; });
       try{ let del=`monthly_sales?manufacturer=eq.${encodeURIComponent(slug)}&period=eq.${encodeURIComponent(per)}`;
         if(source_file) del+=`&source_file=eq.${encodeURIComponent(source_file)}`;

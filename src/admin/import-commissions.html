@@ -83,6 +83,8 @@ const numv=v=>{ if(v==null||v==="") return null; const n=Number(String(v).replac
 const FIELDS=[
   {k:"customer_name",label:"Dealer / customer name",req:true},
   {k:"customer_ref",label:"Account number"},
+  {k:"ship_name",label:"Ship-to name (branch / consignee)"},
+  {k:"ship_address",label:"Ship-to address"},
   {k:"ship_zip",label:"Ship-to ZIP (branch match key)"},
   {k:"ship_city",label:"Ship-to city"},
   {k:"ship_state",label:"Ship-to state"},
@@ -254,7 +256,9 @@ function parseGce(wb){
     for(let i=hr+1;i<rows.length;i++){ const r=rows[i]||[];
       const cn=String(pick(r,"customer name")).trim(); if(!cn) continue;
       const sales=pick(r,"sales $","sales$");
+      const addr=[pick(r,"address1","address 1"),pick(r,"address 2","address2"),pick(r,"address 3","address3")].map(function(x){return String(x||"").trim();}).filter(Boolean).join(", ");
       const rec={ customer_name:cn, customer_ref:String(pick(r,"cust #","cust#","cust")).trim(),
+        ship_name:String(pick(r,"ship to name","ship-to name","shipto name")).trim(), ship_address:addr,
         ship_city:pick(r,"city"), ship_state:pick(r,"state"), ship_zip:pick(r,"zip"),
         product_code:pick(r,"part number"), product_name:pick(r,"part description"), qty:pick(r,"quantity","qty"),
         commission_rate:pick(r,"comm %","comm  %","comm%"), order_date:pick(r,"order date","invoice date"),
@@ -340,7 +344,8 @@ function renderPreview(){
     const real=pays.reduce((a,r)=>a+(numv(r.amount)||0),0), com=pays.reduce((a,r)=>a+(numv(r.commission)||0),0);
     const billed=invs.reduce((a,r)=>a+(numv(r.billed_amount)||0),0);
     $("#prevMeta").innerHTML=`${rows.length} ledger lines · <b>${pays.length}</b> payments (realized ${usd(real)} · commission ${usd(com)}) · <b>${invs.length}</b> invoices (billed ${usd(billed)})`;
-    const cols=["line_type","order_date","customer_name","invoice_no","amount","billed_amount","commission","memo"];
+    const anyShip=rows.some(function(r){return r.ship_name||r.ship_city||r.ship_zip;});
+    const cols=["line_type","order_date","customer_name"].concat(anyShip?["ship_name","ship_city","ship_state","ship_zip"]:[]).concat(["invoice_no","amount","billed_amount","commission","memo"]);
     $("#prevTable").innerHTML=`<thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>`+
       rows.slice(0,10).map(r=>`<tr>${cols.map(c=>`<td>${esc(r[c]==null?"":r[c])}</td>`).join("")}</tr>`).join("")+`</tbody>`;
     return;
@@ -377,7 +382,10 @@ async function doAnalyze(){
   }catch(e){ $("#imsg").textContent="Analyze failed: "+(e.message||e); $("#imsg").className="st warn"; }
   finally{ btn.disabled=false; }
 }
-let LASTREVIEW=null; const RVAPPROVED=new Set();
+let LASTREVIEW=null; const RVAPPROVED=new Set(); let UBFILTER="";
+function ubKey(x){ return (x.corporate_id||"")+"|"+(x.ship_zip||"")+"|"+(x.ship_address||""); }
+function ubMatchFilter(x){ const q=(UBFILTER||"").trim().toLowerCase(); if(!q) return true;
+  return [x.ship_name,x.ship_address,x.ship_city,x.ship_state,x.ship_zip,x.corporate_name].some(v=>String(v||"").toLowerCase().includes(q)); }
 async function dealersApi(body){ const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
   const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify(body)}); return r.json().catch(()=>({})); }
 function rvDealerOpts(sel){ return `<option value="">— choose dealer / branch —</option>`+(CONFIG.dealers||[]).slice().sort((a,b)=>String(a.name).localeCompare(String(b.name))).map(d=>`<option value="${esc(d.id)}"${d.id===sel?" selected":""}>${esc(d.name)}${d.city?` — ${esc(d.city)}, ${esc(d.state||"")}`:""}</option>`).join(""); }
@@ -393,6 +401,7 @@ function renderReview(rv){
   const tiles=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px">
     ${tileHtml("Rows",tot,`${usd(rv.amount_total)} realized · ${usd(rv.commission_total)} comm`)}
     ${tileHtml("Matched",`${m}/${tot}`,`${un} unmatched`,un?"warn":"")}
+    ${rv.held_rows?tileHtml("Held — new branch",rv.held_rows,"unknown ship-to · resolve below","bad"):""}
     ${ledger
       ? tileHtml("Payments",rv.payment_rows||0,`${usd(rv.amount_total)} realized · ${usd(rv.commission_total)} paid`)
         +tileHtml("Invoices",rv.invoice_rows||0,`${usd(rv.billed_total)} billed (awaiting pay)`,"warn")
@@ -421,16 +430,33 @@ function renderReview(rv){
       <select id="amb_sel_${i}" style="min-width:210px">${(a.dealers||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}</select>
       <button class="go sm" onclick="rvAssignZip(${i})">Assign branch</button>
       <button class="go gray sm" onclick="rvApprove('amb',${i})">Approve</button></div>`).join(""):"";
+  // Unknown branch/location — ship-to under a matched corporate that maps to no known branch.
+  // Create it under the corporate, assign it to an existing branch, or keep it on the corporate.
+  const ub=(rv.unknown_branches||[]).filter((x,ix)=>!RVAPPROVED.has("ub:"+ubKey(x)));
+  let ubHtml=ub.length?secHead(`🏢 ${ub.length} ship-to location${ub.length===1?"":"s"} not yet a branch — assign each to the right location so sales aren't bundled onto the corporate account`,"bad")+
+    `<div class="dim" style="margin:0 0 6px">Corporate → Branch/Location → Ship-To. Create the branch under its corporate parent, match it to an existing branch, or keep it on the corporate as a drop-ship.</div>`+
+    `<input id="ubFilter" placeholder="Filter locations by name, city, state or ZIP…" oninput="UBFILTER=this.value;renderReview(LASTREVIEW)" value="${esc(UBFILTER||"")}" style="width:100%;max-width:420px;margin-bottom:6px">`+
+    ub.filter(ubMatchFilter).map((x)=>{ const i=(rv.unknown_branches||[]).indexOf(x);
+      return `<div class="rzrow" style="align-items:flex-start;flex-wrap:wrap">
+      <div class="rn" style="min-width:280px"><b>${esc(x.ship_name||"(no ship-to name)")}</b> ${x.count} order${x.count===1?"":"s"} · ${usd(x.amount)}
+        <div class="dim">${esc([x.ship_address,x.ship_city&&(x.ship_city+", "+(x.ship_state||"")),x.ship_zip].filter(Boolean).join(" · "))}</div>
+        <div class="dim">under <b>${esc(x.corporate_name)}</b>${x.account_ref?` · acct ${esc(x.account_ref)}`:""}</div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <button class="go sm" onclick="rvCreateBranch(${i})" title="Create this as a new branch under ${esc(x.corporate_name)}">＋ Create branch</button>
+        <select id="ub_sel_${i}" style="min-width:200px">${rvDealerOpts()}</select>
+        <button class="go gray sm" onclick="rvAssignBranch(${i})">Assign existing</button>
+        <button class="go gray sm" onclick="rvKeepCorp(${i})" title="Treat as a drop-ship to the corporate account">Keep on corporate</button>
+      </div></div>`; }).join(""):"";
   // Known dealer, new account number → store / ignore
   const na=(rv.new_accounts||[]).filter(a=>!RVAPPROVED.has("acct:"+a.dealer_id+"|"+a.account_ref));
   let naHtml=na.length?secHead(`${na.length} known dealer${na.length===1?"":"s"} with a new account number — store it so future reports auto-match`)+
     na.map((a,i)=>`<div class="rzrow"><div class="rn"><b>${esc(a.name)}</b> <span class="dim">→ account ${esc(a.account_ref)}</span></div>
       <button class="go sm" onclick="rvStoreAcct(${i})">Store account #</button>
       <button class="go gray sm" onclick="rvApprove('acct',${i})">Ignore</button></div>`).join(""):"";
-  const clean = !unm.length && !nz.length && !amb.length && !na.length;
+  const clean = !unm.length && !nz.length && !amb.length && !na.length && !ub.length;
   el.innerHTML=`<div class="card" style="margin-top:14px;border-color:#c7d7ef;background:#fbfdff">
     <h2 style="font-size:16px;margin:0 0 2px">Review &amp; correct before committing <span class="sub" style="font-weight:400;text-transform:none">— nothing is written until you commit; fixes here are saved as rules for next month</span></h2>
-    ${tiles}${unmHtml}${nzHtml}${ambHtml}${naHtml}
+    ${tiles}${unmHtml}${ubHtml}${nzHtml}${ambHtml}${naHtml}
     <div style="margin-top:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <button class="go dk" id="commitBtn" onclick="doImport()">✓ Commit import — write ${tot} rows</button>
       <button class="go gray" onclick="doAnalyze()">↻ Re-check</button>
@@ -447,6 +473,24 @@ async function rvCreate(i){ const u=LASTREVIEW.unmatched[i];
   if(r&&r.dealer_id){ await api({action:"learn_match",manufacturer:$("#mfr").value,name:u.name,dealer_id:r.dealer_id,account_ref:u.account||""});
     try{ CONFIG=await api({action:"config"}); }catch(e){} await doAnalyze(); }
   else alert((r&&r.error)||"Couldn't create the dealer."); }
+// Create the ship-to as a NEW BRANCH under its corporate parent (address/city/state/zip preserved),
+// then re-analyze so its rows attach to the new location by ZIP/address.
+async function rvCreateBranch(i){ const x=LASTREVIEW.unknown_branches[i]; if(!x) return;
+  if(!x.corporate_id){ alert("No corporate parent on file for this location."); return; }
+  const r=await dealersApi({action:"create_dealer", business_name:(x.ship_name||x.corporate_name+" branch"), parent_id:x.corporate_id,
+    address:x.ship_address||"", city:x.ship_city||"", state:x.ship_state||"", zip:x.ship_zip||"",
+    accounts:[{manufacturer:$("#mfr").value, account_ref:x.account_ref||""}]});
+  if(r&&r.dealer_id){ if(x.ship_zip){ try{ await api({action:"assign_zip",manufacturer:$("#mfr").value,zip:x.ship_zip,dealer_id:r.dealer_id}); }catch(e){} }
+    try{ CONFIG=await api({action:"config"}); }catch(e){} await doAnalyze(); }
+  else alert((r&&r.error)||"Couldn't create the branch."); }
+// Assign this ship-to to an existing dealer/branch (saves a ZIP→branch rule so it sticks).
+async function rvAssignBranch(i){ const x=LASTREVIEW.unknown_branches[i]; const did=(($("#ub_sel_"+i)||{}).value)||""; if(!did){ alert("Choose a dealer/branch first."); return; }
+  if(!x.ship_zip){ alert("This location has no ZIP to key the assignment on — create it as a branch instead."); return; }
+  await api({action:"assign_zip",manufacturer:$("#mfr").value,zip:x.ship_zip,dealer_id:did}); await doAnalyze(); }
+// Keep this ship-to on the corporate account (a drop-ship), not a distinct branch.
+async function rvKeepCorp(i){ const x=LASTREVIEW.unknown_branches[i];
+  if(x.ship_zip && x.corporate_id){ await api({action:"assign_zip",manufacturer:$("#mfr").value,zip:x.ship_zip,dealer_id:x.corporate_id}); await doAnalyze(); }
+  else { RVAPPROVED.add("ub:"+ubKey(x)); renderReview(LASTREVIEW); } }
 async function rvUpdateZip(i){ const d=LASTREVIEW.no_zip_dealers[i]; const zip=((($("#nz_zip_"+i)||{}).value)||"").trim(); if(!zip){ alert("Enter a ZIP."); return; }
   await dealersApi({action:"edit",dealer_id:d.dealer_id,zip}); try{ CONFIG=await api({action:"config"}); }catch(e){} await doAnalyze(); }
 async function rvAssignZip(i){ const a=LASTREVIEW.ambiguous_zips[i]; const did=(($("#amb_sel_"+i)||{}).value)||""; if(!did) return;
