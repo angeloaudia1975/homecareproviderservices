@@ -1,30 +1,181 @@
 {
-  "eyebrow": "HCPS Business Services",
-  "headline": "Dealer Services",
-  "lead": "Value-added business services for HCPS dealers — beyond the product lines. Vetted partners and tools that strengthen how you run your business, from payments and cash flow to operations. Separate from our manufacturer portfolio, exclusive to HCPS dealers.",
-  "services": [
+  "eyebrow": "HCPS Business Solutions",
+  "headline": "The HCPS Business Solutions Hub",
+  "lead": "Value-added business services for HomeCare Provider Services dealers — beyond our manufacturer product lines. Access vetted partners, tools, and solutions designed to strengthen your business, improve cash flow, streamline operations, and support long-term growth. Separate from our manufacturer portfolio, and exclusive to the HCPS dealer network.",
+  "categories": [
+    { "key": "financial", "label": "Financial Services" },
+    { "key": "payments", "label": "Payments" },
+    { "key": "marketing", "label": "Marketing" },
+    { "key": "websites", "label": "Websites" },
+    { "key": "technology", "label": "Technology" },
+    { "key": "operations", "label": "Operations" },
+    { "key": "insurance", "label": "Insurance" },
+    { "key": "consulting", "label": "Business Consulting" }
+  ],
+  "pillars": [
+    {
+      "key": "payments",
+      "title": "Payments & Cash Flow",
+      "icon": "card",
+      "desc": "Keep more of every sale and get paid faster with dealer-tuned payment and cash-flow solutions.",
+      "bullets": [
+        "Credit card processing solutions",
+        "Programs designed to reduce payment-processing costs",
+        "Cash-flow improvement tools",
+        "Dealer-specific financial solutions"
+      ]
+    },
+    {
+      "key": "operations",
+      "title": "Operations & Efficiency",
+      "icon": "gear",
+      "desc": "Run a tighter business with tools and services that streamline the day-to-day.",
+      "bullets": [
+        "Business tools that improve daily operations",
+        "Workflow and process solutions",
+        "Technology services",
+        "Dealer productivity tools",
+        "Administrative support resources"
+      ]
+    },
+    {
+      "key": "marketing",
+      "title": "Marketing & Business Development",
+      "icon": "chart",
+      "desc": "Grow revenue with marketing, web, and consulting support built for HME dealers.",
+      "bullets": [
+        "Website development",
+        "Digital marketing services",
+        "Dealer growth consulting",
+        "Lead-generation support",
+        "Brand and business-development programs"
+      ]
+    }
+  ],
+  "partners": [
     {
       "slug": "cardchamp",
       "name": "CardChamp",
-      "category": "Payments & Cash Flow",
+      "type": "partner",
+      "categories": ["payments", "financial"],
+      "category_label": "Payments & Cash Flow",
+      "featured": true,
       "status": "active",
+      "service": "Credit card processing with fully compliant surcharging",
+      "benefit": "Offset processing fees so you keep more of every sale — 0% processing with compliant surcharging.",
+      "hcps_advantage": "A preferred HCPS partner with a dealer-specific enrollment page; HCPS is credited for every referral.",
       "tagline": "Turn Credit Card Fees into Cash Flow",
-      "sub": "Offset credit card processing costs with fully compliant surcharging.",
       "summary": "Most HCPS dealers are overpaying on credit card processing. CardChamp shows you how much — and helps you keep it — with fully compliant surcharging built for small-to-medium businesses.",
       "benefits": [
         "0% credit card processing with compliant surcharging",
         "Set up your account in under 15 minutes",
-        "Month-to-month agreements — no cancellation penalty, ever",
+        "Month-to-month agreements — no cancellation penalty",
         "Personal support you can depend on"
       ],
       "cta_label": "Start Saving Today",
-      "cta_secondary": "Discover how much your business is overpaying in processing fees.",
+      "cta_secondary": "See how much your business is overpaying in processing fees.",
       "url": "https://www.cardchamp.com/homecareproviderservices",
       "logo": "https://www.cardchamp.com/hubfs/_website-logos/cardchamp.svg",
       "accent": "#EE5A5A",
       "accent_ink": "#1E2A55",
       "tracking_key": "cardchamp",
       "referral_note": "Applications and enrollment are completed on the CardChamp page, and HCPS is credited for every referral."
+    },
+    {
+      "slug": "hcps-web",
+      "name": "HCPS Website & Online Presence",
+      "type": "hcps",
+      "categories": ["websites", "marketing", "technology"],
+      "category_label": "Websites & Digital",
+      "featured": false,
+      "status": "active",
+      "service": "Dealer website development and online-ordering presence",
+      "benefit": "A professional web presence plus a 24/7 online ordering storefront your customers can use.",
+      "hcps_advantage": "Built and maintained by your HCPS team and integrated with the HCPS online ordering platform.",
+      "tagline": "A professional web presence, done for you",
+      "summary": "HCPS helps dealers stand up a modern website and a 24/7 online ordering presence — so your business looks the part and customers can order any time.",
+      "benefits": [
+        "Website design & build",
+        "Online ordering storefront",
+        "Integrated with HCPS ordering",
+        "Ongoing updates & support"
+      ],
+      "cta_label": "Talk to HCPS",
+      "cta_secondary": "Ask about a website and online-ordering setup for your store.",
+      "url": "/contact/?reason=Dealer%20Services%20%E2%80%94%20Website",
+      "accent": "#1681c2",
+      "accent_ink": "#0f5c8f",
+      "tracking_key": "hcps-web"
+    },
+    {
+      "slug": "hcps-marketing",
+      "name": "HCPS Digital Marketing",
+      "type": "hcps",
+      "categories": ["marketing"],
+      "category_label": "Marketing",
+      "featured": false,
+      "status": "active",
+      "service": "Email campaigns, promotions & dealer-targeted marketing",
+      "benefit": "Reach more customers and drive repeat business with campaigns run for you.",
+      "hcps_advantage": "Powered by HCPS Connect 360 — targeted to the right audiences with performance reported back.",
+      "tagline": "Marketing that brings customers back",
+      "summary": "From email campaigns to product promotions and brand-awareness programs, HCPS runs dealer-targeted marketing so you can focus on the floor.",
+      "benefits": [
+        "Email & promotional campaigns",
+        "Dealer-targeted audiences",
+        "Brand-awareness programs",
+        "Campaign performance reporting"
+      ],
+      "cta_label": "Talk to HCPS",
+      "cta_secondary": "Ask how HCPS can market your business.",
+      "url": "/contact/?reason=Dealer%20Services%20%E2%80%94%20Marketing",
+      "accent": "#ef6325",
+      "accent_ink": "#b7491a",
+      "tracking_key": "hcps-marketing"
+    },
+    {
+      "slug": "hcps-consulting",
+      "name": "HCPS Growth Consulting",
+      "type": "hcps",
+      "categories": ["consulting", "operations"],
+      "category_label": "Business Consulting",
+      "featured": false,
+      "status": "active",
+      "service": "Dealer growth consulting, showroom & business development",
+      "benefit": "Expert guidance to grow revenue, improve your showroom, and build a stronger business.",
+      "hcps_advantage": "Consultants who know HME — the same team that represents your product lines.",
+      "tagline": "Guidance from people who know HME",
+      "summary": "HCPS works alongside dealers on growth strategy, showroom layout and merchandising, product mix, and business development — practical help from a team that lives in this industry.",
+      "benefits": [
+        "Growth & business-development strategy",
+        "Showroom layout & merchandising",
+        "Product-mix & profitability review",
+        "Ongoing dealer support"
+      ],
+      "cta_label": "Talk to HCPS",
+      "cta_secondary": "Ask about a consulting conversation for your business.",
+      "url": "/consulting/",
+      "accent": "#5b4b9a",
+      "accent_ink": "#40357a",
+      "tracking_key": "hcps-consulting"
     }
-  ]
+  ],
+  "exclusive_benefits": [
+    { "title": "Special programs", "desc": "Offers and programs arranged specifically for HCPS dealers." },
+    { "title": "Preferred pricing", "desc": "Better rates where our partners make them available to the network." },
+    { "title": "Dedicated support", "desc": "A direct line to HCPS to help you get set up and get value." },
+    { "title": "Dealer-only resources", "desc": "Tools and enrollment pages reserved for the HCPS dealer network." },
+    { "title": "Vetted for you", "desc": "Every service is evaluated and selected specifically for HME/DME dealers." }
+  ],
+  "separation": {
+    "manufacturer": {
+      "title": "HCPS Manufacturer Partners",
+      "desc": "The product lines our sales team represents and sells into your store."
+    },
+    "services": {
+      "title": "HCPS Dealer Services",
+      "desc": "Independent business solutions, technology, financial services, and other vetted partners available to our dealer network."
+    },
+    "note": "Dealer Services are separate, value-added business solutions. They do not compete with or alter our manufacturer representation relationships."
+  }
 }
