@@ -15,6 +15,42 @@
  */
 window.HUB_GUIDE = {
 
+  /* ---------------- SALES & MARKETING ---------------- */
+  "Scheduling Console": {
+    tagline: "The command center for every dealer appointment — self-booked or rep-scheduled — with Outlook, Zoom, reminders, and Dealer 360 all wired in behind the scenes.",
+    what: "The Scheduling Console runs HCPS's dealer meeting program end to end. Dealers self-book a live 30-minute slot from the Dealer Hub (online Zoom meetings or on-site field visits), and it books instantly: the Outlook event is created on the assigned rep's calendar, the dealer is invited, both sides get a confirmation and a 24-hour reminder, and the appointment is recorded in Dealer 360 against the right dealer, contact, and rep. From here you assign or reschedule requests, mark meetings complete with notes, manage availability, block travel days, and review every upcoming appointment in one place.",
+    features: [
+      "Live self-scheduling for verified dealers — only open 30-minute slots are shown; booked and blocked times are removed automatically",
+      "Two meeting types with separate availability: online (Zoom, fixed Central hours) and field visits (Wed & Thu, in the dealer's local time zone)",
+      "Instant Outlook calendar event on the assigned rep's calendar, with a dealer invitation",
+      "Confirmation email to the dealer and rep, plus an automatic 24-hour reminder to both",
+      "Double-booking prevention — one appointment per rep calendar per time, enforced at the database",
+      "Availability manager: change days/hours per meeting type, edit the Zoom link, block vacation or travel dates, set the default owner",
+      "Appointment queue: assign a rep, book the time, and move requests through Scheduled → Completed → Follow-up",
+      "Upcoming view: every future appointment with a jump to its Outlook event",
+      "Time-zone correct throughout — field visits honor the dealer's local time, online meetings are Central"
+    ],
+    data: "Reads and writes the service_requests table (requests, bookings, calendar + Zoho references, reminders), the availability config in app_settings, staff_users for rep calendars, and the canonical dealer/contact records for matching and Dealer 360 logging.",
+    actions: [
+      "Set availability per meeting type — days, hours, Zoom link, blocked dates",
+      "Assign a rep and book (or reschedule) an appointment from a request",
+      "Link an appointment to the correct Dealer 360 record",
+      "Mark a meeting completed with notes and spin up a follow-up task",
+      "Cancel an appointment (removes the Outlook event) or reopen it",
+      "Review all upcoming appointments and open their calendar events"
+    ],
+    connects: [
+      "Outlook / Microsoft 365 via Microsoft Graph for calendar events, invitations, and confirmation + reminder email",
+      "Dealer Hub self-scheduling widget feeds bookings straight in",
+      "Dealer 360 gets a timeline entry and (on completion) a follow-up task",
+      "Zoho CRM gets a best-effort Task linked to the dealer's Account",
+      "Assigned-rep routing uses the same rep assignments as the rest of the portal"
+    ],
+    problems: "Turns back-and-forth scheduling emails into self-service: dealers pick a time that's actually open, the invite and reminders go out automatically, nobody double-books a rep, and every meeting is captured as a measurable Dealer 360 touch point instead of living in someone's inbox.",
+    workflow: "Set your availability once, then let dealers book. Work the queue and the Upcoming list day to day; after each meeting, mark it complete with notes so the follow-up is queued and the account history stays current.",
+    intelligence: "Live slot generation net of real Outlook busy time, DST-correct time-zone conversion, database-enforced double-booking prevention, and automatic 24-hour reminders."
+  },
+
   /* ---------------- SALES DATA & ANALYTICS ---------------- */
   "Command Center 360": {
     tagline: "Your interactive business-intelligence cockpit — every sales number on the platform, drillable from the big picture down to a single order.",

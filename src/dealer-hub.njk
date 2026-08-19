@@ -80,6 +80,27 @@ description: "The Dealer Hub is your central destination for manufacturer resour
   .dh-flow li{counter-increment:f;position:relative;padding-left:38px;font-size:13.5px;color:rgba(255,255,255,.9);line-height:1.4;}
   .dh-flow li::before{content:counter(f);position:absolute;left:0;top:-1px;width:26px;height:26px;border-radius:50%;background:linear-gradient(120deg,#ef6325,#fcb21e);color:#141414;font-family:'Archivo Expanded',sans-serif;font-weight:800;font-size:13px;display:grid;place-items:center;}
 
+  /* Self-booker */
+  .dh-avail{background:#eef4fb;border:1px solid #cfe0ef;border-radius:10px;padding:10px 13px;font-size:12.5px;color:#33404b;margin:12px 0 4px;line-height:1.5;}
+  .dh-note{display:block;font-size:12px;color:#7a848f;margin-top:6px;}
+  .dh-link{background:none;border:none;color:var(--hcps-blue,#1681c2);font-weight:700;font-size:13.5px;cursor:pointer;padding:6px 0;font-family:'Inter',sans-serif;}
+  .dh-link:hover{text-decoration:underline;}
+  .sb-welcome{background:#e9f7ef;border:1px solid #bfe6cd;border-radius:10px;padding:10px 13px;font-size:13px;color:#1c6b3f;margin-bottom:12px;}
+  .sb-welcome b{color:#12512e;}
+  .sb-days{display:flex;flex-direction:column;gap:14px;max-height:360px;overflow:auto;margin-top:6px;padding-right:4px;}
+  .sb-day .sb-dh{font-family:'Archivo',sans-serif;font-weight:800;font-size:13px;color:var(--ink);margin:0 0 7px;}
+  .sb-slotrow{display:flex;flex-wrap:wrap;gap:7px;}
+  .sb-slot{background:#f4f7fa;border:1px solid #d7dde3;border-radius:9px;padding:8px 12px;font-size:13.5px;font-weight:700;color:#243240;cursor:pointer;font-family:'Inter',sans-serif;}
+  .sb-slot:hover{border-color:var(--hcps-blue,#1681c2);background:#eaf3fb;}
+  .sb-slot.on{background:linear-gradient(100deg,#ef6325,#fcb21e);color:#141414;border-color:transparent;}
+  .sb-confirm{margin-top:14px;border-top:1px solid #eef2f6;padding-top:14px;}
+  .sb-done{background:#e9f7ef;border:1px solid #bfe6cd;border-radius:14px;padding:22px;text-align:center;}
+  .sb-done h3{font-family:'Archivo',sans-serif;color:#12512e;margin:0 0 8px;font-size:19px;}
+  .sb-done .zoom{display:inline-block;margin-top:10px;background:#1681c2;color:#fff;text-decoration:none;font-weight:700;padding:10px 18px;border-radius:10px;font-size:14px;}
+  .sb-typebtns{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;}
+  .sb-typebtns label{display:inline-flex;align-items:center;gap:7px;margin:0;font-weight:600;font-size:13.5px;color:#33404b;background:#f4f7fa;border:1px solid #dfe6ee;border-radius:9px;padding:9px 13px;cursor:pointer;}
+  .sb-typebtns input{width:auto;}
+
   /* Quick access */
   .dh-quick{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;}
   @media(max-width:900px){.dh-quick{grid-template-columns:repeat(3,1fr);}}
@@ -181,86 +202,90 @@ description: "The Dealer Hub is your central destination for manufacturer resour
   </div>
 </section>
 
-<!-- SCHEDULING FORM -->
+<!-- SELF-SCHEDULER -->
 <section class="dh-sec alt" id="schedule">
   <div class="container">
     <div class="dh-head">
       <p class="dh-kicker">Book it</p>
-      <h2 class="dh-h2">Request an appointment</h2>
-      <p class="dh-sub">Tell us what you need and when works best. We'll assign the right HCPS representative and confirm your time.</p>
+      <h2 class="dh-h2">Schedule your appointment</h2>
+      <p class="dh-sub">Pick a live 30-minute time and it books instantly — calendar invite, Zoom link, reminders, and confirmation all handled for you.</p>
     </div>
 
     <div class="dh-form-wrap">
-      <form id="dh-sched" class="dh-form" novalidate>
-        <input type="text" name="company_website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;" aria-hidden="true">
-        <input type="hidden" name="service_key" id="dh-key" value="">
-        <div>
-          <label for="dh-service">Service *</label>
-          <select id="dh-service" name="service">
-            <option value="">Select a service…</option>
+      <div class="dh-form" id="dh-booker">
+        <!-- Step 1: choose + identify -->
+        <div id="sb-id">
+          <label for="dh-service">What's it about?</label>
+          <select id="dh-service">
+            <option value="">General / not sure</option>
             {% for s in services %}<option value="{{ s.name }}" data-key="{{ s.key }}" data-mode="{{ s.mode }}">{{ s.name }}</option>{% endfor %}
           </select>
-        </div>
-        <div>
-          <label>Format</label>
-          <div class="dh-modes">
-            <label><input type="radio" name="mode" value="remote"> Remote</label>
-            <label><input type="radio" name="mode" value="in_person"> In-person</label>
-            <label><input type="radio" name="mode" value="" checked> No preference</label>
+
+          <label>Meeting type</label>
+          <div class="sb-typebtns" id="sb-types">
+            <label><input type="radio" name="mtype" value="online" checked> Online meeting (Zoom)</label>
+            <label><input type="radio" name="mtype" value="field"> Field visit (on-site)</label>
           </div>
+          <p class="dh-avail" id="sb-availbar"></p>
+
+          <label for="sb-email">Your dealer email *</label>
+          <input id="sb-email" type="email" placeholder="you@yourcompany.com" autocomplete="email">
+          <button class="btn-primary" id="sb-find" type="button">Find available times &rarr;</button>
+          <p class="form-status" id="sb-status" role="status" aria-live="polite"></p>
+          <p class="dh-note">Self-scheduling is for established HCPS dealers. Not set up yet? <a href="/become-a-dealer/">Become a dealer</a> — or we'll show you a request option.</p>
         </div>
-        <div class="row">
-          <div><label for="dh-date">Preferred date</label><input id="dh-date" name="preferred_date" type="date"></div>
-          <div><label for="dh-time">Preferred time</label>
-            <select id="dh-time" name="preferred_time">
-              <option value="">Flexible</option>
-              <option value="Morning">Morning</option>
-              <option value="Midday">Midday</option>
-              <option value="Afternoon">Afternoon</option>
-              <option value="Late afternoon">Late afternoon</option>
-            </select>
-          </div>
+
+        <!-- Step 2: live slots -->
+        <div id="sb-slots-wrap" style="display:none">
+          <div class="sb-welcome" id="sb-welcome"></div>
+          <div class="sb-days" id="sb-days"></div>
+          <div class="sb-confirm" id="sb-confirm" style="display:none"></div>
+          <p class="dh-note" id="sb-slotnote"></p>
+          <button class="dh-link" id="sb-back" type="button">&larr; Change meeting type or email</button>
         </div>
-        <div class="row">
-          <div><label for="dh-alt">Alternate date</label><input id="dh-alt" name="alt_date" type="date"></div>
-          <div><label for="dh-state">State</label><input id="dh-state" name="state" type="text" maxlength="24" placeholder="e.g. OH"></div>
-        </div>
-        <div class="row">
-          <div><label for="dh-company">Dealer / Company *</label><input id="dh-company" name="company" type="text" required></div>
-          <div><label for="dh-name">Contact name *</label><input id="dh-name" name="name" type="text" required></div>
-        </div>
-        <div class="row">
-          <div><label for="dh-email">Email *</label><input id="dh-email" name="email" type="email" required></div>
-          <div><label for="dh-phone">Phone</label><input id="dh-phone" name="phone" type="tel"></div>
-        </div>
-        <div>
-          <label for="dh-manu">Manufacturer (if applicable)</label>
-          <select id="dh-manu" name="manufacturer">
-            <option value="">All / not sure</option>
-            {% for m in activeManufacturers %}<option value="{{ m.name }}">{{ m.name }}</option>{% endfor %}
-          </select>
-        </div>
-        <div>
-          <label for="dh-notes">Notes</label>
-          <textarea id="dh-notes" name="notes" placeholder="Anything that helps us prepare — team size, products, goals, or specific questions."></textarea>
-        </div>
-        <div>
-          <button type="submit" class="btn-primary" id="dh-submit">Request Appointment</button>
-          <p class="form-status" id="dh-status" role="status" aria-live="polite"></p>
-        </div>
-      </form>
+
+        <!-- Step 3: done -->
+        <div id="sb-done" style="display:none"></div>
+      </div>
 
       <aside class="dh-flow">
-        <h3>What happens next</h3>
+        <h3>How self-scheduling works</h3>
         <ol>
-          <li>Your request enters the HCPS scheduling system</li>
-          <li>The right HCPS representative is assigned</li>
-          <li>We confirm the time and send an Outlook calendar invite</li>
-          <li>The appointment appears in Dealer 360 with reminders</li>
-          <li>After the meeting, notes and follow-up are saved to your CRM history</li>
+          <li>Choose an online meeting or a field visit</li>
+          <li>We show live 30-minute openings in your time zone</li>
+          <li>Pick a time — it books instantly with a calendar invite</li>
+          <li>You and your HCPS rep get a confirmation (and Zoom link)</li>
+          <li>A reminder goes out 24 hours before; it's logged in Dealer 360</li>
         </ol>
         <p style="color:rgba(255,255,255,.8);font-size:12.5px;margin:16px 0 0;">Prefer to talk now? Call <a href="tel:{{ site.contact.phone_href }}" style="color:#fcb21e;font-weight:800;">{{ site.contact.phone_display }}</a>.</p>
       </aside>
+    </div>
+
+    <!-- LEGACY fallback: request a time (shown when the email isn't a known dealer) -->
+    <div class="dh-form" id="dh-legacy" style="display:none;max-width:760px;margin:22px auto 0;">
+      <h3 style="font-family:'Archivo',sans-serif;margin:0 0 4px;">Request a time instead</h3>
+      <p class="dh-note" style="margin:0 0 6px;">We couldn't match your email to a dealer account, so tell us what works and a HCPS rep will confirm and send an invite.</p>
+      <form id="dh-sched" novalidate>
+        <input type="text" name="company_website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;" aria-hidden="true">
+        <input type="hidden" name="service_key" id="dhl-key" value="">
+        <div><label for="dhl-service">Service</label>
+          <select id="dhl-service" name="service"><option value="">Select…</option>{% for s in services %}<option value="{{ s.name }}" data-key="{{ s.key }}">{{ s.name }}</option>{% endfor %}</select></div>
+        <div class="row">
+          <div><label for="dhl-date">Preferred date</label><input id="dhl-date" name="preferred_date" type="date"></div>
+          <div><label for="dhl-time">Preferred time</label><input id="dhl-time" name="preferred_time" type="text" placeholder="e.g. Wednesday morning"></div>
+        </div>
+        <div class="row">
+          <div><label for="dhl-company">Dealer / Company *</label><input id="dhl-company" name="company" type="text" required></div>
+          <div><label for="dhl-name">Contact name *</label><input id="dhl-name" name="name" type="text" required></div>
+        </div>
+        <div class="row">
+          <div><label for="dhl-email">Email *</label><input id="dhl-email" name="email" type="email" required></div>
+          <div><label for="dhl-phone">Phone</label><input id="dhl-phone" name="phone" type="tel"></div>
+        </div>
+        <div><label for="dhl-notes">Notes</label><textarea id="dhl-notes" name="notes" placeholder="Anything that helps us prepare."></textarea></div>
+        <div><button type="submit" class="btn-primary" id="dhl-submit">Request appointment</button>
+          <p class="form-status" id="dhl-status" role="status" aria-live="polite"></p></div>
+      </form>
     </div>
   </div>
 </section>
@@ -330,75 +355,152 @@ description: "The Dealer Hub is your central destination for manufacturer resour
 
 <script>
 (function () {
+  var API = "/.netlify/functions/schedule-api";
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]; }); };
+  var TZ = (function () { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) { return ""; } })();
   var svc = document.getElementById("dh-service");
-  var keyField = document.getElementById("dh-key");
-  var form = document.getElementById("dh-sched");
-  var status = document.getElementById("dh-status");
-  var submit = document.getElementById("dh-submit");
+  var emailIn = document.getElementById("sb-email");
+  var findBtn = document.getElementById("sb-find");
+  var sbStatus = document.getElementById("sb-status");
+  var availbar = document.getElementById("sb-availbar");
+  var stepId = document.getElementById("sb-id");
+  var slotsWrap = document.getElementById("sb-slots-wrap");
+  var daysBox = document.getElementById("sb-days");
+  var confirmBox = document.getElementById("sb-confirm");
+  var welcome = document.getElementById("sb-welcome");
+  var doneBox = document.getElementById("sb-done");
+  var legacy = document.getElementById("dh-legacy");
+  var BOOK = { start_utc: null, label: null };
 
-  function setMode(mode) {
-    var radios = form.querySelectorAll('input[name="mode"]');
-    var target = mode || "";
-    radios.forEach(function (r) { r.checked = (r.value === target); });
-    if (!mode) { var none = form.querySelector('input[name="mode"][value=""]'); if (none) none.checked = true; }
+  function mtype() { var r = document.querySelector('input[name="mtype"]:checked'); return r ? r.value : "online"; }
+  function availText() {
+    if (mtype() === "field") return "Field visits: <b>Wednesday &amp; Thursday, 9:00 AM–4:00 PM</b> in your local time (" + esc(TZ || "your time zone") + "). Enter your email to see live openings.";
+    return "Online meetings: <b>Mon 12:00–1:30, Tue 10:00–3:00, Fri 10:00–3:00 (Central)</b>, held over Zoom. Enter your email to see live openings.";
   }
-  function syncKey() {
-    var opt = svc.options[svc.selectedIndex];
-    keyField.value = opt ? (opt.getAttribute("data-key") || "") : "";
-  }
+  function refreshAvail() { availbar.innerHTML = availText(); }
+  document.querySelectorAll('input[name="mtype"]').forEach(function (r) { r.addEventListener("change", refreshAvail); });
+  refreshAvail();
+
+  // Topic preselect from service cards / presets / deep-link (keeps the picker useful).
   function pick(key, name, mode, scroll) {
-    for (var i = 0; i < svc.options.length; i++) {
-      if (svc.options[i].value === name || svc.options[i].getAttribute("data-key") === key) { svc.selectedIndex = i; break; }
-    }
-    syncKey(); setMode(mode);
-    if (scroll !== false) {
-      document.getElementById("schedule").scrollIntoView({ behavior: "smooth", block: "start" });
-      setTimeout(function () { var f = document.getElementById("dh-company"); if (f) f.focus(); }, 420);
-    }
+    for (var i = 0; i < svc.options.length; i++) { if (svc.options[i].value === name || svc.options[i].getAttribute("data-key") === key) { svc.selectedIndex = i; break; } }
+    if (mode === "in_person") { var f = document.querySelector('input[name="mtype"][value="field"]'); if (f) { f.checked = true; refreshAvail(); } }
+    if (scroll !== false) { document.getElementById("schedule").scrollIntoView({ behavior: "smooth", block: "start" }); setTimeout(function () { if (emailIn) emailIn.focus(); }, 420); }
   }
-  svc.addEventListener("change", function () {
-    syncKey();
-    var opt = svc.options[svc.selectedIndex];
-    if (opt) setMode(opt.getAttribute("data-mode") || "");
-  });
-  // Service cards + spotlight buttons
-  document.querySelectorAll(".dh-pick").forEach(function (btn) {
-    btn.addEventListener("click", function () { pick(btn.getAttribute("data-key"), btn.getAttribute("data-name"), btn.getAttribute("data-mode")); });
-  });
-  // Hero / quick-access presets (href="#schedule" data-preset=key)
-  document.querySelectorAll('[data-preset]').forEach(function (a) {
-    a.addEventListener("click", function () {
-      var key = a.getAttribute("data-preset");
-      for (var i = 0; i < svc.options.length; i++) { if (svc.options[i].getAttribute("data-key") === key) { pick(key, svc.options[i].value, svc.options[i].getAttribute("data-mode"), false); break; } }
-    });
-  });
-  // Deep-link ?service=<key>
-  var qp = new URLSearchParams(location.search);
-  var sk = qp.get("service");
+  document.querySelectorAll(".dh-pick").forEach(function (btn) { btn.addEventListener("click", function () { pick(btn.getAttribute("data-key"), btn.getAttribute("data-name"), btn.getAttribute("data-mode")); }); });
+  document.querySelectorAll('[data-preset]').forEach(function (a) { a.addEventListener("click", function () { var key = a.getAttribute("data-preset"); for (var i = 0; i < svc.options.length; i++) { if (svc.options[i].getAttribute("data-key") === key) { pick(key, svc.options[i].value, svc.options[i].getAttribute("data-mode"), false); break; } } }); });
+  var qp = new URLSearchParams(location.search), sk = qp.get("service");
   if (sk) { for (var i = 0; i < svc.options.length; i++) { if (svc.options[i].getAttribute("data-key") === sk) { pick(sk, svc.options[i].value, svc.options[i].getAttribute("data-mode"), false); break; } } }
 
-  form.addEventListener("submit", async function (e) {
-    e.preventDefault();
-    status.textContent = "";
-    var data = Object.fromEntries(new FormData(form).entries());
-    if (!data.service) { status.className = "form-status error"; status.textContent = "Please choose a service."; return; }
-    if (!data.company || !data.name || !data.email) { status.className = "form-status error"; status.textContent = "Please fill in company, contact name, and email."; return; }
-    submit.disabled = true; var original = submit.textContent; submit.textContent = "Sending…";
+  async function api(payload) { var r = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); return r.json(); }
+
+  findBtn.addEventListener("click", async function () {
+    sbStatus.textContent = ""; sbStatus.className = "form-status";
+    var email = (emailIn.value || "").trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { sbStatus.className = "form-status error"; sbStatus.textContent = "Enter a valid email."; return; }
+    findBtn.disabled = true; var orig = findBtn.textContent; findBtn.textContent = "Finding times…";
     try {
-      var res = await fetch("/.netlify/functions/schedule-api", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.assign({ action: "request" }, data)) });
-      var out = await res.json();
-      if (res.ok && out.ok) {
-        form.reset(); syncKey(); setMode("");
-        status.className = "form-status ok";
-        status.textContent = out.message || "Request received — a HCPS representative will confirm your appointment shortly.";
-      } else {
-        status.className = "form-status error";
-        status.textContent = out.message || out.error || "Something went wrong. Please email info@homecareproviderservices.us.";
-      }
-    } catch (err) {
-      status.className = "form-status error";
-      status.textContent = "Network error. Please email info@homecareproviderservices.us.";
-    } finally { submit.disabled = false; submit.textContent = original; }
+      var v = await api({ action: "verify_dealer", email: email });
+      if (v && v.ok && v.matched === false) { revealLegacy(email); return; }
+      if (!v || !v.ok) { sbStatus.className = "form-status error"; sbStatus.textContent = (v && v.message) || "Couldn't check that email."; return; }
+      var s = await api({ action: "slots", email: email, meeting_type: mtype(), tz: TZ });
+      if (!s || !s.ok) { sbStatus.className = "form-status error"; sbStatus.textContent = (s && s.message) || "Couldn't load times."; return; }
+      renderSlots(email, v, s);
+    } catch (e) { sbStatus.className = "form-status error"; sbStatus.textContent = "Network error. Please try again."; }
+    finally { findBtn.disabled = false; findBtn.textContent = orig; }
+  });
+
+  function revealLegacy(email) {
+    legacy.style.display = "";
+    var le = document.getElementById("dhl-email"); if (le) le.value = email;
+    var ls = document.getElementById("dhl-service"); if (ls && svc.value) { for (var i = 0; i < ls.options.length; i++) if (ls.options[i].value === svc.value) ls.selectedIndex = i; }
+    legacy.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function renderSlots(email, v, s) {
+    stepId.style.display = "none"; doneBox.style.display = "none"; slotsWrap.style.display = "";
+    confirmBox.style.display = "none"; BOOK.start_utc = null;
+    var topic = svc.value || "";
+    var tzNote = s.location_type === "online" ? ("Central time" + (s.tz_abbr ? " (" + esc(s.tz_abbr) + ")" : "")) : ("your local time" + (s.tz_abbr ? " (" + esc(s.tz_abbr) + ")" : ""));
+    welcome.innerHTML = "Welcome back, <b>" + esc(v.company || "dealer") + "</b>! Showing open <b>" + esc(s.label) + "</b> times with <b>" + esc(s.rep_display || "your HCPS team") + "</b>, in " + tzNote + "." + (s.zoom_link ? " Online meetings use Zoom." : "");
+    if (!s.days || !s.days.length) {
+      daysBox.innerHTML = '<p class="dh-note">No open times in the next few weeks. Please check the other meeting type, or use the request option below.</p>';
+      document.getElementById("sb-slotnote").innerHTML = '<button class="dh-link" id="sb-req" type="button">Request a time instead →</button>';
+      var rq = document.getElementById("sb-req"); if (rq) rq.addEventListener("click", function () { revealLegacy(email); });
+      return;
+    }
+    daysBox.innerHTML = s.days.map(function (d, di) {
+      var head = new Date(d.date + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+      return '<div class="sb-day"><div class="sb-dh">' + esc(head) + '</div><div class="sb-slotrow">' +
+        d.slots.map(function (sl, si) { return '<button type="button" class="sb-slot" data-di="' + di + '" data-si="' + si + '" data-start="' + esc(sl.start_utc) + '" data-label="' + esc(sl.label) + '">' + esc(sl.label) + '</button>'; }).join("") +
+        '</div></div>';
+    }).join("");
+    document.getElementById("sb-slotnote").textContent = "Times shown are 30 minutes. Booked slots are removed automatically.";
+    daysBox.querySelectorAll(".sb-slot").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        daysBox.querySelectorAll(".sb-slot.on").forEach(function (x) { x.classList.remove("on"); });
+        btn.classList.add("on");
+        BOOK.start_utc = btn.getAttribute("data-start"); BOOK.label = btn.getAttribute("data-label");
+        var head = btn.closest(".sb-day").querySelector(".sb-dh").textContent;
+        showConfirm(email, v, s, head, topic);
+      });
+    });
+  }
+
+  function showConfirm(email, v, s, head, topic) {
+    confirmBox.style.display = "";
+    confirmBox.innerHTML =
+      '<label for="sb-name">Your name</label><input id="sb-name" type="text" value="' + esc(v.contact_name || "") + '" placeholder="First and last name">' +
+      '<label for="sb-phone">Phone (optional)</label><input id="sb-phone" type="tel">' +
+      '<label for="sb-notes">Anything we should know? (optional)</label><textarea id="sb-notes" placeholder="Topic, products, team size, address for a field visit…">' + (topic ? "Topic: " + esc(topic) : "") + '</textarea>' +
+      '<button class="btn-primary" id="sb-confirm-btn" type="button">Confirm ' + esc(s.label) + ' on ' + esc(head) + ' &rarr;</button>' +
+      '<p class="form-status" id="sb-confirm-status" role="status" aria-live="polite"></p>';
+    document.getElementById("sb-confirm-btn").addEventListener("click", function () { doBook(email, s, topic); });
+    confirmBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  async function doBook(email, s, topic) {
+    var cs = document.getElementById("sb-confirm-status"); cs.textContent = ""; cs.className = "form-status";
+    var btn = document.getElementById("sb-confirm-btn");
+    if (!BOOK.start_utc) { cs.className = "form-status error"; cs.textContent = "Pick a time first."; return; }
+    btn.disabled = true; var orig = btn.textContent; btn.textContent = "Booking…";
+    try {
+      var out = await api({ action: "book", email: email, meeting_type: mtype(), start_utc: BOOK.start_utc, tz: TZ,
+        name: (document.getElementById("sb-name") || {}).value || "", phone: (document.getElementById("sb-phone") || {}).value || "",
+        notes: (document.getElementById("sb-notes") || {}).value || "", topic: topic });
+      if (out && out.ok) {
+        slotsWrap.style.display = "none"; doneBox.style.display = "";
+        doneBox.innerHTML = '<div class="sb-done"><h3>You\'re booked ✓</h3><p>' + esc(out.message || "") + '</p>' +
+          (out.zoom_link ? '<a class="zoom" href="' + esc(out.zoom_link) + '" target="_blank" rel="noopener">Join link: ' + esc(out.zoom_link) + '</a>' : "") +
+          '<p style="margin-top:14px;"><button class="dh-link" id="sb-again" type="button">Book another →</button></p></div>';
+        var ag = document.getElementById("sb-again"); if (ag) ag.addEventListener("click", resetBooker);
+      } else if (out && out.error === "slot_taken") {
+        cs.className = "form-status error"; cs.textContent = out.message || "That time was just taken — pick another.";
+        // refresh slots
+        var s2 = await api({ action: "slots", email: email, meeting_type: mtype(), tz: TZ }); if (s2 && s2.ok) renderSlots(email, { company: welcome.textContent }, s2);
+      } else { cs.className = "form-status error"; cs.textContent = (out && out.message) || "Couldn't book that time."; }
+    } catch (e) { cs.className = "form-status error"; cs.textContent = "Network error. Please try again."; }
+    finally { btn.disabled = false; btn.textContent = orig; }
+  }
+
+  function resetBooker() { doneBox.style.display = "none"; slotsWrap.style.display = "none"; stepId.style.display = ""; sbStatus.textContent = ""; document.getElementById("schedule").scrollIntoView({ behavior: "smooth", block: "start" }); }
+  document.getElementById("sb-back").addEventListener("click", resetBooker);
+
+  // Legacy request form (unverified dealers).
+  var lform = document.getElementById("dh-sched");
+  if (lform) lform.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    var st = document.getElementById("dhl-status"); st.textContent = ""; st.className = "form-status";
+    var data = Object.fromEntries(new FormData(lform).entries());
+    var keyOpt = document.getElementById("dhl-service"); if (keyOpt && keyOpt.selectedIndex >= 0) data.service_key = keyOpt.options[keyOpt.selectedIndex].getAttribute("data-key") || "";
+    if (!data.company || !data.name || !data.email) { st.className = "form-status error"; st.textContent = "Please fill in company, contact name, and email."; return; }
+    var sb = document.getElementById("dhl-submit"); sb.disabled = true; var o = sb.textContent; sb.textContent = "Sending…";
+    try {
+      var out = await api(Object.assign({ action: "request" }, data));
+      if (out && out.ok) { lform.reset(); st.className = "form-status ok"; st.textContent = out.message || "Request received — we'll confirm your appointment shortly."; }
+      else { st.className = "form-status error"; st.textContent = (out && (out.message || out.error)) || "Something went wrong. Please email info@homecareproviderservices.us."; }
+    } catch (err) { st.className = "form-status error"; st.textContent = "Network error. Please email info@homecareproviderservices.us."; }
+    finally { sb.disabled = false; sb.textContent = o; }
   });
 })();
 </script>

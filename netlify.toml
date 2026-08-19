@@ -47,3 +47,10 @@
 # until Zoho is connected (app_settings.zoho_auth).
 [functions."zoho-autosync"]
   schedule = "*/15 * * * *"
+
+# Dealer Hub appointment reminders — hourly. Emails the dealer (cc the assigned rep) a day-before and
+# a same-day reminder for every SCHEDULED service request, each sent once (tracked in
+# service_requests.reminders). Self-gates: does nothing until GRAPH_* is set; turn off with
+# SCHEDULE_REMINDERS=off.
+[functions."schedule-reminders"]
+  schedule = "0 * * * *"
