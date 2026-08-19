@@ -20,12 +20,14 @@
   {
     "path": "/consulting/",
     "title": "Dealer Consulting & Showroom Solutions | HomeCare Provider Services",
-    "description": "Hands-on showroom walkthroughs, sales training, and marketing support to help DME dealers grow revenue and strengthen their product mix."
+    "description": "Hands-on showroom walkthroughs, sales training, marketing support, and showroom development tools help DME dealers optimize product mix and maximize profitability. HomeCare Provider Services also provides custom website design and business development solutions to strengthen your brand, increase sales, and support long-term growth.",
+    "image": "/assets/media/hcps-dealer-consulting-mszcqvb1.png"
   },
   {
     "path": "/dealer-hub/",
     "title": "Dealer Hub | HomeCare Provider Services",
-    "description": "Your dealer resources, manufacturer lines, pricing, and online ordering — all in one place from HomeCare Provider Services."
+    "description": "The Dealer Hub is your central destination for manufacturer resources, order requests, product literature, dealer pricing, in-service scheduling, technical support, and dealer login tools—all designed to make managing your HCPS manufacturer relationships faster and easier.",
+    "image": "/assets/media/hcps-dealer-hub-mszcxcka.png"
   },
   {
     "path": "/dealer-support/",
@@ -35,11 +37,13 @@
   {
     "path": "/resources/",
     "title": "Dealer Resources & Documents | HomeCare Provider Services",
-    "description": "Catalogs, product guides, and dealer resources for the manufacturer lines represented by HomeCare Provider Services."
+    "description": "Explore catalogs, product guides, clinical publications, credit applications, and dealer resources from HME and DME manufacturers represented by HomeCare Provider Services.",
+    "image": "/assets/media/hcps-dealer-resources-mszd41nh.png"
   },
   {
     "path": "/contact/",
     "title": "Contact HomeCare Provider Services | HME & DME Representation",
-    "description": "Get in touch with HomeCare Provider Services — manufacturer representation and dealer support across the Ohio Valley and Southeast. Call 937-626-5141."
+    "description": "Get in touch with HomeCare Provider Services for manufacturer-specific questions, dealer support, business development needs, or information about becoming a manufacturing partner. Whether you are part of our dealer network or a manufacturer looking to expand your reach, our team is here to help you grow, strengthen your business, and find the right solutions.",
+    "image": "/assets/media/hcps-contact-us-mszddynm.png"
   }
 ]
