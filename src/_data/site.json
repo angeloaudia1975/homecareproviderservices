@@ -63,15 +63,18 @@
   "why_choose": [
     {
       "title": "Easy On-Boarding Process",
-      "description": "Simplify Your Ordering. Access Products, Review Pricing, and Place Orders Quickly Through Our Complete Line of Online Ordering Platforms."
+      "description": "Simplify Your Ordering. Access Products, Review Pricing, and Place Orders Quickly Through Our Complete Line of Online Ordering Platforms.",
+      "icon": "/assets/why/easy-onboarding.png"
     },
     {
       "title": "Value Based & Premium Pricing",
-      "description": "Offering a Balanced Product Portfolio with Affordable Options and Premium Solutions Designed to Meet a Wide Range of Customer Needs."
+      "description": "Offering a Balanced Product Portfolio with Affordable Options and Premium Solutions Designed to Meet a Wide Range of Customer Needs.",
+      "icon": "/assets/why/value-pricing.png"
     },
     {
       "title": "Free Consultations",
-      "description": "Product Presentations with a Hands-On Approach—We Come to You with Expert Guidance, Personalized Support, and Best-in-Class Dealer Solutions."
+      "description": "Product Presentations with a Hands-On Approach—We Come to You with Expert Guidance, Personalized Support, and Best-in-Class Dealer Solutions.",
+      "icon": "/assets/why/free-consultations.png"
     }
   ],
   "dealer_support_tools": [
