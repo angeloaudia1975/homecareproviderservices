@@ -47,7 +47,8 @@
         { href:"/admin/cardchamp.html",     label:"CardChamp",             icon:"💳", desc:"Referral activity, conversions & commission" },
         { href:"/admin/audiences.html",     label:"Target Audiences",      icon:"🎯", desc:"Build campaign lists from dealers & contacts" },
         { href:"/admin/campaigns.html",     label:"Campaign Studio",       icon:"✉️", desc:"Brief → audience, copy & sequence → Zoho Campaigns" },
-        { href:"/admin/product-interest.html", label:"Product Interest",    icon:"🎯", desc:"Dealers showing product intent who haven't ordered — build a campaign audience" }
+        { href:"/admin/product-interest.html", label:"Product Interest",    icon:"🎯", desc:"Dealers showing product intent who haven't ordered — build a campaign audience" },
+        { href:"/admin/scheduling-console.html", label:"Scheduling Console", icon:"📆", desc:"Dealer Hub service requests — assign a rep, book Outlook & log to Dealer 360" }
     ]},
     { id:"analytics", label:"Sales Data & Analytics", icon:"📊", accent:"#3B599A",
       purpose:"The single source of truth for sales, cadence, opportunities & performance.",
@@ -82,6 +83,7 @@
     { href:"/admin/scheduled-routes.html",   label:"Scheduled Routes" },
     { href:"/admin/health.html",             label:"Dealer Health" },
     { href:"/admin/call-list.html",          label:"Who to Call" },
+    { href:"/admin/scheduling-console.html", label:"Scheduling" },
     { href:"/admin/reps.html",               label:"My Performance" },
     { href:"/admin/my-commissions.html",     label:"My Commissions" },
     { href:"/admin/pipeline.html",           label:"Pipeline" },

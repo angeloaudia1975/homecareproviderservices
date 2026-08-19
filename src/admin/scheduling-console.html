@@ -1,0 +1,258 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Connect 360 — Scheduling Console</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .flow{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 4px}
+ .flow .step{flex:1;min-width:120px;background:#f5f8fc;border:1px solid var(--line);border-radius:10px;padding:8px 11px}
+ .flow .step b{display:block;font-size:12px;color:var(--navy);font-family:'Barlow Condensed';font-weight:800;letter-spacing:.3px}
+ .flow .step span{font-size:11px;color:var(--gray)}
+ .pill{display:inline-block;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:800;white-space:nowrap}
+ .pill.requested{background:#fff3e0;color:#a5590f;border:1px solid #f2d9b0}
+ .pill.scheduled{background:#eaf3fb;color:#12466e;border:1px solid #cfe2fb}
+ .pill.completed{background:#e9f7ef;color:#1c7a44;border:1px solid #bfe6cd}
+ .pill.cancelled{background:#f1f2f4;color:#7a8593;border:1px solid #dfe3e8}
+ .mode{font-size:11px;color:var(--gray)}
+ td.svc{font-weight:600;color:var(--navy)}
+ .sub2{color:#8496a8;font-size:12px}
+ .row-click{cursor:pointer}
+ .dlgbox{max-width:640px;max-height:92vh;overflow:auto}
+ .dgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+ @media(max-width:560px){.dgrid{grid-template-columns:1fr}}
+ .kv{font-size:13px;margin:2px 0}
+ .kv b{color:var(--gray);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;display:block}
+ .box{border:1px solid var(--line);border-radius:10px;padding:12px 13px;margin:10px 0}
+ .box h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--navy2);font-weight:800}
+ .st.ok{color:var(--green)} .st.warn{color:var(--orange-d)}
+ .dealerhit{padding:6px 9px;border:1px solid var(--line);border-radius:8px;margin:4px 0;cursor:pointer;font-size:13px}
+ .dealerhit:hover{background:#eaf3fb;border-color:#9dc8ee}
+ .inl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+ .muted{color:var(--gray);font-size:12px}
+ .clink{color:var(--blue);font-weight:600}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Scheduling Console</h1>
+    <div class="sub">Dealer Hub service requests → assign a rep, book the Outlook appointment, and log it to Dealer 360.</div></div></div>
+
+  <div class="flow">
+    <div class="step"><b>1 · Requested</b><span>Dealer submits from the Hub</span></div>
+    <div class="step"><b>2 · Scheduled</b><span>Rep assigned · Outlook + Zoho</span></div>
+    <div class="step"><b>3 · Completed</b><span>Notes added to Dealer 360</span></div>
+    <div class="step"><b>4 · Follow-up</b><span>Next task created</span></div>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+  <div class="tabs" id="tabs"></div>
+  <div class="card" id="body"><div class="msg">Loading…</div></div>
+</div>
+
+<div id="modal"></div>
+
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const when=s=>{ if(!s) return "—"; try{ return new Date(s).toLocaleDateString("en-US",{month:"short",day:"numeric"}); }catch(e){ return String(s).slice(0,10); } };
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), STATE={requests:[],reps:[],counts:{},graph:true}, FILTER="requested", CUR=null, PICKED_DEALER=null;
+const STATUSES=["requested","scheduled","completed","cancelled"];
+const SLABEL={requested:"Requested",scheduled:"Scheduled",completed:"Completed",cancelled:"Cancelled"};
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;$("#kpis").innerHTML="";$("#tabs").innerHTML="";setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; } HCPS.setSession(j); TOKEN=j.token; init();
+  }catch(err){ gate("Could not reach the server."); } }
+async function api(action, extra){ const r=await fetch("/.netlify/functions/schedule-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action,...(extra||{})})}); if(r.status===401) throw {gate:true}; return r.json(); }
+
+async function init(){
+  if(!TOKEN){ gate(); return; }
+  let j; try{ j=await api("queue",{status:"all"}); }catch(e){ if(e&&e.gate){ gate("Your session ended — sign in again."); return; } $("#body").innerHTML=`<div class="msg err">Couldn't load requests.</div>`; return; }
+  if(j&&j.error==="tables_missing"){ $("#body").innerHTML=`<div class="msg">Scheduling isn't switched on yet — run <code>supabase/service_requests.sql</code> in Supabase, then reload.</div>`; return; }
+  STATE=j||STATE; render();
+}
+
+function render(){
+  const c=STATE.counts||{};
+  $("#kpis").innerHTML=STATUSES.map(s=>`<div class="kpi"><div class="l">${SLABEL[s]}</div><div class="v ${s==='scheduled'?'blue':s==='requested'?'orange':''}">${c[s]||0}</div></div>`).join("")
+    + (STATE.graph===false?`<div class="kpi" style="border-color:#f2d9b0"><div class="l warn">Outlook</div><div class="v warn" style="font-size:14px;padding-top:6px">not configured</div></div>`:"");
+  $("#tabs").innerHTML=[["requested","New requests"],["scheduled","Scheduled"],["completed","Completed"],["cancelled","Cancelled"],["all","All"]]
+    .map(([k,l])=>`<button class="tab ${FILTER===k?'on':''}" onclick="setFilter('${k}')">${l}${k!=='all'&&c[k]?` · ${c[k]}`:""}</button>`).join("");
+  const rows=(STATE.requests||[]).filter(r=>FILTER==="all"?true:(r.status||"requested")===FILTER);
+  if(!rows.length){ $("#body").innerHTML=`<div class="msg">No ${FILTER==='all'?'':SLABEL[FILTER]?.toLowerCase()+' '}requests.</div>`; return; }
+  $("#body").innerHTML=`<div class="dtable"><table><thead><tr>
+    <th>Service</th><th>Dealer</th><th>Preferred</th><th>Mode</th><th>Rep</th><th>Status</th><th></th></tr></thead><tbody>
+    ${rows.map(r=>`<tr class="row-click" onclick="openReq('${r.id}')">
+      <td class="svc">${esc(r.service)}</td>
+      <td>${esc(r.company||"—")}<div class="sub2">${esc(r.contact_name||"")}${r.state?" · "+esc(r.state):""}</div></td>
+      <td>${r.preferred_date?esc(when(r.preferred_date)):"—"}${r.preferred_time?`<div class="sub2">${esc(r.preferred_time)}</div>`:""}</td>
+      <td class="mode">${r.mode==='remote'?'Remote':r.mode==='in_person'?'In person':'—'}</td>
+      <td>${esc(r.rep_name||"—")}</td>
+      <td><span class="pill ${r.status||'requested'}">${SLABEL[r.status]||r.status||"Requested"}</span></td>
+      <td class="num"><span class="clink">Open →</span></td>
+    </tr>`).join("")}
+    </tbody></table></div>`;
+}
+function setFilter(f){ FILTER=f; render(); }
+
+function repOptions(sel){ return `<option value="">— choose a rep —</option>`+(STATE.reps||[]).map(r=>{
+  const label=(r.name||r.rep_name||r.email)+(r.role&&r.role!=='rep'?` (${r.role})`:"");
+  return `<option value="${esc(r.email)}" data-name="${esc(r.rep_name||r.name||"")}" ${sel&&sel.toLowerCase()===String(r.email).toLowerCase()?"selected":""}>${esc(label)}</option>`;
+}).join(""); }
+
+function closeModal(){ $("#modal").innerHTML=""; CUR=null; PICKED_DEALER=null; }
+
+function openReq(id){
+  const r=(STATE.requests||[]).find(x=>x.id===id); if(!r) return;
+  CUR=r; PICKED_DEALER=r.dealer_id?{id:r.dealer_id,business_name:"(linked)"}:null;
+  const cal=r.calendar||{}, zo=r.zoho||{};
+  const scheduled=r.status==="scheduled", completed=r.status==="completed", cancelled=r.status==="cancelled";
+  const defTime=r.preferred_time&&/\d/.test(r.preferred_time)?r.preferred_time:"";
+  const detail=`
+    <div class="dgrid">
+      <div class="kv"><b>Service</b>${esc(r.service)}${r.manufacturer?` · ${esc(r.manufacturer)}`:""}</div>
+      <div class="kv"><b>Requested mode</b>${r.mode==='remote'?'Remote':r.mode==='in_person'?'In person':'No preference'}</div>
+      <div class="kv"><b>Company</b>${esc(r.company||"—")}${r.state?" · "+esc(r.state):""}</div>
+      <div class="kv"><b>Contact</b>${esc(r.contact_name||"—")}</div>
+      <div class="kv"><b>Email</b>${esc(r.email||"—")}</div>
+      <div class="kv"><b>Phone</b>${esc(r.phone||"—")}</div>
+      <div class="kv"><b>Preferred date</b>${r.preferred_date?esc(when(r.preferred_date)):"—"}${r.preferred_time?" · "+esc(r.preferred_time):""}</div>
+      <div class="kv"><b>Alternate</b>${r.alt_date?esc(when(r.alt_date)):"—"}</div>
+    </div>
+    ${r.notes?`<div class="kv" style="margin-top:6px"><b>Notes</b>${esc(r.notes)}</div>`:""}
+    <div class="kv" style="margin-top:6px"><b>Submitted</b>${esc(when(r.created_at))} · request ${esc(String(r.id).slice(0,8))}</div>`;
+
+  // Dealer 360 linkage box
+  const dealerBox=`<div class="box"><h3>Dealer 360 link</h3>
+    <div id="dlLine">${r.dealer_id?`<span class="st ok">✓ Linked to a Dealer 360 record</span> <span class="link" onclick="unlinkDealer()">unlink</span>`
+      :`<span class="muted">Not linked yet — I'll auto-match on assign, or find it now:</span>`}</div>
+    <div class="inl" style="margin-top:7px"><input id="dq" placeholder="Search dealers by name…" style="flex:1;min-width:180px" oninput="dealerSearch()"><span class="muted" id="dqs"></span></div>
+    <div id="dhits"></div></div>`;
+
+  let actionBox="";
+  if(!completed&&!cancelled){
+    actionBox=`<div class="box"><h3>${scheduled?"Reschedule / reassign":"Assign & schedule"}</h3>
+      <div class="dgrid">
+        <div class="fld"><label>Rep</label><select id="aRep">${repOptions(cal.mailbox||r.rep_name)}</select></div>
+        <div class="fld"><label>Mode</label><select id="aMode">
+          <option value="">— use requested —</option>
+          <option value="remote" ${r.mode==='remote'?'selected':''}>Remote</option>
+          <option value="in_person" ${r.mode==='in_person'?'selected':''}>In person</option></select></div>
+        <div class="fld"><label>Date</label><input id="aDate" type="date" value="${esc(r.preferred_date||"")}"></div>
+        <div class="fld"><label>Time (e.g. 2:00 PM)</label><input id="aTime" placeholder="2:00 PM" value="${esc(defTime)}"></div>
+        <div class="fld"><label>Duration (min)</label><input id="aDur" type="number" min="15" step="15" value="60"></div>
+        <div class="fld"><label>Location / link</label><input id="aLoc" placeholder="${r.mode==='remote'?'Teams link (optional)':'Address (optional)'}"></div>
+      </div>
+      <div class="fld"><label>Note for the calendar event (optional)</label><input id="aNote" placeholder="Anything the rep should know"></div>
+      <label class="inl" style="font-size:13px;color:var(--navy);font-weight:600;margin:4px 0"><input type="checkbox" id="aInvite"> Send the dealer an Outlook calendar invite (${esc(r.email||"no email on file")})</label>
+      <div class="inl" style="margin-top:8px"><button class="go orange" onclick="doAssign()">${scheduled?"Update appointment":"Schedule appointment"}</button>
+        <span class="st" id="aMsg"></span></div>
+      ${STATE.graph===false?`<div class="muted warn" style="margin-top:6px">Outlook isn't configured (GRAPH_* env) — the request will be marked scheduled without a calendar event.</div>`:""}
+    </div>`;
+  }
+
+  // Calendar + Zoho status (when scheduled/completed)
+  let statusBox="";
+  if(scheduled||completed){
+    statusBox=`<div class="box"><h3>Booking</h3>
+      <div class="kv"><b>Rep</b>${esc(r.rep_name||"—")}</div>
+      <div class="kv"><b>Outlook</b>${cal.event_id?`<span class="st ok">✓ On ${esc(cal.mailbox||"")}</span>${cal.web_link?` · <a class="clink" href="${esc(cal.web_link)}" target="_blank" rel="noopener">open event</a>`:""}${cal.invited?" · dealer invited":""}`:'<span class="muted">no event</span>'}</div>
+      <div class="kv"><b>Zoho task</b>${zo.task_id?`<span class="st ok">✓ Created${zo.linked?" & linked to Account":""}</span>`:'<span class="muted">none</span>'}</div>
+    </div>`;
+  }
+
+  // Complete box (scheduled or completed)
+  let completeBox="";
+  if(scheduled||completed){
+    completeBox=`<div class="box"><h3>${completed?"Completion & follow-up":"Mark completed"}</h3>
+      <div class="fld"><label>Completion notes (added to Dealer 360)</label><textarea id="cNotes" rows="2" placeholder="What was covered, outcomes…">${esc(r.completed_notes||"")}</textarea></div>
+      <div class="dgrid">
+        <div class="fld"><label>Follow-up (optional)</label><input id="cFollow" placeholder="e.g. Send Golden portal login" value="${esc(r.followup||"")}"></div>
+        <div class="fld"><label>Follow-up due</label><input id="cDue" type="date"></div>
+      </div>
+      <label class="inl" style="font-size:13px;color:var(--navy);font-weight:600;margin:2px 0 8px"><input type="checkbox" id="cTask" checked> Create the follow-up as a Dealer 360 task</label>
+      <div class="inl"><button class="go" onclick="doComplete()">${completed?"Update completion":"Mark completed"}</button><span class="st" id="cMsg"></span></div>
+    </div>`;
+  }
+
+  const footer=`<div class="inl" style="justify-content:space-between;margin-top:12px">
+    <div>${!cancelled?`<span class="link" style="color:#b42323" onclick="doCancel()">Cancel this request</span>`:`<span class="link" onclick="doReopen()">Reopen</span>`}</div>
+    <button class="go ghost" onclick="closeModal()">Close</button></div>`;
+
+  $("#modal").innerHTML=`<div class="dlg" onclick="if(event.target===this)closeModal()"><div class="dlgbox">
+    <div class="inl" style="justify-content:space-between"><h3 style="margin:0;color:var(--navy)">${esc(r.service)} <span class="pill ${r.status||'requested'}">${SLABEL[r.status]||"Requested"}</span></h3></div>
+    ${detail}${dealerBox}${actionBox}${statusBox}${completeBox}${footer}
+  </div></div>`;
+}
+
+let dqT=null;
+function dealerSearch(){
+  const q=($("#dq")||{}).value||""; clearTimeout(dqT);
+  if(q.trim().length<2){ $("#dhits").innerHTML=""; $("#dqs").textContent=""; return; }
+  dqT=setTimeout(async()=>{
+    $("#dqs").textContent="…";
+    try{ const j=await api("search_dealers",{q}); $("#dqs").textContent="";
+      const hits=(j&&j.dealers)||[];
+      $("#dhits").innerHTML=hits.length?hits.map(d=>`<div class="dealerhit" onclick='linkDealer(${JSON.stringify(d).replace(/'/g,"&#39;")})'>${esc(d.business_name)}<span class="muted">${d.city?" · "+esc(d.city):""}${d.state?", "+esc(d.state):""}</span></div>`).join(""):`<div class="muted" style="padding:4px 2px">No matches.</div>`;
+    }catch(e){ $("#dqs").textContent=""; }
+  },250);
+}
+async function linkDealer(d){
+  try{ await api("set_dealer",{id:CUR.id,dealer_id:d.id}); CUR.dealer_id=d.id; PICKED_DEALER=d;
+    $("#dlLine").innerHTML=`<span class="st ok">✓ Linked to ${esc(d.business_name)}</span> <span class="link" onclick="unlinkDealer()">unlink</span>`;
+    $("#dhits").innerHTML=""; $("#dq").value=""; refreshRow();
+  }catch(e){}
+}
+async function unlinkDealer(){
+  try{ await api("set_dealer",{id:CUR.id,dealer_id:null}); CUR.dealer_id=null; PICKED_DEALER=null;
+    $("#dlLine").innerHTML=`<span class="muted">Not linked — I'll auto-match on assign, or find it now:</span>`; refreshRow();
+  }catch(e){}
+}
+
+async function doAssign(){
+  const repSel=$("#aRep"); const rep_email=repSel.value;
+  if(!rep_email){ $("#aMsg").innerHTML='<span class="warn">Choose a rep.</span>'; return; }
+  const opt=repSel.options[repSel.selectedIndex]; const rep_name=opt?opt.getAttribute("data-name"):"";
+  const payload={ id:CUR.id, rep_email, rep_name, date:($("#aDate")||{}).value||"", time:($("#aTime")||{}).value||"",
+    duration_min:Number(($("#aDur")||{}).value||60), mode:($("#aMode")||{}).value||"",
+    location:($("#aLoc")||{}).value||"", note:($("#aNote")||{}).value||"", invite_dealer:$("#aInvite").checked };
+  if(PICKED_DEALER&&PICKED_DEALER.id) payload.dealer_id=PICKED_DEALER.id;
+  $("#aMsg").innerHTML="Scheduling…";
+  try{ const j=await api("assign",payload);
+    if(!j||!j.ok){ $("#aMsg").innerHTML=`<span class="warn">${esc((j&&j.error)||"Couldn't schedule.")}</span>`; return; }
+    applyUpdated(j.request);
+    const cm=j.calendar&&j.calendar.message;
+    $("#aMsg").innerHTML=`<span class="ok">Scheduled.</span>${cm?` <span class="${j.calendar.ok?'ok':'warn'}">${esc(cm)}</span>`:""}`;
+    setTimeout(()=>{ openReq(CUR.id); },700);
+  }catch(e){ $("#aMsg").innerHTML=`<span class="warn">${e&&e.gate?"Session ended.":"Error."}</span>`; }
+}
+async function doComplete(){
+  const payload={ id:CUR.id, completed_notes:($("#cNotes")||{}).value||"", followup:($("#cFollow")||{}).value||"",
+    followup_due:($("#cDue")||{}).value||"", create_task:$("#cTask").checked };
+  $("#cMsg").innerHTML="Saving…";
+  try{ const j=await api("complete",payload);
+    if(!j||!j.ok){ $("#cMsg").innerHTML='<span class="warn">Couldn\'t save.</span>'; return; }
+    applyUpdated(j.request); $("#cMsg").innerHTML='<span class="ok">Completed'+(j.task?" · follow-up task created":"")+'.</span>';
+    setTimeout(()=>{ openReq(CUR.id); },700);
+  }catch(e){ $("#cMsg").innerHTML='<span class="warn">Error.</span>'; }
+}
+async function doCancel(){
+  if(!confirm("Cancel this request and remove its Outlook event?")) return;
+  try{ const j=await api("cancel",{id:CUR.id}); if(j&&j.ok){ applyUpdated(j.request); openReq(CUR.id); } }catch(e){}
+}
+async function doReopen(){ try{ const j=await api("reopen",{id:CUR.id}); if(j&&j.ok){ applyUpdated(j.request); openReq(CUR.id); } }catch(e){} }
+
+function applyUpdated(updated){
+  if(!updated) return;
+  const i=(STATE.requests||[]).findIndex(x=>x.id===updated.id);
+  if(i>=0) STATE.requests[i]=updated; CUR=updated;
+  recount(); render();
+}
+function refreshRow(){ const i=(STATE.requests||[]).findIndex(x=>x.id===CUR.id); if(i>=0) STATE.requests[i]=CUR; render(); }
+function recount(){ const c={}; for(const r of (STATE.requests||[])){ const s=r.status||"requested"; c[s]=(c[s]||0)+1; } STATE.counts=c; }
+
+init();
+</script>
+</body></html>
