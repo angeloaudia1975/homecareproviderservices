@@ -61,7 +61,17 @@ function looksLikeBranch(shipName, custName){
 // (a branch whose business name matches the consignee), then a unique city/state. Returns {id} or null.
 function resolveBranchFn(root, famArr, ship, zipmap, rootOf, ambiguous, ambSeen, nameById){
   const zip=ship.zip, addr=ship.addr, city=ship.city, state=ship.state, sname=ship.name;
-  if(zip && zipmap[zip] && rootOf.get(zipmap[zip])===root) return {id:zipmap[zip]};
+  // MASTER RULE: an explicit ZIP→branch assignment (set by an operator in Review) wins over
+  // everything else — name, address, and spelling. New assignments are stored as
+  // {d:dealer_id, c:corporate_root} so the rule applies only to the corporate that made it and
+  // can route to a branch even if it wasn't already in the family. Older flat entries (a bare
+  // dealer id) keep the in-family behavior. This makes ZIP the master key, so sloppy name/address
+  // typing on the manufacturer's side can no longer misroute a shipment.
+  if(zip && zipmap[zip] != null){
+    const zm = zipmap[zip];
+    if(zm && typeof zm === "object"){ if(zm.d && (!zm.c || zm.c === root)) return {id:zm.d}; }
+    else if(zm && rootOf.get(zm) === root){ return {id:zm}; }
+  }
   if(zip){ const hit=famArr.filter(d=>znorm(d.zip)===zip);
     if(hit.length===1) return {id:hit[0].id};
     if(hit.length>1){ if(!ambSeen.has(zip)){ ambSeen.add(zip); ambiguous.push({zip,dealers:hit.map(d=>({id:d.id,name:nameById.get(d.id)||d.id}))}); } return {id:hit[0].id}; } }
@@ -404,10 +414,14 @@ exports.handler = async (event)=>{
       const zraw=String(b.zip||"").replace(/[^0-9]/g,"");
       const zip=zraw? (zraw.length>5?zraw.slice(0,5):zraw.padStart(5,"0")) : "";
       const did=b.dealer_id;
+      const corp=String(b.corporate_id||"").trim();   // corporate root this rule belongs to (from Review)
       if(!slug||!zip||!did) return json(400,{error:"manufacturer + zip + dealer_id required"});
       const key="zipmap:"+slug;
       let cur={}; try{ const r=await sbGet(`app_settings?key=eq.${encodeURIComponent(key)}&select=value`); if(r&&r[0]&&r[0].value&&typeof r[0].value==="object") cur=r[0].value; }catch(e){}
-      cur[zip]=did;
+      // Store {d:dealer, c:corporate-root}. With the corporate scope, this ZIP→branch rule becomes the
+      // MASTER key for that corporate — it routes the shipment to `did` on every future import,
+      // regardless of how the name/address was typed, and even if `did` isn't already in the family.
+      cur[zip] = corp ? {d:did, c:corp} : {d:did};
       await sbSend("POST","app_settings?on_conflict=key",{key,value:cur,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
       return json(200,{ok:true});
     }

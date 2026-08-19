@@ -503,7 +503,11 @@ async function rvCreateBranch(i){ const x=LASTREVIEW.unknown_branches[i]; if(!x)
 // Assign this ship-to to an existing dealer/branch (saves a ZIP→branch rule so it sticks).
 async function rvAssignBranch(i){ const x=LASTREVIEW.unknown_branches[i]; const did=(($("#ub_sel_"+i)||{}).value)||""; if(!did){ alert("Choose a dealer/branch first."); return; }
   if(!x.ship_zip){ alert("This location has no ZIP to key the assignment on — create it as a branch instead."); return; }
-  await api({action:"assign_zip",manufacturer:$("#mfr").value,zip:x.ship_zip,dealer_id:did}); await doAnalyze(); }
+  // ZIP is the master key: this ZIP now always routes to the chosen branch for this manufacturer,
+  // scoped to this corporate — regardless of how the name/address was typed on future reports.
+  const r=await api({action:"assign_zip",manufacturer:$("#mfr").value,zip:x.ship_zip,dealer_id:did,corporate_id:x.corporate_id||""});
+  if(r&&r.error){ alert("Couldn't save that assignment: "+r.error); return; }
+  await doAnalyze(); }
 // Keep this ship-to on the corporate account (a drop-ship), not a distinct branch.
 async function rvKeepCorp(i){ const x=LASTREVIEW.unknown_branches[i];
   if(x.ship_zip && x.corporate_id){ await api({action:"assign_zip",manufacturer:$("#mfr").value,zip:x.ship_zip,dealer_id:x.corporate_id}); await doAnalyze(); }
