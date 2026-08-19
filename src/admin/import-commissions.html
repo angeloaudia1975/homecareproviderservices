@@ -408,14 +408,31 @@ function renderReview(rv){
       : tileHtml("Products",rv.distinct_products,"distinct models")+tileHtml("Credits",rv.credits,"return/credit lines",rv.credits?"warn":"")}
     ${tileHtml("Physical",usd(rv.physical_amount),`${physPct}% · ${rv.physical_rows} rows`)}
     ${tileHtml("Drop-ship",usd(rv.dropship_amount),`${100-physPct}% · ${rv.dropship_rows} rows`)}</div>`;
-  // Unmatched dealers → match / create / approve
+  // Unmatched dealers → match / create / approve, each broken out by ship-to LOCATION so you can see
+  // who purchased → where it shipped before matching. Branch-type ship-tos are listed individually
+  // (create the corporate first, then each becomes a branch below); patient/individual shipments roll
+  // up as drop-ship "other revenue" on the corporate account.
   const unm=(rv.unmatched||[]).filter(u=>!RVAPPROVED.has("unm:"+u.name));
-  let unmHtml=unm.length?secHead(`⚠ ${unm.length} unmatched dealer${unm.length===1?"":"s"} — match to an existing dealer, create a new one, or approve as unassigned`,"warn")+
-    unm.map((u,i)=>`<div class="rzrow"><div class="rn"><b>${esc(u.name)}</b>${u.account?` <span class="dim">· acct ${esc(u.account)}</span>`:""}${u.zip?` <span class="dim">· ${esc(u.zip)}</span>`:""} <span class="dim">· ${u.count} row${u.count===1?"":"s"}</span></div>
-      <select id="unm_sel_${i}" style="min-width:210px">${rvDealerOpts()}</select>
-      <button class="go sm" onclick="rvMatch(${i})">Match</button>
-      <button class="go gray sm" onclick="rvCreate(${i})">Create dealer</button>
-      <button class="go gray sm" onclick="rvApprove('unm',${i})" title="Import these rows unassigned">Approve</button></div>`).join(""):"";
+  let unmHtml=unm.length?secHead(`⚠ ${unm.length} unmatched dealer${unm.length===1?"":"s"} — match or create the dealer, then confirm each ship-to location below`,"warn")+
+    `<div class="dim" style="margin:0 0 6px">Who purchased → where it shipped → which HCPS location. Matching order: manufacturer account → ship-to name → ship-to address → ZIP. Create or match the dealer; its branch locations then appear for one-click branch creation. Patient/individual shipments post as drop-ship (other revenue) on the corporate account — never bundled onto one branch.</div>`+
+    unm.map((u,i)=>{
+      const brs=u.branches||[]; const ds=u.dropship||{count:0,amount:0}; const ns=u.noship||{count:0,amount:0};
+      const locHtml = brs.length ? `<div style="margin:6px 0 2px 6px;border-left:2px solid #cbd5e1;padding-left:10px">
+        <div class="dim" style="font-weight:700;margin-bottom:3px">${brs.length} ship-to location${brs.length===1?"":"s"} detected in this report${u.branch_amount?` · ${usd(u.branch_amount)}`:""}</div>`+
+        brs.map(b=>`<div style="padding:3px 0;font-size:12.5px">🏢 <b>${esc(b.ship_name||"(no ship-to name)")}</b> <span class="dim">· ${b.count} row${b.count===1?"":"s"}${b.amount?` · ${usd(b.amount)}`:""}</span>
+          <div class="dim" style="margin-left:18px">${esc([b.ship_address,[b.ship_city,b.ship_state].filter(Boolean).join(", "),b.ship_zip].filter(Boolean).join(" · "))||"no address on this line"}</div></div>`).join("")+
+        `</div>` : "";
+      const dsHtml = ds.count ? `<div class="dim" style="margin:4px 0 2px 16px;font-size:12.5px">↳ ${ds.count} drop-ship shipment${ds.count===1?"":"s"} to individuals${ds.amount?` · ${usd(ds.amount)}`:""} — posts as other revenue on the corporate account</div>` : "";
+      const nsHtml = ns.count ? `<div class="dim" style="margin:2px 0 2px 16px;font-size:12.5px">↳ ${ns.count} line${ns.count===1?"":"s"} with no ship-to${ns.amount?` · ${usd(ns.amount)}`:""}</div>` : "";
+      return `<div style="padding:8px 0;border-bottom:1px solid #eef1f4">
+      <div class="rzrow" style="border:0;padding:0">
+        <div class="rn"><b>${esc(u.name)}</b>${u.account?` <span class="dim">· acct ${esc(u.account)}</span>`:""} <span class="dim">· ${u.count} row${u.count===1?"":"s"}${u.total_amount?` · ${usd(u.total_amount)}`:""}</span></div>
+        <select id="unm_sel_${i}" style="min-width:210px">${rvDealerOpts()}</select>
+        <button class="go sm" onclick="rvMatch(${i})">Match</button>
+        <button class="go gray sm" onclick="rvCreate(${i})">Create dealer</button>
+        <button class="go gray sm" onclick="rvApprove('unm',${i})" title="Import these rows unassigned">Approve</button></div>
+      ${locHtml}${dsHtml}${nsHtml}</div>`;
+    }).join(""):"";
   // Matched dealers missing a ZIP → update ZIP / approve
   const nz=(rv.no_zip_dealers||[]).filter(d=>!RVAPPROVED.has("zip:"+d.dealer_id));
   let nzHtml=nz.length?secHead(`${nz.length} matched dealer${nz.length===1?"":"s"} with no ZIP on file — add a ZIP so physical vs. drop-ship can split`,"warn")+

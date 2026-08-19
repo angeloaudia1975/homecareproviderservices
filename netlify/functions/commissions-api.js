@@ -56,15 +56,19 @@ function looksLikeBranch(shipName, custName){
   if(st.some(t=>ct.has(t))) return true;                          // shares a distinctive word with the dealer
   return BIZ.test(sn);                                            // a business-named consignee is a candidate branch
 }
-// Resolve a ship-to to a specific branch within the dealer family (root + branches). Order: saved
-// ZIP→branch override, exact ZIP, street address, then unique city/state. Returns {id} or null.
+// Resolve a ship-to to a specific branch within the dealer family (root + branches). Priority mirrors
+// the operator's mental model: saved ZIP→branch override, exact ZIP, street address, ship-to NAME
+// (a branch whose business name matches the consignee), then a unique city/state. Returns {id} or null.
 function resolveBranchFn(root, famArr, ship, zipmap, rootOf, ambiguous, ambSeen, nameById){
-  const zip=ship.zip, addr=ship.addr, city=ship.city, state=ship.state;
+  const zip=ship.zip, addr=ship.addr, city=ship.city, state=ship.state, sname=ship.name;
   if(zip && zipmap[zip] && rootOf.get(zipmap[zip])===root) return {id:zipmap[zip]};
   if(zip){ const hit=famArr.filter(d=>znorm(d.zip)===zip);
     if(hit.length===1) return {id:hit[0].id};
     if(hit.length>1){ if(!ambSeen.has(zip)){ ambSeen.add(zip); ambiguous.push({zip,dealers:hit.map(d=>({id:d.id,name:nameById.get(d.id)||d.id}))}); } return {id:hit[0].id}; } }
   if(addr){ const hit=famArr.filter(d=>{ const a=naddr(d.address); return a && a===addr; }); if(hit.length>=1) return {id:hit[0].id}; }
+  // Ship-to NAME → an existing branch whose business name matches the consignee (e.g. "DASCO / Lima
+  // Branch"). Only used when the consignee looks like a branch, never a bare patient name.
+  if(sname){ const snd=dnorm(sname); if(snd){ const hit=famArr.filter(d=>{ const bn=dnorm(nameById.get(d.id)||d.business_name||""); return bn && bn===snd; }); if(hit.length>=1) return {id:hit[0].id}; } }
   if(city){ const c=ncity(city), st=nstate(state); const hit=famArr.filter(d=>ncity(d.city)===c && (!st||nstate(d.state)===st)); if(hit.length===1) return {id:hit[0].id}; }
   return null;
 }
@@ -153,17 +157,19 @@ function mapRows(slug, per, source_file, rows, ctx){
       const root=rootOf.get(did)||did;
       const famArr=byRoot.get(root)||[];
       const famZips=famArr.map(d=>znorm(d.zip)).filter(Boolean);
-      const hasShip = !!(shipZip||shipAddrN||shipCity);
+      const hasShip = !!(shipZip||shipAddrN||shipCity||shipName);
       if(hasShip){
         // BRANCH-AWARE routing (GCE + any line with ship-to). Resolve the ship-to to a branch within
         // the dealer family; assign the sale to the ACTUAL location, never bundled onto corporate.
-        const rb = resolveBranchFn(root, famArr, {zip:shipZip, addr:shipAddrN, city:shipCity, state:shipState}, zipmap, rootOf, ambiguous, ambSeen, nameById);
+        const rb = resolveBranchFn(root, famArr, {zip:shipZip, addr:shipAddrN, city:shipCity, state:shipState, name:shipName}, zipmap, rootOf, ambiguous, ambSeen, nameById);
         if(rb && rb.id){ did=rb.id; channel="physical"; }
         else if(looksLikeBranch(shipName, name||nameById.get(root))){
           // A dealer LOCATION we don't have on file yet → HOLD (do not assign to corporate). Surfaced
           // in Review & Correct so the operator can create the branch under this corporate, or reassign.
           did=null; heldRows++;
-          const key=root+"|"+shipZip+"|"+shipAddrN;
+          // Key on ZIP+address; fall back to the ship-to name when neither is present so distinct
+          // name-only branches don't collapse into one held bucket.
+          const key=root+"|"+shipZip+"|"+shipAddrN+"|"+((shipZip||shipAddrN)?"":dnorm(shipName));
           const g=unknownBranch.get(key)||{corporate_id:root, corporate_name:nameById.get(root)||name||"", account_ref:acct||"",
             ship_name:shipName, ship_address:shipAddr, ship_city:shipCity, ship_state:shipState, ship_zip:shipZip, count:0, amount:0};
           g.count++; g.amount+=amount||0; unknownBranch.set(key,g);
@@ -189,7 +195,29 @@ function mapRows(slug, per, source_file, rows, ctx){
           const k=root+"|"+acct; if(!newAcct.has(k)) newAcct.set(k,{dealer_id:root,name:nameById.get(root)||name,account_ref:acct}); }
       }
     } else if(name){
-      const u=unmatched.get(name)||{name,account:acct||"",zip:shipZip||"",count:0}; u.count++; if(!u.account&&acct)u.account=acct; unmatched.set(name,u);
+      // Unmatched corporate — the dealer isn't in Dealer 360 yet. Instead of collapsing all its rows
+      // into one name-only bucket, break them out by ship-to LOCATION so the operator sees exactly
+      // where product shipped before matching: distinct branch-type ship-tos are listed individually
+      // (a create-branch candidate each), person-name/patient consignees roll up as drop-ship "other
+      // revenue" on the corporate, and ledger lines with no ship-to roll up separately.
+      const u=unmatched.get(name)||{name,account:acct||"",zip:shipZip||"",count:0,
+        dropship:{count:0,amount:0}, noship:{count:0,amount:0}, _locs:new Map()};
+      u.count++; if(!u.account&&acct)u.account=acct;
+      const amt = amount!=null?amount:(billed!=null?billed:0);
+      const hasShip = !!(shipZip||shipAddrN||shipName||shipCity);
+      if(hasShip && looksLikeBranch(shipName, name)){
+        // Group by normalized ZIP + street address so spelling/case/name variants of the SAME physical
+        // branch ("245 Northridge Dr" vs "245 NORTHRIDGE DR") merge instead of splitting.
+        const key=shipZip+"|"+shipAddrN+"|"+((shipZip||shipAddrN)?"":dnorm(shipName));
+        const g=u._locs.get(key)||{ship_name:shipName,ship_address:shipAddr,ship_city:shipCity,ship_state:shipState,ship_zip:shipZip,count:0,amount:0};
+        g.count++; g.amount+=amt; if(!g.ship_name&&shipName)g.ship_name=shipName; if(!g.ship_address&&shipAddr)g.ship_address=shipAddr;
+        u._locs.set(key,g);
+      } else if(hasShip){
+        u.dropship.count++; u.dropship.amount+=amt;     // patient / one-off consignee → other revenue on corp
+      } else {
+        u.noship.count++; u.noship.amount+=amt;          // ledger line with no ship-to
+      }
+      unmatched.set(name,u);
     }
     out.push({
       manufacturer:slug, period:per, dealer_id:did||null, channel:channel||null,
@@ -208,8 +236,17 @@ function mapRows(slug, per, source_file, rows, ctx){
       source_file, imported_at:new Date().toISOString(),
     });
   }
+  const R2=n=>Math.round((n||0)*100)/100;
   const review={ total:rows.length, matched, unmatched_count:unmatched.size,
-    unmatched:[...unmatched.values()].sort((a,b)=>b.count-a.count).slice(0,300),
+    unmatched:[...unmatched.values()].sort((a,b)=>b.count-a.count).slice(0,300).map(u=>{
+      const branches=[...(u._locs?u._locs.values():[])].sort((a,b)=>b.count-a.count)
+        .map(g=>({ship_name:g.ship_name||"",ship_address:g.ship_address||"",ship_city:g.ship_city||"",ship_state:g.ship_state||"",ship_zip:g.ship_zip||"",count:g.count,amount:R2(g.amount)})).slice(0,80);
+      const branch_amount=R2(branches.reduce((a,g)=>a+g.amount,0));
+      const total_amount=R2(branch_amount+(u.dropship?u.dropship.amount:0)+(u.noship?u.noship.amount:0));
+      return { name:u.name, account:u.account, zip:u.zip, count:u.count, branches, branch_amount, total_amount,
+        dropship:{count:(u.dropship?u.dropship.count:0),amount:R2(u.dropship?u.dropship.amount:0)},
+        noship:{count:(u.noship?u.noship.count:0),amount:R2(u.noship?u.noship.amount:0)} };
+    }),
     physical_rows:physical, dropship_rows:dropship,
     physical_amount:Math.round(physAmt*100)/100, dropship_amount:Math.round(dropAmt*100)/100,
     new_accounts:[...newAcct.values()].slice(0,300), no_zip_dealers:[...noZip.values()].slice(0,300),
