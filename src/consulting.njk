@@ -2,103 +2,211 @@
 layout: layouts/base.njk
 title: Consulting
 permalink: /consulting/
-description: "Market development & consulting from HomeCare Provider Services — dealer network development, showroom strategy, product launches, sales education, floorplan design, and territory growth."
+description: "Market development & consulting from HomeCare Provider Services — dealer network development, showroom & floorplan design, product launches, sales education, territory growth, and more."
 ---
 {% set pg = pages.consulting %}
-<section class="consult-hero">
-  <div class="container consult-hero-grid">
-    <div>
-      <p class="eyebrow" style="color:var(--hcps-gold);">{{ pg.hero.eyebrow }}</p>
+{% set svcIcons = ["dealer-network-development","showroom-floorplan-design","product-launch-strategy","territory-expansion","sales-training-education","dealer-resource-planning","product-mix-strategy","trade-show-event-support"] %}
+<style>
+  .cs{--navy:#0b1f33;--blue:var(--hcps-blue,#1681c2);--blue-d:var(--hcps-blue-dark,#0f5c8f);--orange:var(--hcps-orange,#ef6325);--gold:var(--hcps-gold,#fcb21e);--ink:#0b0d0f;--paper:#f5f7fa;--line:#e5e9ee;}
+  .cs *{box-sizing:border-box;}
+  .cs .wrap{max-width:1180px;margin:0 auto;padding:0 24px;}
+  .cs h1,.cs h2,.cs h3{font-family:'Archivo Expanded','Archivo',sans-serif;}
+  .cs .kicker{font-family:'Archivo',sans-serif;font-weight:800;text-transform:uppercase;letter-spacing:2px;font-size:12px;color:var(--orange);margin:0 0 10px;}
+  .cs-btn{display:inline-flex;align-items:center;gap:8px;font-family:'Archivo',sans-serif;font-weight:800;font-size:15px;border-radius:12px;padding:14px 26px;text-decoration:none;border:1px solid transparent;transition:transform .13s,box-shadow .13s;cursor:pointer;}
+  .cs-btn:hover{transform:translateY(-2px);}
+  .cs-btn.primary{background:linear-gradient(100deg,var(--orange),var(--gold));color:#141414;box-shadow:0 14px 30px -12px rgba(239,99,37,.7);}
+  .cs-btn.ghost{background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.35);}
+  .cs-btn.ghost:hover{background:rgba(255,255,255,.16);}
+  .cs-btn.big{font-size:17px;padding:18px 34px;border-radius:14px;}
+
+  /* Depth hero (interactive 3D tilt) */
+  .cs-hero{background:linear-gradient(150deg,#0b1f33 0%,#0f5c8f 62%,#1681c2 100%);color:#fff;padding:46px 0 54px;position:relative;overflow:hidden;perspective:1500px;}
+  .cs-hero::after{content:"";position:absolute;right:-120px;top:-120px;width:440px;height:440px;border-radius:50%;background:radial-gradient(circle,rgba(252,178,30,.24),transparent 66%);pointer-events:none;}
+  .cs-hero .wrap{position:relative;z-index:1;}
+  .cs-hero-img{max-width:980px;margin:0 auto;border-radius:18px;overflow:hidden;aspect-ratio:1536/1024;background:url("/assets/consulting/hero-banner.jpg") center/cover;box-shadow:0 45px 85px -22px rgba(0,0,0,.6);transform-style:preserve-3d;transition:transform .18s ease-out;will-change:transform;position:relative;}
+  .cs-glare{position:absolute;inset:0;pointer-events:none;background:radial-gradient(300px 300px at var(--mx,50%) var(--my,30%),rgba(255,255,255,.28),transparent 60%);mix-blend-mode:screen;opacity:0;transition:opacity .2s;}
+  .cs-hero-copy{max-width:900px;margin:30px auto 0;text-align:center;}
+  .cs-hero-copy h1{font-weight:800;font-size:clamp(24px,3.4vw,40px);line-height:1.08;margin:0 0 14px;color:#fff;}
+  .cs-hero-copy p{font-size:clamp(15px,1.4vw,17.5px);color:rgba(255,255,255,.92);max-width:720px;margin:0 auto 24px;}
+  .cs-hero-copy .actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
+
+  .cs-sec{padding:64px 0;}
+  .cs-sec.alt{background:var(--paper);}
+  .cs-head{text-align:center;max-width:760px;margin:0 auto 34px;}
+  .cs-head h2{font-weight:800;font-size:clamp(23px,2.9vw,34px);color:var(--ink);margin:0 0 10px;line-height:1.14;}
+  .cs-head p{font-size:16px;color:#48535f;}
+
+  /* Service cards — big icon on top */
+  .cs-svcs{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;}
+  @media(max-width:940px){.cs-svcs{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:520px){.cs-svcs{grid-template-columns:1fr;}}
+  .cs-svc{background:#fff;border:1px solid var(--line);border-radius:18px;padding:14px 20px 24px;text-align:center;box-shadow:0 10px 26px rgba(12,39,64,.05);transition:transform .16s,box-shadow .16s,border-color .16s;}
+  .cs-svc:hover{transform:translateY(-5px);box-shadow:0 22px 46px rgba(12,39,64,.12);border-color:#cfe0ef;}
+  .cs-svc-ico{width:100%;margin:0 0 10px;}
+  .cs-svc-ico img{width:min(76%,170px);aspect-ratio:1/1;object-fit:contain;display:block;margin:0 auto;filter:drop-shadow(0 10px 18px rgba(12,39,64,.12));transition:transform .18s ease;}
+  .cs-svc:hover .cs-svc-ico img{transform:translateY(-3px) scale(1.05);}
+  .cs-svc h3{font-weight:800;font-size:17px;color:var(--ink);margin:0 0 7px;line-height:1.18;}
+  .cs-svc p{font-size:13.5px;line-height:1.5;color:#55606a;margin:0;}
+
+  /* Showroom & Floorplan Design — power image + copy (Dealer Services style) */
+  .cs-spot{display:grid;grid-template-columns:1.1fr .9fr;gap:0;background:#fff;border:1px solid var(--line);border-radius:20px;overflow:hidden;box-shadow:0 16px 40px rgba(12,39,64,.09);}
+  @media(max-width:860px){.cs-spot{grid-template-columns:1fr;}}
+  .cs-spot-img{background:#0b1f33;}
+  .cs-spot-img img{display:block;width:100%;height:100%;object-fit:cover;}
+  .cs-spot-body{padding:38px;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;}
+  .cs-spot-body h2{font-weight:800;font-size:clamp(22px,2.6vw,30px);color:var(--ink);margin:0 0 12px;line-height:1.14;}
+  .cs-spot-body p{font-size:15px;color:#54606c;margin:0 0 18px;}
+  .cs-chips{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 22px;}
+  .cs-chips span{background:#eef4fb;border:1px solid #d3e3f2;color:var(--blue-d);font-weight:700;font-size:13px;border-radius:9px;padding:8px 13px;}
+
+  /* Process */
+  .cs-proc{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;}
+  @media(max-width:900px){.cs-proc{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:520px){.cs-proc{grid-template-columns:1fr;}}
+  .cs-step{background:#fff;border:1px solid var(--line);border-radius:16px;padding:24px;box-shadow:0 8px 24px rgba(12,39,64,.05);transition:transform .16s,box-shadow .16s;}
+  .cs-step:hover{transform:translateY(-4px);box-shadow:0 18px 40px rgba(12,39,64,.1);}
+  .cs-step .num{width:40px;height:40px;border-radius:11px;background:linear-gradient(120deg,var(--orange),var(--gold));color:#141414;font-family:'Archivo Expanded',sans-serif;font-weight:800;font-size:16px;display:grid;place-items:center;margin:0 0 13px;}
+  .cs-step h3{font-weight:800;font-size:16px;color:var(--ink);margin:0 0 6px;}
+  .cs-step p{font-size:13.5px;line-height:1.5;color:#55606a;margin:0;}
+
+  /* Audience */
+  .cs-aud{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:760px){.cs-aud{grid-template-columns:1fr;}}
+  .cs-aud-card{border-radius:18px;padding:30px;color:#fff;box-shadow:0 16px 40px rgba(12,39,64,.12);}
+  .cs-aud-card.m{background:linear-gradient(155deg,#0f5c8f,#1681c2);}
+  .cs-aud-card.d{background:linear-gradient(155deg,#b7491a,#ef6325);}
+  .cs-aud-card .kicker{color:rgba(255,255,255,.85);}
+  .cs-aud-card h3{color:#fff;font-weight:800;font-size:21px;margin:0 0 10px;line-height:1.15;}
+  .cs-aud-card p{color:rgba(255,255,255,.92);font-size:14.5px;margin:0 0 16px;}
+  .cs-aud-card a{color:#fff;font-family:'Archivo',sans-serif;font-weight:800;font-size:14px;text-decoration:none;border-bottom:2px solid rgba(255,255,255,.5);padding-bottom:2px;}
+
+  .cs-final{background:var(--ink);color:#fff;text-align:center;padding:60px 0;}
+  .cs-final h2{color:#fff;font-weight:800;font-size:clamp(23px,2.9vw,34px);margin:0 0 12px;}
+  .cs-final p{color:rgba(255,255,255,.82);max-width:640px;margin:0 auto 24px;font-size:16px;}
+  .cs-final .actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
+</style>
+
+<div class="cs">
+
+<!-- HERO -->
+<section class="cs-hero">
+  <div class="wrap">
+    <div class="cs-hero-img" id="cs-heroimg" data-reveal="fade" role="img" aria-label="HCPS Dealer Consulting & Showroom Solutions — hands-on consulting to help manufacturers and dealers build stronger markets."><span class="cs-glare"></span></div>
+    <div class="cs-hero-copy" data-reveal="up" style="--d:120ms">
       <h1>{{ pg.hero.headline }}</h1>
-      <p class="lead">{{ pg.hero.lead }}</p>
-      <div class="hero-actions">
-        <a class="btn primary" href="/contact/?topic=Consulting">{{ pg.hero.cta1_label }}</a>
-        <a class="btn outline" href="/dealer-hub/">{{ pg.hero.cta2_label }}</a>
+      <p>{{ pg.hero.lead }}</p>
+      <div class="actions">
+        <a class="cs-btn primary" href="/contact/?topic=Consulting">{{ pg.hero.cta1_label }}</a>
+        <a class="cs-btn ghost" href="/dealer-hub/">{{ pg.hero.cta2_label }}</a>
       </div>
     </div>
-    <aside class="consult-hero-card">
-      <span class="badge">{{ pg.hero.card_badge }}</span>
-      <strong>{{ pg.hero.card_title }}</strong>
-      <p>{{ pg.hero.card_copy }}</p>
-    </aside>
   </div>
 </section>
+<script>
+(function () {
+  var img = document.getElementById("cs-heroimg"); if (!img) return;
+  var band = img.closest(".cs-hero"); var g = img.querySelector(".cs-glare");
+  var reduce = false; try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+  if (reduce) return;
+  band.addEventListener("mousemove", function (e) {
+    var r = img.getBoundingClientRect();
+    var px = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    var py = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+    img.style.transform = "perspective(1500px) rotateY(" + ((px - .5) * 12) + "deg) rotateX(" + ((.5 - py) * 8) + "deg) translateZ(18px)";
+    if (g) { g.style.setProperty("--mx", (px * 100) + "%"); g.style.setProperty("--my", (py * 100) + "%"); g.style.opacity = "1"; }
+  });
+  band.addEventListener("mouseleave", function () { img.style.transform = "perspective(1500px) rotateY(0) rotateX(0)"; if (g) g.style.opacity = "0"; });
+})();
+</script>
 
-<section>
-  <div class="container">
-    <div class="svc-head">
-      <div>
-        <p class="eyebrow">{{ pg.services.eyebrow }}</p>
-        <h2>{{ pg.services.title }}</h2>
-      </div>
+<!-- SERVICES -->
+<section class="cs-sec">
+  <div class="wrap">
+    <div class="cs-head" data-reveal="up">
+      <p class="kicker">{{ pg.services.eyebrow }}</p>
+      <h2>{{ pg.services.title }}</h2>
       <p>{{ pg.services.intro }}</p>
     </div>
-    <div class="svc-grid">
+    <div class="cs-svcs" data-reveal="up">
       {% for s in pg.services.items %}
-      <article class="svc-card"><span class="svc-num">{% if loop.index < 10 %}0{% endif %}{{ loop.index }}</span><h3>{{ s.title }}</h3><p>{{ s.description }}</p></article>
+      <article class="cs-svc">
+        <div class="cs-svc-ico"><img src="/assets/consulting/{{ svcIcons[loop.index0] }}.png" alt="" loading="lazy"></div>
+        <h3>{{ s.title }}</h3>
+        <p>{{ s.description }}</p>
+      </article>
       {% endfor %}
     </div>
   </div>
 </section>
 
-<section class="alt-band">
-  <div class="container consult-split">
-    <div>
-      <p class="eyebrow">{{ pg.split.eyebrow }}</p>
-      <h2>{{ pg.split.title }}</h2>
-      <p>{{ pg.split.copy }}</p>
-      <div class="chip-list">
-        {% for chip in pg.split.chips %}<span class="chip">{{ chip }}</span>{% endfor %}
+<!-- SHOWROOM & FLOORPLAN DESIGN -->
+<section class="cs-sec alt">
+  <div class="wrap">
+    <div class="cs-head" data-reveal="up">
+      <p class="kicker">{{ pg.split.eyebrow }}</p>
+      <h2>Showroom &amp; floorplan design</h2>
+    </div>
+    <div class="cs-spot">
+      <div class="cs-spot-img" data-reveal="left"><img src="/assets/consulting/showroom-power.jpg" alt="Turn showroom space into a stronger selling environment — HCPS showroom & floorplan design"></div>
+      <div class="cs-spot-body" data-reveal="up" style="--d:120ms">
+        <h2>{{ pg.split.title }}</h2>
+        <p>{{ pg.split.copy }}</p>
+        <div class="cs-chips">{% for chip in pg.split.chips %}<span>{{ chip }}</span>{% endfor %}</div>
+        <a class="cs-btn primary" href="/contact/?topic=Showroom%20%26%20Floorplan%20Design">{{ pg.split.aside_cta }}</a>
       </div>
     </div>
-    <aside class="consult-aside">
-      <strong>{{ pg.split.aside_title }}</strong>
-      <p>{{ pg.split.aside_copy }}</p>
-      <a class="btn primary" href="/contact/?topic=Consulting">{{ pg.split.aside_cta }}</a>
-    </aside>
   </div>
 </section>
 
-<section>
-  <div class="container">
-    <div class="section-head center">
-      <p class="eyebrow">{{ pg.process.eyebrow }}</p>
+<!-- PROCESS -->
+<section class="cs-sec">
+  <div class="wrap">
+    <div class="cs-head" data-reveal="up">
+      <p class="kicker">{{ pg.process.eyebrow }}</p>
       <h2>{{ pg.process.title }}</h2>
     </div>
-    <div class="proc-grid">
+    <div class="cs-proc" data-reveal="up">
       {% for step in pg.process.steps %}
-      <article class="proc-card"><span class="proc-num">{{ loop.index }}</span><h3>{{ step.title }}</h3><p>{{ step.description }}</p></article>
+      <article class="cs-step">
+        <div class="num">{{ loop.index }}</div>
+        <h3>{{ step.title }}</h3>
+        <p>{{ step.description }}</p>
+      </article>
       {% endfor %}
     </div>
   </div>
 </section>
 
-<section class="alt-band">
-  <div class="container aud-grid">
-    <article class="aud-card">
-      <p class="eyebrow">For Manufacturers</p>
-      <h3>Build a stronger dealer channel.</h3>
-      <p>Use HCPS to support market entry, dealer development, new product launches, training, showroom placement, and ongoing field execution.</p>
-      <a href="/become-a-manufacturer-partner/">Become a Manufacturer Partner &rarr;</a>
-    </article>
-    <article class="aud-card">
-      <p class="eyebrow">For Dealers</p>
-      <h3>Improve how products are presented and supported.</h3>
-      <p>Use HCPS for showroom strategy, literature requests, product education, in-services, and manufacturer support workflows.</p>
-      <a href="/dealer-hub/">Open Dealer Hub &rarr;</a>
-    </article>
+<!-- AUDIENCE -->
+<section class="cs-sec alt">
+  <div class="wrap">
+    <div class="cs-aud">
+      <article class="cs-aud-card m" data-reveal="left">
+        <p class="kicker">For Manufacturers</p>
+        <h3>Build a stronger dealer channel.</h3>
+        <p>Use HCPS to support market entry, dealer development, new product launches, training, showroom placement, and ongoing field execution.</p>
+        <a href="/become-a-manufacturer-partner/">Become a Manufacturer Partner &rarr;</a>
+      </article>
+      <article class="cs-aud-card d" data-reveal="right">
+        <p class="kicker">For Dealers</p>
+        <h3>Improve how products are presented and supported.</h3>
+        <p>Use HCPS for showroom strategy, literature requests, product education, in-services, and manufacturer support workflows.</p>
+        <a href="/dealer-hub/">Open Dealer Hub &rarr;</a>
+      </article>
+    </div>
   </div>
 </section>
 
-<section class="cta">
-  <div class="container cta-grid">
-    <div>
-      <h2>{{ pg.cta.title }}</h2>
-      <p>{{ pg.cta.copy }}</p>
-    </div>
-    <div class="hero-actions">
-      <a class="btn primary" href="/contact/?topic=Consulting">{{ pg.cta.cta1_label }}</a>
-      <a class="btn outline" href="/manufacturers/">{{ pg.cta.cta2_label }}</a>
+<!-- FINAL CTA -->
+<section class="cs-final">
+  <div class="wrap" data-reveal="up">
+    <h2>{{ pg.cta.title }}</h2>
+    <p>{{ pg.cta.copy }}</p>
+    <div class="actions">
+      <a class="cs-btn primary big" href="/contact/?topic=Consulting">{{ pg.cta.cta1_label }}</a>
+      <a class="cs-btn ghost" style="border-color:rgba(255,255,255,.4);color:#fff;" href="/manufacturers/">{{ pg.cta.cta2_label }}</a>
     </div>
   </div>
 </section>
+
+</div>
