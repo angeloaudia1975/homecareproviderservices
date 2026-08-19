@@ -5,7 +5,7 @@ permalink: /contact/
 description: "Get in touch with HomeCare Provider Services for manufacturer-specific questions, dealer support, business development needs, or information about becoming a manufacturing partner. Whether you are part of our dealer network or a manufacturer looking to expand your reach, our team is here to help you grow, strengthen your business, and find the right solutions."
 ---
 <style>
-  .co-hero{position:relative;overflow:hidden;background:linear-gradient(150deg,#0c2740 0%,#0f5c8f 62%,#1681c2 100%);color:#fff;padding:62px 0 54px;}
+  .co-hero{position:relative;overflow:hidden;background:linear-gradient(150deg,#0c2740 0%,#0f5c8f 62%,#1681c2 100%);color:#fff;padding:48px 0 50px;perspective:1500px;}
   .co-hero::after{content:"";position:absolute;right:-120px;top:-120px;width:440px;height:440px;border-radius:50%;background:radial-gradient(circle,rgba(252,178,30,.26),transparent 62%);pointer-events:none;}
   .co-hero .container{position:relative;z-index:1;}
   .co-eyebrow{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:999px;padding:7px 15px;font-family:'Archivo',sans-serif;font-weight:800;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 15px;}
@@ -74,21 +74,55 @@ description: "Get in touch with HomeCare Provider Services for manufacturer-spec
   .co-band h3{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:clamp(19px,2.3vw,26px);margin:0 0 6px;color:#fff;}
   .co-band p{margin:0;color:rgba(255,255,255,.85);font-size:14.5px;max-width:60ch;}
   .co-band-cta{display:flex;gap:10px;flex-wrap:wrap;}
+
+  /* Depth hero: banner (interactive 3D tilt) -> headline -> CTAs */
+  .co-hero-img{max-width:1000px;margin:0 auto;border-radius:18px;overflow:hidden;aspect-ratio:1672/941;background:url("/assets/contact/hero-banner.jpg") center/cover;box-shadow:0 45px 85px -22px rgba(0,0,0,.6);transform-style:preserve-3d;transition:transform .18s ease-out;will-change:transform;position:relative;}
+  .co-hero-glare{position:absolute;inset:0;pointer-events:none;background:radial-gradient(300px 300px at var(--mx,50%) var(--my,30%),rgba(255,255,255,.28),transparent 60%);mix-blend-mode:screen;opacity:0;transition:opacity .2s;}
+  .co-hero-copy{max-width:1040px;margin:28px auto 0;text-align:center;}
+  .co-hero-copy h1{white-space:nowrap;max-width:none;font-size:clamp(20px,3vw,34px);margin:0 0 12px;}
+  .co-hero-copy .co-lead{margin:0 auto 22px;max-width:80ch;}
+  .co-hero .co-cta-row{justify-content:center;}
+  .co-ico-img{flex:none;width:58px;height:58px;object-fit:contain;}
+  @media(max-width:600px){.co-hero-copy h1{white-space:normal;}}
+  @media(prefers-reduced-motion:reduce){.co-hero-img{transition:none;}}
 </style>
 
 <!-- HERO -->
 <section class="co-hero">
   <div class="container">
-    <span class="co-eyebrow">Contact HomeCare Provider Services</span>
-    <h1>Let's find the right solution for you</h1>
-    <p class="co-lead">Get in touch for manufacturer-specific questions, dealer support, business development, or becoming a manufacturing partner. Whether you're part of our dealer network or a manufacturer looking to expand your reach, our team is here to help you grow, strengthen your business, and find the right solutions.</p>
-    <div class="co-cta-row">
-      <a class="co-btn primary" href="#contact-form">Contact Dealer Support &rarr;</a>
-      <a class="co-btn ghost" href="/become-a-dealer/">Become an HCPS Dealer</a>
-      <a class="co-btn ghost" href="/become-a-manufacturer-partner/">Become a Manufacturing Partner</a>
+    <div class="co-hero-img" id="co-heroimg" role="img" aria-label="Contact HomeCare Provider Services — HME &amp; DME Representation. Your Partner. Your Success. Dealer support, manufacturer partnerships, business development, and a dedicated team here to help. Call (270) 991-1403 or email info@homecareproviderservices.org."><span class="co-hero-glare"></span></div>
+    <div class="co-hero-copy">
+      <h1>Let's find the right solution for you.</h1>
+      <p class="co-lead">Get in touch for manufacturer-specific questions, dealer support, business development, or becoming a manufacturing partner. Whether you're part of our dealer network or a manufacturer looking to expand your reach, our team is here to help you grow, strengthen your business, and find the right solutions.</p>
+      <div class="co-cta-row">
+        <a class="co-btn primary" href="#contact-form">Contact Dealer Support &rarr;</a>
+        <a class="co-btn ghost" href="/become-a-dealer/">Become an HCPS Dealer</a>
+        <a class="co-btn ghost" href="/become-a-manufacturer-partner/">Become a Manufacturing Partner</a>
+      </div>
     </div>
   </div>
 </section>
+<script>
+(function () {
+  var img = document.getElementById("co-heroimg"); if (!img) return;
+  var band = img.closest(".co-hero") || img.parentElement;
+  var glare = img.querySelector(".co-hero-glare");
+  var reduce = false; try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+  if (reduce) return;
+  band.addEventListener("mousemove", function (e) {
+    var r = img.getBoundingClientRect();
+    var px = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    var py = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+    var ry = (px - 0.5) * 14, rx = (0.5 - py) * 10;
+    img.style.transform = "perspective(1500px) rotateY(" + ry + "deg) rotateX(" + rx + "deg) translateZ(20px)";
+    if (glare) { glare.style.setProperty("--mx", (px * 100) + "%"); glare.style.setProperty("--my", (py * 100) + "%"); glare.style.opacity = "1"; }
+  });
+  band.addEventListener("mouseleave", function () {
+    img.style.transform = "perspective(1500px) rotateY(0) rotateX(0)";
+    if (glare) glare.style.opacity = "0";
+  });
+})();
+</script>
 
 <!-- AUDIENCE / REASON CARDS -->
 <section class="co-sec">
@@ -103,7 +137,7 @@ description: "Get in touch with HomeCare Provider Services for manufacturer-spec
       <!-- Dealer Support -->
       <article class="co-card">
         <div class="co-card-top">
-          <div class="co-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
+          <img class="co-ico-img" src="/assets/contact/dealer-support.png" alt="" loading="lazy">
           <h3>Dealer Support</h3>
         </div>
         <p class="blurb">For active HCPS dealers — get answers, access, and hands-on help fast.</p>
@@ -124,7 +158,7 @@ description: "Get in touch with HomeCare Provider Services for manufacturer-spec
       <!-- Business Development -->
       <article class="co-card o">
         <div class="co-card-top">
-          <div class="co-ico orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/><path d="M19 7v3h-3"/></svg></div>
+          <img class="co-ico-img" src="/assets/contact/business-development.png" alt="" loading="lazy">
           <h3>Business Development</h3>
         </div>
         <p class="blurb">Grow your dealership — showroom, product mix, marketing, and a plan to scale.</p>
@@ -145,7 +179,7 @@ description: "Get in touch with HomeCare Provider Services for manufacturer-spec
       <!-- Become a Dealer -->
       <article class="co-card">
         <div class="co-card-top">
-          <div class="co-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-5h15L21 9"/><path d="M4.5 9V20h15V9"/><path d="M9.5 20v-5h5v5"/><path d="M3 9h18"/></svg></div>
+          <img class="co-ico-img" src="/assets/contact/become-a-dealer.png" alt="" loading="lazy">
           <h3>Become a Dealer</h3>
         </div>
         <p class="blurb">Join the HCPS dealer network and start ordering premium HME &amp; DME lines.</p>
@@ -165,7 +199,7 @@ description: "Get in touch with HomeCare Provider Services for manufacturer-spec
       <!-- Become a Manufacturing Partner -->
       <article class="co-card o">
         <div class="co-card-top">
-          <div class="co-ico orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h20"/><path d="M4 20V9l5 3V9l5 3V6l6 4v10"/></svg></div>
+          <img class="co-ico-img" src="/assets/contact/become-a-manufacturer-partner.png" alt="" loading="lazy">
           <h3>Become a Manufacturing Partner</h3>
         </div>
         <p class="blurb">For manufacturers ready to expand reach through our dealer network and reps.</p>
