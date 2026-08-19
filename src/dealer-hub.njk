@@ -2,185 +2,403 @@
 layout: layouts/base.njk
 title: Dealer Hub
 permalink: /dealer-hub/
-description: "The HCPS Dealer Hub — a dealer dashboard for orders, pricing access, literature, in-service training, technical support, and manufacturer resource centers across all 12 manufacturer partners."
+description: "The Dealer Hub is your central destination for manufacturer resources, order requests, product literature, dealer pricing, in-service scheduling, technical support, and dealer login tools—all designed to make managing your HCPS manufacturer relationships faster and easier."
 ---
-{% set pg = pages.dealerhub %}
-<section class="dash-v3-hero">
-  <div class="container dash-v3-hero-grid">
-    <div>
-      <p class="eyebrow">{{ pg.hero.eyebrow }}</p>
-      <h1>{{ pg.hero.headline }}</h1>
-      <p class="lead">{{ pg.hero.lead }}</p>
-      <div class="hero-actions">
-        <a class="btn primary" href="/dealer-support/?request=Place%20or%20Request%20an%20Order">{{ pg.hero.cta1_label }}</a>
-        <a class="btn outline on-light" href="#dash-request-center">{{ pg.hero.cta2_label }}</a>
-      </div>
-    </div>
+<style>
+  .dh-hero{position:relative;overflow:hidden;background:linear-gradient(150deg,#0c2740 0%,#0f5c8f 62%,#1681c2 100%);color:#fff;padding:60px 0 52px;}
+  .dh-hero::after{content:"";position:absolute;right:-120px;top:-120px;width:440px;height:440px;border-radius:50%;background:radial-gradient(circle,rgba(252,178,30,.26),transparent 62%);pointer-events:none;}
+  .dh-hero .container{position:relative;z-index:1;}
+  .dh-eyebrow{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:999px;padding:7px 15px;font-family:'Archivo',sans-serif;font-weight:800;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 15px;}
+  .dh-hero h1{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:clamp(28px,4.4vw,48px);line-height:1.05;margin:0 0 14px;max-width:18ch;}
+  .dh-hero .dh-lead{font-size:clamp(15.5px,1.4vw,18px);line-height:1.55;color:rgba(255,255,255,.9);max-width:74ch;margin:0 0 24px;}
+  .dh-cta-row{display:flex;gap:11px;flex-wrap:wrap;align-items:center;}
+  .dh-btn{display:inline-flex;align-items:center;gap:8px;font-family:'Archivo',sans-serif;font-weight:800;font-size:14.5px;text-decoration:none;border-radius:11px;padding:13px 22px;transition:transform .12s,box-shadow .12s;border:1px solid transparent;cursor:pointer;}
+  .dh-btn:hover{transform:translateY(-1px);}
+  .dh-btn.primary{background:linear-gradient(100deg,#ef6325,#fcb21e);color:#141414;box-shadow:0 14px 30px -12px rgba(239,99,37,.7);}
+  .dh-btn.ghost{background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.28);}
+  .dh-btn.ghost:hover{background:rgba(255,255,255,.16);}
+  .dh-btn.blue{background:var(--hcps-blue,#1681c2);color:#fff;}
+  .dh-btn.sm{padding:10px 16px;font-size:13px;}
 
-    <aside class="dash-v3-user-card">
-      <div class="dash-v3-user-top">
-        <span class="dash-v3-avatar">HC</span>
-        <div>
-          <strong>Dealer Portal Preview</strong>
-          <p>Future personalized login</p>
-        </div>
-      </div>
-      <div class="dash-v3-metrics">
-        <span><b>{{ activeManufacturers.length }}</b> Manufacturer Centers</span>
-        <span><b>6</b> Dealer Workflows</span>
-        <span><b>{{ site.stats.states }}</b> Strategic States</span>
-        <span><b>{{ site.stats.dealers }}</b> Dealer Relationships</span>
-      </div>
-    </aside>
-  </div>
-</section>
+  .dh-sec{padding:50px 0;}
+  .dh-sec.alt{background:var(--paper,#f6f7f5);}
+  .dh-head{max-width:66ch;margin:0 0 28px;}
+  .dh-kicker{font-family:'Archivo',sans-serif;font-weight:800;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--hcps-blue,#1681c2);margin:0 0 9px;}
+  .dh-h2{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:clamp(23px,2.9vw,34px);line-height:1.1;color:var(--ink);margin:0 0 11px;}
+  .dh-sub{font-size:15.5px;line-height:1.55;color:#48525c;margin:0;}
 
-<section class="dash-v3-shell">
-  <div class="container dash-v3-layout">
+  .dh-svc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  @media(max-width:900px){.dh-svc-grid{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:560px){.dh-svc-grid{grid-template-columns:1fr;}}
+  .dh-svc{background:#fff;border:1px solid #e5e9ee;border-radius:16px;padding:22px 20px;box-shadow:0 8px 24px rgba(12,39,64,.05);display:flex;flex-direction:column;transition:transform .14s,box-shadow .14s,border-color .14s;}
+  .dh-svc:hover{transform:translateY(-3px);box-shadow:0 16px 38px rgba(12,39,64,.1);border-color:#cfe0ef;}
+  .dh-ico{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;margin:0 0 13px;background:linear-gradient(135deg,#e9f3fb,#d5e8f6);color:var(--hcps-blue-dark,#0f5c8f);}
+  .dh-ico.orange{background:linear-gradient(135deg,#fde7d8,#fbd3b4);color:#c14a10;}
+  .dh-ico svg{width:23px;height:23px;}
+  .dh-svc h3{font-family:'Archivo',sans-serif;font-weight:800;font-size:16px;color:var(--ink);margin:0 0 6px;line-height:1.2;}
+  .dh-svc .mode{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#8a94a0;margin:0 0 8px;}
+  .dh-svc p{font-size:13.5px;line-height:1.5;color:#55606a;margin:0 0 15px;}
+  .dh-svc .go{margin-top:auto;font-family:'Archivo',sans-serif;font-weight:800;font-size:13.5px;color:#fff;background:var(--hcps-blue,#1681c2);border:none;border-radius:9px;padding:10px 15px;cursor:pointer;align-self:flex-start;transition:background .13s;}
+  .dh-svc .go:hover{background:var(--hcps-blue-dark,#0f5c8f);}
+  .dh-svc.o .go{background:linear-gradient(100deg,#ef6325,#fcb21e);color:#141414;}
 
-    <aside class="dash-v3-sidebar">
-      <p>Dealer Hub</p>
-      <a href="#dash-request-center">Request Center</a>
-      <a href="#dash-manufacturers">Manufacturers</a>
-      <a href="#dash-resources">Resources</a>
-      <a href="#dash-pricing">Pricing</a>
-      <a href="#dash-training">Training</a>
-      <a href="#dash-service">Service</a>
-      <a href="#dash-dealer-services">Dealer Services</a>
-      <a href="#dash-future-login">Future Login</a>
-    </aside>
+  /* Showroom highlight */
+  .dh-spot{display:grid;grid-template-columns:1.1fr .9fr;gap:0;border-radius:20px;overflow:hidden;box-shadow:0 20px 50px rgba(12,39,64,.14);margin-top:26px;}
+  @media(max-width:820px){.dh-spot{grid-template-columns:1fr;}}
+  .dh-spot-main{background:linear-gradient(150deg,#0f5c8f,#1681c2);color:#fff;padding:36px;}
+  .dh-spot-main .dh-kicker{color:#fcb21e;}
+  .dh-spot-main h3{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:clamp(21px,2.5vw,28px);margin:0 0 10px;color:#fff;}
+  .dh-spot-main p{color:rgba(255,255,255,.9);font-size:14.5px;line-height:1.6;margin:0 0 18px;}
+  .dh-spot-list{list-style:none;padding:0;margin:0 0 22px;display:grid;gap:9px;}
+  .dh-spot-list li{position:relative;padding-left:27px;font-size:14px;color:rgba(255,255,255,.95);}
+  .dh-spot-list li::before{content:"";position:absolute;left:0;top:1px;width:17px;height:17px;border-radius:50%;background:#fcb21e url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23141414' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'><path d='M20 6L9 17l-5-5'/></svg>") center/10px no-repeat;}
+  .dh-spot-side{background:#0a1219;color:#fff;padding:30px;display:flex;flex-direction:column;justify-content:center;gap:12px;}
+  .dh-mini{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-left:3px solid #fcb21e;border-radius:12px;padding:14px 16px;}
+  .dh-mini b{display:block;font-family:'Archivo Expanded','Archivo',sans-serif;font-size:19px;color:#fff;line-height:1.05;}
+  .dh-mini span{display:block;margin-top:4px;font-size:12px;color:rgba(255,255,255,.72);}
 
-    <div class="dash-v3-main">
+  /* Scheduling form */
+  .dh-form-wrap{display:grid;grid-template-columns:1.4fr .9fr;gap:26px;align-items:start;}
+  @media(max-width:900px){.dh-form-wrap{grid-template-columns:1fr;}}
+  .dh-form{background:#fff;border-radius:20px;padding:30px;box-shadow:0 20px 50px rgba(12,39,64,.1);border:1px solid #e5e9ee;}
+  .dh-form .row{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:560px){.dh-form .row{grid-template-columns:1fr;}}
+  .dh-form label{display:block;font-family:'Archivo',sans-serif;font-weight:700;font-size:13px;color:var(--ink);margin:14px 0 6px;}
+  .dh-form input,.dh-form select,.dh-form textarea{width:100%;box-sizing:border-box;padding:12px 13px;border:1px solid #d7dde3;border-radius:10px;font-size:15px;font-family:'Inter',sans-serif;color:var(--ink);background:#fff;}
+  .dh-form textarea{min-height:96px;resize:vertical;}
+  .dh-form input:focus,.dh-form select:focus,.dh-form textarea:focus{outline:none;border-color:var(--hcps-blue,#1681c2);box-shadow:0 0 0 3px rgba(22,129,194,.15);}
+  .dh-modes{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;}
+  .dh-modes label{display:inline-flex;align-items:center;gap:7px;margin:0;font-weight:600;font-size:13.5px;color:#33404b;background:#f4f7fa;border:1px solid #dfe6ee;border-radius:9px;padding:9px 13px;cursor:pointer;}
+  .dh-modes input{width:auto;}
+  .dh-form .btn-primary{background:linear-gradient(100deg,#ef6325,#fcb21e);color:#141414;font-family:'Archivo',sans-serif;font-weight:800;font-size:15px;border:none;border-radius:11px;padding:14px 24px;cursor:pointer;margin-top:16px;box-shadow:0 12px 26px -12px rgba(239,99,37,.7);}
+  .dh-form .form-status{margin:12px 0 0;font-size:14px;font-weight:600;}
+  .dh-form .form-status.ok{color:#166b45;}
+  .dh-form .form-status.error{color:#b42323;}
+  .dh-flow{background:linear-gradient(150deg,#0c2740,#0f5c8f);color:#fff;border-radius:20px;padding:26px;}
+  .dh-flow h3{font-family:'Archivo',sans-serif;font-weight:800;font-size:16px;margin:0 0 14px;color:#fff;}
+  .dh-flow ol{list-style:none;counter-reset:f;padding:0;margin:0;display:grid;gap:11px;}
+  .dh-flow li{counter-increment:f;position:relative;padding-left:38px;font-size:13.5px;color:rgba(255,255,255,.9);line-height:1.4;}
+  .dh-flow li::before{content:counter(f);position:absolute;left:0;top:-1px;width:26px;height:26px;border-radius:50%;background:linear-gradient(120deg,#ef6325,#fcb21e);color:#141414;font-family:'Archivo Expanded',sans-serif;font-weight:800;font-size:13px;display:grid;place-items:center;}
 
-      <section class="dash-v3-panel dash-v3-welcome">
-        <div>
-          <p class="eyebrow">{{ pg.welcome.eyebrow }}</p>
-          <h2>{{ pg.welcome.title }}</h2>
-        </div>
-        <a class="dash-v3-help-link" href="/contact/">{{ pg.welcome.help_label }} &rarr;</a>
-      </section>
+  /* Quick access */
+  .dh-quick{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;}
+  @media(max-width:900px){.dh-quick{grid-template-columns:repeat(3,1fr);}}
+  @media(max-width:560px){.dh-quick{grid-template-columns:repeat(2,1fr);}}
+  .dh-q{background:#fff;border:1px solid #e5e9ee;border-radius:14px;padding:16px 14px;text-decoration:none;text-align:center;transition:transform .13s,box-shadow .13s,border-color .13s;display:flex;flex-direction:column;align-items:center;gap:8px;}
+  .dh-q:hover{transform:translateY(-3px);box-shadow:0 14px 30px rgba(12,39,64,.1);border-color:#cfe0ef;}
+  .dh-q .qi{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:#eef4fb;color:var(--hcps-blue-dark,#0f5c8f);}
+  .dh-q .qi svg{width:20px;height:20px;}
+  .dh-q b{font-family:'Archivo',sans-serif;font-weight:800;font-size:13.5px;color:var(--ink);line-height:1.2;}
+  .dh-q span{font-size:11.5px;color:#7a848f;}
 
-      {% set actionHrefs = ["/dealer-support/?request=Place%20or%20Request%20an%20Order", "/dealer-support/?request=Pricing%20Access", "/dealer-support/?request=Order%20Literature", "/dealer-support/?request=Request%20an%20In-Service", "/dealer-support/?request=Technical%20Support", "/resources/"] %}
-      <section class="dash-v3-action-grid" id="dash-request-center">
-        {% for a in pg.actions %}
-        <a class="dash-v3-action{% if loop.index == 1 %} primary{% endif %}" href="{{ actionHrefs[loop.index0] }}">
-          <span>{{ a.icon }}</span><strong>{{ a.title }}</strong><p>{{ a.description }}</p>
-        </a>
-        {% endfor %}
-      </section>
+  /* manufacturer centers */
+  .dh-mfg{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+  @media(max-width:860px){.dh-mfg{grid-template-columns:repeat(3,1fr);}}
+  @media(max-width:560px){.dh-mfg{grid-template-columns:repeat(2,1fr);}}
+  .dh-m{background:#fff;border:1px solid #e5e9ee;border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:8px;transition:transform .13s,box-shadow .13s,border-color .13s;}
+  .dh-m:hover{transform:translateY(-3px);box-shadow:0 14px 30px rgba(12,39,64,.1);border-color:#cfe0ef;}
+  .dh-m img{height:34px;width:auto;max-width:100%;object-fit:contain;align-self:flex-start;}
+  .dh-m b{font-family:'Archivo',sans-serif;font-weight:800;font-size:14px;color:var(--ink);}
+  .dh-m span{font-size:12px;color:#6b7580;}
+  .dh-m .mrow{display:flex;gap:8px;margin-top:auto;}
+  .dh-m .mrow a{flex:1;text-align:center;font-family:'Archivo',sans-serif;font-weight:800;font-size:12px;text-decoration:none;border-radius:8px;padding:8px;}
+  .dh-m .mrow a.open{background:var(--hcps-blue,#1681c2);color:#fff;}
+  .dh-m .mrow a.sup{background:#eef2f6;color:#334656;}
 
-      <section class="dash-v3-two-col">
-        <div class="dash-v3-panel" id="dash-pricing">
-          <div class="dash-v3-panel-head">
-            <div>
-              <p class="eyebrow">Pricing</p>
-              <h3>Dealer pricing center</h3>
-            </div>
-            <span class="dash-v3-badge">Future Login</span>
-          </div>
-          <div class="dash-v3-list">
-            <a href="/dealer-support/?request=Pricing%20Access&amp;topic=MAP%20Pricing"><b>MAP Pricing</b><span>Request protected manufacturer MAP files</span></a>
-            <a href="/dealer-support/?request=Pricing%20Access&amp;topic=MSRP%20Price%20Sheets"><b>MSRP Price Sheets</b><span>Request current MSRP resources</span></a>
-            <a href="/dealer-support/?request=Pricing%20Access&amp;topic=Dealer%20Price%20Sheets"><b>Dealer Price Sheets</b><span>Get dealer pricing set up for your account</span></a>
-            <a href="/dealer-support/?request=Pricing%20Access&amp;topic=Promotions"><b>Promotions</b><span>Current and future manufacturer offers</span></a>
-          </div>
-        </div>
+  .dh-band{background:linear-gradient(150deg,#12181d,#243746);color:#fff;border-radius:20px;padding:34px 38px;display:flex;align-items:center;justify-content:space-between;gap:22px;flex-wrap:wrap;box-shadow:0 20px 50px rgba(12,39,64,.14);}
+  .dh-band h3{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:clamp(19px,2.3vw,26px);margin:0 0 6px;color:#fff;}
+  .dh-band p{margin:0;color:rgba(255,255,255,.85);font-size:14.5px;max-width:58ch;}
+  .dh-band-cta{display:flex;gap:10px;flex-wrap:wrap;}
+</style>
 
-        <div class="dash-v3-panel" id="dash-training">
-          <div class="dash-v3-panel-head">
-            <div>
-              <p class="eyebrow">Training</p>
-              <h3>Education and in-service support</h3>
-            </div>
-            <span class="dash-v3-badge active">Active</span>
-          </div>
-          <div class="dash-v3-training-card">
-            <strong>Request product education</strong>
-            <p>Schedule dealer training, sales team product education, clinical support, or a manufacturer in-service.</p>
-            <a href="/dealer-support/?request=Request%20an%20In-Service">Request Training &rarr;</a>
-          </div>
-          <div class="dash-v3-mini-calendar">
-            <span>Coming Soon</span>
-            <p>Upcoming trainings, webinars, and manufacturer education events.</p>
-          </div>
-        </div>
-      </section>
+{% set services = [
+  {key:"remote-product-training", name:"Remote Product Training", mode:"remote", o:false, blurb:"Live online product walkthroughs for your sales and clinical team."},
+  {key:"inperson-product-training", name:"In-Person Product Training", mode:"in_person", o:false, blurb:"A HCPS rep visits your location for hands-on product training."},
+  {key:"staff-in-service", name:"Staff In-Service Training", mode:"in_person", o:true, blurb:"Structured in-service education so your whole team can sell and support the line."},
+  {key:"portal-training", name:"Online Ordering Portal Training", mode:"remote", o:false, blurb:"Learn to order, reorder, and track everything in the HCPS ordering platform."},
+  {key:"product-education", name:"Manufacturer Product Education", mode:"", o:false, blurb:"Deep-dive education on a specific manufacturer line, remote or in person."},
+  {key:"technical-support", name:"Technical Support Appointment", mode:"remote", o:true, blurb:"Book a working session for setup, troubleshooting, or a technical question."},
+  {key:"account-pricing", name:"Dealer Account & Pricing Assistance", mode:"remote", o:false, blurb:"Get help with account setup, dealer pricing, credit apps, and access."},
+  {key:"showroom-consult", name:"Showroom Consultation", mode:"in_person", o:true, blurb:"Evaluate your product mix, layout, merchandising, and profitability."},
+  {key:"business-dev", name:"Business Development Consultation", mode:"", o:false, blurb:"Growth strategy, category expansion, and a plan to grow revenue."},
+  {key:"showroom-layout", name:"Showroom Layout Review (Showroom Designer)", mode:"", o:true, blurb:"Plan product placement and optimize your floor with our Showroom Designer tools."}
+] %}
 
-      <section class="dash-v3-panel" id="dash-manufacturers">
-        <div class="dash-v3-panel-head">
-          <div>
-            <p class="eyebrow">{{ pg.manufacturers_heading.eyebrow }}</p>
-            <h3>{{ pg.manufacturers_heading.title }}</h3>
-          </div>
-          <a class="dash-v3-view-all" href="/manufacturers/">View Directory &rarr;</a>
-        </div>
-
-        <div class="dash-v3-mfg-grid">
-          {% for m in activeManufacturers %}
-          <article>
-            <a class="dash-v3-mfg-logo" href="/manufacturers/{{ m.id }}/">
-              <img src="{{ m.logo }}" alt="{{ m.name }} logo" loading="lazy">
-            </a>
-            <div class="dash-v3-mfg-body">
-              <h4>{{ m.name }}</h4>
-              <p>{{ m.category }}</p>
-              <span>Pricing, literature, tech service, training</span>
-            </div>
-            <div class="dash-v3-mfg-buttons">
-              <a href="/manufacturers/{{ m.id }}/">Open</a>
-              <a href="/dealer-support/?request=General%20Dealer%20Question&amp;manufacturer={{ m.name | urlencode }}">Support</a>
-            </div>
-          </article>
-          {% endfor %}
-        </div>
-      </section>
-
-      <section class="dash-v3-panel" id="dash-dealer-services">
-        <div class="dash-v3-panel-head">
-          <div>
-            <p class="eyebrow">HCPS Business Services</p>
-            <h3>Dealer Services</h3>
-          </div>
-          <a class="dash-v3-view-all" href="/dealer-services/">View All Services &rarr;</a>
-        </div>
-        <div class="dash-v3-training-card" style="border-left:4px solid #EE5A5A;">
-          <strong style="color:#1E2A55;">&#128179; CardChamp &mdash; Turn Credit Card Fees into Cash Flow</strong>
-          <p>Offset credit card processing costs with fully compliant surcharging. Most HCPS dealers are overpaying on processing &mdash; see how much you can keep. A vetted HCPS service partner, separate from your manufacturer lines.</p>
-          <a href="/dealer-services/" style="color:#EE5A5A;font-weight:800;">Explore CardChamp &rarr;</a>
-        </div>
-      </section>
-
-      <section class="dash-v3-three-col" id="dash-resources">
-        <article>
-          <span>&#128196;</span><h3>Downloads</h3><p>Brochures, catalogs, forms, flyers, sell sheets, and product spec documents.</p><a href="/resources/">Open Resources &rarr;</a>
-        </article>
-        <article id="dash-service">
-          <span>&#128295;</span><h3>Service</h3><p>Warranty forms, service documents, technical support routing, and parts request workflows.</p><a href="/dealer-support/?request=Technical%20Support">Request Service &rarr;</a>
-        </article>
-        <article>
-          <span>&#128226;</span><h3>Announcements</h3><p>Manufacturer promotions, product launches, training dates, and dealer updates.</p><a href="/dealer-support/?request=General%20Dealer%20Question&amp;topic=Updates">Request Updates &rarr;</a>
-        </article>
-      </section>
-
-      <section class="dash-v3-portal-preview" id="dash-future-login">
-        <div>
-          <p class="eyebrow" style="color:var(--hcps-gold);">{{ pg.future_login.eyebrow }}</p>
-          <h2>{{ pg.future_login.title }}</h2>
-          <p>{{ pg.future_login.copy }}</p>
-          <a class="btn primary" href="/contact/?topic=Dealer">{{ pg.future_login.cta_label }}</a>
-        </div>
-        <div class="dash-v3-fake-app">
-          <div class="dash-v3-window-bar"><i></i><i></i><i></i></div>
-          <div class="dash-v3-app-inner">
-            <h3>Welcome, ABC Home Medical</h3>
-            <div class="dash-v3-app-row"><b>3</b><span>New pricing files</span></div>
-            <div class="dash-v3-app-row"><b>2</b><span>Open dealer requests</span></div>
-            <div class="dash-v3-app-row"><b>1</b><span>Scheduled training</span></div>
-            <div class="dash-v3-app-row"><b>{{ activeManufacturers.length }}</b><span>Approved manufacturer lines</span></div>
-          </div>
-        </div>
-      </section>
-
+<!-- HERO -->
+<section class="dh-hero">
+  <div class="container">
+    <span class="dh-eyebrow">HCPS Dealer Hub</span>
+    <h1>Your dealer service &amp; scheduling center</h1>
+    <p class="dh-lead">Your central destination for manufacturer resources, order requests, product literature, dealer pricing, in-service scheduling, technical support, and dealer login tools — plus the ability to request and schedule training, consultations, and support directly from this page. One place to manage every HCPS manufacturer relationship faster and easier.</p>
+    <div class="dh-cta-row">
+      <a class="dh-btn primary" href="#schedule">Schedule Product Training &rarr;</a>
+      <a class="dh-btn ghost" href="#schedule" data-preset="showroom-consult">Request a Showroom Consultation</a>
+      <a class="dh-btn ghost" href="/dealer-support/?request=Place%20or%20Request%20an%20Order#request">Start an Order</a>
     </div>
   </div>
 </section>
+
+<!-- SCHEDULE A SERVICE -->
+<section class="dh-sec">
+  <div class="container">
+    <div class="dh-head">
+      <p class="dh-kicker">Request &amp; schedule</p>
+      <h2 class="dh-h2">Schedule a service</h2>
+      <p class="dh-sub">Pick a service and we'll take it from there — choose remote or in-person, tell us your preferred time, and a HCPS representative will confirm the appointment and send a calendar invite. Every request becomes a tracked Dealer 360 touch point.</p>
+    </div>
+    <div class="dh-svc-grid">
+      {% for s in services %}
+      <article class="dh-svc{% if s.o %} o{% endif %}">
+        <div class="dh-ico{% if s.o %} orange{% endif %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg></div>
+        <h3>{{ s.name }}</h3>
+        <div class="mode">{% if s.mode == "remote" %}Remote{% elif s.mode == "in_person" %}In-person{% else %}Remote or in-person{% endif %}</div>
+        <p>{{ s.blurb }}</p>
+        <button type="button" class="go dh-pick" data-key="{{ s.key }}" data-name="{{ s.name }}" data-mode="{{ s.mode }}">Schedule &rarr;</button>
+      </article>
+      {% endfor %}
+    </div>
+
+    <!-- Showroom consultation highlight -->
+    <div class="dh-spot" id="showroom">
+      <div class="dh-spot-main">
+        <p class="dh-kicker">Showroom Designer</p>
+        <h3>Showroom consultation &amp; layout review</h3>
+        <p>Have a HCPS consultant evaluate your current product mix, showroom layout, and merchandising — and use our new Showroom Designer tools to plan a more profitable floor. In person or remote.</p>
+        <ul class="dh-spot-list">
+          <li>Product-mix evaluation and category gaps</li>
+          <li>Showroom layout &amp; traffic-flow review</li>
+          <li>Merchandising strategy that converts</li>
+          <li>Profitability opportunities per square foot</li>
+        </ul>
+        <button type="button" class="dh-btn primary dh-pick" data-key="showroom-consult" data-name="Showroom Consultation" data-mode="in_person">Request a Showroom Consultation &rarr;</button>
+      </div>
+      <div class="dh-spot-side">
+        <div class="dh-mini"><b>Product mix</b><span>the right lines for your market</span></div>
+        <div class="dh-mini"><b>Layout</b><span>plan placement with Showroom Designer</span></div>
+        <div class="dh-mini"><b>Profitability</b><span>more revenue per square foot</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SCHEDULING FORM -->
+<section class="dh-sec alt" id="schedule">
+  <div class="container">
+    <div class="dh-head">
+      <p class="dh-kicker">Book it</p>
+      <h2 class="dh-h2">Request an appointment</h2>
+      <p class="dh-sub">Tell us what you need and when works best. We'll assign the right HCPS representative and confirm your time.</p>
+    </div>
+
+    <div class="dh-form-wrap">
+      <form id="dh-sched" class="dh-form" novalidate>
+        <input type="text" name="company_website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;" aria-hidden="true">
+        <input type="hidden" name="service_key" id="dh-key" value="">
+        <div>
+          <label for="dh-service">Service *</label>
+          <select id="dh-service" name="service">
+            <option value="">Select a service…</option>
+            {% for s in services %}<option value="{{ s.name }}" data-key="{{ s.key }}" data-mode="{{ s.mode }}">{{ s.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Format</label>
+          <div class="dh-modes">
+            <label><input type="radio" name="mode" value="remote"> Remote</label>
+            <label><input type="radio" name="mode" value="in_person"> In-person</label>
+            <label><input type="radio" name="mode" value="" checked> No preference</label>
+          </div>
+        </div>
+        <div class="row">
+          <div><label for="dh-date">Preferred date</label><input id="dh-date" name="preferred_date" type="date"></div>
+          <div><label for="dh-time">Preferred time</label>
+            <select id="dh-time" name="preferred_time">
+              <option value="">Flexible</option>
+              <option value="Morning">Morning</option>
+              <option value="Midday">Midday</option>
+              <option value="Afternoon">Afternoon</option>
+              <option value="Late afternoon">Late afternoon</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div><label for="dh-alt">Alternate date</label><input id="dh-alt" name="alt_date" type="date"></div>
+          <div><label for="dh-state">State</label><input id="dh-state" name="state" type="text" maxlength="24" placeholder="e.g. OH"></div>
+        </div>
+        <div class="row">
+          <div><label for="dh-company">Dealer / Company *</label><input id="dh-company" name="company" type="text" required></div>
+          <div><label for="dh-name">Contact name *</label><input id="dh-name" name="name" type="text" required></div>
+        </div>
+        <div class="row">
+          <div><label for="dh-email">Email *</label><input id="dh-email" name="email" type="email" required></div>
+          <div><label for="dh-phone">Phone</label><input id="dh-phone" name="phone" type="tel"></div>
+        </div>
+        <div>
+          <label for="dh-manu">Manufacturer (if applicable)</label>
+          <select id="dh-manu" name="manufacturer">
+            <option value="">All / not sure</option>
+            {% for m in activeManufacturers %}<option value="{{ m.name }}">{{ m.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="dh-notes">Notes</label>
+          <textarea id="dh-notes" name="notes" placeholder="Anything that helps us prepare — team size, products, goals, or specific questions."></textarea>
+        </div>
+        <div>
+          <button type="submit" class="btn-primary" id="dh-submit">Request Appointment</button>
+          <p class="form-status" id="dh-status" role="status" aria-live="polite"></p>
+        </div>
+      </form>
+
+      <aside class="dh-flow">
+        <h3>What happens next</h3>
+        <ol>
+          <li>Your request enters the HCPS scheduling system</li>
+          <li>The right HCPS representative is assigned</li>
+          <li>We confirm the time and send an Outlook calendar invite</li>
+          <li>The appointment appears in Dealer 360 with reminders</li>
+          <li>After the meeting, notes and follow-up are saved to your CRM history</li>
+        </ol>
+        <p style="color:rgba(255,255,255,.8);font-size:12.5px;margin:16px 0 0;">Prefer to talk now? Call <a href="tel:{{ site.contact.phone_href }}" style="color:#fcb21e;font-weight:800;">{{ site.contact.phone_display }}</a>.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- QUICK ACCESS -->
+<section class="dh-sec">
+  <div class="container">
+    <div class="dh-head">
+      <p class="dh-kicker">Quick access</p>
+      <h2 class="dh-h2">Everyday dealer tools &amp; resources</h2>
+      <p class="dh-sub">The links dealers reach for most — ordering, resources, pricing, applications, and support.</p>
+    </div>
+    <div class="dh-quick">
+      <a class="dh-q" href="{{ site.links.online_ordering }}" target="_blank" rel="noopener"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg></span><b>Online Ordering</b><span>Order 24/7</span></a>
+      <a class="dh-q" href="/resources/"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2.5z"/><path d="M8 7h8M8 11h8"/></svg></span><b>Catalogs &amp; Literature</b><span>Resource library</span></a>
+      <a class="dh-q" href="/dealer-support/?request=Pricing%20Access#request"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span><b>Dealer Pricing</b><span>Request access</span></a>
+      <a class="dh-q" href="/dealer-support/?request=Pricing%20Access#request"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 15l2 2 4-4"/></svg></span><b>Credit Applications</b><span>Dealer forms</span></a>
+      <a class="dh-q" href="/dealer-support/?request=Place%20or%20Request%20an%20Order#request"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span><b>Order Requests</b><span>Place / request</span></a>
+      <a class="dh-q" href="/dealer-support/?request=Technical%20Support#request"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2 2.3-2.3z"/></svg></span><b>Technical Support</b><span>Get help</span></a>
+      <a class="dh-q" href="/manufacturers/"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg></span><b>Manufacturer Resources</b><span>All partners</span></a>
+      <a class="dh-q" href="/admin/rep-login.html" rel="nofollow"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><b>Dealer Login Tools</b><span>Portal access</span></a>
+      <a class="dh-q" href="/dealer-support/"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span><b>Dealer Support</b><span>Every request</span></a>
+      <a class="dh-q" href="#schedule" data-preset="remote-product-training"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 2 9 2 12 0v-5"/></svg></span><b>Training Resources</b><span>Schedule training</span></a>
+    </div>
+  </div>
+</section>
+
+<!-- MANUFACTURER CENTERS -->
+<section class="dh-sec alt">
+  <div class="container">
+    <div class="dh-head">
+      <p class="dh-kicker">Manufacturer centers</p>
+      <h2 class="dh-h2">Resources by manufacturer partner</h2>
+      <p class="dh-sub">Pricing, literature, technical service, and training for each of our {{ activeManufacturers.length }} manufacturer partners.</p>
+    </div>
+    <div class="dh-mfg">
+      {% for m in activeManufacturers %}
+      <article class="dh-m">
+        {% if m.logo %}<img src="{{ m.logo }}" alt="{{ m.name }}" loading="lazy">{% endif %}
+        <b>{{ m.name }}</b>
+        <span>{{ m.category }}</span>
+        <div class="mrow">
+          <a class="open" href="/manufacturers/{{ m.id }}/">Open</a>
+          <a class="sup" href="/resources/?manufacturer={{ m.id }}">Resources</a>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- FINAL BAND -->
+<section class="dh-sec">
+  <div class="container">
+    <div class="dh-band">
+      <div>
+        <h3>One place for resources, ordering, and scheduling.</h3>
+        <p>Request training, book a showroom consultation, get technical support, or start an order — and every request becomes a tracked touch point in your Dealer 360 history.</p>
+      </div>
+      <div class="dh-band-cta">
+        <a class="dh-btn primary" href="#schedule">Schedule a Service &rarr;</a>
+        <a class="dh-btn ghost" style="border-color:rgba(255,255,255,.3);color:#fff;" href="/dealer-support/">Contact Dealer Support</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+(function () {
+  var svc = document.getElementById("dh-service");
+  var keyField = document.getElementById("dh-key");
+  var form = document.getElementById("dh-sched");
+  var status = document.getElementById("dh-status");
+  var submit = document.getElementById("dh-submit");
+
+  function setMode(mode) {
+    var radios = form.querySelectorAll('input[name="mode"]');
+    var target = mode || "";
+    radios.forEach(function (r) { r.checked = (r.value === target); });
+    if (!mode) { var none = form.querySelector('input[name="mode"][value=""]'); if (none) none.checked = true; }
+  }
+  function syncKey() {
+    var opt = svc.options[svc.selectedIndex];
+    keyField.value = opt ? (opt.getAttribute("data-key") || "") : "";
+  }
+  function pick(key, name, mode, scroll) {
+    for (var i = 0; i < svc.options.length; i++) {
+      if (svc.options[i].value === name || svc.options[i].getAttribute("data-key") === key) { svc.selectedIndex = i; break; }
+    }
+    syncKey(); setMode(mode);
+    if (scroll !== false) {
+      document.getElementById("schedule").scrollIntoView({ behavior: "smooth", block: "start" });
+      setTimeout(function () { var f = document.getElementById("dh-company"); if (f) f.focus(); }, 420);
+    }
+  }
+  svc.addEventListener("change", function () {
+    syncKey();
+    var opt = svc.options[svc.selectedIndex];
+    if (opt) setMode(opt.getAttribute("data-mode") || "");
+  });
+  // Service cards + spotlight buttons
+  document.querySelectorAll(".dh-pick").forEach(function (btn) {
+    btn.addEventListener("click", function () { pick(btn.getAttribute("data-key"), btn.getAttribute("data-name"), btn.getAttribute("data-mode")); });
+  });
+  // Hero / quick-access presets (href="#schedule" data-preset=key)
+  document.querySelectorAll('[data-preset]').forEach(function (a) {
+    a.addEventListener("click", function () {
+      var key = a.getAttribute("data-preset");
+      for (var i = 0; i < svc.options.length; i++) { if (svc.options[i].getAttribute("data-key") === key) { pick(key, svc.options[i].value, svc.options[i].getAttribute("data-mode"), false); break; } }
+    });
+  });
+  // Deep-link ?service=<key>
+  var qp = new URLSearchParams(location.search);
+  var sk = qp.get("service");
+  if (sk) { for (var i = 0; i < svc.options.length; i++) { if (svc.options[i].getAttribute("data-key") === sk) { pick(sk, svc.options[i].value, svc.options[i].getAttribute("data-mode"), false); break; } } }
+
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    status.textContent = "";
+    var data = Object.fromEntries(new FormData(form).entries());
+    if (!data.service) { status.className = "form-status error"; status.textContent = "Please choose a service."; return; }
+    if (!data.company || !data.name || !data.email) { status.className = "form-status error"; status.textContent = "Please fill in company, contact name, and email."; return; }
+    submit.disabled = true; var original = submit.textContent; submit.textContent = "Sending…";
+    try {
+      var res = await fetch("/.netlify/functions/schedule-api", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.assign({ action: "request" }, data)) });
+      var out = await res.json();
+      if (res.ok && out.ok) {
+        form.reset(); syncKey(); setMode("");
+        status.className = "form-status ok";
+        status.textContent = out.message || "Request received — a HCPS representative will confirm your appointment shortly.";
+      } else {
+        status.className = "form-status error";
+        status.textContent = out.message || out.error || "Something went wrong. Please email info@homecareproviderservices.us.";
+      }
+    } catch (err) {
+      status.className = "form-status error";
+      status.textContent = "Network error. Please email info@homecareproviderservices.us.";
+    } finally { submit.disabled = false; submit.textContent = original; }
+  });
+})();
+</script>
