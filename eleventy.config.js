@@ -42,6 +42,47 @@ module.exports = function (eleventyConfig) {
     (docs || []).filter((d) => d.manufacturer === manuId).length
   );
 
+  // --- Centralized manufacturer <-> resource mapping helpers -------------------
+  // Resolve a manufacturer record by its id from a list (e.g. activeManufacturers).
+  // NOTE: Nunjucks has no `equalto` test, so `selectattr("id","equalto",id) | first`
+  // silently returned the FIRST manufacturer (Golden) for every item — this replaces it.
+  eleventyConfig.addFilter("manuById", (list, id) =>
+    (list || []).find((m) => m && m.id === id) || null
+  );
+
+  // Map a manufacturer's free-text category to a Resources product-category id, so a
+  // resource inherits its category from the ONE manufacturer record (keyword, first hit).
+  eleventyConfig.addFilter("resourceCat", (categoryString) => {
+    const s = String(categoryString || "").toLowerCase();
+    if (/ramp/.test(s)) return "ramps";
+    if (/oxygen/.test(s)) return "oxygen";
+    if (/respirat|airway|cough/.test(s)) return "respiratory";
+    if (/apnea|epap|cpap/.test(s)) return "sleep";
+    if (/bed|mattress|surface|healthcare sleep/.test(s)) return "sleep-surfaces";
+    if (/brac|ortho/.test(s)) return "bracing";
+    if (/bath/.test(s)) return "bath-safety";
+    if (/foot/.test(s)) return "footcare";
+    if (/stair|patient lift|hand truck/.test(s)) return "lifts";
+    if (/recliner|lift chair|seating/.test(s)) return "lift-chairs";
+    if (/wheelchair|mobility|scooter|transport|rollator/.test(s)) return "mobility";
+    return "";
+  });
+
+  // Resources product-category taxonomy (the filter dropdown). Central + reusable.
+  eleventyConfig.addGlobalData("resourceCategories", [
+    { id: "lift-chairs",    label: "Lift Chairs & Seating" },
+    { id: "mobility",       label: "Mobility & Wheelchairs" },
+    { id: "respiratory",    label: "Respiratory & Airway" },
+    { id: "oxygen",         label: "Oxygen Therapy" },
+    { id: "sleep",          label: "Sleep Apnea (CPAP/EPAP)" },
+    { id: "sleep-surfaces", label: "Sleep Surfaces & Beds" },
+    { id: "bracing",        label: "Bracing & Orthopedic" },
+    { id: "bath-safety",    label: "Bath Safety" },
+    { id: "ramps",          label: "Ramps & Access" },
+    { id: "lifts",          label: "Patient & Stair Lifts" },
+    { id: "footcare",       label: "Footcare" },
+  ]);
+
   return {
     dir: { input: "src", output: "_site", includes: "_includes", data: "_data" },
     markdownTemplateEngine: "njk",

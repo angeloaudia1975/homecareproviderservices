@@ -48,9 +48,19 @@ description: "Explore catalogs, product guides, clinical publications, credit ap
   .rl-logo-txt{font-family:'Archivo',sans-serif;font-weight:800;font-size:12px;color:#6b7580;}
   .rl-badge{font-family:'Archivo',sans-serif;font-weight:800;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;padding:5px 10px;border-radius:999px;white-space:nowrap;}
   .rl-t-catalog{background:#e7f1fb;color:#0f5c8f;}
+  .rl-t-brochure{background:#e7f1fb;color:#0f5c8f;}
+  .rl-t-service-guide{background:#e5f5f1;color:#0b6a55;}
+  .rl-t-spec-sheet{background:#e5f5f1;color:#0b6a55;}
+  .rl-t-credit-application{background:#efeafb;color:#5a3fb0;}
+  .rl-t-form{background:#fdeadd;color:#c14a10;}
+  .rl-t-price-list{background:#fdf3d6;color:#8a6400;}
+  .rl-t-custom-price-list{background:#fdf3d6;color:#8a6400;}
+  .rl-t-calculator{background:#e8f4f6;color:#0b6478;}
+  .rl-t-training-video{background:#e9f6e5;color:#3a7d1f;}
+  .rl-t-signage{background:#eef2f6;color:#334656;}
+  /* legacy aliases (kept so any older type ids still render a chip) */
   .rl-t-guide{background:#e5f5f1;color:#0b6a55;}
   .rl-t-clinical{background:#efeafb;color:#5a3fb0;}
-  .rl-t-form{background:#fdeadd;color:#c14a10;}
   .rl-t-marketing{background:#fdf3d6;color:#8a6400;}
   .rl-t-training{background:#e9f6e5;color:#3a7d1f;}
   .rl-t-resource{background:#eef2f6;color:#334656;}
@@ -94,20 +104,21 @@ description: "Explore catalogs, product guides, clinical publications, credit ap
     <h2 class="rl-h2">Start here</h2>
     <div class="rl-grid">
       {% for doc in docs.items %}{% if doc.featured %}
-      {% set owner = activeManufacturers | selectattr("id","equalto",doc.manufacturer) | first %}
-      {% set ext = doc.file | string %}{% set isExt = "http" in ext %}
+      {% set owner = activeManufacturers | manuById(doc.manufacturer) %}
+      {% set ownerName = owner.name if owner else (doc.manufacturer | replace("-"," ") | title) %}
+      {% set ext = (doc.file if doc.file else doc.url) | string %}{% set isExt = "http" in ext %}
       <article class="rl-card">
         <div class="rl-card-head">
-          {% if owner and owner.logo %}<img class="rl-logo" src="{{ owner.logo }}" alt="{{ owner.name }}" loading="lazy">{% else %}<span class="rl-logo-txt">HomeCare Provider Services</span>{% endif %}
+          {% if owner and owner.logo %}<img class="rl-logo" src="{{ owner.logo }}" alt="{{ ownerName }}" loading="lazy">{% else %}<span class="rl-logo-txt">{{ ownerName }}</span>{% endif %}
           <span class="rl-badge rl-t-{{ doc.type }}">{{ doc.type | typeLabel(docs.types) }}</span>
         </div>
         <h3>{{ doc.title }}</h3>
         <p>{{ doc.description }}</p>
         <div class="rl-card-foot">
-          <span class="rl-owner">{% if owner %}{{ owner.name }}{% else %}HCPS{% endif %}</span>
-          {% if doc.access == "request" %}<a class="rl-act req" href="{{ doc.file }}">Request &rarr;</a>
-          {% elif doc.access == "dealer" %}<a class="rl-act order" href="{{ doc.file }}"{% if isExt %} target="_blank" rel="noopener"{% endif %}>Order Online &rarr;</a>
-          {% else %}<a class="rl-act dl" href="{{ doc.file }}"{% if isExt %} target="_blank" rel="noopener"{% endif %}>{% if ".pdf" in ext %}Download &rarr;{% else %}View &rarr;{% endif %}</a>{% endif %}
+          <span class="rl-owner">{{ ownerName }}</span>
+          {% if doc.access == "request" %}<a class="rl-act req" href="{{ ext }}">Request &rarr;</a>
+          {% elif doc.access == "dealer" %}<a class="rl-act order" href="{{ ext }}"{% if isExt %} target="_blank" rel="noopener"{% endif %}>Order Online &rarr;</a>
+          {% else %}<a class="rl-act dl" href="{{ ext }}"{% if isExt %} target="_blank" rel="noopener"{% endif %}>{% if ".pdf" in ext %}Download &rarr;{% else %}View &rarr;{% endif %}</a>{% endif %}
         </div>
       </article>
       {% endif %}{% endfor %}
@@ -135,7 +146,7 @@ description: "Explore catalogs, product guides, clinical publications, credit ap
       </select>
       <select id="rl-cat" aria-label="Filter by product category">
         <option value="">All categories</option>
-        {% for c in docs.categories %}<option value="{{ c.id }}">{{ c.label }}</option>{% endfor %}
+        {% for c in resourceCategories %}<option value="{{ c.id }}">{{ c.label }}</option>{% endfor %}
       </select>
       <select id="rl-type" aria-label="Filter by resource type">
         <option value="">All resource types</option>
@@ -146,21 +157,23 @@ description: "Explore catalogs, product guides, clinical publications, credit ap
 
     <div class="rl-grid" id="rl-list">
       {% for doc in docs.items %}
-      {% set owner = activeManufacturers | selectattr("id","equalto",doc.manufacturer) | first %}
-      {% set ext = doc.file | string %}{% set isExt = "http" in ext %}
-      <article class="rl-card" data-manu="{{ doc.manufacturer }}" data-cat="{{ doc.category }}" data-type="{{ doc.type }}"
-               data-search="{{ doc.title | lower }} {{ doc.description | lower }} {% if owner %}{{ owner.name | lower }}{% endif %}">
+      {% set owner = activeManufacturers | manuById(doc.manufacturer) %}
+      {% set ownerName = owner.name if owner else (doc.manufacturer | replace("-"," ") | title) %}
+      {% set catId = (owner.category | resourceCat) if owner else "" %}
+      {% set ext = (doc.file if doc.file else doc.url) | string %}{% set isExt = "http" in ext %}
+      <article class="rl-card" data-manu="{{ doc.manufacturer }}" data-cat="{{ catId }}" data-type="{{ doc.type }}"
+               data-search="{{ doc.title | lower }} {{ doc.description | lower }} {{ ownerName | lower }}">
         <div class="rl-card-head">
-          {% if owner and owner.logo %}<img class="rl-logo" src="{{ owner.logo }}" alt="{{ owner.name }}" loading="lazy">{% else %}<span class="rl-logo-txt">HomeCare Provider Services</span>{% endif %}
+          {% if owner and owner.logo %}<img class="rl-logo" src="{{ owner.logo }}" alt="{{ ownerName }}" loading="lazy">{% else %}<span class="rl-logo-txt">{{ ownerName }}</span>{% endif %}
           <span class="rl-badge rl-t-{{ doc.type }}">{{ doc.type | typeLabel(docs.types) }}</span>
         </div>
         <h3>{{ doc.title }}</h3>
         <p>{{ doc.description }}</p>
         <div class="rl-card-foot">
-          <span class="rl-owner">{% if owner %}{{ owner.name }}{% else %}HCPS{% endif %}</span>
-          {% if doc.access == "request" %}<a class="rl-act req" href="{{ doc.file }}">Request &rarr;</a>
-          {% elif doc.access == "dealer" %}<a class="rl-act order" href="{{ doc.file }}"{% if isExt %} target="_blank" rel="noopener"{% endif %}>Order Online &rarr;</a>
-          {% else %}<a class="rl-act dl" href="{{ doc.file }}"{% if isExt %} target="_blank" rel="noopener"{% endif %}>{% if ".pdf" in ext %}Download &rarr;{% else %}View &rarr;{% endif %}</a>{% endif %}
+          <span class="rl-owner">{{ ownerName }}</span>
+          {% if doc.access == "request" %}<a class="rl-act req" href="{{ ext }}">Request &rarr;</a>
+          {% elif doc.access == "dealer" %}<a class="rl-act order" href="{{ ext }}"{% if isExt %} target="_blank" rel="noopener"{% endif %}>Order Online &rarr;</a>
+          {% else %}<a class="rl-act dl" href="{{ ext }}"{% if isExt %} target="_blank" rel="noopener"{% endif %}>{% if ".pdf" in ext %}Download &rarr;{% else %}View &rarr;{% endif %}</a>{% endif %}
         </div>
       </article>
       {% endfor %}
