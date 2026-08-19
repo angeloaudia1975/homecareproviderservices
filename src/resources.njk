@@ -103,9 +103,10 @@ description: "Explore catalogs, product guides, clinical publications, credit ap
     <p class="rl-kicker">Featured &amp; most-used</p>
     <h2 class="rl-h2">Start here</h2>
     <div class="rl-grid">
-      {% for doc in docs.items %}{% if doc.featured %}
+      {% for doc in docs.items %}
       {% set owner = activeManufacturers | manuById(doc.manufacturer) %}
-      {% set ownerName = owner.name if owner else (doc.manufacturer | replace("-"," ") | title) %}
+      {% if doc.featured and owner %}
+      {% set ownerName = owner.name %}
       {% set ext = (doc.file if doc.file else doc.url) | string %}{% set isExt = "http" in ext %}
       <article class="rl-card">
         <div class="rl-card-head">
@@ -158,8 +159,9 @@ description: "Explore catalogs, product guides, clinical publications, credit ap
     <div class="rl-grid" id="rl-list">
       {% for doc in docs.items %}
       {% set owner = activeManufacturers | manuById(doc.manufacturer) %}
-      {% set ownerName = owner.name if owner else (doc.manufacturer | replace("-"," ") | title) %}
-      {% set catId = (owner.category | resourceCat) if owner else "" %}
+      {% if owner %}
+      {% set ownerName = owner.name %}
+      {% set catId = owner.category | resourceCat %}
       {% set ext = (doc.file if doc.file else doc.url) | string %}{% set isExt = "http" in ext %}
       <article class="rl-card" data-manu="{{ doc.manufacturer }}" data-cat="{{ catId }}" data-type="{{ doc.type }}"
                data-search="{{ doc.title | lower }} {{ doc.description | lower }} {{ ownerName | lower }}">
@@ -176,7 +178,7 @@ description: "Explore catalogs, product guides, clinical publications, credit ap
           {% else %}<a class="rl-act dl" href="{{ ext }}"{% if isExt %} target="_blank" rel="noopener"{% endif %}>{% if ".pdf" in ext %}Download &rarr;{% else %}View &rarr;{% endif %}</a>{% endif %}
         </div>
       </article>
-      {% endfor %}
+      {% endif %}{% endfor %}
     </div>
     <p class="rl-empty" id="rl-none" hidden>No resources match those filters. Try clearing a filter, or <a href="/dealer-support/?request=General%20Dealer%20Question" style="color:var(--hcps-orange);font-weight:800;">ask Dealer Support</a>.</p>
   </div>
