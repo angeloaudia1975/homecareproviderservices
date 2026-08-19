@@ -5,9 +5,17 @@ permalink: /dealer-hub/
 description: "The Dealer Hub is your central destination for manufacturer resources, order requests, product literature, dealer pricing, in-service scheduling, technical support, and dealer login tools—all designed to make managing your HCPS manufacturer relationships faster and easier."
 ---
 <style>
-  .dh-hero{position:relative;overflow:hidden;background:linear-gradient(150deg,#0c2740 0%,#0f5c8f 62%,#1681c2 100%);color:#fff;padding:60px 0 52px;}
+  .dh-hero{position:relative;overflow:hidden;background:linear-gradient(150deg,#0c2740 0%,#0f5c8f 62%,#1681c2 100%);color:#fff;padding:54px 0 52px;perspective:1500px;}
   .dh-hero::after{content:"";position:absolute;right:-120px;top:-120px;width:440px;height:440px;border-radius:50%;background:radial-gradient(circle,rgba(252,178,30,.26),transparent 62%);pointer-events:none;}
   .dh-hero .container{position:relative;z-index:1;}
+  /* Depth hero: banner (interactive 3D tilt) -> headline -> buttons */
+  .dh-hero-img{position:relative;max-width:980px;margin:0 auto;border-radius:18px;overflow:hidden;aspect-ratio:1731/909;background:url("/assets/dealer-hub/hero-banner.jpg") center/cover;box-shadow:0 45px 85px -22px rgba(0,0,0,.6);transform-style:preserve-3d;transition:transform .18s ease-out;will-change:transform;}
+  .dh-hero-glare{position:absolute;inset:0;pointer-events:none;background:radial-gradient(300px 300px at var(--mx,50%) var(--my,30%),rgba(255,255,255,.28),transparent 60%);mix-blend-mode:screen;opacity:0;transition:opacity .2s;}
+  .dh-hero-copy{max-width:800px;margin:30px auto 0;text-align:center;}
+  .dh-hero-copy h1{margin:0 0 12px;max-width:none;}
+  .dh-hero-copy .dh-lead{margin:0 auto 20px;max-width:640px;}
+  .dh-hero .dh-cta-row{justify-content:center;}
+  @media(prefers-reduced-motion:reduce){.dh-hero-img{transition:none;}}
   .dh-eyebrow{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:999px;padding:7px 15px;font-family:'Archivo',sans-serif;font-weight:800;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 15px;}
   .dh-hero h1{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:clamp(28px,4.4vw,48px);line-height:1.05;margin:0 0 14px;max-width:18ch;}
   .dh-hero .dh-lead{font-size:clamp(15.5px,1.4vw,18px);line-height:1.55;color:rgba(255,255,255,.9);max-width:74ch;margin:0 0 24px;}
@@ -147,16 +155,38 @@ description: "The Dealer Hub is your central destination for manufacturer resour
 <!-- HERO -->
 <section class="dh-hero">
   <div class="container">
-    <span class="dh-eyebrow">HCPS Dealer Hub</span>
-    <h1>Your dealer service &amp; scheduling center</h1>
-    <p class="dh-lead">Your central destination for manufacturer resources, order requests, product literature, dealer pricing, in-service scheduling, technical support, and dealer login tools — plus the ability to request and schedule training, consultations, and support directly from this page. One place to manage every HCPS manufacturer relationship faster and easier.</p>
-    <div class="dh-cta-row">
-      <a class="dh-btn primary" href="#schedule">Schedule Product Training &rarr;</a>
-      <a class="dh-btn ghost" href="#schedule" data-preset="showroom-consult">Request a Showroom Consultation</a>
-      <a class="dh-btn ghost" href="/dealer-support/?request=Place%20or%20Request%20an%20Order#request">Start an Order</a>
+    <div class="dh-hero-img" id="dh-heroimg" role="img" aria-label="HomeCare Provider Services Dealer Hub — your central starting point for manufacturer resources, order requests, literature, pricing access, in-service scheduling, technical support, and future dealer login tools."><span class="dh-hero-glare"></span></div>
+    <div class="dh-hero-copy">
+      <h1>Everything you need, all in one place.</h1>
+      <p class="dh-lead">Manufacturer resources, ordering, pricing, in-service scheduling, and technical support — request and book it all from one hub.</p>
+      <div class="dh-cta-row">
+        <a class="dh-btn primary" href="#schedule">Explore the Dealer Hub &rarr;</a>
+        <a class="dh-btn ghost" href="#schedule">Schedule a Service</a>
+      </div>
     </div>
   </div>
 </section>
+<script>
+(function () {
+  var img = document.getElementById("dh-heroimg"); if (!img) return;
+  var band = img.closest(".dh-hero") || img.parentElement;
+  var glare = img.querySelector(".dh-hero-glare");
+  var reduce = false; try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+  if (reduce) return;
+  band.addEventListener("mousemove", function (e) {
+    var r = img.getBoundingClientRect();
+    var px = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    var py = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+    var ry = (px - 0.5) * 14, rx = (0.5 - py) * 10;
+    img.style.transform = "perspective(1500px) rotateY(" + ry + "deg) rotateX(" + rx + "deg) translateZ(20px)";
+    if (glare) { glare.style.setProperty("--mx", (px * 100) + "%"); glare.style.setProperty("--my", (py * 100) + "%"); glare.style.opacity = "1"; }
+  });
+  band.addEventListener("mouseleave", function () {
+    img.style.transform = "perspective(1500px) rotateY(0) rotateX(0)";
+    if (glare) glare.style.opacity = "0";
+  });
+})();
+</script>
 
 <!-- SCHEDULE A SERVICE -->
 <section class="dh-sec">
