@@ -54,5 +54,12 @@
     "description": "Get in touch with HomeCare Provider Services for manufacturer-specific questions, dealer support, business development needs, or information about becoming a manufacturing partner. Whether you are part of our dealer network or a manufacturer looking to expand your reach, our team is here to help you grow, strengthen your business, and find the right solutions.",
     "image": "/assets/media/hcps-contact-us-mszddynm.png",
     "canonical": "https://www.homecareproviderservices.org/contact/"
+  },
+  {
+    "path": "/dealer-services/",
+    "title": "Dealer Services | HomeCare Provider Services",
+    "description": "Value-added business services for HomeCare Provider Services dealers—beyond our manufacturer product lines. Access vetted partners, tools, and solutions designed to strengthen your business, improve cash flow, streamline operations, and support long-term growth. These services are separate from our manufacturer portfolio and available exclusively to the HCPS dealer network.",
+    "image": "/assets/media/hcps-dealer-services-mszhijs1.png",
+    "canonical": "https://www.homecareproviderservices.org/dealer-services/"
   }
 ]
