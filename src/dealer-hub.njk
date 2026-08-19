@@ -32,9 +32,8 @@ description: "The Dealer Hub is your central destination for manufacturer resour
   @media(max-width:560px){.dh-svc-grid{grid-template-columns:1fr;}}
   .dh-svc{background:#fff;border:1px solid #e5e9ee;border-radius:16px;padding:22px 20px;box-shadow:0 8px 24px rgba(12,39,64,.05);display:flex;flex-direction:column;transition:transform .14s,box-shadow .14s,border-color .14s;}
   .dh-svc:hover{transform:translateY(-3px);box-shadow:0 16px 38px rgba(12,39,64,.1);border-color:#cfe0ef;}
-  .dh-ico{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;margin:0 0 13px;background:linear-gradient(135deg,#e9f3fb,#d5e8f6);color:var(--hcps-blue-dark,#0f5c8f);}
-  .dh-ico.orange{background:linear-gradient(135deg,#fde7d8,#fbd3b4);color:#c14a10;}
-  .dh-ico svg{width:23px;height:23px;}
+  .dh-ico{width:60px;height:60px;border-radius:14px;display:grid;place-items:center;margin:0 0 13px;overflow:hidden;background:#fff;}
+  .dh-ico img{width:100%;height:100%;object-fit:contain;display:block;}
   .dh-svc h3{font-family:'Archivo',sans-serif;font-weight:800;font-size:16px;color:var(--ink);margin:0 0 6px;line-height:1.2;}
   .dh-svc .mode{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#8a94a0;margin:0 0 8px;}
   .dh-svc p{font-size:13.5px;line-height:1.5;color:#55606a;margin:0 0 15px;}
@@ -170,7 +169,7 @@ description: "The Dealer Hub is your central destination for manufacturer resour
     <div class="dh-svc-grid">
       {% for s in services %}
       <article class="dh-svc{% if s.o %} o{% endif %}">
-        <div class="dh-ico{% if s.o %} orange{% endif %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg></div>
+        <div class="dh-ico"><img src="/assets/dealer-hub/{{ s.key }}.png" alt="{{ s.name }} icon" loading="lazy" width="120" height="120"></div>
         <h3>{{ s.name }}</h3>
         <div class="mode">{% if s.mode == "remote" %}Remote{% elif s.mode == "in_person" %}In-person{% else %}Remote or in-person{% endif %}</div>
         <p>{{ s.blurb }}</p>
