@@ -942,3 +942,54 @@
 
 /* Video embedded in a manufacturer hero card (replaces the hero image) */
 .m-card-video{border-radius:12px;margin-bottom:16px;box-shadow:0 10px 24px -16px rgba(11,13,15,.4);}
+
+/* ==========================================================================
+   HCPS shared FX layer — scroll-reveal entrance animations + card depth.
+   Paired with /assets/js/hcps-fx.js (loaded site-wide from base.njk).
+   Reveals hide only when JS is present (.has-js) and only when the visitor
+   has NOT requested reduced motion, so the page is always usable without JS.
+   ========================================================================== */
+@media (prefers-reduced-motion: no-preference){
+  .has-js [data-reveal],
+  .has-js .section-head,
+  .has-js .rep-copy,
+  .has-js .manu-grid .manu-card,
+  .has-js .team-grid .team-card,
+  .has-js .testimonial-grid .testimonial-card,
+  .has-js .why-grid article,
+  .has-js .mfp-pill{
+    opacity:0; transform:translateY(26px);
+    transition:opacity .85s ease-in-out, transform .85s ease-in-out;
+    transition-delay:var(--d,0ms); will-change:opacity,transform;
+  }
+  .has-js [data-reveal="down"]{transform:translateY(-26px);}
+  .has-js [data-reveal="fade"]{transform:none;transition-duration:1s;}
+  .has-js [data-reveal="left"]{transform:translateX(-46px);transition-duration:1.25s;}
+  .has-js [data-reveal="right"]{transform:translateX(46px);transition-duration:1.25s;}
+  .has-js .is-in{opacity:1 !important; transform:none !important;}
+  /* gentle stagger inside 3-up grids */
+  .has-js .manu-grid .manu-card:nth-child(3n+2),
+  .has-js .team-grid .team-card:nth-child(3n+2),
+  .has-js .testimonial-grid .testimonial-card:nth-child(3n+2),
+  .has-js .why-grid article:nth-child(2){transition-delay:.11s;}
+  .has-js .manu-grid .manu-card:nth-child(3n),
+  .has-js .team-grid .team-card:nth-child(3n),
+  .has-js .testimonial-grid .testimonial-card:nth-child(3n),
+  .has-js .why-grid article:nth-child(3){transition-delay:.22s;}
+}
+
+/* Card depth + hover — applies wherever these shared cards appear */
+.manu-grid .manu-card{background:linear-gradient(180deg,#ffffff,#f7fafd);border:1px solid #e6ebf1;border-radius:18px;box-shadow:0 10px 26px rgba(12,39,64,.07);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease;}
+.manu-grid .manu-card:hover{transform:translateY(-7px);box-shadow:0 30px 60px rgba(12,39,64,.18);border-color:#cfe0ef;}
+.manu-grid .manu-logo-tile{background-color:#fff;background-size:contain;background-repeat:no-repeat;background-position:center;border:1px solid #eef2f6;border-radius:12px;box-shadow:inset 0 1px 0 #fff, 0 4px 12px rgba(12,39,64,.05);transition:transform .18s ease,box-shadow .18s ease;}
+.manu-grid .manu-card:hover .manu-logo-tile{transform:scale(1.05);box-shadow:0 12px 26px rgba(12,39,64,.14);}
+.logo-row .badge-logo{transition:transform .16s ease,box-shadow .16s ease,filter .16s ease;filter:grayscale(.15);}
+.logo-row .badge-logo:hover{transform:translateY(-4px);box-shadow:0 16px 30px rgba(12,39,64,.16);filter:grayscale(0);}
+.team-grid .team-card{background:#fff;border-radius:18px;box-shadow:0 12px 30px rgba(12,39,64,.08);transition:transform .18s ease,box-shadow .18s ease;}
+.team-grid .team-card:hover{transform:translateY(-7px);box-shadow:0 30px 60px rgba(12,39,64,.18);}
+.team-grid .team-avatar{box-shadow:0 8px 20px rgba(12,39,64,.16);transition:transform .18s ease;}
+.team-grid .team-card:hover .team-avatar{transform:scale(1.05);}
+.testimonial-grid .testimonial-card{transition:transform .2s ease,box-shadow .2s ease,opacity .2s ease;will-change:transform;position:relative;}
+.testimonial-grid .testimonial-card:hover{transform:scale(1.045);box-shadow:0 30px 64px rgba(12,39,64,.22);z-index:3;}
+.testimonial-grid .testimonial-card:hover .quote{color:#12202e;}
+.testimonial-grid:hover .testimonial-card:not(:hover){opacity:.62;}

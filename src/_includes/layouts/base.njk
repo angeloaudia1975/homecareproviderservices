@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>document.documentElement.classList.add('has-js');</script>
+
 {%- set pageseo = false -%}
 {%- for s in seo -%}{%- if s.path == page.url -%}{%- set pageseo = s -%}{%- endif -%}{%- endfor -%}
 {%- set metaTitle = pageseo.title if (pageseo and pageseo.title) else (title + " | " + site.name) -%}
@@ -206,5 +208,7 @@ $zoho.salesiq = $zoho.salesiq || { ready: function () {} };
   src="{{ site.salesiq.domain or 'https://salesiq.zohopublic.com' }}/widget?wc={{ site.salesiq.widgetcode }}"></script>
 {%- endif %}
 
+<!-- Shared HCPS interaction layer: scroll-reveal entrance animations (site-wide) -->
+<script src="/assets/js/hcps-fx.js?v={{ asset.cssVersion }}" defer></script>
 </body>
 </html>

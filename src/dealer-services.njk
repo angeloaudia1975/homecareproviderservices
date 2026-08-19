@@ -17,15 +17,9 @@ description: "Value-added business services for HomeCare Provider Services deale
   .ds-btn.ghost:hover{background:rgba(255,255,255,.16);}
   .ds-btn.big{font-size:17px;padding:18px 34px;border-radius:14px;}
 
-  /* Scroll-reveal entrance animations (run once; disabled for reduced motion) */
-  @media (prefers-reduced-motion: no-preference){
-    .ds [data-reveal]{opacity:0;transform:translateY(26px);transition:opacity .9s ease-in-out, transform .9s ease-in-out;transition-delay:var(--d,0ms);will-change:opacity,transform;}
-    .ds [data-reveal="down"]{transform:translateY(-26px);}
-    .ds [data-reveal="fade"]{transform:none;transition-duration:1s;}
-    .ds [data-reveal="left"]{transform:translateX(-46px);transition-duration:1.25s;}
-    .ds [data-reveal="right"]{transform:translateX(46px);transition-duration:1.25s;}
-    .ds [data-reveal].in{opacity:1;transform:none;}
-  }
+  /* Scroll-reveal entrance animations are provided site-wide by the shared FX
+     layer (site.css + /assets/js/hcps-fx.js). This page's [data-reveal] hooks
+     are honored automatically — no per-page reveal code needed. */
 
   /* Hero */
   .ds-hero{background:linear-gradient(150deg,#0b1f33 0%,#0f5c8f 62%,#1681c2 100%);color:#fff;padding:46px 0 54px;position:relative;overflow:hidden;perspective:1500px;}
@@ -220,14 +214,6 @@ description: "Value-added business services for HomeCare Provider Services deale
   });
   band.addEventListener("mouseleave", function () { el.style.transform = "perspective(1500px) rotateY(0) rotateX(0)"; if (g) g.style.opacity = "0"; });
 })();
-// Scroll-reveal: add .in when an element enters the viewport, once.
-(function () {
-  var reduce = false; try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
-  var els = [].slice.call(document.querySelectorAll(".ds [data-reveal]"));
-  if (reduce || !("IntersectionObserver" in window)) { els.forEach(function (el) { el.classList.add("in"); }); return; }
-  var io = new IntersectionObserver(function (entries) {
-    entries.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); } });
-  }, { threshold: 0.12, rootMargin: "0px 0px -8% 0px" });
-  els.forEach(function (el) { io.observe(el); });
-})();
+// Scroll-reveal is handled site-wide by /assets/js/hcps-fx.js — this page's
+// [data-reveal] hooks are observed automatically, no per-page script needed.
 </script>
