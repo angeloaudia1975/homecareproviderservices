@@ -337,9 +337,9 @@ async function renderAvailability(){
   const box=$("#avbody"); box.innerHTML=`<div class="msg">Loading…</div>`;
   let j; try{ j=await api("get_availability"); }catch(e){ if(e&&e.gate){ gate(); return; } box.innerHTML=`<div class="msg err">Couldn't load.</div>`; return; }
   if(!j||!j.ok){ box.innerHTML=`<div class="msg err">${esc((j&&j.message)||"Couldn't load availability.")}</div>`; return; }
-  const cfg=j.config||{}; const mt=cfg.meeting_types||{}; const on=mt.online||{}, fld=mt.field||{};
+  const cfg=j.config||{}; const mt=cfg.meeting_types||{}; const on=mt.online||{}, fld=mt.field||{}, pt=mt.partner||{};
   box.innerHTML=`
-   <div class="card"><h2>Online meetings (Zoom) — Central time</h2>
+   <div class="card"><h2>Online meetings (Zoom) — Central time · dealer self-scheduling</h2>
      <table>${DOWS.map(d=>dayRow("on",d[0],d[1],on.windows)).join("")}</table>
      <div class="fld" style="margin-top:10px;max-width:520px"><label>Zoom link</label><input id="av-zoom" value="${esc(on.zoom_link||"")}"></div>
      <div class="muted">Currently: ${esc(j.describe&&j.describe.online||"—")}</div>
@@ -347,6 +347,12 @@ async function renderAvailability(){
    <div class="card"><h2>Field visits — dealer's local time</h2>
      <table>${DOWS.map(d=>dayRow("fl",d[0],d[1],fld.windows)).join("")}</table>
      <div class="muted">Currently: ${esc(j.describe&&j.describe.field||"—")}</div>
+   </div>
+   <div class="card"><h2>Partnership meetings (Zoom) — Central time · manufacturer prospects</h2>
+     <table>${DOWS.map(d=>dayRow("pt",d[0],d[1],pt.windows)).join("")}</table>
+     <div class="fld" style="margin-top:10px;max-width:520px"><label>Zoom link</label><input id="av-pzoom" value="${esc(pt.zoom_link||"")}"></div>
+     <div class="fld" style="max-width:420px"><label>Partnership meeting owner (whose calendar prospect meetings book onto)</label><input id="av-powner" value="${esc(cfg.partner_owner_email||"")}"></div>
+     <div class="muted">Currently: ${esc(j.describe&&j.describe.partner||"—")}</div>
    </div>
    <div class="card"><h2>Blocked dates (vacation / travel)</h2>
      <div class="fld"><label>One date per line or comma-separated (YYYY-MM-DD) — no bookings on these days</label>
@@ -360,8 +366,8 @@ function collectWindows(kind){ const w={}; DOWS.forEach(d=>{ const s=hhmmToMin((
 async function saveAvailability(){
   const msg=$("#av-msg"); msg.innerHTML="Saving…";
   const blocked=(($("#av-blocked")||{}).value||"").split(/[\s,]+/).map(s=>s.trim()).filter(s=>/^\d{4}-\d{2}-\d{2}$/.test(s));
-  const config={ default_owner_email:(($("#av-owner")||{}).value||"").trim(), blocked_dates:blocked,
-    meeting_types:{ online:{ windows:collectWindows("on"), zoom_link:(($("#av-zoom")||{}).value||"").trim() }, field:{ windows:collectWindows("fl") } } };
+  const config={ default_owner_email:(($("#av-owner")||{}).value||"").trim(), partner_owner_email:(($("#av-powner")||{}).value||"").trim(), blocked_dates:blocked,
+    meeting_types:{ online:{ windows:collectWindows("on"), zoom_link:(($("#av-zoom")||{}).value||"").trim() }, field:{ windows:collectWindows("fl") }, partner:{ windows:collectWindows("pt"), zoom_link:(($("#av-pzoom")||{}).value||"").trim() } } };
   try{ const j=await api("set_availability",{config});
     if(!j||!j.ok){ msg.innerHTML=`<span class="warn">${esc((j&&(j.message||j.error))||"Couldn't save.")}</span>`; return; }
     msg.innerHTML=`<span class="ok">Saved.</span>`;

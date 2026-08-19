@@ -35,6 +35,7 @@ const zohoLib = require("./_zoho.js");
 // windows: { weekday(0=Sun..6=Sat) : [[startMinute, endMinute], ...] } in the meeting type's clock.
 const DEFAULT_AVAILABILITY = {
   default_owner_email: NOTIFY_FROM,
+  partner_owner_email: NOTIFY_FROM,   // who prospective-manufacturer intro meetings book onto
   meeting_types: {
     online: {
       label: "Online meeting (Zoom)", location_type: "online",
@@ -48,6 +49,13 @@ const DEFAULT_AVAILABILITY = {
       tz_mode: "dealer",
       duration_min: 30, slot_min: 30,
       windows: { "3": [[540, 960]], "4": [[540, 960]] }                       // Wed, Thu 9:00–4:00
+    },
+    partner: {
+      label: "Partnership meeting (Zoom)", location_type: "online",
+      tz_mode: "fixed", tz: SCHED_TZ_IANA, tz_label: "Central",
+      zoom_link: "https://us02web.zoom.us/j/8568376484",
+      duration_min: 30, slot_min: 30,
+      windows: { "1": [[720, 810]], "2": [[600, 900]], "5": [[600, 900]] }   // seeds same as online; edit separately
     }
   },
   blocked_dates: []
@@ -205,6 +213,7 @@ async function getAvailabilityConfig() {
   if (!saved || typeof saved !== "object") return JSON.parse(JSON.stringify(DEFAULT_AVAILABILITY));
   const cfg = JSON.parse(JSON.stringify(DEFAULT_AVAILABILITY));
   cfg.default_owner_email = saved.default_owner_email || cfg.default_owner_email;
+  cfg.partner_owner_email = saved.partner_owner_email || cfg.partner_owner_email || cfg.default_owner_email;
   cfg.blocked_dates = Array.isArray(saved.blocked_dates) ? saved.blocked_dates.filter(dateOr) : cfg.blocked_dates;
   for (const k of Object.keys(cfg.meeting_types)) {
     if (saved.meeting_types && saved.meeting_types[k]) {
@@ -331,6 +340,23 @@ async function zohoTask(req, subject, desc, dueDate) {
     const ok = r && r.ok && r.json && Array.isArray(r.json.data) && r.json.data[0] && r.json.data[0].code === "SUCCESS";
     const id = ok && r.json.data[0].details && r.json.data[0].details.id;
     return ok ? { task_id: id, linked: !!rec.What_Id } : null;
+  } catch (e) { return null; }
+}
+// Upsert a manufacturer PROSPECT as a Zoho Lead (matched on email), with the intro-meeting context (non-fatal).
+async function zohoLead(m) {
+  try {
+    const c = await zohoConnect(); if (!c) return null;
+    const desc = [m.category ? "Product category: " + m.category : "", m.states ? "States needing rep: " + m.states : "",
+      m.territory ? "Territory needs: " + m.territory : "", m.description ? "Product line: " + m.description : "",
+      m.when_text ? "Intro meeting: " + m.when_text : ""].filter(Boolean).join("\n");
+    const rec = { Company: String(m.company || "").slice(0, 100) || "Manufacturer prospect", Last_Name: String(m.name || m.company || "Prospect").slice(0, 80), Email: m.email };
+    if (m.phone) rec.Phone = String(m.phone).slice(0, 40);
+    if (m.website) rec.Website = String(m.website).slice(0, 255);
+    if (desc) rec.Description = desc.slice(0, 30000);
+    const up = await zohoLib.upsertRecords(c.apiDomain, c.token, "Leads", [{ key: m.email, record: rec }], ["Email"]);
+    const id = up && up.idByKey && up.idByKey[m.email];
+    if (id) { try { await zohoLib.zoho("POST", c.apiDomain, c.token, `/crm/v8/Leads/${id}/Notes`, { data: [{ Note_Title: "Partnership meeting scheduled", Note_Content: (m.when_text || "Intro meeting scheduled") + (desc ? "\n\n" + desc : "") }] }); } catch (e) {} }
+    return { lead_id: id || null, upserted: !!(up && (up.inserted + up.updated)) };
   } catch (e) { return null; }
 }
 
@@ -475,6 +501,63 @@ async function publicBook(b) {
     calendar_ok: !!calendar, warning: calWarn });
 }
 
+// ---- Manufacturer partnership meetings (public, no dealer gate — these are prospects) ----
+async function partnerSlots(b) {
+  const cfg = await getAvailabilityConfig();
+  const owner = cfg.partner_owner_email || cfg.default_owner_email || NOTIFY_FROM;
+  const av = await buildAvailability({ type: "partner", cfg, ownerEmail: owner });
+  if (av.error) return json(400, { ok: false, error: av.error });
+  return json(200, { ok: true, meeting_type: "partner", label: av.label, location_type: av.location_type, tz: av.tz, tz_abbr: av.tz_abbr, zoom_link: av.zoom_link, duration_min: av.duration_min, days: av.days });
+}
+async function partnerBook(b) {
+  const company = clip(b.company, 160), name = clip(b.name || b.contact_name, 120), email = clip(b.email, 160);
+  const startUtc = clip(b.start_utc, 40);
+  if (!company || !name || !email || !EMAIL_RE.test(email)) return json(400, { ok: false, error: "bad_input", message: "Please provide company, contact name, and a valid email." });
+  if (!startUtc || isNaN(Date.parse(startUtc))) return json(400, { ok: false, error: "bad_time", message: "Pick a time." });
+  const cfg = await getAvailabilityConfig();
+  const mt = cfg.meeting_types.partner; if (!mt) return json(400, { ok: false, error: "bad_type" });
+  const owner = cfg.partner_owner_email || cfg.default_owner_email || NOTIFY_FROM;
+  const av = await buildAvailability({ type: "partner", cfg, ownerEmail: owner });
+  const slot = (av.days || []).flatMap(x => x.slots).find(s => Date.parse(s.start_utc) === Date.parse(startUtc));
+  if (!slot) return json(200, { ok: false, error: "slot_taken", message: "That time is no longer open. Please pick another slot." });
+  const tz = mt.tz || SCHED_TZ_IANA;
+  const details = [b.website ? "Website: " + clip(b.website, 200) : "", b.product_category ? "Product category: " + clip(b.product_category, 160) : "",
+    b.states ? "States needing rep: " + clip(b.states, 200) : "", b.territory_needs ? "Territory needs: " + clip(b.territory_needs, 400) : "",
+    b.description ? "Product line: " + clip(b.description, 1200) : "", b.notes ? clip(b.notes, 800) : ""].filter(Boolean).join("\n");
+  const req = { service: "Manufacturer partnership meeting", company, contact_name: name, email, phone: clip(b.phone, 40), notes: details, state: null, location_type: "online", rep_name: "HCPS Partnerships" };
+
+  let saved;
+  try {
+    saved = await sbInsertReq({ service: "Manufacturer partnership meeting", service_key: "partner", meeting_type: "partner", mode: "remote",
+      company, contact_name: name, email, phone: clip(b.phone, 40), manufacturer: company, notes: details,
+      rep_name: "HCPS Partnerships", owner_email: owner, start_at: startUtc, end_at: slot.end_utc, timezone: tz, location_type: "online",
+      status: "scheduled", source: "manufacturer-partner", reminders: {} });
+  } catch (e) {
+    if (String(e.bodyText || e.message || "").match(/23505|duplicate key|unique/i)) return json(200, { ok: false, error: "slot_taken", message: "That time was just booked. Please choose another slot." });
+    if (/relation|does not exist|service_requests|column/i.test(String(e.bodyText || e.message || ""))) return json(200, { ok: false, error: "tables_missing", message: "Scheduling isn't fully switched on yet — run supabase/service_requests.sql." });
+    return json(500, { ok: false, error: "save_failed", message: "Couldn't save the booking. Please try again." });
+  }
+
+  let calendar = null, when_text = slot.label, calWarn = null;
+  if (graphEnv()) {
+    try {
+      const tok = await graphToken();
+      const made = await createBookingEvent(tok, { ownerEmail: owner, req, startUtc, endUtc: slot.end_utc, tz, isOnline: true, zoom: mt.zoom_link });
+      if (made.calendar) { calendar = made.calendar; when_text = made.calendar.when_text; await sendConfirmation(tok, { to: email, cc: owner, req, whenText: when_text, zoom: mt.zoom_link }); }
+      else { calWarn = made.error; }
+    } catch (e) { calWarn = "graph_error"; }
+  }
+  await patchReq(saved.id, { calendar: calendar || { start_utc: startUtc, end_utc: slot.end_utc, tz, when_text } });
+
+  // Zoho prospect (Lead) + internal notification.
+  const lead = await zohoLead({ company, name, email, phone: clip(b.phone, 40), website: clip(b.website, 200), category: clip(b.product_category, 160), states: clip(b.states, 200), territory: clip(b.territory_needs, 400), description: clip(b.description, 1200), when_text });
+  if (lead) { try { await patchReq(saved.id, { zoho: { ...lead, at: new Date().toISOString() } }); } catch (e) {} }
+  await notify({ ...req, id: saved.id, mode: "remote", preferred_date: startUtc.slice(0, 10), manufacturer: company });
+
+  return json(200, { ok: true, id: saved.id, when_text, zoom_link: mt.zoom_link,
+    message: `Your partnership meeting is booked for ${when_text}. A calendar invite and confirmation email are on their way with your Zoom link.`, calendar_ok: !!calendar });
+}
+
 // ============================ ADMIN ACTIONS ============================
 async function adminHandler(me, b) {
   if (b.action === "queue") {
@@ -598,22 +681,23 @@ async function adminHandler(me, b) {
   // -- Availability management --
   if (b.action === "get_availability") {
     const cfg = await getAvailabilityConfig();
-    return json(200, { ok: true, config: cfg, describe: { online: describeWindows(cfg.meeting_types.online.windows), field: describeWindows(cfg.meeting_types.field.windows) } });
+    return json(200, { ok: true, config: cfg, describe: { online: describeWindows(cfg.meeting_types.online.windows), field: describeWindows(cfg.meeting_types.field.windows), partner: describeWindows(cfg.meeting_types.partner.windows) } });
   }
   if (b.action === "set_availability") {
     if (!isAdminRole(me)) return json(403, { error: "Admin only" });
     const inc = b.config || {};
     const cfg = await getAvailabilityConfig();
     if (inc.default_owner_email && EMAIL_RE.test(inc.default_owner_email)) cfg.default_owner_email = inc.default_owner_email.toLowerCase();
+    if (inc.partner_owner_email && EMAIL_RE.test(inc.partner_owner_email)) cfg.partner_owner_email = inc.partner_owner_email.toLowerCase();
     if (Array.isArray(inc.blocked_dates)) cfg.blocked_dates = [...new Set(inc.blocked_dates.filter(dateOr))].sort();
     const sanitizeWindows = w => { const out = {}; for (const k of ["0", "1", "2", "3", "4", "5", "6"]) { const arr = w && w[k]; if (Array.isArray(arr)) { const clean = arr.map(p => [Math.max(0, Math.min(1440, +p[0] || 0)), Math.max(0, Math.min(1440, +p[1] || 0))]).filter(p => p[1] > p[0]); if (clean.length) out[k] = clean; } } return out; };
-    if (inc.meeting_types) for (const k of ["online", "field"]) if (inc.meeting_types[k]) {
+    if (inc.meeting_types) for (const k of ["online", "field", "partner"]) if (inc.meeting_types[k]) {
       const s = inc.meeting_types[k], t = cfg.meeting_types[k];
       if (s.windows) t.windows = sanitizeWindows(s.windows);
-      if (k === "online" && typeof s.zoom_link === "string") t.zoom_link = clip(s.zoom_link, 400) || "";
+      if ((k === "online" || k === "partner") && typeof s.zoom_link === "string") t.zoom_link = clip(s.zoom_link, 400) || "";
     }
     await setAvailabilityConfig(cfg);
-    return json(200, { ok: true, config: cfg, describe: { online: describeWindows(cfg.meeting_types.online.windows), field: describeWindows(cfg.meeting_types.field.windows) } });
+    return json(200, { ok: true, config: cfg, describe: { online: describeWindows(cfg.meeting_types.online.windows), field: describeWindows(cfg.meeting_types.field.windows), partner: describeWindows(cfg.meeting_types.partner.windows) } });
   }
   // -- Upcoming appointments --
   if (b.action === "upcoming") {
@@ -650,6 +734,8 @@ exports.handler = async (event) => {
     if (b.action === "verify_dealer") return await publicVerify(b);
     if (b.action === "slots") return await publicSlots(b);
     if (b.action === "book") return await publicBook(b);
+    if (b.action === "partner_slots") return await partnerSlots(b);
+    if (b.action === "partner_book") return await partnerBook(b);
   } catch (e) {
     if (/relation|does not exist|service_requests|column/i.test(String(e.bodyText || e.message || e))) return json(200, { ok: false, error: "tables_missing", message: "Scheduling isn't switched on yet — run supabase/service_requests.sql." });
     return json(500, { ok: false, error: "server", message: "Something went wrong. Please email " + NOTIFY_TO + "." });
