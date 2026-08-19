@@ -2,14 +2,111 @@
 layout: layouts/base.njk
 title: Manufacturers
 permalink: /manufacturers/
-description: "The manufacturer partners represented by HomeCare Provider Services."
+description: "HomeCare Provider Services is the authorized sales representative for innovative HME & DME manufacturers — products and programs that expand your offerings, strengthen your showroom, and add value for your customers."
 ---
-<section>
+<style>
+  /* Depth hero: banner (interactive 3D tilt) -> headline -> buttons — shared site pattern */
+  .mfp-hero{background:linear-gradient(150deg,#0b1f33 0%,#0f5c8f 62%,#1681c2 100%);color:#fff;padding:52px 0 50px;position:relative;overflow:hidden;perspective:1500px;}
+  .mfp-hero::after{content:"";position:absolute;right:-120px;top:-120px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(252,178,30,.26),transparent 68%);pointer-events:none;}
+  .mfp-hero .container{position:relative;z-index:1;}
+  .mfp-hero-img{position:relative;max-width:1000px;margin:0 auto;border-radius:18px;overflow:hidden;aspect-ratio:1672/941;background:url("/assets/manufacturers/hero-banner.jpg") center/cover;box-shadow:0 45px 85px -22px rgba(0,0,0,.6);transform-style:preserve-3d;transition:transform .18s ease-out;will-change:transform;}
+  .mfp-hero-glare{position:absolute;inset:0;pointer-events:none;background:radial-gradient(300px 300px at var(--mx,50%) var(--my,30%),rgba(255,255,255,.28),transparent 60%);mix-blend-mode:screen;opacity:0;transition:opacity .2s;}
+  .mfp-hero-copy{max-width:1040px;margin:30px auto 0;text-align:center;}
+  .mfp-hero-copy h1{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;white-space:nowrap;font-size:clamp(22px,3.6vw,40px);line-height:1.05;margin:0 0 12px;color:#fff;}
+  .mfp-hero-copy p{margin:0 auto 22px;max-width:720px;font-size:clamp(15px,1.4vw,17.5px);line-height:1.6;color:rgba(255,255,255,.92);}
+  .mfp-actions{display:flex;gap:11px;flex-wrap:wrap;justify-content:center;}
+  .mfp-btn{display:inline-flex;align-items:center;gap:8px;font-family:'Archivo',sans-serif;font-weight:800;font-size:14.5px;text-decoration:none;border-radius:11px;padding:13px 22px;transition:transform .12s;border:1px solid transparent;}
+  .mfp-btn:hover{transform:translateY(-1px);}
+  .mfp-btn.primary{background:linear-gradient(100deg,#ef6325,#fcb21e);color:#141414;box-shadow:0 14px 30px -12px rgba(239,99,37,.7);}
+  .mfp-btn.ghost{background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.30);}
+  .mfp-btn.ghost:hover{background:rgba(255,255,255,.16);}
+  @media(max-width:600px){.mfp-hero-copy h1{white-space:normal;}}
+  @media(prefers-reduced-motion:reduce){.mfp-hero-img{transition:none;}}
+
+  /* Strong-statement pillars (text version of the banner's three promises) */
+  .mfp-pillars{padding:38px 0 6px;}
+  .mfp-pillars-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  @media(max-width:760px){.mfp-pillars-grid{grid-template-columns:1fr;}}
+  .mfp-pill{background:#fff;border:1px solid #e5e9ee;border-radius:16px;padding:22px 22px 20px;box-shadow:0 8px 24px rgba(12,39,64,.05);}
+  .mfp-pill .ic{width:44px;height:44px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--hcps-blue,#1681c2);color:#fff;margin:0 0 13px;}
+  .mfp-pill h3{font-family:'Archivo',sans-serif;font-weight:800;font-size:17px;color:var(--ink);margin:0 0 6px;}
+  .mfp-pill p{font-size:14px;line-height:1.55;color:#55606a;margin:0;}
+
+  /* Manufacturer grid section head */
+  .mfp-grid-sec{padding:34px 0 52px;}
+  .mfp-grid-head{margin:0 0 20px;}
+  .mfp-grid-head .eyebrow{font-family:'Archivo',sans-serif;font-weight:800;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--hcps-blue,#1681c2);margin:0 0 8px;}
+  .mfp-grid-head h2{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:clamp(22px,2.7vw,32px);line-height:1.1;color:var(--ink);margin:0 0 8px;}
+  .mfp-grid-head p{font-size:15.5px;line-height:1.55;color:#48525c;margin:0;max-width:74ch;}
+</style>
+
+<!-- DEPTH HERO -->
+<section class="mfp-hero">
   <div class="container">
-    <div class="section-head">
+    <div class="mfp-hero-img" id="mfp-heroimg" role="img" aria-label="HomeCare Provider Services Manufacturing Partners — strong partnerships, innovative products, and better solutions for dealers, representing HME and DME manufacturers across lift chairs, mobility, wheelchairs, ramps, bath safety, oxygen, and respiratory."><span class="mfp-hero-glare"></span></div>
+    <div class="mfp-hero-copy">
+      <h1>Strong partnerships. Better solutions.</h1>
+      <p>HomeCare Provider Services is the authorized sales representative for the manufacturers below — innovative products and programs that expand your offerings, strengthen your showroom, and add value for your customers.</p>
+      <div class="mfp-actions">
+        <a class="mfp-btn primary" href="#manufacturers">Browse Our Manufacturers &rarr;</a>
+        <a class="mfp-btn ghost" href="/resources/">Explore Resources</a>
+        <a class="mfp-btn ghost" href="/become-a-dealer/">Become a Dealer</a>
+      </div>
+    </div>
+  </div>
+</section>
+<script>
+(function () {
+  var img = document.getElementById("mfp-heroimg"); if (!img) return;
+  var band = img.closest(".mfp-hero") || img.parentElement;
+  var glare = img.querySelector(".mfp-hero-glare");
+  var reduce = false; try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+  if (reduce) return;
+  band.addEventListener("mousemove", function (e) {
+    var r = img.getBoundingClientRect();
+    var px = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    var py = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+    var ry = (px - 0.5) * 14, rx = (0.5 - py) * 10;
+    img.style.transform = "perspective(1500px) rotateY(" + ry + "deg) rotateX(" + rx + "deg) translateZ(20px)";
+    if (glare) { glare.style.setProperty("--mx", (px * 100) + "%"); glare.style.setProperty("--my", (py * 100) + "%"); glare.style.opacity = "1"; }
+  });
+  band.addEventListener("mouseleave", function () {
+    img.style.transform = "perspective(1500px) rotateY(0) rotateX(0)";
+    if (glare) glare.style.opacity = "0";
+  });
+})();
+</script>
+
+<!-- STRONG-STATEMENT PILLARS -->
+<section class="mfp-pillars">
+  <div class="container">
+    <div class="mfp-pillars-grid">
+      <div class="mfp-pill">
+        <div class="ic" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 15h2a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H8.5L5 7.5V12"/><path d="m14 8 3.5-3.5a2.12 2.12 0 0 1 3 3L17 11l-4 4-3-3"/><path d="M5 15l3 3"/></svg></div>
+        <h3>Strong Manufacturer Partnerships</h3>
+        <p>Authorized representation for HME &amp; DME manufacturers, backed by dedicated field sales, training, and dealer support.</p>
+      </div>
+      <div class="mfp-pill">
+        <div class="ic" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg></div>
+        <h3>Innovative Products</h3>
+        <p>Carefully selected lines across lift chairs, mobility, wheelchairs, ramps, bath safety, oxygen, and respiratory therapy.</p>
+      </div>
+      <div class="mfp-pill">
+        <div class="ic" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg></div>
+        <h3>Better Solutions for Dealers</h3>
+        <p>Products and programs that expand your offerings, strengthen your showroom, and deliver greater value to your customers.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MANUFACTURER GRID -->
+<section class="mfp-grid-sec" id="manufacturers">
+  <div class="container">
+    <div class="mfp-grid-head">
       <p class="eyebrow">Our Manufacturing Partners</p>
       <h2>{{ activeManufacturers.length }} manufacturers. One representation team.</h2>
-      <p>HomeCare Provider Services is the authorized sales representative for the manufacturers below.</p>
+      <p>Explore each partner's products, catalogs, and dealer resources. HomeCare Provider Services is the authorized sales representative for every manufacturer listed below.</p>
     </div>
     <div class="manu-grid">
       {% for m in activeManufacturers %}
