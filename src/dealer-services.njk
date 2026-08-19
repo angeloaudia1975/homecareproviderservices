@@ -2,294 +2,232 @@
 layout: layouts/base.njk
 title: Dealer Services
 permalink: /dealer-services/
-description: "Value-added business services for HomeCare Provider Services dealers—beyond our manufacturer product lines. Access vetted partners, tools, and solutions designed to strengthen your business, improve cash flow, streamline operations, and support long-term growth. These services are separate from our manufacturer portfolio and available exclusively to the HCPS dealer network."
+description: "Value-added business services for HomeCare Provider Services dealers — beyond our manufacturer product lines. Improve cash flow, run more efficiently, and grow with a premier payments partner (CardChamp) plus HCPS business consulting, digital marketing, and website services, exclusively for the HCPS dealer network."
 ---
-{% set ds = dealerServices %}
 <style>
-  .bh{--blue:var(--hcps-blue,#1681c2);--blue-d:var(--hcps-blue-dark,#0f5c8f);--orange:var(--hcps-orange,#ef6325);--gold:var(--hcps-gold,#fcb21e);--ink:#0b0d0f;--paper:#f6f7f5;}
-  .bh *{box-sizing:border-box;}
-  .bh .wrap{max-width:1200px;margin:0 auto;padding:0 24px;}
-  .bh section{padding:60px 0;}
-  .bh .kicker{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;text-transform:uppercase;letter-spacing:2px;font-size:12px;color:var(--orange);margin:0 0 10px;}
-  .bh h2{font-family:'Archivo',sans-serif;font-weight:800;font-size:clamp(24px,3vw,34px);color:var(--ink);margin:0 0 12px;line-height:1.15;}
-  .bh .sub{font-size:16px;color:#48535f;max-width:760px;line-height:1.6;margin:0 0 8px;}
-  .bh-btn{display:inline-block;font-family:'Archivo',sans-serif;font-weight:800;font-size:15px;border-radius:12px;padding:13px 24px;text-decoration:none;cursor:pointer;border:0;transition:transform .13s,box-shadow .13s;}
-  .bh-btn.primary{background:linear-gradient(100deg,#ef6325,#fcb21e);color:#141414;box-shadow:0 14px 30px -12px rgba(239,99,37,.75);}
-  .bh-btn.primary:hover{transform:translateY(-2px);}
-  .bh-btn.ghost{background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.32);}
-  .bh-btn.ghost:hover{background:rgba(255,255,255,.16);}
-  .bh-btn.blue{background:var(--blue-d);color:#fff;}
-  .bh-btn.sm{padding:10px 16px;font-size:13.5px;border-radius:10px;}
+  .ds{--navy:#0b1f33;--blue:var(--hcps-blue,#1681c2);--blue-d:var(--hcps-blue-dark,#0f5c8f);--orange:var(--hcps-orange,#ef6325);--gold:var(--hcps-gold,#fcb21e);--ink:#0b0d0f;--paper:#f5f7fa;--line:#e5e9ee;}
+  .ds *{box-sizing:border-box;}
+  .ds .wrap{max-width:1180px;margin:0 auto;padding:0 24px;}
+  .ds h1,.ds h2,.ds h3{font-family:'Archivo Expanded','Archivo',sans-serif;}
+  .ds .kicker{font-family:'Archivo',sans-serif;font-weight:800;text-transform:uppercase;letter-spacing:2px;font-size:12px;color:var(--orange);margin:0 0 10px;}
+  .ds-btn{display:inline-flex;align-items:center;gap:8px;font-family:'Archivo',sans-serif;font-weight:800;font-size:15px;border-radius:12px;padding:14px 26px;text-decoration:none;border:1px solid transparent;transition:transform .13s,box-shadow .13s;cursor:pointer;}
+  .ds-btn:hover{transform:translateY(-2px);}
+  .ds-btn.primary{background:linear-gradient(100deg,var(--orange),var(--gold));color:#141414;box-shadow:0 14px 30px -12px rgba(239,99,37,.7);}
+  .ds-btn.ghost{background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.35);}
+  .ds-btn.ghost:hover{background:rgba(255,255,255,.16);}
+  .ds-btn.big{font-size:17px;padding:18px 34px;border-radius:14px;}
+
+  /* Scroll-reveal entrance animations (run once; disabled for reduced motion) */
+  @media (prefers-reduced-motion: no-preference){
+    .ds [data-reveal]{opacity:0;transform:translateY(26px);transition:opacity .9s ease-in-out, transform .9s ease-in-out;transition-delay:var(--d,0ms);will-change:opacity,transform;}
+    .ds [data-reveal="down"]{transform:translateY(-26px);}
+    .ds [data-reveal="fade"]{transform:none;transition-duration:1s;}
+    .ds [data-reveal="left"]{transform:translateX(-46px);transition-duration:1.25s;}
+    .ds [data-reveal="right"]{transform:translateX(46px);transition-duration:1.25s;}
+    .ds [data-reveal].in{opacity:1;transform:none;}
+  }
 
   /* Hero */
-  .bh-hero{background:linear-gradient(150deg,#0b1f33 0%,#0f5c8f 62%,#1681c2 100%);color:#fff;padding:70px 0 60px;position:relative;overflow:hidden;}
-  .bh-hero::after{content:"";position:absolute;right:-120px;top:-120px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(252,178,30,.26),transparent 68%);}
-  .bh-hero .kicker{color:var(--gold);}
-  .bh-hero h1{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:clamp(29px,4.4vw,48px);line-height:1.06;margin:0 0 16px;color:#fff;}
-  .bh-hero p{font-size:17px;line-height:1.6;color:rgba(255,255,255,.92);max-width:680px;margin:0 0 24px;}
-  .bh-hero .actions{display:flex;gap:12px;flex-wrap:wrap;}
-  .bh-chipline{display:flex;gap:8px;flex-wrap:wrap;margin-top:28px;}
-  .bh-chipline span{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;font-size:12.5px;font-weight:600;border-radius:20px;padding:6px 12px;}
+  .ds-hero{background:linear-gradient(150deg,#0b1f33 0%,#0f5c8f 62%,#1681c2 100%);color:#fff;padding:46px 0 54px;position:relative;overflow:hidden;perspective:1500px;}
+  .ds-hero::after{content:"";position:absolute;right:-120px;top:-120px;width:440px;height:440px;border-radius:50%;background:radial-gradient(circle,rgba(252,178,30,.24),transparent 66%);pointer-events:none;}
+  .ds-hero .wrap{position:relative;z-index:1;}
+  .ds-hero-img{max-width:1000px;margin:0 auto;border-radius:18px;overflow:hidden;aspect-ratio:1731/909;background:url("/assets/dealer-services/hero-banner.jpg") center/cover;box-shadow:0 45px 85px -22px rgba(0,0,0,.6);transform-style:preserve-3d;transition:transform .18s ease-out;will-change:transform;position:relative;}
+  .ds-glare{position:absolute;inset:0;pointer-events:none;background:radial-gradient(300px 300px at var(--mx,50%) var(--my,30%),rgba(255,255,255,.28),transparent 60%);mix-blend-mode:screen;opacity:0;transition:opacity .2s;}
+  .ds-hero-copy{max-width:900px;margin:30px auto 0;text-align:center;}
+  .ds-hero-copy h1{font-weight:800;font-size:clamp(24px,3.4vw,40px);line-height:1.08;margin:0 0 14px;color:#fff;}
+  .ds-hero-copy p{font-size:clamp(15px,1.4vw,17.5px);color:rgba(255,255,255,.92);max-width:720px;margin:0 auto 24px;}
+  .ds-hero-copy .actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
 
-  /* Solutions equation */
-  .bh-eqbar{background:#fff;border-bottom:1px solid #edf0f3;}
-  .bh-eq{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px;}
-  .bh-eq span{background:#eef4fb;border:1px solid #d3e3f2;color:var(--blue-d);font-weight:700;font-size:13.5px;border-radius:9px;padding:8px 13px;}
-  .bh-eq b{color:var(--orange);font-weight:800;font-size:16px;padding:0 2px;}
+  /* Sections */
+  .ds-sec{padding:64px 0;}
+  .ds-sec.alt{background:var(--paper);}
+  .ds-head{text-align:center;max-width:760px;margin:0 auto 34px;}
+  .ds-head h2{font-weight:800;font-size:clamp(23px,2.9vw,34px);color:var(--ink);margin:0 0 10px;line-height:1.14;}
+  .ds-head p{font-size:16px;color:#48535f;}
 
-  /* Pillars */
-  .bh-pillars{background:var(--paper);}
-  .bh-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:26px;}
-  @media(max-width:860px){.bh-grid3{grid-template-columns:1fr;}}
-  .bh-pill{background:#fff;border:1px solid #e5e9ee;border-radius:16px;padding:24px;}
-  .bh-pill .ic{width:48px;height:48px;border-radius:13px;background:linear-gradient(135deg,#ef6325,#fcb21e);color:#fff;display:grid;place-items:center;margin-bottom:14px;}
-  .bh-pill .ic svg{width:25px;height:25px;}
-  .bh-pill h3{font-family:'Archivo',sans-serif;font-weight:800;font-size:18px;color:var(--ink);margin:0 0 6px;}
-  .bh-pill .pd{font-size:13.5px;color:#54606c;line-height:1.5;margin:0 0 13px;}
-  .bh-pill ul{list-style:none;padding:0;margin:0;display:grid;gap:8px;}
-  .bh-pill li{position:relative;padding-left:26px;font-size:13.5px;color:#33404b;line-height:1.4;}
-  .bh-pill li::before{content:"";position:absolute;left:0;top:1px;width:18px;height:18px;border-radius:50%;background:#e9f7ef;border:1px solid #bfe6cd;}
-  .bh-pill li::after{content:"";position:absolute;left:6px;top:5px;width:5px;height:8px;border:solid #1c7a44;border-width:0 2px 2px 0;transform:rotate(45deg);}
+  /* Category cards (large icon on top, full card width) */
+  .ds-cats{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;}
+  @media(max-width:860px){.ds-cats{grid-template-columns:1fr;}}
+  .ds-cat{background:#fff;border:1px solid var(--line);border-radius:20px;padding:14px 26px 30px;text-align:center;box-shadow:0 10px 30px rgba(12,39,64,.05);transition:transform .14s,box-shadow .14s;}
+  .ds-cat:hover{transform:translateY(-4px);box-shadow:0 22px 46px rgba(12,39,64,.12);}
+  .ds-cat-ico{width:100%;margin:0 0 12px;position:relative;}
+  .ds-cat-ico img{display:block;width:82%;max-width:230px;margin:0 auto;aspect-ratio:1/1;object-fit:contain;}
+  .ds-cat-ico::after{content:"";display:block;height:4px;width:60px;margin:2px auto 0;border-radius:3px;background:var(--accent,var(--blue));}
+  .ds-cat h3{font-weight:800;font-size:20px;color:var(--ink);margin:0 0 8px;line-height:1.15;}
+  .ds-cat p{font-size:14.5px;color:#54606c;}
 
-  /* Separation band */
-  .bh-sep{background:#fff;}
-  .bh-sep-grid{display:grid;grid-template-columns:1fr auto 1fr;gap:22px;align-items:stretch;margin-top:24px;}
-  @media(max-width:760px){.bh-sep-grid{grid-template-columns:1fr;}}
-  .bh-sep-card{border:1px solid #e5e9ee;border-radius:16px;padding:24px;}
-  .bh-sep-card.man{background:linear-gradient(160deg,#0f5c8f,#1681c2);color:#fff;}
-  .bh-sep-card.svc{background:linear-gradient(160deg,#b7491a,#ef6325);color:#fff;}
-  .bh-sep-card h3{font-family:'Archivo',sans-serif;font-weight:800;font-size:18px;margin:0 0 8px;color:#fff;}
-  .bh-sep-card p{font-size:14px;line-height:1.55;color:rgba(255,255,255,.9);margin:0;}
-  .bh-sep-card .tag{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;font-weight:800;opacity:.8;display:block;margin-bottom:8px;}
-  .bh-sep-vs{display:grid;place-items:center;font-family:'Archivo Expanded',sans-serif;font-weight:800;color:#c2ccd6;font-size:15px;}
-  @media(max-width:760px){.bh-sep-vs{padding:4px;}}
-  .bh-sep-note{margin-top:16px;background:var(--paper);border:1px solid #e5e9ee;border-left:4px solid var(--gold);border-radius:10px;padding:13px 16px;font-size:13.5px;color:#48535f;}
+  /* CardChamp premier partner */
+  .ds-champ{background:linear-gradient(160deg,#0b1f33,#123a5c);color:#fff;position:relative;overflow:hidden;}
+  .ds-champ::before{content:"";position:absolute;left:-140px;bottom:-140px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(239,99,37,.22),transparent 66%);}
+  .ds-champ .wrap{position:relative;z-index:1;}
+  .ds-champ-ribbon{display:inline-flex;align-items:center;gap:9px;background:linear-gradient(100deg,var(--orange),var(--gold));color:#141414;font-family:'Archivo',sans-serif;font-weight:800;font-size:12.5px;letter-spacing:1.5px;text-transform:uppercase;padding:8px 16px;border-radius:30px;margin:0 0 18px;}
+  .ds-champ-img{max-width:920px;margin:0 auto 26px;border-radius:16px;overflow:hidden;box-shadow:0 40px 80px -26px rgba(0,0,0,.7);aspect-ratio:1672/941;background:url("/assets/dealer-services/cardchamp-banner.jpg") center/cover;}
+  .ds-champ-copy{max-width:820px;margin:0 auto;text-align:center;}
+  .ds-champ-copy h2{color:#fff;font-weight:800;font-size:clamp(24px,3vw,36px);margin:0 0 14px;line-height:1.1;}
+  .ds-champ-copy p{color:rgba(255,255,255,.9);font-size:16.5px;margin:0 auto 22px;max-width:720px;}
+  .ds-chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:0 0 30px;}
+  .ds-chips span{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.2);border-radius:30px;padding:9px 17px;font-weight:700;font-size:13.5px;}
+  .ds-chips span b{color:var(--gold);}
 
-  /* Partner grid */
-  .bh-partners{background:var(--paper);}
-  .bh-chips{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0 8px;}
-  .bh-chip{background:#fff;border:1px solid #d7dde3;color:#33404b;font-weight:700;font-size:13px;border-radius:20px;padding:8px 15px;cursor:pointer;transition:all .12s;}
-  .bh-chip:hover{border-color:var(--blue);color:var(--blue-d);}
-  .bh-chip.on{background:var(--blue-d);color:#fff;border-color:var(--blue-d);}
-  .bh-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:18px;}
-  @media(max-width:900px){.bh-cards{grid-template-columns:repeat(2,1fr);}}
-  @media(max-width:600px){.bh-cards{grid-template-columns:1fr;}}
-  .bh-card{background:#fff;border:1px solid #e5e9ee;border-radius:16px;padding:22px;display:flex;flex-direction:column;transition:transform .13s,box-shadow .13s,border-color .13s;}
-  .bh-card:hover{transform:translateY(-3px);box-shadow:0 18px 40px rgba(12,39,64,.1);border-color:#cfe0ef;}
-  .bh-card.feat{border-color:#f2c8a6;box-shadow:0 10px 30px rgba(239,99,37,.1);}
-  .bh-card-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;}
-  .bh-badge{font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;padding:4px 9px;border-radius:20px;}
-  .bh-badge.partner{background:#eaf3fb;color:#12466e;border:1px solid #cfe2fb;}
-  .bh-badge.hcps{background:#fff3e0;color:#a5590f;border:1px solid #f2d9b0;}
-  .bh-badge.feat{background:linear-gradient(100deg,#ef6325,#fcb21e);color:#141414;border:0;}
-  .bh-card .logo{height:30px;max-width:150px;object-fit:contain;object-position:left;}
-  .bh-card .nm{font-family:'Archivo',sans-serif;font-weight:800;font-size:18px;color:var(--ink);}
-  .bh-card .cat{font-size:12px;color:#8a94a0;font-weight:600;margin-top:1px;}
-  .bh-card .svc{font-size:14px;color:#33404b;font-weight:600;margin:12px 0 8px;line-height:1.4;}
-  .bh-kv{font-size:13px;color:#54606c;line-height:1.5;margin:0 0 8px;}
-  .bh-kv b{color:#243240;font-weight:700;display:block;font-size:11px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:1px;}
-  .bh-card .cta{margin-top:auto;padding-top:14px;}
-  .bh-card .cta a{display:inline-block;color:#fff;text-decoration:none;font-weight:800;font-size:14px;padding:11px 18px;border-radius:10px;}
-  .bh-card .cta .sec{display:block;font-size:12px;color:#8a94a0;margin-top:7px;line-height:1.4;}
-  .bh-req{grid-column:1/-1;background:#fff;border:1px dashed #c8d3df;border-radius:16px;padding:24px;display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;}
-  .bh-req h3{margin:0 0 3px;color:var(--ink);font-size:17px;font-family:'Archivo',sans-serif;}
-  .bh-req p{margin:0;font-size:13.5px;color:#54606c;max-width:560px;}
-
-  /* Exclusive benefits */
-  .bh-benefits{background:#fff;}
-  .bh-bgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-top:24px;}
-  @media(max-width:900px){.bh-bgrid{grid-template-columns:repeat(2,1fr);}}
-  @media(max-width:520px){.bh-bgrid{grid-template-columns:1fr;}}
-  .bh-b{background:var(--paper);border:1px solid #e5e9ee;border-radius:14px;padding:18px;}
-  .bh-b .dot{width:34px;height:34px;border-radius:9px;background:#eef4fb;color:var(--blue-d);display:grid;place-items:center;margin-bottom:10px;}
-  .bh-b h4{font-family:'Archivo',sans-serif;font-weight:800;font-size:14.5px;color:var(--ink);margin:0 0 4px;}
-  .bh-b p{font-size:12.5px;color:#5b6672;line-height:1.45;margin:0;}
+  /* HCPS partner services */
+  .ds-svcs{display:grid;gap:28px;margin-top:8px;}
+  .ds-svc{display:grid;grid-template-columns:1.15fr .85fr;gap:0;background:#fff;border:1px solid var(--line);border-radius:20px;overflow:hidden;box-shadow:0 12px 34px rgba(12,39,64,.07);}
+  .ds-svc.rev{grid-template-columns:.85fr 1.15fr;}
+  .ds-svc.rev .ds-svc-img{order:2;}
+  .ds-svc.rev .ds-svc-body{order:1;}
+  @media(max-width:820px){.ds-svc,.ds-svc.rev{grid-template-columns:1fr;}.ds-svc.rev .ds-svc-img{order:0;}.ds-svc.rev .ds-svc-body{order:0;}}
+  .ds-svc-img{background:#0b1f33;}
+  .ds-svc-img img{display:block;width:100%;height:100%;object-fit:cover;}
+  .ds-svc-body{padding:34px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;}
+  .ds-svc-tag{font-family:'Archivo',sans-serif;font-weight:800;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#a5590f;background:#fff3e0;border:1px solid #f2d9b0;border-radius:20px;padding:4px 11px;margin:0 0 12px;}
+  .ds-svc-body h3{font-weight:800;font-size:23px;color:var(--ink);margin:0 0 10px;line-height:1.12;}
+  .ds-svc-body p{font-size:15px;color:#54606c;margin:0 0 20px;}
 
   /* Final CTA */
-  .bh-final{background:var(--ink);color:#fff;text-align:center;}
-  .bh-final h2{color:#fff;}
-  .bh-final p{color:rgba(255,255,255,.8);max-width:640px;margin:0 auto 22px;}
-  .bh-final .actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
+  .ds-final{background:var(--ink);color:#fff;text-align:center;padding:60px 0;}
+  .ds-final h2{color:#fff;font-weight:800;font-size:clamp(23px,2.9vw,34px);margin:0 0 12px;}
+  .ds-final p{color:rgba(255,255,255,.82);max-width:640px;margin:0 auto 24px;font-size:16px;}
 </style>
 
-<div class="bh">
+<div class="ds">
 
 <!-- HERO -->
-<section class="bh-hero">
+<section class="ds-hero">
   <div class="wrap">
-    <p class="kicker">{{ ds.eyebrow }}</p>
-    <h1>{{ ds.headline }}</h1>
-    <p>{{ ds.lead }}</p>
-    <div class="actions">
-      <a class="bh-btn primary" href="#partners">Explore Dealer Services →</a>
-      <a class="bh-btn ghost" href="#payments">Improve Your Cash Flow</a>
-    </div>
-    <div class="bh-chipline">
-      {% for c in ds.categories %}<span>{{ c.label }}</span>{% endfor %}
-    </div>
-  </div>
-</section>
-
-<!-- POSITIONING / EQUATION -->
-<section class="bh-eqbar">
-  <div class="wrap">
-    <p class="kicker">A Solutions Company</p>
-    <h2>The HCPS relationship goes beyond the products we represent.</h2>
-    <p class="sub">We actively identify trusted tools, services, and partners that help our dealers run and grow better businesses — exclusive to the HCPS network.</p>
-    <div class="bh-eq">
-      <span>Improve Cash Flow</span><b>+</b><span>Operate More Efficiently</span><b>+</b><span>Strengthen Marketing</span><b>+</b><span>Grow Revenue</span><b>+</b><span>Build a Better Business</span>
+    <div class="ds-hero-img" id="ds-heroimg" data-reveal="fade" role="img" aria-label="HCPS Dealer Services — value-added business services for HCPS dealers, beyond the product lines."><span class="ds-glare"></span></div>
+    <div class="ds-hero-copy" data-reveal="up" style="--d:120ms">
+      <h1>Value-added business services for HCPS dealers.</h1>
+      <p>Beyond the product lines. HCPS Dealer Services connects you with vetted partners and powerful business tools that strengthen how you run your business — from payments and cash flow to operations, marketing, and growth.</p>
+      <div class="actions">
+        <a class="ds-btn primary" href="#cardchamp">Turn Credit Card Fees into Cash Flow &rarr;</a>
+        <a class="ds-btn ghost" href="#services">Explore Dealer Services</a>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- PILLARS -->
-<section class="bh-pillars" id="payments">
+<!-- CATEGORIES -->
+<section class="ds-sec">
   <div class="wrap">
-    <p class="kicker">What we help with</p>
-    <h2>Business solutions across every part of your operation</h2>
-    <p class="sub">Three core areas today — with a framework built to add partners across financial services, technology, insurance, and more.</p>
-    <div class="bh-grid3">
-      {% for p in ds.pillars %}
-      <article class="bh-pill" id="{{ p.key }}">
-        <div class="ic">
-          {% if p.icon == "card" %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
-          {% elif p.icon == "gear" %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          {% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg>{% endif %}
-        </div>
-        <h3>{{ p.title }}</h3>
-        <p class="pd">{{ p.desc }}</p>
-        <ul>{% for b in p.bullets %}<li>{{ b }}</li>{% endfor %}</ul>
+    <div class="ds-head" data-reveal="up">
+      <p class="kicker">What we help with</p>
+      <h2>Three ways HCPS strengthens your business</h2>
+      <p>Business solutions built exclusively for the HCPS dealer network — designed to help you keep more of every sale, run leaner, and grow.</p>
+    </div>
+    <div class="ds-cats">
+      <article class="ds-cat" data-reveal="up" style="--accent:#0f5c8f;--d:0ms">
+        <div class="ds-cat-ico"><img src="/assets/dealer-services/cat-payments.jpg" alt="" loading="lazy"></div>
+        <h3>Payments &amp; Cash Flow</h3>
+        <p>Solutions that improve cash flow, reduce friction, and help you get paid faster — so more of every sale stays in your business.</p>
       </article>
-      {% endfor %}
+      <article class="ds-cat" data-reveal="up" style="--accent:#1681c2;--d:130ms">
+        <div class="ds-cat-ico"><img src="/assets/dealer-services/cat-operations.jpg" alt="" loading="lazy"></div>
+        <h3>Operations &amp; Efficiency</h3>
+        <p>Tools and services that streamline your daily operations, cut busywork, and drive efficiency across your dealership.</p>
+      </article>
+      <article class="ds-cat" data-reveal="up" style="--accent:#ef6325;--d:260ms">
+        <div class="ds-cat-ico"><img src="/assets/dealer-services/cat-marketing.jpg" alt="" loading="lazy"></div>
+        <h3>Marketing &amp; Business Development</h3>
+        <p>Strategy and support that strengthen your brand, expand your reach, and turn interest into orders and long-term growth.</p>
+      </article>
     </div>
   </div>
 </section>
 
-<!-- SEPARATION -->
-<section class="bh-sep">
+<!-- CARDCHAMP — PREMIER PARTNER -->
+<section class="ds-champ ds-sec" id="cardchamp">
   <div class="wrap">
-    <p class="kicker">Important distinction</p>
-    <h2>Dealer Services is separate from our manufacturer portfolio</h2>
-    <p class="sub">Two different things — so dealers and manufacturers know these services never compete with or alter our product representation.</p>
-    <div class="bh-sep-grid">
-      <div class="bh-sep-card man">
-        <span class="tag">Products we sell</span>
-        <h3>{{ ds.separation.manufacturer.title }}</h3>
-        <p>{{ ds.separation.manufacturer.desc }}</p>
-      </div>
-      <div class="bh-sep-vs">vs</div>
-      <div class="bh-sep-card svc">
-        <span class="tag">Business solutions</span>
-        <h3>{{ ds.separation.services.title }}</h3>
-        <p>{{ ds.separation.services.desc }}</p>
-      </div>
+    <div style="text-align:center" data-reveal="up"><span class="ds-champ-ribbon">&#9733; Premier Dealer Services Partner</span></div>
+    <div class="ds-champ-img" data-reveal="fade" role="img" aria-label="CardChamp — turn credit card fees into cash flow"></div>
+    <div class="ds-champ-copy" data-reveal="down">
+      <h2>Turn credit card fees into cash flow.</h2>
+      <p>Through an exclusive CardChamp partnership for the HCPS dealer network, you can recover the cost of credit card processing and put it back into your business. CardChamp's patented fee-collection technology means no monthly fees, healthier margins, and stronger cash flow — with a simple setup and a team that walks you through every step.</p>
+      <div class="ds-chips"><span><b>&#10003;</b> No Monthly Fees</span><span><b>&#10003;</b> Patented Fee-Collection Technology</span><span><b>&#10003;</b> Improve Cash Flow &amp; Margins</span></div>
+      <a class="ds-btn primary big" href="/contact/?reason=CardChamp%20Consultation%20%E2%80%94%20Turn%20Credit%20Card%20Fees%20into%20Cash%20Flow">Schedule Consultation to Turn Credit Card Fee's into Cash Flow &rarr;</a>
     </div>
-    <div class="bh-sep-note">{{ ds.separation.note }}</div>
   </div>
 </section>
 
-<!-- VETTED PARTNERS -->
-<section class="bh-partners" id="partners">
+<!-- HCPS PARTNER SERVICES -->
+<section class="ds-sec alt" id="services">
   <div class="wrap">
-    <p class="kicker">Vetted Partner Solutions</p>
-    <h2>Preferred partners &amp; services for the HCPS network</h2>
-    <p class="sub">HCPS evaluates and selects outside partners — and offers our own services — that provide meaningful value to dealers. Filter by what you need.</p>
-    <div class="bh-chips" id="bh-chips">
-      <button class="bh-chip on" data-cat="all">All services</button>
-      {% for c in ds.categories %}<button class="bh-chip" data-cat="{{ c.key }}">{{ c.label }}</button>{% endfor %}
+    <div class="ds-head" data-reveal="up">
+      <p class="kicker">HCPS Partner Services</p>
+      <h2>More ways to grow — powered by HCPS</h2>
+      <p>Beyond our partner network, HCPS offers its own services to help dealers strengthen their business, reach more customers, and build a stronger online presence.</p>
     </div>
-    <div class="bh-cards" id="bh-cards">
-      {% for p in ds.partners %}
-      <article class="bh-card{% if p.featured %} feat{% endif %}" data-cats="{{ p.categories | join(' ') }}">
-        <div class="bh-card-top">
-          <div>
-            {% if p.logo %}<img class="logo" src="{{ p.logo }}" alt="{{ p.name }}" loading="lazy" onerror="this.style.display='none';this.insertAdjacentHTML('afterend','<div class=\'nm\'>{{ p.name }}</div>')">
-            {% else %}<div class="nm">{{ p.name }}</div>{% endif %}
-            <div class="cat">{{ p.category_label }}</div>
-          </div>
-          {% if p.featured %}<span class="bh-badge feat">Featured</span>{% elif p.type == "hcps" %}<span class="bh-badge hcps">HCPS Service</span>{% else %}<span class="bh-badge partner">Vetted Partner</span>{% endif %}
-        </div>
-        <p class="svc">{{ p.service }}</p>
-        <p class="bh-kv"><b>Key dealer benefit</b>{{ p.benefit }}</p>
-        <p class="bh-kv"><b>HCPS dealer advantage</b>{{ p.hcps_advantage }}</p>
-        <div class="cta">
-          <a href="{{ p.url }}{% if p.tracking_key and 'http' in p.url %}?utm_source=hcps&utm_medium=website&utm_campaign=dealer-services&utm_content={{ p.tracking_key }}{% endif %}"{% if 'http' in p.url %} target="_blank" rel="noopener"{% endif %} style="background:{{ p.accent }};box-shadow:0 6px 16px {{ p.accent }}44;" data-svc-cta="{{ p.tracking_key }}">{{ p.cta_label }} &rarr;</a>
-          {% if p.cta_secondary %}<span class="sec">{{ p.cta_secondary }}</span>{% endif %}
+    <div class="ds-svcs">
+
+      <article class="ds-svc">
+        <div class="ds-svc-img" data-reveal="left"><img src="/assets/dealer-services/business-consulting.jpg" alt="HCPS Business Consulting" loading="lazy"></div>
+        <div class="ds-svc-body" data-reveal="up" style="--d:120ms">
+          <span class="ds-svc-tag">HCPS Service</span>
+          <h3>HCPS Business Consulting</h3>
+          <p>Hands-on guidance to strengthen how you run and grow your dealership. Our consultants work directly with you on showroom strategy, product mix, pricing, and sales process — building a clear, practical roadmap to scale revenue and profitability.</p>
+          <a class="ds-btn primary" href="/contact/?reason=HCPS%20Business%20Consulting">Contact Us to Learn More &rarr;</a>
         </div>
       </article>
-      {% endfor %}
-      <div class="bh-req" id="bh-empty" style="display:none">
-        <div>
-          <h3>Looking for something specific?</h3>
-          <p>We're actively vetting partners across financial services, insurance, technology, and operations. Tell us what would help your business and we'll point you to the right solution.</p>
-        </div>
-        <a class="bh-btn primary sm" href="/contact/?reason=Dealer%20Services%20%E2%80%94%20Partner%20Request">Request More Information →</a>
-      </div>
-    </div>
-  </div>
-</section>
 
-<!-- EXCLUSIVE BENEFITS -->
-<section class="bh-benefits">
-  <div class="wrap">
-    <p class="kicker">Exclusive Dealer Benefits</p>
-    <h2>Why these services are better through HCPS</h2>
-    <p class="sub">Selected specifically for the HCPS network — with the access and support that come from being a dealer.</p>
-    <div class="bh-bgrid">
-      {% for b in ds.exclusive_benefits %}
-      <div class="bh-b">
-        <div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>
-        <h4>{{ b.title }}</h4>
-        <p>{{ b.desc }}</p>
-      </div>
-      {% endfor %}
+      <article class="ds-svc rev">
+        <div class="ds-svc-img" data-reveal="right"><img src="/assets/dealer-services/digital-marketing.jpg" alt="HCPS Digital Marketing" loading="lazy"></div>
+        <div class="ds-svc-body" data-reveal="up" style="--d:120ms">
+          <span class="ds-svc-tag">HCPS Service</span>
+          <h3>HCPS Digital Marketing</h3>
+          <p>Marketing built for HME &amp; DME dealers. From local SEO and paid search to social, email, and category landing pages, we help you reach more customers across your territory and turn interest into orders.</p>
+          <a class="ds-btn primary" href="/contact/?reason=HCPS%20Digital%20Marketing">Contact Us to Learn More &rarr;</a>
+        </div>
+      </article>
+
+      <article class="ds-svc">
+        <div class="ds-svc-img" data-reveal="left"><img src="/assets/dealer-services/website-online-presence.jpg" alt="HCPS Website &amp; Online Presence" loading="lazy"></div>
+        <div class="ds-svc-body" data-reveal="up" style="--d:120ms">
+          <span class="ds-svc-tag">HCPS Service</span>
+          <h3>HCPS Website &amp; Online Presence</h3>
+          <p>A modern, mobile-friendly website and online presence that makes your dealership easy to find and easy to trust — professional design, product showcases, online-ordering integration, and the local search visibility customers use to choose you.</p>
+          <a class="ds-btn primary" href="/contact/?reason=HCPS%20Website%20%26%20Online%20Presence">Contact Us to Learn More &rarr;</a>
+        </div>
+      </article>
+
     </div>
   </div>
 </section>
 
 <!-- FINAL CTA -->
-<section class="bh-final">
-  <div class="wrap">
+<section class="ds-final">
+  <div class="wrap" data-reveal="up">
     <p class="kicker">A Solutions Company</p>
-    <h2>Let's talk about your business — not just your product lines.</h2>
-    <p>HCPS helps dealers with both the products they sell and the business behind them. Tell us where you'd like to improve cash flow, operations, marketing, or growth, and we'll connect you with the right solution.</p>
-    <div class="actions">
-      <a class="bh-btn primary" href="/contact/?reason=Dealer%20Services%20%E2%80%94%20Business%20Needs">Talk to HCPS About Your Business Needs →</a>
-      <a class="bh-btn ghost" href="#partners">View Preferred Partners</a>
-    </div>
+    <h2>Let's build a stronger business together.</h2>
+    <p>Tell us where you'd like to improve — cash flow, operations, marketing, or your online presence — and we'll connect you with the right solution for your dealership.</p>
+    <a class="ds-btn primary big" href="/contact/?reason=Dealer%20Services%20%E2%80%94%20Business%20Needs">Talk to HCPS About Dealer Services &rarr;</a>
   </div>
 </section>
 
 </div>
 
 <script>
+// Hero 3D tilt (desktop pointer only; respects reduced motion)
 (function () {
-  // Category filter for the partner grid — data-driven, so new partners just work.
-  var chips = document.getElementById("bh-chips");
-  var cards = Array.prototype.slice.call(document.querySelectorAll("#bh-cards .bh-card"));
-  var empty = document.getElementById("bh-empty");
-  if (chips) chips.addEventListener("click", function (e) {
-    var btn = e.target.closest(".bh-chip"); if (!btn) return;
-    chips.querySelectorAll(".bh-chip").forEach(function (c) { c.classList.remove("on"); });
-    btn.classList.add("on");
-    var cat = btn.getAttribute("data-cat");
-    var shown = 0;
-    cards.forEach(function (card) {
-      var cats = (card.getAttribute("data-cats") || "").split(" ");
-      var ok = (cat === "all") || cats.indexOf(cat) > -1;
-      card.style.display = ok ? "" : "none";
-      if (ok) shown++;
-    });
-    if (empty) empty.style.display = shown ? "none" : "";
+  var el = document.getElementById("ds-heroimg"); if (!el) return;
+  var band = el.closest(".ds-hero"); var g = el.querySelector(".ds-glare");
+  var reduce = false; try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+  if (reduce) return;
+  band.addEventListener("mousemove", function (e) {
+    var b = el.getBoundingClientRect();
+    var px = Math.max(0, Math.min(1, (e.clientX - b.left) / b.width));
+    var py = Math.max(0, Math.min(1, (e.clientY - b.top) / b.height));
+    el.style.transform = "perspective(1500px) rotateY(" + ((px - .5) * 12) + "deg) rotateX(" + ((.5 - py) * 8) + "deg) translateZ(18px)";
+    if (g) { g.style.setProperty("--mx", (px * 100) + "%"); g.style.setProperty("--my", (py * 100) + "%"); g.style.opacity = "1"; }
   });
-
-  // Outbound partner-click tracking (SalesIQ + dataLayer), same as before.
-  document.querySelectorAll("[data-svc-cta]").forEach(function (a) {
-    a.addEventListener("click", function () {
-      var key = this.getAttribute("data-svc-cta");
-      try { if (window.HCPSChat && HCPSChat.event) HCPSChat.event("service:" + key + ":click", { Service: key, Surface: "Website" }); } catch (e) {}
-      try { window.dataLayer = window.dataLayer || []; window.dataLayer.push({ event: "service_click", service: key, surface: "website" }); } catch (e) {}
-    });
-  });
+  band.addEventListener("mouseleave", function () { el.style.transform = "perspective(1500px) rotateY(0) rotateX(0)"; if (g) g.style.opacity = "0"; });
+})();
+// Scroll-reveal: add .in when an element enters the viewport, once.
+(function () {
+  var reduce = false; try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+  var els = [].slice.call(document.querySelectorAll(".ds [data-reveal]"));
+  if (reduce || !("IntersectionObserver" in window)) { els.forEach(function (el) { el.classList.add("in"); }); return; }
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); } });
+  }, { threshold: 0.12, rootMargin: "0px 0px -8% 0px" });
+  els.forEach(function (el) { io.observe(el); });
 })();
 </script>
