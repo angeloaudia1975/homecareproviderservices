@@ -3,14 +3,14 @@
     "path": "/",
     "title": "HomeCare Provider Services | HME & DME Manufacturer Representation",
     "description": "HomeCare Provider Services supports our dealer network with trusted sales, service, and growth solutions while partnering with manufacturers seeking stronger representation, brand awareness, and increased sales throughout our region.",
-    "image": "/assets/media/hcps-hme-dme-representation-mszcijes.png",
+    "image": "/assets/media/hcps-hme-dme-representation2-mt0aqipv.png",
     "canonical": "https://www.homecareproviderservices.org/"
   },
   {
     "path": "/become-a-dealer/",
     "title": "Become a Dealer | HomeCare Provider Services",
     "description": "Become a HomeCare Provider Services dealer and access premium HME and DME product lines, competitive dealer pricing, expert support, and 24/7 online ordering and access to our exclusive Showroom Designer Platform. Start your dealer account today.",
-    "image": "/assets/media/become-a-dealer-hcps-mszc3qyr.png",
+    "image": "/assets/media/become-a-hcps-dealer-mt0aptx7.png",
     "canonical": "https://www.homecareproviderservices.org/become-a-dealer/"
   },
   {
@@ -24,7 +24,7 @@
     "path": "/consulting/",
     "title": "Dealer Consulting & Showroom Solutions | HomeCare Provider Services",
     "description": "Hands-on showroom walkthroughs, sales training, marketing support, and showroom development tools help DME dealers optimize product mix and maximize profitability. HomeCare Provider Services also provides custom website design and business development solutions to strengthen your brand, increase sales, and support long-term growth.",
-    "image": "/assets/media/hcps-dealer-consulting-mszcqvb1.png",
+    "image": "/assets/media/hcps-dealer-consulting-mt0ap7z1.png",
     "canonical": "https://www.homecareproviderservices.org/consulting/"
   },
   {
@@ -38,7 +38,7 @@
     "path": "/dealer-support/",
     "title": "Dealer Support | HomeCare Provider Services",
     "description": "HomeCare Provider Services offers hands-on showroom development, sales training, marketing support, and business consulting to help HME and DME dealers strengthen their product mix, improve performance, and grow revenue.",
-    "image": "/assets/media/hcps-dealer-support-mszdhxzg.png",
+    "image": "/assets/media/hcps-dealer-support-mt0aof5d.png",
     "canonical": "https://www.homecareproviderservices.org/dealer-support/"
   },
   {
@@ -52,7 +52,7 @@
     "path": "/contact/",
     "title": "Contact HomeCare Provider Services | HME & DME Representation",
     "description": "Get in touch with HomeCare Provider Services for manufacturer-specific questions, dealer support, business development needs, or information about becoming a manufacturing partner. Whether you are part of our dealer network or a manufacturer looking to expand your reach, our team is here to help you grow, strengthen your business, and find the right solutions.",
-    "image": "/assets/media/hcps-contact-us-mszddynm.png",
+    "image": "/assets/media/hcps-contact-us-mt0ar54i.png",
     "canonical": "https://www.homecareproviderservices.org/contact/"
   },
   {
@@ -61,5 +61,12 @@
     "description": "Value-added business services for HomeCare Provider Services dealers—beyond our manufacturer product lines. Access vetted partners, tools, and solutions designed to strengthen your business, improve cash flow, streamline operations, and support long-term growth. These services are separate from our manufacturer portfolio and available exclusively to the HCPS dealer network.",
     "image": "/assets/media/hcps-dealer-services-mszhijs1.png",
     "canonical": "https://www.homecareproviderservices.org/dealer-services/"
+  },
+  {
+    "path": "/manufacturers/",
+    "title": "Manufacturing Partners | HomeCare Provider Services",
+    "description": "Explore innovative HME and DME manufacturers represented by HomeCare Provider Services, with products and programs designed to help dealers grow and succeed.",
+    "image": "/assets/media/hcps-manufacturing-partners-mt0amzj7.png",
+    "canonical": "https://www.homecareproviderservices.org/manufacturers/"
   }
 ]
