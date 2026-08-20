@@ -114,6 +114,13 @@ Dealer Services = **done-for-you** (HCPS executes). Consulting = **advisory/stra
 advises). "HCPS Business Consulting" lives ONLY on `/consulting/`. Each page carries a one-line
 clarifier + a cross-link to the other. Do not re-add a Business Consulting service card to Dealer Services.
 
+### Audience-specific framing is NOT duplication (RULE)
+On **Become a Manufacturing Partner**, "Product Launch / Staff Training / Marketing" describe what
+HCPS does *for a manufacturer to reach the dealer base* — a distinct service from Consulting's
+*dealer-facing* advisory. Keep that copy where it is; do NOT cross-link it to Consulting or treat it
+as a duplicate of the dealer-side services. Only collapse copy that is the same service for the same
+audience.
+
 ### Dealer Support page — RETIRED (RULE)
 `/dealer-support/` is retired. Its form was a duplicate of Contact's (same Netlify function);
 its bookable functions live in Dealer Hub. Do not recreate it.
