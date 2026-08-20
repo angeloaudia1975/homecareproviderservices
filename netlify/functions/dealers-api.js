@@ -342,7 +342,18 @@ exports.handler = async (event)=>{
       }
       if(act==="merge"){
         if(!b.survivor_id||!Array.isArray(b.loser_ids)||!b.loser_ids.length) return json(400,{error:"survivor_id + loser_ids required"});
-        await rpc("merge_dealers",{p_survivor:b.survivor_id,p_losers:b.loser_ids});
+        const survivor=b.survivor_id;
+        const losers=[...new Set(b.loser_ids.filter(x=>x&&x!==survivor))];
+        if(!losers.length) return json(400,{error:"no valid loser_ids (a dealer can't be merged into itself)"});
+        // Re-point any child dealer whose parent is one of the losers onto the survivor FIRST. The
+        // merge deletes the losers, and Postgres blocks that with dealers_parent_id_fkey while a
+        // branch still points at the account being merged away. Excluding the survivor keeps it from
+        // ever becoming its own parent; the survivor absorbs the losers' branches (intended merge).
+        const inList="("+losers.map(x=>encodeURIComponent(x)).join(",")+")";
+        try{ await sbSend("PATCH",`dealers?parent_id=in.${inList}&id=neq.${encodeURIComponent(survivor)}`,{parent_id:survivor},{Prefer:"return=minimal"}); }catch(e){}
+        // If the survivor's OWN parent was one of the losers, detach it — it can't parent itself.
+        try{ await sbSend("PATCH",`dealers?id=eq.${encodeURIComponent(survivor)}&parent_id=in.${inList}`,{parent_id:null},{Prefer:"return=minimal"}); }catch(e){}
+        await rpc("merge_dealers",{p_survivor:survivor,p_losers:losers});
         return json(200,{ok:true});
       }
       if(act==="edit"){
