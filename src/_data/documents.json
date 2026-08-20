@@ -6,59 +6,64 @@
   },
   "types": [
     {
-      "id": "credit-application",
-      "label": "Credit application",
-      "defaultAccess": "public"
-    },
-    {
-      "id": "price-list",
-      "label": "Standard price list",
-      "defaultAccess": "dealer"
-    },
-    {
-      "id": "custom-price-list",
-      "label": "Custom price list",
-      "defaultAccess": "dealer-specific"
-    },
-    {
-      "id": "brochure",
-      "label": "Brochure",
-      "defaultAccess": "public"
-    },
-    {
       "id": "catalog",
       "label": "Catalog",
-      "defaultAccess": "public"
+      "color": "#1681c2",
+      "need": "catalogs"
     },
     {
-      "id": "spec-sheet",
-      "label": "Spec sheet",
-      "defaultAccess": "public"
+      "id": "product-guide",
+      "label": "Product Guide",
+      "color": "#0f5c8f",
+      "need": "catalogs"
     },
     {
-      "id": "service-guide",
-      "label": "Service guide",
-      "defaultAccess": "public"
+      "id": "dealer-application",
+      "label": "Dealer Application",
+      "color": "#ef6325",
+      "need": "applications"
+    },
+    {
+      "id": "clinical",
+      "label": "Clinical",
+      "color": "#0e8a7a",
+      "need": "clinical"
+    },
+    {
+      "id": "training",
+      "label": "Training / Video",
+      "color": "#6b4bd6",
+      "need": "training"
     },
     {
       "id": "form",
       "label": "Form",
-      "defaultAccess": "public"
+      "color": "#5a6675",
+      "need": "forms"
+    },
+    {
+      "id": "service-warranty",
+      "label": "Service / Warranty",
+      "color": "#c14a10",
+      "need": "service"
+    },
+    {
+      "id": "sales-tool",
+      "label": "Sales Tool",
+      "color": "#a5590f",
+      "need": "sales"
     },
     {
       "id": "calculator",
-      "label": "Calculator / tool",
-      "defaultAccess": "public"
+      "label": "Business Tool",
+      "color": "#1c7a44",
+      "need": "forms"
     },
     {
-      "id": "training-video",
-      "label": "Training video",
-      "defaultAccess": "public"
-    },
-    {
-      "id": "signage",
-      "label": "Signage / artwork",
-      "defaultAccess": "public"
+      "id": "price-list",
+      "label": "Price List",
+      "color": "#3a4bd6",
+      "need": "sales"
     }
   ],
   "formats": [
@@ -72,7 +77,7 @@
     {
       "id": "golden-twilight-training",
       "title": "Golden Technologies Twilight Training Video",
-      "type": "training-video",
+      "type": "training",
       "manufacturer": "golden-technologies",
       "format": "video",
       "file": "",
@@ -80,7 +85,15 @@
       "description": "Quick training walkthrough for the Twilight positioning feature.",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "lift-chairs",
+      "models": [
+        "Twilight"
+      ],
+      "year": "",
+      "popular": false,
+      "keywords": "golden golden technologies lift chairs technologies training training / video twilight video",
+      "sortPriority": 50
     },
     {
       "id": "golden-power-lift-recliner-catalog",
@@ -93,7 +106,21 @@
       "description": "The full Golden power lift recliner lineup — Cloud Supreme (PR519), Cloud+, Cloud Elite, EZ Sleeper, the Comforter (PR531), and more, with Comfort Zones, Twilight Tilt, and Nirvana details.",
       "access": "public",
       "dealers": [],
-      "featured": true
+      "featured": true,
+      "category": "lift-chairs",
+      "models": [
+        "PR519",
+        "PR531",
+        "Cloud Supreme",
+        "Cloud+",
+        "Cloud Elite",
+        "EZ Sleeper",
+        "Comforter"
+      ],
+      "year": "2026",
+      "popular": true,
+      "keywords": "2026 catalog cloud elite cloud supreme cloud+ comforter ez sleeper golden golden technologies lift lift chairs power pr519 pr531 recliner",
+      "sortPriority": 100
     },
     {
       "id": "golden-mobility-catalog",
@@ -106,7 +133,21 @@
       "description": "Golden scooters and power wheelchairs — Buzzaround CarryOn HD (GB220), Buzzaround LX/EX/XL, Companion, Eagle, Ally Pro (GP304), Compass, and more.",
       "access": "public",
       "dealers": [],
-      "featured": true
+      "featured": true,
+      "category": "scooters-power-mobility",
+      "models": [
+        "GB220",
+        "GP304",
+        "Buzzaround",
+        "Companion",
+        "Eagle",
+        "Ally Pro",
+        "Compass"
+      ],
+      "year": "2026",
+      "popular": true,
+      "keywords": "2026 ally pro buzzaround catalog companion compass eagle gb220 golden golden technologies gp304 mobility scooters & power mobility",
+      "sortPriority": 100
     },
     {
       "id": "corsicana-healthcare-catalog",
@@ -119,7 +160,15 @@
       "description": "The CorsicanaCare healthcare sleep collection — the Mobility Bed core product, adjustable bases, clinical mattresses, and the Essentials Care bundle.",
       "access": "public",
       "dealers": [],
-      "featured": true
+      "featured": true,
+      "category": "beds-sleep-systems",
+      "models": [
+        "Mobility Bed"
+      ],
+      "year": "2026",
+      "popular": false,
+      "keywords": "2026 beds & sleep systems catalog corsicana corsicana healthcare healthcare mobility bed",
+      "sortPriority": 80
     },
     {
       "id": "ohio-medical-gce-oxygen-catalog",
@@ -132,7 +181,17 @@
       "description": "Portable and stationary oxygen concentrators — the Zen-O and Zen-O lite POCs and the M50 stationary concentrator, featuring Rate Responsive Therapy.",
       "access": "public",
       "dealers": [],
-      "featured": true
+      "featured": true,
+      "category": "respiratory",
+      "models": [
+        "Zen-O",
+        "Zen-O lite",
+        "M50"
+      ],
+      "year": "2026",
+      "popular": false,
+      "keywords": "2026 catalog gce m50 medical ohio ohio medical oxygen product respiratory zen-o zen-o lite",
+      "sortPriority": 80
     },
     {
       "id": "strongback-dealer-catalog-2026",
@@ -145,12 +204,24 @@
       "description": "The full Strongback wheelchair lineup for dealer presentations — Comfort, Comfort Flip, Heavy Duty, Essential, Excursion transport chairs, SEATA rollator, and the new ErgoSteel 18\", with model specs and MSRP.",
       "access": "public",
       "dealers": [],
-      "featured": true
+      "featured": true,
+      "category": "manual-mobility",
+      "models": [
+        "Comfort",
+        "Comfort Flip",
+        "Heavy Duty",
+        "Essential",
+        "Excursion"
+      ],
+      "year": "2026",
+      "popular": true,
+      "keywords": "2026 catalog comfort comfort flip dealer essential excursion heavy duty manual mobility reference strongback strongback mobility",
+      "sortPriority": 100
     },
     {
       "id": "strongback-brochure-2026",
       "title": "Strongback Product Brochure (2026)",
-      "type": "brochure",
+      "type": "product-guide",
       "manufacturer": "strongback-mobility",
       "format": "pdf",
       "file": "/assets/docs/strongback-brochure-2026.pdf",
@@ -158,12 +229,18 @@
       "description": "Strongback comfort story, ergonomic backrest benefits, product series overview, transport chairs, and features, options & warranty support.",
       "access": "public",
       "dealers": [],
-      "featured": true
+      "featured": true,
+      "category": "manual-mobility",
+      "models": [],
+      "year": "2026",
+      "popular": false,
+      "keywords": "2026 brochure manual mobility product product guide strongback strongback mobility",
+      "sortPriority": 50
     },
     {
       "id": "access4u-dealer-brochure-2023",
       "title": "Access4U Accessibility Solutions Brochure",
-      "type": "brochure",
+      "type": "product-guide",
       "manufacturer": "access4u",
       "format": "pdf",
       "file": "/assets/docs/access4u-dealer-brochure-2023.pdf",
@@ -171,12 +248,21 @@
       "description": "The full Access4U line — Enable modular ramps, commercial ramping, platforms, stairs, gates, guardrails, and the complete MINI, portable, and threshold ramp series, with quick specs and options.",
       "access": "public",
       "dealers": [],
-      "featured": true
+      "featured": true,
+      "category": "accessibility-ramps",
+      "models": [
+        "Enable",
+        "MINI"
+      ],
+      "year": "",
+      "popular": false,
+      "keywords": "access4u accessibility accessibility & ramps brochure enable mini product guide solutions",
+      "sortPriority": 50
     },
     {
       "id": "access4u-20-dealer-sales-points-2025",
       "title": "Access4U — 20 Dealer Sales Points (2025)",
-      "type": "brochure",
+      "type": "sales-tool",
       "manufacturer": "access4u",
       "format": "pdf",
       "file": "/assets/docs/access4u-20-dealer-sales-points-2025.pdf",
@@ -184,7 +270,13 @@
       "description": "20 quick facts new dealers should know — Made in U.S.A., 1,000 lb capacity, inclusive pricing, 7–10 day lead times, one-person installation, dealer-only distribution, and more.",
       "access": "public",
       "dealers": [],
-      "featured": true
+      "featured": true,
+      "category": "accessibility-ramps",
+      "models": [],
+      "year": "2025",
+      "popular": false,
+      "keywords": "2025 access4u accessibility & ramps dealer points sales sales tool",
+      "sortPriority": 50
     },
     {
       "id": "complete-medical-catalog-2024",
@@ -197,7 +289,15 @@
       "description": "The full Blue Jay wholesale line — aids to daily living, bath safety, mobility aids, hip kits, blood pressure, hot & cold therapy, ObusForme backrests, orthopedic braces, compression hosiery, plus retail planograms and merchandising displays.",
       "access": "public",
       "dealers": [],
-      "featured": true
+      "featured": true,
+      "category": "patient-care",
+      "models": [
+        "Blue Jay"
+      ],
+      "year": "2024",
+      "popular": false,
+      "keywords": "2024 blue blue jay catalog complete complete medical / blue jay jay medical patient care",
+      "sortPriority": 80
     },
     {
       "id": "ovation-coded-product-catalog-2026",
@@ -210,7 +310,16 @@
       "description": "The full PDAC-coded orthopedic line — Gen 2 walking boot, Nu-Form ankle & back braces, night splints, knee braces, wrist & thumb supports, shoulder/elbow, spine (TLSO), and med-surg products with L-codes.",
       "access": "public",
       "dealers": [],
-      "featured": true
+      "featured": true,
+      "category": "orthopedics",
+      "models": [
+        "Gen 2",
+        "Nu-Form"
+      ],
+      "year": "2026",
+      "popular": false,
+      "keywords": "2026 catalog coded gen 2 medical nu-form orthopedics ovation ovation medical product",
+      "sortPriority": 80
     },
     {
       "id": "ovation-retail-catalog-2026",
@@ -223,12 +332,22 @@
       "description": "Retail-ready orthopedic bracing — Versa-Fit wrist & thumb, boxer splint, neoprene knee support, Gen2 & Nu-Form ankle braces, back braces, and lumbar supports.",
       "access": "public",
       "dealers": [],
-      "featured": true
+      "featured": true,
+      "category": "orthopedics",
+      "models": [
+        "Versa-Fit",
+        "Gen2",
+        "Nu-Form"
+      ],
+      "year": "2026",
+      "popular": false,
+      "keywords": "2026 catalog gen2 medical nu-form orthopedics ovation ovation medical retail versa-fit",
+      "sortPriority": 80
     },
     {
       "id": "bongorx-epap-brochure-2026",
       "title": "BongoRx EPAP Brochure (2026)",
-      "type": "brochure",
+      "type": "product-guide",
       "manufacturer": "airavant-bongorx",
       "format": "pdf",
       "file": "/assets/docs/bongorx-epap-brochure-2026.pdf",
@@ -236,12 +355,20 @@
       "description": "Effective sleep apnea therapy without the machine — how Bongo Rx works, key patient benefits, starter kit & replenishment part numbers, and the Top 8 dealer FAQs.",
       "access": "public",
       "dealers": [],
-      "featured": true
+      "featured": true,
+      "category": "sleep-therapy",
+      "models": [
+        "Bongo Rx"
+      ],
+      "year": "2026",
+      "popular": false,
+      "keywords": "2026 airavant / bongorx bongo rx bongorx brochure epap product guide sleep therapy",
+      "sortPriority": 50
     },
     {
       "id": "bongorx-sleep-study-review-2026",
       "title": "BongoRx Clinical Sleep Study Review (2026)",
-      "type": "spec-sheet",
+      "type": "clinical",
       "manufacturer": "airavant-bongorx",
       "format": "pdf",
       "file": "/assets/docs/bongorx-sleep-study-review-2026.pdf",
@@ -249,7 +376,15 @@
       "description": "A novel EPAP device for mild-to-moderate OSA — clinical study (Lankford & Kram) showing a 45% mean AHI reduction (15.7 → 7.1, p=0.0093), 83% acceptance, and no serious adverse events.",
       "access": "public",
       "dealers": [],
-      "featured": true
+      "featured": true,
+      "category": "sleep-therapy",
+      "models": [
+        "Bongo Rx"
+      ],
+      "year": "2026",
+      "popular": false,
+      "keywords": "2026 airavant / bongorx bongo rx bongorx clinical review sleep sleep therapy study",
+      "sortPriority": 50
     },
     {
       "id": "pedifix-catalog-2025",
@@ -262,7 +397,13 @@
       "description": "The full PediFix Medical Footcare line plus the turnkey display program — 12', 8', 4', and 2'x6' mobile footcare centers, counter-top displays, 1'–3' planograms, and in-store marketing tools.",
       "access": "public",
       "dealers": [],
-      "featured": true
+      "featured": true,
+      "category": "footcare",
+      "models": [],
+      "year": "2025",
+      "popular": false,
+      "keywords": "2025 catalog display footcare pedifix retail",
+      "sortPriority": 80
     },
     {
       "id": "climbing-steps-catalog-2026",
@@ -275,7 +416,18 @@
       "description": "The full Climbing Steps lineup — Mobile Stairlift portable stair lifts, VoltStair, Freedom Aqua patient lifts, Lift Buddy fall-recovery chair, and Titan & Hercules climbing hand trucks.",
       "access": "public",
       "dealers": [],
-      "featured": true
+      "featured": true,
+      "category": "patient-care",
+      "models": [
+        "Mobile Stairlift",
+        "VoltStair",
+        "Freedom Aqua",
+        "Lift Buddy"
+      ],
+      "year": "2026",
+      "popular": false,
+      "keywords": "2026 catalog climbing climbing steps freedom aqua lift buddy mobile stairlift patient care steps voltstair",
+      "sortPriority": 80
     },
     {
       "id": "biwaze-clear-prescription-form-ms4umpsl",
@@ -288,12 +440,20 @@
       "description": "",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "respiratory",
+      "models": [
+        "BiWaze Clear"
+      ],
+      "year": "",
+      "popular": false,
+      "keywords": "abm respiratory care biwaze biwaze clear clear form prescription respiratory",
+      "sortPriority": 50
     },
     {
       "id": "biwaze-clear-product-brochure-ms4unosv",
       "title": "BiWaze Clear Product Brochure",
-      "type": "brochure",
+      "type": "product-guide",
       "manufacturer": "abm-respiratory-care",
       "format": "pdf",
       "file": "/assets/docs/biwaze-clear-trifold-hme-ms4umzt5.pdf",
@@ -301,12 +461,20 @@
       "description": "",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "respiratory",
+      "models": [
+        "BiWaze Clear"
+      ],
+      "year": "",
+      "popular": false,
+      "keywords": "abm respiratory care biwaze biwaze clear brochure clear product product guide respiratory",
+      "sortPriority": 50
     },
     {
       "id": "biwaze-cough-patient-guide-ms4uojkc",
       "title": "BiWaze Cough Patient Guide",
-      "type": "brochure",
+      "type": "product-guide",
       "manufacturer": "abm-respiratory-care",
       "format": "pdf",
       "file": "/assets/docs/biwaze-cough-patient-guide-ms4unxr1.pdf",
@@ -314,12 +482,20 @@
       "description": "",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "respiratory",
+      "models": [
+        "BiWaze Cough"
+      ],
+      "year": "",
+      "popular": false,
+      "keywords": "abm respiratory care biwaze biwaze cough cough guide patient product guide respiratory",
+      "sortPriority": 50
     },
     {
       "id": "biwaze-cough-brochure-ms4upiri",
-      "title": "BiWaze Cough Product Brochure Brochure",
-      "type": "brochure",
+      "title": "BiWaze Cough Product Brochure",
+      "type": "product-guide",
       "manufacturer": "abm-respiratory-care",
       "format": "pdf",
       "file": "/assets/docs/biwaze-cough-patient-trifold-brochure-ms4uotot.pdf",
@@ -327,7 +503,15 @@
       "description": "",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "respiratory",
+      "models": [
+        "BiWaze Cough"
+      ],
+      "year": "",
+      "popular": false,
+      "keywords": "abm respiratory care biwaze biwaze cough brochure cough product product guide respiratory",
+      "sortPriority": 50
     },
     {
       "id": "biwaze-cough-prescription-form-ms4ur4ct",
@@ -340,7 +524,15 @@
       "description": "",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "respiratory",
+      "models": [
+        "BiWaze Cough"
+      ],
+      "year": "",
+      "popular": false,
+      "keywords": "abm respiratory care biwaze biwaze cough cough form prescription respiratory",
+      "sortPriority": 50
     },
     {
       "id": "access4u-ramp-survey-form-ms4v708b",
@@ -353,12 +545,18 @@
       "description": "Great form to perform a Ramp Site Assessment and Layout. ",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "accessibility-ramps",
+      "models": [],
+      "year": "",
+      "popular": false,
+      "keywords": "access4u accessibility & ramps form ramp survey",
+      "sortPriority": 50
     },
     {
       "id": "access4u-dealer-application-ms4v9rlz",
       "title": "Access4u Dealer Application",
-      "type": "credit-application",
+      "type": "dealer-application",
       "manufacturer": "access4u",
       "format": "pdf",
       "file": "/assets/docs/credit-application-for-access4u-2023-ms4v7utn.pdf",
@@ -366,7 +564,13 @@
       "description": "Access4u Dealer Application. Please email the application back to HomeCare Provider Services to process your new account request with Copy of State Resale Certificate.",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "accessibility-ramps",
+      "models": [],
+      "year": "",
+      "popular": true,
+      "keywords": "access4u accessibility & ramps application dealer dealer application",
+      "sortPriority": 100
     },
     {
       "id": "ramp-rental-agreement-beta-ms4vayq7",
@@ -379,7 +583,13 @@
       "description": "Great tool for Ramp Rental Programs",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "accessibility-ramps",
+      "models": [],
+      "year": "",
+      "popular": false,
+      "keywords": "access4u accessibility & ramps agreement beta form ramp rental",
+      "sortPriority": 50
     },
     {
       "id": "home-safety-solutions-checklist-beta-ms4vd4ug",
@@ -392,7 +602,13 @@
       "description": "Great Home Accessibility Checklist to age in place in the home, great evaluation tool to help provide another level of service.",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "accessibility-ramps",
+      "models": [],
+      "year": "",
+      "popular": false,
+      "keywords": "access4u accessibility & ramps beta checklist form home safety solutions",
+      "sortPriority": 50
     },
     {
       "id": "oxygen-delivery-cost-calculator-for-profit-and-business-deve-ms6hi3ml",
@@ -405,12 +621,18 @@
       "description": "This is a great calculator to show profit and loss per patient, it reviews the initial cost and overall cost of suppling oxygen to a patient. Great tool for Portable Oxygen Concentrator Utilization. ",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "respiratory",
+      "models": [],
+      "year": "",
+      "popular": false,
+      "keywords": "business business tool calculator cost delivery development ohio medical oxygen profit respiratory",
+      "sortPriority": 50
     },
     {
       "id": "rate-responsive-therapy-clinical-white-paper-ms6hmfx7",
       "title": "Rate Responsive Therapy Clinical White Paper",
-      "type": "form",
+      "type": "clinical",
       "manufacturer": "ohio-medical",
       "format": "pdf",
       "file": "/assets/docs/rate-responsive-therapy-clinical-sheet-ms6hl3kr.pdf",
@@ -418,12 +640,20 @@
       "description": "Learn more about the clinical benefits of RRT Therapy.",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "respiratory",
+      "models": [
+        "RRT"
+      ],
+      "year": "",
+      "popular": false,
+      "keywords": "clinical ohio medical paper rate respiratory responsive rrt therapy white",
+      "sortPriority": 50
     },
     {
       "id": "performance-variability-of-bench-testing-of-selected-poc-uni-ms6hop8t",
       "title": "Performance Variability of Bench Testing of Selected POC units Clinical Study",
-      "type": "form",
+      "type": "clinical",
       "manufacturer": "ohio-medical",
       "format": "pdf",
       "file": "/assets/docs/white-paper-email-version-ms6hmzci.pdf",
@@ -431,12 +661,20 @@
       "description": "Great Clinical Study comparing Portable Oxygen Devices",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "respiratory",
+      "models": [
+        "POC"
+      ],
+      "year": "",
+      "popular": false,
+      "keywords": "bench clinical ohio medical performance poc respiratory selected study testing units variability",
+      "sortPriority": 50
     },
     {
       "id": "copd-pathophysiology-and-treatment-considerations-ms6hsvzo",
       "title": "COPD Pathophysiology and Treatment Considerations",
-      "type": "form",
+      "type": "clinical",
       "manufacturer": "ohio-medical",
       "format": "pdf",
       "file": "/assets/docs/copd-for-ohio-medical-ms6hr2az.pdf",
@@ -444,7 +682,15 @@
       "description": "Great Learning Course",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "respiratory",
+      "models": [
+        "COPD"
+      ],
+      "year": "",
+      "popular": false,
+      "keywords": "clinical considerations copd ohio medical pathophysiology respiratory treatment",
+      "sortPriority": 50
     },
     {
       "id": "bongorx-prescription-form-ms6lnok3",
@@ -457,12 +703,20 @@
       "description": "If you need the prescription form and don't have an existing prescription on file for CPAP we have the you covered.",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "sleep-therapy",
+      "models": [
+        "Bongo Rx"
+      ],
+      "year": "",
+      "popular": true,
+      "keywords": "airavant / bongorx bongo rx bongorx form prescription sleep therapy",
+      "sortPriority": 100
     },
     {
       "id": "bongorx-white-paper-study-ms6lp2fw",
       "title": "BongoRx White Paper Study",
-      "type": "form",
+      "type": "clinical",
       "manufacturer": "airavant-bongorx",
       "format": "pdf",
       "file": "/assets/docs/bongo-rx-white-paper-2023-03-17-ms6lo10g.pdf",
@@ -470,12 +724,20 @@
       "description": "A Survey of Patients using the Bongo Rx Device for Treatment of Obstructive Sleep Apnea.",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "sleep-therapy",
+      "models": [
+        "Bongo Rx"
+      ],
+      "year": "",
+      "popular": false,
+      "keywords": "airavant / bongorx bongo rx bongorx clinical paper sleep therapy study white",
+      "sortPriority": 50
     },
     {
       "id": "poc-return-authorization-request-form-ms84kelo",
       "title": "POC Return Authorization Request Form",
-      "type": "form",
+      "type": "service-warranty",
       "manufacturer": "ohio-medical",
       "format": "link",
       "file": "",
@@ -483,12 +745,20 @@
       "description": "This is for requesting Return Material Authorization (RMA) for the GCE Portable Oxygen Concentrator (POC) device. This form needs to be filled out by the medical device dealer only. ",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "respiratory",
+      "models": [
+        "POC"
+      ],
+      "year": "",
+      "popular": false,
+      "keywords": "authorization form ohio medical poc request respiratory return service / warranty",
+      "sortPriority": 50
     },
     {
       "id": "ohio-medical-gce-new-dealer-account-registration-ms84lh5t",
       "title": "Ohio Medical GCE New Dealer Account Registration",
-      "type": "credit-application",
+      "type": "dealer-application",
       "manufacturer": "ohio-medical",
       "format": "link",
       "file": "",
@@ -496,12 +766,18 @@
       "description": "",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "respiratory",
+      "models": [],
+      "year": "",
+      "popular": false,
+      "keywords": "account dealer dealer application gce medical ohio ohio medical registration respiratory",
+      "sortPriority": 60
     },
     {
       "id": "complete-medical-planogram-displays-ms84nqz5",
       "title": "Complete Medical Planogram Displays",
-      "type": "brochure",
+      "type": "sales-tool",
       "manufacturer": "complete-medical-supplies",
       "format": "pdf",
       "file": "/assets/docs/complete-medical-new-planogram-displays-with-special-pricing-ms84mjhm.pdf",
@@ -509,7 +785,13 @@
       "description": "Review a great assortment of turn key displays from Complete Medical",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "patient-care",
+      "models": [],
+      "year": "",
+      "popular": false,
+      "keywords": "complete complete medical / blue jay displays medical patient care planogram sales tool",
+      "sortPriority": 50
     },
     {
       "id": "obusforme-catalog-ms84py7x",
@@ -522,12 +804,20 @@
       "description": "Obusforme product descriptions and specification Catalog from Complete Medical",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "orthopedics",
+      "models": [
+        "ObusForme"
+      ],
+      "year": "",
+      "popular": false,
+      "keywords": "catalog complete medical / blue jay obusforme orthopedics",
+      "sortPriority": 50
     },
     {
       "id": "climbing-steps-new-dealer-application-ms84ywlx",
       "title": "Climbing Steps New Dealer Application",
-      "type": "credit-application",
+      "type": "dealer-application",
       "manufacturer": "climbing-steps",
       "format": "pdf",
       "file": "/assets/docs/climbing-steps-dealer-application-2025-hps-ms84xfg3.pdf",
@@ -535,12 +825,18 @@
       "description": "Please fill out the attached Climbing Steps Dealer application and send back to HomeCare Provider Services to open your account. Please include your state resale certificate.",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "patient-care",
+      "models": [],
+      "year": "",
+      "popular": false,
+      "keywords": "application climbing climbing steps dealer dealer application patient care steps",
+      "sortPriority": 60
     },
     {
       "id": "corsicana-healthcare-new-dealer-application-ms87e2ny",
       "title": "Corsicana Healthcare New Dealer Application",
-      "type": "credit-application",
+      "type": "dealer-application",
       "manufacturer": "corsicana",
       "format": "docx",
       "file": "/assets/docs/corsicana-healthcare-south-bay-international-credit-applicat-ms87by1g.docx",
@@ -548,12 +844,18 @@
       "description": "To open an account with Corsicana Healthcare please fill out the attached application and send to HomeCare Provider Services to open your account. Please send State resale certificate when submitting.",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "beds-sleep-systems",
+      "models": [],
+      "year": "",
+      "popular": false,
+      "keywords": "application beds & sleep systems corsicana corsicana healthcare dealer dealer application healthcare",
+      "sortPriority": 60
     },
     {
       "id": "installation-bemis-assurance-with-clean-shield-toilet-seat-ms97cn2b",
-      "title": " Installation - Bemis Assurance® with Clean Shield™ Toilet Seat",
-      "type": "training-video",
+      "title": "Installation - Bemis Assurance® with Clean Shield™ Toilet Seat",
+      "type": "training",
       "manufacturer": "bemis",
       "format": "video",
       "file": "https://www.youtube.com/watch?v=HIZYz0mE2Rc",
@@ -561,12 +863,21 @@
       "description": "The Bemis Assurance® with Clean Shield seat is a 3\" elevated toilet seat. The Snap2Secure™ (Stay•Tite®) installation system means the seat is fully secure and will never loosen, guaranteed. Seat capacity is tested to 1,000 lbs. ",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "bath-safety",
+      "models": [
+        "Assurance",
+        "Clean Shield"
+      ],
+      "year": "",
+      "popular": false,
+      "keywords": "assurance bath safety bemis bemis assurance clean clean shield installation seat shield toilet training / video",
+      "sortPriority": 50
     },
     {
       "id": "bemis-assurance-display-program-details-ms97eeqe",
       "title": "Bemis Assurance Display Program Details",
-      "type": "brochure",
+      "type": "sales-tool",
       "manufacturer": "bemis",
       "format": "pdf",
       "file": "/assets/docs/bemis-assurance-bath-safety-display-program-2026-new-ms97dw1r.pdf",
@@ -574,7 +885,15 @@
       "description": "To sell “Best” level products, your customers must be able to touch, feel and sit on the products to fully understand the features and benefits. Bemis has an offer to get the Assurance seat display into your store... the Display Promo!",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "bath-safety",
+      "models": [
+        "Assurance"
+      ],
+      "year": "",
+      "popular": false,
+      "keywords": "assurance bath safety bemis bemis assurance details display program sales tool",
+      "sortPriority": 50
     },
     {
       "id": "bemis-raised-toilet-seats-catalog-ms97gaus",
@@ -587,12 +906,20 @@
       "description": "Learn more about all the great products Bemis offers for Bath Safety.",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "bath-safety",
+      "models": [
+        "Assurance"
+      ],
+      "year": "",
+      "popular": false,
+      "keywords": "assurance bath safety bemis bemis assurance catalog raised seats toilet",
+      "sortPriority": 50
     },
     {
       "id": "bemis-new-dealer-application-ms97i35q",
       "title": "Bemis New Dealer Application",
-      "type": "credit-application",
+      "type": "dealer-application",
       "manufacturer": "bemis",
       "format": "pdf",
       "file": "/assets/docs/bemis-hme-dme-dealer-application-2026-ms97gpvy.pdf",
@@ -600,12 +927,18 @@
       "description": "To open an account with Bemis please fill out the application and send back to HomeCare Provider Services with copy of State Resale Certificate.",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "bath-safety",
+      "models": [],
+      "year": "",
+      "popular": true,
+      "keywords": "application bath safety bemis bemis assurance dealer dealer application",
+      "sortPriority": 100
     },
     {
       "id": "installing-the-personal-wash-bidet-with-the-clean-shield-sea-ms97knya",
-      "title": " Installing the Personal Wash Bidet with the Clean Shield Seat",
-      "type": "training-video",
+      "title": "Installing the Personal Wash Bidet with the Clean Shield Seat",
+      "type": "training",
       "manufacturer": "bemis",
       "format": "video",
       "file": "",
@@ -613,12 +946,20 @@
       "description": "The Assurance® 3\" Raised Premium Toilet Seat is designed for both round and elongated toilets, with optional armrests. It connects to your existing toilet and water source, requiring no batteries or electricity. Features include:\n\nAn ergonomic twist knob for hands-free, thorough cleaning.\nAdjustable water pressure for comfort and effectiveness, reducing toilet paper usage and skin irritation.\nA water spray angle tailored for the seat’s higher height.\nA retractable, self-cleaning bidet nozzle with a quality brass valve and inlet.\nAll parts are included for easy, standard installation.\nEnjoy a simple, hygienic, and eco-friendly bathroom solution.",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "bath-safety",
+      "models": [
+        "Clean Shield"
+      ],
+      "year": "",
+      "popular": false,
+      "keywords": "bath safety bemis assurance bidet clean clean shield installing personal seat shield training / video wash",
+      "sortPriority": 50
     },
     {
       "id": "installation-bemis-assurance-support-arms-ms97mvv7",
-      "title": " Installation - Bemis Assurance® Support Arms",
-      "type": "training-video",
+      "title": "Installation - Bemis Assurance® Support Arms",
+      "type": "training",
       "manufacturer": "bemis",
       "format": "video",
       "file": "",
@@ -626,12 +967,21 @@
       "description": "Bemis Assurance®  Support Arms offer you support and security during the standing and sitting process. Support Arms are tested to 350 pounds each side, and are made of heavy gauge aluminum, with a 1.5\" diameter, meeting ADA grab bar requirements. ",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "bath-safety",
+      "models": [
+        "Assurance",
+        "Support Arms"
+      ],
+      "year": "",
+      "popular": false,
+      "keywords": "arms assurance bath safety bemis bemis assurance installation support support arms training / video",
+      "sortPriority": 50
     },
     {
       "id": "golden-technologies-showroom-design-layout-generator-dealer--msdcru71",
       "title": "Golden Technologies Showroom Design Layout Generator Dealer Guide",
-      "type": "service-guide",
+      "type": "sales-tool",
       "manufacturer": "golden-technologies",
       "format": "pdf",
       "file": "/assets/docs/golden-showroom-design-layout-generator-dealer-guide-msdcpyi6.pdf",
@@ -639,12 +989,18 @@
       "description": "Learn how to increase margins and build out and optimize your Golden Technologies showroom in the Golden Online ordering platform",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "lift-chairs",
+      "models": [],
+      "year": "",
+      "popular": false,
+      "keywords": "dealer design generator golden golden technologies guide layout lift chairs sales tool showroom technologies",
+      "sortPriority": 50
     },
     {
       "id": "strongback-consumer-product-claim-form-msnhx8o9",
       "title": "Strongback Consumer Product Claim Form",
-      "type": "form",
+      "type": "service-warranty",
       "manufacturer": "strongback-mobility",
       "format": "link",
       "file": "",
@@ -652,12 +1008,18 @@
       "description": "Strongback Mobility is committed to exceptional customer service, and we want to give our customers the easiest claim process possible. Please submit the form below to begin. Please allow 2-3 business days for your claim process to be reviewed. \n\nWe kindly ask that you provide all the necessary details from the start, so that we can handle your claim quickly and thoroughly.\n\nIf you purchased your wheelchair or rollator through a local Dealer, please return to that Dealer and they will submit this form for you.\n\nThis warranty does NOT apply to used, purchased wheelchairs or rollators, nor does it apply to wheelchairs or rollators that are used as rentals.\n\nPlease note: Failure to complete the claim form in its entirety will delay or possibly void the claim.",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "manual-mobility",
+      "models": [],
+      "year": "",
+      "popular": false,
+      "keywords": "claim consumer form manual mobility product service / warranty strongback strongback mobility",
+      "sortPriority": 50
     },
     {
       "id": "strongback-return-authorization-request-msnhyqd4",
       "title": "Strongback Return Authorization Request",
-      "type": "form",
+      "type": "service-warranty",
       "manufacturer": "strongback-mobility",
       "format": "link",
       "file": "",
@@ -665,8 +1027,135 @@
       "description": "Strongback Mobility is committed to exceptional customer service, and we want to give our customers the easiest return claim process possible. Please submit the form below to begin if you purchased directly from StrongbackMobility.com. Please allow 2-3 business days for your claim process to be reviewed. \nReturn Policy Details:\nEASY RETURNS\nIf you received a chair that is in perfect condition but want to return it for a different reason you have a full 30 days to do so. In these instances, you will need to pay for return shipping and submit the form below to request a return authorization. Any returns received in our warehouse without an issued return authorization will be ineligible for a refund and will be returned to you at your expense.\n\nREQUEST A RETURN AUTHORIZATION\nStrongback Mobility is committed to exceptional customer service and we want to give our customers the easiest return process possible. Please submit the form below to request a return authorization. Once we have received your request, we will send you a confirmation email with your return authorization number (which must be included with your wheelchair to return) and the address where you can mail your returned item.\n\nPLEASE NOTE\nReturns submitted more than 30 days after delivery will not be authorized for return. Products must be returned in their original packaging, and have no cracks, scratches, or any indications of use. A return authorization must be requested and the return authorization number must be included with your return. Customer is responsible for return shipping costs.",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "category": "manual-mobility",
+      "models": [],
+      "year": "",
+      "popular": false,
+      "keywords": "authorization manual mobility request return service / warranty strongback strongback mobility",
+      "sortPriority": 50
     }
   ],
-  "_note": "manufacturer may be empty for general HCPS documents (business tools, financing). format supports pdf/xlsx/docx/video/link."
+  "_note": "Admin-managed single source of record. Each item: manufacturer, category (product), type (standardized), models[], year, keywords, popular, featured, sortPriority. Types/categories/needs defined at top level. Do not hand-seed from documents.js.",
+  "categories": [
+    {
+      "id": "lift-chairs",
+      "label": "Lift Chairs"
+    },
+    {
+      "id": "scooters-power-mobility",
+      "label": "Scooters & Power Mobility"
+    },
+    {
+      "id": "manual-mobility",
+      "label": "Manual Mobility"
+    },
+    {
+      "id": "accessibility-ramps",
+      "label": "Accessibility & Ramps"
+    },
+    {
+      "id": "respiratory",
+      "label": "Respiratory"
+    },
+    {
+      "id": "sleep-therapy",
+      "label": "Sleep Therapy"
+    },
+    {
+      "id": "orthopedics",
+      "label": "Orthopedics"
+    },
+    {
+      "id": "bath-safety",
+      "label": "Bath Safety"
+    },
+    {
+      "id": "patient-care",
+      "label": "Patient Care"
+    },
+    {
+      "id": "beds-sleep-systems",
+      "label": "Beds & Sleep Systems"
+    },
+    {
+      "id": "footcare",
+      "label": "Footcare"
+    }
+  ],
+  "needs": [
+    {
+      "id": "catalogs",
+      "label": "Catalogs & Product Guides",
+      "blurb": "Full manufacturer catalogs, brochures and product guides for every line HCPS represents.",
+      "types": [
+        "catalog",
+        "product-guide"
+      ],
+      "color": "#1681c2",
+      "icon": "<path d=\"M4 19.5A2.5 2.5 0 0 1 6.5 17H20\"/><path d=\"M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z\"/>"
+    },
+    {
+      "id": "applications",
+      "label": "Dealer & Credit Applications",
+      "blurb": "Open a new manufacturer account or download the documents needed to become an authorized dealer.",
+      "types": [
+        "dealer-application"
+      ],
+      "color": "#ef6325",
+      "icon": "<path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"/><path d=\"M14 2v6h6\"/><path d=\"M9 15l2 2 4-4\"/>"
+    },
+    {
+      "id": "clinical",
+      "label": "Clinical Resources",
+      "blurb": "Clinical studies, white papers and patient-education materials — respiratory, sleep and more.",
+      "types": [
+        "clinical"
+      ],
+      "color": "#0e8a7a",
+      "icon": "<path d=\"M22 12h-4l-3 9L9 3l-3 9H2\"/>"
+    },
+    {
+      "id": "training",
+      "label": "Training & Videos",
+      "blurb": "Product training, installation walkthroughs and in-service videos to build confidence to sell.",
+      "types": [
+        "training"
+      ],
+      "color": "#6b4bd6",
+      "icon": "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M10 8l6 4-6 4V8z\"/>"
+    },
+    {
+      "id": "service",
+      "label": "Service, Warranty & Returns",
+      "blurb": "Warranty forms, return-authorization forms and service resources when you need support.",
+      "types": [
+        "service-warranty"
+      ],
+      "color": "#c14a10",
+      "icon": "<path d=\"M14.7 6.3a4 4 0 1 0 2.9 2.9L21 5.8 18.2 3l-3.5 3.3z\"/><path d=\"M7 13l-4 4a2.8 2.8 0 0 0 4 4l4-4\"/>"
+    },
+    {
+      "id": "sales",
+      "label": "Sales & Showroom Tools",
+      "blurb": "Showroom guides, planograms, display programs, sales tools and dealer programs.",
+      "types": [
+        "sales-tool",
+        "price-list"
+      ],
+      "color": "#a5590f",
+      "icon": "<path d=\"M23 6l-9.5 9.5-5-5L1 18\"/><path d=\"M17 6h6v6\"/>"
+    },
+    {
+      "id": "forms",
+      "label": "Forms & Calculators",
+      "blurb": "Survey forms, rental agreements, checklists and business calculators.",
+      "types": [
+        "form",
+        "calculator"
+      ],
+      "color": "#1c7a44",
+      "icon": "<path d=\"M9 2h6a1 1 0 0 1 1 1v1h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2V3a1 1 0 0 1 1-1z\"/><path d=\"M8 11h8M8 15h6\"/>"
+    }
+  ]
 }

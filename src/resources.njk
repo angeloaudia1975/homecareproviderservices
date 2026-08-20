@@ -1,80 +1,88 @@
 ---
 layout: layouts/base.njk
-title: Dealer Resources
+title: Dealer Resource Library
 permalink: /resources/
-description: "Explore catalogs, product guides, clinical publications, credit applications, and dealer resources from HME and DME manufacturers represented by HomeCare Provider Services."
+description: "The HCPS Dealer Resource Library — catalogs, product guides, dealer applications, clinical publications, training videos, service & warranty forms, sales tools and calculators for every HME & DME line HomeCare Provider Services represents. Search or filter by manufacturer, product category and resource type."
 ---
 <style>
-  .rl-hero{position:relative;overflow:hidden;background:linear-gradient(150deg,#0c2740 0%,#0f5c8f 62%,#1681c2 100%);color:#fff;padding:60px 0 52px;}
+  .rl-hero{position:relative;overflow:hidden;background:linear-gradient(150deg,#0c2740 0%,#0f5c8f 62%,#1681c2 100%);color:#fff;padding:58px 0 54px;}
   .rl-hero::after{content:"";position:absolute;right:-120px;top:-120px;width:440px;height:440px;border-radius:50%;background:radial-gradient(circle,rgba(252,178,30,.26),transparent 62%);pointer-events:none;}
-  .rl-hero .container{position:relative;z-index:1;}
+  .rl-hero .container{position:relative;z-index:1;text-align:center;}
   .rl-eyebrow{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:999px;padding:7px 15px;font-family:'Archivo',sans-serif;font-weight:800;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 15px;}
-  .rl-hero h1{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:clamp(28px,4.4vw,48px);line-height:1.05;margin:0 0 14px;max-width:18ch;}
-  .rl-hero .rl-lead{font-size:clamp(15.5px,1.4vw,18px);line-height:1.55;color:rgba(255,255,255,.9);max-width:72ch;margin:0 0 24px;}
-  .rl-cta-row{display:flex;gap:11px;flex-wrap:wrap;align-items:center;}
-  .rl-btn{display:inline-flex;align-items:center;gap:8px;font-family:'Archivo',sans-serif;font-weight:800;font-size:14.5px;text-decoration:none;border-radius:11px;padding:13px 22px;transition:transform .12s,box-shadow .12s;border:1px solid transparent;cursor:pointer;}
-  .rl-btn:hover{transform:translateY(-1px);}
-  .rl-btn.primary{background:linear-gradient(100deg,#ef6325,#fcb21e);color:#141414;box-shadow:0 14px 30px -12px rgba(239,99,37,.7);}
-  .rl-btn.ghost{background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.28);}
-  .rl-btn.ghost:hover{background:rgba(255,255,255,.16);}
-  .rl-btn.blue{background:var(--hcps-blue,#1681c2);color:#fff;}
-  .rl-btn.sm{padding:10px 16px;font-size:13px;}
+  .rl-hero h1{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:clamp(28px,4.4vw,48px);line-height:1.04;margin:0 auto 12px;max-width:20ch;}
+  .rl-hero .rl-lead{font-size:clamp(15.5px,1.4vw,18px);line-height:1.5;color:rgba(255,255,255,.9);max-width:60ch;margin:0 auto 26px;}
+  .rl-search-hero{display:flex;gap:8px;max-width:720px;margin:0 auto;background:#fff;border-radius:14px;padding:8px;box-shadow:0 24px 60px rgba(0,0,0,.32);}
+  .rl-search-hero svg{width:22px;height:22px;color:#8a94a0;align-self:center;margin-left:8px;flex:none;}
+  .rl-search-hero input{flex:1;min-width:0;border:none;outline:none;font-size:16px;padding:12px 10px;color:var(--ink);background:transparent;font-family:'Inter',sans-serif;}
+  .rl-search-hero button{flex:none;border:none;cursor:pointer;font-family:'Archivo',sans-serif;font-weight:800;font-size:14.5px;color:#141414;background:linear-gradient(100deg,#ef6325,#fcb21e);border-radius:10px;padding:12px 20px;}
+  .rl-pop{margin:16px auto 0;max-width:760px;font-size:13px;color:rgba(255,255,255,.86);}
+  .rl-pop b{color:#fcb21e;font-family:'Archivo',sans-serif;letter-spacing:.02em;}
+  .rl-pop button{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:999px;padding:5px 12px;font-size:12.5px;font-weight:700;margin:5px 4px 0;cursor:pointer;transition:.13s;font-family:'Inter',sans-serif;}
+  .rl-pop button:hover{background:rgba(255,255,255,.2);}
 
-  .rl-sec{padding:44px 0;}
+  .rl-sec{padding:46px 0;}
   .rl-sec.alt{background:var(--paper,#f6f7f5);}
   .rl-kicker{font-family:'Archivo',sans-serif;font-weight:800;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--hcps-blue,#1681c2);margin:0 0 8px;}
   .rl-h2{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:clamp(22px,2.7vw,32px);line-height:1.1;color:var(--ink);margin:0 0 10px;}
-  .rl-sub{font-size:15.5px;line-height:1.55;color:#48525c;margin:0 0 22px;max-width:70ch;}
+  .rl-sub{font-size:15.5px;line-height:1.55;color:#48525c;margin:0 0 22px;max-width:74ch;}
 
-  .rl-types{display:flex;gap:9px;flex-wrap:wrap;margin:0 0 6px;}
-  .rl-type-chip{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #d9e0e7;border-radius:999px;padding:9px 15px;font-family:'Archivo',sans-serif;font-weight:700;font-size:13.5px;color:var(--ink);cursor:pointer;transition:.13s;}
-  .rl-type-chip:hover{border-color:var(--hcps-blue,#1681c2);color:var(--hcps-blue-dark,#0f5c8f);}
-  .rl-type-chip.on{background:var(--hcps-blue,#1681c2);border-color:var(--hcps-blue,#1681c2);color:#fff;}
+  /* Need cards */
+  .rl-needs{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+  @media(max-width:1000px){.rl-needs{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:520px){.rl-needs{grid-template-columns:1fr;}}
+  .rl-need{text-align:left;background:#fff;border:1px solid #e5e9ee;border-left:4px solid var(--nc,#1681c2);border-radius:16px;padding:20px 18px;cursor:pointer;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease;display:flex;flex-direction:column;gap:9px;font-family:inherit;}
+  .rl-need:hover{transform:translateY(-4px);box-shadow:0 20px 44px rgba(12,39,64,.12);}
+  .rl-need-ic{width:48px;height:48px;border-radius:13px;display:grid;place-items:center;background:#f1f6fb;color:var(--nc,#1681c2);}
+  .rl-need-ic svg{width:26px;height:26px;}
+  .rl-need-title{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:16px;color:var(--ink);line-height:1.14;}
+  .rl-need-blurb{font-size:13px;color:#55606a;line-height:1.45;flex:1;}
+  .rl-need-count{font-family:'Archivo',sans-serif;font-weight:800;font-size:12.5px;color:var(--nc,#1681c2);}
 
+  /* Manufacturer grid */
+  .rl-manu-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+  @media(max-width:1000px){.rl-manu-grid{grid-template-columns:repeat(3,1fr);}}
+  @media(max-width:680px){.rl-manu-grid{grid-template-columns:repeat(2,1fr);}}
+  .rl-manu-card{display:flex;flex-direction:column;gap:7px;background:#fff;border:1px solid #e5e9ee;border-radius:16px;padding:18px;text-decoration:none;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease;box-shadow:0 8px 22px rgba(12,39,64,.05);}
+  .rl-manu-card:hover{transform:translateY(-4px);box-shadow:0 22px 46px rgba(12,39,64,.13);border-color:#cfe0ef;}
+  .rl-manu-logo{height:38px;max-width:150px;object-fit:contain;object-position:left center;margin:0 0 4px;}
+  .rl-manu-name{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:15px;color:var(--ink);line-height:1.12;}
+  .rl-manu-cat{font-size:11.5px;color:#6b7580;line-height:1.35;}
+  .rl-manu-count{margin-top:auto;padding-top:6px;font-family:'Archivo',sans-serif;font-weight:800;font-size:12.5px;color:var(--hcps-orange,#ef6325);}
+
+  /* Finder */
   .rl-filters{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:12px;background:#fff;border:1px solid #e5e9ee;border-radius:16px;padding:16px;box-shadow:0 10px 30px rgba(12,39,64,.05);align-items:center;}
   @media(max-width:900px){.rl-filters{grid-template-columns:1fr 1fr;}}
   @media(max-width:560px){.rl-filters{grid-template-columns:1fr;}}
   .rl-filters input,.rl-filters select{width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #d7dde3;border-radius:10px;font-size:14.5px;font-family:'Inter',sans-serif;color:var(--ink);background:#fff;}
   .rl-filters input:focus,.rl-filters select:focus{outline:none;border-color:var(--hcps-blue,#1681c2);box-shadow:0 0 0 3px rgba(22,129,194,.15);}
-  .rl-count{grid-column:1/-1;font-size:13px;color:#6b7580;font-weight:600;margin-top:2px;}
+  .rl-active{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px;}
+  .rl-chip{display:inline-flex;align-items:center;gap:8px;background:#eaf3fb;border:1px solid #cfe0ef;color:#0f5c8f;border-radius:999px;padding:6px 8px 6px 13px;font-weight:700;font-size:13px;}
+  .rl-chip button{border:none;background:#0f5c8f;color:#fff;width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:12px;line-height:1;display:grid;place-items:center;padding:0;}
+  .rl-chip button:hover{background:#0b4a73;}
+  .rl-clear{background:none;border:none;color:var(--hcps-orange,#ef6325);font-family:'Archivo',sans-serif;font-weight:800;font-size:13px;cursor:pointer;text-decoration:underline;}
+  .rl-count{font-size:13px;color:#6b7580;font-weight:600;margin:16px 0 0;}
 
-  .rl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:20px;}
-  @media(max-width:940px){.rl-grid{grid-template-columns:repeat(2,1fr);}}
-  @media(max-width:600px){.rl-grid{grid-template-columns:1fr;}}
-  .rl-card{background:#fff;border:1px solid #e5e9ee;border-radius:16px;padding:20px;box-shadow:0 8px 24px rgba(12,39,64,.05);display:flex;flex-direction:column;transition:transform .14s,box-shadow .14s,border-color .14s;}
-  .rl-card:hover{transform:translateY(-3px);box-shadow:0 16px 38px rgba(12,39,64,.1);border-color:#cfe0ef;}
-  .rl-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 13px;}
-  .rl-logo{height:26px;max-width:120px;object-fit:contain;}
-  .rl-logo-txt{font-family:'Archivo',sans-serif;font-weight:800;font-size:12px;color:#6b7580;}
-  .rl-badge{font-family:'Archivo',sans-serif;font-weight:800;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;padding:5px 10px;border-radius:999px;white-space:nowrap;}
-  .rl-t-catalog{background:#e7f1fb;color:#0f5c8f;}
-  .rl-t-brochure{background:#e7f1fb;color:#0f5c8f;}
-  .rl-t-service-guide{background:#e5f5f1;color:#0b6a55;}
-  .rl-t-spec-sheet{background:#e5f5f1;color:#0b6a55;}
-  .rl-t-credit-application{background:#efeafb;color:#5a3fb0;}
-  .rl-t-form{background:#fdeadd;color:#c14a10;}
-  .rl-t-price-list{background:#fdf3d6;color:#8a6400;}
-  .rl-t-custom-price-list{background:#fdf3d6;color:#8a6400;}
-  .rl-t-calculator{background:#e8f4f6;color:#0b6478;}
-  .rl-t-training-video{background:#e9f6e5;color:#3a7d1f;}
-  .rl-t-signage{background:#eef2f6;color:#334656;}
-  /* legacy aliases (kept so any older type ids still render a chip) */
-  .rl-t-guide{background:#e5f5f1;color:#0b6a55;}
-  .rl-t-clinical{background:#efeafb;color:#5a3fb0;}
-  .rl-t-marketing{background:#fdf3d6;color:#8a6400;}
-  .rl-t-training{background:#e9f6e5;color:#3a7d1f;}
-  .rl-t-resource{background:#eef2f6;color:#334656;}
-  .rl-card h3{font-family:'Archivo',sans-serif;font-weight:800;font-size:16px;color:var(--ink);margin:0 0 7px;line-height:1.25;}
-  .rl-card p{font-size:13.5px;line-height:1.5;color:#55606a;margin:0 0 16px;}
-  .rl-card-foot{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:12px;border-top:1px solid #eef1f4;}
-  .rl-owner{font-size:12px;color:#8a94a0;font-weight:600;}
-  .rl-act{display:inline-flex;align-items:center;gap:6px;font-family:'Archivo',sans-serif;font-weight:800;font-size:13px;text-decoration:none;padding:8px 13px;border-radius:9px;white-space:nowrap;}
-  .rl-act.dl{background:var(--hcps-blue,#1681c2);color:#fff;}
-  .rl-act.dl:hover{background:var(--hcps-blue-dark,#0f5c8f);}
-  .rl-act.req{background:linear-gradient(100deg,#ef6325,#fcb21e);color:#141414;}
-  .rl-act.order{background:var(--ink,#0b0d0f);color:#fff;}
-  .rl-empty{text-align:center;color:#6b7580;padding:40px 0;font-size:15px;}
+  .rl-results{display:grid;gap:12px;margin-top:8px;}
+  .rl-result[hidden]{display:none !important;}
+  .rl-result{display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center;background:#fff;border:1px solid #e5e9ee;border-left:5px solid var(--tc,#5a6675);border-radius:14px;padding:15px 18px;box-shadow:0 6px 18px rgba(12,39,64,.05);transition:transform .13s ease,box-shadow .13s ease;}
+  .rl-result:hover{transform:translateY(-2px);box-shadow:0 14px 34px rgba(12,39,64,.12);}
+  .rl-r-badge{align-self:start;font-family:'Archivo',sans-serif;font-weight:800;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:var(--tc,#5a6675);padding:5px 10px;border-radius:6px;white-space:nowrap;}
+  .rl-r-body{min-width:0;}
+  .rl-r-body h3{font-family:'Archivo',sans-serif;font-weight:800;font-size:15.5px;color:var(--ink);margin:0 0 4px;line-height:1.25;}
+  .rl-r-meta{font-size:12px;color:var(--tc,#5a6675);font-weight:800;margin:0 0 5px;text-transform:none;}
+  .rl-r-desc{font-size:13px;color:#55606a;margin:0;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .rl-r-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
+  .rl-r-act{display:inline-flex;align-items:center;gap:5px;font-family:'Archivo',sans-serif;font-weight:800;font-size:12.5px;text-decoration:none;padding:9px 14px;border-radius:9px;white-space:nowrap;}
+  .rl-r-act.pri{background:var(--hcps-blue,#1681c2);color:#fff;}
+  .rl-r-act.pri:hover{background:var(--hcps-blue-dark,#0f5c8f);}
+  .rl-r-act.sec{background:#fdeadd;color:#c14a10;}
+  @media(max-width:720px){.rl-result{grid-template-columns:1fr;gap:10px;}.rl-r-actions{justify-content:flex-start;}}
+  .rl-empty{text-align:center;color:#6b7580;padding:34px 0;font-size:15px;}
 
+  .rl-btn{display:inline-flex;align-items:center;gap:8px;font-family:'Archivo',sans-serif;font-weight:800;font-size:14.5px;text-decoration:none;border-radius:11px;padding:13px 22px;transition:transform .12s,box-shadow .12s;border:1px solid transparent;cursor:pointer;}
+  .rl-btn:hover{transform:translateY(-1px);}
+  .rl-btn.primary{background:linear-gradient(100deg,#ef6325,#fcb21e);color:#141414;box-shadow:0 14px 30px -12px rgba(239,99,37,.7);}
+  .rl-btn.ghost{background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.28);}
   .rl-band{background:linear-gradient(150deg,#12181d,#243746);color:#fff;border-radius:20px;padding:34px 38px;display:flex;align-items:center;justify-content:space-between;gap:22px;flex-wrap:wrap;box-shadow:0 20px 50px rgba(12,39,64,.14);}
   .rl-band h3{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:clamp(19px,2.3vw,26px);margin:0 0 6px;color:#fff;}
   .rl-band p{margin:0;color:rgba(255,255,255,.85);font-size:14.5px;max-width:58ch;}
@@ -82,119 +90,152 @@ description: "Explore catalogs, product guides, clinical publications, credit ap
 </style>
 
 {% set docs = documents %}
+{% set sorted = docs.items | sort(attribute='sortPriority', reverse=true) %}
 
-<!-- HERO -->
+{% macro rcard(doc, docs, mans, extraClass="") %}
+{% set tc = doc.type | typeColor(docs.types) %}
+{% set ext = (doc.file if doc.file else doc.url) | string %}
+{% set isExt = "http" in ext %}
+<article class="rl-result {{ extraClass }}" style="--tc:{{ tc }}"
+  data-manu="{{ doc.manufacturer }}" data-cat="{{ doc.category }}" data-type="{{ doc.type }}"
+  data-need="{{ doc.type | typeNeed(docs.types) }}" data-pop="{{ 1 if doc.popular else 0 }}"
+  data-search="{{ doc.title | lower }} {{ doc.description | lower }} {{ doc.keywords }} {{ doc.models | join(' ') | lower }} {{ doc.manufacturer | manuLabel(mans) | lower }} {{ doc.category | catLabel(docs.categories) | lower }} {{ doc.type | typeLabel(docs.types) | lower }}">
+  <span class="rl-r-badge">{{ doc.type | typeLabel(docs.types) }}</span>
+  <div class="rl-r-body">
+    <h3>{{ doc.title }}</h3>
+    <p class="rl-r-meta">{{ doc.manufacturer | manuLabel(mans) }} &middot; {{ doc.category | catLabel(docs.categories) }}{% if doc.year %} &middot; {{ doc.year }}{% endif %}</p>
+    {% if doc.description %}<p class="rl-r-desc">{{ doc.description }}</p>{% endif %}
+  </div>
+  <div class="rl-r-actions">
+    {% if ext %}
+      {% if doc.format == "video" %}<a class="rl-r-act pri" href="{{ ext }}"{% if isExt %} target="_blank" rel="noopener"{% endif %}>Watch &rarr;</a>
+      {% elif ".pdf" in ext %}<a class="rl-r-act pri" href="{{ ext }}"{% if isExt %} target="_blank" rel="noopener"{% endif %}>Download PDF &darr;</a>
+      {% else %}<a class="rl-r-act pri" href="{{ ext }}"{% if isExt %} target="_blank" rel="noopener"{% endif %}>View &rarr;</a>{% endif %}
+    {% else %}
+      <a class="rl-r-act sec" href="/contact/?reason=Dealer%20Support">Request &rarr;</a>
+    {% endif %}
+  </div>
+</article>
+{% endmacro %}
+
+<!-- HERO + UNIVERSAL SEARCH -->
 <section class="rl-hero">
   <div class="container">
     <span class="rl-eyebrow">HCPS Dealer Resource Library</span>
     <h1>Every dealer resource, in one place</h1>
-    <p class="rl-lead">Explore catalogs, product guides, clinical publications, credit applications, and dealer resources from the {{ activeManufacturers.length }} HME &amp; DME manufacturers represented by HomeCare Provider Services. Filter by manufacturer, product category, or resource type and get to the right document fast.</p>
-    <div class="rl-cta-row">
-      <a class="rl-btn primary" href="#library">Browse Manufacturer Resources &rarr;</a>
-      <a class="rl-btn ghost" href="/become-a-dealer/">Apply for a Dealer Account</a>
-      <a class="rl-btn ghost" href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">Access Online Ordering</a>
-    </div>
+    <p class="rl-lead">Everything you need to sell, support and grow your business — catalogs, applications, clinical studies, training, service &amp; warranty forms and sales tools for the {{ activeManufacturers.length }} HME &amp; DME lines HCPS represents.</p>
+    <form class="rl-search-hero" id="rl-hero-form" role="search" onsubmit="return false;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input type="search" id="rl-hero-search" placeholder="Search catalogs, applications, products, manufacturers or documents…" aria-label="Search all dealer resources">
+      <button type="submit">Search</button>
+    </form>
+    <p class="rl-pop">
+      <b>Popular:</b>
+      <button type="button" data-q="Golden Lift">Golden Lift Chairs</button>
+      <button type="button" data-q="Access4u Dealer Application">Access4U Dealer Application</button>
+      <button type="button" data-q="Bongo clinical">BongoRx Clinical</button>
+      <button type="button" data-q="Strongback warranty">Strongback Warranty</button>
+      <button type="button" data-q="Bemis catalog">Bemis Catalog</button>
+    </p>
   </div>
 </section>
 
-<!-- FEATURED -->
+<!-- WHAT DO YOU NEED? -->
 <section class="rl-sec">
   <div class="container">
-    <p class="rl-kicker">Featured &amp; most-used</p>
-    <h2 class="rl-h2">Start here</h2>
-    <div class="rl-grid">
-      {% for doc in docs.items %}
-      {% set owner = activeManufacturers | manuById(doc.manufacturer) %}
-      {% if doc.featured and owner %}
-      {% set ownerName = owner.name %}
-      {% set ext = (doc.file if doc.file else doc.url) | string %}{% set isExt = "http" in ext %}
-      <article class="rl-card">
-        <div class="rl-card-head">
-          {% if owner and owner.logo %}<img class="rl-logo" src="{{ owner.logo }}" alt="{{ ownerName }}" loading="lazy">{% else %}<span class="rl-logo-txt">{{ ownerName }}</span>{% endif %}
-          <span class="rl-badge rl-t-{{ doc.type }}">{{ doc.type | typeLabel(docs.types) }}</span>
-        </div>
-        <h3>{{ doc.title }}</h3>
-        <p>{{ doc.description }}</p>
-        <div class="rl-card-foot">
-          <span class="rl-owner">{{ ownerName }}</span>
-          {% if doc.access == "request" %}<a class="rl-act req" href="{{ ext }}">Request &rarr;</a>
-          {% elif doc.access == "dealer" %}<a class="rl-act order" href="{{ ext }}"{% if isExt %} target="_blank" rel="noopener"{% endif %}>Order Online &rarr;</a>
-          {% else %}<a class="rl-act dl" href="{{ ext }}"{% if isExt %} target="_blank" rel="noopener"{% endif %}>{% if ".pdf" in ext %}Download &rarr;{% else %}View &rarr;{% endif %}</a>{% endif %}
-        </div>
-      </article>
-      {% endif %}{% endfor %}
+    <p class="rl-kicker">What do you need?</p>
+    <h2 class="rl-h2">Start with what you're trying to do</h2>
+    <p class="rl-sub">Pick the task that brought you here — we'll take you straight to the right resources, no matter what HCPS happens to call the document.</p>
+    <div class="rl-needs">
+      {% for need in docs.needs %}
+      {% set cnt = docs.items | countIn('type', need.types) %}
+      <button type="button" class="rl-need" data-need="{{ need.id }}" style="--nc:{{ need.color }}">
+        <span class="rl-need-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">{{ need.icon | safe }}</svg></span>
+        <span class="rl-need-title">{{ need.label }}</span>
+        <span class="rl-need-blurb">{{ need.blurb }}</span>
+        <span class="rl-need-count">{{ cnt }} resource{{ 's' if cnt != 1 else '' }} &rarr;</span>
+      </button>
+      {% endfor %}
     </div>
   </div>
 </section>
 
-<!-- FILTERABLE LIBRARY -->
-<section class="rl-sec alt" id="library">
+<!-- MOST USED -->
+<section class="rl-sec alt">
   <div class="container">
-    <p class="rl-kicker">Resource directory</p>
-    <h2 class="rl-h2">Find it by manufacturer, category &amp; type</h2>
-    <p class="rl-sub">Pick a resource type, choose your manufacturer and product category, or search — for example, <b>Golden Technologies &rarr; Lift Chairs &rarr; Product Guides</b>, or <b>Access4U &rarr; Credit Applications</b>.</p>
-
-    <div class="rl-types" id="rl-types">
-      <button class="rl-type-chip on" data-type="">All types</button>
-      {% for t in docs.types %}<button class="rl-type-chip" data-type="{{ t.id }}">{{ t.label }}</button>{% endfor %}
+    <p class="rl-kicker">Most-used dealer resources</p>
+    <h2 class="rl-h2">The documents dealers reach for most</h2>
+    <div class="rl-results" style="margin-top:18px;">
+      {% for doc in docs.items %}{% if doc.popular %}{{ rcard(doc, docs, activeManufacturers) }}{% endif %}{% endfor %}
     </div>
+  </div>
+</section>
 
-    <div class="rl-filters" style="margin-top:12px;">
-      <input type="search" id="rl-search" placeholder="Search resources — title, manufacturer, or keyword…" aria-label="Search resources">
+<!-- BROWSE BY MANUFACTURER -->
+<section class="rl-sec">
+  <div class="container">
+    <p class="rl-kicker">Browse by manufacturer</p>
+    <h2 class="rl-h2">Resources by manufacturer</h2>
+    <p class="rl-sub">Every line HCPS represents. Choose a manufacturer to filter the finder to just their catalogs, applications, training and more.</p>
+    <div class="rl-manu-grid">
+      {% for m in activeManufacturers %}
+      {% set cnt = docs.items | countBy(m.id) %}
+      <a class="rl-manu-card" href="/resources/?manufacturer={{ m.id }}#finder" data-manu="{{ m.id }}">
+        {% if m.logo %}<img class="rl-manu-logo" src="{{ m.logo }}" alt="{{ m.name }}" loading="lazy">{% endif %}
+        <span class="rl-manu-name">{{ m.name }}</span>
+        {% if m.category %}<span class="rl-manu-cat">{{ m.category }}</span>{% endif %}
+        <span class="rl-manu-count">{{ cnt }} resource{{ 's' if cnt != 1 else '' }} &rarr;</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- FIND A RESOURCE (finder) -->
+<section class="rl-sec alt" id="finder">
+  <div class="container">
+    <p class="rl-kicker">Find a resource</p>
+    <h2 class="rl-h2">Manufacturer &rarr; product category &rarr; resource type</h2>
+    <p class="rl-sub">Narrow by any combination, or search — for example, <b>Golden Technologies &rarr; Lift Chairs &rarr; Catalog</b>, or <b>Access4U &rarr; Dealer Application</b>. Active filters show as chips you can remove.</p>
+
+    <div class="rl-filters">
+      <input type="search" id="rl-search" placeholder="Search title, product, model or keyword…" aria-label="Search resources">
       <select id="rl-manu" aria-label="Filter by manufacturer">
         <option value="">All manufacturers</option>
         {% for m in activeManufacturers %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
+        <option value="complete-medical-supplies">Complete Medical / Blue Jay</option>
       </select>
       <select id="rl-cat" aria-label="Filter by product category">
-        <option value="">All categories</option>
-        {% for c in resourceCategories %}<option value="{{ c.id }}">{{ c.label }}</option>{% endfor %}
+        <option value="">All product categories</option>
+        {% for c in docs.categories %}<option value="{{ c.id }}">{{ c.label }}</option>{% endfor %}
       </select>
       <select id="rl-type" aria-label="Filter by resource type">
         <option value="">All resource types</option>
         {% for t in docs.types %}<option value="{{ t.id }}">{{ t.label }}</option>{% endfor %}
       </select>
-      <span class="rl-count" id="rl-count"></span>
     </div>
 
-    <div class="rl-grid" id="rl-list">
-      {% for doc in docs.items %}
-      {% set owner = activeManufacturers | manuById(doc.manufacturer) %}
-      {% if owner %}
-      {% set ownerName = owner.name %}
-      {% set catId = owner.category | resourceCat %}
-      {% set ext = (doc.file if doc.file else doc.url) | string %}{% set isExt = "http" in ext %}
-      <article class="rl-card" data-manu="{{ doc.manufacturer }}" data-cat="{{ catId }}" data-type="{{ doc.type }}"
-               data-search="{{ doc.title | lower }} {{ doc.description | lower }} {{ ownerName | lower }}">
-        <div class="rl-card-head">
-          {% if owner and owner.logo %}<img class="rl-logo" src="{{ owner.logo }}" alt="{{ ownerName }}" loading="lazy">{% else %}<span class="rl-logo-txt">{{ ownerName }}</span>{% endif %}
-          <span class="rl-badge rl-t-{{ doc.type }}">{{ doc.type | typeLabel(docs.types) }}</span>
-        </div>
-        <h3>{{ doc.title }}</h3>
-        <p>{{ doc.description }}</p>
-        <div class="rl-card-foot">
-          <span class="rl-owner">{{ ownerName }}</span>
-          {% if doc.access == "request" %}<a class="rl-act req" href="{{ ext }}">Request &rarr;</a>
-          {% elif doc.access == "dealer" %}<a class="rl-act order" href="{{ ext }}"{% if isExt %} target="_blank" rel="noopener"{% endif %}>Order Online &rarr;</a>
-          {% else %}<a class="rl-act dl" href="{{ ext }}"{% if isExt %} target="_blank" rel="noopener"{% endif %}>{% if ".pdf" in ext %}Download &rarr;{% else %}View &rarr;{% endif %}</a>{% endif %}
-        </div>
-      </article>
-      {% endif %}{% endfor %}
+    <div class="rl-active" id="rl-active" hidden></div>
+    <p class="rl-count" id="rl-count"></p>
+
+    <div class="rl-results" id="rl-list">
+      {% for doc in sorted %}{{ rcard(doc, docs, activeManufacturers) }}{% endfor %}
     </div>
-    <p class="rl-empty" id="rl-none" hidden>No resources match those filters. Try clearing a filter, or <a href="/contact/?reason=General%20Question" style="color:var(--hcps-orange);font-weight:800;">ask Dealer Support</a>.</p>
+    <p class="rl-empty" id="rl-none" hidden>No resources match those filters. Try removing a filter, or <a href="/contact/?reason=General%20Question" style="color:var(--hcps-orange);font-weight:800;">ask HCPS Dealer Support</a>.</p>
   </div>
 </section>
 
-<!-- SUPPORT BAND -->
+<!-- CAN'T FIND IT -->
 <section class="rl-sec">
   <div class="container">
     <div class="rl-band">
       <div>
-        <h3>Can't find a document? We'll get it for you.</h3>
-        <p>Catalogs, credit applications, pricing, clinical resources, or training materials — request anything from your HCPS team and we'll send the right file or set up your access.</p>
+        <h3>Can't find the document you're looking for?</h3>
+        <p>Catalogs, dealer applications, pricing, clinical resources or training — tell your HCPS team what you need and we'll send the right file or set up your access.</p>
       </div>
       <div class="rl-band-cta">
-        <a class="rl-btn primary" href="/contact/?reason=Dealer%20Support">Contact Dealer Support &rarr;</a>
-        <a class="rl-btn ghost" style="border-color:rgba(255,255,255,.3);color:#fff;" href="/dealer-hub/?service=staff-in-service#schedule">Schedule an In-Service</a>
+        <a class="rl-btn primary" href="/contact/?reason=Dealer%20Support">Ask HCPS &rarr;</a>
+        <a class="rl-btn ghost" style="border-color:rgba(255,255,255,.3);color:#fff;" href="/#team">Contact Your Sales Rep</a>
       </div>
     </div>
   </div>
@@ -209,42 +250,105 @@ description: "Explore catalogs, product guides, clinical publications, credit ap
 
 <script>
 (function () {
+  var heroSearch = document.getElementById('rl-hero-search');
+  var heroForm   = document.getElementById('rl-hero-form');
   var search = document.getElementById('rl-search');
-  var fManu = document.getElementById('rl-manu');
-  var fCat  = document.getElementById('rl-cat');
-  var fType = document.getElementById('rl-type');
-  var chips = Array.prototype.slice.call(document.querySelectorAll('#rl-types .rl-type-chip'));
-  var cards = Array.prototype.slice.call(document.querySelectorAll('#rl-list .rl-card'));
-  var none  = document.getElementById('rl-none');
-  var count = document.getElementById('rl-count');
+  var fManu  = document.getElementById('rl-manu');
+  var fCat   = document.getElementById('rl-cat');
+  var fType  = document.getElementById('rl-type');
+  var active = document.getElementById('rl-active');
+  var count  = document.getElementById('rl-count');
+  var none   = document.getElementById('rl-none');
+  var cards  = Array.prototype.slice.call(document.querySelectorAll('#rl-list .rl-result'));
+  var finder = document.getElementById('finder');
+  var needBtns = Array.prototype.slice.call(document.querySelectorAll('.rl-need'));
+  var need = '';
 
-  function apply() {
+  // label lookups (from the select options + need buttons)
+  function optMap(sel){ var m={}; Array.prototype.forEach.call(sel.options,function(o){ if(o.value) m[o.value]=o.text; }); return m; }
+  var manuLabels = optMap(fManu), catLabels = optMap(fCat), typeLabels = optMap(fType);
+  var needLabels = {}; needBtns.forEach(function(b){ needLabels[b.dataset.need]=b.querySelector('.rl-need-title').textContent; });
+
+  function scrollFinder(){ finder.scrollIntoView({behavior:'smooth', block:'start'}); }
+
+  function renderChips(q){
+    var chips = [];
+    if (q)          chips.push(['q','“'+q+'”']);
+    if (fManu.value)chips.push(['manu', manuLabels[fManu.value]||fManu.value]);
+    if (fCat.value) chips.push(['cat', catLabels[fCat.value]||fCat.value]);
+    if (fType.value)chips.push(['type', typeLabels[fType.value]||fType.value]);
+    if (need)       chips.push(['need', needLabels[need]||need]);
+    active.innerHTML = '';
+    if (!chips.length){ active.hidden = true; return; }
+    active.hidden = false;
+    chips.forEach(function(c){
+      var span=document.createElement('span'); span.className='rl-chip';
+      span.appendChild(document.createTextNode(c[1]+' '));
+      var b=document.createElement('button'); b.type='button'; b.setAttribute('aria-label','Remove filter'); b.textContent='×';
+      b.addEventListener('click', function(){ clearOne(c[0]); });
+      span.appendChild(b); active.appendChild(span);
+    });
+    var clr=document.createElement('button'); clr.type='button'; clr.className='rl-clear'; clr.textContent='Clear all';
+    clr.addEventListener('click', clearAll); active.appendChild(clr);
+  }
+
+  function clearOne(kind){
+    if(kind==='q'){ search.value=''; heroSearch.value=''; }
+    if(kind==='manu') fManu.value='';
+    if(kind==='cat')  fCat.value='';
+    if(kind==='type') fType.value='';
+    if(kind==='need') need='';
+    apply();
+  }
+  function clearAll(){ search.value=''; heroSearch.value=''; fManu.value=''; fCat.value=''; fType.value=''; need=''; apply(); }
+
+  function apply(){
     var q = search.value.trim().toLowerCase();
     var m = fManu.value, c = fCat.value, t = fType.value, shown = 0;
-    cards.forEach(function (card) {
+    cards.forEach(function(card){
       var ok = (!m || card.dataset.manu === m)
             && (!c || card.dataset.cat === c)
             && (!t || card.dataset.type === t)
+            && (!need || card.dataset.need === need)
             && (!q || card.dataset.search.indexOf(q) > -1);
-      card.hidden = !ok;
-      if (ok) shown++;
+      card.hidden = !ok; if(ok) shown++;
     });
     none.hidden = shown > 0;
     count.textContent = shown + (shown === 1 ? ' resource' : ' resources');
-    chips.forEach(function (ch) { ch.classList.toggle('on', ch.dataset.type === t); });
+    needBtns.forEach(function(b){ b.setAttribute('aria-pressed', b.dataset.need===need ? 'true':'false'); });
+    renderChips(q);
   }
-  [search, fManu, fCat, fType].forEach(function (el) {
-    el.addEventListener('input', apply);
-    el.addEventListener('change', apply);
+
+  // finder search
+  search.addEventListener('input', apply);
+  [fManu,fCat,fType].forEach(function(el){ el.addEventListener('change', apply); });
+
+  // hero search mirrors into the finder
+  heroSearch.addEventListener('input', function(){ search.value = heroSearch.value; apply(); });
+  heroForm.addEventListener('submit', function(){ search.value = heroSearch.value; apply(); scrollFinder(); return false; });
+
+  // popular search chips
+  Array.prototype.forEach.call(document.querySelectorAll('.rl-pop button'), function(b){
+    b.addEventListener('click', function(){ heroSearch.value=b.dataset.q; search.value=b.dataset.q; apply(); scrollFinder(); });
   });
-  chips.forEach(function (ch) {
-    ch.addEventListener('click', function () { fType.value = ch.dataset.type; apply(); document.getElementById('library').scrollIntoView({behavior:'smooth',block:'start'}); });
+
+  // need cards -> filter by need group (clears specific type)
+  needBtns.forEach(function(b){
+    b.addEventListener('click', function(){ need = (need===b.dataset.need) ? '' : b.dataset.need; fType.value=''; apply(); scrollFinder(); });
   });
-  // Deep-link: /resources/?manufacturer=<id>&category=<id>&type=<id>
+
+  // manufacturer cards -> live filter (no reload)
+  Array.prototype.forEach.call(document.querySelectorAll('.rl-manu-card'), function(a){
+    a.addEventListener('click', function(e){ e.preventDefault(); fManu.value=a.dataset.manu; apply(); scrollFinder(); });
+  });
+
+  // deep-link: ?manufacturer=&category=&type=&need=&q=
   var qp = new URLSearchParams(location.search);
   if (qp.get('manufacturer')) fManu.value = qp.get('manufacturer');
-  if (qp.get('category')) fCat.value = qp.get('category');
-  if (qp.get('type')) fType.value = qp.get('type');
+  if (qp.get('category'))     fCat.value  = qp.get('category');
+  if (qp.get('type'))         fType.value = qp.get('type');
+  if (qp.get('need'))         need        = qp.get('need');
+  if (qp.get('q')){ search.value = qp.get('q'); heroSearch.value = qp.get('q'); }
   apply();
 })();
 </script>

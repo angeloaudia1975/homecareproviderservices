@@ -38,6 +38,29 @@ module.exports = function (eleventyConfig) {
     return t ? t.label : typeId;
   });
 
+  // Resource-library helpers (standardized documents.json schema)
+  eleventyConfig.addFilter("typeColor", (typeId, types) => {
+    const t = (types || []).find((x) => x.id === typeId);
+    return t && t.color ? t.color : "#5a6675";
+  });
+  eleventyConfig.addFilter("typeNeed", (typeId, types) => {
+    const t = (types || []).find((x) => x.id === typeId);
+    return t && t.need ? t.need : "";
+  });
+  eleventyConfig.addFilter("catLabel", (catId, cats) => {
+    const c = (cats || []).find((x) => x.id === catId);
+    return c ? c.label : catId;
+  });
+  eleventyConfig.addFilter("manuLabel", (id, list) => {
+    const m = (list || []).find((x) => x && x.id === id);
+    if (m) return m.name;
+    const extra = { "complete-medical-supplies": "Complete Medical / Blue Jay" };
+    return extra[id] || String(id || "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  });
+  eleventyConfig.addFilter("countIn", (items, field, values) =>
+    (items || []).filter((i) => (values || []).indexOf(i[field]) > -1).length
+  );
+
   eleventyConfig.addFilter("countBy", (docs, manuId) =>
     (docs || []).filter((d) => d.manufacturer === manuId).length
   );

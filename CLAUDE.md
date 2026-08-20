@@ -114,6 +114,24 @@ Dealer Services = **done-for-you** (HCPS executes). Consulting = **advisory/stra
 advises). "HCPS Business Consulting" lives ONLY on `/consulting/`. Each page carries a one-line
 clarifier + a cross-link to the other. Do not re-add a Business Consulting service card to Dealer Services.
 
+### Dealer Resource Library — data schema (RULE)
+`/resources/` is driven by `src/_data/documents.json` (admin-managed; `documents.js` stays
+neutralized — never re-seed). Standardized schema, all resolved centrally:
+- Top level: `types` (id, label, color, need), `categories` (11 product categories), `needs`
+  (7 need groups → types), `formats`, `accessLevels`.
+- Each item: `manufacturer`, `category` (per-document product category — NOT derived from the
+  manufacturer anymore), standardized `type`, `models[]`, `year`, `keywords`, `popular`,
+  `featured`, `sortPriority`, plus title/description/file/url/format/access.
+- The admin tool must preserve these fields. Category is per-document; do not reintroduce the
+  manufacturer→category derivation (`resourceCat`) for new work.
+- Page architecture: hero universal search → "What do you need?" need-cards → Most-Used →
+  Browse-by-Manufacturer grid → 3-filter Resource Finder (manufacturer/category/type + search)
+  with removable chips → compact color-coded result cards → "Can't find it" CTA.
+- Per-manufacturer Resource Center pages (`/resources/<manufacturer>/`) are the planned next
+  step; manufacturer cards currently pre-filter the finder.
+- Hidden filter results MUST use `.rl-result[hidden]{display:none!important}` (author `display`
+  overrides the UA `[hidden]` rule otherwise).
+
 ### Audience-specific framing is NOT duplication (RULE)
 On **Become a Manufacturing Partner**, "Product Launch / Staff Training / Marketing" describe what
 HCPS does *for a manufacturer to reach the dealer base* — a distinct service from Consulting's
