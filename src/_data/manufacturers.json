@@ -57,7 +57,7 @@
         "copy": "The Golden Online Ordering Platform is your dealer command center — see real-time available inventory by color, configure lift chairs, view contract and MSRP/EMAP pricing, track orders, and manage parts, warranty, and service in one place.",
         "image": "/assets/products/golden/ordering-platform.jpg",
         "cta": "Request Online Ordering Access",
-        "url": "/dealer-support/?request=Online%20Ordering%20Access&manufacturer=Golden%20Technologies",
+        "url": "/contact/?reason=Online%20Ordering%20Support",
         "url_blank": false,
         "cta2": "Open the Ordering Platform",
         "url2": "https://goldenonlineordering.netlify.app",

@@ -92,6 +92,38 @@ record a stated one, is a defect.
 
 ---
 
+## 8. Content architecture — page purpose & service ownership (single source of truth)
+Every page has ONE distinct purpose. Do not repeat a full service description across pages —
+own it on one page and **cross-link** from the others. Approved map:
+
+- **Home** — brand + overview; routes visitors to the right page. No full service copy.
+- **Manufacturers** — the represented lines (data-driven from `activeManufacturers`). Owns product/brand info.
+- **Dealer Hub** — the logged-work hub for existing dealers: resources, pricing access,
+  ordering, **bookable services** (in-service, technical support, showroom consult) via the
+  `?service=<key>#schedule` scheduler. Owns "get help / book a service."
+- **Dealer Services** — HCPS **done-for-you** products: Digital Marketing, Website & Online
+  Presence (and partner services). Execution HCPS performs *for* the dealer.
+- **Consulting** — **advisory & strategy** (showroom strategy, product mix, pricing, sales
+  process). Guidance, not execution. Owns "HCPS Business Consulting."
+- **Become a Dealer** — top-of-funnel signup/onboarding. Links to the above; no duplicate service copy.
+- **Contact** — all **form requests** (pricing, ordering, literature, general) via
+  `/contact/?reason=<preselect>`.
+
+### Dealer Services ↔ Consulting boundary (RULE)
+Dealer Services = **done-for-you** (HCPS executes). Consulting = **advisory/strategy** (HCPS
+advises). "HCPS Business Consulting" lives ONLY on `/consulting/`. Each page carries a one-line
+clarifier + a cross-link to the other. Do not re-add a Business Consulting service card to Dealer Services.
+
+### Dealer Support page — RETIRED (RULE)
+`/dealer-support/` is retired. Its form was a duplicate of Contact's (same Netlify function);
+its bookable functions live in Dealer Hub. Do not recreate it.
+- `dealer-support.njk` is a `permalink:false` stub (not emitted).
+- `/dealer-support/*` and `/dealer-support/` → `/dealer-hub/` (301) via `redirects.json`.
+- Request/form links point to `/contact/?reason=…`; bookable services to
+  `/dealer-hub/?service=<key>#schedule`. No internal link should target `/dealer-support/`.
+
+---
+
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
 - [ ] Hero headline is short + single-row on desktop, wraps on mobile.

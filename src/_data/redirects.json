@@ -1,1 +1,4 @@
-[]
+[
+  { "from": "/dealer-support/*", "to": "/dealer-hub/", "status": 301 },
+  { "from": "/dealer-support/",  "to": "/dealer-hub/", "status": 301 }
+]

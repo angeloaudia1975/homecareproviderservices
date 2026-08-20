@@ -5,11 +5,11 @@
     { "label": "Dealer Hub", "url": "/dealer-hub/", "external": false, "dropdown": "", "children": [
       { "label": "Resource Library", "url": "/resources/", "external": false },
       { "label": "Golden Resource Library", "url": "/resources/?manufacturer=golden-technologies", "external": false },
-      { "label": "Pricing Access", "url": "/dealer-support/?request=Pricing%20Access", "external": false },
-      { "label": "Dealer Order Request", "url": "/dealer-support/?request=Place%20or%20Request%20an%20Order", "external": false },
-      { "label": "Order Literature", "url": "/dealer-support/?request=Order%20Literature", "external": false },
-      { "label": "Request In-Service", "url": "/dealer-support/?request=Request%20an%20In-Service", "external": false },
-      { "label": "Technical Support", "url": "/dealer-support/?request=Technical%20Support", "external": false }
+      { "label": "Pricing Access", "url": "/contact/?reason=Product%20or%20Pricing%20Question", "external": false },
+      { "label": "Dealer Order Request", "url": "/contact/?reason=Online%20Ordering%20Support", "external": false },
+      { "label": "Order Literature", "url": "/contact/?reason=Dealer%20Support", "external": false },
+      { "label": "Request In-Service", "url": "/dealer-hub/?service=staff-in-service#schedule", "external": false },
+      { "label": "Technical Support", "url": "/dealer-hub/?service=technical-support#schedule", "external": false }
     ] },
     { "label": "Dealer Services", "url": "/dealer-services/", "external": false, "dropdown": "", "children": [] },
     { "label": "Consulting", "url": "/consulting/", "external": false, "dropdown": "", "children": [] },
