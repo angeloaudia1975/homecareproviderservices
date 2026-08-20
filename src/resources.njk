@@ -5,9 +5,13 @@ permalink: /resources/
 description: "The HCPS Dealer Resource Library — catalogs, product guides, dealer applications, clinical publications, training videos, service & warranty forms, sales tools and calculators for every HME & DME line HomeCare Provider Services represents. Search or filter by manufacturer, product category and resource type."
 ---
 <style>
-  .rl-hero{position:relative;overflow:hidden;background:linear-gradient(150deg,#0c2740 0%,#0f5c8f 62%,#1681c2 100%);color:#fff;padding:58px 0 54px;}
+  .rl-hero{position:relative;overflow:hidden;background:linear-gradient(150deg,#0c2740 0%,#0f5c8f 62%,#1681c2 100%);color:#fff;padding:46px 0 54px;perspective:1500px;}
   .rl-hero::after{content:"";position:absolute;right:-120px;top:-120px;width:440px;height:440px;border-radius:50%;background:radial-gradient(circle,rgba(252,178,30,.26),transparent 62%);pointer-events:none;}
   .rl-hero .container{position:relative;z-index:1;text-align:center;}
+  /* Depth-hero tilt banner (matches the other pages) */
+  .rl-hero-img{position:relative;z-index:1;max-width:1000px;margin:0 auto 26px;border-radius:18px;overflow:hidden;aspect-ratio:1731/909;background:url("/assets/resources/hero-banner.jpg") center/cover;box-shadow:0 45px 85px -22px rgba(0,0,0,.6);transform-style:preserve-3d;transition:transform .18s ease-out;will-change:transform;}
+  .rl-hero-glare{position:absolute;inset:0;pointer-events:none;background:radial-gradient(300px 300px at var(--mx,50%) var(--my,30%),rgba(255,255,255,.28),transparent 60%);mix-blend-mode:screen;opacity:0;transition:opacity .2s;}
+  @media(prefers-reduced-motion:reduce){.rl-hero-img{transition:none;}}
   .rl-eyebrow{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:999px;padding:7px 15px;font-family:'Archivo',sans-serif;font-weight:800;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 15px;}
   .rl-hero h1{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:clamp(28px,4.4vw,48px);line-height:1.04;margin:0 auto 12px;max-width:20ch;}
   .rl-hero .rl-lead{font-size:clamp(15.5px,1.4vw,18px);line-height:1.5;color:rgba(255,255,255,.9);max-width:60ch;margin:0 auto 26px;}
@@ -30,10 +34,13 @@ description: "The HCPS Dealer Resource Library — catalogs, product guides, dea
   .rl-needs{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
   @media(max-width:1000px){.rl-needs{grid-template-columns:repeat(2,1fr);}}
   @media(max-width:520px){.rl-needs{grid-template-columns:1fr;}}
-  .rl-need{text-align:left;background:#fff;border:1px solid #e5e9ee;border-left:4px solid var(--nc,#1681c2);border-radius:16px;padding:20px 18px;cursor:pointer;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease;display:flex;flex-direction:column;gap:9px;font-family:inherit;}
-  .rl-need:hover{transform:translateY(-4px);box-shadow:0 20px 44px rgba(12,39,64,.12);}
-  .rl-need-ic{width:48px;height:48px;border-radius:13px;display:grid;place-items:center;background:#f1f6fb;color:var(--nc,#1681c2);}
-  .rl-need-ic svg{width:26px;height:26px;}
+  .rl-need{text-align:center;background:#fff;border:1px solid #e5e9ee;border-radius:18px;padding:22px 18px 24px;cursor:pointer;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;display:flex;flex-direction:column;gap:9px;align-items:center;font-family:inherit;}
+  .rl-need:hover{transform:translateY(-6px);box-shadow:0 30px 60px rgba(12,39,64,.14);border-color:#cfe0ef;}
+  /* Big icon on top — full card width (matches other HCPS pages) */
+  .rl-need-ic{width:100%;margin:0 0 4px;background:none;border-radius:0;}
+  .rl-need-ic img{display:block;width:74%;max-width:168px;margin:0 auto;aspect-ratio:1/1;object-fit:contain;filter:drop-shadow(0 10px 18px rgba(12,39,64,.14));transition:transform .18s ease;}
+  .rl-need:hover .rl-need-ic img{transform:translateY(-4px) scale(1.05);}
+  .rl-need-ic::after{content:"";display:block;height:4px;width:52px;margin:12px auto 0;border-radius:3px;background:var(--nc,#1681c2);}
   .rl-need-title{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:16px;color:var(--ink);line-height:1.14;}
   .rl-need-blurb{font-size:13px;color:#55606a;line-height:1.45;flex:1;}
   .rl-need-count{font-family:'Archivo',sans-serif;font-weight:800;font-size:12.5px;color:var(--nc,#1681c2);}
@@ -121,6 +128,8 @@ description: "The HCPS Dealer Resource Library — catalogs, product guides, dea
 <!-- HERO + UNIVERSAL SEARCH -->
 <section class="rl-hero">
   <div class="container">
+    <div class="rl-hero-img" id="rl-heroimg" role="img" aria-label="HCPS Dealer Resource Library — every dealer resource in one place: catalogs, product guides, clinical publications, applications and more."><span class="rl-hero-glare"></span></div>
+    <div class="rl-hero-copy" data-reveal="up">
     <span class="rl-eyebrow">HCPS Dealer Resource Library</span>
     <h1>Every dealer resource, in one place</h1>
     <p class="rl-lead">Everything you need to sell, support and grow your business — catalogs, applications, clinical studies, training, service &amp; warranty forms and sales tools for the {{ activeManufacturers.length }} HME &amp; DME lines HCPS represents.</p>
@@ -137,8 +146,30 @@ description: "The HCPS Dealer Resource Library — catalogs, product guides, dea
       <button type="button" data-q="Strongback warranty">Strongback Warranty</button>
       <button type="button" data-q="Bemis catalog">Bemis Catalog</button>
     </p>
+    </div>
   </div>
 </section>
+<script>
+(function () {
+  var img = document.getElementById("rl-heroimg"); if (!img) return;
+  var band = img.closest(".rl-hero") || img.parentElement;
+  var glare = img.querySelector(".rl-hero-glare");
+  var reduce = false; try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+  if (reduce) return;
+  band.addEventListener("mousemove", function (e) {
+    var r = img.getBoundingClientRect();
+    var px = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    var py = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+    var ry = (px - 0.5) * 14, rx = (0.5 - py) * 10;
+    img.style.transform = "perspective(1500px) rotateY(" + ry + "deg) rotateX(" + rx + "deg) translateZ(20px)";
+    if (glare) { glare.style.setProperty("--mx", (px * 100) + "%"); glare.style.setProperty("--my", (py * 100) + "%"); glare.style.opacity = "1"; }
+  });
+  band.addEventListener("mouseleave", function () {
+    img.style.transform = "perspective(1500px) rotateY(0) rotateX(0)";
+    if (glare) glare.style.opacity = "0";
+  });
+})();
+</script>
 
 <!-- WHAT DO YOU NEED? -->
 <section class="rl-sec">
@@ -149,8 +180,8 @@ description: "The HCPS Dealer Resource Library — catalogs, product guides, dea
     <div class="rl-needs">
       {% for need in docs.needs %}
       {% set cnt = docs.items | countIn('type', need.types) %}
-      <button type="button" class="rl-need" data-need="{{ need.id }}" style="--nc:{{ need.color }}">
-        <span class="rl-need-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">{{ need.icon | safe }}</svg></span>
+      <button type="button" class="rl-need" data-need="{{ need.id }}" style="--nc:{{ need.color }};--d:{{ loop.index0 * 80 }}ms" data-reveal="up">
+        <span class="rl-need-ic"><img src="/assets/resources/need-{{ need.id }}.png" alt="" loading="lazy"></span>
         <span class="rl-need-title">{{ need.label }}</span>
         <span class="rl-need-blurb">{{ need.blurb }}</span>
         <span class="rl-need-count">{{ cnt }} resource{{ 's' if cnt != 1 else '' }} &rarr;</span>
