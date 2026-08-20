@@ -7,9 +7,13 @@ description: "Become a HomeCare Provider Services dealer and access premium HME 
 <style>
   .bd-hero{position:relative;overflow:hidden;background:linear-gradient(150deg,#0c2740 0%,#0f5c8f 62%,#1681c2 100%);color:#fff;padding:46px 0 54px;perspective:1500px;}
   /* Depth hero: interactive 3D tilt banner -> headline -> CTAs */
-  .bd-hero-img{position:relative;z-index:1;max-width:1000px;margin:0 auto;border-radius:18px;overflow:hidden;aspect-ratio:1672/941;background:url("/assets/become-dealer/hero-banner.jpg") center/cover;box-shadow:0 45px 85px -22px rgba(0,0,0,.6);transform-style:preserve-3d;transition:transform .18s ease-out;will-change:transform;}
+  .bd-hero-img{position:relative;z-index:1;max-width:1000px;margin:0 auto;border-radius:18px 18px 0 0;overflow:hidden;aspect-ratio:1672/941;background:url("/assets/become-dealer/hero-banner.jpg") center/cover;box-shadow:0 45px 85px -22px rgba(0,0,0,.6);transform-style:preserve-3d;transition:transform .18s ease-out;will-change:transform;}
   .bd-hero-glare{position:absolute;inset:0;pointer-events:none;background:radial-gradient(300px 300px at var(--mx,50%) var(--my,30%),rgba(255,255,255,.28),transparent 60%);mix-blend-mode:screen;opacity:0;transition:opacity .2s;}
-  .bd-hero-copy{position:relative;z-index:1;max-width:1000px;margin:28px auto 0;text-align:center;}
+  /* Headline band that runs across the bottom of the hero image */
+  .bd-hero-cap{position:relative;z-index:2;max-width:1000px;margin:0 auto;background:linear-gradient(90deg,#0b1f33,#123a5c);border-radius:0 0 18px 18px;padding:15px 28px;text-align:center;box-shadow:0 34px 70px -30px rgba(0,0,0,.55);}
+  .bd-hero .bd-hero-cap h1{margin:0;max-width:none;font-family:'Archivo',sans-serif;font-weight:800;color:#fff;font-size:clamp(15px,2.5vw,29px);line-height:1.12;white-space:nowrap;}
+  @media(max-width:720px){.bd-hero-cap{padding:13px 16px;}.bd-hero .bd-hero-cap h1{white-space:normal;font-size:clamp(18px,5.2vw,26px);}}
+  .bd-hero-copy{position:relative;z-index:1;max-width:1000px;margin:26px auto 0;text-align:center;}
   .bd-hero-copy h1{max-width:none;}
   .bd-hero-copy .bd-lead{margin-left:auto;margin-right:auto;}
   .bd-hero-copy .bd-cta-row,.bd-hero-copy .bd-trust{justify-content:center;}
@@ -109,15 +113,28 @@ description: "Become a HomeCare Provider Services dealer and access premium HME 
   .bd-form .form-status{margin:12px 0 0;font-size:14px;font-weight:600;}
   .bd-form .form-status.ok{color:#166b45;}
   .bd-form .form-status.error{color:#b42323;}
+
+  /* Alternating image + content spotlight sections (slide in from opposite sides) */
+  .bd-svc{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center;}
+  .bd-svc.rev .bd-svc-media{order:2;}
+  @media(max-width:860px){.bd-svc{grid-template-columns:1fr;gap:26px;}.bd-svc.rev .bd-svc-media{order:0;}}
+  .bd-svc-media img{display:block;width:100%;height:auto;border-radius:20px;box-shadow:0 34px 72px -22px rgba(11,31,51,.55);border:1px solid rgba(255,255,255,.6);}
+  .bd-svc-body .bd-kicker{margin-bottom:8px;}
+  .bd-svc-body h3{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:clamp(22px,2.6vw,30px);line-height:1.12;color:var(--ink);margin:0 0 12px;}
+  .bd-svc-body>p{font-size:15px;line-height:1.6;color:#55606a;margin:0 0 16px;}
+  .bd-svc-list{list-style:none;padding:0;margin:0 0 22px;display:grid;gap:10px;}
+  .bd-svc-list li{position:relative;padding-left:28px;font-size:14.5px;color:#33404b;line-height:1.45;}
+  .bd-svc-list li::before{content:"";position:absolute;left:0;top:1px;width:18px;height:18px;border-radius:50%;background:#fcb21e url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23141414' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'><path d='M20 6L9 17l-5-5'/></svg>") center/11px no-repeat;}
 </style>
 
 <!-- HERO -->
 <section class="bd-hero">
   <div class="container">
     <div class="bd-hero-img" id="bd-heroimg" role="img" aria-label="Become a HomeCare Provider Services Dealer — premium HME &amp; DME product lines, competitive dealer pricing, expert support, and 24/7 online ordering."><span class="bd-hero-glare"></span></div>
-    <div class="bd-hero-copy">
-      <span class="bd-eyebrow">HCPS Dealer Program</span>
+    <div class="bd-hero-cap">
       <h1>Become a HomeCare Provider Services Dealer</h1>
+    </div>
+    <div class="bd-hero-copy">
       <p class="bd-lead">Access premium HME &amp; DME product lines, competitive dealer pricing, expert support, 24/7 online ordering, and our exclusive Showroom Designer Platform — an entire dealer growth platform in one relationship.</p>
       <div class="bd-cta-row">
         <a class="bd-btn primary" href="#apply">Start Your Dealer Account &rarr;</a>
@@ -235,23 +252,19 @@ description: "Become a HomeCare Provider Services dealer and access premium HME 
 <!-- SPOTLIGHT: SHOWROOM DESIGNER -->
 <section class="bd-sec alt" id="showroom">
   <div class="container">
-    <div class="bd-spot blue">
-      <div class="bd-spot-main" data-reveal="left">
+    <div class="bd-svc rev">
+      <div class="bd-svc-media" data-reveal="right"><img src="/assets/become-dealer/svc-showroom.jpg" alt="The HCPS Showroom Designer Platform — designing a dealer showroom floor plan for conversion" loading="lazy"></div>
+      <div class="bd-svc-body" data-reveal="left">
         <p class="bd-kicker">Exclusive to HCPS dealers</p>
         <h3>The Showroom Designer Platform</h3>
         <p>Most rep groups hand you a catalog and walk away. HCPS helps you design the room. Plan where each line lives on your floor, model the mix that drives the most revenue per square foot, and give shoppers a showroom that sells for you.</p>
-        <ul class="bd-spot-list">
+        <ul class="bd-svc-list">
           <li>Plan product placement and traffic flow across your floor</li>
           <li>Optimize layouts for the categories that convert</li>
           <li>Build a more profitable, better-merchandised product mix</li>
           <li>Walkthroughs and merchandising guidance from your consultant</li>
         </ul>
         <a class="bd-btn primary" href="/consulting/">Request a Showroom Consultation &rarr;</a>
-      </div>
-      <div class="bd-spot-side" data-reveal="right">
-        <div class="bd-mini"><b>More revenue</b><span>per square foot of showroom floor</span></div>
-        <div class="bd-mini"><b>Hands-on</b><span>in-person walkthroughs &amp; merchandising</span></div>
-        <div class="bd-mini"><b>Right mix</b><span>lines matched to your market</span></div>
       </div>
     </div>
   </div>
@@ -260,12 +273,13 @@ description: "Become a HomeCare Provider Services dealer and access premium HME 
 <!-- SPOTLIGHT: ORDERING -->
 <section class="bd-sec">
   <div class="container">
-    <div class="bd-spot dark">
-      <div class="bd-spot-main" data-reveal="right">
+    <div class="bd-svc">
+      <div class="bd-svc-media" data-reveal="left"><img src="/assets/become-dealer/svc-ordering.jpg" alt="24/7 Online Ordering &amp; Dealer Access — the HCPS dealer portal on laptop and phone" loading="lazy"></div>
+      <div class="bd-svc-body" data-reveal="right">
         <p class="bd-kicker">Order anytime, from anywhere</p>
         <h3>24/7 Online Ordering &amp; Dealer Access</h3>
         <p>Your dealer portal is open around the clock. Browse live catalogs at your dealer pricing, place and reorder in a few clicks, and track everything in one account — no phone tag, no waiting on business hours.</p>
-        <ul class="bd-spot-list">
+        <ul class="bd-svc-list">
           <li>Exclusive online ordering platform for HCPS dealers</li>
           <li>Live dealer pricing and product availability</li>
           <li>Fast reordering and full order history</li>
@@ -275,11 +289,6 @@ description: "Become a HomeCare Provider Services dealer and access premium HME 
           <a class="bd-btn primary" href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">Access Online Ordering &rarr;</a>
           <a class="bd-btn ghost" href="#apply">Get your dealer login</a>
         </div>
-      </div>
-      <div class="bd-spot-side" data-reveal="left">
-        <div class="bd-mini"><b>24/7</b><span>ordering, every day of the year</span></div>
-        <div class="bd-mini"><b>Live</b><span>dealer pricing &amp; availability</span></div>
-        <div class="bd-mini"><b>1 login</b><span>ordering &middot; pricing &middot; resources</span></div>
       </div>
     </div>
   </div>
