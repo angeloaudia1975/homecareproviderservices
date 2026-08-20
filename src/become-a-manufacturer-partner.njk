@@ -51,11 +51,14 @@ eleventyExcludeFromCollections: true
   .mp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:26px;}
   @media(max-width:900px){.mp-grid{grid-template-columns:repeat(2,1fr);}}
   @media(max-width:560px){.mp-grid{grid-template-columns:1fr;}}
-  .mp-c{background:#fff;border:1px solid #e5e9ee;border-radius:16px;padding:22px;transition:transform .13s,box-shadow .13s,border-color .13s;}
+  .mp-c{background:#fff;border:1px solid #e5e9ee;border-radius:16px;padding:20px 22px 26px;text-align:center;transition:transform .13s,box-shadow .13s,border-color .13s;}
   .mp-c:hover{transform:translateY(-3px);box-shadow:0 18px 40px rgba(12,39,64,.1);border-color:#cfe0ef;}
-  .mp-c .ic{width:56px;height:56px;display:grid;place-items:center;margin-bottom:13px;}
-  .mp-c .ic img{width:100%;height:100%;object-fit:contain;}
-  .mp-c h3{font-family:'Archivo',sans-serif;font-weight:800;font-size:17px;color:var(--ink);margin:0 0 7px;}
+  /* Big icon on top — most of the card width (matches other HCPS pages) */
+  .mp-c .ic{width:100%;margin:0 0 12px;}
+  .mp-c .ic img{display:block;width:82%;max-width:200px;margin:0 auto;aspect-ratio:1/1;object-fit:contain;filter:drop-shadow(0 10px 18px rgba(12,39,64,.14));transition:transform .18s ease;}
+  .mp-c:hover .ic img{transform:translateY(-4px) scale(1.04);}
+  .mp-c .ic::after{content:"";display:block;height:4px;width:56px;margin:12px auto 0;border-radius:3px;background:var(--blue);}
+  .mp-c h3{font-family:'Archivo',sans-serif;font-weight:800;font-size:18px;color:var(--ink);margin:0 0 7px;}
   .mp-c p{font-size:14px;color:#54606c;line-height:1.55;margin:0;}
 
   /* Territory */
@@ -74,10 +77,14 @@ eleventyExcludeFromCollections: true
   /* Detail sections */
   .mp-detail{border-top:1px solid #edf0f3;}
   .mp-detail.alt{background:var(--paper);}
-  .mp-split{display:grid;grid-template-columns:.85fr 1.15fr;gap:40px;align-items:start;}
-  @media(max-width:820px){.mp-split{grid-template-columns:1fr;gap:20px;}}
-  .mp-detail .lead-ic{width:66px;height:66px;display:grid;place-items:center;margin-bottom:14px;}
-  .mp-detail .lead-ic img{width:100%;height:100%;object-fit:contain;}
+  /* Alternating image + content service sections (slide in from opposite sides) */
+  .mp-svc{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center;}
+  .mp-svc.rev .mp-svc-media{order:2;}
+  @media(max-width:860px){.mp-svc{grid-template-columns:1fr;gap:26px;}.mp-svc.rev .mp-svc-media{order:0;}}
+  .mp-svc-media{position:relative;}
+  .mp-svc-media img{display:block;width:100%;height:auto;border-radius:20px;box-shadow:0 34px 72px -22px rgba(11,31,51,.55);border:1px solid rgba(255,255,255,.6);}
+  .mp-svc-body{min-width:0;}
+  .mp-svc-body .sub{margin-bottom:20px;}
   .mp-check{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:11px 20px;}
   @media(max-width:560px){.mp-check{grid-template-columns:1fr;}}
   .mp-check li{position:relative;padding-left:30px;font-size:14.5px;color:#33404b;line-height:1.45;}
@@ -213,124 +220,124 @@ eleventyExcludeFromCollections: true
 
 <!-- DETAIL: Dedicated Sales Representation -->
 <section class="mp-detail" id="sales">
-  <div class="wrap mp-split">
-    <div>
-      <div class="lead-ic"><img src="/assets/mfg-partner/dedicated-sales.png" alt="Dedicated Sales Representation" loading="lazy"></div>
+  <div class="wrap mp-svc rev">
+    <div class="mp-svc-media" data-reveal="right"><img src="/assets/mfg-partner/svc-dedicated-sales.jpg" alt="Dedicated Sales Representation — HCPS reps presenting a product line to a dealer" loading="lazy"></div>
+    <div class="mp-svc-body" data-reveal="left">
       <p class="kicker">Dedicated Sales Representation</p>
       <h2>Feet on the street who already know your buyers.</h2>
       <p class="sub">Our reps carry your line into dealers they visit every month — presenting product, developing accounts, and following up so nothing stalls.</p>
+      <ul class="mp-check">
+        <li>Field sales coverage across the territory</li>
+        <li>Dealer relationship management</li>
+        <li>Product presentations &amp; demos</li>
+        <li>Account development</li>
+        <li>New dealer recruitment</li>
+        <li>Ongoing sales follow-up</li>
+      </ul>
     </div>
-    <ul class="mp-check">
-      <li>Field sales coverage across the territory</li>
-      <li>Dealer relationship management</li>
-      <li>Product presentations &amp; demos</li>
-      <li>Account development</li>
-      <li>New dealer recruitment</li>
-      <li>Ongoing sales follow-up</li>
-    </ul>
   </div>
 </section>
 
 <!-- DETAIL: Online Ordering & Digital Tools -->
 <section class="mp-detail alt" id="ordering">
-  <div class="wrap mp-split">
-    <div>
-      <div class="lead-ic"><img src="/assets/mfg-partner/online-ordering.png" alt="Online Ordering &amp; Digital Tools" loading="lazy"></div>
+  <div class="wrap mp-svc">
+    <div class="mp-svc-media" data-reveal="left"><img src="/assets/mfg-partner/svc-online-ordering.jpg" alt="Online Ordering &amp; Digital Tools — a dealer ordering a line 24/7 on the HCPS platform" loading="lazy"></div>
+    <div class="mp-svc-body" data-reveal="right">
       <p class="kicker">Online Ordering &amp; Digital Tools</p>
       <h2>Your line, orderable 24/7 — and measurable.</h2>
       <p class="sub">Dealers reorder your products through our online platforms, with a manufacturer page for your brand and engagement tracked in Dealer 360.</p>
+      <ul class="mp-check">
+        <li>Access to our online ordering platforms</li>
+        <li>Dealer ordering support</li>
+        <li>Manufacturer-specific product pages</li>
+        <li>Digital product promotion</li>
+        <li>Dealer engagement tracking</li>
+        <li>Dealer 360 &amp; analytics support</li>
+      </ul>
     </div>
-    <ul class="mp-check">
-      <li>Access to our online ordering platforms</li>
-      <li>Dealer ordering support</li>
-      <li>Manufacturer-specific product pages</li>
-      <li>Digital product promotion</li>
-      <li>Dealer engagement tracking</li>
-      <li>Dealer 360 &amp; analytics support</li>
-    </ul>
   </div>
 </section>
 
 <!-- DETAIL: Product Launch Support -->
 <section class="mp-detail" id="launch">
-  <div class="wrap mp-split">
-    <div>
-      <div class="lead-ic"><img src="/assets/mfg-partner/product-launch.png" alt="Product Launch Support" loading="lazy"></div>
+  <div class="wrap mp-svc rev">
+    <div class="mp-svc-media" data-reveal="right"><img src="/assets/mfg-partner/svc-product-launch.jpg" alt="Product Launch Support — HCPS introducing a new product line to targeted dealers" loading="lazy"></div>
+    <div class="mp-svc-body" data-reveal="left">
       <p class="kicker">Product Launch Support</p>
       <h2>Introduce new products to the right dealers — with follow-through.</h2>
       <p class="sub">We target the dealers most likely to stock a new line, run the launch campaign, place it on showroom floors, and have reps follow up.</p>
+      <ul class="mp-check">
+        <li>New product introductions</li>
+        <li>Dealer targeting</li>
+        <li>Product launch campaigns</li>
+        <li>Sales rep follow-up</li>
+        <li>Showroom placement opportunities</li>
+        <li>Dealer education</li>
+      </ul>
     </div>
-    <ul class="mp-check">
-      <li>New product introductions</li>
-      <li>Dealer targeting</li>
-      <li>Product launch campaigns</li>
-      <li>Sales rep follow-up</li>
-      <li>Showroom placement opportunities</li>
-      <li>Dealer education</li>
-    </ul>
   </div>
 </section>
 
 <!-- DETAIL: Staff Training & In-Services -->
 <section class="mp-detail alt" id="training">
-  <div class="wrap mp-split">
-    <div>
-      <div class="lead-ic"><img src="/assets/mfg-partner/staff-training.png" alt="Staff Training &amp; In-Services" loading="lazy"></div>
+  <div class="wrap mp-svc">
+    <div class="mp-svc-media" data-reveal="left"><img src="/assets/mfg-partner/svc-staff-training.jpg" alt="Staff Training &amp; In-Services — HCPS training a dealer team on a product line" loading="lazy"></div>
+    <div class="mp-svc-body" data-reveal="right">
       <p class="kicker">Staff Training &amp; In-Services</p>
       <h2>Dealers who understand your product sell more of it.</h2>
       <p class="sub">Remote and in-person training, staff in-services, and demonstrations keep dealer teams confident and current on your line.</p>
+      <ul class="mp-check">
+        <li>Remote product training</li>
+        <li>In-person dealer training</li>
+        <li>Staff in-services</li>
+        <li>Sales education</li>
+        <li>Product demonstrations</li>
+        <li>Ongoing dealer support</li>
+      </ul>
     </div>
-    <ul class="mp-check">
-      <li>Remote product training</li>
-      <li>In-person dealer training</li>
-      <li>Staff in-services</li>
-      <li>Sales education</li>
-      <li>Product demonstrations</li>
-      <li>Ongoing dealer support</li>
-    </ul>
   </div>
 </section>
 
 <!-- DETAIL: Marketing & Brand Development -->
 <section class="mp-detail" id="marketing">
-  <div class="wrap mp-split">
-    <div>
-      <div class="lead-ic"><img src="/assets/mfg-partner/marketing-intelligence.png" alt="Marketing &amp; Brand Development" loading="lazy"></div>
+  <div class="wrap mp-svc rev">
+    <div class="mp-svc-media" data-reveal="right"><img src="/assets/mfg-partner/svc-marketing.jpg" alt="Marketing &amp; Brand Development — HCPS campaigns building a manufacturer brand across the dealer base" loading="lazy"></div>
+    <div class="mp-svc-body" data-reveal="left">
       <p class="kicker">Marketing &amp; Brand Development</p>
       <h2>Campaigns that build your brand across the dealer base.</h2>
       <p class="sub">Email and digital campaigns targeted to the right dealers, promotions, brand-awareness programs, and the analytics to prove what's working.</p>
+      <ul class="mp-check">
+        <li>Email campaigns</li>
+        <li>Dealer-targeted marketing</li>
+        <li>Digital marketing support</li>
+        <li>Product promotions</li>
+        <li>Brand awareness campaigns</li>
+        <li>Dealer engagement programs</li>
+        <li>Sales &amp; marketing analytics</li>
+      </ul>
+      <div class="cta-row"><a class="mp-btn blue" href="#partner-meeting">Learn About Our Sales &amp; Marketing Programs →</a></div>
     </div>
-    <ul class="mp-check">
-      <li>Email campaigns</li>
-      <li>Dealer-targeted marketing</li>
-      <li>Digital marketing support</li>
-      <li>Product promotions</li>
-      <li>Brand awareness campaigns</li>
-      <li>Dealer engagement programs</li>
-      <li>Sales &amp; marketing analytics</li>
-    </ul>
-    <div class="cta-row" style="grid-column:1/-1;"><a class="mp-btn blue" href="#partner-meeting">Learn About Our Sales &amp; Marketing Programs →</a></div>
   </div>
 </section>
 
 <!-- DETAIL: Dealer & Sales Intelligence -->
 <section class="mp-detail alt" id="intelligence">
-  <div class="wrap mp-split">
-    <div>
-      <div class="lead-ic"><img src="/assets/mfg-partner/marketing-intelligence.png" alt="Marketing, Brand &amp; Intelligence" loading="lazy"></div>
+  <div class="wrap mp-svc">
+    <div class="mp-svc-media" data-reveal="left"><img src="/assets/mfg-partner/svc-intelligence.jpg" alt="Dealer &amp; Sales Intelligence — HCPS Dealer 360 analytics showing how a line performs in the field" loading="lazy"></div>
+    <div class="mp-svc-body" data-reveal="right">
       <p class="kicker">Dealer &amp; Sales Intelligence</p>
       <h2>See exactly how your line is performing in the field.</h2>
       <p class="sub">Purchasing history, product-interest signals, territory trends, and campaign performance — the business-development insight most rep firms can't give you.</p>
+      <ul class="mp-check">
+        <li>Dealer purchasing history</li>
+        <li>Product-interest tracking</li>
+        <li>Territory sales trends</li>
+        <li>Dealer engagement</li>
+        <li>Follow-up opportunities</li>
+        <li>Campaign performance</li>
+        <li>Business-development insights</li>
+      </ul>
     </div>
-    <ul class="mp-check">
-      <li>Dealer purchasing history</li>
-      <li>Product-interest tracking</li>
-      <li>Territory sales trends</li>
-      <li>Dealer engagement</li>
-      <li>Follow-up opportunities</li>
-      <li>Campaign performance</li>
-      <li>Business-development insights</li>
-    </ul>
   </div>
 </section>
 
