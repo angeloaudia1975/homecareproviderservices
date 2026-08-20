@@ -244,6 +244,7 @@ exports.handler = async (event)=>{
       try{ intentRows=await sbGet(`dealer_intent?dealer_id=${memIn}&select=dealer_id,by_manufacturer`); }catch(e){ intentRows=[]; }
       try{ xsRows=await sbGet(`cross_sell?dealer_id=${memIn}&select=dealer_id,rec_slug,score`); }catch(e){ xsRows=[]; }
       const mfrName=Object.fromEntries((mfrs||[]).map(m=>[m.slug,m.name]));
+      if(!mfrName["gce"]) mfrName["gce"]="Ohio Medical / GCE";  // DB may lack a GCE row; keep the label consistent with the rest
       const nameOf=s=>mfrName[s]||mfrName[normBuy(s)]||pretty(s);
       // Exclusions: matched set (normalized + raw) for filtering, plus the raw list to echo back to the UI.
       const exSetByDealer={}, exListByDealer={};
@@ -307,6 +308,11 @@ exports.handler = async (event)=>{
       const PUBLIC_BASE=process.env.PUBLIC_SITE_BASE||"https://homecareproviderservices.netlify.app";
       const PUBLIC_LOGOS={access4u:"access4u.jpg","strongback-mobility":"strongback-mobility.jpg","airavant-bongorx":"airavant-bongorx.jpg",corsicana:"corsicana.jpg","ovation-medical":"ovation-medical.jpg",bemis:"bemis.jpg",pedifix:"pedifix.jpg","climbing-steps":"climbing-steps.jpg",gce:"ohio-medical.jpg","golden-technologies":"golden-technologies.jpg"};
       for(const sl in PUBLIC_LOGOS){ if(!logoBySlug[sl]) logoBySlug[sl]=`${PUBLIC_BASE}/assets/logos/${PUBLIC_LOGOS[sl]}`; }
+      // GCE / Ohio Medical: the ordering-site data maps GCE to /assets/logos/gce.jpg, which isn't
+      // hosted there, so the handout <img> 404s and the logo drops out. Force GCE (and its
+      // ohio-medical alias) to the known-good logo THIS repo deploys, overriding the broken path.
+      logoBySlug["gce"]=`${PUBLIC_BASE}/assets/logos/ohio-medical.jpg`;
+      logoBySlug["ohio-medical"]=`${PUBLIC_BASE}/assets/logos/ohio-medical.jpg`;
 
       // ---- Regional sales trends (drives the per-visit crossover recommendation) ----
       // Aggregate the trailing-180-day sales of EVERY dealer by (state, manufacturer), split into a
