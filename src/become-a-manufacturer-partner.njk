@@ -66,8 +66,11 @@ eleventyExcludeFromCollections: true
   .mp-regions{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-top:24px;}
   @media(max-width:900px){.mp-regions{grid-template-columns:repeat(2,1fr);}}
   @media(max-width:560px){.mp-regions{grid-template-columns:1fr;}}
-  .mp-region{background:#fff;border:1px solid #e5e9ee;border-radius:14px;padding:18px 16px;text-align:center;}
-  .mp-region .pin{width:34px;height:34px;margin:0 auto 10px;border-radius:9px;background:#eef4fb;color:var(--blue-d);display:grid;place-items:center;}
+  .mp-region{background:#fff;border:1px solid #e5e9ee;border-radius:14px;padding:20px 16px 18px;text-align:center;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease;}
+  .mp-region:hover{transform:translateY(-4px);box-shadow:0 18px 40px rgba(12,39,64,.1);border-color:#cfe0ef;}
+  .mp-region .pin{width:100%;margin:0 auto 8px;background:none;border-radius:0;display:block;}
+  .mp-region .pin img{display:block;width:70%;max-width:104px;margin:0 auto;aspect-ratio:1/1;object-fit:contain;filter:drop-shadow(0 8px 14px rgba(12,39,64,.16));transition:transform .18s ease;}
+  .mp-region:hover .pin img{transform:translateY(-3px) scale(1.05);}
   .mp-region b{display:block;font-family:'Archivo',sans-serif;font-size:14.5px;color:var(--ink);}
   .mp-region span{font-size:12px;color:#7a848f;}
   .mp-terr-band{margin-top:22px;background:linear-gradient(120deg,#0f5c8f,#1681c2);color:#fff;border-radius:18px;padding:26px 28px;display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;}
@@ -146,7 +149,7 @@ eleventyExcludeFromCollections: true
 <section class="mp-hero">
   <div class="wrap">
     <div class="mp-hero-img" id="mp-heroimg" role="img" aria-label="Become a Manufacturing Partner — reach 300+ HME dealers across Southern Indiana, Southwest Ohio, Kentucky, Tennessee, and North Georgia with dedicated sales representation, online ordering, product launches, staff training, and marketing support."><span class="mp-hero-glare"></span></div>
-    <div class="mp-hero-copy">
+    <div class="mp-hero-copy" data-reveal="up">
       <h1>Grow your brand across the region.</h1>
       <p>Dedicated representation, online ordering, product launches, training, and marketing — one integrated partner built to grow your sales.</p>
       <div class="actions">
@@ -180,7 +183,7 @@ eleventyExcludeFromCollections: true
 
 <!-- POSITIONING -->
 <section class="mp-pos">
-  <div class="wrap">
+  <div class="wrap" data-reveal="up">
     <p class="kicker">More than a rep firm</p>
     <h2>An integrated growth platform — not traditional independent sales rep.</h2>
     <p class="sub">HomeCare Provider Services connects your brand to a regional dealer network and surrounds it with everything needed to actually move product: field sales, online ordering, launches, training, marketing, and analytics — working together, reported back to you.</p>
@@ -201,17 +204,17 @@ eleventyExcludeFromCollections: true
 <!-- TERRITORY -->
 <section class="mp-terr" id="territory">
   <div class="wrap">
-    <p class="kicker">Territory Coverage</p>
-    <h2>{{ site.stats.states }} states. {{ site.stats.dealers }} dealers. One partner.</h2>
-    <p class="sub">A concentrated, well-covered footprint where our reps already have the dealer relationships — so your line gets in the door faster.</p>
+    <p class="kicker" data-reveal="up">Territory Coverage</p>
+    <h2 data-reveal="up" style="--d:70ms">{{ site.stats.states }} states. {{ site.stats.dealers }} dealers. One partner.</h2>
+    <p class="sub" data-reveal="up" style="--d:140ms">A concentrated, well-covered footprint where our reps already have the dealer relationships — so your line gets in the door faster.</p>
     <div class="mp-regions">
-      <div class="mp-region"><div class="pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><b>Southern Indiana</b><span>Active territory</span></div>
-      <div class="mp-region"><div class="pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><b>Southwest Ohio</b><span>Active territory</span></div>
-      <div class="mp-region"><div class="pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><b>Kentucky</b><span>Active territory</span></div>
-      <div class="mp-region"><div class="pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><b>Tennessee</b><span>Active territory</span></div>
-      <div class="mp-region"><div class="pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><b>North Georgia</b><span>Active territory</span></div>
+      <div class="mp-region" data-reveal="up"><div class="pin"><img src="/assets/mfg-partner/state-southern-indiana.png" alt="Southern Indiana" loading="lazy"></div><b>Southern Indiana</b><span>Active territory</span></div>
+      <div class="mp-region" data-reveal="up" style="--d:80ms"><div class="pin"><img src="/assets/mfg-partner/state-southwest-ohio.png" alt="Southwest Ohio" loading="lazy"></div><b>Southwest Ohio</b><span>Active territory</span></div>
+      <div class="mp-region" data-reveal="up" style="--d:160ms"><div class="pin"><img src="/assets/mfg-partner/state-kentucky.png" alt="Kentucky" loading="lazy"></div><b>Kentucky</b><span>Active territory</span></div>
+      <div class="mp-region" data-reveal="up" style="--d:240ms"><div class="pin"><img src="/assets/mfg-partner/state-tennessee.png" alt="Tennessee" loading="lazy"></div><b>Tennessee</b><span>Active territory</span></div>
+      <div class="mp-region" data-reveal="up" style="--d:320ms"><div class="pin"><img src="/assets/mfg-partner/state-north-georgia.png" alt="North Georgia" loading="lazy"></div><b>North Georgia</b><span>Active territory</span></div>
     </div>
-    <div class="mp-terr-band">
+    <div class="mp-terr-band" data-reveal="up">
       <div><h3>Access to {{ site.stats.dealers }} HME &amp; DME dealers</h3><p>Independent pharmacies, home medical equipment providers, and mobility retailers across the region — already ordering through HCPS.</p></div>
       <a class="mp-btn primary" href="#partner-meeting">Discuss Territory Representation →</a>
     </div>
@@ -343,7 +346,7 @@ eleventyExcludeFromCollections: true
 
 <!-- PARTNERS -->
 <section class="mp-partners">
-  <div class="wrap">
+  <div class="wrap" data-reveal="up">
     <p class="kicker">In good company</p>
     <h2>Join {{ activeManufacturers.length }} manufacturer partners we represent</h2>
     <p class="sub" style="margin:0 auto;">Brands across mobility, respiratory, bracing, bath safety, and home medical equipment already grow with HCPS.</p>
@@ -357,7 +360,7 @@ eleventyExcludeFromCollections: true
 
 <!-- SCHEDULER -->
 <section class="mp-sched" id="partner-meeting">
-  <div class="wrap">
+  <div class="wrap" data-reveal="up">
     <p class="kicker" style="color:var(--gold);">Schedule a Partnership Meeting</p>
     <h2>Book a 30-minute intro over Zoom.</h2>
     <p class="sub">Tell us about your line, pick a time that works, and it's booked instantly — you and our partnerships team get a calendar invite and Zoom link, and we'll come ready to talk territory.</p>
@@ -410,7 +413,7 @@ eleventyExcludeFromCollections: true
 
 <!-- FINAL CTA -->
 <section class="mp-final">
-  <div class="wrap">
+  <div class="wrap" data-reveal="up">
     <p class="kicker">Become a Manufacturing Partner</p>
     <h2>Expand your reach. Strengthen your brand. Grow your sales.</h2>
     <p>HomeCare Provider Services gives your line dealer relationships, field sales, online ordering, launches, training, marketing, and analytics — one integrated partner across the region. Let's start the conversation.</p>
