@@ -18,7 +18,7 @@ async function whoami(event){
     try{ const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${tok}`}});
       if(r.ok){ const u=await r.json(); const email=u&&u.email&&String(u.email).toLowerCase();
         if(email){ const s=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=*`).catch(()=>[]); const su=s&&s[0];
-          if(su&&su.active!==false) return {role:su.role||"rep",name:su.name||email,email}; } } }catch(e){}
+          if(su&&su.active!==false) return {role:su.role||"rep",name:su.name||email,email,rep_name:(su.rep_name||su.name||email)}; } } }catch(e){}
     return null;
   }
   const need=process.env.ANALYTICS_TOKEN, got=event.headers["x-analytics-token"]||"";
@@ -38,7 +38,7 @@ exports.handler = async (event)=>{
     if(!me) return json(401,{error:"unauthorized"});
     // Available to every signed-in staff member, scoped to what they may see: president + Customer
     // Relations Director get the whole book; a sales rep gets only their assigned dealers.
-    const scope=await dealerScope(me, sbGet);
+    const ADMIN=["president","admin","owner"].includes(String(me.role||"").toLowerCase());
     let b={}; try{ b=JSON.parse(event.body||"{}"); }catch(e){}
 
     const d30=new Date(Date.now()-30*864e5).toISOString(), d90=new Date(Date.now()-90*864e5).toISOString();
@@ -60,12 +60,21 @@ exports.handler = async (event)=>{
     // Base excludes test dealers. Build the rep-view options (admins) from the assigned reps.
     dealers=(dealers||[]).filter(d=>!d.is_test);
     const repOptions=[...new Set(dealers.map(d=>String(d.rep_name||"").trim()).filter(Boolean))].sort((a,z)=>a.localeCompare(z));
-    // Which dealers is this view about? A rep sees only their own book. A President/Admin sees ALL,
-    // or — when a rep is chosen in the Command Center selector (b.rep) — just that rep's assigned dealers.
+    // Command Center 360 is assignment-accurate & role-specific. ONLY President/Admin/Owner see the
+    // whole network (and may pick a rep with the Territory-View selector, b.rep). EVERY other role —
+    // sales rep AND relations manager — sees ONLY the dealers the Admin Portal assigns to them
+    // (dealers.rep_name), matching the admin's own per-rep counts. This scoping lives HERE only;
+    // _scope.js is untouched, so a relations manager keeps full-territory reach in Dealer 360 etc.
     let idSet=null, repView="all";
-    if(!scope.isAll){ idSet=scope.ids||new Set(); }
-    else { const rv=String(b.rep||"").trim(); if(rv && rv.toLowerCase()!=="all"){ repView=rv;
-      idSet=new Set(dealers.filter(d=>String(d.rep_name||"").trim().toLowerCase()===rv.toLowerCase()).map(d=>d.id)); } }
+    if(ADMIN){
+      const rv=String(b.rep||"").trim();
+      if(rv && rv.toLowerCase()!=="all"){ repView=rv;
+        idSet=new Set(dealers.filter(d=>String(d.rep_name||"").trim().toLowerCase()===rv.toLowerCase()).map(d=>d.id)); }
+    } else {
+      const myRep=String(me.rep_name||me.name||"").trim().toLowerCase();
+      repView=me.name||me.rep_name||"";
+      idSet=new Set(dealers.filter(d=>String(d.rep_name||"").trim().toLowerCase()===myRep).map(d=>d.id));
+    }
     if(idSet){ const keep=id=>idSet.has(id);
       dealers=dealers.filter(d=>keep(d.id));
       eng=eng.filter(x=>keep(x.dealer_id)); opps=opps.filter(x=>keep(x.dealer_id));
@@ -80,6 +89,10 @@ exports.handler = async (event)=>{
     for(const r of (ms||[])){ if(!r.dealer_id||!dealerIdSet.has(r.dealer_id)) continue;
       if(String(r.period||"").slice(0,10)>=cut180 && (Number(r.amount)||0)>0) activeSet.add(r.dealer_id); }
     const penTotal=dealers.length, penActive=activeSet.size, penPct=penTotal?Math.round(penActive/penTotal*1000)/10:0;
+    const penInactive=Math.max(0,penTotal-penActive);
+    // The actual accounts behind each count, so the summary cards can drill into a reviewable list.
+    const penList=dealers.map(d=>({ id:d.id, name:d.business_name||"", state:d.state||"", rep:d.rep_name||"", active:activeSet.has(d.id) }))
+      .sort((a,b)=>String(a.name).localeCompare(String(b.name)));
     // unmatched Outlook email — distinct external senders we captured but couldn't place with a dealer
     const _emSenders=new Set(); for(const r of (emUn||[])){ const a=String(r.from_address||"").toLowerCase(); if(a) _emSenders.add(a); }
     const emailUnmatched={ senders:_emSenders.size, messages:(emUn||[]).length };
@@ -157,7 +170,7 @@ exports.handler = async (event)=>{
     const coverage=Object.entries(covMap).map(([slug,o])=>({slug,name:mfrName[slug]||slug,dealers:o.lines.size,with_account:o.withAcct.size,penetration:Math.round(o.lines.size/totalDealers*100)})).sort((a,b)=>b.dealers-a.dealers).slice(0,20);
 
     return json(200,{ ok:true,
-      penetration:{ total:penTotal, active:penActive, pct:penPct, window_days:180 },
+      penetration:{ total:penTotal, active:penActive, inactive:penInactive, pct:penPct, window_days:180, list:penList },
       rep_options:repOptions, rep_view:repView,
       dealers: dealers.map(d=>({id:d.id,name:d.business_name||"",state:d.state||"",parent_id:d.parent_id||null})),
       engagement:{ buckets, dormant, declining, growing, scored:engRows.length },

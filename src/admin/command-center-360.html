@@ -146,8 +146,9 @@ function render(){
   const pen=(I&&I.penetration)||null;
   const penLbl=REPVIEW==="all"?"assigned base":esc(REPVIEW);
   const kpis=`<div class="kpis">
-    ${pen?kpi("Dealers assigned",pen.total,penLbl):""}
-    ${pen?kpi("Active dealers",pen.active,"ordered in last 6 mo"):""}
+    ${pen?kpi("Dealers assigned",pen.total,penLbl,"",pen.list?"assigned":""):""}
+    ${pen?kpi("Active dealers",pen.active,"ordered in last 6 mo","",pen.list?"active":""):""}
+    ${pen?kpi("Inactive dealers",(pen.inactive!=null?pen.inactive:Math.max(0,pen.total-pen.active)),"no orders in 6 mo","",pen.list?"inactive":""):""}
     ${pen?kpi("Market penetration",pen.pct+"%",pen.active+" of "+pen.total+" active",pen.pct>=60?"up":(pen.pct<40?"down":"")):""}
     ${kpi("Total sales",short(total),YEAR==="all"?"all time":YEAR)}
     ${kpi("YoY growth",yoy?((yoy.pct>=0?"+":"")+yoy.pct+"%"):"—",yoy?`${yoy.cur} vs ${yoy.prev}`:"need prior year",yoy?(yoy.pct>=0?"up":"down"):"")}
@@ -243,7 +244,7 @@ function coverageCard(){ const cov=(I&&I.coverage)||[]; if(!cov.length) return `
    <table><thead><tr><th>Manufacturer</th><th class="num">Dealers</th><th class="num">With acct #</th><th>Penetration</th></tr></thead><tbody>
    ${cov.map(c=>`<tr data-drill="mfr" data-key="${esc(c.name)}" style="cursor:pointer"><td>${esc(c.name)}</td><td class="num">${c.dealers}</td><td class="num">${c.with_account}</td><td><span class="track" style="width:110px;display:inline-block;vertical-align:middle;height:12px"><span class="fill" style="display:block;height:100%;width:${Math.max(2,Math.round(c.dealers/max*100))}%"></span></span> <span class="hint" style="margin:0">${c.penetration}%</span></td></tr>`).join("")}
    </tbody></table></div>`; }
-function kpi(l,v,s,cls){ return `<div class="kpi"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div><div class="s">${esc(s||"")}</div></div>`; }
+function kpi(l,v,s,cls,drillKey){ const dk=drillKey?` data-drill="dealers" data-key="${drillKey}" style="cursor:pointer"`:""; return `<div class="kpi"${dk}><div class="l">${l}</div><div class="v ${cls||''}">${v}</div><div class="s">${esc(s||"")}</div></div>`; }
 function barRows(items,dt,max,fmt){ max=max||(items[0]&&items[0].v)||1; return items.map(d=>{
     const clk=dt?` data-drill="${dt}" data-key="${esc(d.k)}" style="cursor:pointer"`:' style="cursor:default"';
     return `<div class="drow"${clk}><div class="nm" title="${esc(d.k)}">${esc(d.k)}</div><div class="track"><div class="fill" style="width:${Math.max(2,Math.round((d.v/max)*100))}%"></div></div><div class="val">${fmt==='count'?Number(d.v).toLocaleString():short(d.v)}</div>${dt?'<span class="arw">›</span>':''}</div>`;
@@ -294,12 +295,29 @@ function drill(type,key,push){ openHost(); if(push!==false && type!=='dealerProd
   else if(type==="company") b.innerHTML=drillCompany(key);
   else if(type==="product") b.innerHTML=drillProduct(key);
   else if(type==="region") b.innerHTML=drillRegion(key);
+  else if(type==="dealers") b.innerHTML=drillDealers(key);
   else if(type==="dealerProducts") loadProducts(key);
   const sv=b.querySelector("svg[data-fc]"); if(sv) hydrateHover(sv);
 }
 function crumbGo(i){ const c=CRUMB[i]; CRUMB=CRUMB.slice(0,i); drill(c.type,c.key); }
 function renderCrumbs(){ const el=$("#crumbs"); if(!el)return; el.innerHTML=`<a onclick="closeDrill()">Summary</a>`+CRUMB.map((c,i)=>{ const lbl=(c.type==="product"&&I.products&&I.products.top[c.key])?I.products.top[c.key].name:c.key; return ` › <a onclick="crumbGo(${i})">${esc(String(lbl).slice(0,28))}</a>`; }).join(""); }
 
+function drillDealers(kind){
+  const pen=(I&&I.penetration)||{};
+  if(!pen.list) return '<div class="hint">The account list will be available after the next deploy — refresh then.</div>';
+  let list=(pen.list||[]).slice();
+  if(kind==="active") list=list.filter(d=>d.active);
+  else if(kind==="inactive") list=list.filter(d=>!d.active);
+  const title=kind==="active"?"Active dealers":kind==="inactive"?"Inactive dealers":"Dealers assigned";
+  const who=REPVIEW==="all"?"":(' · '+esc(REPVIEW));
+  const rows=list.map(d=>`<div class="drow" style="cursor:default">
+      <div class="nm" title="${esc(d.name)}">${esc(d.name||"(dealer)")}</div>
+      <div class="hint" style="margin:0;width:130px">${esc(d.state||"")}${d.rep?(' · '+esc(d.rep)):''}</div>
+      <span class="pill ${d.active?'':'dorm'}" style="min-width:64px;text-align:center">${d.active?'Active':'Inactive'}</span>
+      <a class="btn sm" href="/admin/dealer.html?id=${encodeURIComponent(d.id)}">Open →</a>
+    </div>`).join("")||'<div class="hint">No accounts in this group.</div>';
+  return `<h3 style="margin:2px 0 4px">${title}${who}</h3><div class="hint" style="margin:0 0 10px">${list.length} account${list.length===1?'':'s'} — click Open to review any dealer.</div><div class="scrollbox" style="max-height:none">${rows}</div>`;
+}
 function miniChart(F,title){ const s=series(F); const fc=forecast(s,3); return `<div class="chartwrap">${lineFC(s,fc.proj,title)}</div>`; }
 function drillMfr(mfr){ const F=facts().filter(f=>f.line===mfr); const total=F.reduce((s,f)=>s+(f.sales||0),0); const s=series(F); const fc=forecast(s,3);
   const dealers=[...agg(F,f=>f.dealer).entries()].map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v);
