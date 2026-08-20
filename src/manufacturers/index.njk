@@ -27,9 +27,14 @@ description: "HomeCare Provider Services is the authorized sales representative 
   .mfp-pillars{padding:38px 0 6px;}
   .mfp-pillars-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
   @media(max-width:760px){.mfp-pillars-grid{grid-template-columns:1fr;}}
-  .mfp-pill{background:#fff;border:1px solid #e5e9ee;border-radius:16px;padding:22px 22px 20px;box-shadow:0 8px 24px rgba(12,39,64,.05);}
-  .mfp-pill .ic{width:44px;height:44px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--hcps-blue,#1681c2);color:#fff;margin:0 0 13px;}
-  .mfp-pill h3{font-family:'Archivo',sans-serif;font-weight:800;font-size:17px;color:var(--ink);margin:0 0 6px;}
+  .mfp-pill{background:#fff;border:1px solid #e5e9ee;border-radius:18px;padding:24px 22px 26px;text-align:center;box-shadow:0 12px 34px rgba(12,39,64,.06);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;}
+  .mfp-pill:hover{transform:translateY(-6px);box-shadow:0 30px 60px rgba(12,39,64,.14);border-color:#cfe0ef;}
+  /* Big icon on top — full card width (matches other HCPS pages) */
+  .mfp-pill .ic{width:100%;height:auto;background:none;border-radius:0;display:block;margin:0 0 14px;}
+  .mfp-pill .ic img{display:block;width:82%;max-width:190px;margin:0 auto;aspect-ratio:1/1;object-fit:contain;filter:drop-shadow(0 10px 18px rgba(12,39,64,.14));transition:transform .18s ease;}
+  .mfp-pill:hover .ic img{transform:translateY(-4px) scale(1.05);}
+  .mfp-pill .ic::after{content:"";display:block;height:4px;width:56px;margin:12px auto 0;border-radius:3px;background:var(--hcps-blue,#1681c2);}
+  .mfp-pill h3{font-family:'Archivo',sans-serif;font-weight:800;font-size:18px;color:var(--ink);margin:0 0 7px;}
   .mfp-pill p{font-size:14px;line-height:1.55;color:#55606a;margin:0;}
 
   /* Manufacturer grid section head */
@@ -81,18 +86,18 @@ description: "HomeCare Provider Services is the authorized sales representative 
 <section class="mfp-pillars">
   <div class="container">
     <div class="mfp-pillars-grid">
-      <div class="mfp-pill">
-        <div class="ic" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 15h2a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H8.5L5 7.5V12"/><path d="m14 8 3.5-3.5a2.12 2.12 0 0 1 3 3L17 11l-4 4-3-3"/><path d="M5 15l3 3"/></svg></div>
+      <div class="mfp-pill" data-reveal="up">
+        <div class="ic" aria-hidden="true"><img src="/assets/manufacturers/pillar-partnerships.png" alt="" loading="lazy"></div>
         <h3>Strong Manufacturer Partnerships</h3>
         <p>Authorized representation for HME &amp; DME manufacturers, backed by dedicated field sales, training, and dealer support.</p>
       </div>
-      <div class="mfp-pill">
-        <div class="ic" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg></div>
+      <div class="mfp-pill" data-reveal="up" style="--d:110ms">
+        <div class="ic" aria-hidden="true"><img src="/assets/manufacturers/pillar-innovative.png" alt="" loading="lazy"></div>
         <h3>Innovative Products</h3>
         <p>Carefully selected lines across lift chairs, mobility, wheelchairs, ramps, bath safety, oxygen, and respiratory therapy.</p>
       </div>
-      <div class="mfp-pill">
-        <div class="ic" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg></div>
+      <div class="mfp-pill" data-reveal="up" style="--d:220ms">
+        <div class="ic" aria-hidden="true"><img src="/assets/manufacturers/pillar-solutions.png" alt="" loading="lazy"></div>
         <h3>Better Solutions for Dealers</h3>
         <p>Products and programs that expand your offerings, strengthen your showroom, and deliver greater value to your customers.</p>
       </div>
