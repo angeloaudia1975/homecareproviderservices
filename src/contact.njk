@@ -307,6 +307,13 @@ description: "Get in touch with HomeCare Provider Services for manufacturer-spec
   </div>
 </section>
 
+{% set relatedPages = [
+  { href: "/dealer-hub/", label: "Dealer Hub", blurb: "Book services, pricing & ordering access." },
+  { href: "/become-a-dealer/", label: "Become a Dealer", blurb: "Join the HCPS dealer network." },
+  { href: "/manufacturers/", label: "Manufacturers", blurb: "Browse the HME & DME lines we represent." }
+] %}
+{% include "related.njk" %}
+
 <script>
 (function () {
   var form = document.getElementById("hcps-contact");

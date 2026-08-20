@@ -121,3 +121,10 @@ description: "HomeCare Provider Services is the authorized sales representative 
     </div>
   </div>
 </section>
+
+{% set relatedPages = [
+  { href: "/become-a-dealer/", label: "Become a Dealer", blurb: "Join the HCPS dealer network." },
+  { href: "/dealer-hub/", label: "Dealer Hub", blurb: "Book services, pricing & ordering access." },
+  { href: "/resources/", label: "Resources", blurb: "Catalogs, product guides & forms." }
+] %}
+{% include "related.njk" %}

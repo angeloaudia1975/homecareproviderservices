@@ -385,6 +385,13 @@ description: "The Dealer Hub is your central destination for manufacturer resour
   </div>
 </section>
 
+{% set relatedPages = [
+  { href: "/resources/", label: "Resources", blurb: "Catalogs, product guides & forms." },
+  { href: "/dealer-services/", label: "Dealer Services", blurb: "Done-for-you payments, marketing & web." },
+  { href: "/consulting/", label: "Consulting", blurb: "Advisory: showroom, product mix & strategy." }
+] %}
+{% include "related.njk" %}
+
 <script>
 (function () {
   var API = "/.netlify/functions/schedule-api";

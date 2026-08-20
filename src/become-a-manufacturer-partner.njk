@@ -416,6 +416,13 @@ eleventyExcludeFromCollections: true
 
 </div>
 
+{% set relatedPages = [
+  { href: "/manufacturers/", label: "Manufacturers", blurb: "See the partners we already represent." },
+  { href: "/consulting/", label: "Consulting", blurb: "How we develop dealers and their showrooms." },
+  { href: "/contact/", label: "Contact", blurb: "Talk to the HCPS partnerships team." }
+] %}
+{% include "related.njk" %}
+
 <script>
 (function () {
   var API = "/.netlify/functions/schedule-api";

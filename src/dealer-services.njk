@@ -188,6 +188,13 @@ description: "Value-added business services for HomeCare Provider Services deale
 
 </div>
 
+{% set relatedPages = [
+  { href: "/consulting/", label: "Consulting", blurb: "Advisory: showroom, product mix & strategy." },
+  { href: "/dealer-hub/", label: "Dealer Hub", blurb: "Book services, pricing & ordering access." },
+  { href: "/contact/", label: "Contact", blurb: "Talk to the HCPS team." }
+] %}
+{% include "related.njk" %}
+
 <script>
 // Hero 3D tilt (desktop pointer only; respects reduced motion)
 (function () {

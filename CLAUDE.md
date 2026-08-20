@@ -121,6 +121,19 @@ HCPS does *for a manufacturer to reach the dealer base* — a distinct service f
 as a duplicate of the dealer-side services. Only collapse copy that is the same service for the same
 audience.
 
+### Related-pages row — site-wide component (RULE)
+Every main page ends with a "related pages" cross-link row so navigation replaces repeated copy.
+- Component: `src/_includes/related.njk`; styling `.hcps-related*` in `site.css`.
+- Usage: before the page's trailing `<script>`/scope close, set `relatedPages`
+  (list of `{href,label,blurb}`, 3 items) and optional `relatedHeading`, then
+  `{% include "related.njk" %}`. Links follow the ownership map's adjacencies.
+- The row uses the shared `data-reveal` FX and global `.container` (page-agnostic).
+
+### Hero standard — one message, one primary CTA (RULE)
+Each page hero has a single distinct message, its own hero image, and exactly one primary
+CTA aligned to that page's job (secondary actions use the ghost/outline style). Don't add a
+second primary button to a hero.
+
 ### Dealer Support page — RETIRED (RULE)
 `/dealer-support/` is retired. Its form was a duplicate of Contact's (same Netlify function);
 its bookable functions live in Dealer Hub. Do not recreate it.

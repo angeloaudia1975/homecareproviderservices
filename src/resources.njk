@@ -200,6 +200,13 @@ description: "Explore catalogs, product guides, clinical publications, credit ap
   </div>
 </section>
 
+{% set relatedPages = [
+  { href: "/dealer-hub/", label: "Dealer Hub", blurb: "Book services, pricing & ordering access." },
+  { href: "/manufacturers/", label: "Manufacturers", blurb: "Browse the HME & DME lines we represent." },
+  { href: "/contact/", label: "Contact", blurb: "Talk to the HCPS team." }
+] %}
+{% include "related.njk" %}
+
 <script>
 (function () {
   var search = document.getElementById('rl-search');

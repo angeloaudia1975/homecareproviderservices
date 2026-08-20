@@ -1,0 +1,18 @@
+{# Related-pages cross-link row. Set `relatedPages` (list of {href,label,blurb})
+   and optionally `relatedHeading` before including. Renders nothing if unset. #}
+{% if relatedPages and relatedPages.length %}
+<section class="hcps-related" aria-label="Related pages">
+  <div class="container">
+    <p class="hcps-related-eyebrow" data-reveal="up">{{ relatedHeading or "Explore more of the HCPS platform" }}</p>
+    <div class="hcps-related-grid">
+      {% for r in relatedPages %}
+      <a class="hcps-related-card" href="{{ r.href }}" data-reveal="up" style="--d:{{ loop.index0 * 90 }}ms">
+        <span class="hcps-related-label">{{ r.label }}</span>
+        <span class="hcps-related-blurb">{{ r.blurb }}</span>
+        <span class="hcps-related-arrow" aria-hidden="true">&rarr;</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}

@@ -332,6 +332,13 @@ description: "Become a HomeCare Provider Services dealer and access premium HME 
   </div>
 </section>
 
+{% set relatedPages = [
+  { href: "/manufacturers/", label: "Manufacturers", blurb: "Browse the HME & DME lines we represent." },
+  { href: "/dealer-hub/", label: "Dealer Hub", blurb: "Book services, pricing & ordering access." },
+  { href: "/consulting/", label: "Consulting", blurb: "Advisory: showroom, product mix & strategy." }
+] %}
+{% include "related.njk" %}
+
 <script>
 (function () {
   var form = document.getElementById("dealer-form");
