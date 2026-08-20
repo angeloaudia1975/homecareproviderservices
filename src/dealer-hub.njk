@@ -12,8 +12,8 @@ description: "The Dealer Hub is your central destination for manufacturer resour
   .dh-hero-img{position:relative;max-width:980px;margin:0 auto;border-radius:18px;overflow:hidden;aspect-ratio:1731/909;background:url("/assets/dealer-hub/hero-banner.jpg") center/cover;box-shadow:0 45px 85px -22px rgba(0,0,0,.6);transform-style:preserve-3d;transition:transform .18s ease-out;will-change:transform;}
   .dh-hero-glare{position:absolute;inset:0;pointer-events:none;background:radial-gradient(300px 300px at var(--mx,50%) var(--my,30%),rgba(255,255,255,.28),transparent 60%);mix-blend-mode:screen;opacity:0;transition:opacity .2s;}
   .dh-hero-copy{max-width:1040px;margin:30px auto 0;text-align:center;}
-  .dh-hero-copy h1{margin:0 0 12px;max-width:none;white-space:nowrap;font-size:clamp(20px,3.6vw,40px);}
-  .dh-hero-copy .dh-lead{margin:0 auto 20px;max-width:640px;}
+  .dh-hero .dh-hero-copy h1{margin:0 auto 12px;max-width:none;white-space:nowrap;font-size:clamp(20px,3.6vw,40px);line-height:1.06;}
+  .dh-hero .dh-hero-copy .dh-lead{margin:0 auto 20px;max-width:640px;}
   .dh-hero .dh-cta-row{justify-content:center;}
   @media(max-width:600px){.dh-hero-copy h1{white-space:normal;}}
   @media(prefers-reduced-motion:reduce){.dh-hero-img{transition:none;}}
@@ -161,7 +161,7 @@ description: "The Dealer Hub is your central destination for manufacturer resour
 <section class="dh-hero">
   <div class="container">
     <div class="dh-hero-img" id="dh-heroimg" role="img" aria-label="HomeCare Provider Services Dealer Hub — your central starting point for manufacturer resources, order requests, literature, pricing access, in-service scheduling, technical support, and future dealer login tools."><span class="dh-hero-glare"></span></div>
-    <div class="dh-hero-copy">
+    <div class="dh-hero-copy" data-reveal="up">
       <h1>Everything you need, all in one place.</h1>
       <p class="dh-lead">Manufacturer resources, ordering, pricing, in-service scheduling, and technical support — request and book it all from one hub.</p>
       <div class="dh-cta-row">
