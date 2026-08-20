@@ -7,15 +7,12 @@ description: "Become a HomeCare Provider Services dealer and access premium HME 
 <style>
   .bd-hero{position:relative;overflow:hidden;background:linear-gradient(150deg,#0c2740 0%,#0f5c8f 62%,#1681c2 100%);color:#fff;padding:46px 0 54px;perspective:1500px;}
   /* Depth hero: interactive 3D tilt banner -> headline -> CTAs */
-  .bd-hero-img{position:relative;z-index:1;max-width:1000px;margin:0 auto;border-radius:18px 18px 0 0;overflow:hidden;aspect-ratio:1672/941;background:url("/assets/become-dealer/hero-banner.jpg") center/cover;box-shadow:0 45px 85px -22px rgba(0,0,0,.6);transform-style:preserve-3d;transition:transform .18s ease-out;will-change:transform;}
+  .bd-hero-img{position:relative;z-index:1;max-width:1000px;margin:0 auto;border-radius:18px;overflow:hidden;aspect-ratio:1672/941;background:url("/assets/become-dealer/hero-banner.jpg") center/cover;box-shadow:0 45px 85px -22px rgba(0,0,0,.6);transform-style:preserve-3d;transition:transform .18s ease-out;will-change:transform;}
   .bd-hero-glare{position:absolute;inset:0;pointer-events:none;background:radial-gradient(300px 300px at var(--mx,50%) var(--my,30%),rgba(255,255,255,.28),transparent 60%);mix-blend-mode:screen;opacity:0;transition:opacity .2s;}
-  /* Headline band that runs across the bottom of the hero image */
-  .bd-hero-cap{position:relative;z-index:2;max-width:1000px;margin:0 auto;background:linear-gradient(90deg,#0b1f33,#123a5c);border-radius:0 0 18px 18px;padding:15px 28px;text-align:center;box-shadow:0 34px 70px -30px rgba(0,0,0,.55);}
-  .bd-hero .bd-hero-cap h1{margin:0;max-width:none;font-family:'Archivo',sans-serif;font-weight:800;color:#fff;font-size:clamp(15px,2.5vw,29px);line-height:1.12;white-space:nowrap;}
-  @media(max-width:720px){.bd-hero-cap{padding:13px 16px;}.bd-hero .bd-hero-cap h1{white-space:normal;font-size:clamp(18px,5.2vw,26px);}}
-  .bd-hero-copy{position:relative;z-index:1;max-width:1000px;margin:26px auto 0;text-align:center;}
-  .bd-hero-copy h1{max-width:none;}
-  .bd-hero-copy .bd-lead{margin-left:auto;margin-right:auto;}
+  /* Hero copy — centered under the banner (matches the depth-hero pattern site-wide) */
+  .bd-hero-copy{position:relative;z-index:1;max-width:900px;margin:28px auto 0;text-align:center;}
+  .bd-hero .bd-hero-copy h1{margin:0 auto 14px;max-width:22ch;font-size:clamp(26px,3.8vw,42px);line-height:1.06;text-wrap:balance;}
+  .bd-hero .bd-hero-copy .bd-lead{max-width:64ch;margin:0 auto 26px;}
   .bd-hero-copy .bd-cta-row,.bd-hero-copy .bd-trust{justify-content:center;}
   @media(prefers-reduced-motion:reduce){.bd-hero-img{transition:none;}}
   .bd-hero::after{content:"";position:absolute;right:-120px;top:-120px;width:460px;height:460px;border-radius:50%;background:radial-gradient(circle,rgba(252,178,30,.28),transparent 62%);pointer-events:none;}
@@ -131,10 +128,8 @@ description: "Become a HomeCare Provider Services dealer and access premium HME 
 <section class="bd-hero">
   <div class="container">
     <div class="bd-hero-img" id="bd-heroimg" role="img" aria-label="Become a HomeCare Provider Services Dealer — premium HME &amp; DME product lines, competitive dealer pricing, expert support, and 24/7 online ordering."><span class="bd-hero-glare"></span></div>
-    <div class="bd-hero-cap">
+    <div class="bd-hero-copy" data-reveal="up">
       <h1>Become a HomeCare Provider Services Dealer</h1>
-    </div>
-    <div class="bd-hero-copy">
       <p class="bd-lead">Access premium HME &amp; DME product lines, competitive dealer pricing, expert support, 24/7 online ordering, and our exclusive Showroom Designer Platform — an entire dealer growth platform in one relationship.</p>
       <div class="bd-cta-row">
         <a class="bd-btn primary" href="#apply">Start Your Dealer Account &rarr;</a>
