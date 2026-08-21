@@ -84,6 +84,38 @@ description: "Market development & consulting from HomeCare Provider Services �
   .cs-final h2{color:#fff;font-weight:800;font-size:clamp(23px,2.9vw,34px);margin:0 0 12px;}
   .cs-final p{color:rgba(255,255,255,.82);max-width:640px;margin:0 auto 24px;font-size:16px;}
   .cs-final .actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
+
+  /* Consultation scheduler */
+  .cs-sched{background:linear-gradient(160deg,#0b1f33,#0f5c8f);color:#fff;padding:64px 0;}
+  .cs-sched .kicker{color:var(--gold);}
+  .cs-sched h2{color:#fff;font-weight:800;font-size:clamp(22px,2.9vw,34px);margin:0 0 10px;}
+  .cs-sched .sub{color:rgba(255,255,255,.85);max-width:760px;font-size:16px;line-height:1.6;}
+  .cs-sched-wrap{display:grid;grid-template-columns:1.25fr .85fr;gap:26px;align-items:start;margin-top:26px;}
+  @media(max-width:900px){.cs-sched-wrap{grid-template-columns:1fr;}}
+  .csb-form{background:#fff;border-radius:20px;padding:28px;box-shadow:0 24px 60px rgba(0,0,0,.28);}
+  .csb-form label{display:block;font-family:'Archivo',sans-serif;font-weight:700;font-size:12.5px;color:#33404b;margin:12px 0 5px;}
+  .csb-form input,.csb-form select,.csb-form textarea{width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #d7dde3;border-radius:10px;font-size:14.5px;font-family:'Inter',sans-serif;color:#1b2733;background:#fff;}
+  .csb-form textarea{min-height:74px;resize:vertical;}
+  .csb-form input:focus,.csb-form select:focus,.csb-form textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(22,129,194,.15);}
+  .csb-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media(max-width:520px){.csb-row{grid-template-columns:1fr;}}
+  .csb-form .go{margin-top:16px;width:100%;border:0;cursor:pointer;}
+  .csb-status{font-size:13.5px;font-weight:600;margin:10px 0 0;}
+  .csb-status.ok{color:#166b45;} .csb-status.error{color:#b42323;}
+  .csb-days{display:flex;flex-direction:column;gap:12px;max-height:300px;overflow:auto;margin-top:8px;border-top:1px solid #eef2f6;padding-top:12px;}
+  .csb-day .dh{font-family:'Archivo',sans-serif;font-weight:800;font-size:13px;color:#1b2733;margin:0 0 6px;}
+  .csb-slotrow{display:flex;flex-wrap:wrap;gap:7px;}
+  .csb-slot{background:#f4f7fa;border:1px solid #d7dde3;border-radius:9px;padding:8px 12px;font-size:13.5px;font-weight:700;color:#243240;cursor:pointer;}
+  .csb-slot:hover{border-color:var(--blue);background:#eaf3fb;}
+  .csb-slot.on{background:linear-gradient(100deg,var(--orange),var(--gold));color:#141414;border-color:transparent;}
+  .csb-done{background:#e9f7ef;border:1px solid #bfe6cd;border-radius:16px;padding:26px;text-align:center;color:#12512e;}
+  .csb-done h3{font-family:'Archivo',sans-serif;margin:0 0 8px;font-size:20px;}
+  .csb-done .zoom{display:inline-block;margin-top:10px;background:var(--blue);color:#fff;text-decoration:none;font-weight:700;padding:10px 18px;border-radius:10px;font-size:14px;}
+  .csb-link{background:none;border:none;color:var(--blue-d);text-decoration:underline;font-weight:700;font-size:13.5px;cursor:pointer;padding:6px 0;}
+  .cs-flow h3{font-family:'Archivo',sans-serif;font-weight:800;font-size:16px;margin:0 0 14px;color:#fff;}
+  .cs-flow ol{list-style:none;counter-reset:f;padding:0;margin:0;display:grid;gap:11px;}
+  .cs-flow li{counter-increment:f;position:relative;padding-left:40px;font-size:13.5px;color:rgba(255,255,255,.9);line-height:1.45;}
+  .cs-flow li::before{content:counter(f);position:absolute;left:0;top:-1px;width:27px;height:27px;border-radius:50%;background:linear-gradient(120deg,var(--orange),var(--gold));color:#141414;font-family:'Archivo Expanded',sans-serif;font-weight:800;font-size:13px;display:grid;place-items:center;}
 </style>
 
 <div class="cs">
@@ -96,7 +128,7 @@ description: "Market development & consulting from HomeCare Provider Services �
       <h1>{{ pg.hero.headline }}</h1>
       <p>{{ pg.hero.lead }}</p>
       <div class="actions">
-        <a class="cs-btn primary" href="/contact/?topic=Consulting">{{ pg.hero.cta1_label }}</a>
+        <a class="cs-btn primary" href="#consult-meeting">{{ pg.hero.cta1_label }}</a>
         <a class="cs-btn ghost" href="/dealer-hub/">{{ pg.hero.cta2_label }}</a>
       </div>
     </div>
@@ -198,13 +230,66 @@ description: "Market development & consulting from HomeCare Provider Services �
   </div>
 </section>
 
+<!-- SCHEDULE A CONSULTATION MEETING -->
+<section class="cs-sched" id="consult-meeting">
+  <div class="wrap" data-reveal="up">
+    <p class="kicker">Schedule a Consultation Meeting</p>
+    <h2>Book a 30-minute consultation over Zoom.</h2>
+    <p class="sub">Tell us about your business and what you'd like help with, pick a time that works, and it's booked instantly — you and our consulting team get a calendar invite and Zoom link.</p>
+    <div class="cs-sched-wrap">
+      <div class="csb-form" id="csb-booker">
+        <div id="csb-step-form">
+          <div class="csb-row">
+            <div><label for="csb-company">Business / Organization *</label><input id="csb-company" type="text" required></div>
+            <div><label for="csb-name">Contact name *</label><input id="csb-name" type="text" required></div>
+          </div>
+          <div class="csb-row">
+            <div><label for="csb-email">Email *</label><input id="csb-email" type="email" required></div>
+            <div><label for="csb-phone">Phone</label><input id="csb-phone" type="tel"></div>
+          </div>
+          <div class="csb-row">
+            <div><label for="csb-type">Business type</label><input id="csb-type" type="text" placeholder="HME, DME, pharmacy, mobility retailer…"></div>
+            <div><label for="csb-state">State</label><input id="csb-state" type="text" placeholder="e.g. OH"></div>
+          </div>
+          <label for="csb-focus">What would you like help with?</label>
+          <input id="csb-focus" type="text" placeholder="Showroom design, product mix, pricing, marketing, sales process…">
+          <label for="csb-goals">Your current goals or biggest challenge</label>
+          <input id="csb-goals" type="text" placeholder="Grow revenue, open or redesign a showroom, add lines, improve margins…">
+          <label for="csb-desc">Anything else we should know</label>
+          <textarea id="csb-desc" placeholder="Tell us about your store, your team, and what a successful consultation looks like."></textarea>
+          <button class="cs-btn primary go" id="csb-find" type="button">See available meeting times →</button>
+          <p class="csb-status" id="csb-status" role="status" aria-live="polite"></p>
+        </div>
+        <div id="csb-step-slots" style="display:none">
+          <p style="font-size:13px;color:#54606c;margin:0 0 4px;">Pick a 30-minute time (Central). We'll send a Zoom invite and confirmation.</p>
+          <div class="csb-days" id="csb-days"></div>
+          <div id="csb-confirm" style="display:none"></div>
+          <button class="csb-link" id="csb-back" type="button">← Edit details</button>
+        </div>
+        <div id="csb-step-done" style="display:none"></div>
+      </div>
+      <div class="cs-flow">
+        <h3>What happens when you book</h3>
+        <ol>
+          <li>Your consultation is added to the HCPS consulting calendar</li>
+          <li>Outlook sends you and our team a calendar invite</li>
+          <li>We create your record in our CRM</li>
+          <li>You get a confirmation email with the Zoom link</li>
+          <li>Your consultant comes ready with a plan for your business</li>
+        </ol>
+        <p style="color:rgba(255,255,255,.8);font-size:12.5px;margin:16px 0 0;">Prefer to talk first? Call <a href="tel:{{ site.contact.phone_href }}" style="color:var(--gold);font-weight:800;">{{ site.contact.phone_display }}</a> or email <a href="mailto:{{ site.contact.email }}" style="color:var(--gold);font-weight:800;">{{ site.contact.email }}</a>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- FINAL CTA -->
 <section class="cs-final">
   <div class="wrap" data-reveal="up">
     <h2>{{ pg.cta.title }}</h2>
     <p>{{ pg.cta.copy }}</p>
     <div class="actions">
-      <a class="cs-btn primary big" href="/contact/?topic=Consulting">{{ pg.cta.cta1_label }}</a>
+      <a class="cs-btn primary big" href="#consult-meeting">{{ pg.cta.cta1_label }}</a>
       <a class="cs-btn ghost" style="border-color:rgba(255,255,255,.4);color:#fff;" href="/manufacturers/">{{ pg.cta.cta2_label }}</a>
     </div>
   </div>
@@ -216,5 +301,79 @@ description: "Market development & consulting from HomeCare Provider Services �
   { href: "/become-a-dealer/", label: "Become a Dealer", blurb: "Join the HCPS dealer network." }
 ] %}
 {% include "related.njk" %}
+
+<script>
+(function () {
+  var API = "/.netlify/functions/schedule-api";
+  var esc = function (s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c];}); };
+  var TZ = (function(){ try{ return Intl.DateTimeFormat().resolvedOptions().timeZone||""; }catch(e){ return ""; } })();
+  var $ = function(id){ return document.getElementById(id); };
+  if(!$("csb-find")) return;
+  var BOOK = { start_utc:null, label:null };
+  function val(id){ var e=$(id); return e?(e.value||"").trim():""; }
+  function fields(){ return { company:val("csb-company"), name:val("csb-name"), email:val("csb-email"), phone:val("csb-phone"), business_type:val("csb-type"), state:val("csb-state"), focus:val("csb-focus"), goals:val("csb-goals"), description:val("csb-desc") }; }
+  async function api(payload){ var r=await fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}); return r.json(); }
+
+  $("csb-find").addEventListener("click", async function(){
+    var st=$("csb-status"); st.textContent=""; st.className="csb-status";
+    var f=fields();
+    if(!f.company||!f.name||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)){ st.className="csb-status error"; st.textContent="Please add your business, contact name, and a valid email."; return; }
+    var btn=$("csb-find"); btn.disabled=true; var o=btn.textContent; btn.textContent="Loading times…";
+    try{ var s=await api({action:"consult_slots",tz:TZ}); if(!s||!s.ok){ st.className="csb-status error"; st.textContent=(s&&s.message)||"Couldn't load times. Please email us."; return; } renderSlots(s); }
+    catch(e){ st.className="csb-status error"; st.textContent="Network error. Please try again."; }
+    finally{ btn.disabled=false; btn.textContent=o; }
+  });
+
+  function renderSlots(s){
+    $("csb-step-form").style.display="none"; $("csb-step-done").style.display="none"; $("csb-step-slots").style.display="";
+    $("csb-confirm").style.display="none"; BOOK.start_utc=null;
+    var days=$("csb-days");
+    if(!s.days||!s.days.length){ days.innerHTML='<p style="font-size:13px;color:#54606c;">No open times in the next few weeks. Please call us and we\'ll find a time.</p>'; return; }
+    days.innerHTML=s.days.map(function(d){
+      var head=new Date(d.date+"T12:00:00Z").toLocaleDateString("en-US",{weekday:"long",month:"short",day:"numeric"});
+      return '<div class="csb-day"><div class="dh">'+esc(head)+'</div><div class="csb-slotrow">'+
+        d.slots.map(function(sl){ return '<button type="button" class="csb-slot" data-start="'+esc(sl.start_utc)+'" data-label="'+esc(sl.label)+'">'+esc(sl.label)+' CT</button>'; }).join("")+
+        '</div></div>';
+    }).join("");
+    days.querySelectorAll(".csb-slot").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        days.querySelectorAll(".csb-slot.on").forEach(function(x){ x.classList.remove("on"); });
+        btn.classList.add("on"); BOOK.start_utc=btn.getAttribute("data-start"); BOOK.label=btn.getAttribute("data-label");
+        var head=btn.closest(".csb-day").querySelector(".dh").textContent;
+        showConfirm(head);
+      });
+    });
+  }
+
+  function showConfirm(head){
+    var c=$("csb-confirm"); c.style.display="";
+    c.innerHTML='<div style="border-top:1px solid #eef2f6;margin-top:12px;padding-top:12px;">'+
+      '<button class="cs-btn primary go" id="csb-confirm-btn" type="button">Confirm consultation — '+esc(head)+' at '+esc(BOOK.label)+' CT →</button>'+
+      '<p class="csb-status" id="csb-confirm-status" role="status" aria-live="polite"></p></div>';
+    $("csb-confirm-btn").addEventListener("click", doBook);
+    c.scrollIntoView({behavior:"smooth",block:"nearest"});
+  }
+
+  async function doBook(){
+    var cs=$("csb-confirm-status"); cs.textContent=""; cs.className="csb-status";
+    var btn=$("csb-confirm-btn"); if(!BOOK.start_utc){ cs.className="csb-status error"; cs.textContent="Pick a time first."; return; }
+    btn.disabled=true; var o=btn.textContent; btn.textContent="Booking…";
+    try{
+      var out=await api(Object.assign({action:"consult_book",start_utc:BOOK.start_utc,tz:TZ}, fields()));
+      if(out&&out.ok){
+        $("csb-step-slots").style.display="none"; $("csb-step-done").style.display="";
+        $("csb-step-done").innerHTML='<div class="csb-done"><h3>Your consultation is booked ✓</h3><p>'+esc(out.message||"")+'</p>'+
+          (out.zoom_link?'<a class="zoom" href="'+esc(out.zoom_link)+'" target="_blank" rel="noopener">Zoom link: '+esc(out.zoom_link)+'</a>':"")+'</div>';
+      } else if(out&&out.error==="slot_taken"){
+        cs.className="csb-status error"; cs.textContent=out.message||"That time was just taken — pick another.";
+        var s2=await api({action:"consult_slots",tz:TZ}); if(s2&&s2.ok) renderSlots(s2);
+      } else { cs.className="csb-status error"; cs.textContent=(out&&out.message)||"Couldn't book that time. Please email us."; }
+    }catch(e){ cs.className="csb-status error"; cs.textContent="Network error. Please try again."; }
+    finally{ btn.disabled=false; btn.textContent=o; }
+  }
+
+  $("csb-back").addEventListener("click", function(){ $("csb-step-slots").style.display="none"; $("csb-step-form").style.display=""; });
+})();
+</script>
 
 </div>
