@@ -9,7 +9,8 @@
       { "label": "Order Literature", "url": "/contact/?reason=Dealer%20Support", "external": false },
       { "label": "Request In-Service", "url": "/dealer-hub/?service=staff-in-service#schedule", "external": false },
       { "label": "Technical Support", "url": "/dealer-hub/?service=technical-support#schedule", "external": false },
-      { "label": "Become a Dealer", "url": "/become-a-dealer/", "external": false }
+      { "label": "Become a Dealer", "url": "/become-a-dealer/", "external": false },
+      { "label": "Schedule a Meeting", "url": "/become-a-manufacturer-partner/#partner-meeting", "external": false }
     ] },
     { "label": "Dealer Services", "url": "/dealer-services/", "external": false, "dropdown": "", "children": [] },
     { "label": "Consulting", "url": "/consulting/", "external": false, "dropdown": "", "children": [] },
