@@ -5,8 +5,6 @@
     { "label": "Dealer Hub", "url": "/dealer-hub/", "external": false, "dropdown": "", "children": [
       { "label": "Resource Library", "url": "/resources/", "external": false },
       { "label": "Pricing Access", "url": "/contact/?reason=Product%20or%20Pricing%20Question", "external": false },
-      { "label": "Dealer Order Request", "url": "/contact/?reason=Online%20Ordering%20Support", "external": false },
-      { "label": "Order Literature", "url": "/contact/?reason=Dealer%20Support", "external": false },
       { "label": "Request In-Service", "url": "/dealer-hub/?service=staff-in-service#schedule", "external": false },
       { "label": "Technical Support", "url": "/dealer-hub/?service=technical-support#schedule", "external": false },
       { "label": "Become a Dealer", "url": "/become-a-dealer/", "external": false },
