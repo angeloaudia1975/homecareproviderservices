@@ -57,6 +57,34 @@ function orderConfirmation(to,d,summaries){
   return {to,subject:"Your HCPS order confirmation",html,text};
 }
 
+// ---- Phase 4: shipment tracking request to each manufacturer (best-effort, transactional) ----
+// Asks the manufacturer (their contact if on file, else HCPS) to send tracking to the dealer and
+// back to HCPS for sync. Logged in tracking_requests. Never throws into the order flow.
+async function sendTrackingRequests(d, who, summaries){
+  let contacts={};
+  try{ const ms=await sb("GET","manufacturers?select=slug,name,contact_email"); for(const m of (ms||[])){ contacts[m.slug]={name:m.name||m.slug, email:m.contact_email||null}; } }catch(e){}
+  const HCPS_TO=(process.env.PRICING_REQUEST_TO||process.env.ORDER_TO||"orders@homecareproviderservices.us");
+  const dealerEmail=String((d&&d.email)||(who&&who.email)||"").trim();
+  for(const s of (summaries||[])){
+    if(!s.slug) continue;
+    const c=contacts[s.slug]||{name:s.line,email:null};
+    const to=c.email||HCPS_TO;
+    const items=(s.items||[]).map(it=>`${num(it.qty)} x ${it.name||it.code||"Item"}`).join(", ");
+    const ship=[d&&d.address,d&&d.city,d&&d.state,d&&d.zip].filter(Boolean).join(", ");
+    const subject=`Tracking request — ${s.po?"PO "+s.po+" — ":""}${(d&&d.business)||"Dealer"} — ${c.name}`;
+    const html=`<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:600px"><h2 style="color:#2B4071;margin:0 0 8px">Shipment tracking request</h2>`
+      +`<p style="font-size:13.5px;color:#374151">Please send shipment/tracking for this order to the dealer (${esc(dealerEmail)}) and to HCPS (${esc(HCPS_TO)}) so we can sync it to their order history.</p>`
+      +`<table style="border-collapse:collapse;font-size:14px"><tr><td style="padding:3px 12px 3px 0;color:#6b7280">Manufacturer</td><td>${esc(c.name)}</td></tr>`
+      +`<tr><td style="padding:3px 12px 3px 0;color:#6b7280">PO</td><td>${esc(s.po||"—")}</td></tr>`
+      +`<tr><td style="padding:3px 12px 3px 0;color:#6b7280">Dealer</td><td><b>${esc((d&&d.business)||"—")}</b></td></tr>`
+      +`<tr><td style="padding:3px 12px 3px 0;color:#6b7280">Ship to</td><td>${esc(ship||"—")}</td></tr>`
+      +`<tr><td style="padding:3px 12px 3px 0;color:#6b7280;vertical-align:top">Items</td><td>${esc(items)}</td></tr></table></div>`;
+    const text=`Shipment tracking request\nPlease send tracking to the dealer (${dealerEmail}) and HCPS (${HCPS_TO}).\nManufacturer: ${c.name}\nPO: ${s.po||"—"}\nDealer: ${(d&&d.business)||"—"}\nItems: ${items}`;
+    try{ await sendMail({to,subject,html,text}); }catch(e){}
+    try{ await sb("POST","tracking_requests",{dealer_id:who&&who.dealer_id,order_ref:s.order_id||null,manufacturer:s.slug,po:s.po||null,summary:items,status:"requested"},{Prefer:"return=minimal"}); }catch(e){}
+  }
+}
+
 // Resolve the caller's JWT to an APPROVED dealer_id (or null).
 async function dealerFromToken(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -128,6 +156,8 @@ exports.handler = async (event)=>{
         // Best-effort: a mail hiccup never fails the saved order.
         const to=String(d.email||who.email||"").trim();
         if(EMAIL_RE.test(to) && P.allowTransactional(st.mode,isTest)){ try{ await sendMail(orderConfirmation(to,d,summaries)); }catch(e){ console.error("order confirm email failed",e&&e.message); } }
+        // Phase 4 — auto tracking request to each manufacturer (best-effort; never affects the saved order).
+        if(P.allowTransactional(st.mode,isTest)){ try{ await sendTrackingRequests(d,who,summaries); }catch(e){ console.error("tracking request failed",e&&e.message); } }
         // Email→revenue attribution: credit this order to a recent email touch, if any.
         // A campaign CLICK for the line in the last 7d wins (strongest signal); otherwise
         // any automated marketing SEND to the dealer in the last 14d. Runs BEFORE the intent
