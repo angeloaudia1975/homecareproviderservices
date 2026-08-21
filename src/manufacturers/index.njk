@@ -113,18 +113,72 @@ description: "HomeCare Provider Services is the authorized sales representative 
       <h2>{{ activeManufacturers.length }} manufacturers. One representation team.</h2>
       <p>Explore each partner's products, catalogs, and dealer resources. HomeCare Provider Services is the authorized sales representative for every manufacturer listed below.</p>
     </div>
-    <div class="manu-grid">
+    <div class="partner-grid">
       {% for m in activeManufacturers %}
-      <article class="manu-card">
-        <a href="/manufacturers/{{ m.id }}/" class="manu-logo-tile" style="background-image:url('{{ m.logo }}')" aria-label="{{ m.name }}"></a>
-        <p class="cat">{{ m.category }}</p>
-        <h3><a href="/manufacturers/{{ m.id }}/">{{ m.name }}</a></h3>
-        <p>{{ m.description }}</p>
-        <a class="visit" href="/manufacturers/{{ m.id }}/">View Products &amp; Documents &rarr;</a>
-      </article>
+      <button type="button" class="partner-card"
+              data-card="/assets/manufacturers/partners/{{ m.id }}.jpg"
+              data-name="{{ m.name }}"
+              data-url="/manufacturers/{{ m.id }}/"
+              aria-label="{{ m.name }} — enlarge partner card">
+        <img src="/assets/manufacturers/partners/{{ m.id }}.jpg" alt="{{ m.name }} — HomeCare Provider Services manufacturer partner" loading="lazy" width="1100" height="1100">
+        <span class="partner-hint" aria-hidden="true">Click to enlarge</span>
+      </button>
       {% endfor %}
     </div>
   </div>
+
+  <!-- Manufacturer partner-card lightbox -->
+  <div class="pcard-lightbox" id="pcardLightbox" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Manufacturer partner card">
+    <div class="pcard-backdrop" data-close></div>
+    <div class="pcard-dialog">
+      <button type="button" class="pcard-close" data-close aria-label="Close">&times;</button>
+      <img id="pcardImg" src="" alt="">
+      <a id="pcardLearn" class="pcard-learn" href="#">Learn More &rarr;</a>
+    </div>
+  </div>
+
+  {% raw %}
+  <style>
+    #manufacturers .partner-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:30px;margin-top:10px;}
+    @media(max-width:760px){ #manufacturers .partner-grid{grid-template-columns:1fr;gap:22px;} }
+    .partner-card{display:block;padding:0;border:0;background:transparent;cursor:pointer;border-radius:20px;position:relative;overflow:hidden;
+      box-shadow:0 30px 60px -26px rgba(16,38,63,.55),0 8px 22px rgba(16,38,63,.12);
+      transition:transform .24s cubic-bezier(.2,.7,.2,1),box-shadow .24s;will-change:transform;}
+    .partner-card img{display:block;width:100%;height:auto;border-radius:20px;}
+    .partner-card:hover,.partner-card:focus-visible{transform:translateY(-9px) scale(1.012);
+      box-shadow:0 50px 92px -22px rgba(16,38,63,.62),0 14px 30px rgba(16,38,63,.17);outline:none;}
+    .partner-card:focus-visible{box-shadow:0 0 0 3px var(--hcps-orange,#F5821F),0 50px 92px -22px rgba(16,38,63,.62);}
+    .partner-hint{position:absolute;bottom:14px;right:14px;background:rgba(16,38,63,.85);color:#fff;font-size:12px;font-weight:700;
+      letter-spacing:.4px;padding:7px 14px;border-radius:22px;opacity:0;transform:translateY(7px);transition:opacity .2s,transform .2s;pointer-events:none;}
+    .partner-card:hover .partner-hint,.partner-card:focus-visible .partner-hint{opacity:1;transform:none;}
+    .pcard-lightbox{position:fixed;inset:0;z-index:1200;display:none;align-items:center;justify-content:center;padding:24px;}
+    .pcard-lightbox.open{display:flex;}
+    .pcard-backdrop{position:absolute;inset:0;background:rgba(9,18,31,.82);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);}
+    .pcard-dialog{position:relative;max-width:min(760px,93vw);display:flex;flex-direction:column;align-items:center;animation:pcardIn .28s cubic-bezier(.2,.7,.2,1);}
+    @keyframes pcardIn{from{opacity:0;transform:translateY(16px) scale(.96);}to{opacity:1;transform:none;}}
+    .pcard-dialog img{width:100%;height:auto;max-height:80vh;object-fit:contain;border-radius:18px;box-shadow:0 40px 90px rgba(0,0,0,.55);background:#fff;}
+    .pcard-close{position:absolute;top:-16px;right:-16px;width:42px;height:42px;border-radius:50%;background:#fff;border:0;font-size:22px;line-height:1;
+      font-weight:700;color:#10263f;cursor:pointer;box-shadow:0 8px 22px rgba(0,0,0,.4);z-index:2;}
+    .pcard-close:hover{background:#f0f3f7;}
+    .pcard-learn{margin-top:20px;display:inline-flex;align-items:center;gap:8px;background:var(--hcps-orange,#F5821F);color:#fff;font-weight:800;
+      font-size:16px;padding:14px 32px;border-radius:12px;box-shadow:0 14px 32px rgba(245,130,31,.45);text-decoration:none;transition:background .16s,transform .16s;}
+    .pcard-learn:hover{background:#d96f14;transform:translateY(-2px);}
+    @media(max-width:760px){ .pcard-close{top:6px;right:6px;} }
+    @media(prefers-reduced-motion:reduce){.partner-card,.pcard-learn{transition:none;}.pcard-dialog{animation:none;}}
+  </style>
+  <script>
+  (function(){
+    var lb=document.getElementById('pcardLightbox');if(!lb)return;
+    var img=document.getElementById('pcardImg'),learn=document.getElementById('pcardLearn'),lastFocus=null;
+    function open(card){lastFocus=card;img.src=card.getAttribute('data-card');img.alt=card.getAttribute('data-name')+' — HomeCare Provider Services manufacturer partner card';
+      learn.href=card.getAttribute('data-url');lb.classList.add('open');lb.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';learn.focus();}
+    function close(){lb.classList.remove('open');lb.setAttribute('aria-hidden','true');document.body.style.overflow='';img.src='';if(lastFocus)lastFocus.focus();}
+    document.querySelectorAll('#manufacturers .partner-card').forEach(function(c){c.addEventListener('click',function(){open(c);});});
+    lb.querySelectorAll('[data-close]').forEach(function(x){x.addEventListener('click',close);});
+    document.addEventListener('keydown',function(e){if(e.key==='Escape'&&lb.classList.contains('open'))close();});
+  })();
+  </script>
+  {% endraw %}
 </section>
 
 {% set relatedPages = [
