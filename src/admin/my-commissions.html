@@ -2,7 +2,8 @@
 <title>HCPS — My Commissions</title>
 <link rel="stylesheet" href="/admin/admin-shell.css">
 <style>
- .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:10px 0 4px}
+ /* ---- KPIs ---- */
+ .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:10px 0 4px}
  .kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
  .kpi.big{border-left:4px solid var(--orange,#e07b00);background:#fffaf3}
  .kpi.co{border-left:4px solid #64748b}
@@ -13,21 +14,72 @@
  .splitbar .ic{font-size:20px}
  .splitbar .tx{font-size:13px;color:#2b3a4d;line-height:1.5}
  .splitbar b{color:var(--navy)}
- table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
- th{text-align:left;color:var(--gray);font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;border-bottom:1px solid var(--line)}
- td{padding:6px 8px;border-bottom:1px solid #eef2f6}
- td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
- td.you{color:#a85400;font-weight:700}
- td.co{color:#5b6672}
- .grid2{display:grid;grid-template-columns:1fr 1fr;gap:15px}
- @media(max-width:760px){.grid2{grid-template-columns:1fr}}
- .bar{height:7px;border-radius:5px;background:var(--orange,#e07b00);opacity:.85}
+
+ /* ---- relationship flow ---- */
+ .flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 8px;margin:14px 0 2px}
+ .flow .stage{flex:1 1 160px;min-width:150px;padding:4px 14px;position:relative}
+ .flow .stage + .stage{border-left:1px dashed var(--line)}
+ .flow .arrow{position:absolute;left:-11px;top:50%;transform:translateY(-50%);width:22px;height:22px;border-radius:50%;background:var(--paper,#eef1f4);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--orange,#e07b00);font-weight:900;font-size:12px;z-index:2}
+ .flow .fl{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:800}
+ .flow .fv{font-size:22px;font-weight:800;color:var(--navy);font-family:'Barlow Condensed',sans-serif;margin-top:2px;font-variant-numeric:tabular-nums}
+ .flow .fs{font-size:11px;color:var(--gray);margin-top:2px;line-height:1.35}
+ .flow .fv.you{color:#a85400}
+ .flow .split2{display:flex;gap:10px;margin-top:6px}
+ .flow .split2 .mini{flex:1;background:var(--paper,#f6f8fb);border-radius:8px;padding:6px 8px}
+ .flow .split2 .mini .ml{font-size:9px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:800}
+ .flow .split2 .mini .mv{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
+ .flow .split2 .mini.you .mv{color:#a85400}
+ .flow .split2 .mini.co .mv{color:#5b6672}
+
+ /* ---- controls / breadcrumb ---- */
+ .ctrls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0 4px}
+ .seg{display:inline-flex;background:#fff;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+ .seg button{border:0;background:transparent;padding:7px 13px;font-size:12.5px;font-weight:700;color:#51617a;cursor:pointer;font-family:inherit}
+ .seg button.on{background:var(--navy);color:#fff}
+ .seg button+button{border-left:1px solid var(--line)}
+ .crumbs{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-height:30px}
+ .crumbs .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:800}
+ .chip{display:inline-flex;align-items:center;gap:6px;background:#fff4e8;border:1px solid #f6d5ad;color:#a85400;border-radius:20px;padding:4px 6px 4px 11px;font-size:12px;font-weight:700}
+ .chip .k{color:#b98a4d;font-weight:800;font-size:10px;text-transform:uppercase;letter-spacing:.4px}
+ .chip button{border:0;background:#f6d5ad;color:#8a5a00;width:17px;height:17px;border-radius:50%;cursor:pointer;font-weight:900;line-height:1;font-size:11px;display:flex;align-items:center;justify-content:center;font-family:inherit}
+ .chip button:hover{background:#e9b877}
+ .chip.none{background:#f1f5f9;border-color:#e2e8f0;color:#64748b;font-weight:600}
+ .clearall{border:0;background:transparent;color:#b42323;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;text-decoration:underline}
+
+ /* ---- explorer grid ---- */
+ .explore{display:grid;grid-template-columns:1.15fr 1fr;gap:15px;margin-top:6px}
+ @media(max-width:900px){.explore{grid-template-columns:1fr}}
+ .card h2 .cnt{font-size:11px;font-weight:700;color:var(--gray)}
+ .searchbox{width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-family:inherit;margin:2px 0 6px}
+
+ table.mc{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+ table.mc th{text-align:left;color:var(--gray);font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:7px 8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#fff;z-index:1}
+ table.mc td{padding:7px 8px;border-bottom:1px solid #eef2f6}
+ table.mc td.n,table.mc th.n{text-align:right;font-variant-numeric:tabular-nums}
+ table.mc td.you{color:#a85400;font-weight:700}
+ table.mc td.co{color:#5b6672}
+ tr.click{cursor:pointer}
+ tr.click:hover{background:#fff7ee}
+ tr.click.on{background:#fff1df;box-shadow:inset 3px 0 0 var(--orange,#e07b00)}
+ tr.click td:first-child{font-weight:600;color:var(--navy)}
+ .dim td:first-child{color:#334155}
+ .bar{height:7px;border-radius:5px;background:var(--orange,#e07b00);opacity:.85;min-width:2px}
+ .scrollbox{max-height:360px;overflow:auto;border:1px solid #eef2f6;border-radius:10px;margin-top:6px}
+ .scrollbox table.mc th{top:0}
+ .tapnote{font-size:11px;color:#94a3b8;margin-top:5px}
+ .detailwrap{overflow-x:auto;margin-top:6px}
+ .detail-empty{padding:26px 14px;text-align:center;color:#94a3b8;font-size:13px}
+ .prodcode{display:block;font-size:10.5px;color:#94a3b8;font-weight:600;margin-top:1px}
+ .sumrow td{background:#fbfdff;font-weight:800;color:var(--navy);border-top:2px solid var(--line)}
+ .pill-line{display:inline-block;font-size:10.5px;font-weight:700;color:#3b599a;background:#eef2fb;border:1px solid #dde5f5;border-radius:6px;padding:1px 7px}
+ .foot-note{margin-top:12px;font-size:12px;color:#64748b;line-height:1.6}
+ .foot-note b{color:var(--navy)}
 </style>
 </head><body>
 <header id="ac-head"></header>
 <div class="wrap">
   <div class="top"><div><h1 style="margin:0">My Commissions</h1>
-    <div class="sub">Your commissions and sales — by month, manufacturer line, and dealer. Figures reflect only your assigned accounts.</div></div></div>
+    <div class="sub">Your commission analysis tool — drill from month to manufacturer to dealer to the orders behind every dollar. Figures reflect only your assigned accounts.</div></div></div>
   <div id="body"><div class="msg">Loading…</div></div>
 </div>
 <script src="/admin/staff-session.js"></script>
@@ -38,8 +90,12 @@ const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",
 window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
 let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 const money=n=>"$"+Math.round(Number(n)||0).toLocaleString();
-const monthLbl=p=>{ const m=String(p||"").slice(0,7); if(!/^\d{4}-\d{2}$/.test(m)) return m; const [y,mo]=m.split("-"); return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][(+mo)-1]+" "+y; };
+const num=n=>Math.round(Number(n)||0).toLocaleString();
+const YR=String(new Date().getFullYear());
+const MONS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const monthLbl=p=>{ const m=String(p||"").slice(0,7); if(!/^\d{4}-\d{2}$/.test(m)) return m; const [y,mo]=m.split("-"); return MONS[(+mo)-1]+" "+y; };
 
+/* ---- session gate (unchanged) ---- */
 function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
 async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
   try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
@@ -48,82 +104,238 @@ async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), p
   }catch(err){ gate("Could not reach the server. Try again."); } }
 function lock(){ HCPS.signOut(); TOKEN=null; location.reload(); }
 
+/* ---- data + state ---- */
+let FACTS=[], SPLIT=null, HAS=false, RP=1, CP=0;
+const STATE={ period:"ytd", line:null, dealer:null, search:"" };
+
+function periodMatch(f){
+  const p=String(f.period||"");
+  if(STATE.period==="all") return true;
+  if(STATE.period==="ytd") return p.slice(0,4)===YR;
+  return p.slice(0,7)===STATE.period;
+}
+// match honoring active filters, but ignoring the named dimension(s)
+function match(f, ignore){
+  if(!ignore.includes("period") && !periodMatch(f)) return false;
+  if(!ignore.includes("line") && STATE.line && f.line!==STATE.line) return false;
+  if(!ignore.includes("dealer") && STATE.dealer && f.dealer!==STATE.dealer) return false;
+  return true;
+}
+function agg(list, keyFn, lblFn){
+  const m=new Map();
+  for(const f of list){ const k=keyFn(f); if(k==null||k==="") continue;
+    let o=m.get(k); if(!o){o={key:k,label:(lblFn?lblFn(f,k):k),sales:0,comm:0,qty:0,recs:0};m.set(k,o);}
+    o.sales+=Number(f.sales)||0; o.comm+=Number(f.comm)||0; o.qty+=Number(f.qty)||0; o.recs+=Number(f.recs)||0;
+  }
+  return [...m.values()];
+}
+function totals(list){ let s=0,c=0,q=0,r=0; for(const f of list){ s+=Number(f.sales)||0; c+=Number(f.comm)||0; q+=Number(f.qty)||0; r+=Number(f.recs)||0; } return {sales:s,comm:c,qty:q,recs:r}; }
+
+/* ---- render ---- */
 async function load(){
   if(!TOKEN){ gate(); return; }
   let j; try{ const r=await fetch("/.netlify/functions/analytics",{headers:{authorization:"Bearer "+TOKEN}});
     if(r.status===401){ gate("Your session ended — sign in again."); return; }
     j=await r.json(); }catch(e){ $("#body").innerHTML=`<div class="msg err">Couldn't load your commissions.</div>`; return; }
-  const facts=(j&&j.facts)||[];
-  // Commission split for this rep (rep's own % of what their territory generates; company keeps the rest).
-  const split=(j&&j.mySplit)||null;
-  const hasSplit=!!(split && isFinite(split.rep_pct));
-  const RP=hasSplit?split.rep_pct/100:1;          // rep's share fraction
-  const CP=hasSplit?split.company_pct/100:0;      // company/President share fraction
-  const yr=new Date().getFullYear();
-  let commAll=0, salesAll=0, commYTD=0, salesYTD=0;
-  const byMonth={}, byLine={}, byDealer={};
-  for(const f of facts){
-    const c=Number(f.comm)||0, s=Number(f.sales)||0;
-    commAll+=c; salesAll+=s;
-    const m=String(f.period||"").slice(0,7);
-    if(String(f.period||"").slice(0,4)===String(yr)){ commYTD+=c; salesYTD+=s; }
-    byMonth[m]=(byMonth[m]||0)+c;
-    if(f.line){ byLine[f.line]=(byLine[f.line]||0)+c; }
-    const dl=f.master||f.dealer; if(dl){ byDealer[dl]=(byDealer[dl]||0)+c; }
-  }
-  if(!facts.length){ $("#body").innerHTML=`<div class="hint" style="margin-top:10px">No commission data is attributed to your accounts yet. If you believe this is wrong, confirm your rep name is assigned to your dealers in the directory.</div>`; return; }
-  const rate = salesAll>0 ? (commAll/salesAll*100) : 0;
+  FACTS=(j&&j.facts)||[];
+  SPLIT=(j&&j.mySplit)||null;
+  HAS=!!(SPLIT && isFinite(SPLIT.rep_pct));
+  RP=HAS?SPLIT.rep_pct/100:1; CP=HAS?SPLIT.company_pct/100:0;
+  if(!FACTS.length){ $("#body").innerHTML=`<div class="hint" style="margin-top:10px">No commission data is attributed to your accounts yet. If you believe this is wrong, confirm your rep name is assigned to your dealers in the directory.</div>`; return; }
+  renderShell();
+  render();
+}
 
-  // Explanatory banner + KPIs differ depending on whether a split is configured.
-  let banner="", kpis="";
-  if(hasSplit){
-    banner=`<div class="splitbar"><span class="ic">🤝</span><div class="tx">Your commission arrangement: you earn <b>${split.rep_pct}%</b> of the commission your territory generates; HCPS retains <b>${split.company_pct}%</b>. Every figure below shows the <b>total territory commission</b> and <b>your ${split.rep_pct}% share</b>.</div></div>`;
+function renderShell(){
+  // headline KPIs — fixed anchors (YTD + all-time), independent of the drill filters below
+  let commYTD=0, salesYTD=0, commAll=0, salesAll=0;
+  for(const f of FACTS){ const c=Number(f.comm)||0, s=Number(f.sales)||0; commAll+=c; salesAll+=s;
+    if(String(f.period||"").slice(0,4)===YR){ commYTD+=c; salesYTD+=s; } }
+  const rate = salesAll>0 ? (commAll/salesAll*100) : 0;
+  let banner, kpis;
+  if(HAS){
+    banner=`<div class="splitbar"><span class="ic">🤝</span><div class="tx">Your commission arrangement: you earn <b>${SPLIT.rep_pct}%</b> of the commission your territory generates; HCPS retains <b>${SPLIT.company_pct}%</b>. Every figure below shows the <b>total territory commission</b> and <b>your ${SPLIT.rep_pct}% share</b>.</div></div>`;
     kpis=`<div class="kpis">
-      <div class="kpi"><div class="l">Total territory commission — YTD ${yr}</div><div class="v">${money(commYTD)}</div><div class="s">Generated by your accounts</div></div>
-      <div class="kpi big"><div class="l">Your commission (${split.rep_pct}%) — YTD ${yr}</div><div class="v">${money(commYTD*RP)}</div><div class="s">Your earned share</div></div>
-      <div class="kpi co"><div class="l">Company / President (${split.company_pct}%) — YTD ${yr}</div><div class="v">${money(commYTD*CP)}</div><div class="s">HCPS retained</div></div>
+      <div class="kpi"><div class="l">Total territory commission — YTD ${YR}</div><div class="v">${money(commYTD)}</div><div class="s">Generated by your accounts</div></div>
+      <div class="kpi big"><div class="l">Your commission (${SPLIT.rep_pct}%) — YTD ${YR}</div><div class="v">${money(commYTD*RP)}</div><div class="s">Your earned share</div></div>
+      <div class="kpi co"><div class="l">Company / President (${SPLIT.company_pct}%) — YTD ${YR}</div><div class="v">${money(commYTD*CP)}</div><div class="s">HCPS retained</div></div>
       <div class="kpi"><div class="l">Your commission — all time</div><div class="v">${money(commAll*RP)}</div><div class="s">of ${money(commAll)} total</div></div>
     </div>`;
   } else {
     banner=`<div class="splitbar" style="border-left-color:#94a3b8"><span class="ic">ℹ️</span><div class="tx">Your commission split isn't configured yet, so figures below show the <b>total commission</b> your territory generated. Ask the President to set your split and this page will break out your earned share automatically.</div></div>`;
     kpis=`<div class="kpis">
-      <div class="kpi big"><div class="l">Commission — YTD ${yr}</div><div class="v">${money(commYTD)}</div></div>
-      <div class="kpi"><div class="l">Sales — YTD ${yr}</div><div class="v">${money(salesYTD)}</div></div>
+      <div class="kpi big"><div class="l">Commission — YTD ${YR}</div><div class="v">${money(commYTD)}</div></div>
+      <div class="kpi"><div class="l">Sales — YTD ${YR}</div><div class="v">${money(salesYTD)}</div></div>
       <div class="kpi"><div class="l">Commission — all time</div><div class="v">${money(commAll)}</div></div>
       <div class="kpi"><div class="l">Effective rate</div><div class="v">${rate.toFixed(1)}%</div></div>
     </div>`;
   }
+  $("#body").innerHTML = banner + kpis
+    + `<div id="flow"></div>`
+    + `<div class="ctrls">
+         <span class="seg" id="periodSeg">
+           <button data-p="ytd">This year</button>
+           <button data-p="all">All time</button>
+         </span>
+         <span class="crumbs" id="crumbs"></span>
+       </div>`
+    + `<div class="explore">
+         <div style="display:flex;flex-direction:column;gap:15px">
+           <div class="card"><h2>By month <span class="cnt" id="mCnt"></span></h2><div id="monthPanel"></div><div class="tapnote">Tap a month to focus every panel on it.</div></div>
+           <div class="card"><h2>By manufacturer line <span class="cnt" id="lCnt"></span></h2><div id="linePanel"></div><div class="tapnote">Tap a line to see its dealers, products &amp; orders.</div></div>
+         </div>
+         <div style="display:flex;flex-direction:column;gap:15px">
+           <div class="card"><h2>Top dealers <span class="cnt" id="dCnt"></span></h2>
+             <input class="searchbox" id="dealerSearch" type="search" placeholder="Search all your dealers…" autocomplete="off">
+             <div class="scrollbox" id="dealerPanel"></div>
+             <div class="tapnote">Scroll for every dealer in your territory. Tap one to drill in.</div></div>
+         </div>
+       </div>`
+    + `<div class="card" style="margin-top:15px"><h2 id="detailTitle">Order &amp; product detail</h2>
+         <div class="hint" id="detailSub" style="margin-top:-4px"></div>
+         <div class="detailwrap" id="detailPanel"></div></div>`
+    + `<div class="foot-note" id="footNote"></div>`;
 
-  const months=Object.keys(byMonth).filter(m=>/^\d{4}-\d{2}$/.test(m)).sort().slice(-12);
-  const maxM=Math.max(1,...months.map(m=>byMonth[m]));
-  const monthRows=months.map(m=>{
-    const tot=byMonth[m];
-    const cells = hasSplit
-      ? `<td class="n">${money(tot)}</td><td class="n you">${money(tot*RP)}</td><td class="n co">${money(tot*CP)}</td>`
-      : `<td class="n">${money(tot)}</td>`;
-    return `<tr><td>${esc(monthLbl(m))}</td>${cells}
-      <td style="width:34%"><div class="bar" style="width:${Math.max(2,Math.round(tot/maxM*100))}%"></div></td></tr>`;
-  }).join("") || `<tr><td colspan="${hasSplit?5:3}" class="hint">No monthly data.</td></tr>`;
-  const monthHead = hasSplit
-    ? `<tr><th>Month</th><th class="n">Total commission</th><th class="n">Your ${split.rep_pct}%</th><th class="n">Company ${split.company_pct}%</th><th></th></tr>`
-    : `<tr><th>Month</th><th class="n">Commission</th><th></th></tr>`;
+  // wire period segment
+  $("#periodSeg").addEventListener("click",e=>{ const b=e.target.closest("button[data-p]"); if(!b)return; STATE.period=b.dataset.p; render(); });
+  // wire dealer search (preserve focus across re-render by only re-rendering the dealer panel)
+  $("#dealerSearch").addEventListener("input",e=>{ STATE.search=e.target.value; renderDealers(); });
+}
 
-  const mkRows = obj => Object.entries(obj).sort((a,b)=>b[1]-a[1]);
-  const brkRow = ([k,v]) => hasSplit
-      ? `<tr><td>${esc(k)}</td><td class="n">${money(v)}</td><td class="n you">${money(v*RP)}</td></tr>`
-      : `<tr><td>${esc(k)}</td><td class="n">${money(v)}</td></tr>`;
-  const lineRows=mkRows(byLine).map(brkRow).join("")||`<tr><td colspan="${hasSplit?3:2}" class="hint">—</td></tr>`;
-  const dealerRows=mkRows(byDealer).slice(0,15).map(brkRow).join("")||`<tr><td colspan="${hasSplit?3:2}" class="hint">—</td></tr>`;
-  const brkHead = label => hasSplit ? `<tr><th>${label}</th><th class="n">Total</th><th class="n">Your ${split.rep_pct}%</th></tr>` : `<tr><th>${label}</th><th class="n">Commission</th></tr>`;
+function crumbRender(){
+  const host=$("#crumbs"); const parts=[`<span class="lbl">Viewing:</span>`];
+  const periodChip = STATE.period==="ytd" ? `This year (${YR})` : STATE.period==="all" ? "All time" : monthLbl(STATE.period);
+  const monthClearable = !(STATE.period==="ytd"||STATE.period==="all");
+  parts.push(`<span class="chip${monthClearable?"":" none"}"><span class="k">Period</span>${esc(periodChip)}${monthClearable?`<button title="Back to this year" onclick="clr('period')">✕</button>`:``}</span>`);
+  if(STATE.line) parts.push(`<span class="chip"><span class="k">Line</span>${esc(STATE.line)}<button title="Clear" onclick="clr('line')">✕</button></span>`);
+  if(STATE.dealer) parts.push(`<span class="chip"><span class="k">Dealer</span>${esc(STATE.dealer)}<button title="Clear" onclick="clr('dealer')">✕</button></span>`);
+  if(STATE.line||STATE.dealer||monthClearable) parts.push(`<button class="clearall" onclick="clr('all')">Clear all</button>`);
+  host.innerHTML=parts.join("");
+}
+function clr(what){ if(what==="all"){STATE.period="ytd";STATE.line=null;STATE.dealer=null;} else if(what==="period"){STATE.period="ytd";} else {STATE[what]=null;} render(); }
+window.clr=clr;
 
-  $("#body").innerHTML=banner+kpis
-    +`<div class="card"><h2>By month <span class="hint" style="font-weight:600">— last 12</span></h2>
-        <table><thead>${monthHead}</thead><tbody>${monthRows}</tbody></table></div>
-      <div class="grid2">
-        <div class="card"><h2>By manufacturer line</h2><table><thead>${brkHead("Line")}</thead><tbody>${lineRows}</tbody></table></div>
-        <div class="card"><h2>Top dealers</h2><table><thead>${brkHead("Dealer")}</thead><tbody>${dealerRows}</tbody></table></div>
-      </div>
-      <div class="hint" style="margin-top:10px">${hasSplit?`These figures reflect your assigned accounts only. <b>Your ${split.rep_pct}%</b> is your earned commission; the remaining <b>${split.company_pct}%</b> is retained by HCPS/President.`:`These are your own commissions only.`} Questions about a figure? Check the underlying sales in Rep Performance, or ask the President.</div>`;
+function setDim(dim,val){ STATE[dim]=(STATE[dim]===val?null:val); render(); }
+window.setDim=setDim;
+function setMonth(m){ STATE.period=(STATE.period===m?"ytd":m); render(); }
+window.setMonth=setMonth;
+
+function shareCols(o){ return HAS ? `<td class="n">${money(o.comm)}</td><td class="n you">${money(o.comm*RP)}</td>` : `<td class="n">${money(o.comm)}</td>`; }
+function shareHead(){ return HAS ? `<th class="n">Total comm</th><th class="n">Your ${SPLIT.rep_pct}%</th>` : `<th class="n">Commission</th>`; }
+
+function renderMonths(){
+  const list=FACTS.filter(f=>match(f,["period"]));
+  const rows=agg(list,f=>String(f.period||"").slice(0,7)).filter(o=>/^\d{4}-\d{2}$/.test(o.key)).sort((a,b)=>a.key<b.key?-1:1);
+  const max=Math.max(1,...rows.map(o=>o.comm));
+  $("#mCnt").textContent = rows.length?`— ${rows.length} month${rows.length>1?"s":""}`:"";
+  const body = rows.map(o=>{
+    const on = (STATE.period===o.key)?" on":"";
+    return `<tr class="click${on}" onclick="setMonth('${o.key}')">
+      <td>${esc(monthLbl(o.key))}</td>
+      <td class="n">${money(o.sales)}</td>
+      <td class="n">${num(o.recs)}</td>
+      ${shareCols(o)}
+      <td style="width:22%"><div class="bar" style="width:${Math.max(2,Math.round(o.comm/max*100))}%"></div></td></tr>`;
+  }).join("") || `<tr><td colspan="6" class="hint">No monthly data for this view.</td></tr>`;
+  $("#monthPanel").innerHTML=`<table class="mc"><thead><tr><th>Month</th><th class="n">Sales</th><th class="n">Orders</th>${shareHead()}<th></th></tr></thead><tbody>${body}</tbody></table>`;
+}
+function renderLines(){
+  const list=FACTS.filter(f=>match(f,["line"]));
+  const rows=agg(list,f=>f.line).sort((a,b)=>b.comm-a.comm);
+  $("#lCnt").textContent = rows.length?`— ${rows.length} line${rows.length>1?"s":""}`:"";
+  const body = rows.map(o=>{
+    const on=(STATE.line===o.key)?" on":"";
+    const prods=new Set(list.filter(f=>f.line===o.key).map(f=>f.product||f.productName)).size;
+    return `<tr class="click${on}" onclick="setDim('line',${JSON.stringify(o.key).replace(/"/g,'&quot;')})">
+      <td>${esc(o.key)}</td>
+      <td class="n">${money(o.sales)}</td>
+      <td class="n">${num(prods)}</td>
+      ${shareCols(o)}</tr>`;
+  }).join("") || `<tr><td colspan="5" class="hint">No lines for this view.</td></tr>`;
+  $("#linePanel").innerHTML=`<table class="mc"><thead><tr><th>Manufacturer line</th><th class="n">Sales</th><th class="n">Products</th>${shareHead()}</tr></thead><tbody>${body}</tbody></table>`;
+}
+function renderDealers(){
+  const list=FACTS.filter(f=>match(f,["dealer"]));
+  let rows=agg(list,f=>f.dealer).sort((a,b)=>b.comm-a.comm);
+  const total=rows.length;
+  const q=(STATE.search||"").trim().toLowerCase();
+  if(q) rows=rows.filter(o=>String(o.key).toLowerCase().includes(q));
+  $("#dCnt").textContent = total?`— ${total} dealer${total>1?"s":""}`:"";
+  const body = rows.map(o=>{
+    const on=(STATE.dealer===o.key)?" on":"";
+    return `<tr class="click${on}" onclick="setDim('dealer',${JSON.stringify(o.key).replace(/"/g,'&quot;')})">
+      <td>${esc(o.key)}</td>
+      <td class="n">${money(o.sales)}</td>
+      ${shareCols(o)}</tr>`;
+  }).join("") || `<tr><td colspan="4" class="detail-empty">${q?"No dealers match your search.":"No dealers for this view."}</td></tr>`;
+  $("#dealerPanel").innerHTML=`<table class="mc"><thead><tr><th>Dealer</th><th class="n">Sales</th>${shareHead()}</tr></thead><tbody>${body}</tbody></table>`;
+}
+function renderDetail(){
+  const list=FACTS.filter(f=>match(f,[]));
+  const drilled = STATE.line||STATE.dealer||!(STATE.period==="ytd"||STATE.period==="all");
+  // group to the finest grain: month × dealer × line × product
+  let rows=agg(list,f=>[String(f.period||"").slice(0,7),f.dealer,f.line,f.product||"",f.productName||""].join("|~|"),
+                    (f)=>f).map(o=>{ const [pm,dl,ln,pc,pn]=o.key.split("|~|"); return {...o, pm, dl, ln, pc, pn}; });
+  rows.sort((a,b)=>b.sales-a.sales);
+  const CAP=200; const shown=rows.slice(0,CAP);
+  const sub = drilled
+    ? `The sales records behind ${STATE.dealer?`<b>${esc(STATE.dealer)}</b>`:""}${(STATE.dealer&&STATE.line)?" · ":""}${STATE.line?`<b>${esc(STATE.line)}</b>`:""}${((STATE.dealer||STATE.line)&&!(STATE.period==="ytd"||STATE.period==="all"))?" · ":""}${!(STATE.period==="ytd"||STATE.period==="all")?`<b>${esc(monthLbl(STATE.period))}</b>`:""} — every commission dollar in this view, line by line.`
+    : `Every product record in your current view. Tap a month, line, or dealer above to narrow it down.`;
+  $("#detailSub").innerHTML=sub;
+  if(!shown.length){ $("#detailPanel").innerHTML=`<div class="detail-empty">No records for this view.</div>`; return; }
+  const t=totals(list);
+  const body=shown.map(o=>`<tr>
+      <td>${esc(monthLbl(o.pm))}</td>
+      <td>${esc(o.dl)||"—"}</td>
+      <td><span class="pill-line">${esc(o.ln)||"—"}</span></td>
+      <td>${esc(o.pn||o.pc||"(unspecified item)")}${o.pc?`<span class="prodcode">${esc(o.pc)}</span>`:""}</td>
+      <td class="n">${num(o.qty)}</td>
+      <td class="n">${num(o.recs)}</td>
+      <td class="n">${money(o.sales)}</td>
+      ${HAS?`<td class="n">${money(o.comm)}</td><td class="n you">${money(o.comm*RP)}</td>`:`<td class="n">${money(o.comm)}</td>`}
+    </tr>`).join("");
+  const sumCells = HAS
+    ? `<td class="n">${num(t.qty)}</td><td class="n">${num(t.recs)}</td><td class="n">${money(t.sales)}</td><td class="n">${money(t.comm)}</td><td class="n you">${money(t.comm*RP)}</td>`
+    : `<td class="n">${num(t.qty)}</td><td class="n">${num(t.recs)}</td><td class="n">${money(t.sales)}</td><td class="n">${money(t.comm)}</td>`;
+  const capNote = rows.length>CAP ? `<div class="tapnote">Showing the top ${CAP} of ${num(rows.length)} records by sales — narrow with a month, line, or dealer above to see the rest.</div>` : "";
+  $("#detailPanel").innerHTML=`<table class="mc"><thead><tr>
+      <th>Month</th><th>Dealer</th><th>Line</th><th>Product</th><th class="n">Qty</th><th class="n">Orders</th><th class="n">Sales</th>${HAS?`<th class="n">Comm</th><th class="n">Your ${SPLIT.rep_pct}%</th>`:`<th class="n">Commission</th>`}
+    </tr></thead><tbody>${body}<tr class="sumrow"><td>Total</td><td></td><td></td><td></td>${sumCells}</tr></tbody></table>`+capNote;
+}
+function renderFlow(){
+  const t=totals(FACTS.filter(f=>match(f,[])));
+  const rate = t.sales>0 ? (t.comm/t.sales*100) : 0;
+  const scope = STATE.period==="ytd"?`this year (${YR})`:STATE.period==="all"?"all time":monthLbl(STATE.period);
+  const where = [STATE.dealer, STATE.line].filter(Boolean).join(" · ");
+  const stage3 = HAS
+    ? `<div class="fl">Split of that commission</div>
+       <div class="split2">
+         <div class="mini you"><div class="ml">You (${SPLIT.rep_pct}%)</div><div class="mv">${money(t.comm*RP)}</div></div>
+         <div class="mini co"><div class="ml">Company (${SPLIT.company_pct}%)</div><div class="mv">${money(t.comm*CP)}</div></div>
+       </div>`
+    : `<div class="fl">Your commission</div><div class="fv you">${money(t.comm)}</div><div class="fs">No split configured — full territory commission shown.</div>`;
+  $("#flow").innerHTML=`<div class="flow">
+     <div class="stage"><div class="fl">Gross territory sales</div><div class="fv">${money(t.sales)}</div><div class="fs">${esc(scope)}${where?" · "+esc(where):""}</div></div>
+     <div class="stage"><div class="arrow">→</div><div class="fl">Total manufacturer commission</div><div class="fv">${money(t.comm)}</div><div class="fs">${rate.toFixed(1)}% of sales · ${num(t.recs)} orders</div></div>
+     <div class="stage"><div class="arrow">→</div>${stage3}</div>
+   </div>`;
+}
+function renderFoot(){
+  $("#footNote").innerHTML = HAS
+    ? `These figures reflect <b>your assigned accounts only</b>. <b>Your ${SPLIT.rep_pct}%</b> is your earned commission; the remaining <b>${SPLIT.company_pct}%</b> is retained by HCPS / President. "Orders" counts the imported sales records (invoice lines) behind each commission. Every panel updates together as you drill — questions about a figure? Check Rep Performance or ask the President.`
+    : `These are your own commissions only. "Orders" counts the imported sales records behind each commission.`;
+}
+
+function render(){
+  crumbRender();
+  // keep period-seg highlight in sync (a specific drilled month shows as a crumb, not a segment)
+  document.querySelectorAll("#periodSeg button").forEach(b=>b.classList.toggle("on", STATE.period===b.dataset.p));
+  renderFlow();
+  renderMonths();
+  renderLines();
+  renderDealers();
+  renderDetail();
+  renderFoot();
 }
 load();
 </script>
