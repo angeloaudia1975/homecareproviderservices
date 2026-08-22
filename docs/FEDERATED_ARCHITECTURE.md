@@ -1,9 +1,11 @@
 # HCPS ⇄ Golden — Federated Architecture Master Blueprint
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Status:** Adopted — architectural source of truth
 **Owner:** Angelo Audia (HCPS)
 **Applies to:** the HCPS development effort **and** the Golden Ordering Platform / Golden Admin development effort
+
+> **Changelog v1.2.0:** Authorized **HCPS front-end order submission through a manufacturer platform's own ordering API** (§1 doctrine #2 exception; new §2.4), where the manufacturer platform remains the executing, authoritative owner of the order — enabling the Golden ⇄ Partner 360 shared-commerce-engine model (two front-ends, one Golden engine, one synchronized order record). Added `order.status.changed` to the event catalog (§5.3) and the `order_source` tag + shared `order_id` convention; added the front-end-submission direction rule (§5.4) and refined the Conformance boundary check (§13).
 
 > **Changelog v1.1.0:** Added the **single-user Zoho operating model** (§6.1a — Zoho is a headless admin backend; reps stay in the portals). Clarified **rep-level attribution is HCPS-owned** (§6.2). Split Golden licensing into **build-ready (now)** vs **commercial activation (gated on Golden Technologies written approval)** (§10). Added **§14 DNS, registrar & email authentication**.
 
@@ -24,7 +26,7 @@ This is the **single source of truth** for both development projects. Neither th
 ## 1. Doctrine
 
 1. **Federation, not fusion.** The platforms cooperate through shared identifiers and a defined event stream. They do not merge into one system and do not share one database.
-2. **One-way at the boundary.** Manufacturer/Golden platforms **emit** events to HCPS. HCPS **MUST NOT** write into a manufacturer platform's operational workflow (its ordering, its CRM, its campaigns).
+2. **One-way at the boundary.** Manufacturer/Golden platforms **emit** events to HCPS. HCPS **MUST NOT** write into a manufacturer platform's operational **data** — its order tables, CRM records, campaigns, inventory, pricing, or configuration. **Exception (v1.2.0):** an HCPS front-end **MAY submit an order through a manufacturer platform's own ordering API** (§2.4), where that platform remains the executing and authoritative owner of the resulting order. This front-end submission is a client call to the manufacturer's ordering endpoint — it is **not** a direct data write and grants no other write access. Order status, tracking, inventory, pricing, catalog, and configuration remain manufacturer-authoritative and continue to flow **one-way** (manufacturer → HCPS).
 3. **Golden runs standalone.** The Golden platform **MUST** be fully operable with zero connection to HCPS. All HCPS ties live behind one optional, feature-flagged **HCPS Federation Adapter**. Golden core code **MUST NOT** import or hard-depend on HCPS.
 4. **Manufacturers are data, not code.** Adding a manufacturer is configuration (registry + rules), never an infrastructure rewrite.
 5. **One owner per data domain.** Every data domain has exactly one authoritative system (§7). Others hold read-only mirrors kept current by sync/events.
@@ -58,6 +60,16 @@ Golden is authoritative for **everything inside Golden**: its dealers-as-it-know
 | Master contact records | **HCPS** (mirrored to Zoho) | Email is the natural key |
 | Marketing automation / campaign delivery / pipeline | **Zoho CRM Plus** (HCPS) | Per-tenant Zoho for licensees is optional |
 | Website/ordering behavioral activity | **originating platform** | Federated as events |
+
+### 2.4 Front-end order submission (v1.2.0)
+
+An HCPS interface (e.g. HCPS Partner 360) MAY act as a **second front-end** on a manufacturer platform's commerce engine: it reads the manufacturer's catalog, dealer pricing, live inventory, and configurators through that platform's APIs, and submits orders through that platform's own ordering API on the dealer's behalf. Constraints:
+
+- The manufacturer platform **mints the order**, assigns the **single shared `order_id`**, sends the confirmation, and owns every subsequent status transition. There is **one order record**, never a duplicate.
+- Each order records an **`order_source`** (`"partner360"` | `"golden_platform"` | manufacturer-front-end slug) for analytics only; it does not change ownership.
+- HCPS holds a **read-only mirror** of the order (per §1 #5), kept current by `order.created` / `order.status.changed` events.
+- The HCPS front-end **MUST NOT** write manufacturer inventory, pricing, configuration, or order status directly. Dealer **eligibility** gates access: only dealers the manufacturer authorizes may see dealer pricing or submit orders.
+- Golden independence is preserved: this path is additive and the manufacturer platform remains fully operable with the HCPS adapter disabled.
 
 ---
 
@@ -168,8 +180,9 @@ Both projects **MUST** use these exact event names. New events are added by vers
 | `product.clicked` | A product/promo is clicked | `placement` |
 | `product.added_to_cart` | Item added to cart | `qty` |
 | `cart.abandoned` | Cart idle past threshold | `cart_value`, `items[]` |
-| `order.created` | Order submitted | `order_id`, `total`, `lines[]` |
-| `order.completed` | Order finalized/shipped | `order_id`, `total` |
+| `order.created` | Order submitted (from any authorized front-end) | `order_id` (shared), `order_source`, `total`, `lines[]` |
+| `order.status.changed` | Order status transitions (acknowledged, processing, shipped, tracking available, cancelled) | `order_id`, `from`, `to`, `tracking?`, `order_source` |
+| `order.completed` | Order finalized/shipped | `order_id` (shared), `order_source`, `total` |
 | `email.sent` | Marketing/transactional email sent | `campaign_id`, `email` |
 | `email.opened` | Email opened | `campaign_id` |
 | `email.clicked` | Email link clicked | `campaign_id`, `url` |
@@ -179,7 +192,8 @@ Both projects **MUST** use these exact event names. New events are added by vers
 
 ### 5.4 Direction rules
 - Manufacturer/Golden → HCPS: **all** catalog events above (behavioral + order + email).
-- HCPS → Golden (Tenant 0 only, via adapter, minimal): `dealer.identity.assigned` (backfill `hcps_dealer_id`) and reference data the instance opts to consume. HCPS **MUST NOT** push operational commands.
+- HCPS → Golden (Tenant 0 only, via adapter, minimal): `dealer.identity.assigned` (backfill `hcps_dealer_id`) and reference data the instance opts to consume. HCPS **MUST NOT** push operational commands or write manufacturer data directly.
+- HCPS → Golden **front-end order submission** (Tenant 0, v1.2.0): an authorized HCPS front-end MAY `POST` an order to Golden's own versioned ordering API (`/v1/orders`, i.e. `save-order`) on the dealer's behalf. Golden creates, owns, confirms, and advances the order and emits `order.created` / `order.status.changed` back to HCPS. This is a client call to Golden's ordering API — **not** an operational command and **not** a data write into Golden (§2.4).
 - HCPS internal (Zoho/Dealer 360/Engagement Engine) uses the same envelope for consistency.
 
 ---
@@ -311,7 +325,7 @@ The Golden platform **MUST** satisfy all of the following, designed in from the 
 
 Before building a feature, confirm:
 
-- [ ] **Boundary:** does it respect one-way federation (no HCPS→manufacturer operational writes)?
+- [ ] **Boundary:** does it respect one-way federation — no direct HCPS→manufacturer data writes (order tables, inventory, pricing, config, status)? Front-end order submission via the manufacturer's own ordering API (§1 #2 exception / §2.4) is permitted and is not a direct write.
 - [ ] **Golden independence:** would Golden still work with the HCPS adapter disabled?
 - [ ] **Identifiers:** does it use canonical ids (`dealer_id`, `branch_id`, `manufacturer_id` slug, `contact_id`, `product_id`, `tenant_id`) on the wire?
 - [ ] **Ownership:** does it write only to a domain this system owns (§7)?
@@ -338,4 +352,4 @@ If any box is unchecked, revise the design or amend this blueprint (with a versi
 
 ---
 
-*End of Master Blueprint v1.1.0 — give this file, at this version, to both the HCPS and Golden development chats.*
+*End of Master Blueprint v1.2.0 — give this file, at this version, to both the HCPS and Golden development chats.*
