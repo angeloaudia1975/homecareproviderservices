@@ -216,6 +216,63 @@ exports.handler = async (event) => {
       return json(200, { ok: true, saved, sent_to: mfrContact ? "manufacturer" : "hcps" });
     }
 
+    // ---- account setup center (credit apps, resale cert, per-line terms) — NO card storage ----
+    if (b.action === "account_get") {
+      let resale = null, applications = [], terms = [];
+      try { const r = await sb("GET", `resale_certs?dealer_id=eq.${encodeURIComponent(did)}&select=reference,state,status,updated_at&limit=1`); if (r && r[0]) resale = r[0]; } catch (e) {}
+      try { applications = await sb("GET", `credit_applications?dealer_id=eq.${encodeURIComponent(did)}&select=manufacturer,requested_terms,status,created_at&order=created_at.desc`); } catch (e) { applications = []; }
+      try { terms = await sb("GET", `dealer_terms?dealer_id=eq.${encodeURIComponent(did)}&select=manufacturer,terms`); } catch (e) { terms = []; }
+      return json(200, { ok: true, resale, applications: applications || [], terms: terms || [] });
+    }
+    if (b.action === "resale_cert_set") {
+      const reference = String(b.reference || "").trim();
+      const state = String(b.state || "").trim() || null;
+      try { await sb("POST", "resale_certs", { dealer_id: did, reference: reference || null, state, status: reference ? "on_file" : "pending", updated_at: new Date().toISOString() }, { Prefer: "resolution=merge-duplicates,return=minimal" }); }
+      catch (e) { return json(200, { ok: false, error: "save_failed (is the resale_certs table present?)" }); }
+      return json(200, { ok: true });
+    }
+    if (b.action === "credit_application") {
+      const manufacturer = String(b.manufacturer || "").trim();
+      if (!manufacturer) return json(400, { error: "manufacturer required" });
+      const row = {
+        dealer_id: did, manufacturer,
+        legal_name: String(b.legal_name || "").trim() || null,
+        ein: String(b.ein || "").trim() || null,
+        years_in_business: b.years_in_business != null ? String(b.years_in_business).slice(0, 12) : null,
+        bank_ref: String(b.bank_ref || "").trim() || null,
+        trade_refs: String(b.trade_refs || "").trim() || null,
+        requested_terms: String(b.requested_terms || "").trim() || null,
+        note: String(b.note || "").trim() || null,
+        status: "submitted",
+      };
+      let saved = true;
+      try { await sb("POST", "credit_applications", row, { Prefer: "return=minimal" }); } catch (e) { saved = false; }
+      // include whether a resale cert is already on file, so HCPS can forward it with the app
+      let resaleNote = "not on file";
+      try { const r = await sb("GET", `resale_certs?dealer_id=eq.${encodeURIComponent(did)}&select=reference,status&limit=1`); if (r && r[0] && r[0].status === "on_file") resaleNote = "on file" + (r[0].reference ? " (" + r[0].reference + ")" : ""); } catch (e) {}
+      const d = who.dealer || {};
+      const subject = `Credit application — ${d.name || "Dealer"} — ${manufacturer}`;
+      const F = (k, v) => `<tr><td style="padding:3px 12px 3px 0;color:#6b7280;vertical-align:top">${esc(k)}</td><td>${esc(v || "—")}</td></tr>`;
+      const html = `<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:600px">
+        <h2 style="color:#2B4071;margin:0 0 8px">Manufacturer credit application</h2>
+        <table style="border-collapse:collapse;font-size:14px">
+          ${F("Dealer", (d.name || "—") + (d.hcps_account ? " · " + d.hcps_account : ""))}
+          ${F("Manufacturer / line", manufacturer)}
+          ${F("Legal business name", row.legal_name)}
+          ${F("EIN / Tax ID", row.ein)}
+          ${F("Years in business", row.years_in_business)}
+          ${F("Bank reference", row.bank_ref)}
+          ${F("Trade references", row.trade_refs)}
+          ${F("Requested terms", row.requested_terms)}
+          ${F("Resale certificate", resaleNote)}
+          ${row.note ? F("Note", row.note) : ""}
+        </table>
+        <p style="font-size:12.5px;color:#6b7280;margin-top:14px">Submitted from the HCPS Dealer Business Hub. Reply to reach the dealer. HCPS forwards this to the manufacturer with the dealer's resale certificate. (No payment/card data is collected by HCPS.)</p></div>`;
+      const text = `Manufacturer credit application\n\nDealer: ${d.name || "—"}\nManufacturer: ${manufacturer}\nLegal name: ${row.legal_name || "—"}\nEIN: ${row.ein || "—"}\nYears in business: ${row.years_in_business || "—"}\nBank ref: ${row.bank_ref || "—"}\nTrade refs: ${row.trade_refs || "—"}\nRequested terms: ${row.requested_terms || "—"}\nResale cert: ${resaleNote}${row.note ? `\nNote: ${row.note}` : ""}`;
+      try { await sendMail({ to: PRICING_TO, subject, html, text, reply_to: who.email }); } catch (e) {}
+      return json(200, { ok: true, saved });
+    }
+
     return json(400, { error: "unknown action" });
   } catch (e) {
     return json(500, { error: String(e.message || e) });

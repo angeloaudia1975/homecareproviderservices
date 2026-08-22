@@ -151,6 +151,14 @@ description: "HomeCare Provider Services is the authorized sales representative 
     .partner-hint{position:absolute;bottom:14px;right:14px;background:rgba(16,38,63,.85);color:#fff;font-size:12px;font-weight:700;
       letter-spacing:.4px;padding:7px 14px;border-radius:22px;opacity:0;transform:translateY(7px);transition:opacity .2s,transform .2s;pointer-events:none;}
     .partner-card:hover .partner-hint,.partner-card:focus-visible .partner-hint{opacity:1;transform:none;}
+    /* scroll-in-from-the-sides reveal */
+    #manufacturers .partner-grid.pc-stage .partner-card{opacity:0;}
+    #manufacturers .partner-grid.pc-stage .partner-card.pc-done{opacity:1;}
+    @keyframes pcInLeft{from{opacity:0;transform:translateX(-120px) scale(.955);}55%{opacity:1;}to{opacity:1;transform:none;}}
+    @keyframes pcInRight{from{opacity:0;transform:translateX(120px) scale(.955);}55%{opacity:1;}to{opacity:1;transform:none;}}
+    #manufacturers .partner-grid.pc-stage .partner-card.pc-in.pc-left{animation:pcInLeft .8s cubic-bezier(.16,.72,.24,1) both;}
+    #manufacturers .partner-grid.pc-stage .partner-card.pc-in.pc-right{animation:pcInRight .8s cubic-bezier(.16,.72,.24,1) both;}
+    @media(prefers-reduced-motion:reduce){#manufacturers .partner-grid.pc-stage .partner-card{opacity:1;animation:none;}}
     .pcard-lightbox{position:fixed;inset:0;z-index:1200;display:none;align-items:center;justify-content:center;padding:24px;}
     .pcard-lightbox.open{display:flex;}
     .pcard-backdrop{position:absolute;inset:0;background:rgba(9,18,31,.82);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);}
@@ -176,6 +184,21 @@ description: "HomeCare Provider Services is the authorized sales representative 
     document.querySelectorAll('#manufacturers .partner-card').forEach(function(c){c.addEventListener('click',function(){open(c);});});
     lb.querySelectorAll('[data-close]').forEach(function(x){x.addEventListener('click',close);});
     document.addEventListener('keydown',function(e){if(e.key==='Escape'&&lb.classList.contains('open'))close();});
+    // scroll-in reveal: cards slide inward from the outside edges of the page
+    var grid=document.querySelector('#manufacturers .partner-grid');
+    if(grid){
+      var pcards=Array.prototype.slice.call(grid.querySelectorAll('.partner-card'));
+      var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+      pcards.forEach(function(c,i){c.classList.add(i%2?'pc-right':'pc-left');});
+      grid.classList.add('pc-stage');
+      if(!reduce&&'IntersectionObserver' in window){
+        grid.addEventListener('animationend',function(e){var t=e.target;if(t.classList&&t.classList.contains('partner-card')){t.classList.add('pc-done');t.classList.remove('pc-in','pc-left','pc-right');}});
+        var io=new IntersectionObserver(function(entries){entries.forEach(function(en){if(en.isIntersecting){en.target.classList.add('pc-in');io.unobserve(en.target);}});},{threshold:.18,rootMargin:'0px 0px -6% 0px'});
+        pcards.forEach(function(c){io.observe(c);});
+      } else {
+        pcards.forEach(function(c){c.classList.add('pc-done');c.classList.remove('pc-left','pc-right');});
+      }
+    }
   })();
   </script>
   {% endraw %}
