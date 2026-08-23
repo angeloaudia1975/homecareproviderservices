@@ -162,6 +162,38 @@ its bookable functions live in Dealer Hub. Do not recreate it.
 
 ---
 
+## 9. HCPS Connect 360 — admin feature placement (RULE)
+Connect 360 is the complete administrative command center. **No admin tool may exist as a
+direct-URL-only page.** Any new admin tool, reporting module, importer, workflow, or platform
+enhancement must be placed into the operating system so administrators can see and reach it.
+
+**Placement workflow — run it for every new feature, no exceptions:**
+> New feature created → assign a Connect 360 category (hub) → add it to the category page →
+> add dashboard access when it's an active admin tool → verify permissions & navigation.
+
+### Single source of truth (this is what makes the rule enforceable)
+The four hubs and every tool live **once**, in `src/admin/admin-chrome.js` as the `HUBS` array.
+That one array drives all three surfaces:
+1. the masthead **sub-nav** (admin-chrome.js render),
+2. the **category landing pages** (`src/admin/hub.html`), and
+3. the **dashboard grid** (`src/admin/index.html`, which renders from `ACAdmin.HUBS`).
+
+**Add a tool to `HUBS` and it appears on all three automatically. Never hand-code a tile into
+the dashboard grid again** — that is exactly what let Product Content Enrichment & Review go
+missing (2026-08; fixed by making index.html data-driven).
+
+- Each tool object: `{ href, label, icon, desc, status? }`. `status`: omit/`"live"` | `"new"` | `"planned"`.
+- `status:"planned"` **or** an empty `href` → shown on the dashboard as a roadmap tile, but hidden
+  from the sub-nav and category pages (no dead links). When the page ships, give it a real `href`
+  and drop the planned status.
+- Rich guide-card copy for a tool goes in `src/admin/hub-guide.js`, keyed by the **exact `label`**.
+- A tool hosted in the ordering deploy (`hcpsonlineordering.netlify.app`) is linked by its
+  **absolute URL**, matching the other cross-origin ordering tools.
+- Audience: reps see a curated subset via `REP_TOOLS`; admin-only gating is `ADMIN_ROLES`.
+  Verify a new tool's intended audience before shipping.
+
+---
+
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
 - [ ] Hero headline is short + single-row on desktop, wraps on mobile.
@@ -170,6 +202,8 @@ its bookable functions live in Dealer Hub. Do not recreate it.
 - [ ] Content data-driven where applicable; contact info from site.json.
 - [ ] Images optimized (JPEG ~1600px hero, icons resized).
 - [ ] `npm run build` clean before deploy.
+- [ ] **New admin tool** added to `HUBS` in `admin-chrome.js` (→ auto-appears on the dashboard,
+      category page & sub-nav); guide card in `hub-guide.js`; audience/permissions verified.
 
 ## Open items / not-yet-applied (keep current)
 - Big-icon-on-top NOT yet retrofitted to: `manufacturers/index.njk` (pillars),

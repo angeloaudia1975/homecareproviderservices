@@ -124,7 +124,9 @@
     document.getElementById("crumbHub").textContent=hub.label;
     hero.style.display="block";
 
-    var tools=hub.tools||[];
+    // Category pages list only live-navigable tools; planned/hrefless tiles are roadmap-only
+    // (they still show on the dashboard). Single source of truth = ACAdmin.HUBS.
+    var tools=(hub.tools||[]).filter(function(t){ return (window.ACAdmin&&ACAdmin.liveTool)?ACAdmin.liveTool(t):!!(t&&t.href); });
     var wrapAccent=hub.accent||"#F5821F";
     var qbar=document.getElementById("qbar");
     qbar.style.setProperty("--accent", wrapAccent);
