@@ -127,6 +127,8 @@
   .chk{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;cursor:pointer;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:#fff}
   .chk.on{background:var(--okbg);border-color:#b7e2c8;color:var(--ok)}
   .chk.prim.on{background:#fdecdf;border-color:#f4c39c;color:var(--orange)}
+  .chk.rm{margin-left:auto;color:#b42323;border-color:#f0cccc;font-weight:700;padding:5px 9px}
+  .chk.rm:hover{background:#fdecec;border-color:#e3a3a3}
 
   .tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:11px}
   table.sz{border-collapse:collapse;width:100%;font-size:12.5px;min-width:480px}
@@ -170,7 +172,7 @@
   var MFR="ovation-medical";
   var products=[], current=null, merge=null, currentRow=null;
   var picks={}, imgState={};  // picks[fieldKey]=sourceKey ('manual' = your edit) ; imgState[imgId]={approved,primary}
-  var manualText={}, extraImages=[];  // manualText[fieldKey]=textarea string ; extraImages=pasted/uploaded images
+  var manualText={}, extraImages=[], removedImages={};  // manualText[fieldKey]=textarea string ; extraImages=pasted/uploaded ; removedImages=hidden from gallery+publish
 
   var $=function(s,r){return (r||document).querySelector(s);};
   var esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});};
@@ -247,7 +249,7 @@
     $("#main").innerHTML='<div class="empty spin"><h2>Merging sources…</h2></div>';
     api("merge",{manufacturer:MFR, page_key:key}).then(function(j){
       if(!j.ok){ toast(j.error||"Merge failed",true); renderEmpty(); return; }
-      merge=j.merge; currentRow=j.current; picks={}; imgState={}; manualText={}; extraImages=[];
+      merge=j.merge; currentRow=j.current; picks={}; imgState={}; manualText={}; extraImages=[]; removedImages={};
       // default picks = suggested; default image state = approve all non-dup, primary=suggested
       merge.fields.forEach(function(f){ picks[f.key]=f.suggested; manualText[f.key]=valueToText(f.values[f.suggested], f.type); });
       merge.images.forEach(function(g){ imgState[g.id]={approved:!g.duplicate, primary:!!g.primary}; });
@@ -269,7 +271,7 @@
     if(type==="map"){ var o={}; str.split("\n").forEach(function(line){ var i=line.indexOf(":"); if(i<0) return; var k=line.slice(0,i).trim(); var vals=line.slice(i+1).split(",").map(function(x){return x.trim();}).filter(Boolean); if(k) o[k]=vals; }); return o; }
     return str.trim();
   }
-  function allImages(){ return merge.images.concat(extraImages); }
+  function allImages(){ return merge.images.concat(extraImages).filter(function(g){ return !removedImages[g.id]; }); }
   function valHtml(v,type){
     if(v==null||(type==="list"&&!v.length)||(type==="map"&&!Object.keys(v).length)) return '<div class="val muted">— none —</div>';
     if(type==="list") return '<ul class="mini">'+v.map(function(x){return '<li>'+esc(x)+'</li>';}).join("")+'</ul>';
@@ -309,7 +311,8 @@
       +'<img loading="lazy" src="'+esc(g.url)+'" alt="" onerror="this.style.display=\'none\';this.nextSibling&&(this.nextSibling.style.display=\'grid\')"><div class="noimg" style="display:none">image preview unavailable</div></div>'
       +'<div class="cap"><div class="nm">'+esc(g.caption||g.url.split("/").pop())+'</div>'
       +'<div class="ctrls"><span class="chk approve'+(st.approved?" on":"")+'" data-act="approve">'+(st.approved?"✓ Approved":"Approve")+'</span>'
-      +'<span class="chk prim'+(st.primary?" on":"")+'" data-act="primary">'+(st.primary?"★ Primary":"☆ Primary")+'</span></div></div></div>';
+      +'<span class="chk prim'+(st.primary?" on":"")+'" data-act="primary">'+(st.primary?"★ Primary":"☆ Primary")+'</span>'
+      +'<span class="chk rm" data-act="remove" title="Remove from this product">✕</span></div></div></div>';
   }
 
   function sizingHtml(){
@@ -405,7 +408,9 @@
       var id=el.getAttribute("data-id");
       Array.prototype.forEach.call(el.querySelectorAll(".chk"),function(c){
         c.onclick=function(){
-          var act=c.getAttribute("data-act"); var st=imgState[id]||(imgState[id]={});
+          var act=c.getAttribute("data-act");
+          if(act==="remove"){ removeImage(id); return; }
+          var st=imgState[id]||(imgState[id]={});
           if(act==="approve"){ st.approved=!st.approved; if(!st.approved) st.primary=false; }
           else { var was=st.primary; Object.keys(imgState).forEach(function(k){ imgState[k].primary=false; }); st.primary=!was; if(st.primary) st.approved=true; }
           reflectImages(); updateSummary();
@@ -421,6 +426,14 @@
       tile.addEventListener("drop",function(e){ e.preventDefault(); tile.classList.remove("drag");
         var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(f&&/^image\//.test(f.type)) handleImageBlob(f,f.name); });
     }
+  }
+  // Remove an image from this product's gallery (hides source images from view + publish;
+  // drops pasted/uploaded ones entirely). Doesn't touch other products or the stored sources.
+  function removeImage(id){
+    removedImages[id]=true;
+    extraImages=extraImages.filter(function(g){ return g.id!==id; });
+    delete imgState[id];
+    renderGallery(); updateSummary();
   }
   function pickImageFile(){
     var inp=document.createElement("input"); inp.type="file"; inp.accept="image/*";
