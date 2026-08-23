@@ -187,8 +187,14 @@ missing (2026-08; fixed by making index.html data-driven).
   from the sub-nav and category pages (no dead links). When the page ships, give it a real `href`
   and drop the planned status.
 - Rich guide-card copy for a tool goes in `src/admin/hub-guide.js`, keyed by the **exact `label`**.
-- A tool hosted in the ordering deploy (`hcpsonlineordering.netlify.app`) is linked by its
-  **absolute URL**, matching the other cross-origin ordering tools.
+- Prefer hosting admin tools on **this (main-site) deploy** so they share the Connect 360 staff
+  sign-in. Auth pattern: load `/admin/staff-session.js` on the page and send the staff JWT as
+  `Authorization: Bearer <HCPS.token()>`; the function verifies it with a `whoami()` that checks
+  Supabase Auth → `staff_users` role (copy the pattern from `product-content.js` / `featured-api.js`).
+  **Do NOT add a separate per-tool token prompt** — that's what forced re-entry on the enrichment
+  tool (2026-08); it was moved from the ordering deploy onto this one so the staff login just works.
+  A tool that genuinely must live on the ordering deploy is linked by absolute URL, but then it
+  can't use the staff session (cross-origin) — avoid that for admin tools.
 - Audience: reps see a curated subset via `REP_TOOLS`; admin-only gating is `ADMIN_ROLES`.
   Verify a new tool's intended audience before shipping.
 

@@ -1,0 +1,437 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Partner 360 · Product Content Enrichment &amp; Review</title>
+<style>
+  :root{
+    --navy:#12253c; --navy2:#1b3450; --orange:#ef6325; --gold:#fcb21e;
+    --ink:#12253c; --sub:#5b6b7d; --line:#e3e8ef; --bg:#f4f6fa; --card:#fff;
+    --ok:#1f9d55; --okbg:#e7f6ee; --warn:#c56a00; --warnbg:#fdf0dd;
+    --new:#0d6ee0; --newbg:#e5f0fd; --dup:#8a8f98; --dupbg:#eef0f3;
+    --grad:linear-gradient(135deg,#12253c 0%,#1b3450 55%,#24435f 100%);
+    --shadow:0 1px 2px rgba(16,32,52,.06),0 6px 20px rgba(16,32,52,.06);
+    --radius:14px; --f-head:'Archivo','Segoe UI',system-ui,sans-serif; --f-body:'Inter','Segoe UI',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14.5px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  h1,h2,h3,h4{font-family:var(--f-head);margin:0;letter-spacing:-.01em}
+  a{color:var(--new);text-decoration:none}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:.85em;background:#eef1f6;padding:1px 5px;border-radius:5px}
+
+  .masthead{background:var(--grad);color:#fff;padding:14px 22px 12px}
+  .brandrow{display:flex;align-items:center;gap:12px}
+  .brandmark{width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,.12);display:grid;place-items:center;font-family:var(--f-head);font-weight:800;color:var(--gold);border:1px solid rgba(255,255,255,.18)}
+  .brandtxt b{font-family:var(--f-head);font-size:15px;font-weight:800}
+  .brandtxt span{display:block;font-size:11px;color:rgba(255,255,255,.7)}
+  .crumbs{margin-top:9px;font-size:12px;color:rgba(255,255,255,.82);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .crumbs .sep{opacity:.5}.crumbs b{color:#fff;background:rgba(255,255,255,.12);padding:2px 9px;border-radius:20px;font-weight:600}
+
+  .app{display:grid;grid-template-columns:300px 1fr;gap:0;min-height:calc(100vh - 66px)}
+  @media(max-width:860px){.app{grid-template-columns:1fr}}
+  .side{background:var(--card);border-right:1px solid var(--line);padding:16px 14px;overflow-y:auto}
+  .side .mfrrow{display:flex;gap:8px;margin-bottom:12px}
+  .side select,.side input{font-family:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);width:100%}
+  .side h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--sub);margin:14px 4px 8px}
+  .plist{display:flex;flex-direction:column;gap:5px}
+  .pli{border:1px solid var(--line);border-radius:10px;padding:9px 11px;cursor:pointer;background:#fff;transition:.12s}
+  .pli:hover{border-color:#c9d2de}
+  .pli.on{border-color:var(--orange);box-shadow:0 0 0 3px rgba(239,99,37,.12)}
+  .pli .nm{font-weight:600;font-size:13px}
+  .pli .mt{display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap}
+  .stat{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px}
+  .stat.pending_review{background:var(--warnbg);color:var(--warn)}
+  .stat.approved{background:var(--okbg);color:var(--ok)}
+  .stat.rejected{background:#fdeee6;color:var(--orange)}
+  .fcount{font-size:10.5px;color:var(--sub)}
+
+  .main{padding:20px 22px 90px;overflow-y:auto}
+  .empty{max-width:520px;margin:60px auto;text-align:center;color:var(--sub)}
+  .empty h2{color:var(--ink);margin-bottom:8px}
+
+  .btn{font-family:var(--f-head);font-weight:700;font-size:13px;border-radius:10px;padding:9px 15px;border:1px solid var(--line);background:#fff;color:var(--navy);cursor:pointer;transition:.15s}
+  .btn:hover{border-color:#c9d2de}
+  .btn.primary{background:var(--orange);border-color:var(--orange);color:#fff}
+  .btn.primary:hover{filter:brightness(.96)}
+  .btn.ghostdark{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn.sm{padding:6px 11px;font-size:12px}
+
+  .phead{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 18px;display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+  .phead .meta{flex:1;min-width:240px}.phead h1{font-size:20px}
+  .phead .sku{color:var(--sub);font-size:12.5px;margin-top:3px}
+  .headactions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+  .srcbar{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 2px;align-items:center}
+  .srcchip{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:22px;border:1px solid var(--line);background:#fff}
+  .dot{width:11px;height:11px;border-radius:50%;flex:none}
+  .dot.hcps{background:var(--navy)}.dot.web{background:var(--gold)}.dot.pdf{background:var(--orange)}
+  .srcchip.off{opacity:.5}.srcchip small{color:var(--sub);font-weight:500}
+
+  .flagbar{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0 20px}
+  .flag{flex:1;min-width:120px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow)}
+  .flag .n{font-family:var(--f-head);font-size:22px;font-weight:800}.flag .l{font-size:11.5px;color:var(--sub);margin-top:2px}
+  .flag.new .n{color:var(--new)}.flag.conflict .n{color:var(--warn)}.flag.missing .n{color:var(--orange)}.flag.dup .n{color:var(--dup)}
+
+  .sec{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:18px;overflow:hidden}
+  .sec>h2{font-size:14.5px;padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;background:#fbfcfe}
+  .sec .body{padding:6px 18px 16px}
+
+  .field{padding:15px 0;border-bottom:1px dashed var(--line)}.field:last-child{border-bottom:0}
+  .fname{font-family:var(--f-head);font-weight:700;font-size:12.5px;letter-spacing:.02em;text-transform:uppercase;color:var(--navy);display:flex;align-items:center;gap:9px;margin-bottom:10px}
+  .tag{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.02em}
+  .tag.new{background:var(--newbg);color:var(--new)}.tag.conflict{background:var(--warnbg);color:var(--warn)}
+  .tag.missing{background:#fdeee6;color:var(--orange)}.tag.match{background:var(--okbg);color:var(--ok)}.tag.dup{background:var(--dupbg);color:var(--dup)}
+  .cols{display:grid;grid-template-columns:repeat(3,1fr);gap:11px}
+  @media(max-width:760px){.cols{grid-template-columns:1fr}}
+  .opt{border:1.5px solid var(--line);border-radius:11px;padding:10px 12px 11px;position:relative;background:#fff;cursor:pointer;transition:.15s}
+  .opt:hover{border-color:#c9d2de}.opt.sel{border-color:var(--orange);box-shadow:0 0 0 3px rgba(239,99,37,.12)}
+  .opt.empty{background:#fbfcfe;border-style:dashed;cursor:default}
+  .opt .ohead{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;color:var(--sub);margin-bottom:6px}
+  .opt .val{font-size:13px;color:var(--ink)}.opt .val.muted{color:#9aa4b1;font-style:italic}
+  .opt .radio{position:absolute;top:10px;right:10px;width:16px;height:16px;border-radius:50%;border:2px solid #cfd6e0;background:#fff}
+  .opt.sel .radio{border-color:var(--orange);background:radial-gradient(circle,var(--orange) 42%,#fff 46%)}
+  .opt .best{position:absolute;top:-9px;left:11px;background:var(--orange);color:#fff;font-size:9px;font-weight:800;padding:2px 8px;border-radius:20px;display:none}
+  .opt.sel .best{display:inline-block}
+  ul.mini{margin:3px 0 0;padding-left:16px}ul.mini li{margin:2px 0;font-size:12.5px}
+
+  .gal{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  @media(max-width:760px){.gal{grid-template-columns:repeat(2,1fr)}}
+  .imgc{border:1.5px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;position:relative}
+  .imgc.primary{border-color:var(--orange);box-shadow:0 0 0 3px rgba(239,99,37,.12)}
+  .imgc.dupimg{opacity:.7}
+  .imgc .ph{aspect-ratio:1;background:#eef1f6;display:block;position:relative}
+  .imgc .ph img{width:100%;height:100%;object-fit:contain;display:block}
+  .imgc .noimg{position:absolute;inset:0;display:grid;place-items:center;color:#9aa4b1;font-size:11px}
+  .imgc .srcflag{position:absolute;top:7px;left:7px;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;color:#fff}
+  .imgc .srcflag.web{background:var(--gold);color:#3a2c00}.imgc .srcflag.hcps{background:var(--navy)}.imgc .srcflag.pdf{background:var(--orange)}
+  .imgc .badgeflag{position:absolute;top:7px;right:7px;font-size:9px;font-weight:800;padding:3px 8px;border-radius:20px}
+  .badgeflag.new{background:var(--newbg);color:var(--new)}.badgeflag.dup{background:var(--dupbg);color:var(--dup)}
+  .imgc .cap{padding:8px 10px 10px}.imgc .cap .nm{font-size:11.5px;font-weight:600;word-break:break-word}
+  .imgc .ctrls{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  .chk{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;cursor:pointer;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  .chk.on{background:var(--okbg);border-color:#b7e2c8;color:var(--ok)}
+  .chk.prim.on{background:#fdecdf;border-color:#f4c39c;color:var(--orange)}
+
+  .tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:11px}
+  table.sz{border-collapse:collapse;width:100%;font-size:12.5px;min-width:480px}
+  table.sz th{background:#fbfcfe;text-align:left;padding:9px 12px;font-family:var(--f-head);font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--sub);border-bottom:1px solid var(--line)}
+  table.sz td{padding:8px 12px;border-bottom:1px solid var(--line)}table.sz tr:last-child td{border-bottom:0}
+  table.sz tr.newrow td{background:#f5faff}
+
+  .note{font-size:12px;color:var(--sub);padding:9px 13px;background:#fbfcfe;border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:8px;margin:2px 0 12px}
+  .note.ok{border-left-color:var(--ok)}
+
+  .actionbar{position:fixed;bottom:0;left:0;right:0;background:rgba(255,255,255,.94);backdrop-filter:blur(6px);border-top:1px solid var(--line);padding:12px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;z-index:50}
+  .actionbar .summ{font-size:12.5px;color:var(--sub)}.actionbar .summ b{color:var(--ink)}.actionbar .spacer{flex:1}
+  .msrp{font-size:12px;color:var(--sub);background:#eef1f6;border:1px solid var(--line);padding:6px 11px;border-radius:9px}
+
+  /* gate */
+  .gate{max-width:420px;margin:70px auto;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:26px 24px}
+  .gate h2{font-size:20px;margin-bottom:6px}.gate p{color:var(--sub);font-size:13px;margin:0 0 16px}
+  .gate input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;font-size:15px;margin-bottom:12px;font-family:inherit}
+  .toast{position:fixed;top:14px;right:14px;background:var(--navy);color:#fff;padding:11px 16px;border-radius:10px;font-size:13px;box-shadow:var(--shadow);z-index:100;max-width:360px}
+  .toast.err{background:#8a1f1f}.spin{opacity:.6}
+</style>
+</head><body>
+
+<div class="masthead">
+  <div class="brandrow">
+    <div class="brandmark">360</div>
+    <div class="brandtxt"><b>HCPS Connect 360</b><span>Manufacturer &amp; Partner Operations</span></div>
+  </div>
+  <div class="crumbs"><span>Online Ordering</span><span class="sep">›</span><span>Product Management</span><span class="sep">›</span><b>Product Content Enrichment &amp; Review</b></div>
+</div>
+
+<div id="root"></div>
+<div id="toast"></div>
+
+<script src="/admin/staff-session.js"></script>
+<script>
+(function(){
+  "use strict";
+  var API="/.netlify/functions/product-content";
+  var SCRAPE="/.netlify/functions/content-scrape";
+  var MFR="ovation-medical";
+  var products=[], current=null, merge=null, currentRow=null;
+  var picks={}, imgState={};  // picks[fieldKey]=sourceKey ; imgState[imgId]={approved,primary}
+
+  var $=function(s,r){return (r||document).querySelector(s);};
+  var esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});};
+  function toast(msg,err){ var t=$("#toast"); t.innerHTML='<div class="toast'+(err?" err":"")+'">'+esc(msg)+'</div>'; setTimeout(function(){t.innerHTML="";}, err?5200:2600); }
+  function token(){ try{ return (window.HCPS&&HCPS.token&&HCPS.token())||""; }catch(e){ return ""; } }
+  function authHeaders(extra){ return Object.assign({ "content-type":"application/json", "authorization":"Bearer "+token() }, extra||{}); }
+
+  function api(action, body, method){
+    var opts={ method:method||"POST", headers:authHeaders() };
+    if(opts.method!=="GET") opts.body=JSON.stringify(Object.assign({action:action}, body||{}));
+    var url=API + (opts.method==="GET" ? ("?manufacturer="+encodeURIComponent(MFR)) : "");
+    return fetch(url, opts).then(function(r){ return r.json().catch(function(){return {ok:false,error:"bad response"};}); });
+  }
+  function scrape(url){
+    return fetch(SCRAPE,{method:"POST",headers:authHeaders(),body:JSON.stringify({url:url})})
+      .then(function(r){return r.json().catch(function(){return {ok:false,error:"bad response"};});});
+  }
+
+  // ---------- gate ----------
+  // Connect 360 staff sign-in — no separate token. If you're signed in as an admin the tool
+  // just opens; otherwise you're sent to the Connect 360 sign-in like every other admin tool.
+  function notAdmin(msg){
+    $("#root").innerHTML='<div class="gate"><h2>Admin access required</h2>'
+      +'<p>'+esc(msg||"This tool is available to HCPS admins. Sign in to Connect 360 with an admin account to continue.")+'</p>'
+      +'<button class="btn primary" id="tohub">Go to Connect 360 →</button></div>';
+    $("#tohub").onclick=function(){ location.href="/admin/"; };
+  }
+
+  // ---------- load products ----------
+  function boot(){
+    if(!token()){ location.replace("/admin/"); return; }   // not signed in — hand off to the Connect 360 gate
+    $("#root").innerHTML='<div class="empty spin"><h2>Loading…</h2></div>';
+    api("", null, "GET").then(function(j){
+      if(!j.ok){ notAdmin(j.error||"Could not authenticate."); return; }
+      if(!j.admin){ notAdmin("Your account isn't an admin, so it can't edit product content."); return; }
+      products=j.rows||[]; renderShell();
+    }).catch(function(){ $("#root").innerHTML='<div class="empty"><h2>Couldn\'t reach the server</h2><p>Try reloading the page.</p></div>'; });
+  }
+
+  function renderShell(){
+    $("#root").innerHTML=
+      '<div class="app"><aside class="side">'
+      + '<div class="mfrrow"><select id="mfrsel"></select></div>'
+      + '<h3>Products · '+products.length+'</h3><div class="plist" id="plist"></div></aside>'
+      + '<main class="main" id="main"></main></div>';
+    var mfrs=["ovation-medical","strongback-mobility","corsicana","pedifix","complete-medical-supplies","bemis","access4u"];
+    if(mfrs.indexOf(MFR)<0) mfrs.unshift(MFR);
+    $("#mfrsel").innerHTML=mfrs.map(function(m){return '<option value="'+esc(m)+'"'+(m===MFR?" selected":"")+'>'+esc(m)+'</option>';}).join("");
+    $("#mfrsel").onchange=function(){ MFR=this.value; current=null; merge=null; boot(); };
+    renderList(); renderEmpty();
+  }
+  function renderList(){
+    if(!products.length){ $("#plist").innerHTML='<div class="fcount" style="padding:8px">No product_content rows for this line yet.</div>'; return; }
+    $("#plist").innerHTML=products.map(function(p){
+      var f=p.enrichment_flags||{};
+      var counts=[]; if(f.new)counts.push(f.new+" new"); if(f.conflict)counts.push(f.conflict+" conflict"); if(f.missing)counts.push(f.missing+" missing");
+      return '<div class="pli'+(current===p.page_key?" on":"")+'" data-k="'+esc(p.page_key)+'">'
+        +'<div class="nm">'+esc(p.name||p.page_key)+'</div>'
+        +'<div class="mt"><span class="stat '+esc(p.status||"pending_review")+'">'+esc((p.status||"pending").replace("_"," "))+'</span>'
+        +(counts.length?'<span class="fcount">'+esc(counts.join(" · "))+'</span>':'')+'</div></div>';
+    }).join("");
+    Array.prototype.forEach.call($("#plist").querySelectorAll(".pli"),function(el){
+      el.onclick=function(){ openProduct(el.getAttribute("data-k")); };
+    });
+  }
+  function renderEmpty(){
+    $("#main").innerHTML='<div class="empty"><h2>Select a product</h2>'
+      +'<p>Pick a product on the left to run the website &amp; PDF importers, compare all three sources, and approve the best version before it publishes to Partner 360.</p></div>';
+  }
+
+  // ---------- open + merge ----------
+  function openProduct(key){
+    current=key; renderList();
+    $("#main").innerHTML='<div class="empty spin"><h2>Merging sources…</h2></div>';
+    api("merge",{manufacturer:MFR, page_key:key}).then(function(j){
+      if(!j.ok){ toast(j.error||"Merge failed",true); renderEmpty(); return; }
+      merge=j.merge; currentRow=j.current; picks={}; imgState={};
+      // default picks = suggested; default image state = approve all non-dup, primary=suggested
+      merge.fields.forEach(function(f){ picks[f.key]=f.suggested; });
+      merge.images.forEach(function(g){ imgState[g.id]={approved:!g.duplicate, primary:!!g.primary}; });
+      renderMerge();
+    }).catch(function(){ toast("Merge request failed",true); renderEmpty(); });
+  }
+
+  function srcDot(s){ return s==="hcps"?"hcps":(s==="website"?"web":"pdf"); }
+  function valHtml(v,type){
+    if(v==null||(type==="list"&&!v.length)||(type==="map"&&!Object.keys(v).length)) return '<div class="val muted">— none —</div>';
+    if(type==="list") return '<ul class="mini">'+v.map(function(x){return '<li>'+esc(x)+'</li>';}).join("")+'</ul>';
+    if(type==="map") return '<ul class="mini">'+Object.keys(v).map(function(k){return '<li><b>'+esc(k)+':</b> '+esc([].concat(v[k]).join(", "))+'</li>';}).join("")+'</ul>';
+    return '<div class="val">'+esc(v)+'</div>';
+  }
+  function fieldCard(f){
+    var order=["hcps","website","pdf"];
+    var cols=order.map(function(s){
+      var v=f.values[s]; var has=!(v==null);
+      var sel=picks[f.key]===s;
+      return '<label class="opt'+(sel?" sel":"")+(has?"":" empty")+'" data-fk="'+esc(f.key)+'" data-src="'+s+'"'+(has?"":' data-noselect="1"')+'>'
+        +'<span class="best">Selected</span><span class="radio"></span>'
+        +'<div class="ohead"><span class="dot '+srcDot(s)+'"></span> '+esc(merge.sources[s].label)+'</div>'
+        +valHtml(v,f.type)+'</label>';
+    }).join("");
+    return '<div class="field"><div class="fname">'+esc(f.label)+' <span class="tag '+f.flag+'">'+({new:"New",conflict:"Conflict",missing:"Missing",match:"Sources agree"}[f.flag]||f.flag)+'</span></div>'
+      +'<div class="cols">'+cols+'</div></div>';
+  }
+
+  function imgCard(g){
+    var st=imgState[g.id]||{}; var srcCls=srcDot(g.source);
+    var badge=g.flag==="new"?'<span class="badgeflag new">NEW</span>':(g.duplicate?'<span class="badgeflag dup">DUPLICATE</span>':"");
+    return '<div class="imgc'+(st.primary?" primary":"")+(g.duplicate?" dupimg":"")+'" data-id="'+esc(g.id)+'">'
+      +'<div class="ph"><span class="srcflag '+srcCls+'">'+esc(g.source.toUpperCase())+'</span>'+badge
+      +'<img loading="lazy" src="'+esc(g.url)+'" alt="" onerror="this.style.display=\'none\';this.nextSibling&&(this.nextSibling.style.display=\'grid\')"><div class="noimg" style="display:none">image preview unavailable</div></div>'
+      +'<div class="cap"><div class="nm">'+esc(g.caption||g.url.split("/").pop())+'</div>'
+      +'<div class="ctrls"><span class="chk approve'+(st.approved?" on":"")+'" data-act="approve">'+(st.approved?"✓ Approved":"Approve")+'</span>'
+      +'<span class="chk prim'+(st.primary?" on":"")+'" data-act="primary">'+(st.primary?"★ Primary":"☆ Primary")+'</span></div></div></div>';
+  }
+
+  function sizingHtml(){
+    var s=merge.sizing; if(!s||!s.rows.length) return "";
+    var cols=s.columns.length?s.columns:Object.keys(s.rows[0]);
+    var head='<tr>'+cols.map(function(c){return '<th>'+esc(c)+'</th>';}).join("")+'</tr>';
+    var rows=s.rows.map(function(r){ return '<tr'+(s.isNew?' class="newrow"':'')+'>'+cols.map(function(c){return '<td>'+esc(r[c]!=null?r[c]:"")+'</td>';}).join("")+'</tr>'; }).join("");
+    return '<div class="sec"><h2>Sizing / Specification Table '
+      +(s.isNew?'<span class="tag new">New — from '+esc(merge.sources[s.source].label)+'</span>':'<span class="tag match">Reviewed</span>')+'</h2><div class="body">'
+      +(s.isNew?'<div class="note">This chart isn\'t on the current HCPS record. Review, then it publishes to the product page.</div>':"")
+      +'<div class="tblwrap"><table class="sz"><thead>'+head+'</thead><tbody>'+rows+'</tbody></table></div>'
+      +(s.note?'<div style="font-size:12px;color:var(--sub);margin-top:8px"><i>'+esc(s.note)+'</i></div>':"")+'</div></div>';
+  }
+
+  function renderMerge(){
+    var p=currentRow||{}; var f=merge.flags;
+    var srcHtml=["hcps","website","pdf"].map(function(s){
+      var on=merge.sources[s].present; var u=merge.sources[s].url;
+      return '<span class="srcchip'+(on?"":" off")+'"><span class="dot '+srcDot(s)+'"></span> '+esc(merge.sources[s].label)
+        +' <small>'+(on?(u?esc(u.replace(/^https?:\/\//,"").slice(0,28)):"captured"):"not captured")+'</small></span>';
+    }).join("");
+
+    $("#main").innerHTML=
+      '<div class="phead"><div class="meta"><h1>'+esc(p.name||current)+'</h1>'
+      +'<div class="sku"><b>'+esc(MFR)+'</b> &nbsp;·&nbsp; page key <code>'+esc(current)+'</code>'
+      +(p.sku_count?' &nbsp;·&nbsp; '+p.sku_count+' SKUs':'')+' &nbsp;·&nbsp; status <b>'+esc((p.status||"pending_review").replace("_"," "))+'</b></div></div>'
+      +'<div class="headactions">'
+      +'<button class="btn sm" id="runWeb">🌐 Run website import</button>'
+      +'<button class="btn ghostdark" id="saveDraft">Save draft</button>'
+      +'<button class="btn primary" id="publishTop">Approve &amp; Publish →</button></div></div>'
+
+      +'<div class="srcbar">'+srcHtml+'</div>'
+
+      +'<div class="flagbar">'
+      +'<div class="flag new"><div class="n">+'+(f.new||0)+'</div><div class="l">New info found</div></div>'
+      +'<div class="flag conflict"><div class="n">'+(f.conflict||0)+'</div><div class="l">Conflicting values</div></div>'
+      +'<div class="flag missing"><div class="n">'+(f.missing||0)+'</div><div class="l">Missing on HCPS</div></div>'
+      +'<div class="flag dup"><div class="n">'+(f.duplicate||0)+'</div><div class="l">Duplicate images</div></div></div>'
+
+      +'<div class="sec"><h2>Field-by-field · pick the best version</h2><div class="body" id="fields">'
+      + merge.fields.map(fieldCard).join("") +'</div></div>'
+
+      +'<div class="sec"><h2>Product Images · approve individually &amp; set primary</h2><div class="body">'
+      +(merge.images.length?'<div class="gal" id="gal">'+merge.images.map(imgCard).join("")+'</div>':'<div class="note">No images captured yet — run the website import to pull the manufacturer gallery.</div>')
+      +'</div></div>'
+
+      + sizingHtml()
+
+      +'<div class="actionbar"><div class="summ" id="summ"></div><span class="msrp">MSRP rule: single-unit <b>× 2</b> (fixed)</span>'
+      +'<div class="spacer"></div><button class="btn" id="saveDraft2">Save draft</button>'
+      +'<button class="btn primary" id="publishBtn">Approve &amp; Publish to Partner 360 →</button></div>';
+
+    wireMerge(); updateSummary();
+  }
+
+  function wireMerge(){
+    Array.prototype.forEach.call(document.querySelectorAll(".opt"),function(el){
+      if(el.getAttribute("data-noselect")) return;
+      el.onclick=function(){
+        var fk=el.getAttribute("data-fk"), src=el.getAttribute("data-src");
+        picks[fk]=src;
+        Array.prototype.forEach.call(document.querySelectorAll('.opt[data-fk="'+fk+'"]'),function(o){ o.classList.toggle("sel", o.getAttribute("data-src")===src); });
+        updateSummary();
+      };
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".imgc"),function(el){
+      var id=el.getAttribute("data-id");
+      Array.prototype.forEach.call(el.querySelectorAll(".chk"),function(c){
+        c.onclick=function(){
+          var act=c.getAttribute("data-act"); var st=imgState[id]||(imgState[id]={});
+          if(act==="approve"){ st.approved=!st.approved; if(!st.approved) st.primary=false; }
+          else { // primary: single-select, implies approved
+            var was=st.primary; Object.keys(imgState).forEach(function(k){ imgState[k].primary=false; });
+            st.primary=!was; if(st.primary) st.approved=true;
+          }
+          reflectImages(); updateSummary();
+        };
+      });
+    });
+    var pub=function(){ publish("approve"); };
+    $("#publishBtn").onclick=pub; $("#publishTop").onclick=pub;
+    $("#saveDraft").onclick=function(){ publish("draft"); };
+    $("#saveDraft2").onclick=function(){ publish("draft"); };
+    $("#runWeb").onclick=runWebsiteImport;
+  }
+  function reflectImages(){
+    Array.prototype.forEach.call(document.querySelectorAll(".imgc"),function(el){
+      var id=el.getAttribute("data-id"), st=imgState[id]||{};
+      el.classList.toggle("primary", !!st.primary);
+      var a=el.querySelector(".chk.approve"), pm=el.querySelector(".chk.prim");
+      a.classList.toggle("on", !!st.approved); a.textContent=st.approved?"✓ Approved":"Approve";
+      pm.classList.toggle("on", !!st.primary); pm.textContent=st.primary?"★ Primary":"☆ Primary";
+    });
+  }
+  function updateSummary(){
+    var picked=merge.fields.filter(function(f){return picks[f.key];}).length;
+    var appr=Object.keys(imgState).filter(function(k){return imgState[k].approved;}).length;
+    var prim=Object.keys(imgState).filter(function(k){return imgState[k].primary;}).length;
+    var srcN=["hcps","website","pdf"].filter(function(s){return merge.sources[s].present;}).length;
+    var el=$("#summ"); if(el) el.innerHTML='<b>'+srcN+' sources</b> merged · '+picked+' fields selected · '+appr+' images approved · '+prim+' primary'+(merge.sizing.rows.length?' · sizing table ready':'');
+  }
+
+  // ---------- website import ----------
+  function runWebsiteImport(){
+    var suggested=(merge.sources.website && merge.sources.website.url) || "";
+    var url=window.prompt("Manufacturer product-page URL to import:", suggested||"https://");
+    if(!url) return;
+    var btn=$("#runWeb"); btn.disabled=true; btn.textContent="Importing…";
+    scrape(url).then(function(j){
+      if(!j.ok){ toast("Scrape failed: "+(j.error||"unknown"),true); btn.disabled=false; btn.textContent="🌐 Run website import"; return; }
+      // persist as the website source, then re-merge
+      return api("ingest_source",{manufacturer:MFR,page_key:current,source:"website",source_url:url,source_label:"Manufacturer Website",data:j.data}).then(function(k){
+        if(!k.ok){ toast("Save failed: "+(k.error||"unknown"),true); return; }
+        toast("Website imported — "+(j.data.images.length)+" images, "+(j.data.features.length)+" features");
+        openProduct(current);   // re-merge with the new source
+      });
+    }).catch(function(){ toast("Website import failed",true); })
+      .then(function(){ if(btn){ btn.disabled=false; btn.textContent="🌐 Run website import"; } });
+  }
+
+  // ---------- publish ----------
+  function chosenValue(f){ var s=picks[f.key]; return s? f.values[s] : null; }
+  function publish(mode){
+    var patch={ field_provenance:{}, enrichment_flags:merge.flags };
+    merge.fields.forEach(function(f){
+      var s=picks[f.key]; if(!s) return;
+      patch.field_provenance[f.key]=s;
+      var v=f.values[s]; if(v==null) return;
+      patch[f.key]=v;
+    });
+    // images: approved gallery + primary
+    var gallery=[], primaryUrl=null;
+    merge.images.forEach(function(g){
+      var st=imgState[g.id]||{}; if(!st.approved) return;
+      gallery.push({ url:g.url, source:g.source, caption:g.caption||"", primary:!!st.primary, duplicate:!!g.duplicate });
+      if(st.primary) primaryUrl=g.url;
+    });
+    patch.images_gallery=gallery; if(primaryUrl) patch.image=primaryUrl;
+    // sizing
+    if(merge.sizing && merge.sizing.rows.length){ patch.sizing_table=merge.sizing.rows; if(merge.sizing.note) patch.sizing_note=merge.sizing.note; }
+
+    if(mode==="approve" && !window.confirm("Publish the reviewed content for “"+(currentRow&&currentRow.name||current)+"” to Partner 360? Dealers will see it immediately.")) return;
+
+    var action=(mode==="approve")?"approve":"upsert";
+    var body=(mode==="approve")
+      ? { manufacturer:MFR, page_key:current, patch:patch, reviewed_by:"HCPS admin" }
+      : { rows:[Object.assign({manufacturer:MFR, page_key:current, status:(currentRow&&currentRow.status)||"pending_review"}, patch)] };
+
+    var btns=document.querySelectorAll("#publishBtn,#publishTop"); Array.prototype.forEach.call(btns,function(b){b.disabled=true;});
+    api(action, body).then(function(j){
+      if(!j.ok){ toast((mode==="approve"?"Publish":"Save")+" failed: "+(j.error||"unknown"),true); }
+      else {
+        toast(mode==="approve"?"Published to Partner 360 ✓":"Draft saved ✓");
+        // reflect new status locally
+        products.forEach(function(pr){ if(pr.page_key===current){ pr.status=(mode==="approve"?"approved":pr.status); pr.enrichment_flags=merge.flags; pr.name=patch.name||pr.name; } });
+        renderList();
+      }
+      Array.prototype.forEach.call(btns,function(b){b.disabled=false;});
+    }).catch(function(){ toast("Request failed",true); Array.prototype.forEach.call(btns,function(b){b.disabled=false;}); });
+  }
+
+  // Boot once the staff session helper is ready (it loads synchronously above).
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", boot); else boot();
+  window.addEventListener("hcps-token", function(){ if(!products.length) boot(); });   // re-boot after a sign-in/refresh
+})();
+</script>
+</body></html>
