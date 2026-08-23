@@ -302,7 +302,8 @@
           ]
         ]
       }
-    ]
+    ],
+    "resourceLogo": "/assets/logos/golden-technologies-badge.jpg"
   },
   {
     "id": "access4u",
@@ -582,7 +583,8 @@
         "checklist": [],
         "video_side": ""
       }
-    ]
+    ],
+    "resourceLogo": "/assets/logos/access4u-badge.jpg"
   },
   {
     "id": "strongback-mobility",
@@ -843,7 +845,8 @@
         "image": "/assets/products/strongback-mobility/seata-ms4t81bb.jpg",
         "image_side": "right"
       }
-    ]
+    ],
+    "resourceLogo": "/assets/logos/strongback-mobility-badge.jpg"
   },
   {
     "id": "abm-respiratory-care",
@@ -1034,7 +1037,8 @@
           }
         ]
       }
-    ]
+    ],
+    "resourceLogo": "/assets/logos/abm-respiratory-care-badge.jpg"
   },
   {
     "id": "ohio-medical",
@@ -1229,7 +1233,8 @@
           }
         ]
       }
-    ]
+    ],
+    "resourceLogo": "/assets/logos/ohio-medical-badge.jpg"
   },
   {
     "id": "airavant-bongorx",
@@ -1468,7 +1473,8 @@
           }
         ]
       }
-    ]
+    ],
+    "resourceLogo": "/assets/logos/airavant-bongorx-badge.jpg"
   },
   {
     "id": "climbing-steps",
@@ -1702,7 +1708,8 @@
         "cta2": "Request Dealer Pricing",
         "url2": "/contact/?topic=Dealer&manufacturer=climbing-steps"
       }
-    ]
+    ],
+    "resourceLogo": "/assets/logos/climbing-steps-badge.jpg"
   },
   {
     "id": "corsicana",
@@ -1916,7 +1923,8 @@
           }
         ]
       }
-    ]
+    ],
+    "resourceLogo": "/assets/logos/corsicana-badge.jpg"
   },
   {
     "id": "ovation-medical",
@@ -2167,7 +2175,8 @@
         ],
         "cta": "Request Dealer Pricing"
       }
-    ]
+    ],
+    "resourceLogo": "/assets/logos/ovation-medical-badge.jpg"
   },
   {
     "id": "bemis",
@@ -2435,7 +2444,8 @@
           }
         ]
       }
-    ]
+    ],
+    "resourceLogo": "/assets/logos/bemis-badge.jpg"
   },
   {
     "id": "pedifix",
@@ -2779,6 +2789,7 @@
           }
         ]
       }
-    ]
+    ],
+    "resourceLogo": "/assets/logos/pedifix-badge.jpg"
   }
 ]

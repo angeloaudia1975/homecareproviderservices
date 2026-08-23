@@ -49,9 +49,10 @@ description: "The HCPS Dealer Resource Library — catalogs, product guides, dea
   .rl-manu-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
   @media(max-width:1000px){.rl-manu-grid{grid-template-columns:repeat(3,1fr);}}
   @media(max-width:680px){.rl-manu-grid{grid-template-columns:repeat(2,1fr);}}
-  .rl-manu-card{display:flex;flex-direction:column;gap:7px;background:#fff;border:1px solid #e5e9ee;border-radius:16px;padding:18px;text-decoration:none;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease;box-shadow:0 8px 22px rgba(12,39,64,.05);}
+  .rl-manu-card{display:flex;flex-direction:column;gap:7px;background:#fff;border:1px solid #e5e9ee;border-radius:16px;padding:14px;text-decoration:none;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease;box-shadow:0 8px 22px rgba(12,39,64,.05);}
   .rl-manu-card:hover{transform:translateY(-4px);box-shadow:0 22px 46px rgba(12,39,64,.13);border-color:#cfe0ef;}
-  .rl-manu-logo{height:38px;max-width:150px;object-fit:contain;object-position:left center;margin:0 0 4px;}
+  /* Manufacturer badge: full card width, square, centered. */
+  .rl-manu-logo{display:block;width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:12px;margin:0 0 8px;background:#fff;border:1px solid #eef2f6;}
   .rl-manu-name{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:15px;color:var(--ink);line-height:1.12;}
   .rl-manu-cat{font-size:11.5px;color:#6b7580;line-height:1.35;}
   .rl-manu-count{margin-top:auto;padding-top:6px;font-family:'Archivo',sans-serif;font-weight:800;font-size:12.5px;color:var(--hcps-orange,#ef6325);}
@@ -212,7 +213,8 @@ description: "The HCPS Dealer Resource Library — catalogs, product guides, dea
       {% for m in activeManufacturers %}
       {% set cnt = docs.items | countBy(m.id) %}
       <a class="rl-manu-card" href="/resources/?manufacturer={{ m.id }}#finder" data-manu="{{ m.id }}">
-        {% if m.logo %}<img class="rl-manu-logo" src="{{ m.logo }}" alt="{{ m.name }}" loading="lazy">{% endif %}
+        {% set badge = m.resourceLogo or m.logo %}
+        {% if badge %}<img class="rl-manu-logo" src="{{ badge }}" alt="{{ m.name }}" loading="lazy">{% endif %}
         <span class="rl-manu-name">{{ m.name }}</span>
         {% if m.category %}<span class="rl-manu-cat">{{ m.category }}</span>{% endif %}
         <span class="rl-manu-count">{{ cnt }} resource{{ 's' if cnt != 1 else '' }} &rarr;</span>
