@@ -210,6 +210,31 @@ exports.handler = async (event) => {
         return reply(200, { ok: true, url: `${SUPABASE_URL}/storage/v1/object/public/product-content/${path}`, path: path });
       }
 
+      // ---- Rehost an external file (PDF/video/image) into our own public Storage ----
+      if (action === 'rehost') {
+        const m = body.manufacturer || mfr;
+        const src = body.source_url;
+        if (!m || !body.page_key || !src) return reply(400, { ok: false, error: 'manufacturer, page_key, source_url required' });
+        if (!/^https?:\/\//i.test(src)) return reply(400, { ok: false, error: 'a valid http(s) source_url is required' });
+        // Already ours? Return as-is (idempotent).
+        if (src.indexOf('/storage/v1/object/public/product-content/') >= 0) return reply(200, { ok: true, url: src, skipped: true });
+        let r; try {
+          r = await fetch(src, { redirect: 'follow', headers: { 'user-agent': 'HCPS-Partner360-Rehost/1.0' } });
+        } catch (e) { return reply(502, { ok: false, error: 'download failed: ' + String((e && e.message) || e) }); }
+        if (!r.ok) return reply(502, { ok: false, error: 'download failed: HTTP ' + r.status });
+        const ct = r.headers.get('content-type') || 'application/octet-stream';
+        const buf = Buffer.from(await r.arrayBuffer());
+        if (!buf.length) return reply(502, { ok: false, error: 'empty download' });
+        if (buf.length > 50 * 1024 * 1024) return reply(413, { ok: false, error: 'file too large to rehost (>50MB) — keep the link or upload manually' });
+        const nm = (src.split('?')[0].split('#')[0].split('/').pop() || 'file').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 90) || 'file';
+        const path = `${m}/${body.page_key}/rehost/${Date.now()}-${nm}`;
+        const up = await fetch(`${SUPABASE_URL}/storage/v1/object/product-content/${path}`, {
+          method: 'POST', headers: { apikey: SERVICE_ROLE, authorization: 'Bearer ' + SERVICE_ROLE, 'content-type': ct, 'x-upsert': 'true' }, body: buf
+        });
+        if (!up.ok) { const t = await up.text(); return reply(502, { ok: false, error: 'store failed: ' + t }); }
+        return reply(200, { ok: true, url: `${SUPABASE_URL}/storage/v1/object/public/product-content/${path}`, bytes: buf.length });
+      }
+
       // ---- Reconcile the three captured sources into a flagged merge ----
       if (action === 'merge') {
         const m = body.manufacturer || mfr;

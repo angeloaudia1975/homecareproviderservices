@@ -361,7 +361,8 @@
     }).join("");
     var count=docsState.length+videosState.length;
     return '<div class="sec" id="docsec"><h2>Documents &amp; Videos <span class="tag match">'+count+' item'+(count===1?"":"s")+'</span></h2><div class="body">'
-      +'<div class="note">Add instructions, clinical studies, brochures, warranty or manuals as links (or upload a copy), plus video links (YouTube/Vimeo). These publish to the product page for dealers.</div>'
+      +'<div class="note">Add instructions, clinical studies, brochures, warranty or manuals as links (or upload a copy), plus video links (YouTube/Vimeo). These publish to the product page for dealers.'
+      +' <button class="btn sm" id="doc_rehost" style="margin-left:6px">⤓ Rehost external files to our storage</button></div>'
       +'<div class="doclist">'+(docRows+vidRows||'<div class="fcount" style="padding:2px">No documents or videos yet.</div>')+'</div>'
       +'<div class="docadd"><span class="lbl">Add a document</span>'
         +'<input class="title" id="doc_title" placeholder="Title (e.g. Application Instructions)">'
@@ -387,6 +388,29 @@
     };
     Array.prototype.forEach.call(document.querySelectorAll("[data-drm]"),function(x){ x.onclick=function(){ docsState.splice(+x.getAttribute("data-drm"),1); refreshDocs(); }; });
     Array.prototype.forEach.call(document.querySelectorAll("[data-vrm]"),function(x){ x.onclick=function(){ videosState.splice(+x.getAttribute("data-vrm"),1); refreshDocs(); }; });
+    var rh=$("#doc_rehost"); if(rh) rh.onclick=rehostAll;
+  }
+  var HOSTED_MARK="/storage/v1/object/public/product-content/";
+  // Pull each external document/video into our own Storage (server-side), swapping the link for a hosted URL.
+  function rehostAll(){
+    var items=[];
+    docsState.forEach(function(d){ if(d.url&&d.url.indexOf(HOSTED_MARK)<0) items.push({obj:d,isDoc:true}); });
+    videosState.forEach(function(v){ if(v.url&&v.url.indexOf(HOSTED_MARK)<0) items.push({obj:v,isDoc:false}); });
+    if(!items.length){ toast("All files are already hosted in your storage"); return; }
+    var rh=$("#doc_rehost"); if(rh){ rh.disabled=true; rh.textContent="Rehosting…"; }
+    var i=0, ok=0;
+    toast("Rehosting "+items.length+" file(s) — this can take a moment for videos…");
+    function done(){ if(rh){ rh.disabled=false; } refreshDocs(); toast("Rehosted "+ok+" of "+items.length+" to your storage ✓"+(ok<items.length?" — remaining kept as links":"")); }
+    function next(){
+      if(i>=items.length){ done(); return; }
+      var it=items[i++];
+      api("rehost",{manufacturer:MFR,page_key:current,source_url:it.obj.url}).then(function(j){
+        if(j&&j.ok&&j.url){ it.obj.url=j.url; if(it.isDoc) it.obj.hosted=true; ok++; }
+        else { toast("Couldn't rehost one file: "+((j&&j.error)||"failed")+" (kept as link)",true); }
+        next();
+      }).catch(function(){ toast("A file failed to rehost (kept as link)",true); next(); });
+    }
+    next();
   }
   function pickDocFile(){
     var inp=document.createElement("input"); inp.type="file"; inp.accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,application/pdf";
