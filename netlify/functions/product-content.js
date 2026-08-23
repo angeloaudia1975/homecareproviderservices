@@ -169,6 +169,26 @@ exports.handler = async (event) => {
         return reply(200, { ok: true, ingested: { manufacturer: m, page_key: body.page_key, source: body.source } });
       }
 
+      // ---- Upload a pasted/dropped image → public Storage → return its URL ----
+      if (action === 'upload_image') {
+        const m = body.manufacturer || mfr;
+        if (!m || !body.page_key || !body.content_base64) return reply(400, { ok: false, error: 'manufacturer, page_key, content_base64 required' });
+        const ct = body.content_type || 'image/png';
+        const ext = (ct.split('/')[1] || 'png').replace('jpeg', 'jpg').replace(/[^a-z0-9]/g, '') || 'png';
+        const safe = String(body.filename || 'image').replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.[^.]*$/, '').slice(0, 40) || 'image';
+        const path = `${m}/${body.page_key}/${Date.now()}-${safe}.${ext}`;
+        let buf; try { buf = Buffer.from(body.content_base64, 'base64'); } catch (e) { return reply(400, { ok: false, error: 'bad base64' }); }
+        if (!buf.length) return reply(400, { ok: false, error: 'empty image' });
+        if (buf.length > 6 * 1024 * 1024) return reply(413, { ok: false, error: 'image too large (max ~6MB)' });
+        const up = await fetch(`${SUPABASE_URL}/storage/v1/object/product-content/${path}`, {
+          method: 'POST',
+          headers: { apikey: SERVICE_ROLE, authorization: 'Bearer ' + SERVICE_ROLE, 'content-type': ct, 'x-upsert': 'true' },
+          body: buf
+        });
+        if (!up.ok) { const t = await up.text(); return reply(502, { ok: false, error: 'storage upload failed: ' + t }); }
+        return reply(200, { ok: true, url: `${SUPABASE_URL}/storage/v1/object/public/product-content/${path}`, path: path });
+      }
+
       // ---- Reconcile the three captured sources into a flagged merge ----
       if (action === 'merge') {
         const m = body.manufacturer || mfr;

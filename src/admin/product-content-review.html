@@ -93,6 +93,22 @@
   .opt .best{position:absolute;top:-9px;left:11px;background:var(--orange);color:#fff;font-size:9px;font-weight:800;padding:2px 8px;border-radius:20px;display:none}
   .opt.sel .best{display:inline-block}
   ul.mini{margin:3px 0 0;padding-left:16px}ul.mini li{margin:2px 0;font-size:12.5px}
+  /* Live edit row (your own version) */
+  .medit-row{margin-top:11px}
+  .opt.medit{cursor:text;border-style:solid}
+  .opt.medit.sel{border-color:var(--orange);box-shadow:0 0 0 3px rgba(239,99,37,.12)}
+  .opt.medit .ohead{color:var(--orange)}
+  .medit textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-family:var(--f-body);font-size:13px;color:var(--ink);resize:vertical;min-height:38px;background:#fff}
+  .medit textarea:focus{outline:none;border-color:var(--orange);box-shadow:0 0 0 3px rgba(239,99,37,.10)}
+  .medit .hint{font-size:11px;color:var(--sub);margin-top:5px}
+  /* Add-image (paste / drop / pick) tile */
+  .addimg{border:1.5px dashed #c9d2de;border-radius:12px;background:#fbfcfe;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px;min-height:100%;padding:16px 12px;cursor:pointer;color:var(--sub);transition:.15s}
+  .addimg:hover,.addimg.drag{border-color:var(--orange);background:#fff6f0;color:var(--orange)}
+  .addimg .big{font-size:26px;line-height:1}
+  .addimg .t{font-size:12px;font-weight:600}
+  .addimg .s{font-size:10.5px;color:var(--sub)}
+  .imgc .srcflag.upload{background:#0d6ee0}
+  .badgeflag.upload{background:var(--newbg);color:var(--new)}
 
   .gal{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
   @media(max-width:760px){.gal{grid-template-columns:repeat(2,1fr)}}
@@ -153,7 +169,8 @@
   var SCRAPE="/.netlify/functions/content-scrape";
   var MFR="ovation-medical";
   var products=[], current=null, merge=null, currentRow=null;
-  var picks={}, imgState={};  // picks[fieldKey]=sourceKey ; imgState[imgId]={approved,primary}
+  var picks={}, imgState={};  // picks[fieldKey]=sourceKey ('manual' = your edit) ; imgState[imgId]={approved,primary}
+  var manualText={}, extraImages=[];  // manualText[fieldKey]=textarea string ; extraImages=pasted/uploaded images
 
   var $=function(s,r){return (r||document).querySelector(s);};
   var esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});};
@@ -230,15 +247,29 @@
     $("#main").innerHTML='<div class="empty spin"><h2>Merging sources…</h2></div>';
     api("merge",{manufacturer:MFR, page_key:key}).then(function(j){
       if(!j.ok){ toast(j.error||"Merge failed",true); renderEmpty(); return; }
-      merge=j.merge; currentRow=j.current; picks={}; imgState={};
+      merge=j.merge; currentRow=j.current; picks={}; imgState={}; manualText={}; extraImages=[];
       // default picks = suggested; default image state = approve all non-dup, primary=suggested
-      merge.fields.forEach(function(f){ picks[f.key]=f.suggested; });
+      merge.fields.forEach(function(f){ picks[f.key]=f.suggested; manualText[f.key]=valueToText(f.values[f.suggested], f.type); });
       merge.images.forEach(function(g){ imgState[g.id]={approved:!g.duplicate, primary:!!g.primary}; });
       renderMerge();
     }).catch(function(){ toast("Merge request failed",true); renderEmpty(); });
   }
 
-  function srcDot(s){ return s==="hcps"?"hcps":(s==="website"?"web":"pdf"); }
+  function srcDot(s){ return s==="hcps"?"hcps":(s==="website"?"web":(s==="pdf"?"pdf":"upload")); }
+  // ---- Live edit helpers: convert a field value <-> the textarea string the reviewer edits ----
+  function valueToText(v,type){
+    if(v==null) return "";
+    if(type==="list") return (Array.isArray(v)?v:[]).join("\n");
+    if(type==="map") return Object.keys(v).map(function(k){ return k+": "+[].concat(v[k]).join(", "); }).join("\n");
+    return String(v);
+  }
+  function textToValue(str,type){
+    str=str==null?"":String(str);
+    if(type==="list") return str.split("\n").map(function(x){return x.trim();}).filter(Boolean);
+    if(type==="map"){ var o={}; str.split("\n").forEach(function(line){ var i=line.indexOf(":"); if(i<0) return; var k=line.slice(0,i).trim(); var vals=line.slice(i+1).split(",").map(function(x){return x.trim();}).filter(Boolean); if(k) o[k]=vals; }); return o; }
+    return str.trim();
+  }
+  function allImages(){ return merge.images.concat(extraImages); }
   function valHtml(v,type){
     if(v==null||(type==="list"&&!v.length)||(type==="map"&&!Object.keys(v).length)) return '<div class="val muted">— none —</div>';
     if(type==="list") return '<ul class="mini">'+v.map(function(x){return '<li>'+esc(x)+'</li>';}).join("")+'</ul>';
@@ -256,12 +287,23 @@
         +valHtml(v,f.type)+'</label>';
     }).join("");
     return '<div class="field"><div class="fname">'+esc(f.label)+' <span class="tag '+f.flag+'">'+({new:"New",conflict:"Conflict",missing:"Missing",match:"Sources agree"}[f.flag]||f.flag)+'</span></div>'
-      +'<div class="cols">'+cols+'</div></div>';
+      +'<div class="cols">'+cols+'</div>'+meditRow(f)+'</div>';
+  }
+  // A full-width "Your edit" option, pre-filled with the suggested value — edit it to override.
+  function meditRow(f){
+    var sel=picks[f.key]==="manual";
+    var val=manualText[f.key]!=null?manualText[f.key]:"";
+    var hint=f.type==="list"?"One item per line.":(f.type==="map"?"One per line — “Option: value, value”.":"Type or paste your final version.");
+    return '<div class="medit-row"><label class="opt medit'+(sel?" sel":"")+'" data-fk="'+esc(f.key)+'" data-src="manual">'
+      +'<span class="best">Selected</span><span class="radio"></span>'
+      +'<div class="ohead">✎ Your edit — final published value</div>'
+      +'<textarea data-medit="'+esc(f.key)+'" rows="'+(f.type==="text"?2:3)+'" placeholder="Type or paste your version…">'+esc(val)+'</textarea>'
+      +'<div class="hint">'+esc(hint)+'</div></label></div>';
   }
 
   function imgCard(g){
     var st=imgState[g.id]||{}; var srcCls=srcDot(g.source);
-    var badge=g.flag==="new"?'<span class="badgeflag new">NEW</span>':(g.duplicate?'<span class="badgeflag dup">DUPLICATE</span>':"");
+    var badge=g.flag==="upload"?'<span class="badgeflag upload">ADDED</span>':(g.flag==="new"?'<span class="badgeflag new">NEW</span>':(g.duplicate?'<span class="badgeflag dup">DUPLICATE</span>':""));
     return '<div class="imgc'+(st.primary?" primary":"")+(g.duplicate?" dupimg":"")+'" data-id="'+esc(g.id)+'">'
       +'<div class="ph"><span class="srcflag '+srcCls+'">'+esc(g.source.toUpperCase())+'</span>'+badge
       +'<img loading="lazy" src="'+esc(g.url)+'" alt="" onerror="this.style.display=\'none\';this.nextSibling&&(this.nextSibling.style.display=\'grid\')"><div class="noimg" style="display:none">image preview unavailable</div></div>'
@@ -310,8 +352,9 @@
       +'<div class="sec"><h2>Field-by-field · pick the best version</h2><div class="body" id="fields">'
       + merge.fields.map(fieldCard).join("") +'</div></div>'
 
-      +'<div class="sec"><h2>Product Images · approve individually &amp; set primary</h2><div class="body">'
-      +(merge.images.length?'<div class="gal" id="gal">'+merge.images.map(imgCard).join("")+'</div>':'<div class="note">No images captured yet — run the website import to pull the manufacturer gallery.</div>')
+      +'<div class="sec"><h2>Product Images · approve, set primary &amp; paste your own</h2><div class="body">'
+      +'<div class="note">Paste an image anywhere on this screen (Ctrl/⌘+V), or drop / click the tile below — it uploads and drops straight into the gallery.</div>'
+      +'<div class="gal" id="gal"></div>'
       +'</div></div>'
 
       + sizingHtml()
@@ -320,7 +363,7 @@
       +'<div class="spacer"></div><button class="btn" id="saveDraft2">Save draft</button>'
       +'<button class="btn primary" id="publishBtn">Approve &amp; Publish to Partner 360 →</button></div>';
 
-    wireMerge(); updateSummary();
+    wireMerge(); renderGallery(); updateSummary();
   }
 
   function wireMerge(){
@@ -333,18 +376,14 @@
         updateSummary();
       };
     });
-    Array.prototype.forEach.call(document.querySelectorAll(".imgc"),function(el){
-      var id=el.getAttribute("data-id");
-      Array.prototype.forEach.call(el.querySelectorAll(".chk"),function(c){
-        c.onclick=function(){
-          var act=c.getAttribute("data-act"); var st=imgState[id]||(imgState[id]={});
-          if(act==="approve"){ st.approved=!st.approved; if(!st.approved) st.primary=false; }
-          else { // primary: single-select, implies approved
-            var was=st.primary; Object.keys(imgState).forEach(function(k){ imgState[k].primary=false; });
-            st.primary=!was; if(st.primary) st.approved=true;
-          }
-          reflectImages(); updateSummary();
-        };
+    // Live edit: typing in a "Your edit" box updates the value and selects it as the version to publish.
+    Array.prototype.forEach.call(document.querySelectorAll("textarea[data-medit]"),function(ta){
+      ta.addEventListener("input",function(){
+        var fk=ta.getAttribute("data-medit"); manualText[fk]=ta.value;
+        if(picks[fk]!=="manual"){ picks[fk]="manual";
+          Array.prototype.forEach.call(document.querySelectorAll('.opt[data-fk="'+fk+'"]'),function(o){ o.classList.toggle("sel", o.getAttribute("data-src")==="manual"); });
+        }
+        updateSummary();
       });
     });
     var pub=function(){ publish("approve"); };
@@ -352,6 +391,59 @@
     $("#saveDraft").onclick=function(){ publish("draft"); };
     $("#saveDraft2").onclick=function(){ publish("draft"); };
     $("#runWeb").onclick=runWebsiteImport;
+  }
+
+  // ---------- gallery (source images + pasted/uploaded) ----------
+  function galInner(){
+    return allImages().map(imgCard).join("")
+      + '<div class="addimg" id="addimg" tabindex="0"><span class="big">＋</span>'
+      + '<span class="t">Paste or add an image</span><span class="s">Ctrl/⌘+V, drop, or click to choose</span></div>';
+  }
+  function renderGallery(){ var g=$("#gal"); if(!g) return; g.innerHTML=galInner(); wireImages(); }
+  function wireImages(){
+    Array.prototype.forEach.call(document.querySelectorAll(".imgc"),function(el){
+      var id=el.getAttribute("data-id");
+      Array.prototype.forEach.call(el.querySelectorAll(".chk"),function(c){
+        c.onclick=function(){
+          var act=c.getAttribute("data-act"); var st=imgState[id]||(imgState[id]={});
+          if(act==="approve"){ st.approved=!st.approved; if(!st.approved) st.primary=false; }
+          else { var was=st.primary; Object.keys(imgState).forEach(function(k){ imgState[k].primary=false; }); st.primary=!was; if(st.primary) st.approved=true; }
+          reflectImages(); updateSummary();
+        };
+      });
+    });
+    var tile=$("#addimg");
+    if(tile){
+      tile.onclick=pickImageFile;
+      tile.addEventListener("keydown",function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); pickImageFile(); } });
+      tile.addEventListener("dragover",function(e){ e.preventDefault(); tile.classList.add("drag"); });
+      tile.addEventListener("dragleave",function(){ tile.classList.remove("drag"); });
+      tile.addEventListener("drop",function(e){ e.preventDefault(); tile.classList.remove("drag");
+        var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(f&&/^image\//.test(f.type)) handleImageBlob(f,f.name); });
+    }
+  }
+  function pickImageFile(){
+    var inp=document.createElement("input"); inp.type="file"; inp.accept="image/*";
+    inp.onchange=function(){ var f=inp.files&&inp.files[0]; if(f) handleImageBlob(f,f.name); }; inp.click();
+  }
+  // Upload a pasted/dropped/picked image to hosted storage, then drop it into the gallery.
+  function handleImageBlob(blob,name){
+    if(!blob) return;
+    if(blob.size>6*1024*1024){ toast("Image too big (max ~6MB)",true); return; }
+    if(!current){ toast("Open a product first",true); return; }
+    toast("Uploading image…");
+    var reader=new FileReader();
+    reader.onload=function(){
+      var base64=String(reader.result).split(",")[1];
+      api("upload_image",{manufacturer:MFR,page_key:current,filename:name||"pasted",content_type:blob.type||"image/png",content_base64:base64}).then(function(j){
+        if(!j.ok){ toast("Upload failed: "+(j.error||"unknown"),true); return; }
+        var id="upload:"+Date.now()+":"+extraImages.length;
+        extraImages.push({id:id,source:"upload",url:j.url,caption:name&&name!=="pasted"?name:"Uploaded image",duplicate:false,flag:"upload",primary:false});
+        imgState[id]={approved:true,primary:false};
+        renderGallery(); updateSummary(); toast("Image added ✓");
+      }).catch(function(){ toast("Upload failed",true); });
+    };
+    reader.readAsDataURL(blob);
   }
   function reflectImages(){
     Array.prototype.forEach.call(document.querySelectorAll(".imgc"),function(el){
@@ -372,6 +464,10 @@
 
   // ---------- website import ----------
   function runWebsiteImport(){
+    // Guard: don't let a stray click wipe a website source that's already captured (e.g. one I loaded by hand).
+    if(merge.sources.website && merge.sources.website.present){
+      if(!window.confirm("A Manufacturer Website source is already captured for this product.\n\nRunning the importer will REPLACE it with a fresh scrape — which can return worse data on JavaScript-heavy sites. Replace it?")) return;
+    }
     var suggested=(merge.sources.website && merge.sources.website.url) || "";
     var url=window.prompt("Manufacturer product-page URL to import:", suggested||"https://");
     if(!url) return;
@@ -395,12 +491,14 @@
     merge.fields.forEach(function(f){
       var s=picks[f.key]; if(!s) return;
       patch.field_provenance[f.key]=s;
-      var v=f.values[s]; if(v==null) return;
+      var v=(s==="manual")?textToValue(manualText[f.key], f.type):f.values[s];
+      if(v==null) return;
+      if((f.type==="list"&&!v.length)||(f.type==="map"&&!Object.keys(v).length)||(f.type==="text"&&!String(v).trim())) return;
       patch[f.key]=v;
     });
-    // images: approved gallery + primary
+    // images: approved gallery (source + pasted/uploaded) + primary
     var gallery=[], primaryUrl=null;
-    merge.images.forEach(function(g){
+    allImages().forEach(function(g){
       var st=imgState[g.id]||{}; if(!st.approved) return;
       gallery.push({ url:g.url, source:g.source, caption:g.caption||"", primary:!!st.primary, duplicate:!!g.duplicate });
       if(st.primary) primaryUrl=g.url;
@@ -428,6 +526,18 @@
       Array.prototype.forEach.call(btns,function(b){b.disabled=false;});
     }).catch(function(){ toast("Request failed",true); Array.prototype.forEach.call(btns,function(b){b.disabled=false;}); });
   }
+
+  // Paste an image anywhere while a product is open → upload it into the gallery.
+  document.addEventListener("paste",function(e){
+    if(!current||!merge) return;
+    var items=(e.clipboardData&&e.clipboardData.items)||[];
+    for(var i=0;i<items.length;i++){
+      if(items[i].type&&items[i].type.indexOf("image")===0){
+        var blob=items[i].getAsFile(); if(blob){ e.preventDefault(); handleImageBlob(blob,"pasted"); }
+        return;
+      }
+    }
+  });
 
   // Boot once the staff session helper is ready (it loads synchronously above).
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", boot); else boot();

@@ -173,7 +173,9 @@ function mergeSizing(sources) {
   });
   var note = '';
   ['website', 'pdf', 'hcps'].forEach(function (s) { if (!note && sources[s] && sources[s].sizing_note) note = sources[s].sizing_note; });
-  return { rows: rows, columns: orderColumns(Object.keys(keys)), note: note, source: best.src, isNew: !hcpsHad && best.src !== 'hcps' };
+  // Preserve the source's own column order (Object.keys keeps insertion order) so a captured
+  // chart renders exactly as it appeared — e.g. Part Number · Description · Size · Product Sizing Details.
+  return { rows: rows, columns: Object.keys(keys), note: note, source: best.src, isNew: !hcpsHad && best.src !== 'hcps' };
 }
 
 // ---- Top level ----------------------------------------------------------
