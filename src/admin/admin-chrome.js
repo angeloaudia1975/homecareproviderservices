@@ -12,6 +12,7 @@
       href:"/admin/hub.html?cat=ordering", tools:[
         { href:"/admin/catalog.html",            label:"Catalog",                    icon:"📦", desc:"Products, SKUs, categories & descriptions per line" },
         { href:"/admin/images.html",             label:"Product Images",             icon:"🖼️", desc:"Upload & manage product photography" },
+        { href:"https://hcpsonlineordering.netlify.app/admin/product-content-review.html", label:"Product Content Enrichment & Review", icon:"🔬", desc:"Merge website + PDF + HCPS content, pick the best version & approve before dealers see it" },
         { href:"/admin/featured.html",           label:"Featured Products",          icon:"⭐", desc:"Curate the promoted items dealers see first" },
         { href:"/admin/home-editor.html",        label:"Portal Home Content",        icon:"🏠", desc:"Hero banner, promos & the “what's new” tiles" },
         { href:"/admin/dealers.html",            label:"Contract Pricing",           icon:"💲", desc:"Per-dealer negotiated pricing by product" },

@@ -384,6 +384,17 @@ window.HUB_GUIDE = {
     connects: ["Images render across the ordering portal and catalog"],
     problems: "A polished, visual catalog that helps dealers buy with confidence."
   },
+  "Product Content Enrichment & Review": {
+    tagline: "Merge manufacturer website + PDF catalog with your HCPS record, pick the best version, and approve before dealers see it.",
+    what: "The enrichment desk for product pages. For any existing HCPS product it runs two importers against the same record — the manufacturer's website and their PDF/catalog — then merges and compares all three sources so nothing is missed. Every piece of information is labeled with where it came from (Current HCPS Data, Manufacturer Website, or Manufacturer PDF), and you pick the best version field by field before it publishes. New, conflicting, missing, and duplicate content are all flagged up front.",
+    features: ["Three-source merge & compare — HCPS · Website · PDF", "Provenance label on every field", "Per-field “best version” selection", "Per-image approve + set primary + duplicate detection", "Sizing / specification table review", "New / conflict / missing / duplicate flags", "Approved-only gate — dealers only see published content"],
+    data: "Reads the existing catalog record, scraped website content, and extracted PDF content; writes the reviewed result to the product_content layer (approved rows only reach the portal).",
+    actions: ["Run website + PDF import on a product", "Compare sources and choose the best version of each field", "Approve individual images and pick the primary", "Review and accept sizing/spec tables", "Approve & publish to Partner 360"],
+    connects: ["Publishes to the Partner 360 Product Detail page", "Enriches the same catalog the ordering portal serves", "MSRP follows the fixed per-manufacturer rule (Ovation = single-unit × 2)"],
+    problems: "Turns thin catalog rows into complete, trustworthy product pages — with a human approval step so only vetted content, images, and specs ever reach dealers.",
+    workflow: "Existing HCPS product → website import → PDF/catalog import → merge & compare → review flags → approve → publish.",
+    intelligence: "Cross-source field reconciliation with duplicate-image detection (filename, dimensions & visual hash)."
+  },
   "Featured Products": {
     tagline: "Curate the promoted items dealers see first.",
     what: "Choose which products get top billing on the ordering portal — promotions, new arrivals, and priority lines — to steer dealer attention and drive the sales you want.",
