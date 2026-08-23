@@ -131,6 +131,9 @@ description: "The Dealer Hub is your central destination for manufacturer resour
   .dh-m-logo{width:100%;height:104px;display:grid;place-items:center;background:#fff;border:1px solid #eef2f6;border-radius:12px;box-shadow:inset 0 1px 0 #fff;margin-bottom:2px;transition:transform .15s ease;}
   .dh-m:hover .dh-m-logo{transform:scale(1.04);}
   .dh-m-logo img{max-width:84%;max-height:76%;width:auto;height:auto;object-fit:contain;}
+  /* Manufacturer badge: full card width, square, centered — matches the resources page. */
+  .dh-m-badge{display:block;width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:12px;border:1px solid #eef2f6;margin-bottom:2px;transition:transform .15s ease;}
+  .dh-m:hover .dh-m-badge{transform:scale(1.04);}
   .dh-m b{font-family:'Archivo',sans-serif;font-weight:800;font-size:14px;color:var(--ink);}
   .dh-m span{font-size:12px;color:#6b7580;}
   .dh-m .mrow{display:flex;gap:8px;margin-top:auto;width:100%;}
@@ -356,7 +359,8 @@ description: "The Dealer Hub is your central destination for manufacturer resour
     <div class="dh-mfg" data-reveal="up">
       {% for m in activeManufacturers %}
       <article class="dh-m">
-        <div class="dh-m-logo">{% if m.logo %}<img src="{{ m.logo }}" alt="{{ m.name }}" loading="lazy">{% else %}<b style="font-size:15px">{{ m.name }}</b>{% endif %}</div>
+        {% if m.resourceLogo %}<img class="dh-m-badge" src="{{ m.resourceLogo }}" alt="{{ m.name }}" loading="lazy">
+        {% else %}<div class="dh-m-logo">{% if m.logo %}<img src="{{ m.logo }}" alt="{{ m.name }}" loading="lazy">{% else %}<b style="font-size:15px">{{ m.name }}</b>{% endif %}</div>{% endif %}
         <b>{{ m.name }}</b>
         <span>{{ m.category }}</span>
         <div class="mrow">
