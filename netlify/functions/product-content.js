@@ -189,6 +189,27 @@ exports.handler = async (event) => {
         return reply(200, { ok: true, url: `${SUPABASE_URL}/storage/v1/object/public/product-content/${path}`, path: path });
       }
 
+      // ---- Upload a document file (PDF, etc.) → public Storage → return its URL ----
+      if (action === 'upload_file') {
+        const m = body.manufacturer || mfr;
+        if (!m || !body.page_key || !body.content_base64) return reply(400, { ok: false, error: 'manufacturer, page_key, content_base64 required' });
+        const rawName = String(body.filename || 'document');
+        const extM = rawName.match(/\.([A-Za-z0-9]{1,8})$/);
+        const ext = (extM ? extM[1] : 'pdf').toLowerCase();
+        const base = rawName.replace(/\.[^.]*$/, '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 60) || 'document';
+        const path = `${m}/${body.page_key}/docs/${Date.now()}-${base}.${ext}`;
+        let buf; try { buf = Buffer.from(body.content_base64, 'base64'); } catch (e) { return reply(400, { ok: false, error: 'bad base64' }); }
+        if (!buf.length) return reply(400, { ok: false, error: 'empty file' });
+        if (buf.length > 6 * 1024 * 1024) return reply(413, { ok: false, error: 'file too large (max ~6MB)' });
+        const up = await fetch(`${SUPABASE_URL}/storage/v1/object/product-content/${path}`, {
+          method: 'POST',
+          headers: { apikey: SERVICE_ROLE, authorization: 'Bearer ' + SERVICE_ROLE, 'content-type': body.content_type || 'application/octet-stream', 'x-upsert': 'true' },
+          body: buf
+        });
+        if (!up.ok) { const t = await up.text(); return reply(502, { ok: false, error: 'storage upload failed: ' + t }); }
+        return reply(200, { ok: true, url: `${SUPABASE_URL}/storage/v1/object/public/product-content/${path}`, path: path });
+      }
+
       // ---- Reconcile the three captured sources into a flagged merge ----
       if (action === 'merge') {
         const m = body.manufacturer || mfr;

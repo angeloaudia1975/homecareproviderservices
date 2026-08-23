@@ -109,6 +109,21 @@
   .addimg .s{font-size:10.5px;color:var(--sub)}
   .imgc .srcflag.upload{background:#0d6ee0}
   .badgeflag.upload{background:var(--newbg);color:var(--new)}
+  /* Documents & videos */
+  .doclist{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+  .docrow{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:9px 12px;background:#fff}
+  .docrow .dt{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;padding:3px 8px;border-radius:20px;background:#eef1f6;color:var(--navy);white-space:nowrap}
+  .docrow .dt.study{background:#e5f0fd;color:var(--new)} .docrow .dt.instructions{background:var(--okbg);color:var(--ok)}
+  .docrow .dt.video{background:#fdecef;color:#c2185b} .docrow .dt.warranty{background:var(--warnbg);color:var(--warn)}
+  .docrow .dn{flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .docrow .du{font-size:11px;color:var(--sub);text-decoration:none;white-space:nowrap} .docrow .du:hover{text-decoration:underline}
+  .docrow .hosted{font-size:10px;color:var(--ok);font-weight:700}
+  .docrow .rmx{cursor:pointer;color:#b42323;font-weight:700;border:1px solid #f0cccc;border-radius:7px;padding:3px 8px;font-size:12px}
+  .docrow .rmx:hover{background:#fdecec}
+  .docadd{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#fbfcfe;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .docadd input,.docadd select{font-family:var(--f-body);font-size:13px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+  .docadd input.title{flex:1;min-width:150px} .docadd input.url{flex:2;min-width:180px}
+  .docadd .lbl{font-size:11px;font-weight:700;color:var(--sub);width:100%;margin-bottom:-2px}
 
   .gal{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
   @media(max-width:760px){.gal{grid-template-columns:repeat(2,1fr)}}
@@ -173,6 +188,7 @@
   var products=[], current=null, merge=null, currentRow=null;
   var picks={}, imgState={};  // picks[fieldKey]=sourceKey ('manual' = your edit) ; imgState[imgId]={approved,primary}
   var manualText={}, extraImages=[], removedImages={};  // manualText[fieldKey]=textarea string ; extraImages=pasted/uploaded ; removedImages=hidden from gallery+publish
+  var docsState=[], videosState=[];  // documents [{title,url,type,hosted}] ; videos [{title,url}]
 
   var $=function(s,r){return (r||document).querySelector(s);};
   var esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});};
@@ -253,6 +269,8 @@
       // default picks = suggested; default image state = approve all non-dup, primary=suggested
       merge.fields.forEach(function(f){ picks[f.key]=f.suggested; manualText[f.key]=valueToText(f.values[f.suggested], f.type); });
       merge.images.forEach(function(g){ imgState[g.id]={approved:!g.duplicate, primary:!!g.primary}; });
+      docsState=(currentRow&&Array.isArray(currentRow.documents))?currentRow.documents.slice():[];
+      videosState=(currentRow&&Array.isArray(currentRow.videos))?currentRow.videos.slice():[];
       renderMerge();
     }).catch(function(){ toast("Merge request failed",true); renderEmpty(); });
   }
@@ -327,6 +345,69 @@
       +(s.note?'<div style="font-size:12px;color:var(--sub);margin-top:8px"><i>'+esc(s.note)+'</i></div>':"")+'</div></div>';
   }
 
+  // ---------- documents & videos ----------
+  function docTypeName(t){ return {instructions:"Instructions",study:"Clinical Study",brochure:"Brochure",warranty:"Warranty",manual:"Manual",video:"Video",other:"Document"}[t]||"Document"; }
+  function docsHtml(){
+    var docRows=docsState.map(function(d,i){
+      return '<div class="docrow"><span class="dt '+esc(d.type||"other")+'">'+esc(docTypeName(d.type))+'</span>'
+        +'<span class="dn">'+esc(d.title||d.url)+'</span>'+(d.hosted?'<span class="hosted">hosted</span>':'')
+        +'<a class="du" href="'+esc(d.url)+'" target="_blank" rel="noopener">open ↗</a>'
+        +'<span class="rmx" data-drm="'+i+'">✕</span></div>';
+    }).join("");
+    var vidRows=videosState.map(function(v,i){
+      return '<div class="docrow"><span class="dt video">Video</span><span class="dn">'+esc(v.title||v.url)+'</span>'
+        +'<a class="du" href="'+esc(v.url)+'" target="_blank" rel="noopener">open ↗</a>'
+        +'<span class="rmx" data-vrm="'+i+'">✕</span></div>';
+    }).join("");
+    var count=docsState.length+videosState.length;
+    return '<div class="sec" id="docsec"><h2>Documents &amp; Videos <span class="tag match">'+count+' item'+(count===1?"":"s")+'</span></h2><div class="body">'
+      +'<div class="note">Add instructions, clinical studies, brochures, warranty or manuals as links (or upload a copy), plus video links (YouTube/Vimeo). These publish to the product page for dealers.</div>'
+      +'<div class="doclist">'+(docRows+vidRows||'<div class="fcount" style="padding:2px">No documents or videos yet.</div>')+'</div>'
+      +'<div class="docadd"><span class="lbl">Add a document</span>'
+        +'<input class="title" id="doc_title" placeholder="Title (e.g. Application Instructions)">'
+        +'<input class="url" id="doc_url" placeholder="https://link-to-pdf">'
+        +'<select id="doc_type"><option value="instructions">Instructions</option><option value="study">Clinical Study</option><option value="brochure">Brochure</option><option value="warranty">Warranty</option><option value="manual">Manual</option><option value="other">Other</option></select>'
+        +'<button class="btn sm" id="doc_addlink">+ Add link</button><button class="btn sm" id="doc_upload">⬆ Upload file</button></div>'
+      +'<div class="docadd" style="margin-top:8px"><span class="lbl">Add a video</span>'
+        +'<input class="title" id="vid_title" placeholder="Title (e.g. Product Overview)">'
+        +'<input class="url" id="vid_url" placeholder="https://youtube.com/…">'
+        +'<button class="btn sm" id="vid_add">+ Add video</button></div>'
+      +'</div></div>';
+  }
+  function refreshDocs(){ var el=$("#docsec"); if(el){ el.outerHTML=docsHtml(); wireDocs(); } updateSummary(); }
+  function wireDocs(){
+    var a=$("#doc_addlink"); if(a) a.onclick=function(){
+      var u=($("#doc_url").value||"").trim(); if(!u){ toast("Enter a document URL",true); return; }
+      docsState.push({title:($("#doc_title").value||"").trim()||u, url:u, type:$("#doc_type").value, hosted:false}); refreshDocs();
+    };
+    var up=$("#doc_upload"); if(up) up.onclick=pickDocFile;
+    var v=$("#vid_add"); if(v) v.onclick=function(){
+      var u=($("#vid_url").value||"").trim(); if(!u){ toast("Enter a video URL",true); return; }
+      videosState.push({title:($("#vid_title").value||"").trim()||u, url:u}); refreshDocs();
+    };
+    Array.prototype.forEach.call(document.querySelectorAll("[data-drm]"),function(x){ x.onclick=function(){ docsState.splice(+x.getAttribute("data-drm"),1); refreshDocs(); }; });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-vrm]"),function(x){ x.onclick=function(){ videosState.splice(+x.getAttribute("data-vrm"),1); refreshDocs(); }; });
+  }
+  function pickDocFile(){
+    var inp=document.createElement("input"); inp.type="file"; inp.accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,application/pdf";
+    inp.onchange=function(){ var fl=inp.files&&inp.files[0]; if(fl) uploadDoc(fl); }; inp.click();
+  }
+  function uploadDoc(file){
+    if(file.size>6*1024*1024){ toast("File too big (max ~6MB)",true); return; }
+    var ty=$("#doc_type")?$("#doc_type").value:"other";
+    var t=($("#doc_title")&&$("#doc_title").value||"").trim()||file.name.replace(/\.[^.]*$/,"");
+    toast("Uploading file…");
+    var reader=new FileReader();
+    reader.onload=function(){
+      var base64=String(reader.result).split(",")[1];
+      api("upload_file",{manufacturer:MFR,page_key:current,filename:file.name,content_type:file.type||"application/octet-stream",content_base64:base64}).then(function(j){
+        if(!j.ok){ toast("Upload failed: "+(j.error||"unknown"),true); return; }
+        docsState.push({title:t, url:j.url, type:ty, hosted:true}); refreshDocs(); toast("Document uploaded ✓");
+      }).catch(function(){ toast("Upload failed",true); });
+    };
+    reader.readAsDataURL(file);
+  }
+
   function renderMerge(){
     var p=currentRow||{}; var f=merge.flags;
     var srcHtml=["hcps","website","pdf"].map(function(s){
@@ -361,12 +442,13 @@
       +'</div></div>'
 
       + sizingHtml()
+      + docsHtml()
 
       +'<div class="actionbar"><div class="summ" id="summ"></div><span class="msrp">MSRP rule: single-unit <b>× 2</b> (fixed)</span>'
       +'<div class="spacer"></div><button class="btn" id="saveDraft2">Save draft</button>'
       +'<button class="btn primary" id="publishBtn">Approve &amp; Publish to Partner 360 →</button></div>';
 
-    wireMerge(); renderGallery(); updateSummary();
+    wireMerge(); renderGallery(); wireDocs(); updateSummary();
   }
 
   function wireMerge(){
@@ -519,6 +601,8 @@
     patch.images_gallery=gallery; if(primaryUrl) patch.image=primaryUrl;
     // sizing
     if(merge.sizing && merge.sizing.rows.length){ patch.sizing_table=merge.sizing.rows; if(merge.sizing.note) patch.sizing_note=merge.sizing.note; }
+    // documents & videos
+    patch.documents=docsState; patch.videos=videosState;
 
     if(mode==="approve" && !window.confirm("Publish the reviewed content for “"+(currentRow&&currentRow.name||current)+"” to Partner 360? Dealers will see it immediately.")) return;
 
