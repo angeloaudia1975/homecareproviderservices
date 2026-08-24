@@ -239,6 +239,33 @@ every key page at desktop / tablet / iPhone / Android widths: zero horizontal ov
 shown on mobile / hidden on desktop, the panel opens, and dropdown accordions expand. Green =
 shippable; any red must be fixed first.
 
+## 11. Variant-aware products — one model = one record, routed by catalog group (RULE)
+
+A single catalog "product" often bundles several **models** that each have their own manufacturer
+page, image gallery, and specs (e.g. Ovation Gen 2® Walking Boot = 20 SKUs across Tall/Short ×
+Pneumatic/Non-Pneumatic = 4 models). **Never let one image gallery serve multiple models, and never
+let a SKU inherit another model's images.**
+
+The model:
+- **Parent → Model Variant → SKUs → manufacturer page → images/content.** Each model is its own
+  `product_content` row (its own `page_key`, e.g. `gen2-walking-boot-tall-air`), carrying
+  `parent_key` (the family), `variant_label`, `variant_group`, `variant_order`. The family header is
+  the parent row (`is_parent = true`).
+- **SKUs route to their model by the catalog `group` string, not by image basename.** The portal
+  builds `variantByGroup` from approved `variant_group`s and resolves each SKU's `group` → the model's
+  `page_key`; it falls back to the parent/base key when a model isn't approved yet (so nothing breaks
+  mid-review). See `mergeCatalogEdits` in the ordering portal `public/index.html`.
+- **Self-contained variants:** shared content (general story, features, clinical uses, warranty,
+  overview video) is **copied into each model**; variant-specific content (images, height,
+  pneumatic/non-pneumatic feature, dimensions, sizing, model IFU, billing codes) is unique per model.
+- **Review/approve each model independently** in the enrichment tool. Variants live in the tool's
+  `DATA.pages` manifest with their `variant_*` keys; the parent is flagged and lists its `variants`.
+- **Schema:** `supabase/product_content_variants.sql` adds the columns + indexes. Seed a family with a
+  per-model seed (see `ovation_gen2_variants_seed.sql`), status `pending_review`.
+
+Apply this to every multi-model / multi-configuration / multi-gallery product (Compact Pro ROM
+Standard/Cool wrap, back braces by panel, etc.), not just the Gen 2 boot.
+
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
 - [ ] Hero headline is short + single-row on desktop, wraps on mobile.
