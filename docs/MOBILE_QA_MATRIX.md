@@ -55,9 +55,41 @@ checks. Mobile system lives in `layouts/base.njk` (hamburger panel + accordions 
 `assets/css/site.css` (banners: `Mobile navigation`, `MOBILE HARDENING`, and the mobile reveal
 override). Desktop is unchanged (all mobile rules gated to `@media (max-width:980px)`).
 
-## Extending to the other properties
+## Ordering portal (`homecareproviderservicesordering`) — Wave 2
 
-The same criteria apply to the ordering portal (`homecareproviderservicesordering` — catalog,
-product detail, cart, checkout, Connect 360 admin, Partner 360 tools) and the Golden dealer portal.
-Point a copy of this matrix at each property's built output (adjust `ROOT` and `PAGES`) and drive the
-count to green there too. Those waves are tracked separately.
+Status: **hardened; login + shell verified green on mobile.** The portal already had a strong
+responsive base (cart grid stacks at 900px, dealer nav scrolls, catalog uses `auto-fill minmax`,
+grids collapse at their breakpoints). Wave 2 added a `MOBILE HARDENING` block to
+`public/index.html`:
+
+- **16px inputs on mobile** (`!important`) — the portal's fields were 13–14px, which made iOS zoom
+  on focus across every form (login, checkout, quote, account). Fixed.
+- **Overflow safety net** + `img{max-width:100%}`.
+- **Dynamic table wrapper** — a `MutationObserver` wraps every `<table>` (including
+  orders/reports/tools rendered after login) in a `.table-scroll` container so wide tables scroll
+  instead of breaking the page.
+- **Touch heights** on primary actions (`.btn`, `.subbtn`, cart submit, login).
+
+Verified at iPhone (390) and Android (360): no horizontal overflow, all 36 inputs ≥16px, no console
+errors, login/shell render cleanly. **Not yet visually verified:** the authenticated shop, cart,
+checkout, Partner 360 dashboard, and reports require a dealer login — run the manual spot-checks
+(above) from a logged-in session, or point `test/mobile-qa.js` at an authenticated URL, to close
+those out.
+
+## Golden dealer portal — Wave 3
+
+Status: **hardened; shells verified.** Canonical tree is `repo/portals/` (the per-dealer files in a
+stray `src/repo/` copy are not deployed). The same `MOBILE HARDENING` block + dynamic table wrapper
+were added to the interactive pages: `dealer/index.html` (the 2 MB dealer ordering portal),
+`admin/index.html`, `admin/crm.html`, `admin/dealer-360.html`, `admin/campaign-studio.html`.
+
+- All inputs now ≥16px on mobile (they were 11–15px → iOS zoom); verified across all five.
+- Overflow guard + dynamic table wrapper in place; no JS errors.
+- **Caught & fixed:** these files embed HTML inside JS template strings, so a naive "insert before
+  last `</style>`" lands inside a script. Insertion is done before the *real* standalone `</body>`
+  only. (Rule for future edits to these files.)
+
+**Open items (need a Golden dealer login to finish):** `dealer/index.html` has one ~43px-wide
+category-header element the overflow guard currently clips rather than reflows; the authenticated
+shop/cart/checkout, admin dashboards, and CRM tables need the manual device spot-checks from a
+logged-in session. Not visually QA'd authenticated.
