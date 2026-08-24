@@ -54,12 +54,18 @@
   <div class="container nav-inner">
     <a class="brand" href="/"><img src="/assets/hcps-logo.png" alt="{{ site.name }}"></a>
     <a class="nav-order-btn" href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">&#128722; Online Ordering Portal</a>
-    <nav class="links" aria-label="Primary navigation">
+    <button class="nav-toggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="primary-nav">
+      <span class="nav-toggle-box"><span class="nav-toggle-bar"></span></span>
+      <span class="nav-toggle-label">Menu</span>
+    </button>
+    <nav class="links" id="primary-nav" aria-label="Primary navigation">
+      <a class="order-mobile" href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">&#128722; Online Ordering Portal</a>
       {%- if nav and nav.primary and nav.primary.length -%}
       {%- for item in nav.primary -%}
       {%- if item.dropdown == "manufacturers" -%}
       <div class="dropdown">
         <a href="{{ item.url }}">{{ item.label }}</a>
+        <button class="dd-caret" type="button" aria-label="Expand {{ item.label }}" aria-expanded="false"></button>
         <div class="dropdown-menu mega">
           {% for m in activeManufacturers %}<a href="/manufacturers/{{ m.id }}/">{{ m.name }}</a>{% endfor %}
         </div>
@@ -67,6 +73,7 @@
       {%- elif item.children and item.children.length -%}
       <div class="dropdown">
         <a href="{{ item.url }}">{{ item.label }}</a>
+        <button class="dd-caret" type="button" aria-label="Expand {{ item.label }}" aria-expanded="false"></button>
         <div class="dropdown-menu">
           {% for c in item.children %}<a href="{{ c.url }}"{% if c.external %} target="_blank" rel="noopener"{% endif %}>{{ c.label }}</a>{% endfor %}
         </div>
@@ -79,12 +86,14 @@
       <a href="/">Home</a>
       <div class="dropdown">
         <a href="/manufacturers/">Manufacturers</a>
+        <button class="dd-caret" type="button" aria-label="Expand Manufacturers" aria-expanded="false"></button>
         <div class="dropdown-menu mega">
           {% for m in activeManufacturers %}<a href="/manufacturers/{{ m.id }}/">{{ m.name }}</a>{% endfor %}
         </div>
       </div>
       <div class="dropdown">
         <a href="/dealer-hub/">Dealer Hub</a>
+        <button class="dd-caret" type="button" aria-label="Expand Dealer Hub" aria-expanded="false"></button>
         <div class="dropdown-menu">
           <a href="/resources/">Resource Library</a>
           <a href="/contact/?reason=Product%20or%20Pricing%20Question">Pricing Access</a>
@@ -102,6 +111,7 @@
       {%- endif -%}
     </nav>
   </div>
+  <div class="nav-overlay" hidden></div>
 </header>
 
 <main>{{ content | safe }}</main>
@@ -207,6 +217,78 @@ $zoho.salesiq = $zoho.salesiq || { ready: function () {} };
 <script id="zsiqscript" defer
   src="{{ site.salesiq.domain or 'https://salesiq.zohopublic.com' }}/widget?wc={{ site.salesiq.widgetcode }}"></script>
 {%- endif %}
+
+<!-- Mobile navigation: hamburger panel + tap-to-expand dropdowns (desktop untouched) -->
+<script>
+(function () {
+  var header = document.querySelector('header.mainnav');
+  if (!header) return;
+  var toggle  = header.querySelector('.nav-toggle');
+  var panel   = header.querySelector('#primary-nav');
+  var overlay = header.querySelector('.nav-overlay');
+  if (!toggle || !panel) return;
+  var MQ = window.matchMedia('(max-width: 980px)');
+
+  function setOpen(open) {
+    header.classList.toggle('nav-open', open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    if (overlay) { if (open) overlay.removeAttribute('hidden'); else overlay.setAttribute('hidden', ''); }
+    document.body.classList.toggle('nav-lock', open);
+  }
+  function closeMenu() { setOpen(false); }
+
+  toggle.addEventListener('click', function () {
+    setOpen(!header.classList.contains('nav-open'));
+  });
+  if (overlay) overlay.addEventListener('click', closeMenu);
+
+  // Tap-to-expand accordions (mobile only). Caret toggles; the label link still navigates.
+  panel.querySelectorAll('.dd-caret').forEach(function (caret) {
+    caret.addEventListener('click', function (e) {
+      e.preventDefault();
+      var dd = caret.closest('.dropdown');
+      if (!dd) return;
+      var open = dd.classList.toggle('open');
+      caret.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  });
+
+  // Close the panel after tapping any real navigation link.
+  panel.addEventListener('click', function (e) {
+    var a = e.target.closest('a');
+    if (a && MQ.matches) closeMenu();
+  });
+
+  // Escape closes; leaving mobile width resets everything so desktop is pristine.
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
+  function onChange() {
+    if (!MQ.matches) {
+      closeMenu();
+      panel.querySelectorAll('.dropdown.open').forEach(function (dd) {
+        dd.classList.remove('open');
+        var c = dd.querySelector('.dd-caret'); if (c) c.setAttribute('aria-expanded', 'false');
+      });
+    }
+  }
+  if (MQ.addEventListener) MQ.addEventListener('change', onChange); else if (MQ.addListener) MQ.addListener(onChange);
+})();
+</script>
+
+<!-- Safety net: wrap any bare table so it scrolls horizontally on small screens instead of overflowing. -->
+<script>
+(function () {
+  var tables = document.querySelectorAll('table');
+  for (var i = 0; i < tables.length; i++) {
+    var t = tables[i], p = t.parentElement;
+    if (p && (p.classList.contains('table-scroll') || p.classList.contains('m-table-wrap') || p.classList.contains('table-wrap'))) continue;
+    var wrap = document.createElement('div');
+    wrap.className = 'table-scroll';
+    t.parentNode.insertBefore(wrap, t);
+    wrap.appendChild(t);
+  }
+})();
+</script>
 
 <!-- Shared HCPS interaction layer: scroll-reveal entrance animations (site-wide) -->
 <script src="/assets/js/hcps-fx.js?v={{ asset.cssVersion }}" defer></script>

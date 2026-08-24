@@ -197,6 +197,11 @@
   @media (max-width:1080px){ .dropdown-menu.mega{min-width:420px;} }
   .dropdown-menu a{padding:9px 12px;border-radius:7px;text-decoration:none;font-weight:500;font-size:14px;color:var(--ink);}
   .dropdown-menu a:hover{background:var(--paper);color:var(--hcps-blue-dark);}
+  /* Mobile-nav controls are hidden on desktop; the mobile @media block below turns them on. */
+  .nav-toggle{display:none;}
+  .dd-caret{display:none;}
+  .order-mobile{display:none;}
+  .nav-overlay{display:none;}
 
   /* ---------- Hero ---------- */
   .hero{
@@ -389,7 +394,64 @@
     .testimonial-grid{grid-template-columns:1fr;}
     .territory-layout{grid-template-columns:1fr;}
     .footer-grid{grid-template-columns:1fr 1fr;}
-    nav.links{display:none;}
+
+    /* ===================== Mobile navigation ===================== */
+    .nav-inner{flex-wrap:nowrap;gap:10px;}
+    .nav-order-btn{display:none;}            /* header order button hidden; it lives in the panel */
+    .nav-toggle{display:inline-flex;align-items:center;gap:8px;margin-left:auto;position:relative;z-index:65;
+      background:none;border:0;cursor:pointer;padding:8px 4px;color:var(--ink);
+      font-family:'Archivo',sans-serif;font-weight:700;font-size:13px;-webkit-tap-highlight-color:transparent;}
+    .nav-toggle-box{position:relative;width:24px;height:18px;display:inline-block;flex:0 0 auto;}
+    .nav-toggle-bar,.nav-toggle-bar::before,.nav-toggle-bar::after{position:absolute;left:0;height:2.5px;width:24px;
+      background:var(--ink);border-radius:3px;transition:transform .25s ease,opacity .2s ease,top .25s ease;}
+    .nav-toggle-bar{top:8px;}
+    .nav-toggle-bar::before{content:"";top:-7px;}
+    .nav-toggle-bar::after{content:"";top:7px;}
+    .nav-open .nav-toggle-bar{background:transparent;}
+    .nav-open .nav-toggle-bar::before{top:0;transform:rotate(45deg);}
+    .nav-open .nav-toggle-bar::after{top:0;transform:rotate(-45deg);}
+    /* When open, pin the X to the top-right of the panel and drop the label. */
+    .nav-open .nav-toggle{position:fixed;top:16px;right:18px;z-index:66;padding:6px;}
+    .nav-open .nav-toggle-label{display:none;}
+
+    .nav-overlay{display:block;position:fixed;inset:0;background:rgba(11,20,34,.5);z-index:55;border:0;}
+    body.nav-lock{overflow:hidden;}
+
+    /* Off-canvas panel */
+    nav.links{
+      display:flex;flex-direction:column;align-items:stretch;gap:0;margin:0;
+      position:fixed;top:0;right:0;bottom:0;width:min(86vw,360px);
+      background:#fff;box-shadow:-16px 0 40px -18px rgba(11,13,15,.4);
+      padding:74px 0 28px;overflow-y:auto;-webkit-overflow-scrolling:touch;
+      transform:translateX(100%);transition:transform .28s cubic-bezier(.16,.72,.2,1);z-index:60;
+    }
+    .nav-open nav.links{transform:none;}
+
+    .order-mobile{display:flex;align-items:center;justify-content:center;gap:8px;margin:0 16px 12px;min-height:48px;
+      background:linear-gradient(100deg,var(--hcps-orange),var(--hcps-gold));color:#141414;
+      font-family:'Archivo',sans-serif;font-weight:800;font-size:15px;text-decoration:none;border-radius:12px;padding:14px 16px;}
+
+    /* Stacked rows with comfortable touch targets */
+    nav.links > a{display:flex;align-items:center;min-height:52px;padding:0 20px;font-size:16px;
+      border-bottom:1px solid var(--line);text-decoration:none;color:var(--ink);white-space:normal;}
+    .dropdown{position:static;display:grid;grid-template-columns:1fr auto;align-items:center;border-bottom:1px solid var(--line);}
+    .dropdown > a{display:flex;align-items:center;min-height:52px;padding:0 20px;font-size:16px;
+      text-decoration:none;color:var(--ink);white-space:normal;}
+    .dd-caret{display:flex;align-items:center;justify-content:center;width:52px;min-height:52px;
+      background:none;border:0;border-left:1px solid var(--line);cursor:pointer;color:var(--ink);-webkit-tap-highlight-color:transparent;}
+    .dd-caret::after{content:"";width:9px;height:9px;border-right:2.5px solid currentColor;border-bottom:2.5px solid currentColor;
+      transform:rotate(45deg) translate(-2px,-2px);transition:transform .2s ease;}
+    .dropdown.open .dd-caret::after{transform:rotate(-135deg) translate(-1px,-1px);}
+
+    /* Submenu accordion (hover disabled on touch; only .open reveals) */
+    .dropdown:hover .dropdown-menu,
+    .dropdown:hover .dropdown-menu.mega{display:none;}
+    .dropdown .dropdown-menu{position:static;grid-column:1 / -1;min-width:0;max-height:none;overflow:visible;
+      box-shadow:none;border:0;border-radius:0;padding:2px 0 10px;background:var(--paper);}
+    .dropdown.open .dropdown-menu,
+    .dropdown.open .dropdown-menu.mega{display:grid;grid-template-columns:1fr;}
+    .dropdown .dropdown-menu a{min-height:44px;display:flex;align-items:center;padding:0 28px;font-size:15px;border-radius:0;}
+    /* ===================== /Mobile navigation ==================== */
   }
   @media (max-width: 600px){
     .manu-grid{grid-template-columns:1fr;}
@@ -1059,6 +1121,13 @@
   .has-js .testimonial-grid .testimonial-card:nth-child(3n),
   .has-js .why-grid article:nth-child(3){transition-delay:.22s;}
 }
+/* On phones/tablets, horizontal (left/right) scroll-reveals would push the page
+   sideways while off-screen. Convert them to a vertical reveal — same effect,
+   zero horizontal overflow. (Later in the file → wins on tie; desktop unchanged.) */
+@media (prefers-reduced-motion: no-preference) and (max-width:980px){
+  .has-js [data-reveal="left"],
+  .has-js [data-reveal="right"]{transform:translateY(26px);}
+}
 
 /* Card depth + hover — applies wherever these shared cards appear */
 .manu-grid .manu-card{background:linear-gradient(180deg,#ffffff,#f7fafd);border:1px solid #e6ebf1;border-radius:18px;box-shadow:0 10px 26px rgba(12,39,64,.07);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease;}
@@ -1090,3 +1159,42 @@
 .hcps-related-label{font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:800;font-size:17px;color:var(--ink);line-height:1.16;}
 .hcps-related-blurb{font-size:13.5px;color:#55606a;line-height:1.45;}
 .hcps-related-arrow{margin-top:6px;font-family:'Archivo',sans-serif;font-weight:800;font-size:14px;color:var(--hcps-orange);}
+
+/* ============================================================
+   MOBILE HARDENING (site-wide) — added for full phone/tablet support.
+   Scoped to small screens so desktop is unchanged. Search: "MOBILE HARDENING".
+   ============================================================ */
+@media (max-width:980px){
+  /* Safety net: nothing pushes a horizontal scrollbar on phones/tablets. */
+  body{overflow-x:hidden;}
+  img,video,canvas,svg{max-width:100%;height:auto;}
+
+  /* Comfortable, thumb-sized tap targets. */
+  .btn{min-height:46px;display:inline-flex;align-items:center;justify-content:center;}
+  .btn.sm{min-height:42px;}
+
+  /* Forms: >=16px kills iOS focus-zoom. !important defeats page-level inline styles
+     that would otherwise keep inputs at 15px and re-trigger the zoom. */
+  input,select,textarea{font-size:16px !important;}
+  input[type=text],input[type=email],input[type=tel],input[type=search],
+  input[type=number],input[type=url],input[type=password],select,textarea{
+    max-width:100%;min-height:44px;}
+  textarea{min-height:120px;}
+
+  /* Any raw table stays usable via horizontal scroll if it can't stack. */
+  .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  table{max-width:100%;}
+}
+
+@media (max-width:600px){
+  /* Topbar: tidy contact strip instead of a clipped scroll of stats. */
+  .topbar-inner{flex-wrap:wrap;justify-content:center;gap:4px 14px;overflow-x:visible;}
+  .topbar-left{display:none;}                 /* trust stats also appear in the hero/body */
+  .topbar-right{gap:14px;flex-wrap:wrap;justify-content:center;}
+  .topbar-btn{display:none;}                   /* CTA lives in the menu + footer */
+
+  /* Dealer-hub manufacturer grid: let cards shrink so 2-up fits exactly. */
+  .dh-sec .dh-mfg{gap:12px;}
+  .dh-sec .dh-m{min-width:0;}
+  .dh-sec .dh-m b,.dh-sec .dh-m span{overflow-wrap:anywhere;}
+}

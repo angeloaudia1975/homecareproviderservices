@@ -200,6 +200,45 @@ missing (2026-08; fixed by making index.html data-driven).
 
 ---
 
+## 10. Mobile-first — every surface works on phone, tablet, AND desktop (RULE)
+
+**Nothing is "done" until it works and has been tested on desktop, tablet, iPhone (Safari), and
+Android (Chrome).** This applies to *every* surface: HCPS website pages, Partner 360 tools,
+Connect 360 admin features, and manufacturer pages. Fitting on a small screen is not enough —
+all functionality must actually work by touch.
+
+Required on every surface:
+- **Responsive layout** that reflows for phone/tablet (no fixed-width blocks that overflow).
+- **Navigation** works by touch — the site nav uses the hamburger panel + tap-to-expand
+  accordions in `layouts/base.njk` (desktop hover menus are untouched; the mobile system is
+  gated to `@media (max-width:980px)`). Never ship a nav that is `display:none` on mobile with
+  no replacement.
+- **Touch targets ≥ 44px**; buttons and links are comfortably tappable.
+- **Product / manufacturer cards stack cleanly** (grids collapse to 2-up then 1-up).
+- **Images** use `max-width:100%; height:auto` and never get cut off; hero pop-out / lightbox
+  works on touch.
+- **Forms**: inputs are `font-size:16px` on mobile (prevents iOS focus-zoom — enforced site-wide
+  in the "MOBILE HARDENING" block of `site.css` with `!important` so page-level styles can't
+  re-break it), full-width, easy to complete.
+- **Tables / reports** stay usable — either stack (label-per-row) or scroll horizontally inside
+  a `.table-scroll` / `.m-table-wrap` container. `base.njk` auto-wraps any bare `<table>`.
+- **Ordering, checkout, dashboards, calculators, configurators** are operable by touch, not just
+  visible.
+- **No horizontal page scroll**: `body{overflow-x:hidden}` is the mobile safety net, but the real
+  fix is finding the offending element (run the QA script below) and letting it shrink
+  (`min-width:0`) or wrap.
+- **Animations** respect `prefers-reduced-motion` and never tank performance on a phone.
+
+**Where the mobile system lives (single source of truth):** the hamburger/panel markup + script
+is in `src/_includes/layouts/base.njk`; all mobile CSS is in `src/assets/css/site.css` under the
+`Mobile navigation` and `MOBILE HARDENING` banners. Reuse these — do not re-implement per page.
+
+**How to test (required before "done"):** run the reusable QA matrix —
+`node test/mobile-qa.js` (see `docs/MOBILE_QA_MATRIX.md`). It builds the site and checks, for
+every key page at desktop / tablet / iPhone / Android widths: zero horizontal overflow, hamburger
+shown on mobile / hidden on desktop, the panel opens, and dropdown accordions expand. Green =
+shippable; any red must be fixed first.
+
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
 - [ ] Hero headline is short + single-row on desktop, wraps on mobile.
@@ -208,6 +247,9 @@ missing (2026-08; fixed by making index.html data-driven).
 - [ ] Content data-driven where applicable; contact info from site.json.
 - [ ] Images optimized (JPEG ~1600px hero, icons resized).
 - [ ] `npm run build` clean before deploy.
+- [ ] **Mobile (RULE 10):** tested at desktop / tablet / iPhone / Android — no horizontal scroll,
+      nav + dropdowns work by touch, cards stack, forms are 16px & full-width, tables stack/scroll,
+      any interactive tool is operable by touch. Run `node test/mobile-qa.js` → all green.
 - [ ] **New admin tool** added to `HUBS` in `admin-chrome.js` (→ auto-appears on the dashboard,
       category page & sub-nav); guide card in `hub-guide.js`; audience/permissions verified.
 
