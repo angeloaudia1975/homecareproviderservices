@@ -90,6 +90,33 @@ function serve() {
       checks++;
       if (o.sw - o.iw > 2) failures.push(`${vp.name}/${name}: horizontal overflow (scrollWidth ${o.sw} > ${o.iw})`);
 
+      // 1b) no stray full-screen scrim/overlay covering the page on load
+      const scrim = await page.evaluate(() => {
+        const vw = window.innerWidth, vh = window.innerHeight, area = vw * vh;
+        for (const el of document.querySelectorAll('body *')) {
+          const cs = getComputedStyle(el);
+          if ((cs.position !== 'fixed' && cs.position !== 'absolute') || cs.display === 'none' || cs.visibility === 'hidden') continue;
+          if (parseFloat(cs.opacity) === 0 || cs.pointerEvents === 'none') continue;
+          const bg = cs.backgroundColor;
+          const m = bg && bg.match(/rgba?\(([^)]+)\)/);
+          if (!m) continue;
+          const parts = m[1].split(',').map(s => parseFloat(s));
+          const alpha = parts.length === 4 ? parts[3] : 1;
+          if (alpha < 0.05) continue; // effectively transparent
+          const r = el.getBoundingClientRect();
+          // Only the on-screen intersection counts — an off-canvas panel (translated
+          // out of view) is large but doesn't actually cover the viewport.
+          const ix = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
+          const iy = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
+          if (ix * iy >= area * 0.85 && parseInt(cs.zIndex || '0', 10) >= 10) {
+            return { cls: el.className && el.className.toString().slice(0, 40), z: cs.zIndex, bg };
+          }
+        }
+        return null;
+      });
+      checks++;
+      if (scrim) failures.push(`${vp.name}/${name}: stray overlay dimming the page on load (.${scrim.cls}, z=${scrim.z}, bg=${scrim.bg})`);
+
       // 2) nav correctness (run once per viewport, on home)
       if (name === 'home') {
         const tglShown = await page.evaluate(() => {

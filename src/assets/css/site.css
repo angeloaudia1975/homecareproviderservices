@@ -414,7 +414,8 @@
     .nav-open .nav-toggle{position:fixed;top:16px;right:18px;z-index:66;padding:6px;}
     .nav-open .nav-toggle-label{display:none;}
 
-    .nav-overlay{display:block;position:fixed;inset:0;background:rgba(11,20,34,.5);z-index:55;border:0;}
+    .nav-overlay{position:fixed;inset:0;background:rgba(11,20,34,.5);z-index:55;border:0;}
+    .nav-open .nav-overlay{display:block;}   /* scrim shows ONLY while the menu is open */
     body.nav-lock{overflow:hidden;}
 
     /* Off-canvas panel */
