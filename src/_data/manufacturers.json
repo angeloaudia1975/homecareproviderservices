@@ -27,24 +27,7 @@
           "Class II medical devices with AutoDrive™ hand controls."
         ],
         "image": "/assets/products/golden-technologies/premium-showroom-ms4q2utg.jpg",
-        "stats": [
-          {
-            "value": "Since 1985",
-            "label": "Family-owned"
-          },
-          {
-            "value": "5 Categories",
-            "label": "Retail ladder"
-          },
-          {
-            "value": "MaxiComfort®",
-            "label": "Positioning"
-          },
-          {
-            "value": "Twilight™ Tilt",
-            "label": "Zero-gravity"
-          }
-        ],
+        "stats": [],
         "heroImage": "/assets/manufacturers/heroes/golden-technologies.jpg"
       },
       {
@@ -367,7 +350,8 @@
           "Accessories including stairs, gates, ground platforms, guardrails, picket railings, and landing platforms.",
           "Designed to support dealers, home modification experts, DME providers, and access professionals."
         ],
-        "stats": []
+        "stats": [],
+        "heroImage": "/assets/manufacturers/heroes/access4u.jpg"
       },
       {
         "type": "stats",
@@ -646,7 +630,7 @@
         "stats": [
           {
             "value": "Comfort",
-            "label": "Patented Posture Supprt"
+            "label": "Patented Posture Support"
           },
           {
             "value": "Lightweight",
@@ -660,7 +644,8 @@
             "value": "Compact",
             "label": "Foldable Design"
           }
-        ]
+        ],
+        "heroImage": "/assets/manufacturers/heroes/strongback-mobility.jpg"
       },
       {
         "type": "cards",
@@ -895,7 +880,8 @@
           "Home reimbursement pathway with HCPCS codes E0469 and A7021."
         ],
         "image": "/assets/products/abm-respiratory-care/action-ms6d7u79.jpg",
-        "stats": []
+        "stats": [],
+        "heroImage": "/assets/manufacturers/heroes/abm-respiratory-care.jpg"
       },
       {
         "type": "stats",
@@ -1087,7 +1073,8 @@
           "Clarity connected care and a 3-year warranty."
         ],
         "image": "/assets/products/ohio-medical/gce-portable-concentrators-ms6e0l1i.jpg",
-        "stats": []
+        "stats": [],
+        "heroImage": "/assets/manufacturers/heroes/ohio-medical.jpg"
       },
       {
         "type": "stats",
@@ -1297,7 +1284,8 @@
           "Travel-friendly therapy — no machine, hose, or electricity required.",
           "Built-in replenishment — the Starter Kit opens the door to recurring annual and single replacement sales."
         ],
-        "stats": []
+        "stats": [],
+        "heroImage": "/assets/manufacturers/heroes/airavant-bongorx.jpg"
       },
       {
         "type": "stats",
@@ -1523,7 +1511,8 @@
           "Built for the dealer as much as the user."
         ],
         "image": "/assets/products/climbing-steps/climbing-steps-main-image-ms84vqx9.jpg",
-        "stats": []
+        "stats": [],
+        "heroImage": "/assets/manufacturers/heroes/climbing-steps.jpg"
       },
       {
         "type": "stats",
@@ -1758,7 +1747,8 @@
         ],
         "image": "/assets/products/corsicana/mobility-bed-chair.jpg",
         "stats": [],
-        "video": "https://drive.google.com/file/d/1ZUgK2mILNyQSX-_9vmrngr2ZeHD2MErs/preview"
+        "video": "https://drive.google.com/file/d/1ZUgK2mILNyQSX-_9vmrngr2ZeHD2MErs/preview",
+        "heroImage": "/assets/manufacturers/heroes/corsicana.jpg"
       },
       {
         "type": "stats",
@@ -1971,7 +1961,8 @@
           "Use it to open new conversations with clinical referral sources."
         ],
         "image": "/assets/products/ovation-medical/ovation-ms88dwyo.jpg",
-        "stats": []
+        "stats": [],
+        "heroImage": "/assets/manufacturers/heroes/ovation-medical.jpg"
       },
       {
         "type": "stats",
@@ -2236,7 +2227,8 @@
             "value": "Warranty",
             "label": "Limited Lifetime"
           }
-        ]
+        ],
+        "heroImage": "/assets/manufacturers/heroes/bemis.jpg"
       },
       {
         "type": "cards",
@@ -2495,7 +2487,8 @@
           "Skin & fungus care"
         ],
         "image": "/assets/products/pedifix/pedifix-catalog-2025-page-01-image-0013-ms9czq96.jpg",
-        "stats": []
+        "stats": [],
+        "heroImage": "/assets/manufacturers/heroes/pedifix.jpg"
       },
       {
         "type": "stats",
