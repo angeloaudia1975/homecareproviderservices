@@ -750,6 +750,88 @@
 }
 
 /* ============================================================
+   Manufacturer hero — FLOAT variant (.manu-hero--float)
+   Large & minimal image-forward hero: homepage-blue gradient,
+   slide-in-from-right entrance, continuous gentle float + ground
+   shadow, gold corner brackets, click-to-expand lightbox.
+   Driven by a manufacturer's sections[].heroImage in manufacturers.json.
+   NOTE: the floating element is NOT a data-reveal target — the shared
+   reveal engine pins transform:none!important, which would kill the
+   float. Entrance here runs from an inline IntersectionObserver in
+   blocks/hero.njk (.mh-vis -> .mh-vis.in), independent of hcps-fx.js.
+   ============================================================ */
+.manu-hero--float{
+  overflow:hidden; perspective:1500px;
+  padding:70px 0 78px;
+  background:
+    radial-gradient(460px 460px at 92% -30%, rgba(252,178,30,.26), transparent 68%),
+    radial-gradient(420px 420px at -8% 118%, rgba(22,129,194,.35), transparent 66%),
+    linear-gradient(150deg,#0b1f33 0%,#0f5c8f 64%,#1681c2 100%);
+}
+.manu-hero--float::after{content:none;} /* drop the per-brand glow; band carries its own */
+.manu-hero--float .manu-hero-grid{grid-template-columns:.82fr 1.18fr; gap:44px; align-items:center;}
+.manu-hero--float h1{font-size:clamp(33px,4.6vw,52px); line-height:1.0;}
+.manu-hero--float .lead{max-width:46ch;}
+
+/* right column: entrance wrapper (slides in from the right, once) */
+.mh-vis{justify-self:center; position:relative; width:100%; max-width:680px;
+  opacity:0; transform:translateX(150px);
+  transition:opacity .8s ease, transform 1s cubic-bezier(.16,.72,.2,1);}
+.mh-vis.in{opacity:1; transform:none;}
+
+/* inner floater: continuous gentle bob + soft ground shadow */
+.mh-floater{position:relative; animation:mh-bob 5.6s ease-in-out infinite;}
+.mh-floater::after{content:""; position:absolute; left:9%; right:9%; bottom:-42px; height:48px; border-radius:50%;
+  background:radial-gradient(closest-side,rgba(0,0,0,.55),transparent); filter:blur(8px); z-index:-1;
+  animation:mh-shadow 5.6s ease-in-out infinite;}
+.mh-floater:hover{animation-play-state:paused;}
+@keyframes mh-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-16px)}}
+@keyframes mh-shadow{0%,100%{transform:scaleX(1);opacity:.7}50%{transform:scaleX(.85);opacity:.44}}
+
+/* gold corner brackets */
+.mh-corner{position:absolute; z-index:4; width:66px; height:66px; pointer-events:none;}
+.mh-corner.tl{top:-13px; left:-13px; border-top:2.5px solid var(--m-accent,#fcb21e); border-left:2.5px solid var(--m-accent,#fcb21e); border-radius:8px 0 0 0;}
+.mh-corner.br{bottom:-13px; right:-13px; border-bottom:2.5px solid var(--m-accent,#fcb21e); border-right:2.5px solid var(--m-accent,#fcb21e); border-radius:0 0 8px 0;}
+
+/* framed image + click-to-expand */
+.mh-frame{position:relative; border-radius:16px; overflow:hidden; cursor:zoom-in; background:#0d223a;
+  box-shadow:0 55px 100px -30px rgba(0,0,0,.72), 0 0 0 1px rgba(255,255,255,.06) inset;}
+.mh-frame:focus-visible{outline:3px solid var(--m-accent,#fcb21e); outline-offset:3px;}
+.mh-frame img{display:block; width:100%; height:auto;}
+.mh-sheen{position:absolute; inset:0; pointer-events:none; mix-blend-mode:screen; opacity:0; transition:opacity .3s;
+  background:radial-gradient(420px 300px at 30% 0%,rgba(255,255,255,.18),transparent 60%);}
+.mh-floater:hover .mh-sheen{opacity:1;}
+.mh-zoomtag{position:absolute; bottom:12px; right:12px; z-index:4; font-family:'Inter',sans-serif;
+  font-size:11px; font-weight:600; color:#fff; background:rgba(9,20,34,.6); backdrop-filter:blur(4px);
+  border:1px solid rgba(255,255,255,.18); border-radius:30px; padding:6px 12px; opacity:.9; pointer-events:none;}
+
+/* white stat strip below the hero grid */
+.mh-stats{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:34px;}
+.mh-stat{background:#fff; border-radius:14px; padding:16px 18px; text-align:center; color:#0b1f33;
+  box-shadow:0 18px 40px -22px rgba(0,0,0,.5);}
+.mh-stat b{font-family:'Archivo Expanded','Archivo',sans-serif; font-weight:800; font-size:21px; display:block; letter-spacing:.3px; color:#0b1f33;}
+.mh-stat span{font-family:'Inter',sans-serif; font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#5b6b7d;}
+
+/* lightbox */
+.mh-lb{position:fixed; inset:0; z-index:1000; display:none; place-items:center; padding:4vw;
+  background:rgba(5,12,22,.88); backdrop-filter:blur(8px); cursor:zoom-out;}
+.mh-lb.on{display:grid;}
+.mh-lb img{max-width:min(92vw,940px); max-height:90vh; border-radius:14px; box-shadow:0 40px 120px -20px rgba(0,0,0,.8);}
+.mh-x{position:absolute; top:20px; right:24px; color:#fff; font-family:'Inter',sans-serif;
+  font-size:13px; font-weight:600; border:1px solid rgba(255,255,255,.3); border-radius:30px; padding:8px 14px; cursor:pointer;}
+
+@media (max-width:980px){
+  .manu-hero--float{padding:52px 0 60px;}
+  .manu-hero--float .manu-hero-grid{grid-template-columns:1fr; gap:30px;}
+  .mh-vis{max-width:520px;}
+  .mh-stats{grid-template-columns:repeat(2,1fr); margin-top:30px;}
+}
+@media (prefers-reduced-motion:reduce){
+  .mh-vis{opacity:1; transform:none; transition:none;}
+  .mh-floater, .mh-floater::after{animation:none;}
+}
+
+/* ============================================================
    Dealer Hub dashboard (dash-v3-*)  — HCPS orange/gold theme
    ============================================================ */
 .dash-v3-hero{

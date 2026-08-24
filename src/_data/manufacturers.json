@@ -27,7 +27,25 @@
           "Class II medical devices with AutoDrive™ hand controls."
         ],
         "image": "/assets/products/golden-technologies/premium-showroom-ms4q2utg.jpg",
-        "stats": []
+        "stats": [
+          {
+            "value": "Since 1985",
+            "label": "Family-owned"
+          },
+          {
+            "value": "5 Categories",
+            "label": "Retail ladder"
+          },
+          {
+            "value": "MaxiComfort®",
+            "label": "Positioning"
+          },
+          {
+            "value": "Twilight™ Tilt",
+            "label": "Zero-gravity"
+          }
+        ],
+        "heroImage": "/assets/manufacturers/heroes/golden-technologies.jpg"
       },
       {
         "type": "stats",

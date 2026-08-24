@@ -1,10 +1,4 @@
-<section class="manu-hero" style="--m-accent:{{ accent }};--m-dark:{{ dark }}">
-  <div class="container"><div class="manu-hero-grid">
-    <div>
-      {% if b.eyebrow %}<p class="m-eyebrow">{{ b.eyebrow }}</p>{% endif %}
-      <h1>{{ b.headline or manu.name }}</h1>
-      <p class="lead">{{ b.lead or manu.description }}</p>
-      <div class="hero-actions">
+{% set heroCtas %}
         {% if manu.id == "golden-technologies" %}
         <a class="btn primary" href="mailto:{{ site.contact.email }}?subject={{ manu.name | urlencode }}%20Dealer%20Pricing%20Request">Request Dealer Pricing</a>
         {% if manu.ordering_url %}<a class="btn outline on-light" href="{{ manu.ordering_url }}" target="_blank" rel="noopener">Place Dealer Order</a>{% endif %}
@@ -13,7 +7,71 @@
         <a class="btn outline on-light" href="mailto:{{ site.contact.email }}?subject={{ manu.name | urlencode }}%20Dealer%20Pricing%20Request">Request Dealer Pricing</a>
         {% endif %}
         {% if manu.website %}<a class="btn outline on-light" href="{{ manu.website }}" target="_blank" rel="noopener">Manufacturer Website</a>{% endif %}
+{% endset %}
+
+{% if b.heroImage %}
+<section class="manu-hero manu-hero--float" style="--m-accent:{{ accent }};--m-dark:{{ dark }}">
+  <div class="container">
+    <div class="manu-hero-grid">
+      <div>
+        {% if b.eyebrow %}<p class="m-eyebrow">{{ b.eyebrow }}</p>{% endif %}
+        <h1>{{ b.headline or manu.name }}</h1>
+        <p class="lead">{{ b.lead or manu.description }}</p>
+        <div class="hero-actions">{{ heroCtas | safe }}</div>
       </div>
+      <div class="mh-vis" data-mh-vis>
+        <div class="mh-floater">
+          <span class="mh-corner tl"></span><span class="mh-corner br"></span>
+          <div class="mh-frame" data-mh-frame tabindex="0" role="button" aria-label="Expand {{ manu.name }} image">
+            <img src="{{ b.heroImage }}" alt="{{ b.headline or manu.name }}" loading="eager" decoding="async">
+            <span class="mh-sheen"></span>
+            <span class="mh-zoomtag">&#8676; Click to expand</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% if b.stats.length %}
+    <div class="mh-stats">
+      {% for s in b.stats %}<div class="mh-stat"><b>{{ s.value }}</b><span>{{ s.label }}</span></div>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  <div class="mh-lb" data-mh-lb aria-hidden="true">
+    <span class="mh-x">&#10005; Close</span>
+    <img data-mh-lbimg alt="{{ manu.name }} &mdash; full view">
+  </div>
+</section>
+<script>
+(function(){
+  var root=document.currentScript.previousElementSibling;
+  if(!root) return;
+  var vis=root.querySelector("[data-mh-vis]"),
+      frame=root.querySelector("[data-mh-frame]"),
+      lb=root.querySelector("[data-mh-lb]"),
+      lbimg=root.querySelector("[data-mh-lbimg]"),
+      img=frame&&frame.querySelector("img");
+  function openLb(){ if(!img) return; lbimg.src=img.src; lb.classList.add("on"); lb.setAttribute("aria-hidden","false"); }
+  function closeLb(){ lb.classList.remove("on"); lb.setAttribute("aria-hidden","true"); }
+  if(frame){
+    frame.addEventListener("click",openLb);
+    frame.addEventListener("keydown",function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); openLb(); } });
+  }
+  if(lb){ lb.addEventListener("click",closeLb); }
+  document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeLb(); });
+  var reduce=false; try{ reduce=matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){}
+  if(reduce || !("IntersectionObserver" in window)){ if(vis) vis.classList.add("in"); return; }
+  var io=new IntersectionObserver(function(es){ es.forEach(function(x){ if(x.isIntersecting){ x.target.classList.add("in"); io.unobserve(x.target); } }); },{threshold:.2});
+  if(vis) io.observe(vis);
+})();
+</script>
+{% else %}
+<section class="manu-hero" style="--m-accent:{{ accent }};--m-dark:{{ dark }}">
+  <div class="container"><div class="manu-hero-grid">
+    <div>
+      {% if b.eyebrow %}<p class="m-eyebrow">{{ b.eyebrow }}</p>{% endif %}
+      <h1>{{ b.headline or manu.name }}</h1>
+      <p class="lead">{{ b.lead or manu.description }}</p>
+      <div class="hero-actions">{{ heroCtas | safe }}</div>
     </div>
     <aside class="m-card">
       {% if b.video %}<div class="m-video-wrap m-card-video"><iframe src="{{ b.video | embed }}" title="{{ b.card_title or manu.name }}" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>
@@ -26,3 +84,4 @@
     </aside>
   </div></div>
 </section>
+{% endif %}
