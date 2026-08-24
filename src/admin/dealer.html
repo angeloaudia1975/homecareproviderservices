@@ -50,6 +50,22 @@
  .tkb{flex:1;min-width:0}.tkt{font-size:13px;font-weight:600;color:var(--navy)}.tkt.dn{text-decoration:line-through;color:var(--gray)}
  .tkadd{display:flex;gap:6px;margin-top:4px}.tkadd input#ntitle{flex:1;min-width:0}
  .nt{padding:7px 0;border-bottom:1px solid #eef2f6}.nt .ntb{font-size:13px;white-space:pre-wrap;color:var(--ink)}
+ /* ---- Voice notes (Web Speech API dictation) ---- */
+ .vn{margin-top:8px;border:1px solid var(--line);border-radius:11px;background:#fafbfc;padding:9px}
+ .vn-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+ .vn-mic{display:inline-flex;align-items:center;gap:7px}
+ .vn .btn.sm{min-height:38px}
+ @media(max-width:640px){.vn .btn.sm{min-height:44px}}
+ .vn-rec-dot{width:9px;height:9px;border-radius:50%;background:#d9342b;display:inline-block;box-shadow:0 0 0 0 rgba(217,52,43,.5);animation:vnpulse 1.3s infinite}
+ @keyframes vnpulse{0%{box-shadow:0 0 0 0 rgba(217,52,43,.5)}70%{box-shadow:0 0 0 8px rgba(217,52,43,0)}100%{box-shadow:0 0 0 0 rgba(217,52,43,0)}}
+ .vn-status{font-size:12px;color:var(--gray);display:inline-flex;align-items:center;gap:6px;margin-left:2px}
+ .vn-status.err{color:#b4321f}
+ .vn-preview{width:100%;margin-top:8px;border:1px solid var(--line);border-radius:9px;background:#fff;padding:9px 10px;font:inherit;font-size:14px;color:var(--ink);min-height:56px;resize:vertical;line-height:1.45}
+ .vn-preview[readonly]{background:#f4f8fb}
+ .vn-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+ .vn-hint{font-size:11.5px;color:var(--gray);margin-top:6px}
+ .vn-unsupported{font-size:12.5px;color:var(--gray);margin-top:8px;background:#fafbfc;border:1px dashed var(--line);border-radius:9px;padding:9px 11px}
+ @media(prefers-reduced-motion:reduce){.vn-rec-dot{animation:none}}
 </style>
 </head><body>
 <header id="ac-head"></header>
@@ -857,10 +873,115 @@ async function loadCRM(){
     </div>`;
   // Notes live in their own card (left column, top).
   const nel=$("#notes");
-  if(nel) nel.innerHTML=`<textarea id="nbody" rows="3" placeholder="Add a note about this dealer…" style="width:100%"></textarea>
-    <button class="btn sm" style="margin-top:6px" onclick="addNote()">Post note</button>
+  if(nel){ nel.innerHTML=`<textarea id="nbody" rows="3" placeholder="Add a note about this dealer…" style="width:100%"></textarea>
+    <div class="vn" id="vn" hidden>
+      <div class="vn-bar">
+        <button type="button" class="btn sm orange" id="vnStart" onclick="vnStart()">🎤 Start recording</button>
+        <button type="button" class="btn sm" id="vnStop" onclick="vnStop()" hidden>■ Stop</button>
+        <button type="button" class="btn sm ghost" id="vnRe" onclick="vnRerecord()">↻ Re-record</button>
+        <button type="button" class="btn sm ghost" id="vnClear" onclick="vnClearPreview()">✕ Clear</button>
+        <span class="vn-status" id="vnStatus"></span>
+      </div>
+      <textarea class="vn-preview" id="vnPreview" rows="2" readonly placeholder="Your spoken note appears here — review and edit, then Insert into note."></textarea>
+      <div class="vn-actions">
+        <button type="button" class="btn sm" id="vnInsert" onclick="vnInsert()">＋ Insert into note</button>
+      </div>
+      <div class="vn-hint">Tip: speak naturally, then Stop. Review and fix the text, Insert it into your note, edit further if needed, then Post note. Nothing posts until you tap Post note.</div>
+    </div>
+    <div class="vn-unsupported" id="vnNoSupport" hidden>🎤 Voice input isn't available in this browser — you can still type your note normally. For dictation, open Dealer 360 in Chrome (Android/desktop) or Safari (iPhone/iPad).</div>
+    <button class="btn sm" style="margin-top:8px" onclick="addNote()">Post note</button>
     <div style="margin-top:10px">${nts.length?nts.map(nRow).join(""):'<div class="hint">No notes yet.</div>'}</div>`;
+    initVoiceNotes();
+  }
 }
+
+/* ===================== Voice-to-text notes (Web Speech API) =====================
+   Free, browser-native dictation. No backend, no API key, no ongoing cost.
+   Works in Chrome/Edge (Android + desktop) and Safari (iOS 14.5+/macOS).
+   Nothing is ever posted automatically — text lands in the note field for review. */
+var VN_REC=null, VN_ON=false, VN_FINAL="", VN_SUPPORTED=null;
+function vnSR(){ return window.SpeechRecognition || window.webkitSpeechRecognition || null; }
+function vnEl(id){ return document.getElementById(id); }
+function vnStatus(msg, isErr){ var s=vnEl("vnStatus"); if(!s)return; s.innerHTML=(VN_ON?'<span class="vn-rec-dot"></span>':'')+(msg?('<span>'+esc(msg)+'</span>'):''); s.className="vn-status"+(isErr?" err":""); }
+function initVoiceNotes(){
+  VN_ON=false; VN_FINAL="";
+  var SR=vnSR(); VN_SUPPORTED=!!SR;
+  var vn=vnEl("vn"), no=vnEl("vnNoSupport");
+  if(!VN_SUPPORTED){ if(vn)vn.hidden=true; if(no)no.hidden=false; return; }
+  if(vn)vn.hidden=false; if(no)no.hidden=true;
+  vnToggleButtons(false);
+  vnStatus("Tap to dictate your note.");
+}
+function vnToggleButtons(recording){
+  var st=vnEl("vnStart"), sp=vnEl("vnStop"), pv=vnEl("vnPreview");
+  if(st)st.hidden=recording; if(sp)sp.hidden=!recording;
+  if(pv)pv.readOnly=recording; // editable only when not actively recording
+}
+function vnBuildRec(){
+  var SR=vnSR(); if(!SR)return null;
+  var rec=new SR();
+  rec.lang="en-US"; rec.interimResults=true; rec.continuous=true;
+  rec.onresult=function(e){
+    var interim="";
+    for(var i=e.resultIndex;i<e.results.length;i++){
+      var t=e.results[i][0].transcript;
+      if(e.results[i].isFinal){ VN_FINAL += (VN_FINAL && !/\s$/.test(VN_FINAL)?" ":"")+t.trim(); }
+      else interim += t;
+    }
+    var pv=vnEl("vnPreview"); if(pv){ pv.value=(VN_FINAL+(interim?(" "+interim):"")).replace(/\s{2,}/g," ").replace(/^\s+/,""); pv.scrollTop=pv.scrollHeight; }
+  };
+  rec.onerror=function(e){
+    var msg;
+    switch(e.error){
+      case "not-allowed": case "service-not-allowed": msg="Microphone blocked — allow mic access for this site, then try again."; VN_ON=false; vnToggleButtons(false); break;
+      case "audio-capture": msg="No microphone found."; VN_ON=false; vnToggleButtons(false); break;
+      case "no-speech": msg="Didn't catch that — keep talking or tap Stop."; break;
+      case "network": msg="Network needed for transcription — check your connection."; break;
+      case "aborted": return; // user-initiated stop
+      default: msg="Voice error ("+e.error+").";
+    }
+    vnStatus(msg, true);
+  };
+  rec.onend=function(){
+    // Some browsers (esp. iOS) end after a pause. If the user is still recording, resume.
+    if(VN_ON){ try{ rec.start(); }catch(_){ } }
+    else { vnToggleButtons(false); }
+  };
+  return rec;
+}
+function vnStart(){
+  if(!vnSR()){ initVoiceNotes(); return; }
+  if(VN_ON) return;
+  if(!VN_REC) VN_REC=vnBuildRec();
+  // continue from whatever is already in the preview (manual edits included)
+  var pv=vnEl("vnPreview"); VN_FINAL = pv && pv.value.trim() ? pv.value.trim() : "";
+  VN_ON=true; vnToggleButtons(true); vnStatus("Listening…");
+  try{ VN_REC.start(); }catch(_){ /* start() throws if already started */ }
+}
+function vnStop(){
+  VN_ON=false;
+  if(VN_REC){ try{ VN_REC.stop(); }catch(_){ } }
+  vnToggleButtons(false);
+  var pv=vnEl("vnPreview");
+  vnStatus(pv && pv.value.trim() ? "Stopped — review & edit, then Insert into note." : "Stopped. Nothing captured — try again.");
+}
+function vnClearPreview(){
+  VN_FINAL=""; var pv=vnEl("vnPreview"); if(pv)pv.value="";
+  vnStatus(VN_ON?"Listening…":"Cleared. Tap Start to dictate.");
+}
+function vnRerecord(){
+  if(VN_ON){ VN_ON=false; if(VN_REC){ try{VN_REC.stop();}catch(_){}} }
+  vnClearPreview();
+  setTimeout(vnStart, 180); // let the previous session tear down first
+}
+function vnInsert(){
+  var pv=vnEl("vnPreview"); var nb=vnEl("nbody");
+  var t=pv?pv.value.trim():""; if(!t){ vnStatus("Nothing to insert — dictate a note first.", true); return; }
+  if(nb){ nb.value=(nb.value.trim()? nb.value.replace(/\s+$/,"")+"\n":"")+t; nb.focus(); nb.scrollTop=nb.scrollHeight; }
+  vnClearPreview();
+  vnStatus("Inserted into your note — review it, then tap Post note.");
+}
+
 async function addTask(){ const t=(($("#ntitle")||{}).value||"").trim(); if(!t)return; const due=($("#ndue")||{}).value||""; await crm({action:"add_task",dealer_id:CUR,title:t,due_date:due}); loadCRM(); }
 async function addNote(){ const b=(($("#nbody")||{}).value||"").trim(); if(!b)return; await crm({action:"add_note",dealer_id:CUR,body:b}); loadCRM(); }
 async function logActivity(){
