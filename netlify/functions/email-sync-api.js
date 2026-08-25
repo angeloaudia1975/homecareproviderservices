@@ -229,16 +229,38 @@ exports.handler = async (event)=>{
       if(!row) return json(404,{ok:false,error:"not_found"});
       if(!G_TENANT||!G_CLIENT||!G_SECRET) return json(200,{ok:false,error:"graph_env_missing",message:"Set GRAPH_TENANT_ID / GRAPH_CLIENT_ID / GRAPH_CLIENT_SECRET in Netlify to read full email bodies."});
       if(!row.graph_id||!row.mailbox_upn) return json(200,{ok:false,error:"no_source",message:"This message has no Outlook reference to open."});
-      let m; try{ m=await graphGet(`/users/${encodeURIComponent(row.mailbox_upn)}/messages/${encodeURIComponent(row.graph_id)}?$select=subject,body,from,toRecipients,ccRecipients,sentDateTime,receivedDateTime`); }
+      let m; try{ m=await graphGet(`/users/${encodeURIComponent(row.mailbox_upn)}/messages/${encodeURIComponent(row.graph_id)}?$select=subject,body,uniqueBody,from,toRecipients,ccRecipients,sentDateTime,receivedDateTime,hasAttachments`); }
       catch(e){ return json(200,{ok:false,error:"fetch_failed",message:"Couldn't open this message in Outlook — it may have been moved or deleted."}); }
-      const bt=((m.body&&m.body.contentType)||"").toLowerCase();
+      // Prefer the full body; fall back to uniqueBody (some system/confirmation emails leave body empty).
+      let bodyObj = (m.body && m.body.content) ? m.body : ((m.uniqueBody && m.uniqueBody.content) ? m.uniqueBody : (m.body||{}));
+      const bt=((bodyObj&&bodyObj.contentType)||"").toLowerCase();
       const to=(m.toRecipients||[]).map(r=>r.emailAddress&&r.emailAddress.address).filter(Boolean);
       const cc=(m.ccRecipients||[]).map(r=>r.emailAddress&&r.emailAddress.address).filter(Boolean);
+      // Fetch attachments on demand so an attachment-only email (e.g. an order confirmation PDF) still
+      // shows its content. File attachments come back as base64 contentBytes; cap size to keep the
+      // response small, and skip inline images (they belong to the HTML body, not a download list).
+      let attachments=[];
+      const ATT_MAX=6*1024*1024;
+      if(m.hasAttachments || row.has_attachments){
+        try{
+          const at=await graphGet(`/users/${encodeURIComponent(row.mailbox_upn)}/messages/${encodeURIComponent(row.graph_id)}/attachments?$select=id,name,contentType,size,isInline,contentBytes`);
+          for(const a of ((at&&at.value)||[])){
+            if(a.isInline) continue;
+            const isFile=String(a["@odata.type"]||"").indexOf("fileAttachment")>=0 || typeof a.contentBytes==="string";
+            const rec={ name:a.name||"attachment", content_type:a.contentType||"application/octet-stream", size:a.size||0 };
+            if(isFile && a.contentBytes && (a.size||0)<=ATT_MAX) rec.content_b64=a.contentBytes;
+            else if(!isFile) rec.note="Item attachment (open in Outlook)";
+            else rec.note="Too large to preview here";
+            attachments.push(rec);
+          }
+        }catch(e){ /* attachments are optional — never block opening the email */ }
+      }
       return json(200,{ ok:true, id:row.id, subject:m.subject||row.subject||"", direction:row.direction,
         from:row.from_address||((m.from&&m.from.emailAddress&&m.from.emailAddress.address)||""),
         from_name:row.from_name||((m.from&&m.from.emailAddress&&m.from.emailAddress.name)||""),
-        to, cc, when:row.received_at||row.sent_at||null, has_attachments:!!row.has_attachments,
-        body_html: bt==="html"?((m.body&&m.body.content)||""):"", body_text: bt!=="html"?((m.body&&m.body.content)||""):"" });
+        to, cc, when:row.received_at||row.sent_at||null, has_attachments:!!(m.hasAttachments||row.has_attachments),
+        attachments,
+        body_html: bt==="html"?((bodyObj&&bodyObj.content)||""):"", body_text: bt!=="html"?((bodyObj&&bodyObj.content)||""):"" });
     }
 
     // Send an approved AI-drafted email FROM the rep's own Outlook mailbox (Graph sendMail), then log
