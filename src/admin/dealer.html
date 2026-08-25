@@ -518,32 +518,33 @@ function prefillCall(a){
   const k=$("#la_kind"); if(k) k.value="call";
   const s=$("#la_sum"); if(s){ if(!s.value) s.value="Called "+label; setTimeout(function(){ s.scrollIntoView({behavior:"smooth",block:"center"}); s.focus(); },60); }
 }
-function contactForm(c){ c=c||{}; const editing=!!c.email;
+function contactForm(c){ c=c||{}; const editing=!!c.id;
   return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px;background:#fafbfc;margin-bottom:10px">
     <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:800;margin-bottom:6px">${editing?"Edit contact":"Add contact"}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
       <input id="c_name" placeholder="Name" value="${esc(c.name||"")}">
-      <input id="c_email" placeholder="Email *" value="${esc(c.email||"")}">
+      <input id="c_email" placeholder="Email (optional)" value="${esc(c.email||"")}">
       <input id="c_title" placeholder="Title" value="${esc(c.title||"")}">
       <input id="c_role" placeholder="Role" value="${esc(c.role||"")}">
       <input id="c_phone" placeholder="Office phone" value="${esc(c.phone||"")}">
       <input id="c_cell" placeholder="Mobile" value="${esc(c.cell||"")}">
     </div>
-    <input type="hidden" id="c_old" value="${esc(c.email||"")}">
+    <input type="hidden" id="c_id" value="${esc(c.id||"")}">
+    <div class="hint" style="margin:6px 0 0">Email is optional — add the contact now and fill it in later. A contact needs an email before it can be emailed or made the primary.</div>
     <div style="margin-top:6px;display:flex;gap:6px"><button class="btn sm orange" onclick="saveContact()">${editing?"Save changes":"Add contact"}</button>${editing?`<button class="btn sm" onclick="CEDIT=null;renderContacts()">Cancel</button>`:""}</div>
   </div>`; }
 function renderContacts(){ const el=$("#contacts"); if(!el||!CDATA) return;
   const prim=CDATA.primary_email||""; const cs=CDATA.contacts||[];
-  const rows=cs.map(c=>{ const isP=c.email&&c.email.toLowerCase()===prim; const je=esc(String(c.email||"").replace(/'/g,""));
+  const rows=cs.map(c=>{ const isP=c.email&&c.email.toLowerCase()===prim; const jid=esc(String(c.id||"").replace(/'/g,"")); const je=esc(String(c.email||"").replace(/'/g,""));
     return `<div style="padding:7px 0;border-bottom:1px solid #eef2f6"><div style="display:flex;align-items:center;gap:8px">
       <div style="flex:1;min-width:0"><b>${esc(c.name||"—")}</b>${isP?' <span style="font-size:10px;font-weight:800;color:#b45309;background:#fdeee0;border-radius:6px;padding:1px 6px">★ primary</span>':""}
         <div class="hint" style="margin:0">${esc([c.title,c.role].filter(Boolean).join(" · "))}</div>
-        <div class="hint" style="margin:0">${c.email?"✉ "+esc(c.email):""}${c.phone?" · ☎ "+esc(c.phone):""}${c.cell?" · 📱 "+esc(c.cell):""}</div></div>
-      <div style="display:flex;gap:4px;flex-wrap:wrap">${isP?"":`<button class="btn sm" title="Make primary" onclick="makePrimary('${je}','${esc(String(c.name||'').replace(/'/g,''))}','${esc(String(c.phone||'').replace(/'/g,''))}')">★</button>`}
-        <button class="btn sm" onclick="editContact('${je}')">Edit</button>
-        <button class="btn sm" style="color:var(--red)" onclick="delContact('${je}')">✕</button></div>
+        <div class="hint" style="margin:0">${c.email?"✉ "+esc(c.email):'<span style="color:var(--gray)">No email on file</span>'}${c.phone?" · ☎ "+esc(c.phone):""}${c.cell?" · 📱 "+esc(c.cell):""}</div></div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">${(isP||!c.email)?"":`<button class="btn sm" title="Make primary" onclick="makePrimary('${je}','${esc(String(c.name||'').replace(/'/g,''))}','${esc(String(c.phone||'').replace(/'/g,''))}')">★</button>`}
+        <button class="btn sm" onclick="editContact('${jid}')">Edit</button>
+        <button class="btn sm" style="color:var(--red)" onclick="delContact('${jid}')">✕</button></div>
     </div></div>`; }).join("")||'<div class="hint">No contacts yet — add one below.</div>';
-  const editing = CEDIT!=null ? cs.find(c=>c.email===CEDIT) : null;
+  const editing = CEDIT!=null ? cs.find(c=>c.id===CEDIT) : null;
   el.innerHTML = `${rows}${editing?contactForm(editing):contactForm(null)}`;
   // Manufacturer account numbers render in their own card (right column, under Notes & tasks).
   const accts=CDATA.accounts||[];
@@ -554,10 +555,14 @@ function renderContacts(){ const el=$("#contacts"); if(!el||!CDATA) return;
        <input id="acct_${esc(a.slug)}" value="${esc(a.account_ref||"")}" placeholder="account #" style="width:130px"><button class="btn sm" onclick="saveAcct('${esc(a.slug)}')">Save</button></div>`).join("")+acctHint
     : '<div class="hint">No manufacturer accounts on file for this dealer yet.</div>';
 }
-async function saveContact(){ const email=(($("#c_email")||{}).value||"").trim(); if(!email){ alert("Email is required for a contact."); return; }
-  await crm({action:"save_contact",dealer_id:CUR,old_email:($("#c_old")||{}).value||"",email,name:($("#c_name")||{}).value||"",title:($("#c_title")||{}).value||"",role:($("#c_role")||{}).value||"",phone:($("#c_phone")||{}).value||"",cell:($("#c_cell")||{}).value||""}); CEDIT=null; loadContacts(); }
-function editContact(email){ CEDIT=email; renderContacts(); const f=$("#c_name"); if(f)f.focus(); }
-async function delContact(email){ if(!confirm("Remove contact "+email+"?")) return; await crm({action:"delete_contact",dealer_id:CUR,email}); loadContacts(); }
+async function saveContact(){
+  const email=(($("#c_email")||{}).value||"").trim();
+  const name=(($("#c_name")||{}).value||"").trim();
+  if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ alert("That email doesn't look right. Fix it, or clear the field to add the contact without an email."); return; }
+  if(!name && !email){ alert("Add at least a name (an email is optional)."); return; }
+  await crm({action:"save_contact",dealer_id:CUR,id:($("#c_id")||{}).value||"",email,name,title:($("#c_title")||{}).value||"",role:($("#c_role")||{}).value||"",phone:($("#c_phone")||{}).value||"",cell:($("#c_cell")||{}).value||""}); CEDIT=null; loadContacts(); }
+function editContact(id){ CEDIT=id; renderContacts(); const f=$("#c_name"); if(f)f.focus(); }
+async function delContact(id){ const c=((CDATA&&CDATA.contacts)||[]).find(x=>String(x.id)===String(id)); if(!confirm("Remove contact "+((c&&(c.name||c.email))||"this contact")+"?")) return; await crm({action:"delete_contact",dealer_id:CUR,id}); loadContacts(); }
 async function makePrimary(email,name,phone){ await crm({action:"set_primary_contact",dealer_id:CUR,email,name,phone}); loadContacts(); }
 async function saveAcct(slug){ const v=(($("#acct_"+slug)||{}).value||"").trim(); await crm({action:"save_account_ref",dealer_id:CUR,manufacturer:slug,account_ref:v}); }
 

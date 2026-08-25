@@ -245,7 +245,7 @@ exports.handler = async (event)=>{
       if(!b.dealer_id) return json(400,{error:"dealer_id required"});
       const did=encodeURIComponent(b.dealer_id);
       const [contacts,dealer,lines,mfrs]=await Promise.all([
-        sbGet(`dealer_contacts?dealer_id=eq.${did}&select=email,name,title,role,phone,cell&order=name`).catch(()=>[]),
+        sbGet(`dealer_contacts?dealer_id=eq.${did}&select=id,email,name,title,role,phone,cell&order=name`).catch(()=>[]),
         sbGet(`dealers?id=eq.${did}&select=email,contact_name,phone`).catch(()=>[]),
         sbGet(`dealer_manufacturers?dealer_id=eq.${did}&select=manufacturer,account_ref,active`).catch(()=>[]),
         sbGet("manufacturers?select=slug,name").catch(()=>[]),
@@ -256,17 +256,31 @@ exports.handler = async (event)=>{
       return json(200,{ok:true,contacts:contacts||[],primary_email:String((dealer&&dealer[0]&&dealer[0].email)||"").toLowerCase(),accounts});
     }
     if(b.action==="save_contact"){
-      const email=String(b.email||"").trim().toLowerCase();
-      if(!b.dealer_id||!EMAIL_RE.test(email)) return json(400,{error:"dealer_id + a valid email are required"});
-      const old=String(b.old_email||"").trim().toLowerCase();
-      if(old && old!==email){ try{ await sbSend("DELETE",`dealer_contacts?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&email=eq.${encodeURIComponent(old)}`,null,{Prefer:"return=minimal"}); }catch(e){} }
-      const row={dealer_id:b.dealer_id,email,name:clean(b.name,160),title:clean(b.title,120),role:clean(b.role,120),phone:clean(b.phone,60),cell:clean(b.cell,60)};
-      await sbSend("POST","dealer_contacts?on_conflict=dealer_id,email",row,{Prefer:"resolution=merge-duplicates,return=minimal"});
+      // Email is OPTIONAL — a dealer's contact can be added name/phone-only and have the
+      // email filled in later. Contacts are keyed by a surrogate id (dealer_contacts.id),
+      // so any number of email-less contacts can coexist for one dealer.
+      if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+      const raw=String(b.email||"").trim().toLowerCase();
+      if(raw && !EMAIL_RE.test(raw)) return json(400,{error:"Enter a valid email, or leave it blank."});
+      const email=raw||null;
+      const id=String(b.id||"").trim();
+      const fields={name:clean(b.name,160),title:clean(b.title,120),role:clean(b.role,120),phone:clean(b.phone,60),cell:clean(b.cell,60)};
+      if(id){
+        // Edit an existing contact by id — email may now be added, changed, or cleared.
+        try{ await sbSend("PATCH",`dealer_contacts?id=eq.${encodeURIComponent(id)}`,{email,...fields},{Prefer:"return=minimal"}); }
+        catch(e){ return json(409,{error:"Another contact for this dealer already uses that email."}); }
+      } else {
+        // New contact: with an email, merge on (dealer_id,email); without one, insert fresh.
+        try{ await sbSend("POST","dealer_contacts?on_conflict=dealer_id,email",{dealer_id:b.dealer_id,email,...fields},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
+        catch(e){ return json(500,{error:"Couldn't save the contact — "+(e&&e.message||e)}); }
+      }
       return json(200,{ok:true});
     }
     if(b.action==="delete_contact"){
-      if(!b.dealer_id||!b.email) return json(400,{error:"dealer_id + email required"});
-      await sbSend("DELETE",`dealer_contacts?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&email=eq.${encodeURIComponent(String(b.email).toLowerCase())}`,null,{Prefer:"return=minimal"});
+      if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+      if(b.id){ await sbSend("DELETE",`dealer_contacts?id=eq.${encodeURIComponent(String(b.id))}`,null,{Prefer:"return=minimal"}); }
+      else if(b.email){ await sbSend("DELETE",`dealer_contacts?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&email=eq.${encodeURIComponent(String(b.email).toLowerCase())}`,null,{Prefer:"return=minimal"}); }
+      else return json(400,{error:"id or email required"});
       return json(200,{ok:true});
     }
     if(b.action==="set_primary_contact"){
@@ -402,7 +416,7 @@ exports.handler = async (event)=>{
       const drows=await sbGet(`dealers?id=eq.${did}&select=business_name,email`).catch(()=>[]); const d=drows&&drows[0];
       if(!d) return json(404,{error:"dealer not found"});
       let to=clean(b.contact_email,180)||d.email||null;
-      if(!to){ const c=await sbGet(`dealer_contacts?dealer_id=eq.${did}&select=email&limit=1`).catch(()=>[]); to=(c&&c[0]&&c[0].email)||null; }
+      if(!to){ const c=await sbGet(`dealer_contacts?dealer_id=eq.${did}&email=not.is.null&select=email&limit=1`).catch(()=>[]); to=(c&&c[0]&&c[0].email)||null; }
       to=String(to||"").trim(); if(!EMAIL_RE.test(to)) return json(200,{ok:false,message:"No valid contact email on file for this dealer."});
       const opt=await sbGet(`email_optout?email=eq.${encodeURIComponent(to.toLowerCase())}&select=email`).catch(()=>[]);
       if(opt&&opt[0]) return json(200,{ok:false,message:"That contact has unsubscribed from marketing emails."});

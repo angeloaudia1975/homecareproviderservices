@@ -115,7 +115,7 @@ async function enqueueActivation(dealer_id, newSlugs){
     const done=new Set(); for(const r of (priorQ||[])){ String(r.reason||"").replace(/^activation:/,"").split(",").forEach(s=>{ if(s) done.add(s); }); }
     const slugs=newSlugs.filter(s=>s && !done.has(s)); if(!slugs.length) return;
     let to=String(d.email||"").trim();
-    if(!EMAIL_RE.test(to)){ const c=await sbGet(`dealer_contacts?dealer_id=eq.${encodeURIComponent(dealer_id)}&select=email&limit=1`).catch(()=>[]); to=String((c&&c[0]&&c[0].email)||"").trim(); }
+    if(!EMAIL_RE.test(to)){ const c=await sbGet(`dealer_contacts?dealer_id=eq.${encodeURIComponent(dealer_id)}&email=not.is.null&select=email&limit=1`).catch(()=>[]); to=String((c&&c[0]&&c[0].email)||"").trim(); }
     if(!EMAIL_RE.test(to)) return;
     const opted=new Set((opt||[]).map(r=>String(r.email||"").toLowerCase())); if(opted.has(to.toLowerCase())) return;
     const lines=slugs.map(s=>mfrName[s]||s);
