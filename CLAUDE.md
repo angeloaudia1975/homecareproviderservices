@@ -260,6 +260,10 @@ The model:
   pneumatic/non-pneumatic feature, dimensions, sizing, model IFU, billing codes) is unique per model.
 - **Review/approve each model independently** in the enrichment tool. Variants live in the tool's
   `DATA.pages` manifest with their `variant_*` keys; the parent is flagged and lists its `variants`.
+  The review screen renders the family as one grouped block (`renderGrouped`/`familyBlock` in
+  `admin/product-content-review.html`): each model card shows its own manufacturer `website_url`,
+  its own image gallery, a per-model Approve button, and every field is tagged **Shared** (applies
+  to all models) or **Model-specific** (this model only).
 - **Schema:** `supabase/product_content_variants.sql` adds the columns + indexes. Seed a family with a
   per-model seed (see `ovation_gen2_variants_seed.sql`), status `pending_review`.
 
