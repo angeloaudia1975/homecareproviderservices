@@ -253,6 +253,7 @@ function mapRows(slug, per, source_file, rows, ctx){
     }
     out.push({
       manufacturer:slug, period:per, dealer_id:did||null, channel:channel||null,
+      source:"commission",   // explicit lane tag (the sales-report importer stamps 'sales_report')
       customer_name:name||null, customer_ref:acct||null,
       ship_city:shipCity||null, ship_state:shipState||null, ship_zip:shipZip||null,
       ship_name:shipName||null, ship_address:shipAddr||null,
@@ -313,9 +314,16 @@ exports.handler = async (event)=>{
       // Lightweight dealer list (for the "resolve unmatched" picker) + reports already on file.
       let dealers=[];
       try{ dealers=(await sbGetAll("dealers?select=id,business_name,city,state","business_name")).map(d=>({id:d.id,name:d.business_name,city:d.city||"",state:d.state||""})); }catch(e){}
+      // Coverage grid — a manufacturer-month counts as a COMMISSION report received when it carries
+      // commission data, regardless of which importer loaded it (STANDARD RULE): the commission lane
+      // (source='commission'), OR any row with a non-zero commission (e.g. a sales-report upload that
+      // also carries commission, like PediFix / Ovation). Returns every YYYY-MM that qualifies.
       let received={};
-      try{ const rows=await sbGetAll("monthly_sales?select=manufacturer,period","id");
-        const acc={}; for(const r of (rows||[])){ const p=(r.period||"").slice(0,7); if(!r.manufacturer||!p) continue; (acc[r.manufacturer]||(acc[r.manufacturer]=new Set())).add(p); }
+      try{ const rows=await sbGetAll("monthly_sales?select=manufacturer,period,source,commission","id");
+        const acc={}; for(const r of (rows||[])){ const p=(r.period||"").slice(0,7); if(!r.manufacturer||!p) continue;
+          const isCommission = r.source==="commission" || (r.commission!=null && Number(r.commission)!==0);
+          if(!isCommission) continue;
+          (acc[r.manufacturer]||(acc[r.manufacturer]=new Set())).add(p); }
         for(const k in acc) received[k]=[...acc[k]].sort(); }catch(e){}
       return json(200,{ok:true,manufacturers,templates,dealers,received});
     }

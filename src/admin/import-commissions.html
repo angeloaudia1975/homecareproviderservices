@@ -24,6 +24,7 @@
  .dim{color:#9aa4ae}.pill{display:inline-block;background:#eef2f7;border-radius:10px;padding:2px 9px;font-size:12px;margin:2px}
  .mchip{display:inline-block;width:19px;text-align:center;border-radius:4px;font-size:10px;font-weight:700;margin:1px;padding:2px 0}
  .mchip.on{background:#eefaf0;color:#1f7a44;border:1px solid #bfe3ca}.mchip.off{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa}
+ .mchip.none{background:#f3f4f6;color:#9aa4ae;border:1px solid #e5e7eb}
  .recvrow{display:flex;align-items:center;gap:10px;padding:3px 0;border-bottom:1px solid #f0f2f5}.rname{flex:1;min-width:170px;font-size:13px}
  .rzrow{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eef1f4;flex-wrap:wrap}.rzrow .rn{flex:1;min-width:230px;font-size:13px}
  .warn{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;color:#9a3412;font-size:13px;margin-top:8px}
@@ -146,10 +147,24 @@ function renderReceived(){
   const ML=["J","F","M","A","M","J","J","A","S","O","N","D"];
   const mfrs=(CONFIG.manufacturers||[]);
   if(!mfrs.length){ el.textContent="No manufacturers configured."; return; }
-  el.innerHTML=`<div style="margin:2px 0 6px;font-weight:700">${yr}</div>`+mfrs.map(mf=>{
-    const got=new Set(rec[mf.slug]||[]); const chips=[];
-    for(let m=1;m<=cm;m++){ const mm=yr+"-"+String(m).padStart(2,"0"); chips.push(`<span class="mchip ${got.has(mm)?"on":"off"}" title="${mm}">${ML[m-1]}</span>`); }
-    return `<div class="recvrow"><div class="rname">${esc(mf.name)}</div><div>${chips.join("")}</div></div>`;
+  // Show EVERY year that has commission data, not just the current one — so loaded history (e.g. 2025)
+  // is visible. A month is green when a commission report is on file for it (either importer). For the
+  // current year, months still to come in / not yet received show amber ("still needed"); past-year
+  // gaps show neutral (not flagged as needed).
+  const years=new Set([yr]);
+  Object.values(rec).forEach(arr=>(arr||[]).forEach(p=>{ const y=parseInt(String(p).slice(0,4),10); if(y) years.add(y); }));
+  const YRS=[...years].sort();
+  el.innerHTML=`<div class="hint" style="margin:0 0 8px">Green = commission report received · amber = still needed (current year) · grey = not on file (past year).</div>`
+    +mfrs.map(mf=>{
+    const got=new Set(rec[mf.slug]||[]);
+    const groups=YRS.map(y=>{
+      const last=(y===yr)?cm:12; let chips="";
+      for(let m=1;m<=last;m++){ const mm=y+"-"+String(m).padStart(2,"0"); const on=got.has(mm);
+        const cls=on?"on":(y===yr?"off":"none");
+        chips+=`<span class="mchip ${cls}" title="${mm}">${ML[m-1]}</span>`; }
+      return `<span style="display:inline-flex;align-items:center;gap:3px;margin:0 12px 4px 0"><span style="font-size:10px;color:#9aa4ae;font-weight:800">${y}</span>${chips}</span>`;
+    }).join("");
+    return `<div class="recvrow"><div class="rname">${esc(mf.name)}</div><div style="display:flex;flex-wrap:wrap">${groups}</div></div>`;
   }).join("");
 }
 function locByName(){ const m={}; mappedRows().forEach(r=>{ const n=String(r.customer_name||"").trim(); if(n&&!m[n]) m[n]={city:r.ship_city||"",state:r.ship_state||""}; }); return m; }

@@ -306,6 +306,25 @@ source data to maintain the platform's manufacturer account numbers — in BOTH 
 - The captured number must reach every place account numbers live (Dealer 360, Partner 360, reporting,
   CRM sync) — it is stored once on `dealer_manufacturers`, which those surfaces already read.
 
+## 14. A report with commission data counts as a commission report (RULE)
+
+Some manufacturer reports are BOTH a sales report and a commission statement (e.g. PediFix, Ovation).
+Whichever importer loads them, they must count as commission reports.
+
+- Both importers write to `monthly_sales` and both store a per-line `commission`. Each row is tagged
+  by lane: the commission importer stamps `source='commission'`, the sales-report importer
+  `source='sales_report'`. Keep both tags set.
+- **Coverage & commission reporting key off commission DATA, not the importer**: a manufacturer-month
+  counts as a commission report received when it has `source='commission'` OR any row with a non-zero
+  `commission` (commissions-api `config.received`). Never gate commission coverage/reporting on `source`
+  alone.
+- The **Commission Report Import coverage grid** shows **every year that has data** (not just the current
+  year), so loaded history stays visible; green = received, amber = still needed (current year), grey =
+  gap in a past year.
+- Optional hygiene: backfill `source='commission'` on legacy commission rows that predate the tag
+  (`supabase/backfill_commission_source.sql`). Not required for the grid, which already keys on
+  commission data.
+
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
 - [ ] Hero headline is short + single-row on desktop, wraps on mobile.
