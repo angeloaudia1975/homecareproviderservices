@@ -270,6 +270,24 @@ The model:
 Apply this to every multi-model / multi-configuration / multi-gallery product (Compact Pro ROM
 Standard/Cool wrap, back braces by panel, etc.), not just the Gen 2 boot.
 
+## 12. AI dealer communications — one central Style Guide (RULE)
+
+Every AI email generator and automated-campaign generator writes from ONE shared style guide,
+`netlify/functions/_ai_style.js` (the "HCPS AI Communication Style Guide"). Maintain the rules there
+only — never copy tone rules into individual prompts.
+
+- Any generator that builds an AI prompt for dealer-facing copy (`ai-email-api.js`, `campaign-api.js`,
+  and any new one) MUST `require("./_ai_style.js")`, inject `loadStyleGuide(sbGet)` into the prompt,
+  and run `findBanned()` on the result (regenerate once if it flags a phrase).
+- The guide can be overridden live via `app_settings.ai_style_guide` (`{text:...}`) with no redeploy;
+  `loadStyleGuide()` falls back to the code default. Seed/edit with `supabase/ai_style_guide_seed.sql`.
+- Voice: a knowledgeable rep bringing a real, specific opportunity — confident, helpful, relevant,
+  value-driven. Never desperate, apologetic, repetitive, or generically sales-y.
+- Every message leads with a real reason grounded in Dealer 360 (purchase history, lines bought,
+  products, inactivity, regional trends, new products/promotions, crossover) — never "just checking
+  in" / "still interested?". Follow the Don't-Say → Say-Instead pairs in the module.
+- Hardcoded (non-AI) templates (e.g. `_engine.js`) follow the same voice — no "we've missed you".
+
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
 - [ ] Hero headline is short + single-row on desktop, wraps on mobile.

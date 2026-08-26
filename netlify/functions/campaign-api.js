@@ -28,6 +28,7 @@ const P=require("./_platform.js");
 const ZC=require("./_zohocampaigns.js");
 const A=require("./_audiences.js");                        // saved Target Audiences (Builder)
 const { exchangeCode, hasCreds } = require("./_zoho.js");   // reuse the CRM Self-Client token exchange
+const { loadStyleGuide, findBanned } = require("./_ai_style.js");  // centralized HCPS AI Communication Style Guide
 
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -154,18 +155,24 @@ async function aiCopy(brief,line,products){
   if(!AI_KEY) return null;
   const goal=brief.goal||"manufacturer_intro"; const offer=(brief.offer||"").trim();
   const prod=(products||[]).map(p=>p.name).filter(Boolean).slice(0,4).join(", ");
-  const prompt=`You are writing a short, warm B2B email for HomeCare Provider Services (HCPS), a rep group that sells home-medical-equipment lines to durable-medical-equipment dealers. Write copy for this campaign.
+  const styleGuide=await loadStyleGuide(sbGet);   // one source of truth, shared with ai-email-api
+  const buildPrompt=(avoidNote)=>`You are writing a short, professional B2B email for HomeCare Provider Services (HCPS), a rep group that sells home-medical-equipment lines to durable-medical-equipment dealers. Write copy for this campaign.
+
+${styleGuide}
+
 Goal: ${goal}
 Manufacturer line: ${line||"(none specified)"}
 Offer (optional): ${offer||"(none)"}
 Featured products: ${prod||"(none)"}
 Audience: existing/prospective HCPS dealers (businesses, not consumers).
+Lead with the specific value/opportunity of ${line||"this line"} for the dealer's mix — not a check-in or a "still interested?" ask.
 Return ONLY a JSON object with exactly these keys:
-  "subjects": array of 3 subject lines, each <= 55 characters, no emojis
+  "subjects": array of 3 subject lines, each <= 55 characters, no emojis, each naming a concrete benefit/opportunity
   "preheader": one line <= 90 characters
-  "intro_html": 1–2 short paragraphs of plain HTML (<p>…</p>), professional and benefit-focused, NO links, NO greeting, NO signature. You MAY use the literal placeholder {{company}} where the dealer's business name should appear.
-Do not include markdown or any text outside the JSON.`;
-  try{
+  "intro_html": 1–2 short paragraphs of plain HTML (<p>…</p>), professional and value-driven, NO links, NO greeting, NO signature. You MAY use the literal placeholder {{company}} where the dealer's business name should appear.
+Do not include markdown or any text outside the JSON.
+${avoidNote||""}`;
+  async function run(prompt){
     const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
       headers:{"x-api-key":AI_KEY,"anthropic-version":"2023-06-01","content-type":"application/json"},
       body:JSON.stringify({model:AI_MODEL,max_tokens:700,messages:[{role:"user",content:prompt}]})});
@@ -173,7 +180,17 @@ Do not include markdown or any text outside the JSON.`;
     const j=await r.json().catch(()=>null);
     let text=""; for(const c of ((j&&j.content)||[])){ if(c&&typeof c.text==="string") text+=c.text; }
     const s=text.indexOf("{"), e=text.lastIndexOf("}"); if(s<0||e<0) return null;
-    const obj=JSON.parse(text.slice(s,e+1));
+    try{ return JSON.parse(text.slice(s,e+1)); }catch(_){ return null; }
+  }
+  try{
+    let obj=await run(buildPrompt());
+    if(!obj) return null;
+    // Safety net: regenerate once if a banned/desperate phrase slipped into the subjects or intro.
+    const bad=findBanned(`${(obj.subjects||[]).join(" ")}\n${obj.preheader||""}\n${obj.intro_html||""}`);
+    if(bad.length){
+      const retry=await run(buildPrompt(`IMPORTANT: your previous draft used phrasing the style guide forbids (${bad.map(x=>`"${x}"`).join(", ")}). Rewrite so none of those appear; lead with the concrete opportunity instead.`));
+      if(retry) obj=retry;
+    }
     const subjects=Array.isArray(obj.subjects)?obj.subjects.filter(x=>typeof x==="string"&&x.trim()).slice(0,5):[];
     if(!subjects.length) return null;
     let intro=String(obj.intro_html||"").trim();

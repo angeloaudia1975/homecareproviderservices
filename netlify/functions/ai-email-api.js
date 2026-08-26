@@ -18,6 +18,7 @@ const json=(c,o)=>({statusCode:c,headers:{"content-type":"application/json","cac
 const H=()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
 const { dealerScope, isAdmin } = require("./_scope.js");
+const { loadStyleGuide, findBanned } = require("./_ai_style.js");
 
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -120,43 +121,59 @@ exports.handler=async(event)=>{
     const ctx=await gather(dealerId, slugName);
     const contactName=String(b.contact_name||"").trim();
     const firstName=contactName?contactName.split(/\s+/)[0]:"";
+    const styleGuide=await loadStyleGuide(sbGet);   // centralized HCPS AI Communication Style Guide
 
-    const prompt=`You write short, warm, professional B2B sales emails for HomeCare Provider Services (HCPS), a manufacturers' rep group that sells home-medical-equipment lines to durable-medical-equipment (DME) dealers.
+    const buildPrompt=(avoidNote)=>`You write short, professional B2B sales emails for HomeCare Provider Services (HCPS), a manufacturers' rep group that sells home-medical-equipment lines to durable-medical-equipment (DME) dealers.
+
+${styleGuide}
 
 Write ONE email from the rep (${me.name||"the HCPS rep"}) to a dealer contact${firstName?` named ${firstName}`:""}.
 
 Situation / purpose of this email:
 ${tmpl}
 
-What we know about this account (use only what's relevant; never invent facts or numbers):
+What we know about this account (use only what's relevant; never invent facts or numbers) — this is the material for the specific, real reason the style guide requires:
 ${contextLines(ctx)}
 
-Rules:
+Format:
 - Greeting to the contact by first name if provided ("Hi ${firstName||"there"},").
 - 2 to 4 short paragraphs, plain sentences, no marketing fluff, no emojis.
-- Reference the account specifics that fit the purpose (a line they buy, a dormant line, health, cadence) — but don't dump data; be natural.
-- End with a clear, low-pressure next step (a question or a soft ask).
+- Open with the specific insight/opportunity for THIS dealer (a line they buy, a dormant line, whitespace, cadence) — never a check-in or apology.
+- Close with a clear next step or a simple either/or choice — not an open-ended "let me know if…".
 - Do NOT include a signature or sign-off block (no "Best,"/name) — that is added separately.
 - Keep it concise: a busy dealer should read it in 20 seconds.
-
+${avoidNote||""}
 Return ONLY a JSON object with exactly these keys:
-  "subject": a specific subject line, <= 60 characters, no emojis
+  "subject": a specific subject line, <= 60 characters, no emojis, that names the opportunity (not "checking in")
   "body": the email body as plain text with real line breaks between paragraphs (no HTML, no signature)
 Do not include markdown or any text outside the JSON.`;
 
-    let subject="", body="";
-    try{
+    async function generate(prompt){
       const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
         headers:{"x-api-key":AI_KEY,"anthropic-version":"2023-06-01","content-type":"application/json"},
         body:JSON.stringify({model:AI_MODEL,max_tokens:900,messages:[{role:"user",content:prompt}]})});
       if(!r.ok){ const t=await r.text().catch(()=>""); let hint=""; try{ const ej=JSON.parse(t); hint=(ej&&ej.error&&ej.error.message)?` (${ej.error.message})`:""; }catch(_){}
-        return json(200,{ok:false,error:"ai_error",message:`The AI service returned an error${hint}. Try again.`,detail:t.slice(0,200),model:AI_MODEL,signature}); }
+        return {err:`The AI service returned an error${hint}. Try again.`, detail:t.slice(0,200)}; }
       const j=await r.json().catch(()=>null);
       // Pull the text block(s) — newer models can return a reasoning block before the text, so never
       // assume content[0] is the answer; concatenate every text block.
       let text=""; for(const c of ((j&&j.content)||[])){ if(c&&typeof c.text==="string") text+=c.text; }
       const s=text.indexOf("{"), e=text.lastIndexOf("}");
-      if(s>=0&&e>=0){ const obj=JSON.parse(text.slice(s,e+1)); subject=String(obj.subject||"").trim(); body=String(obj.body||"").trim(); }
+      if(s>=0&&e>=0){ try{ const obj=JSON.parse(text.slice(s,e+1)); return {subject:String(obj.subject||"").trim(), body:String(obj.body||"").trim()}; }catch(_){} }
+      return {subject:"", body:""};
+    }
+
+    let subject="", body="";
+    try{
+      let g=await generate(buildPrompt());
+      if(g.err) return json(200,{ok:false,error:"ai_error",message:g.err,detail:g.detail,model:AI_MODEL,signature});
+      // Safety net: if a banned/desperate phrase slipped through, regenerate ONCE naming the offenders.
+      const bad=findBanned(`${g.subject}\n${g.body}`);
+      if(bad.length){
+        const retry=await generate(buildPrompt(`IMPORTANT: your previous draft used phrasing the style guide forbids (${bad.map(x=>`"${x}"`).join(", ")}). Rewrite so none of those appear; lead with the specific opportunity instead.`));
+        if(!retry.err && retry.subject && retry.body) g=retry;
+      }
+      subject=g.subject; body=g.body;
     }catch(e){ return json(200,{ok:false,error:"ai_error",message:"Couldn't reach the AI service.",signature}); }
     if(!subject||!body) return json(200,{ok:false,error:"ai_empty",message:"The AI didn't return a usable draft — try again or a different template.",signature});
 

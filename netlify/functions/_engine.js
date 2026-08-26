@@ -229,8 +229,9 @@ function tmpl(template,dealer,payload,unsub){
   if(template==="reengage"){ // #13 Email Re-engagement — light "still want to hear from us?" touch
     return {subject:`Still want product updates from HCPS?`,
       ...wrap(`We'd love to stay useful${hi}`,`We haven't seen you open our recent notes, and we don't want to clutter your inbox. If our reorder reminders, pricing, and new-line updates are still helpful, no action is needed — you'll keep getting them. If not, you can unsubscribe below anytime. Either way, your portal and pricing are always a click away when you need to order.`,"Visit your portal")}; }
-  // dormant (default)
-  return {subject:"We've missed you at HomeCare Provider Services", ...wrap(`We've missed you${hi}`,`It's been a little while since your last order with HomeCare Provider Services. Your account is active and ready — browse your lines, see your pricing, and reorder in a couple of clicks, 24/7.`,"Sign in & reorder")};
+  // dormant (default) — lead with value/opportunity per the HCPS AI Communication Style Guide
+  // (no "we've missed you"): the account is ready and a reorder is a couple of clicks away.
+  return {subject:"Reorder your HCPS lines in a couple of clicks", ...wrap(`Your account and pricing are ready${hi}`,`Your HomeCare Provider Services account is active with your dealer pricing loaded, so the lines you've ordered before are just a couple of clicks from a reorder — anytime, 24/7. If a new size, model, or complementary line would fit your mix, your HCPS rep can send a quick recommendation — just reply.`,"Sign in & reorder")};
 }
 async function sendMail({to,subject,html,text}){
   const key=process.env.RESEND_API_KEY; if(!key) return {ok:false,skipped:true};
