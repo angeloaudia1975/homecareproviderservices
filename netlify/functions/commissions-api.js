@@ -14,6 +14,15 @@ const ORDERING_BASE = process.env.ORDERING_BASE || "https://hcpsonlineordering.n
 // Manufacturers with no numeric account #: the report's company name IS the account number, and it is
 // shared across a dealer's whole family (HQ + branches). The importer stores it on the family on commit.
 const NAME_AS_ACCOUNT = new Set(["access4u"]);
+// Manufacturers whose customer NUMBERS are reused across different dealers (e.g. PediFix, where one
+// C-number can be Patient Aids in one month and Access Lafayette in another). For these we resolve
+// each line to a dealer by the customer NAME first, and never treat the number as a stable dealer key.
+const NAME_FIRST = new Set(["pedifix"]);
+// ...and for those, do NOT auto-stamp the report's customer number onto the matched dealer's account
+// grid, because the number is not a stable identifier for that dealer.
+const NO_ACCOUNT_CAPTURE = new Set(["pedifix"]);
+// Split one uploaded file that spans several report months into per-month rows by Order Date.
+function groupRowsByMonth(rows){ const g={}, undated=[]; for(const r of rows){ const d=toDate(r&&r.order_date); const m=d?d.slice(0,7):null; if(m){ (g[m]||(g[m]=[])).push(r); } else { undated.push(r); } } return {groups:g, undated}; }
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 
@@ -110,7 +119,12 @@ async function buildCtx(slug){
   try{ const cc=await sbGet("app_settings?key=eq.commission_config&select=value"); orderLines=new Set(((cc&&cc[0]&&cc[0].value&&cc[0].value.order_number_lines))||[]); }catch(e){}
   const fam=await sbGetAll("dealers?select=id,business_name,city,state,zip,address,parent_id","business_name").catch(()=>[]);
   const rootOf=new Map(), byRoot=new Map(), nameById=new Map();
-  for(const d of (fam||[])){ const root=d.parent_id||d.id; rootOf.set(d.id,root); (byRoot.get(root)||byRoot.set(root,[]).get(root)).push(d); nameById.set(d.id,d.business_name); }
+  // Match by dealer business NAME (normalized), not just saved aliases — so a line resolves to the
+  // dealer that actually bears that name even when its customer number is shared/reused. First writer
+  // wins on a normalized-name collision.
+  const idByName={};
+  for(const d of (fam||[])){ const root=d.parent_id||d.id; rootOf.set(d.id,root); (byRoot.get(root)||byRoot.set(root,[]).get(root)).push(d); nameById.set(d.id,d.business_name);
+    const nk=dnorm(d.business_name); if(nk && !(nk in idByName)) idByName[nk]=d.id; }
   // Saved ZIP→branch assignments (from the review screen) — resolve ambiguous/assigned ZIPs deterministically.
   let zipmap={};
   try{ const zm=await sbGet(`app_settings?key=eq.zipmap:${encodeURIComponent(slug)}&select=value`); if(zm&&zm[0]&&zm[0].value&&typeof zm[0].value==="object") zipmap=zm[0].value; }catch(e){}
@@ -119,7 +133,7 @@ async function buildCtx(slug){
   const invChannel={};
   try{ const iv=await sbGetAll(`monthly_sales?manufacturer=eq.${encodeURIComponent(slug)}&line_type=eq.invoice&select=invoice_no,channel`,"invoice_no").catch(()=>[]);
     for(const x of (iv||[])){ if(x.invoice_no) invChannel[String(x.invoice_no).toUpperCase()]=x.channel; } }catch(e){}
-  return {idByAlias,idByAccount,orderLines,rootOf,byRoot,nameById,zipmap,invChannel};
+  return {idByAlias,idByName,idByAccount,orderLines,rootOf,byRoot,nameById,zipmap,invChannel};
 }
 
 // Map raw report rows to monthly_sales rows AND compute a review report. Pure (no DB writes) so the
@@ -127,9 +141,10 @@ async function buildCtx(slug){
 // name alias. Branch attribution: ship-to ZIP → a branch/corporate ZIP on file = physical; no ZIP
 // match = corporate drop-ship. (Falls back to city/state for lines that supply them, e.g. non-Golden.)
 function mapRows(slug, per, source_file, rows, ctx){
-  const {idByAlias,idByAccount,orderLines,rootOf,byRoot,nameById}=ctx;
+  const {idByAlias,idByName,idByAccount,orderLines,rootOf,byRoot,nameById}=ctx;
   const zipmap=ctx.zipmap||{}, invChannel=ctx.invChannel||{};
   const refMatch=!orderLines.has(slug);
+  const nameFirst=NAME_FIRST.has(slug);
   const out=[]; const unmatched=new Map();
   let matched=0, physical=0, dropship=0, physAmt=0, dropAmt=0, credits=0, amtTot=0, commTot=0, heldRows=0;
   const newAcct=new Map(), noZip=new Map(), ambiguous=[], ambSeen=new Set(), models=new Set(), unknownBranch=new Map();
@@ -160,9 +175,18 @@ function mapRows(slug, per, source_file, rows, ctx){
     const invRef=(r.invoice_no!=null&&String(r.invoice_no).trim())?String(r.invoice_no).trim().toUpperCase():"";
     if(lineType==="invoice"){ invRows++; if(billed!=null) billedTot+=billed; }
     else if(lineType==="payment"){ payRows++; }
-    const byAcct=refMatch&&acct&&idByAccount[acct];
-    const byName=name?idByAlias[dnorm(name)]:null;
-    let did=byAcct||byName||null; let channel=null;
+    const acctId=refMatch&&acct?(idByAccount[acct]||null):null;
+    const nameId=name?(idByAlias[dnorm(name)]||idByName[dnorm(name)]||null):null;
+    // Reused-number manufacturers (NAME_FIRST): the customer NAME is authoritative — resolve by it, and
+    // only fall back to the number when no dealer bears the name. Everyone else keeps number-first, but
+    // now a NAME that maps to a DIFFERENT dealer than the number still wins (that mismatch was a misroute).
+    let did;
+    if(nameFirst) did=nameId||acctId||null;
+    else if(nameId&&acctId&&nameId!==acctId) did=nameId;
+    else did=acctId||nameId||null;
+    const byName=!!(did&&did===nameId);
+    const byAcct=!!(did&&!byName&&did===acctId);
+    let channel=null;
     if(did){
       const root=rootOf.get(did)||did;
       const famArr=byRoot.get(root)||[];
@@ -308,49 +332,78 @@ exports.handler = async (event)=>{
     if(b.action==="analyze"){
       const slug=String(b.manufacturer||"").trim();
       const period=String(b.period||"").trim();
+      const multi=b.multi_month===true||period==="auto";
       const rows=Array.isArray(b.rows)?b.rows:[];
-      if(!slug||!/^\d{4}-\d{2}$/.test(period)) return json(400,{error:"manufacturer + period (YYYY-MM) required"});
+      if(!slug) return json(400,{error:"manufacturer required"});
+      if(!multi && !/^\d{4}-\d{2}$/.test(period)) return json(400,{error:"manufacturer + period (YYYY-MM) required"});
       if(!rows.length) return json(400,{error:"no rows"});
       const ctx=await buildCtx(slug);
-      const {review}=mapRows(slug,`${period}-01`,String(b.source_file||"").trim()||null,rows,ctx);
+      // Dealer matching does not depend on the period, so a single pass scores the whole file for review.
+      const {review}=mapRows(slug,`${(multi?"2000-01":period)}-01`,String(b.source_file||"").trim()||null,rows,ctx);
+      if(multi){
+        const {groups,undated}=groupRowsByMonth(rows);
+        review.months=Object.keys(groups).sort().map(m=>({period:m,rows:groups[m].length}));
+        review.undated_rows=undated.length;
+        if(!review.months.length) return json(200,{ok:false,error:"No usable Order Date on any row — map the Order Date column, or uncheck ‘multiple months’ and pick one report month."});
+      }
       return json(200,{ok:true,review});
     }
 
     // Commit: map the rows and write them to monthly_sales (replacing any prior load of this file+month).
+    // A file may cover ONE month (b.period=YYYY-MM) or SEVERAL (b.multi_month=true / period="auto") —
+    // in the multi-month case each row is filed under its own Order Date, one delete+insert per month,
+    // so re-importing the same file stays idempotent per month.
     if(b.action==="import"){
       const slug=String(b.manufacturer||"").trim();
-      const period=String(b.period||"").trim();          // expect YYYY-MM
+      const period=String(b.period||"").trim();          // expect YYYY-MM (single-month)
+      const multi=b.multi_month===true||period==="auto";
       const source_file=String(b.source_file||"").trim()||null;
       const rows=Array.isArray(b.rows)?b.rows:[];
-      if(!slug||!/^\d{4}-\d{2}$/.test(period)) return json(400,{error:"manufacturer + period (YYYY-MM) required"});
+      if(!slug) return json(400,{error:"manufacturer required"});
+      if(!multi && !/^\d{4}-\d{2}$/.test(period)) return json(400,{error:"manufacturer + period (YYYY-MM) required"});
       if(!rows.length) return json(400,{error:"no rows"});
-      const per=`${period}-01`;
       const ctx=await buildCtx(slug);
-      const {out,review}=mapRows(slug,per,source_file,rows,ctx);
       // Column-existence probes: enrichment cols (golden_import.sql) + ship cols (attribution.sql).
       let hasEnrich=true; try{ const p=await fetch(`${SUPABASE_URL}/rest/v1/monthly_sales?select=channel&limit=1`,{headers:H()}); hasEnrich=p.ok; }catch(e){ hasEnrich=false; }
       let hasShip=true;   try{ const p=await fetch(`${SUPABASE_URL}/rest/v1/monthly_sales?select=ship_city&limit=1`,{headers:H()}); hasShip=p.ok; }catch(e){ hasShip=false; }
       let hasShipNA=true; try{ const p=await fetch(`${SUPABASE_URL}/rest/v1/monthly_sales?select=ship_name&limit=1`,{headers:H()}); hasShipNA=p.ok; }catch(e){ hasShipNA=false; }
       const ENRICH=["channel","item_no","line_type","credit_reason","invoice_no","ship_zip","commission_rate","order_date","billed_amount","memo"];
-      const clean=out.map(o=>{ const row={...o};
+      const clean1=out=>out.map(o=>{ const row={...o};
         if(!hasEnrich) ENRICH.forEach(k=>delete row[k]);
         if(!hasShip){ delete row.ship_city; delete row.ship_state; delete row.ship_zip; }
         if(!hasShipNA){ delete row.ship_name; delete row.ship_address; }   // pre-migration safety
         return row; });
-      try{ let del=`monthly_sales?manufacturer=eq.${encodeURIComponent(slug)}&period=eq.${encodeURIComponent(per)}`;
-        if(source_file) del+=`&source_file=eq.${encodeURIComponent(source_file)}`;
-        await sbSend("DELETE",del,null,{Prefer:"return=minimal"}); }catch(e){}
-      let inserted=0;
-      for(let i=0;i<clean.length;i+=500){ const part=clean.slice(i,i+500); await sbSend("POST","monthly_sales",part,{Prefer:"return=minimal"}); inserted+=part.length; }
+      // Build the per-month batches to write.
+      let batches, undatedCount=0;
+      if(multi){
+        const g=groupRowsByMonth(rows); undatedCount=g.undated.length;
+        batches=Object.keys(g.groups).sort().map(m=>({per:`${m}-01`,period:m,rows:g.groups[m]}));
+        if(!batches.length) return json(200,{ok:false,error:"No usable Order Date on any row — can't split by month."});
+      } else {
+        batches=[{per:`${period}-01`,period,rows}];
+      }
+      let inserted=0; const allOut=[]; const monthsWritten=[];
+      for(const bt of batches){
+        const {out}=mapRows(slug,bt.per,source_file,bt.rows,ctx);
+        const clean=clean1(out);
+        try{ let del=`monthly_sales?manufacturer=eq.${encodeURIComponent(slug)}&period=eq.${encodeURIComponent(bt.per)}`;
+          if(source_file) del+=`&source_file=eq.${encodeURIComponent(source_file)}`;
+          await sbSend("DELETE",del,null,{Prefer:"return=minimal"}); }catch(e){}
+        for(let i=0;i<clean.length;i+=500){ const part=clean.slice(i,i+500); await sbSend("POST","monthly_sales",part,{Prefer:"return=minimal"}); inserted+=part.length; }
+        allOut.push(...out); monthsWritten.push({period:bt.period,rows:clean.length});
+      }
+      // One combined review for the response (dealer matching is period-independent, so a single pass scores all rows).
+      const review=mapRows(slug,"2000-01-01",source_file,rows,ctx).review;
+      review.months=monthsWritten; if(undatedCount) review.undated_rows=undatedCount;
       // Manufacturer account numbers are ORGANIZATION-level. For every matched dealer, capture the
       // account number this report carries for it — the report company name for name-as-account lines
       // (Access4u), otherwise the customer # — store it on that dealer, and fill it across the dealer's
       // family (parent + branches) wherever a branch has none yet (never overwriting a branch that holds
-      // its own distinct number). Skipped for order-number lines, where the "customer #" is an order #.
+      // its own distinct number). Skipped for order-number lines and reused-number manufacturers.
       let accounts_set=0;
-      if(!(ctx.orderLines&&ctx.orderLines.has(slug))){
+      if(!(ctx.orderLines&&ctx.orderLines.has(slug)) && !NO_ACCOUNT_CAPTURE.has(slug)){
         const acctByDealer=new Map();
-        for(const o of out){
+        for(const o of allOut){
           if(!o.dealer_id) continue;
           const ref = NAME_AS_ACCOUNT.has(slug) ? String(o.customer_name||"").trim() : String(o.customer_ref||"").trim();
           if(ref && !acctByDealer.has(o.dealer_id)) acctByDealer.set(o.dealer_id, ref);
@@ -359,7 +412,7 @@ exports.handler = async (event)=>{
           try{ await orgAccounts.propagateAccountRef(slug, dealerId, ref); accounts_set++; }catch(e){}
         }
       }
-      return json(200,{ok:true,inserted,review,accounts_set,
+      return json(200,{ok:true,inserted,review,accounts_set,months:monthsWritten,
         matched:review.matched, unmatched:review.unmatched.slice(0,200), unmatched_count:review.unmatched_count});
     }
 

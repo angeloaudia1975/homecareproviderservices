@@ -37,6 +37,13 @@
     <div class="row">
       <div class="fld"><label>Manufacturer / line</label><select id="mfr" onchange="reparse()"></select></div>
       <div class="fld"><label>Report month</label><input type="month" id="period"></div>
+      <div class="fld" style="min-width:260px"><label>&nbsp;</label>
+        <label style="font-weight:400;display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="multiMonth" onchange="onMultiToggle()" style="width:auto">
+          File covers multiple months (file each row by its Order Date)
+        </label>
+        <div id="multiHint" class="sub" style="margin-top:2px"></div>
+      </div>
       <div class="fld"><label>Report file</label><input type="file" id="file" accept=".xlsx,.xls,.csv,.pdf" onchange="onFile()"></div>
       <div class="fld"><label>Header row</label><input type="number" id="hrow" value="1" min="1" style="width:80px" onchange="reparse()"></div>
     </div>
@@ -362,13 +369,35 @@ async function saveTemplate(){
   try{ await api({action:"save_template",manufacturer:slug,mapping}); CONFIG.templates=CONFIG.templates||{}; CONFIG.templates[slug]=mapping; $("#tmsg").textContent="Mapping saved for next time ✓"; $("#tmsg").className="st ok"; }
   catch(e){ $("#tmsg").textContent="Couldn't save: "+(e.message||e); $("#tmsg").className="st warn"; }
 }
+// When "multiple months" is on, each row is filed by its own Order Date — so the single month picker
+// is not used, but the Order Date column MUST be mapped. Show the span of months detected.
+function onMultiToggle(){
+  const multi=$("#multiMonth")&&$("#multiMonth").checked;
+  const per=$("#period"); if(per) per.disabled=!!multi;
+  const hint=$("#multiHint"); if(!hint) return;
+  if(!multi){ hint.textContent=""; return; }
+  const rows=mappedRows(); const ms={};
+  rows.forEach(r=>{ const d=String(r.order_date||"").trim(); const m=d.match(/(\d{4})[-/](\d{2})/)||d.match(/(\d{2})[-/]\d{2}[-/](\d{4})/); });
+  // Count distinct YYYY-MM from Order Date (accepts MM/DD/YYYY or YYYY-MM-DD).
+  const set=new Set(); let undated=0;
+  rows.forEach(r=>{ const s=String(r.order_date||"").trim(); let y,mo;
+    let a=s.match(/^(\d{4})-(\d{2})-\d{2}/); let b=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if(a){y=a[1];mo=a[2];} else if(b){y=b[3];mo=String(b[1]).padStart(2,'0');}
+    if(y&&mo) set.add(`${y}-${mo}`); else undated++; });
+  const arr=[...set].sort();
+  hint.innerHTML = arr.length
+    ? `Detected <b>${arr.length}</b> month(s): ${arr[0]} → ${arr[arr.length-1]}${undated?` · <span style="color:#b45309">${undated} row(s) have no readable Order Date and will be skipped</span>`:""}`
+    : `<span style="color:#b42323">No readable Order Date found — map the Order Date column, or uncheck this.</span>`;
+}
 function validImport(){
   const slug=$("#mfr").value, period=($("#period").value||"").trim();
+  const multi=$("#multiMonth")&&$("#multiMonth").checked;
   if(!slug){ $("#imsg").textContent="Pick a manufacturer."; $("#imsg").className="st warn"; return null; }
-  if(!/^\d{4}-\d{2}$/.test(period)){ $("#imsg").textContent="Pick the report month."; $("#imsg").className="st warn"; return null; }
+  if(!multi && !/^\d{4}-\d{2}$/.test(period)){ $("#imsg").textContent="Pick the report month (or tick ‘multiple months’)."; $("#imsg").className="st warn"; return null; }
   if(!A4U && !MAP.customer_name){ $("#imsg").textContent="Map the Dealer / customer name column."; $("#imsg").className="st warn"; return null; }
+  if(multi && !MAP.order_date){ $("#imsg").textContent="For a multi-month file, map the Order date column."; $("#imsg").className="st warn"; return null; }
   const rows=mappedRows(); if(!rows.length){ $("#imsg").textContent="No rows to load."; $("#imsg").className="st warn"; return null; }
-  return {slug,period,rows};
+  return {slug, period: multi?"auto":period, multi:!!multi, rows};
 }
 // Step 1 — dry run: score the file and show the review gate WITHOUT writing anything.
 async function doAnalyze(){
@@ -376,7 +405,7 @@ async function doAnalyze(){
   const btn=$("#importBtn"); btn.disabled=true; $("#imsg").textContent="Analyzing "+v.rows.length+" rows…"; $("#imsg").className="st";
   $("#importResult").innerHTML="";
   try{
-    const r=await api({action:"analyze",manufacturer:v.slug,period:v.period,source_file:FILENAME,rows:v.rows});
+    const r=await api({action:"analyze",manufacturer:v.slug,period:v.period,multi_month:v.multi,source_file:FILENAME,rows:v.rows});
     if(r&&r.ok){ $("#imsg").textContent="Reviewed — nothing written yet."; $("#imsg").className="st ok"; renderReview(r.review); }
     else { $("#imsg").textContent=(r&&r.error)||"Analyze failed."; $("#imsg").className="st warn"; }
   }catch(e){ $("#imsg").textContent="Analyze failed: "+(e.message||e); $("#imsg").className="st warn"; }
@@ -398,7 +427,10 @@ function renderReview(rv){
   const tot=rv.total||0, m=rv.matched||0, un=rv.unmatched_count||0;
   const physPct=rv.amount_total?Math.round(100*rv.physical_amount/rv.amount_total):0;
   const ledger = (rv.payment_rows||0)+(rv.invoice_rows||0) > 0;   // Access4u payment/invoice ledger
-  const tiles=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px">
+  const monthsBanner = (rv.months&&rv.months.length>1)
+    ? `<div class="sub" style="margin:2px 0 6px">Multi-month file — will write ${rv.months.length} months (${rv.months[0].period} → ${rv.months[rv.months.length-1].period})${rv.undated_rows?` · ${rv.undated_rows} undated row(s) skipped`:""}, one per report month.</div>`
+    : "";
+  const tiles=monthsBanner+`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px">
     ${tileHtml("Rows",tot,`${usd(rv.amount_total)} realized · ${usd(rv.commission_total)} comm`)}
     ${tileHtml("Matched",`${m}/${tot}`,`${un} unmatched`,un?"warn":"")}
     ${rv.held_rows?tileHtml("Held — new branch",rv.held_rows,"unknown ship-to · resolve below","bad"):""}
@@ -529,7 +561,7 @@ async function doImport(){
   const v=validImport(); if(!v) return;
   const btn=$("#commitBtn"); if(btn)btn.disabled=true; const cm=$("#cmsg"); if(cm){cm.textContent="Writing "+v.rows.length+" rows…";cm.className="st";}
   try{
-    const r=await api({action:"import",manufacturer:v.slug,period:v.period,source_file:FILENAME,rows:v.rows});
+    const r=await api({action:"import",manufacturer:v.slug,period:v.period,multi_month:v.multi,source_file:FILENAME,rows:v.rows});
     if(r&&r.ok){
       if(cm){cm.textContent=`Imported ${r.inserted} rows ✓`;cm.className="st ok";}
       const nun=r.unmatched_count||0;
