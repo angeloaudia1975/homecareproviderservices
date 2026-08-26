@@ -365,7 +365,7 @@ function renderDetail(){
        <div style="margin-top:12px"><button class="go" onclick="saveAccess('${d.id}')">Save access</button>
          ${isPres()?`<button class="go blue sm" style="margin-left:8px" onclick="prefillAccess('${d.id}')" title="Check every line this dealer is eligible for under your territory rules (account numbers preserved)">Fill from territory rules</button>`:""}
          <span id="stA" class="st"></span></div>
-       <h2 style="margin-top:18px">Portal access <span class="hint" style="text-transform:none">— what this dealer can actually order, computed live from your territory rules</span></h2>
+       <h2 style="margin-top:18px">Portal access <span class="hint" style="text-transform:none">— what this dealer actually sees on the portal. The lines you tick above override the territory rules; territory rules apply only when the grid is left empty.</span></h2>
        <div id="paccess" class="hint" style="margin-top:4px">Computing…</div>
        <h2 style="margin-top:18px">History &amp; aliases</h2>
        <div>Sales <b>${money(d.sales)}</b> · commission <b>${money(d.comm)}</b> · ${d.recs} records · active ${d.periods.length} month(s)${d.lastPeriod?` · last ${esc(d.lastPeriod)}`:""}</div>
@@ -432,7 +432,7 @@ async function loadPortalAccess(id){
       <div style="margin:4px 0"><b>Available to order</b> <span class="hint" style="text-transform:none">(eligible, no account yet)</span>: ${avail.length?avail.map(s=>chip(s,"al")).join(" "):'<span class="dim">none</span>'}</div>
       ${(gold||ov)?`<div style="margin:6px 0">${gold} ${ov}</div>`:""}
       ${r.governedBy?`<div class="hint" style="text-transform:none">Access inherited from HQ: <b>${esc(r.governedBy)}</b></div>`:""}
-      <div class="hint" style="text-transform:none">This is exactly what the dealer sees on the portal — it updates automatically as the dealer's state or your rules change.${r.lat_known===false?" (Strongback's Indiana cutoff can't be checked — no map location for this account yet.)":""}</div>`;
+      <div class="hint" style="text-transform:none">This is exactly what the dealer sees on the portal. When you've ticked lines above, those are authoritative; if the grid is empty it falls back to territory rules by state.${r.lat_known===false?" (Strongback's Indiana cutoff can't be checked — no map location for this account yet.)":""}</div>`;
   };
   if(PACCESS[id]){ draw(PACCESS[id]); return; }
   const h=host(); if(h)h.textContent="Computing…";
@@ -446,7 +446,7 @@ async function prefillAccess(id){
   await load(); DETAIL=id; render();
 }
 async function prefillAll(){
-  if(!confirm("Apply your territory rules to EVERY dealer's ordering-access grid?\n\nThis checks each dealer's eligible lines (account numbers preserved). It does NOT change what dealers can order on the portal — that's already rule-driven — it just makes the admin grids match the rules."))return;
+  if(!confirm("Pre-fill EVERY dealer's ordering-access grid from your territory rules?\n\nFor each dealer this ticks the lines they're eligible for under the rules (account numbers preserved). The grid is authoritative, so this sets what each dealer can order on the portal — after it runs you can still hand-tick or untick any dealer's lines to override."))return;
   try{ const r=await post({action:"prefill_access_all"}); for(const k in PACCESS) delete PACCESS[k]; alertDlg(`Applied territory rules to ${r.dealers} dealers (${r.lines} line grants).`); await load(); render(); }
   catch(e){ alertDlg("Error: "+(e.message||e)); }
 }

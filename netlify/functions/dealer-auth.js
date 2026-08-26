@@ -66,6 +66,58 @@ async function callerFromToken(event){
   return {uid:u.id, email:(du&&du.email)||u.email, dealer_id:(du&&du.dealer_id)||null, status:(du&&du.status)||"none"};
 }
 
+// Build the full approved-dealer payload (profile + entitled lines + territory/grant access +
+// contract prices + addresses) for a dealer_id. Shared by "me" (a signed-in dealer) and "preview"
+// (staff previewing that dealer read-only). Reads only.
+async function loadDealerPayload(dealer_id, fallbackEmail){
+  let dealer=null, lines=[], access=null, prices={};
+  if(dealer_id){
+    const d=await sb("GET",`dealers?id=eq.${dealer_id}&select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id,golden_status,ovation_access,golden_url`);
+    dealer=d&&d[0]?{id:d[0].id,name:d[0].business_name,hcps_account:d[0].hcps_account||"",contact_name:d[0].contact_name||"",
+      email:d[0].email||fallbackEmail||"",phone:d[0].phone||"",address:d[0].address||"",city:d[0].city||"",state:d[0].state||"",zip:d[0].zip||""}:null;
+    const dm=await sb("GET",`dealer_manufacturers?dealer_id=eq.${dealer_id}&active=eq.true&select=manufacturer,account_ref`);
+    lines=(dm||[]).map(x=>({slug:x.manufacturer,account:x.account_ref||""}));
+    // company-level access decision (a branch inherits its HQ's territory)
+    try{
+      const self=d[0];
+      let gov=self;
+      if(self.parent_id){ const p=await sb("GET",`dealers?id=eq.${self.parent_id}&select=business_name,address,city,state,zip`); if(p&&p[0]) gov=p[0]; }
+      let lat=null;
+      try{ const q=qkey(gov); if(q){ const gc=await sb("GET",`geocache?q=eq.${encodeURIComponent(q)}&ok=eq.true&select=lat&limit=1`); if(gc&&gc[0]) lat=gc[0].lat; } }catch(e){}
+      access=computeAccess(
+        {state:gov.state||self.state, business_name:gov.business_name||self.business_name, lat,
+         golden_status:self.golden_status||"None", ovation_access:!!self.ovation_access},
+        // "Your accounts" = lines the dealer actually has an account NUMBER for; lines that
+        // are merely granted in the admin grid (no account_ref) show as "Available to you".
+        (dm||[]).filter(x=>x.account_ref&&String(x.account_ref).trim()).map(x=>x.manufacturer),
+        // Granted lines (everything ticked in the admin grid) — authoritative over territory.
+        (dm||[]).map(x=>x.manufacturer));
+      if(access) access.golden_url = self.golden_url || "";   // this dealer's specific Golden portal path
+    }catch(e){}
+    // Per-product contract prices (company-level): the governing/master account's prices apply to
+    // all its branches; a branch's own rows override. Keyed "slug::code" for the portal's unitPrice().
+    try{
+      const rec=d&&d[0]; const ids=[dealer_id]; if(rec&&rec.parent_id) ids.push(rec.parent_id);
+      const pr=await sb("GET",`dealer_contract_prices?dealer_id=in.(${ids.join(",")})&active=eq.true&select=dealer_id,manufacturer,code,price`).catch(()=>[]);
+      (pr||[]).sort((a,b)=>(a.dealer_id===dealer_id?1:0)-(b.dealer_id===dealer_id?1:0));   // master first, dealer overrides
+      for(const r of (pr||[])){ if(r.manufacturer&&r.code&&r.price!=null) prices[`${r.manufacturer}::${r.code}`]=Number(r.price); }
+    }catch(e){}
+    // attach stored shipping / billing addresses (if any) so the "My account" editor can prefill
+    if(dealer){
+      try{
+        const addrs=await sb("GET",`dealer_addresses?dealer_id=eq.${dealer_id}&select=address,city,state,zip,label,pri`).catch(()=>[]);
+        const pick=re=>{const a=(addrs||[]).find(x=>re.test(String(x.label||"")));return a?{address:a.address||"",city:a.city||"",state:a.state||"",zip:a.zip||""}:null;};
+        dealer.shipping=pick(/ship/i)||{address:dealer.address,city:dealer.city,state:dealer.state,zip:dealer.zip};
+        dealer.billing=pick(/bill/i)||null;
+        dealer.addresses=(addrs||[]).sort((a,b)=>(b.pri||1)-(a.pri||1))
+          .map(a=>({address:a.address||"",city:a.city||"",state:a.state||"",zip:a.zip||"",label:a.label||""}))
+          .filter(a=>a.address||a.city);
+      }catch(e){}
+    }
+  }
+  return {dealer,lines,access,prices};
+}
+
 exports.handler = async (event)=>{
   if(event.httpMethod==="OPTIONS") return {statusCode:204,headers:CORS,body:""};
   try{
@@ -144,56 +196,28 @@ exports.handler = async (event)=>{
       if(!du) return json(200,{ok:true,status:"none",email:u.email});
       if(du.status!=="approved") return json(200,{ok:true,status:du.status,email:du.email});
       // approved -> return dealer profile + entitled lines for gating + cart prefill
-      let dealer=null, lines=[], access=null, prices={};
-      if(du.dealer_id){
-        const d=await sb("GET",`dealers?id=eq.${du.dealer_id}&select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id,golden_status,ovation_access,golden_url`);
-        dealer=d&&d[0]?{id:d[0].id,name:d[0].business_name,hcps_account:d[0].hcps_account||"",contact_name:d[0].contact_name||"",
-          email:d[0].email||du.email,phone:d[0].phone||"",address:d[0].address||"",city:d[0].city||"",state:d[0].state||"",zip:d[0].zip||""}:null;
-        const dm=await sb("GET",`dealer_manufacturers?dealer_id=eq.${du.dealer_id}&active=eq.true&select=manufacturer,account_ref`);
-        lines=(dm||[]).map(x=>({slug:x.manufacturer,account:x.account_ref||""}));
-        // company-level access decision (a branch inherits its HQ's territory)
-        try{
-          const self=d[0];
-          let gov=self;
-          if(self.parent_id){ const p=await sb("GET",`dealers?id=eq.${self.parent_id}&select=business_name,address,city,state,zip`); if(p&&p[0]) gov=p[0]; }
-          let lat=null;
-          try{ const q=qkey(gov); if(q){ const gc=await sb("GET",`geocache?q=eq.${encodeURIComponent(q)}&ok=eq.true&select=lat&limit=1`); if(gc&&gc[0]) lat=gc[0].lat; } }catch(e){}
-          access=computeAccess(
-            {state:gov.state||self.state, business_name:gov.business_name||self.business_name, lat,
-             golden_status:self.golden_status||"None", ovation_access:!!self.ovation_access},
-            // "Your accounts" = lines the dealer actually has an account NUMBER for; lines that
-            // are merely granted in the admin grid (no account_ref) show as "Available to you".
-            (dm||[]).filter(x=>x.account_ref&&String(x.account_ref).trim()).map(x=>x.manufacturer));
-          if(access) access.golden_url = self.golden_url || "";   // this dealer's specific Golden portal path
-        }catch(e){}
-        // Per-product contract prices (company-level): the governing/master account's prices
-        // apply to all its branches; a branch's own rows override. Keyed "slug::code" for the
-        // portal's unitPrice(). Read with service_role (table has no public RLS policy).
-        try{
-          const rec=d&&d[0]; const ids=[du.dealer_id]; if(rec&&rec.parent_id) ids.push(rec.parent_id);
-          const pr=await sb("GET",`dealer_contract_prices?dealer_id=in.(${ids.join(",")})&active=eq.true&select=dealer_id,manufacturer,code,price`).catch(()=>[]);
-          // apply the master's rows first, then the dealer's own so branch overrides win
-          (pr||[]).sort((a,b)=>(a.dealer_id===du.dealer_id?1:0)-(b.dealer_id===du.dealer_id?1:0));
-          for(const r of (pr||[])){ if(r.manufacturer&&r.code&&r.price!=null) prices[`${r.manufacturer}::${r.code}`]=Number(r.price); }
-        }catch(e){}
-        // attach stored shipping / billing addresses (if any) so the "My account" editor can prefill
-        if(dealer){
-          try{
-            const addrs=await sb("GET",`dealer_addresses?dealer_id=eq.${du.dealer_id}&select=address,city,state,zip,label,pri`).catch(()=>[]);
-            const pick=re=>{const a=(addrs||[]).find(x=>re.test(String(x.label||"")));return a?{address:a.address||"",city:a.city||"",state:a.state||"",zip:a.zip||""}:null;};
-            dealer.shipping=pick(/ship/i)||{address:dealer.address,city:dealer.city,state:dealer.state,zip:dealer.zip};
-            dealer.billing=pick(/bill/i)||null;
-            // full list of locations on file so the cart can offer a "ship to" picker
-            dealer.addresses=(addrs||[]).sort((a,b)=>(b.pri||1)-(a.pri||1))
-              .map(a=>({address:a.address||"",city:a.city||"",state:a.state||"",zip:a.zip||"",label:a.label||""}))
-              .filter(a=>a.address||a.city);
-          }catch(e){}
-        }
-      }
+      const {dealer,lines,access,prices}=await loadDealerPayload(du.dealer_id, du.email);
       // saved cart (persists across logout/login until ordered or cleared)
       let cart=null;
       try{ const cr=await sb("GET",`dealer_carts?uid=eq.${uid}&select=cart`); if(cr&&cr[0]&&cr[0].cart&&Array.isArray(cr[0].cart.items)&&cr[0].cart.items.length) cart=cr[0].cart; }catch(e){}
       return json(200,{ok:true,status:"approved",email:du.email,dealer,lines,access,cart,prices});
+    }
+
+    if(b.action==="preview"){
+      // Admin READ-ONLY preview: staff open the portal "as" a dealer using a short-lived token
+      // minted by Dealer 360 & CRM (dealers-api → preview_link). No dealer login, no shared
+      // credentials. Returns the same approved payload as "me" but never mints a dealer session.
+      const token=String(b.token||"").trim();
+      if(!token) return json(200,{ok:false,code:"no_token"});
+      let rows; try{ rows=await sb("GET",`dealer_preview_tokens?token=eq.${encodeURIComponent(token)}&select=dealer_id,expires_at,used_at`); }
+      catch(e){ return json(200,{ok:false,code:"unavailable",message:"Preview is not set up yet. Run supabase/dealer_preview_tokens.sql."}); }
+      const t=rows&&rows[0];
+      if(!t||!t.dealer_id) return json(200,{ok:false,code:"invalid",message:"This preview link is invalid."});
+      if(t.expires_at && new Date(t.expires_at).getTime()<Date.now()) return json(200,{ok:false,code:"expired",message:"This preview link has expired. Reopen it from Dealer 360 & CRM."});
+      if(!t.used_at){ try{ await sb("PATCH",`dealer_preview_tokens?token=eq.${encodeURIComponent(token)}`,{used_at:new Date().toISOString()},{Prefer:"return=minimal"}); }catch(e){} }
+      const {dealer,lines,access,prices}=await loadDealerPayload(t.dealer_id, null);
+      if(!dealer) return json(200,{ok:false,code:"no_dealer",message:"Dealer record not found."});
+      return json(200,{ok:true,status:"approved",preview:true,email:(dealer&&dealer.email)||"",dealer,lines,access,prices});
     }
 
     // ---- persistent cart ----

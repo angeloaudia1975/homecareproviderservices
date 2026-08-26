@@ -17,6 +17,9 @@ const CLIMBING   = "climbing-steps";        // all dealers EXCEPT Mobility City
 const STRONGBACK = "strongback-mobility";   // Exclusive Territory (below)
 const OVATION    = "ovation-medical";       // per-account flag
 const NOT_REPRESENTED = new Set(["complete-medical-supplies"]);
+// Golden is ordered on Golden's own platform, not inline here — so it is never an orderable
+// line in your_accounts/available even if it's ticked in the admin grid. It's surfaced via `golden`.
+const GOLDEN_SLUGS = new Set(["golden", "golden-technologies"]);
 
 const INDIANAPOLIS_LAT = 39.7684;           // "south of Indianapolis" cutoff for IN
 const OH_EXCLUSIVE = [/\byost\b/i, /med\s*mart/i, /\belumina\b/i];   // OH accounts in territory
@@ -34,18 +37,34 @@ function inExclusiveTerritory(state, name, lat){
 }
 
 // gov: governing account -> { state, business_name, golden_status, ovation_access, lat }
-// ownedSlugs: array/Set of slugs the dealer already has an account for (dealer_manufacturers)
-function computeAccess(gov, ownedSlugs){
+// ownedSlugs:   slugs the dealer already has an account NUMBER for (account_ref set)
+// grantedSlugs: slugs ticked in the admin "Ordering Access" grid (dealer_manufacturers active=true)
+//
+// The admin grid is AUTHORITATIVE: whenever a dealer has at least one line ticked, the portal shows
+// EXACTLY those lines (minus Golden / not-represented), overriding the territory rules — so "turn a
+// line on and the dealer sees it" always holds, regardless of state or account status. Only when the
+// grid is completely empty do we fall back to the territory rules, so dealers set up before the grid
+// was used never silently go dark. (Golden is still surfaced separately via `golden`.)
+function computeAccess(gov, ownedSlugs, grantedSlugs){
   const owned = new Set([...(ownedSlugs || [])].filter(s => s && !NOT_REPRESENTED.has(s)));
+  const granted = [...(grantedSlugs || [])].filter(s => s && !NOT_REPRESENTED.has(s) && !GOLDEN_SLUGS.has(s));
   const st = String(gov.state || "").toUpperCase();
   const name = gov.business_name || "";
 
-  const eligible = new Set(ALL_DEALERS);
-  if (!isMobilityCity(name)) eligible.add(CLIMBING);
-  for (const [slug, states] of Object.entries(STATE_RULES)) if (states.includes(st)) eligible.add(slug);
-  if (inExclusiveTerritory(st, name, gov.lat)) eligible.add(STRONGBACK);
-  if (gov.ovation_access) eligible.add(OVATION);
+  let eligible;
+  if (granted.length) {
+    // Explicit admin grants win — the dealer can order exactly what was ticked.
+    eligible = new Set(granted);
+  } else {
+    // No explicit grants on file — compute from territory rules (prior behavior).
+    eligible = new Set(ALL_DEALERS);
+    if (!isMobilityCity(name)) eligible.add(CLIMBING);
+    for (const [slug, states] of Object.entries(STATE_RULES)) if (states.includes(st)) eligible.add(slug);
+    if (inExclusiveTerritory(st, name, gov.lat)) eligible.add(STRONGBACK);
+    if (gov.ovation_access) eligible.add(OVATION);
+  }
   NOT_REPRESENTED.forEach(s => eligible.delete(s));
+  GOLDEN_SLUGS.forEach(s => eligible.delete(s));   // Golden is never an inline orderable line
 
   const your_accounts = [...eligible].filter(s => owned.has(s)).sort();
   const available     = [...eligible].filter(s => !owned.has(s)).sort();

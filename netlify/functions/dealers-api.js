@@ -147,7 +147,7 @@ async function computeDealerAccess(dealer_id){
   const access=computeAccess({
     state: gov.state||self.state, business_name: gov.business_name||self.business_name, lat,
     golden_status: self.golden_status||"None", ovation_access: !!self.ovation_access,
-  }, ownedWithAccount);
+  }, ownedWithAccount, (dm||[]).map(x=>x.manufacturer));   // granted grid lines override territory
   return { access, gridLines:(dm||[]).map(x=>x.manufacturer).sort(), governedBy, lat_known: lat!=null };
 }
 
