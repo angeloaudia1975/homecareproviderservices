@@ -147,8 +147,8 @@ exports.handler = async (event)=>{
           tiers:cleanTiers(p.tiers), price_note:p.price_note||null,
           active:p.active===false?false:true, updated_at:new Date().toISOString()
         },{Prefer:"resolution=merge-duplicates,return=minimal"});
-        // 2) move link / media / featured rows from the old code to the new code (best-effort)
-        for(const tbl of ["product_links","product_media","featured_products"]){
+        // 2) move link / media / featured / per-dealer contract-price rows from old code → new (best-effort)
+        for(const tbl of ["product_links","product_media","featured_products","dealer_contract_prices"]){
           try{ await sb("PATCH",`${tbl}?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(oldCode)}`,{code:newCode},{Prefer:"return=minimal"}); }catch(e){}
         }
         // 3) retire the old code

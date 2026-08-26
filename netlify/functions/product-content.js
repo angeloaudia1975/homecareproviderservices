@@ -24,7 +24,12 @@
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const ADMIN_TOKEN  = process.env.CONTENT_ADMIN_TOKEN;
+const AI_KEY   = process.env.ANTHROPIC_API_KEY || '';
+const AI_MODEL = process.env.HCPS_AI_MODEL || 'claude-sonnet-5';
 const { computeMerge } = require('./_content-merge.js');
+// Central AI voice/style guide (RULE 12) — used for the prose fields the workspace generates.
+let loadStyleGuide = null, findBanned = null;
+try { ({ loadStyleGuide, findBanned } = require('./_ai_style.js')); } catch (e) { /* optional */ }
 
 const ADMIN_ROLES = { president: 1, admin: 1, owner: 1 };
 const enc = encodeURIComponent;
@@ -176,6 +181,65 @@ async function logHistory(h) {
           before: flatRows(h.before), after: flatRows(h.after), at: new Date().toISOString()
         }]) });
   } catch (e) { /* history is best-effort; never block the write */ }
+}
+
+// ---- AI content generation (per-field "✨ AI" buttons in the workspace) -----
+async function sbGet(path) {
+  try { const r = await fetch(rest(path), { headers: svcHeaders() }); return r.ok ? r.json() : []; }
+  catch (e) { return []; }
+}
+async function callAI(prompt, maxTokens) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': AI_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: AI_MODEL, max_tokens: maxTokens || 700, messages: [{ role: 'user', content: prompt }] })
+  });
+  if (!r.ok) { const t = await r.text().catch(() => ''); return { err: `AI ${r.status}`, detail: t.slice(0, 300) }; }
+  const j = await r.json();
+  // newer models may emit a reasoning block before the text — take the last text block
+  const blocks = Array.isArray(j.content) ? j.content : [];
+  const txt = blocks.filter(b => b && b.type === 'text').map(b => b.text).join('\n').trim();
+  return { text: txt };
+}
+function aiContext(ctx) {
+  ctx = ctx || {};
+  const skus = (ctx.skus || []).map(s => (s.sku || '') + (s.size ? ' (' + s.size + ')' : '')).filter(Boolean).slice(0, 24).join(', ');
+  const lines = [
+    `Product name: ${ctx.name || '(unknown)'}`,
+    ctx.manufacturer ? `Manufacturer: ${ctx.manufacturer}` : '',
+    ctx.category ? `Current category: ${ctx.category}` : '',
+    ctx.subcategory ? `Current subcategory: ${ctx.subcategory}` : '',
+    ctx.family ? `Product family: ${ctx.family}` : '',
+    (ctx.features && ctx.features.length) ? `Known features: ${ctx.features.slice(0, 10).join(' | ')}` : '',
+    (ctx.clinical_applications && ctx.clinical_applications.length) ? `Clinical applications: ${ctx.clinical_applications.join(', ')}` : '',
+    (ctx.billing_codes && ctx.billing_codes.length) ? `HCPCS/billing codes: ${ctx.billing_codes.join(', ')}` : '',
+    ctx.description ? `Existing description: ${ctx.description}` : '',
+    skus ? `SKUs: ${skus}` : ''
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+const AI_GUARDRAILS = 'This is medical/orthopedic product content for a professional DME dealer catalog. ' +
+  'Be factual and specific; do NOT invent measurements, specifications, materials, or clinical claims that are not supported by the context. ' +
+  'No hype or filler.';
+function aiPrompt(field, ctx, styleGuide) {
+  const c = aiContext(ctx);
+  const voice = styleGuide ? ('\n\nHouse voice to follow:\n' + styleGuide + '\n') : '';
+  switch (field) {
+    case 'description':
+      return `${AI_GUARDRAILS}${voice}\nWrite a clear, benefit-oriented product description of 2–3 sentences based on the details below. Return ONLY the description text, no headings.\n\n${c}`;
+    case 'tagline':
+      return `${AI_GUARDRAILS}${voice}\nWrite one short marketing tagline (max 8 words) for this product. Return ONLY the tagline text.\n\n${c}`;
+    case 'features':
+      return `${AI_GUARDRAILS}\nList 4–6 key product features as short phrases, ONE PER LINE, with no bullets, numbers, or leading symbols. Base them only on the details below; do not invent specs. Return ONLY the lines.\n\n${c}`;
+    case 'warranty':
+      return `${AI_GUARDRAILS}\nWrite a brief 1–2 sentence standard manufacturer warranty statement for this product. If specifics are unknown, keep it generic and professional. Return ONLY the warranty text.\n\n${c}`;
+    case 'category':
+      return `${AI_GUARDRAILS}\nChoose the single best CATEGORY for this product. Prefer one of the existing categories if a good fit; otherwise propose a concise new category (1–3 words). Existing categories: ${(ctx.existing_categories || []).join(', ') || '(none yet)'}\nReturn ONLY the category name — nothing else.\n\n${c}`;
+    case 'subcategory':
+      return `${AI_GUARDRAILS}\nSuggest a concise SUBCATEGORY (2–4 words) for this product within its category "${ctx.category || ''}". Return ONLY the subcategory name — nothing else.\n\n${c}`;
+    default:
+      return `${AI_GUARDRAILS}\nWrite a concise value for the "${field}" field of this product. Return only the text.\n\n${c}`;
+  }
 }
 
 exports.handler = async (event) => {
@@ -391,6 +455,24 @@ exports.handler = async (event) => {
         return reply(res.ok ? 200 : 500, { ok: res.ok, rows: res.rows });
       }
 
+      // ---- Rename a SKU number in the content overlay (catalog side handled by catalog-api rename_code) ----
+      if (action === 'rename_sku') {
+        if (!m || !body.page_key || !body.old_sku || !body.new_sku) return reply(400, { ok: false, error: 'manufacturer, page_key, old_sku, new_sku required' });
+        const oldId = String(body.old_sku), newId = String(body.new_sku);
+        if (oldId === newId) return reply(400, { ok: false, error: 'new_sku matches old_sku' });
+        const row = await getRow(m, body.page_key);
+        if (!row) return reply(404, { ok: false, error: 'product not found' });
+        let skus = normSkus(row.skus);
+        if (skus.some(s => skuKey(s) === newId)) return reply(409, { ok: false, error: 'that SKU already exists on this product' });
+        let found = false;
+        skus = skus.map(s => { if (skuKey(s) === oldId) { found = true; return Object.assign(s, { sku: newId }); } return s; });
+        if (!found) return reply(404, { ok: false, error: 'SKU not found on this product' });
+        const res = await patchRow(m, body.page_key, { skus });
+        await logHistory({ manufacturer: m, page_key: body.page_key, action: 'rename_sku', actor: reviewer,
+          summary: `Renamed SKU ${oldId} → ${newId}`, before: row, after: res.rows });
+        return reply(res.ok ? 200 : 500, { ok: res.ok, rows: res.rows });
+      }
+
       // ---- Move SKUs from one product to another ----
       if (action === 'move_skus') {
         const from = body.from_page_key, to = body.to_page_key;
@@ -599,6 +681,31 @@ exports.handler = async (event) => {
         await fetch(rest(`product_content_history?id=eq.${enc(body.id)}`),
           { method: 'PATCH', headers: svcHeaders(), body: JSON.stringify({ undone: true }) });
         return reply(200, { ok: true, restored: before.length });
+      }
+
+      // ---- AI: generate content for one field (description / tagline / features / warranty / category / subcategory) ----
+      if (action === 'generate_content') {
+        if (!AI_KEY) return reply(200, { ok: false, error: 'ai_unavailable', message: "AI drafting isn't enabled — set ANTHROPIC_API_KEY in Netlify." });
+        const field = body.field; const ctx = body.context || {};
+        const ALLOWED = ['description', 'tagline', 'features', 'warranty', 'category', 'subcategory'];
+        if (ALLOWED.indexOf(field) < 0) return reply(400, { ok: false, error: 'bad field' });
+        const prose = ['description', 'tagline', 'features', 'warranty'].indexOf(field) >= 0;
+        let guide = '';
+        if (prose && loadStyleGuide) { try { guide = await loadStyleGuide(sbGet); } catch (e) {} }
+        const maxTok = field === 'features' ? 500 : (field === 'description' ? 400 : 120);
+        let out = await callAI(aiPrompt(field, ctx, guide), maxTok);
+        if (out.err) return reply(200, { ok: false, error: 'ai_error', message: out.err, detail: out.detail, model: AI_MODEL });
+        let text = (out.text || '').trim();
+        if (prose && findBanned && text && findBanned(text).length) {
+          const retry = await callAI(aiPrompt(field, ctx, guide) + '\n\nAvoid these phrases: ' + findBanned(text).join(', '), maxTok);
+          if (!retry.err && retry.text) text = retry.text.trim();
+        }
+        if (field === 'category' || field === 'subcategory' || field === 'tagline') {
+          text = (text.split('\n')[0] || '').replace(/^["'\s]+|["'\s.]+$/g, '').trim();
+        }
+        const resp = { ok: true, field, text };
+        if (field === 'features') resp.list = text.split('\n').map(x => x.replace(/^[-•*\d.\s]+/, '').trim()).filter(Boolean);
+        return reply(200, resp);
       }
 
       return reply(400, { ok: false, error: 'unknown action' });

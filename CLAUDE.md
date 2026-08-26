@@ -383,6 +383,20 @@ changes; add a backend action instead so the workspace can do it.
 - **Every structural/status/content write is logged** to `product_content_history` with a before-snapshot,
   and is reversible from the workspace **History → Undo** drawer. Undo restores snapshots and hides
   (never hard-deletes) anything a change created.
+- **Editing a SKU number is a TRUE global rename (never edit only the content copy).** The workspace's
+  ✎ Edit SKU control renames everywhere at once: it calls catalog-api `rename_code` (re-points the catalog —
+  `custom_products` / `product_overrides` / `product_links` / `product_media` / `featured_products` — and
+  **`dealer_contract_prices`**), then `product-content` `rename_sku` (content overlay + history). The catalog
+  is the SKU's source of truth (`code`); `product_content.skus` is a reference copy — keep them in sync via
+  this rename, never by editing one side alone. **Historical `order_items` / `monthly_sales` keep the original
+  code on purpose** (a record of what was actually ordered/sold). `catalog-api` requires the **president** role.
+- **AI-assisted content is on by the central style guide (RULE 12).** Each editable field has a ✨ AI button →
+  `product-content` `generate_content` (Anthropic, `ANTHROPIC_API_KEY` + `HCPS_AI_MODEL`). Prose fields
+  (description/tagline/features/warranty) inject `loadStyleGuide()` and re-generate once if `findBanned()` flags a
+  phrase; category/subcategory align to the existing taxonomy. Output is a draft the reviewer edits and Saves —
+  never auto-published — and the prompt forbids inventing specs/measurements/claims.
+- **Product images render large (150px, click to open full size)** in Images/Documents & Source — reviewers must
+  actually see the photo. Don't shrink them back to thumbnails.
 - **Auth = Connect 360 staff sign-in (per RULE 9), no token prompt.** The workspace loads
   `/admin/staff-session.js` and sends `Authorization: Bearer <HCPS.token()>`; the `product-content`
   function verifies it via `whoami()` (Supabase Auth → `staff_users` admin role) and does every write with

@@ -90,8 +90,16 @@ textarea.ed{min-height:64px}
 .skutable select.sst{border:1px solid var(--line);border-radius:7px;padding:5px 6px;font-size:11.5px;font-family:inherit}
 .skutable tr.disabled{opacity:.5}
 .skusel{width:17px;height:17px}
-.gal{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.gal img{width:60px;height:60px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff}
+.gal{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px}
+.gal a{display:block;text-decoration:none}
+.gal img{width:150px;height:150px;object-fit:contain;border:1px solid var(--line);border-radius:10px;background:#fff;padding:6px;cursor:zoom-in;transition:box-shadow .13s,transform .13s}
+.gal img:hover{box-shadow:0 12px 26px -12px rgba(11,13,15,.35);transform:translateY(-2px)}
+@media(max-width:560px){.gal img{width:44vw;height:44vw}}
+.mini-ai{border:1px solid #cfe2fb;background:#eef5ff;border-radius:7px;padding:2px 9px;font-size:10.5px;font-weight:800;cursor:pointer;color:var(--blue-dk);margin-left:8px;vertical-align:middle}
+.mini-ai:hover{background:#dfeeff}
+.mini-ai:disabled{opacity:.5;cursor:default}
+.skuedit{border:1px solid var(--line);background:#fff;border-radius:6px;padding:1px 7px;font-size:12px;cursor:pointer;color:var(--blue-dk);line-height:1.3}
+.skuedit:hover{background:#eef5ff;border-color:#cfe2fb}
 .gal .prov{font-size:9px;color:var(--gray);text-align:center;display:block}
 .provline{font-size:11.5px;color:var(--gray)}
 .provline a{color:var(--blue-dk);font-weight:700;word-break:break-all}
@@ -368,12 +376,12 @@ function recordSec(k){ const p=pages[k];
         <datalist id="fam-${cssId(k)}">${famOpts.map(o=>`<option value="${escA(o)}">`).join('')}</datalist></div>
       <div class="fld"><label>Status</label><select class="ed" data-act="set-status" data-pk="${escA(k)}">
         ${STATUSES.map(s=>`<option value="${s[0]}" ${(p.status||'pending_review')===s[0]?'selected':''}>${s[1]}</option>`).join('')}</select></div>
-      <div class="fld"><label>Category</label><input class="ed" list="cat-${cssId(k)}" value="${escA(p.category||'')}" oninput="editField('${escA(k)}','category',this.value)">
+      <div class="fld"><label>Category <button class="mini-ai" data-act="ai-gen" data-pk="${escA(k)}" data-field="category">✨ AI</button></label><input class="ed" list="cat-${cssId(k)}" value="${escA(p.category||'')}" oninput="editField('${escA(k)}','category',this.value)">
         <datalist id="cat-${cssId(k)}">${catOpts.map(o=>`<option value="${escA(o)}">`).join('')}</datalist></div>
-      <div class="fld"><label>Subcategory</label><input class="ed" value="${escA(p.subcategory||'')}" oninput="editField('${escA(k)}','subcategory',this.value)"></div>
+      <div class="fld"><label>Subcategory <button class="mini-ai" data-act="ai-gen" data-pk="${escA(k)}" data-field="subcategory">✨ AI</button></label><input class="ed" value="${escA(p.subcategory||'')}" oninput="editField('${escA(k)}','subcategory',this.value)"></div>
       <div class="fld"><label>MSRP rule</label><input class="ed" value="${escA(p.msrp_rule||'')}" oninput="editField('${escA(k)}','msrp_rule',this.value)"></div>
     </div>
-    <div class="fld" style="margin-top:10px"><label>Tagline</label><input class="ed" value="${escA(p.tagline||'')}" oninput="editField('${escA(k)}','tagline',this.value)"></div>
+    <div class="fld" style="margin-top:10px"><label>Tagline <button class="mini-ai" data-act="ai-gen" data-pk="${escA(k)}" data-field="tagline">✨ AI</button></label><input class="ed" value="${escA(p.tagline||'')}" oninput="editField('${escA(k)}','tagline',this.value)"></div>
     <div class="savebar"><button class="btn dark" data-act="save-record" data-pk="${escA(k)}">Save record</button>
       <label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" ${p.disabled?'checked':''} data-act="toggle-disable" data-pk="${escA(k)}"> Disable whole product (hide from Partner 360)</label></div>
   </div>`; }
@@ -386,7 +394,7 @@ function skuSec(k){ const skus=skusOf(k); const others=Object.keys(pages).filter
       ${skus.map(s=>{ const id=s.sku; const on=skuSel.pk===k&&skuSel.ids.has(id);
         return `<tr class="${s.disabled?'disabled':''}">
         <td><input type="checkbox" class="skusel" ${on?'checked':''} data-act="toggle-sku" data-pk="${escA(k)}" data-sku="${escA(id)}"></td>
-        <td><b>${esc(id)}</b></td>
+        <td><b>${esc(id)}</b> <button class="skuedit" data-act="rename-sku" data-pk="${escA(k)}" data-sku="${escA(id)}" title="Edit this SKU number everywhere">✎</button></td>
         <td><input class="sed" value="${escA(s.name||'')}" placeholder="—" oninput="editSku('${escA(k)}','${escA(id)}','name',this.value)"></td>
         <td><input class="sed" style="max-width:90px" value="${escA(s.size||'')}" placeholder="—" oninput="editSku('${escA(k)}','${escA(id)}','size',this.value)"></td>
         <td><input class="sed" style="max-width:80px" value="${escA(s.hcpcs||'')}" placeholder="—" oninput="editSku('${escA(k)}','${escA(id)}','hcpcs',this.value)"></td>
@@ -402,15 +410,15 @@ function skuSec(k){ const skus=skusOf(k); const others=Object.keys(pages).filter
 function contentSec(k){ const p=pages[k]; const feats=p.features||[]; const specs=p.specs||[];
   const clin=p.clinical_applications||[]; const codes=p.billing_codes||[];
   return `<div class="sec"><h4>Content</h4>
-    <div class="fld"><label>Description</label><textarea class="ed" rows="3" oninput="editField('${escA(k)}','description',this.value)">${esc(p.description||'')}</textarea></div>
-    <div class="fld" style="margin-top:10px"><label>Key features</label>
+    <div class="fld"><label>Description <button class="mini-ai" data-act="ai-gen" data-pk="${escA(k)}" data-field="description">✨ AI</button></label><textarea class="ed" rows="3" oninput="editField('${escA(k)}','description',this.value)">${esc(p.description||'')}</textarea></div>
+    <div class="fld" style="margin-top:10px"><label>Key features <button class="mini-ai" data-act="ai-gen" data-pk="${escA(k)}" data-field="features">✨ AI</button></label>
       <ul class="feat">${feats.map((f,i)=>`<li><textarea class="ed" rows="1" oninput="editFeat('${escA(k)}',${i},this.value)">${esc(f)}</textarea><button class="x" data-act="del-feature" data-pk="${escA(k)}" data-i="${i}">✕</button></li>`).join('')}</ul>
       <button class="btn ghost" style="margin-top:6px" data-act="add-feature" data-pk="${escA(k)}">＋ Add feature</button></div>
     <div class="fld" style="margin-top:12px"><label>Specifications (label → value)</label>
       <div>${specs.map((s,i)=>`<div class="specrow"><input class="ed" placeholder="Label" value="${escA(s.label||'')}" oninput="editSpec('${escA(k)}',${i},'label',this.value)"><input class="ed" placeholder="Value" value="${escA(s.value||'')}" oninput="editSpec('${escA(k)}',${i},'value',this.value)"><button class="x" data-act="del-spec" data-pk="${escA(k)}" data-i="${i}">✕</button></div>`).join('')}</div>
       <button class="btn ghost" data-act="add-spec" data-pk="${escA(k)}">＋ Add spec</button></div>
     <div class="grid2" style="margin-top:12px">
-      <div class="fld"><label>Warranty</label><textarea class="ed" rows="2" oninput="editField('${escA(k)}','warranty',this.value)">${esc(p.warranty||'')}</textarea></div>
+      <div class="fld"><label>Warranty <button class="mini-ai" data-act="ai-gen" data-pk="${escA(k)}" data-field="warranty">✨ AI</button></label><textarea class="ed" rows="2" oninput="editField('${escA(k)}','warranty',this.value)">${esc(p.warranty||'')}</textarea></div>
       <div class="fld"><label>Billing / HCPCS codes (comma-separated)</label><input class="ed" value="${escA(codes.join(', '))}" oninput="editCodes('${escA(k)}',this.value)"></div>
     </div>
     ${clin.length?`<div class="fld" style="margin-top:10px"><label>Clinical applications</label><div>${clin.map(x=>`<span class="chip">${esc(x)}</span>`).join('')}</div></div>`:''}
@@ -448,8 +456,8 @@ function imagesSec(k){ const p=pages[k]; const gal=Array.isArray(p.images_galler
     ${p.website_url?`<div class="provline">📎 Source: <a href="${escA(p.website_url)}" target="_blank" rel="noopener">${esc((p.website_url||'').replace(/^https?:\/\/(www\.)?/,''))}</a></div>`:''}
     ${p.source_files&&p.source_files.length?`<div class="provline">📄 From: ${(Array.isArray(p.source_files)?p.source_files:[]).map(esc).join(', ')}</div>`:''}
     ${p.field_provenance&&Object.keys(p.field_provenance).length?`<div class="provline">🧭 Where fields came from: ${Object.keys(p.field_provenance).map(f=>`${esc(f)} ← <b>${esc(p.field_provenance[f])}</b>`).join(' · ')}</div>`:''}
-    ${gal.length?`<div class="gal">${gal.map(g=>`<div><img src="${escA(g.url)}" title="${escA(g.caption||'')}"><span class="prov">${esc(g.source||'')}${g.primary?' ★':''}</span></div>`).join('')}</div>`
-      :(p.image?`<div class="gal"><div><img src="${escA(/^https?:/.test(p.image)?p.image:'..'+p.image)}"><span class="prov">catalog</span></div></div>`:'<div class="hint">No images captured.</div>')}
+    ${gal.length?`<div class="gal">${gal.map(g=>`<div><a href="${escA(g.url)}" target="_blank" rel="noopener"><img src="${escA(g.url)}" title="${escA(g.caption||'')} — click to view full size"></a><span class="prov">${esc(g.source||'')}${g.primary?' ★':''}</span></div>`).join('')}</div>`
+      :(p.image?`<div class="gal"><div><a href="${escA(/^https?:/.test(p.image)?p.image:'..'+p.image)}" target="_blank" rel="noopener"><img src="${escA(/^https?:/.test(p.image)?p.image:'..'+p.image)}" title="Click to view full size"></a><span class="prov">catalog</span></div></div>`:'<div class="hint">No images captured.</div>')}
     <div class="fld" style="margin-top:10px"><label>Add image URL</label>
       <div style="display:flex;gap:6px"><input class="ed" id="img-${cssId(k)}" placeholder="https://…"><button class="btn" data-act="add-image" data-pk="${escA(k)}">Add</button></div>
       <span class="hint">Paste a hosted image URL. To upload files, use the Images tool; pasted URLs publish as-is.</span></div>
@@ -500,6 +508,8 @@ document.addEventListener('click',async function(e){
   if(act==='add-image'){ const url=(document.getElementById('img-'+cssId(k)).value||'').trim(); if(!url) return;
     pages[k].images_gallery=Array.isArray(pages[k].images_gallery)?pages[k].images_gallery:[]; pages[k].images_gallery.push({url,source:'manual'});
     if(!pages[k].image) pages[k].image=url; await save('save-content',k); reopen(k); return; }
+  if(act==='ai-gen') return doAiGen(k, t.getAttribute('data-field'), t);
+  if(act==='rename-sku') return doRenameSku(k, sku);
   // status + saves + structural
   if(act==='save-record') return doSaveRecord(k,t);
   if(act==='save-content') return doSaveContent(k,t);
@@ -555,6 +565,62 @@ async function doSaveContent(k){ const p=pages[k];
   const r=await apiWrite({action:'set_content',page_key:k,patch});
   toast(r.ok?'Content saved':'Save failed',!r.ok); }
 async function save(kind,k){ if(kind==='save-content') return doSaveContent(k); }
+/* ---- Edit a SKU number everywhere: catalog (via catalog-api rename_code) + content overlay ---- */
+let _catalogCache=null;
+async function catalogGet(){
+  if(_catalogCache) return _catalogCache;
+  try{ const r=await fetch('/.netlify/functions/catalog-api?manufacturer='+encodeURIComponent(MFR),{headers:authHeaders()});
+    const j=await r.json().catch(()=>({})); _catalogCache=(j&&j.products)?j:{products:[],custom:[]}; }
+  catch(e){ _catalogCache={products:[],custom:[]}; }
+  return _catalogCache;
+}
+async function doRenameSku(k, oldSku){
+  oldSku=String(oldSku);
+  const newSku=(window.prompt('Change SKU number — updates the catalog (ordering, pricing, featured, media), the content here, and per-dealer contract prices. Past orders and sales reports keep the old number as a record.\n\nNew SKU for '+oldSku+':', oldSku)||'').trim();
+  if(!newSku || newSku===oldSku) return;
+  if(skusOf(k).some(s=>String(s.sku)===newSku)){ toast('That SKU already exists on this product',true); return; }
+  toast('Renaming '+oldSku+' → '+newSku+'…');
+  // 1) catalog side — only if the code exists in the catalog
+  const cat=await catalogGet();
+  const inCustom=(cat.custom||[]).find(p=>String(p.code)===oldSku);
+  const prod=inCustom||(cat.products||[]).find(p=>String(p.code)===oldSku);
+  let catalogNote='';
+  if(prod){
+    try{
+      const cr=await fetch('/.netlify/functions/catalog-api',{method:'POST',headers:authHeaders(),body:JSON.stringify({
+        action:'rename_code', manufacturer:MFR, old_code:oldSku, new_code:newSku, was_custom:!!inCustom,
+        product:{name:prod.name,category:prod.category,base_price:prod.base_price,msrp:prod.msrp,image:prod.image,description:prod.description,tiers:prod.tiers,price_note:prod.price_note,active:prod.active}
+      })});
+      const cj=await cr.json().catch(()=>({}));
+      if(cr.status===409){ toast('That SKU is already in use in the catalog',true); return; }
+      if(!cr.ok || cj.ok===false){ toast('Catalog rename failed'+(cj.error?': '+cj.error:''),true); return; }
+      _catalogCache=null; catalogNote=' · catalog + pricing updated';
+    }catch(e){ toast('Catalog rename failed — nothing changed',true); return; }
+  } else { catalogNote=' · not in catalog (content only)'; }
+  // 2) content overlay
+  const r=await apiWrite({action:'rename_sku', page_key:k, old_sku:oldSku, new_sku:newSku});
+  if(r.ok && (!r.json || r.json.ok!==false)){
+    const skus=skusOf(k); const i=skus.findIndex(s=>String(s.sku)===oldSku); if(i>=0){ skus[i].sku=newSku; pages[k].skus=skus; }
+    toast('SKU '+oldSku+' → '+newSku+catalogNote); render();
+  } else { toast('Content rename failed'+(prod?' (catalog already updated — re-run to sync content)':''),true); }
+}
+async function doAiGen(k, field, btn){
+  if(!field) return; const p=pages[k]; const orig=btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='✨ …'; }
+  const ctx={ name:p.name, category:p.category, subcategory:p.subcategory, family:p.family,
+    tagline:p.tagline, description:p.description, features:p.features||[],
+    clinical_applications:p.clinical_applications||[], billing_codes:p.billing_codes||[],
+    manufacturer:p.manufacturer||MFR, skus:skusOf(k).map(s=>({sku:s.sku,size:s.size,hcpcs:s.hcpcs})),
+    existing_categories:allCategories() };
+  const r=await apiWrite({action:'generate_content', page_key:k, field, context:ctx});
+  if(btn){ btn.disabled=false; btn.textContent=orig; }
+  const out=r.json||{};
+  if(!r.ok || out.ok===false){ toast(out.message||out.error||'AI generation failed',true); return; }
+  if(field==='features'){
+    if(Array.isArray(out.list)&&out.list.length) pages[k].features=out.list;
+    else if(out.text) pages[k].features=out.text.split('\n').map(x=>x.replace(/^[-•*\d.\s]+/,'').trim()).filter(Boolean);
+  } else if(out.text!=null){ pages[k][field]=out.text; }
+  toast('AI draft added — review, then Save'); reopen(k);
+}
 async function doSaveSkus(k){ const skus=skusOf(k); pages[k].skus=skus; pages[k].sku_count=skus.length;
   const r=await apiWrite({action:'save_skus',page_key:k,skus});
   toast(r.ok?'SKUs saved':'Save failed',!r.ok); }
