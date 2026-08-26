@@ -1,668 +1,672 @@
-<!doctype html><html lang="en"><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Partner 360 · Product Content Enrichment &amp; Review</title>
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<title>Partner 360 · Catalog Management Workspace</title>
 <style>
-  :root{
-    --navy:#12253c; --navy2:#1b3450; --orange:#ef6325; --gold:#fcb21e;
-    --ink:#12253c; --sub:#5b6b7d; --line:#e3e8ef; --bg:#f4f6fa; --card:#fff;
-    --ok:#1f9d55; --okbg:#e7f6ee; --warn:#c56a00; --warnbg:#fdf0dd;
-    --new:#0d6ee0; --newbg:#e5f0fd; --dup:#8a8f98; --dupbg:#eef0f3;
-    --grad:linear-gradient(135deg,#12253c 0%,#1b3450 55%,#24435f 100%);
-    --shadow:0 1px 2px rgba(16,32,52,.06),0 6px 20px rgba(16,32,52,.06);
-    --radius:14px; --f-head:'Archivo','Segoe UI',system-ui,sans-serif; --f-body:'Inter','Segoe UI',system-ui,sans-serif;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14.5px;line-height:1.5;-webkit-font-smoothing:antialiased}
-  h1,h2,h3,h4{font-family:var(--f-head);margin:0;letter-spacing:-.01em}
-  a{color:var(--new);text-decoration:none}
-  code{font-family:ui-monospace,Menlo,monospace;font-size:.85em;background:#eef1f6;padding:1px 5px;border-radius:5px}
-
-  .masthead{background:var(--grad);color:#fff;padding:14px 22px 12px}
-  .brandrow{display:flex;align-items:center;gap:12px}
-  .brandmark{width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,.12);display:grid;place-items:center;font-family:var(--f-head);font-weight:800;color:var(--gold);border:1px solid rgba(255,255,255,.18)}
-  .brandtxt b{font-family:var(--f-head);font-size:15px;font-weight:800}
-  .brandtxt span{display:block;font-size:11px;color:rgba(255,255,255,.7)}
-  .crumbs{margin-top:9px;font-size:12px;color:rgba(255,255,255,.82);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-  .crumbs .sep{opacity:.5}.crumbs b{color:#fff;background:rgba(255,255,255,.12);padding:2px 9px;border-radius:20px;font-weight:600}
-
-  .app{display:grid;grid-template-columns:300px 1fr;gap:0;min-height:calc(100vh - 66px)}
-  @media(max-width:860px){.app{grid-template-columns:1fr}}
-  .side{background:var(--card);border-right:1px solid var(--line);padding:16px 14px;overflow-y:auto}
-  .side .mfrrow{display:flex;gap:8px;margin-bottom:12px}
-  .side select,.side input{font-family:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);width:100%}
-  .side h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--sub);margin:14px 4px 8px}
-  .plist{display:flex;flex-direction:column;gap:5px}
-  .pli{border:1px solid var(--line);border-radius:10px;padding:9px 11px;cursor:pointer;background:#fff;transition:.12s}
-  .pli:hover{border-color:#c9d2de}
-  .pli.on{border-color:var(--orange);box-shadow:0 0 0 3px rgba(239,99,37,.12)}
-  .pli .nm{font-weight:600;font-size:13px}
-  .pli .mt{display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap}
-  .stat{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px}
-  .stat.pending_review{background:var(--warnbg);color:var(--warn)}
-  .stat.approved{background:var(--okbg);color:var(--ok)}
-  .stat.rejected{background:#fdeee6;color:var(--orange)}
-  .fcount{font-size:10.5px;color:var(--sub)}
-
-  .main{padding:20px 22px 90px;overflow-y:auto}
-  .empty{max-width:520px;margin:60px auto;text-align:center;color:var(--sub)}
-  .empty h2{color:var(--ink);margin-bottom:8px}
-
-  .btn{font-family:var(--f-head);font-weight:700;font-size:13px;border-radius:10px;padding:9px 15px;border:1px solid var(--line);background:#fff;color:var(--navy);cursor:pointer;transition:.15s}
-  .btn:hover{border-color:#c9d2de}
-  .btn.primary{background:var(--orange);border-color:var(--orange);color:#fff}
-  .btn.primary:hover{filter:brightness(.96)}
-  .btn.ghostdark{background:var(--navy);color:#fff;border-color:var(--navy)}
-  .btn:disabled{opacity:.5;cursor:not-allowed}
-  .btn.sm{padding:6px 11px;font-size:12px}
-
-  .phead{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 18px;display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
-  .phead .meta{flex:1;min-width:240px}.phead h1{font-size:20px}
-  .phead .sku{color:var(--sub);font-size:12.5px;margin-top:3px}
-  .headactions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-
-  .srcbar{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 2px;align-items:center}
-  .srcchip{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:22px;border:1px solid var(--line);background:#fff}
-  .dot{width:11px;height:11px;border-radius:50%;flex:none}
-  .dot.hcps{background:var(--navy)}.dot.web{background:var(--gold)}.dot.pdf{background:var(--orange)}
-  .srcchip.off{opacity:.5}.srcchip small{color:var(--sub);font-weight:500}
-
-  .flagbar{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0 20px}
-  .flag{flex:1;min-width:120px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow)}
-  .flag .n{font-family:var(--f-head);font-size:22px;font-weight:800}.flag .l{font-size:11.5px;color:var(--sub);margin-top:2px}
-  .flag.new .n{color:var(--new)}.flag.conflict .n{color:var(--warn)}.flag.missing .n{color:var(--orange)}.flag.dup .n{color:var(--dup)}
-
-  .sec{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:18px;overflow:hidden}
-  .sec>h2{font-size:14.5px;padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;background:#fbfcfe}
-  .sec .body{padding:6px 18px 16px}
-
-  .field{padding:15px 0;border-bottom:1px dashed var(--line)}.field:last-child{border-bottom:0}
-  .fname{font-family:var(--f-head);font-weight:700;font-size:12.5px;letter-spacing:.02em;text-transform:uppercase;color:var(--navy);display:flex;align-items:center;gap:9px;margin-bottom:10px}
-  .tag{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.02em}
-  .tag.new{background:var(--newbg);color:var(--new)}.tag.conflict{background:var(--warnbg);color:var(--warn)}
-  .tag.missing{background:#fdeee6;color:var(--orange)}.tag.match{background:var(--okbg);color:var(--ok)}.tag.dup{background:var(--dupbg);color:var(--dup)}
-  .cols{display:grid;grid-template-columns:repeat(3,1fr);gap:11px}
-  @media(max-width:760px){.cols{grid-template-columns:1fr}}
-  .opt{border:1.5px solid var(--line);border-radius:11px;padding:10px 12px 11px;position:relative;background:#fff;cursor:pointer;transition:.15s}
-  .opt:hover{border-color:#c9d2de}.opt.sel{border-color:var(--orange);box-shadow:0 0 0 3px rgba(239,99,37,.12)}
-  .opt.empty{background:#fbfcfe;border-style:dashed;cursor:default}
-  .opt .ohead{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;color:var(--sub);margin-bottom:6px}
-  .opt .val{font-size:13px;color:var(--ink)}.opt .val.muted{color:#9aa4b1;font-style:italic}
-  .opt .radio{position:absolute;top:10px;right:10px;width:16px;height:16px;border-radius:50%;border:2px solid #cfd6e0;background:#fff}
-  .opt.sel .radio{border-color:var(--orange);background:radial-gradient(circle,var(--orange) 42%,#fff 46%)}
-  .opt .best{position:absolute;top:-9px;left:11px;background:var(--orange);color:#fff;font-size:9px;font-weight:800;padding:2px 8px;border-radius:20px;display:none}
-  .opt.sel .best{display:inline-block}
-  ul.mini{margin:3px 0 0;padding-left:16px}ul.mini li{margin:2px 0;font-size:12.5px}
-  /* Live edit row (your own version) */
-  .medit-row{margin-top:11px}
-  .opt.medit{cursor:text;border-style:solid}
-  .opt.medit.sel{border-color:var(--orange);box-shadow:0 0 0 3px rgba(239,99,37,.12)}
-  .opt.medit .ohead{color:var(--orange)}
-  .medit textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-family:var(--f-body);font-size:13px;color:var(--ink);resize:vertical;min-height:38px;background:#fff}
-  .medit textarea:focus{outline:none;border-color:var(--orange);box-shadow:0 0 0 3px rgba(239,99,37,.10)}
-  .medit .hint{font-size:11px;color:var(--sub);margin-top:5px}
-  /* Add-image (paste / drop / pick) tile */
-  .addimg{border:1.5px dashed #c9d2de;border-radius:12px;background:#fbfcfe;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px;min-height:100%;padding:16px 12px;cursor:pointer;color:var(--sub);transition:.15s}
-  .addimg:hover,.addimg.drag{border-color:var(--orange);background:#fff6f0;color:var(--orange)}
-  .addimg .big{font-size:26px;line-height:1}
-  .addimg .t{font-size:12px;font-weight:600}
-  .addimg .s{font-size:10.5px;color:var(--sub)}
-  .imgc .srcflag.upload{background:#0d6ee0}
-  .badgeflag.upload{background:var(--newbg);color:var(--new)}
-  /* Documents & videos */
-  .doclist{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
-  .docrow{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:9px 12px;background:#fff}
-  .docrow .dt{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;padding:3px 8px;border-radius:20px;background:#eef1f6;color:var(--navy);white-space:nowrap}
-  .docrow .dt.study{background:#e5f0fd;color:var(--new)} .docrow .dt.instructions{background:var(--okbg);color:var(--ok)}
-  .docrow .dt.video{background:#fdecef;color:#c2185b} .docrow .dt.warranty{background:var(--warnbg);color:var(--warn)}
-  .docrow .dn{flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .docrow .du{font-size:11px;color:var(--sub);text-decoration:none;white-space:nowrap} .docrow .du:hover{text-decoration:underline}
-  .docrow .hosted{font-size:10px;color:var(--ok);font-weight:700}
-  .docrow .rmx{cursor:pointer;color:#b42323;font-weight:700;border:1px solid #f0cccc;border-radius:7px;padding:3px 8px;font-size:12px}
-  .docrow .rmx:hover{background:#fdecec}
-  .docadd{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#fbfcfe;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
-  .docadd input,.docadd select{font-family:var(--f-body);font-size:13px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
-  .docadd input.title{flex:1;min-width:150px} .docadd input.url{flex:2;min-width:180px}
-  .docadd .lbl{font-size:11px;font-weight:700;color:var(--sub);width:100%;margin-bottom:-2px}
-
-  .gal{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-  @media(max-width:760px){.gal{grid-template-columns:repeat(2,1fr)}}
-  .imgc{border:1.5px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;position:relative}
-  .imgc.primary{border-color:var(--orange);box-shadow:0 0 0 3px rgba(239,99,37,.12)}
-  .imgc.dupimg{opacity:.7}
-  .imgc .ph{aspect-ratio:1;background:#eef1f6;display:block;position:relative}
-  .imgc .ph img{width:100%;height:100%;object-fit:contain;display:block}
-  .imgc .noimg{position:absolute;inset:0;display:grid;place-items:center;color:#9aa4b1;font-size:11px}
-  .imgc .srcflag{position:absolute;top:7px;left:7px;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;color:#fff}
-  .imgc .srcflag.web{background:var(--gold);color:#3a2c00}.imgc .srcflag.hcps{background:var(--navy)}.imgc .srcflag.pdf{background:var(--orange)}
-  .imgc .badgeflag{position:absolute;top:7px;right:7px;font-size:9px;font-weight:800;padding:3px 8px;border-radius:20px}
-  .badgeflag.new{background:var(--newbg);color:var(--new)}.badgeflag.dup{background:var(--dupbg);color:var(--dup)}
-  .imgc .cap{padding:8px 10px 10px}.imgc .cap .nm{font-size:11.5px;font-weight:600;word-break:break-word}
-  .imgc .ctrls{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
-  .chk{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;cursor:pointer;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:#fff}
-  .chk.on{background:var(--okbg);border-color:#b7e2c8;color:var(--ok)}
-  .chk.prim.on{background:#fdecdf;border-color:#f4c39c;color:var(--orange)}
-  .chk.rm{margin-left:auto;color:#b42323;border-color:#f0cccc;font-weight:700;padding:5px 9px}
-  .chk.rm:hover{background:#fdecec;border-color:#e3a3a3}
-
-  .tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:11px}
-  table.sz{border-collapse:collapse;width:100%;font-size:12.5px;min-width:480px}
-  table.sz th{background:#fbfcfe;text-align:left;padding:9px 12px;font-family:var(--f-head);font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--sub);border-bottom:1px solid var(--line)}
-  table.sz td{padding:8px 12px;border-bottom:1px solid var(--line)}table.sz tr:last-child td{border-bottom:0}
-  table.sz tr.newrow td{background:#f5faff}
-
-  .note{font-size:12px;color:var(--sub);padding:9px 13px;background:#fbfcfe;border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:8px;margin:2px 0 12px}
-  .note.ok{border-left-color:var(--ok)}
-
-  .actionbar{position:fixed;bottom:0;left:0;right:0;background:rgba(255,255,255,.94);backdrop-filter:blur(6px);border-top:1px solid var(--line);padding:12px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;z-index:50}
-  .actionbar .summ{font-size:12.5px;color:var(--sub)}.actionbar .summ b{color:var(--ink)}.actionbar .spacer{flex:1}
-  .msrp{font-size:12px;color:var(--sub);background:#eef1f6;border:1px solid var(--line);padding:6px 11px;border-radius:9px}
-
-  /* gate */
-  .gate{max-width:420px;margin:70px auto;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:26px 24px}
-  .gate h2{font-size:20px;margin-bottom:6px}.gate p{color:var(--sub);font-size:13px;margin:0 0 16px}
-  .gate input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;font-size:15px;margin-bottom:12px;font-family:inherit}
-  .toast{position:fixed;top:14px;right:14px;background:var(--navy);color:#fff;padding:11px 16px;border-radius:10px;font-size:13px;box-shadow:var(--shadow);z-index:100;max-width:360px}
-  .toast.err{background:#8a1f1f}.spin{opacity:.6}
-</style>
-</head><body>
-
-<div class="masthead">
-  <div class="brandrow">
-    <div class="brandmark">360</div>
-    <div class="brandtxt"><b>HCPS Connect 360</b><span>Manufacturer &amp; Partner Operations</span></div>
+:root{--navy:#12253c;--navy2:#17456e;--orange:#ef6325;--gold:#fcb21e;--blue:#1681c2;--blue-dk:#0f5c8f;
+--paper:#f6f7f5;--line:#e7e2d8;--gray:#6b7280;--ink:#39424e;
+--grad:linear-gradient(100deg,var(--orange),var(--gold));--shadow:0 18px 40px -20px rgba(11,13,15,.28);
+--good:#1c7a44;--goodbg:#e9f7ef;--warn:#9a4b0d;--warnbg:#fff3e0;--bad:#b42323;--badbg:#fdecec;
+--pub:#0f5c8f;--pubbg:#e5f0fd;--disc:#7a5a00;--discbg:#fdf3dd;--hid:#5b6472;--hidbg:#eef0f3;--flag:#8a1c5a;--flagbg:#fdeaf3;}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--paper);color:var(--navy);overflow-x:hidden}
+.top{background:#0b0d0f;color:#c7d2df;font-size:12px;padding:7px 22px}.top b{color:#fff}
+.pagehd{background:#fff;border-bottom:3px solid var(--orange);padding:14px 22px}
+.pagehd h1{font-family:'Archivo',sans-serif;font-weight:900;font-size:22px;margin:0}
+.pagehd .sub{color:var(--gray);font-size:13px;margin-top:3px}
+.wrap{max-width:1220px;margin:0 auto;padding:20px 22px 120px}
+/* workflow stepper */
+.steps{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 16px}
+.step{display:flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 13px;font-size:12px;font-weight:700;color:var(--gray)}
+.step .n{width:19px;height:19px;border-radius:50%;background:var(--paper);color:var(--gray);display:grid;place-items:center;font-size:11px;font-weight:800;border:1px solid var(--line)}
+.step.on{border-color:var(--navy);color:var(--navy)}.step.on .n{background:var(--navy);color:#fff;border-color:var(--navy)}
+/* stats */
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 16px;box-shadow:var(--shadow)}
+.stat b{font-family:'Archivo',sans-serif;font-size:21px;display:block;line-height:1.1}
+.stat span{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray)}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.toolbar input.search{flex:1;min-width:180px;border:1px solid var(--line);border-radius:999px;padding:9px 15px;font-family:inherit;font-size:13.5px}
+.filters{display:flex;gap:6px;flex-wrap:wrap}
+.filters button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 13px;font-weight:700;font-size:12.5px;cursor:pointer;color:var(--navy);font-family:inherit}
+.filters button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 14px;font-weight:800;font-size:12.5px;cursor:pointer;color:var(--navy);font-family:'Archivo',sans-serif;min-height:40px}
+.btn.dark{background:var(--navy);color:#fff;border-color:var(--navy)}
+.btn.grad{background:var(--grad);color:#141414;border:none}
+.btn.ghost{background:#fff}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+/* structure review banner */
+.structure{background:linear-gradient(180deg,#fdeaf3,#fff);border:2px solid #f4c4dd;border-radius:16px;padding:16px 18px;margin-bottom:18px}
+.structure h2{font-family:'Archivo',sans-serif;font-size:16px;margin:0 0 4px;color:var(--flag)}
+.structure p{margin:0 0 12px;font-size:13px;color:var(--navy2)}
+.flagcard{background:#fff;border:1px solid #f4c4dd;border-radius:12px;padding:13px 15px;margin-bottom:10px}
+.flagcard .fh{display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:space-between}
+.flagcard .fn{font-family:'Archivo',sans-serif;font-weight:800;font-size:15px}
+.flagcard .reasons{font-size:12px;color:var(--flag);margin:6px 0 0}
+/* product card */
+.card{background:#fff;border:1px solid var(--line);border-radius:15px;margin-bottom:14px;box-shadow:var(--shadow);overflow:hidden}
+.card.flagged{border-color:#f4c4dd}
+.chead{display:grid;grid-template-columns:auto 62px 1fr auto;gap:14px;align-items:center;padding:14px 16px}
+@media(max-width:720px){.chead{grid-template-columns:auto 48px 1fr;row-gap:10px}.chead .cactions{grid-column:1/-1}}
+.selbox{width:20px;height:20px}
+.cthumb{width:62px;height:62px;border-radius:10px;background:var(--paper) center/contain no-repeat;border:1px solid var(--line);display:grid;place-items:center;color:#b9bfc7;font-size:9px;text-align:center}
+.pname{font-family:'Archivo',sans-serif;font-weight:800;font-size:16.5px;margin:0;border:1px solid transparent;border-radius:7px;padding:2px 5px}
+.pname:focus{outline:none;border-color:var(--line);background:var(--paper)}
+.pmeta{font-size:11.5px;color:var(--gray);margin-top:3px;display:flex;flex-wrap:wrap;gap:5px 10px;align-items:center}
+.cactions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.badge{display:inline-block;border-radius:999px;padding:4px 10px;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px}
+.b-pending_review{background:var(--warnbg);color:var(--warn);border:1px solid #f2d9b0}
+.b-approved{background:var(--goodbg);color:var(--good);border:1px solid #b7e2c8}
+.b-published{background:var(--pubbg);color:var(--pub);border:1px solid #bcd9f4}
+.b-active{background:var(--goodbg);color:var(--good);border:1px solid #b7e2c8}
+.b-discontinued{background:var(--discbg);color:var(--disc);border:1px solid #ecdca6}
+.b-hidden{background:var(--hidbg);color:var(--hid);border:1px solid #d7dbe0}
+.b-rejected{background:var(--badbg);color:var(--bad);border:1px solid #f3c0c0}
+.b-need{background:#f1f0ff;color:#4b3fb0;border:1px solid #d6d2f7}
+.b-flag{background:var(--flagbg);color:var(--flag);border:1px solid #f4c4dd}
+/* expanded panel */
+.panel{border-top:1px solid var(--line);padding:0;display:none}
+.card.open .panel{display:block}
+.sec{border-bottom:1px solid var(--line);padding:15px 18px}
+.sec:last-child{border-bottom:none}
+.sec h4{font-family:'Archivo',sans-serif;font-size:12.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--navy2);margin:0 0 11px;display:flex;align-items:center;gap:8px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 14px}
+@media(max-width:720px){.grid2,.grid3{grid-template-columns:1fr}}
+.fld{display:flex;flex-direction:column;gap:4px}
+.fld label{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--gray)}
+input.ed,textarea.ed,select.ed{width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-family:inherit;font-size:13.5px;color:var(--navy);resize:vertical;background:#fff}
+select.ed{cursor:pointer}
+textarea.ed{min-height:64px}
+.feat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.feat li{display:flex;gap:6px;align-items:flex-start}
+.feat li .x,.specrow .x{border:1px solid var(--line);background:#fff;border-radius:8px;width:34px;min-height:38px;cursor:pointer;color:var(--bad);font-weight:800;flex:0 0 auto}
+.specrow{display:grid;grid-template-columns:1fr 1.4fr 34px;gap:6px;margin-bottom:6px}
+/* SKU grid */
+.skutable{width:100%;border-collapse:collapse;font-size:13px}
+.skutable th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);padding:6px 8px;border-bottom:1px solid var(--line)}
+.skutable td{padding:5px 8px;border-bottom:1px solid #f1efe9;vertical-align:middle}
+.skutable input.sed{width:100%;border:1px solid transparent;border-radius:6px;padding:5px 6px;font-family:inherit;font-size:12.5px;background:transparent}
+.skutable input.sed:focus{outline:none;border-color:var(--line);background:#fff}
+.skutable select.sst{border:1px solid var(--line);border-radius:7px;padding:5px 6px;font-size:11.5px;font-family:inherit}
+.skutable tr.disabled{opacity:.5}
+.skusel{width:17px;height:17px}
+.gal{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.gal img{width:60px;height:60px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff}
+.gal .prov{font-size:9px;color:var(--gray);text-align:center;display:block}
+.provline{font-size:11.5px;color:var(--gray)}
+.provline a{color:var(--blue-dk);font-weight:700;word-break:break-all}
+.hint{font-size:11.5px;color:var(--gray);margin:4px 0 0}
+.savebar{display:flex;gap:8px;align-items:center;margin-top:11px}
+.savebar .ok{font-size:12px;color:var(--good);font-weight:700}
+.chip{display:inline-block;background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:11.5px;font-weight:600;margin:0 4px 4px 0}
+.codechip{background:#eef5ff;border-color:#cfe2fb;color:var(--navy2)}
+/* sticky action bars */
+.selbar{position:fixed;left:0;right:0;bottom:0;background:var(--navy);color:#fff;padding:12px 22px;display:none;z-index:40;box-shadow:0 -10px 30px -18px rgba(0,0,0,.5)}
+.selbar.show{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.selbar .grow{flex:1;min-width:120px;font-size:13px}
+.selbar select,.selbar input{border:none;border-radius:8px;padding:8px 10px;font-family:inherit;font-size:13px}
+.selbar .btn{background:#1c3a5c;color:#fff;border:1px solid #2b5680}
+.selbar .btn.grad{background:var(--grad);color:#141414;border:none}
+/* modal + drawer */
+.overlay{position:fixed;inset:0;background:rgba(9,12,16,.55);display:none;z-index:60;align-items:flex-start;justify-content:center;padding:30px 16px;overflow:auto}
+.overlay.show{display:flex}
+.modal{background:#fff;border-radius:16px;max-width:760px;width:100%;box-shadow:0 30px 80px -30px rgba(0,0,0,.6)}
+.modal .mh{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line)}
+.modal .mh h3{font-family:'Archivo',sans-serif;margin:0;font-size:17px}
+.modal .mb{padding:18px 20px}
+.modal .close{border:none;background:var(--paper);border-radius:9px;width:34px;height:34px;font-size:17px;cursor:pointer}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(440px,92vw);background:#fff;box-shadow:-20px 0 60px -30px rgba(0,0,0,.5);transform:translateX(100%);transition:transform .22s;z-index:70;display:flex;flex-direction:column}
+.drawer.show{transform:translateX(0)}
+.drawer .dh{display:flex;justify-content:space-between;align-items:center;padding:15px 18px;border-bottom:1px solid var(--line)}
+.drawer .dh h3{font-family:'Archivo',sans-serif;margin:0;font-size:16px}
+.drawer .db{overflow:auto;padding:8px 0}
+.hrow{padding:11px 18px;border-bottom:1px solid #f1efe9;font-size:12.5px;display:flex;gap:10px;justify-content:space-between;align-items:flex-start}
+.hrow .ha{font-size:10.5px;color:var(--gray);text-transform:uppercase;letter-spacing:.4px;font-weight:800}
+.hrow .hu{border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;color:var(--navy);flex:0 0 auto}
+.hrow.undone{opacity:.5}
+/* preview */
+.pv h2{font-family:'Archivo',sans-serif;margin:0 0 2px}
+.pv .pvtag{color:var(--orange);font-weight:700;margin:0 0 8px}
+.pv .pvimgs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.pv .pvimgs img{width:96px;height:96px;object-fit:contain;border:1px solid var(--line);border-radius:10px;background:#fff}
+.pv table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0}
+.pv th,.pv td{border:1px solid var(--line);padding:6px 9px;text-align:left}
+.pv th{background:var(--paper)}
+.mut{color:var(--gray)}
+.tabscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+@media(max-width:640px){input.ed,textarea.ed,select.ed,input.search{font-size:16px}}
+</style></head><body>
+<header id="ac-head"></header>
+<div class="pagehd">
+  <h1>Product Content Enrichment &amp; Review</h1>
+  <div class="sub">Import → <b>review structure</b> → correct products &amp; categories → enrich images &amp; content → add sizing/specs → disable obsolete → preview → approve → <b>publish to Partner 360</b>.</div>
+</div>
+<div class="wrap">
+  <div class="steps" id="steps"></div>
+  <div class="stats" id="stats"></div>
+  <div class="toolbar">
+    <input class="search" id="search" placeholder="Search products, SKUs, categories…" oninput="onSearch(this.value)">
+    <button class="btn ghost" data-act="run-structure">⚑ Structure review</button>
+    <button class="btn ghost" data-act="new-product">＋ New product</button>
+    <button class="btn ghost" data-act="open-history">↺ History</button>
+    <button class="btn ghost" id="selmode" data-act="toggle-selmode">☐ Select</button>
   </div>
-  <div class="crumbs"><span>Online Ordering</span><span class="sep">›</span><span>Product Management</span><span class="sep">›</span><b>Product Content Enrichment &amp; Review</b></div>
+  <div class="filters" id="filters"></div>
+  <div id="structure"></div>
+  <div id="cards"></div>
 </div>
 
-<div id="root"></div>
-<div id="toast"></div>
+<!-- product multi-select bulk bar -->
+<div class="selbar" id="bulkbar">
+  <span class="grow"><b id="bulkcount">0</b> products selected</span>
+  <select id="bulkstatus"><option value="">Set status…</option></select>
+  <input id="bulkcat" placeholder="Set category…" style="max-width:170px">
+  <button class="btn" data-act="bulk-apply">Apply</button>
+  <button class="btn grad" data-act="bulk-publish">Publish selected</button>
+  <button class="btn" data-act="clear-sel">Clear</button>
+</div>
+
+<!-- SKU move/split bar -->
+<div class="selbar" id="skubar">
+  <span class="grow"><b id="skucount">0</b> SKUs selected from <span id="skufrom">—</span></span>
+  <select id="movetarget"><option value="">Move to product…</option></select>
+  <button class="btn" data-act="move-skus">Move</button>
+  <input id="splitname" placeholder="Split into new product name…" style="max-width:220px">
+  <button class="btn grad" data-act="split-skus">Split out</button>
+  <button class="btn" data-act="clear-skusel">Clear</button>
+</div>
+
+<div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+<div class="drawer" id="drawer">
+  <div class="dh"><h3>Change history</h3><button class="close" data-act="close-drawer">✕</button></div>
+  <div class="db" id="historybody"><div style="padding:18px" class="mut">Loading…</div></div>
+</div>
 
 <script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
 <script>
-(function(){
-  "use strict";
-  var API="/.netlify/functions/product-content";
-  var SCRAPE="/.netlify/functions/content-scrape";
-  var MFR="ovation-medical";
-  var products=[], current=null, merge=null, currentRow=null;
-  var picks={}, imgState={};  // picks[fieldKey]=sourceKey ('manual' = your edit) ; imgState[imgId]={approved,primary}
-  var manualText={}, extraImages=[], removedImages={};  // manualText[fieldKey]=textarea string ; extraImages=pasted/uploaded ; removedImages=hidden from gallery+publish
-  var docsState=[], videosState=[];  // documents [{title,url,type,hosted}] ; videos [{title,url}]
+/* ===================== Catalog Management Workspace ===================== */
+const API='/.netlify/functions/product-content';
+const MFR=new URLSearchParams(location.search).get('manufacturer')||'ovation-medical';
+const pages={};
+let filter='all', search='', ONLINE=true, selMode=false;
+function token(){ try{ return (window.HCPS&&HCPS.token&&HCPS.token())||''; }catch(e){ return ''; } }
+function authHeaders(extra){ return Object.assign({'Content-Type':'application/json','authorization':'Bearer '+token()}, extra||{}); }
+const selProducts=new Set();          // page_keys chosen for bulk
+let skuSel={pk:null, ids:new Set()};  // SKUs chosen (single product at a time) for move/split
+const dismissed=new Set();            // structure flags dismissed this session
+const openCards=new Set();            // expanded cards
 
-  var $=function(s,r){return (r||document).querySelector(s);};
-  var esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});};
-  function toast(msg,err){ var t=$("#toast"); t.innerHTML='<div class="toast'+(err?" err":"")+'">'+esc(msg)+'</div>'; setTimeout(function(){t.innerHTML="";}, err?5200:2600); }
-  function token(){ try{ return (window.HCPS&&HCPS.token&&HCPS.token())||""; }catch(e){ return ""; } }
-  function authHeaders(extra){ return Object.assign({ "content-type":"application/json", "authorization":"Bearer "+token() }, extra||{}); }
+const STATUSES=[
+  ['pending_review','Pending review'],['approved','Approved'],['published','Published'],
+  ['active','Active'],['discontinued','Discontinued'],['hidden','Hidden'],['rejected','Rejected']];
+const PUBLIC_SET=new Set(['published','active','discontinued']);
+const SKU_STATUSES=['active','discontinued','hidden'];
+const WORKFLOW=['Import','Review structure','Correct products','Enrich content','Sizing & specs','Disable obsolete','Preview','Approve & publish'];
 
-  function api(action, body, method){
-    var opts={ method:method||"POST", headers:authHeaders() };
-    if(opts.method!=="GET") opts.body=JSON.stringify(Object.assign({action:action}, body||{}));
-    var url=API + (opts.method==="GET" ? ("?manufacturer="+encodeURIComponent(MFR)) : "");
-    return fetch(url, opts).then(function(r){ return r.json().catch(function(){return {ok:false,error:"bad response"};}); });
-  }
-  function scrape(url){
-    return fetch(SCRAPE,{method:"POST",headers:authHeaders(),body:JSON.stringify({url:url})})
-      .then(function(r){return r.json().catch(function(){return {ok:false,error:"bad response"};});});
-  }
+/* ---------- boot: pull live rows via admin token (falls back to offline seed) ---------- */
+async function boot(){
+  if(!token()){ location.replace('/admin/'); return; }   // not signed in → Connect 360 gate
+  try{
+    const r=await fetch(`${API}?manufacturer=${encodeURIComponent(MFR)}`,{headers:authHeaders()});
+    const j=await r.json().catch(()=>({ok:false}));
+    if(!j.ok){ gate(j.error||'Could not authenticate.'); return; }
+    if(!j.admin){ gate("Your account isn't an admin, so it can't edit product content."); return; }
+    const pg={}; (j.rows||[]).forEach(row=>{ pg[row.page_key]=row; });
+    Object.keys(pages).forEach(k=>delete pages[k]); Object.assign(pages,pg);
+    render();
+  }catch(e){ const el=document.getElementById('cards'); if(el) el.innerHTML='<div class="mut" style="padding:24px">Couldn\'t reach the server — reload to try again.</div>'; }
+}
+function gate(msg){ const w=document.querySelector('.wrap');
+  if(w) w.innerHTML='<div style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:26px;margin-top:16px"><h2 style="font-family:Archivo;margin:0 0 6px">Admin access required</h2><p class="mut">'+esc(msg)+'</p><button class="btn dark" style="margin-top:10px" onclick="location.href=\'/admin/\'">Go to Connect 360 →</button></div>'; }
+async function apiWrite(payload){
+  try{ const r=await fetch(`${API}?manufacturer=${encodeURIComponent(MFR)}`,
+      {method:'POST',headers:authHeaders(),body:JSON.stringify(payload)});
+    const json=await r.json().catch(()=>({})); return {ok:r.ok, json}; }
+  catch(e){ return {ok:false, json:{error:String(e)}}; }
+}
+function toast(msg,bad){ const el=document.getElementById('toast')||(()=>{const d=document.createElement('div');d.id='toast';
+  d.style.cssText='position:fixed;left:50%;bottom:78px;transform:translateX(-50%);background:'+(bad?'#b42323':'#12253c')+';color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:700;z-index:90;box-shadow:0 10px 30px -12px rgba(0,0,0,.5)';document.body.appendChild(d);return d;})();
+  el.style.background=bad?'#b42323':'#12253c'; el.textContent=msg; el.style.opacity='1';
+  clearTimeout(el._t); el._t=setTimeout(()=>{el.style.opacity='0';},2200); }
 
-  // ---------- gate ----------
-  // Connect 360 staff sign-in — no separate token. If you're signed in as an admin the tool
-  // just opens; otherwise you're sent to the Connect 360 sign-in like every other admin tool.
-  function notAdmin(msg){
-    $("#root").innerHTML='<div class="gate"><h2>Admin access required</h2>'
-      +'<p>'+esc(msg||"This tool is available to HCPS admins. Sign in to Connect 360 with an admin account to continue.")+'</p>'
-      +'<button class="btn primary" id="tohub">Go to Connect 360 →</button></div>';
-    $("#tohub").onclick=function(){ location.href="/admin/"; };
-  }
+/* ---------- SKU helpers (mirror the backend normalizer) ---------- */
+function normSku(s){ if(s==null)return null;
+  if(typeof s==='string'||typeof s==='number') return {sku:String(s),name:'',size:'',hcpcs:'',group:'',status:'active',disabled:false,image:'',images:[],source:''};
+  return Object.assign({sku:'',name:'',size:'',hcpcs:'',group:'',status:'active',disabled:false,image:'',images:[],source:''},s,{sku:String(s.sku!=null?s.sku:(s.id!=null?s.id:''))}); }
+function skusOf(k){ return (Array.isArray(pages[k].skus)?pages[k].skus:[]).map(normSku).filter(Boolean); }
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escA(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
 
-  // ---------- load products ----------
-  function boot(){
-    if(!token()){ location.replace("/admin/"); return; }   // not signed in — hand off to the Connect 360 gate
-    $("#root").innerHTML='<div class="empty spin"><h2>Loading…</h2></div>';
-    api("", null, "GET").then(function(j){
-      if(!j.ok){ notAdmin(j.error||"Could not authenticate."); return; }
-      if(!j.admin){ notAdmin("Your account isn't an admin, so it can't edit product content."); return; }
-      products=j.rows||[]; renderShell();
-    }).catch(function(){ $("#root").innerHTML='<div class="empty"><h2>Couldn\'t reach the server</h2><p>Try reloading the page.</p></div>'; });
-  }
-
-  function renderShell(){
-    $("#root").innerHTML=
-      '<div class="app"><aside class="side">'
-      + '<div class="mfrrow"><select id="mfrsel"></select></div>'
-      + '<h3>Products · '+products.length+'</h3><div class="plist" id="plist"></div></aside>'
-      + '<main class="main" id="main"></main></div>';
-    var mfrs=["ovation-medical","strongback-mobility","corsicana","pedifix","complete-medical-supplies","bemis","access4u"];
-    if(mfrs.indexOf(MFR)<0) mfrs.unshift(MFR);
-    $("#mfrsel").innerHTML=mfrs.map(function(m){return '<option value="'+esc(m)+'"'+(m===MFR?" selected":"")+'>'+esc(m)+'</option>';}).join("");
-    $("#mfrsel").onchange=function(){ MFR=this.value; current=null; merge=null; boot(); };
-    renderList(); renderEmpty();
-  }
-  function renderList(){
-    if(!products.length){ $("#plist").innerHTML='<div class="fcount" style="padding:8px">No product_content rows for this line yet.</div>'; return; }
-    $("#plist").innerHTML=products.map(function(p){
-      var f=p.enrichment_flags||{};
-      var counts=[]; if(f.new)counts.push(f.new+" new"); if(f.conflict)counts.push(f.conflict+" conflict"); if(f.missing)counts.push(f.missing+" missing");
-      return '<div class="pli'+(current===p.page_key?" on":"")+'" data-k="'+esc(p.page_key)+'">'
-        +'<div class="nm">'+esc(p.name||p.page_key)+'</div>'
-        +'<div class="mt"><span class="stat '+esc(p.status||"pending_review")+'">'+esc((p.status||"pending").replace("_"," "))+'</span>'
-        +(counts.length?'<span class="fcount">'+esc(counts.join(" · "))+'</span>':'')+'</div></div>';
-    }).join("");
-    Array.prototype.forEach.call($("#plist").querySelectorAll(".pli"),function(el){
-      el.onclick=function(){ openProduct(el.getAttribute("data-k")); };
-    });
-  }
-  function renderEmpty(){
-    $("#main").innerHTML='<div class="empty"><h2>Select a product</h2>'
-      +'<p>Pick a product on the left to run the website &amp; PDF importers, compare all three sources, and approve the best version before it publishes to Partner 360.</p></div>';
-  }
-
-  // ---------- open + merge ----------
-  function openProduct(key){
-    current=key; renderList();
-    $("#main").innerHTML='<div class="empty spin"><h2>Merging sources…</h2></div>';
-    api("merge",{manufacturer:MFR, page_key:key}).then(function(j){
-      if(!j.ok){ toast(j.error||"Merge failed",true); renderEmpty(); return; }
-      merge=j.merge; currentRow=j.current; picks={}; imgState={}; manualText={}; extraImages=[]; removedImages={};
-      // default picks = suggested; default image state = approve all non-dup, primary=suggested
-      merge.fields.forEach(function(f){ picks[f.key]=f.suggested; manualText[f.key]=valueToText(f.values[f.suggested], f.type); });
-      merge.images.forEach(function(g){ imgState[g.id]={approved:!g.duplicate, primary:!!g.primary}; });
-      docsState=(currentRow&&Array.isArray(currentRow.documents))?currentRow.documents.slice():[];
-      videosState=(currentRow&&Array.isArray(currentRow.videos))?currentRow.videos.slice():[];
-      renderMerge();
-    }).catch(function(){ toast("Merge request failed",true); renderEmpty(); });
-  }
-
-  function srcDot(s){ return s==="hcps"?"hcps":(s==="website"?"web":(s==="pdf"?"pdf":"upload")); }
-  // ---- Live edit helpers: convert a field value <-> the textarea string the reviewer edits ----
-  function valueToText(v,type){
-    if(v==null) return "";
-    if(type==="list") return (Array.isArray(v)?v:[]).join("\n");
-    if(type==="map") return Object.keys(v).map(function(k){ return k+": "+[].concat(v[k]).join(", "); }).join("\n");
-    return String(v);
-  }
-  function textToValue(str,type){
-    str=str==null?"":String(str);
-    if(type==="list") return str.split("\n").map(function(x){return x.trim();}).filter(Boolean);
-    if(type==="map"){ var o={}; str.split("\n").forEach(function(line){ var i=line.indexOf(":"); if(i<0) return; var k=line.slice(0,i).trim(); var vals=line.slice(i+1).split(",").map(function(x){return x.trim();}).filter(Boolean); if(k) o[k]=vals; }); return o; }
-    return str.trim();
-  }
-  function allImages(){ return merge.images.concat(extraImages).filter(function(g){ return !removedImages[g.id]; }); }
-  function valHtml(v,type){
-    if(v==null||(type==="list"&&!v.length)||(type==="map"&&!Object.keys(v).length)) return '<div class="val muted">— none —</div>';
-    if(type==="list") return '<ul class="mini">'+v.map(function(x){return '<li>'+esc(x)+'</li>';}).join("")+'</ul>';
-    if(type==="map") return '<ul class="mini">'+Object.keys(v).map(function(k){return '<li><b>'+esc(k)+':</b> '+esc([].concat(v[k]).join(", "))+'</li>';}).join("")+'</ul>';
-    return '<div class="val">'+esc(v)+'</div>';
-  }
-  function fieldCard(f){
-    var order=["hcps","website","pdf"];
-    var cols=order.map(function(s){
-      var v=f.values[s]; var has=!(v==null);
-      var sel=picks[f.key]===s;
-      return '<label class="opt'+(sel?" sel":"")+(has?"":" empty")+'" data-fk="'+esc(f.key)+'" data-src="'+s+'"'+(has?"":' data-noselect="1"')+'>'
-        +'<span class="best">Selected</span><span class="radio"></span>'
-        +'<div class="ohead"><span class="dot '+srcDot(s)+'"></span> '+esc(merge.sources[s].label)+'</div>'
-        +valHtml(v,f.type)+'</label>';
-    }).join("");
-    return '<div class="field"><div class="fname">'+esc(f.label)+' <span class="tag '+f.flag+'">'+({new:"New",conflict:"Conflict",missing:"Missing",match:"Sources agree"}[f.flag]||f.flag)+'</span></div>'
-      +'<div class="cols">'+cols+'</div>'+meditRow(f)+'</div>';
-  }
-  // A full-width "Your edit" option, pre-filled with the suggested value — edit it to override.
-  function meditRow(f){
-    var sel=picks[f.key]==="manual";
-    var val=manualText[f.key]!=null?manualText[f.key]:"";
-    var hint=f.type==="list"?"One item per line.":(f.type==="map"?"One per line — “Option: value, value”.":"Type or paste your final version.");
-    return '<div class="medit-row"><label class="opt medit'+(sel?" sel":"")+'" data-fk="'+esc(f.key)+'" data-src="manual">'
-      +'<span class="best">Selected</span><span class="radio"></span>'
-      +'<div class="ohead">✎ Your edit — final published value</div>'
-      +'<textarea data-medit="'+esc(f.key)+'" rows="'+(f.type==="text"?2:3)+'" placeholder="Type or paste your version…">'+esc(val)+'</textarea>'
-      +'<div class="hint">'+esc(hint)+'</div></label></div>';
-  }
-
-  function imgCard(g){
-    var st=imgState[g.id]||{}; var srcCls=srcDot(g.source);
-    var badge=g.flag==="upload"?'<span class="badgeflag upload">ADDED</span>':(g.flag==="new"?'<span class="badgeflag new">NEW</span>':(g.duplicate?'<span class="badgeflag dup">DUPLICATE</span>':""));
-    return '<div class="imgc'+(st.primary?" primary":"")+(g.duplicate?" dupimg":"")+'" data-id="'+esc(g.id)+'">'
-      +'<div class="ph"><span class="srcflag '+srcCls+'">'+esc(g.source.toUpperCase())+'</span>'+badge
-      +'<img loading="lazy" src="'+esc(g.url)+'" alt="" onerror="this.style.display=\'none\';this.nextSibling&&(this.nextSibling.style.display=\'grid\')"><div class="noimg" style="display:none">image preview unavailable</div></div>'
-      +'<div class="cap"><div class="nm">'+esc(g.caption||g.url.split("/").pop())+'</div>'
-      +'<div class="ctrls"><span class="chk approve'+(st.approved?" on":"")+'" data-act="approve">'+(st.approved?"✓ Approved":"Approve")+'</span>'
-      +'<span class="chk prim'+(st.primary?" on":"")+'" data-act="primary">'+(st.primary?"★ Primary":"☆ Primary")+'</span>'
-      +'<span class="chk rm" data-act="remove" title="Remove from this product">✕</span></div></div></div>';
-  }
-
-  function sizingHtml(){
-    var s=merge.sizing; if(!s||!s.rows.length) return "";
-    var cols=s.columns.length?s.columns:Object.keys(s.rows[0]);
-    var head='<tr>'+cols.map(function(c){return '<th>'+esc(c)+'</th>';}).join("")+'</tr>';
-    var rows=s.rows.map(function(r){ return '<tr'+(s.isNew?' class="newrow"':'')+'>'+cols.map(function(c){return '<td>'+esc(r[c]!=null?r[c]:"")+'</td>';}).join("")+'</tr>'; }).join("");
-    return '<div class="sec"><h2>Sizing / Specification Table '
-      +(s.isNew?'<span class="tag new">New — from '+esc(merge.sources[s.source].label)+'</span>':'<span class="tag match">Reviewed</span>')+'</h2><div class="body">'
-      +(s.isNew?'<div class="note">This chart isn\'t on the current HCPS record. Review, then it publishes to the product page.</div>':"")
-      +'<div class="tblwrap"><table class="sz"><thead>'+head+'</thead><tbody>'+rows+'</tbody></table></div>'
-      +(s.note?'<div style="font-size:12px;color:var(--sub);margin-top:8px"><i>'+esc(s.note)+'</i></div>':"")+'</div></div>';
-  }
-
-  // ---------- documents & videos ----------
-  function docTypeName(t){ return {instructions:"Instructions",study:"Clinical Study",brochure:"Brochure",warranty:"Warranty",manual:"Manual",video:"Video",other:"Document"}[t]||"Document"; }
-  function docsHtml(){
-    var docRows=docsState.map(function(d,i){
-      return '<div class="docrow"><span class="dt '+esc(d.type||"other")+'">'+esc(docTypeName(d.type))+'</span>'
-        +'<span class="dn">'+esc(d.title||d.url)+'</span>'+(d.hosted?'<span class="hosted">hosted</span>':'')
-        +'<a class="du" href="'+esc(d.url)+'" target="_blank" rel="noopener">open ↗</a>'
-        +'<span class="rmx" data-drm="'+i+'">✕</span></div>';
-    }).join("");
-    var vidRows=videosState.map(function(v,i){
-      return '<div class="docrow"><span class="dt video">Video</span><span class="dn">'+esc(v.title||v.url)+'</span>'
-        +'<a class="du" href="'+esc(v.url)+'" target="_blank" rel="noopener">open ↗</a>'
-        +'<span class="rmx" data-vrm="'+i+'">✕</span></div>';
-    }).join("");
-    var count=docsState.length+videosState.length;
-    return '<div class="sec" id="docsec"><h2>Documents &amp; Videos <span class="tag match">'+count+' item'+(count===1?"":"s")+'</span></h2><div class="body">'
-      +'<div class="note">Add instructions, clinical studies, brochures, warranty or manuals as links (or upload a copy), plus video links (YouTube/Vimeo). These publish to the product page for dealers.'
-      +' <button class="btn sm" id="doc_rehost" style="margin-left:6px">⤓ Rehost external files to our storage</button></div>'
-      +'<div class="doclist">'+(docRows+vidRows||'<div class="fcount" style="padding:2px">No documents or videos yet.</div>')+'</div>'
-      +'<div class="docadd"><span class="lbl">Add a document</span>'
-        +'<input class="title" id="doc_title" placeholder="Title (e.g. Application Instructions)">'
-        +'<input class="url" id="doc_url" placeholder="https://link-to-pdf">'
-        +'<select id="doc_type"><option value="instructions">Instructions</option><option value="study">Clinical Study</option><option value="brochure">Brochure</option><option value="warranty">Warranty</option><option value="manual">Manual</option><option value="other">Other</option></select>'
-        +'<button class="btn sm" id="doc_addlink">+ Add link</button><button class="btn sm" id="doc_upload">⬆ Upload file</button></div>'
-      +'<div class="docadd" style="margin-top:8px"><span class="lbl">Add a video</span>'
-        +'<input class="title" id="vid_title" placeholder="Title (e.g. Product Overview)">'
-        +'<input class="url" id="vid_url" placeholder="https://youtube.com/…">'
-        +'<button class="btn sm" id="vid_add">+ Add video</button></div>'
-      +'</div></div>';
-  }
-  function refreshDocs(){ var el=$("#docsec"); if(el){ el.outerHTML=docsHtml(); wireDocs(); } updateSummary(); }
-  function wireDocs(){
-    var a=$("#doc_addlink"); if(a) a.onclick=function(){
-      var u=($("#doc_url").value||"").trim(); if(!u){ toast("Enter a document URL",true); return; }
-      docsState.push({title:($("#doc_title").value||"").trim()||u, url:u, type:$("#doc_type").value, hosted:false}); refreshDocs();
-    };
-    var up=$("#doc_upload"); if(up) up.onclick=pickDocFile;
-    var v=$("#vid_add"); if(v) v.onclick=function(){
-      var u=($("#vid_url").value||"").trim(); if(!u){ toast("Enter a video URL",true); return; }
-      videosState.push({title:($("#vid_title").value||"").trim()||u, url:u}); refreshDocs();
-    };
-    Array.prototype.forEach.call(document.querySelectorAll("[data-drm]"),function(x){ x.onclick=function(){ docsState.splice(+x.getAttribute("data-drm"),1); refreshDocs(); }; });
-    Array.prototype.forEach.call(document.querySelectorAll("[data-vrm]"),function(x){ x.onclick=function(){ videosState.splice(+x.getAttribute("data-vrm"),1); refreshDocs(); }; });
-    var rh=$("#doc_rehost"); if(rh) rh.onclick=rehostAll;
-  }
-  var HOSTED_MARK="/storage/v1/object/public/product-content/";
-  // Pull each external document/video into our own Storage (server-side), swapping the link for a hosted URL.
-  function rehostAll(){
-    var items=[];
-    docsState.forEach(function(d){ if(d.url&&d.url.indexOf(HOSTED_MARK)<0) items.push({obj:d,isDoc:true}); });
-    videosState.forEach(function(v){ if(v.url&&v.url.indexOf(HOSTED_MARK)<0) items.push({obj:v,isDoc:false}); });
-    if(!items.length){ toast("All files are already hosted in your storage"); return; }
-    var rh=$("#doc_rehost"); if(rh){ rh.disabled=true; rh.textContent="Rehosting…"; }
-    var i=0, ok=0;
-    toast("Rehosting "+items.length+" file(s) — this can take a moment for videos…");
-    function done(){ if(rh){ rh.disabled=false; } refreshDocs(); toast("Rehosted "+ok+" of "+items.length+" to your storage ✓"+(ok<items.length?" — remaining kept as links":"")); }
-    function next(){
-      if(i>=items.length){ done(); return; }
-      var it=items[i++];
-      api("rehost",{manufacturer:MFR,page_key:current,source_url:it.obj.url}).then(function(j){
-        if(j&&j.ok&&j.url){ it.obj.url=j.url; if(it.isDoc) it.obj.hosted=true; ok++; }
-        else { toast("Couldn't rehost one file: "+((j&&j.error)||"failed")+" (kept as link)",true); }
-        next();
-      }).catch(function(){ toast("A file failed to rehost (kept as link)",true); next(); });
-    }
-    next();
-  }
-  function pickDocFile(){
-    var inp=document.createElement("input"); inp.type="file"; inp.accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,application/pdf";
-    inp.onchange=function(){ var fl=inp.files&&inp.files[0]; if(fl) uploadDoc(fl); }; inp.click();
-  }
-  function uploadDoc(file){
-    if(file.size>6*1024*1024){ toast("File too big (max ~6MB)",true); return; }
-    var ty=$("#doc_type")?$("#doc_type").value:"other";
-    var t=($("#doc_title")&&$("#doc_title").value||"").trim()||file.name.replace(/\.[^.]*$/,"");
-    toast("Uploading file…");
-    var reader=new FileReader();
-    reader.onload=function(){
-      var base64=String(reader.result).split(",")[1];
-      api("upload_file",{manufacturer:MFR,page_key:current,filename:file.name,content_type:file.type||"application/octet-stream",content_base64:base64}).then(function(j){
-        if(!j.ok){ toast("Upload failed: "+(j.error||"unknown"),true); return; }
-        docsState.push({title:t, url:j.url, type:ty, hosted:true}); refreshDocs(); toast("Document uploaded ✓");
-      }).catch(function(){ toast("Upload failed",true); });
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function renderMerge(){
-    var p=currentRow||{}; var f=merge.flags;
-    var srcHtml=["hcps","website","pdf"].map(function(s){
-      var on=merge.sources[s].present; var u=merge.sources[s].url;
-      return '<span class="srcchip'+(on?"":" off")+'"><span class="dot '+srcDot(s)+'"></span> '+esc(merge.sources[s].label)
-        +' <small>'+(on?(u?esc(u.replace(/^https?:\/\//,"").slice(0,28)):"captured"):"not captured")+'</small></span>';
-    }).join("");
-
-    $("#main").innerHTML=
-      '<div class="phead"><div class="meta"><h1>'+esc(p.name||current)+'</h1>'
-      +'<div class="sku"><b>'+esc(MFR)+'</b> &nbsp;·&nbsp; page key <code>'+esc(current)+'</code>'
-      +(p.sku_count?' &nbsp;·&nbsp; '+p.sku_count+' SKUs':'')+' &nbsp;·&nbsp; status <b>'+esc((p.status||"pending_review").replace("_"," "))+'</b></div></div>'
-      +'<div class="headactions">'
-      +'<button class="btn sm" id="runWeb">🌐 Run website import</button>'
-      +'<button class="btn ghostdark" id="saveDraft">Save draft</button>'
-      +'<button class="btn primary" id="publishTop">Approve &amp; Publish →</button></div></div>'
-
-      +'<div class="srcbar">'+srcHtml+'</div>'
-
-      +'<div class="flagbar">'
-      +'<div class="flag new"><div class="n">+'+(f.new||0)+'</div><div class="l">New info found</div></div>'
-      +'<div class="flag conflict"><div class="n">'+(f.conflict||0)+'</div><div class="l">Conflicting values</div></div>'
-      +'<div class="flag missing"><div class="n">'+(f.missing||0)+'</div><div class="l">Missing on HCPS</div></div>'
-      +'<div class="flag dup"><div class="n">'+(f.duplicate||0)+'</div><div class="l">Duplicate images</div></div></div>'
-
-      +'<div class="sec"><h2>Field-by-field · pick the best version</h2><div class="body" id="fields">'
-      + merge.fields.map(fieldCard).join("") +'</div></div>'
-
-      +'<div class="sec"><h2>Product Images · approve, set primary &amp; paste your own</h2><div class="body">'
-      +'<div class="note">Paste an image anywhere on this screen (Ctrl/⌘+V), or drop / click the tile below — it uploads and drops straight into the gallery.</div>'
-      +'<div class="gal" id="gal"></div>'
-      +'</div></div>'
-
-      + sizingHtml()
-      + docsHtml()
-
-      +'<div class="actionbar"><div class="summ" id="summ"></div><span class="msrp">MSRP rule: single-unit <b>× 2</b> (fixed)</span>'
-      +'<div class="spacer"></div><button class="btn" id="saveDraft2">Save draft</button>'
-      +'<button class="btn primary" id="publishBtn">Approve &amp; Publish to Partner 360 →</button></div>';
-
-    wireMerge(); renderGallery(); wireDocs(); updateSummary();
-  }
-
-  function wireMerge(){
-    Array.prototype.forEach.call(document.querySelectorAll(".opt"),function(el){
-      if(el.getAttribute("data-noselect")) return;
-      el.onclick=function(){
-        var fk=el.getAttribute("data-fk"), src=el.getAttribute("data-src");
-        picks[fk]=src;
-        Array.prototype.forEach.call(document.querySelectorAll('.opt[data-fk="'+fk+'"]'),function(o){ o.classList.toggle("sel", o.getAttribute("data-src")===src); });
-        updateSummary();
-      };
-    });
-    // Live edit: typing in a "Your edit" box updates the value and selects it as the version to publish.
-    Array.prototype.forEach.call(document.querySelectorAll("textarea[data-medit]"),function(ta){
-      ta.addEventListener("input",function(){
-        var fk=ta.getAttribute("data-medit"); manualText[fk]=ta.value;
-        if(picks[fk]!=="manual"){ picks[fk]="manual";
-          Array.prototype.forEach.call(document.querySelectorAll('.opt[data-fk="'+fk+'"]'),function(o){ o.classList.toggle("sel", o.getAttribute("data-src")==="manual"); });
-        }
-        updateSummary();
-      });
-    });
-    var pub=function(){ publish("approve"); };
-    $("#publishBtn").onclick=pub; $("#publishTop").onclick=pub;
-    $("#saveDraft").onclick=function(){ publish("draft"); };
-    $("#saveDraft2").onclick=function(){ publish("draft"); };
-    $("#runWeb").onclick=runWebsiteImport;
-  }
-
-  // ---------- gallery (source images + pasted/uploaded) ----------
-  function galInner(){
-    return allImages().map(imgCard).join("")
-      + '<div class="addimg" id="addimg" tabindex="0"><span class="big">＋</span>'
-      + '<span class="t">Paste or add an image</span><span class="s">Ctrl/⌘+V, drop, or click to choose</span></div>';
-  }
-  function renderGallery(){ var g=$("#gal"); if(!g) return; g.innerHTML=galInner(); wireImages(); }
-  function wireImages(){
-    Array.prototype.forEach.call(document.querySelectorAll(".imgc"),function(el){
-      var id=el.getAttribute("data-id");
-      Array.prototype.forEach.call(el.querySelectorAll(".chk"),function(c){
-        c.onclick=function(){
-          var act=c.getAttribute("data-act");
-          if(act==="remove"){ removeImage(id); return; }
-          var st=imgState[id]||(imgState[id]={});
-          if(act==="approve"){ st.approved=!st.approved; if(!st.approved) st.primary=false; }
-          else { var was=st.primary; Object.keys(imgState).forEach(function(k){ imgState[k].primary=false; }); st.primary=!was; if(st.primary) st.approved=true; }
-          reflectImages(); updateSummary();
-        };
-      });
-    });
-    var tile=$("#addimg");
-    if(tile){
-      tile.onclick=pickImageFile;
-      tile.addEventListener("keydown",function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); pickImageFile(); } });
-      tile.addEventListener("dragover",function(e){ e.preventDefault(); tile.classList.add("drag"); });
-      tile.addEventListener("dragleave",function(){ tile.classList.remove("drag"); });
-      tile.addEventListener("drop",function(e){ e.preventDefault(); tile.classList.remove("drag");
-        var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(f&&/^image\//.test(f.type)) handleImageBlob(f,f.name); });
-    }
-  }
-  // Remove an image from this product's gallery (hides source images from view + publish;
-  // drops pasted/uploaded ones entirely). Doesn't touch other products or the stored sources.
-  function removeImage(id){
-    removedImages[id]=true;
-    extraImages=extraImages.filter(function(g){ return g.id!==id; });
-    delete imgState[id];
-    renderGallery(); updateSummary();
-  }
-  function pickImageFile(){
-    var inp=document.createElement("input"); inp.type="file"; inp.accept="image/*";
-    inp.onchange=function(){ var f=inp.files&&inp.files[0]; if(f) handleImageBlob(f,f.name); }; inp.click();
-  }
-  // Upload a pasted/dropped/picked image to hosted storage, then drop it into the gallery.
-  function handleImageBlob(blob,name){
-    if(!blob) return;
-    if(blob.size>6*1024*1024){ toast("Image too big (max ~6MB)",true); return; }
-    if(!current){ toast("Open a product first",true); return; }
-    toast("Uploading image…");
-    var reader=new FileReader();
-    reader.onload=function(){
-      var base64=String(reader.result).split(",")[1];
-      api("upload_image",{manufacturer:MFR,page_key:current,filename:name||"pasted",content_type:blob.type||"image/png",content_base64:base64}).then(function(j){
-        if(!j.ok){ toast("Upload failed: "+(j.error||"unknown"),true); return; }
-        var id="upload:"+Date.now()+":"+extraImages.length;
-        extraImages.push({id:id,source:"upload",url:j.url,caption:name&&name!=="pasted"?name:"Uploaded image",duplicate:false,flag:"upload",primary:false});
-        imgState[id]={approved:true,primary:false};
-        renderGallery(); updateSummary(); toast("Image added ✓");
-      }).catch(function(){ toast("Upload failed",true); });
-    };
-    reader.readAsDataURL(blob);
-  }
-  function reflectImages(){
-    Array.prototype.forEach.call(document.querySelectorAll(".imgc"),function(el){
-      var id=el.getAttribute("data-id"), st=imgState[id]||{};
-      el.classList.toggle("primary", !!st.primary);
-      var a=el.querySelector(".chk.approve"), pm=el.querySelector(".chk.prim");
-      a.classList.toggle("on", !!st.approved); a.textContent=st.approved?"✓ Approved":"Approve";
-      pm.classList.toggle("on", !!st.primary); pm.textContent=st.primary?"★ Primary":"☆ Primary";
-    });
-  }
-  function updateSummary(){
-    var picked=merge.fields.filter(function(f){return picks[f.key];}).length;
-    var appr=Object.keys(imgState).filter(function(k){return imgState[k].approved;}).length;
-    var prim=Object.keys(imgState).filter(function(k){return imgState[k].primary;}).length;
-    var srcN=["hcps","website","pdf"].filter(function(s){return merge.sources[s].present;}).length;
-    var el=$("#summ"); if(el) el.innerHTML='<b>'+srcN+' sources</b> merged · '+picked+' fields selected · '+appr+' images approved · '+prim+' primary'+(merge.sizing.rows.length?' · sizing table ready':'');
-  }
-
-  // ---------- website import ----------
-  function runWebsiteImport(){
-    // Guard: don't let a stray click wipe a website source that's already captured (e.g. one I loaded by hand).
-    if(merge.sources.website && merge.sources.website.present){
-      if(!window.confirm("A Manufacturer Website source is already captured for this product.\n\nRunning the importer will REPLACE it with a fresh scrape — which can return worse data on JavaScript-heavy sites. Replace it?")) return;
-    }
-    var suggested=(merge.sources.website && merge.sources.website.url) || "";
-    var url=window.prompt("Manufacturer product-page URL to import:", suggested||"https://");
-    if(!url) return;
-    var btn=$("#runWeb"); btn.disabled=true; btn.textContent="Importing…";
-    scrape(url).then(function(j){
-      if(!j.ok){ toast("Scrape failed: "+(j.error||"unknown"),true); btn.disabled=false; btn.textContent="🌐 Run website import"; return; }
-      // persist as the website source, then re-merge
-      return api("ingest_source",{manufacturer:MFR,page_key:current,source:"website",source_url:url,source_label:"Manufacturer Website",data:j.data}).then(function(k){
-        if(!k.ok){ toast("Save failed: "+(k.error||"unknown"),true); return; }
-        toast("Website imported — "+(j.data.images.length)+" images, "+(j.data.features.length)+" features");
-        openProduct(current);   // re-merge with the new source
-      });
-    }).catch(function(){ toast("Website import failed",true); })
-      .then(function(){ if(btn){ btn.disabled=false; btn.textContent="🌐 Run website import"; } });
-  }
-
-  // ---------- publish ----------
-  function chosenValue(f){ var s=picks[f.key]; return s? f.values[s] : null; }
-  function publish(mode){
-    var patch={ field_provenance:{}, enrichment_flags:merge.flags };
-    merge.fields.forEach(function(f){
-      var s=picks[f.key]; if(!s) return;
-      patch.field_provenance[f.key]=s;
-      var v=(s==="manual")?textToValue(manualText[f.key], f.type):f.values[s];
-      if(v==null) return;
-      if((f.type==="list"&&!v.length)||(f.type==="map"&&!Object.keys(v).length)||(f.type==="text"&&!String(v).trim())) return;
-      patch[f.key]=v;
-    });
-    // images: approved gallery (source + pasted/uploaded) + primary
-    var gallery=[], primaryUrl=null;
-    allImages().forEach(function(g){
-      var st=imgState[g.id]||{}; if(!st.approved) return;
-      gallery.push({ url:g.url, source:g.source, caption:g.caption||"", primary:!!st.primary, duplicate:!!g.duplicate });
-      if(st.primary) primaryUrl=g.url;
-    });
-    patch.images_gallery=gallery; if(primaryUrl) patch.image=primaryUrl;
-    // sizing
-    if(merge.sizing && merge.sizing.rows.length){ patch.sizing_table=merge.sizing.rows; if(merge.sizing.note) patch.sizing_note=merge.sizing.note; }
-    // documents & videos
-    patch.documents=docsState; patch.videos=videosState;
-
-    if(mode==="approve" && !window.confirm("Publish the reviewed content for “"+(currentRow&&currentRow.name||current)+"” to Partner 360? Dealers will see it immediately.")) return;
-
-    var action=(mode==="approve")?"approve":"upsert";
-    var body=(mode==="approve")
-      ? { manufacturer:MFR, page_key:current, patch:patch, reviewed_by:"HCPS admin" }
-      : { rows:[Object.assign({manufacturer:MFR, page_key:current, status:(currentRow&&currentRow.status)||"pending_review"}, patch)] };
-
-    var btns=document.querySelectorAll("#publishBtn,#publishTop"); Array.prototype.forEach.call(btns,function(b){b.disabled=true;});
-    api(action, body).then(function(j){
-      if(!j.ok){ toast((mode==="approve"?"Publish":"Save")+" failed: "+(j.error||"unknown"),true); }
-      else {
-        toast(mode==="approve"?"Published to Partner 360 ✓":"Draft saved ✓");
-        // reflect new status locally
-        products.forEach(function(pr){ if(pr.page_key===current){ pr.status=(mode==="approve"?"approved":pr.status); pr.enrichment_flags=merge.flags; pr.name=patch.name||pr.name; } });
-        renderList();
-      }
-      Array.prototype.forEach.call(btns,function(b){b.disabled=false;});
-    }).catch(function(){ toast("Request failed",true); Array.prototype.forEach.call(btns,function(b){b.disabled=false;}); });
-  }
-
-  // Paste an image anywhere while a product is open → upload it into the gallery.
-  document.addEventListener("paste",function(e){
-    if(!current||!merge) return;
-    var items=(e.clipboardData&&e.clipboardData.items)||[];
-    for(var i=0;i<items.length;i++){
-      if(items[i].type&&items[i].type.indexOf("image")===0){
-        var blob=items[i].getAsFile(); if(blob){ e.preventDefault(); handleImageBlob(blob,"pasted"); }
-        return;
-      }
-    }
+/* ---------- client-side Structure Review ---------- */
+function structureFlags(){
+  const out=[];
+  Object.keys(pages).forEach(k=>{ const p=pages[k];
+    if(dismissed.has(k)) return;
+    if(p.is_parent||p.parent_key) return;           // parents/variant children already structured
+    const skus=skusOf(k); if(skus.length<2) return;
+    const hcpcs=new Set(skus.map(s=>(s.hcpcs||'').trim()).filter(Boolean));
+    const bases=new Set(skus.map(s=>baseToken(s.name||'')).filter(Boolean));
+    const groups=new Set(skus.map(s=>(s.group||'').trim()).filter(Boolean));
+    const reasons=[];
+    if(hcpcs.size>1) reasons.push(hcpcs.size+' different HCPCS codes across its SKUs');
+    if(bases.size>1) reasons.push(bases.size+' distinct product names in the SKU list');
+    if(groups.size>1) reasons.push(groups.size+' catalog groups');
+    const strong=reasons.length>0;   // HCPCS / name / group divergence = likely several products
+    if(skus.length>=8 && !strong) reasons.push(skus.length+' SKUs under one product — confirm these are size/quantity variants of one product, not several products bundled together');
+    else if(skus.length>=8) reasons.push(skus.length+' SKUs total');
+    if(reasons.length) out.push({key:k, name:p.name||k, count:skus.length, strong, reasons});
   });
+  return out;
+}
+const SIZE_WORDS=/\b(x{0,3}s|s|m|l|x{0,3}l|xxl|xl|small|medium|large|universal|left|right|regular|tall|short|std|standard|adult|pediatric|youth|\d+(\.\d+)?("|in|inch|inches|cm|mm)?)\b/gi;
+function baseToken(str){ return String(str||'').toLowerCase().replace(SIZE_WORDS,' ').replace(/[^a-z ]+/g,' ').replace(/\s+/g,' ').trim().split(' ').slice(0,3).join(' '); }
 
-  // Boot once the staff session helper is ready (it loads synchronously above).
-  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", boot); else boot();
-  window.addEventListener("hcps-token", function(){ if(!products.length) boot(); });   // re-boot after a sign-in/refresh
-})();
+/* ---------- counts / categories ---------- */
+function counts(){ const c={total:0,skus:0,pending:0,published:0,needs:0,flagged:structureFlags().length};
+  for(const k in pages){ const p=pages[k]; c.total++; c.skus+=(p.sku_count||skusOf(k).length||0);
+    if(p.needs_content) c.needs++;
+    if(p.status==='pending_review'||p.status==='approved'||!p.status) c.pending++;
+    if(PUBLIC_SET.has(p.status)) c.published++; }
+  return c; }
+function allCategories(){ const s=new Set(); for(const k in pages){ if(pages[k].category) s.add(pages[k].category);} return [...s].sort(); }
+function allFamilies(){ const s=new Set(); for(const k in pages){ if(pages[k].family) s.add(pages[k].family);} return [...s].sort(); }
+
+/* ---------- render ---------- */
+function render(){
+  const c=counts();
+  document.getElementById('steps').innerHTML=WORKFLOW.map((s,i)=>`<div class="step ${i===1?'on':''}"><span class="n">${i+1}</span>${s}</div>`).join('');
+  document.getElementById('stats').innerHTML=
+    stat(c.total,'Products')+stat(c.skus,'SKUs')+stat(c.published,'Live on Partner 360')+
+    stat(c.pending,'In review')+stat(c.needs,'Need content')+stat(c.flagged,'Structure flags');
+  const fdefs=[['all','All'],['flagged','Flagged'],['pending','In review'],['published','Live'],
+    ['discontinued','Discontinued'],['hidden','Hidden'],['needs','Needs content']];
+  document.getElementById('filters').innerHTML=fdefs.map(f=>`<button class="${f[0]===filter?'on':''}" onclick="setFilter('${f[0]}')">${f[1]}</button>`).join('')
+    +`<span style="align-self:center;margin-left:6px;font-size:11.5px;color:var(--gray)">${ONLINE?'● Live · writing to Supabase':'○ Offline preview'}</span>`;
+  renderStructure();
+  document.getElementById('cards').innerHTML=visibleKeys().map(cardHTML).join('')
+    || '<div class="mut" style="padding:26px;text-align:center">No products match this filter.</div>';
+  // bulk-select column visibility
+  document.getElementById('selmode').textContent=selMode?'☑ Selecting':'☐ Select';
+  document.getElementById('bulkstatus').innerHTML='<option value="">Set status…</option>'+STATUSES.map(s=>`<option value="${s[0]}">${s[1]}</option>`).join('');
+  updateBulkBar(); updateSkuBar();
+}
+function stat(v,l){return `<div class="stat"><b>${v}</b><span>${l}</span></div>`;}
+function setFilter(f){ filter=f; render(); }
+function onSearch(v){ search=v.toLowerCase().trim(); render(); }
+function matchesSearch(k){ if(!search) return true; const p=pages[k];
+  if((p.name||'').toLowerCase().includes(search)) return true;
+  if((p.category||'').toLowerCase().includes(search)) return true;
+  if((p.family||'').toLowerCase().includes(search)) return true;
+  return skusOf(k).some(s=>(s.sku||'').toLowerCase().includes(search)||(s.name||'').toLowerCase().includes(search)); }
+function visibleKeys(){ const flagSet=new Set(structureFlags().map(f=>f.key));
+  return Object.keys(pages).filter(k=>{ const p=pages[k]; if(p.is_parent&&!skusOf(k).length&&!(p.variants||[]).length) {}
+    if(!matchesSearch(k)) return false;
+    if(filter==='flagged') return flagSet.has(k);
+    if(filter==='pending') return (p.status==='pending_review'||p.status==='approved'||!p.status)&&!p.needs_content;
+    if(filter==='published') return PUBLIC_SET.has(p.status);
+    if(filter==='discontinued') return p.status==='discontinued';
+    if(filter==='hidden') return p.status==='hidden';
+    if(filter==='needs') return !!p.needs_content;
+    return true; })
+    .sort((a,b)=>{ const fa=flagSet.has(a)?0:1, fb=flagSet.has(b)?0:1; if(fa!==fb) return fa-fb;
+      return (pages[a].name||a).localeCompare(pages[b].name||b); }); }
+
+function renderStructure(){
+  const flags=structureFlags();
+  const el=document.getElementById('structure');
+  if(!flags.length){ el.innerHTML=''; return; }
+  el.innerHTML=`<div class="structure"><h2>⚑ Possible Multiple Products — Review SKU Grouping</h2>
+    <p>${flags.length} product${flags.length>1?'s':''} may bundle several distinct products under one record. Open each, select the SKUs that belong together, and <b>Split out</b> into their own product — or dismiss if the SKUs really are size variants of one product.</p>
+    ${flags.slice().sort((a,b)=>(b.strong?1:0)-(a.strong?1:0)).map(f=>`<div class="flagcard"><div class="fh">
+        <div><div class="fn">${esc(f.name)} ${f.strong?'<span class="badge b-flag">Likely multiple products</span>':'<span class="badge b-need">Large SKU set — review</span>'}</div><div class="reasons">${f.reasons.map(esc).join(' · ')}</div></div>
+        <div style="display:flex;gap:6px"><button class="btn" data-act="open-manage" data-pk="${escA(f.key)}">Review SKUs</button>
+        <button class="btn ghost" data-act="dismiss-flag" data-pk="${escA(f.key)}">Dismiss</button></div>
+      </div></div>`).join('')}</div>`;
+}
+
+/* ---------- product card ---------- */
+function badge(k){ const p=pages[k];
+  if(p.needs_content) return '<span class="badge b-need">Needs content</span>';
+  const s=p.status||'pending_review'; const lbl=(STATUSES.find(x=>x[0]===s)||[s,s])[1];
+  return `<span class="badge b-${s}">${lbl}</span>`; }
+function cardHTML(k){ const p=pages[k]; const open=openCards.has(k);
+  const flagSet=new Set(structureFlags().map(f=>f.key)); const flagged=flagSet.has(k);
+  const img=p.image?(/^https?:/.test(p.image)?p.image:('..'+p.image)):'';
+  const nsk=p.sku_count||skusOf(k).length||0;
+  const sel=selProducts.has(k);
+  return `<div class="card ${open?'open':''} ${flagged?'flagged':''}" id="card-${cssId(k)}">
+    <div class="chead">
+      ${selMode?`<input type="checkbox" class="selbox" ${sel?'checked':''} data-act="toggle-product" data-pk="${escA(k)}">`:'<span></span>'}
+      <div class="cthumb" style="background-image:url('${escA(img)}')">${img?'':'No image'}</div>
+      <div>
+        <div class="pname" contenteditable data-field="name" data-pk="${escA(k)}" oninput="editField('${escA(k)}','name',this.textContent)">${esc(p.name||k)}</div>
+        <div class="pmeta">${badge(k)}${flagged?'<span class="badge b-flag">⚑ Review grouping</span>':''}
+          <span>${nsk} SKUs</span>${p.category?'<span>'+esc(p.category)+(p.subcategory?' › '+esc(p.subcategory):'')+'</span>':''}
+          ${p.source_pages?'<span>pp. '+esc(p.source_pages)+'</span>':''}</div>
+      </div>
+      <div class="cactions">
+        <button class="btn ghost" data-act="preview" data-pk="${escA(k)}">Preview</button>
+        <button class="btn grad" data-act="publish" data-pk="${escA(k)}">Publish</button>
+        <button class="btn ${open?'dark':''}" data-act="manage" data-pk="${escA(k)}">${open?'Close':'Manage ▾'}</button>
+      </div>
+    </div>
+    <div class="panel">${open?panelHTML(k):''}</div>
+  </div>`; }
+function cssId(k){ return String(k).replace(/[^a-z0-9]/gi,'_'); }
+
+function panelHTML(k){ const p=pages[k];
+  return recordSec(k)+skuSec(k)+contentSec(k)+sizingSec(k)+imagesSec(k)+approveSec(k); }
+
+/* -- Section 1: product record -- */
+function recordSec(k){ const p=pages[k];
+  const catOpts=allCategories(), famOpts=allFamilies();
+  return `<div class="sec"><h4>Product record</h4>
+    <div class="grid3">
+      <div class="fld"><label>Manufacturer</label><input class="ed" value="${escA(p.manufacturer||MFR)}" oninput="editField('${escA(k)}','manufacturer',this.value)"></div>
+      <div class="fld"><label>Family / product line</label><input class="ed" list="fam-${cssId(k)}" value="${escA(p.family||'')}" oninput="editField('${escA(k)}','family',this.value)">
+        <datalist id="fam-${cssId(k)}">${famOpts.map(o=>`<option value="${escA(o)}">`).join('')}</datalist></div>
+      <div class="fld"><label>Status</label><select class="ed" data-act="set-status" data-pk="${escA(k)}">
+        ${STATUSES.map(s=>`<option value="${s[0]}" ${(p.status||'pending_review')===s[0]?'selected':''}>${s[1]}</option>`).join('')}</select></div>
+      <div class="fld"><label>Category</label><input class="ed" list="cat-${cssId(k)}" value="${escA(p.category||'')}" oninput="editField('${escA(k)}','category',this.value)">
+        <datalist id="cat-${cssId(k)}">${catOpts.map(o=>`<option value="${escA(o)}">`).join('')}</datalist></div>
+      <div class="fld"><label>Subcategory</label><input class="ed" value="${escA(p.subcategory||'')}" oninput="editField('${escA(k)}','subcategory',this.value)"></div>
+      <div class="fld"><label>MSRP rule</label><input class="ed" value="${escA(p.msrp_rule||'')}" oninput="editField('${escA(k)}','msrp_rule',this.value)"></div>
+    </div>
+    <div class="fld" style="margin-top:10px"><label>Tagline</label><input class="ed" value="${escA(p.tagline||'')}" oninput="editField('${escA(k)}','tagline',this.value)"></div>
+    <div class="savebar"><button class="btn dark" data-act="save-record" data-pk="${escA(k)}">Save record</button>
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" ${p.disabled?'checked':''} data-act="toggle-disable" data-pk="${escA(k)}"> Disable whole product (hide from Partner 360)</label></div>
+  </div>`; }
+
+/* -- Section 2: SKUs -- */
+function skuSec(k){ const skus=skusOf(k); const others=Object.keys(pages).filter(x=>x!==k&&!pages[x].is_parent);
+  return `<div class="sec"><h4>SKUs <span class="mut" style="font-weight:600;text-transform:none;letter-spacing:0">${skus.length} · select rows to move or split into another product</span></h4>
+    <div class="tabscroll"><table class="skutable"><thead><tr>
+      <th></th><th>SKU</th><th>Name / description</th><th>Size</th><th>HCPCS</th><th>Status</th><th>Off</th></tr></thead><tbody>
+      ${skus.map(s=>{ const id=s.sku; const on=skuSel.pk===k&&skuSel.ids.has(id);
+        return `<tr class="${s.disabled?'disabled':''}">
+        <td><input type="checkbox" class="skusel" ${on?'checked':''} data-act="toggle-sku" data-pk="${escA(k)}" data-sku="${escA(id)}"></td>
+        <td><b>${esc(id)}</b></td>
+        <td><input class="sed" value="${escA(s.name||'')}" placeholder="—" oninput="editSku('${escA(k)}','${escA(id)}','name',this.value)"></td>
+        <td><input class="sed" style="max-width:90px" value="${escA(s.size||'')}" placeholder="—" oninput="editSku('${escA(k)}','${escA(id)}','size',this.value)"></td>
+        <td><input class="sed" style="max-width:80px" value="${escA(s.hcpcs||'')}" placeholder="—" oninput="editSku('${escA(k)}','${escA(id)}','hcpcs',this.value)"></td>
+        <td><select class="sst" data-act="sku-status" data-pk="${escA(k)}" data-sku="${escA(id)}">${SKU_STATUSES.map(st=>`<option value="${st}" ${(s.status||'active')===st?'selected':''}>${st}</option>`).join('')}</select></td>
+        <td><input type="checkbox" ${s.disabled?'checked':''} data-act="sku-disable" data-pk="${escA(k)}" data-sku="${escA(id)}"></td>
+      </tr>`; }).join('')}
+    </tbody></table></div>
+    <div class="savebar"><button class="btn dark" data-act="save-skus" data-pk="${escA(k)}">Save SKU edits</button>
+      <span class="hint">Tip: check SKUs above, then use the bar at the bottom to move them to another product or split them into a new one.</span></div>
+  </div>`; }
+
+/* -- Section 3: content -- */
+function contentSec(k){ const p=pages[k]; const feats=p.features||[]; const specs=p.specs||[];
+  const clin=p.clinical_applications||[]; const codes=p.billing_codes||[];
+  return `<div class="sec"><h4>Content</h4>
+    <div class="fld"><label>Description</label><textarea class="ed" rows="3" oninput="editField('${escA(k)}','description',this.value)">${esc(p.description||'')}</textarea></div>
+    <div class="fld" style="margin-top:10px"><label>Key features</label>
+      <ul class="feat">${feats.map((f,i)=>`<li><textarea class="ed" rows="1" oninput="editFeat('${escA(k)}',${i},this.value)">${esc(f)}</textarea><button class="x" data-act="del-feature" data-pk="${escA(k)}" data-i="${i}">✕</button></li>`).join('')}</ul>
+      <button class="btn ghost" style="margin-top:6px" data-act="add-feature" data-pk="${escA(k)}">＋ Add feature</button></div>
+    <div class="fld" style="margin-top:12px"><label>Specifications (label → value)</label>
+      <div>${specs.map((s,i)=>`<div class="specrow"><input class="ed" placeholder="Label" value="${escA(s.label||'')}" oninput="editSpec('${escA(k)}',${i},'label',this.value)"><input class="ed" placeholder="Value" value="${escA(s.value||'')}" oninput="editSpec('${escA(k)}',${i},'value',this.value)"><button class="x" data-act="del-spec" data-pk="${escA(k)}" data-i="${i}">✕</button></div>`).join('')}</div>
+      <button class="btn ghost" data-act="add-spec" data-pk="${escA(k)}">＋ Add spec</button></div>
+    <div class="grid2" style="margin-top:12px">
+      <div class="fld"><label>Warranty</label><textarea class="ed" rows="2" oninput="editField('${escA(k)}','warranty',this.value)">${esc(p.warranty||'')}</textarea></div>
+      <div class="fld"><label>Billing / HCPCS codes (comma-separated)</label><input class="ed" value="${escA(codes.join(', '))}" oninput="editCodes('${escA(k)}',this.value)"></div>
+    </div>
+    ${clin.length?`<div class="fld" style="margin-top:10px"><label>Clinical applications</label><div>${clin.map(x=>`<span class="chip">${esc(x)}</span>`).join('')}</div></div>`:''}
+    <div class="savebar"><button class="btn dark" data-act="save-content" data-pk="${escA(k)}">Save content</button></div>
+  </div>`; }
+
+/* -- Section 4: sizing / specs paste -- */
+function sizingSec(k){ const p=pages[k]; const st=normSizing(p.sizing_table);
+  return `<div class="sec"><h4>Sizing / spec table</h4>
+    ${st.rows.length?`<div class="tabscroll"><table class="pv"><thead><tr>${st.columns.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead>
+      <tbody>${st.rows.map(r=>`<tr>${st.columns.map(c=>`<td>${esc(r[c]!=null?r[c]:'')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
+      :'<div class="hint">No sizing table yet.</div>'}
+    <div class="fld" style="margin-top:10px"><label>Paste a sizing / spec chart (tab- or comma-separated; first row = column headers)</label>
+      <textarea class="ed" id="sz-${cssId(k)}" rows="4" placeholder="Description&#9;Part Number&#9;Size&#10;Universal Double-Pull LST&#9;61002&#9;25&quot;-50&quot;"></textarea></div>
+    <div class="fld" style="margin-top:8px"><label>Note (optional)</label><input class="ed" id="szn-${cssId(k)}" value="${escA(p.sizing_note||'')}" placeholder="e.g. For left or right foot. Available in Black &amp; White."></div>
+    <div class="savebar"><button class="btn" data-act="parse-sizing" data-pk="${escA(k)}">Preview parse</button>
+      <button class="btn dark" data-act="save-sizing" data-pk="${escA(k)}">Save sizing</button></div>
+    <div id="szprev-${cssId(k)}"></div>
+  </div>`; }
+function normSizing(st){ if(!st) return {columns:[],rows:[]};
+  if(Array.isArray(st)){ const cols=st[0]?Object.keys(st[0]):[]; return {columns:cols,rows:st}; }
+  if(st.columns&&st.rows) return {columns:st.columns,rows:st.rows};
+  return {columns:[],rows:[]}; }
+function parseTable(txt){ const lines=txt.replace(/\r/g,'').split('\n').map(l=>l.trimEnd()).filter(l=>l.trim().length);
+  if(!lines.length) return {columns:[],rows:[]};
+  const delim=lines[0].indexOf('\t')>=0?'\t':(lines[0].indexOf(',')>=0?',':'\t');
+  const cols=lines[0].split(delim).map(c=>c.trim());
+  const rows=lines.slice(1).map(l=>{ const cells=l.split(delim); const o={}; cols.forEach((c,i)=>o[c]=(cells[i]||'').trim()); return o; });
+  return {columns:cols,rows}; }
+
+/* -- Section 5: images + provenance -- */
+function imagesSec(k){ const p=pages[k]; const gal=Array.isArray(p.images_gallery)?p.images_gallery:[];
+  const docs=Array.isArray(p.documents)?p.documents:[];
+  return `<div class="sec"><h4>Images, documents &amp; source</h4>
+    ${p.website_url?`<div class="provline">📎 Source: <a href="${escA(p.website_url)}" target="_blank" rel="noopener">${esc((p.website_url||'').replace(/^https?:\/\/(www\.)?/,''))}</a></div>`:''}
+    ${p.source_files&&p.source_files.length?`<div class="provline">📄 From: ${(Array.isArray(p.source_files)?p.source_files:[]).map(esc).join(', ')}</div>`:''}
+    ${p.field_provenance&&Object.keys(p.field_provenance).length?`<div class="provline">🧭 Where fields came from: ${Object.keys(p.field_provenance).map(f=>`${esc(f)} ← <b>${esc(p.field_provenance[f])}</b>`).join(' · ')}</div>`:''}
+    ${gal.length?`<div class="gal">${gal.map(g=>`<div><img src="${escA(g.url)}" title="${escA(g.caption||'')}"><span class="prov">${esc(g.source||'')}${g.primary?' ★':''}</span></div>`).join('')}</div>`
+      :(p.image?`<div class="gal"><div><img src="${escA(/^https?:/.test(p.image)?p.image:'..'+p.image)}"><span class="prov">catalog</span></div></div>`:'<div class="hint">No images captured.</div>')}
+    <div class="fld" style="margin-top:10px"><label>Add image URL</label>
+      <div style="display:flex;gap:6px"><input class="ed" id="img-${cssId(k)}" placeholder="https://…"><button class="btn" data-act="add-image" data-pk="${escA(k)}">Add</button></div>
+      <span class="hint">Paste a hosted image URL. To upload files, use the Images tool; pasted URLs publish as-is.</span></div>
+    ${docs.length?`<div class="fld" style="margin-top:10px"><label>Documents</label><div>${docs.map(d=>`<span class="chip">${esc(d.title||d.type||'Doc')}</span>`).join('')}</div></div>`:''}
+  </div>`; }
+
+/* -- Section 6: approve / publish -- */
+function approveSec(k){ const p=pages[k]; const s=p.status||'pending_review';
+  return `<div class="sec"><h4>Approve &amp; publish</h4>
+    <div class="savebar" style="flex-wrap:wrap">
+      <button class="btn" data-act="preview" data-pk="${escA(k)}">Preview in Partner 360</button>
+      <button class="btn" data-act="approve" data-pk="${escA(k)}">✓ Approve</button>
+      <button class="btn grad" data-act="publish" data-pk="${escA(k)}">▲ Publish live</button>
+      <button class="btn" data-act="set-status-val" data-pk="${escA(k)}" data-val="discontinued">Mark discontinued</button>
+      <button class="btn" data-act="set-status-val" data-pk="${escA(k)}" data-val="hidden">Hide</button>
+      <button class="btn ghost" data-act="reject" data-pk="${escA(k)}" style="color:var(--bad)">✕ Reject</button>
+    </div>
+    <div class="hint">Approve = content signed off (still internal). Publish = live &amp; orderable on Partner 360. Current: <b>${esc(s)}</b>.</div>
+  </div>`; }
+
+/* ===================== local edits ===================== */
+function editField(k,f,v){ pages[k][f]=v; }
+function editSku(k,id,f,v){ const skus=skusOf(k); const i=skus.findIndex(s=>s.sku===id); if(i>=0){ skus[i][f]=v; pages[k].skus=skus; } }
+function editFeat(k,i,v){ pages[k].features=pages[k].features||[]; pages[k].features[i]=v; }
+function editSpec(k,i,f,v){ pages[k].specs=pages[k].specs||[]; pages[k].specs[i]=pages[k].specs[i]||{label:'',value:''}; pages[k].specs[i][f]=v; }
+function editCodes(k,v){ pages[k].billing_codes=v.split(',').map(x=>x.trim()).filter(Boolean); }
+
+/* ===================== delegated actions ===================== */
+document.addEventListener('click',async function(e){
+  const t=e.target.closest('[data-act]'); if(!t) return;
+  const act=t.getAttribute('data-act'); const k=t.getAttribute('data-pk'); const sku=t.getAttribute('data-sku'); const i=t.getAttribute('data-i');
+  if(act==='manage'||act==='open-manage'){ if(openCards.has(k)) openCards.delete(k); else openCards.add(k);
+    if(act==='open-manage'){ openCards.add(k); } render();
+    if(act==='open-manage'){ const el=document.getElementById('card-'+cssId(k)); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); } return; }
+  if(act==='dismiss-flag'){ dismissed.add(k); render(); return; }
+  if(act==='toggle-selmode'){ selMode=!selMode; if(!selMode) selProducts.clear(); render(); return; }
+  if(act==='toggle-product'){ if(selProducts.has(k)) selProducts.delete(k); else selProducts.add(k); updateBulkBar(); return; }
+  if(act==='clear-sel'){ selProducts.clear(); render(); return; }
+  if(act==='toggle-sku'){ if(skuSel.pk!==k){ skuSel={pk:k,ids:new Set()}; } if(skuSel.ids.has(sku)) skuSel.ids.delete(sku); else skuSel.ids.add(sku);
+    if(!skuSel.ids.size) skuSel.pk=null; updateSkuBar(); return; }
+  if(act==='clear-skusel'){ skuSel={pk:null,ids:new Set()}; render(); return; }
+  if(act==='add-feature'){ pages[k].features=pages[k].features||[]; pages[k].features.push(''); reopen(k); return; }
+  if(act==='del-feature'){ pages[k].features.splice(+i,1); reopen(k); return; }
+  if(act==='add-spec'){ pages[k].specs=pages[k].specs||[]; pages[k].specs.push({label:'',value:''}); reopen(k); return; }
+  if(act==='del-spec'){ pages[k].specs.splice(+i,1); reopen(k); return; }
+  if(act==='parse-sizing'){ const txt=document.getElementById('sz-'+cssId(k)).value; const tb=parseTable(txt);
+    document.getElementById('szprev-'+cssId(k)).innerHTML=tb.rows.length?`<div class="tabscroll" style="margin-top:8px"><table class="pv"><thead><tr>${tb.columns.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${tb.rows.map(r=>`<tr>${tb.columns.map(c=>`<td>${esc(r[c])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:'<div class="hint">Nothing parsed — check the paste.</div>'; return; }
+  if(act==='add-image'){ const url=(document.getElementById('img-'+cssId(k)).value||'').trim(); if(!url) return;
+    pages[k].images_gallery=Array.isArray(pages[k].images_gallery)?pages[k].images_gallery:[]; pages[k].images_gallery.push({url,source:'manual'});
+    if(!pages[k].image) pages[k].image=url; await save('save-content',k); reopen(k); return; }
+  // status + saves + structural
+  if(act==='save-record') return doSaveRecord(k,t);
+  if(act==='save-content') return doSaveContent(k,t);
+  if(act==='save-skus') return doSaveSkus(k,t);
+  if(act==='save-sizing') return doSaveSizing(k,t);
+  if(act==='approve') return doStatus(k,'approved');
+  if(act==='publish') return doStatus(k,'published');
+  if(act==='reject') return doStatus(k,'rejected');
+  if(act==='set-status-val') return doStatus(k,t.getAttribute('data-val'));
+  if(act==='preview') return openPreview(k);
+  if(act==='run-structure') return runStructure();
+  if(act==='new-product') return openNewProduct();
+  if(act==='open-history') return openHistory();
+  if(act==='close-drawer'){ document.getElementById('drawer').classList.remove('show'); return; }
+  if(act==='move-skus') return doMove();
+  if(act==='split-skus') return doSplit();
+  if(act==='bulk-apply') return doBulk(false);
+  if(act==='bulk-publish') return doBulk(true);
+  if(act==='undo'){ return doUndo(t.getAttribute('data-id'),t); }
+  if(act==='close-modal'){ document.getElementById('overlay').classList.remove('show'); return; }
+});
+document.addEventListener('change',async function(e){
+  const t=e.target.closest('[data-act]'); if(!t) return; const act=t.getAttribute('data-act');
+  const k=t.getAttribute('data-pk'), sku=t.getAttribute('data-sku');
+  if(act==='set-status'){ return doStatus(k,t.value); }
+  if(act==='toggle-disable'){ pages[k].disabled=t.checked; return doSaveRecord(k); }
+  if(act==='sku-status'){ editSku(k,sku,'status',t.value); return doSaveSkus(k); }
+  if(act==='sku-disable'){ editSku(k,sku,'disabled',t.checked); return doSaveSkus(k); }
+});
+
+function reopen(k){ render(); }
+function updateBulkBar(){ const bar=document.getElementById('bulkbar'); const n=selProducts.size;
+  document.getElementById('bulkcount').textContent=n; bar.classList.toggle('show',selMode&&n>0);
+  document.getElementById('movetarget'); }
+function updateSkuBar(){ const bar=document.getElementById('skubar'); const n=skuSel.ids.size;
+  document.getElementById('skucount').textContent=n; document.getElementById('skufrom').textContent=skuSel.pk?(pages[skuSel.pk].name||skuSel.pk):'—';
+  bar.classList.toggle('show',n>0);
+  const sel=document.getElementById('movetarget'); const cur=sel.value;
+  sel.innerHTML='<option value="">Move to product…</option>'+Object.keys(pages).filter(x=>x!==skuSel.pk&&!pages[x].is_parent)
+    .sort((a,b)=>(pages[a].name||a).localeCompare(pages[b].name||b))
+    .map(x=>`<option value="${escA(x)}">${esc(pages[x].name||x)}</option>`).join(''); sel.value=cur; }
+
+/* ===================== server saves ===================== */
+async function doStatus(k,status){ const prev=pages[k].status; pages[k].status=status;
+  const r=await apiWrite({action:'set_status',page_key:k,status});
+  if(r.ok){ toast('Status → '+status); render(); } else { pages[k].status=prev; toast('Save failed',true); render(); } }
+async function doSaveRecord(k){ const p=pages[k];
+  const patch={name:p.name,tagline:p.tagline,manufacturer:p.manufacturer,family:p.family,category:p.category,subcategory:p.subcategory,msrp_rule:p.msrp_rule,disabled:!!p.disabled};
+  const r=await apiWrite({action:'set_meta',page_key:k,patch});
+  toast(r.ok?'Record saved':'Save failed',!r.ok); }
+async function doSaveContent(k){ const p=pages[k];
+  const patch={description:p.description,features:p.features||[],specs:p.specs||[],warranty:p.warranty,billing_codes:p.billing_codes||[],clinical_applications:p.clinical_applications||[],images_gallery:p.images_gallery||[],image:p.image};
+  const r=await apiWrite({action:'set_content',page_key:k,patch});
+  toast(r.ok?'Content saved':'Save failed',!r.ok); }
+async function save(kind,k){ if(kind==='save-content') return doSaveContent(k); }
+async function doSaveSkus(k){ const skus=skusOf(k); pages[k].skus=skus; pages[k].sku_count=skus.length;
+  const r=await apiWrite({action:'save_skus',page_key:k,skus});
+  toast(r.ok?'SKUs saved':'Save failed',!r.ok); }
+async function doSaveSizing(k){ const txt=document.getElementById('sz-'+cssId(k)).value.trim();
+  const note=document.getElementById('szn-'+cssId(k)).value;
+  let payload={action:'save_sizing',page_key:k,sizing_note:note};
+  if(txt){ const tb=parseTable(txt); if(!tb.rows.length){ toast('Nothing parsed',true); return; }
+    payload.columns=tb.columns; payload.sizing_table=tb.rows; pages[k].sizing_table={columns:tb.columns,rows:tb.rows}; }
+  else { const cur=normSizing(pages[k].sizing_table); payload.columns=cur.columns; payload.sizing_table=cur.rows; }
+  pages[k].sizing_note=note;
+  const r=await apiWrite(payload); toast(r.ok?'Sizing saved':'Save failed',!r.ok); reopen(k); }
+
+async function doMove(){ if(!skuSel.pk||!skuSel.ids.size) return; const to=document.getElementById('movetarget').value;
+  if(!to){ toast('Pick a target product',true); return; }
+  const ids=[...skuSel.ids];
+  const r=await apiWrite({action:'move_skus',from_page_key:skuSel.pk,to_page_key:to,skus:ids});
+  if(r.ok){ // update local
+    const src=skusOf(skuSel.pk), moving=src.filter(s=>skuSel.ids.has(s.sku));
+    pages[skuSel.pk].skus=src.filter(s=>!skuSel.ids.has(s.sku)); pages[skuSel.pk].sku_count=pages[skuSel.pk].skus.length;
+    const dst=skusOf(to); const dstIds=new Set(dst.map(s=>s.sku)); moving.forEach(s=>{if(!dstIds.has(s.sku))dst.push(s);});
+    pages[to].skus=dst; pages[to].sku_count=dst.length;
+    toast('Moved '+ids.length+' SKU(s)'); skuSel={pk:null,ids:new Set()}; render();
+  } else toast('Move failed',true); }
+async function doSplit(){ if(!skuSel.pk||!skuSel.ids.size) return; const name=(document.getElementById('splitname').value||'').trim();
+  if(!name){ toast('Name the new product',true); return; }
+  const npk=slug(name); const ids=[...skuSel.ids]; const from=skuSel.pk; const srcP=pages[from];
+  const r=await apiWrite({action:'split',from_page_key:from,skus:ids,new:{page_key:npk,name,category:srcP.category,subcategory:srcP.subcategory,family:srcP.family}});
+  if(r.ok){ const src=skusOf(from), moving=src.filter(s=>skuSel.ids.has(s.sku));
+    pages[from].skus=src.filter(s=>!skuSel.ids.has(s.sku)); pages[from].sku_count=pages[from].skus.length;
+    pages[npk]={page_key:npk,name,category:srcP.category,subcategory:srcP.subcategory,family:srcP.family,skus:moving,sku_count:moving.length,status:'pending_review',msrp_rule:srcP.msrp_rule,features:[],image:(moving[0]&&moving[0].image)||''};
+    toast('Split into "'+name+'"'); skuSel={pk:null,ids:new Set()}; document.getElementById('splitname').value=''; openCards.add(npk); render();
+  } else toast('Split failed',true); }
+function slug(s){ return String(s).toLowerCase().replace(/['".]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60); }
+
+async function doBulk(publish){ const keys=[...selProducts]; if(!keys.length) return;
+  const patch={}; const st=publish?'published':document.getElementById('bulkstatus').value; const cat=document.getElementById('bulkcat').value.trim();
+  if(st) patch.status=st; if(cat) patch.category=cat;
+  if(!Object.keys(patch).length){ toast('Choose a status or category',true); return; }
+  const r=await apiWrite({action:'bulk',page_keys:keys,patch});
+  if(r.ok){ keys.forEach(k=>{ if(patch.status)pages[k].status=patch.status; if(patch.category)pages[k].category=patch.category; });
+    toast('Updated '+keys.length+' product(s)'); selProducts.clear(); document.getElementById('bulkcat').value=''; render(); }
+  else toast('Bulk update failed',true); }
+
+/* ===================== new product ===================== */
+function openNewProduct(){ modalHTML('New product',`
+  <div class="fld"><label>Product name</label><input class="ed" id="np-name" placeholder="e.g. Posterior Night Splint"></div>
+  <div class="grid2" style="margin-top:10px">
+    <div class="fld"><label>Category</label><input class="ed" id="np-cat" list="np-catlist" value="">
+      <datalist id="np-catlist">${allCategories().map(o=>`<option value="${escA(o)}">`).join('')}</datalist></div>
+    <div class="fld"><label>Family</label><input class="ed" id="np-fam"></div>
+  </div>
+  <div class="fld" style="margin-top:10px"><label>SKUs (comma or newline separated)</label><textarea class="ed" id="np-skus" rows="3" placeholder="61002, 61004"></textarea></div>
+  <div class="savebar"><button class="btn dark" data-act="new-save">Create product</button></div>`);
+  document.getElementById('modal').querySelector('[data-act="new-save"]').addEventListener('click',doNewProduct);
+}
+async function doNewProduct(){ const name=(document.getElementById('np-name').value||'').trim(); if(!name){toast('Name required',true);return;}
+  const cat=document.getElementById('np-cat').value.trim(), fam=document.getElementById('np-fam').value.trim();
+  const skus=(document.getElementById('np-skus').value||'').split(/[\n,]+/).map(s=>s.trim()).filter(Boolean).map(s=>({sku:s,status:'active'}));
+  const npk=slug(name);
+  const r=await apiWrite({action:'create_product',product:{page_key:npk,name,category:cat,family:fam,skus}});
+  if(r.ok){ pages[npk]={page_key:npk,name,category:cat,family:fam,skus,sku_count:skus.length,status:'pending_review',features:[]};
+    document.getElementById('overlay').classList.remove('show'); openCards.add(npk); toast('Created "'+name+'"'); render(); }
+  else toast('Create failed',true); }
+
+/* ===================== structure review (server pass) ===================== */
+async function runStructure(){ if(!ONLINE){ toast('Structure review runs on the loaded data'); filter='flagged'; render(); return; }
+  const r=await apiWrite({action:'structure_review'});
+  if(r.ok&&r.json&&r.json.flags){ // reflect server flags (they may enrich the client heuristic)
+    toast(r.json.flags.length+' product(s) flagged'); }
+  filter='flagged'; render(); }
+
+/* ===================== preview ===================== */
+function openPreview(k){ const p=pages[k]; const skus=skusOf(k).filter(s=>!s.disabled&&s.status!=='hidden');
+  const st=normSizing(p.sizing_table); const gal=Array.isArray(p.images_gallery)&&p.images_gallery.length?p.images_gallery:(p.image?[{url:/^https?:/.test(p.image)?p.image:'..'+p.image}]:[]);
+  modalHTML('Partner 360 preview · '+esc(p.name||k),`<div class="pv">
+    <h2>${esc(p.name||k)}</h2>${p.tagline?`<p class="pvtag">${esc(p.tagline)}</p>`:''}
+    <div class="mut" style="font-size:12px;margin-bottom:8px">${esc(p.category||'')}${p.subcategory?' › '+esc(p.subcategory):''} ${p.family?' · '+esc(p.family):''} · status <b>${esc(p.status||'pending_review')}</b></div>
+    ${gal.length?`<div class="pvimgs">${gal.map(g=>`<img src="${escA(g.url)}">`).join('')}</div>`:''}
+    ${p.description?`<p>${esc(p.description)}</p>`:''}
+    ${(p.features||[]).length?`<h4 style="font-family:Archivo">Features</h4><ul>${(p.features||[]).map(f=>`<li>${esc(f)}</li>`).join('')}</ul>`:''}
+    ${(p.specs||[]).length?`<h4 style="font-family:Archivo">Specifications</h4><table class="pv"><tbody>${(p.specs||[]).map(s=>`<tr><th>${esc(s.label)}</th><td>${esc(s.value)}</td></tr>`).join('')}</tbody></table>`:''}
+    ${st.rows.length?`<h4 style="font-family:Archivo">Sizing</h4><div class="tabscroll"><table class="pv"><thead><tr>${st.columns.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${st.rows.map(r=>`<tr>${st.columns.map(c=>`<td>${esc(r[c]!=null?r[c]:'')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${p.sizing_note?`<div class="hint">${esc(p.sizing_note)}</div>`:''}`:''}
+    ${p.warranty?`<h4 style="font-family:Archivo">Warranty</h4><p>${esc(p.warranty)}</p>`:''}
+    ${(p.billing_codes||[]).length?`<h4 style="font-family:Archivo">Billing codes</h4><div>${(p.billing_codes||[]).map(c=>`<span class="chip codechip">${esc(c)}</span>`).join('')}</div>`:''}
+    <h4 style="font-family:Archivo">SKUs (${skus.length} orderable)</h4>
+    <div class="tabscroll"><table class="pv"><thead><tr><th>SKU</th><th>Name</th><th>Size</th><th>HCPCS</th></tr></thead>
+      <tbody>${skus.map(s=>`<tr><td>${esc(s.sku)}</td><td>${esc(s.name||'')}</td><td>${esc(s.size||'')}</td><td>${esc(s.hcpcs||'')}</td></tr>`).join('')}</tbody></table></div>
+  </div>`); }
+
+/* ===================== history / undo ===================== */
+async function openHistory(){ const d=document.getElementById('drawer'); d.classList.add('show');
+  const body=document.getElementById('historybody');
+  if(!ONLINE){ body.innerHTML='<div style="padding:18px" class="mut">History is available when connected live (admin token).</div>'; return; }
+  body.innerHTML='<div style="padding:18px" class="mut">Loading…</div>';
+  const r=await apiWrite({action:'history',limit:80});
+  const list=(r.json&&r.json.history)||[];
+  body.innerHTML=list.length?list.map(h=>`<div class="hrow ${h.undone?'undone':''}">
+    <div><div class="ha">${esc(h.action)} · ${new Date(h.at).toLocaleString()}</div><div>${esc(h.summary||'')}</div><div class="mut" style="font-size:11px">${esc(h.actor||'')}</div></div>
+    ${h.undone?'<span class="mut" style="font-size:11px">undone</span>':`<button class="hu" data-act="undo" data-id="${h.id}">Undo</button>`}</div>`).join('')
+    :'<div style="padding:18px" class="mut">No changes recorded yet.</div>'; }
+async function doUndo(id,btn){ btn.disabled=true; const r=await apiWrite({action:'undo',id:Number(id)});
+  if(r.ok){ toast('Change undone — reloading'); const rr=await fetch(`${API}?manufacturer=${encodeURIComponent(MFR)}`,{headers:authHeaders()});
+    if(rr.ok){ const j=await rr.json(); if(j&&j.rows){ const pg={}; j.rows.forEach(row=>pg[row.page_key]=row); Object.keys(pages).forEach(k=>delete pages[k]); Object.assign(pages,pg);} }
+    render(); openHistory(); } else { toast('Undo failed',true); btn.disabled=false; } }
+
+/* ===================== modal helper ===================== */
+function modalHTML(title,inner){ const m=document.getElementById('modal');
+  m.innerHTML=`<div class="mh"><h3>${title}</h3><button class="close" data-act="close-modal">✕</button></div><div class="mb">${inner}</div>`;
+  document.getElementById('overlay').classList.add('show'); }
+document.getElementById('overlay').addEventListener('click',function(e){ if(e.target===this) this.classList.remove('show'); });
+
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+window.addEventListener('hcps-token', function(){ if(!Object.keys(pages).length) boot(); });
 </script>
 </body></html>

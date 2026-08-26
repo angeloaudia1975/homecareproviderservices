@@ -16,6 +16,32 @@ correction, or "do it this way from now on" — I notate it here immediately and
 and confirm in one line that it's recorded. Forgetting a recorded rule, or failing to
 record a stated one, is a defect.
 
+## RULE 0.1 — verify the REPO before writing any file (non-negotiable)
+
+There are **two separate repos** with overlapping filenames, deployed to two different
+Netlify sites. Editing the wrong repo's copy silently does nothing — the change never
+reaches the deployed tool. Before creating or committing ANY file, confirm which repo it
+belongs in and that it is the copy the live site actually serves.
+
+- **`homecareproviderservices` (this repo) → `homecareproviderservices.netlify.app`** — the
+  Connect 360 admin, the public marketing site, and MOST Netlify functions. Admin pages live
+  in `src/admin/`, functions in `netlify/functions/`. **The Product Content / Catalog tool and
+  its `product-content` function live HERE.**
+- **`homecareproviderservicesordering` → the dealer ordering portal (separate site)** — the
+  dealer-facing ordering front end. Admin pages in `public/admin/`, functions in
+  `netlify/functions/`. **The `product_content*` SQL schema files live in its `supabase/`.**
+
+Procedure, every time, before writing:
+1. Find the URL/tile the user actually uses (e.g. `admin-chrome.js` HUBS `href`, or the link the
+   user gives). The domain tells you the repo: `homecareproviderservices.netlify.app` → main repo.
+2. Confirm the target file is that repo's copy — not a same-named file in the other repo. When a
+   filename exists in both repos, the deployed one wins; the other is a stale/parallel copy.
+3. Only then edit + commit. If a feature spans both (schema in ordering/supabase, tool in main),
+   put each piece in its correct repo and say so.
+
+Two files were once shipped to the wrong repo (the catalog workspace + its function landed in
+`homecareproviderservicesordering` when the live tool is in `homecareproviderservices`). Never again.
+
 ## How rules get set (the procedure)
 1. When we agree on a standard, it is **added to this file in the same session** — not
    left in conversation. A rule that isn't written here does not exist.
@@ -327,9 +353,12 @@ Whichever importer loads them, they must count as commission reports.
 
 ## 15. Partner 360 catalog is managed in the admin Catalog Management Workspace (RULE)
 
-The Partner 360 product catalog is curated end-to-end through the **Catalog Management Workspace**
-(`homecareproviderservicesordering/public/admin/product-content-review.html`, backed by the
-`product-content` Netlify function). The whole catalog — product structure, SKUs, lifecycle status,
+The Partner 360 product catalog is curated end-to-end through the **Catalog Management Workspace**.
+**File locations (see RULE 0.1):** the tool is **`homecareproviderservices/src/admin/product-content-review.html`**
+and its backend is **`homecareproviderservices/netlify/functions/product-content.js`** (this repo — served at
+`homecareproviderservices.netlify.app/admin/product-content-review.html`, linked from the "Product Content
+Enrichment & Review" tile). The `product_content*` **SQL schema files live in the OTHER repo**,
+`homecareproviderservicesordering/supabase/`. The whole catalog — product structure, SKUs, lifecycle status,
 categories, sizing, and content — is edited in that UI. Do **not** hand-write SQL for routine catalog
 changes; add a backend action instead so the workspace can do it.
 
@@ -354,8 +383,10 @@ changes; add a backend action instead so the workspace can do it.
 - **Every structural/status/content write is logged** to `product_content_history` with a before-snapshot,
   and is reversible from the workspace **History → Undo** drawer. Undo restores snapshots and hides
   (never hard-deletes) anything a change created.
-- **Never expose the service-role key in the browser.** All writes go through the `product-content`
-  function using `SUPABASE_SERVICE_ROLE`; the workspace authenticates with `CONTENT_ADMIN_TOKEN`.
+- **Auth = Connect 360 staff sign-in (per RULE 9), no token prompt.** The workspace loads
+  `/admin/staff-session.js` and sends `Authorization: Bearer <HCPS.token()>`; the `product-content`
+  function verifies it via `whoami()` (Supabase Auth → `staff_users` admin role) and does every write with
+  `SUPABASE_SERVICE_ROLE`. The service-role key is server-only and never reaches the browser.
 
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.

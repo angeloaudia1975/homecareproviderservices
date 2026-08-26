@@ -6,10 +6,17 @@
  * staff_users table, and admin roles (president/admin/owner) may read drafts and write.
  * A legacy `x-admin-token` matching CONTENT_ADMIN_TOKEN still works for the importer/CLI.
  *
- * - Public GET (no auth): approved content only — same gate as RLS (dealers/portal).
- * - Admin GET:  ALL rows (drafts + approved) for the review queue.
- * - Admin POST: approve / reject / approve_all / upsert / ingest_source / merge — via the
+ * - Public GET (no auth): catalog-visible content only — matches RLS:
+ *     status IN ('published','active','discontinued') AND disabled = false.
+ * - Admin GET:  ALL rows (drafts + every status) for the review/catalog workspace.
+ * - Admin POST: review + upload + catalog-management actions, via the
  *   SUPABASE_SERVICE_ROLE key (bypasses RLS). Service key is a SERVER-ONLY secret.
+ *
+ * Review/media actions : approve · reject · approve_all · upsert · ingest_source ·
+ *                        upload_image · upload_file · rehost · merge
+ * Catalog actions      : set_status · set_meta · set_content · set_sku · save_skus ·
+ *                        move_skus · split · merge_products · create_product ·
+ *                        save_sizing · structure_review · bulk · history · undo
  *
  * Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE (both already set on this deploy);
  *      CONTENT_ADMIN_TOKEN optional (legacy importer fallback only).
@@ -21,6 +28,17 @@ const { computeMerge } = require('./_content-merge.js');
 
 const ADMIN_ROLES = { president: 1, admin: 1, owner: 1 };
 const enc = encodeURIComponent;
+
+// Public visibility gate — MUST match the RLS policy in product_content_catalog_workspace.sql.
+const PUBLIC_STATUSES = ['published', 'active', 'discontinued'];
+const ALL_STATUSES = ['pending_review', 'approved', 'rejected', 'published', 'active', 'discontinued', 'hidden'];
+// Product-record fields the workspace may edit directly (whitelist — nothing else is writable).
+const SAVE_FIELDS = [
+  'name', 'tagline', 'description', 'family', 'category', 'subcategory', 'msrp_rule',
+  'warranty', 'disabled', 'confidence', 'sku_count', 'features', 'clinical_applications',
+  'options', 'billing_codes', 'specs', 'documents', 'videos', 'images_gallery', 'image',
+  'sizing_note', 'field_provenance', 'manufacturer'
+];
 
 // Connect 360 staff auth: verify the Bearer JWT against Supabase Auth, resolve the role
 // from staff_users. Returns { role } for an active staff user, else null. Mirrors the
@@ -90,6 +108,76 @@ function hcpsFromContent(c) {
   };
 }
 
+// ---- SKU normalization: legacy string SKUs → canonical objects -------------
+function normSku(s) {
+  if (s == null) return null;
+  if (typeof s === 'string' || typeof s === 'number') {
+    return { sku: String(s), name: '', size: '', hcpcs: '', group: '',
+             status: 'active', disabled: false, image: '', images: [], source: '' };
+  }
+  return Object.assign(
+    { sku: '', name: '', size: '', hcpcs: '', group: '', status: 'active',
+      disabled: false, image: '', images: [], source: '' },
+    s,
+    { sku: String(s.sku != null ? s.sku : (s.id != null ? s.id : '')) }
+  );
+}
+function normSkus(arr) { return (Array.isArray(arr) ? arr : []).map(normSku).filter(Boolean); }
+function skuKey(s) { return String((s && (s.sku != null ? s.sku : s.id)) || ''); }
+
+// Base model token for structure-review grouping: drop sizes / sides / digits.
+const SIZE_WORDS = /\b(x{0,3}s|s|m|l|x{0,3}l|xxl|xl|small|medium|large|universal|left|right|regular|tall|short|std|standard|adult|pediatric|youth|\d+(\.\d+)?("|in|inch|inches|cm|mm)?)\b/gi;
+function baseToken(str) {
+  return String(str || '')
+    .toLowerCase()
+    .replace(SIZE_WORDS, ' ')
+    .replace(/[^a-z ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ').slice(0, 3).join(' ');
+}
+
+function arr(x) { return Array.isArray(x) ? x : (x == null ? [] : [x]); }
+// Flatten a value that may be a row, an array of rows, or an array of representation arrays.
+function flatRows(x) {
+  const out = [];
+  arr(x).forEach(el => { if (Array.isArray(el)) el.forEach(r => out.push(r)); else out.push(el); });
+  return out.filter(r => r && r.page_key);
+}
+
+// ---- Small REST helpers ----------------------------------------------------
+async function getRow(m, pageKey) {
+  const r = await fetch(rest(`product_content?manufacturer=eq.${enc(m)}&page_key=eq.${enc(pageKey)}&select=*`),
+    { headers: svcHeaders() });
+  const j = await r.json();
+  return Array.isArray(j) ? (j[0] || null) : null;
+}
+async function patchRow(m, pageKey, patch) {
+  const body = Object.assign({}, patch, { updated_at: new Date().toISOString() });
+  const r = await fetch(rest(`product_content?manufacturer=eq.${enc(m)}&page_key=eq.${enc(pageKey)}`),
+    { method: 'PATCH', headers: svcHeaders({ Prefer: 'return=representation' }), body: JSON.stringify(body) });
+  const rows = await r.json();
+  return { ok: r.ok, rows };
+}
+async function insertRow(row) {
+  const r = await fetch(rest('product_content?on_conflict=manufacturer,page_key'),
+    { method: 'POST', headers: svcHeaders({ Prefer: 'resolution=merge-duplicates,return=representation' }),
+      body: JSON.stringify([Object.assign({}, row, { updated_at: new Date().toISOString() })]) });
+  const rows = await r.json();
+  return { ok: r.ok, rows };
+}
+async function logHistory(h) {
+  try {
+    await fetch(rest('product_content_history'),
+      { method: 'POST', headers: svcHeaders({ Prefer: 'return=minimal' }),
+        body: JSON.stringify([{
+          manufacturer: h.manufacturer, page_key: h.page_key || null, action: h.action,
+          actor: h.actor || 'HCPS admin', summary: h.summary || null,
+          before: flatRows(h.before), after: flatRows(h.after), at: new Date().toISOString()
+        }]) });
+  } catch (e) { /* history is best-effort; never block the write */ }
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (!SUPABASE_URL || !SERVICE_ROLE) return reply(500, { ok: false, error: 'Supabase env not configured' });
@@ -104,7 +192,8 @@ exports.handler = async (event) => {
     // ---------- READ ----------
     if (event.httpMethod === 'GET') {
       if (!mfr) return reply(400, { ok: false, error: 'manufacturer required' });
-      const filter = isAdmin ? '' : '&status=eq.approved';   // admins see drafts; public sees approved only
+      // Admins see every row; the public sees catalog-visible rows only (matches RLS).
+      const filter = isAdmin ? '' : `&status=in.(${PUBLIC_STATUSES.join(',')})&disabled=eq.false`;
       const r = await fetch(rest(`product_content?manufacturer=eq.${enc(mfr)}${filter}&select=*&order=page_key`), { headers: svcHeaders() });
       const rows = await r.json();
       return reply(200, { ok: true, admin: isAdmin, rows });
@@ -116,9 +205,10 @@ exports.handler = async (event) => {
       let body = {}; try { body = JSON.parse(event.body || '{}'); } catch (e) {}
       const action = body.action;
       const reviewer = body.reviewed_by || who;
+      const m = body.manufacturer || mfr;
 
+      // ================= REVIEW ACTIONS =================
       if (action === 'approve' || action === 'reject') {
-        const m = body.manufacturer || mfr;
         if (!m) return reply(400, { ok: false, error: 'manufacturer required' });
         if (!body.page_key) return reply(400, { ok: false, error: 'page_key required' });
         const patch = Object.assign({}, body.patch || {}, {
@@ -132,7 +222,6 @@ exports.handler = async (event) => {
       }
 
       if (action === 'approve_all') {
-        const m = body.manufacturer || mfr;
         const r = await fetch(rest(`product_content?manufacturer=eq.${enc(m)}&status=eq.pending_review`),
           { method: 'PATCH', headers: svcHeaders({ Prefer: 'return=representation' }),
             body: JSON.stringify({ status: 'approved', reviewed_by: reviewer, updated_at: new Date().toISOString() }) });
@@ -150,7 +239,6 @@ exports.handler = async (event) => {
 
       // ---- Capture one source (hcps / website / pdf) for a product page ----
       if (action === 'ingest_source') {
-        const m = body.manufacturer || mfr;
         if (!m || !body.page_key || !body.source) return reply(400, { ok: false, error: 'manufacturer, page_key, source required' });
         if (['hcps', 'website', 'pdf'].indexOf(body.source) < 0) return reply(400, { ok: false, error: 'source must be hcps|website|pdf' });
         const d = body.data || {};
@@ -171,7 +259,6 @@ exports.handler = async (event) => {
 
       // ---- Upload a pasted/dropped image → public Storage → return its URL ----
       if (action === 'upload_image') {
-        const m = body.manufacturer || mfr;
         if (!m || !body.page_key || !body.content_base64) return reply(400, { ok: false, error: 'manufacturer, page_key, content_base64 required' });
         const ct = body.content_type || 'image/png';
         const ext = (ct.split('/')[1] || 'png').replace('jpeg', 'jpg').replace(/[^a-z0-9]/g, '') || 'png';
@@ -191,7 +278,6 @@ exports.handler = async (event) => {
 
       // ---- Upload a document file (PDF, etc.) → public Storage → return its URL ----
       if (action === 'upload_file') {
-        const m = body.manufacturer || mfr;
         if (!m || !body.page_key || !body.content_base64) return reply(400, { ok: false, error: 'manufacturer, page_key, content_base64 required' });
         const rawName = String(body.filename || 'document');
         const extM = rawName.match(/\.([A-Za-z0-9]{1,8})$/);
@@ -212,11 +298,9 @@ exports.handler = async (event) => {
 
       // ---- Rehost an external file (PDF/video/image) into our own public Storage ----
       if (action === 'rehost') {
-        const m = body.manufacturer || mfr;
         const src = body.source_url;
         if (!m || !body.page_key || !src) return reply(400, { ok: false, error: 'manufacturer, page_key, source_url required' });
         if (!/^https?:\/\//i.test(src)) return reply(400, { ok: false, error: 'a valid http(s) source_url is required' });
-        // Already ours? Return as-is (idempotent).
         if (src.indexOf('/storage/v1/object/public/product-content/') >= 0) return reply(200, { ok: true, url: src, skipped: true });
         let r; try {
           r = await fetch(src, { redirect: 'follow', headers: { 'user-agent': 'HCPS-Partner360-Rehost/1.0' } });
@@ -237,18 +321,284 @@ exports.handler = async (event) => {
 
       // ---- Reconcile the three captured sources into a flagged merge ----
       if (action === 'merge') {
-        const m = body.manufacturer || mfr;
         if (!m || !body.page_key) return reply(400, { ok: false, error: 'manufacturer, page_key required' });
         const sr = await fetch(rest(`product_content_sources?manufacturer=eq.${enc(m)}&page_key=eq.${enc(body.page_key)}&select=*`), { headers: svcHeaders() });
         const srcRows = await sr.json();
         const byKey = {};
         (Array.isArray(srcRows) ? srcRows : []).forEach(function (r) { byKey[r.source] = mapSourceRow(r); });
-        const pr = await fetch(rest(`product_content?manufacturer=eq.${enc(m)}&page_key=eq.${enc(body.page_key)}&select=*`), { headers: svcHeaders() });
-        const prRows = await pr.json();
-        const cur = (Array.isArray(prRows) && prRows[0]) || null;
+        const cur = await getRow(m, body.page_key);
         if (!byKey.hcps && cur) byKey.hcps = hcpsFromContent(cur);
         const merged = computeMerge({ hcps: byKey.hcps || null, website: byKey.website || null, pdf: byKey.pdf || null });
         return reply(200, { ok: true, manufacturer: m, page_key: body.page_key, merge: merged, current: cur });
+      }
+
+      // ================= CATALOG-MANAGEMENT ACTIONS =================
+
+      // ---- Product lifecycle status ----
+      if (action === 'set_status') {
+        if (!m || !body.page_key || !body.status) return reply(400, { ok: false, error: 'manufacturer, page_key, status required' });
+        if (ALL_STATUSES.indexOf(body.status) < 0) return reply(400, { ok: false, error: 'bad status' });
+        const before = await getRow(m, body.page_key);
+        const patch = { status: body.status, reviewed_by: reviewer };
+        if (body.status === 'published') patch.published_at = new Date().toISOString();
+        const res = await patchRow(m, body.page_key, patch);
+        await logHistory({ manufacturer: m, page_key: body.page_key, action: 'set_status', actor: reviewer,
+          summary: `Status → ${body.status}`, before: before, after: res.rows });
+        return reply(res.ok ? 200 : 500, { ok: res.ok, rows: res.rows });
+      }
+
+      // ---- Edit the product record OR any content field (whitelisted writer) ----
+      if (action === 'set_meta' || action === 'set_content' || action === 'save_fields') {
+        if (!m || !body.page_key) return reply(400, { ok: false, error: 'manufacturer, page_key required' });
+        const p = body.patch || {};
+        const patch = {};
+        Object.keys(p).forEach(k => { if (SAVE_FIELDS.indexOf(k) >= 0) patch[k] = p[k]; });
+        if (!Object.keys(patch).length) return reply(400, { ok: false, error: 'no editable fields in patch' });
+        patch.reviewed_by = reviewer;
+        const before = await getRow(m, body.page_key);
+        const res = await patchRow(m, body.page_key, patch);
+        await logHistory({ manufacturer: m, page_key: body.page_key, action: action === 'set_meta' ? 'set_meta' : 'save_content',
+          actor: reviewer, summary: `Edited ${Object.keys(patch).filter(k => k !== 'reviewed_by').join(', ')}`,
+          before: before, after: res.rows });
+        return reply(res.ok ? 200 : 500, { ok: res.ok, rows: res.rows });
+      }
+
+      // ---- Edit one SKU in place ----
+      if (action === 'set_sku') {
+        if (!m || !body.page_key || body.sku == null) return reply(400, { ok: false, error: 'manufacturer, page_key, sku required' });
+        const row = await getRow(m, body.page_key);
+        if (!row) return reply(404, { ok: false, error: 'product not found' });
+        const id = String(body.sku);
+        let skus = normSkus(row.skus);
+        let found = false;
+        skus = skus.map(s => { if (skuKey(s) === id) { found = true; return Object.assign(s, body.patch || {}, { sku: id }); } return s; });
+        if (!found && body.create) { skus.push(normSku(Object.assign({ sku: id }, body.patch || {}))); found = true; }
+        if (!found) return reply(404, { ok: false, error: 'sku not found on this product' });
+        const res = await patchRow(m, body.page_key, { skus, sku_count: skus.length });
+        await logHistory({ manufacturer: m, page_key: body.page_key, action: 'set_sku', actor: reviewer,
+          summary: `Edited SKU ${id}`, before: row, after: res.rows });
+        return reply(res.ok ? 200 : 500, { ok: res.ok, rows: res.rows });
+      }
+
+      // ---- Replace a product's whole SKU list in one write ----
+      if (action === 'save_skus') {
+        if (!m || !body.page_key || !Array.isArray(body.skus)) return reply(400, { ok: false, error: 'manufacturer, page_key, skus[] required' });
+        const before = await getRow(m, body.page_key);
+        const skus = normSkus(body.skus);
+        const res = await patchRow(m, body.page_key, { skus, sku_count: skus.length });
+        await logHistory({ manufacturer: m, page_key: body.page_key, action: 'save_skus', actor: reviewer,
+          summary: `Saved ${skus.length} SKU row(s)`, before: before, after: res.rows });
+        return reply(res.ok ? 200 : 500, { ok: res.ok, rows: res.rows });
+      }
+
+      // ---- Move SKUs from one product to another ----
+      if (action === 'move_skus') {
+        const from = body.from_page_key, to = body.to_page_key;
+        if (!m || !from || !to || !Array.isArray(body.skus)) return reply(400, { ok: false, error: 'manufacturer, from_page_key, to_page_key, skus[] required' });
+        const src = await getRow(m, from), dst = await getRow(m, to);
+        if (!src || !dst) return reply(404, { ok: false, error: 'source or target product not found' });
+        const ids = body.skus.map(String);
+        let srcSkus = normSkus(src.skus), dstSkus = normSkus(dst.skus);
+        const moving = srcSkus.filter(s => ids.indexOf(skuKey(s)) >= 0);
+        if (!moving.length) return reply(400, { ok: false, error: 'none of those SKUs are on the source product' });
+        srcSkus = srcSkus.filter(s => ids.indexOf(skuKey(s)) < 0);
+        const dstIds = new Set(dstSkus.map(skuKey));
+        moving.forEach(s => { if (!dstIds.has(skuKey(s))) dstSkus.push(s); });
+        const r1 = await patchRow(m, from, { skus: srcSkus, sku_count: srcSkus.length });
+        const r2 = await patchRow(m, to,   { skus: dstSkus, sku_count: dstSkus.length });
+        await logHistory({ manufacturer: m, page_key: null, action: 'move_skus', actor: reviewer,
+          summary: `Moved ${moving.length} SKU(s) from "${src.name || from}" to "${dst.name || to}"`,
+          before: [src, dst], after: [].concat(r1.rows, r2.rows) });
+        return reply(r1.ok && r2.ok ? 200 : 500, { ok: r1.ok && r2.ok, moved: moving.length });
+      }
+
+      // ---- Split: pull selected SKUs out of a product into a NEW product ----
+      if (action === 'split') {
+        const from = body.from_page_key, np = body.new || {};
+        if (!m || !from || !np.page_key || !Array.isArray(body.skus)) return reply(400, { ok: false, error: 'manufacturer, from_page_key, new.page_key, skus[] required' });
+        const src = await getRow(m, from);
+        if (!src) return reply(404, { ok: false, error: 'source product not found' });
+        const ids = body.skus.map(String);
+        let srcSkus = normSkus(src.skus);
+        const moving = srcSkus.filter(s => ids.indexOf(skuKey(s)) >= 0);
+        if (!moving.length) return reply(400, { ok: false, error: 'none of those SKUs are on the source product' });
+        srcSkus = srcSkus.filter(s => ids.indexOf(skuKey(s)) < 0);
+        const newRow = {
+          manufacturer: m, page_key: np.page_key,
+          name: np.name || src.name, tagline: np.tagline != null ? np.tagline : src.tagline,
+          description: np.description != null ? np.description : '',
+          category: np.category || src.category, subcategory: np.subcategory || src.subcategory,
+          family: np.family || src.family, features: np.features || [],
+          skus: moving, sku_count: moving.length,
+          image: (moving[0] && moving[0].image) ? moving[0].image : null,
+          msrp_rule: src.msrp_rule, status: 'pending_review'
+        };
+        const ins = await insertRow(newRow);
+        const r1 = await patchRow(m, from, { skus: srcSkus, sku_count: srcSkus.length });
+        await logHistory({ manufacturer: m, page_key: np.page_key, action: 'split', actor: reviewer,
+          summary: `Split ${moving.length} SKU(s) out of "${src.name || from}" into "${newRow.name}"`,
+          before: [src], after: [].concat(ins.rows, r1.rows) });
+        return reply(ins.ok && r1.ok ? 200 : 500, { ok: ins.ok && r1.ok, created: np.page_key, moved: moving.length, rows: ins.rows });
+      }
+
+      // ---- Merge products: fold sources' SKUs into a target, hide the emptied sources ----
+      if (action === 'merge_products') {
+        const into = body.into_page_key, froms = body.from_page_keys || [];
+        if (!m || !into || !froms.length) return reply(400, { ok: false, error: 'manufacturer, into_page_key, from_page_keys[] required' });
+        const dst = await getRow(m, into);
+        if (!dst) return reply(404, { ok: false, error: 'target product not found' });
+        let dstSkus = normSkus(dst.skus);
+        const dstIds = new Set(dstSkus.map(skuKey));
+        const befores = [dst]; const afters = [];
+        for (const fk of froms) {
+          if (fk === into) continue;
+          const src = await getRow(m, fk); if (!src) continue;
+          befores.push(src);
+          normSkus(src.skus).forEach(s => { if (!dstIds.has(skuKey(s))) { dstSkus.push(s); dstIds.add(skuKey(s)); } });
+          const rr = await patchRow(m, fk, { skus: [], sku_count: 0, status: 'hidden', disabled: true });
+          afters.push(rr.rows);
+        }
+        const r = await patchRow(m, into, { skus: dstSkus, sku_count: dstSkus.length });
+        afters.push(r.rows);
+        await logHistory({ manufacturer: m, page_key: into, action: 'merge_products', actor: reviewer,
+          summary: `Merged ${froms.length} product(s) into "${dst.name || into}"`,
+          before: befores, after: [].concat.apply([], afters) });
+        return reply(r.ok ? 200 : 500, { ok: r.ok, into: into, sku_count: dstSkus.length });
+      }
+
+      // ---- Create a brand-new product (optionally pulling SKUs off an existing source page) ----
+      if (action === 'create_product') {
+        const np = body.product || {};
+        if (!m || !np.page_key) return reply(400, { ok: false, error: 'manufacturer, product.page_key required' });
+        let skus = normSkus(np.skus || []);
+        const befores = [];
+        if (body.from_page_key && Array.isArray(body.skus)) {
+          const src = await getRow(m, body.from_page_key);
+          if (src) {
+            befores.push(src);
+            const ids = body.skus.map(String);
+            let ss = normSkus(src.skus);
+            const moving = ss.filter(s => ids.indexOf(skuKey(s)) >= 0);
+            ss = ss.filter(s => ids.indexOf(skuKey(s)) < 0);
+            skus = skus.concat(moving);
+            await patchRow(m, body.from_page_key, { skus: ss, sku_count: ss.length });
+          }
+        }
+        const newRow = {
+          manufacturer: m, page_key: np.page_key, name: np.name || np.page_key,
+          tagline: np.tagline || null, description: np.description || null,
+          category: np.category || null, subcategory: np.subcategory || null, family: np.family || null,
+          features: np.features || [], skus, sku_count: skus.length,
+          image: np.image || (skus[0] && skus[0].image) || null,
+          msrp_rule: np.msrp_rule || null, status: 'pending_review'
+        };
+        const ins = await insertRow(newRow);
+        await logHistory({ manufacturer: m, page_key: np.page_key, action: 'create_product', actor: reviewer,
+          summary: `Created "${newRow.name}" (${skus.length} SKUs)`, before: befores, after: ins.rows });
+        return reply(ins.ok ? 200 : 500, { ok: ins.ok, created: np.page_key, rows: ins.rows });
+      }
+
+      // ---- Save a sizing / spec table pasted in the workspace (column order preserved) ----
+      if (action === 'save_sizing') {
+        if (!m || !body.page_key) return reply(400, { ok: false, error: 'manufacturer, page_key required' });
+        let st = body.sizing_table;
+        if (Array.isArray(st)) {
+          const cols = (body.columns && body.columns.length) ? body.columns : (st[0] ? Object.keys(st[0]) : []);
+          st = { columns: cols, rows: st };
+        } else if (st && !Array.isArray(st.rows)) {
+          st = { columns: st.columns || [], rows: [] };
+        }
+        const before = await getRow(m, body.page_key);
+        const patch = { sizing_table: st };
+        if (body.sizing_note != null) patch.sizing_note = body.sizing_note;
+        const res = await patchRow(m, body.page_key, patch);
+        await logHistory({ manufacturer: m, page_key: body.page_key, action: 'save_sizing', actor: reviewer,
+          summary: `Saved sizing table (${(st.rows || []).length} rows)`, before: before, after: res.rows });
+        return reply(res.ok ? 200 : 500, { ok: res.ok, rows: res.rows });
+      }
+
+      // ---- Structure review: flag products that look like several products bundled under one ----
+      if (action === 'structure_review') {
+        if (!m) return reply(400, { ok: false, error: 'manufacturer required' });
+        const r = await fetch(rest(`product_content?manufacturer=eq.${enc(m)}&select=page_key,name,category,sku_count,skus,is_parent,parent_key,status`),
+          { headers: svcHeaders() });
+        const rows = await r.json();
+        const flags = [];
+        (Array.isArray(rows) ? rows : []).forEach(row => {
+          if (row.is_parent) return;
+          const skus = normSkus(row.skus);
+          if (skus.length < 2) return;
+          const hcpcs  = new Set(skus.map(s => (s.hcpcs || '').trim()).filter(Boolean));
+          const bases  = new Set(skus.map(s => baseToken(s.name || s.sku)).filter(Boolean));
+          const groups = new Set(skus.map(s => (s.group || '').trim()).filter(Boolean));
+          const reasons = [];
+          if (hcpcs.size > 1)  reasons.push(`${hcpcs.size} different HCPCS codes across its SKUs`);
+          if (bases.size > 1)  reasons.push(`${bases.size} distinct product names in the SKU list`);
+          if (groups.size > 1) reasons.push(`${groups.size} catalog groups`);
+          const strong = reasons.length > 0;
+          if (!strong && skus.length >= 8) reasons.push(`${skus.length} SKUs under one product — confirm these are size/quantity variants, not several products`);
+          if (reasons.length) flags.push({ page_key: row.page_key, name: row.name, sku_count: skus.length, strong, reasons });
+        });
+        return reply(200, { ok: true, flags });
+      }
+
+      // ---- Bulk edit (multi-select) ----
+      if (action === 'bulk') {
+        const keys = body.page_keys || [];
+        const p = body.patch || {};
+        if (!m || !keys.length) return reply(400, { ok: false, error: 'manufacturer, page_keys[] required' });
+        const allow = SAVE_FIELDS.concat(['status', 'published_at']);
+        const clean = {};
+        Object.keys(p).forEach(k => { if (allow.indexOf(k) >= 0) clean[k] = p[k]; });
+        if (clean.status && ALL_STATUSES.indexOf(clean.status) < 0) return reply(400, { ok: false, error: 'bad status' });
+        if (clean.status === 'published' && !clean.published_at) clean.published_at = new Date().toISOString();
+        if (!Object.keys(clean).length) return reply(400, { ok: false, error: 'no editable fields in patch' });
+        clean.reviewed_by = reviewer; clean.updated_at = new Date().toISOString();
+        const befores = [];
+        for (const k of keys) { const b = await getRow(m, k); if (b) befores.push(b); }
+        const inlist = keys.map(enc).join(',');
+        const r = await fetch(rest(`product_content?manufacturer=eq.${enc(m)}&page_key=in.(${inlist})`),
+          { method: 'PATCH', headers: svcHeaders({ Prefer: 'return=representation' }), body: JSON.stringify(clean) });
+        const out = await r.json();
+        await logHistory({ manufacturer: m, page_key: null, action: 'bulk', actor: reviewer,
+          summary: `Bulk edit of ${keys.length} product(s): ${Object.keys(clean).filter(k => ['reviewed_by', 'updated_at'].indexOf(k) < 0).join(', ')}`,
+          before: befores, after: out });
+        return reply(r.ok ? 200 : 500, { ok: r.ok, updated: Array.isArray(out) ? out.length : 0 });
+      }
+
+      // ---- Change history (list) ----
+      if (action === 'history') {
+        if (!m) return reply(400, { ok: false, error: 'manufacturer required' });
+        const lim = Math.min(200, Number(body.limit) || 50);
+        const r = await fetch(rest(`product_content_history?manufacturer=eq.${enc(m)}&order=at.desc&limit=${lim}&select=id,page_key,action,actor,summary,undone,at`),
+          { headers: svcHeaders() });
+        const history = await r.json();
+        return reply(200, { ok: true, history });
+      }
+
+      // ---- Undo one history entry (restore before-snapshots; hide anything it created) ----
+      if (action === 'undo') {
+        if (!m || body.id == null) return reply(400, { ok: false, error: 'manufacturer, id required' });
+        const hr = await fetch(rest(`product_content_history?id=eq.${enc(body.id)}&select=*`), { headers: svcHeaders() });
+        const hrows = await hr.json();
+        const h = Array.isArray(hrows) ? hrows[0] : null;
+        if (!h) return reply(404, { ok: false, error: 'history entry not found' });
+        if (h.undone) return reply(400, { ok: false, error: 'that change was already undone' });
+        const before = flatRows(h.before);
+        const after  = flatRows(h.after);
+        const beforeKeys = new Set(before.map(s => s.page_key));
+        for (const snap of before) {
+          const restore = Object.assign({}, snap); delete restore.id;
+          restore.updated_at = new Date().toISOString();
+          await fetch(rest('product_content?on_conflict=manufacturer,page_key'),
+            { method: 'POST', headers: svcHeaders({ Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify([restore]) });
+        }
+        for (const row of after) {
+          if (!beforeKeys.has(row.page_key)) await patchRow(m, row.page_key, { status: 'hidden', disabled: true });
+        }
+        await fetch(rest(`product_content_history?id=eq.${enc(body.id)}`),
+          { method: 'PATCH', headers: svcHeaders(), body: JSON.stringify({ undone: true }) });
+        return reply(200, { ok: true, restored: before.length });
       }
 
       return reply(400, { ok: false, error: 'unknown action' });
