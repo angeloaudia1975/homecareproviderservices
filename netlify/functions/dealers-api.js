@@ -340,6 +340,25 @@ exports.handler = async (event)=>{
           }catch(e){ return {exists:false,count:0,error:String(e.message||e)}; } };
         return json(200,{ok:true,build:BUILD,dealer_contacts:await probe("dealer_contacts"),dealer_addresses:await probe("dealer_addresses")});
       }
+      if(act==="preview_link"){
+        // Mint a short-lived, READ-ONLY token so authorized staff can open the dealer's HCPS
+        // Partner 360 ordering portal "as" them (preview/impersonation) — no dealer login, no
+        // shared credentials, and no need to assign a staff email to the dealer account.
+        // Mirrors the Golden SSO pattern (server-minted signed link, opened in a new tab).
+        const dealer_id=b.dealer_id;
+        if(!dealer_id) return json(400,{error:"dealer_id required"});
+        // Authorized staff only: management/relations (seesAll) or the rep who owns this dealer.
+        if(!seesAll && !(await ownsDealer(me,dealer_id))) return json(403,{error:"Not your dealer"});
+        const drows=await sbGet(`dealers?id=eq.${encodeURIComponent(dealer_id)}&select=id,business_name`).catch(()=>[]);
+        const dealer=drows&&drows[0];
+        if(!dealer) return json(404,{error:"dealer not found"});
+        const token=require("crypto").randomBytes(24).toString("hex");
+        const ttlMin=30;
+        const expires_at=new Date(Date.now()+ttlMin*60*1000).toISOString();
+        try{ await sbSend("POST","dealer_preview_tokens",{token,dealer_id,created_by:(me.email||me.name||""),expires_at},{Prefer:"return=minimal"}); }
+        catch(e){ return json(500,{error:"Could not create preview session. Run supabase/dealer_preview_tokens.sql, then retry.",detail:String(e.message||e)}); }
+        return json(200,{ok:true,url:`${PORTAL_URL}/?preview=${token}`,dealer_name:dealer.business_name||"",expires_in:ttlMin*60});
+      }
       if(act==="merge"){
         if(!b.survivor_id||!Array.isArray(b.loser_ids)||!b.loser_ids.length) return json(400,{error:"survivor_id + loser_ids required"});
         const survivor=b.survivor_id;

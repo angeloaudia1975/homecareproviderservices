@@ -48,7 +48,23 @@ async function sbAll(base) {
 // Resolve the caller's JWT to an APPROVED dealer (or null). Mirrors orders-api / dealer-auth.
 async function dealerFromToken(event) {
   const auth = event.headers["authorization"] || event.headers["Authorization"] || "";
-  const tok = auth.replace(/^Bearer\s+/i, ""); if (!tok) return null;
+  const raw = auth.replace(/^Bearer\s+/i, ""); if (!raw) return null;
+  // Admin READ-ONLY preview: staff view a dealer's consolidated history via a short-lived
+  // preview token (no dealer JWT). This endpoint only ever reads, so preview is safe here.
+  if (/^preview:/i.test(raw)) {
+    const token = raw.replace(/^preview:/i, "").trim(); if (!token) return null;
+    let rows; try { rows = await sb("GET", `dealer_preview_tokens?token=eq.${encodeURIComponent(token)}&select=dealer_id,expires_at`); } catch (e) { return null; }
+    const t = rows && rows[0];
+    if (!t || !t.dealer_id) return null;
+    if (t.expires_at && new Date(t.expires_at).getTime() < Date.now()) return null;  // expired
+    let dealer = null;
+    try {
+      const d = await sb("GET", `dealers?id=eq.${encodeURIComponent(t.dealer_id)}&select=business_name,hcps_account`);
+      if (d && d[0]) dealer = { name: d[0].business_name || "", hcps_account: d[0].hcps_account || "" };
+    } catch (e) {}
+    return { dealer_id: t.dealer_id, email: null, dealer, preview: true };
+  }
+  const tok = raw;
   const ur = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${tok}` } });
   if (!ur.ok) return null;
   const u = await ur.json();

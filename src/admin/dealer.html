@@ -178,7 +178,7 @@ function render(D,A){
         </div>
         <div class="idrow">${[d.address,d.city,[d.state,d.zip].filter(Boolean).join(" ")].filter(Boolean).map(esc).join(", ")}</div>
       </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost sm" onclick="editCompany()">✎ Edit company info</button>${(d.golden_url||d.golden_status==='Account'||d.golden_status==='Prospect')?`<button class="btn ghost sm" onclick="openGolden(this)" title="Open this dealer's Golden ordering portal (signed one-click sign-in)">🟡 Open Golden portal →</button>`:""}<a class="btn ghost sm" href="/admin/dealers.html?dealer=${encodeURIComponent(d.id)}">Dealer Manager →</a></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost sm" onclick="editCompany()">✎ Edit company info</button><button class="btn ghost sm" onclick="openDealerPortal(this)" title="Preview this dealer's HCPS Partner 360 ordering experience — pricing, manufacturers, products, account & order history — read-only, no login required">🔎 View Dealer Partner 360 Portal →</button>${(d.golden_url||d.golden_status==='Account'||d.golden_status==='Prospect')?`<button class="btn ghost sm" onclick="openGolden(this)" title="Open this dealer's Golden ordering portal (signed one-click sign-in)">🟡 Open Golden portal →</button>`:""}<a class="btn ghost sm" href="/admin/dealers.html?dealer=${encodeURIComponent(d.id)}">Dealer Manager →</a></div>
     </div>
     <div class="stat">
       <div class="s"><div class="l">Total sales</div><div class="v">${money(totalSales)}</div></div>
@@ -862,6 +862,22 @@ async function openGolden(btn){
     if(j&&j.ok&&j.url){ if(w) w.location.href=j.url; else window.location.href=j.url; }
     else { if(w) w.close(); if(btn){ btn.textContent=(j&&j.error==="no_golden_slug")?"No Golden portal on file":"Couldn't open"; setTimeout(()=>{ if(btn) btn.textContent=old; },2600); } }
   }catch(e){ if(w) w.close(); if(btn){ btn.textContent="Couldn't open"; setTimeout(()=>{ if(btn) btn.textContent=old; },2600); } }
+  finally{ if(btn) btn.disabled=false; }
+}
+// Preview the dealer's HCPS Partner 360 ordering portal AS that dealer (read-only). Opens the tab
+// inside the click gesture (avoids pop-up blocking), then points it at a short-lived preview URL
+// minted server-side. No dealer login and no shared credentials — the portal shows a "Previewing
+// as <dealer>" banner and blocks ordering/account writes.
+async function openDealerPortal(btn){
+  if(!CUR) return;
+  const w=window.open("about:blank","_blank");
+  const old=btn?btn.textContent:"";
+  if(btn){ btn.disabled=true; btn.textContent="Opening preview…"; }
+  try{
+    const j=await dapi({action:"preview_link",dealer_id:CUR});
+    if(j&&j.ok&&j.url){ if(w) w.location.href=j.url; else window.location.href=j.url; }
+    else { if(w) w.close(); if(btn){ btn.textContent=(j&&j.error)?String(j.error).slice(0,40):"Couldn't open preview"; setTimeout(()=>{ if(btn) btn.textContent=old; },3200); } }
+  }catch(e){ if(w) w.close(); if(btn){ btn.textContent="Couldn't open preview"; setTimeout(()=>{ if(btn) btn.textContent=old; },3200); } }
   finally{ if(btn) btn.disabled=false; }
 }
 async function loadCRM(){
