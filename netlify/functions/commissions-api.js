@@ -14,13 +14,11 @@ const ORDERING_BASE = process.env.ORDERING_BASE || "https://hcpsonlineordering.n
 // Manufacturers with no numeric account #: the report's company name IS the account number, and it is
 // shared across a dealer's whole family (HQ + branches). The importer stores it on the family on commit.
 const NAME_AS_ACCOUNT = new Set(["access4u"]);
-// Manufacturers whose customer NUMBERS are reused across different dealers (e.g. PediFix, where one
-// C-number can be Patient Aids in one month and Access Lafayette in another). For these we resolve
-// each line to a dealer by the customer NAME first, and never treat the number as a stable dealer key.
-const NAME_FIRST = new Set(["pedifix"]);
-// ...and for those, do NOT auto-stamp the report's customer number onto the matched dealer's account
-// grid, because the number is not a stable identifier for that dealer.
-const NO_ACCOUNT_CAPTURE = new Set(["pedifix"]);
+// Reused-number manufacturers + account-capture exclusions live in ONE shared place, used by both
+// the commission importer and the sales-report importer. PediFix is NAME_FIRST (a shared C-number can
+// be two different Quipt dealers) but its number IS a real account number, so it is captured — with
+// conflict flagging, never a silent overwrite (see reconcileAccountRef below).
+const { NAME_FIRST, NO_ACCOUNT_CAPTURE } = require("./_mfr_rules.js");
 // Split one uploaded file that spans several report months into per-month rows by Order Date.
 function groupRowsByMonth(rows){ const g={}, undated=[]; for(const r of rows){ const d=toDate(r&&r.order_date); const m=d?d.slice(0,7):null; if(m){ (g[m]||(g[m]=[])).push(r); } else { undated.push(r); } } return {groups:g, undated}; }
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
@@ -395,23 +393,28 @@ exports.handler = async (event)=>{
       // One combined review for the response (dealer matching is period-independent, so a single pass scores all rows).
       const review=mapRows(slug,"2000-01-01",source_file,rows,ctx).review;
       review.months=monthsWritten; if(undatedCount) review.undated_rows=undatedCount;
-      // Manufacturer account numbers are ORGANIZATION-level. For every matched dealer, capture the
-      // account number this report carries for it — the report company name for name-as-account lines
-      // (Access4u), otherwise the customer # — store it on that dealer, and fill it across the dealer's
-      // family (parent + branches) wherever a branch has none yet (never overwriting a branch that holds
-      // its own distinct number). Skipped for order-number lines and reused-number manufacturers.
-      let accounts_set=0;
+      // Account-number maintenance (STANDARD RULE, shared with the sales-report importer): capture the
+      // account number this report carries for each matched dealer — the report company name for
+      // name-as-account lines (Access4u), otherwise the customer # — SET it when blank (and fill the
+      // family), CONFIRM + mark active when it matches, and FLAG (never overwrite) when it differs.
+      let accounts_set=0; const acctConflicts=[];
       if(!(ctx.orderLines&&ctx.orderLines.has(slug)) && !NO_ACCOUNT_CAPTURE.has(slug)){
         const acctByDealer=new Map();
         for(const o of allOut){
           if(!o.dealer_id) continue;
           const ref = NAME_AS_ACCOUNT.has(slug) ? String(o.customer_name||"").trim() : String(o.customer_ref||"").trim();
-          if(ref && !acctByDealer.has(o.dealer_id)) acctByDealer.set(o.dealer_id, ref);
+          const e=acctByDealer.get(o.dealer_id)||new Set(); if(ref) e.add(ref); acctByDealer.set(o.dealer_id, e);
         }
-        for(const [dealerId,ref] of acctByDealer){
-          try{ await orgAccounts.propagateAccountRef(slug, dealerId, ref); accounts_set++; }catch(e){}
+        for(const [dealerId,set] of acctByDealer){
+          const refs=[...set];
+          if(refs.length>1){ acctConflicts.push({dealer_id:dealerId,reason:"report_lists_multiple_numbers",values:refs}); continue; }
+          try{ const res=await orgAccounts.reconcileAccountRef(slug, dealerId, refs[0]||"", {apply:true});
+            if(res.status==="set") accounts_set++;
+            else if(res.status==="conflict") acctConflicts.push({dealer_id:dealerId,existing:res.existing,incoming:res.incoming,reason:"differs_from_record"});
+          }catch(e){}
         }
       }
+      review.account_conflicts=acctConflicts;
       return json(200,{ok:true,inserted,review,accounts_set,months:monthsWritten,
         matched:review.matched, unmatched:review.unmatched.slice(0,200), unmatched_count:review.unmatched_count});
     }

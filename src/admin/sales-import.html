@@ -168,7 +168,7 @@ function parseAiravant(items){
 function autoMap(){
   MAP={}; const used=new Set();
   const pat={ order_number:/order.*num|^number$|order.?#|^po$|invoice/i, date:/created date|order date|^date$|invoice date/i,
-    company:/company name|^company$|account name|dealer|^customer name$/i, account_ref:/customer username|username|account ?ref|customer id/i,
+    company:/company name|^company$|account name|dealer|^customer name$/i, account_ref:/customer username|username|account ?ref|customer id|account ?(number|no|num|#)|acct ?(number|no|num|#)|^account$/i,
     product_name:/line item name|product name|item name|^description$|^product$/i, product_code:/line item sku|^sku$|item.?no|^model$|product code/i,
     qty:/line item quantity|^quantity$|^qty$/i, unit_price:/wholesale pric|unit price|dealer price|^price$/i, line_amount:/line total|line amount|extended|ext price/i,
     ship_name:/shipping name/i, ship_city:/shipping city|ship city/i, ship_state:/shipping state|ship state/i, ship_zip:/shipping zip|ship zip|shipping postal/i, email:/e-?mail/i };
@@ -212,6 +212,22 @@ async function assignAlias(i){
 }
 function renderPreview(){
   const p=PREVIEW;
+  // Account-number maintenance from the report (dry-run on preview; applied on import).
+  const ac=p.accounts||{};
+  const acctKpi=(ac.updated||ac.confirmed||ac.conflicts||ac.active_marked)
+    ? `<div class="kpi ${ac.conflicts?'w':'g'}"><div class="l">Account #s</div><div class="v">${ac.updated||0}<span style="font-size:12px;font-weight:400"> new</span>${ac.conflicts?` · ${ac.conflicts} ⚑`:""}</div></div>` : "";
+  const acctPanel=(()=>{
+    const upd=(ac.updated_list||[]); const con=(ac.conflict_list||[]);
+    if(!upd.length && !con.length && !ac.confirmed && !ac.active_marked) return "";
+    const line=`<div class="hint" style="margin-bottom:6px">Account numbers are read from the report and kept current on each dealer. On preview nothing is written yet — this is what will change on import.</div>`;
+    const updT=upd.length?`<h3 style="margin-top:6px">Account numbers to set (${upd.length})</h3>
+      <table><thead><tr><th>Dealer</th><th>New account #</th></tr></thead><tbody>${upd.map(u=>`<tr><td><a class="link" href="/admin/dealer.html?id=${encodeURIComponent(u.dealer_id)}">${esc(u.name)}</a></td><td>${esc(u.account_ref)}</td></tr>`).join("")}</tbody></table>`:"";
+    const conT=con.length?`<h3 class="warn" style="margin-top:10px">Conflicts to review (${con.length}) — NOT changed automatically</h3>
+      <div class="hint" style="margin-bottom:6px">The report's number differs from what's on file (or the report lists more than one for the same dealer). Left as-is so you can decide.</div>
+      <table><thead><tr><th>Dealer</th><th>On file</th><th>In report</th></tr></thead><tbody>${con.map(c=>`<tr><td><a class="link" href="/admin/dealer.html?id=${encodeURIComponent(c.dealer_id)}">${esc(c.name)}</a></td><td>${esc(c.existing||(c.values?"(multiple)":"—"))}</td><td>${esc(c.incoming||(c.values?c.values.join(", "):"—"))}</td></tr>`).join("")}</tbody></table>`:"";
+    const conf=(ac.confirmed||ac.active_marked)?`<div class="hint" style="margin-top:6px">${ac.confirmed||0} already correct · ${ac.active_marked||0} marked active from current sales.</div>`:"";
+    return `<div class="step">${line}${updT}${conT}${conf}</div>`;
+  })();
   const kpis=`<div class="kpis">
     <div class="kpi"><div class="l">Lines</div><div class="v">${p.rows}</div></div>
     <div class="kpi g"><div class="l">Matched to a branch</div><div class="v">${p.matched_lines}</div></div>
@@ -219,6 +235,7 @@ function renderPreview(){
     <div class="kpi"><div class="l">Total sales</div><div class="v">${money(p.total_sales)}</div></div>
     <div class="kpi g"><div class="l">Commission @ ${Math.round(p.commission_rate*1000)/10}%</div><div class="v">${money(p.total_commission)}</div></div>
     <div class="kpi"><div class="l">Dealers</div><div class="v">${p.dealers}</div></div>
+    ${acctKpi}
   </div>`;
   const pd=(p.per_dealer||[]).length?`<div class="step"><h3>By dealer branch</h3><div style="max-height:340px;overflow:auto"><table><thead><tr><th>Dealer / branch</th><th class="num">Orders</th><th class="num">Lines</th><th class="num">Sales</th><th class="num">Commission</th></tr></thead><tbody>
     ${p.per_dealer.map(d=>`<tr><td><a class="link" href="/admin/dealer.html?id=${encodeURIComponent(d.dealer_id)}">${esc(d.name)}</a></td><td class="num">${d.orders}</td><td class="num">${d.lines}</td><td class="num">${money(d.sales)}</td><td class="num">${money(d.commission)}</td></tr>`).join("")}
@@ -235,13 +252,15 @@ function renderPreview(){
     ${DEALERS.length?"":'<div class="hint warn" style="margin-top:4px">Dealer list didn\'t load — reload and try again.</div>'}</div>`:"";
   $("#out").innerHTML=`<div class="card">${kpis}
     <div style="display:flex;gap:8px;align-items:center;margin:4px 0 2px"><button class="btn orange" onclick="doImport()">Load ${p.rows} lines into the platform</button><span id="imsg" class="hint" style="margin:0"></span></div>
-    ${pd}${un}</div>`;
+    ${acctPanel}${pd}${un}</div>`;
 }
 async function doImport(){
   if(BUSY)return; BUSY=true; $("#imsg").textContent="Importing…";
   const rows=buildRows(); const mfr=($("#mfr")||{}).value, rate=($("#rate")||{}).value;
   const r=await si({action:"import",manufacturer:mfr,commission_rate:rate,source_file:FILENAME,rows}); BUSY=false;
-  if(r.body&&r.body.ok){ const s=r.body.summary||{}; $("#imsg").innerHTML=`<span class="ok">✓ Loaded ${r.body.imported} lines — ${money(s.total_sales)} sales, ${money(s.total_commission)} commission, ${s.matched_lines} matched to a branch.</span> Open a dealer's 360 to see it.`; }
+  if(r.body&&r.body.ok){ const s=r.body.summary||{}; const a=s.accounts||{};
+    const acctMsg = a.updated?` · ${a.updated} account # set`:""; const conMsg=a.conflicts?` · <b>${a.conflicts} conflict${a.conflicts===1?"":"s"} to review</b>`:"";
+    $("#imsg").innerHTML=`<span class="ok">✓ Loaded ${r.body.imported} lines — ${money(s.total_sales)} sales, ${money(s.total_commission)} commission, ${s.matched_lines} matched to a branch${acctMsg}.</span>${conMsg} Open a dealer's 360 to see it.`; }
   else $("#imsg").innerHTML=`<span class="warn">Import failed: ${esc((r.body&&(r.body.error||r.body.message))||"error")}</span>`;
 }
 boot();

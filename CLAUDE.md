@@ -288,6 +288,24 @@ only — never copy tone rules into individual prompts.
   in" / "still interested?". Follow the Don't-Say → Say-Instead pairs in the module.
 - Hardcoded (non-AI) templates (e.g. `_engine.js`) follow the same voice — no "we've missed you".
 
+## 13. Importers keep manufacturer account numbers current (RULE)
+
+When a commission or sales report carries a reliable dealer account number, the importer uses that
+source data to maintain the platform's manufacturer account numbers — in BOTH the sales-report importer
+(`sales-import-api.js`) and the commission importer (`commissions-api.js`), via the shared
+`_accountorg.reconcileAccountRef`.
+
+- Per matched dealer: **set** the number when blank (and fill it across the family), **confirm** + mark
+  the manufacturer relationship **active** when it matches, and **flag** (never silently overwrite) when
+  it differs — or when one report lists more than one number for the same dealer. Conflicts surface in
+  the preview/import result for review.
+- Reused-number manufacturers (a shared number that belongs to more than one dealer, e.g. PediFix) are
+  matched **by name first** — list them in `_mfr_rules.js` `NAME_FIRST`. A slug whose report "number"
+  is not a real account number (an order #) goes in `NO_ACCOUNT_CAPTURE`.
+- The preview is a **dry run** (`reconcileAccountRef({apply:false})`) — nothing is written until commit.
+- The captured number must reach every place account numbers live (Dealer 360, Partner 360, reporting,
+  CRM sync) — it is stored once on `dealer_manufacturers`, which those surfaces already read.
+
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
 - [ ] Hero headline is short + single-row on desktop, wraps on mobile.

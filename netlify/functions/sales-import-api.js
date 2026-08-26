@@ -17,6 +17,8 @@ const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
 async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); const t=await r.text(); return t?JSON.parse(t):null; }
 async function sbGetAll(base, orderCol="id"){ const PAGE=1000; let from=0,out=[]; for(;;){ const sep=base.includes("?")?"&":"?"; const rows=await sbGet(`${base}${sep}order=${orderCol}&limit=${PAGE}&offset=${from}`); out=out.concat(rows); if(rows.length<PAGE) break; from+=PAGE; } return out; }
+const orgAccounts=require("./_accountorg.js")(sbGet,sbSend);
+const { NAME_FIRST, NO_ACCOUNT_CAPTURE } = require("./_mfr_rules.js");
 const clean=(v,n)=>{ const s=(v==null?"":String(v)).trim(); return s?s.slice(0,n||400):null; };
 const num=v=>{ if(v==null||v==="") return null; const n=Number(String(v).replace(/[$,\s]/g,"")); return Number.isFinite(n)?n:null; };
 const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
@@ -73,12 +75,16 @@ async function buildResolver(slug){
     hit=shipName&&cands.find(d=>dnorm(d.business_name)===shipName); if(hit) return hit;
     return cands.find(d=>!d.parent_id)||cands[0];   // fall back to the HQ/root
   }
+  const nameFirst=NAME_FIRST.has(slug);
+  function byName(row){ if(!row.company) return null; const id=norm2id.get(dnorm(row.company)); return id?family(id):null; }
+  function byRef(row){ const ref=String(row.account_ref||"").trim().toLowerCase();
+    if(ref&&refToIds.has(ref)){ const ids=refToIds.get(ref); const cands=ids.map(i=>byId.get(i)).filter(Boolean);
+      return cands.length===1?family(cands[0].id):cands; }               // expand a single hit to its family for branch pick
+    return null; }
   function resolve(row){
-    let cands=null;
-    const ref=String(row.account_ref||"").trim().toLowerCase();
-    if(ref&&refToIds.has(ref)){ const ids=refToIds.get(ref); cands=ids.map(i=>byId.get(i)).filter(Boolean);
-      if(cands.length===1) cands=family(cands[0].id); }               // expand a single hit to its family for branch pick
-    if((!cands||!cands.length)&&row.company){ const id=norm2id.get(dnorm(row.company)); if(id) cands=family(id); }
+    // Reused-number manufacturers resolve by NAME first (a shared number can't misroute the sale);
+    // everyone else keeps number-first, then name.
+    let cands = nameFirst ? (byName(row)||byRef(row)) : (byRef(row)||byName(row));
     if(!cands||!cands.length) return null;
     const d=pickBranch(cands,row); return d?d.id:null;
   }
@@ -147,10 +153,38 @@ exports.handler = async (event)=>{
       else if(m.raw.company){ unmatchedNames.add(String(m.raw.company).trim()); }
     }
     const perDealer=[...byDealer.entries()].map(([id,o])=>({dealer_id:id,name:o.name,sales:Math.round(o.sales*100)/100,commission:Math.round(o.commission*100)/100,lines:o.lines,orders:o.orders.size})).sort((a,b)=>b.sales-a.sales);
+
+    // ---- Account-number maintenance (STANDARD RULE) ----------------------------------------
+    // Every report that carries a reliable dealer account number keeps the platform's numbers
+    // current: set it when blank, confirm it when it matches, mark the manufacturer relationship
+    // active from current sales — and FLAG (never silently overwrite) when it differs. On preview
+    // this is a DRY RUN (apply:false) so the operator sees exactly what will change.
+    const acct={updated:[],confirmed:[],conflicts:[],active:0};
+    if(!NO_ACCOUNT_CAPTURE.has(slug)){
+      const dealerRefs=new Map();
+      for(const m of mapped){ if(!m.dealer_id) continue;
+        const ref=clean(m.raw.account_ref,80)||"";
+        const o=dealerRefs.get(m.dealer_id)||{name:(byId.get(m.dealer_id)||{}).business_name||"",refs:new Set()};
+        if(ref) o.refs.add(ref); dealerRefs.set(m.dealer_id,o);
+      }
+      const applyNow=(b.action==="import");
+      for(const [dealerId,o] of dealerRefs){
+        const refs=[...o.refs];
+        if(refs.length>1){ acct.conflicts.push({dealer_id:dealerId,name:o.name,reason:"report_lists_multiple_numbers",values:refs}); continue; }
+        let res; try{ res=await orgAccounts.reconcileAccountRef(slug,dealerId,refs[0]||"",{apply:applyNow}); }catch(e){ res={status:"skip"}; }
+        if(res.status==="set") acct.updated.push({dealer_id:dealerId,name:o.name,account_ref:refs[0]});
+        else if(res.status==="conflict") acct.conflicts.push({dealer_id:dealerId,name:o.name,existing:res.existing,incoming:res.incoming,reason:"differs_from_record"});
+        else if(res.status==="confirmed") acct.confirmed.push({dealer_id:dealerId,name:o.name,account_ref:res.existing});
+        else if(res.status==="active_only") acct.active++;
+      }
+    }
+    const accounts={ updated:acct.updated.length, confirmed:acct.confirmed.length, active_marked:acct.active,
+      conflicts:acct.conflicts.length, updated_list:acct.updated.slice(0,200), conflict_list:acct.conflicts.slice(0,200) };
+
     const summary={ rows:mapped.length, matched_lines:matchedLines, unmatched_lines:mapped.length-matchedLines,
       dealers:perDealer.length, unmatched:[...unmatchedNames].slice(0,100),
       total_sales:Math.round(total*100)/100, total_commission:Math.round(comm*100)/100,
-      commission_rate:rate, per_dealer:perDealer.slice(0,500) };
+      commission_rate:rate, per_dealer:perDealer.slice(0,500), accounts };
 
     if(b.action==="preview") return json(200,{ok:true, preview:summary});
 

@@ -69,5 +69,57 @@ module.exports = function (sbGet, sbSend) {
       ).catch(() => {});
   }
 
-  return { family, propagateAccountRef };
+  const enc = encodeURIComponent;
+  const norm = (s) => String(s == null ? "" : s).trim().toLowerCase();
+
+  // Ensure the (dealer × manufacturer) relationship is marked ACTIVE without touching its
+  // account number. Merge-duplicates updates only the columns in the payload, so account_ref
+  // is preserved.
+  async function markActive(slug, dealerId) {
+    slug = String(slug || "").trim();
+    if (!slug || !dealerId) return;
+    await sbSend(
+      "POST",
+      "dealer_manufacturers?on_conflict=dealer_id,manufacturer",
+      { dealer_id: dealerId, manufacturer: slug, active: true },
+      { Prefer: "resolution=merge-duplicates,return=minimal" }
+    ).catch(() => {});
+  }
+
+  // Conflict-aware account-number maintenance from a report. Compares the number the report
+  // carries for a dealer to what's on file and decides what to do — never silently overwrites a
+  // DIFFERENT existing number. Returns the outcome so the importer can report/flag it:
+  //   {status:"set"}         — was blank, now set (and filled across the family) + marked active
+  //   {status:"confirmed"}   — already matched; relationship (re)marked active
+  //   {status:"active_only"} — report had no number; relationship marked active from activity
+  //   {status:"conflict", existing, incoming} — differs; left untouched, flagged for review
+  //   {status:"skip"}        — nothing to do
+  // opts.apply=false makes it a DRY RUN (no writes) so a preview can show what WOULD change.
+  async function reconcileAccountRef(slug, dealerId, incomingRef, opts) {
+    opts = opts || {};
+    const apply = opts.apply !== false;
+    slug = String(slug || "").trim();
+    incomingRef = String(incomingRef == null ? "" : incomingRef).trim();
+    if (!slug || !dealerId) return { status: "skip" };
+    const cur = await sbGet(
+      `dealer_manufacturers?dealer_id=eq.${enc(dealerId)}&manufacturer=eq.${enc(slug)}&select=account_ref,active`
+    ).catch(() => []);
+    const row = cur && cur[0];
+    const existing = row ? String(row.account_ref || "").trim() : "";
+    if (!incomingRef) {
+      if (apply) await markActive(slug, dealerId);
+      return { status: "active_only", existing };
+    }
+    if (!existing) {
+      if (apply) await propagateAccountRef(slug, dealerId, incomingRef);
+      return { status: "set", incoming: incomingRef };
+    }
+    if (norm(existing) === norm(incomingRef)) {
+      if (apply && (!row || row.active === false)) await markActive(slug, dealerId);
+      return { status: "confirmed", existing };
+    }
+    return { status: "conflict", existing, incoming: incomingRef };
+  }
+
+  return { family, propagateAccountRef, markActive, reconcileAccountRef };
 };
