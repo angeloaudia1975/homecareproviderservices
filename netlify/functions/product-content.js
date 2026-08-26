@@ -15,7 +15,7 @@
  * Review/media actions : approve · reject · approve_all · upsert · ingest_source ·
  *                        upload_image · upload_file · rehost · merge
  * Catalog actions      : set_status · set_meta · set_content · set_sku · save_skus ·
- *                        move_skus · split · merge_products · create_product ·
+ *                        move_skus · split · merge_products · create_product · delete_product ·
  *                        save_sizing · structure_review · bulk · history · undo
  *
  * Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE (both already set on this deploy);
@@ -563,6 +563,25 @@ exports.handler = async (event) => {
           summary: `Merged ${froms.length} product(s) into "${dst.name || into}"`,
           before: befores, after: [].concat.apply([], afters) });
         return reply(r.ok ? 200 : 500, { ok: r.ok, into: into, sku_count: dstSkus.length });
+      }
+
+      // ---- Delete a product record entirely (removing duplicates / erroneous stubs). This removes
+      //      ONLY the review/content record and its SKU grouping; the orderable catalog items
+      //      (products / custom_products) are NOT touched. Snapshotted to history so Undo fully
+      //      restores it, and refused for published products (unpublish first). ----
+      if (action === 'delete_product') {
+        if (!m || !body.page_key) return reply(400, { ok: false, error: 'manufacturer, page_key required' });
+        const row = await getRow(m, body.page_key);
+        if (!row) return reply(404, { ok: false, error: 'product not found' });
+        if (row.status === 'published') return reply(400, { ok: false, error: 'published',
+          message: 'This product is published live. Unpublish it first (set its status away from Published), then delete.' });
+        const del = await fetch(rest(`product_content?manufacturer=eq.${enc(m)}&page_key=eq.${enc(body.page_key)}`),
+          { method: 'DELETE', headers: svcHeaders({ Prefer: 'return=minimal' }) });
+        const okDel = del.ok;
+        if (okDel) await logHistory({ manufacturer: m, page_key: body.page_key, action: 'delete_product', actor: reviewer,
+          summary: `Deleted product "${row.name || body.page_key}"${(row.sku_count || 0) ? ` (had ${row.sku_count} SKU row(s))` : ''}`,
+          before: row, after: [] });
+        return reply(okDel ? 200 : 500, { ok: okDel, deleted: body.page_key });
       }
 
       // ---- Create a brand-new product (optionally pulling SKUs off an existing source page) ----

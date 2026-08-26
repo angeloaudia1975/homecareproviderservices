@@ -549,8 +549,14 @@ function skuSec(k){ const skus=skusOf(k); const others=Object.keys(pages).filter
         <td><input type="checkbox" ${s.disabled?'checked':''} data-act="sku-disable" data-pk="${escA(k)}" data-sku="${escA(id)}"></td>
       </tr>`; }).join('')}
     </tbody></table></div>
-    <div class="savebar"><button class="btn dark" data-act="save-skus" data-pk="${escA(k)}">Save SKU edits</button>
-      <span class="hint"><b>✎</b> rename a SKU · <b>🗑</b> remove it from THIS product · check rows to <b>Move / Split / Remove</b> in the bottom bar.<br><b>“Off” only hides a SKU (it stays listed here). “Remove” takes it out of this product.</b> Neither deletes the orderable catalog item — that's the Discontinued/Hidden status.</span></div>
+    <div class="savebar" style="flex-wrap:wrap;gap:8px">
+      <button class="btn dark" data-act="save-skus" data-pk="${escA(k)}">Save SKU edits</button>
+      <span style="display:inline-flex;gap:6px;align-items:center">
+        <input id="addsku-${cssId(k)}" class="sed" style="max-width:130px" placeholder="New SKU #">
+        <input id="addskuname-${cssId(k)}" class="sed" style="max-width:190px" placeholder="Name / description (optional)">
+        <button class="btn" data-act="add-sku" data-pk="${escA(k)}">＋ Add SKU</button>
+      </span>
+      <span class="hint" style="flex-basis:100%"><b>＋ Add SKU</b> groups another catalog item under this product · <b>✎</b> rename a SKU · <b>🗑</b> remove it from THIS product · check rows to <b>Move / Split / Remove</b> in the bottom bar.<br><b>“Off” only hides a SKU (it stays listed here). “Remove” takes it out of this product.</b> Neither deletes the orderable catalog item — that's the Discontinued/Hidden status.</span></div>
   </div>`; }
 
 /* -- Section 3: content -- */
@@ -621,8 +627,9 @@ function approveSec(k){ const p=pages[k]; const s=p.status||'pending_review';
       <button class="btn" data-act="set-status-val" data-pk="${escA(k)}" data-val="discontinued">Mark discontinued</button>
       <button class="btn" data-act="set-status-val" data-pk="${escA(k)}" data-val="hidden">Hide</button>
       <button class="btn ghost" data-act="reject" data-pk="${escA(k)}" style="color:var(--bad)">✕ Reject</button>
+      <button class="btn" data-act="delete-product" data-pk="${escA(k)}" style="color:#fff;background:var(--bad);border-color:var(--bad);margin-left:auto">🗑 Delete product</button>
     </div>
-    <div class="hint">Approve = content signed off (still internal). Publish = live &amp; orderable on Partner 360. Current: <b>${esc(s)}</b>.</div>
+    <div class="hint">Approve = content signed off (still internal). Publish = live &amp; orderable on Partner 360. Current: <b>${esc(s)}</b>.<br><b>Delete product</b> removes a duplicate or erroneous record entirely (undoable from History; won't touch the orderable catalog items). To combine two real duplicates instead, use <b>Merge</b> so their SKUs and content join into one.</div>
   </div>`; }
 
 /* ===================== local edits ===================== */
@@ -667,6 +674,8 @@ document.addEventListener('click',async function(e){
   if(act==='approve') return doStatus(k,'approved');
   if(act==='publish') return doStatus(k,'published');
   if(act==='reject') return doStatus(k,'rejected');
+  if(act==='delete-product') return doDeleteProduct(k);
+  if(act==='add-sku') return doAddSku(k);
   if(act==='set-status-val') return doStatus(k,t.getAttribute('data-val'));
   if(act==='preview') return openPreview(k);
   if(act==='run-structure') return runStructure();
@@ -715,6 +724,36 @@ async function doSaveContent(k){ const p=pages[k];
   const r=await apiWrite({action:'set_content',page_key:k,patch});
   toast(r.ok?'Content saved':'Save failed',!r.ok); }
 async function save(kind,k){ if(kind==='save-content') return doSaveContent(k); }
+/* ---- Add a SKU to THIS product's grouping (Review Structure). Uses set_sku create; undoable. ---- */
+async function doAddSku(k){
+  const codeEl=document.getElementById('addsku-'+cssId(k)), nameEl=document.getElementById('addskuname-'+cssId(k));
+  const code=((codeEl&&codeEl.value)||'').trim(), name=((nameEl&&nameEl.value)||'').trim();
+  if(!code){ toast('Enter a SKU number to add',true); if(codeEl)codeEl.focus(); return; }
+  if(skusOf(k).some(s=>String(s.sku)===code)){ toast('That SKU is already on this product',true); return; }
+  const r=await apiWrite({action:'set_sku', page_key:k, sku:code, create:true, patch:{name}});
+  if(r.ok && (!r.json||r.json.ok!==false)){
+    pages[k].skus=[...skusOf(k), normSku({sku:code,name})]; pages[k].sku_count=pages[k].skus.length;
+    if(codeEl)codeEl.value=''; if(nameEl)nameEl.value='';
+    toast('Added SKU '+code+' to this product'); render();
+  } else toast((r.json&&(r.json.message||r.json.error))||'Add failed',true);
+}
+/* ---- Delete a whole product record (duplicates / stubs). Undoable from History; blocked on published. ---- */
+async function doDeleteProduct(k){
+  const p=pages[k]||{}; const nm=p.name||k; const n=(skusOf(k)||[]).length;
+  if((p.status||'')==='published'){ window.alert('“'+nm+'” is published live. Set its status away from Published (Hide or Discontinue) first, then delete.'); return; }
+  const warn='Delete the product “'+nm+'”?\n\n'
+    +(n?('It still groups '+n+' SKU row(s) — those orderable catalog items are NOT deleted; they just stop being grouped under this record.\n\n'):'')
+    +'This removes the product from the review list and Partner 360. You can undo it from History.';
+  if(!window.confirm(warn)) return;
+  const r=await apiWrite({action:'delete_product', page_key:k});
+  if(r.ok && (!r.json||r.json.ok!==false)){
+    delete pages[k]; openCards.delete(k); selProducts.delete(k); if(skuSel.pk===k) skuSel={pk:null,ids:new Set()};
+    toast('Deleted “'+nm+'”'); render();
+  } else {
+    const err=(r.json&&(r.json.message||r.json.error))||'Delete failed';
+    toast(err,true); if(r.json&&r.json.error==='published') window.alert(err);
+  }
+}
 /* ---- Remove SKU(s) from THIS product (content grouping only; catalog item untouched; undoable) ---- */
 async function doRemoveSku(k, sku){ sku=String(sku);
   if(!window.confirm('Remove SKU '+sku+' from this product?\n\nThis takes it out of THIS product only — it stops showing here. It does NOT delete the orderable catalog item, and you can undo it from History.')) return;
