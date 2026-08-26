@@ -325,6 +325,38 @@ Whichever importer loads them, they must count as commission reports.
   (`supabase/backfill_commission_source.sql`). Not required for the grid, which already keys on
   commission data.
 
+## 15. Partner 360 catalog is managed in the admin Catalog Management Workspace (RULE)
+
+The Partner 360 product catalog is curated end-to-end through the **Catalog Management Workspace**
+(`homecareproviderservicesordering/public/admin/product-content-review.html`, backed by the
+`product-content` Netlify function). The whole catalog — product structure, SKUs, lifecycle status,
+categories, sizing, and content — is edited in that UI. Do **not** hand-write SQL for routine catalog
+changes; add a backend action instead so the workspace can do it.
+
+- **Workflow (standard order):** Import → Review structure → Correct products & categories →
+  Enrich images & content → Add sizing/specs → Disable obsolete → Preview → Approve → Publish.
+- **Structure review before enrichment.** Every product whose SKUs look like several products bundled
+  together is flagged *"Possible Multiple Products — Review SKU Grouping."* Signals: more than one HCPCS
+  code, more than one base product name, or more than one catalog group across its SKUs (strong signal),
+  or a large SKU set of 8+ (soft nudge). The reviewer splits, moves, merges, or dismisses. This is the
+  operational partner to RULE 11 (variant-aware products): bundles get split into one record per product.
+- **Lifecycle status (one field, `product_content.status`):** `pending_review` · `approved` · `rejected`
+  (review states) and `published` · `active` · `discontinued` · `hidden` (catalog states). **Approve ≠
+  live.** Approve signs off content; **Publish** makes it live and orderable. Per-SKU status
+  (`active`/`discontinued`/`hidden`) and a `disabled` flag suppress individual SKUs or the whole product.
+- **Public visibility gate:** a product/SKU shows on Partner 360 only when
+  `status IN ('published','active','discontinued')` and `disabled = false`. The RLS policy **and** the
+  `product-content` function's public read filter must always match this set. The migration
+  `supabase/product_content_catalog_workspace.sql` moved every legacy `approved` row to `published` so
+  nothing went dark — deploy that SQL and the function together.
+- **Sizing/spec tables are pasted, not coded.** Paste a tab/comma table in the workspace; it is stored as
+  `{columns:[…ordered…], rows:[…]}` so column order survives. No per-product SQL sizing files going forward.
+- **Every structural/status/content write is logged** to `product_content_history` with a before-snapshot,
+  and is reversible from the workspace **History → Undo** drawer. Undo restores snapshots and hides
+  (never hard-deletes) anything a change created.
+- **Never expose the service-role key in the browser.** All writes go through the `product-content`
+  function using `SUPABASE_SERVICE_ROLE`; the workspace authenticates with `CONTENT_ADMIN_TOKEN`.
+
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
 - [ ] Hero headline is short + single-row on desktop, wraps on mobile.
