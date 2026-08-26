@@ -1,0 +1,127 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — AI Style Guide</title>
+<style>
+ :root{--ink:#1b2733;--blue:#3B599A;--blue-dk:#2B4071;--orange:#F5821F;--silver:#D8DEE4;--light:#F3F6FA;--gray:#5b6672;}
+ *{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;background:var(--light);color:var(--ink)}
+ .wrap{max-width:900px;margin:24px auto;padding:0 20px}
+ h1{font-size:23px;margin:0 0 3px}.sub{color:var(--gray);font-size:13.5px;margin:0 0 18px;line-height:1.5}
+ .card{background:#fff;border:1px solid var(--silver);border-radius:12px;padding:18px 20px;margin-bottom:16px}
+ label{font-size:13px;color:var(--gray);font-weight:600}
+ textarea{width:100%;min-height:420px;padding:12px 13px;border:1px solid var(--silver);border-radius:9px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;line-height:1.5;resize:vertical;background:#fff;color:var(--ink)}
+ .go{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer}
+ .go.dk{background:var(--blue-dk)}.go.gray{background:#e7ebf1;color:var(--ink)}.go.warn{background:#fff}.go:disabled{opacity:.5;cursor:default}
+ .go.ghost{background:#fff;border:1px solid var(--silver);color:var(--ink)}
+ .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
+ .st{font-size:13px}.st.ok{color:#1f7a44}.st.warn{color:#b42323}
+ .pill{display:inline-block;border-radius:20px;padding:2px 11px;font-size:12px;font-weight:700}
+ .pill.ov{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa}.pill.df{background:#eefaf0;color:#1f7a44;border:1px solid #bfe3ca}
+ .meta{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+ .count{color:#9aa4ae;font-size:12px;margin-left:auto}
+ details{margin-top:8px}summary{cursor:pointer;font-weight:700;font-size:13px;color:var(--blue-dk)}
+ pre.def{white-space:pre-wrap;background:#f7f9fc;border:1px solid #eef1f4;border-radius:9px;padding:12px 13px;font-size:12.5px;line-height:1.5;margin-top:8px;max-height:340px;overflow:auto}
+ .gate{max-width:400px;margin:60px auto;background:#fff;border:1px solid var(--silver);border-radius:14px;padding:26px 24px}
+ .gate h2{margin:0 0 4px}.gate p{color:var(--gray);font-size:13px;margin:0 0 12px}.gate input{width:100%;margin-bottom:9px;padding:9px 10px;border:1px solid var(--silver);border-radius:8px}
+ .note{background:#f0f6ff;border:1px solid #cfe0f7;border-radius:9px;padding:10px 13px;color:#2b4071;font-size:13px;line-height:1.5}
+</style><link rel="stylesheet" href="/admin/admin-shell.css"></head><body>
+<header id="ac-head"></header>
+<div id="gate"></div>
+<div id="app" class="wrap" style="display:none">
+  <h1>AI Communication Style Guide</h1>
+  <p class="sub">The single set of writing rules every HCPS AI email generator follows — the Dealer&nbsp;360 AI email composer and Automated Campaigns both read this text. Edit it here and it takes effect immediately, no deploy needed. This is the same guide described in the "10&nbsp;Phrases to Avoid" reference: lead with a real, specific opportunity for the dealer; never sound desperate, apologetic, or generically sales-y.</p>
+
+  <div class="card">
+    <div class="meta">
+      <label style="font-weight:700;font-size:14px;color:var(--ink)">The guide</label>
+      <span id="srcPill" class="pill df">—</span>
+      <span class="count"><span id="chars">0</span> / 20000</span>
+    </div>
+    <textarea id="guide" oninput="onEdit()" placeholder="Loading…" spellcheck="true"></textarea>
+    <div class="bar">
+      <button class="go dk" id="saveBtn" onclick="save()">Save changes</button>
+      <button class="go ghost" id="revertBtn" onclick="load()">Revert edits</button>
+      <button class="go gray" id="resetBtn" onclick="resetDefault()">Reset to built-in default</button>
+      <span id="msg" class="st"></span>
+    </div>
+    <div class="note" style="margin-top:14px">Both generators also run an automatic safety check: if a draft still slips in a banned phrase (e.g. "just checking in", "still interested"), it's regenerated once. Keep the "Don't say → Say instead" lines in the text so that check and the model stay in sync.</div>
+    <details>
+      <summary>View the built-in default (for reference / copy)</summary>
+      <pre class="def" id="defText">—</pre>
+    </details>
+  </div>
+</div>
+
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){}
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let DEFAULT="", SAVED="";
+
+async function api(body){
+  const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch("/.netlify/functions/campaign-api",{method:"POST",headers:h,body:JSON.stringify(body)});
+  if(r.status===401){ lock(); throw new Error("unauthorized"); }
+  if(r.status===403){ $("#app").style.display="none"; $("#gate").innerHTML='<div class="gate"><h2>President only</h2><p>Editing the AI Style Guide is limited to President accounts.</p><button class="go" onclick="lock()">Sign in as a different user</button></div>'; throw new Error("forbidden"); }
+  return r.json();
+}
+function gate(msg){ $("#app").style.display="none";
+  $("#gate").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p>Sign in with your work email and password.</p>
+    <input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()">
+    <button class="go" onclick="submitTok()">Sign in</button><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;
+  setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);
+}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; $("#gate").innerHTML=""; boot();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+
+function setPill(isOverride){
+  const p=$("#srcPill");
+  if(isOverride){ p.className="pill ov"; p.textContent="Custom (saved override)"; }
+  else { p.className="pill df"; p.textContent="Built-in default"; }
+}
+function onEdit(){
+  const v=$("#guide").value; $("#chars").textContent=v.length;
+  const dirty=v!==SAVED; $("#saveBtn").disabled=!dirty; $("#revertBtn").disabled=!dirty;
+  const m=$("#msg"); if(dirty){ m.textContent="Unsaved changes"; m.className="st warn"; } else { m.textContent=""; }
+}
+async function load(){
+  const m=$("#msg"); m.textContent="Loading…"; m.className="st";
+  try{
+    const r=await api({action:"get_style_guide"});
+    if(!r||!r.ok){ m.textContent=(r&&r.error)||"Couldn't load the guide."; m.className="st warn"; return; }
+    DEFAULT=r.default||""; SAVED=r.text||"";
+    $("#guide").value=SAVED; $("#defText").textContent=DEFAULT;
+    setPill(!!r.is_override); onEdit(); m.textContent="";
+  }catch(e){ if(String(e.message)==="forbidden"||String(e.message)==="unauthorized")return; m.textContent="Couldn't load the guide."; m.className="st warn"; }
+}
+async function save(){
+  const text=$("#guide").value.trim();
+  if(!text){ if(confirm("The guide is empty. Save empty = reset to the built-in default. Continue?")) return resetDefault(); return; }
+  const btn=$("#saveBtn"); btn.disabled=true; const m=$("#msg"); m.textContent="Saving…"; m.className="st";
+  try{
+    const r=await api({action:"save_style_guide",text});
+    if(r&&r.ok){ SAVED=r.text||text; $("#guide").value=SAVED; setPill(true); onEdit(); m.textContent="Saved — live now for every AI email generator ✓"; m.className="st ok"; }
+    else { m.textContent=(r&&r.error)||"Save failed."; m.className="st warn"; btn.disabled=false; }
+  }catch(e){ m.textContent="Save failed: "+(e.message||e); m.className="st warn"; btn.disabled=false; }
+}
+async function resetDefault(){
+  if(!confirm("Reset to the built-in default? Your saved custom text will be removed and every generator will use the default guide.")) return;
+  const m=$("#msg"); m.textContent="Resetting…"; m.className="st";
+  try{
+    const r=await api({action:"save_style_guide",reset:true});
+    if(r&&r.ok){ SAVED=r.text||DEFAULT; $("#guide").value=SAVED; setPill(false); onEdit(); m.textContent="Reset to the built-in default ✓"; m.className="st ok"; }
+    else { m.textContent=(r&&r.error)||"Reset failed."; m.className="st warn"; }
+  }catch(e){ m.textContent="Reset failed: "+(e.message||e); m.className="st warn"; }
+}
+async function boot(){ $("#app").style.display="block"; await load(); }
+if(TOKEN) boot(); else gate();
+</script>
+</body></html>

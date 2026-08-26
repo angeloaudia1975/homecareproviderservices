@@ -342,6 +342,17 @@ window.HUB_GUIDE = {
     problems: "Go from an idea to a ready-to-send, well-targeted campaign in minutes.",
     intelligence: "AI-generated audience, copy, and send sequence from a short brief."
   },
+  "AI Style Guide": {
+    tagline: "One set of writing rules every AI email generator follows.",
+    what: "The centralized voice and phrasing rules for all AI-written dealer emails — the Dealer 360 AI composer and Automated Campaigns both read it. Edit the text here and it applies everywhere immediately, with no deploy.",
+    features: ["Single source of truth for AI email tone", "Don't-say / say-instead rules", "Live edit — no redeploy", "Reset to the built-in default anytime"],
+    data: "app_settings.ai_style_guide (falls back to the built-in default).",
+    actions: ["Edit the guide", "Save (goes live instantly)", "Reset to default"],
+    reports: [],
+    connects: ["Read by the Dealer 360 AI email composer and Campaign Studio", "Backs the automatic banned-phrase safety check"],
+    problems: "Keep every automated dealer email sounding like a knowledgeable rep bringing a real opportunity — never desperate or generic — and change the rules in one place.",
+    intelligence: "Injected into every AI email prompt; drafts that slip in a banned phrase are auto-regenerated."
+  },
   "Product Interest": {
     tagline: "Turn portal browsing into targeted campaigns — dealers who show intent but haven't ordered.",
     what: "Reads the behavioral signals flowing in from the ordering and Golden portals and answers the campaign question directly: for any product or manufacturer line, which dealers viewed, searched, or carted it recently but haven't actually ordered it? Select them and build a ready-to-use campaign audience in one click.",

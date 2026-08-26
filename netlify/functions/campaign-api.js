@@ -28,7 +28,7 @@ const P=require("./_platform.js");
 const ZC=require("./_zohocampaigns.js");
 const A=require("./_audiences.js");                        // saved Target Audiences (Builder)
 const { exchangeCode, hasCreds } = require("./_zoho.js");   // reuse the CRM Self-Client token exchange
-const { loadStyleGuide, findBanned } = require("./_ai_style.js");  // centralized HCPS AI Communication Style Guide
+const { STYLE_GUIDE, loadStyleGuide, findBanned } = require("./_ai_style.js");  // centralized HCPS AI Communication Style Guide
 
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -282,6 +282,27 @@ exports.handler=async(event)=>{
     const act=b.action||"list";
 
     if(act==="zoho_status"){ return json(200,{ok:true,creds_set:hasCreds(),ready:await ZC.ready(),scopes:ZC.SCOPES,from:CAMPAIGN_FROM,from_name:CAMPAIGN_FROM_NAME,ai_available:aiAvailable()}); }
+
+    // AI Communication Style Guide — read the effective text (the app_settings override if set,
+    // otherwise the code default) plus the default, so the editor can show and reset it.
+    if(act==="get_style_guide"){
+      const text=await loadStyleGuide(sbGet);
+      const is_override=text.trim()!==STYLE_GUIDE.trim();
+      return json(200,{ok:true, text, default: STYLE_GUIDE, is_override});
+    }
+    // Save / reset the guide (President only). An empty/blank text (or reset:true) deletes the override
+    // so both generators fall back to the code default.
+    if(act==="save_style_guide"){
+      if(me.role!=="president") return json(403,{error:"President only — style guide edits are limited to President accounts."});
+      const reset=b.reset===true || !String(b.text||"").trim();
+      if(reset){
+        try{ await sbSend("DELETE","app_settings?key=eq.ai_style_guide",null,{Prefer:"return=minimal"}); }catch(e){}
+        return json(200,{ok:true, reset:true, text: STYLE_GUIDE});
+      }
+      const text=String(b.text).trim().slice(0,20000);
+      await sbSend("POST","app_settings?on_conflict=key",{key:"ai_style_guide",value:{text},updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
+      return json(200,{ok:true, text});
+    }
 
     // Exchange a Zoho Campaigns Self-Client code for a refresh token, stored under
     // app_settings 'zoho_campaigns_auth' (separate from the CRM's 'zoho_auth').
