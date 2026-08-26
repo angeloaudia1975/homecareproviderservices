@@ -41,11 +41,12 @@ async function sendMail({to,subject,html,text}){
 }
 function reengageHtml(dealer,unsub){
   const hi=dealer?(", "+eesc(dealer)):"";
+  // Value-forward per the HCPS AI Communication Style Guide (RULE 12) — no "we've missed you".
   return `<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:560px">
-    <h2 style="color:#2B4071;margin:0 0 6px">We've missed you${hi}</h2>
-    <p style="font-size:13.5px;line-height:1.6;color:#374151;margin:0 0 12px">It's been a little while since your last order with HomeCare Provider Services. Your account is active and ready — browse your manufacturer lines, see your pricing, and reorder in a couple of clicks, 24/7.</p>
+    <h2 style="color:#2B4071;margin:0 0 6px">Your account and pricing are ready${hi}</h2>
+    <p style="font-size:13.5px;line-height:1.6;color:#374151;margin:0 0 12px">Your HomeCare Provider Services account is active with your dealer pricing loaded, so the lines you carry are a couple of clicks from a reorder, 24/7. If a new size, model, or complementary line would fit your mix, your HCPS rep can send a quick recommendation.</p>
     <a href="${ORDERING}" style="display:inline-block;background:#F5821F;color:#fff;text-decoration:none;font-weight:700;padding:11px 18px;border-radius:8px;font-size:14px">Sign in &amp; reorder →</a>
-    <p style="font-size:12.5px;line-height:1.6;color:#6b7280;margin:16px 0 0">Questions, or want a hand with a reorder? Reply to this email or reach your HCPS rep — glad to help.</p>
+    <p style="font-size:12.5px;line-height:1.6;color:#6b7280;margin:16px 0 0">Want a hand with a reorder or a quick recommendation for your mix? Reply to this email or reach your HCPS rep — glad to help.</p>
     <p style="font-size:12px;color:#9aa4ae;margin:14px 0 0">HomeCare Provider Services · Your partner in mobility &amp; home medical equipment.<br><a href="${unsub}" style="color:#9aa4ae">Unsubscribe from these emails</a></p></div>`;
 }
 
@@ -421,7 +422,7 @@ exports.handler = async (event)=>{
       const opt=await sbGet(`email_optout?email=eq.${encodeURIComponent(to.toLowerCase())}&select=email`).catch(()=>[]);
       if(opt&&opt[0]) return json(200,{ok:false,message:"That contact has unsubscribed from marketing emails."});
       const unsub=`${SITE_BASE}/.netlify/functions/unsubscribe?e=${encodeURIComponent(to)}&d=${encodeURIComponent(b.dealer_id)}`;
-      const res=await sendMail({to,subject:"We've missed you at HomeCare Provider Services",html:reengageHtml(d.business_name,unsub),text:`We've missed you${d.business_name?", "+d.business_name:""}!\n\nIt's been a while since your last order with HomeCare Provider Services. Your account is active — sign in to browse your lines, see pricing, and reorder 24/7:\n${ORDERING}\n\nReply to this email or reach your HCPS rep for a hand.\n\nUnsubscribe: ${unsub}`});
+      const res=await sendMail({to,subject:"Reorder your HCPS lines in a couple of clicks",html:reengageHtml(d.business_name,unsub),text:`Your account and pricing are ready${d.business_name?", "+d.business_name:""}.\n\nYour HomeCare Provider Services account is active with your dealer pricing loaded — the lines you carry are a couple of clicks from a reorder, 24/7:\n${ORDERING}\n\nWant a quick recommendation for your mix? Reply to this email or reach your HCPS rep.\n\nUnsubscribe: ${unsub}`});
       if(res.skipped) return json(200,{ok:false,message:"Email isn't configured yet (RESEND_API_KEY not set)."});
       if(!res.ok) return json(200,{ok:false,message:"The email failed to send — please try again."});
       try{ await sbSend("POST","dealer_activity",{dealer_id:b.dealer_id,kind:"campaign",subject:"Re-engagement email sent",contact_email:to,actor:me.name||"staff"},{Prefer:"return=minimal"}); }catch(e){}

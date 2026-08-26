@@ -436,8 +436,15 @@ var COMPOSE={to:"",name:"",sig:""};
 const TPLS=[["follow_up","Follow-up"],["reorder_reminder","Reorder reminder"],["dormant_account","Dormant account"],["product_opportunity","Product opportunity"],["cross_sell","Cross-sell"],["new_product","New product"],["portal_activation","Portal activation"]];
 function renderCompose(){
   const el=$("#compose"); if(!el) return;
-  const cs=(CDATA&&CDATA.contacts)||[]; const prim=(CDATA&&CDATA.primary_email)||"";
-  const opts=cs.filter(c=>c.email).map(c=>`<option value="${esc(c.email)}" data-name="${esc(c.name||"")}"${c.email===prim?" selected":""}>${esc(c.name||c.email)}${c.name?` — ${esc(c.email)}`:""}</option>`).join("");
+  const cs=(CDATA&&CDATA.contacts)||[]; const prim=(CDATA&&CDATA.primary_email)||""; const primName=(CDATA&&CDATA.primary_name)||"";
+  const emails=cs.filter(c=>c.email);
+  const primInContacts = prim && emails.some(c=>String(c.email).toLowerCase()===prim);
+  // The account's PRIMARY email (dealers.email — what Dealer Manager edits and the header shows) is always
+  // selectable here, even when it isn't one of the named contacts, so an updated primary is usable right away.
+  const validPrim = prim && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(prim);
+  const primOpt = (validPrim && !primInContacts)
+    ? `<option value="${esc(prim)}" data-name="${esc(primName)}" selected>${primName?esc(primName)+" — ":""}${esc(prim)} (primary)</option>` : "";
+  const opts=primOpt+emails.map(c=>`<option value="${esc(c.email)}" data-name="${esc(c.name||"")}"${(c.email===prim&&!primOpt)?" selected":""}>${esc(c.name||c.email)}${c.name?` — ${esc(c.email)}`:""}</option>`).join("");
   el.innerHTML=`
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
       <label class="hint" style="margin:0;min-width:64px">To</label>
