@@ -233,7 +233,7 @@ description: "Get in touch with HomeCare Provider Services for manufacturer-spec
           <select id="c-interest" name="interest">
             <option value="">Select a reason…</option>
             <option value="Dealer Support">Dealer Support</option>
-            <option value="Product or Pricing Question">Product or Pricing Question</option>
+            <option value="Product or Pricing Selection Requested">Product or Pricing Selection Requested</option>
             <option value="Online Ordering Support">Online Ordering Support</option>
             <option value="Schedule an In-Service">Schedule an In-Service</option>
             <option value="Showroom Consultation">Showroom Consultation</option>
@@ -318,7 +318,7 @@ description: "Get in touch with HomeCare Provider Services for manufacturer-spec
 
   // Map the reason to a CRM audience/route hint so the inquiry can be segmented downstream.
   var ROUTE = {
-    "Dealer Support":"Dealer", "Product or Pricing Question":"Dealer", "Online Ordering Support":"Dealer",
+    "Dealer Support":"Dealer", "Product or Pricing Selection Requested":"Dealer", "Online Ordering Support":"Dealer",
     "Schedule an In-Service":"Dealer", "Showroom Consultation":"Dealer", "Business Development":"Dealer",
     "Become a Dealer":"Prospect", "Become a Manufacturing Partner":"Manufacturer", "General Question":"General"
   };
