@@ -395,6 +395,15 @@ changes; add a backend action instead so the workspace can do it.
   (description/tagline/features/warranty) inject `loadStyleGuide()` and re-generate once if `findBanned()` flags a
   phrase; category/subcategory align to the existing taxonomy. Output is a draft the reviewer edits and Saves —
   never auto-published — and the prompt forbids inventing specs/measurements/claims.
+- **Removing a SKU is grouping-only, never destructive.** The 🗑 Remove (per-SKU and bulk `remove_skus`) takes a
+  SKU out of THIS product's `product_content.skus` grouping and logs a before-snapshot for Undo. It must NEVER
+  delete the orderable catalog item or its price — that is the Discontinued/Hidden status, managed in Product
+  Catalog. Keep the tool's labels clear: **“Off” hides a SKU (stays listed); “Remove” takes it out; Split/Move
+  relocates it** — and none of them touch pricing.
+- **Price Check verifies catalog price coverage.** The 💲 Price Check button cross-references every SKU (across all
+  products) against the catalog price list (catalog-api GET: `base_price` from the deployed JSON / `custom_products`,
+  with `product_overrides` applied) and reports priced vs. missing-price vs. not-in-catalog SKUs. It is read-only —
+  pricing is set in Product Catalog (base) and Contract Pricing (per-dealer), never in the enrichment tool.
 - **Product images render large (150px, click to open full size)** in Images/Documents & Source — reviewers must
   actually see the photo. Don't shrink them back to thumbnails.
 - **Auth = Connect 360 staff sign-in (per RULE 9), no token prompt.** The workspace loads

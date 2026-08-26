@@ -455,6 +455,23 @@ exports.handler = async (event) => {
         return reply(res.ok ? 200 : 500, { ok: res.ok, rows: res.rows });
       }
 
+      // ---- Remove SKU(s) from THIS product's grouping (content overlay only; catalog item untouched) ----
+      if (action === 'remove_skus') {
+        if (!m || !body.page_key || !Array.isArray(body.skus)) return reply(400, { ok: false, error: 'manufacturer, page_key, skus[] required' });
+        const row = await getRow(m, body.page_key);
+        if (!row) return reply(404, { ok: false, error: 'product not found' });
+        const ids = body.skus.map(String);
+        let skus = normSkus(row.skus);
+        const removed = skus.filter(s => ids.indexOf(skuKey(s)) >= 0);
+        if (!removed.length) return reply(400, { ok: false, error: 'none of those SKUs are on this product' });
+        skus = skus.filter(s => ids.indexOf(skuKey(s)) < 0);
+        const res = await patchRow(m, body.page_key, { skus, sku_count: skus.length });
+        await logHistory({ manufacturer: m, page_key: body.page_key, action: 'remove_skus', actor: reviewer,
+          summary: `Removed ${removed.length} SKU(s) from "${row.name || body.page_key}": ${removed.map(skuKey).join(', ').slice(0, 120)}`,
+          before: row, after: res.rows });
+        return reply(res.ok ? 200 : 500, { ok: res.ok, removed: removed.length, rows: res.rows });
+      }
+
       // ---- Rename a SKU number in the content overlay (catalog side handled by catalog-api rename_code) ----
       if (action === 'rename_sku') {
         if (!m || !body.page_key || !body.old_sku || !body.new_sku) return reply(400, { ok: false, error: 'manufacturer, page_key, old_sku, new_sku required' });

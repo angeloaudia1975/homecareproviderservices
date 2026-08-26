@@ -127,6 +127,8 @@ textarea.ed{min-height:64px}
 .mini-ai:disabled{opacity:.5;cursor:default}
 .skuedit{border:1px solid var(--line);background:#fff;border-radius:6px;padding:1px 7px;font-size:12px;cursor:pointer;color:var(--blue-dk);line-height:1.3}
 .skuedit:hover{background:#eef5ff;border-color:#cfe2fb}
+.skudel{border:1px solid #f3c0c0;background:#fff;border-radius:6px;padding:1px 6px;font-size:12px;cursor:pointer;color:var(--bad);line-height:1.3;margin-left:3px}
+.skudel:hover{background:#fdecec}
 .gal .prov{font-size:9px;color:var(--gray);text-align:center;display:block}
 .provline{font-size:11.5px;color:var(--gray)}
 .provline a{color:var(--blue-dk);font-weight:700;word-break:break-all}
@@ -184,6 +186,7 @@ textarea.ed{min-height:64px}
     <input class="search" id="search" placeholder="Search products, SKUs, categories…" oninput="onSearch(this.value)">
     <button class="btn ghost" data-act="run-structure">⚑ Structure review</button>
     <button class="btn ghost" data-act="new-product">＋ New product</button>
+    <button class="btn ghost" data-act="price-check">💲 Price check</button>
     <button class="btn ghost" data-act="open-history">↺ History</button>
     <button class="btn ghost" id="selmode" data-act="toggle-selmode">☐ Select</button>
   </div>
@@ -209,6 +212,7 @@ textarea.ed{min-height:64px}
   <button class="btn" data-act="move-skus">Move</button>
   <input id="splitname" placeholder="Split into new product name…" style="max-width:220px">
   <button class="btn grad" data-act="split-skus">Split out</button>
+  <button class="btn" data-act="remove-skus-bulk" style="border-color:#e39; background:#7a1c46; color:#fff">🗑 Remove from product</button>
   <button class="btn" data-act="clear-skusel">Clear</button>
 </div>
 
@@ -251,8 +255,8 @@ const STEP_GUIDE=[
     next:"Go to Step 2 — Review Structure — to confirm each record is really ONE product." },
   { title:"Review Product / SKU Structure",
     purpose:"Decide whether each record is a single product or several distinct products bundled under one. This step is ONLY about grouping SKUs into the correct products — nothing else.",
-    do:["Open the ⚑ “Possible Multiple Products” flags at the top.","For each flagged product: Manage → SKUs, and look at the SKU numbers/names.","Check the SKUs that belong elsewhere, then use the bottom bar to Split them into a new product or Move them to the right one; Merge true duplicates.","If the SKUs are just sizes/colors of ONE product, click Dismiss on the flag."],
-    dontYet:["Don't fix categories, descriptions, images, sizing, or status here — those are Steps 3–6. This is the step people over-use: resist making content changes now."],
+    do:["Open the ⚑ “Possible Multiple Products” flags at the top.","For each flagged product: Manage → SKUs, and look at the SKU numbers/names.","Check the SKUs that belong elsewhere, then use the bottom bar to Split them into a new product or Move them to the right one; Merge true duplicates.","To take a SKU out of a product entirely (one you don't recognize, or that doesn't belong), use the 🗑 Remove button (or check rows → 🗑 Remove from product). ⚠ “Off” only HIDES a SKU and leaves it listed — use Remove to actually take it out.","If the SKUs are just sizes/colors of ONE product, click Dismiss on the flag."],
+    dontYet:["Don't fix categories, descriptions, images, sizing, or status here — those are Steps 3–6. This is the step people over-use: resist making content changes now.","Removing a SKU here takes it out of THIS product's grouping only — it does NOT delete the orderable catalog item (that's the Discontinued/Hidden status in later steps). Everything is undoable from History."],
     haveReady:["The manufacturer catalog, so you can confirm which SKUs are genuinely separate products."],
     confirm:["Every product contains only the SKUs that belong to it, and no bundle is left flagged (or you dismissed the size-only flags)."],
     next:"Go to Step 3 — Correct Products & Categories — to set each product's identity." },
@@ -537,7 +541,7 @@ function skuSec(k){ const skus=skusOf(k); const others=Object.keys(pages).filter
       ${skus.map(s=>{ const id=s.sku; const on=skuSel.pk===k&&skuSel.ids.has(id);
         return `<tr class="${s.disabled?'disabled':''}">
         <td><input type="checkbox" class="skusel" ${on?'checked':''} data-act="toggle-sku" data-pk="${escA(k)}" data-sku="${escA(id)}"></td>
-        <td><b>${esc(id)}</b> <button class="skuedit" data-act="rename-sku" data-pk="${escA(k)}" data-sku="${escA(id)}" title="Edit this SKU number everywhere">✎</button></td>
+        <td><b>${esc(id)}</b> <button class="skuedit" data-act="rename-sku" data-pk="${escA(k)}" data-sku="${escA(id)}" title="Edit this SKU number everywhere">✎</button><button class="skudel" data-act="remove-sku" data-pk="${escA(k)}" data-sku="${escA(id)}" title="Remove this SKU from this product">🗑</button></td>
         <td><input class="sed" value="${escA(s.name||'')}" placeholder="—" oninput="editSku('${escA(k)}','${escA(id)}','name',this.value)"></td>
         <td><input class="sed" style="max-width:90px" value="${escA(s.size||'')}" placeholder="—" oninput="editSku('${escA(k)}','${escA(id)}','size',this.value)"></td>
         <td><input class="sed" style="max-width:80px" value="${escA(s.hcpcs||'')}" placeholder="—" oninput="editSku('${escA(k)}','${escA(id)}','hcpcs',this.value)"></td>
@@ -546,7 +550,7 @@ function skuSec(k){ const skus=skusOf(k); const others=Object.keys(pages).filter
       </tr>`; }).join('')}
     </tbody></table></div>
     <div class="savebar"><button class="btn dark" data-act="save-skus" data-pk="${escA(k)}">Save SKU edits</button>
-      <span class="hint">Tip: check SKUs above, then use the bar at the bottom to move them to another product or split them into a new one.</span></div>
+      <span class="hint"><b>✎</b> rename a SKU · <b>🗑</b> remove it from THIS product · check rows to <b>Move / Split / Remove</b> in the bottom bar.<br><b>“Off” only hides a SKU (it stays listed here). “Remove” takes it out of this product.</b> Neither deletes the orderable catalog item — that's the Discontinued/Hidden status.</span></div>
   </div>`; }
 
 /* -- Section 3: content -- */
@@ -653,6 +657,8 @@ document.addEventListener('click',async function(e){
     if(!pages[k].image) pages[k].image=url; await save('save-content',k); reopen(k); return; }
   if(act==='ai-gen') return doAiGen(k, t.getAttribute('data-field'), t);
   if(act==='rename-sku') return doRenameSku(k, sku);
+  if(act==='remove-sku') return doRemoveSku(k, sku);
+  if(act==='remove-skus-bulk') return doRemoveBulk();
   // status + saves + structural
   if(act==='save-record') return doSaveRecord(k,t);
   if(act==='save-content') return doSaveContent(k,t);
@@ -666,6 +672,7 @@ document.addEventListener('click',async function(e){
   if(act==='run-structure') return runStructure();
   if(act==='new-product') return openNewProduct();
   if(act==='open-history') return openHistory();
+  if(act==='price-check') return doPriceCheck();
   if(act==='close-drawer'){ document.getElementById('drawer').classList.remove('show'); return; }
   if(act==='move-skus') return doMove();
   if(act==='split-skus') return doSplit();
@@ -708,6 +715,25 @@ async function doSaveContent(k){ const p=pages[k];
   const r=await apiWrite({action:'set_content',page_key:k,patch});
   toast(r.ok?'Content saved':'Save failed',!r.ok); }
 async function save(kind,k){ if(kind==='save-content') return doSaveContent(k); }
+/* ---- Remove SKU(s) from THIS product (content grouping only; catalog item untouched; undoable) ---- */
+async function doRemoveSku(k, sku){ sku=String(sku);
+  if(!window.confirm('Remove SKU '+sku+' from this product?\n\nThis takes it out of THIS product only — it stops showing here. It does NOT delete the orderable catalog item, and you can undo it from History.')) return;
+  const r=await apiWrite({action:'remove_skus', page_key:k, skus:[sku]});
+  if(r.ok && (!r.json || r.json.ok!==false)){
+    pages[k].skus=skusOf(k).filter(s=>String(s.sku)!==sku); pages[k].sku_count=pages[k].skus.length;
+    if(skuSel.pk===k) skuSel.ids.delete(sku);
+    toast('Removed '+sku+' from this product'); render();
+  } else toast((r.json&&r.json.error)||'Remove failed',true);
+}
+async function doRemoveBulk(){
+  if(!skuSel.pk || !skuSel.ids.size) return; const k=skuSel.pk; const ids=[...skuSel.ids]; const idset=new Set(ids.map(String));
+  if(!window.confirm('Remove '+ids.length+' SKU(s) from this product?\n\nThey stop showing on THIS product. The orderable catalog items are not deleted, and you can undo from History.')) return;
+  const r=await apiWrite({action:'remove_skus', page_key:k, skus:ids});
+  if(r.ok && (!r.json || r.json.ok!==false)){
+    pages[k].skus=skusOf(k).filter(s=>!idset.has(String(s.sku))); pages[k].sku_count=pages[k].skus.length;
+    toast('Removed '+ids.length+' SKU(s) from this product'); skuSel={pk:null,ids:new Set()}; render();
+  } else toast((r.json&&r.json.error)||'Remove failed',true);
+}
 /* ---- Edit a SKU number everywhere: catalog (via catalog-api rename_code) + content overlay ---- */
 let _catalogCache=null;
 async function catalogGet(){
@@ -716,6 +742,39 @@ async function catalogGet(){
     const j=await r.json().catch(()=>({})); _catalogCache=(j&&j.products)?j:{products:[],custom:[]}; }
   catch(e){ _catalogCache={products:[],custom:[]}; }
   return _catalogCache;
+}
+/* ---- Price Check: verify every SKU has a price loaded in the catalog ---- */
+async function doPriceCheck(){
+  toast('Checking prices…'); _catalogCache=null; const cat=await catalogGet();
+  if(!cat || (!(cat.products||[]).length && !(cat.custom||[]).length)){
+    modalHTML('💲 Price Check', '<div class="tut"><p class="mut">Couldn\'t read the catalog price list. Price checking reads the Product Catalog, which is President-only — make sure you\'re signed in as president. If you are, this manufacturer may not have a catalog loaded yet.</p></div>'); return; }
+  const ov=cat.overrides||{}, custom={}, std={};
+  (cat.custom||[]).forEach(p=>{ custom[String(p.code)]=p; });
+  (cat.products||[]).forEach(p=>{ std[String(p.code)]=p; });
+  const inCatalog=c=>{ c=String(c); return !!(custom[c]||std[c]); };
+  function priceOf(c){ c=String(c); const o=ov[c]||{};
+    if(o.base_price!=null&&o.base_price!=='') return Number(o.base_price);
+    const cu=custom[c]; if(cu&&cu.base_price!=null&&cu.base_price!=='') return Number(cu.base_price);
+    const p=std[c]; if(p&&p.base_price!=null&&p.base_price!=='') return Number(p.base_price);
+    return null; }
+  let total=0, priced=0; const missing=[], notInCat=[];
+  Object.keys(pages).forEach(k=>{ const p=pages[k]; if(p.is_parent) return;
+    skusOf(k).forEach(s=>{ const code=String(s.sku||''); if(!code) return; total++;
+      if(!inCatalog(code)){ notInCat.push({code,product:p.name||k}); return; }
+      const pr=priceOf(code); if(pr!=null&&pr>0) priced++; else missing.push({code,product:p.name||k}); }); });
+  const pct=total?Math.round(priced/total*100):0;
+  const grp=list=>{ const by={}; list.forEach(x=>{(by[x.product]=by[x.product]||[]).push(x.code);});
+    return Object.keys(by).sort().map(pn=>`<tr><td>${esc(pn)}</td><td>${by[pn].map(esc).join(', ')}</td></tr>`).join(''); };
+  modalHTML('💲 Price Check · '+esc(MFR), `<div class="tut">
+    <div class="rule"><b>${priced} of ${total} SKUs have a price loaded (${pct}%).</b> ${missing.length?`<b style="color:#b42323">&nbsp;${missing.length} catalog SKU(s) are missing a price.</b>`:'&nbsp;Every catalog SKU has a price. ✅'} ${notInCat.length?`&nbsp;${notInCat.length} SKU(s) aren't in the catalog yet.`:''}</div>
+    <p class="mut">Prices come from the <b>Product Catalog</b> (base/list price) and <b>Contract Pricing</b> (per-dealer). Removing a SKU here never changes pricing — this only verifies it's loaded. Fix missing prices in those tools.</p>
+    ${missing.length?`<h3>In the catalog but missing a price (${missing.length})</h3>
+      <div class="tabscroll"><table><thead><tr><th>Product</th><th>SKU(s)</th></tr></thead><tbody>${grp(missing)}</tbody></table></div>`:''}
+    ${notInCat.length?`<h3>Not found in the catalog (${notInCat.length})</h3>
+      <p class="mut">On a product here, but not in the ordering catalog yet — add them in Product Catalog (or it may be a renamed/typo code).</p>
+      <div class="tabscroll"><table><thead><tr><th>Product</th><th>SKU(s)</th></tr></thead><tbody>${grp(notInCat)}</tbody></table></div>`:''}
+    ${(!missing.length&&!notInCat.length)?'<p><b>✅ All good — every SKU is in the catalog with a price.</b></p>':''}
+  </div>`);
 }
 async function doRenameSku(k, oldSku){
   oldSku=String(oldSku);
