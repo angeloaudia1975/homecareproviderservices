@@ -19,6 +19,33 @@ body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--pape
 .step{display:flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 13px;font-size:12px;font-weight:700;color:var(--gray)}
 .step .n{width:19px;height:19px;border-radius:50%;background:var(--paper);color:var(--gray);display:grid;place-items:center;font-size:11px;font-weight:800;border:1px solid var(--line)}
 .step.on{border-color:var(--navy);color:var(--navy)}.step.on .n{background:var(--navy);color:#fff;border-color:var(--navy)}
+.step{cursor:pointer;transition:border-color .12s,background .12s}
+.step:hover{border-color:var(--navy2)}
+.step.active{background:var(--navy);color:#fff;border-color:var(--navy)}.step.active .n{background:#fff;color:var(--navy);border-color:#fff}
+.guide{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);margin:0 0 16px;overflow:hidden}
+.guide-h{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:12px 16px;cursor:pointer;background:linear-gradient(180deg,#f3f9ff,#fff);border-bottom:1px solid var(--line)}
+.guide.collapsed .guide-h{border-bottom:none}
+.guide-h .gt{font-family:'Archivo',sans-serif;font-weight:800;font-size:14.5px;color:var(--navy)}
+.guide-h .gt .gstep{color:var(--orange)}
+.guide-h .gtools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.guide-b{padding:14px 16px;display:grid;grid-template-columns:1fr 1fr;gap:14px 22px}
+@media(max-width:720px){.guide-b{grid-template-columns:1fr}}
+.guide.collapsed .guide-b{display:none}
+.gblock h5{margin:0 0 5px;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray)}
+.gblock ul{margin:0;padding-left:17px;font-size:13px;line-height:1.55;color:var(--ink)}
+.gblock p{margin:0;font-size:13px;line-height:1.55;color:var(--ink)}
+.gblock.dont h5{color:var(--bad)}.gblock.dont ul{color:#7a2b2b}
+.gblock.next{grid-column:1/-1;background:#eef5ff;border:1px solid #cfe2fb;border-radius:10px;padding:10px 12px}
+.gbtn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 11px;font-size:12px;font-weight:800;cursor:pointer;color:var(--navy);font-family:inherit}
+.gbtn.grad{background:var(--grad);border:none;color:#141414}
+.tut h3{font-family:'Archivo',sans-serif;margin:16px 0 6px;font-size:16px;color:var(--navy)}
+.tut h3:first-child{margin-top:0}
+.tut p{font-size:13.5px;line-height:1.6;margin:0 0 8px;color:var(--ink)}
+.tut ol{font-size:13.5px;line-height:1.6;padding-left:20px}
+.tut .rule{background:#fff3e0;border:1px solid #f2d9b0;border-radius:10px;padding:11px 14px;font-size:13.5px;color:#7a4a0d;margin:0 0 12px}
+.tut table{border-collapse:collapse;width:100%;font-size:12.5px;margin:6px 0 12px}
+.tut th,.tut td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+.tut th{background:var(--paper);font-family:'Archivo',sans-serif}
 /* stats */
 .stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 16px;box-shadow:var(--shadow)}
@@ -151,6 +178,7 @@ textarea.ed{min-height:64px}
 </div>
 <div class="wrap">
   <div class="steps" id="steps"></div>
+  <div id="guide"></div>
   <div class="stats" id="stats"></div>
   <div class="toolbar">
     <input class="search" id="search" placeholder="Search products, SKUs, categories…" oninput="onSearch(this.value)">
@@ -211,6 +239,121 @@ const STATUSES=[
 const PUBLIC_SET=new Set(['published','active','discontinued']);
 const SKU_STATUSES=['active','discontinued','hidden'];
 const WORKFLOW=['Import','Review structure','Correct products','Enrich content','Sizing & specs','Disable obsolete','Preview','Approve & publish'];
+
+/* ===================== Step-by-step "How to use this step" guides ===================== */
+const STEP_GUIDE=[
+  { title:"Import Manufacturer Data",
+    purpose:"Bring the raw product data into the tool — the manufacturer's coded catalog & PDF, their website, and your existing HCPS catalog. This is the source material for everything that follows.",
+    do:["Pick the manufacturer at the top-left.","Scan the product list and each product's captured-source chips (Current HCPS Data / Website / PDF).","If a product is missing website data, open it and use “Run website import” to pull it in."],
+    dontYet:["Don't rename SKUs, change categories, write descriptions, or split anything yet — you're only confirming the data landed."],
+    haveReady:["The manufacturer's coded product catalog and/or retail catalog (PDF).","The manufacturer's website product pages."],
+    confirm:["Every product you expect is in the list, and each shows at least one captured source."],
+    next:"Go to Step 2 — Review Structure — to confirm each record is really ONE product." },
+  { title:"Review Product / SKU Structure",
+    purpose:"Decide whether each record is a single product or several distinct products bundled under one. This step is ONLY about grouping SKUs into the correct products — nothing else.",
+    do:["Open the ⚑ “Possible Multiple Products” flags at the top.","For each flagged product: Manage → SKUs, and look at the SKU numbers/names.","Check the SKUs that belong elsewhere, then use the bottom bar to Split them into a new product or Move them to the right one; Merge true duplicates.","If the SKUs are just sizes/colors of ONE product, click Dismiss on the flag."],
+    dontYet:["Don't fix categories, descriptions, images, sizing, or status here — those are Steps 3–6. This is the step people over-use: resist making content changes now."],
+    haveReady:["The manufacturer catalog, so you can confirm which SKUs are genuinely separate products."],
+    confirm:["Every product contains only the SKUs that belong to it, and no bundle is left flagged (or you dismissed the size-only flags)."],
+    next:"Go to Step 3 — Correct Products & Categories — to set each product's identity." },
+  { title:"Correct Products & Categories",
+    purpose:"Now that the grouping is right, fix each product's identity — name, manufacturer, family, category, subcategory, status, and any SKU numbers that changed.",
+    do:["Manage → Product record: set Category & Subcategory (✨ AI can suggest), Family, Manufacturer, MSRP rule, Name, Tagline.","If a SKU number changed, click the ✎ beside it to rename it everywhere (catalog + pricing + content).","Click Save record."],
+    dontYet:["Don't write long descriptions or add images yet — that's Step 4. Don't approve/publish."],
+    haveReady:["Your category/subcategory list and the correct product names from the catalog."],
+    confirm:["Each product has a correct name, category, subcategory, and status; any renumbered SKUs are updated."],
+    next:"Go to Step 4 — Enrich Images & Content." },
+  { title:"Enrich Images & Content",
+    purpose:"Write the customer-facing content and curate the images dealers will see in Partner 360.",
+    do:["Manage → Content: write the Description, Key features, clinical applications, billing codes (use ✨ AI to draft, then edit).","Manage → Images, documents & source: add image URLs, note the primary, and check the “where fields came from” provenance.","Click Save content."],
+    dontYet:["Don't add sizing charts or specs here — that's Step 5. Don't approve yet."],
+    haveReady:["Product photos (hosted image URLs) and the manufacturer's feature/benefit copy."],
+    confirm:["Each product has a clear description, a few real features, and at least one correct image."],
+    next:"Go to Step 5 — Add Sizing / Specs." },
+  { title:"Add Sizing / Specifications",
+    purpose:"Add the sizing chart, spec table, and warranty so dealers can order the right size with confidence.",
+    do:["Manage → Sizing / spec table: paste the manufacturer's chart (tab- or comma-separated), click Preview parse, then Save sizing.","Add Specifications (label → value) and Warranty in the Content section."],
+    dontYet:["Don't publish yet — you'll preview first."],
+    haveReady:["The manufacturer's sizing/spec chart (copyable from the catalog or website)."],
+    confirm:["The sizing table shows the right columns/rows, and specs/warranty are filled where you have them."],
+    next:"Go to Step 6 — Disable Obsolete Items." },
+  { title:"Disable Obsolete Items",
+    purpose:"Remove products or SKUs that are no longer available, so dealers never order something discontinued.",
+    do:["For a discontinued SKU: set that SKU's Status to Discontinued or Hidden, or check “Off” in the SKU grid.","For a whole product that's gone: set Status to Discontinued or Hidden, or check “Disable whole product” in Product record."],
+    dontYet:["Don't delete anything — discontinuing/hiding keeps the record and its history."],
+    haveReady:["The manufacturer's current active-product list, so you know what's been dropped."],
+    confirm:["Every obsolete SKU/product is marked Discontinued or Hidden."],
+    next:"Go to Step 7 — Preview." },
+  { title:"Preview in Partner 360",
+    purpose:"See exactly how the finished product will appear to dealers before it goes live.",
+    do:["Click Preview on the product (card header or the Approve section).","Check the name, images, description, features, sizing, and orderable SKUs all look right.","If something's off, go back to the relevant step and fix it."],
+    dontYet:["Don't publish until the preview looks correct."],
+    haveReady:["A product with Steps 2–6 completed."],
+    confirm:["The preview looks the way you want dealers to see it."],
+    next:"Go to Step 8 — Approve & Publish." },
+  { title:"Approve & Publish",
+    purpose:"Sign off the finished product, then make it live and orderable for dealers. Approve = signed off (still internal). Publish = live on Partner 360.",
+    do:["Click Approve to sign off the content.","Click Publish to make it live and orderable.","To publish several at once: use Select at the top, choose products, then Publish selected."],
+    dontYet:["Don't publish a product that hasn't been previewed, or one still flagged for structure review."],
+    haveReady:["A previewed, complete product."],
+    confirm:["Status shows Published (or Active) — it now appears to dealers in Partner 360."],
+    next:"Pick the next product — or the next manufacturer — and start again at Step 1. Each manufacturer gets faster as your categories fill in." }
+];
+let guideStep=1, guideOpen=true;
+try{ const gs=JSON.parse(localStorage.getItem('pc_guide')||'null'); if(gs){ if(typeof gs.s==='number') guideStep=gs.s; guideOpen=gs.o!==false; } }catch(e){}
+function persistGuide(){ try{ localStorage.setItem('pc_guide',JSON.stringify({s:guideStep,o:guideOpen})); }catch(e){} }
+function renderSteps(){ const el=document.getElementById('steps'); if(!el) return;
+  el.innerHTML=WORKFLOW.map((s,i)=>`<div class="step ${i===guideStep?'active':''}" onclick="showStep(${i})" title="How to use this step"><span class="n">${i+1}</span>${s}</div>`).join(''); }
+function renderGuide(){ const el=document.getElementById('guide'); if(!el) return; const g=STEP_GUIDE[guideStep]; if(!g){ el.innerHTML=''; return; }
+  el.innerHTML=`<div class="guide ${guideOpen?'':'collapsed'}">
+    <div class="guide-h" onclick="toggleGuide()">
+      <div class="gt"><span class="gstep">Step ${guideStep+1} of 8</span> · How to use “${g.title}”</div>
+      <div class="gtools">
+        <button class="gbtn grad" onclick="event.stopPropagation();openTutorial()">📘 Full tutorial</button>
+        <span style="font-size:12px;color:var(--gray)">${guideOpen?'▾ hide':'▸ show'}</span>
+      </div>
+    </div>
+    <div class="guide-b">
+      <div class="gblock"><h5>✅ What this step is for</h5><p>${g.purpose}</p></div>
+      <div class="gblock"><h5>Do here</h5><ul>${g.do.map(x=>`<li>${x}</li>`).join('')}</ul></div>
+      <div class="gblock dont"><h5>⛔ Not yet — leave for a later step</h5><ul>${g.dontYet.map(x=>`<li>${x}</li>`).join('')}</ul></div>
+      <div class="gblock"><h5>Have ready before this step</h5><ul>${g.haveReady.map(x=>`<li>${x}</li>`).join('')}</ul></div>
+      <div class="gblock"><h5>Confirm before moving on</h5><ul>${g.confirm.map(x=>`<li>${x}</li>`).join('')}</ul></div>
+      <div class="gblock next"><h5>➡ Next step</h5><p>${g.next}</p></div>
+    </div>
+  </div>`; }
+function showStep(i){ guideStep=i; guideOpen=true; persistGuide(); renderSteps(); renderGuide();
+  const el=document.getElementById('guide'); if(el&&el.scrollIntoView) el.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+function toggleGuide(){ guideOpen=!guideOpen; persistGuide(); renderGuide(); }
+function openTutorial(){ modalHTML('📘 Product Content Enrichment — Full Tutorial', `<div class="tut">
+  <div class="rule"><b>The golden rule:</b> work each product <b>top to bottom</b> through its Manage panel — the sections are already in workflow order. <b>Review Structure (Step 2) is ONLY for deciding which SKUs belong to which product.</b> Everything else — categories, content, images, sizing — happens in the later steps.</div>
+  <h3>What each stage is for</h3>
+  <div class="tabscroll"><table>
+    <thead><tr><th>Stage</th><th>This stage is for…</th></tr></thead>
+    <tbody>
+      <tr><td><b>1 · Import</b></td><td>Getting the data in (documents → website → HCPS catalog). Just confirm it arrived.</td></tr>
+      <tr><td><b>2 · Review Structure</b></td><td><b>Structural changes only</b> — split / move / merge SKUs so each record is one real product.</td></tr>
+      <tr><td><b>3 · Correct Products & Categories</b></td><td>Identity — name, family, category, subcategory, status, SKU-number fixes.</td></tr>
+      <tr><td><b>4 · Enrich Images & Content</b></td><td>Content — description, features, images, provenance.</td></tr>
+      <tr><td><b>5 · Sizing / Specs</b></td><td>Sizing chart, spec table, warranty.</td></tr>
+      <tr><td><b>6 · Disable Obsolete</b></td><td>Mark discontinued / hidden SKUs and products.</td></tr>
+      <tr><td><b>7 · Preview</b></td><td>Check the Partner 360 view before it's live.</td></tr>
+      <tr><td><b>8 · Approve & Publish</b></td><td><b>Approve</b> = signed off (internal). <b>Publish</b> = live to dealers.</td></tr>
+    </tbody>
+  </table></div>
+  <h3>The full order, start to finish</h3>
+  <ol>
+    <li><b>Import documents</b> — load the manufacturer's coded/retail catalog PDF (via the importer) so products and SKUs exist.</li>
+    <li><b>Import website content</b> — open a product and “Run website import” to pull the manufacturer's live images and copy as a source.</li>
+    <li><b>Review product / SKU structure</b> — clear the ⚑ flags: split bundled products, move stray SKUs, merge duplicates, dismiss size-only groups. <b>Do nothing else here.</b></li>
+    <li><b>Correct categories & variants</b> — set category/subcategory, family, status, and fix any SKU numbers. Multi-model products become one record per model (variants).</li>
+    <li><b>Enrich images & product data</b> — write the description and features (✨ AI to draft), pick the primary image, add documents.</li>
+    <li><b>Review sizing / specifications</b> — paste the sizing chart, add specs and warranty.</li>
+    <li><b>Preview</b> — open the Partner 360 preview and confirm it looks right.</li>
+    <li><b>Approve, then Publish</b> — Approve to sign off, Publish to go live. Bulk-publish a finished manufacturer with Select → Publish selected.</li>
+  </ol>
+  <div class="rule">Tip: click any numbered step at the top of the page to pop open its “How to use this step” reminder. Your last-open step is remembered on this browser.</div>
+</div>`); }
 
 /* ---------- boot: pull live rows via admin token (falls back to offline seed) ---------- */
 async function boot(){
@@ -283,7 +426,7 @@ function allFamilies(){ const s=new Set(); for(const k in pages){ if(pages[k].fa
 /* ---------- render ---------- */
 function render(){
   const c=counts();
-  document.getElementById('steps').innerHTML=WORKFLOW.map((s,i)=>`<div class="step ${i===1?'on':''}"><span class="n">${i+1}</span>${s}</div>`).join('');
+  renderSteps(); renderGuide();
   document.getElementById('stats').innerHTML=
     stat(c.total,'Products')+stat(c.skus,'SKUs')+stat(c.published,'Live on Partner 360')+
     stat(c.pending,'In review')+stat(c.needs,'Need content')+stat(c.flagged,'Structure flags');
