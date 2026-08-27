@@ -276,7 +276,8 @@ function aiContext(ctx) {
     (ctx.clinical_applications && ctx.clinical_applications.length) ? `Clinical applications: ${ctx.clinical_applications.join(', ')}` : '',
     (ctx.billing_codes && ctx.billing_codes.length) ? `HCPCS/billing codes: ${ctx.billing_codes.join(', ')}` : '',
     ctx.description ? `Existing description: ${ctx.description}` : '',
-    skus ? `SKUs: ${skus}` : ''
+    skus ? `SKUs: ${skus}` : '',
+    (ctx.sizing_rows && ctx.sizing_rows.length) ? `Sizing table: ${JSON.stringify(ctx.sizing_rows).slice(0, 1500)}` : ''
   ].filter(Boolean);
   return lines.join('\n');
 }
@@ -297,6 +298,8 @@ function aiPrompt(field, ctx, styleGuide) {
       return `${AI_GUARDRAILS}\nWrite a brief 1–2 sentence standard manufacturer warranty statement for this product. If specifics are unknown, keep it generic and professional. Return ONLY the warranty text.\n\n${c}`;
     case 'clinical_applications':
       return `${AI_GUARDRAILS}\nList 4–8 clinical applications for this product — the conditions, injuries, or procedures it is indicated for or used to treat (e.g. "ACL, PCL, MCL, and LCL knee-related repairs", "Post-op immobilization"). ONE PER LINE, no bullets, numbers, or leading symbols. Base them only on the product details below; do not invent indications. Return ONLY the lines.\n\n${c}`;
+    case 'specs':
+      return `${AI_GUARDRAILS}\nList 4–10 technical specifications for this product as label/value pairs — the concrete attributes a dealer compares, such as Material, Available sizes, Sizing range, Weight capacity, Closure type, Sided (left/right/universal), Color, Latex-free, Country of origin. Use ONLY facts supported by the details below (including the sizing table and SKUs); do NOT invent measurements, materials, or claims. Omit any spec you cannot support.\nReturn ONLY a JSON array (no prose, no code fences), exactly: [{"label":"Material","value":"…"},{"label":"Available sizes","value":"…"}]\n\n${c}`;
     case 'category':
       return `${AI_GUARDRAILS}\nChoose the single best CATEGORY for this product. Prefer one of the existing categories if a good fit; otherwise propose a concise new category (1–3 words). Existing categories: ${(ctx.existing_categories || []).join(', ') || '(none yet)'}\nReturn ONLY the category name — nothing else.\n\n${c}`;
     case 'subcategory':
@@ -787,12 +790,12 @@ exports.handler = async (event) => {
       if (action === 'generate_content') {
         if (!AI_KEY) return reply(200, { ok: false, error: 'ai_unavailable', message: "AI drafting isn't enabled — set ANTHROPIC_API_KEY in Netlify." });
         const field = body.field; const ctx = body.context || {};
-        const ALLOWED = ['description', 'tagline', 'features', 'warranty', 'category', 'subcategory', 'clinical_applications'];
+        const ALLOWED = ['description', 'tagline', 'features', 'warranty', 'category', 'subcategory', 'clinical_applications', 'specs'];
         if (ALLOWED.indexOf(field) < 0) return reply(400, { ok: false, error: 'bad field' });
         const prose = ['description', 'tagline', 'features', 'warranty'].indexOf(field) >= 0;
         let guide = '';
         if (prose && loadStyleGuide) { try { guide = await loadStyleGuide(sbGet); } catch (e) {} }
-        const maxTok = field === 'features' ? 500 : (field === 'clinical_applications' ? 300 : (field === 'description' ? 400 : 120));
+        const maxTok = (field === 'features' || field === 'specs') ? 600 : (field === 'clinical_applications' ? 300 : (field === 'description' ? 400 : 120));
         let out = await callAI(aiPrompt(field, ctx, guide), maxTok);
         if (out.err) return reply(200, { ok: false, error: 'ai_error', message: out.err, detail: out.detail, model: AI_MODEL });
         let text = (out.text || '').trim();
@@ -805,6 +808,12 @@ exports.handler = async (event) => {
         }
         const resp = { ok: true, field, text };
         if (field === 'features' || field === 'clinical_applications') resp.list = text.split('\n').map(x => x.replace(/^[-•*\d.\s]+/, '').trim()).filter(Boolean);
+        if (field === 'specs') {
+          let arr = parseJsonLoose(text);
+          if (!Array.isArray(arr)) arr = [];
+          resp.specs = arr.map(s => ({ label: String((s && (s.label || s.name)) || '').trim(), value: String((s && (s.value || s.val)) || '').trim() }))
+            .filter(s => s.label || s.value);
+        }
         return reply(200, resp);
       }
 

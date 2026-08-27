@@ -588,7 +588,7 @@ function contentSec(k){ const p=pages[k]; const feats=p.features||[]; const spec
     <div class="fld" style="margin-top:10px"><label>Key features <button class="mini-ai" data-act="ai-gen" data-pk="${escA(k)}" data-field="features">✨ AI</button></label>
       <ul class="feat">${feats.map((f,i)=>`<li><textarea class="ed" rows="1" oninput="editFeat('${escA(k)}',${i},this.value)">${esc(f)}</textarea><button class="x" data-act="del-feature" data-pk="${escA(k)}" data-i="${i}">✕</button></li>`).join('')}</ul>
       <button class="btn ghost" style="margin-top:6px" data-act="add-feature" data-pk="${escA(k)}">＋ Add feature</button></div>
-    <div class="fld" style="margin-top:12px"><label>Specifications (label → value)</label>
+    <div class="fld" style="margin-top:12px"><label>Specifications (label → value) <button class="mini-ai" data-act="ai-gen" data-pk="${escA(k)}" data-field="specs">✨ AI</button> <span class="mut" style="font-size:10px;text-transform:none">material, sizes, weight capacity, closure, latex-free…</span></label>
       <div>${specs.map((s,i)=>`<div class="specrow"><input class="ed" placeholder="Label" value="${escA(s.label||'')}" oninput="editSpec('${escA(k)}',${i},'label',this.value)"><input class="ed" placeholder="Value" value="${escA(s.value||'')}" oninput="editSpec('${escA(k)}',${i},'value',this.value)"><button class="x" data-act="del-spec" data-pk="${escA(k)}" data-i="${i}">✕</button></div>`).join('')}</div>
       <button class="btn ghost" data-act="add-spec" data-pk="${escA(k)}">＋ Add spec</button></div>
     <div class="grid2" style="margin-top:12px">
@@ -1256,12 +1256,21 @@ async function doAiGen(k, field, btn){
     tagline:p.tagline, description:p.description, features:p.features||[],
     clinical_applications:p.clinical_applications||[], billing_codes:p.billing_codes||[],
     manufacturer:p.manufacturer||MFR, skus:skusOf(k).map(s=>({sku:s.sku,size:s.size,hcpcs:s.hcpcs})),
+    sizing_rows:(p.sizing_table&&(p.sizing_table.rows||p.sizing_table))||null,
     existing_categories:allCategories() };
   const r=await apiWrite({action:'generate_content', page_key:k, field, context:ctx});
   if(btn){ btn.disabled=false; btn.textContent=orig; }
   const out=r.json||{};
   if(!r.ok || out.ok===false){ toast(out.message||out.error||'AI generation failed',true); return; }
-  if(field==='features'||field==='clinical_applications'){
+  if(field==='specs'){
+    const incoming=Array.isArray(out.specs)?out.specs:[];
+    const rows=incoming.map(s=>({label:String((s&&s.label)||'').trim(),value:String((s&&s.value)||'').trim()})).filter(s=>s.label||s.value);
+    if(!rows.length){ toast('AI returned no specifications — try again',true); return; }
+    const cur=Array.isArray(pages[k].specs)?pages[k].specs.filter(s=>s&&(String(s.label||'').trim()||String(s.value||'').trim())):[];
+    const seen=new Set(cur.map(s=>String(s.label||'').toLowerCase().trim()));
+    rows.forEach(s=>{ const key=s.label.toLowerCase(); if(!seen.has(key)){ cur.push(s); seen.add(key); } });
+    pages[k].specs=cur;
+  } else if(field==='features'||field==='clinical_applications'){
     if(Array.isArray(out.list)&&out.list.length) pages[k][field]=out.list;
     else if(out.text) pages[k][field]=out.text.split('\n').map(x=>x.replace(/^[-•*\d.\s]+/,'').trim()).filter(Boolean);
   } else if(out.text!=null){ pages[k][field]=out.text; }
@@ -1406,6 +1415,7 @@ function openPreview(k){ const p=pages[k]; const skus=skusOf(k).filter(s=>!s.dis
     ${gal.length?`<div class="pvimgs">${gal.map(g=>`<img src="${escA(g.url)}">`).join('')}</div>`:''}
     ${p.description?`<p>${esc(p.description)}</p>`:''}
     ${(p.features||[]).length?`<h4 style="font-family:Archivo">Features</h4><ul>${(p.features||[]).map(f=>`<li>${esc(f)}</li>`).join('')}</ul>`:''}
+    ${(p.clinical_applications||[]).length?`<h4 style="font-family:Archivo">Clinical applications</h4><div>${(p.clinical_applications||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join('')}</div>`:''}
     ${(p.specs||[]).length?`<h4 style="font-family:Archivo">Specifications</h4><table class="pv"><tbody>${(p.specs||[]).map(s=>`<tr><th>${esc(s.label)}</th><td>${esc(s.value)}</td></tr>`).join('')}</tbody></table>`:''}
     ${st.rows.length?`<h4 style="font-family:Archivo">Sizing</h4><div class="tabscroll"><table class="pv"><thead><tr>${st.columns.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${st.rows.map(r=>`<tr>${st.columns.map(c=>`<td>${esc(r[c]!=null?r[c]:'')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${p.sizing_note?`<div class="hint">${esc(p.sizing_note)}</div>`:''}`:''}
     ${p.warranty?`<h4 style="font-family:Archivo">Warranty</h4><p>${esc(p.warranty)}</p>`:''}
