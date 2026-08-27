@@ -856,23 +856,64 @@ exports.handler = async (event) => {
         const skus = normSkus(row.skus);
         if (!skus.length) return reply(200, { ok: true, rows: [] });
         const codes = Array.isArray(row.billing_codes) ? row.billing_codes.filter(Boolean) : [];
-        const sizing = row.sizing_table && row.sizing_table.length ? JSON.stringify(row.sizing_table).slice(0, 4000) : '(none provided)';
-        const skuList = skus.map(s => ({ sku: String(s.sku), name: s.name || '', size: s.size || '', hcpcs: s.hcpcs || '' }));
-        const prompt = `${AI_GUARDRAILS}\n\nYou are completing the per-SKU (per-variant) detail rows for ONE product in a DME dealer catalog. Each SKU is a size/configuration variant of the same product.\n\nProduct name: ${row.name || '(unknown)'}\nCategory: ${row.category || ''}${row.subcategory ? ' › ' + row.subcategory : ''}\nProduct-level HCPCS / billing codes: ${codes.length ? codes.join(', ') : '(none on file)'}\n\nSizing / spec table (maps the manufacturer PART NUMBER to a size; the SKU numbers below are those part numbers):\n${sizing}\n\nSKUs to complete (fill each field only from real evidence; keep any value already present):\n${JSON.stringify(skuList)}\n\nRULES:\n- size: match each SKU number to the sizing table's part-number column and use that row's size label (e.g. "X-Small", "Medium"). If the table has no size for it, infer from an existing SKU name; otherwise leave "".\n- name: a short, clean variant name — typically the product name plus the size (e.g. "Arm Sling With Padded Shoulder – Medium"). If nothing meaningful to add, leave "".\n- hcpcs: the reimbursement/BILLING code that applies to this variant. This is NOT a part number. Almost always the SAME product-level HCPCS repeats across every size — reuse a code from the product-level codes above. Only use a different code if the sizing table explicitly lists a per-size code. If no product-level code is on file, leave "". NEVER invent a code.\n\nReturn ONLY a JSON array (no prose, no code fences), one object per SKU above, exactly: [{"sku":"<code>","name":"","size":"","hcpcs":""}]`;
-        const rj = await aiJson(prompt, 1500);
-        if (rj.err) return reply(200, { ok: false, error: 'ai_error', message: rj.err, detail: rj.detail, model: AI_MODEL });
-        if (rj.parse_err) return reply(200, { ok: false, error: 'ai_parse', message: 'Could not read the AI response — try again.', raw: rj.raw });
-        let rows = rj.data;
-        if (rows && !Array.isArray(rows) && Array.isArray(rows.rows)) rows = rows.rows;
-        if (!Array.isArray(rows)) return reply(200, { ok: false, error: 'ai_parse', message: 'AI did not return a list — try again.' });
-        // Only ever return codes that belong to this product; drop any hallucinated hcpcs not on file.
+        const defaultCode = codes[0] || '';
+        const productName = String(row.name || '').trim();
         const allow = new Set(codes.map(c => String(c).toUpperCase().trim()));
-        const clean = rows.filter(x => x && x.sku != null).map(x => {
-          let hc = String(x.hcpcs || '').trim();
-          if (hc && allow.size && !allow.has(hc.toUpperCase())) hc = codes[0] || '';
-          return { sku: String(x.sku).trim(), name: String(x.name || '').trim(), size: String(x.size || '').trim(), hcpcs: hc };
+
+        // sizing_table is stored as { columns:[...], rows:[{col:val,...}] } (older rows may be a bare array).
+        const stRows = row.sizing_table && Array.isArray(row.sizing_table.rows) ? row.sizing_table.rows
+          : (Array.isArray(row.sizing_table) ? row.sizing_table : []);
+        const stCols = row.sizing_table && Array.isArray(row.sizing_table.columns) && row.sizing_table.columns.length
+          ? row.sizing_table.columns : (stRows[0] ? Object.keys(stRows[0]) : []);
+        // The column holding the size label: header contains "siz" (Size / Sizing), else the first column.
+        const sizeCol = stCols.find(c => /siz/i.test(c)) || stCols[0] || null;
+
+        // Deterministic match: find each SKU code ANYWHERE in the table (part numbers may live in several
+        // columns, e.g. "Part Number Right Hand" / "Part Number Left Hand"). Derive size + side from the row.
+        const det = {};
+        const want = new Set(skus.map(s => String(s.sku).trim()));
+        stRows.forEach(r => {
+          Object.keys(r || {}).forEach(col => {
+            const v = String(r[col] == null ? '' : r[col]).trim();
+            if (v && want.has(v)) {
+              const size = (sizeCol && r[sizeCol] != null) ? String(r[sizeCol]).trim() : '';
+              let side = '';
+              if (/left/i.test(col)) side = 'Left'; else if (/right/i.test(col)) side = 'Right';
+              det[v] = { size, side };
+            }
+          });
         });
-        return reply(200, { ok: true, rows: clean });
+
+        const buildName = (size, side) => productName
+          ? (productName + (size ? ' – ' + size : '') + (side ? ' (' + side + ')' : ''))
+          : '';
+
+        // Only fall back to the AI for SKUs the table could not resolve a size for.
+        const unresolved = skus.filter(s => !(det[String(s.sku).trim()] && det[String(s.sku).trim()].size));
+        let aiMap = {};
+        if (unresolved.length && AI_KEY) {
+          const sizingJson = stRows.length ? JSON.stringify(stRows).slice(0, 4000) : '(none provided)';
+          const skuList = unresolved.map(s => ({ sku: String(s.sku), currentName: s.name || '', currentSize: s.size || '' }));
+          const prompt = `${AI_GUARDRAILS}\n\nYou are completing per-SKU (per-variant) rows for ONE product in a DME dealer catalog. Each SKU number is a manufacturer PART NUMBER for a size/side variant of the same product.\n\nProduct name: ${productName || '(unknown)'}\nProduct-level HCPCS / billing code(s): ${codes.length ? codes.join(', ') : '(none on file)'}\n\nSizing / spec table rows (JSON). A SKU/part number may appear in ANY column — some tables list it under one "Part Number" column, others split it across columns like "Part Number Right Hand" and "Part Number Left Hand". Match the SKU by finding its exact value in a cell, then read that same row's SIZE label (the size/sizing column):\n${sizingJson}\n\nSKUs still needing a size:\n${JSON.stringify(skuList)}\n\nFor EACH sku return:\n- "size": the size label from the matched row (e.g. "X-Small","Medium"). If the SKU value is not present anywhere in the table, infer from currentName; else "".\n- "side": "Left" if it was found under a left-hand column, "Right" if a right-hand column, else "".\nDo NOT leave size blank when the SKU value appears in the table.\n\nReturn ONLY a JSON array (no prose, no code fences), one object per sku, filled in, e.g.: [{"sku":"51072","size":"X-Small","side":"Right"},{"sku":"50072","size":"X-Small","side":"Left"}]`;
+          const rj = await aiJson(prompt, 1500);
+          if (!rj.err && !rj.parse_err) {
+            let rr = rj.data;
+            if (rr && !Array.isArray(rr) && Array.isArray(rr.rows)) rr = rr.rows;
+            if (Array.isArray(rr)) rr.forEach(x => { if (x && x.sku != null) aiMap[String(x.sku).trim()] = x; });
+          }
+        }
+
+        const clean = skus.map(s => {
+          const code = String(s.sku).trim();
+          const d = det[code] || {};
+          const a = aiMap[code] || {};
+          const size = d.size || String(a.size || '').trim();
+          const side = d.side || String(a.side || '').trim();
+          let hc = String(s.hcpcs || '').trim() || defaultCode;
+          if (hc && allow.size && !allow.has(hc.toUpperCase())) hc = defaultCode;
+          return { sku: code, name: buildName(size, side), size: size, hcpcs: hc };
+        });
+        return reply(200, { ok: true, rows: clean, matched: Object.keys(det).length });
       }
 
       // ---- Return the canonical taxonomy (seed ∪ approved), for the workspace's Catalog Review UI. ----
