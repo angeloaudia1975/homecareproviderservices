@@ -803,6 +803,46 @@ exports.handler = async (event) => {
         return reply(200, { ok: true, taxonomy });
       }
 
+      // ---- Catalog-wide harmonization: look across ALL manufacturers and propose how to line up
+      //      inconsistent category names to the canonical taxonomy, so dealers can compare the same
+      //      kind of product regardless of brand. Read-only — returns proposals for review. ----
+      if (action === 'harmonize_catalog') {
+        if (!AI_KEY) return reply(200, { ok: false, error: 'ai_unavailable', message: "AI review isn't enabled — set ANTHROPIC_API_KEY in Netlify." });
+        const rows = await sbGet(`product_content?select=manufacturer,category,subcategory,name&status=neq.rejected&limit=3000`);
+        const byCat = {};
+        (rows || []).forEach(r => { const c = r.category || '(uncategorized)'; const g = byCat[c] || (byCat[c] = { cat: c, count: 0, mfrs: new Set(), subs: new Set(), samples: [] }); g.count++; if (r.manufacturer) g.mfrs.add(r.manufacturer); if (r.subcategory) g.subs.add(r.subcategory); if (g.samples.length < 4 && r.name) g.samples.push(r.name); });
+        const observed = Object.values(byCat).map(g => ({ category: g.cat, count: g.count, manufacturers: [...g.mfrs], subcategories: [...g.subs].slice(0, 8), samples: g.samples }));
+        if (!observed.length) return reply(200, { ok: true, proposals: [] });
+        const vocab = Object.keys(TAXONOMY).sort().map(c => `- ${c}: ${(TAXONOMY[c] || []).join(', ')}`).join('\n');
+        const prompt = `${AI_GUARDRAILS}\n\nYou are harmonizing a DME dealer catalog (HCPS Partner 360) so that similar products from DIFFERENT manufacturers sit under the SAME Category, letting dealers compare options by need (e.g. "Walking Boots", "Wheelchairs", "Bath Safety") without knowing the brand.\n\nCanonical taxonomy to map toward:\n${vocab}\n\nCategories currently in use (across all manufacturers):\n${observed.map(o => `• "${o.category}" — ${o.count} product(s); manufacturers: ${o.manufacturers.join(', ') || '?'}; subcategories: ${o.subcategories.join(', ') || '—'}; examples: ${o.samples.join('; ') || '—'}`).join('\n')}\n\nFor each currently-used category decide KEEP (already a good canonical category), RENAME (to a canonical category), or MERGE (into another category). Only recommend a change when it clearly improves cross-manufacturer consistency.\nReturn ONLY a JSON array (no prose, no code fences), each element exactly:\n{"from":"the current category name exactly as shown","action":"keep|rename|merge","to":"the canonical category it should become (same as from when keep)","subcategory":"a suggested subcategory or ''","reason":"one short sentence"}`;
+        const out = await callAI(prompt, 1500);
+        if (out.err) return reply(200, { ok: false, error: 'ai_error', message: out.err, detail: out.detail });
+        let proposals = null;
+        try { const t = out.text || ''; const a = t.indexOf('['), b = t.lastIndexOf(']'); proposals = JSON.parse(t.slice(a, b + 1)); }
+        catch (e) { return reply(200, { ok: false, error: 'ai_parse', message: 'Could not read the AI response — try again.', raw: (out.text || '').slice(0, 400) }); }
+        const cmap = {}; observed.forEach(o => { cmap[o.category] = o; });
+        proposals = (Array.isArray(proposals) ? proposals : []).map(p => Object.assign({}, p, { count: (cmap[p.from] && cmap[p.from].count) || 0, manufacturers: (cmap[p.from] && cmap[p.from].manufacturers) || [] }));
+        return reply(200, { ok: true, proposals, observed_count: observed.length });
+      }
+
+      // ---- Apply a harmonization: move every product currently under category `from` to `to`
+      //      (across ALL manufacturers), optionally setting a subcategory. Undoable from History.
+      //      Returns the affected SKU codes per manufacturer so the caller can sync the live shop. ----
+      if (action === 'recategorize') {
+        const from = String(body.from || '').trim(), to = String(body.to || '').trim();
+        if (!from || !to) return reply(400, { ok: false, error: 'from, to required' });
+        const sub = body.subcategory != null && String(body.subcategory).trim() ? String(body.subcategory).trim() : null;
+        const rows = await sbGet(`product_content?select=*&category=eq.${enc(from)}&limit=3000`);
+        if (!rows || !rows.length) return reply(200, { ok: true, updated: 0, affected: [] });
+        const before = rows.map(r => Object.assign({}, r));
+        for (const r of rows) { const patch = { category: to, reviewed_by: reviewer }; if (sub) patch.subcategory = sub; await patchRow(r.manufacturer, r.page_key, patch); }
+        await logHistory({ manufacturer: rows[0].manufacturer, page_key: null, action: 'recategorize', actor: reviewer,
+          summary: `Re-categorized ${rows.length} product(s): "${from}" → "${to}"${sub ? ` (subcategory "${sub}")` : ''}`, before: before, after: [] });
+        const affected = {};
+        rows.forEach(r => { const codes = normSkus(r.skus).map(s => skuKey(s)).filter(Boolean); (affected[r.manufacturer] = affected[r.manufacturer] || []).push(...codes); });
+        return reply(200, { ok: true, updated: rows.length, to, affected: Object.keys(affected).map(m => ({ manufacturer: m, codes: affected[m] })) });
+      }
+
       return reply(400, { ok: false, error: 'unknown action' });
     }
 

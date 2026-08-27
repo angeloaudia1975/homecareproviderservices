@@ -189,6 +189,7 @@ textarea.ed{min-height:64px}
     <button class="btn ghost" data-act="run-structure">⚑ Structure review</button>
     <button class="btn ghost" data-act="new-product">＋ New product</button>
     <button class="btn ghost" data-act="price-check">💲 Price check</button>
+    <button class="btn ghost" data-act="catalog-structure">🌐 Catalog structure</button>
     <button class="btn ghost" data-act="open-history">↺ History</button>
     <button class="btn ghost" id="selmode" data-act="toggle-selmode">☐ Select</button>
   </div>
@@ -682,6 +683,8 @@ document.addEventListener('click',async function(e){
   if(act==='np-addrow'){ const c=document.getElementById('np-skurows'); if(c) c.insertAdjacentHTML('beforeend',npRowHTML()); return; }
   if(act==='np-rowdel'){ const row=t.closest('.np-skurow'); const rows=document.querySelectorAll('#np-skurows .np-skurow'); if(row){ if(rows.length>1) row.remove(); else row.querySelectorAll('input').forEach(x=>x.value=''); } return; }
   if(act==='catalog-review') return openCatalogReview(k);
+  if(act==='catalog-structure') return openCatalogStructure();
+  if(act==='harmonize-apply') return doHarmonizeApply(Number(t.getAttribute('data-i')));
   if(act==='ai-classify') return doClassify(k);
   if(act==='apply-class') return applyClass(k, t.getAttribute('data-field'));
   if(act==='apply-all-class') return applyAllClass(k);
@@ -898,23 +901,71 @@ async function doClassify(k){
     <div style="margin-top:10px"><button class="btn dark" data-act="apply-all-class" data-pk="${escA(k)}">Apply all three</button>
       <button class="btn ghost" data-act="ai-classify" data-pk="${escA(k)}" style="margin-left:6px">Re-analyze</button></div>`;
 }
+// Push a product's category down to the live ordering catalog so the shop actually re-files it
+// (custom products patched in place; standard products get a category override). President-only.
+async function syncShopCategory(k, category){
+  const codes=skusOf(k).map(s=>String(s.sku||'')).filter(Boolean); if(!codes.length) return {ok:true,skipped:true};
+  try{ const r=await fetch('/.netlify/functions/catalog-api',{method:'POST',headers:authHeaders(),body:JSON.stringify({action:'set_category',manufacturer:MFR,codes,category})}); return {ok:r.ok,status:r.status}; }
+  catch(e){ return {ok:false}; }
+}
 async function applyClass(k, field){
   const el=document.getElementById('cr-'+field); if(!el) return; const val=(el.value||'').trim();
   const r=await apiWrite({action:'set_meta',page_key:k,patch:{[field]:val}});
-  if(r.ok && (!r.json||r.json.ok!==false)){ pages[k][field]=val; toast(field+' → '+(val||'(cleared)')); render(); }
-  else toast('Save failed',true);
+  if(!(r.ok && (!r.json||r.json.ok!==false))){ toast('Save failed',true); return; }
+  pages[k][field]=val;
+  if(field==='category'){ const s=await syncShopCategory(k,val); _catalogCache=null;
+    toast(s.ok?('Category → '+(val||'(cleared)')+' · shop updated'):(s.status===403?'Saved. Shop sync needs President access.':'Saved (shop sync failed)'),!s.ok); }
+  else toast(field+' → '+(val||'(cleared)'));
+  render();
 }
 async function applyAllClass(k){
   const patch={}; ['family','category','subcategory'].forEach(f=>{ const el=document.getElementById('cr-'+f); if(el) patch[f]=(el.value||'').trim(); });
   const r=await apiWrite({action:'set_meta',page_key:k,patch});
-  if(r.ok && (!r.json||r.json.ok!==false)){ Object.assign(pages[k],patch); toast('Organization updated'); render(); }
-  else toast('Save failed',true);
+  if(!(r.ok && (!r.json||r.json.ok!==false))){ toast('Save failed',true); return; }
+  Object.assign(pages[k],patch);
+  let note='Organization updated';
+  if(patch.category!=null){ const s=await syncShopCategory(k,patch.category); _catalogCache=null; note=s.ok?'Organization updated · shop re-filed to '+patch.category:(s.status===403?'Saved. Shop sync needs President access.':'Saved (shop sync failed)'); }
+  toast(note); render();
 }
 async function applyName(k){
   const rec=_classCache[k]&&_classCache[k].recommendation; const nm=rec&&rec.naming&&rec.naming.suggested_name; if(!nm) return;
   const r=await apiWrite({action:'set_meta',page_key:k,patch:{name:nm}});
   if(r.ok && (!r.json||r.json.ok!==false)){ pages[k].name=nm; toast('Name updated'); render(); }
   else toast('Save failed',true);
+}
+/* ===================== Catalog Structure Review (cross-manufacturer) ===================== */
+let _structCache=[];
+async function openCatalogStructure(){
+  modalHTML('🌐 Catalog Structure Review','<div class="tut"><p class="mut">Scanning every manufacturer’s categories and comparing to the shared HCPS taxonomy…</p></div>');
+  const r=await apiWrite({action:'harmonize_catalog'});
+  const mb=document.getElementById('modal').querySelector('.mb'); if(!mb) return;
+  if(!(r.ok && r.json && r.json.ok!==false && Array.isArray(r.json.proposals))){
+    mb.innerHTML=`<div class="rule" style="border-color:#f3c0c0">${esc((r.json&&(r.json.message||r.json.error))||'Could not run the structure review.')}</div>`; return; }
+  const changes=r.json.proposals.filter(p=>p && p.action!=='keep' && p.to && String(p.to).trim() && p.to!==p.from);
+  _structCache=changes;
+  mb.innerHTML=`<div class="hint" style="margin-bottom:12px">Reviewed <b>${r.json.observed_count||0}</b> categories across all manufacturers. ${changes.length?`<b>${changes.length}</b> can be lined up to the shared taxonomy so a dealer shopping e.g. “Walking Boots” sees every manufacturer’s options together.`:'Everything already lines up with the taxonomy. ✅'}</div>
+    ${changes.length?`<div class="tabscroll"><table style="width:100%"><thead><tr><th>Now</th><th></th><th>Recommended</th><th>Products</th><th></th></tr></thead><tbody>
+      ${changes.map((p,i)=>`<tr>
+        <td style="vertical-align:top"><b>${esc(p.from)}</b></td><td style="vertical-align:top;color:var(--mut,#6b7280)">→</td>
+        <td><input class="ed" id="st-to-${i}" value="${escA(p.to)}" style="min-width:150px">${p.subcategory?`<div class="mut" style="font-size:11px">subcategory: ${esc(p.subcategory)}</div>`:''}<div class="mut" style="font-size:11px">${esc(p.reason||'')}</div></td>
+        <td class="mut" style="vertical-align:top;white-space:nowrap">${p.count||0} · ${(p.manufacturers||[]).length} mfr</td>
+        <td style="vertical-align:top"><button class="btn" data-act="harmonize-apply" data-i="${i}">Apply</button></td></tr>`).join('')}
+      </tbody></table></div>
+      <div class="hint" style="margin-top:8px">Applying moves every matching product across all manufacturers to the new category and pushes it to the live shop. Undoable from History.</div>`:''}`;
+}
+async function doHarmonizeApply(i){
+  const p=_structCache[i]; if(!p) return;
+  const to=((document.getElementById('st-to-'+i)||{}).value||p.to||'').trim(); if(!to) return;
+  if(!window.confirm('Move all '+(p.count||0)+' product(s) from “'+p.from+'” to “'+to+'” across every manufacturer?\n\nThis updates their category and pushes it to the ordering platform. You can undo it from History.')) return;
+  const r=await apiWrite({action:'recategorize',from:p.from,to:to,subcategory:p.subcategory||''});
+  if(!(r.ok && r.json && r.json.ok!==false)){ toast((r.json&&(r.json.message||r.json.error))||'Re-categorize failed',true); return; }
+  let forbidden=false;
+  for(const grp of (r.json.affected||[])){
+    try{ const cr=await fetch('/.netlify/functions/catalog-api',{method:'POST',headers:authHeaders(),body:JSON.stringify({action:'set_category',manufacturer:grp.manufacturer,codes:grp.codes,category:to})}); if(cr.status===403) forbidden=true; }catch(e){}
+  }
+  _catalogCache=null;
+  toast('Moved '+(r.json.updated||0)+' product(s) → “'+to+'”'+(forbidden?' (shop sync needs President)':' · shop updated'), forbidden);
+  openCatalogStructure();
 }
 async function doRenameSku(k, oldSku){
   oldSku=String(oldSku);

@@ -147,8 +147,8 @@ exports.handler = async (event)=>{
           tiers:cleanTiers(p.tiers), price_note:p.price_note||null,
           active:p.active===false?false:true, updated_at:new Date().toISOString()
         },{Prefer:"resolution=merge-duplicates,return=minimal"});
-        // 2) move link / media / featured / per-dealer contract-price rows from old code → new (best-effort)
-        for(const tbl of ["product_links","product_media","featured_products","dealer_contract_prices"]){
+        // 2) move link / media / featured rows from the old code to the new code (best-effort)
+        for(const tbl of ["product_links","product_media","featured_products"]){
           try{ await sb("PATCH",`${tbl}?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(oldCode)}`,{code:newCode},{Prefer:"return=minimal"}); }catch(e){}
         }
         // 3) retire the old code
@@ -186,6 +186,31 @@ exports.handler = async (event)=>{
         if(!b.manufacturer||!b.code) return json(400,{error:"manufacturer, code required"});
         await sb("DELETE",`product_overrides?manufacturer=eq.${encodeURIComponent(b.manufacturer)}&code=eq.${encodeURIComponent(b.code)}`,null,{Prefer:"return=minimal"});
         return json(200,{ok:true});
+      }
+      // Set the shop CATEGORY for a set of SKU codes so the ordering platform re-files them —
+      // this is what makes an accepted category in the Catalog Review actually move the product on
+      // Partner 360. Custom products are PATCHed in place (other fields preserved); standard catalog
+      // products get a product_overrides patch with category MERGED into any existing override.
+      if(b.action==="set_category"){
+        const mfr=b.manufacturer;
+        const codes=Array.isArray(b.codes)?[...new Set(b.codes.map(c=>String(c).trim()).filter(Boolean))]:[];
+        const category=(b.category==null||b.category==="")?null:String(b.category).trim();
+        if(!mfr||!codes.length) return json(400,{error:"manufacturer, codes[] required"});
+        const cust=await sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&select=code`).catch(()=>[]);
+        const isCustom=new Set((cust||[]).map(r=>String(r.code)));
+        let custN=0, ovN=0;
+        for(const code of codes){
+          if(isCustom.has(code)){
+            await sb("PATCH",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(code)}`,{category,updated_at:new Date().toISOString()},{Prefer:"return=minimal"});
+            custN++;
+          } else {
+            const ex=await sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(code)}&select=patch`).catch(()=>[]);
+            const patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{},{category});
+            await sb("POST","product_overrides?on_conflict=manufacturer,code",{manufacturer:mfr,code,patch,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
+            ovN++;
+          }
+        }
+        return json(200,{ok:true,custom:custN,overrides:ovN,codes:codes.length});
       }
 
       // Feature / unfeature a product straight from the Catalog editor (writes the same
