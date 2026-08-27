@@ -137,6 +137,16 @@ textarea.ed{min-height:64px}
 .savebar .ok{font-size:12px;color:var(--good);font-weight:700}
 .chip{display:inline-block;background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:11.5px;font-weight:600;margin:0 4px 4px 0}
 .codechip{background:#eef5ff;border-color:#cfe2fb;color:var(--navy2)}
+.dropzone{border:2px dashed var(--line);border-radius:12px;padding:16px;text-align:center;color:var(--gray);font-size:12.5px;background:var(--paper);cursor:pointer;outline:none;transition:border-color .13s,background .13s}
+.dropzone:focus,.dropzone.drag{border-color:var(--orange,#ef6325);background:#fff7f2;color:var(--navy2)}
+.dropzone b{color:var(--navy2)}
+.dropzone .dzbtns{margin-top:8px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.galctl{display:flex;gap:4px;justify-content:center;margin-top:3px}
+.galctl button{padding:2px 7px;font-size:10px;border-radius:7px}
+.linkrow{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.linkrow a{flex:1;color:var(--blue-dk);font-weight:600;font-size:12.5px;word-break:break-all;text-decoration:none}
+.linkrow a:hover{text-decoration:underline}
+.linkrow .x{border:1px solid var(--line);background:#fff;border-radius:8px;width:30px;height:30px;cursor:pointer;color:var(--bad);font-weight:800;flex:0 0 auto}
 /* sticky action bars */
 .selbar{position:fixed;left:0;right:0;bottom:0;background:var(--navy);color:#fff;padding:12px 22px;display:none;z-index:40;box-shadow:0 -10px 30px -18px rgba(0,0,0,.5)}
 .selbar.show{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -561,12 +571,13 @@ function skuSec(k){ const skus=skusOf(k); const others=Object.keys(pages).filter
     </tbody></table></div>
     <div class="savebar" style="flex-wrap:wrap;gap:8px">
       <button class="btn dark" data-act="save-skus" data-pk="${escA(k)}">Save SKU edits</button>
+      <button class="btn grad" data-act="ai-fill-skus" data-pk="${escA(k)}">✨ AI fill details</button>
       <span style="display:inline-flex;gap:6px;align-items:center">
         <input id="addsku-${cssId(k)}" class="sed" style="max-width:130px" placeholder="New SKU #">
         <input id="addskuname-${cssId(k)}" class="sed" style="max-width:190px" placeholder="Name / description (optional)">
         <button class="btn" data-act="add-sku" data-pk="${escA(k)}">＋ Add SKU</button>
       </span>
-      <span class="hint" style="flex-basis:100%"><b>＋ Add SKU</b> groups another catalog item under this product · <b>✎</b> rename a SKU · <b>🗑</b> remove it from THIS product · check rows to <b>Move / Split / Remove</b> in the bottom bar.<br><b>“Off” only hides a SKU (it stays listed here). “Remove” takes it out of this product.</b> Neither deletes the orderable catalog item — that's the Discontinued/Hidden status.</span></div>
+      <span class="hint" style="flex-basis:100%"><b>✨ AI fill details</b> reads the sizing table + billing codes and drafts each SKU's Name, Size &amp; HCPCS — only filling blanks, so your manual edits stay. Review, then <b>Save SKU edits</b>.<br><b>＋ Add SKU</b> groups another catalog item under this product · <b>✎</b> rename a SKU · <b>🗑</b> remove it from THIS product · check rows to <b>Move / Split / Remove</b> in the bottom bar.<br><b>“Off” only hides a SKU (it stays listed here). “Remove” takes it out of this product.</b> Neither deletes the orderable catalog item — that's the Discontinued/Hidden status.</span></div>
   </div>`; }
 
 /* -- Section 3: content -- */
@@ -616,17 +627,40 @@ function parseTable(txt){ const lines=txt.replace(/\r/g,'').split('\n').map(l=>l
 
 /* -- Section 5: images + provenance -- */
 function imagesSec(k){ const p=pages[k]; const gal=Array.isArray(p.images_gallery)?p.images_gallery:[];
-  const docs=Array.isArray(p.documents)?p.documents:[];
+  const docs=Array.isArray(p.documents)?p.documents:[]; const vids=Array.isArray(p.videos)?p.videos:[]; const id=cssId(k);
   return `<div class="sec"><h4>Images, documents &amp; source</h4>
     ${p.website_url?`<div class="provline">📎 Source: <a href="${escA(p.website_url)}" target="_blank" rel="noopener">${esc((p.website_url||'').replace(/^https?:\/\/(www\.)?/,''))}</a></div>`:''}
     ${p.source_files&&p.source_files.length?`<div class="provline">📄 From: ${(Array.isArray(p.source_files)?p.source_files:[]).map(esc).join(', ')}</div>`:''}
     ${p.field_provenance&&Object.keys(p.field_provenance).length?`<div class="provline">🧭 Where fields came from: ${Object.keys(p.field_provenance).map(f=>`${esc(f)} ← <b>${esc(p.field_provenance[f])}</b>`).join(' · ')}</div>`:''}
-    ${gal.length?`<div class="gal">${gal.map(g=>`<div><a href="${escA(g.url)}" target="_blank" rel="noopener"><img src="${escA(g.url)}" title="${escA(g.caption||'')} — click to view full size"></a><span class="prov">${esc(g.source||'')}${g.primary?' ★':''}</span></div>`).join('')}</div>`
+    ${gal.length?`<div class="gal">${gal.map((g,i)=>`<div><a href="${escA(g.url)}" target="_blank" rel="noopener"><img src="${escA(g.url)}" title="${escA(g.caption||'')} — click to view full size"></a><span class="prov">${esc(g.source||'')}${g.primary?' ★':''}</span>
+        <div class="galctl">${g.primary?'':`<button class="btn ghost" data-act="set-primary-img" data-pk="${escA(k)}" data-i="${i}">Set primary</button>`}<button class="btn ghost" style="color:var(--bad)" data-act="del-gal-img" data-pk="${escA(k)}" data-i="${i}">Remove</button></div></div>`).join('')}</div>`
       :(p.image?`<div class="gal"><div><a href="${escA(/^https?:/.test(p.image)?p.image:'..'+p.image)}" target="_blank" rel="noopener"><img src="${escA(/^https?:/.test(p.image)?p.image:'..'+p.image)}" title="Click to view full size"></a><span class="prov">catalog</span></div></div>`:'<div class="hint">No images captured.</div>')}
-    <div class="fld" style="margin-top:10px"><label>Add image URL</label>
-      <div style="display:flex;gap:6px"><input class="ed" id="img-${cssId(k)}" placeholder="https://…"><button class="btn" data-act="add-image" data-pk="${escA(k)}">Add</button></div>
-      <span class="hint">Paste a hosted image URL. To upload files, use the Images tool; pasted URLs publish as-is.</span></div>
-    ${docs.length?`<div class="fld" style="margin-top:10px"><label>Documents</label><div>${docs.map(d=>`<span class="chip">${esc(d.title||d.type||'Doc')}</span>`).join('')}</div></div>`:''}
+
+    <div class="fld" style="margin-top:12px"><label>Add images &amp; documents</label>
+      <div class="dropzone" id="dz-${id}" tabindex="0" data-act="focus-dz" data-pk="${escA(k)}"
+        onpaste="handleImgPaste('${escA(k)}',event)"
+        ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')"
+        ondrop="handleImgDrop('${escA(k)}',event)">
+        📋 <b>Click here, then paste an image</b> (Ctrl/⌘ + V) — or <b>drag &amp; drop</b> image / PDF files here
+        <div class="dzbtns"><button class="btn" data-act="pick-img" data-pk="${escA(k)}">Choose image…</button><button class="btn" data-act="pick-doc" data-pk="${escA(k)}">Upload document…</button></div>
+      </div>
+      <input type="file" id="fi-img-${id}" accept="image/*" style="display:none" onchange="onPickImg('${escA(k)}',this)">
+      <input type="file" id="fi-doc-${id}" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" style="display:none" onchange="onPickDoc('${escA(k)}',this)">
+      <span class="hint">Uploads are hosted on HCPS storage (max ~6MB each). Screenshots paste straight in.</span></div>
+
+    <div class="fld" style="margin-top:10px"><label>…or add an image by URL</label>
+      <div style="display:flex;gap:6px"><input class="ed" id="img-${id}" placeholder="https://…"><button class="btn" data-act="add-image" data-pk="${escA(k)}">Add</button></div>
+      <span class="hint">Paste a hosted image URL; it publishes as-is.</span></div>
+
+    <div class="fld" style="margin-top:10px"><label>Videos</label>
+      ${vids.length?`<div style="margin-bottom:6px">${vids.map((v,i)=>`<div class="linkrow">🎬 <a href="${escA(v.url||v||'')}" target="_blank" rel="noopener">${esc(v.title||v.url||v||'Video')}</a><button class="x" data-act="del-video" data-pk="${escA(k)}" data-i="${i}">✕</button></div>`).join('')}</div>`:''}
+      <div style="display:flex;gap:6px"><input class="ed" id="vid-${id}" placeholder="https://youtube.com/… , Vimeo, or a hosted .mp4"><button class="btn" data-act="add-video" data-pk="${escA(k)}">Add video</button></div>
+      <span class="hint">Paste a YouTube, Vimeo, or hosted video link — it shows on the product in Partner 360.</span></div>
+
+    <div class="fld" style="margin-top:10px"><label>Documents</label>
+      ${docs.length?`<div style="margin-bottom:6px">${docs.map((d,i)=>`<div class="linkrow">📄 <a href="${escA(d.url||'')}" target="_blank" rel="noopener">${esc(d.title||d.type||'Document')}</a><button class="x" data-act="del-doc" data-pk="${escA(k)}" data-i="${i}">✕</button></div>`).join('')}</div>`:''}
+      <div style="display:flex;gap:6px"><input class="ed" id="docurl-${id}" placeholder="https://… (link to a PDF or spec sheet)"><button class="btn" data-act="add-doc-url" data-pk="${escA(k)}">Add link</button></div>
+      <span class="hint">Upload a file with the box above, or paste a link to one already hosted.</span></div>
   </div>`; }
 
 /* -- Section 6: approve / publish -- */
@@ -678,6 +712,15 @@ document.addEventListener('click',async function(e){
   if(act==='add-image'){ const url=(document.getElementById('img-'+cssId(k)).value||'').trim(); if(!url) return;
     pages[k].images_gallery=Array.isArray(pages[k].images_gallery)?pages[k].images_gallery:[]; pages[k].images_gallery.push({url,source:'manual'});
     if(!pages[k].image) pages[k].image=url; await save('save-content',k); reopen(k); return; }
+  if(act==='pick-img'){ const el=document.getElementById('fi-img-'+cssId(k)); if(el) el.click(); return; }
+  if(act==='pick-doc'){ const el=document.getElementById('fi-doc-'+cssId(k)); if(el) el.click(); return; }
+  if(act==='focus-dz'){ t.focus(); return; }
+  if(act==='del-gal-img'){ (pages[k].images_gallery||[]).splice(+i,1); await doSaveContent(k); reopen(k); return; }
+  if(act==='set-primary-img'){ const g=pages[k].images_gallery||[]; g.forEach((x,j)=>{ x.primary=(j===+i); }); if(g[+i]) pages[k].image=g[+i].url; await doSaveContent(k); reopen(k); return; }
+  if(act==='add-video') return addVideoUrl(k);
+  if(act==='del-video'){ (pages[k].videos||[]).splice(+i,1); await doSaveContent(k); reopen(k); return; }
+  if(act==='add-doc-url') return addDocUrl(k);
+  if(act==='del-doc'){ (pages[k].documents||[]).splice(+i,1); await doSaveContent(k); reopen(k); return; }
   if(act==='ai-gen') return doAiGen(k, t.getAttribute('data-field'), t);
   if(act==='rename-sku') return doRenameSku(k, sku);
   if(act==='remove-sku') return doRemoveSku(k, sku);
@@ -692,6 +735,7 @@ document.addEventListener('click',async function(e){
   if(act==='reject') return doStatus(k,'rejected');
   if(act==='delete-product') return doDeleteProduct(k);
   if(act==='add-sku') return doAddSku(k);
+  if(act==='ai-fill-skus') return doAiFillSkus(k,t);
   if(act==='np-addrow'){ const c=document.getElementById('np-skurows'); if(c) c.insertAdjacentHTML('beforeend',npRowHTML()); return; }
   if(act==='np-rowdel'){ const row=t.closest('.np-skurow'); const rows=document.querySelectorAll('#np-skurows .np-skurow'); if(row){ if(rows.length>1) row.remove(); else row.querySelectorAll('input').forEach(x=>x.value=''); } return; }
   if(act==='catalog-review') return openCatalogReview(k);
@@ -732,6 +776,67 @@ document.addEventListener('change',async function(e){
 });
 
 function reopen(k){ render(); }
+
+/* ===================== Media: paste / drop / upload images, docs & videos ===================== */
+function fileToB64(file){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onerror=()=>rej(fr.error||new Error('read failed')); fr.onload=()=>{ const s=String(fr.result||''); const c=s.indexOf(','); res(c>=0?s.slice(c+1):s); }; fr.readAsDataURL(file); }); }
+async function uploadImageFile(k,file){
+  if(!file) return;
+  if(!/^image\//.test(file.type||'')){ toast("That file isn't an image",true); return; }
+  if(file.size>6*1024*1024){ toast('Image is over 6MB — resize and try again',true); return; }
+  toast('Uploading image…');
+  try{
+    const content_base64=await fileToB64(file);
+    const r=await apiWrite({action:'upload_image',page_key:k,content_base64,content_type:file.type||'image/png',filename:file.name||'image'});
+    const out=r.json||{};
+    if(!r.ok||!out.ok||!out.url){ toast(out.error||'Upload failed',true); return; }
+    pages[k].images_gallery=Array.isArray(pages[k].images_gallery)?pages[k].images_gallery:[];
+    const first=!pages[k].images_gallery.length && !pages[k].image;
+    pages[k].images_gallery.push({url:out.url,source:'upload',caption:file.name||'',primary:first});
+    if(first) pages[k].image=out.url;
+    await doSaveContent(k); toast('Image added'); reopen(k);
+  }catch(e){ toast('Upload failed — '+(e&&e.message||'error'),true); }
+}
+async function uploadDocFile(k,file){
+  if(!file) return;
+  if(file.size>6*1024*1024){ toast('File is over 6MB — upload a smaller copy or paste a link',true); return; }
+  toast('Uploading document…');
+  try{
+    const content_base64=await fileToB64(file);
+    const r=await apiWrite({action:'upload_file',page_key:k,content_base64,content_type:file.type||'application/octet-stream',filename:file.name||'document'});
+    const out=r.json||{};
+    if(!r.ok||!out.ok||!out.url){ toast(out.error||'Upload failed',true); return; }
+    pages[k].documents=Array.isArray(pages[k].documents)?pages[k].documents:[];
+    pages[k].documents.push({title:file.name||'Document',url:out.url,type:((file.name||'').split('.').pop()||'').toLowerCase()});
+    await doSaveContent(k); toast('Document added'); reopen(k);
+  }catch(e){ toast('Upload failed — '+(e&&e.message||'error'),true); }
+}
+async function handleImgPaste(k,e){
+  const items=(e.clipboardData&&e.clipboardData.items)||[];
+  for(const it of items){ if(it.type&&it.type.indexOf('image')===0){ const f=it.getAsFile(); if(f){ e.preventDefault(); await uploadImageFile(k,f); return; } } }
+  // no image on the clipboard → let the paste fall through (e.g. a URL into a field)
+}
+async function handleImgDrop(k,e){
+  e.preventDefault(); if(e.currentTarget) e.currentTarget.classList.remove('drag');
+  const files=(e.dataTransfer&&e.dataTransfer.files)||[];
+  for(const f of files){ if(/^image\//.test(f.type||'')) await uploadImageFile(k,f); else await uploadDocFile(k,f); }
+}
+async function onPickImg(k,input){ const f=input&&input.files&&input.files[0]; if(input) input.value=''; if(f) await uploadImageFile(k,f); }
+async function onPickDoc(k,input){ const f=input&&input.files&&input.files[0]; if(input) input.value=''; if(f) await uploadDocFile(k,f); }
+async function addVideoUrl(k){
+  const el=document.getElementById('vid-'+cssId(k)); const u=((el&&el.value)||'').trim();
+  if(!u){ toast('Paste a video link first',true); if(el) el.focus(); return; }
+  pages[k].videos=Array.isArray(pages[k].videos)?pages[k].videos:[];
+  pages[k].videos.push({url:u,title:u.replace(/^https?:\/\/(www\.)?/,'').slice(0,70)});
+  await doSaveContent(k); toast('Video added'); reopen(k);
+}
+async function addDocUrl(k){
+  const el=document.getElementById('docurl-'+cssId(k)); const u=((el&&el.value)||'').trim();
+  if(!u){ toast('Paste a document link first',true); if(el) el.focus(); return; }
+  let nm='Document'; try{ nm=decodeURIComponent((u.split('?')[0].split('/').pop()||'Document')); }catch(e){ nm=(u.split('?')[0].split('/').pop()||'Document'); }
+  pages[k].documents=Array.isArray(pages[k].documents)?pages[k].documents:[];
+  pages[k].documents.push({title:(nm||'Document').slice(0,70),url:u,type:((nm.split('.').pop()||'').toLowerCase())});
+  await doSaveContent(k); toast('Document link added'); reopen(k);
+}
 function updateBulkBar(){ const bar=document.getElementById('bulkbar'); const n=selProducts.size;
   document.getElementById('bulkcount').textContent=n; bar.classList.toggle('show',selMode&&n>0);
   document.getElementById('movetarget'); }
@@ -754,7 +859,7 @@ async function doSaveRecord(k){ const p=pages[k];
   const r=await apiWrite({action:'set_meta',page_key:k,patch});
   toast(r.ok?'Record saved':'Save failed',!r.ok); }
 async function doSaveContent(k){ const p=pages[k];
-  const patch={description:p.description,features:(p.features||[]).map(x=>String(x).trim()).filter(Boolean),specs:p.specs||[],warranty:p.warranty,billing_codes:p.billing_codes||[],clinical_applications:(p.clinical_applications||[]).map(x=>String(x).trim()).filter(Boolean),images_gallery:p.images_gallery||[],image:p.image};
+  const patch={description:p.description,features:(p.features||[]).map(x=>String(x).trim()).filter(Boolean),specs:p.specs||[],warranty:p.warranty,billing_codes:p.billing_codes||[],clinical_applications:(p.clinical_applications||[]).map(x=>String(x).trim()).filter(Boolean),images_gallery:Array.isArray(p.images_gallery)?p.images_gallery:[],image:p.image,documents:Array.isArray(p.documents)?p.documents:[],videos:Array.isArray(p.videos)?p.videos:[]};
   const r=await apiWrite({action:'set_content',page_key:k,patch});
   toast(r.ok?'Content saved':'Save failed',!r.ok); }
 async function save(kind,k){ if(kind==='save-content') return doSaveContent(k); }
@@ -1165,6 +1270,27 @@ async function doAiGen(k, field, btn){
 async function doSaveSkus(k){ const skus=skusOf(k); pages[k].skus=skus; pages[k].sku_count=skus.length;
   const r=await apiWrite({action:'save_skus',page_key:k,skus});
   toast(r.ok?'SKUs saved':'Save failed',!r.ok); }
+/* AI-draft each SKU's Name / Size / HCPCS from the product + sizing table + billing codes. Fills BLANKS only. */
+async function doAiFillSkus(k,btn){
+  const skus=skusOf(k); if(!skus.length){ toast('No SKUs to fill on this product',true); return; }
+  const orig=btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='✨ …'; }
+  const r=await apiWrite({action:'ai_fill_skus',page_key:k});
+  if(btn){ btn.disabled=false; btn.textContent=orig; }
+  const out=r.json||{};
+  if(!r.ok||out.ok===false){ toast(out.message||out.error||'AI fill failed',true); return; }
+  const rows=Array.isArray(out.rows)?out.rows:[];
+  if(!rows.length){ toast('AI returned nothing to fill',true); return; }
+  const byCode={}; rows.forEach(x=>{ if(x&&x.sku!=null) byCode[String(x.sku).trim()]=x; });
+  let filled=0;
+  const next=skus.map(s=>{ const rec=byCode[String(s.sku).trim()]; if(!rec) return s;
+    const o=Object.assign({},s);
+    ['name','size','hcpcs'].forEach(f=>{ const cur=String(o[f]||'').trim(); const val=String(rec[f]||'').trim();
+      if(!cur && val){ o[f]=val; filled++; } });
+    return o; });
+  pages[k].skus=next;
+  toast(filled?('AI filled '+filled+' field(s) — review, then Save SKU edits'):'Nothing blank to fill — all SKU details already set');
+  reopen(k);
+}
 async function doSaveSizing(k){ const txt=document.getElementById('sz-'+cssId(k)).value.trim();
   const note=document.getElementById('szn-'+cssId(k)).value;
   let payload={action:'save_sizing',page_key:k,sizing_note:note};

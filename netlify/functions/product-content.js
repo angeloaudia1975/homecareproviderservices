@@ -835,6 +835,37 @@ exports.handler = async (event) => {
         return reply(200, { ok: true, recommendation: parsed, current: { family: row.family || '', category: row.category || '', subcategory: row.subcategory || '' } });
       }
 
+      // ---- AI-draft each SKU's Name / Size / HCPCS from the product + sizing table + billing codes.
+      //      Read-only: returns per-SKU suggestions keyed by code; the workspace fills blanks & the
+      //      user saves. HCPCS here is the reimbursement/billing code for that variant (NOT a part
+      //      number) — the same product code usually repeats across sizes. Never invents codes. ----
+      if (action === 'ai_fill_skus') {
+        if (!AI_KEY) return reply(200, { ok: false, error: 'ai_unavailable', message: "AI drafting isn't enabled — set ANTHROPIC_API_KEY in Netlify." });
+        if (!m || !body.page_key) return reply(400, { ok: false, error: 'manufacturer, page_key required' });
+        const row = await getRow(m, body.page_key);
+        if (!row) return reply(404, { ok: false, error: 'product not found' });
+        const skus = normSkus(row.skus);
+        if (!skus.length) return reply(200, { ok: true, rows: [] });
+        const codes = Array.isArray(row.billing_codes) ? row.billing_codes.filter(Boolean) : [];
+        const sizing = row.sizing_table && row.sizing_table.length ? JSON.stringify(row.sizing_table).slice(0, 4000) : '(none provided)';
+        const skuList = skus.map(s => ({ sku: String(s.sku), name: s.name || '', size: s.size || '', hcpcs: s.hcpcs || '' }));
+        const prompt = `${AI_GUARDRAILS}\n\nYou are completing the per-SKU (per-variant) detail rows for ONE product in a DME dealer catalog. Each SKU is a size/configuration variant of the same product.\n\nProduct name: ${row.name || '(unknown)'}\nCategory: ${row.category || ''}${row.subcategory ? ' › ' + row.subcategory : ''}\nProduct-level HCPCS / billing codes: ${codes.length ? codes.join(', ') : '(none on file)'}\n\nSizing / spec table (maps the manufacturer PART NUMBER to a size; the SKU numbers below are those part numbers):\n${sizing}\n\nSKUs to complete (fill each field only from real evidence; keep any value already present):\n${JSON.stringify(skuList)}\n\nRULES:\n- size: match each SKU number to the sizing table's part-number column and use that row's size label (e.g. "X-Small", "Medium"). If the table has no size for it, infer from an existing SKU name; otherwise leave "".\n- name: a short, clean variant name — typically the product name plus the size (e.g. "Arm Sling With Padded Shoulder – Medium"). If nothing meaningful to add, leave "".\n- hcpcs: the reimbursement/BILLING code that applies to this variant. This is NOT a part number. Almost always the SAME product-level HCPCS repeats across every size — reuse a code from the product-level codes above. Only use a different code if the sizing table explicitly lists a per-size code. If no product-level code is on file, leave "". NEVER invent a code.\n\nReturn ONLY a JSON array (no prose, no code fences), one object per SKU above, exactly: [{"sku":"<code>","name":"","size":"","hcpcs":""}]`;
+        const rj = await aiJson(prompt, 1500);
+        if (rj.err) return reply(200, { ok: false, error: 'ai_error', message: rj.err, detail: rj.detail, model: AI_MODEL });
+        if (rj.parse_err) return reply(200, { ok: false, error: 'ai_parse', message: 'Could not read the AI response — try again.', raw: rj.raw });
+        let rows = rj.data;
+        if (rows && !Array.isArray(rows) && Array.isArray(rows.rows)) rows = rows.rows;
+        if (!Array.isArray(rows)) return reply(200, { ok: false, error: 'ai_parse', message: 'AI did not return a list — try again.' });
+        // Only ever return codes that belong to this product; drop any hallucinated hcpcs not on file.
+        const allow = new Set(codes.map(c => String(c).toUpperCase().trim()));
+        const clean = rows.filter(x => x && x.sku != null).map(x => {
+          let hc = String(x.hcpcs || '').trim();
+          if (hc && allow.size && !allow.has(hc.toUpperCase())) hc = codes[0] || '';
+          return { sku: String(x.sku).trim(), name: String(x.name || '').trim(), size: String(x.size || '').trim(), hcpcs: hc };
+        });
+        return reply(200, { ok: true, rows: clean });
+      }
+
       // ---- Return the canonical taxonomy (seed ∪ approved), for the workspace's Catalog Review UI. ----
       if (action === 'taxonomy') {
         const used = await sbGet(`product_content?select=category,subcategory&status=in.(approved,published,active)&category=not.is.null`);
