@@ -843,6 +843,53 @@ exports.handler = async (event) => {
         return reply(200, { ok: true, updated: rows.length, to, affected: Object.keys(affected).map(m => ({ manufacturer: m, codes: affected[m] })) });
       }
 
+      // ---- Cross-sell: recommend accessories/related from the SAME manufacturer and the closest
+      //      ALTERNATIVES from OTHER manufacturers (so dealers can compare by need). Read-only. The
+      //      AI chooses from real candidate lists by index, so it can't invent products. ----
+      if (action === 'related_products') {
+        if (!AI_KEY) return reply(200, { ok: false, error: 'ai_unavailable', message: "AI review isn't enabled — set ANTHROPIC_API_KEY in Netlify." });
+        if (!m || !body.page_key) return reply(400, { ok: false, error: 'manufacturer, page_key required' });
+        const row = await getRow(m, body.page_key);
+        if (!row) return reply(404, { ok: false, error: 'product not found' });
+        const primOf = r => { const s = normSkus(r.skus)[0]; return s ? skuKey(s) : ''; };
+        const myCode = primOf(row);
+        const sameRows = await sbGet(`product_content?select=page_key,manufacturer,name,category,skus,image&manufacturer=eq.${enc(m)}&status=neq.rejected&limit=250`);
+        const same = (sameRows || []).filter(r => r.page_key !== body.page_key).map(r => ({ manufacturer: m, code: primOf(r), name: r.name, category: r.category || '', image: r.image || '' })).filter(x => x.code && x.code !== myCode).slice(0, 60);
+        let cross = [];
+        if (row.category) {
+          const cr = await sbGet(`product_content?select=page_key,manufacturer,name,category,skus,image&manufacturer=neq.${enc(m)}&category=eq.${enc(row.category)}&status=neq.rejected&limit=120`);
+          cross = (cr || []).map(r => ({ manufacturer: r.manufacturer, code: primOf(r), name: r.name, category: r.category || '', image: r.image || '' })).filter(x => x.code).slice(0, 40);
+        }
+        const sameList = same.map((c, i) => `A${i}: ${c.name}`).join('\n');
+        const crossList = cross.map((c, i) => `X${i}: ${c.name} [${c.manufacturer}]`).join('\n');
+        const prompt = `${AI_GUARDRAILS}\n\nProduct: ${row.name} (category: ${row.category || '?'}).${row.description ? ' Description: ' + String(row.description).slice(0, 300) : ''}\n\nFrom the SAME manufacturer, pick up to 6 items that are genuine ACCESSORIES or naturally cross-sell with this product (replacement parts, liners, companion items). Choose by index:\n${sameList || '(none available)'}\n\nFrom OTHER manufacturers, pick up to 6 items that are the closest ALTERNATIVES — the same kind of product a dealer would compare. Choose by index:\n${crossList || '(none available)'}\n\nReturn ONLY JSON (no prose): {"accessories":[{"i":0,"reason":"short why"}],"alternatives":[{"i":0,"reason":"short why"}]}. Use only indexes that exist above; return empty arrays if nothing genuinely fits.`;
+        const out = await callAI(prompt, 800);
+        if (out.err) return reply(200, { ok: false, error: 'ai_error', message: out.err, detail: out.detail });
+        let parsed = null;
+        try { const t = out.text || ''; const a = t.indexOf('{'), b = t.lastIndexOf('}'); parsed = JSON.parse(t.slice(a, b + 1)); }
+        catch (e) { return reply(200, { ok: false, error: 'ai_parse', message: 'Could not read the AI response — try again.', raw: (out.text || '').slice(0, 400) }); }
+        const pick = (arr, src) => (Array.isArray(arr) ? arr : []).map(o => { const c = src[o && o.i]; return c ? Object.assign({}, c, { reason: (o && o.reason) || '' }) : null; }).filter(Boolean);
+        return reply(200, { ok: true, for_code: myCode, accessories: pick(parsed.accessories, same), alternatives: pick(parsed.alternatives, cross) });
+      }
+
+      // ---- Save the curated related set for a product (authoritative: replaces the prior set). ----
+      if (action === 'save_related') {
+        const code = String(body.code || '').trim(); if (!m || !code) return reply(400, { ok: false, error: 'manufacturer, code required' });
+        const items = Array.isArray(body.items) ? body.items : [];
+        await fetch(rest(`product_related?manufacturer=eq.${enc(m)}&code=eq.${enc(code)}`), { method: 'DELETE', headers: svcHeaders({ Prefer: 'return=minimal' }) }).catch(() => {});
+        const rows = items.map((it, i) => ({ manufacturer: m, code, related_manufacturer: String(it.related_manufacturer || m), related_code: String(it.related_code || ''), related_name: it.related_name || null, related_image: it.related_image || null, related_category: it.related_category || null, kind: (it.kind === 'alternative' ? 'alternative' : 'accessory'), sort: i, created_by: reviewer })).filter(r => r.related_code);
+        let ok = true;
+        if (rows.length) { const rr = await fetch(rest('product_related'), { method: 'POST', headers: svcHeaders({ Prefer: 'return=minimal' }), body: JSON.stringify(rows) }); ok = rr.ok; }
+        return reply(ok ? 200 : 500, { ok, saved: rows.length });
+      }
+
+      // ---- List the curated related set for a product (for the workspace). ----
+      if (action === 'list_related') {
+        const code = String(body.code || '').trim(); if (!m || !code) return reply(400, { ok: false, error: 'manufacturer, code required' });
+        const rows = await sbGet(`product_related?manufacturer=eq.${enc(m)}&code=eq.${enc(code)}&order=sort&select=related_manufacturer,related_code,related_name,related_image,related_category,kind`);
+        return reply(200, { ok: true, related: rows || [] });
+      }
+
       return reply(400, { ok: false, error: 'unknown action' });
     }
 

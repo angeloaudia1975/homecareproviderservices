@@ -686,6 +686,8 @@ document.addEventListener('click',async function(e){
   if(act==='catalog-structure') return openCatalogStructure();
   if(act==='harmonize-apply') return doHarmonizeApply(Number(t.getAttribute('data-i')));
   if(act==='ai-classify') return doClassify(k);
+  if(act==='ai-related') return doRelated(k);
+  if(act==='save-related') return saveRelated(k);
   if(act==='apply-class') return applyClass(k, t.getAttribute('data-field'));
   if(act==='apply-all-class') return applyAllClass(k);
   if(act==='apply-name') return applyName(k);
@@ -875,6 +877,9 @@ async function openCatalogReview(k){
     <h3 style="margin-top:16px">Recommended organization</h3>
     <div id="cr-ai"><button class="btn grad" data-act="ai-classify" data-pk="${escA(k)}">✨ Analyze &amp; recommend Family / Category / Subcategory</button>
       <div class="hint" style="margin-top:6px">Reads the description, features, specs, sizing, SKUs and manufacturer, then recommends where this belongs — matched to the shared HCPS taxonomy so it lines up with the same kind of product from other manufacturers.</div></div>
+    <h3 style="margin-top:16px">Related products &amp; cross-sell</h3>
+    <div id="cr-related"><button class="btn grad" data-act="ai-related" data-pk="${escA(k)}">🔗 Find related &amp; cross-brand alternatives</button>
+      <div class="hint" style="margin-top:6px">Suggests accessories from this manufacturer and the closest products from OTHER HCPS manufacturers, so dealers can compare and you can cross-sell. Saved items show on the product page in Partner 360.</div></div>
     <div class="savebar" style="margin-top:16px"><button class="btn" data-act="preview" data-pk="${escA(k)}">Preview in Partner 360</button>
       <button class="btn grad" data-act="publish" data-pk="${escA(k)}">▲ Publish live</button></div>`;
   const mb=document.getElementById('modal').querySelector('.mb'); if(mb) mb.innerHTML=body;
@@ -932,6 +937,34 @@ async function applyName(k){
   const r=await apiWrite({action:'set_meta',page_key:k,patch:{name:nm}});
   if(r.ok && (!r.json||r.json.ok!==false)){ pages[k].name=nm; toast('Name updated'); render(); }
   else toast('Save failed',true);
+}
+/* ===================== Related products & cross-sell ===================== */
+let _relCache={};
+async function doRelated(k){
+  const box=document.getElementById('cr-related'); if(box) box.innerHTML='<p class="mut">Finding related products & cross-brand alternatives…</p>';
+  const r=await apiWrite({action:'related_products',page_key:k});
+  if(!(r.ok && r.json && r.json.ok!==false)){ if(box) box.innerHTML=`<div class="rule" style="border-color:#f3c0c0">${esc((r.json&&(r.json.message||r.json.error))||'Could not find related products')}</div><button class="btn" data-act="ai-related" data-pk="${escA(k)}" style="margin-top:8px">Try again</button>`; return; }
+  const acc=r.json.accessories||[], alt=r.json.alternatives||[];
+  _relCache[k]={code:r.json.for_code,accessories:acc,alternatives:alt};
+  const item=(x,kind,i)=>`<label style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--line)">
+    <input type="checkbox" class="rel-pick" data-kind="${kind}" data-i="${i}" checked>
+    <span>${x.image?`<img src="${escA(x.image)}" style="width:34px;height:34px;object-fit:contain;border:1px solid var(--line);border-radius:6px;vertical-align:middle;margin-right:6px" onerror="this.style.display='none'">`:''}<b>${esc(x.name||x.code)}</b>${kind==='alternative'?` <span class="mut" style="font-size:11px">· ${esc(x.manufacturer)}</span>`:''}<div class="mut" style="font-size:11px">${esc(x.reason||'')}</div></span></label>`;
+  if(box) box.innerHTML=`
+    ${acc.length?`<div style="font-weight:700;font-size:12.5px;margin:6px 0 2px">Accessories &amp; related (same manufacturer)</div>${acc.map((x,i)=>item(x,'accessory',i)).join('')}`:''}
+    ${alt.length?`<div style="font-weight:700;font-size:12.5px;margin:12px 0 2px">Compare across manufacturers</div>${alt.map((x,i)=>item(x,'alternative',i)).join('')}`:''}
+    ${(!acc.length&&!alt.length)?'<p class="mut">No strong related products found for this one.</p>':`<div style="margin-top:10px"><button class="btn dark" data-act="save-related" data-pk="${escA(k)}">Save cross-sell</button> <button class="btn ghost" data-act="ai-related" data-pk="${escA(k)}">Re-find</button></div>`}`;
+}
+async function saveRelated(k){
+  const rc=_relCache[k]; if(!rc) return;
+  const items=[];
+  document.querySelectorAll('#cr-related .rel-pick:checked').forEach(cb=>{
+    const kind=cb.getAttribute('data-kind'), i=Number(cb.getAttribute('data-i'));
+    const src=kind==='alternative'?rc.alternatives:rc.accessories; const x=src&&src[i]; if(!x) return;
+    items.push({related_manufacturer:x.manufacturer,related_code:x.code,related_name:x.name,related_image:x.image,related_category:x.category,kind});
+  });
+  const r=await apiWrite({action:'save_related',code:rc.code,items});
+  const ok=r.ok && r.json && r.json.ok!==false;
+  toast(ok?('Saved '+items.length+' cross-sell link(s) — they’ll show on the product page'):'Save failed', !ok);
 }
 /* ===================== Catalog Structure Review (cross-manufacturer) ===================== */
 let _structCache=[];
