@@ -678,6 +678,8 @@ document.addEventListener('click',async function(e){
   if(act==='reject') return doStatus(k,'rejected');
   if(act==='delete-product') return doDeleteProduct(k);
   if(act==='add-sku') return doAddSku(k);
+  if(act==='np-addrow'){ const c=document.getElementById('np-skurows'); if(c) c.insertAdjacentHTML('beforeend',npRowHTML()); return; }
+  if(act==='np-rowdel'){ const row=t.closest('.np-skurow'); const rows=document.querySelectorAll('#np-skurows .np-skurow'); if(row){ if(rows.length>1) row.remove(); else row.querySelectorAll('input').forEach(x=>x.value=''); } return; }
   if(act==='set-status-val') return doStatus(k,t.getAttribute('data-val'));
   if(act==='preview') return openPreview(k);
   if(act==='run-structure') return runStructure();
@@ -908,6 +910,12 @@ async function doBulk(publish){ const keys=[...selProducts]; if(!keys.length) re
   else toast('Bulk update failed',true); }
 
 /* ===================== new product ===================== */
+function npRowHTML(){ return `<div class="np-skurow" style="display:grid;grid-template-columns:1fr 1.5fr .85fr 30px;gap:6px;margin-bottom:6px;align-items:center">
+  <input class="ed np-sku" placeholder="SKU #">
+  <input class="ed np-skuname" placeholder="Name / description (optional)">
+  <input class="ed np-skuprice" placeholder="Price $" inputmode="decimal">
+  <button class="btn ghost np-rowdel" type="button" data-act="np-rowdel" title="Remove row" style="padding:6px 9px">✕</button>
+</div>`; }
 function openNewProduct(){ modalHTML('New product',`
   <div class="fld"><label>Product name</label><input class="ed" id="np-name" placeholder="e.g. Posterior Night Splint"></div>
   <div class="grid2" style="margin-top:10px">
@@ -915,18 +923,50 @@ function openNewProduct(){ modalHTML('New product',`
       <datalist id="np-catlist">${allCategories().map(o=>`<option value="${escA(o)}">`).join('')}</datalist></div>
     <div class="fld"><label>Family</label><input class="ed" id="np-fam"></div>
   </div>
-  <div class="fld" style="margin-top:10px"><label>SKUs (comma or newline separated)</label><textarea class="ed" id="np-skus" rows="3" placeholder="61002, 61004"></textarea></div>
+  <div class="fld" style="margin-top:12px"><label>SKUs — each becomes an orderable product on Partner 360</label>
+    <div style="display:grid;grid-template-columns:1fr 1.5fr .85fr 30px;gap:6px;margin-bottom:4px;font-size:10.5px;color:#6b7280;font-weight:800;text-transform:uppercase;letter-spacing:.04em">
+      <span>SKU #</span><span>Name / description</span><span>Price $</span><span></span></div>
+    <div id="np-skurows">${npRowHTML()}${npRowHTML()}${npRowHTML()}</div>
+    <button class="btn ghost" type="button" data-act="np-addrow" style="margin-top:4px">＋ Add SKU row</button>
+    <div class="hint" style="margin-top:8px">Each SKU is created as an orderable catalog item. Enter a <b>price</b> to make it buyable right away; leave price blank to show “Call for pricing” until you set one. Prices write to the Product Catalog (President access).</div>
+  </div>
   <div class="savebar"><button class="btn dark" data-act="new-save">Create product</button></div>`);
   document.getElementById('modal').querySelector('[data-act="new-save"]').addEventListener('click',doNewProduct);
 }
-async function doNewProduct(){ const name=(document.getElementById('np-name').value||'').trim(); if(!name){toast('Name required',true);return;}
+async function doNewProduct(){
+  const name=(document.getElementById('np-name').value||'').trim(); if(!name){toast('Name required',true);return;}
   const cat=document.getElementById('np-cat').value.trim(), fam=document.getElementById('np-fam').value.trim();
-  const skus=(document.getElementById('np-skus').value||'').split(/[\n,]+/).map(s=>s.trim()).filter(Boolean).map(s=>({sku:s,status:'active'}));
+  const rows=[...document.querySelectorAll('#np-skurows .np-skurow')].map(r=>({
+    code:(r.querySelector('.np-sku').value||'').trim(),
+    name:(r.querySelector('.np-skuname').value||'').trim(),
+    price:(r.querySelector('.np-skuprice').value||'').trim()
+  })).filter(x=>x.code);
+  const seen=new Set(); for(const x of rows){ if(seen.has(x.code)){ toast('Duplicate SKU '+x.code,true); return; } seen.add(x.code); }
   const npk=slug(name);
-  const r=await apiWrite({action:'create_product',product:{page_key:npk,name,category:cat,family:fam,skus}});
-  if(r.ok){ pages[npk]={page_key:npk,name,category:cat,family:fam,skus,sku_count:skus.length,status:'pending_review',features:[]};
-    document.getElementById('overlay').classList.remove('show'); openCards.add(npk); toast('Created "'+name+'"'); render(); }
-  else toast('Create failed',true); }
+  const btn=document.querySelector('[data-act="new-save"]'); if(btn){ btn.disabled=true; btn.textContent='Creating…'; }
+  // 1) content record (Review Structure)
+  const skusForContent=rows.map(r=>({sku:r.code,name:r.name,status:'active'}));
+  const r=await apiWrite({action:'create_product',product:{page_key:npk,name,category:cat,family:fam,skus:skusForContent}});
+  if(!(r.ok && (!r.json||r.json.ok!==false))){ toast((r.json&&(r.json.message||r.json.error))||'Create failed',true); if(btn){btn.disabled=false;btn.textContent='Create product';} return; }
+  // 2) orderable + priced catalog items (custom_products via catalog-api, President-only)
+  let made=0, priced=0, catFail=0, forbidden=false;
+  for(const it of rows){
+    const price=it.price===''?null:Number(it.price.replace(/[^0-9.\-]/g,''));
+    const prod={code:it.code, name:it.name||name, category:cat||null, active:true};
+    if(price!=null && isFinite(price)) prod.base_price=price;
+    try{
+      const cr=await fetch('/.netlify/functions/catalog-api',{method:'POST',headers:authHeaders(),body:JSON.stringify({action:'save_product',manufacturer:MFR,product:prod})});
+      if(cr.ok){ made++; if(prod.base_price!=null) priced++; } else { catFail++; if(cr.status===403) forbidden=true; }
+    }catch(e){ catFail++; }
+  }
+  pages[npk]={page_key:npk,name,category:cat,family:fam,skus:skusForContent,sku_count:skusForContent.length,status:'pending_review',features:[]};
+  _catalogCache=null;   // Price Check will re-read the catalog
+  document.getElementById('overlay').classList.remove('show'); openCards.add(npk);
+  if(forbidden) toast('Product created, but adding to the catalog needs President access — no catalog items written.',true);
+  else if(catFail) toast('Created "'+name+'". '+catFail+' SKU(s) couldn\'t be added to the catalog — check them in Product Catalog.',true);
+  else toast('Created "'+name+'" · '+made+' orderable SKU(s)'+(priced?' ('+priced+' priced)':'')+'.');
+  render();
+}
 
 /* ===================== structure review (server pass) ===================== */
 async function runStructure(){ if(!ONLINE){ toast('Structure review runs on the loaded data'); filter='flagged'; render(); return; }
