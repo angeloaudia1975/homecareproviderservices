@@ -44,18 +44,17 @@ const ALL_STATUSES = ['pending_review', 'approved', 'rejected', 'published', 'ac
 // brand). This is a starter — every approval also feeds real, already-used categories back into the
 // vocabulary (see classify_product), so it converges as more manufacturers are completed. Edit freely.
 const TAXONOMY = {
-  'Lower Extremity': ['Walking Boots', 'Foot & Ankle', 'Knee Bracing', 'Ankle Supports', 'Foot Orthotics'],
-  'Upper Extremity': ['Shoulder', 'Elbow', 'Wrist & Hand', 'Arm Slings', 'Clavicle Supports'],
-  'Spine & Back': ['Back Braces', 'Lumbar Supports', 'Cervical Collars', 'Posture Supports'],
-  'Orthopedic Soft Goods': ['Casting Tape', 'Cast Padding', 'Stockinette', 'Slings & Immobilizers', 'Splints'],
+  // Ovation + every orthopedic/bracing line — the merchandising model recommended for HCPS:
+  // dealers shop by NEED, not by each manufacturer's internal body-region structure.
+  'Orthopedic Bracing & Supports': ['Walking Boots', 'Night Splints', 'Ankle Braces & Stabilizers', 'Ankle Stirrups', 'Post-Op Shoes', 'Foot & Ankle Accessories', 'OA Knee Braces', 'Post-Op Knee Braces', 'Knee Braces & Supports', 'Back & Lumbar Braces', 'TLSO Braces', 'Cervical Collars', 'Wrist Braces', 'Thumb Spicas', 'Hand & Finger Splints', 'Shoulder Supports', 'Elbow Supports', 'Arm Slings', 'Clavicle Supports'],
+  'Med-Surg & Clinical Supplies': ['Exam Gloves', 'Masks & PPE', 'Compression & Elastic Wraps', 'Gauze & Dressings', 'Medical Tape', 'Surgical Supplies', 'Casting & Splinting', 'Wound Care'],
+  // Broader DME buckets for HCPS's other manufacturers, so the whole portfolio stays shoppable by need.
   'Mobility': ['Wheelchairs', 'Transport Chairs', 'Walkers & Rollators', 'Canes & Crutches', 'Scooters', 'Ramps'],
-  'Lift Chairs & Seating': ['Lift Chairs', 'Cushions & Positioning'],
   'Bath Safety': ['Grab Bars', 'Shower Chairs & Benches', 'Commodes', 'Raised Toilet Seats', 'Transfer Benches'],
+  'Lift Chairs & Seating': ['Lift Chairs', 'Cushions & Positioning'],
   'Beds & Patient Room': ['Hospital Beds', 'Mattresses & Overlays', 'Bed Rails', 'Patient Lifts'],
   'Respiratory': ['Oxygen', 'Nebulizers', 'CPAP & BiPAP', 'Suction', 'Respiratory Accessories'],
-  'Wound Care & Med-Surg': ['Dressings', 'Gauze & Sponges', 'Tapes & Bandages', 'Skin Care', 'Incontinence'],
-  'Compression & Vascular': ['Compression Stockings', 'DVT Prevention', 'Lymphedema'],
-  'Daily Living Aids': ['Dressing Aids', 'Reachers & Grabbers', 'Eating & Drinking Aids'],
+  'Daily Living Aids': ['Dressing Aids', 'Reachers & Grabbers', 'Eating & Drinking Aids', 'Incontinence'],
   'Diabetic': ['Diabetic Footwear', 'Diabetic Supplies']
 };
 // Product-record fields the workspace may edit directly (whitelist — nothing else is writable).
@@ -63,7 +62,11 @@ const SAVE_FIELDS = [
   'name', 'tagline', 'description', 'family', 'category', 'subcategory', 'msrp_rule',
   'warranty', 'disabled', 'confidence', 'sku_count', 'features', 'clinical_applications',
   'options', 'billing_codes', 'specs', 'documents', 'videos', 'images_gallery', 'image',
-  'sizing_note', 'field_provenance', 'manufacturer'
+  'sizing_note', 'field_provenance', 'manufacturer',
+  // Identity provenance (keep the manufacturer's own structure separate from HCPS merchandising):
+  // source_category = the manufacturer's own category path (e.g. "Lower Extremity > Foot & Ankle"),
+  // source_url = the manufacturer's canonical product page, aliases = alternate/retail names for search.
+  'source_category', 'source_url', 'aliases'
 ];
 
 // Connect 360 staff auth: verify the Bearer JWT against Supabase Auth, resolve the role
@@ -822,7 +825,7 @@ exports.handler = async (event) => {
           features: row.features, clinical_applications: row.clinical_applications, billing_codes: row.billing_codes,
           description: row.description, skus: normSkus(row.skus)
         };
-        const prompt = `${AI_GUARDRAILS}\n\nYou are organizing a DME dealer catalog (HCPS Partner 360) so dealers can shop by NEED across manufacturers. Classify the product below.\n\nControlled taxonomy — STRONGLY prefer reusing an existing Category and Subcategory so the same kind of product from different manufacturers lines up together. Propose a NEW category/subcategory only if nothing fits, and keep it concise:\n${vocab}\n\nProduct:\n${aiContext(ctx)}\n\nReturn ONLY a JSON object (no prose, no code fences) with exactly these keys:\n{"family":"the product line/brand-model family this belongs to (e.g. 'Gen 2 Walking Boot'), or '' if not applicable","category":"best Category","subcategory":"best Subcategory within that Category","is_new_category":true or false,"is_new_subcategory":true or false,"rationale":"one short sentence why","naming":{"ok":true or false,"suggested_name":"a cleaner product name, or the same name if already good","issues":["short naming issues if any"]},"split":{"recommended":true or false,"reason":"if the SKUs look like more than one distinct product explain briefly, else ''"},"confidence":0}`;
+        const prompt = `${AI_GUARDRAILS}\n\nYou are organizing a DME dealer catalog (HCPS Partner 360) so dealers can shop by NEED across manufacturers. Classify the product below.\n\nControlled taxonomy — STRONGLY prefer reusing an existing Category and Subcategory so the same kind of product from different manufacturers lines up together. Propose a NEW category/subcategory only if nothing fits, and keep it concise:\n${vocab}\n\nProduct:\n${aiContext(ctx)}\n\nPRODUCT-IDENTITY CHECK (for the "split" field): a SKU is a variant, not automatically its own product. KEEP SKUs together as ONE product when they differ ONLY by size, left/right, color, pack quantity, or circumference range. RECOMMEND A SPLIT only when the SKUs clearly span more than one distinct MODEL — a major configuration change (e.g. Tall vs Short, Pneumatic vs Non-Pneumatic), different official product names, distinct model numbers or HCPCS codes, or a different clinical purpose/construction. NEVER recommend a split just because there are many SKUs or the names look similar. When you do recommend a split, say how many separate products the SKUs appear to represent.\n\nReturn ONLY a JSON object (no prose, no code fences) with exactly these keys:\n{"family":"the product line/brand-model family this belongs to (e.g. 'Gen 2 Walking Boot'), or '' if not applicable","category":"best Category","subcategory":"best Subcategory within that Category","is_new_category":true or false,"is_new_subcategory":true or false,"rationale":"one short sentence why","naming":{"ok":true or false,"suggested_name":"a cleaner product name, or the same name if already good","issues":["short naming issues if any"]},"split":{"recommended":true or false,"reason":"if the SKUs represent more than one distinct model, name the models and how many products; else ''"},"confidence":0}`;
         const rj = await aiJson(prompt, 1000);
         if (rj.err) return reply(200, { ok: false, error: 'ai_error', message: rj.err, detail: rj.detail, model: AI_MODEL });
         if (rj.parse_err) return reply(200, { ok: false, error: 'ai_parse', message: 'Could not read the AI response — try again.', raw: rj.raw });

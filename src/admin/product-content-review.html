@@ -532,6 +532,11 @@ function recordSec(k){ const p=pages[k];
       <div class="fld"><label>Subcategory <button class="mini-ai" data-act="ai-gen" data-pk="${escA(k)}" data-field="subcategory">✨ AI</button></label><input class="ed" value="${escA(p.subcategory||'')}" oninput="editField('${escA(k)}','subcategory',this.value)"></div>
       <div class="fld"><label>MSRP rule</label><input class="ed" value="${escA(p.msrp_rule||'')}" oninput="editField('${escA(k)}','msrp_rule',this.value)"></div>
     </div>
+    <div class="grid3" style="margin-top:10px">
+      <div class="fld"><label>Mfr source category <span class="mut" style="font-size:10px;text-transform:none">their own structure</span></label><input class="ed" value="${escA(p.source_category||'')}" placeholder="e.g. Lower Extremity › Foot & Ankle" oninput="editField('${escA(k)}','source_category',this.value)"></div>
+      <div class="fld"><label>Mfr source URL <span class="mut" style="font-size:10px;text-transform:none">canonical product page</span></label><input class="ed" value="${escA(p.source_url||'')}" placeholder="https://…manufacturer product page" oninput="editField('${escA(k)}','source_url',this.value)"></div>
+      <div class="fld"><label>Search aliases <span class="mut" style="font-size:10px;text-transform:none">comma-separated</span></label><input class="ed" value="${escA(aliasStr(p.aliases))}" placeholder="e.g. Short Air, Air Walker Short" oninput="editAliases('${escA(k)}',this.value)"></div>
+    </div>
     <div class="fld" style="margin-top:10px"><label>Tagline <button class="mini-ai" data-act="ai-gen" data-pk="${escA(k)}" data-field="tagline">✨ AI</button></label><input class="ed" value="${escA(p.tagline||'')}" oninput="editField('${escA(k)}','tagline',this.value)"></div>
     <div class="savebar"><button class="btn dark" data-act="save-record" data-pk="${escA(k)}">Save record</button>
       <label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" ${p.disabled?'checked':''} data-act="toggle-disable" data-pk="${escA(k)}"> Disable whole product (hide from Partner 360)</label></div>
@@ -734,8 +739,10 @@ function updateSkuBar(){ const bar=document.getElementById('skubar'); const n=sk
 async function doStatus(k,status){ const prev=pages[k].status; pages[k].status=status;
   const r=await apiWrite({action:'set_status',page_key:k,status});
   if(r.ok){ toast('Status → '+status); render(); } else { pages[k].status=prev; toast('Save failed',true); render(); } }
+function aliasStr(a){ return Array.isArray(a)?a.join(', '):(a||''); }
+function editAliases(k,v){ pages[k].aliases=String(v||'').split(',').map(x=>x.trim()).filter(Boolean); }
 async function doSaveRecord(k){ const p=pages[k];
-  const patch={name:p.name,tagline:p.tagline,manufacturer:p.manufacturer,family:p.family,category:p.category,subcategory:p.subcategory,msrp_rule:p.msrp_rule,disabled:!!p.disabled};
+  const patch={name:p.name,tagline:p.tagline,manufacturer:p.manufacturer,family:p.family,category:p.category,subcategory:p.subcategory,msrp_rule:p.msrp_rule,disabled:!!p.disabled,source_category:p.source_category||null,source_url:p.source_url||null,aliases:Array.isArray(p.aliases)?p.aliases:[]};
   const r=await apiWrite({action:'set_meta',page_key:k,patch});
   toast(r.ok?'Record saved':'Save failed',!r.ok); }
 async function doSaveContent(k){ const p=pages[k];
