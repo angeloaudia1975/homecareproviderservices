@@ -584,7 +584,9 @@ function contentSec(k){ const p=pages[k]; const feats=p.features||[]; const spec
       <div class="fld"><label>Warranty <button class="mini-ai" data-act="ai-gen" data-pk="${escA(k)}" data-field="warranty">✨ AI</button></label><textarea class="ed" rows="2" oninput="editField('${escA(k)}','warranty',this.value)">${esc(p.warranty||'')}</textarea></div>
       <div class="fld"><label>Billing / HCPCS codes (comma-separated)</label><input class="ed" value="${escA(codes.join(', '))}" oninput="editCodes('${escA(k)}',this.value)"></div>
     </div>
-    ${clin.length?`<div class="fld" style="margin-top:10px"><label>Clinical applications</label><div>${clin.map(x=>`<span class="chip">${esc(x)}</span>`).join('')}</div></div>`:''}
+    <div class="fld" style="margin-top:12px"><label>Clinical applications <button class="mini-ai" data-act="ai-gen" data-pk="${escA(k)}" data-field="clinical_applications">✨ AI</button> <span class="mut" style="font-size:10px;text-transform:none">conditions / procedures this product is used for</span></label>
+      <ul class="feat">${clin.map((c,i)=>`<li><textarea class="ed" rows="1" oninput="editClin('${escA(k)}',${i},this.value)">${esc(c)}</textarea><button class="x" data-act="del-clin" data-pk="${escA(k)}" data-i="${i}">✕</button></li>`).join('')}</ul>
+      <button class="btn ghost" style="margin-top:6px" data-act="add-clin" data-pk="${escA(k)}">＋ Add clinical application</button></div>
     <div class="savebar"><button class="btn dark" data-act="save-content" data-pk="${escA(k)}">Save content</button></div>
   </div>`; }
 
@@ -647,6 +649,7 @@ function approveSec(k){ const p=pages[k]; const s=p.status||'pending_review';
 function editField(k,f,v){ pages[k][f]=v; }
 function editSku(k,id,f,v){ const skus=skusOf(k); const i=skus.findIndex(s=>s.sku===id); if(i>=0){ skus[i][f]=v; pages[k].skus=skus; } }
 function editFeat(k,i,v){ pages[k].features=pages[k].features||[]; pages[k].features[i]=v; }
+function editClin(k,i,v){ pages[k].clinical_applications=pages[k].clinical_applications||[]; pages[k].clinical_applications[i]=v; }
 function editSpec(k,i,f,v){ pages[k].specs=pages[k].specs||[]; pages[k].specs[i]=pages[k].specs[i]||{label:'',value:''}; pages[k].specs[i][f]=v; }
 function editCodes(k,v){ pages[k].billing_codes=v.split(',').map(x=>x.trim()).filter(Boolean); }
 
@@ -666,6 +669,8 @@ document.addEventListener('click',async function(e){
   if(act==='clear-skusel'){ skuSel={pk:null,ids:new Set()}; render(); return; }
   if(act==='add-feature'){ pages[k].features=pages[k].features||[]; pages[k].features.push(''); reopen(k); return; }
   if(act==='del-feature'){ pages[k].features.splice(+i,1); reopen(k); return; }
+  if(act==='add-clin'){ pages[k].clinical_applications=pages[k].clinical_applications||[]; pages[k].clinical_applications.push(''); reopen(k); return; }
+  if(act==='del-clin'){ pages[k].clinical_applications.splice(+i,1); reopen(k); return; }
   if(act==='add-spec'){ pages[k].specs=pages[k].specs||[]; pages[k].specs.push({label:'',value:''}); reopen(k); return; }
   if(act==='del-spec'){ pages[k].specs.splice(+i,1); reopen(k); return; }
   if(act==='parse-sizing'){ const txt=document.getElementById('sz-'+cssId(k)).value; const tb=parseTable(txt);
@@ -749,7 +754,7 @@ async function doSaveRecord(k){ const p=pages[k];
   const r=await apiWrite({action:'set_meta',page_key:k,patch});
   toast(r.ok?'Record saved':'Save failed',!r.ok); }
 async function doSaveContent(k){ const p=pages[k];
-  const patch={description:p.description,features:p.features||[],specs:p.specs||[],warranty:p.warranty,billing_codes:p.billing_codes||[],clinical_applications:p.clinical_applications||[],images_gallery:p.images_gallery||[],image:p.image};
+  const patch={description:p.description,features:(p.features||[]).map(x=>String(x).trim()).filter(Boolean),specs:p.specs||[],warranty:p.warranty,billing_codes:p.billing_codes||[],clinical_applications:(p.clinical_applications||[]).map(x=>String(x).trim()).filter(Boolean),images_gallery:p.images_gallery||[],image:p.image};
   const r=await apiWrite({action:'set_content',page_key:k,patch});
   toast(r.ok?'Content saved':'Save failed',!r.ok); }
 async function save(kind,k){ if(kind==='save-content') return doSaveContent(k); }
@@ -1151,9 +1156,9 @@ async function doAiGen(k, field, btn){
   if(btn){ btn.disabled=false; btn.textContent=orig; }
   const out=r.json||{};
   if(!r.ok || out.ok===false){ toast(out.message||out.error||'AI generation failed',true); return; }
-  if(field==='features'){
-    if(Array.isArray(out.list)&&out.list.length) pages[k].features=out.list;
-    else if(out.text) pages[k].features=out.text.split('\n').map(x=>x.replace(/^[-•*\d.\s]+/,'').trim()).filter(Boolean);
+  if(field==='features'||field==='clinical_applications'){
+    if(Array.isArray(out.list)&&out.list.length) pages[k][field]=out.list;
+    else if(out.text) pages[k][field]=out.text.split('\n').map(x=>x.replace(/^[-•*\d.\s]+/,'').trim()).filter(Boolean);
   } else if(out.text!=null){ pages[k][field]=out.text; }
   toast('AI draft added — review, then Save'); reopen(k);
 }
