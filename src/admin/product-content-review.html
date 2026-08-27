@@ -190,6 +190,7 @@ textarea.ed{min-height:64px}
     <button class="btn ghost" data-act="new-product">＋ New product</button>
     <button class="btn ghost" data-act="price-check">💲 Price check</button>
     <button class="btn ghost" data-act="catalog-structure">🌐 Catalog structure</button>
+    <button class="btn ghost" data-act="batch-align">🎯 Align all</button>
     <button class="btn ghost" data-act="naming-review">✍️ Naming review</button>
     <button class="btn ghost" data-act="open-history">↺ History</button>
     <button class="btn ghost" id="selmode" data-act="toggle-selmode">☐ Select</button>
@@ -691,6 +692,8 @@ document.addEventListener('click',async function(e){
   if(act==='catalog-review') return openCatalogReview(k);
   if(act==='catalog-structure') return openCatalogStructure();
   if(act==='harmonize-apply') return doHarmonizeApply(Number(t.getAttribute('data-i')));
+  if(act==='batch-align') return openBatchAlign();
+  if(act==='align-apply') return doBatchAlignApply();
   if(act==='naming-review') return openNamingReview();
   if(act==='naming-apply') return doNamingApply(Number(t.getAttribute('data-i')));
   if(act==='naming-apply-all') return doNamingApplyAll();
@@ -976,6 +979,66 @@ async function saveRelated(k){
   const r=await apiWrite({action:'save_related',code:rc.code,items});
   const ok=r.ok && r.json && r.json.ok!==false;
   toast(ok?('Saved '+items.length+' cross-sell link(s) — they’ll show on the product page'):'Save failed', !ok);
+}
+/* ===================== Batch Align (whole manufacturer) ===================== */
+let _alignRows=[];
+async function openBatchAlign(){
+  const keys=Object.keys(pages).filter(k=>!pages[k].is_parent && pages[k].name);
+  if(!keys.length){ toast('No products loaded to align',true); return; }
+  if(!window.confirm('Run the AI Catalog Review across all '+keys.length+' loaded '+MFR+' product(s)?\n\nIt analyzes each product and proposes Family / Category / Subcategory against the HCPS structure. This takes a moment and costs AI usage. Nothing changes until you review and Apply.')) return;
+  modalHTML('🎯 Align '+esc(MFR)+' to HCPS structure','<div class="tut"><p class="mut" id="align-prog">Analyzing 0/'+keys.length+'…</p><div style="height:8px;background:#eef0f2;border-radius:5px;margin-top:8px;overflow:hidden"><div id="align-bar" style="height:100%;width:0;background:var(--orange,#ef6325);transition:width .2s"></div></div></div>');
+  _alignRows=[]; let done=0, idx=0; const CONC=4, total=keys.length;
+  async function worker(){
+    while(idx<keys.length){
+      const k=keys[idx++];
+      try{ const r=await apiWrite({action:'classify_product',page_key:k});
+        if(r.ok && r.json && r.json.ok!==false && r.json.recommendation){ _alignRows.push({k,name:pages[k].name,cur:r.json.current||{},rec:r.json.recommendation}); }
+      }catch(e){}
+      done++; const pe=document.getElementById('align-prog'); if(pe) pe.textContent='Analyzing '+done+'/'+total+'…';
+      const bar=document.getElementById('align-bar'); if(bar) bar.style.width=Math.round(done/total*100)+'%';
+    }
+  }
+  await Promise.all(Array.from({length:Math.min(CONC,keys.length)},()=>worker()));
+  renderBatchAlign();
+}
+function renderBatchAlign(){
+  const mb=document.getElementById('modal').querySelector('.mb'); if(!mb) return;
+  const diff=r=>{const c=r.cur,x=r.rec;return (x.category&&x.category!==c.category)||(x.subcategory&&x.subcategory!==(c.subcategory||''))||(x.family&&x.family!==(c.family||''));};
+  const rows=_alignRows.filter(diff);
+  const splits=_alignRows.filter(x=>x.rec.split && x.rec.split.recommended);
+  if(!rows.length && !splits.length){ mb.innerHTML='<p><b>✅ Every loaded product already matches the HCPS structure.</b></p>'; return; }
+  mb.innerHTML=`<div class="hint" style="margin-bottom:10px">Reviewed <b>${_alignRows.length}</b> product(s). <b>${rows.length}</b> to re-file${splits.length?`, <b>${splits.length}</b> flagged as possible multi-product splits`:''}. Edit any cell, untick to skip, then Apply.</div>
+    ${rows.length?`<div class="tabscroll"><table style="width:100%;font-size:12.5px"><thead><tr>
+        <th><input type="checkbox" checked onclick="document.querySelectorAll('.align-pick').forEach(c=>c.checked=this.checked)"></th><th>Product</th><th>Category</th><th>Subcategory</th><th>Family</th></tr></thead><tbody>
+      ${rows.map(x=>{const ri=_alignRows.indexOf(x);return `<tr>
+        <td style="vertical-align:top"><input type="checkbox" class="align-pick" data-i="${ri}" checked></td>
+        <td style="vertical-align:top">${esc(x.name)}</td>
+        <td><input class="ed" id="al-cat-${ri}" value="${escA(x.rec.category||x.cur.category||'')}" style="min-width:150px"><div class="mut" style="font-size:10px">was: ${esc(x.cur.category||'—')}</div></td>
+        <td><input class="ed" id="al-sub-${ri}" value="${escA(x.rec.subcategory||x.cur.subcategory||'')}" style="min-width:130px"><div class="mut" style="font-size:10px">was: ${esc(x.cur.subcategory||'—')}</div></td>
+        <td><input class="ed" id="al-fam-${ri}" value="${escA(x.rec.family||x.cur.family||'')}" style="min-width:130px"><div class="mut" style="font-size:10px">was: ${esc(x.cur.family||'—')}</div></td></tr>`;}).join('')}
+      </tbody></table></div>
+      <div style="margin-top:10px"><button class="btn dark" data-act="align-apply">Apply selected</button></div>`:''}
+    ${splits.length?`<h3 style="margin-top:14px">Possible splits — handle in Review Structure</h3>${splits.map(x=>`<div class="rule" style="border-color:#f3c0c0;margin-bottom:6px"><b>${esc(x.name)}</b> — ${esc((x.rec.split&&x.rec.split.reason)||'may be more than one product')}</div>`).join('')}<div class="hint">Open each of these, select the SKUs that belong together, and <b>Split out</b> in Review Structure.</div>`:''}`;
+}
+async function doBatchAlignApply(){
+  const picks=[...document.querySelectorAll('.align-pick:checked')].map(cb=>Number(cb.getAttribute('data-i')));
+  if(!picks.length){ toast('Nothing selected',true); return; }
+  const btn=document.querySelector('[data-act="align-apply"]'); if(btn){btn.disabled=true;btn.textContent='Applying…';}
+  let n=0, catSynced=0, forbidden=false;
+  for(const ri of picks){
+    const x=_alignRows[ri]; if(!x) continue;
+    const cat=((document.getElementById('al-cat-'+ri)||{}).value||'').trim();
+    const sub=((document.getElementById('al-sub-'+ri)||{}).value||'').trim();
+    const fam=((document.getElementById('al-fam-'+ri)||{}).value||'').trim();
+    const r=await apiWrite({action:'set_meta',page_key:x.k,patch:{category:cat,subcategory:sub,family:fam}});
+    if(r.ok && (!r.json||r.json.ok!==false)){ n++; if(pages[x.k])Object.assign(pages[x.k],{category:cat,subcategory:sub,family:fam});
+      const s=await syncShopCategory(x.k,cat); if(s&&s.status===403)forbidden=true; else if(s&&s.ok)catSynced++;
+    }
+  }
+  _catalogCache=null;
+  toast('Aligned '+n+' product(s)'+(forbidden?' · shop category sync needs President access':(catSynced?' · shop updated':'')), forbidden);
+  render();
+  const m=document.getElementById('overlay'); if(m)m.classList.remove('show');
 }
 /* ===================== Naming Consistency Review ===================== */
 let _nameCache=[];
