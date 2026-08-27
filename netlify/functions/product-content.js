@@ -890,6 +890,26 @@ exports.handler = async (event) => {
         return reply(200, { ok: true, related: rows || [] });
       }
 
+      // ---- Naming consistency sweep: review one manufacturer's product names for consistent
+      //      Title Case, brand/family prefix and ® usage, no size/color/variant in the title (those
+      //      belong in the SKU), and no redundant words. Read-only — returns rename proposals. ----
+      if (action === 'naming_review') {
+        if (!AI_KEY) return reply(200, { ok: false, error: 'ai_unavailable', message: "AI review isn't enabled — set ANTHROPIC_API_KEY in Netlify." });
+        if (!m) return reply(400, { ok: false, error: 'manufacturer required' });
+        const rows = await sbGet(`product_content?select=page_key,name,family,category&manufacturer=eq.${enc(m)}&status=neq.rejected&limit=400`);
+        const list = (rows || []).filter(r => r.name).slice(0, 120);
+        if (!list.length) return reply(200, { ok: true, proposals: [], reviewed: 0 });
+        const lines = list.map((r, i) => `${i}: "${r.name}"${r.family ? ` [family: ${r.family}]` : ''}${r.category ? ` [cat: ${r.category}]` : ''}`).join('\n');
+        const prompt = `${AI_GUARDRAILS}\n\nReview these product names from ONE manufacturer for a professional DME catalog and flag inconsistencies. Good names: Title Case; a consistent brand/family prefix across a line; the ® used consistently (all or none) within a family; NO size, color, or variant in the title (those belong in the SKU); no redundant or duplicated words; concise.\n\nNames:\n${lines}\n\nReturn ONLY a JSON array (no prose, no code fences) of the names that SHOULD change: [{"i":0,"suggested":"the corrected name","issues":["short issue"]}]. Omit any name that is already fine.`;
+        const out = await callAI(prompt, 1400);
+        if (out.err) return reply(200, { ok: false, error: 'ai_error', message: out.err, detail: out.detail });
+        let arr = null;
+        try { const t = out.text || ''; const a = t.indexOf('['), b = t.lastIndexOf(']'); arr = JSON.parse(t.slice(a, b + 1)); }
+        catch (e) { return reply(200, { ok: false, error: 'ai_parse', message: 'Could not read the AI response — try again.', raw: (out.text || '').slice(0, 400) }); }
+        const proposals = (Array.isArray(arr) ? arr : []).map(o => { const r = list[o && o.i]; if (!r || !o.suggested || String(o.suggested) === r.name) return null; return { page_key: r.page_key, current: r.name, suggested: String(o.suggested), issues: Array.isArray(o.issues) ? o.issues : [] }; }).filter(Boolean);
+        return reply(200, { ok: true, proposals, reviewed: list.length });
+      }
+
       return reply(400, { ok: false, error: 'unknown action' });
     }
 

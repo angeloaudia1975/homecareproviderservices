@@ -190,6 +190,7 @@ textarea.ed{min-height:64px}
     <button class="btn ghost" data-act="new-product">＋ New product</button>
     <button class="btn ghost" data-act="price-check">💲 Price check</button>
     <button class="btn ghost" data-act="catalog-structure">🌐 Catalog structure</button>
+    <button class="btn ghost" data-act="naming-review">✍️ Naming review</button>
     <button class="btn ghost" data-act="open-history">↺ History</button>
     <button class="btn ghost" id="selmode" data-act="toggle-selmode">☐ Select</button>
   </div>
@@ -685,6 +686,9 @@ document.addEventListener('click',async function(e){
   if(act==='catalog-review') return openCatalogReview(k);
   if(act==='catalog-structure') return openCatalogStructure();
   if(act==='harmonize-apply') return doHarmonizeApply(Number(t.getAttribute('data-i')));
+  if(act==='naming-review') return openNamingReview();
+  if(act==='naming-apply') return doNamingApply(Number(t.getAttribute('data-i')));
+  if(act==='naming-apply-all') return doNamingApplyAll();
   if(act==='ai-classify') return doClassify(k);
   if(act==='ai-related') return doRelated(k);
   if(act==='save-related') return saveRelated(k);
@@ -965,6 +969,42 @@ async function saveRelated(k){
   const r=await apiWrite({action:'save_related',code:rc.code,items});
   const ok=r.ok && r.json && r.json.ok!==false;
   toast(ok?('Saved '+items.length+' cross-sell link(s) — they’ll show on the product page'):'Save failed', !ok);
+}
+/* ===================== Naming Consistency Review ===================== */
+let _nameCache=[];
+async function openNamingReview(){
+  modalHTML('✍️ Naming Review · '+esc(MFR),'<div class="tut"><p class="mut">Checking product names for consistency…</p></div>');
+  const r=await apiWrite({action:'naming_review'});
+  const mb=document.getElementById('modal').querySelector('.mb'); if(!mb) return;
+  if(!(r.ok && r.json && r.json.ok!==false && Array.isArray(r.json.proposals))){
+    mb.innerHTML=`<div class="rule" style="border-color:#f3c0c0">${esc((r.json&&(r.json.message||r.json.error))||'Could not run the naming review.')}</div>`; return; }
+  const props=r.json.proposals; _nameCache=props;
+  mb.innerHTML=`<div class="hint" style="margin-bottom:12px">Checked <b>${r.json.reviewed||0}</b> product name(s). ${props.length?`<b>${props.length}</b> could be tidied for consistent titles.`:'Names look consistent. ✅'}</div>
+    ${props.length?`<div class="tabscroll"><table style="width:100%"><thead><tr><th>Current</th><th></th><th>Suggested</th><th></th></tr></thead><tbody>
+      ${props.map((p,i)=>`<tr>
+        <td style="vertical-align:top">${esc(p.current)}${(p.issues&&p.issues.length)?`<div class="mut" style="font-size:11px">${esc(p.issues.join('; '))}</div>`:''}</td>
+        <td style="vertical-align:top;color:var(--mut,#6b7280)">→</td>
+        <td><input class="ed" id="nm-to-${i}" value="${escA(p.suggested)}" style="min-width:200px"></td>
+        <td style="vertical-align:top"><button class="btn" data-act="naming-apply" data-i="${i}">Apply</button></td></tr>`).join('')}
+      </tbody></table></div>
+      <div style="margin-top:10px"><button class="btn dark" data-act="naming-apply-all">Apply all</button></div>`:''}`;
+}
+async function doNamingApply(i){
+  const p=_nameCache[i]; if(!p) return;
+  const to=((document.getElementById('nm-to-'+i)||{}).value||'').trim(); if(!to) return;
+  const r=await apiWrite({action:'set_meta',page_key:p.page_key,patch:{name:to}});
+  if(r.ok && (!r.json||r.json.ok!==false)){ if(pages[p.page_key])pages[p.page_key].name=to;
+    const el=document.getElementById('nm-to-'+i); const tr=el&&el.closest('tr'); if(tr){ tr.style.opacity='.5'; const b=tr.querySelector('[data-act="naming-apply"]'); if(b){b.textContent='✓ Applied';b.disabled=true;} }
+    toast('Renamed'); render(); }
+  else toast('Save failed',true);
+}
+async function doNamingApplyAll(){
+  let n=0;
+  for(let i=0;i<_nameCache.length;i++){ const el=document.getElementById('nm-to-'+i); if(!el) continue; const tr=el.closest('tr'); if(tr&&tr.style.opacity==='0.5') continue;
+    const to=(el.value||'').trim(); if(!to) continue; const p=_nameCache[i];
+    const r=await apiWrite({action:'set_meta',page_key:p.page_key,patch:{name:to}});
+    if(r.ok && (!r.json||r.json.ok!==false)){ if(pages[p.page_key])pages[p.page_key].name=to; n++; if(tr){tr.style.opacity='.5'; const b=tr.querySelector('[data-act="naming-apply"]'); if(b){b.textContent='✓';b.disabled=true;}} } }
+  toast('Applied '+n+' name(s)'); render();
 }
 /* ===================== Catalog Structure Review (cross-manufacturer) ===================== */
 let _structCache=[];
