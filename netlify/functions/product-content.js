@@ -222,6 +222,44 @@ async function callAI(prompt, maxTokens) {
   const txt = blocks.filter(b => b && b.type === 'text').map(b => b.text).join('\n').trim();
   return { text: txt };
 }
+// Tolerant JSON reader for AI output: strips ``` fences, finds the first array/object, bracket-
+// matches to its close (string-aware), drops trailing commas, and falls back to an outer slice.
+// Handles the common cases that broke strict JSON.parse — code fences, a prose preamble, or a
+// trailing comma — so the reviews don't fail with "could not read the AI response".
+function parseJsonLoose(text) {
+  if (text == null) return null;
+  let t = String(text).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+  const ai = t.indexOf('['), oi = t.indexOf('{');
+  let start = -1, open = '[', close = ']';
+  if (ai < 0 && oi < 0) return null;
+  if (oi < 0 || (ai >= 0 && ai < oi)) { start = ai; open = '['; close = ']'; }
+  else { start = oi; open = '{'; close = '}'; }
+  let depth = 0, end = -1, inStr = false, esc = false;
+  for (let i = start; i < t.length; i++) {
+    const ch = t[i];
+    if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === open) depth++;
+    else if (ch === close) { depth--; if (depth === 0) { end = i; break; } }
+  }
+  const clean = s => s.replace(/,\s*([}\]])/g, '$1');
+  if (end >= 0) { try { return JSON.parse(clean(t.slice(start, end + 1))); } catch (e) {} }
+  try { const b = t.lastIndexOf(close); if (b > start) return JSON.parse(clean(t.slice(start, b + 1))); } catch (e) {}
+  return null;
+}
+// Ask the model for JSON and read it robustly; one retry with a strict "JSON only" nudge if the
+// first reply won't parse. Returns {data} | {err,detail} | {parse_err,raw}.
+async function aiJson(prompt, maxTokens) {
+  let out = await callAI(prompt, maxTokens);
+  if (out.err) return { err: out.err, detail: out.detail };
+  let d = parseJsonLoose(out.text);
+  if (d != null) return { data: d };
+  const out2 = await callAI(prompt + '\n\nReturn ONLY the JSON value — no explanation and no markdown code fences.', maxTokens);
+  if (out2.err) return { err: out2.err, detail: out2.detail };
+  d = parseJsonLoose(out2.text);
+  if (d != null) return { data: d };
+  return { parse_err: true, raw: (out2.text || out.text || '').slice(0, 400) };
+}
 function aiContext(ctx) {
   ctx = ctx || {};
   const skus = (ctx.skus || []).map(s => (s.sku || '') + (s.size ? ' (' + s.size + ')' : '')).filter(Boolean).slice(0, 24).join(', ');
@@ -785,11 +823,10 @@ exports.handler = async (event) => {
           description: row.description, skus: normSkus(row.skus)
         };
         const prompt = `${AI_GUARDRAILS}\n\nYou are organizing a DME dealer catalog (HCPS Partner 360) so dealers can shop by NEED across manufacturers. Classify the product below.\n\nControlled taxonomy — STRONGLY prefer reusing an existing Category and Subcategory so the same kind of product from different manufacturers lines up together. Propose a NEW category/subcategory only if nothing fits, and keep it concise:\n${vocab}\n\nProduct:\n${aiContext(ctx)}\n\nReturn ONLY a JSON object (no prose, no code fences) with exactly these keys:\n{"family":"the product line/brand-model family this belongs to (e.g. 'Gen 2 Walking Boot'), or '' if not applicable","category":"best Category","subcategory":"best Subcategory within that Category","is_new_category":true or false,"is_new_subcategory":true or false,"rationale":"one short sentence why","naming":{"ok":true or false,"suggested_name":"a cleaner product name, or the same name if already good","issues":["short naming issues if any"]},"split":{"recommended":true or false,"reason":"if the SKUs look like more than one distinct product explain briefly, else ''"},"confidence":0}`;
-        const out = await callAI(prompt, 700);
-        if (out.err) return reply(200, { ok: false, error: 'ai_error', message: out.err, detail: out.detail, model: AI_MODEL });
-        let parsed = null;
-        try { const t = out.text || ''; const a = t.indexOf('{'), b = t.lastIndexOf('}'); parsed = JSON.parse(t.slice(a, b + 1)); }
-        catch (e) { return reply(200, { ok: false, error: 'ai_parse', message: 'Could not read the AI response — try again.', raw: (out.text || '').slice(0, 400) }); }
+        const rj = await aiJson(prompt, 1000);
+        if (rj.err) return reply(200, { ok: false, error: 'ai_error', message: rj.err, detail: rj.detail, model: AI_MODEL });
+        if (rj.parse_err) return reply(200, { ok: false, error: 'ai_parse', message: 'Could not read the AI response — try again.', raw: rj.raw });
+        const parsed = rj.data;
         return reply(200, { ok: true, recommendation: parsed, current: { family: row.family || '', category: row.category || '', subcategory: row.subcategory || '' } });
       }
 
@@ -815,11 +852,10 @@ exports.handler = async (event) => {
         if (!observed.length) return reply(200, { ok: true, proposals: [] });
         const vocab = Object.keys(TAXONOMY).sort().map(c => `- ${c}: ${(TAXONOMY[c] || []).join(', ')}`).join('\n');
         const prompt = `${AI_GUARDRAILS}\n\nYou are harmonizing a DME dealer catalog (HCPS Partner 360) so that similar products from DIFFERENT manufacturers sit under the SAME Category, letting dealers compare options by need (e.g. "Walking Boots", "Wheelchairs", "Bath Safety") without knowing the brand.\n\nCanonical taxonomy to map toward:\n${vocab}\n\nCategories currently in use (across all manufacturers):\n${observed.map(o => `• "${o.category}" — ${o.count} product(s); manufacturers: ${o.manufacturers.join(', ') || '?'}; subcategories: ${o.subcategories.join(', ') || '—'}; examples: ${o.samples.join('; ') || '—'}`).join('\n')}\n\nFor each currently-used category decide KEEP (already a good canonical category), RENAME (to a canonical category), or MERGE (into another category). Only recommend a change when it clearly improves cross-manufacturer consistency.\nReturn ONLY a JSON array (no prose, no code fences), each element exactly:\n{"from":"the current category name exactly as shown","action":"keep|rename|merge","to":"the canonical category it should become (same as from when keep)","subcategory":"a suggested subcategory or ''","reason":"one short sentence"}`;
-        const out = await callAI(prompt, 1500);
-        if (out.err) return reply(200, { ok: false, error: 'ai_error', message: out.err, detail: out.detail });
-        let proposals = null;
-        try { const t = out.text || ''; const a = t.indexOf('['), b = t.lastIndexOf(']'); proposals = JSON.parse(t.slice(a, b + 1)); }
-        catch (e) { return reply(200, { ok: false, error: 'ai_parse', message: 'Could not read the AI response — try again.', raw: (out.text || '').slice(0, 400) }); }
+        const rj = await aiJson(prompt, 3000);
+        if (rj.err) return reply(200, { ok: false, error: 'ai_error', message: rj.err, detail: rj.detail });
+        if (rj.parse_err) return reply(200, { ok: false, error: 'ai_parse', message: 'Could not read the AI response — try again.', raw: rj.raw });
+        let proposals = rj.data;
         const cmap = {}; observed.forEach(o => { cmap[o.category] = o; });
         proposals = (Array.isArray(proposals) ? proposals : []).map(p => Object.assign({}, p, { count: (cmap[p.from] && cmap[p.from].count) || 0, manufacturers: (cmap[p.from] && cmap[p.from].manufacturers) || [] }));
         return reply(200, { ok: true, proposals, observed_count: observed.length });
@@ -863,11 +899,10 @@ exports.handler = async (event) => {
         const sameList = same.map((c, i) => `A${i}: ${c.name}`).join('\n');
         const crossList = cross.map((c, i) => `X${i}: ${c.name} [${c.manufacturer}]`).join('\n');
         const prompt = `${AI_GUARDRAILS}\n\nProduct: ${row.name} (category: ${row.category || '?'}).${row.description ? ' Description: ' + String(row.description).slice(0, 300) : ''}\n\nFrom the SAME manufacturer, pick up to 6 items that are genuine ACCESSORIES or naturally cross-sell with this product (replacement parts, liners, companion items). Choose by index:\n${sameList || '(none available)'}\n\nFrom OTHER manufacturers, pick up to 6 items that are the closest ALTERNATIVES — the same kind of product a dealer would compare. Choose by index:\n${crossList || '(none available)'}\n\nReturn ONLY JSON (no prose): {"accessories":[{"i":0,"reason":"short why"}],"alternatives":[{"i":0,"reason":"short why"}]}. Use only indexes that exist above; return empty arrays if nothing genuinely fits.`;
-        const out = await callAI(prompt, 800);
-        if (out.err) return reply(200, { ok: false, error: 'ai_error', message: out.err, detail: out.detail });
-        let parsed = null;
-        try { const t = out.text || ''; const a = t.indexOf('{'), b = t.lastIndexOf('}'); parsed = JSON.parse(t.slice(a, b + 1)); }
-        catch (e) { return reply(200, { ok: false, error: 'ai_parse', message: 'Could not read the AI response — try again.', raw: (out.text || '').slice(0, 400) }); }
+        const rj = await aiJson(prompt, 1400);
+        if (rj.err) return reply(200, { ok: false, error: 'ai_error', message: rj.err, detail: rj.detail });
+        if (rj.parse_err) return reply(200, { ok: false, error: 'ai_parse', message: 'Could not read the AI response — try again.', raw: rj.raw });
+        const parsed = rj.data;
         const pick = (arr, src) => (Array.isArray(arr) ? arr : []).map(o => { const c = src[o && o.i]; return c ? Object.assign({}, c, { reason: (o && o.reason) || '' }) : null; }).filter(Boolean);
         return reply(200, { ok: true, for_code: myCode, accessories: pick(parsed.accessories, same), alternatives: pick(parsed.alternatives, cross) });
       }
@@ -901,11 +936,10 @@ exports.handler = async (event) => {
         if (!list.length) return reply(200, { ok: true, proposals: [], reviewed: 0 });
         const lines = list.map((r, i) => `${i}: "${r.name}"${r.family ? ` [family: ${r.family}]` : ''}${r.category ? ` [cat: ${r.category}]` : ''}`).join('\n');
         const prompt = `${AI_GUARDRAILS}\n\nReview these product names from ONE manufacturer for a professional DME catalog and flag inconsistencies. Good names: Title Case; a consistent brand/family prefix across a line; the ® used consistently (all or none) within a family; NO size, color, or variant in the title (those belong in the SKU); no redundant or duplicated words; concise.\n\nNames:\n${lines}\n\nReturn ONLY a JSON array (no prose, no code fences) of the names that SHOULD change: [{"i":0,"suggested":"the corrected name","issues":["short issue"]}]. Omit any name that is already fine.`;
-        const out = await callAI(prompt, 1400);
-        if (out.err) return reply(200, { ok: false, error: 'ai_error', message: out.err, detail: out.detail });
-        let arr = null;
-        try { const t = out.text || ''; const a = t.indexOf('['), b = t.lastIndexOf(']'); arr = JSON.parse(t.slice(a, b + 1)); }
-        catch (e) { return reply(200, { ok: false, error: 'ai_parse', message: 'Could not read the AI response — try again.', raw: (out.text || '').slice(0, 400) }); }
+        const rj = await aiJson(prompt, 2600);
+        if (rj.err) return reply(200, { ok: false, error: 'ai_error', message: rj.err, detail: rj.detail });
+        if (rj.parse_err) return reply(200, { ok: false, error: 'ai_parse', message: 'Could not read the AI response — try again.', raw: rj.raw });
+        const arr = rj.data;
         const proposals = (Array.isArray(arr) ? arr : []).map(o => { const r = list[o && o.i]; if (!r || !o.suggested || String(o.suggested) === r.name) return null; return { page_key: r.page_key, current: r.name, suggested: String(o.suggested), issues: Array.isArray(o.issues) ? o.issues : [] }; }).filter(Boolean);
         return reply(200, { ok: true, proposals, reviewed: list.length });
       }
