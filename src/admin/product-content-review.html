@@ -623,6 +623,7 @@ function imagesSec(k){ const p=pages[k]; const gal=Array.isArray(p.images_galler
 function approveSec(k){ const p=pages[k]; const s=p.status||'pending_review';
   return `<div class="sec"><h4>Approve &amp; publish</h4>
     <div class="savebar" style="flex-wrap:wrap">
+      <button class="btn grad" data-act="catalog-review" data-pk="${escA(k)}">🧠 Catalog Review</button>
       <button class="btn" data-act="preview" data-pk="${escA(k)}">Preview in Partner 360</button>
       <button class="btn" data-act="approve" data-pk="${escA(k)}">✓ Approve</button>
       <button class="btn grad" data-act="publish" data-pk="${escA(k)}">▲ Publish live</button>
@@ -680,6 +681,11 @@ document.addEventListener('click',async function(e){
   if(act==='add-sku') return doAddSku(k);
   if(act==='np-addrow'){ const c=document.getElementById('np-skurows'); if(c) c.insertAdjacentHTML('beforeend',npRowHTML()); return; }
   if(act==='np-rowdel'){ const row=t.closest('.np-skurow'); const rows=document.querySelectorAll('#np-skurows .np-skurow'); if(row){ if(rows.length>1) row.remove(); else row.querySelectorAll('input').forEach(x=>x.value=''); } return; }
+  if(act==='catalog-review') return openCatalogReview(k);
+  if(act==='ai-classify') return doClassify(k);
+  if(act==='apply-class') return applyClass(k, t.getAttribute('data-field'));
+  if(act==='apply-all-class') return applyAllClass(k);
+  if(act==='apply-name') return applyName(k);
   if(act==='set-status-val') return doStatus(k,t.getAttribute('data-val'));
   if(act==='preview') return openPreview(k);
   if(act==='run-structure') return runStructure();
@@ -818,6 +824,97 @@ async function doPriceCheck(){
       <div class="tabscroll"><table><thead><tr><th>Product</th><th>SKU(s)</th></tr></thead><tbody>${grp(notInCat)}</tbody></table></div>`:''}
     ${(!missing.length&&!notInCat.length)?'<p><b>✅ All good — every SKU is in the catalog with a price.</b></p>':''}
   </div>`);
+}
+/* ===================== AI Catalog Review (final stage) ===================== */
+let _classCache={};
+function qScoreRows(k, priceInfo){
+  const p=pages[k]||{}, skus=skusOf(k), R=[]; const add=(label,state,note)=>R.push({label,state,note:note||''});
+  add('Primary image', p.image?'pass':'fail', p.image?'':'add a main photo');
+  add('Additional images', (p.images_gallery&&p.images_gallery.length)?'pass':'warn', (p.images_gallery&&p.images_gallery.length)?p.images_gallery.length+' extra':'none');
+  add('Description', (p.description&&p.description.trim().length>=40)?'pass':'fail', p.description?(p.description.trim().length+' chars'):'missing');
+  add('Key features', ((p.features||[]).filter(Boolean).length>=3)?'pass':'warn', (p.features||[]).filter(Boolean).length+' listed');
+  add('Specifications', ((p.specs||[]).length)?'pass':'warn', (p.specs||[]).length+' rows');
+  add('Category', p.category?'pass':'fail', p.category||'missing');
+  add('Subcategory', p.subcategory?'pass':'warn', p.subcategory||'—');
+  add('Family / product line', p.family?'pass':'warn', p.family||'—');
+  add('Sizing chart', (p.sizing_table&&((p.sizing_table.rows&&p.sizing_table.rows.length)||p.sizing_table.length))?'pass':'warn', 'if applicable');
+  add('Warranty', p.warranty?'pass':'warn', p.warranty?'':'—');
+  add('Documents', ((p.documents||[]).length)?'pass':'warn', ((p.documents||[]).length||0)+' attached');
+  add('SKUs present', skus.length?'pass':'fail', skus.length+' SKU(s)');
+  if(priceInfo) add('Pricing loaded', (priceInfo.missing===0&&priceInfo.notInCat===0&&priceInfo.total>0)?'pass':((priceInfo.missing||priceInfo.notInCat)?'fail':'warn'), priceInfo.priced+'/'+priceInfo.total+' priced'+(priceInfo.notInCat?' · '+priceInfo.notInCat+' not in catalog':''));
+  return R;
+}
+async function openCatalogReview(k){
+  const p=pages[k]||{};
+  modalHTML('🧠 Catalog Review · '+esc(p.name||k),'<div class="tut"><p class="mut">Loading review…</p></div>');
+  let priceInfo=null;
+  try{ _catalogCache=null; const cat=await catalogGet();
+    const custom={},std={},ov=cat.overrides||{}; (cat.custom||[]).forEach(x=>custom[String(x.code)]=x); (cat.products||[]).forEach(x=>std[String(x.code)]=x);
+    const priceOf=c=>{c=String(c);const o=ov[c]||{};if(o.base_price!=null&&o.base_price!=='')return Number(o.base_price);const cu=custom[c];if(cu&&cu.base_price!=null&&cu.base_price!=='')return Number(cu.base_price);const s=std[c];if(s&&s.base_price!=null&&s.base_price!=='')return Number(s.base_price);return null;};
+    let total=0,priced=0,missing=0,notInCat=0;
+    skusOf(k).forEach(s=>{const c=String(s.sku||'');if(!c)return;total++;if(!(custom[c]||std[c])){notInCat++;return;}const pr=priceOf(c);if(pr!=null&&pr>0)priced++;else missing++;});
+    priceInfo={total,priced,missing,notInCat};
+  }catch(e){}
+  const rows=qScoreRows(k,priceInfo);
+  const fails=rows.filter(r=>r.state==='fail').length, warns=rows.filter(r=>r.state==='warn').length, passes=rows.filter(r=>r.state==='pass').length;
+  const score=Math.round((passes+warns*0.5)/rows.length*100);
+  const sc=score>=85?'#22a06b':score>=60?'#e6a417':'#d64545';
+  const dot=s=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${s==='pass'?'#22a06b':s==='warn'?'#e6a417':'#d64545'}"></span>`;
+  const body=`
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
+      <div style="width:64px;height:64px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(${sc} ${score*3.6}deg,#eef0f2 0);flex:0 0 auto">
+        <div style="width:50px;height:50px;border-radius:50%;background:#fff;display:grid;place-items:center;font-family:Archivo,sans-serif;font-weight:800;font-size:17px;color:${sc}">${score}</div></div>
+      <div><div style="font-family:Archivo,sans-serif;font-weight:800;font-size:16px">Catalog Quality Score</div>
+        <div class="mut" style="font-size:12.5px">${passes} good · ${warns} to review · ${fails} missing. ${fails?'<b style="color:#d64545">Resolve the red items before publishing.</b>':'Looks ready to publish. ✅'}</div></div></div>
+    <div class="tabscroll"><table style="width:100%"><tbody>
+      ${rows.map(r=>`<tr><td style="width:22px">${dot(r.state)}</td><td style="font-weight:600">${esc(r.label)}</td><td class="mut" style="text-align:right;font-size:12px">${esc(r.note)}</td></tr>`).join('')}
+    </tbody></table></div>
+    <h3 style="margin-top:16px">Recommended organization</h3>
+    <div id="cr-ai"><button class="btn grad" data-act="ai-classify" data-pk="${escA(k)}">✨ Analyze &amp; recommend Family / Category / Subcategory</button>
+      <div class="hint" style="margin-top:6px">Reads the description, features, specs, sizing, SKUs and manufacturer, then recommends where this belongs — matched to the shared HCPS taxonomy so it lines up with the same kind of product from other manufacturers.</div></div>
+    <div class="savebar" style="margin-top:16px"><button class="btn" data-act="preview" data-pk="${escA(k)}">Preview in Partner 360</button>
+      <button class="btn grad" data-act="publish" data-pk="${escA(k)}">▲ Publish live</button></div>`;
+  const mb=document.getElementById('modal').querySelector('.mb'); if(mb) mb.innerHTML=body;
+}
+async function doClassify(k){
+  const box=document.getElementById('cr-ai'); if(box) box.innerHTML='<p class="mut">Analyzing…</p>';
+  const r=await apiWrite({action:'classify_product',page_key:k});
+  if(!(r.ok && r.json && r.json.ok!==false && r.json.recommendation)){
+    if(box) box.innerHTML=`<div class="rule" style="border-color:#f3c0c0">${esc((r.json&&(r.json.message||r.json.error))||'AI review failed')}</div><button class="btn" data-act="ai-classify" data-pk="${escA(k)}" style="margin-top:8px">Try again</button>`; return; }
+  _classCache[k]=r.json; const rec=r.json.recommendation, cur=r.json.current||{};
+  const rowF=(label,field,curVal,recVal,isNew)=>`<div style="display:grid;grid-template-columns:130px 1fr auto;gap:8px;align-items:center;margin-bottom:8px">
+    <div style="font-weight:700;font-size:12.5px">${label}</div>
+    <div><div class="mut" style="font-size:11px">Current: ${esc(curVal||'—')}</div>
+      <input class="ed" id="cr-${field}" value="${escA(recVal||'')}" style="margin-top:2px">${isNew?'<div class="mut" style="font-size:11px;color:#c98a00">⚑ new — not in the shared taxonomy yet</div>':''}</div>
+    <button class="btn" data-act="apply-class" data-pk="${escA(k)}" data-field="${field}">Apply</button></div>`;
+  const naming=rec.naming||{}, split=rec.split||{};
+  box.innerHTML=`
+    ${rowF('Family / line','family',cur.family,rec.family,false)}
+    ${rowF('Category','category',cur.category,rec.category,rec.is_new_category)}
+    ${rowF('Subcategory','subcategory',cur.subcategory,rec.subcategory,rec.is_new_subcategory)}
+    <div class="hint" style="margin:6px 0">${esc(rec.rationale||'')}${rec.confidence!=null?' · confidence '+Number(rec.confidence)+'%':''}</div>
+    ${(naming && naming.ok===false)?`<div class="rule" style="border-color:#ffe1b0"><b>Naming:</b> suggested “${esc(naming.suggested_name||'')}”${(naming.issues&&naming.issues.length)?' — '+esc(naming.issues.join('; ')):''} <button class="btn ghost" data-act="apply-name" data-pk="${escA(k)}">Use name</button></div>`:''}
+    ${(split && split.recommended)?`<div class="rule" style="border-color:#f3c0c0"><b>⚑ Possible split:</b> ${esc(split.reason||'This may be more than one product.')} Use Split in the Review Structure step.</div>`:''}
+    <div style="margin-top:10px"><button class="btn dark" data-act="apply-all-class" data-pk="${escA(k)}">Apply all three</button>
+      <button class="btn ghost" data-act="ai-classify" data-pk="${escA(k)}" style="margin-left:6px">Re-analyze</button></div>`;
+}
+async function applyClass(k, field){
+  const el=document.getElementById('cr-'+field); if(!el) return; const val=(el.value||'').trim();
+  const r=await apiWrite({action:'set_meta',page_key:k,patch:{[field]:val}});
+  if(r.ok && (!r.json||r.json.ok!==false)){ pages[k][field]=val; toast(field+' → '+(val||'(cleared)')); render(); }
+  else toast('Save failed',true);
+}
+async function applyAllClass(k){
+  const patch={}; ['family','category','subcategory'].forEach(f=>{ const el=document.getElementById('cr-'+f); if(el) patch[f]=(el.value||'').trim(); });
+  const r=await apiWrite({action:'set_meta',page_key:k,patch});
+  if(r.ok && (!r.json||r.json.ok!==false)){ Object.assign(pages[k],patch); toast('Organization updated'); render(); }
+  else toast('Save failed',true);
+}
+async function applyName(k){
+  const rec=_classCache[k]&&_classCache[k].recommendation; const nm=rec&&rec.naming&&rec.naming.suggested_name; if(!nm) return;
+  const r=await apiWrite({action:'set_meta',page_key:k,patch:{name:nm}});
+  if(r.ok && (!r.json||r.json.ok!==false)){ pages[k].name=nm; toast('Name updated'); render(); }
+  else toast('Save failed',true);
 }
 async function doRenameSku(k, oldSku){
   oldSku=String(oldSku);

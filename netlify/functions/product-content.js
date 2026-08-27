@@ -37,6 +37,27 @@ const enc = encodeURIComponent;
 // Public visibility gate — MUST match the RLS policy in product_content_catalog_workspace.sql.
 const PUBLIC_STATUSES = ['published', 'active', 'discontinued'];
 const ALL_STATUSES = ['pending_review', 'approved', 'rejected', 'published', 'active', 'discontinued', 'hidden'];
+
+// ---- Canonical HCPS catalog taxonomy (SEED / DRAFT) ----------------------------------------
+// The controlled vocabulary the AI Catalog Review recommends against, so similar products from
+// DIFFERENT manufacturers land under the SAME Category → Subcategory (dealers shop by need, not by
+// brand). This is a starter — every approval also feeds real, already-used categories back into the
+// vocabulary (see classify_product), so it converges as more manufacturers are completed. Edit freely.
+const TAXONOMY = {
+  'Lower Extremity': ['Walking Boots', 'Foot & Ankle', 'Knee Bracing', 'Ankle Supports', 'Foot Orthotics'],
+  'Upper Extremity': ['Shoulder', 'Elbow', 'Wrist & Hand', 'Arm Slings', 'Clavicle Supports'],
+  'Spine & Back': ['Back Braces', 'Lumbar Supports', 'Cervical Collars', 'Posture Supports'],
+  'Orthopedic Soft Goods': ['Casting Tape', 'Cast Padding', 'Stockinette', 'Slings & Immobilizers', 'Splints'],
+  'Mobility': ['Wheelchairs', 'Transport Chairs', 'Walkers & Rollators', 'Canes & Crutches', 'Scooters', 'Ramps'],
+  'Lift Chairs & Seating': ['Lift Chairs', 'Cushions & Positioning'],
+  'Bath Safety': ['Grab Bars', 'Shower Chairs & Benches', 'Commodes', 'Raised Toilet Seats', 'Transfer Benches'],
+  'Beds & Patient Room': ['Hospital Beds', 'Mattresses & Overlays', 'Bed Rails', 'Patient Lifts'],
+  'Respiratory': ['Oxygen', 'Nebulizers', 'CPAP & BiPAP', 'Suction', 'Respiratory Accessories'],
+  'Wound Care & Med-Surg': ['Dressings', 'Gauze & Sponges', 'Tapes & Bandages', 'Skin Care', 'Incontinence'],
+  'Compression & Vascular': ['Compression Stockings', 'DVT Prevention', 'Lymphedema'],
+  'Daily Living Aids': ['Dressing Aids', 'Reachers & Grabbers', 'Eating & Drinking Aids'],
+  'Diabetic': ['Diabetic Footwear', 'Diabetic Supplies']
+};
 // Product-record fields the workspace may edit directly (whitelist — nothing else is writable).
 const SAVE_FIELDS = [
   'name', 'tagline', 'description', 'family', 'category', 'subcategory', 'msrp_rule',
@@ -742,6 +763,44 @@ exports.handler = async (event) => {
         const resp = { ok: true, field, text };
         if (field === 'features') resp.list = text.split('\n').map(x => x.replace(/^[-•*\d.\s]+/, '').trim()).filter(Boolean);
         return reply(200, resp);
+      }
+
+      // ---- AI Catalog Review: recommend Family / Category / Subcategory (against the canonical
+      //      taxonomy + everything already approved across ALL manufacturers), plus a naming check
+      //      and a split hint. Read-only — it never writes; the workspace applies accepted values. ----
+      if (action === 'classify_product') {
+        if (!AI_KEY) return reply(200, { ok: false, error: 'ai_unavailable', message: "AI review isn't enabled — set ANTHROPIC_API_KEY in Netlify." });
+        if (!m || !body.page_key) return reply(400, { ok: false, error: 'manufacturer, page_key required' });
+        const row = await getRow(m, body.page_key);
+        if (!row) return reply(404, { ok: false, error: 'product not found' });
+        // Controlled vocabulary = seed taxonomy ∪ categories already approved anywhere in the catalog.
+        const used = await sbGet(`product_content?select=category,subcategory&status=in.(approved,published,active)&category=not.is.null`);
+        const subs = {};
+        Object.keys(TAXONOMY).forEach(c => { subs[c] = new Set(TAXONOMY[c] || []); });
+        (used || []).forEach(r => { if (r.category) { (subs[r.category] = subs[r.category] || new Set()); if (r.subcategory) subs[r.category].add(r.subcategory); } });
+        const vocab = Object.keys(subs).sort().map(c => `- ${c}: ${[...subs[c]].sort().join(', ') || '(none yet)'}`).join('\n');
+        const ctx = {
+          name: row.name, manufacturer: m, category: row.category, subcategory: row.subcategory, family: row.family,
+          features: row.features, clinical_applications: row.clinical_applications, billing_codes: row.billing_codes,
+          description: row.description, skus: normSkus(row.skus)
+        };
+        const prompt = `${AI_GUARDRAILS}\n\nYou are organizing a DME dealer catalog (HCPS Partner 360) so dealers can shop by NEED across manufacturers. Classify the product below.\n\nControlled taxonomy — STRONGLY prefer reusing an existing Category and Subcategory so the same kind of product from different manufacturers lines up together. Propose a NEW category/subcategory only if nothing fits, and keep it concise:\n${vocab}\n\nProduct:\n${aiContext(ctx)}\n\nReturn ONLY a JSON object (no prose, no code fences) with exactly these keys:\n{"family":"the product line/brand-model family this belongs to (e.g. 'Gen 2 Walking Boot'), or '' if not applicable","category":"best Category","subcategory":"best Subcategory within that Category","is_new_category":true or false,"is_new_subcategory":true or false,"rationale":"one short sentence why","naming":{"ok":true or false,"suggested_name":"a cleaner product name, or the same name if already good","issues":["short naming issues if any"]},"split":{"recommended":true or false,"reason":"if the SKUs look like more than one distinct product explain briefly, else ''"},"confidence":0}`;
+        const out = await callAI(prompt, 700);
+        if (out.err) return reply(200, { ok: false, error: 'ai_error', message: out.err, detail: out.detail, model: AI_MODEL });
+        let parsed = null;
+        try { const t = out.text || ''; const a = t.indexOf('{'), b = t.lastIndexOf('}'); parsed = JSON.parse(t.slice(a, b + 1)); }
+        catch (e) { return reply(200, { ok: false, error: 'ai_parse', message: 'Could not read the AI response — try again.', raw: (out.text || '').slice(0, 400) }); }
+        return reply(200, { ok: true, recommendation: parsed, current: { family: row.family || '', category: row.category || '', subcategory: row.subcategory || '' } });
+      }
+
+      // ---- Return the canonical taxonomy (seed ∪ approved), for the workspace's Catalog Review UI. ----
+      if (action === 'taxonomy') {
+        const used = await sbGet(`product_content?select=category,subcategory&status=in.(approved,published,active)&category=not.is.null`);
+        const subs = {};
+        Object.keys(TAXONOMY).forEach(c => { subs[c] = new Set(TAXONOMY[c] || []); });
+        (used || []).forEach(r => { if (r.category) { (subs[r.category] = subs[r.category] || new Set()); if (r.subcategory) subs[r.category].add(r.subcategory); } });
+        const taxonomy = {}; Object.keys(subs).sort().forEach(c => { taxonomy[c] = [...subs[c]].sort(); });
+        return reply(200, { ok: true, taxonomy });
       }
 
       return reply(400, { ok: false, error: 'unknown action' });
