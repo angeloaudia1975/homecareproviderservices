@@ -68,16 +68,16 @@ exports.handler = async (event)=>{
       }
       const [prods,custom,links]=await Promise.all([
         fetchJson(`${ORDERING_BASE}/data/${slug}.json`).catch(()=>[]),
-        sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,name,category,base_price,msrp,image,description,active,tiers,price_note`).catch(()=>[]),
+        sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,name,category,base_price,msrp,map,msrp_auto,image,description,active,tiers,price_note,updated_at`).catch(()=>[]),
         sb("GET",`product_links?manufacturer=eq.${encodeURIComponent(slug)}&select=code,label,url`).catch(()=>[]),
       ]);
       const [overRows,featRows,mediaRows]=await Promise.all([
-        sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(slug)}&select=code,patch`).catch(()=>[]),
+        sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(slug)}&select=code,patch,updated_at`).catch(()=>[]),
         sb("GET",`featured_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,active`).catch(()=>[]),
         sb("GET",`product_media?manufacturer=eq.${encodeURIComponent(slug)}&select=id,code,kind,url,title,sort&order=sort`).catch(()=>[]),
       ]);
       const linkMap=Object.fromEntries((links||[]).map(l=>[l.code,{label:l.label||"More Information",url:l.url}]));
-      const overrides=Object.fromEntries((overRows||[]).map(o=>[o.code,o.patch||{}]));
+      const overrides=Object.fromEntries((overRows||[]).map(o=>[o.code,Object.assign({},o.patch||{},{_updated_at:o.updated_at||null})]));
       const featured=(featRows||[]).filter(f=>f.active!==false).map(f=>f.code);
       // media gallery keyed by product code (additional images, videos, brochures, links)
       const media={}; for(const r of (mediaRows||[])){ (media[r.code]=media[r.code]||[]).push({id:r.id,kind:r.kind,url:r.url,title:r.title||"",sort:r.sort||0}); }
@@ -119,6 +119,7 @@ exports.handler = async (event)=>{
         await sb("POST","custom_products?on_conflict=manufacturer,code",{
           manufacturer:mfr, code:String(p.code).trim(), name:String(p.name).trim(),
           category:p.category||null, base_price:num(p.base_price), msrp:num(p.msrp),
+          map:num(p.map), msrp_auto:p.msrp_auto===true,
           image:p.image||null, description:p.description||null,
           tiers:cleanTiers(p.tiers), price_note:p.price_note||null,
           active:p.active===false?false:true, updated_at:new Date().toISOString()
@@ -174,6 +175,8 @@ exports.handler = async (event)=>{
         if(p.price_note!=null) patch.price_note=String(p.price_note);
         if("base_price" in p) patch.base_price=num(p.base_price);
         if("msrp" in p) patch.msrp=num(p.msrp);
+        if("map" in p) patch.map=num(p.map);
+        if("msrp_auto" in p) patch.msrp_auto=(p.msrp_auto===true);
         if("tiers" in p) patch.tiers=cleanTiers(p.tiers);
         if("active" in p) patch.active=(p.active!==false);
         if("image" in p && p.image) patch.image=String(p.image);
@@ -186,6 +189,48 @@ exports.handler = async (event)=>{
         if(!b.manufacturer||!b.code) return json(400,{error:"manufacturer, code required"});
         await sb("DELETE",`product_overrides?manufacturer=eq.${encodeURIComponent(b.manufacturer)}&code=eq.${encodeURIComponent(b.code)}`,null,{Prefer:"return=minimal"});
         return json(200,{ok:true});
+      }
+
+      // Apply pricing to many codes at once — powers the pricelist importer, bulk edits, and
+      // auto-MSRP generation from the Price Check audit. Each row carries a code and any of
+      // base_price / msrp / map / msrp_auto / price_note. A code that's already a custom product
+      // is PATCHed; a code with create:true (or a name) that isn't in the catalog yet is created
+      // as a custom product; any other code (a standard/base catalog item) gets a merged override.
+      if(b.action==="bulk_price"){
+        const mfr=b.manufacturer; const rows=Array.isArray(b.rows)?b.rows:[];
+        if(!mfr||!rows.length) return json(400,{error:"manufacturer and rows required"});
+        const enc=encodeURIComponent;
+        const cust=await sb("GET",`custom_products?manufacturer=eq.${enc(mfr)}&select=code`).catch(()=>[]);
+        const customCodes=new Set((cust||[]).map(r=>String(r.code)));
+        const priceFields=(r)=>{ const f={};
+          ["base_price","msrp","map"].forEach(k=>{ if(k in r) f[k]=num(r[k]); });
+          if("msrp_auto" in r) f.msrp_auto=(r.msrp_auto===true);
+          if(r.price_note!=null) f.price_note=String(r.price_note);
+          return f; };
+        let applied=0, created=0, failed=0; const now=new Date().toISOString();
+        for(const r of rows){
+          const code=String(r.code||"").trim(); if(!code) continue;
+          const pf=priceFields(r);
+          try{
+            if(customCodes.has(code)){
+              await sb("PATCH",`custom_products?manufacturer=eq.${enc(mfr)}&code=eq.${enc(code)}`,
+                Object.assign({},pf,{updated_at:now}),{Prefer:"return=minimal"});
+              applied++;
+            } else if(r.create===true || (r.name!=null && String(r.name).trim())){
+              await sb("POST","custom_products?on_conflict=manufacturer,code",
+                Object.assign({manufacturer:mfr,code,name:String(r.name||code).trim(),category:r.category||null,active:true,updated_at:now},pf),
+                {Prefer:"resolution=merge-duplicates,return=minimal"});
+              customCodes.add(code); created++;
+            } else {
+              const ex=await sb("GET",`product_overrides?manufacturer=eq.${enc(mfr)}&code=eq.${enc(code)}&select=patch`).catch(()=>[]);
+              const patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{},pf);
+              await sb("POST","product_overrides?on_conflict=manufacturer,code",
+                {manufacturer:mfr,code,patch,updated_at:now},{Prefer:"resolution=merge-duplicates,return=minimal"});
+              applied++;
+            }
+          }catch(e){ failed++; }
+        }
+        return json(200,{ok:true,applied,created,failed});
       }
       // Set the shop CATEGORY for a set of SKU codes so the ordering platform re-files them —
       // this is what makes an accepted category in the Catalog Review actually move the product on

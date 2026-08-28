@@ -147,6 +147,18 @@ textarea.ed{min-height:64px}
 .linkrow a{flex:1;color:var(--blue-dk);font-weight:600;font-size:12.5px;word-break:break-all;text-decoration:none}
 .linkrow a:hover{text-decoration:underline}
 .linkrow .x{border:1px solid var(--line);background:#fff;border-radius:8px;width:30px;height:30px;cursor:pointer;color:var(--bad);font-weight:800;flex:0 0 auto}
+/* Price audit */
+.pa-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.pa-score{display:flex;align-items:center;gap:12px;border:2px solid #ccc;border-radius:12px;padding:8px 16px}
+.pa-scv{font-family:Archivo,sans-serif;font-weight:800;font-size:30px;line-height:1}
+.pa-scl{font-size:12px;font-weight:700;color:var(--navy2,#22303f)}
+.pa-actions{display:flex;gap:8px;flex-wrap:wrap}
+.pa-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.pachip{display:inline-block;background:#eef7f0;border:1px solid #d5e6da;border-radius:999px;padding:3px 10px;font-size:11.5px;font-weight:700;color:var(--navy2,#22303f)}
+.pa-sec{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
+.pa-sec h3{margin:0 0 4px;font-family:Archivo,sans-serif;font-size:14px}
+.pa-bulk{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--paper,#f6f7f5);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-bottom:8px;font-size:12px}
+.pa-bulk .ed{padding:6px 8px}
 /* sticky action bars */
 .selbar{position:fixed;left:0;right:0;bottom:0;background:var(--navy);color:#fff;padding:12px 22px;display:none;z-index:40;box-shadow:0 -10px 30px -18px rgba(0,0,0,.5)}
 .selbar.show{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -758,6 +770,16 @@ document.addEventListener('click',async function(e){
   if(act==='new-product') return openNewProduct();
   if(act==='open-history') return openHistory();
   if(act==='price-check') return doPriceCheck();
+  if(act==='price-refresh') return openPriceAudit();
+  if(act==='price-save') return doPriceSaveRow(t.getAttribute('data-code'));
+  if(act==='reconcile-group') return doReconcileGroup(+i);
+  if(act==='auto-msrp-all') return doAutoMsrpAll();
+  if(act==='price-bulk-apply') return doPriceBulkApply();
+  if(act==='price-sel-clear'){ _priceSel=new Set(); renderPriceAudit(); return; }
+  if(act==='price-import') return openPriceImport();
+  if(act==='price-import-parse') return doPriceImportParse();
+  if(act==='price-import-apply') return doPriceImportApply();
+  if(act==='dealer-price-preview') return openDealerPricePreview();
   if(act==='close-drawer'){ document.getElementById('drawer').classList.remove('show'); return; }
   if(act==='move-skus') return doMove();
   if(act==='split-skus') return doSplit();
@@ -924,37 +946,284 @@ async function catalogGet(){
   catch(e){ _catalogCache={products:[],custom:[]}; }
   return _catalogCache;
 }
-/* ---- Price Check: verify every SKU has a price loaded in the catalog ---- */
-async function doPriceCheck(){
-  toast('Checking prices…'); _catalogCache=null; const cat=await catalogGet();
-  if(!cat || (!(cat.products||[]).length && !(cat.custom||[]).length)){
-    modalHTML('💲 Price Check', '<div class="tut"><p class="mut">Couldn\'t read the catalog price list. Price checking reads the Product Catalog, which is President-only — make sure you\'re signed in as president. If you are, this manufacturer may not have a catalog loaded yet.</p></div>'); return; }
-  const ov=cat.overrides||{}, custom={}, std={};
-  (cat.custom||[]).forEach(p=>{ custom[String(p.code)]=p; });
+/* ===================== Price Audit — final QC before publish =====================
+   Cross-references EVERY content SKU against the live catalog price layers (base JSON,
+   custom_products, product_overrides) and flags: live-but-no-price, code mismatches
+   (11102RED ↔ 11102), unassigned/orphan prices, cross-layer conflicts, duplicates,
+   discontinued-with-price, and missing MSRP. Inline add/edit + reconcile + import +
+   bulk + auto-MSRP + dealer preview — all without SQL. */
+async function catalogPost(body){
+  try{ const r=await fetch('/.netlify/functions/catalog-api',{method:'POST',headers:authHeaders(),body:JSON.stringify(body)});
+    const j=await r.json().catch(()=>({})); return {ok:r.ok,status:r.status,json:j}; }
+  catch(e){ return {ok:false,status:0,json:{error:String(e)}}; }
+}
+function pmoney(n){ if(n==null||n===''||!isFinite(Number(n))) return '—'; return '$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function firstNum(){ for(let i=0;i<arguments.length;i++){ const v=arguments[i]; if(v!=null&&v!==''){ const n=Number(v); if(isFinite(n)) return n; } } return null; }
+function roundMsrp(n){ if(n==null||!isFinite(n)) return null; const v=Math.round(n*100)/100; return v; }
+let PRICE_MARKUP=2.0;   // default auto-MSRP multiplier (100% over the dealer price)
+let _priceState=null, _priceSel=new Set();
+
+function buildPriceState(cat){
+  const std={}, custom={}, ov=cat.overrides||{};
   (cat.products||[]).forEach(p=>{ std[String(p.code)]=p; });
-  const inCatalog=c=>{ c=String(c); return !!(custom[c]||std[c]); };
-  function priceOf(c){ c=String(c); const o=ov[c]||{};
-    if(o.base_price!=null&&o.base_price!=='') return Number(o.base_price);
-    const cu=custom[c]; if(cu&&cu.base_price!=null&&cu.base_price!=='') return Number(cu.base_price);
-    const p=std[c]; if(p&&p.base_price!=null&&p.base_price!=='') return Number(p.base_price);
-    return null; }
-  let total=0, priced=0; const missing=[], notInCat=[];
+  (cat.custom||[]).forEach(p=>{ custom[String(p.code)]=p; });
+  const allCodes=new Set([...Object.keys(std),...Object.keys(custom)]);
+  function recOf(code){ code=String(code); const b=std[code], c=custom[code], o=ov[code]||{};
+    const base_price=firstNum(o.base_price, c&&c.base_price, b&&b.base_price);
+    const msrp=firstNum(o.msrp, c&&c.msrp, b&&b.msrp);
+    const map=firstNum(o.map, c&&c.map);
+    const msrp_auto=(o.msrp_auto!=null)?!!o.msrp_auto:(c?!!c.msrp_auto:false);
+    const active=(o.active===false)?false:(c?(c.active!==false):true);
+    const name=o.name||(c&&c.name)||(b&&b.name)||'';
+    const category=o.category||(c&&c.category)||(b&&b.category)||'';
+    const updated=o._updated_at||(c&&c.updated_at)||null;
+    const layers=[];
+    if(b&&b.base_price!=null&&b.base_price!=='') layers.push({src:'base',price:Number(b.base_price)});
+    if(c&&c.base_price!=null&&c.base_price!=='') layers.push({src:'custom',price:Number(c.base_price)});
+    if(o.base_price!=null&&o.base_price!=='') layers.push({src:'override',price:Number(o.base_price)});
+    const source=(o.base_price!=null&&o.base_price!=='')?'override':((c&&c.base_price!=null&&c.base_price!=='')?'custom':((b&&b.base_price!=null)?'base':(c?'custom':'base')));
+    return {code,name,category,base_price,msrp,map,msrp_auto,active,updated,layers,source,
+      editTarget:c?'custom':'base', isBase:!!b, isCustom:!!c, duplicate:!!(b&&c)};
+  }
+  const byLen=[...allCodes].sort((a,b)=>b.length-a.length);
+  function nearMatch(code){ code=String(code);
+    for(const c of byLen){ if(c!==code && code.length>c.length && code.indexOf(c)===0 && c.length>=3) return c; }
+    const stripped=code.replace(/(RED|GREY|GRAY|BLACK|BLUE|WHITE|BEIGE|TAN)$/i,'');
+    if(stripped!==code && allCodes.has(stripped)) return stripped;
+    return null;
+  }
+  const content=[]; const assigned=new Set();
   Object.keys(pages).forEach(k=>{ const p=pages[k]; if(p.is_parent) return;
-    skusOf(k).forEach(s=>{ const code=String(s.sku||''); if(!code) return; total++;
-      if(!inCatalog(code)){ notInCat.push({code,product:p.name||k}); return; }
-      const pr=priceOf(code); if(pr!=null&&pr>0) priced++; else missing.push({code,product:p.name||k}); }); });
-  const pct=total?Math.round(priced/total*100):0;
-  const grp=list=>{ const by={}; list.forEach(x=>{(by[x.product]=by[x.product]||[]).push(x.code);});
-    return Object.keys(by).sort().map(pn=>`<tr><td>${esc(pn)}</td><td>${by[pn].map(esc).join(', ')}</td></tr>`).join(''); };
-  modalHTML('💲 Price Check · '+esc(MFR), `<div class="tut">
-    <div class="rule"><b>${priced} of ${total} SKUs have a price loaded (${pct}%).</b> ${missing.length?`<b style="color:#b42323">&nbsp;${missing.length} catalog SKU(s) are missing a price.</b>`:'&nbsp;Every catalog SKU has a price. ✅'} ${notInCat.length?`&nbsp;${notInCat.length} SKU(s) aren't in the catalog yet.`:''}</div>
-    <p class="mut">Prices come from the <b>Product Catalog</b> (base/list price) and <b>Contract Pricing</b> (per-dealer). Removing a SKU here never changes pricing — this only verifies it's loaded. Fix missing prices in those tools.</p>
-    ${missing.length?`<h3>In the catalog but missing a price (${missing.length})</h3>
-      <div class="tabscroll"><table><thead><tr><th>Product</th><th>SKU(s)</th></tr></thead><tbody>${grp(missing)}</tbody></table></div>`:''}
-    ${notInCat.length?`<h3>Not found in the catalog (${notInCat.length})</h3>
-      <p class="mut">On a product here, but not in the ordering catalog yet — add them in Product Catalog (or it may be a renamed/typo code).</p>
-      <div class="tabscroll"><table><thead><tr><th>Product</th><th>SKU(s)</th></tr></thead><tbody>${grp(notInCat)}</tbody></table></div>`:''}
-    ${(!missing.length&&!notInCat.length)?'<p><b>✅ All good — every SKU is in the catalog with a price.</b></p>':''}
+    skusOf(k).forEach(s=>{ const code=String(s.sku||'').trim(); if(!code) return; assigned.add(code);
+      content.push({code,pk:k,product:p.name||k,family:p.family||'',category:p.category||'',subcategory:p.subcategory||'',
+        status:s.status||'active',disabled:(!!s.disabled||!!p.disabled),size:s.size||''}); }); });
+  const missingPrice=[], mismatch=[], notInCat=[], needsMsrp=[], discWithPrice=[], outdated=[];
+  const now=Date.now(), YEAR=365*24*3600*1000;
+  content.forEach(cs=>{
+    if(!allCodes.has(cs.code)){ const nm=nearMatch(cs.code);
+      if(nm){ const r=recOf(nm); mismatch.push(Object.assign({},cs,{baseCode:nm,basePrice:r.base_price,baseMsrp:r.msrp,baseMap:r.map})); }
+      else notInCat.push(cs);
+      return; }
+    const r=recOf(cs.code);
+    if(r.base_price==null||r.base_price<=0){ missingPrice.push(Object.assign({},cs,{rec:r})); return; }
+    const off=(cs.disabled||cs.status==='discontinued'||cs.status==='hidden');
+    if(off) discWithPrice.push(Object.assign({},cs,{rec:r}));
+    if(!off && (r.msrp==null||r.msrp<=0)) needsMsrp.push(Object.assign({},cs,{rec:r}));
+    if(!off && r.updated && (now-Date.parse(r.updated))>YEAR) outdated.push(Object.assign({},cs,{rec:r}));
+  });
+  // Base codes that anchor a matched variant (e.g. 10102 for 10102RED/GREY) are pricing anchors,
+  // not truly "unassigned" — keep them out of the orphan queue.
+  const anchorCodes=new Set(mismatch.map(m=>m.baseCode));
+  const orphans=[]; allCodes.forEach(code=>{ if(assigned.has(code)||anchorCodes.has(code)) return; const r=recOf(code); if(r.base_price!=null&&r.base_price>0) orphans.push(r); });
+  const conflicts=[]; allCodes.forEach(code=>{ const r=recOf(code); if([...new Set(r.layers.map(l=>l.price))].length>1) conflicts.push(r); });
+  const dupes=[]; allCodes.forEach(code=>{ const r=recOf(code); if(r.duplicate) dupes.push(r); });
+  let denom=0, ok=0;
+  content.forEach(cs=>{ if(cs.disabled) return; denom++; if(allCodes.has(cs.code)){ const r=recOf(cs.code); if(r.base_price>0) ok++; } });
+  return {recOf, allCodes, content, assigned, missingPrice, mismatch, notInCat, needsMsrp,
+    discWithPrice, outdated, orphans, conflicts, dupes, score:(denom?Math.round(ok/denom*100):0), denom, ok};
+}
+
+async function doPriceCheck(){ return openPriceAudit(); }
+async function openPriceAudit(){
+  toast('Cross-checking pricing…'); _catalogCache=null; const cat=await catalogGet();
+  if(!cat || (!(cat.products||[]).length && !(cat.custom||[]).length)){
+    modalHTML('💲 Price Check', '<div class="tut"><p class="mut">Couldn\'t read the catalog price list. Price Check reads the Product Catalog (President-only) — make sure you\'re signed in as president. If you are, this manufacturer may not have a catalog loaded yet — use <b>Import pricelist</b> once a catalog exists.</p></div>'); return; }
+  _priceState=buildPriceState(cat); _priceSel=new Set();
+  renderPriceAudit();
+}
+function paChip(n,label,color){ return `<span class="pachip" style="${n?('background:'+(color||'#fdecec')+';border-color:'+(color?'#e3caa0':'#f0c7c7')):''}">${n} ${esc(label)}</span>`; }
+function renderPriceAudit(){
+  const S=_priceState; if(!S) return;
+  const scoreColor=S.score>=100?'#1a7f4b':(S.score>=80?'#b8791b':'#b42323');
+  // reconcile groups (mismatch grouped by product + baseCode)
+  const mmGroups={}; S.mismatch.forEach(m=>{ const key=m.pk+'|'+m.baseCode; (mmGroups[key]=mmGroups[key]||{product:m.product,baseCode:m.baseCode,basePrice:m.basePrice,baseMsrp:m.baseMsrp,baseMap:m.baseMap,codes:[]}).codes.push(m.code); });
+  const mmArr=Object.keys(mmGroups).map(k=>mmGroups[k]);
+  const grpProd=list=>{ const by={}; list.forEach(x=>{(by[x.product]=by[x.product]||[]).push(x.code);}); return by; };
+  const tbl=(headers,rowsHtml)=>`<div class="tabscroll"><table style="width:100%;font-size:12px"><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+  // priced/assigned SKUs table (editable)
+  const editable=S.content.filter(cs=>S.allCodes.has(cs.code));
+  const priceRow=cs=>{ const r=S.recOf(cs.code); const id=cssId(cs.code);
+    const hay=(cs.product+' '+cs.code+' '+cs.family+' '+cs.category+' '+cs.subcategory).toLowerCase();
+    return `<tr data-pahay="${escA(hay)}">
+      <td><input type="checkbox" class="pa-pick" data-code="${escA(cs.code)}" ${_priceSel.has(cs.code)?'checked':''} onclick="paPick(this)"></td>
+      <td>${esc(cs.product)}<div class="mut" style="font-size:10px">${esc(cs.code)}${cs.size?' · '+esc(cs.size):''}${cs.disabled?' · <b style="color:#b42323">off</b>':''}</div></td>
+      <td><input class="ed pa-b" id="pe-b-${id}" value="${r.base_price!=null?r.base_price:''}" placeholder="—" style="max-width:82px" inputmode="decimal"></td>
+      <td><input class="ed pa-m" id="pe-m-${id}" value="${r.msrp!=null?r.msrp:''}" placeholder="—" style="max-width:82px" inputmode="decimal">${r.msrp_auto?'<div class="mut" style="font-size:9px">auto</div>':''}</td>
+      <td><input class="ed pa-a" id="pe-a-${id}" value="${r.map!=null?r.map:''}" placeholder="—" style="max-width:72px" inputmode="decimal"></td>
+      <td class="mut" style="font-size:10px">${esc(r.source)}${r.updated?'<br>'+esc(new Date(r.updated).toLocaleDateString()):''}</td>
+      <td><button class="btn" data-act="price-save" data-code="${escA(cs.code)}" style="padding:3px 9px;font-size:11px">Save</button></td></tr>`; };
+  const body=`
+    <div class="pa-head">
+      <div class="pa-score" style="border-color:${scoreColor}"><div class="pa-scv" style="color:${scoreColor}">${S.score}%</div><div class="pa-scl">Pricing complete<br><span class="mut">${S.ok} of ${S.denom} active SKUs priced</span></div></div>
+      <div class="pa-actions">
+        <button class="btn" data-act="price-import">⬆ Import pricelist</button>
+        <button class="btn" data-act="dealer-price-preview">👁 Preview as dealer</button>
+        <button class="btn" data-act="price-refresh">↻ Re-check</button>
+      </div>
+    </div>
+    <div class="pa-chips">
+      ${paChip(S.missingPrice.length,'live · no price')}
+      ${paChip(mmArr.reduce((n,g)=>n+g.codes.length,0),'code mismatch')}
+      ${paChip(S.orphans.length,'unassigned price')}
+      ${paChip(S.conflicts.length,'conflict')}
+      ${paChip(S.dupes.length,'duplicate')}
+      ${paChip(S.needsMsrp.length,'need MSRP','#eef5ff')}
+      ${paChip(S.discWithPrice.length,'discontinued · priced')}
+      ${paChip(S.notInCat.length,'not in catalog')}
+      ${paChip(S.outdated.length,'price >1yr old','#eef5ff')}
+    </div>
+
+    ${mmArr.length?`<div class="pa-sec"><h3>Code mismatches — pricing exists under a base code (${mmArr.reduce((n,g)=>n+g.codes.length,0)} SKU${mmArr.reduce((n,g)=>n+g.codes.length,0)===1?'':'s'})</h3>
+      <p class="mut">These live SKUs aren't in the catalog, but a matching base code IS priced (e.g. <b>11102RED → 11102</b>). Assign the base price to each variant so every color/side becomes orderable.</p>
+      ${tbl(['Product','Base code','Base price','Variant SKUs','Action'], mmArr.map((g,i)=>`<tr>
+        <td>${esc(g.product)}</td><td><b>${esc(g.baseCode)}</b></td><td>${pmoney(g.basePrice)}</td>
+        <td class="mut" style="font-size:11px">${g.codes.map(esc).join(', ')}</td>
+        <td><button class="btn dark" data-act="reconcile-group" data-i="${i}" style="padding:3px 9px;font-size:11px">Assign to ${g.codes.length}</button></td></tr>`).join(''))}
+      </div>`:''}
+
+    ${S.missingPrice.length?`<div class="pa-sec"><h3>Live but missing a price (${S.missingPrice.length})</h3>
+      <p class="mut">In the catalog but the dealer price is blank or zero — set it below in the SKU table.</p>
+      ${tbl(['Product','SKU(s)'], Object.entries(grpProd(S.missingPrice)).map(([pn,codes])=>`<tr><td>${esc(pn)}</td><td class="mut" style="font-size:11px">${codes.map(esc).join(', ')}</td></tr>`).join(''))}
+      </div>`:''}
+
+    ${S.orphans.length?`<div class="pa-sec"><h3>Unassigned pricing — priced but on no live SKU (${S.orphans.length})</h3>
+      <p class="mut">A price exists in the catalog for these codes, but no product here uses them. Add the code to a product (Review Structure → ＋ Add SKU), or ignore if retired.</p>
+      ${tbl(['Code','Name','Dealer price','MSRP','Source'], S.orphans.slice(0,200).map(r=>`<tr><td><b>${esc(r.code)}</b></td><td>${esc(r.name||'—')}</td><td>${pmoney(r.base_price)}</td><td>${pmoney(r.msrp)}</td><td class="mut">${esc(r.source)}</td></tr>`).join(''))}
+      </div>`:''}
+
+    ${(S.conflicts.length||S.dupes.length)?`<div class="pa-sec"><h3>Price conflicts &amp; duplicates (${S.conflicts.length+S.dupes.length})</h3>
+      <p class="mut">Same code priced differently across layers (base / custom / override), or the code exists as both a base and a custom product. The <b>override</b> value is what dealers see; edit it in the SKU table to settle it.</p>
+      ${tbl(['Code','Layers','Effective (dealer sees)'], [...S.conflicts,...S.dupes.filter(d=>!S.conflicts.find(c=>c.code===d.code))].map(r=>`<tr><td><b>${esc(r.code)}</b>${r.duplicate?' <span class="mut">(base+custom)</span>':''}</td><td class="mut" style="font-size:11px">${r.layers.map(l=>esc(l.src)+' '+pmoney(l.price)).join(' · ')}</td><td>${pmoney(r.base_price)}</td></tr>`).join(''))}
+      </div>`:''}
+
+    ${S.discWithPrice.length?`<div class="pa-sec"><h3>Discontinued / hidden but still priced (${S.discWithPrice.length})</h3>
+      <p class="mut">These SKUs are turned off here but still carry an active price. That's usually fine (they just won't show), but confirm they shouldn't be sold.</p>
+      ${tbl(['Product','SKU','Status','Dealer price'], S.discWithPrice.map(cs=>`<tr><td>${esc(cs.product)}</td><td>${esc(cs.code)}</td><td class="mut">${esc(cs.disabled?'off':cs.status)}</td><td>${pmoney(cs.rec.base_price)}</td></tr>`).join(''))}
+      </div>`:''}
+
+    ${S.notInCat.length?`<div class="pa-sec"><h3>Not in the catalog (${S.notInCat.length})</h3>
+      <p class="mut">On a product here but not in the ordering catalog, and no matching base code found. Import a pricelist, or add them in Product Catalog.</p>
+      ${tbl(['Product','SKU(s)'], Object.entries(grpProd(S.notInCat)).map(([pn,codes])=>`<tr><td>${esc(pn)}</td><td class="mut" style="font-size:11px">${codes.map(esc).join(', ')}</td></tr>`).join(''))}
+      </div>`:''}
+
+    <div class="pa-sec"><h3>All live SKUs — edit pricing (${editable.length})</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+        <input class="ed" id="pa-q" placeholder="Filter by product, code, family, category…" style="flex:1;min-width:200px" oninput="filterPriceRows(this.value)">
+        <span style="display:inline-flex;gap:6px;align-items:center">MSRP = dealer×<input class="ed" id="pa-mk" value="${PRICE_MARKUP}" style="max-width:56px" inputmode="decimal"><button class="btn" data-act="auto-msrp-all">✨ Fill missing MSRP</button></span>
+      </div>
+      <div id="pa-bulkbar" class="pa-bulk" style="display:none">
+        <b><span id="pa-seln">0</span> selected</b>
+        <span>Set dealer $<input class="ed" id="pa-bulk-b" style="max-width:80px" inputmode="decimal"></span>
+        <span>MSRP $<input class="ed" id="pa-bulk-m" style="max-width:80px" inputmode="decimal"></span>
+        <span>MAP $<input class="ed" id="pa-bulk-a" style="max-width:80px" inputmode="decimal"></span>
+        <button class="btn dark" data-act="price-bulk-apply">Apply to selected</button>
+        <button class="btn ghost" data-act="price-sel-clear">Clear</button>
+      </div>
+      ${tbl([`<input type="checkbox" onclick="paToggleAll(this.checked)">`,'Product / SKU','Dealer $','MSRP','MAP','Source','&nbsp;'], editable.map(priceRow).join(''))}
+    </div>`;
+  modalHTML('💲 Price Check · '+esc(MFR), body);
+}
+function filterPriceRows(q){ q=(q||'').toLowerCase().trim();
+  document.querySelectorAll('tr[data-pahay]').forEach(tr=>{ tr.style.display=(!q||tr.getAttribute('data-pahay').indexOf(q)>=0)?'':'none'; }); }
+function paToggleAll(on){ const S=_priceState; if(!S) return; _priceSel=new Set(); if(on){ S.content.filter(cs=>S.allCodes.has(cs.code)).forEach(cs=>_priceSel.add(cs.code)); }
+  document.querySelectorAll('.pa-pick').forEach(cb=>{ cb.checked=on; }); paBulkBar(); }
+function paBulkBar(){ const bar=document.getElementById('pa-bulkbar'); if(!bar) return; const n=_priceSel.size;
+  bar.style.display=n?'flex':'none'; const el=document.getElementById('pa-seln'); if(el) el.textContent=n; }
+function paPick(cb){ const code=cb.getAttribute('data-code'); if(cb.checked) _priceSel.add(code); else _priceSel.delete(code); paBulkBar(); }
+async function doPriceSaveRow(code){ const S=_priceState; if(!S) return; const r=S.recOf(code); const id=cssId(code);
+  const gb=x=>{ const el=document.getElementById(x); return el?el.value.trim():''; };
+  const base=gb('pe-b-'+id), msrp=gb('pe-m-'+id), map=gb('pe-a-'+id);
+  const body={manufacturer:MFR};
+  if(r.editTarget==='custom'){ body.action='save_product'; body.product={code, name:r.name||code, category:r.category||null,
+    base_price:base===''?null:Number(base), msrp:msrp===''?null:Number(msrp), map:map===''?null:Number(map), msrp_auto:false}; }
+  else { body.action='save_override'; body.code=code; body.patch={base_price:base===''?null:Number(base), msrp:msrp===''?null:Number(msrp), map:map===''?null:Number(map), msrp_auto:false}; }
+  const res=await catalogPost(body);
+  if(res.ok&&(!res.json||res.json.ok!==false)) { toast('Saved '+code); openPriceAudit(); }
+  else toast((res.json&&res.json.error)||(res.status===403?'Pricing edits need President access':'Save failed'),true);
+}
+async function doReconcileGroup(i){ const S=_priceState; if(!S) return;
+  const mmGroups={}; S.mismatch.forEach(m=>{ const key=m.pk+'|'+m.baseCode; (mmGroups[key]=mmGroups[key]||{product:m.product,baseCode:m.baseCode,basePrice:m.basePrice,baseMsrp:m.baseMsrp,baseMap:m.baseMap,codes:[]}).codes.push(m.code); });
+  const g=Object.values(mmGroups)[i]; if(!g) return;
+  if(!window.confirm('Create catalog + pricing for '+g.codes.length+' variant SKU(s) using base code '+g.baseCode+' ('+pmoney(g.basePrice)+')?')) return;
+  const rows=g.codes.map(c=>({code:c, name:g.product, base_price:g.basePrice, msrp:g.baseMsrp, map:g.baseMap, create:true}));
+  const res=await catalogPost({action:'bulk_price',manufacturer:MFR,rows});
+  if(res.ok&&res.json&&res.json.ok){ toast('Assigned price to '+(res.json.created+res.json.applied)+' SKU(s)'); openPriceAudit(); }
+  else toast((res.json&&res.json.error)||'Assign failed',true);
+}
+async function doAutoMsrpAll(){ const S=_priceState; if(!S) return;
+  const mkEl=document.getElementById('pa-mk'); const mk=Number(mkEl&&mkEl.value)||PRICE_MARKUP; PRICE_MARKUP=mk;
+  const rows=S.needsMsrp.map(cs=>({code:cs.code, msrp:roundMsrp(cs.rec.base_price*mk), msrp_auto:true})).filter(r=>r.msrp>0);
+  if(!rows.length){ toast('No priced SKUs are missing an MSRP'); return; }
+  if(!window.confirm('Auto-set MSRP for '+rows.length+' SKU(s) at dealer price × '+mk+'? (Manufacturer MSRPs already entered are left alone.)')) return;
+  const res=await catalogPost({action:'bulk_price',manufacturer:MFR,rows});
+  if(res.ok&&res.json&&res.json.ok){ toast('Generated '+(res.json.applied+res.json.created)+' MSRP(s)'); openPriceAudit(); }
+  else toast((res.json&&res.json.error)||'Auto-MSRP failed',true);
+}
+async function doPriceBulkApply(){ const S=_priceState; if(!S) return; if(!_priceSel.size){ toast('Nothing selected',true); return; }
+  const gb=x=>{ const el=document.getElementById(x); return el?el.value.trim():''; };
+  const b=gb('pa-bulk-b'), m=gb('pa-bulk-m'), a=gb('pa-bulk-a');
+  if(b===''&&m===''&&a===''){ toast('Enter a price to apply',true); return; }
+  const rows=[..._priceSel].map(code=>{ const r={code}; if(b!=='')r.base_price=Number(b); if(m!==''){r.msrp=Number(m);r.msrp_auto=false;} if(a!=='')r.map=Number(a); return r; });
+  if(!window.confirm('Apply these values to '+rows.length+' selected SKU(s)?')) return;
+  const res=await catalogPost({action:'bulk_price',manufacturer:MFR,rows});
+  if(res.ok&&res.json&&res.json.ok){ toast('Updated '+(res.json.applied+res.json.created)+' SKU(s)'); _priceSel=new Set(); openPriceAudit(); }
+  else toast((res.json&&res.json.error)||'Bulk update failed',true);
+}
+/* ---- Pricelist importer ---- */
+function openPriceImport(){
+  modalHTML('⬆ Import pricelist · '+esc(MFR), `<div class="tut">
+    <p class="mut">Paste rows from a manufacturer pricelist. First row = column headers. Include a <b>code</b> column plus any of <b>dealer</b> (dealer price), <b>msrp</b>, <b>map</b>, and optionally <b>name</b>. Tab- or comma-separated.</p>
+    <textarea class="ed" id="pi-txt" rows="8" placeholder="code&#9;name&#9;dealer&#9;msrp&#9;map&#10;11102&#9;Gen 2 Short Pneumatic&#9;72.00&#9;144.00&#9;"></textarea>
+    <div style="margin-top:8px"><button class="btn dark" data-act="price-import-parse">Preview</button></div>
+    <div id="pi-prev" style="margin-top:10px"></div>
+  </div>`);
+}
+function parsePriceList(txt){
+  const lines=String(txt||'').split(/\r?\n/).map(l=>l.trim()).filter(Boolean); if(lines.length<2) return {rows:[],cols:[]};
+  const split=l=>l.indexOf('\t')>=0?l.split('\t'):l.split(',');
+  const heads=split(lines[0]).map(h=>h.trim().toLowerCase());
+  const idx=(names)=>{ for(const n of names){ const i=heads.indexOf(n); if(i>=0) return i; } return -1; };
+  const iCode=idx(['code','sku','item','part','part number','part #','item #']);
+  const iName=idx(['name','description','product']);
+  const iDealer=idx(['dealer','dealer price','cost','base','base price','price','your price']);
+  const iMsrp=idx(['msrp','retail','list','list price']);
+  const iMap=idx(['map','min advertised','minimum advertised price']);
+  const rows=[];
+  for(let r=1;r<lines.length;r++){ const c=split(lines[r]); const code=(c[iCode]||'').trim(); if(iCode<0||!code) continue;
+    const num=v=>{ if(v==null) return null; const n=Number(String(v).replace(/[^0-9.\-]/g,'')); return isFinite(n)&&String(v).trim()!==''?n:null; };
+    rows.push({code, name:iName>=0?(c[iName]||'').trim():'', base_price:iDealer>=0?num(c[iDealer]):null,
+      msrp:iMsrp>=0?num(c[iMsrp]):null, map:iMap>=0?num(c[iMap]):null}); }
+  return {rows, cols:{iCode,iName,iDealer,iMsrp,iMap}};
+}
+let _importRows=[];
+function doPriceImportParse(){ const txt=(document.getElementById('pi-txt')||{}).value||''; const p=parsePriceList(txt);
+  const prev=document.getElementById('pi-prev'); if(!prev) return;
+  if(!p.rows.length){ prev.innerHTML='<div class="hint">Couldn\'t find a code column and at least one data row. Check the paste — first row must be headers including <b>code</b>.</div>'; _importRows=[]; return; }
+  _importRows=p.rows;
+  const S=_priceState;
+  const known=c=>S?S.allCodes.has(String(c)):false;
+  prev.innerHTML=`<div class="rule"><b>${p.rows.length}</b> priced row(s) parsed. Matched to existing catalog codes are updated; new codes are created.</div>
+    <div class="tabscroll" style="max-height:280px;overflow:auto"><table style="width:100%;font-size:12px"><thead><tr><th>Code</th><th>Name</th><th>Dealer</th><th>MSRP</th><th>MAP</th><th>Match</th></tr></thead>
+    <tbody>${p.rows.slice(0,300).map(r=>`<tr><td><b>${esc(r.code)}</b></td><td>${esc(r.name||'—')}</td><td>${pmoney(r.base_price)}</td><td>${pmoney(r.msrp)}</td><td>${pmoney(r.map)}</td><td class="mut">${known(r.code)?'update':'new'}</td></tr>`).join('')}</tbody></table></div>
+    <div style="margin-top:10px"><button class="btn dark" data-act="price-import-apply">Import ${p.rows.length} price(s)</button></div>`;
+}
+async function doPriceImportApply(){ if(!_importRows.length){ toast('Nothing to import',true); return; }
+  const rows=_importRows.map(r=>Object.assign({},r,{create:true}));
+  const res=await catalogPost({action:'bulk_price',manufacturer:MFR,rows});
+  if(res.ok&&res.json&&res.json.ok){ toast('Imported '+(res.json.applied+res.json.created)+' price(s)'); _importRows=[]; openPriceAudit(); }
+  else toast((res.json&&res.json.error)||'Import failed',true);
+}
+/* ---- Preview as dealer: exactly what a dealer sees in Partner 360 ---- */
+function openDealerPricePreview(){ const S=_priceState; if(!S){ return; }
+  const byProd={}; S.content.forEach(cs=>{ if(cs.disabled) return; if(!S.allCodes.has(cs.code)) return; const r=S.recOf(cs.code);
+    (byProd[cs.product]=byProd[cs.product]||[]).push({code:cs.code,size:cs.size,base:r.base_price,msrp:r.msrp,map:r.map}); });
+  const prods=Object.keys(byProd).sort();
+  const rowsFor=arr=>arr.map(x=>{ const margin=(x.msrp!=null&&x.base!=null&&x.msrp>x.base)?(x.msrp-x.base):null; const mp=(margin!=null&&x.msrp)?Math.round(margin/x.msrp*100):null;
+    return `<tr><td>${esc(x.code)}${x.size?' · '+esc(x.size):''}</td><td><b>${pmoney(x.base)}</b></td><td>${pmoney(x.msrp)}</td><td>${x.map!=null?pmoney(x.map):'—'}</td><td class="mut">${margin!=null?pmoney(margin)+(mp!=null?' · '+mp+'%':''):'—'}</td></tr>`; }).join('');
+  modalHTML('👁 Preview as dealer · '+esc(MFR), `<div class="tut">
+    <p class="mut"><b>Your dealer price</b> is what the signed-in dealer pays; <b>MSRP</b> shows as the retail reference and drives the est. margin. Per-dealer contract pricing can lower the dealer price further for specific accounts.</p>
+    ${prods.map(pn=>`<div class="pa-sec"><h3 style="margin:8px 0 4px">${esc(pn)}</h3>
+      <div class="tabscroll"><table style="width:100%;font-size:12px"><thead><tr><th>SKU</th><th>Dealer price</th><th>MSRP</th><th>MAP</th><th>Est. margin</th></tr></thead><tbody>${rowsFor(byProd[pn])}</tbody></table></div></div>`).join('')}
   </div>`);
 }
 /* ===================== AI Catalog Review (final stage) ===================== */
