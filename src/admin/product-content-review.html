@@ -533,7 +533,7 @@ function recordSec(k){ const p=pages[k];
   const catOpts=allCategories(), famOpts=allFamilies();
   return `<div class="sec"><h4>Product record</h4>
     <div class="grid3">
-      <div class="fld"><label>Manufacturer</label><input class="ed" value="${escA(p.manufacturer||MFR)}" oninput="editField('${escA(k)}','manufacturer',this.value)"></div>
+      <div class="fld"><label>Manufacturer <span class="mut" style="font-size:10px;text-transform:none">🔒 line key — locked</span></label><input class="ed" value="${escA(p.manufacturer||MFR)}" readonly title="This is the internal line key (slug) the ordering platform joins on — not the display name. The polished name is set in the manufacturers list. Locked so products can't be moved off the line by accident." style="background:#f3f4f6;color:#6b7280;cursor:not-allowed"><div class="hint">Internal line key — the display name (“Ovation Medical”) is set in the manufacturers list, so changing this here isn’t needed and would move the product off this line.</div></div>
       <div class="fld"><label>Family / product line</label><input class="ed" list="fam-${cssId(k)}" value="${escA(p.family||'')}" oninput="editField('${escA(k)}','family',this.value)">
         <datalist id="fam-${cssId(k)}">${famOpts.map(o=>`<option value="${escA(o)}">`).join('')}</datalist></div>
       <div class="fld"><label>Status</label><select class="ed" data-act="set-status" data-pk="${escA(k)}">
@@ -855,7 +855,10 @@ async function doStatus(k,status){ const prev=pages[k].status; pages[k].status=s
 function aliasStr(a){ return Array.isArray(a)?a.join(', '):(a||''); }
 function editAliases(k,v){ pages[k].aliases=String(v||'').split(',').map(x=>x.trim()).filter(Boolean); }
 async function doSaveRecord(k){ const p=pages[k];
-  const patch={name:p.name,tagline:p.tagline,manufacturer:p.manufacturer,family:p.family,category:p.category,subcategory:p.subcategory,msrp_rule:p.msrp_rule,disabled:!!p.disabled,source_category:p.source_category||null,source_url:p.source_url||null,aliases:Array.isArray(p.aliases)?p.aliases:[]};
+  // NOTE: 'manufacturer' is intentionally NOT sent here — it's the locked line key (slug).
+  // The polished display name lives in the manufacturers list; editing the key would move
+  // the product off its line (this is what hid the Ovation products), so record-save never touches it.
+  const patch={name:p.name,tagline:p.tagline,family:p.family,category:p.category,subcategory:p.subcategory,msrp_rule:p.msrp_rule,disabled:!!p.disabled,source_category:p.source_category||null,source_url:p.source_url||null,aliases:Array.isArray(p.aliases)?p.aliases:[]};
   const r=await apiWrite({action:'set_meta',page_key:k,patch});
   toast(r.ok?'Record saved':'Save failed',!r.ok); }
 async function doSaveContent(k){ const p=pages[k];
