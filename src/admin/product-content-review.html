@@ -211,6 +211,7 @@ textarea.ed{min-height:64px}
     <button class="btn ghost" data-act="run-structure">⚑ Structure review</button>
     <button class="btn ghost" data-act="new-product">＋ New product</button>
     <button class="btn ghost" data-act="price-check">💲 Price check</button>
+    <button class="btn ghost" data-act="catalog-health">🩺 Catalog Health</button>
     <button class="btn ghost" data-act="catalog-structure">🌐 Catalog structure</button>
     <button class="btn ghost" data-act="batch-align">🎯 Align all</button>
     <button class="btn ghost" data-act="naming-review">✍️ Naming review</button>
@@ -743,7 +744,9 @@ document.addEventListener('click',async function(e){
   if(act==='save-skus') return doSaveSkus(k,t);
   if(act==='save-sizing') return doSaveSizing(k,t);
   if(act==='approve') return doStatus(k,'approved');
-  if(act==='publish') return doStatus(k,'published');
+  if(act==='publish') return doPublishGuarded(k);
+  if(act==='catalog-health') return openCatalogHealth();
+  if(act==='health-refresh') return openCatalogHealth();
   if(act==='reject') return doStatus(k,'rejected');
   if(act==='delete-product') return doDeleteProduct(k);
   if(act==='add-sku') return doAddSku(k);
@@ -1226,6 +1229,108 @@ function openDealerPricePreview(){ const S=_priceState; if(!S){ return; }
       <div class="tabscroll"><table style="width:100%;font-size:12px"><thead><tr><th>SKU</th><th>Dealer price</th><th>MSRP</th><th>MAP</th><th>Est. margin</th></tr></thead><tbody>${rowsFor(byProd[pn])}</tbody></table></div></div>`).join('')}
   </div>`);
 }
+/* ===================== Catalog Health — final publish validation gate =====================
+   One screen per manufacturer: products, SKUs, possible duplicates, missing images/categories,
+   unassigned catalog SKUs, content that WON'T render on Partner 360 (unmatched key or not live),
+   unpriced SKUs → what's ready vs blocked. "Live" = the tool's published state (PUBLIC_SET);
+   Approve = internal, Publish = live. Each number drills into its list. */
+function contentMatchIndex(cat){
+  const imgKeys=new Set(), groups=new Set();
+  (cat.products||[]).forEach(p=>{ const ik=String(p.image||'').split('/').pop().replace(/\.(png|jpe?g|webp)$/i,''); if(ik) imgKeys.add(ik); if(p.group) groups.add(String(p.group)); });
+  (cat.custom||[]).forEach(p=>{ const ik=String(p.image||'').split('/').pop().replace(/\.(png|jpe?g|webp)$/i,''); if(ik) imgKeys.add(ik); });
+  return {imgKeys,groups};
+}
+function willRender(k, idx){ if(idx.imgKeys.has(k)) return true; const vg=pages[k]&&pages[k].variant_group;
+  if(vg){ for(const g of String(vg).split('|')){ if(idx.groups.has(g.trim())) return true; } } return false; }
+function healthBlockers(k, S, cat, idx, dupeKeys){ const p=pages[k]||{}; const b=[];
+  if(!p.image && !(p.images_gallery&&p.images_gallery.length)) b.push('image');
+  if(!p.category) b.push('category');
+  if(S && skusOf(k).some(s=>{ const r=S.recOf(String(s.sku)); return !(r&&r.base_price>0); })) b.push('price');
+  if(cat && idx && !willRender(k,idx)) b.push('won’t render');
+  if(dupeKeys&&dupeKeys.has(k)) b.push('duplicate');
+  return b; }
+async function openCatalogHealth(){
+  toast('Running catalog health…'); _catalogCache=null; const cat=await catalogGet();
+  const S=(cat&&((cat.products||[]).length||(cat.custom||[]).length))?buildPriceState(cat):null;
+  const idx=cat?contentMatchIndex(cat):null;
+  const keys=Object.keys(pages).filter(k=>!pages[k].is_parent && pages[k].name);
+  let skuTotal=0; const byName={}, skuOwner={}, skuCollide={};
+  keys.forEach(k=>{ const skus=skusOf(k); skuTotal+=skus.length; const nm=baseToken(pages[k].name);
+    (byName[nm]=byName[nm]||[]).push(k);
+    skus.forEach(s=>{ const c=String(s.sku); if(skuOwner[c]&&skuOwner[c]!==k){ (skuCollide[c]=skuCollide[c]||new Set()).add(skuOwner[c]); skuCollide[c].add(k); } else skuOwner[c]=k; }); });
+  const dupeGroups=Object.keys(byName).filter(nm=>nm&&byName[nm].length>1).map(nm=>byName[nm]);
+  const dupeKeys=new Set(); dupeGroups.forEach(a=>a.forEach(k=>dupeKeys.add(k)));
+  const isLive=p=>PUBLIC_SET.has(p.status);
+  const live=[],review=[],noImg=[],noCat=[],noSub=[],wontRender=[],unpriced=[];
+  keys.forEach(k=>{ const p=pages[k];
+    if(isLive(p)) live.push(k); else review.push(k);
+    if(!p.image && !(p.images_gallery&&p.images_gallery.length)) noImg.push(k);
+    if(!p.category) noCat.push(k); else if(!p.subcategory) noSub.push(k);
+    if(isLive(p) && cat && !willRender(k,idx)) wontRender.push(k);
+    if(S && skusOf(k).some(s=>{ const r=S.recOf(String(s.sku)); return !(r&&r.base_price>0); })) unpriced.push(k); });
+  const orphans=S?S.orphans:[];
+  const ready=review.filter(k=>healthBlockers(k,S,cat,idx,dupeKeys).length===0);
+  const blocked=review.filter(k=>healthBlockers(k,S,cat,idx,dupeKeys).length>0);
+  const readyColor=blocked.length?'#b8791b':'#1a7f4b';
+  const rowsFor=(list,reason)=>list.map(k=>`<tr><td>${esc(pages[k].name)}<div class="mut" style="font-size:10px">${esc(pages[k].status||'in review')}${pages[k].category?' · '+esc(pages[k].category):''}</div></td><td class="mut" style="font-size:11.5px">${reason?reason(k):''}</td><td><button class="btn ghost" style="padding:2px 9px;font-size:11px" onclick="healthOpen('${escA(k)}')">Open</button></td></tr>`).join('');
+  const sec=(title,list,reason,note)=>list.length?`<div class="pa-sec"><h3>${title} (${list.length})</h3>${note?`<p class="mut">${note}</p>`:''}<div class="tabscroll"><table style="width:100%;font-size:12.5px"><thead><tr><th>Product</th><th>Issue</th><th>&nbsp;</th></tr></thead><tbody>${rowsFor(list,reason)}</tbody></table></div></div>`:'';
+  const chip=(n,l,warn)=>`<span class="pachip"${n&&warn?' style="background:'+(warn==='bad'?'#fdecec':'#eef5ff')+';border-color:'+(warn==='bad'?'#f0c7c7':'#cfe0f5')+'"':''}>${n} ${esc(l)}</span>`;
+  const body=`
+    <div class="pa-head">
+      <div class="pa-score" style="border-color:${readyColor}"><div class="pa-scv" style="color:${readyColor}">${ready.length}</div><div class="pa-scl">Ready to publish<br><span class="mut">${live.length} live · ${blocked.length} blocked</span></div></div>
+      <div class="pa-actions"><button class="btn" data-act="price-check">💲 Open Price Check</button><button class="btn" data-act="health-refresh">↻ Re-run</button></div>
+    </div>
+    <div class="pa-chips">
+      ${chip(keys.length,'products')}${chip(skuTotal,'SKUs')}${chip(live.length,'live')}${chip(review.length,'in review')}
+      ${chip(blocked.length,'blocked', blocked.length?'bad':'')}
+      ${chip(dupeGroups.length,'possible duplicates', dupeGroups.length?'bad':'')}
+      ${chip(wontRender.length,'won’t render', wontRender.length?'bad':'')}
+      ${chip(noImg.length,'missing images', noImg.length?'bad':'')}
+      ${chip(noCat.length,'missing categories', noCat.length?'bad':'')}
+      ${chip(unpriced.length,'unpriced', unpriced.length?'bad':'')}
+      ${chip(orphans.length,'unassigned catalog SKUs', orphans.length?'warn':'')}
+      ${chip(noSub.length,'no subcategory','warn')}
+    </div>
+    ${blocked.length?`<div class="pa-sec"><h3>Blocked from publishing (${blocked.length})</h3>
+      <p class="mut">Fix these before the manufacturer is complete. Each shows what's blocking it.</p>
+      <div class="tabscroll"><table style="width:100%;font-size:12.5px"><thead><tr><th>Product</th><th>Blockers</th><th>&nbsp;</th></tr></thead><tbody>
+      ${blocked.map(k=>`<tr><td>${esc(pages[k].name)}<div class="mut" style="font-size:10px">${esc(pages[k].status||'in review')}</div></td><td>${healthBlockers(k,S,cat,idx,dupeKeys).map(x=>`<span class="pill no" style="margin:0 3px 3px 0">${esc(x)}</span>`).join('')}</td><td><button class="btn ghost" style="padding:2px 9px;font-size:11px" onclick="healthOpen('${escA(k)}')">Open</button></td></tr>`).join('')}
+      </tbody></table></div></div>`:''}
+    ${wontRender.length?`<div class="pa-sec"><h3>Live but won’t show on Partner 360 (${wontRender.length})</h3>
+      <p class="mut">These are published, but their content key doesn't match a catalog product — so the dealer sees the raw item, not your enriched page. Fix the SKU grouping / image so the key lines up, or re-run <b>Align all</b>.</p>
+      <div class="tabscroll"><table style="width:100%;font-size:12.5px"><thead><tr><th>Product</th><th>Content key (page)</th><th>&nbsp;</th></tr></thead><tbody>
+      ${wontRender.map(k=>`<tr><td>${esc(pages[k].name)}</td><td class="mut" style="font-size:11px"><code>${esc(k)}</code></td><td><button class="btn ghost" style="padding:2px 9px;font-size:11px" onclick="healthOpen('${escA(k)}')">Open</button></td></tr>`).join('')}
+      </tbody></table></div></div>`:''}
+    ${dupeGroups.length?`<div class="pa-sec"><h3>Possible duplicates (${dupeGroups.length})</h3>
+      <p class="mut">Products with near-identical names — likely the same product entered twice. Merge them in Review Structure, or keep separate if genuinely different.</p>
+      ${dupeGroups.map(g=>`<div class="rule" style="border-color:#f0c7c7;margin-bottom:6px"><b>${esc(pages[g[0]].name)}</b> — ${g.length} records: ${g.map(k=>`<a href="javascript:void 0" onclick="healthOpen('${escA(k)}')">${esc(k)}</a>`).join(', ')}</div>`).join('')}</div>`:''}
+    ${sec('Missing image', noImg, null, 'No primary image or gallery — add one in Enrich Content.')}
+    ${sec('Missing category', noCat, null, 'No HCPS category — set it in the product record or Align all.')}
+    ${S?sec('Unpriced SKUs', unpriced, (k)=>skusOf(k).filter(s=>{const r=S.recOf(String(s.sku));return !(r&&r.base_price>0);}).map(s=>esc(s.sku)).join(', '), 'One or more SKUs have no dealer price — fix in Price Check.'):''}
+    ${orphans.length?`<div class="pa-sec"><h3>Unassigned catalog SKUs (${orphans.length})</h3>
+      <p class="mut">Priced in the catalog but on no product here — add them to a product, or leave if retired.</p>
+      <div class="tabscroll"><table style="width:100%;font-size:12px"><thead><tr><th>Code</th><th>Name</th><th>Dealer price</th></tr></thead><tbody>${orphans.slice(0,200).map(r=>`<tr><td><b>${esc(r.code)}</b></td><td>${esc(r.name||'—')}</td><td>${pmoney(r.base_price)}</td></tr>`).join('')}</tbody></table></div></div>`:''}
+    ${sec('No subcategory (recommended)', noSub, null, 'Optional but recommended for shopping by need.')}
+    ${(!blocked.length&&!wontRender.length&&!dupeGroups.length&&!noImg.length&&!noCat.length&&(!S||!unpriced.length))?'<div class="pa-sec"><p><b>✅ This manufacturer is clean — everything in review is ready to publish.</b></p></div>':''}
+  `;
+  modalHTML('🩺 Catalog Health · '+esc(MFR), body);
+}
+function healthOpen(k){ const m=document.getElementById('overlay'); if(m)m.classList.remove('show');
+  if(typeof openCards!=='undefined'){ openCards.add(k); } render();
+  const el=document.getElementById('card-'+cssId(k)); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); }
+/* Publish guard: warn on blockers before a product goes live. */
+async function doPublishGuarded(k){ const p=pages[k]; const quick=[];
+  if(!p.image && !(p.images_gallery&&p.images_gallery.length)) quick.push('no image');
+  if(!p.category) quick.push('no category');
+  let cat=null; try{ cat=await catalogGet(); }catch(e){}
+  const S=(cat&&((cat.products||[]).length||(cat.custom||[]).length))?buildPriceState(cat):null;
+  const idx=cat?contentMatchIndex(cat):null;
+  if(S && skusOf(k).some(s=>{ const r=S.recOf(String(s.sku)); return !(r&&r.base_price>0); })) quick.push('one or more SKUs have no price');
+  if(cat && idx && !willRender(k,idx)) quick.push('content key won’t match the catalog — the enriched page won’t show');
+  if(quick.length){ if(!window.confirm('“'+(p.name||k)+'” has issues that affect the dealer page:\n\n• '+quick.join('\n• ')+'\n\nPublish live anyway?')) return; }
+  return doStatus(k,'published');
+}
+
 /* ===================== AI Catalog Review (final stage) ===================== */
 let _classCache={};
 function qScoreRows(k, priceInfo){
