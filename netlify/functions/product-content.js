@@ -36,6 +36,9 @@ const enc = encodeURIComponent;
 
 // Public visibility gate — MUST match the RLS policy in product_content_catalog_workspace.sql.
 const PUBLIC_STATUSES = ['published', 'active', 'discontinued'];
+// Ordering site — source of the full manufacturer roster (so lines with no enrichment yet
+// still appear in the workspace selector as "Not started").
+const ORDERING_BASE = process.env.ORDERING_BASE || 'https://hcpsonlineordering.netlify.app';
 const ALL_STATUSES = ['pending_review', 'approved', 'rejected', 'published', 'active', 'discontinued', 'hidden'];
 
 // ---- Canonical HCPS catalog taxonomy (SEED / DRAFT) ----------------------------------------
@@ -322,6 +325,44 @@ exports.handler = async (event) => {
   try {
     // ---------- READ ----------
     if (event.httpMethod === 'GET') {
+      // ---- Manufacturer roster + per-line enrichment progress (admin only).
+      //      Powers the workspace's manufacturer selector and progress dashboard, so staff can
+      //      move between lines without leaving the tool and see where each one stands. Merges
+      //      the FULL roster (ordering site) with product_content counts, so a line that hasn't
+      //      been started yet still shows up as "Not started". ----
+      if (qs.list === 'manufacturers') {
+        if (!isAdmin) return reply(401, { ok: false, error: 'admin role required' });
+        let roster = [];
+        try {
+          const rr = await fetch(`${ORDERING_BASE}/data/manufacturers.json`, { headers: { 'cache-control': 'no-cache' } });
+          if (rr.ok) roster = await rr.json();
+        } catch (e) {}
+        const rows = await sbGet('product_content?select=manufacturer,status,disabled,image,category,description&limit=20000');
+        const by = {};
+        const bucket = (slug) => (by[slug] = by[slug] || { slug, name: slug, products: 0, live: 0, review: 0, noimg: 0, nocat: 0, nodesc: 0 });
+        (Array.isArray(roster) ? roster : []).forEach(m => { if (m && m.slug) { const g = bucket(String(m.slug)); g.name = m.name || m.slug; } });
+        (rows || []).forEach(r => {
+          const m = r && r.manufacturer; if (!m) return;
+          const g = bucket(String(m));
+          g.products++;
+          if (PUBLIC_STATUSES.indexOf(r.status) >= 0) g.live++; else g.review++;
+          if (!r.image) g.noimg++;
+          if (!r.category) g.nocat++;
+          if (!r.description) g.nodesc++;
+        });
+        const list = Object.keys(by).map(k => {
+          const g = by[k];
+          g.state = g.products === 0 ? 'not_started'
+            : (g.live === g.products ? 'published' : (g.live > 0 ? 'in_progress' : 'in_review'));
+          g.pct = g.products ? Math.round(g.live / g.products * 100) : 0;
+          return g;
+        }).sort((a, b) => {
+          const rank = { in_progress: 0, in_review: 1, published: 2, not_started: 3 };
+          const d = (rank[a.state] == null ? 9 : rank[a.state]) - (rank[b.state] == null ? 9 : rank[b.state]);
+          return d !== 0 ? d : String(a.name).localeCompare(String(b.name));
+        });
+        return reply(200, { ok: true, manufacturers: list });
+      }
       if (!mfr) return reply(400, { ok: false, error: 'manufacturer required' });
       // Admins see every row; the public sees catalog-visible rows only (matches RLS).
       const filter = isAdmin ? '' : `&status=in.(${PUBLIC_STATUSES.join(',')})&disabled=eq.false`;

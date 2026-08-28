@@ -48,6 +48,24 @@ body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--pape
 .tut th{background:var(--paper);font-family:'Archivo',sans-serif}
 /* stats */
 .stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+/* Manufacturer selector + progress dashboard */
+.mfrbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:14px;box-shadow:var(--shadow)}
+.mfrbar .lbl{font-size:10.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--gray)}
+.mfrbar select{padding:8px 10px;border:1px solid var(--line);border-radius:9px;font-family:inherit;font-size:14px;font-weight:700;color:var(--navy2,#22303f);background:#fff;cursor:pointer;max-width:320px}
+.mfrbar select:focus{outline:none;border-color:var(--orange,#ef6325)}
+.mstate{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:999px}
+.mstate.published{background:#e7f3ec;color:#1a7f4b}
+.mstate.in_progress{background:#fdf0e2;color:#b8791b}
+.mstate.in_review{background:#eef5ff;color:#2a5c9a}
+.mstate.not_started{background:#eef0f2;color:#6b7280}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin-top:10px}
+.mcard{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fff;cursor:pointer;transition:box-shadow .13s,transform .13s}
+.mcard:hover{box-shadow:0 12px 26px -14px rgba(11,13,15,.35);transform:translateY(-1px);border-color:var(--orange,#ef6325)}
+.mcard.on{border-color:var(--orange,#ef6325);background:#fff7f2}
+.mcard .mn{font-family:Archivo,sans-serif;font-weight:800;font-size:14.5px;margin-bottom:5px}
+.mcard .mm{font-size:11.5px;color:var(--gray);margin-top:6px}
+.mbar{height:6px;background:#eef0f2;border-radius:4px;overflow:hidden;margin-top:8px}
+.mbar>div{height:100%;background:var(--orange,#ef6325)}
 .stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 16px;box-shadow:var(--shadow)}
 .stat b{font-family:'Archivo',sans-serif;font-size:21px;display:block;line-height:1.1}
 .stat span{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray)}
@@ -203,6 +221,7 @@ textarea.ed{min-height:64px}
   <div class="sub">Import → <b>review structure</b> → correct products &amp; categories → enrich images &amp; content → add sizing/specs → disable obsolete → preview → approve → <b>publish to Partner 360</b>.</div>
 </div>
 <div class="wrap">
+  <div class="mfrbar" id="mfrbar"></div>
   <div class="steps" id="steps"></div>
   <div id="guide"></div>
   <div class="stats" id="stats"></div>
@@ -398,6 +417,7 @@ async function boot(){
     const pg={}; (j.rows||[]).forEach(row=>{ pg[row.page_key]=row; });
     Object.keys(pages).forEach(k=>delete pages[k]); Object.assign(pages,pg);
     render();
+    renderMfrBar();   // manufacturer selector + status (non-blocking)
   }catch(e){ const el=document.getElementById('cards'); if(el) el.innerHTML='<div class="mut" style="padding:24px">Couldn\'t reach the server — reload to try again.</div>'; }
 }
 function gate(msg){ const w=document.querySelector('.wrap');
@@ -745,6 +765,7 @@ document.addEventListener('click',async function(e){
   if(act==='save-sizing') return doSaveSizing(k,t);
   if(act==='approve') return doStatus(k,'approved');
   if(act==='publish') return doPublishGuarded(k);
+  if(act==='mfr-dash') return openMfrDashboard();
   if(act==='catalog-health') return openCatalogHealth();
   if(act==='health-refresh') return openCatalogHealth();
   if(act==='reject') return doStatus(k,'rejected');
@@ -1229,6 +1250,61 @@ function openDealerPricePreview(){ const S=_priceState; if(!S){ return; }
       <div class="tabscroll"><table style="width:100%;font-size:12px"><thead><tr><th>SKU</th><th>Dealer price</th><th>MSRP</th><th>MAP</th><th>Est. margin</th></tr></thead><tbody>${rowsFor(byProd[pn])}</tbody></table></div></div>`).join('')}
   </div>`);
 }
+/* ===================== Manufacturer selector + progress dashboard =====================
+   Switch lines without leaving the tool, and see where every manufacturer stands.
+   Roster comes from product-content?list=manufacturers (full roster ∪ enrichment counts),
+   so lines with no work yet still appear as "Not started". */
+let MFRS=null;
+const MSTATE_LABEL={published:'Published',in_progress:'In progress',in_review:'In review',not_started:'Not started'};
+async function loadManufacturers(){
+  if(MFRS) return MFRS;
+  try{ const r=await fetch(`${API}?list=manufacturers`,{headers:authHeaders()});
+    const j=await r.json().catch(()=>({}));
+    MFRS=(j&&j.ok&&Array.isArray(j.manufacturers))?j.manufacturers:[]; }
+  catch(e){ MFRS=[]; }
+  return MFRS;
+}
+function mfrCur(){ return (MFRS||[]).find(m=>m.slug===MFR)||null; }
+function switchManufacturer(slug){
+  if(!slug||slug===MFR) return;
+  const u=new URL(location.href); u.searchParams.set('manufacturer',slug); location.href=u.toString();
+}
+async function renderMfrBar(){
+  const bar=document.getElementById('mfrbar'); if(!bar) return;
+  const list=await loadManufacturers();
+  const cur=mfrCur();
+  const opts=list.length
+    ? list.map(m=>`<option value="${escA(m.slug)}"${m.slug===MFR?' selected':''}>${esc(m.name||m.slug)}${m.products?` — ${m.live}/${m.products} live`:' — not started'}</option>`).join('')
+    : `<option value="${escA(MFR)}" selected>${esc(MFR)}</option>`;
+  bar.innerHTML=`<span class="lbl">Manufacturer</span>
+    <select id="mfrsel" onchange="switchManufacturer(this.value)" aria-label="Switch manufacturer">${opts}</select>
+    ${cur?`<span class="mstate ${esc(cur.state)}">${esc(MSTATE_LABEL[cur.state]||cur.state)}</span>`:''}
+    ${cur&&cur.products?`<span class="mut" style="font-size:12px">${cur.live} of ${cur.products} live · ${cur.pct}%</span>`:''}
+    <button class="btn ghost" data-act="mfr-dash" style="margin-left:auto">📋 All lines</button>`;
+}
+async function openMfrDashboard(){
+  MFRS=null; const list=await loadManufacturers();
+  if(!list.length){ modalHTML('📋 Manufacturer progress','<div class="tut"><p class="mut">Couldn\'t load the manufacturer list. It needs an admin session — make sure you\'re signed in to Connect 360.</p></div>'); return; }
+  const card=m=>{
+    const bits=[];
+    if(m.products){ bits.push(`${m.products} product${m.products===1?'':'s'}`);
+      if(m.review) bits.push(`${m.review} in review`);
+      if(m.noimg) bits.push(`${m.noimg} no image`);
+      if(m.nocat) bits.push(`${m.nocat} no category`); }
+    else bits.push('no enrichment yet');
+    return `<div class="mcard${m.slug===MFR?' on':''}" onclick="switchManufacturer('${escA(m.slug)}')">
+      <div class="mn">${esc(m.name||m.slug)}</div>
+      <span class="mstate ${esc(m.state)}">${esc(MSTATE_LABEL[m.state]||m.state)}</span>
+      ${m.products?`<div class="mbar"><div style="width:${m.pct}%"></div></div>`:''}
+      <div class="mm">${bits.map(esc).join(' · ')}</div></div>`; };
+  const grp=st=>list.filter(m=>m.state===st);
+  const sec=(t,st)=>{ const a=grp(st); return a.length?`<h3 style="margin:16px 0 4px;font-family:Archivo">${t} (${a.length})</h3><div class="mgrid">${a.map(card).join('')}</div>`:''; };
+  modalHTML('📋 Manufacturer progress', `<div class="tut">
+    <p class="mut">Every HCPS line and where its enrichment stands. Click a line to open it — the tool reopens on that manufacturer.</p>
+    ${sec('In progress','in_progress')}${sec('In review','in_review')}${sec('Published','published')}${sec('Not started','not_started')}
+  </div>`);
+}
+
 /* ===================== Catalog Health — final publish validation gate =====================
    One screen per manufacturer: products, SKUs, possible duplicates, missing images/categories,
    unassigned catalog SKUs, content that WON'T render on Partner 360 (unmatched key or not live),
