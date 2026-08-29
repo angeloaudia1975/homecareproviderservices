@@ -693,6 +693,52 @@ exports.handler = async (event) => {
       }
 
       // ---- Create a brand-new product (optionally pulling SKUs off an existing source page) ----
+      // ---- Duplicate detection BEFORE a product is created (Phase 3).
+      //      Compares an incoming product against every existing record for this manufacturer on
+      //      SKU (strongest) > manufacturer product URL > model/name. Returns 'exact' matches
+      //      (enrich the existing record instead of creating a second one) and 'possible' matches
+      //      (staff decides: merge / keep separate / move SKU / replace / ignore). Read-only. ----
+      if (action === 'find_duplicates') {
+        if (!m) return reply(400, { ok: false, error: 'manufacturer required' });
+        const inName = String(body.name || '').trim();
+        const inCodes = (Array.isArray(body.codes) ? body.codes : []).map(c => String(c).trim()).filter(Boolean);
+        const inUrl = String(body.source_url || '').trim();
+        const inModel = String(body.model || '').trim();
+        const skipKey = body.page_key ? String(body.page_key) : null;
+        const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+        const normUrl = (u) => String(u || '').toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/[\/?#].*$/, '').replace(/\/+$/, '');
+        const rows = await sbGet(`product_content?manufacturer=eq.${enc(m)}&select=page_key,name,skus,source_url,family,category,status,aliases&limit=5000`);
+        const nName = norm(inName), nUrl = normUrl(inUrl), nModel = norm(inModel);
+        const codeSet = new Set(inCodes.map(c => c.toLowerCase()));
+        const out = [];
+        (rows || []).forEach(r => {
+          if (skipKey && r.page_key === skipKey) return;
+          const reasons = []; let level = null;
+          const rSkus = normSkus(r.skus).map(s => String(s.sku || '').trim()).filter(Boolean);
+          const hit = rSkus.filter(c => codeSet.has(c.toLowerCase()));
+          if (hit.length) { level = 'exact'; reasons.push(`shares SKU ${hit.slice(0, 4).join(', ')}${hit.length > 4 ? '…' : ''}`); }
+          if (nUrl && normUrl(r.source_url) === nUrl) { level = 'exact'; reasons.push('same manufacturer product URL'); }
+          const rName = norm(r.name);
+          if (nName && rName === nName) { level = 'exact'; reasons.push('identical product name'); }
+          else if (nName && rName && (rName.indexOf(nName) === 0 || nName.indexOf(rName) === 0)) { level = level || 'possible'; reasons.push('very similar name'); }
+          if (!level && nModel && rName && rName.indexOf(nModel) >= 0) { level = 'possible'; reasons.push(`name contains model "${inModel}"`); }
+          if (!level && nName) {
+            const a = new Set(nName.split(' ').filter(w => w.length > 2));
+            const b = new Set(String(rName).split(' ').filter(w => w.length > 2));
+            if (a.size && b.size) {
+              let inter = 0; a.forEach(w => { if (b.has(w)) inter++; });
+              const jac = inter / (a.size + b.size - inter);
+              if (jac >= 0.6) { level = 'possible'; reasons.push('overlapping product name'); }
+            }
+          }
+          if (!level && nName && Array.isArray(r.aliases) && r.aliases.some(al => norm(al) === nName)) { level = 'possible'; reasons.push('matches a saved search alias'); }
+          if (level) out.push({ page_key: r.page_key, name: r.name || r.page_key, status: r.status || '', category: r.category || '', family: r.family || '', sku_count: rSkus.length, skus: rSkus.slice(0, 12), level, reasons });
+        });
+        const rank = { exact: 0, possible: 1 };
+        out.sort((a, b) => (rank[a.level] - rank[b.level]) || String(a.name).localeCompare(String(b.name)));
+        return reply(200, { ok: true, matches: out, exact: out.filter(x => x.level === 'exact').length, possible: out.filter(x => x.level === 'possible').length });
+      }
+
       if (action === 'create_product') {
         const np = body.product || {};
         if (!m || !np.page_key) return reply(400, { ok: false, error: 'manufacturer, product.page_key required' });

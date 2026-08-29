@@ -66,6 +66,15 @@ body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--pape
 .mcard .mm{font-size:11.5px;color:var(--gray);margin-top:6px}
 .mbar{height:6px;background:#eef0f2;border-radius:4px;overflow:hidden;margin-top:8px}
 .mbar>div{height:100%;background:var(--orange,#ef6325)}
+/* Duplicate gate */
+.dupbanner{border-radius:11px;padding:12px 14px;font-size:13px;line-height:1.5}
+.dupbanner.exact{background:#fdecec;border:1px solid #f0c7c7;color:#8d2b2b}
+.dupbanner.poss{background:#fdf3e2;border:1px solid #ecd6a8;color:#8a5e12}
+.dupbanner b{display:block;font-family:Archivo,sans-serif;font-size:14.5px;margin-bottom:3px}
+.duprow{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);border-radius:11px;padding:11px 13px;margin-bottom:8px;background:#fff;flex-wrap:wrap}
+.duprow .dupmain{flex:1;min-width:210px}
+.duprow .dupn{font-weight:800;font-size:13.5px;margin-bottom:3px}
+.duprow .dupacts{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 16px;box-shadow:var(--shadow)}
 .stat b{font-family:'Archivo',sans-serif;font-size:21px;display:block;line-height:1.1}
 .stat span{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray)}
@@ -765,6 +774,15 @@ document.addEventListener('click',async function(e){
   if(act==='save-sizing') return doSaveSizing(k,t);
   if(act==='approve') return doStatus(k,'approved');
   if(act==='publish') return doPublishGuarded(k);
+  if(act==='dup-enrich') return dupEnrichExisting(t.getAttribute('data-pk'));
+  if(act==='dup-cancel'){ _npPending=null; const ov=document.getElementById('overlay'); if(ov) ov.classList.remove('show'); return; }
+  if(act==='dup-separate'){ const P=_npPending; if(!P) return; openNewProduct();
+    setTimeout(()=>{ const g=(id,v)=>{const el=document.getElementById(id); if(el) el.value=v||'';};
+      g('np-name',P.name); g('np-cat',P.cat); g('np-fam',P.fam); g('np-url',P.url);
+      const c=document.getElementById('np-skurows'); if(c&&P.rows.length){ c.innerHTML='';
+        P.rows.forEach(r=>{ c.insertAdjacentHTML('beforeend',npRowHTML()); const row=c.lastElementChild;
+          row.querySelector('.np-sku').value=r.code; row.querySelector('.np-skuname').value=r.name||''; row.querySelector('.np-skuprice').value=r.price||''; }); }
+      doNewProduct(true); },30); return; }
   if(act==='mfr-dash') return openMfrDashboard();
   if(act==='catalog-health') return openCatalogHealth();
   if(act==='health-refresh') return openCatalogHealth();
@@ -1250,6 +1268,48 @@ function openDealerPricePreview(){ const S=_priceState; if(!S){ return; }
       <div class="tabscroll"><table style="width:100%;font-size:12px"><thead><tr><th>SKU</th><th>Dealer price</th><th>MSRP</th><th>MAP</th><th>Est. margin</th></tr></thead><tbody>${rowsFor(byProd[pn])}</tbody></table></div></div>`).join('')}
   </div>`);
 }
+/* ===================== Duplicate gate (Phase 3) ===================== */
+function showDuplicateGate(res){
+  const P=_npPending||{}; const exact=(res.matches||[]).filter(m=>m.level==='exact'), poss=(res.matches||[]).filter(m=>m.level==='possible');
+  const headline = exact.length
+    ? `<div class="dupbanner exact"><b>Existing Product Found — Enrich Existing Record</b><div>“${esc(P.name)}” already exists in this catalog. Add your SKUs to that record instead of creating a second copy.</div></div>`
+    : `<div class="dupbanner poss"><b>Possible Duplicate — Review Required</b><div>“${esc(P.name)}” looks close to ${poss.length} existing record${poss.length===1?'':'s'}. Choose how to proceed.</div></div>`;
+  const row=m=>`<div class="duprow">
+      <div class="dupmain"><div class="dupn">${esc(m.name)} <span class="pill ${m.level==='exact'?'no':'part'}">${m.level==='exact'?'exact match':'possible'}</span></div>
+        <div class="mut" style="font-size:11.5px">${esc(m.reasons.join(' · '))}</div>
+        <div class="mut" style="font-size:11px">${m.sku_count} SKU${m.sku_count===1?'':'s'}${m.category?' · '+esc(m.category):''} · ${esc(m.status||'in review')}</div></div>
+      <div class="dupacts">
+        <button class="btn dark" style="padding:5px 10px;font-size:11.5px" data-act="dup-enrich" data-pk="${escA(m.page_key)}">Enrich this record</button>
+        <button class="btn ghost" style="padding:5px 10px;font-size:11.5px" onclick="healthOpen('${escA(m.page_key)}')">Open</button>
+      </div></div>`;
+  modalHTML('⚠ Duplicate check · '+esc(MFR), `<div class="tut">
+    ${headline}
+    <div style="margin-top:10px">${(exact.concat(poss)).map(row).join('')}</div>
+    <div class="hint" style="margin-top:12px"><b>Enrich this record</b> adds your new SKUs to the existing product (nothing is duplicated). <b>Create separate</b> keeps them apart — use it only when this really is a different product.</div>
+    <div class="savebar" style="flex-wrap:wrap">
+      <button class="btn" data-act="dup-cancel">Cancel</button>
+      <button class="btn ghost" data-act="dup-separate" style="margin-left:auto">Create separate product anyway</button>
+    </div></div>`);
+}
+async function dupEnrichExisting(pk){
+  const P=_npPending; if(!P){ toast('Nothing pending',true); return; }
+  const rows=P.rows||[]; if(!rows.length){ toast('No SKUs to add',true); return; }
+  if(!window.confirm('Add '+rows.length+' SKU(s) to “'+((pages[pk]&&pages[pk].name)||pk)+'”?')) return;
+  let added=0, failed=0;
+  for(const it of rows){
+    const r=await apiWrite({action:'set_sku',page_key:pk,sku:it.code,patch:{name:it.name||'',status:'active'}});
+    if(r.ok && (!r.json||r.json.ok!==false)) added++; else failed++;
+    const price=it.price===''?null:Number(String(it.price).replace(/[^0-9.\-]/g,''));
+    const prod={code:it.code, name:it.name||(pages[pk]&&pages[pk].name)||it.code, category:(pages[pk]&&pages[pk].category)||null, active:true};
+    if(price!=null && isFinite(price)) prod.base_price=price;
+    try{ await catalogPost({action:'save_product',manufacturer:MFR,product:prod}); }catch(e){}
+  }
+  _npPending=null; _catalogCache=null;
+  toast(added?('Added '+added+' SKU(s) to the existing product'+(failed?' · '+failed+' failed':'')):'Could not add SKUs',!added);
+  const ov=document.getElementById('overlay'); if(ov) ov.classList.remove('show');
+  await boot(); healthOpen(pk);
+}
+
 /* ===================== Manufacturer selector + progress dashboard =====================
    Switch lines without leaving the tool, and see where every manufacturer stands.
    Roster comes from product-content?list=manufacturers (full roster ∪ enrichment counts),
@@ -1336,6 +1396,15 @@ async function openCatalogHealth(){
     skus.forEach(s=>{ const c=String(s.sku); if(skuOwner[c]&&skuOwner[c]!==k){ (skuCollide[c]=skuCollide[c]||new Set()).add(skuOwner[c]); skuCollide[c].add(k); } else skuOwner[c]=k; }); });
   const dupeGroups=Object.keys(byName).filter(nm=>nm&&byName[nm].length>1).map(nm=>byName[nm]);
   const dupeKeys=new Set(); dupeGroups.forEach(a=>a.forEach(k=>dupeKeys.add(k)));
+  // Catalog-group split: 2+ content products claiming SKUs from the SAME catalog group. This is the
+  // duplicate mechanism that put one product under two headers in the dealer shop.
+  const grpOwners={};
+  if(cat){ const codeGroup={}; (cat.products||[]).forEach(x=>{ if(x.group) codeGroup[String(x.code)]=String(x.group); });
+    keys.forEach(k=>{ skusOf(k).forEach(sx=>{ const g=codeGroup[String(sx.sku)]; if(g) (grpOwners[g]=grpOwners[g]||new Set()).add(k); }); }); }
+  const groupSplits=Object.keys(grpOwners).filter(g=>grpOwners[g].size>1).map(g=>({group:g,keys:[...grpOwners[g]]}));
+  groupSplits.forEach(gs=>gs.keys.forEach(k=>dupeKeys.add(k)));
+  const skuCollisions=Object.keys(skuCollide).map(c=>({code:c,keys:[...skuCollide[c]]}));
+  skuCollisions.forEach(sc=>sc.keys.forEach(k=>dupeKeys.add(k)));
   const isLive=p=>PUBLIC_SET.has(p.status);
   const live=[],review=[],noImg=[],noCat=[],noSub=[],wontRender=[],unpriced=[];
   keys.forEach(k=>{ const p=pages[k];
@@ -1360,6 +1429,8 @@ async function openCatalogHealth(){
       ${chip(keys.length,'products')}${chip(skuTotal,'SKUs')}${chip(live.length,'live')}${chip(review.length,'in review')}
       ${chip(blocked.length,'blocked', blocked.length?'bad':'')}
       ${chip(dupeGroups.length,'possible duplicates', dupeGroups.length?'bad':'')}
+      ${chip(groupSplits.length,'split across products', groupSplits.length?'bad':'')}
+      ${chip(skuCollisions.length,'SKU on 2+ products', skuCollisions.length?'bad':'')}
       ${chip(wontRender.length,'won’t render', wontRender.length?'bad':'')}
       ${chip(noImg.length,'missing images', noImg.length?'bad':'')}
       ${chip(noCat.length,'missing categories', noCat.length?'bad':'')}
@@ -1377,9 +1448,19 @@ async function openCatalogHealth(){
       <div class="tabscroll"><table style="width:100%;font-size:12.5px"><thead><tr><th>Product</th><th>Content key (page)</th><th>&nbsp;</th></tr></thead><tbody>
       ${wontRender.map(k=>`<tr><td>${esc(pages[k].name)}</td><td class="mut" style="font-size:11px"><code>${esc(k)}</code></td><td><button class="btn ghost" style="padding:2px 9px;font-size:11px" onclick="healthOpen('${escA(k)}')">Open</button></td></tr>`).join('')}
       </tbody></table></div></div>`:''}
+    ${groupSplits.length?`<div class="pa-sec"><h3>One catalog product split across records (${groupSplits.length})</h3>
+      <p class="mut">These records claim SKUs from the <b>same</b> catalog product — the exact cause of a product appearing twice (often under two categories) in the dealer shop. Merge them into one record.</p>
+      ${groupSplits.map(gs=>`<div class="rule" style="border-color:#f0c7c7;margin-bottom:6px"><b>${esc((gs.group.split('::')[1]||gs.group))}</b> — split across ${gs.keys.length}: ${gs.keys.map(k=>`<a href="javascript:void 0" onclick="healthOpen('${escA(k)}')">${esc((pages[k]&&pages[k].name)||k)}</a>`).join(' · ')}
+        <button class="btn dark" style="padding:3px 9px;font-size:11px;margin-left:6px" onclick="healthMerge(${escA(JSON.stringify(gs.keys))})">Merge into one</button></div>`).join('')}</div>`:''}
+    ${skuCollisions.length?`<div class="pa-sec"><h3>Same SKU on more than one product (${skuCollisions.length})</h3>
+      <p class="mut">A SKU can only belong to one product. Remove it from the wrong record, or merge the records.</p>
+      <div class="tabscroll"><table style="width:100%;font-size:12.5px"><thead><tr><th>SKU</th><th>Claimed by</th><th>&nbsp;</th></tr></thead><tbody>
+      ${skuCollisions.map(sc=>`<tr><td><b>${esc(sc.code)}</b></td><td>${sc.keys.map(k=>`<a href="javascript:void 0" onclick="healthOpen('${escA(k)}')">${esc((pages[k]&&pages[k].name)||k)}</a>`).join(' · ')}</td><td><button class="btn dark" style="padding:2px 9px;font-size:11px" onclick="healthMerge(${escA(JSON.stringify(sc.keys))})">Merge</button></td></tr>`).join('')}
+      </tbody></table></div></div>`:''}
     ${dupeGroups.length?`<div class="pa-sec"><h3>Possible duplicates (${dupeGroups.length})</h3>
       <p class="mut">Products with near-identical names — likely the same product entered twice. Merge them in Review Structure, or keep separate if genuinely different.</p>
-      ${dupeGroups.map(g=>`<div class="rule" style="border-color:#f0c7c7;margin-bottom:6px"><b>${esc(pages[g[0]].name)}</b> — ${g.length} records: ${g.map(k=>`<a href="javascript:void 0" onclick="healthOpen('${escA(k)}')">${esc(k)}</a>`).join(', ')}</div>`).join('')}</div>`:''}
+      ${dupeGroups.map(g=>`<div class="rule" style="border-color:#f0c7c7;margin-bottom:6px"><b>${esc(pages[g[0]].name)}</b> — ${g.length} records: ${g.map(k=>`<a href="javascript:void 0" onclick="healthOpen('${escA(k)}')">${esc(k)}</a>`).join(', ')}
+        <button class="btn dark" style="padding:3px 9px;font-size:11px;margin-left:6px" onclick="healthMerge(${escA(JSON.stringify(g))})">Merge into one</button></div>`).join('')}</div>`:''}
     ${sec('Missing image', noImg, null, 'No primary image or gallery — add one in Enrich Content.')}
     ${sec('Missing category', noCat, null, 'No HCPS category — set it in the product record or Align all.')}
     ${S?sec('Unpriced SKUs', unpriced, (k)=>skusOf(k).filter(s=>{const r=S.recOf(String(s.sku));return !(r&&r.base_price>0);}).map(s=>esc(s.sku)).join(', '), 'One or more SKUs have no dealer price — fix in Price Check.'):''}
@@ -1394,6 +1475,20 @@ async function openCatalogHealth(){
 function healthOpen(k){ const m=document.getElementById('overlay'); if(m)m.classList.remove('show');
   if(typeof openCards!=='undefined'){ openCards.add(k); } render();
   const el=document.getElementById('card-'+cssId(k)); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); }
+/* Merge duplicate records into one from Catalog Health (uses merge_products; undoable in History).
+   Keeps the record with the most SKUs as the survivor so the least work is lost. */
+async function healthMerge(keys){
+  keys=(Array.isArray(keys)?keys:[]).filter(k=>pages[k]); if(keys.length<2){ toast('Need two records to merge',true); return; }
+  const survivor=keys.slice().sort((a,b)=>(skusOf(b).length-skusOf(a).length)||String(a).localeCompare(String(b)))[0];
+  const froms=keys.filter(k=>k!==survivor);
+  const nm=k=>(pages[k]&&pages[k].name)||k;
+  if(!window.confirm('Merge into “'+nm(survivor)+'”?\n\nAbsorbing: '+froms.map(nm).join(', ')+'\n\nAll SKUs and content move onto the surviving record. Undoable from History.')) return;
+  const r=await apiWrite({action:'merge_products',into_page_key:survivor,from_page_keys:froms});
+  if(r.ok && (!r.json||r.json.ok!==false)){
+    toast('Merged '+froms.length+' record(s) into “'+nm(survivor)+'”');
+    await boot(); openCatalogHealth();
+  } else toast((r.json&&(r.json.message||r.json.error))||'Merge failed',true);
+}
 /* Publish guard: warn on blockers before a product goes live. */
 async function doPublishGuarded(k){ const p=pages[k]; const quick=[];
   if(!p.image && !(p.images_gallery&&p.images_gallery.length)) quick.push('no image');
@@ -1807,6 +1902,7 @@ function openNewProduct(){ modalHTML('New product',`
       <datalist id="np-catlist">${allCategories().map(o=>`<option value="${escA(o)}">`).join('')}</datalist></div>
     <div class="fld"><label>Family</label><input class="ed" id="np-fam"></div>
   </div>
+  <div class="fld" style="margin-top:10px"><label>Manufacturer product URL <span class="mut" style="font-size:10px;text-transform:none">optional — used to catch duplicates</span></label><input class="ed" id="np-url" placeholder="https://…manufacturer product page"></div>
   <div class="fld" style="margin-top:12px"><label>SKUs — each becomes an orderable product on Partner 360</label>
     <div style="display:grid;grid-template-columns:1fr 1.5fr .85fr 30px;gap:6px;margin-bottom:4px;font-size:10.5px;color:#6b7280;font-weight:800;text-transform:uppercase;letter-spacing:.04em">
       <span>SKU #</span><span>Name / description</span><span>Price $</span><span></span></div>
@@ -1817,7 +1913,12 @@ function openNewProduct(){ modalHTML('New product',`
   <div class="savebar"><button class="btn dark" data-act="new-save">Create product</button></div>`);
   document.getElementById('modal').querySelector('[data-act="new-save"]').addEventListener('click',doNewProduct);
 }
-async function doNewProduct(){
+/* ---- Phase 3: duplicate prevention BEFORE a product is created ----
+   Checks manufacturer + SKU + name + product URL against every existing record. An exact hit
+   offers to enrich the existing record instead of creating a second copy; a possible hit asks
+   for a decision. Nothing is created until the check passes or staff overrides. */
+let _npPending=null;
+async function doNewProduct(force){
   const name=(document.getElementById('np-name').value||'').trim(); if(!name){toast('Name required',true);return;}
   const cat=document.getElementById('np-cat').value.trim(), fam=document.getElementById('np-fam').value.trim();
   const rows=[...document.querySelectorAll('#np-skurows .np-skurow')].map(r=>({
@@ -1826,6 +1927,15 @@ async function doNewProduct(){
     price:(r.querySelector('.np-skuprice').value||'').trim()
   })).filter(x=>x.code);
   const seen=new Set(); for(const x of rows){ if(seen.has(x.code)){ toast('Duplicate SKU '+x.code,true); return; } seen.add(x.code); }
+  const url=((document.getElementById('np-url')||{}).value||'').trim();
+  if(force!==true){
+    const chk=await apiWrite({action:'find_duplicates',name,codes:rows.map(r=>r.code),source_url:url});
+    const cj=(chk&&chk.json)||{};
+    if(chk.ok && cj.ok && Array.isArray(cj.matches) && cj.matches.length){
+      _npPending={name,cat:document.getElementById('np-cat').value.trim(),fam:document.getElementById('np-fam').value.trim(),url,rows};
+      showDuplicateGate(cj); return;
+    }
+  }
   const npk=slug(name);
   const btn=document.querySelector('[data-act="new-save"]'); if(btn){ btn.disabled=true; btn.textContent='Creating…'; }
   // 1) content record (Review Structure)
