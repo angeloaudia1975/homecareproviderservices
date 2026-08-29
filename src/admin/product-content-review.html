@@ -1331,7 +1331,7 @@ function chunkPages(pages,max){
    Select manufacturer → add sources (product URLs / catalog rows / catalog PDF) → scan →
    match against the existing catalog → create only what's genuinely new. Every candidate runs
    through the same duplicate check as manual creation, so a new line can't seed duplicates. */
-let _seCands=[], _seDocs=[], _sePdfPages=[], _sePdfName='';
+let _seCands=[], _seDocs=[], _sePdfPages=[], _sePdfName='', _seUseAI=true;
 function seStepsHtml(n){ const st=['Sources','Scan','Match','Create'];
   return `<div class="sesteps">${st.map((x,i)=>`<span class="sestep ${i+1===n?'on':(i+1<n?'done':'')}">${i+1} · ${x}</span>`).join('')}</div>`; }
 function openStartEnrichment(){
@@ -1349,6 +1349,9 @@ function openStartEnrichment(){
         <button class="btn" data-act="se-pickpdf">Upload catalog PDF…</button>
         <span class="mut" id="se-docnames" style="font-size:12px">No file attached</span></div>
       <input type="file" id="se-pdf" accept=".pdf,.xlsx,.xls,.csv" style="display:none" onchange="seUploadDoc(this)"></div>
+    <label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:13px;line-height:1.45">
+      <input type="checkbox" id="se-ai" checked style="margin-top:3px">
+      <span><b>✨ Use AI to fill the gaps</b> — many manufacturer pages are written as prose with no bullet list or spec table. With this on, each imported product gets its <b>Key features</b>, <b>Specifications</b> and <b>Category</b> drafted from that page's own copy, so you don't fill them in by hand. Everything stays editable and nothing publishes automatically.</span></label>
     <div class="savebar"><button class="btn dark" data-act="se-scan">Scan products →</button></div>
     <div class="hint">Website scanning reads each page's published product data. Pages that need JavaScript may come back partial — you can fix anything in Review Structure afterwards.</div>
   </div>`);
@@ -1384,6 +1387,7 @@ async function seScan(){
   const urls=((document.getElementById('se-urls')||{}).value||'').split(/\r?\n/).map(x=>x.trim()).filter(x=>/^https?:\/\//i.test(x));
   const rowsTxt=((document.getElementById('se-rows')||{}).value||'').trim();
   const parsed=rowsTxt?parseCatalogRows(rowsTxt):[];
+  _seUseAI=!!((document.getElementById('se-ai')||{}).checked);
   const pdfChunks=_sePdfPages.length?chunkPages(_sePdfPages):[];
   if(!urls.length && !parsed.length && !pdfChunks.length){ toast('Add a product URL, catalog rows, or a readable catalog PDF',true); return; }
   const total=urls.length+parsed.length+pdfChunks.length;
@@ -1504,8 +1508,9 @@ async function seCreate(){
   if(!picks.length){ toast('Nothing selected',true); return; }
   if(!window.confirm('Create '+picks.length+' new product record(s) for '+MFR+'?')) return;
   const btn=document.querySelector('[data-act="se-create"]'); if(btn){btn.disabled=true;btn.textContent='Creating…';}
-  let made=0, failed=0;
+  let made=0, failed=0, done=0;
   for(const c of picks){
+    if(btn) btn.textContent=(_seUseAI?'Creating & enriching ':'Creating ')+(done+1)+'/'+picks.length+'…'; done++;
     const pk=slug(c.name)||('product-'+Date.now());
     const d=c.data||{};
     const vmap={}; (d.variants||[]).forEach(v=>{ const sk=String(v.sku||'').trim(); if(sk) vmap[sk]=String(v.title||'').trim(); });
@@ -1527,6 +1532,28 @@ async function seCreate(){
     if(Object.keys(patch).length){ try{ await apiWrite({action:'set_content',page_key:pk,patch}); }catch(e){} }
     const meta={}; if(c.url) meta.source_url=c.url; if(d.tagline) meta.tagline=d.tagline;
     if(Object.keys(meta).length){ try{ await apiWrite({action:'set_meta',page_key:pk,patch:meta}); }catch(e){} }
+    // Fill what the page didn't publish as structured data. Manufacturer pages are often prose:
+    // the facts are there, just not as bullets or a table. Draft them from that page's own copy.
+    if(_seUseAI && (patch.description||c.name)){
+      const ctx={ name:c.name, manufacturer:MFR, category:c.category||'', description:patch.description||'',
+        features:patch.features||[], skus:(c.codes||[]).map(x=>({sku:x})), existing_categories:allCategories() };
+      const need=[];
+      if(!(patch.features&&patch.features.length)) need.push('features');
+      if(!(patch.specs&&patch.specs.length)) need.push('specs');
+      if(!c.category) need.push('category');
+      for(const f of need){
+        try{
+          const ar=await apiWrite({action:'generate_content',page_key:pk,field:f,context:ctx});
+          const ao=ar.json||{}; if(!ar.ok||ao.ok===false) continue;
+          if(f==='features'&&Array.isArray(ao.list)&&ao.list.length){ await apiWrite({action:'set_content',page_key:pk,patch:{features:ao.list}}); ctx.features=ao.list; }
+          else if(f==='specs'&&Array.isArray(ao.specs)&&ao.specs.length){ await apiWrite({action:'set_content',page_key:pk,patch:{specs:ao.specs}}); }
+          else if(f==='category'&&ao.text){ await apiWrite({action:'set_meta',page_key:pk,patch:{category:ao.text}}); ctx.category=ao.text;
+            try{ const sr=await apiWrite({action:'generate_content',page_key:pk,field:'subcategory',context:ctx});
+              const so=sr.json||{}; if(sr.ok&&so.ok!==false&&so.text) await apiWrite({action:'set_meta',page_key:pk,patch:{subcategory:so.text}}); }catch(e){}
+          }
+        }catch(e){}
+      }
+    }
     // orderable catalog items for any codes
     if(c.hcpcs){ try{ await apiWrite({action:'set_content',page_key:pk,patch:{billing_codes:[c.hcpcs]}}); }catch(e){} }
     for(const code of (c.codes||[])){
