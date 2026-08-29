@@ -1665,12 +1665,20 @@ async function openCatalogHealth(){
   skuCollisions.forEach(sc=>sc.keys.forEach(k=>dupeKeys.add(k)));
   const isLive=p=>PUBLIC_SET.has(p.status);
   const live=[],review=[],noImg=[],noCat=[],noSub=[],wontRender=[],unpriced=[];
+  // Storefront richness — what a dealer will NOT see on the product page if it's blank here.
+  const noDesc=[],noSizing=[],noWarranty=[],noSrcUrl=[],noSpecs=[];
+  const hasSizing=p=>{ const st=p.sizing_table; return !!(st && (Array.isArray(st)?st.length:(Array.isArray(st.rows)&&st.rows.length))); };
   keys.forEach(k=>{ const p=pages[k];
     if(isLive(p)) live.push(k); else review.push(k);
     if(!p.image && !(p.images_gallery&&p.images_gallery.length)) noImg.push(k);
     if(!p.category) noCat.push(k); else if(!p.subcategory) noSub.push(k);
     if(isLive(p) && cat && !willRender(k,idx)) wontRender.push(k);
-    if(S && skusOf(k).some(s=>{ const r=S.recOf(String(s.sku)); return !(r&&r.base_price>0); })) unpriced.push(k); });
+    if(S && skusOf(k).some(s=>{ const r=S.recOf(String(s.sku)); return !(r&&r.base_price>0); })) unpriced.push(k);
+    if(!p.description || String(p.description).trim().length<40) noDesc.push(k);
+    if(!hasSizing(p)) noSizing.push(k);
+    if(!p.warranty) noWarranty.push(k);
+    if(!p.source_url) noSrcUrl.push(k);
+    if(!((p.specs||[]).length)) noSpecs.push(k); });
   const orphans=S?S.orphans:[];
   const ready=review.filter(k=>healthBlockers(k,S,cat,idx,dupeKeys).length===0);
   const blocked=review.filter(k=>healthBlockers(k,S,cat,idx,dupeKeys).length>0);
@@ -1726,6 +1734,14 @@ async function openCatalogHealth(){
       <p class="mut">Priced in the catalog but on no product here — add them to a product, or leave if retired.</p>
       <div class="tabscroll"><table style="width:100%;font-size:12px"><thead><tr><th>Code</th><th>Name</th><th>Dealer price</th></tr></thead><tbody>${orphans.slice(0,200).map(r=>`<tr><td><b>${esc(r.code)}</b></td><td>${esc(r.name||'—')}</td><td>${pmoney(r.base_price)}</td></tr>`).join('')}</tbody></table></div></div>`:''}
     ${sec('No subcategory (recommended)', noSub, null, 'Optional but recommended for shopping by need.')}
+    <div class="pa-sec"><h3>Storefront richness — what dealers won't see</h3>
+      <p class="mut">Not blockers, but each blank field is a section missing from the dealer's product page. Use this to see at a glance how complete a manufacturer really is.</p>
+      <div class="tabscroll"><table style="width:100%;font-size:12.5px"><thead><tr><th>Product page section</th><th>Products missing it</th><th>Coverage</th></tr></thead><tbody>
+      ${[['Description',noDesc],['Sizing chart',noSizing],['Specifications',noSpecs],['Warranty',noWarranty],['Manufacturer product link',noSrcUrl],['Images',noImg]]
+        .map(([label,list])=>{ const have=keys.length-list.length; const pct=keys.length?Math.round(have/keys.length*100):0;
+          return `<tr><td>${esc(label)}</td><td>${list.length?`<b>${list.length}</b> <span class="mut" style="font-size:11px">${list.slice(0,3).map(k=>esc((pages[k]&&pages[k].name)||k)).join(', ')}${list.length>3?` +${list.length-3} more`:''}</span>`:'<span class="pill ok">complete</span>'}</td>
+            <td style="min-width:110px"><div class="mbar" style="margin:0"><div style="width:${pct}%"></div></div><span class="mut" style="font-size:10.5px">${have}/${keys.length} · ${pct}%</span></td></tr>`; }).join('')}
+      </tbody></table></div></div>
     ${(!blocked.length&&!wontRender.length&&!dupeGroups.length&&!noImg.length&&!noCat.length&&(!S||!unpriced.length))?'<div class="pa-sec"><p><b>✅ This manufacturer is clean — everything in review is ready to publish.</b></p></div>':''}
   `;
   modalHTML('🩺 Catalog Health · '+esc(MFR), body);
