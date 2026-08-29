@@ -33,6 +33,13 @@
  a.fopen:hover{filter:brightness(1.06);transform:translateY(-1px);}
  .fwhat{margin:12px 0 0;font-size:13.5px;line-height:1.6;color:#37424e;}
  .fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px 22px;margin-top:14px;}
+ .gsec{margin:26px 0 6px;}
+ .gsec:first-of-type{margin-top:10px;}
+ .gsec h2{font-family:'Archivo',system-ui,sans-serif;font-size:17px;font-weight:800;margin:0 0 3px;display:flex;align-items:center;gap:9px;}
+ .gsec h2::before{content:"";width:5px;height:17px;border-radius:3px;background:var(--accent,#F5821F);}
+ .gsec .gb{font-size:12.5px;color:var(--muted,#6b7280);margin:0 0 12px 14px;}
+ .qgrp{font-size:9.5px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:var(--muted,#6b7280);align-self:center;margin:0 2px 0 8px;padding-left:8px;border-left:1px solid var(--line,#e3e6e1);}
+ .qgrp:first-child{margin-left:0;padding-left:0;border-left:0;}
  .fsec h4{margin:0 0 5px;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;font-weight:800;color:var(--navy2);}
  .fsec ul{margin:0;padding-left:17px;}
  .fsec li{font-size:12.5px;line-height:1.45;color:#3a4654;margin:3px 0;}
@@ -95,7 +102,7 @@
     return '<article class="fcard" id="'+esc(slug(t.label))+'">'
       + '<div class="fhead"><span class="ficon">'+esc(t.icon||"•")+'</span>'
       +   '<div class="fht"><h2>'+esc(t.label)+'</h2>'+(tagline?'<div class="ftag">'+esc(tagline)+'</div>':'')+'</div>'
-      +   '<a class="fopen" href="'+esc(t.href)+'">Open '+esc(t.label.split(" ")[0])+' →</a></div>'
+      +   '<a class="fopen" href="'+esc(t.href)+'"'+(t.ext?' target="_blank" rel="noopener"':'')+'>Open '+esc(t.label.split(" ")[0])+(t.ext?' ↗':' →')+'</a></div>'
       + (g.what?'<p class="fwhat">'+esc(g.what)+'</p>':'')
       + (grid?'<div class="fgrid">'+grid+'</div>':'')
       + (notes?'<div class="fnotes">'+notes+'</div>':'')
@@ -136,13 +143,32 @@
     if(!tools.length){ document.getElementById("empty").innerHTML='<div class="msg">No tools in this category yet.</div>'; return; }
 
     // Quick-nav: one-click access to every tool (jumps to its detailed card below).
-    qbar.innerHTML='<div class="ql">'+esc(tools.length)+' tools in '+esc(hub.label)+' — jump to any</div>'
-      + '<div class="qchips">'+tools.map(function(t){
-          return '<a class="qchip" href="#'+esc(slug(t.label))+'"><span class="qi">'+esc(t.icon||"•")+'</span>'+esc(t.label)+'</a>';
-        }).join("")+'</div>';
+    var chip=function(t){
+      return t.ext
+        ? '<a class="qchip" href="'+esc(t.href)+'" target="_blank" rel="noopener"><span class="qi">'+esc(t.icon||"•")+'</span>'+esc(t.label)+' ↗</a>'
+        : '<a class="qchip" href="#'+esc(slug(t.label))+'"><span class="qi">'+esc(t.icon||"•")+'</span>'+esc(t.label)+'</a>'; };
+    var groups=(hub.groups||[]).map(function(g){
+      return { g:g, ts:tools.filter(function(t){ return t.group===g.id; }) };
+    }).filter(function(x){ return x.ts.length; });
+    var grouped=groups.length>0;
+    var leftover=tools.filter(function(t){ return !grouped || !t.group || !groups.some(function(x){ return x.g.id===t.group; }); });
 
-    // Detailed feature-guide cards.
-    cards.innerHTML=tools.map(card).join("");
+    qbar.innerHTML='<div class="ql">'+esc(tools.length)+' tools in '+esc(hub.label)+(grouped?' — one catalog, '+esc(groups.length)+' views':' — jump to any')+'</div>'
+      + '<div class="qchips">'
+      + (grouped
+          ? groups.map(function(x){ return '<span class="qgrp">'+esc(x.g.label)+'</span>'+x.ts.map(chip).join(""); }).join("")
+            + (leftover.length?'<span class="qgrp">More</span>'+leftover.map(chip).join(""):"")
+          : tools.map(chip).join(""))
+      + '</div>';
+
+    // Detailed feature-guide cards, under their view heading.
+    cards.innerHTML = grouped
+      ? groups.map(function(x){
+          return '<section class="gsec"><h2>'+esc(x.g.label)+'</h2>'
+            + (x.g.blurb?'<p class="gb">'+esc(x.g.blurb)+'</p>':'')
+            + x.ts.map(card).join("") + '</section>';
+        }).join("") + (leftover.length?'<section class="gsec"><h2>More</h2>'+leftover.map(card).join("")+'</section>':"")
+      : tools.map(card).join("");
   }
 
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", build); else build();

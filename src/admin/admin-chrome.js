@@ -17,16 +17,27 @@
     { id:"ordering", label:"Online Ordering", icon:"🛒", accent:"#e07b00",
       dashTitle:"HCPS Online Ordering",
       purpose:"Run the dealer ordering platform — products, pricing, content & portal access.",
-      href:"/admin/hub.html?cat=ordering", tools:[
-        { href:"/admin/catalog.html",            label:"Product Catalog",            icon:"📦", desc:"Products, SKUs, categories & descriptions per line" },
-        { href:"/admin/images.html",             label:"Product Images",             icon:"🖼️", desc:"Upload & manage product photography" },
-        { href:"/admin/product-content-review.html", label:"Product Content Enrichment & Review", icon:"🔬", status:"new", desc:"Catalog workspace: review SKU structure, split bundled products, set status/category, paste sizing, enrich content & publish to Partner 360" },
-        { href:"/admin/featured.html",           label:"Featured Products",          icon:"⭐", desc:"Curate the promoted items dealers see first" },
-        { href:"/admin/home-editor.html",        label:"Portal Home Content",        icon:"🏠", desc:"Hero banner, promos & the “what's new” tiles" },
-        { href:"/admin/dealers.html",            label:"Contract Pricing",           icon:"💲", desc:"Per-dealer negotiated pricing by product" },
-        { href:"/admin/dealers.html#logins",     label:"Dealer Portal Accounts",     icon:"🔑", desc:"Registrations, approvals & ordering access" },
-        { href:"",                               label:"Manufacturer Lines & Freight", icon:"🚚", status:"planned", desc:"Line setup, freight rules & territory eligibility" },
-        { href:"/admin/order-fulfillment.html",  label:"Order Review & Fulfillment", icon:"🧾", desc:"See, confirm & track submitted dealer orders" }
+      href:"/admin/hub.html?cat=ordering",
+      // One commerce catalog, four views of it. `groups` orders the sections in the sub-nav and on
+      // the hub page; every tool below declares which view it belongs to. These are VIEWS of the same
+      // product & SKU records — not separate databases.
+      groups:[
+        { id:"catalog",  label:"Catalog Management",     blurb:"The master product & SKU records — what exists, how it's classified, what it costs." },
+        { id:"enrich",   label:"Product Enrichment",     blurb:"Import, structure, enrich and publish a manufacturer's catalog into Partner 360." },
+        { id:"commerce", label:"Commerce Management",    blurb:"Dealer-specific pricing, orders and the rules each manufacturer trades under." },
+        { id:"partner",  label:"Partner 360 Management", blurb:"What dealers actually see and can reach in the ordering portal." }
+      ],
+      tools:[
+        { href:"/admin/catalog.html",            label:"Product Catalog",            icon:"📦", group:"catalog",  desc:"The master product & SKU records — codes, names, categories, list & MSRP pricing and active status, per manufacturer line" },
+        { href:"/admin/product-content-review.html", label:"Product Content Enrichment & Review", icon:"🔬", status:"new", group:"enrich", desc:"The enrichment workspace: start a new line, import catalog & website sources, review SKU structure, fix categories & families, enrich content, images & documents, run Price Check and Catalog Health, then publish to Partner 360" },
+        { href:"/admin/images.html",             label:"Product Images",             icon:"🖼️", group:"enrich",   desc:"Upload & manage product photography used across the catalog and dealer portal" },
+        { href:"/admin/dealers.html",            label:"Contract Pricing",           icon:"💲", group:"commerce", desc:"Per-dealer negotiated pricing that overrides the standard dealer price" },
+        { href:"/admin/order-fulfillment.html",  label:"Order Review & Fulfillment", icon:"🧾", group:"commerce", desc:"See, confirm & track submitted dealer orders" },
+        { href:"",                               label:"Manufacturer Lines & Freight", icon:"🚚", status:"planned", group:"commerce", desc:"Line setup, freight rules & territory eligibility" },
+        { href:"/admin/featured.html",           label:"Featured Products",          icon:"⭐", group:"partner",  desc:"Curate the promoted items dealers see first" },
+        { href:"/admin/home-editor.html",        label:"Portal Home Content",        icon:"🏠", group:"partner",  desc:"Hero banner, promos & the “what's new” tiles" },
+        { href:"/admin/dealers.html#logins",     label:"Dealer Portal Accounts",     icon:"🔑", group:"partner",  desc:"Registrations, approvals & which manufacturer lines each dealer can order" },
+        { href:"https://hcpsonlineordering.netlify.app/", label:"Published Catalog", icon:"👁", group:"partner", ext:true, desc:"Open the live Partner 360 storefront exactly as a dealer sees it — the published result of everything above" }
     ]},
     { id:"website", label:"Website", icon:"🌐", accent:"#2f6bd8", dashTitle:"HCPS Website",
       purpose:"Manage the public homecareproviderservices.us site & its content.",
@@ -184,9 +195,24 @@
       tier1 = '<a href="/admin/"'+(path==="/admin/"?' class="on"':'')+'>Dashboard</a>'
         + HUBS.map(function(h){ var on = hub && hub.id===h.id; return '<a href="'+h.href+'"'+(on?' class="on"':'')+'>'+esc(h.label)+'</a>'; }).join("");
       if(hub){
-        tier2 = '<nav class="ac-sub ac-wrap"><span class="ac-sub-lbl">'+esc(hub.label)+'</span>'
-          + hub.tools.filter(liveTool).map(function(t){ var on = samePage(t.href,path); return '<a href="'+t.href+'"'+(on?' class="on"':'')+'>'+esc(t.label)+'</a>'; }).join("")
-          + '</nav>';
+        var live = hub.tools.filter(liveTool);
+        var linkOf = function(t){ var on = samePage(t.href,path);
+          var cls = (on?'on':'') + (t.ext?(on?' ac-ext':'ac-ext'):'');
+          return '<a href="'+t.href+'"'+(cls?' class="'+cls+'"':'')+(t.ext?' target="_blank" rel="noopener"':'')+'>'+esc(t.label)+'</a>'; };
+        var inner;
+        if(hub.groups && hub.groups.length){
+          // Grouped sub-nav: the hub's tools are VIEWS of one catalog, shown under their view name.
+          inner = hub.groups.map(function(g){
+            var ts = live.filter(function(t){ return t.group===g.id; });
+            if(!ts.length) return '';
+            return '<span class="ac-sub-grp">'+esc(g.label)+'</span>' + ts.map(linkOf).join("");
+          }).join("");
+          var ungrouped = live.filter(function(t){ return !t.group || !hub.groups.some(function(g){ return g.id===t.group; }); });
+          if(ungrouped.length) inner += '<span class="ac-sub-grp">More</span>' + ungrouped.map(linkOf).join("");
+        } else {
+          inner = live.map(linkOf).join("");
+        }
+        tier2 = '<nav class="ac-sub ac-wrap"><span class="ac-sub-lbl">'+esc(hub.label)+'</span>' + inner + '</nav>';
       }
     } else {
       // Focused rep workspace — one clean row of the rep's tools, active one highlighted.
