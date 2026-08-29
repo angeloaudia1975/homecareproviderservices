@@ -752,7 +752,11 @@ exports.handler = async (event) => {
         const inModel = String(body.model || '').trim();
         const skipKey = body.page_key ? String(body.page_key) : null;
         const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
-        const normUrl = (u) => String(u || '').toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/[\/?#].*$/, '').replace(/\/+$/, '');
+        // Compare the FULL path, not just the host. (Stripping from the first slash collapsed every
+        // URL to its domain, so every product on one manufacturer site matched every other.)
+        const normUrl = (u) => String(u || '').toLowerCase().trim()
+          .replace(/^https?:\/\//, '').replace(/^www\./, '')
+          .split('#')[0].split('?')[0].replace(/\/+$/, '');
         const rows = await sbGet(`product_content?manufacturer=eq.${enc(m)}&select=page_key,name,skus,source_url,family,category,status,aliases&limit=5000`);
         const nName = norm(inName), nUrl = normUrl(inUrl), nModel = norm(inModel);
         const codeSet = new Set(inCodes.map(c => c.toLowerCase()));

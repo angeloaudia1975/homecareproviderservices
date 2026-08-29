@@ -204,6 +204,8 @@ textarea.ed{min-height:64px}
 .selbar select,.selbar input{border:none;border-radius:8px;padding:8px 10px;font-family:inherit;font-size:13px}
 .selbar .btn{background:#1c3a5c;color:#fff;border:1px solid #2b5680}
 .selbar .btn.grad{background:var(--grad);color:#141414;border:none}
+.selbar .btn.danger{background:#7c2020;border-color:#a33;color:#fff}
+.selbar .btn.danger:hover{background:#9b2626}
 /* modal + drawer */
 /* z-index 300 clears the sticky Connect 360 nav (z-index:100) so the dialog's header/close
    are never hidden behind it; the modal scrolls internally so it always fits the screen. */
@@ -270,6 +272,7 @@ textarea.ed{min-height:64px}
   <input id="bulkcat" placeholder="Set category…" style="max-width:170px">
   <button class="btn" data-act="bulk-apply">Apply</button>
   <button class="btn grad" data-act="bulk-publish">Publish selected</button>
+  <button class="btn danger" data-act="bulk-delete">🗑 Delete selected</button>
   <button class="btn" data-act="clear-sel">Clear</button>
 </div>
 
@@ -844,6 +847,7 @@ document.addEventListener('click',async function(e){
   if(act==='split-skus') return doSplit();
   if(act==='bulk-apply') return doBulk(false);
   if(act==='bulk-publish') return doBulk(true);
+  if(act==='bulk-delete') return doBulkDelete();
   if(act==='undo'){ return doUndo(t.getAttribute('data-id'),t); }
   if(act==='close-modal'){ document.getElementById('overlay').classList.remove('show'); return; }
 });
@@ -961,6 +965,42 @@ async function doAddSku(k){
   } else toast((r.json&&(r.json.message||r.json.error))||'Add failed',true);
 }
 /* ---- Delete a whole product record (duplicates / stubs). Undoable from History; blocked on published. ---- */
+/* Bulk delete — for clearing out a bad import run. Same guards as single delete: live products
+   are refused (change their status first), orderable catalog items are never touched, and every
+   removal is logged so it can be undone from History. Typed confirmation because it's bulk. */
+async function doBulkDelete(){
+  const keys=[...selProducts].filter(k=>pages[k]);
+  if(!keys.length){ toast('Nothing selected',true); return; }
+  const live=keys.filter(k=>PUBLIC_SET.has((pages[k]||{}).status));
+  const del=keys.filter(k=>!PUBLIC_SET.has((pages[k]||{}).status));
+  if(!del.length){
+    window.alert(live.length+' selected product(s) are live on Partner 360.\n\nSet them to Hidden or Discontinued first — bulk delete never removes a live product.');
+    return; }
+  const skuTotal=del.reduce((n,k)=>n+(skusOf(k)||[]).length,0);
+  const names=del.slice(0,8).map(k=>'• '+((pages[k]&&pages[k].name)||k)).join('\n');
+  const msg='Delete '+del.length+' product record(s)?\n\n'+names+(del.length>8?('\n• …and '+(del.length-8)+' more'):'')
+    +(live.length?('\n\n'+live.length+' live product(s) in your selection will be SKIPPED.'):'')
+    +(skuTotal?('\n\nThey group '+skuTotal+' SKU row(s). Those orderable catalog items are NOT deleted — they just stop being grouped here.'):'')
+    +'\n\nThis clears them from the review list and Partner 360. Undoable from History.\n\nType DELETE to confirm.';
+  const typed=window.prompt(msg,'');
+  if(String(typed||'').trim().toUpperCase()!=='DELETE'){ toast('Delete cancelled'); return; }
+  const bar=document.getElementById('bulkbar');
+  let ok=0, fail=0;
+  for(let i=0;i<del.length;i++){
+    const k=del[i];
+    const c=document.getElementById('bulkcount'); if(c) c.textContent='deleting '+(i+1)+'/'+del.length+'…';
+    try{
+      const r=await apiWrite({action:'delete_product',page_key:k});
+      if(r.ok && (!r.json||r.json.ok!==false)){
+        ok++; delete pages[k]; openCards.delete(k); selProducts.delete(k);
+        if(skuSel.pk===k) skuSel={pk:null,ids:new Set()};
+      } else fail++;
+    }catch(e){ fail++; }
+  }
+  _catalogCache=null;
+  toast('Deleted '+ok+' product(s)'+(fail?' · '+fail+' failed':'')+(live.length?' · '+live.length+' live skipped':''), !ok);
+  selProducts.clear(); render();
+}
 async function doDeleteProduct(k){
   const p=pages[k]||{}; const nm=p.name||k; const n=(skusOf(k)||[]).length;
   if((p.status||'')==='published'){ window.alert('“'+nm+'” is published live. Set its status away from Published (Hide or Discontinue) first, then delete.'); return; }
