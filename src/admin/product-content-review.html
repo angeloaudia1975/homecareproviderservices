@@ -75,6 +75,17 @@ body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--pape
 .duprow .dupmain{flex:1;min-width:210px}
 .duprow .dupn{font-weight:800;font-size:13.5px;margin-bottom:3px}
 .duprow .dupacts{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+/* Start new enrichment wizard */
+.sesteps{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.sestep{font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:5px 11px;border-radius:999px;background:#eef0f2;color:#6b7280}
+.sestep.on{background:var(--navy,#10263f);color:#fff}
+.sestep.done{background:#e7f3ec;color:#1a7f4b}
+.secand{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);border-radius:11px;padding:10px 12px;margin-bottom:7px;background:#fff;flex-wrap:wrap}
+.secand.dupe{border-color:#f0c7c7;background:#fffafa}
+.secand .sem{flex:1;min-width:200px}
+.secand .sen{font-weight:800;font-size:13.5px}
+.seprog{height:8px;background:#eef0f2;border-radius:5px;overflow:hidden;margin-top:8px}
+.seprog>div{height:100%;background:var(--orange,#ef6325);transition:width .2s}
 .stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 16px;box-shadow:var(--shadow)}
 .stat b{font-family:'Archivo',sans-serif;font-size:21px;display:block;line-height:1.1}
 .stat span{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray)}
@@ -238,6 +249,7 @@ textarea.ed{min-height:64px}
     <input class="search" id="search" placeholder="Search products, SKUs, categories…" oninput="onSearch(this.value)">
     <button class="btn ghost" data-act="run-structure">⚑ Structure review</button>
     <button class="btn ghost" data-act="new-product">＋ New product</button>
+    <button class="btn ghost" data-act="start-enrichment">🚀 Start new enrichment</button>
     <button class="btn ghost" data-act="price-check">💲 Price check</button>
     <button class="btn ghost" data-act="catalog-health">🩺 Catalog Health</button>
     <button class="btn ghost" data-act="catalog-structure">🌐 Catalog structure</button>
@@ -774,6 +786,11 @@ document.addEventListener('click',async function(e){
   if(act==='save-sizing') return doSaveSizing(k,t);
   if(act==='approve') return doStatus(k,'approved');
   if(act==='publish') return doPublishGuarded(k);
+  if(act==='start-enrichment') return openStartEnrichment();
+  if(act==='se-pickpdf'){ const el=document.getElementById('se-pdf'); if(el) el.click(); return; }
+  if(act==='se-scan') return seScan();
+  if(act==='se-back') return openStartEnrichment();
+  if(act==='se-create') return seCreate();
   if(act==='dup-enrich') return dupEnrichExisting(t.getAttribute('data-pk'));
   if(act==='dup-cancel'){ _npPending=null; const ov=document.getElementById('overlay'); if(ov) ov.classList.remove('show'); return; }
   if(act==='dup-separate'){ const P=_npPending; if(!P) return; openNewProduct();
@@ -1268,6 +1285,162 @@ function openDealerPricePreview(){ const S=_priceState; if(!S){ return; }
       <div class="tabscroll"><table style="width:100%;font-size:12px"><thead><tr><th>SKU</th><th>Dealer price</th><th>MSRP</th><th>MAP</th><th>Est. margin</th></tr></thead><tbody>${rowsFor(byProd[pn])}</tbody></table></div></div>`).join('')}
   </div>`);
 }
+/* ===================== Start New Enrichment (Phase 4) =====================
+   Select manufacturer → add sources (product URLs / catalog rows / catalog PDF) → scan →
+   match against the existing catalog → create only what's genuinely new. Every candidate runs
+   through the same duplicate check as manual creation, so a new line can't seed duplicates. */
+let _seCands=[], _seDocs=[];
+function seStepsHtml(n){ const st=['Sources','Scan','Match','Create'];
+  return `<div class="sesteps">${st.map((x,i)=>`<span class="sestep ${i+1===n?'on':(i+1<n?'done':'')}">${i+1} · ${x}</span>`).join('')}</div>`; }
+function openStartEnrichment(){
+  _seCands=[]; _seDocs=[];
+  const nm=(mfrCur()&&mfrCur().name)||MFR;
+  modalHTML('🚀 Start new enrichment · '+esc(nm), `<div class="tut">
+    ${seStepsHtml(1)}
+    <p class="mut">Bring a manufacturer's products into the tool. Everything you add is checked against the existing catalog first — matches enrich the existing record instead of creating a duplicate.</p>
+    <div class="fld" style="margin-top:12px"><label>Manufacturer product URLs <span class="mut" style="font-size:10px;text-transform:none">one per line — each page is scanned for name, description, features, images &amp; sizing</span></label>
+      <textarea class="ed" id="se-urls" rows="4" placeholder="https://…/products/gen-2-walking-boot&#10;https://…/products/nu-form-ankle-brace"></textarea></div>
+    <div class="fld" style="margin-top:10px"><label>…or paste catalog rows <span class="mut" style="font-size:10px;text-transform:none">first row = headers; needs a code column, plus name / category if available</span></label>
+      <textarea class="ed" id="se-rows" rows="4" placeholder="code&#9;name&#9;category&#10;10102&#9;Gen 2 Walking Boot Short Pneumatic&#9;Walking Boots"></textarea></div>
+    <div class="fld" style="margin-top:10px"><label>Catalog PDF <span class="mut" style="font-size:10px;text-transform:none">optional — stored as the source document and recorded on everything you create here</span></label>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn" data-act="se-pickpdf">Upload catalog PDF…</button>
+        <span class="mut" id="se-docnames" style="font-size:12px">No file attached</span></div>
+      <input type="file" id="se-pdf" accept=".pdf,.xlsx,.xls,.csv" style="display:none" onchange="seUploadDoc(this)"></div>
+    <div class="savebar"><button class="btn dark" data-act="se-scan">Scan products →</button></div>
+    <div class="hint">Website scanning reads each page's published product data. Pages that need JavaScript may come back partial — you can fix anything in Review Structure afterwards.</div>
+  </div>`);
+}
+async function seUploadDoc(input){
+  const f=input&&input.files&&input.files[0]; if(input) input.value=''; if(!f) return;
+  if(f.size>6*1024*1024){ toast('File is over 6MB',true); return; }
+  toast('Uploading '+f.name+'…');
+  try{
+    const content_base64=await fileToB64(f);
+    const r=await apiWrite({action:'upload_file',page_key:'_line_sources',content_base64,content_type:f.type||'application/octet-stream',filename:f.name});
+    const out=r.json||{};
+    if(!r.ok||!out.ok||!out.url){ toast(out.error||'Upload failed',true); return; }
+    _seDocs.push({title:f.name,url:out.url});
+    const el=document.getElementById('se-docnames'); if(el) el.textContent=_seDocs.map(d=>d.title).join(', ');
+    toast('Catalog document attached');
+  }catch(e){ toast('Upload failed',true); }
+}
+async function seScan(){
+  const urls=((document.getElementById('se-urls')||{}).value||'').split(/\r?\n/).map(x=>x.trim()).filter(x=>/^https?:\/\//i.test(x));
+  const rowsTxt=((document.getElementById('se-rows')||{}).value||'').trim();
+  const parsed=rowsTxt?parseCatalogRows(rowsTxt):[];
+  if(!urls.length && !parsed.length){ toast('Add at least one product URL or catalog row',true); return; }
+  const total=urls.length+parsed.length;
+  modalHTML('🚀 Start new enrichment · '+esc(MFR), `<div class="tut">${seStepsHtml(2)}
+    <p class="mut" id="se-prog">Scanning 0/${total}…</p><div class="seprog"><div id="se-bar" style="width:0"></div></div></div>`);
+  _seCands=[]; let done=0;
+  const bump=()=>{ done++; const p=document.getElementById('se-prog'); if(p)p.textContent='Scanning '+done+'/'+total+'…';
+    const b=document.getElementById('se-bar'); if(b)b.style.width=Math.round(done/total*100)+'%'; };
+  parsed.forEach(r=>{ _seCands.push({name:r.name||r.code,codes:[r.code],category:r.category||'',url:'',src:'catalog row',data:null}); bump(); });
+  for(const u of urls){
+    try{
+      const res=await fetch('/.netlify/functions/content-scrape',{method:'POST',headers:authHeaders(),body:JSON.stringify({url:u})});
+      const j=await res.json().catch(()=>({}));
+      if(res.ok&&j.ok&&j.data){ const d=j.data;
+        _seCands.push({name:(d.name||'').trim()||u,codes:[],category:'',url:d.source_url||u,src:'website',data:d}); }
+      else _seCands.push({name:u,codes:[],category:'',url:u,src:'website',error:(j&&(j.error||j.message))||'could not read that page'});
+    }catch(e){ _seCands.push({name:u,codes:[],category:'',url:u,src:'website',error:'could not reach that page'}); }
+    bump();
+  }
+  await seMatch();
+}
+function parseCatalogRows(txt){
+  const lines=String(txt||'').split(/\r?\n/).map(l=>l.trim()).filter(Boolean); if(lines.length<2) return [];
+  const split=l=>l.indexOf('\t')>=0?l.split('\t'):l.split(',');
+  const heads=split(lines[0]).map(h=>h.trim().toLowerCase());
+  const idx=ns=>{ for(const n of ns){ const i=heads.indexOf(n); if(i>=0) return i; } return -1; };
+  const iC=idx(['code','sku','item','part','part number','item #']), iN=idx(['name','description','product']), iCat=idx(['category','cat']);
+  if(iC<0) return [];
+  const out=[];
+  for(let r=1;r<lines.length;r++){ const c=split(lines[r]); const code=(c[iC]||'').trim(); if(!code) continue;
+    out.push({code,name:iN>=0?(c[iN]||'').trim():'',category:iCat>=0?(c[iCat]||'').trim():''}); }
+  return out;
+}
+async function seMatch(){
+  const total=_seCands.length;
+  modalHTML('🚀 Start new enrichment · '+esc(MFR), `<div class="tut">${seStepsHtml(3)}
+    <p class="mut" id="se-prog">Matching 0/${total} against the existing catalog…</p><div class="seprog"><div id="se-bar" style="width:0"></div></div></div>`);
+  let done=0;
+  for(const c of _seCands){
+    if(!c.error){
+      try{ const r=await apiWrite({action:'find_duplicates',name:c.name,codes:c.codes||[],source_url:c.url||''});
+        const j=r.json||{}; c.matches=(j.ok&&Array.isArray(j.matches))?j.matches:[]; }
+      catch(e){ c.matches=[]; }
+    } else c.matches=[];
+    done++; const p=document.getElementById('se-prog'); if(p)p.textContent='Matching '+done+'/'+total+'…';
+    const b=document.getElementById('se-bar'); if(b)b.style.width=Math.round(done/total*100)+'%';
+  }
+  seRenderResults();
+}
+function seRenderResults(){
+  const fails=_seCands.filter(c=>c.error);
+  const existing=_seCands.filter(c=>!c.error && (c.matches||[]).length);
+  const fresh=_seCands.filter(c=>!c.error && !(c.matches||[]).length);
+  const row=(c,i)=>{
+    const m=(c.matches||[])[0];
+    return `<div class="secand${m?' dupe':''}">
+      <div style="padding-top:2px">${m?'':`<input type="checkbox" class="se-pick" data-i="${i}" checked>`}</div>
+      <div class="sem"><div class="sen">${esc(c.name)}</div>
+        <div class="mut" style="font-size:11.5px">${esc(c.src)}${c.codes&&c.codes.length?' · '+c.codes.map(esc).join(', '):''}${c.category?' · '+esc(c.category):''}</div>
+        ${m?`<div class="mut" style="font-size:11.5px;color:#8d2b2b">Already in the catalog as <b>${esc(m.name)}</b> — ${esc((m.reasons||[]).join('; '))}</div>`:''}</div>
+      ${m?`<div><button class="btn ghost" style="padding:4px 10px;font-size:11.5px" onclick="healthOpen('${escA(m.page_key)}')">Open existing</button></div>`:''}
+    </div>`; };
+  modalHTML('🚀 Start new enrichment · '+esc(MFR), `<div class="tut">${seStepsHtml(4)}
+    <div class="rule">Scanned <b>${_seCands.length}</b> · <b>${fresh.length}</b> new · <b>${existing.length}</b> already in the catalog${fails.length?` · <b>${fails.length}</b> couldn't be read`:''}.</div>
+    ${fresh.length?`<h3 style="margin:14px 0 4px;font-family:Archivo">New products to create (${fresh.length})</h3>
+      <p class="mut">These don't match anything in the catalog. They'll be created as records with their SKUs, ready to enrich.</p>
+      ${fresh.map(c=>row(c,_seCands.indexOf(c))).join('')}`:''}
+    ${existing.length?`<h3 style="margin:16px 0 4px;font-family:Archivo">Already in the catalog (${existing.length})</h3>
+      <p class="mut">Skipped so nothing is duplicated — open a record to enrich it instead.</p>
+      ${existing.map(c=>row(c,_seCands.indexOf(c))).join('')}`:''}
+    ${fails.length?`<h3 style="margin:16px 0 4px;font-family:Archivo">Couldn't be read (${fails.length})</h3>
+      ${fails.map(c=>`<div class="secand"><div class="sem"><div class="sen">${esc(c.name)}</div><div class="mut" style="font-size:11.5px">${esc(c.error)}</div></div></div>`).join('')}`:''}
+    <div class="savebar" style="flex-wrap:wrap">
+      <button class="btn" data-act="se-back">← Back to sources</button>
+      ${fresh.length?`<button class="btn dark" data-act="se-create" style="margin-left:auto">Create ${fresh.length} new product(s)</button>`:'<span class="mut" style="margin-left:auto">Nothing new to create.</span>'}
+    </div></div>`);
+}
+async function seCreate(){
+  const picks=[...document.querySelectorAll('.se-pick:checked')].map(cb=>_seCands[+cb.getAttribute('data-i')]).filter(Boolean);
+  if(!picks.length){ toast('Nothing selected',true); return; }
+  if(!window.confirm('Create '+picks.length+' new product record(s) for '+MFR+'?')) return;
+  const btn=document.querySelector('[data-act="se-create"]'); if(btn){btn.disabled=true;btn.textContent='Creating…';}
+  let made=0, failed=0;
+  for(const c of picks){
+    const pk=slug(c.name)||('product-'+Date.now());
+    const d=c.data||{};
+    const prod={page_key:pk,name:c.name,category:c.category||'',family:'',
+      skus:(c.codes||[]).map(code=>({sku:code,name:'',status:'active'}))};
+    const r=await apiWrite({action:'create_product',product:prod});
+    if(!(r.ok&&(!r.json||r.json.ok!==false))){ failed++; continue; }
+    made++;
+    // carry the scraped content + provenance onto the new record
+    const patch={};
+    if(d.description) patch.description=d.description;
+    if(Array.isArray(d.features)&&d.features.length) patch.features=d.features;
+    if(Array.isArray(d.images)&&d.images.length){ patch.images_gallery=d.images.slice(0,8).map((u,i)=>({url:u,source:'website',primary:i===0})); patch.image=d.images[0]; }
+    if(Array.isArray(d.sizing_rows)&&d.sizing_rows.length) patch.sizing_table={columns:Object.keys(d.sizing_rows[0]||{}),rows:d.sizing_rows};
+    if(Array.isArray(d.billing_codes)&&d.billing_codes.length) patch.billing_codes=d.billing_codes;
+    if(_seDocs.length) patch.documents=_seDocs.slice();
+    if(Object.keys(patch).length){ try{ await apiWrite({action:'set_content',page_key:pk,patch}); }catch(e){} }
+    const meta={}; if(c.url) meta.source_url=c.url; if(d.tagline) meta.tagline=d.tagline;
+    if(Object.keys(meta).length){ try{ await apiWrite({action:'set_meta',page_key:pk,patch:meta}); }catch(e){} }
+    // orderable catalog items for any codes
+    for(const code of (c.codes||[])){
+      try{ await catalogPost({action:'save_product',manufacturer:MFR,product:{code,name:c.name,category:c.category||null,active:true}}); }catch(e){}
+    }
+  }
+  _catalogCache=null;
+  toast('Created '+made+' product(s)'+(failed?' · '+failed+' failed':''),!made);
+  const ov=document.getElementById('overlay'); if(ov) ov.classList.remove('show');
+  await boot();
+}
+
 /* ===================== Duplicate gate (Phase 3) ===================== */
 function showDuplicateGate(res){
   const P=_npPending||{}; const exact=(res.matches||[]).filter(m=>m.level==='exact'), poss=(res.matches||[]).filter(m=>m.level==='possible');
