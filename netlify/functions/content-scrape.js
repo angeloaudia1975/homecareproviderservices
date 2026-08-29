@@ -85,25 +85,44 @@ function firstTag(html, tag) { var m = html.match(new RegExp('<' + tag + '[^>]*>
 
 // ---- images -------------------------------------------------------------
 var IMG_SKIP = /(sprite|logo|icon|favicon|placeholder|pixel|spacer|blank|loading|avatar|badge|flag-|social|facebook|twitter|instagram|youtube|linkedin|cart|search)/i;
+function srcsetBest(v) {
+  // pick the LARGEST candidate in a srcset, not the first (which is usually the smallest thumb)
+  var best = '', bestW = -1;
+  String(v || '').split(',').forEach(function (part) {
+    var bits = part.trim().split(/\s+/);
+    var u = bits[0]; if (!u) return;
+    var d = bits[1] || '';
+    var w = /^(\d+)w$/i.test(d) ? parseInt(d, 10) : (/^([\d.]+)x$/i.test(d) ? parseFloat(d) * 1000 : 0);
+    if (w >= bestW) { bestW = w; best = u; }
+  });
+  return best;
+}
 function collectImages(html, base) {
   var urls = [], push = function (u) {
-    if (!u) return; u = u.trim(); if (!u || u.indexOf('data:') === 0) return;
+    if (!u) return; u = String(u).trim(); if (!u || u.indexOf('data:') === 0) return;
+    if (u.indexOf('//') === 0) u = 'https:' + u;
     if (/\.svg(\?|$)/i.test(u) || IMG_SKIP.test(u)) return;
     var abs = absolutize(u, base); if (urls.indexOf(abs) < 0) urls.push(abs);
   };
   var re = /<img\b[^>]*>/gi, m;
   while ((m = re.exec(html))) {
     var tag = m[0];
+    // zoom/full-size attributes first — these are the un-resized originals behind a gallery
+    var zoom = tag.match(/\bdata-(?:zoom-image|zoom|large_image|large-image|image|full|original-src)=["']([^"']+)["']/i);
     var src = tag.match(/\bsrc=["']([^"']+)["']/i);
-    var lazy = tag.match(/\bdata-(?:src|lazy-src|original)=["']([^"']+)["']/i);
+    var lazy = tag.match(/\bdata-(?:src|lazy-src|lazy|original)=["']([^"']+)["']/i);
     var sset = tag.match(/\b(?:data-)?srcset=["']([^"']+)["']/i);
+    if (zoom) push(zoom[1]);
+    if (sset) push(srcsetBest(sset[1]));
     if (lazy) push(lazy[1]);
     if (src && !/^data:/i.test(src[1])) push(src[1]);
-    if (sset) push(sset[1].split(',')[0].trim().split(/\s+/)[0]);
   }
-  var sre = /<source\b[^>]*\bsrcset=["']([^"']+)["'][^>]*>/gi;
-  while ((m = sre.exec(html))) push(m[1].split(',')[0].trim().split(/\s+/)[0]);
-  return urls.slice(0, 30).map(function (u) { return { url: u }; });
+  var sre = /<source\b[^>]*\b(?:data-)?srcset=["']([^"']+)["'][^>]*>/gi;
+  while ((m = sre.exec(html))) push(srcsetBest(m[1]));
+  // gallery thumbnails often sit inside <a href="...jpg"> pointing at the full-size file
+  var are = /<a\b[^>]*\bhref=["']([^"']+\.(?:jpe?g|png|webp)(?:\?[^"']*)?)["']/gi;
+  while ((m = are.exec(html))) push(m[1]);
+  return urls.slice(0, 40);
 }
 
 // ---- tables (sizing / spec) --------------------------------------------
@@ -180,6 +199,35 @@ function twoColSpecs(html) {
   return out.slice(0, 24);
 }
 
+/* Image URLs come back from three places (JSON-LD, page <img> tags, Shopify JSON) and must all
+   end up as PLAIN STRINGS — a mixed array of {url} objects and strings silently produced broken
+   images downstream. Also upgrade Shopify/Shopify-style CDN thumbnails ("..._100x.webp",
+   "..._1024x1024_crop_center.jpg") to the ORIGINAL file, so a gallery thumbnail yields the
+   full-resolution image rather than a postage stamp. */
+function imgUrl(x) {
+  var u = (typeof x === 'string') ? x : (x && (x.url || x.src || x.contentUrl)) || '';
+  return String(u || '').trim();
+}
+function fullSizeImg(u) {
+  u = String(u || '').trim(); if (!u) return '';
+  var q = ''; var i = u.indexOf('?');
+  if (i >= 0) { q = u.slice(i); u = u.slice(0, i); }
+  // strip a trailing size/crop token before the extension: _100x, _1024x1024, _600x600_crop_center
+  u = u.replace(/_(?:\d{2,5}x\d{0,5}|x\d{2,5})(?:_crop_[a-z]+)?(?=\.[a-z0-9]{2,5}$)/i, '');
+  // keep the cache-busting ?v= but drop resize params some CDNs use
+  if (q) { q = q.replace(/[?&](width|height|size|w|h)=\d+/gi, '').replace(/^&/, '?'); if (q === '?') q = ''; }
+  return u + q;
+}
+function normImages(list) {
+  var out = [], seen = {};
+  (list || []).forEach(function (x) {
+    var u = fullSizeImg(imgUrl(x));
+    if (!u) return;
+    if (seen[u]) return; seen[u] = 1; out.push(u);
+  });
+  return out;
+}
+
 function looksShopify(u) { return /\/products\/[^\/?#]+/i.test(String(u || '')); }
 function shopifyJsonUrl(u) {
   var clean = String(u).split('#')[0].split('?')[0].replace(/\/+$/, '');
@@ -187,8 +235,8 @@ function shopifyJsonUrl(u) {
 }
 function parseShopify(prod, base) {
   var body = String(prod.body_html || '');
-  var images = (prod.images || []).map(function (im) { return absolutize(im && im.src, base); }).filter(Boolean);
-  if (!images.length && prod.image && prod.image.src) images = [absolutize(prod.image.src, base)];
+  var images = normImages((prod.images || []).map(function (im) { return absolutize(imgUrl(im), base); }));
+  if (!images.length && prod.image) images = normImages([absolutize(imgUrl(prod.image), base)]);
   var variants = (prod.variants || []).map(function (v) {
     return {
       sku: String(v.sku || '').trim(),
@@ -235,11 +283,11 @@ function parse(html, base) {
   if (ld && ld.image) {
     [].concat(ld.image).forEach(function (im) {
       var u = (typeof im === 'string') ? im : (im && (im.url || im.contentUrl));
-      if (u) images.push({ url: absolutize(u, base) });
+      if (u) images.push(absolutize(u, base));
     });
   }
-  collectImages(html, base).forEach(function (g) { if (!images.some(function (x) { return x.url === g.url; })) images.push(g); });
-  images = images.slice(0, 24);
+  collectImages(html, base).forEach(function (g) { images.push(g); });
+  images = normImages(images).slice(0, 24);
 
   // options / billing from JSON-LD additionalProperty, when present
   var options = {}, billing = [];

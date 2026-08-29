@@ -1543,6 +1543,22 @@ function seRenderResults(){
       ${fresh.length?`<button class="btn dark" data-act="se-create" style="margin-left:auto">Create ${fresh.length} new product(s)</button>`:'<span class="mut" style="margin-left:auto">Nothing new to create.</span>'}
     </div></div>`);
 }
+/* Scraped image arrays have arrived in two shapes over time: plain URL strings, and
+   {url}/{src} objects from the JSON-LD path. Anything but a string here ends up as
+   [object Object] in an <img src>, which is what broke the Climbing Steps gallery.
+   Coerce defensively so the wizard can never store a non-URL again. */
+function normScrapedImages(list){
+  const out=[], seen=new Set();
+  (Array.isArray(list)?list:[]).forEach(x=>{
+    let u = (typeof x==='string') ? x : (x && (x.url||x.src||x.contentUrl)) || '';
+    u=String(u||'').trim();
+    if(!u || u.startsWith('data:')) return;
+    if(u.startsWith('//')) u='https:'+u;
+    if(!/^https?:\/\//i.test(u) && !u.startsWith('/')) return;
+    if(seen.has(u)) return; seen.add(u); out.push(u);
+  });
+  return out;
+}
 async function seCreate(){
   const picks=[...document.querySelectorAll('.se-pick:checked')].map(cb=>_seCands[+cb.getAttribute('data-i')]).filter(Boolean);
   if(!picks.length){ toast('Nothing selected',true); return; }
@@ -1563,7 +1579,7 @@ async function seCreate(){
     const patch={};
     if(d.description) patch.description=d.description;
     if(Array.isArray(d.features)&&d.features.length) patch.features=d.features;
-    if(Array.isArray(d.images)&&d.images.length){ patch.images_gallery=d.images.slice(0,8).map((u,i)=>({url:u,source:'website',primary:i===0})); patch.image=d.images[0]; }
+    { const imgs=normScrapedImages(d.images); if(imgs.length){ patch.images_gallery=imgs.slice(0,8).map((u,i)=>({url:u,source:'website',primary:i===0})); patch.image=imgs[0]; } }
     if(Array.isArray(d.sizing_rows)&&d.sizing_rows.length) patch.sizing_table={columns:Object.keys(d.sizing_rows[0]||{}),rows:d.sizing_rows};
     if(Array.isArray(d.billing_codes)&&d.billing_codes.length) patch.billing_codes=d.billing_codes;
     if(d.options&&typeof d.options==='object'&&Object.keys(d.options).length) patch.options=d.options;
