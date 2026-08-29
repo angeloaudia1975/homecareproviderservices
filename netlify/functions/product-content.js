@@ -693,6 +693,52 @@ exports.handler = async (event) => {
       }
 
       // ---- Create a brand-new product (optionally pulling SKUs off an existing source page) ----
+      // ---- AI catalog interpretation: turn a chunk of raw catalog text (extracted from the
+      //      manufacturer's PDF in the browser) into structured PRODUCTS with their variant SKUs.
+      //      The hard part isn't reading the codes — it's telling a product family apart from its
+      //      size/color variants. Called once per text chunk by the enrichment wizard so every
+      //      invocation stays small and fast. Read-only: returns candidates for review. ----
+      if (action === 'parse_catalog_text') {
+        if (!AI_KEY) return reply(200, { ok: false, error: 'ai_unavailable', message: "AI parsing isn't enabled — set ANTHROPIC_API_KEY in Netlify." });
+        const text = String(body.text || '').trim();
+        if (!text) return reply(400, { ok: false, error: 'text required' });
+        const clipped = text.slice(0, 12000);
+        const prompt = AI_GUARDRAILS +
+          '\n\nBelow is raw text extracted from a DME manufacturer catalog (' + (m || 'manufacturer') + '). Table layout is lost, so codes, names, sizes and prices may run together on a line.\n\n' +
+          'Your job: identify the PRODUCTS and group their variant SKUs correctly.\n\n' +
+          'CRITICAL GROUPING RULE — this is the whole point:\n' +
+          '- A size, color, side (left/right) or pack-quantity difference is a VARIANT of one product, NOT a separate product. Group every such code under ONE product entry.\n' +
+          '  Example: codes 25001-2, 25001-2B, 25003-2B printed as "Nu-Form Ankle Brace ... XXS / Black XXS / Black Small" are ONE product named "Nu-Form Ankle Brace with Fig-8 Straps" carrying three variant codes.\n' +
+          '- A different MODEL is a separate product: a major configuration change (Tall vs Short, Pneumatic vs Non-Pneumatic), a different official product name, or a clearly different clinical purpose.\n' +
+          '  Example: "Gen 2 Walking Boot Tall Pneumatic" and "Gen 2 Walking Boot Short Pneumatic" are TWO products, each with its own size codes.\n\n' +
+          'Other rules:\n' +
+          "- name: the manufacturer's real product name, cleaned of the size/color suffix.\n" +
+          '- codes: every SKU/part number belonging to that product, exactly as printed.\n' +
+          "- category: the catalog's own section/category if the text shows one, else empty string.\n" +
+          '- hcpcs: a billing code (e.g. L1902, L3809) if printed for the product, else empty string.\n' +
+          '- price: the dealer/list price as a plain number if clearly printed, else null.\n' +
+          '- Ignore page headers, footers, page numbers, phone numbers, addresses, terms and marketing paragraphs.\n' +
+          '- Do NOT invent codes, prices or products. If a line is unreadable, skip it.\n\n' +
+          'CATALOG TEXT (between the markers):\n<<<CATALOG\n' + clipped + '\nCATALOG>>>\n\n' +
+          'Return ONLY a JSON array (no prose, no code fences):\n' +
+          '[{"name":"","codes":[""],"category":"","hcpcs":"","price":null,"variant_note":"what distinguishes the codes, e.g. sizes XXS-XL"}]';
+        const rj = await aiJson(prompt, 3000);
+        if (rj.err) return reply(200, { ok: false, error: 'ai_error', message: rj.err, detail: rj.detail, model: AI_MODEL });
+        if (rj.parse_err) return reply(200, { ok: false, error: 'ai_parse', message: 'Could not read the AI response for this section.', raw: rj.raw });
+        let rows = rj.data;
+        if (rows && !Array.isArray(rows) && Array.isArray(rows.products)) rows = rows.products;
+        if (!Array.isArray(rows)) return reply(200, { ok: true, products: [] });
+        const clean = rows.filter(x => x && (x.name || (Array.isArray(x.codes) && x.codes.length))).map(x => ({
+          name: String(x.name || '').trim(),
+          codes: (Array.isArray(x.codes) ? x.codes : []).map(c => String(c).trim()).filter(Boolean),
+          category: String(x.category || '').trim(),
+          hcpcs: String(x.hcpcs || '').trim(),
+          price: (x.price == null || x.price === '' || !isFinite(Number(x.price))) ? null : Number(x.price),
+          variant_note: String(x.variant_note || '').trim()
+        })).filter(x => x.name);
+        return reply(200, { ok: true, products: clean });
+      }
+
       // ---- Duplicate detection BEFORE a product is created (Phase 3).
       //      Compares an incoming product against every existing record for this manufacturer on
       //      SKU (strongest) > manufacturer product URL > model/name. Returns 'exact' matches

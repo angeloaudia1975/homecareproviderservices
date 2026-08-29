@@ -1285,15 +1285,57 @@ function openDealerPricePreview(){ const S=_priceState; if(!S){ return; }
       <div class="tabscroll"><table style="width:100%;font-size:12px"><thead><tr><th>SKU</th><th>Dealer price</th><th>MSRP</th><th>MAP</th><th>Est. margin</th></tr></thead><tbody>${rowsFor(byProd[pn])}</tbody></table></div></div>`).join('')}
   </div>`);
 }
+/* ---- PDF catalog reading: pdf.js extracts the text IN THE BROWSER (no server-side PDF
+   dependency), then the AI interprets it into products + variant SKUs. Loaded lazily so the
+   page only pays for pdf.js when a catalog PDF is actually used. ---- */
+const PDFJS_VER='3.11.174';
+let _pdfjsReady=null;
+function loadPdfJs(){
+  if(_pdfjsReady) return _pdfjsReady;
+  _pdfjsReady=new Promise((res,rej)=>{
+    if(window.pdfjsLib) return res(window.pdfjsLib);
+    const sc=document.createElement('script');
+    sc.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/'+PDFJS_VER+'/pdf.min.js';
+    sc.onload=()=>res(window.pdfjsLib); sc.onerror=()=>rej(new Error('Could not load the PDF reader'));
+    document.head.appendChild(sc);
+  }).then(lib=>{
+    try{ if(lib&&lib.GlobalWorkerOptions) lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/'+PDFJS_VER+'/pdf.worker.min.js'; }catch(e){}
+    return lib;
+  });
+  return _pdfjsReady;
+}
+async function extractPdfPages(file,onProgress){
+  const lib=await loadPdfJs(); if(!lib) throw new Error('PDF reader unavailable');
+  const buf=await file.arrayBuffer();
+  const doc=await lib.getDocument({data:buf}).promise;
+  const pages=[];
+  for(let i=1;i<=doc.numPages;i++){
+    const pg=await doc.getPage(i);
+    const tc=await pg.getTextContent();
+    pages.push((tc.items||[]).map(x=>x.str).join(' ').replace(/\s+/g,' ').trim());
+    if(onProgress) onProgress(i,doc.numPages);
+  }
+  return pages;
+}
+/* Group pages into chunks the AI can read in one pass, never splitting a page. */
+function chunkPages(pages,max){
+  max=max||9000; const out=[]; let cur='';
+  for(const pg of pages){ if(!pg) continue;
+    if(cur && (cur.length+pg.length+2)>max){ out.push(cur); cur=pg; }
+    else cur = cur ? (cur+'\n\n'+pg) : pg; }
+  if(cur) out.push(cur);
+  return out;
+}
+
 /* ===================== Start New Enrichment (Phase 4) =====================
    Select manufacturer → add sources (product URLs / catalog rows / catalog PDF) → scan →
    match against the existing catalog → create only what's genuinely new. Every candidate runs
    through the same duplicate check as manual creation, so a new line can't seed duplicates. */
-let _seCands=[], _seDocs=[];
+let _seCands=[], _seDocs=[], _sePdfPages=[], _sePdfName='';
 function seStepsHtml(n){ const st=['Sources','Scan','Match','Create'];
   return `<div class="sesteps">${st.map((x,i)=>`<span class="sestep ${i+1===n?'on':(i+1<n?'done':'')}">${i+1} · ${x}</span>`).join('')}</div>`; }
 function openStartEnrichment(){
-  _seCands=[]; _seDocs=[];
+  _seCands=[]; _seDocs=[]; _sePdfPages=[]; _sePdfName='';
   const nm=(mfrCur()&&mfrCur().name)||MFR;
   modalHTML('🚀 Start new enrichment · '+esc(nm), `<div class="tut">
     ${seStepsHtml(1)}
@@ -1302,7 +1344,7 @@ function openStartEnrichment(){
       <textarea class="ed" id="se-urls" rows="4" placeholder="https://…/products/gen-2-walking-boot&#10;https://…/products/nu-form-ankle-brace"></textarea></div>
     <div class="fld" style="margin-top:10px"><label>…or paste catalog rows <span class="mut" style="font-size:10px;text-transform:none">first row = headers; needs a code column, plus name / category if available</span></label>
       <textarea class="ed" id="se-rows" rows="4" placeholder="code&#9;name&#9;category&#10;10102&#9;Gen 2 Walking Boot Short Pneumatic&#9;Walking Boots"></textarea></div>
-    <div class="fld" style="margin-top:10px"><label>Catalog PDF <span class="mut" style="font-size:10px;text-transform:none">optional — stored as the source document and recorded on everything you create here</span></label>
+    <div class="fld" style="margin-top:10px"><label>Catalog PDF <span class="mut" style="font-size:10px;text-transform:none">read in your browser, then interpreted by AI into products &amp; their variant SKUs</span></label>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <button class="btn" data-act="se-pickpdf">Upload catalog PDF…</button>
         <span class="mut" id="se-docnames" style="font-size:12px">No file attached</span></div>
@@ -1314,29 +1356,68 @@ function openStartEnrichment(){
 async function seUploadDoc(input){
   const f=input&&input.files&&input.files[0]; if(input) input.value=''; if(!f) return;
   if(f.size>6*1024*1024){ toast('File is over 6MB',true); return; }
-  toast('Uploading '+f.name+'…');
+  const say=t=>{ const el=document.getElementById('se-docnames'); if(el) el.textContent=t; };
+  say('Uploading '+f.name+'…');
   try{
     const content_base64=await fileToB64(f);
     const r=await apiWrite({action:'upload_file',page_key:'_line_sources',content_base64,content_type:f.type||'application/octet-stream',filename:f.name});
     const out=r.json||{};
-    if(!r.ok||!out.ok||!out.url){ toast(out.error||'Upload failed',true); return; }
-    _seDocs.push({title:f.name,url:out.url});
-    const el=document.getElementById('se-docnames'); if(el) el.textContent=_seDocs.map(d=>d.title).join(', ');
-    toast('Catalog document attached');
-  }catch(e){ toast('Upload failed',true); }
+    if(r.ok&&out.ok&&out.url){ _seDocs.push({title:f.name,url:out.url}); }
+  }catch(e){}
+  // Read the PDF's text in the browser so the AI can interpret it during Scan.
+  if(/\.pdf$/i.test(f.name)){
+    try{
+      say('Reading '+f.name+'…');
+      const pages=await extractPdfPages(f,(i,n)=>say('Reading '+f.name+' — page '+i+' of '+n+'…'));
+      const chars=pages.join('').length;
+      if(chars<200){ _sePdfPages=[]; say(f.name+' — attached, but no readable text (likely a scanned PDF). Paste catalog rows instead.'); toast('That PDF has no extractable text',true); return; }
+      _sePdfPages=pages; _sePdfName=f.name;
+      say(f.name+' — attached · '+pages.length+' page(s) read, ready to interpret');
+      toast('Read '+pages.length+' page(s) from '+f.name);
+    }catch(e){ _sePdfPages=[]; say(f.name+' — attached (couldn\u2019t read its text: '+(e&&e.message||'error')+')'); }
+  } else {
+    say(_seDocs.map(d=>d.title).join(', ')||'No file attached');
+    toast('Document attached');
+  }
 }
 async function seScan(){
   const urls=((document.getElementById('se-urls')||{}).value||'').split(/\r?\n/).map(x=>x.trim()).filter(x=>/^https?:\/\//i.test(x));
   const rowsTxt=((document.getElementById('se-rows')||{}).value||'').trim();
   const parsed=rowsTxt?parseCatalogRows(rowsTxt):[];
-  if(!urls.length && !parsed.length){ toast('Add at least one product URL or catalog row',true); return; }
-  const total=urls.length+parsed.length;
+  const pdfChunks=_sePdfPages.length?chunkPages(_sePdfPages):[];
+  if(!urls.length && !parsed.length && !pdfChunks.length){ toast('Add a product URL, catalog rows, or a readable catalog PDF',true); return; }
+  const total=urls.length+parsed.length+pdfChunks.length;
   modalHTML('🚀 Start new enrichment · '+esc(MFR), `<div class="tut">${seStepsHtml(2)}
     <p class="mut" id="se-prog">Scanning 0/${total}…</p><div class="seprog"><div id="se-bar" style="width:0"></div></div></div>`);
   _seCands=[]; let done=0;
   const bump=()=>{ done++; const p=document.getElementById('se-prog'); if(p)p.textContent='Scanning '+done+'/'+total+'…';
     const b=document.getElementById('se-bar'); if(b)b.style.width=Math.round(done/total*100)+'%'; };
   parsed.forEach(r=>{ _seCands.push({name:r.name||r.code,codes:[r.code],category:r.category||'',url:'',src:'catalog row',data:null}); bump(); });
+  // AI-interpret the catalog PDF section by section: it groups size/color variants under one
+  // product instead of emitting a row per code. Duplicate product names across chunks are merged.
+  const byName={};
+  for(let ci=0; ci<pdfChunks.length; ci++){
+    const p=document.getElementById('se-prog'); if(p)p.textContent='Interpreting catalog PDF — section '+(ci+1)+' of '+pdfChunks.length+'…';
+    try{
+      const r=await apiWrite({action:'parse_catalog_text',text:pdfChunks[ci]});
+      const j=r.json||{};
+      if(r.ok&&j.ok&&Array.isArray(j.products)){
+        j.products.forEach(pr=>{
+          const key=String(pr.name||'').toLowerCase().trim(); if(!key) return;
+          if(byName[key]){ const ex=byName[key];
+            pr.codes.forEach(c=>{ if(ex.codes.indexOf(c)<0) ex.codes.push(c); });
+            if(!ex.category&&pr.category) ex.category=pr.category;
+            if(ex.price==null&&pr.price!=null) ex.price=pr.price;
+          } else {
+            byName[key]={name:pr.name,codes:pr.codes.slice(),category:pr.category||'',hcpcs:pr.hcpcs||'',price:pr.price,note:pr.variant_note||'',
+              url:'',src:'catalog PDF'+(_sePdfName?' · '+_sePdfName:''),data:null};
+            _seCands.push(byName[key]);
+          }
+        });
+      }
+    }catch(e){}
+    bump();
+  }
   for(const u of urls){
     try{
       const res=await fetch('/.netlify/functions/content-scrape',{method:'POST',headers:authHeaders(),body:JSON.stringify({url:u})});
@@ -1386,7 +1467,8 @@ function seRenderResults(){
     return `<div class="secand${m?' dupe':''}">
       <div style="padding-top:2px">${m?'':`<input type="checkbox" class="se-pick" data-i="${i}" checked>`}</div>
       <div class="sem"><div class="sen">${esc(c.name)}</div>
-        <div class="mut" style="font-size:11.5px">${esc(c.src)}${c.codes&&c.codes.length?' · '+c.codes.map(esc).join(', '):''}${c.category?' · '+esc(c.category):''}</div>
+        <div class="mut" style="font-size:11.5px">${esc(c.src)}${c.codes&&c.codes.length?' · '+c.codes.length+' SKU'+(c.codes.length===1?'':'s')+': '+c.codes.slice(0,8).map(esc).join(', ')+(c.codes.length>8?'…':''):''}${c.category?' · '+esc(c.category):''}${c.hcpcs?' · HCPCS '+esc(c.hcpcs):''}</div>
+        ${c.note?`<div class="mut" style="font-size:11px">${esc(c.note)}</div>`:''}
         ${m?`<div class="mut" style="font-size:11.5px;color:#8d2b2b">Already in the catalog as <b>${esc(m.name)}</b> — ${esc((m.reasons||[]).join('; '))}</div>`:''}</div>
       ${m?`<div><button class="btn ghost" style="padding:4px 10px;font-size:11.5px" onclick="healthOpen('${escA(m.page_key)}')">Open existing</button></div>`:''}
     </div>`; };
@@ -1431,8 +1513,11 @@ async function seCreate(){
     const meta={}; if(c.url) meta.source_url=c.url; if(d.tagline) meta.tagline=d.tagline;
     if(Object.keys(meta).length){ try{ await apiWrite({action:'set_meta',page_key:pk,patch:meta}); }catch(e){} }
     // orderable catalog items for any codes
+    if(c.hcpcs){ try{ await apiWrite({action:'set_content',page_key:pk,patch:{billing_codes:[c.hcpcs]}}); }catch(e){} }
     for(const code of (c.codes||[])){
-      try{ await catalogPost({action:'save_product',manufacturer:MFR,product:{code,name:c.name,category:c.category||null,active:true}}); }catch(e){}
+      const prod={code,name:c.name,category:c.category||null,active:true};
+      if(c.price!=null&&isFinite(c.price)) prod.base_price=c.price;
+      try{ await catalogPost({action:'save_product',manufacturer:MFR,product:prod}); }catch(e){}
     }
   }
   _catalogCache=null;
