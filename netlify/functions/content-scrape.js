@@ -147,6 +147,83 @@ function parseFeatures(html) {
 }
 
 // ---- assemble -----------------------------------------------------------
+/* ---- Shopify storefronts (…/products/<handle>) publish a structured product JSON at
+   <url>.json. It carries the real title, full description, every image and — crucially — the
+   VARIANTS with their manufacturer SKUs and prices. That's far more reliable than parsing the
+   rendered page, and it lets the enrichment wizard match on SKU (the strongest signal) instead
+   of guessing from names. Falls back to the HTML parse when a site isn't Shopify. ---- */
+/* Shopify product copy usually lists benefits as a bare <ul> with no "Features" heading, and
+   puts specs in a plain 2-column table. Pull both rather than losing them. */
+function allListItems(html) {
+  var items = [], lre = /<li\b[^>]*>([\s\S]*?)<\/li>/gi, lm, seen = {};
+  while ((lm = lre.exec(String(html || '')))) {
+    var t = stripTags(lm[1]);
+    if (t && t.length > 2 && t.length < 220 && !seen[t.toLowerCase()]) { seen[t.toLowerCase()] = 1; items.push(t); }
+  }
+  return items.slice(0, 14);
+}
+function twoColSpecs(html) {
+  var out = [], seen = {};
+  var tre = /<table\b[\s\S]*?<\/table>/gi, tm;
+  while ((tm = tre.exec(String(html || '')))) {
+    var rre = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi, rm;
+    while ((rm = rre.exec(tm[0]))) {
+      var cells = [], cre = /<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi, cm;
+      while ((cm = cre.exec(rm[1]))) cells.push(stripTags(cm[1]));
+      if (cells.length === 2 && cells[0] && cells[1]) {
+        var k = cells[0].toLowerCase();
+        if (/^(spec|specification|feature|value|description)s?$/.test(k)) continue;   // header row
+        if (!seen[k]) { seen[k] = 1; out.push({ label: cells[0], value: cells[1] }); }
+      }
+    }
+  }
+  return out.slice(0, 24);
+}
+
+function looksShopify(u) { return /\/products\/[^\/?#]+/i.test(String(u || '')); }
+function shopifyJsonUrl(u) {
+  var clean = String(u).split('#')[0].split('?')[0].replace(/\/+$/, '');
+  return clean + '.json';
+}
+function parseShopify(prod, base) {
+  var body = String(prod.body_html || '');
+  var images = (prod.images || []).map(function (im) { return absolutize(im && im.src, base); }).filter(Boolean);
+  if (!images.length && prod.image && prod.image.src) images = [absolutize(prod.image.src, base)];
+  var variants = (prod.variants || []).map(function (v) {
+    return {
+      sku: String(v.sku || '').trim(),
+      title: String(v.title || '').trim(),
+      price: (v.price == null || v.price === '') ? null : Number(v.price),
+      options: [v.option1, v.option2, v.option3].filter(Boolean).join(' / ')
+    };
+  }).filter(function (v) { return v.sku || v.title; });
+  var options = {};
+  (prod.options || []).forEach(function (o) {
+    var name = (o && (o.name || o)) || '';
+    var vals = (o && o.values) || [];
+    if (name && vals.length && String(name).toLowerCase() !== 'title') options[name] = vals;
+  });
+  return {
+    name: stripTags(prod.title || ''),
+    tagline: '',
+    description: stripTags(body).slice(0, 4000),
+    features: (function () { var f = parseFeatures(body); return (f && f.length) ? f : allListItems(body); })(),
+    specs: twoColSpecs(body),
+    images: images,
+    sizing_rows: parseTables(body).rows || [],
+    sizing_note: '',
+    options: options,
+    billing_codes: [],
+    variants: variants,
+    vendor: String(prod.vendor || ''),
+    product_type: String(prod.product_type || ''),
+    tags: Array.isArray(prod.tags) ? prod.tags : String(prod.tags || '').split(',').map(function (t) { return t.trim(); }).filter(Boolean),
+    source_url: base,
+    source: 'shopify-json',
+    raw: ''
+  };
+}
+
 function parse(html, base) {
   var ld = flattenLd(jsonLdBlocks(html)).find(isProduct) || null;
 
@@ -202,6 +279,23 @@ exports.handler = async (event) => {
   const ctrl = new AbortController();
   const timer = setTimeout(function () { ctrl.abort(); }, 12000);
   try {
+    // Shopify first: the product JSON is richer and carries real SKUs + prices.
+    if (looksShopify(url)) {
+      try {
+        const jr = await fetch(shopifyJsonUrl(url), {
+          redirect: 'follow', signal: ctrl.signal,
+          headers: { 'user-agent': 'Mozilla/5.0 (compatible; HCPS-Partner360-ContentBot/1.0)', 'accept': 'application/json' }
+        });
+        if (jr.ok) {
+          const jt = await jr.text();
+          const jp = JSON.parse(jt);
+          if (jp && jp.product && jp.product.title) {
+            clearTimeout(timer);
+            return reply(200, { ok: true, data: parseShopify(jp.product, url) });
+          }
+        }
+      } catch (e) { /* not Shopify, or blocked — fall through to the HTML parse */ }
+    }
     const r = await fetch(url, {
       redirect: 'follow', signal: ctrl.signal,
       headers: { 'user-agent': 'Mozilla/5.0 (compatible; HCPS-Partner360-ContentBot/1.0)', 'accept': 'text/html,*/*' }
