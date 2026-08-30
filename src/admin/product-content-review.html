@@ -1728,13 +1728,24 @@ async function openMfrDashboard(){
    unpriced SKUs → what's ready vs blocked. "Live" = the tool's published state (PUBLIC_SET);
    Approve = internal, Publish = live. Each number drills into its list. */
 function contentMatchIndex(cat){
-  const imgKeys=new Set(), groups=new Set();
-  (cat.products||[]).forEach(p=>{ const ik=String(p.image||'').split('/').pop().replace(/\.(png|jpe?g|webp)$/i,''); if(ik) imgKeys.add(ik); if(p.group) groups.add(String(p.group)); });
-  (cat.custom||[]).forEach(p=>{ const ik=String(p.image||'').split('/').pop().replace(/\.(png|jpe?g|webp)$/i,''); if(ik) imgKeys.add(ik); });
-  return {imgKeys,groups};
+  const imgKeys=new Set(), groups=new Set(), codes=new Set();
+  const addCode=c=>{ c=String(c||'').trim().toUpperCase(); if(c) codes.add(c); };
+  (cat.products||[]).forEach(p=>{ const ik=String(p.image||'').split('/').pop().replace(/\.(png|jpe?g|webp)$/i,''); if(ik) imgKeys.add(ik); if(p.group) groups.add(String(p.group)); addCode(p.code); });
+  (cat.custom||[]).forEach(p=>{ const ik=String(p.image||'').split('/').pop().replace(/\.(png|jpe?g|webp)$/i,''); if(ik) imgKeys.add(ik); addCode(p.code); });
+  return {imgKeys,groups,codes};
 }
-function willRender(k, idx){ if(idx.imgKeys.has(k)) return true; const vg=pages[k]&&pages[k].variant_group;
-  if(vg){ for(const g of String(vg).split('|')){ if(idx.groups.has(g.trim())) return true; } } return false; }
+/* Three ways a content page can reach the dealer page, most reliable first:
+   1. SKU — the page lists a part number the catalog also carries. Deterministic, and the only
+      one that survives a rename, a re-slug, or a new photo.
+   2. variant_group — curated routing for a family that splits into models.
+   3. page_key === the catalog image's filename — the original heuristic, kept for older records. */
+function willRender(k, idx){
+  const sk=skusOf(k)||[];
+  for(const s of sk){ const c=String((s&&s.sku)||'').trim().toUpperCase(); if(c && idx.codes && idx.codes.has(c)) return true; }
+  if(idx.imgKeys.has(k)) return true;
+  const vg=pages[k]&&pages[k].variant_group;
+  if(vg){ for(const g of String(vg).split('|')){ if(idx.groups.has(g.trim())) return true; } }
+  return false; }
 function healthBlockers(k, S, cat, idx, dupeKeys){ const p=pages[k]||{}; const b=[];
   if(!p.image && !(p.images_gallery&&p.images_gallery.length)) b.push('image');
   if(!p.category) b.push('category');
@@ -1862,6 +1873,16 @@ async function healthMerge(keys){
     await boot(); openCatalogHealth();
   } else toast((r.json&&(r.json.message||r.json.error))||'Merge failed',true);
 }
+/* Say WHY the page can't be reached, not just that it can't. The two causes need different
+   fixes: no catalog row at all (add the product to the ordering catalog) vs. a catalog row whose
+   codes this page doesn't claim (put the right SKUs on the record). */
+function renderBlockReason(k, idx){
+  const sk=(skusOf(k)||[]).map(s=>String((s&&s.sku)||'').trim()).filter(Boolean);
+  if(!sk.length) return 'this record has no SKUs, so nothing in the catalog can point at it — add its part numbers';
+  const missing=sk.filter(c=>!idx.codes.has(c.toUpperCase()));
+  if(missing.length===sk.length) return 'none of its SKUs ('+sk.slice(0,4).join(', ')+(sk.length>4?'…':'')+') exist in the ordering catalog yet — the enriched page has no product to attach to';
+  return 'won’t match the catalog — the enriched page won’t show';
+}
 /* Publish guard: warn on blockers before a product goes live. */
 async function doPublishGuarded(k){ const p=pages[k]; const quick=[];
   if(!p.image && !(p.images_gallery&&p.images_gallery.length)) quick.push('no image');
@@ -1870,7 +1891,7 @@ async function doPublishGuarded(k){ const p=pages[k]; const quick=[];
   const S=(cat&&((cat.products||[]).length||(cat.custom||[]).length))?buildPriceState(cat):null;
   const idx=cat?contentMatchIndex(cat):null;
   if(S && skusOf(k).some(s=>{ const r=S.recOf(String(s.sku)); return !(r&&r.base_price>0); })) quick.push('one or more SKUs have no price');
-  if(cat && idx && !willRender(k,idx)) quick.push('content key won’t match the catalog — the enriched page won’t show');
+  if(cat && idx && !willRender(k,idx)) quick.push(renderBlockReason(k,idx));
   if(quick.length){ if(!window.confirm('“'+(p.name||k)+'” has issues that affect the dealer page:\n\n• '+quick.join('\n• ')+'\n\nPublish live anyway?')) return; }
   return doStatus(k,'published');
 }
