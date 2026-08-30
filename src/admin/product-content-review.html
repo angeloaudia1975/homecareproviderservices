@@ -272,6 +272,7 @@ textarea.ed{min-height:64px}
   <input id="bulkcat" placeholder="Set category…" style="max-width:170px">
   <button class="btn" data-act="bulk-apply">Apply</button>
   <button class="btn grad" data-act="bulk-publish">Publish selected</button>
+  <button class="btn" data-act="bulk-secure-images">📥 Secure images</button>
   <button class="btn danger" data-act="bulk-delete">🗑 Delete selected</button>
   <button class="btn" data-act="clear-sel">Clear</button>
 </div>
@@ -449,8 +450,19 @@ function gate(msg){ const w=document.querySelector('.wrap');
 async function apiWrite(payload){
   try{ const r=await fetch(`${API}?manufacturer=${encodeURIComponent(MFR)}`,
       {method:'POST',headers:authHeaders(),body:JSON.stringify(payload)});
-    const json=await r.json().catch(()=>({})); return {ok:r.ok, json}; }
-  catch(e){ return {ok:false, json:{error:String(e)}}; }
+    /* A platform timeout or crash answers with an HTML body, not JSON. Swallowing
+       that to {} is what turned a real 502 into a blank "could not run" message —
+       so keep the status and a snippet of whatever came back. */
+    const raw=await r.text();
+    let json; try{ json=raw?JSON.parse(raw):{}; }catch(e){
+      json={ error:'http_'+r.status,
+             message:(r.status===502||r.status===504)
+               ? 'The server ran out of time on this request (HTTP '+r.status+'). This usually means the job was too big to finish in one pass — try a smaller scope.'
+               : 'The server returned HTTP '+r.status+' instead of a result.',
+             detail:String(raw||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,300) };
+    }
+    return {ok:r.ok, status:r.status, json}; }
+  catch(e){ return {ok:false, status:0, json:{error:'network', message:'Could not reach the server. '+String(e)}}; }
 }
 function toast(msg,bad){ const el=document.getElementById('toast')||(()=>{const d=document.createElement('div');d.id='toast';
   d.style.cssText='position:fixed;left:50%;bottom:78px;transform:translateX(-50%);background:'+(bad?'#b42323':'#12253c')+';color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:700;z-index:400;box-shadow:0 10px 30px -12px rgba(0,0,0,.5)';document.body.appendChild(d);return d;})();
@@ -689,7 +701,8 @@ function imagesSec(k){ const p=pages[k]; const gal=Array.isArray(p.images_galler
     ${p.website_url?`<div class="provline">📎 Source: <a href="${escA(p.website_url)}" target="_blank" rel="noopener">${esc((p.website_url||'').replace(/^https?:\/\/(www\.)?/,''))}</a></div>`:''}
     ${p.source_files&&p.source_files.length?`<div class="provline">📄 From: ${(Array.isArray(p.source_files)?p.source_files:[]).map(esc).join(', ')}</div>`:''}
     ${p.field_provenance&&Object.keys(p.field_provenance).length?`<div class="provline">🧭 Where fields came from: ${Object.keys(p.field_provenance).map(f=>`${esc(f)} ← <b>${esc(p.field_provenance[f])}</b>`).join(' · ')}</div>`:''}
-    ${gal.length?`<div class="gal">${gal.map((g,i)=>`<div><a href="${escA(g.url)}" target="_blank" rel="noopener"><img src="${escA(g.url)}" title="${escA(g.caption||'')} — click to view full size"></a><span class="prov">${esc(g.source||'')}${g.primary?' ★':''}</span>
+    ${gal.length?`${(()=>{ const ext=gal.filter(g=>isExternalImg(g.url)).length; return ext?`<div class="provline" style="border-color:#e6b800;background:#fffdf3">⚠️ <b>${ext}</b> of ${gal.length} image${gal.length===1?'':'s'} on this product ${ext===1?'is a link to':'are links to'} the manufacturer's website. If they change or remove it, the image breaks here. <button class="btn ghost" data-act="secure-images" data-pk="${escA(k)}">📥 Copy image${ext===1?'':'s'} into HCPS storage</button></div>`:`<div class="provline">🔒 All images are stored by HCPS — they survive changes on the manufacturer's site.</div>`; })()}
+      <div class="gal">${gal.map((g,i)=>`<div><a href="${escA(g.url)}" target="_blank" rel="noopener"><img src="${escA(g.url)}" title="${escA(g.caption||'')} — click to view full size"></a><span class="prov">${esc(g.source||'')}${g.primary?' ★':''} · ${isExternalImg(g.url)?'<span style="color:#a4690a">external link</span>':'<span style="color:#2d7d46">stored</span>'}</span>
         <div class="galctl">${g.primary?'':`<button class="btn ghost" data-act="set-primary-img" data-pk="${escA(k)}" data-i="${i}">Set primary</button>`}<button class="btn ghost" style="color:var(--bad)" data-act="del-gal-img" data-pk="${escA(k)}" data-i="${i}">Remove</button></div></div>`).join('')}</div>`
       :(p.image?`<div class="gal"><div><a href="${escA(/^https?:/.test(p.image)?p.image:'..'+p.image)}" target="_blank" rel="noopener"><img src="${escA(/^https?:/.test(p.image)?p.image:'..'+p.image)}" title="Click to view full size"></a><span class="prov">catalog</span></div></div>`:'<div class="hint">No images captured.</div>')}
 
@@ -814,6 +827,9 @@ document.addEventListener('click',async function(e){
   if(act==='np-rowdel'){ const row=t.closest('.np-skurow'); const rows=document.querySelectorAll('#np-skurows .np-skurow'); if(row){ if(rows.length>1) row.remove(); else row.querySelectorAll('input').forEach(x=>x.value=''); } return; }
   if(act==='catalog-review') return openCatalogReview(k);
   if(act==='catalog-structure') return openCatalogStructure();
+  if(act==='struct-one') return openCatalogStructure('manufacturer');
+  if(act==='secure-images') return doSecureImages(t.getAttribute('data-pk'));
+  if(act==='bulk-secure-images') return doBulkSecureImages();
   if(act==='harmonize-apply') return doHarmonizeApply(Number(t.getAttribute('data-i')));
   if(act==='batch-align') return openBatchAlign();
   if(act==='align-apply') return doBatchAlignApply();
@@ -862,6 +878,69 @@ document.addEventListener('change',async function(e){
 
 function reopen(k){ render(); }
 
+/* ── Where an image actually lives ────────────────────────────────────────────
+   A scraped image is a LINK to the manufacturer's CDN — it renders because their
+   server serves it. If they rename the file, redesign the site, or drop the
+   product, the image disappears from our dealer pages too, and nothing here would
+   warn us. An image copied into HCPS storage is our own file and keeps working.
+
+   doSecureImages downloads each external image server-side and re-points the
+   product at our stored copy. The original stays untouched on their site; we just
+   stop depending on it. */
+function isExternalImg(u){
+  u=String(u||'');
+  if(!u) return false;
+  if(u.indexOf('/storage/v1/object/public/product-content/')>=0) return false;  // ours
+  return /^https?:\/\//i.test(u);                                                // someone else's
+}
+function externalImgsOf(k){
+  const p=pages[k]||{}; const out=[];
+  (Array.isArray(p.images_gallery)?p.images_gallery:[]).forEach((g,i)=>{ if(g&&isExternalImg(g.url)) out.push({i,url:g.url}); });
+  return out;
+}
+async function doSecureImages(k, quiet){
+  const p=pages[k]; if(!p) return {copied:0,failed:0};
+  const todo=externalImgsOf(k);
+  const primaryExternal = isExternalImg(p.image) && !todo.some(x=>x.url===p.image);
+  if(!todo.length && !primaryExternal){ if(!quiet) toast('All images are already stored by HCPS'); return {copied:0,failed:0}; }
+  if(!quiet) toast('Copying '+todo.length+' image(s) into HCPS storage…');
+  let copied=0, failed=0;
+  for(const it of todo){
+    const r=await apiWrite({action:'rehost',page_key:k,source_url:it.url});
+    if(r.ok && r.json && r.json.ok && r.json.url){ pages[k].images_gallery[it.i].url=r.json.url;
+      pages[k].images_gallery[it.i].source=(pages[k].images_gallery[it.i].source||'website')+'→stored';
+      if(p.image===it.url) pages[k].image=r.json.url;
+      copied++; }
+    else failed++;
+  }
+  if(primaryExternal){
+    const r=await apiWrite({action:'rehost',page_key:k,source_url:p.image});
+    if(r.ok&&r.json&&r.json.ok&&r.json.url){ pages[k].image=r.json.url; copied++; } else failed++;
+  }
+  if(copied){
+    // Persist the new URLs, and keep the original link on the record so we can always
+    // see where the artwork came from.
+    const patch={images_gallery:pages[k].images_gallery||[],image:pages[k].image||''};
+    await apiWrite({action:'set_content',page_key:k,patch});
+  }
+  if(!quiet){ toast(copied+' image(s) now stored by HCPS'+(failed?(' · '+failed+' could not be copied'):''), !!failed && !copied); reopen(k); }
+  return {copied,failed};
+}
+async function doBulkSecureImages(){
+  const keys=[...selProducts].filter(k=>pages[k]);
+  if(!keys.length){ toast('Nothing selected',true); return; }
+  const withExt=keys.filter(k=>externalImgsOf(k).length||isExternalImg((pages[k]||{}).image));
+  if(!withExt.length){ toast('Every selected product already has stored images'); return; }
+  const total=withExt.reduce((n,k)=>n+externalImgsOf(k).length,0);
+  if(!window.confirm('Copy '+total+' externally-linked image(s) across '+withExt.length+' product(s) into HCPS storage?\n\nThe images stop depending on the manufacturer\u2019s website. Nothing on their site changes. This can take a minute.')) return;
+  let copied=0, failed=0, done=0;
+  for(const k of withExt){
+    done++; toast('Securing images… '+done+'/'+withExt.length);
+    const r=await doSecureImages(k,true); copied+=r.copied; failed+=r.failed;
+  }
+  toast(copied+' image(s) copied into HCPS storage'+(failed?(' · '+failed+' failed'):''), !!failed && !copied);
+  render();
+}
 /* ===================== Media: paste / drop / upload images, docs & videos ===================== */
 function fileToB64(file){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onerror=()=>rej(fr.error||new Error('read failed')); fr.onload=()=>{ const s=String(fr.result||''); const c=s.indexOf(','); res(c>=0?s.slice(c+1):s); }; fr.readAsDataURL(file); }); }
 async function uploadImageFile(k,file){
@@ -2130,15 +2209,30 @@ async function doNamingApplyAll(){
 }
 /* ===================== Catalog Structure Review (cross-manufacturer) ===================== */
 let _structCache=[];
-async function openCatalogStructure(){
-  modalHTML('🌐 Catalog Structure Review','<div class="tut"><p class="mut">Scanning every manufacturer’s categories and comparing to the shared HCPS taxonomy…</p></div>');
-  const r=await apiWrite({action:'harmonize_catalog'});
+/* scope: 'all' compares every manufacturer, 'manufacturer' just the line on screen.
+   The whole-catalog pass reads every category in one AI call and is the one that
+   can run out of time, so a failure now offers the smaller pass as the way out. */
+async function openCatalogStructure(scope){
+  const one = scope==='manufacturer';
+  modalHTML('🌐 Catalog Structure Review',`<div class="tut"><p class="mut">Reviewing ${one?`<b>${esc(MFR)}</b>’s`:'every manufacturer’s'} categories against the shared HCPS taxonomy…</p></div>`);
+  const r=await apiWrite(one?{action:'harmonize_catalog',scope:'manufacturer'}:{action:'harmonize_catalog'});
   const mb=document.getElementById('modal').querySelector('.mb'); if(!mb) return;
   if(!(r.ok && r.json && r.json.ok!==false && Array.isArray(r.json.proposals))){
-    mb.innerHTML=`<div class="rule" style="border-color:#f3c0c0">${esc((r.json&&(r.json.message||r.json.error))||'Could not run the structure review.')}</div>`; return; }
+    const j=r.json||{};
+    const msg=j.message||j.error||'The structure review could not be completed.';
+    const retry = one
+      ? ''
+      : `<div style="margin-top:10px"><button class="btn grad" data-act="struct-one">Review just ${esc(MFR)} instead</button></div>`;
+    mb.innerHTML=`<div class="rule" style="border-color:#f3c0c0"><b>${esc(msg)}</b>`
+      +(j.detail?`<div class="mut" style="font-size:12px;margin-top:6px">${esc(String(j.detail).slice(0,300))}</div>`:'')
+      +(j.error==='ai_unavailable'?`<div class="mut" style="font-size:12px;margin-top:6px">Add ANTHROPIC_API_KEY in Netlify → Site settings → Environment variables, then redeploy.</div>`:'')
+      +retry+`</div>`;
+    return; }
   const changes=r.json.proposals.filter(p=>p && p.action!=='keep' && p.to && String(p.to).trim() && p.to!==p.from);
   _structCache=changes;
-  mb.innerHTML=`<div class="hint" style="margin-bottom:12px">Reviewed <b>${r.json.observed_count||0}</b> categories across all manufacturers. ${changes.length?`<b>${changes.length}</b> can be lined up to the shared taxonomy so a dealer shopping e.g. “Walking Boots” sees every manufacturer’s options together.`:'Everything already lines up with the taxonomy. ✅'}</div>
+  const scopeLabel = (r.json.scope && r.json.scope!=='all') ? `for <b>${esc(r.json.scope)}</b>` : 'across all manufacturers';
+  const omitted = r.json.omitted_count||0;
+  mb.innerHTML=`<div class="hint" style="margin-bottom:12px">Reviewed <b>${r.json.reviewed_count||r.json.observed_count||0}</b> categories ${scopeLabel}${omitted?` (the ${omitted} smallest were skipped to keep the pass inside its time budget)`:''}. ${changes.length?`<b>${changes.length}</b> can be lined up to the shared taxonomy so a dealer shopping e.g. “Walking Boots” sees every manufacturer’s options together.`:'Everything already lines up with the taxonomy. ✅'}</div>
     ${changes.length?`<div class="tabscroll"><table style="width:100%"><thead><tr><th>Now</th><th></th><th>Recommended</th><th>Products</th><th></th></tr></thead><tbody>
       ${changes.map((p,i)=>`<tr>
         <td style="vertical-align:top"><b>${esc(p.from)}</b></td><td style="vertical-align:top;color:var(--mut,#6b7280)">→</td>

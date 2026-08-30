@@ -215,12 +215,32 @@ async function sbGet(path) {
   try { const r = await fetch(rest(path), { headers: svcHeaders() }); return r.ok ? r.json() : []; }
   catch (e) { return []; }
 }
-async function callAI(prompt, maxTokens) {
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'x-api-key': AI_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: AI_MODEL, max_tokens: maxTokens || 700, messages: [{ role: 'user', content: prompt }] })
-  });
+/* Netlify kills a synchronous function at ~10s (26s max). An AI call with no
+   timeout of its own therefore takes the WHOLE function down with it, and the
+   platform's 502 carries an HTML body — which reached the admin as the useless
+   "Could not run the structure review." So: bound every AI call, and fail with a
+   message that says what actually happened. */
+const AI_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS || 18000);
+async function callAI(prompt, maxTokens, timeoutMs) {
+  const ac = new AbortController();
+  const budget = Math.max(2000, Number(timeoutMs || AI_TIMEOUT_MS));
+  const timer = setTimeout(() => ac.abort(), budget);
+  let r;
+  try {
+    r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      signal: ac.signal,
+      headers: { 'x-api-key': AI_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: AI_MODEL, max_tokens: maxTokens || 700, messages: [{ role: 'user', content: prompt }] })
+    });
+  } catch (e) {
+    clearTimeout(timer);
+    const aborted = e && (e.name === 'AbortError' || /abort/i.test(String(e.message || e)));
+    return aborted
+      ? { err: 'ai_timeout', detail: `The AI call passed ${Math.round(budget / 1000)}s and was stopped so the request could return a real answer. Try a smaller scope, or raise AI_TIMEOUT_MS.` }
+      : { err: 'ai_network', detail: String((e && e.message) || e).slice(0, 300) };
+  }
+  clearTimeout(timer);
   if (!r.ok) { const t = await r.text().catch(() => ''); return { err: `AI ${r.status}`, detail: t.slice(0, 300) }; }
   const j = await r.json();
   // newer models may emit a reasoning block before the text — take the last text block
@@ -255,12 +275,16 @@ function parseJsonLoose(text) {
 }
 // Ask the model for JSON and read it robustly; one retry with a strict "JSON only" nudge if the
 // first reply won't parse. Returns {data} | {err,detail} | {parse_err,raw}.
-async function aiJson(prompt, maxTokens) {
-  let out = await callAI(prompt, maxTokens);
+async function aiJson(prompt, maxTokens, deadline) {
+  const left = () => (deadline ? Math.max(0, deadline - Date.now()) : AI_TIMEOUT_MS);
+  let out = await callAI(prompt, maxTokens, left());
   if (out.err) return { err: out.err, detail: out.detail };
   let d = parseJsonLoose(out.text);
   if (d != null) return { data: d };
-  const out2 = await callAI(prompt + '\n\nReturn ONLY the JSON value — no explanation and no markdown code fences.', maxTokens);
+  // The retry only happens if there is real time left for it — otherwise the retry
+  // is what times the whole function out, turning a readable parse error into a 502.
+  if (left() < 4000) return { parse_err: true, raw: (out.text || '').slice(0, 400) };
+  const out2 = await callAI(prompt + '\n\nReturn ONLY the JSON value — no explanation and no markdown code fences.', maxTokens, left());
   if (out2.err) return { err: out2.err, detail: out2.detail };
   d = parseJsonLoose(out2.text);
   if (d != null) return { data: d };
@@ -1068,20 +1092,48 @@ exports.handler = async (event) => {
       //      kind of product regardless of brand. Read-only — returns proposals for review. ----
       if (action === 'harmonize_catalog') {
         if (!AI_KEY) return reply(200, { ok: false, error: 'ai_unavailable', message: "AI review isn't enabled — set ANTHROPIC_API_KEY in Netlify." });
-        const rows = await sbGet(`product_content?select=manufacturer,category,subcategory,name&status=neq.rejected&limit=3000`);
+        // Leave headroom inside the platform's function budget so this always returns
+        // a JSON answer — a timed-out AI call must surface as a message, not a 502.
+        const deadline = Date.now() + Number(process.env.STRUCTURE_BUDGET_MS || 20000);
+        // scope='manufacturer' reviews just the line the admin is looking at: far less
+        // to send, far less to read back, and it answers the question actually asked.
+        const scopeMfr = String(body.scope || '') === 'manufacturer' && m ? m : null;
+        const rows = await sbGet(`product_content?select=manufacturer,category,subcategory,name&status=neq.rejected${scopeMfr ? `&manufacturer=eq.${enc(scopeMfr)}` : ''}&limit=3000`);
         const byCat = {};
         (rows || []).forEach(r => { const c = r.category || '(uncategorized)'; const g = byCat[c] || (byCat[c] = { cat: c, count: 0, mfrs: new Set(), subs: new Set(), samples: [] }); g.count++; if (r.manufacturer) g.mfrs.add(r.manufacturer); if (r.subcategory) g.subs.add(r.subcategory); if (g.samples.length < 4 && r.name) g.samples.push(r.name); });
         const observed = Object.values(byCat).map(g => ({ category: g.cat, count: g.count, manufacturers: [...g.mfrs], subcategories: [...g.subs].slice(0, 8), samples: g.samples }));
-        if (!observed.length) return reply(200, { ok: true, proposals: [] });
+        if (!observed.length) return reply(200, { ok: true, proposals: [], observed_count: 0, scope: scopeMfr || 'all',
+          message: scopeMfr ? `No categorized products found for ${scopeMfr}. Give the products a category first, then run the review.` : 'No categorized products found yet.' });
+        // A prompt listing hundreds of categories is what pushes this over the time
+        // budget. Review the busiest ones — they are where inconsistency actually costs
+        // a dealer a comparison — and say plainly when some were left out.
+        const MAX_CATS = Number(process.env.STRUCTURE_MAX_CATS || 60);
+        observed.sort((a, b) => b.count - a.count);
+        const omitted = Math.max(0, observed.length - MAX_CATS);
+        const reviewed = observed.slice(0, MAX_CATS);
         const vocab = Object.keys(TAXONOMY).sort().map(c => `- ${c}: ${(TAXONOMY[c] || []).join(', ')}`).join('\n');
-        const prompt = `${AI_GUARDRAILS}\n\nYou are harmonizing a DME dealer catalog (HCPS Partner 360) so that similar products from DIFFERENT manufacturers sit under the SAME Category, letting dealers compare options by need (e.g. "Walking Boots", "Wheelchairs", "Bath Safety") without knowing the brand.\n\nCanonical taxonomy to map toward:\n${vocab}\n\nCategories currently in use (across all manufacturers):\n${observed.map(o => `• "${o.category}" — ${o.count} product(s); manufacturers: ${o.manufacturers.join(', ') || '?'}; subcategories: ${o.subcategories.join(', ') || '—'}; examples: ${o.samples.join('; ') || '—'}`).join('\n')}\n\nFor each currently-used category decide KEEP (already a good canonical category), RENAME (to a canonical category), or MERGE (into another category). Only recommend a change when it clearly improves cross-manufacturer consistency.\nReturn ONLY a JSON array (no prose, no code fences), each element exactly:\n{"from":"the current category name exactly as shown","action":"keep|rename|merge","to":"the canonical category it should become (same as from when keep)","subcategory":"a suggested subcategory or ''","reason":"one short sentence"}`;
-        const rj = await aiJson(prompt, 3000);
-        if (rj.err) return reply(200, { ok: false, error: 'ai_error', message: rj.err, detail: rj.detail });
-        if (rj.parse_err) return reply(200, { ok: false, error: 'ai_parse', message: 'Could not read the AI response — try again.', raw: rj.raw });
+        const prompt = `${AI_GUARDRAILS}\n\nYou are harmonizing a DME dealer catalog (HCPS Partner 360) so that similar products from DIFFERENT manufacturers sit under the SAME Category, letting dealers compare options by need (e.g. "Walking Boots", "Wheelchairs", "Bath Safety") without knowing the brand.\n\nCanonical taxonomy to map toward:\n${vocab}\n\nCategories currently in use (${scopeMfr ? 'manufacturer: ' + scopeMfr : 'across all manufacturers'}):\n${reviewed.map(o => `• "${o.category}" — ${o.count} product(s); manufacturers: ${o.manufacturers.join(', ') || '?'}; subcategories: ${o.subcategories.join(', ') || '—'}; examples: ${o.samples.join('; ') || '—'}`).join('\n')}\n\nFor each currently-used category decide KEEP (already a good canonical category), RENAME (to a canonical category), or MERGE (into another category). Only recommend a change when it clearly improves cross-manufacturer consistency.\nReturn ONLY a JSON array (no prose, no code fences), each element exactly:\n{"from":"the current category name exactly as shown","action":"keep|rename|merge","to":"the canonical category it should become (same as from when keep)","subcategory":"a suggested subcategory or ''","reason":"one short sentence"}`;
+        // Output size scales with how many categories are being judged, not a flat 3000.
+        const maxTok = Math.min(3000, 260 + reviewed.length * 90);
+        const rj = await aiJson(prompt, maxTok, deadline);
+        if (rj.err) {
+          const timedOut = rj.err === 'ai_timeout';
+          return reply(200, {
+            ok: false, error: timedOut ? 'ai_timeout' : 'ai_error',
+            message: timedOut
+              ? `The structure review ran out of time reading ${reviewed.length} categories. Run it for one manufacturer instead — that is a much smaller pass and usually finishes.`
+              : `The AI request failed (${rj.err}).`,
+            detail: rj.detail, scope: scopeMfr || 'all', reviewed_count: reviewed.length,
+          });
+        }
+        if (rj.parse_err) return reply(200, { ok: false, error: 'ai_parse', message: 'The AI reply could not be read as a result list — try again.', raw: rj.raw });
         let proposals = rj.data;
         const cmap = {}; observed.forEach(o => { cmap[o.category] = o; });
         proposals = (Array.isArray(proposals) ? proposals : []).map(p => Object.assign({}, p, { count: (cmap[p.from] && cmap[p.from].count) || 0, manufacturers: (cmap[p.from] && cmap[p.from].manufacturers) || [] }));
-        return reply(200, { ok: true, proposals, observed_count: observed.length });
+        return reply(200, {
+          ok: true, proposals, observed_count: observed.length, reviewed_count: reviewed.length,
+          omitted_count: omitted, scope: scopeMfr || 'all',
+        });
       }
 
       // ---- Apply a harmonization: move every product currently under category `from` to `to`
