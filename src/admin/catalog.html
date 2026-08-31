@@ -44,6 +44,14 @@
  @media(max-width:700px){.dupm{grid-template-columns:1fr}}
  .dupc{border:1px solid var(--silver);border-radius:10px;padding:11px 13px;background:#fcfdfe}
  .dupc.win{border-color:#b6d8c1;background:#f4faf6}
+ .dupc.master{border-color:#b8791b;background:#fffaf1;box-shadow:0 2px 10px rgba(184,121,27,.14)}
+ .mtag{font-size:9.5px;font-weight:800;letter-spacing:.5px;background:#b8791b;color:#fff;border-radius:5px;padding:2px 6px;margin-left:5px;vertical-align:middle}
+ .dupfacts{width:100%;border-collapse:collapse;margin-top:8px;font-size:11.5px}
+ .dupfacts th{text-align:left;font-weight:700;color:var(--gray);width:118px;padding:3px 8px 3px 0;vertical-align:top;white-space:nowrap}
+ .dupfacts td{padding:3px 0;color:var(--ink);vertical-align:top}
+ .dupfacts tr.hl td{background:#fff6e0;font-weight:700}
+ .dupwarn{margin-top:6px;padding:6px 9px;border-radius:7px;font-size:11.5px;line-height:1.45;background:#f2f6fa;border:1px solid #dde5ee;color:#44515f}
+ .dupwarn.hi{background:#fdf5f5;border-color:#f0c7c7;color:#8a2f2f;font-weight:600}
  .dupc .cn{font-weight:800;font-size:13px}
  .dupc .cc{font-size:11px;color:var(--gray);font-variant-numeric:tabular-nums}
  .dupc ul{margin:8px 0 0 16px;padding:0;font-size:11.5px;color:var(--gray);line-height:1.7}
@@ -101,9 +109,13 @@ async function boot(){
     await loadMfr();
   }catch(e){if(String(e.message)!=="unauthorized")$("#wrap").innerHTML=`<div class="msg err">Couldn't load: ${esc(e.message)}</div>`;}
 }
-let DUPS=null, DUPBUSY=false, ENRICH=null, GUIDEOPEN=false;
+let DUPS=null, DUPBUSY=false, ENRICH=null, GUIDEOPEN=false, DETAILS=null, DETAILMASTER=null;
+/* The status vocabulary. Deletion is deliberately not in this list — it lives behind a
+   check that the record has nothing attached to it at all. */
+const PA_STATE={ disabled:"Disabled", discontinued:"Discontinued", do_not_list:"Do Not List",
+  not_offered:"Not offered by HCPS", archived:"Archived", possible_duplicate:"Possible duplicate", ignore:"Ignored" };
 async function loadMfr(){ DETAIL=await api("?manufacturer="+encodeURIComponent(SLUG),{method:"GET"});
-  DUPS=null; ENRICH=null; render(); loadSideSignals(); }
+  DUPS=null; ENRICH=null; DETAILS=null; DETAILMASTER=null; render(); loadSideSignals(); }
 
 /* Two signals the catalog can't see on its own: which SKUs the enrichment tool is still
    working on, and which products look like duplicates of each other. Both are fetched
@@ -114,7 +126,18 @@ async function loadSideSignals(){
     const r=await api("",{method:"POST",body:JSON.stringify({action:"duplicate_scan",manufacturer:slug})});
     if(slug===SLUG && r && r.ok!==false){
       const skip=dismissed();
-      DUPS=(r.groups||[]).filter(g=>skip.indexOf(g.key)<0); render(); }
+      DUPS=(r.groups||[]).filter(g=>skip.indexOf(g.key)<0); render();
+      /* Now the expensive half: full provenance for the records actually in the queue.
+         Fetched after the list paints, so the page is usable immediately. */
+      const codes=[...new Set(DUPS.flatMap(g=>g.members.map(m=>m.code)))].slice(0,60);
+      if(codes.length){
+        try{ const d=await api("",{method:"POST",body:JSON.stringify({action:"record_detail",manufacturer:slug,codes})});
+          if(slug===SLUG && d && d.ok!==false){
+            DETAILS={}; (d.records||[]).forEach(x=>{ DETAILS[x.code]=x; });
+            DETAILMASTER=d.master_code||null; render(); }
+        }catch(e){}
+      }
+    }
   }catch(e){ if(slug===SLUG) DUPS=[]; }
   try{
     const h={"content-type":"application/json"}; if(TOKEN) h["authorization"]="Bearer "+TOKEN;
@@ -371,15 +394,51 @@ function dupPanelHtml(){
     if(c.has_override) bits.push(`<li>Has saved catalog edits</li>`);
     return bits.join("");
   };
-  const card=(m,g)=>`<div class="dupc${m.kind==="added"?" win":""}" id="dupc-${esc(m.code)}">
-      <div class="cn">${esc(m.name||m.code)}</div>
-      <div class="cc">${esc(m.code)} · ${m.kind==="added"?"added by enrichment":"standard catalog product"}${
-        m.base_price!=null&&m.base_price!==""?` · $${Number(m.base_price).toFixed(2)}`:" · no price"}</div>
-      <ul>${conn(m.connections)}</ul>
+  const card=(m,g)=>{
+    const d=(DETAILS||{})[m.code]||null;
+    const isMaster=d && d.code===(DETAILMASTER||null);
+    const fmt=v=>v?String(v).slice(0,10):"—";
+    const money=v=>(v==null?"—":"$"+Number(v).toFixed(2));
+    const rows=d?`
+      <table class="dupfacts">
+        <tr><th>Current title</th><td>${esc(d.current_title||"—")}</td></tr>
+        <tr class="${d.enriched_title&&d.enriched_title!==d.current_title?"hl":""}"><th>Approved title</th>
+          <td>${d.enriched_title?esc(d.enriched_title):'<span class="mut">no enrichment record</span>'}</td></tr>
+        <tr><th>SKU · Family</th><td>${esc(d.code)}${d.family?" · "+esc(d.family):""}${d.size?" · "+esc(d.size):""}</td></tr>
+        <tr><th>Category</th><td>${esc(d.category||"—")}${d.subcategory?" › "+esc(d.subcategory):""}</td></tr>
+        <tr><th>Source</th><td>${esc(d.source||"—")}</td></tr>
+        <tr><th>Added · Updated</th><td>${fmt(d.date_added)} · ${fmt(d.date_updated)}</td></tr>
+        <tr><th>Enriched · Published</th><td>${fmt(d.date_enriched)} · ${fmt(d.date_published)}${
+          d.enrichment_status?` <span class="mut">(${esc(d.enrichment_status)})</span>`:""}</td></tr>
+        <tr><th>Partner 360</th><td>${d.partner360_visible
+          ? '<b style="color:#1a7f4b">Visible to dealers now</b>'
+          : '<span class="mut">Not visible</span>'}</td></tr>
+        <tr><th>Pricing</th><td>catalog ${money(d.layer_prices&&d.layer_prices.catalog)} · added ${money(d.layer_prices&&d.layer_prices.added)}${
+          d.layer_prices&&d.layer_prices.override!=null?" · override "+money(d.layer_prices.override):""}</td></tr>
+        <tr><th>Order history</th><td>${d.has_orders?`<b>${d.order_lines}</b> order line${d.order_lines===1?"":"s"}`:'<span class="mut">none</span>'}</td></tr>
+        <tr><th>Attached</th><td>${d.images} image/doc · ${d.links} link${d.featured?" · Featured":""}</td></tr>
+        <tr><th>SKU status</th><td>${d.sku_active?"Active":"Inactive"}${d.disposition?" · "+esc(PA_STATE[d.disposition]||d.disposition):""}</td></tr>
+      </table>
+      ${(d.warnings||[]).map(w=>`<div class="dupwarn ${w.level==="high"?"hi":""}">${esc(w.text)}</div>`).join("")}` : `<ul>${conn(m.connections)}</ul>`;
+    const other=(g.members.find(x=>x.code!==m.code)||{}).code||"";
+    return `<div class="dupc${isMaster?" master":(m.kind==="added"?" win":"")}" id="dupc-${esc(m.code)}">
+      <div class="cn">${esc((d&&d.enriched_title)||m.name||m.code)}${isMaster?' <span class="mtag">ENRICHED MASTER</span>':''}</div>
+      <div class="cc">${esc(m.code)} · ${esc((d&&d.source)||(m.kind==="added"?"added by enrichment":"standard catalog product"))}</div>
+      ${rows}
       <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn sm" onclick="mergeInto('${esc(m.code)}','${esc((g.members.find(x=>x.code!==m.code)||{}).code||"")}')">Keep this one — merge the other in</button>
+        <button class="btn sm" onclick="mergeInto('${esc(m.code)}','${esc(other)}')">Keep this one — merge the other in</button>
+        ${d&&d.preview_url?`<a class="btn ghost sm" href="${esc(d.preview_url)}" target="_blank" rel="noopener">👁 Preview product</a>`:""}
         <button class="btn ghost sm" onclick="editProduct('${esc(m.code)}')">Open</button>
-      </div></div>`;
+        <select class="btn ghost sm" onchange="setRecordState('${esc(m.code)}',this.value)" style="max-width:170px">
+          <option value="">Set status…</option>
+          <option value="">Active</option>
+          <option value="disabled">Disabled</option>
+          <option value="discontinued">Discontinued</option>
+          <option value="do_not_list">Do Not List</option>
+          <option value="archived">Archived</option>
+          <option value="possible_duplicate">Possible Duplicate</option>
+        </select>
+      </div></div>`; };
   return `<div class="card" id="dupreview">
     <h2>Duplicate review${high?` — ${high} to resolve`:""}</h2>
     <p class="hint">These records look like the same product. <b>Nothing has been changed.</b>
@@ -405,15 +464,36 @@ function focusDup(code){ const el=document.getElementById("dupc-"+code);
   if(el){ el.scrollIntoView({behavior:"smooth",block:"center"}); el.style.outline="2px solid var(--orange)"; setTimeout(()=>el.style.outline="",2200); }
   else { const p=document.getElementById("dupreview"); if(p) p.scrollIntoView({behavior:"smooth"}); } }
 
+/* Put a questionable record into a state instead of deleting it. Every one of these is
+   reversible and none loses pricing, orders, images or published content — which is the
+   point: deletion is the last resort, not the first move. */
+async function setRecordState(code,state){
+  const d=(DETAILS||{})[code]||{};
+  const label=state?(PA_STATE[state]||state):"Active";
+  let warn="";
+  if(d.partner360_visible && state && state!=="possible_duplicate")
+    warn="\n\nThis product is visible to dealers in Partner 360 right now — this removes it from what they can order.";
+  if(d.has_orders) warn+="\n\nIt has "+d.order_lines+" historical order line(s). Those are kept either way.";
+  if(!confirm('Set "'+(d.enriched_title||d.current_title||code)+'" to '+label+'?'+warn+"\n\nReversible — you can set it back at any time.")) return;
+  try{
+    const r=await api("",{method:"POST",body:JSON.stringify({action:"save_override",manufacturer:SLUG,code,patch:{disposition:state||""}})});
+    if(r&&r.ok!==false){ toast(code+" → "+label); await loadMfr(); }
+    else toast((r&&r.error)||"Couldn't set that status",true);
+  }catch(e){ toast("Couldn't set that status",true); }
+}
+
 async function mergeInto(winner,loser){
   if(!winner||!loser) return;
   const eff=effProducts(); const w=eff.find(x=>x.code===winner)||{}, l=eff.find(x=>x.code===loser)||{};
   const lConn=((DUPS||[]).flatMap(g=>g.members).find(m=>m.code===loser)||{}).connections||{};
   const warn=lConn.orders?`\n\n${lConn.orders} order line(s) reference ${loser}. Those records stay exactly as they are — order history is never rewritten.`:"";
-  if(!confirm(`Keep "${w.name||winner}" (${winner}) and merge "${l.name||loser}" (${loser}) into it?\n\n`
+  const dw=(DETAILS||{})[winner]||{}, dl=(DETAILS||{})[loser]||{};
+  const title=dw.enriched_title||dw.current_title||w.name||winner;
+  if(!confirm(`Keep "${title}" (${winner}) and merge "${dl.current_title||l.name||loser}" (${loser}) into it?\n\n`
+    +(dw.enriched_title?`• The kept record will carry its APPROVED title: "${dw.enriched_title}"\n`:"")
     +`• ${loser}'s price, MSRP, links, images and Featured placement move to ${winner}\n`
-    +`• ${winner} keeps every value it already has — a merge fills gaps, it never overwrites\n`
-    +`• ${loser} is retired, not deleted, and this can be undone${warn}`)) return;
+    +`• Nothing already set on ${winner} is overwritten by older data\n`
+    +`• ${loser} is ARCHIVED, not deleted, and this can be undone${warn}`)) return;
   if(DUPBUSY) return; DUPBUSY=true;
   try{
     const r=await api("",{method:"POST",body:JSON.stringify({action:"merge_products",manufacturer:SLUG,winner,loser,reviewer:"president"})});

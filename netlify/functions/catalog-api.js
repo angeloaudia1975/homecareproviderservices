@@ -293,7 +293,10 @@ exports.handler = async (event)=>{
            (with who and when) turns an unresolved error into an auditable choice.
            '' clears it and the code returns to the queue. */
         if("disposition" in p){
-          const ALLOWED=["","do_not_list","discontinued","not_offered","ignore"];
+          /* Deletion is the last resort, not the default. These are the states a
+             questionable record can be put into instead — every one reversible, none
+             of which loses pricing, orders, images or published content. */
+          const ALLOWED=["","do_not_list","discontinued","not_offered","ignore","archived","possible_duplicate","disabled"];
           const d=String(p.disposition||"").trim();
           if(ALLOWED.indexOf(d)<0) return json(400,{error:"unknown disposition"});
           if(d){ patch.disposition=d;
@@ -457,6 +460,125 @@ exports.handler = async (event)=>{
         return json(200,{ok:true,forced:b.force===true});
       }
 
+      /* Full provenance for every record in a duplicate group: what the catalog says,
+         what the ENRICHMENT record says, and everything that would be at risk if it were
+         removed. This exists because a merge screen that shows only two product names
+         cannot answer the question a person is actually asking — "which of these is the
+         one I approved, and what breaks if I get this wrong?" */
+      if(b.action==="record_detail"){
+        const mfr=b.manufacturer; if(!mfr) return json(400,{error:"manufacturer required"});
+        const codes=[...new Set((Array.isArray(b.codes)?b.codes:[]).map(c=>String(c).trim()).filter(Boolean))].slice(0,60);
+        if(!codes.length) return json(400,{error:"codes required"});
+        const e=encodeURIComponent;
+        const [base,custom,ovRows,content]=await Promise.all([
+          fetchJson(`${ORDERING_BASE}/data/${e(mfr)}.json`).catch(()=>[]),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`).catch(()=>[]),
+          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch,updated_at`).catch(()=>[]),
+          /* The approved record. The title a person signed off lives HERE — custom_products
+             only ever held a snapshot of the enrichment PAGE name at publish time, which is
+             why merged records kept showing a generic family name instead of the specific
+             title that was approved. Always resolve the enriched title live. */
+          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=page_key,name,family,category,subcategory,skus,status,disabled,image,images_gallery,updated_at,published_at&limit=5000`).catch(()=>[]),
+        ]);
+        const baseBy={}; (base||[]).forEach(p=>{ baseBy[String(p.code)]=p; });
+        const custBy={}; (custom||[]).forEach(p=>{ custBy[String(p.code)]=p; });
+        const ovBy={};   (ovRows||[]).forEach(o=>{ ovBy[String(o.code)]={patch:o.patch||{},updated_at:o.updated_at}; });
+
+        /* SKU → enrichment page. A page can carry several SKUs; the per-SKU entry may hold
+           its own name, and that is more specific than the page name when it exists. */
+        const encBy={};
+        (content||[]).forEach(pc=>{
+          (Array.isArray(pc.skus)?pc.skus:[]).forEach(sk=>{
+            const c=String((sk&&(sk.sku||sk.code))||sk||"").trim(); if(!c) return;
+            const skuName=String((sk&&sk.name)||"").trim();
+            encBy[c.toUpperCase()]={ page_key:pc.page_key,
+              title:(skuName||pc.name||""), page_title:pc.name||"", sku_title:skuName,
+              family:pc.family||"", category:pc.category||"", subcategory:pc.subcategory||"",
+              status:pc.status||"", disabled:!!pc.disabled,
+              image:pc.image||"", gallery:(pc.images_gallery||[]).length,
+              updated_at:pc.updated_at||null, published_at:pc.published_at||null,
+              sku_status:(sk&&sk.status)||"", sku_disabled:!!(sk&&sk.disabled), size:(sk&&sk.size)||"" };
+          });
+        });
+
+        const out=[];
+        for(const code of codes){
+          const bp=baseBy[code], cp=custBy[code], ov=(ovBy[code]||{}).patch||{}, ovAt=(ovBy[code]||{}).updated_at||null;
+          const enc=encBy[String(code).toUpperCase()]||null;
+          const conn=await connectionsFor(mfr,code).catch(()=>null);
+          const first=(...v)=>{ for(const x of v){ if(x!=null&&x!=="") return x; } return null; };
+          const currentTitle=first(ov.name, cp&&cp.name, bp&&bp.name) || code;
+          const price=first(ov.base_price, cp&&cp.base_price, bp&&bp.base_price);
+          const active=(ov.active===false)?false:(cp?(cp.active!==false):true);
+          const disposition=ov.disposition||null;
+          const merged_into=ov.merged_into||null;
+          /* "Visible in Partner 360" is the same test the portal applies: it exists, it is
+             not retired, not merged away, and carries a price a dealer could order at. */
+          const published = active && !merged_into
+            && !["do_not_list","not_offered","discontinued","archived"].includes(String(disposition||""))
+            && price!=null && Number(price)>0;
+          const warnings=[];
+          if(enc && enc.title && enc.title!==currentTitle)
+            warnings.push({level:"info", text:`This record contains newer enriched content — the approved title is “${enc.title}”.`});
+          if(conn && conn.orders)
+            warnings.push({level:"high", text:`This SKU has ${conn.orders} historical order line${conn.orders===1?"":"s"}. Merging keeps them; deleting would orphan them.`});
+          if(published)
+            warnings.push({level:"high", text:"This product is currently published in Partner 360 — dealers can see and order it right now."});
+          if(String(disposition||"")==="discontinued" || /discontinu/i.test(String(enc&&enc.sku_status||"")))
+            warnings.push({level:"info", text:"This item may be discontinued."});
+          if(conn && (conn.media||conn.links))
+            warnings.push({level:"info", text:`${conn.media} image/document${conn.media===1?"":"s"} and ${conn.links} link${conn.links===1?"":"s"} are attached to this record.`});
+          out.push({
+            code,
+            current_title: currentTitle,
+            enriched_title: enc ? enc.title : null,
+            enriched_page_key: enc ? enc.page_key : null,
+            enriched_page_title: enc ? enc.page_title : null,
+            manufacturer: mfr,
+            family: first(enc&&enc.family, bp&&bp.group) || "",
+            category: first(ov.category, enc&&enc.category, cp&&cp.category, bp&&bp.category) || "",
+            subcategory: (enc&&enc.subcategory) || "",
+            source: cp ? (enc ? "added by enrichment" : "added manually") : (bp ? "standard catalog product" : "override only"),
+            is_catalog: !!bp, is_added: !!cp, has_enrichment: !!enc,
+            date_added: first(cp&&cp.created_at, cp&&cp.updated_at),
+            date_updated: first(ov.updated_at, ovAt, cp&&cp.updated_at),
+            date_enriched: enc ? enc.updated_at : null,
+            date_published: enc ? enc.published_at : null,
+            enrichment_status: enc ? enc.status : null,
+            partner360_visible: published,
+            has_pricing: price!=null && Number(price)>0,
+            price: price!=null ? Number(price) : null,
+            /* Per-layer prices, because one SKU can be priced in the catalog and unpriced
+               as an added record — which is exactly what the review screen shows side by
+               side. A single effective number would hide the difference the person is
+               being asked to judge. */
+            layer_prices: {
+              catalog: (bp && bp.base_price!=null && bp.base_price!=="") ? Number(bp.base_price) : null,
+              added:   (cp && cp.base_price!=null && cp.base_price!=="") ? Number(cp.base_price) : null,
+              override:(ov.base_price!=null && ov.base_price!=="") ? Number(ov.base_price) : null,
+            },
+            has_orders: !!(conn && conn.orders), order_lines: (conn&&conn.orders)||0,
+            images: (conn&&conn.media)||0, links: (conn&&conn.links)||0,
+            featured: !!(conn&&conn.featured),
+            sku_active: active,
+            disposition, merged_into,
+            size: enc ? enc.size : "",
+            preview_url: `${ORDERING_BASE}/?product=${e(code)}&mfr=${e(mfr)}`,
+            warnings,
+            /* Safe to delete only when nothing at all points at this record. Anything else
+               should be merged, disabled or archived — all reversible, none of which lose data. */
+            safe_to_delete: !!(conn && !conn.orders && !conn.media && !conn.links && !conn.featured && !conn.has_override && !bp),
+          });
+        }
+        /* The enriched master: the record a person actually approved. Preferred over
+           whichever row happens to be newest or priced, because approval is a decision
+           and the others are just storage. */
+        const withEnc=out.filter(r=>r.has_enrichment);
+        const master = withEnc.find(r=>r.enrichment_status==="approved" || r.enrichment_status==="published")
+                    || withEnc[0] || out.find(r=>r.is_catalog) || out[0] || null;
+        return json(200,{ok:true, records:out, master_code: master?master.code:null});
+      }
+
       /* Every suspected duplicate for one manufacturer, with its evidence and the records
          connected to each side. Read-only — it never changes anything, which is the point:
          the queue exists so a person decides. */
@@ -516,6 +638,26 @@ exports.handler = async (event)=>{
           if(keep[k]!=null&&keep[k]!==""){ carry[k]=keep[k]; return; }
           if(winVal(k)==null||winVal(k)===""){ const v=loseVal(k); if(v!=null&&v!=="") carry[k]=v; }
         });
+        /* THE APPROVED TITLE WINS. custom_products only ever stored a snapshot of the
+           enrichment page name at publish time, so a merge that kept "whatever the winner
+           already had" preserved a stale generic family name and discarded the specific
+           title someone approved — which is exactly what made merged records unrecognisable.
+           The enrichment record is the source of truth for the name, and it is read live.
+           An explicit keep.name from the review screen still overrides it. */
+        if(keep.name==null||keep.name===""){
+          try{
+            const pc=await sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=name,skus,status&limit=5000`).catch(()=>[]);
+            const want=String(win).toUpperCase();
+            for(const row of (pc||[])){
+              const hit=(Array.isArray(row.skus)?row.skus:[]).find(sk=>
+                String((sk&&(sk.sku||sk.code))||sk||"").trim().toUpperCase()===want);
+              if(hit){
+                const t=String((hit&&hit.name)||row.name||"").trim();
+                if(t){ carry.name=t; break; }
+              }
+            }
+          }catch(err){ /* no enrichment record — leave the name as it was */ }
+        }
         let applied=false;
         if(Object.keys(carry).length){
           if(winC){ await sb("PATCH",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(win)}`,
@@ -544,6 +686,7 @@ exports.handler = async (event)=>{
            late-arriving reference still resolve; a standard catalog product is hidden with an
            override, which is the only way to retire one without a redeploy. */
         const retire=Object.assign({},loseOv,{active:false,merged_into:win,merged_at:now,
+          disposition:"archived",
           merged_by:b.reviewer?String(b.reviewer).slice(0,80):null});
         await sb("POST","product_overrides?on_conflict=manufacturer,code",
           {manufacturer:mfr,code:lose,patch:retire,updated_at:now},
