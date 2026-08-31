@@ -54,3 +54,24 @@
 # SCHEDULE_REMINDERS=off.
 [functions."schedule-reminders"]
   schedule = "0 * * * *"
+
+# ── Field rep short links ────────────────────────────────────────────────────
+# A rep opens their day on a phone, usually from a text message. "/my-routes" is short
+# enough to type, reads like what it is, and does not make a field rep navigate an admin
+# path to find where they are driving today. 200 rewrites, so the URL a rep bookmarks or
+# installs to their home screen stays clean.
+[[redirects]]
+  from = "/my-routes"
+  to = "/admin/scheduled-routes.html"
+  status = 200
+
+[[redirects]]
+  from = "/routes"
+  to = "/admin/scheduled-routes.html"
+  status = 200
+
+# The rep portal home, same reasoning.
+[[redirects]]
+  from = "/rep"
+  to = "/admin/rep-home.html"
+  status = 200

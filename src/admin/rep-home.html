@@ -2,6 +2,24 @@
 <title>HCPS — Rep Portal</title>
 <link rel="stylesheet" href="/admin/admin-shell.css">
 <style>
+/* The one thing a rep opens from a phone, standing next to their truck. It is the
+   largest tap target on the page and it sits above everything else, because a field rep
+   should never navigate an admin interface to find out where they are driving today. */
+.myroutes{display:flex;align-items:center;gap:14px;margin:16px 0 6px;padding:16px 18px;
+  background:linear-gradient(135deg,#F5821F,#e06f0c);color:#fff;border-radius:16px;
+  text-decoration:none;box-shadow:0 6px 18px rgba(224,111,12,.28);min-height:64px}
+.myroutes:active{transform:translateY(1px)}
+.myroutes .mr-ico{font-size:28px;line-height:1}
+.myroutes .mr-txt{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.myroutes .mr-txt b{font-size:19px;font-weight:800;letter-spacing:.2px}
+.myroutes .mr-txt i{font-style:normal;font-size:12.5px;opacity:.92}
+.myroutes .mr-go{font-size:30px;font-weight:700;opacity:.85;line-height:1}
+@media(max-width:640px){
+  .myroutes{margin:14px 0 10px;padding:18px;min-height:72px}
+  .myroutes .mr-txt b{font-size:21px}
+}
+</style>
+<style>
  .hero{background:linear-gradient(135deg,#1f2b45,#2c3e66);color:#fff;border-radius:16px;padding:22px 24px;margin:12px 0 16px}
  .hero h1{margin:0;color:#fff;font-size:26px}
  .hero .sub{color:#c9d4ea;margin-top:4px;font-size:14px}
@@ -96,6 +114,11 @@ function render(){
     <div class="hero">
       <h1>Welcome back, ${esc(first)}.</h1>
       <div class="sub">This is your sales workspace — everything for your territory in one place. Start with today's calls, then work your accounts in Dealer 360.</div>
+      <a class="myroutes" href="/my-routes">
+        <span class="mr-ico">🚗</span>
+        <span class="mr-txt"><b>My Routes</b><i id="mr-sub">Today's stops, addresses and drive times</i></span>
+        <span class="mr-go">›</span>
+      </a>
       <div class="today" id="today">
         <a class="tpill" href="/admin/call-list.html">📞 <span>Who to call today</span></a>
         <a class="tpill" href="/admin/tasks.html"><b id="tk">·</b> <span>Open tasks</span></a>

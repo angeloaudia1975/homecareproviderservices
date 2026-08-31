@@ -19,7 +19,12 @@
   header a.full{color:#c9d4e2;font-size:12px;text-decoration:none;border:1px solid #33465f;border-radius:8px;padding:4px 8px}
   .wrap{padding:12px 12px 40px;max-width:640px;margin:0 auto}
   .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 14px;margin:0 0 12px;box-shadow:0 1px 2px rgba(16,38,63,.04)}
+  .sub.addr{color:#3f4d5c;font-weight:600}
   .grouplbl{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);margin:6px 2px 8px}
+  /* Today's route is the answer to the only question a rep has when they open this on
+     a phone, so it is visually louder than everything else in the list. */
+  .stop.todayr{border-color:var(--orange);box-shadow:0 3px 12px rgba(245,130,31,.18)}
+  .stop.todayr .nm{font-size:17px}
   .rsum{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
   .rsum .nm{font-weight:800;font-size:16px;color:var(--navy)}
   .rsum .mt{color:var(--gray);font-size:12.5px}
@@ -126,14 +131,19 @@ function updateStatus(){ const n=outbox().length;
   else if(n) setStatusText(`↻ ${n} to sync`,"#ffd7b0"); else setStatusText("● Online","#9fd6b0"); }
 
 // ---- Boot: deep-link ?route=<id> opens a route; otherwise show the route list ----
-function boot(){ if(!TOKEN){ gate(); return; } const rid=qparam("route"); if(rid){ openRoute(rid); } else { showList(); } }
+function boot(){ if(!TOKEN){ gate(); return; }
+  const rid=qparam("route");
+  // The profile decides what this person may do (assign / set a start point), so it is
+  // loaded before either view renders — including when a route link is opened directly.
+  loadMyHome().then(()=>{ if(rid){ openRoute(rid); } else { showList(); } });
+}
 
 async function showList(){
   if(!TOKEN){ gate(); return; }
   $("#app").innerHTML=`<div class="msg">Loading your routes…</div>`;
   let j=null;
   try{ j=await rapi({action:"list_routes"}); }catch(e){ if(!TOKEN) return; j=null; }
-  if(j&&j.ok){ ROUTES=j.routes||[]; cacheRoutes(ROUTES); }
+  if(j&&j.ok){ ROUTES=j.routes||[]; cacheRoutes(ROUTES); if(j.me){ ME=j.me; MYHOME=j.me.home_base||null; } }
   else { const c=loadCachedRoutes(); if(c){ ROUTES=c; setStatusText("● Offline (cached)","#ffd7b0"); } }
   if(!ROUTES){ $("#app").innerHTML=`<div class="msg">Couldn't load your routes${navigator.onLine?"":" — you're offline"}.</div>`; updateStatus(); return; }
   renderList();
@@ -142,18 +152,26 @@ async function showList(){
 function renderList(){
   const today=todayStr();
   const rs=(ROUTES||[]).slice();
-  const upcoming=rs.filter(r=>!r.scheduled_date||r.scheduled_date>=today).sort((a,b)=>String(a.scheduled_date||"9999").localeCompare(String(b.scheduled_date||"9999")));
+  /* Three buckets, because a rep standing in a parking lot is asking one question:
+     where am I going now. Today comes first and alone; dated routes ahead of today are
+     next; undated saved routes last. */
+  const todayR=rs.filter(r=>r.scheduled_date===today);
+  const upcoming=rs.filter(r=>r.scheduled_date&&r.scheduled_date>today).sort((a,b)=>String(a.scheduled_date).localeCompare(String(b.scheduled_date)));
+  const saved=rs.filter(r=>!r.scheduled_date).sort((a,b)=>String(b.updated_at||"").localeCompare(String(a.updated_at||"")));
   const past=rs.filter(r=>r.scheduled_date&&r.scheduled_date<today).sort((a,b)=>String(b.scheduled_date).localeCompare(String(a.scheduled_date)));
-  const card=r=>{ const done=r.visited||0, n=r.stops_count||0; const prog=n?`${done}/${n}`:"—";
+  const card=(r,big)=>{ const done=r.visited||0, n=r.stops_count||0; const prog=n?`${done}/${n}`:"—";
     const drive=r.duration_s?` · ${Math.round(r.duration_s/60)} min`:"";
-    return `<div class="stop clk" onclick="openRoute('${jesc(r.id)}')"><div class="sh">
-      <div class="ord cal">📅</div>
-      <div class="mid"><div class="nm">${esc(r.name||"Route")}</div><div class="sub">${esc(fmtDate(r.scheduled_date))} · ${n} stop${n===1?"":"s"}${drive}</div></div>
+    const miles=r.distance_m?` · ${Math.round(r.distance_m/1609)} mi`:"";
+    return `<div class="stop clk${big?" todayr":""}" onclick="openRoute('${jesc(r.id)}')"><div class="sh">
+      <div class="ord cal">${big?"🚗":"📅"}</div>
+      <div class="mid"><div class="nm">${esc(r.name||"Route")}</div>
+        <div class="sub">${esc(fmtDate(r.scheduled_date))} · ${n} stop${n===1?"":"s"}${drive}${miles}</div>
+        ${r.planned_by?`<div class="sub" style="color:#9db4d0">Planned for you by ${esc(r.planned_by)}</div>`:""}</div>
       <div class="eta"><div class="t">${prog}</div><div class="l">visited</div></div>
     </div></div>`; };
   const phone=`<div class="phone">
     <div class="t">📲 Add to your phone</div>
-    <div class="u" id="mlink">${esc(location.origin)}/admin/scheduled-routes.html</div>
+    <div class="u" id="mlink">${esc(location.origin)}/my-routes</div>
     <button class="btn sm" onclick="emailLink(this)">✉️ Email me the link</button>
     <button class="btn sm" onclick="toggleInstall()">How to install</button>
     <div id="installBox" hidden>
@@ -162,12 +180,63 @@ function renderList(){
     </div>
     <div id="linkmsg" class="hint" style="color:#9db4d0;margin-top:8px"></div>
   </div>`;
-  let h=phone;
-  h+=`<div class="grouplbl">Upcoming</div>`+(upcoming.length?upcoming.map(card).join(""):`<div class="card hint">No upcoming routes. Build one on the Territory Map and set its date. <a href="/admin/map.html">Open map →</a></div>`);
-  if(past.length) h+=`<div class="grouplbl" style="margin-top:14px">Earlier</div>`+past.map(card).join("");
+  let h=homeBaseBanner();
+  h+=`<div class="grouplbl">Today</div>`+(todayR.length?todayR.map(r=>card(r,true)).join("")
+      :`<div class="card hint">Nothing scheduled for today.</div>`);
+  h+=`<div class="grouplbl" style="margin-top:14px">Upcoming</div>`+(upcoming.length?upcoming.map(r=>card(r)).join("")
+      :`<div class="card hint">No upcoming routes yet.</div>`);
+  if(saved.length) h+=`<div class="grouplbl" style="margin-top:14px">Saved routes</div>`+saved.map(r=>card(r)).join("");
+  if(past.length) h+=`<div class="grouplbl" style="margin-top:14px">Earlier</div>`+past.map(r=>card(r)).join("");
+  h+=phone;
   $("#app").innerHTML=h;
   updateStatus();
 }
+/* ── This rep's own start location ───────────────────────────────────────────
+   A rep's route must never begin at whoever planned it. If they have no default of
+   their own, the app asks — once, at the top of their list — rather than quietly using
+   an address that isn't theirs. */
+let MYHOME=null;
+async function loadMyHome(){
+  try{ const j=await rapi({action:"my_settings"}); if(j&&j.ok){ MYHOME=j.home_base||null; ME=j.me||ME; } }catch(e){}
+}
+function homeBaseBanner(){
+  if(MYHOME) return "";
+  return `<div class="card hint" id="hbbanner" style="border-left:4px solid var(--orange)">
+    <b style="color:var(--navy);font-size:14px">Set your starting point</b><br>
+    Your routes start and end wherever you begin your day. Set it once and every route you open uses it.
+    <div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn sm" onclick="useMyLocation(this)">📍 Use my current location</button>
+      <button class="btn sm" onclick="typeMyHome()">Type an address</button>
+    </div>
+    <div id="hbmsg" style="margin-top:7px"></div></div>`;
+}
+async function saveMyHome(hb,msgEl){
+  try{ const j=await rapi({action:"save_home_base",home_base:hb});
+    if(j&&j.ok){ MYHOME=j.home_base; if(msgEl) msgEl.textContent="✓ Saved."; showList(); return true; }
+    if(msgEl) msgEl.textContent=(j&&j.error)||"Couldn't save that."; }
+  catch(e){ if(msgEl) msgEl.textContent="Couldn't save — check your signal."; }
+  return false;
+}
+function useMyLocation(btn){
+  const m=$("#hbmsg");
+  if(!navigator.geolocation){ if(m) m.textContent="This phone won't share its location — type an address instead."; return; }
+  if(btn) btn.disabled=true; if(m) m.textContent="Getting your location…";
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    await saveMyHome({label:"My start",address:"",lat:pos.coords.latitude,lng:pos.coords.longitude},m);
+    if(btn) btn.disabled=false;
+  },err=>{ if(m) m.textContent="Couldn't get your location ("+(err&&err.message||"denied")+"). Type an address instead.";
+    if(btn) btn.disabled=false; },{enableHighAccuracy:true,timeout:12000});
+}
+async function typeMyHome(){
+  const a=window.prompt("What address should your routes start from?\n(Street, city, state)");
+  if(!a||!a.trim()) return;
+  const m=$("#hbmsg"); if(m) m.textContent="Looking that up…";
+  let g=null; try{ g=await rapi({action:"geocode",q:a.trim()}); }catch(e){}
+  const hit=g&&g.ok&&(g.result||(g.results&&g.results[0]));
+  if(hit&&isFinite(hit.lat)&&isFinite(hit.lng)){ await saveMyHome({label:"My start",address:a.trim(),lat:hit.lat,lng:hit.lng},m); return; }
+  if(m) m.textContent="Couldn't find that address. Try including the city and state, or use your current location.";
+}
+
 function toggleInstall(){ const b=$("#installBox"); if(b) b.hidden=!b.hidden; }
 async function emailLink(btn){
   const m=$("#linkmsg"); if(m)m.textContent="Sending…"; if(btn)btn.disabled=true;
@@ -191,14 +260,58 @@ async function openRoute(id){
   if(navigator.onLine){ computeEtas(); flushOutbox().then(updateStatus); }
 }
 
+/* ── Assigning a route (president only) ─────────────────────────────────────
+   The missing link, made visible: a route is planned by one person and driven by
+   another, and until it is related to that person their portal has nothing to show.
+   The control lives on the route itself, where the decision is actually made. */
+let REPS=null;
+function isBoss(){ return String((ME&&ME.role)||"").toLowerCase()==="president"; }
+function assignBarHtml(r){
+  if(!isBoss()) return "";
+  const who=r.assigned_to_rep||r.assigned_to_email;
+  return `<div class="mt" style="margin:-4px 0 10px;padding:10px 12px;border-radius:10px;background:#f4f7fb;border:1px solid var(--line)">
+    <div style="color:var(--gray)">${who
+      ? `Assigned to <b style="color:var(--navy)">${esc(who)}</b> — it appears in their portal automatically.`
+      : `<b style="color:#b4651a">Not assigned to anyone.</b> Only you can see this route. Assign it and it appears in that rep's portal.`}</div>
+    <div id="asgbox" style="margin-top:8px"><button class="btn sm" onclick="openAssign('${jesc(r.id)}')">${who?"Change who it's for":"Assign to a rep"}</button></div>
+  </div>`;
+}
+async function openAssign(id){
+  const box=$("#asgbox"); if(!box) return;
+  box.innerHTML=`<div class="mt" style="color:var(--gray)">Loading reps…</div>`;
+  if(!REPS){ try{ const j=await rapi({action:"assignable_reps"}); REPS=(j&&j.reps)||[]; }catch(e){ REPS=[]; } }
+  if(!REPS.length){ box.innerHTML=`<div class="mt" style="color:var(--gray)">No active staff accounts to assign to.</div>`; return; }
+  const cur=(DAY&&DAY.route&&DAY.route.assigned_to_email)||"";
+  box.innerHTML=`<select id="asgsel" class="btn" style="max-width:100%">
+      <option value="">— not assigned —</option>
+      ${REPS.map(x=>`<option value="${esc(x.email)}"${x.email===cur?" selected":""}>${esc(x.rep_name||x.name)}${x.has_home_base?"":" (no start point set)"}</option>`).join("")}
+    </select>
+    <button class="btn sm pri" style="margin-left:6px" onclick="doAssign('${jesc(id)}')">Save</button>
+    <div id="asgmsg" class="mt" style="color:var(--gray);margin-top:6px"></div>`;
+}
+async function doAssign(id){
+  const sel=$("#asgsel"), m=$("#asgmsg"); if(!sel) return;
+  if(m) m.textContent="Saving…";
+  try{ const j=await rapi({action:"assign_route",id,assigned_to_email:sel.value||""});
+    if(j&&j.ok){ if(m) m.textContent="✓ Saved"+(j.home_note?" — "+j.home_note:""); openRoute(id); return; }
+    if(m) m.textContent=(j&&j.error)||"Couldn't assign that."; }
+  catch(e){ if(m) m.textContent="Couldn't assign — check your signal."; }
+}
+
 function statusOf(s){ const v=s.visit; if(v&&v.completed_at) return "done"; if(v&&(v.status==="checked_in"||v.checkin_at)) return "here"; return "plan"; }
 function renderDay(){
   const r=DAY.route, stops=DAY.stops||[];
   const drive=r.duration_s?` · ${Math.round(r.duration_s/60)} min drive`:"";
   const done=stops.filter(s=>statusOf(s)==="done").length;
+  const miles=r.distance_m?` · ${Math.round(r.distance_m/1609)} mi`:"";
   let h=`<div style="margin:0 0 10px"><button class="btn sm" onclick="showList()">‹ All routes</button></div>`;
   h+=`<div class="card"><div class="rsum"><span class="nm">${esc(r.name||"Route")}</span><span class="mt">${esc(fmtDate(r.scheduled_date))}</span></div>
-    <div class="mt" style="margin:4px 0 10px;color:var(--gray)">${stops.length} stop${stops.length===1?"":"s"}${drive} · ${done}/${stops.length} visited</div>
+    <div class="mt" style="margin:4px 0 10px;color:var(--gray)">${stops.length} stop${stops.length===1?"":"s"}${drive}${miles} · ${done}/${stops.length} visited</div>
+    ${r.planned_by?`<div class="mt" style="margin:-6px 0 10px;color:var(--gray)">Planned for you by ${esc(r.planned_by)}</div>`:""}
+    ${r.needs_home_base?`<div class="mt" style="margin:-4px 0 10px;padding:9px 11px;border-radius:10px;background:#fff6ec;border:1px solid #f3d6ae;color:#8a5a08">
+      <b>No starting point set.</b> Drive times below are between stops only.
+      <button class="btn sm" style="margin-top:7px" onclick="showList()">Set my starting point</button></div>`:""}
+    ${assignBarHtml(r)}
     <button class="btn sm" onclick="syncCalendar()">📆 Sync to Outlook</button>
     <button class="btn sm" onclick="addToCalendar()">⬇︎ .ics file</button></div>`;
   h+=stops.map((s,i)=>stopCard(s,i)).join("");
@@ -208,13 +321,20 @@ function stopCard(s,i){
   const st=statusOf(s), cls=st==="done"?"done":(st==="here"?"here":"");
   const chip=st==="done"?`<span class="chip done">visited</span>`:(st==="here"?`<span class="chip here">on site</span>`:`<span class="chip plan">planned</span>`);
   const loc=[s.city,s.state].filter(Boolean).join(", ");
+  const addr=[s.address,[s.city,s.state].filter(Boolean).join(", "),s.zip].filter(Boolean).join(" · ");
   const navQ=(isFinite(s.lat)&&isFinite(s.lng))?`${s.lat},${s.lng}`:encodeURIComponent([s.address,s.city,s.state,s.zip].filter(Boolean).join(", "));
   const navUrl=`https://www.google.com/maps/dir/?api=1&destination=${navQ}`;
   return `<div class="stop ${cls}" id="stop_${i}">
     <div class="sh" onclick="toggleBody(${i})">
       <div class="ord">${i+1}</div>
       <div class="mid"><div class="nm">${esc(s.name)} ${chip}</div>
-        <div class="sub">${loc?esc(loc):""}${s.contact_name?` · ${esc(s.contact_name)}`:""}</div></div>
+        ${/* The full street address, readable without opening anything. Navigate covers the
+             common case, but a rep reading it to someone on the phone, or checking they are
+             at the right door, needs to SEE it — and it is the fallback when a phone has no
+             map app or no signal. */""}
+        ${addr?`<div class="sub addr">${esc(addr)}</div>`:(loc?`<div class="sub">${esc(loc)}</div>`:"")}
+        <div class="sub">${s.contact_name?esc(s.contact_name):""}${s.contact_phone?`${s.contact_name?" · ":""}${esc(s.contact_phone)}`:""}${
+          s.visit_min?` · ${esc(String(s.visit_min))} min visit`:""}</div></div>
       <div class="eta"><div class="t" id="eta_${i}">—</div><div class="l">ETA</div></div>
     </div>
     <div class="acts">

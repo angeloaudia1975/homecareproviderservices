@@ -110,11 +110,43 @@ async function whoami(event){
     try{ const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${tok}`}});
       if(r.ok){ const u=await r.json(); const email=u&&u.email&&String(u.email).toLowerCase();
         if(email){ const s=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=*`).catch(()=>[]); const su=s&&s[0];
-          if(su&&su.active!==false) return {role:su.role||"rep",rep_name:su.rep_name||"",name:su.name||email,email,can_travel:!!su.can_travel}; } } }catch(e){}
+          if(su&&su.active!==false) return {role:su.role||"rep",rep_name:su.rep_name||"",name:su.name||email,email,
+            can_travel:!!su.can_travel, home_base:su.home_base||null}; } } }catch(e){}
     return null;
   }
   const need=process.env.ANALYTICS_TOKEN, got=event.headers["x-analytics-token"]||"";
-  if(need && got===need) return {role:"president",rep_name:"",name:"Admin",email:"",can_travel:true};
+  if(need && got===need) return {role:"president",rep_name:"",name:"Admin",email:"",can_travel:true,home_base:null};
+  return null;
+}
+
+/* ─────────────────────── Who may see a route ───────────────────────────────
+   A route has two people attached to it: the one who BUILT it (owner_email) and the
+   one it is FOR (assigned_to_email). Only the first existed before, which is why a
+   route the president planned for a rep was invisible to that rep — his portal asked
+   for routes owned by him, and he owned none of them. The route was never related to
+   him at all; his credentials were fine.
+
+   Viewing and managing are deliberately different rights. A rep works a route assigned
+   to them — opens it, drives it, files visit reports. Renaming, re-planning or deleting
+   it stays with the person who built it, so an assignment can never be silently
+   rewritten or destroyed by the field. */
+const emailEq=(a,b)=>!!a&&!!b&&String(a).toLowerCase().trim()===String(b).toLowerCase().trim();
+const isBoss = me => String(me&&me.role||"").toLowerCase()==="president";
+const canViewRoute = (me,r) => isBoss(me) || emailEq(r&&r.owner_email,me.email) || emailEq(r&&r.assigned_to_email,me.email);
+const canManageRoute = (me,r) => isBoss(me) || emailEq(r&&r.owner_email,me.email);
+// PostgREST filter for "mine": owned by me OR assigned to me.
+const mineFilter = me => { const e=String(me.email||"~none~").toLowerCase();
+  return `or=(owner_email.eq.${encodeURIComponent(e)},assigned_to_email.eq.${encodeURIComponent(e)})`; };
+
+/* A rep's map must never start from someone else's house. The start point is resolved
+   in this order and never falls back to the creator: whatever the route itself records,
+   then the viewing rep's own saved default. If neither exists the map asks rather than
+   guessing — an unset start is a question, not a licence to use the admin's address. */
+function resolveHomeBase(route, me){
+  const rb=route&&route.home_base;
+  if(rb && isFinite(rb.lat) && isFinite(rb.lng)) return {...rb, source:"route"};
+  const mb=me&&me.home_base;
+  if(mb && isFinite(mb.lat) && isFinite(mb.lng)) return {...mb, source:"my_default"};
   return null;
 }
 
@@ -168,6 +200,19 @@ exports.handler = async (event)=>{
     // ---------- Saved routes ----------
     if(b.action==="save_route"){
       const name=String(b.name||"").trim(); if(!name) return json(400,{error:"name required"});
+      /* A route built BY a rep is theirs; a route built by the president is for whoever
+         they name. Recording that at save time is what stops a route existing under the
+         admin account with no relationship to the person meant to drive it. */
+      let asgEmail=null, asgRep=null;
+      if(isBoss(me)){
+        if(b.assigned_to_email!=null){
+          asgEmail=String(b.assigned_to_email||"").toLowerCase().trim()||null;
+          if(asgEmail){ const su=await sbGet(`staff_users?email=eq.${encodeURIComponent(asgEmail)}&select=email,rep_name,name,active`).catch(()=>[]);
+            const u=su&&su[0];
+            if(!u||u.active===false) return json(400,{error:"That rep is not an active staff user"});
+            asgRep=u.rep_name||u.name||null; }
+        }
+      } else { asgEmail=me.email||null; asgRep=me.rep_name||null; }
       const row={
         owner_email:me.email||null, rep_name:me.rep_name||null, name,
         scheduled_date:(b.scheduled_date&&String(b.scheduled_date).trim())||null,
@@ -177,41 +222,135 @@ exports.handler = async (event)=>{
         geometry:b.geometry||null, notes:(b.notes!=null?String(b.notes):null),
         updated_at:new Date().toISOString(),
       };
+      if(asgEmail){ row.assigned_to_email=asgEmail; row.assigned_to_rep=asgRep;
+        row.assigned_at=new Date().toISOString(); row.assigned_by=me.email||me.name||null; }
       if(b.id){
-        // ownership check
-        const cur=await sbGet(`rep_routes?id=eq.${encodeURIComponent(b.id)}&select=owner_email`).catch(()=>[]);
+        const cur=await sbGet(`rep_routes?id=eq.${encodeURIComponent(b.id)}&select=owner_email,assigned_to_email`).catch(()=>[]);
         const own=cur&&cur[0]; if(!own) return json(404,{error:"route not found"});
-        if(me.role!=="president" && String(own.owner_email||"").toLowerCase()!==String(me.email||"").toLowerCase()) return json(403,{error:"not your route"});
+        if(!canManageRoute(me,own)) return json(403,{error:canViewRoute(me,own)
+          ? "This route is assigned to you but owned by whoever planned it — ask them to change it."
+          : "not your route"});
+        // Re-saving must not silently drop an existing assignment.
+        if(!asgEmail && own.assigned_to_email){ delete row.assigned_to_email; delete row.assigned_to_rep; }
         await sbSend("PATCH",`rep_routes?id=eq.${encodeURIComponent(b.id)}`,row,{Prefer:"return=minimal"});
         return json(200,{ok:true,id:b.id});
       }
       const ins=await sbSend("POST","rep_routes",row,{Prefer:"return=representation"});
       return json(200,{ok:true,id:ins&&ins[0]&&ins[0].id});
     }
+    /* Assign an existing route to a rep. This is the missing link: it relates a route
+       the office planned to the person who will drive it, rather than leaving it under
+       the account that happened to create it. Assigning also re-bases the start point,
+       because a route planned from the president's house must not send a rep there. */
+    if(b.action==="assign_route"){
+      if(!isBoss(me)) return json(403,{error:"President only"});
+      const id=String(b.id||"").trim(); if(!id) return json(400,{error:"id required"});
+      const rows=await sbGet(`rep_routes?id=eq.${encodeURIComponent(id)}&select=*`).catch(()=>[]);
+      const route=rows&&rows[0]; if(!route) return json(404,{error:"route not found"});
+      const email=String(b.assigned_to_email||"").toLowerCase().trim();
+      const now=new Date().toISOString();
+      if(!email){        // unassign
+        await sbSend("PATCH",`rep_routes?id=eq.${encodeURIComponent(id)}`,
+          {assigned_to_email:null,assigned_to_rep:null,assigned_at:null,assigned_by:null,updated_at:now},{Prefer:"return=minimal"});
+        return json(200,{ok:true,assigned_to_email:null});
+      }
+      const su=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=email,name,rep_name,active,home_base`).catch(()=>[]);
+      const u=su&&su[0];
+      if(!u) return json(404,{error:`No staff user with the email ${email}. Add them under Staff before assigning a route.`});
+      if(u.active===false) return json(400,{error:"That staff account is inactive"});
+      const patch={assigned_to_email:email, assigned_to_rep:u.rep_name||u.name||null,
+        assigned_at:now, assigned_by:me.email||me.name||"president", updated_at:now};
+      /* Start point. The rep's own default wins; if they have none, the route's start is
+         CLEARED rather than left pointing at whoever planned it, and their map asks them
+         to set one. Silently keeping the admin's address is the bug being fixed. */
+      let home_note=null;
+      if(u.home_base && isFinite(u.home_base.lat) && isFinite(u.home_base.lng)){
+        patch.home_base=u.home_base; home_note="start point set to the rep's own default";
+      } else if(route.home_base && !emailEq(route.owner_email,email)){
+        patch.home_base=null; home_note="start point cleared — this rep has no default yet, so their map will ask";
+      }
+      await sbSend("PATCH",`rep_routes?id=eq.${encodeURIComponent(id)}`,patch,{Prefer:"return=minimal"});
+      return json(200,{ok:true,assigned_to_email:email,assigned_to_rep:patch.assigned_to_rep,home_note});
+    }
+
+    /* The reps a route can be assigned to. */
+    if(b.action==="assignable_reps"){
+      if(!isBoss(me)) return json(403,{error:"President only"});
+      const rows=await sbGet("staff_users?active=neq.false&select=email,name,rep_name,role,home_base&order=name").catch(()=>[]);
+      return json(200,{ok:true,reps:(rows||[]).map(r=>({email:r.email,name:r.name||r.email,
+        rep_name:r.rep_name||"", role:r.role||"rep", has_home_base:!!(r.home_base&&isFinite(r.home_base.lat))}))});
+    }
+
+    /* Each rep's own start location. Personal: a rep may only read and write their own,
+       and it is never copied from anyone else. */
+    /* Turn a typed address into coordinates, so a rep can set their own start point
+       without needing the full map. Uses the OpenRouteService key already configured
+       for routing — no second provider, no key in the browser. */
+    if(b.action==="geocode"){
+      const q=String(b.q||"").trim();
+      if(!q) return json(400,{error:"q required"});
+      if(!ORS_KEY) return json(200,{ok:false,need_key:true,message:"Address lookup isn't set up yet — add ORS_API_KEY in Netlify."});
+      try{
+        const r=await fetch(`https://api.openrouteservice.org/geocode/search?api_key=${encodeURIComponent(ORS_KEY)}`
+          +`&text=${encodeURIComponent(q)}&boundary.country=US&size=1`,{headers:{Accept:"application/json"}});
+        if(!r.ok) return json(200,{ok:false,message:`Lookup failed (${r.status})`});
+        const j=await r.json().catch(()=>null);
+        const f=j&&j.features&&j.features[0];
+        if(!f||!f.geometry||!Array.isArray(f.geometry.coordinates)) return json(200,{ok:false,message:"No match for that address"});
+        return json(200,{ok:true,result:{lat:f.geometry.coordinates[1],lng:f.geometry.coordinates[0],
+          address:(f.properties&&f.properties.label)||q}});
+      }catch(e){ return json(200,{ok:false,message:String(e.message||e).slice(0,160)}); }
+    }
+
+    if(b.action==="my_settings"){
+      return json(200,{ok:true, me:{email:me.email||"",name:me.name||"",rep_name:me.rep_name||"",role:me.role||"rep"},
+        home_base:me.home_base||null});
+    }
+    if(b.action==="save_home_base"){
+      if(!me.email) return json(400,{error:"This account has no email on file, so a personal start point can't be saved."});
+      const h=b.home_base;
+      if(h!==null && !(h && isFinite(h.lat) && isFinite(h.lng))) return json(400,{error:"home_base needs lat and lng"});
+      const val=h?{label:String(h.label||"Home").slice(0,80), address:String(h.address||"").slice(0,240),
+        lat:Number(h.lat), lng:Number(h.lng)}:null;
+      await sbSend("PATCH",`staff_users?email=eq.${encodeURIComponent(String(me.email).toLowerCase())}`,
+        {home_base:val},{Prefer:"return=minimal"});
+      return json(200,{ok:true,home_base:val});
+    }
+
     if(b.action==="list_routes"){
-      let path="rep_routes?select=id,name,scheduled_date,stops,distance_m,duration_s,round_trip,updated_at&order=scheduled_date.desc.nullslast,updated_at.desc";
-      if(me.role!=="president") path+=`&owner_email=eq.${encodeURIComponent(me.email||"~none~")}`;
+      let path="rep_routes?select=id,name,scheduled_date,stops,distance_m,duration_s,round_trip,updated_at,owner_email,rep_name,assigned_to_email,assigned_to_rep&order=scheduled_date.desc.nullslast,updated_at.desc";
+      if(!isBoss(me)) path+="&"+mineFilter(me);
+      else if(b.assigned_to_email){ path+=`&assigned_to_email=eq.${encodeURIComponent(String(b.assigned_to_email).toLowerCase())}`; }
       const rows=await sbGet(path).catch(()=>[]);
       // visited-progress per route (completed visit reports) so the route cards can show 2/5 done.
       const ids=(rows||[]).map(r=>r.id);
       let doneBy={};
       if(ids.length){ try{ const vr=await sbGet(`dealer_visit_reports?route_id=in.(${ids.join(",")})&completed_at=not.is.null&select=route_id`); for(const v of (vr||[])) doneBy[v.route_id]=(doneBy[v.route_id]||0)+1; }catch(e){} }
+      const today=new Date().toISOString().slice(0,10);
       const routes=(rows||[]).map(r=>({id:r.id,name:r.name,scheduled_date:r.scheduled_date,stops_count:(r.stops||[]).length,
-        visited:doneBy[r.id]||0, distance_m:r.distance_m,duration_s:r.duration_s,round_trip:r.round_trip,updated_at:r.updated_at}));
-      return json(200,{ok:true,routes});
+        visited:doneBy[r.id]||0, distance_m:r.distance_m,duration_s:r.duration_s,round_trip:r.round_trip,updated_at:r.updated_at,
+        assigned_to_rep:r.assigned_to_rep||null, assigned_to_email:r.assigned_to_email||null,
+        planned_by:(r.assigned_to_email&&!emailEq(r.assigned_to_email,r.owner_email))?(r.rep_name||r.owner_email||"the office"):null,
+        mine:emailEq(r.assigned_to_email,me.email)||emailEq(r.owner_email,me.email),
+        can_manage:canManageRoute(me,r),
+        when:r.scheduled_date?(r.scheduled_date===today?"today":(r.scheduled_date>today?"upcoming":"past")):"saved"}));
+      return json(200,{ok:true,routes,me:{email:me.email||"",name:me.name||"",rep_name:me.rep_name||"",role:me.role,
+        home_base:me.home_base||null}});
     }
     if(b.action==="get_route"){
       if(!b.id) return json(400,{error:"id required"});
       const rows=await sbGet(`rep_routes?id=eq.${encodeURIComponent(b.id)}&select=*`).catch(()=>[]);
       const r=rows&&rows[0]; if(!r) return json(404,{error:"route not found"});
-      if(me.role!=="president" && String(r.owner_email||"").toLowerCase()!==String(me.email||"").toLowerCase()) return json(403,{error:"not your route"});
-      return json(200,{ok:true,route:r});
+      if(!canViewRoute(me,r)) return json(403,{error:"not your route"});
+      return json(200,{ok:true,route:r,home_base:resolveHomeBase(r,me),can_manage:canManageRoute(me,r)});
     }
     if(b.action==="delete_route"){
       if(!b.id) return json(400,{error:"id required"});
-      const rows=await sbGet(`rep_routes?id=eq.${encodeURIComponent(b.id)}&select=owner_email`).catch(()=>[]);
+      const rows=await sbGet(`rep_routes?id=eq.${encodeURIComponent(b.id)}&select=owner_email,assigned_to_email`).catch(()=>[]);
       const r=rows&&rows[0]; if(!r) return json(200,{ok:true});
-      if(me.role!=="president" && String(r.owner_email||"").toLowerCase()!==String(me.email||"").toLowerCase()) return json(403,{error:"not your route"});
+      if(!canManageRoute(me,r)) return json(403,{error:canViewRoute(me,r)
+        ? "This route was planned for you by the office — it can't be deleted from here."
+        : "not your route"});
       await sbSend("DELETE",`rep_routes?id=eq.${encodeURIComponent(b.id)}`,null,{Prefer:"return=minimal"});
       return json(200,{ok:true});
     }
@@ -482,7 +621,7 @@ exports.handler = async (event)=>{
     // dealer contact info and the current visit status per stop. visit_checkin stamps arrival.
     // visit_report_save upserts the structured report and, on completion, writes through to the CRM
     // (touch + tasks + opportunities) exactly like save_visit. Reps see only their own routes.
-    const ownsRoute=r=> me.role==="president" || String((r&&r.owner_email)||"").toLowerCase()===String(me.email||"").toLowerCase();
+    const ownsRoute=r=> canViewRoute(me,r);   // working a route needs view rights, not ownership
     if(b.action==="route_day"){
       let route=null;
       if(b.route_id){
@@ -491,7 +630,7 @@ exports.handler = async (event)=>{
         if(route && !ownsRoute(route)) return json(403,{error:"not your route"});
       } else {
         const date=(b.date&&/^\d{4}-\d{2}-\d{2}$/.test(b.date))?b.date:new Date().toISOString().slice(0,10);
-        const own=me.role!=="president"?`&owner_email=eq.${encodeURIComponent(me.email||"~none~")}`:"";
+        const own=isBoss(me)?"":"&"+mineFilter(me);
         const rows=await sbGet(`rep_routes?scheduled_date=eq.${date}${own}&select=*&order=updated_at.desc&limit=1`).catch(()=>[]);
         route=(rows&&rows[0])||null;
       }
@@ -510,13 +649,23 @@ exports.handler = async (event)=>{
           lat:s.lat, lng:s.lng, visit_min:(s.visit_min!=null?s.visit_min:null),
           contact_name:(c.name||d.contact_name||""), contact_email:(c.email||d.email||""), contact_phone:(c.phone||c.cell||d.phone||""),
           visit: v?{status:v.status,checkin_at:v.checkin_at,completed_at:v.completed_at}:null }; });
-      return json(200,{ok:true, route:{id:route.id,name:route.name,scheduled_date:route.scheduled_date,home_base:route.home_base,round_trip:route.round_trip,distance_m:route.distance_m,duration_s:route.duration_s,geometry:route.geometry}, stops:outStops});
+      const hb=resolveHomeBase(route,me);
+      return json(200,{ok:true,
+        route:{id:route.id,name:route.name,scheduled_date:route.scheduled_date,
+          home_base:hb, home_base_source:hb?hb.source:null,
+          needs_home_base:!hb,
+          round_trip:route.round_trip,distance_m:route.distance_m,duration_s:route.duration_s,geometry:route.geometry,
+          assigned_to_rep:route.assigned_to_rep||null, assigned_to_email:route.assigned_to_email||null,
+          planned_by:(route.assigned_to_email&&!emailEq(route.assigned_to_email,route.owner_email))
+            ?(route.rep_name||route.owner_email||"the office"):null,
+          can_manage:canManageRoute(me,route)},
+        stops:outStops});
     }
     if(b.action==="visit_checkin"){
       const rid=String(b.route_id||"").trim()||null, did=String(b.dealer_id||"").trim();
       if(!did) return json(400,{error:"dealer_id required"});
       let sd=null;
-      if(rid){ const rr=await sbGet(`rep_routes?id=eq.${encodeURIComponent(rid)}&select=scheduled_date,owner_email`).catch(()=>[]); const r=rr&&rr[0]; if(r){ if(!ownsRoute(r)) return json(403,{error:"not your route"}); sd=r.scheduled_date||null; } }
+      if(rid){ const rr=await sbGet(`rep_routes?id=eq.${encodeURIComponent(rid)}&select=scheduled_date,owner_email,assigned_to_email`).catch(()=>[]); const r=rr&&rr[0]; if(r){ if(!ownsRoute(r)) return json(403,{error:"not your route"}); sd=r.scheduled_date||null; } }
       const now=new Date().toISOString();
       const row={ route_id:rid, dealer_id:did, rep_email:me.email||null, rep_name:me.rep_name||null, scheduled_date:sd, checkin_at:now, status:"checked_in", updated_at:now };
       if(rid){ await sbSend("POST","dealer_visit_reports?on_conflict=route_id,dealer_id",row,{Prefer:"resolution=merge-duplicates,return=minimal"}); }
@@ -540,7 +689,7 @@ exports.handler = async (event)=>{
       const completed = status==="completed";
       const now=new Date().toISOString();
       let sd=null;
-      if(rid){ const rr=await sbGet(`rep_routes?id=eq.${encodeURIComponent(rid)}&select=scheduled_date,owner_email`).catch(()=>[]); const r=rr&&rr[0]; if(r){ if(!ownsRoute(r)) return json(403,{error:"not your route"}); sd=r.scheduled_date||null; } }
+      if(rid){ const rr=await sbGet(`rep_routes?id=eq.${encodeURIComponent(rid)}&select=scheduled_date,owner_email,assigned_to_email`).catch(()=>[]); const r=rr&&rr[0]; if(r){ if(!ownsRoute(r)) return json(403,{error:"not your route"}); sd=r.scheduled_date||null; } }
       const row={ route_id:rid, dealer_id:did, rep_email:me.email||null, rep_name:me.rep_name||null, scheduled_date:sd, status, fields, updated_at:now };
       if(b.transcript!=null) row.transcript=String(b.transcript);
       if(b.structured&&typeof b.structured==="object") row.structured=b.structured;
