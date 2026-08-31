@@ -70,6 +70,13 @@ async function load(){
 function render(users){
   const rows=users.map(u=>userRow(u)).join("")||`<tr><td colspan="6" class="hint">No teammates yet.</td></tr>`;
   $("#body").innerHTML=`
+    <div class="card" style="border-left:4px solid var(--navy)">
+      <h2>Your own account</h2>
+      <p class="hint" style="margin:2px 0 10px">Signed in as <b>${esc((ME&&(ME.name||ME.email))||"")}</b>.
+        Your email signature is appended to the emails you send from Dealer 360 — this page manages your own record as well as the team's.</p>
+      <button class="go" onclick="editUser('${esc((ME&&ME.email)||"")}')">✍️ Edit my profile &amp; signature</button>
+    </div>
+
     <div class="card"><h2>Add a team member</h2>
       <div class="grid2">
         <div><label class="fl">Name</label><input class="in" id="n_name" placeholder="Full name"></div>
@@ -103,7 +110,7 @@ function userRow(u){
     <td>${u.role==="president"?"—":(u.can_travel?"✓":"—")}</td>
     <td class="acts">
       ${canView?`<button class="go sm viewas" onclick="viewAs('${esc(u.email)}','${esc((u.name||u.email)).replace(/'/g,"\\'")}')">👁 View as</button>`:""}
-      <button class="go sm" style="background:#fff;color:var(--navy)" onclick="editUser('${esc(u.email)}')">Edit</button>
+      <button class="go sm" style="background:#fff;color:var(--navy)" onclick="editUser('${esc(u.email)}')">${isMe?"✍️ Edit mine":"Edit"}</button>
       ${u.active?`<button class="go sm" style="background:#fff;color:var(--navy)" onclick="sendReset('${esc(u.email)}','${esc((u.name||u.email)).replace(/'/g,"\\'")}')" title="Email them a link to set a new password">🔑 Reset password</button>`:""}
       ${isMe?"":(u.active?`<button class="go sm" style="background:#fff;color:#b42323;border-color:#f0c8c8" onclick="removeUser('${esc(u.email)}','${esc((u.name||u.email)).replace(/'/g,"\\'")}')">Remove</button>`
                        :`<button class="go sm" style="background:#fff;color:var(--navy)" onclick="reactivate('${esc(u.email)}')">Restore</button>`)}
@@ -138,7 +145,8 @@ async function addUser(){
 }
 async function editUser(email){
   const j=await api({action:"list_users"},true); const u=((j&&j.users)||[]).find(x=>x.email===email); if(!u) return load();
-  $("#body").innerHTML=`<div class="card"><h2>Edit ${esc(u.name||u.email)}</h2>
+  const self = ME && u.email===ME.email;
+  $("#body").innerHTML=`<div class="card"><h2>${self?"Your profile":"Edit "+esc(u.name||u.email)}</h2>
     <div class="grid2">
       <div><label class="fl">Name</label><input class="in" id="e_name" value="${esc(u.name||"")}"></div>
       <div><label class="fl">Email</label><input class="in" value="${esc(u.email)}" disabled></div>
@@ -147,7 +155,7 @@ async function editUser(email){
       <div><label class="fl">Account book (rep name)</label><input class="in" id="e_rep" value="${esc(u.rep_name||"")}"></div>
     </div>
     <label class="cbrow"><input type="checkbox" id="e_travel" style="width:auto" ${u.can_travel?"checked":""}> Can plan &amp; save routes (travels)</label>
-    <div style="margin-top:12px"><label class="fl">Email signature <span class="mut" style="font-weight:600">— appended to their AI-composed Dealer 360 emails</span></label>
+    <div style="margin-top:12px"><label class="fl">Email signature <span class="mut" style="font-weight:600">— appended to ${self?"your":"their"} AI-composed Dealer 360 emails</span></label>
       <textarea id="e_sig" rows="5" class="in" placeholder="e.g.\nGreg Campbell\nSales Representative · HomeCare Provider Services\n(937) 626-5141 · greg@homecareproviderservices.us">${esc(u.email_signature||"")}</textarea></div>
     <div style="margin-top:14px;display:flex;gap:8px">
       <button class="go" onclick="saveEdit('${esc(u.email)}')">Save</button>
