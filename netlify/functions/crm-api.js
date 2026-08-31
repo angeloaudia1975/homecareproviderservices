@@ -89,15 +89,33 @@ exports.handler = async (event)=>{
     if(b.action==="list"){
       if(!b.dealer_id) return json(400,{error:"dealer_id required"});
       const did=encodeURIComponent(b.dealer_id);
-      const [notes,tasks,activity,crosssell,health,opportunities]=await Promise.all([
+      const [notes,tasks,activity,crosssell,health,opportunities,crossplan]=await Promise.all([
         sbGet(`dealer_notes?dealer_id=eq.${did}&select=*&order=created_at.desc&limit=200`).catch(()=>[]),
         sbGet(`dealer_tasks?dealer_id=eq.${did}&select=*&order=status.asc,due_date.asc.nullslast,created_at.desc&limit=200`).catch(()=>[]),
         sbGet(`dealer_activity?dealer_id=eq.${did}&select=*&order=created_at.desc&limit=50`).catch(()=>[]),
         sbGet(`cross_sell?dealer_id=eq.${did}&select=rank,rec_name,basis_name,score,support&order=rank.asc&limit=3`).catch(()=>[]),
         sbGet(`dealer_engagement?dealer_id=eq.${did}&select=status,score,trend,churn_score,months_since,last_period,recent_sales,total_sales,lines`).catch(()=>[]),
         sbGet(`opportunities?dealer_id=eq.${did}&status=eq.open&select=id,title,line,stage,value,probability,expected_close,owner_rep&order=value.desc`).catch(()=>[]),
+        // The rep's own plan. Separate table, separate lifecycle — see migrate-cross-sell-plan.sql.
+        sbGet(`dealer_cross_sell?dealer_id=eq.${did}&select=*&order=priority.asc,updated_at.desc&limit=100`).catch(()=>[]),
       ]);
-      return json(200,{ok:true,notes:notes||[],tasks:tasks||[],activity:activity||[],crosssell:crosssell||[],health:(health&&health[0])||null,opportunities:opportunities||[]});
+      /* The engine's suggestions are shown only where the rep has NOT already made that
+         line part of the plan — otherwise the section tells a rep to consider something
+         they already decided on, which is how a suggestion feed loses credibility. */
+      /* Match on BOTH the slug and the display name, normalised. The plan stores a slug
+         ("golden-technologies") while the engine's suggestion carries the display name
+         ("Golden Technologies"); comparing one to the other matches nothing, and the
+         rep would keep being suggested a line already sitting in their plan. */
+      const mnorm=v=>String(v||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+      const planned=new Set();
+      (crossplan||[]).filter(x=>x.status!=='dismissed').forEach(x=>{
+        if(x.manufacturer) planned.add(mnorm(x.manufacturer));
+        if(x.mfr_name)     planned.add(mnorm(x.mfr_name));
+      });
+      const suggestions=(crosssell||[]).filter(c=>!planned.has(mnorm(c.rec_name)));
+      return json(200,{ok:true,notes:notes||[],tasks:tasks||[],activity:activity||[],
+        crosssell:suggestions,crosssell_all:crosssell||[],crossplan:crossplan||[],
+        health:(health&&health[0])||null,opportunities:opportunities||[]});
     }
 
     // Unified per-dealer digital-activity intelligence: email engagement, ordering-portal
@@ -231,6 +249,131 @@ exports.handler = async (event)=>{
       const rows=await sbGet(`dealer_tasks?status=eq.open&select=assigned_rep`).catch(()=>[]);
       const n=(rows||[]).filter(t=>String(t.assigned_rep||"").toLowerCase()===rn).length;
       return json(200,{ok:true,count:n});
+    }
+
+    /* ── The rep's cross-sell plan ───────────────────────────────────────────
+       Reps decide account strategy; the engine only suggests. These four actions are
+       the whole editing surface: what to promote (a line, a family, a category or a
+       specific SKU), why, and how urgently. Nothing here is ever touched by the
+       nightly recompute. */
+    const OPP_TYPES=new Set(["cross_sell","new_product","upgrade","reorder","competitive_takeaway","demo","whitespace"]);
+    const PRIORITIES=new Set(["high","medium","low"]);
+    const OPP_STATUS=new Set(["open","won","lost","dismissed"]);
+    const trimTo=(v,n)=>String(v==null?"":v).trim().slice(0,n)||null;
+
+    if(b.action==="save_cross_sell"){
+      if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+      const o=b.opportunity||{};
+      const type=String(o.opp_type||"cross_sell").toLowerCase();
+      const pri=String(o.priority||"medium").toLowerCase();
+      const st=String(o.status||"open").toLowerCase();
+      if(!OPP_TYPES.has(type)) return json(400,{error:"unknown opportunity type"});
+      if(!PRIORITIES.has(pri)) return json(400,{error:"priority must be high, medium or low"});
+      if(!OPP_STATUS.has(st)) return json(400,{error:"unknown status"});
+      /* An opportunity that names nothing is not an opportunity — it would show in the
+         plan as an empty row nobody can act on. A manufacturer is the minimum. */
+      if(!String(o.manufacturer||o.mfr_name||"").trim())
+        return json(400,{error:"Pick a manufacturer — an opportunity has to name what you're promoting."});
+      const now=new Date().toISOString();
+      const row={
+        dealer_id:String(b.dealer_id),
+        manufacturer:trimTo(o.manufacturer,80), mfr_name:trimTo(o.mfr_name,120),
+        product_code:trimTo(o.product_code,60), product_name:trimTo(o.product_name,200),
+        family:trimTo(o.family,120), category:trimTo(o.category,120),
+        opp_type:type, priority:pri, status:st,
+        notes:trimTo(o.notes,2000),
+        source:(o.source==="system"?"system":"rep"),
+        updated_at:now, updated_by:me.name||me.email||null,
+      };
+      if(o.id){
+        await sbSend("PATCH",`dealer_cross_sell?id=eq.${encodeURIComponent(o.id)}&dealer_id=eq.${encodeURIComponent(b.dealer_id)}`,
+          row,{Prefer:"return=minimal"});
+        return json(200,{ok:true,id:o.id});
+      }
+      row.created_at=now; row.created_by=me.name||me.email||null;
+      const ins=await sbSend("POST","dealer_cross_sell",row,{Prefer:"return=representation"});
+      return json(200,{ok:true,id:(ins&&ins[0]&&ins[0].id)||null});
+    }
+
+    if(b.action==="delete_cross_sell"){
+      if(!b.dealer_id||!b.id) return json(400,{error:"dealer_id and id required"});
+      await sbSend("DELETE",`dealer_cross_sell?id=eq.${encodeURIComponent(b.id)}&dealer_id=eq.${encodeURIComponent(b.dealer_id)}`,
+        null,{Prefer:"return=minimal"});
+      return json(200,{ok:true});
+    }
+
+    /* Promote one of the engine's suggestions into the plan. The rep owns it from that
+       point on — this is how a suggestion becomes strategy without being retyped. */
+    if(b.action==="adopt_cross_sell"){
+      if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+      const name=String(b.rec_name||"").trim();
+      if(!name) return json(400,{error:"rec_name required"});
+      let slug=String(b.rec_slug||"").trim();
+      if(!slug){ try{ const m=await sbGet(`manufacturers?name=eq.${encodeURIComponent(name)}&select=slug&limit=1`);
+        slug=(m&&m[0]&&m[0].slug)||""; }catch(e){} }
+      const now=new Date().toISOString();
+      const ins=await sbSend("POST","dealer_cross_sell",{
+        dealer_id:String(b.dealer_id), manufacturer:slug||null, mfr_name:name,
+        opp_type:"cross_sell", priority:"medium", status:"open", source:"system",
+        notes:b.basis_name?`Suggested by the platform — dealers who buy ${String(b.basis_name).slice(0,80)} commonly buy this too.`:null,
+        created_at:now, created_by:me.name||me.email||null, updated_at:now, updated_by:me.name||me.email||null,
+      },{Prefer:"return=representation"});
+      return json(200,{ok:true,id:(ins&&ins[0]&&ins[0].id)||null});
+    }
+
+    /* What a rep can pick from, for this dealer. Manufacturers are split into the ones
+       they already buy and the ones they don't — the second list is the whitespace, and
+       it is the more interesting half of a cross-sell conversation. */
+    if(b.action==="cross_sell_options"){
+      if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+      const did=encodeURIComponent(b.dealer_id);
+      const [mfrs,sales,lineStatus]=await Promise.all([
+        sbGet("manufacturers?select=slug,name&order=name").catch(()=>[]),
+        sbGet(`monthly_sales?dealer_id=eq.${did}&select=manufacturer,amount`).catch(()=>[]),
+        sbGet(`dealer_line_status?dealer_id=eq.${did}&select=manufacturer,relationship`).catch(()=>[]),
+      ]);
+      const spend={}; (sales||[]).forEach(r=>{ const k=r.manufacturer||""; if(k) spend[k]=(spend[k]||0)+(Number(r.amount)||0); });
+      const rel={}; (lineStatus||[]).forEach(r=>{ if(r.manufacturer) rel[r.manufacturer]=r.relationship||""; });
+      const list=(mfrs||[]).map(m=>({slug:m.slug,name:m.name||m.slug,
+        spend:Math.round(spend[m.slug]||0), relationship:rel[m.slug]||(spend[m.slug]?"active":"prospect"),
+        buys:!!spend[m.slug]}));
+      return json(200,{ok:true,
+        current:list.filter(x=>x.buys).sort((a,b)=>b.spend-a.spend),
+        potential:list.filter(x=>!x.buys).sort((a,b)=>a.name.localeCompare(b.name)),
+        types:[...OPP_TYPES], priorities:[...PRIORITIES]});
+    }
+
+    /* The catalog for one manufacturer, shaped for a picker: categories → families →
+       products. Read from the SAME layered catalog Partner 360 serves (base file +
+       added products + overrides), so a rep can only promote something a dealer can
+       actually be shown. Retired, do-not-list and merged records are excluded. */
+    if(b.action==="mfr_products"){
+      const slug=String(b.manufacturer||"").trim();
+      if(!slug) return json(400,{error:"manufacturer required"});
+      let base=[],custom=[],ovRows=[];
+      try{
+        const r=await fetch(`${ORDERING}/data/${encodeURIComponent(slug)}.json`,{headers:{"cache-control":"no-cache"}});
+        base=r.ok?(await r.json().catch(()=>[])):[];
+      }catch(e){ base=[]; }
+      try{ custom=await sbGet(`custom_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,name,category,active,image`); }catch(e){}
+      try{ ovRows=await sbGet(`product_overrides?manufacturer=eq.${encodeURIComponent(slug)}&select=code,patch`); }catch(e){}
+      const ov={}; (ovRows||[]).forEach(o=>{ ov[String(o.code)]=o.patch||{}; });
+      const merged={};
+      (base||[]).forEach(p=>{ merged[String(p.code)]={code:String(p.code),name:p.name||"",category:p.category||"",image:p.image||"",group:p.group||""}; });
+      (custom||[]).forEach(p=>{ merged[String(p.code)]=Object.assign(merged[String(p.code)]||{},
+        {code:String(p.code),name:p.name||"",category:p.category||"",image:p.image||"",active:p.active}); });
+      const out=[];
+      Object.keys(merged).forEach(code=>{
+        const o=ov[code]||{}; const p=Object.assign({},merged[code],o);
+        if(o.active===false||p.active===false) return;      // retired
+        if(o.merged_into) return;                           // folded into another record
+        if(o.disposition==="do_not_list"||o.disposition==="not_offered"||o.disposition==="discontinued") return;
+        out.push({code:p.code,name:p.name||p.code,category:p.category||"",family:p.group||"",image:p.image||""});
+      });
+      out.sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+      const categories=[...new Set(out.map(x=>x.category).filter(Boolean))].sort();
+      const families=[...new Set(out.map(x=>x.family).filter(Boolean))].sort();
+      return json(200,{ok:true,manufacturer:slug,products:out.slice(0,3000),categories,families,count:out.length});
     }
 
     if(b.action==="add_note"){
