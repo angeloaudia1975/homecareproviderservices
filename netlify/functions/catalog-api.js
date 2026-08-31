@@ -87,11 +87,18 @@ function duplicateGroups(base, custom, overrides){
     if(members.length<2) return;
     const literal=new Set(members.map(m=>m.code));
     const reasons=[];
-    if(literal.size===1) reasons.push("the same SKU exists as both a catalog product and an added product");
+    /* Two shapes hide behind "same code". Two DIFFERENT spellings of one SKU are two
+       records and merge one into the other. ONE spelling appearing in both the catalog
+       file and the added table is not two products at all — it is one product stored in
+       two layers, and there is no loser to retire. They are resolved by different actions,
+       so the group says which it is rather than leaving the screen to guess. */
+    const sameCode = literal.size===1;
+    if(sameCode) reasons.push("the same SKU exists as both a catalog product and an added product");
     else reasons.push(`the same SKU written differently: ${[...literal].join(" / ")}`);
     const names=new Set(members.map(m=>normName(m.name)).filter(Boolean));
     if(names.size===1 && members.every(m=>m.name)) reasons.push("identical product name");
-    groups.push({ key:"code:"+k, match:"sku", confidence:"high", reasons, members });
+    groups.push({ key:"code:"+k, match:"sku", confidence:"high",
+      same_code:sameCode, code:sameCode?members[0].code:null, reasons, members });
   });
   // Same name, unrelated codes — a weaker signal, so it is offered for review only.
   const byName={};
@@ -108,9 +115,17 @@ function duplicateGroups(base, custom, overrides){
     const o=ov[m.code]||{};
     m.disposition=o.disposition||null; m.merged_into=o.merged_into||null;
     m.retired=(o.active===false)||(m.active===false);
+    m.layers_merged=!!o.layers_merged_at;
   }));
-  // A group whose duplicate has already been merged or retired is settled.
-  return groups.filter(g=>g.members.filter(m=>!m.merged_into && !m.retired).length>1);
+  /* A group whose duplicate has already been merged or retired is settled. So is a
+     same-code pair that has been consolidated: its two layers now resolve to one record.
+     It cannot be settled by retiring a member the way a two-code merge is — both members
+     share one code, so deactivating "the loser" would take the product itself off Partner
+     360. The consolidation stamp is what closes it. */
+  return groups.filter(g=>{
+    if(g.same_code) return !g.members.some(m=>m.layers_merged);
+    return g.members.filter(m=>!m.merged_into && !m.retired).length>1;
+  });
 }
 
 // Staff auth: email/password JWT resolved against staff_users; legacy passcode = president.
@@ -557,6 +572,17 @@ exports.handler = async (event)=>{
               added:   (cp && cp.base_price!=null && cp.base_price!=="") ? Number(cp.base_price) : null,
               override:(ov.base_price!=null && ov.base_price!=="") ? Number(ov.base_price) : null,
             },
+            /* Per-layer titles, for the same reason as per-layer prices. When one SKU sits
+               in both the catalog file and the added table, the two layers can carry two
+               different names — and a screen that shows only the effective one cannot
+               explain why the same product appears twice. */
+            layer_titles: {
+              catalog: (bp && bp.name) || null,
+              added:   (cp && cp.name) || null,
+              override:(ov.name!=null && ov.name!=="") ? String(ov.name) : null,
+              approved: enc ? (enc.title||null) : null,
+            },
+            layers_merged_at: ov.layers_merged_at || null,
             has_orders: !!(conn && conn.orders), order_lines: (conn&&conn.orders)||0,
             images: (conn&&conn.media)||0, links: (conn&&conn.links)||0,
             featured: !!(conn&&conn.featured),
@@ -608,10 +634,103 @@ exports.handler = async (event)=>{
          catalog facts about one SKU. Order history does NOT move: an order records what was
          actually bought under the code it was bought under, and rewriting that would falsify
          history. The count is reported instead so the person merging can see the exposure. */
+      /* CONSOLIDATE THE LAYERS OF ONE SKU.
+         merge_products is the wrong tool when both "duplicates" carry the SAME code: there
+         is no loser to retire, because retiring it would retire the product. What actually
+         happened is that a SKU already present in the deployed catalog file was published
+         again into custom_products, so one product now exists in two layers with two names.
+
+         This resolves it the way the rule says it must: the APPROVED enrichment record is
+         the master, older layers are folded INTO it, and nothing newer is overwritten by
+         anything older. The result is written as an override, which is the only layer that
+         beats both of the others, so afterwards there is exactly one effective title, one
+         price, one category — no redeploy, and both underlying layers are left intact and
+         recoverable. */
+      if(b.action==="merge_layers"){
+        const mfr=b.manufacturer, code=String(b.code||"").trim();
+        if(!mfr||!code) return json(400,{error:"manufacturer and code are required"});
+        const e=encodeURIComponent, now=new Date().toISOString();
+        const [base,custom,ovRows,content]=await Promise.all([
+          fetchJson(`${ORDERING_BASE}/data/${e(mfr)}.json`).catch(()=>[]),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=*`).catch(()=>[]),
+          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`).catch(()=>[]),
+          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=name,skus,status,category,subcategory,image&limit=5000`).catch(()=>[]),
+        ]);
+        const bp=(base||[]).find(x=>String(x.code)===code)||null;
+        const cp=(custom&&custom[0])||null;
+        if(!bp&&!cp) return json(404,{error:`${code} not found in this catalog`});
+        const ov=Object.assign({},(ovRows&&ovRows[0]&&ovRows[0].patch)||{});
+
+        /* The approved title, read live from the enrichment record. custom_products only
+           ever stored a snapshot of the page name at publish time, which is why a
+           consolidated record could still show a generic family name instead of the
+           specific title someone signed off. */
+        let approved=null, approvedStatus=null;
+        const want=code.toUpperCase();
+        for(const row of (content||[])){
+          const hit=(Array.isArray(row.skus)?row.skus:[]).find(sk=>
+            String((sk&&(sk.sku||sk.code))||sk||"").trim().toUpperCase()===want);
+          if(hit){ approved=String((hit&&hit.name)||row.name||"").trim()||null; approvedStatus=row.status||null; break; }
+        }
+
+        /* Newest wins for the title; oldest fills the gaps for everything else. An explicit
+           keep.* from the review screen beats both — that is a person's decision. */
+        const keep=b.keep||{};
+        const first=(...v)=>{ for(const x of v){ if(x!=null&&x!=="") return x; } return null; };
+        const patch=Object.assign({},ov);
+        const carried=[];
+        const set=(k,v)=>{ if(v!=null&&v!==""&&patch[k]!==v){ patch[k]=v; carried.push(k); } };
+
+        const title = (keep.name!=null&&keep.name!=="") ? String(keep.name)
+                    : first(approved, ov.name, cp&&cp.name, bp&&bp.name);
+        set("name", title);
+
+        ["base_price","msrp","map","tiers","price_note","image","description","category"].forEach(k=>{
+          if(keep[k]!=null&&keep[k]!==""){ set(k,keep[k]); return; }
+          if(ov[k]!=null&&ov[k]!=="") return;                     // already decided — leave it
+          set(k, first(cp&&cp[k], bp&&bp[k]));                    // added layer first, then catalog
+        });
+
+        patch.layers_merged_at=now;
+        patch.layers_merged_by=b.reviewer?String(b.reviewer).slice(0,80):null;
+        patch.active=true;                                        // consolidating never hides a product
+        delete patch.disposition;                                 // it is not a duplicate any more
+
+        await sb("POST","product_overrides?on_conflict=manufacturer,code",
+          {manufacturer:mfr,code,patch,updated_at:now},
+          {Prefer:"resolution=merge-duplicates,return=minimal"});
+
+        /* Keep the added row's own name in step, so anything reading that layer directly
+           shows the approved title too rather than the stale publish-time snapshot. */
+        if(cp && title && cp.name!==title){
+          await sb("PATCH",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}`,
+            {name:title,updated_at:now},{Prefer:"return=minimal"}).catch(()=>{});
+        }
+        return json(200,{ok:true,code,title:title||null,approved_title:approved,
+          enrichment_status:approvedStatus,carried,
+          layers:{catalog:!!bp,added:!!cp,override:Object.keys(ov).length>0}});
+      }
+
+      /* Undo a consolidation: the stamp is removed so the pair is reviewable again. The
+         values it wrote are LEFT in place — pulling a live title or price back out from
+         under Partner 360 is a bigger change than the one being undone. */
+      if(b.action==="unmerge_layers"){
+        const mfr=b.manufacturer, code=String(b.code||"").trim();
+        if(!mfr||!code) return json(400,{error:"manufacturer and code required"});
+        const e=encodeURIComponent, now=new Date().toISOString();
+        const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`).catch(()=>[]);
+        const patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{});
+        delete patch.layers_merged_at; delete patch.layers_merged_by;
+        await sb("POST","product_overrides?on_conflict=manufacturer,code",
+          {manufacturer:mfr,code,patch,updated_at:now},{Prefer:"resolution=merge-duplicates,return=minimal"});
+        return json(200,{ok:true,code});
+      }
+
       if(b.action==="merge_products"){
         const mfr=b.manufacturer, win=String(b.winner||"").trim(), lose=String(b.loser||"").trim();
         if(!mfr||!win||!lose) return json(400,{error:"manufacturer, winner and loser are required"});
-        if(win===lose) return json(400,{error:"winner and loser are the same code"});
+        if(win===lose) return json(400,{error:"same_code",
+          message:`${win} is one SKU stored in two layers, not two products. Consolidate it instead of merging.`});
         const e=encodeURIComponent, now=new Date().toISOString();
         const [base,custom]=await Promise.all([
           fetchJson(`${ORDERING_BASE}/data/${mfr}.json`).catch(()=>[]),
