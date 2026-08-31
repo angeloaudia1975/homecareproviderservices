@@ -31,6 +31,33 @@
  .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
  .chip{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:5px;padding:1px 6px;margin-left:4px}
  .chip.cst{background:#eef2fb;color:#3b599a}.chip.ed{background:#fff3e6;color:#b4651a}.chip.ft{background:#fffaf0;color:#b4820f;border:1px solid #f0dca8}
+ .chip.pub{background:#eaf6ef;color:#136c40}.chip.pend{background:#eef2fb;color:#3b599a}
+ .chip.dup{background:#fdecec;color:#b42323}.chip.mrg{background:#f2eefb;color:#5b3fa0}
+ .chip.dis{background:#eef1f4;color:#5b6672}.chip.dnl{background:#f4f0e8;color:#7a6432}
+ .chip.rev{background:#fff6e0;color:#8a5a08}
+ .dupbar{border:1px solid #f0c7c7;background:#fdf5f5;border-radius:12px;padding:13px 16px;margin-bottom:16px}
+ .dupbar b{color:#b42323}
+ .dupg{border:1px solid var(--silver);border-radius:12px;background:#fff;padding:13px 15px;margin-bottom:12px}
+ .dupg h4{font-size:13.5px;margin:0 0 3px;color:var(--blue-dk)}
+ .dupwhy{font-size:12px;color:var(--gray);margin:0 0 10px;line-height:1.55}
+ .dupm{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+ @media(max-width:700px){.dupm{grid-template-columns:1fr}}
+ .dupc{border:1px solid var(--silver);border-radius:10px;padding:11px 13px;background:#fcfdfe}
+ .dupc.win{border-color:#b6d8c1;background:#f4faf6}
+ .dupc .cn{font-weight:800;font-size:13px}
+ .dupc .cc{font-size:11px;color:var(--gray);font-variant-numeric:tabular-nums}
+ .dupc ul{margin:8px 0 0 16px;padding:0;font-size:11.5px;color:var(--gray);line-height:1.7}
+ .dupc ul li b{color:var(--ink)}
+ .guide{border:1px solid var(--silver);border-radius:14px;background:#fff;margin-bottom:18px;overflow:hidden}
+ .guide summary{cursor:pointer;padding:13px 18px;font-weight:800;font-size:14px;color:var(--blue-dk);list-style:none}
+ .guide summary::-webkit-details-marker{display:none}
+ .guide summary::before{content:"\25B8 ";color:var(--gray)}
+ .guide[open] summary::before{content:"\25BE "}
+ .guide .gbody{padding:0 18px 16px;font-size:12.5px;line-height:1.65;color:var(--ink)}
+ .guide .gbody h5{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);margin:14px 0 5px}
+ .guide .gbody p{margin:0 0 7px}
+ .guide .gbody code{background:#eef2f7;padding:1px 5px;border-radius:4px;font-size:11.5px}
+ .guide .gbody .k{display:inline-block;min-width:132px;font-weight:800}
  .star{border:1px solid var(--silver);background:#fff;border-radius:7px;width:30px;height:28px;cursor:pointer;font-size:15px;line-height:1;color:#c7ccd2;vertical-align:middle}
  .star.on{color:#e4a11b;border-color:#e4a11b;background:#fffaf0}
  .gate,.msg{background:#fff;border:1px solid var(--silver);border-radius:12px;padding:24px;max-width:420px;margin:30px auto;text-align:center}
@@ -74,7 +101,67 @@ async function boot(){
     await loadMfr();
   }catch(e){if(String(e.message)!=="unauthorized")$("#wrap").innerHTML=`<div class="msg err">Couldn't load: ${esc(e.message)}</div>`;}
 }
-async function loadMfr(){ DETAIL=await api("?manufacturer="+encodeURIComponent(SLUG),{method:"GET"}); render(); }
+let DUPS=null, DUPBUSY=false, ENRICH=null, GUIDEOPEN=false;
+async function loadMfr(){ DETAIL=await api("?manufacturer="+encodeURIComponent(SLUG),{method:"GET"});
+  DUPS=null; ENRICH=null; render(); loadSideSignals(); }
+
+/* Two signals the catalog can't see on its own: which SKUs the enrichment tool is still
+   working on, and which products look like duplicates of each other. Both are fetched
+   after the page has already painted, so a slow scan never delays the catalog. */
+async function loadSideSignals(){
+  const slug=SLUG;
+  try{
+    const r=await api("",{method:"POST",body:JSON.stringify({action:"duplicate_scan",manufacturer:slug})});
+    if(slug===SLUG && r && r.ok!==false){
+      const skip=dismissed();
+      DUPS=(r.groups||[]).filter(g=>skip.indexOf(g.key)<0); render(); }
+  }catch(e){ if(slug===SLUG) DUPS=[]; }
+  try{
+    const h={"content-type":"application/json"}; if(TOKEN) h["authorization"]="Bearer "+TOKEN;
+    const res=await fetch("/.netlify/functions/product-content?manufacturer="+encodeURIComponent(slug)+"&action=list",{headers:h});
+    if(res.ok){ const j=await res.json().catch(()=>null);
+      const rows=(j&&(j.products||j.rows))||[];
+      const map={};
+      rows.forEach(pr=>{ const st=String(pr.status||"").trim();
+        (Array.isArray(pr.skus)?pr.skus:[]).forEach(sk=>{ const c=String((sk&&(sk.sku||sk.code))||"").trim(); if(c) map[c]=st; }); });
+      if(slug===SLUG){ ENRICH=map; render(); } }
+  }catch(e){ if(slug===SLUG) ENRICH={}; }
+}
+
+/* ── The one status a product has ────────────────────────────────────────────
+   Seven states, evaluated in precedence order, because a product can technically be
+   several at once and only the most consequential one belongs on the row. Merged and
+   Do Not List come first: both are recorded decisions, and a decision outranks an
+   observation. Duplicate Suspected outranks Published because publishing a product
+   that is secretly a second copy of another is the problem worth surfacing. */
+const STATUS_META={
+  merged:      {label:"Merged",             cls:"mrg",  why:"Retired into another product. Its price, links and images moved there; its order history stayed put."},
+  do_not_list: {label:"Do Not List",        cls:"dnl",  why:"A recorded decision that HCPS will not sell this. It is kept for reference and never shown to dealers."},
+  disabled:    {label:"Disabled",           cls:"dis",  why:"Hidden from Partner 360. Nothing is lost — it can be restored at any time."},
+  duplicate:   {label:"Duplicate Suspected",cls:"dup",  why:"Another record in this catalog looks like the same product. Review before editing either one."},
+  needs_review:{label:"Needs Review",       cls:"rev",  why:"Something about this record is incomplete or contradictory."},
+  pending:     {label:"Pending Enrichment", cls:"pend", why:"The enrichment tool is still building this product's content."},
+  published:   {label:"Published",          cls:"pub",  why:"Live on Partner 360 with a price dealers can order at."},
+};
+function dupCodeSet(){
+  const set=new Set();
+  (DUPS||[]).forEach(g=>g.members.forEach(m=>set.add(String(m.code))));
+  return set;
+}
+function statusOf(p,dupSet){
+  const o=(DETAIL.overrides||{})[p.code]||{};
+  if(o.merged_into) return "merged";
+  if(o.disposition==="do_not_list"||o.disposition==="not_offered") return "do_not_list";
+  if(o.disposition==="discontinued") return "disabled";
+  if(p.active===false) return "disabled";
+  if(dupSet && dupSet.has(String(p.code))) return "duplicate";
+  const est=ENRICH?ENRICH[p.code]:undefined;
+  if(est && est!=="published" && est!=="approved" && est!=="complete") return "pending";
+  if(p.base_price==null||p.base_price===""||Number(p.base_price)<=0) return "needs_review";
+  return "published";
+}
+function statusChip(st){ const m=STATUS_META[st]||STATUS_META.published;
+  return `<span class="chip ${m.cls}" title="${esc(m.why)}">${esc(m.label)}</span>`; }
 function fileToB64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});}
 async function upload(slot,file,maxMB,cb){
   if(!file)return; if(file.size>(maxMB||6)*1024*1024){toast("File too large (max "+(maxMB||6)+"MB)");return;}
@@ -105,6 +192,7 @@ function filteredSortedProducts(){
   else if(PSTAT==="featured") arr=arr.filter(p=>isFeat(p.code));
   else if(PSTAT==="added") arr=arr.filter(p=>p.kind==="custom");
   else if(PSTAT==="edited") arr=arr.filter(p=>p.edited);
+  else if(PSTAT&&STATUS_META[PSTAT]){ const ds=dupCodeSet(); arr=arr.filter(p=>statusOf(p,ds)===PSTAT); }
   const price=p=>(p.base_price!=null&&p.base_price!=="")?Number(p.base_price):Infinity;
   const nm=(a,b)=>String(a.name||"").localeCompare(String(b.name||""),"en",{sensitivity:"base"});
   const cmp={ name:nm, code:(a,b)=>String(a.code||"").localeCompare(String(b.code||""),"en",{sensitivity:"base"}),
@@ -137,7 +225,7 @@ function duplicateProduct(code){
   const p=effProducts().find(x=>x.code===code); if(!p)return;
   PDRAFT={kind:"custom",code:p.code+"-COPY",orig_code:null,name:(p.name||"")+" (copy)",category:p.category||"",base_price:p.base_price??"",msrp:p.msrp??"",
     image:p.image||"",description:p.description||"",price_note:p.price_note||"",active:true,tiers:tiersOf(p),edited:false};
-  toast("Duplicated — edit the code/name and save"); render();
+  toast("Copied — give it its own SKU and name, then save"); render();
 }
 function newProduct(){PDRAFT={kind:"custom",code:"",orig_code:null,name:"",category:"",base_price:"",msrp:"",image:"",description:"",price_note:"",active:true,tiers:[]};render();}
 // orig_code = the SKU this draft was opened under; if the code field is changed before saving,
@@ -234,16 +322,21 @@ function prodListHtml(){
   const eff=effProducts();
   const allP=filteredSortedProducts();
   const shownP=allP.slice(0,PLIMIT);
+  const dupSet=dupCodeSet();
   const prodRows=shownP.map(p=>{const tn=(p.tiers&&p.tiers.length)||0;const ft=isFeat(p.code);
+    const st=statusOf(p,dupSet);
+    const o=(DETAIL.overrides||{})[p.code]||{};
     return `<tr>
-     <td><b>${esc(p.name)}</b> ${p.kind==="custom"?'<span class="chip cst">added</span>':(p.edited?'<span class="chip ed">edited</span>':"")}${ft?'<span class="chip ft">★ featured</span>':''}
-        <div style="font-size:11px;color:var(--gray)">${esc(p.code)}${p.category?" · "+esc(p.category):""}</div></td>
+     <td><b>${esc(p.name)}</b> ${statusChip(st)}${p.kind==="custom"?'<span class="chip cst">added</span>':(p.edited?'<span class="chip ed">edited</span>':"")}${ft?'<span class="chip ft">★ featured</span>':''}
+        <div style="font-size:11px;color:var(--gray)">${esc(p.code)}${p.category?" · "+esc(p.category):""}${
+          st==="merged"?` · merged into <b>${esc(o.merged_into)}</b>`:""}${
+          st==="duplicate"?` · <a href="#dupreview" onclick="focusDup('${esc(p.code)}');return false;">see why</a>`:""}</div></td>
      <td class="num">${p.base_price!=null&&p.base_price!==""?"$"+Number(p.base_price).toFixed(2):"—"}</td>
      <td class="num">${tn?tn+" tier"+(tn>1?"s":""):"—"}</td>
      <td>${p.active===false?'<span style="color:var(--gray)">hidden</span>':'<span class="ok">shown</span>'}</td>
      <td style="white-space:nowrap"><button class="star ${ft?"on":""}" title="${ft?"Featured — click to remove":"Add to Featured"}" onclick="toggleFeatured('${esc(p.code)}')">${ft?"★":"☆"}</button>
        <button class="btn ghost sm" onclick="editProduct('${esc(p.code)}')">Edit</button>
-       <button class="btn ghost sm" onclick="duplicateProduct('${esc(p.code)}')">Duplicate</button>
+       <button class="btn ghost sm" onclick="duplicateProduct('${esc(p.code)}')" title="Start a new product pre-filled from this one">Copy as new</button>
        ${p.kind==="custom"
           ? `<button class="btn ghost sm" style="color:var(--red);border-color:#f0c8c8" onclick="delProduct('${esc(p.code)}')">Delete</button>`
           : (p.active===false
@@ -260,6 +353,139 @@ function prodListHtml(){
 }
 // Live search: update PRODQ and swap only the list, leaving the focused input in place.
 function searchProducts(v){ PRODQ=v; PLIMIT=60; var el=document.getElementById('prodlistwrap'); if(el) el.innerHTML=prodListHtml(); }
+/* ── Duplicate Review ────────────────────────────────────────────────────────
+   Nothing here acts on its own. The queue shows each suspected pair, why the system
+   thinks they are the same product, and exactly what is connected to each side, so the
+   choice between merge / keep separate / disable is made on evidence rather than on a
+   guess about which row is safe to delete. */
+function dupPanelHtml(){
+  if(DUPS===null) return `<div class="card"><h2>Duplicate review</h2><p class="hint">Checking this catalog for duplicates…</p></div>`;
+  if(!DUPS.length) return `<div class="card"><h2>Duplicate review</h2><p class="hint">No suspected duplicates in <b>${esc(curMfr().name||SLUG)}</b>. Every SKU here resolves to one product.</p></div>`;
+  const high=DUPS.filter(g=>g.confidence==="high").length;
+  const conn=c=>{ if(!c) return "<li>checking connections…</li>";
+    const bits=[];
+    bits.push(`<li><b>${c.orders}</b> order line${c.orders===1?"":"s"} in history${c.orders?" — never rewritten by a merge":""}</li>`);
+    bits.push(`<li><b>${c.media}</b> image${c.media===1?"":"s"} / document${c.media===1?"":"s"}</li>`);
+    bits.push(`<li><b>${c.links}</b> More Information link${c.links===1?"":"s"}</li>`);
+    if(c.featured) bits.push(`<li>On the <b>Featured</b> list</li>`);
+    if(c.has_override) bits.push(`<li>Has saved catalog edits</li>`);
+    return bits.join("");
+  };
+  const card=(m,g)=>`<div class="dupc${m.kind==="added"?" win":""}" id="dupc-${esc(m.code)}">
+      <div class="cn">${esc(m.name||m.code)}</div>
+      <div class="cc">${esc(m.code)} · ${m.kind==="added"?"added by enrichment":"standard catalog product"}${
+        m.base_price!=null&&m.base_price!==""?` · $${Number(m.base_price).toFixed(2)}`:" · no price"}</div>
+      <ul>${conn(m.connections)}</ul>
+      <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn sm" onclick="mergeInto('${esc(m.code)}','${esc((g.members.find(x=>x.code!==m.code)||{}).code||"")}')">Keep this one — merge the other in</button>
+        <button class="btn ghost sm" onclick="editProduct('${esc(m.code)}')">Open</button>
+      </div></div>`;
+  return `<div class="card" id="dupreview">
+    <h2>Duplicate review${high?` — ${high} to resolve`:""}</h2>
+    <p class="hint">These records look like the same product. <b>Nothing has been changed.</b>
+      A merge keeps the record you choose, moves its twin's price, links, images and Featured placement onto it,
+      and retires the twin — it is never deleted, order history is never rewritten, and it can be undone.</p>
+    <div class="dupbar"><b>Why this happens.</b> The catalog stores <code>MP-P09</code> and <code>mp-p09</code> as two different SKUs,
+      so publishing an enriched product under a differently-typed code created a second copy instead of improving the first.
+      That route is now closed — publishing a SKU that already exists enriches the existing record instead.</div>
+    ${DUPS.map(g=>`<div class="dupg">
+      <h4>${esc(g.members.map(m=>m.name||m.code).filter((v,i,a)=>a.indexOf(v)===i).join("  ·  "))}</h4>
+      <p class="dupwhy"><b>Why flagged:</b> ${esc(g.reasons.join(" · "))}.
+        ${g.confidence==="high"
+          ? "These are the same SKU — merging is almost certainly right."
+          : "The SKUs are different, so this may be a genuine model or size variant. Keep them separate unless you know otherwise."}</p>
+      <div class="dupm">${g.members.map(m=>card(m,g)).join("")}</div>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="btn ghost sm" onclick="dupKeepSeparate('${esc(g.key)}')">Keep separate — different products</button>
+        <span class="hint" style="margin:0">or disable the one you don't sell from its Edit screen.</span>
+      </div></div>`).join("")}
+  </div>`;
+}
+function focusDup(code){ const el=document.getElementById("dupc-"+code);
+  if(el){ el.scrollIntoView({behavior:"smooth",block:"center"}); el.style.outline="2px solid var(--orange)"; setTimeout(()=>el.style.outline="",2200); }
+  else { const p=document.getElementById("dupreview"); if(p) p.scrollIntoView({behavior:"smooth"}); } }
+
+async function mergeInto(winner,loser){
+  if(!winner||!loser) return;
+  const eff=effProducts(); const w=eff.find(x=>x.code===winner)||{}, l=eff.find(x=>x.code===loser)||{};
+  const lConn=((DUPS||[]).flatMap(g=>g.members).find(m=>m.code===loser)||{}).connections||{};
+  const warn=lConn.orders?`\n\n${lConn.orders} order line(s) reference ${loser}. Those records stay exactly as they are — order history is never rewritten.`:"";
+  if(!confirm(`Keep "${w.name||winner}" (${winner}) and merge "${l.name||loser}" (${loser}) into it?\n\n`
+    +`• ${loser}'s price, MSRP, links, images and Featured placement move to ${winner}\n`
+    +`• ${winner} keeps every value it already has — a merge fills gaps, it never overwrites\n`
+    +`• ${loser} is retired, not deleted, and this can be undone${warn}`)) return;
+  if(DUPBUSY) return; DUPBUSY=true;
+  try{
+    const r=await api("",{method:"POST",body:JSON.stringify({action:"merge_products",manufacturer:SLUG,winner,loser,reviewer:"president"})});
+    if(r&&r.ok!==false){
+      const c=(r.carried||[]).length;
+      toast(`Merged ${loser} into ${winner}${c?` · carried ${r.carried.join(", ")}`:""}`);
+      await loadMfr();
+    } else toast((r&&r.error)||"Merge failed",true);
+  }catch(e){ toast("Merge failed",true); }
+  DUPBUSY=false;
+}
+/* "Keep separate" is a decision too, so it is remembered — otherwise the same pair is
+   re-flagged on every load and the queue never empties. Stored per browser; it hides the
+   pair from the queue and changes nothing about either product. */
+function dismissedKey(){ return "hcps_dupok_"+SLUG; }
+function dismissed(){ try{ return JSON.parse(localStorage.getItem(dismissedKey())||"[]")||[]; }catch(e){ return []; } }
+function dupKeepSeparate(key){
+  if(!confirm("Mark these as genuinely different products?\n\nNothing changes on either record — they just stop appearing in this queue.")) return;
+  try{ const d=dismissed(); if(d.indexOf(key)<0) d.push(key); localStorage.setItem(dismissedKey(),JSON.stringify(d)); }catch(e){}
+  DUPS=(DUPS||[]).filter(g=>g.key!==key); toast("Kept separate"); render();
+}
+
+function guideHtml(){ return `<details class="guide"${GUIDEOPEN?" open":""} ontoggle="GUIDEOPEN=this.open">
+  <summary>How to use this page</summary>
+  <div class="gbody">
+    <p><b>Product Catalog is the master record.</b> Everything a dealer can see, order or be priced on lives here.
+      <b>Product Content Enrichment &amp; Review</b> is the tool that improves these records — better names, descriptions,
+      specs, images and links. It should never create a second copy of a product that already exists here; publishing a SKU
+      the catalog already has now enriches the existing record instead.</p>
+
+    <h5>When to edit a product</h5>
+    <p>Any time the details are wrong or incomplete — name, category, price, tiers, image, More Information link.
+      Editing a standard catalog product saves as an override, so it takes effect on Partner 360 immediately with no redeploy,
+      and <b>Reset</b> puts it back to the manufacturer's values. Editing is always safe and always reversible.</p>
+
+    <h5>When to merge duplicates</h5>
+    <p>When two records are the same physical product — most often the same SKU typed differently
+      (<code>MP-P09</code> and <code>mp-p09</code>). Merge from the Duplicate review panel: pick the record to keep, and the other's
+      price, links, images and Featured placement move onto it before it is retired. The retired record is kept and stamped with
+      what it merged into, so nothing that still references the old code breaks. Order history is never rewritten —
+      an order records what was actually bought, under the code it was bought under.</p>
+
+    <h5>When to keep two records separate</h5>
+    <p>When the SKUs genuinely differ — a different size, capacity, colour or model. A shared product name is not enough
+      to merge on. If the review panel flags a real variant, use <b>Keep separate</b> and it stops asking.</p>
+
+    <h5>When to disable a SKU or product</h5>
+    <p>When it exists but should not be sold right now — discontinued, out of stock indefinitely, or not carried by HCPS.
+      Use <b>Remove</b> (standard catalog products) or set it inactive. Dealers stop seeing it, pricing and history are kept,
+      and <b>Restore</b> brings it back. This is the right answer far more often than deletion.</p>
+
+    <h5>When deletion is safe</h5>
+    <p>Only when the record is a genuinely unused duplicate — all four must be true:</p>
+    <ul style="margin:0 0 7px 18px">
+      <li>no order history — nobody has ever bought it</li>
+      <li>no images, documents or More Information link attached</li>
+      <li>not on the Featured list</li>
+      <li>no saved catalog edits</li>
+    </ul>
+    <p>The system checks all four and refuses a delete that would break something, naming what holds it.
+      If you are unsure, merge or disable instead — both are reversible and deletion is not.</p>
+
+    <h5>How enriched products reach Partner 360</h5>
+    <p>Enrichment writes content onto the master product record here. The portal reads the deployed catalog file, then layers
+      your added products and overrides on top, so an edit or a merge appears on Partner 360 without a redeploy.
+      Price Check is what confirms a manufacturer's pricing is complete before you publish; this page is what confirms
+      there is exactly one record per product to publish.</p>
+
+    <h5>What each status means</h5>
+    ${Object.keys(STATUS_META).map(k=>`<p><span class="k">${esc(STATUS_META[k].label)}</span> ${esc(STATUS_META[k].why)}</p>`).join("")}
+  </div></details>`; }
+
 function render(){
   const m=curMfr();
   const mfrOpts=MFRS.map(x=>`<option value="${esc(x.slug)}" ${x.slug===SLUG?"selected":""}>${esc(x.name)}${x.hasData?"":" (no catalog)"}</option>`).join("");
@@ -348,6 +574,8 @@ function render(){
     </div>
 
     ${pform}
+    ${guideHtml()}
+    ${dupPanelHtml()}
     <div class="card">
       <h2>Products</h2>
       <p class="hint">Filter, sort, and page through the whole line. Click <b>Edit</b> to manage everything about a product in one place — details, pricing, category, image, its More Information link/brochure, status &amp; featured. Standard catalog edits save as an override (no redeploy); added products are yours to add or delete.</p>
@@ -355,7 +583,8 @@ function render(){
         <button class="btn sm" onclick="newProduct()">+ Add product</button>
         <input type="text" placeholder="Search name, code / SKU, category…" value="${esc(PRODQ)}" id="prodsearch" oninput="searchProducts(this.value)" style="flex:1;min-width:200px">
         <select onchange="setFilter('cat',this.value)" title="Filter by category"><option value="">All categories</option>${catList().map(c=>`<option value="${esc(c)}" ${PCAT===c?"selected":""}>${esc(c)}</option>`).join("")}</select>
-        <select onchange="setFilter('stat',this.value)" title="Filter by status"><option value="" ${PSTAT===""?"selected":""}>All statuses</option><option value="shown" ${PSTAT==="shown"?"selected":""}>Shown</option><option value="hidden" ${PSTAT==="hidden"?"selected":""}>Hidden</option><option value="featured" ${PSTAT==="featured"?"selected":""}>Featured</option><option value="added" ${PSTAT==="added"?"selected":""}>Added</option><option value="edited" ${PSTAT==="edited"?"selected":""}>Edited</option></select>
+        <select onchange="setFilter('stat',this.value)" title="Filter by status"><option value="" ${PSTAT===""?"selected":""}>All statuses</option><option value="shown" ${PSTAT==="shown"?"selected":""}>Shown</option><option value="hidden" ${PSTAT==="hidden"?"selected":""}>Hidden</option><option value="featured" ${PSTAT==="featured"?"selected":""}>Featured</option><option value="added" ${PSTAT==="added"?"selected":""}>Added</option><option value="edited" ${PSTAT==="edited"?"selected":""}>Edited</option>
+          <optgroup label="Status">${Object.keys(STATUS_META).map(k=>`<option value="${k}" ${PSTAT===k?"selected":""}>${esc(STATUS_META[k].label)}</option>`).join("")}</optgroup></select>
         <select onchange="setFilter('sort',this.value)" title="Sort">
           <option value="name" ${PSORT==="name"?"selected":""}>Sort: Name A–Z</option>
           <option value="code" ${PSORT==="code"?"selected":""}>Code / SKU</option>

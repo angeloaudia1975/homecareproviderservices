@@ -1146,6 +1146,40 @@ async function catalogPost(body){
     const j=await r.json().catch(()=>({})); return {ok:r.ok,status:r.status,json:j}; }
   catch(e){ return {ok:false,status:0,json:{error:String(e)}}; }
 }
+let _pubCollisions=[];
+/* Publish one SKU to the master catalog. The catalog refuses to create a second copy of a
+   SKU it already holds (MP-P09 vs mp-p09 used to slip through as two products), answering
+   409 with the record it collided with. That is not a failure to swallow — it means the
+   master record already exists and should be enriched instead, so it is collected and
+   reported rather than silently dropped. */
+async function publishToCatalog(prod, collisions){
+  const r=await catalogPost({action:'save_product',manufacturer:MFR,product:prod});
+  if(r.status===409 && r.json && r.json.error==='duplicate_sku'){
+    if(collisions) collisions.push({code:prod.code, existing:r.json.existing||{}, connections:r.json.connections||null});
+    return {ok:false, duplicate:true};
+  }
+  return {ok:!!(r.ok && (!r.json || r.json.ok!==false)), duplicate:false, status:r.status, json:r.json};
+}
+function reportCollisions(collisions){
+  if(!collisions || !collisions.length) return;
+  const rows=collisions.slice(0,40).map(c=>`<tr>
+      <td><b>${esc(c.code)}</b></td>
+      <td>${esc((c.existing&&c.existing.code)||'—')}<div class="mut" style="font-size:11px">${esc((c.existing&&c.existing.name)||'')}</div></td>
+      <td class="mut" style="font-size:11px">${c.connections
+        ? [c.connections.orders?c.connections.orders+' order line(s)':'', c.connections.media?c.connections.media+' image(s)':'',
+           c.connections.links?'a link':'', c.connections.featured?'featured':''].filter(Boolean).join(' · ')||'nothing attached yet'
+        : ''}</td></tr>`).join('');
+  modalHTML('⚠ Already in the catalog · '+esc(MFR), `<div class="tut">
+    <div class="dupbanner exact"><b>${collisions.length} SKU${collisions.length===1?'':'s'} already exist${collisions.length===1?'s':''} in the master catalog</b>
+      <div>Nothing was duplicated. The Product Catalog is the master record, so these SKUs were <b>not</b> created a second time —
+        the existing product is the one to enrich.</div></div>
+    <div class="tabscroll" style="margin-top:10px"><table style="width:100%;font-size:12px">
+      <thead><tr><th>Tried to publish</th><th>Already in the catalog as</th><th>What it's connected to</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    <p class="mut" style="margin-top:10px">These are the same SKU written differently (for example <b>MP-P09</b> and <b>mp-p09</b>).
+      Open <b>Product Catalog → Duplicate review</b> if you think one of them is genuinely a different model.</p>
+    <div class="savebar"><button class="btn" onclick="closeModal&&closeModal()">Close</button></div></div>`);
+}
 function pmoney(n){ if(n==null||n===''||!isFinite(Number(n))) return '—'; return '$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function firstNum(){ for(let i=0;i<arguments.length;i++){ const v=arguments[i]; if(v!=null&&v!==''){ const n=Number(v); if(isFinite(n)) return n; } } return null; }
 function roundMsrp(n){ if(n==null||!isFinite(n)) return null; const v=Math.round(n*100)/100; return v; }
@@ -2129,7 +2163,7 @@ async function seCreate(){
   if(!picks.length){ toast('Nothing selected',true); return; }
   if(!window.confirm('Create '+picks.length+' new product record(s) for '+MFR+'?')) return;
   const btn=document.querySelector('[data-act="se-create"]'); if(btn){btn.disabled=true;btn.textContent='Creating…';}
-  let made=0, failed=0, done=0;
+  let made=0, failed=0, done=0; _pubCollisions=[];
   for(const c of picks){
     if(btn) btn.textContent=(_seUseAI?'Creating & enriching ':'Creating ')+(done+1)+'/'+picks.length+'…'; done++;
     const pk=slug(c.name)||('product-'+Date.now());
@@ -2181,11 +2215,13 @@ async function seCreate(){
       const prod={code,name:c.name,category:c.category||null,active:true};
       if(c.msrp!=null&&isFinite(c.msrp)) prod.msrp=c.msrp;          // manufacturer retail → MSRP
       if(c.price!=null&&isFinite(c.price)) prod.base_price=c.price;  // dealer price only from a pricelist
-      try{ await catalogPost({action:'save_product',manufacturer:MFR,product:prod}); }catch(e){}
+      try{ await publishToCatalog(prod, _pubCollisions); }catch(e){}
     }
   }
   _catalogCache=null;
-  toast('Created '+made+' product(s)'+(failed?' · '+failed+' failed':''),!made);
+  toast('Created '+made+' product(s)'+(failed?' · '+failed+' failed':'')
+    +(_pubCollisions.length?' · '+_pubCollisions.length+' already in the catalog':''),!made);
+  if(_pubCollisions.length) reportCollisions(_pubCollisions);
   const ov=document.getElementById('overlay'); if(ov) ov.classList.remove('show');
   await boot();
 }
@@ -2217,17 +2253,18 @@ async function dupEnrichExisting(pk){
   const P=_npPending; if(!P){ toast('Nothing pending',true); return; }
   const rows=P.rows||[]; if(!rows.length){ toast('No SKUs to add',true); return; }
   if(!window.confirm('Add '+rows.length+' SKU(s) to “'+((pages[pk]&&pages[pk].name)||pk)+'”?')) return;
-  let added=0, failed=0;
+  let added=0, failed=0; _pubCollisions=[];
   for(const it of rows){
     const r=await apiWrite({action:'set_sku',page_key:pk,sku:it.code,patch:{name:it.name||'',status:'active'}});
     if(r.ok && (!r.json||r.json.ok!==false)) added++; else failed++;
     const price=it.price===''?null:Number(String(it.price).replace(/[^0-9.\-]/g,''));
     const prod={code:it.code, name:it.name||(pages[pk]&&pages[pk].name)||it.code, category:(pages[pk]&&pages[pk].category)||null, active:true};
     if(price!=null && isFinite(price)) prod.base_price=price;
-    try{ await catalogPost({action:'save_product',manufacturer:MFR,product:prod}); }catch(e){}
+    try{ await publishToCatalog(prod, _pubCollisions); }catch(e){}
   }
   _npPending=null; _catalogCache=null;
   toast(added?('Added '+added+' SKU(s) to the existing product'+(failed?' · '+failed+' failed':'')):'Could not add SKUs',!added);
+  if(_pubCollisions.length) reportCollisions(_pubCollisions);
   const ov=document.getElementById('overlay'); if(ov) ov.classList.remove('show');
   await boot(); healthOpen(pk);
 }
@@ -2917,19 +2954,23 @@ async function doNewProduct(force){
   const r=await apiWrite({action:'create_product',product:{page_key:npk,name,category:cat,family:fam,skus:skusForContent}});
   if(!(r.ok && (!r.json||r.json.ok!==false))){ toast((r.json&&(r.json.message||r.json.error))||'Create failed',true); if(btn){btn.disabled=false;btn.textContent='Create product';} return; }
   // 2) orderable + priced catalog items (custom_products via catalog-api, President-only)
-  let made=0, priced=0, catFail=0, forbidden=false;
+  let made=0, priced=0, catFail=0, forbidden=false, dupBlocked=0;
+  _pubCollisions=[];
   for(const it of rows){
     const price=it.price===''?null:Number(it.price.replace(/[^0-9.\-]/g,''));
     const prod={code:it.code, name:it.name||name, category:cat||null, active:true};
     if(price!=null && isFinite(price)) prod.base_price=price;
     try{
-      const cr=await fetch('/.netlify/functions/catalog-api',{method:'POST',headers:authHeaders(),body:JSON.stringify({action:'save_product',manufacturer:MFR,product:prod})});
-      if(cr.ok){ made++; if(prod.base_price!=null) priced++; } else { catFail++; if(cr.status===403) forbidden=true; }
+      const res=await publishToCatalog(prod, _pubCollisions);
+      if(res.ok){ made++; if(prod.base_price!=null) priced++; }
+      else if(res.duplicate){ dupBlocked++; }
+      else { catFail++; if(res.status===403) forbidden=true; }
     }catch(e){ catFail++; }
   }
   pages[npk]={page_key:npk,name,category:cat,family:fam,skus:skusForContent,sku_count:skusForContent.length,status:'pending_review',features:[]};
   _catalogCache=null;   // Price Check will re-read the catalog
   document.getElementById('overlay').classList.remove('show'); openCards.add(npk);
+  if(dupBlocked) reportCollisions(_pubCollisions);
   if(forbidden) toast('Product created, but adding to the catalog needs President access — no catalog items written.',true);
   else if(catFail) toast('Created "'+name+'". '+catFail+' SKU(s) couldn\'t be added to the catalog — check them in Product Catalog.',true);
   else toast('Created "'+name+'" · '+made+' orderable SKU(s)'+(priced?' ('+priced+' priced)':'')+'.');

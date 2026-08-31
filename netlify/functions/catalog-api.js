@@ -32,6 +32,87 @@ const cleanTiers=t=>{ if(!Array.isArray(t)) return null;
     .filter(r=>r.price!=null).sort((a,b)=>a.min_qty-b.min_qty);
   return out.length?out:null; };
 
+/* ─────────────────────── Duplicate detection & merge ───────────────────────
+   The Product Catalog is the master record. Two mechanisms were quietly creating a
+   second copy of a product instead of improving the first:
+
+     1. save_product always upserted into custom_products without ever asking whether
+        that SKU already existed as a standard catalog product. Publishing an enriched
+        SKU that was already in the catalog therefore produced two rows.
+     2. The unique index is (manufacturer, code) and Postgres compares codes literally,
+        so "MP-P09" and "mp-p09" are two different products to the database and one
+        product to a human. Every duplicate in the catalog today is that pair.
+
+   normCode is the join a person actually means: case-folded, punctuation-stripped. It
+   is used to FIND duplicates and to block new ones — never to merge anything on its
+   own, because two records that look alike can still be a genuinely different variant.
+   That call stays with a person. */
+const normCode = c => String(c||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+const normName = n => String(n||"").toLowerCase().replace(/[^a-z0-9]+/g," ").replace(/\s+/g," ").trim();
+
+// Everything hanging off one SKU. This is what makes a delete or a merge safe to judge:
+// nothing is removed without first showing what points at it.
+async function connectionsFor(mfr, code){
+  const e=encodeURIComponent, q=`manufacturer=eq.${e(mfr)}&code=eq.${e(code)}`;
+  const [links,media,feat,ovr,items]=await Promise.all([
+    sb("GET",`product_links?${q}&select=code`).catch(()=>[]),
+    sb("GET",`product_media?${q}&select=id`).catch(()=>[]),
+    sb("GET",`featured_products?${q}&select=code`).catch(()=>[]),
+    sb("GET",`product_overrides?${q}&select=patch`).catch(()=>[]),
+    // Order history is the one connection that must never be rewritten — an order says
+    // what was actually bought. It is counted so a merge can warn, not migrated.
+    sb("GET",`order_items?code=eq.${e(code)}&select=id&limit=200`).catch(()=>[]),
+  ]);
+  const patch=(ovr&&ovr[0]&&ovr[0].patch)||null;
+  return {
+    links:(links||[]).length, media:(media||[]).length, featured:(feat||[]).length,
+    has_override:!!patch, override:patch||null, orders:(items||[]).length,
+  };
+}
+
+/* Group a manufacturer's products by normalised code and by normalised name, and return
+   only the groups holding more than one distinct record. Evidence is spelled out per
+   group so the review screen can say WHY, rather than asking someone to trust a flag. */
+function duplicateGroups(base, custom, overrides){
+  const rec=[];
+  (base||[]).forEach(p=>rec.push({code:String(p.code), name:p.name||"", category:p.category||"",
+    base_price:p.base_price, msrp:p.msrp, image:p.image||"", kind:"catalog"}));
+  (custom||[]).forEach(p=>rec.push({code:String(p.code), name:p.name||"", category:p.category||"",
+    base_price:p.base_price, msrp:p.msrp, image:p.image||"", kind:"added", active:p.active}));
+  const groups=[];
+  const byCode={};
+  rec.forEach(r=>{ const k=normCode(r.code); if(!k) return; (byCode[k]=byCode[k]||[]).push(r); });
+  Object.keys(byCode).forEach(k=>{
+    const members=byCode[k];
+    if(members.length<2) return;
+    const literal=new Set(members.map(m=>m.code));
+    const reasons=[];
+    if(literal.size===1) reasons.push("the same SKU exists as both a catalog product and an added product");
+    else reasons.push(`the same SKU written differently: ${[...literal].join(" / ")}`);
+    const names=new Set(members.map(m=>normName(m.name)).filter(Boolean));
+    if(names.size===1 && members.every(m=>m.name)) reasons.push("identical product name");
+    groups.push({ key:"code:"+k, match:"sku", confidence:"high", reasons, members });
+  });
+  // Same name, unrelated codes — a weaker signal, so it is offered for review only.
+  const byName={};
+  rec.forEach(r=>{ const n=normName(r.name); if(!n||n.length<6) return; (byName[n]=byName[n]||[]).push(r); });
+  Object.keys(byName).forEach(n=>{
+    const members=byName[n];
+    if(members.length<2) return;
+    if(new Set(members.map(m=>normCode(m.code))).size<2) return;   // already caught by code
+    groups.push({ key:"name:"+n, match:"name", confidence:"review",
+      reasons:["identical product name on different SKUs — may be a real variant"], members });
+  });
+  const ov=overrides||{};
+  groups.forEach(g=>g.members.forEach(m=>{
+    const o=ov[m.code]||{};
+    m.disposition=o.disposition||null; m.merged_into=o.merged_into||null;
+    m.retired=(o.active===false)||(m.active===false);
+  }));
+  // A group whose duplicate has already been merged or retired is settled.
+  return groups.filter(g=>g.members.filter(m=>!m.merged_into && !m.retired).length>1);
+}
+
 // Staff auth: email/password JWT resolved against staff_users; legacy passcode = president.
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -116,6 +197,31 @@ exports.handler = async (event)=>{
       if(b.action==="save_product"){
         const p=b.product||{}; const mfr=b.manufacturer||p.manufacturer;
         if(!mfr||!p.code||!String(p.name||"").trim()) return json(400,{error:"manufacturer, code and name are required"});
+        /* THE DUPLICATE GUARD. This endpoint used to upsert into custom_products with no
+           question asked, so publishing an enriched SKU that already existed in the catalog
+           produced a second, independent product — which is every duplicate now in the
+           catalog. A write under the SAME literal code is an update and always allowed. A
+           write under a DIFFERENT spelling of a code that already exists (MP-P09 vs mp-p09)
+           is refused, and the caller is told what it collided with so it can enrich that
+           record instead. Pass allow_duplicate:true only for a genuinely different variant. */
+        const codeIn=String(p.code).trim();
+        if(b.allow_duplicate!==true){
+          const nk=normCode(codeIn);
+          const [baseAll,customAll]=await Promise.all([
+            fetchJson(`${ORDERING_BASE}/data/${mfr}.json`).catch(()=>[]),
+            sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&select=code,name`).catch(()=>[]),
+          ]);
+          const clash=[]
+            .concat((baseAll||[]).map(x=>({code:String(x.code),name:x.name||"",kind:"catalog"})))
+            .concat((customAll||[]).map(x=>({code:String(x.code),name:x.name||"",kind:"added"})))
+            .find(x=>x.code!==codeIn && normCode(x.code)===nk);
+          if(clash){
+            const conn=await connectionsFor(mfr,clash.code).catch(()=>null);
+            return json(409,{error:"duplicate_sku", code:codeIn, existing:clash, connections:conn,
+              message:`SKU "${codeIn}" is the same item as "${clash.code}", which is already in the catalog. `
+                    + `Enrich that record instead of creating a second copy — or resend with allow_duplicate:true if this really is a different model.`});
+          }
+        }
         await sb("POST","custom_products?on_conflict=manufacturer,code",{
           manufacturer:mfr, code:String(p.code).trim(), name:String(p.name).trim(),
           category:p.category||null, base_price:num(p.base_price), msrp:num(p.msrp),
@@ -321,10 +427,147 @@ exports.handler = async (event)=>{
         await sb("DELETE",`featured_products?manufacturer=eq.${encodeURIComponent(b.manufacturer)}&code=eq.${encodeURIComponent(b.code)}`,null,{Prefer:"return=minimal"});
         return json(200,{ok:true});
       }
+      /* Deleting used to remove the custom_products row and nothing else, leaving that
+         SKU's links, images, featured placement and override behind as orphans pointing at
+         a product that no longer exists — and taking with it any record of a SKU that had
+         been ordered. So a delete now REFUSES while anything is connected, and names what.
+         Retiring (merge, or active:false) is the reversible answer; force:true is the
+         deliberate exception, and it cleans up the connected rows rather than orphaning them. */
       if(b.action==="delete_product"){
         if(!b.manufacturer||!b.code) return json(400,{error:"manufacturer, code required"});
-        await sb("DELETE",`custom_products?manufacturer=eq.${encodeURIComponent(b.manufacturer)}&code=eq.${encodeURIComponent(b.code)}`,null,{Prefer:"return=minimal"});
-        return json(200,{ok:true});
+        const mfr=b.manufacturer, code=String(b.code).trim(), e=encodeURIComponent;
+        const conn=await connectionsFor(mfr,code).catch(()=>null);
+        if(conn && b.force!==true){
+          const held=[];
+          if(conn.orders)   held.push(`${conn.orders} order line${conn.orders===1?"":"s"}`);
+          if(conn.links)    held.push("a More Information link");
+          if(conn.media)    held.push(`${conn.media} image/document${conn.media===1?"":"s"}`);
+          if(conn.featured) held.push("a Featured placement");
+          if(conn.has_override) held.push("saved catalog edits");
+          if(held.length) return json(409,{error:"in_use", code, connections:conn,
+            message:`"${code}" still has ${held.join(", ")}. Deleting would break them. `
+                  + `Merge it into the product it duplicates, or disable it — both are reversible.`});
+        }
+        if(b.force===true){
+          for(const tbl of ["product_links","product_media","featured_products","product_overrides"]){
+            try{ await sb("DELETE",`${tbl}?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}`,null,{Prefer:"return=minimal"}); }catch(err){}
+          }
+        }
+        await sb("DELETE",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}`,null,{Prefer:"return=minimal"});
+        return json(200,{ok:true,forced:b.force===true});
+      }
+
+      /* Every suspected duplicate for one manufacturer, with its evidence and the records
+         connected to each side. Read-only — it never changes anything, which is the point:
+         the queue exists so a person decides. */
+      if(b.action==="duplicate_scan"){
+        const mfr=b.manufacturer; if(!mfr) return json(400,{error:"manufacturer required"});
+        const [base,custom,ovRows]=await Promise.all([
+          fetchJson(`${ORDERING_BASE}/data/${mfr}.json`).catch(()=>[]),
+          sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&select=code,name,category,base_price,msrp,active,image`).catch(()=>[]),
+          sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(mfr)}&select=code,patch`).catch(()=>[]),
+        ]);
+        const overrides=Object.fromEntries((ovRows||[]).map(o=>[o.code,o.patch||{}]));
+        const groups=duplicateGroups(base,custom,overrides);
+        // Connections only for the codes actually in a group — a full-catalog join would be
+        // hundreds of round trips for information nobody is looking at.
+        const codes=[...new Set(groups.flatMap(g=>g.members.map(m=>m.code)))].slice(0,200);
+        const conn={};
+        for(const c of codes){ try{ conn[c]=await connectionsFor(mfr,c); }catch(e){ conn[c]=null; } }
+        groups.forEach(g=>g.members.forEach(m=>{ m.connections=conn[m.code]||null; }));
+        return json(200,{ok:true,groups,scanned:(base||[]).length+(custom||[]).length});
+      }
+
+      /* Merge two records into one. The winner keeps its own code; the loser is RETIRED,
+         never deleted, and stamped merged_into so the decision is auditable and reversible
+         and so anything still holding the old code can be pointed at the right product.
+
+         Pricing, tiers, links, media and featured placement move to the winner — those are
+         catalog facts about one SKU. Order history does NOT move: an order records what was
+         actually bought under the code it was bought under, and rewriting that would falsify
+         history. The count is reported instead so the person merging can see the exposure. */
+      if(b.action==="merge_products"){
+        const mfr=b.manufacturer, win=String(b.winner||"").trim(), lose=String(b.loser||"").trim();
+        if(!mfr||!win||!lose) return json(400,{error:"manufacturer, winner and loser are required"});
+        if(win===lose) return json(400,{error:"winner and loser are the same code"});
+        const e=encodeURIComponent, now=new Date().toISOString();
+        const [base,custom]=await Promise.all([
+          fetchJson(`${ORDERING_BASE}/data/${mfr}.json`).catch(()=>[]),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`).catch(()=>[]),
+        ]);
+        const findB=c=>(base||[]).find(x=>String(x.code)===c);
+        const findC=c=>(custom||[]).find(x=>String(x.code)===c);
+        const winB=findB(win), winC=findC(win), loseB=findB(lose), loseC=findC(lose);
+        if(!winB&&!winC) return json(404,{error:`winner ${win} not found`});
+        if(!loseB&&!loseC) return json(404,{error:`loser ${lose} not found`});
+        const ovAll=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]);
+        const ovOf=c=>{ const r=(ovAll||[]).find(x=>String(x.code)===c); return (r&&r.patch)||{}; };
+        const loseOv=ovOf(lose), winOv=ovOf(win);
+        // Effective value of a field on the losing record, across its layers.
+        const first=(...v)=>{ for(const x of v){ if(x!=null&&x!=="") return x; } return null; };
+        const loseVal=k=>first(loseOv[k], loseC&&loseC[k], loseB&&loseB[k]);
+        const winVal =k=>first(winOv[k],  winC&&winC[k],  winB&&winB[k]);
+        /* Carry a field only where the winner has nothing. A merge fills the winner's gaps
+           from the record being retired; it never overwrites a value someone chose. Explicit
+           `keep` entries from the review screen win over both. */
+        const keep=b.keep||{};
+        const carry={};
+        ["base_price","msrp","map","tiers","price_note","image","description","category","name"].forEach(k=>{
+          if(keep[k]!=null&&keep[k]!==""){ carry[k]=keep[k]; return; }
+          if(winVal(k)==null||winVal(k)===""){ const v=loseVal(k); if(v!=null&&v!=="") carry[k]=v; }
+        });
+        let applied=false;
+        if(Object.keys(carry).length){
+          if(winC){ await sb("PATCH",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(win)}`,
+                      Object.assign({},carry,{updated_at:now}),{Prefer:"return=minimal"}); }
+          else { const merged=Object.assign({},winOv,carry);
+                 await sb("POST","product_overrides?on_conflict=manufacturer,code",
+                   {manufacturer:mfr,code:win,patch:merged,updated_at:now},
+                   {Prefer:"resolution=merge-duplicates,return=minimal"}); }
+          applied=true;
+        }
+        // Re-point what belongs to the SKU. Best-effort per table; a unique clash on the
+        // winner's own row is expected and simply means the winner already has one.
+        const moved={links:0,media:0,featured:0};
+        for(const [tbl,key] of [["product_links","links"],["product_media","media"],["featured_products","featured"]]){
+          try{
+            const rows=await sb("GET",`${tbl}?manufacturer=eq.${e(mfr)}&code=eq.${e(lose)}&select=*`).catch(()=>[]);
+            if(!rows||!rows.length) continue;
+            const winHas=await sb("GET",`${tbl}?manufacturer=eq.${e(mfr)}&code=eq.${e(win)}&select=code&limit=1`).catch(()=>[]);
+            if(tbl!=="product_media" && winHas && winHas.length) continue;   // one row per code; winner keeps its own
+            await sb("PATCH",`${tbl}?manufacturer=eq.${e(mfr)}&code=eq.${e(lose)}`,{code:win},{Prefer:"return=minimal"});
+            moved[key]=rows.length;
+          }catch(err){ /* a clash leaves the loser's row where it is; nothing is destroyed */ }
+        }
+        const orders=await sb("GET",`order_items?code=eq.${e(lose)}&select=id&limit=500`).catch(()=>[]);
+        /* Retire the loser. A custom row is deactivated (not deleted) so its history and any
+           late-arriving reference still resolve; a standard catalog product is hidden with an
+           override, which is the only way to retire one without a redeploy. */
+        const retire=Object.assign({},loseOv,{active:false,merged_into:win,merged_at:now,
+          merged_by:b.reviewer?String(b.reviewer).slice(0,80):null});
+        await sb("POST","product_overrides?on_conflict=manufacturer,code",
+          {manufacturer:mfr,code:lose,patch:retire,updated_at:now},
+          {Prefer:"resolution=merge-duplicates,return=minimal"});
+        if(loseC) await sb("PATCH",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(lose)}`,
+          {active:false,updated_at:now},{Prefer:"return=minimal"}).catch(()=>{});
+        return json(200,{ok:true,winner:win,loser:lose,carried:Object.keys(carry),applied,moved,
+          orders_referencing_loser:(orders||[]).length});
+      }
+
+      /* Undo a merge: the retired record comes back and the stamp is cleared. Carried values
+         are left on the winner — un-carrying them would silently change a live price. */
+      if(b.action==="unmerge_product"){
+        const mfr=b.manufacturer, code=String(b.code||"").trim();
+        if(!mfr||!code) return json(400,{error:"manufacturer and code required"});
+        const e=encodeURIComponent, now=new Date().toISOString();
+        const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`).catch(()=>[]);
+        const patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{});
+        delete patch.merged_into; delete patch.merged_at; delete patch.merged_by; patch.active=true;
+        await sb("POST","product_overrides?on_conflict=manufacturer,code",
+          {manufacturer:mfr,code,patch,updated_at:now},{Prefer:"resolution=merge-duplicates,return=minimal"});
+        await sb("PATCH",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}`,
+          {active:true,updated_at:now},{Prefer:"return=minimal"}).catch(()=>{});
+        return json(200,{ok:true,restored:code});
       }
 
       if(b.action==="save_link"){
