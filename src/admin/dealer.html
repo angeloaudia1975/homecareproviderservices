@@ -756,6 +756,29 @@ function emModalEnsure(){
   document.body.appendChild(wrap);
   document.addEventListener("keydown",function(e){ if(e.key==="Escape") emClose(); });
 }
+/* A definite answer to "why are the bodies blank", read from the permissions Azure
+   actually granted — not inferred from the symptom. */
+async function graphHealth(){
+  let j=null;
+  try{ j=await esapi({action:"graph_health"}); }catch(e){}
+  emModalEnsure();
+  $("#emModal").style.display="block";
+  $("#emSubj").textContent="Outlook connection";
+  $("#emMeta").textContent="";
+  if(!j||!j.ok){ $("#emBody").innerHTML='<div class="hint" style="padding:20px 16px">Couldn\'t check the Outlook connection.</div>'; return; }
+  const good=j.can_read_bodies===true;
+  const steps=(j.fix||[]).map((x,i)=>`<li style="margin:0 0 5px">${esc(x)}</li>`).join("");
+  $("#emBody").innerHTML=`<div style="padding:16px">
+    <div style="padding:11px 13px;border-radius:9px;font-size:13px;line-height:1.55;${good
+      ? "background:#f2f8f4;border:1px solid #b6d8c1;color:#1a7f4b"
+      : "background:#fdf5f5;border:1px solid #f0c7c7;color:#8a2f2f"}">${esc(j.summary||"")}</div>
+    ${j.roles&&j.roles.length?`<div class="hint" style="margin:10px 0 0">Permissions granted to this app: <b>${esc(j.roles.join(", "))}</b></div>`:""}
+    ${steps?`<div style="margin-top:12px"><div style="font-size:12px;font-weight:800;color:var(--navy);margin-bottom:5px">How to fix it</div>
+      <ol style="margin:0;padding-left:18px;font-size:12.5px;color:#4a5563;line-height:1.55">${steps}</ol>
+      <div class="hint" style="margin:9px 0 0">This is an Azure setting, not missing data — every email already synced will show its body the moment the permission is granted.</div></div>`:""}
+  </div>`;
+}
+
 async function openEmail(el){
   const id=(el&&el.getAttribute)?el.getAttribute("data-id"):el; if(!id) return;
   emModalEnsure();
@@ -785,13 +808,35 @@ async function openEmail(el){
     f.style.cssText="width:100%;height:"+(atts.length?"46vh":"60vh")+";border:0;background:#fff";
     body.appendChild(f);
     f.srcdoc=j.body_html;
-  } else {
-    const txt=(j.body_text&&j.body_text.trim()) ? j.body_text
-      : (atts.length ? "This email has no text body — its content is in the attachment"+(atts.length>1?"s":"")+" below." : "(no message body)");
+  } else if(j.body_text&&j.body_text.trim()){
     const d=document.createElement("div");
-    d.style.cssText="white-space:pre-wrap;word-break:break-word;padding:16px;font-size:13.5px;color:"+((j.body_text&&j.body_text.trim())?"#20303f":"#6b7280")+";line-height:1.55";
-    d.textContent=txt;                        // textContent = no HTML injection
+    d.style.cssText="white-space:pre-wrap;word-break:break-word;padding:16px;font-size:13.5px;color:#20303f;line-height:1.55";
+    d.textContent=j.body_text;                // textContent = no HTML injection
     body.appendChild(d);
+  } else {
+    /* No body. Say why, and show whatever Outlook DID give us. "(no message body)" told a
+       rep nothing and made a permission setting look like lost data. */
+    if(j.body_preview&&j.body_preview.trim()){
+      const p=document.createElement("div");
+      p.style.cssText="white-space:pre-wrap;word-break:break-word;padding:16px 16px 4px;font-size:13.5px;color:#20303f;line-height:1.55";
+      p.textContent=j.body_preview;
+      body.appendChild(p);
+    }
+    const note=document.createElement("div");
+    const perm=j.body_status==="permission";
+    note.style.cssText="margin:12px 16px 16px;padding:11px 13px;border-radius:9px;font-size:12.5px;line-height:1.55;"
+      +(perm?"background:#fdf5f5;border:1px solid #f0c7c7;color:#8a2f2f":"background:#f6f8fa;border:1px solid #e6ebf0;color:#5b6672");
+    note.textContent = j.body_note
+      || (atts.length ? "This email has no text body — its content is in the attachment"+(atts.length>1?"s":"")+" below."
+                      : "Outlook returned no body for this message.");
+    body.appendChild(note);
+    if(perm && ME && ME.role==="president"){
+      const b2=document.createElement("button");
+      b2.className="btn sm"; b2.style.cssText="margin:0 16px 16px";
+      b2.textContent="Check Outlook permissions";
+      b2.onclick=graphHealth;
+      body.appendChild(b2);
+    }
   }
   // Attachments — an order-confirmation email often carries its content as a PDF. Show a download
   // link, and preview PDFs inline. (This admin page is served from the real site, so data: links work.)

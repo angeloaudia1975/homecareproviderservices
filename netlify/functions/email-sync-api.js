@@ -38,21 +38,44 @@ function emailHtml(text){
 
 // ---- Microsoft Graph (app-only) ----
 let _tok=null, _tokExp=0;
-async function graphToken(){
-  if(_tok && Date.now()<_tokExp-60000) return _tok;
+async function graphToken(force){
+  /* force skips the cache. The health check uses it so that an admin who has just granted
+     Mail.Read in Azure sees the new permission immediately — a token minted before the
+     grant carries the old roles for up to an hour, and "I fixed it but it still says no"
+     is exactly the wrong answer to give someone. */
+  if(!force && _tok && Date.now()<_tokExp-60000) return _tok;
   const body=new URLSearchParams({client_id:G_CLIENT,client_secret:G_SECRET,scope:"https://graph.microsoft.com/.default",grant_type:"client_credentials"});
   const r=await fetch(`https://login.microsoftonline.com/${G_TENANT}/oauth2/v2.0/token`,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body});
   const j=await r.json().catch(()=>({}));
   if(!r.ok) throw new Error(`Graph auth ${r.status}: ${j.error||""} ${j.error_description||await r.text().catch(()=>"")}`.slice(0,300));
   _tok=j.access_token; _tokExp=Date.now()+(j.expires_in||3599)*1000; return _tok;
 }
-async function graphGet(path){
+async function graphGet(path, extraHeaders){
   const tok=await graphToken();
-  const r=await fetch(`https://graph.microsoft.com/v1.0${path}`,{headers:{Authorization:`Bearer ${tok}`}});
+  const r=await fetch(`https://graph.microsoft.com/v1.0${path}`,{headers:Object.assign({Authorization:`Bearer ${tok}`},extraHeaders||{})});
   const j=await r.json().catch(()=>({}));
   if(!r.ok) throw new Error(`Graph ${r.status} on ${path}: ${(j.error&&j.error.message)||""}`.slice(0,300));
   return j;
 }
+
+/* ── Which application permissions Azure actually granted ────────────────────
+   A client-credentials access token carries the granted app roles in its `roles`
+   claim. Reading them is how "why is every email body blank?" gets a definite answer
+   instead of a guess: Mail.ReadBasic returns a message's headers and recipients but
+   DELIBERATELY strips body, bodyPreview and attachments, which looks exactly like an
+   empty inbox body. Mail.Read is the permission that includes them.
+
+   The claim is read, not trusted for any decision — nothing is authorised from it. */
+function tokenRoles(tok){
+  try{
+    const part=String(tok||"").split(".")[1]; if(!part) return [];
+    const b64=part.replace(/-/g,"+").replace(/_/g,"/");
+    const pad=b64+"=".repeat((4-(b64.length%4))%4);
+    const payload=JSON.parse(Buffer.from(pad,"base64").toString("utf8"));
+    return Array.isArray(payload.roles)?payload.roles:[];
+  }catch(e){ return []; }
+}
+const CAN_READ_BODY = roles => roles.some(r=>/^Mail\.(Read|ReadWrite)$/.test(r));
 const SEL="id,internetMessageId,subject,bodyPreview,from,toRecipients,ccRecipients,sentDateTime,receivedDateTime,conversationId,hasAttachments";
 async function listFolder(mailbox, folder, days, top){
   const since=new Date(Date.now()-(days||30)*864e5).toISOString();
@@ -222,45 +245,84 @@ exports.handler = async (event)=>{
     // never stored. Looks the message up in email_messages first, so staff can only open messages that
     // were already captured onto a dealer timeline (not arbitrary mailbox content). Same access as the
     // dealer timeline above (any signed-in staff), so it sits before the president-only gate.
+    /* Why are the bodies blank? Answers it definitively rather than by inference: reads
+       the app permissions Azure actually granted this integration, and says which one is
+       missing. Safe to expose — it reports permission NAMES, never the token or secret. */
+    if(b.action==="graph_health"){
+      if(!G_TENANT||!G_CLIENT||!G_SECRET)
+        return json(200,{ok:true,configured:false,
+          summary:"Outlook isn't connected yet — set GRAPH_TENANT_ID, GRAPH_CLIENT_ID and GRAPH_CLIENT_SECRET in Netlify."});
+      let tok=null, err=null;
+      try{ tok=await graphToken(true); }catch(e){ err=String(e.message||e); }
+      if(!tok) return json(200,{ok:true,configured:true,can_sign_in:false,summary:"Couldn't sign in to Microsoft Graph.",detail:err});
+      const roles=tokenRoles(tok);
+      const mail=roles.filter(r=>/^Mail\./.test(r));
+      const canBody=CAN_READ_BODY(roles);
+      const canSend=roles.some(r=>/^Mail\.Send$/.test(r));
+      return json(200,{ok:true,configured:true,can_sign_in:true,
+        roles, mail_roles:mail, can_read_bodies:canBody, can_send:canSend,
+        summary: canBody
+          ? `Connected. Email bodies can be read${canSend?" and sent":""}. Granted: ${mail.join(", ")||"—"}.`
+          : `Connected, but this app CANNOT read email bodies. Granted: ${mail.join(", ")||"none"}. `
+            + `Mail.ReadBasic returns a message's headers and recipients but deliberately strips the body, the preview and attachments — which is why every email in Dealer 360 shows no message body.`,
+        fix: canBody?null:[
+          "Azure portal → Microsoft Entra ID → App registrations → the HCPS Connect 360 app",
+          "API permissions → Add a permission → Microsoft Graph → Application permissions",
+          "Tick Mail.Read (and Mail.Send if you want reps to send from Dealer 360)",
+          "Click Grant admin consent for your tenant",
+          "Come back here and run this check again — bodies appear immediately, nothing needs re-syncing",
+        ]});
+    }
+
     if(b.action==="message"){
       const id=String(b.id||"").trim(); if(!id) return json(400,{error:"id required"});
-      let row; try{ const rows=await sbGet(`email_messages?id=eq.${encodeURIComponent(id)}&select=id,graph_id,mailbox_upn,subject,from_address,from_name,direction,sent_at,received_at,has_attachments`); row=rows&&rows[0]; }
+      let row; try{ const rows=await sbGet(`email_messages?id=eq.${encodeURIComponent(id)}&select=id,graph_id,mailbox_upn,subject,snippet,from_address,from_name,direction,sent_at,received_at,has_attachments`); row=rows&&rows[0]; }
       catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run supabase/email_intelligence.sql first."}); }
       if(!row) return json(404,{ok:false,error:"not_found"});
       if(!G_TENANT||!G_CLIENT||!G_SECRET) return json(200,{ok:false,error:"graph_env_missing",message:"Set GRAPH_TENANT_ID / GRAPH_CLIENT_ID / GRAPH_CLIENT_SECRET in Netlify to read full email bodies."});
       if(!row.graph_id||!row.mailbox_upn) return json(200,{ok:false,error:"no_source",message:"This message has no Outlook reference to open."});
-      let m; try{ m=await graphGet(`/users/${encodeURIComponent(row.mailbox_upn)}/messages/${encodeURIComponent(row.graph_id)}?$select=subject,body,uniqueBody,from,toRecipients,ccRecipients,sentDateTime,receivedDateTime,hasAttachments`); }
+      const base=`/users/${encodeURIComponent(row.mailbox_upn)}/messages/${encodeURIComponent(row.graph_id)}`;
+      const PREFER={Prefer:'outlook.body-content-type="html"'};
+      let m;
+      try{ m=await graphGet(`${base}?$select=subject,body,bodyPreview,from,toRecipients,ccRecipients,sentDateTime,receivedDateTime`,PREFER); }
       catch(e){ return json(200,{ok:false,error:"fetch_failed",message:"Couldn't open this message in Outlook — it may have been moved or deleted."}); }
-      // Prefer the full body; fall back to uniqueBody (some system/confirmation emails leave body empty).
-      let bodyObj = (m.body && m.body.content) ? m.body : ((m.uniqueBody && m.uniqueBody.content) ? m.uniqueBody : (m.body||{}));
-      const bt=((bodyObj&&bodyObj.contentType)||"").toLowerCase();
+      /* If a narrowed $select came back without a body, ask for the whole message once
+         before concluding anything. $select is the cheap path, not the only one, and one
+         retry costs far less than a rep staring at a blank panel. */
+      if(!(m&&m.body&&String(m.body.content||"").trim())){
+        try{ const full=await graphGet(base,PREFER); if(full&&full.body) m=Object.assign({},m,full); }catch(e){}
+      }
+      const bt=((m.body&&m.body.contentType)||"").toLowerCase();
+      const content=String((m.body&&m.body.content)||"");
+      const preview=String(m.bodyPreview||row.snippet||"");
       const to=(m.toRecipients||[]).map(r=>r.emailAddress&&r.emailAddress.address).filter(Boolean);
       const cc=(m.ccRecipients||[]).map(r=>r.emailAddress&&r.emailAddress.address).filter(Boolean);
-      // Fetch attachments on demand so an attachment-only email (e.g. an order confirmation PDF) still
-      // shows its content. File attachments come back as base64 contentBytes; cap size to keep the
-      // response small, and skip inline images (they belong to the HTML body, not a download list).
-      let attachments=[];
-      const ATT_MAX=6*1024*1024;
-      if(m.hasAttachments || row.has_attachments){
-        try{
-          const at=await graphGet(`/users/${encodeURIComponent(row.mailbox_upn)}/messages/${encodeURIComponent(row.graph_id)}/attachments?$select=id,name,contentType,size,isInline,contentBytes`);
-          for(const a of ((at&&at.value)||[])){
-            if(a.isInline) continue;
-            const isFile=String(a["@odata.type"]||"").indexOf("fileAttachment")>=0 || typeof a.contentBytes==="string";
-            const rec={ name:a.name||"attachment", content_type:a.contentType||"application/octet-stream", size:a.size||0 };
-            if(isFile && a.contentBytes && (a.size||0)<=ATT_MAX) rec.content_b64=a.contentBytes;
-            else if(!isFile) rec.note="Item attachment (open in Outlook)";
-            else rec.note="Too large to preview here";
-            attachments.push(rec);
-          }
-        }catch(e){ /* attachments are optional — never block opening the email */ }
+
+      /* When the body is still empty, say WHY. An empty panel that offers no reason is
+         what turns a ten-minute permission fix into "the CRM is broken". The overwhelmingly
+         common cause is the Azure app holding Mail.ReadBasic, which returns exactly this:
+         full headers and recipients, no body, no bodyPreview. */
+      let body_status="ok", body_note=null;
+      if(!content.trim()){
+        let roles=[]; try{ roles=tokenRoles(await graphToken(true)); }catch(e){}
+        if(roles.length && !CAN_READ_BODY(roles)){
+          body_status="permission";
+          body_note=`Outlook returned this message's headers but not its body, because the HCPS app registration has ${roles.filter(r=>/^Mail\./.test(r)).join(", ")||"no Mail.Read permission"}. `
+                  + `Mail.ReadBasic deliberately excludes the body. Grant Mail.Read (Application) in Azure → App registrations → API permissions, click Grant admin consent, and bodies appear immediately — nothing needs re-syncing.`;
+        } else if(preview.trim()){
+          body_status="preview_only";
+          body_note="Outlook returned only a preview of this message, not its full body.";
+        } else {
+          body_status="empty";
+          body_note="This message genuinely has no text body in Outlook — its content may be an attachment or an image.";
+        }
       }
       return json(200,{ ok:true, id:row.id, subject:m.subject||row.subject||"", direction:row.direction,
         from:row.from_address||((m.from&&m.from.emailAddress&&m.from.emailAddress.address)||""),
         from_name:row.from_name||((m.from&&m.from.emailAddress&&m.from.emailAddress.name)||""),
-        to, cc, when:row.received_at||row.sent_at||null, has_attachments:!!(m.hasAttachments||row.has_attachments),
-        attachments,
-        body_html: bt==="html"?((bodyObj&&bodyObj.content)||""):"", body_text: bt!=="html"?((bodyObj&&bodyObj.content)||""):"" });
+        to, cc, when:row.received_at||row.sent_at||null, has_attachments:!!row.has_attachments,
+        body_html: bt==="html"?content:"", body_text: bt!=="html"?content:"",
+        body_preview:preview, body_status, body_note });
     }
 
     // Send an approved AI-drafted email FROM the rep's own Outlook mailbox (Graph sendMail), then log
