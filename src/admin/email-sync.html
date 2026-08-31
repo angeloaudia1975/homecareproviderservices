@@ -56,7 +56,7 @@ function render(){ if(!TOKEN){ gate(); return; }
     <div class="hint" style="margin-top:6px">Email auto-syncs in the background every hour — these buttons are for on-demand runs and cleanup.</div>
     <div class="step" style="margin-top:12px">
       <h3>Load older history <span class="hint" style="font-weight:400">— pull months the hourly sync never covered</span></h3>
-      <div class="hint" style="margin:0 0 8px">The rolling sync only ever looks back a few months. To bring in a fixed period — say the start of the year to today — set the dates and run it. It works one month at a time so it can't time out, and it's safe to re-run: messages already stored are matched on their Outlook ID and updated, never duplicated.</div>
+      <div class="hint" style="margin:0 0 8px">The rolling sync only ever looks back a few months. To bring in a fixed period — say the start of the year to today — set the dates and run it. It works a week at a time so it can't time out, and it's safe to re-run: messages already stored are matched on their Outlook ID and updated, never duplicated.</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <span class="hint">from <input id="bf_from" type="date" value="2026-01-01" style="padding:5px 7px;border:1px solid var(--line);border-radius:7px"></span>
         <span class="hint">to <input id="bf_to" type="date" style="padding:5px 7px;border:1px solid var(--line);border-radius:7px"></span>
@@ -193,8 +193,9 @@ async function doBackfill(){
   if(!from){ const m=$("#bf_msg"); if(m){ m.textContent="Pick a start date."; } return; }
   const slices=monthSlices(from,to);
   if(!slices.length){ const m=$("#bf_msg"); if(m){ m.textContent="That range is empty."; } return; }
-  if(!confirm(`Load email history for ${slices.length} month(s), from ${from} to ${to||"today"}?\n\n`
-    +`It runs one month at a time and you'll see each one finish. Re-running is safe — nothing is duplicated.`)) return;
+  if(!confirm(`Load email history for ${slices.length} week(s), from ${from} to ${to||"today"}?\n\n`
+    +`Roughly ${Math.ceil(slices.length*12/60)} minute(s). You'll see each week finish, and you can stop at any point — `
+    +`whatever has loaded stays. Re-running is safe: nothing is duplicated.`)) return;
   BF_STOP=false; BUSY=true;
   const btn=$("#bf_go"); if(btn){ btn.disabled=true; btn.textContent="Loading…"; }
   const prog=$("#bf_prog"); const rows=[];
