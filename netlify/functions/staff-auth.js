@@ -200,6 +200,35 @@ exports.handler = async (event)=>{
       const rows=await sbGet("impersonation_log?select=*&order=created_at.desc&limit=100").catch(()=>[]);
       return json(200,{ok:true,rows:rows||[]});
     }
+    /* Admin-triggered password reset. Deliberately a RESET LINK and not "set this
+       person's password": the rep chooses their own secret and the admin never sees or
+       types it, so a shared credential can't end up in a text message and nobody has to
+       trust that it was changed afterwards. The public "forgot" action stays vague about
+       whether an account exists (it is unauthenticated); this one is President-only and
+       therefore answers plainly, because a useless "if that email exists…" is exactly
+       what makes an admin unsure whether the thing worked. */
+    if(b.action==="send_reset"){
+      const email=String(b.email||"").trim().toLowerCase();
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(200,{ok:false,message:"Enter a valid email."});
+      const target=await getStaff(email);
+      if(!target) return json(200,{ok:false,message:`No staff account with the email ${email}. Add them under Staff first.`});
+      if(target.active===false) return json(200,{ok:false,message:`${target.name||email} is deactivated. Restore their access before sending a reset.`});
+      const redirect_to=String(b.redirect_to||"").trim();
+      try{
+        const u=`${SUPABASE_URL}/auth/v1/recover${redirect_to?`?redirect_to=${encodeURIComponent(redirect_to)}`:""}`;
+        const r=await fetch(u,{method:"POST",headers:{apikey:ANON,"content-type":"application/json"},body:JSON.stringify({email})});
+        if(!r.ok){ const t=await r.text().catch(()=>"");
+          return json(200,{ok:false,message:`The email provider refused that (${r.status}). ${String(t).slice(0,140)}`}); }
+      }catch(e){ return json(200,{ok:false,message:"Couldn't send the reset email: "+String(e.message||e).slice(0,140)}); }
+      /* Recorded in the same audit trail as View-as: an admin causing a change to
+         somebody else's sign-in should leave a trace, even a benign one. */
+      try{ await sbSend("POST","impersonation_log",{admin_email:me.email,admin_name:me.name||me.email,
+        target_email:email,target_name:target.name||email,action:"password_reset_sent",
+        user_agent:String(event.headers["user-agent"]||"").slice(0,300)},{Prefer:"return=minimal"}); }catch(e){}
+      return json(200,{ok:true,to:email,name:target.name||email,
+        message:`Reset link sent to ${email}. It expires in about an hour — they set their own password, and you never see it.`});
+    }
+
     if(b.action==="add_user"){
       const email=String(b.email||"").trim().toLowerCase();
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(200,{ok:false,message:"Enter a valid email."});

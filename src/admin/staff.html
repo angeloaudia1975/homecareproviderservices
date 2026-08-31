@@ -104,11 +104,30 @@ function userRow(u){
     <td class="acts">
       ${canView?`<button class="go sm viewas" onclick="viewAs('${esc(u.email)}','${esc((u.name||u.email)).replace(/'/g,"\\'")}')">👁 View as</button>`:""}
       <button class="go sm" style="background:#fff;color:var(--navy)" onclick="editUser('${esc(u.email)}')">Edit</button>
+      ${u.active?`<button class="go sm" style="background:#fff;color:var(--navy)" onclick="sendReset('${esc(u.email)}','${esc((u.name||u.email)).replace(/'/g,"\\'")}')" title="Email them a link to set a new password">🔑 Reset password</button>`:""}
       ${isMe?"":(u.active?`<button class="go sm" style="background:#fff;color:#b42323;border-color:#f0c8c8" onclick="removeUser('${esc(u.email)}','${esc((u.name||u.email)).replace(/'/g,"\\'")}')">Remove</button>`
                        :`<button class="go sm" style="background:#fff;color:var(--navy)" onclick="reactivate('${esc(u.email)}')">Restore</button>`)}
     </td></tr>`;
 }
 function roleHint(){ const r=$("#n_role").value, t=$("#n_travel"); if(r==="president"){t.checked=true;t.disabled=true;} else {t.disabled=false;} }
+
+/* Send a teammate a password reset link.
+   This deliberately does NOT let an admin type a new password for someone. The rep
+   follows the link and chooses their own, so the password is never spoken aloud, never
+   sits in a text message, and never has to be changed again afterwards "just in case".
+   It also means nobody can later claim the admin knew their credentials. */
+async function sendReset(email,name){
+  if(!confirm(`Email ${name} a password reset link?\n\n`
+    +`They'll get a link at ${email} and set their own new password — you won't see it. `
+    +`The link expires in about an hour.\n\nTheir current password keeps working until they use it.`)) return;
+  const m=$("#addMsg"); if(m){ m.className="msg"; m.textContent="Sending…"; }
+  let j=null;
+  try{ j=await api({action:"send_reset",email,redirect_to:location.origin+"/admin/reset.html"}); }catch(e){ j=null; }
+  if(m){ m.className=(j&&j.ok)?"msg ok":"msg err";
+    m.textContent=(j&&j.message)||"Couldn't send that reset link — try again."; }
+  if(j&&j.ok) toastIf(`Reset link sent to ${email}`);
+}
+function toastIf(t){ try{ if(typeof toast==="function") toast(t); }catch(e){} }
 
 async function addUser(){
   const email=($("#n_email").value||"").trim(), name=($("#n_name").value||"").trim(), role=$("#n_role").value, rep_name=($("#n_rep").value||"").trim(), can_travel=$("#n_travel").checked;
