@@ -180,7 +180,8 @@ exports.handler = async (event)=>{
       // full catalog fields so the editor can show + edit everything (incl. tiers)
       const products=(prods||[]).map(p=>({code:p.code,name:p.name,category:p.category||"",image:p.image||"",
         base_price:p.base_price,msrp:p.msrp,description:p.description||"",tiers:p.tiers||null,price_note:p.price_note||"",group:p.group||""}));
-      return json(200,{products,custom:custom||[],links:linkMap,overrides,featured,media});
+      return json(200,{products,custom:custom||[],links:linkMap,overrides,featured,media,
+        ordering_base:ORDERING_BASE});
     }
 
     if(event.httpMethod==="POST"){
@@ -258,9 +259,33 @@ exports.handler = async (event)=>{
         const p=b.product||{};
         if(!mfr||!oldCode||!newCode) return json(400,{error:"manufacturer, old_code and new_code are required"});
         if(oldCode===newCode) return json(400,{error:"new_code matches old_code"});
-        // don't clobber an existing added product that already uses the new code
-        const clash=await sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(newCode)}&select=code`).catch(()=>[]);
-        if(clash&&clash.length) return json(409,{error:`SKU "${newCode}" is already in use`});
+        /* THE COLLISION IS AN ANSWER, NOT A REFUSAL.
+           This checked custom_products only, so renaming a product onto a code that exists
+           in the DEPLOYED CATALOG FILE was not caught at all — it created an added row that
+           silently shadowed a real catalog product, which is one more way a second copy of
+           one product got made. Both layers are checked now.
+
+           And a collision is reported as data. Someone renumbering a part almost always
+           means "this is the same item as that one" — so the screen is given the record that
+           was hit and everything attached to it, and can offer to merge into it. Refusing
+           with a bare string left them stuck with two records and no way forward. */
+        const eN=encodeURIComponent;
+        const [baseAll,customAll]=await Promise.all([
+          fetchJson(`${ORDERING_BASE}/data/${mfr}.json`).catch(()=>[]),
+          sb("GET",`custom_products?manufacturer=eq.${eN(mfr)}&select=code,name,base_price,active`).catch(()=>[]),
+        ]);
+        const hit=[]
+          .concat((baseAll||[]).map(x=>({code:String(x.code),name:x.name||"",price:x.base_price,kind:"catalog"})))
+          .concat((customAll||[]).map(x=>({code:String(x.code),name:x.name||"",price:x.base_price,kind:"added"})))
+          .find(x=>normCode(x.code)===normCode(newCode));
+        if(hit){
+          const conn=await connectionsFor(mfr,hit.code).catch(()=>null);
+          return json(409,{error:"sku_in_use", old_code:oldCode, new_code:newCode,
+            existing:hit, connections:conn,
+            same_spelling: hit.code===newCode,
+            message:`SKU "${newCode}" already belongs to "${hit.name||hit.code}". `
+                  + `If that is the same item, merge ${oldCode} into it instead of renumbering.`});
+        }
         // 1) create the product under the new code with all fields carried from the client
         await sb("POST","custom_products?on_conflict=manufacturer,code",{
           manufacturer:mfr, code:newCode, name:String(p.name||"").trim()||newCode,

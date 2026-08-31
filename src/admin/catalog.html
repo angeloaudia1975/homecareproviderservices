@@ -94,6 +94,16 @@ async function api(qs,opts){const h={"content-type":"application/json"};if(TOKEN
   if(r.status===401){gate();throw new Error("unauthorized");}
   if(r.status===403){$("#wrap").innerHTML='<div class="msg err">President only — this tool is limited to President accounts. <button class="go" onclick="lock()">Sign in as a different user</button></div>';throw new Error("unauthorized");}
   const j=await r.json().catch(()=>({}));if(!r.ok||j.error)throw new Error(j.error||("HTTP "+r.status));return j;}
+/* Same request, but the response is handed back whole. api() throws on a non-2xx and keeps
+   only the error string, which is exactly wrong for a 409: the collision payload names the
+   record that was hit, and that is what lets the screen offer a merge instead of a dead end. */
+async function apiRaw(qs,opts){
+  const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch(API+(qs||""),{...(opts||{}),headers:{...h,...((opts&&opts.headers)||{})}});
+  if(r.status===401){gate();throw new Error("unauthorized");}
+  const j=await r.json().catch(()=>({}));
+  return {status:r.status, ok:r.ok&&!j.error, body:j};
+}
 function gate(msg){$("#wrap").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p style="margin:2px 0 12px;color:#607089;font-size:13px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username" style="margin:0 0 8px;width:100%"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" style="margin:0 0 12px;width:100%" onkeydown="if(event.key==='Enter')submitTok()"><br><button class="go" onclick="submitTok()">Sign in</button> <a href="reset.html" style="display:inline-block;margin-left:6px;color:#10263f;font-size:13px;font-weight:600">Forgot password?</a><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{var t=$("#lemail");if(t)t.focus();},50);}
 async function submitTok(){
   var email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
@@ -236,6 +246,33 @@ function effProducts(){
   return [...map.values()];
 }
 function tiersOf(p){ return Array.isArray(p&&p.tiers)?p.tiers.map(t=>({min_qty:t.min_qty??t.minQty??1,price:t.price})):[]; }
+
+/* ── What a part number is actually related to ───────────────────────────────
+   The list shows one row per SKU, which hides two things a person needs before they
+   start renumbering anything:
+
+     · the same code can exist in BOTH layers — the deployed catalog file and the added
+       table — which is one product, not two, and is fixed by consolidating rather than
+       by editing a number;
+     · a trailing letter suffix is usually a real VARIANT, not a typo. 1007 and 1007AB
+       are different products ("with AB"), and renumbering one onto the other would
+       destroy a distinction the manufacturer makes.
+
+   Both are read off data the page already has, so this costs nothing and is never stale. */
+const skuStem=c=>String(c||"").toUpperCase().replace(/[^A-Z0-9]/g,"").replace(/[A-Z]+$/,"");
+function skuKin(code){
+  const c=String(code);
+  const inBase=(DETAIL.products||[]).some(x=>String(x.code)===c);
+  const inAdded=(DETAIL.custom||[]).some(x=>String(x.code)===c);
+  const all=effProducts().map(x=>String(x.code));
+  const stem=skuStem(c), bare=String(c).toUpperCase().replace(/[^A-Z0-9]/g,"");
+  let variantOf=null, variants=[];
+  if(stem && stem!==bare) variantOf=all.find(x=>String(x).toUpperCase().replace(/[^A-Z0-9]/g,"")===stem)||null;
+  if(stem===bare) variants=all.filter(x=>x!==c && skuStem(x)===bare);
+  return {twoLayers:inBase&&inAdded, inBase, inAdded, variantOf, variants};
+}
+function orderingBase(){ return (DETAIL&&DETAIL.ordering_base)||"https://hcpsonlineordering.netlify.app"; }
+function previewUrl(code){ return orderingBase()+"/?product="+encodeURIComponent(code)+"&mfr="+encodeURIComponent(SLUG); }
 function isFeat(code){ return (DETAIL.featured||[]).includes(code); }
 function catList(){ return [...new Set(effProducts().map(p=>p.category).filter(Boolean))].sort(); }
 async function toggleFeatured(code){
@@ -263,6 +300,41 @@ function setP(k,v){PDRAFT[k]=v;}
 function addTier(){PDRAFT.tiers.push({min_qty:"",price:""});render();}
 function rmTier(i){PDRAFT.tiers.splice(i,1);render();}
 function setTier(i,k,v){PDRAFT.tiers[i][k]=v;}
+const normSku=c=>String(c||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+
+/* The collision, explained, with the two things that actually resolve it. A variant suffix
+   is called out on its own because merging those two records would be the WRONG answer —
+   1007 and 1007AB are different products, and the number is not the mistake. */
+async function offerMergeInstead(oldCode,newCode,hit,conn){
+  const kin=skuKin(oldCode);
+  const sameStem = skuStem(oldCode)===skuStem(hit.code) && skuStem(oldCode)!=="";
+  const suffixVariant = sameStem && normSku(oldCode)!==normSku(hit.code);
+  const c=conn||{};
+  const risk=[];
+  if(c.orders) risk.push(c.orders+" order line(s) — kept either way, never rewritten");
+  if(c.media) risk.push(c.media+" image/document(s)");
+  if(c.links) risk.push(c.links+" More Information link");
+  if(c.featured) risk.push("on the Featured list");
+
+  if(suffixVariant && !confirm(
+      "Careful — these look like different products, not duplicates.\n\n"
+      +"“"+oldCode+"” and “"+hit.code+"” share a part number stem but differ by a letter suffix, "
+      +"which manufacturers use for a real variant (a different back, brake or frame).\n\n"
+      +"Merging them would collapse two products into one and lose that distinction.\n\n"
+      +"Continue anyway?")) { toast("Nothing changed"); return; }
+
+  const go=confirm(
+    "SKU “"+newCode+"” already belongs to:\n\n"
+    +"   "+(hit.name||hit.code)+"  ("+hit.code+")\n\n"
+    +(risk.length?"That record has: "+risk.join(" · ")+"\n\n":"")
+    +"If that is the same item, merge this one into it — the number stops being the problem.\n\n"
+    +"OK  — merge “"+oldCode+"” into “"+hit.code+"” (that record survives and keeps its approved title)\n"
+    +"Cancel — leave both alone and go back to editing");
+  if(!go){ toast("Nothing changed"); return; }
+  await mergeInto(hit.code, oldCode);
+  PDRAFT=null; render();
+}
+
 async function saveProduct(){
   if(!PDRAFT.code||!String(PDRAFT.name).trim()){toast("Code and name are required");return;}
   const tiers=(PDRAFT.tiers||[]).filter(t=>t.price!==""&&t.price!=null).map(t=>({min_qty:parseInt(t.min_qty||1,10)||1,price:Number(t.price)}));
@@ -270,15 +342,34 @@ async function saveProduct(){
   // link/images across, retire the old code. New/duplicated drafts (orig_code=null) skip this.
   const newCode=String(PDRAFT.code).trim(), oldCode=PDRAFT.orig_code;
   if(oldCode && newCode!==oldCode){
-    if(effProducts().some(p=>p.code===newCode && p.code!==oldCode)){ toast("That SKU is already used by another product — pick a unique one"); return; }
+    /* A COLLISION IS NOT A DEAD END. Renumbering a part onto a code that already exists
+       almost always means "these two records are the same item" — so instead of refusing
+       and leaving two records with no way forward, the collision is shown for what it is
+       and the merge is offered right here. The old refusal ("pick a unique one") asked for
+       the one thing that would NOT fix the problem: a third number. */
+    const hit=effProducts().find(p=>p.code!==oldCode && normSku(p.code)===normSku(newCode));
+    if(hit) return offerMergeInstead(oldCode,newCode,hit);
     if(!confirm("Change SKU from “"+oldCode+"” to “"+newCode+"”?\n\nThe product’s price, featured status, More-Information link and images move to the new SKU, and the old SKU is retired from the portal.")) return;
-    await api("",{method:"POST",body:JSON.stringify({action:"rename_code",manufacturer:SLUG,old_code:oldCode,new_code:newCode,was_custom:PDRAFT.kind==="custom",
+    const r=await apiRaw("",{method:"POST",body:JSON.stringify({action:"rename_code",manufacturer:SLUG,old_code:oldCode,new_code:newCode,was_custom:PDRAFT.kind==="custom",
       product:{code:newCode,name:PDRAFT.name,category:PDRAFT.category,description:PDRAFT.description,price_note:PDRAFT.price_note,
         base_price:PDRAFT.base_price===""?null:Number(PDRAFT.base_price),msrp:PDRAFT.msrp===""?null:Number(PDRAFT.msrp),image:PDRAFT.image||null,tiers,active:PDRAFT.active!==false}})});
+    /* The server checks both layers, so it can still find a collision the page could not —
+       a code that exists only in the deployed catalog file. Same offer, same wording. */
+    if(r.status===409 && r.body && r.body.error==="sku_in_use"){
+      const ex=r.body.existing||{};
+      return offerMergeInstead(oldCode,newCode,{code:ex.code,name:ex.name,kind:ex.kind==="added"?"custom":"catalog"},r.body.connections);
+    }
+    if(!r.ok){ toast((r.body&&(r.body.message||r.body.error))||"Couldn't change that SKU",true); return; }
     PDRAFT=null; await loadMfr(); toast("SKU changed ✓ — live on the portal"); return;
   }
   if(PDRAFT.kind==="custom"){
-    await api("",{method:"POST",body:JSON.stringify({action:"save_product",manufacturer:SLUG,product:{...PDRAFT,tiers}})});
+    const r=await apiRaw("",{method:"POST",body:JSON.stringify({action:"save_product",manufacturer:SLUG,product:{...PDRAFT,tiers}})});
+    if(r.status===409 && r.body && r.body.error==="duplicate_sku"){
+      const ex=r.body.existing||{};
+      return offerMergeInstead(PDRAFT.code, PDRAFT.code,
+        {code:ex.code,name:ex.name,kind:ex.kind==="added"?"custom":"catalog"}, r.body.connections);
+    }
+    if(!r.ok){ toast((r.body&&(r.body.message||r.body.error))||"Couldn't save that product",true); return; }
   }else{
     const patch={name:PDRAFT.name,category:PDRAFT.category,description:PDRAFT.description,price_note:PDRAFT.price_note,
       base_price:PDRAFT.base_price===""?null:Number(PDRAFT.base_price),msrp:PDRAFT.msrp===""?null:Number(PDRAFT.msrp),
@@ -355,13 +446,20 @@ function prodListHtml(){
      <td><b>${esc(p.name)}</b> ${statusChip(st)}${p.kind==="custom"?'<span class="chip cst">added</span>':(p.edited?'<span class="chip ed">edited</span>':"")}${ft?'<span class="chip ft">★ featured</span>':''}
         <div style="font-size:11px;color:var(--gray)">${esc(p.code)}${p.category?" · "+esc(p.category):""}${
           st==="merged"?` · merged into <b>${esc(o.merged_into)}</b>`:""}${
-          st==="duplicate"?` · <a href="#dupreview" onclick="focusDup('${esc(p.code)}');return false;">see why</a>`:""}</div></td>
+          st==="duplicate"?` · <a href="#dupreview" onclick="focusDup('${esc(p.code)}');return false;">see why</a>`:""}${(()=>{
+            const k=skuKin(p.code); const bits=[];
+            if(k.twoLayers) bits.push(`<a href="#dupreview" onclick="focusDup('${esc(p.code)}');return false;" title="This SKU exists in both the deployed catalog file and the added table — one product in two layers">⧉ 2 layers</a>`);
+            if(k.variantOf) bits.push(`<span title="A trailing letter suffix is a manufacturer variant, not a typo — do not renumber it onto ${esc(k.variantOf)}">variant of <b>${esc(k.variantOf)}</b></span>`);
+            else if(k.variants.length) bits.push(`<span title="These are separate variants of this part number">variants: <b>${esc(k.variants.join(", "))}</b></span>`);
+            return bits.length?" · "+bits.join(" · "):"";
+          })()}</div></td>
      <td class="num">${p.base_price!=null&&p.base_price!==""?"$"+Number(p.base_price).toFixed(2):"—"}</td>
      <td class="num">${tn?tn+" tier"+(tn>1?"s":""):"—"}</td>
      <td>${p.active===false?'<span style="color:var(--gray)">hidden</span>':'<span class="ok">shown</span>'}</td>
      <td style="white-space:nowrap"><button class="star ${ft?"on":""}" title="${ft?"Featured — click to remove":"Add to Featured"}" onclick="toggleFeatured('${esc(p.code)}')">${ft?"★":"☆"}</button>
        <button class="btn ghost sm" onclick="editProduct('${esc(p.code)}')">Edit</button>
        <button class="btn ghost sm" onclick="duplicateProduct('${esc(p.code)}')" title="Start a new product pre-filled from this one">Copy as new</button>
+       <a class="btn ghost sm" href="${esc(previewUrl(p.code))}" target="_blank" rel="noopener" title="Open this product on Partner 360 exactly as a dealer sees it">👁 Preview</a>
        ${p.kind==="custom"
           ? `<button class="btn ghost sm" style="color:var(--red);border-color:#f0c8c8" onclick="delProduct('${esc(p.code)}')">Delete</button>`
           : (p.active===false
