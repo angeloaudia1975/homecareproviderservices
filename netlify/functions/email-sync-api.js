@@ -77,12 +77,33 @@ function tokenRoles(tok){
 }
 const CAN_READ_BODY = roles => roles.some(r=>/^Mail\.(Read|ReadWrite)$/.test(r));
 const SEL="id,internetMessageId,subject,bodyPreview,from,toRecipients,ccRecipients,sentDateTime,receivedDateTime,conversationId,hasAttachments";
+/* A window of one folder, FOLLOWING Graph's paging.
+   The original made a single call with $top and took whatever came back, so a request for
+   "the last 120 days" quietly returned only the newest page — which is why history looked
+   thin however large the window was set. Real history needs @odata.nextLink followed to
+   the end of the range, with a page budget so one call can still finish inside a function
+   timeout. */
+async function listFolderRange(mailbox, folder, fromISO, toISO, top, maxPages){
+  const cmp = folder==="sentitems" ? "sentDateTime" : "receivedDateTime";
+  let filter=`${cmp} ge ${fromISO}`;
+  if(toISO) filter+=` and ${cmp} lt ${toISO}`;
+  let path=`/users/${encodeURIComponent(mailbox)}/mailFolders/${folder}/messages`
+    +`?$select=${SEL}&$top=${Math.min(Math.max(top||100,10),999)}&$orderby=${cmp} desc&$filter=${encodeURIComponent(filter).replace(/%20/g," ")}`;
+  const out=[]; let pages=0; const budget=Math.min(Math.max(maxPages||1,1),40);
+  while(path && pages<budget){
+    const j=await graphGet(path);
+    (j.value||[]).forEach(m=>out.push(m));
+    pages++;
+    const next=j["@odata.nextLink"];
+    path = next ? next.replace("https://graph.microsoft.com/v1.0","") : null;
+  }
+  return {messages:out, complete:!path, pages};
+}
+// Kept for the plain rolling-window sync.
 async function listFolder(mailbox, folder, days, top){
   const since=new Date(Date.now()-(days||30)*864e5).toISOString();
-  const cmp = folder==="sentitems" ? "sentDateTime" : "receivedDateTime";
-  const path=`/users/${encodeURIComponent(mailbox)}/mailFolders/${folder}/messages`
-    +`?$select=${SEL}&$top=${top||50}&$orderby=${cmp} desc&$filter=${cmp} ge ${since}`;
-  const j=await graphGet(path); return j.value||[];
+  const r=await listFolderRange(mailbox, folder, since, null, top||50, 1);
+  return r.messages;
 }
 
 // ---- staff auth (president) ----
@@ -149,21 +170,33 @@ async function runSync(opts){
   catch(e){ return {ok:false,error:"tables_missing",message:"Run supabase/email_intelligence.sql first."}; }
   const R=await buildResolver();
   const days=Math.min(Math.max(parseInt(opts.days||30,10)||30,1),120);
-  const PER_FOLDER=Math.min(Math.max(parseInt(opts.per_folder||120,10)||120,10),400);
-  const CAP=Math.min(Math.max(parseInt(opts.cap||500,10)||500,50),1200);
+  /* An explicit window overrides the rolling one. This is what makes reaching back to a
+     fixed date possible at all — the rolling window is clamped to 120 days, which cannot
+     span "1 Jan to now" once you are past April. */
+  const fromISO = opts.from ? new Date(opts.from).toISOString() : new Date(Date.now()-days*864e5).toISOString();
+  const toISO   = opts.to   ? new Date(opts.to).toISOString()   : null;
+  const ranged  = !!opts.from;
+  const PER_FOLDER=Math.min(Math.max(parseInt(opts.per_folder||120,10)||120,10),999);
+  const CAP=Math.min(Math.max(parseInt(opts.cap||500,10)||500,50),ranged?6000:1200);
+  const MAXPAGES=ranged?Math.min(Math.max(parseInt(opts.max_pages||8,10)||8,1),40):1;
 
-  const gathered=[]; const perMailbox=[];
+  const gathered=[]; const perMailbox=[]; let allComplete=true;
   for(const mbox of MAILBOXES){
     let got=0;
     for(const folder of ["inbox","sentitems"]){
       const direction = folder==="sentitems" ? "outbound" : "inbound";
-      let msgs=[]; try{ msgs=await listFolder(mbox,folder,days,PER_FOLDER); }catch(e){ perMailbox.push({mailbox:mbox,folder,error:String(e.message||e)}); continue; }
+      let msgs=[];
+      try{
+        const r=await listFolderRange(mbox,folder,fromISO,toISO,PER_FOLDER,MAXPAGES);
+        msgs=r.messages; if(!r.complete) allComplete=false;
+      }catch(e){ perMailbox.push({mailbox:mbox,folder,error:String(e.message||e)}); allComplete=false; continue; }
       got+=msgs.length; for(const m of msgs) gathered.push({m,mbox,direction,folder});
     }
     perMailbox.push({mailbox:mbox,pulled:got});
   }
   gathered.sort((a,b)=>String((b.m.receivedDateTime||b.m.sentDateTime)||"").localeCompare(String((a.m.receivedDateTime||a.m.sentDateTime)||"")));
   const truncated = gathered.length>CAP; const work = truncated?gathered.slice(0,CAP):gathered;
+  if(truncated) allComplete=false;
 
   const recs=[]; const partsByKey=new Map(); const learn=new Map(); const cand=new Map();
   let kept=0, matched=0;
@@ -217,7 +250,8 @@ async function runSync(opts){
     const toAdd=[...cand.values()].filter(c=>!existing.has(String(c.email).toLowerCase()));
     for(let i=0;i<toAdd.length;i+=500){ try{ await sbSend("POST","contact_candidates",toAdd.slice(i,i+500),{Prefer:"return=minimal"}); newCands+=toAdd.slice(i,i+500).length; }catch(e){} } }
   return {ok:true, scanned:work.length, kept, matched, learned_domains:learn.size, new_candidates:newCands,
-    truncated: truncated?`capped at ${CAP} of ${gathered.length} — run again or narrow days to get the rest`:false, per_mailbox:perMailbox};
+    window:{from:fromISO, to:toISO}, complete:allComplete,
+    truncated: truncated?`capped at ${CAP} of ${gathered.length} — narrow the window and run it again`:false, per_mailbox:perMailbox};
 }
 exports.runSync = runSync;
 
@@ -433,6 +467,38 @@ exports.handler = async (event)=>{
         when:m.receivedDateTime||m.sentDateTime, to:(m.toRecipients||[]).map(r=>r.emailAddress&&r.emailAddress.address).filter(Boolean) });
       return json(200,{ok:true, mailbox:mbox, inbox_count:inb.length, sent_count:snt.length,
         inbox_sample:inb.map(shape), sent_sample:snt.map(shape) });
+    }
+
+    /* Backfill one slice of history. Deliberately ONE window per call: a Netlify function
+       has seconds, and eight months across every mailbox does not fit in seconds. The page
+       walks month by month and shows progress, so a long backfill is visible and resumable
+       rather than a request that silently times out halfway. */
+    if(b.action==="backfill"){
+      const from=String(b.from||"").trim(), to=String(b.to||"").trim();
+      if(!/^\d{4}-\d{2}-\d{2}/.test(from)) return json(400,{error:"from must be a date (YYYY-MM-DD)"});
+      if(to&&!/^\d{4}-\d{2}-\d{2}/.test(to)) return json(400,{error:"to must be a date (YYYY-MM-DD)"});
+      const fromT=Date.parse(from), toT=to?Date.parse(to):Date.now();
+      if(!isFinite(fromT)) return json(400,{error:"from is not a valid date"});
+      if(toT<=fromT) return json(400,{error:"the end of the window must be after its start"});
+      if((toT-fromT)>62*864e5) return json(400,{error:"backfill one month at a time — a wider window can't finish inside the request"});
+      const r=await runSync({from, to:to||null, per_folder:b.per_folder||500, max_pages:b.max_pages||8, cap:b.cap||6000});
+      return json(200,Object.assign({},r,{slice:{from,to:to||null}}));
+    }
+
+    /* How far back the timeline actually goes right now — so "have we got January?" is a
+       fact on screen rather than something to scroll for. */
+    if(b.action==="coverage"){
+      let rows=[];
+      try{ rows=await sbGet("email_messages?select=received_at,sent_at&order=received_at.asc.nullslast&limit=1"); }
+      catch(e){ return json(200,{ok:false,error:"tables_missing"}); }
+      let newest=[]; try{ newest=await sbGet("email_messages?select=received_at,sent_at&order=received_at.desc.nullslast&limit=1"); }catch(e){}
+      let total=null;
+      try{ const r=await fetch(`${SUPABASE_URL}/rest/v1/email_messages?select=id`,{headers:Object.assign({},H(),{Prefer:"count=exact","Range-Unit":"items",Range:"0-0"})});
+        const cr=r.headers.get("content-range")||""; const n=Number(String(cr).split("/")[1]); if(isFinite(n)) total=n; }catch(e){}
+      const first=(rows&&rows[0])||null, last=(newest&&newest[0])||null;
+      return json(200,{ok:true, total,
+        oldest:(first&&(first.received_at||first.sent_at))||null,
+        newest:(last&&(last.received_at||last.sent_at))||null});
     }
 
     if(b.action==="sync"){

@@ -54,6 +54,18 @@ function render(){ if(!TOKEN){ gate(); return; }
       <span id="msg" class="hint" style="margin:0"></span>
     </div>
     <div class="hint" style="margin-top:6px">Email auto-syncs in the background every hour — these buttons are for on-demand runs and cleanup.</div>
+    <div class="step" style="margin-top:12px">
+      <h3>Load older history <span class="hint" style="font-weight:400">— pull months the hourly sync never covered</span></h3>
+      <div class="hint" style="margin:0 0 8px">The rolling sync only ever looks back a few months. To bring in a fixed period — say the start of the year to today — set the dates and run it. It works one month at a time so it can't time out, and it's safe to re-run: messages already stored are matched on their Outlook ID and updated, never duplicated.</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span class="hint">from <input id="bf_from" type="date" value="2026-01-01" style="padding:5px 7px;border:1px solid var(--line);border-radius:7px"></span>
+        <span class="hint">to <input id="bf_to" type="date" style="padding:5px 7px;border:1px solid var(--line);border-radius:7px"></span>
+        <button class="btn orange" id="bf_go" onclick="doBackfill()">Load history</button>
+        <button class="btn sm" onclick="doCoverage()">What have we got?</button>
+        <span id="bf_msg" class="hint" style="margin:0"></span>
+      </div>
+      <div id="bf_prog" style="margin-top:8px"></div>
+    </div>
     <div id="out"></div>
   </div>`;
   doUnmatched();  // show what needs attention as soon as the page opens
@@ -157,6 +169,74 @@ async function doSeed(){ if(BUSY)return; busy("Seeding domains from CRM…"); co
     <div class="kpi"><div class="l">Already had</div><div class="v">${j.already_had}</div></div>
     <div class="kpi ${j.skipped_ambiguous?'w':''}"><div class="l">Skipped (shared domain)</div><div class="v">${j.skipped_ambiguous}</div></div>
   </div><div class="hint">Mapped each dealer's business email domain to that dealer. Shared/ISP domains used by more than one dealer were skipped on purpose. Now click <b>Sync now</b> — matches should jump.</div>`; }
+/* ── Backfill ────────────────────────────────────────────────────────────────
+   Walks the range a month at a time. Each call is its own request, so a long backfill
+   is a visible sequence of small successes instead of one request that dies at the
+   timeout with nothing to show for it — and if it stops halfway, the months already
+   loaded are already in. */
+let BF_STOP=false;
+function monthSlices(fromStr,toStr){
+  const out=[]; const end=toStr?new Date(toStr+"T00:00:00Z"):new Date();
+  let cur=new Date(fromStr+"T00:00:00Z");
+  while(cur<end){
+    const nxt=new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth()+1, 1));
+    const stop=nxt<end?nxt:end;
+    out.push({from:cur.toISOString().slice(0,10), to:stop.toISOString().slice(0,10)});
+    cur=stop;
+    if(out.length>36) break;                    // three years is plenty; never loop away
+  }
+  return out;
+}
+async function doBackfill(){
+  if(BUSY) return;
+  const from=($("#bf_from")||{}).value||"", to=($("#bf_to")||{}).value||"";
+  if(!from){ const m=$("#bf_msg"); if(m){ m.textContent="Pick a start date."; } return; }
+  const slices=monthSlices(from,to);
+  if(!slices.length){ const m=$("#bf_msg"); if(m){ m.textContent="That range is empty."; } return; }
+  if(!confirm(`Load email history for ${slices.length} month(s), from ${from} to ${to||"today"}?\n\n`
+    +`It runs one month at a time and you'll see each one finish. Re-running is safe — nothing is duplicated.`)) return;
+  BF_STOP=false; BUSY=true;
+  const btn=$("#bf_go"); if(btn){ btn.disabled=true; btn.textContent="Loading…"; }
+  const prog=$("#bf_prog"); const rows=[];
+  let kept=0, matched=0, scanned=0, failed=0;
+  const paint=()=>{ if(!prog) return;
+    prog.innerHTML=`<div class="kpis" style="margin-bottom:8px">
+        <div class="kpi"><div class="l">Months done</div><div class="v">${rows.length} / ${slices.length}</div></div>
+        <div class="kpi"><div class="l">Scanned</div><div class="v">${scanned}</div></div>
+        <div class="kpi"><div class="l">Kept</div><div class="v">${kept}</div></div>
+        <div class="kpi"><div class="l">Matched to a dealer</div><div class="v">${matched}</div></div>
+      </div>
+      <div style="max-height:220px;overflow:auto">${rows.map(r=>`<div class="hint" style="margin:0 0 3px">${esc(r)}</div>`).join("")}</div>
+      ${BUSY?`<button class="btn sm" onclick="BF_STOP=true">Stop after this month</button>`:""}`; };
+  paint();
+  for(const sl of slices){
+    if(BF_STOP){ rows.push("Stopped — the months above are loaded."); break; }
+    const m=$("#bf_msg"); if(m) m.textContent=`Loading ${sl.from} → ${sl.to}…`;
+    let j=null;
+    try{ j=await api({action:"backfill",from:sl.from,to:sl.to}); }catch(e){ j=null; }
+    if(j&&j.ok){
+      scanned+=j.scanned||0; kept+=j.kept||0; matched+=j.matched||0;
+      rows.push(`${sl.from} → ${sl.to}: ${j.scanned||0} scanned · ${j.kept||0} kept · ${j.matched||0} matched`
+        +(j.truncated?`  ⚠ ${j.truncated}`:"")+(j.complete===false&&!j.truncated?"  ⚠ more remains in this month — run it again":""));
+    } else {
+      failed++;
+      rows.push(`${sl.from} → ${sl.to}: failed — ${esc((j&&(j.message||j.error))||"no response")}`);
+    }
+    paint();
+  }
+  BUSY=false;
+  if(btn){ btn.disabled=false; btn.textContent="Load history"; }
+  const m=$("#bf_msg"); if(m) m.textContent=failed?`Finished with ${failed} month(s) that failed — re-run to retry those.`:"Finished.";
+  paint(); doCoverage();
+}
+async function doCoverage(){
+  const j=await api({action:"coverage"}).catch(()=>null);
+  const m=$("#bf_msg"); if(!m) return;
+  if(!j||!j.ok){ m.textContent="Couldn't read what's stored."; return; }
+  const d=v=>v?String(v).slice(0,10):"—";
+  m.textContent=`Stored now: ${(j.total!=null?j.total.toLocaleString():"?")} message(s), ${d(j.oldest)} → ${d(j.newest)}.`;
+}
+
 async function doSync(){ if(BUSY)return; const days=parseInt(($("#days")||{}).value,10)||30; busy("Syncing "+days+" days…"); const j=await api({action:"sync",days}); done();
   if(!j.ok){ $("#out").innerHTML=`<div class="hint warn">Sync failed: ${esc(j.message||j.error||"error")}</div>`; return; }
   $("#out").innerHTML=`<div class="kpis">
