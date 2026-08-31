@@ -180,8 +180,47 @@ exports.handler = async (event)=>{
         if("tiers" in p) patch.tiers=cleanTiers(p.tiers);
         if("active" in p) patch.active=(p.active!==false);
         if("image" in p && p.image) patch.image=String(p.image);
+        /* Price Check disposition. A manufacturer price list always carries codes HCPS
+           will never list — retired items, accessories we don't stock, kit components.
+           Without a way to say so, those sit in the "unassigned pricing" queue forever
+           and Price Check can never legitimately reach 100%. Recording the decision
+           (with who and when) turns an unresolved error into an auditable choice.
+           '' clears it and the code returns to the queue. */
+        if("disposition" in p){
+          const ALLOWED=["","do_not_list","discontinued","not_offered","ignore"];
+          const d=String(p.disposition||"").trim();
+          if(ALLOWED.indexOf(d)<0) return json(400,{error:"unknown disposition"});
+          if(d){ patch.disposition=d;
+                 patch.disposition_note=p.disposition_note!=null?String(p.disposition_note).slice(0,300):null;
+                 patch.disposition_at=new Date().toISOString();
+                 patch.disposition_by=p.disposition_by?String(p.disposition_by).slice(0,80):null; }
+          else { patch.disposition=null; patch.disposition_note=null; patch.disposition_at=null; patch.disposition_by=null; }
+        }
+        // Provenance from an imported price list — which file, and the date it takes effect.
+        if(p.case_qty!=null) patch.case_qty=num(p.case_qty);
+        if(p.effective_date!=null) patch.effective_date=String(p.effective_date).slice(0,40);
+        if(p.source_file!=null) patch.source_file=String(p.source_file).slice(0,160);
+        /* A base+custom duplicate that has been deliberately reconciled. The surviving
+           values are written here (the layer the portal reads), and the stamp records
+           that the pair was settled on purpose rather than merely repriced. */
+        if("merged_at" in p){ patch.merged_at=p.merged_at?String(p.merged_at).slice(0,40):null;
+          patch.merged_by=p.merged_by?String(p.merged_by).slice(0,80):((patch.merged_at&&b.reviewer)?String(b.reviewer).slice(0,80):null); }
+
+        /* MERGE, don't replace. Callers send only the fields they are changing — a
+           disposition, one settled price, a corrected MSRP — and the row's patch is the
+           single jsonb blob holding all of them. Writing it wholesale would silently drop
+           every override this caller didn't happen to send: recording "do not list" would
+           erase the product's overridden name and price. bulk_price already reads-then-merges
+           for exactly this reason; save_override has to do the same. Pass replace:true to
+           overwrite the whole patch deliberately. */
+        const enc1=encodeURIComponent, codeK=String(b.code).trim();
+        let merged=patch;
+        if(b.replace!==true){
+          const ex=await sb("GET",`product_overrides?manufacturer=eq.${enc1(b.manufacturer)}&code=eq.${enc1(codeK)}&select=patch`).catch(()=>[]);
+          merged=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{},patch);
+        }
         await sb("POST","product_overrides?on_conflict=manufacturer,code",
-          {manufacturer:b.manufacturer,code:String(b.code).trim(),patch,updated_at:new Date().toISOString()},
+          {manufacturer:b.manufacturer,code:codeK,patch:merged,updated_at:new Date().toISOString()},
           {Prefer:"resolution=merge-duplicates,return=minimal"});
         return json(200,{ok:true});
       }
@@ -202,10 +241,21 @@ exports.handler = async (event)=>{
         const enc=encodeURIComponent;
         const cust=await sb("GET",`custom_products?manufacturer=eq.${enc(mfr)}&select=code`).catch(()=>[]);
         const customCodes=new Set((cust||[]).map(r=>String(r.code)));
+        /* Fields an imported price row can carry. Case quantity and effective date are
+           real facts from the manufacturer's sheet, but only the override layer stores
+           arbitrary keys (its patch is jsonb) — a custom_products row has fixed columns.
+           So they are also folded into price_note, which every layer already carries and
+           every surface already displays. That way the information survives wherever the
+           code happens to live, instead of existing for some codes and not others. */
         const priceFields=(r)=>{ const f={};
           ["base_price","msrp","map"].forEach(k=>{ if(k in r) f[k]=num(r[k]); });
           if("msrp_auto" in r) f.msrp_auto=(r.msrp_auto===true);
+          const bits=[];
+          if(r.effective_date!=null&&String(r.effective_date).trim()) bits.push("eff. "+String(r.effective_date).trim().slice(0,30));
+          if(r.case_qty!=null&&String(r.case_qty).trim()) bits.push("case qty "+String(r.case_qty).trim().slice(0,12));
+          if(r.source_file!=null&&String(r.source_file).trim()) bits.push(String(r.source_file).trim().slice(0,80));
           if(r.price_note!=null) f.price_note=String(r.price_note);
+          else if(bits.length) f.price_note=bits.join(" · ");
           return f; };
         let applied=0, created=0, failed=0; const now=new Date().toISOString();
         for(const r of rows){

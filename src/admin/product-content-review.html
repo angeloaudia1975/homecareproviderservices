@@ -192,6 +192,16 @@ textarea.ed{min-height:64px}
 .pa-scl{font-size:12px;font-weight:700;color:var(--navy2,#22303f)}
 .pa-actions{display:flex;gap:8px;flex-wrap:wrap}
 .pa-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.pa-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:9px;margin-top:8px}
+.pa-sumc{border:1px solid var(--line,#e5e9ee);border-radius:10px;padding:9px 11px;background:#fff}
+.pa-sumv{font-size:19px;font-weight:800;color:#12253c;font-variant-numeric:tabular-nums}
+.pa-suml{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.03em;font-weight:700;margin-top:1px}
+.pa-steps{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.pa-step{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--line,#e5e9ee);background:#fff;color:#54606d}
+.pa-step b{font-size:11px}
+.pa-step i{font-style:normal;font-weight:700;font-variant-numeric:tabular-nums}
+.pa-step.done{border-color:#b6d8c1;background:#f2f8f4;color:#1a7f4b}
+.pa-step.open{border-color:#f0c7c7;background:#fdf5f5;color:#b42323}
 .pachip{display:inline-block;background:#eef7f0;border:1px solid #d5e6da;border-radius:999px;padding:3px 10px;font-size:11.5px;font-weight:700;color:var(--navy2,#22303f)}
 .pa-sec{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
 .pa-sec h3{margin:0 0 4px;font-family:Archivo,sans-serif;font-size:14px}
@@ -855,6 +865,7 @@ document.addEventListener('click',async function(e){
   if(act==='price-bulk-apply') return doPriceBulkApply();
   if(act==='price-sel-clear'){ _priceSel=new Set(); renderPriceAudit(); return; }
   if(act==='price-import') return openPriceImport();
+  if(act==='pa-fixsku') return paFixSku(t.getAttribute('data-code'));
   if(act==='price-import-parse') return doPriceImportParse();
   if(act==='price-import-apply') return doPriceImportApply();
   if(act==='dealer-price-preview') return openDealerPricePreview();
@@ -1155,12 +1166,21 @@ function buildPriceState(cat){
     const name=o.name||(c&&c.name)||(b&&b.name)||'';
     const category=o.category||(c&&c.category)||(b&&b.category)||'';
     const updated=o._updated_at||(c&&c.updated_at)||null;
+    // A recorded decision that this code is deliberately not listed. Held on the
+    // override layer, so it survives a re-import and travels with the code.
+    const disposition=o.disposition||null, disposition_note=o.disposition_note||null, disposition_at=o.disposition_at||null;
     const layers=[];
     if(b&&b.base_price!=null&&b.base_price!=='') layers.push({src:'base',price:Number(b.base_price)});
     if(c&&c.base_price!=null&&c.base_price!=='') layers.push({src:'custom',price:Number(c.base_price)});
     if(o.base_price!=null&&o.base_price!=='') layers.push({src:'override',price:Number(o.base_price)});
     const source=(o.base_price!=null&&o.base_price!=='')?'override':((c&&c.base_price!=null&&c.base_price!=='')?'custom':((b&&b.base_price!=null)?'base':(c?'custom':'base')));
+    /* An override price IS a decision: it is the number dealers read, so once one
+       exists the layers below it no longer leave anything ambiguous. merged_at records
+       that a base+custom duplicate was deliberately reconciled rather than merely priced. */
+    const settled=(o.base_price!=null&&o.base_price!=='');
+    const merged_at=o.merged_at||null;
     return {code,name,category,base_price,msrp,map,msrp_auto,active,updated,layers,source,
+      disposition,disposition_note,disposition_at,settled,merged_at,
       editTarget:c?'custom':'base', isBase:!!b, isCustom:!!c, duplicate:!!(b&&c)};
   }
   const byLen=[...allCodes].sort((a,b)=>b.length-a.length);
@@ -1175,7 +1195,7 @@ function buildPriceState(cat){
     skusOf(k).forEach(s=>{ const code=String(s.sku||'').trim(); if(!code) return; assigned.add(code);
       content.push({code,pk:k,product:p.name||k,family:p.family||'',category:p.category||'',subcategory:p.subcategory||'',
         status:s.status||'active',disabled:(!!s.disabled||!!p.disabled),size:s.size||''}); }); });
-  const missingPrice=[], mismatch=[], notInCat=[], needsMsrp=[], discWithPrice=[], outdated=[];
+  const missingPrice=[], mismatch=[], notInCat=[], needsMsrp=[], discWithPrice=[], outdated=[], decidedLive=[];
   const now=Date.now(), YEAR=365*24*3600*1000;
   content.forEach(cs=>{
     if(!allCodes.has(cs.code)){ const nm=nearMatch(cs.code);
@@ -1183,6 +1203,10 @@ function buildPriceState(cat){
       else notInCat.push(cs);
       return; }
     const r=recOf(cs.code);
+    /* A decision applies wherever the code appears. If a live SKU has been recorded
+       as not-listed, it is not an outstanding pricing gap either — it leaves every
+       queue and shows up under the resolved heading with the rest of the decisions. */
+    if(r.disposition){ decidedLive.push(r); return; }
     if(r.base_price==null||r.base_price<=0){ missingPrice.push(Object.assign({},cs,{rec:r})); return; }
     const off=(cs.disabled||cs.status==='discontinued'||cs.status==='hidden');
     if(off) discWithPrice.push(Object.assign({},cs,{rec:r}));
@@ -1192,13 +1216,32 @@ function buildPriceState(cat){
   // Base codes that anchor a matched variant (e.g. 10102 for 10102RED/GREY) are pricing anchors,
   // not truly "unassigned" — keep them out of the orphan queue.
   const anchorCodes=new Set(mismatch.map(m=>m.baseCode));
-  const orphans=[]; allCodes.forEach(code=>{ if(assigned.has(code)||anchorCodes.has(code)) return; const r=recOf(code); if(r.base_price!=null&&r.base_price>0) orphans.push(r); });
-  const conflicts=[]; allCodes.forEach(code=>{ const r=recOf(code); if([...new Set(r.layers.map(l=>l.price))].length>1) conflicts.push(r); });
-  const dupes=[]; allCodes.forEach(code=>{ const r=recOf(code); if(r.duplicate) dupes.push(r); });
+  /* A dispositioned code is a DECISION, not an outstanding problem. It leaves the
+     unassigned queue and stops counting against the score — which is the whole point:
+     a manufacturer sheet always contains codes HCPS will never list, and without this
+     Price Check could never honestly read 100%. They are still listed, under their
+     own heading, so the decision stays visible and can be undone. */
+  const orphans=[], resolved=[];
+  allCodes.forEach(code=>{ if(assigned.has(code)||anchorCodes.has(code)) return; const r=recOf(code);
+    if(!(r.base_price!=null&&r.base_price>0)) return;
+    (r.disposition ? resolved : orphans).push(r); });
+  decidedLive.forEach(r=>{ if(!resolved.some(x=>x.code===r.code)) resolved.push(r); });
+  /* A conflict is only outstanding while nothing has settled it. Writing an override
+     price is the settlement — that value is what Partner 360 serves, whatever the layers
+     underneath still say — so a settled code leaves both queues. Without this the "Use $X"
+     button appeared to do nothing: the row was rewritten and then flagged again. */
+  const conflicts=[]; allCodes.forEach(code=>{ const r=recOf(code); if(r.disposition||r.settled) return;
+    if([...new Set(r.layers.map(l=>l.price))].length>1) conflicts.push(r); });
+  const dupes=[]; allCodes.forEach(code=>{ const r=recOf(code);
+    if(r.disposition||r.settled||r.merged_at) return; if(r.duplicate) dupes.push(r); });
   let denom=0, ok=0;
-  content.forEach(cs=>{ if(cs.disabled) return; denom++; if(allCodes.has(cs.code)){ const r=recOf(cs.code); if(r.base_price>0) ok++; } });
+  content.forEach(cs=>{ if(cs.disabled) return;
+    const r=allCodes.has(cs.code)?recOf(cs.code):null;
+    if(r&&r.disposition) return;               // deliberately not listed — not a gap
+    denom++; if(r&&r.base_price>0) ok++; });
   return {recOf, allCodes, content, assigned, missingPrice, mismatch, notInCat, needsMsrp,
-    discWithPrice, outdated, orphans, conflicts, dupes, score:(denom?Math.round(ok/denom*100):0), denom, ok};
+    discWithPrice, outdated, orphans, resolved, conflicts, dupes,
+    score:(denom?Math.round(ok/denom*100):0), denom, ok};
 }
 
 async function doPriceCheck(){ return openPriceAudit(); }
@@ -1209,6 +1252,148 @@ async function openPriceAudit(){
   _priceState=buildPriceState(cat); _priceSel=new Set();
   renderPriceAudit();
 }
+const PA_DISPO={do_not_list:'Confirmed – do not list',discontinued:'Discontinued',not_offered:'Not offered by HCPS',ignore:'Ignored price record'};
+
+/* Record (or clear) a decision that HCPS will not list a priced code. Written to the
+   override layer, so it rides with the code and survives the next price-list import —
+   re-importing the manufacturer's sheet will not quietly resurrect something we have
+   already decided against. */
+async function paDispose(code,val,el){
+  if(val){
+    const label=PA_DISPO[val]||val;
+    const note=window.prompt('Why is '+code+' not being listed? (optional — shown in the resolved list)','')||'';
+    if(!window.confirm('Record "'+label+'" for '+code+'?\n\nIt leaves the unassigned queue and stops counting against the pricing score. You can undo it here at any time.')){
+      if(el) el.value=''; return; }
+    const r=await catalogPost({action:'save_override',manufacturer:MFR,code,
+      patch:{disposition:val,disposition_note:note,disposition_by:(window.REVIEWER||'admin')}});
+    if(!(r.ok&&r.json&&r.json.ok!==false)){ toast((r.json&&r.json.error)||'Could not record that',true); if(el) el.value=''; return; }
+    toast(code+' — '+label);
+  } else {
+    const r=await catalogPost({action:'save_override',manufacturer:MFR,code,patch:{disposition:''}});
+    if(!(r.ok&&r.json&&r.json.ok!==false)){ toast('Could not undo that',true); return; }
+    toast(code+' back in the queue');
+  }
+  openPriceAudit();
+}
+
+/* Settle a conflict by writing the winning value as an override — the layer dealers
+   actually read. Picking a value here is what "the override wins" means in practice. */
+async function paSettle(code,val){
+  const v=Number(val); if(!isFinite(v)) return;
+  if(!window.confirm('Make '+pmoney(v)+' the dealer price for '+code+'?\n\nWritten as an override, so it wins over the base file and any added product.')) return;
+  const r=await catalogPost({action:'save_override',manufacturer:MFR,code,patch:{base_price:v}});
+  if(r.ok&&r.json&&r.json.ok!==false){ toast(code+' set to '+pmoney(v)); openPriceAudit(); }
+  else toast((r.json&&r.json.error)||'Could not set that price',true);
+}
+async function paSettleManual(code){
+  const S=_priceState; const cur=S?S.recOf(code):null;
+  const v=window.prompt('Dealer price for '+code+':', cur&&cur.base_price!=null?String(cur.base_price):'');
+  if(v==null||String(v).trim()==='') return;
+  const n=Number(String(v).replace(/[^0-9.\-]/g,''));
+  if(!isFinite(n)||n<0){ toast('That is not a price',true); return; }
+  return paSettle(code,n);
+}
+
+/* ---- Imported pricing that DISAGREES with what we already have ----------------
+   An import that silently overwrites existing pricing is how a wrong number reaches
+   dealers. So a row whose price differs from the record we hold is not applied — it is
+   parked in a review queue, held per manufacturer so it survives a refresh, and cleared
+   one decision at a time. Rows that are new, or that match what we have, still apply
+   straight through: only genuine disagreements ask for a person. ---------------- */
+function piqKey(){ return 'pcr_priceq_'+MFR; }
+function piqLoad(){ try{ const a=JSON.parse(localStorage.getItem(piqKey())||'[]'); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
+function piqSave(a){ try{ localStorage.setItem(piqKey(), JSON.stringify((a||[]).slice(0,3000))); }catch(e){} }
+function piqDrop(code){ piqSave(piqLoad().filter(r=>String(r.code)!==String(code))); }
+function piqAdd(rows){
+  const by={}; piqLoad().forEach(r=>{ by[String(r.code)]=r; });
+  (rows||[]).forEach(r=>{ by[String(r.code)]=r; });   // a newer file supersedes an older queued row
+  piqSave(Object.keys(by).map(k=>by[k]));
+}
+/* What counts as a disagreement: the file states a value AND we hold a different one.
+   A blank in the file is not a claim that the price is blank, and a value we simply
+   don't have yet is an addition, not a conflict. */
+function piqDiff(row, rec){
+  const out=[]; if(!rec) return out;
+  [['base_price','Dealer cost'],['map','MAP'],['msrp','MSRP']].forEach(([k,label])=>{
+    const nv=row[k], cv=rec[k];
+    if(nv==null||nv==='') return;
+    if(cv==null||cv==='') return;
+    if(Number(cv)===Number(nv)) return;
+    out.push({key:k,label,from:Number(cv),to:Number(nv)});
+  });
+  return out;
+}
+async function piqAccept(code){
+  const q=piqLoad().find(r=>String(r.code)===String(code)); if(!q) return;
+  const r=await catalogPost({action:'bulk_price',manufacturer:MFR,rows:[Object.assign({},q,{create:false})]});
+  if(r.ok&&r.json&&r.json.ok!==false){ piqDrop(code); toast(code+' updated from the file'); openPriceAudit(); }
+  else toast((r.json&&r.json.error)||'Could not apply that price',true);
+}
+function piqKeep(code){ piqDrop(code); toast(code+' — kept our price'); openPriceAudit(); }
+async function piqEdit(code){
+  const q=piqLoad().find(r=>String(r.code)===String(code)); if(!q) return;
+  const S=_priceState, cur=S?S.recOf(code):null;
+  const v=window.prompt('Dealer price for '+code+':\n\nOurs: '+pmoney(cur&&cur.base_price)+'   ·   File: '+pmoney(q.base_price),
+    q.base_price!=null?String(q.base_price):(cur&&cur.base_price!=null?String(cur.base_price):''));
+  if(v==null||String(v).trim()==='') return;
+  const n=Number(String(v).replace(/[^0-9.\-]/g,''));
+  if(!isFinite(n)||n<0){ toast('That is not a price',true); return; }
+  const r=await catalogPost({action:'save_override',manufacturer:MFR,code,patch:{base_price:n,source_file:q.source_file||'',effective_date:q.effective_date||''}});
+  if(r.ok&&r.json&&r.json.ok!==false){ piqDrop(code); toast(code+' set to '+pmoney(n)); openPriceAudit(); }
+  else toast((r.json&&r.json.error)||'Could not set that price',true);
+}
+async function piqAcceptAll(){
+  const q=piqLoad(); if(!q.length) return;
+  if(!window.confirm('Apply all '+q.length+' imported price(s) over what we currently hold?\n\nThis is what dealers will pay.')) return;
+  const r=await catalogPost({action:'bulk_price',manufacturer:MFR,rows:q.map(x=>Object.assign({},x,{create:false}))});
+  if(r.ok&&r.json&&r.json.ok!==false){ piqSave([]); toast('Applied '+((r.json.applied||0)+(r.json.created||0))+' price(s)'); openPriceAudit(); }
+  else toast((r.json&&r.json.error)||'Import failed',true);
+}
+function piqKeepAll(){
+  const n=piqLoad().length; if(!n) return;
+  if(!window.confirm('Discard all '+n+' imported price(s) and keep what we have?')) return;
+  piqSave([]); toast('Kept our pricing'); openPriceAudit();
+}
+
+/* ---- Merge a duplicate ---------------------------------------------------------
+   The same code existing as both a catalog product and an added product is not just a
+   price disagreement — two records describe one SKU. Merging writes the surviving
+   values as an override (the layer dealers read) and stamps merged_at, so the pair is
+   recorded as reconciled rather than quietly re-flagged on the next check. -------- */
+async function paMerge(code){
+  const S=_priceState, r=S?S.recOf(code):null; if(!r) return;
+  const prices=[...new Set(r.layers.map(l=>l.price))];
+  const pick=window.prompt('"'+code+'" exists as both a catalog product and an added product.\n\n'
+    +r.layers.map(l=>'  '+l.src+': '+pmoney(l.price)).join('\n')
+    +'\n\nWhich dealer price should survive? (it is written as an override, so it wins everywhere)',
+    String(prices[prices.length-1]!=null?prices[prices.length-1]:(r.base_price||'')));
+  if(pick==null||String(pick).trim()==='') return;
+  const n=Number(String(pick).replace(/[^0-9.\-]/g,''));
+  if(!isFinite(n)||n<0){ toast('That is not a price',true); return; }
+  const patch={base_price:n, merged_at:new Date().toISOString()};
+  if(r.msrp!=null) patch.msrp=r.msrp;
+  if(r.map!=null) patch.map=r.map;
+  const res=await catalogPost({action:'save_override',manufacturer:MFR,code,patch});
+  if(res.ok&&res.json&&res.json.ok!==false){ toast(code+' merged at '+pmoney(n)); openPriceAudit(); }
+  else toast((res.json&&res.json.error)||'Could not merge that record',true);
+}
+
+/* Correct a SKU that is simply wrong on our side — a formatting difference, a typo, a
+   code the manufacturer has since changed. Renaming carries the price with it, which is
+   what makes the row disappear from the unassigned queue for the right reason rather
+   than being papered over with a duplicate. */
+async function paFixSku(code){
+  const S=_priceState; const cur=S?S.recOf(code):null; if(!cur) return;
+  const to=window.prompt('This price is filed under "'+code+'".\n\nWhat is the correct SKU?\n(The price, MSRP and MAP move with it.)', code);
+  if(!to||String(to).trim()===code) return;
+  const newCode=String(to).trim();
+  if(S.allCodes.has(newCode)&&!window.confirm(newCode+' already exists in the catalog. Continue and let the existing record keep its own price?')) return;
+  const r=await catalogPost({action:'rename_code',manufacturer:MFR,old_code:code,new_code:newCode,
+    product:{name:cur.name,category:cur.category,base_price:cur.base_price,msrp:cur.msrp,map:cur.map}});
+  if(r.ok&&r.json&&r.json.ok!==false){ toast(code+' → '+newCode); openPriceAudit(); }
+  else toast((r.json&&r.json.error)||'Could not rename that SKU',true);
+}
+
 function paChip(n,label,color){ return `<span class="pachip" style="${n?('background:'+(color||'#fdecec')+';border-color:'+(color?'#e3caa0':'#f0c7c7')):''}">${n} ${esc(label)}</span>`; }
 function renderPriceAudit(){
   const S=_priceState; if(!S) return;
@@ -1232,7 +1417,7 @@ function renderPriceAudit(){
       <td><button class="btn" data-act="price-save" data-code="${escA(cs.code)}" style="padding:3px 9px;font-size:11px">Save</button></td></tr>`; };
   const body=`
     <div class="pa-head">
-      <div class="pa-score" style="border-color:${scoreColor}"><div class="pa-scv" style="color:${scoreColor}">${S.score}%</div><div class="pa-scl">Pricing complete<br><span class="mut">${S.ok} of ${S.denom} active SKUs priced</span></div></div>
+      <div class="pa-score" style="border-color:${scoreColor}"><div class="pa-scv" style="color:${scoreColor}">${S.score}%</div><div class="pa-scl">Pricing complete<br><span class="mut">${S.ok} of ${S.denom} active SKUs priced${(S.resolved&&S.resolved.length)?` · ${S.resolved.length} resolved`:''}</span></div></div>
       <div class="pa-actions">
         <button class="btn" data-act="price-import">⬆ Import pricelist</button>
         <button class="btn" data-act="dealer-price-preview">👁 Preview as dealer</button>
@@ -1243,13 +1428,73 @@ function renderPriceAudit(){
       ${paChip(S.missingPrice.length,'live · no price')}
       ${paChip(mmArr.reduce((n,g)=>n+g.codes.length,0),'code mismatch')}
       ${paChip(S.orphans.length,'unassigned price')}
+      ${(S.resolved&&S.resolved.length)?paChip(S.resolved.length,'resolved · not listed','#e7f0e9'):''}
       ${paChip(S.conflicts.length,'conflict')}
       ${paChip(S.dupes.length,'duplicate')}
+      ${(function(){const n=piqLoad().length; return n?paChip(n,'imported · to review','#fff4d6'):'';})()}
       ${paChip(S.needsMsrp.length,'need MSRP','#eef5ff')}
       ${paChip(S.discWithPrice.length,'discontinued · priced')}
       ${paChip(S.notInCat.length,'not in catalog')}
       ${paChip(S.outdated.length,'price >1yr old','#eef5ff')}
     </div>
+    ${(function(){
+      /* PRICE CHECK SUMMARY — the one place that answers "is this manufacturer done?".
+         Ready to publish means every live SKU is either priced or deliberately not
+         listed, and nothing is left conflicting. Anything short of that is named. */
+      const matched=S.content.filter(cs=>!cs.disabled&&S.allCodes.has(cs.code)).length;
+      const newSkus=S.notInCat.length;
+      const unassigned=S.orphans.length;
+      const conflicts=S.conflicts.length, dupes=S.dupes.length;
+      const inQueue=piqLoad().length;
+      const doNotList=(S.resolved||[]).length;
+      const missing=S.missingPrice.length;
+      const blockers=[];
+      if(missing) blockers.push(missing+' live SKU'+(missing===1?'':'s')+' with no price');
+      if(unassigned) blockers.push(unassigned+' unassigned price'+(unassigned===1?'':'s'));
+      if(conflicts) blockers.push(conflicts+' price conflict'+(conflicts===1?'':'s'));
+      if(dupes) blockers.push(dupes+' duplicate'+(dupes===1?'':'s'));
+      if(inQueue) blockers.push(inQueue+' imported price'+(inQueue===1?'':'s')+' awaiting a decision');
+      const ready=!blockers.length;
+      const cell=(n,l,tone)=>`<div class="pa-sumc"><div class="pa-sumv"${tone?' style="color:'+tone+'"':''}>${n}</div><div class="pa-suml">${l}</div></div>`;
+      return `<div class="pa-sec" style="margin-top:14px">
+        <h3>Price Check summary</h3>
+        <div class="pa-sum">
+          ${cell(matched,'Products matched')}
+          ${cell(S.ok,'Prices in place','#1a7f4b')}
+          ${cell(newSkus,'New SKUs found', newSkus?'#b8791b':'')}
+          ${cell(unassigned,'Unassigned prices', unassigned?'#b42323':'')}
+          ${cell(conflicts,'Conflicts open', conflicts?'#b42323':'')}
+          ${cell(dupes,'Duplicates open', dupes?'#b42323':'')}
+          ${cell(inQueue,'Imported · to review', inQueue?'#b8791b':'')}
+          ${cell(doNotList,'Marked do-not-list')}
+          ${cell(missing,'Missing pricing', missing?'#b42323':'')}
+        </div>
+        ${(function(){
+          /* The named workflow, with each step answering itself from real counts rather
+             than from a stored "I clicked next". A step is done when the thing it is
+             about is actually clear, so the strip can never claim progress the data
+             doesn't support. */
+          const steps=[
+            {n:'Import price list', done:true, note:'XLSX, CSV or paste'},
+            {n:'Match SKUs', done:!(S.notInCat.length||S.mismatch.length), left:S.notInCat.length+S.mismatch.length},
+            {n:'Correct unassigned', done:!unassigned, left:unassigned},
+            {n:'Review imported pricing', done:!inQueue, left:inQueue},
+            {n:'Resolve conflicts & duplicates', done:!(conflicts||dupes), left:conflicts+dupes},
+            {n:'Confirm do-not-list', done:true, note:doNotList?doNotList+' recorded':'none needed'},
+            {n:'Complete pricing', done:!missing, left:missing},
+            {n:'Publish catalog', done:ready, note:ready?'ready':'blocked'}
+          ];
+          return `<div class="pa-steps">${steps.map(st=>`<span class="pa-step ${st.done?'done':'open'}">
+            <b>${st.done?'✓':'•'}</b> ${esc(st.n)}${st.left?` <i>${st.left}</i>`:(st.note?` <i>${esc(st.note)}</i>`:'')}</span>`).join('')}</div>`;
+        })()}
+        <div class="rule" style="margin-top:10px;border-color:${ready?'#b6d8c1':'#f0c7c7'};background:${ready?'#f2f8f4':'#fdf5f5'}">
+          ${ready
+            ? `<b style="color:#1a7f4b">Ready to publish.</b> Every live SKU is priced or recorded as not listed, and nothing is left conflicting.
+               Pricing here is what Partner 360 reads — product pages, Shop, dealer and contract pricing, quotes, exports and MSRP margins all come from these same records, so publishing the catalog carries it everywhere.`
+            : `<b style="color:#b42323">Not ready yet.</b> Outstanding: ${blockers.join(' · ')}. Resolve or record a decision for each — a decision counts as resolved.`}
+        </div>
+      </div>`;
+    })()}
 
     ${mmArr.length?`<div class="pa-sec"><h3>Code mismatches — pricing exists under a base code (${mmArr.reduce((n,g)=>n+g.codes.length,0)} SKU${mmArr.reduce((n,g)=>n+g.codes.length,0)===1?'':'s'})</h3>
       <p class="mut">These live SKUs aren't in the catalog, but a matching base code IS priced (e.g. <b>11102RED → 11102</b>). Assign the base price to each variant so every color/side becomes orderable.</p>
@@ -1265,13 +1510,89 @@ function renderPriceAudit(){
       </div>`:''}
 
     ${S.orphans.length?`<div class="pa-sec"><h3>Unassigned pricing — priced but on no live SKU (${S.orphans.length})</h3>
-      <p class="mut">A price exists in the catalog for these codes, but no product here uses them. Add the code to a product (Review Structure → ＋ Add SKU), or ignore if retired.</p>
-      ${tbl(['Code','Name','Dealer price','MSRP','Source'], S.orphans.slice(0,200).map(r=>`<tr><td><b>${esc(r.code)}</b></td><td>${esc(r.name||'—')}</td><td>${pmoney(r.base_price)}</td><td>${pmoney(r.msrp)}</td><td class="mut">${esc(r.source)}</td></tr>`).join(''))}
+      <p class="mut">A price exists in the catalog for these codes, but no product here uses them. Three ways to clear each one:
+        <b>correct the SKU</b> if ours is wrong or formatted differently, <b>add it</b> to a product, or record a decision that HCPS will not list it.
+        A recorded decision stops counting against the score — it is an answer, not an outstanding error.</p>
+      ${tbl(['Code','Name','Dealer price','MSRP','Resolve'], S.orphans.slice(0,200).map(r=>`<tr>
+        <td><b>${esc(r.code)}</b></td><td>${esc(r.name||'—')}</td><td>${pmoney(r.base_price)}</td><td>${pmoney(r.msrp)}</td>
+        <td style="white-space:nowrap">
+          <button class="btn ghost" style="padding:3px 8px" data-act="pa-fixsku" data-code="${escA(r.code)}" title="Our SKU is wrong or formatted differently">✎ Correct SKU</button>
+          <select class="ed" style="padding:3px 6px;font-size:11px;max-width:150px" onchange="paDispose('${escA(r.code)}',this.value,this)">
+            <option value="">Do not list…</option>
+            <option value="do_not_list">Confirmed – do not list</option>
+            <option value="discontinued">Discontinued</option>
+            <option value="not_offered">Not offered by HCPS</option>
+            <option value="ignore">Ignore this price record</option>
+          </select>
+        </td></tr>`).join(''))}
       </div>`:''}
 
-    ${(S.conflicts.length||S.dupes.length)?`<div class="pa-sec"><h3>Price conflicts &amp; duplicates (${S.conflicts.length+S.dupes.length})</h3>
-      <p class="mut">Same code priced differently across layers (base / custom / override), or the code exists as both a base and a custom product. The <b>override</b> value is what dealers see; edit it in the SKU table to settle it.</p>
-      ${tbl(['Code','Layers','Effective (dealer sees)'], [...S.conflicts,...S.dupes.filter(d=>!S.conflicts.find(c=>c.code===d.code))].map(r=>`<tr><td><b>${esc(r.code)}</b>${r.duplicate?' <span class="mut">(base+custom)</span>':''}</td><td class="mut" style="font-size:11px">${r.layers.map(l=>esc(l.src)+' '+pmoney(l.price)).join(' · ')}</td><td>${pmoney(r.base_price)}</td></tr>`).join(''))}
+    ${(S.resolved&&S.resolved.length)?`<div class="pa-sec"><h3>Resolved — deliberately not listed (${S.resolved.length})</h3>
+      <p class="mut">Decisions already recorded. These no longer count against the pricing score. Undo one to put it back in the queue.</p>
+      ${tbl(['Code','Name','Decision','Recorded','Undo'], S.resolved.slice(0,200).map(r=>`<tr>
+        <td><b>${esc(r.code)}</b></td><td>${esc(r.name||'—')}</td>
+        <td>${esc(PA_DISPO[r.disposition]||r.disposition)}${r.disposition_note?` <span class="mut">· ${esc(r.disposition_note)}</span>`:''}</td>
+        <td class="mut">${r.disposition_at?esc(String(r.disposition_at).slice(0,10)):'—'}</td>
+        <td><button class="btn ghost" style="padding:3px 8px" onclick="paDispose('${escA(r.code)}','',null)">↩ Undo</button></td>
+      </tr>`).join(''))}
+      </div>`:''}
+
+    ${(function(){
+      /* IMPORTED PRICING AWAITING A DECISION — the manufacturer's file against ours,
+         side by side, with the file it came from and the date it takes effect. Nothing
+         here has been written yet; each row leaves the queue only when someone chooses. */
+      const q=piqLoad(); if(!q.length) return '';
+      const rows=q.slice(0,400).map(r=>{
+        const rec=S.allCodes.has(String(r.code))?S.recOf(r.code):null;
+        const diffs=(r._diff&&r._diff.length)?r._diff:piqDiff(r,rec);
+        return `<tr>
+          <td><b>${esc(r.code)}</b><div class="mut" style="font-size:11px">${esc(r.name||(rec&&rec.name)||'')}</div></td>
+          <td>${diffs.map(d=>`<span class="mut" style="font-size:11px">${esc(d.label)}</span> ${pmoney(d.from)}`).join('<br>')}</td>
+          <td>${diffs.map(d=>`<span class="mut" style="font-size:11px">${esc(d.label)}</span> <b style="color:#b8791b">${pmoney(d.to)}</b>`).join('<br>')}</td>
+          <td class="mut" style="font-size:11px">${esc(r.source_file||'—')}</td>
+          <td class="mut" style="font-size:11px">${esc(r.effective_date||'—')}</td>
+          <td style="white-space:nowrap">
+            <button class="btn dark" style="padding:3px 8px" onclick="piqAccept('${escA(r.code)}')" title="Use the manufacturer's new price">Accept new</button>
+            <button class="btn ghost" style="padding:3px 8px" onclick="piqKeep('${escA(r.code)}')" title="Leave our price as it is">Keep current</button>
+            <button class="btn ghost" style="padding:3px 8px" onclick="piqEdit('${escA(r.code)}')">✎ Edit</button>
+            <button class="btn ghost" style="padding:3px 8px" data-act="pa-fixsku" data-code="${escA(r.code)}" title="Our SKU is wrong or formatted differently">✎ SKU</button>
+            <select class="ed" style="padding:3px 6px;font-size:11px;max-width:130px" onchange="paDispose('${escA(r.code)}',this.value,this)">
+              <option value="">Do not list…</option>
+              <option value="do_not_list">Confirmed – do not list</option>
+              <option value="discontinued">Discontinued</option>
+              <option value="not_offered">Not offered by HCPS</option>
+              <option value="ignore">Ignore this price record</option>
+            </select>
+          </td></tr>`; }).join('');
+      return `<div class="pa-sec" style="border-color:#e6b800;background:#fffdf7">
+        <h3>Imported pricing to review — the file disagrees with ours (${q.length})</h3>
+        <p class="mut">These rows were <b>not</b> applied. For each one the manufacturer's file states a price we already hold differently,
+          so the change is held here rather than overwritten — an overwrite is what would reach dealers unnoticed.
+          New SKUs and rows that matched were imported normally.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <button class="btn dark" style="padding:4px 10px" onclick="piqAcceptAll()">Accept all ${q.length} new price(s)</button>
+          <button class="btn ghost" style="padding:4px 10px" onclick="piqKeepAll()">Keep all current</button>
+        </div>
+        ${tbl(['Code','Current (HCPS)','New (manufacturer)','Source file','Effective','Decision'], rows)}
+        ${q.length>400?`<p class="mut">Showing the first 400 of ${q.length}.</p>`:''}
+      </div>`;
+    })()}
+
+    ${(S.conflicts.length||S.dupes.length)?`<div class="pa-sec"><h3>Price conflicts &amp; duplicates (${new Set([...S.conflicts,...S.dupes].map(r=>r.code)).size})</h3>
+      <p class="mut">The same code carries different prices across layers (base file / added product / override), or exists as both.
+        The <b>override</b> is what dealers actually see. Choose which value wins — the choice is written as an override, so it survives the next import.</p>
+      ${tbl(['Code','Layers','Dealer sees','Settle it'], [...S.conflicts,...S.dupes.filter(d=>!S.conflicts.find(c=>c.code===d.code))].map(r=>{
+        const uniq=[...new Set(r.layers.map(l=>l.price))];
+        return `<tr>
+          <td><b>${esc(r.code)}</b>${r.duplicate?' <span class="mut">(base+custom)</span>':''}<div class="mut" style="font-size:11px">${esc(r.name||'')}</div></td>
+          <td class="mut" style="font-size:11px">${r.layers.map(l=>esc(l.src)+' '+pmoney(l.price)).join('<br>')}</td>
+          <td><b>${pmoney(r.base_price)}</b></td>
+          <td style="white-space:nowrap">
+            ${uniq.map(v=>`<button class="btn ghost" style="padding:3px 8px" onclick="paSettle('${escA(r.code)}',${v})" title="Make ${pmoney(v)} the price dealers see">Use ${pmoney(v)}</button>`).join(' ')}
+            <button class="btn ghost" style="padding:3px 8px" onclick="paSettleManual('${escA(r.code)}')">✎ Enter</button>
+            ${r.duplicate?`<button class="btn ghost" style="padding:3px 8px" onclick="paMerge('${escA(r.code)}')" title="Reconcile the two records into one">⇄ Merge duplicate</button>`:''}
+            <button class="btn ghost" style="padding:3px 8px" data-act="pa-fixsku" data-code="${escA(r.code)}" title="Our SKU is wrong or formatted differently">✎ SKU</button>
+          </td></tr>`; }).join(''))}
       </div>`:''}
 
     ${S.discWithPrice.length?`<div class="pa-sec"><h3>Discontinued / hidden but still priced (${S.discWithPrice.length})</h3>
@@ -1348,49 +1669,175 @@ async function doPriceBulkApply(){ const S=_priceState; if(!S) return; if(!_pric
   else toast((res.json&&res.json.error)||'Bulk update failed',true);
 }
 /* ---- Pricelist importer ---- */
+/* ═══ PRICE LIST IMPORTER ══════════════════════════════════════════════════════
+   Upload → map columns → preview → apply. XLSX, CSV or a paste all end up in the
+   same place: a header row plus data rows, which the mapping step then interprets.
+
+   Columns are GUESSED, never assumed. A manufacturer sheet might label dealer cost
+   "Dealer", "Your Cost", "DLR", or "Net" — so the guess is a starting point the
+   admin confirms, and a wrong guess is one dropdown away from right rather than a
+   silently mispriced catalog. */
+const PI_FIELDS=[
+  {key:'code',  label:'SKU / item code', required:true,
+   hints:['code','sku','item','item #','item no','part','part #','part number','model','model #','catalog','catalog #']},
+  {key:'name',  label:'Product name',    hints:['name','description','product','item description','desc']},
+  {key:'base_price', label:'Dealer cost', hints:['dealer','dealer price','dealer cost','cost','net','net price','your price','your cost','wholesale','base','base price','price','dlr']},
+  {key:'map',   label:'MAP',             hints:['map','map price','min advertised','minimum advertised','minimum advertised price']},
+  {key:'msrp',  label:'MSRP',            hints:['msrp','retail','list','list price','suggested retail','srp','msrp price']},
+  {key:'case_qty', label:'Case quantity',hints:['case','case qty','case quantity','qty per case','pack','pack qty','uom qty','units per case']},
+  {key:'effective_date', label:'Effective date', hints:['effective','effective date','eff date','price date','date','valid from']},
+];
+let _piGrid=null, _piMap={}, _piRows=[], _piFile='';
+
 function openPriceImport(){
   modalHTML('⬆ Import pricelist · '+esc(MFR), `<div class="tut">
-    <p class="mut">Paste rows from a manufacturer pricelist. First row = column headers. Include a <b>code</b> column plus any of <b>dealer</b> (dealer price), <b>msrp</b>, <b>map</b>, and optionally <b>name</b>. Tab- or comma-separated.</p>
-    <textarea class="ed" id="pi-txt" rows="8" placeholder="code&#9;name&#9;dealer&#9;msrp&#9;map&#10;11102&#9;Gen 2 Short Pneumatic&#9;72.00&#9;144.00&#9;"></textarea>
-    <div style="margin-top:8px"><button class="btn dark" data-act="price-import-parse">Preview</button></div>
-    <div id="pi-prev" style="margin-top:10px"></div>
+    <p class="mut">Upload the manufacturer's price list — <b>.xlsx</b>, <b>.xls</b> or <b>.csv</b> — or paste rows below. You'll confirm which column is which before anything is written.</p>
+    <div class="dropzone" id="pi-drop" style="padding:18px;text-align:center">
+      <input type="file" id="pi-file" accept=".xlsx,.xls,.csv,.tsv,.txt" style="display:none" onchange="piPickFile(event)">
+      <button class="btn dark" onclick="document.getElementById('pi-file').click()">Choose a price list file</button>
+      <div class="mut" style="font-size:12px;margin-top:8px">Excel workbooks with a title row, merged cells or several sheets are fine — you'll pick the sheet.</div>
+    </div>
+    <details style="margin-top:10px"><summary class="mut" style="cursor:pointer;font-size:12px">or paste rows instead</summary>
+      <textarea class="ed" id="pi-txt" rows="6" placeholder="code&#9;name&#9;dealer&#9;msrp&#9;map"></textarea>
+      <div style="margin-top:6px"><button class="btn" onclick="piPasteParse()">Read pasted rows</button></div>
+    </details>
+    <div id="pi-prev" style="margin-top:12px"></div>
   </div>`);
 }
-function parsePriceList(txt){
-  const lines=String(txt||'').split(/\r?\n/).map(l=>l.trim()).filter(Boolean); if(lines.length<2) return {rows:[],cols:[]};
-  const split=l=>l.indexOf('\t')>=0?l.split('\t'):l.split(',');
-  const heads=split(lines[0]).map(h=>h.trim().toLowerCase());
-  const idx=(names)=>{ for(const n of names){ const i=heads.indexOf(n); if(i>=0) return i; } return -1; };
-  const iCode=idx(['code','sku','item','part','part number','part #','item #']);
-  const iName=idx(['name','description','product']);
-  const iDealer=idx(['dealer','dealer price','cost','base','base price','price','your price']);
-  const iMsrp=idx(['msrp','retail','list','list price']);
-  const iMap=idx(['map','min advertised','minimum advertised price']);
-  const rows=[];
-  for(let r=1;r<lines.length;r++){ const c=split(lines[r]); const code=(c[iCode]||'').trim(); if(iCode<0||!code) continue;
-    const num=v=>{ if(v==null) return null; const n=Number(String(v).replace(/[^0-9.\-]/g,'')); return isFinite(n)&&String(v).trim()!==''?n:null; };
-    rows.push({code, name:iName>=0?(c[iName]||'').trim():'', base_price:iDealer>=0?num(c[iDealer]):null,
-      msrp:iMsrp>=0?num(c[iMsrp]):null, map:iMap>=0?num(c[iMap]):null}); }
-  return {rows, cols:{iCode,iName,iDealer,iMsrp,iMap}};
+function piPickFile(ev){
+  const f=(ev.target.files||[])[0]; if(!f) return;
+  _piFile=f.name;
+  const prev=document.getElementById('pi-prev'); prev.innerHTML='<div class="hint">Reading '+esc(f.name)+'…</div>';
+  const isCsv=/\.(csv|tsv|txt)$/i.test(f.name);
+  loadXlsx().then(XLSX=>{
+    const rd=new FileReader();
+    rd.onload=e=>{
+      try{
+        const wb=isCsv ? XLSX.read(String(e.target.result),{type:'string'})
+                       : XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        const names=wb.SheetNames||[];
+        if(!names.length){ prev.innerHTML='<div class="hint">That file has no readable sheets.</div>'; return; }
+        window._piWb=wb;
+        if(names.length>1){
+          prev.innerHTML='<div class="rule">Which sheet holds the price list?</div>'
+            +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'
+            +names.map(n=>`<button class="btn" onclick="piUseSheet('${escA(n)}')">${esc(n)}</button>`).join('')+'</div>';
+        } else piUseSheet(names[0]);
+      }catch(err){ prev.innerHTML='<div class="hint">Could not read that file: '+esc(err.message||String(err))+'</div>'; }
+    };
+    rd.onerror=()=>{ prev.innerHTML='<div class="hint">Could not read that file.</div>'; };
+    isCsv ? rd.readAsText(f) : rd.readAsArrayBuffer(f);
+  }).catch(e=>{ prev.innerHTML='<div class="hint">'+esc(e.message||'Could not load the spreadsheet reader')+'</div>'; });
 }
-let _importRows=[];
-function doPriceImportParse(){ const txt=(document.getElementById('pi-txt')||{}).value||''; const p=parsePriceList(txt);
+function piUseSheet(name){
+  const XLSX=window.XLSX, wb=window._piWb; if(!XLSX||!wb) return;
+  _piGrid=sheetToGrid(XLSX,wb,name);
+  if(!_piGrid.headers.length||!_piGrid.rows.length){
+    document.getElementById('pi-prev').innerHTML='<div class="hint">That sheet has no usable rows.</div>'; return; }
+  piGuessMap(); piRenderMap();
+}
+function piPasteParse(){
+  const txt=(document.getElementById('pi-txt')||{}).value||'';
+  const lines=String(txt).split(/\r?\n/).map(l=>l.replace(/\s+$/,'')).filter(l=>l.trim());
+  if(lines.length<2){ document.getElementById('pi-prev').innerHTML='<div class="hint">Paste a header row plus at least one data row.</div>'; return; }
+  const split=l=>l.indexOf('\t')>=0?l.split('\t'):l.split(',');
+  _piFile='pasted rows';
+  _piGrid={headers:split(lines[0]).map(h=>h.trim()), rows:lines.slice(1).map(split), sheet:'paste', header_row:1};
+  piGuessMap(); piRenderMap();
+}
+// Best guess per field: exact header match first, then a contains match.
+function piGuessMap(){
+  const heads=_piGrid.headers.map(h=>String(h||'').trim().toLowerCase());
+  _piMap={};
+  PI_FIELDS.forEach(f=>{
+    let i=heads.findIndex(h=>f.hints.indexOf(h)>=0);
+    if(i<0) i=heads.findIndex(h=>h&&f.hints.some(x=>h.indexOf(x)>=0));
+    if(i>=0 && Object.values(_piMap).indexOf(i)<0) _piMap[f.key]=i;
+  });
+}
+function piRenderMap(){
   const prev=document.getElementById('pi-prev'); if(!prev) return;
-  if(!p.rows.length){ prev.innerHTML='<div class="hint">Couldn\'t find a code column and at least one data row. Check the paste — first row must be headers including <b>code</b>.</div>'; _importRows=[]; return; }
-  _importRows=p.rows;
+  const opts=(sel)=>'<option value="-1">— not in this file —</option>'
+    +_piGrid.headers.map((h,i)=>`<option value="${i}"${sel===i?' selected':''}>${esc(h)}</option>`).join('');
+  const sample=_piGrid.rows.slice(0,3);
+  prev.innerHTML=`<div class="rule"><b>${_piGrid.rows.length}</b> row(s) read from <b>${esc(_piGrid.sheet||'file')}</b>${_piGrid.header_row?` · headers on row ${_piGrid.header_row}`:''}. Confirm the columns:</div>
+    <table style="width:100%;font-size:12px;margin-top:8px"><tbody>
+    ${PI_FIELDS.map(f=>`<tr>
+      <td style="width:150px;padding:4px 6px">${esc(f.label)}${f.required?' <span style="color:var(--bad)">*</span>':''}</td>
+      <td style="padding:4px 6px"><select class="ed" id="pim-${f.key}" onchange="piRemap()" style="width:100%">${opts(_piMap[f.key]!=null?_piMap[f.key]:-1)}</select></td>
+      <td class="mut" style="padding:4px 6px;font-size:11px">${_piMap[f.key]!=null?sample.map(r=>esc(String((r||[])[_piMap[f.key]]||''))).filter(Boolean).slice(0,2).join(' · '):''}</td>
+    </tr>`).join('')}
+    </tbody></table>
+    <div id="pi-prev2" style="margin-top:10px"></div>`;
+  piRemap();
+}
+function piRemap(){
+  PI_FIELDS.forEach(f=>{ const el=document.getElementById('pim-'+f.key); if(el){ const v=Number(el.value); _piMap[f.key]=v>=0?v:null; } });
+  const out=document.getElementById('pi-prev2'); if(!out) return;
+  if(_piMap.code==null){ out.innerHTML='<div class="hint">Pick the column holding the SKU / item code — nothing can be matched without it.</div>'; _piRows=[]; return; }
+  const num=v=>{ if(v==null) return null; const t=String(v).replace(/[^0-9.\-]/g,''); if(!t) return null; const n=Number(t); return isFinite(n)?n:null; };
+  const seen={}; const dupInFile=[];
+  _piRows=[];
+  _piGrid.rows.forEach(r=>{
+    const code=String((r||[])[_piMap.code]||'').trim(); if(!code) return;
+    const row={code, source_file:_piFile};
+    if(_piMap.name!=null) row.name=String(r[_piMap.name]||'').trim();
+    if(_piMap.base_price!=null) row.base_price=num(r[_piMap.base_price]);
+    if(_piMap.map!=null) row.map=num(r[_piMap.map]);
+    if(_piMap.msrp!=null) row.msrp=num(r[_piMap.msrp]);
+    if(_piMap.case_qty!=null) row.case_qty=String(r[_piMap.case_qty]||'').trim();
+    if(_piMap.effective_date!=null) row.effective_date=String(r[_piMap.effective_date]||'').trim();
+    // The same SKU twice in one file is a real and common problem — flag it here
+    // rather than letting the last row silently win.
+    if(seen[code]!=null){ dupInFile.push({code,first:seen[code],again:row}); }
+    seen[code]=row;
+    _piRows.push(row);
+  });
   const S=_priceState;
   const known=c=>S?S.allCodes.has(String(c)):false;
-  prev.innerHTML=`<div class="rule"><b>${p.rows.length}</b> priced row(s) parsed. Matched to existing catalog codes are updated; new codes are created.</div>
-    <div class="tabscroll" style="max-height:280px;overflow:auto"><table style="width:100%;font-size:12px"><thead><tr><th>Code</th><th>Name</th><th>Dealer</th><th>MSRP</th><th>MAP</th><th>Match</th></tr></thead>
-    <tbody>${p.rows.slice(0,300).map(r=>`<tr><td><b>${esc(r.code)}</b></td><td>${esc(r.name||'—')}</td><td>${pmoney(r.base_price)}</td><td>${pmoney(r.msrp)}</td><td>${pmoney(r.map)}</td><td class="mut">${known(r.code)?'update':'new'}</td></tr>`).join('')}</tbody></table></div>
-    <div style="margin-top:10px"><button class="btn dark" data-act="price-import-apply">Import ${p.rows.length} price(s)</button></div>`;
+  const changed=r=>{ if(!S||!known(r.code)) return null; const cur=S.recOf(r.code);
+    if(r.base_price!=null && cur.base_price!=null && Number(cur.base_price)!==Number(r.base_price)) return {from:cur.base_price,to:r.base_price};
+    return null; };
+  const nNew=_piRows.filter(r=>!known(r.code)).length;
+  const nChg=_piRows.filter(r=>changed(r)).length;
+  out.innerHTML=`<div class="rule"><b>${_piRows.length}</b> priced row(s) · <b>${_piRows.length-nNew}</b> match existing codes · <b>${nNew}</b> new
+      ${nChg?` · <b style="color:#b8791b">${nChg}</b> price change(s)`:''}${dupInFile.length?` · <b style="color:var(--bad)">${dupInFile.length}</b> duplicate code(s) in the file`:''}</div>
+    ${dupInFile.length?`<div class="hint" style="border-color:#e6b800;background:#fffdf3">The same code appears more than once in this file: <b>${dupInFile.slice(0,8).map(d=>esc(d.code)).join(', ')}</b>${dupInFile.length>8?' …':''}. The last row wins — check the file if that isn't what you intend.</div>`:''}
+    <div class="tabscroll" style="max-height:260px;overflow:auto;margin-top:8px"><table style="width:100%;font-size:12px"><thead><tr><th>Code</th><th>Name</th><th>Dealer</th><th>MAP</th><th>MSRP</th><th>Change</th></tr></thead>
+    <tbody>${_piRows.slice(0,300).map(r=>{ const ch=changed(r);
+      return `<tr><td><b>${esc(r.code)}</b></td><td>${esc(r.name||'—')}</td><td>${pmoney(r.base_price)}</td><td>${pmoney(r.map)}</td><td>${pmoney(r.msrp)}</td>
+      <td class="mut">${ch?`<span style="color:#b8791b">${pmoney(ch.from)} → <b>${pmoney(ch.to)}</b></span>`:(known(r.code)?'no change':'new')}</td></tr>`; }).join('')}</tbody></table></div>
+    <div style="margin-top:10px"><button class="btn dark" data-act="price-import-apply">Apply ${_piRows.length} price(s)</button>
+      <span class="mut" style="font-size:12px;margin-left:8px">Effective date and case quantity are recorded on each price as a note.</span></div>`;
 }
-async function doPriceImportApply(){ if(!_importRows.length){ toast('Nothing to import',true); return; }
-  const rows=_importRows.map(r=>Object.assign({},r,{create:true}));
-  const res=await catalogPost({action:'bulk_price',manufacturer:MFR,rows});
-  if(res.ok&&res.json&&res.json.ok){ toast('Imported '+(res.json.applied+res.json.created)+' price(s)'); _importRows=[]; openPriceAudit(); }
-  else toast((res.json&&res.json.error)||'Import failed',true);
+async function doPriceImportApply(){
+  if(!_piRows.length){ toast('Nothing to import',true); return; }
+  /* Split the file before writing any of it. New codes and rows that agree with what we
+     hold go straight in — there is nothing to decide. Rows that contradict an existing
+     price are parked for review instead of overwriting it, because that overwrite is
+     exactly what would reach dealers unnoticed. */
+  const S=_priceState;
+  const apply=[], queue=[];
+  _piRows.forEach(r=>{
+    const rec=(S&&S.allCodes.has(String(r.code)))?S.recOf(r.code):null;
+    const diff=rec?piqDiff(r,rec):[];
+    if(diff.length) queue.push(Object.assign({},r,{_diff:diff,_at:new Date().toISOString()}));
+    else apply.push(Object.assign({},r,{create:true}));
+  });
+  if(apply.length){
+    const res=await catalogPost({action:'bulk_price',manufacturer:MFR,rows:apply});
+    if(!(res.ok&&res.json&&res.json.ok)){ toast((res.json&&res.json.error)||'Import failed',true); return; }
+    toast('Imported '+((res.json.applied||0)+(res.json.created||0))+' price(s)'
+      +(queue.length?' · '+queue.length+' to review':''));
+  } else if(queue.length){
+    toast(queue.length+' price(s) differ from ours — review below');
+  }
+  if(queue.length) piqAdd(queue);
+  _piRows=[]; _piGrid=null; openPriceAudit();
 }
+// Kept so the old paste-only entry point still works if anything calls it.
+function doPriceImportParse(){ return piPasteParse(); }
+
 /* ---- Preview as dealer: exactly what a dealer sees in Partner 360 ---- */
 function openDealerPricePreview(){ const S=_priceState; if(!S){ return; }
   const byProd={}; S.content.forEach(cs=>{ if(cs.disabled) return; if(!S.allCodes.has(cs.code)) return; const r=S.recOf(cs.code);
@@ -1407,6 +1854,45 @@ function openDealerPricePreview(){ const S=_priceState; if(!S){ return; }
 /* ---- PDF catalog reading: pdf.js extracts the text IN THE BROWSER (no server-side PDF
    dependency), then the AI interprets it into products + variant SKUs. Loaded lazily so the
    page only pays for pdf.js when a catalog PDF is actually used. ---- */
+/* XLSX reading happens IN THE BROWSER, same approach as the catalog PDF reader: the
+   price list never leaves the admin's machine on its way to being parsed, and there is
+   no server-side spreadsheet dependency to keep alive. Loaded only when a workbook is
+   actually opened, so the page does not pay for it otherwise. */
+const XLSX_VER='0.20.1';
+let _xlsxReady=null;
+function loadXlsx(){
+  if(_xlsxReady) return _xlsxReady;
+  _xlsxReady=new Promise((res,rej)=>{
+    if(window.XLSX) return res(window.XLSX);
+    const s=document.createElement('script');
+    s.src=`https://cdnjs.cloudflare.com/ajax/libs/xlsx/${XLSX_VER}/xlsx.full.min.js`;
+    s.onload=()=>window.XLSX?res(window.XLSX):rej(new Error('xlsx failed to initialise'));
+    s.onerror=()=>rej(new Error('Could not load the spreadsheet reader'));
+    document.head.appendChild(s);
+  });
+  return _xlsxReady;
+}
+/* Turn any sheet into a header row + data rows. Manufacturer sheets rarely start at A1 —
+   there is usually a title, a logo row, maybe a blank line — so the header is found by
+   looking for the first row that actually looks like column headings rather than
+   assuming row 1. Getting this wrong imports the title row as a product. */
+function sheetToGrid(XLSX, wb, sheetName){
+  const ws=wb.Sheets[sheetName]; if(!ws) return {headers:[],rows:[]};
+  const grid=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''});
+  const looksHeader=row=>{
+    const cells=(row||[]).map(c=>String(c||'').trim()).filter(Boolean);
+    if(cells.length<2) return false;
+    // A header row is mostly words, not numbers.
+    const numeric=cells.filter(c=>/^[$]?[\d,.]+$/.test(c)).length;
+    return numeric<=Math.floor(cells.length/2);
+  };
+  let hi=0;
+  for(let i=0;i<Math.min(grid.length,25);i++){ if(looksHeader(grid[i])){ hi=i; break; } }
+  const headers=(grid[hi]||[]).map((c,i)=>String(c||'').trim()||('Column '+(i+1)));
+  const rows=grid.slice(hi+1).filter(r=>(r||[]).some(c=>String(c||'').trim()!==''));
+  return {headers,rows,header_row:hi+1,sheet:sheetName};
+}
+
 const PDFJS_VER='3.11.174';
 let _pdfjsReady=null;
 function loadPdfJs(){
