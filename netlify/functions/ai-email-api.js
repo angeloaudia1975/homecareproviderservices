@@ -95,12 +95,121 @@ function defaultSignature(me){
   return parts.filter(Boolean).join("\n");
 }
 
+/* ── Approved product content for an email ───────────────────────────────────
+   The enrichment tool has already built the good version of every product: a written
+   description, features, specs, sizing, clinical applications, approved photography.
+   The compose tool used to ignore all of it and ask the model to write about a product
+   from its name alone. This is the bridge — it hands the draft real, approved facts so
+   the email says something a dealer couldn't have guessed.
+
+   Only APPROVED content is used. Anything still in review is somebody's draft, and a
+   draft has no business being quoted to a dealer. */
+const APPROVED_STATUS = new Set(["approved","published","active"]);
+
+async function productContent(sbGet, mfrSlug, code){
+  const enc=encodeURIComponent;
+  const rows=await sbGet(`product_content?manufacturer=eq.${enc(mfrSlug)}&select=page_key,name,tagline,description,family,category,subcategory,features,clinical_applications,specs,billing_codes,sizing_table,sizing_note,warranty,image,images_gallery,skus,status,disabled&limit=4000`).catch(()=>[]);
+  const want=String(code||"").trim().toUpperCase();
+  let page=null;
+  for(const r of (rows||[])){
+    if(r.disabled) continue;
+    const skus=Array.isArray(r.skus)?r.skus:[];
+    const hit=skus.some(s=>String((s&&(s.sku||s.code))||s||"").trim().toUpperCase()===want);
+    if(hit){ page=r; break; }
+  }
+  if(!page) return null;
+  const approved=APPROVED_STATUS.has(String(page.status||"").toLowerCase());
+  const gallery=[];
+  const push=(u,cap,primary)=>{ const url=String(u||"").trim(); if(!url) return;
+    if(gallery.some(g=>g.url===url)) return; gallery.push({url,caption:String(cap||"").slice(0,120),primary:!!primary}); };
+  push(page.image,"Primary product photo",true);
+  (Array.isArray(page.images_gallery)?page.images_gallery:[]).forEach(g=>push(g&&(g.url||g),(g&&g.caption)||"",false));
+  const sku=(Array.isArray(page.skus)?page.skus:[]).find(x=>String((x&&(x.sku||x.code))||x||"").trim().toUpperCase()===want)||{};
+  return {
+    approved, status:page.status||"", page_key:page.page_key,
+    code:String(code), name:page.name||"", tagline:page.tagline||"",
+    description:page.description||"", family:page.family||"", category:page.category||"", subcategory:page.subcategory||"",
+    features:(page.features||[]).slice(0,12),
+    clinical:(page.clinical_applications||[]).slice(0,8),
+    specs:page.specs||null, billing_codes:page.billing_codes||[],
+    sizing_note:page.sizing_note||"", sizing_rows:(page.sizing_table||[]).length,
+    warranty:page.warranty||"", size:(sku&&sku.size)||"",
+    images:gallery.slice(0,12),
+  };
+}
+
+/* What the model is told about the product. Only facts that exist — an empty section is
+   omitted rather than sent as a heading with nothing under it, which invites invention. */
+function productBrief(pc){
+  if(!pc) return "";
+  const L=[];
+  L.push(`PRODUCT: ${pc.name}${pc.code?` (${pc.code})`:""}`);
+  if(pc.tagline) L.push(`Tagline: ${pc.tagline}`);
+  if(pc.family||pc.category) L.push(`Line: ${[pc.category,pc.family].filter(Boolean).join(" / ")}`);
+  if(pc.description) L.push(`Approved description: ${String(pc.description).slice(0,900)}`);
+  if(pc.features&&pc.features.length) L.push(`Key features:\n- ${pc.features.map(f=>String(f&&(f.text||f)).slice(0,140)).join("\n- ")}`);
+  if(pc.clinical&&pc.clinical.length) L.push(`Clinical applications: ${pc.clinical.map(c=>String(c&&(c.text||c))).join("; ").slice(0,400)}`);
+  if(pc.specs&&typeof pc.specs==="object"){
+    const kv=Object.entries(pc.specs).filter(([,v])=>v!=null&&String(v).trim()).slice(0,10)
+      .map(([k,v])=>`${k}: ${String(v).slice(0,60)}`);
+    if(kv.length) L.push(`Specifications: ${kv.join(" · ")}`);
+  }
+  if(pc.sizing_rows) L.push(`Sizing: ${pc.sizing_rows} size option(s) available${pc.sizing_note?` — ${String(pc.sizing_note).slice(0,160)}`:""}`);
+  if(pc.warranty) L.push(`Warranty: ${String(pc.warranty).slice(0,120)}`);
+  if(pc.billing_codes&&pc.billing_codes.length) L.push(`Billing codes: ${pc.billing_codes.join(", ").slice(0,120)}`);
+  L.push("Use ONLY these facts about the product. Do not invent specifications, capacities, prices or claims.");
+  return L.join("\n");
+}
+
+/* The Partner 360 destination. A dealer who isn't signed in lands on the portal's
+   login/registration screen and is taken to this product once they're in — the portal
+   remembers the intent (see ?product= handling there), so the link is worth sending to
+   a dealer who has never registered. That is the point: it doubles as an invitation. */
+function partnerProductUrl(base, mfrSlug, code){
+  const u=new URL(base.replace(/\/+$/,"")+"/");
+  u.searchParams.set("product", String(code||""));
+  if(mfrSlug) u.searchParams.set("mfr", String(mfrSlug));
+  return u.toString();
+}
+
+const escH=v=>String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
+/* Turn the model's plain-text body into the email a dealer receives: the approved photo,
+   the copy, and one clear way through to the product on Partner 360. */
+function composeHtml({body, product, imageUrl, productUrl, signature}){
+  const paras=String(body||"").split(/\n{2,}/).map(p=>p.trim()).filter(Boolean)
+    .map(p=>`<p style="margin:0 0 13px;color:#1f2937;font-size:15px;line-height:1.55">${escH(p).replace(/\n/g,"<br>")}</p>`).join("");
+  const img=imageUrl?`<p style="margin:0 0 16px"><img src="${escH(imageUrl)}" alt="${escH(product&&product.name||"")}" width="520"
+      style="max-width:100%;height:auto;border-radius:10px;border:1px solid #e5e9ee"></p>`:"";
+  const cap=product&&product.name?`<p style="margin:-8px 0 16px;color:#6b7280;font-size:12.5px">${escH(product.name)}${product.code?` · ${escH(product.code)}`:""}</p>`:"";
+  const btn=productUrl?`<p style="margin:18px 0 6px"><a href="${escH(productUrl)}"
+      style="background:#F5821F;color:#fff;font-weight:700;text-decoration:none;padding:12px 22px;border-radius:8px;display:inline-block;font-size:15px">View this product on Partner 360 →</a></p>
+    <p style="margin:0 0 16px;color:#6b7280;font-size:12px">Not signed up yet? The link walks you through setting up your Partner 360 account, then opens the product.</p>`:"";
+  const sig=signature?`<p style="margin:18px 0 0;color:#6b7280;font-size:12.5px;line-height:1.5">${escH(signature).replace(/\n/g,"<br>")}</p>`:"";
+  return `<div style="max-width:560px;margin:0 auto;font-family:Arial,Helvetica,sans-serif">
+    ${img}${cap}${paras}${btn}${sig}</div>`;
+}
+
 exports.handler=async(event)=>{
   try{
     if(!SUPABASE_URL||!SERVICE_ROLE) return json(500,{error:"Supabase env vars not set"});
     if(event.httpMethod!=="POST") return json(405,{error:"POST only"});
     const me=await whoami(event); if(!me) return json(401,{error:"unauthorized"});
     let b; try{b=JSON.parse(event.body||"{}");}catch{return json(400,{error:"bad JSON"});}
+    /* The approved content behind one product, for the compose picker: what the
+       enrichment tool built, plus every approved image so the rep can choose which
+       one leads the email. */
+    if(b.action==="product_content"){
+      const mfr=String(b.manufacturer||"").trim(), code=String(b.product_code||"").trim();
+      if(!mfr||!code) return json(400,{error:"manufacturer and product_code required"});
+      const pc=await productContent(sbGet,mfr,code);
+      if(!pc) return json(200,{ok:false,error:"no_content",
+        message:`No enrichment record covers ${code} yet. You can still write the email — it just won't carry approved product content.`});
+      return json(200,{ok:true,product:pc,
+        product_url:partnerProductUrl(ORDERING_BASE,mfr,code),
+        warning: pc.approved?null:`This product's content is still "${pc.status||"in review"}" — approve it in Product Content Enrichment & Review before quoting it to a dealer.`});
+    }
+
     if(b.action!=="draft") return json(400,{error:"unknown action"});
 
     const dealerId=String(b.dealer_id||"").trim(); if(!dealerId) return json(400,{error:"dealer_id required"});
@@ -123,6 +232,27 @@ exports.handler=async(event)=>{
     const firstName=contactName?contactName.split(/\s+/)[0]:"";
     const styleGuide=await loadStyleGuide(sbGet);   // centralized HCPS AI Communication Style Guide
 
+    /* The product the rep chose, if any. This is what turns a generic note into a real
+       one: the model writes from the approved description, features and specs rather
+       than from a product name it has to guess about. */
+    const pmfr=String((b.product&&b.product.manufacturer)||b.manufacturer||"").trim();
+    const pcode=String((b.product&&b.product.code)||b.product_code||"").trim();
+    let PC=null, productUrl="", imageUrl="";
+    if(pmfr&&pcode){
+      PC=await productContent(sbGet,pmfr,pcode).catch(()=>null);
+      productUrl=partnerProductUrl(ORDERING_BASE,pmfr,pcode);
+      /* The rep picks which approved photo leads the email; if they didn't, the primary
+         one does. An image the enrichment record doesn't know about is never used — an
+         email is not the place to introduce an unapproved picture of a product. */
+      const want=String((b.product&&b.product.image_url)||b.image_url||"").trim();
+      const okImg=(PC&&PC.images||[]).some(i=>i.url===want);
+      imageUrl = want&&okImg ? want : (((PC&&PC.images||[])[0]||{}).url||"");
+    }
+    const brief=PC?productBrief(PC):"";
+    /* A line-level promotion with no specific SKU still deserves the manufacturer name
+       in the prompt, so "cross-sell" doesn't come out abstract. */
+    const lineName=String((b.product&&b.product.mfr_name)||b.mfr_name||"").trim();
+
     const buildPrompt=(avoidNote)=>`You write short, professional B2B sales emails for HomeCare Provider Services (HCPS), a manufacturers' rep group that sells home-medical-equipment lines to durable-medical-equipment (DME) dealers.
 
 ${styleGuide}
@@ -134,6 +264,9 @@ ${tmpl}
 
 What we know about this account (use only what's relevant; never invent facts or numbers) — this is the material for the specific, real reason the style guide requires:
 ${contextLines(ctx)}
+${lineName?`\nThe line being promoted: ${lineName}`:""}
+${brief?`\nThe product this email is about — these are APPROVED facts from the HCPS product record. Ground the email in them, and connect them to what this dealer actually sells:\n${brief}`:""}
+${brief?`\nThe email will show an approved photo of the product and a button through to its page on the Partner 360 dealer portal, so do NOT describe the photo or paste a URL — just make a dealer want to click.`:""}
 
 Format:
 - Greeting to the contact by first name if provided ("Hi ${firstName||"there"},").
@@ -177,7 +310,12 @@ Do not include markdown or any text outside the JSON.`;
     }catch(e){ return json(200,{ok:false,error:"ai_error",message:"Couldn't reach the AI service.",signature}); }
     if(!subject||!body) return json(200,{ok:false,error:"ai_empty",message:"The AI didn't return a usable draft — try again or a different template.",signature});
 
-    return json(200,{ok:true, subject, body, signature,
-      context:{ dealer:(ctx.dealer&&ctx.dealer.business_name)||"", template:tmplKey } });
+    const html=composeHtml({body, product:PC, imageUrl, productUrl, signature});
+    return json(200,{ok:true, subject, body, html, signature,
+      product:PC||null, product_url:productUrl||null, image_url:imageUrl||null,
+      product_warning: (PC&&!PC.approved)
+        ? `Heads up: this product's content is still "${PC.status||"in review"}". Approve it in Product Content Enrichment & Review before sending.` : null,
+      context:{ dealer:(ctx.dealer&&ctx.dealer.business_name)||"", template:tmplKey,
+        product:(PC&&PC.name)||lineName||"" } });
   }catch(e){ return json(500,{error:String(e.message||e)}); }
 };

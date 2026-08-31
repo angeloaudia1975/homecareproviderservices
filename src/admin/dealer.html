@@ -458,9 +458,10 @@ function renderCompose(){
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
       <label class="hint" style="margin:0;min-width:64px">Situation</label>
-      <select id="cx_tpl" style="flex:1;min-width:150px">${TPLS.map(t=>`<option value="${t[0]}">${t[1]}</option>`).join("")}</select>
+      <select id="cx_tpl" style="flex:1;min-width:150px" onchange="cxSituation()">${TPLS.map(t=>`<option value="${t[0]}">${t[1]}</option>`).join("")}</select>
       <button class="btn sm orange" id="cx_gen" onclick="genEmail()">✨ Generate draft</button>
     </div>
+    <div id="cx_prodpick"></div>
     <div id="cx_status" class="hint" style="margin:0 0 4px"></div>
     <div id="cx_draft" style="display:none">
       <input id="cx_subj" placeholder="Subject" style="width:100%;margin-bottom:6px;font-weight:600">
@@ -474,17 +475,142 @@ function renderCompose(){
       <div class="hint" style="margin-top:4px">Review &amp; edit above, then Approve &amp; send — it goes from your Outlook and logs to the timeline.</div>
     </div>`;
 }
+/* ── Situation-driven product picker ─────────────────────────────────────────
+   "Cross-sell" and "New product" are not writing prompts, they are questions about a
+   specific product. Choosing one opens the pickers so the draft can be grounded in the
+   approved content the enrichment tool already built — description, features, specs,
+   sizing — instead of asking the model to write about a product from its name. */
+var CXPROD={};
+const PRODUCT_SITUATIONS=new Set(["cross_sell","new_product","product_opportunity"]);
+
+async function cxSituation(){
+  const tpl=($("#cx_tpl")||{}).value||"";
+  const wrap=$("#cx_prodpick"); if(!wrap) return;
+  CXPROD={};
+  if(!PRODUCT_SITUATIONS.has(tpl)){ wrap.innerHTML=""; return; }
+  wrap.innerHTML=`<div class="hint" style="margin:0 0 6px">Loading this dealer's lines…</div>`;
+  const opts=await xsellOptions();
+  /* Cross-sell leads with the lines they DON'T buy yet — that is what cross-selling is.
+     New product leads with everything, because a new item can land on a line they already
+     carry. Both lists are always available; only the order changes. */
+  const cross=(tpl==="cross_sell");
+  const groupA=cross?{label:"Lines they don't buy yet",items:opts.potential}:{label:"Lines they buy today",items:opts.current};
+  const groupB=cross?{label:"Lines they buy today",items:opts.current}:{label:"Lines they don't buy yet",items:opts.potential};
+  const plan=(XPLAN||[]).filter(x=>x.status!=="dismissed"&&(x.manufacturer||x.mfr_name));
+  wrap.innerHTML=`
+    ${plan.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+      <label class="hint" style="margin:0;min-width:64px">From plan</label>
+      <select id="cx_plan" style="flex:1;min-width:180px" onchange="cxFromPlan()">
+        <option value="">— or pick manually below —</option>
+        ${plan.map((x,i)=>`<option value="${i}">${esc(x.mfr_name||x.manufacturer)}${x.product_name?` · ${esc(x.product_name)}`:(x.family?` · ${esc(x.family)}`:"")} (${esc(OPP_LABEL[x.opp_type]||x.opp_type||"")})</option>`).join("")}
+      </select></div>`:""}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+      <label class="hint" style="margin:0;min-width:64px">Line</label>
+      <select id="cx_mfr" style="flex:1;min-width:180px" onchange="cxMfrChanged()">
+        <option value="">— pick a manufacturer —</option>
+        <optgroup label="${esc(groupA.label)}">${groupA.items.map(m=>`<option value="${esc(m.slug)}" data-name="${esc(m.name)}">${esc(m.name)}${m.spend?` — $${m.spend.toLocaleString()}`:""}</option>`).join("")}</optgroup>
+        <optgroup label="${esc(groupB.label)}">${groupB.items.map(m=>`<option value="${esc(m.slug)}" data-name="${esc(m.name)}">${esc(m.name)}${m.spend?` — $${m.spend.toLocaleString()}`:""}</option>`).join("")}</optgroup>
+      </select>
+    </div>
+    <div id="cx_prodrow"></div>
+    <div id="cx_content"></div>`;
+}
+
+async function cxFromPlan(){
+  const i=($("#cx_plan")||{}).value; if(i==="") return;
+  const x=((XPLAN||[]).filter(y=>y.status!=="dismissed"&&(y.manufacturer||y.mfr_name)))[Number(i)];
+  if(!x) return;
+  const mfr=$("#cx_mfr"); if(mfr&&x.manufacturer){ mfr.value=x.manufacturer; await cxMfrChanged(); }
+  if(x.product_code){ const ps=$("#cx_prod"); if(ps){ ps.value=x.product_code; await cxProdChanged(); } }
+  else { const cs=$("#cx_cat"); if(cs&&x.category) cs.value=x.category;
+         const fs=$("#cx_fam"); if(fs&&x.family) fs.value=x.family; }
+}
+
+async function cxMfrChanged(){
+  const sel=$("#cx_mfr"); const row=$("#cx_prodrow"); const cont=$("#cx_content");
+  if(!sel||!row) return;
+  if(cont) cont.innerHTML="";
+  const slug=sel.value;
+  const opt=sel.selectedOptions&&sel.selectedOptions[0];
+  CXPROD={manufacturer:slug,mfr_name:(opt&&opt.getAttribute("data-name"))||""};
+  if(!slug){ row.innerHTML=""; return; }
+  row.innerHTML=`<div class="hint" style="margin:0 0 6px">Loading the catalog…</div>`;
+  const cat=await xsellProducts(slug);
+  row.innerHTML=`
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+      <label class="hint" style="margin:0;min-width:64px">Narrow</label>
+      <select id="cx_cat" style="flex:1;min-width:120px" onchange="cxFilter()"><option value="">Any category</option>${(cat.categories||[]).map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("")}</select>
+      <select id="cx_fam" style="flex:1;min-width:120px" onchange="cxFilter()"><option value="">Any family</option>${(cat.families||[]).map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join("")}</select>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+      <label class="hint" style="margin:0;min-width:64px">Product</label>
+      <select id="cx_prod" style="flex:1;min-width:200px" onchange="cxProdChanged()"></select>
+    </div>`;
+  cxFilter();
+}
+
+function cxFilter(){
+  const slug=(($("#cx_mfr")||{}).value)||""; const cat=XPROD[slug]; if(!cat) return;
+  const c=(($("#cx_cat")||{}).value)||"", f=(($("#cx_fam")||{}).value)||"";
+  const list=(cat.products||[]).filter(p=>(!c||p.category===c)&&(!f||p.family===f));
+  const sel=$("#cx_prod"); if(!sel) return;
+  sel.innerHTML=`<option value="">Promote the whole line (no single product)</option>`
+    +list.slice(0,800).map(p=>`<option value="${esc(p.code)}" data-name="${esc(p.name)}">${esc(p.name)} · ${esc(p.code)}</option>`).join("");
+  cxProdChanged();
+}
+
+/* Pull the approved content the moment a product is chosen, so the rep sees exactly what
+   the AI will be working from — and can pick which approved photo leads the email. */
+async function cxProdChanged(){
+  const sel=$("#cx_prod"); const cont=$("#cx_content"); if(!cont) return;
+  const code=(sel&&sel.value)||"";
+  const opt=sel&&sel.selectedOptions&&sel.selectedOptions[0];
+  CXPROD.code=code; CXPROD.product_name=(opt&&opt.getAttribute("data-name"))||""; CXPROD.image_url="";
+  if(!code){ cont.innerHTML=`<div class="hint" style="margin:0 0 6px">Promoting the whole line — the draft will use the account context only.</div>`; return; }
+  cont.innerHTML=`<div class="hint" style="margin:0 0 6px">Pulling approved product content…</div>`;
+  let j=null;
+  try{ j=await fetch("/.netlify/functions/ai-email-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},
+    body:JSON.stringify({action:"product_content",manufacturer:CXPROD.manufacturer,product_code:code})}).then(r=>r.json()); }catch(e){}
+  if(!j||!j.ok){
+    cont.innerHTML=`<div class="hint" style="margin:0 0 6px;color:#b45309">${esc((j&&j.message)||"No approved content found for this product — the draft will still write from the account context.")}</div>`;
+    return;
+  }
+  const p=j.product||{};
+  CXPROD.image_url=((p.images||[])[0]||{}).url||"";
+  const imgs=(p.images||[]).map((im,i)=>`<label style="display:inline-block;margin:0 6px 6px 0;cursor:pointer">
+      <input type="radio" name="cx_img" value="${esc(im.url)}" ${i===0?"checked":""} onchange="CXPROD.image_url=this.value" style="display:none">
+      <img src="${esc(im.url)}" alt="" style="width:66px;height:66px;object-fit:contain;background:#fff;border:2px solid ${i===0?"var(--orange,#F5821F)":"var(--line)"};border-radius:8px;padding:3px"
+        onclick="this.closest('#cx_content').querySelectorAll('img').forEach(x=>x.style.borderColor='var(--line)');this.style.borderColor='var(--orange,#F5821F)';">
+    </label>`).join("");
+  const facts=[
+    p.features&&p.features.length?`${p.features.length} feature(s)`:"",
+    p.specs&&Object.keys(p.specs).length?`${Object.keys(p.specs).length} spec(s)`:"",
+    p.sizing_rows?`${p.sizing_rows} size option(s)`:"",
+    p.clinical&&p.clinical.length?`${p.clinical.length} clinical application(s)`:"",
+  ].filter(Boolean).join(" · ");
+  cont.innerHTML=`<div style="border:1px solid var(--line);border-radius:9px;background:#fafbfc;padding:9px 11px;margin:0 0 7px">
+      <div style="font-size:12.5px;font-weight:800;color:var(--navy)">${esc(p.name||code)}${p.tagline?` <span class="hint" style="margin:0;font-weight:400">— ${esc(p.tagline)}</span>`:""}</div>
+      <div class="hint" style="margin:2px 0 0">${esc(facts||"Approved content found")}${j.warning?"":""} · the draft will be written from this</div>
+      ${j.warning?`<div class="hint" style="margin:4px 0 0;color:#b45309">${esc(j.warning)}</div>`:""}
+      ${imgs?`<div style="margin-top:7px"><div class="hint" style="margin:0 0 3px">Image for the email — click to choose</div>${imgs}</div>`:`<div class="hint" style="margin:5px 0 0">No approved image on this record yet.</div>`}
+      ${j.product_url?`<div class="hint" style="margin:6px 0 0">The email will include a <b>View this product on Partner 360</b> button. A dealer who isn't registered is walked through signing up, then lands on the product.</div>`:""}
+    </div>`;
+}
+
 async function genEmail(){
   const sel=$("#cx_to"); const to=(sel&&sel.value)||"";
   const name=(sel&&sel.selectedOptions&&sel.selectedOptions[0]&&sel.selectedOptions[0].getAttribute("data-name"))||"";
   const tpl=($("#cx_tpl")||{}).value||"follow_up";
   const st=$("#cx_status"); const gen=$("#cx_gen");
   if(st){ st.style.color=""; st.textContent="Drafting with AI…"; } if(gen) gen.disabled=true;
-  let j; try{ j=await fetch("/.netlify/functions/ai-email-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action:"draft",dealer_id:CUR,template:tpl,contact_email:to,contact_name:name})}).then(r=>r.json()); }catch(e){ j=null; }
+  let j; try{ j=await fetch("/.netlify/functions/ai-email-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action:"draft",dealer_id:CUR,template:tpl,contact_email:to,contact_name:name,
+    product: CXPROD.manufacturer?{manufacturer:CXPROD.manufacturer,mfr_name:CXPROD.mfr_name,code:CXPROD.code,image_url:CXPROD.image_url}:null})}).then(r=>r.json()); }catch(e){ j=null; }
   if(gen) gen.disabled=false;
   if(!j||!j.ok){ if(st){ st.style.color="#b45309"; st.textContent=(j&&j.message)||"Couldn't generate a draft — try again."; } return; }
   if(st) st.textContent="";
   COMPOSE.to=to; COMPOSE.name=name; COMPOSE.sig=j.signature||"";
+  COMPOSE.html=j.html||""; COMPOSE.product_url=j.product_url||"";
+  if(j.product_warning&&st){ st.style.color="#b45309"; st.textContent=j.product_warning; }
   const subj=$("#cx_subj"); if(subj) subj.value=j.subject||"";
   const body=$("#cx_body"); if(body) body.value=(j.body||"")+(j.signature?("\n\n"+j.signature):"");
   const dr=$("#cx_draft"); if(dr) dr.style.display="";
