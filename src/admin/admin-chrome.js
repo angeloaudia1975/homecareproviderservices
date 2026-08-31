@@ -1,3 +1,32 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   HCPS CONNECT 360 — THE NAVIGATION RULE
+   ───────────────────────────────────────────────────────────────────────────
+   Every feature in Connect 360 obeys four rules. They are enforced by code below
+   and checkable at any time by running acNavAudit() in the browser console.
+
+   1. ONE OWNER. Every page belongs to exactly one category. Add the tool to that
+      category's `tools` array in HUBS — this file is the single source of truth for
+      the sub-nav, the category landing pages AND the dashboard.
+
+   2. A SHORTCUT IS NOT AN OWNER. A page may be listed in a second category when the
+      relationship is genuinely useful (Pipeline is sales work and a forecast). Mark
+      that second entry `xref:true`. An xref links to the page; it never captures it.
+      Where the owner isn't obvious from array order, mark the real one `owns:true`.
+      Without this, hubOf() returned whichever category was declared first, which is
+      why opening Dealer Manager used to land you inside Online Ordering.
+
+   3. RANK IT. Add the tool's label to ORDER[<category>] in the position it deserves:
+      most important → most frequently used → supporting → advanced/specialised. An
+      unranked tool still works; it just sorts to the end of its category.
+
+   4. MAKE IT FAVOURITABLE. Any real tool page automatically gets the ☆ in the
+      masthead and can be pinned to a user's own dashboard. Nothing to configure —
+      but a tool that never appears in HUBS can never be favourited, which is another
+      reason rule 1 matters.
+
+   After adding anything, open any admin page and run acNavAudit(). Silence is a pass.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 /* HCPS Admin — shared masthead + hub navigation. Top tier = the four category hubs (each opens its
  * own card-based LANDING PAGE, hub.html?cat=<id>); second tier = EVERY tool inside the current hub.
  * Non-admin staff (sales reps + the Customer Relations Director) get a focused Rep Workspace instead.
@@ -31,12 +60,12 @@
         { href:"/admin/catalog.html",            label:"Product Catalog",            icon:"📦", group:"catalog",  desc:"The master product & SKU records — codes, names, categories, list & MSRP pricing and active status, per manufacturer line" },
         { href:"/admin/product-content-review.html", label:"Product Content Enrichment & Review", icon:"🔬", status:"new", group:"enrich", desc:"The enrichment workspace: start a new line, import catalog & website sources, review SKU structure, fix categories & families, enrich content, images & documents, run Price Check and Catalog Health, then publish to Partner 360" },
         { href:"/admin/images.html",             label:"Product Images",             icon:"🖼️", group:"enrich",   desc:"Upload & manage product photography used across the catalog and dealer portal" },
-        { href:"/admin/dealers.html",            label:"Contract Pricing",           icon:"💲", group:"commerce", desc:"Per-dealer negotiated pricing that overrides the standard dealer price" },
+        { href:"/admin/dealers.html",            label:"Contract Pricing",           icon:"💲", group:"commerce", xref:true, desc:"Per-dealer negotiated pricing that overrides the standard dealer price" },
         { href:"/admin/order-fulfillment.html",  label:"Order Review & Fulfillment", icon:"🧾", group:"commerce", desc:"See, confirm & track submitted dealer orders" },
         { href:"",                               label:"Manufacturer Lines & Freight", icon:"🚚", status:"planned", group:"commerce", desc:"Line setup, freight rules & territory eligibility" },
         { href:"/admin/featured.html",           label:"Featured Products",          icon:"⭐", group:"partner",  desc:"Curate the promoted items dealers see first" },
         { href:"/admin/home-editor.html",        label:"Portal Home Content",        icon:"🏠", group:"partner",  desc:"Hero banner, promos & the “what's new” tiles" },
-        { href:"/admin/dealers.html#logins",     label:"Dealer Portal Accounts",     icon:"🔑", group:"partner",  desc:"Registrations, approvals & which manufacturer lines each dealer can order" },
+        { href:"/admin/dealers.html#logins",     label:"Dealer Portal Accounts",     icon:"🔑", group:"partner", xref:true,  desc:"Registrations, approvals & which manufacturer lines each dealer can order" },
         { href:"https://hcpsonlineordering.netlify.app/", label:"Published Catalog", icon:"👁", group:"partner", ext:true, desc:"Open the live Partner 360 storefront exactly as a dealer sees it — the published result of everything above" }
     ]},
     { id:"website", label:"Website", icon:"🌐", accent:"#2f6bd8", dashTitle:"HCPS Website",
@@ -47,15 +76,15 @@
         { href:"/admin/website.html#landing",       label:"Landing Pages",       icon:"📄", desc:"Campaign & program landing pages" },
         { href:"/admin/website.html#media",         label:"Site Images & Media", icon:"🎞️", desc:"Hero images, banners & downloadable assets" },
         { href:"/admin/website.html#nav",           label:"Links & Navigation",  icon:"🔗", desc:"Menus, footer links & redirects" },
-        { href:"/admin/traffic.html",               label:"Website Traffic",     icon:"📈", desc:"Live visits, top pages & sources (Plausible)" }
+        { href:"/admin/traffic.html",               label:"Website Traffic",     icon:"📈", owns:true, desc:"Live visits, top pages & sources (Plausible)" }
     ]},
     { id:"sales", label:"Sales & Marketing", icon:"🧭", accent:"#1f9d57", dashTitle:"Sales & Marketing",
       purpose:"Territories, dealers, reps, CRM & the programs that grow accounts.",
       href:"/admin/hub.html?cat=sales", tools:[
         { href:"/admin/opportunities.html", label:"Today's Opportunities", icon:"💡", desc:"The next best action for every dealer" },
-        { href:"/admin/call-list.html",     label:"Who to Call",           icon:"📞", desc:"Daily worklist — intent, overdue reorders & dormant" },
+        { href:"/admin/call-list.html",     label:"Who to Call",           icon:"📞", owns:true, desc:"Daily worklist — intent, overdue reorders & dormant" },
         { href:"/admin/health.html",        label:"Dealer Health",         icon:"❤️", desc:"Every dealer scored on recency, rhythm & trend" },
-        { href:"/admin/dealers.html",       label:"Dealer Manager",        icon:"🏢", desc:"Master dealer database, locations & hierarchy" },
+        { href:"/admin/dealers.html",       label:"Dealer Manager",        icon:"🏢", owns:true, desc:"Master dealer database, locations & hierarchy" },
         { href:"/admin/account-assignment.html", label:"Account Assignment", icon:"🧑‍💼", desc:"Assign every dealer to a sales rep — bulk & fast" },
         { href:"/admin/dealer.html",        label:"Dealer 360 & CRM",      icon:"📇", desc:"Full account command center — activity, contacts, tasks" },
         { href:"/admin/map.html",           label:"Territory Map",         icon:"🗺️", desc:"Dealer map, drive routes & saved trips" },
@@ -64,7 +93,7 @@
         { href:"/admin/map.html#handout",   label:"Partnership Snapshots", icon:"📋", desc:"Printable dealer business-case handouts" },
         { href:"/admin/staff.html",         label:"Sales Reps & Staff",    icon:"👥", desc:"Team accounts, roles & territory ownership" },
         { href:"/admin/tasks.html",         label:"My Tasks & Follow-Up Engine", icon:"✅", desc:"Your task queue — auto-built from dealer signals plus manual tasks" },
-        { href:"/admin/pipeline.html",      label:"Pipeline",              icon:"🔮", desc:"Open deals & weighted pipeline" },
+        { href:"/admin/pipeline.html",      label:"Pipeline",              icon:"🔮", owns:true, desc:"Open deals & weighted pipeline" },
         { href:"/admin/zoho-sync.html",     label:"Zoho Sync",             icon:"🔗", desc:"Two-way CRM sync — accounts, contacts, pipeline, notes" },
         { href:"/admin/cardchamp.html",     label:"CardChamp",             icon:"💳", desc:"Referral activity, conversions & commission" },
         { href:"/admin/audiences.html",     label:"Target Audiences",      icon:"🎯", desc:"Build campaign lists from dealers & contacts" },
@@ -80,12 +109,12 @@
         { href:"/admin/reps.html",               label:"Rep Performance & Goals", icon:"🏆", desc:"Scorecards, sales vs. target, YoY & leaderboard" },
         { href:"/admin/commission-report.html",  label:"Commission Report",       icon:"💵", status:"new", desc:"Total → rep share → President share, by rep & by month" },
         { href:"/admin/rep-usage.html",          label:"Rep Usage & Adoption",    icon:"🧑‍💻", status:"new", desc:"Who's signing in, how actively & whether they're using the tools" },
-        { href:"/admin/pipeline.html",           label:"Pipeline & Forecast",     icon:"🔮", desc:"Open deals & a 6-month revenue forecast" },
+        { href:"/admin/pipeline.html",           label:"Pipeline & Forecast",     icon:"🔮", xref:true, desc:"Open deals & a 6-month revenue forecast" },
         { href:"/admin/analytics.html",          label:"Analytics Deep Dive",     icon:"📈", desc:"Cadence, orders, master accounts & rep assignments" },
         { href:"/admin/command-center.html",     label:"Manufacturer Sales Performance",icon:"🏭", desc:"Revenue by line, rep, state & company" },
-        { href:"/admin/call-list.html",          label:"Dealer Activity & Cadence",icon:"🔁", desc:"Who's buying, who's lapsing, who's due to reorder" },
+        { href:"/admin/call-list.html",          label:"Dealer Activity & Cadence",icon:"🔁", xref:true, desc:"Who's buying, who's lapsing, who's due to reorder" },
         { href:"/admin/command-center.html",     label:"Opportunities & Account Trends", icon:"💡", desc:"Growth openings & at-risk (declining) accounts" },
-        { href:"/admin/traffic.html",            label:"Website Traffic",         icon:"🌐", desc:"Live visits, top pages & sources" },
+        { href:"/admin/traffic.html",            label:"Website Traffic",         icon:"🌐", xref:true, desc:"Live visits, top pages & sources" },
         { href:"/admin/import-commissions.html", label:"Commission Report Import", icon:"📥", desc:"Load manufacturer reports & reconcile sales" },
         { href:"/admin/sales-import.html",       label:"Sales Report Import",     icon:"📄", desc:"Load order/sales reports — products, qty, branches" },
         { href:"/admin/email-sync.html",         label:"Email Sync & Deliverability", icon:"📧", desc:"Outlook email matched to dealers — plus SPF/DKIM/DMARC monitoring" },
@@ -94,6 +123,58 @@
         { href:"",                               label:"Reports & Exports",       icon:"📤", status:"planned", desc:"Scheduled reports & data exports" }
     ]}
   ];
+
+  /* ── ORDER WITHIN A CATEGORY ─────────────────────────────────────────────
+     Main Category → Most Important → Most Frequently Used → Supporting → Advanced.
+     Declared here as one ordered list per category so the priority is readable and
+     editable in a single place, instead of being implied by the order of a 20-entry
+     array literal that nobody wants to reshuffle. Anything not named here keeps its
+     position and sorts after the ranked tools, so adding a tool never breaks the list —
+     it just lands at the end until someone ranks it.
+     Ordering's four groups already sequence the section; these rank within each group. */
+  var ORDER = {
+    ordering: [
+      "Product Catalog",
+      "Product Content Enrichment & Review", "Product Images",
+      "Order Review & Fulfillment", "Contract Pricing", "Manufacturer Lines & Freight",
+      "Dealer Portal Accounts", "Featured Products", "Portal Home Content", "Published Catalog"
+    ],
+    website: [
+      "Website Content", "Manufacturer Pages", "Landing Pages",
+      "Site Images & Media", "Links & Navigation", "Website Traffic"
+    ],
+    sales: [
+      // Daily: what a rep opens first thing.
+      "Today's Opportunities", "Who to Call", "Dealer 360 & CRM", "My Tasks & Follow-Up Engine",
+      // Frequent: the working set through the week.
+      "Dealer Health", "Dealer Manager", "Territory Map", "Scheduled Routes", "Pipeline",
+      // Supporting: campaigns and scheduling around the core work.
+      "Account Assignment", "Scheduling Console", "Target Audiences", "Campaign Studio",
+      "Product Interest", "Partnership Snapshots",
+      // Setup & specialized: touched rarely, mostly by an admin.
+      "Sales Reps & Staff", "Territory Lines", "Zoho Sync", "CardChamp", "AI Style Guide"
+    ],
+    analytics: [
+      // The numbers people actually open.
+      "Command Center 360", "Rep Performance & Goals", "Dealer Activity & Cadence",
+      // Regular reporting.
+      "Manufacturer Sales Performance", "Opportunities & Account Trends",
+      "Pipeline & Forecast", "Analytics Deep Dive", "Commission Report",
+      // Supporting signals.
+      "Rep Usage & Adoption", "Golden Activity", "Website Traffic", "Email Sync & Deliverability",
+      // Feeds the data in, and system switches — infrequent, admin-only.
+      "Sales Report Import", "Commission Report Import", "Activation & Go-Live", "Reports & Exports"
+    ]
+  };
+  /* Apply the declared order. Stable: unranked tools keep their relative order at the end. */
+  function rankTools(hub){
+    var order=ORDER[hub.id]; if(!order) return hub.tools;
+    var pos={}; order.forEach(function(l,i){ pos[l]=i; });
+    return hub.tools.map(function(t,i){ return {t:t,i:i,r:(pos[t.label]!=null?pos[t.label]:1e6+i)}; })
+      .sort(function(a,b){ return a.r-b.r || a.i-b.i; })
+      .map(function(x){ return x.t; });
+  }
+  HUBS.forEach(function(h){ h.tools = rankTools(h); });
 
   // Detail/child pages that belong to a hub but aren't listed tools.
   var DETAIL = { "/admin/dealer.html":"sales", "/admin/my-commissions.html":"analytics" };
@@ -166,15 +247,124 @@
   function liveTool(t){ return !!(t && t.href) && t.status !== "planned"; }
   // Resolve which hub a page belongs to. Honors an explicit window.ACHUB set by the landing page and
   // tolerates clean URLs (/admin/hub) so the second-tier tool nav loads on the FIRST click.
+  /* ── THE NAVIGATION RULE ─────────────────────────────────────────────────
+     A page belongs to exactly ONE category. Some pages are deliberately reachable
+     from a second category as a shortcut — Pipeline is sales work AND a forecast —
+     and those entries carry `xref:true`. An xref is a link, never an owner.
+
+     Without this, hubOf() returned whichever hub happened to be listed first in
+     HUBS, so opening Dealer Manager or Dealer Portal Accounts dropped you into
+     Online Ordering's sub-nav: /admin/dealers.html is claimed by Online Ordering
+     ("Contract Pricing", "Dealer Portal Accounts") and by Sales & Marketing
+     ("Dealer Manager"), and Online Ordering is declared first. The page you opened
+     was right; the category around it was not.
+
+     Resolution order — explicit owner, then a non-xref listing, then DETAIL. An
+     xref is only used as a last resort, so a shortcut can never capture a page. */
+  function ownerOf(np){
+    var i,j,t;
+    for(i=0;i<HUBS.length;i++){ for(j=0;j<HUBS[i].tools.length;j++){ t=HUBS[i].tools[j];
+      if(t.owns && samePage(t.href,np)) return HUBS[i]; } }
+    for(i=0;i<HUBS.length;i++){ for(j=0;j<HUBS[i].tools.length;j++){ t=HUBS[i].tools[j];
+      if(!t.xref && samePage(t.href,np)) return HUBS[i]; } }
+    for(var k in DETAIL){ if(samePage(k,np)) return hubById(DETAIL[k]); }
+    for(i=0;i<HUBS.length;i++){ for(j=0;j<HUBS[i].tools.length;j++){ t=HUBS[i].tools[j];
+      if(samePage(t.href,np)) return HUBS[i]; } }
+    return null;
+  }
   function hubOf(path){
     try{ if(window.ACHUB){ var hx=hubById(window.ACHUB); if(hx) return hx; } }catch(e){}
     var np=stripHtml(path);
     if(np==="/admin/hub"){ try{ return hubById(new URLSearchParams(location.search).get("cat")); }catch(e){ return null; } }
-    for(var i=0;i<HUBS.length;i++){ for(var j=0;j<HUBS[i].tools.length;j++){ if(samePage(HUBS[i].tools[j].href,np)) return HUBS[i]; } }
-    for(var k in DETAIL){ if(samePage(k,np)) return hubById(DETAIL[k]); }
-    return null;
+    return ownerOf(np);
   }
 
+  /* Self-check for the rule above: every page owned by exactly one category, every
+     cross-listing declared. Run acNavAudit() in the console after adding a tool —
+     it is the guardrail that keeps this from drifting back. */
+  function navAudit(){
+    var claims={}, problems=[];
+    HUBS.forEach(function(h){ h.tools.forEach(function(t){
+      if(!t.href || t.ext || t.status==="planned") return;
+      var p=stripHtml(t.href);
+      (claims[p]=claims[p]||[]).push({hub:h.id,label:t.label,xref:!!t.xref,owns:!!t.owns});
+    }); });
+    Object.keys(claims).forEach(function(p){
+      var c=claims[p], owners=c.filter(function(x){ return !x.xref; });
+      var hubs={}; owners.forEach(function(x){ hubs[x.hub]=1; });
+      if(Object.keys(hubs).length>1)
+        problems.push({page:p, issue:"claimed as owner by "+Object.keys(hubs).join(" + ")+" — mark the secondary one xref:true",
+          entries:c.map(function(x){ return x.hub+":"+x.label+(x.xref?" (xref)":""); })});
+      if(owners.length===0)
+        problems.push({page:p, issue:"only ever cross-listed — one category must own it", entries:c.map(function(x){ return x.hub+":"+x.label; })});
+    });
+    if(problems.length) console.warn("HCPS nav audit — "+problems.length+" issue(s)", problems);
+    else console.log("HCPS nav audit — every page has exactly one owning category.");
+    return problems;
+  }
+  try{ window.acNavAudit=navAudit; window.ACHUBS=HUBS; }catch(e){}
+
+  /* ── Favorites ───────────────────────────────────────────────────────────
+     A person pins the tools they actually use; they appear on their dashboard. Stored
+     against their own staff record server-side, so the same shortcuts follow them to
+     any machine — a list kept only in this browser would be a different dashboard on
+     their laptop and their phone. Cached in memory for the page's lifetime. */
+  var FAVS=null, FAVQ=null;
+  function favApi(body){
+    var t=(window.HCPS&&HCPS.token&&HCPS.token())||null;
+    return fetch("/.netlify/functions/staff-auth",{method:"POST",
+      headers:{"content-type":"application/json",authorization:"Bearer "+t},
+      body:JSON.stringify(body)}).then(function(r){ return r.json(); }).catch(function(){ return null; });
+  }
+  function loadFavs(){
+    if(FAVS) return Promise.resolve(FAVS);
+    if(FAVQ) return FAVQ;
+    FAVQ=favApi({action:"my_favorites"}).then(function(j){
+      FAVS=(j&&j.ok&&Array.isArray(j.favorites))?j.favorites:[]; FAVQ=null; return FAVS;
+    });
+    return FAVQ;
+  }
+  function isFav(href){ return !!(FAVS && FAVS.some(function(x){ return samePage(x,href); })); }
+  function toggleFav(href){
+    return loadFavs().then(function(list){
+      var next = isFav(href) ? list.filter(function(x){ return !samePage(x,href); }) : list.concat([href]);
+      return favApi({action:"save_favorites",favorites:next}).then(function(j){
+        FAVS=(j&&j.ok&&Array.isArray(j.favorites))?j.favorites:next;
+        try{ window.dispatchEvent(new CustomEvent("hcps-favs",{detail:FAVS})); }catch(e){}
+        return FAVS;
+      });
+    });
+  }
+  /* The star only appears on a page that IS a tool — favouriting a hub landing page or
+     the dashboard itself would put a shortcut to a list of shortcuts on the dashboard. */
+  function toolAt(np){
+    for(var i=0;i<HUBS.length;i++){ for(var j=0;j<HUBS[i].tools.length;j++){
+      var t=HUBS[i].tools[j];
+      if(t.href && !t.ext && t.status!=="planned" && samePage(t.href,np)) return t; } }
+    return null;
+  }
+  function wireFavButton(path){
+    var btn=document.getElementById("ac-fav"); if(!btn) return;
+    var np=stripHtml(path);
+    if(np==="/admin/" || np==="/admin/hub" || !toolAt(np)){ btn.style.display="none"; return; }
+    var here=(toolAt(np)||{}).href||path;
+    btn.style.display="";
+    var paint=function(){ var on=isFav(here);
+      btn.textContent=on?"★":"☆"; btn.classList.toggle("on",on);
+      btn.title=on?"Remove from your dashboard favorites":"Add this page to your dashboard favorites"; };
+    loadFavs().then(paint);
+    btn.onclick=function(){ btn.disabled=true; toggleFav(here).then(function(){ paint(); btn.disabled=false; }); };
+  }
+
+  function ensureFavStyles(){
+    if(document.getElementById("ac-fav-css")) return;
+    var st=document.createElement("style"); st.id="ac-fav-css";
+    st.textContent=".ac-favbtn{background:transparent;border:1px solid rgba(255,255,255,.25);color:#ffd479;border-radius:8px;"
+      +"width:30px;height:28px;font-size:15px;line-height:1;cursor:pointer;padding:0;margin-right:2px}"
+      +".ac-favbtn:hover{background:rgba(255,255,255,.10)}.ac-favbtn.on{color:#ffc233;border-color:rgba(255,194,51,.55)}"
+      +".ac-favbtn[disabled]{opacity:.5;cursor:default}";
+    (document.head||document.documentElement).appendChild(st);
+  }
   function ensureImpStyles(){
     if(document.getElementById("ac-imp-css")) return;
     var s=document.createElement("style"); s.id="ac-imp-css";
@@ -183,7 +373,7 @@
   }
   function render(){
     var host = document.getElementById("ac-head"); if(!host) return;
-    ensureImpStyles();
+    ensureImpStyles(); ensureFavStyles();
     var me = (window.HCPS && HCPS.profile && HCPS.profile()) || null;
     var path = curPath();
     var admin = isAdmin(me);
@@ -234,13 +424,15 @@
       + '<div class="ac-wrap ac-top">'
         + '<a class="ac-brand" href="'+(admin?'/admin/':'/admin/rep-home.html')+'"><span class="ac-mark">H</span>'
         + '<span class="ac-bt"><b>'+(admin?'HCPS Connect 360':'HCPS Sales')+'</b><span>'+(admin?'Operating System':'Rep Workspace')+'</span></span></a>'
-        + '<div class="ac-who">' + who + '<a id="ac-taskbadge" href="/admin/tasks.html" class="ac-badge" style="display:none" title="Your open tasks">0</a><button type="button" id="ac-lock">'+(imp?'Exit view-as':'Lock')+'</button></div>'
+        + '<div class="ac-who">' + who + '<button type="button" id="ac-fav" class="ac-favbtn" title="Add this page to your dashboard favorites" style="display:none">☆</button><a id="ac-taskbadge" href="/admin/tasks.html" class="ac-badge" style="display:none" title="Your open tasks">0</a><button type="button" id="ac-lock">'+(imp?'Exit view-as':'Lock')+'</button></div>'
       + '</div>'
       + '<nav class="ac-nav ac-wrap">' + tier1 + '</nav>'
       + tier2;
 
     var exitBtn = document.getElementById("ac-imp-exit");
     if(exitBtn) exitBtn.addEventListener("click", function(){ window.ACImpersonate.exit(); });
+
+    wireFavButton(path);                 // the ☆ that pins this tool to the user's dashboard
 
     var lb = document.getElementById("ac-lock");
     if(lb) lb.addEventListener("click", function(){
@@ -262,7 +454,9 @@
 
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", render); else render();
   window.addEventListener("hcps-token", render);   // refresh the name after sign-in
-  window.ACAdmin = { render: render, HUBS: HUBS, hubById: hubById, isAdmin: isAdmin, liveTool: liveTool };
+  window.ACAdmin = { render: render, HUBS: HUBS, hubById: hubById, isAdmin: isAdmin, liveTool: liveTool,
+    loadFavs: loadFavs, toggleFav: toggleFav, isFav: isFav, toolAt: toolAt, navAudit: navAudit,
+    favs: function(){ return FAVS||[]; } };
 
   // Usage capture (Phase 3): load the silent rep tracker once per page. Best-effort — a no-op if the
   // user isn't signed in or the capture endpoint/tables aren't set up yet.

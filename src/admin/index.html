@@ -48,6 +48,13 @@
   .callout .cta{color:#c2410c;font-weight:800;white-space:nowrap;}
 
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
+  .favrow{display:flex;flex-wrap:wrap;gap:9px;padding:4px 2px 2px}
+  .favchip{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line,#e5e9ee);
+    border-radius:11px;padding:9px 14px;text-decoration:none;color:inherit;font-size:13.5px;font-weight:700;
+    box-shadow:0 1px 2px rgba(16,38,63,.05)}
+  .favchip:hover{border-color:#b8791b;box-shadow:0 2px 8px rgba(184,121,27,.18)}
+  .favchip .fi{font-size:16px;line-height:1}
+  @media(max-width:640px){.favchip{flex:1 1 calc(50% - 9px);justify-content:flex-start}}
   @media(max-width:880px){.grid{grid-template-columns:1fr;}}
   .hub{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;scroll-margin-top:150px;}
   .hub .top{padding:18px 20px 14px;border-top:5px solid var(--accent);}
@@ -121,6 +128,7 @@
 
     <!-- Rendered from ACAdmin.HUBS (admin-chrome.js) — the SINGLE SOURCE OF TRUTH shared with the
          masthead sub-nav and the category landing pages. Add a tool there and it appears here too. -->
+    <div id="favwrap"></div>
     <div class="grid" id="grid"></div>
 
     <div class="note">
@@ -168,7 +176,34 @@ function toolRow(t){
     ? '<div class="tool planned">'+inner+'</div>'
     : '<a class="tool" href="'+esc(t.href)+'">'+inner+'</a>';
 }
+/* ── Favorites row ───────────────────────────────────────────────────────────
+   The tools this person pinned, straight across the top of their own dashboard.
+   Personal: two people signing into the same Connect 360 see different shortcuts.
+   Resolved against ACAdmin.HUBS so a favorite always shows the tool's real name and
+   icon, and a tool that is later renamed or retired doesn't leave a dead tile. */
+function buildFavs(){
+  const wrap=$("#favwrap"); if(!wrap||!window.ACAdmin) return;
+  ACAdmin.loadFavs().then(function(list){
+    const items=(list||[]).map(function(h){ const t=ACAdmin.toolAt(h); return t?{href:h,t:t}:null; }).filter(Boolean);
+    if(!items.length){
+      wrap.innerHTML='<section class="hub" style="--accent:#b8791b;margin-bottom:22px">'
+        +'<div class="top"><div class="hd"><div class="icon">★</div>'
+        +'<div><h2>Your favorites</h2><p class="purpose">No shortcuts yet. Open any tool and tap the ☆ beside your name — it appears here for you alone.</p></div></div></div></section>';
+      return;
+    }
+    wrap.innerHTML='<section class="hub" style="--accent:#b8791b;margin-bottom:22px">'
+      +'<div class="top"><div class="hd"><div class="icon">★</div>'
+      +'<div><h2>Your favorites</h2><p class="purpose">The tools you pinned — yours alone. Tap the ☆ on any tool to add or remove it.</p></div></div></div>'
+      +'<div class="favrow">'+items.map(function(x){
+          return '<a class="favchip" href="'+esc(x.href)+'"><span class="fi">'+esc(x.t.icon||"•")+'</span>'
+            +'<span class="fl">'+esc(x.t.label)+'</span></a>'; }).join('')
+      +'</div></section>';
+  });
+}
+try{ window.addEventListener("hcps-favs", buildFavs); }catch(e){}
+
 function buildGrid(){
+  buildFavs();
   const grid=$("#grid"); if(!grid) return;
   const HUBS=(window.ACAdmin&&ACAdmin.HUBS)||[];
   if(!HUBS.length){ return; }   // admin-chrome.js not ready yet; hcps-token event will re-run

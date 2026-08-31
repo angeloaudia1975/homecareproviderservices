@@ -161,8 +161,45 @@ exports.handler = async (event)=>{
       return json(200,{ok:true,profile:pubProfile(s)});
     }
 
+    /* Favorites belong to EVERY signed-in staff member, not just the President —
+       a rep personalising their own dashboard is the whole point. So this sits above
+       the management gate, and reads the caller's identity from their session. */
+    const meAny=await caller(event);
+    if(meAny && (b.action==="my_favorites" || b.action==="save_favorites")){
+      const me=meAny;
+      /* ── Personal favorites ──────────────────────────────────────────────────
+       A user's own pinned tools. Self-only by construction: the caller's identity comes
+       from their session, never from the request body, so nobody can read or rewrite
+       someone else's shortcuts by passing an email. */
+      if(b.action==="my_favorites"){
+      const s2=await getStaff(me.email);
+      const fav=(s2&&Array.isArray(s2.favorites))?s2.favorites:[];
+      return json(200,{ok:true,favorites:fav});
+    }
+      if(b.action==="save_favorites"){
+      const list=Array.isArray(b.favorites)?b.favorites:null;
+      if(!list) return json(400,{error:"favorites must be an array"});
+      /* Only in-app admin pages, de-duplicated, capped. A favorite becomes a link on a
+         dashboard, so it is never a place to accept an arbitrary URL — an off-site href
+         here would turn someone's own dashboard into a phishing surface. */
+      const clean=[]; const seen=new Set();
+      for(const raw of list){
+        const h=String(raw||"").trim();
+        if(!/^\/admin\/[A-Za-z0-9._~-]+\.html(#[A-Za-z0-9._~-]*)?$/.test(h)) continue;
+        if(h.indexOf("..")>=0) continue;
+        const k=h.toLowerCase(); if(seen.has(k)) continue;
+        seen.add(k); clean.push(h);
+        if(clean.length>=24) break;
+      }
+      await sbSend("PATCH",`staff_users?email=eq.${encodeURIComponent(String(me.email).toLowerCase())}`,
+        {favorites:clean},{Prefer:"return=minimal"});
+      return json(200,{ok:true,favorites:clean});
+    }
+
+    }
+
     // ---- President-only management ----
-    const me=await caller(event);
+    const me=meAny;
     if(!me) return json(401,{error:"not signed in"});
     if(me.role!=="president") return json(403,{error:"President only"});
 
