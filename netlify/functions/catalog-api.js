@@ -174,13 +174,15 @@ exports.handler = async (event)=>{
       if(!slug){
         const [mfrs,logos]=await Promise.all([
           fetchJson(`${ORDERING_BASE}/data/manufacturers.json`).catch(()=>[]),
-          sb("GET","manufacturer_meta?select=slug,logo_url,enriched_only,category_order").catch(()=>[]),
+          sb("GET","manufacturer_meta?select=slug,logo_url,enriched_only,category_order,category_map").catch(()=>[]),
         ]);
         const lm=Object.fromEntries((logos||[]).map(o=>[o.slug,o.logo_url]));
         const em=Object.fromEntries((logos||[]).map(o=>[o.slug,o.enriched_only===true]));
         const co=Object.fromEntries((logos||[]).map(o=>[o.slug,Array.isArray(o.category_order)?o.category_order:null]));
+        const cmp=Object.fromEntries((logos||[]).map(o=>[o.slug,(o.category_map&&typeof o.category_map==="object")?o.category_map:null]));
         return json(200,{manufacturers:(mfrs||[]).map(m=>({slug:m.slug,name:m.name,hasData:!!m.hasData,
-          logo_url:lm[m.slug]||"", enriched_only:!!em[m.slug], category_order:co[m.slug]||null}))});
+          logo_url:lm[m.slug]||"", enriched_only:!!em[m.slug], category_order:co[m.slug]||null,
+          category_map:cmp[m.slug]||null}))});
       }
       const [prods,custom,links]=await Promise.all([
         fetchJson(`${ORDERING_BASE}/data/${slug}.json`).catch(()=>[]),
@@ -893,6 +895,74 @@ exports.handler = async (event)=>{
          lines have no enrichment pages at all, and gating those would empty them. */
       /* The order categories appear in on Partner 360 — one list, used by both the filter and
          the page, so the two can never drift apart. */
+      /* subcategory → category for a line. Category is DERIVED from this, so filing a product
+         is a single subcategory edit in enrichment rather than a second edit here. */
+      if(b.action==="set_category_map"){
+        const slug=String(b.manufacturer||"").trim();
+        if(!slug) return json(400,{error:"manufacturer required"});
+        const src=(b.map&&typeof b.map==="object"&&!Array.isArray(b.map))?b.map:null;
+        if(!src) return json(400,{error:"map must be an object of subcategory -> category"});
+        const out={}; let n=0;
+        for(const k of Object.keys(src)){
+          const sub=String(k||"").trim().slice(0,120);
+          const cat=String(src[k]==null?"":src[k]).trim().slice(0,120);
+          if(!sub||!cat) continue;
+          out[sub]=cat; if(++n>=200) break;
+        }
+        await sb("POST","manufacturer_meta?on_conflict=slug",
+          {slug, category_map:Object.keys(out).length?out:null},
+          {Prefer:"resolution=merge-duplicates,return=minimal"});
+        return json(200,{ok:true,manufacturer:slug,pairs:Object.keys(out).length,map:out});
+      }
+
+      /* WHICH SKUs NO ENRICHMENT PAGE CLAIMS.
+         Identity is declared now — a page owns a SKU because its SKU list or variant group says
+         so, never because the two share a photograph. That makes an unclaimed SKU visible instead
+         of silently mis-filed, and this is the queue for it. */
+      if(b.action==="link_audit"){
+        const mfr=b.manufacturer; if(!mfr) return json(400,{error:"manufacturer required"});
+        const e=encodeURIComponent;
+        const [base,custom,ovRows,content]=await Promise.all([
+          fetchJson(`${ORDERING_BASE}/data/${e(mfr)}.json`).catch(()=>[]),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code,name,active`).catch(()=>[]),
+          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]),
+          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=page_key,name,status,skus,variant_group`).catch(()=>[]),
+        ]);
+        const ov={}; (ovRows||[]).forEach(o=>{ ov[String(o.code)]=o.patch||{}; });
+        const live=[];
+        const seen=new Set();
+        (base||[]).forEach(x=>{ const c=String(x.code); if((ov[c]||{}).active===false) return;
+          seen.add(c); live.push({code:c,name:(ov[c]||{}).name||x.name||"",group:(ov[c]||{}).group||x.group||""}); });
+        (custom||[]).forEach(x=>{ const c=String(x.code); if(seen.has(c)) return;
+          if(x.active===false||(ov[c]||{}).active===false) return;
+          live.push({code:c,name:(ov[c]||{}).name||x.name||"",group:(ov[c]||{}).group||""}); });
+
+        const LIVE=["published","active"];
+        const pubPages=(content||[]).filter(r=>LIVE.includes(r.status));
+        const bySku={}, byGroup={};
+        pubPages.forEach(r=>{
+          (Array.isArray(r.skus)?r.skus:[]).forEach(sk=>{
+            const c=String((sk&&(sk.sku||sk.code))||sk||"").trim().toUpperCase();
+            if(c && !bySku[c]) bySku[c]=r; });
+          String(r.variant_group||"").split("|").forEach(g=>{ g=g.trim(); if(g&&!byGroup[g]) byGroup[g]=r; });
+        });
+        const unlinked=[], linked=[];
+        live.forEach(p=>{
+          const hit=bySku[p.code.toUpperCase()] || (p.group?byGroup[p.group]:null);
+          if(hit) linked.push({code:p.code,page:hit.name||hit.page_key});
+          else unlinked.push({code:p.code,name:p.name,group:p.group});
+        });
+        // SKUs a page lists that no live catalog product matches
+        const liveSet=new Set(live.map(p=>p.code.toUpperCase()));
+        const dangling=[];
+        pubPages.forEach(r=>(Array.isArray(r.skus)?r.skus:[]).forEach(sk=>{
+          const c=String((sk&&(sk.sku||sk.code))||sk||"").trim();
+          if(c && !liveSet.has(c.toUpperCase())) dangling.push({code:c,page:r.name||r.page_key}); }));
+        return json(200,{ok:true, manufacturer:mfr,
+          live_skus:live.length, published_pages:pubPages.length,
+          linked:linked.length, unlinked, dangling});
+      }
+
       if(b.action==="set_category_order"){
         const slug=String(b.manufacturer||"").trim();
         if(!slug) return json(400,{error:"manufacturer required"});
