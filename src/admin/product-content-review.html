@@ -1780,10 +1780,15 @@ let _piGrid=null, _piMap={}, _piRows=[], _piFile='';
 function openPriceImport(){
   modalHTML('⬆ Import pricelist · '+esc(MFR), `<div class="tut">
     <p class="mut">Upload the manufacturer's price list — <b>.xlsx</b>, <b>.xls</b> or <b>.csv</b> — or paste rows below. You'll confirm which column is which before anything is written.</p>
-    <div class="dropzone" id="pi-drop" style="padding:18px;text-align:center">
+    <div class="dropzone" id="pi-drop" tabindex="0" style="padding:18px;text-align:center"
+         onclick="if(event.target===this)document.getElementById('pi-file').click()"
+         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();document.getElementById('pi-file').click()}"
+         ondragover="event.preventDefault();this.classList.add('drag')"
+         ondragleave="this.classList.remove('drag')"
+         ondrop="piDropFile(event,this)">
       <input type="file" id="pi-file" accept=".xlsx,.xls,.csv,.tsv,.txt" style="display:none" onchange="piPickFile(event)">
-      <button class="btn dark" onclick="document.getElementById('pi-file').click()">Choose a price list file</button>
-      <div class="mut" style="font-size:12px;margin-top:8px">Excel workbooks with a title row, merged cells or several sheets are fine — you'll pick the sheet.</div>
+      <button class="btn dark" onclick="event.stopPropagation();document.getElementById('pi-file').click()">Choose a price list file</button>
+      <div class="mut" style="font-size:12px;margin-top:8px">Or drop the file here. Excel workbooks with a title row, merged cells or several sheets are fine — you'll pick the sheet.</div>
     </div>
     <details style="margin-top:10px"><summary class="mut" style="cursor:pointer;font-size:12px">or paste rows instead</summary>
       <textarea class="ed" id="pi-txt" rows="6" placeholder="code&#9;name&#9;dealer&#9;msrp&#9;map"></textarea>
@@ -1791,6 +1796,16 @@ function openPriceImport(){
     </details>
     <div id="pi-prev" style="margin-top:12px"></div>
   </div>`);
+}
+/* The box carried the dropzone class — dashed border, pointer cursor, the whole visual
+   grammar of "drop a file here" — with no drop handler and no click target except the
+   small button inside it. Dropping did nothing and clicking the box did nothing, which
+   is indistinguishable from the page refusing the file. Both now do what they look like
+   they do. */
+function piDropFile(ev,el){
+  ev.preventDefault(); if(el) el.classList.remove('drag');
+  const f=((ev.dataTransfer&&ev.dataTransfer.files)||[])[0]; if(!f) return;
+  piPickFile({target:{files:[f]}});
 }
 function piPickFile(ev){
   const f=(ev.target.files||[])[0]; if(!f) return;
@@ -1997,19 +2012,37 @@ function openDealerPricePreview(){ const S=_priceState; if(!S){ return; }
    price list never leaves the admin's machine on its way to being parsed, and there is
    no server-side spreadsheet dependency to keep alive. Loaded only when a workbook is
    actually opened, so the page does not pay for it otherwise. */
-const XLSX_VER='0.20.1';
+/* SheetJS stopped publishing to npm and cdnjs after 0.18.5, so anything later here is a
+   404 — and a 404 on the reader looks nothing like a missing library from the outside:
+   the file dialog opens, the file is chosen, and a one-line message appears in a corner,
+   which reads as "it won't take my file". Keep this equal to the version import-commissions
+   and sales-import already load; all three pages should use one reader. */
+const XLSX_VER='0.18.5';
+const XLSX_SRC=[`https://cdnjs.cloudflare.com/ajax/libs/xlsx/${XLSX_VER}/xlsx.full.min.js`,
+                `https://cdn.jsdelivr.net/npm/xlsx@${XLSX_VER}/dist/xlsx.full.min.js`];
 let _xlsxReady=null;
 function loadXlsx(){
   if(_xlsxReady) return _xlsxReady;
-  _xlsxReady=new Promise((res,rej)=>{
+  const p=new Promise((res,rej)=>{
     if(window.XLSX) return res(window.XLSX);
-    const s=document.createElement('script');
-    s.src=`https://cdnjs.cloudflare.com/ajax/libs/xlsx/${XLSX_VER}/xlsx.full.min.js`;
-    s.onload=()=>window.XLSX?res(window.XLSX):rej(new Error('xlsx failed to initialise'));
-    s.onerror=()=>rej(new Error('Could not load the spreadsheet reader'));
-    document.head.appendChild(s);
-  });
-  return _xlsxReady;
+    // Two sources, tried in order, so one CDN having a bad day doesn't take the
+    // importer down with it.
+    let i=0;
+    const next=()=>{
+      if(i>=XLSX_SRC.length){ rej(new Error('Could not load the spreadsheet reader — check the connection, or use "or paste rows instead" below.')); return; }
+      const s=document.createElement('script');
+      s.src=XLSX_SRC[i++];
+      s.onload=()=>{ if(window.XLSX) res(window.XLSX); else next(); };
+      s.onerror=next;
+      document.head.appendChild(s);
+    };
+    next();
+  // A rejected promise would otherwise be cached for the life of the page, so a
+  // dropped connection would keep failing after it came back. Clear it and let the
+  // next attempt start over.
+  }).catch(e=>{ _xlsxReady=null; throw e; });
+  _xlsxReady=p;
+  return p;
 }
 /* Turn any sheet into a header row + data rows. Manufacturer sheets rarely start at A1 —
    there is usually a title, a logo row, maybe a blank line — so the header is found by
