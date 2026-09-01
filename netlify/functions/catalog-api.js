@@ -958,9 +958,24 @@ exports.handler = async (event)=>{
         pubPages.forEach(r=>(Array.isArray(r.skus)?r.skus:[]).forEach(sk=>{
           const c=String((sk&&(sk.sku||sk.code))||sk||"").trim();
           if(c && !liveSet.has(c.toUpperCase())) dangling.push({code:c,page:r.name||r.page_key}); }));
+        /* The page list rides along so the screen can suggest where each unlinked SKU probably
+           belongs. A suggestion is only ever a shortcut to the right page — attaching a SKU is
+           still a decision made in the enrichment tool, where that record lives. */
+        const norm=t=>String(t||"").toLowerCase().replace(/[^a-z0-9]+/g," ").replace(/\s+/g," ").trim();
+        const pageList=pubPages.map(r=>({page_key:r.page_key,name:r.name||r.page_key,n:(Array.isArray(r.skus)?r.skus:[]).length}));
+        const scored=(nm)=>{
+          const w=norm(nm).split(" ").filter(x=>x.length>2);
+          let best=null,bs=0;
+          pageList.forEach(pg=>{ const pw=new Set(norm(pg.name).split(" "));
+            let hit=0; w.forEach(x=>{ if(pw.has(x)) hit++; });
+            const sc=w.length?hit/w.length:0;
+            if(sc>bs){ bs=sc; best=pg; } });
+          return bs>=0.5?{page:best.name,page_key:best.page_key,score:Math.round(bs*100)}:null;
+        };
+        unlinked.forEach(u=>{ u.suggested=scored(u.name); });
         return json(200,{ok:true, manufacturer:mfr,
           live_skus:live.length, published_pages:pubPages.length,
-          linked:linked.length, unlinked, dangling});
+          linked:linked.length, unlinked, dangling, pages:pageList});
       }
 
       if(b.action==="set_category_order"){

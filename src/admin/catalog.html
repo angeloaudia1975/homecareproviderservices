@@ -122,12 +122,13 @@ async function boot(){
   }catch(e){if(String(e.message)!=="unauthorized")$("#wrap").innerHTML=`<div class="msg err">Couldn't load: ${esc(e.message)}</div>`;}
 }
 let DUPS=null, DUPBUSY=false, ENRICH=null, GUIDEOPEN=false, DETAILS=null, DETAILMASTER=null;
+let LINKAUDIT=null, LINKBUSY=false;
 /* The status vocabulary. Deletion is deliberately not in this list — it lives behind a
    check that the record has nothing attached to it at all. */
 const PA_STATE={ disabled:"Disabled", discontinued:"Discontinued", do_not_list:"Do Not List",
   not_offered:"Not offered by HCPS", archived:"Archived", possible_duplicate:"Possible duplicate", ignore:"Ignored" };
 async function loadMfr(){ DETAIL=await api("?manufacturer="+encodeURIComponent(SLUG),{method:"GET"});
-  DUPS=null; ENRICH=null; DETAILS=null; DETAILMASTER=null; render(); loadSideSignals(); }
+  DUPS=null; ENRICH=null; DETAILS=null; DETAILMASTER=null; LINKAUDIT=null; render(); loadSideSignals(); }
 
 /* Two signals the catalog can't see on its own: which SKUs the enrichment tool is still
    working on, and which products look like duplicates of each other. Both are fetched
@@ -537,6 +538,66 @@ function prodListHtml(){
 }
 // Live search: update PRODQ and swap only the list, leaving the focused input in place.
 function searchProducts(v){ PRODQ=v; PLIMIT=60; var el=document.getElementById('prodlistwrap'); if(el) el.innerHTML=prodListHtml(); }
+/* ── Link audit ───────────────────────────────────────────────────────────────
+   WHICH PRODUCTS ARE ACTUALLY CONNECTED TO AN ENRICHMENT RECORD.
+   A product reaches Partner 360 through a published enrichment page, and it does so because
+   that page NAMES its SKU. When nothing names it, an edit made in enrichment cannot reach it —
+   which is exactly how a subcategory change appeared to do nothing. This is read-only on
+   purpose: the fix belongs in Product Content Enrichment & Review, where the record lives, so
+   each row links straight to it rather than offering a second place to edit the same thing. */
+async function loadLinkAudit(){
+  if(LINKBUSY) return; LINKBUSY=true; LINKAUDIT="loading"; render();
+  try{
+    LINKAUDIT=await api("",{method:"POST",body:JSON.stringify({action:"link_audit",manufacturer:SLUG})});
+  }catch(e){ LINKAUDIT={error:String(e.message||e)}; }
+  LINKBUSY=false; render();
+}
+function enrichHref(find){
+  return "/admin/product-content-review.html?manufacturer="+encodeURIComponent(SLUG)
+       + (find?("&find="+encodeURIComponent(find)):"");
+}
+function linkAuditHtml(){
+  const L=LINKAUDIT;
+  if(!L) return `<div class="card"><h2>Link audit</h2>
+    <p class="hint">Every product a dealer sees comes from a published enrichment record that names its SKU.
+      This checks which of this line's SKUs are actually connected — and which enrichment records point at
+      SKUs that no longer exist.</p>
+    <button class="btn sm" onclick="loadLinkAudit()">Run link audit</button></div>`;
+  if(L==="loading") return `<div class="card"><h2>Link audit</h2><p class="hint">Checking every SKU against every published record…</p></div>`;
+  if(L.error) return `<div class="card"><h2>Link audit</h2><p class="hint" style="color:var(--red)">${esc(L.error)}</p>
+    <button class="btn sm" onclick="loadLinkAudit()">Try again</button></div>`;
+  const un=L.unlinked||[], dg=L.dangling||[];
+  const clean=!un.length && !dg.length;
+  return `<div class="card"><h2>Link audit${clean?" — all connected":""}</h2>
+    <p class="hint"><b>${L.linked}</b> of <b>${L.live_skus}</b> SKUs are connected to one of
+      <b>${L.published_pages}</b> published records.
+      ${clean?"Nothing is orphaned in either direction — an edit in enrichment reaches every product on this line."
+             :"The rows below are the products an enrichment edit cannot currently reach."}</p>
+    ${un.length?`<div class="dupg"><h4>${un.length} SKU${un.length===1?"":"s"} no record claims</h4>
+      <p class="dupwhy">These are in the catalog and priced, but no published enrichment record lists them, so
+        nothing controls their title, images or placement. Add the SKU to the record that owns the product —
+        the suggestion is a name match, not a decision.</p>
+      <table class="dupfacts" style="width:100%">
+        <tr><th style="width:120px">SKU</th><th>Product</th><th style="width:230px">Likely record</th><th style="width:96px"></th></tr>
+        ${un.slice(0,120).map(u=>`<tr>
+          <td><code>${esc(u.code)}</code></td>
+          <td>${esc(String(u.name||"").slice(0,54))}</td>
+          <td>${u.suggested?`${esc(u.suggested.page)} <span class="mut">${u.suggested.score}%</span>`:'<span class="mut">no close match</span>'}</td>
+          <td><a class="btn ghost sm" href="${esc(enrichHref((u.suggested&&u.suggested.page)||u.name||u.code))}" target="_blank" rel="noopener">Open ↗</a></td>
+        </tr>`).join("")}
+      </table>${un.length>120?`<p class="hint">…and ${un.length-120} more.</p>`:""}</div>`:""}
+    ${dg.length?`<div class="dupg"><h4>${dg.length} SKU${dg.length===1?"":"s"} a record names that do not exist</h4>
+      <p class="dupwhy">A published record lists these part numbers, but there is no live catalog product with
+        that code — so the record points at nothing. Either add the product, or correct the SKU on the record.</p>
+      <table class="dupfacts" style="width:100%">
+        <tr><th style="width:140px">SKU</th><th>Named by</th><th style="width:96px"></th></tr>
+        ${dg.slice(0,60).map(d=>`<tr><td><code>${esc(d.code)}</code></td><td>${esc(d.page)}</td>
+          <td><a class="btn ghost sm" href="${esc(enrichHref(d.page))}" target="_blank" rel="noopener">Open ↗</a></td></tr>`).join("")}
+      </table></div>`:""}
+    <div style="margin-top:10px"><button class="btn ghost sm" onclick="loadLinkAudit()">Re-run</button></div>
+  </div>`;
+}
+
 /* ── Duplicate Review ────────────────────────────────────────────────────────
    Nothing here acts on its own. The queue shows each suspected pair, why the system
    thinks they are the same product, and exactly what is connected to each side, so the
@@ -913,6 +974,7 @@ function render(){
 
     ${pform}
     ${guideHtml()}
+    ${linkAuditHtml()}
     ${dupPanelHtml()}
     <div class="card">
       <h2>Products</h2>

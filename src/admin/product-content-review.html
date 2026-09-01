@@ -310,6 +310,10 @@ textarea.ed{min-height:64px}
 /* ===================== Catalog Management Workspace ===================== */
 const API='/.netlify/functions/product-content';
 const MFR=new URLSearchParams(location.search).get('manufacturer')||'ovation-medical';
+/* ?find=… prefills the search. The Link audit in Product Catalog is read-only by design — the
+   fix for an unconnected SKU belongs to the record, and the record is edited here — so its rows
+   link straight to the product instead of offering a second place to change the same thing. */
+const FIND=new URLSearchParams(location.search).get('find')||'';
 const pages={};
 let filter='all', search='', ONLINE=true, selMode=false;
 function token(){ try{ return (window.HCPS&&HCPS.token&&HCPS.token())||''; }catch(e){ return ''; } }
@@ -451,6 +455,10 @@ async function boot(){
     if(!j.admin){ gate("Your account isn't an admin, so it can't edit product content."); return; }
     const pg={}; (j.rows||[]).forEach(row=>{ pg[row.page_key]=row; });
     Object.keys(pages).forEach(k=>delete pages[k]); Object.assign(pages,pg);
+    if(FIND){
+      search=String(FIND).toLowerCase().trim();
+      const box=document.getElementById('search'); if(box) box.value=FIND;
+    }
     render();
     renderMfrBar();   // manufacturer selector + status (non-blocking)
   }catch(e){ const el=document.getElementById('cards'); if(el) el.innerHTML='<div class="mut" style="padding:24px">Couldn\'t reach the server — reload to try again.</div>'; }
