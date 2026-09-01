@@ -76,9 +76,9 @@ async function connectionsFor(mfr, code){
 function duplicateGroups(base, custom, overrides){
   const rec=[];
   (base||[]).forEach(p=>rec.push({code:String(p.code), name:p.name||"", category:p.category||"",
-    base_price:p.base_price, msrp:p.msrp, image:p.image||"", kind:"catalog"}));
+    base_price:p.base_price, msrp:p.msrp, image:p.image||"", group:p.group||"", kind:"catalog"}));
   (custom||[]).forEach(p=>rec.push({code:String(p.code), name:p.name||"", category:p.category||"",
-    base_price:p.base_price, msrp:p.msrp, image:p.image||"", kind:"added", active:p.active}));
+    base_price:p.base_price, msrp:p.msrp, image:p.image||"", group:"", kind:"added", active:p.active}));
   const groups=[];
   const byCode={};
   rec.forEach(r=>{ const k=normCode(r.code); if(!k) return; (byCode[k]=byCode[k]||[]).push(r); });
@@ -100,15 +100,32 @@ function duplicateGroups(base, custom, overrides){
     groups.push({ key:"code:"+k, match:"sku", confidence:"high",
       same_code:sameCode, code:sameCode?members[0].code:null, reasons, members });
   });
-  // Same name, unrelated codes — a weaker signal, so it is offered for review only.
+  /* Same name, unrelated codes — a weaker signal, so it is offered for review only.
+
+     AND THE MOST IMPORTANT EXCLUSION IN THIS FILE. Some lines are one SKU per product
+     (a wheelchair). Others sell ONE product in many sizes and sides, each with its own
+     SKU and — necessarily — THE SAME NAME. On those lines every size of every product
+     matches this rule, and merging any of them would collapse a six-size product into
+     one orderable item and take the rest off the portal.
+
+     The catalog already records which SKUs are sizes of one product: the `group` field,
+     which is exactly what the portal uses to build a "6 sizes / options" card. So a pair
+     that shares a group is never a duplicate — it is the product working as intended —
+     and is not offered for merging at all. */
   const byName={};
   rec.forEach(r=>{ const n=normName(r.name); if(!n||n.length<6) return; (byName[n]=byName[n]||[]).push(r); });
   Object.keys(byName).forEach(n=>{
     const members=byName[n];
     if(members.length<2) return;
     if(new Set(members.map(m=>normCode(m.code))).size<2) return;   // already caught by code
+    const groupsSeen=new Set(members.map(m=>String(m.group||"").trim()).filter(Boolean));
+    if(groupsSeen.size===1 && members.every(m=>String(m.group||"").trim()))
+      return;                       // every one of them is a size of the same product
     groups.push({ key:"name:"+n, match:"name", confidence:"review",
-      reasons:["identical product name on different SKUs — may be a real variant"], members });
+      variant_group_split: groupsSeen.size>1,
+      reasons:[groupsSeen.size>1
+        ? `identical product name, but these sit in ${groupsSeen.size} different catalog groups — check the grouping before merging anything`
+        : "identical product name on different SKUs — may be a real variant"], members });
   });
   const ov=overrides||{};
   groups.forEach(g=>g.members.forEach(m=>{
@@ -317,6 +334,11 @@ exports.handler = async (event)=>{
         const p=b.patch||{}; const patch={};
         if(p.name!=null) patch.name=String(p.name);
         if(p.category!=null) patch.category=String(p.category);
+        /* The grouping key. This is what makes several SKUs render as ONE product card with
+           a size picker instead of one card per size, and until now it existed only in the
+           deployed catalog file — so a wrong group could not be fixed without a redeploy.
+           Storing it as an override makes grouping correctable from the admin, live. */
+        if(p.group!=null) patch.group=String(p.group).slice(0,200);
         if(p.description!=null) patch.description=String(p.description);
         if(p.price_note!=null) patch.price_note=String(p.price_note);
         if("base_price" in p) patch.base_price=num(p.base_price);
@@ -576,6 +598,7 @@ exports.handler = async (event)=>{
             enriched_page_title: enc ? enc.page_title : null,
             manufacturer: mfr,
             family: first(enc&&enc.family, bp&&bp.group) || "",
+            group: first(ov.group, bp&&bp.group) || "",
             category: first(ov.category, enc&&enc.category, cp&&cp.category, bp&&bp.category) || "",
             subcategory: (enc&&enc.subcategory) || "",
             source: cp ? (enc ? "added by enrichment" : "added manually") : (bp ? "standard catalog product" : "override only"),
