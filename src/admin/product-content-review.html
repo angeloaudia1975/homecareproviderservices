@@ -1263,13 +1263,27 @@ function buildPriceState(cat){
   // Base codes that anchor a matched variant (e.g. 10102 for 10102RED/GREY) are pricing anchors,
   // not truly "unassigned" — keep them out of the orphan queue.
   const anchorCodes=new Set(mismatch.map(m=>m.baseCode));
+  /* The same idea one step further on. mismatch covers a colour SKU the catalog has never
+     heard of; this covers the ordinary case where BOTH exist — the manufacturer's bare
+     part number carries the price, the colour SKUs are what dealers order, and the bare
+     code has no live SKU of its own. That is a pricing anchor, not an orphan. Calling it
+     an error asked for twenty decisions that all had the same answer: leave it alone. */
+  const liveCodes=[...assigned];
+  const anchors=[];
+  allCodes.forEach(code=>{ if(assigned.has(code)||anchorCodes.has(code)) return;
+    const kids=piColorKids(code,liveCodes); if(!kids.length) return;
+    const r=recOf(code); if(!(r.base_price!=null&&r.base_price>0)) return;
+    anchors.push(Object.assign({},r,{kids,kidPrices:[...new Set(kids.map(k=>{
+      const kr=allCodes.has(k)?recOf(k):null; return kr?kr.base_price:null; }))]}));
+  });
+  const anchorSet=new Set(anchors.map(a=>a.code));
   /* A dispositioned code is a DECISION, not an outstanding problem. It leaves the
      unassigned queue and stops counting against the score — which is the whole point:
      a manufacturer sheet always contains codes HCPS will never list, and without this
      Price Check could never honestly read 100%. They are still listed, under their
      own heading, so the decision stays visible and can be undone. */
   const orphans=[], resolved=[];
-  allCodes.forEach(code=>{ if(assigned.has(code)||anchorCodes.has(code)) return; const r=recOf(code);
+  allCodes.forEach(code=>{ if(assigned.has(code)||anchorCodes.has(code)||anchorSet.has(code)) return; const r=recOf(code);
     if(!(r.base_price!=null&&r.base_price>0)) return;
     (r.disposition ? resolved : orphans).push(r); });
   decidedLive.forEach(r=>{ if(!resolved.some(x=>x.code===r.code)) resolved.push(r); });
@@ -1287,7 +1301,7 @@ function buildPriceState(cat){
     if(r&&r.disposition) return;               // deliberately not listed — not a gap
     denom++; if(r&&r.base_price>0) ok++; });
   return {recOf, allCodes, content, assigned, missingPrice, mismatch, notInCat, needsMsrp,
-    discWithPrice, outdated, orphans, resolved, conflicts, dupes,
+    discWithPrice, outdated, orphans, resolved, conflicts, dupes, anchors, liveCodes,
     score:(denom?Math.round(ok/denom*100):0), denom, ok};
 }
 
@@ -1582,6 +1596,19 @@ function renderPriceAudit(){
         </td></tr>`).join(''))}
       </div>`:''}
 
+    ${(S.anchors&&S.anchors.length)?`<div class="pa-sec"><h3>Pricing anchors — base part numbers your colour SKUs inherit from (${S.anchors.length})</h3>
+      <p class="mut">The manufacturer prices the bare part number; dealers order the colour SKU. These carry no live SKU of their own <b>on purpose</b>, so they are not outstanding and need no decision.
+        An imported price list writes the base code and fans the same price and quantity breaks out to every colour variant. A variant priced differently from its anchor is flagged below — that is the case worth looking at.</p>
+      ${tbl(['Base code','Name','Anchor price','Colour SKUs','Their price'], S.anchors.slice(0,200).map(r=>{
+        const vals=r.kidPrices.filter(v=>v!=null);
+        const off=(!vals.length)||vals.length>1||(r.base_price!=null&&Math.abs(Number(vals[0])-Number(r.base_price))>=0.005);
+        return `<tr>
+        <td><b>${esc(r.code)}</b></td><td>${esc(r.name||'—')}</td><td>${pmoney(r.base_price)}</td>
+        <td class="mut" style="font-size:11px">${esc(r.kids.join(', '))}</td>
+        <td${off?' style="color:#b42323"':''}>${vals.length?vals.map(v=>pmoney(v)).join(' / '):'none priced — they inherit'}</td>
+      </tr>`; }).join(''))}
+      </div>`:''}
+
     ${(S.resolved&&S.resolved.length)?`<div class="pa-sec"><h3>Resolved — deliberately not listed (${S.resolved.length})</h3>
       <p class="mut">Decisions already recorded. These no longer count against the pricing score. Undo one to put it back in the queue.</p>
       ${tbl(['Code','Name','Decision','Recorded','Undo'], S.resolved.slice(0,200).map(r=>`<tr>
@@ -1742,6 +1769,26 @@ const PI_FIELDS=[
   {key:'case_qty', label:'Case quantity',hints:['case','case qty','case quantity','qty per case','pack','pack qty','uom qty','units per case']},
   {key:'effective_date', label:'Effective date', hints:['effective','effective date','eff date','price date','date','valid from']},
 ];
+/* ── Colour variants ────────────────────────────────────────────────────────────
+   Ovation — and most manufacturers — price a bare part number (10002). HCPS sells the
+   colour SKU (10002BLUE). Partner 360 already knows this: a colour SKU with no price of
+   its own falls back to its base part number. Two places here have to know it too, or the
+   bare code looks like an error and the price list never reaches the SKUs dealers buy.
+
+   The tail must be the WHOLE remainder and a colour word, so 10002 claims 10002BLUE and
+   never 100021. */
+const PI_COLOR_TAIL=/^[-_ ]?(BLUE|RED|GREY|GRAY|BLACK|WHITE|PINK|TAN|NAVY|GREEN|PURPLE|ORANGE|BEIGE|BK|WH|PK|DB|BL|GY|RD|NV|TN)$/i;
+function piIsColorOf(base,code){
+  const b=String(base||'').toUpperCase(), c=String(code||'').toUpperCase();
+  if(!b||!c||c===b||!c.startsWith(b)) return false;
+  return PI_COLOR_TAIL.test(c.slice(b.length));
+}
+// the live SKUs that inherit from this base part number
+function piColorKids(code, liveCodes){
+  const out=[]; (liveCodes||[]).forEach(c=>{ if(piIsColorOf(code,c)&&out.indexOf(c)<0) out.push(c); });
+  return out;
+}
+
 /* ── Quantity breaks ────────────────────────────────────────────────────────────
    A manufacturer's price list holds the ladder as COLUMNS — "2-5", "6-10", "11-20",
    "21+" — one price per break, not one row per break. So a tier slot is a pair: which
@@ -1904,6 +1951,29 @@ function piTierMapHtml(opts,sample){
     <div class="mut" style="font-size:11px;margin-top:4px">A break needs both a column and a quantity. Dealer cost is the qty-1 price and is not a break.</div>
   </details>`;
 }
+/* A price row for a bare part number is also a price row for every colour SKU that
+   inherits from it. Without this the 2026 list would update twenty codes nobody can
+   order and leave the eighty SKUs dealers actually buy on last year's price — an import
+   that reports success and changes nothing a dealer would ever see. The base row is kept
+   as well: it stays the anchor a new colour falls back to before it is priced. */
+function piFanOutColors(rows){
+  const S=_priceState; if(!S||!S.liveCodes) return rows;
+  const out=[], seen=new Set(rows.map(r=>String(r.code||'').toUpperCase()));
+  rows.forEach(r=>{
+    out.push(r);
+    const code=String(r.code||'').trim(); if(!code) return;
+    if(S.assigned&&S.assigned.has(code)) return;      // the file's code IS a live SKU
+    piColorKids(code,S.liveCodes).forEach(k=>{
+      // If the file priced the colour SKU itself, that row wins — never overwrite an
+      // explicit price with an inherited one.
+      if(seen.has(k.toUpperCase())) return;
+      seen.add(k.toUpperCase());
+      const kn=(S.allCodes&&S.allCodes.has(k))?(S.recOf(k).name||''):'';
+      out.push(Object.assign({},r,{code:k,name:kn||r.name,_fanFrom:code}));
+    });
+  });
+  return out;
+}
 function piRemap(){
   PI_FIELDS.forEach(f=>{ const el=document.getElementById('pim-'+f.key); if(el){ const v=Number(el.value); _piMap[f.key]=v>=0?v:null; } });
   PI_TIERS.forEach(t=>{ const c=document.getElementById('pit-'+t.key), q=document.getElementById('pitq-'+t.key);
@@ -1940,6 +2010,7 @@ function piRemap(){
     seen[code]=row;
     _piRows.push(row);
   });
+  _piRows=piFanOutColors(_piRows);
   const S=_priceState;
   const known=c=>S?S.allCodes.has(String(c)):false;
   const changed=r=>{ if(!S||!known(r.code)) return null; const cur=S.recOf(r.code);
@@ -1948,6 +2019,8 @@ function piRemap(){
   const nNew=_piRows.filter(r=>!known(r.code)).length;
   const nChg=_piRows.filter(r=>changed(r)).length;
   const nTier=_piRows.filter(r=>r.tiers&&r.tiers.length).length;
+  const fanned=_piRows.filter(r=>r._fanFrom);
+  const nFanBase=new Set(fanned.map(r=>r._fanFrom)).size;
   // Rows the file prices but leaves without breaks, where we hold breaks today. Their
   // ladder is kept, not cleared — this line says so out loud rather than leaving it
   // to be discovered from a dealer's invoice.
@@ -1955,10 +2028,11 @@ function piRemap(){
   out.innerHTML=`<div class="rule"><b>${_piRows.length}</b> priced row(s) · <b>${_piRows.length-nNew}</b> match existing codes · <b>${nNew}</b> new
       ${nChg?` · <b style="color:#b8791b">${nChg}</b> price change(s)`:''}${nTier?` · <b>${nTier}</b> with quantity breaks`:''}${dupInFile.length?` · <b style="color:var(--bad)">${dupInFile.length}</b> duplicate code(s) in the file`:''}</div>
     ${dupInFile.length?`<div class="hint" style="border-color:#e6b800;background:#fffdf3">The same code appears more than once in this file: <b>${dupInFile.slice(0,8).map(d=>esc(d.code)).join(', ')}</b>${dupInFile.length>8?' …':''}. The last row wins — check the file if that isn't what you intend.</div>`:''}
+    ${fanned.length?`<div class="hint" style="border-color:#9ec5a8;background:#f4faf5"><b>${fanned.length}</b> colour SKU(s) will take the price of their base part number — ${nFanBase} base code(s) in this file are not ordered directly, their colour variants are. The base codes are still written, so they stay the fallback for a colour added later.</div>`:''}
     ${nKeptTier?`<div class="hint">${nKeptTier} row(s) have no break prices in this file but have breaks today — those ladders are <b>kept as they are</b>. Clear them per product in the Product Catalog if the manufacturer really has dropped the breaks.</div>`:''}
     <div class="tabscroll" style="max-height:260px;overflow:auto;margin-top:8px"><table style="width:100%;font-size:12px"><thead><tr><th>Code</th><th>Name</th><th>Dealer</th><th>MAP</th><th>MSRP</th>${tierSlots.length?'<th>Quantity breaks</th>':''}<th>Change</th></tr></thead>
     <tbody>${_piRows.slice(0,300).map(r=>{ const ch=changed(r);
-      return `<tr><td><b>${esc(r.code)}</b></td><td>${esc(r.name||'—')}</td><td>${pmoney(r.base_price)}</td><td>${pmoney(r.map)}</td><td>${pmoney(r.msrp)}</td>
+      return `<tr><td><b>${esc(r.code)}</b>${r._fanFrom?`<div class="mut" style="font-size:10px">from ${esc(r._fanFrom)}</div>`:''}</td><td>${esc(r.name||'—')}</td><td>${pmoney(r.base_price)}</td><td>${pmoney(r.map)}</td><td>${pmoney(r.msrp)}</td>
       ${tierSlots.length?`<td class="mut" style="font-size:11px">${esc(piTierText(r.tiers))}</td>`:''}
       <td class="mut">${ch?`<span style="color:#b8791b">${pmoney(ch.from)} → <b>${pmoney(ch.to)}</b></span>`:(known(r.code)?'no change':'new')}</td></tr>`; }).join('')}</tbody></table></div>
     <div style="margin-top:10px"><button class="btn dark" data-act="price-import-apply">Apply ${_piRows.length} price(s)</button>
