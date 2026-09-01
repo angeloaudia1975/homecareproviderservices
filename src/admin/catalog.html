@@ -545,6 +545,86 @@ function searchProducts(v){ PRODQ=v; PLIMIT=60; var el=document.getElementById('
    which is exactly how a subcategory change appeared to do nothing. This is read-only on
    purpose: the fix belongs in Product Content Enrichment & Review, where the record lives, so
    each row links straight to it rather than offering a second place to edit the same thing. */
+/* RESOLVING A ROW. Two different verbs, because they are two different decisions.
+   Retire stops a SKU being offered and keeps everything about it — that is the right answer for
+   almost every row here, since a SKU no record claims is usually one that should not be sold
+   rather than one that should be erased. Delete only appears where the audit has already proved
+   the record is holding nothing: no orders, no images, no links, no Featured slot, and it is an
+   added product rather than one the deployed catalog file would rebuild on the next release. */
+/* ONE button, three honest outcomes — because a "delete" that quietly did something else would
+   be worse than no button. A SKU from the deployed catalog file CANNOT be deleted: the next
+   release rebuilds it, so removing it from the line is the only thing that actually holds. An
+   added record with nothing attached is deleted outright. An added record with orders, images,
+   links or a Featured slot shows what breaks and lets the decision be made with that in view. */
+async function removeSku(code){
+  const u=((LINKAUDIT&&LINKAUDIT.unlinked)||[]).find(x=>x.code===code)||{};
+  const held=[];
+  if(u.orders) held.push(u.orders+" order line(s)");
+  if(u.media) held.push(u.media+" image/document(s)");
+  if(u.links) held.push("a More Information link");
+  if(u.featured) held.push("a Featured placement");
+
+  if(!u.added){
+    return retireSku(code,
+      "“"+code+"” comes from the manufacturer catalog file, so it cannot be deleted — the next "
+      +"catalog release would simply recreate it.\n\nRemoving it from the line is the change that "
+      +"actually holds: dealers stop seeing it, and it can be restored at any time.");
+  }
+  if(u.safe_delete) return deleteSku(code);
+
+  const go=confirm("“"+code+"” still has "+held.join(", ")+".\n\n"
+    +"OK  — DELETE it permanently and drop "+held.join(", ")+". This cannot be undone.\n"
+    +"Cancel — go back (use Remove again and choose nothing, or Open to attach it to a record).\n\n"
+    +"If you are unsure, cancel: retiring it hides it from dealers and keeps all of the above.");
+  if(!go){
+    if(confirm("Retire “"+code+"” instead?\n\nDealers stop seeing it and everything attached is kept.")) return retireSku(code,null,true);
+    return;
+  }
+  try{
+    const r=await apiRaw("",{method:"POST",body:JSON.stringify({action:"delete_product",manufacturer:SLUG,code,force:true})});
+    if(!r.ok){ toast("Couldn't delete "+code,true); return; }
+    toast(code+" deleted permanently");
+    await loadMfr(); await loadLinkAudit();
+  }catch(e){ toast("Couldn't delete "+code,true); }
+}
+
+async function retireSku(code,message,skipConfirm){
+  const u=((LINKAUDIT&&LINKAUDIT.unlinked)||[]).find(x=>x.code===code)||{};
+  const held=[];
+  if(u.orders) held.push(u.orders+" order line(s)");
+  if(u.media) held.push(u.media+" image/document(s)");
+  if(u.links) held.push("a More Information link");
+  if(u.featured) held.push("a Featured placement");
+  if(!skipConfirm && !confirm(message || ("Remove "+code+" from this line?\n\n"
+    +"• Dealers stop seeing it on Partner 360\n"
+    +"• Its price, images, links"+(u.orders?", and its "+u.orders+" order line(s)":"")+" stay exactly as they are\n"
+    +"• It stays in the Product Catalog and can be restored at any time\n"
+    +(held.length?"\nThis record is currently holding: "+held.join(", ")+"\n":"")
+    +"\nIf this product should be sold, attach its SKU to an enrichment record instead — that is what Open does."))) return;
+  try{
+    await api("",{method:"POST",body:JSON.stringify({action:"retire_sku",manufacturer:SLUG,code,reviewer:"president"})});
+    toast(code+" retired — restore it from the Products list any time");
+    await loadMfr(); await loadLinkAudit();
+  }catch(e){ toast("Couldn't retire "+code,true); }
+}
+async function deleteSku(code){
+  const u=((LINKAUDIT&&LINKAUDIT.unlinked)||[]).find(x=>x.code===code)||{};
+  if(!u.safe_delete){ toast("That record still has something attached — retire it instead",true); return; }
+  if(!confirm("Delete "+code+" permanently?\n\n"
+    +"The audit confirms this record has no orders, no images, no links and no Featured placement,\n"
+    +"and it was added here rather than coming from the manufacturer catalog file.\n\n"
+    +"This one cannot be undone. Retire is the reversible option.")) return;
+  try{
+    const r=await apiRaw("",{method:"POST",body:JSON.stringify({action:"delete_product",manufacturer:SLUG,code})});
+    if(r.status===409 && r.body && r.body.error==="in_use"){
+      toast((r.body.message||"That SKU is still in use"),true); await loadLinkAudit(); return;
+    }
+    if(!r.ok){ toast("Couldn't delete "+code,true); return; }
+    toast(code+" deleted");
+    await loadMfr(); await loadLinkAudit();
+  }catch(e){ toast("Couldn't delete "+code,true); }
+}
+
 async function loadLinkAudit(){
   if(LINKBUSY) return; LINKBUSY=true; LINKAUDIT="loading"; render();
   try{
@@ -578,13 +658,28 @@ function linkAuditHtml(){
         nothing controls their title, images or placement. Add the SKU to the record that owns the product —
         the suggestion is a name match, not a decision.</p>
       <table class="dupfacts" style="width:100%">
-        <tr><th style="width:120px">SKU</th><th>Product</th><th style="width:230px">Likely record</th><th style="width:96px"></th></tr>
-        ${un.slice(0,120).map(u=>`<tr>
+        <tr><th style="width:112px">SKU</th><th>Product</th><th style="width:150px">Holding</th>
+            <th style="width:190px">Likely record</th><th style="width:172px"></th></tr>
+        ${un.slice(0,120).map(u=>{
+          const held=[];
+          if(u.orders) held.push(`<b>${u.orders}</b> order${u.orders===1?"":"s"}`);
+          if(u.media) held.push(`${u.media} image${u.media===1?"":"s"}`);
+          if(u.links) held.push("a link");
+          if(u.featured) held.push("Featured");
+          if(u.price!=null) held.push("a price");
+          return `<tr>
           <td><code>${esc(u.code)}</code></td>
-          <td>${esc(String(u.name||"").slice(0,54))}</td>
+          <td>${esc(String(u.name||"").slice(0,46))}</td>
+          <td>${held.length?held.join(" · "):'<span class="mut">nothing</span>'}</td>
           <td>${u.suggested?`${esc(u.suggested.page)} <span class="mut">${u.suggested.score}%</span>`:'<span class="mut">no close match</span>'}</td>
-          <td><a class="btn ghost sm" href="${esc(enrichHref((u.suggested&&u.suggested.page)||u.name||u.code))}" target="_blank" rel="noopener">Open ↗</a></td>
-        </tr>`).join("")}
+          <td style="white-space:nowrap">
+            <a class="btn ghost sm" href="${esc(enrichHref((u.suggested&&u.suggested.page)||u.name||u.code))}" target="_blank" rel="noopener">Open ↗</a>
+            <button class="btn ghost sm" style="color:var(--red);border-color:#f0c8c8"
+              onclick="removeSku('${esc(u.code)}')"
+              title="${u.safe_delete?'Nothing points at this record — it will be deleted outright'
+                     :(u.added?'This record has things attached — you will be shown what breaks before anything happens'
+                             :'This SKU comes from the manufacturer catalog file, so it is removed from the line rather than deleted')}">Remove</button>
+          </td></tr>`;}).join("")}
       </table>${un.length>120?`<p class="hint">…and ${un.length-120} more.</p>`:""}</div>`:""}
     ${dg.length?`<div class="dupg"><h4>${dg.length} SKU${dg.length===1?"":"s"} a record names that do not exist</h4>
       <p class="dupwhy">A published record lists these part numbers, but there is no live catalog product with
@@ -594,7 +689,13 @@ function linkAuditHtml(){
         ${dg.slice(0,60).map(d=>`<tr><td><code>${esc(d.code)}</code></td><td>${esc(d.page)}</td>
           <td><a class="btn ghost sm" href="${esc(enrichHref(d.page))}" target="_blank" rel="noopener">Open ↗</a></td></tr>`).join("")}
       </table></div>`:""}
-    <div style="margin-top:10px"><button class="btn ghost sm" onclick="loadLinkAudit()">Re-run</button></div>
+    <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn ghost sm" onclick="loadLinkAudit()">Re-run</button>
+      <span class="hint" style="margin:0"><b>Open</b> attaches the SKU to a record in enrichment.
+        <b>Remove</b> resolves it the strongest way that record allows — deleted outright when nothing
+        points at it, and taken off the line when it comes from the manufacturer catalog file, which
+        cannot be deleted because the next release would rebuild it.</span>
+    </div>
   </div>`;
 }
 

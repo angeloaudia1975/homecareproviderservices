@@ -919,6 +919,46 @@ exports.handler = async (event)=>{
          Identity is declared now — a page owns a SKU because its SKU list or variant group says
          so, never because the two share a photograph. That makes an unclaimed SKU visible instead
          of silently mis-filed, and this is the queue for it. */
+      /* RETIRE A SKU FROM THE LINE. The reversible half of resolving a link-audit row: the
+         product stops being offered and is stamped with why, while its price, images, links and
+         order history stay exactly where they are. This is the right move for almost everything
+         in that queue — a SKU nobody claims is usually a SKU that should not be sold, not one
+         that should be erased. delete_product remains for the genuinely empty records. */
+      if(b.action==="retire_sku"){
+        const mfr=b.manufacturer, code=String(b.code||"").trim();
+        if(!mfr||!code) return json(400,{error:"manufacturer and code are required"});
+        const e=encodeURIComponent, now=new Date().toISOString();
+        const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`).catch(()=>[]);
+        const patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{});
+        patch.active=false;
+        patch.disposition=["do_not_list","discontinued","not_offered","archived"].includes(String(b.reason||""))
+          ? String(b.reason) : "not_offered";
+        patch.disposition_note=b.note?String(b.note).slice(0,300):"Retired from the link audit — no enrichment record claims this SKU.";
+        patch.disposition_at=now;
+        patch.disposition_by=b.reviewer?String(b.reviewer).slice(0,80):null;
+        await sb("POST","product_overrides?on_conflict=manufacturer,code",
+          {manufacturer:mfr,code,patch,updated_at:now},{Prefer:"resolution=merge-duplicates,return=minimal"});
+        await sb("PATCH",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}`,
+          {active:false,updated_at:now},{Prefer:"return=minimal"}).catch(()=>{});
+        return json(200,{ok:true,code,disposition:patch.disposition});
+      }
+
+      /* Undo the above. */
+      if(b.action==="restore_sku"){
+        const mfr=b.manufacturer, code=String(b.code||"").trim();
+        if(!mfr||!code) return json(400,{error:"manufacturer and code are required"});
+        const e=encodeURIComponent, now=new Date().toISOString();
+        const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`).catch(()=>[]);
+        const patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{});
+        patch.active=true; delete patch.disposition; delete patch.disposition_note;
+        delete patch.disposition_at; delete patch.disposition_by;
+        await sb("POST","product_overrides?on_conflict=manufacturer,code",
+          {manufacturer:mfr,code,patch,updated_at:now},{Prefer:"resolution=merge-duplicates,return=minimal"});
+        await sb("PATCH",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}`,
+          {active:true,updated_at:now},{Prefer:"return=minimal"}).catch(()=>{});
+        return json(200,{ok:true,code});
+      }
+
       if(b.action==="link_audit"){
         const mfr=b.manufacturer; if(!mfr) return json(400,{error:"manufacturer required"});
         const e=encodeURIComponent;
@@ -946,11 +986,33 @@ exports.handler = async (event)=>{
             if(c && !bySku[c]) bySku[c]=r; });
           String(r.variant_group||"").split("|").forEach(g=>{ g=g.trim(); if(g&&!byGroup[g]) byGroup[g]=r; });
         });
+        const e2=encodeURIComponent;
+        const [lnkRows,medRows,featRows,ordRows]=await Promise.all([
+          sb("GET",`product_links?manufacturer=eq.${e2(mfr)}&select=code`).catch(()=>[]),
+          sb("GET",`product_media?manufacturer=eq.${e2(mfr)}&select=code`).catch(()=>[]),
+          sb("GET",`featured_products?manufacturer=eq.${e2(mfr)}&select=code,active`).catch(()=>[]),
+          sb("GET",`order_items?select=code&limit=5000`).catch(()=>[]),
+        ]);
+        const cnt=(rows,f)=>{ const m={}; (rows||[]).forEach(r=>{ if(f&&!f(r)) return;
+          const c=String(r.code||""); if(c) m[c]=(m[c]||0)+1; }); return m; };
+        const nLink=cnt(lnkRows), nMed=cnt(medRows), nFeat=cnt(featRows,r=>r.active!==false), nOrd=cnt(ordRows);
+        const isCustom=new Set((custom||[]).map(x=>String(x.code)));
         const unlinked=[], linked=[];
         live.forEach(p=>{
           const hit=bySku[p.code.toUpperCase()] || (p.group?byGroup[p.group]:null);
           if(hit) linked.push({code:p.code,page:hit.name||hit.page_key});
-          else unlinked.push({code:p.code,name:p.name,group:p.group});
+          else {
+            const o=ov[p.code]||{};
+            const price=(o.base_price!=null&&o.base_price!=="")?Number(o.base_price):null;
+            unlinked.push({code:p.code,name:p.name,group:p.group,
+              orders:nOrd[p.code]||0, media:nMed[p.code]||0, links:nLink[p.code]||0,
+              featured:!!nFeat[p.code], has_override:Object.keys(o).length>0,
+              price, added:isCustom.has(p.code),
+              /* Safe to delete outright only when nothing at all points at it AND it is a record
+                 someone added — a product from the deployed catalog file cannot be deleted, only
+                 retired, because the file rebuilds it on the next deploy. */
+              safe_delete: isCustom.has(p.code) && !(nOrd[p.code]||nMed[p.code]||nLink[p.code]||nFeat[p.code])});
+          }
         });
         // SKUs a page lists that no live catalog product matches
         const liveSet=new Set(live.map(p=>p.code.toUpperCase()));
