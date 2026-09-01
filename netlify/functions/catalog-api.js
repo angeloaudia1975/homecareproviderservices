@@ -174,10 +174,12 @@ exports.handler = async (event)=>{
       if(!slug){
         const [mfrs,logos]=await Promise.all([
           fetchJson(`${ORDERING_BASE}/data/manufacturers.json`).catch(()=>[]),
-          sb("GET","manufacturer_meta?select=slug,logo_url").catch(()=>[]),
+          sb("GET","manufacturer_meta?select=slug,logo_url,enriched_only").catch(()=>[]),
         ]);
         const lm=Object.fromEntries((logos||[]).map(o=>[o.slug,o.logo_url]));
-        return json(200,{manufacturers:(mfrs||[]).map(m=>({slug:m.slug,name:m.name,hasData:!!m.hasData,logo_url:lm[m.slug]||""}))});
+        const em=Object.fromEntries((logos||[]).map(o=>[o.slug,o.enriched_only===true]));
+        return json(200,{manufacturers:(mfrs||[]).map(m=>({slug:m.slug,name:m.name,hasData:!!m.hasData,
+          logo_url:lm[m.slug]||"", enriched_only:!!em[m.slug]}))});
       }
       const [prods,custom,links]=await Promise.all([
         fetchJson(`${ORDERING_BASE}/data/${slug}.json`).catch(()=>[]),
@@ -339,6 +341,11 @@ exports.handler = async (event)=>{
            deployed catalog file — so a wrong group could not be fixed without a redeploy.
            Storing it as an override makes grouping correctable from the admin, live. */
         if(p.group!=null) patch.group=String(p.group).slice(0,200);
+        /* Subcategory is the second level a dealer browses by. It was recorded only during
+           enrichment, so a product without an enrichment record could not be filed under one
+           at all — and the few that slip through are exactly the ones that go missing from
+           the shop's filters. Editable here for the same reason category is. */
+        if(p.subcategory!=null) patch.subcategory=String(p.subcategory).slice(0,120);
         if(p.description!=null) patch.description=String(p.description);
         if(p.price_note!=null) patch.price_note=String(p.price_note);
         if("base_price" in p) patch.base_price=num(p.base_price);
@@ -878,6 +885,18 @@ exports.handler = async (event)=>{
         await sb("PATCH",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}`,
           {active:true,updated_at:now},{Prefer:"return=minimal"}).catch(()=>{});
         return json(200,{ok:true,restored:code});
+      }
+
+      /* Per-line listing mode. On a finished line the enrichment record is the catalogue,
+         so a SKU no published page lists is not offered to dealers. Off by default — most
+         lines have no enrichment pages at all, and gating those would empty them. */
+      if(b.action==="set_listing_mode"){
+        const slug=String(b.manufacturer||"").trim();
+        if(!slug) return json(400,{error:"manufacturer required"});
+        const on=b.enriched_only===true;
+        await sb("POST","manufacturer_meta?on_conflict=slug",
+          {slug, enriched_only:on},{Prefer:"resolution=merge-duplicates,return=minimal"});
+        return json(200,{ok:true,manufacturer:slug,enriched_only:on});
       }
 
       if(b.action==="save_link"){
