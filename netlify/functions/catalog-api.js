@@ -174,12 +174,13 @@ exports.handler = async (event)=>{
       if(!slug){
         const [mfrs,logos]=await Promise.all([
           fetchJson(`${ORDERING_BASE}/data/manufacturers.json`).catch(()=>[]),
-          sb("GET","manufacturer_meta?select=slug,logo_url,enriched_only").catch(()=>[]),
+          sb("GET","manufacturer_meta?select=slug,logo_url,enriched_only,category_order").catch(()=>[]),
         ]);
         const lm=Object.fromEntries((logos||[]).map(o=>[o.slug,o.logo_url]));
         const em=Object.fromEntries((logos||[]).map(o=>[o.slug,o.enriched_only===true]));
+        const co=Object.fromEntries((logos||[]).map(o=>[o.slug,Array.isArray(o.category_order)?o.category_order:null]));
         return json(200,{manufacturers:(mfrs||[]).map(m=>({slug:m.slug,name:m.name,hasData:!!m.hasData,
-          logo_url:lm[m.slug]||"", enriched_only:!!em[m.slug]}))});
+          logo_url:lm[m.slug]||"", enriched_only:!!em[m.slug], category_order:co[m.slug]||null}))});
       }
       const [prods,custom,links]=await Promise.all([
         fetchJson(`${ORDERING_BASE}/data/${slug}.json`).catch(()=>[]),
@@ -890,6 +891,26 @@ exports.handler = async (event)=>{
       /* Per-line listing mode. On a finished line the enrichment record is the catalogue,
          so a SKU no published page lists is not offered to dealers. Off by default — most
          lines have no enrichment pages at all, and gating those would empty them. */
+      /* The order categories appear in on Partner 360 — one list, used by both the filter and
+         the page, so the two can never drift apart. */
+      if(b.action==="set_category_order"){
+        const slug=String(b.manufacturer||"").trim();
+        if(!slug) return json(400,{error:"manufacturer required"});
+        const list=Array.isArray(b.order)?b.order:null;
+        if(!list) return json(400,{error:"order must be an array"});
+        const clean=[]; const seen=new Set();
+        for(const raw of list){
+          const v=String(raw==null?"":raw).trim().slice(0,120);
+          if(!v) continue; const k=v.toLowerCase();
+          if(seen.has(k)) continue; seen.add(k); clean.push(v);
+          if(clean.length>=60) break;
+        }
+        await sb("POST","manufacturer_meta?on_conflict=slug",
+          {slug, category_order:clean.length?clean:null},
+          {Prefer:"resolution=merge-duplicates,return=minimal"});
+        return json(200,{ok:true,manufacturer:slug,order:clean});
+      }
+
       if(b.action==="set_listing_mode"){
         const slug=String(b.manufacturer||"").trim();
         if(!slug) return json(400,{error:"manufacturer required"});

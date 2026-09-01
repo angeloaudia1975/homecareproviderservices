@@ -394,6 +394,32 @@ async function saveProduct(){
 }
 /* Per-line listing mode. Deliberately a per-manufacturer setting: most lines have no
    enrichment pages at all, so a global rule would empty them. */
+/* The category order is stored per manufacturer, so the shop's filter and its scroll order
+   read the same list. Saved on every move — there is no separate Save to forget. */
+function currentCatOrder(){
+  const m=curMfr(); const stored=(m&&Array.isArray(m.category_order))?m.category_order:null;
+  const present=catList();
+  const placed=(stored||[]).filter(c=>present.includes(c));
+  return placed.concat(present.filter(c=>!placed.includes(c)));
+}
+async function saveCatOrder(list){
+  try{
+    await api("",{method:"POST",body:JSON.stringify({action:"set_category_order",manufacturer:SLUG,order:list})});
+    const mm=MFRS.find(x=>x.slug===SLUG); if(mm) mm.category_order=list.slice();
+    render();
+  }catch(e){ toast("Couldn't save the category order",true); }
+}
+async function moveCat(i,dir){
+  const list=currentCatOrder(); const j=i+dir;
+  if(j<0||j>=list.length) return;
+  const t=list[i]; list[i]=list[j]; list[j]=t;
+  await saveCatOrder(list);
+}
+async function resetCatOrder(){
+  if(!confirm("Reset the category order for "+(curMfr().name||SLUG)+" to A–Z?")) return;
+  await saveCatOrder(catList().slice().sort((a,b)=>a.localeCompare(b)));
+}
+
 async function setListingMode(on){
   const name=(curMfr().name||SLUG);
   if(on && !confirm("List only enriched products for "+name+"?\n\n"
@@ -899,6 +925,33 @@ function render(){
               ? `On. Dealers see one card per published enrichment page, and a SKU no page lists is not offered — it stays here, priced and intact, and reappears as soon as a page lists it.`
               : `Off. Every priced SKU on this line is listed, whether or not it has been enriched. Turn this on once this line's enrichment is finished.`}</span>
           </label></div>`; })()}
+      ${(()=>{
+        const stored=(m&&Array.isArray(m.category_order))?m.category_order:null;
+        const present=catList();
+        /* Stored order first, then anything new that has not been placed yet — so a category
+           added later always shows up here to be positioned, rather than silently sorting last
+           on the portal forever. */
+        const placed=(stored||[]).filter(c=>present.includes(c));
+        const unplaced=present.filter(c=>!placed.includes(c));
+        const rows=placed.concat(unplaced);
+        if(rows.length<2) return "";
+        return `<div class="dupbar">
+          <b>Category order on Partner 360.</b> This one list drives the shop's category filter
+          <i>and</i> the order sections scroll down the page, so the two always agree.
+          ${unplaced.length?`<span style="color:#8a5a12"> ${unplaced.length} new categor${unplaced.length===1?"y is":"ies are"} unplaced at the end.</span>`:""}
+          <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;max-width:520px">
+            ${rows.map((c,i)=>`<div style="display:flex;gap:6px;align-items:center;background:#fff;border:1px solid var(--silver);border-radius:8px;padding:5px 8px">
+              <span style="width:20px;color:var(--gray);font-variant-numeric:tabular-nums">${i+1}</span>
+              <span style="flex:1;font-weight:600${(stored&&!placed.includes(c))?";color:#8a5a12":""}">${esc(c)}</span>
+              <span class="hint" style="margin:0">${effProducts().filter(p=>p.category===c).length}</span>
+              <button class="btn ghost sm" ${i===0?"disabled":""} onclick="moveCat(${i},-1)" title="Move up">↑</button>
+              <button class="btn ghost sm" ${i===rows.length-1?"disabled":""} onclick="moveCat(${i},1)" title="Move down">↓</button>
+            </div>`).join("")}
+          </div>
+          <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn ghost sm" onclick="resetCatOrder()">Reset to A–Z</button>
+          </div></div>`;
+      })()}
       <p class="hint">Filter, sort, and page through the whole line. Click <b>Edit</b> to manage everything about a product in one place — details, pricing, category, image, its More Information link/brochure, status &amp; featured. Standard catalog edits save as an override (no redeploy); added products are yours to add or delete.</p>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
         <button class="btn sm" onclick="newProduct()">+ Add product</button>
