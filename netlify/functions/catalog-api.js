@@ -413,7 +413,7 @@ exports.handler = async (event)=>{
 
       // Apply pricing to many codes at once — powers the pricelist importer, bulk edits, and
       // auto-MSRP generation from the Price Check audit. Each row carries a code and any of
-      // base_price / msrp / map / msrp_auto / price_note. A code that's already a custom product
+      // base_price / msrp / map / msrp_auto / price_note / tiers. A code that's already a custom product
       // is PATCHed; a code with create:true (or a name) that isn't in the catalog yet is created
       // as a custom product; any other code (a standard/base catalog item) gets a merged override.
       if(b.action==="bulk_price"){
@@ -431,6 +431,13 @@ exports.handler = async (event)=>{
         const priceFields=(r)=>{ const f={};
           ["base_price","msrp","map"].forEach(k=>{ if(k in r) f[k]=num(r[k]); });
           if("msrp_auto" in r) f.msrp_auto=(r.msrp_auto===true);
+          /* Quantity-break ladder from an imported price list. Every other layer already
+             carried tiers — custom_products has the column, product_overrides.patch is
+             jsonb, and Partner 360 reads and applies them at checkout — so this importer
+             was the single place a manufacturer's price breaks stopped. cleanTiers
+             validates and sorts; an empty ladder resolves to null, which clears the
+             breaks rather than leaving a stale one behind a new base price. */
+          if("tiers" in r) f.tiers=cleanTiers(r.tiers);
           const bits=[];
           if(r.effective_date!=null&&String(r.effective_date).trim()) bits.push("eff. "+String(r.effective_date).trim().slice(0,30));
           if(r.case_qty!=null&&String(r.case_qty).trim()) bits.push("case qty "+String(r.case_qty).trim().slice(0,12));

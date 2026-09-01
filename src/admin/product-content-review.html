@@ -1221,7 +1221,12 @@ function buildPriceState(cat){
        that a base+custom duplicate was deliberately reconciled rather than merely priced. */
     const settled=(o.base_price!=null&&o.base_price!=='');
     const merged_at=o.merged_at||null;
-    return {code,name,category,base_price,msrp,map,msrp_auto,active,updated,layers,source,
+    /* The ladder dealers are actually charged at, resolved through the same layer order
+       as the base price: an override wins, then the custom row, then the base catalog.
+       Without it here, an import could not show what the breaks are today, and so could
+       not tell a changed ladder from an unchanged one. */
+    const tiers=piTierList(o.tiers!=null?o.tiers:((c&&c.tiers)||(b&&b.tiers)||null));
+    return {code,name,category,base_price,msrp,map,msrp_auto,active,updated,layers,source,tiers,
       disposition,disposition_note,disposition_at,settled,merged_at,
       editTarget:c?'custom':'base', isBase:!!b, isCustom:!!c, duplicate:!!(b&&c)};
   }
@@ -1363,6 +1368,14 @@ function piqDiff(row, rec){
     if(Number(cv)===Number(nv)) return;
     out.push({key:k,label,from:Number(cv),to:Number(nv)});
   });
+  /* A ladder that differs is a price change even when the qty-1 price is identical —
+     most of a dealer's spend sits on the breaks, so a silent ladder swap moves more
+     money than a moved base price. Compared as a whole: a break added, removed or
+     re-pointed all count. */
+  if(row.tiers&&row.tiers.length&&piTierDiffers(row.tiers,rec.tiers)){
+    out.push({key:'tiers',label:'Quantity breaks',
+      text_from:piTierText(rec.tiers),text_to:piTierText(row.tiers)});
+  }
   return out;
 }
 async function piqAccept(code){
@@ -1589,8 +1602,8 @@ function renderPriceAudit(){
         const diffs=(r._diff&&r._diff.length)?r._diff:piqDiff(r,rec);
         return `<tr>
           <td><b>${esc(r.code)}</b><div class="mut" style="font-size:11px">${esc(r.name||(rec&&rec.name)||'')}</div></td>
-          <td>${diffs.map(d=>`<span class="mut" style="font-size:11px">${esc(d.label)}</span> ${pmoney(d.from)}`).join('<br>')}</td>
-          <td>${diffs.map(d=>`<span class="mut" style="font-size:11px">${esc(d.label)}</span> <b style="color:#b8791b">${pmoney(d.to)}</b>`).join('<br>')}</td>
+          <td>${diffs.map(d=>`<span class="mut" style="font-size:11px">${esc(d.label)}</span> ${d.text_from!=null?esc(d.text_from):pmoney(d.from)}`).join('<br>')}</td>
+          <td>${diffs.map(d=>`<span class="mut" style="font-size:11px">${esc(d.label)}</span> <b style="color:#b8791b">${d.text_to!=null?esc(d.text_to):pmoney(d.to)}</b>`).join('<br>')}</td>
           <td class="mut" style="font-size:11px">${esc(r.source_file||'—')}</td>
           <td class="mut" style="font-size:11px">${esc(r.effective_date||'—')}</td>
           <td style="white-space:nowrap">
@@ -1729,6 +1742,39 @@ const PI_FIELDS=[
   {key:'case_qty', label:'Case quantity',hints:['case','case qty','case quantity','qty per case','pack','pack qty','uom qty','units per case']},
   {key:'effective_date', label:'Effective date', hints:['effective','effective date','eff date','price date','date','valid from']},
 ];
+/* ── Quantity breaks ────────────────────────────────────────────────────────────
+   A manufacturer's price list holds the ladder as COLUMNS — "2-5", "6-10", "11-20",
+   "21+" — one price per break, not one row per break. So a tier slot is a pair: which
+   column holds the price, and the quantity that price starts at. The quantity is
+   guessed from the header and stays editable, because the break points are the part
+   manufacturers move most often and a wrong one silently mis-prices every order at
+   that quantity — the kind of error nobody sees until a dealer is billed. */
+const PI_TIERS=[{key:'t1'},{key:'t2'},{key:'t3'},{key:'t4'},{key:'t5'},{key:'t6'}];
+let _piTierCol={}, _piTierMin={};
+
+// normalise any stored ladder to [{min_qty,price}] ascending — the shape Partner 360 reads
+function piTierList(t){ if(!Array.isArray(t)) return [];
+  return t.map(x=>({min_qty:Math.max(1,parseInt(x.min_qty!=null?x.min_qty:(x.minQty!=null?x.minQty:1),10)||1),
+                    price:(x.price==null||x.price==='')?null:Number(x.price)}))
+    .filter(x=>x.price!=null&&isFinite(x.price)).sort((a,b)=>a.min_qty-b.min_qty); }
+function piTierText(t){ const l=piTierList(t); return l.length?l.map(x=>x.min_qty+'+ '+pmoney(x.price)).join(' · '):'—'; }
+// true when the two ladders are not the same ladder — a break added, dropped, repriced
+// or moved to a different quantity all count.
+function piTierDiffers(a,b){ const x=piTierList(a), y=piTierList(b);
+  if(x.length!==y.length) return true;
+  return !x.every((t,i)=>t.min_qty===y[i].min_qty&&Math.abs(Number(t.price)-Number(y[i].price))<0.005); }
+// "qty 6", "6-10", "11 - 20", "21+", "6 or more" → 6, 11, 21 …
+function piTierMinFromHeader(h){ const s=String(h||'').toLowerCase();
+  let m=s.match(/qty[^0-9]{0,6}(\d+)/); if(m) return parseInt(m[1],10);
+  m=s.match(/(\d+)\s*(?:[-\u2013\u2014]\s*\d+|\+|\s*or\s*(?:more|up)|\s*and\s*(?:up|over))/); if(m) return parseInt(m[1],10);
+  m=s.match(/^\s*(\d+)\s*$/); if(m) return parseInt(m[1],10);
+  return null; }
+function piIsTierHeader(h){ const s=String(h||'').trim().toLowerCase();
+  if(!s) return false;
+  if(/case|pack|uom/.test(s)) return false;          // that is case quantity, not a break
+  if(/tier|break|qty|quantity|\bea\b/.test(s)) return true;
+  return /^\d+\s*(?:[-\u2013\u2014]\s*\d+|\+)$/.test(s); }
+
 let _piGrid=null, _piMap={}, _piRows=[], _piFile='';
 
 function openPriceImport(){
@@ -1796,6 +1842,16 @@ function piGuessMap(){
     if(i<0) i=heads.findIndex(h=>h&&f.hints.some(x=>h.indexOf(x)>=0));
     if(i>=0 && Object.values(_piMap).indexOf(i)<0) _piMap[f.key]=i;
   });
+  /* Break columns, left to right, skipping anything a named field already claimed —
+     the dealer-cost column is itself a quantity break (qty 1) and must not be counted
+     twice. A slot with no detected quantity is left blank rather than guessed at 1;
+     an unanswered question is safer here than a confident wrong ladder. */
+  _piTierCol={}; _piTierMin={};
+  const taken=Object.values(_piMap);
+  let slot=0;
+  heads.forEach((h,i)=>{ if(slot>=PI_TIERS.length) return; if(taken.indexOf(i)>=0) return;
+    if(!piIsTierHeader(_piGrid.headers[i])) return;
+    const k=PI_TIERS[slot].key; _piTierCol[k]=i; _piTierMin[k]=piTierMinFromHeader(_piGrid.headers[i]); slot++; });
 }
 function piRenderMap(){
   const prev=document.getElementById('pi-prev'); if(!prev) return;
@@ -1810,11 +1866,36 @@ function piRenderMap(){
       <td class="mut" style="padding:4px 6px;font-size:11px">${_piMap[f.key]!=null?sample.map(r=>esc(String((r||[])[_piMap[f.key]]||''))).filter(Boolean).slice(0,2).join(' · '):''}</td>
     </tr>`).join('')}
     </tbody></table>
+    ${piTierMapHtml(opts,sample)}
     <div id="pi-prev2" style="margin-top:10px"></div>`;
   piRemap();
 }
+/* The break columns, shown open when the file has any so they are confirmed rather than
+   discovered later, and collapsed when it doesn't so a flat price list stays a two-line job. */
+function piTierMapHtml(opts,sample){
+  const found=PI_TIERS.filter(t=>_piTierCol[t.key]!=null).length;
+  const rows=PI_TIERS.map((t,i)=>{ const ci=_piTierCol[t.key];
+    return `<tr>
+      <td style="width:150px;padding:4px 6px">Break ${i+1}</td>
+      <td style="padding:4px 6px"><select class="ed" id="pit-${t.key}" onchange="piRemap()" style="width:100%">${opts(ci!=null?ci:-1)}</select></td>
+      <td class="mut" style="padding:4px 6px;font-size:11px;white-space:nowrap">at qty
+        <input class="ed" id="pitq-${t.key}" type="number" min="1" step="1" style="width:64px;padding:2px 4px"
+               value="${_piTierMin[t.key]!=null?_piTierMin[t.key]:''}" onchange="piRemap()"> or more
+        ${ci!=null&&sample.length?`<span style="margin-left:6px">${esc(sample.map(r=>String((r||[])[ci]||'')).filter(Boolean).slice(0,2).join(' · '))}</span>`:''}</td>
+    </tr>`; }).join('');
+  return `<details style="margin-top:8px"${found?' open':''}>
+    <summary class="mut" style="cursor:pointer;font-size:12px">Quantity breaks ${found?`— <b>${found}</b> column(s) detected, confirm the quantity each one starts at`:'— none detected in this file'}</summary>
+    <table style="width:100%;font-size:12px;margin-top:6px"><tbody>${rows}</tbody></table>
+    <div class="mut" style="font-size:11px;margin-top:4px">A break needs both a column and a quantity. Dealer cost is the qty-1 price and is not a break.</div>
+  </details>`;
+}
 function piRemap(){
   PI_FIELDS.forEach(f=>{ const el=document.getElementById('pim-'+f.key); if(el){ const v=Number(el.value); _piMap[f.key]=v>=0?v:null; } });
+  PI_TIERS.forEach(t=>{ const c=document.getElementById('pit-'+t.key), q=document.getElementById('pitq-'+t.key);
+    if(c){ const v=Number(c.value); _piTierCol[t.key]=v>=0?v:null; }
+    if(q){ const v=parseInt(q.value,10); _piTierMin[t.key]=(isFinite(v)&&v>=1)?v:null; } });
+  // A slot only counts once it has both halves — a column and the quantity it starts at.
+  const tierSlots=PI_TIERS.filter(t=>_piTierCol[t.key]!=null&&_piTierMin[t.key]>=1);
   const out=document.getElementById('pi-prev2'); if(!out) return;
   if(_piMap.code==null){ out.innerHTML='<div class="hint">Pick the column holding the SKU / item code — nothing can be matched without it.</div>'; _piRows=[]; return; }
   const num=v=>{ if(v==null) return null; const t=String(v).replace(/[^0-9.\-]/g,''); if(!t) return null; const n=Number(t); return isFinite(n)?n:null; };
@@ -1829,6 +1910,15 @@ function piRemap(){
     if(_piMap.msrp!=null) row.msrp=num(r[_piMap.msrp]);
     if(_piMap.case_qty!=null) row.case_qty=String(r[_piMap.case_qty]||'').trim();
     if(_piMap.effective_date!=null) row.effective_date=String(r[_piMap.effective_date]||'').trim();
+    /* Only attach a ladder when this row actually has break prices. Sending an empty
+       one would CLEAR the breaks the product already has, so a file with a blank cell
+       — the 2026 Ovation sheet has eighteen of them — would quietly delete real
+       pricing. Silence in a spreadsheet is not an instruction to erase. */
+    if(tierSlots.length){
+      const tl=tierSlots.map(t=>({min_qty:_piTierMin[t.key],price:num(r[_piTierCol[t.key]])}))
+        .filter(x=>x.price!=null).sort((a,b)=>a.min_qty-b.min_qty);
+      if(tl.length) row.tiers=tl;
+    }
     // The same SKU twice in one file is a real and common problem — flag it here
     // rather than letting the last row silently win.
     if(seen[code]!=null){ dupInFile.push({code,first:seen[code],again:row}); }
@@ -1842,12 +1932,19 @@ function piRemap(){
     return null; };
   const nNew=_piRows.filter(r=>!known(r.code)).length;
   const nChg=_piRows.filter(r=>changed(r)).length;
+  const nTier=_piRows.filter(r=>r.tiers&&r.tiers.length).length;
+  // Rows the file prices but leaves without breaks, where we hold breaks today. Their
+  // ladder is kept, not cleared — this line says so out loud rather than leaving it
+  // to be discovered from a dealer's invoice.
+  const nKeptTier=tierSlots.length?_piRows.filter(r=>!(r.tiers&&r.tiers.length)&&known(r.code)&&(S.recOf(r.code).tiers||[]).length).length:0;
   out.innerHTML=`<div class="rule"><b>${_piRows.length}</b> priced row(s) · <b>${_piRows.length-nNew}</b> match existing codes · <b>${nNew}</b> new
-      ${nChg?` · <b style="color:#b8791b">${nChg}</b> price change(s)`:''}${dupInFile.length?` · <b style="color:var(--bad)">${dupInFile.length}</b> duplicate code(s) in the file`:''}</div>
+      ${nChg?` · <b style="color:#b8791b">${nChg}</b> price change(s)`:''}${nTier?` · <b>${nTier}</b> with quantity breaks`:''}${dupInFile.length?` · <b style="color:var(--bad)">${dupInFile.length}</b> duplicate code(s) in the file`:''}</div>
     ${dupInFile.length?`<div class="hint" style="border-color:#e6b800;background:#fffdf3">The same code appears more than once in this file: <b>${dupInFile.slice(0,8).map(d=>esc(d.code)).join(', ')}</b>${dupInFile.length>8?' …':''}. The last row wins — check the file if that isn't what you intend.</div>`:''}
-    <div class="tabscroll" style="max-height:260px;overflow:auto;margin-top:8px"><table style="width:100%;font-size:12px"><thead><tr><th>Code</th><th>Name</th><th>Dealer</th><th>MAP</th><th>MSRP</th><th>Change</th></tr></thead>
+    ${nKeptTier?`<div class="hint">${nKeptTier} row(s) have no break prices in this file but have breaks today — those ladders are <b>kept as they are</b>. Clear them per product in the Product Catalog if the manufacturer really has dropped the breaks.</div>`:''}
+    <div class="tabscroll" style="max-height:260px;overflow:auto;margin-top:8px"><table style="width:100%;font-size:12px"><thead><tr><th>Code</th><th>Name</th><th>Dealer</th><th>MAP</th><th>MSRP</th>${tierSlots.length?'<th>Quantity breaks</th>':''}<th>Change</th></tr></thead>
     <tbody>${_piRows.slice(0,300).map(r=>{ const ch=changed(r);
       return `<tr><td><b>${esc(r.code)}</b></td><td>${esc(r.name||'—')}</td><td>${pmoney(r.base_price)}</td><td>${pmoney(r.map)}</td><td>${pmoney(r.msrp)}</td>
+      ${tierSlots.length?`<td class="mut" style="font-size:11px">${esc(piTierText(r.tiers))}</td>`:''}
       <td class="mut">${ch?`<span style="color:#b8791b">${pmoney(ch.from)} → <b>${pmoney(ch.to)}</b></span>`:(known(r.code)?'no change':'new')}</td></tr>`; }).join('')}</tbody></table></div>
     <div style="margin-top:10px"><button class="btn dark" data-act="price-import-apply">Apply ${_piRows.length} price(s)</button>
       <span class="mut" style="font-size:12px;margin-left:8px">Effective date and case quantity are recorded on each price as a note.</span></div>`;
