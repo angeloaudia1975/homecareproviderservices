@@ -152,8 +152,37 @@ let LINKAUDIT=null, LINKBUSY=false;
    check that the record has nothing attached to it at all. */
 const PA_STATE={ disabled:"Disabled", discontinued:"Discontinued", do_not_list:"Do Not List",
   not_offered:"Not offered by HCPS", archived:"Archived", possible_duplicate:"Possible duplicate", ignore:"Ignored" };
+/* The reload is now something you ask for rather than something every click pays for. */
+async function hardRefresh(){ toast("Re-reading from the server…"); await loadMfr(); toast("Up to date"); }
 async function loadMfr(){ DETAIL=await api("?manufacturer="+encodeURIComponent(SLUG),{method:"GET"});
+  touched();
   DUPS=null; ENRICH=null; DETAILS=null; DETAILMASTER=null; LINKAUDIT=null; render(); loadSideSignals(); }
+
+/* ── CHANGE THE SCREEN WITHOUT RELOADING THE WORLD ────────────────────────────
+   Every edit used to end in loadMfr(), which re-fetched the catalog AND re-ran the
+   duplicate scan AND re-fetched provenance for up to sixty codes. That last one asked
+   five questions per code — three hundred queries — after every single click. On a line
+   with 237 duplicates that is the difference between an afternoon and a week.
+
+   The server has already accepted the change by the time we get here. So apply the same
+   change to the copy on screen and redraw: instant, and the next real reload confirms it.
+   Anything that cannot be represented locally still calls loadMfr(). */
+function localOverride(code, patch){
+  DETAIL.overrides=DETAIL.overrides||{};
+  DETAIL.overrides[code]=Object.assign({},DETAIL.overrides[code]||{},patch);
+  touched();
+}
+function localDrop(code){
+  DETAIL.custom=(DETAIL.custom||[]).filter(p=>String(p.code)!==String(code));
+  if(DETAIL.overrides) delete DETAIL.overrides[code];
+  touched();
+}
+// A consolidated pair is no longer a duplicate — take it out of the queue on screen
+// rather than paying for a fresh scan to be told the same thing.
+function localDedupe(codes){
+  const gone=new Set(codes.map(String));
+  if(Array.isArray(DUPS)) DUPS=DUPS.filter(g=>!gone.has(String(g.code||(g.members&&g.members[0]&&g.members[0].code))));
+}
 
 /* Two signals the catalog can't see on its own: which SKUs the enrichment tool is still
    working on, and which products look like duplicates of each other. Both are fetched
@@ -259,6 +288,7 @@ function shelfBarHtml(){
       <button class="btn ghost sm" onclick="setFilter('stat','visible')">Show the ${c.on} live</button>
       <button class="btn ghost sm" onclick="setFilter('stat','notvisible')"${c.off?"":" disabled"}>Show the ${c.off} held back</button>
       <button class="btn ghost sm" onclick="exportShelf()">⬇ Export list</button>
+      <button class="btn ghost sm" onclick="hardRefresh()" title="Re-read everything from the server, including the duplicate scan. Edits update the screen instantly on their own — this is for confirming, or picking up someone else's changes.">↻ Refresh</button>
     </div></div>`;
 }
 /* A list you can read away from the screen, send to the manufacturer, or diff against
@@ -326,7 +356,14 @@ function filteredSortedProducts(){
 }
 function setFilter(k,v){ if(k==="cat")PCAT=v; else if(k==="stat")PSTAT=v; else if(k==="sort")PSORT=v; else if(k==="q")PRODQ=v; PLIMIT=60; render(); }
 // effective product list = catalog (with any override applied) + custom products
+/* Memoised because it is asked for constantly — once per row for the group count, again
+   inside skuKin, again for the category list, the bulk bar and the shelf count. Rebuilding
+   the merged catalog each time made every render quadratic in the size of the line.
+   Any code that changes DETAIL calls touched() and the next call rebuilds. */
+let _EFF=null;
+function touched(){ _EFF=null; }
 function effProducts(){
+  if(_EFF) return _EFF;
   const over=DETAIL.overrides||{};
   const cat=(DETAIL.products||[]).map(p=>{const o=over[p.code]||{}; return {...p,...o,kind:"catalog",edited:!!over[p.code]};});
   const map=new Map(); cat.forEach(p=>map.set(p.code,p));
@@ -335,7 +372,8 @@ function effProducts(){
      invisible in the admin while the portal was honouring it. Same merge for both kinds. */
   (DETAIL.custom||[]).forEach(p=>{ const o=over[p.code]||{};
     map.set(p.code,{...p,...o,kind:"custom",edited:!!over[p.code]}); });
-  return [...map.values()];
+  _EFF=[...map.values()];
+  return _EFF;
 }
 function tiersOf(p){ return Array.isArray(p&&p.tiers)?p.tiers.map(t=>({min_qty:t.min_qty??t.minQty??1,price:t.price})):[]; }
 
@@ -522,7 +560,10 @@ async function setListingMode(on){
   }catch(e){ toast("Couldn't change that setting",true); render(); }
 }
 
-async function delProduct(code){ if(!confirm("Delete added product "+code+"? This removes it completely."))return; await api("",{method:"POST",body:JSON.stringify({action:"delete_product",manufacturer:SLUG,code})}); PDRAFT=null; await loadMfr(); toast("Product deleted"); }
+async function delProduct(code){ if(!confirm("Delete added product "+code+"? This removes it completely."))return;
+  const r=await api("",{method:"POST",body:JSON.stringify({action:"delete_product",manufacturer:SLUG,code})});
+  if(r&&r.error){ toast(r.message||r.error,true); return; }
+  PDRAFT=null; localDrop(code); render(); toast("Product deleted"); }
 async function resetOverride(code){ if(!confirm("Reset this product to the standard catalog values? Your edits (name, price, tiers…) will be removed."))return;
   await api("",{method:"POST",body:JSON.stringify({action:"clear_override",manufacturer:SLUG,code})}); PDRAFT=null; await loadMfr(); toast("Reset to catalog"); }
 // Delete any product: custom products are removed outright; standard catalog products are
@@ -533,14 +574,15 @@ async function removeProduct(code){
   if(!confirm("Remove “"+p.name+"” from the ordering portal? Dealers will no longer see or be able to order it. You can restore it anytime."))return;
   const cur=(DETAIL.overrides||{})[code]||{};
   await api("",{method:"POST",body:JSON.stringify({action:"save_override",manufacturer:SLUG,code,patch:{...cur,active:false}})});
-  PDRAFT=null; await loadMfr(); toast("Removed from portal");
+  PDRAFT=null; localOverride(code,{active:false}); render(); toast("Removed from portal");
 }
 async function restoreProduct(code){
   const cur=(DETAIL.overrides||{})[code]||{};
   const rest=Object.assign({},cur); delete rest.active;
   if(Object.keys(rest).length){ await api("",{method:"POST",body:JSON.stringify({action:"save_override",manufacturer:SLUG,code,patch:{...rest,active:true}})}); }
-  else { await api("",{method:"POST",body:JSON.stringify({action:"clear_override",manufacturer:SLUG,code})}); }
-  await loadMfr(); toast("Restored to portal");
+  else { await api("",{method:"POST",body:JSON.stringify({action:"clear_override",manufacturer:SLUG,code})});
+         if(DETAIL.overrides) delete DETAIL.overrides[code]; touched(); }
+  localOverride(code,{active:true}); render(); toast("Restored to portal");
 }
 
 /* ---- links ---- */
@@ -981,7 +1023,8 @@ async function prodBulkHide(){
     try{ const r=await api("",{method:"POST",body:JSON.stringify({action:"save_override",manufacturer:SLUG,code,patch:{active:false}})});
       if(r&&r.ok!==false) ok++; else bad++; }catch(e){ bad++; }
   }
-  PSEL=new Set(); toast(ok+" hidden"+(bad?" · "+bad+" failed":""),!!bad); await loadMfr();
+  codes.forEach(c=>localOverride(c,{active:false}));
+  PSEL=new Set(); toast(ok+" hidden"+(bad?" · "+bad+" failed":""),!!bad); render();
 }
 async function prodBulkDelete(){
   const picked=effProducts().filter(p=>PSEL.has(p.code));
@@ -1009,7 +1052,8 @@ async function prodBulkDelete(){
       +(refused.length>15?"\n… and "+(refused.length-15)+" more":"")
       +"\n\nSelect them again and use Hide from platform instead — that takes them off the dealer platform and keeps the history intact.");
   }
-  await loadMfr();
+  gone.forEach(localDrop);
+  render();
 }
 
 /* ── Consolidating in bulk ─────────────────────────────────────────────────────
@@ -1069,7 +1113,10 @@ async function dupBulkGo(){
   if(failedChunks) bits.push(failedChunks+" batch"+(failedChunks===1?"":"es")+" failed");
   toast(bits.join(" · "), !!failedChunks);
   if(skipped.length) console.warn("Not consolidated:", skipped);
-  await loadMfr();
+  const now=new Date().toISOString();
+  done.forEach(c=>localOverride(c,{layers_merged_at:now}));
+  localDedupe(done);
+  render();
 }
 function focusDup(code){ const el=document.getElementById("dupc-"+code);
   if(el){ el.scrollIntoView({behavior:"smooth",block:"center"}); el.style.outline="2px solid var(--orange)"; setTimeout(()=>el.style.outline="",2200); }
@@ -1088,7 +1135,7 @@ async function setRecordState(code,state){
   if(!confirm('Set "'+(d.enriched_title||d.current_title||code)+'" to '+label+'?'+warn+"\n\nReversible — you can set it back at any time.")) return;
   try{
     const r=await api("",{method:"POST",body:JSON.stringify({action:"save_override",manufacturer:SLUG,code,patch:{disposition:state||""}})});
-    if(r&&r.ok!==false){ toast(code+" → "+label); await loadMfr(); }
+    if(r&&r.ok!==false){ toast(code+" → "+label); localOverride(code,{disposition:state||""}); render(); }
     else toast((r&&r.error)||"Couldn't set that status",true);
   }catch(e){ toast("Couldn't set that status",true); }
 }
@@ -1137,7 +1184,7 @@ async function mergeLayers(code){
     const r=await api("",{method:"POST",body:JSON.stringify({action:"merge_layers",manufacturer:SLUG,code,reviewer:"president"})});
     if(r&&r.ok!==false){
       toast(`${code} consolidated${r.title?` · now titled "${r.title}"`:""}`);
-      await loadMfr();
+      localOverride(code,{layers_merged_at:new Date().toISOString()}); localDedupe([code]); render();
     } else toast((r&&(r.message||r.error))||"Couldn't consolidate that record",true);
   }catch(e){ toast("Couldn't consolidate that record",true); }
   DUPBUSY=false;

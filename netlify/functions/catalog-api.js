@@ -52,6 +52,33 @@ const normName = n => String(n||"").toLowerCase().replace(/[^a-z0-9]+/g," ").rep
 
 // Everything hanging off one SKU. This is what makes a delete or a merge safe to judge:
 // nothing is removed without first showing what points at it.
+/* THE SAME QUESTION FOR MANY CODES, IN FIVE QUERIES INSTEAD OF FIVE PER CODE.
+   connectionsFor is five reads. record_detail asked it for up to 60 codes, so every time
+   the catalog reloaded it fired THREE HUNDRED queries — and the catalog reloaded after
+   every single edit. That is the wait: not the render, not the page, but a fan-out that
+   grew with the size of the duplicate queue. Asked once for the whole list it is five
+   reads regardless of how many codes are in it. */
+async function connectionsForMany(mfr, codes){
+  const list=[...new Set((codes||[]).map(c=>String(c||"").trim()).filter(Boolean))];
+  const out={}; list.forEach(c=>{ out[c]={links:0,media:0,featured:0,has_override:false,override:null,orders:0}; });
+  if(!list.length) return out;
+  const e=encodeURIComponent;
+  // PostgREST in.() needs each value quoted — codes carry dots, dashes and spaces.
+  const inList="("+list.map(c=>'"'+String(c).replace(/"/g,'\\"')+'"').join(",")+")";
+  const q=`manufacturer=eq.${e(mfr)}&code=in.${e(inList)}`;
+  const [links,media,feat,ovr,items]=await Promise.all([
+    sb("GET",`product_links?${q}&select=code`).catch(()=>[]),
+    sb("GET",`product_media?${q}&select=code`).catch(()=>[]),
+    sb("GET",`featured_products?${q}&select=code`).catch(()=>[]),
+    sb("GET",`product_overrides?${q}&select=code,patch`).catch(()=>[]),
+    // order_items is not scoped by manufacturer — a code is a code there.
+    sb("GET",`order_items?code=in.${e(inList)}&select=code&limit=5000`).catch(()=>[]),
+  ]);
+  const bump=(rows,key)=>(rows||[]).forEach(r=>{ const c=String(r.code||""); if(out[c]) out[c][key]++; });
+  bump(links,"links"); bump(media,"media"); bump(feat,"featured"); bump(items,"orders");
+  (ovr||[]).forEach(r=>{ const c=String(r.code||""); if(out[c]){ out[c].has_override=!!r.patch; out[c].override=r.patch||null; } });
+  return out;
+}
 async function connectionsFor(mfr, code){
   const e=encodeURIComponent, q=`manufacturer=eq.${e(mfr)}&code=eq.${e(code)}`;
   const [links,media,feat,ovr,items]=await Promise.all([
@@ -552,13 +579,15 @@ exports.handler = async (event)=>{
         if(!mfr||!codes.length) return json(400,{error:"manufacturer and codes required"});
         if(codes.length>200) return json(400,{error:"too_many", message:"Send at most 200 codes per call."});
         const e=encodeURIComponent;
-        const custom=await sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code`).catch(()=>[]);
+        const [custom,connAll]=await Promise.all([
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code`).catch(()=>[]),
+          connectionsForMany(mfr,codes).catch(()=>({})),
+        ]);
         const isAdded=new Set((custom||[]).map(x=>String(x.code)));
         const deleted=[], refused=[];
         for(const code of codes){
           if(!isAdded.has(code)){ refused.push({code, reason:"a standard catalog product — it can be hidden, not deleted"}); continue; }
-          let conn=null;
-          try{ conn=await connectionsFor(mfr,code); }catch(err){ conn=null; }
+          const conn=connAll[code]||null;
           if(conn){
             const held=[];
             if(conn.orders)   held.push(`${conn.orders} order line${conn.orders===1?"":"s"}`);
@@ -586,6 +615,7 @@ exports.handler = async (event)=>{
         const codes=[...new Set((Array.isArray(b.codes)?b.codes:[]).map(c=>String(c).trim()).filter(Boolean))].slice(0,60);
         if(!codes.length) return json(400,{error:"codes required"});
         const e=encodeURIComponent;
+        const connAll=await connectionsForMany(mfr,codes).catch(()=>({}));
         const [base,custom,ovRows,content]=await Promise.all([
           fetchJson(`${ORDERING_BASE}/data/${e(mfr)}.json`).catch(()=>[]),
           sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`).catch(()=>[]),
@@ -621,7 +651,7 @@ exports.handler = async (event)=>{
         for(const code of codes){
           const bp=baseBy[code], cp=custBy[code], ov=(ovBy[code]||{}).patch||{}, ovAt=(ovBy[code]||{}).updated_at||null;
           const enc=encBy[String(code).toUpperCase()]||null;
-          const conn=await connectionsFor(mfr,code).catch(()=>null);
+          const conn=connAll[code]||null;
           const first=(...v)=>{ for(const x of v){ if(x!=null&&x!=="") return x; } return null; };
           const currentTitle=first(ov.name, cp&&cp.name, bp&&bp.name) || code;
           const price=first(ov.base_price, cp&&cp.base_price, bp&&bp.base_price);
