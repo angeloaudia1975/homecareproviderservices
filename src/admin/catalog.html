@@ -66,6 +66,9 @@ tr.picked{background:#fffaf6}
 .dupbulk .dbr{display:flex;gap:7px;flex-wrap:wrap}
 .dupbulk button[disabled]{opacity:.45;cursor:not-allowed}
 .duppick{display:inline-flex;gap:7px;align-items:baseline;cursor:pointer}
+.winpick{display:inline-flex;gap:6px;align-items:center;cursor:pointer;font-size:11.5px;color:#7a4a1c;
+  background:#fff3e8;border:1px solid #f0d2c2;border-radius:7px;padding:4px 9px;margin-left:6px}
+.winpick input{margin:0}
 .duppick input{margin:0;transform:translateY(1px)}
 .dupc.picked{outline:2px solid var(--orange);outline-offset:1px;background:#fffaf6}
 .dupc .mut{color:var(--gray);font-weight:400}
@@ -172,6 +175,16 @@ function localOverride(code, patch){
   DETAIL.overrides[code]=Object.assign({},DETAIL.overrides[code]||{},patch);
   touched();
 }
+/* Write to the layer the server wrote to, so the screen is not merely close but correct.
+   A custom product's edits go on its own row; a standard catalog product's go on the
+   override. Putting them in the wrong place would show the right values with a wrong
+   "edited" badge, which is the kind of small lie that makes a screen untrustworthy. */
+function localApply(code, fields, ontoAdded){
+  if(!fields||!Object.keys(fields).length) return;
+  const row=(DETAIL.custom||[]).find(p=>String(p.code)===String(code));
+  if(ontoAdded && row){ Object.assign(row,fields); touched(); return; }
+  localOverride(code, fields);
+}
 function localDrop(code){
   DETAIL.custom=(DETAIL.custom||[]).filter(p=>String(p.code)!==String(code));
   if(DETAIL.overrides) delete DETAIL.overrides[code];
@@ -181,7 +194,14 @@ function localDrop(code){
 // rather than paying for a fresh scan to be told the same thing.
 function localDedupe(codes){
   const gone=new Set(codes.map(String));
-  if(Array.isArray(DUPS)) DUPS=DUPS.filter(g=>!gone.has(String(g.code||(g.members&&g.members[0]&&g.members[0].code))));
+  if(!Array.isArray(DUPS)) return;
+  // A same-code group is named by its code; a two-code group is settled as soon as either
+  // member is. Both shapes have to be recognised or the row stays on screen after the
+  // very action that resolved it.
+  DUPS=DUPS.filter(g=>{
+    if(g.code && gone.has(String(g.code))) return false;
+    return !(g.members||[]).some(m=>gone.has(String(m.code)));
+  });
 }
 
 /* Two signals the catalog can't see on its own: which SKUs the enrichment tool is still
@@ -516,7 +536,22 @@ async function saveProduct(){
     if(PDRAFT.image) patch.image=PDRAFT.image;
     await api("",{method:"POST",body:JSON.stringify({action:"save_override",manufacturer:SLUG,code:PDRAFT.code,patch})});
   }
-  PDRAFT=null; await loadMfr(); toast("Product saved ✓ — live on the portal");
+  /* Same reasoning as the merge: we just sent these values and they were accepted, so
+     show them. A custom product's fields live on its own row; a catalog product's live on
+     the override — localApply puts them where the server put them. */
+  const saved={name:PDRAFT.name,category:PDRAFT.category,subcategory:PDRAFT.subcategory||"",
+    description:PDRAFT.description,price_note:PDRAFT.price_note,group:PDRAFT.group||"",
+    base_price:PDRAFT.base_price===""?null:Number(PDRAFT.base_price),
+    msrp:PDRAFT.msrp===""?null:Number(PDRAFT.msrp), tiers, active:PDRAFT.active!==false};
+  if(PDRAFT.image) saved.image=PDRAFT.image;
+  const wasAdded=PDRAFT.kind==="custom";
+  if(wasAdded && !(DETAIL.custom||[]).some(p=>String(p.code)===String(PDRAFT.code))){
+    (DETAIL.custom=DETAIL.custom||[]).push(Object.assign({code:PDRAFT.code},saved)); touched();
+  } else {
+    localApply(PDRAFT.code, saved, wasAdded);
+    if(wasAdded && PDRAFT.group!=null) localOverride(PDRAFT.code,{group:String(PDRAFT.group||"")});
+  }
+  PDRAFT=null; render(); toast("Product saved ✓ — live on the portal");
 }
 /* Per-line listing mode. Deliberately a per-manufacturer setting: most lines have no
    enrichment pages at all, so a global rule would empty them. */
@@ -892,6 +927,9 @@ function dupPanelHtml(){
       ${rows}
       <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
         ${other?`<button class="btn sm" onclick="mergeInto('${esc(m.code)}','${esc(other)}')">Keep this one — merge the other in</button>`:""}
+        <label class="winpick" title="Choose the record to keep, then merge every chosen group at once from the bar above">
+          <input type="radio" name="dupwin-${esc(cssKey(g.key))}" ${DUPWIN[g.key]===m.code?"checked":""}
+            onchange="dupSetWinner('${esc(g.key)}','${esc(m.code)}')"> keep this one</label>
         ${d&&d.preview_url?`<a class="btn ghost sm" href="${esc(d.preview_url)}" target="_blank" rel="noopener">👁 Preview product</a>`:""}
         <button class="btn ghost sm" onclick="editProduct('${esc(m.code)}')">Open</button>
         <select class="btn ghost sm" onchange="setRecordState('${esc(m.code)}',this.value)" style="max-width:170px">
@@ -1126,6 +1164,52 @@ async function prodBulkDelete(){
    every word of the shorter name, and merging them would have destroyed one. Those keep
    their one-at-a-time review, and no "select all" can sweep them up by accident. */
 let DUPSEL=new Set();
+/* CHOOSE THE SURVIVOR IN EACH GROUP, THEN RUN THEM ALL.
+   Which of two records lives is a judgement and stays one — but having made twenty of
+   them there is no reason to wait through twenty round trips. A group can hold more than
+   two records (10108 twice plus 10108BLUE), so choosing one winner means merging every
+   other member of that group into it. */
+let DUPWIN={};
+function cssKey(k){ return String(k).replace(/[^A-Za-z0-9_-]/g,"_"); }
+function dupSetWinner(key,code){ DUPWIN[key]=code; dupBulkSync(); }
+function dupChosen(){
+  return (DUPS||[]).filter(g=>!g.same_code && DUPWIN[g.key]
+      && (g.members||[]).some(m=>String(m.code)===String(DUPWIN[g.key])));
+}
+function dupPairsFromChoices(){
+  const pairs=[];
+  dupChosen().forEach(g=>{ const win=DUPWIN[g.key];
+    (g.members||[]).forEach(m=>{ const c=String(m.code);
+      if(c!==String(win) && !pairs.some(p=>p.loser===c)) pairs.push({winner:String(win),loser:c,key:g.key}); }); });
+  return pairs;
+}
+async function dupMergeChosen(){
+  const pairs=dupPairsFromChoices(); if(!pairs.length) return;
+  const groups=dupChosen().length;
+  if(!confirm("Merge "+groups+" group"+(groups===1?"":"s")+" — "+pairs.length+" record"+(pairs.length===1?"":"s")+" merged into the one you chose?\n\n"
+    +"Each kept record takes the other's price, links, images and Featured placement where it has none of its own. "
+    +"The others are archived, never deleted. Order history is never rewritten.\n\nEach one can be undone.")) return;
+  const CHUNK=25; const done=[], skipped=[]; let failedChunks=0;
+  for(let i=0;i<pairs.length;i+=CHUNK){
+    const part=pairs.slice(i,i+CHUNK).map(({winner,loser})=>({winner,loser}));
+    toast("Merging "+(i+1)+"–"+Math.min(i+CHUNK,pairs.length)+" of "+pairs.length+"…");
+    let r=null;
+    try{ r=await api("",{method:"POST",body:JSON.stringify({action:"merge_products_bulk",
+      manufacturer:SLUG,pairs:part,reviewer:(window.REVIEWER||"president")})}); }catch(e){ r=null; }
+    if(r&&r.ok!==false){ done.push(...(r.done||[])); skipped.push(...(r.skipped||[])); }
+    else failedChunks++;
+  }
+  // Apply exactly what came back, to the layer the server wrote it to.
+  done.forEach(d=>{
+    localApply(d.winner, d.carried_values||{}, d.winner_is_added===true);
+    localOverride(d.loser,{active:false, merged_into:d.winner});
+  });
+  localDedupe(done.flatMap(d=>[d.winner,d.loser]));
+  DUPWIN={}; render();
+  toast(done.length+" merged"+(skipped.length?" · "+skipped.length+" skipped":"")+(failedChunks?" · "+failedChunks+" batch(es) failed":""),
+        !!(skipped.length||failedChunks));
+  if(skipped.length) console.warn("Not merged:",skipped);
+}
 function dupSelectable(){ return (DUPS||[]).filter(g=>g.same_code).map(g=>g.code||g.members[0].code); }
 function dupPick(code,on){ if(on) DUPSEL.add(code); else DUPSEL.delete(code); dupBulkSync(); }
 function dupPickAll(on){
@@ -1133,7 +1217,10 @@ function dupPickAll(on){
   render();
 }
 function dupBulkSync(){
-  const bar=document.getElementById("dupbulk"); if(bar) bar.outerHTML=dupBulkBarHtml();
+  // Both bars come from one function now, so redraw them together.
+  const bar=document.getElementById("dupbulk"), win=document.getElementById("dupwinbar");
+  if(win) win.remove();
+  if(bar) bar.outerHTML=dupBulkBarHtml();
   document.querySelectorAll(".dupc.master").forEach(el=>{
     const c=(el.id||"").replace(/^dupc-/,""); el.classList.toggle("picked",DUPSEL.has(c)); });
 }
@@ -1148,7 +1235,16 @@ function dupBulkBarHtml(){
       <button class="btn ghost sm" onclick="dupPickAll(true)">Select all ${all.length}</button>
       <button class="btn ghost sm" onclick="dupPickAll(false)"${n?"":" disabled"}>Clear</button>
       <button class="btn sm" onclick="dupBulkGo()"${n?"":" disabled"}>Consolidate ${n||""} selected</button>
-    </div></div>`;
+    </div></div>
+    ${(function(){ const gs=dupChosen().length, ps=dupPairsFromChoices().length;
+      if(!other) return "";
+      return `<div id="dupwinbar" class="dupbulk" style="background:#fff7ef;border-color:#f0d2c2">
+        <div class="dbl">The other <b>${other}</b> are pairs of different SKUs. Tick <b>keep this one</b> on the record you want to survive in each, then run them together.
+          ${gs?`<b>${gs}</b> chosen so far — <b>${ps}</b> record(s) would be merged in.`:""}</div>
+        <div class="dbr">
+          <button class="btn ghost sm" onclick="DUPWIN={};render()"${gs?"":" disabled"}>Clear choices</button>
+          <button class="btn sm" onclick="dupMergeChosen()"${gs?"":" disabled"}>Merge ${gs||""} chosen group${gs===1?"":"s"}</button>
+        </div></div>`; })()}`;
 }
 async function dupBulkGo(){
   const codes=[...DUPSEL]; if(!codes.length) return;
@@ -1217,7 +1313,14 @@ async function mergeInto(winner,loser){
     if(r&&r.ok!==false){
       const c=(r.carried||[]).length;
       toast(`Merged ${loser} into ${winner}${c?` · carried ${r.carried.join(", ")}`:""}`);
-      await loadMfr();
+      /* This one was still reloading the world — the catalog, the duplicate scan and the
+         provenance fetch — which is the five to eight seconds after every merge. The
+         server has already told us exactly what it carried and what it retired, so the
+         screen can say the same thing without asking again. */
+      localApply(winner, r.carried_values||{}, r.winner_is_added===true);
+      localOverride(loser,{active:false, merged_into:winner});
+      localDedupe([winner,loser]);
+      render();
     } else if(r&&r.error==="same_code"){ toast(r.message||"That is one SKU in two layers — consolidate it instead.",true); }
     else toast((r&&r.error)||"Merge failed",true);
   }catch(e){ toast("Merge failed",true); }

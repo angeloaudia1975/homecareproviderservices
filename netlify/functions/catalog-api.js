@@ -758,8 +758,12 @@ exports.handler = async (event)=>{
         // Connections only for the codes actually in a group — a full-catalog join would be
         // hundreds of round trips for information nobody is looking at.
         const codes=[...new Set(groups.flatMap(g=>g.members.map(m=>m.code)))].slice(0,200);
-        const conn={};
-        for(const c of codes){ try{ conn[c]=await connectionsFor(mfr,c); }catch(e){ conn[c]=null; } }
+        /* THIS LINE WAS THE WAIT. It used to be a sequential `for` loop calling
+           connectionsFor once per code — five queries each, awaited one code at a time, for
+           up to two hundred codes. A thousand round trips in single file, measured at 7 to
+           12 seconds on the live site, and it ran on every page load and after every merge.
+           The same answer for every code costs five queries in total. */
+        const conn=await connectionsForMany(mfr,codes).catch(()=>({}));
         groups.forEach(g=>g.members.forEach(m=>{ m.connections=conn[m.code]||null; }));
         return json(200,{ok:true,groups,scanned:(base||[]).length+(custom||[]).length});
       }
@@ -987,6 +991,89 @@ exports.handler = async (event)=>{
         return json(200,{ok:true,code});
       }
 
+      /* MANY MERGES, ONE DECISION EACH.
+         Choosing which of two records survives is a judgement and stays per pair — but
+         once every winner is picked, running them should not mean waiting for a full
+         merge round trip twenty times over. The shared reads happen once; each pair then
+         costs only its own writes. Every pair is re-verified here rather than trusted from
+         the screen: a winner and loser that are the same code, or a code that no longer
+         exists, is skipped and named. */
+      if(b.action==="merge_products_bulk"){
+        const mfr=b.manufacturer;
+        const pairs=(Array.isArray(b.pairs)?b.pairs:[])
+          .map(p=>({winner:String((p&&p.winner)||"").trim(), loser:String((p&&p.loser)||"").trim()}))
+          .filter(p=>p.winner&&p.loser);
+        if(!mfr||!pairs.length) return json(400,{error:"manufacturer and pairs required"});
+        if(pairs.length>25) return json(400,{error:"too_many", message:"Send at most 25 pairs per call."});
+        const e=encodeURIComponent, now=new Date().toISOString();
+        const [base,custom,ovAll,content]=await Promise.all([
+          fetchJson(`${ORDERING_BASE}/data/${e(mfr)}.json`).catch(()=>[]),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`).catch(()=>[]),
+          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]),
+          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=name,skus&limit=5000`).catch(()=>[]),
+        ]);
+        const findB=c=>(base||[]).find(x=>String(x.code)===c);
+        const findC=c=>(custom||[]).find(x=>String(x.code)===c);
+        const ovOf=c=>{ const r=(ovAll||[]).find(x=>String(x.code)===c); return (r&&r.patch)||{}; };
+        const approvedBy={};
+        (content||[]).forEach(row=>{ (Array.isArray(row.skus)?row.skus:[]).forEach(sk=>{
+          const c=String((sk&&(sk.sku||sk.code))||sk||"").trim().toUpperCase(); if(!c||approvedBy[c]) return;
+          approvedBy[c]=String((sk&&sk.name)||row.name||"").trim()||null; }); });
+        const first=(...v)=>{ for(const x of v){ if(x!=null&&x!=="") return x; } return null; };
+        const done=[], skipped=[];
+        for(const {winner:win,loser:lose} of pairs){
+          if(win===lose){ skipped.push({winner:win,loser:lose,reason:"one SKU in two layers — consolidate it instead"}); continue; }
+          const winB=findB(win), winC=findC(win), loseB=findB(lose), loseC=findC(lose);
+          if(!winB&&!winC){ skipped.push({winner:win,loser:lose,reason:`${win} is not in this catalog`}); continue; }
+          if(!loseB&&!loseC){ skipped.push({winner:win,loser:lose,reason:`${lose} is not in this catalog`}); continue; }
+          const loseOv=ovOf(lose), winOv=ovOf(win);
+          if(loseOv.merged_into){ skipped.push({winner:win,loser:lose,reason:`${lose} was already merged`}); continue; }
+          const loseVal=k=>first(loseOv[k], loseC&&loseC[k], loseB&&loseB[k]);
+          const winVal =k=>first(winOv[k],  winC&&winC[k],  winB&&winB[k]);
+          const carry={};
+          ["base_price","msrp","map","tiers","price_note","image","description","category"].forEach(k=>{
+            if(winVal(k)==null||winVal(k)===""){ const v=loseVal(k); if(v!=null&&v!=="") carry[k]=v; }
+          });
+          // The approved title wins, exactly as in the single merge.
+          const appr=approvedBy[String(win).toUpperCase()];
+          if(appr) carry.name=appr;
+          else if(winVal("name")==null||winVal("name")===""){ const v=loseVal("name"); if(v) carry.name=v; }
+          try{
+            if(Object.keys(carry).length){
+              if(winC){ await sb("PATCH",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(win)}`,
+                          Object.assign({},carry,{updated_at:now}),{Prefer:"return=minimal"}); }
+              else { await sb("POST","product_overrides?on_conflict=manufacturer,code",
+                       {manufacturer:mfr,code:win,patch:Object.assign({},winOv,carry),updated_at:now},
+                       {Prefer:"resolution=merge-duplicates,return=minimal"}); }
+            }
+            // Re-point what belongs to the SKU. Order history is never moved.
+            const moved={links:0,media:0,featured:0};
+            for(const [tbl,key] of [["product_links","links"],["product_media","media"],["featured_products","featured"]]){
+              try{
+                const rows=await sb("GET",`${tbl}?manufacturer=eq.${e(mfr)}&code=eq.${e(lose)}&select=*`).catch(()=>[]);
+                if(!rows||!rows.length) continue;
+                if(tbl!=="product_media"){
+                  const winHas=await sb("GET",`${tbl}?manufacturer=eq.${e(mfr)}&code=eq.${e(win)}&select=code&limit=1`).catch(()=>[]);
+                  if(winHas&&winHas.length) continue;
+                }
+                await sb("PATCH",`${tbl}?manufacturer=eq.${e(mfr)}&code=eq.${e(lose)}`,{code:win},{Prefer:"return=minimal"});
+                moved[key]=rows.length;
+              }catch(err){}
+            }
+            const retire=Object.assign({},loseOv,{active:false, merged_into:win, merged_at:now,
+              merged_by:b.reviewer?String(b.reviewer).slice(0,80):null});
+            await sb("POST","product_overrides?on_conflict=manufacturer,code",
+              {manufacturer:mfr,code:lose,patch:retire,updated_at:now},
+              {Prefer:"resolution=merge-duplicates,return=minimal"});
+            if(loseC) await sb("PATCH",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(lose)}`,
+              {active:false,updated_at:now},{Prefer:"return=minimal"}).catch(()=>{});
+            done.push({winner:win,loser:lose,carried:Object.keys(carry),carried_values:carry,
+              winner_is_added:!!winC,moved});
+          }catch(err){ skipped.push({winner:win,loser:lose,reason:"the merge did not complete — try this pair on its own"}); }
+        }
+        return json(200,{ok:true,merged:done.length,done,skipped});
+      }
+
       if(b.action==="merge_products"){
         const mfr=b.manufacturer, win=String(b.winner||"").trim(), lose=String(b.loser||"").trim();
         if(!mfr||!win||!lose) return json(400,{error:"manufacturer, winner and loser are required"});
@@ -1073,7 +1160,8 @@ exports.handler = async (event)=>{
           {Prefer:"resolution=merge-duplicates,return=minimal"});
         if(loseC) await sb("PATCH",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(lose)}`,
           {active:false,updated_at:now},{Prefer:"return=minimal"}).catch(()=>{});
-        return json(200,{ok:true,winner:win,loser:lose,carried:Object.keys(carry),applied,moved,
+        return json(200,{ok:true,winner:win,loser:lose,carried:Object.keys(carry),carried_values:carry,
+          winner_is_added:!!winC,applied,moved,
           orders_referencing_loser:(orders||[]).length});
       }
 
