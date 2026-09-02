@@ -1466,27 +1466,79 @@ async function openPriceAudit(){
   _priceState=buildPriceState(cat); _priceSel=new Set();
   renderPriceAudit();
 }
-const PA_DISPO={do_not_list:'Confirmed – do not list',discontinued:'Discontinued',not_offered:'Not offered by HCPS',ignore:'Ignored price record'};
+const PA_DISPO={archived:'Removed',do_not_list:'Confirmed – do not list',discontinued:'Discontinued',not_offered:'Not offered by HCPS',ignore:'Ignored price record'};
+/* Reasons are bookkeeping; getting the thing off the shelf is the job. So the queue has
+   one button and no menu, and the reason can be stated afterwards from the resolved list
+   — where there is time to care — or left as "Removed", which claims nothing untrue. */
+const PA_REASONS=[['archived','Removed'],['discontinued','Discontinued — manufacturer no longer makes it'],
+  ['not_offered','Not offered by HCPS — still made, we do not carry it'],
+  ['do_not_list','Confirmed – do not list — we could carry it, we choose not to'],
+  ['ignore','Ignore this price record — junk row, item stays active']];
 
 /* Record (or clear) a decision that HCPS will not list a priced code. Written to the
    override layer, so it rides with the code and survives the next price-list import —
    re-importing the manufacturer's sheet will not quietly resurrect something we have
    already decided against. */
+/* Three of the four decisions mean "this is not something a dealer can buy from us", and
+   one — Ignore — means only "stop asking me about this price row". They were all written
+   the same way: a disposition and nothing else. But Partner 360 hides a product on
+   active===false, NOT on disposition, so a record marked Discontinued stayed orderable
+   the moment anything else made it visible. The three real removals now go through
+   retire_sku, which sets both and is reversible; Ignore still only annotates. */
+const PA_REMOVES=['do_not_list','discontinued','not_offered','archived'];
+/* One click, one confirm, done. "Removed" is the honest default: the record is off the
+   shelf and the reason has not been claimed. */
+async function paRemove(code){
+  const S=_priceState, rec=(S&&S.allCodes.has(code))?S.recOf(code):null;
+  if(!window.confirm('Remove '+code+(rec&&rec.name?' — '+rec.name:'')+' from '+MFR+'?\n\n'
+    +'It stops being listed or sold on Partner 360 and moves to the Resolved list, where you can undo it.\n\n'
+    +'Its price, images and order history are kept.')) return;
+  const r=await catalogPost({action:'retire_sku',manufacturer:MFR,code,reason:'archived',
+    note:null,reviewer:(window.REVIEWER||'admin')});
+  if(!(r.ok&&r.json&&r.json.ok!==false)){ toast((r.json&&r.json.error)||'Could not remove that',true); return; }
+  toast(code+' removed — undo it under Resolved');
+  _catalogCache=null; openPriceAudit();
+}
+// Refine why, after the fact, from the resolved list. The record is already inactive;
+// this only changes what the decision says — except Ignore, which puts it back in use.
+async function paSetReason(code,val){
+  if(!val) return;
+  const r=(val==='ignore')
+    ? await catalogPost({action:'save_override',manufacturer:MFR,code,patch:{disposition:'ignore',
+        disposition_by:(window.REVIEWER||'admin'),active:true}})
+    : await catalogPost({action:'retire_sku',manufacturer:MFR,code,reason:val,reviewer:(window.REVIEWER||'admin')});
+  if(!(r.ok&&r.json&&r.json.ok!==false)){ toast((r.json&&r.json.error)||'Could not change that',true); return; }
+  toast(code+' — '+(PA_DISPO[val]||val));
+  _catalogCache=null; openPriceAudit();
+}
 async function paDispose(code,val,el){
   if(val){
     const label=PA_DISPO[val]||val;
+    const removes=PA_REMOVES.indexOf(val)>=0;
     const note=window.prompt('Why is '+code+' not being listed? (optional — shown in the resolved list)','')||'';
-    if(!window.confirm('Record "'+label+'" for '+code+'?\n\nIt leaves the unassigned queue and stops counting against the pricing score. You can undo it here at any time.')){
+    if(!window.confirm('Record "'+label+'" for '+code+'?\n\n'
+        +(removes ? 'It is marked inactive, so Partner 360 will not list or sell it, and it leaves the unassigned queue.'
+                  : 'It leaves the unassigned queue. The record stays active — Ignore only silences this row, it does not remove the item.')
+        +'\n\nYou can undo it here at any time.')){
       if(el) el.value=''; return; }
-    const r=await catalogPost({action:'save_override',manufacturer:MFR,code,
-      patch:{disposition:val,disposition_note:note,disposition_by:(window.REVIEWER||'admin')}});
+    const r=removes
+      ? await catalogPost({action:'retire_sku',manufacturer:MFR,code,reason:val,
+          note:note||null,reviewer:(window.REVIEWER||'admin')})
+      : await catalogPost({action:'save_override',manufacturer:MFR,code,
+          patch:{disposition:val,disposition_note:note,disposition_by:(window.REVIEWER||'admin')}});
     if(!(r.ok&&r.json&&r.json.ok!==false)){ toast((r.json&&r.json.error)||'Could not record that',true); if(el) el.value=''; return; }
-    toast(code+' — '+label);
+    toast(code+' — '+label+(removes?' · removed from Partner 360':''));
   } else {
-    const r=await catalogPost({action:'save_override',manufacturer:MFR,code,patch:{disposition:''}});
+    // Undo has to reverse whichever of the two was done, or a retired code would keep
+    // its inactive flag while losing the decision that explains it.
+    const cur=(_priceState&&_priceState.allCodes.has(code))?(_priceState.recOf(code).disposition||''):'';
+    const r=(PA_REMOVES.indexOf(cur)>=0)
+      ? await catalogPost({action:'restore_sku',manufacturer:MFR,code})
+      : await catalogPost({action:'save_override',manufacturer:MFR,code,patch:{disposition:''}});
     if(!(r.ok&&r.json&&r.json.ok!==false)){ toast('Could not undo that',true); return; }
     toast(code+' back in the queue');
   }
+  _catalogCache=null;
   openPriceAudit();
 }
 
@@ -1735,17 +1787,12 @@ function renderPriceAudit(){
       <p class="mut">A price exists in the catalog for these codes, but no product here uses them. Three ways to clear each one:
         <b>correct the SKU</b> if ours is wrong or formatted differently, <b>add it</b> to a product, or record a decision that HCPS will not list it.
         A recorded decision stops counting against the score — it is an answer, not an outstanding error.</p>
+      <p class="mut" style="font-size:11.5px">Not sold any more? <b>🚫 Remove</b> — one click. It stops being listed or sold on Partner 360 and moves to <b>Resolved</b> below, where you can undo it or say why if it matters.</p>
       ${tbl(['Code','Name','Dealer price','MSRP','Resolve'], S.orphans.slice(0,200).map(r=>`<tr>
         <td><b>${esc(r.code)}</b></td><td>${esc(r.name||'—')}</td><td>${pmoney(r.base_price)}</td><td>${pmoney(r.msrp)}</td>
         <td style="white-space:nowrap">
           <button class="btn ghost" style="padding:3px 8px" data-act="pa-fixsku" data-code="${escA(r.code)}" title="Our SKU is wrong or formatted differently">✎ Correct SKU</button>
-          <select class="ed" style="padding:3px 6px;font-size:11px;max-width:150px" onchange="paDispose('${escA(r.code)}',this.value,this)">
-            <option value="">Do not list…</option>
-            <option value="do_not_list">Confirmed – do not list</option>
-            <option value="discontinued">Discontinued</option>
-            <option value="not_offered">Not offered by HCPS</option>
-            <option value="ignore">Ignore this price record</option>
-          </select>
+          <button class="btn ghost" style="padding:3px 8px" onclick="paRemove('${escA(r.code)}')" title="Stop listing and selling this — reversible">🚫 Remove</button>
         </td></tr>`).join(''))}
       </div>`:''}
 
@@ -1766,7 +1813,9 @@ function renderPriceAudit(){
       <p class="mut">Decisions already recorded. These no longer count against the pricing score. Undo one to put it back in the queue.</p>
       ${tbl(['Code','Name','Decision','Recorded','Undo'], S.resolved.slice(0,200).map(r=>`<tr>
         <td><b>${esc(r.code)}</b></td><td>${esc(r.name||'—')}</td>
-        <td>${esc(PA_DISPO[r.disposition]||r.disposition)}${r.disposition_note?` <span class="mut">· ${esc(r.disposition_note)}</span>`:''}</td>
+        <td><select class="ed" style="padding:3px 6px;font-size:11px;max-width:210px" onchange="paSetReason('${escA(r.code)}',this.value)">
+            ${PA_REASONS.map(([v,lab])=>`<option value="${v}"${r.disposition===v?' selected':''}>${esc(lab)}</option>`).join('')}
+          </select>${r.disposition_note?`<div class="mut" style="font-size:11px">${esc(r.disposition_note)}</div>`:''}</td>
         <td class="mut">${r.disposition_at?esc(String(r.disposition_at).slice(0,10)):'—'}</td>
         <td><button class="btn ghost" style="padding:3px 8px" onclick="paDispose('${escA(r.code)}','',null)">↩ Undo</button></td>
       </tr>`).join(''))}
@@ -1791,13 +1840,7 @@ function renderPriceAudit(){
             <button class="btn ghost" style="padding:3px 8px" onclick="piqKeep('${escA(r.code)}')" title="Leave our price as it is">Keep current</button>
             <button class="btn ghost" style="padding:3px 8px" onclick="piqEdit('${escA(r.code)}')">✎ Edit</button>
             <button class="btn ghost" style="padding:3px 8px" data-act="pa-fixsku" data-code="${escA(r.code)}" title="Our SKU is wrong or formatted differently">✎ SKU</button>
-            <select class="ed" style="padding:3px 6px;font-size:11px;max-width:130px" onchange="paDispose('${escA(r.code)}',this.value,this)">
-              <option value="">Do not list…</option>
-              <option value="do_not_list">Confirmed – do not list</option>
-              <option value="discontinued">Discontinued</option>
-              <option value="not_offered">Not offered by HCPS</option>
-              <option value="ignore">Ignore this price record</option>
-            </select>
+            <button class="btn ghost" style="padding:3px 8px" onclick="paRemove('${escA(r.code)}')" title="Stop listing and selling this — reversible">🚫 Remove</button>
           </td></tr>`; }).join('');
       return `<div class="pa-sec" style="border-color:#e6b800;background:#fffdf7">
         <h3>Imported pricing to review — the file disagrees with ours (${q.length})</h3>
