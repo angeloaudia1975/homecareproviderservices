@@ -43,7 +43,15 @@
  .dupm{display:grid;grid-template-columns:1fr 1fr;gap:12px}
  .dupm.one{grid-template-columns:1fr}
  @media(max-width:700px){.dupm{grid-template-columns:1fr}}
- .dupfacts .mut,/* Bulk product actions: the bar only appears once something is selected. */
+ .dupfacts .mut,.shelf{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;
+  margin:0 0 10px;padding:11px 14px;background:#f3f8f4;border:1px solid #cfe3d5;border-radius:10px}
+.shelf .shl{font-size:12.5px;color:#31473a;max-width:70ch}
+.shelf .shl .mut{color:#5d7365}
+.shelf .shr{display:flex;gap:7px;flex-wrap:wrap}
+.shelf button[disabled]{opacity:.45;cursor:not-allowed}
+.notlive{margin-top:3px;font-size:11px;color:#b42323}
+.notelive{margin-top:3px;font-size:11px;color:#a8690d}
+/* Bulk product actions: the bar only appears once something is selected. */
 .prodbulk{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;
   margin:0 0 10px;padding:10px 14px;background:#fff6f2;border:1px solid #f0d2c2;border-radius:10px}
 .prodbulk .pbl{font-size:12.5px;color:#4a5666}
@@ -213,6 +221,66 @@ function statusOf(p,dupSet){
   if(p.base_price==null||p.base_price===""||Number(p.base_price)<=0) return "needs_review";
   return "published";
 }
+/* ── WHAT A DEALER CAN ACTUALLY SEE ───────────────────────────────────────────
+   Every other view here answers "what did I change?". This one answers the question you
+   ask last, before publishing: what is on the shelf? It is not a summary of the edits —
+   it re-applies the four tests Partner 360 itself applies, plus the enriched-only gate
+   when the line is set that way, and reports the FIRST reason a product fails. A product
+   can fail more than one; naming one thing to fix beats naming four. */
+function visibilityOf(p){
+  const o=(DETAIL.overrides||{})[p.code]||{};
+  if(o.merged_into) return {visible:false, why:"merged into "+o.merged_into};
+  if(o.disposition) return {visible:false, why:(PA_STATE&&PA_STATE[o.disposition])||o.disposition};
+  if(p.active===false) return {visible:false, why:"hidden"};
+  const pr=p.base_price;
+  if(pr==null||pr===""||!(Number(pr)>0)) return {visible:false, why:"no dealer price"};
+  const m=MFRS.find(x=>x.slug===SLUG);
+  if(m&&m.enriched_only){
+    const est=ENRICH?ENRICH[p.code]:undefined;
+    if(est===undefined) return {visible:false, why:"no enrichment record — this line lists approved products only"};
+    if(est!=="published"&&est!=="approved"&&est!=="complete")
+      return {visible:true, why:"", note:"enrichment record is still "+est};
+  }
+  return {visible:true, why:""};
+}
+function visibleCounts(){
+  const all=effProducts(); let on=0; const why={};
+  all.forEach(p=>{ const v=visibilityOf(p);
+    if(v.visible) on++; else why[v.why]=(why[v.why]||0)+1; });
+  return {total:all.length, on, off:all.length-on, why};
+}
+function shelfBarHtml(){
+  const c=visibleCounts();
+  const reasons=Object.keys(c.why).sort((a,b)=>c.why[b]-c.why[a]);
+  return `<div class="shelf">
+    <div class="shl"><b>${c.on}</b> of <b>${c.total}</b> products in this line are visible to dealers on Partner 360 right now.
+      ${c.off?`<span class="mut">The other ${c.off}: ${reasons.slice(0,4).map(r=>`${c.why[r]} ${esc(r)}`).join(" · ")}${reasons.length>4?" · …":""}.</span>`:"Nothing is held back."}</div>
+    <div class="shr">
+      <button class="btn ghost sm" onclick="setFilter('stat','visible')">Show the ${c.on} live</button>
+      <button class="btn ghost sm" onclick="setFilter('stat','notvisible')"${c.off?"":" disabled"}>Show the ${c.off} held back</button>
+      <button class="btn ghost sm" onclick="exportShelf()">⬇ Export list</button>
+    </div></div>`;
+}
+/* A list you can read away from the screen, send to the manufacturer, or diff against
+   next month. Every product, whether it is live, and if not, the one reason why. */
+function exportShelf(){
+  const rows=[["code","name","category","dealer_price","tiers","visible_to_dealers","reason","note"]];
+  effProducts().slice().sort((a,b)=>String(a.code).localeCompare(String(b.code))).forEach(p=>{
+    const v=visibilityOf(p);
+    rows.push([p.code, p.name||"", p.category||"",
+      (p.base_price==null||p.base_price==="")?"":Number(p.base_price).toFixed(2),
+      String((p.tiers&&p.tiers.length)||0), v.visible?"yes":"no", v.why||"", v.note||""]);
+  });
+  const csv=rows.map(r=>r.map(c=>{ const t=String(c==null?"":c);
+    return /[",\n]/.test(t) ? '"'+t.replace(/"/g,'""')+'"' : t; }).join(",")).join("\r\n");
+  const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=SLUG+"-what-dealers-see-"+new Date().toISOString().slice(0,10)+".csv";
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },0);
+  toast("Exported "+(rows.length-1)+" products");
+}
 function statusChip(st){ const m=STATUS_META[st]||STATUS_META.published;
   return `<span class="chip ${m.cls}" title="${esc(m.why)}">${esc(m.label)}</span>`; }
 function fileToB64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});}
@@ -245,6 +313,8 @@ function filteredSortedProducts(){
   else if(PSTAT==="featured") arr=arr.filter(p=>isFeat(p.code));
   else if(PSTAT==="added") arr=arr.filter(p=>p.kind==="custom");
   else if(PSTAT==="edited") arr=arr.filter(p=>p.edited);
+  else if(PSTAT==="visible") arr=arr.filter(p=>visibilityOf(p).visible);
+  else if(PSTAT==="notvisible") arr=arr.filter(p=>!visibilityOf(p).visible);
   else if(PSTAT&&STATUS_META[PSTAT]){ const ds=dupCodeSet(); arr=arr.filter(p=>statusOf(p,ds)===PSTAT); }
   const price=p=>(p.base_price!=null&&p.base_price!=="")?Number(p.base_price):Infinity;
   const nm=(a,b)=>String(a.name||"").localeCompare(String(b.name||""),"en",{sensitivity:"base"});
@@ -533,7 +603,10 @@ function prodListHtml(){
             if(k.variantOf) bits.push(`<span title="A trailing letter suffix is a manufacturer variant, not a typo — do not renumber it onto ${esc(k.variantOf)}">variant of <b>${esc(k.variantOf)}</b></span>`);
             else if(k.variants.length) bits.push(`<span title="These are separate variants of this part number">variants: <b>${esc(k.variants.join(", "))}</b></span>`);
             return bits.length?" · "+bits.join(" · "):"";
-          })()}</div></td>
+          })()}</div>${(()=>{ const v=visibilityOf(p);
+            if(!v.visible) return `<div class="notlive">Not on the dealer platform — ${esc(v.why)}</div>`;
+            if(v.note) return `<div class="notelive">${esc(v.note)}</div>`;
+            return ""; })()}</td>
      <td class="num">${p.base_price!=null&&p.base_price!==""?"$"+Number(p.base_price).toFixed(2):"—"}</td>
      <td class="num">${tn?tn+" tier"+(tn>1?"s":""):"—"}</td>
      <td>${p.active===false?'<span style="color:var(--gray)">hidden</span>':'<span class="ok">shown</span>'}</td>
@@ -549,7 +622,8 @@ function prodListHtml(){
         }
        ${p.kind==="catalog"&&p.edited?`<button class="btn ghost sm" onclick="resetOverride('${esc(p.code)}')">Reset</button>`:""}</td></tr>`;}).join("")
      ||`<tr><td colspan="5" class="hint">No products match.</td></tr>`;
-  return `      ${prodBulkBarHtml(allP,shownP)}
+  return `      ${shelfBarHtml()}
+      ${prodBulkBarHtml(allP,shownP)}
       <table><thead><tr><th class="pickcell"><input type="checkbox" ${allPicked(shownP)?"checked":""} onchange="prodPickAll(this.checked)" title="Select everything the filters are showing"></th><th>Product</th><th class="num">Dealer price</th><th class="num">Tiers</th><th>Status</th><th></th></tr></thead><tbody>${prodRows}</tbody></table>
       <div class="hint" style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <span>Showing <b>${shownP.length}</b> of <b>${allP.length}</b>${allP.length!==eff.length?` (filtered from ${eff.length})`:""}</span>
@@ -1280,6 +1354,7 @@ function render(){
         <input type="text" placeholder="Search name, code / SKU, category…" value="${esc(PRODQ)}" id="prodsearch" oninput="searchProducts(this.value)" style="flex:1;min-width:200px">
         <select onchange="setFilter('cat',this.value)" title="Filter by category"><option value="">All categories</option>${catList().map(c=>`<option value="${esc(c)}" ${PCAT===c?"selected":""}>${esc(c)}</option>`).join("")}</select>
         <select onchange="setFilter('stat',this.value)" title="Filter by status"><option value="" ${PSTAT===""?"selected":""}>All statuses</option><option value="shown" ${PSTAT==="shown"?"selected":""}>Shown</option><option value="hidden" ${PSTAT==="hidden"?"selected":""}>Hidden</option><option value="featured" ${PSTAT==="featured"?"selected":""}>Featured</option><option value="added" ${PSTAT==="added"?"selected":""}>Added</option><option value="edited" ${PSTAT==="edited"?"selected":""}>Edited</option>
+          <optgroup label="On the dealer platform"><option value="visible" ${PSTAT==="visible"?"selected":""}>Visible to dealers</option><option value="notvisible" ${PSTAT==="notvisible"?"selected":""}>Not visible to dealers</option></optgroup>
           <optgroup label="Status">${Object.keys(STATUS_META).map(k=>`<option value="${k}" ${PSTAT===k?"selected":""}>${esc(STATUS_META[k].label)}</option>`).join("")}</optgroup></select>
         <select onchange="setFilter('sort',this.value)" title="Sort">
           <option value="name" ${PSORT==="name"?"selected":""}>Sort: Name A–Z</option>
