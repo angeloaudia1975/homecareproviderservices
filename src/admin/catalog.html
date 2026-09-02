@@ -43,7 +43,15 @@
  .dupm{display:grid;grid-template-columns:1fr 1fr;gap:12px}
  .dupm.one{grid-template-columns:1fr}
  @media(max-width:700px){.dupm{grid-template-columns:1fr}}
- .dupfacts .mut,/* Bulk consolidate: the bar sits above the list and the picked cards say so plainly. */
+ .dupfacts .mut,/* Bulk product actions: the bar only appears once something is selected. */
+.prodbulk{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;
+  margin:0 0 10px;padding:10px 14px;background:#fff6f2;border:1px solid #f0d2c2;border-radius:10px}
+.prodbulk .pbl{font-size:12.5px;color:#4a5666}
+.prodbulk .pbr{display:flex;gap:7px;flex-wrap:wrap}
+td.pickcell,th.pickcell{width:26px;padding-right:0}
+td.pickcell input,th.pickcell input{margin:0}
+tr.picked{background:#fffaf6}
+/* Bulk consolidate: the bar sits above the list and the picked cards say so plainly. */
 .dupbulk{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;
   margin:12px 0 14px;padding:11px 14px;background:#f7f9fc;border:1px solid var(--line);border-radius:10px}
 .dupbulk .dbl{font-size:12.5px;color:#4a5666;max-width:60ch}
@@ -507,7 +515,9 @@ function prodListHtml(){
   const prodRows=shownP.map(p=>{const tn=(p.tiers&&p.tiers.length)||0;const ft=isFeat(p.code);
     const st=statusOf(p,dupSet);
     const o=(DETAIL.overrides||{})[p.code]||{};
-    return `<tr>
+    return `<tr${PSEL.has(p.code)?' class="picked"':''}>
+     <td class="pickcell"><input type="checkbox" ${PSEL.has(p.code)?"checked":""} onchange="prodPick('${esc(p.code)}',this.checked)"
+       title="${p.kind==="custom"?"Select — added products can be deleted":"Select — a standard catalog product can be hidden but not deleted"}"></td>
      <td><b>${esc(p.name)}</b> ${statusChip(st)}${p.kind==="custom"?'<span class="chip cst">added</span>':(p.edited?'<span class="chip ed">edited</span>':"")}${ft?'<span class="chip ft">★ featured</span>':''}
         <div style="font-size:11px;color:var(--gray)">${esc(p.code)}${p.category?" · "+esc(p.category):""}${
           st==="merged"?` · merged into <b>${esc(o.merged_into)}</b>`:""}${
@@ -539,7 +549,8 @@ function prodListHtml(){
         }
        ${p.kind==="catalog"&&p.edited?`<button class="btn ghost sm" onclick="resetOverride('${esc(p.code)}')">Reset</button>`:""}</td></tr>`;}).join("")
      ||`<tr><td colspan="5" class="hint">No products match.</td></tr>`;
-  return `      <table><thead><tr><th>Product</th><th class="num">Dealer price</th><th class="num">Tiers</th><th>Status</th><th></th></tr></thead><tbody>${prodRows}</tbody></table>
+  return `      ${prodBulkBarHtml(allP,shownP)}
+      <table><thead><tr><th class="pickcell"><input type="checkbox" ${allPicked(shownP)?"checked":""} onchange="prodPickAll(this.checked)" title="Select everything the filters are showing"></th><th>Product</th><th class="num">Dealer price</th><th class="num">Tiers</th><th>Status</th><th></th></tr></thead><tbody>${prodRows}</tbody></table>
       <div class="hint" style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <span>Showing <b>${shownP.length}</b> of <b>${allP.length}</b>${allP.length!==eff.length?` (filtered from ${eff.length})`:""}</span>
         ${allP.length>shownP.length?`<button class="btn ghost sm" onclick="PLIMIT+=60;render()">Load more</button><button class="btn ghost sm" onclick="PLIMIT=999999;render()">Show all</button>`:""}
@@ -849,6 +860,84 @@ function dupPanelHtml(){
       </div></div>`).join("")}
   </div>`;
 }
+/* ── Working on many products at once ─────────────────────────────────────────
+   Selection follows the filters: "select all" means everything the list is currently
+   showing, so narrowing to a category or a status and selecting all is the fast, safe way
+   to act on a run of products rather than scrolling for checkboxes.
+
+   Delete is permanent and it is the one Angelo asked for. Two limits are worth knowing
+   before using it, and both come from the catalog itself rather than from caution:
+     · Only ADDED products can be deleted. A standard catalog product lives in the deployed
+       file, so the most it can be is hidden — there is nothing here to remove.
+     · A product carrying order history, images, links, a Featured placement or saved edits
+       is refused, because deleting it would leave those pointing at nothing. Order lines
+       are the serious one: they are what commission and sales reporting are built from.
+   Nothing is forced past those. Whatever is refused comes back named, with Hide offered
+   for the same selection — which is what actually takes a discontinued item off the
+   dealer platform. */
+let PSEL=new Set();
+function prodPick(code,on){ if(on) PSEL.add(code); else PSEL.delete(code); render(); }
+function allPicked(shown){ return shown.length>0 && shown.every(p=>PSEL.has(p.code)); }
+function prodPickAll(on){
+  const shown=lastShown||[];
+  if(on) shown.forEach(p=>PSEL.add(p.code)); else shown.forEach(p=>PSEL.delete(p.code));
+  render();
+}
+let lastShown=[];
+function prodBulkBarHtml(allP,shownP){
+  lastShown=shownP;
+  const n=PSEL.size; if(!n) return '';
+  const picked=effProducts().filter(p=>PSEL.has(p.code));
+  const added=picked.filter(p=>p.kind==="custom").length;
+  const standard=picked.length-added;
+  return `<div class="prodbulk">
+    <div class="pbl"><b>${n}</b> selected — <b>${added}</b> added${standard?`, <b>${standard}</b> standard catalog (these can be hidden, not deleted)`:""}</div>
+    <div class="pbr">
+      <button class="btn ghost sm" onclick="PSEL=new Set();render()">Clear</button>
+      <button class="btn ghost sm" onclick="prodBulkHide()">Hide ${n} from platform</button>
+      <button class="btn sm" style="background:var(--red,#b42323);border-color:var(--red,#b42323);color:#fff" onclick="prodBulkDelete()">Delete ${added||0} added</button>
+    </div></div>`;
+}
+async function prodBulkHide(){
+  const codes=[...PSEL]; if(!codes.length) return;
+  if(!confirm("Hide "+codes.length+" product"+(codes.length===1?"":"s")+" from Partner 360?\n\n"
+    +"Dealers stop seeing and ordering them. Prices, images and order history are kept, and you can show them again at any time.")) return;
+  let ok=0, bad=0;
+  for(const code of codes){
+    try{ const r=await api("",{method:"POST",body:JSON.stringify({action:"save_override",manufacturer:SLUG,code,patch:{active:false}})});
+      if(r&&r.ok!==false) ok++; else bad++; }catch(e){ bad++; }
+  }
+  PSEL=new Set(); toast(ok+" hidden"+(bad?" · "+bad+" failed":""),!!bad); await loadMfr();
+}
+async function prodBulkDelete(){
+  const picked=effProducts().filter(p=>PSEL.has(p.code));
+  const codes=picked.filter(p=>p.kind==="custom").map(p=>p.code);
+  if(!codes.length){ toast("None of the selected products are added products — a standard catalog product can only be hidden",true); return; }
+  if(!confirm("Permanently delete "+codes.length+" added product"+(codes.length===1?"":"s")+" from "+(curMfr().name||SLUG)+"?\n\n"
+    +"This cannot be undone from here — you would have to add them again.\n\n"
+    +"Anything still carrying order history, images, links, a Featured placement or saved catalog edits will be REFUSED and listed, "
+    +"because deleting it would leave those pointing at nothing. Use Hide for those.")) return;
+  const CHUNK=100; const gone=[], refused=[]; let failedChunks=0;
+  for(let i=0;i<codes.length;i+=CHUNK){
+    const part=codes.slice(i,i+CHUNK);
+    toast("Deleting "+(i+1)+"–"+Math.min(i+CHUNK,codes.length)+" of "+codes.length+"…");
+    let r=null;
+    try{ r=await api("",{method:"POST",body:JSON.stringify({action:"delete_products_bulk",manufacturer:SLUG,codes:part})}); }catch(e){ r=null; }
+    if(r&&r.ok!==false){ gone.push(...(r.deleted||[])); refused.push(...(r.refused||[])); }
+    else failedChunks++;
+  }
+  PSEL=new Set();
+  toast(gone.length+" deleted"+(refused.length?" · "+refused.length+" refused":"")+(failedChunks?" · "+failedChunks+" batch(es) failed":""), !!(refused.length||failedChunks));
+  if(refused.length){
+    console.warn("Refused:",refused);
+    alert(refused.length+" product(s) were NOT deleted because something still points at them:\n\n"
+      +refused.slice(0,15).map(r=>"• "+r.code+" — "+r.reason).join("\n")
+      +(refused.length>15?"\n… and "+(refused.length-15)+" more":"")
+      +"\n\nSelect them again and use Hide from platform instead — that takes them off the dealer platform and keeps the history intact.");
+  }
+  await loadMfr();
+}
+
 /* ── Consolidating in bulk ─────────────────────────────────────────────────────
    237 of these is not 237 decisions. A same-code group is one SKU the catalog happens to
    hold in two layers; consolidating it keeps the approved title, fills the gaps from the

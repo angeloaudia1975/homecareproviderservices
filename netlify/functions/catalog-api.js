@@ -539,6 +539,43 @@ exports.handler = async (event)=>{
         return json(200,{ok:true,forced:b.force===true});
       }
 
+      /* DELETE MANY, WITHOUT EVER FORCING.
+         Same guards as the single delete, checked per code, and nothing is forced past
+         them. A record that still has order lines, media, links, a Featured placement or
+         saved catalog edits is refused and named — deleting it would leave those pointing
+         at nothing, and order lines in particular are what commission and sales reporting
+         are built from. Only added products are deletable at all; a standard catalog
+         product lives in the deployed file and is not ours to remove. */
+      if(b.action==="delete_products_bulk"){
+        const mfr=b.manufacturer;
+        const codes=[...new Set((Array.isArray(b.codes)?b.codes:[]).map(c=>String(c||"").trim()).filter(Boolean))];
+        if(!mfr||!codes.length) return json(400,{error:"manufacturer and codes required"});
+        if(codes.length>200) return json(400,{error:"too_many", message:"Send at most 200 codes per call."});
+        const e=encodeURIComponent;
+        const custom=await sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code`).catch(()=>[]);
+        const isAdded=new Set((custom||[]).map(x=>String(x.code)));
+        const deleted=[], refused=[];
+        for(const code of codes){
+          if(!isAdded.has(code)){ refused.push({code, reason:"a standard catalog product — it can be hidden, not deleted"}); continue; }
+          let conn=null;
+          try{ conn=await connectionsFor(mfr,code); }catch(err){ conn=null; }
+          if(conn){
+            const held=[];
+            if(conn.orders)   held.push(`${conn.orders} order line${conn.orders===1?"":"s"}`);
+            if(conn.links)    held.push("a More Information link");
+            if(conn.media)    held.push(`${conn.media} image/document${conn.media===1?"":"s"}`);
+            if(conn.featured) held.push("a Featured placement");
+            if(conn.has_override) held.push("saved catalog edits");
+            if(held.length){ refused.push({code, reason:held.join(", "), connections:conn}); continue; }
+          }
+          try{
+            await sb("DELETE",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}`,null,{Prefer:"return=minimal"});
+            deleted.push(code);
+          }catch(err){ refused.push({code, reason:"the delete did not complete — try it on its own"}); }
+        }
+        return json(200,{ok:true, deleted, refused, requested:codes.length});
+      }
+
       /* Full provenance for every record in a duplicate group: what the catalog says,
          what the ENRICHMENT record says, and everything that would be at risk if it were
          removed. This exists because a merge screen that shows only two product names
