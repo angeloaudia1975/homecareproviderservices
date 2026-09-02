@@ -166,9 +166,15 @@ function duplicateGroups(base, custom, overrides){
      It cannot be settled by retiring a member the way a two-code merge is — both members
      share one code, so deactivating "the loser" would take the product itself off Partner
      360. The consolidation stamp is what closes it. */
+  /* AND — the omission that made this queue impossible to empty. A same-code pair could
+     only be settled by consolidating it. So a SKU the manufacturer had discontinued, that
+     had been hidden and marked not-for-sale, still came back as an open duplicate every
+     time, forever. There was no answer to it except to merge a product that no longer
+     exists into itself. A retired or dispositioned code is settled: the product is off
+     Partner 360 and there is nothing left to decide about it. */
   return groups.filter(g=>{
-    if(g.same_code) return !g.members.some(m=>m.layers_merged);
-    return g.members.filter(m=>!m.merged_into && !m.retired).length>1;
+    if(g.same_code) return !g.members.some(m=>m.layers_merged || m.retired || m.disposition);
+    return g.members.filter(m=>!m.merged_into && !m.retired && !m.disposition).length>1;
   });
 }
 
@@ -841,6 +847,57 @@ exports.handler = async (event)=>{
         return json(200,{ok:true,code,title:title||null,approved_title:approved,
           enrichment_status:approvedStatus,carried,
           layers:{catalog:!!bp,added:!!cp,override:Object.keys(ov).length>0}});
+      }
+
+      /* "THIS ISN'T SOLD ANY MORE." One button, one answer, and the SKU stops appearing
+         in every queue at once.
+
+         A discontinued part needed three separate actions before this — hide it, record a
+         decision about it, and then still resolve it as a duplicate — and the duplicate
+         never actually cleared. What a person means by "it's gone" is one thing:
+           · it comes off Partner 360, so no dealer can see or order it;
+           · it stops counting as an open price, an unassigned code or a duplicate;
+           · anything that points at it — orders above all — keeps working.
+         So: retire the code, and delete the added row underneath it ONLY when nothing is
+         attached to it. If something is attached, the row stays and stays retired, which
+         is the same outcome for everyone except the order history that still needs it.
+         Reversible: restore_sku brings it back. */
+      if(b.action==="discontinue_sku"){
+        const mfr=b.manufacturer, code=String(b.code||"").trim();
+        if(!mfr||!code) return json(400,{error:"manufacturer and code are required"});
+        const e=encodeURIComponent, now=new Date().toISOString();
+        const reason=["discontinued","not_offered","do_not_list","archived"].includes(String(b.reason||""))
+          ? String(b.reason) : "discontinued";
+        const [conn,cust]=await Promise.all([
+          connectionsFor(mfr,code).catch(()=>null),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=code`).catch(()=>[]),
+        ]);
+        const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`).catch(()=>[]);
+        const patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{});
+        patch.active=false;
+        patch.disposition=reason;
+        patch.disposition_note=b.note?String(b.note).slice(0,300):"No longer available from the manufacturer.";
+        patch.disposition_at=now;
+        patch.disposition_by=b.reviewer?String(b.reviewer).slice(0,80):null;
+        await sb("POST","product_overrides?on_conflict=manufacturer,code",
+          {manufacturer:mfr,code,patch,updated_at:now},{Prefer:"resolution=merge-duplicates,return=minimal"});
+        const hadAdded=!!(cust&&cust.length);
+        const held=[];
+        if(conn){
+          if(conn.orders)   held.push(`${conn.orders} order line${conn.orders===1?"":"s"}`);
+          if(conn.links)    held.push("a More Information link");
+          if(conn.media)    held.push(`${conn.media} image/document${conn.media===1?"":"s"}`);
+          if(conn.featured) held.push("a Featured placement");
+        }
+        let removedAdded=false;
+        if(hadAdded && !held.length){
+          try{ await sb("DELETE",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}`,null,{Prefer:"return=minimal"});
+               removedAdded=true; }catch(err){}
+        } else if(hadAdded){
+          try{ await sb("PATCH",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}`,
+                 {active:false,updated_at:now},{Prefer:"return=minimal"}); }catch(err){}
+        }
+        return json(200,{ok:true,code,reason,removed_added:removedAdded,kept_because:held});
       }
 
       /* CONSOLIDATE MANY AT ONCE.

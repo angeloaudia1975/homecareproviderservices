@@ -656,6 +656,9 @@ function prodListHtml(){
        <button class="btn ghost sm" onclick="editProduct('${esc(p.code)}')">Edit</button>
        <button class="btn ghost sm" onclick="duplicateProduct('${esc(p.code)}')" title="Start a new product pre-filled from this one">Copy as new</button>
        <a class="btn ghost sm" href="${esc(previewUrl(p.code))}" target="_blank" rel="noopener" title="Open this product on Partner 360 exactly as a dealer sees it">👁 Preview</a>
+       ${((DETAIL.overrides||{})[p.code]||{}).disposition
+          ? `<button class="btn ghost sm" onclick="restoreProduct('${esc(p.code)}')" title="Put it back on the portal">↩ Bring back</button>`
+          : `<button class="btn ghost sm" style="color:var(--red);border-color:#f0c8c8" onclick="discontinueSku('${esc(p.code)}')" title="No longer sold — off the portal and out of every queue">🚫 Gone</button>`}
        ${p.kind==="custom"
           ? `<button class="btn ghost sm" style="color:var(--red);border-color:#f0c8c8" onclick="delProduct('${esc(p.code)}')">Delete</button>`
           : (p.active===false
@@ -936,6 +939,7 @@ function dupPanelHtml(){
         Both layers are left in place and it can be undone.</div>
       <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn sm" onclick="mergeLayers('${esc(code)}')">Consolidate into one record</button>
+        <button class="btn ghost sm" style="color:var(--red);border-color:#f0c8c8" onclick="discontinueSku('${esc(code)}')" title="The manufacturer no longer sells it — take it off the portal and close this out">🚫 No longer available</button>
         ${d&&d.preview_url?`<a class="btn ghost sm" href="${esc(d.preview_url)}" target="_blank" rel="noopener">👁 Preview product</a>`:""}
         <button class="btn ghost sm" onclick="editProduct('${esc(code)}')">Open</button>
       </div></div>`;
@@ -976,6 +980,37 @@ function dupPanelHtml(){
       </div></div>`).join("")}
   </div>`;
 }
+/* ONE BUTTON FOR "THIS ISN'T SOLD ANY MORE".
+   A discontinued part used to need three separate actions — hide it, record a decision,
+   and then still answer it as a duplicate — and the duplicate never actually cleared,
+   because a same-code pair could only be settled by consolidating a product that no
+   longer exists into itself. That is why the same SKUs kept coming back all day.
+   This is the whole answer in one call, and it is reversible. */
+async function discontinueSku(code){
+  if(!code) return;
+  const p=effProducts().find(x=>String(x.code)===String(code));
+  const d=(DETAILS||{})[code]||{};
+  const warn=[];
+  if(d.has_orders) warn.push("It has "+d.order_lines+" order line(s). Those are kept — the record stays so your commission and sales reporting keep working.");
+  if(d.partner360_visible) warn.push("Dealers can see and order it right now. That stops immediately.");
+  if(!confirm('Mark "'+((p&&p.name)||code)+'" as no longer available?\n\n'
+    +"• It comes off Partner 360 straight away\n"
+    +"• It leaves the duplicate, unassigned-price and missing-price queues for good\n"
+    +"• Its added record is removed if nothing is attached to it\n"
+    +"• Order history is never touched\n"
+    +(warn.length?"\n"+warn.join("\n")+"\n":"")
+    +"\nYou can bring it back at any time.")) return;
+  const r=await api("",{method:"POST",body:JSON.stringify({action:"discontinue_sku",manufacturer:SLUG,code,
+    reason:"discontinued",reviewer:(window.REVIEWER||"president")})});
+  if(!(r&&r.ok!==false)){ toast((r&&(r.message||r.error))||"Couldn't do that",true); return; }
+  localOverride(code,{active:false,disposition:"discontinued"});
+  if(r.removed_added) localDrop(code);
+  localDedupe([code]);
+  if(PDRAFT&&String(PDRAFT.code)===String(code)) PDRAFT=null;
+  render();
+  toast(code+" — no longer available"+(r.removed_added?" · added record removed":(r.kept_because&&r.kept_because.length?" · record kept ("+r.kept_because.join(", ")+")":"")));
+}
+
 /* ── Working on many products at once ─────────────────────────────────────────
    Selection follows the filters: "select all" means everything the list is currently
    showing, so narrowing to a category or a status and selecting all is the fast, safe way
@@ -1011,6 +1046,7 @@ function prodBulkBarHtml(allP,shownP){
     <div class="pbr">
       <button class="btn ghost sm" onclick="PSEL=new Set();render()">Clear</button>
       <button class="btn ghost sm" onclick="prodBulkHide()">Hide ${n} from platform</button>
+      <button class="btn sm" style="background:#8a2b2b;border-color:#8a2b2b;color:#fff" onclick="prodBulkGone()">🚫 ${n} no longer available</button>
       <button class="btn sm" style="background:var(--red,#b42323);border-color:var(--red,#b42323);color:#fff" onclick="prodBulkDelete()">Delete ${added||0} added</button>
     </div></div>`;
 }
@@ -1025,6 +1061,29 @@ async function prodBulkHide(){
   }
   codes.forEach(c=>localOverride(c,{active:false}));
   PSEL=new Set(); toast(ok+" hidden"+(bad?" · "+bad+" failed":""),!!bad); render();
+}
+/* The same answer, for a selection. This is the one to reach for on a discontinued run:
+   it settles them everywhere at once instead of leaving them to come back as duplicates. */
+async function prodBulkGone(){
+  const codes=[...PSEL]; if(!codes.length) return;
+  if(!confirm("Mark "+codes.length+" product"+(codes.length===1?"":"s")+" as no longer available?\n\n"
+    +"They come off Partner 360 and leave every queue — duplicates included. Added records with nothing attached are removed; "
+    +"anything carrying order history is kept and simply retired.\n\nReversible, one at a time, from the row.")) return;
+  let ok=0, bad=0, dropped=0;
+  for(let i=0;i<codes.length;i++){
+    if(i%25===0) toast("Working — "+(i+1)+" of "+codes.length+"…");
+    const code=codes[i];
+    try{
+      const r=await api("",{method:"POST",body:JSON.stringify({action:"discontinue_sku",manufacturer:SLUG,code,
+        reason:"discontinued",reviewer:(window.REVIEWER||"president")})});
+      if(r&&r.ok!==false){ ok++; localOverride(code,{active:false,disposition:"discontinued"});
+        if(r.removed_added){ localDrop(code); dropped++; } }
+      else bad++;
+    }catch(e){ bad++; }
+  }
+  localDedupe(codes);
+  PSEL=new Set(); render();
+  toast(ok+" marked gone"+(dropped?" · "+dropped+" added record(s) removed":"")+(bad?" · "+bad+" failed":""),!!bad);
 }
 async function prodBulkDelete(){
   const picked=effProducts().filter(p=>PSEL.has(p.code));
@@ -1330,9 +1389,12 @@ function render(){
        <button class="btn ghost" onclick="PDRAFT=null;render()">Cancel</button>
        ${PDRAFT.kind==="catalog"&&PDRAFT.edited?`<button class="btn ghost" onclick="resetOverride('${esc(PDRAFT.code)}')">Reset to catalog</button>`:""}
        <span style="flex:1"></span>
+       ${(DETAIL.overrides||{})[PDRAFT.code]&&(DETAIL.overrides||{})[PDRAFT.code].disposition
+          ? `<button class="btn ghost" onclick="restoreProduct('${esc(PDRAFT.code)}')">↩ Bring it back</button>`
+          : `<button class="btn red" onclick="discontinueSku('${esc(PDRAFT.code)}')" title="One button: off the portal, out of every queue, order history kept">🚫 No longer available</button>`}
        ${PDRAFT.kind==="custom"
-          ? (DETAIL.custom&&DETAIL.custom.some(x=>x.code===PDRAFT.code)?`<button class="btn red" onclick="delProduct('${esc(PDRAFT.code)}')">Delete product</button>`:"")
-          : (PDRAFT.active===false?`<button class="btn ghost" onclick="restoreProduct('${esc(PDRAFT.code)}')">Restore to portal</button>`:`<button class="btn red" onclick="removeProduct('${esc(PDRAFT.code)}')">Remove from portal</button>`)}</div>
+          ? (DETAIL.custom&&DETAIL.custom.some(x=>x.code===PDRAFT.code)?`<button class="btn ghost" style="color:var(--red);border-color:#f0c8c8" onclick="delProduct('${esc(PDRAFT.code)}')">Delete product</button>`:"")
+          : (PDRAFT.active===false?"":`<button class="btn ghost" onclick="removeProduct('${esc(PDRAFT.code)}')">Hide only</button>`)}</div>
    </div>` : "";
 
   $("#wrap").innerHTML=`
