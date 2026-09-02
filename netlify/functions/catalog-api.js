@@ -776,6 +776,78 @@ exports.handler = async (event)=>{
           layers:{catalog:!!bp,added:!!cp,override:Object.keys(ov).length>0}});
       }
 
+      /* CONSOLIDATE MANY AT ONCE.
+         merge_layers is written for one code and re-reads the whole deployed catalog file
+         and the whole enrichment table every time it runs. That is fine once; run it 237
+         times and it is 474 heavy reads and 237 function invocations for what is really one
+         decision repeated. This does the same work with the shared data read ONCE and the
+         result written as a single upsert, which is the difference between a morning of
+         clicking and a few seconds.
+
+         It only ever touches a code that exists in BOTH layers — that is what makes it one
+         SKU recorded twice rather than a judgement about two products. Anything else is
+         skipped and named in the reply, never guessed at. */
+      if(b.action==="merge_layers_bulk"){
+        const mfr=b.manufacturer;
+        const codes=[...new Set((Array.isArray(b.codes)?b.codes:[]).map(c=>String(c||"").trim()).filter(Boolean))];
+        if(!mfr||!codes.length) return json(400,{error:"manufacturer and codes required"});
+        if(codes.length>200) return json(400,{error:"too_many", message:"Send at most 200 codes per call."});
+        const e=encodeURIComponent, now=new Date().toISOString();
+        const [base,customAll,ovAll,content]=await Promise.all([
+          fetchJson(`${ORDERING_BASE}/data/${e(mfr)}.json`).catch(()=>[]),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`).catch(()=>[]),
+          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]),
+          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=name,skus,status&limit=5000`).catch(()=>[]),
+        ]);
+        const baseBy={}; (base||[]).forEach(x=>{ baseBy[String(x.code)]=x; });
+        const custBy={}; (customAll||[]).forEach(x=>{ custBy[String(x.code)]=x; });
+        const ovBy={};   (ovAll||[]).forEach(x=>{ ovBy[String(x.code)]=(x.patch||{}); });
+        // The approved title for every SKU, built in one pass instead of once per code.
+        const approvedBy={};
+        (content||[]).forEach(row=>{ (Array.isArray(row.skus)?row.skus:[]).forEach(sk=>{
+          const c=String((sk&&(sk.sku||sk.code))||sk||"").trim().toUpperCase(); if(!c||approvedBy[c]) return;
+          approvedBy[c]=String((sk&&sk.name)||row.name||"").trim()||null; }); });
+
+        const first=(...v)=>{ for(const x of v){ if(x!=null&&x!=="") return x; } return null; };
+        const rows=[], merged=[], skipped=[], renames=[];
+        for(const code of codes){
+          const bp=baseBy[code]||null, cp=custBy[code]||null;
+          if(!bp||!cp){ skipped.push({code, reason: (!bp&&!cp) ? "not in this catalog"
+            : (!cp ? "only in the catalog file — nothing to consolidate"
+                   : "only an added record — nothing to consolidate")}); continue; }
+          const ov=Object.assign({},ovBy[code]||{});
+          if(ov.layers_merged_at){ skipped.push({code, reason:"already consolidated"}); continue; }
+          const patch=Object.assign({},ov);
+          const set=(k,v)=>{ if(v!=null&&v!==""&&patch[k]!==v) patch[k]=v; };
+          const title=first(approvedBy[code.toUpperCase()], ov.name, cp&&cp.name, bp&&bp.name);
+          set("name", title);
+          ["base_price","msrp","map","tiers","price_note","image","description","category"].forEach(k=>{
+            if(ov[k]!=null&&ov[k]!=="") return;                   // already decided — leave it
+            set(k, first(cp&&cp[k], bp&&bp[k]));
+          });
+          patch.layers_merged_at=now;
+          patch.layers_merged_by=b.reviewer?String(b.reviewer).slice(0,80):null;
+          patch.active=true;
+          delete patch.disposition;
+          rows.push({manufacturer:mfr,code,patch,updated_at:now});
+          merged.push(code);
+          if(cp && title && cp.name!==title) renames.push({code,title});
+        }
+        if(rows.length){
+          // One upsert for the whole selection.
+          await sb("POST","product_overrides?on_conflict=manufacturer,code",rows,
+            {Prefer:"resolution=merge-duplicates,return=minimal"});
+        }
+        // Names have to go one at a time — each is a different value — but only where the
+        // added layer is genuinely out of step with the approved title.
+        let renamed=0;
+        for(const r of renames){
+          try{ await sb("PATCH",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(r.code)}`,
+                 {name:r.title,updated_at:now},{Prefer:"return=minimal"}); renamed++; }catch(err){}
+        }
+        return json(200,{ok:true,merged:merged.length,codes:merged,skipped,renamed});
+      }
+
       /* Undo a consolidation: the stamp is removed so the pair is reviewable again. The
          values it wrote are LEFT in place — pulling a live title or price back out from
          under Partner 360 is a bigger change than the one being undone. */
