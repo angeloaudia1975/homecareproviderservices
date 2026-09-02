@@ -42,7 +42,12 @@ a{text-decoration:none;color:inherit;}
 .ac-sub a{color:#c4d1e0;font-size:12px;font-weight:600;padding:6px 11px;border-radius:8px;white-space:nowrap;}
 .ac-sub a:hover{color:#fff;background:rgba(255,255,255,.08);}
 .ac-sub a.on{color:#fff;background:var(--orange);}
-.ac-sub-grp{font-size:9.5px;text-transform:uppercase;letter-spacing:.9px;color:#7d93b0;font-weight:800;margin:0 6px 0 10px;padding-left:10px;border-left:1px solid rgba(255,255,255,.14);}
+/* Section names used to sit in this row as text. They read as tools that would not
+   respond to a click, which is exactly what they were. The grouping now shows as a rule
+   between runs of links — no words, nothing that looks pressable — and the names are on
+   the hub landing page where each one gets a sentence explaining it. */
+.ac-sub-div{width:1px;align-self:stretch;margin:2px 9px;background:rgba(255,255,255,.16);border-radius:1px;}
+.ac-sub-grp{font-size:9.5px;text-transform:uppercase;letter-spacing:.9px;color:#7d93b0;font-weight:800;margin:0 6px 0 10px;padding-left:10px;border-left:1px solid rgba(255,255,255,.14);cursor:default;user-select:none;}
 .ac-sub-grp:first-of-type{margin-left:0;padding-left:0;border-left:0;}
 .ac-sub a.ac-ext::after{content:"↗";font-size:9px;margin-left:4px;opacity:.7;}
 

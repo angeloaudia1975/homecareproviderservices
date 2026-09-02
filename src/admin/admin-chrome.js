@@ -245,6 +245,17 @@
   // A tool is "live-navigable" (shown in sub-nav & category pages) when it has a real page and
   // isn't marked planned. Planned/hrefless tools still appear on the dashboard as roadmap tiles.
   function liveTool(t){ return !!(t && t.href) && t.status !== "planned"; }
+  /* A tool's href, plus the section it is being shown in when that section does not own
+     the page. Only cross-links get the parameter — a page opened from its own section
+     needs nothing, and a clean URL is worth keeping. */
+  function hubHref(t, hubId){
+    if(!t || !t.href || t.ext) return (t&&t.href)||"";
+    var own = ownerOf(stripHtml(t.href));
+    if(!hubId || !own || own.id===hubId) return t.href;
+    var hash = t.href.indexOf("#")>=0 ? t.href.slice(t.href.indexOf("#")) : "";
+    var base = hash ? t.href.slice(0, t.href.indexOf("#")) : t.href;
+    return base + (base.indexOf("?")>=0 ? "&" : "?") + "hub=" + encodeURIComponent(hubId) + hash;
+  }
   // Resolve which hub a page belongs to. Honors an explicit window.ACHUB set by the landing page and
   // tolerates clean URLs (/admin/hub) so the second-tier tool nav loads on the FIRST click.
   /* ── THE NAVIGATION RULE ─────────────────────────────────────────────────
@@ -274,6 +285,15 @@
   }
   function hubOf(path){
     try{ if(window.ACHUB){ var hx=hubById(window.ACHUB); if(hx) return hx; } }catch(e){}
+    /* WHERE YOU CAME FROM IS PART OF WHERE YOU ARE. A few tools are one page listed in
+       two categories — Contract Pricing and Dealer Portal Accounts are both views of the
+       Dealer Manager page, which Sales owns. Resolving the section from the page alone
+       meant clicking either one inside Online Ordering threw you into Sales & Marketing:
+       the right page, the wrong section, and no way back to what you were doing. An xref
+       link now carries the section it was clicked from, and it wins over ownership. It
+       lives in the URL, so it lasts exactly as long as that one navigation. */
+    try{ var q=new URLSearchParams(location.search).get("hub");
+         if(q){ var hq=hubById(q); if(hq) return hq; } }catch(e){}
     var np=stripHtml(path);
     if(np==="/admin/hub"){ try{ return hubById(new URLSearchParams(location.search).get("cat")); }catch(e){ return null; } }
     return ownerOf(np);
@@ -298,11 +318,59 @@
       if(owners.length===0)
         problems.push({page:p, issue:"only ever cross-listed — one category must own it", entries:c.map(function(x){ return x.hub+":"+x.label; })});
     });
+    /* Ownership was the only thing checked, so everything else drifted quietly: a tool
+       ranked nowhere sorted to the end, a duplicate label made two entries indistinguishable,
+       and a page that 404s looked identical to one that works. Each of these is now named. */
+    var seen={};
+    HUBS.forEach(function(h){
+      var ranks=(ORDER[h.id]||[]);
+      h.tools.forEach(function(t){
+        var where=h.id+":"+t.label;
+        /* The same label in two categories is fine when it is the same page — that is what
+           a cross-link IS, and renaming the copy would hide the fact. It is only ambiguous
+           when one name opens two different things. */
+        var prev=seen[t.label];
+        if(prev && prev.hub!==h.id && prev.href!==(t.href||""))
+          problems.push({page:t.href||"(none)", issue:"the label \""+t.label+"\" opens two different pages — a person cannot tell them apart", entries:[prev.hub+":"+prev.href, where+":"+(t.href||"(none)")]});
+        seen[t.label]={hub:h.id, href:t.href||""};
+        if(liveTool(t) && !t.ext && ranks.indexOf(t.label)<0)
+          problems.push({page:t.href, issue:"not ranked in ORDER."+h.id+" — it sorts to the end of the section", entries:[where]});
+        if(!t.href && t.status!=="planned")
+          problems.push({page:"(none)", issue:"no href and not marked planned — it shows nowhere and no one knows why", entries:[where]});
+        if(t.href && !t.ext && t.href.indexOf("/admin/")!==0)
+          problems.push({page:t.href, issue:"href is not an /admin/ page and is not marked ext:true", entries:[where]});
+      });
+      ranks.forEach(function(lab){
+        if(!h.tools.some(function(t){ return t.label===lab; }))
+          problems.push({page:"(none)", issue:"ORDER."+h.id+" ranks \""+lab+"\", which is no longer a tool in that category", entries:[h.id]});
+      });
+    });
     if(problems.length) console.warn("HCPS nav audit — "+problems.length+" issue(s)", problems);
-    else console.log("HCPS nav audit — every page has exactly one owning category.");
+    else console.log("HCPS nav audit — "+HUBS.reduce(function(n,h){ return n+h.tools.length; },0)
+      +" tools: every page owned by one category, every live tool ranked, every label unique.");
     return problems;
   }
-  try{ window.acNavAudit=navAudit; window.ACHUBS=HUBS; }catch(e){}
+  /* The one check a browser cannot make: does the page a link points at actually exist?
+     acNavCheck() fetches every /admin/ href and reports the ones that do not answer.
+     Run it after moving or deleting a page. */
+  function navCheck(){
+    var seen={}, list=[];
+    HUBS.forEach(function(h){ h.tools.forEach(function(t){
+      if(!liveTool(t) || t.ext) return;
+      var p=t.href.split("#")[0]; if(seen[p]) return; seen[p]=1;
+      list.push({page:p, label:t.label, hub:h.id});
+    }); });
+    return Promise.all(list.map(function(x){
+      return fetch(x.page,{method:"HEAD"}).then(function(r){ x.status=r.status; return x; })
+        .catch(function(){ x.status="unreachable"; return x; });
+    })).then(function(rows){
+      var bad=rows.filter(function(r){ return r.status!==200; });
+      if(bad.length) console.warn("HCPS nav check — "+bad.length+" of "+rows.length+" page(s) do not answer", bad);
+      else console.log("HCPS nav check — all "+rows.length+" tool pages answer 200.");
+      return bad;
+    });
+  }
+  try{ window.acNavAudit=navAudit; window.acNavCheck=navCheck; window.ACHUBS=HUBS; }catch(e){}
 
   /* ── Favorites ───────────────────────────────────────────────────────────
      A person pins the tools they actually use; they appear on their dashboard. Stored
@@ -388,21 +456,27 @@
         var live = hub.tools.filter(liveTool);
         var linkOf = function(t){ var on = samePage(t.href,path);
           var cls = (on?'on':'') + (t.ext?(on?' ac-ext':'ac-ext'):'');
-          return '<a href="'+t.href+'"'+(cls?' class="'+cls+'"':'')+(t.ext?' target="_blank" rel="noopener"':'')+'>'+esc(t.label)+'</a>'; };
+          return '<a href="'+hubHref(t,hub.id)+'"'+(cls?' class="'+cls+'"':'')+(t.ext?' target="_blank" rel="noopener"':'')+'>'+esc(t.label)+'</a>'; };
+        /* THE SUB-NAV IS A LIST OF TOOLS, AND NOTHING ELSE. It used to carry the section
+           names — CATALOG MANAGEMENT, PRODUCT ENRICHMENT — as text in the same row as the
+           links, which read as tools that could not be clicked. The grouping is real and
+           worth keeping, so it survives as the ORDER of the links and a plain divider
+           between runs; the names themselves live on the hub landing page, where there is
+           room to say what each section is for. The row also no longer repeats the hub's
+           own name — the tab above it is already lit. */
         var inner;
         if(hub.groups && hub.groups.length){
-          // Grouped sub-nav: the hub's tools are VIEWS of one catalog, shown under their view name.
-          inner = hub.groups.map(function(g){
+          var runs = hub.groups.map(function(g){
             var ts = live.filter(function(t){ return t.group===g.id; });
-            if(!ts.length) return '';
-            return '<span class="ac-sub-grp">'+esc(g.label)+'</span>' + ts.map(linkOf).join("");
-          }).join("");
+            return ts.length ? ts.map(linkOf).join("") : '';
+          }).filter(Boolean);
           var ungrouped = live.filter(function(t){ return !t.group || !hub.groups.some(function(g){ return g.id===t.group; }); });
-          if(ungrouped.length) inner += '<span class="ac-sub-grp">More</span>' + ungrouped.map(linkOf).join("");
+          if(ungrouped.length) runs.push(ungrouped.map(linkOf).join(""));
+          inner = runs.join('<span class="ac-sub-div" aria-hidden="true"></span>');
         } else {
           inner = live.map(linkOf).join("");
         }
-        tier2 = '<nav class="ac-sub ac-wrap"><span class="ac-sub-lbl">'+esc(hub.label)+'</span>' + inner + '</nav>';
+        tier2 = '<nav class="ac-sub ac-wrap" aria-label="'+esc(hub.label)+' tools">' + inner + '</nav>';
       }
     } else {
       // Focused rep workspace — one clean row of the rep's tools, active one highlighted.
@@ -454,7 +528,7 @@
 
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", render); else render();
   window.addEventListener("hcps-token", render);   // refresh the name after sign-in
-  window.ACAdmin = { render: render, HUBS: HUBS, hubById: hubById, isAdmin: isAdmin, liveTool: liveTool,
+  window.ACAdmin = { render: render, HUBS: HUBS, hubById: hubById, isAdmin: isAdmin, liveTool: liveTool, hubHref: hubHref,
     loadFavs: loadFavs, toggleFav: toggleFav, isFav: isFav, toolAt: toolAt, navAudit: navAudit,
     favs: function(){ return FAVS||[]; } };
 

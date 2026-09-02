@@ -85,7 +85,7 @@
     return '<div class="fsec"><h4>'+esc(title)+'</h4><p>'+esc(str)+'</p></div>';
   }
 
-  function card(t){
+  function card(t, hubId){
     var g=GUIDE[t.label]||{};
     var tagline=g.tagline||t.desc||"";
     var grid=[
@@ -102,7 +102,7 @@
     return '<article class="fcard" id="'+esc(slug(t.label))+'">'
       + '<div class="fhead"><span class="ficon">'+esc(t.icon||"•")+'</span>'
       +   '<div class="fht"><h2>'+esc(t.label)+'</h2>'+(tagline?'<div class="ftag">'+esc(tagline)+'</div>':'')+'</div>'
-      +   '<a class="fopen" href="'+esc(t.href)+'"'+(t.ext?' target="_blank" rel="noopener"':'')+'>Open '+esc(t.label.split(" ")[0])+(t.ext?' ↗':' →')+'</a></div>'
+      +   '<a class="fopen" href="'+esc((window.ACAdmin&&ACAdmin.hubHref)?ACAdmin.hubHref(t,hubId):t.href)+'"'+(t.ext?' target="_blank" rel="noopener"':'')+'>Open '+esc(t.label.split(" ")[0])+(t.ext?' ↗':' →')+'</a></div>'
       + (g.what?'<p class="fwhat">'+esc(g.what)+'</p>':'')
       + (grid?'<div class="fgrid">'+grid+'</div>':'')
       + (notes?'<div class="fnotes">'+notes+'</div>':'')
@@ -166,9 +166,9 @@
       ? groups.map(function(x){
           return '<section class="gsec"><h2>'+esc(x.g.label)+'</h2>'
             + (x.g.blurb?'<p class="gb">'+esc(x.g.blurb)+'</p>':'')
-            + x.ts.map(card).join("") + '</section>';
-        }).join("") + (leftover.length?'<section class="gsec"><h2>More</h2>'+leftover.map(card).join("")+'</section>':"")
-      : tools.map(card).join("");
+            + x.ts.map(function(t){ return card(t,hub.id); }).join("") + '</section>';
+        }).join("") + (leftover.length?'<section class="gsec"><h2>More</h2>'+leftover.map(function(t){ return card(t,hub.id); }).join("")+'</section>':"")
+      : tools.map(function(t){ return card(t,hub.id); }).join("");
   }
 
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", build); else build();
