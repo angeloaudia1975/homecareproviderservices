@@ -664,7 +664,8 @@ function skuSec(k){ const skus=skusOf(k); const others=Object.keys(pages).filter
         <input id="addskuname-${cssId(k)}" class="sed" style="max-width:190px" placeholder="Name / description (optional)">
         <button class="btn" data-act="add-sku" data-pk="${escA(k)}">＋ Add SKU</button>
       </span>
-      <span class="hint" style="flex-basis:100%"><b>✨ AI fill details</b> reads the sizing table + billing codes and drafts each SKU's Name, Size &amp; HCPCS — only filling blanks, so your manual edits stay. Review, then <b>Save SKU edits</b>.<br><b>＋ Add SKU</b> groups another catalog item under this product · <b>✎</b> rename a SKU · <b>🗑</b> remove it from THIS product · check rows to <b>Move / Split / Remove</b> in the bottom bar.<br><b>“Off” only hides a SKU (it stays listed here). “Remove” takes it out of this product.</b> Neither deletes the orderable catalog item — that's the Discontinued/Hidden status.</span></div>
+      <button class="btn" data-act="add-sizes" data-pk="${escA(k)}">＋＋ Add sizes</button>
+      <span class="hint" style="flex-basis:100%"><b>✨ AI fill details</b> reads the sizing table + billing codes and drafts each SKU's Name, Size &amp; HCPCS — only filling blanks, so your manual edits stay. Review, then <b>Save SKU edits</b>.<br><b>＋＋ Add sizes</b> adds a whole size run at once — it lists the catalog codes that look like they belong here, or takes a pasted list · <b>＋ Add SKU</b> groups another catalog item under this product · <b>✎</b> rename a SKU · <b>🗑</b> remove it from THIS product · check rows to <b>Move / Split / Remove</b> in the bottom bar.<br><b>“Off” only hides a SKU (it stays listed here). “Remove” takes it out of this product.</b> Neither deletes the orderable catalog item — that's the Discontinued/Hidden status.</span></div>
   </div>`; }
 
 /* -- Section 3: content -- */
@@ -840,6 +841,7 @@ document.addEventListener('click',async function(e){
   if(act==='reject') return doStatus(k,'rejected');
   if(act==='delete-product') return doDeleteProduct(k);
   if(act==='add-sku') return doAddSku(k);
+  if(act==='add-sizes') return openSizeAdd(k);
   if(act==='ai-fill-skus') return doAiFillSkus(k,t);
   if(act==='np-addrow'){ const c=document.getElementById('np-skurows'); if(c) c.insertAdjacentHTML('beforeend',npRowHTML()); return; }
   if(act==='np-rowdel'){ const row=t.closest('.np-skurow'); const rows=document.querySelectorAll('#np-skurows .np-skurow'); if(row){ if(rows.length>1) row.remove(); else row.querySelectorAll('input').forEach(x=>x.value=''); } return; }
@@ -1062,6 +1064,157 @@ async function doAddSku(k){
     toast('Added SKU '+code+' to this product'); render();
   } else toast((r.json&&(r.json.message||r.json.error))||'Add failed',true);
 }
+/* ---- Add a size run in one pass -------------------------------------------------
+   Adding sizes one SKU at a time is the single most repeated action on this screen, and
+   the codes being typed already exist in the catalog — they are the unassigned prices
+   Price Check is complaining about. So the work is really selection, not data entry:
+   show the catalog codes that look like siblings of what this product already has, and
+   let a whole size run be claimed at once. The typed list stays for everything else. */
+let _sizeAdd=null;
+
+// Everything the catalog holds for this manufacturer that no product record claims.
+function unclaimedCatalog(cat){
+  const claimed=new Set();
+  Object.keys(pages).forEach(x=>{ if(pages[x].is_parent) return;
+    skusOf(x).forEach(sk=>{ const c=String(sk.sku||'').trim(); if(c) claimed.add(c.toUpperCase()); }); });
+  const ov=cat.overrides||{}; const out=[]; const seen=new Set();
+  const push=(pr,kind)=>{ const code=String(pr.code||'').trim(); if(!code) return;
+    const U=code.toUpperCase(); if(claimed.has(U)||seen.has(U)) return; seen.add(U);
+    const o=ov[code]||{};
+    if(o.disposition) return;                       // already answered for, elsewhere
+    const price=[o.base_price,pr.base_price].find(v=>v!=null&&v!=='');
+    out.push({code,name:String(o.name||pr.name||''),price:(price!=null?Number(price):null),kind}); };
+  (cat.products||[]).forEach(p=>push(p,'catalog'));
+  (cat.custom||[]).forEach(p=>push(p,'added'));
+  return out;
+}
+// Longest shared opening run — how sibling SKUs in a size range actually look.
+function lcpLen(a,b){ a=String(a).toUpperCase(); b=String(b).toUpperCase();
+  let i=0; while(i<a.length&&i<b.length&&a[i]===b[i]) i++; return i; }
+const SA_SIZE_WORDS=/\b(XXX-?LARGE|XX-?LARGE|X-?LARGE|X-?SMALL|SMALL|MEDIUM|LARGE|UNIVERSAL|ONE SIZE|XXXL|XXL|XL|XS|2XL|3XL|4XL)\b/i;
+function guessSize(name){
+  const t=String(name||'').trim(); if(!t) return '';
+  const tail=t.indexOf(',')>=0 ? t.slice(t.lastIndexOf(',')+1).trim() : '';
+  const m=(tail||t).match(SA_SIZE_WORDS); if(m) return m[0];
+  // Stockinette and tape are sized by width — "Synthetic Stockinette, 4\"" — so a short
+  // trailing segment is the size even when it is not a word.
+  if(tail && tail.length<=14 && /[0-9]/.test(tail)) return tail;
+  return '';
+}
+const SA_STOP=new Set(['the','and','with','for','ovation','pro','premium','a','of','in','w']);
+function nameWords(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9 ]+/g,' ').split(/\s+/)
+  .filter(w=>w.length>2&&!SA_STOP.has(w)); }
+/* Why a candidate is offered, and how strongly. A shared SKU stem with a short differing
+   tail is what a size range looks like; a shared product name is the fallback for lines
+   whose numbering carries no pattern at all. */
+function sizeCandidates(k,pool){
+  const mine=skusOf(k).map(x=>String(x.sku||'')).filter(Boolean);
+  const pname=new Set(nameWords((pages[k]||{}).name));
+  const out=[];
+  pool.forEach(c=>{
+    let best=0, why='';
+    mine.forEach(m=>{
+      const L=lcpLen(m,c.code);
+      if(L<3) return;
+      const tailA=m.length-L, tailB=c.code.length-L;
+      if(tailA>4||tailB>4) return;                  // 733-002PRP vs 733-002-PRPSHOE is NOT a size
+      const score=L*10-(tailA+tailB);
+      if(score>best){ best=score; why='matches '+m; }
+    });
+    if(!best && pname.size){
+      /* Names only, for lines whose numbering carries no pattern. Compare the HEAD of the
+         catalog name — everything before the first comma — because manufacturers write
+         "Product, size, colour, spec" and only the head is the product's identity.
+         Sharing words is not enough: the pressure relief PAD and the post-op SHOE WITH a
+         pressure relief pad share every word of the shorter name, are three digits apart,
+         and are different products at different prices. So the head must also add almost
+         nothing of its own — one word, for a colour or a variant. */
+      const head=String(c.name||'').split(',')[0];
+      const hw=nameWords(head);
+      const shared=hw.filter(w=>pname.has(w));
+      const extra=hw.filter(w=>!pname.has(w)&&!SA_SIZE_WORDS.test(w));
+      if(shared.length>=2 && extra.length<=1){
+        best=shared.length; why='name matches “'+shared.slice(0,3).join(' ')+'”'; }
+    }
+    if(best) out.push(Object.assign({},c,{_score:best,_why:why,_size:guessSize(c.name)}));
+  });
+  return out.sort((a,b)=>b._score-a._score||a.code.localeCompare(b.code));
+}
+async function openSizeAdd(k){
+  toast('Reading the catalog…');
+  const cat=await catalogGet();
+  const pool=unclaimedCatalog(cat);
+  _sizeAdd={k,pool,cands:sizeCandidates(k,pool),pick:new Set(),q:''};
+  renderSizeAdd();
+}
+function renderSizeAdd(){
+  const A=_sizeAdd; if(!A) return;
+  const p=pages[A.k]||{};
+  modalHTML('＋＋ Add sizes · '+esc(p.name||A.k), `<div class="tut">
+    <p class="mut">Catalog codes that no product record claims. The ones that look like they belong to this product are listed first — these are the same codes Price Check reports as unassigned prices, so claiming one here clears it there.</p>
+    <input class="ed" id="sa-q" placeholder="Search all ${A.pool.length} unclaimed codes by number or name" oninput="sizeAddSearch(this.value)" style="margin-bottom:8px">
+    <div id="sa-list"></div>
+    <details style="margin-top:10px"><summary class="mut" style="cursor:pointer;font-size:12px">or paste a list — one per line, <b>SKU, size, name</b></summary>
+      <textarea class="ed" id="sa-txt" rows="5" placeholder="10002, X-Small&#10;10003, Small&#10;10005, Medium"></textarea></details>
+    <div class="savebar" style="margin-top:10px"><button class="btn dark" onclick="doSizeAdd()">Add selected</button>
+      <span class="mut" id="sa-count" style="font-size:12px"></span></div>
+  </div>`);
+  sizeAddList();
+}
+function sizeAddSearch(q){ _sizeAdd.q=String(q||'').trim().toLowerCase(); sizeAddList(); }
+function sizeAddList(){
+  const A=_sizeAdd, el=document.getElementById('sa-list'); if(!A||!el) return;
+  const money=v=>(v==null||v==='')?'—':'$'+Number(v).toFixed(2);
+  let rows=A.q
+    ? A.pool.filter(c=>(c.code+' '+c.name).toLowerCase().indexOf(A.q)>=0)
+        .map(c=>Object.assign({},c,{_why:'search',_size:guessSize(c.name)}))
+    : A.cands;
+  const total=rows.length;
+  rows=rows.slice(0,300);
+  el.innerHTML=(total?`<div class="tabscroll" style="max-height:300px;overflow:auto"><table style="width:100%;font-size:12px">
+    <thead><tr><th></th><th>Code</th><th>Name</th><th>Size</th><th>Price</th><th>Why</th></tr></thead><tbody>
+    ${rows.map(c=>`<tr>
+      <td><input type="checkbox" ${A.pick.has(c.code)?'checked':''} onchange="sizeAddPick('${escA(c.code)}',this.checked)"></td>
+      <td><b>${esc(c.code)}</b></td><td>${esc(c.name||'—')}</td>
+      <td class="mut">${esc(c._size||'—')}</td><td>${money(c.price)}</td>
+      <td class="mut" style="font-size:11px">${esc(c._why||'')}</td></tr>`).join('')}</tbody></table></div>
+    ${total>rows.length?`<div class="mut" style="font-size:11px;margin-top:4px">${total-rows.length} more — narrow the search to see them.</div>`:''}`
+   : `<div class="hint">${A.q?'Nothing unclaimed matches that.':'No unclaimed catalog codes look like siblings of this product — search above, or paste a list below.'}</div>`);
+  sizeAddCount();
+}
+function sizeAddPick(code,on){ const A=_sizeAdd; if(!A) return;
+  if(on) A.pick.add(code); else A.pick.delete(code); sizeAddCount(); }
+function sizeAddCount(){ const A=_sizeAdd, el=document.getElementById('sa-count');
+  if(el&&A) el.textContent=A.pick.size?(A.pick.size+' selected'):'nothing selected yet'; }
+async function doSizeAdd(){
+  const A=_sizeAdd; if(!A) return;
+  const k=A.k, have=new Set(skusOf(k).map(x=>String(x.sku)));
+  const rows=[];
+  A.pick.forEach(code=>{ const c=A.pool.find(x=>x.code===code)||{code};
+    rows.push({sku:code,name:c.name||'',size:guessSize(c.name)}); });
+  // Pasted lines: SKU first, then an optional size, then an optional name.
+  const txt=(document.getElementById('sa-txt')||{}).value||'';
+  String(txt).split(/\r?\n/).forEach(l=>{ const t=l.trim(); if(!t) return;
+    const parts=t.split(',').map(x=>x.trim());
+    const sku=parts[0]; if(!sku) return;
+    if(rows.some(r=>r.sku===sku)) return;
+    rows.push({sku,size:parts[1]||'',name:parts.slice(2).join(', ')||''}); });
+  const fresh=rows.filter(r=>!have.has(r.sku));
+  if(!fresh.length){ toast(rows.length?'Those SKUs are already on this product':'Nothing selected',true); return; }
+  document.getElementById('overlay').classList.remove('show');
+  toast('Adding '+fresh.length+' SKU'+(fresh.length===1?'':'s')+'…');
+  let added=0; const failed=[];
+  for(const r of fresh){
+    const res=await apiWrite({action:'set_sku',page_key:k,sku:r.sku,create:true,patch:{name:r.name,size:r.size}});
+    if(res.ok&&(!res.json||res.json.ok!==false)){ added++;
+      pages[k].skus=[...skusOf(k), normSku({sku:r.sku,name:r.name,size:r.size})]; }
+    else failed.push(r.sku);
+  }
+  pages[k].sku_count=skusOf(k).length;
+  _sizeAdd=null; render();
+  toast(added+' SKU'+(added===1?'':'s')+' added'+(failed.length?(' · '+failed.length+' failed: '+failed.slice(0,4).join(', ')):''),!!failed.length);
+}
+
 /* ---- Delete a whole product record (duplicates / stubs). Undoable from History; blocked on published. ---- */
 /* Bulk delete — for clearing out a bad import run. Same guards as single delete: live products
    are refused (change their status first), orderable catalog items are never touched, and every
@@ -2991,6 +3144,65 @@ async function doHarmonizeApply(i){
   toast('Moved '+(r.json.updated||0)+' product(s) → “'+to+'”'+(forbidden?' (shop sync needs President)':' · shop updated'), forbidden);
   openCatalogStructure();
 }
+/* ---- Correcting a SKU onto a code the catalog already holds ----
+   Three things can be true when the destination exists, and they need different answers:
+     · it is the same item recorded twice  → merge, so price, media and links end up on one record
+     · it is the right destination and the old code is a stray → repoint the product, retire the old
+     · both records are real and separate  → repoint only, change nothing in the catalog
+   Guessing between them is what a screen should never do with pricing, so it asks — with what
+   each record is worth and what is connected to it in view. */
+let _skuMove=null;
+function skuMoveModal(){
+  const M=_skuMove; if(!M) return;
+  const inf=M.info||{}, ex=inf.existing||{}, conn=inf.connections||{};
+  const money=v=>(v==null||v==='')?'—':'$'+Number(v).toFixed(2);
+  const oldP=M.oldRec?M.oldRec.base_price:null;
+  const links=[];
+  if(conn.orders) links.push(conn.orders+' order line'+(conn.orders===1?'':'s'));
+  if(conn.media) links.push(conn.media+' image'+(conn.media===1?'':'s'));
+  if(conn.links) links.push(conn.links+' link'+(conn.links===1?'':'s'));
+  if(conn.featured) links.push('featured placement');
+  modalHTML('✎ '+esc(M.oldSku)+' → '+esc(M.newSku), `<div class="tut">
+    <p class="mut"><b>${esc(M.newSku)}</b> already exists in the catalog. That is usually the point — it is the code carrying the manufacturer's price, waiting for a product. Pick what should happen to the record you are moving away from.</p>
+    <table style="width:100%;font-size:12px;margin:10px 0"><thead><tr><th></th><th>Code</th><th>Name</th><th>Dealer price</th><th>Connected</th></tr></thead><tbody>
+      <tr><td class="mut">moving from</td><td><b>${esc(M.oldSku)}</b></td><td>${esc((M.oldRec&&M.oldRec.name)||'—')}</td><td>${money(oldP)}</td><td class="mut">this product</td></tr>
+      <tr><td class="mut">moving to</td><td><b>${esc(M.newSku)}</b></td><td>${esc(ex.name||'—')}</td><td>${money(ex.price)}</td><td class="mut">${links.length?esc(links.join(' · ')):'nothing'}</td></tr>
+    </tbody></table>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn dark" onclick="skuMoveGo('merge')" style="text-align:left">
+        Merge — point this product at ${esc(M.newSku)} and fold ${esc(M.oldSku)} into it
+        <div class="mut" style="font-weight:400;text-transform:none;font-size:11px">For the same item recorded twice. Anything ${esc(M.newSku)} is missing — image, description, links — is carried over from ${esc(M.oldSku)}; nothing already set on ${esc(M.newSku)} is overwritten, and its price stays. ${esc(M.oldSku)} is retired, reversibly.</div></button>
+      <button class="btn" onclick="skuMoveGo('repoint')" style="text-align:left">
+        Repoint only — this product uses ${esc(M.newSku)}, leave both catalog records alone
+        <div class="mut" style="font-weight:400;text-transform:none;font-size:11px">For when ${esc(M.oldSku)} is a real, separate item that simply does not belong to this product. It stays orderable and keeps its price; it will show in Price Check as unassigned until something claims it.</div></button>
+      <button class="btn ghost" data-act="close-modal" style="text-align:left">Cancel — change nothing</button>
+    </div></div>`);
+}
+async function skuMoveGo(how){
+  const M=_skuMove; if(!M) return;
+  document.getElementById('overlay').classList.remove('show');
+  if(how==='merge'){
+    toast('Merging '+M.oldSku+' into '+M.newSku+'…');
+    const r=await catalogPost({action:'merge_products',manufacturer:MFR,winner:M.newSku,loser:M.oldSku});
+    if(!(r.ok&&r.json&&r.json.ok!==false)){ toast((r.json&&(r.json.message||r.json.error))||'Merge failed — nothing changed',true); return; }
+    _catalogCache=null;
+  }
+  const done=await renameContentSku(M.k,M.oldSku,M.newSku);
+  if(done) toast(M.oldSku+' → '+M.newSku+(how==='merge'?' · catalog records merged':' · catalog unchanged'));
+  _skuMove=null;
+}
+/* The content half of a rename, on its own: this product now uses that SKU. Used by the
+   ordinary rename and by both ways out of the conflict above. */
+async function renameContentSku(k,oldSku,newSku){
+  const r=await apiWrite({action:'rename_sku', page_key:k, old_sku:oldSku, new_sku:newSku});
+  if(r.ok && (!r.json || r.json.ok!==false)){
+    const skus=skusOf(k); const i=skus.findIndex(x=>String(x.sku)===oldSku);
+    if(i>=0){ skus[i].sku=newSku; pages[k].skus=skus; }
+    render(); return true;
+  }
+  toast('Content rename failed — the catalog side is already done, re-run to sync content',true);
+  return false;
+}
 async function doRenameSku(k, oldSku){
   oldSku=String(oldSku);
   const newSku=(window.prompt('Change SKU number — updates the catalog (ordering, pricing, featured, media), the content here, and per-dealer contract prices. Past orders and sales reports keep the old number as a record.\n\nNew SKU for '+oldSku+':', oldSku)||'').trim();
@@ -3009,17 +3221,18 @@ async function doRenameSku(k, oldSku){
         product:{name:prod.name,category:prod.category,base_price:prod.base_price,msrp:prod.msrp,image:prod.image,description:prod.description,tiers:prod.tiers,price_note:prod.price_note,active:prod.active}
       })});
       const cj=await cr.json().catch(()=>({}));
-      if(cr.status===409){ toast('That SKU is already in use in the catalog',true); return; }
+      /* The target code usually EXISTS — that is the normal case, not a collision. A SKU is
+         corrected to match the manufacturer's price list, and that code is already in the
+         catalog holding the new price with no product attached: it is exactly why it showed
+         up in Price Check as unassigned. Refusing here left the correction impossible from
+         this screen, so the conflict now opens the way through instead of closing it. */
+      if(cr.status===409){ _skuMove={k,oldSku,newSku,info:cj,oldRec:prod,wasCustom:!!inCustom}; return skuMoveModal(); }
       if(!cr.ok || cj.ok===false){ toast('Catalog rename failed'+(cj.error?': '+cj.error:''),true); return; }
       _catalogCache=null; catalogNote=' · catalog + pricing updated';
     }catch(e){ toast('Catalog rename failed — nothing changed',true); return; }
   } else { catalogNote=' · not in catalog (content only)'; }
   // 2) content overlay
-  const r=await apiWrite({action:'rename_sku', page_key:k, old_sku:oldSku, new_sku:newSku});
-  if(r.ok && (!r.json || r.json.ok!==false)){
-    const skus=skusOf(k); const i=skus.findIndex(s=>String(s.sku)===oldSku); if(i>=0){ skus[i].sku=newSku; pages[k].skus=skus; }
-    toast('SKU '+oldSku+' → '+newSku+catalogNote); render();
-  } else { toast('Content rename failed'+(prod?' (catalog already updated — re-run to sync content)':''),true); }
+  if(await renameContentSku(k,oldSku,newSku)) toast('SKU '+oldSku+' → '+newSku+catalogNote);
 }
 async function doAiGen(k, field, btn){
   if(!field) return; const p=pages[k]; const orig=btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='✨ …'; }
