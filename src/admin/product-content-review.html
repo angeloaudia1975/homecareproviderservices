@@ -259,16 +259,17 @@ textarea.ed{min-height:64px}
   <div class="stats" id="stats"></div>
   <div class="toolbar">
     <input class="search" id="search" placeholder="Search products, SKUs, categories…" oninput="onSearch(this.value)">
-    <button class="btn ghost" data-act="run-structure">⚑ Structure review</button>
-    <button class="btn ghost" data-act="new-product">＋ New product</button>
-    <button class="btn ghost" data-act="start-enrichment">🚀 Start new enrichment</button>
-    <button class="btn ghost" data-act="price-check">💲 Price check</button>
-    <button class="btn ghost" data-act="catalog-health">🩺 Catalog Health</button>
-    <button class="btn ghost" data-act="catalog-structure">🌐 Catalog structure</button>
-    <button class="btn ghost" data-act="batch-align">🎯 Align all</button>
-    <button class="btn ghost" data-act="naming-review">✍️ Naming review</button>
-    <button class="btn ghost" data-act="open-history">↺ History</button>
-    <button class="btn ghost" id="selmode" data-act="toggle-selmode">☐ Select</button>
+    <button class="btn ghost" data-act="run-structure" title="Checks this manufacturer&apos;s records for grouping problems — one record holding several products, the same SKU on two products, sizes split apart. Straight after an import, before you touch anything else. Instant, no AI.">⚑ Structure review</button>
+    <button class="btn ghost" data-act="new-product" title="Creates one product record by hand, with its SKUs and prices. A single item you already know. For a whole line use Start new enrichment; for more sizes of a product that already exists use ＋＋ Add sizes inside it.">＋ New product</button>
+    <button class="btn ghost" data-act="start-enrichment" title="Brings a manufacturer&apos;s line in from product URLs, pasted catalog rows or a catalog PDF. Checks every item against the catalog first, so a match enriches the existing record instead of creating a duplicate. First, for a manufacturer you have not loaded yet.">🚀 Start new enrichment</button>
+    <button class="btn ghost" data-act="price-check" title="Cross-checks every SKU against the price layers: missing prices, codes priced but on no product, conflicts, duplicates. Also where a manufacturer price list is imported. Before publishing, and any time a price list arrives.">💲 Price check</button>
+    <button class="btn ghost" data-act="catalog-health" title="A read-only report on this manufacturer: duplicate product names, a SKU claimed by two products, records that will not reach the shop. When something looks wrong and you want to know what. It changes nothing.">🩺 Catalog Health</button>
+    <button class="btn ghost" data-act="catalog-structure" title="An AI review of your CATEGORY NAMES against the shared HCPS taxonomy, so a dealer sees every brand&apos;s walking boots together instead of one brand&apos;s. After Align all, when this line&apos;s categories exist but may not match everyone else&apos;s. About 20 seconds. Proposals only.">🌐 Catalog structure</button>
+    <button class="btn ghost" data-act="batch-align" title="An AI pass over every loaded product proposing Family / Category / Subcategory against the HCPS structure. Once the grouping is right. Takes a few minutes and costs AI usage. Nothing changes until you Apply.">🎯 Align all</button>
+    <button class="btn ghost" data-act="naming-review" title="An AI check of product NAMES for consistent titles. Late — after the structure is settled. Renaming before grouping means renaming twice.">✍️ Naming review</button>
+    <button class="btn ghost" data-act="open-history" title="Every change made here, newest first, each with Undo. The way back from anything. Check here before assuming something is lost.">↺ History</button>
+    <button class="btn grad" data-act="tools-guide" title="What every tool on this bar does, and the order to use them in">❔ How these work</button>
+    <button class="btn ghost" id="selmode" data-act="toggle-selmode" title="Turns on checkboxes so you can set status, category, publish or delete several products at once. Whenever the same change applies to many products.">☐ Select</button>
   </div>
   <div class="filters" id="filters"></div>
   <div id="structure"></div>
@@ -848,6 +849,7 @@ document.addEventListener('click',async function(e){
   if(act==='catalog-review') return openCatalogReview(k);
   if(act==='catalog-structure') return openCatalogStructure();
   if(act==='struct-one') return openCatalogStructure('manufacturer');
+  if(act==='struct-all') return openCatalogStructure('all');
   if(act==='secure-images') return doSecureImages(t.getAttribute('data-pk'));
   if(act==='bulk-secure-images') return doBulkSecureImages();
   if(act==='harmonize-apply') return doHarmonizeApply(Number(t.getAttribute('data-i')));
@@ -864,6 +866,7 @@ document.addEventListener('click',async function(e){
   if(act==='apply-name') return applyName(k);
   if(act==='set-status-val') return doStatus(k,t.getAttribute('data-val'));
   if(act==='preview') return openPreview(k);
+  if(act==='tools-guide') return openToolsGuide();
   if(act==='run-structure') return runStructure();
   if(act==='new-product') return openNewProduct();
   if(act==='open-history') return openHistory();
@@ -1064,6 +1067,90 @@ async function doAddSku(k){
     toast('Added SKU '+code+' to this product'); render();
   } else toast((r.json&&(r.json.message||r.json.error))||'Add failed',true);
 }
+/* ===================== What every tool is for, and the order ======================
+   The toolbar grew one button at a time and ended up as ten unlabelled verbs. This is the
+   single description of each — the same text the buttons carry as hover titles, kept in one
+   place so the two cannot drift — arranged by WHEN you reach for it rather than by where it
+   happens to sit on the bar. Two sequences, because there are only two jobs: bringing a
+   manufacturer in, and changing something afterwards. */
+const TOOLS=[
+ {act:'start-enrichment', label:'🚀 Start new enrichment', phase:'new',
+  what:"Brings a manufacturer's line in from product URLs, pasted catalog rows or a catalog PDF. Checks every item against the catalog first, so a match enriches the existing record instead of creating a duplicate.",
+  when:"First, for a manufacturer you have not loaded yet.", ai:true},
+ {act:'run-structure', label:'⚑ Structure review', phase:'new',
+  what:"Checks this manufacturer's records for grouping problems — one record holding several products, the same SKU on two products, sizes split apart.",
+  when:"Straight after an import, before you touch anything else. Instant, no AI.", ai:false},
+ {act:'batch-align', label:'🎯 Align all', phase:'new',
+  what:"An AI pass over every loaded product proposing Family / Category / Subcategory against the HCPS structure.",
+  when:"Once the grouping is right. Takes a few minutes and costs AI usage. Nothing changes until you Apply.", ai:true},
+ {act:'catalog-structure', label:'🌐 Catalog structure', phase:'new',
+  what:"An AI review of your CATEGORY NAMES against the shared HCPS taxonomy, so a dealer sees every brand's walking boots together instead of one brand's.",
+  when:"After Align all, when this line's categories exist but may not match everyone else's. About 20 seconds. Proposals only.", ai:true},
+ {act:'naming-review', label:'✍️ Naming review', phase:'new',
+  what:"An AI check of product NAMES for consistent titles.",
+  when:"Late — after the structure is settled. Renaming before grouping means renaming twice.", ai:true},
+ {act:'price-check', label:'💲 Price check', phase:'both',
+  what:"Cross-checks every SKU against the price layers: missing prices, codes priced but on no product, conflicts, duplicates. Also where a manufacturer price list is imported.",
+  when:"Before publishing, and any time a price list arrives.", ai:false},
+ {act:'catalog-health', label:'🩺 Catalog Health', phase:'both',
+  what:"A read-only report on this manufacturer: duplicate product names, a SKU claimed by two products, records that will not reach the shop.",
+  when:"When something looks wrong and you want to know what. It changes nothing.", ai:false},
+ {act:'new-product', label:'＋ New product', phase:'one',
+  what:"Creates one product record by hand, with its SKUs and prices.",
+  when:"A single item you already know. For a whole line use Start new enrichment; for more sizes of a product that already exists use ＋＋ Add sizes inside it.", ai:false},
+ {act:'toggle-selmode', label:'☐ Select', phase:'both',
+  what:"Turns on checkboxes so you can set status, category, publish or delete several products at once.",
+  when:"Whenever the same change applies to many products.", ai:false},
+ {act:'open-history', label:'↺ History', phase:'both',
+  what:"Every change made here, newest first, each with Undo.",
+  when:"The way back from anything. Check here before assuming something is lost.", ai:false},
+];
+function openToolsGuide(){
+  const row=t=>`<tr>
+    <td style="white-space:nowrap;vertical-align:top"><b>${esc(t.label)}</b>${t.ai?'<div class="mut" style="font-size:10.5px">uses AI</div>':''}</td>
+    <td style="vertical-align:top">${esc(t.what)}</td>
+    <td style="vertical-align:top" class="mut">${esc(t.when)}</td></tr>`;
+  const tbl=list=>`<div class="tabscroll"><table style="width:100%;font-size:12.5px">
+    <thead><tr><th style="width:190px">Tool</th><th>What it does</th><th style="width:34%">When to reach for it</th></tr></thead>
+    <tbody>${list.map(row).join('')}</tbody></table></div>`;
+  modalHTML('❔ The tools, and the order to use them', `<div class="tut">
+    <div class="rule"><b>Two jobs, two sequences.</b> Everything on this bar belongs to one or the other. Nothing that uses AI changes anything on its own — every one of them proposes, and you Apply. <b>History undoes all of it.</b></div>
+
+    <h3 style="margin-top:14px">Bringing a new manufacturer in — do these in order</h3>
+    <ol style="margin:6px 0 10px 18px;font-size:12.5px;line-height:1.7">
+      <li><b>Start new enrichment</b> — load the line from URLs, rows or a PDF.</li>
+      <li><b>Structure review</b> — fix grouping first. One record per product, every size under it.</li>
+      <li><b>Align all</b> — propose Family / Category / Subcategory for each product.</li>
+      <li><b>Catalog structure</b> — line those category names up with the other manufacturers.</li>
+      <li><b>Naming review</b> — tidy the titles, now that nothing else will move.</li>
+      <li><b>Price check → Import pricelist</b> — load the manufacturer's prices, settle what it flags.</li>
+      <li><b>Catalog Health</b> — read the report; it should be clean before you publish.</li>
+      <li><b>Publish</b> — from the product, or <b>Select</b> → Publish selected in bulk.</li>
+    </ol>
+    <p class="mut" style="font-size:12px">The order is not arbitrary: grouping decides what a product IS, so everything after it — category, name, price, images — attaches to the right thing. Do naming or pricing first and you do it twice.</p>
+    ${tbl(TOOLS.filter(t=>t.phase==='new'))}
+
+    <h3 style="margin-top:16px">Adding or changing one product</h3>
+    <ol style="margin:6px 0 10px 18px;font-size:12.5px;line-height:1.7">
+      <li>Already a product here, just more sizes? Open it → <b>＋＋ Add sizes</b>. It lists the catalog codes that look like they belong, so you tick rather than type.</li>
+      <li>Brand new item? <b>＋ New product</b>, then add its SKUs.</li>
+      <li>Wrong SKU number? The <b>✎</b> beside it. If the correct code already exists in the catalog you will be asked whether to merge the two records or just repoint this one.</li>
+      <li><b>Price check</b> to confirm it is priced and nothing is left unassigned.</li>
+      <li>Set its status to <b>Published</b>.</li>
+    </ol>
+    ${tbl(TOOLS.filter(t=>t.phase==='one'||t.phase==='both'))}
+
+    <h3 style="margin-top:16px">Things worth knowing</h3>
+    <ul style="margin:6px 0 0 18px;font-size:12.5px;line-height:1.7">
+      <li><b>The three AI tools need a key.</b> Align all, Catalog structure and Naming review call Anthropic. Without <b>ANTHROPIC_API_KEY</b> set in Netlify they answer "AI review isn't enabled" — that is a setting, not a fault.</li>
+      <li><b>Nothing here deletes.</b> Remove and Discontinued mark a record inactive and reversible; the price, images and order history stay.</li>
+      <li><b>Enrichment is the master record.</b> Category, subcategory and name set here drive what Partner 360 shows. Set it once, here.</li>
+      <li><b>A slow tool is not a broken tool.</b> Catalog structure and Naming review count the seconds while they run; Align all shows a progress bar.</li>
+    </ul>
+    <p class="mut" style="font-size:12px;margin-top:12px">Hovering any button on the toolbar gives you its one-line version. <button class="btn ghost" style="padding:2px 8px" onclick="openTutorial()">📘 Full tutorial</button> covers each product's own panel, top to bottom.</p>
+  </div>`);
+}
+
 /* ---- Add a size run in one pass -------------------------------------------------
    Adding sizes one SKU at a time is the single most repeated action on this screen, and
    the codes being typed already exist in the catalog — they are the unassigned prices
@@ -3105,8 +3192,18 @@ async function doBatchAlignApply(){
 /* ===================== Naming Consistency Review ===================== */
 let _nameCache=[];
 async function openNamingReview(){
-  modalHTML('✍️ Naming Review · '+esc(MFR),'<div class="tut"><p class="mut">Checking product names for consistency…</p></div>');
+  modalHTML('✍️ Naming Review · '+esc(MFR),`<div class="tut">
+    <p class="mut" id="nr-prog">Checking product names for consistency…</p>
+    <div style="height:8px;background:#eef0f2;border-radius:5px;margin-top:8px;overflow:hidden"><div id="nr-bar" style="height:100%;width:4%;background:var(--orange,#ef6325);transition:width .9s linear"></div></div>
+    <p class="mut" style="font-size:11.5px;margin-top:8px">An AI pass over every product name — usually 10–20 seconds. Proposals only; nothing is renamed by looking.</p></div>`);
+  let secs=0; const tick=setInterval(()=>{ secs++;
+    const p=document.getElementById('nr-prog'), b=document.getElementById('nr-bar');
+    if(!p){ clearInterval(tick); return; }
+    p.innerHTML=`Checking product names… <b>${secs}s</b>`;
+    if(b) b.style.width=Math.min(95,4+secs*5)+'%';
+  },1000);
   const r=await apiWrite({action:'naming_review'});
+  clearInterval(tick);
   const mb=document.getElementById('modal').querySelector('.mb'); if(!mb) return;
   if(!(r.ok && r.json && r.json.ok!==false && Array.isArray(r.json.proposals))){
     mb.innerHTML=`<div class="rule" style="border-color:#f3c0c0">${esc((r.json&&(r.json.message||r.json.error))||'Could not run the naming review.')}</div>`; return; }
@@ -3143,16 +3240,33 @@ let _structCache=[];
 /* scope: 'all' compares every manufacturer, 'manufacturer' just the line on screen.
    The whole-catalog pass reads every category in one AI call and is the one that
    can run out of time, so a failure now offers the smaller pass as the way out. */
+/* This is a ~20 second AI call behind one line of static text, and it defaulted to every
+   manufacturer at once — the slowest possible scope. With nothing moving on screen it
+   reads as a button that does nothing, which is how it was reported. It now scopes to the
+   line you are looking at (the question actually being asked), counts the seconds so it is
+   visibly alive, and says how long it should take. */
 async function openCatalogStructure(scope){
-  const one = scope==='manufacturer';
-  modalHTML('🌐 Catalog Structure Review',`<div class="tut"><p class="mut">Reviewing ${one?`<b>${esc(MFR)}</b>’s`:'every manufacturer’s'} categories against the shared HCPS taxonomy…</p></div>`);
+  const one = scope!=='all';
+  modalHTML('🌐 Catalog Structure Review',`<div class="tut">
+    <p class="mut" id="cs-prog">Reviewing ${one?`<b>${esc(MFR)}</b>’s`:'every manufacturer’s'} categories against the shared HCPS taxonomy…</p>
+    <div style="height:8px;background:#eef0f2;border-radius:5px;margin-top:8px;overflow:hidden"><div id="cs-bar" style="height:100%;width:4%;background:var(--orange,#ef6325);transition:width .9s linear"></div></div>
+    <p class="mut" style="font-size:11.5px;margin-top:8px">This one asks the AI to compare your category names with the shared taxonomy — it usually takes about 20 seconds. Nothing is changed by looking.</p>
+  </div>`);
+  // A visible clock, so a slow answer is obviously a slow answer and not a dead button.
+  let secs=0; const tick=setInterval(()=>{ secs++;
+    const p=document.getElementById('cs-prog'), b=document.getElementById('cs-bar');
+    if(!p){ clearInterval(tick); return; }
+    p.innerHTML=`Reviewing ${one?`<b>${esc(MFR)}</b>’s`:'every manufacturer’s'} categories… <b>${secs}s</b>`;
+    if(b) b.style.width=Math.min(95,4+secs*4.5)+'%';
+  },1000);
   const r=await apiWrite(one?{action:'harmonize_catalog',scope:'manufacturer'}:{action:'harmonize_catalog'});
+  clearInterval(tick);
   const mb=document.getElementById('modal').querySelector('.mb'); if(!mb) return;
   if(!(r.ok && r.json && r.json.ok!==false && Array.isArray(r.json.proposals))){
     const j=r.json||{};
     const msg=j.message||j.error||'The structure review could not be completed.';
     const retry = one
-      ? ''
+      ? `<div style="margin-top:10px"><button class="btn ghost" data-act="struct-all">Try every manufacturer instead</button></div>`
       : `<div style="margin-top:10px"><button class="btn grad" data-act="struct-one">Review just ${esc(MFR)} instead</button></div>`;
     mb.innerHTML=`<div class="rule" style="border-color:#f3c0c0"><b>${esc(msg)}</b>`
       +(j.detail?`<div class="mut" style="font-size:12px;margin-top:6px">${esc(String(j.detail).slice(0,300))}</div>`:'')
@@ -3171,7 +3285,9 @@ async function openCatalogStructure(scope){
         <td class="mut" style="vertical-align:top;white-space:nowrap">${p.count||0} · ${(p.manufacturers||[]).length} mfr</td>
         <td style="vertical-align:top"><button class="btn" data-act="harmonize-apply" data-i="${i}">Apply</button></td></tr>`).join('')}
       </tbody></table></div>
-      <div class="hint" style="margin-top:8px">Applying moves every matching product across all manufacturers to the new category and pushes it to the live shop. Undoable from History.</div>`:''}`;
+      <div class="hint" style="margin-top:8px">Applying moves every matching product across all manufacturers to the new category and pushes it to the live shop. Undoable from History.</div>`:''}
+    ${one?`<div style="margin-top:12px"><button class="btn ghost" data-act="struct-all">Now compare across every manufacturer →</button>
+      <span class="mut" style="font-size:11.5px;margin-left:6px">Slower, and only worth it once each line is tidy on its own.</span></div>`:''}`;
 }
 async function doHarmonizeApply(i){
   const p=_structCache[i]; if(!p) return;
