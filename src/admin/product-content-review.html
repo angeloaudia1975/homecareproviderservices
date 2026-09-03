@@ -175,7 +175,46 @@ textarea.ed{min-height:64px}
 .savebar .ok{font-size:12px;color:var(--good);font-weight:700}
 .chip{display:inline-block;background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:11.5px;font-weight:600;margin:0 4px 4px 0}
 .codechip{background:#eef5ff;border-color:#cfe2fb;color:var(--navy2)}
-.dropzone{border:2px dashed var(--line);border-radius:12px;padding:16px;text-align:center;color:var(--gray);font-size:12.5px;background:var(--paper);cursor:pointer;outline:none;transition:border-color .13s,background .13s}
+.sm-wrap{display:flex;flex-direction:column;gap:10px}
+.sm-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.sm-bar input{flex:1;min-width:200px}
+.sm-warn{padding:9px 12px;background:#fdecec;border:1px solid #f3c0c0;border-left:3px solid #b42323;border-radius:6px;font-size:12.5px;color:#5c3030}
+.sm-pane{display:grid;grid-template-columns:280px 1fr;gap:12px}
+@media (max-width:820px){.sm-pane{grid-template-columns:1fr}}
+.sm-side{background:#fff;border:1px solid var(--line);border-radius:10px;padding:6px;max-height:52vh;overflow:auto}
+.sm-cat,.sm-sub{display:flex;gap:8px;align-items:center;padding:6px 9px;border-radius:6px;cursor:pointer;font-size:13px}
+.sm-cat{font-weight:700}
+.sm-cat:hover,.sm-sub:hover{background:#f2f5f9}
+.sm-cat.open{background:#eef3fb;color:#1c3050}
+.sm-cat.none{color:#b42323}
+.sm-sub{padding-left:26px;font-size:12.5px;color:#4a5666}
+.sm-sub.on{background:#fff3e8;color:#a8500f;font-weight:700}
+.sm-cat .nm,.sm-sub .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sm-cat .tw{width:11px;color:#8895a6;font-size:10px}
+.sm-n{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#78859a}
+.sm-insp{background:#fff;border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;min-height:240px}
+.sm-ih{display:flex;gap:8px;align-items:center;padding:10px 13px;border-bottom:1px solid var(--line);font-size:13.5px;flex-wrap:wrap}
+.sm-scroll{max-height:44vh;overflow:auto;flex:1}
+.sm-tbl{width:100%;border-collapse:collapse;font-size:13px}
+.sm-tbl td{padding:8px 13px;border-top:1px solid var(--line);vertical-align:middle}
+.sm-tbl tr:first-child td{border-top:0}
+.sm-tbl tr.on{background:#fffaf6}
+.sm-tbl td.pk{width:22px;padding-right:0}
+.sm-tbl td.sk{text-align:right;white-space:nowrap;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#78859a}
+.sm-tbl td.ac{text-align:right;white-space:nowrap}
+.sm-bulk{display:flex;gap:8px;align-items:center;padding:9px 13px;border-top:1px solid var(--line);background:#fafbfd;border-radius:0 0 10px 10px;flex-wrap:wrap}
+.sm-chip{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:3px;margin-left:6px;vertical-align:1px}
+.sm-chip.c-pub{background:#e7f4ed;color:#1a7f4b}
+.sm-chip.c-pend{background:#fdf3e2;color:#a8690d}
+.sm-chip.c-need{background:#fcecec;color:#b42323}
+.sm-chip.c-dup{background:#fdefe8;color:#c2521c}
+.sm-chip.c-off{background:#eef0f3;color:#6d7887}
+.sm-shelf{padding:10px 0;border-top:1px solid var(--line)}
+.sm-shelf:first-of-type{border-top:0}
+.sm-shelf h4{margin:0 0 6px;font-size:14px}
+.sm-subs{display:flex;gap:6px;flex-wrap:wrap}
+.sm-pill{font-size:11.5px;background:#f2f5f9;border:1px solid var(--line);border-radius:20px;padding:3px 10px;color:#4a5666}
+.dropzone{.dropzone{border:2px dashed var(--line);border-radius:12px;padding:16px;text-align:center;color:var(--gray);font-size:12.5px;background:var(--paper);cursor:pointer;outline:none;transition:border-color .13s,background .13s}
 .dropzone:focus,.dropzone.drag{border-color:var(--orange,#ef6325);background:#fff7f2;color:var(--navy2)}
 .dropzone b{color:var(--navy2)}
 .dropzone .dzbtns{margin-top:8px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
@@ -268,6 +307,7 @@ textarea.ed{min-height:64px}
     <button class="btn ghost" data-act="batch-align" title="An AI pass over every loaded product proposing Family / Category / Subcategory against the HCPS structure. Once the grouping is right. Takes a few minutes and costs AI usage. Nothing changes until you Apply.">🎯 Align all</button>
     <button class="btn ghost" data-act="naming-review" title="An AI check of product NAMES for consistent titles. Late — after the structure is settled. Renaming before grouping means renaming twice.">✍️ Naming review</button>
     <button class="btn ghost" data-act="open-history" title="Every change made here, newest first, each with Undo. The way back from anything. Check here before assuming something is lost.">↺ History</button>
+    <button class="btn ghost" data-act="structure-map" title="The whole line as a tree — categories, subcategories and the products under each — with counts, status, and anything sitting with no category pinned at the top. Before publishing, and any time the shop&apos;s browsing order looks wrong. It is also where products are moved between categories in bulk.">🌳 Structure map</button>
     <button class="btn grad" data-act="tools-guide" title="What every tool on this bar does, and the order to use them in">❔ How these work</button>
     <button class="btn ghost" id="selmode" data-act="toggle-selmode" title="Turns on checkboxes so you can set status, category, publish or delete several products at once. Whenever the same change applies to many products.">☐ Select</button>
   </div>
@@ -321,7 +361,20 @@ function token(){ try{ return (window.HCPS&&HCPS.token&&HCPS.token())||''; }catc
 function authHeaders(extra){ return Object.assign({'Content-Type':'application/json','authorization':'Bearer '+token()}, extra||{}); }
 const selProducts=new Set();          // page_keys chosen for bulk
 let skuSel={pk:null, ids:new Set()};  // SKUs chosen (single product at a time) for move/split
-const dismissed=new Set();            // structure flags dismissed this session
+/* Structure flags you have already answered. This used to be a plain Set — "dismissed
+   this session" — so all seven came back on every reload and the same decisions had to be
+   made again and again. A dismissal IS a decision, so it is remembered. Kept per browser
+   and per manufacturer, the same way the catalog remembers "keep separate"; if you need it
+   to follow you to another machine, that is a column on the record and a migration. */
+function dismissKey(){ return "hcps_structok_"+MFR; }
+function loadDismissed(){
+  try{ const a=JSON.parse(localStorage.getItem(dismissKey())||"[]"); return new Set(Array.isArray(a)?a:[]); }
+  catch(e){ return new Set(); }
+}
+function saveDismissed(){
+  try{ localStorage.setItem(dismissKey(), JSON.stringify([...dismissed])); }catch(e){}
+}
+let dismissed=loadDismissed();
 const openCards=new Set();            // expanded cards
 
 const STATUSES=[
@@ -784,7 +837,7 @@ document.addEventListener('click',async function(e){
   if(act==='manage'||act==='open-manage'){ if(openCards.has(k)) openCards.delete(k); else openCards.add(k);
     if(act==='open-manage'){ openCards.add(k); } render();
     if(act==='open-manage'){ const el=document.getElementById('card-'+cssId(k)); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); } return; }
-  if(act==='dismiss-flag'){ dismissed.add(k); render(); return; }
+  if(act==='dismiss-flag'){ dismissed.add(k); saveDismissed(); render(); toast('Dismissed — it will stay dismissed'); return; }
   if(act==='toggle-selmode'){ selMode=!selMode; if(!selMode) selProducts.clear(); render(); return; }
   if(act==='toggle-product'){ if(selProducts.has(k)) selProducts.delete(k); else selProducts.add(k); updateBulkBar(); return; }
   if(act==='clear-sel'){ selProducts.clear(); render(); return; }
@@ -866,6 +919,7 @@ document.addEventListener('click',async function(e){
   if(act==='apply-name') return applyName(k);
   if(act==='set-status-val') return doStatus(k,t.getAttribute('data-val'));
   if(act==='preview') return openPreview(k);
+  if(act==='structure-map') return openStructureMap();
   if(act==='tools-guide') return openToolsGuide();
   if(act==='run-structure') return runStructure();
   if(act==='new-product') return openNewProduct();
@@ -1067,6 +1121,192 @@ async function doAddSku(k){
     toast('Added SKU '+code+' to this product'); render();
   } else toast((r.json&&(r.json.message||r.json.error))||'Add failed',true);
 }
+/* ═══════════════════ THE STRUCTURE MAP ═══════════════════════════════════════
+   The map on the left, the work on the right. Every other screen here answers
+   "what is wrong with this product?"; this one answers "is the SHELF right?" — which is
+   the question a dealer's experience actually turns on, and the only one that was not
+   asked anywhere.
+
+   The left pane holds categories and subcategories ONLY. Putting products in it would make
+   it unreadable the moment one category holds forty of them, which is exactly the shape of
+   this catalog: 42 of Ovation's 52 products sit under one heading. Products go on the
+   right, where there is room for status, SKU count and a checkbox — and where moving ten
+   of them is one action rather than ten.
+
+   It reads and writes the same enrichment records as the rest of the workspace. A category
+   changed here is the category Partner 360 serves; there is no second copy to keep in step.
+   ═════════════════════════════════════════════════════════════════════════════ */
+const SM_NONE='\u0000none';           // the bucket for "no category set" — never a real name
+let SM={cat:null, sub:null, pick:new Set(), q:''};
+
+// Every non-parent product, with the facts the map needs, computed once per open.
+function smRows(){
+  const flagged=new Set(structureFlags().map(f=>f.key||f.k).filter(Boolean));
+  return Object.keys(pages).filter(k=>!pages[k].is_parent).map(k=>{
+    const p=pages[k], skus=skusOf(k);
+    const cat=String(p.category||'').trim(), sub=String(p.subcategory||'').trim();
+    let state='pending';
+    if(p.disabled) state='disabled';
+    else if(!cat) state='needcat';
+    else if(PUBLIC_SET.has(String(p.status||''))) state='published';
+    return {k, name:p.name||k, family:String(p.family||'').trim(),
+      cat:cat||SM_NONE, sub:sub||'', skus:skus.length, state,
+      grouping:flagged.has(k), status:p.status||''};
+  });
+}
+function smTree(rows){
+  const t={};
+  rows.forEach(r=>{ const c=(t[r.cat]=t[r.cat]||{subs:{},n:0,sk:0});
+    c.n++; c.sk+=r.skus;
+    const sk=r.sub||'';
+    const sc=(c.subs[sk]=c.subs[sk]||{n:0,sk:0}); sc.n++; sc.sk+=r.skus; });
+  return t;
+}
+const SM_CHIP={
+  published:['c-pub','Published'], pending:['c-pend','Pending review'],
+  needcat:['c-need','Needs category'], disabled:['c-off','Disabled']};
+function smChip(r){
+  const [cls,lab]=SM_CHIP[r.state]||SM_CHIP.pending;
+  return `<span class="sm-chip ${cls}">${lab}</span>`
+    + (r.grouping?`<span class="sm-chip c-dup" title="Flagged in Structure review — its SKUs may be several products">Review grouping</span>`:'');
+}
+function openStructureMap(){ SM={cat:null,sub:null,pick:new Set(),q:''}; smRender(); }
+function smRender(){
+  const rows=smRows(), tree=smTree(rows);
+  const cats=Object.keys(tree).sort((a,b)=>a===SM_NONE?-1:b===SM_NONE?1:a.localeCompare(b));
+  const totals={n:rows.length, sk:rows.reduce((a,r)=>a+r.skus,0),
+    none:rows.filter(r=>r.cat===SM_NONE).length};
+  if(SM.cat===null){ SM.cat = totals.none ? SM_NONE : (cats[0]||null); SM.sub=null; }
+
+  const catLabel=c=>c===SM_NONE?'⚠ No category':c;
+  const side=cats.map(c=>{
+    const on=SM.cat===c, g=tree[c];
+    const subs=Object.keys(g.subs).sort((a,b)=>a===''?-1:b===''?1:a.localeCompare(b));
+    return `<div class="sm-cat${c===SM_NONE?' none':''}${on?' open':''}" onclick="smPick('${escA(c)}',null)">
+        <span class="tw">${on?'▾':'▸'}</span><span class="nm">${esc(catLabel(c))}</span>
+        <span class="sm-n">${g.n}</span></div>`
+      + (on?subs.map(sc=>`<div class="sm-sub${SM.sub===sc?' on':''}" onclick="event.stopPropagation();smPick('${escA(c)}','${escA(sc)}')">
+          <span class="nm">${sc?esc(sc):'<i>no subcategory</i>'}</span><span class="sm-n">${g.subs[sc].n}</span></div>`).join(''):'');
+  }).join('');
+
+  const q=SM.q.toLowerCase();
+  let list=rows.filter(r=>r.cat===SM.cat && (SM.sub===null||r.sub===SM.sub));
+  if(q) list=rows.filter(r=>(r.name+' '+r.cat+' '+r.sub+' '+r.family).toLowerCase().indexOf(q)>=0);
+  list.sort((a,b)=>a.name.localeCompare(b.name));
+  const picked=[...SM.pick].filter(k=>rows.some(r=>r.k===k));
+
+  const head = q ? `Search “${esc(SM.q)}”` : (catLabel(SM.cat)+(SM.sub!==null?(SM.sub?' › '+esc(SM.sub):' › no subcategory'):''));
+  const body=`<div class="sm-wrap">
+    <div class="sm-bar">
+      <input class="ed" id="sm-q" placeholder="Find a product anywhere in this line…" value="${escA(SM.q)}" oninput="smSearch(this.value)">
+      <span class="mut" style="font-size:12px"><b>${totals.n}</b> products · <b>${totals.sk}</b> SKUs · <b>${cats.filter(c=>c!==SM_NONE).length}</b> categories</span>
+    </div>
+    ${totals.none?`<div class="sm-warn">⚠ <b>${totals.none}</b> product(s) have no category — they are pinned at the top of the map and will not reach dealers on a line that lists approved products only.</div>`:''}
+    <div class="sm-pane">
+      <div class="sm-side">${side||'<div class="mut" style="padding:12px">No products loaded.</div>'}</div>
+      <div class="sm-insp">
+        <div class="sm-ih"><b>${esc(head)}</b> <span class="mut">${list.length} product${list.length===1?'':'s'} · ${list.reduce((a,r)=>a+r.skus,0)} SKUs</span>
+          <span style="flex:1"></span>
+          <button class="btn ghost" style="padding:3px 9px;font-size:11.5px" onclick="smRenameCat()" ${SM.cat===SM_NONE?'disabled':''}>✎ Rename</button>
+          <button class="btn ghost" style="padding:3px 9px;font-size:11.5px" onclick="smPreview()">👁 As a dealer</button></div>
+        <div class="sm-scroll">${list.length?`<table class="sm-tbl"><tbody>${list.map(r=>`<tr class="${SM.pick.has(r.k)?'on':''}">
+          <td class="pk"><input type="checkbox" ${SM.pick.has(r.k)?'checked':''} onchange="smTick('${escA(r.k)}',this.checked)"></td>
+          <td><b>${esc(r.name)}</b>${smChip(r)}
+            <div class="mut" style="font-size:11px">${esc(r.cat===SM_NONE?'no category':r.cat)}${r.sub?' › '+esc(r.sub):''}${r.family?' · family: '+esc(r.family):''}</div></td>
+          <td class="sk">${r.skus} SKU</td>
+          <td class="ac"><button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="smOpen('${escA(r.k)}')">Open</button>
+            <button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="smMoveOne('${escA(r.k)}')">Move</button></td>
+        </tr>`).join('')}</tbody></table>`:'<div class="mut" style="padding:18px">Nothing here.</div>'}</div>
+        <div class="sm-bulk">${picked.length?`<b>${picked.length} selected</b>
+            <button class="btn ghost" style="padding:3px 9px;font-size:11.5px" onclick="SM.pick=new Set();smRender()">Clear</button>
+            <span style="flex:1"></span>
+            <button class="btn dark" style="padding:4px 11px;font-size:12px" onclick="smMovePicked()">Move ${picked.length} →</button>`
+          :`<span class="mut" style="font-size:12px">Tick products to move several at once. Everything here is the same record the rest of the workspace edits.</span>`}</div>
+      </div>
+    </div>
+  </div>`;
+  modalHTML('🌳 Structure map · '+esc(MFR), body);
+}
+function smPick(c,sub){ SM.cat=(c===SM.cat&&sub===null&&SM.sub===null)?SM.cat:c; SM.sub=sub; SM.q=''; smRender(); }
+function smSearch(v){ SM.q=String(v||''); smRender();
+  const el=document.getElementById('sm-q'); if(el){ el.focus(); el.setSelectionRange(el.value.length,el.value.length); } }
+function smTick(k,on){ if(on) SM.pick.add(k); else SM.pick.delete(k); smRender(); }
+function smOpen(k){ document.getElementById('overlay').classList.remove('show'); reopen(k); }
+
+/* Moving is one write per product — set_meta on the enrichment record, which is what the
+   shop reads. No second copy, no separate publish step. */
+async function smWrite(keys, cat, sub){
+  let ok=0, bad=0;
+  for(let i=0;i<keys.length;i++){
+    if(keys.length>4 && i%5===0) toast('Moving '+(i+1)+' of '+keys.length+'…');
+    const patch={category:cat}; if(sub!=null) patch.subcategory=sub;
+    const r=await apiWrite({action:'set_meta', page_key:keys[i], patch});
+    if(r.ok && (!r.json||r.json.ok!==false)){ ok++; Object.assign(pages[keys[i]], patch); }
+    else bad++;
+  }
+  toast(ok+' moved'+(bad?' · '+bad+' failed':''), !!bad);
+  SM.pick=new Set(); smRender(); render();
+}
+function smAskDestination(n){
+  const cats=allCategories();
+  const cat=window.prompt('Move '+n+' product'+(n===1?'':'s')+' to which CATEGORY?\n\n'
+    +'Existing: '+(cats.join(', ')||'(none yet)')+'\n\nType an existing name, or a new one to create it.',
+    SM.cat===SM_NONE?'':SM.cat);
+  if(cat==null||!String(cat).trim()) return null;
+  const subs=[...new Set(Object.keys(pages).filter(k=>String(pages[k].category||'').trim()===String(cat).trim())
+    .map(k=>String(pages[k].subcategory||'').trim()).filter(Boolean))].sort();
+  const sub=window.prompt('And which SUBCATEGORY?\n\n'
+    +(subs.length?'In “'+String(cat).trim()+'”: '+subs.join(', '):'That category has no subcategories yet.')
+    +'\n\nLeave empty for none.', SM.sub||'');
+  if(sub==null) return null;
+  return {cat:String(cat).trim(), sub:String(sub).trim()};
+}
+async function smMoveOne(k){
+  const d=smAskDestination(1); if(!d) return;
+  await smWrite([k], d.cat, d.sub);
+}
+async function smMovePicked(){
+  const keys=[...SM.pick]; if(!keys.length) return;
+  const d=smAskDestination(keys.length); if(!d) return;
+  if(!window.confirm('Move '+keys.length+' product'+(keys.length===1?'':'s')+' to “'+d.cat+(d.sub?' › '+d.sub:'')+'”?\n\n'
+    +'This is the category Partner 360 serves — dealers will browse them there. Undoable from History.')) return;
+  await smWrite(keys, d.cat, d.sub);
+}
+/* Renaming is a move of everything in it — there is no category record to rename, the
+   category IS the value on each product. Saying so avoids the surprise of "I renamed it
+   and half the products stayed behind". */
+async function smRenameCat(){
+  if(SM.cat===SM_NONE) return;
+  const scope = SM.sub!==null && SM.sub!=='' ? 'subcategory' : 'category';
+  const cur = scope==='subcategory' ? SM.sub : SM.cat;
+  const to=window.prompt('Rename this '+scope+'.\n\nEvery product in it is moved to the new name — a '
+    +scope+' is just the value each product carries, not a record of its own.\n\nNew name:', cur);
+  if(to==null||!String(to).trim()||String(to).trim()===cur) return;
+  const keys=smRows().filter(r=>scope==='subcategory'
+      ? (r.cat===SM.cat && r.sub===SM.sub) : (r.cat===SM.cat)).map(r=>r.k);
+  if(!keys.length) return;
+  if(!window.confirm('Rename “'+cur+'” to “'+String(to).trim()+'” across '+keys.length+' product(s)?')) return;
+  if(scope==='subcategory'){ await smWrite(keys, SM.cat, String(to).trim()); SM.sub=String(to).trim(); }
+  else { await smWrite(keys, String(to).trim(), null); SM.cat=String(to).trim(); }
+  smRender();
+}
+function smPreview(){
+  const rows=smRows(), tree=smTree(rows);
+  const cats=Object.keys(tree).filter(c=>c!==SM_NONE).sort();
+  const shelf=cats.map(c=>{
+    const subs=Object.keys(tree[c].subs).sort((a,b)=>a===''?1:b===''?-1:a.localeCompare(b));
+    return `<div class="sm-shelf"><h4>${esc(c)} <span class="mut">${tree[c].n} product(s)</span></h4>
+      <div class="sm-subs">${subs.map(sc=>`<span class="sm-pill">${sc?esc(sc):'—'} <b>${tree[c].subs[sc].n}</b></span>`).join('')}</div></div>`;
+  }).join('');
+  const hidden=rows.filter(r=>r.state==='disabled'||r.cat===SM_NONE).length;
+  modalHTML('👁 How dealers will browse this line', `<div class="tut">
+    <p class="mut">Partner 360 lists these categories in order, each with its subcategories as filters underneath. This is the shape a dealer sees — not a picture of it, the same numbers the shop will use.</p>
+    ${shelf||'<div class="hint">No categorized products yet.</div>'}
+    ${hidden?`<div class="hint">${hidden} product(s) will not appear — disabled, or with no category.</div>`:''}
+    <div style="margin-top:12px"><button class="btn ghost" onclick="smRender()">← Back to the map</button></div>
+  </div>`);
+}
+
 /* ===================== What every tool is for, and the order ======================
    The toolbar grew one button at a time and ended up as ten unlabelled verbs. This is the
    single description of each — the same text the buttons carry as hover titles, kept in one
@@ -1077,6 +1317,9 @@ const TOOLS=[
  {act:'start-enrichment', label:'🚀 Start new enrichment', phase:'new',
   what:"Brings a manufacturer's line in from product URLs, pasted catalog rows or a catalog PDF. Checks every item against the catalog first, so a match enriches the existing record instead of creating a duplicate.",
   when:"First, for a manufacturer you have not loaded yet.", ai:true},
+ {act:'structure-map', label:'🌳 Structure map', phase:'both',
+  what:"The whole line as a tree — categories, subcategories and the products under each — with counts, status, and anything sitting with no category pinned at the top.",
+  when:"Before publishing, and any time the shop's browsing order looks wrong. It is also where products are moved between categories in bulk.", ai:false},
  {act:'run-structure', label:'⚑ Structure review', phase:'new',
   what:"Checks this manufacturer's records for grouping problems — one record holding several products, the same SKU on two products, sizes split apart.",
   when:"Straight after an import, before you touch anything else. Instant, no AI.", ai:false},
