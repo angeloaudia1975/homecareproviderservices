@@ -529,6 +529,28 @@ exports.handler = async (event)=>{
         return json(200,{ok:true,custom:custN,overrides:ovN,codes:codes.length});
       }
 
+      /* SET ONE GROUP ACROSS SEVERAL SKUS — "these are sizes of one product".
+         The group is what Partner 360 uses to fold SKUs into a single card with a size
+         picker, so this is the answer to a set of same-named codes that are NOT duplicates
+         but siblings. It writes to the OVERRIDE layer for every code, including added
+         products: custom_products has no group column, which is why an added product's
+         group was silently dropped before. One read, one upsert for the whole set. */
+      if(b.action==="set_group"){
+        const mfr=b.manufacturer;
+        const codes=Array.isArray(b.codes)?[...new Set(b.codes.map(c=>String(c).trim()).filter(Boolean))]:[];
+        const group=(b.group==null)?"":String(b.group).trim().slice(0,160);
+        if(!mfr||!codes.length) return json(400,{error:"manufacturer, codes[] required"});
+        if(codes.length>200) return json(400,{error:"too_many"});
+        const e=encodeURIComponent, now=new Date().toISOString();
+        const ovAll=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]);
+        const ovBy={}; (ovAll||[]).forEach(r=>{ ovBy[String(r.code)]=r.patch||{}; });
+        const rows=codes.map(code=>({manufacturer:mfr,code,
+          patch:Object.assign({},ovBy[code]||{},{group}), updated_at:now}));
+        await sb("POST","product_overrides?on_conflict=manufacturer,code",rows,
+          {Prefer:"resolution=merge-duplicates,return=minimal"});
+        return json(200,{ok:true,codes:codes.length,group});
+      }
+
       // Feature / unfeature a product straight from the Catalog editor (writes the same
       // featured_products table the Featured page uses).
       if(b.action==="set_featured"){

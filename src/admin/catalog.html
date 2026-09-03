@@ -1013,8 +1013,9 @@ function dupPanelHtml(){
       <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         ${g.same_code
           ? `<span class="hint" style="margin:0">One product, one SKU — there is nothing to keep separate here.</span>`
-          : `<button class="btn ghost sm" onclick="dupKeepSeparate('${esc(g.key)}')">Keep separate — different products</button>
-             <span class="hint" style="margin:0">or disable the one you don't sell from its Edit screen.</span>`}
+          : `<button class="btn sm" style="background:#1a6b45;border-color:#1a6b45;color:#fff" onclick="dupGroupTogether('${esc(g.key)}')">▦ Same product, different sizes — make it one card</button>
+             <button class="btn ghost sm" onclick="dupKeepSeparate('${esc(g.key)}')">Keep separate — different products</button>
+             <span class="hint" style="margin:0">Merging would archive all but one of these. Grouping keeps every size orderable under a single card with a size picker.</span>`}
       </div></div>`).join("")}
   </div>`;
 }
@@ -1357,6 +1358,42 @@ async function mergeLayers(code){
    pair from the queue and changes nothing about either product. */
 function dismissedKey(){ return "hcps_dupok_"+SLUG; }
 function dismissed(){ try{ return JSON.parse(localStorage.getItem(dismissedKey())||"[]")||[]; }catch(e){ return []; } }
+/* THE THIRD ANSWER, AND USUALLY THE RIGHT ONE.
+   A set of same-named SKUs is flagged as duplicates, but Merge and Keep separate are both
+   wrong for a size run. Merging ARCHIVES every record but one — three sizes of a night
+   splint become one orderable size and the other two leave the portal. Keeping them
+   separate leaves three cards on the shelf where a dealer expects one product with a size
+   picker. What Partner 360 actually reads is the group: SKUs sharing one become a single
+   card. So the card now offers it, because the queue was asking a question whose real
+   answer was not on the screen. */
+async function dupGroupTogether(key){
+  const g=(DUPS||[]).find(x=>x.key===key); if(!g) return;
+  const codes=[...new Set((g.members||[]).map(m=>String(m.code)))];
+  if(codes.length<2) return;
+  const eff=effProducts();
+  const first=eff.find(p=>String(p.code)===codes[0])||{};
+  /* groupTitle lives inside dupPanelHtml and is not in scope here — deriving the name from
+     the members is also more honest: it is their shared name, minus the size word, which is
+     exactly the product these SKUs are sizes of. */
+  const names=codes.map(c=>{ const p=eff.find(x=>String(x.code)===c); return String((p&&p.name)||""); }).filter(Boolean);
+  const stripSize=t=>String(t).replace(/\s*[-–,]\s*(X{0,3}-?(?:Small|Large)|Small|Medium|Large|Left|Right|Universal|\d+(?:\.\d+)?\s*(?:in|inch|")?)\s*$/i,"").trim();
+  const nm=stripSize(names[0]||first.name||"");
+  const cat=String(first.category||"").trim();
+  const suggested=(cat?cat+"::":"")+(nm||codes[0]);
+  const label=window.prompt(
+    "Group these "+codes.length+" SKUs into ONE product card with a size picker.\n\n"
+    +codes.join(", ")+"\n\n"
+    +"They all stay live and orderable — nothing is archived. Dealers will see one card and choose the size.\n\n"
+    +"Group name (dealers never see this — it only joins the sizes together):", suggested);
+  if(label==null||!String(label).trim()) return;
+  const grp=String(label).trim();
+  const r=await api("",{method:"POST",body:JSON.stringify({action:"set_group",manufacturer:SLUG,codes,group:grp})});
+  if(!(r&&r.ok!==false)){ toast((r&&(r.message||r.error))||"Couldn't group those",true); return; }
+  codes.forEach(c=>localOverride(c,{group:grp}));
+  localDedupe(codes);
+  render();
+  toast(codes.length+" SKUs now one card · "+grp);
+}
 function dupKeepSeparate(key){
   if(!confirm("Mark these as genuinely different products?\n\nNothing changes on either record — they just stop appearing in this queue.")) return;
   try{ const d=dismissed(); if(d.indexOf(key)<0) d.push(key); localStorage.setItem(dismissedKey(),JSON.stringify(d)); }catch(e){}
