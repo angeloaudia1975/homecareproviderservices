@@ -209,6 +209,9 @@ textarea.ed{min-height:64px}
 .sm-chip.c-need{background:#fcecec;color:#b42323}
 .sm-chip.c-dup{background:#fdefe8;color:#c2521c}
 .sm-chip.c-off{background:#eef0f3;color:#6d7887}
+.sm-health{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;
+  padding:9px 12px;background:#f3f8f4;border:1px solid #cfe3d5;border-radius:8px;font-size:12px;color:#31473a}
+.sm-health.bad{background:#fff8ec;border-color:#f0dcb8;color:#5c4a2e}
 .sm-shelf{padding:10px 0;border-top:1px solid var(--line)}
 .sm-shelf:first-of-type{border-top:0}
 .sm-shelf h4{margin:0 0 6px;font-size:14px}
@@ -1137,20 +1140,40 @@ async function doAddSku(k){
    changed here is the category Partner 360 serves; there is no second copy to keep in step.
    ═════════════════════════════════════════════════════════════════════════════ */
 const SM_NONE='\u0000none';           // the bucket for "no category set" — never a real name
-let SM={cat:null, sub:null, pick:new Set(), q:''};
+/* WHAT A DEALER SEES IS NOT THE FIELD ON THE RECORD.
+   The record carries an INTERNAL category — "Orthopedic Bracing & Supports" — which is a
+   department, useful for reporting and far too broad to shop. What Partner 360 actually
+   shows is derived: the subcategory is looked up in this line's category map and becomes a
+   body-area heading. "Ankle Braces & Stabilizers" becomes "Foot & Ankle".
+
+   The first version of this map showed the raw field, so it disagreed with the shop and
+   made a two-level structure look like three. It now shows the dealer view, and the
+   internal department rides along as metadata — which is exactly where it belongs.
+
+   One thing overrules the map: a category pinned onto a product's own override layer.
+   That is meant for a deliberate exception; a few hundred of them left over from an old
+   bulk pass are why one subcategory can appear under two headings. They are counted and
+   removable from here. */
+let SM={cat:null, sub:null, pick:new Set(), q:'', map:{}, pinned:{}, loaded:false};
 
 // Every non-parent product, with the facts the map needs, computed once per open.
 function smRows(){
   const flagged=new Set(structureFlags().map(f=>f.key||f.k).filter(Boolean));
+  const map=SM.map||{}, pinned=SM.pinned||{};
   return Object.keys(pages).filter(k=>!pages[k].is_parent).map(k=>{
     const p=pages[k], skus=skusOf(k);
-    const cat=String(p.category||'').trim(), sub=String(p.subcategory||'').trim();
+    const internal=String(p.category||'').trim(), sub=String(p.subcategory||'').trim();
+    /* The same resolution Partner 360 does, in the same order: a pinned category on a SKU
+       wins, then the subcategory's mapping, then the record's own category. */
+    const pin=skus.map(x=>pinned[String(x.sku)]).find(v=>v!=null&&v!=='')||null;
+    const dealer = pin || (sub && map[sub]) || internal;
     let state='pending';
     if(p.disabled) state='disabled';
-    else if(!cat) state='needcat';
+    else if(!dealer) state='needcat';
     else if(PUBLIC_SET.has(String(p.status||''))) state='published';
     return {k, name:p.name||k, family:String(p.family||'').trim(),
-      cat:cat||SM_NONE, sub:sub||'', skus:skus.length, state,
+      internal:internal||'', sub:sub||'', skus:skus.length, state,
+      cat:dealer||SM_NONE, pinned:!!pin, unmapped:!!(sub && !map[sub] && !pin),
       grouping:flagged.has(k), status:p.status||''};
   });
 }
@@ -1170,7 +1193,23 @@ function smChip(r){
   return `<span class="sm-chip ${cls}">${lab}</span>`
     + (r.grouping?`<span class="sm-chip c-dup" title="Flagged in Structure review — its SKUs may be several products">Review grouping</span>`:'');
 }
-function openStructureMap(){ SM={cat:null,sub:null,pick:new Set(),q:''}; smRender(); }
+async function openStructureMap(){
+  SM={cat:null,sub:null,pick:new Set(),q:'',map:{},pinned:{},loaded:false};
+  modalHTML('🌳 Structure map · '+esc(MFR),'<div class="tut"><p class="mut">Reading the dealer structure…</p></div>');
+  try{
+    const h=authHeaders();
+    const [mf,cat]=await Promise.all([
+      fetch('/.netlify/functions/catalog-api',{headers:h}).then(r=>r.json()).catch(()=>({})),
+      fetch('/.netlify/functions/catalog-api?manufacturer='+encodeURIComponent(MFR),{headers:h}).then(r=>r.json()).catch(()=>({}))
+    ]);
+    const me=((mf&&mf.manufacturers)||[]).find(x=>x.slug===MFR)||{};
+    SM.map=(me.category_map&&typeof me.category_map==='object')?me.category_map:{};
+    SM.order=Array.isArray(me.category_order)?me.category_order:null;
+    const ov=(cat&&cat.overrides)||{};
+    Object.keys(ov).forEach(c=>{ const v=ov[c]&&ov[c].category; if(v!=null&&v!=='') SM.pinned[c]=v; });
+  }catch(e){}
+  SM.loaded=true; smRender();
+}
 function smRender(){
   const rows=smRows(), tree=smTree(rows);
   const cats=Object.keys(tree).sort((a,b)=>a===SM_NONE?-1:b===SM_NONE?1:a.localeCompare(b));
@@ -1201,6 +1240,7 @@ function smRender(){
       <input class="ed" id="sm-q" placeholder="Find a product anywhere in this line…" value="${escA(SM.q)}" oninput="smSearch(this.value)">
       <span class="mut" style="font-size:12px"><b>${totals.n}</b> products · <b>${totals.sk}</b> SKUs · <b>${cats.filter(c=>c!==SM_NONE).length}</b> categories</span>
     </div>
+    ${smHealthHtml(rows)}
     ${totals.none?`<div class="sm-warn">⚠ <b>${totals.none}</b> product(s) have no category — they are pinned at the top of the map and will not reach dealers on a line that lists approved products only.</div>`:''}
     <div class="sm-pane">
       <div class="sm-side">${side||'<div class="mut" style="padding:12px">No products loaded.</div>'}</div>
@@ -1212,7 +1252,8 @@ function smRender(){
         <div class="sm-scroll">${list.length?`<table class="sm-tbl"><tbody>${list.map(r=>`<tr class="${SM.pick.has(r.k)?'on':''}">
           <td class="pk"><input type="checkbox" ${SM.pick.has(r.k)?'checked':''} onchange="smTick('${escA(r.k)}',this.checked)"></td>
           <td><b>${esc(r.name)}</b>${smChip(r)}
-            <div class="mut" style="font-size:11px">${esc(r.cat===SM_NONE?'no category':r.cat)}${r.sub?' › '+esc(r.sub):''}${r.family?' · family: '+esc(r.family):''}</div></td>
+            <div class="mut" style="font-size:11px">${esc(r.cat===SM_NONE?'no category':r.cat)}${r.sub?' › '+esc(r.sub):''}${r.family?' · family: '+esc(r.family):''}</div>
+            <div class="mut" style="font-size:10.5px;opacity:.8">internal: ${esc(r.internal||'—')}${r.pinned?' · <b style="color:#b42323">category pinned on the SKU — overrules the map</b>':''}${r.unmapped?' · <b style="color:#a8690d">subcategory not mapped</b>':''}</div></td>
           <td class="sk">${r.skus} SKU</td>
           <td class="ac"><button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="smOpen('${escA(r.k)}')">Open</button>
             <button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="smMoveOne('${escA(r.k)}')">Move</button></td>
@@ -1226,6 +1267,80 @@ function smRender(){
     </div>
   </div>`;
   modalHTML('🌳 Structure map · '+esc(MFR), body);
+}
+/* The one line that says whether the shelf is being built the way it was designed. */
+function smHealthHtml(rows){
+  const pinned=rows.filter(r=>r.pinned).length;
+  const unmapped=[...new Set(rows.filter(r=>r.unmapped).map(r=>r.sub))];
+  const bits=[];
+  if(pinned) bits.push(`<b>${pinned}</b> product(s) have a category pinned on the SKU, which overrules the map`);
+  if(unmapped.length) bits.push(`<b>${unmapped.length}</b> subcategor${unmapped.length===1?'y is':'ies are'} not mapped (${unmapped.map(esc).join(', ')}) — they fall back to the internal department`);
+  return `<div class="sm-health${bits.length?' bad':''}">
+    <div><b>Dealers browse Category › Subcategory › Products.</b> The category is worked out from the subcategory using this line's map — the internal department on each record is not a level dealers navigate.
+      ${bits.length?'<br>'+bits.join('. ')+'.':' Nothing is overriding it.'}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn ghost" style="padding:3px 9px;font-size:11.5px" onclick="smEditMap()">⚙ Dealer categories</button>
+      ${pinned?`<button class="btn ghost" style="padding:3px 9px;font-size:11.5px;color:#b42323;border-color:#f0c8c8" onclick="smUnpin()">Unpin ${pinned} product(s)</button>`:''}
+    </div></div>`;
+}
+/* THE MAP IS THE DEALER STRUCTURE. Every subcategory in the line, and the heading a dealer
+   finds it under. Changing one here moves that whole subcategory on the shop — which is the
+   level this should be edited at, rather than product by product. */
+function smEditMap(){
+  const rows=smRows();
+  const subs=[...new Set(rows.map(r=>r.sub).filter(Boolean))].sort();
+  const cats=[...new Set(Object.values(SM.map||{}).concat(rows.map(r=>r.cat)).filter(c=>c&&c!==SM_NONE))].sort();
+  const opts=cur=>['<option value="">— not mapped —</option>']
+    .concat(cats.map(c=>`<option value="${escA(c)}"${cur===c?' selected':''}>${esc(c)}</option>`)).join('');
+  modalHTML('⚙ Dealer categories · '+esc(MFR), `<div class="tut">
+    <p class="mut">Every subcategory in this line, and the heading a dealer finds it under. This <b>is</b> the shop's structure — two levels, nothing else. The internal department on each record stays as it is; it is not what dealers navigate.</p>
+    <div class="tabscroll" style="max-height:50vh;overflow:auto"><table style="width:100%;font-size:12.5px">
+      <thead><tr><th style="width:44%">Subcategory</th><th>Dealers find it under</th><th style="width:70px">Products</th></tr></thead>
+      <tbody>${subs.map(sc=>{ const n=rows.filter(r=>r.sub===sc).length; const cur=(SM.map||{})[sc]||'';
+        return `<tr><td>${esc(sc)}</td>
+          <td><select class="ed" id="smm-${cssId(sc)}" style="width:100%">${opts(cur)}</select>
+            <input class="ed" id="smn-${cssId(sc)}" placeholder="…or type a new heading" style="margin-top:4px;font-size:11.5px"></td>
+          <td class="mut">${n}</td></tr>`; }).join('')}</tbody></table></div>
+    <div class="savebar" style="margin-top:10px"><button class="btn dark" onclick="smSaveMap()">Save dealer structure</button>
+      <button class="btn ghost" onclick="smRender()">← Back to the map</button></div>
+  </div>`);
+}
+async function smSaveMap(){
+  const rows=smRows();
+  const subs=[...new Set(rows.map(r=>r.sub).filter(Boolean))].sort();
+  const map={};
+  subs.forEach(sc=>{
+    const typed=((document.getElementById('smn-'+cssId(sc))||{}).value||'').trim();
+    const chosen=((document.getElementById('smm-'+cssId(sc))||{}).value||'').trim();
+    const v=typed||chosen; if(v) map[sc]=v;
+  });
+  const r=await catalogPost({action:'set_category_map',manufacturer:MFR,map});
+  if(!(r.ok&&r.json&&r.json.ok!==false)){ toast((r.json&&r.json.error)||'Could not save that',true); return; }
+  SM.map=map;
+  // Keep the shop's category order in step: drop headings nothing maps to any more.
+  const wanted=[...new Set(Object.values(map))];
+  const order=(SM.order||[]).filter(c=>wanted.indexOf(c)>=0).concat(wanted.filter(c=>(SM.order||[]).indexOf(c)<0));
+  try{ await catalogPost({action:'set_category_order',manufacturer:MFR,order}); SM.order=order; }catch(e){}
+  toast(Object.keys(map).length+' subcategories mapped');
+  smRender();
+}
+/* A pinned category is a per-product exception. Hundreds of them are not exceptions, they
+   are an old structure still in charge — and while they are there the map cannot do its job. */
+async function smUnpin(){
+  const r0=await catalogPost({action:'clear_derived_categories',manufacturer:MFR,preview:true});
+  const n=(r0.json&&r0.json.count)||0;
+  if(!n){ toast('Nothing is pinned'); return; }
+  const sample=((r0.json&&r0.json.sample)||[]).slice(0,6).map(x=>x.code+' → '+x.category).join('\n');
+  if(!window.confirm('Unpin the category on '+n+' product record(s)?\n\n'
+    +'They will take their heading from the subcategory map like everything else, so one\n'
+    +'subcategory stops appearing under two headings.\n\n'
+    +'Only the pinned category is removed. Price, MSRP, tiers, group, name and every other\n'
+    +'saved edit are untouched.\n\nFor example:\n'+sample)) return;
+  const r=await catalogPost({action:'clear_derived_categories',manufacturer:MFR});
+  if(!(r.ok&&r.json&&r.json.ok!==false)){ toast((r.json&&r.json.error)||'Could not do that',true); return; }
+  SM.pinned={};
+  toast((r.json.cleared||0)+' unpinned — the map is now in charge');
+  smRender();
 }
 function smPick(c,sub){ SM.cat=(c===SM.cat&&sub===null&&SM.sub===null)?SM.cat:c; SM.sub=sub; SM.q=''; smRender(); }
 function smSearch(v){ SM.q=String(v||''); smRender();

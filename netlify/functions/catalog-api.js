@@ -1210,6 +1210,36 @@ exports.handler = async (event)=>{
          the page, so the two can never drift apart. */
       /* subcategory → category for a line. Category is DERIVED from this, so filing a product
          is a single subcategory edit in enrichment rather than a second edit here. */
+      /* A PINNED CATEGORY BEATS THE MAP, WHICH IS HOW ONE SUBCATEGORY ENDS UP IN TWO PLACES.
+         The dealer-facing category is derived from the subcategory through category_map. But a
+         `category` written onto a product's override layer wins over that map, by design — it is
+         someone's explicit decision about one product. Three hundred of them written by a bulk
+         pass are not that; they are a snapshot of an older structure that now silently overrules
+         the map, which is why "Thumb Spicas" appears under two headings and why retired names
+         like "Pneumatic Walkers" still show up.
+
+         This removes ONLY the category key from each override. Price, MSRP, tiers, group, name,
+         disposition and everything else on that layer are untouched. */
+      if(b.action==="clear_derived_categories"){
+        const mfr=String(b.manufacturer||"").trim();
+        if(!mfr) return json(400,{error:"manufacturer required"});
+        const e=encodeURIComponent, now=new Date().toISOString();
+        const ovAll=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]);
+        const hits=(ovAll||[]).filter(r=>r.patch && r.patch.category!=null && r.patch.category!=="");
+        if(b.preview===true)
+          return json(200,{ok:true,preview:true,count:hits.length,
+            sample:hits.slice(0,10).map(r=>({code:String(r.code),category:r.patch.category}))});
+        if(!hits.length) return json(200,{ok:true,cleared:0});
+        const rows=hits.map(r=>{ const patch=Object.assign({},r.patch); delete patch.category;
+          return {manufacturer:mfr, code:String(r.code), patch, updated_at:now}; });
+        // One upsert for all of them.
+        for(let i=0;i<rows.length;i+=200){
+          await sb("POST","product_overrides?on_conflict=manufacturer,code",rows.slice(i,i+200),
+            {Prefer:"resolution=merge-duplicates,return=minimal"});
+        }
+        return json(200,{ok:true,cleared:rows.length});
+      }
+
       if(b.action==="set_category_map"){
         const slug=String(b.manufacturer||"").trim();
         if(!slug) return json(400,{error:"manufacturer required"});
