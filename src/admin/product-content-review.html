@@ -310,6 +310,66 @@ body.sm-dragging .sm-pin,body.sm-dragging .sm-sub{outline:1px dashed #c9d6e6;out
 .pv th{background:var(--paper)}
 .mut{color:var(--gray)}
 .tabscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+/* ── completion board ───────────────────────────────────────────────────────────
+   Status colour here is semantic and reserved: red = cannot be sold as it stands,
+   amber = something is missing, green = done. It is never used for anything else on
+   this screen, so a colour always means the same thing. */
+/* A board is a table, not a form: it needs the width. :has() widens only this modal, and a
+   browser without it simply keeps the standard width and scrolls — nothing breaks. */
+.modal:has(.cb){max-width:1180px}
+.cb{display:flex;flex-direction:column;gap:12px}
+.cbhead{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between}
+.cbbig{font-family:'Archivo',sans-serif;font-size:26px;font-weight:800;line-height:1.1;color:var(--navy)}
+.cbacts{display:flex;flex-wrap:wrap;gap:6px}
+.cbtiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:6px}
+.cbtile{display:flex;flex-direction:column;gap:1px;align-items:flex-start;cursor:pointer;text-align:left;
+  padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;font:inherit}
+.cbtile:hover{border-color:var(--blue)}
+.cbtile.on{border-color:var(--navy);box-shadow:inset 0 0 0 1px var(--navy)}
+.cbtile .n{font-family:'Archivo',sans-serif;font-size:20px;font-weight:800;line-height:1.05;font-variant-numeric:tabular-nums}
+.cbtile .l{font-size:11px;color:var(--gray);line-height:1.25}
+.cbtile.bad .n{color:var(--bad)}
+.cbtile.warn .n{color:var(--warn)}
+.cbtile.ok .n{color:var(--good)}
+.cbtile.mut .n{color:var(--gray)}
+.cbfilter{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.cbfilter input{flex:1;min-width:180px;padding:7px 10px;border:1px solid var(--line);border-radius:9px;font:inherit}
+.cbt{border-collapse:collapse;width:100%;font-size:12.5px}
+.cbt th,.cbt td{border-bottom:1px solid var(--line);padding:6px 9px;text-align:left;vertical-align:top}
+.cbt th{position:sticky;top:0;background:var(--paper);z-index:1;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--gray)}
+.cbt .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap}
+/* Column floors, so a long product name wraps instead of crushing every other column into
+   one word per line. Past the sum of these the table scrolls inside its own box. */
+.cbt th:nth-child(1),.cbt td:nth-child(1){min-width:132px}
+.cbt th:nth-child(2),.cbt td:nth-child(2){min-width:180px}
+.cbt th:nth-child(3),.cbt td:nth-child(3){min-width:158px}
+.cbt th:nth-child(4),.cbt td:nth-child(4){min-width:140px}
+.cbt th:nth-child(5),.cbt td:nth-child(5){min-width:130px}
+.cbt th:nth-child(6),.cbt td:nth-child(6){min-width:200px}
+.cbchip{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
+.cbchip.bad{color:var(--bad);background:var(--badbg)}
+.cbchip.warn{color:var(--warn);background:var(--warnbg)}
+.cbchip.ok{color:var(--good);background:var(--goodbg)}
+.cbchip.mut{color:var(--hid);background:var(--hidbg)}
+.cbwarn{color:var(--bad);font-size:10.5px;font-weight:700;white-space:nowrap}
+.cbflow{border:1px solid var(--line);border-radius:12px;background:var(--paper);padding:10px 12px}
+.cbflowhead{display:flex;gap:10px;align-items:center;margin-bottom:6px}
+/* Each step is one block. Without a divider the offender list reads as if it belonged to
+   the NEXT step down, which is exactly the wrong SKU to go looking at. */
+.cbsteps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.cbsteps li{display:grid;grid-template-columns:18px 190px 1fr;gap:2px 8px;align-items:baseline;
+  font-size:12px;padding:5px 0;border-bottom:1px solid var(--line)}
+.cbsteps li:last-child{border-bottom:0}
+/* The tick and the step name span BOTH rows of their block, so a name that wraps to two
+   lines cannot push the offender SKUs away from the sentence they belong to. */
+.cbsteps .mark,.cbsteps .nm{grid-row:1/span 2}
+.cbsteps .dt{grid-column:3;grid-row:1}
+.cbsteps .mark{font-weight:800}
+.cbsteps li.ok .mark{color:var(--good)}
+.cbsteps li.bad .mark{color:var(--bad)}
+.cbsteps .nm{font-weight:700}
+.cbsteps .off{grid-column:3;grid-row:2;font-size:11px;color:var(--bad)}
+@media(max-width:640px){.cbsteps li{grid-template-columns:18px 1fr}.cbsteps .off{grid-column:2}}
 @media(max-width:640px){input.ed,textarea.ed,select.ed,input.search{font-size:16px}}
 </style></head><body>
 <header id="ac-head"></header>
@@ -325,6 +385,7 @@ body.sm-dragging .sm-pin,body.sm-dragging .sm-sub{outline:1px dashed #c9d6e6;out
   <div class="toolbar">
     <input class="search" id="search" placeholder="Search products, SKUs, categories…" oninput="onSearch(this.value)">
     <button class="btn ghost" data-act="run-structure" title="Checks this manufacturer&apos;s records for grouping problems — one record holding several products, the same SKU on two products, sizes split apart. Straight after an import, before you touch anything else. Instant, no AI.">⚑ Structure review</button>
+    <button class="btn grad" data-act="completion-board" title="Every SKU in the Product Catalog for this manufacturer with a status worked out from what is actually there — including the ones no enrichment record has ever been created for. Also runs the ten-step flow test for the line. First, and any time you want to know what is left. It is the only screen that shows catalog SKUs that have no enrichment page, which is where most unfinished work hides.">📋 Completion board</button>
     <button class="btn ghost" data-act="new-product" title="Creates one product record by hand, with its SKUs and prices. A single item you already know. For a whole line use Start new enrichment; for more sizes of a product that already exists use ＋＋ Add sizes inside it.">＋ New product</button>
     <button class="btn ghost" data-act="start-enrichment" title="Brings a manufacturer&apos;s line in from product URLs, pasted catalog rows or a catalog PDF. Checks every item against the catalog first, so a match enriches the existing record instead of creating a duplicate. First, for a manufacturer you have not loaded yet.">🚀 Start new enrichment</button>
     <button class="btn ghost" data-act="price-check" title="Cross-checks every SKU against the price layers: missing prices, codes priced but on no product, conflicts, duplicates. Also where a manufacturer price list is imported. Before publishing, and any time a price list arrives.">💲 Price check</button>
@@ -945,6 +1006,15 @@ document.addEventListener('click',async function(e){
   if(act==='apply-name') return applyName(k);
   if(act==='set-status-val') return doStatus(k,t.getAttribute('data-val'));
   if(act==='preview') return openPreview(k);
+  if(act==='completion-board') return openCompletionBoard();
+  if(act==='cb-refresh')  return openCompletionBoard(true);
+  if(act==='cb-filter'){ CB.filter=(CB.filter===k?'':k); cbRender(); return; }
+  if(act==='cb-flow')     return cbFlowTest();
+  if(act==='cb-export')   return cbExport();
+  if(act==='cb-open'){ document.getElementById('overlay').classList.remove('show');
+    openCards.add(k); render();
+    const el=document.getElementById('card-'+cssId(k)); if(el) el.scrollIntoView({behavior:'smooth',block:'start'});
+    return; }
   if(act==='structure-map') return openStructureMap();
   if(act==='tools-guide') return openToolsGuide();
   if(act==='run-structure') return runStructure();
@@ -1273,6 +1343,7 @@ function smRender(){
         <div class="sm-ih"><b>${esc(head)}</b> <span class="mut">${list.length} product${list.length===1?'':'s'} · ${list.reduce((a,r)=>a+r.skus,0)} SKUs</span>
           <span style="flex:1"></span>
           <button class="btn ghost" style="padding:3px 9px;font-size:11.5px" onclick="smRenameCat()" ${SM.cat===SM_NONE?'disabled':''}>✎ Rename</button>
+          <button class="btn ghost" style="padding:3px 9px;font-size:11.5px;color:#b42323;border-color:#f0c8c8" onclick="smRemoveCat()" ${SM.cat===SM_NONE?'disabled':''}>🗑 Remove</button>
           <button class="btn ghost" style="padding:3px 9px;font-size:11.5px" onclick="smPreview()">👁 As a dealer</button></div>
         <div class="sm-scroll">${list.length?`<table class="sm-tbl"><tbody>${list.map(r=>`<tr class="${SM.pick.has(r.k)?'on':''}" draggable="true" ondragstart="smDragStart(event,'${escA(r.k)}')" ondragend="smDragEnd()">
           <td class="pk"><input type="checkbox" ${SM.pick.has(r.k)?'checked':''} onchange="smTick('${escA(r.k)}',this.checked)"></td>
@@ -1501,6 +1572,88 @@ async function smRenameCat(){
   else { await smWrite(keys, String(to).trim(), null); SM.cat=String(to).trim(); }
   smRender();
 }
+/* ── REMOVING A CATEGORY ──────────────────────────────────────────────────────
+   There is no Delete because there is nothing to delete. A category is not a record; it is
+   a value carried by each product, plus an entry in this line's map. A heading with no
+   products under it does not exist — it simply stops being drawn.
+
+   So "remove" means "empty it", and the only real question is where its contents go. That
+   is asked, and then everything that pointed at the old name is cleaned up in one pass:
+   the subcategories that mapped to it, the products pinned to it, and its place in the
+   shop's category order. Miss any one of those and the name comes back looking deleted-
+   but-not-gone, which is exactly the state this catalog was in. */
+async function smRemoveCat(){
+  if(SM.cat===SM_NONE) return;
+  const rows=smRows();
+  const isSub = SM.sub!==null && SM.sub!=='';
+  if(isSub) return smRemoveSub(rows);
+
+  const cat=SM.cat;
+  const mine=rows.filter(r=>r.cat===cat);
+  const subs=[...new Set(Object.keys(SM.map||{}).filter(k=>SM.map[k]===cat))];
+  const pinned=mine.filter(r=>r.pinned).length;
+  const others=[...new Set(rows.map(r=>r.cat).filter(c=>c&&c!==SM_NONE&&c!==cat))].sort();
+
+  if(mine.length){
+    const to=window.prompt(
+      'Remove the heading “'+cat+'”.\n\n'
+      +'It holds '+mine.length+' product(s) across '+(subs.length||1)+' subcategor'+(subs.length===1?'y':'ies')+'.\n'
+      +'A heading is not a record — it disappears as soon as nothing points at it. So its\n'
+      +'subcategories need a new home first.\n\n'
+      +'Move them under which heading?\n\nExisting: '+(others.join(', ')||'(none)')
+      +'\n\nType a heading, or leave empty to cancel.', others[0]||'');
+    if(to==null||!String(to).trim()) return;
+    const dest=String(to).trim();
+    if(!window.confirm('Move '+subs.length+' subcategor'+(subs.length===1?'y':'ies')+' ('+ (subs.join(', ')||'—') +') under “'+dest+'”'
+      +(pinned?(', and unpin '+pinned+' product(s) pinned to “'+cat+'”'):'')
+      +'?\n\nNo product changes its subcategory and nothing is deleted — only the heading they sit under.')) return;
+    // 1. every subcategory that pointed here now points at the destination
+    const map=Object.assign({},SM.map||{});
+    subs.forEach(sc=>{ map[sc]=dest; });
+    const r1=await catalogPost({action:'set_category_map',manufacturer:MFR,map});
+    if(!(r1.ok&&r1.json&&r1.json.ok!==false)){ toast((r1.json&&r1.json.error)||'Could not remap',true); return; }
+    SM.map=map;
+    // 2. the pins that would keep the old heading alive regardless of the map
+    if(pinned){
+      const r2=await catalogPost({action:'clear_derived_categories',manufacturer:MFR,only:cat});
+      if(r2.ok&&r2.json&&r2.json.ok!==false){
+        Object.keys(SM.pinned).forEach(c=>{ if(SM.pinned[c]===cat) delete SM.pinned[c]; });
+      }
+    }
+  } else if(!window.confirm('Remove the empty heading “'+cat+'”?\n\nNothing points at it, so this only tidies the shop\'s category order.')) return;
+  // 3. its place in the shop's running order
+  const order=(SM.order||[]).filter(c=>c!==cat);
+  try{ await catalogPost({action:'set_category_order',manufacturer:MFR,order}); SM.order=order; }catch(e){}
+  SM.cat=null; SM.sub=null;
+  toast('“'+cat+'” removed — nothing points at it any more');
+  smRender(); render();
+}
+/* A subcategory is where products actually live, so emptying one really does move them. */
+async function smRemoveSub(rows){
+  const cat=SM.cat, sub=SM.sub;
+  const mine=rows.filter(r=>r.cat===cat && r.sub===sub);
+  const others=[...new Set(rows.map(r=>r.sub).filter(x=>x&&x!==sub))].sort();
+  if(mine.length){
+    const to=window.prompt(
+      'Remove the subcategory “'+sub+'”.\n\n'
+      +'It holds '+mine.length+' product(s), and every product has to live somewhere.\n\n'
+      +'Move them into which subcategory?\n\nExisting: '+(others.join(', ')||'(none)')
+      +'\n\nType one, or leave empty to cancel.', others[0]||'');
+    if(to==null||!String(to).trim()) return;
+    const dest=String(to).trim();
+    if(dest===sub) return;
+    if(!window.confirm('Move '+mine.length+' product(s) from “'+sub+'” to “'+dest+'”?\n\nNothing is deleted. Undoable from History.')) return;
+    await smWriteSub(mine.map(r=>r.k), dest);
+  } else if(!window.confirm('Remove the empty subcategory “'+sub+'”?\n\nNothing is in it — this only drops it from the map.')) return;
+  // drop its mapping so the name stops being offered
+  if((SM.map||{})[sub]){
+    const map=Object.assign({},SM.map); delete map[sub];
+    try{ await catalogPost({action:'set_category_map',manufacturer:MFR,map}); SM.map=map; }catch(e){}
+  }
+  SM.sub=null;
+  toast('“'+sub+'” removed');
+  smRender(); render();
+}
 function smPreview(){
   const rows=smRows(), tree=smTree(rows);
   const cats=Object.keys(tree).filter(c=>c!==SM_NONE).sort();
@@ -1525,6 +1678,9 @@ function smPreview(){
    happens to sit on the bar. Two sequences, because there are only two jobs: bringing a
    manufacturer in, and changing something afterwards. */
 const TOOLS=[
+ {act:'completion-board', label:'📋 Completion board', phase:'both',
+  what:"Every SKU in the Product Catalog for this manufacturer with a status worked out from what is actually there — including the ones no enrichment record has ever been created for. Also runs the ten-step flow test for the line.",
+  when:"First, and any time you want to know what is left. It is the only screen that shows catalog SKUs that have no enrichment page, which is where most unfinished work hides.", ai:false},
  {act:'start-enrichment', label:'🚀 Start new enrichment', phase:'new',
   what:"Brings a manufacturer's line in from product URLs, pasted catalog rows or a catalog PDF. Checks every item against the catalog first, so a match enriches the existing record instead of creating a duplicate.",
   when:"First, for a manufacturer you have not loaded yet.", ai:true},
@@ -3118,8 +3274,27 @@ async function seCreate(){
     const pk=slug(c.name)||('product-'+Date.now());
     const d=c.data||{};
     const vmap={}; (d.variants||[]).forEach(v=>{ const sk=String(v.sku||'').trim(); if(sk) vmap[sk]=String(v.title||'').trim(); });
+    /* ── THE MASTER RECORD FIRST ────────────────────────────────────────────────
+       This is the bulk path — a whole manufacturer line at once — and it used to create
+       the enrichment page before writing a single catalog row. When the catalog refused
+       (no President access, or the SKU already existed) the page stayed anyway, listing
+       part numbers nothing could price or sell. At import scale that is how a line ends
+       up with pages describing products the Product Catalog has never heard of.
+
+       So: catalog first, page derived from what it actually took, and if it took nothing
+       for this product then there is nothing yet to describe and no page is written. */
+    const inCatalog=[];
+    for(const code of (c.codes||[])){
+      const cp={code,name:c.name,category:c.category||null,active:true};
+      if(c.msrp!=null&&isFinite(c.msrp)) cp.msrp=c.msrp;          // manufacturer retail → MSRP
+      if(c.price!=null&&isFinite(c.price)) cp.base_price=c.price;  // dealer price only from a pricelist
+      try{ const cr=await publishToCatalog(cp, _pubCollisions);
+        // a 409 means the master record is already there — enrich it, never duplicate it
+        if(cr && (cr.ok || cr.duplicate)) inCatalog.push(code); }catch(e){}
+    }
+    if(!inCatalog.length){ failed++; continue; }
     const prod={page_key:pk,name:c.name,category:c.category||'',family:'',
-      skus:(c.codes||[]).map(code=>({sku:code,name:(vmap[code]&&vmap[code].toLowerCase()!=='default title')?vmap[code]:'',status:'active'}))};
+      skus:inCatalog.map(code=>({sku:code,name:(vmap[code]&&vmap[code].toLowerCase()!=='default title')?vmap[code]:'',status:'active'}))};
     const r=await apiWrite({action:'create_product',product:prod});
     if(!(r.ok&&(!r.json||r.json.ok!==false))){ failed++; continue; }
     made++;
@@ -3158,16 +3333,10 @@ async function seCreate(){
         }catch(e){}
       }
     }
-    // orderable catalog items for any codes
     if(c.hcpcs){ try{ await apiWrite({action:'set_content',page_key:pk,patch:{billing_codes:[c.hcpcs]}}); }catch(e){} }
-    for(const code of (c.codes||[])){
-      const prod={code,name:c.name,category:c.category||null,active:true};
-      if(c.msrp!=null&&isFinite(c.msrp)) prod.msrp=c.msrp;          // manufacturer retail → MSRP
-      if(c.price!=null&&isFinite(c.price)) prod.base_price=c.price;  // dealer price only from a pricelist
-      try{ await publishToCatalog(prod, _pubCollisions); }catch(e){}
-    }
   }
   _catalogCache=null;
+  CB.data=null;   // the completion board must not report a count taken before this import
   toast('Created '+made+' product(s)'+(failed?' · '+failed+' failed':'')
     +(_pubCollisions.length?' · '+_pubCollisions.length+' already in the catalog':''),!made);
   if(_pubCollisions.length) reportCollisions(_pubCollisions);
@@ -3987,31 +4156,64 @@ async function doNewProduct(force){
   }
   const npk=slug(name);
   const btn=document.querySelector('[data-act="new-save"]'); if(btn){ btn.disabled=true; btn.textContent='Creating…'; }
-  // 1) content record (Review Structure)
-  const skusForContent=rows.map(r=>({sku:r.code,name:r.name,status:'active'}));
-  const r=await apiWrite({action:'create_product',product:{page_key:npk,name,category:cat,family:fam,skus:skusForContent}});
-  if(!(r.ok && (!r.json||r.json.ok!==false))){ toast((r.json&&(r.json.message||r.json.error))||'Create failed',true); if(btn){btn.disabled=false;btn.textContent='Create product';} return; }
-  // 2) orderable + priced catalog items (custom_products via catalog-api, President-only)
-  let made=0, priced=0, catFail=0, forbidden=false, dupBlocked=0;
+  /* ── ONE MASTER RECORD, CREATED ONCE ─────────────────────────────────────────
+     This used to write the enrichment page FIRST and then loop the SKUs into the catalog.
+     Two record sets, in the wrong order, with nothing tying them together: if the catalog
+     writes were refused — no President access, or a SKU that already existed — the page
+     survived anyway, listing part numbers the catalog had never heard of. That is exactly
+     how 4900-LINER-L and 4900-LINER-R came to sit on a published Ovation page with no
+     catalog row, no price and no way for a dealer to order them.
+
+     THE CATALOG SKU IS THE MASTER, so it is written first, and the enrichment page is
+     DERIVED from what the catalog actually holds afterwards. A SKU the catalog refused is
+     left off the page rather than invented onto it, and if the catalog took nothing at all
+     no page is created — there is nothing yet for a page to describe. */
+  const inCatalog=[], refused=[];
+  let made=0, priced=0, forbidden=false, dupBlocked=0;
   _pubCollisions=[];
   for(const it of rows){
     const price=it.price===''?null:Number(it.price.replace(/[^0-9.\-]/g,''));
     const prod={code:it.code, name:it.name||name, category:cat||null, active:true};
     if(price!=null && isFinite(price)) prod.base_price=price;
-    try{
-      const res=await publishToCatalog(prod, _pubCollisions);
-      if(res.ok){ made++; if(prod.base_price!=null) priced++; }
-      else if(res.duplicate){ dupBlocked++; }
-      else { catFail++; if(res.status===403) forbidden=true; }
-    }catch(e){ catFail++; }
+    let res=null;
+    try{ res=await publishToCatalog(prod, _pubCollisions); }catch(e){ res=null; }
+    if(res && res.ok){ made++; if(prod.base_price!=null) priced++; inCatalog.push(it); }
+    /* A 409 is not a failure. It means the master record already exists — which is the
+       whole reason it must not be created twice — so the SKU belongs on the page. */
+    else if(res && res.duplicate){ dupBlocked++; inCatalog.push(it); }
+    else { refused.push(it.code); if(res && res.status===403) forbidden=true; }
   }
-  pages[npk]={page_key:npk,name,category:cat,family:fam,skus:skusForContent,sku_count:skusForContent.length,status:'pending_review',features:[]};
-  _catalogCache=null;   // Price Check will re-read the catalog
+  const restore=()=>{ if(btn){ btn.disabled=false; btn.textContent='Create product'; } };
+  if(!inCatalog.length){
+    restore();
+    if(dupBlocked) reportCollisions(_pubCollisions);
+    toast(forbidden
+      ? 'Adding to the Product Catalog needs President access. Nothing was created — a content record without catalog SKUs is what leaves products no dealer can order.'
+      : 'No SKU could be written to the Product Catalog, so no product record was created.', true);
+    return;
+  }
+  // The page is DERIVED from the master list — only SKUs the catalog actually holds.
+  const skusForContent=inCatalog.map(r2=>({sku:r2.code,name:r2.name,status:'active'}));
+  const r=await apiWrite({action:'create_product',product:{page_key:npk,name,category:cat,family:fam,skus:skusForContent}});
+  if(!(r.ok && (!r.json||r.json.ok!==false))){
+    restore();
+    /* The master record exists either way, so say where it is. Swallowing this into a bare
+       server message is how a SKU ends up created and then forgotten. */
+    toast('The catalog SKUs were created, but the content record was not'
+      + ((r.json&&(r.json.message||r.json.error))?' — '+(r.json.message||r.json.error):'')
+      + '. Open the Completion board: they are there as Needs SKU Review.', true);
+    return;
+  }
+  pages[npk]={page_key:npk,name,category:cat,family:fam,skus:skusForContent,
+    sku_count:skusForContent.length,status:'pending_review',features:[]};
+  _catalogCache=null;   // Price Check and the Completion board will re-read the catalog
+  CB.data=null;         // and the board must not show a count taken before this product existed
   document.getElementById('overlay').classList.remove('show'); openCards.add(npk);
   if(dupBlocked) reportCollisions(_pubCollisions);
-  if(forbidden) toast('Product created, but adding to the catalog needs President access — no catalog items written.',true);
-  else if(catFail) toast('Created "'+name+'". '+catFail+' SKU(s) couldn\'t be added to the catalog — check them in Product Catalog.',true);
-  else toast('Created "'+name+'" · '+made+' orderable SKU(s)'+(priced?' ('+priced+' priced)':'')+'.');
+  if(refused.length) toast('Created "'+name+'" with '+inCatalog.length+' SKU(s). '+refused.length+
+    ' could not be added to the catalog and were left off the record: '+refused.slice(0,6).join(', ')+'.',true);
+  else toast('Created "'+name+'" · '+made+' orderable SKU(s)'+(priced?' ('+priced+' priced)':'')+
+    (dupBlocked?' · '+dupBlocked+' already in the catalog':'')+'.');
   render();
 }
 
@@ -4058,6 +4260,159 @@ async function doUndo(id,btn){ btn.disabled=true; const r=await apiWrite({action
     render(); openHistory(); } else { toast('Undo failed',true); btn.disabled=false; } }
 
 /* ===================== modal helper ===================== */
+/* ═══════════════════════════════════════════════════════════════════════════════
+   THE COMPLETION BOARD
+
+   The complaint this answers, in Angelo's words: "If a product exists in the Product
+   Catalog, that same product should automatically appear in Product Content Enrichment
+   & Review with the correct status."
+
+   It does now, and without creating anything. The board asks the server for a sweep of
+   the MASTER list — every catalog SKU, resolved through all five price layers — joined
+   to the enrichment pages by the one shared module the shop's rules are tested against.
+   A SKU with no enrichment record is not missing from this screen; it is ON it, with a
+   status saying what it needs. That is the whole difference between one system and two.
+
+   Nothing here writes. It is a view of the master record, which is the point.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const CB={data:null,filter:'',q:'',flow:null,loading:false};
+const CB_ORDER=['possible_duplicate','needs_sku_review','needs_pricing','needs_category',
+                'needs_images','needs_content','ready_to_publish','published','retired'];
+const CB_LABEL={possible_duplicate:'Possible Duplicate',needs_sku_review:'Needs SKU Review',
+  needs_pricing:'Needs Pricing',needs_category:'Needs Category',needs_images:'Needs Images',
+  needs_content:'Needs Content',ready_to_publish:'Ready to Publish',published:'Published',
+  retired:'Retired'};
+/* Status colour is semantic, not decorative: red = the product cannot be sold as it stands,
+   amber = something is missing, green = done. Never reused for anything else. */
+const CB_TONE={possible_duplicate:'bad',needs_sku_review:'bad',needs_pricing:'warn',
+  needs_category:'warn',needs_images:'warn',needs_content:'warn',
+  ready_to_publish:'ok',published:'ok',retired:'mut'};
+
+async function openCompletionBoard(force){
+  if(CB.loading) return;
+  if(!CB.data||force){
+    CB.loading=true; CB.flow=null;
+    modalHTML('📋 Completion board · '+esc(MFR),
+      '<div class="tut"><p class="mut">Reading every catalog SKU and working out what each one still needs…</p></div>');
+    const r=await catalogPost({action:'status_sweep',manufacturer:MFR});
+    CB.loading=false;
+    if(!r.ok||!r.json||r.json.ok===false){
+      const msg=(r.json&&(r.json.error||r.json.message))||('HTTP '+r.status);
+      modalHTML('📋 Completion board · '+esc(MFR), `<div class="tut">
+        <div class="rule"><b>Could not read the catalog.</b> ${esc(msg)}</div>
+        <p class="mut" style="font-size:12px">The board reads the Product Catalog through catalog-api, which is President-only. If this says President only, sign in as the president account.</p>
+        <p><button class="btn ghost" data-act="cb-refresh">Try again</button></p></div>`);
+      return;
+    }
+    CB.data=r.json; CB.filter=''; CB.q='';
+  }
+  cbRender();
+}
+
+function cbRows(){
+  const d=CB.data; if(!d||!Array.isArray(d.rows)) return [];
+  const q=CB.q.trim().toLowerCase();
+  return d.rows.filter(r=>{
+    if(CB.filter && r.status!==CB.filter) return false;
+    if(!q) return true;
+    return (r.code+' '+r.name+' '+(r.page_name||'')+' '+(r.category||'')+' '+(r.subcategory||''))
+      .toLowerCase().indexOf(q)>=0;
+  });
+}
+
+function cbRender(){
+  const d=CB.data; if(!d) return;
+  const c=d.counts||{};
+  const tile=k=>{
+    const n=c[k]||0, on=CB.filter===k;
+    return `<button class="cbtile ${CB_TONE[k]}${on?' on':''}" data-act="cb-filter" data-k="${k}"
+      title="${escA(CB_LABEL[k])} — click to show only these">
+      <span class="n">${n}</span><span class="l">${esc(CB_LABEL[k])}</span></button>`;
+  };
+  const rows=cbRows();
+  const gate=d.enriched_only
+    ? 'This line is set to <b>show only enriched products</b>, so any SKU no published page claims is invisible to dealers right now.'
+    : 'This line lists <b>every catalog SKU</b>, enriched or not.';
+  const body=`<div class="cb">
+    <div class="cbhead">
+      <div>
+        <div class="cbbig">${d.percent_published||0}% <span class="mut" style="font-size:12px;font-weight:400">of this line is live</span></div>
+        <div class="mut" style="font-size:12px">${d.total} SKU(s) · ${d.catalog_total} from the Product Catalog${d.no_catalog_row?` · <b style="color:var(--bad,#b3261e)">${d.no_catalog_row} listed on a page with no catalog record</b>`:''}</div>
+      </div>
+      <div class="cbacts">
+        <button class="btn grad" data-act="cb-flow">▶ Run the 10-step flow test</button>
+        <button class="btn ghost" data-act="cb-export">⭳ Export CSV</button>
+        <button class="btn ghost" data-act="cb-refresh">↻ Refresh</button>
+      </div>
+    </div>
+    <div class="rule" style="font-size:12px">${gate} Every SKU below comes from the Product Catalog — <b>nothing was created to put it here</b>, and its status is worked out from what is actually attached to it.</div>
+    <div class="cbtiles">${CB_ORDER.map(tile).join('')}</div>
+    ${CB.flow?cbFlowHtml():''}
+    <div class="cbfilter">
+      <input id="cbq" type="search" placeholder="Find a SKU, product or category…" value="${escA(CB.q)}">
+      ${CB.filter?`<button class="btn ghost" data-act="cb-filter" data-k="${CB.filter}">✕ ${esc(CB_LABEL[CB.filter])}</button>`:''}
+      <span class="mut" style="font-size:12px">${rows.length} shown</span>
+    </div>
+    <div class="tabscroll" style="max-height:46vh">
+      <table class="cbt"><thead><tr>
+        <th>SKU</th><th>Name</th><th>Enrichment page</th><th>Category</th><th>Status</th><th>What it needs</th>
+      </tr></thead><tbody>
+      ${rows.slice(0,600).map(r=>`<tr>
+        <td class="mono">${esc(r.code)}${r.no_catalog_row?' <span class="cbwarn">no catalog record</span>':''}</td>
+        <td>${esc(r.name||'')}</td>
+        <td>${r.page_key?`<a href="#" data-act="cb-open" data-k="${escA(r.page_key)}">${esc(r.page_name||r.page_key)}</a>
+              <span class="mut" style="font-size:11px">${esc(r.page_status||'')}</span>`
+             :'<span class="mut">—</span>'}</td>
+        <td>${esc(r.category||'')}${r.subcategory?`<div class="mut" style="font-size:11px">${esc(r.subcategory)}</div>`:''}</td>
+        <td><span class="cbchip ${CB_TONE[r.status]}">${esc(r.status_label||r.status)}</span></td>
+        <td class="mut">${esc(r.why||'')}</td>
+      </tr>`).join('')}
+      </tbody></table>
+    </div>
+    ${rows.length>600?`<p class="mut" style="font-size:12px">Showing the first 600 of ${rows.length}. Filter or search to narrow it, or export the CSV for the whole list.</p>`:''}
+  </div>`;
+  modalHTML('📋 Completion board · '+esc(MFR), body);
+  const q=document.getElementById('cbq');
+  if(q){ q.addEventListener('input',()=>{ CB.q=q.value; const pos=q.selectionStart; cbRender();
+    const n=document.getElementById('cbq'); if(n){ n.focus(); try{n.setSelectionRange(pos,pos);}catch(e){} } }); }
+}
+
+/* The ten steps, run against this manufacturer's real data. A step that fails names the
+   products that failed it, so "the flow does not work" becomes "these four SKUs". */
+async function cbFlowTest(){
+  const r=await catalogPost({action:'flow_test',manufacturer:MFR,sample:8});
+  if(!r.ok||!r.json||r.json.ok===false){ toast((r.json&&r.json.error)||'Flow test failed',true); return; }
+  CB.flow=r.json; cbRender();
+}
+function cbFlowHtml(){
+  const f=CB.flow;
+  return `<div class="cbflow">
+    <div class="cbflowhead"><b>${f.passed} of ${f.of} steps pass</b>
+      ${f.next_step?`<span class="cbchip bad">Next: ${esc(f.next_step)}</span>`:'<span class="cbchip ok">Whole flow passes</span>'}</div>
+    <ol class="cbsteps">${f.steps.map(st=>`<li class="${st.pass?'ok':'bad'}">
+      <span class="mark">${st.pass?'✓':'✕'}</span>
+      <span class="nm">${esc(st.name)}</span>
+      <span class="dt mut">${esc(st.detail)}</span>
+      ${st.offenders&&st.offenders.length?`<span class="off mono">${st.offenders.map(esc).join(', ')}${st.offender_count>st.offenders.length?` +${st.offender_count-st.offenders.length} more`:''}</span>`:''}
+    </li>`).join('')}</ol>
+  </div>`;
+}
+
+function cbExport(){
+  const rows=cbRows();
+  const head=['sku','name','status','why','enrichment_page','page_status','category','subcategory','price','visible_to_dealers','source'];
+  const cell=v=>{ const t=String(v==null?'':v); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
+  const csv=[head.join(',')].concat(rows.map(r=>[r.code,r.name,r.status_label||r.status,r.why,
+    r.page_name||r.page_key||'',r.page_status||'',r.category||'',r.subcategory||'',
+    r.price==null?'':r.price, r.visible?'yes':'no', r.source].map(cell).join(','))).join('\r\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}));
+  a.download=MFR+'-completion-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  toast(rows.length+' row(s) exported');
+}
+
 function modalHTML(title,inner){ const m=document.getElementById('modal');
   m.innerHTML=`<div class="mh"><h3>${title}</h3><button class="close" data-act="close-modal">✕</button></div><div class="mb">${inner}</div>`;
   document.getElementById('overlay').classList.add('show'); }

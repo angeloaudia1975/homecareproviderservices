@@ -19,6 +19,11 @@ const CORS = {"access-control-allow-origin":"*","access-control-allow-methods":"
 const json=(c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store",...CORS},body:JSON.stringify(o)});
 const H=()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 const EXT={"image/jpeg":"jpg","image/jpg":"jpg","image/png":"png","image/webp":"webp","image/gif":"gif","application/pdf":"pdf"};
+/* THE JOIN, AND THE STATUS DERIVED FROM IT, LIVE IN ONE FILE — the same one the shop's rules
+   are tested against. The admin used to have no way to answer "what will a dealer actually
+   see", because the only code that knew how a catalog SKU meets an enrichment page lived
+   inside the shop's page file. Importing it here is what makes the tools one system. */
+const JOIN = require("./_catalog-join.js");
 
 async function sb(method,path,body,extra){
   const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined});
@@ -192,6 +197,127 @@ async function whoami(event){
   const need=process.env.ANALYTICS_TOKEN, got=event.headers["x-analytics-token"]||(event.queryStringParameters||{}).token||"";
   if(need&&got===need) return {role:"president"};
   return null;
+}
+
+/* ── ONE MASTER RECORD, RESOLVED ONCE ──────────────────────────────────────────
+   The five layers, applied server-side in the same order the catalog screen applies them:
+   deployed catalog file → custom_products → product_overrides. A custom row REPLACES a base
+   row with the same code (it is the same product, added later), and the override patch sits
+   on top of whichever one won. Doing this on the server is what lets every tool — and every
+   audit — start from an identical list instead of each rebuilding its own. */
+async function resolveCatalog(slug){
+  const e=encodeURIComponent;
+  const [base,custom,overRows,mediaRows]=await Promise.all([
+    fetchJson(`${ORDERING_BASE}/data/${slug}.json`).catch(()=>[]),
+    sb("GET",`custom_products?manufacturer=eq.${e(slug)}&select=code,name,category,base_price,msrp,image,description,active,tiers,price_note`).catch(()=>[]),
+    sb("GET",`product_overrides?manufacturer=eq.${e(slug)}&select=code,patch`).catch(()=>[]),
+    sb("GET",`product_media?manufacturer=eq.${e(slug)}&select=code`).catch(()=>[]),
+  ]);
+  const over=Object.fromEntries((overRows||[]).map(o=>[o.code,o.patch||{}]));
+  const mediaCount={}; (mediaRows||[]).forEach(r=>{ mediaCount[r.code]=(mediaCount[r.code]||0)+1; });
+  const map=new Map();
+  const put=(p,kind)=>{ const o=over[p.code]||{}; map.set(String(p.code), Object.assign({},p,o,{kind})); };
+  (base||[]).forEach(p=>put(p,"catalog"));
+  (custom||[]).forEach(p=>put(p,"custom"));
+  return [...map.values()].map(p=>({
+    code:String(p.code||""), name:p.name||"", group:p.group||"",
+    category:p.category||"", subcategory:p.subcategory||"",
+    image:p.image||"", description:p.description||"",
+    price:(p.base_price===""||p.base_price==null)?null:Number(p.base_price),
+    tiers:Array.isArray(p.tiers)?p.tiers:[],
+    active:p.active!==false,
+    media_count:mediaCount[p.code]||0,
+    // A category typed directly in the admin is a decision; the subcategory map fills the
+    // answer, it does not overrule one.
+    category_from_override:Object.prototype.hasOwnProperty.call(over[p.code]||{},"category"),
+    kind:p.kind,
+  }));
+}
+
+/* ALL pages, every status — the admin has to see drafts. The shop's live gate is applied
+   inside the join, so "written" and "visible" stay two separate, reportable facts. */
+async function loadPages(slug){
+  const rows=await sb("GET",`product_content?manufacturer=eq.${encodeURIComponent(slug)}&select=page_key,name,status,subcategory,description,features,images_gallery,image,skus,variant_group`).catch(()=>[]);
+  const pages={}; (rows||[]).forEach(r=>{ if(r&&r.page_key) pages[r.page_key]=r; });
+  return pages;
+}
+
+async function loadMeta(slug){
+  const rows=await sb("GET",`manufacturer_meta?slug=eq.${encodeURIComponent(slug)}&select=slug,enriched_only,category_order,category_map`).catch(()=>[]);
+  return (rows&&rows[0])||{};
+}
+
+async function sweepManufacturer(slug){
+  const [products,pages,meta]=await Promise.all([resolveCatalog(slug),loadPages(slug),loadMeta(slug)]);
+  const categoryMap=(meta.category_map&&typeof meta.category_map==="object")?meta.category_map:null;
+  // The dealer-facing headings are the ordered list if one is set, otherwise whatever the
+  // subcategory map actually points at. With neither, the rule stays quiet rather than
+  // flagging every product on a line nobody has organised yet.
+  const dealerCategories=Array.isArray(meta.category_order)&&meta.category_order.length
+    ? meta.category_order.map(String)
+    : (categoryMap?[...new Set(Object.values(categoryMap).map(String))]:[]);
+  return JOIN.sweep({products,pages,categoryMap,dealerCategories,
+    enrichedOnly:meta.enriched_only===true});
+}
+
+/* ── PRODUCT CREATED → … → APPEARS CORRECTLY IN PARTNER 360 ────────────────────
+   The ten steps, each one an assertion against real data rather than a screenshot. A step
+   that fails names the products that failed it, capped to a readable sample, so the next
+   action is obvious instead of another hunt. */
+async function flowTest(slug, sample){
+  const swept=await sweepManufacturer(slug);
+  const rows=swept.rows, cat=rows.filter(r=>r.source==="catalog");
+  const names=list=>list.slice(0,sample).map(r=>r.code);
+  const step=(id,name,pass,detail,offenders)=>({id,name,pass:!!pass,detail,
+    offenders:offenders?names(offenders):[], offender_count:offenders?offenders.length:0});
+
+  const unlinked=cat.filter(r=>r.unlinked);
+  const orphanPage=rows.filter(r=>r.no_catalog_row);
+  const unpriced=cat.filter(r=>r.status==="needs_pricing");
+  const uncategorised=rows.filter(r=>r.status==="needs_category");
+  const imageless=rows.filter(r=>r.status==="needs_images");
+  const dupes=rows.filter(r=>r.status==="possible_duplicate");
+  const ready=rows.filter(r=>r.status==="ready_to_publish");
+  const live=rows.filter(r=>r.status==="published");
+  const claimedNotVisible=cat.filter(r=>r.page_key&&!r.visible&&r.active);
+
+  const steps=[
+    step(1,"Product created", cat.length>0,
+      `${cat.length} catalog SKU(s) resolved through all five price layers.`),
+    step(2,"Appears in Catalog", cat.length>0,
+      `${cat.length} SKU(s) in the master list.`),
+    step(3,"Appears in Enrichment", unlinked.length===0,
+      unlinked.length?`${unlinked.length} catalog SKU(s) have no enrichment page.`
+                     :"Every catalog SKU is claimed by an enrichment page.", unlinked),
+    step(4,"Categorized in Structure Map", uncategorised.length===0,
+      uncategorised.length?`${uncategorised.length} SKU(s) have no dealer-facing category or an unmapped subcategory.`
+                          :"Every SKU resolves to a dealer-facing category.", uncategorised),
+    step(5,"Pricing attached", unpriced.length===0,
+      unpriced.length?`${unpriced.length} SKU(s) have no price and no tier.`
+                     :"Every SKU carries a price or a quantity break.", unpriced),
+    step(6,"Images / documents attached", imageless.length===0,
+      imageless.length?`${imageless.length} SKU(s) have no image on the SKU or its page.`
+                      :"Every SKU has at least one image.", imageless),
+    step(7,"Duplicate check", dupes.length===0,
+      dupes.length?`${dupes.length} SKU(s) share a part number with another and are unsettled.`
+                  :"No unsettled duplicate part numbers.", dupes),
+    step(8,"Preview", orphanPage.length===0,
+      orphanPage.length?`${orphanPage.length} SKU(s) are listed on a page but have no catalog record, so preview shows what cannot be sold.`
+                       :"Every previewed SKU has a catalog record behind it.", orphanPage),
+    step(9,"Publish", ready.length===0,
+      ready.length?`${ready.length} SKU(s) are complete and waiting to be published.`
+                  :"Nothing is sitting finished-but-unpublished.", ready),
+    step(10,"Appears correctly in Partner 360", claimedNotVisible.length===0 && live.length>0,
+      claimedNotVisible.length?`${claimedNotVisible.length} SKU(s) have a page but are still not visible to dealers.`
+        :(live.length?`${live.length} SKU(s) are live and visible.`:"Nothing is live on this line yet."),
+      claimedNotVisible),
+  ];
+  const firstFail=steps.find(s=>!s.pass);
+  return {ok:true, slug, sample, counts:swept.counts, total:swept.total,
+    enriched_only:swept.enriched_only, percent_published:swept.percent_published,
+    steps, passed:steps.filter(s=>s.pass).length, of:steps.length,
+    next_step:firstFail?firstFail.name:null,
+    next_action:firstFail?firstFail.detail:"The whole flow passes for this line."};
 }
 
 exports.handler = async (event)=>{
@@ -1225,7 +1351,11 @@ exports.handler = async (event)=>{
         if(!mfr) return json(400,{error:"manufacturer required"});
         const e=encodeURIComponent, now=new Date().toISOString();
         const ovAll=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]);
-        const hits=(ovAll||[]).filter(r=>r.patch && r.patch.category!=null && r.patch.category!=="");
+        /* `only` narrows it to the pins holding one doomed heading in place — used when a
+           category is being emptied, so the rest of the pins are left exactly as they are. */
+        const only=(b.only==null||b.only==="")?null:String(b.only).trim();
+        const hits=(ovAll||[]).filter(r=>r.patch && r.patch.category!=null && r.patch.category!==""
+          && (only===null || String(r.patch.category).trim()===only));
         if(b.preview===true)
           return json(200,{ok:true,preview:true,count:hits.length,
             sample:hits.slice(0,10).map(r=>({code:String(r.code),category:r.patch.category}))});
@@ -1450,6 +1580,34 @@ exports.handler = async (event)=>{
         const ids=Array.isArray(b.ids)?b.ids:[];
         for(let i=0;i<ids.length;i++){ try{ await sb("PATCH",`product_media?id=eq.${encodeURIComponent(ids[i])}`,{sort:i},{Prefer:"return=minimal"}); }catch(e){} }
         return json(200,{ok:true});
+      }
+
+      /* ── THE COMPLETION BOARD ────────────────────────────────────────────────
+         Every catalog SKU on a line, with a status derived from what already exists.
+         Nothing is stored, so nothing can go stale and nobody has to remember to set a
+         flag. This is the answer to "a product in the catalog should appear in enrichment
+         with the correct status" — it appears because this reads the catalog, not because
+         a second record was created for it. */
+      if(b.action==="status_sweep"){
+        const slug=String(b.manufacturer||"").trim();
+        if(!slug) return json(400,{error:"manufacturer required"});
+        const swept=await sweepManufacturer(slug);
+        // The rows are large; the board only needs them when it is showing the list.
+        if(b.counts_only) return json(200,{ok:true,slug,counts:swept.counts,total:swept.total,
+          catalog_total:swept.catalog_total,no_catalog_row:swept.no_catalog_row,
+          enriched_only:swept.enriched_only,percent_published:swept.percent_published});
+        return json(200,Object.assign({ok:true,slug},swept));
+      }
+
+      /* ── THE END-TO-END FLOW TEST ────────────────────────────────────────────
+         Ten steps, one manufacturer, run against real data and reported pass/fail. The
+         point is not that it passes — it is that when it does not, it names the step and
+         the products that broke it, so a line can be proven finished before the next one
+         is started. */
+      if(b.action==="flow_test"){
+        const slug=String(b.manufacturer||"").trim();
+        if(!slug) return json(400,{error:"manufacturer required"});
+        return json(200,await flowTest(slug, Math.max(1, Math.min(50, parseInt(b.sample,10)||5))));
       }
 
       return json(400,{error:"unknown action"});
