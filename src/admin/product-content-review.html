@@ -209,6 +209,29 @@ textarea.ed{min-height:64px}
 .sm-chip.c-need{background:#fcecec;color:#b42323}
 .sm-chip.c-dup{background:#fdefe8;color:#c2521c}
 .sm-chip.c-off{background:#eef0f3;color:#6d7887}
+/* The shelf drawn as cards. Each subcategory chip is a drop target, so the diagram is
+   both the picture of the catalog and the fastest way to change it. */
+.sm-diagram{border:1px solid var(--line);border-radius:10px;background:#fbfcfe;padding:10px 12px}
+.sm-dg-h{font-size:11.5px;color:var(--gray);margin-bottom:8px}
+.sm-cards{display:grid;gap:9px;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));max-height:30vh;overflow:auto}
+.sm-card{background:#fff;border:1px solid var(--line);border-radius:9px;padding:8px 10px;cursor:pointer}
+.sm-card:hover{border-color:#c9d6e6}
+.sm-card.on{border-color:var(--orange,#ef6325);box-shadow:0 0 0 2px #fdece1}
+.sm-card.none{border-color:#f0c8c8;background:#fff7f7}
+.sm-card-h{display:flex;gap:8px;align-items:baseline;font-weight:800;font-size:12.5px;color:var(--navy2,#1c3050)}
+.sm-card.none .sm-card-h{color:#b42323}
+.sm-card-n{margin-left:auto;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#78859a;font-weight:600}
+.sm-card-b{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.sm-pin{display:inline-flex;gap:5px;align-items:center;font-size:11px;background:#f2f5f9;border:1px solid var(--line);
+  border-radius:20px;padding:3px 9px;color:#4a5666;cursor:pointer}
+.sm-pin b{font-family:ui-monospace,Menlo,monospace;font-size:10px;color:#78859a}
+.sm-pin:hover{border-color:#c9d6e6;background:#eaf0f7}
+.sm-pin.on{background:#fff3e8;border-color:#f0cfae;color:#a8500f}
+/* While a drag is in flight every valid target lifts, so it is obvious where a product can go. */
+body.sm-dragging .sm-pin,body.sm-dragging .sm-sub{outline:1px dashed #c9d6e6;outline-offset:1px}
+.sm-over{background:#e7f4ed !important;outline:2px solid #1a7f4b !important;outline-offset:1px;color:#14603a !important}
+.sm-tbl tr[draggable="true"]{cursor:grab}
+.sm-tbl tr[draggable="true"]:active{cursor:grabbing}
 .sm-health{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;
   padding:9px 12px;background:#f3f8f4;border:1px solid #cfe3d5;border-radius:8px;font-size:12px;color:#31473a}
 .sm-health.bad{background:#fff8ec;border-color:#f0dcb8;color:#5c4a2e}
@@ -1224,7 +1247,8 @@ function smRender(){
     return `<div class="sm-cat${c===SM_NONE?' none':''}${on?' open':''}" onclick="smPick('${escA(c)}',null)">
         <span class="tw">${on?'▾':'▸'}</span><span class="nm">${esc(catLabel(c))}</span>
         <span class="sm-n">${g.n}</span></div>`
-      + (on?subs.map(sc=>`<div class="sm-sub${SM.sub===sc?' on':''}" onclick="event.stopPropagation();smPick('${escA(c)}','${escA(sc)}')">
+      + (on?subs.map(sc=>`<div class="sm-sub${SM.sub===sc?' on':''}" onclick="event.stopPropagation();smPick('${escA(c)}','${escA(sc)}')"
+          ${sc?`ondragover="smOver(event,this)" ondragleave="smOut(this)" ondrop="smDrop(event,this,'${escA(sc)}')"`:''}>
           <span class="nm">${sc?esc(sc):'<i>no subcategory</i>'}</span><span class="sm-n">${g.subs[sc].n}</span></div>`).join(''):'');
   }).join('');
 
@@ -1241,6 +1265,7 @@ function smRender(){
       <span class="mut" style="font-size:12px"><b>${totals.n}</b> products · <b>${totals.sk}</b> SKUs · <b>${cats.filter(c=>c!==SM_NONE).length}</b> categories</span>
     </div>
     ${smHealthHtml(rows)}
+    ${smDiagramHtml(rows,tree)}
     ${totals.none?`<div class="sm-warn">⚠ <b>${totals.none}</b> product(s) have no category — they are pinned at the top of the map and will not reach dealers on a line that lists approved products only.</div>`:''}
     <div class="sm-pane">
       <div class="sm-side">${side||'<div class="mut" style="padding:12px">No products loaded.</div>'}</div>
@@ -1249,7 +1274,7 @@ function smRender(){
           <span style="flex:1"></span>
           <button class="btn ghost" style="padding:3px 9px;font-size:11.5px" onclick="smRenameCat()" ${SM.cat===SM_NONE?'disabled':''}>✎ Rename</button>
           <button class="btn ghost" style="padding:3px 9px;font-size:11.5px" onclick="smPreview()">👁 As a dealer</button></div>
-        <div class="sm-scroll">${list.length?`<table class="sm-tbl"><tbody>${list.map(r=>`<tr class="${SM.pick.has(r.k)?'on':''}">
+        <div class="sm-scroll">${list.length?`<table class="sm-tbl"><tbody>${list.map(r=>`<tr class="${SM.pick.has(r.k)?'on':''}" draggable="true" ondragstart="smDragStart(event,'${escA(r.k)}')" ondragend="smDragEnd()">
           <td class="pk"><input type="checkbox" ${SM.pick.has(r.k)?'checked':''} onchange="smTick('${escA(r.k)}',this.checked)"></td>
           <td><b>${esc(r.name)}</b>${smChip(r)}
             <div class="mut" style="font-size:11px">${esc(r.cat===SM_NONE?'no category':r.cat)}${r.sub?' › '+esc(r.sub):''}${r.family?' · family: '+esc(r.family):''}</div>
@@ -1268,6 +1293,77 @@ function smRender(){
   </div>`;
   modalHTML('🌳 Structure map · '+esc(MFR), body);
 }
+/* ── THE MAP AT THE TOP ───────────────────────────────────────────────────────
+   The same tree the panes below show, drawn as the shelf: each dealer heading a card,
+   each subcategory a chip inside it with its product count. It is not decoration — every
+   chip is a drop target, so the diagram is also the fastest way to move something. What
+   has no category at all gets the first card, in red, because it is the only thing on this
+   screen that is definitely wrong. */
+function smDiagramHtml(rows,tree){
+  const cats=Object.keys(tree).sort((a,b)=>a===SM_NONE?-1:b===SM_NONE?1:a.localeCompare(b));
+  const card=c=>{
+    const g=tree[c], none=c===SM_NONE;
+    const subs=Object.keys(g.subs).sort((a,b)=>a===''?1:b===''?-1:a.localeCompare(b));
+    return `<div class="sm-card${none?' none':''}${SM.cat===c?' on':''}" onclick="smPick('${escA(c)}',null)">
+      <div class="sm-card-h">${none?'⚠ No category':esc(c)}<span class="sm-card-n">${g.n}</span></div>
+      <div class="sm-card-b">${subs.map(sc=>`<span class="sm-pin${SM.sub===sc&&SM.cat===c?' on':''}"
+          onclick="event.stopPropagation();smPick('${escA(c)}','${escA(sc)}')"
+          ${sc?`ondragover="smOver(event,this)" ondragleave="smOut(this)" ondrop="smDrop(event,this,'${escA(sc)}')"`:''}
+          >${sc?esc(sc):'<i>none</i>'}<b>${g.subs[sc].n}</b></span>`).join('')||'<span class="mut" style="font-size:11px">no subcategories</span>'}</div>
+    </div>`;
+  };
+  return `<div class="sm-diagram">
+    <div class="sm-dg-h">The shelf, as a dealer sees it — drag any product onto a subcategory to move it there.</div>
+    <div class="sm-cards">${cats.map(card).join('')}</div>
+  </div>`;
+}
+
+/* ── DRAGGING ─────────────────────────────────────────────────────────────────
+   Dragging one product moves that product. Dragging one that is part of a selection moves
+   the whole selection — the thing you are holding is what you already ticked, which is what
+   people expect and the alternative (silently moving only the one) quietly loses work.
+
+   A drop sets the SUBCATEGORY and nothing else. The dealer heading follows from the map, so
+   one write puts the product where it belongs; the internal department stays exactly as it
+   was, which is what it is for. */
+let SM_DRAG=null;
+function smDragStart(ev,k){
+  SM_DRAG = SM.pick.has(k) ? [...SM.pick] : [k];
+  try{ ev.dataTransfer.effectAllowed='move'; ev.dataTransfer.setData('text/plain',SM_DRAG.join(',')); }catch(e){}
+  document.body.classList.add('sm-dragging');
+}
+function smDragEnd(){ SM_DRAG=null; document.body.classList.remove('sm-dragging');
+  document.querySelectorAll('.sm-over').forEach(e=>e.classList.remove('sm-over')); }
+function smOver(ev,el){ if(!SM_DRAG) return; ev.preventDefault();
+  try{ ev.dataTransfer.dropEffect='move'; }catch(e){} el.classList.add('sm-over'); }
+function smOut(el){ el.classList.remove('sm-over'); }
+async function smDrop(ev,el,sub){
+  ev.preventDefault(); ev.stopPropagation();
+  el.classList.remove('sm-over');
+  let keys=SM_DRAG;
+  if(!keys){ try{ keys=String(ev.dataTransfer.getData('text/plain')||'').split(',').filter(Boolean); }catch(e){ keys=null; } }
+  SM_DRAG=null; document.body.classList.remove('sm-dragging');
+  if(!keys||!keys.length||!sub) return;
+  // Dropping something where it already is is not a change — say nothing, write nothing.
+  const moving=keys.filter(k=>String((pages[k]||{}).subcategory||'').trim()!==sub);
+  if(!moving.length){ toast('Already in “'+sub+'”'); return; }
+  await smWriteSub(moving, sub);
+}
+/* One field, one write. The heading a dealer sees is derived from this, so nothing else
+   has to be touched for the shop to be right. */
+async function smWriteSub(keys, sub){
+  let ok=0, bad=0;
+  for(let i=0;i<keys.length;i++){
+    if(keys.length>4 && i%5===0) toast('Moving '+(i+1)+' of '+keys.length+'…');
+    const r=await apiWrite({action:'set_meta', page_key:keys[i], patch:{subcategory:sub}});
+    if(r.ok && (!r.json||r.json.ok!==false)){ ok++; pages[keys[i]].subcategory=sub; }
+    else bad++;
+  }
+  const dealer=(SM.map||{})[sub];
+  toast(ok+' moved to “'+sub+'”'+(dealer?' · dealers find it under '+dealer:' · this subcategory is not mapped to a heading yet')+(bad?' · '+bad+' failed':''), !!bad);
+  SM.pick=new Set(); smRender(); render();
+}
+
 /* The one line that says whether the shelf is being built the way it was designed. */
 function smHealthHtml(rows){
   const pinned=rows.filter(r=>r.pinned).length;
