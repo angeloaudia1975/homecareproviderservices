@@ -89,6 +89,15 @@ body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--pape
 .stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 16px;box-shadow:var(--shadow)}
 .stat b{font-family:'Archivo',sans-serif;font-size:21px;display:block;line-height:1.1}
 .stat span{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray)}
+/* A tile you can click is a queue; one you cannot is a fact. The derived ones open the
+   Completion board already filtered, so a number on this page always has a list behind it. */
+.stat.q{cursor:pointer;font:inherit;text-align:left;border-color:var(--line)}
+.stat.q:hover{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset}
+.stat.q b{color:var(--warn)}
+.stat.q.zero b{color:var(--good)}
+.stat.q[data-k="needs_sku_review"] b,.stat.q[data-k="possible_duplicate"] b{color:var(--bad)}
+.stat.q.zero[data-k="needs_sku_review"] b,.stat.q.zero[data-k="possible_duplicate"] b{color:var(--good)}
+.stat.q[data-k="ready_to_publish"] b{color:var(--pub)}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
 .toolbar input.search{flex:1;min-width:180px;border:1px solid var(--line);border-radius:999px;padding:9px 15px;font-family:inherit;font-size:13.5px}
 .filters{display:flex;gap:6px;flex-wrap:wrap}
@@ -607,11 +616,19 @@ async function boot(){
     }
     render();
     renderMfrBar();   // manufacturer selector + status (non-blocking)
+    loadMasterCounts();   // the derived queue, from the CATALOG — see below
   }catch(e){ const el=document.getElementById('cards'); if(el) el.innerHTML='<div class="mut" style="padding:24px">Couldn\'t reach the server — reload to try again.</div>'; }
 }
 function gate(msg){ const w=document.querySelector('.wrap');
   if(w) w.innerHTML='<div style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:26px;margin-top:16px"><h2 style="font-family:Archivo;margin:0 0 6px">Admin access required</h2><p class="mut">'+esc(msg)+'</p><button class="btn dark" style="margin-top:10px" onclick="location.href=\'/admin/\'">Go to Connect 360 →</button></div>'; }
 async function apiWrite(payload){
+  const res=await _apiWrite(payload);
+  /* THE COUNTS ARE NEVER OLDER THAN THE SCREEN. Marking them stale here rather than at each
+     call site means a write added later cannot forget to do it. */
+  if(res && res.ok && (!res.json || res.json.ok!==false) && typeof masterStale==='function') masterStale();
+  return res;
+}
+async function _apiWrite(payload){
   try{ const r=await fetch(`${API}?manufacturer=${encodeURIComponent(MFR)}`,
       {method:'POST',headers:authHeaders(),body:JSON.stringify(payload)});
     /* A platform timeout or crash answers with an HTML body, not JSON. Swallowing
@@ -665,6 +682,35 @@ function structureFlags(){
 const SIZE_WORDS=/\b(x{0,3}s|s|m|l|x{0,3}l|xxl|xl|small|medium|large|universal|left|right|regular|tall|short|std|standard|adult|pediatric|youth|\d+(\.\d+)?("|in|inch|inches|cm|mm)?)\b/gi;
 function baseToken(str){ return String(str||'').toLowerCase().replace(SIZE_WORDS,' ').replace(/[^a-z ]+/g,' ').replace(/\s+/g,' ').trim().split(' ').slice(0,3).join(' '); }
 
+/* ── THE NUMBERS AT THE TOP OF THIS PAGE COME FROM THE CATALOG ────────────────
+   They used to be counted from `pages` — the enrichment table — so "Need content: 0" meant
+   "none of the 52 enrichment records carries a needs_content flag", which nothing ever set.
+   A product sitting in the master catalog with no images, no price or no page could not be
+   counted here at all, because this screen had never heard of it.
+
+   The counts are now the derived status of every SKU in the Product Catalog, computed by the
+   shared module on the server. Same numbers as the Completion board, because it is the same
+   sweep — one question, asked once. */
+let MASTER=null;
+async function loadMasterCounts(force){
+  if(MASTER && !force) return MASTER;
+  try{
+    const r=await catalogPost({action:'status_sweep',manufacturer:MFR,counts_only:true});
+    if(r.ok && r.json && r.json.ok!==false){ MASTER=r.json; render(); }
+  }catch(e){ /* the page still works without them; the tiles just say "—" */ }
+  return MASTER;
+}
+/* Every write that could change a status invalidates them, so the header can never show a
+   number taken before the change that is on screen. Debounced, because a bulk action is a
+   hundred writes and re-sweeping the catalog after each one would be a hundred sweeps. */
+let _staleT=null;
+function masterStale(){
+  MASTER=null; CB.data=null; CB.audit=null; CB.plan=null;
+  render();
+  clearTimeout(_staleT);
+  _staleT=setTimeout(()=>{ _staleT=null; loadMasterCounts(true); }, 900);
+}
+
 /* ---------- counts / categories ---------- */
 function counts(){ const c={total:0,skus:0,pending:0,published:0,needs:0,flagged:structureFlags().length};
   for(const k in pages){ const p=pages[k]; c.total++; c.skus+=(p.sku_count||skusOf(k).length||0);
@@ -679,11 +725,28 @@ function allFamilies(){ const s=new Set(); for(const k in pages){ if(pages[k].fa
 function render(){
   const c=counts();
   renderSteps(); renderGuide();
+  /* Enrichment's own numbers first — what is on THIS screen — then the master catalog's,
+     which is where the work actually is. A tile you can click is a queue; one you cannot is
+     a fact, so only the derived ones are buttons. */
+  const M=MASTER&&MASTER.counts?MASTER.counts:null;
+  const q=(k,label)=>M
+    ? `<button class="stat q${M[k]?'':' zero'}" data-act="cb-open-status" data-k="${k}" title="Open the Completion board showing only these">
+         <b>${M[k]||0}</b><span>${label}</span></button>`
+    : `<div class="stat"><b>—</b><span>${label}</span></div>`;
   document.getElementById('stats').innerHTML=
-    stat(c.total,'Products')+stat(c.skus,'SKUs')+stat(c.published,'Live on Partner 360')+
-    stat(c.pending,'In review')+stat(c.needs,'Need content')+stat(c.flagged,'Structure flags');
+    stat(c.total,'Products')+stat(c.skus,'SKUs')+
+    stat(MASTER?MASTER.catalog_total:'—','Catalog SKUs')+
+    stat(c.published,'Live on Partner 360')+
+    q('needs_sku_review','Needs SKU review')+
+    q('needs_content','Needs content')+
+    q('needs_images','Needs images')+
+    q('needs_pricing','Needs pricing')+
+    q('needs_category','Needs category')+
+    q('possible_duplicate','Possible duplicate')+
+    q('ready_to_publish','Ready to publish')+
+    stat(c.flagged,'Structure flags');
   const fdefs=[['all','All'],['flagged','Flagged'],['pending','In review'],['published','Live'],
-    ['discontinued','Discontinued'],['hidden','Hidden'],['needs','Needs content']];
+    ['discontinued','Discontinued'],['hidden','Hidden']];
   document.getElementById('filters').innerHTML=fdefs.map(f=>`<button class="${f[0]===filter?'on':''}" onclick="setFilter('${f[0]}')">${f[1]}</button>`).join('')
     +`<span style="align-self:center;margin-left:6px;font-size:11.5px;color:var(--gray)">${ONLINE?'● Live · writing to Supabase':'○ Offline preview'}</span>`;
   renderStructure();
@@ -1012,6 +1075,7 @@ document.addEventListener('click',async function(e){
   if(act==='set-status-val') return doStatus(k,t.getAttribute('data-val'));
   if(act==='preview') return openPreview(k);
   if(act==='completion-board') return openCompletionBoard();
+  if(act==='cb-open-status'){ CB.filter=k||''; return openCompletionBoard(); }
   if(act==='cb-refresh')  return openCompletionBoard(true);
   if(act==='cb-filter'){ CB.filter=(CB.filter===k?'':k); cbRender(); return; }
   if(act==='cb-flow')     return cbFlowTest();
@@ -2010,7 +2074,12 @@ async function catalogGet(){
    bulk + auto-MSRP + dealer preview — all without SQL. */
 async function catalogPost(body){
   try{ const r=await fetch('/.netlify/functions/catalog-api',{method:'POST',headers:authHeaders(),body:JSON.stringify(body)});
-    const j=await r.json().catch(()=>({})); return {ok:r.ok,status:r.status,json:j}; }
+    const j=await r.json().catch(()=>({}));
+    /* A read never invalidates anything; a write to the catalog changes what the counts mean. */
+    const READS={status_sweep:1, catalog_audit:1, repair_plan:1, flow_test:1, duplicate_scan:1,
+                 record_detail:1, unassigned_pricing:1, history:1};
+    if(r.ok && body && body.action && !READS[body.action] && typeof masterStale==='function') masterStale();
+    return {ok:r.ok,status:r.status,json:j}; }
   catch(e){ return {ok:false,status:0,json:{error:String(e)}}; }
 }
 let _pubCollisions=[];
@@ -3345,7 +3414,7 @@ async function seCreate(){
     if(c.hcpcs){ try{ await apiWrite({action:'set_content',page_key:pk,patch:{billing_codes:[c.hcpcs]}}); }catch(e){} }
   }
   _catalogCache=null;
-  CB.data=null;   // the completion board must not report a count taken before this import
+  masterStale();  // the board and the header counts all predate this import
   toast('Created '+made+' product(s)'+(failed?' · '+failed+' failed':'')
     +(_pubCollisions.length?' · '+_pubCollisions.length+' already in the catalog':''),!made);
   if(_pubCollisions.length) reportCollisions(_pubCollisions);
@@ -4216,7 +4285,7 @@ async function doNewProduct(force){
   pages[npk]={page_key:npk,name,category:cat,family:fam,skus:skusForContent,
     sku_count:skusForContent.length,status:'pending_review',features:[]};
   _catalogCache=null;   // Price Check and the Completion board will re-read the catalog
-  CB.data=null; CB.audit=null;   // the board and the audit must not report counts taken before this existed
+  masterStale();        // the board, the audit and the header counts all predate this product
   document.getElementById('overlay').classList.remove('show'); openCards.add(npk);
   if(dupBlocked) reportCollisions(_pubCollisions);
   if(refused.length) toast('Created "'+name+'" with '+inCatalog.length+' SKU(s). '+refused.length+
@@ -4486,7 +4555,7 @@ async function cbRepairApply(){
     if(r.ok&&(!r.json||r.json.ok!==false)){ done++; if(pages[pg.page_key]) pages[pg.page_key].skus=pg.skus; }
     else failed++;
   }
-  CB.plan=null; CB.data=null; CB.audit=null;
+  masterStale();
   toast(failed ? `${done} page(s) repaired · ${failed} failed — check History`
                : `${done} page(s) repaired. Undo any of it from History.`, !!failed);
   await openCompletionBoard(true);
