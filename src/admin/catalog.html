@@ -212,8 +212,13 @@ async function loadSideSignals(){
   try{
     const r=await api("",{method:"POST",body:JSON.stringify({action:"duplicate_scan",manufacturer:slug})});
     if(slug===SLUG && r && r.ok!==false){
-      const skip=dismissed();
-      DUPS=(r.groups||[]).filter(g=>skip.indexOf(g.key)<0); render();
+      /* The server already excludes the groups someone has judged — the decision lives on
+         the product record now. The old localStorage list is still honoured so a machine
+         that made decisions before this change does not suddenly see them all again. */
+      const legacy=dismissed();
+      DUPS=(r.groups||[]).filter(g=>legacy.indexOf(g.key)<0);
+      DUPOK=r.kept_separate||0;
+      render();
       /* Now the expensive half: full provenance for the records actually in the queue.
          Fetched after the list paints, so the page is usable immediately. */
       const codes=[...new Set(DUPS.flatMap(g=>g.members.map(m=>m.code)))].slice(0,60);
@@ -405,6 +410,7 @@ function effProducts(){
       _cat: d ? d.category : (p.category||""),
       _catSource: d ? d.source : "catalog",
       _internal: d ? d.internal : (p.category||""),
+      _sub: d ? (d.subcategory||"") : (p.subcategory||""),
     });
   });
   return _EFF;
@@ -1380,6 +1386,7 @@ async function mergeLayers(code){
 /* "Keep separate" is a decision too, so it is remembered — otherwise the same pair is
    re-flagged on every load and the queue never empties. Stored per browser; it hides the
    pair from the queue and changes nothing about either product. */
+let DUPOK=0;
 function dismissedKey(){ return "hcps_dupok_"+SLUG; }
 function dismissed(){ try{ return JSON.parse(localStorage.getItem(dismissedKey())||"[]")||[]; }catch(e){ return []; } }
 /* THE THIRD ANSWER, AND USUALLY THE RIGHT ONE.
@@ -1418,10 +1425,24 @@ async function dupGroupTogether(key){
   render();
   toast(codes.length+" SKUs now one card · "+grp);
 }
-function dupKeepSeparate(key){
-  if(!confirm("Mark these as genuinely different products?\n\nNothing changes on either record — they just stop appearing in this queue.")) return;
-  try{ const d=dismissed(); if(d.indexOf(key)<0) d.push(key); localStorage.setItem(dismissedKey(),JSON.stringify(d)); }catch(e){}
-  DUPS=(DUPS||[]).filter(g=>g.key!==key); toast("Kept separate"); render();
+/* "THESE ARE DIFFERENT PRODUCTS." A size run shares a name by definition, so the name rule
+   flags it forever and no merge would be correct. This decision used to be written to
+   localStorage — which is why the same groups came back on another machine, in another
+   browser profile, or after clearing site data. It was never saved to the product at all.
+   It is now written to the master record, so it holds everywhere and for everyone. */
+async function dupKeepSeparate(key){
+  const g=(DUPS||[]).find(x=>x.key===key); if(!g) return;
+  const members=[...new Set((g.members||[]).map(m=>String(m.code)))];
+  if(members.length<2) return;
+  if(!confirm("Mark these as genuinely different products?\n\n"+members.join(", ")
+    +"\n\nNothing changes on any record — they stop appearing in this queue, on every machine.\n"
+    +"If a new SKU ever joins this group, it will be raised again.")) return;
+  const r=await api("",{method:"POST",body:JSON.stringify({action:"set_duplicate_ok",
+    manufacturer:SLUG,key,members,reviewer:(window.REVIEWER||"admin")})});
+  if(!(r&&r.ok!==false)){ toast((r&&(r.message||r.error))||"Could not save that decision",true); return; }
+  DUPS=(DUPS||[]).filter(x=>x.key!==key);
+  toast("Kept separate — saved to the product record, not this browser");
+  render();
 }
 
 function guideHtml(){ return `<details class="guide"${GUIDEOPEN?" open":""} ontoggle="GUIDEOPEN=this.open">
@@ -1607,15 +1628,33 @@ function render(){
         return `<div class="dupbar">
           <b>Category order on Partner 360.</b> This one list drives the shop's category filter
           <i>and</i> the order sections scroll down the page, so the two always agree.
-          ${unplaced.length?`<span style="color:#8a5a12"> ${unplaced.length} new categor${unplaced.length===1?"y is":"ies are"} unplaced at the end.</span>`:""}
+          ${unplaced.length?`<span style="color:#8a5a12"> ${unplaced.length} heading${unplaced.length===1?"":"s"} at the end ${unplaced.length===1?"is":"are"} not in your dealer list — expand ${unplaced.length===1?"it":"them"} below to see why.</span>`:""}
           <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;max-width:520px">
-            ${rows.map((c,i)=>`<div style="display:flex;gap:6px;align-items:center;background:#fff;border:1px solid var(--silver);border-radius:8px;padding:5px 8px">
-              <span style="width:20px;color:var(--gray);font-variant-numeric:tabular-nums">${i+1}</span>
-              <span style="flex:1;font-weight:600${(stored&&!placed.includes(c))?";color:#8a5a12":""}">${esc(c)}</span>
-              <span class="hint" style="margin:0">${effProducts().filter(p=>catOf(p)===c).length}</span>
-              <button class="btn ghost sm" ${i===0?"disabled":""} onclick="moveCat(${i},-1)" title="Move up">↑</button>
-              <button class="btn ghost sm" ${i===rows.length-1?"disabled":""} onclick="moveCat(${i},1)" title="Move down">↓</button>
-            </div>`).join("")}
+            ${rows.map((c,i)=>{
+              const mine=effProducts().filter(p=>catOf(p)===c);
+              const isDealer=!stored || placed.includes(c);
+              /* WHAT A DEALER ACTUALLY BROWSES. The shop groups by category, then by
+                 subcategory, so seeing the subcategories here is the only way to check the
+                 dealer-facing layout without opening Partner 360 beside this screen. */
+              const subs={}; mine.forEach(p=>{ const k=String(p._sub||"").trim()||"—"; subs[k]=(subs[k]||0)+1; });
+              const subList=Object.entries(subs).sort((a,b)=>b[1]-a[1]);
+              /* A heading nothing derives is not a dealer category — it is the record's own old
+                 value showing through because no enrichment page gives these SKUs a subcategory.
+                 Saying so is more useful than listing it as if dealers saw it. */
+              const orphan=!isDealer && subList.length===1 && subList[0][0]==="—";
+              return `<div style="background:#fff;border:1px solid var(--silver);border-radius:8px;padding:5px 8px;${isDealer?"":"border-color:#e0b46a;background:#fffdf6"}">
+              <div style="display:flex;gap:6px;align-items:center">
+                <span style="width:20px;color:var(--gray);font-variant-numeric:tabular-nums">${i+1}</span>
+                <span style="flex:1;font-weight:600${isDealer?"":";color:#8a5a12"}">${esc(c)}</span>
+                <span class="hint" style="margin:0">${mine.length}</span>
+                <button class="btn ghost sm" ${i===0?"disabled":""} onclick="moveCat(${i},-1)" title="Move up">↑</button>
+                <button class="btn ghost sm" ${i===rows.length-1?"disabled":""} onclick="moveCat(${i},1)" title="Move down">↓</button>
+              </div>
+              ${orphan
+                ? `<div style="font-size:11px;color:#8a5a12;margin:3px 0 0 26px">Not a dealer category — these ${mine.length} SKU(s) have no enrichment page, so nothing derives a heading for them and the record's own old value shows through. List them on a page and this disappears.</div>`
+                : `<div style="display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 0 26px">${subList.map(([k,n])=>
+                    `<span class="hint" style="margin:0;background:${k==="—"?"#fdf3dd":"var(--paper)"};border:1px solid var(--line);border-radius:999px;padding:1px 7px">${k==="—"?"no subcategory":esc(k)} <b>${n}</b></span>`).join("")}</div>`}
+            </div>`;}).join("")}
           </div>
           <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
             <button class="btn ghost sm" onclick="resetCatOrder()">Reset to A–Z</button>

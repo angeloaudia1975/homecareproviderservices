@@ -202,7 +202,28 @@ function duplicateGroups(base, custom, overrides){
      time, forever. There was no answer to it except to merge a product that no longer
      exists into itself. A retired or dispositioned code is settled: the product is off
      Partner 360 and there is nothing left to decide about it. */
+  /* "THESE ARE DIFFERENT PRODUCTS." A size run shares a name by definition — 31003, 31005 and
+     31007 are Small, Medium and Large of one splint — so the name rule flags them forever and
+     there is no merge that would be correct. Saying so once has to STICK, and it only sticks if
+     it is written to the master record. It used to be kept in the browser's localStorage, which
+     is why the same groups came back on another machine, in another profile, or after clearing
+     site data: the decision was never actually saved anywhere.
+
+     The member list is stored with the decision. If the group later gains a SKU nobody has
+     judged, it is raised again — a decision about three products is not a decision about a
+     fourth. */
+  const settledKey=g=>{
+    const now=[...new Set(g.members.map(m=>String(m.code)))].sort().join("|");
+    // every member must carry the decision, and it must be about THIS set of products
+    return g.members.every(m=>{
+      const d=(ov[m.code]||{}).dup_ok;
+      if(!d || d.key!==g.key) return false;
+      const was=Array.isArray(d.members)?d.members.map(String).sort().join("|"):"";
+      return was===now;
+    });
+  };
   return groups.filter(g=>{
+    if(settledKey(g)) return false;
     if(g.same_code) return !g.members.some(m=>m.layers_merged || m.retired || m.disposition);
     return g.members.filter(m=>!m.merged_into && !m.retired && !m.disposition).length>1;
   });
@@ -1155,7 +1176,8 @@ exports.handler = async (event)=>{
           }
         }
         return json(200,{ok:true,groups,scanned:(base||[]).length+(custom||[]).length,
-          auto_settled:auto.length, auto_settled_codes:auto.slice(0,200)});
+          auto_settled:auto.length, auto_settled_codes:auto.slice(0,200),
+          kept_separate:Object.values(overrides).filter(p=>p&&p.dup_ok).length});
       }
 
       /* Merge two records into one. The winner keeps its own code; the loser is RETIRED,
@@ -1867,6 +1889,31 @@ exports.handler = async (event)=>{
          point is not that it passes — it is that when it does not, it names the step and
          the products that broke it, so a line can be proven finished before the next one
          is started. */
+      /* "THESE ARE DIFFERENT PRODUCTS" — SAVED WHERE EVERY MACHINE CAN SEE IT.
+         This used to live in the browser's localStorage, so the decision died with the
+         browser profile and the same size runs came back forever. It is a decision about the
+         product line, so it belongs on the manufacturer record. Reversible: send ok:false. */
+      if(b.action==="set_duplicate_ok"){
+        const mfr=String(b.manufacturer||"").trim();
+        const key=String(b.key||"").trim();
+        const members=[...new Set((Array.isArray(b.members)?b.members:[]).map(x=>String(x).trim()).filter(Boolean))].sort();
+        if(!mfr||!key) return json(400,{error:"manufacturer and key are required"});
+        if(members.length<2) return json(400,{error:"members[] required — a decision needs the products it is about"});
+        const e=encodeURIComponent, now=new Date().toISOString();
+        const inList="("+members.map(c=>'"'+c.replace(/"/g,'\\"')+'"').join(",")+")";
+        const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=in.${e(inList)}&select=code,patch`).catch(()=>[]);
+        const have=Object.fromEntries((ex||[]).map(r=>[String(r.code),r.patch||{}]));
+        const rows=members.map(code=>{
+          const patch=Object.assign({},have[code]||{});
+          if(b.ok===false) delete patch.dup_ok;
+          else patch.dup_ok={key, members, at:now, by:b.reviewer?String(b.reviewer).slice(0,80):null};
+          return {manufacturer:mfr, code, patch, updated_at:now};
+        });
+        await sb("POST","product_overrides?on_conflict=manufacturer,code",rows,
+          {Prefer:"resolution=merge-duplicates,return=minimal"});
+        return json(200,{ok:true,manufacturer:mfr,key,members,kept_separate:b.ok!==false});
+      }
+
       /* THE CATALOG AUDIT REPORT — ten buckets, one manufacturer, read-only. */
       if(b.action==="catalog_audit"){
         const slug=String(b.manufacturer||"").trim();
