@@ -349,18 +349,28 @@ body.sm-dragging .sm-pin,body.sm-dragging .sm-sub{outline:1px dashed #c9d6e6;out
 .cbt .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap}
 /* Column floors, so a long product name wraps instead of crushing every other column into
    one word per line. Past the sum of these the table scrolls inside its own box. */
-.cbt th:nth-child(1),.cbt td:nth-child(1){min-width:132px}
-.cbt th:nth-child(2),.cbt td:nth-child(2){min-width:180px}
-.cbt th:nth-child(3),.cbt td:nth-child(3){min-width:158px}
-.cbt th:nth-child(4),.cbt td:nth-child(4){min-width:140px}
-.cbt th:nth-child(5),.cbt td:nth-child(5){min-width:130px}
-.cbt th:nth-child(6),.cbt td:nth-child(6){min-width:200px}
+/* The product list has a tick column in front, so its widths are scoped to it — the audit
+   and repair tables are three columns of their own and must not inherit them. */
+.cbprod th:nth-child(1),.cbprod td:nth-child(1){width:26px;min-width:26px}
+.cbprod th:nth-child(2),.cbprod td:nth-child(2){min-width:132px}
+.cbprod th:nth-child(3),.cbprod td:nth-child(3){min-width:180px}
+.cbprod th:nth-child(4),.cbprod td:nth-child(4){min-width:158px}
+.cbprod th:nth-child(5),.cbprod td:nth-child(5){min-width:140px}
+.cbprod th:nth-child(6),.cbprod td:nth-child(6){min-width:130px}
+.cbprod th:nth-child(7),.cbprod td:nth-child(7){min-width:200px}
 .cbchip{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
 .cbchip.bad{color:var(--bad);background:var(--badbg)}
 .cbchip.warn{color:var(--warn);background:var(--warnbg)}
 .cbchip.ok{color:var(--good);background:var(--goodbg)}
 .cbchip.mut{color:var(--hid);background:var(--hidbg)}
 .cbwarn{color:var(--bad);font-size:10.5px;font-weight:700;white-space:nowrap}
+/* Turning a queue into work: tick the SKUs that belong together and build the product. */
+.cbpick{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;padding:8px 12px;
+  border:1px solid var(--navy);border-radius:10px;background:#eef4fb}
+.cbpick .grow{flex:1}
+.cbt tbody tr.on{background:#eef4fb}
+.cbt td input[type=checkbox]{margin:0;cursor:pointer}
+.cbt th input[type=checkbox]{margin:0;cursor:pointer}
 /* The audit table is a different shape from the product list: three columns, the first a
    label that must not wrap mid-phrase, the last a long list of part numbers. */
 .cbaudit th:nth-child(1),.cbaudit td:nth-child(1){min-width:250px;width:250px}
@@ -1107,6 +1117,13 @@ document.addEventListener('click',async function(e){
   if(act==='cb-flow')     return cbFlowTest();
   if(act==='cb-audit')    return cbAudit();
   if(act==='cb-audit-export') return cbAuditExport();
+  if(act==='cb-pick'){ if(CB.pick.has(k)) CB.pick.delete(k); else CB.pick.add(k); cbRender(); return; }
+  if(act==='cb-pick-all'){ const all=cbRows().filter(cbPickable).map(r=>r.code);
+    if(all.every(c=>CB.pick.has(c))) all.forEach(c=>CB.pick.delete(c)); else all.forEach(c=>CB.pick.add(c));
+    cbRender(); return; }
+  if(act==='cb-pick-clear'){ CB.pick.clear(); cbRender(); return; }
+  if(act==='cb-make')         return cbMakeProduct();
+  if(act==='cb-addto')        return cbAddToProduct();
   if(act==='cb-repair')       return cbRepair();
   if(act==='cb-repair-apply') return cbRepairApply();
   if(act==='cb-export')   return cbExport();
@@ -4379,7 +4396,7 @@ async function doUndo(id,btn){ btn.disabled=true; const r=await apiWrite({action
 
    Nothing here writes. It is a view of the master record, which is the point.
    ═══════════════════════════════════════════════════════════════════════════════ */
-const CB={data:null,filter:'',q:'',flow:null,audit:null,plan:null,loading:false};
+const CB={data:null,filter:'',q:'',flow:null,audit:null,plan:null,loading:false,pick:new Set()};
 const CB_ORDER=['possible_duplicate','needs_sku_review','needs_pricing','needs_category',
                 'needs_images','needs_content','ready_to_publish','published','retired'];
 const CB_LABEL={possible_duplicate:'Possible Duplicate',needs_sku_review:'Needs SKU Review',
@@ -4445,8 +4462,8 @@ function cbRender(){
         <div class="mut" style="font-size:12px">${d.total} SKU(s) · ${d.catalog_total} from the Product Catalog${d.no_catalog_row?` · <b style="color:var(--bad,#b3261e)">${d.no_catalog_row} listed on a page with no catalog record</b>`:''}</div>
       </div>
       <div class="cbacts">
-        <button class="btn grad" data-act="cb-flow">▶ Run the 10-step flow test</button>
-        <button class="btn ghost" data-act="cb-audit">🔍 Full catalog audit</button>
+        <button class="btn grad" data-act="cb-flow" title="Walks this manufacturer through the whole pipeline — created → in the catalog → in enrichment → categorised → priced → images → duplicate check → preview → publish → live on Partner 360 — and marks each step pass or fail against real data, naming the SKUs that failed it. Read-only. When it reads 10 of 10, the line is finished.">▶ Run the 10-step flow test</button>
+        <button class="btn ghost" data-act="cb-audit" title="Every open finding on this line, grouped and with the SKUs named: missing products, duplicates, unassigned SKUs, missing content, images, pricing or category, conflicting data, and anything published with no catalog record behind it. Read-only, exportable as CSV.">🔍 Full catalog audit</button>
         <button class="btn ghost" data-act="cb-export">⭳ Export CSV</button>
         <button class="btn ghost" data-act="cb-refresh">↻ Refresh</button>
       </div>
@@ -4456,16 +4473,19 @@ function cbRender(){
     ${CB.flow?cbFlowHtml():''}
     ${CB.audit?cbAuditHtml():''}
     ${CB.plan?cbPlanHtml():''}
+    ${cbPickBarHtml()}
     <div class="cbfilter">
       <input id="cbq" type="search" placeholder="Find a SKU, product or category…" value="${escA(CB.q)}">
       ${CB.filter?`<button class="btn ghost" data-act="cb-filter" data-k="${CB.filter}">✕ ${esc(CB_LABEL[CB.filter])}</button>`:''}
       <span class="mut" style="font-size:12px">${rows.length} shown</span>
     </div>
     <div class="tabscroll" style="max-height:46vh">
-      <table class="cbt"><thead><tr>
+      <table class="cbt cbprod"><thead><tr>
+        <th style="width:26px"><input type="checkbox" data-act="cb-pick-all" title="Select every SKU below that has no product yet"></th>
         <th>SKU</th><th>Name</th><th>Enrichment page</th><th>Category</th><th>Status</th><th>What it needs</th>
       </tr></thead><tbody>
-      ${rows.slice(0,600).map(r=>`<tr>
+      ${rows.slice(0,600).map(r=>`<tr class="${CB.pick.has(r.code)?'on':''}">
+        <td>${cbPickable(r)?`<input type="checkbox" data-act="cb-pick" data-k="${escA(r.code)}" ${CB.pick.has(r.code)?'checked':''}>`:''}</td>
         <td class="mono">${esc(r.code)}${r.no_catalog_row?' <span class="cbwarn">no catalog record</span>':''}</td>
         <td>${esc(r.name||'')}</td>
         <td>${r.page_key?`<a href="#" data-act="cb-open" data-k="${escA(r.page_key)}">${esc(r.page_name||r.page_key)}</a>
@@ -4504,6 +4524,92 @@ function cbFlowHtml(){
       ${st.offenders&&st.offenders.length?`<span class="off mono">${st.offenders.map(esc).join(', ')}${st.offender_count>st.offenders.length?` +${st.offender_count-st.offenders.length} more`:''}</span>`:''}
     </li>`).join('')}</ol>
   </div>`;
+}
+
+/* ── FROM THE QUEUE TO A PRODUCT ──────────────────────────────────────────────
+   The board could tell you that 21 SKUs have no product and then leave you to go and find
+   them by hand. This is the step that was missing: tick them here and build the product
+   they belong to, without leaving the queue.
+
+   NOTHING IS CREATED IN THE CATALOG. These SKUs already exist there — that is why they are
+   on this list. What is missing is the enrichment page that says which of them are one
+   product, so only the page is written. Master first, page derived: the same rule, applied
+   in the one direction it had not been. */
+function cbPickable(r){
+  /* A SKU that already sits on a product is not a candidate for a new one — move it with
+     "Add to an existing product" instead, so it is never on two pages at once. */
+  return r.source==='catalog' && r.active!==false && !r.page_key;
+}
+function cbPickBarHtml(){
+  const n=CB.pick.size;
+  const avail=cbRows().filter(cbPickable).length;
+  if(!avail && !n) return '';
+  if(!n) return `<div class="note" style="margin-top:8px;font-size:12.5px">${avail} SKU(s) here have no product yet. Tick them to build one — the SKUs already exist in the catalog, so only the product record is created.</div>`;
+  return `<div class="cbpick">
+    <b>${n} SKU(s) selected</b>
+    <span class="mut" style="font-size:12px">${[...CB.pick].slice(0,8).join(', ')}${n>8?' +'+(n-8)+' more':''}</span>
+    <span class="grow"></span>
+    <button class="btn dark sm" data-act="cb-make">＋ Build one product from these</button>
+    <button class="btn ghost sm" data-act="cb-addto">Add to an existing product…</button>
+    <button class="btn ghost sm" data-act="cb-pick-clear">Clear</button>
+  </div>`;
+}
+/* The name to suggest: what these SKUs already agree on. Their common opening, with a
+   trailing size or side removed — which is the product, and the rest is the option. */
+function cbSuggestName(codes){
+  const names=codes.map(c=>{ const r=(CB.data&&CB.data.rows||[]).find(x=>x.code===c); return String((r&&r.name)||'').trim(); }).filter(Boolean);
+  if(!names.length) return '';
+  let pre=names[0];
+  for(const n of names.slice(1)){ let i=0; while(i<pre.length && i<n.length && pre[i]===n[i]) i++; pre=pre.slice(0,i); }
+  pre=pre.replace(/[\s,\-–—(]+$/,'').trim();
+  if(pre.length<4) pre=names[0];
+  return pre.replace(/\s*[-–,]\s*(X{0,3}-?(?:Small|Large)|Small|Medium|Large|Left|Right|Universal|Regular|Tall|Short)\s*$/i,'').trim();
+}
+async function cbMakeProduct(){
+  const codes=[...CB.pick]; if(!codes.length) return;
+  const suggested=cbSuggestName(codes);
+  const name=window.prompt(
+    'Build ONE product from these '+codes.length+' SKU(s):\n\n'+codes.join(', ')+
+    '\n\nThey stay exactly as they are in the Product Catalog — this creates the product record that says they belong together, and opens it for editing.\n\nProduct name:', suggested);
+  if(name==null || !String(name).trim()) return;
+  const pk=slug(String(name).trim());
+  if(pages[pk]){ toast('A product called that already exists — use "Add to an existing product" instead',true); return; }
+  const skus=codes.map(c=>{ const r=(CB.data&&CB.data.rows||[]).find(x=>x.code===c)||{};
+    return {sku:c, name:String(r.name||'').trim(), status:'active'}; });
+  const r=await apiWrite({action:'create_product',product:{page_key:pk,name:String(name).trim(),
+    category:'', family:'', skus}});
+  if(!(r.ok && (!r.json||r.json.ok!==false))){ toast((r.json&&(r.json.message||r.json.error))||'Could not create that product',true); return; }
+  pages[pk]={page_key:pk,name:String(name).trim(),skus,sku_count:skus.length,status:'pending_review',features:[]};
+  CB.pick.clear();
+  document.getElementById('overlay').classList.remove('show');
+  openCards.add(pk); render();
+  const el=document.getElementById('card-'+cssId(pk)); if(el) el.scrollIntoView({behavior:'smooth',block:'start'});
+  toast('Created "'+String(name).trim()+'" with '+skus.length+' SKU(s) — set its category and subcategory next, then enrich it.');
+}
+async function cbAddToProduct(){
+  const codes=[...CB.pick]; if(!codes.length) return;
+  const keys=Object.keys(pages).sort((a,b)=>String(pages[a].name||a).localeCompare(String(pages[b].name||b)));
+  if(!keys.length){ toast('There are no products on this line yet — use "Build one product" first',true); return; }
+  const listed=keys.slice(0,60).map((k,i)=>(i+1)+'. '+(pages[k].name||k)).join('\n');
+  const pickStr=window.prompt('Add '+codes.length+' SKU(s) to which product?\n\n'+listed
+    +(keys.length>60?'\n… '+(keys.length-60)+' more — type the name instead':'')
+    +'\n\nType a number, or the product name:');
+  if(pickStr==null||!String(pickStr).trim()) return;
+  const t=String(pickStr).trim();
+  let k=/^\d+$/.test(t) ? keys[parseInt(t,10)-1] : keys.find(x=>String(pages[x].name||x).toLowerCase()===t.toLowerCase());
+  if(!k){ toast('No product matched "'+t+'"',true); return; }
+  const have=(pages[k].skus||[]).map(x=>String(x.sku||x.code||'').toUpperCase());
+  const add=codes.filter(c=>have.indexOf(c.toUpperCase())<0).map(c=>{
+    const r=(CB.data&&CB.data.rows||[]).find(x=>x.code===c)||{};
+    return {sku:c, name:String(r.name||'').trim(), status:'active'}; });
+  if(!add.length){ toast('Those SKUs are already on that product'); CB.pick.clear(); cbRender(); return; }
+  const skus=(pages[k].skus||[]).concat(add);
+  const r=await apiWrite({action:'save_skus',page_key:k,skus});
+  if(!(r.ok && (!r.json||r.json.ok!==false))){ toast((r.json&&(r.json.message||r.json.error))||'Could not add those',true); return; }
+  pages[k].skus=skus; pages[k].sku_count=skus.length;
+  CB.pick.clear();
+  toast(add.length+' SKU(s) added to "'+(pages[k].name||k)+'"');
+  await openCompletionBoard(true);
 }
 
 /* ── THE CATALOG AUDIT ────────────────────────────────────────────────────────
