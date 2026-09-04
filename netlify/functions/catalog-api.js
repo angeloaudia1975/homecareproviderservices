@@ -159,6 +159,31 @@ function duplicateGroups(base, custom, overrides){
         ? `identical product name, but these sit in ${groupsSeen.size} different catalog groups — check the grouping before merging anything`
         : "identical product name on different SKUs — may be a real variant"], members });
   });
+  /* A SAME-CODE PAIR IS NOT ALWAYS A DECISION.
+     One SKU living in both the deployed catalog file and the added table is one product in
+     two layers. Partner 360 already resolves it — the added row wins — and consolidation is
+     a fixed precedence, not a judgement call. So the only same-code pair worth a person's
+     time is one where the two layers DISAGREE about something: the name, the price, the
+     category. Where they agree, or where one side simply has nothing to say, consolidation
+     would pick the same answer a person would, and asking is wasted work.
+
+     "Empty on one side" is never a conflict — consolidation takes the value that exists. */
+  groups.forEach(g=>{
+    if(!g.same_code) return;
+    const val=(m,k)=>{ const v=m[k]; return (v==null||v==="")?null:(typeof v==="string"?v.trim():v); };
+    const clash=(k,norm)=>{
+      const vals=g.members.map(m=>val(m,k)).filter(v=>v!=null).map(v=>norm?norm(v):v);
+      return new Set(vals).size>1;
+    };
+    const fields=[];
+    if(clash("name",normName)) fields.push("name");
+    if(clash("base_price",v=>Number(v))) fields.push("price");
+    if(clash("msrp",v=>Number(v))) fields.push("msrp");
+    if(clash("category",v=>String(v).trim().toLowerCase())) fields.push("category");
+    g.conflicts=fields;
+    g.no_conflict=fields.length===0;
+    if(fields.length) g.reasons.push("the two layers disagree on "+fields.join(", "));
+  });
   const ov=overrides||{};
   groups.forEach(g=>g.members.forEach(m=>{
     const o=ov[m.code]||{};
@@ -258,6 +283,129 @@ async function sweepManufacturer(slug){
     : (categoryMap?[...new Set(Object.values(categoryMap).map(String))]:[]);
   return JOIN.sweep({products,pages,categoryMap,dealerCategories,
     enrichedOnly:meta.enriched_only===true});
+}
+
+/* ── THE REPAIR PLAN ──────────────────────────────────────────────
+   The audit finds two classes of problem that need no judgement, only permission. This
+   computes exactly what would change and WRITES NOTHING — the edits are applied by the tool
+   that owns product_content, so they land in its history and can be undone like anything
+   else. Repairing a table behind an API that does not own it is how the two halves of this
+   platform drifted apart in the first place.
+
+   1. SKU NAMES A DEALER CANNOT TELL APART.
+      The master knows 10007RED is the RED one. The enrichment page calls it the same thing
+      as the black and the grey, and the shop shows the enrichment name — so a dealer opens
+      the product and sees three identical "Large" options. Only a STRICT EXTENSION is
+      proposed: the master name must begin with the enrichment name and add to it. That is a
+      colour or a side being restored, never a rename.
+
+   2. A RETIRED SKU STILL LISTED ON A LIVE PAGE.
+      Off Partner 360 by the catalog's reckoning, on it by the page's. Taking it off the
+      page's list is what makes the two agree. */
+function repairPlan(rows, pages){
+  const edits={}, name_fixes=[], retired_removals=[];
+  const push=(pk,fn)=>{ if(!edits[pk]) edits[pk]=((pages[pk]||{}).skus||[]).map(x=>Object.assign({},x)); fn(edits[pk]); };
+  for(const r of rows){
+    if(!r.page_key || !pages[r.page_key]) continue;
+    const U=JOIN.upper(r.code);
+    if(r.active===false && r.live_page_key){
+      push(r.page_key, arr=>{ const i=arr.findIndex(x=>JOIN.upper(x&&(x.sku||x.code))===U); if(i>=0) arr.splice(i,1); });
+      retired_removals.push({code:r.code, page_key:r.page_key});
+      continue;
+    }
+    const master=String(r.name||"").trim(), enrich=String(r.page_sku_name||"").trim();
+    if(!master||!enrich||master===enrich) continue;
+    if(master.length>enrich.length && master.slice(0,enrich.length)===enrich){
+      push(r.page_key, arr=>{ const i=arr.findIndex(x=>JOIN.upper(x&&(x.sku||x.code))===U); if(i>=0) arr[i].name=master; });
+      name_fixes.push({code:r.code, page_key:r.page_key, from:enrich, to:master});
+    }
+  }
+  return {name_fixes, retired_removals,
+    pages:Object.keys(edits).map(pk=>({page_key:pk, skus:edits[pk]}))};
+}
+
+/* ── THE CATALOG AUDIT ────────────────────────────────────────────────────────
+   Ten questions asked of one master list, in one pass, so a manufacturer line can be
+   judged as a whole instead of one screen at a time. Every bucket names the SKUs in it —
+   a count with no codes behind it is not something anyone can act on.
+
+   It reads. It changes nothing. */
+async function auditManufacturer(slug, sample){
+  const cap=Math.max(1,Math.min(200,sample||10));
+  const [products,pages,meta,mediaRows]=await Promise.all([
+    resolveCatalog(slug), loadPages(slug), loadMeta(slug),
+    sb("GET",`product_media?manufacturer=eq.${encodeURIComponent(slug)}&select=code`).catch(()=>[]),
+  ]);
+  const categoryMap=(meta.category_map&&typeof meta.category_map==="object")?meta.category_map:null;
+  const dealerCats=Array.isArray(meta.category_order)&&meta.category_order.length
+    ? meta.category_order.map(String)
+    : (categoryMap?[...new Set(Object.values(categoryMap).map(String))]:[]);
+  const swept=JOIN.sweep({products,pages,categoryMap,dealerCategories:dealerCats,
+    enrichedOnly:meta.enriched_only===true});
+  const rows=swept.rows, byCode={}; rows.forEach(r=>{ byCode[JOIN.upper(r.code)]=r; });
+
+  const B={}; const add=(k,v)=>{ (B[k]=B[k]||[]).push(v); };
+
+  /* One SKU in two layers is the duplicate that regenerates: the deployed catalog file and
+     an added row both holding the same code. It is counted separately from two SPELLINGS of
+     one code, because they are resolved by different actions. */
+  const inBase=new Set(products.filter(p=>p.kind==="catalog").map(p=>String(p.code)));
+  const inAdded=new Set(products.filter(p=>p.kind==="custom").map(p=>String(p.code)));
+  const rawBase=await fetchJson(`${ORDERING_BASE}/data/${slug}.json`).catch(()=>[]);
+  const baseCodes=new Set((rawBase||[]).map(x=>String(x.code)));
+  const custCodes=await sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code`)
+    .then(r=>new Set((r||[]).map(x=>String(x.code)))).catch(()=>new Set());
+  for(const c of baseCodes) if(custCodes.has(c)) add("duplicate_skus", c+" — in the catalog file and the added table");
+  const byNorm={}; rows.filter(r=>r.source==="catalog").forEach(r=>{ const n=normCode(r.code); if(n)(byNorm[n]=byNorm[n]||[]).push(r.code); });
+  Object.values(byNorm).forEach(v=>{ if(v.length>1) add("duplicate_skus", v.join(" / ")+" — the same code written differently"); });
+
+  // one SKU claimed by more than one enrichment page: the product boundary is wrong
+  const claims={};
+  Object.keys(pages).forEach(k=>((pages[k]||{}).skus||[]).forEach(sx=>{
+    const c=JOIN.upper(sx&&(sx.sku||sx.code)); if(c) (claims[c]=claims[c]||[]).push(k); }));
+  Object.keys(claims).forEach(c=>{ if(claims[c].length>1) add("duplicate_skus", c+" — claimed by "+claims[c].length+" pages: "+claims[c].join(", ")); });
+
+  // same product name on genuinely different codes
+  const byName={};
+  rows.filter(r=>r.source==="catalog"&&r.active).forEach(r=>{ const n=normName(r.name); if(n.length>5)(byName[n]=byName[n]||[]).push(r.code); });
+  Object.values(byName).forEach(v=>{ if(v.length>1 && new Set(v.map(normCode)).size>1) add("duplicate_products", v.slice(0,6).join(" / ")); });
+
+  for(const r of rows){
+    if(r.no_catalog_row){ add("published_not_in_master", r.code+" — listed on \""+r.page_key+"\" with no catalog record"); continue; }
+    if(!r.active){ if(r.live_page_key) add("discontinued_inconsistent", r.code+" — retired, but a live page still lists it"); continue; }
+    if(r.unlinked) add("unassigned_skus", r.code);
+    if(r.status==="needs_content" || r.unlinked) add("missing_content", r.code);
+    if(r.price==null && !(r.tiers&&r.tiers.length)) add("missing_pricing", r.code);
+    if(!r.category || (dealerCats.length && dealerCats.indexOf(r.category)<0))
+      add("missing_categories", r.code+(r.category?" ("+r.category+")":" (none)"));
+    if(!r.image && !r.media_count) add("missing_images", r.code);
+    /* THE ONE A COUNT WOULD HIDE. The master knows this SKU is the RED one; the enrichment
+       page calls it the same thing as the black and the grey. A dealer then sees three
+       identical options and cannot tell them apart. */
+    if(r.page_sku_name && r.name && normName(r.page_sku_name)!==normName(r.name))
+      add("conflicting_data", r.code+': master "'+r.name.slice(0,44)+'" vs enrichment "'+r.page_sku_name.slice(0,44)+'"');
+  }
+  // a page whose SKUs are ALL absent from the master is a product that exists in one tool only
+  Object.keys(pages).forEach(k=>{
+    const skus=((pages[k]||{}).skus||[]).map(sx=>JOIN.upper(sx&&(sx.sku||sx.code))).filter(Boolean);
+    if(skus.length && skus.every(c=>!byCode[c] || byCode[c].no_catalog_row))
+      add("missing_products", k+" — no catalog record for any of its "+skus.length+" SKU(s)");
+  });
+
+  const KEYS=["missing_products","duplicate_products","duplicate_skus","unassigned_skus",
+    "missing_content","missing_images","missing_pricing","missing_categories",
+    "conflicting_data","published_not_in_master","discontinued_inconsistent"];
+  const buckets={}; let open=0;
+  KEYS.forEach(k=>{ const v=B[k]||[]; open+=v.length;
+    buckets[k]={count:v.length, examples:v.slice(0,cap)}; });
+  return {ok:true, slug, master_skus:rows.filter(r=>r.source==="catalog").length,
+    enrichment_pages:Object.keys(pages).length,
+    live_pages:Object.keys(pages).filter(k=>JOIN.isLive(pages[k])).length,
+    visible_to_dealers:rows.filter(r=>r.visible).length,
+    media_rows:(mediaRows||[]).length,
+    counts:swept.counts, percent_published:swept.percent_published,
+    enriched_only:swept.enriched_only, findings:buckets, open_findings:open,
+    clean: open===0};
 }
 
 /* ── PRODUCT CREATED → … → APPEARS CORRECTLY IN PARTNER 360 ────────────────────
@@ -361,8 +509,28 @@ exports.handler = async (event)=>{
       // full catalog fields so the editor can show + edit everything (incl. tiers)
       const products=(prods||[]).map(p=>({code:p.code,name:p.name,category:p.category||"",image:p.image||"",
         base_price:p.base_price,msrp:p.msrp,description:p.description||"",tiers:p.tiers||null,price_note:p.price_note||"",group:p.group||""}));
+      /* ONE ANSWER TO "WHAT CATEGORY IS THIS?".
+         The Structure Map showed the derived heading, this screen showed the raw one, and
+         the same product read "Back & Spine" on one page and "Orthopedic Bracing & Supports"
+         on the other — both true, neither labelled. The category is resolved here, once, with
+         the same module the shop's rules are tested against, and handed to the screen with its
+         SOURCE attached so it can say where the answer came from instead of picking a layer. */
+      const [dpages,dmeta]=await Promise.all([loadPages(slug),loadMeta(slug)]);
+      const dmap=(dmeta.category_map&&typeof dmeta.category_map==="object")?dmeta.category_map:null;
+      const didx=JOIN.indexPages(dpages);
+      const derived={};
+      const allForCat=[]
+        .concat((products||[]).map(x=>Object.assign({},x,{kind:"catalog"})))
+        .concat((custom||[]).map(x=>Object.assign({},x,{kind:"custom"})));
+      for(const x of allForCat){
+        const o=overrides[x.code]||{};
+        const prod=Object.assign({},x,o,{kind:x.kind,
+          category_from_override:Object.prototype.hasOwnProperty.call(o,"category")&&o.category!=null&&o.category!==""});
+        const pk=JOIN.resolvePage(prod,didx,dpages);
+        derived[String(x.code)]=JOIN.resolveCategory({product:prod,page:pk?dpages[pk]:null,categoryMap:dmap});
+      }
       return json(200,{products,custom:custom||[],links:linkMap,overrides,featured,media,
-        ordering_base:ORDERING_BASE});
+        derived, category_map:dmap, ordering_base:ORDERING_BASE});
     }
 
     if(event.httpMethod==="POST"){
@@ -402,12 +570,12 @@ exports.handler = async (event)=>{
            is refused, and the caller is told what it collided with so it can enrich that
            record instead. Pass allow_duplicate:true only for a genuinely different variant. */
         const codeIn=String(p.code).trim();
+        const [baseAll,customAll]=await Promise.all([
+          fetchJson(`${ORDERING_BASE}/data/${mfr}.json`).catch(()=>[]),
+          sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&select=code,name`).catch(()=>[]),
+        ]);
         if(b.allow_duplicate!==true){
           const nk=normCode(codeIn);
-          const [baseAll,customAll]=await Promise.all([
-            fetchJson(`${ORDERING_BASE}/data/${mfr}.json`).catch(()=>[]),
-            sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&select=code,name`).catch(()=>[]),
-          ]);
           const clash=[]
             .concat((baseAll||[]).map(x=>({code:String(x.code),name:x.name||"",kind:"catalog"})))
             .concat((customAll||[]).map(x=>({code:String(x.code),name:x.name||"",kind:"added"})))
@@ -418,6 +586,38 @@ exports.handler = async (event)=>{
               message:`SKU "${codeIn}" is the same item as "${clash.code}", which is already in the catalog. `
                     + `Enrich that record instead of creating a second copy — or resend with allow_duplicate:true if this really is a different model.`});
           }
+        }
+        /* THE SAME LITERAL CODE IS AN UPDATE — BUT ONLY WHERE THE RECORD ALREADY IS.
+           Writing custom_products under a code that only exists in the DEPLOYED CATALOG FILE
+           is not an update, it is a second layer for a product that already has one, and the
+           duplicate scan reports it as a same-code duplicate forever after. A change to a
+           catalog product belongs on the override layer, which is exactly what it is for.
+
+           Prices always win — a price is the reason anyone publishes. Descriptive fields are
+           written only where the catalog record has nothing, so publishing never quietly
+           overwrites a name or a category someone already settled on. */
+        const inCustom=(customAll||[]).some(x=>String(x.code)===codeIn);
+        const baseRec=(baseAll||[]).find(x=>String(x.code)===codeIn)||null;
+        if(!inCustom && baseRec){
+          const now2=new Date().toISOString();
+          const ex=await sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(codeIn)}&select=patch`).catch(()=>[]);
+          const patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{});
+          const carried=[];
+          const put=(k,v)=>{ if(v!=null&&v!==""){ patch[k]=v; carried.push(k); } };
+          put("base_price",num(p.base_price)); put("msrp",num(p.msrp)); put("map",num(p.map));
+          if(p.msrp_auto===true) put("msrp_auto",true);
+          const t=cleanTiers(p.tiers); if(t) put("tiers",t);
+          put("price_note",p.price_note||null);
+          ["name","category","image","description"].forEach(k=>{
+            const v=k==="name"?String(p.name||"").trim():(p[k]||null);
+            if(v!=null&&v!=="" && !(baseRec[k]!=null&&String(baseRec[k]).trim()!=="")) put(k,v);
+          });
+          if(p.active===false) patch.active=false;
+          await sb("POST","product_overrides?on_conflict=manufacturer,code",
+            {manufacturer:mfr,code:codeIn,patch,updated_at:now2},
+            {Prefer:"resolution=merge-duplicates,return=minimal"});
+          return json(200,{ok:true, layer:"override", code:codeIn, carried,
+            message:`"${codeIn}" is already a catalog product — it was updated in place instead of being added a second time.`});
         }
         await sb("POST","custom_products?on_conflict=manufacturer,code",{
           manufacturer:mfr, code:String(p.code).trim(), name:String(p.name).trim(),
@@ -579,8 +779,21 @@ exports.handler = async (event)=>{
         const mfr=b.manufacturer; const rows=Array.isArray(b.rows)?b.rows:[];
         if(!mfr||!rows.length) return json(400,{error:"manufacturer and rows required"});
         const enc=encodeURIComponent;
-        const cust=await sb("GET",`custom_products?manufacturer=eq.${enc(mfr)}&select=code`).catch(()=>[]);
+        /* THE DOOR THAT KEPT REFILLING THE DUPLICATE QUEUE.
+           This used to look only at custom_products. Any imported row carrying a name whose
+           code was not already an ADDED product got a new custom_products row — including,
+           and usually, codes that already existed in the deployed catalog file. One code in
+           two layers is exactly what the duplicate scan calls a same-code duplicate, so every
+           price-list import manufactured a fresh batch of them to review. A 243-row list
+           produced 243. The catalog file is now read too: a code that already exists there is
+           PRICED THROUGH THE OVERRIDE LAYER, which is where a change to a catalog product
+           belongs, and no second record is created. */
+        const [cust,baseAll]=await Promise.all([
+          sb("GET",`custom_products?manufacturer=eq.${enc(mfr)}&select=code`).catch(()=>[]),
+          fetchJson(`${ORDERING_BASE}/data/${mfr}.json`).catch(()=>[]),
+        ]);
         const customCodes=new Set((cust||[]).map(r=>String(r.code)));
+        const baseCodes=new Set((baseAll||[]).map(r=>String(r.code)));
         /* Fields an imported price row can carry. Case quantity and effective date are
            real facts from the manufacturer's sheet, but only the override layer stores
            arbitrary keys (its patch is jsonb) — a custom_products row has fixed columns.
@@ -604,7 +817,7 @@ exports.handler = async (event)=>{
           if(r.price_note!=null) f.price_note=String(r.price_note);
           else if(bits.length) f.price_note=bits.join(" · ");
           return f; };
-        let applied=0, created=0, failed=0; const now=new Date().toISOString();
+        let applied=0, created=0, failed=0, priced_in_place=0; const now=new Date().toISOString();
         for(const r of rows){
           const code=String(r.code||"").trim(); if(!code) continue;
           const pf=priceFields(r);
@@ -613,7 +826,7 @@ exports.handler = async (event)=>{
               await sb("PATCH",`custom_products?manufacturer=eq.${enc(mfr)}&code=eq.${enc(code)}`,
                 Object.assign({},pf,{updated_at:now}),{Prefer:"return=minimal"});
               applied++;
-            } else if(r.create===true || (r.name!=null && String(r.name).trim())){
+            } else if(!baseCodes.has(code) && (r.create===true || (r.name!=null && String(r.name).trim()))){
               await sb("POST","custom_products?on_conflict=manufacturer,code",
                 Object.assign({manufacturer:mfr,code,name:String(r.name||code).trim(),category:r.category||null,active:true,updated_at:now},pf),
                 {Prefer:"resolution=merge-duplicates,return=minimal"});
@@ -623,11 +836,11 @@ exports.handler = async (event)=>{
               const patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{},pf);
               await sb("POST","product_overrides?on_conflict=manufacturer,code",
                 {manufacturer:mfr,code,patch,updated_at:now},{Prefer:"resolution=merge-duplicates,return=minimal"});
-              applied++;
+              applied++; if(baseCodes.has(code)) priced_in_place++;
             }
           }catch(e){ failed++; }
         }
-        return json(200,{ok:true,applied,created,failed});
+        return json(200,{ok:true,applied,created,failed,priced_in_place});
       }
       // Set the shop CATEGORY for a set of SKU codes so the ordering platform re-files them —
       // this is what makes an accepted category in the Catalog Review actually move the product on
@@ -902,7 +1115,7 @@ exports.handler = async (event)=>{
           sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(mfr)}&select=code,patch`).catch(()=>[]),
         ]);
         const overrides=Object.fromEntries((ovRows||[]).map(o=>[o.code,o.patch||{}]));
-        const groups=duplicateGroups(base,custom,overrides);
+        let groups=duplicateGroups(base,custom,overrides);
         // Connections only for the codes actually in a group — a full-catalog join would be
         // hundreds of round trips for information nobody is looking at.
         const codes=[...new Set(groups.flatMap(g=>g.members.map(m=>m.code)))].slice(0,200);
@@ -913,7 +1126,36 @@ exports.handler = async (event)=>{
            The same answer for every code costs five queries in total. */
         const conn=await connectionsForMany(mfr,codes).catch(()=>({}));
         groups.forEach(g=>g.members.forEach(m=>{ m.connections=conn[m.code]||null; }));
-        return json(200,{ok:true,groups,scanned:(base||[]).length+(custom||[]).length});
+
+        /* SETTLE THE ONES THAT ARE NOT DECISIONS. A same-code pair whose layers agree is
+           bookkeeping: the shop already shows the right thing and consolidation would pick
+           exactly the values that are already there. Stamping it here means it leaves the
+           queue for good instead of being recomputed and re-reviewed on every scan — which
+           is what made this list feel endless. Anything the layers disagree about is left
+           alone and still comes to a person. Pass no_auto:true to scan without settling. */
+        let auto=[];
+        if(b.no_auto!==true){
+          /* duplicateGroups has already dropped every group with a settled member, so a
+             same-code group still standing here has never been consolidated. */
+          auto=groups.filter(g=>g.same_code && g.no_conflict && g.code).map(g=>String(g.code));
+          if(auto.length){
+            const now=new Date().toISOString();
+            const rows=auto.map(code=>({manufacturer:mfr, code,
+              patch:Object.assign({},overrides[code]||{},
+                {layers_merged_at:now, layers_merged_by:"auto", layers_merged_auto:true}),
+              updated_at:now}));
+            try{
+              for(let i=0;i<rows.length;i+=200){
+                await sb("POST","product_overrides?on_conflict=manufacturer,code",rows.slice(i,i+200),
+                  {Prefer:"resolution=merge-duplicates,return=minimal"});
+              }
+              const done=new Set(auto);
+              groups=groups.filter(g=>!(g.same_code && g.code && done.has(String(g.code))));
+            }catch(e){ auto=[]; }   // could not stamp → leave them in the queue rather than hide them
+          }
+        }
+        return json(200,{ok:true,groups,scanned:(base||[]).length+(custom||[]).length,
+          auto_settled:auto.length, auto_settled_codes:auto.slice(0,200)});
       }
 
       /* Merge two records into one. The winner keeps its own code; the loser is RETIRED,
@@ -1350,16 +1592,28 @@ exports.handler = async (event)=>{
         const mfr=String(b.manufacturer||"").trim();
         if(!mfr) return json(400,{error:"manufacturer required"});
         const e=encodeURIComponent, now=new Date().toISOString();
-        const ovAll=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]);
+        /* A heading does not live in one place. A pin sits in the override patch, but an
+           ADDED product carries its category in a COLUMN on custom_products — and this action
+           never read that table, which is why "Orthopedic Bracing & Supports" survived being
+           removed: added rows still held the string. Both layers are cleared now, so the
+           heading actually disappears and the subcategory map decides. */
+        const [ovAll,custAll]=await Promise.all([
+          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code,category`).catch(()=>[]),
+        ]);
         /* `only` narrows it to the pins holding one doomed heading in place — used when a
            category is being emptied, so the rest of the pins are left exactly as they are. */
         const only=(b.only==null||b.only==="")?null:String(b.only).trim();
         const hits=(ovAll||[]).filter(r=>r.patch && r.patch.category!=null && r.patch.category!==""
           && (only===null || String(r.patch.category).trim()===only));
+        const custHits=(custAll||[]).filter(r=>r.category!=null && String(r.category).trim()!==""
+          && (only===null || String(r.category).trim()===only));
         if(b.preview===true)
-          return json(200,{ok:true,preview:true,count:hits.length,
-            sample:hits.slice(0,10).map(r=>({code:String(r.code),category:r.patch.category}))});
-        if(!hits.length) return json(200,{ok:true,cleared:0});
+          return json(200,{ok:true,preview:true,count:hits.length+custHits.length,
+            pinned:hits.length, added:custHits.length,
+            sample:hits.slice(0,10).map(r=>({code:String(r.code),category:r.patch.category,layer:"pinned"}))
+              .concat(custHits.slice(0,10).map(r=>({code:String(r.code),category:r.category,layer:"added"})))});
+        if(!hits.length && !custHits.length) return json(200,{ok:true,cleared:0,pinned:0,added:0});
         const rows=hits.map(r=>{ const patch=Object.assign({},r.patch); delete patch.category;
           return {manufacturer:mfr, code:String(r.code), patch, updated_at:now}; });
         // One upsert for all of them.
@@ -1367,7 +1621,16 @@ exports.handler = async (event)=>{
           await sb("POST","product_overrides?on_conflict=manufacturer,code",rows.slice(i,i+200),
             {Prefer:"resolution=merge-duplicates,return=minimal"});
         }
-        return json(200,{ok:true,cleared:rows.length});
+        /* The added rows are cleared by filter rather than one call each — a whole line's
+           worth of headings is one request. */
+        if(custHits.length){
+          const filter=only===null ? "category=not.is.null"
+                                   : `category=eq.${e(only)}`;
+          await sb("PATCH",`custom_products?manufacturer=eq.${e(mfr)}&${filter}`,
+            {category:null,updated_at:now},{Prefer:"return=minimal"}).catch(()=>{});
+        }
+        return json(200,{ok:true,cleared:rows.length+custHits.length,
+          pinned:rows.length, added:custHits.length});
       }
 
       if(b.action==="set_category_map"){
@@ -1604,6 +1867,28 @@ exports.handler = async (event)=>{
          point is not that it passes — it is that when it does not, it names the step and
          the products that broke it, so a line can be proven finished before the next one
          is started. */
+      /* THE CATALOG AUDIT REPORT — ten buckets, one manufacturer, read-only. */
+      if(b.action==="catalog_audit"){
+        const slug=String(b.manufacturer||"").trim();
+        if(!slug) return json(400,{error:"manufacturer required"});
+        return json(200,await auditManufacturer(slug, parseInt(b.sample,10)||10));
+      }
+
+      /* WHAT COULD BE REPAIRED WITHOUT A JUDGEMENT CALL — computed here, applied by the
+         tool that owns the table, so every edit is undoable from History. */
+      if(b.action==="repair_plan"){
+        const slug=String(b.manufacturer||"").trim();
+        if(!slug) return json(400,{error:"manufacturer required"});
+        const [products,pages,meta]=await Promise.all([resolveCatalog(slug),loadPages(slug),loadMeta(slug)]);
+        const categoryMap=(meta.category_map&&typeof meta.category_map==="object")?meta.category_map:null;
+        const swept=JOIN.sweep({products,pages,categoryMap,
+          dealerCategories:Array.isArray(meta.category_order)?meta.category_order.map(String):[],
+          enrichedOnly:meta.enriched_only===true});
+        const plan=repairPlan(swept.rows, pages);
+        return json(200,Object.assign({ok:true,slug},plan,
+          {total:plan.name_fixes.length+plan.retired_removals.length}));
+      }
+
       if(b.action==="flow_test"){
         const slug=String(b.manufacturer||"").trim();
         if(!slug) return json(400,{error:"manufacturer required"});

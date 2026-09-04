@@ -65,6 +65,37 @@ function resolvePage(product, idx, pages) {
 
 const isLive = pg => !!pg && LIVE_STATUSES.indexOf(str(pg.status)) >= 0;
 
+/* ── WHAT IS THIS PRODUCT'S CATEGORY, AND WHO SAID SO ─────────────────────────
+   A category has four possible homes, and until now every screen picked its own subset:
+   the deployed catalog file's own field, the added row's column, a pin typed into the
+   override patch, and the subcategory map applied at read time. The Structure Map showed
+   the derived answer, the Product Catalog showed the raw one, the shop showed a third
+   thing — all reading the same records and disagreeing, because nobody had ever written
+   down what the question means.
+
+   This is that definition. It returns the answer AND its source, so a screen can show
+   "Back & Spine" and say underneath where it came from, instead of quietly showing one
+   layer and letting the person discover the other on a different page.
+
+   The precedence is the shop's, exactly: a pin a person typed wins; otherwise the
+   subcategory map fills the answer; otherwise whatever the record itself carries. */
+function resolveCategory(input) {
+  const p = (input && input.product) || {};
+  const page = (input && input.page) || null;
+  const map = (input && input.categoryMap) || null;
+  const internal = str(p.category);
+  const sub = (page && str(page.subcategory)) || str(p.subcategory);
+
+  // A category typed in the admin is a decision. The map fills the answer, it never overrules one.
+  if (p.category_from_override && internal)
+    return { category: internal, source: "pinned", internal, subcategory: sub };
+  if (map && sub && map[sub])
+    return { category: String(map[sub]), source: "map", internal, subcategory: sub };
+  if (internal)
+    return { category: internal, source: p.kind === "custom" ? "added" : "catalog", internal, subcategory: sub };
+  return { category: "", source: "none", internal: "", subcategory: sub };
+}
+
 /* ── the join ─────────────────────────────────────────────────────────────────
    products : resolved catalog SKUs — the five price layers already applied by the caller.
               {code,name,group,category,subcategory,image,price,tiers,active,media_count}
@@ -100,14 +131,11 @@ function buildJoin(input) {
     if (pageKey) claimed[upper(code)] = true;
 
     // The enrichment record is the master for the things enrichment decides.
-    let subcategory = str(p.subcategory);
-    if (pg && str(pg.subcategory)) subcategory = str(pg.subcategory);
-    let category = str(p.category);
-    if (categoryMap && subcategory && !p.category_from_override) {
-      const mapped = categoryMap[subcategory];
-      if (mapped) category = String(mapped);
-    }
+    const rc = resolveCategory({ product: p, page: pg, categoryMap });
+    const subcategory = rc.subcategory;
+    const category = rc.category;
 
+    const sxEntry = idx.skuEntry[upper(code)] || null;
     const gallery = pg ? arr(pg.images_gallery) : [];
     const prim = gallery.find(g => g && g.primary);
     const image = (prim && prim.url) || str(p.image) || (pg && str(pg.image)) || "";
@@ -123,6 +151,11 @@ function buildJoin(input) {
       page_status: pg ? str(pg.status) : "",
       page_name: pg ? str(pg.name) : "",
       category, subcategory,
+      category_source: rc.source, category_internal: rc.internal,
+      page_sku_name: sxEntry ? str(sxEntry.name) : "",
+      page_sku_size: sxEntry ? str(sxEntry.size) : "",
+      pages_claiming: Object.keys(pages).filter(k => arr(pages[k] && pages[k].skus)
+        .some(sx => upper(sx && (sx.sku || sx.code)) === upper(code))).length,
       price: p.price == null ? null : p.price,
       tiers: arr(p.tiers),
       image,
@@ -254,5 +287,5 @@ function sweep(input) {
 module.exports = {
   LIVE_STATUSES, STATUSES, LABELS,
   upper, normCode, indexPages, resolvePage, isLive,
-  buildJoin, statusFor, sweep,
+  resolveCategory, buildJoin, statusFor, sweep,
 };

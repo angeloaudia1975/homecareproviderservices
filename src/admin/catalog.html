@@ -317,7 +317,7 @@ function exportShelf(){
   const rows=[["code","name","category","dealer_price","tiers","visible_to_dealers","reason","note"]];
   effProducts().slice().sort((a,b)=>String(a.code).localeCompare(String(b.code))).forEach(p=>{
     const v=visibilityOf(p);
-    rows.push([p.code, p.name||"", p.category||"",
+    rows.push([p.code, p.name||"", catOf(p), p._internal||"",
       (p.base_price==null||p.base_price==="")?"":Number(p.base_price).toFixed(2),
       String((p.tiers&&p.tiers.length)||0), v.visible?"yes":"no", v.why||"", v.note||""]);
   });
@@ -356,8 +356,8 @@ let PDRAFT=null, PRODQ="", PCAT="", PSTAT="", PSORT="name", PLIMIT=60;
 function filteredSortedProducts(){
   let arr=effProducts();
   const q=PRODQ.toLowerCase().trim();
-  if(q) arr=arr.filter(p=>(`${p.code} ${p.name} ${p.category||""}`.toLowerCase().includes(q)));
-  if(PCAT) arr=arr.filter(p=>(p.category||"")===PCAT);
+  if(q) arr=arr.filter(p=>(`${p.code} ${p.name} ${catOf(p)} ${p._internal||""}`.toLowerCase().includes(q)));
+  if(PCAT) arr=arr.filter(p=>catOf(p)===PCAT);
   if(PSTAT==="shown") arr=arr.filter(p=>p.active!==false);
   else if(PSTAT==="hidden") arr=arr.filter(p=>p.active===false);
   else if(PSTAT==="featured") arr=arr.filter(p=>isFeat(p.code));
@@ -392,8 +392,31 @@ function effProducts(){
      invisible in the admin while the portal was honouring it. Same merge for both kinds. */
   (DETAIL.custom||[]).forEach(p=>{ const o=over[p.code]||{};
     map.set(p.code,{...p,...o,kind:"custom",edited:!!over[p.code]}); });
-  _EFF=[...map.values()];
+  /* THE DEALER CATEGORY, AND WHERE IT CAME FROM — resolved on the server by the same
+     module the shop's rules are tested against, never recomputed here. This screen used to
+     show the RAW category while the Structure Map showed the DERIVED one, so the same
+     product read "Orthopedic Bracing & Supports" here and "Back & Spine" there. Both were
+     true; neither said which layer it was showing. Now there is one answer and it carries
+     its own source, so the two screens cannot drift apart again. */
+  const der=(DETAIL&&DETAIL.derived)||{};
+  _EFF=[...map.values()].map(p=>{
+    const d=der[String(p.code)]||null;
+    return Object.assign(p,{
+      _cat: d ? d.category : (p.category||""),
+      _catSource: d ? d.source : "catalog",
+      _internal: d ? d.internal : (p.category||""),
+    });
+  });
   return _EFF;
+}
+/* What a dealer sees. Everything on this screen that says "category" means this. */
+const catOf=p=>String((p&&p._cat)||"");
+/* Shown underneath it, labelled, exactly as the Structure Map labels it — only when the
+   record's own value is different from the answer, because that is the only time it tells
+   you anything. */
+function internalCatNote(p){
+  const raw=String((p&&p._internal)||"").trim();
+  return (raw && raw!==catOf(p)) ? raw : "";
 }
 function tiersOf(p){ return Array.isArray(p&&p.tiers)?p.tiers.map(t=>({min_qty:t.min_qty??t.minQty??1,price:t.price})):[]; }
 
@@ -424,7 +447,7 @@ function skuKin(code){
 function orderingBase(){ return (DETAIL&&DETAIL.ordering_base)||"https://hcpsonlineordering.netlify.app"; }
 function previewUrl(code){ return orderingBase()+"/?product="+encodeURIComponent(code)+"&mfr="+encodeURIComponent(SLUG); }
 function isFeat(code){ return (DETAIL.featured||[]).includes(code); }
-function catList(){ return [...new Set(effProducts().map(p=>p.category).filter(Boolean))].sort(); }
+function catList(){ return [...new Set(effProducts().map(catOf).filter(Boolean))].sort(); }
 /* Existing groups, offered as suggestions — the fastest way to fix a stray SKU is to pick
    the group its siblings already use rather than retyping a string that must match exactly. */
 function groupList(){ return [...new Set(effProducts().map(p=>String(p.group||"").trim()).filter(Boolean))].sort(); }
@@ -666,7 +689,8 @@ function prodListHtml(){
      <td class="pickcell"><input type="checkbox" ${PSEL.has(p.code)?"checked":""} onchange="prodPick('${esc(p.code)}',this.checked)"
        title="${p.kind==="custom"?"Select — added products can be deleted":"Select — a standard catalog product can be hidden but not deleted"}"></td>
      <td><b>${esc(p.name)}</b> ${statusChip(st)}${p.kind==="custom"?'<span class="chip cst">added</span>':(p.edited?'<span class="chip ed">edited</span>':"")}${ft?'<span class="chip ft">★ featured</span>':''}
-        <div style="font-size:11px;color:var(--gray)">${esc(p.code)}${p.category?" · "+esc(p.category):""}${
+        <div style="font-size:11px;color:var(--gray)">${esc(p.code)}${catOf(p)?" · "+esc(catOf(p)):""}${
+          internalCatNote(p)?`<span title="What this record itself stores. The heading above is what a dealer sees — it comes from the subcategory map."> · internal: ${esc(internalCatNote(p))}</span>`:""}${
           st==="merged"?` · merged into <b>${esc(o.merged_into)}</b>`:""}${
           st==="duplicate"?` · <a href="#dupreview" onclick="focusDup('${esc(p.code)}');return false;">see why</a>`:""}${(()=>{
             const k=skuKin(p.code); const bits=[];
@@ -1588,7 +1612,7 @@ function render(){
             ${rows.map((c,i)=>`<div style="display:flex;gap:6px;align-items:center;background:#fff;border:1px solid var(--silver);border-radius:8px;padding:5px 8px">
               <span style="width:20px;color:var(--gray);font-variant-numeric:tabular-nums">${i+1}</span>
               <span style="flex:1;font-weight:600${(stored&&!placed.includes(c))?";color:#8a5a12":""}">${esc(c)}</span>
-              <span class="hint" style="margin:0">${effProducts().filter(p=>p.category===c).length}</span>
+              <span class="hint" style="margin:0">${effProducts().filter(p=>catOf(p)===c).length}</span>
               <button class="btn ghost sm" ${i===0?"disabled":""} onclick="moveCat(${i},-1)" title="Move up">↑</button>
               <button class="btn ghost sm" ${i===rows.length-1?"disabled":""} onclick="moveCat(${i},1)" title="Move down">↓</button>
             </div>`).join("")}

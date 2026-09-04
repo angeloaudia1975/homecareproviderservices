@@ -352,6 +352,11 @@ body.sm-dragging .sm-pin,body.sm-dragging .sm-sub{outline:1px dashed #c9d6e6;out
 .cbchip.ok{color:var(--good);background:var(--goodbg)}
 .cbchip.mut{color:var(--hid);background:var(--hidbg)}
 .cbwarn{color:var(--bad);font-size:10.5px;font-weight:700;white-space:nowrap}
+/* The audit table is a different shape from the product list: three columns, the first a
+   label that must not wrap mid-phrase, the last a long list of part numbers. */
+.cbaudit th:nth-child(1),.cbaudit td:nth-child(1){min-width:250px;width:250px}
+.cbaudit th:nth-child(2),.cbaudit td:nth-child(2){min-width:64px;width:64px}
+.cbaudit th:nth-child(3),.cbaudit td:nth-child(3){min-width:380px}
 .cbflow{border:1px solid var(--line);border-radius:12px;background:var(--paper);padding:10px 12px}
 .cbflowhead{display:flex;gap:10px;align-items:center;margin-bottom:6px}
 /* Each step is one block. Without a divider the offender list reads as if it belonged to
@@ -1010,6 +1015,10 @@ document.addEventListener('click',async function(e){
   if(act==='cb-refresh')  return openCompletionBoard(true);
   if(act==='cb-filter'){ CB.filter=(CB.filter===k?'':k); cbRender(); return; }
   if(act==='cb-flow')     return cbFlowTest();
+  if(act==='cb-audit')    return cbAudit();
+  if(act==='cb-audit-export') return cbAuditExport();
+  if(act==='cb-repair')       return cbRepair();
+  if(act==='cb-repair-apply') return cbRepairApply();
   if(act==='cb-export')   return cbExport();
   if(act==='cb-open'){ document.getElementById('overlay').classList.remove('show');
     openCards.add(k); render();
@@ -4207,7 +4216,7 @@ async function doNewProduct(force){
   pages[npk]={page_key:npk,name,category:cat,family:fam,skus:skusForContent,
     sku_count:skusForContent.length,status:'pending_review',features:[]};
   _catalogCache=null;   // Price Check and the Completion board will re-read the catalog
-  CB.data=null;         // and the board must not show a count taken before this product existed
+  CB.data=null; CB.audit=null;   // the board and the audit must not report counts taken before this existed
   document.getElementById('overlay').classList.remove('show'); openCards.add(npk);
   if(dupBlocked) reportCollisions(_pubCollisions);
   if(refused.length) toast('Created "'+name+'" with '+inCatalog.length+' SKU(s). '+refused.length+
@@ -4275,7 +4284,7 @@ async function doUndo(id,btn){ btn.disabled=true; const r=await apiWrite({action
 
    Nothing here writes. It is a view of the master record, which is the point.
    ═══════════════════════════════════════════════════════════════════════════════ */
-const CB={data:null,filter:'',q:'',flow:null,loading:false};
+const CB={data:null,filter:'',q:'',flow:null,audit:null,plan:null,loading:false};
 const CB_ORDER=['possible_duplicate','needs_sku_review','needs_pricing','needs_category',
                 'needs_images','needs_content','ready_to_publish','published','retired'];
 const CB_LABEL={possible_duplicate:'Possible Duplicate',needs_sku_review:'Needs SKU Review',
@@ -4341,6 +4350,7 @@ function cbRender(){
       </div>
       <div class="cbacts">
         <button class="btn grad" data-act="cb-flow">▶ Run the 10-step flow test</button>
+        <button class="btn ghost" data-act="cb-audit">🔍 Full catalog audit</button>
         <button class="btn ghost" data-act="cb-export">⭳ Export CSV</button>
         <button class="btn ghost" data-act="cb-refresh">↻ Refresh</button>
       </div>
@@ -4348,6 +4358,8 @@ function cbRender(){
     <div class="rule" style="font-size:12px">${gate} Every SKU below comes from the Product Catalog — <b>nothing was created to put it here</b>, and its status is worked out from what is actually attached to it.</div>
     <div class="cbtiles">${CB_ORDER.map(tile).join('')}</div>
     ${CB.flow?cbFlowHtml():''}
+    ${CB.audit?cbAuditHtml():''}
+    ${CB.plan?cbPlanHtml():''}
     <div class="cbfilter">
       <input id="cbq" type="search" placeholder="Find a SKU, product or category…" value="${escA(CB.q)}">
       ${CB.filter?`<button class="btn ghost" data-act="cb-filter" data-k="${CB.filter}">✕ ${esc(CB_LABEL[CB.filter])}</button>`:''}
@@ -4396,6 +4408,104 @@ function cbFlowHtml(){
       ${st.offenders&&st.offenders.length?`<span class="off mono">${st.offenders.map(esc).join(', ')}${st.offender_count>st.offenders.length?` +${st.offender_count-st.offenders.length} more`:''}</span>`:''}
     </li>`).join('')}</ol>
   </div>`;
+}
+
+/* ── THE CATALOG AUDIT ────────────────────────────────────────────────────────
+   Ten questions asked of the one master list. Every bucket names the SKUs in it, because
+   a count nobody can act on is not a finding. It reads and changes nothing. */
+const CB_AUDIT=[
+  ['missing_products','Missing products','a product that exists in one tool and not the other'],
+  ['duplicate_products','Duplicate products','the same name on genuinely different part numbers'],
+  ['duplicate_skus','Duplicate SKUs','one code in two layers, two spellings of one code, or a SKU on two pages'],
+  ['unassigned_skus','Unassigned SKUs','a catalog SKU no enrichment page claims'],
+  ['missing_content','Products missing content','no description and no features'],
+  ['missing_images','Products missing images','nothing on the SKU, its page, or its media'],
+  ['missing_pricing','Products missing pricing','no price survives the catalog layers, and no tier'],
+  ['missing_categories','Products missing categories','no heading, or one dealers are not offered'],
+  ['conflicting_data','Conflicting data','the master and the enrichment record disagree'],
+  ['published_not_in_master','Published but not in the master','live to dealers with no catalog record behind it'],
+  ['discontinued_inconsistent','Discontinued inconsistently','retired here, still on a live page there'],
+];
+async function cbAudit(){
+  const r=await catalogPost({action:'catalog_audit',manufacturer:MFR,sample:25});
+  if(!r.ok||!r.json||r.json.ok===false){ toast((r.json&&r.json.error)||'Audit failed',true); return; }
+  CB.audit=r.json; cbRender();
+}
+function cbAuditHtml(){
+  const a=CB.audit, f=a.findings||{};
+  const row=([k,label,why])=>{ const b=f[k]||{count:0,examples:[]};
+    return `<tr class="${b.count?'bad':'ok'}">
+      <td><b>${esc(label)}</b><div class="mut" style="font-size:11px">${esc(why)}</div></td>
+      <td class="n"><span class="cbchip ${b.count?'bad':'ok'}">${b.count}</span></td>
+      <td class="mono" style="font-size:11px">${b.examples.length?b.examples.map(esc).join('<br>'):'<span class="mut">nothing</span>'}</td></tr>`; };
+  return `<div class="cbflow">
+    <div class="cbflowhead"><b>Catalog audit · ${esc(a.slug)}</b>
+      ${a.clean?'<span class="cbchip ok">Clean — nothing open</span>'
+               :`<span class="cbchip bad">${a.open_findings} finding(s)</span>`}
+      <span class="mut" style="font-size:11.5px">${a.master_skus} master SKUs · ${a.live_pages} live pages · ${a.visible_to_dealers} visible to dealers</span>
+      <button class="btn ghost sm" data-act="cb-repair" style="margin-left:auto">🛠 Repair what can be repaired</button>
+      <button class="btn ghost sm" data-act="cb-audit-export">⭳ CSV</button></div>
+    <div class="tabscroll" style="max-height:40vh"><table class="cbt cbaudit"><thead><tr>
+      <th>Finding</th><th class="n">Count</th><th>SKUs</th>
+    </tr></thead><tbody>${CB_AUDIT.map(row).join('')}</tbody></table></div>
+  </div>`;
+}
+/* ── REPAIR ────────────────────────────────────────────────────────────────────
+   Two classes of problem that need permission rather than judgement. The plan is computed
+   by the catalog side and shown in full BEFORE anything is written; applying it goes
+   through the enrichment API, which owns product_content — so every edit is in History and
+   undoable. Nothing here guesses. */
+async function cbRepair(){
+  const r=await catalogPost({action:'repair_plan',manufacturer:MFR});
+  if(!r.ok||!r.json||r.json.ok===false){ toast((r.json&&r.json.error)||'Could not build a repair plan',true); return; }
+  CB.plan=r.json;
+  if(!CB.plan.total) toast('Nothing here can be repaired automatically — what is left needs a decision.');
+  cbRender();
+}
+function cbPlanHtml(){
+  const p=CB.plan;
+  if(!p.total) return `<div class="note" style="margin-top:8px">Nothing can be repaired without a judgement call. Everything still open needs a decision from you.</div>`;
+  const nf=p.name_fixes.slice(0,25).map(x=>`<tr><td class="mono">${esc(x.code)}</td>
+    <td class="mut">${esc(x.from)}</td><td><b>${esc(x.to)}</b></td></tr>`).join('');
+  const rr=p.retired_removals.slice(0,25).map(x=>`<tr><td class="mono">${esc(x.code)}</td>
+    <td class="mut">retired</td><td>taken off <b>${esc(x.page_key)}</b></td></tr>`).join('');
+  return `<div class="cbflow" style="margin-top:8px">
+    <div class="cbflowhead"><b>${p.total} repair(s) proposed</b>
+      <span class="mut" style="font-size:11.5px">${p.name_fixes.length} SKU name(s) · ${p.retired_removals.length} retired SKU(s) on a live page · ${p.pages.length} page(s) touched</span>
+      <button class="btn dark sm" data-act="cb-repair-apply" style="margin-left:auto">Apply all ${p.total}</button></div>
+    <div class="rule" style="font-size:12px">A name is only changed where the master says <i>more</i> than the enrichment record — a colour or a side being restored, never a rename. Everything below is written through the enrichment tool, so <b>History undoes it</b>.</div>
+    <div class="tabscroll" style="max-height:34vh"><table class="cbt"><thead><tr>
+      <th>SKU</th><th>Now</th><th>Becomes</th></tr></thead><tbody>${nf}${rr}</tbody></table></div>
+  </div>`;
+}
+async function cbRepairApply(){
+  const p=CB.plan; if(!p||!p.pages.length) return;
+  let done=0, failed=0;
+  for(const pg of p.pages){
+    const r=await apiWrite({action:'save_skus',page_key:pg.page_key,skus:pg.skus});
+    if(r.ok&&(!r.json||r.json.ok!==false)){ done++; if(pages[pg.page_key]) pages[pg.page_key].skus=pg.skus; }
+    else failed++;
+  }
+  CB.plan=null; CB.data=null; CB.audit=null;
+  toast(failed ? `${done} page(s) repaired · ${failed} failed — check History`
+               : `${done} page(s) repaired. Undo any of it from History.`, !!failed);
+  await openCompletionBoard(true);
+  render();
+}
+
+function cbAuditExport(){
+  const a=CB.audit; if(!a) return;
+  const cell=v=>{ const t=String(v==null?'':v); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
+  const lines=[['finding','count','detail'].join(',')];
+  CB_AUDIT.forEach(([k,label])=>{ const b=(a.findings||{})[k]||{count:0,examples:[]};
+    if(!b.count) lines.push([label,0,''].map(cell).join(','));
+    else b.examples.forEach(x=>lines.push([label,b.count,x].map(cell).join(','))); });
+  const el=document.createElement('a');
+  el.href=URL.createObjectURL(new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'}));
+  el.download=MFR+'-catalog-audit-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(el); el.click(); el.remove();
+  setTimeout(()=>URL.revokeObjectURL(el.href),4000);
+  toast('Audit exported');
 }
 
 function cbExport(){
