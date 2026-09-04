@@ -462,7 +462,10 @@ async function flowTest(slug, sample){
   const step=(id,name,pass,detail,offenders)=>({id,name,pass:!!pass,detail,
     offenders:offenders?names(offenders):[], offender_count:offenders?offenders.length:0});
 
-  const unlinked=cat.filter(r=>r.unlinked);
+  /* A RETIRED SKU DOES NOT NEED AN ENRICHMENT PAGE. Counting the 67 discontinued walkers as
+     work still to do made step 3 report 85 when the answer a person has to act on is 21 — the
+     same over-reporting the audit had, in the one place it was left. */
+  const unlinked=cat.filter(r=>r.unlinked && r.active);
   const orphanPage=rows.filter(r=>r.no_catalog_row);
   const unpriced=cat.filter(r=>r.status==="needs_pricing");
   const uncategorised=rows.filter(r=>r.status==="needs_category");
