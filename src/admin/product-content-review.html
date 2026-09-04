@@ -95,9 +95,9 @@ body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--pape
 .stat.q:hover{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset}
 .stat.q b{color:var(--warn)}
 .stat.q.zero b{color:var(--good)}
-.stat.q[data-k="needs_sku_review"] b,.stat.q[data-k="possible_duplicate"] b{color:var(--bad)}
-.stat.q.zero[data-k="needs_sku_review"] b,.stat.q.zero[data-k="possible_duplicate"] b{color:var(--good)}
-.stat.q[data-k="ready_to_publish"] b{color:var(--pub)}
+.stat.q[data-pk="needs_sku_review"] b,.stat.q[data-pk="possible_duplicate"] b{color:var(--bad)}
+.stat.q.zero[data-pk="needs_sku_review"] b,.stat.q.zero[data-pk="possible_duplicate"] b{color:var(--good)}
+.stat.q[data-pk="ready_to_publish"] b{color:var(--pub)}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
 .toolbar input.search{flex:1;min-width:180px;border:1px solid var(--line);border-radius:999px;padding:9px 15px;font-family:inherit;font-size:13.5px}
 .filters{display:flex;gap:6px;flex-wrap:wrap}
@@ -365,8 +365,12 @@ body.sm-dragging .sm-pin,body.sm-dragging .sm-sub{outline:1px dashed #c9d6e6;out
 .cbchip.mut{color:var(--hid);background:var(--hidbg)}
 .cbwarn{color:var(--bad);font-size:10.5px;font-weight:700;white-space:nowrap}
 /* Turning a queue into work: tick the SKUs that belong together and build the product. */
+/* Sticky, because the count and the buttons are useless if they are above the part of the
+   list you are working in. */
+#cbpickbar{position:sticky;bottom:0;z-index:2}
 .cbpick{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;padding:8px 12px;
-  border:1px solid var(--navy);border-radius:10px;background:#eef4fb}
+  border:1px solid var(--navy);border-radius:10px;background:#eef4fb;
+  box-shadow:0 -6px 18px -12px rgba(11,13,15,.45)}
 .cbpick .grow{flex:1}
 .cbt tbody tr.on{background:#eef4fb}
 .cbt td input[type=checkbox]{margin:0;cursor:pointer}
@@ -765,7 +769,7 @@ function render(){
      a fact, so only the derived ones are buttons. */
   const M=MASTER&&MASTER.counts?MASTER.counts:null;
   const q=(k,label)=>M
-    ? `<button class="stat q${M[k]?'':' zero'}" data-act="cb-open-status" data-k="${k}" title="Open the Completion board showing only these">
+    ? `<button class="stat q${M[k]?'':' zero'}" data-act="cb-open-status" data-pk="${k}" title="Open the Completion board showing only these">
          <b>${M[k]||0}</b><span>${label}</span></button>`
     : `<div class="stat"><b>—</b><span>${label}</span></div>`;
   document.getElementById('stats').innerHTML=
@@ -1117,11 +1121,14 @@ document.addEventListener('click',async function(e){
   if(act==='cb-flow')     return cbFlowTest();
   if(act==='cb-audit')    return cbAudit();
   if(act==='cb-audit-export') return cbAuditExport();
-  if(act==='cb-pick'){ if(CB.pick.has(k)) CB.pick.delete(k); else CB.pick.add(k); cbRender(); return; }
+  /* IN PLACE, NEVER A RE-RENDER. cbRender() replaces the whole modal, which on a line of 371
+     rows throws away the scroll position — so ticking the fifth item you wanted sent you back
+     to the top to find the sixth. A tick changes one row and a counter; that is all it redraws. */
+  if(act==='cb-pick'){ if(CB.pick.has(k)) CB.pick.delete(k); else CB.pick.add(k); cbPickPaint([k]); return; }
   if(act==='cb-pick-all'){ const all=cbRows().filter(cbPickable).map(r=>r.code);
     if(all.every(c=>CB.pick.has(c))) all.forEach(c=>CB.pick.delete(c)); else all.forEach(c=>CB.pick.add(c));
-    cbRender(); return; }
-  if(act==='cb-pick-clear'){ CB.pick.clear(); cbRender(); return; }
+    cbPickPaint(all); return; }
+  if(act==='cb-pick-clear'){ const was=[...CB.pick]; CB.pick.clear(); cbPickPaint(was); return; }
   if(act==='cb-make')         return cbMakeProduct();
   if(act==='cb-addto')        return cbAddToProduct();
   if(act==='cb-repair')       return cbRepair();
@@ -4447,7 +4454,7 @@ function cbRender(){
   const c=d.counts||{};
   const tile=k=>{
     const n=c[k]||0, on=CB.filter===k;
-    return `<button class="cbtile ${CB_TONE[k]}${on?' on':''}" data-act="cb-filter" data-k="${k}"
+    return `<button class="cbtile ${CB_TONE[k]}${on?' on':''}" data-act="cb-filter" data-pk="${k}"
       title="${escA(CB_LABEL[k])} — click to show only these">
       <span class="n">${n}</span><span class="l">${esc(CB_LABEL[k])}</span></button>`;
   };
@@ -4473,10 +4480,10 @@ function cbRender(){
     ${CB.flow?cbFlowHtml():''}
     ${CB.audit?cbAuditHtml():''}
     ${CB.plan?cbPlanHtml():''}
-    ${cbPickBarHtml()}
+    <div id="cbpickbar">${cbPickBarHtml()}</div>
     <div class="cbfilter">
       <input id="cbq" type="search" placeholder="Find a SKU, product or category…" value="${escA(CB.q)}">
-      ${CB.filter?`<button class="btn ghost" data-act="cb-filter" data-k="${CB.filter}">✕ ${esc(CB_LABEL[CB.filter])}</button>`:''}
+      ${CB.filter?`<button class="btn ghost" data-act="cb-filter" data-pk="${CB.filter}">✕ ${esc(CB_LABEL[CB.filter])}</button>`:''}
       <span class="mut" style="font-size:12px">${rows.length} shown</span>
     </div>
     <div class="tabscroll" style="max-height:46vh">
@@ -4485,10 +4492,10 @@ function cbRender(){
         <th>SKU</th><th>Name</th><th>Enrichment page</th><th>Category</th><th>Status</th><th>What it needs</th>
       </tr></thead><tbody>
       ${rows.slice(0,600).map(r=>`<tr class="${CB.pick.has(r.code)?'on':''}">
-        <td>${cbPickable(r)?`<input type="checkbox" data-act="cb-pick" data-k="${escA(r.code)}" ${CB.pick.has(r.code)?'checked':''}>`:''}</td>
+        <td>${cbPickable(r)?`<input type="checkbox" data-act="cb-pick" data-pk="${escA(r.code)}" ${CB.pick.has(r.code)?'checked':''}>`:''}</td>
         <td class="mono">${esc(r.code)}${r.no_catalog_row?' <span class="cbwarn">no catalog record</span>':''}</td>
         <td>${esc(r.name||'')}</td>
-        <td>${r.page_key?`<a href="#" data-act="cb-open" data-k="${escA(r.page_key)}">${esc(r.page_name||r.page_key)}</a>
+        <td>${r.page_key?`<a href="#" data-act="cb-open" data-pk="${escA(r.page_key)}">${esc(r.page_name||r.page_key)}</a>
               <span class="mut" style="font-size:11px">${esc(r.page_status||'')}</span>`
              :'<span class="mut">—</span>'}</td>
         <td>${esc(r.category||'')}${r.subcategory?`<div class="mut" style="font-size:11px">${esc(r.subcategory)}</div>`:''}</td>
@@ -4539,6 +4546,21 @@ function cbPickable(r){
   /* A SKU that already sits on a product is not a candidate for a new one — move it with
      "Add to an existing product" instead, so it is never on two pages at once. */
   return r.source==='catalog' && r.active!==false && !r.page_key;
+}
+/* Repaint only what changed: the ticked rows and the counter. */
+function cbPickPaint(codes){
+  (codes||[]).forEach(c=>{
+    const box=document.querySelector('#modal input[data-act="cb-pick"][data-pk="'+CSS.escape(c)+'"]');
+    if(!box) return;
+    const on=CB.pick.has(c);
+    box.checked=on;
+    const tr=box.closest('tr'); if(tr) tr.classList.toggle('on',on);
+  });
+  const bar=document.getElementById('cbpickbar');
+  if(bar) bar.innerHTML=cbPickBarHtml();
+  const all=document.querySelector('#modal input[data-act="cb-pick-all"]');
+  if(all){ const av=cbRows().filter(cbPickable).map(r=>r.code);
+    all.checked = av.length>0 && av.every(c=>CB.pick.has(c)); }
 }
 function cbPickBarHtml(){
   const n=CB.pick.size;
