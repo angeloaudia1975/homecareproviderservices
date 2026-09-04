@@ -2707,6 +2707,15 @@
         ]
       },
       {
+        "type": "video",
+        "eyebrow": "Pedifix Enhancing Customer Outcomes",
+        "headline": "Watch the Video to Learn More",
+        "copy": "Explore PediFix Footcare Products and See How Their Innovative Solutions Can Help Address Common Foot Disorders, Improve Comfort, and Support Better Everyday Foot Care.",
+        "embed": "https://drive.google.com/file/d/1WKiMs-D9JUYN48FRVlHiiihJbm0mums9/view",
+        "checklist": [],
+        "video_side": ""
+      },
+      {
         "type": "split",
         "headline": "A simple retail line that fits next to mobility, footwear, and home medical products.",
         "copy": "PediFix gives dealers a practical way to add lower-ticket, high-need footcare items to the showroom. It pairs naturally with shoes, compression, diabetic supplies, braces, mobility products, lift chairs, and daily living aids — building a “Foot Comfort Center” arranged by customer need: toes, bunions, heel, arch, forefoot, skin, fungus, and diabetic footcare.",
@@ -2799,15 +2808,6 @@
             "description": "Use “Tell us where it hurts” signage so staff can guide customers to a category without complex clinical training."
           }
         ]
-      },
-      {
-        "type": "video",
-        "eyebrow": "Pedifix Introduction Video",
-        "headline": "",
-        "copy": "Learn about Pedifix Footcare products",
-        "embed": "https://drive.google.com/file/d/1WKiMs-D9JUYN48FRVlHiiihJbm0mums9/view",
-        "checklist": [],
-        "video_side": ""
       }
     ],
     "resourceLogo": "/assets/logos/pedifix-badge.jpg"
