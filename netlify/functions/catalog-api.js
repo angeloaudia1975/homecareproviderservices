@@ -370,13 +370,23 @@ async function auditManufacturer(slug, sample){
   /* One SKU in two layers is the duplicate that regenerates: the deployed catalog file and
      an added row both holding the same code. It is counted separately from two SPELLINGS of
      one code, because they are resolved by different actions. */
-  const inBase=new Set(products.filter(p=>p.kind==="catalog").map(p=>String(p.code)));
-  const inAdded=new Set(products.filter(p=>p.kind==="custom").map(p=>String(p.code)));
   const rawBase=await fetchJson(`${ORDERING_BASE}/data/${slug}.json`).catch(()=>[]);
   const baseCodes=new Set((rawBase||[]).map(x=>String(x.code)));
   const custCodes=await sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code`)
     .then(r=>new Set((r||[]).map(x=>String(x.code)))).catch(()=>new Set());
-  for(const c of baseCodes) if(custCodes.has(c)) add("duplicate_skus", c+" — in the catalog file and the added table");
+  /* A FINDING IS SOMETHING LEFT TO DO. A code living in two layers that has already been
+     consolidated is not a problem any more — it is a decision someone made, recorded on the
+     record. Counting those made the report say 243 when the answer was 0, which is the fastest
+     way to teach someone to stop reading a report. Settled ones are reported as a fact, apart
+     from the findings. */
+  const ovRows=await sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(slug)}&select=code,patch`).catch(()=>[]);
+  const ovBy=Object.fromEntries((ovRows||[]).map(r=>[String(r.code),r.patch||{}]));
+  const settled=c=>{ const o=ovBy[c]||{}; return !!(o.layers_merged_at || o.dup_ok || o.disposition || o.active===false); };
+  let consolidated=0;
+  for(const c of baseCodes) if(custCodes.has(c)){
+    if(settled(c)) consolidated++;
+    else add("duplicate_skus", c+" — in the catalog file and the added table");
+  }
   const byNorm={}; rows.filter(r=>r.source==="catalog").forEach(r=>{ const n=normCode(r.code); if(n)(byNorm[n]=byNorm[n]||[]).push(r.code); });
   Object.values(byNorm).forEach(v=>{ if(v.length>1) add("duplicate_skus", v.join(" / ")+" — the same code written differently"); });
 
@@ -394,8 +404,13 @@ async function auditManufacturer(slug, sample){
   for(const r of rows){
     if(r.no_catalog_row){ add("published_not_in_master", r.code+" — listed on \""+r.page_key+"\" with no catalog record"); continue; }
     if(!r.active){ if(r.live_page_key) add("discontinued_inconsistent", r.code+" — retired, but a live page still lists it"); continue; }
-    if(r.unlinked) add("unassigned_skus", r.code);
-    if(r.status==="needs_content" || r.unlinked) add("missing_content", r.code);
+    /* ONE PROBLEM, COUNTED ONCE. A SKU no page claims has no content, no category and no
+       image BECAUSE it has no page — listing it in four buckets makes four jobs out of one
+       and inflates every number on the report. It is reported where the work actually is. */
+    if(r.unlinked){ add("unassigned_skus", r.code);
+      if(r.price==null && !(r.tiers&&r.tiers.length)) add("missing_pricing", r.code);
+      continue; }
+    if(r.status==="needs_content") add("missing_content", r.code);
     if(r.price==null && !(r.tiers&&r.tiers.length)) add("missing_pricing", r.code);
     if(!r.category || (dealerCats.length && dealerCats.indexOf(r.category)<0))
       add("missing_categories", r.code+(r.category?" ("+r.category+")":" (none)"));
@@ -416,16 +431,23 @@ async function auditManufacturer(slug, sample){
   const KEYS=["missing_products","duplicate_products","duplicate_skus","unassigned_skus",
     "missing_content","missing_images","missing_pricing","missing_categories",
     "conflicting_data","published_not_in_master","discontinued_inconsistent"];
-  const buckets={}; let open=0;
-  KEYS.forEach(k=>{ const v=B[k]||[]; open+=v.length;
-    buckets[k]={count:v.length, examples:v.slice(0,cap)}; });
+  const buckets={};
+  KEYS.forEach(k=>{ const v=B[k]||[]; buckets[k]={count:v.length, examples:v.slice(0,cap)}; });
+  /* How many PRODUCTS have something open — the number you drive to zero. Summing the buckets
+     counts a SKU once per thing wrong with it, so a line could report more findings than it
+     has products. */
+  const touched=new Set();
+  KEYS.forEach(k=>(B[k]||[]).forEach(v=>{ const m=String(v).match(/^([^\s(:—]+)/); if(m) touched.add(m[1]); }));
+  const open=touched.size;
   return {ok:true, slug, master_skus:rows.filter(r=>r.source==="catalog").length,
     enrichment_pages:Object.keys(pages).length,
     live_pages:Object.keys(pages).filter(k=>JOIN.isLive(pages[k])).length,
     visible_to_dealers:rows.filter(r=>r.visible).length,
     media_rows:(mediaRows||[]).length,
     counts:swept.counts, percent_published:swept.percent_published,
-    enriched_only:swept.enriched_only, findings:buckets, open_findings:open,
+    enriched_only:swept.enriched_only, findings:buckets,
+    open_findings:open, open_note:"products with something open (a SKU is counted once, not once per bucket)",
+    already_consolidated:consolidated,
     clean: open===0};
 }
 

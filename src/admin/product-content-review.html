@@ -691,14 +691,39 @@ function baseToken(str){ return String(str||'').toLowerCase().replace(SIZE_WORDS
    The counts are now the derived status of every SKU in the Product Catalog, computed by the
    shared module on the server. Same numbers as the Completion board, because it is the same
    sweep — one question, asked once. */
-let MASTER=null;
+let MASTER=null, PAGECAT={};
 async function loadMasterCounts(force){
   if(MASTER && !force) return MASTER;
   try{
-    const r=await catalogPost({action:'status_sweep',manufacturer:MFR,counts_only:true});
-    if(r.ok && r.json && r.json.ok!==false){ MASTER=r.json; render(); }
+    /* The FULL sweep, once. It feeds the tiles, the category line on every card, and the
+       Completion board — so all three are the same answer to the same question, fetched once
+       rather than three times with three chances to disagree. */
+    const r=await catalogPost({action:'status_sweep',manufacturer:MFR});
+    if(r.ok && r.json && r.json.ok!==false){
+      MASTER=r.json; CB.data=r.json;
+      PAGECAT={};
+      (r.json.rows||[]).forEach(row=>{ const k=row.page_key;
+        if(k && !PAGECAT[k]) PAGECAT[k]={category:row.category||'', subcategory:row.subcategory||''}; });
+      render();
+    }
   }catch(e){ /* the page still works without them; the tiles just say "—" */ }
   return MASTER;
+}
+/* WHAT A DEALER SEES FOR THIS PRODUCT. product_content.category is a value stored on the page
+   when it was written; it is not updated when the subcategory map changes, which is why these
+   cards still read "Orthopedic Bracing & Supports" while the Structure Map, the Product Catalog
+   and Partner 360 all say "Wrist & Hand". The heading shown here is now the derived one, with
+   the page's own stored value labelled — the same treatment, and the same word, as the
+   Product Catalog uses. */
+function pageCatLine(k,p){
+  const d=PAGECAT[k];
+  const cat=(d&&d.category)||p.category||'';
+  const sub=(d&&d.subcategory)||p.subcategory||'';
+  const stored=String(p.category||'').trim();
+  if(!cat) return '';
+  const drift=stored && stored!==cat
+    ? `<span class="mut" title="What this enrichment record stores. The heading before it is what a dealer sees — it comes from the subcategory map."> · internal: ${esc(stored)}</span>` : '';
+  return '<span>'+esc(cat)+(sub?' › '+esc(sub):'')+drift+'</span>';
 }
 /* Every write that could change a status invalidates them, so the header can never show a
    number taken before the change that is on screen. Debounced, because a bulk action is a
@@ -763,6 +788,7 @@ function onSearch(v){ search=v.toLowerCase().trim(); render(); }
 function matchesSearch(k){ if(!search) return true; const p=pages[k];
   if((p.name||'').toLowerCase().includes(search)) return true;
   if((p.category||'').toLowerCase().includes(search)) return true;
+  { const d=PAGECAT[k]; if(d && (d.category||'').toLowerCase().includes(search)) return true; }
   if((p.family||'').toLowerCase().includes(search)) return true;
   return skusOf(k).some(s=>(s.sku||'').toLowerCase().includes(search)||(s.name||'').toLowerCase().includes(search)); }
 function visibleKeys(){ const flagSet=new Set(structureFlags().map(f=>f.key));
@@ -808,7 +834,7 @@ function cardHTML(k){ const p=pages[k]; const open=openCards.has(k);
       <div>
         <div class="pname" contenteditable data-field="name" data-pk="${escA(k)}" oninput="editField('${escA(k)}','name',this.textContent)">${esc(p.name||k)}</div>
         <div class="pmeta">${badge(k)}${flagged?'<span class="badge b-flag">⚑ Review grouping</span>':''}
-          <span>${nsk} SKUs</span>${p.category?'<span>'+esc(p.category)+(p.subcategory?' › '+esc(p.subcategory):'')+'</span>':''}
+          <span>${nsk} SKUs</span>${pageCatLine(k,p)}
           ${p.source_pages?'<span>pp. '+esc(p.source_pages)+'</span>':''}</div>
       </div>
       <div class="cactions">
@@ -4368,6 +4394,7 @@ const CB_TONE={possible_duplicate:'bad',needs_sku_review:'bad',needs_pricing:'wa
 
 async function openCompletionBoard(force){
   if(CB.loading) return;
+  if(CB.data && !force){ cbRender(); return; }
   if(!CB.data||force){
     CB.loading=true; CB.flow=null;
     modalHTML('📋 Completion board · '+esc(MFR),
