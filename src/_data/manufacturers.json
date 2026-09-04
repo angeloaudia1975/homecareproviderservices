@@ -2799,6 +2799,15 @@
             "description": "Use “Tell us where it hurts” signage so staff can guide customers to a category without complex clinical training."
           }
         ]
+      },
+      {
+        "type": "video",
+        "eyebrow": "Pedifix Introduction Video",
+        "headline": "",
+        "copy": "Learn about Pedifix Footcare products",
+        "embed": "https://drive.google.com/file/d/1WKiMs-D9JUYN48FRVlHiiihJbm0mums9/view",
+        "checklist": [],
+        "video_side": ""
       }
     ],
     "resourceLogo": "/assets/logos/pedifix-badge.jpg"
