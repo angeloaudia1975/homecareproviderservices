@@ -465,7 +465,27 @@ body.sm-dragging .sm-pin,body.sm-dragging .sm-sub{outline:1px dashed #c9d6e6;out
 <script>
 /* ===================== Catalog Management Workspace ===================== */
 const API='/.netlify/functions/product-content';
-const MFR=new URLSearchParams(location.search).get('manufacturer')||'ovation-medical';
+/* WHICH MANUFACTURER AM I LOOKING AT? One answer, remembered, shared by both screens.
+   The Product Catalog had no memory: with no ?manufacturer= it picked the first line with
+   data — Access4U — while Product Content Enrichment defaulted to Ovation. So the two
+   screens disagreed about which line you were on, and the "Product Catalog" link in the top
+   nav carries no manufacturer at all. Settle duplicates on Ovation, click Product Catalog,
+   and you land on Access4U looking at a different pile — which is exactly what "they keep
+   coming back regardless of whether I save" looks like from the outside.
+
+   This is a per-person convenience, not shared state, so the browser is the right place for
+   it — and the URL is corrected to match, so a reload, a bookmark or the back button all
+   land on the line you were actually working on. */
+function hcpsLastMfr(){ try{ return localStorage.getItem('hcps_last_mfr')||''; }catch(e){ return ''; } }
+function hcpsRememberMfr(slug){
+  if(!slug) return slug;
+  try{ localStorage.setItem('hcps_last_mfr', slug); }catch(e){}
+  try{ const u=new URL(location.href);
+    if(u.searchParams.get('manufacturer')!==slug){ u.searchParams.set('manufacturer',slug);
+      history.replaceState(null,'',u.toString()); } }catch(e){}
+  return slug;
+}
+const MFR=hcpsRememberMfr(new URLSearchParams(location.search).get('manufacturer')||hcpsLastMfr()||'ovation-medical');
 /* ?find=… prefills the search. The Link audit in Product Catalog is read-only by design — the
    fix for an unconnected SKU belongs to the record, and the record is edited here — so its rows
    link straight to the product instead of offering a second place to change the same thing. */

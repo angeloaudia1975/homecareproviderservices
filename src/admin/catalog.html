@@ -115,7 +115,28 @@ const API="/.netlify/functions/catalog-api";
 const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
 window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
 let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+/* WHICH MANUFACTURER AM I LOOKING AT? One answer, remembered, shared by both screens.
+   The Product Catalog had no memory: with no ?manufacturer= it picked the first line with
+   data — Access4U — while Product Content Enrichment defaulted to Ovation. So the two
+   screens disagreed about which line you were on, and the "Product Catalog" link in the top
+   nav carries no manufacturer at all. Settle duplicates on Ovation, click Product Catalog,
+   and you land on Access4U looking at a different pile — which is exactly what "they keep
+   coming back regardless of whether I save" looks like from the outside.
+
+   This is a per-person convenience, not shared state, so the browser is the right place for
+   it — and the URL is corrected to match, so a reload, a bookmark or the back button all
+   land on the line you were actually working on. */
+function hcpsLastMfr(){ try{ return localStorage.getItem('hcps_last_mfr')||''; }catch(e){ return ''; } }
+function hcpsRememberMfr(slug){
+  if(!slug) return slug;
+  try{ localStorage.setItem('hcps_last_mfr', slug); }catch(e){}
+  try{ const u=new URL(location.href);
+    if(u.searchParams.get('manufacturer')!==slug){ u.searchParams.set('manufacturer',slug);
+      history.replaceState(null,'',u.toString()); } }catch(e){}
+  return slug;
+}
 let TOKEN=HCPS.token(), MFRS=[], SLUG="", DETAIL=null, PQ="";
+SLUG=new URLSearchParams(location.search).get("manufacturer")||hcpsLastMfr()||"";
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800);}
 async function api(qs,opts){const h={"content-type":"application/json"};if(TOKEN)h["authorization"]="Bearer "+TOKEN;
   const r=await fetch(API+(qs||""),{...(opts||{}),headers:{...h,...((opts&&opts.headers)||{})}});
@@ -145,7 +166,10 @@ function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
 async function boot(){
   try{const j=await api("",{method:"GET"}); MFRS=j.manufacturers||[];
     if(!MFRS.length){$("#wrap").innerHTML='<div class="msg">No manufacturers found.</div>';return;}
+    /* a remembered line that no longer exists must not strand the page on nothing */
+    if(SLUG && !MFRS.some(m=>m.slug===SLUG)) SLUG="";
     if(!SLUG) SLUG=(MFRS.find(m=>m.hasData)||MFRS[0]).slug;
+    hcpsRememberMfr(SLUG);
     await loadMfr();
   }catch(e){if(String(e.message)!=="unauthorized")$("#wrap").innerHTML=`<div class="msg err">Couldn't load: ${esc(e.message)}</div>`;}
 }
@@ -212,11 +236,12 @@ async function loadSideSignals(){
   try{
     const r=await api("",{method:"POST",body:JSON.stringify({action:"duplicate_scan",manufacturer:slug})});
     if(slug===SLUG && r && r.ok!==false){
-      /* The server already excludes the groups someone has judged — the decision lives on
-         the product record now. The old localStorage list is still honoured so a machine
-         that made decisions before this change does not suddenly see them all again. */
-      const legacy=dismissed();
-      DUPS=(r.groups||[]).filter(g=>legacy.indexOf(g.key)<0);
+      /* THE SERVER IS THE ONLY AUTHORITY NOW. The old localStorage list is deliberately no
+         longer applied: it hid groups on ONE browser that were never actually saved, which
+         made a queue look settled when nothing had been written down. What you see here is
+         what is on the records — and one click on "Keep separate" makes it stay that way
+         everywhere. */
+      DUPS=(r.groups||[]);
       DUPOK=r.kept_separate||0;
       render();
       /* Now the expensive half: full provenance for the records actually in the queue.
