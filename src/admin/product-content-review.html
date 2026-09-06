@@ -239,6 +239,19 @@ textarea.ed{min-height:64px}
 /* While a drag is in flight every valid target lifts, so it is obvious where a product can go. */
 body.sm-dragging .sm-pin,body.sm-dragging .sm-sub{outline:1px dashed #c9d6e6;outline-offset:1px}
 .sm-over{background:#e7f4ed !important;outline:2px solid #1a7f4b !important;outline-offset:1px;color:#14603a !important}
+/* Moving from a list, not a typed name. The panel sits inside the inspector so the map
+   stays on screen behind it — you can see where you are moving from. */
+.sm-move{border:1px solid var(--navy);border-radius:10px;background:#eef4fb;padding:10px 12px;margin:8px 0;
+  display:flex;flex-direction:column;gap:8px}
+.sm-move-h{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+.sm-move-r{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.sm-move-r label{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);width:150px}
+.sm-move-r select,.sm-move-r input{flex:1;min-width:170px;padding:6px 9px;border:1px solid var(--line);
+  border-radius:8px;font:inherit;background:#fff}
+.sm-move-n{font-size:12px;color:var(--gray);padding-left:158px}
+.sm-move-n.warn{color:var(--warn);font-weight:600}
+.sm-move-a{display:flex;gap:6px;justify-content:flex-end}
+@media(max-width:720px){.sm-move-r label{width:auto}.sm-move-n{padding-left:0}}
 .sm-tbl tr[draggable="true"]{cursor:grab}
 .sm-tbl tr[draggable="true"]:active{cursor:grabbing}
 .sm-health{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;
@@ -1430,7 +1443,7 @@ function smChip(r){
     + (r.grouping?`<span class="sm-chip c-dup" title="Flagged in Structure review — its SKUs may be several products">Review grouping</span>`:'');
 }
 async function openStructureMap(){
-  SM={cat:null,sub:null,pick:new Set(),q:'',map:{},pinned:{},loaded:false};
+  SM={cat:null,sub:null,pick:new Set(),q:'',map:{},pinned:{},loaded:false,move:null};
   modalHTML('🌳 Structure map · '+esc(MFR),'<div class="tut"><p class="mut">Reading the dealer structure…</p></div>');
   try{
     const h=authHeaders();
@@ -1488,6 +1501,7 @@ function smRender(){
           <button class="btn ghost" style="padding:3px 9px;font-size:11.5px" onclick="smRenameCat()" ${SM.cat===SM_NONE?'disabled':''}>✎ Rename</button>
           <button class="btn ghost" style="padding:3px 9px;font-size:11.5px;color:#b42323;border-color:#f0c8c8" onclick="smRemoveCat()" ${SM.cat===SM_NONE?'disabled':''}>🗑 Remove</button>
           <button class="btn ghost" style="padding:3px 9px;font-size:11.5px" onclick="smPreview()">👁 As a dealer</button></div>
+        ${smMovePanelHtml(rows)}
         <div class="sm-scroll">${list.length?`<table class="sm-tbl"><tbody>${list.map(r=>`<tr class="${SM.pick.has(r.k)?'on':''}" draggable="true" ondragstart="smDragStart(event,'${escA(r.k)}')" ondragend="smDragEnd()">
           <td class="pk"><input type="checkbox" ${SM.pick.has(r.k)?'checked':''} onchange="smTick('${escA(r.k)}',this.checked)"></td>
           <td><b>${esc(r.name)}</b>${smChip(r)}
@@ -1672,30 +1686,98 @@ async function smWrite(keys, cat, sub){
   toast(ok+' moved'+(bad?' · '+bad+' failed':''), !!bad);
   SM.pick=new Set(); smRender(); render();
 }
-function smAskDestination(n){
-  const cats=allCategories();
-  const cat=window.prompt('Move '+n+' product'+(n===1?'':'s')+' to which CATEGORY?\n\n'
-    +'Existing: '+(cats.join(', ')||'(none yet)')+'\n\nType an existing name, or a new one to create it.',
-    SM.cat===SM_NONE?'':SM.cat);
-  if(cat==null||!String(cat).trim()) return null;
-  const subs=[...new Set(Object.keys(pages).filter(k=>String(pages[k].category||'').trim()===String(cat).trim())
-    .map(k=>String(pages[k].subcategory||'').trim()).filter(Boolean))].sort();
-  const sub=window.prompt('And which SUBCATEGORY?\n\n'
-    +(subs.length?'In “'+String(cat).trim()+'”: '+subs.join(', '):'That category has no subcategories yet.')
-    +'\n\nLeave empty for none.', SM.sub||'');
-  if(sub==null) return null;
-  return {cat:String(cat).trim(), sub:String(sub).trim()};
+/* ── MOVING A PRODUCT, FROM A LIST RATHER THAN A TYPED NAME ────────────────────
+   Moving used to be two window.prompt boxes: type the category, then type the subcategory.
+   A typo made a new category nobody meant, and you had to remember the exact spelling of
+   the one you wanted. This is the same operation from dropdowns.
+
+   It also tells the truth about how the structure works. A product does not carry a
+   category — it carries a SUBCATEGORY, and the category is worked out from the line's map.
+   So the panel asks for the subcategory, then shows which heading dealers will find it
+   under, and lets you change that heading — saying plainly that doing so moves everything
+   else in that subcategory too, because it does. */
+function smSubList(rows){
+  return [...new Set((rows||[]).map(r=>String(r.sub||'').trim()).filter(Boolean)
+    .concat(Object.keys(SM.map||{})))].sort();
 }
-async function smMoveOne(k){
-  const d=smAskDestination(1); if(!d) return;
-  await smWrite([k], d.cat, d.sub);
+function smCatList(){
+  return [...new Set([].concat(Array.isArray(SM.order)?SM.order:[],
+    Object.values(SM.map||{})).map(String).filter(Boolean))].sort();
 }
-async function smMovePicked(){
+function smMovePanelHtml(rows){
+  const mv=SM.move; if(!mv) return '';
+  const subs=smSubList(rows), cats=smCatList();
+  const sub = mv.newSub!=null ? mv.newSub : mv.sub;
+  const mapped = sub ? (SM.map||{})[sub] : '';
+  const cat = mv.newCat!=null ? mv.newCat : (mv.cat || mapped || '');
+  const alsoMoving = sub && mapped && cat && cat!==mapped
+    ? (rows||[]).filter(r=>String(r.sub||'').trim()===sub && mv.keys.indexOf(r.k)<0).length : 0;
+  const opt=(v,sel)=>`<option value="${escA(v)}"${v===sel?' selected':''}>${esc(v)}</option>`;
+  return `<div class="sm-move">
+    <div class="sm-move-h"><b>Move ${mv.keys.length} product${mv.keys.length===1?'':'s'}</b>
+      <span class="mut" style="font-size:11.5px">${mv.keys.slice(0,3).map(k=>esc((pages[k]||{}).name||k)).join(', ')}${mv.keys.length>3?' +'+(mv.keys.length-3)+' more':''}</span></div>
+    <div class="sm-move-r">
+      <label>Subcategory</label>
+      ${mv.newSub!=null
+        ? `<input class="ed" value="${escA(mv.newSub)}" placeholder="New subcategory name"
+             oninput="SM.move.newSub=this.value;smRender()">
+           <button class="btn ghost sm" onclick="SM.move.newSub=null;smRender()">Pick an existing one</button>`
+        : `<select onchange="smMoveSub(this.value)">
+             <option value=""${!sub?' selected':''}>— choose —</option>
+             ${subs.map(x=>opt(x,sub)).join('')}
+             <option value="__new">＋ New subcategory…</option>
+           </select>`}
+    </div>
+    <div class="sm-move-r">
+      <label>Dealers find it under</label>
+      ${mv.newCat!=null
+        ? `<input class="ed" value="${escA(mv.newCat)}" placeholder="New category name"
+             oninput="SM.move.newCat=this.value;smRender()">
+           <button class="btn ghost sm" onclick="SM.move.newCat=null;smRender()">Pick an existing one</button>`
+        : `<select onchange="smMoveCat(this.value)">
+             <option value=""${!cat?' selected':''}>— choose —</option>
+             ${cats.map(x=>opt(x,cat)).join('')}
+             <option value="__new">＋ New category…</option>
+           </select>`}
+    </div>
+    ${sub&&mapped&&cat===mapped?`<div class="sm-move-n">“${esc(sub)}” already sits under <b>${esc(mapped)}</b>.</div>`:''}
+    ${alsoMoving?`<div class="sm-move-n warn">Changing where “${esc(sub)}” sits moves <b>${alsoMoving} other product${alsoMoving===1?'':'s'}</b> in that subcategory as well — the heading belongs to the subcategory, not to one product. Put these under a different subcategory instead if that is not what you want.</div>`:''}
+    ${sub&&!mapped&&!cat?`<div class="sm-move-n warn">“${esc(sub)}” is not mapped to a heading yet, so pick one — otherwise dealers will not find these.</div>`:''}
+    <div class="sm-move-a">
+      <button class="btn dark sm" onclick="smMoveApply()" ${sub&&cat?'':'disabled'}>Move ${mv.keys.length}</button>
+      <button class="btn ghost sm" onclick="SM.move=null;smRender()">Cancel</button>
+    </div>
+  </div>`;
+}
+function smMoveSub(v){ if(v==='__new'){ SM.move.newSub=''; } else { SM.move.newSub=null; SM.move.sub=v;
+  const m=(SM.map||{})[v]; if(m){ SM.move.newCat=null; SM.move.cat=m; } } smRender(); }
+function smMoveCat(v){ if(v==='__new'){ SM.move.newCat=''; } else { SM.move.newCat=null; SM.move.cat=v; } smRender(); }
+async function smMoveApply(){
+  const mv=SM.move; if(!mv) return;
+  const sub=String(mv.newSub!=null?mv.newSub:mv.sub||'').trim();
+  const cat=String(mv.newCat!=null?mv.newCat:(mv.cat||'')).trim();
+  if(!sub||!cat) return;
+  /* The heading is the map's answer, so making it true is part of the move — otherwise the
+     product lands in a subcategory that points somewhere else and appears not to have moved. */
+  if((SM.map||{})[sub]!==cat){
+    const map=Object.assign({},SM.map||{}); map[sub]=cat;
+    const r=await catalogPost({action:'set_category_map',manufacturer:MFR,map});
+    if(!(r.ok&&r.json&&r.json.ok!==false)){ toast((r.json&&r.json.error)||'Could not save the category',true); return; }
+    SM.map=map;
+  }
+  SM.move=null;
+  await smWriteSub(mv.keys, sub);
+}
+
+function smMoveOne(k){
+  const r=(smRows()||[]).find(x=>x.k===k)||{};
+  SM.move={keys:[k], sub:String(r.sub||''), cat:'', newSub:null, newCat:null};
+  smRender();
+}
+function smMovePicked(){
   const keys=[...SM.pick]; if(!keys.length) return;
-  const d=smAskDestination(keys.length); if(!d) return;
-  if(!window.confirm('Move '+keys.length+' product'+(keys.length===1?'':'s')+' to “'+d.cat+(d.sub?' › '+d.sub:'')+'”?\n\n'
-    +'This is the category Partner 360 serves — dealers will browse them there. Undoable from History.')) return;
-  await smWrite(keys, d.cat, d.sub);
+  SM.move={keys, sub:'', cat:'', newSub:null, newCat:null};
+  smRender();
 }
 /* Renaming is a move of everything in it — there is no category record to rename, the
    category IS the value on each product. Saying so avoids the surprise of "I renamed it
