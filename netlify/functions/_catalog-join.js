@@ -284,8 +284,116 @@ function sweep(input) {
   };
 }
 
+/* ── OPTION AXES ──────────────────────────────────────────────────────────────
+   A model's SKUs vary along axes: size, colour, side. This is the definition of that, and
+   the dealer shop carries the same rule so the two cannot drift; t-axes-parity holds them
+   to identical answers on identical input.
+
+   The axes come FROM THE SKUS. A scraped "Color: Blue" attribute is one page's snapshot,
+   taken once at import; the SKU list is the approved record of what a dealer can order, and
+   only it decides what is selectable. An axis whose value varies is a choice; an axis with
+   one value throughout is not a choice — it is what the model IS. */
+const OPTION_COLORS = ["black","blue","grey","gray","red","white","pink","navy","tan","beige",
+  "green","purple","orange","camo","teal","charcoal","silver","gold","brown","yellow","ivory"];
+const OPTION_SIDES = ["left","right","universal","bilateral"];
+const SIZE_RANK = [["xxsmall",0],["xx-small",0],["2xs",0],["xxs",0],
+  ["x-small",1],["xsmall",1],["extra small",1],["xs",1],
+  ["small",2],["s",2],["medium",3],["med",3],["m",3],
+  ["x-large",5],["xlarge",5],["extra large",5],["xl",5],
+  ["xx-large",6],["xxlarge",6],["2xl",6],["xxl",6],
+  ["3xl",7],["4xl",8],["5xl",9],
+  ["large",4],["lg",4],["l",4],
+  ["universal",10],["one size",10],["osfa",10]];
+const AXIS_ORDER = ["Size","Color","Side","Option"];
+function foldTok(x){ return " " + String(x==null?"":x).toLowerCase().replace(/[^a-z0-9]+/g," ").trim() + " "; }
+function sizeRank(label){
+  const t = foldTok(label);
+  for (let i=0;i<SIZE_RANK.length;i++){ if (t.indexOf(foldTok(SIZE_RANK[i][0])) >= 0) return SIZE_RANK[i][1]; }
+  return 50;
+}
+function titleWord(w){ return String(w==null?"":w).replace(/\b[a-z]/g, c => c.toUpperCase()); }
+function optionTokens(label){
+  return String(label==null?"":label).toLowerCase().replace(/[^a-z0-9]+/g," ").trim().split(" ").filter(Boolean);
+}
+function optionAxesOf(label){
+  const raw = String(label==null?"":label).trim();
+  if (!raw) return {};
+  const toks = optionTokens(raw);
+  let color = "", side = "";
+  toks.forEach(t => { const c = (t === "gray") ? "grey" : t;
+    if (!color && OPTION_COLORS.indexOf(c) >= 0) color = c;
+    if (!side && OPTION_SIDES.indexOf(c) >= 0 && c !== "universal") side = c; });
+  /* Cut the recognised words out of the ORIGINAL text, so the size keeps the spelling
+     someone typed — "X-Small", never the folded "X Small". */
+  const cutWord = (str, w) => w ? str.replace(new RegExp("(^|[^A-Za-z0-9])" + w + "(?![A-Za-z0-9])", "ig"), "$1") : str;
+  let rest = cutWord(raw, color === "grey" ? "gr[ae]y" : color);
+  rest = cutWord(rest, side);
+  rest = rest.replace(/^[\s,;:·–—-]+/, "").replace(/[\s,;:·–—-]+$/, "").replace(/\s{2,}/g, " ").trim();
+  const out = {};
+  if (rest && sizeRank(rest) < 50) out.Size = rest;
+  else if (rest && !color && !side) out.Option = rest;
+  else if (rest) out.Size = rest;
+  if (color) out.Color = titleWord(color);
+  if (side) out.Side = titleWord(side);
+  return out;
+}
+/* labels: the option text of each SKU on a page, in page order. */
+function optionAxes(labels){
+  const seen = {}, order = [];
+  arr(labels).forEach(l => { const ax = optionAxesOf(l);
+    Object.keys(ax).forEach(k => { if (!seen[k]) { seen[k] = []; order.push(k); }
+      if (seen[k].indexOf(ax[k]) < 0) seen[k].push(ax[k]); }); });
+  const keys = order.slice().sort((a, b) => {
+    const ia = AXIS_ORDER.indexOf(a), ib = AXIS_ORDER.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || order.indexOf(a) - order.indexOf(b); });
+  const varying = {}, fixed = {};
+  keys.forEach(k => { const vals = seen[k];
+    if (k === "Size") vals.sort((x, y) => sizeRank(x) - sizeRank(y) || x.localeCompare(y));
+    else vals.sort((x, y) => x.localeCompare(y));
+    (vals.length > 1 ? varying : fixed)[k] = vals; });
+  return { varying: varying, fixed: fixed, keys: keys };
+}
+/* The option text of one enrichment SKU row: the authored option field, else whatever
+   trails the per-SKU name. Same precedence the shop applies, for the same reason. */
+function skuOptionText(sx, pageName){
+  if (!sx) return "";
+  const opt = str(sx.size != null ? sx.size : (sx.option != null ? sx.option : ""));
+  let lbl = str(sx.name);
+  const gn = str(pageName);
+  if (gn && lbl.toLowerCase().indexOf(gn.toLowerCase()) === 0) lbl = lbl.slice(gn.length);
+  lbl = lbl.replace(/^[\s,;:·–—-]+/, "").trim();
+  if (!opt) return lbl;
+  if (!lbl) return opt;
+  const n = x => x.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const a = n(opt), b = n(lbl);
+  if (a === b || a.indexOf(b) >= 0) return opt;
+  if (b.indexOf(a) >= 0) return lbl;
+  return opt + " · " + lbl;
+}
+/* Does a page's scraped options blob contradict its own SKUs? Returns one entry per axis
+   the blob claims that the SKUs already answer differently. */
+function optionConflicts(blob, labels){
+  const ax = optionAxes(labels);
+  const have = {};
+  Object.keys(ax.varying).forEach(k => { have[k.toLowerCase()] = ax.varying[k]; });
+  Object.keys(ax.fixed).forEach(k => { have[k.toLowerCase()] = ax.fixed[k]; });
+  const out = [];
+  const b = (blob && typeof blob === "object") ? blob : {};
+  Object.keys(b).forEach(k => {
+    const mine = have[String(k).toLowerCase()];
+    if (!mine) return;                       // the SKUs are silent — the blob is all we have
+    const claimed = (Array.isArray(b[k]) ? b[k] : [b[k]]).map(x => str(x)).filter(Boolean);
+    const same = claimed.length === mine.length &&
+      claimed.every(c => mine.some(m => m.toLowerCase() === c.toLowerCase()));
+    if (!same) out.push({ axis: k, record_says: claimed, skus_say: mine.slice() });
+  });
+  return out;
+}
+
 module.exports = {
   LIVE_STATUSES, STATUSES, LABELS,
   upper, normCode, indexPages, resolvePage, isLive,
   resolveCategory, buildJoin, statusFor, sweep,
+  OPTION_COLORS, OPTION_SIDES, AXIS_ORDER, sizeRank, titleWord,
+  optionTokens, optionAxesOf, optionAxes, skuOptionText, optionConflicts,
 };

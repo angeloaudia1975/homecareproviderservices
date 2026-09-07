@@ -3615,6 +3615,51 @@ function _repeatProduct(code){        // true if this code was viewed within 14 
     return last>0 && (now-last) <= 14*864e5;
   }catch(e){ return false; }
 }
+/* ===== SEARCH CAPTURE ===================================================================
+   What a dealer TYPES is the earliest and clearest statement of what they want, and it was
+   the one signal the portal threw away: both search boxes filtered the page in the browser
+   and told no one. A dealer who searched "lift recliner" four times and never ordered one
+   looked identical to a dealer who never opened the catalog.
+
+   Three rules keep this honest rather than noisy:
+     - Only a SETTLED query is recorded. The box filters as you type; a search is not the
+       prefix you passed through on the way to it, so nothing is sent until typing stops.
+     - The same query is not recorded twice in a minute, so a dealer flicking between two
+       products does not read as sustained demand for one.
+     - A query that finds NOTHING is recorded too. Those are the ones worth having: they are
+       demand for something the catalog does not carry, and no other signal captures them. */
+const SEARCH_SETTLE_MS=1200;     // typing has stopped, not merely paused between letters
+const SEARCH_MIN_LEN=2;
+const SEARCH_REPEAT_MS=60000;    // the same query again within a minute is the same search
+const SEARCH_MAX_Q=120;
+const _searchSent=new Map();
+const _searchTimers={};   // one per box: the global search must not cancel the catalog's
+function searchNorm(q){ return String(q==null?'':q).trim().toLowerCase().replace(/\s+/g,' '); }
+/* Should this settled query be recorded? Separated from the sending so it can be reasoned
+   about — and tested — without a network in the way. */
+function searchSendable(q,now){
+  const n=searchNorm(q);
+  if(n.length<SEARCH_MIN_LEN) return false;
+  const last=_searchSent.get(n)||0;
+  if(now-last < SEARCH_REPEAT_MS) return false;
+  _searchSent.set(n,now);
+  /* The map is a de-duplication window, not a history; it must not grow without bound in a
+     session someone leaves open all day. */
+  if(_searchSent.size>300){ const cut=now-SEARCH_REPEAT_MS;
+    for(const [k,t] of [..._searchSent]) if(t<cut) _searchSent.delete(k);
+    if(_searchSent.size>300) _searchSent.clear(); }
+  return true;
+}
+/* One settled search. `hits` is what the dealer actually saw; `slug`/`code` credit the line
+   and product the search landed on, so it joins the same per-product intent reporting the
+   view and cart signals already feed — rather than becoming a separate stream nothing reads. */
+function trackSearch(q,hits,slug,code,surface){
+  if(!searchSendable(q,Date.now())) return false;
+  track('search', slug||undefined, code||undefined,
+    {q:String(q).trim().slice(0,SEARCH_MAX_Q), hits:Number(hits)||0, surface:surface||'catalog'});
+  return true;
+}
+function searchSettle(key,fn){ clearTimeout(_searchTimers[key]); _searchTimers[key]=setTimeout(fn,SEARCH_SETTLE_MS); }
 function track(type,manufacturer,product,meta){
   if(AUTH.status!=='approved'||!AUTH.session||!AUTH.session.access_token) return;   // signed-in dealers only
   try{
@@ -3870,6 +3915,13 @@ lightbox.addEventListener("click",e=>{ if(e.target===lightbox || e.target.tagNam
 document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ if(lightbox.classList.contains("open")) closeLightbox(); closeVideo(); } });
 const debounce=(fn,ms=180)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};};
 $("#search").addEventListener("input",debounce(renderProducts,180));
+/* The same keystrokes that filter the page also state an intent. Recorded once typing has
+   settled, with the number of products the dealer was actually left looking at. */
+$("#search").addEventListener("input",function(){ searchSettle('catalog',function(){
+  const q=$("#search").value; if(!searchNorm(q)) return;
+  let hits=0, top=null; try{ const f=filtered(); hits=f.length; top=f[0]||null; }catch(e){}
+  trackSearch(q,hits,(top&&top.manufacturer)||state.active||undefined,(top&&top.code)||undefined,'catalog');
+}); });
 $("#catFilter").addEventListener("change",renderProducts);
 $("#brandFilter").addEventListener("change",renderProducts);
 
@@ -4785,6 +4837,12 @@ window.P360={boot:boot,show:showView,get booted(){return _p360booted;}};let _p36
     const hits=all.filter(x=>((x.p.name||'').toLowerCase().includes(q))||((x.p.code||'').toLowerCase().includes(q))||((x.mname||'').toLowerCase().includes(q))).slice(0,8);
     box.innerHTML = hits.length ? hits.map(x=>`<div class="gsr" onclick="openFromSearch('${esc(x.slug)}','${esc(x.p.code)}')"><b>${esc(x.p.name)}</b><span>${esc(x.mname)} · Item # ${esc(x.p.code)}${x.p._skuOption?" · "+esc(variantLabel(x.p)):""}</span></div>`).join('') : `<div class="gsr empty">No matches for &ldquo;${esc(q)}&rdquo;</div>`;
     box.classList.add('on');
+    /* The global box searches every line a dealer is entitled to, so a miss here is a miss
+       across the whole catalogue — the strongest "we do not carry this" signal there is. */
+    searchSettle('global',function(){
+      const top=hits[0]||null;
+      trackSearch(q,hits.length,(top&&top.slug)||undefined,(top&&top.p&&top.p.code)||undefined,'global');
+    });
   }
   window.openFromSearch=async function(slug,code){
     const box=$q('#gsresults'); if(box)box.classList.remove('on');

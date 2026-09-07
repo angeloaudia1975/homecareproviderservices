@@ -293,6 +293,201 @@ async function loadMeta(slug){
   return (rows&&rows[0])||{};
 }
 
+/* ── THE PRODUCT STRUCTURE AUDIT ──────────────────────────────────────────────
+   One question, asked of every product on a line: does what a dealer will see match the
+   record someone approved? Four ways it can fail, each nameable and each fixable:
+
+     options_contradict_skus — the stored options blob claims something the SKUs deny
+     option_axis_unstated    — the SKUs offer a real choice the record never mentions
+     sku_option_blank        — a SKU with no option text, so it is indistinguishable
+     sku_option_duplicated   — two SKUs on one page with the SAME option text, which means
+                               a dealer picking one of them cannot know which they got
+     sku_claimed_twice       — two pages claim one part number
+     page_has_no_skus        — an approved page a dealer can reach that lists nothing
+
+   It reads and computes only. */
+async function structureAudit(slug){
+  const e=encodeURIComponent;
+  const pages=await sb("GET",`product_content?manufacturer=eq.${e(slug)}&select=page_key,name,status,disabled,options,skus&limit=5000`).catch(()=>[]);
+  const findings=[], seenSku={};
+  (pages||[]).forEach(pg=>{
+    const skus=Array.isArray(pg.skus)?pg.skus:[];
+    skus.forEach(sx=>{ const c=JOIN.normCode(String((sx&&(sx.sku||sx.code))||"")); if(!c) return;
+      (seenSku[c]=seenSku[c]||[]).push(pg.page_key); });
+  });
+  (pages||[]).forEach(pg=>{
+    const skus=Array.isArray(pg.skus)?pg.skus:[];
+    const labels=skus.map(sx=>JOIN.skuOptionText(sx,pg.name));
+    const ax=JOIN.optionAxes(labels);
+    const live=JOIN.isLive(pg) && pg.disabled!==true;
+    const add=(kind,detail)=>findings.push({page_key:pg.page_key,name:pg.name||pg.page_key,
+      status:pg.status||"",live,kind,detail,sku_count:skus.length});
+
+    if(live && !skus.length){ add("page_has_no_skus","approved, but lists no SKUs — a dealer reaching it sees nothing to order"); }
+
+    const conf=JOIN.optionConflicts(pg.options,labels);
+    conf.forEach(c=>add("options_contradict_skus",
+      `${c.axis}: the record says ${c.record_says.join(", ")||"nothing"}, the SKUs say ${c.skus_say.join(", ")}`));
+
+    const blobKeys={}; const blob=(pg.options&&typeof pg.options==="object")?pg.options:{};
+    Object.keys(blob).forEach(k=>{ blobKeys[String(k).toLowerCase()]=1; });
+    Object.keys(ax.varying).forEach(k=>{ if(!blobKeys[k.toLowerCase()])
+      add("option_axis_unstated",`${k}: ${ax.varying[k].length} choices in the SKUs (${ax.varying[k].join(", ")}), not stated on the record`); });
+
+    if(skus.length>1){
+      const blank=skus.filter((sx,i)=>!String(labels[i]||"").trim())
+        .map(sx=>String((sx&&(sx.sku||sx.code))||"")).filter(Boolean);
+      if(blank.length) add("sku_option_blank",
+        `${blank.length} SKU${blank.length===1?"":"s"} with no option text: ${blank.slice(0,8).join(", ")}${blank.length>8?"…":""}`);
+      const byLabel={};
+      labels.forEach((l,i)=>{ const key=String(l||"").trim().toLowerCase(); if(!key) return;
+        (byLabel[key]=byLabel[key]||[]).push(String((skus[i]&&(skus[i].sku||skus[i].code))||"")); });
+      const dup=Object.keys(byLabel).filter(k2=>byLabel[k2].length>1);
+      if(dup.length) add("sku_option_duplicated",
+        dup.slice(0,4).map(k2=>`"${k2}" → ${byLabel[k2].join(", ")}`).join("; ")+(dup.length>4?` (+${dup.length-4} more)`:""));
+    }
+
+    skus.forEach(sx=>{ const c=JOIN.normCode(String((sx&&(sx.sku||sx.code))||"")); if(!c) return;
+      const owners=[...new Set(seenSku[c]||[])];
+      if(owners.length>1 && owners[0]===pg.page_key)
+        add("sku_claimed_twice",`${String(sx.sku||sx.code)} is also on ${owners.filter(o=>o!==pg.page_key).join(", ")}`); });
+  });
+  const byKind={}; findings.forEach(f=>{ byKind[f.kind]=(byKind[f.kind]||0)+1; });
+  const products={}; findings.forEach(f=>{ products[f.page_key]=1; });
+  return {ok:true, slug, pages:(pages||[]).length,
+    products_affected:Object.keys(products).length,
+    findings_total:findings.length, by_kind:byKind, findings};
+}
+
+/* ── THE DEALER PAGE SOURCE ───────────────────────────────────────────────────
+   Every field a dealer sees, traced to the record that supplied it and the admin screen
+   that edits it. This exists because "which screen controls this?" had no answer: a colour
+   chip on a dealer page came from an attribute blob written once by the importer, with no
+   editor anywhere and nothing on screen to say so. A field whose origin cannot be named is
+   a field nobody can fix.
+
+   It reads and computes only — it changes nothing. */
+const EDITED_IN = {
+  deployed:  "Deployed catalog file — replaced by a price-list import",
+  custom:    "Product Catalog → the product row",
+  override:  "Product Catalog → the product row (saved as an override)",
+  page:      "Product Content Enrichment & Review → this page",
+  page_sku:  "Product Content Enrichment & Review → the SKUS table on this page",
+  map:       "Product Content Enrichment & Review → Structure Map (subcategory → category)",
+  meta:      "Product Content Enrichment & Review → line settings",
+  scrape:    "Written once by Start Enrichment. NO EDITOR — see the options editor on the page",
+  none:      "Nothing sets this",
+};
+async function pageSource(slug, wantCode, wantPage){
+  const e=encodeURIComponent;
+  const [base,custom,ovRows,content,meta,mediaRows]=await Promise.all([
+    fetchJson(`${ORDERING_BASE}/data/${e(slug)}.json`).catch(()=>[]),
+    sb("GET",`custom_products?manufacturer=eq.${e(slug)}&select=*`).catch(()=>[]),
+    sb("GET",`product_overrides?manufacturer=eq.${e(slug)}&select=code,patch,updated_at`).catch(()=>[]),
+    sb("GET",`product_content?manufacturer=eq.${e(slug)}&select=page_key,name,tagline,description,features,options,billing_codes,image,images_gallery,skus,status,disabled,subcategory,category,variant_group,parent_key,variant_label,specs,sizing_table,documents,videos,updated_at,published_at&limit=5000`).catch(()=>[]),
+    loadMeta(slug),
+    sb("GET",`product_media?manufacturer=eq.${e(slug)}&select=code`).catch(()=>[]),
+  ]);
+  const baseBy={}; (base||[]).forEach(r=>{ if(r&&r.code!=null) baseBy[String(r.code)]=r; });
+  const custBy={}; (custom||[]).forEach(r=>{ if(r&&r.code!=null) custBy[String(r.code)]=r; });
+  const ovBy={};   (ovRows||[]).forEach(r=>{ if(r&&r.code!=null) ovBy[String(r.code)]=r; });
+  const mediaN={}; (mediaRows||[]).forEach(r=>{ mediaN[String(r.code)]=(mediaN[String(r.code)]||0)+1; });
+  const pages=(content||[]);
+
+  /* Which page claims this SKU — and does more than one? That second question is the point:
+     two pages claiming one part number is how a change in the right place stops working. */
+  const claimFor=code=>{
+    const want=JOIN.normCode(code);
+    return pages.filter(pg=>(Array.isArray(pg.skus)?pg.skus:[])
+      .some(sx=>JOIN.normCode(String((sx&&(sx.sku||sx.code))||""))===want));
+  };
+
+  let code=String(wantCode||"").trim();
+  let page=null;
+  if(!code && wantPage){
+    page=pages.find(pg=>pg.page_key===String(wantPage))||null;
+    const first=page&&(Array.isArray(page.skus)?page.skus:[])[0];
+    code=String((first&&(first.sku||first.code))||"").trim();
+  }
+  if(!code) return {error:"code or page_key required"};
+
+  const claims=claimFor(code);
+  if(!page) page=claims[0]||null;
+
+  const b=baseBy[code]||null, c=custBy[code]||null, ov=(ovBy[code]||{}).patch||{};
+  const layers=[];
+  if(b) layers.push("deployed");
+  if(c) layers.push("custom");
+  if(Object.keys(ov).length) layers.push("override");
+
+  /* One field, one answer, and the answer names where it came from. The precedence here is
+     the same one resolveCatalog applies when it builds the catalog the shop reads. */
+  const pick=(field,pageField)=>{
+    if(Object.prototype.hasOwnProperty.call(ov,field) && ov[field]!=null && ov[field]!=="")
+      return {value:ov[field], from:"override"};
+    if(c && c[field]!=null && c[field]!=="") return {value:c[field], from:"custom"};
+    if(b && b[field]!=null && b[field]!=="") return {value:b[field], from:"deployed"};
+    if(pageField && page && page[pageField]!=null && page[pageField]!=="")
+      return {value:page[pageField], from:"page"};
+    return {value:null, from:"none"};
+  };
+
+  const skuRow=page ? (Array.isArray(page.skus)?page.skus:[])
+    .find(sx=>JOIN.normCode(String((sx&&(sx.sku||sx.code))||""))===JOIN.normCode(code)) || null : null;
+  const pageLabels=page ? (Array.isArray(page.skus)?page.skus:[])
+    .map(sx=>JOIN.skuOptionText(sx,page.name)) : [];
+  const axes=JOIN.optionAxes(pageLabels);
+  const myOption=JOIN.skuOptionText(skuRow,page&&page.name);
+
+  const categoryMap=(meta.category_map&&typeof meta.category_map==="object")?meta.category_map:null;
+  const cat=JOIN.resolveCategory({
+    product:{category:(c&&c.category)||(b&&b.category)||"", subcategory:(b&&b.subcategory)||"",
+             kind:c?"custom":"catalog",
+             category_from_override:Object.prototype.hasOwnProperty.call(ov,"category")},
+    page, categoryMap});
+
+  const nm=pick("name");
+  const pr=pick("base_price"), ms=pick("msrp"), im=pick("image");
+  const live=page ? JOIN.isLive(page) : false;
+  const enrichedOnly=meta.enriched_only===true;
+
+  const fields=[
+    {field:"Part number",        value:code,                        from:layers[0]||"none"},
+    {field:"Product name (card)",value:(page&&page.name)||nm.value||"", from:page?"page":nm.from},
+    {field:"Option name (SKU)",  value:(skuRow&&(skuRow.name||""))||"", from:skuRow?"page_sku":"none"},
+    {field:"Option shown to dealer",value:myOption,                  from:skuRow?"page_sku":"none"},
+    {field:"Dealer price",       value:pr.value,                     from:pr.from},
+    {field:"MSRP",               value:ms.value,                     from:ms.from},
+    {field:"Category",           value:cat.category,                 from:cat.source==="map"?"map":(cat.source==="pinned"?"override":(cat.source==="none"?"none":(c?"custom":"deployed")))},
+    {field:"Subcategory",        value:(page&&page.subcategory)||(b&&b.subcategory)||"", from:(page&&page.subcategory)?"page":((b&&b.subcategory)?"deployed":"none")},
+    {field:"Primary image",      value:(page&&page.image)||im.value||"", from:(page&&page.image)?"page":im.from},
+    {field:"Description",        value:(page&&page.description)?"(page copy)":((b&&b.description)?"(catalog text)":""),
+                                 from:(page&&page.description)?"page":((b&&b.description)?"deployed":"none")},
+    {field:"Tagline",            value:(page&&page.tagline)||"",     from:(page&&page.tagline)?"page":"none"},
+    {field:"Options & configurations", value:page&&page.options?Object.keys(page.options).join(", "):"", from:page&&page.options?"scrape":"none"},
+  ].map(f=>Object.assign(f,{edited_in:EDITED_IN[f.from]||EDITED_IN.none}));
+
+  return {
+    ok:true, slug, code,
+    page: page ? {page_key:page.page_key, name:page.name, status:page.status, live,
+      disabled:page.disabled===true, variant_group:page.variant_group||"", parent_key:page.parent_key||"",
+      sku_count:(Array.isArray(page.skus)?page.skus:[]).length, updated_at:page.updated_at||null} : null,
+    layers, in_deployed_file:!!b, in_custom_products:!!c,
+    override_keys:Object.keys(ov),
+    media_rows:mediaN[code]||0,
+    claimed_by:claims.map(p=>p.page_key),
+    conflicting_claims:claims.length>1,
+    visible_to_dealer: page ? (live && !(page.disabled===true)) : !enrichedOnly,
+    enriched_only:enrichedOnly,
+    axes:{varying:axes.varying, fixed:axes.fixed},
+    my_option:myOption,
+    option_blob:(page&&page.options)||null,
+    option_conflicts:JOIN.optionConflicts((page&&page.options)||null,pageLabels),
+    sku_labels:pageLabels,
+    fields,
+  };
+}
+
 async function sweepManufacturer(slug){
   const [products,pages,meta]=await Promise.all([resolveCatalog(slug),loadPages(slug),loadMeta(slug)]);
   const categoryMap=(meta.category_map&&typeof meta.category_map==="object")?meta.category_map:null;
@@ -1898,6 +2093,29 @@ exports.handler = async (event)=>{
          flag. This is the answer to "a product in the catalog should appear in enrichment
          with the correct status" — it appears because this reads the catalog, not because
          a second record was created for it. */
+      /* WHERE DOES THIS COME FROM? Read-only provenance for one dealer product page. */
+      /* DOES WHAT A DEALER SEES MATCH THE APPROVED RECORD? Asked of every product. */
+      if(b.action==="structure_audit"){
+        const slugs=Array.isArray(b.manufacturers)&&b.manufacturers.length
+          ? b.manufacturers.map(x=>String(x).trim()).filter(Boolean).slice(0,20)
+          : [String(b.manufacturer||"").trim()].filter(Boolean);
+        if(!slugs.length) return json(400,{error:"manufacturer required"});
+        const out=[];
+        for(const sg of slugs) out.push(await structureAudit(sg));
+        if(slugs.length===1) return json(200,out[0]);
+        return json(200,{ok:true, lines:out,
+          products_affected:out.reduce((n,x)=>n+x.products_affected,0),
+          findings_total:out.reduce((n,x)=>n+x.findings_total,0)});
+      }
+
+      if(b.action==="page_source"){
+        const slug=String(b.manufacturer||"").trim();
+        if(!slug) return json(400,{error:"manufacturer required"});
+        const out=await pageSource(slug,b.code,b.page_key);
+        if(out&&out.error) return json(400,out);
+        return json(200,out);
+      }
+
       if(b.action==="status_sweep"){
         const slug=String(b.manufacturer||"").trim();
         if(!slug) return json(400,{error:"manufacturer required"});

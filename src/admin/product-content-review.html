@@ -968,8 +968,37 @@ function contentSec(k){ const p=pages[k]; const feats=p.features||[]; const spec
     <div class="fld" style="margin-top:12px"><label>Clinical applications <button class="mini-ai" data-act="ai-gen" data-pk="${escA(k)}" data-field="clinical_applications">✨ AI</button> <span class="mut" style="font-size:10px;text-transform:none">conditions / procedures this product is used for</span></label>
       <ul class="feat">${clin.map((c,i)=>`<li><textarea class="ed" rows="1" oninput="editClin('${escA(k)}',${i},this.value)">${esc(c)}</textarea><button class="x" data-act="del-clin" data-pk="${escA(k)}" data-i="${i}">✕</button></li>`).join('')}</ul>
       <button class="btn ghost" style="margin-top:6px" data-act="add-clin" data-pk="${escA(k)}">＋ Add clinical application</button></div>
+    ${optionsFld(k)}
     <div class="savebar"><button class="btn dark" data-act="save-content" data-pk="${escA(k)}">Save content</button></div>
   </div>`; }
+
+/* OPTIONS & CONFIGURATIONS — the field a dealer reads and nobody could edit.
+   It was written once by Start Enrichment and never exposed again, which is how a
+   four-colour boot went on telling dealers "Color: Blue" whichever colour was selected.
+   The SKUs are the record of what is orderable, so the SKU-derived answer is shown beside
+   whatever is stored, and one button replaces the latter with the former. */
+function optionsRows(k){ const o=(pages[k]&&pages[k].options&&typeof pages[k].options==='object')?pages[k].options:{};
+  return Object.keys(o).map(key=>({key:key, vals:(Array.isArray(o[key])?o[key]:[o[key]]).map(v=>String(v==null?'':v))})); }
+function optionsFld(k){
+  const rows=optionsRows(k);
+  const derived=skuAxes(k);
+  const dk=Object.keys(derived.varying), fk=Object.keys(derived.fixed);
+  const stored={}; rows.forEach(r=>{ stored[r.key.toLowerCase()]=r.vals.map(v=>v.toLowerCase()).sort().join('|'); });
+  const clash=[...dk,...fk].filter(key=>{
+    const have=stored[key.toLowerCase()]; if(have===undefined) return false;
+    const mine=(derived.varying[key]||derived.fixed[key]||[]).map(v=>String(v).toLowerCase()).sort().join('|');
+    return have!==mine; });
+  return `<div class="fld" style="margin-top:12px"><label>Options &amp; configurations
+      <span class="mut" style="font-size:10px;text-transform:none">shown on the dealer product page</span></label>
+    <div>${rows.map((r,i)=>`<div class="specrow"><input class="ed" placeholder="Axis, e.g. Color" value="${escA(r.key)}" oninput="editOptKey('${escA(k)}',${i},this.value)"><input class="ed" placeholder="Values, comma-separated" value="${escA(r.vals.join(', '))}" oninput="editOptVals('${escA(k)}',${i},this.value)"><button class="x" data-act="del-opt" data-pk="${escA(k)}" data-i="${i}">✕</button></div>`).join('')}</div>
+    <button class="btn ghost" data-act="add-opt" data-pk="${escA(k)}">＋ Add option</button>
+    ${(dk.length||fk.length)?`<div class="hint" style="margin-top:6px">
+      From this product's ${skusOf(k).length} SKUs: ${[...dk.map(x=>`<b>${esc(x)}</b> ${esc((derived.varying[x]||[]).join(', '))}`),
+        ...fk.map(x=>`<b>${esc(x)}</b> ${esc((derived.fixed[x]||[]).join(', '))} <i>(same on every SKU)</i>`)].join(' &nbsp;·&nbsp; ')}
+      <button class="btn ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" data-act="opt-from-skus" data-pk="${escA(k)}">Use the SKUs</button></div>`:''}
+    ${clash.length?`<div class="hint" style="color:var(--bad);margin-top:4px">This record disagrees with its own SKUs on: <b>${esc(clash.join(', '))}</b>. A dealer sees what is stored here, so it will be wrong until this is corrected.</div>`:''}
+  </div>`;
+}
 
 /* -- Section 4: sizing / specs paste -- */
 function sizingSec(k){ const p=pages[k]; const st=normSizing(p.sizing_table);
@@ -1040,6 +1069,7 @@ function approveSec(k){ const p=pages[k]; const s=p.status||'pending_review';
     <div class="savebar" style="flex-wrap:wrap">
       <button class="btn grad" data-act="catalog-review" data-pk="${escA(k)}">🧠 Catalog Review</button>
       <button class="btn" data-act="preview" data-pk="${escA(k)}">Preview in Partner 360</button>
+      <button class="btn" data-act="page-source" data-pk="${escA(psFirstSku(k))}">🔎 Dealer Page Source</button>
       <button class="btn" data-act="approve" data-pk="${escA(k)}">✓ Approve</button>
       <button class="btn grad" data-act="publish" data-pk="${escA(k)}">▲ Publish live</button>
       <button class="btn" data-act="set-status-val" data-pk="${escA(k)}" data-val="discontinued">Mark discontinued</button>
@@ -1057,6 +1087,69 @@ function editFeat(k,i,v){ pages[k].features=pages[k].features||[]; pages[k].feat
 function editClin(k,i,v){ pages[k].clinical_applications=pages[k].clinical_applications||[]; pages[k].clinical_applications[i]=v; }
 function editSpec(k,i,f,v){ pages[k].specs=pages[k].specs||[]; pages[k].specs[i]=pages[k].specs[i]||{label:'',value:''}; pages[k].specs[i][f]=v; }
 function editCodes(k,v){ pages[k].billing_codes=v.split(',').map(x=>x.trim()).filter(Boolean); }
+function optSet(k,rows){ const o={}; rows.forEach(r=>{ const key=String(r.key||'').trim(); if(!key) return;
+  o[key]=r.vals.map(v=>String(v).trim()).filter(Boolean); }); pages[k].options=o; }
+function editOptKey(k,i,v){ const rows=optionsRows(k); if(!rows[i]) return; rows[i].key=v; optSet(k,rows); }
+function editOptVals(k,i,v){ const rows=optionsRows(k); if(!rows[i]) return;
+  rows[i].vals=String(v).split(',').map(x=>x.trim()).filter(Boolean); optSet(k,rows); }
+/* THE AXES A PRODUCT ACTUALLY HAS, read from its SKUs. Same rule the dealer shop applies,
+   so what this screen promises is what a dealer gets. */
+const OPT_COLORS=['black','blue','grey','gray','red','white','pink','navy','tan','beige','green',
+  'purple','orange','camo','teal','charcoal','silver','gold','brown','yellow','ivory'];
+const OPT_SIDES=['left','right','bilateral'];
+const OPT_SIZES=[['xxsmall',0],['xx-small',0],['2xs',0],['xxs',0],['x-small',1],['xsmall',1],['extra small',1],['xs',1],
+  ['small',2],['s',2],['medium',3],['med',3],['m',3],['x-large',5],['xlarge',5],['extra large',5],['xl',5],
+  ['xx-large',6],['xxlarge',6],['2xl',6],['xxl',6],['3xl',7],['4xl',8],['5xl',9],
+  ['large',4],['lg',4],['l',4],['universal',10],['one size',10],['osfa',10]];
+function optFold(x){ return ' '+String(x==null?'':x).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()+' '; }
+function optSizeRank(l){ const t=optFold(l);
+  for(const [w,r] of OPT_SIZES){ if(t.indexOf(optFold(w))>=0) return r; } return 50; }
+function optTitle(w){ return String(w==null?'':w).replace(/\b[a-z]/g,c=>c.toUpperCase()); }
+function optAxesOf(label){
+  const raw=String(label==null?'':label).trim(); if(!raw) return {};
+  const toks=raw.toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().split(' ').filter(Boolean);
+  let color='',side='';
+  toks.forEach(t=>{ const c=(t==='gray')?'grey':t;
+    if(!color&&OPT_COLORS.indexOf(c)>=0) color=c;
+    if(!side&&OPT_SIDES.indexOf(c)>=0) side=c; });
+  const cut=(str,w)=>w?str.replace(new RegExp('(^|[^A-Za-z0-9])'+w+'(?![A-Za-z0-9])','ig'),'$1'):str;
+  let rest=cut(raw,color==='grey'?'gr[ae]y':color); rest=cut(rest,side);
+  rest=rest.replace(/^[\s,;:·–—-]+/,'').replace(/[\s,;:·–—-]+$/,'').replace(/\s{2,}/g,' ').trim();
+  const out={};
+  if(rest&&optSizeRank(rest)<50) out.Size=rest;
+  else if(rest&&!color&&!side) out.Option=rest;
+  else if(rest) out.Size=rest;
+  if(color) out.Color=optTitle(color);
+  if(side) out.Side=optTitle(side);
+  return out;
+}
+function skuOptionLabel(k,sx){
+  const opt=String((sx&&(sx.size!=null?sx.size:sx.option))||'').trim();
+  const gn=String((pages[k]&&pages[k].name)||'').trim();
+  let lbl=String((sx&&sx.name)||'').trim();
+  if(gn&&lbl.toLowerCase().indexOf(gn.toLowerCase())===0) lbl=lbl.slice(gn.length);
+  lbl=lbl.replace(/^[\s,;:·–—-]+/,'').trim();
+  if(!opt) return lbl; if(!lbl) return opt;
+  const n=x=>x.toLowerCase().replace(/[^a-z0-9]/g,''); const a=n(opt),b=n(lbl);
+  if(a===b||a.indexOf(b)>=0) return opt;
+  if(b.indexOf(a)>=0) return lbl;
+  return opt+' · '+lbl;
+}
+const OPT_AXIS_ORDER=['Size','Color','Side','Option'];
+function skuAxes(k){
+  const seen={},order=[];
+  skusOf(k).forEach(sx=>{ const ax=optAxesOf(skuOptionLabel(k,sx));
+    Object.keys(ax).forEach(key=>{ if(!seen[key]){seen[key]=[];order.push(key);}
+      if(seen[key].indexOf(ax[key])<0) seen[key].push(ax[key]); }); });
+  const keys=order.slice().sort((a,b)=>{ const ia=OPT_AXIS_ORDER.indexOf(a),ib=OPT_AXIS_ORDER.indexOf(b);
+    return (ia<0?99:ia)-(ib<0?99:ib)||order.indexOf(a)-order.indexOf(b); });
+  const varying={},fixed={};
+  keys.forEach(key=>{ const vals=seen[key];
+    if(key==='Size') vals.sort((x,y)=>optSizeRank(x)-optSizeRank(y)||x.localeCompare(y));
+    else vals.sort((x,y)=>x.localeCompare(y));
+    (vals.length>1?varying:fixed)[key]=vals; });
+  return {varying:varying,fixed:fixed};
+}
 
 /* ===================== delegated actions ===================== */
 document.addEventListener('click',async function(e){
@@ -1099,6 +1192,17 @@ document.addEventListener('click',async function(e){
   // status + saves + structural
   if(act==='save-record') return doSaveRecord(k,t);
   if(act==='save-content') return doSaveContent(k,t);
+  if(act==='add-opt'){ const o=(pages[k].options&&typeof pages[k].options==='object')?Object.assign({},pages[k].options):{};
+    if(!Object.prototype.hasOwnProperty.call(o,'')) o['']=[];   // one blank row at a time, at the end
+    pages[k].options=o; render(); return; }
+  if(act==='del-opt'){ const rows=optionsRows(k); const i=Number(t.getAttribute('data-i')); rows.splice(i,1); optSet(k,rows); render(); return; }
+  if(act==='opt-from-skus'){ const d=skuAxes(k); const next={};
+    Object.keys(d.varying).forEach(x=>{ next[x]=d.varying[x].slice(); });
+    Object.keys(d.fixed).forEach(x=>{ next[x]=d.fixed[x].slice(); });
+    const blob=(pages[k].options&&typeof pages[k].options==='object')?pages[k].options:{};
+    const claimed={}; Object.keys(next).forEach(x=>{ claimed[x.toLowerCase()]=1; });
+    Object.keys(blob).forEach(x=>{ if(!claimed[x.toLowerCase()]) next[x]=Array.isArray(blob[x])?blob[x]:[blob[x]]; });
+    pages[k].options=next; render(); toast('Options rebuilt from the SKUs — Save content to keep them'); return; }
   if(act==='save-skus') return doSaveSkus(k,t);
   if(act==='save-sizing') return doSaveSizing(k,t);
   if(act==='approve') return doStatus(k,'approved');
@@ -1119,6 +1223,9 @@ document.addEventListener('click',async function(e){
       doNewProduct(true); },30); return; }
   if(act==='mfr-dash') return openMfrDashboard();
   if(act==='catalog-health') return openCatalogHealth();
+  if(act==='page-source') return openPageSource(t.getAttribute('data-pk')||PS_CODE);
+  if(act==='ps-go'){ const el=document.getElementById('ps-code'); return openPageSource(el?el.value:''); }
+  if(act==='ps-fixopts') return psRebuildOptions();
   if(act==='health-refresh') return openCatalogHealth();
   if(act==='reject') return doStatus(k,'rejected');
   if(act==='delete-product') return doDeleteProduct(k);
@@ -1356,7 +1463,7 @@ async function doSaveRecord(k){ const p=pages[k];
   const r=await apiWrite({action:'set_meta',page_key:k,patch});
   toast(r.ok?'Record saved':'Save failed',!r.ok); }
 async function doSaveContent(k){ const p=pages[k];
-  const patch={description:p.description,features:(p.features||[]).map(x=>String(x).trim()).filter(Boolean),specs:p.specs||[],warranty:p.warranty,billing_codes:p.billing_codes||[],clinical_applications:(p.clinical_applications||[]).map(x=>String(x).trim()).filter(Boolean),images_gallery:Array.isArray(p.images_gallery)?p.images_gallery:[],image:p.image,documents:Array.isArray(p.documents)?p.documents:[],videos:Array.isArray(p.videos)?p.videos:[]};
+  const patch={description:p.description,features:(p.features||[]).map(x=>String(x).trim()).filter(Boolean),specs:p.specs||[],warranty:p.warranty,billing_codes:p.billing_codes||[],clinical_applications:(p.clinical_applications||[]).map(x=>String(x).trim()).filter(Boolean),images_gallery:Array.isArray(p.images_gallery)?p.images_gallery:[],image:p.image,documents:Array.isArray(p.documents)?p.documents:[],videos:Array.isArray(p.videos)?p.videos:[],options:(p.options&&typeof p.options==='object')?p.options:{}};
   const r=await apiWrite({action:'set_content',page_key:k,patch});
   toast(r.ok?'Content saved':'Save failed',!r.ok); }
 async function save(kind,k){ if(kind==='save-content') return doSaveContent(k); }
@@ -4847,6 +4954,97 @@ function cbExport(){
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href),4000);
   toast(rows.length+' row(s) exported');
+}
+
+/* ── DEALER PAGE SOURCE ───────────────────────────────────────────────────────
+   "Which screen actually controls this?" had no answer, and that is why the same fix had to
+   be made three times. This names, for one dealer product page, the record behind every
+   field and the tool that edits it — including the fields that NO tool edits, which is the
+   answer that matters most. It only reads. */
+/* Trace from a record: any of its SKUs will do — they all resolve to this page. */
+function psFirstSku(k){ const p=pages[k]||{}; const a=Array.isArray(p.skus)?p.skus:[];
+  const first=a.find(x=>x&&(x.sku||x.code)); return first?String(first.sku||first.code):''; }
+let PS_CODE='';
+function psSourceChip(from){
+  const label={deployed:'Deployed catalog',custom:'Product Catalog',override:'Product Catalog (override)',
+    page:'Enrichment page',page_sku:'Enrichment SKU row',map:'Structure Map',meta:'Line settings',
+    scrape:'Scraper (no editor)',none:'—'}[from]||from;
+  const bad=(from==='scrape'||from==='none');
+  return `<span class="pill ${bad?'no':'ok'}" style="font-size:10px">${esc(label)}</span>`;
+}
+async function openPageSource(code){
+  PS_CODE=String(code||PS_CODE||'').trim();
+  modalHTML('Dealer Page Source','<p class="mut">Reading…</p>');
+  const r=await catalogPost({action:'page_source',manufacturer:MFR,code:PS_CODE});
+  const d=(r&&r.json)||{};
+  if(!r.ok||d.error){ modalHTML('Dealer Page Source',`<p class="mut">Could not trace <b>${esc(PS_CODE)}</b>. ${esc(d.error||('HTTP '+r.status))}</p>${psFormHtml()}`); return; }
+  modalHTML('Dealer Page Source',psHtml(d));
+}
+function psFormHtml(){
+  return `<div class="pa-sec"><h3>Trace another</h3>
+    <div style="display:flex;gap:8px;max-width:420px">
+      <input id="ps-code" value="${escA(PS_CODE)}" placeholder="Part number, e.g. 10007RED" style="flex:1">
+      <button class="btn dark" data-act="ps-go">Trace</button></div></div>`;
+}
+function psHtml(d){
+  const pg=d.page;
+  const ax=d.axes||{varying:{},fixed:{}};
+  const vk=Object.keys(ax.varying), fk=Object.keys(ax.fixed);
+  const conf=d.option_conflicts||[];
+  return `
+  <p class="mut">Every field on the dealer page for <b>${esc(d.code)}</b>, and the record it comes from.
+     A field whose source says <span class="pill no" style="font-size:10px">Scraper (no editor)</span> cannot be
+     corrected in any tool — that is a gap, not your mistake.</p>
+
+  <div class="pa-sec"><h3>Identity</h3>
+    <div class="tabscroll"><table style="width:100%;font-size:12.5px"><tbody>
+      <tr><td style="width:190px">Part number</td><td><b>${esc(d.code)}</b></td></tr>
+      <tr><td>Held in</td><td>${(d.layers||[]).length?(d.layers||[]).map(l=>psSourceChip(l)).join(' '):'<span class="pill no">no catalog row</span>'}</td></tr>
+      ${(d.override_keys||[]).length?`<tr><td>Override fields</td><td>${(d.override_keys||[]).map(k=>`<code>${esc(k)}</code>`).join(' ')}</td></tr>`:''}
+      <tr><td>Enrichment page</td><td>${pg?`<b>${esc(pg.name||pg.page_key)}</b> <span class="mut" style="font-size:11px">(<code>${esc(pg.page_key)}</code>, ${esc(pg.status||'—')}, ${pg.sku_count} SKUs)</span>`:'<span class="pill no">no page claims this SKU</span>'}</td></tr>
+      ${d.conflicting_claims?`<tr><td>Claimed by</td><td><span class="pill no">${(d.claimed_by||[]).length} pages</span> ${(d.claimed_by||[]).map(k=>`<code>${esc(k)}</code>`).join(' ')} — a SKU may belong to one page only</td></tr>`:''}
+      <tr><td>Visible to dealers</td><td>${d.visible_to_dealer?'<span class="pill ok">yes</span>':'<span class="pill no">no</span>'}${d.enriched_only?' <span class="mut" style="font-size:11px">line lists enriched products only</span>':''}</td></tr>
+    </tbody></table></div></div>
+
+  <div class="pa-sec"><h3>Field by field</h3>
+    <div class="tabscroll"><table style="width:100%;font-size:12.5px">
+    <thead><tr><th style="width:170px">Field</th><th>Value</th><th style="width:150px">Comes from</th><th>Edit it in</th></tr></thead><tbody>
+    ${(d.fields||[]).map(f=>`<tr><td>${esc(f.field)}</td>
+      <td>${f.value===null||f.value===''?'<span class="mut">—</span>':esc(String(f.value).slice(0,90))}</td>
+      <td>${psSourceChip(f.from)}</td>
+      <td class="mut" style="font-size:11px">${esc(f.edited_in||'')}</td></tr>`).join('')}
+    </tbody></table></div></div>
+
+  <div class="pa-sec"><h3>What a dealer can choose</h3>
+    ${vk.length?`<p class="mut">Derived from this page's ${(d.sku_labels||[]).length} SKUs — not from a stored attribute.</p>
+      ${vk.map(k=>`<div style="margin:4px 0"><b>${esc(k)}</b> <span class="mut" style="font-size:11px">${ax.varying[k].length} to choose from</span><br>
+        ${ax.varying[k].map(v=>`<span class="pill ${String((d.my_option||'')).toLowerCase().indexOf(String(v).toLowerCase())>=0?'ok':''}" style="margin:2px 3px 0 0">${esc(v)}</span>`).join('')}</div>`).join('')}`
+      :'<p class="mut">This product has no selectable options — one SKU, or every SKU identical.</p>'}
+    ${fk.length?`<div style="margin-top:8px"><span class="mut" style="font-size:11px">Fixed for every SKU on this page (not a choice):</span><br>
+      ${fk.map(k=>`<b style="font-size:12px">${esc(k)}</b> ${ax.fixed[k].map(v=>`<span class="pill">${esc(v)}</span>`).join('')}`).join(' &nbsp; ')}</div>`:''}
+    ${d.option_blob?`<div style="margin-top:10px"><span class="mut" style="font-size:11px">Stored options blob on the record: <code>${esc(JSON.stringify(d.option_blob).slice(0,180))}</code></span></div>`:''}
+    ${conf.length?`<div class="rule" style="border-color:#f0c7c7;margin-top:8px">
+      <b>The stored record contradicts its own SKUs</b>
+      ${conf.map(c=>`<div style="font-size:12px;margin-top:3px">${esc(c.axis)} — record says <b>${esc(c.record_says.join(', ')||'nothing')}</b>, SKUs say <b>${esc(c.skus_say.join(', '))}</b></div>`).join('')}
+      <button class="btn dark" style="padding:3px 9px;font-size:11px;margin-top:6px" data-act="ps-fixopts">Rebuild options from the SKUs</button></div>`:''}
+  </div>
+  ${psFormHtml()}`;
+}
+/* The repair is a normal edit to the record, applied by the tool that owns product_content,
+   so it lands in this page's history and undoes like anything else. */
+async function psRebuildOptions(){
+  const r=await catalogPost({action:'page_source',manufacturer:MFR,code:PS_CODE});
+  const d=(r&&r.json)||{}; if(!r.ok||!d.page) { toast('Nothing to rebuild'); return; }
+  const ax=d.axes||{varying:{},fixed:{}};
+  const next={};
+  Object.keys(ax.varying).forEach(k=>{ next[k]=ax.varying[k].slice(); });
+  Object.keys(ax.fixed).forEach(k=>{ next[k]=ax.fixed[k].slice(); });
+  const blob=(d.option_blob&&typeof d.option_blob==='object')?d.option_blob:{};
+  const claimed={}; Object.keys(next).forEach(k=>{ claimed[k.toLowerCase()]=1; });
+  Object.keys(blob).forEach(k=>{ if(!claimed[k.toLowerCase()]) next[k]=Array.isArray(blob[k])?blob[k]:[blob[k]]; });
+  const w=await apiWrite({action:'set_content',page_key:d.page.page_key,patch:{options:next}});
+  if(w&&w.ok&&(!w.json||w.json.ok!==false)){ toast('Options rebuilt from the SKUs'); openPageSource(PS_CODE); }
+  else toast('Could not save the rebuilt options');
 }
 
 function modalHTML(title,inner){ const m=document.getElementById('modal');
