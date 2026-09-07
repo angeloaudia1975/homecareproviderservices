@@ -306,6 +306,128 @@ async function loadMeta(slug){
      page_has_no_skus        — an approved page a dealer can reach that lists nothing
 
    It reads and computes only. */
+/* ── THE THREE-WAY LINE-UP ────────────────────────────────────────────────────
+   One row per enrichment product, showing the SAME fields as Enrichment holds them, as the
+   master catalog holds them, and as a dealer would see them — with the mismatches named.
+
+   It exists because "the enrichment record looks right but the dealer page is wrong" had no
+   way to be answered except by opening three screens and comparing by eye. The three views
+   are computed from the same records the shop reads, so a row that lines up here lines up
+   there.
+
+   Reads and computes only. */
+async function threeWay(slug){
+  const e=encodeURIComponent;
+  const [base,custom,ovRows,pages,meta]=await Promise.all([
+    fetchJson(`${ORDERING_BASE}/data/${e(slug)}.json`).catch(()=>[]),
+    sb("GET",`custom_products?manufacturer=eq.${e(slug)}&select=code,name,category,base_price,msrp,image,description,active,price_note`).catch(()=>[]),
+    sb("GET",`product_overrides?manufacturer=eq.${e(slug)}&select=code,patch`).catch(()=>[]),
+    sb("GET",`product_content?manufacturer=eq.${e(slug)}&select=page_key,name,status,disabled,subcategory,category,family,skus,image,images_gallery,sizing_table,description,options&limit=5000`).catch(()=>[]),
+    loadMeta(slug),
+  ]);
+  const ov={}; (ovRows||[]).forEach(r=>{ ov[String(r.code)]=r.patch||{}; });
+  /* The catalog record a SKU actually resolves to: deployed file, then added row, then the
+     override patch on top — the same precedence resolveCatalog applies. */
+  const cat={};
+  (base||[]).forEach(r=>{ if(r&&r.code!=null) cat[String(r.code)]=Object.assign({},r,{_layer:"deployed"}); });
+  /* The layer string ACCUMULATES. A code in both the deployed file and custom_products is the
+     shape that manufactured duplicates for months; reporting only the winning layer hides it. */
+  (custom||[]).forEach(r=>{ if(r&&r.code!=null){ const c=String(r.code); const had=cat[c]&&cat[c]._layer;
+    cat[c]=Object.assign({},cat[c]||{},r,{_layer:had?had+"+custom":"custom"}); } });
+  Object.keys(ov).forEach(c=>{ if(cat[c]) cat[c]=Object.assign({},cat[c],ov[c],{_layer:cat[c]._layer+"+override"}); });
+
+  const categoryMap=(meta.category_map&&typeof meta.category_map==="object")?meta.category_map:null;
+  const enrichedOnly=meta.enriched_only===true;
+  const str=v=>String(v==null?"":v).trim();
+
+  /* Which page owns a SKU, resolved the way the shop resolves it: first live page wins. */
+  const owner={};
+  (pages||[]).forEach(pg=>{ if(!JOIN.isLive(pg)||pg.disabled===true) return;
+    (Array.isArray(pg.skus)?pg.skus:[]).forEach(sx=>{ const c=JOIN.normCode(String((sx&&(sx.sku||sx.code))||""));
+      if(c && !owner[c]) owner[c]=pg.page_key; }); });
+
+  const rows=(pages||[]).map(pg=>{
+    const skus=Array.isArray(pg.skus)?pg.skus:[];
+    const live=JOIN.isLive(pg) && pg.disabled!==true;
+    const mismatch=[];
+    const members=skus.map(sx=>{
+      const code=String((sx&&(sx.sku||sx.code))||"");
+      const c=cat[code]||null;
+      const active=c?(c.active!==false):false;
+      const ownedHere=owner[JOIN.normCode(code)]===pg.page_key;
+      return { code,
+        enrichment_name:str(sx&&sx.name), enrichment_option:JOIN.skuOptionText(sx,pg.name),
+        in_catalog:!!c, layer:c?c._layer:null, active,
+        catalog_name:c?str(c.name):null,
+        dealer_cost:c?num(c.base_price):null, msrp:c?num(c.msrp):null,
+        note:c?str(c.price_note):"",
+        /* What a dealer would actually see for this part number. */
+        visible: live && active && ownedHere && !!c,
+        owned_by: owner[JOIN.normCode(code)]||null };
+    });
+
+    const shown=members.filter(m=>m.visible);
+    const prices=shown.map(m=>m.dealer_cost).filter(v=>v!=null&&v>0);
+    const add=(field,enrich,master,dealer,why)=>mismatch.push({field,enrichment:enrich,catalog:master,dealer:dealer,why});
+
+    /* THE CHECKS. Each one is a way the three views come apart in practice. */
+    members.filter(m=>!m.in_catalog).forEach(m=>
+      add("Master SKU",m.code,"(no catalog record)","hidden",
+        `${m.code} is on this product but has no record in the master catalog`));
+    members.filter(m=>m.in_catalog&&!m.active).forEach(m=>
+      add("Status",m.code,"retired","hidden",
+        `${m.code} is retired in the master catalog, so a dealer never sees it — even though this product still lists it`));
+    members.filter(m=>m.in_catalog&&m.active&&m.owned_by&&!m.visible&&live).forEach(m=>
+      add("Variant SKU",m.code,m.owned_by,"shown under another product",
+        `${m.code} is listed here but another live product claims it first (${m.owned_by}), so it renders there instead`));
+    members.filter(m=>m.in_catalog && m.enrichment_name && str(m.catalog_name) &&
+        str(m.catalog_name).toLowerCase()!==str(m.enrichment_name).toLowerCase()).forEach(m=>
+      add("Product Name",m.enrichment_name,m.catalog_name,m.catalog_name,
+        `${m.code} is named differently in the master catalog than in enrichment`));
+    members.filter(m=>str(m.note) && dealerNoteLeaks(m.note)).forEach(m=>
+      add("Dealer Cost",null,m.note,"note shown to dealer",
+        `${m.code} carries import provenance in its price note, which reaches the storefront`));
+    if(live && !shown.length && skus.length)
+      add("Published Output",`${skus.length} SKUs`,"none visible","product does not appear",
+        "every SKU on this approved product is retired, missing, or claimed by another product");
+    /* One product, one card: if the SKUs a dealer CAN see carry wildly different prices, the
+       card's "from" price is the cheapest thing on it — which is how an accessory ends up
+       fronting a brace. */
+    if(prices.length>1 && Math.max(...prices) >= Math.min(...prices)*4)
+      add("Dealer Cost",null,`${Math.min(...prices)} – ${Math.max(...prices)}`,`from ${Math.min(...prices)}`,
+        "the visible SKUs differ in price by more than 4x — the card fronts the cheapest, which is usually an accessory grouped with a main product");
+
+    const catCat=(()=>{ const first=members.find(m=>m.in_catalog); if(!first) return null;
+      const c=cat[first.code]||{}; return JOIN.resolveCategory({product:{category:str(c.category),subcategory:"",kind:"catalog",
+        category_from_override:Object.prototype.hasOwnProperty.call(ov[first.code]||{},"category")}, page:pg, categoryMap}); })();
+
+    return {
+      page_key:pg.page_key, product:str(pg.name), status:str(pg.status), live,
+      family:str(pg.family), category:catCat?catCat.category:"", category_source:catCat?catCat.source:"none",
+      subcategory:str(pg.subcategory),
+      sku_count:skus.length, visible_count:shown.length,
+      master_sku:(shown[0]||members[0]||{}).code||null,
+      dealer_cost:prices.length?Math.min(...prices):null,
+      msrp:(shown.find(m=>m.msrp!=null)||{}).msrp||null,
+      images:(Array.isArray(pg.images_gallery)?pg.images_gallery.length:0)+(str(pg.image)?1:0),
+      sizing:!!(pg.sizing_table&&(pg.sizing_table.rows||[]).length),
+      description:!!str(pg.description),
+      members, mismatch,
+      ok:mismatch.length===0,
+    };
+  });
+  const byField={}; rows.forEach(r=>r.mismatch.forEach(m=>{ byField[m.field]=(byField[m.field]||0)+1; }));
+  return { ok:true, slug, products:rows.length,
+    aligned:rows.filter(r=>r.ok).length, misaligned:rows.filter(r=>!r.ok).length,
+    by_field:byField, enriched_only:enrichedOnly, rows };
+}
+/* The importer's own stamp — an effective date and the spreadsheet it came from. Operational,
+   and the storefront was printing it under the price. Mirrors the shop's filter. */
+function dealerNoteLeaks(note){
+  return String(note==null?"":note).split(/\s*·\s*/).map(x=>x.trim()).filter(Boolean)
+    .some(x=>/^\s*eff\.\s|\.(xlsx?|csv)\b|-import\b/i.test(x));
+}
+
 async function structureAudit(slug){
   const e=encodeURIComponent;
   const pages=await sb("GET",`product_content?manufacturer=eq.${e(slug)}&select=page_key,name,status,disabled,options,skus&limit=5000`).catch(()=>[]);
@@ -2107,6 +2229,15 @@ exports.handler = async (event)=>{
          a second record was created for it. */
       /* WHERE DOES THIS COME FROM? Read-only provenance for one dealer product page. */
       /* DOES WHAT A DEALER SEES MATCH THE APPROVED RECORD? Asked of every product. */
+      /* ENRICHMENT vs MASTER CATALOG vs WHAT A DEALER SEES — one row per product. */
+      if(b.action==="three_way"){
+        const slug=String(b.manufacturer||"").trim();
+        if(!slug) return json(400,{error:"manufacturer required"});
+        const out=await threeWay(slug);
+        if(b.problems_only) out.rows=out.rows.filter(r=>!r.ok);
+        return json(200,out);
+      }
+
       if(b.action==="structure_audit"){
         const slugs=Array.isArray(b.manufacturers)&&b.manufacturers.length
           ? b.manufacturers.map(x=>String(x).trim()).filter(Boolean).slice(0,20)
