@@ -325,6 +325,18 @@ async function structureAudit(slug){
 
     if(live && !skus.length){ add("page_has_no_skus","approved, but lists no SKUs — a dealer reaching it sees nothing to order"); }
 
+    /* THE GRID. Can a dealer reach every approved SKU, and only those? Three ways it fails,
+       and each is a broken dealer page rather than an error anyone would otherwise see. */
+    if(skus.length>1){
+      const grid=JOIN.variantGrid(skus.map((sx,i)=>({code:String((sx&&(sx.sku||sx.code))||""),label:labels[i]})));
+      grid.unreachable.forEach(c=>add("variant_unreachable",
+        `${c} sits in no combination a dealer can select — it can never be ordered from this page`));
+      grid.collisions.forEach(x=>add("variant_collision",
+        `${x.codes.join(" and ")} are the same selection (${x.cell.replace(/\|/g," + ")}) — picking it gets one of them, the rest are unreachable`));
+      if(grid.gaps.length) add("variant_gap",
+        `${grid.gaps.length} of ${grid.combinations} selectable combinations have no SKU: ${grid.gaps.slice(0,4).map(g=>g.replace(/\|/g," + ")).join("; ")}${grid.gaps.length>4?"…":""}`);
+    }
+
     const conf=JOIN.optionConflicts(pg.options,labels);
     conf.forEach(c=>add("options_contradict_skus",
       `${c.axis}: the record says ${c.record_says.join(", ")||"nothing"}, the SKUs say ${c.skus_say.join(", ")}`));

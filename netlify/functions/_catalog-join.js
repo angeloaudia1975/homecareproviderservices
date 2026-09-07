@@ -304,7 +304,7 @@ const SIZE_RANK = [["xxsmall",0],["xx-small",0],["2xs",0],["xxs",0],
   ["3xl",7],["4xl",8],["5xl",9],
   ["large",4],["lg",4],["l",4],
   ["universal",10],["one size",10],["osfa",10]];
-const AXIS_ORDER = ["Size","Color","Side","Option"];
+const AXIS_ORDER = ["Size","Color","Side","Variant"];
 function foldTok(x){ return " " + String(x==null?"":x).toLowerCase().replace(/[^a-z0-9]+/g," ").trim() + " "; }
 function sizeRank(label){
   const t = foldTok(label);
@@ -331,7 +331,7 @@ function optionAxesOf(label){
   rest = rest.replace(/^[\s,;:·–—-]+/, "").replace(/[\s,;:·–—-]+$/, "").replace(/\s{2,}/g, " ").trim();
   const out = {};
   if (rest && sizeRank(rest) < 50) out.Size = rest;
-  else if (rest && !color && !side) out.Option = rest;
+  else if (rest && !color && !side) out.Variant = rest;
   else if (rest) out.Size = rest;
   if (color) out.Color = titleWord(color);
   if (side) out.Side = titleWord(side);
@@ -370,6 +370,61 @@ function skuOptionText(sx, pageName){
   if (b.indexOf(a) >= 0) return lbl;
   return opt + " · " + lbl;
 }
+/* ── CAN A DEALER ACTUALLY REACH EVERY APPROVED SKU? ──────────────────────────
+   The axes are a grid: five sizes by four colours is twenty cells, and the page approved
+   twenty SKUs. That arithmetic is the whole guarantee, and it fails in three ways, each of
+   which a dealer meets as a broken page rather than an error:
+
+     unreachable — a SKU sits in no cell a dealer can select, so it can never be ordered
+     collision   — two SKUs share one cell, so picking it silently gets one of them and the
+                   other is unreachable; this is the "two options that look identical" bug
+     gap         — a cell the pickers offer that no SKU fills, so the selection dead-ends
+
+   `entries` is [{code, label}] — one per SKU on the page, label being its option text. */
+function variantGrid(entries){
+  const list = arr(entries).filter(e => e && str(e.code));
+  const ax = optionAxes(list.map(e => str(e.label)));
+  const keys = Object.keys(ax.varying);
+  const cellOf = label => {
+    const a = optionAxesOf(label);
+    /* Only the axes that VARY identify a cell — a value every SKU shares distinguishes
+       nothing, and including it would make every cell trivially unique. */
+    return keys.map(k => k + "=" + str(a[k])).join("|");
+  };
+  /* A SKU with no option text at all is reported on its own account (blank_labels); it would
+     otherwise land in the same empty cell as every other blank one and be reported a second
+     time as a collision, which says nothing new and buries the findings that do. */
+  const labelled = list.filter(e => str(e.label));
+  const byCell = {};
+  labelled.forEach(e => { const c = cellOf(str(e.label));
+    (byCell[c] = byCell[c] || []).push(str(e.code)); });
+  const collisions = [], reachable = [];
+  Object.keys(byCell).forEach(c => {
+    const codes = byCell[c];
+    if (codes.length > 1) collisions.push({ cell: c, codes: codes.slice() });
+    reachable.push(codes[0]);            // the picker can only ever resolve to one of them
+  });
+  const unreachable = labelled.map(e => str(e.code)).filter(c => reachable.indexOf(c) < 0);
+  /* Every combination the pickers offer, and which of them no SKU fills. */
+  let cells = [""];
+  keys.forEach(k => { const next = [];
+    ax.varying[k].forEach(v => cells.forEach(c => next.push(c ? c + "|" + k + "=" + v : k + "=" + v)));
+    cells = next; });
+  if (!keys.length) cells = [];
+  const gaps = cells.filter(c => !byCell[c]);
+  const blank = list.filter(e => !str(e.label)).map(e => str(e.code));
+  return {
+    axes: keys, sizes: ax.varying.Size || [], colors: ax.varying.Color || [],
+    fixed: ax.fixed,
+    sku_count: list.length,
+    combinations: cells.length,
+    unreachable, collisions, gaps,
+    blank_labels: blank,
+    /* One question, one answer: can a dealer select exactly the approved set and nothing else? */
+    exact: unreachable.length === 0 && collisions.length === 0 && gaps.length === 0 && blank.length === 0,
+  };
+}
+
 /* Does a page's scraped options blob contradict its own SKUs? Returns one entry per axis
    the blob claims that the SKUs already answer differently. */
 function optionConflicts(blob, labels){
@@ -395,5 +450,5 @@ module.exports = {
   upper, normCode, indexPages, resolvePage, isLive,
   resolveCategory, buildJoin, statusFor, sweep,
   OPTION_COLORS, OPTION_SIDES, AXIS_ORDER, sizeRank, titleWord,
-  optionTokens, optionAxesOf, optionAxes, skuOptionText, optionConflicts,
+  optionTokens, optionAxesOf, optionAxes, skuOptionText, optionConflicts, variantGrid,
 };

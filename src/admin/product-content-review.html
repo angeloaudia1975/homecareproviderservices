@@ -1117,7 +1117,7 @@ function optAxesOf(label){
   rest=rest.replace(/^[\s,;:·–—-]+/,'').replace(/[\s,;:·–—-]+$/,'').replace(/\s{2,}/g,' ').trim();
   const out={};
   if(rest&&optSizeRank(rest)<50) out.Size=rest;
-  else if(rest&&!color&&!side) out.Option=rest;
+  else if(rest&&!color&&!side) out.Variant=rest;
   else if(rest) out.Size=rest;
   if(color) out.Color=optTitle(color);
   if(side) out.Side=optTitle(side);
@@ -1135,7 +1135,7 @@ function skuOptionLabel(k,sx){
   if(b.indexOf(a)>=0) return lbl;
   return opt+' · '+lbl;
 }
-const OPT_AXIS_ORDER=['Size','Color','Side','Option'];
+const OPT_AXIS_ORDER=['Size','Color','Side','Variant'];
 function skuAxes(k){
   const seen={},order=[];
   skusOf(k).forEach(sx=>{ const ax=optAxesOf(skuOptionLabel(k,sx));
