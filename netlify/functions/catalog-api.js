@@ -1918,8 +1918,14 @@ exports.handler = async (event)=>{
         /* Retire the loser. A custom row is deactivated (not deleted) so its history and any
            late-arriving reference still resolve; a standard catalog product is hidden with an
            override, which is the only way to retire one without a redeploy. */
+        /* A MERGE THAT CANNOT BE UNDONE IS NOT A MERGE, IT IS A DELETION.
+           What the merge copied onto the winner is recorded ON the loser, beside the pointer,
+           so unmerging can hand those values back and take them off the winner again. Without
+           this the carry is untraceable the moment the call returns, and "separate these two
+           again" becomes a manual reconstruction from memory. */
         const retire=Object.assign({},loseOv,{active:false,merged_into:win,merged_at:now,
           disposition:"archived",
+          merged_carry:Object.keys(carry).length?carry:null,
           merged_by:b.reviewer?String(b.reviewer).slice(0,80):null});
         await sb("POST","product_overrides?on_conflict=manufacturer,code",
           {manufacturer:mfr,code:lose,patch:retire,updated_at:now},
@@ -1933,18 +1939,112 @@ exports.handler = async (event)=>{
 
       /* Undo a merge: the retired record comes back and the stamp is cleared. Carried values
          are left on the winner — un-carrying them would silently change a live price. */
+      /* SEPARATE TWO PRODUCTS A MERGE PUT TOGETHER.
+         A merge leaves FIVE marks on the losing record — active:false, merged_into, merged_at,
+         merged_by and disposition:"archived" — and copies fields onto the winner. Clearing
+         only `active`, which is what the Bring back button used to do, left every other mark
+         in place: the row came back still labelled MERGED, still pointing at the winner, and
+         still carrying the disposition that decides which button is offered. Nothing visible
+         changed, which is exactly how it looked from the outside — a button that does nothing.
+
+         Every mark is removed here, and the fields the merge copied are taken off the winner
+         where the winner has not been edited since. */
       if(b.action==="unmerge_product"){
         const mfr=b.manufacturer, code=String(b.code||"").trim();
         if(!mfr||!code) return json(400,{error:"manufacturer and code required"});
         const e=encodeURIComponent, now=new Date().toISOString();
         const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`).catch(()=>[]);
         const patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{});
-        delete patch.merged_into; delete patch.merged_at; delete patch.merged_by; patch.active=true;
+        const winner=String(patch.merged_into||"").trim();
+        const carried=(patch.merged_carry&&typeof patch.merged_carry==="object")?patch.merged_carry:null;
+        delete patch.merged_into; delete patch.merged_at; delete patch.merged_by;
+        delete patch.merged_carry;
+        delete patch.disposition;          // ← the mark that kept the row looking archived
+        patch.active=true;
         await sb("POST","product_overrides?on_conflict=manufacturer,code",
           {manufacturer:mfr,code,patch,updated_at:now},{Prefer:"resolution=merge-duplicates,return=minimal"});
         await sb("PATCH",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}`,
           {active:true,updated_at:now},{Prefer:"return=minimal"}).catch(()=>{});
-        return json(200,{ok:true,restored:code});
+
+        /* Take back what the merge gave the winner — but only where the winner still holds
+           exactly the carried value. A value someone has since edited is their decision and
+           is left alone; unmerging must not quietly undo a person's later work. */
+        const returned=[], kept=[];
+        if(winner && carried && Object.keys(carried).length){
+          const [wOvRows,wCustom]=await Promise.all([
+            sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(winner)}&select=patch`).catch(()=>[]),
+            sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(winner)}&select=code`).catch(()=>[]),
+          ]);
+          const same=(a,b2)=>JSON.stringify(a==null?null:a)===JSON.stringify(b2==null?null:b2);
+          if(wCustom&&wCustom.length){
+            const clear={};
+            for(const k of Object.keys(carried)){
+              const cur=await sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(winner)}&select=${e(k)}`).catch(()=>[]);
+              const v=cur&&cur[0]?cur[0][k]:undefined;
+              if(same(v,carried[k])){ clear[k]=null; returned.push(k); } else kept.push(k);
+            }
+            if(Object.keys(clear).length)
+              await sb("PATCH",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(winner)}`,
+                Object.assign({},clear,{updated_at:now}),{Prefer:"return=minimal"}).catch(()=>{});
+          } else {
+            const wp=Object.assign({},(wOvRows&&wOvRows[0]&&wOvRows[0].patch)||{});
+            for(const k of Object.keys(carried)){
+              if(same(wp[k],carried[k])){ delete wp[k]; returned.push(k); } else kept.push(k);
+            }
+            await sb("POST","product_overrides?on_conflict=manufacturer,code",
+              {manufacturer:mfr,code:winner,patch:wp,updated_at:now},
+              {Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{});
+          }
+        }
+        return json(200,{ok:true,restored:code,unmerged_from:winner||null,
+          returned,kept_on_winner:kept});
+      }
+
+      /* EVERY MERGE ON A LINE, BEFORE ANYTHING ELSE IS RECONCILED.
+         Reconciling names across a catalog that contains merges someone did not intend would
+         write the wrong name onto the wrong record and make the mistake permanent. This lists
+         the merges so they can be reviewed and undone first. Reads only. */
+      if(b.action==="merge_review"){
+        const mfr=String(b.manufacturer||"").trim();
+        if(!mfr) return json(400,{error:"manufacturer required"});
+        const e=encodeURIComponent;
+        const [ovRows,custom,base,pages]=await Promise.all([
+          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch,updated_at`).catch(()=>[]),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code,name,base_price,msrp,active`).catch(()=>[]),
+          fetchJson(`${ORDERING_BASE}/data/${e(mfr)}.json`).catch(()=>[]),
+          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=page_key,name,status,disabled,skus&limit=5000`).catch(()=>[]),
+        ]);
+        const nameOf=c=>{ const cu=(custom||[]).find(x=>String(x.code)===c);
+          if(cu&&cu.name) return String(cu.name);
+          const b2=(base||[]).find(x=>String(x.code)===c); return b2?String(b2.name||""):""; };
+        const priceOf=c=>{ const cu=(custom||[]).find(x=>String(x.code)===c);
+          if(cu&&cu.base_price!=null) return num(cu.base_price);
+          const b2=(base||[]).find(x=>String(x.code)===c); return b2?num(b2.base_price):null; };
+        /* Which approved products still list the merged-away code — the reason a merge shows
+           up on the dealer side at all. */
+        const listedBy=c=>{ const want=JOIN.normCode(c);
+          return (pages||[]).filter(pg=>(Array.isArray(pg.skus)?pg.skus:[])
+            .some(sx=>JOIN.normCode(String((sx&&(sx.sku||sx.code))||""))===want))
+            .map(pg=>({page_key:pg.page_key,name:pg.name,live:JOIN.isLive(pg)&&pg.disabled!==true})); };
+        const merges=(ovRows||[]).filter(r=>r.patch&&r.patch.merged_into).map(r=>{
+          const lose=String(r.code), win=String(r.patch.merged_into);
+          return { loser:lose, loser_name:nameOf(lose), loser_price:priceOf(lose),
+            winner:win, winner_name:nameOf(win), winner_price:priceOf(win),
+            merged_at:r.patch.merged_at||null, merged_by:r.patch.merged_by||null,
+            carried:r.patch.merged_carry?Object.keys(r.patch.merged_carry):[],
+            reversible:!!r.patch.merged_carry,
+            loser_listed_on:listedBy(lose), winner_listed_on:listedBy(win),
+            /* The shape that produced the Nu-Form card: two records that are not variants of
+               one product at all — very different prices, and each named on its own page. */
+            suspicious:(()=>{ const a=priceOf(lose), b2=priceOf(win);
+              if(a!=null&&b2!=null&&a>0&&b2>0&&(Math.max(a,b2)>=Math.min(a,b2)*4)) return "prices differ by more than 4x";
+              const ln=nameOf(lose).toLowerCase(), wn=nameOf(win).toLowerCase();
+              if(ln&&wn&&ln===wn) return "both records carry the same name — one of them is probably wrong";
+              return null; })() };
+        });
+        return json(200,{ok:true, manufacturer:mfr, merges:merges.length,
+          not_reversible:merges.filter(m=>!m.reversible).length,
+          suspicious:merges.filter(m=>m.suspicious).length, rows:merges});
       }
 
       /* Per-line listing mode. On a finished line the enrichment record is the catalogue,

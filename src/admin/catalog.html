@@ -665,14 +665,38 @@ async function removeProduct(code){
   await api("",{method:"POST",body:JSON.stringify({action:"save_override",manufacturer:SLUG,code,patch:{...cur,active:false}})});
   PDRAFT=null; localOverride(code,{active:false}); render(); toast("Removed from portal");
 }
+/* BRING BACK, FOR A ROW A MERGE PUT AWAY.
+   A merge leaves five marks on the losing record: active:false, merged_into, merged_at,
+   merged_by and disposition:"archived". This used to clear only `active` and write the rest
+   straight back, so the row returned still labelled MERGED, still pointing at its winner, and
+   still archived — the button reported success and, from the outside, did nothing at all.
+   A merged row now goes through unmerge_product, which is the only thing that removes all
+   five and hands back the fields the merge copied to the winner. */
 async function restoreProduct(code){
   const cur=(DETAIL.overrides||{})[code]||{};
-  const rest=Object.assign({},cur); delete rest.active;
+  if(cur.merged_into){ return unmergeProduct(code); }
+  const rest=Object.assign({},cur); delete rest.active; delete rest.disposition;
   if(Object.keys(rest).length){ await api("",{method:"POST",body:JSON.stringify({action:"save_override",manufacturer:SLUG,code,patch:{...rest,active:true}})}); }
   else { await api("",{method:"POST",body:JSON.stringify({action:"clear_override",manufacturer:SLUG,code})});
          if(DETAIL.overrides) delete DETAIL.overrides[code]; touched(); }
   localOverride(code,{active:true}); render(); toast("Restored to portal");
 }
+async function unmergeProduct(code){
+  const win=((DETAIL.overrides||{})[code]||{}).merged_into||"";
+  const r=await api("",{method:"POST",body:JSON.stringify({action:"unmerge_product",manufacturer:SLUG,code})});
+  const j=(r&&r.json)||r||{};
+  if(j&&j.ok===false){ toast("Could not separate "+code,true); return; }
+  /* Take the marks off the row on screen too, so the badges go without a full reload. */
+  if(DETAIL.overrides&&DETAIL.overrides[code]){
+    const p=DETAIL.overrides[code];
+    delete p.merged_into; delete p.merged_at; delete p.merged_by; delete p.merged_carry;
+    delete p.disposition; p.active=true;
+  }
+  localOverride(code,{active:true}); touched(); render();
+  const back=(j.returned||[]).length;
+  toast(`${code} separated from ${win||"its merge"}`+(back?` · ${back} field${back>1?"s":""} taken back off ${win}`:""));
+}
+window.unmergeProduct=unmergeProduct;
 
 /* ---- links ---- */
 function allProducts(){ const cat=(DETAIL.products||[]).map(p=>({code:p.code,name:p.name})); const cust=(DETAIL.custom||[]).map(p=>({code:p.code,name:p.name+" (custom)"}));
@@ -746,9 +770,10 @@ function prodListHtml(){
        <button class="btn ghost sm" onclick="editProduct('${esc(p.code)}')">Edit</button>
        <button class="btn ghost sm" onclick="duplicateProduct('${esc(p.code)}')" title="Start a new product pre-filled from this one">Copy as new</button>
        <a class="btn ghost sm" href="${esc(previewUrl(p.code))}" target="_blank" rel="noopener" title="Open this product on Partner 360 exactly as a dealer sees it">👁 Preview</a>
-       ${((DETAIL.overrides||{})[p.code]||{}).disposition
-          ? `<button class="btn ghost sm" onclick="restoreProduct('${esc(p.code)}')" title="Put it back on the portal">↩ Bring back</button>`
-          : `<button class="btn ghost sm" style="color:var(--red);border-color:#f0c8c8" onclick="discontinueSku('${esc(p.code)}')" title="No longer sold — off the portal and out of every queue">🚫 Gone</button>`}
+       ${(()=>{ const ovp=(DETAIL.overrides||{})[p.code]||{};
+          if(ovp.merged_into) return `<button class="btn ghost sm" onclick="unmergeProduct('${esc(p.code)}')" title="Separate this back into its own item number, and take back what the merge copied to ${esc(ovp.merged_into)}">⇄ Unmerge from ${esc(ovp.merged_into)}</button>`;
+          if(ovp.disposition) return `<button class="btn ghost sm" onclick="restoreProduct('${esc(p.code)}')" title="Put it back on the portal">↩ Bring back</button>`;
+          return `<button class="btn ghost sm" style="color:var(--red);border-color:#f0c8c8" onclick="discontinueSku('${esc(p.code)}')" title="No longer sold — off the portal and out of every queue">🚫 Gone</button>`; })()}
        ${p.kind==="custom"
           ? `<button class="btn ghost sm" style="color:var(--red);border-color:#f0c8c8" onclick="delProduct('${esc(p.code)}')">Delete</button>`
           : (p.active===false
