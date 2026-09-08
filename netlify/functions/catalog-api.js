@@ -386,7 +386,7 @@ async function threeWay(slug){
         `${m.code} is named differently in the master catalog than in enrichment`));
     members.filter(m=>str(m.note) && dealerNoteLeaks(m.note)).forEach(m=>
       add("Dealer Cost",null,m.note,"note shown to dealer",
-        `${m.code} carries import provenance in its price note, which reaches the storefront`));
+        `${m.code} carries import provenance that survives the storefront's price-note filter`));
     if(live && !shown.length && skus.length)
       add("Published Output",`${skus.length} SKUs`,"none visible","product does not appear",
         "every SKU on this approved product is retired, missing, or claimed by another product");
@@ -413,19 +413,44 @@ async function threeWay(slug){
       sizing:!!(pg.sizing_table&&(pg.sizing_table.rows||[]).length),
       description:!!str(pg.description),
       members, mismatch,
+      /* Housekeeping, not a mismatch: SKUs whose price note still carries the importer's
+         stamp. Nothing reaches a dealer — the storefront strips it — but the column is
+         holding operational text that belongs in an import log, and it is worth being able
+         to see how many without it counting against alignment. */
+      provenance_notes:members.filter(m=>str(m.note)&&noteHasProvenance(m.note)).length,
       ok:mismatch.length===0,
     };
   });
   const byField={}; rows.forEach(r=>r.mismatch.forEach(m=>{ byField[m.field]=(byField[m.field]||0)+1; }));
   return { ok:true, slug, products:rows.length,
     aligned:rows.filter(r=>r.ok).length, misaligned:rows.filter(r=>!r.ok).length,
-    by_field:byField, enriched_only:enrichedOnly, rows };
+    by_field:byField, enriched_only:enrichedOnly,
+    notes_with_provenance:rows.reduce((n,r)=>n+r.provenance_notes,0), rows };
 }
-/* The importer's own stamp — an effective date and the spreadsheet it came from. Operational,
-   and the storefront was printing it under the price. Mirrors the shop's filter. */
-function dealerNoteLeaks(note){
+/* The importer's own stamp — an effective date and the spreadsheet it came from.
+   THIS IS THE SHOP'S FILTER, and that is exactly the point: the storefront runs the same
+   pattern in dealerPriceNote() to DROP these segments before rendering. The audit used to run
+   it to ASSERT THE OPPOSITE — that the same text "reaches the storefront" — so every note the
+   shop reliably strips was reported as a live leak. On Ovation that was 214 findings against
+   303 SKUs, all false, and they buried the 104 real name mismatches underneath them.
+
+   A note that merely CONTAINS provenance is not a leak; it is a leak already stopped. What
+   would be worth reporting is provenance that SURVIVES the filter — which is what a
+   divergence between these two implementations would look like — so that is what is tested.
+   The raw presence of a stamp is still counted, as housekeeping, but it is not a mismatch. */
+const PRICE_NOTE_OPERATIONAL=/^\s*eff\.\s|\.(xlsx?|csv)\b|-import\b/i;
+function dealerVisibleNote(note){
   return String(note==null?"":note).split(/\s*·\s*/).map(x=>x.trim()).filter(Boolean)
-    .some(x=>/^\s*eff\.\s|\.(xlsx?|csv)\b|-import\b/i.test(x));
+    .filter(x=>!PRICE_NOTE_OPERATIONAL.test(x)).join(" · ");
+}
+function noteHasProvenance(note){
+  return String(note==null?"":note).split(/\s*·\s*/).map(x=>x.trim()).filter(Boolean)
+    .some(x=>PRICE_NOTE_OPERATIONAL.test(x));
+}
+/* True only if the storefront would still print operational text after filtering — i.e. the
+   two implementations have drifted apart. Under matching filters this is correctly never true. */
+function dealerNoteLeaks(note){
+  return PRICE_NOTE_OPERATIONAL.test(dealerVisibleNote(note));
 }
 
 async function structureAudit(slug){
