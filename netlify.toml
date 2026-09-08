@@ -8,6 +8,22 @@
   command = "npm run build"
   publish = "_site"
 
+# Netlify's secret scanner fails the build if the VALUE of any configured env var appears
+# anywhere in the repo or build output. "Claude outputs/" is a scratch folder of working
+# snapshots, and it contains the Supabase project URL — which is public by design (every
+# browser request the portal makes carries it), not a credential. That single match blocked
+# nine consecutive production deploys, Sep 6 8:14 PM through Sep 8 10:46 AM, while the site
+# kept quietly serving the Sep 6 build.
+#
+# Scoped to the scratch folder ON PURPOSE. Do NOT widen this to SECRETS_SCAN_OMIT_KEYS for
+# ANTHROPIC_API_KEY / ADMIN_PASSWORD / SUPABASE_SERVICE_ROLE and friends: those are real
+# credentials, none of them was the thing that matched here, and omitting them would leave a
+# genuine leak undetected. Scanning stays fully armed for every key, everywhere except this
+# one folder — which is never published (publish dir is _site), so nothing in it reaches the
+# web regardless.
+[build.environment]
+  SECRETS_SCAN_OMIT_PATHS = "Claude outputs/**"
+
 # Keep the internal admin / rep portal out of search engines — it's staff-only, reached via the
 # footer "Rep Login" link, not Google. X-Robots-Tag is authoritative: pages carry noindex even if
 # something links to them, so they never appear in search results. Access is unchanged (login still
