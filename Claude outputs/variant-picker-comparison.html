@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Casting Tape — variant picker, two ways</title>
+<style>
+  :root{
+    --paper:#f6f7f5; --white:#fff; --ink:#0b0d0f; --navy:#12253c; --gray:#5b6672;
+    --line:#e4e7ec; --green:#1c7a44; --orange:#e2683c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:1180px;margin:0 auto;padding:26px 20px 60px}
+  h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--gray);font-size:14px;margin:0 0 22px}
+  .sub b{color:var(--ink)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media (max-width:860px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--white);border:1px solid var(--line);border-radius:14px;overflow:hidden;
+    box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .ph{padding:13px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;
+    background:linear-gradient(180deg,#fff,#fbfcfd)}
+  .tag{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    padding:3px 8px;border-radius:999px;color:#fff;background:var(--navy)}
+  .tag.b{background:var(--orange)}
+  .ph h2{font-size:15px;margin:0;font-weight:700}
+  .pb{padding:18px}
+  .pname{font-size:17px;font-weight:700;margin:0 0 2px}
+  .pmeta{font-size:12px;color:var(--gray);margin:0 0 16px}
+  label{display:block;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--gray);margin:0 0 5px}
+  select{width:100%;padding:10px 11px;font-size:14px;border:1px solid var(--line);border-radius:9px;
+    background:#fff;color:var(--ink);font-family:inherit}
+  select:focus{outline:2px solid var(--navy);outline-offset:1px}
+  .fieldrow{margin-bottom:13px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .swatches{display:flex;gap:7px;margin-top:8px;flex-wrap:wrap}
+  .sw{width:22px;height:22px;border-radius:6px;border:1px solid rgba(0,0,0,.18)}
+  .result{margin-top:16px;padding:13px 14px;border:1px solid var(--line);border-radius:11px;background:#fbfcfd}
+  .rsku{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--gray)}
+  .rprice{font-size:26px;font-weight:800;letter-spacing:-.02em;margin:2px 0 0}
+  .rprice sup{font-size:14px;font-weight:700;top:-.55em;position:relative}
+  .tierhint{margin-top:7px;font-size:11px;color:var(--gray)}
+  .tierhint b{color:var(--green);font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:10px}
+  .count{margin-top:14px;padding:9px 12px;border-radius:9px;font-size:12.5px;line-height:1.5;
+    background:rgba(18,37,60,.05);color:var(--navy)}
+  .note{margin-top:26px;background:var(--white);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .note h3{margin:0 0 10px;font-size:14px}
+  .note ul{margin:0;padding-left:19px}
+  .note li{margin:0 0 8px;font-size:14px}
+  .note li:last-child{margin-bottom:0}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
+    background:#f1f3f6;padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Casting Tape — the same product, two picker shapes</h1>
+  <p class="sub">Real live data: <b>16 SKUs</b>, 4 colours × 4 sizes, real prices and volume tiers. Both pickers work — click them.</p>
+
+  <div class="grid">
+    <!-- ============ OPTION A ============ -->
+    <div class="panel">
+      <div class="ph"><span class="tag">Option A</span><h2>One dropdown, one line</h2></div>
+      <div class="pb">
+        <p class="pname">Casting Tape</p>
+        <p class="pmeta">Medical / Clinical Supplies › Casting &amp; Splinting</p>
+
+        <div class="fieldrow">
+          <label>Variant</label>
+          <select id="selA"></select>
+        </div>
+
+        <div class="result">
+          <div class="rsku" id="skuA"></div>
+          <p class="rprice" id="priceA"></p>
+          <div class="tierhint" id="tierA"></div>
+        </div>
+
+        <div class="count">One list of <b>16</b> entries. Colour and size read together on a single line, exactly as typed in the catalog.</div>
+      </div>
+    </div>
+
+    <!-- ============ OPTION B ============ -->
+    <div class="panel">
+      <div class="ph"><span class="tag b">Option B</span><h2>Two dropdowns</h2></div>
+      <div class="pb">
+        <p class="pname">Casting Tape</p>
+        <p class="pmeta">Medical / Clinical Supplies › Casting &amp; Splinting</p>
+
+        <div class="fieldrow two">
+          <div>
+            <label>Size</label>
+            <select id="sizeB"></select>
+          </div>
+          <div>
+            <label>Colour</label>
+            <select id="colorB"></select>
+          </div>
+        </div>
+        <div class="swatches" id="swB"></div>
+
+        <div class="result">
+          <div class="rsku" id="skuB"></div>
+          <p class="rprice" id="priceB"></p>
+          <div class="tierhint" id="tierB"></div>
+        </div>
+
+        <div class="count">Two short lists — <b>4</b> sizes and <b>4</b> colours — instead of one 16-row list.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <h3>What actually differs</h3>
+    <ul>
+      <li><b>Colour is listed either way.</b> In A it sits on the line (<code>Dark Blue · 3" x 4 Yd</code>); in B it has its own picker. Neither hides it.</li>
+      <li><b>A is one rule for the whole site.</b> Every product behaves identically, however many ways it varies. The arm sling already reads this way today: <code>X-Small · 9"- 11"</code>.</li>
+      <li><b>B stays short as the range grows.</b> The Gen 2 Walking Boot is 5 sizes × 4 colours = 20 SKUs — that is a 20-row list in A, or 5 + 4 in B.</li>
+      <li><b>Price follows size here, not colour</b> — every colour of a 3" tape is $59.95. In B the price only moves when the Size picker moves, which makes that relationship visible.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+const SKUS=[
+ {code:"CF002DB",color:"Dark Blue",size:'2" x 4 Yd',price:49.95},
+ {code:"CF002PK",color:"Pink",size:'2" x 4 Yd',price:49.95},
+ {code:"CF002WH",color:"White",size:'2" x 4 Yd',price:49.95},
+ {code:"CF002BK",color:"Black",size:'2" x 4 Yd',price:49.95},
+ {code:"CF003DB",color:"Dark Blue",size:'3" x 4 Yd',price:59.95},
+ {code:"CF003PK",color:"Pink",size:'3" x 4 Yd',price:59.95},
+ {code:"CF003WH",color:"White",size:'3" x 4 Yd',price:59.95},
+ {code:"CF003BK",color:"Black",size:'3" x 4 Yd',price:59.95},
+ {code:"CF004DB",color:"Dark Blue",size:'4" x 4 Yd',price:69.95},
+ {code:"CF004PK",color:"Pink",size:'4" x 4 Yd',price:69.95},
+ {code:"CF004WH",color:"White",size:'4" x 4 Yd',price:69.95},
+ {code:"CF004BK",color:"Black",size:'4" x 4 Yd',price:69.95},
+ {code:"CF005DB",color:"Dark Blue",size:'5" x 5 Yd',price:79.50},
+ {code:"CF005PK",color:"Pink",size:'5" x 5 Yd',price:79.50},
+ {code:"CF005WH",color:"White",size:'5" x 5 Yd',price:79.50},
+ {code:"CF005BK",color:"Black",size:'5" x 5 Yd',price:79.50}
+];
+// Real tiers, keyed by size (they track size, not colour).
+const TIERS={
+ '2" x 4 Yd':[[2,45.95],[6,42.95],[11,38.95],[21,35.95]],
+ '3" x 4 Yd':[[2,55.95],[6,52.95],[11,48.95],[21,43.95]],
+ '4" x 4 Yd':[[2,65.95],[6,60.95],[11,56.95],[21,50.95]],
+ '5" x 5 Yd':[[2,74.95],[6,69.95],[11,64.95],[21,58.95]]
+};
+const SWATCH={'Dark Blue':'#1f3f7a','Pink':'#e58fb0','White':'#f4f5f7','Black':'#1b1d20'};
+const money=n=>'$'+Number(n).toFixed(2);
+const priceHtml=n=>{const [d,c]=Number(n).toFixed(2).split('.');return '<sup>$</sup>'+d+'<sup>.'+c+'</sup>';};
+const tierLine=size=>(TIERS[size]||[]).map(t=>t[0]+'+ '+money(t[1])).join(' · ');
+const SIZES=[...new Set(SKUS.map(s=>s.size))];
+const COLORS=[...new Set(SKUS.map(s=>s.color))];
+
+function show(sku, skuEl, priceEl, tierEl){
+  skuEl.textContent='Item # '+sku.code;
+  priceEl.innerHTML=priceHtml(sku.price);
+  tierEl.innerHTML='<b>Volume</b> '+tierLine(sku.size);
+}
+
+/* ---- Option A: one dropdown, "Colour · Size" on one line ---- */
+const selA=document.getElementById('selA');
+SKUS.forEach((s,i)=>{
+  const o=document.createElement('option');
+  o.value=String(i); o.textContent=s.color+' · '+s.size;
+  selA.appendChild(o);
+});
+function renderA(){
+  show(SKUS[+selA.value], document.getElementById('skuA'),
+       document.getElementById('priceA'), document.getElementById('tierA'));
+}
+selA.addEventListener('change',renderA);
+
+/* ---- Option B: size + colour, resolved to a SKU ---- */
+const sizeB=document.getElementById('sizeB'), colorB=document.getElementById('colorB');
+SIZES.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;sizeB.appendChild(o);});
+COLORS.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;colorB.appendChild(o);});
+document.getElementById('swB').innerHTML=COLORS.map(c=>
+  '<span class="sw" title="'+c+'" style="background:'+(SWATCH[c]||'#ccc')+'"></span>').join('');
+function renderB(){
+  const hit=SKUS.find(s=>s.size===sizeB.value&&s.color===colorB.value)||SKUS[0];
+  show(hit, document.getElementById('skuB'),
+       document.getElementById('priceB'), document.getElementById('tierB'));
+}
+sizeB.addEventListener('change',renderB);
+colorB.addEventListener('change',renderB);
+
+renderA(); renderB();
+</script>
+</body>
+</html>

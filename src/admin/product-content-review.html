@@ -100,6 +100,15 @@ body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--pape
 .stat.q[data-pk="ready_to_publish"] b{color:var(--pub)}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
 .toolbar input.search{flex:1;min-width:180px;border:1px solid var(--line);border-radius:999px;padding:9px 15px;font-family:inherit;font-size:13.5px}
+/* Pinned search. It sits ABOVE the button row so the sticky strip stays one line tall —
+   sticking the whole toolbar would pin three wrapped rows of buttons to the top and eat the
+   list it is meant to help you read. */
+.searchbar{position:sticky;top:0;z-index:30;display:flex;gap:10px;align-items:center;
+  background:var(--paper);padding:10px 0 9px;margin:0 0 10px;
+  box-shadow:0 6px 10px -8px rgba(16,24,40,.28)}
+.searchbar input.search{flex:1;min-width:180px;border:1px solid var(--line);border-radius:999px;
+  padding:10px 16px;font-family:inherit;font-size:13.5px;background:#fff}
+.searchcount{font-size:12px;color:var(--gray);white-space:nowrap}
 .filters{display:flex;gap:6px;flex-wrap:wrap}
 .filters button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 13px;font-weight:700;font-size:12.5px;cursor:pointer;color:var(--navy);font-family:inherit}
 .filters button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
@@ -429,8 +438,14 @@ body.sm-dragging .sm-pin,body.sm-dragging .sm-sub{outline:1px dashed #c9d6e6;out
   <div class="steps" id="steps"></div>
   <div id="guide"></div>
   <div class="stats" id="stats"></div>
-  <div class="toolbar">
+  <!-- The search input used to live inside .toolbar, which scrolls away with the page. On a
+       57-product list that means the only way to reach a product is to scroll to it, and the
+       one control that would save the scrolling is itself off-screen by then. Pinned. -->
+  <div class="searchbar">
     <input class="search" id="search" placeholder="Search products, SKUs, categories…" oninput="onSearch(this.value)">
+    <span class="searchcount" id="searchcount"></span>
+  </div>
+  <div class="toolbar">
     <button class="btn ghost" data-act="run-structure" title="Checks this manufacturer&apos;s records for grouping problems — one record holding several products, the same SKU on two products, sizes split apart. Straight after an import, before you touch anything else. Instant, no AI.">⚑ Structure review</button>
     <button class="btn grad" data-act="completion-board" title="Every SKU in the Product Catalog for this manufacturer with a status worked out from what is actually there — including the ones no enrichment record has ever been created for. Also runs the ten-step flow test for the line. First, and any time you want to know what is left. It is the only screen that shows catalog SKUs that have no enrichment page, which is where most unfinished work hides.">📋 Completion board</button>
     <button class="btn ghost" data-act="new-product" title="Creates one product record by hand, with its SKUs and prices. A single item you already know. For a whole line use Start new enrichment; for more sizes of a product that already exists use ＋＋ Add sizes inside it.">＋ New product</button>
@@ -837,7 +852,15 @@ function render(){
 }
 function stat(v,l){return `<div class="stat"><b>${v}</b><span>${l}</span></div>`;}
 function setFilter(f){ filter=f; render(); }
-function onSearch(v){ search=v.toLowerCase().trim(); render(); }
+function onSearch(v){ search=v.toLowerCase().trim(); render(); updateSearchCount(); }
+/* Typing into a filter with no feedback is how you end up scrolling anyway, unsure whether
+   two results means two matches or a broken search. Silent when the box is empty. */
+function updateSearchCount(){
+  const el=document.getElementById('searchcount'); if(!el) return;
+  if(!search){ el.textContent=''; return; }
+  let n=0; try{ n=visibleKeys().length; }catch(e){ el.textContent=''; return; }
+  el.textContent = n===0 ? 'no matches' : (n===1 ? '1 match' : n+' matches');
+}
 function matchesSearch(k){ if(!search) return true; const p=pages[k];
   if((p.name||'').toLowerCase().includes(search)) return true;
   if((p.category||'').toLowerCase().includes(search)) return true;

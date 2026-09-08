@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ovation — variant picker review, all 57 products</title>
+<style>
+  :root{--paper:#f6f7f5;--white:#fff;--ink:#0b0d0f;--navy:#12253c;--gray:#5b6672;
+        --line:#e4e7ec;--green:#1c7a44;--amber:#b06b12;--red:#a8341f;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1080px;margin:0 auto;padding:24px 18px 70px}
+  h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--gray);font-size:14px;margin:0 0 20px}
+  .tiles{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 24px}
+  .tile{background:var(--white);border:1px solid var(--line);border-radius:11px;
+    padding:11px 15px;min-width:118px}
+  .tile b{display:block;font-size:23px;line-height:1.15;letter-spacing:-.02em}
+  .tile span{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gray)}
+  .tile.ok b{color:var(--green)} .tile.warn b{color:var(--amber)}
+  h2{font-size:15px;margin:30px 0 4px;display:flex;align-items:center;gap:9px}
+  h2 .pill{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+    padding:3px 9px;border-radius:999px;color:#fff}
+  .pill.g{background:var(--green)} .pill.a{background:var(--amber)}
+  .hint{color:var(--gray);font-size:13px;margin:0 0 12px}
+  table{width:100%;border-collapse:collapse;background:var(--white);
+    border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th{text-align:left;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--gray);padding:10px 13px;background:#fbfcfd;border-bottom:1px solid var(--line)}
+  td{padding:11px 13px;border-top:1px solid var(--line);font-size:13.5px;vertical-align:top}
+  tr:first-child td{border-top:none}
+  .nm{font-weight:650}
+  .ct{color:var(--gray);font-size:12px;white-space:nowrap}
+  .ax{margin:0 0 3px}
+  .ax:last-child{margin-bottom:0}
+  .axk{display:inline-block;min-width:52px;font-size:10.5px;font-weight:800;text-transform:uppercase;
+    letter-spacing:.05em;color:var(--navy)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
+    background:#f1f3f6;padding:1px 5px;border-radius:4px}
+  .why{color:var(--red);font-size:12.5px;margin-top:5px}
+  .none{color:var(--amber);font-style:italic}
+  .foot{margin-top:30px;background:var(--white);border:1px solid var(--line);
+    border-radius:12px;padding:17px 19px}
+  .foot h3{margin:0 0 9px;font-size:14px}
+  .foot li{font-size:13.5px;margin-bottom:7px}
+  .foot li:last-child{margin-bottom:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Ovation Medical — every product's variant picker</h1>
+  <p class="sub">All 57 cards, 303 SKUs, showing what the dropdown will offer <b>after</b> the fixes now committed. Option B: colour and size get separate pickers where they vary independently.</p>
+
+  <div class="tiles">
+    <div class="tile ok"><b>38</b><span>Read correctly</span></div>
+    <div class="tile warn"><b>16</b><span>Need a decision</span></div>
+    <div class="tile"><b>3</b><span>Single SKU — no picker</span></div>
+    <div class="tile"><b>13</b><span>Two-axis (size × colour/side)</span></div>
+  </div>
+
+  <h2><span class="pill a">Needs you</span> 16 products where the picker still reads wrong</h2>
+  <p class="hint">Grouped by cause. Most share one root problem: the SKU name repeats the product name, and the prefix strip only removes an <i>exact</i> match.</p>
+  <table>
+    <tr><th style="width:27%">Product</th><th style="width:8%">SKUs</th><th>What the dropdown shows</th></tr>
+
+    <tr><td class="nm">Compact Pro ROM — Standard</td><td class="ct">2</td>
+      <td><span class="none">No picker at all</span>
+        <div class="why">Both labels are ~124 characters of repeated product name, so no axis varies. 51508 is reachable but indistinguishable from 51500.</div></td></tr>
+
+    <tr><td class="nm">Compact Pro ROM — Cool Wrap</td><td class="ct">2</td>
+      <td><span class="none">No picker at all</span>
+        <div class="why">Same as above, for 51600 / 51608.</div></td></tr>
+
+    <tr><td class="nm">Nu-Form Universal Back Brace (L0637/L0650)</td><td class="ct">2</td>
+      <td><span class="none">No picker at all</span>
+        <div class="why">62007 reads <code>30”-48”</code> with curly quotes, 61008-2 reads <code>50" - 60"</code> with straight ones — so Size is treated as fixed, not varying.</div></td></tr>
+
+    <tr><td class="nm">Universal LS Double-Pull Back Brace</td><td class="ct">2</td>
+      <td><div class="ax"><span class="axk">Size</span> <code>Universal LS Double-Pull Back Brace 4XL · 50"-60"</code> / <code>… Standard · 25"-50"</code></div>
+        <div class="why">Whole product name inside every option. Should read <code>4XL · 50"-60"</code> and <code>Standard · 25"-50"</code>.</div></td></tr>
+
+    <tr><td class="nm">Universal LST Double-Pull Back Brace</td><td class="ct">2</td>
+      <td><div class="ax"><span class="axk">Size</span> same pattern as above</div>
+        <div class="why">Same fix.</div></td></tr>
+
+    <tr><td class="nm">Universal LST Plus Double-Pull Back Brace</td><td class="ct">2</td>
+      <td><div class="ax"><span class="axk">Size</span> same pattern as above</div>
+        <div class="why">Same fix.</div></td></tr>
+
+    <tr><td class="nm">Universal TLSO 456 (L0456)</td><td class="ct">2</td>
+      <td><div class="ax"><span class="axk">Size</span> <code>Universal TLSO 456, 4XL · 36" - 66"</code> / <code>Universal TLSO 456 · 28" - 58"</code></div>
+        <div class="why">Name repeats; the comma before 4XL stops the exact-prefix strip.</div></td></tr>
+
+    <tr><td class="nm">Universal TSLO 464 (L0464)</td><td class="ct">2</td>
+      <td><div class="ax"><span class="axk">Size</span> same pattern as above</div>
+        <div class="why">Same fix.</div></td></tr>
+
+    <tr><td class="nm">Neoprene Hinged Knee Support Hinged</td><td class="ct">5</td>
+      <td><div class="ax"><span class="axk">Size</span> <code>Neoprene Hinged Knee Support – Small</code> … <code>– XX-Large</code></div>
+        <div class="why">Page name ends "…Support <b>Hinged</b>", SKU names don't, so the prefix never strips. Should read <code>Small</code>…<code>XX-Large</code>.</div></td></tr>
+
+    <tr><td class="nm">Ovation Post Op Square Toe Shoe With Pressure Relief</td><td class="ct">5</td>
+      <td><div class="ax"><span class="axk">Size</span> <code>Ovation Post Op Shoe With Pressure Relief Pad X-Small</code> …</div>
+        <div class="why">Same cause — page name and SKU name differ slightly.</div></td></tr>
+
+    <tr><td class="nm">The Game Changer™ OA Knee Brace</td><td class="ct">5</td>
+      <td><div class="ax"><span class="axk">Size</span> <code>Ovation Knee Brace Under Sleeve S/M</code> / <code>… L/XL</code> / <code>Universal</code></div>
+        <div class="ax"><span class="axk">Side</span> Left / Right</div>
+        <div class="why">The under-sleeves are <b>accessories</b>, not sizes of the brace. They belong in Related products.</div></td></tr>
+
+    <tr><td class="nm">Nu-Form Universal Extension Belt</td><td class="ct">2</td>
+      <td><div class="ax"><span class="axk">Size</span> <code>Nu-Form Universal Back Brace Extension Belt 10/PK · 30″-70″</code> / <code>Nu-Form™ Universal Back Brace · 30″-70″</code></div>
+        <div class="why">Two SKUs, same measurement, differing only by pack size — and one is named after the brace, not the belt. Is 61000-210 a 10-pack?</div></td></tr>
+
+    <tr><td class="nm">Elastic Bandage with the Alligator Clips</td><td class="ct">4</td>
+      <td><div class="ax"><span class="axk">Variant</span> <code>2", 12 Rolls – BE002N · 2" x 5 yrds</code> …</div>
+        <div class="why">Part numbers inside the option text, and the size appears twice.</div></td></tr>
+
+    <tr><td class="nm">Gauze Sponges - Non Sterile</td><td class="ct">6</td>
+      <td><div class="ax"><span class="axk">Variant</span> <code>2" x 2" 8ply</code>, <code>3" x 3" 8ply</code>, <code>4" x 4" 8ply · 3" x 3" 8ply</code> …</div>
+        <div class="why">One SKU carries <b>two different sizes</b> — the name and the option disagree. A real data conflict, not just formatting.</div></td></tr>
+
+    <tr><td class="nm">Gauze Sponges - Sterile</td><td class="ct">3</td>
+      <td><div class="ax"><span class="axk">Variant</span> <code>Gauze Sponges · 2″ x 2″, 12ply</code> …</div>
+        <div class="why">"Gauze Sponges" repeated in every option.</div></td></tr>
+
+    <tr><td class="nm">Ovation Square Toe Post-Op Shoe</td><td class="ct">5</td>
+      <td><div class="ax"><span class="axk">Size</span> <code>X-Small · Mens: 3 – 5…</code>, <code>Small · …</code>, <span class="none">(blank)</span>, <code>Medium · …</code></div>
+        <div class="why">One SKU produces an <b>empty</b> option — a dealer sees a blank row in the dropdown.</div></td></tr>
+  </table>
+
+  <h2><span class="pill g">Good</span> 38 products whose picker reads correctly</h2>
+  <p class="hint">Spot-check any of these; I've listed the exact values each dropdown will carry.</p>
+  <table>
+    <tr><th style="width:30%">Product</th><th style="width:8%">SKUs</th><th>Picker</th></tr>
+    <tr><td class="nm">Arm Sling With Padded Shoulder</td><td class="ct">5</td><td><div class="ax"><span class="axk">Size</span> X-Small · 9"- 11" / Small · 11" - 13" / Medium · 13" - 15" / Large · 15" - 17" / X-Large · 17" - 19"</div></td></tr>
+    <tr><td class="nm">Casting Tape</td><td class="ct">16</td><td><div class="ax"><span class="axk">Size</span> 2" x 4 Yd / 3" x 4 Yd / 4" x 4 Yd / 5" x 5 Yd</div><div class="ax"><span class="axk">Colour</span> Black / Dark Blue / Pink / White</div></td></tr>
+    <tr><td class="nm">Gen 2® Walking Boot — Tall Pneumatic</td><td class="ct">20</td><td><div class="ax"><span class="axk">Size</span> X-Small / Small / Medium / Large / X-Large</div><div class="ax"><span class="axk">Colour</span> Black / Blue / Grey / Red</div></td></tr>
+    <tr><td class="nm">Gen 2® Walking Boot — Tall Non-Pneumatic</td><td class="ct">20</td><td><div class="ax"><span class="axk">Size</span> X-Small → X-Large</div><div class="ax"><span class="axk">Colour</span> Black / Blue / Grey / Red</div></td></tr>
+    <tr><td class="nm">Gen 2® Walking Boot — Short Pneumatic</td><td class="ct">20</td><td><div class="ax"><span class="axk">Size</span> X-Small → X-Large</div><div class="ax"><span class="axk">Colour</span> Black / Blue / Grey / Red</div></td></tr>
+    <tr><td class="nm">Gen 2® Walking Boot — Short Non-Pneumatic</td><td class="ct">20</td><td><div class="ax"><span class="axk">Size</span> X-Small → X-Large</div><div class="ax"><span class="axk">Colour</span> Black / Blue / Grey / Red</div></td></tr>
+    <tr><td class="nm">Pneumatic Ankle Stirrups</td><td class="ct">4</td><td><div class="ax"><span class="axk">Size</span> Standard/Universal (5'1 - Up) / Youth/Universal (Up to 5')</div><div class="ax"><span class="axk">Colour</span> Black / White</div></td></tr>
+    <tr><td class="nm">Foam Ankle Stirrups</td><td class="ct">4</td><td><div class="ax"><span class="axk">Size</span> Standard/Universal (5'1 - Up) / Youth/Universal (Up to 5')</div><div class="ax"><span class="axk">Colour</span> Blue / White</div></td></tr>
+    <tr><td class="nm">Classic Thumb Spica</td><td class="ct">10</td><td><div class="ax"><span class="axk">Size</span> X-Small / Small / Medium / Large / X-Large</div><div class="ax"><span class="axk">Side</span> Left / Right</div></td></tr>
+    <tr><td class="nm">Classic Wrist Brace</td><td class="ct">10</td><td><div class="ax"><span class="axk">Size</span> X-Small / Small / Medium / Large / X-Large</div><div class="ax"><span class="axk">Side</span> Left / Right</div></td></tr>
+    <tr><td class="nm">Nu-Form™ Thumb Spica</td><td class="ct">6</td><td><div class="ax"><span class="axk">Size</span> X-Small Hand / Standard Hand / X-Large Hand</div><div class="ax"><span class="axk">Side</span> Left / Right</div></td></tr>
+    <tr><td class="nm">Ovation Round Toe Post-Op Shoe</td><td class="ct">8</td><td><div class="ax"><span class="axk">Size</span> X-Small · Children's 10 – 1 / Womens Small · 4 – 6 / Mens Small · 6 – 8 / … 8 in all</div></td></tr>
+    <tr><td class="nm">Shoulder Immobilizer with Foam Straps</td><td class="ct">5</td><td><div class="ax"><span class="axk">Size</span> X-Small · 9” – 11” / Small · 11” – 13” / Medium / Large / X-Large</div></td></tr>
+    <tr><td class="nm">Shoulder Abduction Sling</td><td class="ct">3</td><td><div class="ax"><span class="axk">Size</span> Small · up to 12.5” / Medium · 12.5” to 15.5” / Large · 15.5” and up</div></td></tr>
+    <tr><td class="nm">Lace-Up Ankle Brace</td><td class="ct">7</td><td><div class="ax"><span class="axk">Size</span> XX-Small → XX-Large</div></td></tr>
+    <tr><td class="nm">Nu-Form™ Ankle Brace</td><td class="ct">7</td><td><div class="ax"><span class="axk">Size</span> XX-Small → XX-Large</div></td></tr>
+    <tr><td class="nm">Ovation Pressure Relief Pad</td><td class="ct">5</td><td><div class="ax"><span class="axk">Size</span> X-Small / Small / Medium / Large / X-Large</div></td></tr>
+    <tr><td class="nm">Ovation Pro Nitrile Gloves, Blue</td><td class="ct">4</td><td><div class="ax"><span class="axk">Size</span> SM 3.5ML Non-Sterile · Small / MD · Medium / LG · Large / XL · X-Large</div></td></tr>
+    <tr><td class="nm">Elastic Lumbar Support</td><td class="ct">5</td><td><div class="ax"><span class="axk">Size</span> Small / Medium / Large / XLarge / XXLarge</div></td></tr>
+    <tr><td class="nm">Neoprene Knee Support with Stabilized Patella</td><td class="ct">5</td><td><div class="ax"><span class="axk">Size</span> Small → XX-Large</div></td></tr>
+    <tr><td class="nm">Neoprene Knee Support Anterior Closure</td><td class="ct">7</td><td><div class="ax"><span class="axk">Size</span> Small / Medium / <b>3X-Large / 4X-Large</b> / Large / X-Large / XX-Large</div><div class="why">Values are right; the <b>order</b> is wrong — 3XL and 4XL sort before Large. Fixable in the size ranking, no data change.</div></td></tr>
+    <tr><td class="nm">Clavical Support</td><td class="ct">4</td><td><div class="ax"><span class="axk">Size</span> Small / Medium / Large / X-Large</div></td></tr>
+    <tr><td class="nm">Boxer Splint</td><td class="ct">2</td><td><div class="ax"><span class="axk">Side</span> Left / Right</div></td></tr>
+    <tr><td class="nm">Universal 8" Wrist Brace</td><td class="ct">2</td><td><div class="ax"><span class="axk">Side</span> Left / Right</div></td></tr>
+    <tr><td class="nm">Universal 9" Thumb Spica</td><td class="ct">2</td><td><div class="ax"><span class="axk">Side</span> Left / Right</div></td></tr>
+    <tr><td class="nm">Dorsal Night Splint</td><td class="ct">2</td><td><div class="ax"><span class="axk">Size</span> Small to Medium / Large to X-Large</div></td></tr>
+    <tr><td class="nm">Hybrid Night Splint</td><td class="ct">3</td><td><div class="ax"><span class="axk">Size</span> Small to Medium / Large to X-Large</div></td></tr>
+    <tr><td class="nm">Posterior Night Splint</td><td class="ct">3</td><td><div class="ax"><span class="axk">Size</span> Small / Medium / Large</div></td></tr>
+    <tr><td class="nm">Step Free Ankle Stabilizer</td><td class="ct">3</td><td><div class="ax"><span class="axk">Size</span> Small / Medium / Large</div></td></tr>
+    <tr><td class="nm">Cloth Tape</td><td class="ct">2</td><td><div class="ax"><span class="axk">Variant</span> 1″ x 5″ yrds / 2″ x 5″ yrds</div></td></tr>
+    <tr><td class="nm">Synthetic Stockinette</td><td class="ct">4</td><td><div class="ax"><span class="axk">Variant</span> 2″ / 3″ / 4″ / 6″ x 25 yd</div></td></tr>
+    <tr><td class="nm">Synthetic Cast Padding</td><td class="ct">4</td><td><div class="ax"><span class="axk">Variant</span> 12 rolls · 2″ / 3″ / 4″ / 6″ x 3 yd</div></td></tr>
+    <tr><td class="nm">Soft Conforming Gauze Bandage</td><td class="ct">3</td><td><div class="ax"><span class="axk">Variant</span> 12 rolls · 2" / 3" / 4" x 4.1 yd</div></td></tr>
+    <tr><td class="nm">Ovation Self-Adhering Compression Wrap</td><td class="ct">4</td><td><div class="ax"><span class="axk">Variant</span> 12 rolls · 2” / 3” / 4” / 6” x 5 yd</div></td></tr>
+    <tr><td class="nm">Ovation Premium Fiberglass Roll Splint</td><td class="ct">4</td><td><div class="ax"><span class="axk">Variant</span> 2" / 3" / 4" / 5" x 15ft</div></td></tr>
+    <tr><td class="nm">Ovation Premium Non-Woven Roll Splint</td><td class="ct">4</td><td><div class="ax"><span class="axk">Variant</span> 2" / 3" / 4" x 15ft, plus one leaking a truncated name</div></td></tr>
+    <tr><td class="nm">Nu-Form Universal Back Brace (L0627/L0642)</td><td class="ct">1</td><td>Single SKU — no picker, correct</td></tr>
+    <tr><td class="nm">Nu-Form™ Universal Back Brace (L0631/L0648)</td><td class="ct">1</td><td>Single SKU — no picker, correct</td></tr>
+    <tr><td class="nm">Low Profile Compact Pro Rom Knee Brace</td><td class="ct">1</td><td>Single SKU — no picker, correct</td></tr>
+  </table>
+
+  <div class="foot">
+    <h3>What I'd fix without asking, if you agree</h3>
+    <ul>
+      <li><b>Lenient prefix strip</b> — clears 8 products at once (the five Universal braces, Neoprene Hinged, Ovation Post Op Square Toe, Gauze Sponges Sterile). Today the product name is only removed from a SKU name when it matches <i>exactly</i>; matching on whole words instead handles "Universal TLSO 456<b>,</b> 4XL" and "…Support <b>Hinged</b>".</li>
+      <li><b>Size ranking for 3XL/4XL/5XL</b> — one line; they currently sort before Large because "3X-Large" only matches the word "large".</li>
+      <li><b>Straight vs curly quotes</b> — normalise before comparing, which restores the Nu-Form 0637 picker.</li>
+    </ul>
+    <h3 style="margin-top:15px">What I can't decide for you</h3>
+    <ul>
+      <li><b>Compact Pro ROM ×2</b> — what actually separates 51500 from 51508, and 51600 from 51608?</li>
+      <li><b>Game Changer</b> — confirm the under-sleeves are accessories, so I move them to Related products.</li>
+      <li><b>Extension belt</b> — is 61000-210 a 10-pack of 61000-2?</li>
+      <li><b>Gauze Sponges Non-Sterile</b> — one SKU claims two sizes. Which is right?</li>
+      <li><b>Ovation Square Toe Post-Op Shoe</b> — one SKU has no option text at all.</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>
