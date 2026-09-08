@@ -98,7 +98,7 @@ async function forgot(){
   err.className=""; err.textContent="Sending…";
   let j=null, netErr=null;
   try{
-    const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"forgot",email,redirect_to:location.origin+"/admin/reset.html"})});
+    const r=await fetch("/.netlify/functions/password-reset",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"request",email,audience:"staff"})});
     j=await r.json().catch(()=>null);
     if(!r.ok) netErr="The server answered "+r.status+".";
   }catch(e){ netErr="Could not reach the server."; }
@@ -106,7 +106,7 @@ async function forgot(){
     err.textContent="Couldn't send the reset email. "+netErr+" Nothing was sent — try again, or ask the President to send you one from Staff."; return; }
   if(j && j.ok===false){ err.className="err";
     err.textContent=j.message||"Couldn't send the reset email."; return; }
-  err.className="ok"; err.textContent="If that email has an account, a reset link is on its way. Check your inbox (and spam). Nothing arrives within a few minutes? Ask the President to send one from Staff — that screen reports the real reason.";
+  err.className="ok"; err.textContent=(j&&j.message)||"If that email has a staff account, a reset link is on its way from hello@homecareproviderservices.us. Check your inbox (and spam). Nothing within a few minutes? Ask the President to send one from Staff.";
 }
 </script>
 </body></html>
