@@ -21,7 +21,10 @@
  .ok{color:#2d7d46;font-size:13px;margin-top:10px}
  .row{display:flex;justify-content:space-between;align-items:center;margin-top:12px}
  .link{background:none;border:0;color:var(--orange,#e07b00);font-size:12.5px;cursor:pointer;padding:0;text-decoration:underline}
- .fine{font-size:11.5px;color:var(--gray);margin-top:16px;line-height:1.5;border-top:1px solid var(--line);padding-top:12px}
+ .row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.remember{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#4b5563;cursor:pointer;user-select:none}
+.remember input{width:auto;margin:0}
+.fine{font-size:11.5px;color:var(--gray);margin-top:16px;line-height:1.5;border-top:1px solid var(--line);padding-top:12px}
 </style>
 </head><body>
 <div class="box">
@@ -35,7 +38,7 @@
     <input id="pass" type="password" autocomplete="current-password" placeholder="Password" onkeydown="if(event.key==='Enter')submitLogin()">
     <button class="go" id="btn" type="submit" onclick="submitLogin()">Sign in</button>
     <div class="err" id="err"></div>
-    <div class="row"><button type="button" class="link" onclick="forgot()">Forgot password?</button></div>
+    <div class="row"><label class="remember"><input type="checkbox" id="remember" checked> Remember my email</label><button type="button" class="link" onclick="forgot()">Forgot password?</button></div>
   </form>
   <div class="fine">First time signing in? Enter your assigned email and choose a password — that becomes your password going forward. Trouble getting in? Ask the President to confirm your account.</div>
 </div>
@@ -43,6 +46,24 @@
 <script>
 const $=s=>document.querySelector(s);
 const DEST="/admin/rep-home.html";
+/* REMEMBERED, AND ONLY THE EMAIL.
+   A password is never written down here — not to localStorage, not to a cookie, not
+   anywhere this page can reach. What gets remembered is the address, so a rep who signs in
+   from the same machine does not retype it; the password stays with the browser's own
+   password manager, which is built for it and is the only thing that should hold one.
+   Unticking the box forgets the address immediately, on this device. */
+const REMEMBER_KEY="hcps_rep_email";
+function rememberEmail(e){ try{ if(e) localStorage.setItem(REMEMBER_KEY,e); }catch(err){} }
+function forgetEmail(){ try{ localStorage.removeItem(REMEMBER_KEY); }catch(err){} }
+function savedEmail(){ try{ return localStorage.getItem(REMEMBER_KEY)||""; }catch(err){ return ""; } }
+/* Prefill, and put the cursor where it is actually needed. */
+try{
+  const saved=savedEmail(), box=$("#remember"), em=$("#email");
+  if(saved && em){ em.value=saved; if(box) box.checked=true;
+    const pw=$("#pass"); if(pw) setTimeout(()=>pw.focus(),50); }
+  else if(box && !saved){ /* first visit: leave it ticked, nothing to prefill */ }
+  if(box) box.addEventListener("change",()=>{ if(!box.checked) forgetEmail(); });
+}catch(e){}
 // Already signed in? Go straight to the portal.
 try{ if(window.HCPS&&HCPS.token&&HCPS.token()){ location.replace(DEST); } }catch(e){}
 
@@ -51,6 +72,8 @@ async function submitLogin(){
   const err=$("#err"), btn=$("#btn");
   err.className="err"; err.textContent="";
   if(!email||!password){ err.textContent="Enter your email and password."; return; }
+  const box=$("#remember");
+  if(!box || box.checked) rememberEmail(email); else forgetEmail();
   btn.disabled=true; btn.textContent="Signing in…";
   try{
     const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
@@ -63,13 +86,27 @@ async function submitLogin(){
   }catch(e){ err.textContent="Couldn't reach the server. Try again."; btn.disabled=false; btn.textContent="Sign in"; }
 }
 
+/* THE ANSWER IS READ, NOT ASSUMED.
+   This used to fire the request, ignore the reply and print "a reset link is on its way"
+   whatever came back — so a dead mail provider, a rate limit and a genuine send all looked
+   identical, and the only way to tell them apart was to wait for an email that was never
+   coming. Whether an account EXISTS stays deliberately vague: that is a real privacy
+   boundary on a page anyone can open. A provider failure is not, and is now said plainly. */
 async function forgot(){
   const email=($("#email").value||"").trim(), err=$("#err");
   if(!email){ err.className="err"; err.textContent="Enter your email above first, then tap Forgot password."; return; }
+  err.className=""; err.textContent="Sending…";
+  let j=null, netErr=null;
   try{
-    await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"forgot",email,redirect_to:location.origin+"/admin/reset.html"})});
-  }catch(e){}
-  err.className="ok"; err.textContent="If that email has an account, a reset link is on its way. Check your inbox (and spam).";
+    const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"forgot",email,redirect_to:location.origin+"/admin/reset.html"})});
+    j=await r.json().catch(()=>null);
+    if(!r.ok) netErr="The server answered "+r.status+".";
+  }catch(e){ netErr="Could not reach the server."; }
+  if(netErr){ err.className="err";
+    err.textContent="Couldn't send the reset email. "+netErr+" Nothing was sent — try again, or ask the President to send you one from Staff."; return; }
+  if(j && j.ok===false){ err.className="err";
+    err.textContent=j.message||"Couldn't send the reset email."; return; }
+  err.className="ok"; err.textContent="If that email has an account, a reset link is on its way. Check your inbox (and spam). Nothing arrives within a few minutes? Ask the President to send one from Staff — that screen reports the real reason.";
 }
 </script>
 </body></html>
