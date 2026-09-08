@@ -187,6 +187,12 @@ textarea.ed{min-height:64px}
 .sm-wrap{display:flex;flex-direction:column;gap:10px}
 .sm-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .sm-bar input{flex:1;min-width:200px}
+.sm-order{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:10px 0}
+.sm-order-h{display:flex;gap:10px;align-items:baseline;margin-bottom:7px;flex-wrap:wrap}
+.sm-order-l{display:flex;flex-direction:column;gap:4px}
+.sm-order-r{display:flex;gap:8px;align-items:center;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.sm-order-r .nm{flex:1;font-weight:600;font-size:12.5px}
+.sm-order-i{width:18px;text-align:right;color:var(--gray);font-size:11px}
 .sm-warn{padding:9px 12px;background:#fdecec;border:1px solid #f3c0c0;border-left:3px solid #b42323;border-radius:6px;font-size:12.5px;color:#5c3030}
 .sm-pane{display:grid;grid-template-columns:280px 1fr;gap:12px}
 @media (max-width:820px){.sm-pane{grid-template-columns:1fr}}
@@ -1566,9 +1572,54 @@ async function openStructureMap(){
   }catch(e){}
   SM.loaded=true; smRender();
 }
+/* ── THE ORDER DEALERS SEE ────────────────────────────────────────────────────
+   The saved category_order is what Partner 360 scrolls down and what fills its category
+   filter. It was edited in the Product Catalog while assignments were made here, so the
+   screen that decided WHAT was in a category was not the screen that decided WHERE it sat.
+   This is the same list, edited where the structure is.
+
+   The map itself is sorted by it too. Sorting the map alphabetically while the shop used the
+   saved order meant this screen could never show what a dealer would actually see. */
+function smCatOrder(cats){
+  const ord=Array.isArray(SM.order)?SM.order:[];
+  const rank=c=>{ const i=ord.indexOf(c); return i<0?ord.length:i; };
+  return cats.slice().sort((a,b)=>{
+    if(a===SM_NONE) return -1; if(b===SM_NONE) return 1;   // what has no category is always first
+    return rank(a)-rank(b) || a.localeCompare(b);          // unplaced ones fall in alphabetically at the end
+  });
+}
+/* Move one category up or down and save. The list stored is every category currently on the
+   line, so a category that was never placed gets a position the moment anyone touches the
+   order — otherwise it would silently stay at the end for ever. */
+async function smMoveCatOrder(cat,dir){
+  const cats=smCatOrder(Object.keys(smTree(smRows()))).filter(c=>c!==SM_NONE);
+  const i=cats.indexOf(cat); const j=i+dir;
+  if(i<0||j<0||j>=cats.length) return;
+  cats.splice(j,0,cats.splice(i,1)[0]);
+  SM.order=cats;
+  smRender();
+  const r=await catalogPost({action:'set_category_order',manufacturer:MFR,order:cats});
+  if(!(r&&r.ok)) toast('Could not save the order',true);
+}
+function smOrderPanelHtml(tree){
+  const cats=smCatOrder(Object.keys(tree)).filter(c=>c!==SM_NONE);
+  if(cats.length<2) return '';
+  return `<div class="sm-order">
+    <div class="sm-order-h"><b>Order on Partner 360</b>
+      <span class="mut" style="font-size:11.5px">This is the order dealers scroll and the order their category filter lists. Saved as you move it.</span></div>
+    <div class="sm-order-l">${cats.map((c,i)=>`<div class="sm-order-r">
+      <span class="sm-order-i">${i+1}</span>
+      <span class="nm">${esc(c)}</span>
+      <span class="sm-n">${tree[c]?tree[c].n:0}</span>
+      <button class="btn ghost" style="padding:1px 7px;font-size:11px" ${i===0?'disabled':''}
+        onclick="smMoveCatOrder('${escA(c)}',-1)" title="Move up">↑</button>
+      <button class="btn ghost" style="padding:1px 7px;font-size:11px" ${i===cats.length-1?'disabled':''}
+        onclick="smMoveCatOrder('${escA(c)}',1)" title="Move down">↓</button>
+    </div>`).join('')}</div></div>`;
+}
 function smRender(){
   const rows=smRows(), tree=smTree(rows);
-  const cats=Object.keys(tree).sort((a,b)=>a===SM_NONE?-1:b===SM_NONE?1:a.localeCompare(b));
+  const cats=smCatOrder(Object.keys(tree));
   const totals={n:rows.length, sk:rows.reduce((a,r)=>a+r.skus,0),
     none:rows.filter(r=>r.cat===SM_NONE).length};
   if(SM.cat===null){ SM.cat = totals.none ? SM_NONE : (cats[0]||null); SM.sub=null; }
@@ -1599,6 +1650,7 @@ function smRender(){
     </div>
     ${smHealthHtml(rows)}
     ${smDiagramHtml(rows,tree)}
+    ${smOrderPanelHtml(tree)}
     ${totals.none?`<div class="sm-warn">⚠ <b>${totals.none}</b> product(s) have no category — they are pinned at the top of the map and will not reach dealers on a line that lists approved products only.</div>`:''}
     <div class="sm-pane">
       <div class="sm-side">${side||'<div class="mut" style="padding:12px">No products loaded.</div>'}</div>
@@ -1635,7 +1687,7 @@ function smRender(){
    has no category at all gets the first card, in red, because it is the only thing on this
    screen that is definitely wrong. */
 function smDiagramHtml(rows,tree){
-  const cats=Object.keys(tree).sort((a,b)=>a===SM_NONE?-1:b===SM_NONE?1:a.localeCompare(b));
+  const cats=smCatOrder(Object.keys(tree));
   const card=c=>{
     const g=tree[c], none=c===SM_NONE;
     const subs=Object.keys(g.subs).sort((a,b)=>a===''?1:b===''?-1:a.localeCompare(b));

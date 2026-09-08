@@ -404,6 +404,85 @@ function filteredSortedProducts(){
     status:(a,b)=>((a.active===false?1:0)-(b.active===false?1:0))||nm(a,b) }[PSORT]||nm;
   return arr.slice().sort(cmp);
 }
+/* ── MERGED PRICING ───────────────────────────────────────────────────────────
+   Every product whose price came out of a merge, in one place. Finding these meant reading
+   369 rows looking for a badge; a merge is the one operation that moves a price from one
+   record onto another, so it is the one that most needs to be reviewable as a set.
+
+   It reads the same merge_review the Structure work uses — the marks a merge leaves are the
+   only record of it, and there is no second store of them. */
+let MP=null;
+async function openMergedPricing(){
+  modalHTML('Merged pricing','<p class="mut">Reading…</p>');
+  const r=await api("",{method:"POST",body:JSON.stringify({action:"merge_review",manufacturer:SLUG})});
+  const j=(r&&r.json)||r||{};
+  if(!j||j.ok===false||!Array.isArray(j.rows)){
+    modalHTML('Merged pricing',`<p class="mut">Could not read the merges on this line.${j&&j.error?' '+esc(j.error):''}</p>`);
+    return;
+  }
+  MP=j; renderMergedPricing();
+}
+function mpMoney(v){ return (v==null||v==="")?'—':'$'+Number(v).toFixed(2); }
+function mpStatus(m){
+  if(m.suspicious) return `<span class="pill no" title="${escA(m.suspicious)}">Review</span>`;
+  if(!m.reversible) return `<span class="pill" title="This merge predates the carry record, so undoing it restores the record but cannot take fields back off the winner">Undo not clean</span>`;
+  return `<span class="pill ok">Reversible</span>`;
+}
+function renderMergedPricing(){
+  const j=MP; if(!j) return;
+  const rows=j.rows||[];
+  if(!rows.length){ modalHTML('Merged pricing','<p class="mut">No pricing on this line came from a merge.</p>'); return; }
+  const body=rows.map(m=>`<tr>
+    <td><b>${esc(m.winner_name||m.winner)}</b>${m.winner_listed_on&&m.winner_listed_on.length
+        ?`<div class="mut" style="font-size:10.5px">on ${esc(m.winner_listed_on.map(x=>x.name||x.page_key).join(', '))}</div>`:''}</td>
+    <td><code>${esc(m.winner)}</code></td>
+    <td><code>${esc(m.loser)}</code><div class="mut" style="font-size:10.5px">${esc((m.loser_name||'').slice(0,38))}</div></td>
+    <td class="num">${mpMoney(m.winner_price)}</td>
+    <td class="num">${mpMoney(m.loser_price)}</td>
+    <td>${mpStatus(m)}${m.carried&&m.carried.length
+        ?`<div class="mut" style="font-size:10.5px">carried ${esc(m.carried.join(', '))}</div>`:''}</td>
+    <td class="mut" style="font-size:11px;white-space:nowrap">${m.merged_at?esc(String(m.merged_at).slice(0,10)):'—'}${
+        m.merged_by?`<div>${esc(m.merged_by)}</div>`:''}</td>
+    <td style="white-space:nowrap">
+      <button class="btn ghost sm" onclick="mpOpen('${escA(m.winner)}')" title="Open the surviving product">View</button>
+      <button class="btn ghost sm" onclick="mpEdit('${escA(m.winner)}')" title="Edit the surviving SKU and its price">Edit</button>
+      <button class="btn ghost sm" onclick="mpUndo('${escA(m.loser)}','${escA(m.winner)}')" title="Separate ${escA(m.loser)} back into its own item number">⇄ Undo</button>
+    </td></tr>`).join('');
+  modalHTML('Merged pricing', `
+    <p class="mut">${rows.length} product${rows.length===1?'':'s'} on this line carry pricing that came from a merge.
+      ${j.suspicious?`<b style="color:var(--bad)">${j.suspicious} worth a second look</b> — the two sides differ by more than 4x, or both carry the same name.`:''}
+      ${j.not_reversible?` ${j.not_reversible} predate${j.not_reversible===1?'s':''} the carry record, so undoing restores the record but cannot take fields back off the winner.`:''}</p>
+    <div class="tabscroll"><table style="width:100%;font-size:12.5px">
+      <thead><tr><th>Product</th><th>SKU</th><th>Merged from</th><th class="num">Current price</th>
+        <th class="num">Source price</th><th>Merge status</th><th>Updated</th><th>&nbsp;</th></tr></thead>
+      <tbody>${body}</tbody></table></div>`);
+}
+function mpOpen(code){ const el=document.getElementById('overlay'); if(el) el.classList.remove('show');
+  setFilter('q',code); const box=document.getElementById('prodsearch'); if(box) box.value=code; }
+function mpEdit(code){ const el=document.getElementById('overlay'); if(el) el.classList.remove('show');
+  editProduct(code); }
+async function mpUndo(loser,winner){
+  const r=await api("",{method:"POST",body:JSON.stringify({action:"unmerge_product",manufacturer:SLUG,code:loser})});
+  const j=(r&&r.json)||r||{};
+  if(j&&j.ok===false){ toast('Could not separate '+loser,true); return; }
+  if(DETAIL.overrides&&DETAIL.overrides[loser]){ const p=DETAIL.overrides[loser];
+    delete p.merged_into; delete p.merged_at; delete p.merged_by; delete p.merged_carry;
+    delete p.disposition; p.active=true; }
+  touched();
+  /* Drop the row from the view rather than re-reading the line — the merge it described no
+     longer exists, and leaving it on screen is how a button comes to look like it did nothing. */
+  if(MP&&Array.isArray(MP.rows)){
+    MP.rows=MP.rows.filter(x=>String(x.loser)!==String(loser));
+    MP.merges=MP.rows.length;
+    MP.suspicious=MP.rows.filter(x=>x.suspicious).length;
+    MP.not_reversible=MP.rows.filter(x=>!x.reversible).length;
+  }
+  const back=(j.returned||[]).length;
+  toast(`${loser} separated from ${winner}`+(back?` · ${back} field${back>1?'s':''} taken back`:''));
+  renderMergedPricing(); render();
+}
+window.openMergedPricing=openMergedPricing; window.mpUndo=mpUndo;
+window.mpOpen=mpOpen; window.mpEdit=mpEdit;
 function setFilter(k,v){ if(k==="cat")PCAT=v; else if(k==="stat")PSTAT=v; else if(k==="sort")PSORT=v; else if(k==="q")PRODQ=v; PLIMIT=60; render(); }
 // effective product list = catalog (with any override applied) + custom products
 /* Memoised because it is asked for constantly — once per row for the group count, again
@@ -1697,8 +1776,7 @@ function render(){
                 <span style="width:20px;color:var(--gray);font-variant-numeric:tabular-nums">${i+1}</span>
                 <span style="flex:1;font-weight:600${isDealer?"":";color:#8a5a12"}">${esc(c)}</span>
                 <span class="hint" style="margin:0">${mine.length}</span>
-                <button class="btn ghost sm" ${i===0?"disabled":""} onclick="moveCat(${i},-1)" title="Move up">↑</button>
-                <button class="btn ghost sm" ${i===rows.length-1?"disabled":""} onclick="moveCat(${i},1)" title="Move down">↓</button>
+
               </div>
               ${orphan
                 ? `<div style="font-size:11px;color:#8a5a12;margin:3px 0 0 26px">Not a dealer category — these ${mine.length} SKU(s) have no enrichment page, so nothing derives a heading for them and the record's own old value shows through. List them on a page and this disappears.</div>`
@@ -1706,13 +1784,16 @@ function render(){
                     `<span class="hint" style="margin:0;background:${k==="—"?"#fdf3dd":"var(--paper)"};border:1px solid var(--line);border-radius:999px;padding:1px 7px">${k==="—"?"no subcategory":esc(k)} <b>${n}</b></span>`).join("")}</div>`}
             </div>`;}).join("")}
           </div>
-          <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-            <button class="btn ghost sm" onclick="resetCatOrder()">Reset to A–Z</button>
+          <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <a class="btn sm" href="/admin/product-content-review.html?manufacturer=${encodeURIComponent(SLUG)}"
+               title="The order is set where the structure is">🌳 Change the order in the Structure Map</a>
+            <span class="hint" style="margin:0">Read-only here. One list, one owner: the Structure Map sets what dealers see, this screen shows what it currently is. Editing it in two places is how the order and the assignments came apart.</span>
           </div></div>`;
       })()}
       <p class="hint">Filter, sort, and page through the whole line. Click <b>Edit</b> to manage everything about a product in one place — details, pricing, category, image, its More Information link/brochure, status &amp; featured. Standard catalog edits save as an override (no redeploy); added products are yours to add or delete.</p>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
         <button class="btn sm" onclick="newProduct()">+ Add product</button>
+        <button class="btn sm" onclick="openMergedPricing()" title="Every product whose pricing came from a merge — what it was merged from, and what it is worth now">⇄ Merged pricing</button>
         <input type="text" placeholder="Search name, code / SKU, category…" value="${esc(PRODQ)}" id="prodsearch" oninput="searchProducts(this.value)" style="flex:1;min-width:200px">
         <select onchange="setFilter('cat',this.value)" title="Filter by category"><option value="">All categories</option>${catList().map(c=>`<option value="${esc(c)}" ${PCAT===c?"selected":""}>${esc(c)}</option>`).join("")}</select>
         <select onchange="setFilter('stat',this.value)" title="Filter by status"><option value="" ${PSTAT===""?"selected":""}>All statuses</option><option value="shown" ${PSTAT==="shown"?"selected":""}>Shown</option><option value="hidden" ${PSTAT==="hidden"?"selected":""}>Hidden</option><option value="featured" ${PSTAT==="featured"?"selected":""}>Featured</option><option value="added" ${PSTAT==="added"?"selected":""}>Added</option><option value="edited" ${PSTAT==="edited"?"selected":""}>Edited</option>
