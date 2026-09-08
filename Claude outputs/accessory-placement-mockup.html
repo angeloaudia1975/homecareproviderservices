@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Extension belt — where it should live on the brace page</title>
+<style>
+  :root{--paper:#f6f7f5;--white:#fff;--ink:#0b0d0f;--navy:#12253c;--gray:#5b6672;
+        --line:#e4e7ec;--green:#1c7a44;--orange:#e2683c;--red:#a8341f;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:26px 20px 60px}
+  h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--gray);font-size:14px;margin:0 0 8px}
+  .lead{background:#fff;border:1px solid var(--line);border-left:3px solid var(--red);
+    border-radius:10px;padding:13px 16px;margin:0 0 22px;font-size:14px}
+  .lead b{color:var(--red)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media (max-width:900px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--white);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .ph{padding:12px 17px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;
+    background:linear-gradient(180deg,#fff,#fbfcfd)}
+  .tag{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    padding:3px 8px;border-radius:999px;color:#fff;background:var(--red)}
+  .tag.g{background:var(--green)}
+  .ph h2{font-size:14.5px;margin:0;font-weight:700}
+  .pb{padding:17px}
+
+  .shelfcard{border:1px solid var(--line);border-radius:11px;padding:12px 14px;margin:0 0 18px;background:#fbfcfd}
+  .shelfcard .lbl{font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--gray)}
+  .shelfcard .nm{font-weight:650;margin:4px 0 3px;font-size:14px}
+  .shelfcard .ct{font-size:12px;color:var(--gray)}
+  .shelfcard .pr{font-weight:800;font-size:19px;margin-top:5px}
+  .shelfcard .pr .from{font-size:10.5px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.05em}
+  .bad{color:var(--red)} .good{color:var(--green)}
+
+  .pname{font-size:16px;font-weight:700;margin:0 0 12px}
+  label{display:block;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--gray);margin:0 0 5px}
+  select{width:100%;padding:10px 11px;font-size:13.5px;border:1px solid var(--line);
+    border-radius:9px;background:#fff;color:var(--ink);font-family:inherit}
+  .result{margin-top:14px;padding:12px 13px;border:1px solid var(--line);border-radius:10px;background:#fbfcfd}
+  .rsku{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:var(--gray)}
+  .rprice{font-size:23px;font-weight:800;letter-spacing:-.02em;margin:2px 0 0}
+  .btn{margin-top:11px;width:100%;padding:9px;border:none;border-radius:9px;background:var(--navy);
+    color:#fff;font-weight:700;font-size:13px;font-family:inherit;cursor:default}
+
+  .accsect{margin-top:19px;padding-top:15px;border-top:1px solid var(--line)}
+  .accsect h3{font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--gray);margin:0 0 10px}
+  .acc{display:flex;align-items:center;gap:12px;border:1px solid var(--line);
+    border-radius:10px;padding:11px 13px;background:#fff}
+  .accsw{width:38px;height:38px;border-radius:8px;background:#e8ebef;flex:none;
+    display:flex;align-items:center;justify-content:center;font-size:16px}
+  .acc .an{font-weight:650;font-size:13.5px}
+  .acc .as{font-size:11.5px;color:var(--gray)}
+  .acc .ap{margin-left:auto;text-align:right}
+  .acc .ap b{display:block;font-size:15px}
+  .acc .ap button{margin-top:4px;padding:5px 11px;border:1px solid var(--navy);border-radius:7px;
+    background:#fff;color:var(--navy);font-weight:700;font-size:11.5px;font-family:inherit;cursor:default}
+
+  .note{margin-top:26px;background:var(--white);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .note h3{margin:0 0 10px;font-size:14px}
+  .note li{font-size:14px;margin-bottom:9px}
+  .note li:last-child{margin-bottom:0}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
+    background:#f1f3f6;padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Nu-Form Universal Back Brace (L0637/L0650)</h1>
+  <p class="sub">Real page, real SKUs. The belt stays on this page in both versions — the question is only which part of the page it sits in.</p>
+  <div class="lead">To be clear: <b>I am not proposing to hide the belt.</b> A dealer who needs an extension should find it right here, exactly as you say. The problem is that it is currently one of the <b>size options for the brace</b> — so the shelf card advertises this $149.95 brace as <b>“From $14.95”</b>.</div>
+
+  <div class="grid">
+    <!-- ===== TODAY ===== -->
+    <div class="panel">
+      <div class="ph"><span class="tag">Today</span><h2>Belt is a size of the brace</h2></div>
+      <div class="pb">
+        <div class="shelfcard">
+          <div class="lbl">On the shelf</div>
+          <div class="nm">Nu-Form Universal Back Brace (L0637/L0650)</div>
+          <div class="ct">3 sizes / options</div>
+          <div class="pr bad"><span class="from">From </span>$14.95</div>
+        </div>
+
+        <p class="pname">Choose a size</p>
+        <label>Size</label>
+        <select id="selA">
+          <option value="0">30”-48”</option>
+          <option value="1">50" - 60" · Nu-Form Universal Back Brace 0637, 4XL</option>
+          <option value="2">30″-70″ · Nu-Form Universal Extension Belt – Single</option>
+        </select>
+        <div class="result">
+          <div class="rsku" id="skuA"></div>
+          <div class="rprice" id="prA"></div>
+          <button class="btn">🛒 Add to cart</button>
+        </div>
+        <p class="ct" style="margin-top:12px;font-size:12.5px;color:var(--red)">
+          A $14.95 belt sits between two braces in the size list, and sets the card's headline price.
+        </p>
+      </div>
+    </div>
+
+    <!-- ===== PROPOSED ===== -->
+    <div class="panel">
+      <div class="ph"><span class="tag g">Proposed</span><h2>Belt is an accessory on the same page</h2></div>
+      <div class="pb">
+        <div class="shelfcard">
+          <div class="lbl">On the shelf</div>
+          <div class="nm">Nu-Form Universal Back Brace (L0637/L0650)</div>
+          <div class="ct">2 sizes</div>
+          <div class="pr good"><span class="from">From </span>$129.95</div>
+        </div>
+
+        <p class="pname">Choose a size</p>
+        <label>Size</label>
+        <select id="selB">
+          <option value="0">30”-48”</option>
+          <option value="1">50”-60” · 4XL</option>
+        </select>
+        <div class="result">
+          <div class="rsku" id="skuB"></div>
+          <div class="rprice" id="prB"></div>
+          <button class="btn">🛒 Add to cart</button>
+        </div>
+
+        <div class="accsect">
+          <h3>Accessories for this brace</h3>
+          <div class="acc">
+            <div class="accsw">🔗</div>
+            <div>
+              <div class="an">Nu-Form Universal Extension Belt</div>
+              <div class="as">Item # 61000-2 · fits 30″-70″ · also sold in a 10-pack</div>
+            </div>
+            <div class="ap"><b>$14.95</b><button>Add</button></div>
+          </div>
+        </div>
+        <p class="ct" style="margin-top:12px;font-size:12.5px;color:var(--green)">
+          Same page, one scroll down, with its own price and Add button — and it no longer pretends to be a brace size.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <h3>Yes — “linked as a suggested item” is exactly it</h3>
+    <ul>
+      <li>The shop already renders this section. <code>product_related</code> with <code>kind=accessory</code> drives a Related-products block that exists in the code today; nothing new has to be built to display it.</li>
+      <li><b>It appears on all three brace pages</b>, not just one. That is the point of linking rather than listing — one belt record, shown wherever it is useful.</li>
+      <li><b>One description instead of four.</b> Right now 61000-2 is listed as a SKU on four pages and carries four different option texts. Whichever page the join reaches first wins, which is why editing the belt's own page didn't change what the shop showed.</li>
+      <li><b>The brace's own sizes get their picker back.</b> With the belt out of the size list, 30”-48” and 50”-60” are the two choices — which is also what fixes this card showing no picker at all today.</li>
+      <li><b>Nothing is removed from the catalog.</b> 61000-2 stays orderable, keeps its price and its 10-pack, and keeps its own product page for a dealer who searches for it directly.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+const A=[{c:'62007',p:149.95},{c:'61008-2',p:129.95},{c:'61000-2',p:14.95}];
+const B=[{c:'62007',p:149.95},{c:'61008-2',p:129.95}];
+const money=n=>'$'+Number(n).toFixed(2);
+function wire(sel,data,skuEl,prEl){
+  const s=document.getElementById(sel);
+  const draw=()=>{const d=data[+s.value];
+    document.getElementById(skuEl).textContent='Item # '+d.c;
+    document.getElementById(prEl).textContent=money(d.p);};
+  s.addEventListener('change',draw); draw();
+}
+wire('selA',A,'skuA','prA');
+wire('selB',B,'skuB','prB');
+</script>
+</body>
+</html>
