@@ -248,6 +248,33 @@ function duplicateGroups(base, custom, overrides){
   });
 }
 
+/* Fold recorded decisions into the reconciled rows.
+   A SKU the reconciler refused to decide becomes writable only once EVERY one
+   of its conflicts carries a resolved_value. Partially-resolved SKUs stay out:
+   writing a row with one settled field and one still in dispute would put a
+   half-decided price into the master record, which is the failure mode this
+   whole exercise exists to remove. Pure function. */
+function applyResolutions(rows, conflicts, resolved){
+  const byCode = {};
+  (conflicts || []).forEach(c => { (byCode[c.code] = byCode[c.code] || []).push(c); });
+  const ready = [], blocked = [], used = [];
+  (rows || []).forEach(row => {
+    const cs = byCode[row.code] || [];
+    if(!cs.length){ ready.push(row); return; }
+    const patched = Object.assign({}, row);
+    const missing = [];
+    cs.forEach(c => {
+      const key = c.code + "|" + c.field;
+      if(!(key in (resolved || {}))){ missing.push(c.field); return; }
+      patched[c.field] = resolved[key];
+      used.push(key);
+    });
+    if(missing.length) blocked.push({ code: row.code, unresolved: missing });
+    else ready.push(patched);
+  });
+  return { ready, blocked, used };
+}
+
 /* ═══════════════════ THE RECONCILER ═══════════════════════════════════════
    Collapses the three layers of one SKU — the deployed catalog file, the added
    row, and the override patch — into a single product_skus record.
@@ -1738,6 +1765,42 @@ exports.handler = async (event)=>{
         const overrides=Object.fromEntries((ovRows||[]).map(o=>[String(o.code),o.patch||{}]));
         const r=reconcileSkus({slug:mfr, base:base||[], custom:custom||[], overrides, pages:pages||[]});
         const byField={}; r.conflicts.forEach(c=>{ byField[c.field]=(byField[c.field]||0)+1; });
+
+        /* ---- APPLY. The first write of the rebuild. --------------------- */
+        if(b.apply===true){
+          /* Decisions come from the record, never from a rule invented here.
+             A field the reconciler refused to settle is written only because a
+             person resolved it and that resolution was stored. */
+          const resRows=await sb("GET",
+            `reconcile_conflicts?manufacturer=eq.${e(mfr)}&resolved_value=not.is.null&select=code,field,resolved_value`)
+            .catch(()=>[]);
+          const resolved={};
+          (resRows||[]).forEach(x=>{ resolved[String(x.code)+"|"+String(x.field)]=x.resolved_value; });
+          const applied=applyResolutions(r.rows, r.conflicts, resolved);
+
+          /* Never overwrite a populated line by accident. */
+          const existing=await sb("GET",
+            `product_skus?manufacturer=eq.${e(mfr)}&select=code&limit=1`).catch(()=>[]);
+          if(existing && existing.length && b.replace!==true)
+            return json(409,{error:"already_populated",
+              message:`product_skus already holds rows for ${mfr}. Pass replace:true to rebuild them.`});
+          if(existing && existing.length && b.replace===true)
+            await sb("DELETE",`product_skus?manufacturer=eq.${e(mfr)}`,null,{Prefer:"return=minimal"});
+
+          const now=new Date().toISOString();
+          const who=b.reviewer?String(b.reviewer).slice(0,80):"reconciler";
+          const payload=applied.ready.map(x=>Object.assign({},x,{updated_at:now,updated_by:who}));
+          let written=0;
+          for(let i=0;i<payload.length;i+=200){
+            await sb("POST","product_skus",payload.slice(i,i+200),{Prefer:"return=minimal"});
+            written+=payload.slice(i,i+200).length;
+          }
+          return json(200,{ok:true, applied:true, manufacturer:mfr,
+            written, held_back:applied.blocked.length, blocked:applied.blocked,
+            resolutions_used:[...new Set(applied.used)].length,
+            reconciled:r.stats, superseded:r.superseded, skipped:r.skipped.length});
+        }
+
         return json(200,{ok:true, dry_run:true, wrote_nothing:true,
           stats:r.stats, conflicts_by_field:byField,
           conflicts:r.conflicts.slice(0, Math.min(500, Number(b.limit)||500)),
