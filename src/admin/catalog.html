@@ -572,15 +572,15 @@ async function toggleFeatured(code){
 }
 function duplicateProduct(code){
   const p=effProducts().find(x=>x.code===code); if(!p)return;
-  PDRAFT={kind:"custom",code:p.code+"-COPY",orig_code:null,name:(p.name||"")+" (copy)",category:p.category||"",base_price:p.base_price??"",msrp:p.msrp??"",
+  PDRAFT={kind:"custom",code:p.code+"-COPY",orig_code:null,name:(p.name||"")+" (copy)",category:p.category||"",base_price:p.base_price??"",msrp:p.msrp??"",map:p.map??"",
     image:p.image||"",description:p.description||"",price_note:p.price_note||"",active:true,tiers:tiersOf(p),edited:false};
   toast("Copied — give it its own SKU and name, then save"); render();
 }
-function newProduct(){PDRAFT={kind:"custom",code:"",orig_code:null,name:"",category:"",base_price:"",msrp:"",image:"",description:"",price_note:"",active:true,tiers:[]};render();}
+function newProduct(){PDRAFT={kind:"custom",code:"",orig_code:null,name:"",category:"",base_price:"",msrp:"",map:"",image:"",description:"",price_note:"",active:true,tiers:[]};render();}
 // orig_code = the SKU this draft was opened under; if the code field is changed before saving,
 // saveProduct treats it as a rename (see rename_code). New/duplicate drafts have orig_code=null.
 function editProduct(code){ const p=effProducts().find(x=>x.code===code); if(!p)return;
-  PDRAFT={kind:p.kind,code:p.code,orig_code:p.code,name:p.name||"",category:p.category||"",subcategory:p.subcategory||"",group:p.group||"",base_price:p.base_price??"",msrp:p.msrp??"",
+  PDRAFT={kind:p.kind,code:p.code,orig_code:p.code,name:p.name||"",category:p.category||"",subcategory:p.subcategory||"",group:p.group||"",base_price:p.base_price??"",msrp:p.msrp??"",map:p.map??"",
     image:p.image||"",description:p.description||"",price_note:p.price_note||"",active:p.active!==false,tiers:tiersOf(p),edited:!!p.edited};
   render(); }
 function setP(k,v){PDRAFT[k]=v;}
@@ -639,7 +639,7 @@ async function saveProduct(){
     if(!confirm("Change SKU from “"+oldCode+"” to “"+newCode+"”?\n\nThe product’s price, featured status, More-Information link and images move to the new SKU, and the old SKU is retired from the portal.")) return;
     const r=await apiRaw("",{method:"POST",body:JSON.stringify({action:"rename_code",manufacturer:SLUG,old_code:oldCode,new_code:newCode,was_custom:PDRAFT.kind==="custom",
       product:{code:newCode,name:PDRAFT.name,category:PDRAFT.category,description:PDRAFT.description,price_note:PDRAFT.price_note,
-        base_price:PDRAFT.base_price===""?null:Number(PDRAFT.base_price),msrp:PDRAFT.msrp===""?null:Number(PDRAFT.msrp),image:PDRAFT.image||null,tiers,active:PDRAFT.active!==false}})});
+        base_price:PDRAFT.base_price===""?null:Number(PDRAFT.base_price),msrp:PDRAFT.msrp===""?null:Number(PDRAFT.msrp),map:PDRAFT.map===""||PDRAFT.map==null?null:Number(PDRAFT.map),image:PDRAFT.image||null,tiers,active:PDRAFT.active!==false}})});
     /* The server checks both layers, so it can still find a collision the page could not —
        a code that exists only in the deployed catalog file. Same offer, same wording. */
     if(r.status===409 && r.body && r.body.error==="sku_in_use"){
@@ -664,7 +664,7 @@ async function saveProduct(){
   }else{
     const patch={name:PDRAFT.name,category:PDRAFT.category,description:PDRAFT.description,price_note:PDRAFT.price_note,
       group:PDRAFT.group||"", subcategory:PDRAFT.subcategory||"",
-      base_price:PDRAFT.base_price===""?null:Number(PDRAFT.base_price),msrp:PDRAFT.msrp===""?null:Number(PDRAFT.msrp),
+      base_price:PDRAFT.base_price===""?null:Number(PDRAFT.base_price),msrp:PDRAFT.msrp===""?null:Number(PDRAFT.msrp),map:PDRAFT.map===""||PDRAFT.map==null?null:Number(PDRAFT.map),
       tiers,active:PDRAFT.active!==false};
     if(PDRAFT.image) patch.image=PDRAFT.image;
     await api("",{method:"POST",body:JSON.stringify({action:"save_override",manufacturer:SLUG,code:PDRAFT.code,patch})});
@@ -675,7 +675,7 @@ async function saveProduct(){
   const saved={name:PDRAFT.name,category:PDRAFT.category,subcategory:PDRAFT.subcategory||"",
     description:PDRAFT.description,price_note:PDRAFT.price_note,group:PDRAFT.group||"",
     base_price:PDRAFT.base_price===""?null:Number(PDRAFT.base_price),
-    msrp:PDRAFT.msrp===""?null:Number(PDRAFT.msrp), tiers, active:PDRAFT.active!==false};
+    msrp:PDRAFT.msrp===""?null:Number(PDRAFT.msrp),map:PDRAFT.map===""||PDRAFT.map==null?null:Number(PDRAFT.map), tiers, active:PDRAFT.active!==false};
   if(PDRAFT.image) saved.image=PDRAFT.image;
   const wasAdded=PDRAFT.kind==="custom";
   if(wasAdded && !(DETAIL.custom||[]).some(p=>String(p.code)===String(PDRAFT.code))){
@@ -843,6 +843,10 @@ function prodListHtml(){
             if(v.note) return `<div class="notelive">${esc(v.note)}</div>`;
             return ""; })()}</td>
      <td class="num">${p.base_price!=null&&p.base_price!==""?"$"+Number(p.base_price).toFixed(2):"—"}</td>
+     <!-- MAP — minimum advertised price. Held on every price layer already; the catalog
+          just never showed it, so the one number a rep needs when a dealer asks what they
+          may advertise at was invisible here. Dash when the line has no MAP programme. -->
+     <td class="num">${p.map!=null&&p.map!==""?'<span class="mapv">$'+Number(p.map).toFixed(2)+'</span>':"—"}</td>
      <td class="num">${tn?tn+" tier"+(tn>1?"s":""):"—"}</td>
      <td>${p.active===false?'<span style="color:var(--gray)">hidden</span>':'<span class="ok">shown</span>'}</td>
      <td style="white-space:nowrap"><button class="star ${ft?"on":""}" title="${ft?"Featured — click to remove":"Add to Featured"}" onclick="toggleFeatured('${esc(p.code)}')">${ft?"★":"☆"}</button>
@@ -860,10 +864,10 @@ function prodListHtml(){
               : `<button class="btn ghost sm" style="color:var(--red);border-color:#f0c8c8" onclick="removeProduct('${esc(p.code)}')">Remove</button>`)
         }
        ${p.kind==="catalog"&&p.edited?`<button class="btn ghost sm" onclick="resetOverride('${esc(p.code)}')">Reset</button>`:""}</td></tr>`;}).join("")
-     ||`<tr><td colspan="5" class="hint">No products match.</td></tr>`;
+     ||`<tr><td colspan="7" class="hint">No products match.</td></tr>`;
   return `      ${shelfBarHtml()}
       ${prodBulkBarHtml(allP,shownP)}
-      <table><thead><tr><th class="pickcell"><input type="checkbox" ${allPicked(shownP)?"checked":""} onchange="prodPickAll(this.checked)" title="Select everything the filters are showing"></th><th>Product</th><th class="num">Dealer price</th><th class="num">Tiers</th><th>Status</th><th></th></tr></thead><tbody>${prodRows}</tbody></table>
+      <table><thead><tr><th class="pickcell"><input type="checkbox" ${allPicked(shownP)?"checked":""} onchange="prodPickAll(this.checked)" title="Select everything the filters are showing"></th><th>Product</th><th class="num">Dealer price</th><th class="num" title="Minimum advertised price">MAP</th><th class="num">Tiers</th><th>Status</th><th></th></tr></thead><tbody>${prodRows}</tbody></table>
       <div class="hint" style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <span>Showing <b>${shownP.length}</b> of <b>${allP.length}</b>${allP.length!==eff.length?` (filtered from ${eff.length})`:""}</span>
         ${allP.length>shownP.length?`<button class="btn ghost sm" onclick="PLIMIT+=60;render()">Load more</button><button class="btn ghost sm" onclick="PLIMIT=999999;render()">Show all</button>`:""}
@@ -1659,6 +1663,7 @@ function render(){
           })()}</div></div>
        <div><label class="fl">Dealer price ($)</label><input type="number" step="0.01" value="${esc(PDRAFT.base_price)}" oninput="setP('base_price',this.value)"></div>
        <div><label class="fl">MSRP ($, optional)</label><input type="number" step="0.01" value="${esc(PDRAFT.msrp)}" oninput="setP('msrp',this.value)"></div>
+       <div><label class="fl" title="Minimum advertised price">MAP ($, optional)</label><input type="number" step="0.01" value="${esc(PDRAFT.map)}" oninput="setP('map',this.value)"></div>
        <div><label class="fl">Show on portal</label><select onchange="setP('active',this.value==='yes')"><option value="yes" ${PDRAFT.active!==false?"selected":""}>Shown</option><option value="no" ${PDRAFT.active===false?"selected":""}>Hidden</option></select></div>
      </div>
      <label class="fl">Price note (optional) <span style="text-transform:none;color:var(--gray);font-weight:400">— small line under the price, e.g. "per case"</span></label><input type="text" value="${esc(PDRAFT.price_note)}" oninput="setP('price_note',this.value)">
