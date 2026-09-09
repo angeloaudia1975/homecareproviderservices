@@ -296,6 +296,58 @@ function applyResolutions(rows, conflicts, resolved){
 
    Pure function: no I/O, so it can be tested against fixtures. */
 
+/* TOMBSTONES — the retired part numbers a dealer may still order by.
+   A superseded code gets a row of its own carrying no prices at all: its whole
+   job is to answer "what replaced this?". Prices are left null deliberately —
+   an order line already stores the price it was sold at, so copying a
+   last-known price here would create a second, ageing copy of something the
+   order already knows.
+
+   Three things are dropped, and the two that could mean a mistake upstream are
+   returned as refusals rather than silently discarded:
+     · a pointer to a code that did not survive either, which would leave a
+       tombstone aimed at nothing — refused;
+     · a dead code that normalises to one we just wrote live, which would make
+       the same record both current and superseded — refused;
+     · a pointer that normalises to its own code (mp-p08 -> MP-P08), which is a
+       spelling twin rather than a replacement. Not a refusal: normalisation
+       already resolves it, so there is nothing to record and nothing wrong.
+
+   That last test is deliberately the ONLY guard on twins. An earlier version
+   also checked the same_code flag first, which read well and covered exactly
+   the same cases — a flag saying "these two spellings normalise alike" cannot
+   be true when the normalised codes differ. Two guards for one condition means
+   neither can be tested independently, and the mutation run said so by leaving
+   the flag check alive with every test still passing. The flag stays in the
+   reported list, where it tells a person what kind of supersession they are
+   looking at; the decision here is made by comparing the codes.
+
+   Pure function, so it can be tested against fixtures. */
+function tombstoneRows(superseded, liveRows, { manufacturer, now, who }){
+  const key = c => String(c == null ? "" : c).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const liveNorm = new Set((liveRows || []).map(x => key(x.code)));
+  const rows = [], refused = [];
+  (superseded || []).forEach(s => {
+    const from = key(s.code), to = key(s.superseded_by);
+    if(!from || !to) return;
+    if(from === to) return;                       // a spelling twin, not a replacement
+    if(!liveNorm.has(to)){
+      refused.push({ code:s.code, superseded_by:s.superseded_by,
+                     reason:"replacement is not a live SKU" });
+      return;
+    }
+    if(liveNorm.has(from)){
+      refused.push({ code:s.code, superseded_by:s.superseded_by,
+                     reason:"this code is live in its own right" });
+      return;
+    }
+    rows.push({ manufacturer, code:s.code, superseded_by:s.superseded_by,
+                status:"discontinued", status_note:"superseded by " + s.superseded_by,
+                status_at:now, status_by:who, updated_at:now, updated_by:who });
+  });
+  return { rows, refused };
+}
+
 /* HCPS shows a suggested retail price at twice the dealer price wherever a
    manufacturer has not published one. The rule used to live in exactly one
    place — fillMsrp() in the ordering repo's public/index.html — where it ran at
@@ -389,6 +441,31 @@ function reconcileSkus({ slug, base, custom, overrides, pages }){
        is genuinely gone and produces no row. */
     const live = members.filter(m => !m.settled);
     if(!live.length){
+      /* A PART NUMBER THAT WAS REPLACED STILL HAS TO RESOLVE TO SOMETHING.
+         Twenty-one Ovation codes were retired because the manufacturer reissued
+         them under a new number — twenty Gen 2 boots where the plain code gave
+         way to a colour-suffixed one (10102 -> 10102BLUE), plus one Nu-Form
+         ankle brace. That mapping exists in exactly one place today:
+         product_overrides.patch.merged_into. Phase 6 deletes that table.
+
+         Nothing was recording it here, because the branch below that captures
+         supersessions only looks at merges WITHIN a group, and a merge onto a
+         different part number is by definition a merge out of one. The loser
+         lands in its own group, every member settled, and it left as a bare
+         line in `skipped` with the pointer thrown away.
+
+         So the pointer is captured here, where the dead code is. Whether it
+         becomes a row is decided at apply time — a same-spelling twin needs no
+         row, because normalising the code already resolves it. */
+      const pointer = members.map(m => m.merged_into).find(Boolean);
+      if(pointer){
+        superseded.push({
+          manufacturer: slug,
+          code,
+          superseded_by: String(pointer),
+          same_code: norm(pointer) === key
+        });
+      }
       skipped.push({ code, reason: "every spelling is retired, merged or dispositioned" });
       return;
     }
@@ -523,9 +600,9 @@ function reconcileSkus({ slug, base, custom, overrides, pages }){
     /* A twin merged into this record is not a conflict — it is the resolution
        of one. Recorded as history, and never pointing at itself. */
     members.filter(m => m.merged_into).forEach(m => {
-      if(norm(m.merged_into) !== key) return;   // points outside this group — not ours to record
+      if(norm(m.merged_into) !== key) return;   // handled where the dead code's own group is read
       if(m.code === code) return;               // the survivor's own stale pointer
-      superseded.push({ manufacturer: slug, code: m.code, superseded_by: code });
+      superseded.push({ manufacturer: slug, code: m.code, superseded_by: code, same_code: true });
     });
 
     rows.push(row);
@@ -1900,9 +1977,19 @@ exports.handler = async (event)=>{
             await sb("POST","product_skus",payload.slice(i,i+200),{Prefer:"return=minimal"});
             written+=payload.slice(i,i+200).length;
           }
+
+          const {rows:stones, refused} = tombstoneRows(r.superseded, payload,
+            {manufacturer:mfr, now, who});
+          let tombstoned=0;
+          for(let i=0;i<stones.length;i+=200){
+            await sb("POST","product_skus",stones.slice(i,i+200),{Prefer:"return=minimal"});
+            tombstoned+=stones.slice(i,i+200).length;
+          }
+
           return json(200,{ok:true, applied:true, manufacturer:mfr,
             written, held_back:applied.blocked.length, blocked:applied.blocked,
             resolutions_used:[...new Set(applied.used)].length,
+            tombstoned, tombstones_refused:refused,
             reconciled:r.stats, superseded:r.superseded, skipped:r.skipped.length});
         }
 
