@@ -222,10 +222,29 @@ function duplicateGroups(base, custom, overrides){
       return was===now;
     });
   };
+  /* THE GROUP THAT COULD NEVER BE CLOSED.
+     A code can carry BOTH problems at once: a lowercase twin, AND its own two layers
+     (catalog file + added table). Grouping is by NORMALISED code, so all three records
+     land together — and because two spellings are present the group took the two-code
+     branch, which never looked at layers_merged. Consolidating the layers and merging the
+     twin therefore settled every member individually while the group itself stayed open
+     forever, showing the surviving code TWICE because its two layers are two records.
+     That is what made this queue look permanently broken.
+
+     A spelling group is open only while two or more DISTINCT spellings are still
+     unsettled. Two records of the SAME spelling are one product in two layers — which is
+     the other branch's business, not this one's. */
   return groups.filter(g=>{
     if(settledKey(g)) return false;
     if(g.same_code) return !g.members.some(m=>m.layers_merged || m.retired || m.disposition);
-    return g.members.filter(m=>!m.merged_into && !m.retired && !m.disposition).length>1;
+    const open=g.members.filter(m=>!m.merged_into && !m.retired && !m.disposition);
+    const spellings=new Set(open.map(m=>String(m.code)));
+    if(spellings.size>1) return true;    // two live spellings — a genuine merge decision
+    if(spellings.size===0) return false; // every member settled
+    /* One spelling left standing. The twin is resolved, but this code may still be sitting
+       in two layers — which is the OTHER kind of duplicate and would otherwise vanish
+       silently, because a mixed group never reaches the same_code branch. */
+    return open.length>1 && !open.some(m=>m.layers_merged);
   });
 }
 
