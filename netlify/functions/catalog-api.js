@@ -295,6 +295,17 @@ function applyResolutions(rows, conflicts, resolved){
    would reappear here as a fresh conflict.
 
    Pure function: no I/O, so it can be tested against fixtures. */
+
+/* HCPS shows a suggested retail price at twice the dealer price wherever a
+   manufacturer has not published one. The rule used to live in exactly one
+   place — fillMsrp() in the ordering repo's public/index.html — where it ran at
+   render time and was invisible to every other tool. It lives HERE now, and the
+   number it produces is written into the record. If this ever changes, the two
+   must change together: fillMsrp is the storefront's copy until Phase 5 retires
+   it, and until then a mismatch would show as a gate failure, which is the
+   behaviour we want. */
+const MSRP_MULTIPLIER = 2;
+
 function reconcileSkus({ slug, base, custom, overrides, pages }){
   const ov = overrides || {};
   const norm = c => normCode(c);
@@ -434,12 +445,69 @@ function reconcileSkus({ slug, base, custom, overrides, pages }){
       return out.length ? out : null;
     };
 
+    /* A DERIVED MSRP IS STILL A FACT, AND FACTS LIVE IN THE RECORD.
+       Thirty-three Ovation SKUs carry no MSRP in the price list, none in the
+       catalog file and none in either database layer. Partner 360 has been
+       doubling the dealer price as it renders and labelling it "suggested", so
+       the only place that rule existed was inside the storefront — invisible to
+       the admin, and unavailable to any future surface. That is the same shape
+       as the MAP line and the product name: a fact kept somewhere other than
+       the master record.
+
+       So the multiplier is applied here, once, and the number is written down
+       with msrp_auto recording how it was arrived at. A dealer sees a figure
+       that came out of the catalog, and the catalog can say whether the
+       manufacturer quoted it or we derived it. If Ovation later publishes a
+       real MSRP it settles like any other stated value and the flag clears.
+
+       DISPUTED IS NOT THE SAME AS ABSENT. When the layers disagree about an
+       MSRP, settle() has already recorded a conflict and returned null.
+       Deriving a number at that point would paper over the disagreement with an
+       invented figure — precisely the failure this rebuild exists to end. Only
+       a genuinely unstated MSRP is derived; a disputed one stays null and the
+       SKU stays blocked until a person decides. */
+    const conflictsBeforeMsrp = conflicts.length;
+    const statedMsrp = settle("msrp", money);
+    const msrpDisputed = conflicts.length > conflictsBeforeMsrp;
+    /* Only an explicit true counts. A layer that says false is silent rather
+       than contradictory, so reading this flag can never invent a conflict. */
+    const flaggedAuto = gather("msrp_auto", v => (v === true ? true : null)).length > 0;
+    const derivedNow = (basePrice != null && basePrice > 0)
+      ? Math.round(basePrice * MSRP_MULTIPLIER * 100) / 100
+      : null;
+
+    /* A DERIVED MSRP THAT OUTLIVED THE PRICE IT WAS DERIVED FROM.
+       The six Nu-Form Thumb Spica SKUs carry a stored MSRP of $39.90, flagged
+       msrp_auto, against a dealer price of $27.95. $39.90 is twice $19.95 — the
+       price they were wrongly selling at until it was corrected. The dealer
+       price was fixed in both layers; the number generated from it was not, and
+       it has been sitting in the record ever since claiming to be Ovation's.
+
+       Partner 360 never showed it — it reads no MSRP for these and doubles the
+       dealer price at render, so a dealer sees $55.90. Cutting over while the
+       record says $39.90 would therefore CHANGE a dealer-visible price, which
+       is the one thing this migration must not do.
+
+       So a stored MSRP that is flagged as generated is re-derived when the
+       price it came from no longer produces it. A stored MSRP that is NOT
+       flagged stays untouched, always — that one is somebody's quote, and the
+       flag is the whole difference between a number we computed and a number we
+       were given. Across all 336 Ovation records this touches exactly six, and
+       there is not one unflagged MSRP that departs from the multiplier for it
+       to catch by accident. */
+    const staleAuto = flaggedAuto && statedMsrp != null && derivedNow != null
+                   && Math.abs(statedMsrp - derivedNow) >= 0.005;
+
+    const derivable = derivedNow != null && !msrpDisputed
+                   && (statedMsrp == null || staleAuto);
+
     const row = {
       manufacturer: slug,
       code,
       option_label: optionBySku[key] || null,
       base_price:   basePrice,
-      msrp:         settle("msrp",       money),
+      msrp:         derivable ? derivedNow : statedMsrp,
+      msrp_auto:    derivable ? true : flaggedAuto,
       map:          settle("map",        money),
       tiers:        settle("tiers",      ladder),
       price_note:   settle("price_note", n => dealerVisibleNote(n) || null),
