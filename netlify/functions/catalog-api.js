@@ -362,14 +362,36 @@ function reconcileSkus({ slug, base, custom, overrides, pages }){
 
     const money = v => { const n = num(v); return (n == null) ? null : Math.round(n * 100) / 100; };
 
+    /* base_price is settled FIRST because the ladder comparison depends on it. */
+    const basePrice = settle("base_price", money);
+
+    /* A QUANTITY-1 ROW THAT RESTATES THE UNIT PRICE IS NOT A DIFFERENT LADDER.
+       The deployed catalog file writes the single-unit price as the first rung;
+       both database layers leave it out and let base_price supply it, which is
+       what the shop already does when it renders the ladder. Comparing the raw
+       arrays therefore called 206 of Ovation's 303 SKUs a pricing conflict when
+       every break from two upward was identical to the cent — a queue nobody
+       could work through, hiding the ten that are real.
+
+       Checked across all 216: not one layer carried a qty-1 rung that differed
+       from its own base_price, so dropping it never discards a real price. If
+       base_price is itself disputed the rungs are compared untouched, because
+       then there is no agreed unit price to measure the first rung against. */
+    const ladder = lad => {
+      const t = cleanTiers(lad);
+      if(!t || basePrice == null) return t;
+      const out = t.filter(r => !(r.min_qty === 1 && Math.abs(r.price - basePrice) < 0.005));
+      return out.length ? out : null;
+    };
+
     const row = {
       manufacturer: slug,
       code,
       option_label: optionBySku[key] || null,
-      base_price:   settle("base_price", money),
+      base_price:   basePrice,
       msrp:         settle("msrp",       money),
       map:          settle("map",        money),
-      tiers:        settle("tiers",      cleanTiers),
+      tiers:        settle("tiers",      ladder),
       price_note:   settle("price_note", n => dealerVisibleNote(n) || null),
       uom:          settle("uom"),
       hcpcs:        settle("hcpc"),
