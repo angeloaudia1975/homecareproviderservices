@@ -326,11 +326,34 @@ function reconcileSkus({ slug, base, custom, overrides, pages }){
   const rows = [], conflicts = [], superseded = [], skipped = [];
 
   Object.keys(groups).sort().forEach(key => {
-    /* Canonical spelling FIRST, from the manufacturer's own catalog file where
-       there is one. It has to be decided before settling, because whether a
-       merge pointer settles a record depends on which record is the survivor. */
+    /* WHICH SPELLING IS THE PART NUMBER.
+       Decided before settling, because whether a merge pointer settles a record
+       depends on which record is the survivor — but it must not therefore be
+       decided carelessly.
+
+       The first version fell back to all[0] whenever the deployed catalog file
+       had no row for this SKU, which is every product added through enrichment.
+       all[0] is just whichever row the database happened to return first, so
+       for MP-P12, MP-P13 and MP-P14 it picked the ARCHIVED lowercase twin and
+       migrated the part number as `mp-p12`. Every price was right; the code a
+       dealer orders by was wrong, and no count would have shown it.
+
+       A record that is plainly finished — retired or dispositioned — is never
+       the part number while a live one exists. That test deliberately ignores
+       merged_into, which cannot be evaluated until the survivor is known. */
     const all = groups[key];
-    const code = (all.find(m => m.layer === "catalog") || all[0]).code;
+    const plainlySettled = m => (ov[m.code] || {}).disposition
+                             || (ov[m.code] || {}).active === false
+                             || m.row.active === false;
+    const standing = all.filter(m => !plainlySettled(m));
+    /* Priority: a live record always outranks a finished one, and among live
+       records the manufacturer's own catalog-file spelling wins. Only if every
+       spelling is finished does a settled one get to name the SKU. */
+    const pick = standing.find(m => m.layer === "catalog")
+              || standing[0]
+              || all.find(m => m.layer === "catalog")
+              || all[0];
+    const code = pick.code;
 
     const members = all.map(m => {
       const patch = ov[m.code] || {};
