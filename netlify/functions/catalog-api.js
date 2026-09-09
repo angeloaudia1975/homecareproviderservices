@@ -1771,9 +1771,23 @@ exports.handler = async (event)=>{
           /* Decisions come from the record, never from a rule invented here.
              A field the reconciler refused to settle is written only because a
              person resolved it and that resolution was stored. */
-          const resRows=await sb("GET",
-            `reconcile_conflicts?manufacturer=eq.${e(mfr)}&resolved_value=not.is.null&select=code,field,resolved_value`)
-            .catch(()=>[]);
+          /* NO .catch HERE, DELIBERATELY.
+             This read was written as `.catch(()=>[])`, which turned "I could
+             not read the decisions" into "there are no decisions" — and that is
+             exactly the class of silent failure this rebuild exists to remove.
+             It cost an hour: the table had been moved between schemas and had
+             lost its grants, PostgREST answered 42501, the catch swallowed it,
+             and two SKUs looked unresolved when their resolutions were sitting
+             right there. An unreadable decision table must stop the apply, not
+             quietly reduce it to a no-op. */
+          let resRows;
+          try{
+            resRows=await sb("GET",
+              `reconcile_conflicts?manufacturer=eq.${e(mfr)}&resolved_value=not.is.null&select=code,field,resolved_value`);
+          }catch(err){
+            return json(503,{error:"resolutions_unreadable",
+              message:"Could not read reconcile_conflicts, so no decision could be applied. Nothing was written. "+String(err&&err.message||err)});
+          }
           const resolved={};
           (resRows||[]).forEach(x=>{ resolved[String(x.code)+"|"+String(x.field)]=x.resolved_value; });
           const applied=applyResolutions(r.rows, r.conflicts, resolved);
