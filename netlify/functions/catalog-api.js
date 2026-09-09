@@ -742,7 +742,16 @@ async function auditManufacturer(slug, sample){
     else add("duplicate_skus", c+" — in the catalog file and the added table");
   }
   const byNorm={}; rows.filter(r=>r.source==="catalog").forEach(r=>{ const n=normCode(r.code); if(n)(byNorm[n]=byNorm[n]||[]).push(r.code); });
-  Object.values(byNorm).forEach(v=>{ if(v.length>1) add("duplicate_skus", v.join(" / ")+" — the same code written differently"); });
+  /* A SPELLING THAT HAS BEEN SETTLED IS NOT A FINDING EITHER. The layer check above already
+     skips a code that was merged, archived or marked duplicate-ok; this one did not, so a
+     pair reconciled weeks ago reported itself forever and the count never fell. Only
+     spellings still standing on their own count — one survivor means the pair is resolved. */
+  Object.values(byNorm).forEach(v=>{
+    if(v.length<2) return;
+    const open=v.filter(c=>!settled(c));
+    if(open.length>1) add("duplicate_skus", open.join(" / ")+" — the same code written differently");
+    else consolidated++;
+  });
 
   // one SKU claimed by more than one enrichment page: the product boundary is wrong
   const claims={};
