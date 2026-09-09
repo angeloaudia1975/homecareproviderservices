@@ -248,6 +248,166 @@ function duplicateGroups(base, custom, overrides){
   });
 }
 
+/* ═══════════════════ THE RECONCILER ═══════════════════════════════════════
+   Collapses the three layers of one SKU — the deployed catalog file, the added
+   row, and the override patch — into a single product_skus record.
+
+   ITS ONE RULE: where the layers AGREE, take the value. Where they DISAGREE,
+   take NOTHING and record the disagreement for a person.
+
+   That inversion is the entire point of the rebuild. Every wrong price found
+   this month survived because some tool applied a precedence rule silently:
+   the Nu-Form Thumb Spica sold at the Classic's ladder for weeks because the
+   override layer simply won, and no screen showed the two prices underneath it.
+   A reconciler that picks a winner would migrate that error into the new model
+   and call it done.
+
+   Settled records do not vote. A twin that has been merged away, retired or
+   dispositioned is a decision someone already made, so its stale values must
+   not fight the surviving record — otherwise every already-resolved duplicate
+   would reappear here as a fresh conflict.
+
+   Pure function: no I/O, so it can be tested against fixtures. */
+function reconcileSkus({ slug, base, custom, overrides, pages }){
+  const ov = overrides || {};
+  const norm = c => normCode(c);
+
+  /* Every record that claims this part number, across both stored layers. */
+  const groups = {};
+  const add = (code, layer, row) => {
+    const k = norm(code); if(!k) return;
+    (groups[k] = groups[k] || []).push({ code:String(code), layer, row: row||{} });
+  };
+  (base   || []).forEach(r => add(r.code, "catalog", r));
+  (custom || []).forEach(r => add(r.code, "added",   r));
+
+  /* Per-SKU option label, but ONLY where a page carries more than one SKU.
+     On a single-SKU page the per-SKU name is a duplicate of the page title —
+     which is exactly the copy that was silently overriding approved product
+     names. A one-SKU page contributes no option label at all. */
+  const optionBySku = {};
+  (pages || []).forEach(pg => {
+    const skus = Array.isArray(pg.skus) ? pg.skus : [];
+    if(skus.length < 2) return;
+    skus.forEach(sk => {
+      const c = norm((sk && (sk.sku || sk.code)) || sk || "");
+      const label = String((sk && (sk.size || sk.name)) || "").trim();
+      if(c && label) optionBySku[c] = label;
+    });
+  });
+
+  const rows = [], conflicts = [], superseded = [], skipped = [];
+
+  Object.keys(groups).sort().forEach(key => {
+    /* Canonical spelling FIRST, from the manufacturer's own catalog file where
+       there is one. It has to be decided before settling, because whether a
+       merge pointer settles a record depends on which record is the survivor. */
+    const all = groups[key];
+    const code = (all.find(m => m.layer === "catalog") || all[0]).code;
+
+    const members = all.map(m => {
+      const patch = ov[m.code] || {};
+      const retired = patch.active === false || m.row.active === false;
+      const mergedInto = patch.merged_into || null;
+      /* A merge pointer settles a record only when that record is NOT the
+         survivor. Eleven Climbing Steps codes were found pointing at their own
+         lowercase twin — the pointer written backwards — and treating that as
+         "merged away" would retire the live product and drop it from the
+         catalog entirely. The survivor's own pointer is ignored here; it is
+         stale bookkeeping, not a decision about the survivor. */
+      const mergedAway = !!mergedInto && m.code !== code;
+      return Object.assign({}, m, {
+        patch, retired,
+        merged_into: mergedInto,
+        disposition: patch.disposition || null,
+        settled: !!(mergedAway || patch.disposition || retired)
+      });
+    });
+
+    /* Only unsettled records get a vote. If every spelling is settled the SKU
+       is genuinely gone and produces no row. */
+    const live = members.filter(m => !m.settled);
+    if(!live.length){
+      skipped.push({ code, reason: "every spelling is retired, merged or dispositioned" });
+      return;
+    }
+
+    /* A field's value, gathered across the live records' three layers, in the
+       order the shop resolves them — but WITHOUT choosing between them. */
+    const gather = (field, pick) => {
+      const seen = [];
+      live.forEach(m => {
+        const push = (where, raw) => {
+          const v = pick ? pick(raw) : raw;
+          if(v === null || v === undefined || v === "") return;
+          seen.push({ where, value: v });
+        };
+        push("override", m.patch[field]);
+        push(m.layer,    m.row[field]);
+      });
+      return seen;
+    };
+
+    const settle = (field, pick, compare) => {
+      const seen = gather(field, pick);
+      if(!seen.length) return null;
+      const cmp = compare || (v => JSON.stringify(v));
+      const distinct = [...new Set(seen.map(s => cmp(s.value)))];
+      if(distinct.length === 1) return seen[0].value;
+      const layerValues = {};
+      seen.forEach(s => { if(!(s.where in layerValues)) layerValues[s.where] = s.value; });
+      conflicts.push({ manufacturer: slug, code, field, layer_values: layerValues, severity: "blocking" });
+      return null;                       // refuse to guess
+    };
+
+    const money = v => { const n = num(v); return (n == null) ? null : Math.round(n * 100) / 100; };
+
+    const row = {
+      manufacturer: slug,
+      code,
+      option_label: optionBySku[key] || null,
+      base_price:   settle("base_price", money),
+      msrp:         settle("msrp",       money),
+      map:          settle("map",        money),
+      tiers:        settle("tiers",      cleanTiers),
+      price_note:   settle("price_note", n => dealerVisibleNote(n) || null),
+      uom:          settle("uom"),
+      hcpcs:        settle("hcpc"),
+      case_qty:     settle("case_qty",   v => { const n = num(v); return n == null ? null : Math.round(n); }),
+      effective_date: settle("effective_date"),
+      source_file:    settle("source_file"),
+      status: "active",
+      superseded_by: null
+    };
+
+    /* A twin merged into this record is not a conflict — it is the resolution
+       of one. Recorded as history, and never pointing at itself. */
+    members.filter(m => m.merged_into).forEach(m => {
+      if(norm(m.merged_into) !== key) return;   // points outside this group — not ours to record
+      if(m.code === code) return;               // the survivor's own stale pointer
+      superseded.push({ manufacturer: slug, code: m.code, superseded_by: code });
+    });
+
+    rows.push(row);
+  });
+
+  const blocked = new Set(conflicts.map(c => c.code));
+  return {
+    rows,
+    conflicts,
+    superseded,
+    skipped,
+    stats: {
+      skus: rows.length,
+      clean: rows.filter(r => !blocked.has(r.code)).length,
+      blocked: blocked.size,
+      conflicts: conflicts.length,
+      superseded: superseded.length,
+      skipped: skipped.length
+    }
+  };
+}
+
 // Staff auth: email/password JWT resolved against staff_users; legacy passcode = president.
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -1535,6 +1695,34 @@ exports.handler = async (event)=>{
       /* Every suspected duplicate for one manufacturer, with its evidence and the records
          connected to each side. Read-only — it never changes anything, which is the point:
          the queue exists so a person decides. */
+      /* DRY RUN ONLY, DELIBERATELY.
+         This action reads the three layers and reports what the new model
+         would contain — the rows it could write cleanly, and every conflict it
+         refuses to decide. It writes NOTHING: not to product_skus, not to
+         reconcile_conflicts, not to anything. Applying comes after the
+         conflicts have been resolved by a person, which is Phase 3.
+
+         Phase 2's gate is this action running clean on Climbing Steps, whose
+         21 SKUs we already reconciled against the manufacturer's price list. */
+      if(b.action==="reconcile"){
+        const mfr=b.manufacturer; if(!mfr) return json(400,{error:"manufacturer required"});
+        const e=encodeURIComponent;
+        const [base,custom,ovRows,pages]=await Promise.all([
+          fetchJson(`${ORDERING_BASE}/data/${e(mfr)}.json`).catch(()=>[]),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`).catch(()=>[]),
+          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]),
+          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=page_key,name,skus&limit=5000`).catch(()=>[]),
+        ]);
+        const overrides=Object.fromEntries((ovRows||[]).map(o=>[String(o.code),o.patch||{}]));
+        const r=reconcileSkus({slug:mfr, base:base||[], custom:custom||[], overrides, pages:pages||[]});
+        const byField={}; r.conflicts.forEach(c=>{ byField[c.field]=(byField[c.field]||0)+1; });
+        return json(200,{ok:true, dry_run:true, wrote_nothing:true,
+          stats:r.stats, conflicts_by_field:byField,
+          conflicts:r.conflicts.slice(0, Math.min(500, Number(b.limit)||500)),
+          superseded:r.superseded, skipped:r.skipped,
+          sample_rows:r.rows.slice(0,3)});
+      }
+
       if(b.action==="duplicate_scan"){
         const mfr=b.manufacturer; if(!mfr) return json(400,{error:"manufacturer required"});
         const [base,custom,ovRows]=await Promise.all([
