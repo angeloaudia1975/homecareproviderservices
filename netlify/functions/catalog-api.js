@@ -323,10 +323,12 @@ function applyResolutions(rows, conflicts, resolved){
    looking at; the decision here is made by comparing the codes.
 
    Pure function, so it can be tested against fixtures. */
-function tombstoneRows(superseded, liveRows, { manufacturer, now, who }){
+function tombstoneRows(superseded, skipped, liveRows, { manufacturer, now, who }){
   const key = c => String(c == null ? "" : c).toUpperCase().replace(/[^A-Z0-9]/g, "");
   const liveNorm = new Set((liveRows || []).map(x => key(x.code)));
   const rows = [], refused = [];
+  const taken = new Set();                        // one row per part number, whichever route it came by
+
   (superseded || []).forEach(s => {
     const from = key(s.code), to = key(s.superseded_by);
     if(!from || !to) return;
@@ -341,10 +343,36 @@ function tombstoneRows(superseded, liveRows, { manufacturer, now, who }){
                      reason:"this code is live in its own right" });
       return;
     }
+    if(taken.has(from)) return;
+    taken.add(from);
     rows.push({ manufacturer, code:s.code, superseded_by:s.superseded_by,
                 status:"discontinued", status_note:"superseded by " + s.superseded_by,
                 status_at:now, status_by:who, updated_at:now, updated_by:who });
   });
+
+  /* DISCONTINUED, AND NOTHING TOOK ITS PLACE.
+     Forty-five Ovation codes are retired with no successor to point at — the
+     product is simply gone. They still deserve a row: without one, a part
+     number from an old order resolves to nothing at all, and "we have never
+     heard of this" is a worse answer than "that was discontinued".
+
+     Every superseded code appears in `skipped` too, so those are skipped here —
+     they already have a row carrying the better answer, and a second would
+     collide on the unique index. */
+  (skipped || []).forEach(s => {
+    const from = key(s && s.code);
+    if(!from || taken.has(from)) return;
+    if(liveNorm.has(from)){
+      refused.push({ code:s.code, superseded_by:null,
+                     reason:"this code is live in its own right" });
+      return;
+    }
+    taken.add(from);
+    rows.push({ manufacturer, code:s.code, superseded_by:null,
+                status:"discontinued", status_note:"discontinued — no replacement",
+                status_at:now, status_by:who, updated_at:now, updated_by:who });
+  });
+
   return { rows, refused };
 }
 
@@ -1978,7 +2006,7 @@ exports.handler = async (event)=>{
             written+=payload.slice(i,i+200).length;
           }
 
-          const {rows:stones, refused} = tombstoneRows(r.superseded, payload,
+          const {rows:stones, refused} = tombstoneRows(r.superseded, r.skipped, payload,
             {manufacturer:mfr, now, who});
           let tombstoned=0;
           for(let i=0;i<stones.length;i+=200){

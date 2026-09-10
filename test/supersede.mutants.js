@@ -30,12 +30,34 @@ const MUTANTS = [
     to:   '    if(false){' },
 
   { name: 'stop checking the dead code is not itself live',
-    from: '    if(liveNorm.has(from)){',
-    to:   '    if(false){' },
+    from: "    if(liveNorm.has(from)){\n      refused.push({ code:s.code, superseded_by:s.superseded_by,",
+    to:   "    if(false){\n      refused.push({ code:s.code, superseded_by:s.superseded_by," },
 
   { name: 'let a record supersede itself in another spelling',
     from: '    if(from === to) return;                       // a spelling twin, not a replacement',
     to:   '    if(false) return;' },
+
+
+  { name: 'stop tombstoning a code with no successor',
+    from: "    if(!from || taken.has(from)) return;",
+    to:   "    if(true) return;" },
+
+  { name: 'tombstone a superseded code a second time',
+    from: "  const taken = new Set();                        // one row per part number, whichever route it came by",
+    to:   "  const taken = { has:()=>false, add:()=>{} };" },
+
+  { name: 'give an orphan tombstone a pointer it does not have',
+    from: "    rows.push({ manufacturer, code:s.code, superseded_by:null,",
+    to:   "    rows.push({ manufacturer, code:s.code, superseded_by:s.code,",
+  },
+
+  { name: 'leave an orphan tombstone active',
+    from: '                status:"discontinued", status_note:"discontinued — no replacement",',
+    to:   '                status:"active", status_note:"discontinued — no replacement",' },
+
+  { name: 'tombstone a skipped code that is actually live',
+    from: "    if(liveNorm.has(from)){\n      refused.push({ code:s.code, superseded_by:null,",
+    to:   "    if(false){\n      refused.push({ code:s.code, superseded_by:null," },
 
   { name: 'compare codes raw instead of normalised',
     from: '  const key = c => String(c == null ? "" : c).toUpperCase().replace(/[^A-Z0-9]/g, "");',

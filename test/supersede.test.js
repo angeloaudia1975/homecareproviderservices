@@ -17,7 +17,7 @@ function run(src){
   const M = load(src);
   const rec = o => M.reconcileSkus(Object.assign(
     { slug:'test-line', base:[], custom:[], overrides:{}, pages:[] }, o));
-  const stones = (sup, live) => M.tombstoneRows(sup, live,
+  const stones = (sup, live, skipped) => M.tombstoneRows(sup, skipped || [], live,
     { manufacturer:'test-line', now:'2026-09-09T00:00:00Z', who:'president' });
 
   pass = 0; fail = 0; out.length = 0;
@@ -146,6 +146,40 @@ function run(src){
     eq(rows.length, 1, 'matched through normalisation');
   });
 
+
+  /* ---- discontinued with nothing to point at ----------------------------- */
+  t('a code retired with no successor still gets a row', () => {
+    const { rows, refused } = stones([], [{ code:'LIVE1' }], [{ code:'DEAD1', reason:'x' }]);
+    eq(refused, [], 'refused');
+    eq(rows.length, 1, 'one row');
+    eq(rows[0].code, 'DEAD1', 'code');
+    eq(rows[0].superseded_by, null, 'no pointer');
+    eq(rows[0].status, 'discontinued', 'status');
+    eq('base_price' in rows[0], false, 'no price');
+  });
+
+  t('a superseded code is not tombstoned twice', () => {
+    // Every superseded code appears in `skipped` as well. Two rows would
+    // collide on (manufacturer, code_norm).
+    const { rows } = stones(
+      [{ code:'10102', superseded_by:'10102BLUE', same_code:false }],
+      [{ code:'10102BLUE' }],
+      [{ code:'10102', reason:'x' }]);
+    eq(rows.length, 1, 'one row only');
+    eq(rows[0].superseded_by, '10102BLUE', 'and it kept the pointer, not the bare tombstone');
+  });
+
+  t('a skipped code that is live in its own right is refused', () => {
+    const { rows, refused } = stones([], [{ code:'A1' }], [{ code:'a-1', reason:'x' }]);
+    eq(rows, [], 'rows');
+    eq(refused.length, 1, 'refused');
+  });
+
+  t('the same code skipped twice produces one row', () => {
+    const { rows } = stones([], [], [{ code:'DEAD1' }, { code:'dead 1' }]);
+    eq(rows.length, 1, 'deduped by normalised code');
+  });
+
   /* ---- end to end -------------------------------------------------------- */
   t('twenty Gen 2 boots and one ankle brace, as they actually are', () => {
     const gen2 = ['10102','10103','10105','10107','10108','10002','10003','10005','10007','10008',
@@ -164,7 +198,7 @@ function run(src){
     eq(r.skipped.length, 21, 'dead codes');
     eq(r.superseded.filter(s => !s.same_code).length, 21, 'cross-code pointers');
 
-    const { rows, refused } = stones(r.superseded, r.rows);
+    const { rows, refused } = stones(r.superseded, r.rows, r.skipped);
     eq(rows.length, 21, 'tombstones');
     eq(refused, [], 'refused');
     eq(new Set(rows.map(x => x.status)).size, 1, 'all one status');
@@ -177,7 +211,7 @@ function run(src){
     gen2.forEach(c => { base.push({ code:c }, { code:c + 'BLUE' });
                         overrides[c] = { active:false, merged_into:c + 'BLUE' }; });
     const r = rec({ base, overrides });
-    const { rows } = stones(r.superseded, r.rows);
+    const { rows } = stones(r.superseded, r.rows, r.skipped);
     const norm = c => String(c).toUpperCase().replace(/[^A-Z0-9]/g, '');
     const all = r.rows.map(x => norm(x.code)).concat(rows.map(x => norm(x.code)));
     eq(all.length, new Set(all).size, 'every normalised code unique');
