@@ -47,8 +47,8 @@ const MUTANTS = [
     to:   '    if(false) return;' },
 
   { name: 'let a blank code become a product',
-    from: '    if(!code) return;',
-    to:   '    if(false) return;' },
+    from: "    if(!code) return;\n    const k = key(code);",
+    to:   "    if(false) return;\n    const k = key(code);" },
 
   { name: 'call a half-cent difference a price change',
     from: '                       : Math.abs(Number(a) - Number(b)) < 0.005;\n  const ladder =',

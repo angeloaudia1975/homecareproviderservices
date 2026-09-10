@@ -60,8 +60,8 @@ const MUTANTS = [
     to:   "    if(false){\n      refused.push({ code:s.code, superseded_by:null," },
 
   { name: 'compare codes raw instead of normalised',
-    from: '  const key = c => String(c == null ? "" : c).toUpperCase().replace(/[^A-Z0-9]/g, "");',
-    to:   '  const key = c => String(c == null ? "" : c);' },
+    from: '  const key = c => String(c == null ? "" : c).toUpperCase().replace(/[^A-Z0-9]/g, "");\n  const liveNorm =',
+    to:   '  const key = c => String(c == null ? "" : c);\n  const liveNorm =' },
 
   { name: 'give the tombstone a price after all',
     from: '    rows.push({ manufacturer, code:s.code, superseded_by:s.superseded_by,',

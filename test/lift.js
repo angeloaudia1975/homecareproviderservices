@@ -80,12 +80,15 @@ function load(source){
     liftDecl(src, 'cleanTiers'),
     liftDecl(src, 'normCode'),
     liftDecl(src, 'dealerVisibleNote'),
+    liftDecl(src, 'packSize'),
+    liftDecl(src, 'round2'),
+    liftDecl(src, 'auditRecord'),
     liftDecl(src, 'diffPriceImport'),
     liftDecl(src, 'tombstoneRows'),
     liftDecl(src, 'reconcileSkus'),
     liftDecl(src, 'applyResolutions'),
   ];
-  const code = parts.join('\n\n') + '\n;module.exports={reconcileSkus,applyResolutions,tombstoneRows,diffPriceImport,MSRP_MULTIPLIER,cleanTiers,num};';
+  const code = parts.join('\n\n') + '\n;module.exports={reconcileSkus,applyResolutions,tombstoneRows,diffPriceImport,auditRecord,packSize,MSRP_MULTIPLIER,cleanTiers,num};';
   const mod = { exports: {} };
   new Function('module', 'exports', 'require', code)(mod, mod.exports, require);
   return mod.exports;

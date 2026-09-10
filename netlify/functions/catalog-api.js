@@ -323,6 +323,123 @@ function applyResolutions(rows, conflicts, resolved){
    looking at; the decision here is made by comparing the codes.
 
    Pure function, so it can be tested against fixtures. */
+/* How many units are in the thing a dealer buys. "4/CS" is four; "EA" is one.
+   Returns null when the unit says nothing about quantity, so a caller can tell
+   "sold singly" from "we don't know". */
+function packSize(uom){
+  const s = String(uom == null ? "" : uom).trim();
+  if(!s) return null;
+  const m = s.match(/(\d+)\s*(?:\/|\s)\s*(?:cs|case|cse|pk|pack|bx|box|ea)\b/i)
+         || s.match(/^\s*(?:cs|case|pk|pack|bx|box)\s*(?:of)?\s*(\d+)\s*$/i);
+  if(!m) return null;
+  const n = parseInt(m[1], 10);
+  return (isFinite(n) && n > 1) ? n : null;
+}
+
+/* ═══ RECORD CONSISTENCY AUDIT ══════════════════════════════════════════════
+   The price-list import compares the record to a manufacturer's sheet. It
+   cannot catch a record that contradicts ITSELF, because no price list mentions
+   the contradiction — which is exactly how MP-P12 advertised $524.99 and
+   charged $629.99 for months, and how six thumb spicas kept an MSRP derived
+   from a price they no longer had.
+
+   This is the other half: checks a price list can never make. It reads the
+   record and nothing else, so it runs on every line whether or not a list has
+   arrived.
+
+   PER-UNIT AWARE, WHICH IS THE WHOLE DIFFICULTY.
+   On a pack-priced line the dealer price is for the pack while MSRP and MAP are
+   per unit — Bemis at $119.96 a case of four against a $59.99 unit MSRP. Naive
+   comparison calls that nine defects and is wrong nine times. Prices that are
+   in selling units (base price, tier rungs) are compared to each other; prices
+   that are per unit (MSRP, MAP) are compared to the per-unit dealer price.
+
+   Pure function: no I/O, so it can be tested against fixtures. */
+function auditRecord(rows, opts){
+  const o = opts || {};
+  const mult = o.multiplier == null ? MSRP_MULTIPLIER : Number(o.multiplier);
+  const n = v => { const x = num(v); return x == null ? null : x; };
+  const findings = [];
+  const add = (code, check, detail) => findings.push({ code, check, detail });
+
+  (rows || []).forEach(r => {
+    const code = String((r && r.code) || "").trim();
+    if(!code) return;
+    const status = String(r.status || "active");
+    const base = n(r.base_price);
+    const pack = (() => { const p = n(r.case_qty); return (p != null && p > 1) ? Math.round(p) : 1; })();
+    const perUnit = base == null ? null : base / pack;
+    const tiers = cleanTiers(r.tiers) || [];
+
+    if(status !== "active"){
+      /* A tombstone with a price is a tombstone pretending to be for sale. */
+      if(base != null) add(code, "discontinued_with_price", `status ${status} but carries a price of ${base}`);
+      return;
+    }
+
+    if(r.superseded_by)
+      add(code, "active_but_superseded", `active, yet superseded by ${r.superseded_by}`);
+
+    if(base == null){
+      add(code, "no_dealer_price", "active with no dealer price — the card reads Call for pricing");
+      return;
+    }
+    if(base <= 0) add(code, "non_positive_price", `dealer price is ${base}`);
+
+    /* THE ONE THAT COST MONEY. A rung at quantity 1 is the unit price wearing a
+       hat; if it disagrees with base_price the card and the cart disagree too,
+       because the card reads base_price and the cart reads the rung. */
+    tiers.filter(t => t.min_qty <= 1).forEach(t => {
+      if(Math.abs(t.price - base) >= 0.005)
+        add(code, "qty1_rung_conflicts", `card shows ${base}, a quantity-1 rung charges ${t.price}`);
+    });
+
+    tiers.filter(t => t.min_qty > 1).forEach(t => {
+      if(t.price > base + 0.005)
+        add(code, "tier_above_base", `buying ${t.min_qty}+ costs ${t.price} each against a base of ${base}`);
+    });
+
+    const rungs = tiers.filter(t => t.min_qty > 1);
+    for(let i = 1; i < rungs.length; i++){
+      if(rungs[i].price > rungs[i-1].price + 0.005)
+        add(code, "tier_not_descending",
+            `${rungs[i].min_qty}+ at ${rungs[i].price} costs more than ${rungs[i-1].min_qty}+ at ${rungs[i-1].price}`);
+    }
+
+    const msrp = n(r.msrp), map = n(r.map);
+    const unitLabel = pack > 1 ? ` (per unit of a pack of ${pack})` : "";
+
+    if(map != null && perUnit != null && map < perUnit - 0.005)
+      add(code, "map_below_dealer_price",
+          `MAP ${map} is below the dealer price of ${round2(perUnit)}${unitLabel}`);
+
+    if(msrp != null && perUnit != null && msrp < perUnit - 0.005)
+      add(code, "msrp_below_dealer_price",
+          `MSRP ${msrp} is below the dealer price of ${round2(perUnit)}${unitLabel}`);
+
+    if(msrp != null && map != null && msrp < map - 0.005)
+      add(code, "msrp_below_map", `MSRP ${msrp} is below MAP ${map}`);
+
+    /* A derived MSRP that no longer matches the price it was derived from. */
+    if(r.msrp_auto === true && msrp != null && perUnit != null && perUnit > 0){
+      const want = Math.round(perUnit * mult * 100) / 100;
+      if(Math.abs(msrp - want) >= 0.005)
+        add(code, "stale_derived_msrp",
+            `MSRP ${msrp} is marked derived but ${round2(perUnit)}${unitLabel} would derive ${want}`);
+    }
+
+    if(r.uom && pack === 1 && packSize(r.uom))
+      add(code, "pack_size_not_recorded", `uom says ${r.uom} but case_qty is not set`);
+  });
+
+  const byCheck = {};
+  findings.forEach(f => { byCheck[f.check] = (byCheck[f.check] || 0) + 1; });
+  return { findings, by_check: byCheck,
+           stats: { rows: (rows || []).length, findings: findings.length,
+                    skus_affected: new Set(findings.map(f => f.code)).size } };
+}
+function round2(v){ return Math.round(Number(v) * 100) / 100; }
+
 /* ═══ PRICE LIST IMPORT ═════════════════════════════════════════════════════
    A manufacturer sends a price list. Today that means somebody reads a
    spreadsheet against a screen — which is how a $105 quantity rung sat on a
@@ -715,7 +832,19 @@ function reconcileSkus({ slug, base, custom, overrides, pages }){
       price_note:   settle("price_note", n => dealerVisibleNote(n) || null),
       uom:          settle("uom"),
       hcpcs:        settle("hcpc"),
-      case_qty:     settle("case_qty",   v => { const n = num(v); return n == null ? null : Math.round(n); }),
+      /* WHAT A PRICE IS THE PRICE OF.
+         BEMIS is sold by the case: 7YA05313GRY is $119.96 for four, and the
+         per-unit maths lives in the price note as prose. Nothing in the record
+         said so, which made the line unreadable to anything that compares
+         numbers — an audit would call a $59.99 MSRP "below cost" against a
+         $119.96 case price, nine times over, and be wrong every time.
+
+         The pack size is already there, spelled into uom as "4/CS". Reading it
+         out turns a sentence a person has to interpret into a number the record
+         can reason with. An explicit case_qty on a layer still wins; this only
+         fills the gap. */
+      case_qty:     settle("case_qty", v => { const n = num(v); return n == null ? null : Math.round(n); })
+                      ?? packSize(settle("uom")),
       effective_date: settle("effective_date"),
       source_file:    settle("source_file"),
       status: "active",
