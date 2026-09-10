@@ -323,6 +323,103 @@ function applyResolutions(rows, conflicts, resolved){
    looking at; the decision here is made by comparing the codes.
 
    Pure function, so it can be tested against fixtures. */
+/* ═══ PRICE LIST IMPORT ═════════════════════════════════════════════════════
+   A manufacturer sends a price list. Today that means somebody reads a
+   spreadsheet against a screen — which is how a $105 quantity rung sat on a
+   patient lift for months, and how six thumb spicas kept an MSRP derived from a
+   price they had stopped selling at. Nine more manufacturers are coming; read
+   by eye, every one of them will hide something.
+
+   So a list is compared to the record mechanically and the differences are
+   listed for a person. Nothing is written by importing. Angelo's rule: the
+   system notifies, he approves, and the corrected pricing ends up right — so
+   this half only ever produces a report.
+
+   WHAT IT WILL NOT DECIDE
+     · A code on the list that the catalog does not have is `added` — reported,
+       never created here, because a new SKU needs an enrichment page before it
+       can be sold and that is a separate decision.
+     · A code the catalog has that the list does not mention is `absent` —
+       reported, NEVER retired. A list omits products for many reasons and
+       "not on this year's sheet" is not the same as "discontinued".
+     · A field the list is silent about leaves the record alone. A list with no
+       MAP column is not a list saying every MAP is zero.
+
+   Pure function: no I/O, so it can be tested against fixtures. */
+function diffPriceImport(records, rows, opts){
+  const o = opts || {};
+  const mult = o.multiplier == null ? MSRP_MULTIPLIER : Number(o.multiplier);
+  const key = c => String(c == null ? "" : c).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const money = v => { const n = num(v); return n == null ? null : Math.round(n * 100) / 100; };
+  const near = (a, b) => (a == null && b == null) ? true
+                       : (a == null || b == null) ? false
+                       : Math.abs(Number(a) - Number(b)) < 0.005;
+  const ladder = t => { const c = cleanTiers(t); return c ? c.map(x => x.min_qty + ':' + x.price).join(',') : ""; };
+
+  const byCode = {};
+  (records || []).forEach(r => { byCode[key(r.code)] = r; });
+
+  const seen = new Set();
+  const unchanged = [], changed = [], added = [];
+
+  (rows || []).forEach(raw => {
+    const code = String((raw && raw.code) || "").trim();
+    if(!code) return;
+    const k = key(code);
+    if(seen.has(k)) return;                 // a list that names a code twice gets read once
+    seen.add(k);
+
+    const listBase = money(raw.base_price);
+    const listMsrp = money(raw.msrp);
+    const listMap  = money(raw.map);
+    const listTiers = cleanTiers(raw.tiers);
+
+    /* The MSRP rule, applied to what the list actually says. A list that quotes
+       an MSRP is believed; a list with no MSRP column means HCPS derives one,
+       and it derives from the price ON THIS LIST rather than the old one. */
+    const wantMsrp = listMsrp != null ? listMsrp
+                   : (listBase != null && listBase > 0 ? Math.round(listBase * mult * 100) / 100 : null);
+    const wantMsrpAuto = listMsrp == null && wantMsrp != null;
+
+    const rec = byCode[k];
+    if(!rec){
+      added.push({ code, description: raw.description || null, base_price: listBase,
+                   msrp: wantMsrp, msrp_auto: wantMsrpAuto, map: listMap, tiers: listTiers });
+      return;
+    }
+
+    const fields = [];
+    const compare = (field, want, have, fmt) => {
+      if(want == null) return;              // the list is silent — leave the record alone
+      const same = fmt ? (fmt(want) === fmt(have)) : near(want, have);
+      if(!same) fields.push({ field, from: have == null ? null : have, to: want });
+    };
+    compare("base_price", listBase, rec.base_price == null ? null : Number(rec.base_price));
+    compare("msrp",       wantMsrp, rec.msrp == null ? null : Number(rec.msrp));
+    compare("map",        listMap,  rec.map  == null ? null : Number(rec.map));
+    if(listTiers) compare("tiers", listTiers, cleanTiers(rec.tiers), ladder);
+
+    /* Provenance moves with the number: a price the manufacturer now quotes
+       stops being ours, and one they stop quoting becomes ours. */
+    if(wantMsrp != null && (rec.msrp_auto === true) !== wantMsrpAuto)
+      fields.push({ field: "msrp_auto", from: rec.msrp_auto === true, to: wantMsrpAuto });
+
+    if(fields.length) changed.push({ code: rec.code, fields });
+    else unchanged.push(rec.code);
+  });
+
+  const absent = (records || [])
+    .filter(r => !seen.has(key(r.code)))
+    .map(r => ({ code: r.code, base_price: r.base_price == null ? null : Number(r.base_price) }));
+
+  return {
+    unchanged, changed, added, absent,
+    stats: { on_list: seen.size, in_record: (records || []).length,
+             unchanged: unchanged.length, changed: changed.length,
+             added: added.length, absent: absent.length }
+  };
+}
+
 function tombstoneRows(superseded, skipped, liveRows, { manufacturer, now, who }){
   const key = c => String(c == null ? "" : c).toUpperCase().replace(/[^A-Z0-9]/g, "");
   const liveNorm = new Set((liveRows || []).map(x => key(x.code)));
