@@ -1,0 +1,322 @@
+code,price_1,price_2_5,price_6_10,price_11_20,price_21_plus,msrp_derived_2x,source
+25001-2B,27.95,23.95,19.95,16.95,13.95,55.9,sheet 1
+25002-2B,27.95,23.95,19.95,16.95,13.95,55.9,sheet 1
+25003-2B,27.95,23.95,19.95,16.95,13.95,55.9,sheet 1
+25005-2B,27.95,23.95,19.95,16.95,13.95,55.9,sheet 1
+25007-2B,27.95,23.95,19.95,16.95,13.95,55.9,sheet 1
+25008-2B,27.95,23.95,19.95,16.95,13.95,55.9,sheet 1
+25009-2B,27.95,23.95,19.95,16.95,13.95,55.9,sheet 1
+25001,24.95,19.95,12.5,9.5,7.95,49.9,sheet 1
+25002,24.95,19.95,12.5,9.5,7.95,49.9,sheet 1
+25003,24.95,19.95,12.5,9.5,7.95,49.9,sheet 1
+25005,24.95,19.95,12.5,9.5,7.95,49.9,sheet 1
+25007,24.95,19.95,12.5,9.5,7.95,49.9,sheet 1
+25008,24.95,19.95,12.5,9.5,7.95,49.9,sheet 1
+25009,24.95,19.95,12.5,9.5,7.95,49.9,sheet 1
+2000B,26.95,19.95,13.95,10.95,9.5,53.9,sheet 1
+2000W,26.95,19.95,14.95,10.95,9.5,53.9,sheet 1
+2100B,26.95,19.95,14.95,10.95,9.5,53.9,sheet 1
+2100W,26.95,19.95,14.95,10.95,9.5,53.9,sheet 1
+2020B,26.95,19.95,14.95,10.95,9.5,53.9,sheet 1
+2020W,26.95,19.95,14.95,10.95,9.5,53.9,sheet 1
+2120B,26.95,19.95,14.95,10.95,9.5,53.9,sheet 1
+2120W,26.95,19.95,14.95,10.95,9.5,53.9,sheet 1
+62001,129.95,89.95,79.95,69.95,60.0,259.9,sheet 1
+62002,139.95,99.95,84.95,74.99,65.99,279.9,sheet 1
+62007,149.95,109.95,89.99,79.99,69.99,299.9,sheet 1
+61008-2,129.95,89.95,69.95,59.95,49.95,259.9,sheet 1
+61000-2,14.95,12.95,11.95,10.99,8.99,29.9,sheet 1
+61000-210,139.95,109.95,99.95,89.95,84.95,279.9,sheet 1
+61001,79.99,69.95,59.95,49.95,44.95,159.98,sheet 1
+61003,89.99,79.95,69.95,59.95,54.95,179.98,sheet 1
+61002,99.95,89.95,79.95,69.95,59.95,199.9,sheet 1
+61004,99.95,89.95,79.95,69.95,59.95,199.9,sheet 1
+61007,109.95,99.95,89.95,79.95,69.95,219.9,sheet 1
+61008,119.95,109.95,99.5,89.95,79.95,239.9,sheet 1
+61010,169.95,149.95,99.5,79.95,69.95,339.9,sheet 1
+61011,169.95,149.95,99.5,79.95,69.95,339.9,sheet 1
+61012,169.95,149.95,129.95,106.5,89.5,339.9,sheet 1
+61013,169.95,149.95,129.95,109.5,89.5,339.9,sheet 1
+60003,32.95,19.95,18.95,14.5,13.5,65.9,sheet 1
+60005,32.95,19.95,18.95,14.5,13.5,65.9,sheet 1
+60007,32.95,19.95,18.95,14.5,13.5,65.9,sheet 1
+60008,32.95,19.95,18.95,14.5,13.5,65.9,sheet 1
+60009,32.95,19.95,18.95,14.5,13.5,65.9,sheet 1
+60010,148.5,120.15,118.8,,89.95,297.0,sheet 1 — product not in HCPS catalog
+60013,133.5,120.15,106.8,,74.95,267.0,sheet 1 — product not in HCPS catalog
+60015,133.5,120.15,106.8,,74.95,267.0,sheet 1 — product not in HCPS catalog
+60017,133.5,120.15,106.8,,74.95,267.0,sheet 1 — product not in HCPS catalog
+60018,133.5,120.15,106.8,,74.95,267.0,sheet 1 — product not in HCPS catalog
+60019,148.5,120.15,118.8,,89.95,297.0,sheet 1 — product not in HCPS catalog
+60023,269.95,219.95,199.95,,177.95,539.9,sheet 1 — product not in HCPS catalog
+60025,269.95,219.95,199.95,,177.95,539.9,sheet 1 — product not in HCPS catalog
+60027,269.95,219.95,199.95,,177.95,539.9,sheet 1 — product not in HCPS catalog
+60028,269.95,219.95,199.95,,177.95,539.9,sheet 1 — product not in HCPS catalog
+60029,279.95,229.95,199.95,,192.95,559.9,sheet 1 — product not in HCPS catalog
+60033,325.0,302.95,306.0,,295.95,650.0,sheet 1 — product not in HCPS catalog
+60035,325.0,302.95,306.0,,295.95,650.0,sheet 1 — product not in HCPS catalog
+60037,325.0,302.95,306.0,,295.95,650.0,sheet 1 — product not in HCPS catalog
+60038,325.0,302.95,306.0,,295.95,650.0,sheet 1 — product not in HCPS catalog
+60039,336.68,329.95,325.0,,310.95,673.36,sheet 1 — product not in HCPS catalog
+60067,295.0,289.0,289.0,,276.0,590.0,sheet 1 — product not in HCPS catalog
+60068,295.0,289.0,289.0,,276.0,590.0,sheet 1 — product not in HCPS catalog
+49001,195.0,175.0,125.0,99.5,79.99,390.0,sheet 1
+49002,195.0,175.0,125.0,99.5,79.99,390.0,sheet 1
+4900-OKBU-S-M,25.0,19.5,19.5,13.95,12.95,50.0,sheet 1
+4900-OKBU-L-XL,25.0,19.5,19.5,13.95,12.95,50.0,sheet 1
+4900-Wrap,19.5,15.95,12.95,9.9,9.95,39.0,sheet 1
+45003,27.95,24.95,17.95,15.95,14.95,55.9,sheet 1
+45005,27.95,24.95,17.95,15.95,14.95,55.9,sheet 1
+45007,27.95,24.95,17.95,15.95,14.95,55.9,sheet 1
+45008,27.95,24.95,17.95,15.95,14.95,55.9,sheet 1
+45009,27.95,24.95,17.95,15.95,14.95,55.9,sheet 1
+45013,29.95,25.95,19.95,17.95,14.95,59.9,sheet 1
+45015,29.95,25.95,19.95,17.95,14.95,59.9,sheet 1
+45017,29.95,25.95,19.95,17.95,14.95,59.9,sheet 1
+45018,29.95,25.95,19.95,17.95,14.95,59.9,sheet 1
+45019,29.95,25.95,19.95,17.95,14.95,59.9,sheet 1
+45023,29.95,25.95,19.95,17.95,14.95,59.9,sheet 1
+45025,29.95,25.95,19.95,17.95,14.95,59.9,sheet 1
+45027,29.95,25.95,19.95,17.95,14.95,59.9,sheet 1
+45028,29.95,25.95,19.95,17.95,14.95,59.9,sheet 1
+45029,29.95,25.95,19.95,17.95,14.95,59.9,sheet 1
+45030,29.95,25.95,19.95,17.95,14.95,59.9,sheet 1
+45031,29.95,25.95,19.95,17.95,14.95,59.9,sheet 1
+51500,125.0,99.5,89.95,74.5,69.95,250.0,sheet 1
+51508,125.0,99.5,89.95,74.5,69.95,250.0,sheet 1
+51600,125.0,99.5,89.95,74.5,69.95,250.0,sheet 1
+51608,125.0,99.5,89.95,74.5,69.95,250.0,sheet 1
+51700,99.95,89.95,79.95,69.95,59.95,199.9,sheet 1
+30014,39.95,29.95,23.95,16.95,14.95,79.9,sheet 1
+30016,39.95,29.95,23.95,16.95,14.95,79.9,sheet 1
+30000S,6.95,5.95,4.95,3.95,3.0,13.9,sheet 1
+31003,39.95,25.5,18.95,14.95,12.95,79.9,sheet 1
+31005,39.95,25.5,18.95,14.95,12.95,79.9,sheet 1
+31007,39.95,25.5,18.95,14.95,12.95,79.9,sheet 1
+22003,29.95,29.5,19.5,17.95,15.95,59.9,sheet 1
+22005,29.95,29.5,19.5,17.95,15.95,59.9,sheet 1
+22007,29.95,29.5,19.5,17.95,15.95,59.9,sheet 1
+30004,29.95,19.5,13.5,10.5,9.5,59.9,sheet 1
+30006,29.95,19.5,13.5,10.5,9.5,59.9,sheet 1
+50072-5,27.95,22.95,17.95,15.95,13.95,55.9,sheet 1
+50075-5,27.95,22.95,17.95,15.95,13.95,55.9,sheet 1
+50078-5,27.95,22.95,17.95,15.95,13.95,55.9,sheet 1
+51072-5,27.95,22.95,17.95,15.95,13.95,55.9,sheet 1
+51075-5,27.95,22.95,17.95,15.95,13.95,55.9,sheet 1
+51078-5,27.95,22.95,17.95,15.95,13.95,55.9,sheet 1
+50072-2,24.95,19.95,15.95,13.95,11.95,49.9,sheet 1
+50075-2,24.95,19.95,15.95,13.95,11.95,49.9,sheet 1
+50078-2,24.95,19.95,15.95,13.95,11.95,49.9,sheet 1
+51072-2,24.95,19.95,15.95,13.95,11.95,49.9,sheet 1
+51075-2,24.95,19.95,15.95,13.95,11.95,49.9,sheet 1
+51078-2,24.95,19.95,15.95,13.95,11.95,49.9,sheet 1
+50072,19.95,15.95,13.95,10.95,7.95,39.9,sheet 1
+50073,19.95,15.95,13.95,10.95,7.95,39.9,sheet 1
+50075,19.95,15.95,13.95,10.95,7.95,39.9,sheet 1
+50077,19.95,15.95,13.95,10.95,7.95,39.9,sheet 1
+50078,19.95,15.95,13.95,10.95,7.95,39.9,sheet 1
+51072,19.95,15.95,13.95,10.95,7.95,39.9,sheet 1
+51073,19.95,15.95,13.95,10.95,7.95,39.9,sheet 1
+51075,19.95,15.95,13.95,10.95,7.95,39.9,sheet 1
+51077,19.95,15.95,13.95,10.95,7.95,39.9,sheet 1
+51078,19.95,15.95,13.95,10.95,7.95,39.9,sheet 1
+50070,20.95,16.95,13.95,11.95,9.95,41.9,sheet 1
+51070,20.95,16.95,13.95,11.95,9.95,41.9,sheet 1
+58072-2,18.95,16.95,10.95,8.95,7.95,37.9,sheet 1
+58075-2,18.95,16.95,10.95,8.95,7.95,37.9,sheet 1
+58078-2,18.95,16.95,10.95,8.95,7.95,37.9,sheet 1
+59072-2,18.95,16.95,10.95,8.95,7.95,37.9,sheet 1
+59075-2,18.95,16.95,10.95,8.95,7.95,37.9,sheet 1
+59078-2,18.95,16.95,10.95,8.95,7.95,37.9,sheet 1
+58072,17.95,11.95,7.95,6.5,5.95,35.9,sheet 1
+58073,17.95,11.95,7.95,6.5,5.95,35.9,sheet 1
+58075,17.95,11.95,7.95,6.5,5.95,35.9,sheet 1
+58077,17.95,11.95,7.95,6.5,5.95,35.9,sheet 1
+58078,17.95,11.95,7.95,6.5,5.95,35.9,sheet 1
+59072,17.95,11.95,7.95,6.5,5.95,35.9,sheet 1
+59073,17.95,11.95,7.95,6.5,5.95,35.9,sheet 1
+59075,17.95,11.95,7.95,6.5,5.95,35.9,sheet 1
+59077,17.95,11.95,7.95,6.5,5.95,35.9,sheet 1
+59078,17.95,11.95,7.95,6.5,5.95,35.9,sheet 1
+50080,16.95,14.95,12.95,10.95,8.95,33.9,sheet 1
+51080,16.95,14.95,12.95,10.95,8.95,33.9,sheet 1
+58070,17.95,14.95,12.95,9.5,8.95,35.9,sheet 1
+59070,17.95,14.95,12.95,9.5,8.95,35.9,sheet 1
+57013,19.95,17.95,16.95,12.95,10.95,39.9,sheet 1
+57015,19.95,17.95,16.95,12.95,10.95,39.9,sheet 1
+57017,19.95,17.95,16.95,12.95,10.95,39.9,sheet 1
+57018,19.95,17.95,16.95,12.95,10.95,39.9,sheet 1
+58012,9.95,7.95,6.95,5.25,4.75,19.9,sheet 1
+58013,9.95,7.95,6.95,5.25,4.75,19.9,sheet 1
+58015,9.95,7.95,6.95,5.25,4.75,19.9,sheet 1
+58017,9.95,7.95,6.95,5.25,4.75,19.9,sheet 1
+58018,9.95,7.95,6.95,5.25,4.75,19.9,sheet 1
+59013,36.95,31.95,22.5,19.95,14.95,73.9,sheet 1
+59015,36.95,31.95,22.5,19.95,14.95,73.9,sheet 1
+59017,36.95,31.95,22.5,19.95,14.95,73.9,sheet 1
+59022,13.95,11.95,9.95,8.95,7.95,27.9,sheet 1
+59023,13.95,11.95,9.95,8.95,7.95,27.9,sheet 1
+59025,13.95,11.95,9.95,8.95,7.95,27.9,sheet 1
+59027,13.95,11.95,9.95,8.95,7.95,27.9,sheet 1
+59028,13.95,11.95,9.95,8.95,7.95,27.9,sheet 1
+10002BLACK,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10002"
+10002BLUE,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10002"
+10002GREY,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10002"
+10002RED,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10002"
+10003BLACK,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10003"
+10003BLUE,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10003"
+10003GREY,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10003"
+10003RED,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10003"
+10005BLACK,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10005"
+10005BLUE,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10005"
+10005GREY,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10005"
+10005RED,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10005"
+10007BLACK,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10007"
+10007BLUE,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10007"
+10007GREY,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10007"
+10007RED,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10007"
+10008BLACK,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10008"
+10008BLUE,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10008"
+10008GREY,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10008"
+10008RED,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10008"
+10102BLACK,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10102"
+10102BLUE,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10102"
+10102GREY,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10102"
+10102RED,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10102"
+10103BLACK,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10103"
+10103BLUE,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10103"
+10103GREY,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10103"
+10103RED,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10103"
+10105BLACK,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10105"
+10105BLUE,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10105"
+10105GREY,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10105"
+10105RED,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10105"
+10107BLACK,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10107"
+10107BLUE,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10107"
+10107GREY,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10107"
+10107RED,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10107"
+10108BLACK,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10108"
+10108BLUE,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10108"
+10108GREY,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10108"
+10108RED,49.95,44.95,37.95,31.95,27.95,99.9,"sheet 1 — colour SKU, price from parent 10108"
+11002BLACK,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11002"
+11002BLUE,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11002"
+11002GREY,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11002"
+11002RED,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11002"
+11003BLACK,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11003"
+11003BLUE,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11003"
+11003GREY,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11003"
+11003RED,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11003"
+11005BLACK,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11005"
+11005BLUE,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11005"
+11005GREY,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11005"
+11005RED,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11005"
+11007BLACK,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11007"
+11007BLUE,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11007"
+11007GREY,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11007"
+11007RED,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11007"
+11008BLACK,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11008"
+11008BLUE,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11008"
+11008GREY,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11008"
+11008RED,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11008"
+11102BLACK,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11102"
+11102BLUE,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11102"
+11102GREY,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11102"
+11102RED,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11102"
+11103BLACK,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11103"
+11103BLUE,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11103"
+11103GREY,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11103"
+11103RED,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11103"
+11105BLACK,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11105"
+11105BLUE,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11105"
+11105GREY,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11105"
+11105RED,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11105"
+11107BLACK,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11107"
+11107BLUE,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11107"
+11107GREY,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11107"
+11107RED,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11107"
+11108BLACK,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11108"
+11108BLUE,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11108"
+11108GREY,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11108"
+11108RED,49.95,36.5,34.5,29.95,24.95,99.9,"sheet 1 — colour SKU, price from parent 11108"
+GS222SN,4.25,,,,,8.5,"sheet 2 — list price only, bands unconfirmed"
+GS233SN,6.95,,,,,13.9,"sheet 2 — list price only, bands unconfirmed"
+GS244SN,12.5,,,,,25.0,"sheet 2 — list price only, bands unconfirmed"
+GS822SN,3.5,,,,,7.0,"sheet 2 — list price only, bands unconfirmed"
+GS833SN,5.95,,,,,11.9,"sheet 2 — list price only, bands unconfirmed"
+GS844SN,8.25,,,,,16.5,"sheet 2 — list price only, bands unconfirmed"
+GS222SS,8.5,,,,,17.0,"sheet 2 — list price only, bands unconfirmed"
+GS233SS,12.95,,,,,25.9,"sheet 2 — list price only, bands unconfirmed"
+GS244SS,19.95,,,,,39.9,"sheet 2 — list price only, bands unconfirmed"
+TC002N,16.95,,,,,33.9,"sheet 2 — list price only, bands unconfirmed"
+TC001N,18.95,,,,,37.9,"sheet 2 — list price only, bands unconfirmed"
+BC002SN,17.25,,,,,34.5,"sheet 2 — list price only, bands unconfirmed"
+BC003SN,24.95,,,,,49.9,"sheet 2 — list price only, bands unconfirmed"
+BC004SN,34.95,,,,,69.9,"sheet 2 — list price only, bands unconfirmed"
+BC006SN,54.95,,,,,109.9,"sheet 2 — list price only, bands unconfirmed"
+BH002SN,3.95,,,,,7.9,"sheet 2 — list price only, bands unconfirmed"
+BH003SN,4.95,,,,,9.9,"sheet 2 — list price only, bands unconfirmed"
+BH004SN,5.95,,,,,11.9,"sheet 2 — list price only, bands unconfirmed"
+GN108BL,8.95,,,,,17.9,"sheet 2 — list price only, bands unconfirmed"
+GN107BL,8.95,,,,,17.9,"sheet 2 — list price only, bands unconfirmed"
+GN103BL,8.95,,,,,17.9,"sheet 2 — list price only, bands unconfirmed"
+GN105BL,8.95,,,,,17.9,"sheet 2 — list price only, bands unconfirmed"
+BE002N,7.95,,,,,15.9,"sheet 2 — list price only, bands unconfirmed"
+BE003N,11.95,,,,,23.9,"sheet 2 — list price only, bands unconfirmed"
+BE004N,13.95,,,,,27.9,"sheet 2 — list price only, bands unconfirmed"
+BE006N,18.95,,,,,37.9,"sheet 2 — list price only, bands unconfirmed"
+PC002SN,5.95,,,,,11.9,"sheet 2 — list price only, bands unconfirmed"
+PC003SN,7.95,,,,,15.9,"sheet 2 — list price only, bands unconfirmed"
+PC004SN,9.95,,,,,19.9,"sheet 2 — list price only, bands unconfirmed"
+PC006SN,11.95,,,,,23.9,"sheet 2 — list price only, bands unconfirmed"
+CF002BL,49.95,,,,,99.9,"sheet 2 — list price only, bands unconfirmed"
+CF002DB,49.95,,,,,99.9,"sheet 2 — list price only, bands unconfirmed"
+CF002PK,49.95,,,,,99.9,"sheet 2 — list price only, bands unconfirmed"
+CF002WH,49.95,,,,,99.9,"sheet 2 — list price only, bands unconfirmed"
+CF003BL,59.95,,,,,119.9,"sheet 2 — list price only, bands unconfirmed"
+CF003DB,59.95,,,,,119.9,"sheet 2 — list price only, bands unconfirmed"
+CF003PK,59.95,,,,,119.9,"sheet 2 — list price only, bands unconfirmed"
+CF003WH,59.95,,,,,119.9,"sheet 2 — list price only, bands unconfirmed"
+CF004BL,69.95,,,,,139.9,"sheet 2 — list price only, bands unconfirmed"
+CF004DB,69.95,,,,,139.9,"sheet 2 — list price only, bands unconfirmed"
+CF004PK,69.95,,,,,139.9,"sheet 2 — list price only, bands unconfirmed"
+CF004WH,69.95,,,,,139.9,"sheet 2 — list price only, bands unconfirmed"
+CF005BL,79.5,,,,,159.0,"sheet 2 — list price only, bands unconfirmed"
+CF005DB,79.5,,,,,159.0,"sheet 2 — list price only, bands unconfirmed"
+CF005PK,79.5,,,,,159.0,"sheet 2 — list price only, bands unconfirmed"
+CF005WH,79.5,,,,,159.0,"sheet 2 — list price only, bands unconfirmed"
+RF002PK,92.95,,,,,185.9,"sheet 2 — list price only, bands unconfirmed"
+RF003PK,109.95,,,,,219.9,"sheet 2 — list price only, bands unconfirmed"
+RF004PK,134.95,,,,,269.9,"sheet 2 — list price only, bands unconfirmed"
+RF005PK,154.95,,,,,309.9,"sheet 2 — list price only, bands unconfirmed"
+RN002PK,85.0,,,,,170.0,"sheet 2 — list price only, bands unconfirmed"
+RN003PK,100.0,,,,,200.0,"sheet 2 — list price only, bands unconfirmed"
+RN004PK,120.0,,,,,240.0,"sheet 2 — list price only, bands unconfirmed"
+RN005PK,135.0,,,,,270.0,"sheet 2 — list price only, bands unconfirmed"
+ST002SN,13.95,,,,,27.9,"sheet 2 — list price only, bands unconfirmed"
+ST003SN,17.0,,,,,34.0,"sheet 2 — list price only, bands unconfirmed"
+ST004SN,19.95,,,,,39.9,"sheet 2 — list price only, bands unconfirmed"
+ST006SN,27.95,,,,,55.9,"sheet 2 — list price only, bands unconfirmed"
+701XS,10.95,,,,,21.9,"sheet 2 — list price only, bands unconfirmed"
+701MS,10.95,,,,,21.9,"sheet 2 — list price only, bands unconfirmed"
+701MM,10.95,,,,,21.9,"sheet 2 — list price only, bands unconfirmed"
+701ML,10.95,,,,,21.9,"sheet 2 — list price only, bands unconfirmed"
+701MXL,10.95,,,,,21.9,"sheet 2 — list price only, bands unconfirmed"
+701WS,10.95,,,,,21.9,"sheet 2 — list price only, bands unconfirmed"
+701WM,10.95,,,,,21.9,"sheet 2 — list price only, bands unconfirmed"
+701WL,10.95,,,,,21.9,"sheet 2 — list price only, bands unconfirmed"
+733-002,15.95,,,,,31.9,"sheet 2 — list price only, bands unconfirmed"
+733-003,15.95,,,,,31.9,"sheet 2 — list price only, bands unconfirmed"
+733-005,15.95,,,,,31.9,"sheet 2 — list price only, bands unconfirmed"
+733-007,15.95,,,,,31.9,"sheet 2 — list price only, bands unconfirmed"
+733-008,15.95,,,,,31.9,"sheet 2 — list price only, bands unconfirmed"
+733-002-PRPSHOE,18.95,,,,,37.9,"sheet 2 — list price only, bands unconfirmed"
+733-003-PRPSHOE,18.95,,,,,37.9,"sheet 2 — list price only, bands unconfirmed"
+733-005-PRPSHOE,18.95,,,,,37.9,"sheet 2 — list price only, bands unconfirmed"
+733-007-PRPSHOE,18.95,,,,,37.9,"sheet 2 — list price only, bands unconfirmed"
+733-008-PRPSHOE,18.95,,,,,37.9,"sheet 2 — list price only, bands unconfirmed"
+733-002PRP,15.95,,,,,31.9,"sheet 2 — list price only, bands unconfirmed"
+733-003PRP,15.95,,,,,31.9,"sheet 2 — list price only, bands unconfirmed"
+733-005PRP,15.95,,,,,31.9,"sheet 2 — list price only, bands unconfirmed"
+733-007PRP,15.95,,,,,31.9,"sheet 2 — list price only, bands unconfirmed"
+733-008PRP,15.95,,,,,31.9,"sheet 2 — list price only, bands unconfirmed"
