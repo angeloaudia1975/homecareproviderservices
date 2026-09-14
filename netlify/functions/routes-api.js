@@ -27,6 +27,34 @@ const MAIL_FROM = process.env.HCPS_MAIL_FROM || "HCPS Partner Portal <orders@hom
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const P = require("./_platform.js");
 const esc2 = s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+/* WHICH LINE THE HANDOUT LEADS WITH.
+   The automatic pick blends portal engagement, product fit and regional demand and rotates
+   weekly, which is right for planning a route and wrong the moment a rep knows what this
+   particular visit is about. A pin overrides it — but only towards a line the dealer could
+   actually be sold, and never one the rep has marked a poor fit, because a handout that
+   features an excluded line would contradict the tickbox that excluded it.
+
+   A pin is allowed on two kinds of line and the difference matters to the sheet: an
+   opportunity the dealer does not yet carry ("new_line") and a line they already buy
+   ("reorder"), which is the re-stock conversation. Anything else — a line they are not
+   approved for, a slug that no longer exists, an excluded one — is ignored rather than
+   forced, and the automatic pick stands. Returning the reason unchanged is deliberate: a
+   pin decides WHICH line is featured, not what the dealer is told about it. The sheet is
+   dealer-facing and must never read "your rep chose this".
+
+   Pure, and separate from the handler, so the decision can be tested without a database. */
+function featuredPick(pinSlug, opps, carried, auto, norm){
+  const key = s => String(norm ? norm(s) : String(s||"").toLowerCase().trim());
+  const pin = String(pinSlug||"").trim();
+  if(!pin) return auto || null;
+  const k = key(pin);
+  const inOpps = (opps||[]).find(o => o && key(o.slug) === k);
+  if(inOpps) return { kind:"new_line", slug:inOpps.slug, name:inOpps.name, pinned:true };
+  const inCarried = (carried||[]).find(l => l && key(l.slug) === k);
+  if(inCarried) return { kind:"reorder", slug:inCarried.slug, name:inCarried.name, pinned:true };
+  return auto || null;   // a pin we cannot honour is dropped, not forced
+}
 function prettyDate(s){ try{ const p=String(s).split("-").map(Number); const d=new Date(p[0],p[1]-1,p[2]); return d.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"}); }catch(e){ return String(s||""); } }
 async function sendMail({to,subject,html,text,replyTo}){
   const key=process.env.RESEND_API_KEY; if(!key) return {ok:false,skipped:true};
@@ -378,8 +406,10 @@ exports.handler = async (event)=>{
       // from the ordering portal (product views, repeat views, pricing views, order-page hits — already
       // rolled into dealer_intent.by_manufacturer), (c) fit-based cross-sell recommendations. All loaded
       // tolerantly so a missing table never breaks the handout.
-      let exRows=[], intentRows=[], xsRows=[];
+      let exRows=[], intentRows=[], xsRows=[], featRows=[];
       try{ exRows=await sbGet(`dealer_handout_exclusions?dealer_id=${reqIn}&select=dealer_id,manufacturer`); }catch(e){ exRows=[]; }
+      // (d) the rep's pinned line for this visit — one row per dealer, consumed when the handout prints.
+      try{ featRows=await sbGet(`dealer_handout_feature?dealer_id=${reqIn}&select=dealer_id,manufacturer`); }catch(e){ featRows=[]; }
       try{ intentRows=await sbGet(`dealer_intent?dealer_id=${memIn}&select=dealer_id,by_manufacturer`); }catch(e){ intentRows=[]; }
       try{ xsRows=await sbGet(`cross_sell?dealer_id=${memIn}&select=dealer_id,rec_slug,score`); }catch(e){ xsRows=[]; }
       const mfrName=Object.fromEntries((mfrs||[]).map(m=>[m.slug,m.name]));
@@ -389,6 +419,25 @@ exports.handler = async (event)=>{
       const exSetByDealer={}, exListByDealer={};
       for(const r of (exRows||[])){ const s=exSetByDealer[r.dealer_id]||(exSetByDealer[r.dealer_id]=new Set()); s.add(normBuy(r.manufacturer)); s.add(String(r.manufacturer||"").toLowerCase());
         (exListByDealer[r.dealer_id]||(exListByDealer[r.dealer_id]=[])).push(r.manufacturer); }
+      const featByDealer={};
+      for(const r of (featRows||[])){ if(r&&r.manufacturer) featByDealer[r.dealer_id]=String(r.manufacturer); }
+      /* THE ORDERING ACCESS GRID, WHICH THIS FUNCTION USED TO IGNORE.
+         computeAccess treats the admin grid as authoritative — tick a line and the dealer has
+         it — but it was called here with no grid at all, so it fell through to the territory
+         rules on every dealer and the handout quietly disagreed with the rest of the system.
+         140 of 443 dealers lost at least one ticked line: 85 Ovation, 47 StrongBack, 13 ABM.
+         Ovation and ABM have no territory rule to fall back on, so a dealer ticked for either
+         could never be shown it. The rows were already loaded for account numbers; they just
+         were not being used for eligibility. A dealer's own grid wins; a branch with none
+         falls back to its company's, so multi-location accounts set up at the parent still
+         resolve. */
+      const gridByDealer={}, gridByCo={};
+      for(const x of (dm||[])){
+        if(!x||!x.manufacturer||x.active===false) continue;
+        (gridByDealer[x.dealer_id]||(gridByDealer[x.dealer_id]=new Set())).add(x.manufacturer);
+        const cid=companyOf(x.dealer_id);
+        (gridByCo[cid]||(gridByCo[cid]=new Set())).add(x.manufacturer);
+      }
       // Engagement/intent per manufacturer — this location and rolled up to the company.
       const intentByDealer={}, intentByCo={};
       for(const r of (intentRows||[])){ const bm=(r&&r.by_manufacturer)||{}; const m=intentByDealer[r.dealer_id]||(intentByDealer[r.dealer_id]={});
@@ -482,7 +531,13 @@ exports.handler = async (event)=>{
       for(const id of ids){
         const d=byId[id]; if(!d) continue;
         const cid=companyOf(id); const master=byId[cid]||d;   // company-level governing account
-        let acc; try{ acc=computeAccess({state:master.state||d.state,business_name:master.business_name||d.business_name,ovation_access:!!(master.ovation_access||d.ovation_access),golden_status:(master.golden_status||d.golden_status||"None"),lat:null},[]); }catch(e){ acc={your_accounts:[],available:[],golden:"None"}; }
+        /* The dealer's own ticked lines, falling back to the company's. `lat` stays null: with a
+           grid present computeAccess never reaches the territory rules, so it cannot matter. It
+           still can for a dealer with an EMPTY grid, where the "Indiana south of Indianapolis"
+           test needs a latitude and conservatively says no without one — that path is unchanged
+           here and would need the geocache read dealers-api does. */
+        const grid=[...(gridByDealer[id]||gridByCo[cid]||new Set())];
+        let acc; try{ acc=computeAccess({state:master.state||d.state,business_name:master.business_name||d.business_name,ovation_access:!!(master.ovation_access||d.ovation_access),golden_status:(master.golden_status||d.golden_status||"None"),lat:null},[],grid); }catch(e){ acc={your_accounts:[],available:[],golden:"None"}; }
         const eligible=[...new Set([...(acc.your_accounts||[]),...(acc.available||[])])];
         const s=byDealer[id]||{lines:{},total:0,ytd:0,recent:0,buys:new Set()};
         const coBuySet=coBuys[cid]||new Set();
@@ -517,11 +572,17 @@ exports.handler = async (event)=>{
         const WI=0.45, WX=0.30, WR=0.25;
         const blendedOf=o=>WI*(intentM(o.slug)/maxI)+WX*(xsM(o.slug)/maxX)+WR*(rScore(o.slug)/maxR);
         let crossover=null;
+        // The rep's pin for this visit, resolved against what this dealer can actually be shown.
+        const pinned=featuredPick(featByDealer[id], opps, lines, null, normBuy);
         const oppRanked=opps.map(o=>({...o,score:rScore(o.slug),tot:rTot(o.slug),intent:intentM(o.slug),xs:xsM(o.slug),blended:blendedOf(o)}))
           .sort((a,b)=>b.blended-a.blended||b.score-a.score||b.tot-a.tot||String(a.name).localeCompare(String(b.name)));
-        if(oppRanked.length){
+        // A pin to a line they already carry is a re-stock conversation — handled below, so the
+        // opportunity pick is skipped entirely rather than allowed to overwrite the pin.
+        if(oppRanked.length && !(pinned&&pinned.kind==="reorder")){
           const pool=oppRanked.slice(0,Math.min(5,oppRanked.length));
-          const pick=pool[(weekSeed+dhash(id))%pool.length];
+          const pick=(pinned&&pinned.kind==="new_line")
+            ? (oppRanked.find(o=>normBuy(o.slug)===normBuy(pinned.slug))||pool[(weekSeed+dhash(id))%pool.length])
+            : pool[(weekSeed+dhash(id))%pool.length];
           const rising=rScore(pick.slug)>rPrior(pick.slug);
           const nI=pick.intent/maxI, nX=pick.xs/maxX, nR=pick.score/maxR;
           let reason, basis;
@@ -539,7 +600,23 @@ exports.handler = async (event)=>{
             reason=`Approved for your territory and a natural complement to the lines you already carry — a strong candidate to add next.`;
           }
           crossover={ kind:"new_line", name:pick.name, slug:pick.slug, logo:pick.logo||logoBySlug[pick.slug]||"",
-            region_amt:r2(pick.score), basis, reason };
+            region_amt:r2(pick.score), basis, reason,
+            pinned:!!(pinned&&pinned.kind==="new_line"&&normBuy(pinned.slug)===normBuy(pick.slug)) };
+        }
+        /* A pinned line the dealer already carries. The automatic re-stock story below claims
+           "you haven't reordered in 60+ days", which is a fact about the data — so it is only
+           used when it is actually true of this line, and a neutral prompt stands in when it
+           is not. The rep may well be pinning a line they ordered last week. */
+        if(!crossover && pinned && pinned.kind==="reorder"){
+          const L=lines.find(l=>normBuy(l.slug)===normBuy(pinned.slug));
+          if(L){
+            const quiet=(L.d60||0)===0 && rScore(L.slug)>0;
+            crossover={ kind:"reorder", name:L.name, slug:L.slug, logo:logoBySlug[L.slug]||"",
+              region_amt:r2(rScore(L.slug)), basis:"reorder", pinned:true,
+              reason: quiet
+                ? `${L.name} is moving across ${stCode||"your area"} right now, but you haven't reordered in 60+ days — a timely re-stock while demand is up.`
+                : `${L.name} is a line you already carry — worth a look at your stock levels and the current programs while we're together.` };
+          }
         }
         if(!crossover){
           const gaps=lines.filter(L=>(L.d60||0)===0 && rScore(L.slug)>0 && !isExcluded(L.slug)).map(L=>({...L,score:rScore(L.slug)})).sort((a,b)=>b.score-a.score);
@@ -564,6 +641,11 @@ exports.handler = async (event)=>{
           retail_value:Math.round(retail*100)/100,
           lines, opps, accounts, carried, products, products_more, crossover,
           excluded:(exListByDealer[id]||[]).map(sl=>({slug:sl,name:nameOf(sl),logo:logoBySlug[sl]||logoBySlug[normBuy(sl)]||""})),
+          /* What the rep pinned, and — separately — whether it could be honoured. A pin on a
+             line that has since been excluded or dropped from the grid is reported as stored
+             but not applied, so the card can say so instead of silently ignoring the click. */
+          featured:featByDealer[id]||null,
+          featured_applied:!!(pinned&&featByDealer[id]),
           rep_name:assignedRep||"", rep_email:(repInfo&&repInfo.email)||"",
           golden:(acc.golden||master.golden_status||d.golden_status||"None"), golden_logo:(logoBySlug["golden-technologies"]||""), ovation:!!(master.ovation_access||d.ovation_access),
           contacts:(contactsByDealer[id]||[]).map(c=>({name:c.name||"",email:c.email||"",phone:c.phone||"",cell:c.cell||"",title:c.title||"",role:c.role||""})),
@@ -614,6 +696,23 @@ exports.handler = async (event)=>{
       if(on){ await sbSend("POST","dealer_handout_exclusions?on_conflict=dealer_id,manufacturer",{dealer_id:did,manufacturer:slug,created_by:me.email||me.name||null,created_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
       else { await sbSend("DELETE",`dealer_handout_exclusions?dealer_id=eq.${encodeURIComponent(did)}&manufacturer=eq.${encodeURIComponent(slug)}`,null,{Prefer:"return=minimal"}); }
       return json(200,{ok:true,excluded:on});
+    }
+
+    /* Pin the line this visit leads with, or clear it. One row per dealer — pinning a second
+       line replaces the first rather than stacking, because the handout features exactly one.
+       An empty manufacturer clears, which is also how printing consumes the pin. Permission is
+       the same as exclusions: management anywhere, or the rep this dealer is assigned to. */
+    if(b.action==="set_handout_feature"){
+      const did=String(b.dealer_id||"").trim(); const slug=String(b.manufacturer||"").trim();
+      if(!did) return json(400,{error:"dealer_id required"});
+      const dr=await sbGet(`dealers?id=eq.${encodeURIComponent(did)}&select=id,rep_name`).catch(()=>[]);
+      const dealer=dr&&dr[0]; if(!dealer) return json(404,{error:"dealer not found"});
+      const mgr=MGMT_ROLES.has(String(me.role||"").toLowerCase());
+      const ownsIt=!!me.rep_name && String(dealer.rep_name||"").trim().toLowerCase()===String(me.rep_name).trim().toLowerCase();
+      if(!mgr && !ownsIt) return json(403,{error:"not your account"});
+      if(slug){ await sbSend("POST","dealer_handout_feature?on_conflict=dealer_id",{dealer_id:did,manufacturer:slug,created_by:me.email||me.name||null,created_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
+      else { await sbSend("DELETE",`dealer_handout_feature?dealer_id=eq.${encodeURIComponent(did)}`,null,{Prefer:"return=minimal"}); }
+      return json(200,{ok:true,featured:slug||null});
     }
 
     // ---------- Scheduled Routes: mobile field-visit day view + per-dealer visit reports ----------

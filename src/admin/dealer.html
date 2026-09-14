@@ -1528,6 +1528,18 @@ async function printDealerHandout(id){
   let c={};
   try{ const r=await rapi({action:"business_case",dealer_ids:[id]}); c=(r&&r.cases&&r.cases[id])||{}; }catch(e){}
   try{ w.document.open(); w.document.write(handoutHtml(c)); w.document.close(); }catch(e){}
+  /* THE PIN IS CONSUMED HERE, AFTER THE SHEET IS ON SCREEN — never before, or a failed
+     render would spend it for nothing. It is cleared only when it actually reached the
+     handout: a pin that could not be honoured stays put so the rep can see why and fix it.
+     Clearing is best-effort; a handout that printed correctly must not report an error
+     because the tidy-up afterwards failed. */
+  if(c.featured && c.featured_applied){
+    const cxn=(c.crossover&&c.crossover.name)||c.featured;
+    try{
+      await rapi({action:"set_handout_feature",dealer_id:id,manufacturer:""});
+      if(id===CUR){ HPINUSED={slug:c.featured,name:cxn}; await loadHandout(); }
+    }catch(e){}
+  }
 }
 function handoutHtml(c){ return DealerHandout.html(c, {HANDOUT:HANDOUT, ME:ME}); }
 
@@ -1539,31 +1551,74 @@ async function loadHandout(){
   let c={}; try{ const r=await rapi({action:"business_case",dealer_ids:[CUR]}); c=(r&&r.cases&&r.cases[CUR])||{}; }catch(e){}
   HBC=c; renderHandout();
 }
+/* The line just consumed by a print, remembered only until the card is left. It exists so the
+   card can say "pin used" and offer to set it again with one click, rather than silently
+   reverting to the automatic pick and looking like the pin was ignored. */
+let HPINUSED=null;
 function renderHandout(){
   const el=$("#handout"); if(!el) return;
   const c=HBC||{}; const cx=c.crossover;
   const basisLabel={engagement:"Portal engagement",regional:"Regional demand",fit:"Product fit",reorder:"Re-stock"};
+  const pinnedSlug=c.featured||null;
+  const q=s=>esc(String(s==null?"":s).replace(/'/g,"\\'"));
   const feat = cx
     ? `<div style="border:1px solid #fed7aa;background:#fff8f0;border-radius:10px;padding:10px 12px;margin-bottom:10px">
-        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:#b45309;font-weight:800">Featured on the handout${cx.basis?` · ${esc(basisLabel[cx.basis]||cx.basis)}`:""}</div>
+        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:#b45309;font-weight:800">Featured on the handout · ${cx.pinned?"Pinned for this visit":esc(basisLabel[cx.basis]||cx.basis||"Automatic")}</div>
         <div style="font-weight:800;color:var(--navy);margin-top:2px">${esc(cx.name||"")}</div>
         <div class="hint" style="margin-top:2px">${esc(cx.reason||"")}</div>
+        ${cx.pinned?`<button class="btn sm" style="margin-top:8px" onclick="setFeature('')">Clear pin — go back to automatic</button>`:""}
       </div>`
     : `<div class="hint" style="margin-bottom:10px">No featured opportunity right now — every approved line is either already stocked or excluded.</div>`;
-  const opps=(c.opps||[]), excluded=(c.excluded||[]), featSlug=cx&&cx.slug;
-  const row=(m,isEx)=>`<label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
-      <input type="checkbox" ${isEx?"checked":""} onchange="toggleExclude('${esc(String(m.slug).replace(/'/g,"\\'"))}',this.checked,this)">
+  /* A pin stored but not applied means the line has since been excluded or dropped off the
+     dealer's ordering access. Saying so beats leaving the rep to wonder why their click did
+     nothing on the sheet. */
+  const stale = (pinnedSlug && !c.featured_applied)
+    ? `<div class="hint" style="color:#b42323;margin:-4px 0 10px">Pinned line is no longer available to this dealer, so the handout picked automatically. <a href="#" class="link" onclick="setFeature('');return false;">Clear the pin</a></div>` : "";
+  const used = (HPINUSED && !pinnedSlug)
+    ? `<div class="hint" style="margin:-4px 0 10px">Pin used on the last handout — ${esc(HPINUSED.name)} is back to the automatic rotation. <a href="#" class="link" onclick="setFeature('${q(HPINUSED.slug)}');return false;">Pin it again</a></div>` : "";
+  const opps=(c.opps||[]), excluded=(c.excluded||[]), carried=(c.lines||[]), featSlug=cx&&cx.slug;
+  const isPinned=m=>pinnedSlug && String(pinnedSlug).toLowerCase()===String(m.slug).toLowerCase();
+  const star=m=>isPinned(m)
+    ? `<button class="btn sm" onclick="setFeature('')" title="Stop featuring this line" style="border-color:#f6d5ad;background:#fff8f0;color:#b45309;font-weight:800">★ Featured</button>`
+    : `<button class="btn sm" onclick="setFeature('${q(m.slug)}')" title="Lead this visit with ${esc(m.name||m.slug)}">☆ Feature</button>`;
+  const row=(m,isEx)=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
+      <input type="checkbox" ${isEx?"checked":""} title="Exclude from this dealer's handout" onchange="toggleExclude('${q(m.slug)}',this.checked,this)">
       <span style="flex:1">${esc(m.name||m.slug)}${(!isEx&&m.slug===featSlug)?` <span style="font-size:10px;color:#b45309;font-weight:800">★ featured</span>`:""}</span>
-      <span class="hint">${isEx?"excluded":"eligible"}</span>
-    </label>`;
+      ${isEx?"":star(m)}
+      <span class="hint" style="min-width:56px;text-align:right">${isEx?"excluded":"eligible"}</span>
+    </div>`;
+  /* Lines they already carry can be pinned too — that is the re-stock conversation, and the
+     handout has always had a "reorder" shape for it. They get no exclude tickbox: excluding is
+     about which OPPORTUNITIES get suggested, and a line they already buy is not one. */
+  const crow=m=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
+      <span style="flex:1;padding-left:22px">${esc(m.name||m.slug)}${(m.slug===featSlug)?` <span style="font-size:10px;color:#b45309;font-weight:800">★ featured</span>`:""}</span>
+      ${star(m)}
+      <span class="hint" style="min-width:56px;text-align:right">carried</span>
+    </div>`;
   const list = (opps.length||excluded.length)
-    ? `<div style="font-size:12px;color:var(--gray);margin:2px 0 4px">Tick a manufacturer to exclude it from this dealer's handout — poor fits won't be featured or suggested. Affects the handout only; the account's lines and CRM are unchanged.</div>${opps.map(m=>row(m,false)).join("")}${excluded.map(m=>row(m,true)).join("")}`
+    ? `<div style="font-size:12px;color:var(--gray);margin:2px 0 4px">Press <b>☆ Feature</b> to lead this visit with a line — it overrides the automatic pick and clears itself once you print. Tick a manufacturer to exclude it instead: poor fits won't be featured or suggested. Both affect the handout only; the account's lines and CRM are unchanged.</div>${opps.map(m=>row(m,false)).join("")}${excluded.map(m=>row(m,true)).join("")}`
     : `<div class="hint">No opportunity lines to curate for this dealer yet.</div>`;
-  el.innerHTML=`${feat}${list}
+  const clist = carried.length
+    ? `<div style="font-size:12px;color:var(--gray);margin:10px 0 4px">Lines they already carry — feature one to lead with a re-stock.</div>${carried.map(crow).join("")}`
+    : "";
+  el.innerHTML=`${feat}${stale}${used}${list}${clist}
     <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
       <button class="btn sm" onclick="printDealerHandout(CUR)">🖨 Print handout</button>
       <span id="hox_msg" class="hint"></span>
     </div>`;
+}
+/* Pin a line for this visit, or clear it with an empty slug. */
+async function setFeature(slug){
+  const msg=$("#hox_msg"); if(msg)msg.textContent="Saving…";
+  try{
+    const r=await rapi({action:"set_handout_feature",dealer_id:CUR,manufacturer:slug||""});
+    if(!(r&&r.ok)) throw new Error((r&&r.error)||"failed");
+    if(slug) HPINUSED=null;          // a fresh pin supersedes the "pin used" note
+    await loadHandout();
+    if(msg) msg.textContent="";
+  }catch(e){
+    if(msg) msg.textContent = /not your account/.test(String(e.message))?"You can only feature a line on your own accounts.":"Couldn't save.";
+  }
 }
 async function toggleExclude(slug,on,elm){
   const msg=$("#hox_msg"); if(msg)msg.textContent="Saving…";
