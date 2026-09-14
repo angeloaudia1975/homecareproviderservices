@@ -194,31 +194,6 @@
       "sortPriority": 80
     },
     {
-      "id": "strongback-dealer-catalog-2026",
-      "title": "Strongback Dealer Catalog & Reference (2026)",
-      "type": "catalog",
-      "manufacturer": "strongback-mobility",
-      "format": "pdf",
-      "file": "/assets/docs/strongback-dealer-catalog-2026.pdf",
-      "url": "",
-      "description": "The full Strongback wheelchair lineup for dealer presentations — Comfort, Comfort Flip, Heavy Duty, Essential, Excursion transport chairs, SEATA rollator, and the new ErgoSteel 18\", with model specs and MSRP.",
-      "access": "public",
-      "dealers": [],
-      "featured": true,
-      "category": "manual-mobility",
-      "models": [
-        "Comfort",
-        "Comfort Flip",
-        "Heavy Duty",
-        "Essential",
-        "Excursion"
-      ],
-      "year": "2026",
-      "popular": true,
-      "keywords": "2026 catalog comfort comfort flip dealer essential excursion heavy duty manual mobility reference strongback strongback mobility",
-      "sortPriority": 100
-    },
-    {
       "id": "access4u-dealer-brochure-2023",
       "title": "Access4U Accessibility Solutions Brochure",
       "type": "product-guide",
