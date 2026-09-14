@@ -1047,6 +1047,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "strongback-mobility-brochure-mu1gizqq",
+      "title": "Strongback Mobility Brochure ",
+      "type": "catalog",
+      "manufacturer": "strongback-mobility",
+      "format": "pdf",
+      "file": "/assets/docs/strongback-mobility-brochure-9-26-mu1ghqmw.pdf",
+      "url": "",
+      "description": "The Strongback Mobility Consumer Brochure 2026",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "Admin-managed single source of record. Each item: manufacturer, category (product), type (standardized), models[], year, keywords, popular, featured, sortPriority. Types/categories/needs defined at top level. Do not hand-seed from documents.js.",
