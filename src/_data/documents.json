@@ -219,25 +219,6 @@
       "sortPriority": 100
     },
     {
-      "id": "strongback-brochure-2026",
-      "title": "Strongback Product Brochure (2026)",
-      "type": "product-guide",
-      "manufacturer": "strongback-mobility",
-      "format": "pdf",
-      "file": "/assets/docs/strongback-brochure-2026.pdf",
-      "url": "",
-      "description": "Strongback comfort story, ergonomic backrest benefits, product series overview, transport chairs, and features, options & warranty support.",
-      "access": "public",
-      "dealers": [],
-      "featured": true,
-      "category": "manual-mobility",
-      "models": [],
-      "year": "2026",
-      "popular": false,
-      "keywords": "2026 brochure manual mobility product product guide strongback strongback mobility",
-      "sortPriority": 50
-    },
-    {
       "id": "access4u-dealer-brochure-2023",
       "title": "Access4U Accessibility Solutions Brochure",
       "type": "product-guide",
