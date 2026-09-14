@@ -1034,6 +1034,19 @@
       "popular": false,
       "keywords": "authorization manual mobility request return service / warranty strongback strongback mobility",
       "sortPriority": 50
+    },
+    {
+      "id": "strongback-catalog-2026-mu1gh9dr",
+      "title": "Strongback Catalog 2026",
+      "type": "catalog",
+      "manufacturer": "strongback-mobility",
+      "format": "pdf",
+      "file": "/assets/docs/catalog-llc-2026-09-updated-mu1gg7wn.pdf",
+      "url": "",
+      "description": "Learn about the complete line of Strongback Products",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "Admin-managed single source of record. Each item: manufacturer, category (product), type (standardized), models[], year, keywords, popular, featured, sortPriority. Types/categories/needs defined at top level. Do not hand-seed from documents.js.",
