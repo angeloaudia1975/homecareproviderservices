@@ -182,7 +182,13 @@ async function buildState(){
   const [dealers,aliases,dm,mfrs,dir,reps,nomerge,logins] = await Promise.all([
     sbGetAll("dealers?select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,status,notes,active,parent_id"),
     sbGetAll("dealer_aliases?select=alias_norm,raw_name,dealer_id","alias_norm"),
-    sbGetAll("dealer_manufacturers?select=dealer_id,manufacturer,active","dealer_id,manufacturer"),
+    /* account_ref is selected here, not fetched per dealer.
+       The dealer's account number at each manufacturer was reachable only through
+       crm-api {action:"contacts"}, one call per dealer — fine for one open record,
+       useless for a search box that has to answer "who has an ABM account?" across
+       every dealer at once. It is one more column on a read this function already
+       does, so it costs nothing and removes the N+1 entirely. */
+    sbGetAll("dealer_manufacturers?select=dealer_id,manufacturer,active,account_ref","dealer_id,manufacturer"),
     sbGet("manufacturers?select=slug,name,active"),
     sbGet("dealer_directory?select=dealer_name,rep_name,hcps_account").catch(()=>[]),
     sbGet("reps?select=name").catch(()=>[]),
@@ -214,6 +220,20 @@ async function buildState(){
   const repByName=Object.fromEntries(dir.map(d=>[d.dealer_name,d.rep_name]));
   const aliByDealer=new Map(); for(const a of aliases){(aliByDealer.get(a.dealer_id)||aliByDealer.set(a.dealer_id,[]).get(a.dealer_id)).push(a.raw_name);}
   const accByDealer=new Map(); for(const x of dm){if(x.active!==false)(accByDealer.get(x.dealer_id)||accByDealer.set(x.dealer_id,[]).get(x.dealer_id)).push(x.manufacturer);}
+  /* ACCOUNT NUMBERS, INCLUDING THE ONES ON SWITCHED-OFF ROWS.
+     `access` above is the grid as ticked — active rows only — and that is the right
+     definition of "this dealer carries this line". An account number is a different
+     kind of fact: the dealer HAS an account at that manufacturer whether or not
+     ordering access is currently on. Dropping those rows would make a real account
+     number unfindable, so the row's own `active` travels with it and the caller can
+     say which it is rather than guess. Only non-blank refs are carried. */
+  const refByDealer=new Map();
+  for(const x of dm){
+    const ref=String(x.account_ref==null?"":x.account_ref).trim();
+    if(!ref) continue;
+    (refByDealer.get(x.dealer_id)||refByDealer.set(x.dealer_id,[]).get(x.dealer_id))
+      .push({slug:x.manufacturer, ref, active:x.active!==false});
+  }
   // aggregate sales per dealer_id
   const agg=new Map();
   let unlinked=0;
@@ -247,6 +267,10 @@ async function buildState(){
       access:(accByDealer.get(d.id)||[]).slice().sort(),
       buysLines:[...a.lines].sort(),
       accounts:[...a.accts].sort(),
+      /* The dealer's account number at each manufacturer, from the Ordering Access
+         grid. Distinct from `accounts` above, which is the customer number that
+         appears on the manufacturer's own commission report. */
+      mfrAccounts:(refByDealer.get(d.id)||[]).slice().sort((p,q)=>p.slug.localeCompare(q.slug)),
       contacts:(contactsByDealer.get(d.id)||[]).map(c=>({email:c.email||"",name:c.name||"",title:c.title||"",role:c.role||"",phone:c.phone||"",cell:c.cell||""})),
       addresses:(addrByDealer.get(d.id)||[]).map(x=>({address:x.address||"",city:x.city||"",state:x.state||"",zip:x.zip||"",label:x.label||"",pri:x.pri||1}))
         .sort((p,q)=>(q.pri||1)-(p.pri||1)),
