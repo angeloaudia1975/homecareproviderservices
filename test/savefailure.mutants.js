@@ -13,6 +13,7 @@ const suite = require('./savefailure.test');
 
 const apiSrc  = fs.readFileSync(suite.API, 'utf8');
 const pageSrc = fs.readFileSync(suite.PAGE, 'utf8');
+const catSrc  = fs.readFileSync(suite.CAT, 'utf8');
 
 const MUTANTS = [
   { name: 'CONTROL — a comment, changing nothing', where: 'api',
@@ -89,24 +90,55 @@ const MUTANTS = [
   { name: 'treat a whitespace-only detail as a real one, hiding the reason underneath', where: 'page',
     from: '  const detail = (r && typeof r.detail === "string") ? r.detail.trim() : "";',
     to:   '  const detail = (r && typeof r.detail === "string") ? r.detail : "";' },
+
+  // --- the catalog side: a missing column
+  { name: 'stop recognising a missing COLUMN, the third refusal', where: 'cat',
+    from: "const SCHEMA_MISSING = /PGRST20[45]|Could not find the (table|'[^']*' column)/i;",
+    to:   "const SCHEMA_MISSING = /PGRST205|Could not find the table/i;" },
+
+  { name: 'call every failure a missing migration, sending the hunt to the database', where: 'cat',
+    from: '  if(!SCHEMA_MISSING.test(m)) return null;',
+    to:   '  if(false) return null;' },
+
+  { name: 'drop the file name from the detail', where: 'cat',
+    from: '    ? "This needs a one-time database setup that hasn\'t been run yet (" + setupFile + ")."',
+    to:   '    ? "This needs a one-time database setup that hasn\'t been run yet."' },
+
+  { name: 'throw away what Supabase actually said when no file is named', where: 'cat',
+    from: '    : "The database is missing something this needs. Supabase said: " + m.slice(0, 200);',
+    to:   '    : "The database is missing something this needs.";' },
+
+  { name: 'drop the raw supabase text kept for diagnosis', where: 'cat',
+    from: '  return { code:503, body:{ error:"schema_missing", setup:setupFile || null, detail:detail,\n                            supabase:m.slice(0, 300) } };',
+    to:   '  return { code:503, body:{ error:"schema_missing", setup:setupFile || null, detail:detail } };' },
+
+  { name: 'claim a file even when none was given', where: 'cat',
+    from: '  return { code:503, body:{ error:"schema_missing", setup:setupFile || null, detail:detail,\n                            supabase:m.slice(0, 300) } };',
+    to:   '  return { code:503, body:{ error:"schema_missing", setup:setupFile || "supabase/record_authority.sql", detail:detail,\n                            supabase:m.slice(0, 300) } };' },
+
+  { name: 'answer a missing migration with a 500 like everything else', where: 'cat',
+    from: '  return { code:503, body:{ error:"schema_missing", setup:setupFile || null, detail:detail,\n                            supabase:m.slice(0, 300) } };',
+    to:   '  return { code:500, body:{ error:"schema_missing", setup:setupFile || null, detail:detail,\n                            supabase:m.slice(0, 300) } };' },
 ];
 
 let bad = 0;
 console.log('mutant                                                              src  anchors  result');
 console.log('-'.repeat(96));
 
+const SOURCES = { api: apiSrc, page: pageSrc, cat: catSrc };
+
 for(const m of MUTANTS){
-  const src = m.where === 'page' ? pageSrc : apiSrc;
+  const src = SOURCES[m.where];
   const hits = src.split(m.from).length - 1;
   if(hits !== 1){
     console.log(m.name.padEnd(64) + m.where.padStart(5) + String(hits).padStart(9) + '   ANCHOR NOT UNIQUE — mutant is meaningless');
     bad++; continue;
   }
   const mutated = src.replace(m.from, m.to);
+  const args = { api: [mutated, pageSrc, catSrc], page: [apiSrc, mutated, catSrc], cat: [apiSrc, pageSrc, mutated] }[m.where];
   let r;
-  try {
-    r = m.where === 'page' ? suite.run(apiSrc, mutated) : suite.run(mutated, pageSrc);
-  } catch(e){ r = { pass: 0, fail: -1, report: 'threw: ' + e.message }; }
+  try { r = suite.run.apply(null, args); }
+  catch(e){ r = { pass: 0, fail: -1, report: 'threw: ' + e.message }; }
 
   const survived = r.fail === 0;
   const wantSurvive = m.expect === 'survive';

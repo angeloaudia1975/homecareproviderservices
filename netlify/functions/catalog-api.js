@@ -1643,6 +1643,27 @@ async function resyncRecord(mfr, who){
            held_back:applied.blocked.length };
 }
 
+/* THE MIGRATION THAT HAS NOT BEEN RUN, SAYING SO ITSELF.
+   PostgREST reports a missing table as PGRST205 and a missing COLUMN as PGRST204, both as
+   ordinary error strings with a 400 or 404 behind them. Left to a catch-all they arrive in the
+   browser as an anonymous 500, and each one costs a round trip to identify. Handing prices to
+   the master record for one line was refused three times by three unrelated messages — PGRST102,
+   42P10, PGRST204. The first two were faults in this file; the third was a migration nobody had
+   run. A 500 says none of that, which is why all three cost the same round trip to tell apart.
+
+   Returns null for anything else, so a caller keeps its own handling and a real fault is never
+   dressed up as a missing migration. Pure, so the mapping is testable without a database. */
+const SCHEMA_MISSING = /PGRST20[45]|Could not find the (table|'[^']*' column)/i;
+function schemaFailure(err, setupFile){
+  const m = String((err && err.message) || err || "");
+  if(!SCHEMA_MISSING.test(m)) return null;
+  const detail = setupFile
+    ? "This needs a one-time database setup that hasn't been run yet (" + setupFile + ")."
+    : "The database is missing something this needs. Supabase said: " + m.slice(0, 200);
+  return { code:503, body:{ error:"schema_missing", setup:setupFile || null, detail:detail,
+                            supabase:m.slice(0, 300) } };
+}
+
 /* Mirror every line touched by this request, once, after the work is done.
    A failure is RECORDED rather than swallowed: the feed refuses authority while
    record_resync_error is set, so a broken mirror drops that line back to the
@@ -3210,9 +3231,12 @@ exports.handler = async (event)=>{
         const slug=String(b.manufacturer||"").trim();
         if(!slug) return json(400,{error:"manufacturer required"});
         const on=b.authoritative===true;
+        const META="supabase/record_authority.sql";
         if(!on){
-          await sb("POST","manufacturer_meta?on_conflict=slug",
-            {slug, record_authoritative:false},{Prefer:"resolution=merge-duplicates,return=minimal"});
+          try{
+            await sb("POST","manufacturer_meta?on_conflict=slug",
+              {slug, record_authoritative:false},{Prefer:"resolution=merge-duplicates,return=minimal"});
+          }catch(e){ const f=schemaFailure(e,META); if(f) return json(f.code,f.body); throw e; }
           return json(200,{ok:true,manufacturer:slug,authoritative:false,
             message:"Prices for this line come from the legacy layers again."});
         }
@@ -3223,12 +3247,31 @@ exports.handler = async (event)=>{
             message:`${slug} has no rows in product_skus. Run reconcile with apply:true first — switching authority on now would empty the line.`});
         let stats, err=null;
         try{ stats=await resyncRecord(slug, String(b.reviewer||"authority-switch").slice(0,80)); }
-        catch(e){ err=String((e&&e.message)||e).slice(0,500); }
+        catch(e){
+          /* No file is named here on purpose: the mirror reads product_skus and the decision
+             table, which three different migrations create between them, and pointing at the
+             wrong one is worse than pointing at none. Supabase's own message names the missing
+             table or column, so it is passed through instead of being guessed at. */
+          const f=schemaFailure(e); if(f) return json(f.code,f.body);
+          err=String((e&&e.message)||e).slice(0,500);
+        }
         if(err) return json(502,{error:"resync_failed", message:
           `Nothing was switched on. The record could not be brought up to date with the layers: ${err}`});
-        await sb("POST","manufacturer_meta?on_conflict=slug",
-          {slug, record_authoritative:true, record_resync_at:new Date().toISOString(), record_resync_error:null},
-          {Prefer:"resolution=merge-duplicates,return=minimal"});
+        /* THE FLAG IS WRITTEN LAST, AND ITS OWN FAILURE IS NOT THE MIRROR'S FAILURE.
+           The mirror has already run at this point, so a failure here leaves the record correct
+           and the line still reading from the layers — the safe half of the pair. Saying which
+           of the two failed, and which migration is missing, is the whole difference between a
+           minute and an afternoon: this switch was refused three times by three unrelated
+           messages, two of them bugs here and one a migration that had never been run. */
+        try{
+          await sb("POST","manufacturer_meta?on_conflict=slug",
+            {slug, record_authoritative:true, record_resync_at:new Date().toISOString(), record_resync_error:null},
+            {Prefer:"resolution=merge-duplicates,return=minimal"});
+        }catch(e){
+          const f=schemaFailure(e,META);
+          if(f){ f.body.mirrored=stats; f.body.detail+=" The record itself was brought up to date; only the authority flag could not be stored, so the line still prices from the layers."; return json(f.code,f.body); }
+          throw e;
+        }
         return json(200,{ok:true,manufacturer:slug,authoritative:true,resynced:stats});
       }
 

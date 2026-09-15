@@ -14,6 +14,7 @@ const path = require('path');
 
 const API  = process.env.ROUTES_API  || path.join(__dirname, '..', 'netlify', 'functions', 'routes-api.js');
 const PAGE = process.env.DEALER_HTML || path.join(__dirname, '..', 'src', 'admin', 'dealer.html');
+const CAT  = process.env.CATALOG_API || path.join(__dirname, '..', 'netlify', 'functions', 'catalog-api.js');
 
 /* Lift one function out of a source file by name, balancing braces. Nothing is re-typed or
    re-implemented here: a test that runs a copy of the code proves nothing about the code. */
@@ -32,14 +33,18 @@ function lift(src, name){
   return src.slice(at, end);
 }
 
-function load(apiSrc, pageSrc){
+function load(apiSrc, pageSrc, catSrc){
   const api  = apiSrc  !== undefined ? apiSrc  : fs.readFileSync(API, 'utf8');
   const page = pageSrc !== undefined ? pageSrc : fs.readFileSync(PAGE, 'utf8');
-  /* MISSING_TABLE is a const beside writeFailure in routes-api; take the real line, not a copy. */
+  const cat  = catSrc  !== undefined ? catSrc  : fs.readFileSync(CAT, 'utf8');
+  /* The regexes are consts beside their functions; take the real lines, not copies. */
   const reLine = /const MISSING_TABLE\s*=\s*\/[^\n]*;/.exec(api);
   if(!reLine) throw new Error('MISSING_TABLE not found in routes-api.js');
-  const js = reLine[0] + '\n' + lift(api, 'writeFailure') + '\n' + lift(page, 'saveErr')
-           + '\nmodule.exports = { writeFailure, saveErr };';
+  const reCat = /const SCHEMA_MISSING\s*=\s*\/[^\n]*;/.exec(cat);
+  if(!reCat) throw new Error('SCHEMA_MISSING not found in catalog-api.js');
+  const js = reLine[0] + '\n' + lift(api, 'writeFailure') + '\n' + lift(page, 'saveErr') + '\n'
+           + reCat[0] + '\n' + lift(cat, 'schemaFailure')
+           + '\nmodule.exports = { writeFailure, saveErr, schemaFailure };';
   const mod = { exports: {} };
   new Function('module', 'exports', js)(mod, mod.exports);
   return mod.exports;
@@ -55,6 +60,7 @@ function eq(a, b, what){
   if(JSON.stringify(a) !== JSON.stringify(b))
     throw new Error((what || 'value') + ': got ' + JSON.stringify(a) + ', expected ' + JSON.stringify(b));
 }
+function ok(v, msg){ if(!v) throw new Error(msg || 'expected truthy, got ' + JSON.stringify(v)); }
 function has(hay, needle, what){
   if(String(hay).toLowerCase().indexOf(String(needle).toLowerCase()) < 0)
     throw new Error((what || 'text') + ': ' + JSON.stringify(String(hay)) + ' does not mention ' + JSON.stringify(needle));
@@ -69,8 +75,16 @@ const REAL_PGRST205 = 'Supabase 404: {"code":"PGRST205","details":null,"hint":"P
   + '\'public.dealer_handout_exclusions\'","message":"Could not find the table \'public.dealer_handout_feature\''
   + ' in the schema cache"}';
 
-function run(apiSrc, pageSrc){
-  const M = load(apiSrc, pageSrc);
+/* The three answers the record-authority switch was refused by, in the order they happened.
+   PGRST102 and 42P10 were faults in catalog-api itself; PGRST204 was a migration nobody had run.
+   Telling those two classes apart is the entire job of the mapping tested below. */
+const REAL_PGRST102 = 'Supabase 400: {"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}';
+const REAL_42P10    = 'Supabase 400: {"code":"42P10","details":null,"hint":null,"message":"there is no unique or exclusion constraint matching the ON CONFLICT specification"}';
+const REAL_PGRST204 = 'Supabase 400: {"code":"PGRST204","details":null,"hint":null,"message":"Could not find the '
+  + "'record_authoritative' column of 'manufacturer_meta' in the schema cache\"}";
+
+function run(apiSrc, pageSrc, catSrc){
+  const M = load(apiSrc, pageSrc, catSrc);
   pass = 0; fail = 0; out.length = 0;
 
   /* ---- the server half: an error that names its own cure --------------------- */
@@ -190,10 +204,50 @@ function run(apiSrc, pageSrc){
     has(M.saveErr({ error: 'not your account', detail: '   ' }, 'feature a line'), 'your own accounts', 'falls through');
   });
 
+  /* ---- the catalog side: a missing COLUMN, which is the same lesson again ----- */
+  t('THE THIRD REFUSAL — a missing column names the migration to run', () => {
+    const f = M.schemaFailure(new Error(REAL_PGRST204), 'supabase/record_authority.sql');
+    eq(f.code, 503, 'status');
+    eq(f.body.error, 'schema_missing', 'error code');
+    has(f.body.detail, 'supabase/record_authority.sql', 'names the file');
+    has(f.body.supabase, 'record_authoritative', 'keeps what Supabase actually said');
+  });
+
+  t('a missing table is caught by the same mapping', () => {
+    ok(M.schemaFailure(new Error("Could not find the table 'public.x' in the schema cache"), 'f.sql'),
+      'PGRST205-shaped message');
+    ok(M.schemaFailure(new Error('PGRST205'), 'f.sql'), 'code alone');
+    ok(M.schemaFailure(new Error('PGRST204'), 'f.sql'), 'column code alone');
+  });
+
+  t('WITH NO FILE TO NAME, SUPABASE\'S OWN WORDS ARE PASSED THROUGH', () => {
+    /* The mirror reads tables three migrations create between them. Guessing which one is
+       missing would be worse than saying nothing — but the message already names it. */
+    const f = M.schemaFailure(new Error(REAL_PGRST204));
+    eq(f.body.setup, null, 'no file claimed');
+    has(f.body.detail, 'record_authoritative', 'the missing thing is still named');
+  });
+
+  t('THE TWO REAL BUGS ARE NOT CALLED MISSING MIGRATIONS', () => {
+    /* PGRST102 and 42P10 were both faults in catalog-api. If either had been reported as "run
+       the setup SQL", the fix would have been looked for in the database and never found. */
+    eq(M.schemaFailure(new Error(REAL_PGRST102), 'f.sql'), null, 'PGRST102 passes through');
+    eq(M.schemaFailure(new Error(REAL_42P10), 'f.sql'), null, '42P10 passes through');
+    eq(M.schemaFailure(new Error('duplicate key value violates unique constraint'), 'f.sql'), null, 'constraint');
+    eq(M.schemaFailure(new Error('fetch failed'), 'f.sql'), null, 'network');
+    eq(M.schemaFailure(undefined, 'f.sql'), null, 'nothing at all');
+  });
+
+  t('the page turns a schema failure into the same sentence as everything else', () => {
+    // End to end: catalog-api's answer, rendered by the page the rep is looking at.
+    const f = M.schemaFailure(new Error(REAL_PGRST204), 'supabase/record_authority.sql');
+    has(M.saveErr(f.body, 'switch authority'), 'record_authority.sql', 'reaches the screen');
+  });
+
   return { pass, fail, report: out.join('\n') };
 }
 
-module.exports = { run, load, lift, API, PAGE, REAL_PGRST205 };
+module.exports = { run, load, lift, API, PAGE, CAT, REAL_PGRST205, REAL_PGRST204, REAL_42P10 };
 
 if(require.main === module){
   const r = run();
