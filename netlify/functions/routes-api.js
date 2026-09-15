@@ -148,6 +148,28 @@ function followupHtml(text,repName){
 }
 async function fetchJson(url){ const r=await fetch(url); if(!r.ok) throw new Error("fetch "+r.status); return r.json(); }
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
+/* EVERY ROW, NOT THE FIRST THOUSAND.
+   PostgREST answers at most 1000 rows and says nothing about having stopped — no
+   error, no flag, just a short array that sums to a plausible-looking number. That
+   is how a visit package for an eight-stop route came to print 12-22% of each
+   dealer's real lifetime sales while looking entirely normal, and why the same
+   dealer's total changed depending on how many stops were on the route.
+   The caller MUST supply a stable `order=`; without one the database is free to
+   return a different thousand per page, which duplicates some rows and drops
+   others — quieter and worse than the truncation it replaces. */
+async function sbGetAll(path, cap){
+  const max=cap||100000;
+  const sep=path.indexOf("?")>=0?"&":"?";
+  let out=[], from=0;
+  for(;;){
+    const rows=await sbGet(`${path}${sep}limit=1000&offset=${from}`);
+    out=out.concat(rows||[]);
+    if(!rows||rows.length<1000) break;
+    from+=1000;
+    if(from>=max) break;
+  }
+  return out;
+}
 async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); const t=await r.text(); return t?JSON.parse(t):null; }
 
 // ---- Microsoft Graph (Outlook calendar write) — app-only, same creds as email-sync ----
@@ -419,7 +441,10 @@ exports.handler = async (event)=>{
       const ids=[...new Set((Array.isArray(b.dealer_ids)?b.dealer_ids:[]).filter(Boolean))];
       if(!ids.length) return json(200,{ok:true,cases:{}});
       // Load ALL dealers so a branch rolls up to its whole company (master HQ + all branches).
-      const allDealers=await sbGet("dealers?select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id,golden_status,ovation_access,golden_url").catch(()=>[]);
+      /* Paged for the same reason, before it becomes the same bug: a stop whose
+         dealer row fell past the cap is skipped entirely by `if(!d) continue;`
+         below — it would simply vanish from the printed route. 444 dealers today. */
+      const allDealers=await sbGetAll("dealers?select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id,golden_status,ovation_access,golden_url&order=id").catch(()=>[]);
       const byId=Object.fromEntries(allDealers.map(d=>[d.id,d]));
       const companyOf=id=>{ const d=byId[id]; return (d&&d.parent_id)?d.parent_id:id; };   // master id (self if HQ/standalone)
       const membersOfCompany={}; for(const d of allDealers){ const cid=d.parent_id||d.id; (membersOfCompany[cid]||(membersOfCompany[cid]=[])).push(d.id); }
@@ -427,10 +452,20 @@ exports.handler = async (event)=>{
       const memberIds=[...new Set(reqCompanies.flatMap(cid=>membersOfCompany[cid]||[cid]))];
       const memIn=`in.(${memberIds.join(",")})`, reqIn=`in.(${ids.join(",")})`;
       const [sales,contacts,mfrs,dm] = await Promise.all([
-        sbGet(`monthly_sales?dealer_id=${memIn}&select=dealer_id,manufacturer,period,amount,qty,product_code,product_name`).catch(()=>[]),
-        sbGet(`dealer_contacts?dealer_id=${reqIn}&select=dealer_id,name,email,phone,cell,title,role`).catch(()=>[]),
+        /* PAGED. This read feeds the lifetime total, the buying history and the
+           products-ordered table on every visit package, and it asks for the whole
+           company family of every stop at once — so an eight-stop route wanted far
+           more than the 1000 rows PostgREST hands back by default. Against 11,985
+           sales rows each stop printed between 12% and 22% of its real lifetime,
+           and the figure moved depending on how many stops shared the request. */
+        sbGetAll(`monthly_sales?dealer_id=${memIn}&select=dealer_id,manufacturer,period,amount,qty,product_code,product_name&order=id`).catch(()=>[]),
+        sbGetAll(`dealer_contacts?dealer_id=${reqIn}&select=dealer_id,name,email,phone,cell,title,role&order=dealer_id`).catch(()=>[]),
         sbGet("manufacturers?select=slug,name").catch(()=>[]),
-        sbGet(`dealer_manufacturers?dealer_id=${memIn}&select=dealer_id,manufacturer,account_ref,active`).catch(()=>[]),
+        /* Paged too. These rows decide the account numbers printed on the card AND,
+           since the eligibility fix, which lines count as already carried — so a
+           truncation here would both hide an account and offer a line back to the
+           dealer who already holds it. */
+        sbGetAll(`dealer_manufacturers?dealer_id=${memIn}&select=dealer_id,manufacturer,account_ref,active&order=dealer_id`).catch(()=>[]),
       ]);
       // ---- Handout intelligence signals ----
       // (a) rep-set poor-fit exclusions (per LOCATION), (b) decayed engagement/intent per manufacturer
