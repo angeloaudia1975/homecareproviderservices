@@ -823,6 +823,13 @@ exports.handler = async (event)=>{
         return { order:i, dealer_id:s.dealer_id||"", name:s.name||d.business_name||"",
           address:s.address||d.address||"", city:s.city||d.city||"", state:s.state||d.state||"", zip:s.zip||d.zip||"",
           lat:s.lat, lng:s.lng, visit_min:(s.visit_min!=null?s.visit_min:null),
+          /* THE NIGHTS. The planner writes these into the saved route — a stop can
+             end the day, and the next one starts at next_start_min the following
+             morning — and this map used to drop both. The field app therefore ran
+             one unbroken clock and printed a three-day loop as a single day, with
+             stops at 12:25 AM, 3:22 AM and 5:50 AM, and mailed dealers those times. */
+          overnight:!!s.overnight,
+          next_start_min:(s.next_start_min!=null?s.next_start_min:null),
           contact_name:(c.name||d.contact_name||""), contact_email:(c.email||d.email||""), contact_phone:(c.phone||c.cell||d.phone||""),
           visit: v?{status:v.status,checkin_at:v.checkin_at,completed_at:v.completed_at}:null }; });
       const hb=resolveHomeBase(route,me);
@@ -980,7 +987,12 @@ exports.handler = async (event)=>{
       const when = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? prettyDate(dateStr) : "";
       const eta = String(b.eta||"").trim();
       const opp = String(b.opportunity||"").trim();
-      const first = String(d.contact_name||"").split(/\s+/)[0]||"";
+      /* GREET THE PERSON THE ROUTE SAYS WE ARE VISITING.
+         This read the dealer record's contact_name while the stop card, the TO
+         field and the rep's expectation all come from dealer_contacts — so a note
+         addressed to Steve Lyons opened "Hi Jeremiah". The caller passes the
+         contact it is actually showing; the dealer record is the fallback. */
+      const first = String(b.contact_name||d.contact_name||"").trim().split(/\s+/)[0]||"";
       const greet = first?`Hi ${first},`:"Hi there,";
       const arrive = eta
         ? `I expect to be in your area${when?` on ${when}`:""} around ${eta}`

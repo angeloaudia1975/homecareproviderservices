@@ -78,6 +78,7 @@
 
 <script src="/admin/staff-session.js"></script>
 <script src="/admin/dealer-handout.js"></script>
+<script src="/admin/route-clock.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -335,7 +336,7 @@ function stopCard(s,i){
         ${addr?`<div class="sub addr">${esc(addr)}</div>`:(loc?`<div class="sub">${esc(loc)}</div>`:"")}
         <div class="sub">${s.contact_name?esc(s.contact_name):""}${s.contact_phone?`${s.contact_name?" · ":""}${esc(s.contact_phone)}`:""}${
           s.visit_min?` · ${esc(String(s.visit_min))} min visit`:""}</div></div>
-      <div class="eta"><div class="t" id="eta_${i}">—</div><div class="l">ETA</div></div>
+      <div class="eta"><div class="t" id="eta_${i}">—</div><div class="l" id="etal_${i}">ETA</div></div>
     </div>
     <div class="acts">
       <a class="btn" href="${navUrl}" target="_blank" rel="noopener">🧭 Navigate</a>
@@ -469,8 +470,17 @@ async function headsUp(i){
   if(!navigator.onLine){ toast("Heads-up needs a connection"); return; }
   const s=DAY.stops[i];
   const etaEl=$("#eta_"+i); const eta=(etaEl&&etaEl.textContent||"").trim(); const etaTxt=(eta&&eta!=="—")?eta:"";
+  /* THE DATE OF THIS STOP, not the date the route starts. On a multi-day route
+     they are different for every stop after the first overnight, and sending a
+     dealer day one's date with day three's arrival time is worse than sending
+     nothing. Falls back to the route date only before the ETAs have computed. */
+  const when = s._dateISO || (DAY.route&&DAY.route.scheduled_date) || "";
   toast("Preparing heads-up…");
-  let j; try{ j=await rapi({action:"previsit_draft",dealer_id:s.dealer_id,date:(DAY.route&&DAY.route.scheduled_date)||"",eta:etaTxt}); }catch(e){ j=null; }
+  let j; try{ j=await rapi({action:"previsit_draft",dealer_id:s.dealer_id,date:when,eta:etaTxt,
+    /* the contact the card shows and the TO field uses — the draft used to greet
+       whoever was on the dealer record instead, which is how a note to Steve Lyons
+       opened "Hi Jeremiah". */
+    contact_name:s.contact_name||""}); }catch(e){ j=null; }
   if(!j||!j.ok){ toast((j&&j.message)||"Couldn't prepare the heads-up"); return; }
   openDraft(s, j.subject||"", j.body||"", j.signature||"", "Pre-visit heads-up — review before sending");
 }
@@ -510,7 +520,16 @@ async function openHandout(dealer_id){
   try{ w.document.open(); w.document.write(DealerHandout.html(c,{HANDOUT,ME})); w.document.close(); }catch(e){}
 }
 
-// ---- ETAs (also stores arrival ms per stop for the calendar export) ----
+/* ---- ETAs (also stores arrival ms per stop for the calendar export) ----
+   This ran its own clock: one unbroken accumulation, in the phone's timezone,
+   with no idea that a stop could end the day. A saved three-day Kentucky loop
+   therefore showed stop 10 at 12:25 AM and stop 14 at 7:07 AM, all on day one's
+   date — and since the heads-up email, the .ics export and the Outlook sync all
+   read these same numbers, every one of them was wrong in the same way.
+   The arithmetic now comes from RouteClock, which the planner's own itinerary is
+   built on: it ends the day at an overnight and resumes next morning, and it
+   works in each stop's zone — this loop crosses the Central/Eastern line at
+   Glasgow, which a browser-local clock cannot see. */
 async function computeEtas(){
   const r=DAY.route, stops=DAY.stops||[];
   const useHome = r.round_trip && r.home_base && isFinite(r.home_base.lat) && isFinite(r.home_base.lng);
@@ -520,17 +539,30 @@ async function computeEtas(){
   if(coords.length<2) return;
   let legs=[]; try{ const d=await rapi({action:"directions",coords}); legs=(d&&d.legs)||[]; }catch(e){}
   if(legs.length<coords.length-1) return;
+  if(typeof RouteClock==="undefined") return;   // no clock, no invented times
+
   const depart=(r.home_base&&r.home_base.depart_time)||"08:00";
-  let base=Date.parse((r.scheduled_date||todayStr())+"T"+(/^\d{1,2}:\d{2}$/.test(depart)?depart:"08:00")+":00");
-  if(!isFinite(base)) return;
-  let clock=base;
+  const items=RouteClock.routeItinerary({
+    stops, legs, leadingLeg:useHome,
+    startDate:(r.scheduled_date||todayStr()),
+    startMinutes:RouteClock.parseTimeMin(depart, 8*60),
+    defaultVisit:30
+  });
+  if(!items.length) return;
+
+  DAY._days=RouteClock.dayCount(items);
   for(let k=0;k<stops.length;k++){
-    const coordIdx=k+(useHome?1:0);
-    if(coordIdx>0) clock += (legs[coordIdx-1].duration_s||0)*1000;
-    stops[k]._arrive=clock;
-    const el=$("#eta_"+k); if(el) el.textContent=new Date(clock).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"});
-    const vmin=(stops[k].visit_min!=null?stops[k].visit_min:30);
-    clock += vmin*60000;
+    const it=items[k];
+    stops[k]._arrive=it.arriveAbs;
+    stops[k]._tz=it.tz;
+    stops[k]._dateISO=it.dateISO;     // the date THIS stop falls on, for the heads-up
+    stops[k]._dayIndex=it.dayIndex;
+    const el=$("#eta_"+k);
+    if(el) el.textContent=RouteClock.fmtAbs(it.arriveAbs, it.tz);
+    /* On a multi-day route "ETA" alone is a lie of omission — the rep needs to know
+       which day, and so does anyone reading over their shoulder. */
+    const lab=$("#etal_"+k);
+    if(lab) lab.textContent = DAY._days>1 ? ("ETA · Day "+(it.dayIndex+1)) : "ETA";
   }
 }
 

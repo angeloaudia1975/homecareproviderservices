@@ -21,12 +21,16 @@
  *     is the only thing this worker was ever meant to solve.
  *   · CACHE is bumped, so every browser drops the stale copies the moment this activates.
  */
-const CACHE = "hcps-sr-v2";
+const CACHE = "hcps-sr-v3";   // bumped: route-clock.js added to the shell
 const FIELD_PAGE = "/admin/scheduled-routes.html";
 const SHELL = [
   FIELD_PAGE,
   "/admin/staff-session.js",
   "/admin/dealer-handout.js",
+  /* The shared route clock. It has to be in the shell: computeEtas refuses to
+     invent times without it, so a rep opening the route offline would see no ETAs
+     at all rather than wrong ones. */
+  "/admin/route-clock.js",
   "/admin/scheduled-routes.webmanifest",
   "/assets/hcps-logo.png"
 ];
