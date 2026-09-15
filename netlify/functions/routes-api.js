@@ -86,6 +86,24 @@ function featuredPick(pinSlug, opps, carried, auto, norm){
   if(inCarried) return { kind:"reorder", slug:inCarried.slug, name:inCarried.name, pinned:true };
   return auto || null;   // a pin we cannot honour is dropped, not forced
 }
+
+/* THE ERROR THAT NAMES ITS OWN CURE.
+   Supabase answers a write to a table that does not exist with a 404 carrying PGRST205 — not a
+   crash, not a permission problem, and nothing a rep did wrong. Left to the handler's catch-all
+   it reaches the browser as an anonymous 500, and the page printed "Couldn't save.": three words
+   that hid the only fact that mattered, which was that a one-time migration had never been run.
+   The Feature button on the dealer handout sat broken behind exactly that.
+
+   So the one case gets its own answer, carrying a sentence a person can act on, and everything
+   else passes through untouched — a real bug must not be dressed up as a missing migration.
+   Pure and module-level, so the mapping is testable without a database. */
+const MISSING_TABLE = /PGRST205|Could not find the table/i;
+function writeFailure(err, table, setupFile){
+  const m = String((err && err.message) || err || "");
+  if(MISSING_TABLE.test(m)) return { code:503, body:{ error:"storage_missing", table:table,
+    detail:"This needs a one-time database setup that hasn't been run yet (" + setupFile + ")." } };
+  return { code:500, body:{ error: m || "write failed" } };
+}
 function prettyDate(s){ try{ const p=String(s).split("-").map(Number); const d=new Date(p[0],p[1]-1,p[2]); return d.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"}); }catch(e){ return String(s||""); } }
 async function sendMail({to,subject,html,text,replyTo}){
   const key=process.env.RESEND_API_KEY; if(!key) return {ok:false,skipped:true};
@@ -770,8 +788,13 @@ exports.handler = async (event)=>{
       const mgr=MGMT_ROLES.has(String(me.role||"").toLowerCase());
       const ownsIt=!!me.rep_name && String(dealer.rep_name||"").trim().toLowerCase()===String(me.rep_name).trim().toLowerCase();
       if(!mgr && !ownsIt) return json(403,{error:"not your account"});
-      if(on){ await sbSend("POST","dealer_handout_exclusions?on_conflict=dealer_id,manufacturer",{dealer_id:did,manufacturer:slug,created_by:me.email||me.name||null,created_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
-      else { await sbSend("DELETE",`dealer_handout_exclusions?dealer_id=eq.${encodeURIComponent(did)}&manufacturer=eq.${encodeURIComponent(slug)}`,null,{Prefer:"return=minimal"}); }
+      try{
+        if(on){ await sbSend("POST","dealer_handout_exclusions?on_conflict=dealer_id,manufacturer",{dealer_id:did,manufacturer:slug,created_by:me.email||me.name||null,created_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
+        else { await sbSend("DELETE",`dealer_handout_exclusions?dealer_id=eq.${encodeURIComponent(did)}&manufacturer=eq.${encodeURIComponent(slug)}`,null,{Prefer:"return=minimal"}); }
+      }catch(e){
+        const f=writeFailure(e,"dealer_handout_exclusions","supabase/dealer_handout_exclusions.sql");
+        return json(f.code,f.body);
+      }
       return json(200,{ok:true,excluded:on});
     }
 
@@ -787,8 +810,13 @@ exports.handler = async (event)=>{
       const mgr=MGMT_ROLES.has(String(me.role||"").toLowerCase());
       const ownsIt=!!me.rep_name && String(dealer.rep_name||"").trim().toLowerCase()===String(me.rep_name).trim().toLowerCase();
       if(!mgr && !ownsIt) return json(403,{error:"not your account"});
-      if(slug){ await sbSend("POST","dealer_handout_feature?on_conflict=dealer_id",{dealer_id:did,manufacturer:slug,created_by:me.email||me.name||null,created_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
-      else { await sbSend("DELETE",`dealer_handout_feature?dealer_id=eq.${encodeURIComponent(did)}`,null,{Prefer:"return=minimal"}); }
+      try{
+        if(slug){ await sbSend("POST","dealer_handout_feature?on_conflict=dealer_id",{dealer_id:did,manufacturer:slug,created_by:me.email||me.name||null,created_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
+        else { await sbSend("DELETE",`dealer_handout_feature?dealer_id=eq.${encodeURIComponent(did)}`,null,{Prefer:"return=minimal"}); }
+      }catch(e){
+        const f=writeFailure(e,"dealer_handout_feature","supabase/handout_feature.sql");
+        return json(f.code,f.body);
+      }
       return json(200,{ok:true,featured:slug||null});
     }
 

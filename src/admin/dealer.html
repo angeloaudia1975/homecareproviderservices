@@ -1607,30 +1607,49 @@ function renderHandout(){
       <span id="hox_msg" class="hint"></span>
     </div>`;
 }
+/* WHAT WENT WRONG, IN WORDS, EVERY TIME.
+   Both buttons below used to print "Couldn't save." for any failure at all, so a missing
+   database table, an expired sign-in and a permission refusal looked identical on screen — and
+   the one that actually happened was the one those three words hid: the pin table had never
+   been created, and the API had been saying so in every single response.
+
+   The rule now: a detail the API wrote for a person is shown as-is, a reason we recognise is
+   translated, and a reason we do not recognise is shown verbatim rather than thrown away. A
+   message nobody can act on is the same as no message.
+
+   Pure — takes a failed response (or a thrown error) and returns the sentence. */
+function saveErr(r, verb){
+  const detail = (r && typeof r.detail === "string") ? r.detail.trim() : "";
+  if(detail) return detail;
+  const m = String((r && r.error) || r || "").trim();
+  if(/not your account/i.test(m)) return "You can only " + verb + " on your own accounts.";
+  if(/storage_missing|PGRST205|Could not find the table/i.test(m))
+    return "This needs a one-time database setup that hasn't been run yet.";
+  if(/unauthor|expired|\b401\b/i.test(m)) return "Your sign-in expired — reload the page and sign in again.";
+  return "Couldn't save — " + (m ? m.slice(0, 160) : "the server gave no reason") + ".";
+}
 /* Pin a line for this visit, or clear it with an empty slug. */
 async function setFeature(slug){
   const msg=$("#hox_msg"); if(msg)msg.textContent="Saving…";
   try{
     const r=await rapi({action:"set_handout_feature",dealer_id:CUR,manufacturer:slug||""});
-    if(!(r&&r.ok)) throw new Error((r&&r.error)||"failed");
+    if(!(r&&r.ok)){ if(msg) msg.textContent=saveErr(r,"feature a line"); return; }
     if(slug) HPINUSED=null;          // a fresh pin supersedes the "pin used" note
     await loadHandout();
     if(msg) msg.textContent="";
   }catch(e){
-    if(msg) msg.textContent = /not your account/.test(String(e.message))?"You can only feature a line on your own accounts.":"Couldn't save.";
+    if(msg) msg.textContent=saveErr(e,"feature a line");
   }
 }
 async function toggleExclude(slug,on,elm){
   const msg=$("#hox_msg"); if(msg)msg.textContent="Saving…";
   if(elm) elm.disabled=true;
+  const failed=r=>{ if(elm){ elm.checked=!on; elm.disabled=false; } if(msg) msg.textContent=saveErr(r,"exclude a line"); };
   try{
     const r=await rapi({action:"set_handout_exclusion",dealer_id:CUR,manufacturer:slug,excluded:on});
-    if(!(r&&r.ok)) throw new Error((r&&r.error)||"failed");
+    if(!(r&&r.ok)){ failed(r); return; }
     await loadHandout();   // refresh so the featured pick re-computes live
-  }catch(e){
-    if(elm){ elm.checked=!on; elm.disabled=false; }
-    if(msg) msg.textContent = /not your account/.test(String(e.message))?"You can only exclude on your own accounts.":"Couldn't save.";
-  }
+  }catch(e){ failed(e); }
 }
 
 load();
