@@ -29,7 +29,13 @@
     // back to the signed-in user only when the dealer has no assigned rep on file.
     const rep=(c.rep_name)||(ME&&ME.name)||"Your HCPS Representative";
     const repEmail=c.rep_name?(c.rep_email||""):((ME&&ME.email)||"");
-    const tile=(x,on)=>`<div class="ltile${on?" on":""}">${x.logo?`<img src="${esc(x.logo)}" alt="${esc(x.name)}" onerror="this.style.display='none'">`:""}<span class="ln">${esc(x.name)}</span></div>`;
+    /* A LINE TILE IS ITS LOGO, AND ITS NAME WHEN THERE IS NO LOGO.
+       At the size these print now the marks are wordmarks — the name underneath was repeating
+       what the picture already said, and it was the repetition that pushed CardChamp off page 1.
+       So the name is carried on every tile and hidden by CSS only while a logo is actually
+       showing: a manufacturer with no logo on file prints its name, and a logo that fails to
+       load puts its name back on the way out. No tile can print empty. */
+    const tile=(x,on)=>`<div class="ltile${on?" on":""}${x.logo?" haslogo":""}">${x.logo?`<img src="${esc(x.logo)}" alt="${esc(x.name)}" onerror="this.style.display='none';this.parentNode.classList.remove('haslogo')">`:""}<span class="ln">${esc(x.name)}</span></div>`;
     // Golden can reach the handout two ways — a real Golden account already sits in `carried`
     // (from dealer_manufacturers), and/or the dealer is a Golden prospect via golden status. To
     // avoid a double logo, strip any Golden entry out of carried/opps and render Golden exactly
@@ -86,56 +92,76 @@
           </div>
         </div>`;
     return `<!doctype html><html><head><meta charset="utf-8"><title>Your HCPS Partnership — ${esc(c.name||"")}</title><style>
-      body{font:14px Arial,sans-serif;color:#1b2733;margin:0}
-      .hero{position:relative;background:#10263f;color:#fff;padding:24px 28px}.hero .b{color:#F5821F;font-weight:800;letter-spacing:.5px;font-size:13px;text-transform:uppercase}
-      .hero .herologo{position:absolute;top:20px;right:28px;max-height:52px;max-width:180px;object-fit:contain;background:#fff;border-radius:8px;padding:6px 10px}
-      .hero h1{font-size:24px;margin:6px 0 2px}.hero p{margin:0;color:#c9d4e2;font-size:13px}
-      .wrap{padding:22px 28px}h2{font-size:15px;color:#2B4071;margin:18px 0 8px;border-bottom:2px solid #eef1f4;padding-bottom:4px}
+      /* TWO PAGES, AND WHICH THINGS ARE ON WHICH ONE.
+         The sheet is printed, handed over and talked through, so page 1 has to carry the visit:
+         who they are with us, the line to lead with, what they carry, what they could add, and
+         the CardChamp offer at the foot. Page 2 opens with What's new and carries the detail.
+         The measurements that produced the numbers below: doubling the logos adds about 260px to
+         page 1, and every point of padding and printer margin that could come out came to about
+         90px — so the momentum table and the circle-back pills moved to page 2 and the tile names
+         came off. Changing any of these back puts CardChamp on page 2. */
+      @page{size:letter;margin:0.3in 0.38in}
+      body{font:13.5px Arial,sans-serif;color:#1b2733;margin:0}
+      .hero{position:relative;background:#10263f;color:#fff;padding:12px 20px}.hero .b{color:#F5821F;font-weight:800;letter-spacing:.5px;font-size:13px;text-transform:uppercase}
+      .hero .herologo{position:absolute;top:20px;right:28px;max-height:56px;max-width:200px;object-fit:contain;background:#fff;border-radius:8px;padding:6px 10px}
+      .hero h1{font-size:21px;margin:4px 0 2px}.hero p{margin:0;color:#c9d4e2;font-size:13px}
+      .wrap{padding:10px 20px}
+      h2{font-size:14px;color:#2B4071;margin:8px 0 4px;border-bottom:2px solid #eef1f4;padding-bottom:3px;break-after:avoid;page-break-after:avoid}
       .pill{display:inline-block;border:1px solid #cfd6de;border-radius:14px;padding:3px 11px;margin:3px;font-size:12px;color:#333c47}
       .pill.on{background:#eaf7ee;border-color:#bfe3ca;color:#1f7a44;font-weight:700}
-      .tiles{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0}
-      .ltile{border:1px solid #cfd6de;border-radius:10px;padding:8px 10px;min-width:96px;text-align:center;background:#fff}
+      .tiles{display:flex;flex-wrap:wrap;gap:5px;margin:2px 0}
+      /* Centred, and as tall as a logo: a tile falling back to its name then sits in the middle
+         of the space rather than floating at the top of an apparently empty box. */
+      .ltile{border:1px solid #cfd6de;border-radius:10px;padding:5px 8px;min-width:150px;min-height:68px;text-align:center;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center}
       .ltile.on{border-color:#bfe3ca;background:#f6fbf7}
-      .ltile img{max-height:34px;max-width:120px;object-fit:contain;display:block;margin:0 auto 5px}
-      .ltile .ln{font-size:11px;color:#333c47;font-weight:600}
-      .stats{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0}.stat{background:#f4f7fb;border:1px solid #e2e8f1;border-radius:10px;padding:10px 14px;min-width:118px}
-      .sv{font-size:20px;font-weight:800}.sl{font-size:11px;color:#6b7683;margin-top:2px}.note{font-size:11px;color:#9aa4ae;margin:4px 0 0}
+      .ltile img{max-height:68px;max-width:240px;object-fit:contain;display:block;margin:0 auto}
+      .ltile .ln{font-size:10.5px;line-height:1.15;color:#333c47;font-weight:600}
+      .ltile.haslogo .ln{display:none}   /* the logo is the name; see the tile builder above */
+      .stats{display:flex;gap:8px;flex-wrap:wrap;margin:5px 0}.stat{background:#f4f7fb;border:1px solid #e2e8f1;border-radius:10px;padding:6px 10px;min-width:104px}
+      .sv{font-size:18px;font-weight:800}.sl{font-size:11px;color:#6b7683;margin-top:2px}.note{font-size:11px;color:#9aa4ae;margin:4px 0 0}
       ul{margin:6px 0;padding-left:18px}li{margin:4px 0}
-      .cta{margin-top:16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:14px 16px}.cta b{color:#9a3412}
-      .foot{margin-top:20px;border-top:1px solid #eef1f4;padding-top:12px;color:#5b6672;font-size:13px}.dim{color:#9aa4ae}
+      .cta{margin-top:10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:11px 14px}.cta b{color:#9a3412}
+      .foot{margin-top:12px;border-top:1px solid #eef1f4;padding-top:9px;color:#5b6672;font-size:13px}.dim{color:#9aa4ae}
       .foot a{color:#2f73b8}
       table.act{width:100%;border-collapse:collapse;margin-top:2px}
-      table.act th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#5b6672;text-align:left;border-bottom:2px solid #e2e8f1;padding:5px 7px}
-      table.act td{border-bottom:1px solid #eef1f4;padding:5px 7px;font-size:12.5px;text-align:left}
+      table.act th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#5b6672;text-align:left;border-bottom:2px solid #e2e8f1;padding:4px 6px}
+      table.act td{border-bottom:1px solid #eef1f4;padding:3px 6px;font-size:12px;text-align:left}
       table.act .r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+      table.act tr{break-inside:avoid;page-break-inside:avoid}
       .badge{display:inline-block;border:1px solid;border-radius:11px;padding:1px 9px;font-size:11px;font-weight:800}
-      .cross{margin-top:14px;border:1px solid #fed7aa;background:linear-gradient(180deg,#fff8f0,#ffffff);border-radius:12px;padding:13px 16px}
+      .cross{margin-top:6px;border:1px solid #fed7aa;background:linear-gradient(180deg,#fff8f0,#ffffff);border-radius:12px;padding:9px 12px}
       .crosstag{display:inline-block;background:#F5821F;color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;padding:3px 11px;border-radius:20px}
-      .crossbody{display:flex;align-items:center;gap:14px;margin-top:11px}
-      .crosslogo{max-height:46px;max-width:132px;object-fit:contain;flex:0 0 auto}
-      .crossname{font-size:18px;font-weight:800;color:#2B4071}.crossreason{font-size:13px;color:#5b6672;margin-top:2px;line-height:1.4}
-      .crosscta{margin-top:11px;font-size:12px;color:#9a3412;background:#fff7ed;border:1px dashed #f4b980;border-radius:8px;padding:8px 11px}
-      .cc{display:flex;gap:14px;align-items:flex-start;border:1px solid #d6e6f5;background:#f7fbff;border-radius:12px;padding:13px 16px}
+      .crossbody{display:flex;align-items:center;gap:10px;margin-top:7px}
+      .crosslogo{max-height:56px;max-width:170px;object-fit:contain;flex:0 0 auto}
+      .crossname{font-size:16px;font-weight:800;color:#2B4071}.crossreason{font-size:12px;color:#5b6672;margin-top:2px;line-height:1.3}
+      .crosscta{margin-top:6px;font-size:11.5px;color:#9a3412;background:#fff7ed;border:1px dashed #f4b980;border-radius:8px;padding:6px 9px}
+      .cc{display:flex;gap:14px;align-items:flex-start;border:1px solid #d6e6f5;background:#f7fbff;border-radius:12px;padding:10px 13px}
       .cclogo{max-height:38px;max-width:150px;object-fit:contain;flex:0 0 auto;margin-top:2px}
       .ccbody{flex:1;min-width:0}.ccbody ul{margin:6px 0 0;padding-left:18px}.ccbody li{margin:3px 0}
-      .cccta{margin-top:9px;font-size:12px;color:#0f5a8a;background:#eef6fd;border:1px solid #d6e6f5;border-radius:8px;padding:8px 11px}
+      .cccta{margin-top:7px;font-size:12px;color:#0f5a8a;background:#eef6fd;border:1px solid #d6e6f5;border-radius:8px;padding:6px 10px}
       .repcard{background:#f4f7fb;border:1px solid #e2e8f1;border-radius:10px;padding:10px 13px}
       .repcard .rl{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#6b7683;font-weight:700;margin-bottom:2px}.repcard b{color:#2B4071}
+      /* A card that does not fit moves whole rather than tearing in half. Before this, page 2
+         opened in the middle of the CardChamp block, on "Lower or offset merchant fees". */
+      .cc,.cross,.ltile,.repcard,.stat{break-inside:avoid;page-break-inside:avoid}
+      .p2{break-before:page;page-break-before:always}
       @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.hero{-webkit-print-color-adjust:exact;print-color-adjust:exact}.cross,.cc,.badge,.crosstag,.crosscta,.cccta,.repcard{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
       </style></head><body>
       <div class="hero"><img class="herologo" src="https://homecareproviderservices.netlify.app/assets/hcps-logo.png" alt="HomeCare Provider Services" onerror="this.style.display='none'"><div class="b">HomeCare Provider Services</div><h1>Your Partnership Snapshot</h1><p>${esc(c.name||"")}${c.city?" · "+esc([c.city,c.state].filter(Boolean).join(", ")):""}</p>${(c.is_branch&&c.company&&c.company!==c.name)?`<p style="margin-top:2px;color:#c9d4e2;font-size:11px">A location of ${esc(c.company)}</p>`:""}${(c.accounts&&c.accounts.length)?`<p style="margin-top:6px;color:#eaf0f8;font-size:12px">Your accounts: ${c.accounts.map(a=>esc(a.name)+(a.account?` #${esc(a.account)}`:"")).join("&nbsp;·&nbsp;")}</p>`:""}</div>
       <div class="wrap">
         <h2>Your business with HCPS</h2>${stats}${retail?`<p class="note">Retail value = MSRP of the products you've purchased through us — your selling-revenue potential.</p>`:""}
-        ${activityHtml}${dueHtml}
         ${crossHtml}
         <h2>Lines you carry with us</h2><div>${yourLines}</div>
         <h2>Ways we can help you grow</h2><p style="margin:2px 0 6px;color:#5b6672">Products approved for your territory that you're not carrying yet — new revenue we can help you add:</p><div>${growLines}</div>
         ${cardchampHtml}
+        <div class="p2">
         <h2>What's new at HCPS</h2><ul>${updates}</ul>
+        ${activityHtml}${dueHtml}
         <div class="cta"><b>Order online, anytime.</b> Your account, your lines, your pricing — at <b>${esc(ordUrl.replace(/^https?:\/\//,""))}</b>. Ask your rep to get you logged in.</div>
         <div class="foot">
           <div class="repcard"><div class="rl">Your HCPS Sales Representative</div><b>${esc(rep)}</b>${repEmail?` · <a href="mailto:${esc(repEmail)}">${esc(repEmail)}</a>`:""}</div>
           <div style="margin-top:10px">HomeCare Provider Services · Your partner in mobility &amp; home medical equipment.<br><b>www.homecareproviderservices.org</b></div>
+        </div>
         </div>
       </div>
       <scr`+`ipt>window.onload=function(){window.print();}</scr`+`ipt></body></html>`;
