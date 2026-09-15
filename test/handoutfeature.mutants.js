@@ -45,9 +45,12 @@ const MUTANTS = [
     from: '  const inCarried = (carried||[]).find(l => l && key(l.slug) === k);',
     to:   '  const inCarried = null;' },
 
+  /* Widened after growthOpportunities was added alongside this function with an
+     identical key line — the harness reported the anchor as ambiguous rather than
+     silently mutating the wrong function, which is the whole reason it counts. */
   { name: 'drop the pin when a slug has drifted to a new spelling',
-    from: '  const key = s => String(norm ? norm(s) : String(s||"").toLowerCase().trim());',
-    to:   '  const key = s => String(s||"");' },
+    from: '  const key = s => String(norm ? norm(s) : String(s||"").toLowerCase().trim());\n  const pin = String(pinSlug||"").trim();',
+    to:   '  const key = s => String(s||"");\n  const pin = String(pinSlug||"").trim();' },
 
   { name: 'stop trimming, so a padded slug never matches',
     from: '  const pin = String(pinSlug||"").trim();',

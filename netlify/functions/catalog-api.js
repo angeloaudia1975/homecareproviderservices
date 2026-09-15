@@ -25,9 +25,38 @@ const EXT={"image/jpeg":"jpg","image/jpg":"jpg","image/png":"png","image/webp":"
    inside the shop's page file. Importing it here is what makes the tools one system. */
 const JOIN = require("./_catalog-join.js");
 
+/* ─────────────── THE ONE PLACE A LAYER WRITE CAN BE NOTICED ───────────────
+   Seventeen actions in this file change a commercial fact — price, MSRP, MAP,
+   tiers, a code, a status — and not one of them shares a helper: the override
+   read-modify-write idiom alone is hand-copied a dozen times. Once a line's
+   prices are served from product_skus, every one of those seventeen has to
+   reach the record too, and hooking them individually means seventeen chances
+   to miss one and let a price diverge silently. The eighteenth, added next
+   year, would miss by default.
+   So the hook goes where they already agree: the transport. Any successful
+   non-GET against a layer table marks that manufacturer dirty, and the handler
+   mirrors the dirty lines once, at the end. A new action inherits this by
+   existing. Only writes that SUCCEEDED are noted — sb throws above. */
+const DIRTY_LINES = new Set();
+const LAYER_TABLE = /^(custom_products|product_overrides)(\?|$)/;
+/* The manufacturer is on the query string for a filtered PATCH/DELETE and in
+   the body for an insert or upsert, so both spellings are read. A write we
+   cannot attribute is left unmarked rather than triggering a blind rebuild of
+   the wrong line. */
+function slugOfWrite(path, body){
+  const m = /[?&]manufacturer=eq\.([^&]+)/.exec(path);
+  if(m) { try { return decodeURIComponent(m[1]); } catch(e) { return m[1]; } }
+  const rows = Array.isArray(body) ? body : (body ? [body] : []);
+  for(const r of rows) if(r && r.manufacturer) return String(r.manufacturer);
+  return null;
+}
 async function sb(method,path,body,extra){
   const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined});
-  const t=await r.text(); if(!r.ok) throw new Error(`Supabase ${r.status}: ${t}`); return t?JSON.parse(t):null;
+  const t=await r.text(); if(!r.ok) throw new Error(`Supabase ${r.status}: ${t}`);
+  if(method!=="GET" && LAYER_TABLE.test(path)){
+    const slug=slugOfWrite(path,body); if(slug) DIRTY_LINES.add(slug);
+  }
+  return t?JSON.parse(t):null;
 }
 async function fetchJson(url){ const r=await fetch(url,{headers:{"cache-control":"no-cache"}}); if(!r.ok) throw new Error(`${url} ${r.status}`); return r.json(); }
 const num=v=>{ if(v===""||v==null) return null; const n=Number(v); return isFinite(n)?n:null; };
@@ -1525,6 +1554,97 @@ async function flowTest(slug, sample){
     steps, passed:steps.filter(s=>s.pass).length, of:steps.length,
     next_step:firstFail?firstFail.name:null,
     next_action:firstFail?firstFail.detail:"The whole flow passes for this line."};
+}
+
+/* ───────────────────── LAYERS → RECORD, INCREMENTALLY ─────────────────────
+   The rebuild already owns exactly one description of how the three layers
+   become a product_skus row: reconcileSkus, plus the resolutions a person
+   approved, plus tombstoneRows. This runs that same description again for one
+   manufacturer after its layers change. Writing a second mapping here — "when
+   base_price is patched, update this column" — would be a copy that drifts, and
+   the whole point of the record is that there is one answer.
+
+   It differs from the reconcile APPLY path in exactly one way, and it matters:
+   apply deletes every row for the line and re-inserts, which leaves a window
+   where product_skus is empty for that manufacturer. The feed reads the
+   presence of any row as "this line is migrated", so a storefront that loaded
+   inside that window would see migrated:false and quietly fall back. This
+   upserts instead, and removes only the codes the layers no longer produce. */
+async function resyncRecord(mfr, who){
+  const e=encodeURIComponent;
+  const [base,custom,ovRows,pages]=await Promise.all([
+    fetchJson(`${ORDERING_BASE}/data/${e(mfr)}.json`).catch(()=>[]),
+    sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`).catch(()=>[]),
+    sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]),
+    sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=page_key,name,skus&limit=5000`).catch(()=>[]),
+  ]);
+  const overrides=Object.fromEntries((ovRows||[]).map(o=>[String(o.code),o.patch||{}]));
+  const r=reconcileSkus({slug:mfr, base:base||[], custom:custom||[], overrides, pages:pages||[]});
+
+  /* NO .catch, for the reason the apply path documents: reading "there are no
+     decisions" out of "I could not read the decisions" is what turned an hour
+     of the migration into a hunt for two SKUs whose resolutions were sitting
+     right there. An unreadable decision table stops the mirror. */
+  let resRows;
+  try{
+    resRows=await sb("GET",
+      `reconcile_conflicts?manufacturer=eq.${e(mfr)}&resolved_value=not.is.null&select=code,field,resolved_value`);
+  }catch(err){
+    throw new Error("resolutions_unreadable: "+String((err&&err.message)||err));
+  }
+  const resolved={};
+  (resRows||[]).forEach(x=>{ resolved[String(x.code)+"|"+String(x.field)]=x.resolved_value; });
+  const applied=applyResolutions(r.rows, r.conflicts, resolved);
+
+  const now=new Date().toISOString();
+  const by=String(who||"auto-resync").slice(0,80);
+  const payload=applied.ready.map(x=>Object.assign({},x,{updated_at:now,updated_by:by}));
+  const {rows:stones}=tombstoneRows(r.superseded, r.skipped, payload, {manufacturer:mfr, now, who:by});
+  const all=payload.concat(stones);
+  for(let i=0;i<all.length;i+=200)
+    await sb("POST","product_skus?on_conflict=manufacturer,code",all.slice(i,i+200),
+      {Prefer:"resolution=merge-duplicates,return=minimal"});
+
+  /* A product deleted from the layers must stop selling. Without this the row
+     would simply stop being updated and keep its last price for ever, which is
+     the most expensive shape of stale there is. */
+  const live=new Set(all.map(x=>String(x.code)));
+  const have=await sb("GET",`product_skus?manufacturer=eq.${e(mfr)}&select=code`).catch(()=>[]);
+  const stale=(have||[]).map(x=>String(x.code)).filter(c=>!live.has(c));
+  for(const code of stale)
+    await sb("DELETE",`product_skus?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}`,null,{Prefer:"return=minimal"});
+
+  return { written:payload.length, tombstoned:stones.length, removed:stale.length,
+           held_back:applied.blocked.length };
+}
+
+/* Mirror every line touched by this request, once, after the work is done.
+   A failure is RECORDED rather than swallowed: the feed refuses authority while
+   record_resync_error is set, so a broken mirror drops that line back to the
+   layers on its own instead of serving prices that quietly stopped updating.
+   It never fails the request — the layer write genuinely succeeded, and telling
+   a person their price edit failed when it did not is its own kind of wrong. */
+async function flushRecordResync(){
+  if(!DIRTY_LINES.size) return;
+  const slugs=[...DIRTY_LINES]; DIRTY_LINES.clear();
+  for(const slug of slugs){
+    try{
+      const meta=await sb("GET",
+        `manufacturer_meta?slug=eq.${encodeURIComponent(slug)}&select=record_authoritative`).catch(()=>[]);
+      if(!(meta && meta[0] && meta[0].record_authoritative===true)) continue;
+      let err=null;
+      try{ await resyncRecord(slug,"auto-resync"); }
+      catch(e){ err=String((e&&e.message)||e).slice(0,500); }
+      try{
+        await sb("POST","manufacturer_meta?on_conflict=slug",
+          {slug, record_resync_at:new Date().toISOString(), record_resync_error:err},
+          {Prefer:"resolution=merge-duplicates,return=minimal"});
+      }catch(e){}
+      if(err) try{ console.error("[HCPS] record resync failed for "+slug+": "+err); }catch(e){}
+    }catch(e){
+      try{ console.error("[HCPS] record resync hook failed for "+slug+": "+String((e&&e.message)||e)); }catch(_){}
+    }
+  }
 }
 
 exports.handler = async (event)=>{
@@ -3051,6 +3171,42 @@ exports.handler = async (event)=>{
         return json(200,{ok:true,manufacturer:slug,enriched_only:on});
       }
 
+      /* PHASE 6, ONE LINE AT A TIME. Hand this manufacturer's prices to the
+         master record, or hand them back to the layers.
+         Turning it ON does three things in one call, deliberately: it refuses
+         unless the line actually has rows in product_skus (a line with none
+         would go dark the moment the shop trusted it), it runs the mirror once
+         so the record matches the layers at the moment authority transfers, and
+         it stores the result. Authority and a verified record arrive together or
+         not at all — the ordering IS the safety property.
+         Turning it OFF is unconditional and instant: the layers are still being
+         maintained underneath, so falling back is always safe. */
+      if(b.action==="set_record_authority"){
+        const slug=String(b.manufacturer||"").trim();
+        if(!slug) return json(400,{error:"manufacturer required"});
+        const on=b.authoritative===true;
+        if(!on){
+          await sb("POST","manufacturer_meta?on_conflict=slug",
+            {slug, record_authoritative:false},{Prefer:"resolution=merge-duplicates,return=minimal"});
+          return json(200,{ok:true,manufacturer:slug,authoritative:false,
+            message:"Prices for this line come from the legacy layers again."});
+        }
+        const any=await sb("GET",
+          `product_skus?manufacturer=eq.${encodeURIComponent(slug)}&select=code&limit=1`).catch(()=>[]);
+        if(!(any && any.length))
+          return json(409,{error:"not_migrated",
+            message:`${slug} has no rows in product_skus. Run reconcile with apply:true first — switching authority on now would empty the line.`});
+        let stats, err=null;
+        try{ stats=await resyncRecord(slug, String(b.reviewer||"authority-switch").slice(0,80)); }
+        catch(e){ err=String((e&&e.message)||e).slice(0,500); }
+        if(err) return json(502,{error:"resync_failed", message:
+          `Nothing was switched on. The record could not be brought up to date with the layers: ${err}`});
+        await sb("POST","manufacturer_meta?on_conflict=slug",
+          {slug, record_authoritative:true, record_resync_at:new Date().toISOString(), record_resync_error:null},
+          {Prefer:"resolution=merge-duplicates,return=minimal"});
+        return json(200,{ok:true,manufacturer:slug,authoritative:true,resynced:stats});
+      }
+
       if(b.action==="save_link"){
         if(!b.manufacturer||!b.code||!String(b.url||"").trim()) return json(400,{error:"manufacturer, code and url are required"});
         await sb("POST","product_links?on_conflict=manufacturer,code",{
@@ -3204,4 +3360,8 @@ exports.handler = async (event)=>{
     }
     return json(405,{error:"method not allowed"});
   }catch(e){return json(500,{error:String(e.message||e)});}
+  /* Runs whatever the request did, including the 500 path — a write that landed
+     before a later step threw still has to reach the record. The Set is cleared
+     inside the flush, so a warm container never inherits another request's work. */
+  finally{ try{ await flushRecordResync(); }catch(e){} }
 };

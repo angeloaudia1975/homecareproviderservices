@@ -28,6 +28,37 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const P = require("./_platform.js");
 const esc2 = s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 
+/* WHAT THE DEALER COULD BUY THAT THEY DO NOT ALREADY HAVE.
+   "Carrying a line" is true in two independent ways and the handout depends on
+   both: the manufacturer's commission report shows purchases, or the dealer holds
+   an account number with them. Either one means the relationship exists, so either
+   one disqualifies the line from "Ways we can help you grow". Subtracting only the
+   first is what let a dealer's own account numbers be offered back to them as new
+   revenue on the same sheet that printed them.
+
+   Slugs are normalised on both sides. The three sources agree on spelling today —
+   the grid, the sales report and the account rows all say "ohio-medical" — but
+   NORM_BUY exists precisely because that has not always been true, and a
+   subtraction that silently stops matching is the failure mode that produced this
+   bug in the first place.
+
+   Pure, so the rule can be tested without a database. */
+function growthOpportunities(eligible, buySet, accountSlugs, isExcluded, norm){
+  const key = s => String(norm ? norm(s) : String(s||"").toLowerCase().trim());
+  const bought = new Set();
+  (buySet ? [...buySet] : []).forEach(s => bought.add(key(s)));
+  (accountSlugs || []).forEach(s => bought.add(key(s)));
+  /* Filtering on the KEY rather than the raw value is what drops a blank or
+     whitespace-only slug — which is truthy, renders an empty tile on a printed
+     sheet, and has no product behind it. It also makes guarding the two loops
+     above unnecessary: an empty key can never match an entry that was itself
+     dropped for having one. */
+  return (eligible || []).filter(x => {
+    const k = key(x);
+    return !!k && !bought.has(k) && !(isExcluded && isExcluded(x));
+  });
+}
+
 /* WHICH LINE THE HANDOUT LEADS WITH.
    The automatic pick blends portal engagement, product fit and regional demand and rotates
    weekly, which is right for planning a route and wrong the moment a rep knows what this
@@ -545,7 +576,18 @@ exports.handler = async (event)=>{
         // not as a featured pick, not in "ways to grow". CRM/access are untouched (this is display only).
         const exSet=exSetByDealer[id]||new Set();
         const isExcluded=sl=>exSet.has(normBuy(sl))||exSet.has(String(sl).toLowerCase());
-        const opps=eligible.filter(x=>!coBuySet.has(x)&&!isExcluded(x)).map(x=>({slug:x,name:nameOf(x),logo:logoBySlug[x]||""}));
+        /* AN ACCOUNT NUMBER IS ALREADY A RELATIONSHIP.
+           This used to subtract only the lines with commission history, so a dealer
+           who has an account with a manufacturer but has not ordered through it yet
+           appeared in BOTH halves of the handout — "Lines you carry with us" builds
+           from account numbers, "Ways we can help you grow" built from sales. Glasgow
+           Prescription Center was handed a sheet listing its own Ovation and PediFix
+           account numbers across the top and then offering those two lines as new
+           revenue underneath. 179 of 444 dealers had at least one line in both.
+           Both facts now count as carrying the line, which is also what makes the two
+           sections complementary by construction rather than by coincidence. */
+        const opps=growthOpportunities(eligible, coBuySet, (acctByCo[cid]||[]).map(a=>a.manufacturer),
+          isExcluded, normBuy).map(x=>({slug:x,name:nameOf(x),logo:logoBySlug[x]||""}));
         const r2=n=>Math.round((n||0)*100)/100;
         const lines=Object.entries(s.lines).map(([slug,v])=>({slug,name:v.name,amount:r2(v.amount),orders:v.orders,last:v.last,d60:r2(v.d60),d120:r2(v.d120),d180:r2(v.d180)})).sort((a,b)=>b.amount-a.amount);
         const allProds=Object.values(prodByDealer[id]||{}).sort((a,b)=>b.amount-a.amount);
