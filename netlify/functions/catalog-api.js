@@ -1600,10 +1600,22 @@ async function resyncRecord(mfr, who){
   const by=String(who||"auto-resync").slice(0,80);
   const payload=applied.ready.map(x=>Object.assign({},x,{updated_at:now,updated_by:by}));
   const {rows:stones}=tombstoneRows(r.superseded, r.skipped, payload, {manufacturer:mfr, now, who:by});
+  /* LIVE ROWS AND TOMBSTONES GO IN SEPARATE BATCHES.
+     They are deliberately different shapes — a tombstone carries status_note/at/by
+     and no prices, a live row carries prices and no status_note — and PostgREST
+     rejects a bulk write whose objects do not all share the same keys
+     (PGRST102, "All object keys must match"). Concatenating them failed the whole
+     resync, which is how the very first attempt to give Bemis authority refused
+     itself. The reconcile apply path has always written them as two calls; this
+     now does the same. */
+  const writeAll=async rows=>{
+    for(let i=0;i<rows.length;i+=200)
+      await sb("POST","product_skus?on_conflict=manufacturer,code",rows.slice(i,i+200),
+        {Prefer:"resolution=merge-duplicates,return=minimal"});
+  };
+  await writeAll(payload);
+  await writeAll(stones);
   const all=payload.concat(stones);
-  for(let i=0;i<all.length;i+=200)
-    await sb("POST","product_skus?on_conflict=manufacturer,code",all.slice(i,i+200),
-      {Prefer:"resolution=merge-duplicates,return=minimal"});
 
   /* A product deleted from the layers must stop selling. Without this the row
      would simply stop being updated and keep its last price for ever, which is
