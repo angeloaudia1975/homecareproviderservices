@@ -1002,7 +1002,8 @@
       "description": "Learn about the complete line of Strongback Products",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "models": []
     },
     {
       "id": "strongback-mobility-brochure-mu1gizqq",
@@ -1015,7 +1016,8 @@
       "description": "The Strongback Mobility Consumer Brochure 2026",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "models": []
     },
     {
       "id": "strongback-mobility-dealer-experience-video-mu1gka6k",
@@ -1028,7 +1030,8 @@
       "description": "Over the past 10 years we’ve learned a lot from our most successful dealers about helping customers choose the right wheelchair. \nWe put together a short Experience Share video on the approaches they use to improve customer satisfaction and increase profit per wheelchair sale. \n",
       "access": "public",
       "dealers": [],
-      "featured": false
+      "featured": false,
+      "models": []
     }
   ],
   "_note": "Admin-managed single source of record. Each item: manufacturer, category (product), type (standardized), models[], year, keywords, popular, featured, sortPriority. Types/categories/needs defined at top level. Do not hand-seed from documents.js.",

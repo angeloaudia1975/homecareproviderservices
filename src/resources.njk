@@ -107,7 +107,7 @@ description: "The HCPS Dealer Resource Library — catalogs, product guides, dea
 <article class="rl-result {{ extraClass }}" style="--tc:{{ tc }}"
   data-manu="{{ doc.manufacturer }}" data-cat="{{ doc.category }}" data-type="{{ doc.type }}"
   data-need="{{ doc.type | typeNeed(docs.types) }}" data-pop="{{ 1 if doc.popular else 0 }}"
-  data-search="{{ doc.title | lower }} {{ doc.description | lower }} {{ doc.keywords }} {{ doc.models | join(' ') | lower }} {{ doc.manufacturer | manuLabel(mans) | lower }} {{ doc.category | catLabel(docs.categories) | lower }} {{ doc.type | typeLabel(docs.types) | lower }}">
+  data-search="{{ doc.title | lower }} {{ doc.description | lower }} {{ doc.keywords }} {{ (doc.models or []) | join(' ') | lower }} {{ doc.manufacturer | manuLabel(mans) | lower }} {{ doc.category | catLabel(docs.categories) | lower }} {{ doc.type | typeLabel(docs.types) | lower }}">
   <span class="rl-r-badge">{{ doc.type | typeLabel(docs.types) }}</span>
   <div class="rl-r-body">
     <h3>{{ doc.title }}</h3>
