@@ -1608,9 +1608,22 @@ async function resyncRecord(mfr, who){
      resync, which is how the very first attempt to give Bemis authority refused
      itself. The reconcile apply path has always written them as two calls; this
      now does the same. */
+  /* THE CONFLICT TARGET IS THE NORMALISED CODE, BECAUSE THAT IS THE UNIQUE INDEX.
+     product_skus has exactly one unique index — (manufacturer, code_norm), where code_norm is
+     the generated upper-cased, punctuation-stripped code. Nothing enforces uniqueness on
+     (manufacturer, code), so asking Postgres to resolve a conflict on it fails outright with
+     42P10, "there is no unique or exclusion constraint matching the ON CONFLICT specification":
+     the second refusal Bemis met on its way to authority, and again nothing was switched on.
+
+     Targeting code_norm is also the behaviour we want and not merely the one that compiles: two
+     spellings of one part number ARE one row, so the mirror updates that row rather than trying
+     to create a twin the index would reject. Verified against this table's real DDL on Postgres
+     16 — (manufacturer, code) errors 42P10, (manufacturer, code_norm) inserts and then updates,
+     and a payload naming code_norm is refused because a generated column cannot be written,
+     which is why these rows never carry one. */
   const writeAll=async rows=>{
     for(let i=0;i<rows.length;i+=200)
-      await sb("POST","product_skus?on_conflict=manufacturer,code",rows.slice(i,i+200),
+      await sb("POST","product_skus?on_conflict=manufacturer,code_norm",rows.slice(i,i+200),
         {Prefer:"resolution=merge-duplicates,return=minimal"});
   };
   await writeAll(payload);
