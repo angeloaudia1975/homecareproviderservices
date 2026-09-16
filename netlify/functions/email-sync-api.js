@@ -366,7 +366,18 @@ exports.handler = async (event)=>{
     if(b.action==="send"){
       const dealerId=String(b.dealer_id||"").trim();
       const to=String(b.to||"").trim().toLowerCase();
-      const cc=Array.isArray(b.cc)?b.cc.map(x=>String(x||"").trim()).filter(Boolean):[];
+      /* COPIES ARE CHECKED THE SAME WAY THE RECIPIENT IS.
+         These go straight into Graph's ccRecipients, and one malformed address there fails the
+         whole send — the rep is told the email did not go, with no clue that the reason is a
+         colleague's mistyped address rather than the dealer's. Now that a rep can pick several
+         people per send (Scheduled Routes), that is a live path rather than a theoretical one.
+         Anything unusable is dropped, the To is never also copied to itself, and the same address
+         twice is one copy. */
+      const ccSeen=new Set([String(b.to||"").trim().toLowerCase()]);
+      const cc=(Array.isArray(b.cc)?b.cc:[]).map(x=>String(x==null?"":x).trim()).filter(a=>{
+        if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a)) return false;
+        const k=a.toLowerCase(); if(ccSeen.has(k)) return false; ccSeen.add(k); return true;
+      });
       const subject=String(b.subject||"").trim();
       const bodyText=String(b.body_text||b.body||"");
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return json(200,{ok:false,error:"bad_to",message:"Enter a valid recipient email."});
@@ -393,8 +404,13 @@ exports.handler = async (event)=>{
       }catch(e){ sendErr={error:"send_failed",message:String(e.message||e).slice(0,200)}; }
       if(sendErr) return json(200,{ok:false,fallback:true,to,...sendErr});
       // Sent — log it to the Dealer 360 timeline (best-effort; never blocks the success).
-      if(dealerId){ try{ await sbSend("POST","dealer_activity",{dealer_id:dealerId,kind:"email",subject:subject,detail:"Sent to "+to,contact_email:to,actor:fromMailbox},{Prefer:"return=minimal"}); }catch(e){} }
-      return json(200,{ok:true,to});
+      /* The timeline records everyone it went to, not just the To. A follow-up the owner was
+         copied on is a different fact from one only the buyer saw, and the next rep to open this
+         dealer can only know which from what is written here. */
+      if(dealerId){ try{ await sbSend("POST","dealer_activity",{dealer_id:dealerId,kind:"email",subject:subject,
+        detail:"Sent to "+to+(cc.length?" · copied to "+cc.join(", "):""),contact_email:to,actor:fromMailbox},
+        {Prefer:"return=minimal"}); }catch(e){} }
+      return json(200,{ok:true,to,cc});
     }
 
     if(me.role!=="president") return json(403,{error:"president only"});

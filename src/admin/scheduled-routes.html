@@ -68,6 +68,11 @@
   .modal{position:fixed;inset:0;background:rgba(16,38,63,.5);display:flex;align-items:flex-end;justify-content:center;z-index:50}
   .sheet{background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:640px;max-height:88vh;overflow:auto;padding:16px}
   .sheet h3{margin:0 0 8px;color:var(--navy)}
+  /* Recipient rows. Tall enough to hit with a thumb in a van, and the whole row is the target —
+     a 14px checkbox is not something to aim at one-handed. */
+  .rcpt{display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;margin-bottom:6px;line-height:1.3}
+  .rcpt input{width:20px;height:20px;margin:1px 0 0;flex:0 0 auto}
+  .rcpt span{min-width:0;word-break:break-word}
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;background:var(--navy);color:#fff;padding:10px 16px;border-radius:24px;font-size:13.5px;z-index:60;box-shadow:0 4px 14px rgba(0,0,0,.2)}
 </style>
 </head><body>
@@ -484,13 +489,73 @@ async function headsUp(i){
   if(!j||!j.ok){ toast((j&&j.message)||"Couldn't prepare the heads-up"); return; }
   openDraft(s, j.subject||"", j.body||"", j.signature||"", "Pre-visit heads-up — review before sending");
 }
+/* ---- WHO THE EMAIL GOES TO -------------------------------------------------
+   The pre-visit heads-up and the after-visit follow-up are drafted by different code and sent by
+   this one, so the recipient picker lives here and serves both.
+
+   It used to be a single box holding one address that the server had chosen — whichever contact
+   row came back first. An account where the owner, the buyer and the billing clerk all deal with
+   us could only ever be written to at that one address, and a rep who wanted anyone else had to
+   remember it and type it. */
+
+/* The people this stop can be emailed. A day cached before this shipped carries no list on its
+   stops, so the one address it does have becomes a list of one rather than an empty picker —
+   this app is used in a van with no signal and that cache can be days old. */
+function recipientRows(s){
+  const list=(s&&Array.isArray(s.contacts))?s.contacts.slice():[];
+  if(list.length) return list;
+  const e=String((s&&s.contact_email)||"").trim();
+  return e?[{name:String((s&&s.contact_name)||"").trim(),email:e,title:"",source:"contact"}]:[];
+}
+/* Anything a person might type into a free-text address box: commas, semicolons, spaces, or a
+   pasted "Name <addr>" pair. Returns the pieces in order with the empties gone — it does not
+   judge them, because telling someone their typo is not an address is splitRecipients' job. */
+function parseEmails(text){
+  return String(text==null?"":text).replace(/[<>]/g," ").split(/[,;\s]+/).map(x=>x.trim()).filter(Boolean);
+}
+const RCPT_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/* ONE EMAIL, ONE PRIMARY. The first address picked is the To and the rest are copied — a note to
+   a person who happens to have colleagues, rather than a group memo. Case and repetition collapse,
+   because the same address is often on both a contact row and the account record. Anything
+   malformed is handed back rather than quietly dropped: a rep who mistypes an address should be
+   told, not left believing a dealer was written to.
+   Pure, so the rule can be tested without a browser. */
+function splitRecipients(list){
+  const seen=new Set(), good=[], bad=[];
+  (list||[]).forEach(raw=>{
+    const a=String(raw==null?"":raw).trim(); if(!a) return;
+    if(!RCPT_RE.test(a)){ bad.push(a); return; }
+    const k=a.toLowerCase(); if(seen.has(k)) return; seen.add(k);
+    good.push(a);
+  });
+  return { to:good[0]||"", cc:good.slice(1), bad:bad };
+}
+/* The greeting follows the person it is addressed to: tick Stacey instead of Bryant and "Hi
+   Bryant," becomes "Hi Stacey,". Only a line that already looks like a greeting is touched, and
+   only the first one — whatever the rep has written underneath is never rewritten. A replacer
+   function rather than a replacement string, because a name is data and "$&" in a replacement
+   string is not. */
+function swapGreeting(body,name){
+  const first=String(name==null?"":name).trim().split(/\s+/)[0]||"";
+  if(!first) return body;
+  /* The name goes in through the replacer's return value, never through a replacement string —
+     a "$&" or "$1" in a replacement string is an instruction, and a name is not. */
+  return String(body==null?"":body).replace(/^(\s*)Hi [^,\n]{1,40},/, (m,lead)=>lead+"Hi "+first+",");
+}
 function openDraft(s,subject,body,signature,title){
-  const to=s.contact_email||"";
+  const rows=recipientRows(s);
   const full=body+(signature?`\n\n${signature}`:"");
+  const people=rows.length
+    ? rows.map((r,i)=>`<label class="rcpt"><input type="checkbox" class="d_p" data-email="${esc(r.email)}" data-name="${esc(r.name)}"${i===0?" checked":""} onchange="draftWho()">
+        <span><b>${esc(r.name||r.email)}</b>${r.title?` <span class="hint">· ${esc(r.title)}</span>`:""}${r.source==="account"?` <span class="hint">· account email</span>`:""}<br><span class="hint">${esc(r.email)}</span></span></label>`).join("")
+    : `<div class="hint">No email on file for this account — type one below.</div>`;
   const wrap=document.createElement("div"); wrap.className="modal"; wrap.onclick=e=>{ if(e.target===wrap) wrap.remove(); };
   wrap.innerHTML=`<div class="sheet">
     <h3>${esc(title||"Email — review before sending")}</h3>
-    <label class="fl">To</label><input class="in" id="d_to" value="${esc(to)}" placeholder="dealer contact email">
+    <label class="fl">To</label>
+    <div id="d_people">${people}</div>
+    <input class="in" id="d_extra" placeholder="another email address (optional)" oninput="draftWho()">
+    <div id="d_who" class="hint" style="margin-top:6px"></div>
     <label class="fl">Subject</label><input class="in" id="d_sub" value="${esc(subject)}">
     <label class="fl">Message</label><textarea class="in" id="d_body" style="min-height:200px">${esc(full)}</textarea>
     <div class="hint" style="margin-top:6px">Nothing sends until you tap Send. It goes from your Outlook.</div>
@@ -500,13 +565,53 @@ function openDraft(s,subject,body,signature,title){
     </div>
     <div id="d_msg" class="hint" style="margin-top:8px"></div></div>`;
   document.body.appendChild(wrap);
+  draftWho();
+}
+/* What the picker currently adds up to: the ticked addresses in the order shown, then anything
+   typed, and the name of whoever is first — which is who the greeting belongs to. */
+function draftPicked(){
+  const out=[]; let firstName="";
+  document.querySelectorAll("#d_people .d_p").forEach(el=>{
+    if(!el.checked) return;
+    out.push(el.getAttribute("data-email")||"");
+    if(!firstName) firstName=el.getAttribute("data-name")||"";
+  });
+  parseEmails(($("#d_extra")||{}).value||"").forEach(a=>out.push(a));
+  return { list:out, firstName:firstName };
+}
+/* Keep the summary line and the greeting in step with the ticks, so what the rep is about to do
+   is written on the screen before they do it. */
+function draftWho(){
+  const p=draftPicked(), r=splitRecipients(p.list), who=$("#d_who");
+  if(who){
+    who.style.color="";
+    if(r.to){
+      who.textContent="To "+r.to+(r.cc.length?" · copy to "+r.cc.join(", "):"")
+        +(r.bad.length?"  ·  not an email address: "+r.bad.join(", "):"");
+    } else {
+      who.textContent=r.bad.length?("Not an email address: "+r.bad.join(", "))
+        :"Tick at least one person, or type an address.";
+    }
+    if(r.bad.length) who.style.color="#b42323";
+  }
+  const body=$("#d_body");
+  if(body && r.to && p.firstName){
+    /* Only a ticked contact carries a name to greet. A typed-in address has none, so the
+       greeting is left exactly as drafted rather than blanked. */
+    const swapped=swapGreeting(body.value,p.firstName);
+    if(swapped!==body.value) body.value=swapped;
+  }
 }
 async function sendDraft(dealer_id,btn){
-  const to=($("#d_to")||{}).value||"", subject=($("#d_sub")||{}).value||"", body=($("#d_body")||{}).value||"";
-  const m=$("#d_msg"); if(!to){ if(m){m.style.color="#b42323";m.textContent="Add a recipient email.";} return; }
-  if(m){ m.style.color=""; m.textContent="Sending…"; } if(btn) btn.disabled=true;
-  let j; try{ j=await esapi({action:"send",dealer_id,to,subject,body_text:body}); }catch(e){ j=null; }
-  if(j&&j.ok){ toast("Email sent ✓"); const modal=document.querySelector(".modal"); if(modal) modal.remove(); }
+  const picked=draftPicked(), r=splitRecipients(picked.list);
+  const subject=($("#d_sub")||{}).value||"", body=($("#d_body")||{}).value||"";
+  const m=$("#d_msg");
+  if(r.bad.length){ if(m){m.style.color="#b42323";m.textContent="Check this address: "+r.bad.join(", ");} return; }
+  if(!r.to){ if(m){m.style.color="#b42323";m.textContent="Pick at least one recipient.";} return; }
+  if(m){ m.style.color=""; m.textContent=r.cc.length?`Sending to ${1+r.cc.length} people…`:"Sending…"; }
+  if(btn) btn.disabled=true;
+  let j; try{ j=await esapi({action:"send",dealer_id,to:r.to,cc:r.cc,subject,body_text:body}); }catch(e){ j=null; }
+  if(j&&j.ok){ toast(r.cc.length?`Email sent to ${1+r.cc.length} ✓`:"Email sent ✓"); const modal=document.querySelector(".modal"); if(modal) modal.remove(); }
   else { if(m){ m.style.color="#b42323"; m.textContent=(j&&j.message)||"Couldn't send — you can also send from Dealer 360."; } if(btn) btn.disabled=false; }
 }
 

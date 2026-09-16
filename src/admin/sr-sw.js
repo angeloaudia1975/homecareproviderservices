@@ -21,7 +21,7 @@
  *     is the only thing this worker was ever meant to solve.
  *   · CACHE is bumped, so every browser drops the stale copies the moment this activates.
  */
-const CACHE = "hcps-sr-v3";   // bumped: route-clock.js added to the shell
+const CACHE = "hcps-sr-v4";   // bumped: the email sheet now picks recipients from the account's contacts
 const FIELD_PAGE = "/admin/scheduled-routes.html";
 const SHELL = [
   FIELD_PAGE,

@@ -87,6 +87,32 @@ function featuredPick(pinSlug, opps, carried, auto, norm){
   return auto || null;   // a pin we cannot honour is dropped, not forced
 }
 
+/* EVERYONE AT THIS ACCOUNT WHO CAN BE EMAILED, IN THE ORDER TO OFFER THEM.
+   The field app used to be handed exactly one address per stop — whichever contact row came back
+   first — so a heads-up could only ever go to that person, however many people at the shop
+   actually place the orders. This returns the whole list, and the rep picks at send time.
+
+   Rows with no usable address are dropped rather than listed and greyed out: this list exists to
+   be emailed, and an entry that cannot be is only something to tap by mistake. The account's own
+   address comes last and is marked as such — it is a fallback, not a person, and offering it
+   above a named buyer is how a personal note lands in a shared inbox. Duplicates collapse on the
+   address itself, because the same person is often on both the contact row and the account.
+
+   Pure, so the list can be tested without a database. */
+function stopRecipients(contacts, dealer){
+  const seen=new Set(), out=[];
+  const add=(name,email,title,source)=>{
+    const e=String(email==null?"":email).trim();
+    if(!EMAIL_RE.test(e)) return;
+    const k=e.toLowerCase(); if(seen.has(k)) return; seen.add(k);
+    out.push({ name:String(name==null?"":name).trim(), email:e,
+               title:String(title==null?"":title).trim(), source:source });
+  };
+  (contacts||[]).forEach(c=>{ if(c) add(c.name, c.email, c.title||c.role, "contact"); });
+  if(dealer) add(dealer.contact_name, dealer.email, "", "account");
+  return out;
+}
+
 /* THE ERROR THAT NAMES ITS OWN CURE.
    Supabase answers a write to a table that does not exist with a 404 carrying PGRST205 — not a
    crash, not a permission problem, and nothing a rep did wrong. Left to the handler's catch-all
@@ -841,10 +867,13 @@ exports.handler = async (event)=>{
       if(!route) return json(200,{ok:true,route:null,stops:[]});
       const stops=Array.isArray(route.stops)?route.stops:[];
       const ids=[...new Set(stops.map(s=>s.dealer_id).filter(Boolean))];
-      let dmap={},cmap={},vmap={};
+      let dmap={},cmap={},clist={},vmap={};
       if(ids.length){
         try{ const ds=await sbGet(`dealers?id=in.(${ids.join(",")})&select=id,business_name,contact_name,email,phone,address,city,state,zip`); for(const d of (ds||[])) dmap[d.id]=d; }catch(e){}
-        try{ const cs=await sbGet(`dealer_contacts?dealer_id=in.(${ids.join(",")})&select=dealer_id,name,email,phone,cell`); for(const c of (cs||[])){ if(!cmap[c.dealer_id]) cmap[c.dealer_id]=c; } }catch(e){}
+        /* ALL of them, not only the first. The first row still names the card and the call
+           button — that is the person the rep rings — but every contact is sent down as well, so
+           the heads-up and the follow-up can be addressed to whoever this visit is actually with. */
+        try{ const cs=await sbGet(`dealer_contacts?dealer_id=in.(${ids.join(",")})&select=dealer_id,name,email,phone,cell,title,role&order=dealer_id`); for(const c of (cs||[])){ if(!cmap[c.dealer_id]) cmap[c.dealer_id]=c; (clist[c.dealer_id]=clist[c.dealer_id]||[]).push(c); } }catch(e){}
       }
       try{ const vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(route.id)}&select=dealer_id,status,checkin_at,completed_at`); for(const v of (vr||[])) vmap[v.dealer_id]=v; }catch(e){}
       const outStops=stops.map((s,i)=>{ const d=dmap[s.dealer_id]||{}, c=cmap[s.dealer_id]||{}, v=vmap[s.dealer_id]||null;
@@ -859,6 +888,7 @@ exports.handler = async (event)=>{
           overnight:!!s.overnight,
           next_start_min:(s.next_start_min!=null?s.next_start_min:null),
           contact_name:(c.name||d.contact_name||""), contact_email:(c.email||d.email||""), contact_phone:(c.phone||c.cell||d.phone||""),
+          contacts: stopRecipients(clist[s.dealer_id]||[], d),
           visit: v?{status:v.status,checkin_at:v.checkin_at,completed_at:v.completed_at}:null }; });
       const hb=resolveHomeBase(route,me);
       return json(200,{ok:true,
