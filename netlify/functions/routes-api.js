@@ -87,6 +87,90 @@ function featuredPick(pinSlug, opps, carried, auto, norm){
   return auto || null;   // a pin we cannot honour is dropped, not forced
 }
 
+/* A BRANCH'S NAME WITHOUT THE COMPANY'S NAME IN FRONT OF IT.
+   "Glasgow Prescription Center Hosparus Warehouse" in a table column is mostly the word Glasgow
+   again. The shared prefix is dropped so the column says the one thing that distinguishes the
+   location — and when nothing is left after dropping it, the full name is kept rather than a
+   blank. */
+function shortLocation(name, companyName){
+  const n=String(name==null?"":name).trim(), c=String(companyName==null?"":companyName).trim();
+  if(!c || n.length<=c.length) return n;
+  if(n.slice(0,c.length).toLowerCase()!==c.toLowerCase()) return n;
+  const rest=n.slice(c.length).replace(/^[\s\-–—·,:]+/,"").trim();
+  return rest||n;
+}
+/* WHICH LOCATION BOUGHT, SAID IN A COLUMN'S WIDTH.
+   Blank when it was all this shop — on a single-location account the column is empty on every
+   row, which is the point: it only speaks up when there is something to say. */
+function whereLabel(by){
+  const list=(by||[]).filter(x=>x&&(x.amount||0)>0);
+  if(!list.length) return "";
+  const others=list.filter(x=>!x.here), names=others.map(x=>x.name).filter(Boolean);
+  if(!names.length) return "";
+  const label = names.length===1 ? names[0]
+              : names.length===2 ? (names[0]+" & "+names[1])
+              : (names.length+" other locations");
+  return list.some(x=>x.here) ? "+ "+label : label;
+}
+/* ONE TABLE FOR THE WHOLE COMPANY, AND WHO IN IT BOUGHT.
+   The purchasing table was scoped to the single location the sheet is for, while the figures
+   printed above it were company-wide. Glasgow Prescription Center therefore showed $100,908
+   lifetime over a table adding up to $99,892, and the $1,016 of StrongBack its own warehouse had
+   bought appeared nowhere — which reads, to the dealer holding the sheet, as HCPS not knowing
+   about their own orders. 108 of 444 dealers were in that position; 47 printed a company total
+   over a table with nothing in it at all.
+
+   Merging the family's rows fixes the arithmetic. Naming the location keeps it honest on a branch
+   visit, where "you bought this" and "your company bought this" are different sentences.
+   A line only reaches this table by having been bought — an account with no orders is a tile
+   under "Lines you carry with us" and nothing more, because a row of dashes in a purchasing
+   history is not history.
+
+   Pure, so the merge can be tested without a database. */
+function companyLines(memberIds, byDealer, hereId, nameById, companyName){
+  const merged={};
+  (memberIds||[]).forEach(did=>{
+    const src=(byDealer||{})[did]; if(!src||!src.lines) return;
+    for(const slug in src.lines){
+      const L=src.lines[slug]||{};
+      const M=merged[slug]||(merged[slug]={slug:slug,name:L.name,amount:0,qty:0,orders:0,last:"",d60:0,d120:0,d180:0,by:[]});
+      if(!M.name && L.name) M.name=L.name;
+      M.amount+=Number(L.amount)||0; M.qty+=Number(L.qty)||0; M.orders+=Number(L.orders)||0;
+      M.d60+=Number(L.d60)||0; M.d120+=Number(L.d120)||0; M.d180+=Number(L.d180)||0;
+      if(String(L.last||"")>M.last) M.last=String(L.last||"");
+      if((Number(L.amount)||0)>0)
+        M.by.push({ dealer_id:did, name:shortLocation((nameById||{})[did], companyName),
+                    amount:Number(L.amount)||0, here:did===hereId });
+    }
+  });
+  return Object.keys(merged).map(k=>{
+    const M=merged[k];
+    M.by.sort((a,b)=>b.amount-a.amount);
+    M.where=whereLabel(M.by);
+    return M;
+  }).sort((a,b)=>b.amount-a.amount);
+}
+
+/* The same merge for the products underneath the table. One part number bought at two locations
+   is one entry carrying both, keyed exactly as the per-location maps key it. */
+function companyProducts(memberIds, prodByDealer){
+  const merged={};
+  (memberIds||[]).forEach(did=>{
+    const src=(prodByDealer||{})[did]; if(!src) return;
+    for(const key in src){
+      const P=src[key]||{};
+      const M=merged[key]||(merged[key]={code:P.code,name:P.name,line:P.line,qty:0,amount:0,orders:0,last:"",d60:0,d120:0,d180:0});
+      if(!M.code && P.code) M.code=P.code;
+      if(!M.name && P.name) M.name=P.name;
+      if(!M.line && P.line) M.line=P.line;
+      M.qty+=Number(P.qty)||0; M.amount+=Number(P.amount)||0; M.orders+=Number(P.orders)||0;
+      M.d60+=Number(P.d60)||0; M.d120+=Number(P.d120)||0; M.d180+=Number(P.d180)||0;
+      if(String(P.last||"")>M.last) M.last=String(P.last||"");
+    }
+  });
+  return Object.keys(merged).map(k=>merged[k]);
+}
+
 /* EVERYONE AT THIS ACCOUNT WHO CAN BE EMAILED, IN THE ORDER TO OFFER THEM.
    The field app used to be handed exactly one address per stop — whichever contact row came back
    first — so a heads-up could only ever go to that person, however many people at the shop
@@ -492,6 +576,7 @@ exports.handler = async (event)=>{
       const byId=Object.fromEntries(allDealers.map(d=>[d.id,d]));
       const companyOf=id=>{ const d=byId[id]; return (d&&d.parent_id)?d.parent_id:id; };   // master id (self if HQ/standalone)
       const membersOfCompany={}; for(const d of allDealers){ const cid=d.parent_id||d.id; (membersOfCompany[cid]||(membersOfCompany[cid]=[])).push(d.id); }
+      const nameById=Object.fromEntries(allDealers.map(d=>[d.id,d.business_name||""]));   // for naming which location bought
       const reqCompanies=[...new Set(ids.map(companyOf))];
       const memberIds=[...new Set(reqCompanies.flatMap(cid=>membersOfCompany[cid]||[cid]))];
       const memIn=`in.(${memberIds.join(",")})`, reqIn=`in.(${ids.join(",")})`;
@@ -668,8 +753,18 @@ exports.handler = async (event)=>{
         const opps=growthOpportunities(eligible, coBuySet, (acctByCo[cid]||[]).map(a=>a.manufacturer),
           isExcluded, normBuy).map(x=>({slug:x,name:nameOf(x),logo:logoBySlug[x]||""}));
         const r2=n=>Math.round((n||0)*100)/100;
-        const lines=Object.entries(s.lines).map(([slug,v])=>({slug,name:v.name,amount:r2(v.amount),orders:v.orders,last:v.last,d60:r2(v.d60),d120:r2(v.d120),d180:r2(v.d180)})).sort((a,b)=>b.amount-a.amount);
-        const allProds=Object.values(prodByDealer[id]||{}).sort((a,b)=>b.amount-a.amount);
+        /* THE WHOLE COMPANY'S PURCHASING, NOT JUST THIS DOOR'S — and each row says where it was
+           bought when that was not here. The figures above this table have always been
+           company-wide; the table had not been, which is what made them disagree. */
+        const famIds=(membersOfCompany[cid]&&membersOfCompany[cid].length)?membersOfCompany[cid]:[id];
+        const lines=companyLines(famIds, byDealer, id, nameById, master.business_name||d.business_name||"")
+          .map(v=>({slug:v.slug,name:v.name,amount:r2(v.amount),orders:v.orders,last:v.last,
+                    d60:r2(v.d60),d120:r2(v.d120),d180:r2(v.d180),where:v.where,
+                    by:v.by.map(x=>({name:x.name,amount:r2(x.amount),here:x.here}))}));
+        /* The products follow the table. Leaving them on this location alone would put a line in
+           the purchasing table with none of its products in the list underneath — the same
+           disagreement, one section further down the same sheet. */
+        const allProds=companyProducts(famIds, prodByDealer).sort((a,b)=>b.amount-a.amount);
         const products=allProds.slice(0,40).map(p=>({code:p.code,name:p.name,line:p.line,qty:p.qty,amount:r2(p.amount),orders:p.orders,last:p.last,d60:r2(p.d60),d120:r2(p.d120),d180:r2(p.d180)}));
         const products_more=Math.max(0,allProds.length-products.length);
         const accounts=(acctByCo[cid]||[]).map(a=>({slug:a.manufacturer,name:nameOf(a.manufacturer),account:a.account_ref})).sort((a,b)=>a.name.localeCompare(b.name));

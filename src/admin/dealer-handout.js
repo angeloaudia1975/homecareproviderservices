@@ -63,11 +63,20 @@
     // Purchasing activity across 60 / 120 / 180 days — momentum by line, with slowing/stopped flags so
     // the rep can open a conversation about anything that's gone quiet.
     const actLines=(c.lines||[]).filter(l=>(l.amount||0)>0);
+    /* WHICH LOCATION BOUGHT IT.
+       The table now covers every location of the company, because the figures above it always
+       did — a sheet printing $100,908 lifetime over a table adding up to $99,892 reads as HCPS
+       not knowing about the dealer's own orders. `where` is set only when the buying was not all
+       at the shop this sheet is for, so on a single-location account it never appears.
+       It sits under the line name rather than in a column of its own: a seventh column would
+       squeeze five numeric ones on every sheet in the territory to serve the third of them that
+       have more than one location. */
     const actRows=actLines.map(l=>{ const a=+l.d60||0,b=+l.d120||0,e=+l.d180||0;
       let st,col; if(a>0){st="Active";col="#1f7a44";} else if(b>0){st="Slowing";col="#b26b00";} else {st="Stopped";col="#b42323";}
-      return `<tr><td>${esc(l.name)}</td><td>${lastLbl(l.last)}</td><td class="r">${a?fmtUsd(a):"—"}</td><td class="r">${b?fmtUsd(b):"—"}</td><td class="r">${e?fmtUsd(e):"—"}</td><td><span class="badge" style="color:${col};border-color:${col}55;background:${col}12">${st}</span></td></tr>`; }).join("");
+      return `<tr><td>${esc(l.name)}${l.where?`<div class="where">${esc(l.where)}</div>`:""}</td><td>${lastLbl(l.last)}</td><td class="r">${a?fmtUsd(a):"—"}</td><td class="r">${b?fmtUsd(b):"—"}</td><td class="r">${e?fmtUsd(e):"—"}</td><td><span class="badge" style="color:${col};border-color:${col}55;background:${col}12">${st}</span></td></tr>`; }).join("");
+    const anyWhere=actLines.some(l=>l.where);
     const activityHtml=actRows?`<h2>Purchasing activity — last 60 / 120 / 180 days</h2>
-        <p class="note" style="margin:2px 0 8px">Momentum by manufacturer line. <b style="color:#b26b00">Slowing</b> or <b style="color:#b42323">Stopped</b> flags a line worth talking through — what changed, and how we can help restart it.</p>
+        <p class="note" style="margin:2px 0 8px">Momentum by manufacturer line${anyWhere?", across every location of your company — the location is named where it wasn't this one":""}. <b style="color:#b26b00">Slowing</b> or <b style="color:#b42323">Stopped</b> flags a line worth talking through — what changed, and how we can help restart it.</p>
         <table class="act"><thead><tr><th>Manufacturer line</th><th>Last order</th><th class="r">60 days</th><th class="r">120 days</th><th class="r">180 days</th><th>Status</th></tr></thead><tbody>${actRows}</tbody></table>`:"";
     const cut60=new Date(Date.now()-60*864e5).toISOString().slice(0,10);
     const cut180=new Date(Date.now()-183*864e5).toISOString().slice(0,10);
@@ -128,6 +137,7 @@
       table.act td{border-bottom:1px solid #eef1f4;padding:3px 6px;font-size:12px;text-align:left}
       table.act .r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
       table.act tr{break-inside:avoid;page-break-inside:avoid}
+      table.act .where{font-size:10.5px;color:#6b7683;margin-top:1px;line-height:1.2}
       .badge{display:inline-block;border:1px solid;border-radius:11px;padding:1px 9px;font-size:11px;font-weight:800}
       .cross{margin-top:6px;border:1px solid #fed7aa;background:linear-gradient(180deg,#fff8f0,#ffffff);border-radius:12px;padding:9px 12px}
       .crosstag{display:inline-block;background:#F5821F;color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;padding:3px 11px;border-radius:20px}
