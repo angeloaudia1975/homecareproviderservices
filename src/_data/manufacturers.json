@@ -2825,11 +2825,11 @@
     "id": "dalton",
     "name": "Dalton",
     "category": "",
-    "description": "",
-    "website": "",
-    "logo": "",
+    "description": "Dalton Medical is a trusted medical supply company providing access to premium medical supplies, equipment, and devices for everyone from private healthcare providers to large-scale hospitals. With global manufacturing and a strong operational presence in Texas, we ensure you have access to Hospital Beds, Wheelchairs, Patient Lifts, Support Surfaces and all the traditional products for your DME Business Model.",
+    "website": "https://daltonmedical.com/",
+    "logo": "/assets/logos/dalton-mublvxul.jpg",
     "featured": false,
-    "ordering_url": "",
+    "ordering_url": "https://hcpsonlineordering.netlify.app/",
     "brand": {
       "accent": "#1681c2",
       "dark": "#0b0d0f"
