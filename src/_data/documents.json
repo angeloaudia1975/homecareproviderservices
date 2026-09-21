@@ -1058,6 +1058,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "dalton-medical-patient-lifts-and-slings-mubn9ux8",
+      "title": "Dalton Medical Patient Lifts and Slings",
+      "type": "catalog",
+      "manufacturer": "dalton",
+      "format": "pdf",
+      "file": "/assets/docs/lifts-and-slings-mini-catalog-mubn8z0d.pdf",
+      "url": "",
+      "description": "Learn More about the Robust Selection on Patient Lifts from Dalton Medical Supply.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "Admin-managed single source of record. Each item: manufacturer, category (product), type (standardized), models[], year, keywords, popular, featured, sortPriority. Types/categories/needs defined at top level. Do not hand-seed from documents.js.",
