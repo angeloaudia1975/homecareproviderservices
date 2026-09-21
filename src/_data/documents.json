@@ -1045,6 +1045,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "dalton-medical-long-term-care-full-electric-beds-mubn8m4z",
+      "title": "Dalton Medical Long Term Care Full Electric Beds ",
+      "type": "catalog",
+      "manufacturer": "dalton",
+      "format": "pdf",
+      "file": "/assets/docs/ltc-bed-mini-catalog-mubn7enu.pdf",
+      "url": "",
+      "description": "Learn more about the LTC Hospital Beds from Dalton Medical",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "Admin-managed single source of record. Each item: manufacturer, category (product), type (standardized), models[], year, keywords, popular, featured, sortPriority. Types/categories/needs defined at top level. Do not hand-seed from documents.js.",
