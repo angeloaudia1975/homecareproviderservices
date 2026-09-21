@@ -1084,6 +1084,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "dalton-medical-support-surfaces-mini-catalog-mubncs1b",
+      "title": "Dalton Medical Support Surfaces Mini Catalog",
+      "type": "catalog",
+      "manufacturer": "dalton",
+      "format": "pdf",
+      "file": "/assets/docs/support-surface-mini-catalog-mubnbyqb.pdf",
+      "url": "",
+      "description": "Learn more about the robust line of Support Surfaces from Dalton Medical. ",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "Admin-managed single source of record. Each item: manufacturer, category (product), type (standardized), models[], year, keywords, popular, featured, sortPriority. Types/categories/needs defined at top level. Do not hand-seed from documents.js.",
