@@ -2824,7 +2824,7 @@
   {
     "id": "dalton",
     "name": "Dalton",
-    "category": "",
+    "category": "Wheelchairs, patient lifts, beds & support surfaces",
     "description": "Dalton Medical is a trusted medical supply company providing access to premium medical supplies, equipment, and devices for everyone from private healthcare providers to large-scale hospitals. With global manufacturing and a strong operational presence in Texas, we ensure you have access to Hospital Beds, Wheelchairs, Patient Lifts, Support Surfaces and all the traditional products for your DME Business Model.",
     "website": "https://daltonmedical.com/",
     "logo": "/assets/logos/dalton-mublvxul.jpg",
@@ -2834,6 +2834,179 @@
       "accent": "#1681c2",
       "dark": "#0b0d0f"
     },
-    "sections": []
+    "sections": [
+      {
+        "type": "hero",
+        "eyebrow": "Excellence Since 1984",
+        "headline": "A manufacturer's pipeline for the four categories your business runs on.",
+        "lead": "Dalton Medical began as a regional distributor in the Southwest in 1984. Dalton ownership also owns the factories, so dealers buy from the manufacturer rather than another distributor — on wheelchairs, patient lifts, beds and support surfaces, with the flexibility to buy by container, customise products, and brand them as your own.",
+        "card_title": "",
+        "card_intro": "",
+        "checklist": [],
+        "image": "",
+        "stats": [
+          {
+            "value": "1984",
+            "label": "Building medical equipment since"
+          },
+          {
+            "value": "4",
+            "label": "Categories they manufacture"
+          },
+          {
+            "value": "1,000 lb",
+            "label": "Patient lift capacity"
+          },
+          {
+            "value": "3",
+            "label": "US distribution warehouses"
+          }
+        ],
+        "heroImage": "/assets/manufacturers/heroes/dalton.jpg"
+      },
+      {
+        "type": "split",
+        "headline": "A new chapter — and what it means for your margins.",
+        "copy": "2026 opens a new chapter in the Dalton Medical legacy: a privately owned manufacturer with a ten-year plan, focused on doing a few categories exceptionally well rather than listing everything. For a dealer that shows up as a shorter supply chain, fewer hands between the factory and your dock, and a partner who can adapt a product to what you actually sell.",
+        "checklist": [],
+        "checks": [
+          "Direct sourcing — manufacturer and distributor in one, so the middleman comes out",
+          "Focused products — four manufactured categories, not a catalogue of everything",
+          "Strictest quality guidelines — internal safety inspection plus third-party compliance testing",
+          "Focused partnerships — long-term programs built for turbulent times in HME"
+        ],
+        "image": "/assets/products/dalton/four-anchors.jpg",
+        "image_side": "right"
+      },
+      {
+        "type": "products",
+        "eyebrow": "The Four Anchors",
+        "title": "The four categories Dalton manufactures",
+        "intro": "Dalton specialises in and manufactures the four key categories dealers need most — with bulk purchasing through direct or indirect container programs, custom products and custom branding available on each.",
+        "items": [
+          {
+            "name": "Wheelchairs",
+            "tags": [
+              "ISO tested & certified"
+            ],
+            "badge": "Manufactured",
+            "image": "/assets/products/dalton/wheelchairs.png",
+            "url": "",
+            "description": "From pediatric to bariatric, manual and power — every option you need, in seat widths from 12″ to 32″.",
+            "bullets": [
+              "Pediatric through bariatric",
+              "Manual and power",
+              "12″ to 32″ seat widths"
+            ]
+          },
+          {
+            "name": "Patient Lifts",
+            "tags": [
+              "Up to 1,000 lbs"
+            ],
+            "badge": "Manufactured",
+            "image": "/assets/products/dalton/patient-lifts.png",
+            "url": "",
+            "description": "Manual, electric and stand-assist devices, with the slings and accessories to go with them, supporting patients up to 1,000 lbs.",
+            "bullets": [
+              "Manual, electric & stand-assist",
+              "Slings and accessories in the same line",
+              "Rated to 1,000 lbs"
+            ]
+          },
+          {
+            "name": "Beds",
+            "tags": [
+              "Homecare · Hospice · LTC"
+            ],
+            "badge": "Manufactured",
+            "image": "/assets/products/dalton/beds.png",
+            "url": "",
+            "description": "Products built for the homecare, hospice and long-term care markets — including configurations other vendors do not offer.",
+            "bullets": [
+              "Homecare, hospice and LTC",
+              "Configurations other vendors don't carry",
+              "Container programs available"
+            ]
+          },
+          {
+            "name": "Support Surfaces",
+            "tags": [
+              "Group 1 & Group 2"
+            ],
+            "badge": "Manufactured",
+            "image": "/assets/products/dalton/support-surfaces.png",
+            "url": "",
+            "description": "High-quality Group 1 and Group 2 surfaces worth adding to your service fleet.",
+            "bullets": [
+              "Group 1 and Group 2",
+              "Built for rental fleets",
+              "Pairs with the bed line"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "cards",
+        "eyebrow": "Other Categories",
+        "title": "More of what your job already requires",
+        "intro": "Dalton also distributes and manufactures the everyday categories that keep an order complete — plus incontinence and ADLs.",
+        "items": [
+          {
+            "name": "Walking Aids",
+            "tag": "",
+            "image": "/assets/products/dalton/walking-aids.png",
+            "description": "From crutches to high-end rollators — the full walking range, covered."
+          },
+          {
+            "name": "Bath Safety",
+            "tag": "",
+            "image": "/assets/products/dalton/bath-safety.png",
+            "description": "The products you need for the bathroom, built to the same quality standards as the anchor lines."
+          },
+          {
+            "name": "Respiratory",
+            "tag": "",
+            "image": "/assets/products/dalton/respiratory.png",
+            "description": "From cylinders to cannulas, suction machines and nebulizers."
+          }
+        ]
+      },
+      {
+        "type": "differentiators",
+        "eyebrow": "Why dealers are opening Dalton",
+        "title": "Three reasons this line earns its shelf space",
+        "intro": "Straight from Dalton's own introduction — and the reasons HCPS took the line on.",
+        "items": [
+          {
+            "title": "1. You buy from the factory",
+            "description": "Dalton ownership owns the factories. As both manufacturer and distributor they adapt quickly to what you need and take the middleman out — which is where the time and the money go."
+          },
+          {
+            "title": "2. Depth instead of breadth",
+            "description": "Four manufactured categories rather than a catalogue of everything, which is what makes container programs, custom products and custom branding possible on the lines you actually stock."
+          },
+          {
+            "title": "3. Quality you can stand behind",
+            "description": "Every device passes rigorous internal safety inspection and third-party compliance testing before it reaches your floor, backed by leadership with decades in this business."
+          }
+        ]
+      },
+      {
+        "type": "spotlight",
+        "badge": "Open your account",
+        "headline": "Ready to add Dalton to your floor?",
+        "copy": "HCPS represents Dalton Medical across Kentucky and Tennessee. Start with the four anchors, price a container program, or ask about custom branding — your rep can price any of it and get the account opened.",
+        "image": "/assets/logos/dalton-badge.jpg",
+        "checklist": [
+          "Request dealer pricing on wheelchairs, lifts, beds or surfaces",
+          "Ask about direct and indirect container programs",
+          "Explore custom products and custom branding",
+          "Book a 15-minute line overview for your team"
+        ],
+        "cta": "Place Dealer Order"
+      }
+    ],
+    "resourceLogo": "/assets/logos/dalton-badge.jpg"
   }
 ]
