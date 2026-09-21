@@ -1032,6 +1032,19 @@
       "dealers": [],
       "featured": false,
       "models": []
+    },
+    {
+      "id": "dalton-medical-line-of-semi-electric-and-full-electric-dme-b-mubn75n3",
+      "title": "Dalton Medical Line of Semi-Electric and Full Electric DME Beds",
+      "type": "catalog",
+      "manufacturer": "dalton",
+      "format": "pdf",
+      "file": "/assets/docs/beds-and-pt-room-mini-catalog-mubn3y74.pdf",
+      "url": "",
+      "description": "Learn more about the Dalton Medical line of Semi-Electric and Full Electric Beds in our Mini Catalog.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "Admin-managed single source of record. Each item: manufacturer, category (product), type (standardized), models[], year, keywords, popular, featured, sortPriority. Types/categories/needs defined at top level. Do not hand-seed from documents.js.",
