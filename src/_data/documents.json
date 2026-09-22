@@ -1032,6 +1032,19 @@
       "dealers": [],
       "featured": false,
       "models": []
+    },
+    {
+      "id": "dalton-medical-master-catalog-mud643d1",
+      "title": "Dalton Medical Master Catalog ",
+      "type": "catalog",
+      "manufacturer": "dalton",
+      "format": "pdf",
+      "file": "",
+      "url": "",
+      "description": "Learn about the full portfolio of Dalton Medical. ",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "Admin-managed single source of record. Each item: manufacturer, category (product), type (standardized), models[], year, keywords, popular, featured, sortPriority. Types/categories/needs defined at top level. Do not hand-seed from documents.js.",
