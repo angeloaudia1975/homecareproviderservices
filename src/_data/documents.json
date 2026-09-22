@@ -1045,19 +1045,6 @@
       "access": "public",
       "dealers": [],
       "featured": false
-    },
-    {
-      "id": "dalton-medical-wheelchair-catalog-mubnbqnc",
-      "title": "Dalton Medical Wheelchair Catalog",
-      "type": "catalog",
-      "manufacturer": "dalton",
-      "format": "pdf",
-      "file": "/assets/docs/wheelchair-mini-catalog-mubna4xa.pdf",
-      "url": "",
-      "description": "Learn more about the full portfolio of Wheelchairs available from Dalton Medical. We offer a full line to accommodate all your wheelchair needs including cushions. ",
-      "access": "public",
-      "dealers": [],
-      "featured": false
     }
   ],
   "_note": "Admin-managed single source of record. Each item: manufacturer, category (product), type (standardized), models[], year, keywords, popular, featured, sortPriority. Types/categories/needs defined at top level. Do not hand-seed from documents.js.",
