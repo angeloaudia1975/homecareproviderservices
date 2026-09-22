@@ -1058,6 +1058,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "strongback-dealer-application-mud67do4",
+      "title": "Strongback Dealer Application",
+      "type": "dealer-application",
+      "manufacturer": "strongback-mobility",
+      "format": "pdf",
+      "file": "/assets/docs/2026-dealer-account-application-hps-mud66qww.pdf",
+      "url": "",
+      "description": "Setup your Strongback Account Today.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "Admin-managed single source of record. Each item: manufacturer, category (product), type (standardized), models[], year, keywords, popular, featured, sortPriority. Types/categories/needs defined at top level. Do not hand-seed from documents.js.",
