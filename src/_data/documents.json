@@ -1071,6 +1071,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "iseries-bed-installation-and-assembly-instructions-mueakpq9",
+      "title": "iSeries Bed Installation and Assembly Instructions",
+      "type": "training",
+      "manufacturer": "dalton",
+      "format": "pdf",
+      "file": "/assets/docs/iseries-installation-and-assembly-mueajbvi.pdf",
+      "url": "",
+      "description": "Quick iSeries Installation Instruction",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "Admin-managed single source of record. Each item: manufacturer, category (product), type (standardized), models[], year, keywords, popular, featured, sortPriority. Types/categories/needs defined at top level. Do not hand-seed from documents.js.",
