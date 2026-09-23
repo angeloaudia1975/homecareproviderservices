@@ -378,8 +378,19 @@ exports.handler = async (event)=>{
 
     if(b.action==="add_note"){
       if(!b.dealer_id||!clean(b.body)) return json(400,{error:"dealer_id + body required"});
+      const NOTE_KINDS=new Set(["note","call","visit","email","quote","issue"]);
+      const kind=NOTE_KINDS.has(String(b.kind||"").toLowerCase())?String(b.kind).toLowerCase():"note";
       const row={dealer_id:b.dealer_id,author_email:me.email||null,author_name:me.name||null,body:clean(b.body,4000)};
-      const ins=await sbSend("POST","dealer_notes",row,{Prefer:"return=representation"});
+      let ins;
+      try{
+        ins=await sbSend("POST","dealer_notes",Object.assign({kind},row),{Prefer:"return=representation"});
+      }catch(e){
+        // dealer_notes.kind is optional. On a deployment that hasn't run
+        // supabase/dealer_note_kind.sql the note still posts — untyped — and Dealer 360
+        // reads it as a plain "Note". Every other failure is real and must surface.
+        if(!/PGRST204|Could not find the 'kind' column/i.test(String((e&&e.message)||e))) throw e;
+        ins=await sbSend("POST","dealer_notes",row,{Prefer:"return=representation"});
+      }
       return json(200,{ok:true,note:(ins&&ins[0])||row});
     }
 

@@ -50,6 +50,49 @@
  .tkb{flex:1;min-width:0}.tkt{font-size:13px;font-weight:600;color:var(--navy)}.tkt.dn{text-decoration:line-through;color:var(--gray)}
  .tkadd{display:flex;gap:6px;margin-top:4px}.tkadd input#ntitle{flex:1;min-width:0}
  .nt{padding:7px 0;border-bottom:1px solid #eef2f6}.nt .ntb{font-size:13px;white-space:pre-wrap;color:var(--ink)}
+ /* ---- Notes ---------------------------------------------------------------
+    A rep opens this card to read a dealer's history in the minute before a call,
+    an email or a visit — so it is sized for reading, not for storing text. Each
+    note leads with the three things you scan for (what kind of touch, who, how
+    long ago) and only then the words. The activity timeline keeps .nt above; the
+    two lists are read for different reasons and no longer share a type scale. */
+ .ncompose{border:1px solid var(--line);border-radius:12px;background:#fafbfc;padding:10px}
+ .ncompose textarea#nbody{width:100%;font-size:14.5px;line-height:1.55;resize:vertical}
+ .ncbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:7px}
+ .ncbar select{width:auto}
+ .ncmsg{font-size:12.5px;font-weight:600;margin-left:2px}
+ .nhd{display:flex;align-items:center;gap:8px;margin:16px 0 9px;font-size:11px;
+      text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:800}
+ .nhd .ncount{letter-spacing:0;color:var(--navy);background:#eef3f8;border-radius:999px;padding:2px 9px;font-size:11px}
+ .nhd .nrule{flex:1;height:1px;background:var(--line)}
+ .nlist{display:flex;flex-direction:column;gap:10px}
+ .ncard{border:1px solid var(--line);border-left:3px solid #b9c5d2;border-radius:11px;
+        background:#fff;padding:11px 15px 13px}
+ .ncard:hover{background:#fcfdfe}
+ .nmeta{display:flex;flex-wrap:wrap;align-items:center;gap:5px 10px;margin-bottom:7px}
+ .nkind{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;
+        border-radius:6px;padding:2px 8px;white-space:nowrap;background:#eef2f6;color:#41576b}
+ .nwho{font-size:13px;font-weight:700;color:var(--navy)}
+ .nwhen{font-size:12.5px;font-weight:600;color:#41576b;font-variant-numeric:tabular-nums}
+ .nago{font-size:12px;font-weight:600;color:var(--gray);margin-left:auto;white-space:nowrap}
+ /* On a phone the meta row wraps, and a flush-right age ends up orphaned on its own
+    line — let it sit next to the date instead. */
+ @media(max-width:620px){ .nago{margin-left:0} }
+ /* 15px/1.65 is the readable part; the 74ch cap is what makes it *scannable* — the
+    left column runs ~855px wide, and a 120-character line loses your eye on the wrap. */
+ .nbody{font-size:15px;font-weight:500;line-height:1.65;color:var(--ink);
+        white-space:pre-wrap;overflow-wrap:anywhere;max-width:74ch}
+ .nbody.clamp{display:-webkit-box;-webkit-line-clamp:9;-webkit-box-orient:vertical;overflow:hidden}
+ .nmore{background:none;border:0;padding:5px 0 0;font:inherit;font-size:12.5px;font-weight:700;color:var(--blue);cursor:pointer}
+ .nmore:hover{text-decoration:underline}
+ .ncard.nk-call{border-left-color:var(--blue)}   .ncard.nk-call  .nkind{background:#e8f1fb;color:#1a5fa8}
+ .ncard.nk-visit{border-left-color:var(--orange)}.ncard.nk-visit .nkind{background:#fdeee0;color:#b45309}
+ .ncard.nk-email{border-left-color:#8b6ede}      .ncard.nk-email .nkind{background:#f3eef9;color:#5b3fa0}
+ .ncard.nk-quote{border-left-color:var(--green)} .ncard.nk-quote .nkind{background:#e7f6ec;color:#1f7a44}
+ .ncard.nk-issue{border-left-color:#d64545}      .ncard.nk-issue .nkind{background:#fdecec;color:#b42323}
+ /* Contacts: the email is the action, so it has to look like one. */
+ .cmail{color:var(--blue);font-weight:700;text-decoration:none}
+ .cmail:hover{text-decoration:underline}
  /* ---- Voice notes (Web Speech API dictation) ---- */
  .vn{margin-top:8px;border:1px solid var(--line);border-radius:11px;background:#fafbfc;padding:9px}
  .vn-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
@@ -267,11 +310,13 @@ function render(D,A){
       </div>
     </div></div>`;
 
-  // Rep workstation order (left column, top→bottom): Notes → Outlook Email → Make a Call → Log a
-  // Touch → Signals & Analytics. Reference sidebar (right): tasks/timeline, contacts, addresses, accounts.
+  // Rep workstation order (left column, top→bottom): Notes → Contacts → Outlook Email → Make a
+  // Call → Log a Touch → Signals & Analytics. Notes and Contacts sit together at the top because
+  // they answer the two questions a rep has before a call: what happened last, and who do I ask.
+  // Reference sidebar (right): tasks/timeline, addresses, manufacturer account numbers.
   $("#body").innerHTML=`${header}${nextBanner}
     <div class="d360">
-      <div>${notesCard}${emailCard}${callCard}${touchCard}${contactsCard}${handoutCard}${intelCard}${history}${salesCard}${commCard}</div>
+      <div>${notesCard}${contactsCard}${emailCard}${callCard}${touchCard}${handoutCard}${intelCard}${history}${salesCard}${commCard}</div>
       <div>${tasksCard}${signals}${addrCard}${acctCard}</div>
     </div>`;
   CUR=d.id; DPHONE=d.phone||""; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails(); loadHandout();
@@ -753,6 +798,15 @@ function prefillCall(a){
   const k=$("#la_kind"); if(k) k.value="call";
   const s=$("#la_sum"); if(s){ if(!s.value) s.value="Called "+label; setTimeout(function(){ s.scrollIntoView({behavior:"smooth",block:"center"}); s.focus(); },60); }
 }
+/* Clicking a contact's email hands the address straight to the default mail app
+   (Outlook on the reps' desktops) as a new message — the href is the stored address
+   verbatim, so nothing gets re-typed or re-encoded on the way. Like the phone links,
+   it also pre-fills "Log a touch" rather than logging anything on its own: opening a
+   compose window is an intention, not yet a touch. */
+function emailTouch(email,name){
+  const k=$("#la_kind"); if(k) k.value="email";
+  const s=$("#la_sum"); if(s && !s.value) s.value="Emailed "+(name||email);
+}
 function contactForm(c){ c=c||{}; const editing=!!c.id;
   return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px;background:#fafbfc;margin-bottom:10px">
     <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:800;margin-bottom:6px">${editing?"Edit contact":"Add contact"}</div>
@@ -774,7 +828,7 @@ function renderContacts(){ const el=$("#contacts"); if(!el||!CDATA) return;
     return `<div style="padding:7px 0;border-bottom:1px solid #eef2f6"><div style="display:flex;align-items:center;gap:8px">
       <div style="flex:1;min-width:0"><b>${esc(c.name||"—")}</b>${isP?' <span style="font-size:10px;font-weight:800;color:#b45309;background:#fdeee0;border-radius:6px;padding:1px 6px">★ primary</span>':""}
         <div class="hint" style="margin:0">${esc([c.title,c.role].filter(Boolean).join(" · "))}</div>
-        <div class="hint" style="margin:0">${c.email?"✉ "+esc(c.email):'<span style="color:var(--gray)">No email on file</span>'}${c.phone?" · ☎ "+esc(c.phone):""}${c.cell?" · 📱 "+esc(c.cell):""}</div></div>
+        <div class="hint" style="margin:0">${c.email?`✉ <a class="cmail" href="mailto:${esc(c.email)}" title="Open a new message to ${esc(c.name||c.email)} in your mail app" onclick="emailTouch('${je}','${esc(String(c.name||"").replace(/'/g,""))}')">${esc(c.email)}</a>`:'<span style="color:var(--gray)">No email on file</span>'}${c.phone?" · ☎ "+esc(c.phone):""}${c.cell?" · 📱 "+esc(c.cell):""}</div></div>
       <div style="display:flex;gap:4px;flex-wrap:wrap">${(isP||!c.email)?"":`<button class="btn sm" title="Make primary" onclick="makePrimary('${je}','${esc(String(c.name||'').replace(/'/g,''))}','${esc(String(c.phone||'').replace(/'/g,''))}')">★</button>`}
         <button class="btn sm" onclick="editContact('${jid}')">Edit</button>
         <button class="btn sm" style="color:var(--red)" onclick="delContact('${jid}')">✕</button></div>
@@ -1153,6 +1207,51 @@ async function openDealerPortal(btn){
   }catch(e){ if(w) w.close(); if(btn){ btn.textContent="Couldn't open preview"; setTimeout(()=>{ if(btn) btn.textContent=old; },3200); } }
   finally{ if(btn) btn.disabled=false; }
 }
+/* ===== Notes — what a rep scans for before a call, an email or a visit =====
+   The type is optional in storage: dealer_notes.kind only exists once
+   supabase/dealer_note_kind.sql has been run, and every note written before that
+   reads as a plain "Note". Nothing here assumes the column is there. */
+const NKINDS=[["note","📝 Note"],["call","📞 Call"],["visit","🚗 Visit"],["email","✉ Email"],["quote","🏷 Pricing"],["issue","⚠ Issue"]];
+const NKLABEL={note:"Note",call:"Call",visit:"Visit",email:"Email",quote:"Pricing",issue:"Issue"};
+function noteKind(n){ const k=String((n&&n.kind)||"note").toLowerCase(); return NKLABEL[k]?k:"note"; }
+function noteAgo(d){
+  const ms=Date.now()-d.getTime(); if(ms<0) return "";
+  const days=Math.floor(ms/86400000);
+  if(days===0) return "today";
+  if(days===1) return "yesterday";
+  if(days<7)   return days+" days ago";
+  if(days<35){ const w=Math.round(days/7);  return w+(w===1?" week ago":" weeks ago"); }
+  if(days<365){const m=Math.round(days/30); return m+(m===1?" month ago":" months ago"); }
+  const y=Math.floor(days/365); return y+(y===1?" year ago":" years ago");
+}
+function noteStamp(iso){
+  const d=new Date(iso||"");
+  if(!iso||isNaN(d.getTime())) return {date:"",time:"",ago:"",full:""};
+  return { date:d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}),
+           time:d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}),
+           ago:noteAgo(d), full:d.toLocaleString() };
+}
+/* One dictated ramble shouldn't bury the four notes under it — fold anything past
+   nine lines behind Show more. Measured after paint, so a note that just fits is
+   left alone rather than given a button that reveals one extra line. */
+function clampNotes(){
+  document.querySelectorAll("#notes .nbody").forEach(function(el){
+    if(el.dataset.clamped) return; el.dataset.clamped="1";
+    const lh=parseFloat(getComputedStyle(el).lineHeight)||25;
+    if(el.scrollHeight <= lh*9 + lh*0.6) return;
+    el.classList.add("clamp");
+    const b=document.createElement("button");
+    b.type="button"; b.className="nmore"; b.textContent="Show more";
+    b.onclick=function(){ const folded=el.classList.toggle("clamp"); b.textContent=folded?"Show more":"Show less"; };
+    el.parentNode.appendChild(b);
+  });
+}
+function noteErr(r){
+  const m=String((r&&(r.detail||r.message||r.error))||"");
+  if(/tables_missing|PGRST205|Could not find the table/i.test(m)) return "Couldn't post — notes storage isn't set up yet (run supabase/crm.sql).";
+  if(/unauthor|expired|401/i.test(m)) return "Couldn't post — your sign-in expired. Reload the page and try again.";
+  return m ? "Couldn't post — "+m.slice(0,160)+"." : "Couldn't post the note — nothing was saved, and your text is still here.";
+}
 async function loadCRM(){
   const el=$("#crm"); if(!el||!CUR) return;
   let j; try{ j=await crm({action:"list",dealer_id:CUR}); }catch(e){ el.innerHTML=`<div class="hint">Couldn't load tasks.</div>`; const n0=$("#notes"); if(n0)n0.innerHTML=`<div class="hint">Couldn't load notes.</div>`; return; }
@@ -1182,7 +1281,13 @@ async function loadCRM(){
     <button class="tkchk" title="${t.status==='open'?'Mark done':'Reopen'}" onclick="taskAction('${t.id}','${t.status==='open'?'complete_task':'reopen_task'}')">${t.status==='open'?'○':'●'}</button>
     <div class="tkb"><div class="tkt ${t.status!=='open'?'dn':''}">${esc(t.title)}${t.source==='auto'?' <span class="pill2 due">auto</span>':''}</div>
       ${t.due_date?`<div class="hint" style="margin:0">due ${esc(t.due_date)}</div>`:''}${t.detail?`<div class="hint" style="margin:0">${esc(t.detail)}</div>`:''}</div></div>`;
-  const nRow=n=>`<div class="nt"><div class="ntb">${esc(n.body)}</div><div class="hint" style="margin:2px 0 0">${esc(n.author_name||n.author_email||"")}${n.created_at?" · "+new Date(n.created_at).toLocaleString():""}</div></div>`;
+  const nRow=n=>{ const k=noteKind(n), s=noteStamp(n.created_at);
+    return `<div class="ncard nk-${k}">
+      <div class="nmeta"><span class="nkind">${esc(NKLABEL[k])}</span>
+        <span class="nwho">${esc(n.author_name||n.author_email||"—")}</span>
+        ${s.date?`<span class="nwhen" title="${esc(s.full)}">${esc(s.date)} · ${esc(s.time)}</span>`:""}
+        ${s.ago?`<span class="nago">${esc(s.ago)}</span>`:""}</div>
+      <div class="nbody">${esc(n.body)}</div></div>`; };
   const aRow=a=>{ const ic=a.kind==="campaign"?"📣":a.kind==="call"?"📞":a.kind==="visit"?"🚗":a.kind==="meeting"?"👥":a.kind==="note"?"📝":a.kind==="system"?"•":"📧"; return `<div class="nt"><div class="ntb">${ic} ${esc(a.subject||a.kind)}</div>${a.detail?`<div class="hint" style="margin:2px 0 0">${esc(a.detail)}</div>`:""}<div class="hint" style="margin:2px 0 0">${esc(a.actor||a.contact_email||"")}${a.created_at?" · "+new Date(a.created_at).toLocaleString():""}</div></div>`; };
   el.innerHTML=`${hpBlock}${opBlock}${xsBlock}<div class="tasks">
       ${open.length?open.map(tRow).join(""):'<div class="hint">No open tasks.</div>'}
@@ -1206,7 +1311,14 @@ async function loadCRM(){
     </div>`;
   // Notes live in their own card (left column, top).
   const nel=$("#notes");
-  if(nel){ nel.innerHTML=`<textarea id="nbody" rows="3" placeholder="Add a note about this dealer…" style="width:100%"></textarea>
+  if(nel){ nel.innerHTML=`<div class="ncompose">
+    <textarea id="nbody" rows="2" placeholder="Add a note about this dealer…"></textarea>
+    <div class="ncbar">
+      <select id="nkind" title="What kind of note is this?">${NKINDS.map(([v,l])=>`<option value="${v}">${l}</option>`).join("")}</select>
+      <button type="button" class="btn sm ghost" id="vnOpen" onclick="vnOpenPanel()" hidden>🎤 Dictate</button>
+      <button class="btn sm orange" onclick="addNote()">Post note</button>
+      <span class="ncmsg" id="ncmsg"></span>
+    </div>
     <div class="vn" id="vn" hidden>
       <div class="vn-bar">
         <button type="button" class="btn sm orange" id="vnStart" onclick="vnStart()">🎤 Start recording</button>
@@ -1222,9 +1334,11 @@ async function loadCRM(){
       <div class="vn-hint">Tip: speak naturally, then Stop. Review and fix the text, Insert it into your note, edit further if needed, then Post note. Nothing posts until you tap Post note.</div>
     </div>
     <div class="vn-unsupported" id="vnNoSupport" hidden>🎤 Voice input isn't available in this browser — you can still type your note normally. For dictation, open Dealer 360 in Chrome (Android/desktop) or Safari (iPhone/iPad).</div>
-    <button class="btn sm" style="margin-top:8px" onclick="addNote()">Post note</button>
-    <div style="margin-top:10px">${nts.length?nts.map(nRow).join(""):'<div class="hint">No notes yet.</div>'}</div>`;
+    </div>
+    <div class="nhd">History${nts.length?` <span class="ncount">${nts.length}</span>`:""}<span class="nrule"></span></div>
+    ${nts.length?`<div class="nlist">${nts.map(nRow).join("")}</div>`:'<div class="hint">No notes yet — the first one you post shows up here.</div>'}`;
     initVoiceNotes();
+    clampNotes();
   }
 }
 
@@ -1239,11 +1353,19 @@ function vnStatus(msg, isErr){ var s=vnEl("vnStatus"); if(!s)return; s.innerHTML
 function initVoiceNotes(){
   VN_ON=false; VN_FINAL="";
   var SR=vnSR(); VN_SUPPORTED=!!SR;
-  var vn=vnEl("vn"), no=vnEl("vnNoSupport");
-  if(!VN_SUPPORTED){ if(vn)vn.hidden=true; if(no)no.hidden=false; return; }
-  if(vn)vn.hidden=false; if(no)no.hidden=true;
+  var vn=vnEl("vn"), no=vnEl("vnNoSupport"), op=vnEl("vnOpen");
+  if(!VN_SUPPORTED){ if(vn)vn.hidden=true; if(op)op.hidden=true; if(no)no.hidden=false; return; }
+  // The dictation panel is ~200px of controls, and it used to sit between the rep and
+  // the history they opened this card to read. It now folds behind "🎤 Dictate", which
+  // opens it AND starts recording — the same single click as the old Start button.
+  if(vn)vn.hidden=true; if(no)no.hidden=true; if(op)op.hidden=false;
   vnToggleButtons(false);
   vnStatus("Tap to dictate your note.");
+}
+function vnOpenPanel(){
+  var vn=vnEl("vn"), op=vnEl("vnOpen");
+  if(vn)vn.hidden=false; if(op)op.hidden=true;
+  vnStart();
 }
 function vnToggleButtons(recording){
   var st=vnEl("vnStart"), sp=vnEl("vnStop"), pv=vnEl("vnPreview");
@@ -1316,7 +1438,16 @@ function vnInsert(){
 }
 
 async function addTask(){ const t=(($("#ntitle")||{}).value||"").trim(); if(!t)return; const due=($("#ndue")||{}).value||""; await crm({action:"add_task",dealer_id:CUR,title:t,due_date:due}); loadCRM(); }
-async function addNote(){ const b=(($("#nbody")||{}).value||"").trim(); if(!b)return; await crm({action:"add_note",dealer_id:CUR,body:b}); loadCRM(); }
+async function addNote(){
+  const b=(($("#nbody")||{}).value||"").trim(); if(!b)return;
+  const kind=(($("#nkind")||{}).value||"note");
+  const msg=$("#ncmsg"); if(msg){ msg.style.color="var(--gray)"; msg.textContent="Posting…"; }
+  let r; try{ r=await crm({action:"add_note",dealer_id:CUR,body:b,kind}); }catch(e){ r={error:String((e&&e.message)||e)}; }
+  // Only re-render on success: loadCRM() rebuilds the card, which would throw away a
+  // note the rep just dictated if the save had actually failed.
+  if(!r||r.error||!r.ok){ if(msg){ msg.style.color="#b42323"; msg.textContent=noteErr(r); } return; }
+  loadCRM();
+}
 async function logActivity(){
   const kind=($("#la_kind")||{}).value||"note";
   const summary=(($("#la_sum")||{}).value||"").trim(); if(!summary){ toast&&toast("Enter what happened"); return; }
