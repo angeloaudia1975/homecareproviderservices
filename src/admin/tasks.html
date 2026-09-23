@@ -40,7 +40,7 @@
 </head><body>
 <header id="ac-head"></header>
 <div class="wrap">
-  <div class="top"><div><h1>My Tasks</h1><div class="sub">Your follow-up queue — manual tasks plus the ones the follow-up engine builds from dealer signals.</div></div>
+  <div class="top"><div><h1 id="pgtitle">My Tasks</h1><div class="sub" id="pgsub">Your follow-up queue — manual tasks plus the ones the follow-up engine builds from dealer signals.</div></div>
     <div id="runbox"></div></div>
   <div id="autopanel"></div>
   <div id="body"><div class="msg">Loading…</div></div>
@@ -53,7 +53,11 @@ const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",
 const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
 window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
 let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
-let TOKEN=HCPS.token(), TASKS=[], ROLE="", FSRC="all", FREP="all", REPS=[];
+/* Two different permissions, kept apart on purpose. SEESALL is the server's answer to
+   "may this person work the whole territory" — president, or a Relations Manager — and it
+   decides what the queue shows. ROLE stays reserved for the engine controls, because
+   running the machine that fills the queue is not the same right as working it. */
+let TOKEN=HCPS.token(), TASKS=[], ROLE="", SEESALL=false, FSRC="all", FREP="all", REPS=[];
 
 function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
 async function submitTok(){
@@ -73,8 +77,14 @@ async function load(){
   if(r.status===401){ gate("Your session ended — sign in again."); return; }
   const j=r.body;
   if(j&&j.error==="tables_missing"){ $("#body").innerHTML=`<div class="msg">Run <b>supabase/crm.sql</b> in Supabase to turn on tasks, then reload.</div>`; return; }
-  TASKS=(j&&j.tasks)||[]; ROLE=(j&&j.role)||"";
+  TASKS=(j&&j.tasks)||[]; ROLE=(j&&j.role)||""; SEESALL=!!(j&&j.sees_all);
   REPS=[...new Set(TASKS.map(t=>t.assigned_rep).filter(Boolean))].sort();
+  // Whoever works the whole territory is looking at the team's queue, not their own list.
+  const h=$("#pgtitle"), s=$("#pgsub");
+  if(h) h.textContent = SEESALL ? "Tasks & Follow-Up Engine" : "My Tasks";
+  if(s) s.textContent = SEESALL
+    ? "Every open follow-up across all manufacturer lines — manual tasks plus the ones the follow-up engine builds from dealer signals. Filter by rep, or work the unassigned pile."
+    : "Your follow-up queue — manual tasks plus the ones the follow-up engine builds from dealer signals.";
   // president gets the engine console + Zoho mirror
   $("#runbox").innerHTML = ROLE==="president" ? `<button class="btn ghost" id="mirbtn" onclick="mirrorZoho()">⤴ Mirror to Zoho</button>` : "";
   if(ROLE==="president") loadAutomation(); else $("#autopanel").innerHTML="";
@@ -176,20 +186,36 @@ async function mirrorZoho(){
   if(!j.ok) alert("Mirror to Zoho: "+(j.message||j.error||r.status));
 }
 function render(){
-  let rows=TASKS.filter(t=> (FSRC==="all"||t.source===FSRC) && (FREP==="all"||t.assigned_rep===FREP) );
-  const c={open:TASKS.length,high:TASKS.filter(t=>t.priority==="high").length,auto:TASKS.filter(t=>t.source==="auto").length,manual:TASKS.filter(t=>t.source==="manual").length};
+  // "__none" is the unowned pile — tasks the engine raised against a dealer that has no rep
+  // on it. They are nobody's by definition, so a name filter can never surface them.
+  let rows=TASKS.filter(t=> (FSRC==="all"||t.source===FSRC)
+    && (FREP==="all" || (FREP==="__none" ? !t.assigned_rep : t.assigned_rep===FREP)) );
+  const c={open:TASKS.length,high:TASKS.filter(t=>t.priority==="high").length,auto:TASKS.filter(t=>t.source==="auto").length,
+           manual:TASKS.filter(t=>t.source==="manual").length,none:TASKS.filter(t=>!t.assigned_rep).length};
   const kpi=(l,v,cls)=>`<div class="kpi"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div></div>`;
-  const kpis=`<div class="kpis" style="margin-bottom:14px">${kpi("Open tasks",c.open,"blue")}${kpi("High priority",c.high,"orange")}${kpi("Auto-generated",c.auto,"")}${kpi("Manual",c.manual,"")}</div>`;
+  const kpis=`<div class="kpis" style="margin-bottom:14px">${kpi("Open tasks",c.open,"blue")}${kpi("High priority",c.high,"orange")}${kpi("Auto-generated",c.auto,"")}${kpi("Manual",c.manual,"")}${SEESALL&&c.none?kpi("Unassigned",c.none,"orange"):""}</div>`;
+  /* The segments used to be hard-coded All / Auto / Manual, which offered a filter for a
+     source the queue rarely has and hid the two it does: "intent" (a dealer showing buying
+     interest) and "visit" (a follow-up dictated in the field). Those are the opportunities,
+     so build the row from the sources actually present. */
+  const SRCLAB={auto:"🤖 Auto",intent:"🎯 Intent",visit:"🚗 Visit",manual:"✍️ Manual"};
   const seg=(v,l)=>`<button class="${FSRC===v?'on':''}" onclick="setSrc('${v}')">${l}</button>`;
-  const repSel = ROLE==="president" ? `<select onchange="setRep(this.value)"><option value="all">All reps</option>${REPS.map(r=>`<option value="${esc(r)}"${FREP===r?" selected":""}>${esc(r)}</option>`).join("")}</select>` : "";
-  const filt=`<div class="filt"><div class="seg">${seg("all","All")}${seg("auto","🤖 Auto")}${seg("manual","✍️ Manual")}</div>${repSel}<span class="hint" style="margin:0">${rows.length} task${rows.length===1?"":"s"}</span></div>`;
+  const present=[...new Set(TASKS.map(t=>String(t.source||"")))]
+    .filter(s=>/^[a-z_]{1,24}$/.test(s))                       // never interpolate a stray value into onclick
+    .sort((a,b)=>{const o=Object.keys(SRCLAB); const ia=o.indexOf(a), ib=o.indexOf(b);
+                  return (ia<0?99:ia)-(ib<0?99:ib) || a.localeCompare(b);});
+  const segs=seg("all","All")+present.map(s=>seg(s,SRCLAB[s]||(s.charAt(0).toUpperCase()+s.slice(1)))).join("");
+  const repSel = SEESALL ? `<select onchange="setRep(this.value)"><option value="all">All reps</option>${REPS.map(r=>`<option value="${esc(r)}"${FREP===r?" selected":""}>${esc(r)}</option>`).join("")}${c.none?`<option value="__none"${FREP==="__none"?" selected":""}>Unassigned (${c.none})</option>`:""}</select>` : "";
+  const filt=`<div class="filt"><div class="seg">${segs}</div>${repSel}<span class="hint" style="margin:0">${rows.length} task${rows.length===1?"":"s"}</span></div>`;
   let body;
   if(!rows.length){ body=`<div class="msg">No open tasks${FSRC!=="all"||FREP!=="all"?" for this filter":""}. ${ROLE==="president"&&!TASKS.length?'Click <b>Run follow-up engine</b> to build the queue from dealer signals.':'🎉'}</div>`; }
   else{
     body=rows.map(t=>{
       const link=t.dealer_id?`/admin/dealer.html?id=${encodeURIComponent(t.dealer_id)}`:null;
       const dealer=link?`<a class="link" href="${link}">${esc(t.dealer_name||"dealer")}</a>`:esc(t.dealer_name||"");
-      const meta=[dealer, t.due_date?"due "+esc(t.due_date):"", t.assigned_rep?"· "+esc(t.assigned_rep):""].filter(Boolean).join(" ");
+      // On the whole-territory view an unowned task should say so, not just stay silent.
+      const who = t.assigned_rep ? "· "+esc(t.assigned_rep) : (SEESALL ? '· <b style="color:#b45309">unassigned</b>' : "");
+      const meta=[dealer, t.due_date?"due "+esc(t.due_date):"", who].filter(Boolean).join(" ");
       return `<div class="tkrow ${t.priority==='high'?'hi':''}">
         <button class="tkchk" title="Mark done" onclick="act('${t.id}','complete_task')">○</button>
         <div><div class="t">${esc(t.title)}</div>${t.detail?`<div class="d">${esc(t.detail)}</div>`:''}

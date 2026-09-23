@@ -65,7 +65,7 @@ async function whoami(event){
   return null;
 }
 
-const { dealerScope, isAdmin } = require("./_scope.js");
+const { dealerScope, isAdmin, seesAllDealers } = require("./_scope.js");
 
 exports.handler = async (event)=>{
   try{
@@ -239,15 +239,18 @@ exports.handler = async (event)=>{
       return json(200,{ok:true, sales:{ currency:"USD", total:grand, combined:combinedSeries, manufacturers, has_products:manufacturers.some(m=>m.products.length>0) }});
     }
 
-    // Lightweight open-task count for the masthead badge (the caller's own, rep-scoped).
+    // Lightweight open-task count for the masthead badge. Scoped the same way the queue
+    // itself is (see my_tasks): whoever works the whole territory counts the whole queue.
     if(b.action==="task_count"){
-      if(me.role==="president"){
+      if(seesAllDealers(me)){
         try{ const r=await fetch(`${SUPABASE_URL}/rest/v1/dealer_tasks?status=eq.open&select=id`,{headers:{...H(),Prefer:"count=exact",Range:"0-0"}}); const cr=r.headers.get("content-range")||""; const n=cr.includes("/")?parseInt(cr.split("/")[1],10):0; return json(200,{ok:true,count:Number.isFinite(n)?n:0}); }
         catch(e){ return json(200,{ok:true,count:0}); }
       }
-      const rn=(me.rep_name||"").toLowerCase();
+      // An empty rep_name must match nothing. Without the `!!rn` guard it compares "" to ""
+      // and silently counts every UNASSIGNED task as this rep's own.
+      const rn=String(me.rep_name||"").toLowerCase();
       const rows=await sbGet(`dealer_tasks?status=eq.open&select=assigned_rep`).catch(()=>[]);
-      const n=(rows||[]).filter(t=>String(t.assigned_rep||"").toLowerCase()===rn).length;
+      const n=(rows||[]).filter(t=>!!rn && String(t.assigned_rep||"").toLowerCase()===rn).length;
       return json(200,{ok:true,count:n});
     }
 
@@ -491,15 +494,28 @@ exports.handler = async (event)=>{
       return json(200,{ok:true,status});
     }
 
-    // Open tasks across all dealers (for a future global worklist). Reps see their own.
+    // The follow-up queue across every dealer.
+    //
+    // Who sees the whole queue is the same question as who may work any dealer, and _scope.js
+    // already answers it once for the whole app: management, PLUS a Relations Manager, whose
+    // job is the territory rather than a book of accounts. This endpoint used to ask
+    // `role !== "president"` on its own, which quietly cut a Relations Manager down to the
+    // tasks carrying her own name — and unowned tasks carry nobody's. A sales rep still sees
+    // only their own. Engine controls stay president-only; reading and working the queue is
+    // not the same permission as running the machine that fills it.
     if(b.action==="my_tasks"){
       const status=["open","done","dismissed"].includes(b.status)?b.status:"open";
       let q=`dealer_tasks?status=eq.${status}&select=*&order=priority.desc,due_date.asc.nullslast,created_at.desc&limit=800`;
       let tasks=await sbGet(q).catch(()=>[]);
-      if(me.role!=="president" && me.rep_name){ const rn=me.rep_name.toLowerCase(); tasks=(tasks||[]).filter(t=>String(t.assigned_rep||"").toLowerCase()===rn); }
+      const seesAll=seesAllDealers(me);
+      // A rep with no rep_name on their account must see NOTHING, not everything: the old
+      // `&& me.rep_name` guard skipped the filter entirely for such an account, which handed
+      // a rep the whole company's queue. staff-auth allows a null rep_name, so this is reachable.
+      if(!seesAll){ const rn=String(me.rep_name||"").toLowerCase();
+        tasks=(tasks||[]).filter(t=>!!rn && String(t.assigned_rep||"").toLowerCase()===rn); }
       const names=await namesFor((tasks||[]).map(t=>t.dealer_id));
       tasks=(tasks||[]).map(t=>({...t,dealer_name:names[t.dealer_id]||""}));
-      return json(200,{ok:true,tasks,role:me.role});
+      return json(200,{ok:true,tasks,role:me.role,sees_all:seesAll});
     }
 
     // Intelligent follow-up engine (President-only). Reads the same signals the Call List
