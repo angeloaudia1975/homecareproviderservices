@@ -28,7 +28,8 @@
  .chartwrap{position:relative}
  .cctip{position:absolute;pointer-events:none;background:#0f1b2b;color:#fff;border-radius:7px;padding:5px 8px;font-size:12px;opacity:0;transition:opacity .1s;z-index:5}
  .cctip b{font-size:13px}
- .drill{position:fixed;inset:0;background:rgba(12,22,34,.42);z-index:50;display:flex;justify-content:flex-end}
+ /* Above the sticky masthead (z-index 100) — at 50 the drawer's top slid under it. */
+ .drill{position:fixed;inset:0;background:rgba(12,22,34,.42);z-index:200;display:flex;justify-content:flex-end}
  .drill .panel{width:min(760px,96vw);background:var(--paper,#f4f6f9);height:100%;overflow:auto;box-shadow:-12px 0 40px rgba(0,0,0,.25);padding:0 0 40px}
  .drill .dhead{position:sticky;top:0;background:#10263f;color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;z-index:2}
  .crumbs{font-size:12px;color:#aebdd0}.crumbs a{color:#fff;cursor:pointer;text-decoration:underline}

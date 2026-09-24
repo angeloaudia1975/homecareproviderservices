@@ -129,12 +129,29 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--navy3);b
 .gate input{width:100%;margin:10px 0;}
 .mergebar{position:sticky;top:150px;z-index:5;background:var(--navy);color:#fff;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
 .mergebar .sel{font-weight:700;}
-.dlg{position:fixed;inset:0;background:rgba(16,38,63,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px;}
-.dlgbox{background:var(--card);border-radius:14px;padding:20px 22px;max-width:560px;width:100%;box-shadow:var(--shadow-lg);}
+/* Dialog overlay. The box MUST cap its own height and scroll inside itself.
+   `align-items:center` on a flex container that is exactly the viewport does something
+   nasty when the child is taller than it: the child is centred, so half the overflow goes
+   ABOVE the container's top edge, and that half cannot be scrolled to — not by the overlay,
+   not by the page, not by any means. The Add-dealer form is ~720px, so on a window shorter
+   than ~752px its heading and the first lines of its instructions simply vanished.
+   max-height:100% resolves against the overlay's content box (viewport minus the 16px
+   padding), so the box can never overflow and centring can never push it out of reach;
+   overflow:auto then scrolls the long form inside the box. margin:auto keeps it centred
+   while it still fits. Measured at 900/760/700/640/580/500/420px: nothing lost at any height.
+
+   The z-index is the other half of the same bug. .ac-head is sticky at z-index 100, so at 50
+   a dialog rendered UNDER the masthead — invisible for its top ~78px. It never showed while
+   dialogs were short and centred, and appeared the moment they grew tall enough to reach the
+   top of the window. The layer order is now: masthead 100 < dialog 200 < toast 300, which
+   keeps toasts on top of dialogs the way they were at 60 over 50. */
+.dlg{position:fixed;inset:0;background:rgba(16,38,63,.45);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px;overflow:auto;}
+.dlgbox{background:var(--card);border-radius:14px;padding:20px 22px;max-width:560px;width:100%;box-shadow:var(--shadow-lg);max-height:100%;overflow:auto;margin:auto;}
 .dlgbox h3{margin:0 0 8px;color:var(--navy);}
 .pick{display:block;padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin:5px 0;cursor:pointer;}
 .pick.on{background:#eaf3fb;border-color:#9dc8ee;}
 
 /* ---------- toast (used by catalog/images/featured/home-editor) ---------- */
-#toast,.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--navy);color:#fff;padding:11px 18px;border-radius:10px;font-weight:700;font-size:13px;box-shadow:var(--shadow-lg);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:60;}
+/* Above the dialog layer (200), as it was above the old dialog layer (50). */
+#toast,.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--navy);color:#fff;padding:11px 18px;border-radius:10px;font-weight:700;font-size:13px;box-shadow:var(--shadow-lg);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:300;}
 #toast.show,.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}

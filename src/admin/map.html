@@ -67,16 +67,19 @@
  .routep li .del:hover{color:var(--danger)}
  .routep .ractions{display:flex;gap:7px;padding:11px;border-top:1px solid var(--line);flex-wrap:wrap}
  .routep .ractions .btn{flex:1;justify-content:center;text-align:center;padding:9px 8px;font-size:12.5px}
- /* home editor overlay */
- .homeov{position:fixed;inset:0;z-index:1100;background:rgba(16,24,40,.45);display:grid;place-items:center;padding:20px}
- .homecard{background:#fff;border-radius:14px;padding:20px;width:100%;max-width:430px;box-shadow:0 24px 70px rgba(0,0,0,.3)}
+ /* home editor overlay. Grid centring degrades safely at the top, so nothing is lost above —
+    but the overlay had no overflow and the card no height cap, so on a short window everything
+    past the fold was unreachable off the BOTTOM. One call site below already worked around this
+    with an inline max-height; the cap belongs here instead, on every card. */
+ .homeov{position:fixed;inset:0;z-index:1100;background:rgba(16,24,40,.45);display:grid;place-items:center;padding:20px;overflow:auto}
+ .homecard{background:#fff;border-radius:14px;padding:20px;width:100%;max-width:430px;box-shadow:0 24px 70px rgba(0,0,0,.3);max-height:100%;overflow:auto}
  .homecard b{font-size:15px}.homecard p{color:var(--muted);font-size:12.5px;margin:4px 0 12px}
  .homecard input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;font:inherit}
  .homecard input:focus{outline:2px solid rgba(59,89,154,.35);border-color:var(--blue)}
  .homecard .ha{display:flex;gap:8px;margin-top:12px}.homecard .er{color:var(--danger);font-size:12.5px;margin-top:8px;min-height:15px}
  /* gate */
- .gate{position:fixed;inset:0;z-index:1000;background:linear-gradient(135deg,#16202e,#2B4071);display:grid;place-items:center;padding:20px}
- .gate-card{background:#fff;border-radius:16px;padding:30px;width:100%;max-width:370px;box-shadow:0 24px 70px rgba(0,0,0,.35)}
+ .gate{position:fixed;inset:0;z-index:1000;background:linear-gradient(135deg,#16202e,#2B4071);display:grid;place-items:center;padding:20px;overflow:auto}
+ .gate-card{background:#fff;border-radius:16px;padding:30px;width:100%;max-width:370px;box-shadow:0 24px 70px rgba(0,0,0,.35);max-height:100%;overflow:auto}
  .gate-card .brand{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--orange);font-weight:800}
  .gate-card h2{margin:6px 0 3px;font-size:22px}.gate-card p{color:var(--muted);font-size:13px;margin:0 0 16px}
  .gate-card input{width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:9px;font-size:15px;font-family:inherit}
