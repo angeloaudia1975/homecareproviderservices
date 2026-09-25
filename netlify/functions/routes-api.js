@@ -251,6 +251,40 @@ function visitNotesSummary(f){
   if(f.notes) L.push(`Notes: ${f.notes}`);
   return L.join("\n")||null;
 }
+/* A completed visit produced tasks, opportunities, intent signals and a row in
+   dealer_visits — but never a dealer_notes row, and never a dealer_activity row. Dealer 360's
+   Notes card reads dealer_notes and its timeline reads dealer_activity, so a rep who dictated
+   a full visit report saw nothing at all on the account afterwards.
+
+   visit_note_id on dealer_visit_reports is what makes this safe to run more than once: the
+   note is created only when that column is empty, so re-saving a completed report, or running
+   the backfill twice, can never duplicate a note. */
+async function visitToCrm(did, fields, transcript, repName, repEmail, whenIso, existingNoteId){
+  if(existingNoteId) return null;
+  const summary = visitNotesSummary(fields) || String(transcript||"").trim() || null;
+  if(!summary) return null;
+  const when = whenIso ? new Date(whenIso) : new Date();
+  const body = `🚗 Dealer visit — ${isNaN(when)?"":when.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}\n${summary}`;
+  let noteId=null;
+  try{
+    const base={dealer_id:did, author_email:repEmail||null, author_name:repName||null, body:body.slice(0,4000)};
+    let ins;
+    // dealer_notes.kind is optional (supabase/dealer_note_kind.sql) — post without it if absent.
+    try{ ins=await sbSend("POST","dealer_notes",Object.assign({kind:"visit"},base),{Prefer:"return=representation"}); }
+    catch(e){ if(!/PGRST204|Could not find the 'kind' column/i.test(String(e&&e.message||e))) throw e;
+              ins=await sbSend("POST","dealer_notes",base,{Prefer:"return=representation"}); }
+    noteId=(ins&&ins[0]&&ins[0].id)||null;
+  }catch(e){ return null; }
+  // and onto the timeline, so the visit is visible beside calls and emails
+  try{
+    await sbSend("POST","dealer_activity",{dealer_id:did, kind:"visit",
+      subject:`Dealer visit${fields&&fields.purpose?` — ${String(fields.purpose).slice(0,120)}`:""}`,
+      detail:summary.slice(0,2000), actor:repName||repEmail||null,
+      created_at:whenIso||new Date().toISOString()},{Prefer:"return=minimal"});
+  }catch(e){}
+  return noteId;
+}
+
 function buildFollowup(dealerName,repName,details){
   const parts=[];
   parts.push(`Hi ${dealerName||"there"},`);
@@ -1026,6 +1060,16 @@ exports.handler = async (event)=>{
       const now=new Date().toISOString();
       let sd=null;
       if(rid){ const rr=await sbGet(`rep_routes?id=eq.${encodeURIComponent(rid)}&select=scheduled_date,owner_email,assigned_to_email`).catch(()=>[]); const r=rr&&rr[0]; if(r){ if(!ownsRoute(r)) return json(403,{error:"not your route"}); sd=r.scheduled_date||null; } }
+      // Was this report already completed, and does it already have a note? Both decide
+      // whether this save is the one that should reach Dealer 360.
+      let priorNoteId=null, alreadyCompleted=false;
+      try{
+        const prevPath = rid
+          ? `dealer_visit_reports?route_id=eq.${encodeURIComponent(rid)}&dealer_id=eq.${encodeURIComponent(did)}&select=id,completed_at,visit_note_id&limit=1`
+          : `dealer_visit_reports?dealer_id=eq.${encodeURIComponent(did)}&select=id,completed_at,visit_note_id&order=updated_at.desc&limit=1`;
+        const prev=await sbGet(prevPath); const pr=prev&&prev[0];
+        if(pr){ priorNoteId=pr.visit_note_id||null; alreadyCompleted=!!pr.completed_at; }
+      }catch(e){}
       const row={ route_id:rid, dealer_id:did, rep_email:me.email||null, rep_name:me.rep_name||null, scheduled_date:sd, status, fields, updated_at:now };
       if(b.transcript!=null) row.transcript=String(b.transcript);
       if(b.structured&&typeof b.structured==="object") row.structured=b.structured;
@@ -1038,6 +1082,17 @@ exports.handler = async (event)=>{
         const d=(dr&&dr[0])||{}; const st=await P.getState(); const env=P.envFor(st.mode,d.is_test);
         const repName=me.name||me.rep_name||"HCPS rep";
         try{ await sbSend("POST","dealer_visits",{dealer_id:did,rep_name:me.rep_name||null,owner_email:me.email||null,visited_at:now,notes:visitNotesSummary(fields),details:fields,env},{Prefer:"return=minimal"}); }catch(e){}
+        // Into Dealer 360 — the step that was missing.
+        const newNoteId=await visitToCrm(did, fields, b.transcript, repName, me.email, now, priorNoteId);
+        if(newNoteId){
+          try{
+            const patchPath = rid
+              ? `dealer_visit_reports?route_id=eq.${encodeURIComponent(rid)}&dealer_id=eq.${encodeURIComponent(did)}`
+              : `dealer_visit_reports?dealer_id=eq.${encodeURIComponent(did)}&completed_at=eq.${encodeURIComponent(now)}`;
+            await sbSend("PATCH",patchPath,{visit_note_id:newNoteId},{Prefer:"return=minimal"});
+          }catch(e){}
+        }
+        void alreadyCompleted;
         const tasks=[];
         for(const f of followupList(fields.followups)){ const t=String(f).trim(); if(t) tasks.push({dealer_id:did,title:`Follow-up: ${t.slice(0,120)}`,detail:"From dealer visit",source:"visit",reason:"visit_followup",priority:"normal",assigned_rep:me.rep_name||null,created_by:repName,status:"open",env}); }
         const na=String(fields.next_action||"").trim();
@@ -1056,6 +1111,32 @@ exports.handler = async (event)=>{
       return json(200,{ok:true,status,completed_at:completed?now:null,tasks:tCreated,opportunities:oCreated});
     }
 
+    /* One-time repair: every visit completed before the Dealer 360 write existed has a report
+       but no note. Idempotent — a report that already carries a visit_note_id is skipped, so
+       running this twice does nothing the second time. President only; it writes to accounts. */
+    if(b.action==="backfill_visit_notes"){
+      if(me.role!=="president") return json(403,{error:"President only"});
+      let rows=[];
+      try{
+        rows=await sbGet("dealer_visit_reports?completed_at=not.is.null&visit_note_id=is.null&select=id,dealer_id,fields,transcript,rep_name,rep_email,completed_at&order=completed_at.desc&limit=500");
+      }catch(e){
+        if(/PGRST204|visit_note_id/i.test(String(e&&e.message||e)))
+          return json(503,{error:"storage_missing", setup:"supabase/visit_notes.sql",
+                           detail:"dealer_visit_reports.visit_note_id doesn't exist yet."});
+        throw e;
+      }
+      let made=0, skipped=0;
+      for(const r of (rows||[])){
+        if(!r.dealer_id){ skipped++; continue; }
+        const id=await visitToCrm(r.dealer_id, r.fields||{}, r.transcript, r.rep_name||"HCPS rep", r.rep_email, r.completed_at, null);
+        if(id){ made++;
+          try{ await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(r.id)}`,{visit_note_id:id},{Prefer:"return=minimal"}); }catch(e){}
+        } else skipped++;
+      }
+      return json(200,{ok:true, examined:(rows||[]).length, notes_created:made, skipped,
+        message: made ? `${made} visit${made===1?"":"s"} now show in Dealer 360.` : "Nothing to backfill — every completed visit already has a note."});
+    }
+
     // ---------- Visit notes → tasks + opportunities (Phase 4) ----------
     if(b.action==="save_visit"){
       const dealer_id=b.dealer_id; if(!dealer_id) return json(400,{error:"dealer_id required"});
@@ -1066,6 +1147,8 @@ exports.handler = async (event)=>{
       const st=await P.getState(); const env=P.envFor(st.mode,d.is_test);
       const repName=me.name||me.rep_name||"HCPS rep";
       try{ await sbSend("POST","dealer_visits",{dealer_id,rep_name:me.rep_name||null,owner_email:me.email||null,visited_at:new Date().toISOString(),notes:summary,details,env},{Prefer:"return=minimal"}); }catch(e){}
+      // Same gap as visit_report_save had: this path also never reached Dealer 360.
+      await visitToCrm(dealer_id, details, summary, repName, me.email, new Date().toISOString(), null);
       // follow-up items -> tasks; order-expected & next-visit -> tasks
       const tasks=[];
       for(const f of followupList(details.follow_ups)){ const t=String(f).trim(); if(t) tasks.push({dealer_id,title:`Follow-up: ${t.slice(0,120)}`,detail:"From dealer visit",source:"visit",reason:"visit_followup",priority:"normal",assigned_rep:me.rep_name||null,created_by:repName,status:"open",env}); }
