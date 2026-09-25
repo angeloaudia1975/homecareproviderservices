@@ -259,15 +259,42 @@ function visitNotesSummary(f){
    visit_note_id on dealer_visit_reports is what makes this safe to run more than once: the
    note is created only when that column is empty, so re-saving a completed report, or running
    the backfill twice, can never duplicate a note. */
+/* Compose the note body. The dictation is the rep's own account of the visit and always
+   survives; the structured fields are extra detail added underneath when they were filled in.
+   The old rule was `summary || transcript`, which meant filling in ONE field silently threw the
+   whole dictation away.
+
+   fields.notes and the transcript are usually the same words — the dictation lands in both — so
+   whichever is the fuller version wins rather than printing the paragraph twice. */
+const vnorm = t => String(t||"").toLowerCase().replace(/\s+/g," ").trim();
+function visitNoteBody(fields, transcript){
+  const f = fields || {};
+  const spokenA = String(f.notes||"").trim();          // dictation as stored on the report
+  const spokenB = String(transcript||"").trim();       // dictation as captured
+  let spoken;
+  if(!spokenA) spoken = spokenB;
+  else if(!spokenB) spoken = spokenA;
+  else if(vnorm(spokenB).includes(vnorm(spokenA))) spoken = spokenB;
+  else if(vnorm(spokenA).includes(vnorm(spokenB))) spoken = spokenA;
+  else spoken = spokenA + "\n\n" + spokenB;          // genuinely different — keep both
+  // Labelled fields, minus notes, which is the dictation and is handled above.
+  const struct = visitNotesSummary(Object.assign({}, f, {notes:""}));
+  return [spoken, struct].filter(Boolean).join("\n\n") || null;
+}
+
 async function visitToCrm(did, fields, transcript, repName, repEmail, whenIso, existingNoteId){
   if(existingNoteId) return null;
-  const summary = visitNotesSummary(fields) || String(transcript||"").trim() || null;
+  const summary = visitNoteBody(fields, transcript);
   if(!summary) return null;
   const when = whenIso ? new Date(whenIso) : new Date();
   const body = `🚗 Dealer visit — ${isNaN(when)?"":when.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}\n${summary}`;
   let noteId=null;
   try{
-    const base={dealer_id:did, author_email:repEmail||null, author_name:repName||null, body:body.slice(0,4000)};
+    // Date the note to the VISIT, not to the moment the row was inserted. On the live path
+    // those are the same; on a backfill they are not, and without this every historic visit
+    // lands at today's date and the Notes card's chronology becomes a lie.
+    const base={dealer_id:did, author_email:repEmail||null, author_name:repName||null,
+                body:body.slice(0,4000), created_at:whenIso||new Date().toISOString()};
     let ins;
     // dealer_notes.kind is optional (supabase/dealer_note_kind.sql) — post without it if absent.
     try{ ins=await sbSend("POST","dealer_notes",Object.assign({kind:"visit"},base),{Prefer:"return=representation"}); }
