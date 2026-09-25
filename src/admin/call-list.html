@@ -340,6 +340,7 @@ function evidenceHtml(d){
       ${box("Health", [d.health&&d.health.status?`Status ${esc(d.health.status)}`:"",d.health&&d.health.trend?`trend ${esc(d.health.trend)}`:"",d.health&&d.health.score!=null?`score ${d.health.score}`:""].filter(Boolean).join(" · ")||`<span class="mut">Not scored.</span>`)}
       ${box("Intent", (d.intent&&d.intent.score)?`Score ${d.intent.score}${d.intent.top_manufacturer?` · ${esc(d.intent.top_manufacturer)}`:""}${d.intent.top_product?` · viewed ${esc(d.intent.top_product)}`:""}`:`<span class="mut">No recent portal activity.</span>`)}
       ${box("Open cart", d.cart?`${d.cart.items} item(s), ${money(d.cart.value)} — ${esc((d.cart.products||[]).join(", "))}`:`<span class="mut">None.</span>`)}
+      ${box("Who to ask for", list(d.contacts,c=>`<div><b>${esc(c.name)}</b>${c.title?` <span class="mut">— ${esc(c.title)}</span>`:""}${c.primary?" <b style='color:#b45309'>main</b>":""}</div>`,"No contacts on file."))}
       ${box("Recent notes", list(d.notes,n=>`<div><b>${esc(n.kind)}</b> ${n.days_ago}d — ${esc(String(n.body).slice(0,180))}</div>`,"No notes."))}
       ${box("Recent touches", list(d.activity,a=>`<div><b>${esc(a.kind)}</b> ${a.days_ago}d — ${esc(a.subject)}</div>`,"Nothing logged."))}
       ${box("Visits", list(d.visits,v=>`<div>${v.days_ago}d ago — ${esc(String(v.summary).slice(0,160))}</div>`,"No visit reports."))}

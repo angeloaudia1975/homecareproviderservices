@@ -113,6 +113,7 @@ function signalsKey(d){
     d.intent && Math.round((d.intent.score||0)/10),
     d.latest && d.latest.note, d.latest && d.latest.activity, d.latest && d.latest.visit, d.latest && d.latest.email,
     d.cart && d.cart.value,
+    (d.contacts||[]).length,
     (d.crosssell||[]).map(c=>c.rec_name).join(","),
   ].join("|");
   let h=5381; for(let i=0;i<parts.length;i++) h=((h*33)^parts.charCodeAt(i))>>>0;
@@ -129,7 +130,7 @@ async function gatherDossier(dealerId){
   const did=encodeURIComponent(dealerId);
   const g=(p,f)=>sbGet(p).catch(()=>f);
 
-  const [dealer, sales, lines, notes, acts, visits, emails, xs, health, intent, camps, accts, opps, cartRows] = await Promise.all([
+  const [dealer, sales, lines, notes, acts, visits, emails, xs, health, intent, camps, accts, opps, contactRows, cartRows] = await Promise.all([
     g(`dealers?id=eq.${did}&select=id,business_name,city,state,zip,email,phone,rep_name,hcps_account`, []),
     g(`monthly_sales?dealer_id=eq.${did}&select=manufacturer,period,amount`, []),
     g(`dealer_line_status?dealer_id=eq.${did}&select=manufacturer,relationship,months_since,last_order_period,status_since`, []),
@@ -143,6 +144,7 @@ async function gatherDossier(dealerId){
     g(`email_sends?dealer_id=eq.${did}&select=template,sent_at&order=sent_at.desc&limit=6`, []),
     g(`dealer_manufacturers?dealer_id=eq.${did}&select=manufacturer,account_ref,active`, []),
     g(`opportunities?dealer_id=eq.${did}&select=title,line,stage,value,expected_close&limit=5`, []),
+    g(`dealer_contacts?dealer_id=eq.${did}&select=name,title,role,email&order=name&limit=12`, []),
     g(`dealer_carts?dealer_id=eq.${did}&select=cart,updated_at&order=updated_at.desc&limit=1`, []),
   ]);
 
@@ -261,6 +263,9 @@ async function gatherDossier(dealerId){
     campaigns: (camps||[]).map(c=>({template:c.template||"", days_ago:daysAgo(c.sent_at)})),
     accounts: (accts||[]).filter(a=>a.active!==false).map(a=>({manufacturer:a.manufacturer, account_ref:a.account_ref||""})),
     opportunities: (opps||[]).map(o=>({title:clean(o.title,120), line:o.line||"", stage:o.stage||"", value:o.value||null, expected_close:o.expected_close||null})),
+    contacts: (contactRows||[]).filter(c=>c.name||c.email).map(c=>({
+      name:clean(c.name,80), title:clean(c.title,80), role:clean(c.role,60),
+      primary: !!(c.email && D.email && String(c.email).toLowerCase()===String(D.email).toLowerCase()) })),
     latest:{ note:(notes&&notes[0]&&notes[0].created_at)||null, activity:(acts&&acts[0]&&acts[0].created_at)||null,
              visit:(visits&&visits[0]&&(visits[0].completed_at||visits[0].checkin_at))||null,
              email:(emails&&emails[0]&&emails[0].received_at)||null },
@@ -325,6 +330,8 @@ function briefPrompt(d, style, learned, repName){
   put("MARKETING THEY HAVE BEEN SENT:", list(d.campaigns,c=>`- ${c.template} (${c.days_ago}d ago)`));
   put("OPEN OPPORTUNITIES:", list(d.opportunities,o=>`- ${o.title} (${o.stage}${o.value?`, ${money(o.value)}`:""})`));
   put("MANUFACTURER ACCOUNT NUMBERS ON FILE:", (d.accounts||[]).map(a=>`${a.manufacturer}${a.account_ref?` #${a.account_ref}`:""}`).join(", "));
+  put("PEOPLE AT THIS DEALER (ask for the one whose job matches the opportunity):",
+    list(d.contacts,c=>`- ${c.name}${c.title?` — ${c.title}`:""}${c.role&&c.role!==c.title?` (${c.role})`:""}${c.primary?" [main contact]":""}`));
 
   if(learned) put("WHAT HAS ACTUALLY WORKED ACROSS THE HCPS NETWORK:", learned);
 
@@ -339,6 +346,7 @@ HARD RULES — a brief that breaks one of these is useless and possibly harmful:
 - Do not reference a lapsed line as "recent" or an overdue reorder as confirmed — these are inferences from ordering cadence, so phrase them as the rep noticing a pattern, not as fact.
 - The rep will read the script aloud. Write how a person talks, in short sentences. No marketing voice, no superlatives.
 - NEVER write a placeholder in square brackets. The rep calling is named below — use that name. A script that says "[Rep]" or "[Your Name]" is read aloud exactly as written.
+- The rep's name is who is MAKING the call. Never greet the dealer with it. Greet whichever person at the dealer the opportunity points to, by THEIR name from the people list; if no person fits, open without a name rather than guessing one.
 
 HOUSE WRITING STYLE:
 ${style}
