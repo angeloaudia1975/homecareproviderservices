@@ -335,6 +335,8 @@ function evidenceHtml(d){
       ${box("Buying now", list(d.lines,l=>`<div>${esc(l.manufacturer)} — ${money(l.total)}, last ${esc(l.last_period||"?")}${l.cadence_months?`, ~${l.cadence_months}mo cycle`:""}${l.overdue?" <b style='color:#b45309'>overdue</b>":""}</div>`,"No recorded purchases."))}
       ${box("Stopped buying", list(d.lapsed,l=>`<div>${esc(l.manufacturer)} — last ${esc(l.last_period||"?")} (${l.months_since}mo)</div>`,"Nothing lapsed."))}
       ${box("Never bought", (d.available_lines||[]).map(m=>esc(m.name)).join(", ")||`<span class="mut">Buys every line.</span>`)}
+      ${box("Set up, never ordered", (d.open_lines||[]).map(m=>esc(m.manufacturer)).join(", ")||`<span class="mut">None — every line set up has been bought.</span>`)}
+      ${box("Account numbers on file", (d.accounts||[]).map(a=>`${esc(a.manufacturer)} <span class="mut">#${esc(a.account_ref)}</span>`).join("<br>")||`<span class="mut">No account numbers recorded.</span>`)}
       ${box("Cross-sell engine", list(d.crosssell,c=>`<div>${esc(c.recommend)} <span class="mut">— they buy ${esc(c.because_they_buy)}</span></div>`,"No suggestions yet."))}
       ${box("Nearby dealers buy", list((d.regional||[]).filter(r=>!r.this_dealer_buys).slice(0,4),r=>`<div>${esc(r.manufacturer)} — ${r.peer_dealers} dealer(s), ${money(r.total)}</div>`,"No regional signal."))}
       ${box("Health", [d.health&&d.health.status?`Status ${esc(d.health.status)}`:"",d.health&&d.health.trend?`trend ${esc(d.health.trend)}`:"",d.health&&d.health.score!=null?`score ${d.health.score}`:""].filter(Boolean).join(" · ")||`<span class="mut">Not scored.</span>`)}

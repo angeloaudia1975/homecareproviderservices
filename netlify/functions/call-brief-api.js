@@ -52,6 +52,25 @@ async function mfrNames(){
 const mfrLabel=(map,s)=>{ const k=String(s||"").toLowerCase(); if(!k) return "";
   return map[k] || k.replace(/[-_]+/g," ").replace(/\b\w/g,c=>c.toUpperCase()); };
 
+/* dealer_manufacturers holds one row per line HCPS has SET UP for a dealer; account_ref is the
+   actual account number with that manufacturer. A row with a blank ref is not an account the
+   dealer holds — and when they have never bought that line either, it is an open opportunity.
+   Conflating the two told a rep that Retail Medical Solutions had Access4U and Climbing Steps
+   accounts when they had neither a number nor a single order. */
+function splitAccounts(accts, boughtNames, label){
+  const L=typeof label==="function"?label:(x=>x);
+  const bought=new Set(boughtNames||[]);
+  const live=(accts||[]).filter(a=>a && a.active!==false);
+  return {
+    accounts: live.filter(a=>String(a.account_ref||"").trim())
+                  .map(a=>({manufacturer:L(a.manufacturer), account_ref:String(a.account_ref).trim()}))
+                  .filter(a=>a.manufacturer),
+    open_lines: live.filter(a=>!String(a.account_ref||"").trim())
+                  .map(a=>({manufacturer:L(a.manufacturer)}))
+                  .filter(a=>a.manufacturer && !bought.has(a.manufacturer)),
+  };
+}
+
 /* dealer_carts.cart is {items:[{qty, p:{name, code, manufacturer, base_price}}]} — the price and
    the name live on `p`, and the item count is the sum of qty, not the number of lines. */
 function readCart(row){
@@ -114,6 +133,7 @@ function signalsKey(d){
     d.latest && d.latest.note, d.latest && d.latest.activity, d.latest && d.latest.visit, d.latest && d.latest.email,
     d.cart && d.cart.value,
     (d.contacts||[]).length,
+    (d.accounts||[]).map(a=>a.manufacturer).join(","),
     (d.crosssell||[]).map(c=>c.rec_name).join(","),
   ].join("|");
   let h=5381; for(let i=0;i<parts.length;i++) h=((h*33)^parts.charCodeAt(i))>>>0;
@@ -235,6 +255,7 @@ async function gatherDossier(dealerId){
   for(const r of regional) r.manufacturer=label(r.manufacturer);
   const statusByName={}; for(const k of Object.keys(statusBy)) statusByName[label(k)]=statusBy[k];
 
+  const ACC=splitAccounts(accts, lineRows.map(l=>l.manufacturer), label);
   const HE=(health&&health[0])||{}, IN=(intent&&intent[0])||{};
   const dossier={
     dealer:{ id:D.id||dealerId, name:D.business_name||"", city:D.city||"", state:D.state||"",
@@ -261,7 +282,8 @@ async function gatherDossier(dealerId){
     emails: (emails||[]).map(e=>({ direction:e.direction||"", subject:clean(e.subject,140),
                                    who:e.from_name||e.from_address||"", days_ago:daysAgo(e.received_at) })),
     campaigns: (camps||[]).map(c=>({template:c.template||"", days_ago:daysAgo(c.sent_at)})),
-    accounts: (accts||[]).filter(a=>a.active!==false).map(a=>({manufacturer:a.manufacturer, account_ref:a.account_ref||""})),
+    accounts: ACC.accounts,
+    open_lines: ACC.open_lines,
     opportunities: (opps||[]).map(o=>({title:clean(o.title,120), line:o.line||"", stage:o.stage||"", value:o.value||null, expected_close:o.expected_close||null})),
     contacts: (contactRows||[]).filter(c=>c.name||c.email).map(c=>({
       name:clean(c.name,80), title:clean(c.title,80), role:clean(c.role,60),
@@ -329,7 +351,10 @@ function briefPrompt(d, style, learned, repName){
     list(d.emails,e=>`- ${e.direction==="out"?"we wrote":"they wrote"} ${e.days_ago!=null?e.days_ago+"d ago":""}: ${e.subject}`));
   put("MARKETING THEY HAVE BEEN SENT:", list(d.campaigns,c=>`- ${c.template} (${c.days_ago}d ago)`));
   put("OPEN OPPORTUNITIES:", list(d.opportunities,o=>`- ${o.title} (${o.stage}${o.value?`, ${money(o.value)}`:""})`));
-  put("MANUFACTURER ACCOUNT NUMBERS ON FILE:", (d.accounts||[]).map(a=>`${a.manufacturer}${a.account_ref?` #${a.account_ref}`:""}`).join(", "));
+  put("MANUFACTURER ACCOUNTS THEY ACTUALLY HOLD (line — account number):",
+    (d.accounts||[]).map(a=>`${a.manufacturer} #${a.account_ref}`).join(", "));
+  put("LINES SET UP BUT NEVER ORDERED — no account number and no purchases, so these are OPEN OPPORTUNITIES, not existing accounts:",
+    (d.open_lines||[]).map(m=>m.manufacturer).join(", "));
   put("PEOPLE AT THIS DEALER (ask for the one whose job matches the opportunity):",
     list(d.contacts,c=>`- ${c.name}${c.title?` — ${c.title}`:""}${c.role&&c.role!==c.title?` (${c.role})`:""}${c.primary?" [main contact]":""}`));
 
@@ -344,6 +369,7 @@ HARD RULES — a brief that breaks one of these is useless and possibly harmful:
 - Never claim something was said, sent or promised unless the notes, activity, visits or email below record it.
 - If the facts are thin, say so in the reason and build a genuine discovery call instead of manufacturing urgency.
 - Do not reference a lapsed line as "recent" or an overdue reorder as confirmed — these are inferences from ordering cadence, so phrase them as the rep noticing a pattern, not as fact.
+- A line is only an account this dealer HOLDS if it appears under the accounts-they-actually-hold heading with a number. A line with no account number and no purchases is a line they have never bought — never call it active, existing, established or "their account", and never imply they have ordered it.
 - The rep will read the script aloud. Write how a person talks, in short sentences. No marketing voice, no superlatives.
 - NEVER write a placeholder in square brackets. The rep calling is named below — use that name. A script that says "[Rep]" or "[Your Name]" is read aloud exactly as written.
 - The rep's name is who is MAKING the call. Never greet the dealer with it. Greet whichever person at the dealer the opportunity points to, by THEIR name from the people list; if no person fits, open without a name rather than guessing one.
@@ -815,4 +841,4 @@ async function learnedSummary(){
 
 module.exports._internals={ gatherDossier, signalsKey, briefPrompt, normalizeBrief, worklist,
                             logOutcome, insights, learnedSummary, tally, OUTCOMES, WIN, MIN_N,
-                            readCart, mfrLabel, callClaude };
+                            readCart, mfrLabel, callClaude, splitAccounts };
