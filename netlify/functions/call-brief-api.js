@@ -37,6 +37,38 @@ async function sbGetAll(base, orderCol="id"){
 const { dealerScope, isAdmin, seesAllDealers } = require("./_scope.js");
 const { loadStyleGuide, findBanned } = require("./_ai_style.js");
 
+/* monthly_sales, dealer_line_status, dealer_intent and intent_events all store the manufacturer
+   SLUG ("climbing-steps", "golden-technologies"), while cross_sell and the manufacturers table
+   carry the display name. Mixing the two puts "climbing-steps" in a script a rep reads aloud, so
+   everything that reaches a human or a prompt goes through this map first. */
+let _mfrCache=null;
+async function mfrNames(){
+  if(_mfrCache) return _mfrCache;
+  const m={};
+  try{ for(const r of (await sbGet("manufacturers?select=slug,name"))||[]) if(r.slug) m[String(r.slug).toLowerCase()]=r.name||r.slug; }catch(e){}
+  _mfrCache=m; return m;
+}
+// Fall back to a de-slugged title case so an unmapped slug still reads like a name.
+const mfrLabel=(map,s)=>{ const k=String(s||"").toLowerCase(); if(!k) return "";
+  return map[k] || k.replace(/[-_]+/g," ").replace(/\b\w/g,c=>c.toUpperCase()); };
+
+/* dealer_carts.cart is {items:[{qty, p:{name, code, manufacturer, base_price}}]} — the price and
+   the name live on `p`, and the item count is the sum of qty, not the number of lines. */
+function readCart(row){
+  try{
+    const items=(row&&row.cart&&row.cart.items)||[];
+    if(!items.length) return null;
+    let qty=0, value=0; const names=[];
+    for(const it of items){
+      const p=it&&it.p||{}, q=Number(it&&it.qty)||0;
+      qty+=q; value+=(Number(p.base_price)||0)*q;
+      const n=p.name||p.code; if(n) names.push(String(n).slice(0,80));
+    }
+    if(!qty) return null;
+    return { items:qty, value:Math.round(value), updated_at:row.updated_at, products:names.slice(0,6) };
+  }catch(e){ return null; }
+}
+
 // A missing table means the migration hasn't run — say which file, don't 500.
 const MISSING = /PGRST20[45]|Could not find the table/i;
 function setupNeeded(e, file){
@@ -191,16 +223,15 @@ async function gatherDossier(dealerId){
   }catch(e){}
 
   // ---- open cart ----------------------------------------------------------------------
-  let cart=null;
-  try{
-    const c=(cartRows&&cartRows[0])||null;
-    const items=c&&c.cart&&(Array.isArray(c.cart)?c.cart:(c.cart.items||[]));
-    if(items&&items.length){
-      cart={ items:items.length, updated_at:c.updated_at,
-             value:Math.round(items.reduce((s,i)=>s+((Number(i.qty)||0)*(Number(i.unit_price||i.price)||0)),0)),
-             products:items.slice(0,6).map(i=>clean(i.name||i.code,80)) };
-    }
-  }catch(e){}
+  const cart=readCart((cartRows&&cartRows[0])||null);
+
+  // Slug -> display name, applied to everything that reaches the prompt or the screen.
+  const NAME=await mfrNames();
+  const label=s=>mfrLabel(NAME,s);
+  for(const l of lineRows) l.manufacturer=label(l.manufacturer);
+  for(const l of lapsed)   l.manufacturer=label(l.manufacturer);
+  for(const r of regional) r.manufacturer=label(r.manufacturer);
+  const statusByName={}; for(const k of Object.keys(statusBy)) statusByName[label(k)]=statusBy[k];
 
   const HE=(health&&health[0])||{}, IN=(intent&&intent[0])||{};
   const dossier={
@@ -208,7 +239,7 @@ async function gatherDossier(dealerId){
              rep:D.rep_name||"", account:D.hcps_account||"", phone:D.phone||"", email:D.email||"" },
     sales:{ total:Math.round(total), last_period:pmLbl(lastPm), months_since:latest!=null&&lastPm!=null?latest-lastPm:null,
             first_period:pmLbl(firstPm), recent:Math.round(Number(HE.recent_sales)||0) },
-    lines:lineRows.slice(0,10).map(l=>({...l, relationship:(statusBy[l.manufacturer]||{}).relationship||null})),
+    lines:lineRows.slice(0,10).map(l=>({...l, relationship:(statusByName[l.manufacturer]||{}).relationship||null})),
     lapsed: lapsed.slice(0,5),
     overdue: lineRows.filter(l=>l.overdue).slice(0,5)
               .map(l=>({manufacturer:l.manufacturer,months_since:l.months_since,cadence_months:l.cadence_months,total:l.total})),
@@ -217,7 +248,7 @@ async function gatherDossier(dealerId){
     crosssell: (xs||[]).map(c=>({recommend:c.rec_name,because_they_buy:c.basis_name,score:c.score,support:c.support})),
     health:{ status:HE.status||null, score:HE.score!=null?HE.score:null, trend:HE.trend||null,
              churn_score:HE.churn_score!=null?HE.churn_score:null, months_since:HE.months_since!=null?HE.months_since:null },
-    intent:{ score:IN.score_total!=null?IN.score_total:null, top_manufacturer:IN.top_manufacturer||null,
+    intent:{ score:IN.score_total!=null?IN.score_total:null, top_manufacturer:label(IN.top_manufacturer)||null,
              top_product:IN.top_product||null, last_event_at:IN.last_event_at||null },
     cart,
     notes: (notes||[]).map(n=>({kind:n.kind||"note", author:n.author_name||n.author_email||"", days_ago:daysAgo(n.created_at), body:clean(n.body,600)})),
@@ -326,20 +357,35 @@ Return ONLY a JSON object, no markdown and no text outside it:
 }`;
 }
 
+/* A brief is a big JSON object — reason, opportunity, opening, a ~180-word script, questions,
+   recommendations, objections, next step. The first version of this asked for 2,200 tokens and
+   the model ran out of room mid-object, so lastIndexOf("}") landed inside a nested value and
+   JSON.parse failed on output that was otherwise good. The cap is now generous, and when a
+   parse does fail the error says WHY — stop_reason "max_tokens" means truncated, anything else
+   means malformed — so the next failure diagnoses itself instead of being guessed at. */
 async function callClaude(prompt, maxTokens){
   const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
     headers:{"x-api-key":AI_KEY,"anthropic-version":"2023-06-01","content-type":"application/json"},
-    body:JSON.stringify({model:AI_MODEL,max_tokens:maxTokens||2200,messages:[{role:"user",content:prompt}]})});
+    body:JSON.stringify({model:AI_MODEL,max_tokens:maxTokens||4000,messages:[{role:"user",content:prompt}]})});
   if(!r.ok){ const t=await r.text().catch(()=>""); let hint="";
     try{ const ej=JSON.parse(t); hint=(ej&&ej.error&&ej.error.message)?` (${ej.error.message})`:""; }catch(_){}
-    return {err:`The AI service returned an error${hint}.`, detail:t.slice(0,200)}; }
+    return {err:`The AI service returned an error${hint}.`, detail:t.slice(0,300)}; }
   const j=await r.json().catch(()=>null);
   // Newer models can emit a reasoning block before the answer — concatenate every text block
   // rather than assuming content[0] is it.
   let text=""; for(const c of ((j&&j.content)||[])) if(c&&typeof c.text==="string") text+=c.text;
-  const s=text.indexOf("{"), e=text.lastIndexOf("}");
-  if(s>=0&&e>=0){ try{ return {obj:JSON.parse(text.slice(s,e+1))}; }catch(_){} }
-  return {err:"The AI didn't return a usable brief.", detail:text.slice(0,200)};
+  const stop=(j&&j.stop_reason)||"";
+  // Models often wrap JSON in a ```json fence even when told not to. Strip it before slicing.
+  const fenced=text.replace(/^[\s\S]*?```(?:json)?\s*/i,"").replace(/```[\s\S]*$/,"");
+  for(const cand of [fenced, text]){
+    const s=cand.indexOf("{"), e=cand.lastIndexOf("}");
+    if(s>=0&&e>s){ try{ return {obj:JSON.parse(cand.slice(s,e+1))}; }catch(_){} }
+  }
+  const truncated = stop==="max_tokens";
+  return { err: truncated
+      ? "The AI ran out of room before finishing the brief. Try again — if it keeps happening the token cap needs raising."
+      : "The AI didn't return usable JSON.",
+    detail:`stop_reason=${stop||"?"} chars=${text.length} :: ${text.slice(0,300)}`, stop_reason:stop };
 }
 
 function normalizeBrief(o){
@@ -462,14 +508,11 @@ async function worklist(me){
   const lineBy={}; for(const l of lines) (lineBy[l.dealer_id]||(lineBy[l.dealer_id]=[])).push(l);
   const cartBy={};
   for(const c of carts){
-    try{
-      const items=c.cart&&(Array.isArray(c.cart)?c.cart:(c.cart.items||[]));
-      if(!items||!items.length) continue;
-      const value=Math.round(items.reduce((s,i)=>s+((Number(i.qty)||0)*(Number(i.unit_price||i.price)||0)),0));
-      const prev=cartBy[c.dealer_id];
-      if(!prev||value>prev.value) cartBy[c.dealer_id]={value,items:items.length,at:c.updated_at};
-    }catch(e){}
+    const k=readCart(c); if(!k) continue;
+    const prev=cartBy[c.dealer_id];
+    if(!prev||k.value>prev.value) cartBy[c.dealer_id]={value:k.value,items:k.items,at:c.updated_at};
   }
+  const NAME=await mfrNames();
   const seenBy={};
   for(const s of sess){ const t=new Date(s.last_seen_at).getTime();
     if(!isNaN(t) && (!seenBy[s.dealer_id]||t>seenBy[s.dealer_id])) seenBy[s.dealer_id]=t; }
@@ -491,11 +534,11 @@ async function worklist(me){
       score+=50000-(days*100);
     }
     if(Number(i.score_total)>0){
-      reasons.push({t:"intent", label:`🎯 Intent ${Math.round(i.score_total)}${i.top_manufacturer?` · ${i.top_manufacturer}`:""}`});
+      reasons.push({t:"intent", label:`🎯 Intent ${Math.round(i.score_total)}${i.top_manufacturer?` · ${mfrLabel(NAME,i.top_manufacturer)}`:""}`});
       score+=Number(i.score_total)*300;
     }
     const od=(lineBy[d.id]||[]).filter(l=>l.relationship==="dormant"&&Number(l.months_since)>=3);
-    for(const l of od.slice(0,3)){ reasons.push({t:"overdue", label:`⏰ ${l.manufacturer}: ${l.months_since}mo`}); score+=8000; }
+    for(const l of od.slice(0,3)){ reasons.push({t:"overdue", label:`⏰ ${mfrLabel(NAME,l.manufacturer)}: ${l.months_since}mo`}); score+=8000; }
 
     if(e.status==="at_risk"){ reasons.push({t:"risk", label:`⚠ At risk${e.churn_score?` · urgency ${e.churn_score}`:""}`}); score+=Number(e.total_sales||0)*0.4; }
     else if(e.status==="dormant"){ reasons.push({t:"dormant", label:`💤 Dormant ${e.months_since||"?"}mo`}); score+=Number(e.total_sales||0)*0.3; }
@@ -741,4 +784,5 @@ async function learnedSummary(){
 }
 
 module.exports._internals={ gatherDossier, signalsKey, briefPrompt, normalizeBrief, worklist,
-                            logOutcome, insights, learnedSummary, tally, OUTCOMES, WIN, MIN_N };
+                            logOutcome, insights, learnedSummary, tally, OUTCOMES, WIN, MIN_N,
+                            readCart, mfrLabel, callClaude };
