@@ -82,7 +82,7 @@
       purpose:"Territories, dealers, reps, CRM & the programs that grow accounts.",
       href:"/admin/hub.html?cat=sales", tools:[
         { href:"/admin/opportunities.html", label:"Today's Opportunities", icon:"💡", desc:"The next best action for every dealer" },
-        { href:"/admin/call-list.html",     label:"Who to Call",           icon:"📞", owns:true, desc:"Daily worklist — intent, overdue reorders & dormant" },
+        { href:"/admin/call-list.html",     label:"Sales Call Workspace",  icon:"📞", owns:true, desc:"Who to call, why, what to say — AI call strategy, outcome capture & follow-up" },
         { href:"/admin/health.html",        label:"Dealer Health",         icon:"❤️", desc:"Every dealer scored on recency, rhythm & trend" },
         { href:"/admin/dealers.html",       label:"Dealer Manager",        icon:"🏢", owns:true, desc:"Master dealer database, locations & hierarchy" },
         { href:"/admin/account-assignment.html", label:"Account Assignment", icon:"🧑‍💼", desc:"Assign every dealer to a sales rep — bulk & fast" },
@@ -189,7 +189,7 @@
     { href:"/admin/map.html",                label:"Territory Map" },
     { href:"/admin/scheduled-routes.html",   label:"Scheduled Routes" },
     { href:"/admin/health.html",             label:"Dealer Health" },
-    { href:"/admin/call-list.html",          label:"Who to Call" },
+    { href:"/admin/call-list.html",          label:"Call Workspace" },
     { href:"/admin/scheduling-console.html", label:"Scheduling" },
     { href:"/admin/reps.html",               label:"My Performance" },
     { href:"/admin/my-commissions.html",     label:"My Commissions" },
