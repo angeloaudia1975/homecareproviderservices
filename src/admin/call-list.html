@@ -226,21 +226,53 @@ async function toggle(id){
   if(!BRIEFS[id]) await fetchBrief(id,false); else paintBrief(id);
 }
 async function refresh(id){ await fetchBrief(id,true); }
-async function fetchBrief(id, force){
-  BRIEFS[id]={state:"loading"}; paintBrief(id);
-  const r=await api({action:"brief", dealer_id:id, refresh:!!force});
-  if(r.status===503){ BRIEFS[id]={state:"setup", body:r.body}; paintBrief(id); return; }
-  const b=r.body||{};
-  BRIEFS[id]= b.ok ? {state:"ok", brief:b.brief, dossier:b.dossier, brief_id:b.brief_id,
-                      cached:b.cached, generated_at:b.generated_at, warning:b.warning}
-                   : {state:"err", message:b.message||b.error||("HTTP "+r.status), dossier:b.dossier};
+/* Writing a brief takes 25-30 seconds, which is at or past Netlify's ceiling for a
+   synchronous function — the generation finishes and the row is saved, but the HTTP request
+   the rep is waiting on gets cut off first. So a request that dies is NOT a failure here:
+   we keep polling the cache-only "peek" until the brief lands. peek never generates, so
+   polling is free and can't start a second billed run. */
+const POLL_EVERY=4000, POLL_FOR=150000;
+function setBrief(id, b, extra){
+  BRIEFS[id]= b && b.ok!==false && b.brief
+    ? {state:"ok", brief:b.brief, dossier:b.dossier, brief_id:b.brief_id,
+       cached:b.cached, generated_at:b.generated_at, warning:b.warning}
+    : Object.assign({state:"err", message:(b&&(b.message||b.error))||"Couldn't build the strategy.",
+                     dossier:b&&b.dossier}, extra||{});
   paintBrief(id);
+}
+async function fetchBrief(id, force){
+  BRIEFS[id]={state:"loading", since:Date.now()}; paintBrief(id);
+  let r=null;
+  try{ r=await api({action:"brief", dealer_id:id, refresh:!!force}); }
+  catch(e){ r=null; }                                  // request cut off — the work may still land
+  if(r && r.status===503){ BRIEFS[id]={state:"setup", body:r.body}; paintBrief(id); return; }
+  if(r && r.body && r.body.ok && r.body.brief){ setBrief(id, r.body); return; }
+
+  // Either the connection dropped or the server is still writing. Wait for the row.
+  const deadline=Date.now()+POLL_FOR;
+  while(Date.now()<deadline){
+    if(BRIEFS[id] && BRIEFS[id].state!=="loading") return;   // the rep closed it or retried
+    await new Promise(s=>setTimeout(s,POLL_EVERY));
+    let p=null;
+    try{ p=await api({action:"peek", dealer_id:id}); }catch(e){ continue; }
+    if(p && p.status===503){ BRIEFS[id]={state:"setup", body:p.body}; paintBrief(id); return; }
+    if(p && p.body && p.body.ready){ setBrief(id, p.body); return; }
+  }
+  // Nothing after two and a half minutes — report what the server last said, if anything.
+  setBrief(id, (r&&r.body)||{message:"The strategy is taking longer than expected. Try again — if it was written, it will appear instantly."});
 }
 function paintBrief(id){
   const el=document.getElementById("brief-"+id); if(!el) return;
   const B=BRIEFS[id];
   if(!B){ el.innerHTML=""; return; }
-  if(B.state==="loading"){ el.innerHTML=`<div class="brief"><div class="msg" style="margin:0"><span class="spin"></span>Reading the account and writing the call strategy…</div></div>`; return; }
+  if(B.state==="loading"){
+    const secs=Math.round((Date.now()-(B.since||Date.now()))/1000);
+    el.innerHTML=`<div class="brief"><div class="msg" style="margin:0"><span class="spin"></span>Reading the account and writing the call strategy…
+      <div class="hint" style="margin:6px 0 0">This takes about half a minute. ${secs>25?"Still going — it will appear as soon as it's written.":""}</div></div></div>`;
+    // keep the elapsed hint honest while we wait
+    clearTimeout(B.tick); B.tick=setTimeout(()=>{ if(BRIEFS[id]===B) paintBrief(id); }, 5000);
+    return;
+  }
   if(B.state==="setup"){ el.innerHTML=`<div class="brief">${setupMsg(B.body)}</div>`; return; }
   if(B.state==="err"){
     el.innerHTML=`<div class="brief"><div class="msg err" style="margin:0 0 12px"><b>No strategy.</b> ${esc(B.message)}

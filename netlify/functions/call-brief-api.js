@@ -275,11 +275,12 @@ async function gatherDossier(dealerId){
    dossier does not carry is simply absent from the prompt, so there is nothing to
    embroider. The rep edits everything before it is used.
    =========================================================================== */
-function briefPrompt(d, style, learned){
+function briefPrompt(d, style, learned, repName){
   const L=[];
   const put=(h,v)=>{ if(v && String(v).trim()) L.push(h+"\n"+v); };
   const list=(a,f)=>(a&&a.length)?a.map(f).join("\n"):"";
 
+  if(repName) L.push(`THE REP MAKING THIS CALL IS NAMED: ${repName} — use this name in the opening and script.`);
   L.push(`DEALER: ${d.dealer.name}${d.dealer.city?` — ${d.dealer.city}, ${d.dealer.state}`:""}`);
   if(d.dealer.rep) L.push(`Their HCPS rep: ${d.dealer.rep}`);
 
@@ -337,6 +338,7 @@ HARD RULES — a brief that breaks one of these is useless and possibly harmful:
 - If the facts are thin, say so in the reason and build a genuine discovery call instead of manufacturing urgency.
 - Do not reference a lapsed line as "recent" or an overdue reorder as confirmed — these are inferences from ordering cadence, so phrase them as the rep noticing a pattern, not as fact.
 - The rep will read the script aloud. Write how a person talks, in short sentences. No marketing voice, no superlatives.
+- NEVER write a placeholder in square brackets. The rep calling is named below — use that name. A script that says "[Rep]" or "[Your Name]" is read aloud exactly as written.
 
 HOUSE WRITING STYLE:
 ${style}
@@ -347,12 +349,12 @@ ${L.join("\n\n")}
 Return ONLY a JSON object, no markdown and no text outside it:
 {
   "reason": "1-2 sentences: why this dealer is worth a call today, citing the specific fact that makes it true",
-  "opportunity": { "headline": "the single strongest opportunity, <=70 chars", "manufacturer": "the line it concerns, or empty", "angle": "one of: reorder | cross_sell | new_line | winback | new_product | intent | relationship | discovery", "detail": "2-3 sentences on why this is the best play and what it is worth" },
+  "opportunity": { "headline": "the single strongest opportunity, <=70 chars", "manufacturer": "the line it concerns, or empty", "angle": "one of: reorder | cross_sell | new_line | winback | new_product | intent | relationship | discovery", "detail": "2 sentences on why this is the best play and what it is worth" },
   "opening": "2-3 sentences the rep can say verbatim once the dealer picks up. It must give a concrete reason for the call drawn from the facts.",
-  "script": "a natural conversational script of 150-250 words, in the rep's voice, with (pause) markers where the dealer talks. Built on this dealer's actual history.",
-  "questions": ["4-6 discovery questions specific to this account — inventory, patient demand, competing products, business conditions, what changed"],
+  "script": "a natural conversational script of 130-180 words, in the rep's voice, with (pause) markers where the dealer talks. Built on this dealer's actual history.",
+  "questions": ["4-5 discovery questions specific to this account — inventory, patient demand, competing products, business conditions, what changed"],
   "recommendations": [{ "name": "product or manufacturer", "why": "one line tied to a fact above" }],
-  "objections": [{ "objection": "what this dealer is likely to say, based on their history", "response": "how to answer it honestly" }],
+  "objections": [{ "//": "at most 3", "objection": "what this dealer is likely to say, based on their history", "response": "how to answer it honestly" }],
   "next_step": { "action": "one of: send_info | schedule_appointment | send_quote | introduce_line | showroom | discuss_reorder | follow_up_call", "detail": "one line on what to do", "due_in_days": 7 }
 }`;
 }
@@ -388,17 +390,23 @@ async function callClaude(prompt, maxTokens){
     detail:`stop_reason=${stop||"?"} chars=${text.length} :: ${text.slice(0,300)}`, stop_reason:stop };
 }
 
-function normalizeBrief(o){
+const PLACEHOLDER=/\[(rep|your name|name|rep name|your rep|sales rep|dealer|dealer name|company)\]/gi;
+function dePlaceholder(t, repName){
+  if(!t) return t;
+  return String(t).replace(PLACEHOLDER, m => repName || "").replace(/\s{2,}/g," ").replace(/\s+([,.])/g,"$1").trim();
+}
+function normalizeBrief(o, repName){
   const arr=(v,n)=>Array.isArray(v)?v.slice(0,n):[];
   const op=o.opportunity||{};
   const ns=o.next_step||{};
+  const P=t=>dePlaceholder(t, repName);
   return {
-    reason: clean(o.reason,600),
+    reason: clean(P(o.reason),600),
     opportunity:{ headline:clean(op.headline,120), manufacturer:clean(op.manufacturer,80),
                   angle:clean(op.angle,40)||"discovery", detail:clean(op.detail,800) },
-    opening: clean(o.opening,900),
-    script: clean(o.script,3000),
-    questions: arr(o.questions,8).map(q=>clean(q,220)).filter(Boolean),
+    opening: clean(P(o.opening),900),
+    script: clean(P(o.script),3000),
+    questions: arr(o.questions,8).map(q=>clean(P(q),220)).filter(Boolean),
     recommendations: arr(o.recommendations,6).map(r=>({name:clean(r&&r.name,100), why:clean(r&&r.why,240)})).filter(r=>r.name),
     objections: arr(o.objections,5).map(r=>({objection:clean(r&&r.objection,220), response:clean(r&&r.response,600)})).filter(r=>r.objection),
     next_step:{ action:clean(ns.action,40)||"follow_up_call", detail:clean(ns.detail,240),
@@ -417,6 +425,20 @@ module.exports.handler = async (event) => {
     if(b.dealer_id && !isAdmin(me)){
       const sc=await dealerScope(me, sbGet);
       if(!sc.isAll && !(sc.ids && sc.ids.has(String(b.dealer_id)))) return json(403,{error:"Not your dealer"});
+    }
+
+    /* Cache-only. A fresh brief takes ~25-30s, which is at or past Netlify's synchronous
+       ceiling, so the page fires "brief" and then polls "peek" until the row appears. peek
+       never generates, so polling is free and can never start a second billed generation. */
+    if(b.action==="peek"){
+      if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+      const dossier=await gatherDossier(b.dealer_id);
+      try{
+        const hit=await sbGet(`call_briefs?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&signals_key=eq.${encodeURIComponent(dossier.signals_key)}&select=*&order=created_at.desc&limit=1`);
+        if(hit&&hit[0]) return json(200,{ok:true, ready:true, cached:true, brief_id:hit[0].id,
+                                         brief:hit[0].brief, dossier, generated_at:hit[0].created_at, model:hit[0].model});
+      }catch(e){ const st=setupNeeded(e,"supabase/call_workspace.sql"); if(st) return json(503,st); }
+      return json(200,{ok:true, ready:false, dossier});
     }
 
     if(b.action==="dossier"){
@@ -442,14 +464,14 @@ module.exports.handler = async (event) => {
 
       const style=await loadStyleGuide(sbGet);
       const learned=await learnedSummary().catch(()=>null);
-      let g=await callClaude(briefPrompt(dossier, style, learned));
+      let g=await callClaude(briefPrompt(dossier, style, learned, me.name||me.rep_name||""));
       if(g.err) return json(200,{ok:false, error:"ai_error", message:g.err, detail:g.detail, dossier, model:AI_MODEL});
-      let brief=normalizeBrief(g.obj||{});
+      let brief=normalizeBrief(g.obj||{}, me.name||me.rep_name||"");
       const bad=findBanned(`${brief.opening}\n${brief.script}`);
       if(bad.length){
-        const retry=await callClaude(briefPrompt(dossier, style, learned)+
+        const retry=await callClaude(briefPrompt(dossier, style, learned, me.name||me.rep_name||"")+
           `\n\nIMPORTANT: your previous draft used phrasing the style guide forbids (${bad.map(x=>`"${x}"`).join(", ")}). Rewrite so none of those appear.`);
-        if(!retry.err && retry.obj) brief=normalizeBrief(retry.obj);
+        if(!retry.err && retry.obj) brief=normalizeBrief(retry.obj, me.name||me.rep_name||"");
       }
       if(!brief.reason || !brief.script) return json(200,{ok:false, error:"ai_empty", dossier,
         message:"The AI didn't return a usable brief — try again."});
