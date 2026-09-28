@@ -53,6 +53,7 @@
  .banner{margin:0;padding:10px 18px;background:#fff7ed;border-bottom:1px solid #fed7aa;color:#9a3412;font-size:13px}
  /* route panel */
  .routep{position:absolute;left:14px;bottom:14px;z-index:600;width:296px;max-height:66%;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 34px rgba(16,24,40,.22);overflow:hidden}
+ .rdraft{font-size:11.5px;color:#8a5d12;background:#fdf4e6;border:1px solid #f0dca8;border-radius:7px;padding:5px 8px;margin:0 0 6px}
  .routep .rhead{display:flex;align-items:center;gap:8px;padding:11px 13px;border-bottom:1px solid var(--line);font-size:14px}
  .routep .rhead .m{color:var(--muted);font-size:11.5px;font-weight:600}
  .routep .rx{margin-left:auto;background:none;border:0;color:var(--danger);font-weight:700;font-size:12px;cursor:pointer}
@@ -120,6 +121,7 @@
   <div id="map"></div>
   <div class="routep" id="routep" hidden>
     <div class="rhead"><b>Route plan</b> <span class="m" id="rmeta"></span><button class="rx" onclick="clearRoute()">Clear</button></div>
+    <div class="rdraft" id="rdraft" hidden></div>
     <div class="rtrow" id="rtRow" style="display:none"><label><input type="checkbox" id="rtChk" checked onchange="toggleRT(this.checked)"> Round trip — start &amp; end at home base</label></div>
     <div class="rtrow"><label style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">Start <input type="date" id="startDate" style="width:auto" onchange="renderRoute()"> at <input type="time" id="startTime" value="08:00" style="width:auto" onchange="renderRoute()"> · default visit <input type="number" id="visitMin" value="30" min="0" step="5" style="width:52px" onchange="renderRoute()"> min</label></div>
     <ol id="rlist"></ol>
@@ -397,7 +399,7 @@ function effectiveRoute(){
 function routeMiles(){ const R=effectiveRoute(); let m=0; for(let i=1;i<R.length;i++) m+=hav(R[i-1],R[i]); return m; }
 function addStop(i){ const p=POINTS[i]; if(!p)return; if(inRoute(p)){ ROUTE=ROUTE.filter(s=>s._i!==p._i); } else { if(ROUTE.length>=25){ alert("That's a lot of stops — keep a route under 25 for a workable day."); return; } ROUTE.push(p); } renderRoute(); draw(); if(MAP)MAP.closePopup(); }
 function removeStop(i){ ROUTE.splice(i,1); renderRoute(); draw(); }
-function clearRoute(){ ROUTE=[]; CURRENT_ROUTE_ID=null; renderRoute(); draw(); }
+function clearRoute(){ ROUTE=[]; CURRENT_ROUTE_ID=null; clearDraft(); renderRoute(); draw(); }
 async function optimize(){
   if(ROUTE.length<2){ renderRoute(); return; }
   const home=(HOME&&ROUNDTRIP)?{lat:HOME.lat,lng:HOME.lng}:null;
@@ -587,12 +589,93 @@ function itineraryListHtml(){
 
 (function(){ try{ const sd=document.getElementById("startDate"); if(sd && !sd.value){ const n=new Date(); sd.value=`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}-${String(n.getDate()).padStart(2,"0")}`; } }catch(e){} })();
 
+/* ---- Route drafts ------------------------------------------------------------------
+   The plan lived only in memory, so stepping over to Dealer 360 and back lost it. It is
+   now mirrored into this browser after every change and restored on the way back in.
+   Saving to the server is still what makes a route real, assignable and shareable — this
+   only stops a half-built plan evaporating because you looked something up.
+
+   Keyed per staff email so two people on one machine never inherit each other's plan. */
+const DRAFT_KEY=()=>"hcps_route_draft_"+String((ME&&ME.email)||"anon").toLowerCase();
+const DRAFT_MAX_AGE=14*864e5;          // a fortnight-old plan is clutter, not context
+let DRAFT_RESTORED_AT=null;
+
+function stopRecord(s){
+  return {dealer_id:s.dealer_id||"", name:s.name||"", address:s.address||"", city:s.city||"",
+          state:s.state||"", zip:s.zip||"", lat:s.lat, lng:s.lng,
+          visit_min:(s.visit_min!=null?s.visit_min:null), overnight:!!s.overnight,
+          next_start_min:(s.next_start_min!=null?s.next_start_min:null)};
+}
+function saveDraft(){
+  try{
+    if(!ROUTE.length){ localStorage.removeItem(DRAFT_KEY()); return; }
+    localStorage.setItem(DRAFT_KEY(), JSON.stringify({
+      v:1, at:Date.now(), stops:ROUTE.map(stopRecord), round_trip:!!ROUNDTRIP,
+      route_id:CURRENT_ROUTE_ID||null,
+      start_date:(($("#startDate")||{}).value||""),
+      start_time:(($("#startTime")||{}).value||""),
+      visit_min:(($("#visitMin")||{}).value||"")
+    }));
+  }catch(e){}                           // private mode / full quota — never break the map
+}
+function clearDraft(){ try{ localStorage.removeItem(DRAFT_KEY()); }catch(e){} DRAFT_RESTORED_AT=null; }
+function readDraft(){
+  try{
+    const d=JSON.parse(localStorage.getItem(DRAFT_KEY())||"null");
+    if(!d||!Array.isArray(d.stops)||!d.stops.length) return null;
+    if(d.at && (Date.now()-d.at)>DRAFT_MAX_AGE){ clearDraft(); return null; }
+    return d;
+  }catch(e){ return null; }
+}
+/* A stop's _i is a position in POINTS, which is rebuilt on every load — so a stored stop is
+   matched back to its live point by dealer_id (coordinates for older drafts) to get a fresh
+   _i and light its marker up again. Per-stop edits belong to the PLAN, not to the map point,
+   so they are re-applied on top; the old re-map dropped them on every refresh. */
+function hydrateStop(s, idx){
+  let p=null;
+  if(s.dealer_id) p=POINTS.find(x=>x.dealer_id===s.dealer_id)||null;
+  if(!p) p=POINTS.find(x=>x.name===s.name&&x.lat===s.lat&&x.lng===s.lng)||null;
+  const base = p ? Object.assign({},p) : Object.assign({_i:"dr"+idx}, s);
+  if(s.visit_min!=null) base.visit_min=s.visit_min;
+  base.overnight=!!s.overnight;
+  if(s.next_start_min!=null) base.next_start_min=s.next_start_min;
+  return base;
+}
+function restoreDraft(){
+  const d=readDraft(); if(!d) return false;
+  ROUTE=d.stops.map(hydrateStop);
+  ROUNDTRIP=d.round_trip!==false;
+  CURRENT_ROUTE_ID=d.route_id||null;
+  const sd=$("#startDate"); if(sd&&d.start_date) sd.value=d.start_date;
+  const st=$("#startTime"); if(st&&d.start_time) st.value=d.start_time;
+  const vm=$("#visitMin"); if(vm&&d.visit_min) vm.value=d.visit_min;
+  DRAFT_RESTORED_AT=d.at||null;
+  return true;
+}
+function draftAge(ms){
+  const m=Math.round((Date.now()-ms)/60000);
+  if(m<2) return "a moment ago";
+  if(m<60) return m+" minutes ago";
+  const h=Math.round(m/60); if(h<24) return h+(h===1?" hour ago":" hours ago");
+  const d=Math.round(h/24); return d+(d===1?" day ago":" days ago");
+}
+function renderDraftNote(){
+  const el=$("#rdraft"); if(!el) return;
+  if(!ROUTE.length){ el.textContent=""; el.hidden=true; return; }
+  el.hidden=false;
+  if(DRAFT_RESTORED_AT) el.textContent="Picked up where you left off — unsaved plan from "+draftAge(DRAFT_RESTORED_AT)+". Save it to assign or share it.";
+  else if(!CURRENT_ROUTE_ID) el.textContent="Not saved yet — kept in this browser while you move around the portal.";
+  else el.textContent="";
+  el.hidden = !el.textContent;
+}
+
 function renderRoute(){
   const panel=$("#routep"); panel.hidden = ROUTE.length===0;
   $("#rtRow").style.display = HOME ? "block" : "none";
   const cb=$("#rtChk"); if(cb) cb.checked=ROUNDTRIP;
   const list=$("#rlist");
-  if(!ROUTE.length){ list.innerHTML=""; if(ROUTELINE){MAP.removeLayer(ROUTELINE);ROUTELINE=null;} if(ROUTEGEO){MAP.removeLayer(ROUTEGEO);ROUTEGEO=null;} LASTROUTE={distance_m:0,duration_s:0,geometry:null}; CURRENT_ROUTE_ID=null; return; }
+  if(!ROUTE.length){ list.innerHTML=""; if(ROUTELINE){MAP.removeLayer(ROUTELINE);ROUTELINE=null;} if(ROUTEGEO){MAP.removeLayer(ROUTEGEO);ROUTEGEO=null;} LASTROUTE={distance_m:0,duration_s:0,geometry:null}; CURRENT_ROUTE_ID=null; saveDraft(); renderDraftNote(); return; }
+  saveDraft(); renderDraftNote();
   list.innerHTML=itineraryListHtml();
   updateRouteMeta();
   if(ROUTELINE){ MAP.removeLayer(ROUTELINE); ROUTELINE=null; }
@@ -865,7 +948,10 @@ async function loadPoints(){
   if(j&&j.error==="tables_missing"){ banner(j.message); POINTS=[]; UNMAPPED=[]; }
   else { banner(""); POINTS=(j&&j.points)||[]; UNMAPPED=(j&&j.unmapped)||[]; }
   POINTS.forEach((p,i)=>p._i=i);
-  if(ROUTE.length){ ROUTE=ROUTE.map(s=>POINTS.find(p=>p.name===s.name&&p.lat===s.lat&&p.lng===s.lng)).filter(Boolean); }
+  // Re-point the plan at the freshly loaded map points, keeping the rep's per-stop edits;
+  // with nothing in memory, pick the draft back up instead.
+  if(ROUTE.length) ROUTE=ROUTE.map((s,i)=>hydrateStop(stopRecord(s),i));
+  else restoreDraft();
   fillStateFilter(); draw(); renderRoute(); renderUnmapped();
 }
 function renderUnmapped(){
