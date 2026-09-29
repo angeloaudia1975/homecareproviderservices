@@ -742,16 +742,27 @@ exports.handler = async (event)=>{
       await Promise.all([...buySlugs].map(async slug=>{
         try{ const cat=await fetchJson(`${ORDERING_BASE}/data/${slug}.json`); (cat||[]).forEach(p=>{ if(p&&p.code){ const ms=Number(p.msrp)||0; if(ms>0) msrpByCode[String(p.code).toUpperCase()]=ms; } }); }catch(e){}
       }));
+      /* Logo resolution, in priority order:
+           1. manufacturer_meta.logo_url — an explicit upload, always wins.
+           2. The public HCPS site — THIS repo deploys it, so every path below is known to exist.
+           3. The ordering site's manufacturers.json — last resort only.
+         Tier 3 used to come second. It points at /assets/logos/<slug>.jpg on the ordering site,
+         which hosts just 2 of the 12 lines (Golden, Dalton); the other ten 404 there. Any line
+         without a tier-1 upload fell straight into a missing file — GCE first, then ABM on the
+         dealer handout, where the <img> onerror hid it and printed the bare name instead.
+         Checked against both hosts 2026-09-29: every path in PUBLIC_LOGOS loads at 705x255. */
       let logoBySlug={};
       try{ const meta=await sbGet("manufacturer_meta?select=slug,logo_url"); (meta||[]).forEach(m=>{ if(m&&m.slug&&m.logo_url) logoBySlug[m.slug]=String(m.logo_url); }); }catch(e){}
+      const PUBLIC_BASE=process.env.PUBLIC_SITE_BASE||"https://homecareproviderservices.netlify.app";
+      const PUBLIC_LOGOS={
+        "abm-respiratory-care":"abm-respiratory-care.jpg", access4u:"access4u.jpg",
+        "airavant-bongorx":"airavant-bongorx.jpg", bemis:"bemis.jpg", "climbing-steps":"climbing-steps.jpg",
+        corsicana:"corsicana.jpg", dalton:"dalton-mublvxul.jpg", "golden-technologies":"golden-technologies.jpg",
+        "ohio-medical":"ohio-medical.jpg", gce:"ohio-medical.jpg", "ovation-medical":"ovation-medical.jpg",
+        pedifix:"pedifix.jpg", "strongback-mobility":"strongback-mobility.jpg" };
+      for(const sl in PUBLIC_LOGOS){ if(!logoBySlug[sl]) logoBySlug[sl]=`${PUBLIC_BASE}/assets/logos/${PUBLIC_LOGOS[sl]}`; }
       try{ const mm=await fetchJson(`${ORDERING_BASE}/data/manufacturers.json`); (mm||[]).forEach(m=>{ if(m&&m.slug&&m.logo&&!logoBySlug[m.slug]){ const p=String(m.logo); logoBySlug[m.slug]=p.startsWith("http")?p:(ORDERING_BASE+p); } }); }catch(e){}
       if(!logoBySlug["golden-technologies"]) logoBySlug["golden-technologies"]=ORDERING_BASE+"/assets/logos/golden-technologies.jpg";
-      // Fallback logos from the public HCPS site (which this repo deploys) so lines missing a logo
-      // in the ordering-site data — Access4U in particular — still render on the handout. The <img>
-      // has onerror-hide, so a bad path degrades gracefully rather than showing a broken image.
-      const PUBLIC_BASE=process.env.PUBLIC_SITE_BASE||"https://homecareproviderservices.netlify.app";
-      const PUBLIC_LOGOS={access4u:"access4u.jpg","strongback-mobility":"strongback-mobility.jpg","airavant-bongorx":"airavant-bongorx.jpg",corsicana:"corsicana.jpg","ovation-medical":"ovation-medical.jpg",bemis:"bemis.jpg",pedifix:"pedifix.jpg","climbing-steps":"climbing-steps.jpg",gce:"ohio-medical.jpg","golden-technologies":"golden-technologies.jpg"};
-      for(const sl in PUBLIC_LOGOS){ if(!logoBySlug[sl]) logoBySlug[sl]=`${PUBLIC_BASE}/assets/logos/${PUBLIC_LOGOS[sl]}`; }
       // GCE / Ohio Medical: the ordering-site data maps GCE to /assets/logos/gce.jpg, which isn't
       // hosted there, so the handout <img> 404s and the logo drops out. Force GCE (and its
       // ohio-medical alias) to the known-good logo THIS repo deploys, overriding the broken path.
