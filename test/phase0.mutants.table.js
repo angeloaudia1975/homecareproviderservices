@@ -77,7 +77,7 @@ module.exports = {
   '0F any status accepted':            { file: 'routes-api.js', from: 'if(!VISIT_STATUSES.includes(status)) return json(400', to: 'if(false) return json(400' },
   '0F no heal':                        { file: 'routes-api.js', from: 'if(rowPath && !firstCompletion) await sbSend(', to: 'if(false) await sbSend(' },
   '0F off-route: new report each time':{ file: 'routes-api.js', from: '`dealer_visit_reports?route_id=is.null&dealer_id=eq.${encodeURIComponent(did)}&rep_email=eq.${encodeURIComponent((meNow&&meNow.email)||"")}&completed_at=is.null&${sel}&order=updated_at.desc&limit=1`', to: '`dealer_visit_reports?id=eq.none&${sel}`' },
-  '0F off-route: replay is a new visit':{ file: 'routes-api.js', from: 'if(l && l.completed_at && canonJson(l.fields||{})===canonJson(fields)) prev=l;', to: '' },
+  '0F off-route: replay is a new visit':{ file: 'routes-api.js', from: 'if(same) prev=same;', to: '' },
   // ---- Phase 0G: field outbox (scheduled-routes.html; applied by phase0-outbox.test.js) ----
   '0G one queue for everyone':         { file: 'scheduled-routes.html', from: 'function obKey(kind){ const u=obUser(); return u ? `sr_${kind}_${u}` : `sr_${kind}__noone`; }', to: 'function obKey(kind){ return `sr_${kind}`; }' },
   '0G old queue sent automatically':   { file: 'scheduled-routes.html', from: '  if(moved) setQuarantine(q);', to: '  if(moved){ const a=outbox(); for(const x of q) a.push(x); setOutbox(a); }' },
@@ -129,5 +129,7 @@ module.exports = {
   '0K D360 company edit to Relations': { file: 'dealer.html', from: '.toLowerCase()==="relations"?"":`<button class="btn ghost sm" onclick="editCompany()">', to: '.toLowerCase()==="nobody"?"":`<button class="btn ghost sm" onclick="editCompany()">' },
   '0L Relations stays on Admin dash':  { file: 'index.html', from: 'if(role!=="rep"&&role!=="relations") return null;', to: 'if(role!=="rep") return null;' },
   '0L management sent off Admin dash': { file: 'index.html', from: 'if(role!=="rep"&&role!=="relations") return null;', to: 'if(!role) return null;' },
-  '0F replay compared by key order':   { file: 'routes-api.js', from: 'canonJson(l.fields||{})===canonJson(fields)', to: 'JSON.stringify(l.fields||{})===JSON.stringify(fields)' },
+  '0F replay compared by key order':   { file: 'routes-api.js', from: 'canonJson(l.fields||{})===want', to: 'JSON.stringify(l.fields||{})===JSON.stringify(fields)' },
+  '0F replay checks only the last visit':{ file: 'routes-api.js', from: 'const same=(done||[]).find(l=>l && l.completed_at && canonJson(l.fields||{})===want); if(same) prev=same;', to: 'const l=(done||[])[0]; if(l && l.completed_at && canonJson(l.fields||{})===want) prev=l;' },
+  '0F replay window removed':          { file: 'routes-api.js', from: '&completed_at=gte.${encodeURIComponent(since)}', to: '' },
 };

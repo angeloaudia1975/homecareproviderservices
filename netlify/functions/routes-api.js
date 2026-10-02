@@ -1191,13 +1191,17 @@ exports.handler = async (event)=>{
       let sd=null;
       if(rid){ const chk=await routeStopCheck(rid,did); if(!chk.ok) return json(chk.status,{error:chk.error}); sd=chk.route.scheduled_date||null; }
       // The report this save belongs to (see VISITS RUN ONCE above). Off a route, an exact replay
-      // of the rep's last finished report for this dealer is that report, not a new visit.
+      // of ANY of the rep's finished reports for this dealer in the last 30 days is that report, not
+      // a new visit — also when a newer visit was finished in between (a lost response retried late).
+      // A genuinely new visit always differs in at least one field.
       let prev=await visitReportFor(rid,did,me);
       if(!rid && !prev && completed){
-        const last=await sbGet(`dealer_visit_reports?route_id=is.null&dealer_id=eq.${encodeURIComponent(did)}&rep_email=eq.${encodeURIComponent(me.email||"")}&select=id,status,checkin_at,completed_at,visit_note_id,fields&order=updated_at.desc&limit=1`).catch(()=>[]);
+        const since=new Date(Date.now()-30*86400000).toISOString();
+        const done=await sbGet(`dealer_visit_reports?route_id=is.null&dealer_id=eq.${encodeURIComponent(did)}&rep_email=eq.${encodeURIComponent(me.email||"")}&completed_at=gte.${encodeURIComponent(since)}&select=id,status,checkin_at,completed_at,visit_note_id,fields&order=completed_at.desc&limit=50`).catch(()=>[]);
         // Compared key-order-free: Postgres stores jsonb with its own key order, so the stored
         // fields never stringify the way the incoming ones do (found in the live check).
-        const l=last&&last[0]; if(l && l.completed_at && canonJson(l.fields||{})===canonJson(fields)) prev=l;
+        const want=canonJson(fields);
+        const same=(done||[]).find(l=>l && l.completed_at && canonJson(l.fields||{})===want); if(same) prev=same;
       }
       const priorNoteId=(prev&&prev.visit_note_id)||null;
       // Status only moves forward; a finished visit stays finished (later edits are kept, the

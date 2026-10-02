@@ -120,6 +120,29 @@ const report = w => w.db.dealer_visit_reports.filter(r => r.dealer_id === 'd-gre
     const r3 = await call(load('routes-api.js', w), Object.assign({}, body, { fields: Object.assign({}, FIELDS, { purpose: 'Next month' }) }), { token: 'greg' });
     assert.strictEqual(r3.body.first_completion, true); assert.strictEqual(report(w).length, 2); assert.strictEqual(count(w, 'dealer_visits'), 2);
   });
+  await t('0F off a route: a late replay of an earlier visit, after a newer one finished, is still the earlier visit', async () => {
+    const w = createWorld(seed());
+    const v1 = { action: 'visit_report_save', dealer_id: 'd-greg', status: 'completed', fields: FIELDS, structured: STRUCT };
+    const v2 = Object.assign({}, v1, { fields: Object.assign({}, FIELDS, { purpose: 'Second visit', followups: ['Drop off a brochure'] }) });
+    await call(load('routes-api.js', w), v1, { token: 'greg' });
+    await call(load('routes-api.js', w), { action: 'visit_checkin', dealer_id: 'd-greg' }, { token: 'greg' });
+    const second = await call(load('routes-api.js', w), v2, { token: 'greg' });
+    assert.strictEqual(second.body.first_completion, true, 'the newer visit is a visit of its own');
+    const before = fanout(w);
+    const late = await call(load('routes-api.js', w), v1, { token: 'greg' });   // visit 1's lost response, retried late
+    assert.strictEqual(late.body.first_completion, false, 'the late replay was treated as a new visit');
+    assert.deepStrictEqual(fanout(w), before, 'the late replay repeated side effects');
+    assert.strictEqual(report(w).length, 2);
+  });
+  await t('0F off a route: the same report a month later is a new visit', async () => {
+    const w = createWorld(seed());
+    const v1 = { action: 'visit_report_save', dealer_id: 'd-greg', status: 'completed', fields: FIELDS };
+    await call(load('routes-api.js', w), v1, { token: 'greg' });
+    report(w)[0].completed_at = new Date(Date.now() - 40 * 86400000).toISOString();
+    const again = await call(load('routes-api.js', w), v1, { token: 'greg' });
+    assert.strictEqual(again.body.first_completion, true, 'an identical visit 40 days later was swallowed');
+    assert.strictEqual(count(w, 'dealer_visits'), 2);
+  });
   await t('0F a rep still cannot report a visit on someone else\'s dealer', async () => {
     const w = createWorld(seed()); const m = load('routes-api.js', w);
     const r = await call(m, { action: 'visit_report_save', dealer_id: 'd-ang', status: 'completed', fields: FIELDS }, { token: 'greg' });
