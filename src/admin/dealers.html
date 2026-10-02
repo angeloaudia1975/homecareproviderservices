@@ -96,7 +96,7 @@ function filtered(){const q=($("#q")?.value||"").trim().toLowerCase();
 function emailStatus(d){
   if(!DATA||DATA.email_verified_supported!==true||!d.email) return "";
   if(d.email_verified) return ` <span class="chip acc" title="Email confirmed">✓ verified</span>`;
-  return ` <span class="chip rev" title="Email not verified yet">pending verification</span> <a class="link" style="cursor:pointer;font-size:11px" onclick="event.stopPropagation();verifyEmail('${d.id}')" title="Mark this email verified">✓ verify</a>`;
+  return ` <span class="chip rev" title="Email not verified yet">pending verification</span>${isRelations()?"":` <a class="link" style="cursor:pointer;font-size:11px" onclick="event.stopPropagation();verifyEmail('${d.id}')" title="Mark this email verified">✓ verify</a>`}`;
 }
 async function verifyEmail(id){
   const r=await post({action:"verify_email",dealer_id:id,verified:true},"Verifying…");
@@ -337,9 +337,10 @@ function renderDetail(){
   const d=DATA.dealers.find(x=>x.id===DETAIL); if(!d){DETAIL=null;return render();}
   const mfrs=dedupeMfrs(DATA.manufacturers,d);   // collapse duplicate manufacturer rows (Golden ×2, Bongo/AIRAVANT…)
   const dLogins=(DATA.logins||[]).filter(l=>l.dealer_id===d.id);
+  const ro=isRelations();   // Customer Relations: read-only here (server-enforced in dealers-api)
   const accset=new Set(d.access);
-  let acc=mfrs.map(m=>`<label class="accitem ${m.checked?"on":""}"><input type="checkbox" value="${esc(m.slug)}" ${m.checked?"checked":""} onchange="this.parentNode.classList.toggle('on',this.checked)">${esc(m.name)}${m.buys?` <span class="chip" style="margin-left:auto">buys</span>`:""}</label>`).join("");
-  const fld=(k,lab,val,ph)=>`<div class="fld"><label>${lab}</label><input id="f_${k}" value="${esc(val||"")}" placeholder="${ph||""}"></div>`;
+  let acc=mfrs.map(m=>`<label class="accitem ${m.checked?"on":""}"><input type="checkbox" value="${esc(m.slug)}" ${m.checked?"checked":""} ${ro?"disabled":""} onchange="this.parentNode.classList.toggle('on',this.checked)">${esc(m.name)}${m.buys?` <span class="chip" style="margin-left:auto">buys</span>`:""}</label>`).join("");
+  const fld=(k,lab,val,ph)=>`<div class="fld"><label>${lab}</label><input id="f_${k}" value="${esc(val||"")}" placeholder="${ph||""}" ${ro?"readonly":""}></div>`;
   const relStyle="margin:8px 0 0;padding:9px 12px;border-radius:8px;font-size:13px;background:#eef3fb;border:1px solid #d8e3f4";
   const relBanner = d.master
     ? `<div style="${relStyle}">↳ Branch of <a onclick="openDealerByName('${jesc(d.master)}')" style="cursor:pointer;color:var(--blue);font-weight:700">${esc(d.master)}</a> <span class="hint" style="text-transform:none">— revenue rolls up to this HQ</span></div>`
@@ -358,14 +359,14 @@ function renderDetail(){
        ${fld("website","Website",d.website,"https://…")}
        ${fld("address","Address",d.address)}
        <div style="display:flex;gap:8px">${fld("city","City",d.city)}${fld("state","State",d.state)}${fld("zip","ZIP",d.zip)}</div>
-       <div class="fld"><label>Owner rep</label><input list="repopts" id="f_rep" value="${esc(d.rep)}" placeholder="rep…"><datalist id="repopts">${DATA.repOptions.map(r=>`<option value="${esc(r)}">`).join("")}</datalist></div>
-       <button class="go" onclick="saveDetail('${d.id}','${jesc(d.name)}')">Save details</button> <span id="stD" class="st"></span>
-       ${d.status==="review"?`<button class="go blue sm" style="margin-left:8px" onclick="confirmNew('${d.id}')">Confirm as new dealer</button>`:""}
+       <div class="fld"><label>Owner rep</label><input list="repopts" id="f_rep" value="${esc(d.rep)}" placeholder="rep…" ${ro?"readonly":""}><datalist id="repopts">${DATA.repOptions.map(r=>`<option value="${esc(r)}">`).join("")}</datalist></div>
+       ${ro?`<div class="hint" style="text-transform:none;margin-top:6px">🔒 Read-only for Customer Relations — owner, ordering access and account settings are changed by management. Notes, contacts, tasks and email live in the <a class="link" href="/admin/dealer.html?id=${d.id}">360 Profile</a>.</div>`:`<button class="go" onclick="saveDetail('${d.id}','${jesc(d.name)}')">Save details</button> <span id="stD" class="st"></span>`}
+       ${(d.status==="review"&&!ro)?`<button class="go blue sm" style="margin-left:8px" onclick="confirmNew('${d.id}')">Confirm as new dealer</button>`:""}
      </div>
      <div class="card"><h2>Ordering access (manufacturer lines)</h2>
        <div class="hint">Tick the manufacturers this dealer is allowed to order on the portal. Default is none until you grant them. “buys” marks lines they already have sales with.</div>
        <div class="accgrid" id="accgrid">${acc}</div>
-       <div style="margin-top:12px"><button class="go" onclick="saveAccess('${d.id}')">Save access</button>
+       <div style="margin-top:12px">${ro?"":`<button class="go" onclick="saveAccess('${d.id}')">Save access</button>`}
          ${isPres()?`<button class="go blue sm" style="margin-left:8px" onclick="prefillAccess('${d.id}')" title="Check every line this dealer is eligible for under your territory rules (account numbers preserved)">Fill from territory rules</button>`:""}
          <span id="stA" class="st"></span></div>
        <h2 style="margin-top:18px">Portal access <span class="hint" style="text-transform:none">— what this dealer actually sees on the portal. The lines you tick above override the territory rules; territory rules apply only when the grid is left empty.</span></h2>
@@ -384,7 +385,7 @@ function renderDetail(){
        <h2 style="margin-top:18px">Contacts on file ${(d.contacts&&d.contacts.length)?`(${d.contacts.length})`:""}</h2>
        <div class="hint">Every person &amp; email imported for this account. Any of these emails can be used to register for the ordering portal. Pick one as the account's <b>default email</b> — it's used on the dealer record and order emails.</div>
        ${(d.contacts&&d.contacts.length)?`<table style="margin-top:6px"><tbody>${d.contacts.map(c=>`<tr>
-           <td style="width:110px;white-space:nowrap">${c.email?(sameEmail(c.email,d.email)?`<span class="chip acc">★ default</span>`:`<button class="go sm" onclick="setDefaultEmail('${d.id}','${jesc(c.email)}','${jesc(c.name||'')}','${jesc(c.phone||'')}')">Make default</button>`):""}</td>
+           <td style="width:110px;white-space:nowrap">${c.email?(sameEmail(c.email,d.email)?`<span class="chip acc">★ default</span>`:ro?"":`<button class="go sm" onclick="setDefaultEmail('${d.id}','${jesc(c.email)}','${jesc(c.name||'')}','${jesc(c.phone||'')}')">Make default</button>`):""}</td>
            <td class="lbl">${esc(c.name||"—")}</td>
            <td>${c.email?`<a href="mailto:${esc(c.email)}" style="color:var(--blue)">${esc(c.email)}</a>`:`<span class="dim">no email</span>`}</td>
            <td class="hint">${esc([c.title,c.role].filter(Boolean).join(" · "))}${c.phone?` · ☎ ${esc(c.phone)}`:""}${c.cell?` · 📱 ${esc(c.cell)}`:""}</td></tr>`).join("")}</tbody></table>`
@@ -402,7 +403,7 @@ function renderDetail(){
          :`<div class="dim" style="margin-top:6px">No portal login is linked to this dealer yet. When someone registers on the ordering portal and you approve &amp; link them here, their sign-in email will appear in this spot.</div>`}
      </div>
    </div>
-   <div class="card" style="margin-top:14px">
+   <div class="card" style="margin-top:14px${ro?";display:none":""}">
      <h2>Contract pricing <span class="hint" style="text-transform:none">— set this dealer's negotiated per-product prices; they override list pricing in the portal for this dealer only. Prices set on a headquarters apply to its branches too.</span></h2>
      ${(d.access&&d.access.length)
         ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0 4px">

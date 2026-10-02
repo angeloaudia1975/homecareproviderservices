@@ -2,7 +2,8 @@
    Relations (Lori) works EVERY dealer and the marketing tools, with NO management powers and only
    her own performance and pay. The president is the control; Greg (rep) stays fenced. */
 const assert = require('assert');
-const { createWorld, load, call, standardSeed, t, done } = require('./phase0-mock');
+const vm = require('vm');
+const { createWorld, load, call, standardSeed, t, done, adminSrc } = require('./phase0-mock');
 
 function seed() {
   const S = standardSeed({
@@ -55,12 +56,62 @@ const ALL = ['d-ang', 'd-dir-greg', 'd-greg', 'd-greg-branch', 'd-none'];
     for (const [fn, body] of [['audiences-api.js', { action: 'list' }], ['campaign-api.js', { action: 'list' }], ['partner-api.js', { action: 'report' }]])
       assert.strictEqual((await call(load(fn, w), body, { token: 'lori' })).status, 200, fn);
   });
-  await t('0K Relations: Dealer Manager list is every dealer and basic edits work', async () => {
+  await t('0K Relations: Dealer Manager lists every dealer and is READ-ONLY (server-enforced)', async () => {
     const w = W();
     const r = await call(load('dealers-api.js', w), null, { token: 'lori', method: 'GET' });
     assert.strictEqual(r.body.dealers.length, ALL.length);
-    const e = await call(load('dealers-api.js', w), { action: 'edit', dealer_id: 'd-ang', phone: '615-000' }, { token: 'lori' });
-    assert.notStrictEqual(e.status, 403, JSON.stringify(e.body));
+    const before = JSON.stringify(w.db.dealers);
+    const WRITES = [
+      { action: 'edit', dealer_id: 'd-ang', phone: '615-000' },
+      { action: 'edit', dealer_id: 'd-ang', business_name: 'Renamed Co' },
+      { action: 'access', dealer_id: 'd-ang', manufacturers: ['golden'] },
+      { action: 'verify_email', dealer_id: 'd-ang' },
+      { action: 'rep', dealer_id: 'd-ang', rep_name: 'Lori Hunt' },
+      { action: 'create_dealer', business_name: 'New Co', parent_id: 'd-ang' },
+      { action: 'set_contract_price', dealer_id: 'd-ang', manufacturer: 'golden', code: 'X', price: 1 },
+      { action: 'no_such_action', dealer_id: 'd-ang' } ];
+    for (const body of WRITES) {
+      const x = await call(load('dealers-api.js', w), body, { token: 'lori' });
+      assert.strictEqual(x.status, 403, body.action + ' answered ' + x.status + ' ' + JSON.stringify(x.body).slice(0, 120));
+    }
+    assert.strictEqual(JSON.stringify(w.db.dealers), before, 'a refused write still changed a dealer row');
+    for (const body of [{ action: 'portal_access', dealer_id: 'd-greg' }, { action: 'preview_link', dealer_id: 'd-greg' }]) {
+      const x = await call(load('dealers-api.js', w), body, { token: 'lori' });
+      assert.notStrictEqual(x.status, 403, body.action + ' (a read) was refused: ' + JSON.stringify(x.body).slice(0, 120));
+    }
+    const p = await call(load('dealers-api.js', w), { action: 'edit', dealer_id: 'd-ang', phone: '615-000' }, { token: 'pres' });
+    assert.strictEqual(p.status, 200, 'the president can still edit: ' + JSON.stringify(p.body).slice(0, 120));
+    const g = await call(load('dealers-api.js', w), { action: 'edit', dealer_id: 'd-greg', phone: '615-111' }, { token: 'greg' });
+    assert.strictEqual(g.status, 200, 'a rep can still edit their own dealer: ' + JSON.stringify(g.body).slice(0, 120));
+  });
+  await t('0K Relations: the Dealer Manager page shows no edit controls to Relations (president unchanged)', async () => {
+    const html = adminSrc('dealers.html');
+    const detail = role => {
+      const body = { innerHTML: '' }; const stub = { textContent: '', className: '', innerHTML: '', value: '', style: {}, classList: { toggle() {} } };
+      const ctx = { console, URLSearchParams, setTimeout, clearTimeout, Promise,
+        window: { addEventListener() {} }, location: { hash: '', search: '', href: '' },
+        HCPS: { profile: () => ({ role, email: role + '@hcps.us' }), token: () => 't' },
+        fetch: () => new Promise(() => {}),
+        document: { querySelector: s => (s === '#body' ? body : stub), querySelectorAll: () => [], getElementById: () => stub, addEventListener() {}, createElement: () => stub } };
+      vm.createContext(ctx);
+      vm.runInContext(html.split('<script>\r\n').slice(-1)[0].split('<script>\n').slice(-1)[0].split('</script>')[0], ctx);
+      vm.runInContext(`DATA={email_verified_supported:true,manufacturers:[{slug:'golden',name:'Golden'},{slug:'pride',name:'Pride'}],repOptions:['Greg Campbell'],logins:[],mfrName:{},
+        dealers:[{id:'d1',name:'Acme Medical',status:'review',email:'buyer@acme.test',email_verified:false,contact_name:'Pat',phone:'1',access:['golden'],buysLines:[],aliases:[],periods:[],accounts:[],addresses:[],
+          contacts:[{name:'Pat',email:'buyer@acme.test'},{name:'Sam',email:'sam@acme.test'}],rep:'Greg Campbell',sales:0,comm:0,recs:0,branches:[]}]}; DETAIL='d1'; renderDetail();`, ctx);
+      return { html: body.innerHTML, status: vm.runInContext('emailStatus(DATA.dealers[0])', ctx) };
+    };
+    const lori = detail('relations'), pres = detail('president');
+    for (const [what, re] of [['Save details', /saveDetail\(/], ['Save access', /saveAccess\(/], ['Make default', /setDefaultEmail\(/], ['Confirm as new', /confirmNew\(/]]) {
+      assert.ok(re.test(pres.html), 'president lost ' + what);
+      assert.ok(!re.test(lori.html), 'Relations still sees ' + what);
+    }
+    assert.ok(/verifyEmail\(/.test(pres.status) && !/verifyEmail\(/.test(lori.status), 'verify link');
+    assert.ok(/<input type="checkbox" value="golden" checked disabled/.test(lori.html), 'access boxes not locked for Relations');
+    assert.ok(/id="f_business_name"[^>]*readonly/.test(lori.html) && !/id="f_business_name"[^>]*readonly/.test(pres.html), 'detail fields not read-only');
+    assert.ok(/id="f_rep"[^>]*readonly/.test(lori.html), 'owner field not read-only');
+    assert.ok(/Read-only for Customer Relations/.test(lori.html), 'no read-only notice');
+    const d360 = adminSrc('dealer.html');
+    assert.ok(/\$\{String\(\(ME&&ME\.role\)\|\|""\)\.toLowerCase\(\)==="relations"\?"":`<button class="btn ghost sm" onclick="editCompany\(\)">/.test(d360), 'Dealer 360 still offers Relations "Edit company info"');
   });
   await t('0K Relations: pipeline shows every deal', async () => {
     const w = W();

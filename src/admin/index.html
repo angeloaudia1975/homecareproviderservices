@@ -152,7 +152,9 @@ const $=s=>document.querySelector(s);
    opens /admin/ with a saved session, goes to their own landing (profile.landing from the server —
    today the rep workspace home). Server-side checks still guard every tool. */
 function repLanding(){
-  const role=String((ME&&ME.role)||"").toLowerCase(); if(role!=="rep") return null;
+  // The Admin dashboard is management's (president/admin/owner). A sales rep and Customer Relations
+  // go to their own workspace (decision Oct 2); the server still guards every admin endpoint.
+  const role=String((ME&&ME.role)||"").toLowerCase(); if(role!=="rep"&&role!=="relations") return null;
   const u=ME&&ME.landing; return (typeof u==="string"&&/^\/admin\/[A-Za-z0-9._\/-]*$/.test(u)&&!u.includes("..")&&u!=="/admin/")?u:"/admin/rep-home.html";
 }
 function showApp(){

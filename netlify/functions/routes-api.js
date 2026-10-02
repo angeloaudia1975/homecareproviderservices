@@ -1081,6 +1081,8 @@ exports.handler = async (event)=>{
     }
     // Visit report helpers (Phase 0F — see VISITS RUN ONCE below).
     const VISIT_STATUSES=["planned","checked_in","in_progress","completed"];
+    // Same data → same text, whatever order the keys came in (jsonb reorders them).
+    const canonJson=v=>Array.isArray(v)?"["+v.map(canonJson).join(",")+"]":(v&&typeof v==="object")?"{"+Object.keys(v).sort().map(k=>JSON.stringify(k)+":"+canonJson(v[k])).join(",")+"}":JSON.stringify(v===undefined?null:v);
     const visitStatusMax=(a,b2)=>{ const ia=VISIT_STATUSES.indexOf(String(a||"")), ib=VISIT_STATUSES.indexOf(String(b2||"")); return ia>ib ? VISIT_STATUSES[ia] : (ib>=0 ? VISIT_STATUSES[ib] : "in_progress"); };
     // The report a check-in/save belongs to: the route stop's row, or — off a route — this rep's
     // most recent report for the dealer that is not finished yet.
@@ -1193,7 +1195,9 @@ exports.handler = async (event)=>{
       let prev=await visitReportFor(rid,did,me);
       if(!rid && !prev && completed){
         const last=await sbGet(`dealer_visit_reports?route_id=is.null&dealer_id=eq.${encodeURIComponent(did)}&rep_email=eq.${encodeURIComponent(me.email||"")}&select=id,status,checkin_at,completed_at,visit_note_id,fields&order=updated_at.desc&limit=1`).catch(()=>[]);
-        const l=last&&last[0]; if(l && l.completed_at && JSON.stringify(l.fields||{})===JSON.stringify(fields)) prev=l;
+        // Compared key-order-free: Postgres stores jsonb with its own key order, so the stored
+        // fields never stringify the way the incoming ones do (found in the live check).
+        const l=last&&last[0]; if(l && l.completed_at && canonJson(l.fields||{})===canonJson(fields)) prev=l;
       }
       const priorNoteId=(prev&&prev.visit_note_id)||null;
       // Status only moves forward; a finished visit stays finished (later edits are kept, the

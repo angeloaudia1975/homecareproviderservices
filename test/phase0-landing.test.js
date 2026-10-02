@@ -3,7 +3,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { createWorld, load, call, standardSeed, t, done } = require('./phase0-mock');
+const { createWorld, load, call, standardSeed, t, done, adminSrc } = require('./phase0-mock');
 
 const login = async (w, who) => (await call(load('staff-auth.js', w), { action: 'login', email: who + '@hcps.us', password: 'pw-' + who + '-1' })).body;
 function world(setting) {
@@ -49,7 +49,7 @@ const CC = '/admin/command-center.html';
 
   /* The pages: lifted from the shipped HTML. */
   const ADMIN = path.join(__dirname, '..', 'src', 'admin');
-  const src = f => fs.readFileSync(path.join(ADMIN, f), 'utf8');
+  const src = f => adminSrc(f);
   await t('0L rep-login follows profile.landing and refuses anything off-site', async () => {
     const m = src('rep-login.html').match(/function landingOf\(p\)\{[^\n]*\}/); assert.ok(m, 'landingOf not found');
     const landingOf = new Function(m[0] + '; return landingOf;')();
@@ -59,14 +59,17 @@ const CC = '/admin/command-center.html';
     assert.strictEqual(landingOf({}), null);
     assert.ok(/location\.replace\(landingOf\(j\.profile\)\|\|/.test(src('rep-login.html')), 'sign-in does not use the landing');
   });
-  await t('0L the /admin/ dashboard sends a sales rep to their landing; management and Relations stay', async () => {
+  await t('0L the /admin/ dashboard sends a sales rep and Relations to their landing; only management stays', async () => {
     const m = src('index.html').match(/function repLanding\(\)\{[\s\S]*?\n\}/); assert.ok(m, 'repLanding not found');
     const make = me => new Function('ME', m[0] + '; return repLanding();')(me);
     assert.strictEqual(make({ role: 'rep' }), '/admin/rep-home.html');
     assert.strictEqual(make({ role: 'rep', landing: CC }), CC);
     assert.strictEqual(make({ role: 'rep', landing: 'https://evil.test' }), '/admin/rep-home.html');
     assert.strictEqual(make({ role: 'president', landing: '/admin/' }), null);
-    assert.strictEqual(make({ role: 'relations' }), null);
+    assert.strictEqual(make({ role: 'relations' }), '/admin/rep-home.html');
+    assert.strictEqual(make({ role: 'relations', landing: '/admin/rep-home.html' }), '/admin/rep-home.html');
+    assert.strictEqual(make({ role: 'Relations', landing: '/admin/' }), '/admin/rep-home.html', 'Relations must never stay on the Admin dashboard');
+    for (const role of ['president', 'admin', 'owner']) assert.strictEqual(make({ role }), null, role + ' must keep the Admin dashboard');
     assert.ok(/function showApp\(\)\{\s*const away=repLanding\(\); if\(away\)\{ location\.replace\(away\); return; \}/.test(src('index.html')), 'showApp does not check first');
   });
 

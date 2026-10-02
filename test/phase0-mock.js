@@ -37,6 +37,12 @@ function createWorld(seed) {
   const missingTables = new Set(seed.missingTables || []);
 
   const decode = s => decodeURIComponent(String(s).replace(/\+/g, ' '));
+  // Postgres stores a jsonb value with its OWN key order (shorter keys first, then by bytes), so an
+  // object read back never has the key order it was written with. Mirror that for every
+  // object-valued column, so code that compares JSON text is caught here rather than in production.
+  const jsonbOrder = v => Array.isArray(v) ? v.map(jsonbOrder) : (v && typeof v === 'object')
+    ? Object.fromEntries(Object.keys(v).sort((a, b) => a.length - b.length || (a < b ? -1 : a > b ? 1 : 0)).map(k => [k, jsonbOrder(v[k])])) : v;
+  const jsonbRow = r => { const o = { ...r }; for (const k of Object.keys(o)) if (o[k] && typeof o[k] === 'object') o[k] = jsonbOrder(o[k]); return o; };
   function parseVal(v) { if (v === 'null') return null; if (v === 'true') return true; if (v === 'false') return false; return v; }
   function cmp(a, b) { if (a == null && b == null) return 0; if (a == null) return -1; if (b == null) return 1; const na = Number(a), nb = Number(b); if (!isNaN(na) && !isNaN(nb) && String(a).trim() !== '' && String(b).trim() !== '') return na - nb; return String(a).localeCompare(String(b)); }
   function test(row, col, op, val) {
@@ -147,7 +153,7 @@ function createWorld(seed) {
         const keys = meta.on_conflict ? meta.on_conflict.split(',') : (/merge-duplicates|ignore-duplicates/.test(prefer) && PK[table] ? PK[table].split(',') : null);
         if (seed.rejectConflict && keys && seed.rejectConflict[table] === meta.on_conflict) return res(400, { code: '42P10', message: 'there is no unique or exclusion constraint matching the ON CONFLICT specification' });
         for (const r of list) {
-          const row = { ...r };
+          const row = jsonbRow(r);
           if (seed.columns && seed.columns[table]) { for (const c of Object.keys(row)) if (!seed.columns[table].includes(c)) return res(400, { code: 'PGRST204', message: `Could not find the '${c}' column of '${table}'` }); }
           if (keys) {
             const ex = db[table].find(x => keys.every(k => String(x[k]) === String(row[k]) && x[k] != null));
@@ -161,7 +167,7 @@ function createWorld(seed) {
       }
       if (method === 'PATCH') {
         const hit = db[table].filter(filt);
-        for (const r of hit) Object.assign(r, body);
+        for (const r of hit) Object.assign(r, jsonbRow(body));
         writes.push({ kind: 'patch', table, count: hit.length, body, qs });
         return res(200, /return=representation/.test(prefer) ? hit : '');
       }
@@ -195,7 +201,7 @@ function load(file, world, env, root) {
   for (const [k, v] of Object.entries(all)) if (v !== undefined && v !== null) process.env[k] = v;
   // Pre-compile every sibling helper the file might require, so a mutant in a shared helper
   // (e.g. _scope.js) is the version the handler actually gets.
-  if (MUTANT && MUTANT.file !== path.basename(full)) {
+  if (MUTANT && MUTANT.file !== path.basename(full) && /\.js$/.test(MUTANT.file)) {   // page mutants go through adminSrc()
     const hp = path.join(MUTANT.ordering ? ORDER_REPO : REPO, MUTANT.file);
     if (fs.existsSync(hp)) compileInto(hp);
   }
@@ -245,4 +251,13 @@ let pass = 0, fail = 0; const failures = [];
 async function t(name, fn) { try { await fn(); pass++; } catch (e) { fail++; failures.push(name); console.log('FAIL ' + name + '\n  ' + (e && e.message || e)); } }
 function done(label) { console.log(`\n${label}: ${pass} passed, ${fail} failed`); process.exitCode = fail ? 1 : 0; return { pass, fail }; }
 
-module.exports = { createWorld, load, ev, call, standardSeed, t, done, REPO, ORDER_REPO, BASE };
+/* An admin page's source (src/admin/<file>), with the current mutant applied when it targets that page. */
+function adminSrc(file) {
+  let src = fs.readFileSync(path.join(__dirname, '..', 'src', 'admin', file), 'utf8');
+  if (MUTANT && MUTANT.file === file && !MUTANT.ordering) {
+    if (!src.includes(MUTANT.from)) throw new Error('MUTANT ANCHOR NOT FOUND: ' + process.env.P0_MUTANT);
+    src = src.split(MUTANT.from).join(MUTANT.to);
+  }
+  return src;
+}
+module.exports = { createWorld, load, ev, call, standardSeed, t, done, REPO, ORDER_REPO, BASE, adminSrc };
