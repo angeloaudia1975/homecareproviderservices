@@ -468,6 +468,7 @@ async function startEndAnalyze(w, extra) {
     const d = await call(load('ai-email-api.js', w, { ANTHROPIC_API_KEY: 'k' }), { action: 'draft', dealer_id: 'd-greg', template: 'visit_followup', visit_report_id: rep.id, contact_name: 'Bryant Smith' }, { token: 'greg' });
     assert.strictEqual(d.body.ok, true, JSON.stringify(d.body));
     assert.ok(/Visit date: Friday, October 2, 2026/.test(prompts[0]), 'the visit date is not in the prompt');
+    assert.ok(/"thinking":\{"type":"disabled"\}/.test(prompts[0]), 'thinking was left on for the email draft');
     assert.ok(/meeting was on October 2/.test(prompts[0]) && /NEVER use relative day words/.test(prompts[0]));
     assert.strictEqual(prompts.length, 2, 'no rewrite was asked for'); assert.ok(/used relative day words/.test(prompts[1]) && /yesterday[^a-z]+[^"]*tomorrow/.test(prompts[1]), prompts[1].slice(-400));
     assert.ok(/the time on October 2/.test(d.body.body) && !/yesterday/i.test(d.body.body), d.body.body);

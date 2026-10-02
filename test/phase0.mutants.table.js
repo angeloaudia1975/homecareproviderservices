@@ -173,6 +173,7 @@ module.exports = {
   '1F AI: partial served from cache':   { file: 'routes-api.js', from: ' && !r.ai_suggestion.partial)', to: ')' },
   '1F AI: partial offers no retry':     { file: 'scheduled-routes.html', from: 'return REV && (REV.manual||REV.partial) && ', to: 'return REV && REV.manual && ' },
   '1F QA retry switch for anyone':      { file: 'routes-api.js', from: 'const qaFail=b.qa_fail_first===true && qaOk;', to: 'const qaFail=b.qa_fail_first===true;' },
+  '1K email: thinking left on':         { file: 'ai-email-api.js', from: 'let r=await send({type:"disabled"})', to: 'let r=await send(null)' },
   '1K AI: thinking left on':             { file: '_visit_ai.js', from: 'r = await send(NO_THINKING);', to: 'r = await send(null);' },
   '1K AI: no fallback without thinking':{ file: '_visit_ai.js', from: 'if(r.status === 400 && /thinking/i.test(t)){', to: 'if(false){' },
   '1K check: numbers run into the next product':{ file: '_visit_ai.js', from: '["and", "or", "plus", "vs", "versus"].includes(la)) break;', to: 'false) break;' },

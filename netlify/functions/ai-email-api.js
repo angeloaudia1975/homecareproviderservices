@@ -339,12 +339,17 @@ Return ONLY a JSON object with exactly these keys:
 Do not include markdown or any text outside the JSON.`;
 
     async function generate(prompt){
-      const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
+      /* Thinking off: Claude Sonnet 5 thinks by default, which made drafts slow (20 s+) and can use up
+         the 900-token allowance before the email is written. A model that refuses the setting answers
+         400; the draft is then asked for once without it. */
+      const send=thinking=>fetch("https://api.anthropic.com/v1/messages",{method:"POST",
         headers:{"x-api-key":AI_KEY,"anthropic-version":"2023-06-01","content-type":"application/json"},
-        body:JSON.stringify({model:AI_MODEL,max_tokens:900,messages:[{role:"user",content:prompt}]})});
-      if(!r.ok){ const t=await r.text().catch(()=>""); let hint=""; try{ const ej=JSON.parse(t); hint=(ej&&ej.error&&ej.error.message)?` (${ej.error.message})`:""; }catch(_){}
+        body:JSON.stringify(Object.assign({model:AI_MODEL,max_tokens:900,messages:[{role:"user",content:prompt}]},thinking?{thinking}:{}))});
+      let r=await send({type:"disabled"}), t=await r.text().catch(()=>"");
+      if(r.status===400 && /thinking/i.test(t)){ r=await send(null); t=await r.text().catch(()=>""); }
+      if(!r.ok){ let hint=""; try{ const ej=JSON.parse(t); hint=(ej&&ej.error&&ej.error.message)?` (${ej.error.message})`:""; }catch(_){}
         return {err:`The AI service returned an error${hint}. Try again.`, detail:t.slice(0,200)}; }
-      const j=await r.json().catch(()=>null);
+      let j=null; try{ j=JSON.parse(t); }catch(_){}
       // Pull the text block(s) — newer models can return a reasoning block before the text, so never
       // assume content[0] is the answer; concatenate every text block.
       let text=""; for(const c of ((j&&j.content)||[])){ if(c&&typeof c.text==="string") text+=c.text; }
