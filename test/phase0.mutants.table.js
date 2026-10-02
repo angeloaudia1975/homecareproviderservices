@@ -179,6 +179,7 @@ module.exports = {
   '1H email: relative days left in':    { file: 'ai-email-api.js', from: 'subject=fixRelativePast(subject,visitDay.md); body=fixRelativePast(body,visitDay.md);', to: '' },
   '1H email: no rewrite asked for':     { file: 'ai-email-api.js', from: 'if(visitDay && RELATIVE_DAY.test(`${g.subject}\\n${g.body}`)){', to: 'if(false){' },
   '1H email: QA date on a real dealer': { file: 'ai-email-api.js', from: 'if(dt&&dt[0]&&dt[0].is_test===true && Number.isFinite', to: 'if(Number.isFinite' },
+  '1H email: greets someone before a pick': { file: 'ai-email-api.js', from: 'if(recap && !firstName) body=neutralGreeting(body);', to: '' },
   // ("one attendee → that attendee" also follows from attendees being listed first, so a mutant of that branch is equivalent.)
   '1I recipient: picks for the rep':    { file: 'scheduled-routes.html', from: 'else if(attRows.length>1){ note=', to: 'else if(attRows.length>1){ pre.add(low(attRows[0].email)); note=' },
 };

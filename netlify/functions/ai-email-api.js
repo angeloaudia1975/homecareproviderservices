@@ -325,7 +325,7 @@ ${brief?`\nThe product this email is about — these are APPROVED facts from the
 ${brief?`\nThe email will show an approved photo of the product and a button through to its page on the Partner 360 dealer portal, so do NOT describe the photo or paste a URL — just make a dealer want to click.`:""}
 
 Format:
-- Greeting to the contact by first name if provided ("Hi ${firstName||"there"},").
+- Greeting to the contact by first name if provided ("Hi ${firstName||"there"},").${!firstName&&recap?` No recipient has been chosen yet, so greet with exactly "Hi there," — no one's name.`:""}
 - 2 to 4 short paragraphs, plain sentences, no marketing fluff, no emojis.
 ${recap?`- Open with a short thank-you for the meeting, then the recap of what was agreed — never an apology.`:`- Open with the specific insight/opportunity for THIS dealer (a line they buy, a dormant line, whitespace, cadence) — never a check-in or apology.`}
 ${visitDay?`- The meeting was on ${visitDay.md}. Refer to it by that date ("Thank you for meeting with me on ${visitDay.md}"). NEVER use relative day words — no "today", "yesterday", "tomorrow", "this morning", "last week" — because this email may be sent days later. Write any due date as a date ("by Tuesday, October 6"), not as a relative day.`:""}
@@ -373,6 +373,9 @@ Do not include markdown or any text outside the JSON.`;
       subject=g.subject; body=g.body;
       if(visitDay){ subject=fixRelativePast(subject,visitDay.md); body=fixRelativePast(body,visitDay.md);
         if(RELATIVE_DAY.test(`${subject}\n${body}`)) warnings.push("This draft still mentions a relative day (like “tomorrow”) — check the dates before sending."); }
+      // Several people were at the meeting and the rep hasn't picked who it goes to: the greeting
+      // names no one until they do (the screen then swaps in the name of whoever is ticked).
+      if(recap && !firstName) body=neutralGreeting(body);
     }catch(e){ return json(200,{ok:false,error:"ai_error",message:"Couldn't reach the AI service.",signature}); }
     if(!subject||!body) return json(200,{ok:false,error:"ai_empty",message:"The AI didn't return a usable draft — try again or a different template.",signature});
 
@@ -386,5 +389,7 @@ Do not include markdown or any text outside the JSON.`;
   }catch(e){ return json(500,{error:String(e.message||e)}); }
 };
 
+function neutralGreeting(s){ return String(s==null?"":s).replace(/^(\s*)Hi [^,\n]{1,40},/, (m, lead) => lead + "Hi there,"); }
+
 // Pure pieces, for the tests.
-exports.__test={visitDateParts,fixRelativePast,RELATIVE_DAY,visitRecapLines};
+exports.__test={visitDateParts,fixRelativePast,RELATIVE_DAY,visitRecapLines,neutralGreeting};

@@ -466,6 +466,10 @@ async function startEndAnalyze(w, extra) {
     assert.deepStrictEqual(T.visitDateParts('2026-10-03T03:30:00Z').md, 'October 2', 'an evening visit was dated the next day');
     const g = await call(load('ai-email-api.js', w, { ANTHROPIC_API_KEY: 'k' }), { action: 'draft', dealer_id: 'd-greg', template: 'visit_followup', visit_report_id: rep.id, qa_visit_at: '2026-09-28T14:00:00Z' }, { token: 'pres' });
     assert.ok(/Visit date: Friday, October 2/.test(prompts[prompts.length - 2]), 'the QA override worked on a real dealer');
+    // No recipient picked yet (several attendees): the greeting names no one; a chosen contact is greeted by name.
+    assert.ok(/^Hi Bryant,/.test(d.body.body), 'a chosen contact lost their greeting: ' + d.body.body.slice(0, 40));
+    assert.ok(/^Hi there,/.test(g.body.body), 'the draft greeted someone before a recipient was picked: ' + g.body.body.slice(0, 40));
+    assert.ok(/No recipient has been chosen yet/.test(prompts[prompts.length - 2]) && !/No recipient has been chosen yet/.test(prompts[0]));
   });
   await t('Email recipients: one attendee → that person; several → the rep picks; none → the main contact; saved draft keeps its address', async () => {
     const src = require('./phase0-mock').adminSrc('scheduled-routes.html');

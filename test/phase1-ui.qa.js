@@ -254,6 +254,7 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
     const ticked = await page.$$eval('#d_people .d_p', xs => xs.filter(x => x.checked).map(x => x.getAttribute('data-email')));
     assert.deepStrictEqual(ticked, [], 'a recipient was chosen for the rep: ' + ticked);
     assert.ok(/2 people at the meeting have an email — tick who this goes to/.test(await page.textContent('#draftwrap')));
+    assert.ok(/^Hi there,/.test(await page.inputValue('#d_body')), 'the draft greeted someone before a recipient was picked');
     await page.click('#d_people .rcpt:has-text("Pat Lee")');
     assert.ok(/^Hi Pat,/.test(await page.inputValue('#d_body')), 'the greeting did not follow the chosen recipient');
     await page.screenshot({ path: path.join(SHOTS, 'email-multi-attendee.png'), fullPage: true });
