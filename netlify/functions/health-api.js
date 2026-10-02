@@ -41,7 +41,8 @@ exports.handler=async(event)=>{
     // account). A sales rep sees only their own book.
     const role=String(me.role||"").toLowerCase();
     const seesAll=({president:1,admin:1,owner:1,relations:1})[role];
-    if(!seesAll){ const rn=(me.rep_name||"").toLowerCase(); rows=rows.filter(r=>String(r.rep_name||"").toLowerCase()===rn); }
+    // A rep with no book name sees nothing — a blank name used to match every unassigned dealer.
+    if(!seesAll){ const rn=String(me.rep_name||"").trim().toLowerCase(); rows=rows.filter(r=>!!rn && String(r.rep_name||"").trim().toLowerCase()===rn); }
     // summary
     const tiers={healthy:0,watch:0,at_risk:0,dormant:0,new:0};
     let scoreSum=0, atRiskRev=0;

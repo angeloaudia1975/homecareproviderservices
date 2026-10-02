@@ -115,6 +115,9 @@ exports.handler = async (event)=>{
     if(event.httpMethod!=="POST") return json(405,{error:"POST only"});
     const me=await whoami(event);
     if(!me) return json(401,{error:"unauthorized"});
+    /* Management only. An import writes monthly_sales — the sales AND commission figures that
+       pay, targets and every report are built on — so it is not a rep or Relations tool. */
+    if(!["president","admin","owner"].includes(String(me.role||"").toLowerCase())) return json(403,{error:"Sales import is limited to management."});
     let b; try{ b=JSON.parse(event.body||"{}"); }catch{ return json(400,{error:"bad JSON"}); }
 
     // Dealer list for the "assign unmatched company" dropdown.

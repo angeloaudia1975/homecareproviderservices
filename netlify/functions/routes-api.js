@@ -400,6 +400,15 @@ async function whoami(event){
    to them — opens it, drives it, files visit reports. Renaming, re-planning or deleting
    it stays with the person who built it, so an assignment can never be silently
    rewritten or destroyed by the field. */
+/* The only app_settings keys this endpoint will read or write, and the only fields of each
+   that may leave the server. Everything else in that table — Zoho credentials, commission
+   splits, automation config — stays server-side. Add a key here only if it is safe for every
+   signed-in staff member to see. */
+const PUBLIC_SETTINGS = {
+  handout: { fields:["ordering_url","updates"], writable:true },
+};
+function pickFields(v, fields){ const out={}; for(const f of fields) if(v && Object.prototype.hasOwnProperty.call(v,f)) out[f]=v[f]; return out; }
+
 const emailEq=(a,b)=>!!a&&!!b&&String(a).toLowerCase().trim()===String(b).toLowerCase().trim();
 const isBoss = me => String(me&&me.role||"").toLowerCase()==="president";
 const canViewRoute = (me,r) => isBoss(me) || emailEq(r&&r.owner_email,me.email) || emailEq(r&&r.assigned_to_email,me.email);
@@ -407,6 +416,18 @@ const canManageRoute = (me,r) => isBoss(me) || emailEq(r&&r.owner_email,me.email
 // PostgREST filter for "mine": owned by me OR assigned to me.
 const mineFilter = me => { const e=String(me.email||"~none~").toLowerCase();
   return `or=(owner_email.eq.${encodeURIComponent(e)},assigned_to_email.eq.${encodeURIComponent(e)})`; };
+
+const SC=require("./_scope.js");
+// Dealer ids the caller may NOT work: outside their book (_scope.js) and not a stop on any
+// route they own or are assigned. [] means every id is allowed.
+async function dealersOffReach(me, ids){
+  let off=await SC.dealersOutsideScope(me, ids, sbGet);
+  if(!off.length) return off;
+  const rs=await sbGet(`rep_routes?${mineFilter(me)}&select=stops&limit=1000`).catch(()=>[]);
+  const onMine=new Set();
+  for(const r of (rs||[])) for(const st of (Array.isArray(r.stops)?r.stops:[])) if(st&&st.dealer_id) onMine.add(String(st.dealer_id));
+  return off.filter(id=>!onMine.has(id));
+}
 
 /* A rep's map must never start from someone else's house. The start point is resolved
    in this order and never falls back to the creator: whatever the route itself records,
@@ -623,6 +644,20 @@ exports.handler = async (event)=>{
         : "not your route"});
       await sbSend("DELETE",`rep_routes?id=eq.${encodeURIComponent(b.id)}`,null,{Prefer:"return=minimal"});
       return json(200,{ok:true});
+    }
+
+    /* DEALER SCOPE FOR EVERY DEALER ACTION (Phase 0).
+       These actions read a dealer's history and contacts, write visits, notes, tasks and
+       opportunities onto it, or email it — and used to accept any dealer_id from any staff
+       member. Now the dealer must be in the caller's book (_scope.js), OR be a stop on a route
+       the caller owns or is assigned: a rep sent on a ride-along can work every stop of that
+       route without the dealers being moved into his book. */
+    const DEALER_ACTIONS=new Set(["business_case","log_visit","visit_checkin","visit_report_get","visit_report_save","save_visit",
+      "generate_followup","send_followup","notify_visit","previsit_draft","list_handout_exclusions","set_handout_exclusion","set_handout_feature"]);
+    if(DEALER_ACTIONS.has(b.action)){
+      const want=b.action==="business_case"?(Array.isArray(b.dealer_ids)?b.dealer_ids:[]):[b.dealer_id];
+      const off=await dealersOffReach(me,want);
+      if(off.length) return json(403,{error:"Not your dealer",dealer_ids:off});
     }
 
     // ---------- Business-case trip packet: per-stop history, contacts, opportunities ----------
@@ -950,15 +985,28 @@ exports.handler = async (event)=>{
     }
 
     // ---------- Editable app settings (e.g. the dealer-handout news) ----------
+    /* SETTINGS ARE READ THROUGH AN ALLOWLIST, NEVER BY KEY.
+       This used to return whatever app_settings row was named, to any signed-in staff member —
+       and that table also holds the Zoho refresh tokens (zoho_auth, zoho_campaigns_auth),
+       commission splits and the automation config. A rep could read a live Zoho credential by
+       typing its key. Now each key that may cross this endpoint is listed with the exact fields
+       that may leave it, and every other key is refused for every role, the president included:
+       credentials are read only by the server functions that use them. */
     if(b.action==="get_settings"){
       const key=String(b.key||"").trim(); if(!key) return json(400,{error:"key required"});
+      const rule=PUBLIC_SETTINGS[key];
+      if(!rule) return json(403,{error:"That setting isn't available here."});
       const rows=await sbGet(`app_settings?key=eq.${encodeURIComponent(key)}&select=value`).catch(()=>[]);
-      return json(200,{ok:true,value:(rows&&rows[0]&&rows[0].value)||null});
+      const v=(rows&&rows[0]&&rows[0].value)||null;
+      return json(200,{ok:true,value:v?pickFields(v,rule.fields):null});
     }
     if(b.action==="set_settings"){
       if(me.role!=="president") return json(403,{error:"President only"});
       const key=String(b.key||"").trim(); if(!key) return json(400,{error:"key required"});
-      await sbSend("POST","app_settings?on_conflict=key",{key,value:b.value||{},updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
+      const rule=PUBLIC_SETTINGS[key];
+      if(!rule||!rule.writable) return json(403,{error:"That setting can't be changed here."});
+      const value=pickFields((b.value&&typeof b.value==="object")?b.value:{}, rule.fields);
+      await sbSend("POST","app_settings?on_conflict=key",{key,value,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
       return json(200,{ok:true});
     }
 
@@ -1019,6 +1067,18 @@ exports.handler = async (event)=>{
     // visit_report_save upserts the structured report and, on completion, writes through to the CRM
     // (touch + tasks + opportunities) exactly like save_visit. Reps see only their own routes.
     const ownsRoute=r=> canViewRoute(me,r);   // working a route needs view rights, not ownership
+    /* A visit filed against a route needs that route to exist, the caller to be able to see it,
+       and the dealer to actually be one of its stops. A made-up route id used to skip every
+       check, and a real one let a report be filed for any dealer at all. */
+    async function routeStopCheck(rid,did){
+      const rr=await sbGet(`rep_routes?id=eq.${encodeURIComponent(rid)}&select=id,scheduled_date,owner_email,assigned_to_email,stops&limit=1`).catch(()=>[]);
+      const r=rr&&rr[0];
+      if(!r) return {ok:false,status:404,error:"route not found"};
+      if(!ownsRoute(r)) return {ok:false,status:403,error:"not your route"};
+      const onRoute=(Array.isArray(r.stops)?r.stops:[]).some(st=>st&&String(st.dealer_id||"")===String(did));
+      if(!onRoute && !SC.seesAllDealers(me)) return {ok:false,status:403,error:"That dealer isn't a stop on this route."};
+      return {ok:true,route:r};
+    }
     if(b.action==="route_day"){
       let route=null;
       if(b.route_id){
@@ -1073,7 +1133,7 @@ exports.handler = async (event)=>{
       const rid=String(b.route_id||"").trim()||null, did=String(b.dealer_id||"").trim();
       if(!did) return json(400,{error:"dealer_id required"});
       let sd=null;
-      if(rid){ const rr=await sbGet(`rep_routes?id=eq.${encodeURIComponent(rid)}&select=scheduled_date,owner_email,assigned_to_email`).catch(()=>[]); const r=rr&&rr[0]; if(r){ if(!ownsRoute(r)) return json(403,{error:"not your route"}); sd=r.scheduled_date||null; } }
+      if(rid){ const chk=await routeStopCheck(rid,did); if(!chk.ok) return json(chk.status,{error:chk.error}); sd=chk.route.scheduled_date||null; }
       const now=new Date().toISOString();
       const row={ route_id:rid, dealer_id:did, rep_email:me.email||null, rep_name:me.rep_name||null, scheduled_date:sd, checkin_at:now, status:"checked_in", updated_at:now };
       if(rid){ await sbSend("POST","dealer_visit_reports?on_conflict=route_id,dealer_id",row,{Prefer:"resolution=merge-duplicates,return=minimal"}); }
@@ -1083,6 +1143,7 @@ exports.handler = async (event)=>{
     if(b.action==="visit_report_get"){
       const rid=String(b.route_id||"").trim(), did=String(b.dealer_id||"").trim();
       if(!did) return json(400,{error:"dealer_id required"});
+      if(rid){ const chk=await routeStopCheck(rid,did); if(!chk.ok) return json(chk.status,{error:chk.error}); }
       const path = rid
         ? `dealer_visit_reports?route_id=eq.${encodeURIComponent(rid)}&dealer_id=eq.${encodeURIComponent(did)}&select=*&limit=1`
         : `dealer_visit_reports?dealer_id=eq.${encodeURIComponent(did)}&select=*&order=updated_at.desc&limit=1`;
@@ -1097,7 +1158,7 @@ exports.handler = async (event)=>{
       const completed = status==="completed";
       const now=new Date().toISOString();
       let sd=null;
-      if(rid){ const rr=await sbGet(`rep_routes?id=eq.${encodeURIComponent(rid)}&select=scheduled_date,owner_email,assigned_to_email`).catch(()=>[]); const r=rr&&rr[0]; if(r){ if(!ownsRoute(r)) return json(403,{error:"not your route"}); sd=r.scheduled_date||null; } }
+      if(rid){ const chk=await routeStopCheck(rid,did); if(!chk.ok) return json(chk.status,{error:chk.error}); sd=chk.route.scheduled_date||null; }
       // Was this report already completed, and does it already have a note? Both decide
       // whether this save is the one that should reach Dealer 360.
       let priorNoteId=null, alreadyCompleted=false;

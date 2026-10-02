@@ -92,7 +92,11 @@ async function generateRecoveryLink(email, redirect_to) {
   return { ok: true, link };
 }
 
-function template(portal, link) {
+/* kind "invite" is the first-time setup email a new staff member gets when the President adds
+   them; anything else is the ordinary reset. Same link, same one-time rules — only the words
+   differ, so a new rep isn't told they "asked to reset" a password they never had. */
+function template(portal, link, kind) {
+  if (kind === "invite") return inviteTemplate(portal, link);
   const L = esc(link);
   const html = `<!doctype html><html><body style="margin:0;background:#f4f5f7;padding:24px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#141414">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
@@ -132,6 +136,41 @@ return to ${portal.label} and choose "Forgot password?" again.
 Didn't ask for this? Ignore this email — your password has not changed.
 Questions: ${SUPPORT_PHONE} or hello@homecareproviderservices.us`;
   return { subject: `Reset your ${portal.label} password`, html, text };
+}
+
+function inviteTemplate(portal, link) {
+  const L = esc(link);
+  const html = `<!doctype html><html><body style="margin:0;background:#f4f5f7;padding:24px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#141414">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+    <table role="presentation" width="100%" style="max-width:520px;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e6e8ec">
+      <tr><td style="background:#0f2440;padding:20px 26px">
+        <div style="color:#fff;font-size:17px;font-weight:800;letter-spacing:.2px">HomeCare Provider Services</div>
+        <div style="color:#9fb0c4;font-size:12px;margin-top:2px">${esc(portal.label)}</div></td></tr>
+      <tr><td style="padding:26px">
+        <div style="font-size:19px;font-weight:800;margin-bottom:10px">Set up your account</div>
+        <p style="margin:0 0 16px;font-size:14.5px;line-height:1.55;color:#3c4450">
+          You've been added to ${esc(portal.intro)}. Choose your password using the button below,
+          then sign in with this email address.</p>
+        <p style="margin:0 0 22px"><a href="${L}"
+          style="display:inline-block;background:#ef6325;color:#fff;text-decoration:none;padding:13px 22px;border-radius:9px;font-weight:700;font-size:15px">Set my password</a></p>
+        <p style="margin:0 0 16px;font-size:13px;line-height:1.55;color:#6b7580">
+          This link can only be used once, and expires a short time from now. If it has expired,
+          open ${esc(portal.label)} and choose “Forgot password?” to get a new one.</p>
+        <p style="margin:0;font-size:12px;line-height:1.5;color:#98a1ad;word-break:break-all">
+          If the button doesn't work, paste this into your browser:<br>${L}</p>
+      </td></tr>
+      <tr><td style="background:#fafbfc;padding:14px 26px;border-top:1px solid #eef0f3;font-size:12px;color:#8a94a6">
+        HomeCare Provider Services · ${esc(SUPPORT_PHONE)} · hello@homecareproviderservices.us</td></tr>
+    </table></td></tr></table></body></html>`;
+  const text = `Set up your account — HomeCare Provider Services (${portal.label})
+
+You've been added to ${portal.intro}. Choose your password here, then sign in with this email address:
+${link}
+
+This link can only be used once and expires a short time from now. If it has expired,
+open ${portal.label} and choose "Forgot password?" to get a new one.
+Questions: ${SUPPORT_PHONE} or hello@homecareproviderservices.us`;
+  return { subject: `Set up your ${portal.label} account`, html, text };
 }
 
 async function sendViaResend(to, built) {
@@ -189,4 +228,4 @@ exports.handler = async (event) => {
 };
 
 /* Exported for the test suite; the handler above is what Netlify runs. */
-exports._internals = { PORTALS, template, accountExists, generateRecoveryLink, esc };
+exports._internals = { PORTALS, template, accountExists, generateRecoveryLink, esc, sendViaResend };

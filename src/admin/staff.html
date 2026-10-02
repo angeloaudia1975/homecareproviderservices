@@ -141,7 +141,10 @@ async function addUser(){
   const m=$("#addMsg"); m.className="msg"; m.textContent="Adding…";
   const j=await api({action:"add_user",email,name,role,rep_name,can_travel},true);
   if(!j||!j.ok){ m.className="msg err"; m.textContent=(j&&j.message)||"Couldn't add."; return; }
-  load();
+  await load();
+  // Say whether the setup email went out — the new person can't sign in until they use it.
+  const m2=$("#addMsg"); if(m2&&j.message){ m2.className=j.invite_sent?"msg":"msg err"; m2.textContent=j.message; }
+  toastIf(j.message);
 }
 async function editUser(email){
   const j=await api({action:"list_users"},true); const u=((j&&j.users)||[]).find(x=>x.email===email); if(!u) return load();

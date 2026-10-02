@@ -27,6 +27,8 @@ async function fetchJson(url){ const r=await fetch(url); if(!r.ok) throw new Err
 // Auth: accept a President/admin staff Bearer (the shared session used across the portal) OR the
 // legacy x-analytics-token passcode. Territory config is admin-only — reps don't manage it.
 const ADMIN_ROLES=new Set(["president","admin","owner"]);
+// Constant-time compare for the legacy passcode, so it can't be guessed a byte at a time.
+function safeEq(a,b){ const A=Buffer.from(String(a)), B=Buffer.from(String(b)); return A.length===B.length && require("crypto").timingSafeEqual(A,B); }
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
   const tok=auth.replace(/^Bearer\s+/i,"").trim();
@@ -36,9 +38,11 @@ async function whoami(event){
         if(email){ const s=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=role,active`).catch(()=>[]); const su=s&&s[0];
           if(su&&su.active!==false) return {role:su.role||"rep",email}; } } }catch(e){}
   }
-  const need=process.env.ANALYTICS_TOKEN, got=event.headers["x-analytics-token"]||event.headers["X-Analytics-Token"]||"";
-  if(need){ if(got===need) return {role:"president",email:""}; }
-  else { return {role:"president",email:""}; }   // no passcode configured → preserve legacy open behavior
+  /* FAILS CLOSED (was: no passcode configured → everyone is president, which left territory
+     settings readable and writable by anonymous requests). The passcode now works only when
+     ANALYTICS_TOKEN is set and the header matches it exactly. */
+  const need=process.env.ANALYTICS_TOKEN||"", got=String(event.headers["x-analytics-token"]||event.headers["X-Analytics-Token"]||"");
+  if(need && safeEq(got,need)) return {role:"president",email:""};
   return null;
 }
 

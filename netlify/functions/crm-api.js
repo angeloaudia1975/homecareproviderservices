@@ -66,6 +66,7 @@ async function whoami(event){
 }
 
 const { dealerScope, isAdmin, seesAllDealers } = require("./_scope.js");
+const SC=require("./_scope.js");
 
 exports.handler = async (event)=>{
   try{
@@ -424,8 +425,12 @@ exports.handler = async (event)=>{
       const id=String(b.id||"").trim();
       const fields={name:clean(b.name,160),title:clean(b.title,120),role:clean(b.role,120),phone:clean(b.phone,60),cell:clean(b.cell,60)};
       if(id){
-        // Edit an existing contact by id — email may now be added, changed, or cleared.
-        try{ await sbSend("PATCH",`dealer_contacts?id=eq.${encodeURIComponent(id)}`,{email,...fields},{Prefer:"return=minimal"}); }
+        // Edit an existing contact by id — email may now be added, changed, or cleared. The id must
+        // belong to the dealer this request was authorized for: the scope check above only proves
+        // the caller may work b.dealer_id, not that this contact is one of its contacts.
+        const own=await SC.authorizeRecord(me,"dealer_contacts",id,sbGet,{dealerId:b.dealer_id});
+        if(!own.ok) return json(own.status,{error:own.error});
+        try{ await sbSend("PATCH",`dealer_contacts?id=eq.${encodeURIComponent(id)}&dealer_id=eq.${encodeURIComponent(b.dealer_id)}`,{email,...fields},{Prefer:"return=minimal"}); }
         catch(e){ return json(409,{error:"Another contact for this dealer already uses that email."}); }
       } else {
         // New contact: with an email, merge on (dealer_id,email); without one, insert fresh.
@@ -436,7 +441,10 @@ exports.handler = async (event)=>{
     }
     if(b.action==="delete_contact"){
       if(!b.dealer_id) return json(400,{error:"dealer_id required"});
-      if(b.id){ await sbSend("DELETE",`dealer_contacts?id=eq.${encodeURIComponent(String(b.id))}`,null,{Prefer:"return=minimal"}); }
+      if(b.id){
+        const own=await SC.authorizeRecord(me,"dealer_contacts",b.id,sbGet,{dealerId:b.dealer_id});
+        if(!own.ok) return json(own.status,{error:own.error});
+        await sbSend("DELETE",`dealer_contacts?id=eq.${encodeURIComponent(String(b.id))}&dealer_id=eq.${encodeURIComponent(b.dealer_id)}`,null,{Prefer:"return=minimal"}); }
       else if(b.email){ await sbSend("DELETE",`dealer_contacts?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&email=eq.${encodeURIComponent(String(b.email).toLowerCase())}`,null,{Prefer:"return=minimal"}); }
       else return json(400,{error:"id or email required"});
       return json(200,{ok:true});
@@ -488,6 +496,10 @@ exports.handler = async (event)=>{
 
     if(b.action==="complete_task"||b.action==="reopen_task"||b.action==="dismiss_task"){
       if(!b.id) return json(400,{error:"id required"});
+      /* Tasks are changed by id, so the id is resolved first: management, the rep the task is
+         assigned to, or a rep whose book holds the task's dealer. Anyone else gets 403. */
+      const own=await SC.authorizeRecord(me,"dealer_tasks",b.id,sbGet,{ownerFields:["assigned_rep"]});
+      if(!own.ok) return json(own.status,{error:own.error});
       const status=b.action==="complete_task"?"done":b.action==="dismiss_task"?"dismissed":"open";
       const patch={status,done_at:status==="open"?null:new Date().toISOString()};
       await sbSend("PATCH",`dealer_tasks?id=eq.${encodeURIComponent(b.id)}`,patch,{Prefer:"return=minimal"});

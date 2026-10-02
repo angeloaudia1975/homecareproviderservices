@@ -87,7 +87,8 @@ exports.handler = async (event) => {
     // canonical dealers the Dealer Manager shows (post-merge, post-rename). Without this
     // the page would count raw customer_name strings and drift from the corrected list.
     let dealers = [], aliases = [];
-    try { dealers = await sbGet("dealers?select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id"); } catch (e) { dealers = []; }
+    try { dealers = await sbGet("dealers?select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id,rep_name"); }
+    catch (e) { try { dealers = await sbGet("dealers?select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id"); } catch (e2) { dealers = []; } }
     try { aliases = await sbGet("dealer_aliases?select=alias_norm,dealer_id"); } catch (e) { aliases = []; }
     const nameById = Object.fromEntries(dealers.map(d => [d.id, d.business_name]));
     // Master (HQ) name per dealer, so reports can roll branch sales up to the company.
@@ -163,9 +164,20 @@ exports.handler = async (event) => {
     let repOptionsOut = [...new Set([...repTable, ...reps])].filter(Boolean).sort();
     if (!seesAllDealers) {
       const rn = String(me.rep_name || "").trim().toLowerCase();
-      facts = facts.filter(f => String(f.rep || "").toLowerCase() === rn);   // own dealers only
+      facts = facts.filter(f => !!rn && String(f.rep || "").toLowerCase() === rn);   // own dealers only
       repsOut = [...new Set(facts.map(f => f.rep))].filter(Boolean);
       repOptionsOut = repsOut.slice();
+      /* Contact details and assignments only for the rep's own dealers. This payload used to send
+         every dealer's contact, email, phone and addresses — and the whole assignment directory —
+         to any rep who opened Dealer 360 or Command Center 360. "Own" = dealers in his sales
+         facts, assigned to him in the directory or on the dealer record, plus their branch family. */
+      const mine = new Set();
+      for (const f of facts) { mine.add(f.dealer); mine.add(f.master); }
+      for (const a of (assignments || [])) if (rn && String(a.rep_name || "").trim().toLowerCase() === rn) mine.add(a.dealer_name);
+      for (const d of dealers) if (rn && String(d.rep_name || "").trim().toLowerCase() === rn) mine.add(d.business_name);
+      for (const d of dealers) { const p = d.parent_id && nameById[d.parent_id]; if (p && mine.has(p)) mine.add(d.business_name); if (p && mine.has(d.business_name)) mine.add(p); }
+      for (const nm of Object.keys(dealerInfo)) if (!mine.has(nm)) delete dealerInfo[nm];
+      assignments = (assignments || []).filter(a => rn && String(a.rep_name || "").trim().toLowerCase() === rn);
     } else if (!admin) {
       // Relations Manager: keep all dealers' sales, but zero out commissions that aren't their own.
       const rn = String(me.rep_name || "").trim().toLowerCase();

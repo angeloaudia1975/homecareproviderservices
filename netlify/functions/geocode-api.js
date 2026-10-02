@@ -104,6 +104,8 @@ async function allAddressKeys(){
   return map; // q -> sample address parts
 }
 
+// Constant-time compare for the legacy passcode, so it can't be guessed a byte at a time.
+function safeEq(a,b){ const A=Buffer.from(String(a)), B=Buffer.from(String(b)); return A.length===B.length && require("crypto").timingSafeEqual(A,B); }
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
   const tok=auth.replace(/^Bearer\s+/i,"").trim();
@@ -115,10 +117,13 @@ async function whoami(event){
     }catch(e){}
     return null;
   }
-  const need=process.env.ANALYTICS_TOKEN;
-  const got=event.headers["x-analytics-token"]||event.headers["X-Analytics-Token"]||"";
-  if(!need) return {role:"president",rep_name:"",can_travel:true,name:"Admin"};
-  if(got===need) return {role:"president",rep_name:"",can_travel:true,name:"Admin"};
+  /* FAILS CLOSED. An unset ANALYTICS_TOKEN used to mean "no passcode configured, so let
+     everyone in as president" — which, with the variable unset in production, served the
+     full dealer map to any anonymous request. Now a passcode works only when the variable
+     is set AND the header matches it exactly; anything else is refused. */
+  const need=process.env.ANALYTICS_TOKEN||"";
+  const got=String(event.headers["x-analytics-token"]||event.headers["X-Analytics-Token"]||"");
+  if(need && safeEq(got,need)) return {role:"president",rep_name:"",can_travel:true,name:"Admin"};
   return null;
 }
 

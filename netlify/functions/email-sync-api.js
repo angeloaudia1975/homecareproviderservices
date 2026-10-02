@@ -113,9 +113,12 @@ async function whoami(event){
   try{ const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${tok}`}});
     if(r.ok){ const u=await r.json(); const email=u&&u.email&&String(u.email).toLowerCase();
       if(email){ const s=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=*`).catch(()=>[]); const su=s&&s[0];
-        if(su&&su.active!==false) return {role:su.role||"rep",email}; } } }catch(e){}
+        if(su&&su.active!==false) return {role:su.role||"rep",email,rep_name:su.rep_name||"",name:su.name||email}; } } }catch(e){}
   return null;
 }
+// Dealer scope: the same rule as every other endpoint (_scope.js). Reading a dealer's mail
+// or opening a message body requires that dealer to be in the caller's book.
+const SC=require("./_scope.js");
 
 // ---- dealer resolver: learned domains + dnorm name/alias ----
 async function buildResolver(){
@@ -264,6 +267,7 @@ exports.handler = async (event)=>{
     // Read a dealer's captured emails for the Dealer 360 timeline — any signed-in staff.
     if(b.action==="dealer"){
       const id=String(b.dealer_id||"").trim(); if(!id) return json(400,{error:"dealer_id required"});
+      if(!(await SC.canAccessDealer(me,id,sbGet))) return json(403,{error:"Not your dealer"});
       let rows;
       try{ rows=await sbGet(`email_messages?dealer_id=eq.${encodeURIComponent(id)}&select=id,direction,subject,snippet,from_address,from_name,sent_at,received_at,thread_id,mailbox_upn,has_attachments,match_confidence,folder&order=received_at.desc.nullslast&limit=${Math.min(parseInt(b.limit||60,10)||60,200)}`); }
       catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run supabase/email_intelligence.sql first."}); }
@@ -310,9 +314,17 @@ exports.handler = async (event)=>{
 
     if(b.action==="message"){
       const id=String(b.id||"").trim(); if(!id) return json(400,{error:"id required"});
-      let row; try{ const rows=await sbGet(`email_messages?id=eq.${encodeURIComponent(id)}&select=id,graph_id,mailbox_upn,subject,snippet,from_address,from_name,direction,sent_at,received_at,has_attachments`); row=rows&&rows[0]; }
+      let row; try{ const rows=await sbGet(`email_messages?id=eq.${encodeURIComponent(id)}&select=id,dealer_id,graph_id,mailbox_upn,subject,snippet,from_address,from_name,direction,sent_at,received_at,has_attachments`); row=rows&&rows[0]; }
       catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run supabase/email_intelligence.sql first."}); }
       if(!row) return json(404,{ok:false,error:"not_found"});
+      /* A full Outlook body is opened only for someone entitled to it: management, the owner of
+         the mailbox it was captured from, or a rep whose book holds the dealer it is filed on.
+         Knowing a message id is not enough. */
+      if(!SC.seesAllDealers(me)){
+        const ownBox=!!me.email && String(row.mailbox_upn||"").toLowerCase()===String(me.email).toLowerCase();
+        const ownDealer=!!row.dealer_id && await SC.canAccessDealer(me,row.dealer_id,sbGet);
+        if(!ownBox && !ownDealer) return json(403,{ok:false,error:"Not your message"});
+      }
       if(!G_TENANT||!G_CLIENT||!G_SECRET) return json(200,{ok:false,error:"graph_env_missing",message:"Set GRAPH_TENANT_ID / GRAPH_CLIENT_ID / GRAPH_CLIENT_SECRET in Netlify to read full email bodies."});
       if(!row.graph_id||!row.mailbox_upn) return json(200,{ok:false,error:"no_source",message:"This message has no Outlook reference to open."});
       const base=`/users/${encodeURIComponent(row.mailbox_upn)}/messages/${encodeURIComponent(row.graph_id)}`;
@@ -383,6 +395,9 @@ exports.handler = async (event)=>{
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return json(200,{ok:false,error:"bad_to",message:"Enter a valid recipient email."});
       if(!subject) return json(200,{ok:false,error:"no_subject",message:"Add a subject line."});
       if(!bodyText.trim()) return json(200,{ok:false,error:"no_body",message:"The email body is empty."});
+      // The email goes from the caller's own mailbox; logging it onto a dealer's timeline needs
+      // that dealer to be in their book.
+      if(dealerId && !(await SC.canAccessDealer(me,dealerId,sbGet))) return json(403,{ok:false,error:"Not your dealer"});
       const fromMailbox=String(me.email||"").toLowerCase();   // the rep's login email == their Outlook mailbox
       if(!fromMailbox) return json(200,{ok:false,error:"no_sender",message:"Your account has no email on file to send from."});
       if(!G_TENANT||!G_CLIENT||!G_SECRET) return json(200,{ok:false,error:"graph_env_missing",fallback:true,to,message:"Sending from Outlook isn't set up yet (Graph credentials)."});

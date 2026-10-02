@@ -67,7 +67,9 @@ exports.handler = async (event)=>{
         };
       });
       // reps see only their book
-      if(!manage && me.rep_name){ const rn=me.rep_name.toLowerCase(); list=list.filter(o=>String(o.rep||"").toLowerCase()===rn); }
+      // A rep sees only his book — and a rep with no book name sees nothing (a blank name used
+      // to skip this filter and show every dealer's orders).
+      if(!manage){ const rn=String(me.rep_name||"").trim().toLowerCase(); list=rn?list.filter(o=>String(o.rep||"").toLowerCase()===rn):[]; }
       const stats={}; for(const s of STATUSES) stats[s]=0; for(const o of list) stats[o.status]=(stats[o.status]||0)+1;
       return json(200,{ok:true,orders:list,stats,role:me.role,manage});
     }

@@ -278,6 +278,10 @@ exports.handler=async(event)=>{
   try{
     if(event.httpMethod!=="POST") return json(405,{error:"POST only"});
     const me=await whoami(event); if(!me) return json(401,{error:"unauthorized"});
+    /* Not a sales-rep tool: it reads every dealer's contacts and can change or mail them all.
+       The rep role is refused; management and Relations keep their current access until the
+       Phase 0 role matrix decides Relations. */
+    if(String(me.role||"rep").toLowerCase()==="rep") return json(403,{error:"Not available to the sales rep role."});
     let b; try{b=JSON.parse(event.body||"{}");}catch{b={};}
     const act=b.action||"list";
 

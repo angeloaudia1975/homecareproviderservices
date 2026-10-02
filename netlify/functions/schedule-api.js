@@ -88,6 +88,7 @@ async function sbInsertReq(row) {
 }
 
 // ---- Staff auth (same pattern as crm-api / routes-api) ----
+const SC = require("./_scope.js");
 async function whoami(event) {
   const auth = event.headers["authorization"] || event.headers["Authorization"] || "";
   const tok = auth.replace(/^Bearer\s+/i, "").trim();
@@ -626,11 +627,33 @@ async function consultBook(b) {
 
 // ============================ ADMIN ACTIONS ============================
 async function adminHandler(me, b) {
+  /* WHO MAY WORK A REQUEST. Management (and, unchanged in Phase 0, Relations) see the whole
+     queue. A rep sees and works: requests booked into his own calendar, requests for dealers in
+     his book, and unclaimed requests with no dealer yet (new prospects, so triage still works).
+     Another rep's appointment is refused even if its id is known, and a rep can only book into
+     his own calendar. */
+  const manages = SC.seesAllDealers(me);
+  const scope = manages ? null : await SC.dealerScope(me, sbGet);
+  const myEmail = String(me.email || "").toLowerCase(), myRep = String(me.rep_name || "").trim().toLowerCase();
+  const inBook = id => !!id && !!(scope && scope.ids && scope.ids.has(String(id)));
+  const canWork = req => {
+    if (manages) return true;
+    if (!req) return false;
+    if (req.owner_email && String(req.owner_email).toLowerCase() === myEmail) return true;
+    if (req.dealer_id) return inBook(req.dealer_id);
+    if (myRep && req.rep_name && String(req.rep_name).trim().toLowerCase() === myRep) return true;
+    return !req.owner_email && !req.rep_name;      // unclaimed prospect request
+  };
+  const ID_ACTIONS = new Set(["set_dealer", "assign", "complete", "cancel", "reopen"]);
+  if (ID_ACTIONS.has(b.action) && b.id) {
+    const req0 = await getReq(b.id);
+    if (req0 && !canWork(req0)) return json(403, { error: "Not your appointment" });
+  }
   if (b.action === "queue") {
     const status = clip(b.status, 20);
     const filt = status && status !== "all" ? `&status=eq.${encodeURIComponent(status)}` : "";
-    const requests = await sbGet(`service_requests?select=*${filt}&order=created_at.desc&limit=500`).catch(() => []);
-    const all = status ? await sbGet(`service_requests?select=status`).catch(() => []) : requests;
+    const requests = (await sbGet(`service_requests?select=*${filt}&order=created_at.desc&limit=500`).catch(() => [])).filter(canWork);
+    const all = status ? (await sbGet(`service_requests?select=status,owner_email,dealer_id,rep_name`).catch(() => [])).filter(canWork) : requests;
     const counts = {}; for (const r of all) counts[r.status || "requested"] = (counts[r.status || "requested"] || 0) + 1;
     let reps = [];
     try { reps = await sbGet(`staff_users?active=neq.false&select=email,name,rep_name,role&order=name.asc`); }
@@ -645,12 +668,13 @@ async function adminHandler(me, b) {
     const q = clip(b.q, 80); if (!q || q.length < 2) return json(200, { ok: true, dealers: [] });
     let rows = [];
     try { rows = await sbGet(`dealers?business_name=ilike.*${encodeURIComponent(q)}*&select=id,business_name,city,state,is_test&order=business_name.asc&limit=25`); } catch (e) {}
-    return json(200, { ok: true, dealers: (rows || []).filter(d => !d.is_test) });
+    return json(200, { ok: true, dealers: (rows || []).filter(d => !d.is_test && (manages || inBook(d.id))) });
   }
 
   if (b.action === "set_dealer") {
     if (!b.id) return json(400, { error: "id required" });
     const req = await getReq(b.id); if (!req) return json(404, { error: "not found" });
+    if (b.dealer_id && !manages && !inBook(b.dealer_id)) return json(403, { error: "Not your dealer" });
     const out = await patchReq(b.id, { dealer_id: b.dealer_id ? String(b.dealer_id) : null });
     return json(200, { ok: true, request: out });
   }
@@ -660,6 +684,8 @@ async function adminHandler(me, b) {
     if (!b.id) return json(400, { error: "id required" });
     const repEmail = clip(b.rep_email, 160);
     if (!repEmail || !EMAIL_RE.test(repEmail)) return json(400, { error: "A rep with a valid work email is required to book the appointment." });
+    if (!manages && repEmail.toLowerCase() !== myEmail) return json(403, { error: "You can only book appointments into your own calendar." });
+    if (!manages && b.dealer_id && !inBook(b.dealer_id)) return json(403, { error: "Not your dealer" });
     const req = await getReq(b.id); if (!req) return json(404, { error: "not found" });
     const cfg = await getAvailabilityConfig();
     const date = dateOr(b.date) || req.preferred_date;
@@ -770,7 +796,7 @@ async function adminHandler(me, b) {
     const nowISO = new Date().toISOString();
     let rows = [];
     try { rows = await sbGet(`service_requests?status=eq.scheduled&start_at=gte.${encodeURIComponent(nowISO)}&select=*&order=start_at.asc&limit=300`); } catch (e) {}
-    return json(200, { ok: true, appointments: rows });
+    return json(200, { ok: true, appointments: (rows || []).filter(canWork) });
   }
 
   return json(400, { error: "unknown action" });

@@ -65,4 +65,47 @@ async function dealerScope(me, sbGet){
   return { isAll:false, ids, repName };
 }
 
-module.exports = { dnorm, roleOf, isAdmin, seesAllDealers, seesAllCommissions, dealerScope };
+/* ── Record-level authorization (Phase 0) ─────────────────────────────────────────────
+   Every endpoint that reads or changes something belonging to a dealer asks ONE question,
+   through these helpers, instead of each file inventing its own rule. Knowing a record's id
+   is never enough: the record is looked up first, then its dealer (or its direct owner) is
+   checked against the caller. Browser-side hiding is not authorization. */
+
+// Which of these dealer ids is the caller NOT allowed to work? [] means all are allowed.
+async function dealersOutsideScope(me, dealerIds, sbGet){
+  const ids=[...new Set((dealerIds||[]).map(x=>String(x==null?"":x).trim()).filter(Boolean))];
+  if(!ids.length || seesAllDealers(me)) return [];
+  const sc=await dealerScope(me, sbGet);
+  return ids.filter(id=>!(sc.ids && sc.ids.has(id)));
+}
+async function canAccessDealer(me, dealerId, sbGet){
+  if(!dealerId) return false;
+  return (await dealersOutsideScope(me, [dealerId], sbGet)).length===0;
+}
+/* Look a record up by id and decide whether the caller may act on it.
+     opts.dealerId    — the dealer the request claims the record belongs to; must match
+     opts.ownerFields — columns naming a person (email or rep name) who owns the record directly,
+                        e.g. a task's assigned_rep; that person may act on it even off their book
+     opts.select      — extra columns the caller wants back
+   Returns {ok:true,row} or {ok:false,status,error}. */
+async function authorizeRecord(me, table, id, sbGet, opts){
+  opts=opts||{};
+  const rid=String(id==null?"":id).trim(); if(!rid) return {ok:false,status:400,error:"id required"};
+  const cols=[...new Set(["id","dealer_id"].concat(opts.ownerFields||[], opts.select||[]))];
+  let rows; try{ rows=await sbGet(`${table}?id=eq.${encodeURIComponent(rid)}&select=${cols.join(",")}&limit=1`); }
+  catch(e){ return {ok:false,status:500,error:"lookup failed"}; }
+  const row=rows&&rows[0]; if(!row) return {ok:false,status:404,error:"not found"};
+  if(opts.dealerId!=null && String(row.dealer_id==null?"":row.dealer_id)!==String(opts.dealerId))
+    return {ok:false,status:403,error:"That record doesn't belong to this dealer."};
+  if(seesAllDealers(me)) return {ok:true,row};
+  const myEmail=String((me&&me.email)||"").trim().toLowerCase(), myRep=String((me&&me.rep_name)||"").trim().toLowerCase();
+  for(const f of (opts.ownerFields||[])){
+    const v=String(row[f]==null?"":row[f]).trim().toLowerCase(); if(!v) continue;
+    if((myEmail && v===myEmail) || (myRep && v===myRep)) return {ok:true,row};
+  }
+  if(row.dealer_id && await canAccessDealer(me, row.dealer_id, sbGet)) return {ok:true,row};
+  return {ok:false,status:403,error:"Not your record"};
+}
+
+module.exports = { dnorm, roleOf, isAdmin, seesAllDealers, seesAllCommissions, dealerScope,
+                   dealersOutsideScope, canAccessDealer, authorizeRecord };

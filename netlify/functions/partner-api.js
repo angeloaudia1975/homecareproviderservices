@@ -46,6 +46,8 @@ exports.handler = async (event)=>{
     if(event.httpMethod!=="POST") return json(405,{error:"POST only"});
     const me=await whoami(event);
     if(!me) return json(401,{error:"unauthorized"});
+    // CardChamp referrals are a management/Relations ledger, not a sales-rep tool.
+    if(String(me.role||"rep").toLowerCase()==="rep") return json(403,{error:"Not available to the sales rep role."});
     let b; try{ b=JSON.parse(event.body||"{}"); }catch{ return json(400,{error:"bad JSON"}); }
     const service=clean(b.service,40)||"cardchamp";
 

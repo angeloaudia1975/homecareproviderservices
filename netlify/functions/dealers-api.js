@@ -168,12 +168,13 @@ async function whoami(event){
   if(need && got===need) return {role:"president",rep_name:"",name:"Admin",email:""};
   return null;
 }
+/* Does this rep own the dealer? Asked through the shared resolver (_scope.js) — the same rule
+   Dealer 360, tasks and the call workspace use — instead of an exact-name lookup in the legacy
+   directory only, which disagreed with them for dealers assigned through Bulk Assignment. */
+const SC=require("./_scope.js");
 async function ownsDealer(me, dealer_id){
-  if(!me||!me.rep_name||!dealer_id) return false;
-  const d=await sbGet(`dealers?id=eq.${encodeURIComponent(dealer_id)}&select=business_name`).catch(()=>[]);
-  const nm=d&&d[0]&&d[0].business_name; if(!nm) return false;
-  const dir=await sbGet(`dealer_directory?dealer_name=eq.${encodeURIComponent(nm)}&select=rep_name`).catch(()=>[]);
-  return String((dir&&dir[0]&&dir[0].rep_name)||"").trim().toLowerCase()===String(me.rep_name).trim().toLowerCase();
+  if(!me||!dealer_id) return false;
+  return SC.canAccessDealer(me, dealer_id, sbGet);
 }
 // Structural / cross-book / login / approval tools are President-only.
 const PRESIDENT_ONLY=new Set(["merge","split","import_contacts","backfill_master","attribution_breakdown","reattribute","clear_order_refs","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep","rep_bulk","list_contract_prices","set_contract_price","clear_contract_price","prefill_access","prefill_access_all","create_dealer"]);
@@ -540,6 +541,7 @@ exports.handler = async (event)=>{
       // Read-only: what this dealer can actually order on the portal, computed live from the rules.
       if(act==="portal_access"){
         if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+        if(!seesAll && !(await ownsDealer(me,b.dealer_id))) return json(403,{error:"Not your dealer"});
         const r=await computeDealerAccess(b.dealer_id);
         if(!r) return json(404,{error:"dealer not found"});
         return json(200,{ok:true,...r});

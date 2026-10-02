@@ -20,6 +20,7 @@ const clean=(v,n)=>{ const s=(v==null?"":String(v)).trim(); return s?s.slice(0,n
 const STAGE_PROB={identified:0.1,contacted:0.3,quoted:0.6,won:1,lost:0};
 const STAGES=["identified","contacted","quoted","won","lost"];
 
+const SC=require("./_scope.js");
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
   const tok=auth.replace(/^Bearer\s+/i,"").trim();
@@ -43,13 +44,18 @@ exports.handler=async(event)=>{
     try{ await sbGet("opportunities?select=id&limit=1"); }
     catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run supabase/pipeline.sql in Supabase, then reload."}); }
 
+    /* Who may write a deal. Management (and, unchanged in Phase 0, Relations) may work any deal.
+       A rep may add deals on dealers in his book, change only deals he owns or whose dealer is
+       in his book, and can't hand a deal to someone else — owner_rep stays his own. */
+    const manages=SC.seesAllDealers(me);
     if(b.action==="add"){
       if(!clean(b.title)) return json(400,{error:"title required"});
+      if(b.dealer_id && !(await SC.canAccessDealer(me,b.dealer_id,sbGet))) return json(403,{error:"Not your dealer"});
       const stage=STAGES.includes(b.stage)?b.stage:"identified";
       const row={ dealer_id:b.dealer_id||null, title:clean(b.title,200), line:clean(b.line,120),
         stage, value:Number(b.value)||0, probability:(b.probability!=null?Number(b.probability):STAGE_PROB[stage]),
         expected_close:/^\d{4}-\d{2}-\d{2}$/.test(String(b.expected_close||""))?b.expected_close:null,
-        owner_rep:clean(b.owner_rep,120)||me.rep_name||null, source:b.source==="crosssell"?"crosssell":"manual",
+        owner_rep:(manages?(clean(b.owner_rep,120)||me.rep_name||null):(me.rep_name||null)), source:b.source==="crosssell"?"crosssell":"manual",
         notes:clean(b.notes,2000), status: stage==="won"?"won":stage==="lost"?"lost":"open",
         created_by:me.name||me.email||null };
       const ins=await sbSend("POST","opportunities",row,{Prefer:"return=representation"});
@@ -57,6 +63,8 @@ exports.handler=async(event)=>{
     }
     if(b.action==="update"){
       if(!b.id) return json(400,{error:"id required"});
+      const own=await SC.authorizeRecord(me,"opportunities",b.id,sbGet,{ownerFields:["owner_rep"]});
+      if(!own.ok) return json(own.status,{error:own.error});
       const patch={updated_at:new Date().toISOString()};
       if(b.stage&&STAGES.includes(b.stage)){ patch.stage=b.stage; patch.probability=(b.probability!=null?Number(b.probability):STAGE_PROB[b.stage]); patch.status=b.stage==="won"?"won":b.stage==="lost"?"lost":"open"; }
       if(b.value!=null) patch.value=Number(b.value)||0;
@@ -64,7 +72,7 @@ exports.handler=async(event)=>{
       if(b.line!=null) patch.line=clean(b.line,120);
       if(b.notes!=null) patch.notes=clean(b.notes,2000);
       if(b.expected_close!==undefined) patch.expected_close=/^\d{4}-\d{2}-\d{2}$/.test(String(b.expected_close||""))?b.expected_close:null;
-      if(b.owner_rep!=null) patch.owner_rep=clean(b.owner_rep,120);
+      if(b.owner_rep!=null && manages) patch.owner_rep=clean(b.owner_rep,120);
       await sbSend("PATCH",`opportunities?id=eq.${encodeURIComponent(b.id)}`,patch,{Prefer:"return=minimal"});
       return json(200,{ok:true});
     }
@@ -96,7 +104,7 @@ exports.handler=async(event)=>{
     const resolve=r=>{ if(r.dealer_id&&nameById[r.dealer_id])return r.dealer_id; const id=idByAlias[dnorm(r.customer_name)]; return (id&&nameById[id])?id:null; };
     const DLL=new Map(); let L=0; // dealer|line -> {pms:Map(pm->$)}
     for(const r of rows){ const id=resolve(r); if(!id)continue; if(isEx(r.manufacturer))continue; const pm=pmOf(r.period); if(!pm)continue; if(pm>L)L=pm;
-      if(isRep && String(repOfDealer(id)||"").toLowerCase()!==myRep) continue;
+      if(isRep && (!myRep || String(repOfDealer(id)||"").toLowerCase()!==myRep)) continue;
       const key=id+"|"+r.manufacturer; let o=DLL.get(key); if(!o){o={id,pms:new Map()};DLL.set(key,o);} o.pms.set(pm,(o.pms.get(pm)||0)+(Number(r.amount)||0)); }
     const HOR=6; const reorderByPm={};
     for(const [,o] of DLL){ const pmArr=[...o.pms.keys()].sort((a,b)=>a-b); if(pmArr.length<2)continue;
@@ -107,7 +115,8 @@ exports.handler=async(event)=>{
 
     // opportunities (rep-scoped) + pipeline forecast
     let oppList=opps.map(o=>({...o, dealer_name:o.dealer_id?(nameById[o.dealer_id]||""):"" }));
-    if(isRep) oppList=oppList.filter(o=>String(o.owner_rep||"").toLowerCase()===myRep);
+    // A rep with no book name sees no deals — a blank name must never match unowned deals.
+    if(isRep) oppList=oppList.filter(o=>!!myRep && String(o.owner_rep||"").toLowerCase()===myRep);
     const pipeByPm={};
     for(const o of oppList){ if(o.status!=="open")continue; const pm=o.expected_close?pmOf(o.expected_close):null; if(pm==null||pm<=L||pm>L+HOR)continue;
       const prob=o.probability!=null?Number(o.probability):(STAGE_PROB[o.stage]||0); pipeByPm[pm]=(pipeByPm[pm]||0)+(Number(o.value)||0)*prob/12; }
@@ -115,7 +124,7 @@ exports.handler=async(event)=>{
 
     const forecast=[]; for(let m=L+1;m<=L+HOR;m++){ const ro=Math.round(reorderByPm[m]||0), pp=Math.round(pipeByPm[m]||0); forecast.push({pm:m,label:pmLabel(m),reorder:ro,pipeline:pp,total:ro+pp}); }
     // history (last 12 months actuals, same scope)
-    const actualByPm={}; for(const r of rows){ const id=resolve(r); if(!id)continue; if(isEx(r.manufacturer))continue; if(isRep&&String(repOfDealer(id)||"").toLowerCase()!==myRep)continue; const pm=pmOf(r.period); if(pm==null)continue; if(pm>L-12&&pm<=L) actualByPm[pm]=(actualByPm[pm]||0)+(Number(r.amount)||0); }
+    const actualByPm={}; for(const r of rows){ const id=resolve(r); if(!id)continue; if(isEx(r.manufacturer))continue; if(isRep&&(!myRep||String(repOfDealer(id)||"").toLowerCase()!==myRep))continue; const pm=pmOf(r.period); if(pm==null)continue; if(pm>L-12&&pm<=L) actualByPm[pm]=(actualByPm[pm]||0)+(Number(r.amount)||0); }
     const history=[]; for(let m=L-11;m<=L;m++){ history.push({pm:m,label:pmLabel(m),actual:Math.round(actualByPm[m]||0)}); }
 
     // summary

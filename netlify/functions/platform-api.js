@@ -23,6 +23,7 @@ exports.handler=async(event)=>{
   try{
     if(event.httpMethod!=="POST") return json(405,{error:"POST only"});
     const me=await whoami(event); if(!me) return json(401,{error:"unauthorized"});
+    const MGMT=["president","admin","owner"].includes(String(me.role||"").toLowerCase());
     let b; try{b=JSON.parse(event.body||"{}");}catch{b={};}
 
     if(b.action==="get" || !b.action){
@@ -32,6 +33,8 @@ exports.handler=async(event)=>{
     if(b.action==="set"){
       const mode=String(b.mode||"").toLowerCase();
       if(!P.MODES.includes(mode)) return json(400,{ok:false,error:"invalid mode"});
+      // Platform mode decides whether real dealers receive email — management only.
+      if(!MGMT) return json(403,{ok:false,error:"Only management can change the platform mode."});
       // Only the president may take the platform Live (it starts the official record).
       if(mode==="live" && me.role!=="president") return json(200,{ok:false,message:"Only the president can activate Live mode."});
       const res=await P.setMode(mode,me.email,new Date().toISOString());

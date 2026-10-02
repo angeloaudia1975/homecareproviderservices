@@ -1,6 +1,8 @@
 // HCPS admin — staff accounts, roles & login. Service-role, server-side. No npm deps.
 //
-//   POST {action:"login", email, password}      -> { ok, token, profile }   (bootstrap + first-login-sets-password)
+//   POST {action:"login", email, password}      -> { ok, token, profile }
+//     A staff record alone never lets anyone choose its password. New staff get an emailed
+//     setup link (add_user); forgotten passwords get the same HCPS-branded link.
 //   POST {action:"me"} + Authorization: Bearer   -> { ok, profile }
 //   President-only (Bearer of a president):
 //     {action:"list_users"} -> { users }
@@ -45,6 +47,28 @@ async function emailFromToken(event){
   try{ const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${tok}`}}); if(!r.ok) return null; const u=await r.json(); return (u&&u.email)?String(u.email).toLowerCase():null; }catch(e){ return null; }
 }
 async function getStaff(email){ const rows=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=*`).catch(()=>[]); return (rows&&rows[0])||null; }
+// Same lookup, but a database error is an error — sign-in must never treat "couldn't read the
+// staff table" as "this person isn't staff" or, worse, "the table is empty".
+async function getStaffStrict(email){ const rows=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=*`); return (rows&&rows[0])||null; }
+
+/* ONE WAY TO GIVE SOMEONE A PASSWORD: a single-use link to their own inbox.
+   Used for new staff (kind "invite"), the President's reset button and the public "forgot"
+   form. The link is minted with the admin API and sent by HCPS (password-reset.js), always
+   to the fixed /admin/reset.html — a redirect supplied by the browser is never used, because
+   whoever controls the redirect receives a live recovery token.
+   If the person has no login yet, one is created first with a long random password that
+   nobody ever sees; the link is how they set their own. */
+const PR=require("./password-reset.js")._internals;
+async function sendStaffLink(email, kind){
+  const throwaway=require("crypto").randomBytes(32).toString("hex");
+  const c=await adminCreateUser(email, throwaway);
+  if(!c.ok && !c.exists) return {ok:false, message:"Couldn't prepare the account: "+String(c.error||"").slice(0,140)};
+  const g=await PR.generateRecoveryLink(email, PR.PORTALS.staff.redirect);
+  if(!g.ok) return {ok:false, message:g.status===429?"Too many links requested just now — wait a few minutes and try again.":`Couldn't create the link (${g.status}).`};
+  const sent=await PR.sendViaResend(email, PR.template(PR.PORTALS.staff, g.link, kind));
+  if(!sent.ok) return {ok:false, message:`Couldn't send the email (${sent.status}).`};
+  return {ok:true};
+}
 
 // ---- Impersonation ("View as Rep") ----
 // Mint a real, rep-scoped session for an admin WITHOUT the rep's password, using Supabase's
@@ -90,23 +114,26 @@ exports.handler = async (event)=>{
     if(b.action==="login"){
       const email=String(b.email||"").trim().toLowerCase(), password=String(b.password||"");
       if(!email||!password) return json(200,{ok:false,message:"Enter your email and password."});
-      let staff=await getStaff(email);
-      const all=await sbGet("staff_users?select=email").catch(()=>[]);
-      const empty=(all||[]).length===0;
-      if(!staff && !empty) return json(200,{ok:false,message:"No staff account for that email — ask your administrator to add you."});
+      let staff, empty;
+      try{
+        staff=await getStaffStrict(email);
+        const any=await sbGet("staff_users?select=email&limit=1");
+        empty=(any||[]).length===0;
+      }catch(e){ return json(200,{ok:false,message:"Sign-in is unavailable right now. Please try again in a minute."}); }
+      /* Bootstrapping the very first President only happens on a brand-new install, and only for
+         the address named in STAFF_BOOTSTRAP_EMAIL — never for whoever signs in first. */
+      const boot=String(process.env.STAFF_BOOTSTRAP_EMAIL||"").trim().toLowerCase();
+      const mayBootstrap = !staff && empty && !!boot && email===boot;
+      if(!staff && !mayBootstrap) return json(200,{ok:false,message:"No staff account for that email — ask your administrator to add you."});
       if(staff && staff.active===false) return json(200,{ok:false,message:"Your access has been turned off. Contact the President."});
 
-      let g=await tokenGrant(email,password);
-      if(!g.ok){
-        if(password.length<8) return json(200,{ok:false,message:"First sign-in sets your password — use at least 8 characters."});
-        const c=await adminCreateUser(email,password);
-        if(c.exists) return json(200,{ok:false,message:"Incorrect password."});
-        if(!c.ok) return json(200,{ok:false,message:c.error||"Could not sign in."});
-        g=await tokenGrant(email,password);
-      }
-      if(!g.ok) return json(200,{ok:false,message:"Could not sign in — check your email and password."});
+      /* NO "FIRST SIGN-IN SETS YOUR PASSWORD". That rule let anyone who knew the email of a staff
+         member who hadn't signed in yet choose their password and walk in as them. A password is
+         now set only through the emailed link, so a failed sign-in is just a failed sign-in. */
+      const g=await tokenGrant(email,password);
+      if(!g.ok) return json(200,{ok:false,message:"Incorrect email or password. New to HCPS Sales? Use the link in your invitation email to set your password, or choose “Forgot password?” to get a new one."});
 
-      if(!staff){ // bootstrap first user as president
+      if(!staff){ // bootstrap first user as president (named in STAFF_BOOTSTRAP_EMAIL, empty table only)
         staff={email,name:(String(b.name||"").trim()||email.split("@")[0]),role:"president",rep_name:null,can_travel:true,active:true};
         await sbSend("POST","staff_users?on_conflict=email",staff,{Prefer:"resolution=merge-duplicates,return=minimal"});
       }
@@ -144,15 +171,12 @@ exports.handler = async (event)=>{
     // active staff member. Always returns the same message so we never reveal which emails exist.
     if(b.action==="forgot"){
       const email=String(b.email||"").trim().toLowerCase();
-      const redirect_to=String(b.redirect_to||"").trim();
+      // b.redirect_to is deliberately ignored: the link always lands on /admin/reset.html.
       const generic={ok:true,message:"If that email is a staff account, a reset link is on its way. Check your inbox (and spam)."};
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(200,{ok:false,message:"Enter a valid email."});
       const s=await getStaff(email);
       if(!s || s.active===false) return json(200,generic);   // don't reveal non-accounts
-      try{
-        const u=`${SUPABASE_URL}/auth/v1/recover${redirect_to?`?redirect_to=${encodeURIComponent(redirect_to)}`:""}`;
-        await fetch(u,{method:"POST",headers:{apikey:ANON,"content-type":"application/json"},body:JSON.stringify({email})});
-      }catch(e){}
+      try{ await sendStaffLink(email,"reset"); }catch(e){}
       return json(200,generic);
     }
 
@@ -219,7 +243,7 @@ exports.handler = async (event)=>{
       const g=await adminGenerateLink(email);
       const sess=g.ok ? await verifyMagic(g,email) : null;
       if(!sess || !sess.access_token){
-        return json(200,{ok:false,message:`${target.name||email} needs to sign in at least once before you can view their portal (they set their own password on first sign-in).`});
+        return json(200,{ok:false,message:`${target.name||email} needs to finish setting up their account (from their invitation email) before you can view their portal.`});
       }
       // Audit — best effort; never blocks the session.
       try{ await sbSend("POST","impersonation_log",{admin_email:me.email,admin_name:me.name||me.email,target_email:email,target_name:target.name||email,action:"start",user_agent:String(event.headers["user-agent"]||"").slice(0,300)},{Prefer:"return=minimal"}); }catch(e){}
@@ -250,13 +274,11 @@ exports.handler = async (event)=>{
       const target=await getStaff(email);
       if(!target) return json(200,{ok:false,message:`No staff account with the email ${email}. Add them under Staff first.`});
       if(target.active===false) return json(200,{ok:false,message:`${target.name||email} is deactivated. Restore their access before sending a reset.`});
-      const redirect_to=String(b.redirect_to||"").trim();
-      try{
-        const u=`${SUPABASE_URL}/auth/v1/recover${redirect_to?`?redirect_to=${encodeURIComponent(redirect_to)}`:""}`;
-        const r=await fetch(u,{method:"POST",headers:{apikey:ANON,"content-type":"application/json"},body:JSON.stringify({email})});
-        if(!r.ok){ const t=await r.text().catch(()=>"");
-          return json(200,{ok:false,message:`The email provider refused that (${r.status}). ${String(t).slice(0,140)}`}); }
-      }catch(e){ return json(200,{ok:false,message:"Couldn't send the reset email: "+String(e.message||e).slice(0,140)}); }
+      // b.redirect_to is ignored on purpose: the link always lands on /admin/reset.html.
+      let sent;
+      try{ sent=await sendStaffLink(email,"reset"); }
+      catch(e){ return json(200,{ok:false,message:"Couldn't send the reset email: "+String(e.message||e).slice(0,140)}); }
+      if(!sent.ok) return json(200,{ok:false,message:sent.message});
       /* Recorded in the same audit trail as View-as: an admin causing a change to
          somebody else's sign-in should leave a trace, even a benign one. */
       try{ await sbSend("POST","impersonation_log",{admin_email:me.email,admin_name:me.name||me.email,
@@ -272,7 +294,15 @@ exports.handler = async (event)=>{
       const role=ROLES.includes(b.role)?b.role:"rep";
       const row={email,name:String(b.name||"").trim()||email.split("@")[0],role,rep_name:(b.rep_name||"").trim()||null,can_travel:role==="president"?true:!!b.can_travel,active:true};
       await sbSend("POST","staff_users?on_conflict=email",row,{Prefer:"resolution=merge-duplicates,return=minimal"});
-      return json(200,{ok:true,profile:pubProfile(row)});
+      /* The new person sets their own password from an emailed link. Nobody — the President
+         included — ever chooses, sees or types it. */
+      let invite;
+      try{ invite=await sendStaffLink(email,"invite"); }catch(e){ invite={ok:false,message:String(e.message||e).slice(0,140)}; }
+      try{ await sbSend("POST","impersonation_log",{admin_email:me.email,admin_name:me.name||me.email,target_email:email,target_name:row.name,action:invite.ok?"invite_sent":"invite_failed",user_agent:String(event.headers["user-agent"]||"").slice(0,300)},{Prefer:"return=minimal"}); }catch(e){}
+      return json(200,{ok:true,profile:pubProfile(row),invite_sent:!!invite.ok,
+        message: invite.ok
+          ? `Added. A setup link is on its way to ${email} — they choose their own password from it.`
+          : `Added, but the setup email didn't go out (${invite.message}). Use 🔑 Reset password on their row to send it again.`});
     }
     if(b.action==="update_user"){
       const email=String(b.email||"").trim().toLowerCase(); if(!email) return json(400,{error:"email required"});
