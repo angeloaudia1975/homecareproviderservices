@@ -1,0 +1,163 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>HCPS — Permission check</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ /* Permission check (Phase 1 QA). The President picks a rep or Relations account; the page opens the
+    normal, audit-logged View-as session for that person and asks the LIVE server, as that person,
+    for things they must be refused and things they must be allowed. Nothing here decides access —
+    every answer comes from the server's own checks. Nothing is created or changed: the probes are
+    reads, a "set the platform mode to what it already is", and structural edits with no dealer named. */
+ .pc{max-width:860px}
+ .who{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+ .who .btn{min-height:44px;display:inline-flex;align-items:center}
+ .verdict{font-size:20px;font-weight:800;border-radius:12px;padding:14px 16px;margin:10px 0 14px}
+ .verdict.ok{background:#e9f7ef;color:#11643a;border:1px solid #bfe5cf}
+ .verdict.bad{background:#fdecec;color:#9b1c1c;border:1px solid #f3c2c2}
+ .verdict.run{background:#eef5fc;color:#2b4a6f;border:1px solid #cfe0f2}
+ .rows{display:grid;gap:6px}
+ .row{display:grid;grid-template-columns:70px minmax(0,1fr) auto;gap:10px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:14px}
+ .row .r{font-weight:800;font-size:12px;border-radius:6px;padding:3px 0;text-align:center}
+ .row .r.p{background:#e9f7ef;color:#11643a} .row .r.f{background:#fdecec;color:#9b1c1c} .row .r.w{background:#f1f3f5;color:#6b7280}
+ .row .g{color:var(--gray);font-size:12px;white-space:nowrap}
+ .steps{margin:6px 0 0 18px;padding:0;line-height:1.7}
+ .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+ .acts .btn{min-height:44px}
+ @media(max-width:640px){ .wrap{padding:12px 12px 50px} .row{grid-template-columns:58px minmax(0,1fr)} .row .g{grid-column:2} }
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap pc">
+  <div class="top"><div><h1>Permission check</h1><div class="sub">Shows, on the live server, what a rep or Relations account can and can't do — tested as that person.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+async function call(fn,body,method){
+  const opt={method:method||"POST",headers:{authorization:"Bearer "+(TOKEN||"")}};
+  if(opt.method==="POST"){ opt.headers["content-type"]="application/json"; opt.body=JSON.stringify(body||{}); }
+  try{ const r=await fetch("/.netlify/functions/"+fn,opt); let j=null; try{ j=await r.json(); }catch(e){} return {status:r.status,j:j||{}}; }
+  catch(e){ return {status:0,j:{}}; }
+}
+const ROLE=()=>String((ME&&ME.role)||"").toLowerCase();
+const MGMT=r=>["president","admin","owner"].includes(r);
+
+/* Phase 1 TEST records on the House-owned "TEST — Golden Sandbox" dealer: a rep must not reach them by
+   id. (After the Phase 1 cleanup they no longer exist — a refusal is then a 404, still a pass.) */
+const TD="3f7d87a2-7fbc-47e1-a34a-aaaacf4c4c7b";
+const ANGELO="angelo@homecareproviderservices.us";
+
+function picker(){
+  if(ROLE()!=="president"){ $("#body").innerHTML=`<div class="card">Only the President can run this check (it opens a View-as session).</div>`; return; }
+  $("#body").innerHTML=`<div class="card"><h2>Who do you want to check?</h2>
+    <p class="hint">Click a name. You'll be asked to confirm, then the page opens a normal View-as session for that person (logged like any View-as) and runs the check by itself. When it's done, press <b>Exit view-as</b>.</p>
+    <div class="who" id="who"><span class="hint">Loading staff…</span></div></div>`;
+  call("staff-auth",{action:"list_users"}).then(r=>{
+    const users=((r.j&&r.j.users)||[]).filter(u=>u.active!==false && ["rep","relations"].includes(String(u.role||"").toLowerCase()));
+    $("#who").innerHTML=users.length?users.map(u=>`<button class="btn" data-email="${esc(u.email)}" data-name="${esc(u.name||u.email)}">Check ${esc(u.name||u.email)} <span style="opacity:.75;font-weight:600;margin-left:6px">· ${esc(u.role)}</span></button>`).join("")
+      :`<span class="hint">No active rep or Relations accounts found.</span>`;
+    for(const b of document.querySelectorAll("#who .btn")) b.addEventListener("click",()=>startAs(b.getAttribute("data-email"),b.getAttribute("data-name"),b));
+  });
+}
+async function startAs(email,name,btn){
+  if(!confirm(`Open a View-as session for ${name} and run the permission check?\n\nThis is logged like any View-as. Nothing is changed. Press "Exit view-as" when you're done.`)) return;
+  if(btn){ btn.disabled=true; btn.textContent="Opening…"; }
+  const r=await call("staff-auth",{action:"impersonate",email});
+  const j=r.j||{};
+  if(!j.ok){ alert(j.message||j.error||"Couldn't start the View-as session."); picker(); return; }
+  window.ACImpersonate.start({token:j.token,refresh:j.refresh,expires_in:j.expires_in,profile:j.profile},
+    {by_name:(ME&&(ME.name||ME.email))||"admin",rep_name:(j.profile&&j.profile.name)||name,rep_email:email,at:(j.impersonation&&j.impersonation.at)||""},
+    "/admin/permission-check.html");
+}
+
+async function run(){
+  const role=ROLE(), rep=role==="rep", me=String((ME&&ME.email)||"").toLowerCase();
+  const whoRaw=(ME&&(ME.name||ME.email))||"this account", who=esc(whoRaw);
+  $("#body").innerHTML=`<div class="verdict run" id="verdict">Checking ${who} (${esc(role)})…</div><div class="rows" id="rows"></div>
+    <div class="acts">${window.ACImpersonate&&ACImpersonate.active()?`<button class="btn" onclick="ACImpersonate.exit()">Exit view-as</button>`:""}<button class="btn" style="background:#6b7280" id="copy">Copy results</button></div>`;
+  const rows=[]; const add=(check,expect,got,ok)=>{ rows.push({check,expect,got,ok}); $("#rows").insertAdjacentHTML("beforeend",
+    `<div class="row"><span class="r ${ok?"p":"f"}">${ok?"PASS":"FAIL"}</span><span>${esc(check)}</span><span class="g">expected ${esc(expect)} · got ${esc(String(got))}</span></div>`); };
+  const refused=s=>s===403||s===404;
+  const mode=((await call("platform-api",{action:"get"})).j||{}).mode;
+
+  // Refused for BOTH roles. None of these changes anything even if it were wrongly allowed.
+  const refuse=[
+    ["User management (list staff)","staff-auth",{action:"list_users"}],
+    ["President-only View-as","staff-auth",{action:"impersonate",email:ANGELO}],
+    ["Change platform mode","platform-api",{action:"set",mode}],
+    ["Read Zoho credentials","routes-api",{action:"get_settings",key:"zoho_auth"}],
+    ["Zoho integration","zoho-api",{action:"status"}],
+    ["Sales import","sales-import-api",{action:"preview",rows:[]}],
+    ["Commission import settings","commissions-api",{action:"config"}],
+    ["Change dealer ownership (rep)","dealers-api",{action:"rep"}],
+    ["Change dealer ordering access","dealers-api",{action:"access"}],
+    ["Change dealer email verification","dealers-api",{action:"verify_email"}],
+    ["Edit structural Dealer Manager fields","dealers-api",{action:"edit"}],
+  ];
+  if(rep) refuse.push(
+    ["Open a House dealer's Dealer 360 (not his book)","crm-api",{action:"list",dealer_id:TD}],
+    ["Read a House dealer's visits","crm-api",{action:"visits",dealer_id:TD}],
+    ["Retrieve Angelo's visit (by route)","routes-api",{action:"visit_report_get",route_id:"d9f557cb-09b4-41a3-ac54-98c69e696608",dealer_id:TD,detail:true}],
+    ["Modify Angelo's task (by id)","crm-api",{action:"reopen_task",id:"4fa5c265-c5bf-4edf-a398-50f1fff5e0eb"}],
+    ["Modify Angelo's opportunity (by id)","pipeline-api",{action:"update",id:"cd84e191-74c9-481a-8786-a31fa6093164"}],
+    ["Draft an email from Angelo's dealer visit","ai-email-api",{action:"draft",dealer_id:TD,template:"visit_followup",visit_report_id:"cd7801be-cf5d-4682-9db4-0a977ba461c1"}],
+  );
+  for(const [label,fn,body] of refuse){ const r=await call(fn,body); add(label,"refused",r.status,refused(r.status)); }
+
+  // Allowed (200).
+  const allow=rep?[
+    ["Own Command Center","rep-command-api",{action:"today"}],
+    ["Own tasks","crm-api",{action:"my_tasks"}],
+    ["Own routes","routes-api",{action:"list_routes"}],
+    ["Own pipeline","pipeline-api",{action:"board"}],
+  ]:[
+    ["Audiences","audiences-api",{action:"list"}],
+    ["Campaign Studio","campaign-api",{action:"list"}],
+    ["Partner report","partner-api",{action:"report"}],
+    ["Command 360","command360-api",{action:"summary"}],
+    ["Open any dealer's Dealer 360","crm-api",{action:"list",dealer_id:TD}],
+  ];
+  for(const [label,fn,body] of allow){ const r=await call(fn,body); add(label,"200",r.status,r.status===200); }
+
+  // Dealer list: a rep sees only his book; Relations sees every dealer.
+  const dl=await call("dealers-api",null,"GET"); const dealers=(dl.j&&dl.j.dealers)||[];
+  if(rep){
+    add("Dealer list is his book only (no House TEST dealer)","his book",dl.status===200?dealers.length+" dealers":dl.status,dl.status===200&&!dealers.some(d=>String(d.id)===TD));
+    const routes=((await call("routes-api",{action:"list_routes"})).j||{}).routes||[];
+    add("No Angelo / TEST routes in his routes","none",routes.filter(r=>/TEST — Phase 1/.test(r.name||"")).length,!routes.some(r=>/TEST — Phase 1/.test(r.name||"")));
+    const tasks=((await call("crm-api",{action:"my_tasks"})).j||{}).tasks||[];
+    add("No House-dealer tasks in My Tasks","none",tasks.filter(t=>t.dealer_id===TD).length,!tasks.some(t=>t.dealer_id===TD));
+    const day=((await call("rep-command-api",{action:"today",rep:ANGELO})).j||{});
+    const w=String((day.header&&day.header.rep&&day.header.rep.email)||"");
+    add("Asking for Angelo's day returns his own day",me,w||"(none)",!!w&&w===me);
+  }else{
+    add("Dealer list shows every dealer (incl. House TEST dealer)","all dealers",dl.status===200?dealers.length+" dealers":dl.status,dl.status===200&&dealers.some(d=>String(d.id)===TD));
+    // A rep's Command Center, read-only: the first sales rep Relations may pick (Greg, when he's on the list).
+    const reps=(((await call("rep-command-api",{action:"reps"})).j||{}).reps||[]).filter(x=>String(x.role||"rep")==="rep");
+    const pick=(reps.find(x=>/greg/i.test(x.name||x.email))||reps[0]||{}).email||"";
+    const day=pick?((await call("rep-command-api",{action:"today",rep:pick})).j||{}):{};
+    const h=day.header||{};
+    add("Views a rep's Command Center, read-only",(pick||"a rep")+" · viewing",(h.rep&&h.rep.email)||"(none)",!!(pick&&h.rep&&h.rep.email===pick&&h.viewing_other));
+  }
+  const bad=rows.filter(r=>!r.ok).length;
+  const v=$("#verdict"); v.className="verdict "+(bad?"bad":"ok");
+  v.textContent=bad?`${whoRaw} (${role}): ${bad} of ${rows.length} checks FAILED — press Copy results and send them to Claude.`:`${whoRaw} (${role}): ALL ${rows.length} CHECKS PASSED`;
+  $("#copy").onclick=()=>{ const t=v.textContent+"\n"+rows.map(r=>`${r.ok?"PASS":"FAIL"} — ${r.check} (expected ${r.expect}, got ${r.got})`).join("\n");
+    (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{$("#copy").textContent="Copied ✓";},()=>{ prompt("Copy these results:",t); }); };
+}
+
+(function(){
+  if(!TOKEN){ $("#body").innerHTML=`<div class="card">Sign in first, then open this page again. <a href="/admin/">Go to sign-in</a></div>`; return; }
+  const role=ROLE();
+  if(role==="rep"||role==="relations"){ run(); return; }
+  if(MGMT(role)){ picker(); return; }
+  $("#body").innerHTML=`<div class="card">This check is for rep and Relations accounts (this session is “${esc(role||"unknown")}”).</div>`;
+})();
+</script>
+</body></html>

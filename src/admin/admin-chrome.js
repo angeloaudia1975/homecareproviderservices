@@ -226,12 +226,13 @@
   window.ACImpersonate = {
     active: impGet,
     // Begin viewing as a rep: stash the admin session, mark impersonation, activate the rep session.
-    start: function(session, meta){
+    // `next` (optional): an /admin/ page to open as the rep instead of their home (the Permission check).
+    start: function(session, meta, next){
       var stash={}; SESS_KEYS.forEach(function(k){ stash[k]=lget(k); });
       lset(IMP_STASH, JSON.stringify(stash));
       lset(IMP_KEY, JSON.stringify(meta||{}));
       if(window.HCPS && HCPS.setSession) HCPS.setSession(session);   // activate rep session
-      location.href = "/admin/rep-home.html";
+      location.href = (typeof next === "string" && /^\/admin\/[\w-]+\.html$/.test(next)) ? next : "/admin/rep-home.html";
     },
     // Exit: restore the admin session, clear the markers, log the end, return to Staff.
     exit: function(){

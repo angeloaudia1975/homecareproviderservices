@@ -42,6 +42,8 @@ function world() {
       { id: 'r-2', owner_email: 'angelo@hcps.us', assigned_to_email: 'greg@hcps.us', assigned_to_rep: 'Greg Campbell', rep_name: 'Angelo Audia', name: 'KY loop (afternoon)', scheduled_date: TODAY,
         stops: [{ dealer_id: 'd-greg', name: 'Glasgow Prescription Center', city: 'Glasgow', state: 'KY' }] }],
     dealer_visit_reports: [],
+    // the live House-owned TEST dealer the Permission check probes (not in any rep's book)
+    dealers: [{ id: '3f7d87a2-7fbc-47e1-a34a-aaaacf4c4c7b', business_name: 'TEST — Golden Sandbox', rep_name: null, parent_id: null, state: 'IN', is_test: true }],
     dealer_contacts: [{ id: 'c-bryant', dealer_id: 'd-greg', name: 'Bryant Smith', email: 'bryant@glasgow.test', title: 'Pharmacist', phone: '270-111' }],
     manufacturers: [{ slug: 'golden-technologies', name: 'Golden Technologies' }, { slug: 'strongback-mobility', name: 'Strongback Mobility' }],
     app_settings: [{ key: 'platform', value: { mode: 'development' } }],
@@ -380,6 +382,27 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
     const c = await ctxFor(browser, 'lori', DESKTOP); const p = await c.newPage();
     await p.goto(`${B}/admin/command-center-rep.html?rep=greg@hcps.us`); await p.waitForSelector('.viewing');
     assert.ok(/Glasgow Prescription Center/.test(await p.textContent('#body'))); await c.close();
+  });
+
+  /* ───────────── Permission check page: the live server answers, as the person being checked ───────────── */
+  for (const who of ['greg', 'lori']) {
+    await step(`Permission check (${who}): every refusal and every allowed action passes, on a phone`, async () => {
+      const c = await ctxFor(browser, who, PHONE); const p = await c.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
+      await p.goto(`${B}/admin/permission-check.html`); await p.waitForSelector('.verdict.ok, .verdict.bad', { timeout: 30000 });
+      const fails = await p.$$eval('.row', rs => rs.filter(r => r.querySelector('.r.f')).map(r => r.innerText.replace(/\s+/g, ' ')));
+      assert.deepStrictEqual(fails, [], 'failed checks: ' + fails.join(' | '));
+      assert.ok(/ALL \d+ CHECKS PASSED/.test(await p.textContent('#verdict')));
+      await noHScroll(p, 'permission check phone'); await p.screenshot({ path: path.join(SHOTS, `permission-check-${who}.png`), fullPage: true });
+      assert.deepStrictEqual(errs, []); await c.close();
+    });
+  }
+  await step('Permission check (president): offers the rep and Relations accounts to check, and runs nothing as himself', async () => {
+    const c = await ctxFor(browser, 'pres', DESKTOP); const p = await c.newPage();
+    await p.goto(`${B}/admin/permission-check.html`); await p.waitForSelector('#who .btn', { timeout: 15000 });
+    const names = await p.$$eval('#who .btn', b => b.map(x => x.textContent.trim()));
+    assert.ok(names.some(t => /Greg Campbell/.test(t)) && names.some(t => /Lori Hunt/.test(t)) && !names.some(t => /Angelo/.test(t)), names.join(' | '));
+    assert.strictEqual(await p.$('#verdict'), null, 'the check ran in the president\'s own session');
+    await c.close();
   });
 
   await browser.close(); srv.close();
