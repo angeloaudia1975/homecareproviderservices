@@ -8,6 +8,12 @@
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const json = (code, obj) => ({ statusCode: code, headers: { "content-type": "application/json", "cache-control": "no-store" }, body: JSON.stringify(obj) });
+// Owner changes go through the shared resolver so dealers.rep_email, dealers.rep_name and this
+// directory never disagree (Phase 0D).
+const SC = require("./_scope.js");
+const H = () => ({ apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}` });
+async function sbGet(p) { const r = await fetch(`${SUPABASE_URL}/rest/v1/${p}`, { headers: H() }); if (!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
+async function sbSend(m, p, b, x) { const r = await fetch(`${SUPABASE_URL}/rest/v1/${p}`, { method: m, headers: { ...H(), "content-type": "application/json", ...(x || {}) }, body: b != null ? JSON.stringify(b) : undefined }); if (!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); const t = await r.text(); return t ? JSON.parse(t) : null; }
 
 // Staff auth: email/password JWT resolved against staff_users; legacy passcode = president.
 async function whoami(event){
@@ -43,6 +49,11 @@ exports.handler = async (event) => {
       updated_at: new Date().toISOString(),
     };
 
+    // A name that is a real dealer: change the owner everywhere (and hand over its open work).
+    // A name that matches no dealer (a raw sales customer name) only updates the directory, as before.
+    const dealerId = await SC.dealerIdByName(dealer_name, sbGet).catch(() => null);
+    const owner = dealerId ? await SC.setDealerOwner([dealerId], row.rep_name, { sbGet, sbSend }) : null;
+
     // Upsert on the dealer_name primary key.
     const r = await fetch(`${SUPABASE_URL}/rest/v1/dealer_directory`, {
       method: "POST",
@@ -56,7 +67,7 @@ exports.handler = async (event) => {
     });
     if (!r.ok) return json(500, { error: `Supabase ${r.status}: ${await r.text()}` });
     const saved = await r.json();
-    return json(200, { ok: true, saved: Array.isArray(saved) ? saved[0] : saved });
+    return json(200, { ok: true, saved: Array.isArray(saved) ? saved[0] : saved, dealer_id: dealerId || null, rep_email: owner ? owner.email : null, moved: owner ? owner.moved : null });
   } catch (e) {
     return json(500, { error: String(e.message || e) });
   }

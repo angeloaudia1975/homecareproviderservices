@@ -100,6 +100,28 @@ async function verifyMagic(g,email){
 }
 function pubProfile(s){ return s?{email:s.email,name:s.name||"",role:s.role||"rep",rep_name:s.rep_name||"",can_travel:!!s.can_travel,active:s.active!==false,email_signature:s.email_signature||""}:null; }
 async function caller(event){ const email=await emailFromToken(event); if(!email) return null; const s=await getStaff(email); return (s&&s.active!==false)?s:null; }
+/* WHERE A STAFF MEMBER LANDS (Phase 0L). One answer, returned as profile.landing by login, refresh
+   and me, and used by every sign-in page — so changing a landing is a setting, not a code hunt.
+     management (president/admin/owner) -> /admin/  (the operating system)
+     everyone else                      -> /admin/rep-home.html  (today's rule)
+   app_settings key "rep_landing" can later send sales reps somewhere new (the Command Center):
+     {"mode":"off"}                                   default, and when the row is missing
+     {"mode":"pilot","url":"/admin/…","emails":[…]}   only the listed reps
+     {"mode":"on","url":"/admin/…"}                   every rep
+   Only a same-site /admin/ path is accepted. It is OFF and stays off until you switch it on. */
+const REP_HOME="/admin/rep-home.html";
+async function landingFor(s){
+  const role=String((s&&s.role)||"").toLowerCase();
+  if(["president","admin","owner"].includes(role)) return "/admin/";
+  let cfg=null; try{ const r=await sbGet("app_settings?key=eq.rep_landing&select=value"); cfg=r&&r[0]&&r[0].value; }catch(e){ cfg=null; }
+  if(!cfg || typeof cfg!=="object" || role!=="rep") return REP_HOME;
+  const url=(typeof cfg.url==="string" && /^\/admin\/[A-Za-z0-9._\/-]*$/.test(cfg.url) && !cfg.url.includes("..")) ? cfg.url : null;
+  const mode=String(cfg.mode||"off").toLowerCase();
+  if(url && mode==="on") return url;
+  if(url && mode==="pilot" && Array.isArray(cfg.emails) && cfg.emails.map(e=>String(e||"").trim().toLowerCase()).includes(String(s.email||"").toLowerCase())) return url;
+  return REP_HOME;
+}
+async function profileWithLanding(s){ const p=pubProfile(s); if(p) p.landing=await landingFor(s); return p; }
 
 exports.handler = async (event)=>{
   try{
@@ -137,7 +159,7 @@ exports.handler = async (event)=>{
         staff={email,name:(String(b.name||"").trim()||email.split("@")[0]),role:"president",rep_name:null,can_travel:true,active:true};
         await sbSend("POST","staff_users?on_conflict=email",staff,{Prefer:"resolution=merge-duplicates,return=minimal"});
       }
-      return json(200,{ok:true,token:g.access_token,refresh:g.refresh_token,expires_in:g.expires_in,profile:pubProfile(staff)});
+      return json(200,{ok:true,token:g.access_token,refresh:g.refresh_token,expires_in:g.expires_in,profile:await profileWithLanding(staff)});
     }
 
     // Silent session renewal. The browser trades its rotating refresh token for a fresh
@@ -158,7 +180,7 @@ exports.handler = async (event)=>{
       try{ const u=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${j.access_token}`}}); if(u.ok){ const uj=await u.json(); email=uj&&uj.email&&String(uj.email).toLowerCase(); } }catch(e){}
       const staff=email?await getStaff(email):null;
       if(!staff || staff.active===false) return json(200,{ok:false,message:"account inactive"});
-      return json(200,{ok:true,token:j.access_token,refresh:j.refresh_token||rt,expires_in:j.expires_in,profile:pubProfile(staff)});
+      return json(200,{ok:true,token:j.access_token,refresh:j.refresh_token||rt,expires_in:j.expires_in,profile:await profileWithLanding(staff)});
     }
 
     // Public config for the reset page. Returns ONLY the publishable anon key (never the
@@ -182,7 +204,7 @@ exports.handler = async (event)=>{
 
     if(b.action==="me"){
       const s=await caller(event); if(!s) return json(200,{ok:false,message:"not signed in"});
-      return json(200,{ok:true,profile:pubProfile(s)});
+      return json(200,{ok:true,profile:await profileWithLanding(s)});
     }
 
     /* Favorites belong to EVERY signed-in staff member, not just the President —

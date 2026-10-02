@@ -1,8 +1,8 @@
-/* Runs both Phase 0 suites once clean (must pass) and once per mutant (must fail). */
+/* Runs the Phase 0 suites once clean (must pass) and once per mutant (must fail). */
 const { spawnSync } = require('child_process');
 const path = require('path');
 const table = require('./phase0.mutants.table.js');
-const SUITES = ['phase0-security.test.js', 'phase0-ownership.test.js'];
+const SUITES = ['phase0-security.test.js', 'phase0-ownership.test.js', 'phase0-scope.test.js', 'phase0-visits.test.js', 'phase0-outbox.test.js', 'phase0-contacts.test.js', 'phase0-tasks.test.js', 'phase0-roles.test.js', 'phase0-landing.test.js'];
 function run(mutant) {
   let failed = 0; const notes = [];
   for (const s of SUITES) {

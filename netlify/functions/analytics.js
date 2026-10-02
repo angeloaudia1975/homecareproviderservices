@@ -55,6 +55,7 @@ async function whoami(event){
   if(need && got===need) return {role:"president",rep_name:"",name:"Admin",email:""};
   return null;
 }
+const SC = require("./_scope.js");
 const MONTH = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const label = (p) => { const [y,m] = p.split("-"); return `${MONTH[parseInt(m,10)-1]} ${y}`; };
 
@@ -82,6 +83,15 @@ exports.handler = async (event) => {
     let assignments = [], repTable = [];
     try { assignments = await sbGet("dealer_directory?select=dealer_name,rep_name,hcps_account"); } catch (e) { assignments = []; }
     try { repTable = (await sbGet("reps?select=name")).map(x => x.name); } catch (e) { repTable = []; }
+    // Phase 0D: the real owner of every dealer (dealers.rep_email, then rep_name, then this directory)
+    // from the shared resolver. Overlay it on the directory rows so the assignment editor and the rep
+    // attribution below show — and save back — the owner every other page uses.
+    let OI = null; try { OI = await SC.ownerIndex(sbGet); } catch (e) { OI = null; }
+    if (OI) {
+      const byName = new Map((assignments || []).map(a => [a.dealer_name, a]));
+      for (const o of OI.byId.values()) { if (!o.name) continue; const a = byName.get(o.name);
+        if (a) a.rep_name = o.rep || null; else if (o.rep) { const n = { dealer_name: o.name, rep_name: o.rep, hcps_account: null }; assignments.push(n); byName.set(o.name, n); } }
+    }
 
     // Dealer master + alias layer, so this page rolls raw sales names up to the SAME
     // canonical dealers the Dealer Manager shows (post-merge, post-rename). Without this
@@ -115,6 +125,7 @@ exports.handler = async (event) => {
     // Live rep assignment from the president portal (dealer_directory), keyed by normalized
     // dealer name — this, NOT the static rep_name stamped on each sale, is the source of truth.
     const repByNorm = {};
+    if (OI) for (const o of OI.byId.values()) { const k = dnorm(o.name); if (k && o.rep && !(k in repByNorm)) repByNorm[k] = o.rep; }   // real dealers first
     for (const a of (assignments||[])) { const k = dnorm(a.dealer_name); if (k && a.rep_name && !(k in repByNorm)) repByNorm[k] = a.rep_name; }
     // Resolve a sales row to its canonical dealer name: prefer the stored dealer_id, else
     // match the raw name through the alias table, else fall back to the raw name.
@@ -171,11 +182,17 @@ exports.handler = async (event) => {
          every dealer's contact, email, phone and addresses — and the whole assignment directory —
          to any rep who opened Dealer 360 or Command Center 360. "Own" = dealers in his sales
          facts, assigned to him in the directory or on the dealer record, plus their branch family. */
+      // "Own" = the rep's book from the shared resolver (owner by email; an open branch follows its
+      // HQ, but an HQ or branch explicitly owned by someone else is NOT pulled in — the old
+      // family loop here did pull it in), plus the raw sales names in his own facts.
       const mine = new Set();
-      for (const f of facts) { mine.add(f.dealer); mine.add(f.master); }
+      for (const f of facts) mine.add(f.dealer);
       for (const a of (assignments || [])) if (rn && String(a.rep_name || "").trim().toLowerCase() === rn) mine.add(a.dealer_name);
-      for (const d of dealers) if (rn && String(d.rep_name || "").trim().toLowerCase() === rn) mine.add(d.business_name);
-      for (const d of dealers) { const p = d.parent_id && nameById[d.parent_id]; if (p && mine.has(p)) mine.add(d.business_name); if (p && mine.has(d.business_name)) mine.add(p); }
+      const sc = await SC.dealerScope(me, sbGet, OI || undefined).catch(() => ({ ids: new Set() }));
+      const inBook = new Set(); for (const d of dealers) if (sc.ids && sc.ids.has(String(d.id))) inBook.add(d.business_name);
+      const dealerNames = new Set(dealers.map(d => d.business_name));
+      for (const nm of [...mine]) if (dealerNames.has(nm) && !inBook.has(nm)) mine.delete(nm);   // a real dealer must be in the book
+      for (const nm of inBook) mine.add(nm);
       for (const nm of Object.keys(dealerInfo)) if (!mine.has(nm)) delete dealerInfo[nm];
       assignments = (assignments || []).filter(a => rn && String(a.rep_name || "").trim().toLowerCase() === rn);
     } else if (!admin) {

@@ -8,6 +8,7 @@
 const SUPABASE_URL=process.env.SUPABASE_URL, SERVICE_ROLE=process.env.SUPABASE_SERVICE_ROLE;
 const json=(c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H=()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
+const SC=require("./_scope.js");
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}`); return r.json(); }
 async function sbGetAll(base,col="id"){ const PAGE=1000; let from=0,out=[]; for(;;){ const sep=base.includes("?")?"&":"?"; const rows=await sbGet(`${base}${sep}order=${col}&limit=${PAGE}&offset=${from}`); out=out.concat(rows); if(rows.length<PAGE)break; from+=PAGE; } return out; }
 
@@ -41,10 +42,14 @@ exports.handler=async(event)=>{
     const intentById={}; intent.forEach(it=>intentById[it.dealer_id]=it);
     const xsById={}; xs.forEach(x=>{ if(x&&x.dealer_id&&!xsById[x.dealer_id]) xsById[x.dealer_id]=x; });
 
-    const meRep = me.role==="president" ? null : (me.rep_name||"~none~");
-    const repSet = meRep ? new Set(eng.filter(e=>String(e.rep_name||"")===meRep).map(e=>e.dealer_id)) : null;
-    const inScope = id => (!repSet || repSet.has(id)) && !!nameById[id];
-    const repOf = id => (engById[id]&&engById[id].rep_name)||"";
+    // Owner + book from the shared resolver (Phase 0D/0K). Management and a Relations Manager see
+    // every dealer; a sales rep gets their own book (owner by email, branch family included).
+    let OI=null; try{ OI=await SC.ownerIndex(sbGet); }catch(e){}
+    const all=SC.seesAllDealers(me);
+    const meRep = all ? null : (me.rep_name||"~none~");   // task/opportunity metrics below
+    const repSet = all ? null : ((await SC.dealerScope(me, sbGet, OI||undefined)).ids || new Set());
+    const inScope = id => (!repSet || repSet.has(String(id))) && !!nameById[id];
+    const repOf = id => (OI&&OI.repOf(id)) || (engById[id]&&engById[id].rep_name) || "";
 
     const rows=[]; const seen=new Set();
     const push=(id,prio,badge,evidence,action)=>{ if(seen.has(id)||!inScope(id))return; seen.add(id); rows.push({dealer_id:id,name:nameById[id],rep:repOf(id),prio,badge,evidence,action}); };

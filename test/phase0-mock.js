@@ -119,6 +119,17 @@ function createWorld(seed) {
       if (!db[table]) db[table] = [];
       const { filt, meta } = query(table, qs);
       const prefer = String(headers.prefer || '');
+      // seed.columns[table] = the columns this database has (a database before a migration): asking
+      // for, filtering on or writing any other column fails the way PostgREST does.
+      const known = seed.columns && seed.columns[table];
+      if (known) {
+        const used = [];
+        if (meta.select && meta.select !== '*') for (const c of meta.select.split(',').map(x => x.trim())) if (c && !c.includes('(')) used.push(c);
+        for (const part of qs.split('&').filter(Boolean)) { const k = decode(part.slice(0, part.indexOf('='))); const v = decode(part.slice(part.indexOf('=') + 1));
+          if (k === 'or') { for (const c of parseOr(v)) used.push(c.col); } else if (!['select', 'order', 'limit', 'offset', 'on_conflict', 'columns'].includes(k)) used.push(k); }
+        if (method === 'PATCH' && body && typeof body === 'object') for (const c of Object.keys(body)) if (!known.includes(c)) return res(400, { code: 'PGRST204', message: `Could not find the '${c}' column of '${table}' in the schema cache` });
+        const bad = used.find(c => !known.includes(c)); if (bad) return res(400, { code: '42703', message: `column ${table}.${bad} does not exist` });
+      }
       if (method === 'GET') {
         let rows = db[table].filter(filt);
         if (meta.order) { const [col, dir] = meta.order.split(',')[0].split('.'); rows = rows.slice().sort((a, b) => (dir === 'desc' ? -1 : 1) * cmp(a[col], b[col])); }
@@ -128,7 +139,12 @@ function createWorld(seed) {
       }
       if (method === 'POST') {
         const list = Array.isArray(body) ? body : [body]; const out = [];
-        const keys = meta.on_conflict ? meta.on_conflict.split(',') : null;
+        // Real PostgREST refuses a bulk insert whose rows don't all have the same keys.
+        if (list.length > 1) { const sig = r => Object.keys(r || {}).sort().join(','); if (list.some(r => sig(r) !== sig(list[0]))) return res(400, { code: 'PGRST102', message: 'All object keys must match' }); }
+        // Without on_conflict, PostgREST merges on the table's primary key. Tables keyed by
+        // something other than "id" are listed here so the fake does the same.
+        const PK = Object.assign({ dealer_directory: 'dealer_name' }, seed.pk || {});
+        const keys = meta.on_conflict ? meta.on_conflict.split(',') : (/merge-duplicates|ignore-duplicates/.test(prefer) && PK[table] ? PK[table].split(',') : null);
         if (seed.rejectConflict && keys && seed.rejectConflict[table] === meta.on_conflict) return res(400, { code: '42P10', message: 'there is no unique or exclusion constraint matching the ON CONFLICT specification' });
         for (const r of list) {
           const row = { ...r };

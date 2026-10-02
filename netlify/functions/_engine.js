@@ -21,6 +21,7 @@ const MAIL_FROM=process.env.HCPS_MAIL_FROM||"HCPS Partner Portal <orders@homecar
 const ORDERING=process.env.ORDERING_BASE||"https://hcpsonlineordering.netlify.app";
 const SITE_BASE=process.env.SITE_BASE||"https://homecareproviderservices.netlify.app";
 const P=require("./_platform.js");
+const SC=require("./_scope.js");
 
 // ---- Config -----------------------------------------------------------------
 const DEFAULTS={engine_enabled:true,email_enabled:false,cap_per_7d:2,min_gap_hours:48,
@@ -66,16 +67,16 @@ function inBusiness(cfg){
 // sales,first,last,monthsSince,signals:[{reason,title,detail,priority,template,payload}]}
 async function computeSignals(){
   const cfg=await getConfig();
-  const [mfrs,dealers,aliases,dir]=await Promise.all([
+  const [mfrs,dealers,aliases,OI]=await Promise.all([
     sbGet("manufacturers?select=slug,name").catch(()=>[]),
     sbGetAll("dealers?select=id,business_name,parent_id,email"),
     sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]),
-    sbGet("dealer_directory?select=dealer_name,rep_name").catch(()=>[]),
+    SC.ownerIndex(sbGet).catch(()=>null),   // who owns each dealer (Phase 0D)
   ]);
   const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
   const nameById={},emailById={}; for(const d of dealers){ nameById[d.id]=d.business_name; emailById[d.id]=d.email||null; }
   const idByAlias={}; for(const a of aliases) idByAlias[a.alias_norm]=a.dealer_id;
-  const repByName={}; for(const x of dir) repByName[x.dealer_name]=x.rep_name||"";
+  const repOfId=id=>(OI&&OI.repOf(id))||"";
   const rows=await sbGetAll("monthly_sales?select=dealer_id,manufacturer,period,customer_name,amount");
   const resolve=r=>{ if(r.dealer_id && nameById[r.dealer_id]) return r.dealer_id; const id=idByAlias[dnorm(r.customer_name)]; return (id&&nameById[id])?id:null; };
   let latest=0; const DL=new Map();
@@ -99,7 +100,7 @@ async function computeSignals(){
   const exDealer=new Set((cfg.exclude_dealers||[]).map(String));
   for(const [id,o] of DL){
     if(exDealer.has(id)) continue;
-    const rep=repByName[nameById[id]]||null; const signals=[];
+    const rep=repOfId(id)||null; const signals=[];
     const ov=[]; for(const [slug,ln] of o.lines){ if(exMfr.has(mnorm(slug))||exMfr.has(mnorm(mfrName[slug]))) continue; const pms=[...ln.pms].sort((a,b)=>a-b); if(pms.length<2)continue; const gaps=[]; for(let i=1;i<pms.length;i++)gaps.push(pms[i]-pms[i-1]); const cyc=median(gaps); if(cyc==null||cyc<=0)continue; const since=latest-pms[pms.length-1]; if(since>=cyc+Math.max(MING,Math.round(cyc*MULT))) ov.push({slug,since,cyc,sales:ln.sales}); }
     ov.sort((a,b)=>b.sales-a.sales);
     for(const x of ov.slice(0,3)){ const line=mfrName[x.slug]||x.slug; signals.push({reason:"overdue:"+x.slug,title:`Reorder due — ${line}`,detail:`Usually orders ~${Math.round(x.cyc)}mo; ${x.since}mo since last ${line} order.`,priority:x.sales>20000?"high":"normal",template:"overdue",payload:{line,slug:x.slug,cyc:Math.round(x.cyc),since:x.since}}); }
@@ -131,7 +132,7 @@ async function runTasks(sig){
   const toCreate=[];
   for(const [id,m] of desired){ for(const [reason,f] of m){ const k=id+"|"+reason; if(existKey.has(k)||cooldown.has(k))continue; toCreate.push({dealer_id:id,title:f.title,detail:f.detail,priority:f.priority,source:"auto",reason,assigned_rep:f.rep||null,created_by:"Follow-up engine",status:"open"}); } }
   let created=0; for(let i=0;i<toCreate.length;i+=200){ const part=toCreate.slice(i,i+200); try{ await sbSend("POST","dealer_tasks",part,{Prefer:"return=minimal"}); created+=part.length; }catch(e){} }
-  let closed=0; for(const t of existing){ const m=desired.get(t.dealer_id); if(!(m&&m.has(t.reason))){ try{ await sbSend("PATCH",`dealer_tasks?id=eq.${encodeURIComponent(t.id)}`,{status:"dismissed",done_at:new Date().toISOString()},{Prefer:"return=minimal"}); closed++; }catch(e){} } }
+  let closed=0; for(const t of existing){ const m=desired.get(t.dealer_id); if(!(m&&m.has(t.reason))){ try{ await require("./_upsert.js").sendTolerant(sbSend,"PATCH",`dealer_tasks?id=eq.${encodeURIComponent(t.id)}`,{status:"dismissed",done_at:new Date().toISOString(),completed_by:"system"},["completed_by"]); /* completed_by: the engine, not a rep (Phase 0I) */ closed++; }catch(e){} } }
   return {ok:true,dealers_flagged:desired.size,created,dismissed:closed,open_auto:(existing.length-closed)+created};
 }
 
@@ -287,16 +288,16 @@ async function drainQueue(cfg,winKey){
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 async function recomputeEngagement(){
   const cfg=await getConfig();
-  const [mfrs,dealers,aliases,dir]=await Promise.all([
+  const [mfrs,dealers,aliases,OI]=await Promise.all([
     sbGet("manufacturers?select=slug,name").catch(()=>[]),
     sbGetAll("dealers?select=id,business_name,parent_id"),
     sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]),
-    sbGet("dealer_directory?select=dealer_name,rep_name").catch(()=>[]),
+    SC.ownerIndex(sbGet).catch(()=>null),   // who owns each dealer (Phase 0D)
   ]);
   const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
   const nameById={}; for(const d of dealers) nameById[d.id]=d.business_name;
   const idByAlias={}; for(const a of aliases) idByAlias[a.alias_norm]=a.dealer_id;
-  const repByName={}; for(const x of dir) repByName[x.dealer_name]=x.rep_name||"";
+  const repOfId=id=>(OI&&OI.repOf(id))||"";
   const mnorm=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
   const exMfr=new Set((cfg.exclude_manufacturers||[]).map(mnorm));
   const isEx=slug=>exMfr.has(mnorm(slug))||exMfr.has(mnorm(mfrName[slug]));
@@ -328,7 +329,7 @@ async function recomputeEngagement(){
     out.push({dealer_id:id,status:tier,score,months_since:ms,last_period:pmToStr(o.last),
       dormant_since: tier==="dormant"?isoDate(monthsAgo(ms)):null,
       trend,churn_score:churn,recent_sales:Math.round(recent3),total_sales:Math.round(o.total),
-      lines:o.lines.size,rep_name:repByName[nameById[id]]||null,cycle_json:{cyc:cyc?Math.round(cyc):null},
+      lines:o.lines.size,rep_name:repOfId(id)||null,cycle_json:{cyc:cyc?Math.round(cyc):null},
       computed_at:now.toISOString()});
   }
   let up=0; for(let i=0;i<out.length;i+=200){ const part=out.slice(i,i+200); try{ await sbSend("POST","dealer_engagement?on_conflict=dealer_id",part,{Prefer:"resolution=merge-duplicates,return=minimal"}); up+=part.length; }catch(e){} }

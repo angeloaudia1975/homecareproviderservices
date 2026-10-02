@@ -461,7 +461,8 @@ exports.handler = async (event)=>{
         const name=[clean(ct.First_Name),clean(ct.Last_Name)].filter(Boolean).join(" ").slice(0,120)||null;
         rows.push({dealer_id:id,email,name,title:clean(ct.Title)||null,phone:clean(ct.Phone)||null});
       }
-      let written=0; for(let i=0;i<rows.length;i+=500){ try{ await sbSend("POST","dealer_contacts?on_conflict=dealer_id,email",rows.slice(i,i+500),{Prefer:"resolution=merge-duplicates,return=minimal"}); written+=rows.slice(i,i+500).length; }catch(e){} }
+      // A Zoho contact with no phone or title must not erase the one on file (Phase 0H).
+      const { written } = await require("./_upsert.js").upsertKeepingValues(sbSend,"dealer_contacts?on_conflict=dealer_id,email",rows);
       try{ await stampSync("contacts_pulled_at"); }catch(e){}
       return json(200,{ ok:true, zoho_contacts:(contacts||[]).length, with_email:withEmail, matched_to_dealer:rows.length, written,
         unmatched_accounts:unmatched.size, unmatched_sample:[...unmatched].slice(0,20) });

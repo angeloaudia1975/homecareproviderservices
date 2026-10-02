@@ -77,7 +77,7 @@
 </style>
 </head><body>
 <header>
-  <div class="row"><span class="b">HCPS Field</span><h1>Scheduled Routes</h1><span id="netstat" style="font-size:11px;font-weight:700;color:#9fd6b0"></span><a class="full" href="/admin/hub.html?cat=sales">Full portal</a></div>
+  <div class="row"><span class="b">HCPS Field</span><h1>Scheduled Routes</h1><span id="netstat" onclick="openSyncPanel()" style="font-size:11px;font-weight:700;color:#9fd6b0;cursor:pointer"></span><a class="full" href="/admin/hub.html?cat=sales">Full portal</a></div>
 </header>
 <div class="wrap"><div id="app"><div class="msg">Loading…</div></div></div>
 
@@ -118,30 +118,128 @@ async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), p
   HCPS.setSession(j); TOKEN=j.token; ME=j.profile; boot(); }
 
 // ---- Offline cache + write outbox (localStorage) ----
-function cacheDay(id,j){ try{ localStorage.setItem("sr_day_"+id, JSON.stringify(j)); }catch(e){} }
-function loadCachedDay(id){ try{ const s=localStorage.getItem("sr_day_"+id); return s?JSON.parse(s):null; }catch(e){ return null; } }
-function cacheRoutes(j){ try{ localStorage.setItem("sr_routes", JSON.stringify(j)); }catch(e){} }
-function loadCachedRoutes(){ try{ const s=localStorage.getItem("sr_routes"); return s?JSON.parse(s):null; }catch(e){ return null; } }
-function outbox(){ try{ return JSON.parse(localStorage.getItem("sr_outbox")||"[]"); }catch(e){ return []; } }
-function setOutbox(a){ try{ localStorage.setItem("sr_outbox",JSON.stringify(a)); }catch(e){} updateStatus(); }
-function enqueue(body){ const a=outbox(); a.push({id:Date.now()+"_"+Math.random().toString(36).slice(2,7),body}); setOutbox(a); }
-async function tryOrQueue(body){ if(!navigator.onLine){ enqueue(body); return false; }
-  try{ const r=await rapi(body); if(r&&r.ok) return true; enqueue(body); return false; }catch(e){ enqueue(body); return false; } }
-async function flushOutbox(){ if(!navigator.onLine) return; let a=outbox(); if(!a.length){ updateStatus(); return; }
-  setStatusText("↻ Syncing…"); const remain=[];
-  for(const item of a){ try{ const r=await rapi(item.body); if(!(r&&r.ok)) remain.push(item); }catch(e){ remain.push(item); if(!TOKEN) break; } }
-  setOutbox(remain); }
+/* OUTBOX:BEGIN — the field write queue (Phase 0G). test/phase0-outbox.test.js runs this block.
+   · Everything is kept PER PERSON (keyed by the signed-in email), so a second rep on the same
+     phone never sees — or sends under their own login — the first rep's cached routes or
+     unsynced visits.
+   · Sync goes in order and stops at the first item the server could not take right now (offline,
+     5xx, timeout), so a later save can never overtake an earlier one.
+   · An item the server REFUSES (a 4xx: not your dealer, bad input…) will never succeed by being
+     resent, so it leaves the queue for a review list — "need review" in the header — where it
+     can be retried or discarded. It no longer blocks, or silently re-sends, forever.
+   · A lapsed session stops the sync and keeps the queue until you sign in again. */
+function obUser(){ return String((ME&&ME.email)||"").trim().toLowerCase(); }
+function obKey(kind){ const u=obUser(); return u ? `sr_${kind}_${u}` : `sr_${kind}__noone`; }
+function obRead(kind){ try{ const a=JSON.parse(localStorage.getItem(obKey(kind))||"null"); return a==null?null:a; }catch(e){ return null; } }
+function obWrite(kind,v){ try{ localStorage.setItem(obKey(kind),JSON.stringify(v)); }catch(e){} }
+function cacheDay(id,j){ obWrite("day_"+id,j); }
+function loadCachedDay(id){ return obRead("day_"+id); }
+function cacheRoutes(j){ obWrite("routes",j); }
+function loadCachedRoutes(){ return obRead("routes"); }
+function outbox(){ const a=obRead("outbox"); return Array.isArray(a)?a:[]; }
+function setOutbox(a){ obWrite("outbox",a); updateStatus(); }
+function quarantine(){ const a=obRead("quarantine"); return Array.isArray(a)?a:[]; }
+function setQuarantine(a){ obWrite("quarantine",a); updateStatus(); }
+function obId(){ return Date.now()+"_"+Math.random().toString(36).slice(2,7); }
+function enqueue(body){ const a=outbox(); a.push({id:obId(),body,queued_at:new Date().toISOString(),tries:0}); setOutbox(a); }
+/* Queues saved before this change ("sr_outbox", one for everyone on the device) — and anything
+   queued while no one was identified — can't be attributed to a person, so they are never sent
+   automatically: they move to THIS person's review list, where Retry sends them as you. */
+function adoptLegacyOutbox(){
+  if(!obUser()) return;
+  const q=quarantine(); let moved=0;
+  for(const key of ["sr_outbox","sr_outbox__noone"]){
+    let old=[]; try{ old=JSON.parse(localStorage.getItem(key)||"[]"); }catch(e){ old=[]; }
+    if(Array.isArray(old)) for(const it of old){ if(!it||!it.body) continue; moved++;
+      q.push({id:it.id||obId(),body:it.body,error:"Saved on this device before sign-ins were kept apart — check it is yours, then Retry or Discard.",legacy:true,at:new Date().toISOString()}); }
+    try{ localStorage.removeItem(key); }catch(e){}
+  }
+  if(moved) setQuarantine(q);
+}
+// One raw send. kind: "ok" | "rejected" (4xx, or a 200 that says no) | "auth" (401) | "retry" (offline/5xx/408/429).
+async function obSend(body){
+  let r; try{ const h={"content-type":"application/json"}; if(TOKEN) h["authorization"]="Bearer "+TOKEN;
+    r=await fetch("/.netlify/functions/routes-api",{method:"POST",headers:h,body:JSON.stringify(body)}); }
+  catch(e){ return {kind:"retry",status:0,j:null}; }
+  let j=null; try{ j=await r.json(); }catch(e){}
+  if(r.status===401) return {kind:"auth",status:401,j};
+  if(r.status>=500||r.status===408||r.status===429) return {kind:"retry",status:r.status,j};
+  if(r.status>=400) return {kind:"rejected",status:r.status,j};
+  if(j&&j.ok) return {kind:"ok",status:r.status,j};
+  return {kind:"rejected",status:r.status,j};
+}
+function obErrorText(res){ return String((res.j&&(res.j.error||res.j.message))||("HTTP "+res.status)).slice(0,200); }
+function obSignedOut(){ TOKEN=null; gate("Session ended — sign in again. Your unsynced changes are kept on this device."); }
+let OB_FLUSHING=false;
+async function flushOutbox(){
+  if(!navigator.onLine||OB_FLUSHING||!TOKEN){ updateStatus(); return; }
+  OB_FLUSHING=true;
+  try{
+    const seen=new Set();                       // never send one item twice in a pass (e.g. storage full)
+    while(true){
+      const a=outbox(); if(!a.length) break;
+      const item=a[0]; if(seen.has(item.id)) break; seen.add(item.id); setStatusText("↻ Syncing…");
+      const res=await obSend(item.body);
+      if(res.kind==="ok"){ setOutbox(outbox().filter(x=>x.id!==item.id)); continue; }
+      if(res.kind==="rejected"){
+        const q=quarantine(); q.push({id:item.id,body:item.body,error:obErrorText(res),status:res.status,at:new Date().toISOString()});
+        setQuarantine(q); setOutbox(outbox().filter(x=>x.id!==item.id)); continue; }
+      if(res.kind==="auth"){ obSignedOut(); break; }
+      const cur=outbox(); const k=cur.findIndex(x=>x.id===item.id);           // retry later, order kept
+      if(k>=0){ cur[k].tries=(cur[k].tries||0)+1; cur[k].last_error=res.status?("HTTP "+res.status):"no connection"; setOutbox(cur); }
+      break;
+    }
+  } finally { OB_FLUSHING=false; updateStatus(); }
+}
+// Send now if possible. {sent} | {queued} | {rejected, error} — a refusal is shown, never queued.
+async function tryOrQueue(body){
+  if(!navigator.onLine){ enqueue(body); return {sent:false,queued:true}; }
+  if(outbox().length){                                     // earlier items first — keep the order
+    enqueue(body); const id=outbox().slice(-1)[0].id; await flushOutbox();
+    if(outbox().some(x=>x.id===id)) return {sent:false,queued:true};
+    const bad=quarantine().find(x=>x.id===id); if(bad) return {sent:false,rejected:true,error:bad.error};
+    return {sent:true,j:null}; }
+  const res=await obSend(body);
+  if(res.kind==="ok") return {sent:true,j:res.j};
+  if(res.kind==="rejected") return {sent:false,rejected:true,error:obErrorText(res)};
+  enqueue(body); if(res.kind==="auth") obSignedOut();
+  return {sent:false,queued:true};
+}
+function retryQuarantined(id){ const q=quarantine(); const it=q.find(x=>x.id===id); if(!it) return;
+  setQuarantine(q.filter(x=>x.id!==id)); const a=outbox(); a.push({id:it.id,body:it.body,queued_at:new Date().toISOString(),tries:0}); setOutbox(a);
+  return flushOutbox().then(()=>{ if(typeof renderSyncPanel==="function") renderSyncPanel(); }); }
+function discardQuarantined(id){ setQuarantine(quarantine().filter(x=>x.id!==id)); if(typeof renderSyncPanel==="function") renderSyncPanel(); }
 function setStatusText(t,c){ const el=$("#netstat"); if(el){ el.textContent=t; el.style.color=c||"#ffd7b0"; } }
-function updateStatus(){ const n=outbox().length;
-  if(!navigator.onLine) setStatusText("● Offline"+(n?` · ${n} to sync`:""),"#ffd7b0");
-  else if(n) setStatusText(`↻ ${n} to sync`,"#ffd7b0"); else setStatusText("● Online","#9fd6b0"); }
+function updateStatus(){ const n=outbox().length, nq=quarantine().length, rv=nq?` · ⚠ ${nq} need review`:"";
+  if(!navigator.onLine) setStatusText("● Offline"+(n?` · ${n} to sync`:"")+rv,"#ffd7b0");
+  else if(n) setStatusText(`↻ ${n} to sync`+rv,"#ffd7b0");
+  else if(nq) setStatusText(`⚠ ${nq} need review`,"#ffd7b0");
+  else setStatusText("● Online","#9fd6b0"); }
+/* OUTBOX:END */
+// The review list behind "need review": what each refused item was, why, Retry / Discard.
+function obLabel(b){ const a=b&&b.action; return a==="visit_checkin"?"Arrival":a==="visit_report_save"?(b.status==="completed"?"Completed visit":"Visit draft"):String(a||"Change"); }
+function obDealer(b){ const id=b&&b.dealer_id; const st=DAY&&DAY.stops&&DAY.stops.find(x=>String(x.dealer_id)===String(id)); return (st&&(st.name||st.business_name))||"a dealer"; }
+function openSyncPanel(){ if(!quarantine().length && !outbox().length) return; renderSyncPanel(true); }
+function renderSyncPanel(open){
+  let p=document.getElementById("syncpanel");
+  if(!p){ if(!open) return; p=document.createElement("div"); p.id="syncpanel"; document.body.appendChild(p); }
+  const q=quarantine(), a=outbox();
+  if(!q.length && !a.length){ p.remove(); return; }
+  p.setAttribute("style","position:fixed;left:12px;right:12px;bottom:12px;max-height:70vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;z-index:70;box-shadow:0 6px 24px rgba(0,0,0,.25)");
+  p.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><b style="color:var(--navy)">Unsynced changes</b><span style="flex:1"></span><button class="btn" onclick="document.getElementById('syncpanel').remove()">Close</button></div>
+    ${a.length?`<p class="hint" style="margin:0 0 10px">${a.length} waiting to send — they go automatically when you're back online.</p>`:""}
+    ${q.map(it=>`<div style="border-top:1px solid var(--line);padding:10px 0">
+      <div style="font-weight:700">${esc(obLabel(it.body))} · ${esc(obDealer(it.body))}</div>
+      <div class="hint" style="margin:2px 0 8px;color:#b42323">${esc(it.error||"Refused")}</div>
+      <button class="btn pri" onclick="retryQuarantined('${jesc(it.id)}')">Retry</button> <button class="btn" onclick="discardQuarantined('${jesc(it.id)}')">Discard</button></div>`).join("")}`;
+}
 
 // ---- Boot: deep-link ?route=<id> opens a route; otherwise show the route list ----
 function boot(){ if(!TOKEN){ gate(); return; }
   const rid=qparam("route");
   // The profile decides what this person may do (assign / set a start point), so it is
   // loaded before either view renders — including when a route link is opened directly.
-  loadMyHome().then(()=>{ if(rid){ openRoute(rid); } else { showList(); } });
+  loadMyHome().then(()=>{ adoptLegacyOutbox(); if(rid){ openRoute(rid); } else { showList(); } });
 }
 
 async function showList(){
@@ -442,8 +540,8 @@ async function checkIn(i){
   const s=DAY.stops[i]; const now=new Date().toISOString();
   s.visit=Object.assign({},s.visit,{status:"checked_in",checkin_at:now});
   renderDay(); cacheDay(DAY.route.id,DAY); if(navigator.onLine) computeEtas(); setTimeout(()=>toggleBody(i),60);
-  const sent=await tryOrQueue({action:"visit_checkin",route_id:DAY.route.id,dealer_id:s.dealer_id});
-  toast(sent?"Arrival logged ✓":"Saved offline — will sync"); updateStatus();
+  const res=await tryOrQueue({action:"visit_checkin",route_id:DAY.route.id,dealer_id:s.dealer_id});
+  toast(res.sent?"Arrival logged ✓":res.rejected?("Couldn't log arrival — "+res.error):"Saved offline — will sync"); updateStatus();
 }
 async function saveVisit(i,status){
   const s=DAY.stops[i], m=$("#vmsg_"+i); if(m){ m.style.color=""; m.textContent="Saving…"; }
@@ -453,13 +551,10 @@ async function saveVisit(i,status){
   if(VTX[i]) payload.transcript=VTX[i];
   s.visit=Object.assign({},s.visit,{status,completed_at:status==="completed"?new Date().toISOString():((s.visit&&s.visit.completed_at)||null)});
   cacheDay(DAY.route.id,DAY);
-  if(!navigator.onLine){ enqueue(payload); updateStatus();
-    if(status==="completed"){ toast("Saved offline — will sync ✓"); renderDay(); } else if(m){ m.style.color="var(--ok)"; m.textContent="Saved offline — will sync."; }
-    return; }
-  try{ const j=await rapi(payload);
-    if(j&&j.ok){ if(status==="completed"){ toast(`Visit saved ✓ ${j.tasks?`· ${j.tasks} task${j.tasks===1?'':'s'}`:''}`); renderDay(); } else if(m){ m.style.color="var(--ok)"; m.textContent="Draft saved."; } }
-    else if(m){ m.style.color="#b42323"; m.textContent=(j&&j.error)||"Couldn't save."; }
-  }catch(e){ enqueue(payload); updateStatus(); if(status==="completed"){ toast("Saved offline — will sync ✓"); renderDay(); } else if(m){ m.style.color="var(--ok)"; m.textContent="Saved offline — will sync."; } }
+  const res=await tryOrQueue(payload); updateStatus();
+  if(res.sent){ const j=res.j||{}; if(status==="completed"){ toast(`Visit saved ✓ ${j.tasks?`· ${j.tasks} task${j.tasks===1?'':'s'}`:''}`); renderDay(); } else if(m){ m.style.color="var(--ok)"; m.textContent="Draft saved."; } }
+  else if(res.rejected){ if(m){ m.style.color="#b42323"; m.textContent=res.error||"Couldn't save."; } else toast("Couldn't save — "+(res.error||"refused")); }
+  else { if(status==="completed"){ toast("Saved offline — will sync ✓"); renderDay(); } else if(m){ m.style.color="var(--ok)"; m.textContent="Saved offline — will sync."; } }
 }
 async function draftFollowup(i){
   const s=DAY.stops[i], m=$("#vmsg_"+i);

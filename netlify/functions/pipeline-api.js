@@ -21,6 +21,7 @@ const STAGE_PROB={identified:0.1,contacted:0.3,quoted:0.6,won:1,lost:0};
 const STAGES=["identified","contacted","quoted","won","lost"];
 
 const SC=require("./_scope.js");
+const UP=require("./_upsert.js");
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
   const tok=auth.replace(/^Bearer\s+/i,"").trim();
@@ -58,12 +59,15 @@ exports.handler=async(event)=>{
         owner_rep:(manages?(clean(b.owner_rep,120)||me.rep_name||null):(me.rep_name||null)), source:b.source==="crosssell"?"crosssell":"manual",
         notes:clean(b.notes,2000), status: stage==="won"?"won":stage==="lost"?"lost":"open",
         created_by:me.name||me.email||null };
-      const ins=await sbSend("POST","opportunities",row,{Prefer:"return=representation"});
+      // owner_email (Phase 0J): a rep's own deal carries their sign-in email; for a deal management
+      // assigns to someone else the database fills it from owner_rep (phase0_task_owner_email.sql).
+      if(!manages || !clean(b.owner_rep,120)) row.owner_email=String(me.email||"").toLowerCase()||null;
+      const ins=await UP.sendTolerant(sbSend,"POST","opportunities",row,["owner_email"],{Prefer:"return=representation"});
       return json(200,{ok:true,opportunity:(ins&&ins[0])||row});
     }
     if(b.action==="update"){
       if(!b.id) return json(400,{error:"id required"});
-      const own=await SC.authorizeRecord(me,"opportunities",b.id,sbGet,{ownerFields:["owner_rep"]});
+      const own=await SC.authorizeRecord(me,"opportunities",b.id,sbGet,{ownerFields:["owner_rep","owner_email"],optional:["owner_email"]});
       if(!own.ok) return json(own.status,{error:own.error});
       const patch={updated_at:new Date().toISOString()};
       if(b.stage&&STAGES.includes(b.stage)){ patch.stage=b.stage; patch.probability=(b.probability!=null?Number(b.probability):STAGE_PROB[b.stage]); patch.status=b.stage==="won"?"won":b.stage==="lost"?"lost":"open"; }
@@ -78,17 +82,17 @@ exports.handler=async(event)=>{
     }
 
     // ---- board + forecast ----
-    const [opps,dealers,aliases,dir,mfrs,cfg]=await Promise.all([
+    const [opps,dealers,aliases,OI,mfrs,cfg]=await Promise.all([
       sbGetAll("opportunities?select=*","created_at"),
       sbGetAll("dealers?select=id,business_name"),
       sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]),
-      sbGet("dealer_directory?select=dealer_name,rep_name").catch(()=>[]),
+      SC.ownerIndex(sbGet).catch(()=>null),                 // who owns each dealer (Phase 0D)
       sbGet("manufacturers?select=slug,name").catch(()=>[]),
       sbGet("app_settings?key=eq.automation_config&select=value").catch(()=>[]),
     ]);
     const nameById={}; for(const d of dealers) nameById[d.id]=d.business_name;
     const idByAlias={}; for(const a of aliases) idByAlias[a.alias_norm]=a.dealer_id;
-    const repByName={}; for(const x of dir) repByName[x.dealer_name]=x.rep_name||"";
+
     const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
     const mnorm=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
     const exSet=new Set((((cfg&&cfg[0]&&cfg[0].value&&cfg[0].value.exclude_manufacturers)||[])).map(mnorm));
@@ -97,14 +101,16 @@ exports.handler=async(event)=>{
     // rep sees only their own.
     const role=String(me.role||"").toLowerCase();
     const isRep = !({president:1,admin:1,owner:1,relations:1})[role]; const myRep=(me.rep_name||"").toLowerCase();
-    const repOfDealer=id=>repByName[nameById[id]]||null;
+    // A rep's sales actuals and reorder projection cover exactly their book (shared resolver).
+    const sc=isRep ? await SC.dealerScope(me, sbGet, OI||undefined) : null;
+    const outOfBook=id=>isRep && !(sc && sc.ids && sc.ids.has(String(id)));
 
     // reorder projection from monthly_sales cadence
     const rows=await sbGetAll("monthly_sales?select=dealer_id,manufacturer,period,customer_name,amount");
     const resolve=r=>{ if(r.dealer_id&&nameById[r.dealer_id])return r.dealer_id; const id=idByAlias[dnorm(r.customer_name)]; return (id&&nameById[id])?id:null; };
     const DLL=new Map(); let L=0; // dealer|line -> {pms:Map(pm->$)}
     for(const r of rows){ const id=resolve(r); if(!id)continue; if(isEx(r.manufacturer))continue; const pm=pmOf(r.period); if(!pm)continue; if(pm>L)L=pm;
-      if(isRep && (!myRep || String(repOfDealer(id)||"").toLowerCase()!==myRep)) continue;
+      if(outOfBook(id)) continue;
       const key=id+"|"+r.manufacturer; let o=DLL.get(key); if(!o){o={id,pms:new Map()};DLL.set(key,o);} o.pms.set(pm,(o.pms.get(pm)||0)+(Number(r.amount)||0)); }
     const HOR=6; const reorderByPm={};
     for(const [,o] of DLL){ const pmArr=[...o.pms.keys()].sort((a,b)=>a-b); if(pmArr.length<2)continue;
@@ -116,7 +122,8 @@ exports.handler=async(event)=>{
     // opportunities (rep-scoped) + pipeline forecast
     let oppList=opps.map(o=>({...o, dealer_name:o.dealer_id?(nameById[o.dealer_id]||""):"" }));
     // A rep with no book name sees no deals — a blank name must never match unowned deals.
-    if(isRep) oppList=oppList.filter(o=>!!myRep && String(o.owner_rep||"").toLowerCase()===myRep);
+    const myEmail=String(me.email||"").trim().toLowerCase();
+    if(isRep) oppList=oppList.filter(o=>(!!myEmail && String(o.owner_email||"").toLowerCase()===myEmail) || (!!myRep && String(o.owner_rep||"").toLowerCase()===myRep));
     const pipeByPm={};
     for(const o of oppList){ if(o.status!=="open")continue; const pm=o.expected_close?pmOf(o.expected_close):null; if(pm==null||pm<=L||pm>L+HOR)continue;
       const prob=o.probability!=null?Number(o.probability):(STAGE_PROB[o.stage]||0); pipeByPm[pm]=(pipeByPm[pm]||0)+(Number(o.value)||0)*prob/12; }
@@ -124,7 +131,7 @@ exports.handler=async(event)=>{
 
     const forecast=[]; for(let m=L+1;m<=L+HOR;m++){ const ro=Math.round(reorderByPm[m]||0), pp=Math.round(pipeByPm[m]||0); forecast.push({pm:m,label:pmLabel(m),reorder:ro,pipeline:pp,total:ro+pp}); }
     // history (last 12 months actuals, same scope)
-    const actualByPm={}; for(const r of rows){ const id=resolve(r); if(!id)continue; if(isEx(r.manufacturer))continue; if(isRep&&(!myRep||String(repOfDealer(id)||"").toLowerCase()!==myRep))continue; const pm=pmOf(r.period); if(pm==null)continue; if(pm>L-12&&pm<=L) actualByPm[pm]=(actualByPm[pm]||0)+(Number(r.amount)||0); }
+    const actualByPm={}; for(const r of rows){ const id=resolve(r); if(!id)continue; if(isEx(r.manufacturer))continue; if(outOfBook(id))continue; const pm=pmOf(r.period); if(pm==null)continue; if(pm>L-12&&pm<=L) actualByPm[pm]=(actualByPm[pm]||0)+(Number(r.amount)||0); }
     const history=[]; for(let m=L-11;m<=L;m++){ history.push({pm:m,label:pmLabel(m),actual:Math.round(actualByPm[m]||0)}); }
 
     // summary

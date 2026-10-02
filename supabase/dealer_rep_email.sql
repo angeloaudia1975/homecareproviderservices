@@ -8,6 +8,11 @@
 -- STEP 1 is safe to run any time: it adds an empty column and an index, nothing else.
 -- STEP 2 fills it in. It is deliberately commented out: run it only after the ownership
 -- report (Phase 0 log, section 0C) has been approved.
+--
+-- APPLIED TO PRODUCTION 2026-10-02 (both steps, after approval). Result: Angelo 305, Greg 111,
+-- Lori 5, no owner 23 (20 never assigned + 3 "House"); 12 directory names copied onto the dealer
+-- row. From Phase 0D on, every owner change goes through setDealerOwner() in
+-- netlify/functions/_scope.js, which writes rep_email, rep_name and dealer_directory together.
 
 -- ─── STEP 1 ─────────────────────────────────────────────────────────────────────────────────
 alter table public.dealers add column if not exists rep_email text;

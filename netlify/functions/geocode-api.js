@@ -14,6 +14,8 @@ const BUILD = "geocode-api v2 (pin classes)";
 
 // Territory rules — to flag each dealer's growth opportunities on the map.
 const { computeAccess } = require("./_access.js");
+// Who may see which dealers — the shared resolver (Phase 0D).
+const SC = require("./_scope.js");
 // Normalize a monthly_sales manufacturer slug to the catalog/access slug so "what they buy"
 // lines up with "what they're eligible for" (reports say bongo/golden; catalog says the rest).
 const NORM_BUY={ bongo:"airavant-bongorx", airavant:"airavant-bongorx", "golden":"golden-technologies", "ohio-medical":"gce" };
@@ -113,7 +115,7 @@ async function whoami(event){
     try{ const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${tok}`}});
       if(r.ok){ const u=await r.json(); const email=u&&u.email&&String(u.email).toLowerCase();
         if(email){ const s=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=*`).catch(()=>[]); const su=s&&s[0];
-          if(su&&su.active!==false) return {role:su.role||"rep",rep_name:su.rep_name||"",can_travel:!!su.can_travel,name:su.name||email}; return null; } }
+          if(su&&su.active!==false) return {role:su.role||"rep",rep_name:su.rep_name||"",can_travel:!!su.can_travel,name:su.name||email,email}; return null; } }
     }catch(e){}
     return null;
   }
@@ -186,11 +188,12 @@ exports.handler = async (event)=>{
         else if(cutoff && lo && lo>=cutoff) p.klass="active";
         else p.klass="lapsed";
       }
-      if(me.role==="rep"){
-        // A sales rep sees only their own dealers on the map. (Relations Director + president see all.)
-        const rn=String(me.rep_name||"").trim().toLowerCase();
-        const rep={}; try{ const dir=await sbGetAll("dealer_directory?select=dealer_name,rep_name","dealer_name"); for(const d of (dir||[])) rep[d.dealer_name]=d.rep_name||""; }catch(e){}
-        const mine=p=> !!rn && String(rep[p.name]||"").trim().toLowerCase()===rn;
+      if(!SC.seesAllDealers(me)){
+        // A sales rep sees only their own book on the map — the shared resolver's book (owner by
+        // email, branch family included), the same one Dealer 360 and every record check use.
+        // (Relations + management see all.)
+        const sc=await SC.dealerScope(me, sbGet);
+        const mine=p=> !!(sc.ids && p.dealer_id && sc.ids.has(String(p.dealer_id)));
         return json(200,{ok:true,build:BUILD,role:me.role,points:points.filter(mine),unmapped:unmapped.filter(mine)});
       }
       return json(200,{ok:true,build:BUILD,role:me.role,points,unmapped});

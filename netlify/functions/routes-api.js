@@ -816,11 +816,10 @@ exports.handler = async (event)=>{
       for(const r of recentRegion){ const st=stateById[r.dealer_id]; if(!st) continue; const sl=normBuy(r.manufacturer); const amt=Number(r.amount)||0; const per=(r.period||"").slice(0,10); const k=st+"|"+sl;
         regTot[k]=(regTot[k]||0)+amt; if(per>=cutoff90) regRecent[k]=(regRecent[k]||0)+amt; else regPrior[k]=(regPrior[k]||0)+amt; }
 
-      // ---- Assigned rep + email (dealer_directory dealer->rep, staff_users rep->email) ----
-      let directory=[], staffU=[];
-      try{ directory=await sbGet("dealer_directory?select=dealer_name,rep_name&limit=100000"); }catch(e){ directory=[]; }
-      try{ staffU=await sbGet("staff_users?select=email,name,rep_name,active"); }catch(e){ staffU=[]; }
-      const repByNorm={}; for(const x of (directory||[])){ const k=dnorm(x.dealer_name); if(k && x.rep_name && !(k in repByNorm)) repByNorm[k]=x.rep_name; }
+      // ---- Assigned rep + email: the shared resolver (Phase 0D) — dealers.rep_email first, then
+      //      rep_name, then the legacy directory; staff_users gives the rep's name for the handout. ----
+      let OI=null; try{ OI=await SC.ownerIndex(sbGet); }catch(e){ OI=null; }
+      const staffU=(OI&&OI.staff)||[];
       const repInfoByName={}; for(const s of (staffU||[])){ if(s.active===false) continue; const rn=String(s.rep_name||"").trim().toLowerCase(); if(rn && !(rn in repInfoByName)) repInfoByName[rn]={email:s.email||"",name:s.name||""}; }
 
       // Rotation seed: ISO week number — the crossover pick cycles through the top candidates over
@@ -949,7 +948,8 @@ exports.handler = async (event)=>{
         }
 
         // ---- Assigned rep for THIS dealer (may differ from whoever prints the handout) ----
-        const assignedRep=repByNorm[dnorm(master.business_name||"")]||repByNorm[dnorm(d.business_name||"")]||"";
+        // The dealer's own owner first (an explicitly assigned branch keeps its owner), else its company's.
+        const assignedRep=(OI&&(OI.repOf(d.id)||OI.repOf(master.id)))||"";
         const repInfo=assignedRep?(repInfoByName[assignedRep.toLowerCase()]||null):null;
 
         let retail=0; const pd=prodByDealer[id]||{};
@@ -1079,6 +1079,18 @@ exports.handler = async (event)=>{
       if(!onRoute && !SC.seesAllDealers(me)) return {ok:false,status:403,error:"That dealer isn't a stop on this route."};
       return {ok:true,route:r};
     }
+    // Visit report helpers (Phase 0F — see VISITS RUN ONCE below).
+    const VISIT_STATUSES=["planned","checked_in","in_progress","completed"];
+    const visitStatusMax=(a,b2)=>{ const ia=VISIT_STATUSES.indexOf(String(a||"")), ib=VISIT_STATUSES.indexOf(String(b2||"")); return ia>ib ? VISIT_STATUSES[ia] : (ib>=0 ? VISIT_STATUSES[ib] : "in_progress"); };
+    // The report a check-in/save belongs to: the route stop's row, or — off a route — this rep's
+    // most recent report for the dealer that is not finished yet.
+    async function visitReportFor(rid,did,meNow){
+      const sel="select=id,status,checkin_at,completed_at,visit_note_id";
+      const path = rid
+        ? `dealer_visit_reports?route_id=eq.${encodeURIComponent(rid)}&dealer_id=eq.${encodeURIComponent(did)}&${sel}&limit=1`
+        : `dealer_visit_reports?route_id=is.null&dealer_id=eq.${encodeURIComponent(did)}&rep_email=eq.${encodeURIComponent((meNow&&meNow.email)||"")}&completed_at=is.null&${sel}&order=updated_at.desc&limit=1`;
+      const rows=await sbGet(path).catch(()=>[]); return (rows&&rows[0])||null;
+    }
     if(b.action==="route_day"){
       let route=null;
       if(b.route_id){
@@ -1129,16 +1141,32 @@ exports.handler = async (event)=>{
           can_manage:canManageRoute(me,route)},
         stops:outStops});
     }
+    /* VISITS RUN ONCE (Phase 0F). A visit report is one row per route stop (route_id + dealer_id),
+       or — off a route — the rep's one OPEN report for that dealer. Saves may arrive twice: a double
+       tap, or the field outbox replaying a request whose answer was lost. So:
+         · a repeated check-in keeps the first arrival time and never re-opens a finished visit;
+         · status only moves forward (planned → checked_in → in_progress → completed);
+         · "completed" is CLAIMED atomically — completed_at is set by one PATCH that only matches a
+           row whose completed_at is still empty — and only the save that wins the claim writes the
+           visit's side effects (visit log, Dealer 360 note, tasks, opportunities, interest signals,
+           handout exclusions). A replay changes nothing.
+       The map page's one-tap log_visit / save_visit (below) are separate, older, online-only
+       actions with no outbox; they are unchanged. */
     if(b.action==="visit_checkin"){
       const rid=String(b.route_id||"").trim()||null, did=String(b.dealer_id||"").trim();
       if(!did) return json(400,{error:"dealer_id required"});
       let sd=null;
       if(rid){ const chk=await routeStopCheck(rid,did); if(!chk.ok) return json(chk.status,{error:chk.error}); sd=chk.route.scheduled_date||null; }
       const now=new Date().toISOString();
-      const row={ route_id:rid, dealer_id:did, rep_email:me.email||null, rep_name:me.rep_name||null, scheduled_date:sd, checkin_at:now, status:"checked_in", updated_at:now };
+      const prev=await visitReportFor(rid,did,me);
+      if(prev && prev.completed_at) return json(200,{ok:true,checkin_at:prev.checkin_at||null,status:"completed",already:true});
+      if(prev && prev.checkin_at) return json(200,{ok:true,checkin_at:prev.checkin_at,status:prev.status||"checked_in",already:true});
+      const status=prev ? visitStatusMax(prev.status,"checked_in") : "checked_in";
+      const row={ route_id:rid, dealer_id:did, rep_email:me.email||null, rep_name:me.rep_name||null, scheduled_date:sd, checkin_at:now, status, updated_at:now };
       if(rid){ await sbSend("POST","dealer_visit_reports?on_conflict=route_id,dealer_id",row,{Prefer:"resolution=merge-duplicates,return=minimal"}); }
+      else if(prev){ await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(prev.id)}`,{checkin_at:now,status,updated_at:now},{Prefer:"return=minimal"}); }
       else { await sbSend("POST","dealer_visit_reports",row,{Prefer:"return=minimal"}); }
-      return json(200,{ok:true,checkin_at:now});
+      return json(200,{ok:true,checkin_at:now,status});
     }
     if(b.action==="visit_report_get"){
       const rid=String(b.route_id||"").trim(), did=String(b.dealer_id||"").trim();
@@ -1155,28 +1183,47 @@ exports.handler = async (event)=>{
       if(!did) return json(400,{error:"dealer_id required"});
       const fields=(b.fields&&typeof b.fields==="object")?b.fields:{};
       const status=String(b.status||"in_progress");
+      if(!VISIT_STATUSES.includes(status)) return json(400,{error:`Unknown visit status "${status.slice(0,40)}".`});
       const completed = status==="completed";
       const now=new Date().toISOString();
       let sd=null;
       if(rid){ const chk=await routeStopCheck(rid,did); if(!chk.ok) return json(chk.status,{error:chk.error}); sd=chk.route.scheduled_date||null; }
-      // Was this report already completed, and does it already have a note? Both decide
-      // whether this save is the one that should reach Dealer 360.
-      let priorNoteId=null, alreadyCompleted=false;
-      try{
-        const prevPath = rid
-          ? `dealer_visit_reports?route_id=eq.${encodeURIComponent(rid)}&dealer_id=eq.${encodeURIComponent(did)}&select=id,completed_at,visit_note_id&limit=1`
-          : `dealer_visit_reports?dealer_id=eq.${encodeURIComponent(did)}&select=id,completed_at,visit_note_id&order=updated_at.desc&limit=1`;
-        const prev=await sbGet(prevPath); const pr=prev&&prev[0];
-        if(pr){ priorNoteId=pr.visit_note_id||null; alreadyCompleted=!!pr.completed_at; }
-      }catch(e){}
-      const row={ route_id:rid, dealer_id:did, rep_email:me.email||null, rep_name:me.rep_name||null, scheduled_date:sd, status, fields, updated_at:now };
+      // The report this save belongs to (see VISITS RUN ONCE above). Off a route, an exact replay
+      // of the rep's last finished report for this dealer is that report, not a new visit.
+      let prev=await visitReportFor(rid,did,me);
+      if(!rid && !prev && completed){
+        const last=await sbGet(`dealer_visit_reports?route_id=is.null&dealer_id=eq.${encodeURIComponent(did)}&rep_email=eq.${encodeURIComponent(me.email||"")}&select=id,status,checkin_at,completed_at,visit_note_id,fields&order=updated_at.desc&limit=1`).catch(()=>[]);
+        const l=last&&last[0]; if(l && l.completed_at && JSON.stringify(l.fields||{})===JSON.stringify(fields)) prev=l;
+      }
+      const priorNoteId=(prev&&prev.visit_note_id)||null;
+      // Status only moves forward; a finished visit stays finished (later edits are kept, the
+      // visit is not re-opened).
+      const newStatus=(prev&&prev.completed_at) ? "completed" : visitStatusMax(prev&&prev.status, status);
+      const row={ route_id:rid, dealer_id:did, rep_email:me.email||null, rep_name:me.rep_name||null, scheduled_date:sd, status:newStatus, fields, updated_at:now };
       if(b.transcript!=null) row.transcript=String(b.transcript);
       if(b.structured&&typeof b.structured==="object") row.structured=b.structured;
-      if(completed) row.completed_at=now;
+      let reportId=(prev&&prev.id)||null;
       if(rid){ await sbSend("POST","dealer_visit_reports?on_conflict=route_id,dealer_id",row,{Prefer:"resolution=merge-duplicates,return=minimal"}); }
-      else { await sbSend("POST","dealer_visit_reports",row,{Prefer:"return=minimal"}); }
+      else if(prev){ const {route_id,dealer_id,...upd}=row; await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(prev.id)}`,upd,{Prefer:"return=minimal"}); }
+      else { const ins=await sbSend("POST","dealer_visit_reports",row,{Prefer:"return=representation"}); reportId=(ins&&ins[0]&&ins[0].id)||null; }
+      // THE CLAIM: only the save that flips completed_at from empty does the fan-out below.
+      let firstCompletion=false;
+      if(completed && !(prev&&prev.completed_at)){
+        const claimPath = rid
+          ? `dealer_visit_reports?route_id=eq.${encodeURIComponent(rid)}&dealer_id=eq.${encodeURIComponent(did)}&completed_at=is.null`
+          : (reportId ? `dealer_visit_reports?id=eq.${encodeURIComponent(reportId)}&completed_at=is.null` : null);
+        if(claimPath){
+          const won=await sbSend("PATCH",`${claimPath}&select=id`,{completed_at:now,status:"completed",updated_at:now},{Prefer:"return=representation"});
+          firstCompletion=Array.isArray(won)&&won.length>0;
+        }
+      }
+      // Heal an interleaving where this upsert landed just after another save's claim: a row with
+      // completed_at is always "completed".
+      { const rowPath = rid ? `dealer_visit_reports?route_id=eq.${encodeURIComponent(rid)}&dealer_id=eq.${encodeURIComponent(did)}`
+                            : (reportId ? `dealer_visit_reports?id=eq.${encodeURIComponent(reportId)}` : null);
+        if(rowPath && !firstCompletion) await sbSend("PATCH",`${rowPath}&completed_at=not.is.null&status=neq.completed`,{status:"completed"},{Prefer:"return=minimal"}).catch(()=>{}); }
       let tCreated=0,oCreated=0;
-      if(completed){
+      if(firstCompletion){
         const dr=await sbGet(`dealers?id=eq.${encodeURIComponent(did)}&select=business_name,is_test`).catch(()=>[]);
         const d=(dr&&dr[0])||{}; const st=await P.getState(); const env=P.envFor(st.mode,d.is_test);
         const repName=me.name||me.rep_name||"HCPS rep";
@@ -1191,12 +1238,13 @@ exports.handler = async (event)=>{
             await sbSend("PATCH",patchPath,{visit_note_id:newNoteId},{Prefer:"return=minimal"});
           }catch(e){}
         }
-        void alreadyCompleted;
         const tasks=[];
         for(const f of followupList(fields.followups)){ const t=String(f).trim(); if(t) tasks.push({dealer_id:did,title:`Follow-up: ${t.slice(0,120)}`,detail:"From dealer visit",source:"visit",reason:"visit_followup",priority:"normal",assigned_rep:me.rep_name||null,created_by:repName,status:"open",env}); }
         const na=String(fields.next_action||"").trim();
         if(na){ const t={dealer_id:did,title:`Next action: ${na.slice(0,120)}`,detail:"From dealer visit",source:"visit",reason:"visit_next_action",priority:"normal",assigned_rep:me.rep_name||null,created_by:repName,status:"open",env}; if(/^\d{4}-\d{2}-\d{2}$/.test(String(fields.next_action_date||""))) t.due_date=fields.next_action_date; tasks.push(t); }
-        if(tasks.length){ try{ await sbSend("POST","dealer_tasks",tasks,{Prefer:"return=minimal"}); tCreated=tasks.length; }catch(e){} }
+        // Every row carries due_date: PostgREST rejects a bulk insert whose rows have different keys,
+        // which used to drop ALL of a visit's tasks whenever only the next action had a date.
+        if(tasks.length){ try{ await sbSend("POST","dealer_tasks",tasks.map(x=>Object.assign({due_date:null},x)),{Prefer:"return=minimal"}); tCreated=tasks.length; }catch(e){} }
         const oppRows=followupList(fields.opportunities).map(x=>String(x).trim()).filter(Boolean).map(x=>({dealer_id:did,title:x.slice(0,140),stage:"identified",source:"visit",owner_rep:me.rep_name||null,created_by:repName,notes:"From dealer visit",status:"open"}));
         if(oppRows.length){ try{ await sbSend("POST","opportunities",oppRows,{Prefer:"return=minimal"}); oCreated=oppRows.length; }catch(e){} }
         // Structured intelligence from a voice/AI-parsed visit: feed product-interest signals and
@@ -1207,7 +1255,8 @@ exports.handler = async (event)=>{
         const poorSlugs=Array.isArray(S.poor_fit_slugs)?[...new Set(S.poor_fit_slugs.map(x=>String(x||"").trim()).filter(Boolean))]:[];
         if(poorSlugs.length){ const exRows=poorSlugs.map(sl=>({dealer_id:did,manufacturer:sl,created_by:me.email||me.name||null,created_at:now})); try{ await sbSend("POST","dealer_handout_exclusions?on_conflict=dealer_id,manufacturer",exRows,{Prefer:"resolution=merge-duplicates,return=minimal"}); }catch(e){} }
       }
-      return json(200,{ok:true,status,completed_at:completed?now:null,tasks:tCreated,opportunities:oCreated});
+      const doneAt=firstCompletion ? now : ((prev&&prev.completed_at)||null);
+      return json(200,{ok:true,status:doneAt?"completed":row.status,completed_at:doneAt,first_completion:firstCompletion,already_completed:!!(prev&&prev.completed_at),tasks:tCreated,opportunities:oCreated});
     }
 
     /* One-time repair: every visit completed before the Dealer 360 write existed has a report
@@ -1253,7 +1302,8 @@ exports.handler = async (event)=>{
       for(const f of followupList(details.follow_ups)){ const t=String(f).trim(); if(t) tasks.push({dealer_id,title:`Follow-up: ${t.slice(0,120)}`,detail:"From dealer visit",source:"visit",reason:"visit_followup",priority:"normal",assigned_rep:me.rep_name||null,created_by:repName,status:"open",env}); }
       if(String(details.orders_expected||"").trim()) tasks.push({dealer_id,title:`Expected order — ${d.business_name||"dealer"}`,detail:String(details.orders_expected).slice(0,200),source:"visit",reason:"visit_order",priority:"high",assigned_rep:me.rep_name||null,created_by:repName,status:"open",env});
       if(/^\d{4}-\d{2}-\d{2}$/.test(String(details.next_visit||""))) tasks.push({dealer_id,title:`Next visit — ${d.business_name||"dealer"}`,detail:"Scheduled from visit notes",due_date:details.next_visit,source:"visit",reason:"visit_next",priority:"normal",assigned_rep:me.rep_name||null,created_by:repName,status:"open",env});
-      let tCreated=0; if(tasks.length){ try{ await sbSend("POST","dealer_tasks",tasks,{Prefer:"return=minimal"}); tCreated=tasks.length; }catch(e){} }
+      // Same keys on every row (see visit_report_save) — the next-visit task is the only one with a date.
+      let tCreated=0; if(tasks.length){ try{ await sbSend("POST","dealer_tasks",tasks.map(x=>Object.assign({due_date:null},x)),{Prefer:"return=minimal"}); tCreated=tasks.length; }catch(e){} }
       // manufacturer opportunities -> opportunities (pipeline)
       const oppRows=followupList(details.opportunities).map(x=>String(x).trim()).filter(Boolean).map(x=>({dealer_id,title:x.slice(0,140),stage:"identified",source:"visit",owner_rep:me.rep_name||null,created_by:repName,notes:"From dealer visit",status:"open"}));
       let oCreated=0; if(oppRows.length){ try{ await sbSend("POST","opportunities",oppRows,{Prefer:"return=minimal"}); oCreated=oppRows.length; }catch(e){} }

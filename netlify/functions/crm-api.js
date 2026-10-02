@@ -67,6 +67,22 @@ async function whoami(event){
 
 const { dealerScope, isAdmin, seesAllDealers } = require("./_scope.js");
 const SC=require("./_scope.js");
+const UP=require("./_upsert.js");
+const patchTolerant=(path,body,optional)=>UP.sendTolerant(sbSend,"PATCH",path,body,optional);
+/* A rep's own tasks (Phase 0I): assigned to their sign-in email, or to their rep name. Asked on
+   the server (never "all tasks, filtered here" — one read stops at 1000 rows) and checked exactly
+   here. Neither email nor name -> nothing, never everything. Before the 0I columns exist the
+   email half is skipped. Used by BOTH the list and the badge so they always agree. */
+async function repTasks(me, status, select){
+  const rn=String((me&&me.rep_name)||"").trim().toLowerCase(), em=String((me&&me.email)||"").trim().toLowerCase();
+  if(!rn && !em) return [];
+  const like=rn?encodeURIComponent("*"+rn.replace(/[,()"]/g,"")+"*"):null;
+  const who=[em?`assigned_email.eq.${encodeURIComponent(em)}`:null, rn?`assigned_rep.ilike.${like}`:null].filter(Boolean).join(",");
+  const sel=select==="*"?"*":select;
+  let rows=await sbGetAll(`dealer_tasks?status=eq.${status}&or=(${who})&select=${sel}`,"id").catch(()=>null);
+  if(rows==null) rows = rn ? await sbGetAll(`dealer_tasks?status=eq.${status}&assigned_rep=ilike.${like}&select=${sel.replace(/,?assigned_email/,"")}`,"id").catch(()=>[]) : [];
+  return (rows||[]).filter(t=>(em && String(t.assigned_email||"").toLowerCase()===em) || (rn && String(t.assigned_rep||"").trim().toLowerCase()===rn));
+}
 
 exports.handler = async (event)=>{
   try{
@@ -249,9 +265,8 @@ exports.handler = async (event)=>{
       }
       // An empty rep_name must match nothing. Without the `!!rn` guard it compares "" to ""
       // and silently counts every UNASSIGNED task as this rep's own.
-      const rn=String(me.rep_name||"").toLowerCase();
-      const rows=await sbGet(`dealer_tasks?status=eq.open&select=assigned_rep`).catch(()=>[]);
-      const n=(rows||[]).filter(t=>!!rn && String(t.assigned_rep||"").toLowerCase()===rn).length;
+      // The same rule as the my_tasks list (repTasks), so the badge never disagrees with the page.
+      const n=(await repTasks(me,"open","id,assigned_rep,assigned_email")).length;
       return json(200,{ok:true,count:n});
     }
 
@@ -433,8 +448,10 @@ exports.handler = async (event)=>{
         try{ await sbSend("PATCH",`dealer_contacts?id=eq.${encodeURIComponent(id)}&dealer_id=eq.${encodeURIComponent(b.dealer_id)}`,{email,...fields},{Prefer:"return=minimal"}); }
         catch(e){ return json(409,{error:"Another contact for this dealer already uses that email."}); }
       } else {
-        // New contact: with an email, merge on (dealer_id,email); without one, insert fresh.
-        try{ await sbSend("POST","dealer_contacts?on_conflict=dealer_id,email",{dealer_id:b.dealer_id,email,...fields},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
+        // New contact: with an email, merge on (dealer_id,email); without one, insert fresh. Blank
+        // fields are left out, so adding "Pat, pat@x.com" for a contact already on file never
+        // wipes their stored phone or title (Phase 0H). Clearing a field is done by editing by id.
+        try{ await sbSend("POST","dealer_contacts?on_conflict=dealer_id,email",UP.stripBlank({dealer_id:b.dealer_id,email,...fields},["dealer_id","email"]),{Prefer:"resolution=merge-duplicates,return=minimal"}); }
         catch(e){ return json(500,{error:"Couldn't save the contact — "+(e&&e.message||e)}); }
       }
       return json(200,{ok:true});
@@ -498,11 +515,13 @@ exports.handler = async (event)=>{
       if(!b.id) return json(400,{error:"id required"});
       /* Tasks are changed by id, so the id is resolved first: management, the rep the task is
          assigned to, or a rep whose book holds the task's dealer. Anyone else gets 403. */
-      const own=await SC.authorizeRecord(me,"dealer_tasks",b.id,sbGet,{ownerFields:["assigned_rep"]});
+      const own=await SC.authorizeRecord(me,"dealer_tasks",b.id,sbGet,{ownerFields:["assigned_rep","assigned_email"],optional:["assigned_email"]});
       if(!own.ok) return json(own.status,{error:own.error});
       const status=b.action==="complete_task"?"done":b.action==="dismiss_task"?"dismissed":"open";
-      const patch={status,done_at:status==="open"?null:new Date().toISOString()};
-      await sbSend("PATCH",`dealer_tasks?id=eq.${encodeURIComponent(b.id)}`,patch,{Prefer:"return=minimal"});
+      // completed_by (Phase 0I): who closed it — so "tasks completed" credits the person who did
+      // the work, not whoever the task was assigned to, and never the engine's auto-dismissals.
+      const patch={status,done_at:status==="open"?null:new Date().toISOString(),completed_by:status==="open"?null:(me.email||me.name||null)};
+      await patchTolerant(`dealer_tasks?id=eq.${encodeURIComponent(b.id)}`,patch,["completed_by"]);
       return json(200,{ok:true,status});
     }
 
@@ -517,14 +536,19 @@ exports.handler = async (event)=>{
     // not the same permission as running the machine that fills it.
     if(b.action==="my_tasks"){
       const status=["open","done","dismissed"].includes(b.status)?b.status:"open";
-      let q=`dealer_tasks?status=eq.${status}&select=*&order=priority.desc,due_date.asc.nullslast,created_at.desc&limit=800`;
-      let tasks=await sbGet(q).catch(()=>[]);
       const seesAll=seesAllDealers(me);
-      // A rep with no rep_name on their account must see NOTHING, not everything: the old
-      // `&& me.rep_name` guard skipped the filter entirely for such an account, which handed
-      // a rep the whole company's queue. staff-auth allows a null rep_name, so this is reachable.
-      if(!seesAll){ const rn=String(me.rep_name||"").toLowerCase();
-        tasks=(tasks||[]).filter(t=>!!rn && String(t.assigned_rep||"").toLowerCase()===rn); }
+      // Every task, read page by page (one read stops at 1000 rows). A rep's own tasks are picked
+      // on the server: assigned by email (Phase 0I) or by name. A rep with neither sees NOTHING —
+      // the old `&& me.rep_name` guard once handed such an account the whole company's queue.
+      let tasks=[];
+      if(seesAll) tasks=await sbGetAll(`dealer_tasks?status=eq.${status}&select=*`,"id").catch(()=>[]);
+      else tasks=await repTasks(me,status,"*");
+      // Order: priority high → normal → low (the column is text, so the database sorted it
+      // alphabetically and put "high" LAST), then the nearest due date, then the newest.
+      const PRANK={high:0,normal:1,medium:1,low:2};
+      tasks.sort((a,z)=>((PRANK[String(a.priority||"normal").toLowerCase()]??1)-(PRANK[String(z.priority||"normal").toLowerCase()]??1))
+        || (a.due_date&&z.due_date ? String(a.due_date).localeCompare(String(z.due_date)) : (a.due_date?-1:(z.due_date?1:0)))
+        || String(z.created_at||"").localeCompare(String(a.created_at||"")));
       const names=await namesFor((tasks||[]).map(t=>t.dealer_id));
       tasks=(tasks||[]).map(t=>({...t,dealer_name:names[t.dealer_id]||""}));
       return json(200,{ok:true,tasks,role:me.role,sees_all:seesAll});

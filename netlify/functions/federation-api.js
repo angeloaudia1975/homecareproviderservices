@@ -24,7 +24,7 @@ const H=()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
 async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); const t=await r.text(); if(!r.ok) throw new Error(`Supabase ${r.status}: ${t}`); return t?JSON.parse(t):null; }
 async function sbGetAll(base, orderCol="id"){ const PAGE=1000; let from=0,out=[]; for(;;){ const sep=base.includes("?")?"&":"?"; const rows=await sbGet(`${base}${sep}order=${orderCol}&limit=${PAGE}&offset=${from}`); out=out.concat(rows); if(rows.length<PAGE) break; from+=PAGE; if(from>=60000) break; } return out; }
-const { dealerScope } = require("./_scope.js");
+const { dealerScope, ownerIndex } = require("./_scope.js");
 
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -54,11 +54,9 @@ exports.handler=async(event)=>{
     // Canonical dealer master + rep, shared by several actions.
     async function dealerMap(){
       const dealers=await sbGetAll("dealers?select=id,business_name,city,state,hcps_account,parent_id,is_test");
-      let dir=[]; try{ dir=await sbGet("dealer_directory?select=dealer_name,rep_name&limit=100000"); }catch(e){}
-      const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
-      const dn=n=>String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim();
-      const repByNorm={}; for(const x of dir){ const k=dn(x.dealer_name); if(k&&x.rep_name&&!(k in repByNorm)) repByNorm[k]=x.rep_name; }
-      const m={}; for(const d of dealers) m[d.id]={id:d.id,name:d.business_name||"",city:d.city||"",state:d.state||"",acct:d.hcps_account||"",parent_id:d.parent_id||null,is_test:!!d.is_test,rep:repByNorm[dn(d.business_name)]||""};
+      // Owner of each dealer from the shared resolver (Phase 0D): rep_email, then rep_name, then the directory.
+      let OI=null; try{ OI=await ownerIndex(sbGet); }catch(e){}
+      const m={}; for(const d of dealers) m[d.id]={id:d.id,name:d.business_name||"",city:d.city||"",state:d.state||"",acct:d.hcps_account||"",parent_id:d.parent_id||null,is_test:!!d.is_test,rep:(OI&&OI.repOf(d.id))||""};
       return m;
     }
     // Dealers flagged is_test (sandbox/QA) — excluded from the real audience builders so test

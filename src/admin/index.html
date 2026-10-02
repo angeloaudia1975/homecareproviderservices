@@ -148,7 +148,15 @@ let TOKEN=HCPS.token(), ME=null;
 try{ ME=HCPS.profile(); }catch(e){ ME=null; }
 const $=s=>document.querySelector(s);
 
+/* The operating-system dashboard is for management (Phase 0L). A sales rep who signs in here, or
+   opens /admin/ with a saved session, goes to their own landing (profile.landing from the server —
+   today the rep workspace home). Server-side checks still guard every tool. */
+function repLanding(){
+  const role=String((ME&&ME.role)||"").toLowerCase(); if(role!=="rep") return null;
+  const u=ME&&ME.landing; return (typeof u==="string"&&/^\/admin\/[A-Za-z0-9._\/-]*$/.test(u)&&!u.includes("..")&&u!=="/admin/")?u:"/admin/rep-home.html";
+}
 function showApp(){
+  const away=repLanding(); if(away){ location.replace(away); return; }
   $("#gate").style.display="none";
   $("#app").style.display="block";
   const wn=$("#whoName"); if(wn) wn.innerHTML=(ME&&ME.name)?("Hi, <b>"+esc(ME.name)+"</b>"+(ME.role?" · "+esc(ME.role):"")):"";

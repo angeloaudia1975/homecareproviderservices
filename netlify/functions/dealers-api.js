@@ -172,6 +172,7 @@ async function whoami(event){
    Dealer 360, tasks and the call workspace use — instead of an exact-name lookup in the legacy
    directory only, which disagreed with them for dealers assigned through Bulk Assignment. */
 const SC=require("./_scope.js");
+const UP=require("./_upsert.js");
 async function ownsDealer(me, dealer_id){
   if(!me||!dealer_id) return false;
   return SC.canAccessDealer(me, dealer_id, sbGet);
@@ -208,7 +209,9 @@ async function buildState(){
   // Assigned sales rep is now stored directly on the dealer (dealers.rep_name, keyed by dealer id) —
   // the durable source of truth that survives renames/merges. Decoupled + tolerant: if the column
   // isn't present yet the page still loads and we fall back to the legacy name-keyed directory below.
-  let repById={}; try{ const rp=await sbGetAll("dealers?select=id,rep_name"); for(const x of (rp||[])) if(x.rep_name) repById[x.id]=x.rep_name; }catch(e){}
+  // Owner from the shared resolver (_scope.js ownerIndex): dealers.rep_email first, then rep_name,
+  // then the legacy directory — the same answer every other endpoint gets.
+  let repById={}, repEmailById={}; try{ const oi=await SC.ownerIndex(sbGet); for(const o of oi.byId.values()){ if(o.rep) repById[o.id]=o.rep; if(o.email) repEmailById[o.id]=o.email; } }catch(e){}
   const dcontacts = await sbGetAll("dealer_contacts?select=dealer_id,email,name,title,role,phone,cell","dealer_id,email").catch(()=>[]);
   const contactsByDealer=new Map(); for(const x of dcontacts){(contactsByDealer.get(x.dealer_id)||contactsByDealer.set(x.dealer_id,[]).get(x.dealer_id)).push(x);}
   const daddrs = await sbGetAll("dealer_addresses?select=dealer_id,address,city,state,zip,label,pri","dealer_id,addr_key").catch(()=>[]);
@@ -261,7 +264,7 @@ async function buildState(){
       contact_name:d.contact_name||"", email:d.email||"", email_verified: evSupported?!!evById[d.id]:null, phone:d.phone||"", website:webById[d.id]||"",
       golden_url:(goldById[d.id]&&goldById[d.id].url)||"", golden_status:(goldById[d.id]&&goldById[d.id].status)||"",
       address:d.address||"", city:d.city||"", state:d.state||"", zip:d.zip||"", notes:d.notes||"",
-      rep: repById[d.id]||repByName[d.business_name]||"",
+      rep: repById[d.id]||repByName[d.business_name]||"", rep_email: repEmailById[d.id]||"",
       master: d.parent_id ? (nameById[d.parent_id]||"") : "",
       branches:(branchesByParent.get(d.id)||[]).slice().sort(),
       aliases:(aliByDealer.get(d.id)||[]).filter((v,i,s)=>s.indexOf(v)===i).sort(),
@@ -339,9 +342,10 @@ exports.handler = async (event)=>{
       const state=await buildState();
       state.role=me.role; state.rep_name=me.rep_name||"";
       if(!seesAll){
-        // A sales rep sees only their own book of dealers.
-        const rn=String(me.rep_name||"").trim().toLowerCase();
-        state.dealers=(state.dealers||[]).filter(d=> rn && String(d.rep||"").trim().toLowerCase()===rn);
+        // A sales rep sees only their own book of dealers — the shared resolver's book, so this list,
+        // Dealer 360 and every record check agree (owner by email, branch family included).
+        const sc=await SC.dealerScope(me, sbGet);
+        state.dealers=(state.dealers||[]).filter(d=> sc.ids && sc.ids.has(String(d.id)));
       }
       if(!isAdminRole){
         // Non-management roles don't manage the admin queues/tools — hide them.
@@ -515,14 +519,12 @@ exports.handler = async (event)=>{
       }
       if(act==="rep"){
         const rep=(b.rep_name||"").trim()||null;
-        // Preferred path: store the assignment on the dealer record itself (durable, survives renames).
-        if(b.dealer_id){
-          await sbSend("PATCH",`dealers?id=eq.${encodeURIComponent(b.dealer_id)}`,{rep_name:rep},{Prefer:"return=minimal"});
-          // Keep the legacy name-keyed directory in sync so older lookups + rep-portal fallback stay consistent.
-          if(b.dealer_name){ await sbSend("POST","dealer_directory",{dealer_name:b.dealer_name,rep_name:rep,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{}); }
-          return json(200,{ok:true});
-        }
+        // One owner, written everywhere at once (dealers.rep_email + rep_name + the legacy directory),
+        // with the dealer's open tasks/opportunities following it — see setDealerOwner in _scope.js.
+        const id=b.dealer_id || (b.dealer_name ? await SC.dealerIdByName(b.dealer_name, sbGet) : null);
+        if(id){ const r=await SC.setDealerOwner([id], rep, {sbGet,sbSend}); return json(200,{ok:true,rep_email:r.email,moved:r.moved}); }
         if(!b.dealer_name) return json(400,{error:"dealer_id or dealer_name required"});
+        // A name that matches no dealer (e.g. a raw sales customer name): directory only, as before.
         await sbSend("POST","dealer_directory",{dealer_name:b.dealer_name,rep_name:rep,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
         return json(200,{ok:true});
       }
@@ -530,12 +532,8 @@ exports.handler = async (event)=>{
         const rep=(b.rep_name||"").trim()||null;
         const ids=Array.isArray(b.dealer_ids)?[...new Set(b.dealer_ids.filter(Boolean))]:[];
         if(!ids.length) return json(400,{error:"dealer_ids required"});
-        // One PATCH for the whole selection via an in.() filter (chunked to keep the URL sane).
-        for(let i=0;i<ids.length;i+=100){
-          const chunk=ids.slice(i,i+100).map(encodeURIComponent).join(",");
-          await sbSend("PATCH",`dealers?id=in.(${chunk})`,{rep_name:rep},{Prefer:"return=minimal"});
-        }
-        return json(200,{ok:true,updated:ids.length});
+        const r=await SC.setDealerOwner(ids, rep, {sbGet,sbSend});
+        return json(200,{ok:true,updated:ids.length,rep_email:r.email,moved:r.moved});
       }
       // ---- Territory access (rules engine) ----
       // Read-only: what this dealer can actually order on the portal, computed live from the rules.
@@ -619,7 +617,14 @@ exports.handler = async (event)=>{
       if(act==="import_contacts"){
         const rows=Array.isArray(b.rows)?b.rows:[];
         if(!rows.length) return json(400,{error:"rows[] required"});
-        const create=b.create!==false;
+        /* CONTACT SAFETY (Phase 0H). An import MERGES by default: it adds and updates, and a blank
+           cell never erases a value already on file. "Replace" is allowed only for the dealers
+           named in this file (never the whole company's address book, as it used to be), and only
+           after a preview: {preview:true} reports what would change and writes nothing; the
+           replace then has to be sent with confirm_replace:true. */
+        const create=b.create!==false, preview=b.preview===true, replace=b.replace===true;
+        if(replace && !preview && b.confirm_replace!==true)
+          return json(400,{error:"Replacing contacts needs confirmation. Run the preview first, then confirm."});
         // Store everything directly here (service role) instead of via a Postgres function,
         // so nothing can be silently blocked by a function that failed to install. The ONLY
         // requirement is that the two tables exist — probe them and say so plainly if not.
@@ -633,12 +638,6 @@ exports.handler = async (event)=>{
         const chunk=(arr,n)=>{const o=[];for(let i=0;i<arr.length;i+=n)o.push(arr.slice(i,i+n));return o;};
         const errors=[];
 
-        // Optional clean slate: wipe existing contacts/addresses so a re-import lands only
-        // on the correct (canonical) dealers — undoes any earlier mis-attached rows.
-        if(b.replace){
-          try{ await sbSend("DELETE","dealer_contacts?dealer_id=not.is.null",null,{Prefer:"return=minimal"}); }catch(e){ errors.push("wipe contacts: "+e.message); }
-          try{ await sbSend("DELETE","dealer_addresses?dealer_id=not.is.null",null,{Prefer:"return=minimal"}); }catch(e){ errors.push("wipe addresses: "+e.message); }
-        }
 
         // resolution map: normalized name/alias -> dealer_id
         const dealersAll=await sbGetAll("dealers?select=id,business_name");
@@ -653,6 +652,17 @@ exports.handler = async (event)=>{
           if(norm2id.has(k)) matched++;
           else if(create){ if(!createSet.has(k)) createSet.set(k,nm); }
           else unmatched.push(nm); }
+        const fileIdsNow=()=>[...new Set(rows.map(r=>norm2id.get(dnorm((r.company||"").trim()))).filter(Boolean))];
+        if(preview){
+          const ids=fileIdsNow(); let contactsOnFile=0, addressesOnFile=0;
+          if(replace){ for(const part of chunk(ids,100)){ const inq=part.map(encodeURIComponent).join(",");
+            contactsOnFile+=(await sbGetAll(`dealer_contacts?dealer_id=in.(${inq})&select=dealer_id`,"dealer_id,email").catch(()=>[])).length;
+            addressesOnFile+=(await sbGetAll(`dealer_addresses?dealer_id=in.(${inq})&select=dealer_id`,"dealer_id,addr_key").catch(()=>[])).length; } }
+          const inFile=(k)=>rows.reduce((n,r)=>n+((r[k]||[]).filter(x=>x&&(k==="contacts"?String(x.email||"").trim():String(x.address||"").trim())).length),0);
+          return json(200,{ok:true,preview:{companies:rows.length,matched,would_create:createSet.size,unmatched:unmatched.length,
+            dealers_in_file:ids.length,contacts_in_file:inFile("contacts"),addresses_in_file:inFile("addresses"),
+            replace, contacts_to_remove:replace?contactsOnFile:0, addresses_to_remove:replace?addressesOnFile:0}});
+        }
         if(createSet.size){
           const batch=[...createSet.values()].map(nm=>({business_name:nm,active:true,status:"prospect"}));
           try{
@@ -662,6 +672,13 @@ exports.handler = async (event)=>{
             created=batch.length;
             if(aliasRows.length) await sbSend("POST","dealer_aliases?on_conflict=alias_norm",aliasRows,{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{});
           }catch(e){ errors.push("create dealers: "+e.message); }
+        }
+
+        // Confirmed replace: clear ONLY the dealers named in this file, then load them fresh.
+        if(replace){
+          for(const part of chunk(fileIdsNow(),100)){ const inq=part.map(encodeURIComponent).join(",");
+            try{ await sbSend("DELETE",`dealer_contacts?dealer_id=in.(${inq})`,null,{Prefer:"return=minimal"}); }catch(e){ errors.push("clear contacts: "+e.message); }
+            try{ await sbSend("DELETE",`dealer_addresses?dealer_id=in.(${inq})`,null,{Prefer:"return=minimal"}); }catch(e){ errors.push("clear addresses: "+e.message); } }
         }
 
         // build de-duplicated bulk sets keyed by dealer
@@ -684,9 +701,11 @@ exports.handler = async (event)=>{
 
         const contactsArr=[...contactMap.values()], addrArr=[...addrMap.values()], lineArr=[...lineMap.values()];
         let contactsStored=0, addressesStored=0, ents=0;
-        for(const part of chunk(contactsArr,500)){ try{ await sbSend("POST","dealer_contacts?on_conflict=dealer_id,email",part,{Prefer:"resolution=merge-duplicates,return=minimal"}); contactsStored+=part.length; }catch(e){ errors.push("contacts: "+e.message); } }
-        for(const part of chunk(addrArr,500)){ try{ await sbSend("POST","dealer_addresses?on_conflict=dealer_id,addr_key",part,{Prefer:"resolution=merge-duplicates,return=minimal"}); addressesStored+=part.length; }catch(e){ errors.push("addresses: "+e.message); } }
-        for(const part of chunk(lineArr,500)){ try{ await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",part,{Prefer:"resolution=merge-duplicates,return=minimal"}); ents+=part.length; }catch(e){ errors.push("lines: "+e.message); } }
+        // Blank cells are dropped before each upsert, so they never erase a stored phone, title or
+        // account number (see _upsert.js).
+        { const r=await UP.upsertKeepingValues(sbSend,"dealer_contacts?on_conflict=dealer_id,email",contactsArr); contactsStored=r.written; r.errors.forEach(m=>errors.push("contacts: "+m)); }
+        { const r=await UP.upsertKeepingValues(sbSend,"dealer_addresses?on_conflict=dealer_id,addr_key",addrArr); addressesStored=r.written; r.errors.forEach(m=>errors.push("addresses: "+m)); }
+        { const r=await UP.upsertKeepingValues(sbSend,"dealer_manufacturers?on_conflict=dealer_id,manufacturer",lineArr); ents=r.written; r.errors.forEach(m=>errors.push("lines: "+m)); }
 
         // per-dealer: set contact/email/phone + promote the top-ranked (HQ) address
         const primaryByDealer=new Map();
@@ -698,7 +717,7 @@ exports.handler = async (event)=>{
           updates.push({id,patch}); }
         for(const part of chunk(updates,20)){ await Promise.all(part.map(u=> sbSend("PATCH","dealers?id=eq."+u.id,u.patch,{Prefer:"return=minimal"}).catch(e=>{ if(errors.length<8) errors.push("dealer update: "+e.message); }) )); }
 
-        return json(200,{ok:errors.length===0,result:{matched,created,updated:dealerUpd.size,entitlements:ents,contacts:contactsStored,addresses:addressesStored,unmatched,errors:errors.slice(0,6)}});
+        return json(200,{ok:errors.length===0,result:{matched,created,updated:dealerUpd.size,entitlements:ents,contacts:contactsStored,addresses:addressesStored,unmatched,replaced:replace?fileIdsNow().length:0,errors:errors.slice(0,6)}});
       }
       if(act==="approve_login"){
         if(!b.uid) return json(400,{error:"uid required"});

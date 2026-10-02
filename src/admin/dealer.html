@@ -352,7 +352,7 @@ async function saveCompany(){
   const d=DOBJ||{}; const g=id=>(($("#"+id)||{}).value||"").trim(); const m=$("#e_msg"); if(m)m.textContent="Saving…";
   const name=g("e_name")||d.name;
   await dapi({action:"edit",dealer_id:d.id,business_name:name,email:g("e_email"),phone:g("e_phone"),website:g("e_website"),address:g("e_address"),city:g("e_city"),state:g("e_state"),zip:g("e_zip")});
-  const rep=g("e_rep"); if(rep!==String(d.rep||"")) await dapi({action:"rep",dealer_name:name,rep_name:rep});
+  const rep=g("e_rep"); if(rep!==String(d.rep||"")) await dapi({action:"rep",dealer_id:d.id,dealer_name:name,rep_name:rep});
   load();
 }
 // ---- Contacts & account-number management ----

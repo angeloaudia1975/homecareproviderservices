@@ -23,6 +23,7 @@ const isPres=()=>!!(ME&&ME.role==="president");
 // Dealer Manager is an admin tool. Sales reps (and other non-admin roles) work in Dealer 360 & CRM.
 const ADMIN_ROLES={president:1,admin:1,owner:1};
 const isAdminRole=()=>!!(ME&&ADMIN_ROLES[String(ME.role||"").toLowerCase()]);
+const isRelations=()=>!!(ME&&String(ME.role||"").toLowerCase()==="relations");
 let DATA=null,TOKEN=HCPS.token(),TAB=(location.hash==="#logins"?"logins":"all"),SEL=new Set(),SELP=new Set(),DETAIL=null,SORT={key:"sales",dir:-1};
 // Deep-link: /admin/dealers.html?dealer=<id> opens that dealer's record directly
 // (used by the Map's "Open in Dealer Manager" link). Applied once, after data loads.
@@ -117,8 +118,10 @@ function sortDealers(list){
 }
 function render(){
   if(!DATA)return;
-  // Dealer Manager is admin-only. A rep who lands here (old link, bookmark) is sent to their workspace.
-  if(ME && !isAdminRole()){
+  // Dealer Manager: management, and a Relations Manager (Phase 0K — every dealer, no management
+  // powers; the merge / assignment / portal-login / import tools stay hidden and president-only on
+  // the server). A rep who lands here (old link, bookmark) is sent to their workspace.
+  if(ME && !isAdminRole() && !isRelations()){
     $("#body").innerHTML=`<div class="msg"><div class="card" style="max-width:520px;margin:24px auto;text-align:center">
       <div style="font-size:34px;margin-bottom:6px">🔒</div>
       <h2 style="margin:0 0 6px">Dealer Manager is admin-only</h2>
@@ -142,7 +145,7 @@ function render(){
   const pchg=(DATA.changeRequests||[]).length;
   const roleLbl=ME&&ME.role?(ME.role==='president'?'President':ME.role==='rep'?'Sales Rep':'Customer Relations'):"";
   const tabs=`<div class="tabs" style="display:flex;align-items:center;flex-wrap:wrap;gap:6px">
-    <button class="tab ${TAB==='all'?'on':''}" onclick="setTab('all')">${isPres()?'All dealers':'My dealers'}</button>
+    <button class="tab ${TAB==='all'?'on':''}" onclick="setTab('all')">${isPres()||isRelations()?'All dealers':'My dealers'}</button>
     ${isPres()?`
     <button class="tab ${TAB==='review'?'on':''}" onclick="setTab('review')">Review queue${rev?` (${rev})`:""}</button>
     <button class="tab ${TAB==='dupes'?'on':''}" onclick="setTab('dupes')">Suggested duplicates${dup?` (${dup})`:""}</button>
@@ -157,7 +160,7 @@ function render(){
   ({all:renderAll,review:renderReview,dupes:renderDupes,logins:renderLogins,changes:renderChanges,activity:renderActivity,import:renderImport}[TAB])();
 }
 function mergeBar(){
-  if(SEL.size<1) return "";
+  if(SEL.size<1 || !isPres()) return "";   // merging is the president's (server-enforced too)
   const names=[...SEL].map(id=>DATA.dealers.find(d=>d.id===id)?.name).filter(Boolean);
   const shown=names.slice(0,6).map(n=>esc(n)).join(" · ")+(names.length>6?` · +${names.length-6} more`:"");
   const action = SEL.size>=2
@@ -200,9 +203,9 @@ function renderAll(){
   const ds=filtered();
   const sortSel=Object.keys(SORTLBL).map(k=>`<option value="${k}" ${SORT.key===k?"selected":""}>${SORTLBL[k]}${SORT.key===k?(SORT.dir>0?" ▲":" ▼"):""}</option>`).join("");
   let h=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-      <h2 style="margin:0">All dealers <span class="hint" style="text-transform:none">(${ds.length} shown — tick 2+ (or “Select all”) then “Merge selected”, or click a dealer to manage)</span></h2>
+      <h2 style="margin:0">All dealers <span class="hint" style="text-transform:none">(${ds.length} shown — ${isPres()?"tick 2+ (or “Select all”) then “Merge selected”, or ":""}click a dealer to manage)</span></h2>
       <label class="hint" style="text-transform:none">Sort: <select onchange="setSort(this.value)">${sortSel}</select></label></div>
-    <div class="dtable"><table style="margin-top:8px"><thead><tr><th><input type="checkbox" ${allSelected()?"checked":""} onclick="toggleAll(this)" title="Select all shown"></th>
+    <div class="dtable"><table style="margin-top:8px"><thead><tr><th>${isPres()?`<input type="checkbox" ${allSelected()?"checked":""} onclick="toggleAll(this)" title="Select all shown">`:""}</th>
       <th class="link" onclick="setSort('name')" style="cursor:pointer">Dealer${sortArrow('name')}</th>
       <th>Address / email</th><th class="buys">Buys</th>
       <th class="num link" onclick="setSort('sales')" style="cursor:pointer">Sales${sortArrow('sales')}</th>
@@ -212,7 +215,7 @@ function renderAll(){
     const contact=`<div class="hint" style="text-transform:none;line-height:1.5">
         ${d.address?`${esc(d.address)}${loc?", "+esc(loc):""}`:(loc?`📍 ${esc(loc)}`:`<span class="chip rev">no address</span>`)}<br>
         ${d.email?`✉ <a href="mailto:${esc(d.email)}" style="color:var(--blue)">${esc(d.email)}</a>${emailStatus(d)}`:`<span class="chip rev">no email</span>`}${d.phone?` · ${esc(d.phone)}`:""}</div>`;
-    h+=`<tr class="drow" style="cursor:pointer" onclick="if(!event.target.closest('input,a,button,select,label'))openDetail('${d.id}')" title="Click to manage ${esc(d.name)}"><td><input type="checkbox" ${SEL.has(d.id)?"checked":""} onclick="toggleSel('${d.id}')"></td>
+    h+=`<tr class="drow" style="cursor:pointer" onclick="if(!event.target.closest('input,a,button,select,label'))openDetail('${d.id}')" title="Click to manage ${esc(d.name)}"><td>${isPres()?`<input type="checkbox" ${SEL.has(d.id)?"checked":""} onclick="toggleSel('${d.id}')">`:""}</td>
       <td class="lbl"><a class="link" style="cursor:pointer" onclick="openDetail('${d.id}')">${esc(d.name)}</a> ${d.status==="review"?`<span class="chip rev">review</span>`:""}${d.status==="prospect"?`<span class="chip al">prospect</span>`:""}
         ${d.aliases.filter(a=>a!==d.name).slice(0,3).map(a=>`<span class="chip al">${esc(a)}</span>`).join("")}
         ${(d.accounts&&d.accounts.length)?`<div class="hint" style="margin:2px 0 0">acct: ${d.accounts.slice(0,6).map(esc).join(", ")}</div>`:""}</td>
@@ -826,7 +829,7 @@ function importFromText(text,fname){
     return {company,address:addr,city:get(r,"City"),state:get(r,"State"),zip:get(r,"ZIP"),
       contact,email:(contacts[0]&&contacts[0].email)||get(r,"Contact Emails"),phone:get(r,"Office Phones"),lines,contacts,addresses};
   });
-  IMPORT={rows:out,create:true,replace:true,busy:false,result:null,fname};
+  IMPORT={rows:out,create:true,replace:false,busy:false,result:null,fname};
   render();
 }
 function onImportFile(inp){ const f=inp.files&&inp.files[0]; if(!f)return; const rd=new FileReader();
@@ -841,7 +844,21 @@ async function applyImport(){
   if(!IMPORT.rows||IMPORT.busy)return; IMPORT.busy=true; render();
   try{
     const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
-    const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify({action:"import_contacts",rows:IMPORT.rows,create:IMPORT.create,replace:IMPORT.replace!==false})});
+    const replace=IMPORT.replace===true;
+    // Replace is destructive: ask the server what it would remove (nothing is written by a
+    // preview), show it, and only send the replace once it's confirmed. Merge needs no preview.
+    if(replace){
+      const pr=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify({action:"import_contacts",rows:IMPORT.rows,create:IMPORT.create,replace:true,preview:true})});
+      const pj=await pr.json().catch(()=>({})); const p=pj.preview;
+      if(!p){ IMPORT.busy=false; IMPORT.result={topError:String(pj.error||"Couldn't preview the replace.")}; render(); return; }
+      const ok=confirm(`Replace contacts for the ${p.dealers_in_file} dealer${p.dealers_in_file===1?"":"s"} in this file?\n\n`+
+        `This removes ${p.contacts_to_remove} contact${p.contacts_to_remove===1?"":"s"} and ${p.addresses_to_remove} address${p.addresses_to_remove===1?"":"es"} on those dealers, `+
+        `then loads ${p.contacts_in_file} contact${p.contacts_in_file===1?"":"s"} and ${p.addresses_in_file} address${p.addresses_in_file===1?"":"es"} from the file.`+
+        (p.would_create?`\n${p.would_create} new dealer${p.would_create===1?"":"s"} will be created first.`:"")+
+        `\n\nDealers not in this file are not touched.`);
+      if(!ok){ IMPORT.busy=false; render(); return; }
+    }
+    const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify({action:"import_contacts",rows:IMPORT.rows,create:IMPORT.create,replace,confirm_replace:replace})});
     const j=await r.json().catch(()=>({}));
     IMPORT.result = j.result || {};
     if(j.error && j.result && j.result.message) IMPORT.result.topError=j.result.message;
@@ -907,7 +924,7 @@ function renderImport(){
     <label style="display:flex;gap:8px;align-items:center;margin:14px 0 6px;font-size:14px">
       <input type="checkbox" ${IMPORT.create?"checked":""} onchange="IMPORT.create=this.checked"> Create dealers for unmatched companies (recommended — loads all dealers)</label>
     <label style="display:flex;gap:8px;align-items:center;margin:2px 0 6px;font-size:14px">
-      <input type="checkbox" ${IMPORT.replace!==false?"checked":""} onchange="IMPORT.replace=this.checked"> Replace existing contacts &amp; addresses first (recommended — clean re-import onto the correct dealers)</label>
+      <input type="checkbox" ${IMPORT.replace===true?"checked":""} onchange="IMPORT.replace=this.checked"> Replace the contacts &amp; addresses of the dealers in this file (you'll see what will be removed first). Off = merge: adds and updates, never erases.</label>
     <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
       <button class="go orange" ${IMPORT.busy?"disabled":""} onclick="applyImport()">${IMPORT.busy?"Importing…":"Apply import"}</button>
       <button class="go blue sm" onclick="IMPORT={rows:null,create:true,busy:false,result:null,fname:''};render()">Choose a different file</button>

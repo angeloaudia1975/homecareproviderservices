@@ -28,7 +28,7 @@ async function whoami(event){
 // Robust trend sign from a value that may be a number ('12.4') or a word ('up'/'down').
 function trendSign(t){ const n=Number(t); if(Number.isFinite(n)&&String(t).trim()!=="") return n>0.5?1:(n<-0.5?-1:0); const s=String(t||"").toLowerCase(); if(/up|grow|rising|\+/.test(s))return 1; if(/down|declin|falling|-/.test(s))return -1; return 0; }
 
-const { dealerScope } = require("./_scope.js");
+const { dealerScope, ownerIndex } = require("./_scope.js");
 
 exports.handler = async (event)=>{
   try{
@@ -59,21 +59,27 @@ exports.handler = async (event)=>{
     ]);
     // Base excludes test dealers. Build the rep-view options (admins) from the assigned reps.
     dealers=(dealers||[]).filter(d=>!d.is_test);
+    // Owner of every dealer from the shared resolver (Phase 0D): dealers.rep_email first, then
+    // rep_name, then the legacy directory. Replaces the raw rep_name column for scoping and labels.
+    let OI=null; try{ OI=await ownerIndex(sbGet); }catch(e){}
+    if(OI) dealers=dealers.map(d=>({...d, rep_name:OI.repOf(d.id)||null}));
     const repOptions=[...new Set(dealers.map(d=>String(d.rep_name||"").trim()).filter(Boolean))].sort((a,z)=>a.localeCompare(z));
-    // Command Center 360 is assignment-accurate & role-specific. ONLY President/Admin/Owner see the
-    // whole network (and may pick a rep with the Territory-View selector, b.rep). EVERY other role —
-    // sales rep AND relations manager — sees ONLY the dealers the Admin Portal assigns to them
-    // (dealers.rep_name), matching the admin's own per-rep counts. This scoping lives HERE only;
-    // _scope.js is untouched, so a relations manager keeps full-territory reach in Dealer 360 etc.
+    // Command Center 360 scope (Phase 0K): management AND a Relations Manager see the whole network
+    // and may narrow it to one rep's book with the Territory-View selector (b.rep) — Relations works
+    // every dealer, exactly as in Dealer 360. A sales rep sees only their own book (shared resolver).
+    // Nothing here is commission or team pay; the unmatched-email review stays management's.
+    const RELATIONS=String(me.role||"").toLowerCase()==="relations";
+    if(RELATIONS) emUn=[];
     let idSet=null, repView="all";
-    if(ADMIN){
+    if(ADMIN || RELATIONS){
       const rv=String(b.rep||"").trim();
       if(rv && rv.toLowerCase()!=="all"){ repView=rv;
         idSet=new Set(dealers.filter(d=>String(d.rep_name||"").trim().toLowerCase()===rv.toLowerCase()).map(d=>d.id)); }
     } else {
-      const myRep=String(me.rep_name||me.name||"").trim().toLowerCase();
       repView=me.name||me.rep_name||"";
-      idSet=new Set(dealers.filter(d=>String(d.rep_name||"").trim().toLowerCase()===myRep).map(d=>d.id));
+      // Their own book from the shared resolver (owner by email, branch family included).
+      const sc=await dealerScope(me, sbGet, OI||undefined);
+      idSet=new Set([...(sc.ids||[])]);
     }
     if(idSet){ const keep=id=>idSet.has(id);
       dealers=dealers.filter(d=>keep(d.id));
@@ -102,7 +108,7 @@ exports.handler = async (event)=>{
 
     // ---- engagement: growth / decline / dormant ----
     const engRows=(eng||[]).map(e=>({ dealer_id:e.dealer_id, name:nameOf[e.dealer_id]||"(dealer)", state:stateOf[e.dealer_id]||"",
-      rep:e.rep_name||"Unassigned", status:e.status||"", score:Number(e.score)||0, churn:Number(e.churn_score)||0,
+      rep:(OI&&OI.repOf(e.dealer_id))||e.rep_name||"Unassigned", status:e.status||"", score:Number(e.score)||0, churn:Number(e.churn_score)||0,
       months_since:e.months_since==null?null:Number(e.months_since), recent:money(e.recent_sales), total:money(e.total_sales),
       sign:trendSign(e.trend) }));
     const buckets={growing:0,steady:0,declining:0,dormant:0};

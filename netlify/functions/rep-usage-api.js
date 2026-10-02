@@ -44,7 +44,9 @@ async function gather(days){
     safe(`rep_activity?occurred_at=gte.${since}&select=email,action,tool,dealer_id,occurred_at`, "occurred_at"),
     safe(`dealer_notes?created_at=gte.${since}&select=author_email,author_name,dealer_id,body,created_at`, "created_at"),
     safe(`dealer_activity?created_at=gte.${since}&select=actor,kind,subject,dealer_id,created_at`, "created_at"),
-    safe(`dealer_tasks?or=(created_at.gte.${since},done_at.gte.${since})&select=created_by,assigned_rep,title,status,dealer_id,done_at,created_at`, "created_at"),
+    // completed_by arrives with supabase/phase0_task_owner_email.sql; read without it until then.
+    sbGetAll(`dealer_tasks?or=(created_at.gte.${since},done_at.gte.${since})&select=created_by,assigned_rep,assigned_email,completed_by,title,status,dealer_id,done_at,created_at`, "created_at")
+      .catch(()=>safe(`dealer_tasks?or=(created_at.gte.${since},done_at.gte.${since})&select=created_by,assigned_rep,title,status,dealer_id,done_at,created_at`, "created_at")),
     safe(`dealer_visits?visited_at=gte.${since}&select=owner_email,rep_name,dealer_id,visited_at`, "visited_at"),
     safe(`rep_routes?created_at=gte.${since}&select=owner_email,rep_name,name,scheduled_date,stops,created_at`, "created_at"),
     safe(`opportunities?created_at=gte.${since}&select=created_by,owner_rep,title,dealer_id,created_at`, "created_at"),
@@ -71,8 +73,12 @@ function summarize(su, D){
 
   const notes=D.notes.filter(n=>lc(n.author_email)===k.email).length;
   const touches=D.activity.filter(a=>isMine(k, a.actor)).length;
-  const tasksCreated=D.tasks.filter(t=>isMine(k, t.created_by)).length;
-  const tasksDone=D.tasks.filter(t=>t.done_at && isMine(k, t.assigned_rep, t.created_by)).length;
+  const tasksCreated=D.tasks.filter(t=>t.created_at>=D.since && isMine(k, t.created_by)).length;
+  // Completed = marked DONE (not dismissed — the engine dismisses tasks whose signal went away),
+  // inside the window, and credited to whoever closed it; before completed_by existed, to the
+  // assignee. Creating a task and having the engine close it is not a completion. (Phase 0I)
+  const tasksDone=D.tasks.filter(t=>t.status==="done" && t.done_at && t.done_at>=D.since &&
+    (t.completed_by ? isMine(k, t.completed_by) : isMine(k, t.assigned_email, t.assigned_rep))).length;
   const visits=D.visits.filter(v=>isMine(k, v.owner_email, v.rep_name)).length;
   const routes=D.routes.filter(r=>isMine(k, r.owner_email, r.rep_name)).length;
   const opps=D.opps.filter(o=>isMine(k, o.created_by, o.owner_rep)).length;
@@ -119,7 +125,7 @@ exports.handler = async (event)=>{
       D.activity.filter(a=>isMine(k,a.actor)).forEach(a=>tl.push({at:a.created_at, kind:"touch", text:(a.kind||"touch")+(a.dealer_id?(" · "+dn(a.dealer_id)):""), detail:a.subject||""}));
       D.notes.filter(n=>lc(n.author_email)===k.email).forEach(n=>tl.push({at:n.created_at, kind:"note", text:"Note"+(n.dealer_id?(" · "+dn(n.dealer_id)):""), detail:(n.body||"").slice(0,80)}));
       D.tasks.filter(t=>isMine(k,t.created_by)).forEach(t=>tl.push({at:t.created_at, kind:"task", text:"Task created"+(t.dealer_id?(" · "+dn(t.dealer_id)):""), detail:t.title||""}));
-      D.tasks.filter(t=>t.done_at&&isMine(k,t.assigned_rep,t.created_by)).forEach(t=>tl.push({at:t.done_at, kind:"done", text:"Task completed"+(t.dealer_id?(" · "+dn(t.dealer_id)):""), detail:t.title||""}));
+      D.tasks.filter(t=>t.status==="done"&&t.done_at&&(t.completed_by?isMine(k,t.completed_by):isMine(k,t.assigned_email,t.assigned_rep))).forEach(t=>tl.push({at:t.done_at, kind:"done", text:"Task completed"+(t.dealer_id?(" · "+dn(t.dealer_id)):""), detail:t.title||""}));
       D.visits.filter(v=>isMine(k,v.owner_email,v.rep_name)).forEach(v=>tl.push({at:v.visited_at, kind:"visit", text:"Visit logged"+(v.dealer_id?(" · "+dn(v.dealer_id)):""), detail:""}));
       D.routes.filter(r=>isMine(k,r.owner_email,r.rep_name)).forEach(r=>tl.push({at:r.created_at, kind:"route", text:"Route: "+(r.name||"trip"), detail:((r.stops&&r.stops.length)||0)+" stops"+(r.scheduled_date?(" · "+dayKey(r.scheduled_date)):"")}));
       D.opps.filter(o=>isMine(k,o.created_by,o.owner_rep)).forEach(o=>tl.push({at:o.created_at, kind:"opp", text:"Opportunity"+(o.dealer_id?(" · "+dn(o.dealer_id)):""), detail:o.title||""}));

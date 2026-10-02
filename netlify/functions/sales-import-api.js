@@ -19,6 +19,7 @@ async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_U
 async function sbGetAll(base, orderCol="id"){ const PAGE=1000; let from=0,out=[]; for(;;){ const sep=base.includes("?")?"&":"?"; const rows=await sbGet(`${base}${sep}order=${orderCol}&limit=${PAGE}&offset=${from}`); out=out.concat(rows); if(rows.length<PAGE) break; from+=PAGE; } return out; }
 const orgAccounts=require("./_accountorg.js")(sbGet,sbSend);
 const { NAME_FIRST, NO_ACCOUNT_CAPTURE } = require("./_mfr_rules.js");
+const SC=require("./_scope.js");
 const clean=(v,n)=>{ const s=(v==null?"":String(v)).trim(); return s?s.slice(0,n||400):null; };
 const num=v=>{ if(v==null||v==="") return null; const n=Number(String(v).replace(/[$,\s]/g,"")); return Number.isFinite(n)?n:null; };
 const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
@@ -50,17 +51,15 @@ async function buildResolver(slug){
     sbGetAll("dealers?select=id,business_name,parent_id,city,zip","id").catch(()=>[]),
     sbGetAll(`dealer_manufacturers?manufacturer=eq.${encodeURIComponent(slug)}&select=dealer_id,account_ref`,"dealer_id").catch(()=>[]),
     sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]),
-    sbGetAll("dealer_directory?select=dealer_name,rep_name","dealer_name").catch(()=>[]),
+    SC.ownerIndex(sbGet).catch(()=>null),     // who owns each dealer (Phase 0D)
   ]);
   const byId=new Map(); for(const d of dealers) byId.set(d.id,d);
   const rootOf=id=>{ const d=byId.get(id); return (d&&d.parent_id)?d.parent_id:id; };
-  // rep assignment lives in dealer_directory (dealer_name -> rep_name); match by normalized name,
-  // and fall back to the family HQ's assignment for branches without their own directory row.
-  const repByName=new Map(); for(const x of (dir||[])){ if(x&&x.dealer_name){ const rn=String(x.rep_name||"").trim(); if(rn) repByName.set(dnorm(x.dealer_name), rn); } }
-  function repOf(id){ if(!id) return null; const d=byId.get(id); if(!d) return null;
-    let r=repByName.get(dnorm(d.business_name));
-    if(!r){ const rt=byId.get(rootOf(id)); if(rt) r=repByName.get(dnorm(rt.business_name)); }
-    return r||null; }
+  // The rep stamped on each imported sale is the dealer's owner from the shared resolver
+  // (dealers.rep_email, then rep_name, then the legacy directory), falling back to the family HQ's
+  // owner for a branch that has none of its own.
+  function repOf(id){ if(!id || !dir) return null; if(!byId.get(id)) return null;
+    return dir.repOf(id) || dir.repOf(rootOf(id)) || null; }
   const familyByRoot=new Map();
   for(const d of dealers){ const r=rootOf(d.id); (familyByRoot.get(r)||familyByRoot.set(r,[]).get(r)).push(d); }
   const refToIds=new Map(); for(const x of dms){ const k=String(x.account_ref||"").trim().toLowerCase(); if(!k) continue; (refToIds.get(k)||refToIds.set(k,[]).get(k)).push(x.dealer_id); }

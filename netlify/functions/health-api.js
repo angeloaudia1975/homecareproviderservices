@@ -5,6 +5,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const json=(c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H=()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
+const SC=require("./_scope.js");
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
 async function sbGetAll(base,orderCol="dealer_id"){ const PAGE=1000; let from=0,out=[]; for(;;){ const sep=base.includes("?")?"&":"?"; const rows=await sbGet(`${base}${sep}order=${orderCol}&limit=${PAGE}&offset=${from}`); out=out.concat(rows); if(rows.length<PAGE) break; from+=PAGE; } return out; }
 
@@ -42,7 +43,11 @@ exports.handler=async(event)=>{
     const role=String(me.role||"").toLowerCase();
     const seesAll=({president:1,admin:1,owner:1,relations:1})[role];
     // A rep with no book name sees nothing — a blank name used to match every unassigned dealer.
-    if(!seesAll){ const rn=String(me.rep_name||"").trim().toLowerCase(); rows=rows.filter(r=>!!rn && String(r.rep_name||"").trim().toLowerCase()===rn); }
+    // Owner and book from the shared resolver (Phase 0D): the live owner replaces the nightly
+    // cache's rep label, and a rep's rows are exactly their book (owner by email, family included).
+    let OI=null; try{ OI=await SC.ownerIndex(sbGet); }catch(e){}
+    if(OI) rows=rows.map(r=>({...r, rep_name:OI.repOf(r.dealer_id)||null}));
+    if(!seesAll){ const sc=await SC.dealerScope(me, sbGet, OI||undefined); rows=rows.filter(r=>!!(sc.ids && sc.ids.has(String(r.dealer_id)))); }
     // summary
     const tiers={healthy:0,watch:0,at_risk:0,dormant:0,new:0};
     let scoreSum=0, atRiskRev=0;

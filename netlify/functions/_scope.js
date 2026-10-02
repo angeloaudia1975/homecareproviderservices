@@ -2,18 +2,27 @@
 // member see". Keeps the Sales Rep Portal's access rules consistent across every endpoint.
 //
 //   president / admin / owner -> ALL dealers, ALL commissions, full team reporting (management)
-//   relations  -> ALL dealers (a Relations Manager works the whole territory operationally —
-//                 accounts, notes, tasks, health, map), BUT only their OWN commissions, and NO
-//                 team-performance leaderboard. Ranking + pay stay private; management-only.
-//   rep        -> ONLY their assigned dealers (dealer_directory.rep_name === their rep_name),
-//                 and only their OWN commissions
+//   relations  -> ALL dealers, NO management powers (policy approved 2026-10-02, Phase 0K).
+//                 HAS: Dealer 360 for every dealer (notes, contacts, tasks, timeline, dealer email),
+//                 routes they own, visit actions, opportunities/pipeline, company-wide dealer
+//                 analytics, Command Center 360, Dealer Manager (non-structural), marketing tools
+//                 (Audiences, Campaign Studio, CardChamp).
+//                 DOES NOT HAVE: user management, View-as, Go Live / platform mode, app settings,
+//                 secrets or integration credentials, engine configuration, sales or commission
+//                 import, team performance or anyone else's pay — OWN performance and commission only.
+//   rep        -> ONLY the dealers they own, and only their OWN commissions
 //
 // Two tiers: seesAllDealers (operational reach = management + relations) is separate from isAdmin
 // / seesAllCommissions (team performance + pay = management only). Keep them distinct.
 //
-// Dealer assignment is read from dealer_directory (dealer_name -> rep_name), matched to dealers by
-// the same dnorm() the rest of the app uses, and extended across a dealer family (an owned HQ's
-// branches, and the HQ of an owned branch). Pass the calling function's own `sbGet`.
+// WHO OWNS A DEALER (Phase 0D). One answer, in this order:
+//   1. dealers.rep_email — the authoritative owner, the same email the rep signs in with.
+//   2. dealers.rep_name  — only when rep_email is empty (names that match no staff user, e.g. House).
+//   3. dealer_directory  — the legacy name-keyed list, only when the dealer row names nobody.
+// A dealer family stays together (an owned HQ's branches, the HQ of an owned branch), except that a
+// branch or HQ explicitly owned by someone else keeps its own owner. Every endpoint asks here —
+// ownerIndex() for "who owns this dealer", dealerScope() for "which dealers may this user work" —
+// and every owner change goes through setDealerOwner(). Pass the calling function's own sbGet/sbSend.
 
 const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
 function dnorm(n){ return String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim(); }
@@ -27,42 +36,155 @@ function seesAllDealers(me){ return isAdmin(me) || roleOf(me)==="relations"; }
 // Commissions/pay stay management-only — a Relations Manager sees only their own.
 function seesAllCommissions(me){ return isAdmin(me); }
 
+const low=s=>String(s==null?"":s).trim().toLowerCase();
+
+// Read every row, 1000 at a time. The Data API returns at most 1000 rows per request no matter
+// what limit is asked for, so a single read silently stops at 1000. `path` must not carry its own
+// order/limit/offset.
+async function getAll(sbGet, path, orderCol){
+  const PAGE=1000, sep=path.includes("?")?"&":"?"; let out=[];
+  for(let off=0; off<500000; off+=PAGE){
+    const rows=await sbGet(`${path}${sep}order=${orderCol||"id"}&limit=${PAGE}&offset=${off}`);
+    if(!Array.isArray(rows)) break; out=out.concat(rows); if(rows.length<PAGE) break;
+  }
+  return out;
+}
+
+// Dealer rows with their owner columns, tolerating a database that predates rep_email / rep_name.
+async function loadDealers(sbGet){
+  for(const cols of ["id,business_name,parent_id,rep_name,rep_email","id,business_name,parent_id,rep_name","id,business_name,parent_id"]){
+    try{ return await getAll(sbGet, `dealers?select=${cols}`, "id"); }catch(e){}
+  }
+  return [];
+}
+
+/* Who owns each dealer. Returns
+     byId     Map(dealer id -> { id, name, parent_id, email, rep, source, explicit })
+                email    the owner's sign-in email ("" if none). Stored rep_email, else the email of
+                         the staff member whose rep name matches.
+                rep      the owner's display name ("" if none) — the staff member's rep name for a
+                         stored email, else dealers.rep_name, else the directory's name.
+                source   "email" | "name" | "directory" | ""
+                explicit true when the dealer row itself names an owner (email or name)
+     repByName {business or sales name -> rep}: the directory for names that match no dealer (raw
+               sales customer names), overridden by every dealer's real owner. A drop-in for the
+               old `repByName` maps built from dealer_directory.
+     repOf(id), emailOf(id), staff */
+async function ownerIndex(sbGet){
+  const [dealers, dir, staff]=await Promise.all([
+    loadDealers(sbGet),
+    getAll(sbGet, "dealer_directory?select=dealer_name,rep_name", "dealer_name").catch(()=>[]),
+    sbGet("staff_users?select=email,name,rep_name,active").catch(()=>[]),
+  ]);
+  const repByEmail={}, emailByRep={};
+  for(const s of (staff||[])){ const e=low(s.email); if(!e) continue; const rn=String(s.rep_name||s.name||"").trim();
+    repByEmail[e]=rn; const k=low(s.rep_name); if(k) emailByRep[k]=(k in emailByRep && emailByRep[k]!==e)?"":e; }   // ambiguous name -> no email
+  const dirExact={}, dirNorm={};
+  for(const x of (dir||[])){ const r=String(x.rep_name||"").trim(); if(!r||!x.dealer_name) continue;
+    dirExact[x.dealer_name]=r; const k=dnorm(x.dealer_name); (dirNorm[k]=dirNorm[k]||new Set()).add(r); }
+  const byId=new Map();
+  for(const d of (dealers||[])){
+    const storedEmail=low(d.rep_email), storedRep=String(d.rep_name||"").trim();
+    let email="", rep="", source="";
+    if(storedEmail){ email=storedEmail; rep=repByEmail[storedEmail]||storedRep; source="email"; }
+    else if(storedRep){ rep=storedRep; email=emailByRep[low(storedRep)]||""; source="name"; }
+    else {
+      const ex=dirExact[d.business_name]; const ns=dirNorm[dnorm(d.business_name)];
+      const r=ex || (ns && ns.size===1 ? [...ns][0] : "");
+      if(r){ rep=r; email=emailByRep[low(r)]||""; source="directory"; }
+    }
+    byId.set(String(d.id), { id:d.id, name:d.business_name||"", parent_id:d.parent_id||null, email, rep, source,
+      explicit:!!(storedEmail||storedRep), storedEmail, storedRep, dirReps:dirNorm[dnorm(d.business_name)]||null });
+  }
+  const repByName=Object.assign({}, dirExact);
+  for(const o of byId.values()){ if(!o.name) continue; if(o.rep) repByName[o.name]=o.rep; else delete repByName[o.name]; }
+  return { byId, repByName, staff:staff||[], dealers:dealers||[],
+    repOf:id=>((byId.get(String(id))||{}).rep||""), emailOf:id=>((byId.get(String(id))||{}).email||"") };
+}
+
+// Does this dealer belong directly (not through its family) to this staff member?
+function ownsDirectly(o, myEmail, myRep){
+  if(!o) return false;
+  if(o.storedEmail) return !!myEmail && o.storedEmail===myEmail;            // the authoritative owner
+  if(o.storedRep)   return !!myRep && low(o.storedRep)===myRep;              // a name with no email yet
+  // Legacy directory: any directory row for this dealer's name naming the rep (old rule).
+  return !!myRep && !!o.dirReps && [...o.dirReps].some(r=>low(r)===myRep);
+}
+
 // Resolve the caller's dealer scope. Returns { isAll, ids:Set<id>|null, repName }.
 // isAll === true  -> no filtering (president / relations).
 // isAll === false -> `ids` is the exact set of dealer_ids the rep may see (may be empty).
-async function dealerScope(me, sbGet){
+async function dealerScope(me, sbGet, idx){
   const repName=String((me&&me.rep_name)||"").trim();
   if(seesAllDealers(me)) return { isAll:true, ids:null, repName };
   const ids=new Set();
-  if(repName){
-    try{
-      // rep_name is now stored directly on the dealer (the durable source of truth). Load it tolerantly:
-      // if the column isn't present yet, fall back to matching the legacy name-keyed directory.
-      let dealers;
-      try{ dealers=await sbGet("dealers?select=id,business_name,parent_id,rep_name&limit=100000"); }
-      catch(e){ dealers=await sbGet("dealers?select=id,business_name,parent_id&limit=100000"); }
-      const rn=repName.toLowerCase();
-      // Primary: the explicit assignment stored on the dealer.
-      const explicit=new Map(); // id -> lowercased assigned rep (blank if none)
-      for(const d of (dealers||[])){
-        const er=String(d.rep_name||"").trim().toLowerCase();
-        explicit.set(d.id, er);
-        if(er===rn) ids.add(d.id);
-      }
-      // Back-compat: honor the legacy directory for any dealer that has no stored rep yet.
-      try{
-        const dir=await sbGet("dealer_directory?select=dealer_name,rep_name&limit=100000");
-        const mine=new Set();
-        for(const x of (dir||[])){ if(String(x.rep_name||"").trim().toLowerCase()===rn) mine.add(dnorm(x.dealer_name)); }
-        for(const d of (dealers||[])){ if(!explicit.get(d.id) && mine.has(dnorm(d.business_name))) ids.add(d.id); }
-      }catch(e){}
-      // Keep a dealer family together — but never pull in a member explicitly assigned to a DIFFERENT rep
-      // (branches are assigned independently, so an explicit assignment always wins).
-      for(const d of (dealers||[])){ const er=explicit.get(d.id)||""; if(d.parent_id && ids.has(d.parent_id) && (er===""||er===rn)) ids.add(d.id); }
-      for(const d of (dealers||[])){ if(d.parent_id && ids.has(d.id)){ const per=explicit.get(d.parent_id)||""; if(per===""||per===rn) ids.add(d.parent_id); } }
-    }catch(e){}
-  }
+  const myEmail=low(me&&me.email), myRep=low(repName);
+  if(!myEmail && !myRep) return { isAll:false, ids, repName };
+  try{
+    const index=idx||await ownerIndex(sbGet);
+    for(const o of index.byId.values()) if(ownsDirectly(o, myEmail, myRep)) ids.add(String(o.id));
+    // Keep a dealer family together — but never pull in a member explicitly owned by someone else
+    // (branches are assigned independently, so an explicit assignment always wins).
+    const mineOrOpen=o=>!o.explicit || ownsDirectly(o, myEmail, myRep);
+    for(const o of index.byId.values()) if(o.parent_id && ids.has(String(o.parent_id)) && mineOrOpen(o)) ids.add(String(o.id));
+    for(const o of index.byId.values()) if(o.parent_id && ids.has(String(o.id))){ const p=index.byId.get(String(o.parent_id)); if(p && mineOrOpen(p)) ids.add(String(p.id)); }
+  }catch(e){}
   return { isAll:false, ids, repName };
+}
+
+/* The ONE way to change who owns dealers. Writes dealers.rep_email + dealers.rep_name and the legacy
+   dealer_directory together, so no reader can disagree, then hands the dealers' open work to the new
+   owner: open tasks and open opportunities that were the previous owner's (or nobody's) move with
+   the dealer. Work assigned to a third person stays with them. Clearing the owner moves nothing.
+     deps = { sbGet, sbSend }  (the calling function's own helpers; sbSend(method, path, body, headers))
+   Returns { ok, updated, rep, email, moved:{ tasks, opportunities } }. */
+async function setDealerOwner(dealerIds, repName, deps){
+  const { sbGet, sbSend }=deps;
+  const ids=[...new Set((dealerIds||[]).map(x=>String(x==null?"":x).trim()).filter(Boolean))];
+  const rep=String(repName==null?"":repName).trim()||null;
+  const idx=await ownerIndex(sbGet);
+  let email=null;
+  if(rep){ const matches=(idx.staff||[]).filter(s=>s.email && low(s.rep_name)===low(rep)); if(matches.length===1) email=low(matches[0].email); }
+  const before=ids.map(id=>idx.byId.get(id)).filter(Boolean);
+  const enc=a=>a.map(encodeURIComponent).join(",");
+  for(let i=0;i<ids.length;i+=100){
+    const chunk=enc(ids.slice(i,i+100));
+    try{ await sbSend("PATCH",`dealers?id=in.(${chunk})`,{rep_name:rep,rep_email:email},{Prefer:"return=minimal"}); }
+    catch(e){ if(!/PGRST204|rep_email/.test(String(e&&e.message||e))) throw e;           // column not added yet
+      await sbSend("PATCH",`dealers?id=in.(${chunk})`,{rep_name:rep},{Prefer:"return=minimal"}); }
+  }
+  const now=new Date().toISOString();
+  const dirRows=before.filter(o=>o.name).map(o=>({dealer_name:o.name,rep_name:rep,updated_at:now}));
+  if(dirRows.length) await sbSend("POST","dealer_directory",dirRows,{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{});
+  const moved={tasks:0,opportunities:0};
+  if(rep){
+    const byPrev=new Map();   // previous owner's name -> dealer ids
+    for(const o of before){ const p=o.rep||""; if(low(p)===low(rep)) continue; if(!byPrev.has(p)) byPrev.set(p,[]); byPrev.get(p).push(String(o.id)); }
+    const move=async(table, col, chunk, prev, body)=>{
+      const who=prev?`${col}=eq.${encodeURIComponent(prev)}`:`${col}=is.null`;
+      const r=await sbSend("PATCH",`${table}?dealer_id=in.(${chunk})&status=eq.open&${who}&select=id`,body,{Prefer:"return=representation"}).catch(()=>null);
+      return Array.isArray(r)?r.length:0;
+    };
+    for(const [prev, dids] of byPrev){
+      for(let i=0;i<dids.length;i+=100){
+        const chunk=enc(dids.slice(i,i+100));
+        for(const p of (prev?[prev,""]:[""])){            // the previous owner's, and nobody's
+          moved.tasks+=await move("dealer_tasks","assigned_rep",chunk,p,{assigned_rep:rep});
+          moved.opportunities+=await move("opportunities","owner_rep",chunk,p,{owner_rep:rep});
+        }
+      }
+    }
+  }
+  return { ok:true, updated:ids.length, rep, email, moved };
+}
+
+// Find a dealer by its name (exact first, then the shared normalisation when exactly one matches).
+async function dealerIdByName(name, sbGet, idx){
+  const nm=String(name||"").trim(); if(!nm) return null;
+  const index=idx||await ownerIndex(sbGet);
+  let exact=null; const norm=[]; const k=dnorm(nm);
+  for(const o of index.byId.values()){ if(o.name===nm){ exact=String(o.id); break; } if(dnorm(o.name)===k) norm.push(String(o.id)); }
+  return exact || (norm.length===1 ? norm[0] : null);
 }
 
 /* ── Record-level authorization (Phase 0) ─────────────────────────────────────────────
@@ -93,7 +215,14 @@ async function authorizeRecord(me, table, id, sbGet, opts){
   const rid=String(id==null?"":id).trim(); if(!rid) return {ok:false,status:400,error:"id required"};
   const cols=[...new Set(["id","dealer_id"].concat(opts.ownerFields||[], opts.select||[]))];
   let rows; try{ rows=await sbGet(`${table}?id=eq.${encodeURIComponent(rid)}&select=${cols.join(",")}&limit=1`); }
-  catch(e){ return {ok:false,status:500,error:"lookup failed"}; }
+  catch(e){
+    // opts.optional: owner columns a database may not have yet (e.g. dealer_tasks.assigned_email
+    // before supabase/phase0_task_owner_email.sql) — ask again without them.
+    const opt=new Set(opts.optional||[]); const base=cols.filter(c=>!opt.has(c));
+    if(base.length===cols.length) return {ok:false,status:500,error:"lookup failed"};
+    try{ rows=await sbGet(`${table}?id=eq.${encodeURIComponent(rid)}&select=${base.join(",")}&limit=1`); }
+    catch(e2){ return {ok:false,status:500,error:"lookup failed"}; }
+  }
   const row=rows&&rows[0]; if(!row) return {ok:false,status:404,error:"not found"};
   if(opts.dealerId!=null && String(row.dealer_id==null?"":row.dealer_id)!==String(opts.dealerId))
     return {ok:false,status:403,error:"That record doesn't belong to this dealer."};
@@ -108,4 +237,5 @@ async function authorizeRecord(me, table, id, sbGet, opts){
 }
 
 module.exports = { dnorm, roleOf, isAdmin, seesAllDealers, seesAllCommissions, dealerScope,
-                   dealersOutsideScope, canAccessDealer, authorizeRecord };
+                   dealersOutsideScope, canAccessDealer, authorizeRecord,
+                   getAll, ownerIndex, setDealerOwner, dealerIdByName };

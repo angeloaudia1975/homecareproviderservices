@@ -9,6 +9,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
+const SC = require("./_scope.js");
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
 async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); const t=await r.text(); return t?JSON.parse(t):null; }
 const clean=(v,n)=>{ const s=(v==null?"":String(v)).trim(); return s?s.slice(0,n||500):null; };
@@ -44,19 +45,19 @@ exports.handler = async (event)=>{
     catch(e){ return json(200,{ok:false,error:"tables_missing",message:"No orders table yet — it's created the first time a dealer submits an order on the portal."}); }
 
     if(b.action==="list"){
-      const [orders,dealers,dir,mfrs]=await Promise.all([
+      const [orders,dealers,OI,mfrs]=await Promise.all([
         sbGet("orders?select=id,dealer_id,hcps_account,manufacturer,status,po_number,notes,admin_notes,tracking_number,subtotal,submitted_at,updated_at,ship_name,ship_address,ship_city,ship_state,ship_zip,contact_name,contact_email,contact_phone,order_items(code,name,qty,unit_price,line_total)&order=submitted_at.desc&limit=500").catch(()=>[]),
         sbGet("dealers?select=id,business_name").catch(()=>[]),
-        sbGet("dealer_directory?select=dealer_name,rep_name").catch(()=>[]),
+        SC.ownerIndex(sbGet).catch(()=>null),           // who owns each dealer (Phase 0D)
         sbGet("manufacturers?select=slug,name").catch(()=>[]),
       ]);
       const nameById={}; for(const d of dealers) nameById[d.id]=d.business_name;
-      const repByName={}; for(const x of dir) repByName[x.dealer_name]=x.rep_name||"";
+      const repByName=(OI&&OI.repByName)||{};
       const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
       let list=(orders||[]).map(o=>{
         const dealer=nameById[o.dealer_id]||o.ship_name||"(unknown)";
         return {
-          id:o.id, dealer_id:o.dealer_id, dealer, rep:repByName[dealer]||"",
+          id:o.id, dealer_id:o.dealer_id, dealer, rep:(OI&&o.dealer_id&&OI.repOf(o.dealer_id))||repByName[dealer]||"",
           manufacturer:mfrName[o.manufacturer]||o.manufacturer||"—",
           status:o.status||"submitted", po:o.po_number||"", notes:o.notes||"", admin_notes:o.admin_notes||"",
           tracking:o.tracking_number||"", subtotal:num(o.subtotal), submitted_at:o.submitted_at, updated_at:o.updated_at,
@@ -69,7 +70,7 @@ exports.handler = async (event)=>{
       // reps see only their book
       // A rep sees only his book — and a rep with no book name sees nothing (a blank name used
       // to skip this filter and show every dealer's orders).
-      if(!manage){ const rn=String(me.rep_name||"").trim().toLowerCase(); list=rn?list.filter(o=>String(o.rep||"").toLowerCase()===rn):[]; }
+      if(!manage){ const sc=await SC.dealerScope(me, sbGet, OI||undefined); list=list.filter(o=>!!(o.dealer_id && sc.ids && sc.ids.has(String(o.dealer_id)))); }
       const stats={}; for(const s of STATUSES) stats[s]=0; for(const o of list) stats[o.status]=(stats[o.status]||0)+1;
       return json(200,{ok:true,orders:list,stats,role:me.role,manage});
     }

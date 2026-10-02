@@ -2,6 +2,7 @@
 // and per-rep digests ("call these first"). Data from dealer_engagement + monthly_sales +
 // dealer_tasks + rep_targets. Sends via Resend. Gated by automation_config.reports_enabled.
 const engine=require("./_engine");
+const SC=require("./_scope.js");
 const SUPABASE_URL=process.env.SUPABASE_URL, SERVICE_ROLE=process.env.SUPABASE_SERVICE_ROLE;
 const H=()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 async function sbGet(p){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${p}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
@@ -21,7 +22,7 @@ async function sendMail({to,subject,html,text}){ const key=process.env.RESEND_AP
 async function gather(){
   const [dealers,dir,eng,tasks,targets,sales,staff]=await Promise.all([
     sbGetAll("dealers?select=id,business_name"),
-    sbGet("dealer_directory?select=dealer_name,rep_name").catch(()=>[]),
+    SC.ownerIndex(sbGet).then(o=>o.repByName).catch(()=>({})),   // dealer name -> real owner (Phase 0D)
     sbGet("dealer_engagement?select=dealer_id,rep_name,status,score,churn_score,months_since,last_period,total_sales,recent_sales,trend").catch(()=>[]),
     sbGet("dealer_tasks?status=eq.open&select=assigned_rep").catch(()=>[]),
     sbGet("rep_targets?select=rep_name,year,target").catch(()=>[]),
@@ -29,7 +30,7 @@ async function gather(){
     sbGet("staff_users?select=name,email,role,rep_name,active").catch(()=>[]),
   ]);
   const nameById={}; for(const d of dealers) nameById[d.id]=d.business_name;
-  const repByName={}; for(const x of dir) repByName[x.dealer_name]=x.rep_name||"";
+  const repByName=dir||{};
   // per-rep sales
   const byRepMonth={}; const periods=new Set();
   for(const r of sales){ const nm=nameById[r.dealer_id]|| (r.customer_name||"").trim(); const rep=(nm&&repByName[nm])||r.rep_name||"Unassigned"; const p=ym(r.period); if(!p)continue; periods.add(p); (byRepMonth[rep]=byRepMonth[rep]||{})[p]=(byRepMonth[rep][p]||0)+(Number(r.amount)||0); }

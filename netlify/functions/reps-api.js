@@ -8,6 +8,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const json=(c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H=()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
+const SC=require("./_scope.js");
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
 async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); const t=await r.text(); return t?JSON.parse(t):null; }
 async function sbGetAll(base,orderCol="id"){ const PAGE=1000; let from=0,out=[]; for(;;){ const sep=base.includes("?")?"&":"?"; const rows=await sbGet(`${base}${sep}order=${orderCol}&limit=${PAGE}&offset=${from}`); out=out.concat(rows); if(rows.length<PAGE) break; from+=PAGE; } return out; }
@@ -85,14 +86,14 @@ exports.handler=async(event)=>{
     const [dealers,aliases,dir,eng,tasks,targets]=await Promise.all([
       sbGetAll("dealers?select=id,business_name,parent_id"),
       sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]),
-      sbGet("dealer_directory?select=dealer_name,rep_name").catch(()=>[]),
+      SC.ownerIndex(sbGet).then(o=>o.repByName).catch(()=>({})),   // dealer name -> real owner (Phase 0D)
       sbGet("dealer_engagement?select=rep_name,status,score,total_sales,recent_sales").catch(()=>[]),
       sbGet("dealer_tasks?status=eq.open&select=assigned_rep").catch(()=>[]),
       sbGet("rep_targets?select=rep_name,year,target").catch(()=>[]),
     ]);
     const nameById={}; for(const d of dealers) nameById[d.id]=d.business_name;
     const idByAlias={}; for(const a of aliases) idByAlias[a.alias_norm]=a.dealer_id;
-    const repByName={}; for(const x of dir) repByName[x.dealer_name]=x.rep_name||"";
+    const repByName=dir||{};
     const canon=r=>{ if(r.dealer_id&&nameById[r.dealer_id])return nameById[r.dealer_id]; const id=idByAlias[dnorm(r.customer_name)]; return (id&&nameById[id])?nameById[id]:((r.customer_name||"").trim()||null); };
     const rows=await sbGetAll("monthly_sales?select=dealer_id,period,customer_name,rep_name,amount");
     // per-rep monthly sales

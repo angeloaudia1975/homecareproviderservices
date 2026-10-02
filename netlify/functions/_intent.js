@@ -16,6 +16,7 @@ async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_U
 async function sbGetAll(base, orderCol="id"){ const PAGE=1000; let from=0,out=[]; for(;;){ const sep=base.includes("?")?"&":"?"; const rows=await sbGet(`${base}${sep}order=${orderCol}&limit=${PAGE}&offset=${from}`); out=out.concat(rows); if(rows.length<PAGE) break; from+=PAGE; } return out; }
 
 const P=require("./_platform.js");
+const SC=require("./_scope.js");
 
 // ---- helpers (mirrors _engine.js so behavior matches) -----------------------
 const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
@@ -234,11 +235,11 @@ async function syncIntentTasks(){
     sbGet(`dealer_intent?score_total=gte.${th}&select=dealer_id,score_total,by_manufacturer,top_manufacturer,top_product,last_event_at`).catch(()=>[]),
     sbGetAll("dealers?select=id,business_name"),
     sbGet("manufacturers?select=slug,name").catch(()=>[]),
-    sbGet("dealer_directory?select=dealer_name,rep_name").catch(()=>[]),
+    SC.ownerIndex(sbGet).then(o=>o.repByName).catch(()=>({})),   // dealer name -> real owner (Phase 0D)
   ]);
   const nameById={}; for(const d of dealers) nameById[d.id]=d.business_name;
   const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
-  const repByName={}; for(const x of dir) repByName[x.dealer_name]=x.rep_name||"";
+  const repByName=dir||{};
   // enrich with months-since-last-order for the hot line (for the evidence line)
   const ids=(hot||[]).map(h=>h.dealer_id);
   let lineMs={}; // dealer -> { slug -> months_since }
@@ -264,7 +265,7 @@ async function syncIntentTasks(){
     toCreate.push({dealer_id:id,title:f.title,detail:f.detail,priority:f.priority,source:"intent",reason:"intent",assigned_rep:f.rep||null,created_by:"Intent engine",status:"open",env:P.envFor(st.mode,false)}); }
   let created=0; for(let i=0;i<toCreate.length;i+=200){ const part=toCreate.slice(i,i+200); try{ await sbSend("POST","dealer_tasks",part,{Prefer:"return=minimal"}); created+=part.length; }catch(e){} }
   // retire open intent tasks whose dealer is no longer opportunity-tier
-  let closed=0; for(const t of (existing||[])){ if(!desired.has(t.dealer_id)){ try{ await sbSend("PATCH",`dealer_tasks?id=eq.${encodeURIComponent(t.id)}`,{status:"dismissed",done_at:new Date().toISOString()},{Prefer:"return=minimal"}); closed++; }catch(e){} } }
+  let closed=0; for(const t of (existing||[])){ if(!desired.has(t.dealer_id)){ try{ await require("./_upsert.js").sendTolerant(sbSend,"PATCH",`dealer_tasks?id=eq.${encodeURIComponent(t.id)}`,{status:"dismissed",done_at:new Date().toISOString(),completed_by:"system"},["completed_by"]); /* completed_by: the engine, not a rep (Phase 0I) */ closed++; }catch(e){} } }
   return {opportunity:desired.size,created,dismissed:closed};
 }
 
@@ -388,12 +389,12 @@ async function enqueueReengagement(){
     sbGet("email_optout?select=email").catch(()=>[]),
     sbGet("email_queue?status=eq.queued&template=eq.reengage&select=dealer_id").catch(()=>[]),
     sbGetAll("dealers?select=id,business_name,email"),
-    sbGet("dealer_directory?select=dealer_name,rep_name").catch(()=>[]),
+    SC.ownerIndex(sbGet).then(o=>o.repByName).catch(()=>({})),   // dealer name -> real owner (Phase 0D)
   ]);
   const opted=new Set((optRows||[]).map(r=>String(r.email||"").toLowerCase()));
   const live=new Set((liveRows||[]).map(r=>r.dealer_id));
   const nameById={},emailById={}; for(const d of dealers){ nameById[d.id]=d.business_name; emailById[d.id]=d.email||null; }
-  const repBy={}; for(const x of (dir||[])) repBy[x.dealer_name]=x.rep_name||"";
+  const repBy=dir||{};
   const insert=[]; const flagTasks=[]; let considered=0;
   for(const id of candidates){ considered++;
     if(re30.has(id)||live.has(id)) continue;                        // 1 per 30d

@@ -819,7 +819,7 @@ async function insights(me){
     by_angle: tally(rows, r=>r.angle),
     by_manufacturer: tally(rows, r=>r.manufacturer),
     by_hour: tally(rows, r=>r.call_hour==null?null:String(r.call_hour).padStart(2,"0")+":00"),
-    by_rep: seesAllDealers(me) ? tally(rows, r=>r.rep_name) : [],
+    by_rep: isAdmin(me) ? tally(rows, r=>r.rep_name) : [],   // rep-by-rep results are team performance: management only (0K)
   });
 }
 

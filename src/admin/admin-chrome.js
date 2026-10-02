@@ -196,6 +196,19 @@
     { href:"/admin/pipeline.html",           label:"Pipeline" },
     { href:"/admin/tasks.html",              label:"My Tasks" }
   ];
+  // A Relations Manager works EVERY dealer and runs the marketing tools — with no management powers
+  // (no users, View-as, Go Live, settings, credentials, imports or team pay). Phase 0K. The server
+  // enforces all of this; the menu only shows what the role can use.
+  var RELATIONS_TOOLS = [
+    { href:"/admin/dealers.html",   label:"Dealer Manager" },
+    { href:"/admin/audiences.html", label:"Audiences" },
+    { href:"/admin/campaigns.html", label:"Campaign Studio" },
+    { href:"/admin/cardchamp.html", label:"CardChamp" }
+  ];
+  // A non-admin's home: their landing from the server (profile.landing, Phase 0L) when it is a
+  // same-site /admin/ page, else the rep workspace home (today's rule).
+  function homeFor(me){ var u=me&&me.landing; return (typeof u==="string"&&/^\/admin\/[A-Za-z0-9._\/-]*$/.test(u)&&u.indexOf("..")<0&&u!=="/admin/")?u:"/admin/rep-home.html"; }
+  function workspaceTools(me){ return String((me&&me.role)||"").toLowerCase()==="relations" ? REP_TOOLS.concat(RELATIONS_TOOLS) : REP_TOOLS; }
   var ADMIN_ROLES = { president:1, admin:1, owner:1 };
   function isAdmin(me){ return !!(me && ADMIN_ROLES[String((me&&me.role)||"").toLowerCase()]); }
 
@@ -480,7 +493,7 @@
       }
     } else {
       // Focused rep workspace — one clean row of the rep's tools, active one highlighted.
-      tier1 = REP_TOOLS.map(function(t){ var on = samePage(t.href,path); return '<a href="'+t.href+'"'+(on?' class="on"':'')+'>'+esc(t.label)+'</a>'; }).join("");
+      tier1 = workspaceTools(me).map(function(t){ var on = samePage(t.href,path); return '<a href="'+t.href+'"'+(on?' class="on"':'')+'>'+esc(t.label)+'</a>'; }).join("");
     }
 
     // While viewing as a rep, a persistent banner sits above the masthead on every page.
@@ -496,7 +509,7 @@
     host.innerHTML =
       banner
       + '<div class="ac-wrap ac-top">'
-        + '<a class="ac-brand" href="'+(admin?'/admin/':'/admin/rep-home.html')+'"><span class="ac-mark">H</span>'
+        + '<a class="ac-brand" href="'+(admin?'/admin/':homeFor(me))+'"><span class="ac-mark">H</span>'
         + '<span class="ac-bt"><b>'+(admin?'HCPS Connect 360':'HCPS Sales')+'</b><span>'+(admin?'Operating System':'Rep Workspace')+'</span></span></a>'
         + '<div class="ac-who">' + who + '<button type="button" id="ac-fav" class="ac-favbtn" title="Add this page to your dashboard favorites" style="display:none">☆</button><a id="ac-taskbadge" href="/admin/tasks.html" class="ac-badge" style="display:none" title="Your open tasks">0</a><button type="button" id="ac-lock">'+(imp?'Exit view-as':'Lock')+'</button></div>'
       + '</div>'
