@@ -289,6 +289,8 @@ const NUMWORD = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, 
 const GENERIC = new Set("chair chairs lift lifts unit units model models power transport product products item items line lines new the and for with set sets pair pairs box boxes case cases".split(" "));
 const REQ_GENERIC = new Set("request requested asked ask wants want need needs info information details detail more about".split(" "));
 const MONTH = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)$/i;
+/* "two rollator models", "2 weeks", "3 Golden lines": the number counts these, not units of the product. */
+const COUNTS_OTHER = new Set("model type kind style version option color colour size brand sample line week day month year hour minute location store branch".split(" "));
 const singular = w => (w.length > 4 && w.endsWith("s") ? w.slice(0, -1) : w);
 /* Model numbers: "PR-535", "PR519", "G 2000". Not "Oct 16" and not "in 30 days". */
 function modelCodes(s){
@@ -327,6 +329,7 @@ function quantitiesIn(text){
       if(/^\d+x?$/.test(la) && la !== "x" || NUMWORD[la] || ["and", "or", "plus", "vs", "versus"].includes(la)) break;
       after.push(a); if(/[,;:.]$/.test(a)) break;
     }
+    if(after.some(a => COUNTS_OTHER.has(singular(a.toLowerCase().replace(/[^a-z0-9]/g, ""))))) continue;
     const toks = new Set(modelCodes(after.join(" ")).map(c => c.code));
     for(const a of after){ const lw = a.toLowerCase().replace(/[^a-z0-9]/g, ""); if(lw) toks.add(singular(lw)); }
     out.push({ n, toks, phrase: [words[k]].concat(after).join(" ") });

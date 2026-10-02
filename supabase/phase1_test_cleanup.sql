@@ -3,6 +3,7 @@
 -- created against a dealer id that does not exist. Production dealers are never touched: the
 -- guards below stop the whole script if any listed row is on a real dealer.
 --
+-- Test contacts removed: Dana Price (b8850abf…) and Bryant Cole (1e2cd1f8…, added by the R5 approval).
 -- Run it AFTER the Greg/Lori checklist (that checklist uses task 4fa5c265…, opportunity
 -- cd84e191… and visit cd7801be…, which this script removes).
 -- The five Phase 0 visits on the sandbox (cfb6f81c, 1034544f, 71946204, 20d9aec7, e269079e) and
@@ -13,7 +14,7 @@ with v(id) as (values
   ('cd7801be-cf5d-4682-9db4-0a977ba461c1'::uuid),('f367c40b-bc7c-46e1-b72a-00368438b385'),('83c70734-4679-426f-90f4-118936d697cc'),
   ('5323ffcf-ecaf-4231-b981-d540f68303aa'),('f463ac6c-9481-478e-921c-8d113bc365c4'),('9d1dac08-a4b9-4ccc-9dd3-a33836b2dc79'),
   ('343c0db6-614a-421d-a573-46a853284673'),('5302d029-7cef-47e2-a6e0-f96993982362'),('4b4ee5be-9980-4f1b-bb85-c2057e591ecb'),
-  ('2df5920d-0f91-4c47-a143-395dde3bb282'))
+  ('c10f3b0f-fa6a-48a1-9321-577fbbf2540d'),('2caeaa27-c5d5-47e3-8d55-68180d7abec4'),('2df5920d-0f91-4c47-a143-395dde3bb282'))
 select 'visits' as what, count(*) from dealer_visit_reports where id in (select id from v)
 union all select 'attendees', count(*) from dealer_visit_participants where visit_report_id in (select id from v)
 union all select 'visit log rows', count(*) from dealer_visits where visit_report_id in (select id from v)
@@ -22,8 +23,8 @@ union all select 'opportunities', count(*) from opportunities where origin_type 
 union all select 'timeline rows', count(*) from dealer_activity where ref_type = 'visit_report' and ref_id in (select id::text from v)
 union all select 'interest signals', count(*) from intent_events where meta->>'visit_report_id' in (select id::text from v)
 union all select 'visit notes', count(*) from dealer_notes where id in (select visit_note_id from dealer_visit_reports where id in (select id from v))
-union all select 'routes', count(*) from rep_routes where id in ('d9f557cb-09b4-41a3-ac54-98c69e696608','e5db8b32-231e-4b63-9467-20ff965f94e0','bd585a3a-34cd-4cfa-aeb9-b2f9557e0efe','de85c72d-4f5e-48e6-b25f-d9ace55d2971')
-union all select 'contact (Dana Price)', count(*) from dealer_contacts where id = 'b8850abf-fc10-4866-bd7a-8e924661bd84';
+union all select 'routes', count(*) from rep_routes where id in ('d9f557cb-09b4-41a3-ac54-98c69e696608','e5db8b32-231e-4b63-9467-20ff965f94e0','bd585a3a-34cd-4cfa-aeb9-b2f9557e0efe','de85c72d-4f5e-48e6-b25f-d9ace55d2971','fadddc8d-8637-468c-bfe4-4dbb4652db63','5ca3b901-b5cd-47fd-8eb3-beb2a92480d3')
+union all select 'test contacts (Dana Price, Bryant Cole)', count(*) from dealer_contacts where id in ('b8850abf-fc10-4866-bd7a-8e924661bd84','1e2cd1f8-ec68-4f3d-91b6-a1544602c876');
 
 -- STEP 2: the cleanup. One transaction: either everything below is removed, or nothing is.
 begin;
@@ -39,6 +40,8 @@ insert into p1_visits values
   ('343c0db6-614a-421d-a573-46a853284673', 'off-route test visit'),
   ('5302d029-7cef-47e2-a6e0-f96993982362', 'off-route AI corpus host'),
   ('4b4ee5be-9980-4f1b-bb85-c2057e591ecb', 'off-route previous-day email-date visit'),
+  ('c10f3b0f-fa6a-48a1-9321-577fbbf2540d', 'route R5 — forced partial → Try AI again (created contact Bryant Cole)'),
+  ('2caeaa27-c5d5-47e3-8d55-68180d7abec4', 'route R6 — AI forced to fail → manual approval'),
   ('2df5920d-0f91-4c47-a143-395dde3bb282', 'stray visit on a dealer id that does not exist');
 
 create temp table p1_routes (id uuid primary key) on commit drop;
@@ -46,7 +49,9 @@ insert into p1_routes values
   ('d9f557cb-09b4-41a3-ac54-98c69e696608'),   -- TEST — Phase 1 live check (online visit)
   ('e5db8b32-231e-4b63-9467-20ff965f94e0'),   -- TEST — Phase 1 live check (offline visit)
   ('bd585a3a-34cd-4cfa-aeb9-b2f9557e0efe'),   -- TEST — Phase 1 live check (AI retry + one attendee)
-  ('de85c72d-4f5e-48e6-b25f-d9ace55d2971');   -- TEST — Phase 1 live check (offline + several attendees)
+  ('de85c72d-4f5e-48e6-b25f-d9ace55d2971'),   -- TEST — Phase 1 live check (offline + several attendees)
+  ('fadddc8d-8637-468c-bfe4-4dbb4652db63'),   -- TEST — Phase 1 live check (forced partial → Try AI again)
+  ('5ca3b901-b5cd-47fd-8eb3-beb2a92480d3');   -- TEST — Phase 1 live check (AI fails → manual approval)
 
 -- Guards: stop if anything listed is not what it should be.
 do $$
@@ -62,9 +67,9 @@ begin
   if exists (select 1 from rep_routes r join p1_routes p on p.id = r.id where r.name not like 'TEST — Phase 1 live check%') then
     raise exception 'A listed route is not a "TEST — Phase 1 live check" route — nothing removed.';
   end if;
-  if exists (select 1 from dealer_contacts where id = 'b8850abf-fc10-4866-bd7a-8e924661bd84'
-             and (dealer_id <> '3f7d87a2-7fbc-47e1-a34a-aaaacf4c4c7b' or name <> 'Dana Price')) then
-    raise exception 'The Dana Price contact is not the sandbox test contact — nothing removed.';
+  if exists (select 1 from dealer_contacts where id in ('b8850abf-fc10-4866-bd7a-8e924661bd84','1e2cd1f8-ec68-4f3d-91b6-a1544602c876')
+             and (dealer_id <> '3f7d87a2-7fbc-47e1-a34a-aaaacf4c4c7b' or name not in ('Dana Price','Bryant Cole'))) then
+    raise exception 'A listed contact is not a sandbox test contact — nothing removed.';
   end if;
 end $$;
 
@@ -81,6 +86,6 @@ delete from intent_events             where meta->>'visit_report_id' in (select 
 delete from dealer_visit_reports      where id in (select id from p1_visits);
 delete from dealer_notes              where id in (select id from p1_notes);
 delete from rep_routes                where id in (select id from p1_routes);
-delete from dealer_contacts           where id = 'b8850abf-fc10-4866-bd7a-8e924661bd84';
+delete from dealer_contacts           where id in ('b8850abf-fc10-4866-bd7a-8e924661bd84','1e2cd1f8-ec68-4f3d-91b6-a1544602c876');
 
 commit;

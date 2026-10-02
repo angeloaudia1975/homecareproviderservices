@@ -177,6 +177,7 @@ module.exports = {
   '1K AI: thinking left on':             { file: '_visit_ai.js', from: 'r = await send(NO_THINKING);', to: 'r = await send(null);' },
   '1K AI: no fallback without thinking':{ file: '_visit_ai.js', from: 'if(r.status === 400 && /thinking/i.test(t)){', to: 'if(false){' },
   '1K check: numbers run into the next product':{ file: '_visit_ai.js', from: '["and", "or", "plus", "vs", "versus"].includes(la)) break;', to: 'false) break;' },
+  '1K check: counts of models read as units':{ file: '_visit_ai.js', from: 'if(after.some(a => COUNTS_OTHER.has(', to: 'if(false && after.some(a => COUNTS_OTHER.has(' },
   '1J QA part failure for anyone':      { file: 'routes-api.js', from: 'const qaParts=qaOk ?', to: 'const qaParts=true ?' },
   '1J forced part still calls the AI':  { file: '_visit_ai.js', from: 'if(forceFail.has(part)) return {', to: 'if(false) return {' },
   '1J check: quantity ignored':         { file: '_visit_ai.js', from: 'if(hit) flag(o, "quantity"', to: 'if(false) flag(o, "quantity"' },

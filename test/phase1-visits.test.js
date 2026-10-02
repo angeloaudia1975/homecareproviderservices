@@ -538,6 +538,8 @@ async function startEndAnalyze(w, extra) {
     VAI.crossCheck(two, { notes: '20 walkers and 12 rollators', mfrs: [] }); assert.deepStrictEqual(two.checks, [], JSON.stringify(two.checks));
     two.meeting_summary = 'They want 20 walkers and rollators for the new store.';
     VAI.crossCheck(two, { notes: '20 walkers and 12 rollators', mfrs: [] }); assert.deepStrictEqual(two.checks, [], '"20 walkers and rollators" was read as 20 rollators');
+    two.meeting_summary = 'Nina asked for samples of the two rollator models and pricing in 2 weeks.';
+    VAI.crossCheck(two, { notes: '20 walkers and 12 rollators', mfrs: [] }); assert.deepStrictEqual(two.checks, [], '"two rollator models" was read as 2 rollators');
     two.meeting_summary = 'Opening order: 20 walkers and 12 rollators, plus samples.';
     two.opportunities[1].quantity = 10; VAI.crossCheck(two, { notes: '20 walkers and 12 rollators', mfrs: [] });
     assert.ok(/says 10, the summary says 12/.test(two.opportunities[1].review || ''), JSON.stringify(two.checks));
