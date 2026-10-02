@@ -74,6 +74,43 @@
   .rcpt input{width:20px;height:20px;margin:1px 0 0;flex:0 0 auto}
   .rcpt span{min-width:0;word-break:break-word}
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;background:var(--navy);color:#fff;padding:10px 16px;border-radius:24px;font-size:13.5px;z-index:60;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+  /* ── Visit mode (Phase 1): one big thumb target per step, 16px fields so iOS never zooms ── */
+  .btn.xl{font-size:16.5px;padding:14px 16px;min-height:52px;justify-content:center;border-radius:12px}
+  .btn.xl.wide{width:100%}
+  .btn:disabled{opacity:.55;cursor:default}
+  input.in,textarea.in,select.in{font-size:16px}
+  select.in{width:100%;font:inherit;font-size:16px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;color:#1b2733}
+  .vmode .vtimer{display:flex;align-items:baseline;justify-content:space-between;background:#fff1e3;border:1px solid #f6c79a;border-radius:12px;padding:10px 14px;color:#8a4b0a;font-weight:700}
+  .vmode .vtimer b{font-size:26px;font-variant-numeric:tabular-nums;color:#b45309}
+  textarea.vnotes{min-height:110px}
+  .chip.fu-pending{background:#fff1e3;color:#b45309}.chip.fu-complete{background:#e7f6ee;color:var(--ok)}.chip.fu-none{background:#eef2f6;color:#5b6672}
+  .modal.full{align-items:stretch}
+  .sheet.full{max-height:none;height:100%;border-radius:0;padding:0 14px 14px;-webkit-overflow-scrolling:touch}
+  .sheethd{position:sticky;top:0;z-index:2;background:#fff;display:flex;align-items:center;gap:10px;justify-content:space-between;padding:calc(12px + env(safe-area-inset-top,0)) 0 10px;border-bottom:1px solid var(--line);margin-bottom:10px;color:var(--navy)}
+  .sheethd b{font-size:15.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rvnote{background:#fff6ec;border:1px solid #f3d6ae;color:#8a5a08;border-radius:10px;padding:9px 11px;font-size:13px;margin:0 0 10px}
+  .rvnote.ok{background:#eef5fc;border-color:#cfe0f2;color:#2b4a6f}
+  .rv-sec{margin:0 0 14px}
+  .rv-sec h4{margin:0 0 6px;color:var(--navy);font-size:14.5px}
+  details.rv-sec>summary{cursor:pointer;list-style:none;padding:4px 0}
+  details.rv-sec>summary::-webkit-details-marker{display:none}
+  .rv-card{border:1px solid var(--line);border-radius:12px;padding:10px;background:#fff;margin:0 0 8px}
+  .rv-card.opp{border-color:#f6c79a;background:#fffaf4}
+  .rv-card.off{opacity:.45}
+  .rv-top{display:flex;gap:8px;align-items:flex-start}
+  .rv-row{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+  .rv-row>*{flex:1 1 130px;min-width:0}
+  .rv-row>.btn{flex:0 1 auto}
+  .rv-chk{display:flex;align-items:center;gap:8px;font-size:14px;padding:6px 0;min-height:36px}
+  .rv-chk input{width:22px;height:22px;flex:0 0 auto;margin:0}
+  .rv-add{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .rv-add>.in{flex:1 1 160px;min-width:0}
+  .rv-line{font-size:14px;padding:3px 0;border-bottom:1px dashed #edf0f4}
+  textarea.rv-list{min-height:46px}
+  details.rv-more>summary{cursor:pointer;padding:10px 0 2px;min-height:40px}
+  .hint.ok{color:var(--ok)}
+  .rv-done{text-align:center;padding:30px 4px}
+  .rv-done .big{font-size:22px;font-weight:800;color:var(--ok)}
 </style>
 </head><body>
 <header>
@@ -217,7 +254,9 @@ function updateStatus(){ const n=outbox().length, nq=quarantine().length, rv=nq?
   else setStatusText("● Online","#9fd6b0"); }
 /* OUTBOX:END */
 // The review list behind "need review": what each refused item was, why, Retry / Discard.
-function obLabel(b){ const a=b&&b.action; return a==="visit_checkin"?"Arrival":a==="visit_report_save"?(b.status==="completed"?"Completed visit":"Visit draft"):String(a||"Change"); }
+const OB_LABELS={visit_checkin:"Visit start",visit_end:"Visit end",visit_approve:"Approved visit summary",visit_followup_set:"Follow-up status",visit_email_save:"Follow-up email draft"};
+function obLabel(b){ const a=b&&b.action; if(a==="visit_email_save"&&b.sent) return "Follow-up email (sent)";
+  return a==="visit_report_save"?(b.status==="completed"?"Completed visit":"Visit notes"):(OB_LABELS[a]||String(a||"Change")); }
 function obDealer(b){ const id=b&&b.dealer_id; const st=DAY&&DAY.stops&&DAY.stops.find(x=>String(x.dealer_id)===String(id)); return (st&&(st.name||st.business_name))||"a dealer"; }
 function openSyncPanel(){ if(!quarantine().length && !outbox().length) return; renderSyncPanel(true); }
 function renderSyncPanel(open){
@@ -402,13 +441,28 @@ async function doAssign(id){
   catch(e){ if(m) m.textContent="Couldn't assign — check your signal."; }
 }
 
-function statusOf(s){ const v=s.visit; if(v&&v.completed_at) return "done"; if(v&&(v.status==="checked_in"||v.checkin_at)) return "here"; return "plan"; }
+/* ── VISIT MODE (Phase 1) ─────────────────────────────────────────────────────────────────
+   Start Visit → on-site timer, quick notes, dictation → End Visit → Review the AI summary →
+   approve attendees, follow-ups and opportunities → draft the follow-up email → Done.
+   Built for a phone in one hand: one big button per step, nothing to fill in that the notes
+   already say. Every write goes through the outbox, so it works with no signal, and the server
+   makes a replay a no-op (Phase 0F + 1): a double tap or a resend never duplicates a record. */
+const FU_LABEL={pending:"Follow-up pending",complete:"Follow-up complete",none:"No follow-up required"};
+function statusOf(s){ const v=s.visit; if(v&&(v.approved_at||v.completed_at)) return "done"; if(v&&v.ended_at) return "ended"; if(v&&(v.status==="checked_in"||v.checkin_at)) return "here"; return "plan"; }
+function vkey(s){ return String((DAY&&DAY.route&&DAY.route.id)||"")+"_"+String(s.dealer_id||""); }
+function fuChip(v){ const f=v&&v.followup_status; return f?`<span class="chip fu-${esc(f)}">${esc(FU_LABEL[f]||f)}</span>`:""; }
+function hms(ms){ ms=Math.max(0,ms|0); const s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor((s%3600)/60); return (h?h+":"+String(m).padStart(2,"0"):String(m))+":"+String(s%60).padStart(2,"0"); }
+function minsBetween(a,b){ const x=Date.parse(a), y=Date.parse(b); return (isFinite(x)&&isFinite(y))?Math.max(0,Math.round((y-x)/60000)):null; }
+let VTIMER=null;
+function tickTimers(){ document.querySelectorAll(".vtimer[data-start]").forEach(el=>{ const st=Date.parse(el.getAttribute("data-start")); if(isFinite(st)) el.querySelector("b").textContent=hms(Date.now()-st); }); }
+function startTimers(){ if(VTIMER) clearInterval(VTIMER); tickTimers(); VTIMER=setInterval(tickTimers,1000); }
+
 function renderDay(){
   const r=DAY.route, stops=DAY.stops||[];
   const drive=r.duration_s?` · ${Math.round(r.duration_s/60)} min drive`:"";
   const done=stops.filter(s=>statusOf(s)==="done").length;
   const miles=r.distance_m?` · ${Math.round(r.distance_m/1609)} mi`:"";
-  let h=`<div style="margin:0 0 10px"><button class="btn sm" onclick="showList()">‹ All routes</button></div>`;
+  let h=`<div style="margin:0 0 10px"><button class="btn sm" onclick="showList()">‹ All routes</button> <a class="btn sm" href="/admin/command-center-rep.html">📋 Command Center</a></div>`;
   h+=`<div class="card"><div class="rsum"><span class="nm">${esc(r.name||"Route")}</span><span class="mt">${esc(fmtDate(r.scheduled_date))}</span></div>
     <div class="mt" style="margin:4px 0 10px;color:var(--gray)">${stops.length} stop${stops.length===1?"":"s"}${drive}${miles} · ${done}/${stops.length} visited</div>
     ${r.planned_by?`<div class="mt" style="margin:-6px 0 10px;color:var(--gray)">Planned for you by ${esc(r.planned_by)}</div>`:""}
@@ -420,84 +474,82 @@ function renderDay(){
     <button class="btn sm" onclick="addToCalendar()">⬇︎ .ics file</button></div>`;
   h+=stops.map((s,i)=>stopCard(s,i)).join("");
   $("#app").innerHTML=h;
+  // The stop you are at opens by itself, so the timer and the notes are one glance away.
+  stops.forEach((s,i)=>{ if(statusOf(s)==="here") openBody(i); });
+  startTimers();
 }
 function stopCard(s,i){
-  const st=statusOf(s), cls=st==="done"?"done":(st==="here"?"here":"");
-  const chip=st==="done"?`<span class="chip done">visited</span>`:(st==="here"?`<span class="chip here">on site</span>`:`<span class="chip plan">planned</span>`);
+  const st=statusOf(s), v=s.visit||{};
+  const cls=st==="done"?"done":(st==="here"||st==="ended"?"here":"");
+  const chip=st==="done"?`<span class="chip done">visited</span> ${fuChip(v)}`
+    :st==="ended"?`<span class="chip here">summary due</span>`
+    :st==="here"?`<span class="chip here">on site</span>`:`<span class="chip plan">planned</span>`;
   const loc=[s.city,s.state].filter(Boolean).join(", ");
   const addr=[s.address,[s.city,s.state].filter(Boolean).join(", "),s.zip].filter(Boolean).join(" · ");
   const navQ=(isFinite(s.lat)&&isFinite(s.lng))?`${s.lat},${s.lng}`:encodeURIComponent([s.address,s.city,s.state,s.zip].filter(Boolean).join(", "));
   const navUrl=`https://www.google.com/maps/dir/?api=1&destination=${navQ}`;
+  const main = st==="plan" ? `<button class="btn go xl wide" onclick="checkIn(${i})">▶ Start visit</button>`
+    : st==="here" ? `<button class="btn pri wide" onclick="toggleBody(${i})">⏱ Visit in progress</button>`
+    : st==="ended" ? `<button class="btn go xl wide" onclick="openReview(${i})">Review summary →</button>`
+    : `<button class="btn wide" onclick="openSummary(${i})">View summary</button>`;
   return `<div class="stop ${cls}" id="stop_${i}">
     <div class="sh" onclick="toggleBody(${i})">
       <div class="ord">${i+1}</div>
       <div class="mid"><div class="nm">${esc(s.name)} ${chip}</div>
-        ${/* The full street address, readable without opening anything. Navigate covers the
-             common case, but a rep reading it to someone on the phone, or checking they are
-             at the right door, needs to SEE it — and it is the fallback when a phone has no
-             map app or no signal. */""}
         ${addr?`<div class="sub addr">${esc(addr)}</div>`:(loc?`<div class="sub">${esc(loc)}</div>`:"")}
         <div class="sub">${s.contact_name?esc(s.contact_name):""}${s.contact_phone?`${s.contact_name?" · ":""}${esc(s.contact_phone)}`:""}${
-          s.visit_min?` · ${esc(String(s.visit_min))} min visit`:""}</div></div>
+          s.visit_min?` · ${esc(String(s.visit_min))} min visit`:""}${v.duration_min!=null&&st!=="plan"&&st!=="here"?` · on site ${esc(String(v.duration_min))} min`:""}</div></div>
       <div class="eta"><div class="t" id="eta_${i}">—</div><div class="l" id="etal_${i}">ETA</div></div>
     </div>
     <div class="acts">
       <a class="btn" href="${navUrl}" target="_blank" rel="noopener">🧭 Navigate</a>
       ${s.contact_phone?`<a class="btn" href="tel:${esc(String(s.contact_phone).replace(/[^0-9+]/g,''))}">📞 Call</a>`:""}
       <button class="btn" onclick="openHandout('${jesc(s.dealer_id)}')">📄 Visit package</button>
-      <button class="btn" onclick="headsUp(${i})">📣 Heads-up</button>
-      ${st==="plan"?`<button class="btn go" onclick="checkIn(${i})">▶ Start visit</button>`:`<button class="btn ${st==='done'?'':'pri'}" onclick="toggleBody(${i})">${st==='done'?'View':'✎ Log visit'}</button>`}
+      ${st==="plan"?`<button class="btn" onclick="headsUp(${i})">📣 Heads-up</button>`:""}
+      <a class="btn" href="/admin/dealer.html?id=${encodeURIComponent(s.dealer_id)}">📇 Dealer 360</a>
+      ${main}
     </div>
     <div class="body" id="body_${i}"></div>
   </div>`;
 }
-
-function toggleBody(i){ const b=$("#body_"+i); if(!b) return; if(b.classList.contains("open")){ b.classList.remove("open"); return; }
-  b.classList.add("open"); if(!b.dataset.loaded){ loadVisitForm(i); } }
-async function loadVisitForm(i){
-  const s=DAY.stops[i], b=$("#body_"+i); b.dataset.loaded="1";
-  b.innerHTML=`<div class="hint">Loading…</div>`;
-  let rep=null; try{ const j=await rapi({action:"visit_report_get",route_id:DAY.route.id,dealer_id:s.dealer_id}); rep=(j&&j.report)||null; }catch(e){}
-  const f=(rep&&rep.fields)||{};
-  const g=(v)=>v==null?"":Array.isArray(v)?v.join(", "):String(v);
-  b.innerHTML=`
+function openBody(i){ const b=$("#body_"+i); if(!b) return; b.classList.add("open"); if(!b.dataset.loaded) loadStopBody(i); }
+function toggleBody(i){ const b=$("#body_"+i); if(!b) return; if(b.classList.contains("open")){ b.classList.remove("open"); return; } openBody(i); }
+function loadStopBody(i){
+  const s=DAY.stops[i], b=$("#body_"+i), st=statusOf(s); b.dataset.loaded="1";
+  if(st==="here") return visitPanel(i);
+  if(st==="ended"){ b.innerHTML=`<div class="hint">Visit ended${s.visit&&s.visit.duration_min!=null?` after ${esc(String(s.visit.duration_min))} min`:""}. Review the summary to save it.</div>
+    <button class="btn go xl wide" style="margin-top:10px" onclick="openReview(${i})">Review summary →</button>`; return; }
+  if(st==="done"){ b.innerHTML=`<button class="btn wide" onclick="openSummary(${i})">View summary</button>`; return; }
+  b.innerHTML=`<div class="hint">Tap <b>Start visit</b> when you walk in — the timer starts and your notes are kept with the visit.</div>`;
+}
+function visitPanel(i){
+  const s=DAY.stops[i], b=$("#body_"+i), k=vkey(s);
+  const notes=obRead("vnote_"+k)||"", tx=obRead("vtx_"+k)||"";
+  b.innerHTML=`<div class="vmode">
+    <div class="vtimer" data-start="${esc((s.visit&&s.visit.checkin_at)||new Date().toISOString())}">On site <b>0:00</b></div>
+    <label class="fl" for="vn_${i}">Quick notes</label>
+    <textarea class="in vnotes" id="vn_${i}" placeholder="Who you met, what you covered, what you promised…" oninput="keepNotes(${i})">${esc(notes)}</textarea>
     <div class="voice" id="voice_${i}">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <button class="btn go" id="rec_${i}" onclick="toggleRec(${i})">🎤 Record summary</button>
-        <span id="recmsg_${i}" class="hint">Speak your summary after you leave — it fills the fields below for you to review.</span>
+        <button class="btn go" id="rec_${i}" onclick="toggleRec(${i})">🎤 Dictate</button>
+        <span id="recmsg_${i}" class="hint">Talk through the meeting — it becomes the summary you review after.</span>
       </div>
-      <div id="tx_${i}" style="display:none;margin-top:8px"></div>
+      <textarea class="in" id="vt_${i}" placeholder="Dictation appears here" style="margin-top:8px;${tx?"":"display:none"}" oninput="keepNotes(${i})">${esc(tx)}</textarea>
     </div>
-    <label class="fl">Purpose of visit</label><input class="in" id="f_purpose_${i}" value="${esc(g(f.purpose))}" placeholder="e.g. Quarterly check-in, present new line">
-    <label class="fl">Manufacturers discussed</label><input class="in" id="f_manu_${i}" value="${esc(g(f.manufacturers))}" placeholder="Strongback, Corsicana…">
-    <label class="fl">Products presented</label><input class="in" id="f_prod_${i}" value="${esc(g(f.products))}" placeholder="ErgoSteel, ErgoBed…">
-    <label class="fl">Products they're interested in</label><input class="in" id="f_int_${i}" value="${esc(g(f.interest))}" placeholder="What they want to bring in">
-    <label class="fl">Questions / concerns</label><textarea class="in" id="f_conc_${i}" placeholder="Pricing, lead times, objections…">${esc(g(f.concerns))}</textarea>
-    <label class="fl">Competitive info</label><input class="in" id="f_comp_${i}" value="${esc(g(f.competitive))}" placeholder="What competitors they use">
-    <label class="fl">Opportunities identified</label><input class="in" id="f_opp_${i}" value="${esc(g(f.opportunities))}" placeholder="e.g. 2 ErgoSteel chairs">
-    <label class="fl">Follow-up requirements</label><textarea class="in" id="f_fu_${i}" placeholder="One per line — each becomes a task">${esc(g(f.followups))}</textarea>
-    <label class="fl">General notes</label><textarea class="in" id="f_notes_${i}" placeholder="Anything else worth capturing">${esc(g(f.notes))}</textarea>
-    <label class="fl">Next action</label><input class="in" id="f_na_${i}" value="${esc(g(f.next_action))}" placeholder="e.g. Send pricing + literature">
-    <label class="fl">Follow-up date</label><input class="in" type="date" id="f_nad_${i}" value="${esc(f.next_action_date||'')}">
-    <div class="save-row">
-      <button class="btn wide" onclick="saveVisit(${i},'in_progress')">Save draft</button>
-      <button class="btn go wide" onclick="saveVisit(${i},'completed')">✓ Complete visit</button>
-    </div>
-    <div class="save-row"><button class="btn wide" onclick="draftFollowup(${i})">✉️ Draft follow-up email</button></div>
-    <div id="vmsg_${i}" class="hint" style="margin-top:8px"></div>`;
+    <button class="btn go xl wide" style="margin-top:12px" onclick="endVisit(${i})">■ End visit</button>
+    <div id="vmsg_${i}" class="hint" style="margin-top:8px"></div></div>`;
+  startTimers();
 }
-function collect(i){ const v=id=>(($("#f_"+id+"_"+i)||{}).value||"").trim();
-  return { purpose:v("purpose"), manufacturers:v("manu"), products:v("prod"), interest:v("int"),
-    concerns:v("conc"), competitive:v("comp"), opportunities:v("opp"), followups:v("fu"),
-    notes:v("notes"), next_action:v("na"), next_action_date:v("nad") }; }
+function keepNotes(i){ const s=DAY.stops[i], k=vkey(s);
+  obWrite("vnote_"+k,(($("#vn_"+i)||{}).value||"")); obWrite("vtx_"+k,(($("#vt_"+i)||{}).value||"")); }
 
-// ---- Voice ----
+// ---- Voice: the words only (the summary is built at review time) ----
 function blobToB64(blob){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).replace(/^data:[^,]*,/,"")); r.onerror=rej; r.readAsDataURL(blob); }); }
 function toggleRec(i){ const r=REC[i]; if(r&&r.mr&&r.mr.state==="recording"){ stopRec(i); } else { startRec(i); } }
 async function startRec(i){
   const btn=$("#rec_"+i), msg=$("#recmsg_"+i);
-  if(!navigator.onLine){ if(msg)msg.textContent="Voice transcription needs a connection — type your notes for now; they'll sync."; return; }
-  if(!navigator.mediaDevices||!window.MediaRecorder){ if(msg)msg.textContent="This device can't record here — type your notes below."; return; }
+  if(!navigator.onLine){ if(msg)msg.textContent="Dictation needs a connection — type quick notes for now; they're kept."; return; }
+  if(!navigator.mediaDevices||!window.MediaRecorder){ if(msg)msg.textContent="This device can't record here — type your notes."; return; }
   let stream; try{ stream=await navigator.mediaDevices.getUserMedia({audio:true}); }
   catch(e){ if(msg)msg.textContent="Microphone blocked — allow mic access, or type your notes."; return; }
   const mime=(MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported("audio/webm"))?"audio/webm":((MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported("audio/mp4"))?"audio/mp4":"");
@@ -505,66 +557,250 @@ async function startRec(i){
   const chunks=[]; mr.ondataavailable=e=>{ if(e.data&&e.data.size) chunks.push(e.data); };
   mr.onstop=async()=>{ try{ stream.getTracks().forEach(t=>t.stop()); }catch(e){} const blob=new Blob(chunks,{type:mr.mimeType||mime||"audio/webm"}); await processAudio(i,blob); };
   const t0=Date.now(); const timer=setInterval(()=>{ const sec=Math.floor((Date.now()-t0)/1000); const m=$("#recmsg_"+i); if(m)m.textContent="● Recording "+Math.floor(sec/60)+":"+String(sec%60).padStart(2,"0")+" — tap Stop"; if(sec>=240) stopRec(i); },500);
-  REC[i]={mr,stream,timer};
-  mr.start();
+  REC[i]={mr,stream,timer}; mr.start();
   if(btn){ btn.textContent="■ Stop"; btn.classList.remove("go"); btn.classList.add("pri"); }
 }
 function stopRec(i){ const r=REC[i]; if(!r) return; if(r.timer) clearInterval(r.timer); try{ r.mr.stop(); }catch(e){}
-  const btn=$("#rec_"+i); if(btn){ btn.textContent="🎤 Record summary"; btn.classList.add("go"); btn.classList.remove("pri"); }
+  const btn=$("#rec_"+i); if(btn){ btn.textContent="🎤 Dictate"; btn.classList.add("go"); btn.classList.remove("pri"); }
   const msg=$("#recmsg_"+i); if(msg) msg.textContent="Transcribing…"; }
 async function processAudio(i,blob){
   const s=DAY.stops[i], msg=$("#recmsg_"+i);
   if(!blob||!blob.size){ if(msg)msg.textContent="Nothing recorded — try again."; return; }
   if(blob.size>9*1024*1024){ if(msg)msg.textContent="That recording's too long — keep it under ~4 minutes."; return; }
   let b64; try{ b64=await blobToB64(blob); }catch(e){ if(msg)msg.textContent="Couldn't read the recording."; return; }
-  let j; try{ j=await voiceApi({action:"transcribe",dealer_id:s.dealer_id,audio_base64:b64,mime:blob.type||"audio/webm"}); }catch(e){ j=null; }
-  handleVoiceResult(i,j);
-}
-function handleVoiceResult(i,j){
-  const msg=$("#recmsg_"+i), tx=$("#tx_"+i);
-  if(!j){ if(msg)msg.textContent="Couldn't reach transcription — type your notes."; return; }
-  if(j.ok===false && j.error){ if(msg)msg.textContent=j.message||"Transcription unavailable — type your notes."; return; }
-  const f=j.fields||{};
-  const setv=(id,val)=>{ if(val==null||val==="") return; const el=$("#f_"+id+"_"+i); if(el && !el.value.trim()) el.value=val; };
-  setv("purpose",f.purpose); setv("manu",f.manufacturers); setv("prod",f.products); setv("int",f.interest);
-  setv("conc",f.concerns); setv("comp",f.competitive); setv("opp",f.opportunities); setv("fu",f.followups);
-  setv("notes",f.notes); setv("na",f.next_action); setv("nad",f.next_action_date);
-  VSTRUCT[i]=j.structured||{}; VTX[i]=j.transcript||"";
-  if(msg) msg.textContent = j.message || "✓ Filled from your voice note — review & edit below.";
-  if(tx){ tx.style.display="block"; const poor=(j.structured&&j.structured.poor_fit_slugs)||[];
-    tx.innerHTML=`<details><summary class="hint">Transcript</summary><div style="font-size:13px;color:#42505f;margin-top:4px;white-space:pre-wrap">${esc(j.transcript||"")}</div></details>`
-      +(poor.length?`<div class="hint" style="margin-top:6px">Will flag as poor-fit on save: <b>${poor.map(esc).join(", ")}</b></div>`:""); }
+  let j; try{ j=await voiceApi({action:"transcribe",raw:true,dealer_id:s.dealer_id,audio_base64:b64,mime:blob.type||"audio/webm"}); }catch(e){ j=null; }
+  if(!j||j.ok===false||!j.transcript){ if(msg)msg.textContent=(j&&j.message)||"Couldn't transcribe — type your notes."; return; }
+  const ta=$("#vt_"+i); if(ta){ ta.style.display="block"; ta.value=(ta.value.trim()?ta.value.trim()+"\n\n":"")+j.transcript; keepNotes(i); }
+  if(msg) msg.textContent="✓ Added to your dictation — record again to add more.";
 }
 
 async function checkIn(i){
   const s=DAY.stops[i]; const now=new Date().toISOString();
   s.visit=Object.assign({},s.visit,{status:"checked_in",checkin_at:now});
-  renderDay(); cacheDay(DAY.route.id,DAY); if(navigator.onLine) computeEtas(); setTimeout(()=>toggleBody(i),60);
-  const res=await tryOrQueue({action:"visit_checkin",route_id:DAY.route.id,dealer_id:s.dealer_id});
-  toast(res.sent?"Arrival logged ✓":res.rejected?("Couldn't log arrival — "+res.error):"Saved offline — will sync"); updateStatus();
+  renderDay(); cacheDay(DAY.route.id,DAY); if(navigator.onLine) computeEtas();
+  // The arrival keeps the time it was tapped even if it syncs later (the timer runs from it).
+  const res=await tryOrQueue({action:"visit_checkin",route_id:DAY.route.id,dealer_id:s.dealer_id,at:now});
+  toast(res.sent?"Visit started ✓":res.rejected?("Couldn't start — "+res.error):"Started offline — will sync"); updateStatus();
 }
-async function saveVisit(i,status){
-  const s=DAY.stops[i], m=$("#vmsg_"+i); if(m){ m.style.color=""; m.textContent="Saving…"; }
-  const fields=collect(i);
-  const payload={action:"visit_report_save",route_id:DAY.route.id,dealer_id:s.dealer_id,fields,status};
-  if(VSTRUCT[i]) payload.structured=VSTRUCT[i];
-  if(VTX[i]) payload.transcript=VTX[i];
-  s.visit=Object.assign({},s.visit,{status,completed_at:status==="completed"?new Date().toISOString():((s.visit&&s.visit.completed_at)||null)});
+async function endVisit(i){
+  const s=DAY.stops[i], k=vkey(s); keepNotes(i);
+  const at=new Date().toISOString(), notes=obRead("vnote_"+k)||"", tx=obRead("vtx_"+k)||"";
+  s.visit=Object.assign({},s.visit,{status:"ended",ended_at:at,duration_min:minsBetween(s.visit&&s.visit.checkin_at,at)});
+  cacheDay(DAY.route.id,DAY); renderDay();
+  // The notes go up first, so they are on the visit even if the summary has to wait for signal.
+  if(notes||tx) await tryOrQueue({action:"visit_report_save",route_id:DAY.route.id,dealer_id:s.dealer_id,status:"in_progress",fields:{notes},transcript:tx||undefined});
+  const res=await tryOrQueue({action:"visit_end",route_id:DAY.route.id,dealer_id:s.dealer_id,at,started_at:(s.visit&&s.visit.checkin_at)||null});
+  updateStatus();
+  if(res.rejected){ toast("Couldn't end the visit — "+res.error); return; }
+  openReview(i);
+}
+
+/* ---- Review: the AI's suggestions, the rep's decisions ---- */
+let REV=null;
+const LISTS=[["products_discussed","Products discussed"],["dealer_interests","Dealer interests"],["dealer_concerns","Dealer concerns"],["objections","Objections"],
+  ["competitors","Competitors mentioned"],["pricing_requests","Pricing requests"],["samples_requested","Samples requested"],["literature_requested","Literature requested"],["training_requested","Training requested"]];
+function emptySuggestion(notes){ const s={meeting_summary:String(notes||"").slice(0,1500),rep_commitments:[],dealer_commitments:[],attendees:[],follow_ups:[],opportunities:[],
+  suggested_next_action:{text:"",due_date:""},interest_slugs:[]}; LISTS.forEach(([k])=>s[k]=[]); return s; }
+function fullSheet(title){
+  const old=document.getElementById("rvwrap"); if(old) old.remove();
+  const wrap=document.createElement("div"); wrap.className="modal full"; wrap.id="rvwrap";
+  wrap.innerHTML=`<div class="sheet full"><div class="sheethd"><b>${esc(title)}</b><button class="btn sm" onclick="closeReview()">Close</button></div><div id="rv_body"></div></div>`;
+  document.body.appendChild(wrap); return wrap;
+}
+function closeReview(){ const w=document.getElementById("rvwrap"); if(w) w.remove(); REV=null; if(DAY) renderDay(); }
+async function openReview(i){
+  const s=DAY.stops[i], k=vkey(s);
+  fullSheet("Visit summary · "+s.name);
+  const notes=obRead("vnote_"+k)||"", tx=obRead("vtx_"+k)||"";
+  REV={i,manual:false,contacts:[],mfrs:[],report_id:null};
+  const body=$("#rv_body");
+  if(!navigator.onLine){ REV.manual=true; REV.sug=emptySuggestion(notes||tx); REV.msg="You're offline — the AI summary needs a connection. Review by hand now, or come back to it with signal."; renderReview(); return; }
+  body.innerHTML=`<div class="msg">✨ Summarizing your notes…<div class="hint" style="margin-top:6px">Suggestions only — nothing is saved until you approve.</div></div>`;
+  let j=null;
+  try{ j=await rapi({action:"visit_analyze",route_id:DAY.route.id,dealer_id:s.dealer_id,notes:notes||undefined,transcript:tx||undefined,local_date:todayStr()}); }catch(e){ j=null; }
+  if(!REV) return;
+  if(j){ REV.contacts=j.contacts||[]; REV.mfrs=j.manufacturers||[]; REV.report_id=j.report_id||null; }
+  if(j&&j.ok&&j.suggestion){ REV.sug=j.suggestion; }
+  else { REV.manual=true; REV.sug=emptySuggestion(notes||tx); REV.msg=(j&&(j.message||j.error))||"Couldn't reach the AI — review by hand."; }
+  renderReview();
+}
+function optList(list,cur){ return list.map(o=>`<option value="${esc(o.v)}"${String(o.v)===String(cur||"")?" selected":""}>${esc(o.l)}</option>`).join(""); }
+function mfrOptions(cur){ return optList([{v:"",l:"Manufacturer…"}].concat((REV.mfrs||[]).map(m=>({v:m.slug,l:m.name}))),cur); }
+function contactOptions(cur){
+  const people=(REV.contacts||[]).map(c=>({v:c.id,l:c.name+(c.title?` · ${c.title}`:"")}));
+  return optList([{v:"",l:"Contact (optional)"}].concat(people),cur);
+}
+function renderReview(){
+  const s=DAY.stops[REV.i], g=REV.sug||emptySuggestion("");
+  const commits=a=>(a||[]).map(c=>(c.text||"")+(c.due_date?` — by ${c.due_date}`:"")).join("\n");
+  const filled=LISTS.filter(([k])=>(g[k]||[]).length).length;
+  const at=(g.attendees||[]).map(a=>attendeeCard(a)).join("");
+  const fu=(g.follow_ups||[]).map(f=>followCard(f,!REV.manual)).join("");
+  const op=(g.opportunities||[]).map(o=>oppCard(o)).join("");
+  const na=g.suggested_next_action||{};
+  $("#rv_body").innerHTML=`
+    ${REV.msg?`<div class="rvnote">${esc(REV.msg)}</div>`:`<div class="rvnote ok">Suggested from your notes${REV.sug&&REV.sug.model?"":""} — edit anything, untick what's wrong. Nothing is saved until you approve.</div>`}
+    <div class="rv-sec"><h4>Meeting summary</h4><textarea class="in" id="rv_sum" rows="4">${esc(g.meeting_summary||"")}</textarea></div>
+    <details class="rv-sec"${filled?" open":""}><summary><h4 style="display:inline">What came up</h4> <span class="hint">${filled} section${filled===1?"":"s"}</span></summary>
+      ${LISTS.filter(([k])=>(g[k]||[]).length).map(([k,l])=>listField(k,l,g)).join("")}
+      ${filled<LISTS.length?`<details class="rv-more"><summary class="hint">＋ ${LISTS.length-filled} more section${LISTS.length-filled===1?"":"s"} (objections, samples, training…)</summary>
+        ${LISTS.filter(([k])=>!(g[k]||[]).length).map(([k,l])=>listField(k,l,g)).join("")}</details>`:""}
+      <label class="fl">Rep commitments</label><textarea class="in" id="rv_repc" rows="2" placeholder="What you promised — one per line">${esc(commits(g.rep_commitments))}</textarea>
+      <label class="fl">Dealer commitments</label><textarea class="in" id="rv_dlrc" rows="2" placeholder="What they promised or asked for">${esc(commits(g.dealer_commitments))}</textarea>
+    </details>
+    <div class="rv-sec"><h4>Who attended</h4><div id="rv_at">${at||`<div class="hint">No one named yet.</div>`}</div>
+      <div class="rv-add"><select class="in" id="rv_atpick"><option value="">Add someone on file…</option>${(REV.contacts||[]).map(c=>`<option value="${esc(c.id)}">${esc(c.name)}${c.title?` · ${esc(c.title)}`:""}</option>`).join("")}</select>
+        <input class="in" id="rv_atname" placeholder="…or type a new name"><button class="btn" onclick="addAttendee()">Add</button></div></div>
+    <div class="rv-sec"><h4>Follow-ups <span class="hint">→ My Tasks</span></h4><div id="rv_fu">${fu||`<div class="hint">No follow-ups suggested.</div>`}</div>
+      <button class="btn wide" onclick="addFollow()">＋ Add a follow-up</button></div>
+    <div class="rv-sec"><h4>Opportunities <span class="hint">→ Pipeline</span></h4><div id="rv_op">${op||`<div class="hint">No opportunity detected.</div>`}</div>
+      <button class="btn wide" onclick="addOpp()">＋ Add an opportunity</button></div>
+    <div class="rv-sec"><h4>Next action</h4>
+      <label class="rv-chk"><input type="checkbox" id="rv_na_on"${na.text?" checked":""}> Make it a task</label>
+      <input class="in" id="rv_na" value="${esc(na.text||"")}" placeholder="e.g. Send pricing + literature"><input class="in" type="date" id="rv_na_d" value="${esc(na.due_date||"")}" style="margin-top:6px"></div>
+    <button class="btn go xl wide" onclick="approveVisit()">✓ Approve &amp; save</button>
+    <button class="btn wide" style="margin-top:8px" onclick="closeReview()">Not now — review later</button>
+    <div id="rv_msg" class="hint" style="margin:10px 0 30px"></div>`;
+}
+// Only the sections the meeting actually touched are shown open; the rest wait behind one tap.
+function listField(k,l,g){ const a=(g[k]||[]).map(x=>typeof x==="object"?(x.text||x.title||""):x).filter(Boolean);
+  return `<label class="fl">${esc(l)}</label><textarea class="in rv-list" data-k="${k}" rows="${Math.max(1,a.length)}" placeholder="One per line">${esc(a.join("\n"))}</textarea>`; }
+function attendeeCard(a){
+  const matched=a.contact_id?((REV.contacts||[]).find(c=>String(c.id)===String(a.contact_id))||{name:a.matched_name||a.name}):null;
+  return `<div class="rv-card" data-at="${esc(a.key)}" data-cid="${esc(a.contact_id||"")}">
+    <div class="rv-top"><label class="rv-chk"><input type="checkbox" class="rv-on" checked></label>
+      <div style="flex:1;min-width:0"><input class="in rv-name" value="${esc(a.name||"")}"><input class="in rv-title" value="${esc(a.title||"")}" placeholder="Title" style="margin-top:6px"></div></div>
+    ${matched?`<div class="hint ok">✓ On file: ${esc(matched.name||a.name)}</div>`
+      :`<label class="rv-chk"><input type="checkbox" class="rv-new" checked> Add as a new Dealer 360 contact</label><input class="in rv-email" type="email" placeholder="Email (optional)">`}
+  </div>`;
+}
+function followCard(f,ai){
+  return `<div class="rv-card" data-fu="${esc(f.key)}" data-ai="${ai?"1":""}">
+    <div class="rv-top"><label class="rv-chk"><input type="checkbox" class="rv-on" checked onchange="this.closest('.rv-card').classList.toggle('off',!this.checked)"></label>
+      <input class="in rv-t" value="${esc(f.title||"")}" style="flex:1"></div>
+    <div class="rv-row"><input class="in rv-d" type="date" value="${esc(f.due_date||"")}">
+      <select class="in rv-p">${optList([{v:"high",l:"High"},{v:"normal",l:"Normal"},{v:"low",l:"Low"}],f.priority||"normal")}</select></div>
+    ${f.from&&f.from!=="other"?`<div class="hint">${esc(String(f.from).replace(/_/g," "))}</div>`:""}
+  </div>`;
+}
+function oppCard(o){
+  const s=DAY.stops[REV.i];
+  return `<div class="rv-card opp" data-op="${esc(o.key)}">
+    <div class="rv-top"><label class="rv-chk"><input type="checkbox" class="rv-on" checked onchange="this.closest('.rv-card').classList.toggle('off',!this.checked)"></label>
+      <div style="flex:1;min-width:0"><div class="hint" style="font-weight:800;color:var(--orange)">OPPORTUNITY DETECTED · ${esc(s.name)}</div><input class="in rv-t" value="${esc(o.title||"")}"></div></div>
+    <div class="rv-row"><select class="in rv-m">${mfrOptions(o.manufacturer)}</select><input class="in rv-pr" value="${esc(o.product||"")}" placeholder="Product / model"></div>
+    <div class="rv-row"><input class="in rv-q" type="number" inputmode="numeric" min="0" value="${o.quantity!=null?esc(String(o.quantity)):""}" placeholder="Qty">
+      <input class="in rv-v" type="number" inputmode="decimal" min="0" value="${o.value!=null?esc(String(o.value)):""}" placeholder="Est. value $"></div>
+    ${o.value_source==="catalog"?`<div class="hint">Priced from the catalog: ${esc(String(o.quantity||1))} × $${esc(String(o.unit_price))}${o.product_name?` (${esc(o.product_name)})`:""}</div>`:""}
+    <div class="rv-row"><select class="in rv-c">${contactOptions(o.contact_id)}</select>
+      <select class="in rv-s">${optList([{v:"identified",l:"Identified"},{v:"contacted",l:"Contacted"},{v:"quoted",l:"Quoted"}],o.stage||"identified")}</select></div>
+    <label class="fl">Expected close</label><input class="in rv-e" type="date" value="${esc(o.expected_close||"")}">
+  </div>`;
+}
+function addAttendee(){
+  const pick=$("#rv_atpick"), nm=$("#rv_atname"); const cid=pick&&pick.value, name=(nm&&nm.value||"").trim();
+  const c=cid?(REV.contacts||[]).find(x=>String(x.id)===String(cid)):null;
+  if(!c&&!name) return;
+  const a={key:"at_m_"+Date.now(),name:c?c.name:name,title:c?(c.title||""):"",contact_id:c?c.id:null};
+  const box=$("#rv_at"); if(box.querySelector(".hint")&&!box.querySelector(".rv-card")) box.innerHTML="";
+  box.insertAdjacentHTML("beforeend",attendeeCard(a)); if(pick) pick.value=""; if(nm) nm.value="";
+}
+function addFollow(){ const box=$("#rv_fu"); if(!box.querySelector(".rv-card")) box.innerHTML="";
+  box.insertAdjacentHTML("beforeend",followCard({key:"fu_m_"+Date.now(),title:"",priority:"normal"},false)); const t=box.lastElementChild.querySelector(".rv-t"); if(t) t.focus(); }
+function addOpp(){ const box=$("#rv_op"); if(!box.querySelector(".rv-card")) box.innerHTML="";
+  box.insertAdjacentHTML("beforeend",oppCard({key:"op_m_"+Date.now(),title:"",stage:"identified"})); const t=box.lastElementChild.querySelector(".rv-t"); if(t) t.focus(); }
+function collectReview(){
+  const v=(el,sel)=>{ const x=el.querySelector(sel); return x?String(x.value||"").trim():""; };
+  const split=t=>String(t||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  const commits=t=>split(t).map(x=>{ const m=x.match(/^(.*?)\s+—\s+by\s+(\d{4}-\d{2}-\d{2})$/); return m?{text:m[1],due_date:m[2]}:{text:x,due_date:""}; });
+  const summary={meeting_summary:String(($("#rv_sum")||{}).value||"").trim(),rep_commitments:commits(($("#rv_repc")||{}).value),dealer_commitments:commits(($("#rv_dlrc")||{}).value),
+    suggested_next_action:{text:String(($("#rv_na")||{}).value||"").trim(),due_date:String(($("#rv_na_d")||{}).value||"")}};
+  document.querySelectorAll("#rv_body .rv-list").forEach(t=>summary[t.getAttribute("data-k")]=split(t.value));
+  const participants=[...document.querySelectorAll("#rv_at .rv-card")].filter(c=>c.querySelector(".rv-on").checked).map(c=>({key:c.getAttribute("data-at"),
+    name:v(c,".rv-name"),title:v(c,".rv-title"),contact_id:c.getAttribute("data-cid")||null,email:v(c,".rv-email")||null,
+    add_as_contact:!!(c.querySelector(".rv-new")&&c.querySelector(".rv-new").checked),source:REV.manual?"rep":"ai"})).filter(p=>p.name);
+  const tasks=[...document.querySelectorAll("#rv_fu .rv-card")].filter(c=>c.querySelector(".rv-on").checked).map(c=>({key:c.getAttribute("data-fu"),
+    title:v(c,".rv-t"),due_date:v(c,".rv-d")||null,priority:v(c,".rv-p")||"normal",kind:"followup",ai:c.getAttribute("data-ai")==="1"})).filter(t=>t.title);
+  if(($("#rv_na_on")||{}).checked && summary.suggested_next_action.text)
+    tasks.push({key:"next_action",title:summary.suggested_next_action.text,due_date:summary.suggested_next_action.due_date||null,priority:"normal",kind:"next_action",ai:!REV.manual});
+  const opportunities=[...document.querySelectorAll("#rv_op .rv-card")].filter(c=>c.querySelector(".rv-on").checked).map(c=>({key:c.getAttribute("data-op"),
+    title:v(c,".rv-t"),manufacturer:v(c,".rv-m"),product:v(c,".rv-pr"),quantity:v(c,".rv-q")===""?null:Number(v(c,".rv-q")),
+    value:v(c,".rv-v")===""?null:Number(v(c,".rv-v")),contact_id:v(c,".rv-c")||null,stage:v(c,".rv-s")||"identified",expected_close:v(c,".rv-e")||null})).filter(o=>o.title);
+  return {summary,participants,tasks,opportunities};
+}
+async function approveVisit(){
+  const s=DAY.stops[REV.i], k=vkey(s), m=$("#rv_msg");
+  const c=collectReview();
+  if(!c.summary.meeting_summary && !c.tasks.length && !c.opportunities.length){ if(m){ m.style.color="#b42323"; m.textContent="Add a one-line summary first."; } return; }
+  const btn=document.querySelector("#rv_body .btn.go"); if(btn){ btn.disabled=true; btn.textContent="Saving…"; }
+  const body=Object.assign({action:"visit_approve",route_id:DAY.route.id,dealer_id:s.dealer_id,started_at:(s.visit&&s.visit.checkin_at)||null,
+    notes:obRead("vnote_"+k)||undefined,transcript:obRead("vtx_"+k)||undefined,interest_slugs:(REV.sug&&REV.sug.interest_slugs)||[]},c);
+  const res=await tryOrQueue(body); updateStatus();
+  if(res.rejected){ if(btn){ btn.disabled=false; btn.textContent="✓ Approve & save"; } if(m){ m.style.color="#b42323"; m.textContent=res.error||"Couldn't save."; } return; }
+  const j=(res.j)||{}, now=new Date().toISOString();
+  s.visit=Object.assign({},s.visit,{status:"completed",approved_at:now,completed_at:now,id:j.report_id||(s.visit&&s.visit.id)||REV.report_id||null,
+    followup_status:j.followup_status||((c.tasks.length||c.opportunities.length)?"pending":"none")});
   cacheDay(DAY.route.id,DAY);
-  const res=await tryOrQueue(payload); updateStatus();
-  if(res.sent){ const j=res.j||{}; if(status==="completed"){ toast(`Visit saved ✓ ${j.tasks?`· ${j.tasks} task${j.tasks===1?'':'s'}`:''}`); renderDay(); } else if(m){ m.style.color="var(--ok)"; m.textContent="Draft saved."; } }
-  else if(res.rejected){ if(m){ m.style.color="#b42323"; m.textContent=res.error||"Couldn't save."; } else toast("Couldn't save — "+(res.error||"refused")); }
-  else { if(status==="completed"){ toast("Saved offline — will sync ✓"); renderDay(); } else if(m){ m.style.color="var(--ok)"; m.textContent="Saved offline — will sync."; } }
+  const cr=j.created||{};
+  $("#rv_body").innerHTML=`<div class="rv-done">
+    <div class="big">✓ Visit saved${res.sent?"":" on this phone"}</div>
+    <div class="hint" style="margin:6px 0 14px">${res.sent
+      ? `${cr.tasks||0} follow-up${cr.tasks===1?"":"s"} → My Tasks · ${cr.opportunities||0} opportunit${cr.opportunities===1?"y":"ies"} → Pipeline${cr.contacts?` · ${cr.contacts} new contact${cr.contacts===1?"":"s"}`:""}`
+      : "No signal — it syncs by itself, and sending it twice never doubles anything."}</div>
+    ${fuChip(s.visit)}
+    <button class="btn go xl wide" style="margin-top:16px" onclick="draftVisitEmail(${REV.i})"${res.sent?"":" disabled"}>✉ Draft follow-up email</button>
+    <button class="btn xl wide" style="margin-top:8px" onclick="finishVisit()">Done</button></div>`;
 }
-async function draftFollowup(i){
-  const s=DAY.stops[i], m=$("#vmsg_"+i);
-  if(!navigator.onLine){ if(m){ m.style.color="#b42323"; m.textContent="Needs a connection to draft the email — your notes are saved."; } return; }
-  if(m){ m.style.color=""; m.textContent="Drafting…"; }
-  const details=collect(i);
-  let j; try{ j=await rapi({action:"generate_followup",dealer_id:s.dealer_id,details}); }catch(e){ j=null; }
-  if(!j||!j.ok||!(j.subject||j.body)){ if(m){ m.style.color="#b42323"; m.textContent=(j&&j.message)||"Couldn't draft the email."; } return; }
-  if(m)m.textContent="";
-  openDraft(s, j.subject||"", j.body||"", j.signature||"", "Follow-up email — review before sending");
+function finishVisit(){ const s=REV&&DAY.stops[REV.i]; if(s){ const k=vkey(s); obWrite("vnote_"+k,""); obWrite("vtx_"+k,""); } closeReview(); toast("Visit done ✓"); }
+
+/* ---- After the visit: summary, follow-up status, email ---- */
+async function openSummary(i){
+  const s=DAY.stops[i]; fullSheet("Visit · "+s.name); REV={i,manual:false,contacts:[],mfrs:[]};
+  const box=$("#rv_body");
+  if(!navigator.onLine){ box.innerHTML=`<div class="msg">The full summary needs a connection.</div>${fuChip(s.visit)}`; return; }
+  box.innerHTML=`<div class="msg">Loading…</div>`;
+  let j=null; try{ j=await rapi({action:"visit_report_get",route_id:DAY.route.id,dealer_id:s.dealer_id,detail:true}); }catch(e){ j=null; }
+  const r=j&&j.report; if(!r){ box.innerHTML=`<div class="msg">Couldn't load this visit.</div>`; return; }
+  REV.report_id=r.id;
+  const sm=r.summary||null, f=r.fields||{};
+  const list=(a,l)=>(a&&a.length)?`<div class="rv-line"><b>${esc(l)}:</b> ${esc(a.map(x=>typeof x==="object"?(x.text||""):x).join("; "))}</div>`:"";
+  const st=(t)=>t.status==="done"?"✓":t.status==="dismissed"?"–":"○";
+  box.innerHTML=`<div class="rv-sec">${r.duration_min!=null?`<div class="hint">On site ${esc(String(r.duration_min))} min</div>`:""}
+      ${sm?`<p style="margin:6px 0">${esc(sm.meeting_summary||"")}</p>${LISTS.map(([k,l])=>list(sm[k],l)).join("")}${list(sm.rep_commitments,"Rep commitments")}${list(sm.dealer_commitments,"Dealer commitments")}`
+         :`<p style="white-space:pre-wrap">${esc([f.purpose,f.notes].filter(Boolean).join("\n")||"No summary on this visit.")}</p>`}</div>
+    ${(j.participants||[]).length?`<div class="rv-sec"><h4>Attended</h4>${j.participants.map(p=>`<div class="rv-line">${esc(p.name_snapshot)}${p.title_snapshot?` · ${esc(p.title_snapshot)}`:""}</div>`).join("")}</div>`:""}
+    ${(j.tasks||[]).length?`<div class="rv-sec"><h4>Follow-ups</h4>${j.tasks.map(t=>`<div class="rv-line">${st(t)} ${esc(t.title)}${t.due_date?` <span class="hint">· ${esc(t.due_date)}</span>`:""}</div>`).join("")}</div>`:""}
+    ${(j.opportunities||[]).length?`<div class="rv-sec"><h4>Opportunities</h4>${j.opportunities.map(o=>`<div class="rv-line">${esc(o.title)} <span class="hint">· ${esc(o.stage)}${o.value?` · $${esc(String(Math.round(o.value)))}`:""}</span></div>`).join("")}</div>`:""}
+    <div class="rv-sec">${fuChip(r)} ${r.followup_manual?`<span class="hint">set by hand</span>`:""}
+      <div class="rv-row" style="margin-top:8px">${r.followup_status!=="complete"?`<button class="btn" onclick="setFollow(${i},'complete')">Mark follow-up complete</button>`:""}
+        ${r.followup_manual?`<button class="btn" onclick="setFollow(${i},'auto')">Back to automatic</button>`:""}</div></div>
+    ${r.approved_at?`<button class="btn go xl wide" onclick="draftVisitEmail(${i})">✉ ${r.followup_email&&r.followup_email.saved_at?"Open follow-up email draft":"Draft follow-up email"}</button>`:""}
+    <a class="btn xl wide" style="margin-top:8px" href="/admin/dealer.html?id=${encodeURIComponent(s.dealer_id)}">📇 Open in Dealer 360</a>
+    <div id="rv_msg" class="hint" style="margin:10px 0 30px"></div>`;
+  REV.email=r.followup_email||null;
+}
+async function setFollow(i,status){
+  const s=DAY.stops[i];
+  const res=await tryOrQueue({action:"visit_followup_set",route_id:DAY.route.id,dealer_id:s.dealer_id,status});
+  if(res.rejected){ toast(res.error||"Couldn't change it"); return; }
+  if(res.j&&res.j.followup_status) s.visit=Object.assign({},s.visit,{followup_status:res.j.followup_status});
+  cacheDay(DAY.route.id,DAY); openSummary(i);
+}
+async function draftVisitEmail(i){
+  const s=DAY.stops[i], m=$("#rv_msg");
+  if(!navigator.onLine){ if(m){ m.style.color="#b42323"; m.textContent="Drafting needs a connection — the visit is saved."; } return; }
+  const saved=REV&&REV.email;
+  if(saved&&saved.saved_at&&saved.body){ openDraft(s,saved.subject||"",saved.body||"","","Follow-up email — your saved draft",{visit:true,saved:true,to:saved.to}); return; }
+  if(m){ m.style.color=""; m.textContent="Drafting from the approved summary…"; }
+  let reportId=(s.visit&&s.visit.id)||(REV&&REV.report_id)||null;
+  if(!reportId){ try{ const g=await rapi({action:"visit_report_get",route_id:DAY.route.id,dealer_id:s.dealer_id}); reportId=g&&g.report&&g.report.id; }catch(e){} }
+  let j=null;
+  try{ const h={"content-type":"application/json"}; if(TOKEN) h["authorization"]="Bearer "+TOKEN;
+    const r=await fetch("/.netlify/functions/ai-email-api",{method:"POST",headers:h,body:JSON.stringify({action:"draft",dealer_id:s.dealer_id,template:"visit_followup",visit_report_id:reportId,contact_name:s.contact_name||""})});
+    j=await r.json().catch(()=>null); }catch(e){ j=null; }
+  if(m) m.textContent="";
+  if(j&&j.ok&&j.subject){ openDraft(s,j.subject,j.body||"",j.signature||"","Follow-up email — review before sending",{visit:true}); return; }
+  if(m){ m.style.color="#b42323"; m.textContent=(j&&(j.message||j.error))||"Couldn't draft the email."; }
 }
 async function headsUp(i){
   if(!navigator.onLine){ toast("Heads-up needs a connection"); return; }
@@ -637,24 +873,38 @@ function swapGreeting(body,name){
      a "$&" or "$1" in a replacement string is an instruction, and a name is not. */
   return String(body==null?"":body).replace(/^(\s*)Hi [^,\n]{1,40},/, (m,lead)=>lead+"Hi "+first+",");
 }
-function openDraft(s,subject,body,signature,title){
+/* opts.visit — the follow-up to an approved visit: adds Copy and Save draft (kept on the visit,
+   synced like everything else), and a send is recorded on the visit. opts.to — the address a saved
+   draft was going to, ticked instead of the first contact. Nothing ever sends without the tap. */
+let DRAFT=null;
+function openDraft(s,subject,body,signature,title,opts){
+  opts=opts||{};
   const rows=recipientRows(s);
   const full=body+(signature?`\n\n${signature}`:"");
+  const want=String(opts.to||"").trim().toLowerCase();
+  const pre=want&&rows.some(r=>String(r.email||"").toLowerCase()===want) ? (r=>String(r.email||"").toLowerCase()===want) : ((r,i)=>i===0);
+  const extra=want&&!rows.some(r=>String(r.email||"").toLowerCase()===want)?opts.to:"";
+  DRAFT=opts.visit?{visit:true,dealer_id:s.dealer_id,route_id:(DAY&&DAY.route&&DAY.route.id)||null,report_id:(s.visit&&s.visit.id)||(REV&&REV.report_id)||null}:null;
   const people=rows.length
-    ? rows.map((r,i)=>`<label class="rcpt"><input type="checkbox" class="d_p" data-email="${esc(r.email)}" data-name="${esc(r.name)}"${i===0?" checked":""} onchange="draftWho()">
+    ? rows.map((r,i)=>`<label class="rcpt"><input type="checkbox" class="d_p" data-email="${esc(r.email)}" data-name="${esc(r.name)}"${pre(r,i)?" checked":""} onchange="draftWho()">
         <span><b>${esc(r.name||r.email)}</b>${r.title?` <span class="hint">· ${esc(r.title)}</span>`:""}${r.source==="account"?` <span class="hint">· account email</span>`:""}<br><span class="hint">${esc(r.email)}</span></span></label>`).join("")
     : `<div class="hint">No email on file for this account — type one below.</div>`;
-  const wrap=document.createElement("div"); wrap.className="modal"; wrap.onclick=e=>{ if(e.target===wrap) wrap.remove(); };
+  const old=document.getElementById("draftwrap"); if(old) old.remove();
+  const wrap=document.createElement("div"); wrap.className="modal"; wrap.id="draftwrap"; wrap.onclick=e=>{ if(e.target===wrap) wrap.remove(); };
   wrap.innerHTML=`<div class="sheet">
     <h3>${esc(title||"Email — review before sending")}</h3>
     <label class="fl">To</label>
     <div id="d_people">${people}</div>
-    <input class="in" id="d_extra" placeholder="another email address (optional)" oninput="draftWho()">
+    <input class="in" id="d_extra" placeholder="another email address (optional)" value="${esc(extra)}" oninput="draftWho()">
     <div id="d_who" class="hint" style="margin-top:6px"></div>
     <label class="fl">Subject</label><input class="in" id="d_sub" value="${esc(subject)}">
     <label class="fl">Message</label><textarea class="in" id="d_body" style="min-height:200px">${esc(full)}</textarea>
     <div class="hint" style="margin-top:6px">Nothing sends until you tap Send. It goes from your Outlook.</div>
-    <div class="save-row" style="margin-top:12px">
+    ${opts.visit?`<div class="save-row" style="margin-top:12px">
+      <button class="btn wide" onclick="copyDraft()">⧉ Copy</button>
+      <button class="btn wide" onclick="saveDraft(this)">Save draft</button>
+    </div>`:""}
+    <div class="save-row" style="margin-top:${opts.visit?8:12}px">
       <button class="btn wide" onclick="this.closest('.modal').remove()">Close</button>
       <button class="btn go wide" onclick="sendDraft('${jesc(s.dealer_id)}',this)">Send from my Outlook</button>
     </div>
@@ -706,8 +956,30 @@ async function sendDraft(dealer_id,btn){
   if(m){ m.style.color=""; m.textContent=r.cc.length?`Sending to ${1+r.cc.length} people…`:"Sending…"; }
   if(btn) btn.disabled=true;
   let j; try{ j=await esapi({action:"send",dealer_id,to:r.to,cc:r.cc,subject,body_text:body}); }catch(e){ j=null; }
-  if(j&&j.ok){ toast(r.cc.length?`Email sent to ${1+r.cc.length} ✓`:"Email sent ✓"); const modal=document.querySelector(".modal"); if(modal) modal.remove(); }
+  if(j&&j.ok){ toast(r.cc.length?`Email sent to ${1+r.cc.length} ✓`:"Email sent ✓");
+    // A visit's follow-up is marked sent on the visit, so the summary and Dealer 360 show it went.
+    if(DRAFT&&DRAFT.visit){ const d=DRAFT; tryOrQueue(Object.assign(draftSaveBody(d,{to:r.to,cc:r.cc,subject,body}),{sent:true})).then(()=>{ if(REV) REV.email=null; updateStatus(); }); }
+    const modal=document.getElementById("draftwrap"); if(modal) modal.remove(); }
   else { if(m){ m.style.color="#b42323"; m.textContent=(j&&j.message)||"Couldn't send — you can also send from Dealer 360."; } if(btn) btn.disabled=false; }
+}
+function draftSaveBody(d,email){ const b={action:"visit_email_save",dealer_id:d.dealer_id,email};
+  if(d.report_id) b.report_id=d.report_id; else if(d.route_id) b.route_id=d.route_id; return b; }
+function draftNow(){ const picked=draftPicked(), r=splitRecipients(picked.list);
+  return {to:r.to,cc:r.cc,subject:($("#d_sub")||{}).value||"",body:($("#d_body")||{}).value||""}; }
+async function copyDraft(){
+  const e=draftNow(), text=(e.subject?`Subject: ${e.subject}\n\n`:"")+e.body, m=$("#d_msg");
+  let ok=false; try{ if(navigator.clipboard&&navigator.clipboard.writeText){ await navigator.clipboard.writeText(text); ok=true; } }catch(_){}
+  if(!ok){ const t=$("#d_body"); if(t){ t.focus(); t.select(); try{ ok=document.execCommand("copy"); }catch(_){} } }
+  if(m){ m.style.color=ok?"var(--ok)":"#b42323"; m.textContent=ok?"✓ Copied — paste it into any email.":"Couldn't copy here — select the message and copy it."; }
+}
+async function saveDraft(btn){
+  if(!DRAFT) return; const m=$("#d_msg"), e=draftNow();
+  if(btn) btn.disabled=true;
+  const res=await tryOrQueue(draftSaveBody(DRAFT,e)); updateStatus();
+  if(btn) btn.disabled=false;
+  if(res.rejected){ if(m){ m.style.color="#b42323"; m.textContent=res.error||"Couldn't save the draft."; } return; }
+  if(REV) REV.email=Object.assign({},e,{saved_at:new Date().toISOString()});
+  if(m){ m.style.color="var(--ok)"; m.textContent=res.sent?"✓ Draft saved on the visit.":"✓ Saved on this phone — syncs when you have signal."; }
 }
 
 // ---- Visit package (shared handout) ----

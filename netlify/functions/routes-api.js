@@ -26,6 +26,14 @@ const ORDERING_BASE = process.env.ORDERING_BASE || "https://hcpsonlineordering.n
 const MAIL_FROM = process.env.HCPS_MAIL_FROM || "HCPS Partner Portal <orders@homecareproviderservices.us>";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const P = require("./_platform.js");
+// Phase 1 — Visit Intelligence: shared visit, task, opportunity and meeting-AI helpers.
+const VI = require("./_visits.js");
+const TK = require("./_tasks.js");
+const OPP = require("./_opps.js");
+const VAI = require("./_visit_ai.js");
+const UP = require("./_upsert.js");
+const AI_KEY = process.env.ANTHROPIC_API_KEY || "";
+const VISIT_AI_MODEL = process.env.HCPS_VISIT_AI_MODEL || process.env.HCPS_AI_MODEL || "claude-sonnet-5";
 const esc2 = s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 
 /* WHAT THE DEALER COULD BUY THAT THEY DO NOT ALREADY HAVE.
@@ -653,6 +661,7 @@ exports.handler = async (event)=>{
        the caller owns or is assigned: a rep sent on a ride-along can work every stop of that
        route without the dealers being moved into his book. */
     const DEALER_ACTIONS=new Set(["business_case","log_visit","visit_checkin","visit_report_get","visit_report_save","save_visit",
+      "visit_end","visit_analyze","visit_approve","visit_followup_set","visit_email_save",
       "generate_followup","send_followup","notify_visit","previsit_draft","list_handout_exclusions","set_handout_exclusion","set_handout_feature"]);
     if(DEALER_ACTIONS.has(b.action)){
       const want=b.action==="business_case"?(Array.isArray(b.dealer_ids)?b.dealer_ids:[]):[b.dealer_id];
@@ -1080,7 +1089,8 @@ exports.handler = async (event)=>{
       return {ok:true,route:r};
     }
     // Visit report helpers (Phase 0F — see VISITS RUN ONCE below).
-    const VISIT_STATUSES=["planned","checked_in","in_progress","completed"];
+    // "ended" (Phase 1): the rep tapped End Visit; the summary is not approved yet.
+    const VISIT_STATUSES=["planned","checked_in","in_progress","ended","completed"];
     // Same data → same text, whatever order the keys came in (jsonb reorders them).
     const canonJson=v=>Array.isArray(v)?"["+v.map(canonJson).join(",")+"]":(v&&typeof v==="object")?"{"+Object.keys(v).sort().map(k=>JSON.stringify(k)+":"+canonJson(v[k])).join(",")+"}":JSON.stringify(v===undefined?null:v);
     const visitStatusMax=(a,b2)=>{ const ia=VISIT_STATUSES.indexOf(String(a||"")), ib=VISIT_STATUSES.indexOf(String(b2||"")); return ia>ib ? VISIT_STATUSES[ia] : (ib>=0 ? VISIT_STATUSES[ib] : "in_progress"); };
@@ -1116,7 +1126,8 @@ exports.handler = async (event)=>{
            the heads-up and the follow-up can be addressed to whoever this visit is actually with. */
         try{ const cs=await sbGet(`dealer_contacts?dealer_id=in.(${ids.join(",")})&select=dealer_id,name,email,phone,cell,title,role&order=dealer_id`); for(const c of (cs||[])){ if(!cmap[c.dealer_id]) cmap[c.dealer_id]=c; (clist[c.dealer_id]=clist[c.dealer_id]||[]).push(c); } }catch(e){}
       }
-      try{ const vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(route.id)}&select=dealer_id,status,checkin_at,completed_at`); for(const v of (vr||[])) vmap[v.dealer_id]=v; }catch(e){}
+      try{ const vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(route.id)}&select=id,dealer_id,status,checkin_at,completed_at,ended_at,duration_min,approved_at,followup_status,ai_suggested_at`); for(const v of (vr||[])) vmap[v.dealer_id]=v; }
+      catch(e){ try{ const vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(route.id)}&select=dealer_id,status,checkin_at,completed_at`); for(const v of (vr||[])) vmap[v.dealer_id]=v; }catch(_){} }
       const outStops=stops.map((s,i)=>{ const d=dmap[s.dealer_id]||{}, c=cmap[s.dealer_id]||{}, v=vmap[s.dealer_id]||null;
         return { order:i, dealer_id:s.dealer_id||"", name:s.name||d.business_name||"",
           address:s.address||d.address||"", city:s.city||d.city||"", state:s.state||d.state||"", zip:s.zip||d.zip||"",
@@ -1130,7 +1141,9 @@ exports.handler = async (event)=>{
           next_start_min:(s.next_start_min!=null?s.next_start_min:null),
           contact_name:(c.name||d.contact_name||""), contact_email:(c.email||d.email||""), contact_phone:(c.phone||c.cell||d.phone||""),
           contacts: stopRecipients(clist[s.dealer_id]||[], d),
-          visit: v?{status:v.status,checkin_at:v.checkin_at,completed_at:v.completed_at}:null }; });
+          visit: v?{id:v.id||null,status:v.status,checkin_at:v.checkin_at,completed_at:v.completed_at,ended_at:v.ended_at||null,
+            duration_min:(v.duration_min!=null?v.duration_min:null),approved_at:v.approved_at||null,
+            followup_status:v.followup_status||null,has_suggestion:!!v.ai_suggested_at}:null }; });
       const hb=resolveHomeBase(route,me);
       return json(200,{ok:true,
         route:{id:route.id,name:route.name,scheduled_date:route.scheduled_date,
@@ -1160,15 +1173,17 @@ exports.handler = async (event)=>{
       let sd=null;
       if(rid){ const chk=await routeStopCheck(rid,did); if(!chk.ok) return json(chk.status,{error:chk.error}); sd=chk.route.scheduled_date||null; }
       const now=new Date().toISOString();
+      // An arrival tapped offline keeps the time it was tapped (the on-site timer runs from it).
+      const arrivedAt=VI.clientTime(b.at)||now;
       const prev=await visitReportFor(rid,did,me);
       if(prev && prev.completed_at) return json(200,{ok:true,checkin_at:prev.checkin_at||null,status:"completed",already:true});
       if(prev && prev.checkin_at) return json(200,{ok:true,checkin_at:prev.checkin_at,status:prev.status||"checked_in",already:true});
       const status=prev ? visitStatusMax(prev.status,"checked_in") : "checked_in";
-      const row={ route_id:rid, dealer_id:did, rep_email:me.email||null, rep_name:me.rep_name||null, scheduled_date:sd, checkin_at:now, status, updated_at:now };
+      const row={ route_id:rid, dealer_id:did, rep_email:me.email||null, rep_name:me.rep_name||null, scheduled_date:sd, checkin_at:arrivedAt, status, updated_at:now };
       if(rid){ await sbSend("POST","dealer_visit_reports?on_conflict=route_id,dealer_id",row,{Prefer:"resolution=merge-duplicates,return=minimal"}); }
-      else if(prev){ await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(prev.id)}`,{checkin_at:now,status,updated_at:now},{Prefer:"return=minimal"}); }
+      else if(prev){ await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(prev.id)}`,{checkin_at:arrivedAt,status,updated_at:now},{Prefer:"return=minimal"}); }
       else { await sbSend("POST","dealer_visit_reports",row,{Prefer:"return=minimal"}); }
-      return json(200,{ok:true,checkin_at:now,status});
+      return json(200,{ok:true,checkin_at:arrivedAt,status});
     }
     if(b.action==="visit_report_get"){
       const rid=String(b.route_id||"").trim(), did=String(b.dealer_id||"").trim();
@@ -1178,7 +1193,16 @@ exports.handler = async (event)=>{
         ? `dealer_visit_reports?route_id=eq.${encodeURIComponent(rid)}&dealer_id=eq.${encodeURIComponent(did)}&select=*&limit=1`
         : `dealer_visit_reports?dealer_id=eq.${encodeURIComponent(did)}&select=*&order=updated_at.desc&limit=1`;
       const rows=await sbGet(path).catch(()=>[]);
-      return json(200,{ok:true,report:(rows&&rows[0])||null});
+      const report=(rows&&rows[0])||null;
+      if(!report || !b.detail) return json(200,{ok:true,report});
+      // The Visit Summary screen: attendees and the tasks / deals this visit created.
+      const id=encodeURIComponent(report.id);
+      const [participants,tasks,opportunities]=await Promise.all([
+        sbGet(`dealer_visit_participants?visit_report_id=eq.${id}&select=*&order=created_at`).catch(()=>[]),
+        sbGet(`dealer_tasks?origin_type=eq.visit_report&origin_id=eq.${id}&select=id,title,status,due_date,priority,origin_key&order=created_at`).catch(()=>[]),
+        sbGet(`opportunities?origin_type=eq.visit_report&origin_id=eq.${id}&select=id,title,stage,status,value,manufacturer,product,quantity,origin_key&order=created_at`).catch(()=>[]),
+      ]);
+      return json(200,{ok:true,report,participants:participants||[],tasks:tasks||[],opportunities:opportunities||[]});
     }
     if(b.action==="visit_report_save"){
       const rid=String(b.route_id||"").trim()||null, did=String(b.dealer_id||"").trim();
@@ -1265,6 +1289,327 @@ exports.handler = async (event)=>{
       }
       const doneAt=firstCompletion ? now : ((prev&&prev.completed_at)||null);
       return json(200,{ok:true,status:doneAt?"completed":row.status,completed_at:doneAt,first_completion:firstCompletion,already_completed:!!(prev&&prev.completed_at),tasks:tCreated,opportunities:oCreated});
+    }
+
+    /* ─────────────── PHASE 1 · VISIT INTELLIGENCE ───────────────────────────────────────────
+       One visit = one dealer_visit_reports row (the route stop's, or off a route the rep's open one).
+         Start Visit   visit_checkin (above): checkin_at — the on-site timer runs from it
+         End Visit     visit_end: ended_at + duration. Idempotent; an End tapped offline keeps its time.
+         Summary       visit_analyze: AI SUGGESTIONS from the typed notes + dictation, kept on the report.
+                       Not CRM records — nothing is created until the rep approves.
+         Approve       visit_approve: what the rep approved. Attendees → dealer_contacts +
+                       dealer_visit_participants; follow-ups → dealer_tasks; deals → opportunities, all
+                       linked back by (origin_type, origin_id, origin_key) and inserted "ignore
+                       duplicates", so a replay creates nothing new. The visit then completes through the
+                       Phase 0 claim, so the visit log, Dealer 360 note, timeline row and interest signals
+                       are written exactly once.
+         Follow-up     follow-up status: none | pending | complete (automatic from the linked tasks and
+                       deals; visit_followup_set overrides by hand).
+         Email         visit_email_save keeps the follow-up email draft. Nothing is ever sent from here. */
+    const ISO_D=/^\d{4}-\d{2}-\d{2}$/;
+    const cleanS=(v,n)=>{ const s=(v==null?"":String(v)).trim(); return s?s.slice(0,n):""; };
+    const hashStr=s=>{ let h=5381; s=String(s||""); for(let i=0;i<s.length;i++) h=((h<<5)+h+s.charCodeAt(i))>>>0; return h.toString(36)+":"+s.length; };
+    async function reportFull(rid,did){
+      const path = rid
+        ? `dealer_visit_reports?route_id=eq.${encodeURIComponent(rid)}&dealer_id=eq.${encodeURIComponent(did)}&select=*&limit=1`
+        : `dealer_visit_reports?route_id=is.null&dealer_id=eq.${encodeURIComponent(did)}&rep_email=eq.${encodeURIComponent(me.email||"")}&completed_at=is.null&select=*&order=updated_at.desc&limit=1`;
+      const rows=await sbGet(path).catch(()=>[]); return (rows&&rows[0])||null;
+    }
+    // A visit by id: its dealer must be the one this request was scoped to, and it must be the
+    // caller's own visit, a visit on a route they work, or the caller sees every dealer.
+    async function reportById(id,did){
+      const rows=await sbGet(`dealer_visit_reports?id=eq.${encodeURIComponent(id)}&select=*&limit=1`).catch(()=>[]);
+      const r=rows&&rows[0]; if(!r) return {ok:false,status:404,error:"Visit not found."};
+      if(String(r.dealer_id)!==String(did)) return {ok:false,status:403,error:"That visit belongs to another dealer."};
+      if(SC.seesAllDealers(me) || emailEq(r.rep_email,me.email)) return {ok:true,report:r};
+      if(r.route_id){ const chk=await routeStopCheck(r.route_id,did); if(chk.ok) return {ok:true,report:r}; }
+      return {ok:false,status:403,error:"Not your visit."};
+    }
+    async function locateReport(rid,did){
+      if(b.report_id) return reportById(String(b.report_id),did);
+      if(rid){ const chk=await routeStopCheck(rid,did); if(!chk.ok) return chk; }
+      const r=await reportFull(rid,did);
+      return r?{ok:true,report:r}:{ok:false,status:404,error:"Start the visit first."};
+    }
+    async function dealerEnv(did){
+      const dr=await sbGet(`dealers?id=eq.${encodeURIComponent(did)}&select=business_name,is_test`).catch(()=>[]);
+      const d=(dr&&dr[0])||{}; const st=await P.getState(); return {dealer:d, env:P.envFor(st.mode,d.is_test)};
+    }
+    async function knownMfrs(){ const m=await sbGet("manufacturers?select=slug,name").catch(()=>[]); return (m||[]).filter(x=>x&&x.slug); }
+    // The published catalog for a line (the Partner 360 shop's own data), plus any SKUs kept in the
+    // database. Used only to price a model the dealer named ("2 × PR519").
+    async function loadCatalog(slug){
+      const out=[];
+      try{ const r=await fetch(`${ORDERING_BASE}/data/${encodeURIComponent(slug)}.json`); if(r.ok){ const j=await r.json(); if(Array.isArray(j)) for(const p of j) out.push({code:p.code,name:p.name,base_price:p.base_price}); } }catch(e){}
+      try{ const s=await sbGet(`product_skus?manufacturer=eq.${encodeURIComponent(slug)}&select=code,option_label,base_price&limit=1000`); for(const p of (s||[])) out.push({code:p.code,name:p.option_label||p.code,base_price:p.base_price}); }catch(e){}
+      return out;
+    }
+
+    if(b.action==="visit_end"){
+      const rid=String(b.route_id||"").trim()||null, did=String(b.dealer_id||"").trim();
+      if(!did) return json(400,{error:"dealer_id required"});
+      let sd=null;
+      if(rid){ const chk=await routeStopCheck(rid,did); if(!chk.ok) return json(chk.status,{error:chk.error}); sd=chk.route.scheduled_date||null; }
+      const nowMs=Date.now(), nowIso=new Date(nowMs).toISOString();
+      const endIso=VI.clientTime(b.at,nowMs)||nowIso;
+      let prev=await reportFull(rid,did);
+      if(!prev && !rid && b.at){
+        // Off a route, a replayed End for a visit that has since been approved is that visit.
+        const rows=await sbGet(`dealer_visit_reports?route_id=is.null&dealer_id=eq.${encodeURIComponent(did)}&rep_email=eq.${encodeURIComponent(me.email||"")}&ended_at=eq.${encodeURIComponent(endIso)}&select=*&limit=1`).catch(()=>[]);
+        if(rows&&rows[0]) prev=rows[0];
+      }
+      if(prev && prev.ended_at) return json(200,{ok:true,report_id:prev.id,ended_at:prev.ended_at,duration_min:prev.duration_min,status:prev.status,already:true});
+      const startIso=(prev&&prev.checkin_at)||VI.clientTime(b.started_at,nowMs)||endIso;
+      const end=Date.parse(endIso)<Date.parse(startIso)?startIso:endIso;
+      const dur=Math.max(0,Math.round((Date.parse(end)-Date.parse(startIso))/60000));
+      if(!prev){
+        // Never started here (the arrival was lost, or End came first): open and end it now.
+        const row={route_id:rid,dealer_id:did,rep_email:me.email||null,rep_name:me.rep_name||null,scheduled_date:sd,
+          checkin_at:startIso,ended_at:end,duration_min:dur,status:"ended",origin:rid?"route":"adhoc",updated_at:nowIso};
+        const ins = rid ? await sbSend("POST","dealer_visit_reports?on_conflict=route_id,dealer_id",row,{Prefer:"resolution=merge-duplicates,return=representation"})
+                        : await sbSend("POST","dealer_visit_reports",row,{Prefer:"return=representation"});
+        return json(200,{ok:true,report_id:(ins&&ins[0]&&ins[0].id)||null,ended_at:end,duration_min:dur,status:"ended"});
+      }
+      const status=prev.completed_at?"completed":visitStatusMax(prev.status,"ended");
+      const won=await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(prev.id)}&ended_at=is.null&select=id`,
+        {ended_at:end,duration_min:dur,status,checkin_at:startIso,updated_at:nowIso,origin:prev.origin||(rid?"route":"adhoc")},{Prefer:"return=representation"});
+      if(!(Array.isArray(won)&&won.length)){
+        const again=await sbGet(`dealer_visit_reports?id=eq.${encodeURIComponent(prev.id)}&select=ended_at,duration_min,status`).catch(()=>[]);
+        const r=(again&&again[0])||{};
+        return json(200,{ok:true,report_id:prev.id,ended_at:r.ended_at||end,duration_min:r.duration_min,status:r.status||status,already:true});
+      }
+      return json(200,{ok:true,report_id:prev.id,ended_at:end,duration_min:dur,status});
+    }
+
+    if(b.action==="visit_analyze"){
+      const rid=String(b.route_id||"").trim()||null, did=String(b.dealer_id||"").trim();
+      if(!did) return json(400,{error:"dealer_id required"});
+      const loc=await locateReport(rid,did); if(!loc.ok) return json(loc.status,{error:loc.error});
+      const r=loc.report; const nowIso=new Date().toISOString();
+      const notes=String(b.notes!=null?b.notes:((r.fields&&r.fields.notes)||"")).slice(0,8000).trim();
+      const transcript=String(b.transcript!=null?b.transcript:(r.transcript||"")).slice(0,20000).trim();
+      const empty=!notes && !transcript;
+      const visitDate=ISO_D.test(String(b.local_date||""))?String(b.local_date):String(r.checkin_at||nowIso).slice(0,10);
+      const weekday=new Date(visitDate+"T12:00:00Z").toLocaleDateString("en-US",{weekday:"long",timeZone:"UTC"});
+      const inputHash=hashStr(notes+"\n\u0000"+transcript+"\n"+visitDate);
+      // What was typed and dictated stays with the visit, whatever the AI does next.
+      const fields=Object.assign({}, r.fields||{}, {notes});
+      if(!empty){ try{ await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(r.id)}`,{fields,transcript:transcript||null,updated_at:nowIso},{Prefer:"return=minimal"}); }catch(e){} }
+      // The review screen's pickers: this dealer's contacts and the known manufacturers.
+      const [{dealer},contacts,mfrs]=await Promise.all([
+        dealerEnv(did),
+        sbGet(`dealer_contacts?dealer_id=eq.${encodeURIComponent(did)}&select=id,name,title,email&order=name`).catch(()=>[]),
+        knownMfrs(),
+      ]);
+      const pickers={contacts:(contacts||[]).map(c=>({id:c.id,name:c.name||c.email||"",title:c.title||"",email:c.email||""})),manufacturers:mfrs.map(m=>({slug:m.slug,name:m.name||m.slug}))};
+      if(!b.refresh && r.ai_suggestion && r.ai_suggestion.input_hash===inputHash)
+        return json(200,Object.assign({ok:true,report_id:r.id,suggestion:r.ai_suggestion,cached:true},pickers));
+      if(b.manual) return json(200,Object.assign({ok:true,report_id:r.id,suggestion:null},pickers));
+      // Nothing written or dictated: no AI call — the rep reviews by hand, with the pickers.
+      if(empty) return json(200,Object.assign({ok:false,report_id:r.id,error:"no_notes",message:"Nothing to summarize yet — write the summary below, or go back and dictate."},pickers));
+      const sales=await sbGet(`monthly_sales?dealer_id=eq.${encodeURIComponent(did)}&select=product_name&limit=600`).catch(()=>[]);
+      const products=[...new Set((sales||[]).map(x=>String(x.product_name||"").trim()).filter(Boolean))];
+      const res=await VAI.summarize({transcript,notes,visitDate,weekday,dealerName:dealer.business_name||"",repName:me.name||me.rep_name||"",
+        contacts:contacts||[],mfrs,products,fetch,apiKey:AI_KEY,model:VISIT_AI_MODEL});
+      if(!res.ok) return json(200,Object.assign({ok:false,report_id:r.id,error:res.error,message:res.message},pickers));
+      const sug=VAI.normalizeSuggestion(res.raw,{visitDate,contacts:contacts||[],mfrs});
+      await VAI.priceLookup(sug.opportunities,{loadCatalog});
+      Object.assign(sug,{input_hash:inputHash,generated_at:nowIso,model:VISIT_AI_MODEL});
+      try{ await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(r.id)}`,{ai_suggestion:sug,ai_suggested_at:nowIso},{Prefer:"return=minimal"}); }catch(e){}
+      return json(200,Object.assign({ok:true,report_id:r.id,suggestion:sug},pickers));
+    }
+
+    if(b.action==="visit_approve"){
+      const rid=String(b.route_id||"").trim()||null, did=String(b.dealer_id||"").trim();
+      if(!did) return json(400,{error:"dealer_id required"});
+      let sd=null;
+      if(rid){ const chk=await routeStopCheck(rid,did); if(!chk.ok) return json(chk.status,{error:chk.error}); sd=chk.route.scheduled_date||null; }
+      const nowIso=new Date().toISOString();
+      const summaryIn=VI.normalizeSummary(b.summary);
+      const tasksIn=(Array.isArray(b.tasks)?b.tasks:[]).filter(t=>t&&cleanS(t.title,200)&&TK.KEY_RE.test(String(t.key||""))).slice(0,25);
+      const oppsIn=(Array.isArray(b.opportunities)?b.opportunities:[]).filter(o=>o&&cleanS(o.title,200)&&TK.KEY_RE.test(String(o.key||""))).slice(0,15);
+      const partsIn=(Array.isArray(b.participants)?b.participants:[]).slice(0,30);
+      let r=null;
+      if(b.report_id){ const x=await reportById(String(b.report_id),did); if(!x.ok) return json(x.status,{error:x.error}); r=x.report; }
+      else r=await reportFull(rid,did);
+      if(!r && !rid){
+        // Off a route, a replay after approval is that visit: same rep, dealer and approved summary.
+        const since=new Date(Date.now()-30*86400000).toISOString();
+        const done=await sbGet(`dealer_visit_reports?route_id=is.null&dealer_id=eq.${encodeURIComponent(did)}&rep_email=eq.${encodeURIComponent(me.email||"")}&approved_at=gte.${encodeURIComponent(since)}&select=*&order=approved_at.desc&limit=50`).catch(()=>[]);
+        const want=canonJson(summaryIn);
+        r=(done||[]).find(x=>x&&x.summary&&canonJson(VI.normalizeSummary(x.summary))===want)||null;
+      }
+      if(!r){
+        const row={route_id:rid,dealer_id:did,rep_email:me.email||null,rep_name:me.rep_name||null,scheduled_date:sd,
+          checkin_at:VI.clientTime(b.started_at)||nowIso,status:"ended",origin:rid?"route":"adhoc",updated_at:nowIso};
+        const ins = rid ? await sbSend("POST","dealer_visit_reports?on_conflict=route_id,dealer_id",row,{Prefer:"resolution=merge-duplicates,return=representation"})
+                        : await sbSend("POST","dealer_visit_reports",row,{Prefer:"return=representation"});
+        r=(ins&&ins[0])||null;
+        if(!r) return json(500,{error:"Couldn't open the visit record."});
+      }
+      const reportId=r.id;
+      const {env}=await dealerEnv(did);
+      const mfrs=await knownMfrs(); const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
+
+      // ATTENDEES — linked to the dealer's own contacts. "Add as contact" makes a normal Dealer 360
+      // contact (found again by email or name on a replay, never made twice).
+      const contacts=await sbGet(`dealer_contacts?dealer_id=eq.${encodeURIComponent(did)}&select=id,name,email,title,phone,cell`).catch(()=>[]);
+      const byId={}; for(const c of (contacts||[])) byId[c.id]=c;
+      /* The participant row is the lock. Rows are inserted first with "ignore duplicates", so only
+         the request that actually inserted a person's row may create a NEW contact for them — two
+         approvals racing (a double tap) can never both add "Stacey". Everyone else only links to a
+         contact that already exists, and never overwrites a link that is already set. */
+      const contactFor=(p,name,email)=>{
+        if(p.contact_id&&byId[p.contact_id]) return String(p.contact_id);
+        const m=(email&&(contacts||[]).find(c=>String(c.email||"").toLowerCase()===email)) || (contacts||[]).find(c=>VI.nameKey(c.name)===VI.nameKey(name));
+        return m?String(m.id):null;
+      };
+      const pRows=[], want=[], contactsAdded=[], contactByKey={};
+      for(const p of partsIn){
+        if(!p) continue;
+        let name=cleanS(p.name,160); if(!name && p.contact_id && byId[p.contact_id]) name=cleanS(byId[p.contact_id].name,160);
+        if(!name) continue;
+        const k=VI.nameKey(name); if(!k || pRows.some(x=>x.name_key===k)) continue;
+        const email=EMAIL_RE.test(String(p.email||"").trim())?String(p.email).trim().toLowerCase():null;
+        const cid=(p.contact_id&&byId[p.contact_id])?String(p.contact_id):(p.add_as_contact?contactFor(p,name,email):null);
+        const c=cid?byId[cid]:null;
+        pRows.push({visit_report_id:reportId,dealer_id:did,contact_id:cid,name_key:k,name_snapshot:name,
+          title_snapshot:cleanS(p.title,120)||(c&&c.title)||null,email_snapshot:(c&&c.email)||email||null,
+          attended:p.attended!==false,source:p.source==="ai"?"ai":"rep",created_by:me.email||me.name||null});
+        want.push({p,name,email,k});
+      }
+      let owned=new Set();
+      if(pRows.length){
+        let ins;
+        try{ ins=await sbSend("POST","dealer_visit_participants?on_conflict=visit_report_id,name_key",pRows,{Prefer:"resolution=ignore-duplicates,return=representation"}); }
+        catch(e){ return json(200,{ok:false,error:"migration_needed",message:"Run supabase/phase1_visit_intelligence.sql, then approve again. ("+String(e.message||e).slice(0,120)+")"}); }
+        owned=new Set((ins||[]).map(x=>x.name_key));
+      }
+      const stored0=await sbGet(`dealer_visit_participants?visit_report_id=eq.${encodeURIComponent(reportId)}&select=name_key,contact_id,created_at`).catch(()=>[]);
+      const storedBy={}; for(const x of (stored0||[])) storedBy[x.name_key]=x;
+      for(const {p,name,email,k} of want){
+        const row=pRows.find(x=>x.name_key===k); const st=storedBy[k]||{};
+        let cid=st.contact_id||row.contact_id||null;
+        // A row this request inserted — or one left without its contact by an approval that stopped
+        // part-way (older than two minutes) — may create the contact.
+        const stale=st.created_at && (Date.now()-Date.parse(st.created_at))>120000;
+        if(!cid && p.add_as_contact && (owned.has(k)||stale)){
+          const base=UP.stripBlank({dealer_id:did,email,name,title:cleanS(p.title,120)||null,phone:cleanS(p.phone,60)||null},["dealer_id"]);
+          let ins=null;
+          try{ ins = email
+            ? await sbSend("POST","dealer_contacts?on_conflict=dealer_id,email",base,{Prefer:"resolution=merge-duplicates,return=representation"})
+            : await sbSend("POST","dealer_contacts",base,{Prefer:"return=representation"}); }catch(e){ ins=null; }
+          const c=ins&&ins[0];
+          if(c){ cid=String(c.id); (contacts||[]).push(c); byId[c.id]=c; contactsAdded.push(c.id); }
+        }
+        if(cid && !st.contact_id){
+          await sbSend("PATCH",`dealer_visit_participants?visit_report_id=eq.${encodeURIComponent(reportId)}&name_key=eq.${encodeURIComponent(k)}&contact_id=is.null`,
+            {contact_id:cid,email_snapshot:(byId[cid]&&byId[cid].email)||row.email_snapshot||null},{Prefer:"return=minimal"}).catch(()=>{});
+        }
+        row.contact_id=cid;
+        if(p.key) contactByKey[String(p.key)]=cid;
+      }
+      const haveKeys=new Set([...Object.keys(storedBy)].filter(k=>!owned.has(k)));
+
+      // What was approved — kept with the visit (follow-up status reads the deals' approved stages).
+      const tasksApproved=tasksIn.map(t=>({key:String(t.key),title:cleanS(t.title,200),detail:cleanS(t.detail,2000)||null,
+        due_date:ISO_D.test(String(t.due_date||""))?String(t.due_date):null,
+        priority:TK.PRIORITIES.includes(String(t.priority||"").toLowerCase())?String(t.priority).toLowerCase():"normal",
+        kind:String(t.kind||"followup"),ai:!!t.ai}));
+      const oppsApproved=oppsIn.map(o=>({key:String(o.key),title:cleanS(o.title,200),manufacturer:mfrName[o.manufacturer]?String(o.manufacturer):"",
+        product:cleanS(o.product,160)||null,quantity:o.quantity,value:o.value,stage:OPP.OPEN_STAGES.includes(String(o.stage||"").toLowerCase())?String(o.stage).toLowerCase():"identified",
+        expected_close:ISO_D.test(String(o.expected_close||""))?String(o.expected_close):null,
+        contact_id:(o.contact_id&&byId[o.contact_id])?String(o.contact_id):(o.contact_key&&contactByKey[o.contact_key])||null,notes:cleanS(o.notes,2000)||null}));
+      const stored=Object.assign({},summaryIn,{
+        attendees:pRows.map(p=>({name:p.name_snapshot,title:p.title_snapshot,contact_id:p.contact_id})),
+        tasks:tasksApproved.map(t=>({key:t.key,title:t.title,due_date:t.due_date,priority:t.priority})),
+        opportunities:oppsApproved.map(o=>({key:o.key,title:o.title,stage:o.stage,manufacturer:o.manufacturer,product:o.product,quantity:o.quantity,value:o.value})),
+        contacts_added:[...new Set([].concat(((r.summary&&r.summary.contacts_added)||[]),contactsAdded))],
+        interest_slugs:[...new Set((Array.isArray(b.interest_slugs)?b.interest_slugs:[]).map(String).filter(s=>mfrName[s]))],
+      });
+      const endedAt=r.ended_at||nowIso;
+      const startedAt=r.checkin_at||VI.clientTime(b.started_at)||endedAt;
+      const fields=Object.assign({}, r.fields||{}, b.notes!=null?{notes:String(b.notes).slice(0,8000)}:{});
+      const upd={summary:stored,fields,approved_by:me.email||me.name||null,updated_at:nowIso,ended_at:endedAt,checkin_at:startedAt,
+        duration_min:(r.duration_min!=null?r.duration_min:Math.max(0,Math.round((Date.parse(endedAt)-Date.parse(startedAt))/60000)))};
+      if(b.transcript!=null) upd.transcript=String(b.transcript).slice(0,20000);
+      await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(reportId)}`,upd,{Prefer:"return=minimal"});
+      await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(reportId)}&approved_at=is.null`,{approved_at:nowIso},{Prefer:"return=minimal"}).catch(()=>{});
+
+      // FOLLOW-UP TASKS and OPPORTUNITIES — into the existing tables, linked to this visit.
+      const repName=me.name||me.rep_name||"HCPS rep";
+      const tRes=await TK.createTasks(tasksApproved.map(t=>({key:t.key,title:t.title,
+          detail:[t.detail,`From the ${String(startedAt).slice(0,10)} visit`].filter(Boolean).join("\n"),
+          due_date:t.due_date,priority:t.priority,dealer_id:did,ai_generated:t.ai,
+          reason:t.kind==="next_action"?"visit_next_action":"visit_followup"})),
+        {sbGet,sbSend,me,source:"visit",env,origin:{type:"visit_report",id:String(reportId)},created_by:repName});
+      const oRes=await OPP.createOpportunities(oppsApproved.map(o=>Object.assign({},o,{dealer_id:did,
+          notes:[o.notes,`From the ${String(startedAt).slice(0,10)} visit`].filter(Boolean).join("\n")})),
+        {sbGet,sbSend,me,source:"visit",mfrName,origin:{type:"visit_report",id:String(reportId)}});
+
+      // COMPLETE — the Phase 0 claim: only the approval that flips completed_at writes the visit log,
+      // the Dealer 360 note, the timeline row and the interest signals.
+      let firstCompletion=false;
+      if(!r.completed_at){
+        const won=await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(reportId)}&completed_at=is.null&select=id`,
+          {completed_at:nowIso,status:"completed",updated_at:nowIso},{Prefer:"return=representation"});
+        firstCompletion=Array.isArray(won)&&won.length>0;
+      }
+      if(!firstCompletion) await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(reportId)}&completed_at=not.is.null&status=neq.completed`,{status:"completed"},{Prefer:"return=minimal"}).catch(()=>{});
+      if(firstCompletion){
+        const body=VI.summaryNoteBody(stored,{attendees:pRows.map(p=>p.name_snapshot)})||String(fields.notes||"").trim()||null;
+        try{ await UP.sendTolerant(sbSend,"POST","dealer_visits?on_conflict=visit_report_id",{dealer_id:did,rep_name:me.rep_name||null,owner_email:me.email||null,
+          visited_at:startedAt,notes:(body||"").slice(0,4000)||null,details:{summary:stored},env,visit_report_id:reportId},["visit_report_id"],{Prefer:"resolution=ignore-duplicates,return=minimal"}); }catch(e){}
+        if(body && !r.visit_note_id){
+          const when=new Date(startedAt);
+          const text=`🚗 Dealer visit — ${isNaN(when)?"":when.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}\n${body}`;
+          let noteId=null;
+          try{ const ins=await UP.sendTolerant(sbSend,"POST","dealer_notes",{kind:"visit",dealer_id:did,author_email:me.email||null,author_name:repName,body:text.slice(0,4000),created_at:startedAt},["kind"],{Prefer:"return=representation"});
+               noteId=(ins&&ins[0]&&ins[0].id)||null; }catch(e){}
+          if(noteId) await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(reportId)}`,{visit_note_id:noteId},{Prefer:"return=minimal"}).catch(()=>{});
+          try{ await UP.sendTolerant(sbSend,"POST","dealer_activity",{dealer_id:did,kind:"visit",
+            subject:`Dealer visit${stored.meeting_summary?` — ${stored.meeting_summary.slice(0,110)}`:""}`,detail:body.slice(0,2000),
+            actor:repName,actor_email:me.email||null,ref_type:"visit_report",ref_id:String(reportId),created_at:startedAt},["ref_type","ref_id","actor_email"],{Prefer:"return=minimal"}); }catch(e){}
+        }
+        const slugs=stored.interest_slugs||[];
+        if(slugs.length){ try{ await sbSend("POST","intent_events",slugs.map(sl=>({dealer_id:did,manufacturer:sl,product_code:null,event_type:"visit_interest",weight:10,source:"visit",env,meta:{via:"visit_summary",visit_report_id:reportId},occurred_at:nowIso})),{Prefer:"return=minimal"}); }catch(e){} }
+      }
+      const fu=await VI.recomputeFollowup([reportId],{sbGet,sbSend});
+      return json(200,{ok:true,report_id:reportId,first_completion:firstCompletion,
+        created:{tasks:tRes.created.length,opportunities:oRes.created.length,participants:pRows.filter(p=>!haveKeys.has(p.name_key)).length,contacts:contactsAdded.length},
+        skipped:{tasks:tRes.skipped,opportunities:oRes.skipped},followup_status:fu[reportId]||"none"});
+    }
+
+    if(b.action==="visit_followup_set"){
+      const rid=String(b.route_id||"").trim()||null, did=String(b.dealer_id||"").trim();
+      if(!did) return json(400,{error:"dealer_id required"});
+      const loc=b.report_id?await reportById(String(b.report_id),did):await locateReport(rid,did);
+      if(!loc.ok) return json(loc.status,{error:loc.error});
+      const r=loc.report; const want=String(b.status||"");
+      if(!r.approved_at) return json(400,{error:"Approve the visit summary first."});
+      if(want==="auto"){
+        await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(r.id)}`,{followup_manual:false},{Prefer:"return=minimal"});
+        const fu=await VI.recomputeFollowup([r.id],{sbGet,sbSend});
+        return json(200,{ok:true,report_id:r.id,followup_status:fu[r.id]||"none",manual:false});
+      }
+      if(!["none","pending","complete"].includes(want)) return json(400,{error:"status is none, pending, complete or auto"});
+      await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(r.id)}`,
+        {followup_status:want,followup_manual:true,followup_completed_at:want==="complete"?new Date().toISOString():null},{Prefer:"return=minimal"});
+      return json(200,{ok:true,report_id:r.id,followup_status:want,manual:true});
+    }
+
+    if(b.action==="visit_email_save"){
+      const rid=String(b.route_id||"").trim()||null, did=String(b.dealer_id||"").trim();
+      if(!did) return json(400,{error:"dealer_id required"});
+      const loc=b.report_id?await reportById(String(b.report_id),did):await locateReport(rid,did);
+      if(!loc.ok) return json(loc.status,{error:loc.error});
+      const e=(b.email&&typeof b.email==="object")?b.email:{};
+      const prev=(loc.report.followup_email&&typeof loc.report.followup_email==="object")?loc.report.followup_email:{};
+      const draft={to:cleanS(e.to,200),cc:(Array.isArray(e.cc)?e.cc:[]).map(x=>cleanS(x,200)).filter(Boolean).slice(0,10),
+        subject:cleanS(e.subject,300),body:String(e.body||"").slice(0,20000),saved_at:new Date().toISOString(),
+        sent_at:b.sent?new Date().toISOString():(prev.sent_at||null)};
+      await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(loc.report.id)}`,{followup_email:draft},{Prefer:"return=minimal"});
+      return json(200,{ok:true,report_id:loc.report.id,email:draft});
     }
 
     /* One-time repair: every visit completed before the Dealer 360 write existed has a report

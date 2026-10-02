@@ -125,6 +125,8 @@ exports.handler=async(event)=>{
       try{ transcript=await deepgramTranscribe(buf, b.mime||"audio/webm", keyterms); }
       catch(e){ return json(200,{ok:false,error:"transcribe_failed",message:String(e.message||e)}); }
       if(!transcript.trim()) return json(200,{ok:false,error:"no_speech",message:"Didn't catch any speech — try recording again, closer and a bit slower."});
+      // Visit mode (Phase 1) only needs the words: the meeting summary is built at review time.
+      if(b.raw) return json(200,{ok:true,transcript});
     } else if(b.action!=="structure"){
       return json(400,{error:"unknown action"});
     }

@@ -205,12 +205,13 @@ function seed() {
   });
 
   /* ── dealers-api ── */
-  await t('Dealer Manager: rep edits use the shared scope, and portal access is checked', async () => {
+  await t('Dealer Manager: a rep reads portal access on their own book only, and changes no dealer settings', async () => {
     const w = createWorld(seed()); const m = load('dealers-api.js', w);
-    denied(await call(m, { action: 'portal_access', dealer_id: 'd-ang' }, { token: 'greg' }), 'portal_access');
+    denied(await call(m, { action: 'portal_access', dealer_id: 'd-ang' }, { token: 'greg' }), 'portal_access other');
+    notDenied(await call(m, { action: 'portal_access', dealer_id: 'd-greg' }, { token: 'greg' }), 'portal_access own (dealers.rep_name)');
+    notDenied(await call(m, { action: 'portal_access', dealer_id: 'd-greg-branch' }, { token: 'greg' }), 'portal_access own branch (family)');
     denied(await call(m, { action: 'edit', dealer_id: 'd-ang', patch: { phone: '1' } }, { token: 'greg' }), 'edit other');
-    notDenied(await call(m, { action: 'edit', dealer_id: 'd-greg', patch: { phone: '1' } }, { token: 'greg' }), 'edit own (dealers.rep_name)');
-    notDenied(await call(m, { action: 'edit', dealer_id: 'd-greg-branch', patch: { phone: '1' } }, { token: 'greg' }), 'edit own branch (family)');
+    denied(await call(m, { action: 'edit', dealer_id: 'd-greg', patch: { phone: '1' } }, { token: 'greg' }), 'edit own: dealer settings are management-only (Oct 2)');
   });
 
   /* ── read leaks ── */

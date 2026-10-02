@@ -81,8 +81,29 @@ const ALL = ['d-ang', 'd-dir-greg', 'd-greg', 'd-greg-branch', 'd-none'];
     }
     const p = await call(load('dealers-api.js', w), { action: 'edit', dealer_id: 'd-ang', phone: '615-000' }, { token: 'pres' });
     assert.strictEqual(p.status, 200, 'the president can still edit: ' + JSON.stringify(p.body).slice(0, 120));
-    const g = await call(load('dealers-api.js', w), { action: 'edit', dealer_id: 'd-greg', phone: '615-111' }, { token: 'greg' });
-    assert.strictEqual(g.status, 200, 'a rep can still edit their own dealer: ' + JSON.stringify(g.body).slice(0, 120));
+  });
+  await t('Dealer settings are management-only: a rep cannot change them even on a dealer in his own book', async () => {
+    const w = W();
+    const before = JSON.stringify(w.db.dealers), lines = JSON.stringify(w.db.dealer_manufacturers || []);
+    for (const body of [
+      { action: 'edit', dealer_id: 'd-greg', phone: '615-111' },
+      { action: 'edit', dealer_id: 'd-greg', business_name: 'Renamed' },
+      { action: 'access', dealer_id: 'd-greg', manufacturers: ['golden'] },
+      { action: 'verify_email', dealer_id: 'd-greg' },
+      { action: 'rep', dealer_id: 'd-greg', rep_name: 'Greg Campbell' } ]) {
+      const x = await call(load('dealers-api.js', w), body, { token: 'greg' });
+      assert.strictEqual(x.status, 403, 'rep ' + body.action + ' on own dealer answered ' + x.status);
+    }
+    assert.strictEqual(JSON.stringify(w.db.dealers), before, 'a refused rep write changed a dealer');
+    for (const tok of ['greg', 'lori']) {
+      const a = await call(load('crm-api.js', w), { action: 'save_account_ref', dealer_id: 'd-greg', manufacturer: 'golden', account_ref: 'NEW-1' }, { token: tok });
+      assert.strictEqual(a.status, 403, tok + ' saved an account number (ordering access): ' + a.status);
+    }
+    assert.strictEqual(JSON.stringify(w.db.dealer_manufacturers || []), lines, 'a refused account-number save changed ordering access');
+    const r = await call(load('dealers-api.js', w), { action: 'portal_access', dealer_id: 'd-greg' }, { token: 'greg' });
+    assert.notStrictEqual(r.status, 403, 'reading portal access on his own dealer was refused');
+    const p = await call(load('crm-api.js', w), { action: 'save_account_ref', dealer_id: 'd-greg', manufacturer: 'golden', account_ref: 'NEW-1' }, { token: 'pres' });
+    assert.strictEqual(p.status, 200, 'the president can still set account numbers: ' + JSON.stringify(p.body).slice(0, 120));
   });
   await t('0K Relations: the Dealer Manager page shows no edit controls to Relations (president unchanged)', async () => {
     const html = adminSrc('dealers.html');
@@ -111,7 +132,12 @@ const ALL = ['d-ang', 'd-dir-greg', 'd-greg', 'd-greg-branch', 'd-none'];
     assert.ok(/id="f_rep"[^>]*readonly/.test(lori.html), 'owner field not read-only');
     assert.ok(/Read-only for Customer Relations/.test(lori.html), 'no read-only notice');
     const d360 = adminSrc('dealer.html');
-    assert.ok(/\$\{String\(\(ME&&ME\.role\)\|\|""\)\.toLowerCase\(\)==="relations"\?"":`<button class="btn ghost sm" onclick="editCompany\(\)">/.test(d360), 'Dealer 360 still offers Relations "Edit company info"');
+    assert.ok(/\$\{!isMgmt\(\)\?"":`<button class="btn ghost sm" onclick="editCompany\(\)">/.test(d360), 'Dealer 360 "Edit company info" is not gated on management');
+    const mg = d360.match(/const isMgmt=\(\)=>[^\n]*/); assert.ok(mg, 'isMgmt not found');
+    const isMgmtFor = role => new Function('ME', mg[0] + '; return isMgmt();')({ role });
+    for (const role of ['president', 'admin', 'owner']) assert.strictEqual(isMgmtFor(role), true, role);
+    for (const role of ['rep', 'relations', '']) assert.strictEqual(isMgmtFor(role), false, 'Dealer 360 offers dealer settings to ' + (role || 'no role'));
+    assert.ok(/\$\{isMgmt\(\)\?`<input id="acct_/.test(d360), 'account-number inputs are not management-only');
   });
   await t('0K Relations: pipeline shows every deal', async () => {
     const w = W();

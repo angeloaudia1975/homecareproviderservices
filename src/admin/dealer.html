@@ -4,6 +4,10 @@
 <style>
  .d360{display:grid;grid-template-columns:1fr 340px;gap:15px;align-items:start}
  @media(max-width:900px){.d360{grid-template-columns:1fr}}
+ /* Grid columns may shrink below their widest child — without this a single wide row pushed the
+    whole page to ~540px on a 390px phone (sideways scroll, browser zoomed out). */
+ .d360>div{min-width:0}
+ .d360 input,.d360 select,.d360 textarea{min-width:0;max-width:100%}
  .idrow{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:#41576b;margin:6px 0 0}
  .idrow b{color:var(--navy)}
  .spark{width:100%;height:70px;display:block}
@@ -115,6 +119,27 @@
  .vn-hint{font-size:11.5px;color:var(--gray);margin-top:6px}
  .vn-unsupported{font-size:12.5px;color:var(--gray);margin-top:8px;background:#fafbfc;border:1px dashed var(--line);border-radius:9px;padding:9px 11px}
  @media(prefers-reduced-motion:reduce){.vn-rec-dot{animation:none}}
+ /* Visits & Meetings (Phase 1) — one dealer-scoped read: what's coming, what's live, what happened. */
+ .vm-sec{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:800;margin:10px 0 5px}
+ .vm-sec:first-child{margin-top:0}
+ .vm{border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:#fff;margin:0 0 8px}
+ .vm.live{border-color:#f6c79a;background:#fffaf4}
+ .vm-hd{display:flex;gap:6px 10px;align-items:baseline;flex-wrap:wrap;font-size:13px;color:#41576b}
+ .vm-hd b{color:var(--navy)}
+ .vm-sum{font-size:13px;color:#33475b;margin:4px 0 0;white-space:pre-wrap}
+ .vm-tags{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 0}
+ .vm-tag{font-size:11px;background:#f5f8fb;border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:#41576b}
+ .vm-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+ .vm-more{border-top:1px dashed var(--line);margin-top:8px;padding-top:6px;font-size:13px}
+ .vm-more .vl{padding:3px 0}
+ .vm-more .vl b{color:var(--navy)}
+ .vm-row{display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid #f1f3f6}
+ .vm-row:last-child{border-bottom:0}
+ .pill2.none{background:#eef2f6;color:#5b6672}
+ @media(max-width:640px){.vm-acts .btn{flex:1 1 auto;min-height:44px}}
+ /* Reps reach Dealer 360 from the field app on a phone, where the pinned rep menu (~380px tall)
+    would cover half the screen. On a phone it scrolls away with the page instead. */
+ @media(max-width:760px){ header#ac-head{position:static} }
 </style>
 </head><body>
 <header id="ac-head"></header>
@@ -134,6 +159,8 @@ const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
 window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
 let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 let TOKEN=HCPS.token(), CUR=null, ALLD=[];
+// Dealer settings (company info, account numbers) are management-only; the server enforces it.
+const isMgmt=()=>!!(ME&&({president:1,admin:1,owner:1})[String(ME.role||"").toLowerCase()]);
 const Q=new URLSearchParams(location.search); const QID=Q.get("id"); const QNAME=Q.get("name");
 let SORTKEY="sales_desc";   // Dealer 360 picker sort — default: highest sales first
 // slug -> manufacturer display name, from the list payload. The search needs it so a person
@@ -231,7 +258,7 @@ function render(D,A){
         </div>
         <div class="idrow">${[d.address,d.city,[d.state,d.zip].filter(Boolean).join(" ")].filter(Boolean).map(esc).join(", ")}</div>
       </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">${String((ME&&ME.role)||"").toLowerCase()==="relations"?"":`<button class="btn ghost sm" onclick="editCompany()">✎ Edit company info</button>`}<button class="btn ghost sm" onclick="openDealerPortal(this)" title="Preview this dealer's HCPS Partner 360 ordering experience — pricing, manufacturers, products, account & order history — read-only, no login required">🔎 View Dealer Partner 360 Portal →</button>${(d.golden_url||d.golden_status==='Account'||d.golden_status==='Prospect')?`<button class="btn ghost sm" onclick="openGolden(this)" title="Open this dealer's Golden ordering portal (signed one-click sign-in)">🟡 Open Golden portal →</button>`:""}<a class="btn ghost sm" href="/admin/dealers.html?dealer=${encodeURIComponent(d.id)}">Dealer Manager →</a></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${!isMgmt()?"":`<button class="btn ghost sm" onclick="editCompany()">✎ Edit company info</button>`}<button class="btn ghost sm" onclick="openDealerPortal(this)" title="Preview this dealer's HCPS Partner 360 ordering experience — pricing, manufacturers, products, account & order history — read-only, no login required">🔎 View Dealer Partner 360 Portal →</button>${(d.golden_url||d.golden_status==='Account'||d.golden_status==='Prospect')?`<button class="btn ghost sm" onclick="openGolden(this)" title="Open this dealer's Golden ordering portal (signed one-click sign-in)">🟡 Open Golden portal →</button>`:""}<a class="btn ghost sm" href="/admin/dealers.html?dealer=${encodeURIComponent(d.id)}">Dealer Manager →</a></div>
     </div>
     <div class="stat">
       <div class="s"><div class="l">Total sales</div><div class="v">${money(totalSales)}</div></div>
@@ -291,6 +318,7 @@ function render(D,A){
     <div id="emails"><div class="hint">Loading email…</div></div></div>`;
   const callCard=`<div class="card"><h2>Make a call</h2><div id="callbox"><div class="hint">Loading…</div></div></div>`;
   const touchCard=`<div class="card"><h2>Log a touch</h2><div id="touch"><div class="hint">Loading…</div></div></div>`;
+  const visitsCard=`<div class="card" id="visitsCard"><h2>Visits &amp; meetings</h2><div id="visits"><div class="hint">Loading visits…</div></div></div>`;
   const handoutCard=`<div class="card" id="handoutCard"><h2>Dealer handout</h2><div id="handout"><div class="hint">Loading…</div></div></div>`;
 
   // Next best action — synthesized from what we already know (upgraded once intent loads).
@@ -316,10 +344,10 @@ function render(D,A){
   // Reference sidebar (right): tasks/timeline, addresses, manufacturer account numbers.
   $("#body").innerHTML=`${header}${nextBanner}
     <div class="d360">
-      <div>${notesCard}${contactsCard}${emailCard}${callCard}${touchCard}${handoutCard}${intelCard}${history}${salesCard}${commCard}</div>
+      <div>${notesCard}${contactsCard}${emailCard}${callCard}${touchCard}${visitsCard}${handoutCard}${intelCard}${history}${salesCard}${commCard}</div>
       <div>${tasksCard}${signals}${addrCard}${acctCard}</div>
     </div>`;
-  CUR=d.id; DPHONE=d.phone||""; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails(); loadHandout();
+  CUR=d.id; DPHONE=d.phone||""; VLIM=25; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails(); loadVisits(); loadHandout();
 }
 function nextBestAction(d,lines,monthsSince,cart,sess){
   const due=(lines||[]).filter(l=>l.status==="due");
@@ -841,7 +869,7 @@ function renderContacts(){ const el=$("#contacts"); if(!el||!CDATA) return;
   const acctHint='<div class="hint" style="margin-top:8px">Account numbers are organization-level — saving one here also fills every branch in this dealer group that doesn’t already have its own number for that manufacturer.</div>';
   if(ael) ael.innerHTML = accts.length
     ? accts.map(a=>`<div style="display:flex;align-items:center;gap:6px;margin:4px 0"><span style="flex:1;font-size:13px">${esc(a.name)}${a.active?"":' <span class="hint">(inactive)</span>'}</span>
-       <input id="acct_${esc(a.slug)}" value="${esc(a.account_ref||"")}" placeholder="account #" style="width:130px"><button class="btn sm" onclick="saveAcct('${esc(a.slug)}')">Save</button></div>`).join("")+acctHint
+       ${isMgmt()?`<input id="acct_${esc(a.slug)}" value="${esc(a.account_ref||"")}" placeholder="account #" style="width:130px"><button class="btn sm" onclick="saveAcct('${esc(a.slug)}')">Save</button>`:`<span style="font-size:13px;font-weight:700;color:var(--navy)">${esc(a.account_ref||"—")}</span>`}</div>`).join("")+(isMgmt()?acctHint:'')
     : '<div class="hint">No manufacturer accounts on file for this dealer yet.</div>';
 }
 async function saveContact(){
@@ -1619,7 +1647,89 @@ async function startOpp(line){
   await fetch("/.netlify/functions/pipeline-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action:"add",dealer_id:CUR,title:t,line:line||"",value:Number(val)||0,source:"crosssell"})});
   loadCRM();
 }
-async function taskAction(id,act){ await crm({action:act,id}); loadCRM(); }
+async function taskAction(id,act){ const j=await crm({action:act,id}); loadCRM(); if(j&&j.followup) loadVisits(); }
+
+/* ── Visits & Meetings ───────────────────────────────────────────────────────────────────
+   Everything here comes from ONE dealer-scoped call (crm-api "visits"): the visits on this
+   dealer, the route stops and booked meetings still ahead, and for each past visit its approved
+   summary, who attended (the name as recorded, even if that contact is later removed), the
+   follow-up status, and the tasks and deals it created. */
+let VISITS=null, VLIM=25;
+const VM_FU={pending:"Follow-up pending",complete:"Follow-up complete",none:"No follow-up required"};
+const VM_LISTS=[["products_discussed","Products discussed"],["dealer_interests","Dealer interests"],["dealer_concerns","Dealer concerns"],["objections","Objections"],
+  ["competitors","Competitors mentioned"],["pricing_requests","Pricing requested"],["samples_requested","Samples requested"],["literature_requested","Literature requested"],["training_requested","Training requested"]];
+async function loadVisits(){
+  const el=$("#visits"); if(!el||!CUR) return;
+  let j=null; try{ j=await crm({action:"visits",dealer_id:CUR,limit:VLIM}); }catch(e){ j=null; }
+  if(!j||!j.ok){ el.innerHTML=`<div class="hint">${esc((j&&(j.message||j.error))||"Couldn't load visits.")}</div>`; return; }
+  VISITS=j; renderVisits();
+}
+function vmDate(ds){ if(!ds) return ""; const s=String(ds); const d=new Date(s.length===10?s+"T12:00:00":s); return isNaN(d)?s:d.toLocaleDateString([], {weekday:"short",month:"short",day:"numeric",year:"numeric"}); }
+function vmTime(ds){ if(!ds) return ""; const d=new Date(ds); return isNaN(d)?"":d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}); }
+function vmFu(f){ return f?`<span class="pill2 ${f==="pending"?"due":f==="complete"?"ok":"none"}">${esc(VM_FU[f]||f)}</span>`:""; }
+function vmClip(t,n){ t=String(t||""); return t.length>n?t.slice(0,n).replace(/\s+\S*$/,"")+"…":t; }
+function renderVisits(){
+  const el=$("#visits"); if(!el) return; const j=VISITS||{};
+  const up=j.upcoming||[], mt=j.meetings||[], ac=j.active||[], past=j.past||[];
+  let h="";
+  if(ac.length) h+=`<div class="vm-sec">In progress</div>`+ac.map(v=>`<div class="vm live"><div class="vm-hd"><b>${v.ended_at?"Ended — summary due":"On site now"}</b>
+      <span>${esc(v.rep_name||v.rep_email||"")}</span><span>started ${esc(vmTime(v.started_at))}${v.duration_min!=null?` · ${esc(String(v.duration_min))} min`:""}</span></div>
+      ${v.route_id?`<div class="vm-acts"><a class="btn sm" href="/admin/scheduled-routes.html?route=${encodeURIComponent(v.route_id)}">Open in the field app</a></div>`:""}</div>`).join("");
+  if(up.length||mt.length) h+=`<div class="vm-sec">Upcoming</div>`
+    +up.map(u=>`<div class="vm"><div class="vm-hd"><b>${esc(vmDate(u.date))}</b><span>Route stop · ${esc(u.route_name||"Route")}</span>${u.rep_name?`<span>${esc(u.rep_name)}</span>`:""}</div></div>`).join("")
+    +mt.map(m=>`<div class="vm"><div class="vm-hd"><b>${esc(vmDate(m.start_at))} ${esc(vmTime(m.start_at))}</b><span>${esc(m.meeting_type||m.service||"Appointment")}</span>${m.rep_name?`<span>${esc(m.rep_name)}</span>`:""}</div></div>`).join("");
+  h+=`<div class="vm-sec">Previous visits</div>`+(past.length?past.map(vmPastRow).join("")
+    :`<div class="hint">No visits logged yet. A visit started in the field app shows here with its summary, who attended and its follow-ups.</div>`);
+  if(j.more) h+=`<button class="btn sm ghost" onclick="VLIM=Math.min(100,VLIM+25);loadVisits()">Show older visits</button>`;
+  el.innerHTML=h;
+}
+function vmPastRow(v){
+  const s=v.summary||{}, text=s.meeting_summary||v.notes||"";
+  const prods=(s.products_discussed||[]).slice(0,6);
+  const att=(v.attendees||[]).filter(a=>a.attended!==false).map(a=>a.name).filter(Boolean);
+  const T=v.tasks||[], O=v.opportunities||[], tOpen=T.filter(t=>t.status==="open").length;
+  const mail=v.email&&v.email.sent_at?`<span class="pill2 ok">email sent</span>`:(v.email&&v.email.saved_at?`<span class="pill2 none">email drafted</span>`:"");
+  return `<div class="vm" data-id="${esc(v.id)}">
+    <div class="vm-hd"><b>${esc(vmDate(v.date))}</b><span>${esc(v.rep_name||v.rep_email||"")}</span>${v.duration_min!=null?`<span>${esc(String(v.duration_min))} min on site</span>`:""}${vmFu(v.followup_status)}${mail}</div>
+    ${att.length?`<div class="hint" style="margin:3px 0 0">With ${esc(att.join(", "))}</div>`:""}
+    ${text?`<div class="vm-sum">${esc(vmClip(text,240))}</div>`:""}
+    ${prods.length?`<div class="vm-tags">${prods.map(p=>`<span class="vm-tag">${esc(p)}</span>`).join("")}</div>`:""}
+    <div class="vm-acts">
+      <button class="btn sm" onclick="vmShow(this,'sum')">View full summary</button>
+      ${T.length?`<button class="btn sm" onclick="vmShow(this,'tasks')">View tasks · ${tOpen} open of ${T.length}</button>`:""}
+      ${O.length?`<button class="btn sm" onclick="vmShow(this,'opps')">View opportunit${O.length===1?"y":"ies"} · ${O.length}</button>`:""}
+    </div>
+    <div class="vm-more" hidden></div></div>`;
+}
+function vmShow(btn,what){
+  const card=btn.closest(".vm"), box=card&&card.querySelector(".vm-more"); if(!box) return;
+  const v=((VISITS&&VISITS.past)||[]).find(x=>String(x.id)===String(card.getAttribute("data-id"))); if(!v) return;
+  if(!box.hidden && box.getAttribute("data-what")===what){ box.hidden=true; return; }
+  box.setAttribute("data-what",what); box.hidden=false;
+  const s=v.summary||null, L=(a)=>(a||[]).map(x=>typeof x==="object"?(x.text||"")+(x.due_date?` (by ${x.due_date})`:""):x).filter(Boolean).join("; ");
+  if(what==="sum"){
+    let h="";
+    if(s){ if(s.meeting_summary) h+=`<div class="vm-sum" style="margin:0 0 6px">${esc(s.meeting_summary)}</div>`;
+      for(const [k,l] of VM_LISTS) if((s[k]||[]).length) h+=`<div class="vl"><b>${esc(l)}:</b> ${esc(L(s[k]))}</div>`;
+      if((s.rep_commitments||[]).length) h+=`<div class="vl"><b>Rep commitments:</b> ${esc(L(s.rep_commitments))}</div>`;
+      if((s.dealer_commitments||[]).length) h+=`<div class="vl"><b>Dealer commitments:</b> ${esc(L(s.dealer_commitments))}</div>`;
+      if(s.suggested_next_action&&s.suggested_next_action.text) h+=`<div class="vl"><b>Next action:</b> ${esc(s.suggested_next_action.text)}${s.suggested_next_action.due_date?` (by ${esc(s.suggested_next_action.due_date)})`:""}</div>`; }
+    else h+=`<div class="vm-sum">${esc(v.notes||"No summary was recorded for this visit.")}</div>`;
+    if((v.attendees||[]).length) h+=`<div class="vl"><b>Attended:</b> ${esc(v.attendees.map(a=>a.name+(a.title?` (${a.title})`:"")).join(", "))}</div>`;
+    if(v.followup_manual) h+=`<div class="hint" style="margin:4px 0 0">Follow-up status was set by hand.</div>`;
+    box.innerHTML=h; return;
+  }
+  if(what==="tasks"){
+    box.innerHTML=(v.tasks||[]).map(t=>`<div class="vm-row"><button class="tkchk" title="${t.status==='open'?'Mark done':'Reopen'}" onclick="taskAction('${esc(t.id)}','${t.status==='open'?'complete_task':'reopen_task'}')">${t.status==='open'?'○':'●'}</button>
+      <div style="flex:1"><div class="tkt ${t.status!=='open'?'dn':''}">${esc(t.title)}</div>
+      <div class="hint" style="margin:0">${t.status==="dismissed"?"dismissed · ":""}${t.due_date?`due ${esc(t.due_date)}`:"no due date"}${t.assigned_rep?` · ${esc(t.assigned_rep)}`:""}${t.priority==="high"?" · high":""}</div></div></div>`).join("")
+      +`<div class="hint" style="margin:6px 0 0">These are the same tasks as in Tasks &amp; timeline and My Tasks.</div>`;
+    return;
+  }
+  box.innerHTML=(v.opportunities||[]).map(o=>`<div class="vm-row"><div style="flex:1"><div><b style="color:var(--navy)">${esc(o.title)}</b></div>
+      <div class="hint" style="margin:0">${esc([o.line||o.manufacturer,o.product,o.quantity!=null?`qty ${o.quantity}`:""].filter(Boolean).join(" · "))}${o.value?` · $${esc(Math.round(o.value).toLocaleString())}`:""} · ${esc(o.status==="open"?o.stage:o.status)}</div></div></div>`).join("")
+    +`<div style="margin-top:6px"><a class="link" href="/admin/pipeline.html">Open in Pipeline →</a></div>`;
+}
 async function sendReengage(){
   if(!CUR) return;
   if(!confirm("Send the 'we've missed you — come back and reorder' email to this dealer's contact?")) return;

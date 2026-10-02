@@ -47,8 +47,25 @@ const TEMPLATES={
   dormant_account:  "A re-engagement note for a dormant account that hasn't ordered recently — warm, low-pressure, invite them back.",
   new_product:      "Introduce a new product or line HCPS now represents that would suit this dealer.",
   portal_activation:"Encourage the dealer to start using the online ordering portal (check stock, pricing, place orders themselves).",
-  cross_sell:       "Suggest a complementary line the dealer doesn't buy yet but that fits their mix (cross-sell)."
+  cross_sell:       "Suggest a complementary line the dealer doesn't buy yet but that fits their mix (cross-sell).",
+  visit_followup:   "A follow-up after an in-person visit. Recap what was agreed in the meeting recap below, confirm what the rep will send or do and by when, and restate anything the dealer said they would do. Use only the meeting recap for what happened — never add products, prices, quantities or promises that are not in it."
 };
+/* The approved meeting intelligence of one visit (Phase 1), as prompt lines. Only what the rep
+   approved — the AI's raw suggestions never reach an email. */
+function visitRecapLines(r){
+  const s=(r&&r.summary&&typeof r.summary==="object")?r.summary:null; if(!s) return "";
+  const L=[]; const list=(k,label)=>{ const v=Array.isArray(s[k])?s[k].filter(Boolean):[]; if(v.length) L.push(`${label}: ${v.map(x=>typeof x==="object"?(x.text||x.title||""):x).filter(Boolean).join("; ")}`); };
+  if(s.meeting_summary) L.push(`Summary: ${s.meeting_summary}`);
+  if(Array.isArray(s.attendees)&&s.attendees.length) L.push(`Met with: ${s.attendees.map(a=>a.name+(a.title?` (${a.title})`:"")).join(", ")}`);
+  list("products_discussed","Products discussed"); list("dealer_interests","Dealer interests"); list("dealer_concerns","Dealer concerns");
+  list("pricing_requests","Pricing requested"); list("samples_requested","Samples requested"); list("literature_requested","Literature requested");
+  list("training_requested","Training requested");
+  const commits=(k,label)=>{ const v=Array.isArray(s[k])?s[k]:[]; if(v.length) L.push(`${label}: ${v.map(c=>(c.text||"")+(c.due_date?` (by ${c.due_date})`:"")).join("; ")}`); };
+  commits("rep_commitments","What the rep committed to"); commits("dealer_commitments","What the dealer committed to");
+  if(Array.isArray(s.tasks)&&s.tasks.length) L.push(`Rep follow-ups: ${s.tasks.map(t=>t.title+(t.due_date?` (by ${t.due_date})`:"")).join("; ")}`);
+  if(s.suggested_next_action&&s.suggested_next_action.text) L.push(`Next step: ${s.suggested_next_action.text}${s.suggested_next_action.due_date?` (by ${s.suggested_next_action.due_date})`:""}`);
+  return L.join("\n");
+}
 
 async function gather(dealerId, slugName){
   const out={};
@@ -223,6 +240,17 @@ exports.handler=async(event)=>{
 
     const tmplKey=String(b.template||"follow_up").toLowerCase();
     const tmpl=TEMPLATES[tmplKey]||TEMPLATES.follow_up;
+    // A visit follow-up is written from that visit's APPROVED summary (Phase 1).
+    let recap="";
+    if(tmplKey==="visit_followup"){
+      const vid=String(b.visit_report_id||"").trim();
+      if(!vid) return json(400,{error:"visit_report_id required"});
+      const vr=await sbGet(`dealer_visit_reports?id=eq.${encodeURIComponent(vid)}&select=id,dealer_id,summary,approved_at`).catch(()=>[]);
+      const v=vr&&vr[0];
+      if(!v || String(v.dealer_id)!==dealerId) return json(404,{error:"Visit not found for this dealer."});
+      if(!v.approved_at) return json(400,{error:"Approve the visit summary first."});
+      recap=visitRecapLines(v);
+    }
 
     // slug -> manufacturer display name
     let slugName={}; try{ const m=await sbGet("manufacturers?select=slug,name"); (m||[]).forEach(x=>{ if(x&&x.slug) slugName[x.slug]=x.name||x.slug; }); }catch(e){}
@@ -265,13 +293,14 @@ ${tmpl}
 What we know about this account (use only what's relevant; never invent facts or numbers) — this is the material for the specific, real reason the style guide requires:
 ${contextLines(ctx)}
 ${lineName?`\nThe line being promoted: ${lineName}`:""}
+${recap?`\nMEETING RECAP — approved by the rep. This is what happened at the visit; the email must agree with it:\n${recap}`:""}
 ${brief?`\nThe product this email is about — these are APPROVED facts from the HCPS product record. Ground the email in them, and connect them to what this dealer actually sells:\n${brief}`:""}
 ${brief?`\nThe email will show an approved photo of the product and a button through to its page on the Partner 360 dealer portal, so do NOT describe the photo or paste a URL — just make a dealer want to click.`:""}
 
 Format:
 - Greeting to the contact by first name if provided ("Hi ${firstName||"there"},").
 - 2 to 4 short paragraphs, plain sentences, no marketing fluff, no emojis.
-- Open with the specific insight/opportunity for THIS dealer (a line they buy, a dormant line, whitespace, cadence) — never a check-in or apology.
+${recap?`- Open with a short thank-you for the meeting, then the recap of what was agreed — never an apology.`:`- Open with the specific insight/opportunity for THIS dealer (a line they buy, a dormant line, whitespace, cadence) — never a check-in or apology.`}
 - Close with a clear next step or a simple either/or choice — not an open-ended "let me know if…".
 - Do NOT include a signature or sign-off block (no "Best,"/name) — that is added separately.
 - Keep it concise: a busy dealer should read it in 20 seconds.

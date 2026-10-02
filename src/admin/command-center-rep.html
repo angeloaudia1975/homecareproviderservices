@@ -1,0 +1,296 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>HCPS — Command Center</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ /* The Sales Rep Command Center (Phase 1). Three questions, in the order the day asks them:
+    what do I need to do today · what happened at my visits · what do I follow up on now.
+    Everything is read from data that already exists (one call, filtered on the server to this
+    person); nothing here runs AI on load. On a phone it is one column with thumb-sized rows. */
+ .cc{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:15px;align-items:start;margin-top:14px}
+ @media(max-width:980px){.cc{grid-template-columns:1fr}}
+ .cc .card h2{display:flex;align-items:center;gap:8px}
+ .cc .card h2 .n{margin-left:auto;font-size:11px;color:var(--gray);font-weight:700;letter-spacing:.3px;text-transform:none}
+ .hello{font-size:21px;font-weight:800;color:var(--navy);margin:0}
+ .viewing{background:#fff6ec;border:1px solid #f3d6ae;color:#8a5a08;border-radius:10px;padding:8px 12px;font-size:13px;margin:10px 0 0}
+ .picker{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+ .picker select{min-width:220px}
+ .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+ .tile{border:1px solid var(--line);border-radius:11px;padding:9px 12px;background:#fff}
+ .tile .l{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:700}
+ .tile .v{font-size:22px;font-weight:800;font-family:'Barlow Condensed';color:var(--navy);line-height:1.1}
+ .tile .s{font-size:11.5px;color:var(--gray)}
+ .tile.warn .v{color:var(--orange)}
+ .qa{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+ .row{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid #eef1f4}
+ .row:last-child{border-bottom:0}
+ .row .m{flex:1;min-width:0}
+ .row .t{font-weight:700;color:var(--navy);font-size:14px}
+ .row .d{font-size:12.5px;color:#41576b;margin-top:1px}
+ .why{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:6px;padding:2px 7px;background:#eef2f6;color:#5b6672;white-space:nowrap}
+ .why.hot{background:#fdeee0;color:#b45309}.why.ok{background:#e7f6ec;color:#1f7a44}.why.blue{background:#eaf3fb;color:#12466e}
+ .ord{flex:0 0 auto;width:28px;height:28px;border-radius:50%;background:var(--navy);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:13px}
+ .ord.done{background:#1f7a44}.ord.on_site,.ord.ended{background:var(--orange)}
+ .chk{background:none;border:1px solid var(--line);border-radius:50%;width:30px;height:30px;font-size:15px;line-height:1;cursor:pointer;color:var(--blue);flex:0 0 auto}
+ .chk:disabled{opacity:.4;cursor:default}
+ .bar{height:10px;border-radius:6px;background:#eef2f6;overflow:hidden;margin:6px 0 4px}
+ .bar>i{display:block;height:100%;background:#1f7a44}
+ .prog{display:flex;gap:4px;margin:6px 0}
+ .prog span{flex:1;height:10px;border-radius:4px;background:#eef2f6}
+ .prog span.done{background:#1f7a44}.prog span.on_site,.prog span.ended{background:var(--orange)}
+ details.prep{border:1px solid var(--line);border-radius:11px;background:#fff;margin:0 0 8px}
+ details.prep>summary{list-style:none;cursor:pointer;padding:10px 12px;display:flex;gap:8px;align-items:center}
+ details.prep>summary::-webkit-details-marker{display:none}
+ details.prep>summary .t{font-weight:700;color:var(--navy);flex:1;min-width:0}
+ details.prep[open]>summary{border-bottom:1px solid var(--line)}
+ .pb{padding:9px 12px;font-size:13px;color:#33475b}
+ .pb .k{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:800;margin:8px 0 2px}
+ .pb .k:first-child{margin-top:0}
+ .pb ul{margin:2px 0;padding-left:18px}
+ .act3{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;font-size:12px;text-align:center}
+ .act3 div{background:#f5f8fb;border-radius:7px;padding:4px}
+ .act3 b{display:block;color:var(--navy);font-size:13px}
+ .empty{color:var(--gray);font-size:13px;padding:4px 0}
+ .sm2{font-size:11.5px;color:var(--gray)}
+ /* On a phone the rep menu wraps to ~380px; pinned, it would cover half the screen. It scrolls away here. */
+ @media(max-width:760px){ header#ac-head{position:static} }
+ @media(max-width:640px){
+   .wrap{padding:12px 12px 50px}
+   .btn,.qa .btn{min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+   .qa .btn{flex:1 1 auto}
+   .picker select{min-width:0;flex:1;font-size:16px}
+   .tiles{grid-template-columns:repeat(2,1fr)}
+   .chk{width:44px;height:44px;font-size:18px}
+ }
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 id="pgtitle">Command Center</h1><div class="sub" id="pgsub">Your day — what to do, what happened at your visits, and what to follow up on.</div></div>
+    <div id="pickbox"></div></div>
+  <div id="body"><div class="msg">Loading your day…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let DATA=null, REPS=null, VIEW=null;   // VIEW = the rep being viewed (management / Relations only)
+try{ VIEW=new URLSearchParams(location.search).get("rep")||null; }catch(e){ VIEW=null; }
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div id="lerr" style="color:#b42323;margin-top:8px">${esc(msg||"")}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+async function api(fn,payload){
+  const r=await fetch("/.netlify/functions/"+fn,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+(TOKEN||"")},body:JSON.stringify(payload)});
+  return {status:r.status,body:await r.json().catch(()=>({}))};
+}
+function localDate(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function fmtDay(ds){ if(!ds) return ""; const d=new Date(ds+"T12:00:00"); return isNaN(d)?ds:d.toLocaleDateString([], {weekday:"long",month:"long",day:"numeric"}); }
+function shortDay(ds){ if(!ds) return ""; const s=String(ds).slice(0,10); const d=new Date(s+"T12:00:00"); return isNaN(d)?s:d.toLocaleDateString([], {month:"short",day:"numeric"}); }
+function tm(iso){ if(!iso) return ""; const d=new Date(iso); return isNaN(d)?"":d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}); }
+function money(n){ n=Math.round(Number(n)||0); return "$"+n.toLocaleString(); }
+const dlink=(id,name)=>id?`<a class="link" href="/admin/dealer.html?id=${encodeURIComponent(id)}">${esc(name||"Dealer")}</a>`:esc(name||"");
+const FU={pending:["Follow-up pending","hot"],complete:["Follow-up complete","ok"],none:["No follow-up needed",""]};
+const fuChip=f=>f&&FU[f]?`<span class="why ${FU[f][1]}">${FU[f][0]}</span>`:"";
+const ST={planned:["Planned",""],on_site:["On site","hot"],ended:["Summary due","hot"],done:["Visited","ok"]};
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  $("#body").innerHTML=`<div class="msg">Loading your day…</div>`;
+  const req={action:"today",date:localDate(),hour:new Date().getHours(),tz:new Date().getTimezoneOffset()};
+  if(VIEW) req.rep=VIEW;
+  let r; try{ r=await api("rep-command-api",req); }catch(e){ $("#body").innerHTML=`<div class="msg err">Couldn't reach the server — check your connection and reload.</div>`; return; }
+  if(r.status===401){ gate("Your session ended — sign in again."); return; }
+  const j=r.body||{};
+  if(!j.ok){ $("#body").innerHTML=`<div class="msg err">${esc(j.error||j.message||"Couldn't load your day.")}</div>`; return; }
+  DATA=j;
+  if(REPS===null) loadReps();
+  render();
+}
+/* The rep picker: only for the people the server lets pick (management and Relations). A rep
+   gets an empty list and sees no picker — and the server ignores a rep's `rep` either way. */
+async function loadReps(){
+  REPS=[]; let r=null; try{ r=await api("rep-command-api",{action:"reps"}); }catch(e){ r=null; }
+  REPS=(r&&r.body&&r.body.reps)||[]; renderPicker();
+}
+function renderPicker(){
+  const box=$("#pickbox"); if(!box) return;
+  if(!REPS||!REPS.length){ box.innerHTML=""; return; }
+  const cur=(DATA&&DATA.header&&DATA.header.rep&&DATA.header.rep.email)||"";
+  const reps=REPS.filter(x=>x.role==="rep"||x.email===cur), others=REPS.filter(x=>!(x.role==="rep"||x.email===cur));
+  const opt=x=>`<option value="${esc(x.email)}"${x.email===cur?" selected":""}>${esc(x.name)}${x.role&&x.role!=="rep"?` (${esc(x.role)})`:""}</option>`;
+  box.innerHTML=`<div class="picker"><label class="sm2" for="repsel">Viewing</label><select id="repsel" onchange="pickRep(this.value)">
+    ${reps.length?`<optgroup label="Sales reps">${reps.map(opt).join("")}</optgroup>`:""}${others.length?`<optgroup label="Other staff">${others.map(opt).join("")}</optgroup>`:""}</select></div>`;
+}
+function pickRep(email){
+  const mine=String((ME&&ME.email)||"").toLowerCase();
+  VIEW=(email&&email.toLowerCase()!==mine)?email:null;
+  try{ const u=new URL(location.href); if(VIEW) u.searchParams.set("rep",VIEW); else u.searchParams.delete("rep"); history.replaceState(null,"",u.toString()); }catch(e){}
+  load();
+}
+
+/* ---- Panels ---- */
+function pHeader(j){
+  const h=j.header, first=String((h.rep&&h.rep.name)||"").split(/[\s@]/)[0];
+  const hr=new Date().getHours(), greet=hr<12?"Good morning":hr<17?"Good afternoon":"Good evening";
+  const T=(l,v,s,warn)=>`<div class="tile${warn?" warn":""}"><div class="l">${l}</div><div class="v">${v}</div>${s?`<div class="s">${s}</div>`:""}</div>`;
+  return `<div class="card"><p class="hello">${h.viewing_other?esc(h.rep.name)+"'s day":`${greet}${first?", "+esc(first):""}`}</p>
+    <div class="sm2" style="margin:2px 0 10px">${esc(fmtDay(h.date))}${h.stops?` · ${h.stops} stop${h.stops===1?"":"s"} today${h.first_stop?` — first: ${esc(h.first_stop)}`:""}`:" · no route today"}${h.appointments?` · ${h.appointments} booked meeting${h.appointments===1?"":"s"}`:""}</div>
+    ${h.viewing_other?`<div class="viewing" style="margin:0 0 10px">You're viewing <b>${esc(h.rep.name)}</b>'s Command Center — read-only. Their tasks and visits are theirs to work.</div>`:""}
+    <div class="tiles">
+      ${T("Open tasks",h.open_tasks,h.overdue?`${h.overdue} overdue`:(h.due_today?`${h.due_today} due today`:""),h.overdue>0)}
+      ${T("Follow-ups pending",h.followups_pending,"visits awaiting follow-up",h.followups_pending>0)}
+      ${T("Deals to look at",h.opportunities_attention,`${h.opportunities_open} open`)}
+      ${T("Weighted pipeline",money(h.pipeline_weighted),"")}
+    </div>
+    <div class="qa">
+      ${j.route?`<a class="btn orange" href="/admin/scheduled-routes.html?route=${encodeURIComponent(j.route.id)}">🚗 Open today's route</a>`:`<a class="btn" href="/admin/scheduled-routes.html">📅 My routes</a>`}
+      ${h.viewing_other?"":`<a class="btn ghost" href="/admin/tasks.html">✅ My Tasks</a><a class="btn ghost" href="/admin/pipeline.html">🔮 Pipeline</a>`}
+    </div></div>`;
+}
+function pPriorities(j){
+  const P=j.priorities||[];
+  const ic={task:"✅",followup:"↩︎",appointment:"📆",opportunity:"🔮"};
+  return `<div class="card"><h2>Today's priorities <span class="n">${P.length||""}</span></h2>
+    ${P.length?P.map(p=>`<div class="row"><div style="font-size:16px;flex:0 0 auto">${ic[p.kind]||"•"}</div><div class="m">
+      <div class="t">${esc(p.title)}</div><div class="d">${dlink(p.dealer_id,p.dealer)}${p.kind==="appointment"&&p.due?` · ${esc(tm(p.due))}`:""}</div></div>
+      <span class="why ${/overdue|passed/i.test(p.why)?"hot":"blue"}">${esc(p.why)}</span></div>`).join("")
+      :`<div class="empty">Nothing overdue or due today. 👍</div>`}</div>`;
+}
+function pRoute(j){
+  const r=j.route;
+  if(!r) return `<div class="card"><h2>Today's route</h2><div class="empty">No route scheduled for today.</div><div class="qa"><a class="btn ghost" href="/admin/scheduled-routes.html">Open my routes</a></div></div>`;
+  return `<div class="card"><h2>Today's route <span class="n">${esc(r.name||"")}</span></h2>
+    ${r.stops.map(s=>`<div class="row"><div class="ord ${esc(s.status)}">${s.order}</div><div class="m">
+      <div class="t">${dlink(s.dealer_id,s.name)}</div><div class="d">${esc(s.place||"")}${s.visit_min?` · ${s.visit_min} min planned`:""}${s.duration_min!=null?` · on site ${s.duration_min} min`:""}${s.started_at&&s.status==="on_site"?` · since ${esc(tm(s.started_at))}`:""}</div></div>
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end"><span class="why ${ST[s.status]?ST[s.status][1]:""}">${ST[s.status]?ST[s.status][0]:esc(s.status)}</span>${fuChip(s.followup_status)}</div></div>`).join("")}
+    <div class="qa"><a class="btn orange" href="/admin/scheduled-routes.html?route=${encodeURIComponent(r.id)}">Open in the field app</a></div></div>`;
+}
+function pPrep(j){
+  const P=j.prep||[];
+  if(!P.length) return "";
+  const item=p=>{
+    const a=p.activity||{}, parts=[];
+    if(p.last_visit) parts.push(`<div class="k">Last visit</div><div>${esc(shortDay(p.last_visit.date))}${p.last_visit.rep?` · ${esc(p.last_visit.rep)}`:""}${p.last_visit.summary?` — ${esc(p.last_visit.summary)}`:""}</div>`);
+    else parts.push(`<div class="k">Last visit</div><div class="sm2">No visit on record.</div>`);
+    if(p.last_purchase) parts.push(`<div class="k">Last purchase</div><div>${p.last_purchase.month?`${esc(p.last_purchase.month)}${p.last_purchase.amount?` · ${money(p.last_purchase.amount)}`:""}`:""}${p.last_purchase.portal_order?` · portal order ${esc(shortDay(p.last_purchase.portal_order))}`:""}</div>`);
+    parts.push(`<div class="k">Activity · sales / touches</div><div class="act3"><div>60 days<b>${money(a.sales_60)}</b>${a.touches_60||0} touches</div><div>120 days<b>${money(a.sales_120)}</b>${a.touches_120||0} touches</div><div>180 days<b>${money(a.sales_180)}</b>${a.touches_180||0} touches</div></div>`);
+    if(p.trend&&p.trend.status) parts.push(`<div class="k">Sales trend</div><div>${esc(p.trend.status)}${p.trend.trend!=null?` · ${esc(String(p.trend.trend))}`:""}</div>`);
+    if(p.recent_products) parts.push(`<div class="k">Recent products</div><div>${p.recent_products.map(esc).join(" · ")}</div>`);
+    if(p.concerns) parts.push(`<div class="k">Dealer concerns</div><ul>${p.concerns.map(c=>`<li>${esc(c)}</li>`).join("")}</ul>`);
+    if(p.open_tasks) parts.push(`<div class="k">Open tasks · ${p.open_tasks.count}</div><ul>${p.open_tasks.top.map(t=>`<li>${esc(t.title)}${t.due_date?` <span class="sm2">· ${esc(shortDay(t.due_date))}</span>`:""}</li>`).join("")}</ul>`);
+    if(p.open_opportunities) parts.push(`<div class="k">Open opportunities · ${p.open_opportunities.count} · ${money(p.open_opportunities.value)}</div><ul>${p.open_opportunities.top.map(o=>`<li>${esc(o.title)} <span class="sm2">· ${esc(o.stage)}</span></li>`).join("")}</ul>`);
+    if(p.crossover) parts.push(`<div class="k">Crossover opportunity</div><div>${esc(p.crossover.line)}${p.crossover.because?` <span class="sm2">— buys ${esc(p.crossover.because)}</span>`:""}</div>`);
+    if(p.recent_notes) parts.push(`<div class="k">Recent notes</div>${p.recent_notes.map(n=>`<div>${esc(shortDay(n.date))} — ${esc(n.text)}</div>`).join("")}`);
+    if(p.contacts) parts.push(`<div class="k">Contacts</div>${p.contacts.map(c=>`<div>${esc(c.name)}${c.title?` <span class="sm2">· ${esc(c.title)}</span>`:""}${c.phone?` · <a class="link" href="tel:${esc(String(c.phone).replace(/[^0-9+]/g,""))}">${esc(c.phone)}</a>`:""}</div>`).join("")}`);
+    const flag=(p.concerns?"⚠ ":"")+(p.open_opportunities?"🔮 ":"");
+    return `<details class="prep"><summary><span class="t">${esc(p.name||"Dealer")}</span><span class="sm2">${flag}${p.last_visit?`last visit ${esc(shortDay(p.last_visit.date))}`:"first visit"}</span></summary>
+      <div class="pb">${parts.join("")}<div class="qa"><a class="btn ghost sm" href="/admin/dealer.html?id=${encodeURIComponent(p.dealer_id)}">Open Dealer 360</a></div></div></details>`;
+  };
+  return `<div class="card"><h2>Meeting prep <span class="n">tap a stop</span></h2>${P.map(item).join("")}</div>`;
+}
+function pProgress(j){
+  const v=j.visit_progress||{}, c=v.counts||{}, stops=(j.route&&j.route.stops)||[];
+  if(!v.total && !v.off_route) return "";
+  return `<div class="card"><h2>Visit progress <span class="n">${c.done||0} of ${v.total||0} done</span></h2>
+    ${stops.length?`<div class="prog">${stops.map(s=>`<span class="${esc(s.status)}" title="${esc(s.name)}"></span>`).join("")}</div>`:""}
+    <div class="sm2">${c.done||0} visited · ${c.ended||0} summary due · ${c.on_site||0} on site · ${c.planned||0} still to go${v.off_route?` · ${v.off_route} off-route`:""}</div></div>`;
+}
+function pActivity(j){
+  const A=j.visit_activity||[];
+  if(!A.length) return `<div class="card"><h2>Today's visit activity</h2><div class="empty">No visits started yet today.</div></div>`;
+  return `<div class="card"><h2>Today's visit activity <span class="n">${A.length}</span></h2>
+    ${A.map(v=>`<div class="row"><div class="m"><div class="t">${dlink(v.dealer_id,v.dealer)}</div>
+      <div class="d">${esc(tm(v.started_at))}${v.duration_min!=null?` · ${v.duration_min} min`:""}${v.attendees&&v.attendees.length?` · with ${esc(v.attendees.join(", "))}`:""}</div>
+      ${v.summary?`<div class="d" style="margin-top:3px">${esc(v.summary)}</div>`:(v.status==="ended"?`<div class="d" style="color:#b45309;margin-top:3px">Summary not approved yet.</div>`:"")}
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:5px">${v.tasks?`<span class="why blue">${v.tasks} task${v.tasks===1?"":"s"}</span>`:""}${v.opportunities?`<span class="why blue">${v.opportunities} deal${v.opportunities===1?"":"s"}</span>`:""}${v.contacts_added?`<span class="why blue">${v.contacts_added} new contact${v.contacts_added===1?"":"s"}</span>`:""}${v.email_sent?`<span class="why ok">email sent</span>`:(v.email_drafted?`<span class="why">email drafted</span>`:"")}${fuChip(v.followup_status)}</div></div>
+      <span class="why ${ST[v.status]?ST[v.status][1]:""}">${ST[v.status]?ST[v.status][0]:esc(v.status)}</span></div>`).join("")}</div>`;
+}
+function pFollow(j){
+  const Q=(j.followup_queue&&j.followup_queue.visits)||[], D=(j.followup_queue&&j.followup_queue.tasks_due_soon)||[];
+  const ro=!!(j.header&&j.header.viewing_other);
+  const today=j.header.date;
+  const tk=(t)=>`<div class="row" id="tk_${esc(t.id)}"><button class="chk" ${ro?"disabled":""} title="${ro?"Read-only":"Mark done"}" onclick="doneTask('${esc(t.id)}',this)">○</button><div class="m"><div class="t" style="font-weight:600">${esc(t.title)}</div>
+    <div class="d">${t.dealer!==undefined?dlink(t.dealer_id,t.dealer)+" · ":""}${t.due_date?`due ${esc(shortDay(t.due_date))}`:"no due date"}</div></div>
+    ${t.due_date&&t.due_date<today?`<span class="why hot">Overdue</span>`:(t.due_date===today?`<span class="why blue">Today</span>`:"")}</div>`;
+  let h=`<div class="card"><h2>Follow-up queue <span class="n">${Q.length} visit${Q.length===1?"":"s"}</span></h2>`;
+  if(!Q.length && !D.length) h+=`<div class="empty">Nothing waiting on you.</div>`;
+  h+=Q.map(v=>`<div style="border:1px solid var(--line);border-radius:11px;padding:9px 11px;margin:0 0 8px;background:#fff">
+      <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><b style="color:var(--navy)">${dlink(v.dealer_id,v.dealer)}</b><span class="sm2">visited ${esc(shortDay(v.visit_date))}${v.due?` · next due ${esc(shortDay(v.due))}`:""}</span></div>
+      ${v.commitments.rep.length?`<div class="d" style="margin-top:4px"><b>You promised:</b> ${esc(v.commitments.rep.join("; "))}</div>`:""}
+      ${v.commitments.dealer.length?`<div class="d"><b>They'll do:</b> ${esc(v.commitments.dealer.join("; "))}</div>`:""}
+      ${v.open_tasks.map(t=>tk(t)).join("")}
+      ${v.opportunities.length?`<div class="d" style="margin-top:4px">${v.opportunities.map(o=>`🔮 ${esc(o.title)} <span class="sm2">· ${esc(o.stage)}</span>`).join("<br>")}</div>`:""}
+    </div>`).join("");
+  if(D.length) h+=`<div class="sm2" style="margin:8px 0 2px;font-weight:800;text-transform:uppercase;letter-spacing:.4px">Other tasks due in the next 3 days</div>`+D.map(tk).join("");
+  return h+`</div>`;
+}
+function pOpps(j){
+  const O=(j.opportunities&&j.opportunities.needs_attention)||[];
+  return `<div class="card"><h2>Opportunities needing attention <span class="n">${O.length} of ${j.opportunities.open} open</span></h2>
+    ${O.length?O.map(o=>`<div class="row"><div class="m"><div class="t">${esc(o.title)}</div>
+      <div class="d">${dlink(o.dealer_id,o.dealer)} · ${esc(o.stage)}${o.value?` · ${money(o.value)}`:""}${o.expected_close?` · close ${esc(shortDay(o.expected_close))}`:""}</div>
+      ${o.next_step?`<div class="d">Next: ${esc(o.next_step)}</div>`:""}</div>
+      <div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">${o.why.map(w=>`<span class="why ${/passed|due|30\+/i.test(w)?"hot":"blue"}">${esc(w)}</span>`).join("")}</div></div>`).join("")
+      :`<div class="empty">No deals need attention.</div>`}
+    ${j.header.viewing_other?"":`<div class="qa"><a class="btn ghost sm" href="/admin/pipeline.html">Open Pipeline</a></div>`}</div>`;
+}
+function pEod(j){
+  const e=j.end_of_day||{}, p=e.progress||{total:0,completed:0,label:""};
+  const pct=p.total?Math.round(100*p.completed/p.total):0;
+  const T=(l,v)=>`<div class="tile"><div class="l">${l}</div><div class="v">${v}</div></div>`;
+  return `<div class="card"><h2>End-of-day results</h2>
+    <div style="font-weight:800;color:var(--navy);font-size:15px">Today's follow-up progress</div>
+    <div class="bar"><i style="width:${pct}%"></i></div><div class="sm2" style="margin-bottom:10px">${esc(p.label)}</div>
+    <div class="tiles">
+      ${T("Your commitments",e.rep_commitments||0)}${T("Dealer commitments",e.dealer_commitments||0)}
+      ${T("Tasks from visits",e.tasks_created_from_visits||0)}${T("Tasks completed",e.tasks_completed||0)}
+      ${T("Opportunities added",e.opportunities_created||0)}${T("Contacts added",e.contacts_added||0)}
+      ${T("Follow-up emails sent",e.followup_emails_sent||0)}${e.followup_emails_drafted?T("Emails still in draft",e.followup_emails_drafted):""}
+      ${T("Visits completed",`${e.visits_completed||0}<span class="sm2" style="font-size:12px"> / ${e.visits_started||0}</span>`)}
+    </div></div>`;
+}
+function pTomorrow(j){
+  const t=j.tomorrow||{};
+  return `<div class="card"><h2>Tomorrow</h2>
+    ${t.stops?`<div class="t" style="font-weight:700;color:var(--navy)">${esc(t.name||"Route")} · ${t.stops} stop${t.stops===1?"":"s"}</div>
+      <div class="sm2">${t.first_stop?`First: ${esc(t.first_stop)}`:""}</div>
+      <div style="margin-top:6px;font-size:13px">${(t.dealers||[]).map(d=>`${dlink(d.dealer_id,d.name)}${d.place?` <span class="sm2">· ${esc(d.place)}</span>`:""}`).join("<br>")}</div>
+      <div class="qa"><a class="btn ghost sm" href="/admin/scheduled-routes.html?route=${encodeURIComponent(t.id)}">Open tomorrow's route</a></div>`
+      :`<div class="empty">No route scheduled for tomorrow.</div>`}
+    ${t.tasks_due?`<div class="sm2" style="margin-top:8px">${t.tasks_due} task${t.tasks_due===1?"":"s"} due tomorrow</div>`:""}</div>`;
+}
+
+/* The order follows the day: before the first stop, the plan; once visits start, the visits;
+   late in the day (or the route done), the results and what is left to follow up. */
+function render(){
+  const j=DATA; if(!j) return;
+  renderPicker();
+  if(j.empty){ $("#body").innerHTML=`<div class="msg">${esc(j.message||"Nothing to show.")}</div>`; return; }
+  const L={morning:[pPriorities,pRoute,pPrep,pFollow], field:[pProgress,pRoute,pActivity,pPriorities,pPrep], wrap:[pEod,pActivity,pFollow,pProgress]};
+  const R={morning:[pOpps,pTomorrow], field:[pFollow,pOpps,pEod], wrap:[pOpps,pTomorrow,pPriorities]};
+  const ph=L[j.phase]?j.phase:"morning";
+  $("#body").innerHTML=pHeader(j)+`<div class="cc"><div>${L[ph].map(f=>f(j)).join("")}</div><div>${R[ph].map(f=>f(j)).join("")}</div></div>`;
+}
+async function doneTask(id,btn){
+  if(DATA&&DATA.header&&DATA.header.viewing_other) return;
+  if(btn){ btn.disabled=true; btn.textContent="…"; }
+  let r=null; try{ r=await api("crm-api",{action:"complete_task",id}); }catch(e){ r=null; }
+  if(!r||!r.body||!r.body.ok){ if(btn){ btn.disabled=false; btn.textContent="○";
+      const m=btn.closest(".row")&&btn.closest(".row").querySelector(".m");
+      if(m) m.insertAdjacentHTML("beforeend",`<div class="d" style="color:#b42323">${esc((r&&r.body&&(r.body.error||r.body.message))||"Couldn't complete that task.")}</div>`); }
+    return; }
+  load();
+}
+load();
+</script>
+</body></html>

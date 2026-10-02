@@ -178,10 +178,11 @@ async function ownsDealer(me, dealer_id){
   return SC.canAccessDealer(me, dealer_id, sbGet);
 }
 // Structural / cross-book / login / approval tools are President-only.
-// Customer Relations reads the Dealer Manager but changes nothing in it (decision Oct 2): no details,
-// ordering access, email verification, owner, branch family or account structure. Her dealer work —
-// notes, contacts, tasks, email, deals — runs through Dealer 360 (crm-api), which she has on every dealer.
-const RELATIONS_READS=new Set(["portal_access","preview_link"]);
+// Dealer settings are MANAGEMENT-ONLY (decisions Oct 2: Relations, then every rep). A sales rep or
+// Customer Relations may only READ here — never change details, ordering access, email
+// verification, owner, branch family or account structure, not even on a dealer in their own
+// book. Their dealer work — visits, notes, contacts, tasks, deals, email — runs through Dealer 360.
+const NON_MGMT_READS=new Set(["portal_access","preview_link"]);
 const PRESIDENT_ONLY=new Set(["merge","split","import_contacts","backfill_master","attribution_breakdown","reattribute","clear_order_refs","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep","rep_bulk","list_contract_prices","set_contract_price","clear_contract_price","prefill_access","prefill_access_all","create_dealer"]);
 
 async function buildState(){
@@ -362,7 +363,7 @@ exports.handler = async (event)=>{
       let b; try{b=JSON.parse(event.body||"{}");}catch{return json(400,{error:"bad JSON"});}
       const act=b.action;
       if(PRESIDENT_ONLY.has(act) && me.role!=="president") return json(403,{error:"President only"});
-      if(role==="relations" && !RELATIONS_READS.has(act)) return json(403,{error:"Read-only for Customer Relations — dealer settings are changed by management. Use the 360 Profile for notes, contacts, tasks and email."});
+      if(!isAdminRole && !NON_MGMT_READS.has(act)) return json(403,{error:"Dealer settings are changed by management. Use the 360 Profile for visits, notes, contacts, tasks and email."});
       if(!seesAll && (act==="edit"||act==="access"||act==="verify_email") && !(await ownsDealer(me,b.dealer_id))) return json(403,{error:"Not your dealer"});
       if(act==="diag"){
         // Self-check: which code is live, do the tables exist, and how many rows are stored.

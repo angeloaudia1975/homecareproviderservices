@@ -55,6 +55,11 @@ function createWorld(seed) {
       case 'is': return val === 'null' ? cell == null : String(cell) === val;
       case 'in': { const list = val.replace(/^\(|\)$/g, '').split(',').map(s => s.replace(/^"|"$/g, '')); return list.includes(String(cell)); }
       case 'ilike': case 'like': { const re = new RegExp('^' + val.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/%/g, '.*') + '$', op === 'ilike' ? 'i' : ''); return re.test(String(cell == null ? '' : cell)); }
+      case 'cs': { // jsonb containment: stops=cs.[{"dealer_id":"x"}]
+        let want; try { want = JSON.parse(val); } catch (e) { return false; }
+        const contains = (h, w) => Array.isArray(w) ? (Array.isArray(h) && w.every(x => h.some(y => contains(y, x))))
+          : (w && typeof w === 'object') ? (!!h && typeof h === 'object' && Object.keys(w).every(k => contains(h[k], w[k]))) : String(h) === String(w);
+        return contains(cell, want); }
       default: return true;
     }
   }
@@ -159,6 +164,12 @@ function createWorld(seed) {
             const ex = db[table].find(x => keys.every(k => String(x[k]) === String(row[k]) && x[k] != null));
             if (ex) { if (/ignore-duplicates/.test(prefer)) continue; Object.assign(ex, row); out.push(ex); writes.push({ kind: 'upsert', table, row: { ...ex } }); continue; }
           }
+          // seed.unique[table] = [[cols], …]: unique indexes (NULLs never collide, as in Postgres).
+          for (const cols of ((seed.unique || {})[table] || [])) {
+            if (cols.some(c => row[c] == null)) continue;
+            if (db[table].some(x => cols.every(c => x[c] != null && String(x[c]) === String(row[c]))))
+              return res(409, { code: '23505', message: `duplicate key value violates unique constraint (${cols.join(',')})` });
+          }
           if (!('id' in row) && seed.autoId !== false) row.id = row.id || ('id-' + table + '-' + (db[table].length + 1) + '-' + Math.random().toString(36).slice(2, 7));
           if (!('created_at' in row)) row.created_at = new Date().toISOString();
           db[table].push(row); out.push(row); writes.push({ kind: 'insert', table, row: { ...row } });
@@ -183,6 +194,14 @@ function createWorld(seed) {
     if (u.includes('graph.microsoft.com')) { outbound.push({ kind: 'graph', url: u, method, body }); return res(method === 'POST' && /sendMail/.test(u) ? 202 : 200, {}); }
     if (u.includes('api.resend.com')) { outbound.push({ kind: 'resend', body }); return res(200, { id: 'm1' }); }
     if (u.includes('/data/manufacturers.json')) return res(200, []);
+    // Published catalogs (Partner 360 /data/<slug>.json) and the Anthropic API, when a test supplies them.
+    { const m = u.match(/\/data\/([a-z0-9-]+)\.json/); if (m) return res(200, ((seed.catalog || {})[m[1]]) || []); }
+    if (u.includes('api.anthropic.com')) {
+      outbound.push({ kind: 'ai', body });
+      if (typeof seed.ai !== 'function') return res(500, { error: { message: 'no AI in this test' } });
+      const out = seed.ai(body); if (out && out.status) return res(out.status, out.body || {});
+      return res(200, { content: [{ type: 'text', text: typeof out === 'string' ? out : JSON.stringify(out) }] });
+    }
     return res(404, { error: 'unmocked ' + u });
   }
 

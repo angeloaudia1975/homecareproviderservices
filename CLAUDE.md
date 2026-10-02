@@ -411,6 +411,37 @@ changes; add a backend action instead so the workspace can do it.
   function verifies it via `whoami()` (Supabase Auth → `staff_users` admin role) and does every write with
   `SUPABASE_SERVICE_ROLE`. The service-role key is server-only and never reaches the browser.
 
+## 16. Connect 360 field CRM — permissions, visits & the Command Center (RULE)
+
+Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
+
+- **Reps never change structural dealer settings — even on their own book.** Ordering/portal access,
+  email verification status, account numbers, company info edits and other dealer settings are
+  **management-only** (president/admin/owner), enforced in the function (`dealers-api` NON_MGMT_READS,
+  `crm-api` save_account_ref), never by hiding a button. Reps work visits, notes, contacts, tasks,
+  opportunities, emails, dealer intelligence and routes. Customer Relations is read-only in Dealer Manager.
+- **Scope = `_scope.js`.** `dealers.rep_email` is authoritative; a rep reaches a record only through a
+  dealer in their book (knowing an id is never enough). Missing/invalid token → deny.
+- **One store per record type — no parallel systems.** Visit follow-ups go into `dealer_tasks` through
+  `_tasks.js createTasks`; deals into `opportunities` through `_opps.js` (existing stages only; Zoho reads
+  named columns, so new columns are not synced); people into `dealer_contacts`; meeting attendees into
+  `dealer_visit_participants` linked to `dealer_contacts` with a name/title snapshot (still readable if the
+  contact is deleted).
+- **AI suggests, the rep approves.** Visit summaries, attendees, follow-ups and opportunities are
+  suggestions until the rep taps Approve; nothing is written to the CRM before that. A follow-up email is
+  a draft — Edit / Copy / Save draft / Send — and **never sends automatically**. No AI runs on page load.
+- **A replay is a no-op.** Every write from a visit carries `(origin_type, origin_id, origin_key)` against
+  a unique index (or a claim PATCH on a null column), so a double tap, an offline resend or a late replay
+  never duplicates a visit, note, task, deal, contact, activity row or intent signal — while a genuinely
+  new visit still creates a new record.
+- **Command Center access:** a rep sees only their own; president/admin/owner and Relations may pick a
+  rep to view, read-only. The `rep_landing` switch (`staff-auth` landingFor) stays **off** until approved —
+  then `pilot` for named reps, and `on` for everyone only after the pilot is approved.
+- **Reads:** filter on the server, run in parallel, page past the 1000-row cap (`SC.getAll`), no N+1 and
+  no company-wide payloads to a rep's browser.
+- **Shipping:** SQL the user must run is pasted inline in the reply (and committed as a file); after a push,
+  the live Netlify endpoints are tested — a successful push is not proof of a deploy.
+
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
 - [ ] Hero headline is short + single-row on desktop, wraps on mobile.

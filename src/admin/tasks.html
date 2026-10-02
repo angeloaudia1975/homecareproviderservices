@@ -11,6 +11,7 @@
  .tkrow .right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;white-space:nowrap}
  .pl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:6px;padding:2px 7px}
  .pl.high{background:#fdeee0;color:#b45309}.pl.auto{background:#eaf3fb;color:#12466e}.pl.manual{background:#eef2f6;color:#5b6672}
+ .pl.visit{background:#fff1e3;color:#b45309}.pl.intent{background:#f3eef9;color:#5b3fa0}
  .filt{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 14px}
  .seg{display:inline-flex;background:#e3e9f0;border-radius:9px;padding:2px;gap:2px}
  .seg button{background:none;border:0;border-radius:7px;padding:7px 12px;font-weight:700;font-size:12.5px;color:#41576b;cursor:pointer;font-family:inherit}
@@ -220,7 +221,7 @@ function render(){
         <button class="tkchk" title="Mark done" onclick="act('${t.id}','complete_task')">○</button>
         <div><div class="t">${esc(t.title)}</div>${t.detail?`<div class="d">${esc(t.detail)}</div>`:''}
           <div class="meta">${meta}</div></div>
-        <div class="right">${t.priority==='high'?'<span class="pl high">High</span>':''}<span class="pl ${t.source==='auto'?'auto':'manual'}">${t.source==='auto'?'Auto':'Manual'}</span>
+        <div class="right">${t.priority==='high'?'<span class="pl high">High</span>':''}<span class="pl ${PLSRC[t.source]?esc(t.source):'manual'}">${(PLSRC[t.source]||'Manual')}</span>
           <button class="dismiss" onclick="act('${t.id}','dismiss_task')">dismiss</button></div>
       </div>`;
     }).join("");
@@ -228,6 +229,8 @@ function render(){
   $("#body").innerHTML=kpis+filt+body;
 }
 function setSrc(v){ FSRC=v; render(); }
+// The row's source pill. A follow-up approved from a visit summary says "Visit", not "Manual".
+const PLSRC={auto:"Auto",intent:"Intent",visit:"Visit"};
 function setRep(v){ FREP=v; render(); }
 async function act(id,action){ await crm({action,id}); TASKS=TASKS.filter(t=>t.id!==id); render(); }
 

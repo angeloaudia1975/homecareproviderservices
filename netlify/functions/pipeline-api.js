@@ -22,6 +22,7 @@ const STAGES=["identified","contacted","quoted","won","lost"];
 
 const SC=require("./_scope.js");
 const UP=require("./_upsert.js");
+const VI=require("./_visits.js");   // Phase 1: a visit's follow-up status follows its deals
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
   const tok=auth.replace(/^Bearer\s+/i,"").trim();
@@ -69,15 +70,20 @@ exports.handler=async(event)=>{
       if(!b.id) return json(400,{error:"id required"});
       const own=await SC.authorizeRecord(me,"opportunities",b.id,sbGet,{ownerFields:["owner_rep","owner_email"],optional:["owner_email"]});
       if(!own.ok) return json(own.status,{error:own.error});
-      const patch={updated_at:new Date().toISOString()};
-      if(b.stage&&STAGES.includes(b.stage)){ patch.stage=b.stage; patch.probability=(b.probability!=null?Number(b.probability):STAGE_PROB[b.stage]); patch.status=b.stage==="won"?"won":b.stage==="lost"?"lost":"open"; }
+      const patch={updated_at:new Date().toISOString(),updated_by:me.email||me.name||null};
+      if(b.stage&&STAGES.includes(b.stage)){ patch.stage=b.stage; patch.probability=(b.probability!=null?Number(b.probability):STAGE_PROB[b.stage]); patch.status=b.stage==="won"?"won":b.stage==="lost"?"lost":"open";
+        const cur=await sbGet(`opportunities?id=eq.${encodeURIComponent(b.id)}&select=stage`).catch(()=>[]);
+        if(String((cur&&cur[0]&&cur[0].stage)||"")!==b.stage) patch.stage_changed_at=patch.updated_at; }
       if(b.value!=null) patch.value=Number(b.value)||0;
       if(b.title!=null) patch.title=clean(b.title,200);
       if(b.line!=null) patch.line=clean(b.line,120);
       if(b.notes!=null) patch.notes=clean(b.notes,2000);
       if(b.expected_close!==undefined) patch.expected_close=/^\d{4}-\d{2}-\d{2}$/.test(String(b.expected_close||""))?b.expected_close:null;
       if(b.owner_rep!=null && manages) patch.owner_rep=clean(b.owner_rep,120);
-      await sbSend("PATCH",`opportunities?id=eq.${encodeURIComponent(b.id)}`,patch,{Prefer:"return=minimal"});
+      await UP.sendTolerant(sbSend,"PATCH",`opportunities?id=eq.${encodeURIComponent(b.id)}`,patch,["updated_by","stage_changed_at"]);
+      // A deal from a visit moves that visit's follow-up status (Phase 1).
+      try{ const o=await sbGet(`opportunities?id=eq.${encodeURIComponent(b.id)}&select=origin_type,origin_id`);
+        if(o&&o[0]&&o[0].origin_type==="visit_report"&&o[0].origin_id) await VI.recomputeFollowup([o[0].origin_id],{sbGet,sbSend}); }catch(e){}
       return json(200,{ok:true});
     }
 

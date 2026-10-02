@@ -68,6 +68,8 @@ async function whoami(event){
 const { dealerScope, isAdmin, seesAllDealers } = require("./_scope.js");
 const SC=require("./_scope.js");
 const UP=require("./_upsert.js");
+const TK=require("./_tasks.js");     // Phase 1: the one way to create a task
+const VI=require("./_visits.js");    // Phase 1: visit follow-up status
 const patchTolerant=(path,body,optional)=>UP.sendTolerant(sbSend,"PATCH",path,body,optional);
 /* A rep's own tasks (Phase 0I): assigned to their sign-in email, or to their rep name. Asked on
    the server (never "all tasks, filtered here" — one read stops at 1000 rows) and checked exactly
@@ -133,6 +135,57 @@ exports.handler = async (event)=>{
       return json(200,{ok:true,notes:notes||[],tasks:tasks||[],activity:activity||[],
         crosssell:suggestions,crosssell_all:crosssell||[],crossplan:crossplan||[],
         health:(health&&health[0])||null,opportunities:opportunities||[]});
+    }
+
+    /* ---- Visits & Meetings (Phase 1) — the Dealer 360 card, in ONE dealer-scoped call ----------
+       Visits are seen by dealer, like notes and tasks: whoever may work this dealer (the scope check
+       above) sees its visits, and nobody sees visits on a dealer outside their book.
+         upcoming   route stops on a future (or today's not-yet-started) route
+         meetings   booked Dealer Hub appointments still ahead
+         active     started, not yet approved (on site, or ended awaiting the summary)
+         past       approved / completed visits, newest first, with attendees (name kept even if the
+                    contact is later deleted), follow-up status and the tasks + deals they created */
+    if(b.action==="visits"){
+      if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+      const did=encodeURIComponent(b.dealer_id);
+      const today=new Date().toISOString().slice(0,10);
+      const lim=Math.min(Math.max(parseInt(b.limit||"25",10)||25,1),100);
+      const COLS="id,route_id,rep_email,rep_name,scheduled_date,checkin_at,ended_at,completed_at,approved_at,status,duration_min,summary,fields,followup_status,followup_due,followup_completed_at,followup_manual,followup_email";
+      const [reports,routes,meetings]=await Promise.all([
+        sbGet(`dealer_visit_reports?dealer_id=eq.${did}&select=${COLS}&order=checkin_at.desc.nullslast&limit=${lim+1}`)
+          .catch(()=>sbGet(`dealer_visit_reports?dealer_id=eq.${did}&select=*&order=checkin_at.desc.nullslast&limit=${lim+1}`).catch(()=>[])),
+        sbGet(`rep_routes?stops=cs.${encodeURIComponent(JSON.stringify([{dealer_id:String(b.dealer_id)}]))}&scheduled_date=gte.${today}&select=id,name,scheduled_date,rep_name,owner_email,assigned_to_email,assigned_to_rep&order=scheduled_date&limit=20`).catch(()=>[]),
+        sbGet(`service_requests?dealer_id=eq.${did}&start_at=gte.${encodeURIComponent(new Date().toISOString())}&select=id,service,meeting_type,start_at,end_at,rep_name,status&order=start_at&limit=10`).catch(()=>[]),
+      ]);
+      const rs=(reports||[]).slice(0,lim), more=(reports||[]).length>lim;
+      const ids=rs.map(r=>r.id).filter(Boolean);
+      let parts=[],tasks=[],opps=[];
+      if(ids.length){
+        const inl=ids.map(encodeURIComponent).join(",");
+        [parts,tasks,opps]=await Promise.all([
+          sbGet(`dealer_visit_participants?visit_report_id=in.(${inl})&select=visit_report_id,contact_id,name_snapshot,title_snapshot,email_snapshot,attended,source&order=created_at`).catch(()=>[]),
+          sbGet(`dealer_tasks?origin_type=eq.visit_report&origin_id=in.(${inl})&select=id,origin_id,title,status,due_date,priority,assigned_rep&order=created_at`).catch(()=>[]),
+          sbGet(`opportunities?origin_type=eq.visit_report&origin_id=in.(${inl})&select=id,origin_id,title,stage,status,value,line,manufacturer,product,quantity&order=created_at`).catch(()=>[]),
+        ]);
+      }
+      const by=(arr,k,id)=>(arr||[]).filter(x=>String(x[k])===String(id));
+      const legacyText=f=>{ f=f||{}; return [f.purpose&&`Purpose: ${f.purpose}`, f.notes].filter(Boolean).join("\n").slice(0,1200)||null; };
+      const shape=r=>({ id:r.id, route_id:r.route_id||null, rep_name:r.rep_name||null, rep_email:r.rep_email||null,
+        date:String(r.checkin_at||r.scheduled_date||"").slice(0,10)||null, started_at:r.checkin_at||null, ended_at:r.ended_at||null,
+        duration_min:(r.duration_min!=null?r.duration_min:null), status:r.status||null, approved:!!r.approved_at, completed:!!r.completed_at,
+        summary:(r.summary&&typeof r.summary==="object")?r.summary:null, notes:r.summary?null:legacyText(r.fields),
+        attendees:by(parts,"visit_report_id",r.id).map(p=>({name:p.name_snapshot,title:p.title_snapshot||null,email:p.email_snapshot||null,
+          contact_id:p.contact_id||null,attended:p.attended!==false})),
+        followup_status:r.followup_status||(r.approved_at?"none":null), followup_due:r.followup_due||null, followup_manual:!!r.followup_manual,
+        tasks:by(tasks,"origin_id",r.id).map(t=>({id:t.id,title:t.title,status:t.status,due_date:t.due_date,priority:t.priority,assigned_rep:t.assigned_rep})),
+        opportunities:by(opps,"origin_id",r.id).map(o=>({id:o.id,title:o.title,stage:o.stage,status:o.status,value:o.value,line:o.line||null,manufacturer:o.manufacturer,product:o.product,quantity:o.quantity})),
+        email:r.followup_email?{saved_at:r.followup_email.saved_at||null,sent_at:r.followup_email.sent_at||null,subject:r.followup_email.subject||""}:null });
+      const active=rs.filter(r=>r.checkin_at&&!r.completed_at&&!r.approved_at).map(shape);
+      const past=rs.filter(r=>r.completed_at||r.approved_at).map(shape);
+      const reported=new Set(rs.filter(r=>r.route_id).map(r=>String(r.route_id)));
+      const upcoming=(routes||[]).filter(rt=>!reported.has(String(rt.id))).map(rt=>({route_id:rt.id,route_name:rt.name,date:rt.scheduled_date,
+        rep_name:rt.assigned_to_rep||rt.rep_name||null}));
+      return json(200,{ok:true,upcoming,meetings:(meetings||[]).filter(m=>!/cancel|complete|done/i.test(String(m.status||""))),active,past,more});
     }
 
     // Unified per-dealer digital-activity intelligence: email engagement, ordering-portal
@@ -474,6 +527,9 @@ exports.handler = async (event)=>{
       return json(200,{ok:true});
     }
     if(b.action==="save_account_ref"){
+      // A manufacturer account number is ordering-access configuration: saving one marks the line
+      // active for the dealer and its family (dealer_manufacturers). Management only (Oct 2).
+      if(!isAdmin(me)) return json(403,{error:"Account numbers are changed by management."});
       if(!b.dealer_id||!b.manufacturer) return json(400,{error:"dealer_id + manufacturer required"});
       // Account numbers are organization-level: set it here and fill it across the dealer's family
       // (parent + branches) wherever a branch has none yet — a branch with its own number is left alone.
@@ -491,24 +547,20 @@ exports.handler = async (event)=>{
       const ins=await sbSend("POST","dealer_activity",row,{Prefer:"return=representation"});
       let task=null;
       if(clean(b.followup_title)){
-        const trow={dealer_id:b.dealer_id,title:clean(b.followup_title,200),detail:clean(b.followup_detail||b.summary,2000),
-          due_date:/^\d{4}-\d{2}-\d{2}$/.test(String(b.followup_due||""))?b.followup_due:null,
-          priority:["low","normal","high"].includes(b.followup_priority)?b.followup_priority:"normal",
-          source:"manual",assigned_rep:me.rep_name||null,created_by:me.name||me.email||null,status:"open"};
-        const ti=await sbSend("POST","dealer_tasks",trow,{Prefer:"return=representation"}); task=(ti&&ti[0])||trow;
+        const tr=await TK.createTasks([{dealer_id:b.dealer_id,title:b.followup_title,detail:b.followup_detail||b.summary,
+          due_date:b.followup_due,priority:b.followup_priority}],{sbGet,sbSend,me,source:"manual"});
+        task=(tr.created&&tr.created[0])||null;
       }
       return json(200,{ok:true,activity:(ins&&ins[0])||row,task});
     }
 
     if(b.action==="add_task"){
       if(!b.dealer_id||!clean(b.title)) return json(400,{error:"dealer_id + title required"});
-      const pr=["low","normal","high"].includes(b.priority)?b.priority:"normal";
-      const row={dealer_id:b.dealer_id,title:clean(b.title,200),detail:clean(b.detail,2000),
-        due_date:/^\d{4}-\d{2}-\d{2}$/.test(String(b.due_date||""))?b.due_date:null,
-        priority:pr,source:"manual",assigned_rep:clean(b.assigned_rep,120)||me.rep_name||null,
-        created_by:me.name||me.email||null,status:"open"};
-      const ins=await sbSend("POST","dealer_tasks",row,{Prefer:"return=representation"});
-      return json(200,{ok:true,task:(ins&&ins[0])||row});
+      // Assigning a task to someone else is for management and Relations; a rep's tasks are their own.
+      const assignTo=seesAllDealers(me)?clean(b.assigned_rep,120):null;
+      const tr=await TK.createTasks([{dealer_id:b.dealer_id,title:b.title,detail:b.detail,due_date:b.due_date,priority:b.priority,assigned_rep:assignTo}],
+        {sbGet,sbSend,me,source:"manual"});
+      return json(200,{ok:true,task:(tr.created&&tr.created[0])||null});
     }
 
     if(b.action==="complete_task"||b.action==="reopen_task"||b.action==="dismiss_task"){
@@ -520,9 +572,13 @@ exports.handler = async (event)=>{
       const status=b.action==="complete_task"?"done":b.action==="dismiss_task"?"dismissed":"open";
       // completed_by (Phase 0I): who closed it — so "tasks completed" credits the person who did
       // the work, not whoever the task was assigned to, and never the engine's auto-dismissals.
-      const patch={status,done_at:status==="open"?null:new Date().toISOString(),completed_by:status==="open"?null:(me.email||me.name||null)};
-      await patchTolerant(`dealer_tasks?id=eq.${encodeURIComponent(b.id)}`,patch,["completed_by"]);
-      return json(200,{ok:true,status});
+      const patch={status,done_at:status==="open"?null:new Date().toISOString(),completed_by:status==="open"?null:(me.email||me.name||null),updated_at:new Date().toISOString()};
+      await patchTolerant(`dealer_tasks?id=eq.${encodeURIComponent(b.id)}`,patch,["completed_by","updated_at"]);
+      // A task from a visit moves that visit's follow-up status (Phase 1): all linked tasks closed → complete.
+      let followup=null;
+      try{ const t=await sbGet(`dealer_tasks?id=eq.${encodeURIComponent(b.id)}&select=origin_type,origin_id`);
+        const o=t&&t[0]; if(o&&o.origin_type==="visit_report"&&o.origin_id){ const fu=await VI.recomputeFollowup([o.origin_id],{sbGet,sbSend}); followup={visit_report_id:o.origin_id,status:fu[o.origin_id]||null}; } }catch(e){}
+      return json(200,{ok:true,status,followup});
     }
 
     // The follow-up queue across every dealer.

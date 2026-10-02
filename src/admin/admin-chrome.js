@@ -89,6 +89,7 @@
         { href:"/admin/dealer.html",        label:"Dealer 360 & CRM",      icon:"📇", desc:"Full account command center — activity, contacts, tasks" },
         { href:"/admin/map.html",           label:"Territory Map",         icon:"🗺️", desc:"Dealer map, drive routes & saved trips" },
         { href:"/admin/scheduled-routes.html", label:"Scheduled Routes",   icon:"📅", desc:"Mobile field companion — today's visits, packages & voice notes" },
+        { href:"/admin/command-center-rep.html", label:"Rep Command Center", icon:"🧭", status:"new", desc:"A rep's day — priorities, route & meeting prep, visit results, follow-ups. Pick any rep to view." },
         { href:"/admin/territory.html",     label:"Territory Lines",       icon:"📍", desc:"Which manufacturer lines you represent in each state" },
         { href:"/admin/map.html#handout",   label:"Partnership Snapshots", icon:"📋", desc:"Printable dealer business-case handouts" },
         { href:"/admin/staff.html",         label:"Sales Reps & Staff",    icon:"👥", desc:"Team accounts, roles & territory ownership" },
@@ -145,7 +146,7 @@
     ],
     sales: [
       // Daily: what a rep opens first thing.
-      "Today's Opportunities", "Who to Call", "Dealer 360 & CRM", "My Tasks & Follow-Up Engine",
+      "Today's Opportunities", "Who to Call", "Dealer 360 & CRM", "My Tasks & Follow-Up Engine", "Rep Command Center",
       // Frequent: the working set through the week.
       "Dealer Health", "Dealer Manager", "Territory Map", "Scheduled Routes", "Pipeline",
       // Supporting: campaigns and scheduling around the core work.
@@ -183,6 +184,7 @@
   // data scoping restricts what they can actually see).
   var REP_TOOLS = [
     { href:"/admin/rep-home.html",           label:"Portal Home" },
+    { href:"/admin/command-center-rep.html", label:"My Command Center" },
     { href:"/admin/rep-training.html",       label:"Training" },
     { href:"/admin/command-center-360.html", label:"Command Center 360" },
     { href:"/admin/dealer.html",             label:"Dealer 360 & CRM" },
