@@ -361,6 +361,7 @@ async function startEndAnalyze(w, extra) {
     const retry = prompts.find(p => /previous answer was cut off/.test(p)); assert.ok(retry && /WHAT HAPPENED/.test(retry), 'the retry did not ask for a shorter answer');
     assert.ok(/minified JSON/.test(prompts[0]), 'compact output was not requested');
     assert.ok(/"max_tokens":4096/.test(prompts[0]), 'the output allowance was not raised');
+    assert.ok(prompts.every(p => /"thinking":\{"type":"disabled"\}/.test(p)), 'thinking was left on (slow, and it eats the output allowance)');
     assert.strictEqual(a.body.suggestion.follow_ups.length, 2);
   });
   await t('AI: a wrong-shaped answer (no summary) is retried; fenced JSON with stray braces after it parses first time', async () => {
@@ -530,6 +531,15 @@ async function startEndAnalyze(w, extra) {
     ok.meeting_summary = 'Met Bryant; pricing on 2 PR519 chairs for a customer and 1 PR519 for the showroom.';
     VAI.crossCheck(ok, { notes: 'Met Bryant. 2 PR519 chairs for a customer, 1 PR519 for the showroom; send pricing and the catalog.', mfrs: [] });
     assert.deepStrictEqual(ok.checks, [], JSON.stringify(ok.checks));
+    // "20 walkers and 12 rollators" — each number belongs to its own product
+    const two = { meeting_summary: 'Opening order: 20 walkers and 12 rollators, plus samples.', attendees: [], follow_ups: [], suggested_next_action: {},
+      opportunities: [{ key: 'w', title: '20 walkers', product: 'walkers', quantity: 20 }, { key: 'r', title: '12 rollators', product: 'rollators', quantity: 12 }] };
+    VAI.crossCheck(two, { notes: '20 walkers and 12 rollators', mfrs: [] }); assert.deepStrictEqual(two.checks, [], JSON.stringify(two.checks));
+    two.meeting_summary = 'They want 20 walkers and rollators for the new store.';
+    VAI.crossCheck(two, { notes: '20 walkers and 12 rollators', mfrs: [] }); assert.deepStrictEqual(two.checks, [], '"20 walkers and rollators" was read as 20 rollators');
+    two.meeting_summary = 'Opening order: 20 walkers and 12 rollators, plus samples.';
+    two.opportunities[1].quantity = 10; VAI.crossCheck(two, { notes: '20 walkers and 12 rollators', mfrs: [] });
+    assert.ok(/says 10, the summary says 12/.test(two.opportunities[1].review || ''), JSON.stringify(two.checks));
     // through the server: the deals part says 4, the summary says 6 → the deal is marked, the number kept
     const S = seed(); S.ai = byPart({ meeting: () => Object.assign({}, AI_OUT, { meeting_summary: 'Met Bryant. They want 6 Excursion chairs.' }),
       deals: () => ({ opportunities: [{ title: '4 Strongback Excursion chairs', manufacturer_slug: 'strongback-mobility', product: 'Excursion', quantity: 4, contact_name: 'Bryant Smith' }] }) });
@@ -577,6 +587,14 @@ async function startEndAnalyze(w, extra) {
     // the notes changed since → the whole summary runs again (nothing stale is kept)
     const changed = await R(w, Object.assign({}, body, { notes: 'New notes', retry_parts: ['deals'], refresh: true }), 'pres');
     assert.ok(!changed.body.merged); assert.strictEqual(changed.body.suggestion.meeting_summary, 'A DIFFERENT SUMMARY');
+  });
+  await t('AI: a model that refuses the thinking setting is asked again without it; usage is reported per part', async () => {
+    const S = seed(); let n = 0;
+    S.ai = b => { n++; return b.thinking ? { status: 400, body: { error: { message: 'thinking: not supported for this model' } } } : { status: 200, body: { content: [{ type: 'text', text: JSON.stringify(AI_OUT) }], stop_reason: 'end_turn', usage: { output_tokens: 321 } } }; };
+    const w = createWorld(S); await R(w, Object.assign({ action: 'visit_checkin' }, stop));
+    const a = await R(w, Object.assign({ action: 'visit_analyze', notes: 'Met Bryant.', local_date: TODAY }, stop));
+    assert.strictEqual(a.body.ok, true, JSON.stringify(a.body)); assert.strictEqual(n, 8, 'each part: one refused call and one without thinking');
+    assert.strictEqual(a.body.parts.meeting.tokens, 321); assert.strictEqual(a.body.parts.meeting.attempts, 1);
   });
   await t('Several deals and several follow-ups stay separate records; a replayed approval adds nothing', async () => {
     const S = seed(); S.ai = () => Object.assign({}, AI_OUT, {

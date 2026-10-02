@@ -200,26 +200,32 @@ async function priceLookup(opps, deps){
 /* One request to the model. { ok, raw } or { ok:false, error, message, retry } — `retry` says a
    second try is worthwhile (cut off, not JSON, wrong shape, or the service was busy). */
 const MAX_TOKENS = 4096;
+/* Thinking is OFF for these calls. Claude Sonnet 5 thinks by default (adaptive thinking) — that made a
+   structured extraction like this one slow and was what used up the output allowance on long notes.
+   A model that doesn't accept the setting answers 400; that call is then made once without it. */
+const NO_THINKING = { type: "disabled" };
 async function callOnce(i, timeoutMs){
   const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
   const timer = ctl ? setTimeout(() => ctl.abort(), Math.max(1000, timeoutMs)) : null;
-  let r;
+  const send = thinking => i.fetch("https://api.anthropic.com/v1/messages", { method: "POST", signal: ctl ? ctl.signal : undefined,
+    headers: { "x-api-key": i.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify(Object.assign({ model: i.model, max_tokens: i.maxTokens || MAX_TOKENS, messages: [{ role: "user", content: buildPrompt(i) }] }, thinking ? { thinking } : {})) });
+  let r, t;
   try{
-    r = await i.fetch("https://api.anthropic.com/v1/messages", { method: "POST", signal: ctl ? ctl.signal : undefined,
-      headers: { "x-api-key": i.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: i.model, max_tokens: i.maxTokens || MAX_TOKENS, messages: [{ role: "user", content: buildPrompt(i) }] }) });
+    r = await send(NO_THINKING); t = await r.text().catch(() => "");
+    if(r.status === 400 && /thinking/i.test(t)){ r = await send(null); t = await r.text().catch(() => ""); }
   }catch(e){
     return { ok: false, error: "ai_timeout", message: "The summary took too long.", retry: false };
   }finally{ if(timer) clearTimeout(timer); }
-  const t = await r.text().catch(() => "");
   if(!r.ok){ let hint = ""; try{ const ej = JSON.parse(t); hint = ej && ej.error && ej.error.message ? ` (${ej.error.message})` : ""; }catch(_){}
     return { ok: false, error: "ai_error", message: "The AI service returned an error" + hint + ".", retry: r.status >= 500 || r.status === 429 }; }
   let j = {}; try{ j = JSON.parse(t); }catch(_){}
   let text = ""; for(const c of ((j && j.content) || [])) if(c && typeof c.text === "string") text += c.text;
+  const tokens = j && j.usage && Number.isFinite(j.usage.output_tokens) ? j.usage.output_tokens : undefined;
   const raw = extractJson(text);
-  if(!raw) return { ok: false, error: j && j.stop_reason === "max_tokens" ? "ai_incomplete" : "ai_empty", message: "The AI's answer was cut off or unreadable.", retry: true };
-  if(!validRaw(raw, i.part)) return { ok: false, error: "ai_invalid", message: "The AI's answer was missing parts of the summary.", retry: true };
-  return { ok: true, raw };
+  if(!raw) return { ok: false, error: j && j.stop_reason === "max_tokens" ? "ai_incomplete" : "ai_empty", message: "The AI's answer was cut off or unreadable.", retry: true, tokens };
+  if(!validRaw(raw, i.part)) return { ok: false, error: "ai_invalid", message: "The AI's answer was missing parts of the summary.", retry: true, tokens };
+  return { ok: true, raw, tokens };
 }
 /* The summary, with ONE automatic retry when the first answer is incomplete or the wrong shape.
    Everything fits inside the function's time budget: the retry only runs if there is room for it.
@@ -258,7 +264,7 @@ async function summarize(i){
   const results = {};
   await Promise.all(want.map(async part => { results[part] = await half(part); }));
   const parts = {};
-  for(const part of want){ const r = results[part]; parts[part] = { ok: !!r.ok, attempts: r.attempts, ms: r.ms, error: r.ok ? undefined : r.error }; }
+  for(const part of want){ const r = results[part]; parts[part] = { ok: !!r.ok, attempts: r.attempts, ms: r.ms, tokens: r.tokens, error: r.ok ? undefined : r.error }; }
   const attempts = Math.max(...want.map(p => results[p].attempts)), forced = !!(results.meeting && results.meeting.forced);
   const meeting = results.meeting;
   if(meeting && !meeting.ok) return { ok: false, error: meeting.error, attempts, forced, parts,
@@ -313,10 +319,17 @@ function quantitiesIn(text){
     const w = words[k].toLowerCase().replace(/[^a-z0-9]/g, "");
     const n = /^\d{1,4}x?$/.test(w) ? parseInt(w, 10) : NUMWORD[w];
     if(!n) continue;
-    const after = words.slice(k + 1, k + 5);
+    // the words that belong to this number: up to four, stopping at the next number, at "and"/"or",
+    // or after a comma — "20 walkers and 12 rollators" is 20 walkers, not 20 rollators
+    const after = [];
+    for(const a of words.slice(k + 1, k + 5)){
+      const la = a.toLowerCase().replace(/[^a-z0-9]/g, "");
+      if(/^\d+x?$/.test(la) && la !== "x" || NUMWORD[la] || ["and", "or", "plus", "vs", "versus"].includes(la)) break;
+      after.push(a); if(/[,;:.]$/.test(a)) break;
+    }
     const toks = new Set(modelCodes(after.join(" ")).map(c => c.code));
     for(const a of after){ const lw = a.toLowerCase().replace(/[^a-z0-9]/g, ""); if(lw) toks.add(singular(lw)); }
-    out.push({ n, toks, phrase: words.slice(k, k + 5).join(" ") });
+    out.push({ n, toks, phrase: [words[k]].concat(after).join(" ") });
   }
   return out;
 }
@@ -352,7 +365,7 @@ function crossCheck(sug, ctx){
       } if(hit) break; }
       if(hit) break;
     }
-    if(hit) flag(o, "quantity", `Quantity: this deal says ${o.quantity}, ${hit.label} ${SAY[hit.label]} ${hit.n} (“${clean(hit.text, 60)}…”). Check before approving.`, "opportunities");
+    if(hit) flag(o, "quantity", `Quantity: this deal says ${o.quantity}, ${hit.label} ${SAY[hit.label]} ${hit.n} (“${clean(hit.text, 60)}”). Check before approving.`, "opportunities");
   }
   // 2. Product / model — a model number that isn't in the notes was misheard or made up somewhere.
   if(notesText.trim()){

@@ -444,7 +444,9 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
 - **AI never blocks a visit.** The meeting summary is four AI requests run at the same time ("what
   happened", commitments, follow-ups, deals — each a fraction of the output, so long dictations fit the
   function's time limit); each asks for compact JSON, is shape-checked and retried ONCE inside a fixed budget,
-  and only supplies its own keys. If a later part fails, the summary still shows, marked partial (saying
+  and only supplies its own keys. Thinking is turned OFF for these calls (Sonnet 5 thinks by default —
+  slow, and it used up the output allowance); a model that refuses the setting is asked again without it.
+  If a later part fails, the summary still shows, marked partial (saying
   which part); Try AI again then asks ONLY for the missing part and fills only that section — what already
   came back and anything the rep changed is never touched. The parts are cross-checked without another AI
   call (quantity, model vs the notes, deal contact, promised date, asked-for follow-ups): conflicts are
