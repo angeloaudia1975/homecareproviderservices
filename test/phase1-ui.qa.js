@@ -51,10 +51,16 @@ function world() {
     dealer_visits: [['visit_report_id']], dealer_visit_participants: [['visit_report_id', 'name_key']], dealer_contacts: [['dealer_id', 'email']],
     dealer_visit_reports: [['route_id', 'dealer_id']] };
   S.catalog = { 'golden-technologies': [{ code: 'PR-519', name: 'Golden PR519 Lift Chair', base_price: 899 }] };
-  // AI.fail > 0: that many summary calls come back cut off (the live failure), to drive the retry paths.
-  const AI = { fail: 0, calls: 0 };
-  S.ai = body => { if (/MEETING RECAP/.test(JSON.stringify(body))) return { subject: 'Following up on our visit', body: 'Hi Bryant,\n\nThank you for meeting with me on October 2. As promised, PR519 pricing is on its way.' };
-    AI.calls++; if (AI.fail > 0) { AI.fail--; return { status: 200, body: { content: [{ type: 'text', text: '{"meeting_summary":"Met Bry' }], stop_reason: 'max_tokens' } }; }
+  // A summary is two AI requests at once: "what happened" and "what happens next".
+  // AI.fail > 0: that many "what happened" answers come back cut off (the live failure); AI.failNext the same
+  // for the "what happens next" half — to drive the retry and partial paths.
+  const AI = { fail: 0, failNext: 0, calls: 0 };
+  const cutOff = () => ({ status: 200, body: { content: [{ type: 'text', text: '{"meeting_summary":"Met Bry' }], stop_reason: 'max_tokens' } });
+  S.ai = body => { const p = JSON.stringify(body);
+    if (/MEETING RECAP/.test(p)) return { subject: 'Following up on our visit', body: 'Hi Bryant,\n\nThank you for meeting with me on October 2. As promised, PR519 pricing is on its way.' };
+    AI.calls++;
+    if (/WHAT HAPPENS NEXT/.test(p)) { if (AI.failNext > 0) { AI.failNext--; return cutOff(); } return AI_VISIT; }
+    if (AI.fail > 0) { AI.fail--; return cutOff(); }
     return AI_VISIT; };
   const w = createWorld(S); w.AI = AI; return w;
 }
@@ -229,7 +235,7 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
     await page.fill('#vn_0', 'Second call at Glasgow. Bryant and Pat Lee. Send PR519 pricing.');
     w.AI.fail = 2; const c0 = w.AI.calls;
     await page.click('#stop_0 .vmode .btn.go.xl'); await page.waitForSelector('#rv_retry', { timeout: 15000 });
-    assert.strictEqual(w.AI.calls - c0, 2, 'the server did not retry exactly once');
+    assert.strictEqual(w.AI.calls - c0, 3, 'the server did not retry the failed half exactly once (2 tries + the other half)');
     assert.ok(/notes are saved/i.test(await page.textContent('#rv_body .rvnote')));
     assert.strictEqual(await page.inputValue('#rv_sum'), 'Second call at Glasgow. Bryant and Pat Lee. Send PR519 pricing.', 'the notes were not kept in the manual summary');
     assert.strictEqual(n(w, 'dealer_tasks', t => t.origin_type === 'visit_report' && t.dealer_id === 'd-greg'), 1, 'records created before approval');
@@ -255,6 +261,28 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
   });
   await step('field: no JavaScript errors', async () => { assert.deepStrictEqual(errors.filter(e => /^field/.test(e)), []); });
   await ctx.close();
+
+  /* ───────────── Half the answer: the summary is in, the follow-ups half isn't ───────────── */
+  await step('AI partial: summary shows with a note and Try AI again; a follow-up typed meanwhile survives the retry', async () => {
+    const w3 = world(); const s3 = await serve(w3); const B3 = `http://127.0.0.1:${s3.port}`;
+    const c3 = await ctxFor(browser, 'greg', PHONE); const p3 = await c3.newPage(); const errs = []; p3.on('pageerror', e => errs.push(e.message));
+    await p3.goto(`${B3}/admin/scheduled-routes.html?route=r-2`); await p3.waitForSelector('#stop_0 .btn.go.xl');
+    await p3.click('#stop_0 .btn.go.xl'); await p3.waitForSelector('#vn_0'); await p3.fill('#vn_0', 'Met Bryant. Send PR519 pricing.');
+    w3.AI.failNext = 2;
+    await p3.click('#stop_0 .vmode .btn.go.xl'); await p3.waitForSelector('#rv_retry', { timeout: 15000 });
+    assert.ok(/didn't finish the follow-ups/.test(await p3.textContent('#rv_body .rvnote')), 'no partial note');
+    assert.strictEqual(await p3.inputValue('#rv_sum'), AI_VISIT.meeting_summary, 'the summary that came back is not shown');
+    assert.strictEqual((await p3.$$('#rv_fu .rv-card')).length, 0);
+    await p3.click('#rv_body button:has-text("Add a follow-up")'); await p3.fill('#rv_fu .rv-card:last-child .rv-t', 'Bring the swatch book');
+    await noHScroll(p3, 'partial review phone'); await p3.screenshot({ path: path.join(SHOTS, 'ai-partial.png'), fullPage: true });
+    assert.strictEqual(n(w3, 'dealer_tasks', t => t.origin_type === 'visit_report'), 0, 'records created before approval');
+    await p3.click('#rv_retry'); await p3.waitForSelector('#rv_body .rvnote.ok', { timeout: 15000 });
+    const fus = await p3.$$eval('#rv_fu .rv-card .rv-t', xs => xs.map(x => x.value));
+    assert.ok(fus.includes('Send PR519 pricing') && fus.includes('Bring the swatch book'), 'follow-ups after retry: ' + fus);
+    await p3.click('#rv_body > .btn.go.xl'); await p3.waitForSelector('.rv-done', { timeout: 15000 });
+    assert.ok(n(w3, 'dealer_tasks', t => t.origin_type === 'visit_report' && t.title === 'Bring the swatch book') === 1, 'the typed follow-up was not created');
+    assert.deepStrictEqual(errs, []); await c3.close(); s3.srv.close();
+  });
 
   /* ───────────── Poor network: a slow server still completes the review ───────────── */
   await step('slow network: the review waits, then fills in', async () => {

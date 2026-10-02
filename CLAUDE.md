@@ -441,8 +441,10 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   no company-wide payloads to a rep's browser.
 - **Shipping:** SQL the user must run is pasted inline in the reply (and committed as a file); after a push,
   the live Netlify endpoints are tested — a successful push is not proof of a deploy.
-- **AI never blocks a visit.** The meeting summary asks for compact JSON, validates the shape, retries ONCE
-  automatically, and the review always opens: "Try AI again" in place, or a full manual fallback (summary,
+- **AI never blocks a visit.** The meeting summary is two AI requests run at the same time ("what happened"
+  and "what happens next", each half the output, so long dictations fit the function's time limit); each
+  asks for compact JSON, is shape-checked and retried ONCE inside a fixed budget. If only the follow-ups half
+  fails, the summary still shows, marked partial, with Try AI again. The review always opens: "Try AI again" in place, or a full manual fallback (summary,
   attendees, follow-ups, opportunities, next action). The rep's notes are saved before any AI call.
 - **Dates in AI drafts are absolute.** The real visit date is passed in; drafts say "on October 2", never
   "yesterday/today" unless the system itself computed it. Follow-up emails go to an attendee first; with

@@ -42,25 +42,21 @@ TYPED NOTES:
 DICTATION (transcript):
 """${String(i.transcript || "").slice(0, 12000)}"""
 
-Return ONLY a compact, minified JSON object — one line, no indentation, no markdown, nothing before or after it.
-Keep it short: list items are short phrases (under 12 words), at most 8 items per list, and OMIT any key whose value would be empty.
-Keys (all optional except meeting_summary):
-{
- "meeting_summary": "2-4 plain sentences: who you met, what was covered, the outcome",
- "products_discussed": ["product or line names"],
- "dealer_interests": [], "dealer_concerns": [], "objections": [], "competitors": [],
- "pricing_requests": [], "samples_requested": [], "literature_requested": [], "training_requested": [],
- "attendees": [{"name": "dealer-side person who was in the meeting (not the rep)", "title": ""}],
- "rep_commitments": [{"text": "what the REP promised, e.g. send pricing", "due_date": "YYYY-MM-DD or \\"\\""}],
- "dealer_commitments": [{"text": "what the DEALER promised or asked for, e.g. call me Friday", "due_date": ""}],
- "follow_ups": [{"title": "short imperative task for the rep", "due_date": "", "priority": "high|normal|low", "from": "rep_commitment|dealer_commitment|request|other"}],
- "opportunities": [{"title": "e.g. 2 x PR519 lift chairs", "manufacturer_slug": "a KNOWN slug or \\"\\"", "product": "model or product code/name", "quantity": null, "est_value": null, "contact_name": "", "stage": "identified|contacted|quoted", "expected_close": ""}],
- "suggested_next_action": {"text": "", "due_date": ""},
- "interest_slugs": ["KNOWN slugs the dealer showed interest in"],
- "poor_fit_slugs": ["KNOWN slugs the rep explicitly said are NOT a fit"]
+${i.part === "actions" ? ACTIONS_SPEC(i) : i.part === "meeting" ? MEETING_SPEC : MEETING_SPEC + "\n" + ACTIONS_SPEC(i)}${i.retryNote ? `\n\n${i.retryNote}` : ""}`;
 }
-Rules: every rep commitment and every dealer request becomes a follow_up — one follow_up per separate action, and never the same action twice. suggested_next_action is the single most important next step; leave it out when that step is already a follow_up. Each distinct deal is its own opportunity. Resolve relative dates against the visit date (tomorrow = the day after ${i.visitDate || "the visit"}; "Friday" = the coming Friday). Leave a date out when none was said. est_value only when a price or total was stated. Use "quoted" only if a quote was given.${i.retryNote ? `\n\n${i.retryNote}` : ""}`;
-}
+/* The answer is asked for in two halves that run AT THE SAME TIME — what happened (summary, lists,
+   attendees) and what happens next (commitments, follow-ups, deals). Each half is about half the
+   output, so the whole summary arrives in roughly half the time; long dictations no longer run
+   into the function's time limit. */
+const COMPACT = `Return ONLY a compact, minified JSON object — one line, no indentation, no markdown, nothing before or after it.
+Keep it short: list items are short phrases (under 12 words), at most 8 items per list, and OMIT any key whose value would be empty.`;
+const MEETING_SPEC = `${COMPACT}
+This answer covers WHAT HAPPENED. Keys (all optional except meeting_summary):
+{"meeting_summary":"2-4 plain sentences: who you met, what was covered, the outcome","products_discussed":["product or line names"],"dealer_interests":[],"dealer_concerns":[],"objections":[],"competitors":[],"pricing_requests":[],"samples_requested":[],"literature_requested":[],"training_requested":[],"attendees":[{"name":"dealer-side person who was in the meeting (not the rep)","title":""}],"interest_slugs":["KNOWN slugs the dealer showed interest in"],"poor_fit_slugs":["KNOWN slugs the rep explicitly said are NOT a fit"]}`;
+const ACTIONS_SPEC = i => `${COMPACT}
+This answer covers WHAT HAPPENS NEXT. Keys (all optional):
+{"rep_commitments":[{"text":"what the REP promised, e.g. send pricing","due_date":"YYYY-MM-DD"}],"dealer_commitments":[{"text":"what the DEALER promised or asked for","due_date":""}],"follow_ups":[{"title":"short imperative task for the rep","due_date":"","priority":"high|normal|low","from":"rep_commitment|dealer_commitment|request|other"}],"opportunities":[{"title":"e.g. 2 x PR519 lift chairs","manufacturer_slug":"a KNOWN slug","product":"model or product code/name","quantity":null,"est_value":null,"contact_name":"","stage":"identified|contacted|quoted","expected_close":""}],"suggested_next_action":{"text":"","due_date":""}}
+Rules: every rep commitment and every dealer request becomes a follow_up — one follow_up per separate action, and never the same action twice. suggested_next_action is the single most important next step; leave it out when that step is already a follow_up. Each distinct deal is its own opportunity. Resolve relative dates against the visit date (tomorrow = the day after ${i.visitDate || "the visit"}; "Friday" = the coming Friday). Leave a date out when none was said. est_value only when a price or total was stated. Use "quoted" only if a quote was given.`;
 
 /* ---- Reading the model's answer -------------------------------------------------------------
    The first complete JSON object in the text (code fences and any stray words around it are
@@ -84,9 +80,9 @@ function extractJson(text){
 const LIST_KEYS = ["products_discussed", "dealer_interests", "dealer_concerns", "objections", "competitors", "pricing_requests",
   "samples_requested", "literature_requested", "training_requested", "attendees", "rep_commitments", "dealer_commitments",
   "follow_ups", "opportunities", "interest_slugs", "poor_fit_slugs"];
-function validRaw(raw){
+function validRaw(raw, part){
   if(!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
-  if(typeof raw.meeting_summary !== "string" || !raw.meeting_summary.trim()) return false;
+  if(part !== "actions" && (typeof raw.meeting_summary !== "string" || !raw.meeting_summary.trim())) return false;
   for(const k of LIST_KEYS) if(raw[k] != null && !Array.isArray(raw[k])) return false;
   if(raw.suggested_next_action != null && typeof raw.suggested_next_action !== "object" && typeof raw.suggested_next_action !== "string") return false;
   return true;
@@ -212,28 +208,41 @@ async function callOnce(i, timeoutMs){
   let text = ""; for(const c of ((j && j.content) || [])) if(c && typeof c.text === "string") text += c.text;
   const raw = extractJson(text);
   if(!raw) return { ok: false, error: j && j.stop_reason === "max_tokens" ? "ai_incomplete" : "ai_empty", message: "The AI's answer was cut off or unreadable.", retry: true };
-  if(!validRaw(raw)) return { ok: false, error: "ai_invalid", message: "The AI's answer was missing parts of the summary.", retry: true };
+  if(!validRaw(raw, i.part)) return { ok: false, error: "ai_invalid", message: "The AI's answer was missing parts of the summary.", retry: true };
   return { ok: true, raw };
 }
 /* The summary, with ONE automatic retry when the first answer is incomplete or the wrong shape.
    Everything fits inside the function's time budget: the retry only runs if there is room for it.
    i.forceFirstInvalid (QA only — see routes-api) throws the first answer away to prove the retry. */
+const ACTION_KEYS = ["rep_commitments", "dealer_commitments", "follow_ups", "opportunities", "suggested_next_action"];
 const RETRY_NOTE = "IMPORTANT: your previous answer was cut off or was not valid JSON. Answer again with a SHORTER summary: minified JSON only, at most 5 items per list, short phrases.";
 async function summarize(i){
   if(!i.apiKey) return { ok: false, error: "ai_unavailable", attempts: 0, message: "AI summaries need ANTHROPIC_API_KEY set in Netlify. You can still review and approve by hand." };
   // Netlify ends a function at ~26 s; the rest of visit_analyze needs a second or two of that.
   const t0 = Date.now(), budget = i.budgetMs || 22000, minRetry = i.minRetryMs || 6000;
-  let res = await callOnce(i, Math.min(i.timeoutMs || 16000, budget));
-  let attempts = 1, forced = false;
-  if(res.ok && i.forceFirstInvalid){ res = { ok: false, error: "ai_invalid", message: "First answer discarded for a test.", retry: true }; forced = true; }
-  const left = budget - (Date.now() - t0);
-  if(!res.ok && res.retry && left >= minRetry){
-    res = await callOnce(Object.assign({}, i, { retryNote: RETRY_NOTE }), left - 500);
-    attempts = 2;
+  const firstWait = Math.min(i.timeoutMs || 17000, budget);
+  /* One half, with its single retry. The QA switch discards the first "what happened" answer. */
+  async function half(part){
+    const p = Object.assign({}, i, { part });
+    let res = await callOnce(p, firstWait), attempts = 1, forced = false;
+    if(res.ok && part === "meeting" && i.forceFirstInvalid){ res = { ok: false, error: "ai_invalid", message: "First answer discarded for a test.", retry: true }; forced = true; }
+    const left = budget - (Date.now() - t0);
+    if(!res.ok && res.retry && left >= minRetry){
+      res = await callOnce(Object.assign(p, { retryNote: RETRY_NOTE }), left - 500);
+      attempts = 2;
+    }
+    return Object.assign(res, { attempts, forced });
   }
-  if(res.ok) return { ok: true, raw: res.raw, attempts, forced };
-  return { ok: false, error: res.error, attempts, forced,
-    message: (res.message || "The AI couldn't summarize this visit.") + " Your notes are saved — try the AI again, or fill in the summary yourself." };
+  const [meeting, actions] = await Promise.all([half("meeting"), half("actions")]);
+  const attempts = Math.max(meeting.attempts, actions.attempts), forced = meeting.forced;
+  if(!meeting.ok) return { ok: false, error: meeting.error, attempts, forced,
+    message: (meeting.message || "The AI couldn't summarize this visit.") + " Your notes are saved — try the AI again, or fill in the summary yourself." };
+  // Each half only supplies its own keys, so a stray key in one answer can't overwrite the other.
+  // What happened came back but what happens next did not: show what we have, and say so.
+  const raw = {};
+  for(const [k, v] of Object.entries(meeting.raw || {})) if(!ACTION_KEYS.includes(k)) raw[k] = v;
+  if(actions.ok) for(const k of ACTION_KEYS) if(actions.raw[k] != null) raw[k] = actions.raw[k];
+  return { ok: true, raw, attempts, forced, partial: actions.ok ? null : "actions" };
 }
 
 module.exports = { buildPrompt, normalizeSuggestion, priceLookup, summarize, codeNorm, extractJson, validRaw, sameAction };

@@ -1418,7 +1418,7 @@ exports.handler = async (event)=>{
         knownMfrs(),
       ]);
       const pickers={contacts:(contacts||[]).map(c=>({id:c.id,name:c.name||c.email||"",title:c.title||"",email:c.email||""})),manufacturers:mfrs.map(m=>({slug:m.slug,name:m.name||m.slug}))};
-      if(!b.refresh && r.ai_suggestion && r.ai_suggestion.input_hash===inputHash)
+      if(!b.refresh && r.ai_suggestion && r.ai_suggestion.input_hash===inputHash && !r.ai_suggestion.partial)
         return json(200,Object.assign({ok:true,report_id:r.id,suggestion:r.ai_suggestion,cached:true},pickers));
       if(b.manual) return json(200,Object.assign({ok:true,report_id:r.id,suggestion:null},pickers));
       // Nothing written or dictated: no AI call — the rep reviews by hand, with the pickers.
@@ -1434,7 +1434,8 @@ exports.handler = async (event)=>{
       if(!res.ok) return json(200,Object.assign({ok:false,report_id:r.id,error:res.error,message:res.message,attempts:res.attempts},pickers));
       const sug=VAI.normalizeSuggestion(res.raw,{visitDate,contacts:contacts||[],mfrs});
       await VAI.priceLookup(sug.opportunities,{loadCatalog});
-      Object.assign(sug,{input_hash:inputHash,generated_at:nowIso,model:VISIT_AI_MODEL});
+      // partial: the follow-ups half didn't come back — the screen says so and offers Try AI again.
+      Object.assign(sug,{input_hash:inputHash,generated_at:nowIso,model:VISIT_AI_MODEL,partial:res.partial||undefined});
       try{ await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(r.id)}`,{ai_suggestion:sug,ai_suggested_at:nowIso},{Prefer:"return=minimal"}); }catch(e){}
       return json(200,Object.assign({ok:true,report_id:r.id,suggestion:sug,attempts:res.attempts,qa_forced:res.forced||undefined},pickers));
     }
