@@ -42,21 +42,27 @@ TYPED NOTES:
 DICTATION (transcript):
 """${String(i.transcript || "").slice(0, 12000)}"""
 
-${i.part === "meeting" ? MEETING_SPEC : i.part === "followups" ? FOLLOWUPS_SPEC(i) : i.part === "deals" ? DEALS_SPEC : MEETING_SPEC + "\n" + FOLLOWUPS_SPEC(i) + "\n" + DEALS_SPEC}${i.retryNote ? `\n\n${i.retryNote}` : ""}`;
+${i.part === "meeting" ? MEETING_SPEC : i.part === "commitments" ? COMMITMENTS_SPEC(i) : i.part === "followups" ? FOLLOWUPS_SPEC(i) : i.part === "deals" ? DEALS_SPEC : MEETING_SPEC + "\n" + COMMITMENTS_SPEC(i) + "\n" + FOLLOWUPS_SPEC(i) + "\n" + DEALS_SPEC}${i.retryNote ? `\n\n${i.retryNote}` : ""}`;
 }
-/* The answer is asked for in three parts that run AT THE SAME TIME — what happened (summary, lists,
-   attendees), the follow-ups (commitments, tasks, next action) and the deals (opportunities). Each
-   part is about a third of the output, so the whole summary arrives in roughly a third of the time;
-   long dictations no longer run into the function's time limit. */
+/* The answer is asked for in four parts that run AT THE SAME TIME — what happened (summary, lists,
+   attendees), the commitments (who promised what), the follow-ups (tasks, next action) and the deals
+   (opportunities). Each part is a fraction of the output, so the whole summary arrives in a fraction
+   of the time; long dictations no longer run into the function's time limit. The parts never see
+   each other's answers — crossCheck() compares them afterwards and flags anything that disagrees. */
 const COMPACT = `Return ONLY a compact, minified JSON object — one line, no indentation, no markdown, nothing before or after it.
 Keep it short: list items are short phrases (under 12 words), at most 8 items per list, and OMIT any key whose value would be empty.`;
 const MEETING_SPEC = `${COMPACT}
 This answer covers WHAT HAPPENED. Keys (all optional except meeting_summary):
 {"meeting_summary":"2-4 plain sentences: who you met, what was covered, the outcome","products_discussed":["product or line names"],"dealer_interests":[],"dealer_concerns":[],"objections":[],"competitors":[],"pricing_requests":[],"samples_requested":[],"literature_requested":[],"training_requested":[],"attendees":[{"name":"dealer-side person who was in the meeting (not the rep)","title":""}],"interest_slugs":["KNOWN slugs the dealer showed interest in"],"poor_fit_slugs":["KNOWN slugs the rep explicitly said are NOT a fit"]}`;
+const DATE_RULE = i => `Resolve relative dates against the visit date (tomorrow = the day after ${i.visitDate || "the visit"}; "Friday" = the coming Friday). Leave a date out when none was said.`;
+const COMMITMENTS_SPEC = i => `${COMPACT}
+This answer covers the COMMITMENTS: who promised what. Keys (all optional):
+{"rep_commitments":[{"text":"what the REP promised, e.g. send pricing","due_date":"YYYY-MM-DD"}],"dealer_commitments":[{"text":"what the DEALER promised or asked for","due_date":""}]}
+Rules: only promises and requests actually in the notes. ${DATE_RULE(i)}`;
 const FOLLOWUPS_SPEC = i => `${COMPACT}
 This answer covers WHAT HAPPENS NEXT: the follow-ups. Keys (all optional):
-{"rep_commitments":[{"text":"what the REP promised, e.g. send pricing","due_date":"YYYY-MM-DD"}],"dealer_commitments":[{"text":"what the DEALER promised or asked for","due_date":""}],"follow_ups":[{"title":"short imperative task for the rep","due_date":"","priority":"high|normal|low","from":"rep_commitment|dealer_commitment|request|other"}],"suggested_next_action":{"text":"","due_date":""}}
-Rules: every rep commitment and every dealer request becomes a follow_up — one follow_up per separate action, and never the same action twice. suggested_next_action is the single most important next step; leave it out when that step is already a follow_up. Resolve relative dates against the visit date (tomorrow = the day after ${i.visitDate || "the visit"}; "Friday" = the coming Friday). Leave a date out when none was said.`;
+{"follow_ups":[{"title":"short imperative task for the rep","due_date":"","priority":"high|normal|low","from":"rep_commitment|dealer_commitment|request|other"}],"suggested_next_action":{"text":"","due_date":""}}
+Rules: every rep commitment and every dealer request becomes a follow_up — one follow_up per separate action, and never the same action twice. Do not invent tasks the notes don't support. suggested_next_action is the single most important next step; leave it out when that step is already a follow_up. ${DATE_RULE(i)}`;
 const DEALS_SPEC = `${COMPACT}
 This answer covers the DEALS: products this dealer may buy. Keys (all optional):
 {"opportunities":[{"title":"e.g. 2 x PR519 lift chairs","manufacturer_slug":"a KNOWN slug","product":"model or product code/name","quantity":null,"est_value":null,"contact_name":"","stage":"identified|contacted|quoted","expected_close":""}]}
@@ -98,11 +104,11 @@ function validRaw(raw, part){
    keeps them apart. */
 const STOP = new Set("a an and the to for of on in at by with from this that their them they our your you it its is be will please re dealer customer store".split(" "));
 function actionWords(s){ return new Set(String(s || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(w => w && !STOP.has(w))); }
-function sameAction(a, b){
+function sameAction(a, b, ignoreDates){
   const A = actionWords(a && (a.title || a.text)), B = actionWords(b && (b.title || b.text));
   if(!A.size || !B.size) return false;
   const da = String((a && a.due_date) || ""), db = String((b && b.due_date) || "");
-  if(da && db && da !== db) return false;
+  if(!ignoreDates && da && db && da !== db) return false;
   let inter = 0; for(const w of A) if(B.has(w)) inter++;
   const union = A.size + B.size - inter;
   return inter / Math.min(A.size, B.size) >= 0.75 || inter / union >= 0.6;
@@ -218,8 +224,12 @@ async function callOnce(i, timeoutMs){
 /* The summary, with ONE automatic retry when the first answer is incomplete or the wrong shape.
    Everything fits inside the function's time budget: the retry only runs if there is room for it.
    i.forceFirstInvalid (QA only — see routes-api) throws the first answer away to prove the retry. */
-const PART_KEYS = { followups: ["rep_commitments", "dealer_commitments", "follow_ups", "suggested_next_action"], deals: ["opportunities"] };
-const ACTION_KEYS = PART_KEYS.followups.concat(PART_KEYS.deals);
+const PART_KEYS = { commitments: ["rep_commitments", "dealer_commitments"], followups: ["follow_ups", "suggested_next_action"], deals: ["opportunities"] };
+const ACTION_KEYS = PART_KEYS.commitments.concat(PART_KEYS.followups, PART_KEYS.deals);
+const PARTS = ["meeting", "commitments", "followups", "deals"];
+// What the review screen calls each later part when it is missing.
+const SECTION = { commitments: "commitments", followups: "follow_ups", deals: "opportunities" };
+const PART_OF = { commitments: "commitments", follow_ups: "followups", opportunities: "deals" };
 const RETRY_NOTE = "IMPORTANT: your previous answer was cut off or was not valid JSON. Answer again with a SHORTER summary: minified JSON only, at most 5 items per list, short phrases.";
 async function summarize(i){
   if(!i.apiKey) return { ok: false, error: "ai_unavailable", attempts: 0, message: "AI summaries need ANTHROPIC_API_KEY set in Netlify. You can still review and approve by hand." };
@@ -228,9 +238,14 @@ async function summarize(i){
   // A part that times out is not retried, so each part may use the whole budget on its first try;
   // a part that fails FAST (cut off, wrong shape) still has room for its one retry.
   const firstWait = Math.min(i.timeoutMs || budget - 1000, budget);
+  /* i.only — run just these parts (Try AI again after a partial summary); the rest are not asked.
+     i.forceFail — QA only (see routes-api): these parts fail on purpose, without calling the AI. */
+  const want = Array.isArray(i.only) && i.only.length ? PARTS.filter(p => i.only.includes(p)) : PARTS;
+  const forceFail = new Set(Array.isArray(i.forceFail) ? i.forceFail : []);
   /* One part, with its single retry. The QA switch discards the first "what happened" answer. */
   async function half(part){
-    const p = Object.assign({}, i, { part });
+    const p = Object.assign({}, i, { part }), s0 = Date.now();
+    if(forceFail.has(part)) return { ok: false, error: "qa_forced", message: "This part failed on purpose for a test.", retry: false, attempts: 1, forced: true, ms: 0 };
     let res = await callOnce(p, firstWait), attempts = 1, forced = false;
     if(res.ok && part === "meeting" && i.forceFirstInvalid){ res = { ok: false, error: "ai_invalid", message: "First answer discarded for a test.", retry: true }; forced = true; }
     const left = budget - (Date.now() - t0);
@@ -238,20 +253,155 @@ async function summarize(i){
       res = await callOnce(Object.assign(p, { retryNote: RETRY_NOTE }), left - 500);
       attempts = 2;
     }
-    return Object.assign(res, { attempts, forced });
+    return Object.assign(res, { attempts, forced, ms: Date.now() - s0 });
   }
-  const [meeting, followups, deals] = await Promise.all([half("meeting"), half("followups"), half("deals")]);
-  const attempts = Math.max(meeting.attempts, followups.attempts, deals.attempts), forced = meeting.forced;
-  if(!meeting.ok) return { ok: false, error: meeting.error, attempts, forced,
+  const results = {};
+  await Promise.all(want.map(async part => { results[part] = await half(part); }));
+  const parts = {};
+  for(const part of want){ const r = results[part]; parts[part] = { ok: !!r.ok, attempts: r.attempts, ms: r.ms, error: r.ok ? undefined : r.error }; }
+  const attempts = Math.max(...want.map(p => results[p].attempts)), forced = !!(results.meeting && results.meeting.forced);
+  const meeting = results.meeting;
+  if(meeting && !meeting.ok) return { ok: false, error: meeting.error, attempts, forced, parts,
     message: (meeting.message || "The AI couldn't summarize this visit.") + " Your notes are saved — try the AI again, or fill in the summary yourself." };
   // Each part only supplies its own keys, so a stray key in one answer can't overwrite another.
   // What happened came back but a later part did not: show what we have, and say which is missing.
   const raw = {};
-  for(const [k, v] of Object.entries(meeting.raw || {})) if(!ACTION_KEYS.includes(k)) raw[k] = v;
-  for(const [part, res] of [["followups", followups], ["deals", deals]])
-    if(res.ok) for(const k of PART_KEYS[part]) if(res.raw[k] != null) raw[k] = res.raw[k];
-  const partial = !followups.ok && !deals.ok ? "actions" : !followups.ok ? "follow_ups" : !deals.ok ? "opportunities" : null;
-  return { ok: true, raw, attempts, forced, partial };
+  if(meeting) for(const [k, v] of Object.entries(meeting.raw || {})) if(!ACTION_KEYS.includes(k)) raw[k] = v;
+  for(const part of ["commitments", "followups", "deals"]){ const res = results[part];
+    if(res && res.ok) for(const k of PART_KEYS[part]) if(res.raw[k] != null) raw[k] = res.raw[k]; }
+  const missing = want.filter(p => p !== "meeting" && !results[p].ok).map(p => SECTION[p]);
+  return { ok: true, raw, attempts, forced, parts, partial: missing.length ? missing : null };
 }
 
-module.exports = { buildPrompt, normalizeSuggestion, priceLookup, summarize, codeNorm, extractJson, validRaw, sameAction };
+/* ---- Do the parts agree? -----------------------------------------------------------------------
+   The four parts are separate requests and never see each other's answers, so they can disagree:
+   one says 2 chairs and another 4, a deal names someone who wasn't at the meeting, a follow-up is
+   due on a different day than the promise it came from. These checks are plain comparisons — no
+   extra AI call — and nothing is changed or chosen: the item is marked for the rep (item.review)
+   and the review screen lists what to look at before approving (sug.checks). */
+const NUMWORD = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, fifteen: 15, twenty: 20, thirty: 30, forty: 40, fifty: 50 };
+const GENERIC = new Set("chair chairs lift lifts unit units model models power transport product products item items line lines new the and for with set sets pair pairs box boxes case cases".split(" "));
+const REQ_GENERIC = new Set("request requested asked ask wants want need needs info information details detail more about".split(" "));
+const MONTH = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)$/i;
+const singular = w => (w.length > 4 && w.endsWith("s") ? w.slice(0, -1) : w);
+/* Model numbers: "PR-535", "PR519", "G 2000". Not "Oct 16" and not "in 30 days". */
+function modelCodes(s){
+  const out = []; const re = /\b([A-Za-z]{1,4})[- ]?(\d{2,5})\b/g; let m;
+  while((m = re.exec(String(s == null ? "" : s)))){
+    const letters = m[1], digits = m[2], joined = m[0].indexOf(" ") < 0;
+    if(MONTH.test(letters)) continue;
+    if(letters !== letters.toUpperCase() && !(joined && digits.length >= 3)) continue;
+    out.push({ code: (letters + digits).toLowerCase(), digits, text: m[0] });
+  }
+  return out;
+}
+/* What identifies a deal's product in someone else's sentence: its model number and its
+   distinctive words (MaxiComfort, Excursion, rollator) — never generic ones like "chairs". */
+function productTokens(o, mfrWords){
+  const t = new Set(modelCodes(`${o.product || ""} ${o.title || ""}`).map(c => c.code));
+  const add = w => { w = w.toLowerCase().replace(/[^a-z0-9]/g, ""); if(w.length >= 4 && !GENERIC.has(w) && !mfrWords.has(w) && !/^\d+$/.test(w)) t.add(singular(w)); };
+  for(const w of String(o.product || "").split(/\s+/)) add(w);
+  for(const w of String(o.title || "").split(/\s+/)) if(/^[A-Z]/.test(w)) add(w);
+  return t;
+}
+/* "2 PR-535 chairs", "six Excursion transport chairs": a number and the words just after it. */
+function quantitiesIn(text){
+  const words = String(text == null ? "" : text).replace(/(\d),(\d)/g, "$1$2").split(/\s+/).filter(Boolean);
+  const out = [];
+  for(let k = 0; k < words.length; k++){
+    if(/^\$/.test(words[k])) continue;
+    const w = words[k].toLowerCase().replace(/[^a-z0-9]/g, "");
+    const n = /^\d{1,4}x?$/.test(w) ? parseInt(w, 10) : NUMWORD[w];
+    if(!n) continue;
+    const after = words.slice(k + 1, k + 5);
+    const toks = new Set(modelCodes(after.join(" ")).map(c => c.code));
+    for(const a of after){ const lw = a.toLowerCase().replace(/[^a-z0-9]/g, ""); if(lw) toks.add(singular(lw)); }
+    out.push({ n, toks, phrase: words.slice(k, k + 5).join(" ") });
+  }
+  return out;
+}
+const SAY = { "the summary": "says", "the follow-ups": "say", "the commitments": "say" };
+function crossCheck(sug, ctx){
+  ctx = ctx || {};
+  const checks = [];
+  const flag = (item, kind, message, section) => { if(!item.review) item.review = message; checks.push({ kind, section, key: item.key, message }); };
+  const fus = sug.follow_ups || [], opps = sug.opportunities || [], na = sug.suggested_next_action || {};
+  for(const x of fus.concat(opps)) delete x.review;
+  delete na.review;
+  const missing = new Set(Array.isArray(sug.partial) ? sug.partial : []);
+  const notesText = `${ctx.notes || ""}\n${ctx.transcript || ""}`;
+  const mfrWords = new Set();
+  for(const m of (ctx.mfrs || [])) for(const w of String(m.name || "").toLowerCase().split(/\s+/)) if(w) mfrWords.add(w);
+  const commits = (sug.rep_commitments || []).concat(sug.dealer_commitments || []);
+  const meetingTexts = [sug.meeting_summary].concat(sug.products_discussed || [], sug.pricing_requests || [], sug.samples_requested || [],
+    sug.dealer_interests || [], sug.literature_requested || [], sug.training_requested || []);
+  const fuTexts = fus.map(f => f.title).concat(na.text ? [na.text] : []);
+  const commitTexts = commits.map(c => c.text);
+
+  // 1. Quantity — a deal's quantity against the number another part gives the same product.
+  for(const o of opps){
+    if(o.quantity == null) continue;
+    const toks = productTokens(o, mfrWords); if(!toks.size) continue;
+    let hit = null;
+    for(const [label, texts] of [["the summary", meetingTexts], ["the follow-ups", fuTexts], ["the commitments", commitTexts]]){
+      for(const t of texts){ for(const q of quantitiesIn(t)){
+        if(q.n === o.quantity || ![...q.toks].some(x => toks.has(x))) continue;
+        // another deal for the same product with that quantity explains the other number
+        if(opps.some(p => p !== o && p.quantity === q.n && [...productTokens(p, mfrWords)].some(x => toks.has(x)))) continue;
+        hit = { label, n: q.n, text: q.phrase }; break;
+      } if(hit) break; }
+      if(hit) break;
+    }
+    if(hit) flag(o, "quantity", `Quantity: this deal says ${o.quantity}, ${hit.label} ${SAY[hit.label]} ${hit.n} (“${clean(hit.text, 60)}…”). Check before approving.`, "opportunities");
+  }
+  // 2. Product / model — a model number that isn't in the notes was misheard or made up somewhere.
+  if(notesText.trim()){
+    const inNotes = d => new RegExp(`(^|\\D)${d}(\\D|$)`).test(notesText);
+    const firstBad = s => modelCodes(s).find(c => !inNotes(c.digits));
+    for(const o of opps){ const c = firstBad(`${o.product || ""} ${o.title || ""}`); if(c) flag(o, "model", `Model “${c.text}” isn't in your notes — check the product before approving.`, "opportunities"); }
+    for(const f of fus){ const c = firstBad(f.title); if(c) flag(f, "model", `Model “${c.text}” isn't in your notes — check it.`, "follow_ups"); }
+    if(na.text){ const c = firstBad(na.text); if(c) flag(na, "model", `Model “${c.text}” isn't in your notes — check it.`, "next_action"); }
+    const c = firstBad(meetingTexts.filter(Boolean).join(" \n "));
+    if(c) checks.push({ kind: "model", section: "summary", message: `The summary mentions “${c.text}”, which isn't in your notes — check it.` });
+  }
+  // 3. Contact — a deal's contact should be someone at the meeting or on file.
+  const people = (sug.attendees || []).map(a => V.nameKey(a.name)).filter(Boolean);
+  for(const o of opps){
+    if(!o.contact_name || o.contact_id) continue;
+    const k = V.nameKey(o.contact_name), first = k.split(" ")[0];
+    if(people.some(p => p === k || p.split(" ")[0] === first)) continue;
+    flag(o, "contact", `Contact “${o.contact_name}” isn't among the attendees or the contacts on file — check it.`, "opportunities");
+  }
+  // 4. Promised date — a follow-up and the promise it comes from should be due the same day.
+  for(const f of fus){
+    if(!f.due_date) continue;
+    const c = (sug.rep_commitments || []).find(c => c.due_date && c.due_date !== f.due_date && sameAction(c, f, true));
+    if(c) flag(f, "date", `Date: you promised “${clean(c.text, 60)}” by ${c.due_date}; this follow-up is due ${f.due_date}.`, "follow_ups");
+  }
+  if(na.text && na.due_date && !na.duplicate_of){
+    const f = fus.find(f => f.due_date && f.due_date !== na.due_date && sameAction(f, na, true));
+    if(f) flag(na, "date", `Date: the next action is the follow-up “${clean(f.title, 60)}” with a different date (${na.due_date} vs ${f.due_date}).`, "next_action");
+  }
+  // 5. Requested follow-up — what the dealer asked for should have a follow-up.
+  if(!missing.has("follow_ups")){
+    const fuWords = fus.map(f => new Set([...actionWords(f.title)].map(singular)));
+    for(const r of [].concat(sug.pricing_requests || [], sug.samples_requested || [], sug.literature_requested || [], sug.training_requested || [])){
+      const words = [...actionWords(r)].map(singular).filter(w => !REQ_GENERIC.has(w));
+      if(!words.length || fuWords.some(fw => words.some(w => fw.has(w)))) continue;
+      checks.push({ kind: "request", section: "follow_ups", message: `Asked for “${clean(r, 60)}” — no follow-up covers it. Add one if it's needed.` });
+    }
+  }
+  sug.checks = checks;
+  return sug;
+}
+/* Try AI again after a partial summary asks only for the missing parts. Their sections replace
+   the empty ones; everything that already came back — summary, attendees, lists and the other
+   sections — is kept exactly as it was. */
+function mergeParts(stored, fresh, parts){
+  const out = Object.assign({}, stored);
+  for(const part of parts) for(const k of PART_KEYS[part]) out[k] = fresh[k];
+  return out;
+}
+
+module.exports = { buildPrompt, normalizeSuggestion, priceLookup, summarize, codeNorm, extractJson, validRaw, sameAction,
+                   crossCheck, mergeParts, modelCodes, quantitiesIn, PARTS, PART_OF, SECTION };

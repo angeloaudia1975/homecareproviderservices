@@ -97,6 +97,9 @@
   .rv-card{border:1px solid var(--line);border-radius:12px;padding:10px;background:#fff;margin:0 0 8px}
   .rv-card.opp{border-color:#f6c79a;background:#fffaf4}
   .rv-card.off{opacity:.45}
+  .rv-review{color:#8a5a08;background:#fff6ec;border-radius:8px;padding:5px 8px;font-size:12.5px;margin-top:6px}
+  .rv-checks{background:#fff6ec;border:1px solid #f3d6ae;color:#8a5a08;border-radius:10px;padding:9px 11px;font-size:13px;margin:0 0 10px}
+  .rv-checks ul{margin:6px 0 0 18px;padding:0}
   .rv-top{display:flex;gap:8px;align-items:flex-start}
   .rv-row{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
   .rv-row>*{flex:1 1 130px;min-width:0}
@@ -630,17 +633,37 @@ async function openReview(i){
    a summary they rewrote — is carried over into the new suggestion rather than thrown away. */
 function canRetryAi(){ return REV && (REV.manual||REV.partial) && !["ai_unavailable","no_notes"].includes(REV.err); }
 /* The summary came back but the follow-ups and/or the deals didn't: show what we have and say which. */
+const SECTION_NAME={commitments:"the commitments",follow_ups:"the follow-ups",opportunities:"the opportunities"};
+const SECTION_PART={commitments:"commitments",follow_ups:"followups",opportunities:"deals"};
+function missingSections(kind){ return Array.isArray(kind)?kind:kind==="actions"?["commitments","follow_ups","opportunities"]:kind?[String(kind)]:[]; }
 function partialNote(kind){
-  const what=kind==="follow_ups"?"the follow-ups":kind==="opportunities"?"the opportunities":"the follow-ups and deals";
-  REV.partial=true; REV.msg=`The summary is in, but the AI didn't finish ${what}. Add them below, or try the AI again — nothing you type is lost.`;
+  const miss=missingSections(kind).filter(k=>SECTION_NAME[k]); const names=miss.map(k=>SECTION_NAME[k]);
+  const what=names.length>1?names.slice(0,-1).join(", ")+" and "+names[names.length-1]:(names[0]||"the follow-ups and deals");
+  REV.partial=true; REV.missing=miss;
+  REV.msg=`The summary is in, but the AI didn't finish ${what}. Add them below, or try the AI again — nothing you type is lost.`;
 }
+/* The four AI parts are compared on the server (quantity, model, contact, promised date, what was
+   asked for). Anything that disagrees is listed here and marked on its card — never chosen for the rep. */
+function checksHtml(g){
+  const c=(g&&g.checks)||[]; if(!c.length) return "";
+  return `<div class="rv-checks" id="rv_checks"><b>⚠ Check before approving</b> — ${c.length===1?"this doesn't":"these don't"} line up across the AI's answers or with your notes:<ul>${c.map(x=>`<li>${esc(x.message)}</li>`).join("")}</ul></div>`;
+}
+function noteHtml(){
+  return REV.msg?`<div class="rvnote">${esc(REV.msg)}${canRetryAi()?`<div style="margin-top:8px"><button class="btn go wide" id="rv_retry" onclick="tryAiAgain(this)">✨ Try AI again</button><div id="rv_aimsg" class="hint" style="margin-top:6px"></div></div>`:""}</div>`
+    :`<div class="rvnote ok">Suggested from your notes — edit anything, untick what's wrong. Nothing is saved until you approve.</div>`;
+}
+function reviewHint(item){ return item&&item.review?`<div class="rv-review">⚠ ${esc(item.review)}</div>`:""; }
 async function tryAiAgain(btn){
   if(!REV) return; const s=DAY.stops[REV.i], k=vkey(s), m=$("#rv_aimsg");
   if(!navigator.onLine){ if(m) m.textContent="Still offline — the AI needs a connection."; return; }
   const notes=obRead("vnote_"+k)||"", tx=obRead("vtx_"+k)||"";
   const before=collectReview(), fallback=emptySuggestion(notes||tx).meeting_summary;
+  // After a partial summary only the missing parts are asked for; everything else stays as it is.
+  const missing=(!REV.manual&&REV.partial)?(REV.missing||[]).slice():[];
+  const retryParts=missing.map(x=>SECTION_PART[x]).filter(Boolean);
   if(btn){ btn.disabled=true; btn.textContent="✨ Summarizing…"; } if(m) m.textContent="";
-  let j=null; try{ j=await rapi({action:"visit_analyze",route_id:DAY.route.id,dealer_id:s.dealer_id,notes:notes||undefined,transcript:tx||undefined,local_date:todayStr(),refresh:true}); }catch(e){ j=null; }
+  let j=null; try{ j=await rapi({action:"visit_analyze",route_id:DAY.route.id,dealer_id:s.dealer_id,notes:notes||undefined,transcript:tx||undefined,local_date:todayStr(),refresh:true,
+    retry_parts:retryParts.length?retryParts:undefined}); }catch(e){ j=null; }
   if(!REV) return;
   if(j){ REV.contacts=j.contacts||REV.contacts; REV.mfrs=j.manufacturers||REV.mfrs; REV.report_id=j.report_id||REV.report_id; }
   if(!(j&&j.ok&&j.suggestion)){
@@ -650,6 +673,7 @@ async function tryAiAgain(btn){
     return;
   }
   const g=j.suggestion;
+  if(j.merged && retryParts.length){ fillMissing(g,missing); return; }
   if(before.summary.meeting_summary && before.summary.meeting_summary!==String(fallback||"").trim()) g.meeting_summary=before.summary.meeting_summary;
   for(const p of before.participants) if(/^at_m_/.test(p.key)) g.attendees.push({key:p.key,name:p.name,title:p.title,contact_id:p.contact_id,email:p.email||""});
   for(const t of before.tasks) if(/^fu_m_/.test(t.key)) g.follow_ups.push({key:t.key,title:t.title,due_date:t.due_date||"",priority:t.priority,from:"other"});
@@ -657,6 +681,42 @@ async function tryAiAgain(btn){
   REV.sug=g; REV.manual=false; REV.partial=false; REV.msg=null; REV.err=null; REV.retried=true;
   if(g.partial) partialNote(g.partial);
   renderReview();
+}
+/* Try AI again after a partial summary: only the sections that were missing are filled in. Every
+   other section — and anything the rep typed, ticked or changed — is left exactly as it is; cards
+   that were already there only get their "check" mark updated. */
+function fillMissing(g,missing){
+  const still=new Set(missingSections(g.partial)), filled=missing.filter(x=>!still.has(x));
+  const manual=(box,attr,re)=>[...box.querySelectorAll(".rv-card")].filter(c=>re.test(c.getAttribute(attr)||""));
+  const refill=(sel,attr,re,cards,empty)=>{ const box=$(sel); if(!box) return; const keep=manual(box,attr,re);
+    box.innerHTML=cards; keep.forEach(c=>box.appendChild(c)); if(!box.querySelector(".rv-card")) box.innerHTML=`<div class="hint">${empty}</div>`; };
+  if(filled.includes("follow_ups")){
+    refill("#rv_fu","data-fu",/^fu_m_/,(g.follow_ups||[]).map(f=>followCard(f,true)).join(""),"No follow-ups suggested.");
+    const na=g.suggested_next_action||{}, t=$("#rv_na");
+    if(t && !t.value.trim() && na.text){ t.value=na.text; const d=$("#rv_na_d"); if(d&&!d.value) d.value=na.due_date||""; const on=$("#rv_na_on"); if(on) on.checked=!na.duplicate_of; }
+    REV.sug.follow_ups=g.follow_ups; REV.sug.suggested_next_action=g.suggested_next_action;
+  }
+  if(filled.includes("opportunities")){
+    refill("#rv_op","data-op",/^op_m_/,(g.opportunities||[]).map(o=>oppCard(o)).join(""),"No opportunity detected.");
+    REV.sug.opportunities=g.opportunities;
+  }
+  if(filled.includes("commitments")){
+    const fmt=a=>(a||[]).map(c=>(c.text||"")+(c.due_date?` — by ${c.due_date}`:"")).join("\n");
+    const r=$("#rv_repc"), d=$("#rv_dlrc"); if(r&&!r.value.trim()) r.value=fmt(g.rep_commitments); if(d&&!d.value.trim()) d.value=fmt(g.dealer_commitments);
+    REV.sug.rep_commitments=g.rep_commitments; REV.sug.dealer_commitments=g.dealer_commitments;
+  }
+  // The checks now cover the whole summary: marks on cards that were already there are refreshed.
+  const byKey={}; for(const x of (g.follow_ups||[]).concat(g.opportunities||[])) byKey[x.key]=x;
+  for(const c of document.querySelectorAll("#rv_fu .rv-card, #rv_op .rv-card")){
+    const k=c.getAttribute("data-fu")||c.getAttribute("data-op"); const old=c.querySelector(".rv-review"); if(old) old.remove();
+    if(byKey[k]&&byKey[k].review) c.insertAdjacentHTML("beforeend",reviewHint(byKey[k]));
+  }
+  const nr=$("#rv_na_review"); if(nr) nr.innerHTML=reviewHint(g.suggested_next_action);
+  REV.sug.checks=g.checks; REV.sug.partial=g.partial; REV.retried=true;
+  REV.partial=false; REV.msg=null; REV.missing=[]; if(still.size) partialNote([...still]);
+  const note=document.querySelector("#rv_body > .rvnote"); if(note) note.outerHTML=noteHtml();
+  const oldChecks=$("#rv_checks"); if(oldChecks) oldChecks.remove();
+  const note2=document.querySelector("#rv_body > .rvnote"); if(note2) note2.insertAdjacentHTML("afterend",checksHtml(g));
 }
 function optList(list,cur){ return list.map(o=>`<option value="${esc(o.v)}"${String(o.v)===String(cur||"")?" selected":""}>${esc(o.l)}</option>`).join(""); }
 function mfrOptions(cur){ return optList([{v:"",l:"Manufacturer…"}].concat((REV.mfrs||[]).map(m=>({v:m.slug,l:m.name}))),cur); }
@@ -673,8 +733,8 @@ function renderReview(){
   const op=(g.opportunities||[]).map(o=>oppCard(o)).join("");
   const na=g.suggested_next_action||{};
   $("#rv_body").innerHTML=`
-    ${REV.msg?`<div class="rvnote">${esc(REV.msg)}${canRetryAi()?`<div style="margin-top:8px"><button class="btn go wide" id="rv_retry" onclick="tryAiAgain(this)">✨ Try AI again</button><div id="rv_aimsg" class="hint" style="margin-top:6px"></div></div>`:""}</div>`
-      :`<div class="rvnote ok">Suggested from your notes — edit anything, untick what's wrong. Nothing is saved until you approve.</div>`}
+    ${noteHtml()}
+    ${checksHtml(g)}
     <div class="rv-sec"><h4>Meeting summary</h4><textarea class="in" id="rv_sum" rows="4">${esc(g.meeting_summary||"")}</textarea></div>
     <details class="rv-sec"${filled?" open":""}><summary><h4 style="display:inline">What came up</h4> <span class="hint">${filled} section${filled===1?"":"s"}</span></summary>
       ${LISTS.filter(([k])=>(g[k]||[]).length).map(([k,l])=>listField(k,l,g)).join("")}
@@ -693,6 +753,7 @@ function renderReview(){
     <div class="rv-sec"><h4>Next action</h4>
       <label class="rv-chk"><input type="checkbox" id="rv_na_on"${na.text&&!na.duplicate_of?" checked":""}> Make it a task</label>
       ${na.duplicate_of?`<div class="hint">Already a follow-up above${na.dup_title?` (“${esc(na.dup_title)}”)`:""} — left unticked so it isn't done twice.</div>`:""}
+      <div id="rv_na_review">${reviewHint(na)}</div>
       <input class="in" id="rv_na" value="${esc(na.text||"")}" placeholder="e.g. Send pricing + literature"><input class="in" type="date" id="rv_na_d" value="${esc(na.due_date||"")}" style="margin-top:6px"></div>
     <button class="btn go xl wide" onclick="approveVisit()">✓ Approve &amp; save</button>
     <button class="btn wide" style="margin-top:8px" onclick="closeReview()">Not now — review later</button>
@@ -719,6 +780,7 @@ function followCard(f,ai){
       <select class="in rv-p">${optList([{v:"high",l:"High"},{v:"normal",l:"Normal"},{v:"low",l:"Low"}],f.priority||"normal")}</select></div>
     ${dup?`<div class="hint">Looks like a repeat of “${esc(f.dup_title||"another follow-up")}” — left unticked. Tick it if it's separate work.</div>`
       :(f.from&&f.from!=="other"?`<div class="hint">${esc(String(f.from).replace(/_/g," "))}</div>`:"")}
+    ${reviewHint(f)}
   </div>`;
 }
 function oppCard(o){
@@ -733,6 +795,7 @@ function oppCard(o){
     <div class="rv-row"><select class="in rv-c">${contactOptions(o.contact_id)}</select>
       <select class="in rv-s">${optList([{v:"identified",l:"Identified"},{v:"contacted",l:"Contacted"},{v:"quoted",l:"Quoted"}],o.stage||"identified")}</select></div>
     <label class="fl">Expected close</label><input class="in rv-e" type="date" value="${esc(o.expected_close||"")}">
+    ${reviewHint(o)}
   </div>`;
 }
 function addAttendee(){

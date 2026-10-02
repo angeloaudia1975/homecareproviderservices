@@ -59,6 +59,7 @@ function world() {
   S.ai = body => { const p = JSON.stringify(body);
     if (/MEETING RECAP/.test(p)) return { subject: 'Following up on our visit', body: 'Hi Bryant,\n\nThank you for meeting with me on October 2. As promised, PR519 pricing is on its way.' };
     AI.calls++;
+    if (AI.override) { const o = AI.override(p); if (o) return o; }
     if (/WHAT HAPPENS NEXT/.test(p)) { if (AI.failNext > 0) { AI.failNext--; return cutOff(); } return AI_VISIT; }
     if (/WHAT HAPPENED/.test(p) && AI.fail > 0) { AI.fail--; return cutOff(); }
     return AI_VISIT; };
@@ -235,7 +236,7 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
     await page.fill('#vn_0', 'Second call at Glasgow. Bryant and Pat Lee. Send PR519 pricing.');
     w.AI.fail = 2; const c0 = w.AI.calls;
     await page.click('#stop_0 .vmode .btn.go.xl'); await page.waitForSelector('#rv_retry', { timeout: 15000 });
-    assert.strictEqual(w.AI.calls - c0, 4, 'the server did not retry the failed part exactly once (2 tries + the 2 other parts)');
+    assert.strictEqual(w.AI.calls - c0, 5, 'the server did not retry the failed part exactly once (2 tries + the 3 other parts)');
     assert.ok(/notes are saved/i.test(await page.textContent('#rv_body .rvnote')));
     assert.strictEqual(await page.inputValue('#rv_sum'), 'Second call at Glasgow. Bryant and Pat Lee. Send PR519 pricing.', 'the notes were not kept in the manual summary');
     assert.strictEqual(n(w, 'dealer_tasks', t => t.origin_type === 'visit_report' && t.dealer_id === 'd-greg'), 1, 'records created before approval');
@@ -275,14 +276,38 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
     assert.strictEqual(await p3.inputValue('#rv_sum'), AI_VISIT.meeting_summary, 'the summary that came back is not shown');
     assert.strictEqual((await p3.$$('#rv_fu .rv-card')).length, 0);
     await p3.click('#rv_body button:has-text("Add a follow-up")'); await p3.fill('#rv_fu .rv-card:last-child .rv-t', 'Bring the swatch book');
+    // the rep edits sections that DID come back — a retry must not touch them
+    await p3.fill('#rv_sum', 'Edited by the rep.'); await p3.fill('#rv_op .rv-card .rv-q', '3');
+    await p3.click('#rv_at .rv-card:first-child .rv-on');
     await noHScroll(p3, 'partial review phone'); await p3.screenshot({ path: path.join(SHOTS, 'ai-partial.png'), fullPage: true });
     assert.strictEqual(n(w3, 'dealer_tasks', t => t.origin_type === 'visit_report'), 0, 'records created before approval');
+    const c0 = w3.AI.calls;
     await p3.click('#rv_retry'); await p3.waitForSelector('#rv_body .rvnote.ok', { timeout: 15000 });
+    assert.strictEqual(w3.AI.calls - c0, 1, 'Try AI again asked for more than the missing part');
+    assert.strictEqual(await p3.inputValue('#rv_sum'), 'Edited by the rep.', 'the summary was changed by the retry');
+    assert.strictEqual(await p3.inputValue('#rv_op .rv-card .rv-q'), '3', 'the deal was changed by the retry');
+    assert.strictEqual(await p3.isChecked('#rv_at .rv-card:first-child .rv-on'), false, 'an unticked attendee was ticked again');
     const fus = await p3.$$eval('#rv_fu .rv-card .rv-t', xs => xs.map(x => x.value));
     assert.ok(fus.includes('Send PR519 pricing') && fus.includes('Bring the swatch book'), 'follow-ups after retry: ' + fus);
     await p3.click('#rv_body > .btn.go.xl'); await p3.waitForSelector('.rv-done', { timeout: 15000 });
     assert.ok(n(w3, 'dealer_tasks', t => t.origin_type === 'visit_report' && t.title === 'Bring the swatch book') === 1, 'the typed follow-up was not created');
     assert.deepStrictEqual(errs, []); await c3.close(); s3.srv.close();
+  });
+
+  /* ───────────── The parts disagree: the deal is marked for the rep, nothing is chosen ───────────── */
+  await step('consistency: when the summary says 6 and the deal says 4, the deal is marked and the banner lists it; the 4 is kept', async () => {
+    const w4 = world(); const s4 = await serve(w4); const B4 = `http://127.0.0.1:${s4.port}`;
+    w4.AI.override = p => /covers the DEALS/.test(p) ? { opportunities: [{ title: '4 Strongback Excursion chairs', manufacturer_slug: 'strongback-mobility', product: 'Excursion', quantity: 4, contact_name: 'Bryant Smith' }] }
+      : /WHAT HAPPENED/.test(p) ? Object.assign({}, AI_VISIT, { meeting_summary: 'Met Bryant. He wants 6 Excursion chairs for the rental fleet.' }) : null;
+    const c4 = await ctxFor(browser, 'greg', PHONE); const p4 = await c4.newPage(); const errs = []; p4.on('pageerror', e => errs.push(e.message));
+    await p4.goto(`${B4}/admin/scheduled-routes.html?route=r-2`); await p4.waitForSelector('#stop_0 .btn.go.xl');
+    await p4.click('#stop_0 .btn.go.xl'); await p4.waitForSelector('#vn_0'); await p4.fill('#vn_0', 'Bryant wants 6 Excursion chairs for the rental fleet.');
+    await p4.click('#stop_0 .vmode .btn.go.xl'); await p4.waitForSelector('#rv_checks', { timeout: 15000 });
+    assert.ok(/says 4, the summary says 6/.test(await p4.textContent('#rv_checks')), await p4.textContent('#rv_checks'));
+    assert.ok(/says 4, the summary says 6/.test(await p4.textContent('#rv_op .rv-card .rv-review')));
+    assert.strictEqual(await p4.inputValue('#rv_op .rv-card .rv-q'), '4', 'the quantity was changed');
+    await noHScroll(p4, 'checks phone'); await p4.screenshot({ path: path.join(SHOTS, 'ai-checks.png'), fullPage: true });
+    assert.deepStrictEqual(errs, []); await c4.close(); s4.srv.close();
   });
 
   /* ───────────── Poor network: a slow server still completes the review ───────────── */

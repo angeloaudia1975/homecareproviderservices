@@ -441,16 +441,21 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   no company-wide payloads to a rep's browser.
 - **Shipping:** SQL the user must run is pasted inline in the reply (and committed as a file); after a push,
   the live Netlify endpoints are tested — a successful push is not proof of a deploy.
-- **AI never blocks a visit.** The meeting summary is three AI requests run at the same time ("what
-  happened", the follow-ups, the deals — each a third of the output, so long dictations fit the function's
-  time limit); each asks for compact JSON, is shape-checked and retried ONCE inside a fixed budget, and only
-  supplies its own keys. If the follow-ups or deals part fails, the summary still shows, marked partial
-  (saying which part), with Try AI again. The review always opens: "Try AI again" in place, or a full manual fallback (summary,
+- **AI never blocks a visit.** The meeting summary is four AI requests run at the same time ("what
+  happened", commitments, follow-ups, deals — each a fraction of the output, so long dictations fit the
+  function's time limit); each asks for compact JSON, is shape-checked and retried ONCE inside a fixed budget,
+  and only supplies its own keys. If a later part fails, the summary still shows, marked partial (saying
+  which part); Try AI again then asks ONLY for the missing part and fills only that section — what already
+  came back and anything the rep changed is never touched. The parts are cross-checked without another AI
+  call (quantity, model vs the notes, deal contact, promised date, asked-for follow-ups): conflicts are
+  marked for the rep, never resolved by picking one. The review always opens: "Try AI again" in place, or a full manual fallback (summary,
   attendees, follow-ups, opportunities, next action). The rep's notes are saved before any AI call.
 - **Dates in AI drafts are absolute.** The real visit date is passed in; drafts say "on October 2", never
   "yesterday/today" unless the system itself computed it. Follow-up emails go to an attendee first; with
   several attendees the rep chooses; the main contact is only the fallback.
 - **A visit needs a real dealer.** Visit writes check the dealer exists — for every role, management included.
+- **QA switches** (`qa_fail_first`, `qa_fail_part`, `qa_visit_at`) work only for the president on a TEST
+  dealer and are ignored for everyone and everything else.
 - **View-as** stays president-only, audit-logged, and goes through the same server authorization as the
   real user. Never add a bypass or a test-only endpoint that skips authorization. QA switches that only
   change AI/email behaviour are allowed solely for the president on a TEST (`is_test`) dealer.

@@ -295,9 +295,9 @@ async function startEndAnalyze(w, extra) {
     const w = W(); let calls = 0; const S = seed(); S.ai = () => { calls++; return AI_OUT; }; const w2 = createWorld(S);
     await R(w2, Object.assign({ action: 'visit_checkin' }, stop));
     const body = Object.assign({ action: 'visit_analyze', notes: 'same notes', local_date: TODAY }, stop);
-    // One summary = three AI requests made at the same time (what happened / follow-ups / deals).
-    await R(w2, body); const c2 = await R(w2, body); assert.strictEqual(c2.body.cached, true); assert.strictEqual(calls, 3);
-    await R(w2, Object.assign({ refresh: true }, body)); assert.strictEqual(calls, 6);
+    // One summary = four AI requests made at the same time (what happened / commitments / follow-ups / deals).
+    await R(w2, body); const c2 = await R(w2, body); assert.strictEqual(c2.body.cached, true); assert.strictEqual(calls, 4);
+    await R(w2, Object.assign({ refresh: true }, body)); assert.strictEqual(calls, 8);
     await R(w, Object.assign({ action: 'visit_checkin' }, stop));
     const off = await R(w, Object.assign({ action: 'visit_analyze', notes: 'x' }, stop), 'greg', { ANTHROPIC_API_KEY: '' });
     assert.strictEqual(off.body.ok, false); assert.strictEqual(off.body.error, 'ai_unavailable');
@@ -354,7 +354,8 @@ async function startEndAnalyze(w, extra) {
     await R(w, Object.assign({ action: 'visit_checkin' }, stop));
     const a = await R(w, Object.assign({ action: 'visit_analyze', notes: 'Met Bryant.', local_date: TODAY }, stop));
     assert.strictEqual(a.body.ok, true, JSON.stringify(a.body)); assert.strictEqual(a.body.attempts, 2);
-    assert.strictEqual(prompts.length, 4, 'expected 3 parts + 1 retry');
+    assert.strictEqual(prompts.length, 5, 'expected 4 parts + 1 retry');
+    assert.strictEqual(prompts.filter(p => /covers the COMMITMENTS/.test(p)).length, 1);
     assert.strictEqual(prompts.filter(p => /WHAT HAPPENED/.test(p)).length, 2); assert.strictEqual(prompts.filter(p => /WHAT HAPPENS NEXT/.test(p)).length, 1);
     assert.strictEqual(prompts.filter(p => /covers the DEALS/.test(p)).length, 1);
     const retry = prompts.find(p => /previous answer was cut off/.test(p)); assert.ok(retry && /WHAT HAPPENED/.test(retry), 'the retry did not ask for a shorter answer');
@@ -371,13 +372,13 @@ async function startEndAnalyze(w, extra) {
     const S2 = seed(); let m = 0; S2.ai = () => { m++; return 'Here you go:\n```json\n' + JSON.stringify(AI_OUT) + '\n```\nNote: {not json}'; };
     const w2 = createWorld(S2); await R(w2, Object.assign({ action: 'visit_checkin' }, stop));
     const b2 = await R(w2, Object.assign({ action: 'visit_analyze', notes: 'n2', local_date: TODAY }, stop));
-    assert.strictEqual(b2.body.ok, true, JSON.stringify(b2.body)); assert.strictEqual(b2.body.attempts, 1); assert.strictEqual(m, 3, 'one request per part');
+    assert.strictEqual(b2.body.ok, true, JSON.stringify(b2.body)); assert.strictEqual(b2.body.attempts, 1); assert.strictEqual(m, 4, 'one request per part');
   });
   await t('AI: both attempts fail → a usable manual review; notes kept; the rep can still approve by hand', async () => {
     const S = seed(); let n = 0; S.ai = () => { n++; return cut('{"meeting_summary":"trunc', 'max_tokens'); };
     const w = createWorld(S); await R(w, Object.assign({ action: 'visit_checkin' }, stop)); await R(w, Object.assign({ action: 'visit_end' }, stop));
     const a = await R(w, Object.assign({ action: 'visit_analyze', notes: 'Met Bryant. Send pricing Friday.', local_date: TODAY }, stop));
-    assert.strictEqual(a.body.ok, false); assert.strictEqual(a.body.attempts, 2); assert.strictEqual(n, 6, 'more than one retry per part');
+    assert.strictEqual(a.body.ok, false); assert.strictEqual(a.body.attempts, 2); assert.strictEqual(n, 8, 'more than one retry per part');
     assert.ok(/notes are saved/i.test(a.body.message), a.body.message);
     assert.ok((a.body.contacts || []).length && (a.body.manufacturers || []).length, 'pickers missing on failure');
     assert.strictEqual(w.db.dealer_visit_reports[0].fields.notes, 'Met Bryant. Send pricing Friday.');
@@ -392,7 +393,8 @@ async function startEndAnalyze(w, extra) {
     const w = createWorld(S);
     await R(w, { action: 'visit_checkin', dealer_id: 'd-test' }, 'pres');
     const q = await R(w, { action: 'visit_analyze', dealer_id: 'd-test', notes: 'qa', local_date: TODAY, qa_fail_first: true }, 'pres');
-    assert.strictEqual(q.body.ok, true); assert.strictEqual(q.body.attempts, 2); assert.strictEqual(q.body.qa_forced, true); assert.strictEqual(n, 4, 'three parts + the forced retry');
+    assert.strictEqual(q.body.ok, true); assert.strictEqual(q.body.attempts, 2); assert.strictEqual(q.body.qa_forced, true); assert.strictEqual(n, 5, 'four parts + the forced retry');
+    assert.deepStrictEqual(Object.keys(q.body.parts).sort(), ['commitments', 'deals', 'followups', 'meeting']); assert.strictEqual(q.body.parts.meeting.attempts, 2);
     await R(w, Object.assign({ action: 'visit_checkin' }, stop));
     const g = await R(w, Object.assign({ action: 'visit_analyze', notes: 'rep', local_date: TODAY, qa_fail_first: true }, stop));
     assert.strictEqual(g.body.attempts, 1, 'a rep could force a retry'); assert.ok(!g.body.qa_forced);
@@ -400,7 +402,7 @@ async function startEndAnalyze(w, extra) {
     const p = await R(w, { action: 'visit_analyze', route_id: 'r-ang', dealer_id: 'd-ang', notes: 'real dealer', local_date: TODAY, qa_fail_first: true }, 'pres');
     assert.strictEqual(p.body.attempts, 1, 'the switch worked on a real dealer');
   });
-  await t('AI: the summary is asked for in three parts; if a later part fails the review opens with what came back, marked partial', async () => {
+  await t('AI: the summary is asked for in four parts; if a later part fails the review opens with what came back, marked partial', async () => {
     const S = seed(); let next = 0;
     S.ai = b => { const p = JSON.stringify(b);
       if(/WHAT HAPPENS NEXT/.test(p)){ next++; return cut('{"follow_ups":[{"title":"Send pri', 'max_tokens'); }
@@ -409,7 +411,8 @@ async function startEndAnalyze(w, extra) {
     const w = createWorld(S); await R(w, Object.assign({ action: 'visit_checkin' }, stop));
     const body = Object.assign({ action: 'visit_analyze', notes: 'Met Bryant.', local_date: TODAY }, stop);
     const a = await R(w, body);
-    assert.strictEqual(a.body.ok, true, JSON.stringify(a.body)); assert.strictEqual(a.body.suggestion.partial, 'follow_ups');
+    assert.strictEqual(a.body.ok, true, JSON.stringify(a.body)); assert.deepStrictEqual(a.body.suggestion.partial, ['follow_ups']);
+    assert.ok(a.body.suggestion.rep_commitments.length, 'the commitments that came back were lost'); assert.strictEqual(a.body.parts.followups.ok, false);
     assert.ok(a.body.suggestion.meeting_summary, 'the summary that did come back was lost'); assert.strictEqual(a.body.suggestion.attendees.length, AI_OUT.attendees.length);
     assert.strictEqual(a.body.suggestion.opportunities.length, AI_OUT.opportunities.length, 'the deals that did come back were lost');
     assert.strictEqual(a.body.suggestion.follow_ups.length, 0, 'a stray follow-up from another part was used'); assert.strictEqual(next, 2, 'the follow-ups part was not retried once');
@@ -422,10 +425,10 @@ async function startEndAnalyze(w, extra) {
     // only the deals part fails → partial "opportunities", follow-ups kept; both fail → "actions"
     const S3 = seed(); S3.ai = b => /covers the DEALS/.test(JSON.stringify(b)) ? cut('{"opportunities":[{"ti', 'max_tokens') : AI_OUT;
     const w3 = createWorld(S3); await R(w3, Object.assign({ action: 'visit_checkin' }, stop));
-    const c3 = await R(w3, body); assert.strictEqual(c3.body.suggestion.partial, 'opportunities'); assert.strictEqual(c3.body.suggestion.follow_ups.length, 2); assert.strictEqual(c3.body.suggestion.opportunities.length, 0);
+    const c3 = await R(w3, body); assert.deepStrictEqual(c3.body.suggestion.partial, ['opportunities']); assert.strictEqual(c3.body.suggestion.follow_ups.length, 2); assert.strictEqual(c3.body.suggestion.opportunities.length, 0);
     const S4 = seed(); S4.ai = b => /WHAT HAPPENED/.test(JSON.stringify(b)) ? AI_OUT : cut('{"x', 'max_tokens');
     const w4 = createWorld(S4); await R(w4, Object.assign({ action: 'visit_checkin' }, stop));
-    const c4 = await R(w4, body); assert.strictEqual(c4.body.suggestion.partial, 'actions');
+    const c4 = await R(w4, body); assert.deepStrictEqual(c4.body.suggestion.partial, ['commitments', 'follow_ups', 'opportunities']);
   });
   await t('Duplicates: a repeated follow-up and a next action that repeats a follow-up are offered unticked', async () => {
     const S = seed(); S.ai = () => Object.assign({}, AI_OUT, {
@@ -497,13 +500,109 @@ async function startEndAnalyze(w, extra) {
     const typed = pick(rows, [], 'someone@else.test'); assert.strictEqual(typed.extra, 'someone@else.test');
   });
 
+  /* ── Consistency across the four AI parts, partial retry, QA part-failure switch ── */
+  const VAI = require('../netlify/functions/_visit_ai.js');
+  const byPart = (fns) => b => { const p = JSON.stringify(b);
+    const part = /WHAT HAPPENED/.test(p) ? 'meeting' : /covers the COMMITMENTS/.test(p) ? 'commitments' : /WHAT HAPPENS NEXT/.test(p) ? 'followups' : /covers the DEALS/.test(p) ? 'deals' : 'other';
+    fns.calls = fns.calls || {}; fns.calls[part] = (fns.calls[part] || 0) + 1;
+    return (fns[part] || (() => AI_OUT))(b); };
+  await t('Consistency: quantity, model, contact, promised date and asked-for follow-ups are compared across the parts; conflicts are marked, never resolved', async () => {
+    const sug = { meeting_summary: 'Met Bryant and Stacey. They want pricing on 2 PR-535 chairs and 6 Excursion chairs.', pricing_requests: ['PR-535 pricing'],
+      literature_requested: ['Golden catalog'], training_requested: ['staff in-service'], attendees: [{ name: 'Bryant Cole' }, { name: 'Stacey Webb' }],
+      rep_commitments: [{ text: 'Send PR-535 pricing and catalog', due_date: '2026-10-06' }],
+      follow_ups: [{ key: 'f1', title: 'Send PR-535 pricing and the Golden catalog', due_date: '2026-10-08' }, { key: 'f2', title: 'Quote 4 Excursion chairs', due_date: '' }],
+      suggested_next_action: { text: 'Send PR-535 pricing', due_date: '2026-10-07' },
+      opportunities: [{ key: 'o1', title: '2 x PR-535 MaxiComfort', product: 'PR-535', quantity: 2, contact_name: 'Bryant Cole' },
+        { key: 'o2', title: '4 Strongback Excursion chairs', product: 'Excursion', quantity: 4, contact_name: 'Luis Ortega' },
+        { key: 'o3', title: '1 x PR-519', product: 'PR-519', quantity: 1 }] };
+    VAI.crossCheck(sug, { notes: 'Bryant wants 2 PR-535 and 6 Excursion chairs. Send pricing by Tuesday.', mfrs: [{ slug: 'g', name: 'Golden Technologies' }, { slug: 's', name: 'Strongback Mobility' }] });
+    const kinds = sug.checks.map(c => c.kind + ':' + (c.key || c.section));
+    for (const k of ['quantity:o2', 'model:o3', 'contact:o2', 'date:f1', 'date:next_action', 'request:follow_ups']) assert.ok(kinds.includes(k), 'not flagged: ' + k + ' in ' + kinds.join(', '));
+    assert.ok(!kinds.includes('quantity:o1') && !kinds.includes('model:o1') && !kinds.includes('contact:o1'), 'a consistent deal was flagged: ' + kinds.join(', '));
+    assert.ok(/says 4, the summary says 6/.test(sug.opportunities[1].review), sug.opportunities[1].review);
+    assert.strictEqual(sug.opportunities[1].quantity, 4, 'a conflict was resolved by choosing a number'); assert.strictEqual(sug.follow_ups[0].due_date, '2026-10-08', 'a date was changed');
+    assert.ok(sug.suggested_next_action.review && sug.follow_ups[0].review);
+    // a consistent suggestion raises nothing
+    const ok = { meeting_summary: 'Met Bryant; pricing on 2 PR519 chairs.', pricing_requests: ['PR519 pricing'], literature_requested: ['Golden catalog'], attendees: [{ name: 'Bryant Smith' }],
+      rep_commitments: [{ text: 'Send PR519 pricing', due_date: IN3 }], follow_ups: [{ key: 'a', title: 'Send PR519 pricing and the Golden catalog', due_date: IN3 }],
+      suggested_next_action: {}, opportunities: [{ key: 'b', title: '2 x PR519 lift chairs', product: 'PR519', quantity: 2, contact_name: 'Bryant Smith' },
+        { key: 'c', title: '1 x PR519 for the showroom', product: 'PR519', quantity: 1 }] };
+    ok.meeting_summary = 'Met Bryant; pricing on 2 PR519 chairs for a customer and 1 PR519 for the showroom.';
+    VAI.crossCheck(ok, { notes: 'Met Bryant. 2 PR519 chairs for a customer, 1 PR519 for the showroom; send pricing and the catalog.', mfrs: [] });
+    assert.deepStrictEqual(ok.checks, [], JSON.stringify(ok.checks));
+    // through the server: the deals part says 4, the summary says 6 → the deal is marked, the number kept
+    const S = seed(); S.ai = byPart({ meeting: () => Object.assign({}, AI_OUT, { meeting_summary: 'Met Bryant. They want 6 Excursion chairs.' }),
+      deals: () => ({ opportunities: [{ title: '4 Strongback Excursion chairs', manufacturer_slug: 'strongback-mobility', product: 'Excursion', quantity: 4, contact_name: 'Bryant Smith' }] }) });
+    const w = createWorld(S); await R(w, Object.assign({ action: 'visit_checkin' }, stop));
+    const a = await R(w, Object.assign({ action: 'visit_analyze', notes: 'Bryant wants 6 Excursion chairs.', local_date: TODAY }, stop));
+    const o = a.body.suggestion.opportunities[0]; assert.strictEqual(o.quantity, 4); assert.ok(/says 4, the summary says 6/.test(o.review || ''), JSON.stringify(a.body.suggestion.checks));
+    assert.strictEqual(n_(w, 'opportunities'), 0, 'records created before approval');
+  });
+  await t('QA part-failure switch: president on a TEST dealer only; a forced part makes no AI call; per-part results are reported', async () => {
+    const fns = {}; const S = seed({ dealers: [TEST_DEALER] }); S.ai = byPart(fns); const w = createWorld(S);
+    await R(w, { action: 'visit_checkin', dealer_id: 'd-test' }, 'pres');
+    const q = await R(w, { action: 'visit_analyze', dealer_id: 'd-test', notes: 'qa', local_date: TODAY, qa_fail_part: ['deals'] }, 'pres');
+    assert.deepStrictEqual(q.body.suggestion.partial, ['opportunities']); assert.strictEqual(q.body.parts.deals.error, 'qa_forced'); assert.ok(!fns.calls.deals, 'a forced part called the AI');
+    assert.strictEqual(q.body.parts.meeting.ok, true); assert.strictEqual(q.body.parts.meeting.attempts, 1);
+    const m = await R(w, { action: 'visit_analyze', dealer_id: 'd-test', notes: 'qa', local_date: TODAY, qa_fail_part: 'meeting', refresh: true }, 'pres');
+    assert.strictEqual(m.body.ok, false); assert.strictEqual(m.body.error, 'qa_forced'); assert.ok((m.body.contacts || []).length >= 0 && m.body.parts.meeting.ok === false);
+    await R(w, Object.assign({ action: 'visit_checkin' }, stop));
+    const g = await R(w, Object.assign({ action: 'visit_analyze', notes: 'rep', local_date: TODAY, qa_fail_part: ['deals', 'meeting'] }, stop));
+    assert.strictEqual(g.body.ok, true); assert.ok(!g.body.suggestion.partial, 'a rep could force a part to fail');
+    await R(w, { action: 'visit_checkin', route_id: 'r-ang', dealer_id: 'd-ang' }, 'pres');
+    const p = await R(w, { action: 'visit_analyze', route_id: 'r-ang', dealer_id: 'd-ang', notes: 'real', local_date: TODAY, qa_fail_part: 'deals' }, 'pres');
+    assert.ok(!p.body.suggestion.partial, 'the switch worked on a real dealer');
+  });
+  await t('Try AI again after a partial summary asks only for the missing parts and keeps every other section exactly as it was', async () => {
+    const fns = {}; const S = seed({ dealers: [TEST_DEALER] }); S.ai = byPart(fns); const w = createWorld(S);
+    await R(w, { action: 'visit_checkin', dealer_id: 'd-test' }, 'pres');
+    const body = { action: 'visit_analyze', dealer_id: 'd-test', notes: 'Met Bryant. Send PR519 pricing; 2 PR519 chairs.', local_date: TODAY };
+    const first = (await R(w, Object.assign({ qa_fail_part: ['followups', 'deals'] }, body), 'pres')).body.suggestion;
+    assert.deepStrictEqual(first.partial, ['follow_ups', 'opportunities']); assert.strictEqual(first.follow_ups.length, 0); assert.strictEqual(first.opportunities.length, 0);
+    // from now on the "what happened" and commitments parts would answer differently — they must not be asked again
+    fns.meeting = () => Object.assign({}, AI_OUT, { meeting_summary: 'A DIFFERENT SUMMARY', attendees: [{ name: 'Someone Else' }] });
+    fns.commitments = () => ({ rep_commitments: [{ text: 'DIFFERENT', due_date: '' }] });
+    const before = Object.assign({}, fns.calls);
+    const again = await R(w, Object.assign({ retry_parts: ['followups', 'deals'], refresh: true }, body), 'pres');
+    const g = again.body.suggestion;
+    assert.strictEqual(again.body.merged, true); assert.ok(!g.partial, 'still marked partial: ' + JSON.stringify(g.partial));
+    assert.strictEqual(fns.calls.meeting, before.meeting, 'the summary was asked for again'); assert.strictEqual(fns.calls.commitments, before.commitments, 'the commitments were asked for again');
+    assert.strictEqual(g.meeting_summary, first.meeting_summary); assert.deepStrictEqual(g.attendees, first.attendees); assert.deepStrictEqual(g.rep_commitments, first.rep_commitments);
+    assert.strictEqual(g.follow_ups.length, 2); assert.strictEqual(g.opportunities.length, 1);
+    assert.strictEqual(n_(w, 'dealer_tasks'), 0, 'records created before approval'); assert.strictEqual(n_(w, 'opportunities'), 0);
+    // only one of two missing parts comes back → still partial for the other
+    const third = (await R(w, Object.assign({ qa_fail_part: ['followups', 'deals'], refresh: true }, body), 'pres')).body.suggestion;
+    const half = (await R(w, Object.assign({ retry_parts: ['followups', 'deals'], qa_fail_part: ['deals'], refresh: true }, body), 'pres')).body.suggestion;
+    assert.deepStrictEqual(half.partial, ['opportunities']); assert.strictEqual(half.follow_ups.length, 2); assert.strictEqual(half.meeting_summary, third.meeting_summary);
+    // the notes changed since → the whole summary runs again (nothing stale is kept)
+    const changed = await R(w, Object.assign({}, body, { notes: 'New notes', retry_parts: ['deals'], refresh: true }), 'pres');
+    assert.ok(!changed.body.merged); assert.strictEqual(changed.body.suggestion.meeting_summary, 'A DIFFERENT SUMMARY');
+  });
+  await t('Several deals and several follow-ups stay separate records; a replayed approval adds nothing', async () => {
+    const S = seed(); S.ai = () => Object.assign({}, AI_OUT, {
+      follow_ups: [{ title: 'Send PR519 pricing', due_date: IN3 }, { title: 'Ship the fabric sample book', due_date: IN3 }, { title: 'Book the staff in-service', due_date: IN7 }],
+      opportunities: [{ title: '2 x PR519 lift chairs', manufacturer_slug: 'golden-technologies', product: 'PR519', quantity: 2 },
+        { title: '1 x PR519 lift chair (showroom)', manufacturer_slug: 'golden-technologies', product: 'PR519', quantity: 1 },
+        { title: '4 Strongback Excursion chairs', manufacturer_slug: 'strongback-mobility', product: 'Excursion', quantity: 4 }] });
+    const w = createWorld(S); const sug = await startEndAnalyze(w);
+    assert.strictEqual(sug.follow_ups.length, 3); assert.strictEqual(sug.opportunities.length, 3); assert.ok(sug.follow_ups.every(f => !f.dup_of), 'separate follow-ups were merged');
+    const ap = approval(sug); await R(w, ap);
+    const tasks = w.db.dealer_tasks.filter(x => x.origin_type === 'visit_report'), opps = w.db.opportunities.filter(x => x.origin_type === 'visit_report');
+    assert.strictEqual(tasks.length, 3); assert.strictEqual(opps.length, 3); assert.strictEqual(new Set(opps.map(o => o.title)).size, 3);
+    const before = JSON.stringify(sideEffects(w)); await R(w, ap); await R(w, ap);
+    assert.strictEqual(JSON.stringify(sideEffects(w)), before, 'a replayed approval created records');
+  });
   await t('Review screen: a partial summary and an AI failure offer Try AI again; no key / no notes do not', async () => {
     const src = require('./phase0-mock').adminSrc('scheduled-routes.html');
     const lift = name => { const at = src.indexOf('function ' + name + '('); let i = src.indexOf('{', at), d = 0; for (; i < src.length; i++) { if (src[i] === '{') d++; else if (src[i] === '}' && --d === 0) break; } return src.slice(at, i + 1); };
-    const mk = new Function('REV', lift('canRetryAi') + '\n' + lift('partialNote') + '\nreturn { canRetryAi, partialNote };');
+    const consts = /const SECTION_NAME=[^\n]*\n/.exec(src)[0];
+    const mk = new Function('REV', consts + lift('missingSections') + '\n' + lift('canRetryAi') + '\n' + lift('partialNote') + '\nreturn { canRetryAi, partialNote };');
     const part = { manual: false }; const f = mk(part); f.partialNote();
     assert.ok(part.partial && /didn't finish the follow-ups/.test(part.msg) && f.canRetryAi(), 'a partial summary offers no retry');
-    const deals = { manual: false }; mk(deals).partialNote('opportunities'); assert.ok(/didn't finish the opportunities/.test(deals.msg), deals.msg);
+    const deals = { manual: false }; mk(deals).partialNote(['opportunities']); assert.ok(/didn't finish the opportunities\./.test(deals.msg), deals.msg);
+    assert.deepStrictEqual(deals.missing, ['opportunities']);
+    const two = { manual: false }; mk(two).partialNote(['commitments', 'follow_ups', 'opportunities']); assert.ok(/the commitments, the follow-ups and the opportunities/.test(two.msg), two.msg);
+    const old = { manual: false }; mk(old).partialNote('follow_ups'); assert.deepStrictEqual(old.missing, ['follow_ups'], 'a summary saved before the split is not understood');
     assert.ok(mk({ manual: true, err: 'ai_incomplete' }).canRetryAi());
     assert.ok(!mk({ manual: true, err: 'ai_unavailable' }).canRetryAi() && !mk({ manual: true, err: 'no_notes' }).canRetryAi());
     assert.ok(!mk({ manual: false }).canRetryAi(), 'a full AI summary offered a retry');

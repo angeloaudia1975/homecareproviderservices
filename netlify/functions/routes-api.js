@@ -1425,19 +1425,39 @@ exports.handler = async (event)=>{
       if(empty) return json(200,Object.assign({ok:false,report_id:r.id,error:"no_notes",message:"Nothing to summarize yet — write the summary below, or go back and dictate."},pickers));
       const sales=await sbGet(`monthly_sales?dealer_id=eq.${encodeURIComponent(did)}&select=product_name&limit=600`).catch(()=>[]);
       const products=[...new Set((sales||[]).map(x=>String(x.product_name||"").trim()).filter(Boolean))];
-      /* QA only: the president, on a TEST dealer, can ask for the first AI answer to be thrown away
-         to prove the automatic retry on the live service. It changes nothing else and is refused for
-         everyone and everything else. */
-      const qaFail=b.qa_fail_first===true && me.role==="president" && dealer.is_test===true;
+      /* QA only: the president, on a TEST dealer, can (a) have the first "what happened" answer thrown
+         away to prove the automatic retry, and (b) make whole parts fail on purpose to prove the partial
+         and manual paths on the live service. Refused for everyone and everything else. */
+      const qaOk=me.role==="president" && dealer.is_test===true;
+      const qaFail=b.qa_fail_first===true && qaOk;
+      const qaParts=qaOk ? [].concat(b.qa_fail_part||[]).map(String).filter(p=>VAI.PARTS.includes(p)) : [];
+      /* Try AI again after a partial summary: only the missing parts are asked for — and only when the
+         notes are the ones the stored summary was made from; otherwise the whole summary runs again. */
+      const stored=r.ai_suggestion;
+      const asList=p=>Array.isArray(p)?p:p==="actions"?["commitments","follow_ups","opportunities"]:p?[String(p)]:[];
+      const retryParts=[...new Set([].concat(b.retry_parts||[]).map(String).filter(p=>p!=="meeting"&&VAI.PARTS.includes(p)))];
+      const merge=retryParts.length>0 && !!stored && stored.input_hash===inputHash && typeof stored.meeting_summary==="string";
       const res=await VAI.summarize({transcript,notes,visitDate,weekday,dealerName:dealer.business_name||"",repName:me.name||me.rep_name||"",
-        contacts:contacts||[],mfrs,products,fetch,apiKey:AI_KEY,model:VISIT_AI_MODEL,forceFirstInvalid:qaFail});
-      if(!res.ok) return json(200,Object.assign({ok:false,report_id:r.id,error:res.error,message:res.message,attempts:res.attempts},pickers));
-      const sug=VAI.normalizeSuggestion(res.raw,{visitDate,contacts:contacts||[],mfrs});
+        contacts:contacts||[],mfrs,products,fetch,apiKey:AI_KEY,model:VISIT_AI_MODEL,forceFirstInvalid:qaFail,forceFail:qaParts,
+        only:merge?retryParts:undefined});
+      if(!res.ok) return json(200,Object.assign({ok:false,report_id:r.id,error:res.error,message:res.message,attempts:res.attempts,parts:res.parts},pickers));
+      let sug=VAI.normalizeSuggestion(res.raw,{visitDate,contacts:contacts||[],mfrs});
       await VAI.priceLookup(sug.opportunities,{loadCatalog});
-      // partial: the follow-ups and/or deals part didn't come back — the screen says which and offers Try AI again.
-      Object.assign(sug,{input_hash:inputHash,generated_at:nowIso,model:VISIT_AI_MODEL,partial:res.partial||undefined});
+      let partial=res.partial||null;
+      if(merge){
+        // Only the sections that came back now replace anything; the rest of the stored summary is kept as it was.
+        const back=retryParts.filter(p=>res.parts[p]&&res.parts[p].ok);
+        sug=VAI.mergeParts(stored,sug,back);
+        const still=new Set(asList(stored.partial).concat(partial||[]));
+        for(const p of back) still.delete(VAI.SECTION[p]);
+        partial=still.size?[...still]:null;
+      }
+      // partial: a later part (commitments, follow-ups, deals) didn't come back — the screen says which and offers Try AI again.
+      Object.assign(sug,{input_hash:inputHash,generated_at:nowIso,model:VISIT_AI_MODEL,partial:partial||undefined});
+      // Do the parts agree? Conflicts are marked for the rep — nothing is chosen or changed.
+      VAI.crossCheck(sug,{notes,transcript,mfrs,contacts:contacts||[]});
       try{ await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(r.id)}`,{ai_suggestion:sug,ai_suggested_at:nowIso},{Prefer:"return=minimal"}); }catch(e){}
-      return json(200,Object.assign({ok:true,report_id:r.id,suggestion:sug,attempts:res.attempts,qa_forced:res.forced||undefined},pickers));
+      return json(200,Object.assign({ok:true,report_id:r.id,suggestion:sug,attempts:res.attempts,qa_forced:res.forced||undefined,parts:res.parts,merged:merge||undefined},pickers));
     }
 
     if(b.action==="visit_approve"){
