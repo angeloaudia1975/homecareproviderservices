@@ -42,7 +42,9 @@ TYPED NOTES:
 DICTATION (transcript):
 """${String(i.transcript || "").slice(0, 12000)}"""
 
-Return ONLY a JSON object with exactly these keys (use "" or [] when the notes say nothing):
+Return ONLY a compact, minified JSON object — one line, no indentation, no markdown, nothing before or after it.
+Keep it short: list items are short phrases (under 12 words), at most 8 items per list, and OMIT any key whose value would be empty.
+Keys (all optional except meeting_summary):
 {
  "meeting_summary": "2-4 plain sentences: who you met, what was covered, the outcome",
  "products_discussed": ["product or line names"],
@@ -57,7 +59,53 @@ Return ONLY a JSON object with exactly these keys (use "" or [] when the notes s
  "interest_slugs": ["KNOWN slugs the dealer showed interest in"],
  "poor_fit_slugs": ["KNOWN slugs the rep explicitly said are NOT a fit"]
 }
-Rules: every rep commitment and every dealer request becomes a follow_up. Resolve relative dates against the visit date (tomorrow = the day after ${i.visitDate || "the visit"}; "Friday" = the coming Friday). Leave a date "" when none was said. est_value only when a price or total was stated. Use "quoted" only if a quote was given. No markdown, nothing outside the JSON.`;
+Rules: every rep commitment and every dealer request becomes a follow_up — one follow_up per separate action, and never the same action twice. suggested_next_action is the single most important next step; leave it out when that step is already a follow_up. Each distinct deal is its own opportunity. Resolve relative dates against the visit date (tomorrow = the day after ${i.visitDate || "the visit"}; "Friday" = the coming Friday). Leave a date out when none was said. est_value only when a price or total was stated. Use "quoted" only if a quote was given.${i.retryNote ? `\n\n${i.retryNote}` : ""}`;
+}
+
+/* ---- Reading the model's answer -------------------------------------------------------------
+   The first complete JSON object in the text (code fences and any stray words around it are
+   ignored). Braces inside strings are skipped, so a summary that mentions "{" can't confuse it. */
+function extractJson(text){
+  const t = String(text == null ? "" : text).replace(/```(?:json)?/gi, "");
+  for(let start = t.indexOf("{"); start >= 0; start = t.indexOf("{", start + 1)){
+    let depth = 0, inStr = false, esc = false;
+    for(let k = start; k < t.length; k++){
+      const c = t[k];
+      if(inStr){ if(esc) esc = false; else if(c === "\\") esc = true; else if(c === "\"") inStr = false; continue; }
+      if(c === "\"") inStr = true;
+      else if(c === "{") depth++;
+      else if(c === "}"){ depth--; if(depth === 0){ try{ const o = JSON.parse(t.slice(start, k + 1)); if(o && typeof o === "object" && !Array.isArray(o)) return o; }catch(_){} break; } }
+    }
+  }
+  return null;
+}
+/* Is this a summary the review screen can show? A non-empty meeting summary, and every list the
+   screen reads is a list (or absent). Anything else is treated as a failed attempt. */
+const LIST_KEYS = ["products_discussed", "dealer_interests", "dealer_concerns", "objections", "competitors", "pricing_requests",
+  "samples_requested", "literature_requested", "training_requested", "attendees", "rep_commitments", "dealer_commitments",
+  "follow_ups", "opportunities", "interest_slugs", "poor_fit_slugs"];
+function validRaw(raw){
+  if(!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  if(typeof raw.meeting_summary !== "string" || !raw.meeting_summary.trim()) return false;
+  for(const k of LIST_KEYS) if(raw[k] != null && !Array.isArray(raw[k])) return false;
+  if(raw.suggested_next_action != null && typeof raw.suggested_next_action !== "object" && typeof raw.suggested_next_action !== "string") return false;
+  return true;
+}
+
+/* ---- Near-duplicate actions --------------------------------------------------------------------
+   "Send PR-535 pricing and the Golden catalog" and "Send PR-535 pricing and Golden catalog to the
+   dealer" are one piece of work. Compared on their meaningful words; a different date (both set)
+   keeps them apart. */
+const STOP = new Set("a an and the to for of on in at by with from this that their them they our your you it its is be will please re dealer customer store".split(" "));
+function actionWords(s){ return new Set(String(s || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(w => w && !STOP.has(w))); }
+function sameAction(a, b){
+  const A = actionWords(a && (a.title || a.text)), B = actionWords(b && (b.title || b.text));
+  if(!A.size || !B.size) return false;
+  const da = String((a && a.due_date) || ""), db = String((b && b.due_date) || "");
+  if(da && db && da !== db) return false;
+  let inter = 0; for(const w of A) if(B.has(w)) inter++;
+  const union = A.size + B.size - inter;
+  return inter / Math.min(A.size, B.size) >= 0.75 || inter / union >= 0.6;
 }
 
 /* Pure: whatever came back, in the exact shape the review screen expects, with stable keys,
@@ -84,9 +132,13 @@ function normalizeSuggestion(raw, ctx){
   const follow_ups = [];
   for(const f of (Array.isArray(raw.follow_ups) ? raw.follow_ups : [])){
     const title = clean(f && (f.title || f.text || f), 200); if(!title) continue;
-    follow_ups.push({ key: V.textKey("fu", title, follow_ups.length), title, due_date: okDate(f && f.due_date),
+    const item = { key: V.textKey("fu", title, follow_ups.length), title, due_date: okDate(f && f.due_date),
       priority: PRI.includes(String(f && f.priority || "").toLowerCase()) ? String(f.priority).toLowerCase() : "normal",
-      from: clean(f && f.from, 40) || "other" });
+      from: clean(f && f.from, 40) || "other" };
+    // A repeat of an earlier follow-up is still shown, but unticked — the rep decides.
+    const twin = follow_ups.find(x => !x.dup_of && sameAction(x, item));
+    if(twin){ item.dup_of = twin.key; item.dup_title = twin.title; }
+    follow_ups.push(item);
     if(follow_ups.length >= 15) break;
   }
 
@@ -107,8 +159,11 @@ function normalizeSuggestion(raw, ctx){
   }
 
   const keep = arr => (Array.isArray(arr) ? arr : []).map(x => String(x || "").trim()).filter(x => slugs.has(x));
+  const next = { text: s.suggested_next_action.text, due_date: okDate(s.suggested_next_action.due_date) };
+  // The next action is usually one of the follow-ups again; then it is offered unticked.
+  if(next.text){ const twin = follow_ups.find(f => !f.dup_of && sameAction(f, next)); if(twin){ next.duplicate_of = twin.key; next.dup_title = twin.title; } }
   return Object.assign(s, {
-    suggested_next_action: { text: s.suggested_next_action.text, due_date: okDate(s.suggested_next_action.due_date) },
+    suggested_next_action: next,
     attendees, follow_ups, opportunities,
     interest_slugs: [...new Set(keep(raw.interest_slugs))], poor_fit_slugs: [...new Set(keep(raw.poor_fit_slugs))],
   });
@@ -136,27 +191,49 @@ async function priceLookup(opps, deps){
   return opps;
 }
 
-async function summarize(i){
-  if(!i.apiKey) return { ok: false, error: "ai_unavailable", message: "AI summaries need ANTHROPIC_API_KEY set in Netlify. You can still review and approve by hand." };
+/* One request to the model. { ok, raw } or { ok:false, error, message, retry } — `retry` says a
+   second try is worthwhile (cut off, not JSON, wrong shape, or the service was busy). */
+const MAX_TOKENS = 4096;
+async function callOnce(i, timeoutMs){
   const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const timer = ctl ? setTimeout(() => ctl.abort(), i.timeoutMs || 22000) : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), Math.max(1000, timeoutMs)) : null;
   let r;
   try{
     r = await i.fetch("https://api.anthropic.com/v1/messages", { method: "POST", signal: ctl ? ctl.signal : undefined,
       headers: { "x-api-key": i.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: i.model, max_tokens: 1800, messages: [{ role: "user", content: buildPrompt(i) }] }) });
+      body: JSON.stringify({ model: i.model, max_tokens: i.maxTokens || MAX_TOKENS, messages: [{ role: "user", content: buildPrompt(i) }] }) });
   }catch(e){
-    return { ok: false, error: "ai_timeout", message: "The summary took too long. Try again, or approve by hand." };
+    return { ok: false, error: "ai_timeout", message: "The summary took too long.", retry: false };
   }finally{ if(timer) clearTimeout(timer); }
   const t = await r.text().catch(() => "");
   if(!r.ok){ let hint = ""; try{ const ej = JSON.parse(t); hint = ej && ej.error && ej.error.message ? ` (${ej.error.message})` : ""; }catch(_){}
-    return { ok: false, error: "ai_error", message: "The AI service returned an error" + hint + ". Try again, or approve by hand." }; }
+    return { ok: false, error: "ai_error", message: "The AI service returned an error" + hint + ".", retry: r.status >= 500 || r.status === 429 }; }
   let j = {}; try{ j = JSON.parse(t); }catch(_){}
   let text = ""; for(const c of ((j && j.content) || [])) if(c && typeof c.text === "string") text += c.text;
-  const a = text.indexOf("{"), b = text.lastIndexOf("}");
-  let raw = null; if(a >= 0 && b > a){ try{ raw = JSON.parse(text.slice(a, b + 1)); }catch(_){} }
-  if(!raw) return { ok: false, error: "ai_empty", message: "The AI didn't return a usable summary. Try again, or approve by hand." };
+  const raw = extractJson(text);
+  if(!raw) return { ok: false, error: j && j.stop_reason === "max_tokens" ? "ai_incomplete" : "ai_empty", message: "The AI's answer was cut off or unreadable.", retry: true };
+  if(!validRaw(raw)) return { ok: false, error: "ai_invalid", message: "The AI's answer was missing parts of the summary.", retry: true };
   return { ok: true, raw };
 }
+/* The summary, with ONE automatic retry when the first answer is incomplete or the wrong shape.
+   Everything fits inside the function's time budget: the retry only runs if there is room for it.
+   i.forceFirstInvalid (QA only — see routes-api) throws the first answer away to prove the retry. */
+const RETRY_NOTE = "IMPORTANT: your previous answer was cut off or was not valid JSON. Answer again with a SHORTER summary: minified JSON only, at most 5 items per list, short phrases.";
+async function summarize(i){
+  if(!i.apiKey) return { ok: false, error: "ai_unavailable", attempts: 0, message: "AI summaries need ANTHROPIC_API_KEY set in Netlify. You can still review and approve by hand." };
+  // Netlify ends a function at ~26 s; the rest of visit_analyze needs a second or two of that.
+  const t0 = Date.now(), budget = i.budgetMs || 22000, minRetry = i.minRetryMs || 6000;
+  let res = await callOnce(i, Math.min(i.timeoutMs || 16000, budget));
+  let attempts = 1, forced = false;
+  if(res.ok && i.forceFirstInvalid){ res = { ok: false, error: "ai_invalid", message: "First answer discarded for a test.", retry: true }; forced = true; }
+  const left = budget - (Date.now() - t0);
+  if(!res.ok && res.retry && left >= minRetry){
+    res = await callOnce(Object.assign({}, i, { retryNote: RETRY_NOTE }), left - 500);
+    attempts = 2;
+  }
+  if(res.ok) return { ok: true, raw: res.raw, attempts, forced };
+  return { ok: false, error: res.error, attempts, forced,
+    message: (res.message || "The AI couldn't summarize this visit.") + " Your notes are saved — try the AI again, or fill in the summary yourself." };
+}
 
-module.exports = { buildPrompt, normalizeSuggestion, priceLookup, summarize, codeNorm };
+module.exports = { buildPrompt, normalizeSuggestion, priceLookup, summarize, codeNorm, extractJson, validRaw, sameAction };

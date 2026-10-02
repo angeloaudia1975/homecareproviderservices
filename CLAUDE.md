@@ -441,6 +441,18 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   no company-wide payloads to a rep's browser.
 - **Shipping:** SQL the user must run is pasted inline in the reply (and committed as a file); after a push,
   the live Netlify endpoints are tested — a successful push is not proof of a deploy.
+- **AI never blocks a visit.** The meeting summary asks for compact JSON, validates the shape, retries ONCE
+  automatically, and the review always opens: "Try AI again" in place, or a full manual fallback (summary,
+  attendees, follow-ups, opportunities, next action). The rep's notes are saved before any AI call.
+- **Dates in AI drafts are absolute.** The real visit date is passed in; drafts say "on October 2", never
+  "yesterday/today" unless the system itself computed it. Follow-up emails go to an attendee first; with
+  several attendees the rep chooses; the main contact is only the fallback.
+- **A visit needs a real dealer.** Visit writes check the dealer exists — for every role, management included.
+- **View-as** stays president-only, audit-logged, and goes through the same server authorization as the
+  real user. Never add a bypass or a test-only endpoint that skips authorization. QA switches that only
+  change AI/email behaviour are allowed solely for the president on a TEST (`is_test`) dealer.
+- **Duplicate suggestions** (a follow-up repeated, or a next action that repeats a follow-up) are shown
+  unticked — never silently dropped, never auto-selected twice.
 
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.

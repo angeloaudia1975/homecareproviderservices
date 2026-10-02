@@ -40,6 +40,7 @@ const W = extra => createWorld(seed(extra));
 const R = (w, body, tok, env) => call(load('routes-api.js', w, env === undefined ? { ANTHROPIC_API_KEY: 'k' } : env), body, { token: tok || 'greg' });
 const C = (w, body, tok) => call(load('crm-api.js', w), body, { token: tok || 'greg' });
 const n = (w, table, f) => (w.db[table] || []).filter(f || (() => true)).length;
+const n_ = n;
 const sideEffects = w => ({ reports: n(w, 'dealer_visit_reports'), visits: n(w, 'dealer_visits'), notes: n(w, 'dealer_notes'), activity: n(w, 'dealer_activity', a => a.kind === 'visit'),
   tasks: n(w, 'dealer_tasks'), opps: n(w, 'opportunities'), intent: n(w, 'intent_events'), contacts: n(w, 'dealer_contacts'), participants: n(w, 'dealer_visit_participants') });
 const stop = { route_id: 'r-1', dealer_id: 'd-greg' };
@@ -338,6 +339,125 @@ async function startEndAnalyze(w, extra) {
     assert.strictEqual(other.status, 403);
     const cross = await call(load('ai-email-api.js', w, { ANTHROPIC_API_KEY: 'k' }), { action: 'draft', dealer_id: 'd-dir-greg', template: 'visit_followup', visit_report_id: w.db.dealer_visit_reports[0].id }, { token: 'greg' });
     assert.strictEqual(cross.status, 404, 'a visit on one dealer drafted an email to another');
+  });
+
+  /* ── Blocker fixes (Phase 1 live findings) ── */
+  const TEST_DEALER = { id: 'd-test', business_name: 'TEST — Sandbox', rep_name: null, parent_id: null, state: 'IN', is_test: true };
+  const cut = (text, stop) => ({ status: 200, body: { content: [{ type: 'text', text }], stop_reason: stop || 'end_turn' } });
+  await t('AI: a cut-off first answer is retried once, automatically, and the review opens', async () => {
+    const S = seed(); const prompts = [];
+    S.ai = b => { prompts.push(JSON.stringify(b)); return prompts.length === 1 ? cut('{"meeting_summary":"Met Bryant and Sta', 'max_tokens') : AI_OUT; };
+    const w = createWorld(S);
+    await R(w, Object.assign({ action: 'visit_checkin' }, stop));
+    const a = await R(w, Object.assign({ action: 'visit_analyze', notes: 'Met Bryant.', local_date: TODAY }, stop));
+    assert.strictEqual(a.body.ok, true, JSON.stringify(a.body)); assert.strictEqual(a.body.attempts, 2);
+    assert.strictEqual(prompts.length, 2); assert.ok(/previous answer was cut off/.test(prompts[1]), 'the retry did not ask for a shorter answer');
+    assert.ok(/minified JSON/.test(prompts[0]), 'compact output was not requested');
+    assert.ok(/"max_tokens":4096/.test(prompts[0]), 'the output allowance was not raised');
+    assert.strictEqual(a.body.suggestion.follow_ups.length, 2);
+  });
+  await t('AI: a wrong-shaped answer (no summary) is retried; fenced JSON with stray braces after it parses first time', async () => {
+    const S = seed(); let n = 0;
+    S.ai = () => { n++; return n === 1 ? { follow_ups: [{ title: 'x' }] } : AI_OUT; };
+    const w = createWorld(S); await R(w, Object.assign({ action: 'visit_checkin' }, stop));
+    const a = await R(w, Object.assign({ action: 'visit_analyze', notes: 'n1', local_date: TODAY }, stop));
+    assert.strictEqual(a.body.ok, true); assert.strictEqual(a.body.attempts, 2);
+    const S2 = seed(); let m = 0; S2.ai = () => { m++; return 'Here you go:\n```json\n' + JSON.stringify(AI_OUT) + '\n```\nNote: {not json}'; };
+    const w2 = createWorld(S2); await R(w2, Object.assign({ action: 'visit_checkin' }, stop));
+    const b2 = await R(w2, Object.assign({ action: 'visit_analyze', notes: 'n2', local_date: TODAY }, stop));
+    assert.strictEqual(b2.body.ok, true, JSON.stringify(b2.body)); assert.strictEqual(b2.body.attempts, 1); assert.strictEqual(m, 1);
+  });
+  await t('AI: both attempts fail → a usable manual review; notes kept; the rep can still approve by hand', async () => {
+    const S = seed(); let n = 0; S.ai = () => { n++; return cut('{"meeting_summary":"trunc', 'max_tokens'); };
+    const w = createWorld(S); await R(w, Object.assign({ action: 'visit_checkin' }, stop)); await R(w, Object.assign({ action: 'visit_end' }, stop));
+    const a = await R(w, Object.assign({ action: 'visit_analyze', notes: 'Met Bryant. Send pricing Friday.', local_date: TODAY }, stop));
+    assert.strictEqual(a.body.ok, false); assert.strictEqual(a.body.attempts, 2); assert.strictEqual(n, 2, 'more than one retry');
+    assert.ok(/notes are saved/i.test(a.body.message), a.body.message);
+    assert.ok((a.body.contacts || []).length && (a.body.manufacturers || []).length, 'pickers missing on failure');
+    assert.strictEqual(w.db.dealer_visit_reports[0].fields.notes, 'Met Bryant. Send pricing Friday.');
+    assert.strictEqual(n_(w, 'dealer_tasks'), 0, 'records created before approval');
+    const manual = Object.assign({ action: 'visit_approve' }, stop, { summary: { meeting_summary: 'Met Bryant; send pricing Friday.' },
+      participants: [{ key: 'at_m_1', name: 'Bryant Smith', contact_id: 'c-bryant' }], tasks: [{ key: 'fu_m_1', title: 'Send pricing', due_date: IN3, priority: 'normal' }],
+      opportunities: [{ key: 'op_m_1', title: '2 lift chairs', stage: 'identified' }] });
+    const ap = await R(w, manual); assert.strictEqual(ap.status, 200); assert.deepStrictEqual(ap.body.created, { tasks: 1, opportunities: 1, participants: 1, contacts: 0 });
+  });
+  await t('AI: the QA "fail the first answer" switch works only for the president on a TEST dealer', async () => {
+    const S = seed({ dealers: [TEST_DEALER] }); let n = 0; S.ai = () => { n++; return AI_OUT; };
+    const w = createWorld(S);
+    await R(w, { action: 'visit_checkin', dealer_id: 'd-test' }, 'pres');
+    const q = await R(w, { action: 'visit_analyze', dealer_id: 'd-test', notes: 'qa', local_date: TODAY, qa_fail_first: true }, 'pres');
+    assert.strictEqual(q.body.ok, true); assert.strictEqual(q.body.attempts, 2); assert.strictEqual(q.body.qa_forced, true); assert.strictEqual(n, 2);
+    await R(w, Object.assign({ action: 'visit_checkin' }, stop));
+    const g = await R(w, Object.assign({ action: 'visit_analyze', notes: 'rep', local_date: TODAY, qa_fail_first: true }, stop));
+    assert.strictEqual(g.body.attempts, 1, 'a rep could force a retry'); assert.ok(!g.body.qa_forced);
+    await R(w, { action: 'visit_checkin', route_id: 'r-ang', dealer_id: 'd-ang' }, 'pres');
+    const p = await R(w, { action: 'visit_analyze', route_id: 'r-ang', dealer_id: 'd-ang', notes: 'real dealer', local_date: TODAY, qa_fail_first: true }, 'pres');
+    assert.strictEqual(p.body.attempts, 1, 'the switch worked on a real dealer');
+  });
+  await t('Duplicates: a repeated follow-up and a next action that repeats a follow-up are offered unticked', async () => {
+    const S = seed(); S.ai = () => Object.assign({}, AI_OUT, {
+      follow_ups: AI_OUT.follow_ups.concat([{ title: 'Send the PR519 pricing to the dealer', due_date: IN3, priority: 'normal' }]),
+      suggested_next_action: { text: 'Send PR519 pricing', due_date: IN3 } });
+    const w = createWorld(S); await R(w, Object.assign({ action: 'visit_checkin' }, stop));
+    const sug = (await R(w, Object.assign({ action: 'visit_analyze', notes: 'dup', local_date: TODAY }, stop))).body.suggestion;
+    assert.strictEqual(sug.follow_ups.length, 3, 'a suggestion was dropped');
+    assert.ok(!sug.follow_ups[0].dup_of && !sug.follow_ups[1].dup_of, 'distinct follow-ups marked as repeats');
+    assert.strictEqual(sug.follow_ups[2].dup_of, sug.follow_ups[0].key);
+    assert.strictEqual(sug.suggested_next_action.duplicate_of, sug.follow_ups[0].key);
+    const VAI = require('../netlify/functions/_visit_ai.js');
+    assert.strictEqual(VAI.sameAction({ title: 'Call Bryant back' }, { title: 'Send PR519 pricing' }), false);
+    assert.strictEqual(VAI.sameAction({ title: 'Send pricing', due_date: '2026-10-06' }, { title: 'Send pricing', due_date: '2026-10-20' }), false, 'different dates are different work');
+  });
+  await t('Visits are only recorded against a dealer that exists — for the president too', async () => {
+    const w = W(); const before = n_(w, 'dealer_visit_reports');
+    for (const body of [{ action: 'visit_checkin', route_id: 'r-1', dealer_id: 'd-ghost' }, { action: 'visit_checkin', dealer_id: 'd-ghost' },
+      { action: 'visit_end', dealer_id: 'd-ghost' }, { action: 'visit_approve', dealer_id: 'd-ghost', summary: { meeting_summary: 'x' } },
+      { action: 'visit_report_save', dealer_id: 'd-ghost', status: 'in_progress', fields: { notes: 'x' } }]) {
+      const r = await R(w, body, 'pres'); assert.strictEqual(r.status, 404, body.action + ' → ' + r.status + ' ' + JSON.stringify(r.body));
+    }
+    assert.strictEqual(n_(w, 'dealer_visit_reports'), before, 'a stray visit was created');
+    assert.strictEqual((await R(w, Object.assign({ action: 'visit_checkin' }, stop), 'pres')).status, 200, 'a real dealer was refused');
+  });
+  await t('Email: the real visit date is in the prompt; relative days are rewritten once, then replaced; nothing is sent', async () => {
+    const S = seed({ dealers: [TEST_DEALER] }); const prompts = [];
+    S.ai = b => { const s = JSON.stringify(b); if (!/MEETING RECAP/.test(s)) return AI_OUT; prompts.push(s);
+      return { subject: 'Following up', body: 'Hi Bryant,\n\nThanks for the time yesterday. I will send it tomorrow.' }; };
+    const w = createWorld(S); const sug = await (async () => { await R(w, Object.assign({ action: 'visit_checkin', at: '2026-10-02T15:25:00Z' }, stop)).catch(() => {}); return null; })();
+    await R(w, Object.assign({ action: 'visit_end' }, stop));
+    const s1 = (await R(w, Object.assign({ action: 'visit_analyze', notes: 'Met Bryant.', local_date: TODAY }, stop))).body.suggestion;
+    await R(w, approval(s1)); const rep = w.db.dealer_visit_reports[0];
+    rep.checkin_at = '2026-10-02T15:25:00Z';
+    const before = w.outbound.filter(x => x.kind === 'graph' || x.kind === 'resend').length;
+    const d = await call(load('ai-email-api.js', w, { ANTHROPIC_API_KEY: 'k' }), { action: 'draft', dealer_id: 'd-greg', template: 'visit_followup', visit_report_id: rep.id, contact_name: 'Bryant Smith' }, { token: 'greg' });
+    assert.strictEqual(d.body.ok, true, JSON.stringify(d.body));
+    assert.ok(/Visit date: Friday, October 2, 2026/.test(prompts[0]), 'the visit date is not in the prompt');
+    assert.ok(/meeting was on October 2/.test(prompts[0]) && /NEVER use relative day words/.test(prompts[0]));
+    assert.strictEqual(prompts.length, 2, 'no rewrite was asked for'); assert.ok(/used relative day words/.test(prompts[1]) && /yesterday[^a-z]+[^"]*tomorrow/.test(prompts[1]), prompts[1].slice(-400));
+    assert.ok(/the time on October 2/.test(d.body.body) && !/yesterday/i.test(d.body.body), d.body.body);
+    assert.strictEqual(d.body.visit_date, 'October 2'); assert.ok((d.body.warnings || []).length === 1, 'a remaining "tomorrow" was not flagged');
+    assert.strictEqual(w.outbound.filter(x => x.kind === 'graph' || x.kind === 'resend').length, before, 'an email was sent');
+    // QA date override: president + TEST dealer only.
+    const T = require('../netlify/functions/ai-email-api.js').__test;
+    assert.deepStrictEqual(T.visitDateParts('2026-09-28T14:00:00Z'), { md: 'September 28', long: 'Monday, September 28, 2026' });
+    assert.deepStrictEqual(T.visitDateParts('2026-10-03T03:30:00Z').md, 'October 2', 'an evening visit was dated the next day');
+    const g = await call(load('ai-email-api.js', w, { ANTHROPIC_API_KEY: 'k' }), { action: 'draft', dealer_id: 'd-greg', template: 'visit_followup', visit_report_id: rep.id, qa_visit_at: '2026-09-28T14:00:00Z' }, { token: 'pres' });
+    assert.ok(/Visit date: Friday, October 2/.test(prompts[prompts.length - 2]), 'the QA override worked on a real dealer');
+  });
+  await t('Email recipients: one attendee → that person; several → the rep picks; none → the main contact; saved draft keeps its address', async () => {
+    const src = require('./phase0-mock').adminSrc('scheduled-routes.html');
+    const lift = name => { const at = src.indexOf('function ' + name + '('); let i = src.indexOf('{', at), d = 0; for (; i < src.length; i++) { if (src[i] === '{') d++; else if (src[i] === '}' && --d === 0) break; } return src.slice(at, i + 1); };
+    const re = /const RCPT_RE\s*=\s*[^\n]*;/.exec(src)[0];
+    const pick = new Function(re + '\n' + lift('pickVisitRecipients') + '\nreturn pickVisitRecipients;')();
+    const rows = [{ name: 'Sandbox Main', email: 'main@dealer.test', source: 'contact' }, { name: 'Bryant Smith', email: 'bryant@dealer.test', source: 'contact' }];
+    const one = pick(rows, [{ name: 'Bryant Smith', email: 'bryant@dealer.test' }, { name: 'Dana Price', email: '' }], '');
+    assert.deepStrictEqual([...one.pre], ['bryant@dealer.test']); assert.strictEqual(one.greet, 'Bryant Smith'); assert.deepStrictEqual(one.noEmail, ['Dana Price']);
+    assert.strictEqual(one.rows.filter(r => r.email === 'bryant@dealer.test').length, 1, 'an attendee was listed twice'); assert.strictEqual(one.rows[0].source, 'attendee');
+    const many = pick(rows, [{ name: 'Bryant Smith', email: 'bryant@dealer.test' }, { name: 'Pat Lee', email: 'pat@dealer.test' }], '');
+    assert.strictEqual(many.pre.size, 0, 'a recipient was chosen for the rep'); assert.ok(/tick who this goes to/.test(many.note)); assert.strictEqual(many.greet, '');
+    const none = pick(rows, [], ''); assert.deepStrictEqual([...none.pre], ['main@dealer.test']);
+    const noEmails = pick(rows, [{ name: 'Dana Price', email: '' }], ''); assert.deepStrictEqual([...noEmails.pre], ['main@dealer.test']);
+    const saved = pick(rows, [{ name: 'Bryant Smith', email: 'bryant@dealer.test' }], 'main@dealer.test'); assert.deepStrictEqual([...saved.pre], ['main@dealer.test']);
+    const typed = pick(rows, [], 'someone@else.test'); assert.strictEqual(typed.extra, 'someone@else.test');
   });
 
   done('Phase 1 visit intelligence');

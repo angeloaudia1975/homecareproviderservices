@@ -52,6 +52,24 @@ const TEMPLATES={
 };
 /* The approved meeting intelligence of one visit (Phase 1), as prompt lines. Only what the rep
    approved — the AI's raw suggestions never reach an email. */
+/* The visit's calendar date in the territory's time (Central covers both sides of the line closely
+   enough for a date): { md:"October 2", long:"Friday, October 2, 2026" }. */
+const TERRITORY_TZ="America/Chicago";
+function visitDateParts(iso){
+  const t=Date.parse(String(iso||"")); if(!Number.isFinite(t)) return null;
+  const d=new Date(t);
+  const md=d.toLocaleDateString("en-US",{timeZone:TERRITORY_TZ,month:"long",day:"numeric"});
+  const long=d.toLocaleDateString("en-US",{timeZone:TERRITORY_TZ,weekday:"long",month:"long",day:"numeric",year:"numeric"});
+  return {md,long};
+}
+const RELATIVE_DAY=/\b(yesterday|today|tonight|tomorrow|this (?:morning|afternoon|evening)|earlier today|the other day|last week)\b/i;
+// Only the words that can only mean the meeting itself are rewritten; "tomorrow" is left for the rep.
+function fixRelativePast(text,md){
+  return String(text==null?"":text)
+    .replace(/\b(?:earlier today|this (?:morning|afternoon|evening)|yesterday|the other day)\b/gi,()=>`on ${md}`)
+    .replace(/\b(meeting|meet|talking|speaking|visit|time) today\b/gi,(m,w)=>`${w} on ${md}`)
+    .replace(/\bon on\b/gi,"on");
+}
 function visitRecapLines(r){
   const s=(r&&r.summary&&typeof r.summary==="object")?r.summary:null; if(!s) return "";
   const L=[]; const list=(k,label)=>{ const v=Array.isArray(s[k])?s[k].filter(Boolean):[]; if(v.length) L.push(`${label}: ${v.map(x=>typeof x==="object"?(x.text||x.title||""):x).filter(Boolean).join("; ")}`); };
@@ -241,15 +259,24 @@ exports.handler=async(event)=>{
     const tmplKey=String(b.template||"follow_up").toLowerCase();
     const tmpl=TEMPLATES[tmplKey]||TEMPLATES.follow_up;
     // A visit follow-up is written from that visit's APPROVED summary (Phase 1).
-    let recap="";
+    let recap="", visitDay=null;
     if(tmplKey==="visit_followup"){
       const vid=String(b.visit_report_id||"").trim();
       if(!vid) return json(400,{error:"visit_report_id required"});
-      const vr=await sbGet(`dealer_visit_reports?id=eq.${encodeURIComponent(vid)}&select=id,dealer_id,summary,approved_at`).catch(()=>[]);
+      const vr=await sbGet(`dealer_visit_reports?id=eq.${encodeURIComponent(vid)}&select=id,dealer_id,summary,approved_at,checkin_at,ended_at,completed_at`).catch(()=>[]);
       const v=vr&&vr[0];
       if(!v || String(v.dealer_id)!==dealerId) return json(404,{error:"Visit not found for this dealer."});
       if(!v.approved_at) return json(400,{error:"Approve the visit summary first."});
-      recap=visitRecapLines(v);
+      /* The meeting's real date goes into the prompt; the model is never left to work out whether it
+         was "today" or "yesterday". QA only: the president may set a different visit time on a TEST
+         dealer to check older visits (it changes this draft only, nothing stored). */
+      let at=v.checkin_at||v.ended_at||v.completed_at||v.approved_at;
+      if(b.qa_visit_at && me.role==="president"){
+        const dt=await sbGet(`dealers?id=eq.${encodeURIComponent(dealerId)}&select=is_test`).catch(()=>[]);
+        if(dt&&dt[0]&&dt[0].is_test===true && Number.isFinite(Date.parse(String(b.qa_visit_at)))) at=String(b.qa_visit_at);
+      }
+      visitDay=visitDateParts(at);
+      recap=(visitDay?`Visit date: ${visitDay.long} (the meeting was in person)\n`:"")+visitRecapLines(v);
     }
 
     // slug -> manufacturer display name
@@ -301,6 +328,7 @@ Format:
 - Greeting to the contact by first name if provided ("Hi ${firstName||"there"},").
 - 2 to 4 short paragraphs, plain sentences, no marketing fluff, no emojis.
 ${recap?`- Open with a short thank-you for the meeting, then the recap of what was agreed — never an apology.`:`- Open with the specific insight/opportunity for THIS dealer (a line they buy, a dormant line, whitespace, cadence) — never a check-in or apology.`}
+${visitDay?`- The meeting was on ${visitDay.md}. Refer to it by that date ("Thank you for meeting with me on ${visitDay.md}"). NEVER use relative day words — no "today", "yesterday", "tomorrow", "this morning", "last week" — because this email may be sent days later. Write any due date as a date ("by Tuesday, October 6"), not as a relative day.`:""}
 - Close with a clear next step or a simple either/or choice — not an open-ended "let me know if…".
 - Do NOT include a signature or sign-off block (no "Best,"/name) — that is added separately.
 - Keep it concise: a busy dealer should read it in 20 seconds.
@@ -325,7 +353,7 @@ Do not include markdown or any text outside the JSON.`;
       return {subject:"", body:""};
     }
 
-    let subject="", body="";
+    let subject="", body=""; const warnings=[];
     try{
       let g=await generate(buildPrompt());
       if(g.err) return json(200,{ok:false,error:"ai_error",message:g.err,detail:g.detail,model:AI_MODEL,signature});
@@ -335,12 +363,21 @@ Do not include markdown or any text outside the JSON.`;
         const retry=await generate(buildPrompt(`IMPORTANT: your previous draft used phrasing the style guide forbids (${bad.map(x=>`"${x}"`).join(", ")}). Rewrite so none of those appear; lead with the specific opportunity instead.`));
         if(!retry.err && retry.subject && retry.body) g=retry;
       }
+      // A visit email must not date the meeting relatively. One rewrite naming the words; then the
+      // past-tense ones are replaced with the real date, and anything left is flagged for the rep.
+      if(visitDay && RELATIVE_DAY.test(`${g.subject}\n${g.body}`)){
+        const found=[...new Set((`${g.subject}\n${g.body}`.match(new RegExp(RELATIVE_DAY.source,"gi"))||[]).map(x=>x.toLowerCase()))];
+        const retry=await generate(buildPrompt(`IMPORTANT: your previous draft used relative day words (${found.map(x=>`"${x}"`).join(", ")}). Rewrite it referring to the meeting only as "on ${visitDay.md}" and to due dates only by their dates.`));
+        if(!retry.err && retry.subject && retry.body) g=retry;
+      }
       subject=g.subject; body=g.body;
+      if(visitDay){ subject=fixRelativePast(subject,visitDay.md); body=fixRelativePast(body,visitDay.md);
+        if(RELATIVE_DAY.test(`${subject}\n${body}`)) warnings.push("This draft still mentions a relative day (like “tomorrow”) — check the dates before sending."); }
     }catch(e){ return json(200,{ok:false,error:"ai_error",message:"Couldn't reach the AI service.",signature}); }
     if(!subject||!body) return json(200,{ok:false,error:"ai_empty",message:"The AI didn't return a usable draft — try again or a different template.",signature});
 
     const html=composeHtml({body, product:PC, imageUrl, productUrl, signature});
-    return json(200,{ok:true, subject, body, html, signature,
+    return json(200,{ok:true, subject, body, html, signature, visit_date:visitDay?visitDay.md:undefined, warnings:warnings.length?warnings:undefined,
       product:PC||null, product_url:productUrl||null, image_url:imageUrl||null,
       product_warning: (PC&&!PC.approved)
         ? `Heads up: this product's content is still "${PC.status||"in review"}". Approve it in Product Content Enrichment & Review before sending.` : null,
@@ -348,3 +385,6 @@ Do not include markdown or any text outside the JSON.`;
         product:(PC&&PC.name)||lineName||"" } });
   }catch(e){ return json(500,{error:String(e.message||e)}); }
 };
+
+// Pure pieces, for the tests.
+exports.__test={visitDateParts,fixRelativePast,RELATIVE_DAY,visitRecapLines};

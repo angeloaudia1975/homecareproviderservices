@@ -621,7 +621,35 @@ async function openReview(i){
   if(!REV) return;
   if(j){ REV.contacts=j.contacts||[]; REV.mfrs=j.manufacturers||[]; REV.report_id=j.report_id||null; }
   if(j&&j.ok&&j.suggestion){ REV.sug=j.suggestion; }
-  else { REV.manual=true; REV.sug=emptySuggestion(notes||tx); REV.msg=(j&&(j.message||j.error))||"Couldn't reach the AI — review by hand."; }
+  else { REV.manual=true; REV.err=(j&&j.error)||"no_connection"; REV.sug=emptySuggestion(notes||tx);
+    REV.msg=(j&&j.message)||"Couldn't reach the AI. Your notes are saved — try the AI again, or fill in the summary yourself."; }
+  renderReview();
+}
+/* Try the AI again without leaving the review. The notes it reads are the ones kept on this phone
+   (and already saved on the visit). Anything the rep added by hand — attendees, follow-ups, deals,
+   a summary they rewrote — is carried over into the new suggestion rather than thrown away. */
+function canRetryAi(){ return REV && REV.manual && !["ai_unavailable","no_notes"].includes(REV.err); }
+async function tryAiAgain(btn){
+  if(!REV) return; const s=DAY.stops[REV.i], k=vkey(s), m=$("#rv_aimsg");
+  if(!navigator.onLine){ if(m) m.textContent="Still offline — the AI needs a connection."; return; }
+  const notes=obRead("vnote_"+k)||"", tx=obRead("vtx_"+k)||"";
+  const before=collectReview(), fallback=emptySuggestion(notes||tx).meeting_summary;
+  if(btn){ btn.disabled=true; btn.textContent="✨ Summarizing…"; } if(m) m.textContent="";
+  let j=null; try{ j=await rapi({action:"visit_analyze",route_id:DAY.route.id,dealer_id:s.dealer_id,notes:notes||undefined,transcript:tx||undefined,local_date:todayStr(),refresh:true}); }catch(e){ j=null; }
+  if(!REV) return;
+  if(j){ REV.contacts=j.contacts||REV.contacts; REV.mfrs=j.manufacturers||REV.mfrs; REV.report_id=j.report_id||REV.report_id; }
+  if(!(j&&j.ok&&j.suggestion)){
+    REV.err=(j&&j.error)||"no_connection";
+    if(btn){ btn.disabled=false; btn.textContent="✨ Try AI again"; }
+    if(m) m.textContent=(j&&j.message)||"Couldn't reach the AI. Your notes and anything typed below are kept.";
+    return;
+  }
+  const g=j.suggestion;
+  if(before.summary.meeting_summary && before.summary.meeting_summary!==String(fallback||"").trim()) g.meeting_summary=before.summary.meeting_summary;
+  for(const p of before.participants) if(/^at_m_/.test(p.key)) g.attendees.push({key:p.key,name:p.name,title:p.title,contact_id:p.contact_id,email:p.email||""});
+  for(const t of before.tasks) if(/^fu_m_/.test(t.key)) g.follow_ups.push({key:t.key,title:t.title,due_date:t.due_date||"",priority:t.priority,from:"other"});
+  for(const o of before.opportunities) if(/^op_m_/.test(o.key)) g.opportunities.push(Object.assign({},o));
+  REV.sug=g; REV.manual=false; REV.msg=null; REV.err=null; REV.retried=true;
   renderReview();
 }
 function optList(list,cur){ return list.map(o=>`<option value="${esc(o.v)}"${String(o.v)===String(cur||"")?" selected":""}>${esc(o.l)}</option>`).join(""); }
@@ -639,7 +667,8 @@ function renderReview(){
   const op=(g.opportunities||[]).map(o=>oppCard(o)).join("");
   const na=g.suggested_next_action||{};
   $("#rv_body").innerHTML=`
-    ${REV.msg?`<div class="rvnote">${esc(REV.msg)}</div>`:`<div class="rvnote ok">Suggested from your notes${REV.sug&&REV.sug.model?"":""} — edit anything, untick what's wrong. Nothing is saved until you approve.</div>`}
+    ${REV.msg?`<div class="rvnote">${esc(REV.msg)}${canRetryAi()?`<div style="margin-top:8px"><button class="btn go wide" id="rv_retry" onclick="tryAiAgain(this)">✨ Try AI again</button><div id="rv_aimsg" class="hint" style="margin-top:6px"></div></div>`:""}</div>`
+      :`<div class="rvnote ok">Suggested from your notes — edit anything, untick what's wrong. Nothing is saved until you approve.</div>`}
     <div class="rv-sec"><h4>Meeting summary</h4><textarea class="in" id="rv_sum" rows="4">${esc(g.meeting_summary||"")}</textarea></div>
     <details class="rv-sec"${filled?" open":""}><summary><h4 style="display:inline">What came up</h4> <span class="hint">${filled} section${filled===1?"":"s"}</span></summary>
       ${LISTS.filter(([k])=>(g[k]||[]).length).map(([k,l])=>listField(k,l,g)).join("")}
@@ -656,7 +685,8 @@ function renderReview(){
     <div class="rv-sec"><h4>Opportunities <span class="hint">→ Pipeline</span></h4><div id="rv_op">${op||`<div class="hint">No opportunity detected.</div>`}</div>
       <button class="btn wide" onclick="addOpp()">＋ Add an opportunity</button></div>
     <div class="rv-sec"><h4>Next action</h4>
-      <label class="rv-chk"><input type="checkbox" id="rv_na_on"${na.text?" checked":""}> Make it a task</label>
+      <label class="rv-chk"><input type="checkbox" id="rv_na_on"${na.text&&!na.duplicate_of?" checked":""}> Make it a task</label>
+      ${na.duplicate_of?`<div class="hint">Already a follow-up above${na.dup_title?` (“${esc(na.dup_title)}”)`:""} — left unticked so it isn't done twice.</div>`:""}
       <input class="in" id="rv_na" value="${esc(na.text||"")}" placeholder="e.g. Send pricing + literature"><input class="in" type="date" id="rv_na_d" value="${esc(na.due_date||"")}" style="margin-top:6px"></div>
     <button class="btn go xl wide" onclick="approveVisit()">✓ Approve &amp; save</button>
     <button class="btn wide" style="margin-top:8px" onclick="closeReview()">Not now — review later</button>
@@ -671,16 +701,18 @@ function attendeeCard(a){
     <div class="rv-top"><label class="rv-chk"><input type="checkbox" class="rv-on" checked></label>
       <div style="flex:1;min-width:0"><input class="in rv-name" value="${esc(a.name||"")}"><input class="in rv-title" value="${esc(a.title||"")}" placeholder="Title" style="margin-top:6px"></div></div>
     ${matched?`<div class="hint ok">✓ On file: ${esc(matched.name||a.name)}</div>`
-      :`<label class="rv-chk"><input type="checkbox" class="rv-new" checked> Add as a new Dealer 360 contact</label><input class="in rv-email" type="email" placeholder="Email (optional)">`}
+      :`<label class="rv-chk"><input type="checkbox" class="rv-new" checked> Add as a new Dealer 360 contact</label><input class="in rv-email" type="email" placeholder="Email (optional)" value="${esc(a.email||"")}">`}
   </div>`;
 }
 function followCard(f,ai){
-  return `<div class="rv-card" data-fu="${esc(f.key)}" data-ai="${ai?"1":""}">
-    <div class="rv-top"><label class="rv-chk"><input type="checkbox" class="rv-on" checked onchange="this.closest('.rv-card').classList.toggle('off',!this.checked)"></label>
+  const dup=!!f.dup_of;   // looks like a repeat of an earlier follow-up: shown, but unticked
+  return `<div class="rv-card${dup?" off":""}" data-fu="${esc(f.key)}" data-ai="${ai?"1":""}">
+    <div class="rv-top"><label class="rv-chk"><input type="checkbox" class="rv-on"${dup?"":" checked"} onchange="this.closest('.rv-card').classList.toggle('off',!this.checked)"></label>
       <input class="in rv-t" value="${esc(f.title||"")}" style="flex:1"></div>
     <div class="rv-row"><input class="in rv-d" type="date" value="${esc(f.due_date||"")}">
       <select class="in rv-p">${optList([{v:"high",l:"High"},{v:"normal",l:"Normal"},{v:"low",l:"Low"}],f.priority||"normal")}</select></div>
-    ${f.from&&f.from!=="other"?`<div class="hint">${esc(String(f.from).replace(/_/g," "))}</div>`:""}
+    ${dup?`<div class="hint">Looks like a repeat of “${esc(f.dup_title||"another follow-up")}” — left unticked. Tick it if it's separate work.</div>`
+      :(f.from&&f.from!=="other"?`<div class="hint">${esc(String(f.from).replace(/_/g," "))}</div>`:"")}
   </div>`;
 }
 function oppCard(o){
@@ -789,18 +821,43 @@ async function setFollow(i,status){
 async function draftVisitEmail(i){
   const s=DAY.stops[i], m=$("#rv_msg");
   if(!navigator.onLine){ if(m){ m.style.color="#b42323"; m.textContent="Drafting needs a connection — the visit is saved."; } return; }
-  const saved=REV&&REV.email;
-  if(saved&&saved.saved_at&&saved.body){ openDraft(s,saved.subject||"",saved.body||"","","Follow-up email — your saved draft",{visit:true,saved:true,to:saved.to}); return; }
   if(m){ m.style.color=""; m.textContent="Drafting from the approved summary…"; }
-  let reportId=(s.visit&&s.visit.id)||(REV&&REV.report_id)||null;
-  if(!reportId){ try{ const g=await rapi({action:"visit_report_get",route_id:DAY.route.id,dealer_id:s.dealer_id}); reportId=g&&g.report&&g.report.id; }catch(e){} }
+  // The visit as saved: its id, who attended (the email goes to them first) and any saved draft.
+  let reportId=(s.visit&&s.visit.id)||(REV&&REV.report_id)||null, attendees=[], saved=REV&&REV.email;
+  try{ const g=await rapi({action:"visit_report_get",route_id:DAY.route.id,dealer_id:s.dealer_id,detail:true});
+    if(g&&g.report){ reportId=reportId||g.report.id; if(g.report.followup_email) saved=g.report.followup_email; }
+    attendees=((g&&g.participants)||[]).filter(p=>p&&p.attended!==false).map(p=>({name:p.name_snapshot||"",title:p.title_snapshot||"",email:String(p.email_snapshot||"").trim()}));
+  }catch(e){}
+  if(saved&&saved.saved_at&&saved.body){ if(m) m.textContent=""; openDraft(s,saved.subject||"",saved.body||"","","Follow-up email — your saved draft",{visit:true,saved:true,to:saved.to,attendees}); return; }
+  const pick=pickVisitRecipients(recipientRows(s),attendees,"");
   let j=null;
   try{ const h={"content-type":"application/json"}; if(TOKEN) h["authorization"]="Bearer "+TOKEN;
-    const r=await fetch("/.netlify/functions/ai-email-api",{method:"POST",headers:h,body:JSON.stringify({action:"draft",dealer_id:s.dealer_id,template:"visit_followup",visit_report_id:reportId,contact_name:s.contact_name||""})});
+    const r=await fetch("/.netlify/functions/ai-email-api",{method:"POST",headers:h,body:JSON.stringify({action:"draft",dealer_id:s.dealer_id,template:"visit_followup",visit_report_id:reportId,contact_name:pick.greet})});
     j=await r.json().catch(()=>null); }catch(e){ j=null; }
   if(m) m.textContent="";
-  if(j&&j.ok&&j.subject){ openDraft(s,j.subject,j.body||"",j.signature||"","Follow-up email — review before sending",{visit:true}); return; }
+  if(j&&j.ok&&j.subject){ openDraft(s,j.subject,j.body||"",j.signature||"","Follow-up email — review before sending",{visit:true,attendees,warnings:j.warnings}); return; }
   if(m){ m.style.color="#b42323"; m.textContent=(j&&(j.message||j.error))||"Couldn't draft the email."; }
+}
+/* WHO A VISIT FOLLOW-UP GOES TO (Phase 1). Pure — tested.
+   · A saved draft keeps the address it was going to.
+   · One attendee with an email → that person, ticked.
+   · Several attendees with emails → all listed first, none ticked: the rep chooses.
+   · Nobody who attended has an email → the account's main contact, as before.
+   Attendees are listed first and never twice; attendees with no email are named so the rep knows. */
+function pickVisitRecipients(rows,attendees,savedTo){
+  const low=x=>String(x||"").trim().toLowerCase();
+  const att=(attendees||[]).filter(a=>a&&a.name);
+  const attRows=att.filter(a=>RCPT_RE.test(String(a.email||"").trim())).map(a=>({name:a.name,email:String(a.email).trim(),title:a.title||"",source:"attendee"}));
+  const seen=new Set(attRows.map(a=>low(a.email)));
+  const all=attRows.concat((rows||[]).filter(r=>r&&r.email&&!seen.has(low(r.email))));
+  const want=low(savedTo);
+  let pre=new Set(), note="", greet="";
+  if(want){ if(all.some(r=>low(r.email)===want)) pre.add(want); }
+  else if(attRows.length===1){ pre.add(low(attRows[0].email)); greet=attRows[0].name; }
+  else if(attRows.length>1){ note=`${attRows.length} people at the meeting have an email — tick who this goes to.`; }
+  else if(all.length){ pre.add(low(all[0].email)); greet=all[0].name||""; }
+  const noEmail=att.filter(a=>!RCPT_RE.test(String(a.email||"").trim())).map(a=>a.name);
+  return { rows:all, pre, note, greet, noEmail, extra: want&&!all.some(r=>low(r.email)===want) ? String(savedTo).trim() : "" };
 }
 async function headsUp(i){
   if(!navigator.onLine){ toast("Heads-up needs a connection"); return; }
@@ -879,22 +936,32 @@ function swapGreeting(body,name){
 let DRAFT=null;
 function openDraft(s,subject,body,signature,title,opts){
   opts=opts||{};
-  const rows=recipientRows(s);
   const full=body+(signature?`\n\n${signature}`:"");
-  const want=String(opts.to||"").trim().toLowerCase();
-  const pre=want&&rows.some(r=>String(r.email||"").toLowerCase()===want) ? (r=>String(r.email||"").toLowerCase()===want) : ((r,i)=>i===0);
-  const extra=want&&!rows.some(r=>String(r.email||"").toLowerCase()===want)?opts.to:"";
+  let rows, pre, extra, pickNote="", noEmail=[];
+  if(opts.visit){
+    const p=pickVisitRecipients(recipientRows(s),opts.attendees||[],opts.to||"");
+    rows=p.rows; extra=p.extra; pickNote=p.note; noEmail=p.noEmail;
+    pre=(r)=>p.pre.has(String(r.email||"").trim().toLowerCase());
+  } else {
+    rows=recipientRows(s);
+    const want=String(opts.to||"").trim().toLowerCase();
+    pre=want&&rows.some(r=>String(r.email||"").toLowerCase()===want) ? (r=>String(r.email||"").toLowerCase()===want) : ((r,i)=>i===0);
+    extra=want&&!rows.some(r=>String(r.email||"").toLowerCase()===want)?opts.to:"";
+  }
   DRAFT=opts.visit?{visit:true,dealer_id:s.dealer_id,route_id:(DAY&&DAY.route&&DAY.route.id)||null,report_id:(s.visit&&s.visit.id)||(REV&&REV.report_id)||null}:null;
   const people=rows.length
     ? rows.map((r,i)=>`<label class="rcpt"><input type="checkbox" class="d_p" data-email="${esc(r.email)}" data-name="${esc(r.name)}"${pre(r,i)?" checked":""} onchange="draftWho()">
-        <span><b>${esc(r.name||r.email)}</b>${r.title?` <span class="hint">· ${esc(r.title)}</span>`:""}${r.source==="account"?` <span class="hint">· account email</span>`:""}<br><span class="hint">${esc(r.email)}</span></span></label>`).join("")
+        <span><b>${esc(r.name||r.email)}</b>${r.title?` <span class="hint">· ${esc(r.title)}</span>`:""}${r.source==="attendee"?` <span class="hint">· at the meeting</span>`:""}${r.source==="account"?` <span class="hint">· account email</span>`:""}<br><span class="hint">${esc(r.email)}</span></span></label>`).join("")
     : `<div class="hint">No email on file for this account — type one below.</div>`;
   const old=document.getElementById("draftwrap"); if(old) old.remove();
   const wrap=document.createElement("div"); wrap.className="modal"; wrap.id="draftwrap"; wrap.onclick=e=>{ if(e.target===wrap) wrap.remove(); };
   wrap.innerHTML=`<div class="sheet">
     <h3>${esc(title||"Email — review before sending")}</h3>
+    ${(opts.warnings||[]).map(w=>`<div class="rvnote">${esc(w)}</div>`).join("")}
     <label class="fl">To</label>
+    ${pickNote?`<div class="hint" style="margin:0 0 6px;color:#8a5a08">${esc(pickNote)}</div>`:""}
     <div id="d_people">${people}</div>
+    ${noEmail.length?`<div class="hint" style="margin:0 0 6px">Also at the meeting, no email on file: ${esc(noEmail.join(", "))}</div>`:""}
     <input class="in" id="d_extra" placeholder="another email address (optional)" value="${esc(extra)}" oninput="draftWho()">
     <div id="d_who" class="hint" style="margin-top:6px"></div>
     <label class="fl">Subject</label><input class="in" id="d_sub" value="${esc(subject)}">

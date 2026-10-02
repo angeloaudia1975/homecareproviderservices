@@ -157,4 +157,21 @@ module.exports = {
   '1 CC: rep list offered to reps':     { file: 'rep-command-api.js', from: 'if(!canPick) return json(200,{ok:true,reps:[]});', to: '' },
   '1 CC: tasks first page only':        { file: 'rep-command-api.js', from: 'getAll(`dealer_tasks?status=eq.open&or=(${mineTasks})&select=', to: 'sbGet(`dealer_tasks?status=eq.open&or=(${mineTasks})&select=' },
   "1 CC: another rep's route shown":    { file: 'rep-command-api.js', from: 'const mineRoutes=(routes||[]).filter(r=>r.assigned_to_email ? low(r.assigned_to_email)===who.email : low(r.owner_email)===who.email);', to: 'const mineRoutes=(routes||[]);' },
+  // ---- Phase 1 blocker fixes ----
+  '1F AI: no automatic retry':          { file: '_visit_ai.js', from: 'if(!res.ok && res.retry && left >= minRetry){', to: 'if(false){' },
+  '1F AI: old output allowance':        { file: '_visit_ai.js', from: 'const MAX_TOKENS = 4096;', to: 'const MAX_TOKENS = 1800;' },
+  '1F AI: shape not validated':         { file: '_visit_ai.js', from: '  if(!validRaw(raw)) return { ok: false, error: "ai_invalid"', to: '  if(false) return { ok: false, error: "ai_invalid"' },
+  '1F AI: naive JSON parse':            { file: '_visit_ai.js', from: 'const t = String(text == null ? "" : text).replace(/```(?:json)?/gi, "");', to: 'const t = String(text == null ? "" : text); { const a = t.indexOf("{"), b = t.lastIndexOf("}"); try{ return JSON.parse(t.slice(a, b + 1)); }catch(_){ return null; } }' },
+  '1F AI: retries without limit':       { file: '_visit_ai.js', from: '    attempts = 2;\n  }', to: '    attempts = 2;\n    if(!res.ok) res = await callOnce(i, 5000), attempts = 3;\n  }' },
+  '1F QA retry switch for anyone':      { file: 'routes-api.js', from: 'const qaFail=b.qa_fail_first===true && me.role==="president" && dealer.is_test===true;', to: 'const qaFail=b.qa_fail_first===true;' },
+  '1F repeated follow-up ticked':       { file: '_visit_ai.js', from: 'if(twin){ item.dup_of = twin.key; item.dup_title = twin.title; }', to: '' },
+  '1F repeated next action ticked':     { file: '_visit_ai.js', from: 'if(next.text){ const twin', to: 'if(false){ const twin' },
+  '1F dates ignored in repeats':        { file: '_visit_ai.js', from: 'if(da && db && da !== db) return false;', to: '' },
+  '1G visit for a dealer that does not exist':{ file: 'routes-api.js', from: 'if(!ex) return json(404,{error:"Dealer not found."});', to: '' },
+  '1H email: no visit date':            { file: 'ai-email-api.js', from: 'recap=(visitDay?`Visit date: ${visitDay.long} (the meeting was in person)\\n`:"")+visitRecapLines(v);', to: 'recap=visitRecapLines(v);' },
+  '1H email: relative days left in':    { file: 'ai-email-api.js', from: 'subject=fixRelativePast(subject,visitDay.md); body=fixRelativePast(body,visitDay.md);', to: '' },
+  '1H email: no rewrite asked for':     { file: 'ai-email-api.js', from: 'if(visitDay && RELATIVE_DAY.test(`${g.subject}\\n${g.body}`)){', to: 'if(false){' },
+  '1H email: QA date on a real dealer': { file: 'ai-email-api.js', from: 'if(dt&&dt[0]&&dt[0].is_test===true && Number.isFinite', to: 'if(Number.isFinite' },
+  // ("one attendee → that attendee" also follows from attendees being listed first, so a mutant of that branch is equivalent.)
+  '1I recipient: picks for the rep':    { file: 'scheduled-routes.html', from: 'else if(attRows.length>1){ note=', to: 'else if(attRows.length>1){ pre.add(low(attRows[0].email)); note=' },
 };

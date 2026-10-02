@@ -38,7 +38,9 @@ function world() {
   const S = standardSeed({
     rep_routes: [{ id: 'r-1', owner_email: 'angelo@hcps.us', assigned_to_email: 'greg@hcps.us', assigned_to_rep: 'Greg Campbell', rep_name: 'Angelo Audia', name: 'KY loop', scheduled_date: TODAY,
       stops: [{ dealer_id: 'd-greg', name: 'Glasgow Prescription Center', city: 'Glasgow', state: 'KY' }, { dealer_id: 'd-dir-greg', name: 'Directory Only Dealer', city: 'Bowling Green', state: 'KY' }] },
-      { id: 'r-ang', owner_email: 'angelo@hcps.us', rep_name: 'Angelo Audia', name: 'TN loop', scheduled_date: TODAY, stops: [{ dealer_id: 'd-ang', name: 'RMS' }] }],
+      { id: 'r-ang', owner_email: 'angelo@hcps.us', rep_name: 'Angelo Audia', name: 'TN loop', scheduled_date: TODAY, stops: [{ dealer_id: 'd-ang', name: 'RMS' }] },
+      { id: 'r-2', owner_email: 'angelo@hcps.us', assigned_to_email: 'greg@hcps.us', assigned_to_rep: 'Greg Campbell', rep_name: 'Angelo Audia', name: 'KY loop (afternoon)', scheduled_date: TODAY,
+        stops: [{ dealer_id: 'd-greg', name: 'Glasgow Prescription Center', city: 'Glasgow', state: 'KY' }] }],
     dealer_visit_reports: [],
     dealer_contacts: [{ id: 'c-bryant', dealer_id: 'd-greg', name: 'Bryant Smith', email: 'bryant@glasgow.test', title: 'Pharmacist', phone: '270-111' }],
     manufacturers: [{ slug: 'golden-technologies', name: 'Golden Technologies' }, { slug: 'strongback-mobility', name: 'Strongback Mobility' }],
@@ -49,8 +51,12 @@ function world() {
     dealer_visits: [['visit_report_id']], dealer_visit_participants: [['visit_report_id', 'name_key']], dealer_contacts: [['dealer_id', 'email']],
     dealer_visit_reports: [['route_id', 'dealer_id']] };
   S.catalog = { 'golden-technologies': [{ code: 'PR-519', name: 'Golden PR519 Lift Chair', base_price: 899 }] };
-  S.ai = body => /MEETING RECAP/.test(JSON.stringify(body)) ? { subject: 'Following up on our visit', body: 'Hi Bryant,\n\nThanks for the time today. As promised, PR519 pricing is on its way.' } : AI_VISIT;
-  return createWorld(S);
+  // AI.fail > 0: that many summary calls come back cut off (the live failure), to drive the retry paths.
+  const AI = { fail: 0, calls: 0 };
+  S.ai = body => { if (/MEETING RECAP/.test(JSON.stringify(body))) return { subject: 'Following up on our visit', body: 'Hi Bryant,\n\nThank you for meeting with me on October 2. As promised, PR519 pricing is on its way.' };
+    AI.calls++; if (AI.fail > 0) { AI.fail--; return { status: 200, body: { content: [{ type: 'text', text: '{"meeting_summary":"Met Bry' }], stop_reason: 'max_tokens' } }; }
+    return AI_VISIT; };
+  const w = createWorld(S); w.AI = AI; return w;
 }
 
 const PROFILES = {
@@ -148,11 +154,14 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
     const cards = await page.$$('#rv_fu .rv-card');
     await (await cards[1].$('.rv-on')).uncheck();
     await (await cards[0].$('.rv-d')).fill(IN7); await (await cards[0].$('.rv-p')).selectOption('normal');
+    // The suggested next action ("Send pricing") repeats the first follow-up: offered, but unticked.
+    assert.strictEqual(await page.isChecked('#rv_na_on'), false, 'the duplicate next action was ticked');
+    assert.ok(/Already a follow-up above/.test(await page.textContent('#rv_body')), 'no explanation for the unticked next action');
     await page.evaluate(() => { const b = document.querySelector('#rv_body > .btn.go.xl'); b.click(); b.click(); });
     await page.waitForSelector('.rv-done', { timeout: 15000 });
-    const txt = await page.textContent('.rv-done'); assert.ok(/2 follow-ups → My Tasks · 1 opportunity → Pipeline · 1 new contact/.test(txt), txt);
+    const txt = await page.textContent('.rv-done'); assert.ok(/1 follow-up → My Tasks · 1 opportunity → Pipeline · 1 new contact/.test(txt), txt);
     const tasks = w.db.dealer_tasks.filter(t => t.origin_type === 'visit_report');
-    assert.strictEqual(tasks.length, 2, 'expected the edited follow-up + the next action');
+    assert.strictEqual(tasks.length, 1, 'expected only the edited follow-up (the repeat next action stays unticked)');
     const fu = tasks.find(t => t.title === 'Send PR519 pricing'); assert.strictEqual(fu.due_date, IN7); assert.strictEqual(fu.priority, 'normal');
     assert.ok(!tasks.some(t => t.title === 'Call Bryant back'), 'the rejected follow-up was created');
     assert.strictEqual(n(w, 'opportunities'), 1); assert.strictEqual(n(w, 'dealer_contacts', c => c.dealer_id === 'd-greg'), 2);
@@ -163,6 +172,10 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
     const before = w.outbound.filter(x => x.kind === 'graph' && /sendMail/.test(x.url)).length;
     await page.click('.rv-done .btn.go.xl'); await page.waitForSelector('#draftwrap #d_body');
     assert.ok(/PR519 pricing/.test(await page.inputValue('#d_body')));
+    // One attendee has an email → they are the recipient; the one without is named.
+    const ticked = await page.$$eval('#d_people .d_p', xs => xs.filter(x => x.checked).map(x => x.getAttribute('data-email')));
+    assert.deepStrictEqual(ticked, ['bryant@glasgow.test'], 'recipient: ' + ticked);
+    assert.ok(/no email on file: Stacey New/.test(await page.textContent('#draftwrap')), 'the attendee without an email is not mentioned');
     assert.strictEqual(w.outbound.filter(x => x.kind === 'graph' && /sendMail/.test(x.url)).length, before, 'drafting sent an email');
     await page.click('#draftwrap button:has-text("Save draft")'); await page.waitForFunction(() => /Draft saved/.test((document.getElementById('d_msg') || {}).textContent || ''));
     const rep = w.db.dealer_visit_reports.find(r => r.dealer_id === 'd-greg');
@@ -209,6 +222,37 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
     await page.evaluate(b => { enqueue(JSON.parse(b)); return flushOutbox(); }, last.body);
     assert.strictEqual(JSON.stringify([n(w, 'dealer_tasks'), n(w, 'dealer_notes'), n(w, 'dealer_visits'), n(w, 'dealer_activity')]), before, 'a replay duplicated records');
   });
+  /* ───────────── AI fails twice → manual review with Try AI again; the rep's own additions survive ───────────── */
+  await step('AI failure: review still opens; Try AI again works in place; the rep\'s added follow-up is kept; several attendees → rep picks the recipient', async () => {
+    await page.goto(`${B}/admin/scheduled-routes.html?route=r-2`); await page.waitForSelector('#stop_0 .btn.go.xl');
+    await page.click('#stop_0 .btn.go.xl'); await page.waitForSelector('#vn_0');
+    await page.fill('#vn_0', 'Second call at Glasgow. Bryant and Pat Lee. Send PR519 pricing.');
+    w.AI.fail = 2; const c0 = w.AI.calls;
+    await page.click('#stop_0 .vmode .btn.go.xl'); await page.waitForSelector('#rv_retry', { timeout: 15000 });
+    assert.strictEqual(w.AI.calls - c0, 2, 'the server did not retry exactly once');
+    assert.ok(/notes are saved/i.test(await page.textContent('#rv_body .rvnote')));
+    assert.strictEqual(await page.inputValue('#rv_sum'), 'Second call at Glasgow. Bryant and Pat Lee. Send PR519 pricing.', 'the notes were not kept in the manual summary');
+    assert.strictEqual(n(w, 'dealer_tasks', t => t.origin_type === 'visit_report' && t.dealer_id === 'd-greg'), 1, 'records created before approval');
+    await page.click('#rv_body button:has-text("Add a follow-up")'); await page.fill('#rv_fu .rv-card:last-child .rv-t', 'Drop off a fabric sample');
+    await page.fill('#rv_atname', 'Pat Lee'); await page.click('#rv_body .rv-add button');
+    await page.fill('#rv_at .rv-card:last-child .rv-email', 'pat@glasgow.test');
+    await page.screenshot({ path: path.join(SHOTS, 'ai-fail-manual.png'), fullPage: true });
+    await page.click('#rv_retry'); await page.waitForSelector('#rv_body .rvnote.ok', { timeout: 15000 });
+    const fus = await page.$$eval('#rv_fu .rv-card .rv-t', xs => xs.map(x => x.value));
+    assert.ok(fus.includes('Send PR519 pricing') && fus.includes('Drop off a fabric sample'), 'follow-ups after retry: ' + fus);
+    const att = await page.$$eval('#rv_at .rv-card .rv-name', xs => xs.map(x => x.value)); assert.ok(att.includes('Pat Lee'), 'the added attendee was lost: ' + att);
+    await page.screenshot({ path: path.join(SHOTS, 'ai-retry-ok.png'), fullPage: true });
+    assert.strictEqual(await page.inputValue('#rv_at .rv-card:last-child .rv-email'), 'pat@glasgow.test', 'the email typed before the retry was lost');
+    await page.click('#rv_body > .btn.go.xl'); await page.waitForSelector('.rv-done', { timeout: 15000 });
+    await page.click('.rv-done .btn.go.xl'); await page.waitForSelector('#draftwrap #d_body');
+    const ticked = await page.$$eval('#d_people .d_p', xs => xs.filter(x => x.checked).map(x => x.getAttribute('data-email')));
+    assert.deepStrictEqual(ticked, [], 'a recipient was chosen for the rep: ' + ticked);
+    assert.ok(/2 people at the meeting have an email — tick who this goes to/.test(await page.textContent('#draftwrap')));
+    await page.click('#d_people .rcpt:has-text("Pat Lee")');
+    assert.ok(/^Hi Pat,/.test(await page.inputValue('#d_body')), 'the greeting did not follow the chosen recipient');
+    await page.screenshot({ path: path.join(SHOTS, 'email-multi-attendee.png'), fullPage: true });
+    await page.click('#draftwrap button:has-text("Close")'); await page.click('.rv-done .btn.xl:not(.go)');
+  });
   await step('field: no JavaScript errors', async () => { assert.deepStrictEqual(errors.filter(e => /^field/.test(e)), []); });
   await ctx.close();
 
@@ -239,11 +283,12 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
       if (label === 'phone') await noHScroll(p, 'Dealer 360 phone');
       await p.$eval('#visitsCard', e => e.scrollIntoView()); await p.screenshot({ path: path.join(SHOTS, `d360-${label}.png`) });
       // Completing the visit's last open task from here moves the follow-up status.
-      const open = w.db.dealer_tasks.filter(t => t.origin_type === 'visit_report' && t.status === 'open' && t.dealer_id === 'd-greg');
+      const firstVisit = await p.$eval('#visits .vm[data-id]', e => e.getAttribute('data-id'));
+      const open = w.db.dealer_tasks.filter(t => t.origin_type === 'visit_report' && t.status === 'open' && t.origin_id === firstVisit);
       if (label === 'desktop') {
         await p.click('#visits .vm button:has-text("View tasks")');
         for (const t of open) { await p.click(`#visits .vm-more .tkchk[onclick*="${t.id}"]`); await p.waitForTimeout(400); await p.click('#visits .vm button:has-text("View tasks")').catch(() => {}); }
-        const rep = w.db.dealer_visit_reports.find(r => r.dealer_id === 'd-greg');
+        const rep = w.db.dealer_visit_reports.find(r => r.id === firstVisit);
         // the deal is still at its approved stage, so the visit stays pending until it moves
         assert.strictEqual(rep.followup_status, 'pending');
       }
@@ -284,6 +329,6 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
   });
 
   await browser.close(); srv.close();
-  console.log(`\nPhase 1 UI: ${pass} passed, ${fail} failed  (screenshots in ' + SHOTS + ')`);
+  console.log(`\nPhase 1 UI: ${pass} passed, ${fail} failed  (screenshots in ${SHOTS})`);
   process.exitCode = fail ? 1 : 0;
 })().catch(e => { console.log('CRASH', e); process.exitCode = 1; });

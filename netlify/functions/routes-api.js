@@ -436,6 +436,14 @@ async function dealersOffReach(me, ids){
   for(const r of (rs||[])) for(const st of (Array.isArray(r.stops)?r.stops:[])) if(st&&st.dealer_id) onMine.add(String(st.dealer_id));
   return off.filter(id=>!onMine.has(id));
 }
+// Visit writes are refused for a dealer id that matches no dealer (Phase 1 live finding).
+const VISIT_WRITE_ACTIONS=new Set(["visit_checkin","visit_end","visit_analyze","visit_approve","visit_report_save",
+  "visit_followup_set","visit_email_save","log_visit","save_visit"]);
+// true = exists · false = no such dealer (or not a valid id) · null = couldn't tell right now.
+async function dealerExists(id){
+  try{ const rows=await sbGet(`dealers?id=eq.${encodeURIComponent(String(id))}&select=id&limit=1`); return Array.isArray(rows)&&rows.length>0; }
+  catch(e){ return /Supabase 4\d\d|22P02|invalid input syntax/i.test(String(e&&e.message||e)) ? false : null; }
+}
 
 /* A rep's map must never start from someone else's house. The start point is resolved
    in this order and never falls back to the creator: whatever the route itself records,
@@ -667,6 +675,14 @@ exports.handler = async (event)=>{
       const want=b.action==="business_case"?(Array.isArray(b.dealer_ids)?b.dealer_ids:[]):[b.dealer_id];
       const off=await dealersOffReach(me,want);
       if(off.length) return json(403,{error:"Not your dealer",dealer_ids:off});
+    }
+    /* A visit is only ever recorded against a dealer that exists — for every role. Management can
+       visit any dealer, so this is the check that stops a mistyped or stale id becoming a stray visit.
+       A database hiccup is a 503 (retry later), never a "not found". */
+    if(VISIT_WRITE_ACTIONS.has(b.action) && b.dealer_id){
+      const ex=await dealerExists(b.dealer_id);
+      if(ex===null) return json(503,{error:"Couldn't check the dealer right now — try again."});
+      if(!ex) return json(404,{error:"Dealer not found."});
     }
 
     // ---------- Business-case trip packet: per-stop history, contacts, opportunities ----------
@@ -1409,14 +1425,18 @@ exports.handler = async (event)=>{
       if(empty) return json(200,Object.assign({ok:false,report_id:r.id,error:"no_notes",message:"Nothing to summarize yet — write the summary below, or go back and dictate."},pickers));
       const sales=await sbGet(`monthly_sales?dealer_id=eq.${encodeURIComponent(did)}&select=product_name&limit=600`).catch(()=>[]);
       const products=[...new Set((sales||[]).map(x=>String(x.product_name||"").trim()).filter(Boolean))];
+      /* QA only: the president, on a TEST dealer, can ask for the first AI answer to be thrown away
+         to prove the automatic retry on the live service. It changes nothing else and is refused for
+         everyone and everything else. */
+      const qaFail=b.qa_fail_first===true && me.role==="president" && dealer.is_test===true;
       const res=await VAI.summarize({transcript,notes,visitDate,weekday,dealerName:dealer.business_name||"",repName:me.name||me.rep_name||"",
-        contacts:contacts||[],mfrs,products,fetch,apiKey:AI_KEY,model:VISIT_AI_MODEL});
-      if(!res.ok) return json(200,Object.assign({ok:false,report_id:r.id,error:res.error,message:res.message},pickers));
+        contacts:contacts||[],mfrs,products,fetch,apiKey:AI_KEY,model:VISIT_AI_MODEL,forceFirstInvalid:qaFail});
+      if(!res.ok) return json(200,Object.assign({ok:false,report_id:r.id,error:res.error,message:res.message,attempts:res.attempts},pickers));
       const sug=VAI.normalizeSuggestion(res.raw,{visitDate,contacts:contacts||[],mfrs});
       await VAI.priceLookup(sug.opportunities,{loadCatalog});
       Object.assign(sug,{input_hash:inputHash,generated_at:nowIso,model:VISIT_AI_MODEL});
       try{ await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(r.id)}`,{ai_suggestion:sug,ai_suggested_at:nowIso},{Prefer:"return=minimal"}); }catch(e){}
-      return json(200,Object.assign({ok:true,report_id:r.id,suggestion:sug},pickers));
+      return json(200,Object.assign({ok:true,report_id:r.id,suggestion:sug,attempts:res.attempts,qa_forced:res.forced||undefined},pickers));
     }
 
     if(b.action==="visit_approve"){
