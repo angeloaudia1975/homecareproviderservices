@@ -620,7 +620,7 @@ async function openReview(i){
   try{ j=await rapi({action:"visit_analyze",route_id:DAY.route.id,dealer_id:s.dealer_id,notes:notes||undefined,transcript:tx||undefined,local_date:todayStr()}); }catch(e){ j=null; }
   if(!REV) return;
   if(j){ REV.contacts=j.contacts||[]; REV.mfrs=j.manufacturers||[]; REV.report_id=j.report_id||null; }
-  if(j&&j.ok&&j.suggestion){ REV.sug=j.suggestion; if(j.suggestion.partial) partialNote(); }
+  if(j&&j.ok&&j.suggestion){ REV.sug=j.suggestion; if(j.suggestion.partial) partialNote(j.suggestion.partial); }
   else { REV.manual=true; REV.err=(j&&j.error)||"no_connection"; REV.sug=emptySuggestion(notes||tx);
     REV.msg=(j&&j.message)||"Couldn't reach the AI. Your notes are saved — try the AI again, or fill in the summary yourself."; }
   renderReview();
@@ -629,8 +629,11 @@ async function openReview(i){
    (and already saved on the visit). Anything the rep added by hand — attendees, follow-ups, deals,
    a summary they rewrote — is carried over into the new suggestion rather than thrown away. */
 function canRetryAi(){ return REV && (REV.manual||REV.partial) && !["ai_unavailable","no_notes"].includes(REV.err); }
-/* The summary came back but the follow-ups/deals half didn't: show what we have and say so. */
-function partialNote(){ REV.partial=true; REV.msg="The summary is in, but the AI didn't finish the follow-ups and deals. Add them below, or try the AI again — nothing you type is lost."; }
+/* The summary came back but the follow-ups and/or the deals didn't: show what we have and say which. */
+function partialNote(kind){
+  const what=kind==="follow_ups"?"the follow-ups":kind==="opportunities"?"the opportunities":"the follow-ups and deals";
+  REV.partial=true; REV.msg=`The summary is in, but the AI didn't finish ${what}. Add them below, or try the AI again — nothing you type is lost.`;
+}
 async function tryAiAgain(btn){
   if(!REV) return; const s=DAY.stops[REV.i], k=vkey(s), m=$("#rv_aimsg");
   if(!navigator.onLine){ if(m) m.textContent="Still offline — the AI needs a connection."; return; }
@@ -652,7 +655,7 @@ async function tryAiAgain(btn){
   for(const t of before.tasks) if(/^fu_m_/.test(t.key)) g.follow_ups.push({key:t.key,title:t.title,due_date:t.due_date||"",priority:t.priority,from:"other"});
   for(const o of before.opportunities) if(/^op_m_/.test(o.key)) g.opportunities.push(Object.assign({},o));
   REV.sug=g; REV.manual=false; REV.partial=false; REV.msg=null; REV.err=null; REV.retried=true;
-  if(g.partial) partialNote();
+  if(g.partial) partialNote(g.partial);
   renderReview();
 }
 function optList(list,cur){ return list.map(o=>`<option value="${esc(o.v)}"${String(o.v)===String(cur||"")?" selected":""}>${esc(o.l)}</option>`).join(""); }

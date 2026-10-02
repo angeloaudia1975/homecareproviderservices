@@ -1434,7 +1434,7 @@ exports.handler = async (event)=>{
       if(!res.ok) return json(200,Object.assign({ok:false,report_id:r.id,error:res.error,message:res.message,attempts:res.attempts},pickers));
       const sug=VAI.normalizeSuggestion(res.raw,{visitDate,contacts:contacts||[],mfrs});
       await VAI.priceLookup(sug.opportunities,{loadCatalog});
-      // partial: the follow-ups half didn't come back — the screen says so and offers Try AI again.
+      // partial: the follow-ups and/or deals part didn't come back — the screen says which and offers Try AI again.
       Object.assign(sug,{input_hash:inputHash,generated_at:nowIso,model:VISIT_AI_MODEL,partial:res.partial||undefined});
       try{ await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(r.id)}`,{ai_suggestion:sug,ai_suggested_at:nowIso},{Prefer:"return=minimal"}); }catch(e){}
       return json(200,Object.assign({ok:true,report_id:r.id,suggestion:sug,attempts:res.attempts,qa_forced:res.forced||undefined},pickers));

@@ -295,9 +295,9 @@ async function startEndAnalyze(w, extra) {
     const w = W(); let calls = 0; const S = seed(); S.ai = () => { calls++; return AI_OUT; }; const w2 = createWorld(S);
     await R(w2, Object.assign({ action: 'visit_checkin' }, stop));
     const body = Object.assign({ action: 'visit_analyze', notes: 'same notes', local_date: TODAY }, stop);
-    // One summary = two AI requests made at the same time (what happened / what happens next).
-    await R(w2, body); const c2 = await R(w2, body); assert.strictEqual(c2.body.cached, true); assert.strictEqual(calls, 2);
-    await R(w2, Object.assign({ refresh: true }, body)); assert.strictEqual(calls, 4);
+    // One summary = three AI requests made at the same time (what happened / follow-ups / deals).
+    await R(w2, body); const c2 = await R(w2, body); assert.strictEqual(c2.body.cached, true); assert.strictEqual(calls, 3);
+    await R(w2, Object.assign({ refresh: true }, body)); assert.strictEqual(calls, 6);
     await R(w, Object.assign({ action: 'visit_checkin' }, stop));
     const off = await R(w, Object.assign({ action: 'visit_analyze', notes: 'x' }, stop), 'greg', { ANTHROPIC_API_KEY: '' });
     assert.strictEqual(off.body.ok, false); assert.strictEqual(off.body.error, 'ai_unavailable');
@@ -354,8 +354,9 @@ async function startEndAnalyze(w, extra) {
     await R(w, Object.assign({ action: 'visit_checkin' }, stop));
     const a = await R(w, Object.assign({ action: 'visit_analyze', notes: 'Met Bryant.', local_date: TODAY }, stop));
     assert.strictEqual(a.body.ok, true, JSON.stringify(a.body)); assert.strictEqual(a.body.attempts, 2);
-    assert.strictEqual(prompts.length, 3, 'expected 2 halves + 1 retry');
+    assert.strictEqual(prompts.length, 4, 'expected 3 parts + 1 retry');
     assert.strictEqual(prompts.filter(p => /WHAT HAPPENED/.test(p)).length, 2); assert.strictEqual(prompts.filter(p => /WHAT HAPPENS NEXT/.test(p)).length, 1);
+    assert.strictEqual(prompts.filter(p => /covers the DEALS/.test(p)).length, 1);
     const retry = prompts.find(p => /previous answer was cut off/.test(p)); assert.ok(retry && /WHAT HAPPENED/.test(retry), 'the retry did not ask for a shorter answer');
     assert.ok(/minified JSON/.test(prompts[0]), 'compact output was not requested');
     assert.ok(/"max_tokens":4096/.test(prompts[0]), 'the output allowance was not raised');
@@ -370,13 +371,13 @@ async function startEndAnalyze(w, extra) {
     const S2 = seed(); let m = 0; S2.ai = () => { m++; return 'Here you go:\n```json\n' + JSON.stringify(AI_OUT) + '\n```\nNote: {not json}'; };
     const w2 = createWorld(S2); await R(w2, Object.assign({ action: 'visit_checkin' }, stop));
     const b2 = await R(w2, Object.assign({ action: 'visit_analyze', notes: 'n2', local_date: TODAY }, stop));
-    assert.strictEqual(b2.body.ok, true, JSON.stringify(b2.body)); assert.strictEqual(b2.body.attempts, 1); assert.strictEqual(m, 2, 'one request per half');
+    assert.strictEqual(b2.body.ok, true, JSON.stringify(b2.body)); assert.strictEqual(b2.body.attempts, 1); assert.strictEqual(m, 3, 'one request per part');
   });
   await t('AI: both attempts fail → a usable manual review; notes kept; the rep can still approve by hand', async () => {
     const S = seed(); let n = 0; S.ai = () => { n++; return cut('{"meeting_summary":"trunc', 'max_tokens'); };
     const w = createWorld(S); await R(w, Object.assign({ action: 'visit_checkin' }, stop)); await R(w, Object.assign({ action: 'visit_end' }, stop));
     const a = await R(w, Object.assign({ action: 'visit_analyze', notes: 'Met Bryant. Send pricing Friday.', local_date: TODAY }, stop));
-    assert.strictEqual(a.body.ok, false); assert.strictEqual(a.body.attempts, 2); assert.strictEqual(n, 4, 'more than one retry per half');
+    assert.strictEqual(a.body.ok, false); assert.strictEqual(a.body.attempts, 2); assert.strictEqual(n, 6, 'more than one retry per part');
     assert.ok(/notes are saved/i.test(a.body.message), a.body.message);
     assert.ok((a.body.contacts || []).length && (a.body.manufacturers || []).length, 'pickers missing on failure');
     assert.strictEqual(w.db.dealer_visit_reports[0].fields.notes, 'Met Bryant. Send pricing Friday.');
@@ -391,7 +392,7 @@ async function startEndAnalyze(w, extra) {
     const w = createWorld(S);
     await R(w, { action: 'visit_checkin', dealer_id: 'd-test' }, 'pres');
     const q = await R(w, { action: 'visit_analyze', dealer_id: 'd-test', notes: 'qa', local_date: TODAY, qa_fail_first: true }, 'pres');
-    assert.strictEqual(q.body.ok, true); assert.strictEqual(q.body.attempts, 2); assert.strictEqual(q.body.qa_forced, true); assert.strictEqual(n, 3, 'two halves + the forced retry');
+    assert.strictEqual(q.body.ok, true); assert.strictEqual(q.body.attempts, 2); assert.strictEqual(q.body.qa_forced, true); assert.strictEqual(n, 4, 'three parts + the forced retry');
     await R(w, Object.assign({ action: 'visit_checkin' }, stop));
     const g = await R(w, Object.assign({ action: 'visit_analyze', notes: 'rep', local_date: TODAY, qa_fail_first: true }, stop));
     assert.strictEqual(g.body.attempts, 1, 'a rep could force a retry'); assert.ok(!g.body.qa_forced);
@@ -399,7 +400,7 @@ async function startEndAnalyze(w, extra) {
     const p = await R(w, { action: 'visit_analyze', route_id: 'r-ang', dealer_id: 'd-ang', notes: 'real dealer', local_date: TODAY, qa_fail_first: true }, 'pres');
     assert.strictEqual(p.body.attempts, 1, 'the switch worked on a real dealer');
   });
-  await t('AI: the summary is asked for in two halves; if only the follow-ups half fails the review opens with what came back, marked partial', async () => {
+  await t('AI: the summary is asked for in three parts; if a later part fails the review opens with what came back, marked partial', async () => {
     const S = seed(); let next = 0;
     S.ai = b => { const p = JSON.stringify(b);
       if(/WHAT HAPPENS NEXT/.test(p)){ next++; return cut('{"follow_ups":[{"title":"Send pri', 'max_tokens'); }
@@ -408,15 +409,23 @@ async function startEndAnalyze(w, extra) {
     const w = createWorld(S); await R(w, Object.assign({ action: 'visit_checkin' }, stop));
     const body = Object.assign({ action: 'visit_analyze', notes: 'Met Bryant.', local_date: TODAY }, stop);
     const a = await R(w, body);
-    assert.strictEqual(a.body.ok, true, JSON.stringify(a.body)); assert.strictEqual(a.body.suggestion.partial, 'actions');
+    assert.strictEqual(a.body.ok, true, JSON.stringify(a.body)); assert.strictEqual(a.body.suggestion.partial, 'follow_ups');
     assert.ok(a.body.suggestion.meeting_summary, 'the summary that did come back was lost'); assert.strictEqual(a.body.suggestion.attendees.length, AI_OUT.attendees.length);
-    assert.strictEqual(a.body.suggestion.follow_ups.length, 0, 'a stray follow-up from the wrong half was used'); assert.strictEqual(next, 2, 'the follow-ups half was not retried once');
+    assert.strictEqual(a.body.suggestion.opportunities.length, AI_OUT.opportunities.length, 'the deals that did come back were lost');
+    assert.strictEqual(a.body.suggestion.follow_ups.length, 0, 'a stray follow-up from another part was used'); assert.strictEqual(next, 2, 'the follow-ups part was not retried once');
     assert.strictEqual(n_(w, 'dealer_tasks'), 0, 'records created before approval');
     const again = await R(w, body); assert.ok(!again.body.cached, 'a partial summary was served from cache'); assert.strictEqual(next, 4);
     // the follow-ups half's own stray summary never replaces the real one
     const S2 = seed(); S2.ai = b => /WHAT HAPPENS NEXT/.test(JSON.stringify(b)) ? Object.assign({}, AI_OUT, { meeting_summary: 'WRONG' }) : AI_OUT;
     const w2 = createWorld(S2); await R(w2, Object.assign({ action: 'visit_checkin' }, stop));
     const b2 = await R(w2, body); assert.strictEqual(b2.body.suggestion.meeting_summary, AI_OUT.meeting_summary); assert.ok(!b2.body.suggestion.partial);
+    // only the deals part fails → partial "opportunities", follow-ups kept; both fail → "actions"
+    const S3 = seed(); S3.ai = b => /covers the DEALS/.test(JSON.stringify(b)) ? cut('{"opportunities":[{"ti', 'max_tokens') : AI_OUT;
+    const w3 = createWorld(S3); await R(w3, Object.assign({ action: 'visit_checkin' }, stop));
+    const c3 = await R(w3, body); assert.strictEqual(c3.body.suggestion.partial, 'opportunities'); assert.strictEqual(c3.body.suggestion.follow_ups.length, 2); assert.strictEqual(c3.body.suggestion.opportunities.length, 0);
+    const S4 = seed(); S4.ai = b => /WHAT HAPPENED/.test(JSON.stringify(b)) ? AI_OUT : cut('{"x', 'max_tokens');
+    const w4 = createWorld(S4); await R(w4, Object.assign({ action: 'visit_checkin' }, stop));
+    const c4 = await R(w4, body); assert.strictEqual(c4.body.suggestion.partial, 'actions');
   });
   await t('Duplicates: a repeated follow-up and a next action that repeats a follow-up are offered unticked', async () => {
     const S = seed(); S.ai = () => Object.assign({}, AI_OUT, {
@@ -494,6 +503,7 @@ async function startEndAnalyze(w, extra) {
     const mk = new Function('REV', lift('canRetryAi') + '\n' + lift('partialNote') + '\nreturn { canRetryAi, partialNote };');
     const part = { manual: false }; const f = mk(part); f.partialNote();
     assert.ok(part.partial && /didn't finish the follow-ups/.test(part.msg) && f.canRetryAi(), 'a partial summary offers no retry');
+    const deals = { manual: false }; mk(deals).partialNote('opportunities'); assert.ok(/didn't finish the opportunities/.test(deals.msg), deals.msg);
     assert.ok(mk({ manual: true, err: 'ai_incomplete' }).canRetryAi());
     assert.ok(!mk({ manual: true, err: 'ai_unavailable' }).canRetryAi() && !mk({ manual: true, err: 'no_notes' }).canRetryAi());
     assert.ok(!mk({ manual: false }).canRetryAi(), 'a full AI summary offered a retry');

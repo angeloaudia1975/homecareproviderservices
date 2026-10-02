@@ -51,16 +51,16 @@ function world() {
     dealer_visits: [['visit_report_id']], dealer_visit_participants: [['visit_report_id', 'name_key']], dealer_contacts: [['dealer_id', 'email']],
     dealer_visit_reports: [['route_id', 'dealer_id']] };
   S.catalog = { 'golden-technologies': [{ code: 'PR-519', name: 'Golden PR519 Lift Chair', base_price: 899 }] };
-  // A summary is two AI requests at once: "what happened" and "what happens next".
+  // A summary is three AI requests at once: "what happened", the follow-ups and the deals.
   // AI.fail > 0: that many "what happened" answers come back cut off (the live failure); AI.failNext the same
-  // for the "what happens next" half — to drive the retry and partial paths.
+  // for the follow-ups part — to drive the retry and partial paths.
   const AI = { fail: 0, failNext: 0, calls: 0 };
   const cutOff = () => ({ status: 200, body: { content: [{ type: 'text', text: '{"meeting_summary":"Met Bry' }], stop_reason: 'max_tokens' } });
   S.ai = body => { const p = JSON.stringify(body);
     if (/MEETING RECAP/.test(p)) return { subject: 'Following up on our visit', body: 'Hi Bryant,\n\nThank you for meeting with me on October 2. As promised, PR519 pricing is on its way.' };
     AI.calls++;
     if (/WHAT HAPPENS NEXT/.test(p)) { if (AI.failNext > 0) { AI.failNext--; return cutOff(); } return AI_VISIT; }
-    if (AI.fail > 0) { AI.fail--; return cutOff(); }
+    if (/WHAT HAPPENED/.test(p) && AI.fail > 0) { AI.fail--; return cutOff(); }
     return AI_VISIT; };
   const w = createWorld(S); w.AI = AI; return w;
 }
@@ -235,7 +235,7 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
     await page.fill('#vn_0', 'Second call at Glasgow. Bryant and Pat Lee. Send PR519 pricing.');
     w.AI.fail = 2; const c0 = w.AI.calls;
     await page.click('#stop_0 .vmode .btn.go.xl'); await page.waitForSelector('#rv_retry', { timeout: 15000 });
-    assert.strictEqual(w.AI.calls - c0, 3, 'the server did not retry the failed half exactly once (2 tries + the other half)');
+    assert.strictEqual(w.AI.calls - c0, 4, 'the server did not retry the failed part exactly once (2 tries + the 2 other parts)');
     assert.ok(/notes are saved/i.test(await page.textContent('#rv_body .rvnote')));
     assert.strictEqual(await page.inputValue('#rv_sum'), 'Second call at Glasgow. Bryant and Pat Lee. Send PR519 pricing.', 'the notes were not kept in the manual summary');
     assert.strictEqual(n(w, 'dealer_tasks', t => t.origin_type === 'visit_report' && t.dealer_id === 'd-greg'), 1, 'records created before approval');
