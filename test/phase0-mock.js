@@ -170,6 +170,14 @@ function createWorld(seed) {
             if (db[table].some(x => cols.every(c => x[c] != null && String(x[c]) === String(row[c]))))
               return res(409, { code: '23505', message: `duplicate key value violates unique constraint (${cols.join(',')})` });
           }
+          // seed.uniquePartial[table] = [{cols, lower:[cols compared case-blind], where(row)}]: a partial
+          // unique index (… WHERE …), e.g. one open unplanned visit per rep per dealer (Phase 2A).
+          for (const u of ((seed.uniquePartial || {})[table] || [])) {
+            if (!u.where(row) || u.cols.some(c => row[c] == null)) continue;
+            const nv = (c, v) => (u.lower || []).includes(c) ? String(v).toLowerCase() : String(v);
+            if (db[table].some(x => u.where(x) && u.cols.every(c => x[c] != null && nv(c, x[c]) === nv(c, row[c]))))
+              return res(409, { code: '23505', message: `duplicate key value violates unique constraint (partial ${u.cols.join(',')})` });
+          }
           if (!('id' in row) && seed.autoId !== false) row.id = row.id || ('id-' + table + '-' + (db[table].length + 1) + '-' + Math.random().toString(36).slice(2, 7));
           if (!('created_at' in row)) row.created_at = new Date().toISOString();
           db[table].push(row); out.push(row); writes.push({ kind: 'insert', table, row: { ...row } });

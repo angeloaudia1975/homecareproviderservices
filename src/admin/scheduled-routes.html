@@ -283,10 +283,11 @@ function renderSyncPanel(open){
 
 // ---- Boot: deep-link ?route=<id> opens a route; otherwise show the route list ----
 function boot(){ if(!TOKEN){ gate(); return; }
-  const rid=qparam("route");
+  const rid=qparam("route"), did=qparam("dealer");
   // The profile decides what this person may do (assign / set a start point), so it is
   // loaded before either view renders — including when a route link is opened directly.
-  loadMyHome().then(()=>{ adoptLegacyOutbox(); if(rid){ openRoute(rid); } else { showList(); } });
+  // ?dealer=<id> (Phase 2A) is an unplanned visit started from Dealer 360: the same visit mode, one dealer, no route.
+  loadMyHome().then(()=>{ adoptLegacyOutbox(); if(rid){ openRoute(rid); } else if(did){ openDealerVisit(did); } else { showList(); } });
 }
 
 async function showList(){
@@ -411,6 +412,46 @@ async function openRoute(id){
   if(navigator.onLine){ computeEtas(); flushOutbox().then(updateStatus); }
 }
 
+/* ── UNPLANNED VISIT (Phase 2A) ──────────────────────────────────────────────────────────────
+   Start Visit on Dealer 360 opens this page with ?dealer=<id>: the SAME visit mode as a route stop —
+   notes, dictation, End, AI review, approve, follow-up email — for one dealer with no route. The
+   phone makes a visit_key when the visit starts and sends it on every call, queued or not, so the
+   server always finds that one visit: a replay never opens a second one, and an unfinished visit
+   is resumed rather than doubled. The key is kept per dealer on this phone until the next visit. */
+function newVisitKey(){ return "v"+Date.now().toString(36)+Math.random().toString(36).slice(2,10); }
+function adhocKeyName(did){ return "adhoc_key_"+did; }
+async function openDealerVisit(did){
+  if(!TOKEN){ gate(); return; }
+  $("#app").innerHTML=`<div class="msg">Loading the visit…</div>`;
+  if(navigator.onLine) await flushOutbox();      // anything queued for this visit goes first
+  let key=obRead(adhocKeyName(did))||null, j=null, offline=false;
+  try{ j=await rapi({action:"route_day",dealer_id:did,visit_key:key||undefined}); }catch(e){ if(!TOKEN) return; j=null; }
+  if(j&&!j.ok&&j.error){
+    $("#app").innerHTML=`<div class="msg">${esc(j.error)}</div><div style="text-align:center"><a class="btn" href="/admin/dealer.html?id=${encodeURIComponent(did)}">‹ Dealer 360</a></div>`; return; }
+  if(!(j&&j.ok)){
+    j=loadCachedDay("adhoc_"+did); offline=true;
+    // No copy on this phone yet: the visit can still be started and noted; it syncs later.
+    if(!j) j={ok:true,route:{id:null,adhoc:true,dealer_id:did,name:"Unplanned visit",scheduled_date:todayStr(),needs_home_base:false},stops:[{dealer_id:did,name:"This dealer",visit:null}]};
+  } else {
+    const v=(j.stops&&j.stops[0]&&j.stops[0].visit)||null;
+    const doneLongAgo=v&&(v.completed_at||v.approved_at)&&(Date.now()-Date.parse(v.completed_at||v.approved_at)>2*3600e3);
+    if(v&&!doneLongAgo) key=v.visit_key||key||newVisitKey();      // the visit in progress (or just finished)
+    else if(doneLongAgo){ j.stops[0].visit=null; key=newVisitKey(); }   // that one is over: a new visit
+    else key=key||newVisitKey();      // not started on the server yet — keep the key anything queued carries
+  }
+  j.route=Object.assign({},j.route,{adhoc:true,dealer_id:did,visit_key:(j.route&&j.route.visit_key)||key});
+  obWrite(adhocKeyName(did),j.route.visit_key);
+  DAY=j; cacheDay(dayKey(),DAY);
+  renderDay();
+  if(offline) setStatusText("● Offline (showing cached)","#ffd7b0"); else updateStatus();
+}
+// The finished visit stays on screen; the next one gets its own key.
+function startAnotherVisit(){
+  if(!ADHOC()) return;
+  DAY.route.visit_key=newVisitKey(); obWrite(adhocKeyName(DAY.route.dealer_id),DAY.route.visit_key);
+  DAY.stops[0].visit=null; cacheDay(dayKey(),DAY); renderDay();
+}
+
 /* ── Assigning a route (president only) ─────────────────────────────────────
    The missing link, made visible: a route is planned by one person and driven by
    another, and until it is related to that person their portal has nothing to show.
@@ -458,7 +499,13 @@ async function doAssign(id){
    makes a replay a no-op (Phase 0F + 1): a double tap or a resend never duplicates a record. */
 const FU_LABEL={pending:"Follow-up pending",complete:"Follow-up complete",none:"No follow-up required"};
 function statusOf(s){ const v=s.visit; if(v&&(v.approved_at||v.completed_at)) return "done"; if(v&&v.ended_at) return "ended"; if(v&&(v.status==="checked_in"||v.checkin_at)) return "here"; return "plan"; }
-function vkey(s){ return String((DAY&&DAY.route&&DAY.route.id)||"")+"_"+String(s.dealer_id||""); }
+function ADHOC(){ return !!(DAY&&DAY.route&&DAY.route.adhoc); }
+// Notes and dictation are kept on the phone per visit: a route stop, or one unplanned visit (its key).
+function vkey(s){ return ADHOC() ? "adhoc_"+String(DAY.route.visit_key||"")+"_"+String(s.dealer_id||"")
+                                 : String((DAY&&DAY.route&&DAY.route.id)||"")+"_"+String(s.dealer_id||""); }
+// Which visit a call is about: the route stop, or (unplanned) the dealer plus this visit's key.
+function vctx(s){ const c={route_id:(DAY&&DAY.route&&DAY.route.id)||undefined,dealer_id:s.dealer_id}; if(ADHOC()) c.visit_key=DAY.route.visit_key; return c; }
+function dayKey(){ return ADHOC() ? "adhoc_"+DAY.route.dealer_id : DAY.route.id; }
 function fuChip(v){ const f=v&&v.followup_status; return f?`<span class="chip fu-${esc(f)}">${esc(FU_LABEL[f]||f)}</span>`:""; }
 function hms(ms){ ms=Math.max(0,ms|0); const s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor((s%3600)/60); return (h?h+":"+String(m).padStart(2,"0"):String(m))+":"+String(s%60).padStart(2,"0"); }
 function minsBetween(a,b){ const x=Date.parse(a), y=Date.parse(b); return (isFinite(x)&&isFinite(y))?Math.max(0,Math.round((y-x)/60000)):null; }
@@ -471,6 +518,17 @@ function renderDay(){
   const drive=r.duration_s?` · ${Math.round(r.duration_s/60)} min drive`:"";
   const done=stops.filter(s=>statusOf(s)==="done").length;
   const miles=r.distance_m?` · ${Math.round(r.distance_m/1609)} mi`:"";
+  if(ADHOC()){
+    const s0=stops[0]||{};
+    let a=`<div style="margin:0 0 10px"><a class="btn sm" href="/admin/dealer.html?id=${encodeURIComponent(r.dealer_id)}">‹ Dealer 360</a> <a class="btn sm" href="/admin/command-center-rep.html">📋 Command Center</a></div>`;
+    a+=`<div class="card"><div class="rsum"><span class="nm">Unplanned visit</span><span class="mt">${esc(fmtDate(r.scheduled_date||todayStr()))}</span></div>
+      <div class="mt" style="margin:4px 0 2px;color:var(--gray)">Not on a route — saved to ${esc(s0.name||"this dealer")} like any visit: summary, attendees, follow-ups and email.</div></div>`;
+    a+=stops.map((s,i)=>stopCard(s,i)).join("");
+    if(statusOf(s0)==="done") a+=`<button class="btn xl wide" style="margin-top:4px" onclick="startAnotherVisit()">▶ Start another visit here</button>`;
+    $("#app").innerHTML=a;
+    stops.forEach((s,i)=>{ if(statusOf(s)==="here") openBody(i); });
+    startTimers(); return;
+  }
   let h=`<div style="margin:0 0 10px"><button class="btn sm" onclick="showList()">‹ All routes</button> <a class="btn sm" href="/admin/command-center-rep.html">📋 Command Center</a></div>`;
   h+=`<div class="card"><div class="rsum"><span class="nm">${esc(r.name||"Route")}</span><span class="mt">${esc(fmtDate(r.scheduled_date))}</span></div>
     <div class="mt" style="margin:4px 0 10px;color:var(--gray)">${stops.length} stop${stops.length===1?"":"s"}${drive}${miles} · ${done}/${stops.length} visited</div>
@@ -508,13 +566,13 @@ function stopCard(s,i){
         ${addr?`<div class="sub addr">${esc(addr)}</div>`:(loc?`<div class="sub">${esc(loc)}</div>`:"")}
         <div class="sub">${s.contact_name?esc(s.contact_name):""}${s.contact_phone?`${s.contact_name?" · ":""}${esc(s.contact_phone)}`:""}${
           s.visit_min?` · ${esc(String(s.visit_min))} min visit`:""}${v.duration_min!=null&&st!=="plan"&&st!=="here"?` · on site ${esc(String(v.duration_min))} min`:""}</div></div>
-      <div class="eta"><div class="t" id="eta_${i}">—</div><div class="l" id="etal_${i}">ETA</div></div>
+      ${ADHOC()?"":`<div class="eta"><div class="t" id="eta_${i}">—</div><div class="l" id="etal_${i}">ETA</div></div>`}
     </div>
     <div class="acts">
       <a class="btn" href="${navUrl}" target="_blank" rel="noopener">🧭 Navigate</a>
       ${s.contact_phone?`<a class="btn" href="tel:${esc(String(s.contact_phone).replace(/[^0-9+]/g,''))}">📞 Call</a>`:""}
       <button class="btn" onclick="openHandout('${jesc(s.dealer_id)}')">📄 Visit package</button>
-      ${st==="plan"?`<button class="btn" onclick="headsUp(${i})">📣 Heads-up</button>`:""}
+      ${st==="plan"&&!ADHOC()?`<button class="btn" onclick="headsUp(${i})">📣 Heads-up</button>`:""}
       <a class="btn" href="/admin/dealer.html?id=${encodeURIComponent(s.dealer_id)}">📇 Dealer 360</a>
       ${main}
     </div>
@@ -586,19 +644,27 @@ async function processAudio(i,blob){
 async function checkIn(i){
   const s=DAY.stops[i]; const now=new Date().toISOString();
   s.visit=Object.assign({},s.visit,{status:"checked_in",checkin_at:now});
-  renderDay(); cacheDay(DAY.route.id,DAY); if(navigator.onLine) computeEtas();
+  renderDay(); cacheDay(dayKey(),DAY); if(navigator.onLine&&!ADHOC()) computeEtas();
   // The arrival keeps the time it was tapped even if it syncs later (the timer runs from it).
-  const res=await tryOrQueue({action:"visit_checkin",route_id:DAY.route.id,dealer_id:s.dealer_id,at:now});
-  toast(res.sent?"Visit started ✓":res.rejected?("Couldn't start — "+res.error):"Started offline — will sync"); updateStatus();
+  const res=await tryOrQueue(Object.assign({action:"visit_checkin",at:now},vctx(s)));
+  // An unplanned visit already open here is resumed: take its id, its arrival time and its key.
+  const j=res.j||{};
+  if(ADHOC()&&res.sent&&j.ok){
+    if(j.visit_key&&j.visit_key!==DAY.route.visit_key){ DAY.route.visit_key=j.visit_key; obWrite(adhocKeyName(DAY.route.dealer_id),j.visit_key); }
+    // Resumed (started on another phone, or already ended there): show that visit as it really is.
+    if(j.resumed){ toast("Visit resumed ✓"); updateStatus(); openDealerVisit(DAY.route.dealer_id); return; }
+    s.visit=Object.assign({},s.visit,{id:j.report_id||(s.visit&&s.visit.id)||null},j.checkin_at?{checkin_at:j.checkin_at}:{},j.status==="completed"?{status:"completed",completed_at:now}:{});
+    cacheDay(dayKey(),DAY); renderDay(); }
+  toast(res.sent?(j.resumed?"Visit resumed ✓":"Visit started ✓"):res.rejected?("Couldn't start — "+res.error):"Started offline — will sync"); updateStatus();
 }
 async function endVisit(i){
   const s=DAY.stops[i], k=vkey(s); keepNotes(i);
   const at=new Date().toISOString(), notes=obRead("vnote_"+k)||"", tx=obRead("vtx_"+k)||"";
   s.visit=Object.assign({},s.visit,{status:"ended",ended_at:at,duration_min:minsBetween(s.visit&&s.visit.checkin_at,at)});
-  cacheDay(DAY.route.id,DAY); renderDay();
+  cacheDay(dayKey(),DAY); renderDay();
   // The notes go up first, so they are on the visit even if the summary has to wait for signal.
-  if(notes||tx) await tryOrQueue({action:"visit_report_save",route_id:DAY.route.id,dealer_id:s.dealer_id,status:"in_progress",fields:{notes},transcript:tx||undefined});
-  const res=await tryOrQueue({action:"visit_end",route_id:DAY.route.id,dealer_id:s.dealer_id,at,started_at:(s.visit&&s.visit.checkin_at)||null});
+  if(notes||tx) await tryOrQueue(Object.assign({action:"visit_report_save",status:"in_progress",fields:{notes},transcript:tx||undefined},vctx(s)));
+  const res=await tryOrQueue(Object.assign({action:"visit_end",at,started_at:(s.visit&&s.visit.checkin_at)||null},vctx(s)));
   updateStatus();
   if(res.rejected){ toast("Couldn't end the visit — "+res.error); return; }
   openReview(i);
@@ -626,7 +692,7 @@ async function openReview(i){
   if(!navigator.onLine){ REV.manual=true; REV.sug=emptySuggestion(notes||tx); REV.msg="You're offline — the AI summary needs a connection. Review by hand now, or come back to it with signal."; renderReview(); return; }
   body.innerHTML=`<div class="msg">✨ Summarizing your notes…<div class="hint" style="margin-top:6px">Suggestions only — nothing is saved until you approve.</div></div>`;
   let j=null;
-  try{ j=await rapi({action:"visit_analyze",route_id:DAY.route.id,dealer_id:s.dealer_id,notes:notes||undefined,transcript:tx||undefined,local_date:todayStr()}); }catch(e){ j=null; }
+  try{ j=await rapi(Object.assign({action:"visit_analyze",notes:notes||undefined,transcript:tx||undefined,local_date:todayStr()},vctx(s))); }catch(e){ j=null; }
   if(!REV) return;
   if(j){ REV.contacts=j.contacts||[]; REV.mfrs=j.manufacturers||[]; REV.report_id=j.report_id||null; }
   if(j&&j.ok&&j.suggestion){ REV.sug=j.suggestion; if(j.suggestion.partial) partialNote(j.suggestion.partial); }
@@ -668,7 +734,7 @@ async function tryAiAgain(btn){
   const missing=(!REV.manual&&REV.partial)?(REV.missing||[]).slice():[];
   const retryParts=missing.map(x=>SECTION_PART[x]).filter(Boolean);
   if(btn){ btn.disabled=true; btn.textContent="✨ Summarizing…"; } if(m) m.textContent="";
-  let j=null; try{ j=await rapi({action:"visit_analyze",route_id:DAY.route.id,dealer_id:s.dealer_id,notes:notes||undefined,transcript:tx||undefined,local_date:todayStr(),refresh:true,
+  let j=null; try{ j=await rapi({action:"visit_analyze",...vctx(s),notes:notes||undefined,transcript:tx||undefined,local_date:todayStr(),refresh:true,
     retry_parts:retryParts.length?retryParts:undefined}); }catch(e){ j=null; }
   if(!REV) return;
   if(j){ REV.contacts=j.contacts||REV.contacts; REV.mfrs=j.manufacturers||REV.mfrs; REV.report_id=j.report_id||REV.report_id; }
@@ -840,14 +906,14 @@ async function approveVisit(){
   const c=collectReview();
   if(!c.summary.meeting_summary && !c.tasks.length && !c.opportunities.length){ if(m){ m.style.color="#b42323"; m.textContent="Add a one-line summary first."; } return; }
   const btn=document.querySelector("#rv_body .btn.go"); if(btn){ btn.disabled=true; btn.textContent="Saving…"; }
-  const body=Object.assign({action:"visit_approve",route_id:DAY.route.id,dealer_id:s.dealer_id,started_at:(s.visit&&s.visit.checkin_at)||null,
+  const body=Object.assign({action:"visit_approve",...vctx(s),started_at:(s.visit&&s.visit.checkin_at)||null,
     notes:obRead("vnote_"+k)||undefined,transcript:obRead("vtx_"+k)||undefined,interest_slugs:(REV.sug&&REV.sug.interest_slugs)||[]},c);
   const res=await tryOrQueue(body); updateStatus();
   if(res.rejected){ if(btn){ btn.disabled=false; btn.textContent="✓ Approve & save"; } if(m){ m.style.color="#b42323"; m.textContent=res.error||"Couldn't save."; } return; }
   const j=(res.j)||{}, now=new Date().toISOString();
   s.visit=Object.assign({},s.visit,{status:"completed",approved_at:now,completed_at:now,id:j.report_id||(s.visit&&s.visit.id)||REV.report_id||null,
     followup_status:j.followup_status||((c.tasks.length||c.opportunities.length)?"pending":"none")});
-  cacheDay(DAY.route.id,DAY);
+  cacheDay(dayKey(),DAY);
   const cr=j.created||{};
   $("#rv_body").innerHTML=`<div class="rv-done">
     <div class="big">✓ Visit saved${res.sent?"":" on this phone"}</div>
@@ -866,7 +932,7 @@ async function openSummary(i){
   const box=$("#rv_body");
   if(!navigator.onLine){ box.innerHTML=`<div class="msg">The full summary needs a connection.</div>${fuChip(s.visit)}`; return; }
   box.innerHTML=`<div class="msg">Loading…</div>`;
-  let j=null; try{ j=await rapi({action:"visit_report_get",route_id:DAY.route.id,dealer_id:s.dealer_id,detail:true}); }catch(e){ j=null; }
+  let j=null; try{ j=await rapi(Object.assign({action:"visit_report_get",detail:true},vctx(s),ADHOC()&&s.visit&&s.visit.id?{report_id:s.visit.id}:{})); }catch(e){ j=null; }
   const r=j&&j.report; if(!r){ box.innerHTML=`<div class="msg">Couldn't load this visit.</div>`; return; }
   REV.report_id=r.id;
   const sm=r.summary||null, f=r.fields||{};
@@ -888,10 +954,10 @@ async function openSummary(i){
 }
 async function setFollow(i,status){
   const s=DAY.stops[i];
-  const res=await tryOrQueue({action:"visit_followup_set",route_id:DAY.route.id,dealer_id:s.dealer_id,status});
+  const res=await tryOrQueue(Object.assign({action:"visit_followup_set",status},vctx(s)));
   if(res.rejected){ toast(res.error||"Couldn't change it"); return; }
   if(res.j&&res.j.followup_status) s.visit=Object.assign({},s.visit,{followup_status:res.j.followup_status});
-  cacheDay(DAY.route.id,DAY); openSummary(i);
+  cacheDay(dayKey(),DAY); openSummary(i);
 }
 async function draftVisitEmail(i){
   const s=DAY.stops[i], m=$("#rv_msg");
@@ -899,7 +965,7 @@ async function draftVisitEmail(i){
   if(m){ m.style.color=""; m.textContent="Drafting from the approved summary…"; }
   // The visit as saved: its id, who attended (the email goes to them first) and any saved draft.
   let reportId=(s.visit&&s.visit.id)||(REV&&REV.report_id)||null, attendees=[], saved=REV&&REV.email;
-  try{ const g=await rapi({action:"visit_report_get",route_id:DAY.route.id,dealer_id:s.dealer_id,detail:true});
+  try{ const g=await rapi(Object.assign({action:"visit_report_get",detail:true},vctx(s),reportId&&ADHOC()?{report_id:reportId}:{}));
     if(g&&g.report){ reportId=reportId||g.report.id; if(g.report.followup_email) saved=g.report.followup_email; }
     attendees=((g&&g.participants)||[]).filter(p=>p&&p.attended!==false).map(p=>({name:p.name_snapshot||"",title:p.title_snapshot||"",email:String(p.email_snapshot||"").trim()}));
   }catch(e){}
@@ -1023,7 +1089,8 @@ function openDraft(s,subject,body,signature,title,opts){
     pre=want&&rows.some(r=>String(r.email||"").toLowerCase()===want) ? (r=>String(r.email||"").toLowerCase()===want) : ((r,i)=>i===0);
     extra=want&&!rows.some(r=>String(r.email||"").toLowerCase()===want)?opts.to:"";
   }
-  DRAFT=opts.visit?{visit:true,dealer_id:s.dealer_id,route_id:(DAY&&DAY.route&&DAY.route.id)||null,report_id:(s.visit&&s.visit.id)||(REV&&REV.report_id)||null}:null;
+  DRAFT=opts.visit?{visit:true,dealer_id:s.dealer_id,route_id:(DAY&&DAY.route&&DAY.route.id)||null,report_id:(s.visit&&s.visit.id)||(REV&&REV.report_id)||null,
+    visit_key:ADHOC()?DAY.route.visit_key:null}:null;
   const people=rows.length
     ? rows.map((r,i)=>`<label class="rcpt"><input type="checkbox" class="d_p" data-email="${esc(r.email)}" data-name="${esc(r.name)}"${pre(r,i)?" checked":""} onchange="draftWho()">
         <span><b>${esc(r.name||r.email)}</b>${r.title?` <span class="hint">· ${esc(r.title)}</span>`:""}${r.source==="attendee"?` <span class="hint">· at the meeting</span>`:""}${r.source==="account"?` <span class="hint">· account email</span>`:""}<br><span class="hint">${esc(r.email)}</span></span></label>`).join("")
@@ -1105,7 +1172,7 @@ async function sendDraft(dealer_id,btn){
   else { if(m){ m.style.color="#b42323"; m.textContent=(j&&j.message)||"Couldn't send — you can also send from Dealer 360."; } if(btn) btn.disabled=false; }
 }
 function draftSaveBody(d,email){ const b={action:"visit_email_save",dealer_id:d.dealer_id,email};
-  if(d.report_id) b.report_id=d.report_id; else if(d.route_id) b.route_id=d.route_id; return b; }
+  if(d.report_id) b.report_id=d.report_id; else if(d.route_id) b.route_id=d.route_id; else if(d.visit_key) b.visit_key=d.visit_key; return b; }
 function draftNow(){ const picked=draftPicked(), r=splitRecipients(picked.list);
   return {to:r.to,cc:r.cc,subject:($("#d_sub")||{}).value||"",body:($("#d_body")||{}).value||""}; }
 async function copyDraft(){
@@ -1228,7 +1295,7 @@ function addToCalendar(){
 }
 
 // ---- Connectivity ----
-window.addEventListener("online", ()=>{ updateStatus(); flushOutbox().then(()=>{ if(navigator.onLine && TOKEN){ if(DAY&&DAY.route) openRoute(DAY.route.id); else showList(); } }); });
+window.addEventListener("online", ()=>{ updateStatus(); flushOutbox().then(()=>{ if(navigator.onLine && TOKEN){ if(DAY&&DAY.route) (ADHOC()?openDealerVisit(DAY.route.dealer_id):openRoute(DAY.route.id)); else showList(); } }); });
 window.addEventListener("offline", ()=>updateStatus());
 if("serviceWorker" in navigator){ try{ navigator.serviceWorker.register("/admin/sr-sw.js").catch(()=>{}); }catch(e){} }
 

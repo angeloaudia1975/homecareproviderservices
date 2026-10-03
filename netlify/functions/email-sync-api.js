@@ -267,7 +267,7 @@ exports.handler = async (event)=>{
     // Read a dealer's captured emails for the Dealer 360 timeline — any signed-in staff.
     if(b.action==="dealer"){
       const id=String(b.dealer_id||"").trim(); if(!id) return json(400,{error:"dealer_id required"});
-      if(!(await SC.canAccessDealer(me,id,sbGet))) return json(403,{error:"Not your dealer"});
+      if(!(await SC.canAccessDealer(SC.workspaceUser(event, me),id,sbGet))) return json(403,{error:"Not your dealer"});
       let rows;
       try{ rows=await sbGet(`email_messages?dealer_id=eq.${encodeURIComponent(id)}&select=id,direction,subject,snippet,from_address,from_name,sent_at,received_at,thread_id,mailbox_upn,has_attachments,match_confidence,folder&order=received_at.desc.nullslast&limit=${Math.min(parseInt(b.limit||60,10)||60,200)}`); }
       catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run supabase/email_intelligence.sql first."}); }
@@ -397,7 +397,8 @@ exports.handler = async (event)=>{
       if(!bodyText.trim()) return json(200,{ok:false,error:"no_body",message:"The email body is empty."});
       // The email goes from the caller's own mailbox; logging it onto a dealer's timeline needs
       // that dealer to be in their book.
-      if(dealerId && !(await SC.canAccessDealer(me,dealerId,sbGet))) return json(403,{ok:false,error:"Not your dealer"});
+      // In My Sales Workspace, only dealers in his own book (Phase 2, amendment 1).
+      if(dealerId && !(await SC.canAccessDealer(SC.workspaceUser(event, me),dealerId,sbGet))) return json(403,{ok:false,error:"Not your dealer"});
       const fromMailbox=String(me.email||"").toLowerCase();   // the rep's login email == their Outlook mailbox
       if(!fromMailbox) return json(200,{ok:false,error:"no_sender",message:"Your account has no email on file to send from."});
       if(!G_TENANT||!G_CLIENT||!G_SECRET) return json(200,{ok:false,error:"graph_env_missing",fallback:true,to,message:"Sending from Outlook isn't set up yet (Graph credentials)."});

@@ -17,7 +17,7 @@ const ORDERING_BASE = process.env.ORDERING_BASE || "https://hcpsonlineordering.n
 const json=(c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H=()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
-const { dealerScope, isAdmin } = require("./_scope.js");
+const { dealerScope, isAdmin, workspaceUser } = require("./_scope.js");
 const { loadStyleGuide, findBanned } = require("./_ai_style.js");
 
 async function whoami(event){
@@ -248,9 +248,11 @@ exports.handler=async(event)=>{
     if(b.action!=="draft") return json(400,{error:"unknown action"});
 
     const dealerId=String(b.dealer_id||"").trim(); if(!dealerId) return json(400,{error:"dealer_id required"});
-    // Access check: management + relations may draft for any dealer; a rep only for their own book.
-    if(!isAdmin(me)){
-      const sc=await dealerScope(me, sbGet);
+    // Access check: management + relations may draft for any dealer; a rep only for their own book —
+    // and so may the President inside My Sales Workspace (Phase 2, amendment 1).
+    const scopeMe=workspaceUser(event, me);
+    if(!isAdmin(scopeMe)){
+      const sc=await dealerScope(scopeMe, sbGet);
       if(!sc.isAll && !(sc.ids && sc.ids.has(dealerId))) return json(403,{error:"Not your dealer"});
     }
     const signature=(me.signature&&me.signature.trim())||defaultSignature(me);

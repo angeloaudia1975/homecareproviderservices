@@ -144,6 +144,11 @@ async function runWorkspace(){
     const dm=(await call("rep-command-api",{action:"today",rep:other})).j||{}, hm=dm.header||{};
     add("Management view of "+other+": read-only",other+" · read-only",((hm.rep&&hm.rep.email)||"(none)")+(hm.viewing_other?" · read-only":""),!!(hm.rep&&hm.rep.email===other&&hm.viewing_other&&!hm.workspace));
   }
+  // Phase 2A, amendment 1: Start visit (the unplanned-visit screen) — read-only probes, nothing is started.
+  const sv=await call("routes-api",{action:"route_day",dealer_id:TD},"POST",WSH);
+  add("Workspace: Start visit refused at a dealer outside your book (TEST, House)","refused",sv.j.code==="flag_off"?"switch off":sv.status,sv.status===403&&sv.j.code!=="flag_off");
+  const sa=await call("routes-api",{action:"route_day",dealer_id:TD});
+  add("Admin mode: Start visit available at any dealer (TEST)","200",sa.j.code==="flag_off"?"switch off":sa.status,sa.status===200&&!!(sa.j.route&&sa.j.route.adhoc));
   verdict(rows,"My Sales Workspace ("+((ME&&(ME.name||ME.email))||"you")+")");
 }
 
@@ -175,6 +180,7 @@ async function run(){
     ["Modify Angelo's task (by id)","crm-api",{action:"reopen_task",id:"4fa5c265-c5bf-4edf-a398-50f1fff5e0eb"}],
     ["Modify Angelo's opportunity (by id)","pipeline-api",{action:"update",id:"cd84e191-74c9-481a-8786-a31fa6093164"}],
     ["Draft an email from Angelo's dealer visit","ai-email-api",{action:"draft",dealer_id:TD,template:"visit_followup",visit_report_id:"cd7801be-cf5d-4682-9db4-0a977ba461c1"}],
+    ["Open an unplanned visit at the TEST dealer (not his book)","routes-api",{action:"route_day",dealer_id:TD}],
   );
   for(const [label,fn,body] of refuse){ const r=await call(fn,body); add(label,"refused",r.status,refused(r.status)); }
 
@@ -221,6 +227,9 @@ async function run(){
     // The workspace header is for management only — sent by Relations, it changes nothing.
     const tw=((await call("crm-api",{action:"my_tasks"},"POST",WSH)).j||{});
     add("Workspace header ignored for Relations (still company-wide)","company-wide",tw.sees_all?"company-wide":"narrowed",!!tw.sees_all);
+    // Phase 2A: Relations may visit any dealer — read-only probe, nothing is started.
+    const sv=await call("routes-api",{action:"route_day",dealer_id:TD});
+    add("Unplanned visit screen opens at any dealer (TEST)","200",sv.j.code==="flag_off"?"switch off":sv.status,sv.status===200&&!!(sv.j.route&&sv.j.route.adhoc));
   }
   // Where this person lands at sign-in (pilot: Greg and Lori → Command Center).
   const prof=((await call("staff-auth",{action:"me"})).j||{}).profile||{};

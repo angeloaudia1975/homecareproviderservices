@@ -67,6 +67,7 @@ async function whoami(event){
 
 const { dealerScope, isAdmin, seesAllDealers } = require("./_scope.js");
 const SC=require("./_scope.js");
+const FL=require("./_flags.js");
 const UP=require("./_upsert.js");
 const TK=require("./_tasks.js");     // Phase 1: the one way to create a task
 const VI=require("./_visits.js");    // Phase 1: visit follow-up status
@@ -99,9 +100,11 @@ exports.handler = async (event)=>{
     catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run supabase/crm.sql in Supabase, then reload."}); }
 
     // Data scope: management and a Relations Manager may work any dealer (dealerScope.isAll). A sales
-    // rep may only touch dealers in their own book.
-    if(!isAdmin(me) && b.dealer_id){
-      const sc=await dealerScope(me, sbGet);
+    // rep may only touch dealers in their own book — and so may the President inside My Sales
+    // Workspace, where he works as a rep (Phase 2, amendment 1: scopeMe). Role gates keep `me`.
+    const scopeMe=SC.workspaceUser(event, me);
+    if(!isAdmin(scopeMe) && b.dealer_id){
+      const sc=await dealerScope(scopeMe, sbGet);
       if(!sc.isAll && !(sc.ids && sc.ids.has(String(b.dealer_id)))) return json(403,{error:"Not your dealer"});
     }
 
@@ -170,7 +173,9 @@ exports.handler = async (event)=>{
       }
       const by=(arr,k,id)=>(arr||[]).filter(x=>String(x[k])===String(id));
       const legacyText=f=>{ f=f||{}; return [f.purpose&&`Purpose: ${f.purpose}`, f.notes].filter(Boolean).join("\n").slice(0,1200)||null; };
+      const myEmail=String(me.email||"").trim().toLowerCase();
       const shape=r=>({ id:r.id, route_id:r.route_id||null, rep_name:r.rep_name||null, rep_email:r.rep_email||null,
+        mine:!!myEmail && String(r.rep_email||"").trim().toLowerCase()===myEmail,
         date:String(r.checkin_at||r.scheduled_date||"").slice(0,10)||null, started_at:r.checkin_at||null, ended_at:r.ended_at||null,
         duration_min:(r.duration_min!=null?r.duration_min:null), status:r.status||null, approved:!!r.approved_at, completed:!!r.completed_at,
         summary:(r.summary&&typeof r.summary==="object")?r.summary:null, notes:r.summary?null:legacyText(r.fields),
@@ -185,7 +190,12 @@ exports.handler = async (event)=>{
       const reported=new Set(rs.filter(r=>r.route_id).map(r=>String(r.route_id)));
       const upcoming=(routes||[]).filter(rt=>!reported.has(String(rt.id))).map(rt=>({route_id:rt.id,route_name:rt.name,date:rt.scheduled_date,
         rep_name:rt.assigned_to_rep||rt.rep_name||null}));
-      return json(200,{ok:true,upcoming,meetings:(meetings||[]).filter(m=>!/cancel|complete|done/i.test(String(m.status||""))),active,past,more});
+      // Phase 2A: Start Visit on Dealer 360 (behind the adhoc_visit switch). my_open = this person's own
+      // unfinished unplanned visit here — the button then says Resume, never starts a second one.
+      const adhoc_visit=await FL.flagOn(sbGet,"adhoc_visit");
+      const myOpen=active.find(v=>v.mine && !v.route_id)||null;
+      return json(200,{ok:true,upcoming,meetings:(meetings||[]).filter(m=>!/cancel|complete|done/i.test(String(m.status||""))),active,past,more,
+        adhoc_visit, my_open_visit:myOpen?myOpen.id:null});
     }
 
     // Unified per-dealer digital-activity intelligence: email engagement, ordering-portal
@@ -496,7 +506,7 @@ exports.handler = async (event)=>{
         // Edit an existing contact by id — email may now be added, changed, or cleared. The id must
         // belong to the dealer this request was authorized for: the scope check above only proves
         // the caller may work b.dealer_id, not that this contact is one of its contacts.
-        const own=await SC.authorizeRecord(me,"dealer_contacts",id,sbGet,{dealerId:b.dealer_id});
+        const own=await SC.authorizeRecord(scopeMe,"dealer_contacts",id,sbGet,{dealerId:b.dealer_id});
         if(!own.ok) return json(own.status,{error:own.error});
         try{ await sbSend("PATCH",`dealer_contacts?id=eq.${encodeURIComponent(id)}&dealer_id=eq.${encodeURIComponent(b.dealer_id)}`,{email,...fields},{Prefer:"return=minimal"}); }
         catch(e){ return json(409,{error:"Another contact for this dealer already uses that email."}); }
@@ -512,7 +522,7 @@ exports.handler = async (event)=>{
     if(b.action==="delete_contact"){
       if(!b.dealer_id) return json(400,{error:"dealer_id required"});
       if(b.id){
-        const own=await SC.authorizeRecord(me,"dealer_contacts",b.id,sbGet,{dealerId:b.dealer_id});
+        const own=await SC.authorizeRecord(scopeMe,"dealer_contacts",b.id,sbGet,{dealerId:b.dealer_id});
         if(!own.ok) return json(own.status,{error:own.error});
         await sbSend("DELETE",`dealer_contacts?id=eq.${encodeURIComponent(String(b.id))}&dealer_id=eq.${encodeURIComponent(b.dealer_id)}`,null,{Prefer:"return=minimal"}); }
       else if(b.email){ await sbSend("DELETE",`dealer_contacts?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&email=eq.${encodeURIComponent(String(b.email).toLowerCase())}`,null,{Prefer:"return=minimal"}); }
@@ -557,7 +567,7 @@ exports.handler = async (event)=>{
     if(b.action==="add_task"){
       if(!b.dealer_id||!clean(b.title)) return json(400,{error:"dealer_id + title required"});
       // Assigning a task to someone else is for management and Relations; a rep's tasks are their own.
-      const assignTo=seesAllDealers(me)?clean(b.assigned_rep,120):null;
+      const assignTo=seesAllDealers(scopeMe)?clean(b.assigned_rep,120):null;
       const tr=await TK.createTasks([{dealer_id:b.dealer_id,title:b.title,detail:b.detail,due_date:b.due_date,priority:b.priority,assigned_rep:assignTo}],
         {sbGet,sbSend,me,source:"manual"});
       return json(200,{ok:true,task:(tr.created&&tr.created[0])||null});
@@ -567,7 +577,7 @@ exports.handler = async (event)=>{
       if(!b.id) return json(400,{error:"id required"});
       /* Tasks are changed by id, so the id is resolved first: management, the rep the task is
          assigned to, or a rep whose book holds the task's dealer. Anyone else gets 403. */
-      const own=await SC.authorizeRecord(me,"dealer_tasks",b.id,sbGet,{ownerFields:["assigned_rep","assigned_email"],optional:["assigned_email"]});
+      const own=await SC.authorizeRecord(scopeMe,"dealer_tasks",b.id,sbGet,{ownerFields:["assigned_rep","assigned_email"],optional:["assigned_email"]});
       if(!own.ok) return json(own.status,{error:own.error});
       const status=b.action==="complete_task"?"done":b.action==="dismiss_task"?"dismissed":"open";
       // completed_by (Phase 0I): who closed it — so "tasks completed" credits the person who did

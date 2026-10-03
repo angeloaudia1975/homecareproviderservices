@@ -445,8 +445,12 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   `x-hcps-workspace: mine`. The server (`SC.workspaceMine`, management only) uses it **only to narrow
   lists** to his book via `SC.ownBook` (the rep resolver — `dealers.rep_email`, no second ownership model):
   CC (no picker, his own day), my_tasks/task_count, pipeline board, list_routes (not routes he planned for
-  others), dealers-api GET, geocode-api GET. Writes and record checks never read it — President authority
-  is unchanged, and the header means nothing for reps or Relations. Back to Admin Dashboard leaves it.
+  others), dealers-api GET, geocode-api GET. **Phase 2 amendment 1 (2026-10-03):** the workspace is Angelo
+  acting as a rep, so operational sales writes and record checks made from it are limited to his book too —
+  `SC.workspaceUser(event, me)` checks him as a rep with his own book (dealer/record checks in crm-api,
+  pipeline-api, routes-api visit actions incl. Start visit, ai-email-api, visit-voice-api, email-sync-api);
+  role gates keep the real role. Admin mode (no header) keeps company-wide reach. The header means nothing
+  for reps or Relations. Back to Admin Dashboard leaves it.
 - **Reads:** filter on the server, run in parallel, page past the 1000-row cap (`SC.getAll`), no N+1 and
   no company-wide payloads to a rep's browser.
 - **Shipping:** SQL the user must run is pasted inline in the reply (and committed as a file); after a push,
@@ -473,6 +477,15 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   change AI/email behaviour are allowed solely for the president on a TEST (`is_test`) dealer.
 - **Duplicate suggestions** (a follow-up repeated, or a next action that repeats a follow-up) are shown
   unticked — never silently dropped, never auto-selected twice.
+- **Phase 2 switches** (`_flags.js`, app_settings `phase2_flags`): a feature is on only when its value is
+  exactly `true`; a missing row/key or a read error = off = Phase 1 behaviour. Turning a switch off is step 1
+  of any Phase 2 rollback (no deploy).
+- **Unplanned visits (2A, switch `adhoc_visit`).** Start visit on Dealer 360 opens the field app in dealer
+  mode (`scheduled-routes.html?dealer=<id>`) — the same visit flow, no route. The phone makes a `visit_key`
+  at Start and sends it on every call, queued or not; the server finds the visit by rep + dealer + key, so a
+  replay after approval never opens another visit or lands on the next one. One open unplanned visit per
+  rep per dealer (`uq_dvr_open_adhoc`): a second Start resumes it. Reach: the rep's book or a route he
+  drives; Relations and Admin mode anywhere; My Sales Workspace his book only.
 
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.

@@ -426,14 +426,20 @@ const mineFilter = me => { const e=String(me.email||"~none~").toLowerCase();
   return `or=(owner_email.eq.${encodeURIComponent(e)},assigned_to_email.eq.${encodeURIComponent(e)})`; };
 
 const SC=require("./_scope.js");
+const FL=require("./_flags.js");
 // Dealer ids the caller may NOT work: outside their book (_scope.js) and not a stop on any
 // route they own or are assigned. [] means every id is allowed.
 async function dealersOffReach(me, ids){
   let off=await SC.dealersOutsideScope(me, ids, sbGet);
   if(!off.length) return off;
-  const rs=await sbGet(`rep_routes?${mineFilter(me)}&select=stops&limit=1000`).catch(()=>[]);
+  const rs=await sbGet(`rep_routes?${mineFilter(me)}&select=stops,owner_email,assigned_to_email&limit=1000`).catch(()=>[]);
   const onMine=new Set();
-  for(const r of (rs||[])) for(const st of (Array.isArray(r.stops)?r.stops:[])) if(st&&st.dealer_id) onMine.add(String(st.dealer_id));
+  for(const r of (rs||[])){
+    // In My Sales Workspace only the routes he DRIVES count (assigned to him, or built by him for
+    // nobody else) — a route he planned for Greg is Greg's day, not a way into Greg's dealers.
+    if(me.workspace && !(r.assigned_to_email ? emailEq(r.assigned_to_email,me.email) : emailEq(r.owner_email,me.email))) continue;
+    for(const st of (Array.isArray(r.stops)?r.stops:[])) if(st&&st.dealer_id) onMine.add(String(st.dealer_id));
+  }
   return off.filter(id=>!onMine.has(id));
 }
 // Visit writes are refused for a dealer id that matches no dealer (Phase 1 live finding).
@@ -471,6 +477,9 @@ exports.handler = async (event)=>{
     if(event.httpMethod!=="POST") return json(405,{error:"POST only"});
     const me=await whoami(event);
     if(!me) return json(401,{error:"unauthorized"});
+    // Dealer and record checks for sales work: in My Sales Workspace the President is checked as a
+    // rep with his own book (Phase 2, amendment 1); everyone else, and his Admin mode, as themselves.
+    const scopeMe=SC.workspaceUser(event, me);
     let b; try{b=JSON.parse(event.body||"{}");}catch{return json(400,{error:"bad JSON"});}
 
     // ---------- Routing engine (OpenRouteService) ----------
@@ -677,7 +686,7 @@ exports.handler = async (event)=>{
       "generate_followup","send_followup","notify_visit","previsit_draft","list_handout_exclusions","set_handout_exclusion","set_handout_feature"]);
     if(DEALER_ACTIONS.has(b.action)){
       const want=b.action==="business_case"?(Array.isArray(b.dealer_ids)?b.dealer_ids:[]):[b.dealer_id];
-      const off=await dealersOffReach(me,want);
+      const off=await dealersOffReach(scopeMe,want);
       if(off.length) return json(403,{error:"Not your dealer",dealer_ids:off});
     }
     /* A visit is only ever recorded against a dealer that exists — for every role. Management can
@@ -1105,7 +1114,7 @@ exports.handler = async (event)=>{
       if(!r) return {ok:false,status:404,error:"route not found"};
       if(!ownsRoute(r)) return {ok:false,status:403,error:"not your route"};
       const onRoute=(Array.isArray(r.stops)?r.stops:[]).some(st=>st&&String(st.dealer_id||"")===String(did));
-      if(!onRoute && !SC.seesAllDealers(me)) return {ok:false,status:403,error:"That dealer isn't a stop on this route."};
+      if(!onRoute && !SC.seesAllDealers(scopeMe)) return {ok:false,status:403,error:"That dealer isn't a stop on this route."};
       return {ok:true,route:r};
     }
     // Visit report helpers (Phase 0F — see VISITS RUN ONCE below).
@@ -1123,22 +1132,26 @@ exports.handler = async (event)=>{
         : `dealer_visit_reports?route_id=is.null&dealer_id=eq.${encodeURIComponent(did)}&rep_email=eq.${encodeURIComponent((meNow&&meNow.email)||"")}&completed_at=is.null&${sel}&order=updated_at.desc&limit=1`;
       const rows=await sbGet(path).catch(()=>[]); return (rows&&rows[0])||null;
     }
-    if(b.action==="route_day"){
-      let route=null;
-      if(b.route_id){
-        const rows=await sbGet(`rep_routes?id=eq.${encodeURIComponent(b.route_id)}&select=*`).catch(()=>[]);
-        route=(rows&&rows[0])||null;
-        if(route && !ownsRoute(route)) return json(403,{error:"not your route"});
-      } else {
-        const date=(b.date&&/^\d{4}-\d{2}-\d{2}$/.test(b.date))?b.date:new Date().toISOString().slice(0,10);
-        const own=isBoss(me)?"":"&"+mineFilter(me);
-        const rows=await sbGet(`rep_routes?scheduled_date=eq.${date}${own}&select=*&order=updated_at.desc&limit=1`).catch(()=>[]);
-        route=(rows&&rows[0])||null;
-      }
-      if(!route) return json(200,{ok:true,route:null,stops:[]});
-      const stops=Array.isArray(route.stops)?route.stops:[];
+    /* PHASE 2A · UNPLANNED VISITS (Start Visit on Dealer 360). Off a route, a visit is found by the
+       visit_key the phone made when Start was tapped and sends on every later call, queued or not —
+       so a replay that arrives after the visit was approved lands on THAT visit and never opens a new
+       one. Calls without a key keep the Phase 1 rule (this rep's one open report for the dealer), and
+       the database allows only one open off-route visit per rep per dealer
+       (supabase/phase2_adhoc_visits.sql): a second Start resumes the open visit. */
+    function visitKeyOf(x){ const k=String((x&&x.visit_key)||"").trim(); return /^[A-Za-z0-9_-]{6,64}$/.test(k)?k:null; }
+    async function reportByKey(did,key,sel){
+      if(!key) return null;
+      const rows=await sbGet(`dealer_visit_reports?route_id=is.null&dealer_id=eq.${encodeURIComponent(did)}&rep_email=eq.${encodeURIComponent(me.email||"")}&visit_key=eq.${encodeURIComponent(key)}&select=${sel||"*"}&limit=1`).catch(()=>[]);
+      return (rows&&rows[0])||null;
+    }
+    function isConflict(e){ return /Supabase 409|23505|duplicate key/i.test(String((e&&e.message)||e)); }
+    // The phone's key goes onto an open visit that has none yet (one started before keys existed).
+    async function adoptKey(id,key){ if(!id||!key) return; await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(id)}&visit_key=is.null`,{visit_key:key},{Prefer:"return=minimal"}).catch(()=>{}); }
+    async function keyOf(id){ const r=await sbGet(`dealer_visit_reports?id=eq.${encodeURIComponent(id)}&select=visit_key&limit=1`).catch(()=>[]); return (r&&r[0]&&r[0].visit_key)||null; }
+    // Dealer cards for a day's stops: details, every contact, and the visit on each.
+    async function stopDetails(stops,vmap){
       const ids=[...new Set(stops.map(s=>s.dealer_id).filter(Boolean))];
-      let dmap={},cmap={},clist={},vmap={};
+      let dmap={},cmap={},clist={};
       if(ids.length){
         try{ const ds=await sbGet(`dealers?id=in.(${ids.join(",")})&select=id,business_name,contact_name,email,phone,address,city,state,zip`); for(const d of (ds||[])) dmap[d.id]=d; }catch(e){}
         /* ALL of them, not only the first. The first row still names the card and the call
@@ -1146,9 +1159,7 @@ exports.handler = async (event)=>{
            the heads-up and the follow-up can be addressed to whoever this visit is actually with. */
         try{ const cs=await sbGet(`dealer_contacts?dealer_id=in.(${ids.join(",")})&select=dealer_id,name,email,phone,cell,title,role&order=dealer_id`); for(const c of (cs||[])){ if(!cmap[c.dealer_id]) cmap[c.dealer_id]=c; (clist[c.dealer_id]=clist[c.dealer_id]||[]).push(c); } }catch(e){}
       }
-      try{ const vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(route.id)}&select=id,dealer_id,status,checkin_at,completed_at,ended_at,duration_min,approved_at,followup_status,ai_suggested_at`); for(const v of (vr||[])) vmap[v.dealer_id]=v; }
-      catch(e){ try{ const vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(route.id)}&select=dealer_id,status,checkin_at,completed_at`); for(const v of (vr||[])) vmap[v.dealer_id]=v; }catch(_){} }
-      const outStops=stops.map((s,i)=>{ const d=dmap[s.dealer_id]||{}, c=cmap[s.dealer_id]||{}, v=vmap[s.dealer_id]||null;
+      return stops.map((s,i)=>{ const d=dmap[s.dealer_id]||{}, c=cmap[s.dealer_id]||{}, v=vmap[s.dealer_id]||null;
         return { order:i, dealer_id:s.dealer_id||"", name:s.name||d.business_name||"",
           address:s.address||d.address||"", city:s.city||d.city||"", state:s.state||d.state||"", zip:s.zip||d.zip||"",
           lat:s.lat, lng:s.lng, visit_min:(s.visit_min!=null?s.visit_min:null),
@@ -1163,7 +1174,49 @@ exports.handler = async (event)=>{
           contacts: stopRecipients(clist[s.dealer_id]||[], d),
           visit: v?{id:v.id||null,status:v.status,checkin_at:v.checkin_at,completed_at:v.completed_at,ended_at:v.ended_at||null,
             duration_min:(v.duration_min!=null?v.duration_min:null),approved_at:v.approved_at||null,
-            followup_status:v.followup_status||null,has_suggestion:!!v.ai_suggested_at}:null }; });
+            followup_status:v.followup_status||null,has_suggestion:!!v.ai_suggested_at,
+            ...(v.visit_key?{visit_key:v.visit_key}:{})}:null }; });
+    }
+    if(b.action==="route_day" && !b.route_id && b.dealer_id){
+      /* Phase 2A: one dealer, no route — the field app's visit mode opened from Dealer 360. Behind
+         the adhoc_visit switch; the dealer must be one this person may work (in My Sales Workspace,
+         his own book). Returns the same day shape as a route with one stop, plus the visit on it:
+         the one this phone's visit_key names, else this rep's open unplanned visit. */
+      if(!(await FL.flagOn(sbGet,"adhoc_visit"))) return json(403,{error:"Unplanned visits aren't turned on yet.",code:"flag_off"});
+      const did=String(b.dealer_id).trim();
+      const off=await dealersOffReach(scopeMe,[did]);
+      if(off.length>0) return json(403,{error:"Not your dealer",dealer_ids:off});
+      const ex=await dealerExists(did);
+      if(ex===null) return json(503,{error:"Couldn't check the dealer right now — try again."});
+      if(ex===false) return json(404,{error:"Dealer not found."});
+      const VCOLS="id,status,checkin_at,completed_at,ended_at,duration_min,approved_at,followup_status,ai_suggested_at,visit_key";
+      let v=await reportByKey(did,visitKeyOf(b),VCOLS);
+      if(!v){ const rows=await sbGet(`dealer_visit_reports?route_id=is.null&dealer_id=eq.${encodeURIComponent(did)}&rep_email=eq.${encodeURIComponent(me.email||"")}&completed_at=is.null&select=${VCOLS}&order=updated_at.desc&limit=1`).catch(()=>[]); v=(rows&&rows[0])||null; }
+      const vmap={}; if(v) vmap[did]=v;
+      const stops=await stopDetails([{dealer_id:did}],vmap);
+      return json(200,{ok:true,
+        route:{id:null,adhoc:true,dealer_id:did,name:"Unplanned visit",scheduled_date:new Date().toISOString().slice(0,10),
+          home_base:null,home_base_source:null,needs_home_base:false,round_trip:false,can_manage:false},
+        stops});
+    }
+    if(b.action==="route_day"){
+      let route=null;
+      if(b.route_id){
+        const rows=await sbGet(`rep_routes?id=eq.${encodeURIComponent(b.route_id)}&select=*`).catch(()=>[]);
+        route=(rows&&rows[0])||null;
+        if(route && !ownsRoute(route)) return json(403,{error:"not your route"});
+      } else {
+        const date=(b.date&&/^\d{4}-\d{2}-\d{2}$/.test(b.date))?b.date:new Date().toISOString().slice(0,10);
+        const own=isBoss(me)?"":"&"+mineFilter(me);
+        const rows=await sbGet(`rep_routes?scheduled_date=eq.${date}${own}&select=*&order=updated_at.desc&limit=1`).catch(()=>[]);
+        route=(rows&&rows[0])||null;
+      }
+      if(!route) return json(200,{ok:true,route:null,stops:[]});
+      const stops=Array.isArray(route.stops)?route.stops:[];
+      let vmap={};
+      try{ const vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(route.id)}&select=id,dealer_id,status,checkin_at,completed_at,ended_at,duration_min,approved_at,followup_status,ai_suggested_at`); for(const v of (vr||[])) vmap[v.dealer_id]=v; }
+      catch(e){ try{ const vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(route.id)}&select=dealer_id,status,checkin_at,completed_at`); for(const v of (vr||[])) vmap[v.dealer_id]=v; }catch(_){} }
+      const outStops=await stopDetails(stops,vmap);
       const hb=resolveHomeBase(route,me);
       return json(200,{ok:true,
         route:{id:route.id,name:route.name,scheduled_date:route.scheduled_date,
@@ -1195,25 +1248,55 @@ exports.handler = async (event)=>{
       const now=new Date().toISOString();
       // An arrival tapped offline keeps the time it was tapped (the on-site timer runs from it).
       const arrivedAt=VI.clientTime(b.at)||now;
+      // Phase 2A: a replayed Start for an unplanned visit is that visit, whatever state it is in now.
+      const vk=rid?null:visitKeyOf(b);
+      if(vk){ const k=await reportByKey(did,vk,"id,status,checkin_at,completed_at");
+        if(k && k.completed_at) return json(200,{ok:true,report_id:k.id,visit_key:vk,checkin_at:k.checkin_at||null,status:"completed",already:true});
+        if(k && k.checkin_at) return json(200,{ok:true,report_id:k.id,visit_key:vk,checkin_at:k.checkin_at,status:k.status||"checked_in",already:true}); }
       const prev=await visitReportFor(rid,did,me);
       if(prev && prev.completed_at) return json(200,{ok:true,checkin_at:prev.checkin_at||null,status:"completed",already:true});
-      if(prev && prev.checkin_at) return json(200,{ok:true,checkin_at:prev.checkin_at,status:prev.status||"checked_in",already:true});
+      if(prev && prev.checkin_at){
+        // An unfinished unplanned visit is resumed, never doubled (approved decision, 2026-10-03).
+        if(vk){ await adoptKey(prev.id,vk); return json(200,{ok:true,report_id:prev.id,visit_key:(await keyOf(prev.id))||vk,checkin_at:prev.checkin_at,status:prev.status||"checked_in",already:true,resumed:true}); }
+        return json(200,{ok:true,checkin_at:prev.checkin_at,status:prev.status||"checked_in",already:true});
+      }
       const status=prev ? visitStatusMax(prev.status,"checked_in") : "checked_in";
       const row={ route_id:rid, dealer_id:did, rep_email:me.email||null, rep_name:me.rep_name||null, scheduled_date:sd, checkin_at:arrivedAt, status, updated_at:now };
       if(rid){ await sbSend("POST","dealer_visit_reports?on_conflict=route_id,dealer_id",row,{Prefer:"resolution=merge-duplicates,return=minimal"}); }
-      else if(prev){ await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(prev.id)}`,{checkin_at:arrivedAt,status,updated_at:now},{Prefer:"return=minimal"}); }
+      else if(prev){ await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(prev.id)}`,{checkin_at:arrivedAt,status,updated_at:now},{Prefer:"return=minimal"});
+        if(vk){ await adoptKey(prev.id,vk); return json(200,{ok:true,report_id:prev.id,visit_key:(await keyOf(prev.id))||vk,checkin_at:arrivedAt,status}); } }
+      else if(vk){
+        row.visit_key=vk; row.origin="adhoc";
+        let ins=null;
+        try{ ins=await sbSend("POST","dealer_visit_reports",row,{Prefer:"return=representation"}); }
+        catch(e){
+          if(!isConflict(e)) throw e;
+          // Two Starts at once for this rep and dealer: the one that got in first is the visit.
+          const again=await visitReportFor(null,did,me);
+          if(!again) throw e;
+          await adoptKey(again.id,vk);
+          return json(200,{ok:true,report_id:again.id,visit_key:(await keyOf(again.id))||vk,checkin_at:again.checkin_at||null,status:again.status||"checked_in",already:true,resumed:true});
+        }
+        return json(200,{ok:true,report_id:(ins&&ins[0]&&ins[0].id)||null,visit_key:vk,checkin_at:arrivedAt,status});
+      }
       else { await sbSend("POST","dealer_visit_reports",row,{Prefer:"return=minimal"}); }
       return json(200,{ok:true,checkin_at:arrivedAt,status});
     }
     if(b.action==="visit_report_get"){
       const rid=String(b.route_id||"").trim(), did=String(b.dealer_id||"").trim();
       if(!did) return json(400,{error:"dealer_id required"});
-      if(rid){ const chk=await routeStopCheck(rid,did); if(!chk.ok) return json(chk.status,{error:chk.error}); }
-      const path = rid
-        ? `dealer_visit_reports?route_id=eq.${encodeURIComponent(rid)}&dealer_id=eq.${encodeURIComponent(did)}&select=*&limit=1`
-        : `dealer_visit_reports?dealer_id=eq.${encodeURIComponent(did)}&select=*&order=updated_at.desc&limit=1`;
-      const rows=await sbGet(path).catch(()=>[]);
-      const report=(rows&&rows[0])||null;
+      let report=null;
+      if(b.report_id){ const x=await reportById(String(b.report_id),did); if(!x.ok) return json(x.status,{error:x.error}); report=x.report; }
+      else if(rid){
+        const chk=await routeStopCheck(rid,did); if(!chk.ok) return json(chk.status,{error:chk.error});
+        const rows=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(rid)}&dealer_id=eq.${encodeURIComponent(did)}&select=*&limit=1`).catch(()=>[]);
+        report=(rows&&rows[0])||null;
+      } else {
+        // Off a route: the visit this phone's key names, else the caller's OWN latest unplanned visit
+        // (it used to return the dealer's newest visit by anyone).
+        report=await reportByKey(did,visitKeyOf(b),"*");
+        if(!report){ const rows=await sbGet(`dealer_visit_reports?route_id=is.null&dealer_id=eq.${encodeURIComponent(did)}&rep_email=eq.${encodeURIComponent(me.email||"")}&select=*&order=updated_at.desc&limit=1`).catch(()=>[]); report=(rows&&rows[0])||null; }
+      }
       if(!report || !b.detail) return json(200,{ok:true,report});
       // The Visit Summary screen: attendees and the tasks / deals this visit created.
       const id=encodeURIComponent(report.id);
@@ -1238,7 +1321,9 @@ exports.handler = async (event)=>{
       // of ANY of the rep's finished reports for this dealer in the last 30 days is that report, not
       // a new visit — also when a newer visit was finished in between (a lost response retried late).
       // A genuinely new visit always differs in at least one field.
-      let prev=await visitReportFor(rid,did,me);
+      const vk=rid?null:visitKeyOf(b);
+      let prev=vk ? await reportByKey(did,vk,"id,status,checkin_at,completed_at,visit_note_id") : null;
+      if(!prev) prev=await visitReportFor(rid,did,me);
       if(!rid && !prev && completed){
         const since=new Date(Date.now()-30*86400000).toISOString();
         const done=await sbGet(`dealer_visit_reports?route_id=is.null&dealer_id=eq.${encodeURIComponent(did)}&rep_email=eq.${encodeURIComponent(me.email||"")}&completed_at=gte.${encodeURIComponent(since)}&select=id,status,checkin_at,completed_at,visit_note_id,fields&order=completed_at.desc&limit=50`).catch(()=>[]);
@@ -1257,7 +1342,16 @@ exports.handler = async (event)=>{
       let reportId=(prev&&prev.id)||null;
       if(rid){ await sbSend("POST","dealer_visit_reports?on_conflict=route_id,dealer_id",row,{Prefer:"resolution=merge-duplicates,return=minimal"}); }
       else if(prev){ const {route_id,dealer_id,...upd}=row; await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(prev.id)}`,upd,{Prefer:"return=minimal"}); }
-      else { const ins=await sbSend("POST","dealer_visit_reports",row,{Prefer:"return=representation"}); reportId=(ins&&ins[0]&&ins[0].id)||null; }
+      else {
+        const insRow=vk?Object.assign({},row,{visit_key:vk,origin:"adhoc"}):row;
+        const ins=await sbSend("POST","dealer_visit_reports",insRow,{Prefer:"return=representation"}).catch(async e=>{
+          if(!isConflict(e)) throw e;
+          // Lost a race with a Start for the same rep and dealer: save onto that open visit instead.
+          const again=await visitReportFor(rid,did,me); if(!again) throw e;
+          const {route_id,dealer_id,...upd}=row;
+          await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(again.id)}`,upd,{Prefer:"return=minimal"});
+          return [{id:again.id}]; });
+        reportId=(ins&&ins[0]&&ins[0].id)||null; }
       // THE CLAIM: only the save that flips completed_at from empty does the fan-out below.
       let firstCompletion=false;
       if(completed && !(prev&&prev.completed_at)){
@@ -1341,12 +1435,13 @@ exports.handler = async (event)=>{
       const rows=await sbGet(`dealer_visit_reports?id=eq.${encodeURIComponent(id)}&select=*&limit=1`).catch(()=>[]);
       const r=rows&&rows[0]; if(!r) return {ok:false,status:404,error:"Visit not found."};
       if(String(r.dealer_id)!==String(did)) return {ok:false,status:403,error:"That visit belongs to another dealer."};
-      if(SC.seesAllDealers(me) || emailEq(r.rep_email,me.email)) return {ok:true,report:r};
+      if(SC.seesAllDealers(scopeMe) || emailEq(r.rep_email,me.email)) return {ok:true,report:r};
       if(r.route_id){ const chk=await routeStopCheck(r.route_id,did); if(chk.ok) return {ok:true,report:r}; }
       return {ok:false,status:403,error:"Not your visit."};
     }
     async function locateReport(rid,did){
       if(b.report_id) return reportById(String(b.report_id),did);
+      if(!rid){ const k=await reportByKey(did,visitKeyOf(b),"*"); if(k) return {ok:true,report:k}; }
       if(rid){ const chk=await routeStopCheck(rid,did); if(!chk.ok) return chk; }
       const r=await reportFull(rid,did);
       return r?{ok:true,report:r}:{ok:false,status:404,error:"Start the visit first."};
@@ -1372,23 +1467,33 @@ exports.handler = async (event)=>{
       if(rid){ const chk=await routeStopCheck(rid,did); if(!chk.ok) return json(chk.status,{error:chk.error}); sd=chk.route.scheduled_date||null; }
       const nowMs=Date.now(), nowIso=new Date(nowMs).toISOString();
       const endIso=VI.clientTime(b.at,nowMs)||nowIso;
-      let prev=await reportFull(rid,did);
+      const vk=rid?null:visitKeyOf(b);
+      let prev=vk ? await reportByKey(did,vk,"*") : null;
+      if(!prev){ prev=await reportFull(rid,did); if(vk && prev && !prev.visit_key) await adoptKey(prev.id,vk); }
       if(!prev && !rid && b.at){
         // Off a route, a replayed End for a visit that has since been approved is that visit.
         const rows=await sbGet(`dealer_visit_reports?route_id=is.null&dealer_id=eq.${encodeURIComponent(did)}&rep_email=eq.${encodeURIComponent(me.email||"")}&ended_at=eq.${encodeURIComponent(endIso)}&select=*&limit=1`).catch(()=>[]);
         if(rows&&rows[0]) prev=rows[0];
       }
       if(prev && prev.ended_at) return json(200,{ok:true,report_id:prev.id,ended_at:prev.ended_at,duration_min:prev.duration_min,status:prev.status,already:true});
-      const startIso=(prev&&prev.checkin_at)||VI.clientTime(b.started_at,nowMs)||endIso;
-      const end=Date.parse(endIso)<Date.parse(startIso)?startIso:endIso;
-      const dur=Math.max(0,Math.round((Date.parse(end)-Date.parse(startIso))/60000));
+      let startIso=(prev&&prev.checkin_at)||VI.clientTime(b.started_at,nowMs)||endIso;
+      let end=Date.parse(endIso)<Date.parse(startIso)?startIso:endIso;
+      let dur=Math.max(0,Math.round((Date.parse(end)-Date.parse(startIso))/60000));
       if(!prev){
         // Never started here (the arrival was lost, or End came first): open and end it now.
         const row={route_id:rid,dealer_id:did,rep_email:me.email||null,rep_name:me.rep_name||null,scheduled_date:sd,
           checkin_at:startIso,ended_at:end,duration_min:dur,status:"ended",origin:rid?"route":"adhoc",updated_at:nowIso};
-        const ins = rid ? await sbSend("POST","dealer_visit_reports?on_conflict=route_id,dealer_id",row,{Prefer:"resolution=merge-duplicates,return=representation"})
-                        : await sbSend("POST","dealer_visit_reports",row,{Prefer:"return=representation"});
-        return json(200,{ok:true,report_id:(ins&&ins[0]&&ins[0].id)||null,ended_at:end,duration_min:dur,status:"ended"});
+        if(vk) row.visit_key=vk;
+        let ins=null, raced=null;
+        try{ ins = rid ? await sbSend("POST","dealer_visit_reports?on_conflict=route_id,dealer_id",row,{Prefer:"resolution=merge-duplicates,return=representation"})
+                       : await sbSend("POST","dealer_visit_reports",row,{Prefer:"return=representation"}); }
+        catch(e){ if(rid || !isConflict(e)) throw e; raced=await reportFull(rid,did); if(!raced) throw e; }
+        if(!raced) return json(200,{ok:true,report_id:(ins&&ins[0]&&ins[0].id)||null,ended_at:end,duration_min:dur,status:"ended"});
+        // A Start for this rep and dealer landed first: end THAT visit (below), from its own arrival.
+        prev=raced;
+        if(prev.ended_at) return json(200,{ok:true,report_id:prev.id,ended_at:prev.ended_at,duration_min:prev.duration_min,status:prev.status,already:true});
+        startIso=prev.checkin_at||startIso; end=Date.parse(endIso)<Date.parse(startIso)?startIso:endIso;
+        dur=Math.max(0,Math.round((Date.parse(end)-Date.parse(startIso))/60000));
       }
       const status=prev.completed_at?"completed":visitStatusMax(prev.status,"ended");
       const won=await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(prev.id)}&ended_at=is.null&select=id`,
@@ -1475,8 +1580,9 @@ exports.handler = async (event)=>{
       const oppsIn=(Array.isArray(b.opportunities)?b.opportunities:[]).filter(o=>o&&cleanS(o.title,200)&&TK.KEY_RE.test(String(o.key||""))).slice(0,15);
       const partsIn=(Array.isArray(b.participants)?b.participants:[]).slice(0,30);
       let r=null;
+      const vk=rid?null:visitKeyOf(b);
       if(b.report_id){ const x=await reportById(String(b.report_id),did); if(!x.ok) return json(x.status,{error:x.error}); r=x.report; }
-      else r=await reportFull(rid,did);
+      else { if(vk) r=await reportByKey(did,vk,"*"); if(!r) r=await reportFull(rid,did); }
       if(!r && !rid){
         // Off a route, a replay after approval is that visit: same rep, dealer and approved summary.
         const since=new Date(Date.now()-30*86400000).toISOString();
@@ -1487,8 +1593,11 @@ exports.handler = async (event)=>{
       if(!r){
         const row={route_id:rid,dealer_id:did,rep_email:me.email||null,rep_name:me.rep_name||null,scheduled_date:sd,
           checkin_at:VI.clientTime(b.started_at)||nowIso,status:"ended",origin:rid?"route":"adhoc",updated_at:nowIso};
+        if(vk) row.visit_key=vk;
         const ins = rid ? await sbSend("POST","dealer_visit_reports?on_conflict=route_id,dealer_id",row,{Prefer:"resolution=merge-duplicates,return=representation"})
-                        : await sbSend("POST","dealer_visit_reports",row,{Prefer:"return=representation"});
+                        : await sbSend("POST","dealer_visit_reports",row,{Prefer:"return=representation"}).catch(async e=>{
+                            // A Start for this rep and dealer landed first: approve THAT open visit.
+                            if(!isConflict(e)) throw e; const again=await reportFull(rid,did); if(!again) throw e; return [again]; });
         r=(ins&&ins[0])||null;
         if(!r) return json(500,{error:"Couldn't open the visit record."});
       }

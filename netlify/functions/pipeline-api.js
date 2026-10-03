@@ -49,10 +49,12 @@ exports.handler=async(event)=>{
     /* Who may write a deal. Management (and, unchanged in Phase 0, Relations) may work any deal.
        A rep may add deals on dealers in his book, change only deals he owns or whose dealer is
        in his book, and can't hand a deal to someone else — owner_rep stays his own. */
-    const manages=SC.seesAllDealers(me);
+    // In My Sales Workspace the President writes deals as a rep with his own book (Phase 2, amendment 1).
+    const scopeMe=SC.workspaceUser(event, me);
+    const manages=SC.seesAllDealers(scopeMe);
     if(b.action==="add"){
       if(!clean(b.title)) return json(400,{error:"title required"});
-      if(b.dealer_id && !(await SC.canAccessDealer(me,b.dealer_id,sbGet))) return json(403,{error:"Not your dealer"});
+      if(b.dealer_id && !(await SC.canAccessDealer(scopeMe,b.dealer_id,sbGet))) return json(403,{error:"Not your dealer"});
       const stage=STAGES.includes(b.stage)?b.stage:"identified";
       const row={ dealer_id:b.dealer_id||null, title:clean(b.title,200), line:clean(b.line,120),
         stage, value:Number(b.value)||0, probability:(b.probability!=null?Number(b.probability):STAGE_PROB[stage]),
@@ -68,7 +70,7 @@ exports.handler=async(event)=>{
     }
     if(b.action==="update"){
       if(!b.id) return json(400,{error:"id required"});
-      const own=await SC.authorizeRecord(me,"opportunities",b.id,sbGet,{ownerFields:["owner_rep","owner_email"],optional:["owner_email"]});
+      const own=await SC.authorizeRecord(scopeMe,"opportunities",b.id,sbGet,{ownerFields:["owner_rep","owner_email"],optional:["owner_email"]});
       if(!own.ok) return json(own.status,{error:own.error});
       const patch={updated_at:new Date().toISOString(),updated_by:me.email||me.name||null};
       if(b.stage&&STAGES.includes(b.stage)){ patch.stage=b.stage; patch.probability=(b.probability!=null?Number(b.probability):STAGE_PROB[b.stage]); patch.status=b.stage==="won"?"won":b.stage==="lost"?"lost":"open";

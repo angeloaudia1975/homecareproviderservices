@@ -20,7 +20,7 @@ const AI_MODEL = process.env.HCPS_AI_MODEL || "claude-sonnet-5";
 const json=(c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H=()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
-const { dealerScope, isAdmin } = require("./_scope.js");
+const { dealerScope, isAdmin, workspaceUser } = require("./_scope.js");
 
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -100,9 +100,11 @@ exports.handler=async(event)=>{
     const me=await whoami(event); if(!me) return json(401,{error:"unauthorized"});
     let b; try{b=JSON.parse(event.body||"{}");}catch{return json(400,{error:"bad JSON"});}
     const dealerId=String(b.dealer_id||"").trim(); if(!dealerId) return json(400,{error:"dealer_id required"});
-    // Access: management/relations anywhere; a rep only for their own book.
-    if(!isAdmin(me)){
-      const sc=await dealerScope(me, sbGet);
+    // Access: management/relations anywhere; a rep only for their own book — and so may the President
+    // inside My Sales Workspace (Phase 2, amendment 1).
+    const scopeMe=workspaceUser(event, me);
+    if(!isAdmin(scopeMe)){
+      const sc=await dealerScope(scopeMe, sbGet);
       if(!sc.isAll && !(sc.ids && sc.ids.has(dealerId))) return json(403,{error:"Not your dealer"});
     }
 

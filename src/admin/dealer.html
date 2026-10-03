@@ -130,6 +130,7 @@
  .vm-tags{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 0}
  .vm-tag{font-size:11px;background:#f5f8fb;border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:#41576b}
  .vm-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+ .vm-acts a.btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
  .vm-more{border-top:1px dashed var(--line);margin-top:8px;padding-top:6px;font-size:13px}
  .vm-more .vl{padding:3px 0}
  .vm-more .vl b{color:var(--navy)}
@@ -1674,9 +1675,17 @@ function renderVisits(){
   const el=$("#visits"); if(!el) return; const j=VISITS||{};
   const up=j.upcoming||[], mt=j.meetings||[], ac=j.active||[], past=j.past||[];
   let h="";
+  /* Phase 2A: Start Visit here, no route needed (behind the adhoc_visit switch). It opens the field
+     app's visit mode for this dealer; with an unfinished unplanned visit of your own here, the button
+     resumes that one instead — never a second visit at the same dealer. */
+  const visitUrl=`/admin/scheduled-routes.html?dealer=${encodeURIComponent(CUR)}`;
+  if(j.adhoc_visit) h+=`<div class="vm-acts" style="margin:0 0 10px">${j.my_open_visit
+      ?`<a class="btn sm orange" id="vm-start" href="${visitUrl}">⏱ Resume my visit</a>`
+      :`<a class="btn sm orange" id="vm-start" href="${visitUrl}">▶ Start visit</a>`}</div>`;
   if(ac.length) h+=`<div class="vm-sec">In progress</div>`+ac.map(v=>`<div class="vm live"><div class="vm-hd"><b>${v.ended_at?"Ended — summary due":"On site now"}</b>
       <span>${esc(v.rep_name||v.rep_email||"")}</span><span>started ${esc(vmTime(v.started_at))}${v.duration_min!=null?` · ${esc(String(v.duration_min))} min`:""}</span></div>
-      ${v.route_id?`<div class="vm-acts"><a class="btn sm" href="/admin/scheduled-routes.html?route=${encodeURIComponent(v.route_id)}">Open in the field app</a></div>`:""}</div>`).join("");
+      ${v.route_id?`<div class="vm-acts"><a class="btn sm" href="/admin/scheduled-routes.html?route=${encodeURIComponent(v.route_id)}">Open in the field app</a></div>`
+        :(v.mine&&j.adhoc_visit?`<div class="vm-acts"><a class="btn sm" href="${visitUrl}">Open in the field app</a></div>`:"")}</div>`).join("");
   if(up.length||mt.length) h+=`<div class="vm-sec">Upcoming</div>`
     +up.map(u=>`<div class="vm"><div class="vm-hd"><b>${esc(vmDate(u.date))}</b><span>Route stop · ${esc(u.route_name||"Route")}</span>${u.rep_name?`<span>${esc(u.rep_name)}</span>`:""}</div></div>`).join("")
     +mt.map(m=>`<div class="vm"><div class="vm-hd"><b>${esc(vmDate(m.start_at))} ${esc(vmTime(m.start_at))}</b><span>${esc(m.meeting_type||m.service||"Appointment")}</span>${m.rep_name?`<span>${esc(m.rep_name)}</span>`:""}</div></div>`).join("");

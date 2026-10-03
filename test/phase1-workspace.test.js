@@ -3,7 +3,8 @@
    The President is also a working rep. With the header `x-hcps-workspace: mine` the working sales
    lists answer exactly as they would for a rep with his email — his book (dealers.rep_email, the
    same resolver every rep gets), his tasks, routes and deals, his own Command Center with no
-   picker — while every write keeps his real authority. The header means nothing to anyone else.
+   picker — and (Phase 2 amendment 1) his sales writes from the workspace reach only that book too;
+   Admin mode keeps company-wide reach. The header means nothing to anyone else.
    staff-auth landingFor() sends a Relations Manager to the pilot page only when her own email is
    listed; management always lands on /admin/. */
 const assert = require('assert');
@@ -271,12 +272,24 @@ function landWorld(setting) {
     assert.strictEqual(opp.status, 200, JSON.stringify(opp.body));
     assert.ok(w.db.opportunities.some(o => o.title === 'Spring lift chairs' && o.dealer_id === 'd-ang-mail'));
   });
-  await t('Workspace is not a permission reduction: his President authority outside the book is unchanged', async () => {
+  await t('Workspace writes are his own book only (Phase 2 amendment 1); Admin mode keeps company-wide reach', async () => {
     const w = W();
-    const r = await call(load('crm-api.js', w), { action: 'list', dealer_id: 'd-greg' }, as('pres', true));
-    assert.strictEqual(r.status, 200, 'President refused a dealer outside his book while in the workspace');
-    const a = await call(load('crm-api.js', w), { action: 'add_task', dealer_id: 'd-greg', title: 'Coach Greg' }, as('pres', true));
-    assert.strictEqual(a.status, 200);
+    // Inside My Sales Workspace: Greg's dealer is refused for reads and sales writes alike.
+    for (const [fn, body] of [['crm-api.js', { action: 'list', dealer_id: 'd-greg' }], ['crm-api.js', { action: 'add_task', dealer_id: 'd-greg', title: 'Coach Greg' }],
+      ['crm-api.js', { action: 'complete_task', id: 't-g1' }], ['pipeline-api.js', { action: 'add', dealer_id: 'd-greg', title: 'x' }],
+      ['pipeline-api.js', { action: 'update', id: 'o-g', stage: 'quoted' }]]) {
+      const r = await call(load(fn, w), body, as('pres', true));
+      assert.ok(r.status === 403 || r.status === 404, fn + ' ' + body.action + ' in the workspace answered ' + r.status);
+    }
+    const v = await R(w, { action: 'visit_checkin', route_id: 'r-g', dealer_id: 'd-greg' }, 'pres', true);
+    assert.strictEqual(v.status, 403, 'Start Visit on Greg\'s dealer from the workspace: ' + JSON.stringify(v.body));
+    // His own book still works in the workspace (covered above); the Admin view keeps full reach.
+    const a = await call(load('crm-api.js', w), { action: 'add_task', dealer_id: 'd-greg', title: 'Coach Greg' }, as('pres', false));
+    assert.strictEqual(a.status, 200, 'Admin mode lost company-wide reach');
+    const l = await call(load('crm-api.js', w), { action: 'list', dealer_id: 'd-greg' }, as('pres', false));
+    assert.strictEqual(l.status, 200);
+    const o = await call(load('pipeline-api.js', w), { action: 'update', id: 'o-g', stage: 'quoted' }, as('pres', false));
+    assert.strictEqual(o.status, 200);
   });
   await t('The header grants a rep nothing: Greg still cannot reach Angelo\'s dealer or records', async () => {
     const w = W();

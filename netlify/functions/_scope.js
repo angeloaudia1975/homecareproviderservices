@@ -240,8 +240,9 @@ async function authorizeRecord(me, table, id, sbGet, opts){
    switch his working sales views to that book: the page sends the header `x-hcps-workspace: mine`
    and the read endpoints then answer exactly as they would for a sales rep with his email.
    - Honored for management roles only; anyone else sending the header gets their normal answer.
-   - It only NARROWS what a list shows. Authorization never reads it: every write and record check
-     still uses the caller's real role, so President permissions are unchanged in the workspace.
+   - It NARROWS what a list shows, and (Phase 2, amendment 1) limits operational sales writes made
+     from the workspace to his own book — see workspaceUser() below. It never widens anything, and
+     the President's normal Admin mode (no header) keeps company-wide reach.
    - The book is the same resolver a rep gets (dealers.rep_email first, then rep_name, then the
      legacy directory, families kept together) — no second ownership model. */
 function workspaceMine(event, me){
@@ -251,7 +252,16 @@ function workspaceMine(event, me){
 }
 // The caller's own dealer book, resolved as if they were a rep (used only inside the workspace).
 async function ownBook(me, sbGet, idx){ return dealerScope(Object.assign({}, me, {role:"rep"}), sbGet, idx); }
+/* WHO A SALES WRITE IS CHECKED AS (Phase 2, approved amendment 1, 2026-10-03). My Sales Workspace is
+   the President acting as a sales rep, so operational sales writes made from it (Start Visit and the
+   rest of the visit flow, tasks, deals, notes, contacts, follow-up email) are checked as that rep:
+   only dealers in his own book (dealers.rep_email first, the same resolver). Outside the workspace —
+   and for every other role — this is simply `me`, unchanged. Use the result ONLY for dealer and
+   record scope checks; role gates (President-only actions) keep reading the real `me`. */
+function workspaceUser(event, me){
+  return workspaceMine(event, me) ? Object.assign({}, me, {role:"rep", workspace:true}) : me;
+}
 
 module.exports = { dnorm, roleOf, isAdmin, seesAllDealers, seesAllCommissions, dealerScope,
                    dealersOutsideScope, canAccessDealer, authorizeRecord,
-                   getAll, ownerIndex, setDealerOwner, dealerIdByName, workspaceMine, ownBook };
+                   getAll, ownerIndex, setDealerOwner, dealerIdByName, workspaceMine, ownBook, workspaceUser };
