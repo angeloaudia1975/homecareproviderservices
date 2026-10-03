@@ -89,7 +89,8 @@
         { href:"/admin/dealer.html",        label:"Dealer 360 & CRM",      icon:"📇", desc:"Full account command center — activity, contacts, tasks" },
         { href:"/admin/map.html",           label:"Territory Map",         icon:"🗺️", desc:"Dealer map, drive routes & saved trips" },
         { href:"/admin/scheduled-routes.html", label:"Scheduled Routes",   icon:"📅", desc:"Mobile field companion — today's visits, packages & voice notes" },
-        { href:"/admin/command-center-rep.html", label:"Rep Command Center", icon:"🧭", status:"new", desc:"A rep's day — priorities, route & meeting prep, visit results, follow-ups. Pick any rep to view." },
+        { href:"/admin/command-center-rep.html?workspace=mine", label:"My Sales Workspace", icon:"🧑‍💼", status:"new", desc:"Work your own dealer book as a rep — your day, route, visits, tasks & deals. Back to Admin any time." },
+        { href:"/admin/command-center-rep.html", label:"Rep Command Center", icon:"🧭", status:"new", desc:"A rep's day — priorities, route & meeting prep, visit results, follow-ups. Pick any rep to view (read-only)." },
         { href:"/admin/territory.html",     label:"Territory Lines",       icon:"📍", desc:"Which manufacturer lines you represent in each state" },
         { href:"/admin/map.html#handout",   label:"Partnership Snapshots", icon:"📋", desc:"Printable dealer business-case handouts" },
         { href:"/admin/staff.html",         label:"Sales Reps & Staff",    icon:"👥", desc:"Team accounts, roles & territory ownership" },
@@ -146,7 +147,7 @@
     ],
     sales: [
       // Daily: what a rep opens first thing.
-      "Today's Opportunities", "Who to Call", "Dealer 360 & CRM", "My Tasks & Follow-Up Engine", "Rep Command Center",
+      "My Sales Workspace", "Today's Opportunities", "Who to Call", "Dealer 360 & CRM", "My Tasks & Follow-Up Engine", "Rep Command Center",
       // Frequent: the working set through the week.
       "Dealer Health", "Dealer Manager", "Territory Map", "Scheduled Routes", "Pipeline",
       // Supporting: campaigns and scheduling around the core work.
@@ -207,6 +208,20 @@
     { href:"/admin/campaigns.html", label:"Campaign Studio" },
     { href:"/admin/cardchamp.html", label:"CardChamp" }
   ];
+  // MY SALES WORKSPACE — a President who also carries a dealer book works it here, as a rep would:
+  // his own day, route, visits, tasks, deals and Dealer 360, scoped to the dealers assigned to him.
+  // The flag lives in staff-session.js (HCPS.workspace); the server narrows lists to his book and
+  // never reduces what he may do. "Back to Admin Dashboard" leaves it.
+  var WORKSPACE_TOOLS = [
+    { href:"/admin/command-center-rep.html", label:"My Command Center" },
+    { href:"/admin/scheduled-routes.html",   label:"Today's Route & Visits" },
+    { href:"/admin/map.html",                label:"Route Planner" },
+    { href:"/admin/dealer.html",             label:"Dealer 360" },
+    { href:"/admin/tasks.html",              label:"My Tasks" },
+    { href:"/admin/pipeline.html",           label:"Pipeline" }
+  ];
+  var WS_ENTER = "/admin/command-center-rep.html?workspace=mine", WS_EXIT = "/admin/?workspace=off";
+  function inWorkspace(me){ return isAdmin(me) && !!(window.HCPS && HCPS.workspace && HCPS.workspace()); }
   // A non-admin's home: their landing from the server (profile.landing, Phase 0L) when it is a
   // same-site /admin/ page, else the rep workspace home (today's rule).
   function homeFor(me){ var u=me&&me.landing; return (typeof u==="string"&&/^\/admin\/[A-Za-z0-9._\/-]*$/.test(u)&&u.indexOf("..")<0&&u!=="/admin/")?u:"/admin/rep-home.html"; }
@@ -455,16 +470,29 @@
     s.textContent=".ac-imp{display:flex;align-items:center;gap:10px;background:#7a1f1f;color:#fff;padding:7px 16px;font-size:13px;font-weight:600}.ac-imp b{color:#ffe0a3}.ac-imp-tx{flex:1;min-width:0}.ac-imp-dot{font-size:15px}.ac-imp button{background:#fff;color:#7a1f1f;border:0;border-radius:7px;padding:5px 12px;font-weight:800;font-size:12px;cursor:pointer;white-space:nowrap}.ac-imp button:hover{background:#ffe9e9}";
     (document.head||document.documentElement).appendChild(s);
   }
+  function ensureWsStyles(){
+    if(document.getElementById("ac-ws-css")) return;
+    var s=document.createElement("style"); s.id="ac-ws-css";
+    s.textContent=".ac-ws{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;background:#14532d;color:#fff;padding:8px 16px;font-size:13px}"
+      +".ac-ws b{color:#bbf7d0}.ac-ws-tx{flex:1;min-width:220px}.ac-ws a.ac-ws-back{background:#fff;color:#14532d;border-radius:7px;padding:6px 12px;font-weight:800;font-size:12.5px;text-decoration:none;white-space:nowrap}"
+      +".ac-ws a.ac-ws-back:hover{background:#dcfce7}.ac-wsbtn{display:inline-flex;align-items:center;gap:4px;background:#1f9d57;color:#fff!important;border-radius:8px;padding:5px 10px;font-weight:700;font-size:12.5px;text-decoration:none;margin-right:6px;white-space:nowrap}"
+      +".ac-wsbtn:hover{background:#178a4b}";
+    (document.head||document.documentElement).appendChild(s);
+  }
   function render(){
     var host = document.getElementById("ac-head"); if(!host) return;
-    ensureImpStyles(); ensureFavStyles();
+    ensureImpStyles(); ensureFavStyles(); ensureWsStyles();
     var me = (window.HCPS && HCPS.profile && HCPS.profile()) || null;
     var path = curPath();
     var admin = isAdmin(me);
+    var ws = inWorkspace(me);
     var who = me ? ('Hi, <b>'+esc(me.name||me.email||"")+'</b>'+(me.role?' · '+esc(me.role):'')) : '';
 
     var tier1, tier2='';
-    if(admin){
+    if(ws){
+      // My Sales Workspace: one row of his working sales tools, no admin hubs.
+      tier1 = WORKSPACE_TOOLS.map(function(t){ var on = samePage(t.href,path); return '<a href="'+t.href+'"'+(on?' class="on"':'')+'>'+esc(t.label)+'</a>'; }).join("");
+    } else if(admin){
       var hub = hubOf(path);
       tier1 = '<a href="/admin/"'+(path==="/admin/"?' class="on"':'')+'>Dashboard</a>'
         + HUBS.map(function(h){ var on = hub && hub.id===h.id; return '<a href="'+h.href+'"'+(on?' class="on"':'')+'>'+esc(h.label)+'</a>'; }).join("");
@@ -507,20 +535,26 @@
         + (imp.by_name?' started by '+esc(imp.by_name):'')+'.</span>'
         + '<button type="button" id="ac-imp-exit">Exit view-as</button></div>'
       : '';
+    if(ws) banner += '<div class="ac-ws"><span aria-hidden="true">🧑‍💼</span>'
+        + '<span class="ac-ws-tx"><b>My Sales Workspace</b> — your own dealer book (the dealers assigned to '
+        + esc((me&&me.email)||"you")+'). Lists show only your accounts; you can work them fully.</span>'
+        + '<a class="ac-ws-back" id="ac-ws-exit" href="'+WS_EXIT+'">← Back to Admin Dashboard</a></div>';
 
     host.className = "ac-head";
     host.innerHTML =
       banner
       + '<div class="ac-wrap ac-top">'
         + '<a class="ac-brand" href="'+(admin?'/admin/':homeFor(me))+'"><span class="ac-mark">H</span>'
-        + '<span class="ac-bt"><b>'+(admin?'HCPS Connect 360':'HCPS Sales')+'</b><span>'+(admin?'Operating System':'Rep Workspace')+'</span></span></a>'
-        + '<div class="ac-who">' + who + '<button type="button" id="ac-fav" class="ac-favbtn" title="Add this page to your dashboard favorites" style="display:none">☆</button><a id="ac-taskbadge" href="/admin/tasks.html" class="ac-badge" style="display:none" title="Your open tasks">0</a><button type="button" id="ac-lock">'+(imp?'Exit view-as':'Lock')+'</button></div>'
+        + '<span class="ac-bt"><b>'+(admin?'HCPS Connect 360':'HCPS Sales')+'</b><span>'+(ws?'My Sales Workspace':(admin?'Operating System':'Rep Workspace'))+'</span></span></a>'
+        + '<div class="ac-who">' + (admin && !ws && !imp ? '<a class="ac-wsbtn" id="ac-ws-enter" href="'+WS_ENTER+'" title="Work your own dealer book — your day, route, visits, tasks and deals">🧑‍💼 My Sales Workspace</a>' : '') + who + '<button type="button" id="ac-fav" class="ac-favbtn" title="Add this page to your dashboard favorites" style="display:none">☆</button><a id="ac-taskbadge" href="/admin/tasks.html" class="ac-badge" style="display:none" title="Your open tasks">0</a><button type="button" id="ac-lock">'+(imp?'Exit view-as':'Lock')+'</button></div>'
       + '</div>'
       + '<nav class="ac-nav ac-wrap">' + tier1 + '</nav>'
       + tier2;
 
     var exitBtn = document.getElementById("ac-imp-exit");
     if(exitBtn) exitBtn.addEventListener("click", function(){ window.ACImpersonate.exit(); });
+    var wsExit = document.getElementById("ac-ws-exit");
+    if(wsExit) wsExit.addEventListener("click", function(){ if(window.HCPS && HCPS.setWorkspace) HCPS.setWorkspace(false); });
 
     wireFavButton(path);                 // the ☆ that pins this tool to the user's dashboard
 
@@ -544,7 +578,7 @@
 
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", render); else render();
   window.addEventListener("hcps-token", render);   // refresh the name after sign-in
-  window.ACAdmin = { render: render, HUBS: HUBS, hubById: hubById, isAdmin: isAdmin, liveTool: liveTool, hubHref: hubHref,
+  window.ACAdmin = { render: render, HUBS: HUBS, hubById: hubById, isAdmin: isAdmin, liveTool: liveTool, hubHref: hubHref, inWorkspace: inWorkspace,
     loadFavs: loadFavs, toggleFav: toggleFav, isFav: isFav, toolAt: toolAt, navAudit: navAudit,
     favs: function(){ return FAVS||[]; } };
 

@@ -351,6 +351,12 @@ exports.handler = async (event)=>{
         // Dealer 360 and every record check agree (owner by email, branch family included).
         const sc=await SC.dealerScope(me, sbGet);
         state.dealers=(state.dealers||[]).filter(d=> sc.ids && sc.ids.has(String(d.id)));
+      } else if(SC.workspaceMine(event, me)){
+        // My Sales Workspace: the President's own book (the rep resolver), for Dealer 360's picker.
+        // A list filter only — what he may open or change is still decided by his real role.
+        const sc=await SC.ownBook(me, sbGet);
+        state.dealers=(state.dealers||[]).filter(d=> sc.ids && sc.ids.has(String(d.id)));
+        state.workspace=true;
       }
       if(!isAdminRole){
         // Non-management roles don't manage the admin queues/tools — hide them.

@@ -207,6 +207,8 @@ function render(D,A){
   if(!d && QNAME) d = dealers.find(x=>x.name===QNAME);
   if(!d){
     if(!QID && !QNAME) return renderPicker(dealers);   // opened with no dealer → show the 360 picker
+    // My Sales Workspace lists only the President's own book; a dealer outside it opens from the Admin view.
+    if(D.workspace){ $("#body").innerHTML=`<div class="msg">This dealer isn't in your own dealer book, so My Sales Workspace doesn't list it. <a class="link" href="/admin/dealer.html">Choose one of your dealers</a> · <a class="link" href="${esc((()=>{ const u=new URL(location.href); u.searchParams.set("workspace","off"); return u.pathname+u.search; })())}" onclick="HCPS.setWorkspace(false)">Open it in the Admin view</a></div>`; return; }
     $("#body").innerHTML=`<div class="msg">Dealer not found. <a class="link" href="/admin/dealer.html">Choose a dealer</a></div>`; return;
   }
 

@@ -626,9 +626,13 @@ exports.handler = async (event)=>{
 
     if(b.action==="list_routes"){
       let path="rep_routes?select=id,name,scheduled_date,stops,distance_m,duration_s,round_trip,updated_at,owner_email,rep_name,assigned_to_email,assigned_to_rep&order=scheduled_date.desc.nullslast,updated_at.desc";
-      if(!isBoss(me)) path+="&"+mineFilter(me);
+      // My Sales Workspace: the President's OWN routes only — assigned to him, or built by him for
+      // nobody else (a route he planned for Greg is Greg's day, not his).
+      const workspace=SC.workspaceMine(event, me);
+      if(!isBoss(me) || workspace) path+="&"+mineFilter(me);
       else if(b.assigned_to_email){ path+=`&assigned_to_email=eq.${encodeURIComponent(String(b.assigned_to_email).toLowerCase())}`; }
-      const rows=await sbGet(path).catch(()=>[]);
+      let rows=await sbGet(path).catch(()=>[]);
+      if(workspace) rows=(rows||[]).filter(r=>r.assigned_to_email ? emailEq(r.assigned_to_email,me.email) : emailEq(r.owner_email,me.email));
       // visited-progress per route (completed visit reports) so the route cards can show 2/5 done.
       const ids=(rows||[]).map(r=>r.id);
       let doneBy={};
@@ -641,7 +645,7 @@ exports.handler = async (event)=>{
         mine:emailEq(r.assigned_to_email,me.email)||emailEq(r.owner_email,me.email),
         can_manage:canManageRoute(me,r),
         when:r.scheduled_date?(r.scheduled_date===today?"today":(r.scheduled_date>today?"upcoming":"past")):"saved"}));
-      return json(200,{ok:true,routes,me:{email:me.email||"",name:me.name||"",rep_name:me.rep_name||"",role:me.role,
+      return json(200,{ok:true,routes,workspace,me:{email:me.email||"",name:me.name||"",rep_name:me.rep_name||"",role:me.role,
         home_base:me.home_base||null}});
     }
     if(b.action==="get_route"){

@@ -188,6 +188,12 @@ exports.handler = async (event)=>{
         else if(cutoff && lo && lo>=cutoff) p.klass="active";
         else p.klass="lapsed";
       }
+      if(SC.workspaceMine(event, me)){
+        // My Sales Workspace: the President's own book on the map / route planner (rep resolver).
+        const sc=await SC.ownBook(me, sbGet);
+        const mine=p=> !!(sc.ids && p.dealer_id && sc.ids.has(String(p.dealer_id)));
+        return json(200,{ok:true,build:BUILD,role:me.role,workspace:true,points:points.filter(mine),unmapped:unmapped.filter(mine)});
+      }
       if(!SC.seesAllDealers(me)){
         // A sales rep sees only their own book on the map — the shared resolver's book (owner by
         // email, branch family included), the same one Dealer 360 and every record check use.

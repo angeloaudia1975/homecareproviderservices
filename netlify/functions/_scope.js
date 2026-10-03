@@ -236,6 +236,22 @@ async function authorizeRecord(me, table, id, sbGet, opts){
   return {ok:false,status:403,error:"Not your record"};
 }
 
+/* MY SALES WORKSPACE (President dual role). A management user who also carries a dealer book can
+   switch his working sales views to that book: the page sends the header `x-hcps-workspace: mine`
+   and the read endpoints then answer exactly as they would for a sales rep with his email.
+   - Honored for management roles only; anyone else sending the header gets their normal answer.
+   - It only NARROWS what a list shows. Authorization never reads it: every write and record check
+     still uses the caller's real role, so President permissions are unchanged in the workspace.
+   - The book is the same resolver a rep gets (dealers.rep_email first, then rep_name, then the
+     legacy directory, families kept together) — no second ownership model. */
+function workspaceMine(event, me){
+  const h=(event&&event.headers)||{};
+  const v=h["x-hcps-workspace"]!=null ? h["x-hcps-workspace"] : h["X-HCPS-Workspace"];
+  return low(v)==="mine" && isAdmin(me);
+}
+// The caller's own dealer book, resolved as if they were a rep (used only inside the workspace).
+async function ownBook(me, sbGet, idx){ return dealerScope(Object.assign({}, me, {role:"rep"}), sbGet, idx); }
+
 module.exports = { dnorm, roleOf, isAdmin, seesAllDealers, seesAllCommissions, dealerScope,
                    dealersOutsideScope, canAccessDealer, authorizeRecord,
-                   getAll, ownerIndex, setDealerOwner, dealerIdByName };
+                   getAll, ownerIndex, setDealerOwner, dealerIdByName, workspaceMine, ownBook };

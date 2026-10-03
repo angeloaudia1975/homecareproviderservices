@@ -106,9 +106,11 @@ exports.handler=async(event)=>{
     // Pipeline scope: management + a Relations Manager see the whole territory's pipeline; a sales
     // rep sees only their own.
     const role=String(me.role||"").toLowerCase();
-    const isRep = !({president:1,admin:1,owner:1,relations:1})[role]; const myRep=(me.rep_name||"").toLowerCase();
+    // My Sales Workspace: a President working his own book gets the rep view of HIS book and deals.
+    const workspace=SC.workspaceMine(event, me);
+    const isRep = workspace || !({president:1,admin:1,owner:1,relations:1})[role]; const myRep=(me.rep_name||"").toLowerCase();
     // A rep's sales actuals and reorder projection cover exactly their book (shared resolver).
-    const sc=isRep ? await SC.dealerScope(me, sbGet, OI||undefined) : null;
+    const sc=isRep ? await (workspace ? SC.ownBook(me, sbGet, OI||undefined) : SC.dealerScope(me, sbGet, OI||undefined)) : null;
     const outOfBook=id=>isRep && !(sc && sc.ids && sc.ids.has(String(id)));
 
     // reorder projection from monthly_sales cadence
@@ -153,6 +155,6 @@ exports.handler=async(event)=>{
       by_stage:byStage
     };
     oppList.sort((a,b)=>(Number(b.value)||0)-(Number(a.value)||0));
-    return json(200,{ok:true,role:me.role,latest:L?pmStr(L):null,opportunities:oppList,forecast,history,summary,stages:STAGES,stage_prob:STAGE_PROB});
+    return json(200,{ok:true,role:me.role,workspace,latest:L?pmStr(L):null,opportunities:oppList,forecast,history,summary,stages:STAGES,stage_prob:STAGE_PROB});
   }catch(e){ return json(500,{error:String(e.message||e)}); }
 };

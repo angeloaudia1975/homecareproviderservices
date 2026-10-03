@@ -117,7 +117,10 @@
 </style>
 </head><body>
 <header>
-  <div class="row"><span class="b">HCPS Field</span><h1>Scheduled Routes</h1><span id="netstat" onclick="openSyncPanel()" style="font-size:11px;font-weight:700;color:#9fd6b0;cursor:pointer"></span><a class="full" href="/admin/hub.html?cat=sales">Full portal</a></div>
+  <div class="row"><span class="b">HCPS Field</span><h1>Scheduled Routes</h1><span id="netstat" onclick="openSyncPanel()" style="font-size:11px;font-weight:700;color:#9fd6b0;cursor:pointer"></span><a class="full" id="fullportal" href="/admin/hub.html?cat=sales">Full portal</a></div>
+  <div id="wsstrip" style="display:none;margin-top:8px;padding:7px 10px;border-radius:8px;background:#14532d;font-size:13px;line-height:1.5">🧑‍💼 <b style="color:#bbf7d0">My Sales Workspace</b> — your own routes and visits.
+    <span style="display:inline-flex;gap:8px;flex-wrap:wrap;margin-left:4px"><a href="/admin/command-center-rep.html" style="color:#fff;font-weight:700">My Command Center</a>
+    <a id="wsback" href="/admin/?workspace=off" onclick="HCPS.setWorkspace(false)" style="background:#fff;color:#14532d;border-radius:6px;padding:2px 9px;font-weight:800;text-decoration:none">← Back to Admin Dashboard</a></span></div>
 </header>
 <div class="wrap"><div id="app"><div class="msg">Loading…</div></div></div>
 
@@ -130,6 +133,8 @@ const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",
 const jesc=s=>String(s==null?"":s).replace(/'/g,"\\'").replace(/"/g,"&quot;");
 window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
 let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+/* My Sales Workspace (President working his own book): say so, and offer the way back. */
+if(HCPS.workspace&&HCPS.workspace()){ $("#wsstrip").style.display=""; const fp=$("#fullportal"); if(fp) fp.style.display="none"; }
 let ROUTES=null, DAY=null, HANDOUT={ordering_url:DealerHandout.ORDERING_URL,updates:DealerHandout.UPDATES.slice()};
 let VSTRUCT={}, VTX={}, REC={};
 function todayStr(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
@@ -411,7 +416,8 @@ async function openRoute(id){
    another, and until it is related to that person their portal has nothing to show.
    The control lives on the route itself, where the decision is actually made. */
 let REPS=null;
-function isBoss(){ return String((ME&&ME.role)||"").toLowerCase()==="president"; }
+// In My Sales Workspace the President drives his own routes — the assign control is a management tool.
+function isBoss(){ return String((ME&&ME.role)||"").toLowerCase()==="president" && !(HCPS.workspace&&HCPS.workspace()); }
 function assignBarHtml(r){
   if(!isBoss()) return "";
   const who=r.assigned_to_rep||r.assigned_to_email;

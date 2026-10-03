@@ -293,6 +293,16 @@ window.HUB_GUIDE = {
     problems: "Turns intentions into tracked follow-through.",
     intelligence: "Automatic task generation from dealer signals and visit notes."
   },
+  "My Sales Workspace": {
+    tagline: "Your own dealer book, worked the way a sales rep works it — without leaving the President account or using View-as.",
+    what: "My Sales Workspace switches the working sales pages to the dealers assigned to you (dealers.rep_email = your email, resolved exactly as it is for every rep). Your Command Center, routes, Dealer 360 list, My Tasks and Pipeline then show only your own accounts and your own work, and everything stays fully operational: start and end visits, record and transcribe, approve the AI visit summary and attendees, create tasks and deals, draft the follow-up email. Your President permissions are unchanged — the workspace narrows what the lists show, never what you may do. A green banner marks the mode on every page, with Back to Admin Dashboard to leave it.",
+    features: ["Your own day: priorities, today's route, meeting prep and visit results", "Field app: Start/End Visit, transcription, AI Visit Summary, attendee approval, follow-up email", "My Tasks and Pipeline limited to your own tasks and deals", "Dealer 360 picker and Route Planner limited to your own dealers", "Back to Admin Dashboard on every workspace page"],
+    data: "The same records as the rep tools — dealers (rep_email), routes, visit reports, tasks and opportunities — scoped by the shared ownership resolver.",
+    actions: ["Work your own accounts end to end", "Return to the Admin Dashboard"],
+    connects: ["Opened from the masthead button or the Sales & Marketing hub", "Your normal sign-in still lands on the Admin Dashboard", "Rep Command Center remains the management view of any rep's day, read-only"],
+    problems: "The President is also a working rep; this gives that job its own focused workspace without giving up the admin tools.",
+    intelligence: "Same Visit Intelligence as the reps — AI drafts, you approve before anything is saved."
+  },
   "Rep Command Center": {
     tagline: "A sales rep's whole day on one screen — what to do, what happened at each visit, and what to follow up on now.",
     what: "The Command Center answers a rep's three questions from data the platform already keeps: what do I need to do today, what happened during my visits, and what do I need to follow up on. It reads the rep's own routes, tasks, opportunities and approved visit summaries — filtered on the server to that rep — and orders the panels by the time of day: the plan in the morning, the visits while they're in the field, the results and follow-ups at the end of the day. The president and Customer Relations can pick any rep to view their day, read-only.",

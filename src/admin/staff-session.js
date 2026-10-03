@@ -61,9 +61,34 @@
 
   function signOut() {
     lset(TKEY, null); lset(PKEY, null); lset(RKEY, null); lset(XKEY, null);
-    try { sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); } catch (e) {}
+    try { sessionStorage.removeItem(TKEY); sessionStorage.removeItem(PKEY); sessionStorage.removeItem(WKEY); } catch (e) {}
     emit(null);
   }
+
+  /* ---- My Sales Workspace (President dual role) -------------------------------------
+     A President who also carries a dealer book can work it as a rep would, without View-as
+     and without leaving his account. The mode is a per-tab flag: entered with
+     ?workspace=mine (the "My Sales Workspace" link), left with ?workspace=off (the "Back to
+     Admin Dashboard" button) or by opening any page that is not one of the working sales pages
+     below. While it is on, API calls carry `x-hcps-workspace: mine`, which the server honors
+     for management roles only and uses only to NARROW lists to his own book — authorization
+     never reads it. */
+  var WKEY = "hcps_workspace";
+  var WS_PAGES = ["/admin/command-center-rep", "/admin/scheduled-routes", "/admin/map",
+                  "/admin/dealer", "/admin/tasks", "/admin/pipeline"];
+  function isMgmt(p) { var r = String((p && p.role) || "").toLowerCase(); return r === "president" || r === "admin" || r === "owner"; }
+  function onWsPage() { var p = String(location.pathname || "").replace(/\.html$/, "").replace(/\/+$/, ""); return WS_PAGES.indexOf(p) >= 0; }
+  function sget(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
+  function sset(k, v) { try { if (v == null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, v); } catch (e) {} }
+  function setWorkspace(on) { sset(WKEY, on ? "mine" : null); }
+  function workspace() { return sget(WKEY) === "mine" && onWsPage() && isMgmt(profile()); }
+  (function initWorkspace() {
+    var q = null; try { q = new URLSearchParams(location.search).get("workspace"); } catch (e) {}
+    if (q === "mine") setWorkspace(true);
+    else if (q === "off") setWorkspace(false);
+    if (!onWsPage()) setWorkspace(false);           // any other page = back in the admin view
+    var p = profile(); if (p && !isMgmt(p)) setWorkspace(false);
+  })();
 
   // Notify the page (and this tab) that the token changed, so its local copy stays fresh.
   function emit(t) { try { window.dispatchEvent(new CustomEvent("hcps-token", { detail: t })); } catch (e) {} }
@@ -126,6 +151,7 @@
     var hdrs = new Headers(opts.headers || {});
     var hadAuth = hdrs.has("authorization");   // Headers matching is case-insensitive
     if (hadAuth && token()) hdrs.set("authorization", "Bearer " + token());
+    if (workspace()) hdrs.set("x-hcps-workspace", "mine");   // a page may also send it explicitly (Permission check)
     opts.headers = hdrs;
     return origFetch(input, opts).then(function (res) {
       if (res.status !== 401 || !hadAuth || !refreshTok()) return res;
@@ -144,6 +170,8 @@
     signOut: signOut,
     refresh: refresh,
     ensureFresh: ensureFresh,
-    needsRefresh: needsRefresh
+    needsRefresh: needsRefresh,
+    workspace: workspace,
+    setWorkspace: setWorkspace
   };
 })();

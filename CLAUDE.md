@@ -436,7 +436,17 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   new visit still creates a new record.
 - **Command Center access:** a rep sees only their own; president/admin/owner and Relations may pick a
   rep to view, read-only. The `rep_landing` switch (`staff-auth` landingFor) stays **off** until approved —
-  then `pilot` for named reps, and `on` for everyone only after the pilot is approved.
+  then `pilot` for named reps, and `on` for everyone only after the pilot is approved. A Relations user
+  follows it **only when her own email is listed** (`on` alone never moves Relations); management always
+  lands on `/admin/`. Pilot approved 2026-10-03: Greg + Lori → Command Center.
+- **My Sales Workspace (President dual role).** The President also works his own dealer book. Masthead
+  "My Sales Workspace" sets a per-tab flag (`staff-session.js` HCPS.workspace, `?workspace=mine|off`; any
+  page outside CC / field app / map / Dealer 360 / My Tasks / Pipeline leaves it) and API calls carry
+  `x-hcps-workspace: mine`. The server (`SC.workspaceMine`, management only) uses it **only to narrow
+  lists** to his book via `SC.ownBook` (the rep resolver — `dealers.rep_email`, no second ownership model):
+  CC (no picker, his own day), my_tasks/task_count, pipeline board, list_routes (not routes he planned for
+  others), dealers-api GET, geocode-api GET. Writes and record checks never read it — President authority
+  is unchanged, and the header means nothing for reps or Relations. Back to Admin Dashboard leaves it.
 - **Reads:** filter on the server, run in parallel, page past the 1000-row cap (`SC.getAll`), no N+1 and
   no company-wide payloads to a rep's browser.
 - **Shipping:** SQL the user must run is pasted inline in the reply (and committed as a file); after a push,

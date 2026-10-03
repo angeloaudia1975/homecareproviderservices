@@ -39,8 +39,8 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
-async function call(fn,body,method){
-  const opt={method:method||"POST",headers:{authorization:"Bearer "+(TOKEN||"")}};
+async function call(fn,body,method,extra){
+  const opt={method:method||"POST",headers:Object.assign({authorization:"Bearer "+(TOKEN||"")},extra||{})};
   if(opt.method==="POST"){ opt.headers["content-type"]="application/json"; opt.body=JSON.stringify(body||{}); }
   try{ const r=await fetch("/.netlify/functions/"+fn,opt); let j=null; try{ j=await r.json(); }catch(e){} return {status:r.status,j:j||{}}; }
   catch(e){ return {status:0,j:{}}; }
@@ -48,14 +48,20 @@ async function call(fn,body,method){
 const ROLE=()=>String((ME&&ME.role)||"").toLowerCase();
 const MGMT=r=>["president","admin","owner"].includes(r);
 
-/* Phase 1 TEST records on the House-owned "TEST — Golden Sandbox" dealer: a rep must not reach them by
+/* Phase 1 TEST records on the "TEST — Golden Sandbox" dealer (not a rep's book): a rep must not reach them by
    id. (After the Phase 1 cleanup they no longer exist — a refusal is then a 404, still a pass.) */
 const TD="3f7d87a2-7fbc-47e1-a34a-aaaacf4c4c7b";
 const ANGELO="angelo@homecareproviderservices.us";
+const CC_URL="/admin/command-center-rep.html";
+const PILOT=["greg@homecareproviderservices.us","lori@homecareproviderservices.us"];   // the Command Center landing pilot
+const WSH={"x-hcps-workspace":"mine"};   // the My Sales Workspace header (honored for management only)
 
 function picker(){
   if(ROLE()!=="president"){ $("#body").innerHTML=`<div class="card">Only the President can run this check (it opens a View-as session).</div>`; return; }
-  $("#body").innerHTML=`<div class="card"><h2>Who do you want to check?</h2>
+  $("#body").innerHTML=`<div class="card"><h2>My Sales Workspace</h2>
+    <p class="hint">Checks, in your own session (no View-as), that My Sales Workspace shows only your own dealer book, tasks, routes and deals — and that the normal Admin view is unchanged.</p>
+    <div class="who"><button class="btn" id="wscheck">Check my Sales Workspace</button></div></div>
+    <div class="card"><h2>Who do you want to check?</h2>
     <p class="hint">Click a name. You'll be asked to confirm, then the page opens a normal View-as session for that person (logged like any View-as) and runs the check by itself. When it's done, press <b>Exit view-as</b>.</p>
     <div class="who" id="who"><span class="hint">Loading staff…</span></div></div>`;
   call("staff-auth",{action:"list_users"}).then(r=>{
@@ -64,6 +70,7 @@ function picker(){
       :`<span class="hint">No active rep or Relations accounts found.</span>`;
     for(const b of document.querySelectorAll("#who .btn")) b.addEventListener("click",()=>startAs(b.getAttribute("data-email"),b.getAttribute("data-name"),b));
   });
+  const wb=$("#wscheck"); if(wb) wb.addEventListener("click",runWorkspace);
 }
 async function startAs(email,name,btn){
   if(!confirm(`Open a View-as session for ${name} and run the permission check?\n\nThis is logged like any View-as. Nothing is changed. Press "Exit view-as" when you're done.`)) return;
@@ -76,13 +83,74 @@ async function startAs(email,name,btn){
     "/admin/permission-check.html");
 }
 
-async function run(){
-  const role=ROLE(), rep=role==="rep", me=String((ME&&ME.email)||"").toLowerCase();
-  const whoRaw=(ME&&(ME.name||ME.email))||"this account", who=esc(whoRaw);
-  $("#body").innerHTML=`<div class="verdict run" id="verdict">Checking ${who} (${esc(role)})…</div><div class="rows" id="rows"></div>
+function sheet(title){
+  $("#body").innerHTML=`<div class="verdict run" id="verdict">${esc(title)}…</div><div class="rows" id="rows"></div>
     <div class="acts">${window.ACImpersonate&&ACImpersonate.active()?`<button class="btn" onclick="ACImpersonate.exit()">Exit view-as</button>`:""}<button class="btn" style="background:#6b7280" id="copy">Copy results</button></div>`;
   const rows=[]; const add=(check,expect,got,ok)=>{ rows.push({check,expect,got,ok}); $("#rows").insertAdjacentHTML("beforeend",
     `<div class="row"><span class="r ${ok?"p":"f"}">${ok?"PASS":"FAIL"}</span><span>${esc(check)}</span><span class="g">expected ${esc(expect)} · got ${esc(String(got))}</span></div>`); };
+  return {rows,add};
+}
+function verdict(rows,label){
+  const bad=rows.filter(r=>!r.ok).length;
+  const v=$("#verdict"); v.className="verdict "+(bad?"bad":"ok");
+  v.textContent=bad?`${label}: ${bad} of ${rows.length} checks FAILED — press Copy results and send them to Claude.`:`${label}: ALL ${rows.length} CHECKS PASSED`;
+  $("#copy").onclick=()=>{ const t=v.textContent+"\n"+rows.map(r=>`${r.ok?"PASS":"FAIL"} — ${r.check} (expected ${r.expect}, got ${r.got})`).join("\n");
+    (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{$("#copy").textContent="Copied ✓";},()=>{ prompt("Copy these results:",t); }); };
+}
+
+/* My Sales Workspace, checked in the President's own session. Read-only: compares each list with and
+   without the workspace header. */
+async function runWorkspace(){
+  const me=String((ME&&ME.email)||"").toLowerCase(), rn=String((ME&&ME.rep_name)||"").trim().toLowerCase();
+  const {rows,add}=sheet("Checking My Sales Workspace for "+((ME&&(ME.name||ME.email))||"you"));
+  const prof=((await call("staff-auth",{action:"me"})).j||{}).profile||{};
+  add("Your sign-in still lands on the Admin Dashboard","/admin/",prof.landing||"(none)",prof.landing==="/admin/");
+  // Dealer book: the same resolver as a rep's — only dealers assigned to you (plus their own branches/HQ).
+  const all=(((await call("dealers-api",null,"GET")).j||{}).dealers)||[];
+  const wsr=await call("dealers-api",null,"GET",WSH); const mine=((wsr.j||{}).dealers)||[];
+  const ids=new Set(mine.map(d=>String(d.id)));
+  const assigned=all.filter(d=>String(d.rep_email||"").toLowerCase()===me);
+  const othersIn=mine.filter(d=>d.rep_email && String(d.rep_email).toLowerCase()!==me);
+  add("Workspace dealer list = your own book",assigned.length+"+ of "+all.length,wsr.status===200?mine.length+" dealers":wsr.status,
+    wsr.status===200&&mine.length>0&&mine.length<all.length&&assigned.every(d=>ids.has(String(d.id))));
+  add("No dealer assigned to someone else in your workspace","none",othersIn.length?othersIn.slice(0,3).map(d=>d.name).join(", "):"none",!othersIn.length);
+  add("Admin dealer list unchanged (every dealer)","all dealers",all.length+" dealers",all.length>=mine.length&&all.length>0);
+  // Map / route planner.
+  const pts=(((await call("geocode-api",null,"GET",WSH)).j||{}).points)||[];
+  const outPts=pts.filter(p=>!ids.has(String(p.dealer_id)));
+  add("Route planner map shows only your dealers","none outside",outPts.length+" outside of "+pts.length,!outPts.length);
+  // Tasks.
+  const tw=(await call("crm-api",{action:"my_tasks"},"POST",WSH)).j||{}, tasks=tw.tasks||[];
+  const notMine=tasks.filter(t=>!(String(t.assigned_email||"").toLowerCase()===me || (rn&&String(t.assigned_rep||"").trim().toLowerCase()===rn)));
+  add("My Tasks shows only your tasks","yours only",(tw.sees_all?"company-wide · ":"")+tasks.length+" tasks, "+notMine.length+" not yours",!tw.sees_all&&!notMine.length);
+  const ta=(await call("crm-api",{action:"my_tasks"})).j||{};
+  add("Admin task queue unchanged (company-wide)","company-wide",ta.sees_all?"company-wide":"own only",!!ta.sees_all);
+  // Routes.
+  const rw=(await call("routes-api",{action:"list_routes"},"POST",WSH)).j||{}, routes=rw.routes||[];
+  const foreign=routes.filter(r=>!r.mine || (r.assigned_to_email && String(r.assigned_to_email).toLowerCase()!==me));
+  add("Routes: only your own (none you planned for others)","yours only",routes.length+" routes, "+foreign.length+" not yours",!!rw.workspace&&!foreign.length);
+  // Pipeline.
+  const pw=(await call("pipeline-api",{action:"board"},"POST",WSH)).j||{}, opps=pw.opportunities||[];
+  const foreignO=opps.filter(o=>!(String(o.owner_email||"").toLowerCase()===me || (rn&&String(o.owner_rep||"").trim().toLowerCase()===rn)));
+  add("Pipeline: only your own deals","yours only",opps.length+" deals, "+foreignO.length+" not yours",!!pw.workspace&&!foreignO.length);
+  // Command Center: your own day, no picker; the management view keeps the picker and stays read-only.
+  const reps=(((await call("rep-command-api",{action:"reps"})).j||{}).reps||[]).filter(x=>String(x.role||"rep")==="rep");
+  const other=(reps.find(x=>/greg/i.test(x.name||x.email))||reps[0]||{}).email||"";
+  const dw=(await call("rep-command-api",{action:"today",rep:other||undefined},"POST",WSH)).j||{}, hw=dw.header||{};
+  add("Workspace Command Center is your own day (picker ignored)",me,(hw.rep&&hw.rep.email)||"(none)",!!hw.workspace&&!hw.viewing_other&&hw.rep&&hw.rep.email===me);
+  const pr=(((await call("rep-command-api",{action:"reps"},"POST",WSH)).j||{}).reps)||[];
+  add("No rep picker inside the workspace","none",pr.length+" reps",!pr.length);
+  if(other){
+    const dm=(await call("rep-command-api",{action:"today",rep:other})).j||{}, hm=dm.header||{};
+    add("Management view of "+other+": read-only",other+" · read-only",((hm.rep&&hm.rep.email)||"(none)")+(hm.viewing_other?" · read-only":""),!!(hm.rep&&hm.rep.email===other&&hm.viewing_other&&!hm.workspace));
+  }
+  verdict(rows,"My Sales Workspace ("+((ME&&(ME.name||ME.email))||"you")+")");
+}
+
+async function run(){
+  const role=ROLE(), rep=role==="rep", me=String((ME&&ME.email)||"").toLowerCase();
+  const whoRaw=(ME&&(ME.name||ME.email))||"this account";
+  const {rows,add}=sheet("Checking "+whoRaw+" ("+role+")");
   const refused=s=>s===403||s===404;
   const mode=((await call("platform-api",{action:"get"})).j||{}).mode;
 
@@ -101,8 +169,8 @@ async function run(){
     ["Edit structural Dealer Manager fields","dealers-api",{action:"edit"}],
   ];
   if(rep) refuse.push(
-    ["Open a House dealer's Dealer 360 (not his book)","crm-api",{action:"list",dealer_id:TD}],
-    ["Read a House dealer's visits","crm-api",{action:"visits",dealer_id:TD}],
+    ["Open the TEST dealer's Dealer 360 (not his book)","crm-api",{action:"list",dealer_id:TD}],
+    ["Read the TEST dealer's visits","crm-api",{action:"visits",dealer_id:TD}],
     ["Retrieve Angelo's visit (by route)","routes-api",{action:"visit_report_get",route_id:"d9f557cb-09b4-41a3-ac54-98c69e696608",dealer_id:TD,detail:true}],
     ["Modify Angelo's task (by id)","crm-api",{action:"reopen_task",id:"4fa5c265-c5bf-4edf-a398-50f1fff5e0eb"}],
     ["Modify Angelo's opportunity (by id)","pipeline-api",{action:"update",id:"cd84e191-74c9-481a-8786-a31fa6093164"}],
@@ -128,28 +196,37 @@ async function run(){
   // Dealer list: a rep sees only his book; Relations sees every dealer.
   const dl=await call("dealers-api",null,"GET"); const dealers=(dl.j&&dl.j.dealers)||[];
   if(rep){
-    add("Dealer list is his book only (no House TEST dealer)","his book",dl.status===200?dealers.length+" dealers":dl.status,dl.status===200&&!dealers.some(d=>String(d.id)===TD));
+    add("Dealer list is his book only (no TEST dealer)","his book",dl.status===200?dealers.length+" dealers":dl.status,dl.status===200&&!dealers.some(d=>String(d.id)===TD));
     const routes=((await call("routes-api",{action:"list_routes"})).j||{}).routes||[];
     add("No Angelo / TEST routes in his routes","none",routes.filter(r=>/TEST — Phase 1/.test(r.name||"")).length,!routes.some(r=>/TEST — Phase 1/.test(r.name||"")));
     const tasks=((await call("crm-api",{action:"my_tasks"})).j||{}).tasks||[];
-    add("No House-dealer tasks in My Tasks","none",tasks.filter(t=>t.dealer_id===TD).length,!tasks.some(t=>t.dealer_id===TD));
+    add("No TEST-dealer tasks in My Tasks","none",tasks.filter(t=>t.dealer_id===TD).length,!tasks.some(t=>t.dealer_id===TD));
     const day=((await call("rep-command-api",{action:"today",rep:ANGELO})).j||{});
     const w=String((day.header&&day.header.rep&&day.header.rep.email)||"");
     add("Asking for Angelo's day returns his own day",me,w||"(none)",!!w&&w===me);
+    // The workspace header is for management only — sent by a rep, it changes nothing.
+    const tw=((await call("crm-api",{action:"my_tasks"},"POST",WSH)).j||{});
+    add("Workspace header ignored for a rep (tasks)",tasks.length+" own tasks",(tw.tasks||[]).length+" tasks",!tw.sees_all&&(tw.tasks||[]).length===tasks.length);
+    const dw=await call("dealers-api",null,"GET",WSH);
+    add("Workspace header ignored for a rep (dealer list)",dealers.length+" dealers",((dw.j&&dw.j.dealers)||[]).length+" dealers",((dw.j&&dw.j.dealers)||[]).length===dealers.length);
   }else{
-    add("Dealer list shows every dealer (incl. House TEST dealer)","all dealers",dl.status===200?dealers.length+" dealers":dl.status,dl.status===200&&dealers.some(d=>String(d.id)===TD));
+    add("Dealer list shows every dealer (incl. TEST dealer)","all dealers",dl.status===200?dealers.length+" dealers":dl.status,dl.status===200&&dealers.some(d=>String(d.id)===TD));
     // A rep's Command Center, read-only: the first sales rep Relations may pick (Greg, when he's on the list).
     const reps=(((await call("rep-command-api",{action:"reps"})).j||{}).reps||[]).filter(x=>String(x.role||"rep")==="rep");
     const pick=(reps.find(x=>/greg/i.test(x.name||x.email))||reps[0]||{}).email||"";
     const day=pick?((await call("rep-command-api",{action:"today",rep:pick})).j||{}):{};
     const h=day.header||{};
     add("Views a rep's Command Center, read-only",(pick||"a rep")+" · viewing",(h.rep&&h.rep.email)||"(none)",!!(pick&&h.rep&&h.rep.email===pick&&h.viewing_other));
+    add("Rep picker available in her Command Center","reps listed",reps.length+" reps",reps.length>0);
+    // The workspace header is for management only — sent by Relations, it changes nothing.
+    const tw=((await call("crm-api",{action:"my_tasks"},"POST",WSH)).j||{});
+    add("Workspace header ignored for Relations (still company-wide)","company-wide",tw.sees_all?"company-wide":"narrowed",!!tw.sees_all);
   }
-  const bad=rows.filter(r=>!r.ok).length;
-  const v=$("#verdict"); v.className="verdict "+(bad?"bad":"ok");
-  v.textContent=bad?`${whoRaw} (${role}): ${bad} of ${rows.length} checks FAILED — press Copy results and send them to Claude.`:`${whoRaw} (${role}): ALL ${rows.length} CHECKS PASSED`;
-  $("#copy").onclick=()=>{ const t=v.textContent+"\n"+rows.map(r=>`${r.ok?"PASS":"FAIL"} — ${r.check} (expected ${r.expect}, got ${r.got})`).join("\n");
-    (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{$("#copy").textContent="Copied ✓";},()=>{ prompt("Copy these results:",t); }); };
+  // Where this person lands at sign-in (pilot: Greg and Lori → Command Center).
+  const prof=((await call("staff-auth",{action:"me"})).j||{}).profile||{};
+  const want=PILOT.includes(me)?CC_URL:"/admin/rep-home.html";
+  add(PILOT.includes(me)?"Signs in to the Command Center (pilot)":"Signs in to Portal Home (not in the pilot)",want,prof.landing||"(none)",prof.landing===want);
+  verdict(rows,whoRaw+" ("+role+")");
 }
 
 (function(){

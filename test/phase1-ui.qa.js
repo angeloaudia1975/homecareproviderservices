@@ -94,7 +94,8 @@ function serve(w, opts) {
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e.message || e) })); }
       return;
     }
-    const p = u.pathname.startsWith('/admin/') ? path.join(ADMIN, u.pathname.slice(7)) : null;
+    let p = u.pathname.startsWith('/admin/') ? path.join(ADMIN, u.pathname.slice(7)) : null;
+    if (p && fs.existsSync(p) && fs.statSync(p).isDirectory()) p = path.join(p, 'index.html');   // /admin/ → the dashboard
     if (!p || !fs.existsSync(p) || fs.statSync(p).isDirectory()) { res.writeHead(404); res.end(''); return; }
     const ext = path.extname(p); const ct = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.webmanifest': 'application/json' }[ext] || 'application/octet-stream';
     res.writeHead(200, { 'content-type': ct + '; charset=utf-8' }); res.end(fs.readFileSync(p));
@@ -384,6 +385,85 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
     assert.ok(/Glasgow Prescription Center/.test(await p.textContent('#body'))); await c.close();
   });
 
+  /* ───────────── My Sales Workspace (the President's own book) ───────────── */
+  await step('Workspace: the President enters from the masthead — his own day, no picker, Back to Admin', async () => {
+    const c = await ctxFor(browser, 'pres', DESKTOP); const p = await c.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
+    await p.goto(`${B}/admin/tasks.html`); await p.waitForSelector('#ac-ws-enter');
+    await p.waitForFunction(() => /Old overdue call/.test(document.body.innerText), null, { timeout: 15000 });   // Admin queue: company-wide
+    assert.strictEqual(await p.$('.ac-ws'), null, 'workspace banner shown in the Admin view');
+    await p.click('#ac-ws-enter'); await p.waitForSelector('.hello');
+    assert.strictEqual((await p.textContent('#pgtitle')).trim(), 'My Sales Workspace');
+    assert.ok(await p.$('.ac-ws') && await p.$('#ac-ws-exit') && await p.$('#wsback'), 'no workspace banner / Back to Admin');
+    assert.strictEqual(await p.$('#repsel'), null, 'the rep picker is offered inside the workspace');
+    const t = await p.textContent('#body');
+    assert.ok(/TN loop|RMS/.test(t), 'his own route is missing: ' + t.slice(0, 400));
+    assert.ok(!/KY loop|Glasgow Prescription/.test(t), 'Greg\'s day leaked into the workspace');
+    assert.ok(!/read-only/.test(t), 'his own workspace is read-only');
+    const nav = await p.$$eval('.ac-nav a', as => as.map(a => a.textContent.trim()));
+    assert.deepStrictEqual(nav, ['My Command Center', "Today's Route & Visits", 'Route Planner', 'Dealer 360', 'My Tasks', 'Pipeline'], nav.join(' | '));
+    await p.screenshot({ path: path.join(SHOTS, 'ws-1-command-center.png'), fullPage: true });
+    // My Tasks inside the workspace: his own, no engine console.
+    await p.click('.ac-nav a:has-text("My Tasks")'); await p.waitForSelector('.ac-ws');
+    await p.waitForFunction(() => /My Tasks/.test((document.querySelector('#pgtitle') || {}).textContent || ''), null, { timeout: 15000 });
+    assert.ok(!/Old overdue call/.test(await p.textContent('body')), 'Greg\'s task in his workspace');
+    assert.strictEqual(await p.$('#mirbtn'), null, 'engine console inside the workspace');
+    // The field app: his routes only, with the way back.
+    await p.click('.ac-nav a:has-text("Today\'s Route")'); await p.waitForSelector('#wsstrip', { state: 'visible' });
+    await p.waitForFunction(() => /TN loop/.test(document.body.innerText), null, { timeout: 15000 });
+    assert.ok(!/KY loop/.test(await p.textContent('#app')), 'a route he planned for Greg shows in his workspace');
+    await p.screenshot({ path: path.join(SHOTS, 'ws-2-field-app.png'), fullPage: true });
+    // Dealer 360 picker: his book.
+    await p.goto(`${B}/admin/dealer.html`); await p.waitForSelector('.ac-ws');
+    await p.waitForFunction(() => /Retail Medical Solutions/.test(document.body.innerText), null, { timeout: 15000 });
+    assert.ok(!/Glasgow Prescription Center/.test(await p.textContent('#body')), 'Greg\'s dealer in his Dealer 360 list');
+    // Back to Admin Dashboard: the flag is gone and the Admin views are company-wide again.
+    await p.click('#ac-ws-exit'); await p.waitForURL(/\/admin\/(\?workspace=off)?$/);
+    assert.strictEqual(await p.evaluate(() => sessionStorage.getItem('hcps_workspace')), null);
+    await p.goto(`${B}/admin/tasks.html`); await p.waitForFunction(() => /Old overdue call/.test(document.body.innerText), null, { timeout: 15000 });
+    assert.strictEqual(await p.$('.ac-ws'), null);
+    assert.deepStrictEqual(errs.filter(e => !/analytics|Failed to fetch/.test(e)), []); await c.close();
+  });
+  await step('Workspace (phone): banner, Back to Admin and the field-app strip fit a phone', async () => {
+    const c = await ctxFor(browser, 'pres', PHONE); const p = await c.newPage();
+    await p.goto(`${B}/admin/command-center-rep.html?workspace=mine`); await p.waitForSelector('.hello');
+    await noHScroll(p, 'workspace CC phone'); await p.screenshot({ path: path.join(SHOTS, 'ws-phone-cc.png'), fullPage: true });
+    const back = await p.$eval('#ac-ws-exit', e => e.getBoundingClientRect().height); assert.ok(back >= 24, 'Back to Admin too small: ' + back);
+    await p.goto(`${B}/admin/scheduled-routes.html`); await p.waitForSelector('#wsstrip', { state: 'visible' });
+    await noHScroll(p, 'workspace field app phone'); await p.screenshot({ path: path.join(SHOTS, 'ws-phone-field.png'), fullPage: true });
+    await c.close();
+  });
+  await step('Workspace: opening an Admin page leaves it; the management view of Greg stays read-only', async () => {
+    const c = await ctxFor(browser, 'pres', DESKTOP); const p = await c.newPage();
+    await p.goto(`${B}/admin/command-center-rep.html?workspace=mine`); await p.waitForSelector('.ac-ws');
+    await p.goto(`${B}/admin/permission-check.html`);   // not a workspace page
+    await p.goto(`${B}/admin/command-center-rep.html?rep=greg@hcps.us`); await p.waitForSelector('.viewing');
+    assert.strictEqual(await p.$('.ac-ws'), null, 'the workspace followed him into the Admin view');
+    const chk = await p.$$eval('.chk', bs => bs.map(b => b.disabled)); assert.ok(chk.length && chk.every(Boolean), 'Greg\'s tasks could be ticked');
+    await c.close();
+  });
+  await step('Workspace: a rep or Relations asking for it gets nothing different', async () => {
+    for (const who of ['greg', 'lori']) {
+      const c = await ctxFor(browser, who, DESKTOP); const p = await c.newPage();
+      await p.goto(`${B}/admin/command-center-rep.html?workspace=mine`); await p.waitForSelector('.hello');
+      assert.strictEqual(await p.$('.ac-ws'), null, who + ' got the workspace banner');
+      assert.strictEqual(await p.$('#ac-ws-enter'), null, who + ' was offered My Sales Workspace');
+      assert.notStrictEqual((await p.textContent('#pgtitle')).trim(), 'My Sales Workspace');
+      const sent = calls.filter(x => x.name === 'rep-command-api');   // headers aren't recorded; the page must not claim the mode
+      assert.ok(sent.length);
+      if (who === 'lori') await p.waitForSelector('#repsel');   // Relations keeps the rep picker
+      await c.close();
+    }
+  });
+  await step('Permission check (president): My Sales Workspace check passes in his own session', async () => {
+    const c = await ctxFor(browser, 'pres', DESKTOP); const p = await c.newPage();
+    await p.goto(`${B}/admin/permission-check.html`); await p.waitForSelector('#wscheck');
+    await p.click('#wscheck'); await p.waitForSelector('.verdict.ok, .verdict.bad', { timeout: 30000 });
+    const fails = await p.$$eval('.row', rs => rs.filter(r => r.querySelector('.r.f')).map(r => r.innerText.replace(/\s+/g, ' ')));
+    assert.deepStrictEqual(fails, [], 'failed checks: ' + fails.join(' | '));
+    await p.screenshot({ path: path.join(SHOTS, 'permission-check-workspace.png'), fullPage: true });
+    await c.close();
+  });
+
   /* ───────────── Permission check page: the live server answers, as the person being checked ───────────── */
   for (const who of ['greg', 'lori']) {
     await step(`Permission check (${who}): every refusal and every allowed action passes, on a phone`, async () => {
@@ -396,7 +476,7 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
       assert.deepStrictEqual(errs, []); await c.close();
     });
   }
-  await step('Permission check (president): offers the rep and Relations accounts to check, and runs nothing as himself', async () => {
+  await step('Permission check (president): offers the rep and Relations accounts to check, and runs nothing until asked', async () => {
     const c = await ctxFor(browser, 'pres', DESKTOP); const p = await c.newPage();
     await p.goto(`${B}/admin/permission-check.html`); await p.waitForSelector('#who .btn', { timeout: 15000 });
     const names = await p.$$eval('#who .btn', b => b.map(x => x.textContent.trim()));

@@ -80,6 +80,14 @@ window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}}
 let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 let DATA=null, REPS=null, VIEW=null;   // VIEW = the rep being viewed (management / Relations only)
 try{ VIEW=new URLSearchParams(location.search).get("rep")||null; }catch(e){ VIEW=null; }
+/* My Sales Workspace: the President working his OWN book, as a rep would — his day only, no rep
+   picker, full working access, and a way back to the Admin Dashboard. */
+const WS=!!(window.HCPS&&HCPS.workspace&&HCPS.workspace());
+if(WS){ VIEW=null; try{ const u=new URL(location.href); if(u.searchParams.has("rep")){ u.searchParams.delete("rep"); history.replaceState(null,"",u.toString()); } }catch(e){}
+  document.title="HCPS — My Sales Workspace";
+  $("#pgtitle").textContent="My Sales Workspace";
+  $("#pgsub").textContent="Your own dealer book — your day, route, visits, follow-ups and deals. Everything here is yours to work.";
+  $("#pickbox").innerHTML=`<a class="btn ghost" id="wsback" href="/admin/?workspace=off" onclick="HCPS.setWorkspace(false)">← Back to Admin Dashboard</a>`; }
 
 function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div id="lerr" style="color:#b42323;margin-top:8px">${esc(msg||"")}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
 async function submitTok(){
@@ -113,7 +121,7 @@ async function load(){
   const j=r.body||{};
   if(!j.ok){ $("#body").innerHTML=`<div class="msg err">${esc(j.error||j.message||"Couldn't load your day.")}</div>`; return; }
   DATA=j;
-  if(REPS===null) loadReps();
+  if(REPS===null && !WS) loadReps();
   render();
 }
 /* The rep picker: only for the people the server lets pick (management and Relations). A rep
@@ -123,7 +131,7 @@ async function loadReps(){
   REPS=(r&&r.body&&r.body.reps)||[]; renderPicker();
 }
 function renderPicker(){
-  const box=$("#pickbox"); if(!box) return;
+  const box=$("#pickbox"); if(!box || WS) return;
   if(!REPS||!REPS.length){ box.innerHTML=""; return; }
   const cur=(DATA&&DATA.header&&DATA.header.rep&&DATA.header.rep.email)||"";
   const reps=REPS.filter(x=>x.role==="rep"||x.email===cur), others=REPS.filter(x=>!(x.role==="rep"||x.email===cur));
@@ -146,6 +154,7 @@ function pHeader(j){
   return `<div class="card"><p class="hello">${h.viewing_other?esc(h.rep.name)+"'s day":`${greet}${first?", "+esc(first):""}`}</p>
     <div class="sm2" style="margin:2px 0 10px">${esc(fmtDay(h.date))}${h.stops?` · ${h.stops} stop${h.stops===1?"":"s"} today${h.first_stop?` — first: ${esc(h.first_stop)}`:""}`:" · no route today"}${h.appointments?` · ${h.appointments} booked meeting${h.appointments===1?"":"s"}`:""}</div>
     ${h.viewing_other?`<div class="viewing" style="margin:0 0 10px">You're viewing <b>${esc(h.rep.name)}</b>'s Command Center — read-only. Their tasks and visits are theirs to work.</div>`:""}
+    ${!h.viewing_other&&!WS&&window.ACAdmin&&ACAdmin.isAdmin(ME)?`<div class="sm2" style="margin:0 0 10px">This is the management view. To work your own dealer book, open <a class="link" href="/admin/command-center-rep.html?workspace=mine">🧑‍💼 My Sales Workspace</a>.</div>`:""}
     <div class="tiles">
       ${T("Open tasks",h.open_tasks,h.overdue?`${h.overdue} overdue`:(h.due_today?`${h.due_today} due today`:""),h.overdue>0)}
       ${T("Follow-ups pending",h.followups_pending,"visits awaiting follow-up",h.followups_pending>0)}

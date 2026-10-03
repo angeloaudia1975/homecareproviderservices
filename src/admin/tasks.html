@@ -86,9 +86,11 @@ async function load(){
   if(s) s.textContent = SEESALL
     ? "Every open follow-up across all manufacturer lines — manual tasks plus the ones the follow-up engine builds from dealer signals. Filter by rep, or work the unassigned pile."
     : "Your follow-up queue — manual tasks plus the ones the follow-up engine builds from dealer signals.";
-  // president gets the engine console + Zoho mirror
-  $("#runbox").innerHTML = ROLE==="president" ? `<button class="btn ghost" id="mirbtn" onclick="mirrorZoho()">⤴ Mirror to Zoho</button>` : "";
-  if(ROLE==="president") loadAutomation(); else $("#autopanel").innerHTML="";
+  // president gets the engine console + Zoho mirror — except in My Sales Workspace, which is his
+  // own task list as a rep sees it (the engine is a management tool; the Admin view still has it).
+  const ENGINE = ROLE==="president" && !(HCPS.workspace&&HCPS.workspace());
+  $("#runbox").innerHTML = ENGINE ? `<button class="btn ghost" id="mirbtn" onclick="mirrorZoho()">⤴ Mirror to Zoho</button>` : "";
+  if(ENGINE) loadAutomation(); else $("#autopanel").innerHTML="";
   render();
 }
 
@@ -209,7 +211,7 @@ function render(){
   const repSel = SEESALL ? `<select onchange="setRep(this.value)"><option value="all">All reps</option>${REPS.map(r=>`<option value="${esc(r)}"${FREP===r?" selected":""}>${esc(r)}</option>`).join("")}${c.none?`<option value="__none"${FREP==="__none"?" selected":""}>Unassigned (${c.none})</option>`:""}</select>` : "";
   const filt=`<div class="filt"><div class="seg">${segs}</div>${repSel}<span class="hint" style="margin:0">${rows.length} task${rows.length===1?"":"s"}</span></div>`;
   let body;
-  if(!rows.length){ body=`<div class="msg">No open tasks${FSRC!=="all"||FREP!=="all"?" for this filter":""}. ${ROLE==="president"&&!TASKS.length?'Click <b>Run follow-up engine</b> to build the queue from dealer signals.':'🎉'}</div>`; }
+  if(!rows.length){ body=`<div class="msg">No open tasks${FSRC!=="all"||FREP!=="all"?" for this filter":""}. ${ROLE==="president"&&!TASKS.length&&!(HCPS.workspace&&HCPS.workspace())?'Click <b>Run follow-up engine</b> to build the queue from dealer signals.':'🎉'}</div>`; }
   else{
     body=rows.map(t=>{
       const link=t.dealer_id?`/admin/dealer.html?id=${encodeURIComponent(t.dealer_id)}`:null;

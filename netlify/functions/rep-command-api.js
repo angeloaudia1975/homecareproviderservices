@@ -140,7 +140,9 @@ exports.handler = async (event)=>{
     if(event.httpMethod!=="POST") return json(405,{error:"POST only"});
     const me=await whoami(event); if(!me) return json(401,{error:"unauthorized"});
     let b={}; try{ b=JSON.parse(event.body||"{}"); }catch(e){ return json(400,{error:"bad JSON"}); }
-    const canPick=SC.seesAllDealers(me);   // management + Customer Relations (Phase 0 matrix)
+    // My Sales Workspace: a President working his own book sees his own day only — no picker.
+    const workspace=SC.workspaceMine(event, me);
+    const canPick=SC.seesAllDealers(me) && !workspace;   // management + Customer Relations (Phase 0 matrix)
 
     if(b.action==="reps"){
       if(!canPick) return json(200,{ok:true,reps:[]});
@@ -269,7 +271,7 @@ exports.handler = async (event)=>{
       dealer_commitments:todaysVisits.reduce((a,v)=>a+((v.summary&&v.summary.dealer_commitments)||[]).length,0)};
 
     const overdue=tasks.filter(t=>t.due_date&&t.due_date<today).length, dueToday=tasks.filter(t=>t.due_date===today).length;
-    const header={date:today,rep:{email:who.email,name:who.name,rep_name:who.rep_name},viewing_other:who.email!==low(me.email),
+    const header={date:today,rep:{email:who.email,name:who.name,rep_name:who.rep_name},viewing_other:who.email!==low(me.email),workspace,
       stops:route?route.stops.length:0,first_stop:route&&route.stops[0]?route.stops[0].name:null,
       open_tasks:tasks.length,overdue,due_today:dueToday,followups_pending:(pendingFU||[]).length,
       opportunities_open:myOpps.length,opportunities_attention:oppList.length,pipeline_weighted:weighted,appointments:(appts||[]).length};

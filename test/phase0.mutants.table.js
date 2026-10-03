@@ -118,9 +118,9 @@ module.exports = {
   // ---- Phase 0L: one landing rule, off by default ----
   '0L management sent to rep home':    { file: 'staff-auth.js', from: 'if(["president","admin","owner"].includes(role)) return "/admin/";', to: '' },
   '0L off-site landing accepted':      { file: 'staff-auth.js', from: '&& /^\\/admin\\/[A-Za-z0-9._\\/-]*$/.test(cfg.url) && !cfg.url.includes(".."))', to: ')' },
-  '0L pilot ignores the list':         { file: 'staff-auth.js', from: 'mode==="pilot" && Array.isArray(cfg.emails) && cfg.emails.map(e=>String(e||"").trim().toLowerCase()).includes(String(s.email||"").toLowerCase())', to: 'mode==="pilot"' },
+  '0L pilot ignores the list':         { file: 'staff-auth.js', from: 'if(url && mode==="pilot" && listed) return url;', to: 'if(url && mode==="pilot") return url;' },
   '0L "off" behaves as "on"':          { file: 'staff-auth.js', from: 'if(url && mode==="on") return url;', to: 'if(url) return url;' },
-  '0L Relations moved too':            { file: 'staff-auth.js', from: '|| role!=="rep") return REP_HOME;', to: ') return REP_HOME;' },
+  '0L Relations moved too':            { file: 'staff-auth.js', from: 'if(role==="relations") return (url && (mode==="pilot" || mode==="on") && listed) ? url : REP_HOME;', to: '' },
   // ---- Oct 2 decisions: Relations reads the Dealer Manager; the Admin dashboard is management's ----
   '0K non-management may write Dealer Manager':{ file: 'dealers-api.js', from: 'if(!isAdminRole && !NON_MGMT_READS.has(act)) return json(403,', to: 'if(role==="relations" && !NON_MGMT_READS.has(act)) return json(403,' },
   '0K Relations may write Dealer Manager':{ file: 'dealers-api.js', from: 'if(!isAdminRole && !NON_MGMT_READS.has(act)) return json(403,', to: 'if(role==="rep" && !NON_MGMT_READS.has(act)) return json(403,' },
@@ -205,5 +205,24 @@ module.exports = {
   '1H email: QA date on a real dealer': { file: 'ai-email-api.js', from: 'if(dt&&dt[0]&&dt[0].is_test===true && Number.isFinite', to: 'if(Number.isFinite' },
   '1H email: greets someone before a pick': { file: 'ai-email-api.js', from: 'if(recap && !firstName) body=neutralGreeting(body);', to: '' },
   // ("one attendee → that attendee" also follows from attendees being listed first, so a mutant of that branch is equivalent.)
+  // ---- My Sales Workspace (President dual role) + Relations Command Center landing ----
+  '1W listed Relations ignored':       { file: 'staff-auth.js', from: '(url && (mode==="pilot" || mode==="on") && listed)', to: '(false)' },
+  '1W Relations moves while "off"':    { file: 'staff-auth.js', from: '(url && (mode==="pilot" || mode==="on") && listed)', to: '(url && listed)' },
+  '1W Relations never reaches the pilot':{ file: 'staff-auth.js', from: '(role!=="rep" && role!=="relations")) return REP_HOME;', to: 'role!=="rep") return REP_HOME;' },
+  '1W pilot list case-sensitive':      { file: 'staff-auth.js', from: 'cfg.emails.map(e=>String(e||"").trim().toLowerCase()).includes(me)', to: 'cfg.emails.includes(me)' },
+  '1W header honored for any role':    { file: '_scope.js', from: 'return low(v)==="mine" && isAdmin(me);', to: 'return low(v)==="mine";' },
+  '1W header ignored':                 { file: '_scope.js', from: 'return low(v)==="mine" && isAdmin(me);', to: 'return false;' },
+  '1W header any value':               { file: '_scope.js', from: 'return low(v)==="mine" && isAdmin(me);', to: 'return !!v && isAdmin(me);' },
+  '1W book resolved as President':     { file: '_scope.js', from: 'return dealerScope(Object.assign({}, me, {role:"rep"}), sbGet, idx);', to: 'return dealerScope(me, sbGet, idx);' },
+  '1W CC picker kept in workspace':    { file: 'rep-command-api.js', from: 'const canPick=SC.seesAllDealers(me) && !workspace;', to: 'const canPick=SC.seesAllDealers(me);' },
+  '1W CC narrows Relations':           { file: 'rep-command-api.js', from: 'const canPick=SC.seesAllDealers(me) && !workspace;', to: 'const canPick=SC.seesAllDealers(me) && !SC.workspaceMine({headers:{"x-hcps-workspace":"mine"}},{role:"president"});' },
+  '1W tasks company-wide in workspace':{ file: 'crm-api.js', from: 'const seesAll=seesAllDealers(me) && !SC.workspaceMine(event, me);', to: 'const seesAll=seesAllDealers(me);' },
+  '1W task badge company-wide':        { file: 'crm-api.js', from: 'if(seesAllDealers(me) && !SC.workspaceMine(event, me)){   // in My', to: 'if(seesAllDealers(me)){   // in My' },
+  '1W pipeline company-wide':          { file: 'pipeline-api.js', from: 'const isRep = workspace ||', to: 'const isRep =' },
+  '1W pipeline book as President':     { file: 'pipeline-api.js', from: '(workspace ? SC.ownBook(me, sbGet, OI||undefined) :', to: '(workspace ? SC.dealerScope(me, sbGet, OI||undefined) :' },
+  '1W routes planned for others kept': { file: 'routes-api.js', from: 'if(workspace) rows=(rows||[]).filter(', to: 'if(false) rows=(rows||[]).filter(' },
+  '1W routes company-wide':            { file: 'routes-api.js', from: 'const workspace=SC.workspaceMine(event, me);\n      if(!isBoss(me) || workspace)', to: 'const workspace=false;\n      if(!isBoss(me) || workspace)' },
+  '1W dealer list company-wide':       { file: 'dealers-api.js', from: '} else if(SC.workspaceMine(event, me)){', to: '} else if(false){' },
+  '1W map company-wide':               { file: 'geocode-api.js', from: 'if(SC.workspaceMine(event, me)){', to: 'if(false){' },
   '1I recipient: picks for the rep':    { file: 'scheduled-routes.html', from: 'else if(attRows.length>1){ note=', to: 'else if(attRows.length>1){ pre.add(low(attRows[0].email)); note=' },
 };

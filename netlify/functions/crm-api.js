@@ -312,7 +312,7 @@ exports.handler = async (event)=>{
     // Lightweight open-task count for the masthead badge. Scoped the same way the queue
     // itself is (see my_tasks): whoever works the whole territory counts the whole queue.
     if(b.action==="task_count"){
-      if(seesAllDealers(me)){
+      if(seesAllDealers(me) && !SC.workspaceMine(event, me)){   // in My Sales Workspace: his own count
         try{ const r=await fetch(`${SUPABASE_URL}/rest/v1/dealer_tasks?status=eq.open&select=id`,{headers:{...H(),Prefer:"count=exact",Range:"0-0"}}); const cr=r.headers.get("content-range")||""; const n=cr.includes("/")?parseInt(cr.split("/")[1],10):0; return json(200,{ok:true,count:Number.isFinite(n)?n:0}); }
         catch(e){ return json(200,{ok:true,count:0}); }
       }
@@ -592,7 +592,8 @@ exports.handler = async (event)=>{
     // not the same permission as running the machine that fills it.
     if(b.action==="my_tasks"){
       const status=["open","done","dismissed"].includes(b.status)?b.status:"open";
-      const seesAll=seesAllDealers(me);
+      // My Sales Workspace (President's own book): his own tasks, exactly as a rep sees theirs.
+      const seesAll=seesAllDealers(me) && !SC.workspaceMine(event, me);
       // Every task, read page by page (one read stops at 1000 rows). A rep's own tasks are picked
       // on the server: assigned by email (Phase 0I) or by name. A rep with neither sees NOTHING —
       // the old `&& me.rep_name` guard once handed such an account the whole company's queue.

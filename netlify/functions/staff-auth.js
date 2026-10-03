@@ -108,17 +108,24 @@ async function caller(event){ const email=await emailFromToken(event); if(!email
      {"mode":"off"}                                   default, and when the row is missing
      {"mode":"pilot","url":"/admin/…","emails":[…]}   only the listed reps
      {"mode":"on","url":"/admin/…"}                   every rep
+   A Relations Manager follows it only when her own email is in "emails" (pilot or on) — never
+   because of "on" alone. Management always lands on /admin/ whatever the setting says.
    Only a same-site /admin/ path is accepted. It is OFF and stays off until you switch it on. */
 const REP_HOME="/admin/rep-home.html";
 async function landingFor(s){
   const role=String((s&&s.role)||"").toLowerCase();
   if(["president","admin","owner"].includes(role)) return "/admin/";
   let cfg=null; try{ const r=await sbGet("app_settings?key=eq.rep_landing&select=value"); cfg=r&&r[0]&&r[0].value; }catch(e){ cfg=null; }
-  if(!cfg || typeof cfg!=="object" || role!=="rep") return REP_HOME;
+  if(!cfg || typeof cfg!=="object" || (role!=="rep" && role!=="relations")) return REP_HOME;
   const url=(typeof cfg.url==="string" && /^\/admin\/[A-Za-z0-9._\/-]*$/.test(cfg.url) && !cfg.url.includes("..")) ? cfg.url : null;
   const mode=String(cfg.mode||"off").toLowerCase();
+  const me=String(s.email||"").trim().toLowerCase();
+  const listed=!!me && Array.isArray(cfg.emails) && cfg.emails.map(e=>String(e||"").trim().toLowerCase()).includes(me);
+  // A Relations Manager moves ONLY when her own email is listed (pilot or on). "on" by itself
+  // moves every rep, never Relations — no Relations user changes landing without being named.
+  if(role==="relations") return (url && (mode==="pilot" || mode==="on") && listed) ? url : REP_HOME;
   if(url && mode==="on") return url;
-  if(url && mode==="pilot" && Array.isArray(cfg.emails) && cfg.emails.map(e=>String(e||"").trim().toLowerCase()).includes(String(s.email||"").toLowerCase())) return url;
+  if(url && mode==="pilot" && listed) return url;
   return REP_HOME;
 }
 async function profileWithLanding(s){ const p=pubProfile(s); if(p) p.landing=await landingFor(s); return p; }
