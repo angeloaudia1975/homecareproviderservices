@@ -423,6 +423,17 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
     assert.strictEqual(await p.$('.ac-ws'), null);
     assert.deepStrictEqual(errs.filter(e => !/analytics|Failed to fetch/.test(e)), []); await c.close();
   });
+  await step('Admin Dashboard: My Sales Workspace in the header and as a callout (desktop + phone); it opens the workspace', async () => {
+    for (const [label, dev] of [['desktop', DESKTOP], ['phone', PHONE]]) {
+      const c = await ctxFor(browser, 'pres', dev); const p = await c.newPage();
+      await p.goto(`${B}/admin/`); await p.waitForSelector('#ws-callout', { state: 'visible', timeout: 15000 });
+      assert.ok(await p.isVisible('#ws-enter'), label + ': header button hidden');
+      await noHScroll(p, 'dashboard ' + label); await p.screenshot({ path: path.join(SHOTS, `dashboard-${label}.png`) });
+      await p.click('#ws-callout'); await p.waitForSelector('.ac-ws');
+      assert.strictEqual((await p.textContent('#pgtitle')).trim(), 'My Sales Workspace');
+      await c.close();
+    }
+  });
   await step('Workspace (phone): banner, Back to Admin and the field-app strip fit a phone', async () => {
     const c = await ctxFor(browser, 'pres', PHONE); const p = await c.newPage();
     await p.goto(`${B}/admin/command-center-rep.html?workspace=mine`); await p.waitForSelector('.hello');

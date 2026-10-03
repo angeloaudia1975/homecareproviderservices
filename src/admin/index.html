@@ -46,6 +46,11 @@
   .callout{display:flex;align-items:center;gap:12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:14px 18px;margin:0 0 22px;color:#9a3412;}
   .callout b{color:#7c2d12;}
   .callout .cta{color:#c2410c;font-weight:800;white-space:nowrap;}
+  /* My Sales Workspace — the President's own dealer book, worked as a rep (admin-chrome.js / staff-session.js) */
+  .callout.ws{background:#ecfdf3;border-color:#a7e3bd;color:#14532d;}
+  .callout.ws b{color:#14532d;} .callout.ws .cta{color:#15803d;}
+  .wsbtn{display:inline-flex;align-items:center;gap:4px;background:#1f9d57;color:#fff;border-radius:8px;padding:7px 12px;font-weight:700;font-size:12.5px;text-decoration:none;white-space:nowrap;}
+  .wsbtn:hover{background:#178a4b;}
 
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
   .favrow{display:flex;flex-wrap:wrap;gap:9px;padding:4px 2px 2px}
@@ -105,7 +110,7 @@
   <header>
     <div class="hwrap htop">
       <div class="brand"><div class="mark">H</div><div><b>HCPS Connect 360</b><span>Operating System</span></div></div>
-      <div class="who"><span id="whoName"></span><button onclick="lock()">Lock</button></div>
+      <div class="who"><a class="wsbtn" id="ws-enter" href="/admin/command-center-rep.html?workspace=mine" title="Work your own dealer book — your day, route, visits, tasks and deals">🧑‍💼 My Sales Workspace</a><span id="whoName"></span><button onclick="lock()">Lock</button></div>
     </div>
     <nav class="hubnav">
       <a href="#top" class="on">Dashboard</a>
@@ -121,6 +126,11 @@
   </div></div>
 
   <main>
+    <a class="callout ws" id="ws-callout" href="/admin/command-center-rep.html?workspace=mine">
+      <span style="font-size:22px">🧑‍💼</span>
+      <span><b>My Sales Workspace</b> — work your own dealer book as a rep: today's route and meeting prep, Start/End Visit, AI visit summaries, follow-ups, tasks and deals. Your Admin Dashboard stays one click away.</span>
+      <span class="cta" style="margin-left:auto">Open →</span>
+    </a>
     <a class="callout" href="/admin/dealers.html#logins">
       <span style="font-size:22px">✅</span>
       <span><b>Approve dealer logins</b> — dealers who register on the ordering portal wait here until you approve them. <span id="pendCount" style="font-weight:800"></span></span>
