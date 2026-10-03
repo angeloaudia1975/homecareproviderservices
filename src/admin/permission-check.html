@@ -145,10 +145,20 @@ async function runWorkspace(){
     add("Management view of "+other+": read-only",other+" · read-only",((hm.rep&&hm.rep.email)||"(none)")+(hm.viewing_other?" · read-only":""),!!(hm.rep&&hm.rep.email===other&&hm.viewing_other&&!hm.workspace));
   }
   // Phase 2A, amendment 1: Start visit (the unplanned-visit screen) — read-only probes, nothing is started.
-  const sv=await call("routes-api",{action:"route_day",dealer_id:TD},"POST",WSH);
-  add("Workspace: Start visit refused at a dealer outside your book (TEST, House)","refused",sv.j.code==="flag_off"?"switch off":sv.status,sv.status===403&&sv.j.code!=="flag_off");
-  const sa=await call("routes-api",{action:"route_day",dealer_id:TD});
-  add("Admin mode: Start visit available at any dealer (TEST)","200",sa.j.code==="flag_off"?"switch off":sa.status,sa.status===200&&!!(sa.j.route&&sa.j.route.adhoc));
+  // The probe dealers are in another rep's book AND not a stop on a route you drive: a route you drive
+  // lets you visit its stops, the same rule as for any rep.
+  const onMine=new Set();
+  for(const r of routes){ const d=(await call("routes-api",{action:"route_day",route_id:r.id},"POST",WSH)).j||{};
+    for(const st of (d.stops||[])) if(st&&st.dealer_id) onMine.add(String(st.dealer_id)); }
+  const otherBook=all.filter(d=>!onMine.has(String(d.id)) && (d.rep_email ? String(d.rep_email).toLowerCase()!==me
+    : (!!d.rep && String(d.rep).trim().toLowerCase()!==rn && !/house|unassigned/i.test(d.rep)))).slice(0,3);
+  if(!otherBook.length) add("Workspace: Start visit refused outside your book","a dealer to test with","none found",false);
+  for(const d of otherBook){
+    const sv=await call("routes-api",{action:"route_day",dealer_id:d.id},"POST",WSH);
+    add("Workspace: Start visit refused at "+(d.name||d.id)+" ("+(d.rep||d.rep_email)+"'s book)","refused",sv.j.code==="flag_off"?"switch off":sv.status,sv.status===403&&sv.j.code!=="flag_off");
+  }
+  const sa=await call("routes-api",{action:"route_day",dealer_id:(otherBook[0]&&otherBook[0].id)||TD});
+  add("Admin mode: Start visit available at any dealer","200",sa.j.code==="flag_off"?"switch off":sa.status,sa.status===200&&!!(sa.j.route&&sa.j.route.adhoc));
   verdict(rows,"My Sales Workspace ("+((ME&&(ME.name||ME.email))||"you")+")");
 }
 
