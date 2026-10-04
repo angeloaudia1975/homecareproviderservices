@@ -8,6 +8,7 @@
 //
 //   POST {action:"today", date?:"YYYY-MM-DD" (the rep's local date), hour?:0-23, rep?:email}
 //   POST {action:"reps"}   -> the people a viewer may pick (management / Relations only)
+//   POST {action:"brief", mode:"auto"|"refresh"|"check", date, tz, rep?}  -> the Morning Brief (Phase 2B)
 //
 // WHO: the signed-in person sees their own Command Center. The president (and admin/owner) and
 // Customer Relations — the roles that work every dealer — may pick a rep to VIEW (read-only, never
@@ -21,8 +22,13 @@ const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
+async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); const t=await r.text(); return t?JSON.parse(t):null; }
 const SC = require("./_scope.js");
+const FL = require("./_flags.js");
+const BAI = require("./_brief_ai.js");
 const getAll = (path, order) => SC.getAll(sbGet, path, order);
+const AI_KEY = process.env.ANTHROPIC_API_KEY || "";
+const BRIEF_MODEL = process.env.HCPS_BRIEF_AI_MODEL || process.env.HCPS_AI_MODEL || "claude-sonnet-5";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const low = s => String(s == null ? "" : s).trim().toLowerCase();
@@ -149,7 +155,7 @@ exports.handler = async (event)=>{
       const s=await sbGet("staff_users?active=eq.true&select=email,name,rep_name,role&order=name").catch(()=>[]);
       return json(200,{ok:true,reps:(s||[]).filter(x=>x.email).map(x=>({email:low(x.email),name:x.name||x.rep_name||x.email,role:x.role||"rep"}))});
     }
-    if(b.action!=="today") return json(400,{error:"unknown action"});
+    if(b.action!=="today" && b.action!=="brief") return json(400,{error:"unknown action"});
 
     // The person whose day this is.
     let who={email:low(me.email),rep_name:String(me.rep_name||"").trim(),name:me.name||me.email,role:me.role};
@@ -159,6 +165,17 @@ exports.handler = async (event)=>{
       who={email:low(su.email),rep_name:String(su.rep_name||"").trim(),name:su.name||su.email,role:su.role||"rep"};
     }
     if(!who.email) return json(200,{ok:true,empty:true,message:"Your account has no email on file."});
+    if(b.action==="brief") return await briefAction(me, who, b, workspace);
+    const day=await buildDay(me, who, b, workspace);
+    // Phase 2B: the stored Morning Brief rides along — read from storage only, never written or
+    // generated here, so the Command Center renders at once. The page asks for it (brief) afterwards.
+    if(await FL.flagOn(sbGet,"morning_brief")) day.morning_brief=await storedBriefFor(me, who, day.header.date);
+    return json(200,Object.assign({ok:true},day));
+  }catch(e){ return json(500,{error:String(e.message||e)}); }
+};
+
+/* ---- The day (Phase 1 Command Center), shared by `today` and the Morning Brief ---------------- */
+async function buildDay(me, who, b, workspace){
     const today=ISO.test(String(b.date||""))?String(b.date):new Date().toISOString().slice(0,10);
     const tomorrow=addDays(today,1);
     const hour=Number.isFinite(Number(b.hour))?Number(b.hour):null;
@@ -283,12 +300,134 @@ exports.handler = async (event)=>{
       dealers:stopsTomorrow.slice(0,12).map(s=>({dealer_id:s.dealer_id,name:s.name||names[s.dealer_id]||"",place:[s.city,s.state].filter(Boolean).join(", ")||place[s.dealer_id]||""})),
       tasks_due:tasks.filter(t=>t.due_date===tomorrow).length}:{stops:0,tasks_due:tasks.filter(t=>t.due_date===tomorrow).length};
 
-    return json(200,{ok:true,phase,header,
+    return {phase,header,
       priorities:priorities({today,tasks,followups:pendingFU||[],opps:myOpps,appointments:appts||[],names}),
       route,prep,visit_progress:{counts,total:route?route.stops.length:0,off_route:visitActivity.filter(v=>!(route&&route.stops.some(s=>String(s.dealer_id)===String(v.dealer_id)))).length},
       visit_activity:visitActivity,followup_queue:{visits:followQueue,tasks_due_soon:dueSoon},
-      opportunities:{needs_attention:oppList,open:myOpps.length,weighted},end_of_day:eod,tomorrow:tomorrowPrev,appointments:appts||[]});
-  }catch(e){ return json(500,{error:String(e.message||e)}); }
-};
+      opportunities:{needs_attention:oppList,open:myOpps.length,weighted},end_of_day:eod,tomorrow:tomorrowPrev,appointments:appts||[]};
+}
+
+/* ---- PHASE 2B · THE MORNING BRIEF -------------------------------------------------------------
+   One stored brief per person per day (rep_daily_briefs, kind "morning"), behind the morning_brief
+   switch. `today` only READS it, so the Command Center renders at once; the page then calls `brief`:
+     auto     the person's own brief: written now if there is none today (or the last attempt failed
+              more than 10 minutes ago); otherwise the stored one, with a stale flag
+     refresh  the person's own brief, rewritten — at most once per 10 minutes
+     check    read-only: the stored brief, whether it is stale, and the ranked signals
+   Management and Relations may READ a rep's stored brief (the same rule as viewing their Command
+   Center) but never write one in that person's name. What it reads: the person's own day (the Phase 1
+   Command Center) plus relationship signals — their own dealer book for a rep and for the President
+   (in My Sales Workspace and in the Admin view alike: never company-wide President data), and EVERY
+   dealer for Customer Relations, ranked to the top 10 (approved 2026-10-03). */
+const REFRESH_MS = 10 * 60 * 1000;   // one (re)generation per person per 10 minutes
+const CRASH_MS = 90 * 1000;          // a "generating" row older than this was left by a function that died
+const MISSING = /PGRST20[45]|Could not find the table|42P01|does not exist/i;
+async function readBrief(email, date){
+  try{ const r=await sbGet(`rep_daily_briefs?rep_email=eq.${enc(email)}&brief_date=eq.${enc(date)}&kind=eq.morning&select=id,status,content,signals_key,model,generated_by,generated_at,attempted_at,error&limit=1`);
+    return { row:(r&&r[0])||null }; }
+  catch(e){ return MISSING.test(String(e.message||e)) ? { missing:true } : { error:true }; }
+}
+const hasContent = row => !!(row && row.content && Array.isArray(row.content.focus) && row.content.focus.length);
+function briefView(me, who, rd, extra){
+  const own=who.email===low(me.email), row=rd.row||null;
+  const last=row&&Date.parse(row.attempted_at||"");
+  return Object.assign({ enabled:true, person:who.email, own, can_generate:own, storage_missing:!!rd.missing,
+    status: row ? row.status : "none", brief: hasContent(row) ? row.content : null,
+    generated_at: (row&&row.generated_at)||null, written_by: (row&&row.generated_by)||null,
+    next_refresh_at: own && Number.isFinite(last) ? new Date(last+REFRESH_MS).toISOString() : null,
+    error: row&&row.status==="failed" ? (row.error||"ai_failed") : null }, extra||{});
+}
+async function storedBriefFor(me, who, date){ return briefView(me, who, await readBrief(who.email, date)); }
+const roleLabel = who => low(who.role)==="relations" ? "relations" : SC.isAdmin(who) ? "president" : "rep";
+const publicSignals = list => (list||[]).map(({score,amounts,...x})=>x);
+
+/* Relationship signals: Customer Relations reads every dealer; everyone else their own book (the
+   shared resolver, rep rules — dealers.rep_email first). TEST dealers never appear, and the person's
+   own visit follow-ups are left out here because their own work already lists them. */
+async function signalsFor(who, today){
+  const companyWide=low(who.role)==="relations";
+  const idx=await SC.ownerIndex(sbGet);
+  let scope=null;
+  if(!companyWide){ const sc=await SC.ownBook({email:who.email,rep_name:who.rep_name,role:"rep"}, sbGet, idx); scope=sc.ids||new Set(); }
+  const since3=addDays(today,-3), since8=addDays(today,-8), since60=addDays(today,-60);
+  const g=p=>sbGet(p).catch(()=>[]);
+  const VCOLS="id,dealer_id,rep_name,rep_email,checkin_at,completed_at,approved_at,followup_status,followup_due,summary";
+  const [eng,intent,sess,carts,recent,pending,tests,mfrs]=await Promise.all([
+    getAll("dealer_engagement?select=dealer_id,status,trend,churn_score,months_since,last_period,total_sales,recent_sales","dealer_id").catch(()=>[]),
+    g(`dealer_intent?last_event_at=gte.${since3}&select=dealer_id,score_total,top_manufacturer,top_product,last_event_at&limit=2000`),
+    g(`dealer_sessions?last_seen_at=gte.${since3}&select=dealer_id,last_seen_at&limit=5000`),
+    g(`dealer_carts?updated_at=gte.${since8}&select=dealer_id,cart,updated_at&limit=2000`),
+    getAll(`dealer_visit_reports?checkin_at=gte.${since60}&completed_at=not.is.null&select=${VCOLS}`,"id").catch(()=>[]),
+    getAll(`dealer_visit_reports?followup_status=eq.pending&select=${VCOLS}`,"id").catch(()=>[]),
+    g("dealers?is_test=is.true&select=id"),
+    g("manufacturers?select=slug,name"),
+  ]);
+  const vmap=new Map(); for(const v of [].concat(recent||[],pending||[])) if(low(v.rep_email)!==who.email) vmap.set(String(v.id),v);
+  const names={}, owners={}; for(const o of idx.byId.values()){ names[o.id]=o.name; owners[o.id]=o.rep||""; }
+  const mfr={}; for(const m of (mfrs||[])) if(m.slug) mfr[String(m.slug).toLowerCase()]=m.name||m.slug;
+  const signals=BAI.rankSignals({ today, scope, exclude:new Set((tests||[]).map(t=>String(t.id))), limit:companyWide?10:8,
+    names, owners, mfr, engagement:eng||[], intent:intent||[], sessions:sess||[], carts:carts||[], visits:[...vmap.values()] });
+  return { scope: companyWide ? "company_wide" : "own_book", signals };
+}
+
+async function briefAction(me, who, b, workspace){
+  if(!(await FL.flagOn(sbGet,"morning_brief"))) return json(403,{error:"The Morning Brief isn't turned on yet.",code:"flag_off"});
+  const mode=["auto","refresh","check"].includes(b.mode)?b.mode:"check";
+  const own=who.email===low(me.email);
+  // Reading another person's brief: yes (management / Relations — `who` is only someone else for them).
+  // Writing one in their name: never.
+  if(!own && mode!=="check") return json(403,{error:`You can read ${who.name}'s brief but not write one for them.`,code:"not_yours"});
+  if(b.dry_run) return json(200,{ok:true,dry_run:true,mode,own});
+  const day=await buildDay(me, who, b, workspace);
+  const today=day.header.date;
+  const sig=await signalsFor(who, today);
+  const inputs=BAI.briefInputs(day, sig.signals, { role:roleLabel(who), scope:sig.scope, tz:b.tz, date:today });
+  const key=BAI.signalsKey(inputs);
+  const rd=await readBrief(who.email, today);
+  if(rd.missing) return json(503,{error:"storage_missing",setup:"supabase/phase2_rep_daily_briefs.sql"});
+  if(rd.error) return json(503,{error:"Couldn't read the stored brief right now — try again."});
+  const row=rd.row;
+  const base={ scope:sig.scope, signals:publicSignals(sig.signals), rule_headline:BAI.ruleHeadline(inputs) };
+  const view=extra=>json(200,Object.assign({ok:true},briefView(me,who,rd,Object.assign({ stale: !!(hasContent(row) && row.signals_key && row.signals_key!==key) },base,extra||{}))));
+  if(!own || mode==="check") return view();
+  const nowMs=Date.now(), last=row?(Date.parse(row.attempted_at||"")||0):0;
+  const crashed=!!(row && row.status==="generating" && nowMs-last>CRASH_MS);
+  if(row && row.status==="generating" && !crashed) return view({ pending:true });
+  if(mode==="auto" && row && hasContent(row)) return view();
+  if(row && !crashed && nowMs-last<REFRESH_MS) return view({ too_soon:true });
+  // THE CLAIM: one generation at a time per person and day — a second tab, a double tap or a
+  // replay finds the row already claimed and waits for it instead of paying for another.
+  const nowIso=new Date(nowMs).toISOString();
+  let claimId=null;
+  if(!row){
+    let ins=null;
+    try{ ins=await sbSend("POST","rep_daily_briefs?on_conflict=rep_email,brief_date,kind",
+      {rep_email:who.email,brief_date:today,kind:"morning",status:"generating",content:{},attempted_at:nowIso,generated_by:low(me.email)},
+      {Prefer:"resolution=ignore-duplicates,return=representation"}); }
+    catch(e){ return json(503,{error:"Couldn't start the brief right now — try again."}); }
+    claimId=(ins&&ins[0]&&ins[0].id)||null;
+    if(!claimId) return view({ pending:true });
+  } else {
+    const won=await sbSend("PATCH",`rep_daily_briefs?id=eq.${enc(row.id)}&attempted_at=eq.${enc(row.attempted_at)}&select=id`,
+      {status:"generating",attempted_at:nowIso,generated_by:low(me.email)},{Prefer:"return=representation"}).catch(()=>[]);
+    if(!(Array.isArray(won)&&won.length)) return view({ pending:true });
+    claimId=row.id;
+  }
+  const res=await BAI.generate({ inputs, fetch, apiKey:AI_KEY, model:BRIEF_MODEL, budgetMs:20000 });
+  const doneIso=new Date().toISOString();
+  if(res.ok){
+    const content=Object.assign({ version:1 }, res.content, { scope:sig.scope, signals:publicSignals(sig.signals), for:{ email:who.email, name:who.name } });
+    await sbSend("PATCH",`rep_daily_briefs?id=eq.${enc(claimId)}`,{status:"ready",content,inputs,signals_key:key,model:BRIEF_MODEL,
+      generated_by:low(me.email),generated_at:doneIso,error:null},{Prefer:"return=minimal"});
+    const fresh={ row:{ id:claimId, status:"ready", content, signals_key:key, generated_at:doneIso, generated_by:low(me.email), attempted_at:nowIso } };
+    return json(200,Object.assign({ok:true},briefView(me,who,fresh,Object.assign({ stale:false, generated:true, attempts:res.attempts },base))));
+  }
+  // The AI failed: a brief written earlier today stays; otherwise the row says so and the page shows
+  // the rule-based Today's Priorities. Either way the next try waits 10 minutes.
+  const keep=hasContent(row);
+  await sbSend("PATCH",`rep_daily_briefs?id=eq.${enc(claimId)}`,{status:keep?"ready":"failed",error:res.error||"ai_failed"},{Prefer:"return=minimal"}).catch(()=>{});
+  const after={ row:Object.assign({}, row||{}, { id:claimId, status:keep?"ready":"failed", error:res.error||"ai_failed", attempted_at:nowIso }) };
+  return json(200,Object.assign({ok:true},briefView(me,who,after,Object.assign({ stale: keep && !!row.signals_key && row.signals_key!==key, ai_failed:true, ai_error:res.error||"ai_failed" },base))));
+}
 
 module.exports.__test = { buildPrep, oppAttention, priorities, followupProgress, stopStatus };

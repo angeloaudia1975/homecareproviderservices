@@ -429,7 +429,9 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   contact is deleted).
 - **AI suggests, the rep approves.** Visit summaries, attendees, follow-ups and opportunities are
   suggestions until the rep taps Approve; nothing is written to the CRM before that. A follow-up email is
-  a draft — Edit / Copy / Save draft / Send — and **never sends automatically**. No AI runs on page load.
+  a draft — Edit / Copy / Save draft / Send — and **never sends automatically**. No AI runs on page load
+  (one approved exception, 2026-10-03: the Morning Brief is written after the Command Center is on screen
+  when today's brief doesn't exist yet — see 2B below).
 - **A replay is a no-op.** Every write from a visit carries `(origin_type, origin_id, origin_key)` against
   a unique index (or a claim PATCH on a null column), so a double tap, an offline resend or a late replay
   never duplicates a visit, note, task, deal, contact, activity row or intent signal — while a genuinely
@@ -486,6 +488,22 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   replay after approval never opens another visit or lands on the next one. One open unplanned visit per
   rep per dealer (`uq_dvr_open_adhoc`): a second Start resumes it. Reach: the rep's book or a route he
   drives; Relations and Admin mode anywhere; My Sales Workspace his book only.
+- **Morning Brief (2B, switch `morning_brief`).** One stored brief per person per day (`rep_daily_briefs`,
+  kind `morning`). `today` only READS it, so the Command Center renders at once; the page then calls
+  `rep-command-api` `brief` (`auto` writes it if there is none yet; `refresh` once per 10 minutes; `check`
+  read-only). The row is the lock (one generation at a time; a stuck `generating` row is retried after 90 s).
+  Every focus item / watch-out must cite a ref from the input (task, follow-up, deal, appointment, stop,
+  signal) and quote no $ amount the input lacks — anything else is dropped; nothing grounded → no brief, the
+  rule-based Today's Priorities stand in. `signals_key` marks a stored brief stale when the day's facts change.
+  Relationship signals (`_brief_ai.js rankSignals`, top 8; TEST dealers excluded): a rep's and the President's
+  own book (`SC.ownBook`, in My Sales Workspace and the Admin view alike — never company-wide President
+  data); Customer Relations: her own work plus the top 10 company-wide signals. Management and Relations may
+  READ a rep's stored brief, never write one in that person's name.
+- **Zoho and testing (rule until the Zoho `is_test` exclusion is fixed in 2F).** The Zoho autosync pushes
+  every dealer, every contact with an email and every deal, TEST ones included. Do not create TEST dealers,
+  contacts, tasks or opportunities that could be pushed to Zoho unless the task requires it and Angelo has
+  approved it. Live tests use what exists (the TEST sandbox dealer, read-only checks) and create no deals or
+  contacts.
 
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.

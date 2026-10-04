@@ -7,7 +7,8 @@
  /* The Sales Rep Command Center (Phase 1). Three questions, in the order the day asks them:
     what do I need to do today · what happened at my visits · what do I follow up on now.
     Everything is read from data that already exists (one call, filtered on the server to this
-    person); nothing here runs AI on load. On a phone it is one column with thumb-sized rows. */
+    person). The one AI piece, the Morning Brief (Phase 2B), is asked for only after the page is on
+    screen. On a phone it is one column with thumb-sized rows. */
  .cc{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:15px;align-items:start;margin-top:14px}
  @media(max-width:980px){.cc{grid-template-columns:1fr}}
  .cc .card h2{display:flex;align-items:center;gap:8px}
@@ -53,6 +54,20 @@
  .act3 b{display:block;color:var(--navy);font-size:13px}
  .empty{color:var(--gray);font-size:13px;padding:4px 0}
  .sm2{font-size:11.5px;color:var(--gray)}
+ /* Morning Brief (Phase 2B) */
+ #briefcard{border-left:4px solid var(--orange)}
+ .bhead{font-size:16px;font-weight:700;color:var(--navy);line-height:1.35;margin:2px 0 8px}
+ .bitem{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #eef1f4}
+ .bitem:last-child{border-bottom:0}
+ .bitem .n{flex:0 0 auto;width:24px;height:24px;border-radius:50%;background:#eaf3fb;color:#12466e;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center}
+ .bitem .r{font-size:13px;color:#33475b;margin-top:2px}
+ .bitem .a{font-size:13px;color:#1f7a44;font-weight:700;margin-top:2px}
+ .bsec{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:800;margin:12px 0 2px}
+ .bstale{background:#fff6ec;border:1px solid #f3d6ae;color:#8a5a08;border-radius:9px;padding:7px 10px;font-size:12.5px;margin:8px 0 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+ .bwork{display:flex;gap:10px;align-items:center;color:#41576b;font-size:13.5px}
+ .spin{width:16px;height:16px;border-radius:50%;border:2px solid #d6e2ee;border-top-color:var(--orange);animation:sp 1s linear infinite;flex:0 0 auto}
+ @keyframes sp{to{transform:rotate(360deg)}}
+ .bfoot{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
  /* On a phone the rep menu wraps to ~380px; pinned, it would cover half the screen. It scrolls away here. */
  @media(max-width:760px){ header#ac-head{position:static} }
  @media(max-width:640px){
@@ -79,6 +94,7 @@ const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",
 window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
 let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 let DATA=null, REPS=null, VIEW=null;   // VIEW = the rep being viewed (management / Relations only)
+let BRIEF=null, BRIEF_FOR=null, BRIEF_POLL=0;   // the Morning Brief card's latest answer, and whose it is
 try{ VIEW=new URLSearchParams(location.search).get("rep")||null; }catch(e){ VIEW=null; }
 /* My Sales Workspace: the President working his OWN book, as a rep would — his day only, no rep
    picker, full working access, and a way back to the Admin Dashboard. */
@@ -122,7 +138,10 @@ async function load(){
   if(!j.ok){ $("#body").innerHTML=`<div class="msg err">${esc(j.error||j.message||"Couldn't load your day.")}</div>`; return; }
   DATA=j;
   if(REPS===null && !WS) loadReps();
+  const who=(j.header&&j.header.rep&&j.header.rep.email)||"";
+  if(BRIEF_FOR!==who){ BRIEF=null; BRIEF_FOR=who; BRIEF_POLL=0; }
   render();
+  briefStart();   // after the page is on screen — never before
 }
 /* The rep picker: only for the people the server lets pick (management and Relations). A rep
    gets an empty list and sees no picker — and the server ignores a rep's `rep` either way. */
@@ -145,6 +164,74 @@ function pickRep(email){
   try{ const u=new URL(location.href); if(VIEW) u.searchParams.set("rep",VIEW); else u.searchParams.delete("rep"); history.replaceState(null,"",u.toString()); }catch(e){}
   load();
 }
+
+/* ---- MORNING BRIEF (Phase 2B) -------------------------------------------------------------------
+   The Command Center is drawn first, from the day's data and any brief already stored for today. Only
+   then does the page ask for the brief: written now if there is none yet (your own day only), else the
+   stored one with a note when things have changed since. Viewing someone else's day shows their stored
+   brief, read-only — it is never written in their name. If the AI fails, the rule-based priorities
+   stand in. Refresh: once per 10 minutes. Behind the morning_brief switch: off → no card at all. */
+const BICON={task:"✅",followup:"↩︎",deal:"🔮",appointment:"📆",signal:"📡",stop:"📍"};
+const STYPE={cart:"Open cart",portal:"On the portal",dealer_commitment:"Dealer promise late",followup_overdue:"Follow-up late",rep_commitment:"Promise late",quiet:"Going quiet",decline:"Buying down"};
+function briefState(j){ const mb=j&&j.morning_brief; if(!mb||!mb.enabled||mb.storage_missing) return null; return BRIEF||mb; }
+function pBrief(j){
+  const b=briefState(j); if(!b) return "";
+  const own=!!b.own, name=(j.header&&j.header.rep&&j.header.rep.name)||"";
+  const sigs=b.signals||(b.brief&&b.brief.signals)||[];
+  const wide=(b.scope||(b.brief&&b.brief.scope))==="company_wide";
+  // One signal per row; the label sits with the reason so a long label never squeezes the text on a phone.
+  const sigList=n=>sigs.length?`<div class="bsec">${wide?"Relationship signals · all dealers":"Relationship signals · your book"}</div>`+sigs.slice(0,n).map(x=>`<div class="row"><div class="m"><div class="t" style="font-size:13.5px">${dlink(x.dealer_id,x.dealer)}${wide&&x.owner?` <span class="sm2">· ${esc(x.owner==="House"?"House account":x.owner)}</span>`:""}</div>
+      <div class="d"><span class="why ${/cart|commitment|overdue/.test(x.type)?"hot":"blue"}">${esc(STYPE[x.type]||x.type)}</span> ${esc(x.why)}</div>${x.action?`<div class="d" style="color:#1f7a44;font-weight:700">→ ${esc(x.action)}</div>`:""}</div></div>`).join(""):"";
+  let h=`<div class="card" id="briefcard"><h2>☀️ Morning brief <span class="n">${own?"":"read-only"}</span></h2>`;
+  if(!own) h+=`<div class="sm2" style="margin:-2px 0 8px">${esc(name)}'s brief — you can read it, not write it for them.</div>`;
+  const B=b.brief;
+  if(B){
+    h+=`<p class="bhead">${esc(B.headline)}</p>`;
+    h+=(B.focus||[]).map((f,i)=>`<div class="bitem"><div class="n">${i+1}</div><div class="m" style="flex:1;min-width:0">
+      <div class="t" style="font-weight:700;color:var(--navy);font-size:14px">${BICON[f.kind]||"•"} ${f.dealer_id?dlink(f.dealer_id,f.dealer||f.title):esc(f.title||"")}${f.dealer&&f.title&&f.kind!=="signal"&&f.kind!=="stop"?` <span class="sm2">· ${esc(f.title)}</span>`:""}</div>
+      <div class="r">${esc(f.reason)}</div>${f.action?`<div class="a">→ ${esc(f.action)}</div>`:""}</div></div>`).join("");
+    if(B.first_stop) h+=`<div class="bsec">First stop</div><div class="d">${dlink(B.first_stop.dealer_id,B.first_stop.dealer)} — ${esc(B.first_stop.tip)}</div>`;
+    if((B.watch_outs||[]).length) h+=`<div class="bsec">Watch out</div>`+B.watch_outs.map(w=>`<div class="d" style="margin:2px 0">⚠ ${w.dealer_id?dlink(w.dealer_id,w.dealer)+" — ":""}${esc(w.text)}</div>`).join("");
+    h+=sigList(wide?10:5);
+    if(b.stale) h+=`<div class="bstale">Things changed since this brief.${own?` <button class="btn sm" onclick="briefRefresh()" ${refreshWait(b)?"disabled":""}>↻ Refresh</button>`:""}</div>`;
+  } else if(b.working || b.pending || (own && (b.status==="none"||b.status==="generating") && !b.ai_failed && !b.too_soon)){
+    h+=`<div class="bwork"><div class="spin"></div><div>${own?"Writing your morning brief — your day is below, and this fills in by itself.":"Their brief is being written…"}</div></div>`;
+  } else if(!own){
+    h+=`<div class="empty">No brief for ${esc(name)} yet today — it is written when they open their Command Center.</div>`+sigList(wide?10:5);
+  } else {
+    // The AI could not write it: the rule-based priorities stand in.
+    const P=(j.priorities||[]).slice(0,5);
+    h+=`<div class="sm2" style="margin:0 0 6px">The AI brief isn't available right now — here is what the day's data says.</div><p class="bhead">${esc(b.rule_headline||"")}</p>`
+      +(P.length?P.map(p=>`<div class="row"><div class="m"><div class="t">${esc(p.title)}</div><div class="d">${dlink(p.dealer_id,p.dealer)}</div></div><span class="why ${/overdue|passed/i.test(p.why)?"hot":"blue"}">${esc(p.why)}</span></div>`).join(""):`<div class="empty">Nothing overdue or due today.</div>`)
+      +sigList(wide?10:5);
+  }
+  if(own && (B || b.ai_failed || b.too_soon || b.status==="failed")){
+    const w=refreshWait(b);
+    h+=`<div class="bfoot">${B&&b.generated_at?`<span class="sm2">Written ${esc(tm(b.generated_at))}</span>`:""}
+      <button class="btn ghost sm" id="briefrefresh" onclick="briefRefresh()" ${w?"disabled":""}>↻ ${B?"Refresh":"Try the AI again"}</button>${w?`<span class="sm2">available at ${esc(tm(b.next_refresh_at))}</span>`:""}</div>`;
+  } else if(B && b.generated_at) h+=`<div class="bfoot"><span class="sm2">Written ${esc(tm(b.generated_at))}</span></div>`;
+  return h+`</div>`;
+}
+function refreshWait(b){ const t=Date.parse((b&&b.next_refresh_at)||""); return Number.isFinite(t)&&t>Date.now(); }
+function paintBrief(){ const el=$("#briefcard"); if(el) el.outerHTML=pBrief(DATA); }
+async function briefCall(mode){
+  const who=BRIEF_FOR;
+  const req={action:"brief",mode,date:localDate(),hour:new Date().getHours(),tz:new Date().getTimezoneOffset()};
+  if(VIEW) req.rep=VIEW;
+  if(mode!=="check"){ BRIEF=Object.assign({},briefState(DATA)||{},{working:true}); paintBrief(); }
+  let r=null; try{ r=await api("rep-command-api",req); }catch(e){ r=null; }
+  if(BRIEF_FOR!==who) return;   // the viewer moved on to someone else meanwhile
+  const body=r&&r.body;
+  if(body&&body.ok) BRIEF=Object.assign({},body,{working:false});
+  else BRIEF=Object.assign({},briefState(DATA)||{},{working:false,pending:false,ai_failed:true});
+  paintBrief();
+  if(BRIEF.pending && BRIEF_POLL<10){ BRIEF_POLL++; setTimeout(()=>{ if(BRIEF_FOR===who) briefCall(BRIEF.own?"auto":"check"); },6000); }
+}
+function briefStart(){
+  const mb=DATA&&DATA.morning_brief; if(!mb||!mb.enabled||mb.storage_missing) return;
+  briefCall(mb.own?"auto":"check");
+}
+function briefRefresh(){ const b=briefState(DATA); if(!b||!b.own||refreshWait(b)) return; BRIEF_POLL=0; briefCall("refresh"); }
 
 /* ---- Panels ---- */
 function pHeader(j){
@@ -285,7 +372,7 @@ function render(){
   const j=DATA; if(!j) return;
   renderPicker();
   if(j.empty){ $("#body").innerHTML=`<div class="msg">${esc(j.message||"Nothing to show.")}</div>`; return; }
-  const L={morning:[pPriorities,pRoute,pPrep,pFollow], field:[pProgress,pRoute,pActivity,pPriorities,pPrep], wrap:[pEod,pActivity,pFollow,pProgress]};
+  const L={morning:[pBrief,pPriorities,pRoute,pPrep,pFollow], field:[pBrief,pProgress,pRoute,pActivity,pPriorities,pPrep], wrap:[pBrief,pEod,pActivity,pFollow,pProgress]};
   const R={morning:[pOpps,pTomorrow], field:[pFollow,pOpps,pEod], wrap:[pOpps,pTomorrow,pPriorities]};
   const ph=L[j.phase]?j.phase:"morning";
   $("#body").innerHTML=pHeader(j)+`<div class="cc"><div>${L[ph].map(f=>f(j)).join("")}</div><div>${R[ph].map(f=>f(j)).join("")}</div></div>`;
