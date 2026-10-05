@@ -53,7 +53,7 @@ const MGMT=r=>["president","admin","owner"].includes(r);
    id. (After the Phase 1 cleanup they no longer exist — a refusal is then a 404, still a pass.) */
 const TD="3f7d87a2-7fbc-47e1-a34a-aaaacf4c4c7b";
 const ANGELO="angelo@homecareproviderservices.us";
-const ANGELO_OPP="cd84e191-74c9-481a-8786-a31fa6093164";   // Angelo's TEST opportunity
+const ANGELO_OPP="adbddad4-a563-42e1-ae4e-3f5ef1270b51";   // Angelo's deal "Golden lift chairs — sandbox test" (Lost). Must exist: a 404 proves nothing.
 const CC_URL="/admin/command-center-rep.html";
 const PILOT=["greg@homecareproviderservices.us","lori@homecareproviderservices.us"];   // the Command Center landing pilot
 const WSH={"x-hcps-workspace":"mine"};   // the My Sales Workspace header (honored for management only)
@@ -268,7 +268,7 @@ async function run(){
     add("Reads the Relationship Timeline of his own dealer"+(own?" ("+(own.name||own.id)+")":""),"200",tlo.j.code==="flag_off"?"switch off":(own?tlo.status:"no dealer"),tlo.status===200);
     // Phase 2E: Angelo's deal history is refused by id; his own Conversion report covers his own deals only.
     const hx=await call("pipeline-api",{action:"history",id:ANGELO_OPP});
-    add("Read the stage history of Angelo's opportunity (by id)","refused",hx.j.code==="flag_off"?"switch off":hx.status,hx.status===403&&hx.j.code!=="flag_off");
+    add("Read the stage history of Angelo's opportunity (by id)","refused",hx.j.code==="flag_off"?"switch off":hx.status===404?"404 — the probe deal no longer exists (update ANGELO_OPP)":hx.status,hx.status===403&&hx.j.code!=="flag_off");
     await convRow(add,"Conversion report: his own deals only","own",null,[me,String((ME&&ME.rep_name)||"").trim().toLowerCase()].filter(Boolean));
     const routes=((await call("routes-api",{action:"list_routes"})).j||{}).routes||[];
     add("No Angelo / TEST routes in his routes","none",routes.filter(r=>/TEST — Phase 1/.test(r.name||"")).length,!routes.some(r=>/TEST — Phase 1/.test(r.name||"")));

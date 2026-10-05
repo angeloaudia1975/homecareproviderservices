@@ -467,7 +467,7 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
   });
   // Phase 2E: Angelo's TEST deal (the Permission check probes it by id) and one of Greg's — added here so the
   // visit-flow steps above still start with no deals.
-  w.db.opportunities = (w.db.opportunities || []).concat([{ id: 'cd84e191-74c9-481a-8786-a31fa6093164', dealer_id: '3f7d87a2-7fbc-47e1-a34a-aaaacf4c4c7b', title: 'TEST deal', stage: 'identified', status: 'open', value: 100, owner_rep: 'Angelo Audia', owner_email: 'angelo@hcps.us', source: 'manual', created_at: new Date(Date.now() - 10 * 864e5).toISOString() },
+  w.db.opportunities = (w.db.opportunities || []).concat([{ id: 'adbddad4-a563-42e1-ae4e-3f5ef1270b51', dealer_id: 'd-ang', title: 'Golden lift chairs — sandbox test', stage: 'lost', status: 'lost', value: 100, owner_rep: 'Angelo Audia', owner_email: 'angelo@hcps.us', source: 'manual', created_at: new Date(Date.now() - 10 * 864e5).toISOString() },
       { id: 'o-greg-1', dealer_id: 'd-greg', title: 'Glasgow lift chairs', stage: 'quoted', status: 'open', value: 2400, owner_rep: 'Greg Campbell', owner_email: 'greg@hcps.us', source: 'manual', created_at: new Date(Date.now() - 20 * 864e5).toISOString() }]);
   w.db.opportunity_events = (w.db.opportunity_events || []).concat([{ opportunity_id: 'o-greg-1', kind: 'baseline', to_stage: 'quoted', to_status: 'open', value: 2400, changed_by: 'system', source: 'baseline', changed_at: new Date(Date.now() - 5 * 864e5).toISOString() }]);
   await step('Permission check (president): My Sales Workspace check passes in his own session', async () => {
