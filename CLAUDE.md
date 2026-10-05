@@ -509,6 +509,18 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   retried once with the exact figures, then rejected — the card shows the counted numbers and `ruleRecap`.
   **No AI on page load**: the card (evening view, or whenever a recap is stored) only calls `check`; the rep
   taps "Write my recap".
+- **Relationship Timeline (2D, switch `timeline`).** Dealer 360's activity list becomes one chronological
+  history built at READ time by `crm-api timeline` (`_timeline.js`) from the existing stores — no activity
+  table, no writer change, nothing written by reading it. Each thing appears once: a visit report (completed)
+  folds its visit note (`visit_note_id`), its `visit` activity row (ref_type visit_report, or the legacy row
+  written at the same moment); a call (`call_outcomes`) folds its note (`note_id`) and `call` row; a synced
+  email / engine send folds its logged `email` / `campaign` row; an appointment its `meeting` rows; a Golden
+  order (`federation_orders`, one per `external_order_id`) its order / purchase rows. Portal activity is one
+  line per portal per local day (`tz` from the browser) plus milestones: first sign-in ever, a sign-in after
+  30+ days away, a cart left open over $500. Newest first, 50 a page, `before` cursor; a source that hits its
+  row cap sets a "floor" the page never goes below, so Load older skips and repeats nothing. Filters: visits,
+  calls, emails, tasks, deals, orders, portal, notes. Who may read it = who may open that Dealer 360 (the
+  crm-api dealer-scope check; in My Sales Workspace Angelo's own book). Off → the old 50-row list.
 - **Account class (Phase 2 add-on, `dealers.account_class`).** One optional label per account, set by
   President/Admin only (`dealers-api set_account_class`; Edit company info on Dealer 360): dealer, prospect,
   manufacturer, vendor, service_provider, internal, other, not_relevant. It decides ONE thing — Morning Brief

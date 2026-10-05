@@ -32,6 +32,18 @@
  .schip:hover{background:#eef3f8}
  .schip.on{background:#1681c2;border-color:#1681c2;color:#fff}
  .schip .scnt{font-weight:600;opacity:.65;margin-left:5px;font-size:11px}
+ /* Relationship Timeline (Phase 2D) */
+ .tlhd{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:800;margin:0 0 6px}
+ .tlday{font-size:11px;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.4px;margin:12px 0 4px}
+ .tle{display:flex;gap:9px;padding:7px 0;border-bottom:1px solid #eef2f6}
+ .tle .ic{flex:none;width:26px;height:26px;border-radius:8px;background:#f2f6fa;display:flex;align-items:center;justify-content:center;font-size:14px}
+ .tle.k-milestone .ic{background:#fff4e5}
+ .tle .bd{flex:1;min-width:0}
+ .tle .tt{font-size:13px;font-weight:700;color:var(--ink);overflow-wrap:anywhere}
+ .tle .mt{font-size:12px;color:#41576b;margin-top:1px;overflow-wrap:anywhere}
+ .tle .dt{font-size:12.5px;color:var(--ink);margin-top:3px;white-space:pre-wrap;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+ .tle .dt.open{display:block}
+ .tle .wh{font-size:11.5px;color:var(--gray);margin-top:2px}
  .schip.on .scnt{opacity:.9}
  .chwrap{position:relative;margin:2px 0 0}
  .chart{width:100%;height:auto;display:block;overflow:visible}
@@ -1338,9 +1350,13 @@ async function loadCRM(){
       <div class="tkadd"><input id="ntitle" placeholder="Add a task…" onkeydown="if(event.key==='Enter')addTask()"><input id="ndue" type="date" title="Due date" style="width:auto"><button class="btn sm" onclick="addTask()">Add</button></div>
       ${done.length?`<div class="hint" style="margin:8px 0 2px">Done (${done.length})</div>`+done.slice(0,6).map(tRow).join(""):''}
     </div>
-    ${acts.length?`<div style="height:1px;background:var(--line);margin:12px 0"></div>
+    ${j&&j.timeline?`<div style="height:1px;background:var(--line);margin:12px 0"></div>
+    <div class="tlhd">Relationship timeline</div>
+    <div class="schips" id="tlchips"></div><div id="tl"><div class="hint">Loading the timeline…</div></div><div id="tlmore"></div>`
+    :acts.length?`<div style="height:1px;background:var(--line);margin:12px 0"></div>
     <div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:800;margin-bottom:6px">Activity timeline</div>
     <div>${acts.map(aRow).join("")}</div>`:''}`;
+  if(j&&j.timeline) loadTimeline(true);
   // Log a touch lives in its own card (left column, above Signals & Analytics).
   const tel=$("#touch");
   if(tel) tel.innerHTML=`<div style="border:1px solid var(--line);border-radius:10px;padding:10px;background:#fafbfc">
@@ -1384,6 +1400,50 @@ async function loadCRM(){
     initVoiceNotes();
     clampNotes();
   }
+}
+
+/* ===================== Relationship Timeline (Phase 2D) =====================
+   One chronological history for this dealer (crm-api `timeline`): visits, calls, notes, emails, tasks,
+   deals, orders, appointments and portal activity — each once — newest first, 50 at a time, with
+   filters and Load older. Read-only. Behind the `timeline` switch; off, the old activity list shows. */
+const TLCATS=[["all","All"],["visits","Visits"],["calls","Calls"],["emails","Emails"],["tasks","Tasks"],["deals","Deals"],["orders","Orders"],["portal","Portal"],["notes","Notes"]];
+const TLICON={visit:"🚗",appt:"👥",meeting:"👥",call:"📞",note:"📝",email_out:"📤",email_in:"📥",email:"✉️",send:"📣",campaign:"📣",engage:"👁",task_new:"➕",task_done:"✅",task_dismissed:"✖",deal:"🔮",order:"🛒",gorder:"🟡",sales:"💲",golden:"🟡",portal:"💻",milestone:"⭐",system:"•"};
+let TL={cat:"all",events:[],ids:new Set(),next:null,busy:false,dealer:null,err:"",seq:0};
+async function loadTimeline(reset){
+  if(!CUR) return; const who=CUR;
+  if(reset||TL.dealer!==CUR){ TL.events=[]; TL.ids=new Set(); TL.next=null; TL.err=""; TL.dealer=CUR; reset=true; }
+  else if(TL.busy||!TL.next) return;                        // Load older: one page at a time
+  const seq=++TL.seq; TL.busy=true; paintTimeline();
+  let j=null; try{ j=await crm({action:"timeline",dealer_id:CUR,filter:TL.cat,before:reset?undefined:TL.next,tz:new Date().getTimezoneOffset()}); }catch(e){ j=null; }
+  if(seq!==TL.seq||CUR!==who) return;                       // a newer load (filter, reload) took over
+  TL.busy=false;
+  if(!j||!j.ok){ TL.err=(j&&j.error)||"Couldn't load the timeline."; paintTimeline(); return; }
+  for(const e of (j.events||[])) if(!TL.ids.has(e.id)){ TL.ids.add(e.id); TL.events.push(e); }
+  TL.next=j.next_before||null; paintTimeline();
+}
+function tlFilter(c){ if(TL.cat===c) return; TL.cat=c; loadTimeline(true); }
+function tlDay(iso){ const d=new Date(iso), t=new Date(); const k=x=>x.toDateString();
+  if(k(d)===k(t)) return "Today"; const y=new Date(t); y.setDate(t.getDate()-1); if(k(d)===k(y)) return "Yesterday";
+  return d.toLocaleDateString([], {weekday:"short",month:"short",day:"numeric",year:d.getFullYear()===t.getFullYear()?undefined:"numeric"}); }
+function tlOpenVisit(id){
+  const row=document.querySelector(`#visits .vm[data-id="${CSS.escape(String(id))}"]`);
+  if(row){ row.scrollIntoView({behavior:"smooth",block:"center"}); const b=[...row.querySelectorAll("button")].find(x=>/'sum'/.test(x.getAttribute("onclick")||"")); const box=row.querySelector(".vm-more"); if(b&&box&&box.hidden) b.click(); return; }
+  const v=$("#visitsCard"); if(v) v.scrollIntoView({behavior:"smooth",block:"start"});
+}
+function paintTimeline(){
+  const ch=$("#tlchips"), el=$("#tl"), mo=$("#tlmore"); if(!el) return;
+  if(ch) ch.innerHTML=TLCATS.map(([k,l])=>`<button class="schip ${TL.cat===k?"on":""}" onclick="tlFilter('${k}')">${esc(l)}</button>`).join("");
+  if(TL.err && !TL.events.length){ el.innerHTML=`<div class="hint">${esc(TL.err)}</div>`; if(mo) mo.innerHTML=""; return; }
+  if(!TL.events.length){ el.innerHTML=TL.busy?`<div class="hint">Loading the timeline…</div>`:`<div class="hint">${TL.cat==="all"?"Nothing on this dealer's timeline yet.":"Nothing of this kind in this dealer's history."}</div>`; if(mo) mo.innerHTML=""; return; }
+  let h="", last="";
+  for(const e of TL.events){ const day=tlDay(e.at); if(day!==last){ h+=`<div class="tlday">${esc(day)}</div>`; last=day; }
+    const when=new Date(e.at).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"});
+    h+=`<div class="tle k-${esc(e.kind)}" data-id="${esc(e.id)}"><div class="ic">${TLICON[e.kind]||"•"}</div><div class="bd">
+      <div class="tt">${esc(e.title)}</div>${e.meta?`<div class="mt">${esc(e.meta)}</div>`:""}
+      ${e.detail?`<div class="dt" onclick="this.classList.toggle('open')" title="Tap to show all">${esc(e.detail)}</div>`:""}
+      <div class="wh">${e.who?esc(e.who)+" · ":""}${esc(when)}${e.ref&&e.ref.type==="visit_report"?` · <a class="link" href="#visitsCard" onclick="tlOpenVisit('${esc(e.ref.id)}');return false">Open visit</a>`:""}</div></div></div>`; }
+  el.innerHTML=h;
+  if(mo) mo.innerHTML=TL.next?`<button class="btn sm ghost" style="margin-top:8px" ${TL.busy?"disabled":""} onclick="loadTimeline(false)">${TL.busy?"Loading…":"Load older"}</button>`:(TL.err?`<div class="hint">${esc(TL.err)}</div>`:`<div class="hint" style="margin-top:8px">That's the whole history.</div>`);
 }
 
 /* ===================== Voice-to-text notes (Web Speech API) =====================

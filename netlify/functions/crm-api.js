@@ -71,6 +71,7 @@ const FL=require("./_flags.js");
 const UP=require("./_upsert.js");
 const TK=require("./_tasks.js");     // Phase 1: the one way to create a task
 const VI=require("./_visits.js");    // Phase 1: visit follow-up status
+const TL=require("./_timeline.js");  // Phase 2D: the Dealer 360 Relationship Timeline
 const patchTolerant=(path,body,optional)=>UP.sendTolerant(sbSend,"PATCH",path,body,optional);
 /* A rep's own tasks (Phase 0I): assigned to their sign-in email, or to their rep name. Asked on
    the server (never "all tasks, filtered here" — one read stops at 1000 rows) and checked exactly
@@ -135,9 +136,26 @@ exports.handler = async (event)=>{
         if(x.mfr_name)     planned.add(mnorm(x.mfr_name));
       });
       const suggestions=(crosssell||[]).filter(c=>!planned.has(mnorm(c.rec_name)));
+      // Phase 2D: with the timeline switch on, the page shows the Relationship Timeline (action
+      // `timeline`) in place of this 50-row activity list; switched off, this list is all there is.
+      const timeline=await FL.flagOn(sbGet,"timeline");
       return json(200,{ok:true,notes:notes||[],tasks:tasks||[],activity:activity||[],
         crosssell:suggestions,crosssell_all:crosssell||[],crossplan:crossplan||[],
-        health:(health&&health[0])||null,opportunities:opportunities||[]});
+        health:(health&&health[0])||null,opportunities:opportunities||[],timeline});
+    }
+
+    /* ---- Relationship Timeline (Phase 2D) --------------------------------------------------------
+       One chronological history for this dealer, built at read time from the existing stores
+       (_timeline.js). Read-only: nothing is written. Who may read it is exactly who may open this
+       dealer's Dealer 360 — the dealer-scope check at the top of this handler (a rep: their book;
+       Relations and management: any dealer; My Sales Workspace: Angelo's own book).
+         {dealer_id, before?, filter?: all|visits|calls|emails|tasks|deals|orders|portal|notes, tz?}
+         -> {events:[{id,cat,kind,at,title,detail,meta,who,ref}], next_before} */
+    if(b.action==="timeline"){
+      if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+      if(!(await FL.flagOn(sbGet,"timeline"))) return json(403,{error:"The Relationship Timeline isn't turned on yet.",code:"flag_off"});
+      const out=await TL.timeline(sbGet,{dealer_id:String(b.dealer_id),before:b.before,filter:b.filter,tz:b.tz});
+      return json(200,Object.assign({ok:true,dealer_id:String(b.dealer_id)},out));
     }
 
     /* ---- Visits & Meetings (Phase 1) — the Dealer 360 card, in ONE dealer-scoped call ----------

@@ -179,6 +179,12 @@ async function runWorkspace(){
     add(label+": your End-of-Day Recap is your own day",me,rc.j.code==="flag_off"?"switch off":(rc.status===200?(rc.j.person||"(none)")+(rc.j.can_generate?" · yours to write":" · read-only"):rc.status),
       rc.status===200&&rc.j.person===me&&rc.j.can_generate===true&&!!rc.j.facts);
   }
+  // Phase 2D: the Relationship Timeline follows Dealer 360 — in the workspace your own book only; in
+  // the Admin view any dealer. Read-only.
+  const tlw=await call("crm-api",{action:"timeline",dealer_id:(otherBook[0]&&otherBook[0].id)||TD},"POST",WSH);
+  add("Workspace: Relationship Timeline refused outside your book","refused",tlw.j.code==="flag_off"?"switch off":tlw.status,tlw.status===403&&tlw.j.code!=="flag_off");
+  const tla=await call("crm-api",{action:"timeline",dealer_id:(otherBook[0]&&otherBook[0].id)||TD});
+  add("Admin view: Relationship Timeline of any dealer","200",tla.j.code==="flag_off"?"switch off":tla.status,tla.status===200);
   if(other){
     const rw2=await call("rep-command-api",{action:"brief",kind:"eod",mode:"auto",rep:other,dry_run:true});
     add("Cannot write "+other+"'s End-of-Day Recap (dry run)","refused",rw2.j.code==="flag_off"?"switch off":rw2.status,rw2.status===403&&rw2.j.code==="not_yours");
@@ -216,6 +222,7 @@ async function run(){
     ["Modify Angelo's opportunity (by id)","pipeline-api",{action:"update",id:"cd84e191-74c9-481a-8786-a31fa6093164"}],
     ["Draft an email from Angelo's dealer visit","ai-email-api",{action:"draft",dealer_id:TD,template:"visit_followup",visit_report_id:"cd7801be-cf5d-4682-9db4-0a977ba461c1"}],
     ["Open an unplanned visit at the TEST dealer (not his book)","routes-api",{action:"route_day",dealer_id:TD}],
+    ["Read the TEST dealer's Relationship Timeline (not his book)","crm-api",{action:"timeline",dealer_id:TD}],
   );
   for(const [label,fn,body] of refuse){ const r=await call(fn,body); add(label,"refused",r.status,refused(r.status)); }
 
@@ -238,6 +245,9 @@ async function run(){
   const dl=await call("dealers-api",null,"GET"); const dealers=(dl.j&&dl.j.dealers)||[];
   if(rep){
     add("Dealer list is his book only (no TEST dealer)","his book",dl.status===200?dealers.length+" dealers":dl.status,dl.status===200&&!dealers.some(d=>String(d.id)===TD));
+    // Phase 2D: the Relationship Timeline of a dealer in his book (read-only).
+    const own=dealers[0]; const tlo=own?await call("crm-api",{action:"timeline",dealer_id:own.id}):{status:0,j:{}};
+    add("Reads the Relationship Timeline of his own dealer"+(own?" ("+(own.name||own.id)+")":""),"200",tlo.j.code==="flag_off"?"switch off":(own?tlo.status:"no dealer"),tlo.status===200);
     const routes=((await call("routes-api",{action:"list_routes"})).j||{}).routes||[];
     add("No Angelo / TEST routes in his routes","none",routes.filter(r=>/TEST — Phase 1/.test(r.name||"")).length,!routes.some(r=>/TEST — Phase 1/.test(r.name||"")));
     const tasks=((await call("crm-api",{action:"my_tasks"})).j||{}).tasks||[];
@@ -286,6 +296,9 @@ async function run(){
     }
     const bo=await call("rep-command-api",{action:"brief",mode:"check",date:ld(),tz:new Date().getTimezoneOffset()});
     add("Her Morning Brief's relationship signals are company-wide","company_wide",bo.j.code==="flag_off"?"switch off":(bo.status===200?`${bo.j.scope} · ${(bo.j.signals||[]).length} signals`:bo.status),bo.status===200&&bo.j.scope==="company_wide");
+    // Phase 2D: Relations reads any dealer's Relationship Timeline (read-only).
+    const tlr=await call("crm-api",{action:"timeline",dealer_id:TD});
+    add("Reads any dealer's Relationship Timeline (TEST)","200",tlr.j.code==="flag_off"?"switch off":tlr.status,tlr.status===200);
     // Phase 2A: Relations may visit any dealer — read-only probe, nothing is started.
     const sv=await call("routes-api",{action:"route_day",dealer_id:TD});
     add("Unplanned visit screen opens at any dealer (TEST)","200",sv.j.code==="flag_off"?"switch off":sv.status,sv.status===200&&!!(sv.j.route&&sv.j.route.adhoc));

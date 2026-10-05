@@ -255,13 +255,13 @@ window.HUB_GUIDE = {
   "Dealer 360 & CRM": {
     tagline: "The full account command center — activity, contacts, tasks, and next best action.",
     what: "Everything about one dealer on a single screen: sales history, the full email timeline, contacts, notes, tasks, buying intent, opportunities, manufacturer accounts, and the recommended next action — the rep's home base for any account.",
-    features: ["360° activity timeline", "Email threads pulled in by Email Sync", "Contacts", "Notes and tasks", "Buying intent and opportunities", "Manufacturer accounts and pricing", "Next-best-action", "Visit logging"],
+    features: ["Relationship Timeline — every visit, call, note, email, task, deal, order, appointment and portal visit in one history, each shown once, newest first, with filters and Load older", "Email threads pulled in by Email Sync", "Contacts", "Notes and tasks", "Buying intent and opportunities", "Manufacturer accounts and pricing", "Next-best-action", "Visit logging"],
     data: "The sales cube, email_messages, dealer_contacts, tasks, opportunities, and engagement.",
     actions: ["Log calls and visits", "Add notes and tasks", "Create opportunities", "Send email follow-ups", "Review full history"],
     reports: ["Per-dealer activity", "Buying history", "Opportunity list"],
     connects: ["Pulls from Email Sync, the sales cube, Dealer Health, and My Tasks", "Pushes notes, tasks, and contacts to Zoho CRM Plus"],
     problems: "No more hunting across inboxes and spreadsheets — the whole relationship lives in one place.",
-    intelligence: "Auto-surfaced buying intent, next-best-action, and automatically attached email."
+    intelligence: "Auto-surfaced buying intent, next-best-action, and automatically attached email. The timeline folds a visit's note and log entry into the visit itself, and rolls portal browsing up into one line a day with milestones (first sign-in, back after 30+ days, a cart over $500)."
   },
   "Territory Map": {
     tagline: "Dealer map, drive routing, saved trips — and the printable Dealer Handout.",
