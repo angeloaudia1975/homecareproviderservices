@@ -137,10 +137,10 @@ window.HUB_GUIDE = {
   "Pipeline & Forecast": {
     tagline: "Open deals plus a data-driven six-month revenue forecast.",
     what: "Combines your open opportunities (weighted by stage) with reorder-cadence projections to forecast the next six months of revenue — so you can see what's committed, what's likely, and where the gaps are.",
-    features: ["Open-deal pipeline by stage", "Weighted pipeline value", "Six-month forecast from cadence plus pipeline", "Per-rep and per-line breakdowns", "Gap-to-goal view"],
+    features: ["Open-deal pipeline by stage", "Weighted pipeline value", "Six-month forecast from cadence plus pipeline", "Per-rep and per-line breakdowns", "Gap-to-goal view", "Stage history on each deal — every stage and status change recorded from the day history started (earlier moves aren't invented)", "Conversion tab — deals created (and from visits), pipeline added, deals entering Quoted, won, lost, win rate, time in stage, by rep and by manufacturer, for 30 days to 12 months", "Possible order matches — an order from the same dealer for the same manufacturer within 120 days after a deal was created (a possible match, not proof)"],
     data: "Opportunities/deals (kept in sync with Zoho), monthly_sales reorder cadence, and rep assignments.",
     actions: ["Review and filter open deals", "See the forecast by rep or line", "Identify light months before they arrive"],
-    reports: ["Pipeline by stage", "Weighted forecast", "Cadence-based projection"],
+    reports: ["Pipeline by stage", "Weighted forecast", "Cadence-based projection", "Conversion: created, won, lost, win rate, time in stage — by rep and by manufacturer"],
     connects: ["Deals sync two-way with Zoho CRM Plus", "Cadence comes from the sales cube", "Feeds the Command Center 360 forecast"],
     problems: "Replaces gut-feel forecasting with a number grounded in real reorder patterns and live deals.",
     workflow: "Monthly forecasting and pipeline review — deciding where to push before quarter-end.",

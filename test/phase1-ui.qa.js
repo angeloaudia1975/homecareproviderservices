@@ -46,7 +46,7 @@ function world() {
     dealers: [{ id: '3f7d87a2-7fbc-47e1-a34a-aaaacf4c4c7b', business_name: 'TEST — Golden Sandbox', rep_name: null, parent_id: null, state: 'IN', is_test: true }],
     dealer_contacts: [{ id: 'c-bryant', dealer_id: 'd-greg', name: 'Bryant Smith', email: 'bryant@glasgow.test', title: 'Pharmacist', phone: '270-111' }],
     manufacturers: [{ slug: 'golden-technologies', name: 'Golden Technologies' }, { slug: 'strongback-mobility', name: 'Strongback Mobility' }],
-    app_settings: [{ key: 'platform', value: { mode: 'development' } }, { key: 'phase2_flags', value: { adhoc_visit: true, morning_brief: true, eod_recap: true, timeline: true } }],
+    app_settings: [{ key: 'platform', value: { mode: 'development' } }, { key: 'phase2_flags', value: { adhoc_visit: true, morning_brief: true, eod_recap: true, timeline: true, conversion: true } }],
     dealer_tasks: [{ id: 't-old', dealer_id: 'd-greg', title: 'Old overdue call', status: 'open', due_date: dayStr(-2), priority: 'normal', assigned_rep: 'Greg Campbell', assigned_email: 'greg@hcps.us', source: 'manual', created_at: new Date(Date.now() - 5 * 864e5).toISOString() }],
   });
   S.unique = { dealer_tasks: [['origin_type', 'origin_id', 'origin_key']], opportunities: [['origin_type', 'origin_id', 'origin_key']],
@@ -465,6 +465,11 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
       await c.close();
     }
   });
+  // Phase 2E: Angelo's TEST deal (the Permission check probes it by id) and one of Greg's — added here so the
+  // visit-flow steps above still start with no deals.
+  w.db.opportunities = (w.db.opportunities || []).concat([{ id: 'cd84e191-74c9-481a-8786-a31fa6093164', dealer_id: '3f7d87a2-7fbc-47e1-a34a-aaaacf4c4c7b', title: 'TEST deal', stage: 'identified', status: 'open', value: 100, owner_rep: 'Angelo Audia', owner_email: 'angelo@hcps.us', source: 'manual', created_at: new Date(Date.now() - 10 * 864e5).toISOString() },
+      { id: 'o-greg-1', dealer_id: 'd-greg', title: 'Glasgow lift chairs', stage: 'quoted', status: 'open', value: 2400, owner_rep: 'Greg Campbell', owner_email: 'greg@hcps.us', source: 'manual', created_at: new Date(Date.now() - 20 * 864e5).toISOString() }]);
+  w.db.opportunity_events = (w.db.opportunity_events || []).concat([{ opportunity_id: 'o-greg-1', kind: 'baseline', to_stage: 'quoted', to_status: 'open', value: 2400, changed_by: 'system', source: 'baseline', changed_at: new Date(Date.now() - 5 * 864e5).toISOString() }]);
   await step('Permission check (president): My Sales Workspace check passes in his own session', async () => {
     const c = await ctxFor(browser, 'pres', DESKTOP); const p = await c.newPage();
     await p.goto(`${B}/admin/permission-check.html`); await p.waitForSelector('#wscheck');

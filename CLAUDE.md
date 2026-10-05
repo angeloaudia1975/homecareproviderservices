@@ -521,6 +521,22 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   row cap sets a "floor" the page never goes below, so Load older skips and repeats nothing. Filters: visits,
   calls, emails, tasks, deals, orders, portal, notes. Who may read it = who may open that Dealer 360 (the
   crm-api dealer-scope check; in My Sales Workspace Angelo's own book). Off → the old 50-row list.
+- **Opportunity stage history & Conversion (2E, switch `conversion`).** An audit layer on the SAME
+  `opportunities` table and five stages (no second deal system). `opportunity_events` is written ONLY by the
+  database trigger `hcps_opportunity_event` (AFTER INSERT OR UPDATE OF stage, status): kind `created` /
+  `change` with from/to stage and status, value at the time and `changed_at` — authoritative whichever code
+  path wrote. `source`/`changed_by` only when reliably known: `pipeline` + the email when pipeline-api's
+  write carried `x-hcps-source: pipeline` / `x-hcps-actor` (PostgREST request headers; nothing else sends
+  them), `visit` + the row's updated_by/created_by for a deal whose own row says it came from a visit, else
+  `unknown` (e.g. the Zoho pull — Zoho code is unchanged and never reads this table). The migration wrote one
+  `baseline` per existing deal (source baseline, changed_by system): a starting point, never a move — moves,
+  closes, entered-Quoted and time in stage count only created/change entries; a stay that began at a
+  baseline isn't measured. `pipeline-api history` (one deal) and `conversion` (`_conversion.js`, pure: 30/90/
+  180/365 days or from–to) are scoped like the board: a rep his own deals, My Sales Workspace Angelo's own,
+  President/Admin/Relations company-wide; no commission figures. Win rate = won ÷ (won + lost) closed in the
+  period. "Possible order match" = same dealer + same manufacturer (the deal's known slug, or a line equal
+  to exactly one manufacturer) + a portal order / sales-report line within 120 days AFTER creation (a
+  month-only sales line must be a later month) — never called attribution. Off → the Phase 1 Pipeline page.
 - **Account class (Phase 2 add-on, `dealers.account_class`).** One optional label per account, set by
   President/Admin only (`dealers-api set_account_class`; Edit company info on Dealer 360): dealer, prospect,
   manufacturer, vendor, service_provider, internal, other, not_relevant. It decides ONE thing — Morning Brief

@@ -16,6 +16,20 @@
  .addbar input,.addbar select{padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-family:inherit;font-size:12.5px}
  .addbar input.t{flex:1;min-width:150px}
  .vin{width:96px;text-align:right}
+ /* Phase 2E: Conversion tab + deal history */
+ .vtabs{display:flex;gap:6px;margin:0 0 14px;flex-wrap:wrap}
+ .vtab{font-size:13px;font-weight:800;color:var(--navy);background:#f5f8fb;border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer;font-family:inherit}
+ .vtab.on{background:#1681c2;border-color:#1681c2;color:#fff}
+ .pchips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
+ .pchip{font-size:12px;font-weight:700;color:var(--navy);background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 11px;cursor:pointer;font-family:inherit}
+ .pchip.on{background:var(--navy);border-color:var(--navy);color:#fff}
+ .cnote{font-size:12.5px;color:#41576b;background:#f6fafd;border:1px solid #d9e7f2;border-radius:10px;padding:9px 12px;margin:0 0 14px}
+ .hist{background:#fbfcfd}.hist td{padding:6px 11px 10px}
+ .hev{display:flex;gap:10px;font-size:12.5px;padding:3px 0;flex-wrap:wrap}.hev .w{color:var(--gray);min-width:120px}.hev .bl{color:#8a96a3;font-style:italic}
+ .twrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+ .hist .hbox{position:sticky;left:11px;max-width:calc(100vw - 84px)}   /* readable on a phone while the wide table scrolls */
+ @media(max-width:600px){#conv .pt th,#conv .pt td{padding:7px 8px}#conv .pt th{letter-spacing:0}}
+ .hlink{font-size:11.5px;font-weight:700;color:#1681c2;cursor:pointer;background:none;border:0;padding:0;font-family:inherit}
 </style>
 </head><body>
 <header id="ac-head"></header>
@@ -31,6 +45,7 @@ const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",
 window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
 let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 let TOKEN=HCPS.token(), DATA=null;
+let VIEW="pipeline", CONV=null, CDAYS=90, CBUSY=false;   // Phase 2E: the Conversion tab (behind the conversion switch)
 const money=n=>"$"+Math.round(Number(n||0)).toLocaleString("en-US");
 const short=n=>{n=Number(n||0);const a=Math.abs(n);if(a>=1e6)return "$"+(n/1e6).toFixed(1)+"M";if(a>=1e3)return "$"+Math.round(n/1e3)+"k";return "$"+Math.round(n);};
 const C={actual:"#c4ccd4",reorder:"#1681c2",pipeline:"#F5821F"};
@@ -55,7 +70,7 @@ async function load(){
   const j=r.body;
   if(j&&j.error==="tables_missing"){ $("#body").innerHTML=`<div class="msg">Run <b>supabase/pipeline.sql</b> in Supabase, then reload.</div>`; return; }
   if(!j||!j.ok){ $("#body").innerHTML=`<div class="msg err">${esc((j&&j.error)||"Couldn't load.")}</div>`; return; }
-  DATA=j; render();
+  DATA=j; if(!DATA.conversion) VIEW="pipeline"; render();
 }
 
 function forecastChart(history, forecast){
@@ -96,8 +111,8 @@ function render(){
   const chart=forecastChart(DATA.history||[], DATA.forecast||[]);
   // opportunities table
   const stSel=(o)=>`<select class="stsel st-${o.stage}" onchange="setStage('${o.id}',this.value)">${stages.map(st=>`<option value="${st}"${o.stage===st?" selected":""}>${STG[st]||st}</option>`).join("")}</select>`;
-  const rowsHtml=opps.length?opps.map(o=>`<tr>
-      <td>${o.dealer_id?`<a class="link" href="/admin/dealer.html?id=${encodeURIComponent(o.dealer_id)}">${esc(o.dealer_name||o.title)}</a>`:esc(o.title)}${o.line?`<div class="hint" style="margin:0">${esc(o.line)}</div>`:""}</td>
+  const rowsHtml=opps.length?opps.map(o=>`<tr data-opp="${esc(o.id)}">
+      <td>${o.dealer_id?`<a class="link" href="/admin/dealer.html?id=${encodeURIComponent(o.dealer_id)}">${esc(o.dealer_name||o.title)}</a>`:esc(o.title)}${o.line?`<div class="hint" style="margin:0">${esc(o.line)}</div>`:""}${DATA.conversion?`<div><button class="hlink" onclick="showHistory('${esc(o.id)}',this)">Stage history</button></div>`:""}</td>
       <td>${stSel(o)}</td>
       <td class="num">${money(o.value)}</td>
       <td class="num">${o.probability!=null?Math.round(o.probability*100)+"%":"—"}</td>
@@ -114,7 +129,64 @@ function render(){
       <input id="oClose" type="date" title="Expected close">
       <button class="btn orange" onclick="addOpp()">Add</button>
     </div></div>`;
-  $("#body").innerHTML=kpis+chart+table;
+  const tabs=DATA.conversion?`<div class="vtabs"><button class="vtab ${VIEW==="pipeline"?"on":""}" onclick="setView('pipeline')">Pipeline</button><button class="vtab ${VIEW==="conversion"?"on":""}" onclick="setView('conversion')">Conversion</button></div>`:"";
+  if(VIEW==="conversion"){ $("#body").innerHTML=tabs+`<div id="conv">${convHtml()}</div>`; return; }
+  $("#body").innerHTML=DATA.conversion?tabs+kpis+chart+`<div class="twrap">`+table+`</div>`:kpis+chart+table;   // switch off: exactly the Phase 1 page
+}
+/* ---- Phase 2E: stage history on a deal, and the Conversion tab ---------------------------------- */
+function setView(v){ VIEW=v; render(); if(v==="conversion" && !CONV) loadConv(); }
+const STGL=s=>STG[s]||s||"—";
+const when=t=>{ const d=new Date(t); return isNaN(d)?"":d.toLocaleDateString([], {month:"short",day:"numeric",year:"numeric"})+" "+d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}); };
+const SRC={pipeline:"Pipeline",visit:"from a visit",baseline:"history start",system:"system",unknown:"source not recorded"};
+async function showHistory(id,btn){
+  const tr=btn.closest("tr"), nx=tr&&tr.nextElementSibling;
+  if(nx&&nx.classList.contains("hist")){ nx.remove(); return; }
+  const row=document.createElement("tr"); row.className="hist"; row.innerHTML=`<td colspan="6"><span class="hint">Loading history…</span></td>`; tr.after(row);
+  const r=await api({action:"history",id}); const j=r.body||{};
+  if(!j.ok){ row.innerHTML=`<td colspan="6"><span class="hint">${esc(j.error==="storage_missing"?"Stage history isn't set up yet.":(j.error||"Couldn't load the history."))}</span></td>`; return; }
+  const ev=j.events||[];
+  row.innerHTML=`<td colspan="6"><div class="hbox">${ev.length?ev.map(e=>{
+      const what=e.kind==="baseline"?`<span class="bl">History starts here — the deal was already ${esc(STGL(e.to_stage))}${e.to_status&&e.to_status!=="open"&&e.to_status!==e.to_stage?` (${esc(e.to_status)})`:""}. Earlier moves weren't recorded.</span>`
+        :e.kind==="created"?`Created at <b>${esc(STGL(e.to_stage))}</b>`
+        :(e.from_stage!==e.to_stage?`<b>${esc(STGL(e.from_stage))}</b> → <b>${esc(STGL(e.to_stage))}</b>`:`Status ${esc(e.from_status||"—")} → <b>${esc(e.to_status||"—")}</b>`);
+      const who=e.kind==="baseline"?"":[e.changed_by&&e.changed_by!=="unknown"?e.changed_by:"",SRC[e.source]||e.source].filter(Boolean).join(" · ");
+      return `<div class="hev"><span class="w">${esc(when(e.changed_at))}</span><span>${what}${e.value!=null&&e.kind!=="baseline"?` <span class="hint">· ${money(e.value)}</span>`:""}</span>${who?`<span class="hint">${esc(who)}</span>`:""}</div>`; }).join("")
+    :`<span class="hint">No history recorded for this deal yet.</span>`}</div></td>`;
+}
+async function loadConv(){
+  if(CBUSY) return; CBUSY=true; const el=$("#conv"); if(el) el.innerHTML=convHtml();
+  const r=await api({action:"conversion",days:CDAYS}); CBUSY=false;
+  CONV=r.body||{}; const c=$("#conv"); if(c) c.innerHTML=convHtml();
+}
+function setDays(d){ if(CDAYS===d) return; CDAYS=d; CONV=null; loadConv(); }
+const pct=v=>v==null?"—":v+"%";
+function convHtml(){
+  const chips=`<div class="pchips">${[[30,"30 days"],[90,"90 days"],[180,"6 months"],[365,"12 months"]].map(([d,l])=>`<button class="pchip ${CDAYS===d?"on":""}" onclick="setDays(${d})">${l}</button>`).join("")}</div>`;
+  if(!CONV||CBUSY) return chips+`<div class="msg">Loading the conversion report…</div>`;
+  const c=CONV; if(!c.ok) return chips+`<div class="msg err">${esc(c.error==="storage_missing"?"Stage history isn't set up yet (run supabase/phase2_opportunity_events.sql).":(c.error||"Couldn't load the report."))}</div>`;
+  const T=c.totals||{}, kpi=(l,v,cls,sub)=>`<div class="kpi"><div class="l">${l}</div><div class="v ${cls||""}">${v}</div>${sub?`<div class="l" style="margin-top:2px;text-transform:none;letter-spacing:0;font-weight:600">${sub}</div>`:""}</div>`;
+  const scopeL=c.scope==="company"?"All reps":c.scope==="workspace"?"Your own deals (My Sales Workspace)":"Your own deals";
+  const since=c.history_since?new Date(c.history_since).toLocaleDateString([], {month:"short",day:"numeric",year:"numeric"}):null;
+  let h=chips+`<div class="cnote"><b>${esc(scopeL)}.</b> ${since?`Stage history starts ${esc(since)}: deals that existed then were recorded where they stood, without their earlier moves, so stage moves, time in stage and win rate count only from that date.`:"No stage history recorded yet."}</div>`;
+  h+=`<div class="kpis" style="margin-bottom:16px">
+    ${kpi("Deals created",T.created,"blue",`${T.from_visits} from visits`)}
+    ${kpi("Pipeline added",short(T.added_value),"orange",`${short(T.added_weighted)} weighted`)}
+    ${kpi("Entered Quoted",T.entered_quoted,"","deals moved into Quoted")}
+    ${kpi("Won",T.won,"",short(T.won_value))}
+    ${kpi("Lost",T.lost,"",short(T.lost_value))}
+    ${kpi("Win rate",pct(T.win_rate),"","won ÷ (won + lost) in the period")}
+    ${kpi("Open pipeline now",short(T.open_weighted),"",`weighted · ${short(T.open_value)} face · ${T.open} deals`)}
+  </div>`;
+  const mv=c.movement||[];
+  h+=`<div class="card"><h2>Stage movement <span class="hint" style="font-weight:600">moves recorded in the period</span></h2>${mv.length?`<div class="twrap"><table class="pt"><thead><tr><th>From</th><th>To</th><th class="num">Deals</th></tr></thead><tbody>${mv.map(m=>`<tr><td>${esc(STGL(m.from))}</td><td>${esc(STGL(m.to))}</td><td class="num">${m.count}</td></tr>`).join("")}</tbody></table></div>`:`<div class="hint">No stage moves recorded in this period.</div>`}</div>`;
+  h+=`<div class="card" style="margin-top:16px"><h2>Time in stage <span class="hint" style="font-weight:600">median days, for stages whose start was recorded</span></h2><div class="twrap"><table class="pt"><thead><tr><th>Stage</th><th class="num">Median days</th><th class="num">Measured</th></tr></thead><tbody>${(c.time_in_stage||[]).map(t=>`<tr><td>${esc(STGL(t.stage))}</td><td class="num">${t.median_days==null?"—":t.median_days}</td><td class="num">${t.measured}</td></tr>`).join("")}</tbody></table></div></div>`;
+  const grpT=(title,rows,label)=>`<div class="card" style="margin-top:16px"><h2>${title}</h2>${rows.length?`<div class="twrap"><table class="pt"><thead><tr><th>${label}</th><th class="num">Created</th><th class="num">From visits</th><th class="num">Added (weighted)</th><th class="num">Entered Quoted</th><th class="num">Won</th><th class="num">Lost</th><th class="num">Win rate</th><th class="num">Open pipeline (weighted)</th></tr></thead><tbody>${rows.map(g=>`<tr><td>${esc(g.label)}</td><td class="num">${g.created}</td><td class="num">${g.from_visits}</td><td class="num">${money(g.added_weighted)}</td><td class="num">${g.entered_quoted}</td><td class="num">${g.won}</td><td class="num">${g.lost}</td><td class="num">${pct(g.win_rate)}</td><td class="num">${money(g.open_weighted)}</td></tr>`).join("")}</tbody></table></div>`:`<div class="hint">Nothing in this period.</div>`}</div>`;
+  h+=grpT("By rep",c.by_rep||[],"Rep")+grpT("By manufacturer",c.by_manufacturer||[],"Manufacturer");
+  const pm=c.possible_matches||{}, L=pm.list||[];
+  h+=`<div class="card" style="margin-top:16px"><h2>Possible order matches <span class="hint" style="font-weight:600">${pm.matched||0} of ${pm.considered||0} deals created in the period</span></h2>
+    <div class="cnote" style="margin:0 0 10px">A <b>possible match</b> is an order from the same dealer for the same manufacturer within ${pm.window_days||120} days after the deal was created. It is not proof that the deal led to the order. ${pm.manufacturer_unknown?`${pm.manufacturer_unknown} deal${pm.manufacturer_unknown===1?"":"s"} without a recognised manufacturer ${pm.manufacturer_unknown===1?"is":"are"} left unmatched.`:""}</div>
+    ${L.length?`<div class="twrap"><table class="pt"><thead><tr><th>Deal</th><th>Manufacturer</th><th>Created</th><th>Possible resulting order</th></tr></thead><tbody>${L.map(m=>`<tr><td>${m.dealer_id?`<a class="link" href="/admin/dealer.html?id=${encodeURIComponent(m.dealer_id)}">${esc(m.dealer||m.title)}</a>`:esc(m.title)}<div class="hint" style="margin:0">${esc(m.title)} · ${esc(m.owner)}</div></td><td>${esc(m.manufacturer)}</td><td>${esc(String(m.created_at||"").slice(0,10))}</td><td>${esc(m.first.date)} · ${money(m.first.amount)} <span class="hint">(${esc(m.first.source)}${m.possible_orders>1?`, ${m.possible_orders} possible orders`:""})</span></td></tr>`).join("")}</tbody></table></div>`:`<div class="hint">No possible order matches in this period.</div>`}</div>`;
+  return h;
 }
 async function setStage(id,stage){ await api({action:"update",id,stage}); await load(); }
 async function addOpp(){

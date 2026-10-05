@@ -53,6 +53,7 @@ const MGMT=r=>["president","admin","owner"].includes(r);
    id. (After the Phase 1 cleanup they no longer exist — a refusal is then a 404, still a pass.) */
 const TD="3f7d87a2-7fbc-47e1-a34a-aaaacf4c4c7b";
 const ANGELO="angelo@homecareproviderservices.us";
+const ANGELO_OPP="cd84e191-74c9-481a-8786-a31fa6093164";   // Angelo's TEST opportunity
 const CC_URL="/admin/command-center-rep.html";
 const PILOT=["greg@homecareproviderservices.us","lori@homecareproviderservices.us"];   // the Command Center landing pilot
 const WSH={"x-hcps-workspace":"mine"};   // the My Sales Workspace header (honored for management only)
@@ -97,6 +98,14 @@ function verdict(rows,label){
   v.textContent=bad?`${label}: ${bad} of ${rows.length} checks FAILED — press Copy results and send them to Claude.`:`${label}: ALL ${rows.length} CHECKS PASSED`;
   $("#copy").onclick=()=>{ const t=v.textContent+"\n"+rows.map(r=>`${r.ok?"PASS":"FAIL"} — ${r.check} (expected ${r.expect}, got ${r.got})`).join("\n");
     (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{$("#copy").textContent="Copied ✓";},()=>{ prompt("Copy these results:",t); }); };
+}
+
+/* Phase 2E: the Conversion report — read-only. `want` is the scope this view should get. */
+async function convRow(add,label,want,hdr,mine){
+  const r=await call("pipeline-api",{action:"conversion",days:90},"POST",hdr||undefined), j=r.j||{};
+  const reps=(j.by_rep||[]).map(g=>g.key), others=mine?reps.filter(k=>!mine.includes(k)):[];
+  const got=j.code==="flag_off"?"switch off":(r.status===200?`${j.scope} · ${(j.totals||{}).created||0} created · ${reps.length} rep${reps.length===1?"":"s"}${others.length?", "+others.length+" not yours":""}`:r.status);
+  add(label,want,got,r.status===200&&j.scope===want&&!others.length&&!/commission/i.test(JSON.stringify(j)));
 }
 
 /* My Sales Workspace, checked in the President's own session. Read-only: compares each list with and
@@ -185,6 +194,15 @@ async function runWorkspace(){
   add("Workspace: Relationship Timeline refused outside your book","refused",tlw.j.code==="flag_off"?"switch off":tlw.status,tlw.status===403&&tlw.j.code!=="flag_off");
   const tla=await call("crm-api",{action:"timeline",dealer_id:(otherBook[0]&&otherBook[0].id)||TD});
   add("Admin view: Relationship Timeline of any dealer","200",tla.j.code==="flag_off"?"switch off":tla.status,tla.status===200);
+  // Phase 2E: the Conversion report and deal history — your own deals in the workspace, company-wide in
+  // the Admin view. Read-only.
+  await convRow(add,"Workspace: Conversion report covers only your own deals","workspace",WSH,[me,rn].filter(Boolean));
+  await convRow(add,"Admin view: Conversion report is company-wide","company",null,null);
+  const allOpps=(((await call("pipeline-api",{action:"board"})).j||{}).opportunities)||[];
+  const notMineO=allOpps.find(o=>!(String(o.owner_email||"").toLowerCase()===me || (rn&&String(o.owner_rep||"").trim().toLowerCase()===rn)));
+  if(!notMineO) add("Workspace: another rep's deal history refused","a deal to test with","none found",false);
+  else{ const hw=await call("pipeline-api",{action:"history",id:notMineO.id},"POST",WSH);
+    add("Workspace: another rep's deal history refused ("+(notMineO.owner_rep||notMineO.owner_email||"?")+")","refused",hw.j.code==="flag_off"?"switch off":hw.status,hw.status===403&&hw.j.code!=="flag_off"); }
   if(other){
     const rw2=await call("rep-command-api",{action:"brief",kind:"eod",mode:"auto",rep:other,dry_run:true});
     add("Cannot write "+other+"'s End-of-Day Recap (dry run)","refused",rw2.j.code==="flag_off"?"switch off":rw2.status,rw2.status===403&&rw2.j.code==="not_yours");
@@ -219,7 +237,7 @@ async function run(){
     ["Read the TEST dealer's visits","crm-api",{action:"visits",dealer_id:TD}],
     ["Retrieve Angelo's visit (by route)","routes-api",{action:"visit_report_get",route_id:"d9f557cb-09b4-41a3-ac54-98c69e696608",dealer_id:TD,detail:true}],
     ["Modify Angelo's task (by id)","crm-api",{action:"reopen_task",id:"4fa5c265-c5bf-4edf-a398-50f1fff5e0eb"}],
-    ["Modify Angelo's opportunity (by id)","pipeline-api",{action:"update",id:"cd84e191-74c9-481a-8786-a31fa6093164"}],
+    ["Modify Angelo's opportunity (by id)","pipeline-api",{action:"update",id:ANGELO_OPP}],
     ["Draft an email from Angelo's dealer visit","ai-email-api",{action:"draft",dealer_id:TD,template:"visit_followup",visit_report_id:"cd7801be-cf5d-4682-9db4-0a977ba461c1"}],
     ["Open an unplanned visit at the TEST dealer (not his book)","routes-api",{action:"route_day",dealer_id:TD}],
     ["Read the TEST dealer's Relationship Timeline (not his book)","crm-api",{action:"timeline",dealer_id:TD}],
@@ -248,6 +266,10 @@ async function run(){
     // Phase 2D: the Relationship Timeline of a dealer in his book (read-only).
     const own=dealers[0]; const tlo=own?await call("crm-api",{action:"timeline",dealer_id:own.id}):{status:0,j:{}};
     add("Reads the Relationship Timeline of his own dealer"+(own?" ("+(own.name||own.id)+")":""),"200",tlo.j.code==="flag_off"?"switch off":(own?tlo.status:"no dealer"),tlo.status===200);
+    // Phase 2E: Angelo's deal history is refused by id; his own Conversion report covers his own deals only.
+    const hx=await call("pipeline-api",{action:"history",id:ANGELO_OPP});
+    add("Read the stage history of Angelo's opportunity (by id)","refused",hx.j.code==="flag_off"?"switch off":hx.status,hx.status===403&&hx.j.code!=="flag_off");
+    await convRow(add,"Conversion report: his own deals only","own",null,[me,String((ME&&ME.rep_name)||"").trim().toLowerCase()].filter(Boolean));
     const routes=((await call("routes-api",{action:"list_routes"})).j||{}).routes||[];
     add("No Angelo / TEST routes in his routes","none",routes.filter(r=>/TEST — Phase 1/.test(r.name||"")).length,!routes.some(r=>/TEST — Phase 1/.test(r.name||"")));
     const tasks=((await call("crm-api",{action:"my_tasks"})).j||{}).tasks||[];
@@ -299,6 +321,8 @@ async function run(){
     // Phase 2D: Relations reads any dealer's Relationship Timeline (read-only).
     const tlr=await call("crm-api",{action:"timeline",dealer_id:TD});
     add("Reads any dealer's Relationship Timeline (TEST)","200",tlr.j.code==="flag_off"?"switch off":tlr.status,tlr.status===200);
+    // Phase 2E: Relations reads the company-wide Conversion report (no commission figures).
+    await convRow(add,"Conversion report is company-wide (no commission)","company",null,null);
     // Phase 2A: Relations may visit any dealer — read-only probe, nothing is started.
     const sv=await call("routes-api",{action:"route_day",dealer_id:TD});
     add("Unplanned visit screen opens at any dealer (TEST)","200",sv.j.code==="flag_off"?"switch off":sv.status,sv.status===200&&!!(sv.j.route&&sv.j.route.adhoc));

@@ -4,6 +4,8 @@
 //   POST {action:"board"}                               -> { opportunities, forecast, history, summary, stages }
 //   POST {action:"add", title, dealer_id?, line?, value?, stage?, expected_close?, owner_rep?, notes?}
 //   POST {action:"update", id, ...fields}
+//   POST {action:"history", id}                         -> { opportunity, events }   (Phase 2E, switch `conversion`)
+//   POST {action:"conversion", days?|from?,to?}         -> the Conversion report       (Phase 2E, switch `conversion`)
 const SUPABASE_URL=process.env.SUPABASE_URL, SERVICE_ROLE=process.env.SUPABASE_SERVICE_ROLE;
 const json=(c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H=()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
@@ -23,6 +25,12 @@ const STAGES=["identified","contacted","quoted","won","lost"];
 const SC=require("./_scope.js");
 const UP=require("./_upsert.js");
 const VI=require("./_visits.js");   // Phase 1: a visit's follow-up status follows its deals
+const FL=require("./_flags.js");
+const CV=require("./_conversion.js"); // Phase 2E: the Conversion report
+// Phase 2E: the database records every stage/status change (supabase/phase2_opportunity_events.sql). The
+// Pipeline says on its own writes that it is the Pipeline, and who — PostgREST hands these request headers
+// to the trigger. Nothing else changes about the write.
+const ctxHeaders=(me,extra)=>Object.assign({"x-hcps-source":"pipeline","x-hcps-actor":String((me&&(me.email||me.name))||"").toLowerCase().slice(0,200)},extra||{});
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
   const tok=auth.replace(/^Bearer\s+/i,"").trim();
@@ -65,7 +73,7 @@ exports.handler=async(event)=>{
       // owner_email (Phase 0J): a rep's own deal carries their sign-in email; for a deal management
       // assigns to someone else the database fills it from owner_rep (phase0_task_owner_email.sql).
       if(!manages || !clean(b.owner_rep,120)) row.owner_email=String(me.email||"").toLowerCase()||null;
-      const ins=await UP.sendTolerant(sbSend,"POST","opportunities",row,["owner_email"],{Prefer:"return=representation"});
+      const ins=await UP.sendTolerant(sbSend,"POST","opportunities",row,["owner_email"],ctxHeaders(me,{Prefer:"return=representation"}));
       return json(200,{ok:true,opportunity:(ins&&ins[0])||row});
     }
     if(b.action==="update"){
@@ -82,11 +90,66 @@ exports.handler=async(event)=>{
       if(b.notes!=null) patch.notes=clean(b.notes,2000);
       if(b.expected_close!==undefined) patch.expected_close=/^\d{4}-\d{2}-\d{2}$/.test(String(b.expected_close||""))?b.expected_close:null;
       if(b.owner_rep!=null && manages) patch.owner_rep=clean(b.owner_rep,120);
-      await UP.sendTolerant(sbSend,"PATCH",`opportunities?id=eq.${encodeURIComponent(b.id)}`,patch,["updated_by","stage_changed_at"]);
+      await UP.sendTolerant(sbSend,"PATCH",`opportunities?id=eq.${encodeURIComponent(b.id)}`,patch,["updated_by","stage_changed_at"],ctxHeaders(me,{Prefer:"return=minimal"}));
       // A deal from a visit moves that visit's follow-up status (Phase 1).
       try{ const o=await sbGet(`opportunities?id=eq.${encodeURIComponent(b.id)}&select=origin_type,origin_id`);
         if(o&&o[0]&&o[0].origin_type==="visit_report"&&o[0].origin_id) await VI.recomputeFollowup([o[0].origin_id],{sbGet,sbSend}); }catch(e){}
       return json(200,{ok:true});
+    }
+
+    /* ---- Phase 2E: a deal's stage history, and the Conversion report -----------------------------
+       Scoped exactly like the board: a rep sees his own deals; the President in My Sales Workspace his
+       own; management and Relations in the normal views the whole company. No commission figures. */
+    if(b.action==="history"||b.action==="conversion"){
+      if(!(await FL.flagOn(sbGet,"conversion"))) return json(403,{error:"Conversion reporting isn't turned on yet.",code:"flag_off"});
+      const role=String(me.role||"").toLowerCase(), workspace=SC.workspaceMine(event, me);
+      const isRep=workspace || !({president:1,admin:1,owner:1,relations:1})[role];
+      const myEmail=String(me.email||"").trim().toLowerCase(), myRep=String(me.rep_name||"").trim().toLowerCase();
+      const mine=o=>(!!myEmail && String(o.owner_email||"").trim().toLowerCase()===myEmail) || (!!myRep && String(o.owner_rep||"").trim().toLowerCase()===myRep);
+      const scope=isRep?(workspace?"workspace":"own"):"company";
+      const ECOLS="opportunity_id,kind,from_stage,to_stage,from_status,to_status,value,changed_by,source,changed_at";
+      const MISSING=/PGRST20[45]|Could not find the table|42P01|does not exist/i;
+      if(b.action==="history"){
+        if(!b.id) return json(400,{error:"id required"});
+        const r=await sbGet(`opportunities?id=eq.${encodeURIComponent(b.id)}&select=id,title,dealer_id,stage,status,value,owner_rep,owner_email,created_at,origin_type,source`).catch(()=>[]);
+        const o=r&&r[0]; if(!o) return json(404,{error:"Deal not found"});
+        if(isRep && !mine(o)) return json(403,{error:"Not your deal"});
+        let events;
+        try{ events=await sbGet(`opportunity_events?opportunity_id=eq.${encodeURIComponent(o.id)}&select=${ECOLS}&order=changed_at.asc&limit=500`); }
+        catch(e){ return json(MISSING.test(String(e.message||e))?503:500,{error:"storage_missing",setup:"supabase/phase2_opportunity_events.sql"}); }
+        return json(200,{ok:true,scope,opportunity:{id:o.id,title:o.title,dealer_id:o.dealer_id,stage:o.stage,status:o.status,value:o.value,owner:o.owner_rep||o.owner_email||"",created_at:o.created_at,from_visit:o.origin_type==="visit_report"||o.source==="visit"},events:events||[]});
+      }
+      // The period: the last N days (30 / 90 / 180 / 365), or from–to dates.
+      const DAYS=[30,90,180,365]; const ISOD=/^\d{4}-\d{2}-\d{2}$/;
+      let to=Date.now(), from=to-(DAYS.includes(Number(b.days))?Number(b.days):90)*864e5;
+      if(ISOD.test(String(b.from||"")) && ISOD.test(String(b.to||""))){ const f=Date.parse(b.from+"T00:00:00Z"), t=Date.parse(b.to+"T00:00:00Z")+864e5; if(t>f){ from=f; to=t; } }
+      let opps=await sbGetAll("opportunities?select=id,title,dealer_id,stage,status,value,probability,owner_rep,owner_email,created_at,origin_type,source,manufacturer,line","created_at")
+        .catch(()=>sbGetAll("opportunities?select=id,title,dealer_id,stage,status,value,probability,owner_rep,owner_email,created_at,source,line","created_at"));
+      if(isRep) opps=opps.filter(mine);
+      let events=[];
+      try{
+        if(isRep){ const ids=opps.map(o=>o.id); for(let i=0;i<ids.length;i+=100){ const part=ids.slice(i,i+100).map(encodeURIComponent).join(","); events=events.concat(await sbGet(`opportunity_events?opportunity_id=in.(${part})&select=${ECOLS}&limit=5000`)); } }
+        else events=await sbGetAll(`opportunity_events?select=id,${ECOLS}`,"changed_at,id");
+      }catch(e){ if(MISSING.test(String(e.message||e))) return json(503,{error:"storage_missing",setup:"supabase/phase2_opportunity_events.sql"}); throw e; }
+      const mfrs=await sbGet("manufacturers?select=slug,name").catch(()=>[]);
+      // Orders only for the deals that can be matched (created in the period, manufacturer certain).
+      const cand=opps.filter(o=>{ const t=Date.parse(o.created_at||""); return o.dealer_id && t>=from && t<to && CV.manufacturerOf(o,mfrs); });
+      const dids=[...new Set(cand.map(o=>String(o.dealer_id)))];
+      const since=cand.length?new Date(Math.min(...cand.map(o=>Date.parse(o.created_at)))).toISOString():null;
+      let orders=[], sales=[], names={};
+      for(let i=0;i<dids.length;i+=80){
+        const part=dids.slice(i,i+80).map(encodeURIComponent).join(",");
+        const [o1,s1,n1]=await Promise.all([
+          sbGetAll(`orders?dealer_id=in.(${part})&submitted_at=gte.${encodeURIComponent(since)}&select=id,dealer_id,manufacturer,submitted_at,subtotal`,"id").catch(()=>[]),
+          sbGetAll(`monthly_sales?dealer_id=in.(${part})&period=gte.${since.slice(0,7)}-01&select=dealer_id,manufacturer,period,order_date,amount`,"period")
+            .catch(()=>sbGetAll(`monthly_sales?dealer_id=in.(${part})&period=gte.${since.slice(0,7)}-01&select=dealer_id,manufacturer,period,amount`,"period").catch(()=>[])),
+          sbGet(`dealers?id=in.(${part})&select=id,business_name`).catch(()=>[]),
+        ]);
+        orders=orders.concat(o1||[]); sales=sales.concat(s1||[]); for(const d of (n1||[])) names[d.id]=d.business_name;
+      }
+      for(const o of opps) if(names[o.dealer_id]) o.dealer_name=names[o.dealer_id];
+      const rep=CV.compute({opps,events,orders,sales,mfrs,from,to});
+      return json(200,Object.assign({ok:true,scope,workspace,days:DAYS.includes(Number(b.days))?Number(b.days):(b.from?null:90)},rep));
     }
 
     // ---- board + forecast ----
@@ -157,6 +220,8 @@ exports.handler=async(event)=>{
       by_stage:byStage
     };
     oppList.sort((a,b)=>(Number(b.value)||0)-(Number(a.value)||0));
-    return json(200,{ok:true,role:me.role,workspace,latest:L?pmStr(L):null,opportunities:oppList,forecast,history,summary,stages:STAGES,stage_prob:STAGE_PROB});
+    // Phase 2E: with the conversion switch on, the page offers the Conversion tab and each deal's history.
+    const conversion=await FL.flagOn(sbGet,"conversion");
+    return json(200,{ok:true,role:me.role,workspace,latest:L?pmStr(L):null,opportunities:oppList,forecast,history,summary,stages:STAGES,stage_prob:STAGE_PROB,conversion});
   }catch(e){ return json(500,{error:String(e.message||e)}); }
 };
