@@ -166,8 +166,9 @@ async function all(w, extra, tok) {   // every page, in order
     assert.ok(!titles.some(x => /\$200/.test(x)));
     const go = events.filter(e => e.kind === 'gorder'); assert.strictEqual(go.length, 1, JSON.stringify(go));
     assert.ok(/Golden order · \$1,200 \(#G-77\)/.test(go[0].title) && /completed/.test(go[0].meta));
-    // "Activated — first Golden sign-in" is the same moment: a milestone, under Portal.
-    const act = events.find(e => e.id === 'act:a-gfirst'); assert.ok(act && act.cat === 'portal' && act.kind === 'milestone');
+    // "Activated — first Golden sign-in" is the same moment as that milestone: shown once, not twice.
+    assert.ok(!I.includes('act:a-gfirst'), 'the first Golden sign-in shows twice');
+    assert.strictEqual(titles.filter(x => /first golden sign-in|First sign-in to the Golden/i.test(x)).length, 1);
   });
 
   await t('HCPS ordering portal: first sign-in ever, back after 30+ days, a cart over $500, and one line for the day', async () => {
@@ -230,7 +231,7 @@ async function all(w, extra, tok) {   // every page, in order
   await t('Paging a heavy Golden dealer (more rows than one read takes): every day line once, every view counted', async () => {
     const rows = []; const N = 3500;
     for (let i = 0; i < N; i++) rows.push({ id: 'hv' + i, dealer_id: 'd-greg', kind: 'golden', subject: 'Viewed PR' + (i % 7), created_at: at(DAY + Math.floor(i / 100) * DAY + (i % 100) * 60e3) });
-    const S = standardSeed({ dealer_activity: rows, app_settings: [{ key: 'phase2_flags', value: { timeline: true } }] }); S.maxRows = 5000;
+    const S = standardSeed({ dealer_activity: rows, app_settings: [{ key: 'phase2_flags', value: { timeline: true } }] });   // the fake returns at most 1000 rows a read, like Supabase
     const w = W(S);
     const { events } = await all(w, { filter: 'portal' });
     const lines = events.filter(e => e.kind === 'golden');
@@ -238,6 +239,18 @@ async function all(w, extra, tok) {   // every page, in order
     assert.strictEqual(lines.length, 35, lines.length + ' day lines');
     const total = lines.reduce((a, e) => a + Number((/(\d+) products viewed/.exec(e.meta) || [])[1] || 0), 0);
     assert.strictEqual(total, N, 'views counted ' + total);
+  });
+
+  await t('Monthly sales with more rows than one read returns (1000): every month reaches the Orders view, once', async () => {
+    const rows = []; for (let m = 0; m < 30; m++) for (let k = 0; k < 50; k++) { const d = new Date(Date.UTC(2026, 8 - m, 1)); rows.push({ dealer_id: 'd-greg', manufacturer: 'line-' + (k % 5), period: d.toISOString().slice(0, 10), amount: 10 }); }
+    const S = standardSeed({ monthly_sales: rows, app_settings: [{ key: 'phase2_flags', value: { timeline: true } }] });
+    const w = W(S);
+    for (const f of ['orders', 'all']) {
+      const { events, pages } = await all(w, { filter: f });
+      const months = events.filter(e => e.kind === 'sales');
+      assert.strictEqual(months.length, 30, `${f}: ${months.length} months in ${pages} pages`); assert.strictEqual(new Set(months.map(e => e.id)).size, 30);
+      assert.ok(months.every(e => / · \$500$/.test(e.title)), f + ': a month was cut short: ' + months.map(e => e.title).join(' | '));
+    }
   });
 
   await t('Who may read it: Greg his book only; Lori and the President any dealer; My Sales Workspace Angelo\'s own book; no token → 401', async () => {
@@ -289,6 +302,10 @@ async function all(w, extra, tok) {   // every page, in order
     const b3 = cap => TLM.build({ gold_signins: { rows: si, cap, kind: 'meta', col: 'created_at' } }, { before: NOW, tz: TZ, cat: 'portal' }).events.map(e => e.title);
     assert.deepStrictEqual(b3(200), ['Back on the Golden portal after 31 days', 'First sign-in to the Golden portal']);
     assert.deepStrictEqual(b3(3), ['Back on the Golden portal after 31 days']);
+    // Without a computed first sign-in, the writer's "Activated" row stands in for it (under Portal).
+    const act = [{ id: 'sys', kind: 'system', subject: 'Activated — first Golden sign-in', created_at: si[0].created_at }];
+    const b4 = cap => TLM.build({ gold_signins: { rows: si, cap, kind: 'meta', col: 'created_at' }, activity: { rows: act, cap: 120, kind: 'simple', col: 'created_at' } }, { before: NOW, tz: TZ, cat: 'all' }).events.map(e => e.id + '|' + e.cat);
+    assert.ok(!b4(200).includes('act:sys|portal')); assert.ok(b4(3).includes('act:sys|portal'));
   });
 
   done('Phase 2D relationship timeline');

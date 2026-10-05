@@ -29,8 +29,10 @@
    just above it. Nothing is skipped and nothing repeats from one page to the next. */
 const PAGE = 50;
 const CAP = 60;                 // rows per one-row-per-event source (>= PAGE, so a page is always exact)
-const ROLL_CAP = 3000;          // rows per day-grouped source (portal events, email opens/clicks)
-const SALES_CAP = 5000;
+// Supabase returns at most 1000 rows per read (PostgREST max-rows), so no cap may exceed it — a read
+// that comes back with 1000 rows is treated as cut off, never as complete.
+const ROLL_CAP = 1000;          // rows per day-grouped source (portal events, email opens/clicks)
+const SALES_CAP = 1000;
 const SIGNIN_CAP = 200;
 const CART_MILESTONE = 500;     // approved: a cart left open over $500 is its own event
 const AWAY_DAYS = 30;           // approved: a sign-in after 30+ days away is its own event
@@ -85,7 +87,8 @@ async function read(sbGet, did, opt){
   if(on("orders", "portal")) jobs.push(S("gorders", "federation_orders", "", "event_id,external_order_id,order_total,line_count,status,occurred_at", "occurred_at"));
   if(on("orders")){
     jobs.push(S("orders", "orders", "", "id,manufacturer,status,subtotal,po_number,submitted_at", "submitted_at"));
-    jobs.push(q("sales", `monthly_sales?dealer_id=eq.${D}&period=lt.${encodeURIComponent(iso(before).slice(0, 10))}&select=period,manufacturer,amount&order=period.desc&limit=${SALES_CAP}`, SALES_CAP, "months", "period"));
+    // A month's line sits at noon on its first day, so it belongs before the cursor when that is earlier.
+    jobs.push(q("sales", `monthly_sales?dealer_id=eq.${D}&period=lte.${iso(before - 12 * 3600000 - 1).slice(0, 10)}&select=period,manufacturer,amount&order=period.desc&limit=${SALES_CAP}`, SALES_CAP, "months", "period"));
   }
   if(on("orders", "portal")) jobs.push(ROLL("golden", "dealer_activity", "kind=eq.golden", "id,subject,detail,created_at", "created_at"));
   if(on("portal")){
@@ -221,11 +224,12 @@ function build(raw, opt){
   const signMilestones = (times, whole, emit) => { for(let i = 0; i < times.length; i++){ const t = times[i].t;
     if(i === 0){ if(whole) emit("first", times[i]); continue; }
     if(t - times[i - 1].t >= AWAY_DAYS * 86400000) emit("back", times[i], Math.floor((t - times[i - 1].t) / 86400000)); } };
+  let goldFirstAt = null;               // the first Golden sign-in, when this page knows it
   if(cat === "all" || cat === "portal"){
     // Golden.
     const gRows = gold.filter(a => !folded.has("g:" + a.id) && !goldOrderRow(a.subject));
     const gs = R("gold_signins").map(a => ({ id: a.id, t: ms(a.created_at) })).filter(x => x.t != null).sort((x, y) => x.t - y.t);
-    signMilestones(gs, !!raw.gold_signins && raw.gold_signins.rows.length < raw.gold_signins.cap, (k, x, days) => { folded.add("g:" + x.id);
+    signMilestones(gs, !!raw.gold_signins && raw.gold_signins.rows.length < raw.gold_signins.cap, (k, x, days) => { folded.add("g:" + x.id); if(k === "first") goldFirstAt = x.t;
       add({ id: `ms:gold-${k}:${x.id}`, cat: "portal", kind: "milestone", t: x.t, title: k === "first" ? "First sign-in to the Golden portal" : `Back on the Golden portal after ${days} days`, who: "Dealer (Golden portal)" }); });
     for(const a of gRows) if(cartGold(a) && amt(a.subject) > CART_MILESTONE){ folded.add("g:" + a.id); add({ id: "ms:gold-cart:" + a.id, cat: "portal", kind: "milestone", t: ms(a.created_at), title: `Golden cart left open · ${money(amt(a.subject))}`, who: "Dealer (Golden portal)" }); }
     for(const a of gRows) if(signalGold(a)){ folded.add("g:" + a.id); add({ id: "gsig:" + a.id, cat: "portal", kind: "portal", t: ms(a.created_at), title: clean(a.subject, 140), detail: clean(a.detail, 200), who: "Golden portal" }); }
@@ -262,6 +266,8 @@ function build(raw, opt){
   const ACAT = { visit: "visits", meeting: "visits", call: "calls", email: "emails", campaign: "emails", note: "notes" };
   for(const a of acts){ if(folded.has("a:" + a.id)) continue;
     const firstGold = /^activated — first golden sign-in/i.test(a.subject || "");
+    // The federation writer's "Activated — first Golden sign-in" row IS that milestone: shown once.
+    if(firstGold && goldFirstAt != null && Math.abs(actT(a) - goldFirstAt) <= 86400000) continue;
     add({ id: "act:" + a.id, cat: firstGold ? "portal" : (ACAT[a.kind] || "other"), kind: firstGold ? "milestone" : (a.kind || "system"), t: actT(a), title: clean(a.subject || a.kind, 160), detail: clean(a.detail, 300), who: a.actor || a.actor_email || "" }); }
 
   // ---- the page ----

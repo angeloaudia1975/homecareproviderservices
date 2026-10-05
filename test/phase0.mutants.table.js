@@ -336,6 +336,10 @@ module.exports = {
   '2D next page skips the floor':      { file: '_timeline.js', from: 'else if(floor > -Infinity) next = floor + 1;', to: 'else if(floor > -Infinity) next = floor;' },
   '2D ties split across pages':        { file: '_timeline.js', from: 'page = list.filter(e => e.t >= cut); next = cut;', to: 'next = cut;' },
   '2D filter ignored':                 { file: '_timeline.js', from: 'if(cat !== "all") list = list.filter(e => e.cat === cat);', to: '' },
+  '2D first Golden sign-in twice':     { file: '_timeline.js', from: 'if(firstGold && goldFirstAt != null && Math.abs(actT(a) - goldFirstAt) <= 86400000) continue;', to: '' },
+  '2D sales month lost at the cursor':  { file: '_timeline.js', from: 'period=lte.${iso(before - 12 * 3600000 - 1).slice(0, 10)}', to: 'period=lt.${iso(before).slice(0, 10)}' },
+  '2D portal cap above max rows':      { file: '_timeline.js', from: 'const ROLL_CAP = 1000;', to: 'const ROLL_CAP = 3000;' },
+  '2D sales cap above max rows':       { file: '_timeline.js', from: 'const SALES_CAP = 1000;', to: 'const SALES_CAP = 5000;' },
   '2D everything in the future too':   { file: '_timeline.js', from: 'const add = (e) => { if(e.t == null || !(e.t < before)) return; ev.push(e); };', to: 'const add = (e) => { if(e.t == null) return; ev.push(e); };' },
   // ---- Phase 2C: the AI End-of-Day Recap ----
   '2C recap switch ignored':           { file: 'rep-command-api.js', from: 'if(!(await FL.flagOn(sbGet,flag))) return json(403', to: 'if(kind!=="eod" && !(await FL.flagOn(sbGet,flag))) return json(403' },
