@@ -9,6 +9,7 @@
 //   POST {action:"today", date?:"YYYY-MM-DD" (the rep's local date), hour?:0-23, rep?:email}
 //   POST {action:"reps"}   -> the people a viewer may pick (management / Relations only)
 //   POST {action:"brief", mode:"auto"|"refresh"|"check", date, tz, rep?}  -> the Morning Brief (Phase 2B)
+//   POST {action:"brief", kind:"eod", mode:…}                              -> the End-of-Day Recap (Phase 2C)
 //
 // WHO: the signed-in person sees their own Command Center. The president (and admin/owner) and
 // Customer Relations — the roles that work every dealer — may pick a rep to VIEW (read-only, never
@@ -169,13 +170,15 @@ exports.handler = async (event)=>{
     const day=await buildDay(me, who, b, workspace);
     // Phase 2B: the stored Morning Brief rides along — read from storage only, never written or
     // generated here, so the Command Center renders at once. The page asks for it (brief) afterwards.
-    if(await FL.flagOn(sbGet,"morning_brief")) day.morning_brief=await storedBriefFor(me, who, day.header.date);
+    if(await FL.flagOn(sbGet,"morning_brief")) day.morning_brief=await storedBriefFor(me, who, day.header.date, "morning");
+    // Phase 2C: the stored End-of-Day Recap, the same way — read only, no AI.
+    if(await FL.flagOn(sbGet,"eod_recap")) day.eod_recap=await storedBriefFor(me, who, day.header.date, "eod");
     return json(200,Object.assign({ok:true},day));
   }catch(e){ return json(500,{error:String(e.message||e)}); }
 };
 
 /* ---- The day (Phase 1 Command Center), shared by `today` and the Morning Brief ---------------- */
-async function buildDay(me, who, b, workspace){
+async function buildDay(me, who, b, workspace, opts){
     const today=ISO.test(String(b.date||""))?String(b.date):new Date().toISOString().slice(0,10);
     const tomorrow=addDays(today,1);
     const hour=Number.isFinite(Number(b.hour))?Number(b.hour):null;
@@ -300,7 +303,32 @@ async function buildDay(me, who, b, workspace){
       dealers:stopsTomorrow.slice(0,12).map(s=>({dealer_id:s.dealer_id,name:s.name||names[s.dealer_id]||"",place:[s.city,s.state].filter(Boolean).join(", ")||place[s.dealer_id]||""})),
       tasks_due:tasks.filter(t=>t.due_date===tomorrow).length}:{stops:0,tasks_due:tasks.filter(t=>t.due_date===tomorrow).length};
 
-    return {phase,header,
+    // Phase 2C: the extra detail the End-of-Day Recap counts from (only when asked — `today` never sends it).
+    let _recap;
+    if(opts && opts.recap){
+      const vDealer={}; for(const v of todaysVisits) vDealer[String(v.id)]=v.dealer_id;
+      const oppsToday=new Map();
+      for(const o of (originOpps||[])) if(todaysIds.includes(String(o.origin_id)))
+        oppsToday.set(String(o.id),{id:o.id,title:o.title,stage:o.stage,value:Number(o.value)||0,dealer_id:vDealer[String(o.origin_id)]||null,source:"visit"});
+      for(const o of myOpps) if(inDay(o.created_at) && !oppsToday.has(String(o.id)))
+        oppsToday.set(String(o.id),{id:o.id,title:o.title,stage:o.stage,value:Number(o.value)||0,dealer_id:o.dealer_id,source:"pipeline"});
+      const extraIds=[...oppsToday.values()].map(o=>o.dealer_id).concat(closedToday.map(t=>t.dealer_id)).filter(id=>id&&!names[id]);
+      if(extraIds.length){ for(const d of await byIds("dealers","id",extraIds,"id,business_name")) names[d.id]=d.business_name; }
+      const nm=id=>names[id]||"";
+      _recap={
+        visits:todaysVisits.slice().sort((a,z)=>String(a.checkin_at).localeCompare(String(z.checkin_at))).map(v=>({id:v.id,dealer_id:v.dealer_id,dealer:nm(v.dealer_id),status:stopStatus(v),
+          summary:String((v.summary&&v.summary.meeting_summary)||"").slice(0,300)||null,attendees:(pByVisit[v.id]||[]).map(p=>p.name_snapshot).filter(Boolean),
+          rep_commitments:((v.summary&&v.summary.rep_commitments)||[]).map(c=>c&&c.text).filter(Boolean),dealer_commitments:((v.summary&&v.summary.dealer_commitments)||[]).map(c=>c&&c.text).filter(Boolean)})),
+        opportunities_created:[...oppsToday.values()].map(o=>Object.assign(o,{dealer:nm(o.dealer_id)})),
+        tasks_created:(originTasks||[]).filter(t=>todaysIds.includes(String(t.origin_id))).map(t=>({id:t.id,title:t.title,status:t.status})),
+        tasks_completed:closedToday.filter(t=>t.status==="done").map(t=>({id:t.id,title:t.title,dealer_id:t.dealer_id,dealer:nm(t.dealer_id)})),
+        tasks_due_tomorrow:tasks.filter(t=>t.due_date===tomorrow).slice(0,8).map(t=>({id:t.id,title:t.title,dealer_id:t.dealer_id,dealer:nm(t.dealer_id)})),
+        overdue:tasks.filter(t=>t.due_date&&t.due_date<today).sort((a,z)=>String(a.due_date).localeCompare(String(z.due_date))).slice(0,5).map(t=>({id:t.id,title:t.title,dealer_id:t.dealer_id,dealer:nm(t.dealer_id),due:t.due_date})),
+        followups_due:followQueue.filter(f=>f.due&&f.due<=tomorrow).slice(0,5).map(f=>({id:f.id,dealer_id:f.dealer_id,dealer:f.dealer,due:f.due})),
+        unresolved:followQueue.slice(0,8).map(f=>({id:f.id,dealer_id:f.dealer_id,dealer:f.dealer,text:`visit ${f.visit_date}${f.due?`, follow-up due ${f.due}`:""}${f.open_tasks.length?` · ${f.open_tasks.length} open task${f.open_tasks.length===1?"":"s"}`:""}`})),
+        open_visit_tasks:followQueue.reduce((a,f)=>a+f.open_tasks.length,0)};
+    }
+    return {phase,header,_recap,
       priorities:priorities({today,tasks,followups:pendingFU||[],opps:myOpps,appointments:appts||[],names}),
       route,prep,visit_progress:{counts,total:route?route.stops.length:0,off_route:visitActivity.filter(v=>!(route&&route.stops.some(s=>String(s.dealer_id)===String(v.dealer_id)))).length},
       visit_activity:visitActivity,followup_queue:{visits:followQueue,tasks_due_soon:dueSoon},
@@ -322,12 +350,13 @@ async function buildDay(me, who, b, workspace){
 const REFRESH_MS = 10 * 60 * 1000;   // one (re)generation per person per 10 minutes
 const CRASH_MS = 90 * 1000;          // a "generating" row older than this was left by a function that died
 const MISSING = /PGRST20[45]|Could not find the table|42P01|does not exist/i;
-async function readBrief(email, date){
-  try{ const r=await sbGet(`rep_daily_briefs?rep_email=eq.${enc(email)}&brief_date=eq.${enc(date)}&kind=eq.morning&select=id,status,content,signals_key,model,generated_by,generated_at,attempted_at,error&limit=1`);
+async function readBrief(email, date, kind){
+  try{ const r=await sbGet(`rep_daily_briefs?rep_email=eq.${enc(email)}&brief_date=eq.${enc(date)}&kind=eq.${kind==="eod"?"eod":"morning"}&select=id,status,content,signals_key,model,generated_by,generated_at,attempted_at,error&limit=1`);
     return { row:(r&&r[0])||null }; }
   catch(e){ return MISSING.test(String(e.message||e)) ? { missing:true } : { error:true }; }
 }
-const hasContent = row => !!(row && row.content && Array.isArray(row.content.focus) && row.content.focus.length);
+// A stored brief has focus items; a stored recap has its narrative (Phase 2C).
+const hasContent = row => !!(row && row.content && ((Array.isArray(row.content.focus) && row.content.focus.length) || row.content.narrative));
 function briefView(me, who, rd, extra){
   const own=who.email===low(me.email), row=rd.row||null;
   const last=row&&Date.parse(row.attempted_at||"");
@@ -337,7 +366,7 @@ function briefView(me, who, rd, extra){
     next_refresh_at: own && Number.isFinite(last) ? new Date(last+REFRESH_MS).toISOString() : null,
     error: row&&row.status==="failed" ? (row.error||"ai_failed") : null }, extra||{});
 }
-async function storedBriefFor(me, who, date){ return briefView(me, who, await readBrief(who.email, date)); }
+async function storedBriefFor(me, who, date, kind){ return briefView(me, who, await readBrief(who.email, date, kind)); }
 const roleLabel = who => low(who.role)==="relations" ? "relations" : SC.isAdmin(who) ? "president" : "rep";
 const publicSignals = list => (list||[]).map(({score,amounts,...x})=>x);
 
@@ -371,23 +400,35 @@ async function signalsFor(who, today){
 }
 
 async function briefAction(me, who, b, workspace){
-  if(!(await FL.flagOn(sbGet,"morning_brief"))) return json(403,{error:"The Morning Brief isn't turned on yet.",code:"flag_off"});
+  // kind "morning" = the Morning Brief (2B); kind "eod" = the End-of-Day Recap (2C). Same storage, same
+  // rules: own only, one (re)generation per 10 minutes, read-only for management and Relations.
+  const kind=b.kind==="eod"?"eod":"morning";
+  const flag=kind==="eod"?"eod_recap":"morning_brief";
+  if(!(await FL.flagOn(sbGet,flag))) return json(403,{error:kind==="eod"?"The End-of-Day Recap isn't turned on yet.":"The Morning Brief isn't turned on yet.",code:"flag_off"});
   const mode=["auto","refresh","check"].includes(b.mode)?b.mode:"check";
   const own=who.email===low(me.email);
   // Reading another person's brief: yes (management / Relations — `who` is only someone else for them).
   // Writing one in their name: never.
-  if(!own && mode!=="check") return json(403,{error:`You can read ${who.name}'s brief but not write one for them.`,code:"not_yours"});
-  if(b.dry_run) return json(200,{ok:true,dry_run:true,mode,own});
-  const day=await buildDay(me, who, b, workspace);
+  if(!own && mode!=="check") return json(403,{error:`You can read ${who.name}'s ${kind==="eod"?"recap":"brief"} but not write one for them.`,code:"not_yours"});
+  if(b.dry_run) return json(200,{ok:true,dry_run:true,mode,own,kind});
+  const day=await buildDay(me, who, b, workspace, { recap: kind==="eod" });
   const today=day.header.date;
-  const sig=await signalsFor(who, today);
-  const inputs=BAI.briefInputs(day, sig.signals, { role:roleLabel(who), scope:sig.scope, tz:b.tz, date:today });
-  const key=BAI.signalsKey(inputs);
-  const rd=await readBrief(who.email, today);
+  let inputs, key, base, sig=null;
+  if(kind==="morning"){
+    sig=await signalsFor(who, today);
+    inputs=BAI.briefInputs(day, sig.signals, { role:roleLabel(who), scope:sig.scope, tz:b.tz, date:today });
+    key=BAI.signalsKey(inputs);
+    base={ scope:sig.scope, signals:publicSignals(sig.signals), rule_headline:BAI.ruleHeadline(inputs) };
+  } else {
+    // The recap's numbers are counted here, by code; the AI only writes the narrative around them.
+    inputs=BAI.recapInputs(day, { role:roleLabel(who), tz:b.tz, date:today });
+    key=BAI.recapKey(inputs);
+    base={ kind:"eod", facts:inputs.facts, people:inputs.people, tomorrow:inputs.tomorrow, unresolved:inputs.unresolved, rule_text:BAI.ruleRecap(inputs) };
+  }
+  const rd=await readBrief(who.email, today, kind);
   if(rd.missing) return json(503,{error:"storage_missing",setup:"supabase/phase2_rep_daily_briefs.sql"});
   if(rd.error) return json(503,{error:"Couldn't read the stored brief right now — try again."});
   const row=rd.row;
-  const base={ scope:sig.scope, signals:publicSignals(sig.signals), rule_headline:BAI.ruleHeadline(inputs) };
   const view=extra=>json(200,Object.assign({ok:true},briefView(me,who,rd,Object.assign({ stale: !!(hasContent(row) && row.signals_key && row.signals_key!==key) },base,extra||{}))));
   if(!own || mode==="check") return view();
   const nowMs=Date.now(), last=row?(Date.parse(row.attempted_at||"")||0):0;
@@ -402,7 +443,7 @@ async function briefAction(me, who, b, workspace){
   if(!row){
     let ins=null;
     try{ ins=await sbSend("POST","rep_daily_briefs?on_conflict=rep_email,brief_date,kind",
-      {rep_email:who.email,brief_date:today,kind:"morning",status:"generating",content:{},attempted_at:nowIso,generated_by:low(me.email)},
+      {rep_email:who.email,brief_date:today,kind,status:"generating",content:{},attempted_at:nowIso,generated_by:low(me.email)},
       {Prefer:"resolution=ignore-duplicates,return=representation"}); }
     catch(e){ return json(503,{error:"Couldn't start the brief right now — try again."}); }
     claimId=(ins&&ins[0]&&ins[0].id)||null;
@@ -413,17 +454,22 @@ async function briefAction(me, who, b, workspace){
     if(!(Array.isArray(won)&&won.length)) return view({ pending:true });
     claimId=row.id;
   }
-  const res=await BAI.generate({ inputs, fetch, apiKey:AI_KEY, model:BRIEF_MODEL, budgetMs:20000 });
+  const res=kind==="morning"
+    ? await BAI.generate({ inputs, fetch, apiKey:AI_KEY, model:BRIEF_MODEL, budgetMs:20000 })
+    : await BAI.generateRecap({ inputs, fetch, apiKey:AI_KEY, model:BRIEF_MODEL, budgetMs:20000 });
   const doneIso=new Date().toISOString();
   if(res.ok){
-    const content=Object.assign({ version:1 }, res.content, { scope:sig.scope, signals:publicSignals(sig.signals), for:{ email:who.email, name:who.name } });
+    const content=kind==="morning"
+      ? Object.assign({ version:1 }, res.content, { scope:sig.scope, signals:publicSignals(sig.signals), for:{ email:who.email, name:who.name } })
+      : Object.assign({ version:1, kind:"eod" }, res.content, { facts:inputs.facts, people:inputs.people, tomorrow:inputs.tomorrow, unresolved:inputs.unresolved, for:{ email:who.email, name:who.name } });
     await sbSend("PATCH",`rep_daily_briefs?id=eq.${enc(claimId)}`,{status:"ready",content,inputs,signals_key:key,model:BRIEF_MODEL,
       generated_by:low(me.email),generated_at:doneIso,error:null},{Prefer:"return=minimal"});
     const fresh={ row:{ id:claimId, status:"ready", content, signals_key:key, generated_at:doneIso, generated_by:low(me.email), attempted_at:nowIso } };
     return json(200,Object.assign({ok:true},briefView(me,who,fresh,Object.assign({ stale:false, generated:true, attempts:res.attempts },base))));
   }
-  // The AI failed: a brief written earlier today stays; otherwise the row says so and the page shows
-  // the rule-based Today's Priorities. Either way the next try waits 10 minutes.
+  // The AI failed (for a recap: also when its numbers didn't match the counts, twice): a version written
+  // earlier today stays; otherwise the row says so and the page shows the counted facts / rule-based
+  // priorities. Either way the next try waits 10 minutes.
   const keep=hasContent(row);
   await sbSend("PATCH",`rep_daily_briefs?id=eq.${enc(claimId)}`,{status:keep?"ready":"failed",error:res.error||"ai_failed"},{Prefer:"return=minimal"}).catch(()=>{});
   const after={ row:Object.assign({}, row||{}, { id:claimId, status:keep?"ready":"failed", error:res.error||"ai_failed", attempted_at:nowIso }) };

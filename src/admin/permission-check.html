@@ -172,6 +172,17 @@ async function runWorkspace(){
     const bw=await call("rep-command-api",{action:"brief",mode:"refresh",rep:other,dry_run:true});
     add("Cannot write "+other+"'s Morning Brief (dry run)","refused",bw.j.code==="flag_off"?"switch off":bw.status,bw.status===403&&bw.j.code==="not_yours");
   }
+  // Phase 2C: the End-of-Day Recap is your own day too (in the workspace even when another rep is named);
+  // one recap per person per day, shared by both views. "check" and "dry_run" never write or run the AI.
+  for(const [label,hdr] of [["Workspace",WSH],["Admin view",null]]){
+    const rc=await call("rep-command-api",{action:"brief",kind:"eod",mode:"check",rep:hdr&&other?other:undefined,date:ld(),tz:new Date().getTimezoneOffset()},"POST",hdr||undefined);
+    add(label+": your End-of-Day Recap is your own day",me,rc.j.code==="flag_off"?"switch off":(rc.status===200?(rc.j.person||"(none)")+(rc.j.can_generate?" · yours to write":" · read-only"):rc.status),
+      rc.status===200&&rc.j.person===me&&rc.j.can_generate===true&&!!rc.j.facts);
+  }
+  if(other){
+    const rw2=await call("rep-command-api",{action:"brief",kind:"eod",mode:"auto",rep:other,dry_run:true});
+    add("Cannot write "+other+"'s End-of-Day Recap (dry run)","refused",rw2.j.code==="flag_off"?"switch off":rw2.status,rw2.status===403&&rw2.j.code==="not_yours");
+  }
   verdict(rows,"My Sales Workspace ("+((ME&&(ME.name||ME.email))||"you")+")");
 }
 
@@ -243,6 +254,11 @@ async function run(){
     add("Asking for Angelo's Morning Brief returns his own",me,ba.j.code==="flag_off"?"switch off":(ba.j.person||ba.status),ba.status===200&&ba.j.person===me);
     const bd=await call("rep-command-api",{action:"brief",mode:"refresh",rep:ANGELO,dry_run:true});
     add("A brief request naming Angelo stays his own (dry run)","his own",bd.j.code==="flag_off"?"switch off":(bd.j.own?"his own":bd.status),bd.status===200&&bd.j.dry_run===true&&bd.j.own===true);
+    // Phase 2C: the same for the End-of-Day Recap.
+    const ra=await call("rep-command-api",{action:"brief",kind:"eod",mode:"check",rep:ANGELO,date:ld(),tz:new Date().getTimezoneOffset()});
+    add("Asking for Angelo's End-of-Day Recap returns his own",me,ra.j.code==="flag_off"?"switch off":(ra.j.person||ra.status),ra.status===200&&ra.j.person===me);
+    const rd=await call("rep-command-api",{action:"brief",kind:"eod",mode:"auto",rep:ANGELO,dry_run:true});
+    add("A recap request naming Angelo stays his own (dry run)","his own",rd.j.code==="flag_off"?"switch off":(rd.j.own&&rd.j.kind==="eod"?"his own":rd.status),rd.status===200&&rd.j.dry_run===true&&rd.j.own===true&&rd.j.kind==="eod");
   }else{
     add("Dealer list shows every dealer (incl. TEST dealer)","all dealers",dl.status===200?dealers.length+" dealers":dl.status,dl.status===200&&dealers.some(d=>String(d.id)===TD));
     // A rep's Command Center, read-only: the first sales rep Relations may pick (Greg, when he's on the list).
@@ -261,6 +277,11 @@ async function run(){
       add("Reads "+pick+"'s Morning Brief, read-only",pick+" · read-only",br.j.code==="flag_off"?"switch off":(br.status===200?(br.j.person||"")+(br.j.can_generate?" · can write":" · read-only"):br.status),br.status===200&&br.j.person===pick&&br.j.can_generate===false);
       const bw=await call("rep-command-api",{action:"brief",mode:"refresh",rep:pick,dry_run:true});
       add("Cannot write "+pick+"'s Morning Brief (dry run)","refused",bw.j.code==="flag_off"?"switch off":bw.status,bw.status===403&&bw.j.code==="not_yours");
+      // Phase 2C: the same for the rep's End-of-Day Recap.
+      const rr=await call("rep-command-api",{action:"brief",kind:"eod",mode:"check",rep:pick,date:ld(),tz:new Date().getTimezoneOffset()});
+      add("Reads "+pick+"'s End-of-Day Recap, read-only",pick+" · read-only",rr.j.code==="flag_off"?"switch off":(rr.status===200?(rr.j.person||"")+(rr.j.can_generate?" · can write":" · read-only"):rr.status),rr.status===200&&rr.j.person===pick&&rr.j.can_generate===false);
+      const rw=await call("rep-command-api",{action:"brief",kind:"eod",mode:"auto",rep:pick,dry_run:true});
+      add("Cannot write "+pick+"'s End-of-Day Recap (dry run)","refused",rw.j.code==="flag_off"?"switch off":rw.status,rw.status===403&&rw.j.code==="not_yours");
     }
     const bo=await call("rep-command-api",{action:"brief",mode:"check",date:ld(),tz:new Date().getTimezoneOffset()});
     add("Her Morning Brief's relationship signals are company-wide","company_wide",bo.j.code==="flag_off"?"switch off":(bo.status===200?`${bo.j.scope} · ${(bo.j.signals||[]).length} signals`:bo.status),bo.status===200&&bo.j.scope==="company_wide");

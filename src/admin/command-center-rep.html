@@ -68,6 +68,13 @@
  .spin{width:16px;height:16px;border-radius:50%;border:2px solid #d6e2ee;border-top-color:var(--orange);animation:sp 1s linear infinite;flex:0 0 auto}
  @keyframes sp{to{transform:rotate(360deg)}}
  .bfoot{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+ /* End-of-Day Recap (Phase 2C) */
+ #recapcard{border-left:4px solid var(--navy)}
+ .rnarr{font-size:14.5px;line-height:1.5;color:#1b2733;margin:2px 0 8px}
+ .rfacts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin:8px 0}
+ .rfacts div{background:#f5f8fb;border-radius:8px;padding:6px 9px;font-size:12px;color:#5b6672}
+ .rfacts b{display:block;font-size:17px;color:var(--navy);font-family:'Barlow Condensed'}
+ @media(max-width:640px){.rfacts{grid-template-columns:repeat(2,1fr)}}
  /* On a phone the rep menu wraps to ~380px; pinned, it would cover half the screen. It scrolls away here. */
  @media(max-width:760px){ header#ac-head{position:static} }
  @media(max-width:640px){
@@ -95,6 +102,7 @@ window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}}
 let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 let DATA=null, REPS=null, VIEW=null;   // VIEW = the rep being viewed (management / Relations only)
 let BRIEF=null, BRIEF_FOR=null, BRIEF_POLL=0;   // the Morning Brief card's latest answer, and whose it is
+let RECAP=null, RECAP_POLL=0;                    // the End-of-Day Recap card's latest answer (same person as BRIEF_FOR)
 try{ VIEW=new URLSearchParams(location.search).get("rep")||null; }catch(e){ VIEW=null; }
 /* My Sales Workspace: the President working his OWN book, as a rep would — his day only, no rep
    picker, full working access, and a way back to the Admin Dashboard. */
@@ -139,9 +147,10 @@ async function load(){
   DATA=j;
   if(REPS===null && !WS) loadReps();
   const who=(j.header&&j.header.rep&&j.header.rep.email)||"";
-  if(BRIEF_FOR!==who){ BRIEF=null; BRIEF_FOR=who; BRIEF_POLL=0; }
+  if(BRIEF_FOR!==who){ BRIEF=null; RECAP=null; BRIEF_FOR=who; BRIEF_POLL=0; RECAP_POLL=0; }
   render();
   briefStart();   // after the page is on screen — never before
+  recapStart();   // read-only check (no AI): today's counted facts, and whether a stored recap is out of date
 }
 /* The rep picker: only for the people the server lets pick (management and Relations). A rep
    gets an empty list and sees no picker — and the server ignores a rep's `rep` either way. */
@@ -232,6 +241,66 @@ function briefStart(){
   briefCall(mb.own?"auto":"check");
 }
 function briefRefresh(){ const b=briefState(DATA); if(!b||!b.own||refreshWait(b)) return; BRIEF_POLL=0; briefCall("refresh"); }
+
+/* ---- END-OF-DAY RECAP (Phase 2C) -----------------------------------------------------------------
+   In the evening view. The numbers are counted by the server from the day's records and shown as they
+   are; the AI only writes a few sentences around them, and a narrative whose numbers don't match the
+   counts is rejected. Nothing is written on page load: a stored recap is shown as stored, otherwise the
+   rep taps "Write my recap". Viewing someone else: their stored recap, read-only. Behind eod_recap. */
+const RFACT=[["visits_completed","Visits completed",f=>`${f.visits_completed}<span class="sm2"> / ${f.visits_started}</span>`],["people_met","People met"],
+  ["commitments","Commitments made"],["followup_tasks_created","Follow-up tasks created"],["tasks_completed","Tasks completed"],
+  ["opportunities_created","Deals added"],["pipeline_added","Est. pipeline added",f=>money(f.pipeline_added)],
+  ["emails_sent","Follow-up emails",f=>`${f.emails_sent}<span class="sm2"> sent · ${f.emails_drafted} draft</span>`],["unresolved_followups","Follow-ups still open"]];
+function recapState(j){ const r=j&&j.eod_recap; if(!r||!r.enabled||r.storage_missing) return null; return RECAP||r; }
+function pRecap(j){
+  const r=recapState(j); if(!r) return "";
+  const R=r.brief;   // the stored recap
+  if(j.phase!=="wrap" && !R) return "";
+  const own=!!r.own, name=(j.header&&j.header.rep&&j.header.rep.name)||"";
+  const F=(R&&R.facts)||r.facts||null, T=(R&&R.tomorrow)||r.tomorrow||[], U=(R&&R.unresolved)||r.unresolved||[];
+  const facts=F?`<div class="rfacts">${RFACT.map(([k,l,fmt])=>`<div><b>${fmt?fmt(F):esc(String(F[k]??0))}</b>${esc(l)}</div>`).join("")}</div>`:"";
+  const lists=(U.length?`<div class="bsec">Still open</div>`+U.map(u=>`<div class="d" style="margin:2px 0">${dlink(u.dealer_id,u.dealer)} — ${esc(u.text)}</div>`).join(""):"")
+    +(T.length?`<div class="bsec">Tomorrow's priorities</div>`+T.map(t=>`<div class="d" style="margin:2px 0">• ${esc(t.text)}${t.dealer&&!String(t.text).includes(t.dealer)?` — ${dlink(t.dealer_id,t.dealer)}`:""}</div>`).join(""):"");
+  let h=`<div class="card" id="recapcard"><h2>🌙 End-of-day recap <span class="n">${own?"":"read-only"}</span></h2>`;
+  if(!own) h+=`<div class="sm2" style="margin:-2px 0 8px">${esc(name)}'s recap — you can read it, not write it for them.</div>`;
+  if(R){
+    h+=`<p class="rnarr">${esc(R.narrative)}</p>${R.tomorrow_text?`<p class="rnarr" style="color:#41576b"><b>Tomorrow:</b> ${esc(R.tomorrow_text)}</p>`:""}${facts}${lists}`;
+    if(r.stale) h+=`<div class="bstale">Things changed since this recap.${own?` <button class="btn sm" onclick="recapCall('refresh')" ${refreshWait(r)?"disabled":""}>↻ Refresh</button>`:""}</div>`;
+  } else if(r.working || r.pending){
+    h+=`<div class="bwork"><div class="spin"></div><div>Writing ${own?"your":"the"} recap from today's numbers…</div></div>${facts}`;
+  } else if(!own){
+    h+=`<div class="empty">No recap from ${esc(name)} yet today.</div>${facts}${lists}`;
+  } else if(r.ai_failed || r.too_soon || r.status==="failed"){
+    h+=`<div class="sm2" style="margin:0 0 6px">The AI recap isn't available right now — here are today's numbers.</div><p class="rnarr">${esc(r.rule_text||"")}</p>${facts}${lists}`;
+  } else {
+    h+=`${facts}${lists}<div class="sm2" style="margin:6px 0 0">The numbers are counted from your day; the AI only writes the summary around them.</div>`;
+  }
+  if(own){
+    const w=refreshWait(r), first=!R&&!(r.ai_failed||r.too_soon||r.status==="failed");
+    if(!(r.working||r.pending)) h+=`<div class="bfoot">${R&&r.generated_at?`<span class="sm2">Written ${esc(tm(r.generated_at))}</span>`:""}
+      <button class="btn ${first?"orange":"ghost"} sm" id="recapbtn" onclick="recapCall('${first?"auto":"refresh"}')" ${!first&&w?"disabled":""}>${first?"✍️ Write my recap":R?"↻ Refresh":"↻ Try the AI again"}</button>${!first&&w?`<span class="sm2">available at ${esc(tm(r.next_refresh_at))}</span>`:""}</div>`;
+  } else if(R && r.generated_at) h+=`<div class="bfoot"><span class="sm2">Written ${esc(tm(r.generated_at))}</span></div>`;
+  return h+`</div>`;
+}
+function paintRecap(){ const el=$("#recapcard"); if(el) el.outerHTML=pRecap(DATA); }
+async function recapCall(mode){
+  const who=BRIEF_FOR, cur=recapState(DATA)||{};
+  if(mode!=="check" && (!cur.own || (mode==="refresh" && refreshWait(cur)))) return;
+  const req={action:"brief",kind:"eod",mode,date:localDate(),hour:new Date().getHours(),tz:new Date().getTimezoneOffset()};
+  if(VIEW) req.rep=VIEW;
+  if(mode!=="check"){ RECAP=Object.assign({},cur,{working:true}); paintRecap(); }
+  let r=null; try{ r=await api("rep-command-api",req); }catch(e){ r=null; }
+  if(BRIEF_FOR!==who) return;
+  const body=r&&r.body;
+  if(body&&body.ok) RECAP=Object.assign({},body,{working:false});
+  else RECAP=Object.assign({},cur,{working:false,pending:false,ai_failed:mode!=="check"});
+  paintRecap();
+  if(RECAP.pending && RECAP_POLL<10){ RECAP_POLL++; setTimeout(()=>{ if(BRIEF_FOR===who) recapCall("check"); },6000); }
+}
+function recapStart(){
+  const r=DATA&&DATA.eod_recap; if(!r||!r.enabled||r.storage_missing) return;
+  if(DATA.phase==="wrap" || r.brief) recapCall("check");
+}
 
 /* ---- Panels ---- */
 function pHeader(j){
@@ -372,7 +441,7 @@ function render(){
   const j=DATA; if(!j) return;
   renderPicker();
   if(j.empty){ $("#body").innerHTML=`<div class="msg">${esc(j.message||"Nothing to show.")}</div>`; return; }
-  const L={morning:[pBrief,pPriorities,pRoute,pPrep,pFollow], field:[pBrief,pProgress,pRoute,pActivity,pPriorities,pPrep], wrap:[pBrief,pEod,pActivity,pFollow,pProgress]};
+  const L={morning:[pBrief,pRecap,pPriorities,pRoute,pPrep,pFollow], field:[pBrief,pRecap,pProgress,pRoute,pActivity,pPriorities,pPrep], wrap:[pRecap,pBrief,pEod,pActivity,pFollow,pProgress]};
   const R={morning:[pOpps,pTomorrow], field:[pFollow,pOpps,pEod], wrap:[pOpps,pTomorrow,pPriorities]};
   const ph=L[j.phase]?j.phase:"morning";
   $("#body").innerHTML=pHeader(j)+`<div class="cc"><div>${L[ph].map(f=>f(j)).join("")}</div><div>${R[ph].map(f=>f(j)).join("")}</div></div>`;

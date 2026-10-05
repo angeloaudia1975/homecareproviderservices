@@ -46,7 +46,7 @@ function world() {
     dealers: [{ id: '3f7d87a2-7fbc-47e1-a34a-aaaacf4c4c7b', business_name: 'TEST — Golden Sandbox', rep_name: null, parent_id: null, state: 'IN', is_test: true }],
     dealer_contacts: [{ id: 'c-bryant', dealer_id: 'd-greg', name: 'Bryant Smith', email: 'bryant@glasgow.test', title: 'Pharmacist', phone: '270-111' }],
     manufacturers: [{ slug: 'golden-technologies', name: 'Golden Technologies' }, { slug: 'strongback-mobility', name: 'Strongback Mobility' }],
-    app_settings: [{ key: 'platform', value: { mode: 'development' } }, { key: 'phase2_flags', value: { adhoc_visit: true, morning_brief: true } }],
+    app_settings: [{ key: 'platform', value: { mode: 'development' } }, { key: 'phase2_flags', value: { adhoc_visit: true, morning_brief: true, eod_recap: true } }],
     dealer_tasks: [{ id: 't-old', dealer_id: 'd-greg', title: 'Old overdue call', status: 'open', due_date: dayStr(-2), priority: 'normal', assigned_rep: 'Greg Campbell', assigned_email: 'greg@hcps.us', source: 'manual', created_at: new Date(Date.now() - 5 * 864e5).toISOString() }],
   });
   S.unique = { dealer_tasks: [['origin_type', 'origin_id', 'origin_key']], opportunities: [['origin_type', 'origin_id', 'origin_key']],

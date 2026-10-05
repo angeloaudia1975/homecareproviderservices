@@ -499,6 +499,16 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   own book (`SC.ownBook`, in My Sales Workspace and the Admin view alike — never company-wide President
   data); Customer Relations: her own work plus the top 10 company-wide signals. Management and Relations may
   READ a rep's stored brief, never write one in that person's name.
+- **End-of-Day Recap (2C, switch `eod_recap`).** Same table, kind `eod`, same rules (own only; one
+  (re)generation per 10 minutes; read-only for management and Relations; one per person per day, shared by My
+  Sales Workspace and the Admin view). The numbers are counted by code (`_brief_ai.js recapInputs`: visits
+  completed/started, people met (unique), commitments, follow-up tasks created from today's visits, tasks
+  completed (done, not dismissed), deals created today, weighted pipeline added, follow-up emails sent/drafted,
+  open follow-ups, tomorrow's priorities); the AI writes only the narrative. `checkNumbers` checks every number
+  in it against the count it sits next to (no totals, no percentages, $ only the counted amounts); a mismatch is
+  retried once with the exact figures, then rejected — the card shows the counted numbers and `ruleRecap`.
+  **No AI on page load**: the card (evening view, or whenever a recap is stored) only calls `check`; the rep
+  taps "Write my recap".
 - **Zoho and testing (rule until the Zoho `is_test` exclusion is fixed in 2F).** The Zoho autosync pushes
   every dealer, every contact with an email and every deal, TEST ones included. Do not create TEST dealers,
   contacts, tasks or opportunities that could be pushed to Zoho unless the task requires it and Angelo has

@@ -275,4 +275,203 @@ async function generate(i){
   return Object.assign(res, { attempts });
 }
 
-module.exports = { rankSignals, briefInputs, signalsKey, ground, generate, buildPrompt, ruleHeadline, amountsOk, readCart, extractJson, W };
+/* ==== PHASE 2C · END-OF-DAY RECAP ==================================================================
+   The day's numbers are counted by code (recapInputs); the AI writes only the narrative. Every number the
+   narrative states is checked against those counts (checkNumbers): a number next to "visits" must be a
+   visit count, next to "tasks" a task count, and so on; any other number must be one of the facts. A
+   narrative that fails is retried once with the exact figures, then rejected — the card then shows the
+   counted facts with a plain sentence built from them (ruleRecap). Stored as kind "eod" in
+   rep_daily_briefs, beside the Morning Brief. */
+const STAGE_P = { identified: 0.1, contacted: 0.3, quoted: 0.6, won: 1, lost: 0 };
+function recapInputs(day, opt){
+  opt = opt || {};
+  const r = day._recap || {}, e = day.end_of_day || {}, h = day.header || {}, tm = day.tomorrow || {};
+  const visits = r.visits || [];
+  const people = [...new Set(visits.flatMap(v => v.attendees || []).map(n => clean(n, 80)).filter(Boolean))];
+  const opps = r.opportunities_created || [];
+  const pipeline_added = Math.round(opps.reduce((a, o) => a + (Number(o.value) || 0) * (STAGE_P[o.stage] != null ? STAGE_P[o.stage] : 0.1), 0));
+  const pipeline_value = Math.round(opps.reduce((a, o) => a + (Number(o.value) || 0), 0));
+  const rc = visits.reduce((a, v) => a + (v.rep_commitments || []).length, 0), dc = visits.reduce((a, v) => a + (v.dealer_commitments || []).length, 0);
+  const facts = {
+    visits_completed: visits.filter(v => v.status === "done").length, visits_started: visits.length,
+    people_met: people.length,
+    commitments: rc + dc, rep_commitments: rc, dealer_commitments: dc,
+    followup_tasks_created: (r.tasks_created || []).length,
+    tasks_completed: (r.tasks_completed || []).length,
+    opportunities_created: opps.length, pipeline_added, pipeline_value,
+    emails_sent: e.followup_emails_sent || 0, emails_drafted: e.followup_emails_drafted || 0,
+    unresolved_followups: h.followups_pending || 0, open_visit_tasks: r.open_visit_tasks || 0, overdue_tasks: h.overdue || 0,
+    tomorrow_stops: tm.stops || 0, tasks_due_tomorrow: (r.tasks_due_tomorrow || []).length,
+  };
+  // Tomorrow's priorities, in the order to do them: the route, overdue work, what falls due tomorrow.
+  const tomorrow = [];
+  if(tm.stops) tomorrow.push({ kind: "route", id: tm.id, dealer_id: (tm.dealers && tm.dealers[0] && tm.dealers[0].dealer_id) || null, text: `${tm.name || "Route"} — ${tm.stops} stop${tm.stops === 1 ? "" : "s"}${tm.first_stop ? `, first ${tm.first_stop}` : ""}` });
+  for(const t of (r.overdue || []).slice(0, 3)) tomorrow.push({ kind: "overdue", id: t.id, dealer_id: t.dealer_id, dealer: t.dealer, text: `Overdue: ${t.title}` });
+  for(const f of (r.followups_due || []).slice(0, 3)) tomorrow.push({ kind: "followup", id: f.id, dealer_id: f.dealer_id, dealer: f.dealer, text: `Visit follow-up due ${f.due}` });
+  for(const t of (r.tasks_due_tomorrow || []).slice(0, 4)) tomorrow.push({ kind: "task", id: t.id, dealer_id: t.dealer_id, dealer: t.dealer, text: t.title });
+  const unresolved = (r.unresolved || []).slice(0, 6);
+  // Numbers that may appear because they are part of a name or title in the facts ("Route 66 Medical").
+  const nameNums = []; for(const s of [].concat(visits.map(v => v.dealer), people, tomorrow.map(x => x.text + " " + (x.dealer || "")), unresolved.map(u => u.dealer), opps.map(o => o.title + " " + (o.dealer || ""))))
+    for(const m of String(s || "").match(/\d[\d,]*/g) || []) nameNums.push(Number(m.replace(/,/g, "")));
+  return { date: h.date || opt.date || "", person: { name: (h.rep && h.rep.name) || "", role: opt.role || "rep" }, tz: opt.tz,
+    facts, people, visits: visits.slice(0, 10), opportunities: opps.slice(0, 10), tasks_completed: (r.tasks_completed || []).slice(0, 10),
+    tasks_created: (r.tasks_created || []).slice(0, 10), unresolved, tomorrow, nameNums: [...new Set(nameNums)] };
+}
+function recapKey(i){
+  const f = i.facts || {};
+  const parts = [i.date, Object.keys(f).sort().map(k => k + ":" + f[k]).join(","), (i.tomorrow || []).map(t => t.kind + ":" + t.id).join(",")].join("|");
+  let h = 5381; for(let k = 0; k < parts.length; k++) h = ((h * 33) ^ parts.charCodeAt(k)) >>> 0;
+  return h.toString(36) + "-" + parts.length.toString(36);
+}
+const plural = (n, one, many) => `${n} ${n === 1 ? one : (many || one + "s")}`;
+function ruleRecap(i){
+  const f = i.facts, s = [];
+  s.push(f.visits_started ? `You completed ${f.visits_completed} of ${plural(f.visits_started, "visit")} today${f.people_met ? ` and met ${plural(f.people_met, "person", "people")}` : ""}.` : "No visits were logged today.");
+  if(f.commitments || f.followup_tasks_created) s.push(`${plural(f.commitments, "commitment")} recorded and ${plural(f.followup_tasks_created, "follow-up task")} created.`);
+  if(f.tasks_completed) s.push(`${plural(f.tasks_completed, "task")} completed.`);
+  if(f.opportunities_created) s.push(`${plural(f.opportunities_created, "deal")} added${f.pipeline_added ? ` (${money(f.pipeline_added)} in weighted pipeline)` : ""}.`);
+  if(f.emails_sent || f.emails_drafted) s.push(`Follow-up emails: ${f.emails_sent} sent, ${f.emails_drafted} still in draft.`);
+  if(f.unresolved_followups) s.push(`${plural(f.unresolved_followups, "visit follow-up")} still open.`);
+  return s.join(" ");
+}
+
+/* ---- The number check -------------------------------------------------------------------------- */
+const NUMWORDS = { no: 0, zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20 };
+const NUMCAT = [
+  [/^visits?$/, ["visits_completed", "visits_started"]],
+  [/^stops?$/, ["tomorrow_stops", "visits_completed", "visits_started"]],
+  [/^(people|persons?|contacts?|attendees?|buyers?|owners?|decision-?makers?)$/, ["people_met"]],
+  [/^(commitments?|promises?)$/, ["commitments", "rep_commitments", "dealer_commitments"]],
+  [/^(tasks?|actions?|to-?dos?)$/, ["followup_tasks_created", "tasks_completed", "tasks_due_tomorrow", "overdue_tasks", "open_visit_tasks"]],
+  [/^follow-?ups?$/, ["followup_tasks_created", "unresolved_followups", "open_visit_tasks"]],
+  [/^(deals?|opportunit(y|ies))$/, ["opportunities_created"]],
+  [/^(emails?|drafts?)$/, ["emails_sent", "emails_drafted"]],
+];
+const BREAK = new Set(["and", "or", "but", "with", "while", "plus", "of", "from", "to", "for", "at", "in", "on", "by", "that", "which", "who"]);
+/* Words around the number that say WHICH count it is ("completed 3 visits" is the completed count, not
+   the started one). Applied when they narrow the noun's choices to something; "2 of 3 visits" keeps the
+   total (3) unqualified. */
+const QUAL = [
+  [/^(completed|finished|done|closed|wrapped)$/, ["visits_completed", "tasks_completed"]],
+  [/^(started|began|logged)$/, ["visits_started"]],
+  [/^(created|added|new|opened|generated|set)$/, ["followup_tasks_created", "opportunities_created"]],
+  [/^sent$/, ["emails_sent"]],
+  [/^(drafted|unsent)$/, ["emails_drafted"]],
+  [/^(overdue|late)$/, ["overdue_tasks"]],
+  [/^(open|remain|remaining|outstanding|pending|unresolved)$/, ["unresolved_followups", "open_visit_tasks", "overdue_tasks"]],
+  [/^(met|meet|meeting)$/, ["people_met"]],
+];
+const MONTHS = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?$/i;
+function checkNumbers(text, facts, extra){
+  const f = facts || {}, bad = [];
+  const all = new Set(Object.values(f).filter(v => Number.isFinite(v)).map(Number).concat((extra && extra.nameNums) || []));
+  const money = [f.pipeline_added, f.pipeline_value].concat((extra && extra.amounts) || []).filter(n => Number(n) > 0);
+  const toks = String(text || "").replace(/([.,;:!?()])(?=\s|$)/g, " $1 ").split(/\s+/).filter(Boolean);
+  // The last qualifying verb in the current sentence: "you completed 1 visit and 2 tasks" — the 2 is a
+  // completed count too, even though "and" sits between them.
+  let sentQual = null;
+  for(let k = 0; k < toks.length; k++){
+    const raw = toks[k], prev = (toks[k - 1] || "").toLowerCase(), prev2 = (toks[k - 2] || "");
+    if(/^[.;!?]$/.test(raw)){ sentQual = null; continue; }
+    { const w0 = raw.toLowerCase().replace(/[^a-z-]/g, ""); for(const [re, keys] of QUAL) if(w0 && re.test(w0)) sentQual = keys; }
+    let val = null, isWord = false, isMoney = false;
+    const mm = raw.match(/^\$\s?(\d[\d,]*(?:\.\d+)?)([kKmM])?$/);
+    if(mm){ isMoney = true; val = Number(mm[1].replace(/,/g, "")) * (/[kK]/.test(mm[2] || "") ? 1000 : /[mM]/.test(mm[2] || "") ? 1e6 : 1); }
+    else if(/^\d[\d,]*(\.\d+)?%$/.test(raw)){ bad.push(raw); continue; }   // percentages are not counted facts
+    else if(/^\d[\d,]*(\.\d+)?$/.test(raw)) val = Number(raw.replace(/,/g, ""));
+    else if(/^\d{1,2}(:\d\d)?(am|pm)?$/i.test(raw) && /:|am|pm/i.test(raw)) continue;        // a time of day
+    else if(/^\d+(st|nd|rd|th)$/i.test(raw)){ bad.push(raw); continue; }
+    else if(/\d/.test(raw) && !/^[A-Za-z]/.test(raw)){ val = Number(raw.replace(/[^\d.]/g, "")); }
+    else if(NUMWORDS[raw.toLowerCase()] != null){ val = NUMWORDS[raw.toLowerCase()]; isWord = true; }
+    if(val == null || !Number.isFinite(val)) continue;
+    if(isMoney){ if(!money.some(a => Math.abs(a - val) <= Math.max(1, /[kKmM]$/.test(raw) ? a * 0.06 : 1))) bad.push(raw); continue; }
+    if(!isWord && (MONTHS.test(prev) || (MONTHS.test(prev2) && prev === "the"))) continue;   // a date: "October 5"
+    if(!isWord && val >= 2000 && val <= 2099) continue;                                          // a year
+    // The noun this number counts: the first category noun before a clause break, within four words.
+    let cat = null;
+    for(let j = k + 1; j <= k + 4 && j < toks.length; j++){
+      const w = toks[j].toLowerCase().replace(/[^a-z-]/g, "");
+      if(!w || BREAK.has(w) || /^[.,;:!?()]$/.test(toks[j])) break;
+      for(const [re, keys] of NUMCAT) if(re.test(w)) cat = keys;   // keep going: the head noun is the last one ("follow-up tasks")
+    }
+    if(isWord && !cat) continue;            // "one of the dealers" — a word, not a count
+    if(cat && !(prev === "of" && /^\d|^(one|two|three|four|five|six|seven|eight|nine|ten)$/i.test(prev2))){
+      // Narrow by the words around it: up to three before, and the noun phrase after (to the clause break).
+      const norm = w => w.toLowerCase().replace(/[^a-z-]/g, ""), ctx = [];
+      for(let j = k - 1; j >= Math.max(0, k - 3); j--){ const w = norm(toks[j]); if(!w || BREAK.has(w)) break; ctx.push(w); }
+      for(let j = k + 1; j <= k + 5 && j < toks.length; j++){ const w = norm(toks[j]); if(!w || BREAK.has(w)) break; ctx.push(w); }
+      let local = false;
+      for(const [re, keys] of QUAL) if(ctx.some(w => re.test(w))){ const n = cat.filter(x => keys.includes(x)); if(n.length){ cat = n; local = true; } }
+      if(!local && sentQual && (prev === "and" || prev === "plus" || prev === ",")){ const n = cat.filter(x => sentQual.includes(x)); if(n.length) cat = n; }
+    }
+    if(cat){ if(!cat.some(key => Number(f[key]) === val)) bad.push(raw + " " + (toks[k + 1] || "")); }
+    else if(!all.has(val)) bad.push(raw);
+  }
+  return { ok: bad.length === 0, bad };
+}
+
+function recapPrompt(i, retryNote){
+  const f = i.facts, L = [];
+  const weekday = Number.isFinite(dayMs(i.date)) ? new Date(dayMs(i.date)).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" }) : i.date;
+  L.push(`TODAY: ${weekday}. End-of-day recap for ${i.person.name || "the rep"}.`);
+  L.push(`FACTS (counted by the system — the ONLY numbers you may use):
+- visits completed: ${f.visits_completed} (of ${f.visits_started} started)
+- people met: ${f.people_met}${i.people.length ? ` (${i.people.slice(0, 12).join(", ")})` : ""}
+- commitments made: ${f.commitments} (rep ${f.rep_commitments}, dealer ${f.dealer_commitments})
+- follow-up tasks created: ${f.followup_tasks_created}
+- tasks completed: ${f.tasks_completed}
+- deals created: ${f.opportunities_created}; estimated pipeline added: ${money(f.pipeline_added)} weighted (${money(f.pipeline_value)} face value)
+- follow-up emails: ${f.emails_sent} sent, ${f.emails_drafted} drafted and not sent
+- visit follow-ups still open: ${f.unresolved_followups}; open tasks from visits: ${f.open_visit_tasks}; overdue tasks: ${f.overdue_tasks}
+- tomorrow: ${f.tomorrow_stops} route stops, ${f.tasks_due_tomorrow} tasks due`);
+  if(i.visits.length) L.push("TODAY'S VISITS:\n" + i.visits.map(v => `- ${v.dealer}${v.status === "done" ? "" : " (not finished)"}${v.summary ? `: ${clean(v.summary, 220)}` : ""}${(v.rep_commitments || []).length ? ` · promised: ${v.rep_commitments.slice(0, 3).join("; ")}` : ""}${(v.dealer_commitments || []).length ? ` · dealer said: ${v.dealer_commitments.slice(0, 3).join("; ")}` : ""}`).join("\n"));
+  if(i.opportunities.length) L.push("DEALS ADDED:\n" + i.opportunities.map(o => `- ${o.title}${o.dealer ? ` · ${o.dealer}` : ""} · ${o.stage}${o.value ? ` · ${money(o.value)}` : ""}`).join("\n"));
+  if(i.tasks_completed.length) L.push("TASKS COMPLETED:\n" + i.tasks_completed.map(t => `- ${t.title}${t.dealer ? ` · ${t.dealer}` : ""}`).join("\n"));
+  if(i.unresolved.length) L.push("STILL OPEN:\n" + i.unresolved.map(u => `- ${u.dealer}: ${u.text}`).join("\n"));
+  if(i.tomorrow.length) L.push("TOMORROW (in order):\n" + i.tomorrow.map(t => `- ${t.text}${t.dealer && !String(t.text).includes(t.dealer) ? ` · ${t.dealer}` : ""}`).join("\n"));
+  return `You write a short end-of-day recap for one person at HomeCare Provider Services (HCPS), a manufacturers' rep group selling home-medical-equipment lines to DME dealers. Write it to them ("you"), plainly, like a good sales manager would.
+
+STRICT NUMBER RULE: every number you write must be copied exactly from FACTS, next to what it counts ("3 visits", "2 follow-up tasks"). Never add, subtract, total, average or estimate; never write a percentage. If unsure, leave the number out. Never invent a dealer, person, product, amount or promise.
+
+${L.join("\n\n")}
+
+Return ONLY a compact, minified JSON object — one line, nothing before or after it:
+{"narrative":"3 to 5 sentences: what got done today, what came out of the visits, what is still open","tomorrow":"1 or 2 sentences: what to do first tomorrow and why"}${retryNote ? "\n\n" + retryNote : ""}`;
+}
+async function recapOnce(i, timeoutMs, retryNote){
+  const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), Math.max(1000, timeoutMs)) : null;
+  const send = thinking => i.fetch("https://api.anthropic.com/v1/messages", { method: "POST", signal: ctl ? ctl.signal : undefined,
+    headers: { "x-api-key": i.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify(Object.assign({ model: i.model, max_tokens: i.maxTokens || 1000, messages: [{ role: "user", content: recapPrompt(i.inputs, retryNote) }] }, thinking ? { thinking } : {})) });
+  let r, t;
+  try{ r = await send(NO_THINKING); t = await r.text().catch(() => "");
+    if(r.status === 400 && /thinking/i.test(t)){ r = await send(null); t = await r.text().catch(() => ""); } }
+  catch(e){ return { ok: false, error: "ai_timeout", retry: false }; }
+  finally{ if(timer) clearTimeout(timer); }
+  if(!r.ok) return { ok: false, error: "ai_error", retry: r.status >= 500 || r.status === 429 };
+  let j = {}; try{ j = JSON.parse(t); }catch(_){}
+  let text = ""; for(const c of ((j && j.content) || [])) if(c && typeof c.text === "string") text += c.text;
+  const raw = extractJson(text);
+  const narrative = clean(raw && raw.narrative, 1200), tomorrow = clean(raw && raw.tomorrow, 400);
+  if(!narrative) return { ok: false, error: j && j.stop_reason === "max_tokens" ? "ai_incomplete" : "ai_empty", retry: true };
+  const extra = { nameNums: i.inputs.nameNums, amounts: i.inputs.opportunities.map(o => o.value) };
+  const chk = checkNumbers(narrative + " " + tomorrow, i.inputs.facts, extra);
+  if(!chk.ok) return { ok: false, error: "numbers_mismatch", bad: chk.bad, retry: true };
+  return { ok: true, content: { narrative, tomorrow_text: tomorrow } };
+}
+async function generateRecap(i){
+  if(!i.apiKey) return { ok: false, error: "ai_unavailable", attempts: 0 };
+  const t0 = Date.now(), budget = i.budgetMs || 20000, minRetry = i.minRetryMs || 6000;
+  let res = await recapOnce(i, Math.min(i.timeoutMs || budget - 1000, budget)), attempts = 1;
+  const left = budget - (Date.now() - t0);
+  if(!res.ok && res.retry && left >= minRetry){
+    const f = i.inputs.facts;
+    const note = `IMPORTANT: your previous answer ${res.bad ? `stated numbers that do not match the counted facts (${res.bad.slice(0, 5).join(", ")})` : "was cut off or not valid JSON"}. Answer again, minified JSON only. Use only these exact figures, each next to what it counts: ${f.visits_completed} visits completed, ${f.people_met} people met, ${f.commitments} commitments, ${f.followup_tasks_created} follow-up tasks created, ${f.tasks_completed} tasks completed, ${f.opportunities_created} deals, ${money(f.pipeline_added)} weighted pipeline, ${f.emails_sent} emails sent, ${f.emails_drafted} drafted, ${f.unresolved_followups} follow-ups open — or leave numbers out.`;
+    res = await recapOnce(i, left - 500, note); attempts = 2;
+  }
+  return Object.assign(res, { attempts });
+}
+
+module.exports = { rankSignals, briefInputs, signalsKey, ground, generate, buildPrompt, ruleHeadline, amountsOk, readCart, extractJson, W,
+  recapInputs, recapKey, ruleRecap, checkNumbers, recapPrompt, generateRecap };
