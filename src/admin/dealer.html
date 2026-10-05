@@ -162,6 +162,9 @@ let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 let TOKEN=HCPS.token(), CUR=null, ALLD=[];
 // Dealer settings (company info, account numbers) are management-only; the server enforces it.
 const isMgmt=()=>!!(ME&&({president:1,admin:1,owner:1})[String(ME.role||"").toLowerCase()]);
+// Account class (management only; the server enforces it). Mirrors netlify/functions/_account_class.js.
+const ACLASS={dealer:"Dealer",prospect:"Prospect",manufacturer:"Manufacturer",vendor:"Vendor / supplier",service_provider:"Service provider",internal:"Internal",other:"Other",not_relevant:"Not relevant"};
+const ACLASS_OFF=new Set(["manufacturer","vendor","service_provider","internal","not_relevant"]);
 const Q=new URLSearchParams(location.search); const QID=Q.get("id"); const QNAME=Q.get("name");
 let SORTKEY="sales_desc";   // Dealer 360 picker sort — default: highest sales first
 // slug -> manufacturer display name, from the list payload. The search needs it so a person
@@ -255,6 +258,7 @@ function render(D,A){
         <div class="idrow">
           ${d.rep?`<span>Rep: <b>${esc(d.rep)}</b></span>`:""}
           ${d.hcps_account?`<span>HCPS #: <b>${esc(d.hcps_account)}</b></span>`:""}
+          ${isMgmt()&&d.account_class?`<span title="Account class — set by management; decides Morning Brief signals only">Class: <b>${esc(ACLASS[d.account_class]||d.account_class)}</b>${ACLASS_OFF.has(d.account_class)?' <span class="hint">(no brief signals)</span>':""}</span>`:""}
           ${d.phone?`<span>☎ ${esc(d.phone)}</span>`:""}
           ${d.email?`<span>✉ <a class="link" href="mailto:${esc(d.email)}">${esc(d.email)}</a></span>`:""}
           ${website?`<span>🌐 <a class="link" href="${esc(/^https?:/i.test(website)?website:'https://'+website)}" target="_blank">${esc(website.replace(/^https?:\/\//,''))}</a></span>`:""}
@@ -374,6 +378,9 @@ async function editCompany(){
       <label class="hint">City${F("e_city","City",d.city)}</label>
       <label class="hint">State${F("e_state","ST",d.state)}</label>
       <label class="hint">ZIP${F("e_zip","ZIP",d.zip)}</label>
+      ${d.account_class===null||d.account_class===undefined?"":`<label class="hint" style="grid-column:1/3">Account class
+        <select id="e_class" style="width:100%"><option value="">— not set (gets Morning Brief signals) —</option>${Object.entries(ACLASS).map(([k,l])=>`<option value="${k}" ${d.account_class===k?"selected":""}>${esc(l)}${ACLASS_OFF.has(k)?" — no Morning Brief signals":""}</option>`).join("")}</select>
+        <span style="display:block;margin-top:3px">Only decides whether this account raises Morning Brief relationship signals. It doesn't change the owner, who can open it, or anything else about the account.</span></label>`}
     </div>
     <div style="margin-top:12px;display:flex;gap:8px"><button class="btn orange sm" onclick="saveCompany()">Save company info</button><button class="btn ghost sm" onclick="load()">Cancel</button><span id="e_msg" class="hint"></span></div>`;
   const f=$("#e_name"); if(f)f.focus();
@@ -382,8 +389,14 @@ async function dapi(payload){ const r=await fetch("/.netlify/functions/dealers-a
 async function saveCompany(){
   const d=DOBJ||{}; const g=id=>(($("#"+id)||{}).value||"").trim(); const m=$("#e_msg"); if(m)m.textContent="Saving…";
   const name=g("e_name")||d.name;
-  await dapi({action:"edit",dealer_id:d.id,business_name:name,email:g("e_email"),phone:g("e_phone"),website:g("e_website"),address:g("e_address"),city:g("e_city"),state:g("e_state"),zip:g("e_zip")});
+  const info={business_name:name,email:g("e_email"),phone:g("e_phone"),website:g("e_website"),address:g("e_address"),city:g("e_city"),state:g("e_state"),zip:g("e_zip")};
+  const was={business_name:d.name,email:d.email,phone:d.phone,website:d.website,address:d.address,city:d.city,state:d.state,zip:d.zip};
+  // Only a real company-info change is written (so saving just the account class touches nothing else).
+  if(Object.keys(info).some(k=>String(info[k]||"")!==String(was[k]||""))) await dapi(Object.assign({action:"edit",dealer_id:d.id},info));
   const rep=g("e_rep"); if(rep!==String(d.rep||"")) await dapi({action:"rep",dealer_id:d.id,dealer_name:name,rep_name:rep});
+  const cls=$("#e_class"); if(cls && cls.value!==String(d.account_class||"")){
+    const r=await dapi({action:"set_account_class",dealer_id:d.id,account_class:cls.value});
+    if(!r||!r.ok){ if(m) m.textContent=(r&&(r.message||r.error))||"Couldn't save the account class."; return; } }
   load();
 }
 // ---- Contacts & account-number management ----

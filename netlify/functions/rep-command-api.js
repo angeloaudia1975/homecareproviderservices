@@ -27,6 +27,7 @@ async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_U
 const SC = require("./_scope.js");
 const FL = require("./_flags.js");
 const BAI = require("./_brief_ai.js");
+const AC = require("./_account_class.js");
 const getAll = (path, order) => SC.getAll(sbGet, path, order);
 const AI_KEY = process.env.ANTHROPIC_API_KEY || "";
 const BRIEF_MODEL = process.env.HCPS_BRIEF_AI_MODEL || process.env.HCPS_AI_MODEL || "claude-sonnet-5";
@@ -371,8 +372,10 @@ const roleLabel = who => low(who.role)==="relations" ? "relations" : SC.isAdmin(
 const publicSignals = list => (list||[]).map(({score,amounts,...x})=>x);
 
 /* Relationship signals: Customer Relations reads every dealer; everyone else their own book (the
-   shared resolver, rep rules — dealers.rep_email first). TEST dealers never appear, and the person's
-   own visit follow-ups are left out here because their own work already lists them. */
+   shared resolver, rep rules — dealers.rep_email first). TEST dealers never appear, nor do accounts
+   President/Admin classified as manufacturer, vendor, service provider, internal or not relevant
+   (dealers.account_class; blank, dealer, prospect and other stay eligible). The person's own visit
+   follow-ups are left out here because their own work already lists them. */
 async function signalsFor(who, today){
   const companyWide=low(who.role)==="relations";
   const idx=await SC.ownerIndex(sbGet);
@@ -381,7 +384,7 @@ async function signalsFor(who, today){
   const since3=addDays(today,-3), since8=addDays(today,-8), since60=addDays(today,-60);
   const g=p=>sbGet(p).catch(()=>[]);
   const VCOLS="id,dealer_id,rep_name,rep_email,checkin_at,completed_at,approved_at,followup_status,followup_due,summary";
-  const [eng,intent,sess,carts,recent,pending,tests,mfrs]=await Promise.all([
+  const [eng,intent,sess,carts,recent,pending,tests,mfrs,classed]=await Promise.all([
     getAll("dealer_engagement?select=dealer_id,status,trend,churn_score,months_since,last_period,total_sales,recent_sales","dealer_id").catch(()=>[]),
     g(`dealer_intent?last_event_at=gte.${since3}&select=dealer_id,score_total,top_manufacturer,top_product,last_event_at&limit=2000`),
     g(`dealer_sessions?last_seen_at=gte.${since3}&select=dealer_id,last_seen_at&limit=5000`),
@@ -390,11 +393,13 @@ async function signalsFor(who, today){
     getAll(`dealer_visit_reports?followup_status=eq.pending&select=${VCOLS}`,"id").catch(()=>[]),
     g("dealers?is_test=is.true&select=id"),
     g("manufacturers?select=slug,name"),
+    // Before supabase/phase2_account_class.sql the column isn't there: the read fails, nothing is excluded.
+    g(`dealers?account_class=in.(${AC.SIGNAL_EXCLUDED.join(",")})&select=id`),
   ]);
   const vmap=new Map(); for(const v of [].concat(recent||[],pending||[])) if(low(v.rep_email)!==who.email) vmap.set(String(v.id),v);
   const names={}, owners={}; for(const o of idx.byId.values()){ names[o.id]=o.name; owners[o.id]=o.rep||""; }
   const mfr={}; for(const m of (mfrs||[])) if(m.slug) mfr[String(m.slug).toLowerCase()]=m.name||m.slug;
-  const signals=BAI.rankSignals({ today, scope, exclude:new Set((tests||[]).map(t=>String(t.id))), limit:companyWide?10:8,
+  const signals=BAI.rankSignals({ today, scope, exclude:new Set([].concat(tests||[],classed||[]).map(t=>String(t.id))), limit:companyWide?10:8,
     names, owners, mfr, engagement:eng||[], intent:intent||[], sessions:sess||[], carts:carts||[], visits:[...vmap.values()] });
   return { scope: companyWide ? "company_wide" : "own_book", signals };
 }

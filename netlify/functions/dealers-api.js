@@ -173,6 +173,7 @@ async function whoami(event){
    directory only, which disagreed with them for dealers assigned through Bulk Assignment. */
 const SC=require("./_scope.js");
 const UP=require("./_upsert.js");
+const AC=require("./_account_class.js");
 async function ownsDealer(me, dealer_id){
   if(!me||!dealer_id) return false;
   return SC.canAccessDealer(me, dealer_id, sbGet);
@@ -211,6 +212,10 @@ async function buildState(){
   // Golden portal linkage (dealers.golden_url / golden_status) — powers the "Open Golden portal" deep
   // link on Dealer 360. Decoupled + tolerant so the page still loads if the columns aren't present.
   let goldById={}; try{ const g=await sbGetAll("dealers?select=id,golden_url,golden_status"); for(const x of (g||[])) goldById[x.id]={url:x.golden_url||"",status:x.golden_status||""}; }catch(e){}
+  // Account class (dealers.account_class, supabase/phase2_account_class.sql) — President/Admin's label for
+  // what kind of account this is; it only decides Morning Brief signal eligibility. Decoupled + tolerant:
+  // before the migration every dealer reads null ("not available yet") and the page loads as before.
+  let classById={}, classSupported=false; try{ const ac=await sbGetAll("dealers?select=id,account_class"); classSupported=true; for(const x of (ac||[])) if(x.account_class) classById[x.id]=x.account_class; }catch(e){}
   // Assigned sales rep is now stored directly on the dealer (dealers.rep_name, keyed by dealer id) —
   // the durable source of truth that survives renames/merges. Decoupled + tolerant: if the column
   // isn't present yet the page still loads and we fall back to the legacy name-keyed directory below.
@@ -268,6 +273,7 @@ async function buildState(){
       id:d.id, name:d.business_name, hcps_account:d.hcps_account||"", status:d.status||"",
       contact_name:d.contact_name||"", email:d.email||"", email_verified: evSupported?!!evById[d.id]:null, phone:d.phone||"", website:webById[d.id]||"",
       golden_url:(goldById[d.id]&&goldById[d.id].url)||"", golden_status:(goldById[d.id]&&goldById[d.id].status)||"",
+      account_class: classSupported ? (classById[d.id]||"") : null,
       address:d.address||"", city:d.city||"", state:d.state||"", zip:d.zip||"", notes:d.notes||"",
       rep: repById[d.id]||repByName[d.business_name]||"", rep_email: repEmailById[d.id]||"",
       master: d.parent_id ? (nameById[d.parent_id]||"") : "",
@@ -415,6 +421,22 @@ exports.handler = async (event)=>{
         try{ await sbSend("PATCH",`dealers?id=eq.${encodeURIComponent(survivor)}&parent_id=in.${inList}`,{parent_id:null},{Prefer:"return=minimal"}); }catch(e){}
         await rpc("merge_dealers",{p_survivor:survivor,p_losers:losers});
         return json(200,{ok:true});
+      }
+      // Account class — President/Admin only (the management check above already refuses reps and
+      // Relations; checked again here so the rule stands on its own). Writes that one column and who set
+      // it, nothing else: no updated_at, no owner, no access, no status — so ownership, rep scope, Dealer
+      // 360 visibility and the Zoho push are untouched. Blank clears it (blank = eligible for signals).
+      if(act==="set_account_class"){
+        if(!isAdminRole) return json(403,{error:"Only the President or an Admin can set the account class."});
+        if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+        const raw=b.account_class==null?"":String(b.account_class).trim().toLowerCase();
+        if(raw && !AC.isClass(raw)) return json(400,{error:"Unknown account class",allowed:AC.CLASSES});
+        const cur=await sbGet(`dealers?id=eq.${encodeURIComponent(b.dealer_id)}&select=id`).catch(()=>[]);
+        if(!cur||!cur[0]) return json(404,{error:"dealer not found"});
+        const patch={account_class:raw||null, account_class_set_by:String(me.email||"").toLowerCase()||null, account_class_set_at:new Date().toISOString()};
+        try{ await sbSend("PATCH",`dealers?id=eq.${encodeURIComponent(b.dealer_id)}`,patch,{Prefer:"return=minimal"}); }
+        catch(e){ if(/account_class/i.test(String(e.message||""))) return json(200,{ok:false,error:"needs_migration",message:"Run supabase/phase2_account_class.sql in Supabase first."}); throw e; }
+        return json(200,{ok:true,dealer_id:b.dealer_id,account_class:raw||null,signal_eligible:AC.signalEligible(raw)});
       }
       if(act==="edit"){
         if(!b.dealer_id) return json(400,{error:"dealer_id required"});

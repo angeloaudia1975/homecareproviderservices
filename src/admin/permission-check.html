@@ -206,6 +206,7 @@ async function run(){
     ["Change dealer ordering access","dealers-api",{action:"access"}],
     ["Change dealer email verification","dealers-api",{action:"verify_email"}],
     ["Edit structural Dealer Manager fields","dealers-api",{action:"edit"}],
+    ["Change an account's class (Morning Brief eligibility)","dealers-api",{action:"set_account_class"}],
   ];
   if(rep) refuse.push(
     ["Open the TEST dealer's Dealer 360 (not his book)","crm-api",{action:"list",dealer_id:TD}],

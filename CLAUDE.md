@@ -509,6 +509,13 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   retried once with the exact figures, then rejected — the card shows the counted numbers and `ruleRecap`.
   **No AI on page load**: the card (evening view, or whenever a recap is stored) only calls `check`; the rep
   taps "Write my recap".
+- **Account class (Phase 2 add-on, `dealers.account_class`).** One optional label per account, set by
+  President/Admin only (`dealers-api set_account_class`; Edit company info on Dealer 360): dealer, prospect,
+  manufacturer, vendor, service_provider, internal, other, not_relevant. It decides ONE thing — Morning Brief
+  relationship signals skip manufacturer / vendor / service_provider / internal / not_relevant
+  (`_account_class.js SIGNAL_EXCLUDED`); blank (every existing record), dealer, prospect and other stay
+  eligible. It never changes owner, rep scope, access, visibility or any other column (no `updated_at`), and
+  nothing is ever classified automatically or inferred from a company name.
 - **Zoho and testing (rule until the Zoho `is_test` exclusion is fixed in 2F).** The Zoho autosync pushes
   every dealer, every contact with an email and every deal, TEST ones included. Do not create TEST dealers,
   contacts, tasks or opportunities that could be pushed to Zoho unless the task requires it and Angelo has
