@@ -12,7 +12,8 @@
 // your_accounts/available — it's surfaced only via `golden`.
 
 const ALL_DEALERS = ["access4u", "airavant-bongorx", "corsicana"];      // every dealer
-const STATE_RULES  = { bemis: ["IN","KY","OH"], pedifix: ["KY","TN","GA"], gce: ["IN","KY","TN","OH"] };
+const STATE_RULES  = { bemis: ["IN","KY","OH"], pedifix: ["KY","TN","GA"], gce: ["IN","KY","TN","OH"],
+                       dalton: ["KY","TN"] };
 const CLIMBING   = "climbing-steps";        // all dealers EXCEPT Mobility City
 const STRONGBACK = "strongback-mobility";   // Exclusive Territory (below)
 const OVATION    = "ovation-medical";       // per-account flag
