@@ -154,6 +154,39 @@ try {
     const cols = q(`select string_agg(column_name, ',' order by column_name) from information_schema.columns where table_name='opportunities'`);
     assert.ok(!/event|history/.test(cols), cols);
   });
+
+  t('rollback, exactly as documented: step 1 switches Conversion off (only that switch); step 2 stops recording, deals still save, history kept; re-running restores', () => {
+    // The statements are taken from the migration's own ROLLBACK block, so the documented text is what runs.
+    const lines = fs.readFileSync(MIG, 'utf8').split('\n').filter(l => /^-- (update|drop trigger)/.test(l)).map(l => l.slice(3));
+    assert.strictEqual(lines.length, 3, lines.join(' | '));
+    assert.strictEqual(lines[0], `update public.app_settings set value = value || '{"conversion":false}'::jsonb, updated_at = now() where key = 'phase2_flags';`);
+    q(`update app_settings set value = value || '{"timeline":true,"eod_recap":true}'::jsonb where key='phase2_flags'`);
+    const others = q(`select (value - 'conversion')::text from app_settings where key='phase2_flags'`);
+    const stamp0 = q(`select updated_at from app_settings where key='phase2_flags'`);
+    q(lines[0]);
+    assert.strictEqual(q(`select value->>'conversion' from app_settings where key='phase2_flags'`), 'false');
+    assert.strictEqual(q(`select jsonb_typeof(value->'conversion') from app_settings where key='phase2_flags'`), 'boolean');
+    assert.strictEqual(q(`select (value - 'conversion')::text from app_settings where key='phase2_flags'`), others, 'another switch changed');
+    assert.ok(q(`select updated_at > '${stamp0}'::timestamptz from app_settings where key='phase2_flags'`) === 't');
+    q(lines[0]);   // running it twice is harmless
+    assert.strictEqual(q(`select count(*) from app_settings where key='phase2_flags'`), '1');
+    // Step 1 alone keeps recording (the history stays complete while the tab is hidden).
+    const n0 = +q(`select count(*) from opportunity_events`);
+    q(`update opportunities set stage='won' where id='${A1}'`);
+    assert.strictEqual(+q(`select count(*) from opportunity_events`), n0 + 1);
+    // Step 2: no more recording; the deal still saves; the history already written is kept.
+    q(lines[1]); q(lines[2]);
+    assert.strictEqual(q(`select count(*) from pg_trigger where tgname in ('hcps_opportunity_event','hcps_opportunity_stage_stamp')`), '0');
+    q(`update opportunities set stage='lost' where id='${A1}'`);
+    assert.strictEqual(q(`select stage from opportunities where id='${A1}'`), 'lost');
+    assert.strictEqual(+q(`select count(*) from opportunity_events`), n0 + 1);
+    assert.strictEqual(q(`select count(*) from pg_trigger where tgname='hcps_opportunity_owner_email'`), '1', 'the owner-email trigger was dropped');
+    // Re-running the migration restores both triggers and the switch, without new baselines for deals with history.
+    file(DB, MIG);
+    assert.strictEqual(q(`select count(*) from pg_trigger where tgname in ('hcps_opportunity_event','hcps_opportunity_stage_stamp')`), '2');
+    assert.strictEqual(q(`select value->>'conversion' from app_settings where key='phase2_flags'`), 'true');
+    assert.strictEqual(q(`select count(*) from opportunity_events where opportunity_id='${A1}' and kind='baseline'`), '1');
+  });
 } finally {
   try { run('postgres', `drop database if exists ${DB}`); } catch (e) {}
 }

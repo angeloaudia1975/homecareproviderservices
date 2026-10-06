@@ -34,6 +34,14 @@ const AI_VISIT = {
   opportunities: [{ title: '2 x PR519 lift chairs', manufacturer_slug: 'golden-technologies', product: 'PR519', quantity: 2, est_value: null, contact_name: 'Bryant Smith', stage: 'identified', expected_close: '' }],
   suggested_next_action: { text: 'Send pricing', due_date: IN3 }, interest_slugs: ['golden-technologies'], poor_fit_slugs: [] };
 
+// The Permission check's test targets (same ids as live): Angelo's task on the TEST dealer, and Angelo's
+// approved visit at a dealer in his own book.
+function addPcTargets(w) {
+  w.db.dealers.push({ id: '651b304e-38b3-44ae-989d-d7cb0072ed86', business_name: 'Georges Pharmacy Batesville Corp', rep_name: 'Angelo Audia', parent_id: null, state: 'IN' });
+  w.db.dealer_tasks.push({ id: 'c2541012-1c8a-414c-b716-3ebd7ea2db4b', dealer_id: '3f7d87a2-7fbc-47e1-a34a-aaaacf4c4c7b', title: 'Follow-up: Re-test follow-up B', status: 'dismissed', assigned_rep: 'Angelo Audia', assigned_email: 'angelo@hcps.us', source: 'manual', created_at: new Date(Date.now() - 4 * 864e5).toISOString() });
+  w.db.dealer_visit_reports.push({ id: '6ad16613-9342-4b0e-a53a-034b736808b7', dealer_id: '651b304e-38b3-44ae-989d-d7cb0072ed86', route_id: null, rep_email: 'angelo@hcps.us', rep_name: 'Angelo Audia', status: 'completed',
+    checkin_at: new Date(Date.now() - 864e5).toISOString(), completed_at: new Date(Date.now() - 864e5 + 6e5).toISOString(), approved_at: new Date(Date.now() - 864e5 + 6e5).toISOString(), summary: { meeting_summary: 'Clinical meeting.' } });
+}
 function world() {
   const S = standardSeed({
     rep_routes: [{ id: 'r-1', owner_email: 'angelo@hcps.us', assigned_to_email: 'greg@hcps.us', assigned_to_rep: 'Greg Campbell', rep_name: 'Angelo Audia', name: 'KY loop', scheduled_date: TODAY,
@@ -470,6 +478,7 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
   w.db.opportunities = (w.db.opportunities || []).concat([{ id: 'adbddad4-a563-42e1-ae4e-3f5ef1270b51', dealer_id: 'd-ang', title: 'Golden lift chairs — sandbox test', stage: 'lost', status: 'lost', value: 100, owner_rep: 'Angelo Audia', owner_email: 'angelo@hcps.us', source: 'manual', created_at: new Date(Date.now() - 10 * 864e5).toISOString() },
       { id: 'o-greg-1', dealer_id: 'd-greg', title: 'Glasgow lift chairs', stage: 'quoted', status: 'open', value: 2400, owner_rep: 'Greg Campbell', owner_email: 'greg@hcps.us', source: 'manual', created_at: new Date(Date.now() - 20 * 864e5).toISOString() }]);
   w.db.opportunity_events = (w.db.opportunity_events || []).concat([{ opportunity_id: 'o-greg-1', kind: 'baseline', to_stage: 'quoted', to_status: 'open', value: 2400, changed_by: 'system', source: 'baseline', changed_at: new Date(Date.now() - 5 * 864e5).toISOString() }]);
+  addPcTargets(w);
   await step('Permission check (president): My Sales Workspace check passes in his own session', async () => {
     const c = await ctxFor(browser, 'pres', DESKTOP); const p = await c.newPage();
     await p.goto(`${B}/admin/permission-check.html`); await p.waitForSelector('#wscheck');
@@ -481,17 +490,55 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
   });
 
   /* ───────────── Permission check page: the live server answers, as the person being checked ───────────── */
+  // The President's session confirms the test targets before View-as (fixtureCheck); the result rides into
+  // the checked person's tab in sessionStorage, exactly as startAs → View-as does in production.
+  const preCheck = async (B0, who) => { const c = await ctxFor(browser, 'pres', DESKTOP); const p = await c.newPage();
+    await p.goto(`${B0}/admin/permission-check.html`); await p.waitForSelector('#who .btn', { timeout: 15000 });
+    const fx = await p.evaluate(e => fixtureCheck(e).then(() => sessionStorage.getItem('hcps_pc_fixtures')), PROFILES[who].email); await c.close(); return fx; };
+  const asChecked = async (who, device, fx) => { const c = await ctxFor(browser, who, device);
+    if (fx) await c.addInitScript(v => { try { sessionStorage.setItem('hcps_pc_fixtures', v); } catch (e) {} }, fx); return c; };
+  const rowsOf = p => p.$$eval('.row', rs => rs.map(r => ({ st: r.querySelector('.r').textContent, t: r.innerText.replace(/\s+/g, ' ') })));
   for (const who of ['greg', 'lori']) {
     await step(`Permission check (${who}): every refusal and every allowed action passes, on a phone`, async () => {
-      const c = await ctxFor(browser, who, PHONE); const p = await c.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
+      const fx = await preCheck(B, who); assert.ok(/"missing":\[\]/.test(fx), 'a test target is missing: ' + fx);
+      const c = await asChecked(who, PHONE, fx); const p = await c.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
       await p.goto(`${B}/admin/permission-check.html`); await p.waitForSelector('.verdict.ok, .verdict.bad', { timeout: 30000 });
-      const fails = await p.$$eval('.row', rs => rs.filter(r => r.querySelector('.r.f')).map(r => r.innerText.replace(/\s+/g, ' ')));
+      const fails = await p.$$eval('.row', rs => rs.filter(r => r.querySelector('.r.f, .r.i')).map(r => r.innerText.replace(/\s+/g, ' ')));
       assert.deepStrictEqual(fails, [], 'failed checks: ' + fails.join(' | '));
       assert.ok(/ALL \d+ CHECKS PASSED/.test(await p.textContent('#verdict')));
+      if (who === 'greg') { const R = await rowsOf(p); assert.ok(R.some(r => /Test targets confirmed/.test(r.t) && r.st === 'PASS') && R.some(r => /Modify Angelo's task \(by id\)/.test(r.t) && /got 403/.test(r.t)), 'targets row / task probe'); }
       await noHScroll(p, 'permission check phone'); await p.screenshot({ path: path.join(SHOTS, `permission-check-${who}.png`), fullPage: true });
       assert.deepStrictEqual(errs, []); await c.close();
     });
   }
+  await step('Permission check: a missing test target is TEST INVALID — never a pass', async () => {
+    // (1) No confirmation from the President (page opened directly as Greg): the targets row is TEST INVALID.
+    let c = await asChecked('greg', DESKTOP, null), p = await c.newPage();
+    await p.goto(`${B}/admin/permission-check.html`); await p.waitForSelector('.verdict.ok, .verdict.bad', { timeout: 30000 });
+    let R = await rowsOf(p), v = await p.textContent('#verdict');
+    assert.ok(R.some(r => /Test targets confirmed/.test(r.t) && r.st === 'TEST INVALID' && /not confirmed/.test(r.t)), 'unconfirmed targets passed');
+    assert.ok(/1 TEST INVALID of \d+ checks/.test(v) && !/ALL/.test(v), v); await c.close();
+    // (2) Angelo's task deleted before the check: the President's check reports it; its probes are TEST INVALID.
+    const keep = w.db.dealer_tasks.slice(); w.db.dealer_tasks = w.db.dealer_tasks.filter(t => t.id !== 'c2541012-1c8a-414c-b716-3ebd7ea2db4b');
+    const fx = await preCheck(B, 'greg'); assert.ok(/Angelo's task/.test(fx), fx);
+    c = await asChecked('greg', DESKTOP, fx); p = await c.newPage();
+    await p.goto(`${B}/admin/permission-check.html`); await p.waitForSelector('.verdict.ok, .verdict.bad', { timeout: 30000 });
+    R = await rowsOf(p); v = await p.textContent('#verdict');
+    for (const re of [/Test targets confirmed/, /Modify Angelo's task \(by id\)/, /No TEST-dealer tasks in My Tasks/])
+      assert.ok(R.some(r => re.test(r.t) && r.st === 'TEST INVALID'), re + ' not TEST INVALID');
+    assert.ok(/3 TEST INVALID/.test(v) && !/FAILED/.test(v), v); await c.close();
+    w.db.dealer_tasks = keep;
+    // (3) Confirmed, then Angelo's deal deleted mid-way: the server's 404 is TEST INVALID, not a refusal.
+    const fx2 = await preCheck(B, 'greg'); const opps = w.db.opportunities.slice();
+    w.db.opportunities = opps.filter(o => o.id !== 'adbddad4-a563-42e1-ae4e-3f5ef1270b51');
+    c = await asChecked('greg', DESKTOP, fx2); p = await c.newPage();
+    await p.goto(`${B}/admin/permission-check.html`); await p.waitForSelector('.verdict.ok, .verdict.bad', { timeout: 30000 });
+    R = await rowsOf(p);
+    for (const re of [/Modify Angelo's opportunity \(by id\)/, /stage history of Angelo's opportunity/])
+      assert.ok(R.some(r => re.test(r.t) && r.st === 'TEST INVALID' && /404 — target record no longer exists/.test(r.t)), re + ' passed on a 404');
+    await p.screenshot({ path: path.join(SHOTS, 'permission-check-test-invalid.png'), fullPage: true });
+    await c.close(); w.db.opportunities = opps;
+  });
   await step('Permission check (president): offers the rep and Relations accounts to check, and runs nothing until asked', async () => {
     const c = await ctxFor(browser, 'pres', DESKTOP); const p = await c.newPage();
     await p.goto(`${B}/admin/permission-check.html`); await p.waitForSelector('#who .btn', { timeout: 15000 });

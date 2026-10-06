@@ -17,14 +17,15 @@
  .verdict.bad{background:#fdecec;color:#9b1c1c;border:1px solid #f3c2c2}
  .verdict.run{background:#eef5fc;color:#2b4a6f;border:1px solid #cfe0f2}
  .rows{display:grid;gap:6px}
- .row{display:grid;grid-template-columns:70px minmax(0,1fr) auto;gap:10px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:14px}
+ .row{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:10px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:14px}
  .row .r{font-weight:800;font-size:12px;border-radius:6px;padding:3px 0;text-align:center}
  .row .r.p{background:#e9f7ef;color:#11643a} .row .r.f{background:#fdecec;color:#9b1c1c} .row .r.w{background:#f1f3f5;color:#6b7280}
+ .row .r.i{background:#fff4e0;color:#8a4b00;font-size:11px}   /* TEST INVALID: the record the check aims at is gone — not a pass */
  .row .g{color:var(--gray);font-size:12px;white-space:nowrap}
  .steps{margin:6px 0 0 18px;padding:0;line-height:1.7}
  .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
  .acts .btn{min-height:44px}
- @media(max-width:640px){ .wrap{padding:12px 12px 50px} .row{grid-template-columns:58px minmax(0,1fr)} .row .g{grid-column:2} }
+ @media(max-width:640px){ .wrap{padding:12px 12px 50px} .row{grid-template-columns:84px minmax(0,1fr)} .row .g{grid-column:2} }
 </style>
 </head><body>
 <header id="ac-head"></header>
@@ -49,11 +50,46 @@ const ROLE=()=>String((ME&&ME.role)||"").toLowerCase();
 const ld=()=>{ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };   // the person's own date
 const MGMT=r=>["president","admin","owner"].includes(r);
 
-/* Phase 1 TEST records on the "TEST — Golden Sandbox" dealer (not a rep's book): a rep must not reach them by
-   id. (After the Phase 1 cleanup they no longer exist — a refusal is then a 404, still a pass.) */
-const TD="3f7d87a2-7fbc-47e1-a34a-aaaacf4c4c7b";
+/* TEST TARGETS. A rep's refusal checks aim at real records that are NOT his. A refusal only proves
+   something while its target exists: a deleted target answers 404 (or, behind a dealer check, 403 for
+   any id at all). So (2F maintenance):
+     · before the View-as session starts, the President's own session confirms each target exists and
+       isn't the checked person's (fixtureCheck → sessionStorage), and
+     · a target that is gone — by that check, or a 404 from the server — shows TEST INVALID, never PASS.
+   No target here is created by the check; when one is retired, point the constant at another record. */
+const TD="3f7d87a2-7fbc-47e1-a34a-aaaacf4c4c7b";            // "TEST — Golden Sandbox" (House-owned, is_test)
 const ANGELO="angelo@homecareproviderservices.us";
-const ANGELO_OPP="adbddad4-a563-42e1-ae4e-3f5ef1270b51";   // Angelo's deal "Golden lift chairs — sandbox test" (Lost). Must exist: a 404 proves nothing.
+const ANGELO_OPP="adbddad4-a563-42e1-ae4e-3f5ef1270b51";    // Angelo's deal "Golden lift chairs — sandbox test" (Lost)
+const ANGELO_TASK="c2541012-1c8a-414c-b716-3ebd7ea2db4b";   // Angelo's task "Follow-up: Re-test follow-up B" on the TEST dealer (dismissed)
+const ANGELO_VISIT="6ad16613-9342-4b0e-a53a-034b736808b7";  // Angelo's approved visit at Georges Pharmacy Batesville (his book)
+const ANGELO_VISIT_DEALER="651b304e-38b3-44ae-989d-d7cb0072ed86";
+const FX_KEY="hcps_pc_fixtures";
+/* Run in the PRESIDENT's session (read-only) for the person about to be checked. */
+async function fixtureCheck(forEmail){
+  const who=String(forEmail||"").trim().toLowerCase();
+  const theirs=v=>{ const x=String(v==null?"":v).trim().toLowerCase(); return !x || x===who; };   // blank owner counts as not proven
+  const missing=[];
+  const all=(((await call("dealers-api",null,"GET")).j||{}).dealers)||[];
+  const dealer=id=>all.find(d=>String(d.id)===String(id));
+  const td=dealer(TD); if(!td || String(td.rep_email||"").trim().toLowerCase()===who) missing.push("TEST dealer");
+  const tl=await call("crm-api",{action:"list",dealer_id:TD});
+  const tk=((tl.j&&tl.j.tasks)||[]).find(t=>String(t.id)===ANGELO_TASK);
+  if(!td || !tk || theirs(tk.assigned_email||tk.assigned_rep)) missing.push("Angelo's task");
+  const pb=await call("pipeline-api",{action:"board"});
+  const op=((pb.j&&pb.j.opportunities)||[]).find(o=>String(o.id)===ANGELO_OPP);
+  if(!op || theirs(op.owner_email||op.owner_rep)) missing.push("Angelo's deal");
+  const vd=dealer(ANGELO_VISIT_DEALER);
+  const vr=await call("routes-api",{action:"visit_report_get",report_id:ANGELO_VISIT,dealer_id:ANGELO_VISIT_DEALER});
+  const rp=vr.j&&vr.j.report;
+  if(!vd || !rp || theirs(rp.rep_email) || String(vd.rep_email||"").trim().toLowerCase()===who) missing.push("Angelo's visit");
+  const rec={at:Date.now(),for:who,missing};
+  try{ sessionStorage.setItem(FX_KEY,JSON.stringify(rec)); }catch(e){}
+  return rec;
+}
+function fixturesFor(who){
+  try{ const f=JSON.parse(sessionStorage.getItem(FX_KEY)||"null");
+    return (f && f.for===String(who||"").toLowerCase() && Date.now()-f.at<4*3600e3 && Array.isArray(f.missing)) ? f : null; }catch(e){ return null; }
+}
 const CC_URL="/admin/command-center-rep.html";
 const PILOT=["greg@homecareproviderservices.us","lori@homecareproviderservices.us"];   // the Command Center landing pilot
 const WSH={"x-hcps-workspace":"mine"};   // the My Sales Workspace header (honored for management only)
@@ -77,6 +113,7 @@ function picker(){
 async function startAs(email,name,btn){
   if(!confirm(`Open a View-as session for ${name} and run the permission check?\n\nThis is logged like any View-as. Nothing is changed. Press "Exit view-as" when you're done.`)) return;
   if(btn){ btn.disabled=true; btn.textContent="Opening…"; }
+  try{ await fixtureCheck(email); }catch(e){}   // read-only, as the President — the check marks any missing target TEST INVALID
   const r=await call("staff-auth",{action:"impersonate",email});
   const j=r.j||{};
   if(!j.ok){ alert(j.message||j.error||"Couldn't start the View-as session."); picker(); return; }
@@ -88,15 +125,19 @@ async function startAs(email,name,btn){
 function sheet(title){
   $("#body").innerHTML=`<div class="verdict run" id="verdict">${esc(title)}…</div><div class="rows" id="rows"></div>
     <div class="acts">${window.ACImpersonate&&ACImpersonate.active()?`<button class="btn" onclick="ACImpersonate.exit()">Exit view-as</button>`:""}<button class="btn" style="background:#6b7280" id="copy">Copy results</button></div>`;
-  const rows=[]; const add=(check,expect,got,ok)=>{ rows.push({check,expect,got,ok}); $("#rows").insertAdjacentHTML("beforeend",
-    `<div class="row"><span class="r ${ok?"p":"f"}">${ok?"PASS":"FAIL"}</span><span>${esc(check)}</span><span class="g">expected ${esc(expect)} · got ${esc(String(got))}</span></div>`); };
+  // ok: true = PASS, false = FAIL, "invalid" = TEST INVALID (the record the check aims at no longer exists).
+  const rows=[]; const add=(check,expect,got,ok)=>{ const st=ok==="invalid"?"invalid":!!ok; rows.push({check,expect,got,ok:st});
+    const [cls,lab]=st==="invalid"?["i","TEST INVALID"]:st?["p","PASS"]:["f","FAIL"];
+    $("#rows").insertAdjacentHTML("beforeend",
+    `<div class="row"><span class="r ${cls}">${lab}</span><span>${esc(check)}</span><span class="g">expected ${esc(expect)} · got ${esc(String(got))}</span></div>`); };
   return {rows,add};
 }
 function verdict(rows,label){
-  const bad=rows.filter(r=>!r.ok).length;
-  const v=$("#verdict"); v.className="verdict "+(bad?"bad":"ok");
-  v.textContent=bad?`${label}: ${bad} of ${rows.length} checks FAILED — press Copy results and send them to Claude.`:`${label}: ALL ${rows.length} CHECKS PASSED`;
-  $("#copy").onclick=()=>{ const t=v.textContent+"\n"+rows.map(r=>`${r.ok?"PASS":"FAIL"} — ${r.check} (expected ${r.expect}, got ${r.got})`).join("\n");
+  const bad=rows.filter(r=>r.ok===false).length, inv=rows.filter(r=>r.ok==="invalid").length;
+  const v=$("#verdict"); v.className="verdict "+(bad||inv?"bad":"ok");
+  const what=[bad?`${bad} FAILED`:"",inv?`${inv} TEST INVALID`:""].filter(Boolean).join(", ");
+  v.textContent=(bad||inv)?`${label}: ${what} of ${rows.length} checks — press Copy results and send them to Claude.`:`${label}: ALL ${rows.length} CHECKS PASSED`;
+  $("#copy").onclick=()=>{ const t=v.textContent+"\n"+rows.map(r=>`${r.ok==="invalid"?"TEST INVALID":r.ok?"PASS":"FAIL"} — ${r.check} (expected ${r.expect}, got ${r.got})`).join("\n");
     (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{$("#copy").textContent="Copied ✓";},()=>{ prompt("Copy these results:",t); }); };
 }
 
@@ -216,6 +257,18 @@ async function run(){
   const {rows,add}=sheet("Checking "+whoRaw+" ("+role+")");
   const refused=s=>s===403||s===404;
   const mode=((await call("platform-api",{action:"get"})).j||{}).mode;
+  // Test targets (reps): confirmed by the President just before this View-as session (fixtureCheck).
+  const FX=rep?fixturesFor(me):null, gone=k=>!!(FX&&FX.missing.includes(k));
+  if(rep) add("Test targets confirmed before the check (TEST dealer, Angelo's task, deal and visit)","all present",
+    FX?(FX.missing.length?"missing: "+FX.missing.join(", "):"all present"):"not confirmed — start this check from the President's Permission check page",
+    FX&&!FX.missing.length?true:"invalid");
+  // A refusal aimed at a specific record: it must be a 403 while the record exists; a missing record is TEST INVALID.
+  const probe=async(label,fn,body,needs)=>{
+    const lost=needs.filter(gone); if(lost.length) return add(label,"refused","target record no longer exists ("+lost.join(", ")+")","invalid");
+    const r=await call(fn,body);
+    if(r.status===404) return add(label,"refused","404 — target record no longer exists","invalid");
+    add(label,"refused",r.j.code==="flag_off"?"switch off":r.status,r.status===403&&r.j.code!=="flag_off");
+  };
 
   // Refused for BOTH roles. None of these changes anything even if it were wrongly allowed.
   const refuse=[
@@ -232,17 +285,19 @@ async function run(){
     ["Edit structural Dealer Manager fields","dealers-api",{action:"edit"}],
     ["Change an account's class (Morning Brief eligibility)","dealers-api",{action:"set_account_class"}],
   ];
-  if(rep) refuse.push(
-    ["Open the TEST dealer's Dealer 360 (not his book)","crm-api",{action:"list",dealer_id:TD}],
-    ["Read the TEST dealer's visits","crm-api",{action:"visits",dealer_id:TD}],
-    ["Retrieve Angelo's visit (by route)","routes-api",{action:"visit_report_get",route_id:"d9f557cb-09b4-41a3-ac54-98c69e696608",dealer_id:TD,detail:true}],
-    ["Modify Angelo's task (by id)","crm-api",{action:"reopen_task",id:"4fa5c265-c5bf-4edf-a398-50f1fff5e0eb"}],
-    ["Modify Angelo's opportunity (by id)","pipeline-api",{action:"update",id:ANGELO_OPP}],
-    ["Draft an email from Angelo's dealer visit","ai-email-api",{action:"draft",dealer_id:TD,template:"visit_followup",visit_report_id:"cd7801be-cf5d-4682-9db4-0a977ba461c1"}],
-    ["Open an unplanned visit at the TEST dealer (not his book)","routes-api",{action:"route_day",dealer_id:TD}],
-    ["Read the TEST dealer's Relationship Timeline (not his book)","crm-api",{action:"timeline",dealer_id:TD}],
-  );
   for(const [label,fn,body] of refuse){ const r=await call(fn,body); add(label,"refused",r.status,refused(r.status)); }
+  // Refusals aimed at specific records that are not his (each needs its target to exist). The task probe
+  // is "dismiss" on an already-dismissed task, so even a wrong answer would change nothing visible.
+  if(rep) for(const [label,fn,body,needs] of [
+    ["Open the TEST dealer's Dealer 360 (not his book)","crm-api",{action:"list",dealer_id:TD},["TEST dealer"]],
+    ["Read the TEST dealer's visits","crm-api",{action:"visits",dealer_id:TD},["TEST dealer"]],
+    ["Retrieve Angelo's visit (by id)","routes-api",{action:"visit_report_get",report_id:ANGELO_VISIT,dealer_id:ANGELO_VISIT_DEALER,detail:true},["Angelo's visit"]],
+    ["Modify Angelo's task (by id)","crm-api",{action:"dismiss_task",id:ANGELO_TASK},["Angelo's task"]],
+    ["Modify Angelo's opportunity (by id)","pipeline-api",{action:"update",id:ANGELO_OPP},["Angelo's deal"]],
+    ["Draft an email from Angelo's dealer visit","ai-email-api",{action:"draft",dealer_id:ANGELO_VISIT_DEALER,template:"visit_followup",visit_report_id:ANGELO_VISIT},["Angelo's visit"]],
+    ["Open an unplanned visit at the TEST dealer (not his book)","routes-api",{action:"route_day",dealer_id:TD},["TEST dealer"]],
+    ["Read the TEST dealer's Relationship Timeline (not his book)","crm-api",{action:"timeline",dealer_id:TD},["TEST dealer"]],
+  ]) await probe(label,fn,body,needs);
 
   // Allowed (200).
   const allow=rep?[
@@ -262,18 +317,21 @@ async function run(){
   // Dealer list: a rep sees only his book; Relations sees every dealer.
   const dl=await call("dealers-api",null,"GET"); const dealers=(dl.j&&dl.j.dealers)||[];
   if(rep){
-    add("Dealer list is his book only (no TEST dealer)","his book",dl.status===200?dealers.length+" dealers":dl.status,dl.status===200&&!dealers.some(d=>String(d.id)===TD));
+    if(gone("TEST dealer")) add("Dealer list is his book only (no TEST dealer)","his book","target record no longer exists (TEST dealer)","invalid");
+    else add("Dealer list is his book only (no TEST dealer)","his book",dl.status===200?dealers.length+" dealers":dl.status,dl.status===200&&!dealers.some(d=>String(d.id)===TD));
     // Phase 2D: the Relationship Timeline of a dealer in his book (read-only).
     const own=dealers[0]; const tlo=own?await call("crm-api",{action:"timeline",dealer_id:own.id}):{status:0,j:{}};
     add("Reads the Relationship Timeline of his own dealer"+(own?" ("+(own.name||own.id)+")":""),"200",tlo.j.code==="flag_off"?"switch off":(own?tlo.status:"no dealer"),tlo.status===200);
     // Phase 2E: Angelo's deal history is refused by id; his own Conversion report covers his own deals only.
-    const hx=await call("pipeline-api",{action:"history",id:ANGELO_OPP});
-    add("Read the stage history of Angelo's opportunity (by id)","refused",hx.j.code==="flag_off"?"switch off":hx.status===404?"404 — the probe deal no longer exists (update ANGELO_OPP)":hx.status,hx.status===403&&hx.j.code!=="flag_off");
+    await probe("Read the stage history of Angelo's opportunity (by id)","pipeline-api",{action:"history",id:ANGELO_OPP},["Angelo's deal"]);
     await convRow(add,"Conversion report: his own deals only","own",null,[me,String((ME&&ME.rep_name)||"").trim().toLowerCase()].filter(Boolean));
     const routes=((await call("routes-api",{action:"list_routes"})).j||{}).routes||[];
-    add("No Angelo / TEST routes in his routes","none",routes.filter(r=>/TEST — Phase 1/.test(r.name||"")).length,!routes.some(r=>/TEST — Phase 1/.test(r.name||"")));
+    // Every route listed is one he drives or owns (no one else's — Angelo's or TEST — by any name).
+    const notHis=routes.filter(r=>!(r.mine===true || String(r.assigned_to_email||"").toLowerCase()===me));
+    add("No one else's routes in his routes (Angelo / TEST)","none",notHis.length+" of "+routes.length,!notHis.length);
     const tasks=((await call("crm-api",{action:"my_tasks"})).j||{}).tasks||[];
-    add("No TEST-dealer tasks in My Tasks","none",tasks.filter(t=>t.dealer_id===TD).length,!tasks.some(t=>t.dealer_id===TD));
+    if(gone("Angelo's task")) add("No TEST-dealer tasks in My Tasks","none","target record no longer exists (Angelo's task)","invalid");
+    else add("No TEST-dealer tasks in My Tasks","none",tasks.filter(t=>t.dealer_id===TD).length,!tasks.some(t=>t.dealer_id===TD));
     const day=((await call("rep-command-api",{action:"today",rep:ANGELO})).j||{});
     const w=String((day.header&&day.header.rep&&day.header.rep.email)||"");
     add("Asking for Angelo's day returns his own day",me,w||"(none)",!!w&&w===me);
