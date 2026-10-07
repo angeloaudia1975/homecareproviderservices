@@ -122,14 +122,14 @@ exports.handler = async (event)=>{
       const code=String(b.code||"").trim();
       if(!code) return json(400,{error:"code required"});
       const ex=await exchangeCode(code);
-      if(!ex.ok) return json(200,{ok:false,message:"Zoho rejected the code — it may have expired (they last a few minutes) or the scopes were off. Generate a fresh code and try again.",detail:ex.error});
+      if(!ex.ok) return json(200,{ok:false,message:"Zoho rejected the code — it may have expired (they last a few minutes) or the scopes were off. Generate a fresh code and try again.",detail:ex.error==null?ex.error:ZL.scrubString(String(ex.error))});
       await setZohoAuth({ refresh_token:ex.refresh_token, api_domain:ex.api_domain, connected_at:new Date().toISOString() });
       return json(200,{ok:true,message:"Connected to Zoho — refresh token stored securely.",api_domain:ex.api_domain});
     }
 
     if(b.action==="test"){
       const c=await connect();
-      if(!c.ok) return json(200,{ok:false,connected:false,reason:c.reason,message: c.reason==="not_connected" ? "Not connected yet — finish the Self Client step." : "Couldn't refresh the Zoho token — reconnect.",detail:c.error});
+      if(!c.ok) return json(200,{ok:false,connected:false,reason:c.reason,message: c.reason==="not_connected" ? "Not connected yet — finish the Self Client step." : "Couldn't refresh the Zoho token — reconnect.",detail:c.error==null?c.error:ZL.scrubString(String(c.error))});
       const org=await zoho("GET",c.apiDomain,c.token,"/crm/v8/org");
       const mods=await zoho("GET",c.apiDomain,c.token,"/crm/v8/settings/modules");
       const orgName = org.ok && org.json && org.json.org && org.json.org[0] && org.json.org[0].company_name;
@@ -531,5 +531,5 @@ exports.handler = async (event)=>{
     }
 
     return json(400,{error:"unknown action"});
-  }catch(e){ return json(500,{error:String(e.message||e)}); }
+  }catch(e){ return json(500,{error:ZL.scrubString(String(e.message||e))}); }   // 2F-1.1: cleaned like the log
 };

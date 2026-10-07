@@ -159,8 +159,53 @@ const form = o => Object.entries(o).map(([k, v]) => encodeURIComponent(k) + '=' 
     const run = logs(w).find(l => l.entity === 'autosync'); assert.strictEqual(run.result, 'fail'); assert.ok(/token refresh failed: invalid_code/.test(run.detail), run.detail);
   });
 
+  /* ---------------- 2F-1.1 — credential-SHAPED text is masked on every logging path, crashes included ---------------- */
+  const ZTOK = '1000.' + 'a1b2c3d4'.repeat(4) + '.' + '9f8e7d6c'.repeat(4);                  // a Zoho OAuth token's shape
+  const JWT = 'eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.c2lnbmF0dXJlX3ZhbHVl';   // a Supabase key's shape
+  const SBKEY = 'sb_secret_Q1w2E3r4T5y6U7i8';
+  await t('2F-1.1 scrubString: credential-shaped text is masked wherever it appears; business text is untouched', () => {
+    const cases = [
+      ['Authorization: Zoho-oauthtoken ' + ZTOK, ZTOK], ['sent Bearer abcdef0123456789xyz', 'abcdef0123456789xyz'],
+      ['refresh ' + ZTOK + ' expired', ZTOK], ['key ' + JWT + ' leaked', JWT], ['using ' + SBKEY, SBKEY],
+      ['refresh_token=r3fr3sh-value&grant_type=refresh_token', 'r3fr3sh-value'], ['{"access_token":"acc-123456","api_domain":"https://www.zohoapis.com"}', 'acc-123456'],
+      ['password: hunter2xyz', 'hunter2xyz'], ['apikey=k-998877', 'k-998877'], ['client_secret: cs-zzz111', 'cs-zzz111'], ['x-hcps-secret=' + WH_SECRET, WH_SECRET],
+    ];
+    for (const [text, leak] of cases) { const out = ZL.scrubString(text); assert.ok(!out.includes(leak) && out.includes('[redacted]'), text + ' → ' + out); }
+    for (const keep of ['INVALID_DATA: invalid data (api_name Email)', 'token refresh failed: invalid_client (http 400)', 'Call about the Bearer 4-wheel walker; token count 3',
+      '{"token_type":"Bearer","api_domain":"https://www.zohoapis.com"}', 'Zoho connection settings couldn\'t be read: zoho_auth', '{"failures":2,"failures_by_phase":{"contacts":2}}'])
+      assert.strictEqual(ZL.scrubString(keep), keep);
+    // The same masking reaches webhook payloads (redact) and failure rows (failRow).
+    const r = JSON.stringify(ZL.redact({ Description: 'customer pasted password: hunter2xyz here', nested: [{ note: 'Bearer ' + JWT }] }));
+    const row = ZL.failRow({ msg: 'Zoho said Zoho-oauthtoken ' + ZTOK + ' is invalid' }).detail;
+    assert.ok(!r.includes('hunter2xyz') && !r.includes(JWT) && !row.includes(ZTOK), r + ' ' + row);
+  });
+
+  await t('2F-1.1 autosync crash: the run\'s "fail" row and the reply keep the whole reason, with no secret or token in it', async () => {
+    const tail = ' — end of reason';
+    const boom = () => { throw new Error('socket closed after Zoho-oauthtoken ' + ZTOK + ' client_secret=' + CLIENT_SECRET + ' key ' + JWT + ' ' + 'x'.repeat(400) + tail); };
+    const w = W({ zoho: { tokenJson: () => ({ get access_token() { return boom(); } }) } });
+    const res = await autosync(w);
+    assert.strictEqual(res.ok, false); const run = runRow(w); assert.strictEqual(run.result, 'fail');
+    for (const leak of [ZTOK, CLIENT_SECRET, JWT]) assert.ok(!run.detail.includes(leak) && !res.error.includes(leak), 'the crash reason holds ' + leak.slice(0, 10));
+    assert.ok(run.detail.endsWith(tail) && res.error.endsWith(tail), 'the crash reason was cut');
+    assert.ok(!everything(w).includes(CLIENT_SECRET) && !everything(w).includes(ZTOK));
+  });
+
+  await t('2F-1.1 token refresh refused with a reply that echoes a token: the run row says why, token masked', async () => {
+    const w = W({ zoho: { tokenJson: { message: 'invalid refresh_token=' + ZTOK } } }); await autosync(w);
+    const run = runRow(w); assert.strictEqual(run.result, 'fail'); assert.ok(/token refresh failed/.test(run.detail) && !run.detail.includes(ZTOK), run.detail);
+  });
+
   /* ---------------- F9.1 / F9.2 — on-demand actions and scheduling ---------------- */
   const api = (w, action) => call(load('zoho-api.js', w, ENV), { action }, { token: 'pres' });
+  await t('2F-1.1 on-demand crash, connection test and code exchange: no token reaches the reply', async () => {
+    const w = W({ zoho: { tokenJson: () => ({ get access_token() { throw new Error('reset by peer; Authorization: Zoho-oauthtoken ' + ZTOK); } }) } });
+    const r = await api(w, 'sync_contacts'); assert.strictEqual(r.status, 500); assert.ok(r.body.error && !r.body.error.includes(ZTOK), r.body.error);
+    const w2 = W({ zoho: { tokenJson: { message: 'bad refresh_token=' + ZTOK } } }); const s = await api(w2, 'test');
+    assert.strictEqual(s.body.connected, false); assert.ok(s.body.detail && !s.body.detail.includes(ZTOK), s.body.detail);
+    const x = await call(load('zoho-api.js', w2, ENV), { action: 'oauth_exchange', code: '1000.abc' }, { token: 'pres' });
+    assert.strictEqual(x.body.ok, false); assert.ok(x.body.detail && !x.body.detail.includes(ZTOK), x.body.detail);
+  });
   await t('On-demand pushes: every refused record is a failure row; the response counts them and is no longer "ok"', async () => {
     const w = W({ zoho: { batchFail: { Contacts: 400 } } }); const r = await api(w, 'sync_contacts');
     assert.strictEqual(r.body.ok, false); assert.strictEqual(r.body.failed, 4); assert.strictEqual(fails(w).length, 4);

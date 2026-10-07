@@ -208,9 +208,10 @@ function createWorld(seed) {
     // Zoho CRM (Phase 2F): OAuth token + the CRM v8 endpoints the sync uses. seed.zoho = {
     //   modules:{Accounts:[…],Deals:[…],…}  readFail:{Deals:{page,status}}  batchFail:{Contacts:400}
     //   upsert(module, record, i) / deal(method, record) / create(module, record) → a Zoho row or undefined (= SUCCESS)
-    //   tokenFail:true }. Every call is recorded in outbound as {kind:'zoho', method, path, body}.
+    //   tokenFail:true  tokenJson:{…}|()=>{…} (the token endpoint's 200 body) }. Every call is recorded in outbound as {kind:'zoho', method, path, body}.
     if (u.includes('accounts.zoho.com/oauth/v2/token')) {
       const z = seed.zoho || {}; outbound.push({ kind: 'zoho_token' });
+      if (z.tokenJson) return res(200, typeof z.tokenJson === 'function' ? z.tokenJson() : z.tokenJson);   // 2F-1.1: a custom token reply
       return z.tokenFail ? res(400, { error: 'invalid_code' }) : res(200, { access_token: 'zat', api_domain: 'https://www.zohoapis.com' });
     }
     if (u.includes('zohoapis.com/crm/v8/')) {

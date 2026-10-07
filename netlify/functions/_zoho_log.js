@@ -18,9 +18,22 @@ function secrets(){
   return [process.env.ZOHO_WEBHOOK_SECRET, process.env.ZOHO_CLIENT_SECRET, process.env.SUPABASE_SERVICE_ROLE]
     .map(s => String(s || "")).filter(s => s.length >= 6);
 }
+// 2F-1.1: besides this deployment's own secret values, anything SHAPED like a credential is masked
+// wherever it appears in text (error messages, Zoho/database replies, stack traces): an
+// Authorization header value, a Zoho OAuth token (1000.<hex>.<hex>), a JWT (the Supabase keys are
+// JWTs), a Supabase secret key, and the value of any secret/token/password/api-key/authorization
+// pair written as name=value, name: value or "name":"value". Business text is left as it is.
+const SHAPES = [
+  [/\b(Bearer|Basic|Zoho-oauthtoken)\s+[A-Za-z0-9._~+\/=-]{16,}/gi, "$1 " + REDACTED],
+  [/\b1000\.[0-9a-f]{16,}\.[0-9a-f]{16,}\b/gi, REDACTED],
+  [/\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, REDACTED],
+  [/\bsb_(?:secret|publishable)_[A-Za-z0-9_-]{8,}/g, REDACTED],
+  [/(\b[A-Za-z_-]*(?:secret|token|passw(?:or)?d|pwd|api[_-]?key|apikey|authorization)\b)("?\s*[=:]\s*"?)(?!\[redacted\])[^\s&"',;}\]]+/gi, "$1$2" + REDACTED],
+];
 function scrubString(s){
   let out = String(s);
   for(const sec of secrets()) if(out.includes(sec)) out = out.split(sec).join(REDACTED);
+  for(const [re, to] of SHAPES) out = out.replace(re, to);
   return out;
 }
 // Deep copy with credential-named keys removed and secret values masked.

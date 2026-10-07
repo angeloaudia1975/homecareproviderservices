@@ -542,8 +542,12 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   RECORD (entity, entity_id, dealer_id, zoho_id, action; `detail` = JSON {phase, msg, run, …} up to 8000
   chars). `redact()` drops any field named like secret/token/auth/password/api key/signature/cookie and
   masks this deployment's own secret values (webhook secret, Zoho client secret, service key) anywhere in
-  text — the webhook stores and logs only the redacted copy. Nothing may `catch(e){}` around a Zoho read
-  or write: autosync uses its per-run collector (`F.fail`, flushed after each phase) and logs the run
+  text — the webhook stores and logs only the redacted copy. **2F-1.1:** `scrubString()` also masks anything
+  SHAPED like a credential (an Authorization header value, a Zoho OAuth token `1000.<hex>.<hex>`, a JWT, an
+  `sb_secret_` key, and the value of any secret/token/password/api-key/authorization `name=value` /
+  `name: value` / `"name":"value"` pair), and EVERY logging path goes through it — failure rows, the run
+  summary, `console.error`, the autosync crash row (kept whole, up to 8000 chars) and zoho-api's error replies.
+  Nothing may `catch(e){}` around a Zoho read or write: autosync uses its per-run collector (`F.fail`, flushed after each phase) and logs the run
   "partial" when any failure happened; the run's own row is complete JSON with counts
   (`failures`, `failures_by_phase`), never cut. `_zoho.js`: `upsertRecords().failed` lists every refused
   record (a refused batch lists each record in it); `getAllRecords()` sets `.incomplete` when a page

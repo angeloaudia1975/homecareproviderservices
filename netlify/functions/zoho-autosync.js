@@ -241,7 +241,9 @@ async function runInner(runAt){
 exports.handler = async ()=>{
   try{ const res=await run(); return {statusCode:200, headers:{"content-type":"application/json"}, body:JSON.stringify(res)}; }
   catch(e){
-    try{ await logRow({direction:"out",entity:"autosync",action:"run",result:"fail",detail:String(e&&e.message||e).slice(0,300)}); }catch(_){}
-    return {statusCode:200, headers:{"content-type":"application/json"}, body:JSON.stringify({ok:false,error:String(e&&e.message||e)})};
+    // 2F-1.1: the crash reason is cleaned like every other log line (no secret, no token) and kept whole.
+    const msg=ZL.scrubString(failMsg(e)).slice(0,ZL.DETAIL_MAX);
+    try{ await logRow({direction:"out",entity:"autosync",action:"run",result:"fail",detail:msg}); }catch(_){}
+    return {statusCode:200, headers:{"content-type":"application/json"}, body:JSON.stringify({ok:false,error:msg})};
   }
 };
