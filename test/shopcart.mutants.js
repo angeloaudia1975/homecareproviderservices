@@ -15,9 +15,14 @@ const M=[
  ['shop','HCPS orders recorded twice','body:JSON.stringify({action:"create",orders:goldenOrders,dealer})','body:JSON.stringify({action:"create",orders,dealer})'],
  ['shop','golden-only guard dropped','if(goldenOrders.length && AUTH.status===','if(AUTH.status==='],
  ['submit','email sent despite a refused record','    if (res.status === 409 && rec && rec.status === "prices_changed")\n      return json(409','    if (false)\n      return json(409'],
- ['submit','browser prices emailed','  try { orders = applyServerPrices(orders, rec.orders); }','  try { }'],
  ['submit','server subtotal not used','items_subtotal: sub, estimated_total: r2(sub + fee),','items_subtotal: o.items_subtotal, estimated_total: o.estimated_total,'],
  ['submit','no sign-in required','if (!/^Bearer\\s+\\S+/i.test(auth)) return json(401','if (false) return json(401'],
+ ['submit','email before persistence confirmed', 'if (!rec || !Array.isArray(rec.orders) || !rec.orders.length || (rec.status !== "recorded" && rec.status !== "partial"))', 'if (false)'],
+ ['submit','unrecorded orders emailed', 'orders = applyServerPrices(orders.filter((o) => recordedSlugs.has(o.manufacturer_slug)), rec.orders);', 'orders = orders;'],
+ ['submit','no retry', 'attempt < 2 &&', 'attempt < 1 &&'],
+ ['submit','unsent order not flagged', 'if (unsent.length) { try { await callApi', 'if (false) { try { await callApi'],
+ ['shop','partial order clears the whole cart', '(j.not_recorded||[]).forEach(sl=>keep.add(sl));', ''],
+ ['submit','unrecorded order reported as placed', 'const notRecorded = orders.filter((o) => !recordedSlugs.has(o.manufacturer_slug)).map((o) => o.manufacturer_slug);', 'const notRecorded = [];'],
 ];
 let surv=0;
 for(const [w,n,f,t] of M){ const P=w==='shop'?SHOP:SUB; const src=fs.readFileSync(P,'utf8').replace(/\r\n/g,'\n'); const c=src.split(f).length-1; if(c!==1){console.log(`BAD ANCHOR(${c}) ${n}`);surv++;continue;}

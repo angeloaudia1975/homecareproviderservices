@@ -151,7 +151,11 @@ exports.handler = async (event)=>{
       // validate manufacturer slugs against the real table; keep names for the confirmation email
       let known=new Set(), mfrName={};
       try{ const ms=await sb("GET","manufacturers?select=slug,name"); for(const m of (ms||[])){ known.add(m.slug); mfrName[m.slug]=m.name||m.slug; } }catch(e){}
-      let saved=0; const summaries=[]; const slugs=new Set();
+      /* PERSIST FIRST, AND ONLY WHAT PERSISTED COUNTS. An order is recorded with all of its lines
+         or not at all: if its lines cannot be written, the order row is removed again and the
+         order is reported as failed. Nothing downstream (emails, tracking requests) ever sees an
+         order that did not persist. */
+      let saved=0; const summaries=[]; const slugs=new Set(); const failed=[];
       for(const o of orders){
         const slug=o.manufacturer_slug||o.manufacturer||null;
         const cleanSlug=(slug&&known.has(slug))?slug:null;
@@ -170,15 +174,23 @@ exports.handler = async (event)=>{
         };
         let ins;
         try{ ins=await sb("POST","orders",row,{Prefer:"return=representation"}); }
-        catch(e){ continue; }  // best-effort: skip a bad order, keep going
-        const oid=ins&&ins[0]&&ins[0].id; if(!oid) continue;
+        catch(e){ console.error("order insert failed",slug,e&&e.message); failed.push({manufacturer_slug:slug,error:"order_not_recorded"}); continue; }
+        const oid=ins&&ins[0]&&ins[0].id; if(!oid){ failed.push({manufacturer_slug:slug,error:"order_not_recorded"}); continue; }
         const items=(o.items||[]).map(it=>({
           order_id:oid, code:it.code||null, name:it.name||null,
           qty:Math.max(1,Math.round(num(it.qty))||1),
           unit_price:num(it.unit), line_total:Math.round(num(it.unit)*num(it.qty)*100)/100,
         }));
-        if(items.length){ try{ await sb("POST","order_items",items,{Prefer:"return=minimal"}); }catch(e){} }
-        summaries.push({slug:cleanSlug, line:cleanSlug?(mfrName[cleanSlug]||cleanSlug):(slug||"Order"), po:o.po||"", items, subtotal:row.subtotal, order_id:oid});
+        if(items.length){
+          try{ await sb("POST","order_items",items,{Prefer:"return=minimal"}); }
+          catch(e){
+            console.error("order lines failed — order withdrawn",oid,e&&e.message);
+            try{ await sb("DELETE",`orders?id=eq.${encodeURIComponent(oid)}`,null,{Prefer:"return=minimal"}); }
+            catch(e2){ console.error("could not withdraw order without lines",oid,e2&&e2.message); }
+            failed.push({manufacturer_slug:slug,error:"order_not_recorded"}); continue;
+          }
+        }
+        summaries.push({request_slug:slug, slug:cleanSlug, line:cleanSlug?(mfrName[cleanSlug]||cleanSlug):(slug||"Order"), po:o.po||"", items, subtotal:row.subtotal, order_id:oid});
         if(cleanSlug) slugs.add(cleanSlug);
         saved++;
       }
@@ -215,8 +227,20 @@ exports.handler = async (event)=>{
         // commission upload can't see a same-day online order, so this IS the real reset.)
         for(const slug of slugs){ try{ await sb("DELETE",`intent_events?dealer_id=eq.${who.dealer_id}&manufacturer=eq.${encodeURIComponent(slug)}`,null,{Prefer:"return=minimal"}); }catch(e){} }
       }
-      return json(200,{ok:true,saved,orders:summaries.map(su=>({order_id:su.order_id,manufacturer_slug:su.slug,subtotal:su.subtotal,
-        items:su.items.map(it=>({code:it.code,name:it.name,qty:it.qty,unit:it.unit_price,line_total:it.line_total}))}))});
+      const recorded=summaries.map(su=>({order_id:su.order_id,manufacturer_slug:su.request_slug,subtotal:su.subtotal,
+        items:su.items.map(it=>({code:it.code,name:it.name,qty:it.qty,unit:it.unit_price,line_total:it.line_total}))}));
+      if(!saved) return json(503,{ok:false,status:"record_failed",saved:0,failed,orders:[]});
+      return json(200,{ok:!failed.length,status:failed.length?"partial":"recorded",saved,failed,orders:recorded});
+    }
+
+    /* The HCPS notification for a recorded order could not be sent. The order stands; it is
+       flagged where staff work orders (admin_notes, shown in Orders) so it is followed up by hand. */
+    if(b.action==="notification_failed"){
+      const ids=(Array.isArray(b.order_ids)?b.order_ids:[]).map(String).filter(x=>/^[A-Za-z0-9-]{1,64}$/.test(x));
+      if(!ids.length) return json(400,{error:"no order_ids"});
+      const note=`HCPS order email failed to send ${new Date().toISOString()} — order is recorded; notify the manufacturer manually.`;
+      await sb("PATCH",`orders?id=in.(${ids.join(",")})&dealer_id=eq.${encodeURIComponent(who.dealer_id)}`,{admin_notes:note},{Prefer:"return=minimal"});
+      return json(200,{ok:true,flagged:ids.length});
     }
 
     if(b.action==="list"){

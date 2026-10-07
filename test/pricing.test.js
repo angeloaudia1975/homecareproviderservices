@@ -20,8 +20,8 @@ const FILE=()=>({[LINE]:[
   {manufacturer:LINE,code:'C1',name:'Contract item',group:'',base_price:20},
 ]});
 
-function world({files, tables, failRead, fileStatus}){
-  const W=M.createWorld({ tokens:{dealer:'d@x.com'}, failRead,
+function world({files, tables, failRead, failWrite, fileStatus}){
+  const W=M.createWorld({ tokens:{dealer:'d@x.com'}, failRead, failWrite,
     tables:Object.assign({
       app_settings:[{key:'platform_state',value:{mode:'development'}}],
       manufacturers:[{slug:LINE,name:'Ovation Medical'},{slug:'golden-technologies',name:'Golden'}],
@@ -167,6 +167,24 @@ await t('one code in two families is priced by the family the dealer chose, neve
   eq(item(r,'SR3').unit,200,'RR family'); eq(r.body.changed,false,'unchanged');
   const r2=await call(C,{action:'price_check',orders:[order([{code:'SR3',qty:1,unit:100}])]});
   eq(item(r2,'SR3').available,false,'ambiguous without a family');
+});
+await t('an order whose lines cannot be written is withdrawn — never recorded half, never confirmed',async()=>{
+  const W=world({failWrite:(m,t)=>m==='POST'&&t==='order_items'?500:0}); const C=mod(W);
+  const c=await call(C,{action:'create',orders:[order([{code:'A1',qty:1,unit:50}])],dealer:{email:'d@x.com'}});
+  eq(c.status,503,'refused'); eq(c.body.status,'record_failed','reason'); eq(W.db.orders.length,0,'order row withdrawn');
+  eq(W.db.tracking_requests.length,0,'no tracking request'); ok(!W.calls.some(x=>/resend/.test(x.url)),'no confirmation email');
+});
+await t('one manufacturer failing to record does not hide the ones that did',async()=>{
+  let n=0; const W=world({failWrite:(m,t)=>m==='POST'&&t==='order_items'&&(n++===1)?500:0}); const C=mod(W);
+  W.db.manufacturers.push({slug:'other-line',name:'Other'});
+  const c=await call(C,{action:'create',orders:[order([{code:'A1',qty:1,unit:50}]),{manufacturer_slug:'golden-technologies',po:'G',items:[{code:'G1',qty:1,unit:5}],items_subtotal:5}],dealer:{}});
+  eq([c.status,c.body.status,c.body.saved],[200,'partial',1],'partial'); eq(c.body.failed.map(f=>f.manufacturer_slug),['golden-technologies'],'which failed');
+  eq(c.body.orders.map(o=>o.manufacturer_slug),[LINE],'which recorded'); eq(W.db.orders.length,1,'one row');
+});
+await t('a failed HCPS notification flags the dealer\'s own recorded order, and nobody else\'s',async()=>{
+  const W=world({tables:{orders:[{id:'o1',dealer_id:'d1'},{id:'o2',dealer_id:'zz'}]}}); const C=mod(W);
+  const r=await call(C,{action:'notification_failed',order_ids:['o1','o2']});
+  eq(r.status,200,'ok'); ok(/email failed/.test(W.db.orders[0].admin_notes||''),'own order flagged'); eq(W.db.orders[1].admin_notes,undefined,'other dealer untouched');
 });
 await t('an unauthenticated caller gets nothing priced',async()=>{
   const W=world({}); const C=mod(W);

@@ -21,6 +21,10 @@ const M=[
  ['orders-api.js','create stores browser prices', '      orders=priced.orders;', ''],
  ['orders-api.js','pricing failure ignored in create', 'catch(e){ console.error("order pricing failed",e&&e.message); return json(503', 'catch(e){ priced={changed:false,orders}; } if(0) return json(503'],
  ['orders-api.js','stored subtotal from browser', 'o.estimated_total):num(o.subtotal),', 'o.estimated_total):num(o.items_subtotal),'],
+ ['orders-api.js','order kept without its lines', 'try{ await sb("DELETE",`orders?id=eq.${encodeURIComponent(oid)}`,null,{Prefer:"return=minimal"}); }', 'try{ }'],
+ ['orders-api.js','failed lines still confirmed', 'failed.push({manufacturer_slug:slug,error:"order_not_recorded"}); continue;\n          }', '}'],
+ ['orders-api.js','nothing saved reported as success', 'if(!saved) return json(503,{ok:false,status:"record_failed"', 'if(false) return json(503,{ok:false,status:"record_failed"'],
+ ['orders-api.js','flag ignores dealer scope', '&dealer_id=eq.${encodeURIComponent(who.dealer_id)}`,{admin_notes:note}', '`,{admin_notes:note}'],
 ];
 let surv=0;
 for(const [file,n,f,t] of M){ const src=fs.readFileSync(A+'/'+file,'utf8').replace(/\r\n/g,'\n'); const c=src.split(f).length-1; if(c!==1){console.log(`BAD ANCHOR(${c}) ${n}`);surv++;continue;}

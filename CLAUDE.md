@@ -627,6 +627,13 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   what the dealer reviewed, saves nothing and returns 409 `prices_changed` with the new prices for
   review. Only a recorded order is emailed to HCPS, and the email carries the recorded prices.
   Golden orders are priced by Golden and pass through untouched.
+- **Validate → persist → notify (orders).** The recorded order is the proof that an order exists,
+  never an email. An order is recorded with all of its lines or not at all (lines that fail to
+  write withdraw the order row). No email of any kind (HCPS, dealer confirmation, tracking request)
+  goes out for an order that did not persist. A notification that fails AFTER a successful record
+  is retried once, then the order is flagged in `admin_notes` for staff — a valid order is never
+  rolled back because an email provider failed. When one manufacturer's order fails to record,
+  only the recorded ones are emailed; the failed one stays in the dealer's cart.
 - **One image authority (Phase 2.4).** A product's photos live on its enrichment page:
   `images_gallery` is ordered with exactly one `primary`, and `product_content.image` is always that
   primary (normalised on every save). A SKU that genuinely needs its own photo uses

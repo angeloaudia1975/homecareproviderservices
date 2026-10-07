@@ -29,18 +29,19 @@ const FILE={[LINE]:[
   {manufacturer:LINE,code:'A1',name:'Standard item',group:'',base_price:50},
   {manufacturer:LINE,code:'B1',name:'Boot S',group:'Boot',base_price:50,tiers:TIERS},
   {manufacturer:LINE,code:'B2',name:'Boot M',group:'Boot',base_price:50,tiers:TIERS},
-  {manufacturer:LINE,code:'C1',name:'Contract item',group:'',base_price:20}]};
+  {manufacturer:LINE,code:'C1',name:'Contract item',group:'',base_price:20}],
+  'other-line':[{manufacturer:'other-line',code:'Z1',name:'Other item',group:'',base_price:10}]};
 
 function env(opts){
   opts=opts||{};
-  const W=M.createWorld({failRead:(t)=>(opts.failMeta||(opts.state&&opts.state.failMeta))&&t==='manufacturer_meta'?500:0, tables:{
+  const W=M.createWorld({failRead:(t)=>(opts.failMeta||(opts.state&&opts.state.failMeta))&&t==='manufacturer_meta'?500:0, failWrite:(m,t,b)=>m==='POST'&&t==='order_items'&&(opts.failItems||(opts.failItemsFor&&[].concat(b)[0].code===opts.failItemsFor))?500:0, tables:{
     app_settings:[{key:'platform_state',value:{mode:'development'}}],
-    manufacturers:[{slug:LINE,name:'Ovation Medical'},{slug:'golden-technologies',name:'Golden'}], manufacturer_meta:[{slug:LINE}],
+    manufacturers:[{slug:LINE,name:'Ovation Medical'},{slug:'golden-technologies',name:'Golden'},{slug:'other-line',name:'Other'}], manufacturer_meta:[{slug:LINE},{slug:'other-line'}],
     dealers:[{id:'d1',parent_id:null,is_test:true}], dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}],
     dealer_contract_prices:[{dealer_id:'d1',manufacturer:LINE,code:'C1',price:17,active:true}],
     product_overrides:[], custom_products:[], product_images:[], product_links:[], product_media:[], product_content:[], product_skus:[],
     orders:[], order_items:[], tracking_requests:[], email_sends:[], intent_events:[], email_attribution:[]}});
-  const emails=[], hits={price_check:0,create:0,submit:0};
+  const emails=[], allMail=[], hits={price_check:0,create:0,submit:0};
   const inner=W.fetch;
   let ordersApi, submitFn;
   const router=async(url,o)=>{
@@ -57,7 +58,7 @@ function env(opts){
       const slug=decodeURIComponent(u.slice((OB+(content?'/data/content/':'/data/')).length).replace(/\.json.*$/,''));
       if(content||!(slug in FILE)) return {ok:false,status:404,json:async()=>null};
       return {ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(FILE[slug]))}; }
-    if(u.startsWith('https://api.resend.com')){ const m=JSON.parse(o.body); if(/^New order/.test(m.subject)) emails.push(m); return {ok:opts.emailFails?false:true,status:opts.emailFails?500:200,json:async()=>({id:'m'})}; }
+    if(u.startsWith('https://api.resend.com')){ const m=JSON.parse(o.body); allMail.push(m); if(/^New order/.test(m.subject)) emails.push(m); return {ok:opts.emailFails?false:true,status:opts.emailFails?500:200,json:async()=>({id:'m'})}; }
     return inner(url,o);
   };
   W.fetch=router;
@@ -81,7 +82,7 @@ function env(opts){
   const prod=(code,x)=>Object.assign(JSON.parse(JSON.stringify(FILE[LINE].find(p=>p.code===code))),x||{});
   const add=(code,qty,x)=>{ const p=prod(code,x); CART.set(LINE+'::'+code,{p,qty}); MFR[LINE]={po:'PO-7',notes:''}; return p; };
   const setPrice=(code,patch)=>{ W.db.product_overrides=W.db.product_overrides.filter(o=>o.code!==code); W.db.product_overrides.push({manufacturer:LINE,code,patch}); };
-  return {W,page,CART,MFR,AUTH,toasts,emails,hits,add,setPrice,btn};
+  return {W,page,CART,MFR,AUTH,toasts,emails,allMail,hits,add,setPrice,btn,ordersApi:()=>ordersApi};
 }
 const saved=items=>({items,mfr:{[LINE]:{po:'PO-7',notes:''}}});
 const settle=async()=>{ for(let i=0;i<20;i++) await tick(); };
@@ -141,12 +142,18 @@ await t('price change between review and checkout: nothing is submitted until th
   eq((await E.page.serverPriceCheck()).changed,false,'reviewed at 50');
   E.setPrice('A1',{base_price:52});
   await E.page.submitOrder();
-  eq([E.hits.submit,E.W.db.orders.length,E.emails.length],[0,0,0],'nothing submitted, recorded or emailed');
+  eq([E.hits.submit,E.W.db.orders.length,E.allMail.length],[0,0,0],'nothing submitted, recorded or emailed (no HCPS, dealer or tracking mail)');
   ok(E.toasts.some(m=>/Prices changed/.test(m)),'dealer told'); ok(/\$50\.00.*\$52\.00/.test(E.page.priceNoteHtml(E.CART.get(LINE+'::A1').p)),'line shows old → new');
   eq(E.CART.size,1,'cart kept for review');
   await E.page.submitOrder();
   eq(E.W.db.order_items.map(i=>[i.unit_price,i.line_total]),[[52,104]],'submitted at the reviewed price');
   ok(/\$52\.00/.test(E.emails[0].html),'email at 52');
+  eq([E.W.db.orders.length,E.emails.length],[1,1],'exactly one order and one HCPS notification');
+  const hist=await M.call(E.ordersApi(),{action:'list'},{headers:{authorization:'Bearer jwt'}});
+  /* (the in-memory fake does not embed order_items, so the lines are joined from the table) */
+  const H=hist.body.orders; eq(H.length,1,'one order in history');
+  eq([H[0].subtotal,E.W.db.order_items.filter(x=>x.order_id===H[0].id).map(x=>[x.code,x.unit_price,x.line_total])],[104,[['A1',52,104]]],'order history = stored order');
+  ok(/\$104\.00/.test(E.emails[0].html)&&/\$52\.00/.test(E.emails[0].html),'email = order history');
 });
 await t('a price change in the last moment (after the check, before the record) is refused by the server, not emailed',async()=>{
   let armed=true;
@@ -190,6 +197,21 @@ await t('if only the HCPS email fails, the order stands at the server price and 
   const E=env({emailFails:true}); E.add('A1',1);
   await E.page.submitOrder();
   eq(E.W.db.order_items.map(i=>i.unit_price),[50],'recorded'); ok(E.toasts.some(m=>/recorded/.test(m)),'told'); eq(E.CART.size,0,'not resubmittable twice');
+  eq(E.emails.length,2,'the HCPS email was retried once');
+  ok(/HCPS order email failed/.test(E.W.db.orders[0].admin_notes||''),'the recorded order is flagged for staff');
+});
+await t('when one manufacturer\'s order cannot be recorded, only the recorded one is emailed and leaves the cart',async()=>{
+  const E=env({failItemsFor:'Z1'}); E.add('A1',1);
+  E.CART.set('other-line::Z1',{p:{manufacturer:'other-line',code:'Z1',name:'Other item',group:'',base_price:10},qty:1}); E.MFR['other-line']={po:'PO-9',notes:''};
+  await E.page.submitOrder();
+  eq(E.W.db.orders.map(o=>o.manufacturer),[LINE],'only Ovation recorded'); eq(E.emails.length,1,'only Ovation emailed');
+  eq([...E.CART.keys()],['other-line::Z1'],'the unrecorded order stays in the cart'); ok(E.toasts.some(m=>/could not be recorded/.test(m)),'told');
+});
+await t('if the order cannot be persisted, no order email of any kind is sent and the cart is kept',async()=>{
+  const E=env({failItems:true}); E.add('A1',1);
+  await E.page.submitOrder();
+  eq([E.W.db.orders.length,E.W.db.order_items.length,E.allMail.length,E.CART.size],[0,0,0,1],'nothing persisted, nothing sent, cart kept');
+  ok(E.toasts.some(m=>/nothing was submitted|nothing was placed/i.test(m)),'told: '+E.toasts.join(' | '));
 });
 console.log(`\nshop cart: ${pass} passed, ${fail} failed`); process.exitCode=fail?1:0;
 })();
