@@ -72,8 +72,10 @@ async function ensureTextField(apiDomain, token, module, label, length){
 
 // Upsert records into a module, matched by duplicate_check_fields. records = [{key, record}]
 // where key is our own id (so we can map key -> Zoho id afterward for associations). Chunks of 100.
+// `errors` keeps the first 8 (as before); `failed` (Phase 2F-1) lists EVERY record Zoho didn't take,
+// by our key, with Zoho's code, message and details — a whole-batch refusal lists each record in it.
 async function upsertRecords(apiDomain, token, module, records, dupFields){
-  const out = { processed:0, inserted:0, updated:0, errors:[], idByKey:{} };
+  const out = { processed:0, inserted:0, updated:0, errors:[], failed:[], idByKey:{} };
   for(let i=0;i<records.length;i+=100){
     const chunk = records.slice(i, i+100);
     const r = await zoho("POST", apiDomain, token, `/crm/v8/${encodeURIComponent(module)}/upsert`,
@@ -84,22 +86,38 @@ async function upsertRecords(apiDomain, token, module, records, dupFields){
           out.processed++; if(row.action==="insert") out.inserted++; else out.updated++;
           const key = chunk[idx] && chunk[idx].key, id = row.details && row.details.id;
           if(key && id) out.idByKey[key] = id;
-        } else if(out.errors.length<8){ out.errors.push({ code:row&&row.code, message:row&&row.message }); }
+        } else {
+          if(out.errors.length<8){ out.errors.push({ code:row&&row.code, message:row&&row.message }); }
+          out.failed.push({ key: chunk[idx] && chunk[idx].key, code: row && row.code || null, message: row && row.message || "not accepted", details: row && row.details || null });
+        }
       });
-    } else out.errors.push({ batch:i/100, status:r.status, message:(r.json && JSON.stringify(r.json).slice(0,200)) || "error" });
+      // A record Zoho answered nothing for is a failure too.
+      for(let k=r.json.data.length;k<chunk.length;k++) out.failed.push({ key: chunk[k].key, code:null, message:"no result returned for this record", details:null });
+    } else {
+      out.errors.push({ batch:i/100, status:r.status, message:(r.json && JSON.stringify(r.json).slice(0,200)) || "error" });
+      const why = (r.json && JSON.stringify(r.json)) || ("http "+r.status);
+      for(const x of chunk) out.failed.push({ key:x.key, code:"BATCH_REJECTED", message:"the whole batch of "+chunk.length+" was refused (http "+r.status+")", details:why });
+    }
   }
   return out;
 }
 
 // Read all records of a module (paginated, 200/page) with the given comma-separated fields.
+// Phase 2F-1: a read that stopped early is no longer silent — the returned array carries
+// `incomplete` ({module, page, status, message}) when a page failed or the page cap was hit.
+// (Zoho answers 204 with no body for an empty module: that is complete, not a failure.)
 async function getAllRecords(apiDomain, token, module, fields){
   const out=[]; let page=1;
   for(;;){
     const r = await zoho("GET", apiDomain, token, `/crm/v8/${encodeURIComponent(module)}?fields=${encodeURIComponent(fields)}&per_page=200&page=${page}`);
-    if(!r.ok || !r.json || !Array.isArray(r.json.data)) break;
+    if(r.status===204) break;
+    if(!r.ok || !r.json || !Array.isArray(r.json.data)){
+      out.incomplete = { module, page, status:r.status, message:(r.json && JSON.stringify(r.json).slice(0,1000)) || ("http "+r.status), records_read:out.length };
+      break;
+    }
     out.push(...r.json.data);
     if(!(r.json.info && r.json.info.more_records)) break;
-    page++; if(page>60) break;   // safety cap
+    page++; if(page>60){ out.incomplete = { module, page, status:null, message:"stopped at the 60-page safety cap", records_read:out.length }; break; }
   }
   return out;
 }

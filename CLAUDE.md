@@ -537,6 +537,19 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   period. "Possible order match" = same dealer + same manufacturer (the deal's known slug, or a line equal
   to exactly one manufacturer) + a portal order / sales-report line within 120 days AFTER creation (a
   month-only sales line must be a later month) — never called attribution. Off → the Phase 1 Pipeline page.
+- **Zoho sync failures are recorded, secrets never stored (2F-1).** `_zoho_log.js` is the one way the Zoho
+  sync records a problem: `failRow()` → a `zoho_sync_log` row with `result:"fail"`, ONE ROW PER FAILED
+  RECORD (entity, entity_id, dealer_id, zoho_id, action; `detail` = JSON {phase, msg, run, …} up to 8000
+  chars). `redact()` drops any field named like secret/token/auth/password/api key/signature/cookie and
+  masks this deployment's own secret values (webhook secret, Zoho client secret, service key) anywhere in
+  text — the webhook stores and logs only the redacted copy. Nothing may `catch(e){}` around a Zoho read
+  or write: autosync uses its per-run collector (`F.fail`, flushed after each phase) and logs the run
+  "partial" when any failure happened; the run's own row is complete JSON with counts
+  (`failures`, `failures_by_phase`), never cut. `_zoho.js`: `upsertRecords().failed` lists every refused
+  record (a refused batch lists each record in it); `getAllRecords()` sets `.incomplete` when a page
+  failed or the 60-page cap was hit. On-demand actions in `zoho-api.js` and scheduling's Zoho task/lead
+  calls log the same rows; responses carry `failed` and `zoho_read_incomplete`. Sync behaviour (what is
+  sent to Zoho, what is written to HCPS, ordering, the webhook's queue write) is unchanged by 2F-1.
 - **Account class (Phase 2 add-on, `dealers.account_class`).** One optional label per account, set by
   President/Admin only (`dealers-api set_account_class`; Edit company info on Dealer 360): dealer, prospect,
   manufacturer, vendor, service_provider, internal, other, not_relevant. It decides ONE thing — Morning Brief

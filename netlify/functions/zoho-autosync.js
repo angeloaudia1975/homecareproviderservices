@@ -15,6 +15,9 @@
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const { accessToken, zoho, upsertRecords, getAllRecords } = require("./_zoho.js");
+// Phase 2F-1: every step that used to swallow an error records a failure row (one per record)
+// and the run is logged "partial". Sync behaviour itself is unchanged.
+const ZL = require("./_zoho_log.js");
 
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}`); return r.json(); }
@@ -43,17 +46,34 @@ function hashOf(obj){
 }
 function prune(rec){ Object.keys(rec).forEach(k=>rec[k]===undefined&&delete rec[k]); return rec; }
 
-async function getZohoAuth(){ try{ const rows=await sbGet("app_settings?key=eq.zoho_auth&select=value"); return (rows&&rows[0]&&rows[0].value)||null; }catch(e){ return null; } }
-async function getHashes(){ try{ const rows=await sbGet("app_settings?key=eq.zoho_push_hashes&select=value"); return (rows&&rows[0]&&rows[0].value)||{}; }catch(e){ return {}; } }
-async function setHashes(v){ try{ await sbSend("POST","app_settings?on_conflict=key",{key:"zoho_push_hashes",value:v,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); }catch(e){} }
-async function stampSync(k){ try{ const rows=await sbGet("app_settings?key=eq.zoho_sync&select=value"); const v=(rows&&rows[0]&&rows[0].value)||{}; v[k]=new Date().toISOString(); await sbSend("POST","app_settings?on_conflict=key",{key:"zoho_sync",value:v,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); }catch(e){} }
-async function logRow(row){ try{ await sbSend("POST","zoho_sync_log",row,{Prefer:"return=minimal"}); }catch(e){} }
+// F (the run's failure collector) is set by run(); helpers report into it when one exists.
+let F=null;
+const failMsg=e=>String((e&&e.message)||e);
+async function getZohoAuth(){ try{ const rows=await sbGet("app_settings?key=eq.zoho_auth&select=value"); return (rows&&rows[0]&&rows[0].value)||null; }
+  catch(e){ if(F) F.fail({phase:"auth_read",entity:"zoho_auth",action:"read",msg:failMsg(e)}); return null; } }
+async function getHashes(){ try{ const rows=await sbGet("app_settings?key=eq.zoho_push_hashes&select=value"); return (rows&&rows[0]&&rows[0].value)||{}; }
+  catch(e){ if(F) F.fail({phase:"hashes_read",entity:"sync_state",action:"read",msg:"push fingerprints couldn't be read, so every record counts as changed this run: "+failMsg(e)}); return {}; } }
+async function setHashes(v){ try{ await sbSend("POST","app_settings?on_conflict=key",{key:"zoho_push_hashes",value:v,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
+  catch(e){ if(F) F.fail({phase:"hashes_write",entity:"sync_state",action:"write",msg:"push fingerprints weren't saved, so this run's records will be pushed again: "+failMsg(e)}); } }
+async function stampSync(k){ try{ const rows=await sbGet("app_settings?key=eq.zoho_sync&select=value"); const v=(rows&&rows[0]&&rows[0].value)||{}; v[k]=new Date().toISOString(); await sbSend("POST","app_settings?on_conflict=key",{key:"zoho_sync",value:v,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
+  catch(e){ if(F) F.fail({phase:"stamp",entity:"sync_state",action:"write",msg:"last-sync time not saved ("+k+"): "+failMsg(e)}); } }
+async function logRow(row){ try{ await sbSend("POST","zoho_sync_log",row,{Prefer:"return=minimal"}); }catch(e){ console.error("zoho_sync_log write failed:", ZL.scrubString(failMsg(e))); } }
+// A Zoho read that came back incomplete (see _zoho.js getAllRecords) — recorded, the run carries on as before.
+function readCheck(list, phase){ if(list && list.incomplete && F) F.fail({phase,entity:String(list.incomplete.module||"zoho").toLowerCase(),action:"read",msg:"Zoho read stopped early: "+list.incomplete.message,extra:{page:list.incomplete.page,status:list.incomplete.status,records_read:list.incomplete.records_read}}); return list||[]; }
+// Every record a Zoho upsert refused, one failure row each.
+function upsertFails(res, phase, entity, idOf){ for(const f of ((res&&res.failed)||[])){ const id=idOf(f.key); F.fail({phase,entity,entity_id:id.entity_id,dealer_id:id.dealer_id||null,action:"push",msg:(f.code?f.code+": ":"")+(f.message||"not accepted"),extra:{zoho_details:f.details||null}}); } }
 
 async function run(){
+  const runAt=new Date().toISOString();
+  F=ZL.collector({run:runAt});
+  try{ return await runInner(runAt); }
+  finally{ try{ await F.flush(); }catch(e){} F=null; }
+}
+async function runInner(runAt){
   const cfg=await getZohoAuth();
-  if(!cfg||!cfg.refresh_token){ await logRow({direction:"out",entity:"autosync",action:"run",result:"skip",detail:"not connected"}); return {ok:false,reason:"not_connected"}; }
+  if(!cfg||!cfg.refresh_token){ await F.flush(); await logRow({direction:"out",entity:"autosync",action:"run",result:F.count()?"fail":"skip",detail:F.count()?"Zoho connection settings couldn't be read":"not connected"}); return {ok:false,reason:F.count()?"auth_read":"not_connected"}; }
   const at=await accessToken(cfg.refresh_token);
-  if(!at||!at.ok){ await logRow({direction:"out",entity:"autosync",action:"run",result:"fail",detail:"token refresh failed"}); return {ok:false,reason:"token"}; }
+  if(!at||!at.ok){ await logRow({direction:"out",entity:"autosync",action:"run",result:"fail",detail:ZL.scrubString("token refresh failed"+(at&&at.error?": "+at.error:"")+(at&&at.status?" (http "+at.status+")":""))}); return {ok:false,reason:"token"}; }
   const apiDomain=(cfg.api_domain||at.api_domain||"https://www.zohoapis.com").replace(/\/+$/,"");
   const token=at.access_token;
 
@@ -62,7 +82,8 @@ async function run(){
 
   // Cache Zoho Account ids by name (needed to LINK contacts + deals to their account). One read.
   const acctIdByName={};
-  try{ const accts=await getAllRecords(apiDomain,token,"Accounts","Account_Name"); for(const a of (accts||[])){ if(a.Account_Name) acctIdByName[String(a.Account_Name)]=a.id; } }catch(e){}
+  try{ const accts=readCheck(await getAllRecords(apiDomain,token,"Accounts","Account_Name"),"accounts_read"); for(const a of (accts||[])){ if(a.Account_Name) acctIdByName[String(a.Account_Name)]=a.id; } }
+  catch(e){ F.fail({phase:"accounts_read",entity:"accounts",action:"read",msg:"Zoho Accounts couldn't be read (contacts and deals go out without their account link): "+failMsg(e)}); }
 
   // ---- OUTBOUND: dealers -> Accounts (changed only, matched on Account_Name) ----
   try{
@@ -78,40 +99,42 @@ async function run(){
     if(changed.length){
       const res=await upsertRecords(apiDomain,token,"Accounts",changed,["Account_Name"]);
       for(const c of changed){ const id=res.idByKey[c.key]; if(id){ next[c.key]=c._h; summary.accounts.ok++; if(c.record.Account_Name) acctIdByName[c.record.Account_Name]=id; } }
-      if(res.errors.length) summary.errors.push({phase:"accounts",errs:res.errors.slice(0,2)});
+      upsertFails(res,"accounts","dealer",k=>({entity_id:String(k||"").replace(/^acct:/,""),dealer_id:String(k||"").replace(/^acct:/,"")}));
       await setHashes(next);   // persist progress before the next (heavier) phase
     }
   }catch(e){ summary.errors.push({phase:"accounts",msg:String(e.message||e)}); }
+  await F.flush();
 
   // ---- OUTBOUND: dealer people -> Contacts (changed only, matched on Email, linked to Account) ----
   try{
     const dealers=await sbGetAll("dealers?select=id,business_name,contact_name,email","id");
     const nameByDealer={}; for(const d of dealers) nameByDealer[String(d.id)]=(clean(d.business_name)||("Dealer "+d.id)).slice(0,255);
     const people=[];
-    const dc=await sbGetAll("dealer_contacts?select=id,dealer_id,name,email,phone,title","id").catch(()=>[]);
+    const dc=await sbGetAll("dealer_contacts?select=id,dealer_id,name,email,phone,title","id").catch(e=>{ F.fail({phase:"contacts_read",entity:"contacts",action:"read",msg:"HCPS contacts couldn't be read (only dealers' main emails were considered): "+failMsg(e)}); return []; });
     for(const x of (dc||[])){ const email=clean(x.email); if(!email||!EMAIL_RE.test(email)) continue; const nm=splitName(x.name); people.push({dealer_id:String(x.dealer_id), email, first:nm.first, last:nm.last, phone:clean(x.phone), title:clean(x.title)}); }
     for(const d of dealers){ const email=clean(d.email); if(!email||!EMAIL_RE.test(email)) continue; const nm=splitName(d.contact_name); people.push({dealer_id:String(d.id), email, first:nm.first, last:nm.last}); }
     const seen=new Set(), uniq=[];
     for(const p of people){ const k=p.email.toLowerCase(); if(seen.has(k)) continue; seen.add(k); uniq.push(p); }
-    const changed=[];
+    const changed=[], dealerOfKey={};
     for(const p of uniq){
       const company=nameByDealer[p.dealer_id]||"";
       const rec=prune({ Last_Name:(p.last||p.first||company||"Contact").slice(0,80), First_Name:clean(p.first), Email:p.email, Phone:clean(p.phone), Title:clean(p.title) });
       const key="contact:"+p.email.toLowerCase(), h=hashOf({...rec, _company:company});
-      if(hashes[key]!==h){ const acctId=acctIdByName[company]; const record={...rec}; if(acctId) record.Account_Name={id:acctId}; changed.push({key, record, _h:h}); }
+      if(hashes[key]!==h){ const acctId=acctIdByName[company]; const record={...rec}; if(acctId) record.Account_Name={id:acctId}; changed.push({key, record, _h:h}); dealerOfKey[key]=p.dealer_id; }
     }
     summary.contacts.changed=changed.length;
     if(changed.length){
       const res=await upsertRecords(apiDomain,token,"Contacts",changed,["Email"]);
       for(const c of changed){ if(res.idByKey[c.key]){ next[c.key]=c._h; summary.contacts.ok++; } }
-      if(res.errors.length) summary.errors.push({phase:"contacts",errs:res.errors.slice(0,2)});
+      upsertFails(res,"contacts","contact",k=>({entity_id:String(k||"").replace(/^contact:/,""),dealer_id:dealerOfKey[k]||null}));
       await setHashes(next);
     }
   }catch(e){ summary.errors.push({phase:"contacts",msg:String(e.message||e)}); }
+  await F.flush();
 
   // ---- OUTBOUND: pipeline -> Deals (changed only; PUT when we already know the Zoho Deal id) ----
   try{
-    const opps=await sbGetAll("opportunities?select=id,dealer_id,title,line,stage,value,expected_close,zoho_id","id").catch(()=>[]);
+    const opps=await sbGetAll("opportunities?select=id,dealer_id,title,line,stage,value,expected_close,zoho_id","id").catch(e=>{ F.fail({phase:"opps_read",entity:"opportunities",action:"read",msg:"HCPS deals couldn't be read, so none were pushed: "+failMsg(e)}); return []; });
     const dealers=await sbGetAll("dealers?select=id,business_name","id"); const nameById={}; for(const d of dealers) nameById[d.id]=(clean(d.business_name)||("Dealer "+d.id)).slice(0,255);
     const today=new Date().toISOString().slice(0,10);
     for(const o of opps){
@@ -125,19 +148,23 @@ async function run(){
       if(o.zoho_id){ r=await zoho("PUT",apiDomain,token,"/crm/v8/Deals",{data:[{id:o.zoho_id,...body}]}); }
       else { r=await zoho("POST",apiDomain,token,"/crm/v8/Deals",{data:[body]}); }
       const row=r.ok&&r.json&&Array.isArray(r.json.data)&&r.json.data[0];
-      if(row&&row.code==="SUCCESS"){ next[key]=h; summary.opportunities.ok++; if(!o.zoho_id){ const id=row.details&&row.details.id; if(id){ try{ await sbSend("PATCH",`opportunities?id=eq.${encodeURIComponent(o.id)}`,{zoho_id:id},{Prefer:"return=minimal"}); }catch(e){} } } }
-      else if(summary.errors.length<8){ summary.errors.push({phase:"opps",opp:o.id,msg:(r.json&&JSON.stringify(r.json).slice(0,120))||("http "+r.status)}); }
+      if(row&&row.code==="SUCCESS"){ next[key]=h; summary.opportunities.ok++; if(!o.zoho_id){ const id=row.details&&row.details.id;
+          if(id){ try{ await sbSend("PATCH",`opportunities?id=eq.${encodeURIComponent(o.id)}`,{zoho_id:id},{Prefer:"return=minimal"}); }
+            catch(e){ F.fail({phase:"opps_zoho_id",entity:"opportunity",entity_id:o.id,dealer_id:o.dealer_id,zoho_id:id,action:"write",msg:"the new Zoho Deal id wasn't saved on the HCPS deal — the next run would create the deal in Zoho again: "+failMsg(e)}); } }
+          else F.fail({phase:"opps_zoho_id",entity:"opportunity",entity_id:o.id,dealer_id:o.dealer_id,action:"push",msg:"Zoho created the deal but returned no id"}); } }
+      else F.fail({phase:"opps",entity:"opportunity",entity_id:o.id,dealer_id:o.dealer_id,zoho_id:o.zoho_id||null,action:"push",msg:(row&&row.code?row.code+": "+(row.message||""):"http "+r.status),extra:{zoho:r.json||null}});
     }
     summary.opportunities.changed=summary.opportunities.ok;
     await setHashes(next);
   }catch(e){ summary.errors.push({phase:"opps",msg:String(e.message||e)}); }
+  await F.flush();
 
   // ---- INBOUND: Zoho Deal stage/amount/close -> linked opportunities (Zoho owns pipeline moves) ----
   try{
-    const opps=await sbGetAll("opportunities?select=id,zoho_id,stage,value,expected_close&zoho_id=not.is.null","id").catch(()=>[]);
+    const opps=await sbGetAll("opportunities?select=id,zoho_id,stage,value,expected_close&zoho_id=not.is.null","id").catch(e=>{ F.fail({phase:"pull_read",entity:"opportunities",action:"read",msg:"HCPS linked deals couldn't be read, so nothing was pulled: "+failMsg(e)}); return []; });
     if(opps.length){
       const byZoho={}; for(const o of opps) byZoho[o.zoho_id]=o;
-      const deals=await getAllRecords(apiDomain,token,"Deals","Deal_Name,Stage,Amount,Closing_Date,Modified_Time");
+      const deals=readCheck(await getAllRecords(apiDomain,token,"Deals","Deal_Name,Stage,Amount,Closing_Date,Modified_Time"),"pull_read");
       for(const d of (deals||[])){ const o=byZoho[d.id]; if(!o) continue;
         const mapped=ZOHO_TO_STAGE[d.Stage]||null; const patch={};
         if(mapped && mapped!==o.stage) patch.stage=mapped;
@@ -146,11 +173,13 @@ async function run(){
         if(Object.keys(patch).length){
           if(patch.stage){ patch.status=patch.stage==="won"?"won":patch.stage==="lost"?"lost":"open"; const P={identified:0.1,contacted:0.3,quoted:0.6,won:1,lost:0}; patch.probability=P[patch.stage]; }
           patch.updated_at=new Date().toISOString();
-          try{ await sbSend("PATCH",`opportunities?id=eq.${encodeURIComponent(o.id)}`,patch,{Prefer:"return=minimal"}); summary.deals_pulled++; }catch(e){}
+          try{ await sbSend("PATCH",`opportunities?id=eq.${encodeURIComponent(o.id)}`,patch,{Prefer:"return=minimal"}); summary.deals_pulled++; }
+          catch(e){ F.fail({phase:"pull_deals",entity:"opportunity",entity_id:o.id,zoho_id:d.id,direction:"in",action:"pull",msg:"a Zoho change couldn't be saved on the HCPS deal: "+failMsg(e),extra:{fields:Object.keys(patch)}}); }
         }
       }
     }
   }catch(e){ summary.errors.push({phase:"pull_deals",msg:String(e.message||e)}); }
+  await F.flush();
 
   // ---- INBOUND webhook queue: process the real-time Zoho change events captured by zoho-webhook.js.
   // Ownership-safe: we NEVER overwrite Dealer-360-owned profile fields from here. For each event we
@@ -161,11 +190,11 @@ async function run(){
   // then mark the queue row done so it never re-processes. Bounded per run to stay well inside the
   // function budget; leftover rows drain on the next heartbeat.
   try{
-    const pend=await sbGetAll("zoho_sync_queue?select=id,entity,entity_id,dealer_id,payload,attempts&direction=eq.in&status=eq.pending&order=id.asc&limit=400","id").catch(()=>[]);
+    const pend=await sbGetAll("zoho_sync_queue?select=id,entity,entity_id,dealer_id,payload,attempts&direction=eq.in&status=eq.pending&order=id.asc&limit=400","id").catch(e=>{ F.fail({phase:"inbound_read",entity:"queue",direction:"in",action:"read",msg:"the inbound queue couldn't be read: "+failMsg(e)}); return []; });
     if(pend.length){
       const dealers=await sbGetAll("dealers?select=id,business_name","id");
       const norm2id=new Map(); for(const d of dealers) norm2id.set(dnorm(d.business_name), d.id);
-      const aliases=await sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]);
+      const aliases=await sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(e=>{ F.fail({phase:"inbound_read",entity:"dealer_aliases",direction:"in",action:"read",msg:"dealer aliases couldn't be read (events matched by exact name only): "+failMsg(e)}); return []; });
       for(const a of (aliases||[])){ if(a&&a.alias_norm&&!norm2id.has(a.alias_norm)) norm2id.set(a.alias_norm,a.dealer_id); }
       let processed=0, touched=0, newContacts=0;
       for(const q of pend){
@@ -183,14 +212,16 @@ async function run(){
               await sbSend("POST","dealer_contacts?on_conflict=dealer_id,email",prune({dealer_id,email,name:nm}),{Prefer:"resolution=merge-duplicates,return=minimal"});
               newContacts++;
             }
-          }catch(e){}
+          }catch(e){ F.fail({phase:"inbound_contact",entity:"contact",entity_id:email,dealer_id,direction:"in",action:"apply",msg:"a new contact from a Zoho event wasn't added: "+failMsg(e),extra:{queue_id:q.id}}); }
         }
         // Timeline touch-point (visible to reps; leaves owned profile fields untouched).
         if(dealer_id){
           const subj=("Zoho "+(q.entity||"record")+" updated"+(email?(" — "+email):account?(" — "+account):"")).slice(0,180);
-          try{ await sbSend("POST","dealer_activity",{dealer_id,kind:"system",subject:subj,actor:"Zoho sync"},{Prefer:"return=minimal"}); touched++; }catch(e){}
+          try{ await sbSend("POST","dealer_activity",{dealer_id,kind:"system",subject:subj,actor:"Zoho sync"},{Prefer:"return=minimal"}); touched++; }
+          catch(e){ F.fail({phase:"inbound_timeline",entity:"dealer_activity",dealer_id,direction:"in",action:"apply",msg:"the timeline entry for a Zoho event wasn't added: "+failMsg(e),extra:{queue_id:q.id}}); }
         }
-        try{ await sbSend("PATCH",`zoho_sync_queue?id=eq.${encodeURIComponent(q.id)}`,{status:"synced",dealer_id,processed_at:new Date().toISOString(),updated_at:new Date().toISOString()},{Prefer:"return=minimal"}); processed++; }catch(e){}
+        try{ await sbSend("PATCH",`zoho_sync_queue?id=eq.${encodeURIComponent(q.id)}`,{status:"synced",dealer_id,processed_at:new Date().toISOString(),updated_at:new Date().toISOString()},{Prefer:"return=minimal"}); processed++; }
+        catch(e){ F.fail({phase:"inbound_mark",entity:"queue",entity_id:String(q.id),dealer_id,direction:"in",action:"write",msg:"a processed event wasn't marked done, so it will be processed again: "+failMsg(e)}); }
       }
       summary.inbound={processed,touched,new_contacts:newContacts};
     }
@@ -198,7 +229,12 @@ async function run(){
 
   await setHashes(next);
   await stampSync("autosync_at");
-  await logRow({direction:"out",entity:"autosync",action:"run",result:summary.errors.length?"partial":"ok",detail:JSON.stringify(summary).slice(0,600)});
+  // The run's summary row: counts only (each failure has its own row, with its full reason) and never cut.
+  const fl=await F.flush();
+  summary.failures=F.count(); if(summary.failures) summary.failures_by_phase=F.byPhase();
+  if(fl.lost) summary.failure_rows_not_written=fl.lost;
+  summary.run=runAt;
+  await logRow({direction:"out",entity:"autosync",action:"run",result:(summary.errors.length||summary.failures)?"partial":"ok",detail:ZL.scrubString(JSON.stringify(summary))});
   return {ok:true, summary};
 }
 

@@ -141,6 +141,10 @@ function createWorld(seed) {
         if (method === 'PATCH' && body && typeof body === 'object') for (const c of Object.keys(body)) if (!known.includes(c)) return res(400, { code: 'PGRST204', message: `Could not find the '${c}' column of '${table}' in the schema cache` });
         const bad = used.find(c => !known.includes(c)); if (bad) return res(400, { code: '42703', message: `column ${table}.${bad} does not exist` });
       }
+      // seed.failRead(table, qs) / seed.failWrite(method, table, body, qs) → an HTTP status to fail that call with
+      // (Phase 2F: proves a refused read or write is recorded, not swallowed).
+      if (method === 'GET' && seed.failRead) { const st = seed.failRead(table, qs); if (st) return res(st, { code: 'XX000', message: 'forced read failure on ' + table }); }
+      if (method !== 'GET' && seed.failWrite) { const st = seed.failWrite(method, table, body, qs); if (st) return res(st, { code: 'XX000', message: 'forced write failure on ' + table }); }
       if (method === 'GET') {
         let rows = db[table].filter(filt);
         if (meta.order) { const [col, dir] = meta.order.split(',')[0].split('.'); rows = rows.slice().sort((a, b) => (dir === 'desc' ? -1 : 1) * cmp(a[col], b[col])); }
@@ -201,6 +205,47 @@ function createWorld(seed) {
     if (u.includes('login.microsoftonline.com')) return res(200, { access_token: 'graph', expires_in: 3600 });
     if (u.includes('graph.microsoft.com')) { outbound.push({ kind: 'graph', url: u, method, body }); return res(method === 'POST' && /sendMail/.test(u) ? 202 : 200, {}); }
     if (u.includes('api.resend.com')) { outbound.push({ kind: 'resend', body }); return res(200, { id: 'm1' }); }
+    // Zoho CRM (Phase 2F): OAuth token + the CRM v8 endpoints the sync uses. seed.zoho = {
+    //   modules:{Accounts:[…],Deals:[…],…}  readFail:{Deals:{page,status}}  batchFail:{Contacts:400}
+    //   upsert(module, record, i) / deal(method, record) / create(module, record) → a Zoho row or undefined (= SUCCESS)
+    //   tokenFail:true }. Every call is recorded in outbound as {kind:'zoho', method, path, body}.
+    if (u.includes('accounts.zoho.com/oauth/v2/token')) {
+      const z = seed.zoho || {}; outbound.push({ kind: 'zoho_token' });
+      return z.tokenFail ? res(400, { error: 'invalid_code' }) : res(200, { access_token: 'zat', api_domain: 'https://www.zohoapis.com' });
+    }
+    if (u.includes('zohoapis.com/crm/v8/')) {
+      const z = seed.zoho || (seed.zoho = {}); z.modules = z.modules || {}; z.seq = z.seq || 1;
+      const pathq = u.slice(u.indexOf('/crm/v8/')); const p0 = pathq.split('?')[0]; const parts = p0.split('/').filter(Boolean); // ['crm','v8',Module,...]
+      const mod = decodeURIComponent(parts[2] || ''); const sp = new URLSearchParams(pathq.split('?')[1] || '');
+      outbound.push({ kind: 'zoho', method, path: pathq, body });
+      const newId = () => '75305690000' + String(z.seq++).padStart(8, '0');
+      const ok = (row, rec) => Object.assign({ code: 'SUCCESS', status: 'success', message: 'record added', action: 'insert', details: { id: (rec && rec.id) || newId() } }, row || {});
+      if (method === 'GET' && parts[3] === 'search') return res(204, '');
+      if (method === 'GET' && parts.length === 3) {
+        const page = Number(sp.get('page') || 1), per = Number(sp.get('per_page') || 200);
+        const rf = (z.readFail || {})[mod]; if (rf && page >= (rf.page || 1)) return res(rf.status || 500, { code: 'INTERNAL_ERROR', message: 'zoho read failed' });
+        const all = z.modules[mod] || []; if (!all.length) return res(204, '');
+        return res(200, { data: all.slice((page - 1) * per, page * per), info: { more_records: page * per < all.length, page } });
+      }
+      if (method === 'POST' && parts[3] === 'upsert') {
+        const bf = (z.batchFail || {})[mod]; if (bf) return res(bf, { data: [{ code: 'INVALID_DATA', details: { api_name: 'Email' }, message: 'invalid data', status: 'error' }] });
+        const data = (body && body.data || []).map((rec, i) => { const r = z.upsert && z.upsert(mod, rec, i); if (r && r.code && r.code !== 'SUCCESS') return Object.assign({ status: 'error' }, r);
+          const row = ok(r, rec); (z.modules[mod] = z.modules[mod] || []).push(Object.assign({ id: row.details.id }, rec)); return row; });
+        return res(200, { data });
+      }
+      if ((method === 'PUT' || method === 'POST') && parts.length === 3) {
+        const data = (body && body.data || []).map(rec => { const r = (mod === 'Deals' && z.deal) ? z.deal(method, rec) : (z.create && z.create(mod, rec));
+          if (r && r.code && r.code !== 'SUCCESS') return Object.assign({ status: 'error' }, r);
+          const row = ok(Object.assign(method === 'PUT' ? { action: 'update', details: { id: rec.id } } : {}, r || {}), rec);
+          // z.keep[module]: Zoho's copy is changed again by someone else right after our write (the write is accepted, the record isn't).
+          const list = (z.modules[mod] = z.modules[mod] || []); const ex = list.find(x => x.id === row.details.id);
+          if (!(z.keep && z.keep[mod])) { if (ex) Object.assign(ex, rec); else list.push(Object.assign({ id: row.details.id }, rec)); }
+          return row; });
+        return res(z.httpFail && z.httpFail[mod] ? z.httpFail[mod] : 200, { data });
+      }
+      if (method === 'POST' && parts[4] === 'Notes') return res(z.noteFail ? 400 : 200, z.noteFail ? { code: 'INVALID_DATA' } : { data: [ok()] });
+      return res(404, { code: 'INVALID_URL_PATTERN' });
+    }
     if (u.includes('/data/manufacturers.json')) return res(200, []);
     // Published catalogs (Partner 360 /data/<slug>.json) and the Anthropic API, when a test supplies them.
     { const m = u.match(/\/data\/([a-z0-9-]+)\.json/); if (m) return res(200, ((seed.catalog || {})[m[1]]) || []); }

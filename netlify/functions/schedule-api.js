@@ -324,12 +324,16 @@ async function sendConfirmation(tok, { to, cc, req, whenText, zoom, tzAbbrev }) 
 }
 
 // ---- Zoho (best-effort) ----
+// Phase 2F-1: best-effort still never blocks a booking, but a failed Zoho write is now recorded as a
+// failure row (zoho_sync_log, result "fail") instead of disappearing.
+const ZL = require("./_zoho_log.js");
+const zfail = (f) => ZL.writeLog([ZL.failRow(Object.assign({ phase: "schedule" }, f))]).catch(() => {});
 async function zohoConnect() {
   if (!zohoLib.hasCreds()) return null;
-  let cfg = null; try { const rows = await sbGet("app_settings?key=eq.zoho_auth&select=value"); cfg = rows && rows[0] && rows[0].value; } catch (e) { return null; }
+  let cfg = null; try { const rows = await sbGet("app_settings?key=eq.zoho_auth&select=value"); cfg = rows && rows[0] && rows[0].value; } catch (e) { await zfail({ entity: "zoho_auth", action: "read", msg: "Zoho connection settings couldn't be read: " + String(e.message || e) }); return null; }
   if (!cfg || !cfg.refresh_token) return null;
   const at = await zohoLib.accessToken(cfg.refresh_token);
-  if (!at.ok) return null;
+  if (!at.ok) { await zfail({ entity: "zoho_auth", action: "token", msg: "Zoho token refresh failed: " + String(at.error || ("http " + at.status)) }); return null; }
   return { token: at.access_token, apiDomain: (cfg.api_domain || at.api_domain || "https://www.zohoapis.com").replace(/\/+$/, "") };
 }
 async function zohoTask(req, subject, desc, dueDate) {
@@ -343,13 +347,15 @@ async function zohoTask(req, subject, desc, dueDate) {
         const sr = await zohoLib.zoho("GET", c.apiDomain, c.token, `/crm/v8/Accounts/search?criteria=${encodeURIComponent(`(Account_Name:equals:${req.company})`)}`);
         const acc = sr && sr.ok && sr.json && Array.isArray(sr.json.data) && sr.json.data[0] && sr.json.data[0].id;
         if (acc) { rec.What_Id = acc; rec.$se_module = "Accounts"; }
-      } catch (e) {}
+        else if (!(sr && (sr.ok || sr.status === 204))) await zfail({ entity: "account", action: "read", msg: "account lookup for the appointment task failed (task created unlinked): " + ((sr && sr.json && JSON.stringify(sr.json)) || ("http " + (sr && sr.status))) });
+      } catch (e) { await zfail({ entity: "account", action: "read", msg: "account lookup for the appointment task failed (task created unlinked): " + String(e.message || e) }); }
     }
     const r = await zohoLib.zoho("POST", c.apiDomain, c.token, "/crm/v8/Tasks", { data: [rec] });
     const ok = r && r.ok && r.json && Array.isArray(r.json.data) && r.json.data[0] && r.json.data[0].code === "SUCCESS";
     const id = ok && r.json.data[0].details && r.json.data[0].details.id;
+    if (!ok) await zfail({ entity: "task", action: "push", msg: "appointment task not created in Zoho: " + ((r && r.json && JSON.stringify(r.json)) || ("http " + (r && r.status))), extra: { company: req.company || null, subject: rec.Subject } });
     return ok ? { task_id: id, linked: !!rec.What_Id } : null;
-  } catch (e) { return null; }
+  } catch (e) { await zfail({ entity: "task", action: "push", msg: "appointment task not created in Zoho: " + String(e.message || e) }); return null; }
 }
 // Upsert a manufacturer PROSPECT as a Zoho Lead (matched on email), with the intro-meeting context (non-fatal).
 async function zohoLead(m) {
@@ -365,9 +371,12 @@ async function zohoLead(m) {
     if (desc) rec.Description = desc.slice(0, 30000);
     const up = await zohoLib.upsertRecords(c.apiDomain, c.token, "Leads", [{ key: m.email, record: rec }], ["Email"]);
     const id = up && up.idByKey && up.idByKey[m.email];
-    if (id) { try { await zohoLib.zoho("POST", c.apiDomain, c.token, `/crm/v8/Leads/${id}/Notes`, { data: [{ Note_Title: m.note_title || "Partnership meeting scheduled", Note_Content: (m.when_text || "Meeting scheduled") + (desc ? "\n\n" + desc : "") }] }); } catch (e) {} }
+    for (const f of ((up && up.failed) || [])) await zfail({ entity: "lead", entity_id: f.key, action: "push", msg: "prospect not saved as a Zoho Lead: " + (f.code ? f.code + ": " : "") + (f.message || ""), extra: { zoho_details: f.details || null } });
+    if (id) { try { const nr = await zohoLib.zoho("POST", c.apiDomain, c.token, `/crm/v8/Leads/${id}/Notes`, { data: [{ Note_Title: m.note_title || "Partnership meeting scheduled", Note_Content: (m.when_text || "Meeting scheduled") + (desc ? "\n\n" + desc : "") }] });
+        if (!(nr && nr.ok)) await zfail({ entity: "lead_note", entity_id: id, zoho_id: id, action: "push", msg: "meeting note not added to the Zoho Lead: " + ((nr && nr.json && JSON.stringify(nr.json)) || ("http " + (nr && nr.status))) }); }
+      catch (e) { await zfail({ entity: "lead_note", entity_id: id, zoho_id: id, action: "push", msg: "meeting note not added to the Zoho Lead: " + String(e.message || e) }); } }
     return { lead_id: id || null, upserted: !!(up && (up.inserted + up.updated)) };
-  } catch (e) { return null; }
+  } catch (e) { await zfail({ entity: "lead", action: "push", msg: "prospect not saved as a Zoho Lead: " + String(e.message || e) }); return null; }
 }
 
 // ---- Dealer 360 ----

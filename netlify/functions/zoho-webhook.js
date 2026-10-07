@@ -14,7 +14,14 @@ const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const SECRET = process.env.ZOHO_WEBHOOK_SECRET || "";
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
-async function sbSend(method,path,body,extra){ try{ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); const t=await r.text(); return t?JSON.parse(t):null; }catch(e){ return null; } }
+// Phase 2F-1: the database answer is no longer ignored. {ok,status,body}: a refused write is visible
+// to the caller, which records it as a failure row (see below) instead of dropping it.
+async function sbSend(method,path,body,extra){ try{ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); const t=await r.text(); let j=null; try{ j=t?JSON.parse(t):null; }catch(e){ j={raw:t}; } return {ok:r.ok,status:r.status,body:j}; }catch(e){ return {ok:false,status:0,body:{message:String(e&&e.message||e)}}; } }
+// Phase 2F-1 (security): nothing that looks like a credential is ever stored or logged — the
+// ?secret= used to authenticate the call, any secret/token/auth-named field, and any value that
+// contains one of this deployment's secrets (see _zoho_log.js).
+const ZL = require("./_zoho_log.js");
+const why = res => { const b=(res&&res.body)||{}; return [b.code, b.message||b.msg||b.error||(b.raw&&String(b.raw).slice(0,300))].filter(Boolean).join(": ")||("http "+((res&&res.status)||0)); };
 const clean=(v,n)=>{ const s=(v==null?"":String(v)).trim(); return s?s.slice(0,n||500):null; };
 
 function parseParams(event){
@@ -43,26 +50,35 @@ exports.handler = async (event)=>{
       return json(401,{ok:false,error:"unauthorized"});
     }
 
-    const module=clean(p.module||p.Module||p.$module||p.moduleName,40)||"Unknown";
-    const recordId=clean(p.id||p.recordId||p.entity_id||p.Id||p.ID,60);
-    const email=clean(p.Email||p.email,200);
-    const account=clean(p["Account Name"]||p.Account_Name||p.account_name||p.Account||p.accountName,200);
+    // From here on only the cleaned copy is used: the secret never reaches the log, the queue or a summary.
+    const safe=ZL.redact(p);
+    const module=clean(safe.module||safe.Module||safe.$module||safe.moduleName,40)||"Unknown";
+    const recordId=clean(safe.id||safe.recordId||safe.entity_id||safe.Id||safe.ID,60);
+    const email=clean(safe.Email||safe.email,200);
+    const account=clean(safe["Account Name"]||safe.Account_Name||safe.account_name||safe.Account||safe.accountName,200);
     const summary=[module, recordId?("#"+recordId):"", account||email||""].filter(Boolean).join(" ").slice(0,300);
 
     // Best-effort dealer tag (for dashboard grouping) — resolve by contact email, else leave null.
-    let dealer_id=null;
-    if(email){ const r=await sbSend("GET",`dealer_contacts?email=eq.${encodeURIComponent(email.toLowerCase())}&select=dealer_id&limit=1`); if(Array.isArray(r)&&r[0]) dealer_id=r[0].dealer_id; }
+    let dealer_id=null; const fails=[];
+    if(email){ const r=await sbSend("GET",`dealer_contacts?email=eq.${encodeURIComponent(email.toLowerCase())}&select=dealer_id&limit=1`);
+      if(r.ok && Array.isArray(r.body) && r.body[0]) dealer_id=r.body[0].dealer_id;
+      else if(!r.ok) fails.push({phase:"webhook_dealer",action:"read",msg:"the dealer lookup for this event failed: "+why(r)}); }
 
     // Log it (history + dashboard counts) and queue it for later, ownership-safe application.
-    await sbSend("POST","zoho_sync_log",{direction:"in",entity:module.toLowerCase(),entity_id:recordId,dealer_id,action:"webhook",result:"ok",detail:summary,zoho_id:recordId},{Prefer:"return=minimal"});
-    await sbSend("POST","zoho_sync_queue?on_conflict=direction,entity,entity_id",
-      {direction:"in",entity:module.toLowerCase(),entity_id:recordId,dealer_id,op:"upsert",payload:p,status:"pending",zoho_id:recordId,updated_at:new Date().toISOString()},
+    const lg=await sbSend("POST","zoho_sync_log",{direction:"in",entity:module.toLowerCase(),entity_id:recordId,dealer_id,action:"webhook",result:"ok",detail:summary,zoho_id:recordId},{Prefer:"return=minimal"});
+    if(!lg.ok) console.error("zoho-webhook: receipt not logged:", ZL.scrubString(why(lg)));
+    // The queue write is unchanged (Phase 2F-1 is observability only) — but if it is refused, that is now
+    // recorded as a failure row with the database's reason, instead of being dropped.
+    const qr=await sbSend("POST","zoho_sync_queue?on_conflict=direction,entity,entity_id",
+      {direction:"in",entity:module.toLowerCase(),entity_id:recordId,dealer_id,op:"upsert",payload:safe,status:"pending",zoho_id:recordId,updated_at:new Date().toISOString()},
       {Prefer:"resolution=merge-duplicates,return=minimal"});
+    if(!qr.ok) fails.push({phase:"webhook_queue",action:"queue",msg:"the event was received but not queued: "+why(qr),extra:{http:qr.status}});
+    if(fails.length) await ZL.writeLog(fails.map(f=>ZL.failRow(Object.assign({direction:"in",entity:module.toLowerCase(),entity_id:recordId,dealer_id,zoho_id:recordId},f))));
 
     return json(200,{ok:true, received:summary});
   }catch(e){
     // Always 200 to avoid Zoho retry storms; the failure is logged best-effort.
-    try{ await sbSend("POST","zoho_sync_log",{direction:"in",action:"webhook",result:"fail",detail:String(e&&e.message||e).slice(0,300)},{Prefer:"return=minimal"}); }catch(_){}
+    try{ await ZL.writeLog([ZL.failRow({direction:"in",entity:"webhook",action:"webhook",phase:"webhook",msg:String(e&&e.stack||e&&e.message||e)})]); }catch(_){}
     return json(200,{ok:false});
   }
 };

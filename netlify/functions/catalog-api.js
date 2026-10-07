@@ -981,8 +981,14 @@ async function loadMeta(slug){
      sku_option_blank        — a SKU with no option text, so it is indistinguishable
      sku_option_duplicated   — two SKUs on one page with the SAME option text, which means
                                a dealer picking one of them cannot know which they got
-     sku_claimed_twice       — two pages claim one part number
+     sku_claimed_twice       — two pages claim one part number that nobody has declared an
+                               accessory, so only the first page can sell it
+     accessory_in_sku_list   — (info) a declared accessory still sitting in SKU lists; being
+                               shared between products is correct, the SKU-list entry is not
      page_has_no_skus        — an approved page a dealer can reach that lists nothing
+     variant_unreachable / variant_collision / variant_gap — the option grid is broken
+
+   Every finding carries severity "fault" or "info"; faults_total counts only the faults.
 
    It reads and computes only. */
 /* ── THE THREE-WAY LINE-UP ────────────────────────────────────────────────────
@@ -1134,8 +1140,22 @@ function dealerNoteLeaks(note){
 
 async function structureAudit(slug){
   const e=encodeURIComponent;
-  const pages=await sb("GET",`product_content?manufacturer=eq.${e(slug)}&select=page_key,name,status,disabled,options,skus&limit=5000`).catch(()=>[]);
+  const [pages,rel]=await Promise.all([
+    sb("GET",`product_content?manufacturer=eq.${e(slug)}&select=page_key,name,status,disabled,options,skus&limit=5000`).catch(()=>[]),
+    sb("GET",`product_related?manufacturer=eq.${e(slug)}&select=code,related_code,related_manufacturer,kind&limit=10000`).catch(()=>[]),
+  ]);
   const findings=[], seenSku={};
+  /* A SHARED ACCESSORY IS NOT A SHARED VARIANT.
+     One extension belt offered with two braces is correct catalog design; one size
+     listed on two braces is a bug. The difference is declared, not guessed: a part
+     number someone has linked as an accessory in Catalog Review (product_related, any
+     kind but "alternative", same line) is an accessory, wherever else it appears.
+     accessoryOf[part] = the parent part numbers that offer it. */
+  const accessoryOf={};
+  (rel||[]).forEach(r=>{ if(!r || r.kind==="alternative") return;
+    const rm=String(r.related_manufacturer||"").trim(); if(rm && rm!==slug) return;
+    const a=JOIN.normCode(String(r.related_code||"")), p=JOIN.normCode(String(r.code||""));
+    if(!a || !p) return; (accessoryOf[a]=accessoryOf[a]||[]).push(p); });
   (pages||[]).forEach(pg=>{
     const skus=Array.isArray(pg.skus)?pg.skus:[];
     skus.forEach(sx=>{ const c=JOIN.normCode(String((sx&&(sx.sku||sx.code))||"")); if(!c) return;
@@ -1187,15 +1207,31 @@ async function structureAudit(slug){
 
     skus.forEach(sx=>{ const c=JOIN.normCode(String((sx&&(sx.sku||sx.code))||"")); if(!c) return;
       const owners=[...new Set(seenSku[c]||[])];
-      if(owners.length>1 && owners[0]===pg.page_key)
-        add("sku_claimed_twice",`${String(sx.sku||sx.code)} is also on ${owners.filter(o=>o!==pg.page_key).join(", ")}`); });
+      if(!(owners.length>1 && owners[0]===pg.page_key)) return;
+      const others=owners.filter(o=>o!==pg.page_key).join(", ");
+      const parents=[...new Set(accessoryOf[c]||[])];
+      if(parents.length)
+        /* Declared an accessory, so being offered from two products is fine. It is still
+           sitting in SKU lists, where the shop gives it to the first page only and the
+           variant grid treats it as a size — housekeeping, not a dealer-facing fault. */
+        add("accessory_in_sku_list",`${String(sx.sku||sx.code)} is linked as an accessory of ${parents.join(", ")} — a shared accessory is fine, but it is also in the SKU list here and on ${others}; take it off those lists and let Related products offer it`);
+      else
+        add("sku_claimed_twice",`${String(sx.sku||sx.code)} is also on ${others} — the shop sells a part number from the first page that lists it, so only ${pg.page_key} can order it. If it is an accessory, link it under Related products instead`); });
   });
+  for(const f of findings) f.severity=STRUCTURE_INFO_KINDS[f.kind]?"info":"fault";
   const byKind={}; findings.forEach(f=>{ byKind[f.kind]=(byKind[f.kind]||0)+1; });
   const products={}; findings.forEach(f=>{ products[f.page_key]=1; });
+  const faultProducts={}; findings.forEach(f=>{ if(f.severity==="fault") faultProducts[f.page_key]=1; });
   return {ok:true, slug, pages:(pages||[]).length,
     products_affected:Object.keys(products).length,
-    findings_total:findings.length, by_kind:byKind, findings};
+    findings_total:findings.length,
+    faults_total:findings.filter(f=>f.severity==="fault").length,
+    products_with_faults:Object.keys(faultProducts).length,
+    by_kind:byKind, findings};
 }
+/* Findings that describe untidy records rather than something a dealer hits. Everything
+   else the audit reports is a dealer-facing fault. */
+const STRUCTURE_INFO_KINDS={ option_axis_unstated:1, accessory_in_sku_list:1 };
 
 /* ── THE DEALER PAGE SOURCE ───────────────────────────────────────────────────
    Every field a dealer sees, traced to the record that supplied it and the admin screen
@@ -3344,7 +3380,8 @@ exports.handler = async (event)=>{
         if(slugs.length===1) return json(200,out[0]);
         return json(200,{ok:true, lines:out,
           products_affected:out.reduce((n,x)=>n+x.products_affected,0),
-          findings_total:out.reduce((n,x)=>n+x.findings_total,0)});
+          findings_total:out.reduce((n,x)=>n+x.findings_total,0),
+          faults_total:out.reduce((n,x)=>n+x.faults_total,0)});
       }
 
       if(b.action==="page_source"){

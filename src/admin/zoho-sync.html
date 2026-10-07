@@ -105,7 +105,7 @@ function render(){
     ${tile("Webhook events · 24h",wh.in_24h||0)}
     ${tile("Inbound queued",wh.pending||0,wh.pending?"w":"")}
     ${tile("Pending updates",q.pending||0,q.pending?"w":"")}
-    ${tile("Failed syncs",q.failed||0,q.failed?"w":"")}
+    ${(()=>{ const f=(STATE.failures&&STATE.failures.in_24h)||0, n=f+(q.failed||0); return tile("Sync failures · 24h",n,n?"w":""); })()}
     ${tile("Emails to fix",iv.count||0,iv.count?"w":"")}
     ${tile("Pipeline linked",(opp.linked||0)+"/"+(opp.total||0))}
   </div>`;
