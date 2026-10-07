@@ -51,23 +51,28 @@ exports.handler = async (event)=>{
         ]);
         return json(200,{featured:feat||[],manufacturers:(mfrs||[]).map(m=>({slug:m.slug,name:m.name,hasData:!!m.hasData}))});
       }
-      const [prods,featRows,custom,overRows,imgRows]=await Promise.all([
+      /* Phase 2.4 — images resolve through the ONE image rule (images-api resolveImage):
+         SKU photo → the product page's primary → the catalog layer. product_images is legacy
+         and is no longer read. */
+      const IMG=require("./images-api.js")._pure;
+      const [prods,featRows,custom,overRows,pages]=await Promise.all([
         fetchJson(`${ORDERING_BASE}/data/${slug}.json`).catch(()=>[]),
         sb("GET",`featured_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,note,rank,active`).catch(()=>[]),
         sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,name,category,image,active`).catch(()=>[]),
         sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(slug)}&select=code,patch`).catch(()=>[]),
-        sb("GET",`product_images?manufacturer=eq.${encodeURIComponent(slug)}&select=code,url`).catch(()=>[]),
+        sb("GET",`product_content?manufacturer=eq.${encodeURIComponent(slug)}&select=page_key,status,image,images_gallery,skus&limit=5000`).catch(()=>[]),
       ]);
       const featured=Object.fromEntries((featRows||[]).map(f=>[f.code,{note:f.note,rank:f.rank,active:f.active}]));
       const over=Object.fromEntries((overRows||[]).map(o=>[o.code,o.patch||{}]));
-      const imgs=Object.fromEntries((imgRows||[]).map(i=>[i.code,i.url]));
+      const pidx=IMG.pageIndex(pages||[]);
+      const imgOf=(code,extra)=>IMG.resolveImage(Object.assign({code, page:pidx[String(code).trim().toUpperCase()]||null, override:over[code]},extra)).url;
       // catalog products with any admin edits/hides applied, then admin-added (custom) products
       let products=(prods||[]).map(p=>{const o=over[p.code]||{};
-        return {code:p.code,name:o.name||p.name,category:o.category||p.category||"",image:o.image||imgs[p.code]||p.image||"",hidden:o.active===false};})
+        return {code:p.code,name:o.name||p.name,category:o.category||p.category||"",image:imgOf(p.code,{base:p}),hidden:o.active===false};})
         .filter(p=>!p.hidden);
       const have=new Set(products.map(p=>p.code));
       (custom||[]).forEach(c=>{ if(c.active===false||have.has(c.code)) return;
-        products.push({code:c.code,name:c.name,category:c.category||"",image:c.image||imgs[c.code]||"",added:true}); });
+        products.push({code:c.code,name:c.name,category:c.category||"",image:imgOf(c.code,{custom:c}),added:true}); });
       return json(200,{products,featured});
     }
 

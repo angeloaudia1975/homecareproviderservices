@@ -1187,69 +1187,129 @@ function dealerNoteLeaks(note){
 
 async function structureAudit(slug){
   const e=encodeURIComponent;
-  const [pages,rel]=await Promise.all([
-    sb("GET",`product_content?manufacturer=eq.${e(slug)}&select=page_key,name,status,disabled,options,skus&limit=5000`).catch(()=>[]),
-    sb("GET",`product_related?manufacturer=eq.${e(slug)}&select=code,related_code,related_manufacturer,kind&limit=10000`).catch(()=>[]),
+  /* Strict reads (Phase 2.2 rule): an unreadable layer is an error, never "no products";
+     the action turns the throw into a 503. */
+  const [pages,rel,base,custom,ovRows,meta]=await Promise.all([
+    sb("GET",`product_content?manufacturer=eq.${e(slug)}&select=page_key,name,status,disabled,options,skus,variant_group&limit=5000`),
+    sb("GET",`product_related?manufacturer=eq.${e(slug)}&select=code,related_code,related_manufacturer,kind&limit=10000`),
+    catalogFile(slug),
+    sb("GET",`custom_products?manufacturer=eq.${e(slug)}&select=code,name,active`),
+    sb("GET",`product_overrides?manufacturer=eq.${e(slug)}&select=code,patch`),
+    loadMeta(slug),
   ]);
-  const findings=[], seenSku={};
-  /* A SHARED ACCESSORY IS NOT A SHARED VARIANT.
-     One extension belt offered with two braces is correct catalog design; one size
-     listed on two braces is a bug. The difference is declared, not guessed: a part
-     number someone has linked as an accessory in Catalog Review (product_related, any
-     kind but "alternative", same line) is an accessory, wherever else it appears.
-     accessoryOf[part] = the parent part numbers that offer it. */
+  return structureFindings({slug, pages:pages||[], rel:rel||[], base:base||[], custom:custom||[],
+    overrides:ovRows||[], enrichedOnly:meta&&meta.enriched_only===true});
+}
+/* THE STRUCTURE AUDIT, BUILT THE WAY THE SHOP BUILDS A PAGE (Phase 2.6). Pure.
+   The old audit derived option labels its own way (JOIN.skuOptionText / variantGrid) and so
+   reported "collisions" on pages a dealer could order perfectly well — the three Ovation size
+   pairs among them. This reconstructs the dealer's products exactly as Partner 360 does
+   (catalog file + added rows + overrides, the first LIVE page that lists a SKU owns it, the
+   enrichment SKU name unless an admin pinned one, the authored size/option) and then asks the
+   storefront's OWN picker functions (_shop_picker.js, copied verbatim) what a dealer can
+   choose. A finding here is a finding on the real page. */
+const PICK = require("./_shop_picker.js");
+function structureFindings({slug, pages, rel, base, custom, overrides, enrichedOnly}){
+  const LIVEST=["published","active"];
+  const om={}; (overrides||[]).forEach(o=>{ om[String(o.code)]=o.patch||{}; });
+  /* 1. The shop's product list. */
+  let prods=(base||[]).map(p=>{ const pa=om[String(p.code)]||{}; const q=Object.assign({},p,{code:String(p.code)});
+    ["name","group"].forEach(k=>{ if(k in pa && pa[k]!=null) q[k]=pa[k]; });
+    if(pa.name!=null && pa.name!=="") q._nameFromOverride=true;
+    if(pa.active===false) q._hidden=true; return q; }).filter(p=>!p._hidden);
+  const have=new Set(prods.map(p=>p.code));
+  (custom||[]).forEach(c=>{ const code=String(c.code); if(c.active===false||have.has(code)) return;
+    const pa=om[code]||{}; if(pa.active===false) return;
+    const q={code, name:c.name}; ["name","group"].forEach(k=>{ if(k in pa && pa[k]!=null) q[k]=pa[k]; });
+    if(pa.name!=null && pa.name!=="") q._nameFromOverride=true; prods.push(q); });
+  /* 2. Page ownership, exactly as the shop resolves it (live pages only, first listing wins;
+        then the variant group). */
+  const live=(pages||[]).filter(pg=>LIVEST.indexOf(pg.status)>=0);
+  const pageBySku={}, skuEntry={}, byGroup={};
+  live.forEach(pg=>{ (Array.isArray(pg.skus)?pg.skus:[]).forEach(sx=>{ const c=String((sx&&(sx.sku||sx.code))||"").trim().toUpperCase();
+      if(!c) return; if(!pageBySku[c]) pageBySku[c]=pg; if(!skuEntry[c]) skuEntry[c]=sx; });
+    if(pg.variant_group) String(pg.variant_group).split("|").forEach(g=>{ g=g.trim(); if(g) byGroup[g]=pg; }); });
+  prods.forEach(p=>{ const k=String(p.code).trim().toUpperCase();
+    const pg=pageBySku[k]||(p.group&&byGroup[p.group])||null; if(!pg) return;
+    p._pageKey=pg.page_key; const sx=skuEntry[k];
+    const nm=sx&&String(sx.name||"").trim(); if(nm && !p._nameFromOverride) p.name=nm;
+    const opt=sx&&String((sx.size!=null?sx.size:(sx.option!=null?sx.option:""))||"").trim(); if(opt) p._skuOption=opt;
+    if(pg.name) p._encPage=String(pg.name).trim(); });
+  if(enrichedOnly) prods=prods.filter(p=>p._pageKey);
+  /* The picker a SKU opens collects every product with the same key — the shop's own
+     groupKeyOf (page, else catalog group, else code), copied verbatim. */
+  const pickerKey=p=>PICK.groupKeyOf(p);
+
+  /* Shared-SKU bookkeeping (Phase 2 fix: a declared accessory is not a shared variant). */
   const accessoryOf={};
   (rel||[]).forEach(r=>{ if(!r || r.kind==="alternative") return;
     const rm=String(r.related_manufacturer||"").trim(); if(rm && rm!==slug) return;
     const a=JOIN.normCode(String(r.related_code||"")), p=JOIN.normCode(String(r.code||""));
     if(!a || !p) return; (accessoryOf[a]=accessoryOf[a]||[]).push(p); });
+  /* Only LIVE pages compete for a SKU in the shop, so only they can take one from another. */
+  const seenSku={};
+  live.forEach(pg=>{ (Array.isArray(pg.skus)?pg.skus:[]).forEach(sx=>{ const c=JOIN.normCode(String((sx&&(sx.sku||sx.code))||"")); if(!c) return;
+    (seenSku[c]=seenSku[c]||[]).push(pg.page_key); }); });
+
+  const findings=[];
   (pages||[]).forEach(pg=>{
     const skus=Array.isArray(pg.skus)?pg.skus:[];
-    skus.forEach(sx=>{ const c=JOIN.normCode(String((sx&&(sx.sku||sx.code))||"")); if(!c) return;
-      (seenSku[c]=seenSku[c]||[]).push(pg.page_key); });
-  });
-  (pages||[]).forEach(pg=>{
-    const skus=Array.isArray(pg.skus)?pg.skus:[];
-    const labels=skus.map(sx=>JOIN.skuOptionText(sx,pg.name));
-    const ax=JOIN.optionAxes(labels);
-    const live=JOIN.isLive(pg) && pg.disabled!==true;
+    const isLive=LIVEST.indexOf(pg.status)>=0 && pg.disabled!==true;
     const add=(kind,detail)=>findings.push({page_key:pg.page_key,name:pg.name||pg.page_key,
-      status:pg.status||"",live,kind,detail,sku_count:skus.length});
+      status:pg.status||"",live:isLive,kind,detail,sku_count:skus.length});
+    if(isLive && !skus.length) add("page_has_no_skus","approved, but lists no SKUs — a dealer reaching it sees nothing to order");
 
-    if(live && !skus.length){ add("page_has_no_skus","approved, but lists no SKUs — a dealer reaching it sees nothing to order"); }
-
-    /* THE GRID. Can a dealer reach every approved SKU, and only those? Three ways it fails,
-       and each is a broken dealer page rather than an error anyone would otherwise see. */
-    if(skus.length>1){
-      const grid=JOIN.variantGrid(skus.map((sx,i)=>({code:String((sx&&(sx.sku||sx.code))||""),label:labels[i]})));
-      grid.unreachable.forEach(c=>add("variant_unreachable",
-        `${c} sits in no combination a dealer can select — it can never be ordered from this page`));
-      grid.collisions.forEach(x=>add("variant_collision",
-        `${x.codes.join(" and ")} are the same selection (${x.cell.replace(/\|/g," + ")}) — picking it gets one of them, the rest are unreachable`));
-      if(grid.gaps.length) add("variant_gap",
-        `${grid.gaps.length} of ${grid.combinations} selectable combinations have no SKU: ${grid.gaps.slice(0,4).map(g=>g.replace(/\|/g," + ")).join("; ")}${grid.gaps.length>4?"…":""}`);
-    }
-
-    const conf=JOIN.optionConflicts(pg.options,labels);
-    conf.forEach(c=>add("options_contradict_skus",
-      `${c.axis}: the record says ${c.record_says.join(", ")||"nothing"}, the SKUs say ${c.skus_say.join(", ")}`));
-
-    const blobKeys={}; const blob=(pg.options&&typeof pg.options==="object")?pg.options:{};
-    Object.keys(blob).forEach(k=>{ blobKeys[String(k).toLowerCase()]=1; });
-    Object.keys(ax.varying).forEach(k=>{ if(!blobKeys[k.toLowerCase()])
-      add("option_axis_unstated",`${k}: ${ax.varying[k].length} choices in the SKUs (${ax.varying[k].join(", ")}), not stated on the record`); });
-
-    if(skus.length>1){
-      const blank=skus.filter((sx,i)=>!String(labels[i]||"").trim())
-        .map(sx=>String((sx&&(sx.sku||sx.code))||"")).filter(Boolean);
-      if(blank.length) add("sku_option_blank",
-        `${blank.length} SKU${blank.length===1?"":"s"} with no option text: ${blank.slice(0,8).join(", ")}${blank.length>8?"…":""}`);
-      const byLabel={};
-      labels.forEach((l,i)=>{ const key=String(l||"").trim().toLowerCase(); if(!key) return;
-        (byLabel[key]=byLabel[key]||[]).push(String((skus[i]&&(skus[i].sku||skus[i].code))||"")); });
-      const dup=Object.keys(byLabel).filter(k2=>byLabel[k2].length>1);
-      if(dup.length) add("sku_option_duplicated",
-        dup.slice(0,4).map(k2=>`"${k2}" → ${byLabel[k2].join(", ")}`).join("; ")+(dup.length>4?` (+${dup.length-4} more)`:""));
+    /* The dealer's card for this page, and the picker each of its SKUs opens. */
+    const card=prods.filter(p=>p._pageKey===pg.page_key);
+    if(isLive && card.length){
+      const sets={}; card.forEach(p=>{ (sets[pickerKey(p)]=sets[pickerKey(p)]||[]).push(p.code); });
+      const keys=Object.keys(sets);
+      /* With the picker keyed by page these cannot happen; kept so a change to the shop's key
+         that splits a card again is caught here rather than by a dealer. */
+      if(keys.length>1) add("picker_split",
+        `the card's SKUs open ${keys.length} different pickers (${keys.map(k=>`"${k}": ${sets[k].join(", ")}`).join("; ")}) — from any one SKU a dealer cannot choose the others`);
+      keys.forEach(k=>{
+        const G=PICK.sortVariants(prods.filter(p=>pickerKey(p)===k));
+        const foreign=G.filter(p=>p._pageKey!==pg.page_key).map(p=>p.code);
+        if(foreign.length) add("picker_crosses_products",
+          `the picker for ${sets[k].join(", ")} also offers ${foreign.join(", ")}, which belong to another product`);
+        if(G.length<2) return;
+        const AX=PICK.optionAxes(G), axKeys=Object.keys(AX.varying);
+        if(axKeys.length>=2){
+          /* Several pickers: each SKU must be the EXACT answer to its own combination. */
+          const comboOf=v=>{ const a=PICK.optionAxesOf(PICK.variantLabel(v)); const w={}; axKeys.forEach(x=>{ w[x]=a[x]||""; }); return w; };
+          const seen={};
+          G.forEach(v=>{ const w=comboOf(v); const key=axKeys.map(x=>w[x]).join(" + ");
+            const hit=PICK.resolveVariant(G,w,null);
+            if(hit && hit.code!==v.code){
+              if(seen[key]) seen[key].push(v.code); else seen[key]=[hit.code, v.code];
+            }
+            if(!axKeys.every(x=>w[x])) add("variant_unreachable",`${v.code} has no value for ${axKeys.filter(x=>!w[x]).join(", ")} — its picker combination is incomplete`); });
+          Object.keys(seen).forEach(key=>add("variant_collision",
+            `${seen[key].join(" and ")} are the same selection (${key}) — picking it always gives ${seen[key][0]}; ${seen[key].slice(1).join(", ")} cannot be ordered from this page`));
+          const have2=new Set(G.map(v=>{ const w=comboOf(v); return axKeys.map(x=>w[x]).join("|"); }));
+          let total=1; axKeys.forEach(x=>{ total*=AX.varying[x].length; });
+          const gaps=[]; const walk=(i,acc)=>{ if(i===axKeys.length){ const kk=acc.join("|"); if(!have2.has(kk)) gaps.push(acc.join(" + ")); return; }
+            AX.varying[axKeys[i]].forEach(val=>walk(i+1,acc.concat([val]))); };
+          if(total<=400) walk(0,[]);
+          if(gaps.length) add("variant_gap",
+            `${gaps.length} of ${total} combinations the pickers offer are not stocked (the shop then opens the nearest SKU): ${gaps.slice(0,4).join("; ")}${gaps.length>4?"…":""}`);
+        } else {
+          /* One list of every SKU: always reachable, but two identical entries are a dealer
+             choosing blind. */
+          const by={}; G.forEach(v=>{ const l=PICK.variantLabel(v).trim().toLowerCase(); (by[l]=by[l]||[]).push(v.code); });
+          const dup=Object.keys(by).filter(l=>by[l].length>1);
+          if(dup.length) add("sku_option_duplicated",
+            dup.slice(0,4).map(l=>`"${l}" → ${by[l].join(", ")}`).join("; ")+(dup.length>4?` (+${dup.length-4} more)`:"")+" — identical entries in the picker");
+        }
+        const labels=G.map(v=>PICK.variantLabel(v));
+        JOIN.optionConflicts(pg.options,labels).forEach(c=>add("options_contradict_skus",
+          `${c.axis}: the record says ${c.record_says.join(", ")||"nothing"}, the SKUs say ${c.skus_say.join(", ")}`));
+        const blob=(pg.options&&typeof pg.options==="object")?pg.options:{}, bk={};
+        Object.keys(blob).forEach(x=>{ bk[String(x).toLowerCase()]=1; });
+        axKeys.forEach(x=>{ if(!bk[x.toLowerCase()])
+          add("option_axis_unstated",`${x}: ${AX.varying[x].length} choices in the SKUs (${AX.varying[x].join(", ")}), not stated on the record`); });
+      });
     }
 
     skus.forEach(sx=>{ const c=JOIN.normCode(String((sx&&(sx.sku||sx.code))||"")); if(!c) return;
@@ -1258,14 +1318,11 @@ async function structureAudit(slug){
       const others=owners.filter(o=>o!==pg.page_key).join(", ");
       const parents=[...new Set(accessoryOf[c]||[])];
       if(parents.length)
-        /* Declared an accessory, so being offered from two products is fine. It is still
-           sitting in SKU lists, where the shop gives it to the first page only and the
-           variant grid treats it as a size — housekeeping, not a dealer-facing fault. */
         add("accessory_in_sku_list",`${String(sx.sku||sx.code)} is linked as an accessory of ${parents.join(", ")} — a shared accessory is fine, but it is also in the SKU list here and on ${others}; take it off those lists and let Related products offer it`);
       else
         add("sku_claimed_twice",`${String(sx.sku||sx.code)} is also on ${others} — the shop sells a part number from the first page that lists it, so only ${pg.page_key} can order it. If it is an accessory, link it under Related products instead`); });
   });
-  for(const f of findings) f.severity=STRUCTURE_INFO_KINDS[f.kind]?"info":"fault";
+  for(const f of findings) f.severity=STRUCTURE_INFO_KINDS[f.kind]?"info":(STRUCTURE_GAP_KINDS[f.kind]?"gap":"fault");
   const byKind={}; findings.forEach(f=>{ byKind[f.kind]=(byKind[f.kind]||0)+1; });
   const products={}; findings.forEach(f=>{ products[f.page_key]=1; });
   const faultProducts={}; findings.forEach(f=>{ if(f.severity==="fault") faultProducts[f.page_key]=1; });
@@ -1273,12 +1330,18 @@ async function structureAudit(slug){
     products_affected:Object.keys(products).length,
     findings_total:findings.length,
     faults_total:findings.filter(f=>f.severity==="fault").length,
+    gaps_total:findings.filter(f=>f.severity==="gap").length,
     products_with_faults:Object.keys(faultProducts).length,
     by_kind:byKind, findings};
 }
+/* Missing combinations: the pickers offer them, nothing is stocked, the shop opens the nearest
+   SKU instead. Not a broken page, not tidy either — reported on their own. */
+const STRUCTURE_GAP_KINDS={ variant_gap:1 };
 /* Findings that describe untidy records rather than something a dealer hits. Everything
    else the audit reports is a dealer-facing fault. */
-const STRUCTURE_INFO_KINDS={ option_axis_unstated:1, accessory_in_sku_list:1 };
+/* options_contradict_skus is untidy, not broken: the dealer page answers every axis the SKUs
+   name from the SKUs and ignores the stored blob for it (optionsPanelHtml). */
+const STRUCTURE_INFO_KINDS={ option_axis_unstated:1, accessory_in_sku_list:1, options_contradict_skus:1 };
 
 /* ── THE DEALER PAGE SOURCE ───────────────────────────────────────────────────
    Every field a dealer sees, traced to the record that supplied it and the admin screen
@@ -3728,7 +3791,8 @@ exports.handler = async (event)=>{
           : [String(b.manufacturer||"").trim()].filter(Boolean);
         if(!slugs.length) return json(400,{error:"manufacturer required"});
         const out=[];
-        for(const sg of slugs) out.push(await structureAudit(sg));
+        try{ for(const sg of slugs) out.push(await structureAudit(sg)); }
+        catch(err){ return json(503,{error:"layer_unreadable", message:"The structure audit could not read a layer: "+String((err&&err.message)||err).slice(0,300)}); }
         if(slugs.length===1) return json(200,out[0]);
         return json(200,{ok:true, lines:out,
           products_affected:out.reduce((n,x)=>n+x.products_affected,0),

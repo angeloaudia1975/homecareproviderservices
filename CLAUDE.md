@@ -616,6 +616,17 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   contract prices still win; checkout recalculates the price on the server and, if it changed
   after the dealer last reviewed, returns the cart for review instead of submitting. The server is
   the final pricing authority.
+- **One image authority (Phase 2.4).** A product's photos live on its enrichment page:
+  `images_gallery` is ordered with exactly one `primary`, and `product_content.image` is always that
+  primary (normalised on every save). A SKU that genuinely needs its own photo uses
+  `skus[i].image`. A SKU no page claims keeps its photo on the catalog layer (override `image`, or the
+  added product's `image`). Precedence everywhere — shop, Featured, Product Images: SKU photo →
+  page primary → catalog layer → catalog file. **Product Images is a view over that authority**
+  (images-api writes the page/SKU/catalog record, never `product_images`); on a multi-SKU product it
+  asks "whole product or this SKU". `product_images` is legacy: migrated by `migrate_legacy`
+  (dry run first; a collision with an approved primary is never auto-replaced), then kept read-only.
+- **No broken images on dealer pages (standing rule):** every product image has an `onerror`
+  placeholder; a failed thumbnail leaves the strip.
 - **Old Partner 360 `/admin` pages** are contained with temporary redirects to the main admin; their
   functions stay until usage logs show nothing calls them.
 - **Corrections to earlier notes:** Price Check is NOT read-only (it writes through bulk_price /

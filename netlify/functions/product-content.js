@@ -177,6 +177,18 @@ function flatRows(x) {
   return out.filter(r => r && r.page_key);
 }
 
+/* A gallery with exactly one primary, and the image that follows from it. Pure; the same rule
+   as images-api.js normalizeGallery. No primary → the entry matching `image`, else the first. */
+function normalizeGallery(gallery, image) {
+  const s = v => String(v == null ? '' : v).trim();
+  const g = (Array.isArray(gallery) ? gallery : []).filter(x => x && s(x.url)).map(x => Object.assign({}, x));
+  if (!g.length) return { gallery: [], image: s(image) || null };
+  let i = g.findIndex(x => x.primary === true);
+  if (i < 0) { i = g.findIndex(x => s(x.url) === s(image)); if (i < 0) i = 0; }
+  g.forEach((x, k) => { x.primary = (k === i); });
+  return { gallery: g, image: g[i].url };
+}
+
 // ---- Small REST helpers ----------------------------------------------------
 async function getRow(m, pageKey) {
   const r = await fetch(rest(`product_content?manufacturer=eq.${enc(m)}&page_key=eq.${enc(pageKey)}&select=*`),
@@ -552,6 +564,16 @@ exports.handler = async (event) => {
         if (!Object.keys(patch).length) return reply(400, { ok: false, error: 'no editable fields in patch' });
         patch.reviewed_by = reviewer;
         const before = await getRow(m, body.page_key);
+        /* ONE PRIMARY, AND THE IMAGE FOLLOWS IT (Phase 2.4). The gallery is the image authority
+           for a product: exactly one entry is primary and product_content.image is that entry.
+           Adding a photo by URL, uploading to a page that had only an image, or deleting the
+           primary all used to leave a gallery with no primary — and the storefront then ignored
+           the page image and showed an older layer's photo. Normalised on every save. */
+        if ('images_gallery' in patch) {
+          const n = normalizeGallery(patch.images_gallery, 'image' in patch ? patch.image : (before && before.image));
+          patch.images_gallery = n.gallery;
+          if (n.image) patch.image = n.image;
+        }
         const res = await patchRow(m, body.page_key, patch);
         await logHistory({ manufacturer: m, page_key: body.page_key, action: action === 'set_meta' ? 'set_meta' : 'save_content',
           actor: reviewer, summary: `Edited ${Object.keys(patch).filter(k => k !== 'reviewed_by').join(', ')}`,

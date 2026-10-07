@@ -44,6 +44,7 @@
  .pubbar .publish{background:var(--green);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-weight:800;font-size:14px;cursor:pointer}
  .pubbar .publish:hover{background:#146138}.pubbar .publish:disabled{opacity:.6;cursor:default}
  .toast{position:fixed;bottom:78px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:60}.toast.show{opacity:1}
+.where{font-size:11px;color:#607089;margin:2px 0 6px}.scope{font-size:12px;margin:4px 0}table.pv{border-collapse:collapse;margin-top:6px;font-size:12px}table.pv td,table.pv th{border:1px solid #e3e8ef;padding:4px 6px;text-align:left}
 </style><link rel="stylesheet" href="/admin/admin-shell.css"></head><body>
 <header id="ac-head"></header>
 <div class="wrap" id="wrap"><div class="msg">Loading…</div></div>
@@ -64,7 +65,7 @@ const ORDERING="https://hcpsonlineordering.netlify.app";
 const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
 window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
 let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
-let TOKEN=HCPS.token(), MFRS=[], SLUG="", PRODUCTS=[], OVER={}, Q="", NEEDONLY=false, BROKEN={}, PICK=null;
+let TOKEN=HCPS.token(), MFRS=[], SLUG="", PRODUCTS=[], Q="", NEEDONLY=false, BROKEN={}, PICK=null;
 // Staged (unpublished) changes across all lines, keyed "mfr::code":
 //   {kind:'upload', slug, code, name, data, contentType, filename, dataUrl}  or  {kind:'remove', slug, code}
 const STAGE=new Map();
@@ -91,30 +92,45 @@ async function boot(){
     SLUG=MFRS[0].slug;await loadMfr();
   }catch(e){if(String(e.message)!=="unauthorized")$("#wrap").innerHTML=`<div class="msg err">Couldn't load: ${esc(e.message)}</div>`;}
 }
-async function loadMfr(){ const j=await api("?manufacturer="+encodeURIComponent(SLUG),{method:"GET"}); PRODUCTS=j.products||[];OVER=j.overrides||{};BROKEN={};render(); }
+async function loadMfr(){ const j=await api("?manufacturer="+encodeURIComponent(SLUG),{method:"GET"}); PRODUCTS=j.products||[];LEGACY=j.legacy_rows||0;PLAN=null;BROKEN={};render(); }
+/* Phase 2.4 — this screen is a VIEW over the one image authority: a product's photo lives on
+   its enrichment page (gallery primary), a SKU-specific photo on that SKU, and a SKU no page
+   claims on the catalog layer. What is shown here is exactly what dealers see. */
+let LEGACY=0, PLAN=null;
+const SRC_LABEL={page:"Product photo",sku:"This SKU's photo","catalog-override":"Catalog photo","catalog-added":"Catalog photo","catalog-file":"Catalog file",none:""};
 function staged(code){ return STAGE.get(skey(SLUG,code)); }
-function imgFor(p){ const s=staged(p.code); if(s){ return s.kind==='upload'?s.dataUrl:""; } if(OVER[p.code])return OVER[p.code]; if(p.image)return ORDERING+p.image; return ""; }
-function statusOf(p){ const s=staged(p.code); if(s)return s.kind==='upload'?"stg":"miss"; if(OVER[p.code])return "up"; if(p.image&&!BROKEN[p.code])return "has"; return "miss"; }
+function abs(u){ return !u?"":(/^https?:/i.test(u)?u:ORDERING+u); }
+function imgFor(p){ const s=staged(p.code); if(s){ return s.kind==='upload'?s.dataUrl:""; } return abs(p.image); }
+function statusOf(p){ const s=staged(p.code); if(s)return s.kind==='upload'?"stg":"miss"; if(p.image&&!BROKEN[p.code])return "has"; return "miss"; }
+function canRemove(p){ return p.source==="sku"||p.source==="catalog-override"||p.source==="catalog-added"; }
 function filtered(){ const q=Q.toLowerCase();
   return PRODUCTS.filter(p=>{ if(NEEDONLY && statusOf(p)!=="miss") return false;
-    if(q && !(`${p.code} ${p.name} ${p.category}`.toLowerCase().includes(q))) return false; return true; }); }
+    if(q && !(`${p.code} ${p.name} ${p.category} ${p.page_name||""}`.toLowerCase().includes(q))) return false; return true; }); }
 function render(){
-  const withImg=PRODUCTS.filter(p=>statusOf(p)==="has"||statusOf(p)==="up").length, miss=PRODUCTS.filter(p=>statusOf(p)==="miss").length;
+  const withImg=PRODUCTS.filter(p=>statusOf(p)==="has").length, miss=PRODUCTS.filter(p=>statusOf(p)==="miss").length;
   const stgCount=STAGE.size;
   const mfrOpts=MFRS.map(m=>`<option value="${esc(m.slug)}" ${m.slug===SLUG?"selected":""}>${esc(m.name)}</option>`).join("");
   const cards=filtered().map(p=>{const src=imgFor(p),st=statusOf(p);const s=staged(p.code);
-    const badge=st==="stg"?'<span class="badge stg">Staged</span>':st==="up"?'<span class="badge up">Uploaded</span>':st==="has"?'<span class="badge has">Has photo</span>':'<span class="badge miss">Needs image</span>';
+    const badge=st==="stg"?'<span class="badge stg">Staged</span>':st==="has"?`<span class="badge has">${esc(SRC_LABEL[p.source]||"Has photo")}</span>`:'<span class="badge miss">Needs image</span>';
     const img=src?`<img src="${esc(src)}" alt="" loading="lazy" onerror="imgBroke('${esc(p.code)}')">`:`<span class="ph">No image</span>`;
     let acts;
-    if(s){ acts=`<button class="undo" onclick="unstage('${esc(p.code)}')">Undo staged ${s.kind==='remove'?'removal':'photo'}</button>`; }
-    else { acts=`<button class="up" onclick="pick('${esc(p.code)}')">${OVER[p.code]?"Replace":"Upload"}</button>`+
-      (OVER[p.code]?`<button class="rm" onclick="stageRemove('${esc(p.code)}')">Remove</button>`:""); }
+    if(s){
+      const needScope=s.kind==='upload' && p.page_skus>1 && !s.scope;
+      acts=(needScope?`<div class="scope">Use this photo for <button class="up" onclick="setScope('${esc(p.code)}','product')">the whole product</button> <button class="up" onclick="setScope('${esc(p.code)}','sku')">this SKU only</button></div>`:
+             (s.kind==='upload'&&p.page_skus>1?`<div class="scope">→ ${s.scope==='sku'?'this SKU only':'whole product'}</div>`:''))+
+           `<button class="undo" onclick="unstage('${esc(p.code)}')">Undo staged ${s.kind==='remove'?'removal':'photo'}</button>`;
+    } else {
+      acts=`<button class="up" onclick="pick('${esc(p.code)}')">${p.image?"Replace":"Upload"}</button>`+
+        (canRemove(p)?`<button class="rm" onclick="stageRemove('${esc(p.code)}')">Remove</button>`:"");
+    }
+    const where=p.page_key?`<div class="where">On “${esc(p.page_name||p.page_key)}”${p.page_skus>1?` · ${p.page_skus} SKUs`:""}</div>`:`<div class="where">No product page</div>`;
     return `<div class="pc ${s?'staged':''}"><div class="img">${badge}${img}</div>
-      <div class="body"><div class="code">#${esc(p.code)}</div><div class="nm">${esc(p.name)}</div>
+      <div class="body"><div class="code">#${esc(p.code)}</div><div class="nm">${esc(p.name)}</div>${where}
       <div class="acts">${acts}</div></div></div>`;
   }).join("");
-  $("#wrap").innerHTML=`<h1>🖼️ Image Manager</h1><p class="sub">Stage as many photo changes as you like, then <b>Publish all</b> in one go.</p>
-   <div class="infobar">✓ Photos publish to Supabase storage and go live on the portal instantly — <b>no Netlify redeploy and no build credits used</b>. Staging just lets you batch several changes into one publish.</div>
+  $("#wrap").innerHTML=`<h1>🖼️ Product Images</h1><p class="sub">Stage photo changes, then <b>Publish all</b>. Every photo shown here is the one dealers see.</p>
+   <div class="infobar">A product's photo is saved to its product page — the same place Product Content Enrichment edits — so both screens always agree. A SKU without a product page keeps its photo on the catalog record. Gallery order and extra photos are managed in Enrichment.</div>
+   ${LEGACY?`<div class="infobar">Legacy uploads: ${LEGACY} photo(s) from the old image store on this line. <button class="up" onclick="legacyPlan()">Review migration (dry run)</button>${PLAN?renderPlan():""}</div>`:""}
    <div class="kpis">
      <div class="kpi"><div class="l">Products</div><div class="v">${PRODUCTS.length}</div></div>
      <div class="kpi"><div class="l">Have image</div><div class="v">${withImg}</div></div>
@@ -131,6 +147,25 @@ function render(){
   $("#filein").onchange=onFile;
   renderPubbar();
 }
+function renderPlan(){
+  const r=(PLAN.report||[])[0]; if(!r) return "";
+  const by=Object.entries(r.by_class).map(([k,v])=>`${esc(k.replace(/_/g," "))}: <b>${v}</b>`).join(" · ");
+  const coll=r.plan.filter(x=>x.class==="collision");
+  const rows=coll.map(x=>`<tr><td>${esc(x.code)}</td><td>${esc(x.page_key)}</td><td><img src="${esc(abs(x.url))}" style="height:48px" onerror="this.replaceWith('—')"></td><td><img src="${esc(abs(x.current))}" style="height:48px" onerror="this.replaceWith('—')"></td></tr>`).join("");
+  return `<div style="margin-top:8px">${by}</div>
+    ${coll.length?`<div style="margin-top:8px">Collisions (the product page already has an approved photo — dealers see that one; nothing changes unless you decide):</div>
+    <table class="pv"><thead><tr><th>SKU</th><th>Page</th><th>Legacy upload</th><th>Current photo</th></tr></thead><tbody>${rows}</tbody></table>`:""}
+    <div style="margin-top:8px"><button class="up" onclick="legacyApply()">Apply the safe moves</button> <span style="font-size:12px;color:#607089">Moves only uploads that are what dealers see today, and photos for pages that have none. Collisions are left as they are.</span></div>`;
+}
+async function legacyPlan(){ try{ PLAN=await api("",{method:"POST",body:JSON.stringify({action:"migrate_legacy",manufacturer:SLUG})}); render(); }catch(e){ toast("Dry run failed: "+e.message); } }
+async function legacyApply(){
+  if(!confirm("Move the safe legacy photos on this line into the image record? Collisions are not touched.")) return;
+  try{ const j=await api("",{method:"POST",body:JSON.stringify({action:"migrate_legacy",manufacturer:SLUG,apply:true})});
+    const done=((j.report||[])[0]||{}).applied||[]; const bad=done.filter(x=>!x.ok).length;
+    toast(bad?`Moved ${done.length-bad}, ${bad} failed`:`Moved ${done.length} photo(s) ✓`); await loadMfr();
+  }catch(e){ toast("Migration failed: "+e.message); }
+}
+function setScope(code,scope){ const s=STAGE.get(skey(SLUG,code)); if(s){ s.scope=scope; render(); } }
 function renderPubbar(){
   const n=STAGE.size, bar=$("#pubbar");
   if(!n){bar.classList.remove("show");return;}
@@ -148,30 +183,31 @@ function onFile(e){ const f=e.target.files&&e.target.files[0]; if(!f||!PICK)retu
   if(f.size>5*1024*1024){toast("Image must be under 5 MB");return;}
   const rd=new FileReader(); const code=PICK, slug=SLUG, p=PRODUCTS.find(x=>x.code===code)||{};
   rd.onload=()=>{ const dataUrl=String(rd.result), data=dataUrl.split(",")[1];
-    STAGE.set(skey(slug,code),{kind:'upload',slug,code,name:p.name||"",data,contentType:f.type||"image/jpeg",filename:f.name,dataUrl});
-    render(); toast("Staged — publish when ready");
+    STAGE.set(skey(slug,code),{kind:'upload',slug,code,name:p.name||"",data,contentType:f.type||"image/jpeg",filename:f.name,dataUrl,
+      scope:(p.page_key&&p.page_skus===1)?'product':null, multi:p.page_skus>1});
+    render(); toast(p.page_skus>1?"Staged — choose whole product or this SKU":"Staged — publish when ready");
   };
   rd.readAsDataURL(f);
 }
 async function publishAll(){
   const items=[...STAGE.values()]; if(!items.length)return;
+  const unscoped=items.filter(it=>it.kind==='upload'&&it.multi&&!it.scope);
+  if(unscoped.length){ toast(`Choose "whole product" or "this SKU only" for ${unscoped.length} photo(s) first`); return; }
   const btn=$("#publishBtn"); btn.disabled=true; const orig=btn.textContent;
-  let ok=0, fail=0;
+  let ok=0, fail=0; const errs=[];
   for(let i=0;i<items.length;i++){ const it=items[i]; btn.textContent=`Publishing ${i+1}/${items.length}…`;
     try{
       if(it.kind==='upload'){
-        const j=await api("",{method:"POST",body:JSON.stringify({action:"upload",manufacturer:it.slug,code:it.code,filename:it.filename,contentType:it.contentType,data:it.data})});
-        if(it.slug===SLUG){ OVER[it.code]=j.url; delete BROKEN[it.code]; }
+        await api("",{method:"POST",body:JSON.stringify({action:"upload",manufacturer:it.slug,code:it.code,scope:it.scope||undefined,filename:it.filename,contentType:it.contentType,data:it.data})});
       }else{
         await api("",{method:"POST",body:JSON.stringify({action:"clear",manufacturer:it.slug,code:it.code})});
-        if(it.slug===SLUG) delete OVER[it.code];
       }
       STAGE.delete(skey(it.slug,it.code)); ok++;
-    }catch(e){ fail++; }
+    }catch(e){ fail++; errs.push(it.code+": "+e.message); }
   }
   btn.disabled=false; btn.textContent=orig;
-  render();
-  toast(fail? `Published ${ok}, ${fail} failed — check and retry` : `Published ${ok} change${ok===1?'':'s'} ✓`);
+  await loadMfr();
+  toast(fail? `Published ${ok}, ${fail} failed — ${errs[0]}` : `Published ${ok} change${ok===1?'':'s'} ✓`);
 }
 /* masthead provides Lock */
 if(TOKEN)boot();else gate();
