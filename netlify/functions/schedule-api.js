@@ -328,6 +328,9 @@ async function sendConfirmation(tok, { to, cc, req, whenText, zoom, tzAbbrev }) 
 // failure row (zoho_sync_log, result "fail") instead of disappearing.
 const ZL = require("./_zoho_log.js");
 const zfail = (f) => ZL.writeLog([ZL.failRow(Object.assign({ phase: "schedule" }, f))]).catch(() => {});
+// Phase 2F-2: an appointment for a TEST dealer (by dealer id, or by the dealer's name when the booking
+// isn't tied to a dealer yet) never creates a Zoho task. If the TEST dealers can't be read: no Zoho task.
+const ZT = require("./_zoho_test.js");
 async function zohoConnect() {
   if (!zohoLib.hasCreds()) return null;
   let cfg = null; try { const rows = await sbGet("app_settings?key=eq.zoho_auth&select=value"); cfg = rows && rows[0] && rows[0].value; } catch (e) { await zfail({ entity: "zoho_auth", action: "read", msg: "Zoho connection settings couldn't be read: " + String(e.message || e) }); return null; }
@@ -338,6 +341,8 @@ async function zohoConnect() {
 }
 async function zohoTask(req, subject, desc, dueDate) {
   try {
+    let T; try { T = await ZT.load(sbGet); } catch (e) { await zfail({ entity: "task", action: "push", msg: "TEST dealers couldn't be read, so no Zoho task was created for this appointment: " + String(e.message || e) }); return null; }
+    if (T.dealer(req.dealer_id) || T.name(req.company)) return null;   // a TEST dealer's appointment stays out of Zoho
     const c = await zohoConnect(); if (!c) return null;
     const rec = { Subject: String(subject || "HCPS appointment").slice(0, 255), Status: "Not Started" };
     if (/^\d{4}-\d{2}-\d{2}$/.test(String(dueDate || ""))) rec.Due_Date = dueDate;
@@ -360,6 +365,10 @@ async function zohoTask(req, subject, desc, dueDate) {
 // Upsert a manufacturer PROSPECT as a Zoho Lead (matched on email), with the intro-meeting context (non-fatal).
 async function zohoLead(m) {
   try {
+    // Phase 2F-2: a prospect whose company is a TEST dealer's name, or whose address is a TEST dealer's
+    // email, never becomes a Zoho Lead. If the TEST dealers can't be read: no Lead.
+    let T; try { T = await ZT.load(sbGet); } catch (e) { await zfail({ entity: "lead", action: "push", msg: "TEST dealers couldn't be read, so this prospect was not saved as a Zoho Lead: " + String(e.message || e) }); return null; }
+    if (T.name(m.company) || T.email(m.email)) return null;
     const c = await zohoConnect(); if (!c) return null;
     const desc = m.desc ? String(m.desc) : [m.category ? "Product category: " + m.category : "", m.states ? "States needing rep: " + m.states : "",
       m.territory ? "Territory needs: " + m.territory : "", m.description ? "Product line: " + m.description : "",
@@ -512,7 +521,7 @@ async function publicBook(b) {
 
   // Dealer 360 + Zoho (best-effort).
   await logActivity(d.dealer_id, `Appointment booked — ${mt.label}`, `${when_text} · ${isOnline ? "Online (Zoom)" : "Field visit"} · with ${owner.rep_display}. Self-booked via Dealer Hub.`, email, "Dealer Hub");
-  const zt = await zohoTask({ company: d.company }, `HCPS ${mt.label} — ${d.company || ""}`.trim(), `Self-booked ${when_text} with ${owner.rep_display}. ${isOnline ? "Zoom." : "Field visit."}`, dateOr(startUtc.slice(0, 10)));
+  const zt = await zohoTask({ company: d.company, dealer_id: d.dealer_id }, `HCPS ${mt.label} — ${d.company || ""}`.trim(), `Self-booked ${when_text} with ${owner.rep_display}. ${isOnline ? "Zoom." : "Field visit."}`, dateOr(startUtc.slice(0, 10)));
   if (zt) { try { await patchReq(saved.id, { zoho: { ...zt, at: new Date().toISOString() } }); } catch (e) {} }
 
   return json(200, { ok: true, id: saved.id, when_text, zoom_link: isOnline ? mt.zoom_link : null,
@@ -736,7 +745,7 @@ async function adminHandler(me, b) {
     }
 
     let zoho = req.zoho && typeof req.zoho === "object" ? { ...req.zoho } : {};
-    if (!zoho.task_id) { const zt = await zohoTask(req, `HCPS ${req.service} — ${req.company || ""}`.trim(), `Scheduled with ${clip(b.rep_name, 120) || repEmail}${date ? " on " + date : ""}${timeText ? " " + timeText : ""}.`, date); if (zt) zoho = { ...zoho, ...zt, at: new Date().toISOString() }; }
+    if (!zoho.task_id) { const zt = await zohoTask(Object.assign({}, req, { dealer_id: dealer_id || req.dealer_id || null }), `HCPS ${req.service} — ${req.company || ""}`.trim(), `Scheduled with ${clip(b.rep_name, 120) || repEmail}${date ? " on " + date : ""}${timeText ? " " + timeText : ""}.`, date); if (zt) zoho = { ...zoho, ...zt, at: new Date().toISOString() }; }
 
     let out;
     try {

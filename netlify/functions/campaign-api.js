@@ -456,6 +456,15 @@ exports.handler=async(event)=>{
         c.audience.sample=c.audience.sample.filter(s=>!excl.has(String(s.email||"").toLowerCase()));
         c.audience.count=c.audience.sample.length;
       }
+      // Phase 2F-2: a TEST dealer's recipients never go to Zoho (the shared rule). If the TEST dealers
+      // can't be read, nothing is pushed.
+      let T; try{ T=await require("./_zoho_test.js").load(sbGet); }
+      catch(e){ return json(200,{ok:false,error:"test_rule_unavailable",message:"Couldn't confirm which dealers are TEST dealers, so nothing was sent to Zoho. Try again shortly."}); }
+      if(c.audience && Array.isArray(c.audience.sample)){
+        const before=c.audience.sample.length;
+        c.audience.sample=c.audience.sample.filter(s=>!T.dealer(s.dealer_id));   // recipients carry their dealer
+        if(c.audience.sample.length!==before) c.audience.count=c.audience.sample.length;
+      }
       if(c.audience && !(c.audience.sample&&c.audience.sample.length)) return json(200,{ok:false,message:"No recipients left to send — every contact was excluded."});
       const res=await ZC.pushCampaign(c,CAMPAIGN_FROM,CAMPAIGN_FROM_NAME);
       if(!res.ok) return json(200,{ok:false,message:res.error||"Zoho push failed",step:res.step||null});

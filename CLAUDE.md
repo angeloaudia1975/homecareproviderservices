@@ -561,11 +561,66 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   (`_account_class.js SIGNAL_EXCLUDED`); blank (every existing record), dealer, prospect and other stay
   eligible. It never changes owner, rep scope, access, visibility or any other column (no `updated_at`), and
   nothing is ever classified automatically or inferred from a company name.
-- **Zoho and testing (rule until the Zoho `is_test` exclusion is fixed in 2F).** The Zoho autosync pushes
-  every dealer, every contact with an email and every deal, TEST ones included. Do not create TEST dealers,
-  contacts, tasks or opportunities that could be pushed to Zoho unless the task requires it and Angelo has
-  approved it. Live tests use what exists (the TEST sandbox dealer, read-only checks) and create no deals or
-  contacts.
+- **TEST isolation (2F-2).** `_zoho_test.js` is the ONE rule every Zoho push path uses: a dealer with
+  `is_test = true`, and everything attached to it — its own email, contacts, deals, tasks, notes,
+  appointments, website-booking Leads, sales roll-ups and campaign recipients — is never sent to Zoho.
+  `load(sbGet)` reads the TEST dealers and their contacts' emails once per run/request and THROWS when it
+  can't; the caller then pushes nothing (fail closed) and records why (a failure row; autosync logs the run
+  "partial", sets `outbound_skipped:"test_rule_unavailable"` and still runs its pulls). Matching: by dealer
+  id; a record that only carries a company name (imports, the master list, a booking not yet tied to a
+  dealer) by the name compared on letters and digits; imports and Leads also by a TEST dealer's email.
+  Wired into zoho-autosync (accounts, contacts, deals — TEST rows dropped BEFORE de-duplication, so a real
+  dealer's copy of a shared address is still pushed), every zoho-api push (sync_accounts, sync_contacts,
+  zoho_import_accounts/contacts, zoho_load_master, sync_deals, mirror_to_zoho, sync_opportunities —
+  responses carry `test_excluded`), schedule-api's Zoho task and Lead, and campaign-api push_to_zoho. Any new
+  code that writes to Zoho must use it (the 2F-2 test fails when a new Zoho writer appears without it). The
+  autosync summary carries `test_excluded:{accounts,contacts,deals}`. Existing Zoho TEST records are left
+  alone — removing them is a separate, approved cleanup step. Pulls from Zoho are unchanged.
+- **Zoho and testing.** Until 2F-2 is live and verified, TEST dealers, contacts, tasks and opportunities can
+  still reach Zoho: create none unless the task requires it and Angelo has approved it, and live tests use
+  what exists (the TEST sandbox dealer, read-only checks). Once 2F-2 is verified live they stay out of
+  Zoho, but live tests still create only what a check needs, on the TEST sandbox dealer.
+
+## 17. Online Ordering — one master record per field (RULE, agreed 2026-10-07)
+
+Architecture: **Structure Map = organisation · Product Content Enrichment = identity/content ·
+product_skus = commercial (SKU, dealer price, MSRP, MAP, tiers, sellable status) · Partner 360 =
+published output.** One master answer per field; no tool keeps its own copy; no new parallel store.
+Disagreeing sources are reported, never silently resolved. Priority until further notice: finish
+Climbing Steps → Strongback → Ovation; **no new manufacturer onboarding and no admin-nav redesign**
+until all three pass the Gold Standard (Structure, Content, Commerce, Partner 360).
+
+- **Canonical commercial write (migrated lines).** Admin commercial edit → `product_skus` FIRST →
+  temporary legacy projection (override / added row) so the shop matches while
+  `record_authoritative=false`. Never "edit the override, then copy it into the record". The
+  projection is marked `patch.record_projection.fields`; the reconciler settles a projected field
+  from it alone and never counts it as a vote against the catalog file. One path:
+  `commitCommercial` in `catalog-api.js` (save_override, bulk_price/Price Check, save_product,
+  retire/restore/discontinue). If the record write fails, nothing is written to the layers.
+  Lines with no product_skus rows keep legacy behaviour until they are migrated.
+- **The record is never rebuilt from the layers on a migrated line.** The end-of-request hook only
+  checks parity (what the shop shows vs product_skus) for the codes touched and writes a
+  `parity:` message to `manufacturer_meta.record_resync_error` on any difference — that blocks
+  authority. `reconcile apply replace:true` is refused while canonical edits exist.
+- **A failed read is an error, never an empty layer.** Catalog file: 404 = genuinely no file
+  (empty); any other failure throws. Supabase reads on these paths have no `.catch(()=>[])`.
+- **Record authority** stays OFF on every line until that line's parity is proven and Angelo has
+  reviewed the reconciliation report. `set_record_authority` requires `confirm_parity:true`, a
+  clean `record_resync_error`, and zero parity drift; it never rewrites the record.
+- **Product Catalog saves send only the fields the person changed** (`draftChanges`). A price edit
+  must never pin name, category or description as an override.
+- **Price changes are confirmed against the manufacturer's approved price list before anything
+  changes;** a conflict is reported to Angelo, not fixed silently.
+- **Saved carts (agreed, implementing in 2.7):** a cart loads at current authorised pricing; a
+  changed line shows **Price updated** (old → new where practical); totals and tiers recalculate;
+  contract prices still win; checkout recalculates the price on the server and, if it changed
+  after the dealer last reviewed, returns the cart for review instead of submitting. The server is
+  the final pricing authority.
+- **Old Partner 360 `/admin` pages** are contained with temporary redirects to the main admin; their
+  functions stay until usage logs show nothing calls them.
+- **Corrections to earlier notes:** Price Check is NOT read-only (it writes through bulk_price /
+  save_override, now via the canonical path). `rename_code` does NOT yet re-point
+  `dealer_contract_prices` or `product_images` (open defect; see the Integration Audit doc).
 
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.

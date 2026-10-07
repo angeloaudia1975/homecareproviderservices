@@ -18,6 +18,8 @@ const { accessToken, zoho, upsertRecords, getAllRecords } = require("./_zoho.js"
 // Phase 2F-1: every step that used to swallow an error records a failure row (one per record)
 // and the run is logged "partial". Sync behaviour itself is unchanged.
 const ZL = require("./_zoho_log.js");
+// Phase 2F-2: TEST isolation — nothing attached to an is_test dealer is pushed (the shared rule).
+const ZT = require("./_zoho_test.js");
 
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}`); return r.json(); }
@@ -79,6 +81,12 @@ async function runInner(runAt){
 
   const hashes=await getHashes(); const next={...hashes};
   const summary={accounts:{changed:0,ok:0}, contacts:{changed:0,ok:0}, opportunities:{changed:0,ok:0}, deals_pulled:0, errors:[]};
+  // Phase 2F-2: which dealers are TEST. If that can't be read, NOTHING is pushed this run (fail closed);
+  // the pulls below still run (they only write to HCPS).
+  let T=null;
+  try{ T=await ZT.load(sbGet); }
+  catch(e){ F.fail({phase:"test_rule",entity:"dealers",action:"read",msg:"TEST dealers couldn't be read, so nothing was pushed to Zoho this run: "+failMsg(e)}); summary.outbound_skipped="test_rule_unavailable"; }
+  summary.test_excluded={accounts:0,contacts:0,deals:0};
 
   // Cache Zoho Account ids by name (needed to LINK contacts + deals to their account). One read.
   const acctIdByName={};
@@ -86,10 +94,11 @@ async function runInner(runAt){
   catch(e){ F.fail({phase:"accounts_read",entity:"accounts",action:"read",msg:"Zoho Accounts couldn't be read (contacts and deals go out without their account link): "+failMsg(e)}); }
 
   // ---- OUTBOUND: dealers -> Accounts (changed only, matched on Account_Name) ----
-  try{
+  if(T) try{
     const dealers=await sbGetAll("dealers?select=id,business_name,city,state,zip,phone,address,email","id");
     const changed=[];
     for(const d of dealers){
+      if(T.dealer(d.id)){ summary.test_excluded.accounts++; continue; }   // a TEST dealer is never an Account
       const rec=prune({ Account_Name:(clean(d.business_name)||("Dealer "+d.id)), Phone:clean(d.phone), Website:websiteFrom(d.email), Billing_Street:clean(d.address), Billing_City:clean(d.city), Billing_State:clean(d.state), Billing_Code:clean(d.zip) });
       rec.Account_Name=String(rec.Account_Name).slice(0,255);
       const key="acct:"+d.id, h=hashOf(rec);
@@ -106,13 +115,15 @@ async function runInner(runAt){
   await F.flush();
 
   // ---- OUTBOUND: dealer people -> Contacts (changed only, matched on Email, linked to Account) ----
-  try{
+  if(T) try{
     const dealers=await sbGetAll("dealers?select=id,business_name,contact_name,email","id");
     const nameByDealer={}; for(const d of dealers) nameByDealer[String(d.id)]=(clean(d.business_name)||("Dealer "+d.id)).slice(0,255);
     const people=[];
     const dc=await sbGetAll("dealer_contacts?select=id,dealer_id,name,email,phone,title","id").catch(e=>{ F.fail({phase:"contacts_read",entity:"contacts",action:"read",msg:"HCPS contacts couldn't be read (only dealers' main emails were considered): "+failMsg(e)}); return []; });
-    for(const x of (dc||[])){ const email=clean(x.email); if(!email||!EMAIL_RE.test(email)) continue; const nm=splitName(x.name); people.push({dealer_id:String(x.dealer_id), email, first:nm.first, last:nm.last, phone:clean(x.phone), title:clean(x.title)}); }
-    for(const d of dealers){ const email=clean(d.email); if(!email||!EMAIL_RE.test(email)) continue; const nm=splitName(d.contact_name); people.push({dealer_id:String(d.id), email, first:nm.first, last:nm.last}); }
+    // A TEST dealer's contacts and its own email are left out BEFORE de-duplication, so the same address on
+    // a real dealer is still pushed for that real dealer.
+    for(const x of (dc||[])){ const email=clean(x.email); if(!email||!EMAIL_RE.test(email)) continue; if(T.dealer(x.dealer_id)){ summary.test_excluded.contacts++; continue; } const nm=splitName(x.name); people.push({dealer_id:String(x.dealer_id), email, first:nm.first, last:nm.last, phone:clean(x.phone), title:clean(x.title)}); }
+    for(const d of dealers){ const email=clean(d.email); if(!email||!EMAIL_RE.test(email)) continue; if(T.dealer(d.id)){ summary.test_excluded.contacts++; continue; } const nm=splitName(d.contact_name); people.push({dealer_id:String(d.id), email, first:nm.first, last:nm.last}); }
     const seen=new Set(), uniq=[];
     for(const p of people){ const k=p.email.toLowerCase(); if(seen.has(k)) continue; seen.add(k); uniq.push(p); }
     const changed=[], dealerOfKey={};
@@ -133,11 +144,12 @@ async function runInner(runAt){
   await F.flush();
 
   // ---- OUTBOUND: pipeline -> Deals (changed only; PUT when we already know the Zoho Deal id) ----
-  try{
+  if(T) try{
     const opps=await sbGetAll("opportunities?select=id,dealer_id,title,line,stage,value,expected_close,zoho_id","id").catch(e=>{ F.fail({phase:"opps_read",entity:"opportunities",action:"read",msg:"HCPS deals couldn't be read, so none were pushed: "+failMsg(e)}); return []; });
     const dealers=await sbGetAll("dealers?select=id,business_name","id"); const nameById={}; for(const d of dealers) nameById[d.id]=(clean(d.business_name)||("Dealer "+d.id)).slice(0,255);
     const today=new Date().toISOString().slice(0,10);
     for(const o of opps){
+      if(T.dealer(o.dealer_id)){ summary.test_excluded.deals++; continue; }   // a TEST dealer's deal is never pushed
       const rec=prune({ Deal_Name:String(o.title||"Opportunity").slice(0,255), Amount:Number(o.value)||0, Stage:STAGE_TO_ZOHO[o.stage]||"Qualification", Closing_Date:/^\d{4}-\d{2}-\d{2}$/.test(String(o.expected_close||""))?o.expected_close:today });
       if(o.line) rec.Description="Line: "+o.line;
       const acctId=o.dealer_id?acctIdByName[nameById[o.dealer_id]]:null;

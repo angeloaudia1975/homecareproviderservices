@@ -583,7 +583,27 @@ function newProduct(){PDRAFT={kind:"custom",code:"",orig_code:null,name:"",categ
 function editProduct(code){ const p=effProducts().find(x=>x.code===code); if(!p)return;
   PDRAFT={kind:p.kind,code:p.code,orig_code:p.code,name:p.name||"",category:p.category||"",subcategory:p.subcategory||"",group:p.group||"",base_price:p.base_price??"",msrp:p.msrp??"",map:p.map??"",
     image:p.image||"",description:p.description||"",price_note:p.price_note||"",active:p.active!==false,tiers:tiersOf(p),edited:!!p.edited};
+  /* What the form opened with, so a save can send only what the person actually changed. */
+  PDRAFT._orig=JSON.parse(JSON.stringify(PDRAFT));
   render(); }
+/* CHANGED FIELDS ONLY (Phase 2.3).
+   Every save used to send name, category, description and every price back as an override,
+   even for a one-field price edit — which pinned the name and category, so later renames in
+   Enrichment and moves in the Structure Map stopped reaching dealers for that SKU. This
+   returns only the fields whose value differs from what the form opened with. Pure. */
+function draftChanges(orig, draft, tiers){
+  const o=orig||{}, out={};
+  const s=v=>String(v==null?"":v).trim();
+  const n=v=>(v===""||v==null)?null:(isFinite(Number(v))?Math.round(Number(v)*100)/100:null);
+  const lad=t=>JSON.stringify((Array.isArray(t)?t:[]).filter(r=>r&&r.price!==""&&r.price!=null)
+    .map(r=>[parseInt(r.min_qty||1,10)||1, Math.round(Number(r.price)*100)/100]).sort((a,b)=>a[0]-b[0]));
+  ["name","category","description","price_note","group","subcategory","image"].forEach(k=>{
+    if(s(draft[k])!==s(o[k])) out[k]=(k==="image"&&!s(draft[k]))?null:s(draft[k]); });
+  ["base_price","msrp","map"].forEach(k=>{ if(n(draft[k])!==n(o[k])) out[k]=n(draft[k]); });
+  if(lad(tiers)!==lad(o.tiers)) out.tiers=tiers;
+  if((draft.active!==false)!==(o.active!==false)) out.active=draft.active!==false;
+  return out;
+}
 function setP(k,v){PDRAFT[k]=v;}
 function addTier(){PDRAFT.tiers.push({min_qty:"",price:""});render();}
 function rmTier(i){PDRAFT.tiers.splice(i,1);render();}
@@ -650,8 +670,13 @@ async function saveProduct(){
     if(!r.ok){ toast((r.body&&(r.body.message||r.body.error))||"Couldn't change that SKU",true); return; }
     PDRAFT=null; await loadMfr(); toast("SKU changed ✓ — live on the portal"); return;
   }
+  const isEdit=!!PDRAFT._orig;
+  const changes=isEdit?draftChanges(PDRAFT._orig, PDRAFT, tiers):null;
+  if(isEdit && !Object.keys(changes).length){ PDRAFT=null; render(); toast("No changes to save"); return; }
   if(PDRAFT.kind==="custom"){
-    const r=await apiRaw("",{method:"POST",body:JSON.stringify({action:"save_product",manufacturer:SLUG,product:{...PDRAFT,tiers}})});
+    const {_orig, ...prodOut}=PDRAFT;
+    const r=await apiRaw("",{method:"POST",body:JSON.stringify({action:"save_product",manufacturer:SLUG,
+      product:{...prodOut,tiers}, changed:isEdit?Object.keys(changes):null})});
     if(r.status===409 && r.body && r.body.error==="duplicate_sku"){
       const ex=r.body.existing||{};
       return offerMergeInstead(PDRAFT.code, PDRAFT.code,
@@ -660,25 +685,28 @@ async function saveProduct(){
     if(!r.ok){ toast((r.body&&(r.body.message||r.body.error))||"Couldn't save that product",true); return; }
     /* An added product's group lives on the override layer — custom_products has no column
        for it — so it is saved separately rather than being silently dropped. */
-    if(PDRAFT.group!=null) await api("",{method:"POST",body:JSON.stringify(
+    if(PDRAFT.group!=null && (!isEdit || "group" in changes)) await api("",{method:"POST",body:JSON.stringify(
       {action:"save_override",manufacturer:SLUG,code:PDRAFT.code,patch:{group:String(PDRAFT.group||"")}})}).catch(()=>{});
   }else{
-    const patch={name:PDRAFT.name,category:PDRAFT.category,description:PDRAFT.description,price_note:PDRAFT.price_note,
-      group:PDRAFT.group||"", subcategory:PDRAFT.subcategory||"",
-      base_price:PDRAFT.base_price===""?null:Number(PDRAFT.base_price),msrp:PDRAFT.msrp===""?null:Number(PDRAFT.msrp),map:PDRAFT.map===""||PDRAFT.map==null?null:Number(PDRAFT.map),
-      tiers,active:PDRAFT.active!==false};
-    if(PDRAFT.image) patch.image=PDRAFT.image;
-    await api("",{method:"POST",body:JSON.stringify({action:"save_override",manufacturer:SLUG,code:PDRAFT.code,patch})});
+    /* Only what changed. An image cleared to blank is not sent (the override cannot
+       remove an image); everything else the person changed is. */
+    const patch=Object.assign({},changes);
+    if("image" in patch && !patch.image) delete patch.image;
+    if(!Object.keys(patch).length){ PDRAFT=null; render(); toast("No changes to save"); return; }
+    const r=await apiRaw("",{method:"POST",body:JSON.stringify({action:"save_override",manufacturer:SLUG,code:PDRAFT.code,patch})});
+    if(!r.ok){ toast((r.body&&(r.body.message||r.body.error))||"Couldn't save that product",true); return; }
   }
   /* Same reasoning as the merge: we just sent these values and they were accepted, so
      show them. A custom product's fields live on its own row; a catalog product's live on
      the override — localApply puts them where the server put them. */
-  const saved={name:PDRAFT.name,category:PDRAFT.category,subcategory:PDRAFT.subcategory||"",
+  const wasAdded=PDRAFT.kind==="custom";
+  let saved={name:PDRAFT.name,category:PDRAFT.category,subcategory:PDRAFT.subcategory||"",
     description:PDRAFT.description,price_note:PDRAFT.price_note,group:PDRAFT.group||"",
     base_price:PDRAFT.base_price===""?null:Number(PDRAFT.base_price),
     msrp:PDRAFT.msrp===""?null:Number(PDRAFT.msrp),map:PDRAFT.map===""||PDRAFT.map==null?null:Number(PDRAFT.map), tiers, active:PDRAFT.active!==false};
   if(PDRAFT.image) saved.image=PDRAFT.image;
-  const wasAdded=PDRAFT.kind==="custom";
+  /* A catalog product's screen copy shows only what was overridden — the fields sent. */
+  if(isEdit && !wasAdded){ saved=Object.assign({},changes); if("image" in saved && !saved.image) delete saved.image; }
   if(wasAdded && !(DETAIL.custom||[]).some(p=>String(p.code)===String(PDRAFT.code))){
     (DETAIL.custom=DETAIL.custom||[]).push(Object.assign({code:PDRAFT.code},saved)); touched();
   } else {

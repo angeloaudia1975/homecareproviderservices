@@ -50,13 +50,41 @@ function slugOfWrite(path, body){
   for(const r of rows) if(r && r.manufacturer) return String(r.manufacturer);
   return null;
 }
+/* Which part numbers a layer write touched, so the end-of-request check can compare exactly
+   those against the master record. A write that names no code (a line-wide PATCH) marks the
+   line with "*", which the check reads as "compare every code on the line". */
+const DIRTY_CODES = new Map();
+function codesOfWrite(path, body){
+  const m = /[?&]code=eq\.([^&]+)/.exec(path);
+  if(m){ try { return [decodeURIComponent(m[1])]; } catch(e) { return [m[1]]; } }
+  const rows = Array.isArray(body) ? body : (body ? [body] : []);
+  const out = rows.map(r => r && r.code).filter(c => c != null && String(c).trim() !== "").map(String);
+  return out.length ? out : ["*"];
+}
 async function sb(method,path,body,extra){
   const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined});
   const t=await r.text(); if(!r.ok) throw new Error(`Supabase ${r.status}: ${t}`);
   if(method!=="GET" && LAYER_TABLE.test(path)){
-    const slug=slugOfWrite(path,body); if(slug) DIRTY_LINES.add(slug);
+    const slug=slugOfWrite(path,body);
+    if(slug){
+      DIRTY_LINES.add(slug);
+      const set=DIRTY_CODES.get(slug)||new Set();
+      codesOfWrite(path,body).forEach(c=>set.add(c));
+      DIRTY_CODES.set(slug,set);
+    }
   }
   return t?JSON.parse(t):null;
+}
+/* The deployed catalog file, strictly. A line with no file at all (404) genuinely has no
+   catalog-file products — that is an empty layer. Anything else that fails (a 5xx, a timeout,
+   a body that is not JSON) is an unreadable layer and throws; it is never read as "empty". */
+async function catalogFile(mfr){
+  const r=await fetch(`${ORDERING_BASE}/data/${encodeURIComponent(mfr)}.json`,{headers:{"cache-control":"no-cache"}});
+  if(r.status===404) return [];
+  if(!r.ok) throw new Error(`catalog file for ${mfr}: HTTP ${r.status}`);
+  const j=await r.json();
+  if(!Array.isArray(j)) throw new Error(`catalog file for ${mfr} is not a list`);
+  return j;
 }
 async function fetchJson(url){ const r=await fetch(url,{headers:{"cache-control":"no-cache"}}); if(!r.ok) throw new Error(`${url} ${r.status}`); return r.json(); }
 const num=v=>{ if(v===""||v==null) return null; const n=Number(v); return isFinite(n)?n:null; };
@@ -757,7 +785,26 @@ function reconcileSkus({ slug, base, custom, overrides, pages }){
       return seen;
     };
 
+    /* A PROJECTION IS NOT A VOTE.
+       On a migrated line a commercial edit is written to product_skus FIRST, and the override
+       is then written as a copy of the record's result so the storefront (still reading the
+       layers) shows the same number. That copy is marked: patch.record_projection.fields.
+       Counting it as one layer against the catalog file would make every canonical edit
+       "disagree" with the stale file it exists to supersede — the edit coming back through
+       reconciliation as a conflict against itself. So a projected field is settled from the
+       projection alone: it IS the record's value, written from it. */
+    const projected = field => {
+      for(const m of live){
+        const pr = m.patch && m.patch.record_projection;
+        if(pr && Array.isArray(pr.fields) && pr.fields.indexOf(field) >= 0 && field in m.patch)
+          return { hit:true, value:m.patch[field] };
+      }
+      return { hit:false };
+    };
     const settle = (field, pick, compare) => {
+      const pj = projected(field);
+      if(pj.hit){ const v = pick ? pick(pj.value) : pj.value;
+                  return (v === undefined || v === "") ? null : v; }
       const seen = gather(field, pick);
       if(!seen.length) return null;
       const cmp = compare || (v => JSON.stringify(v));
@@ -1606,6 +1653,9 @@ async function flowTest(slug, sample){
    presence of any row as "this line is migrated", so a storefront that loaded
    inside that window would see migrated:false and quietly fall back. This
    upserts instead, and removes only the codes the layers no longer produce. */
+/* RETIRED BY PHASE 2.2 — no caller remains. Kept (not deleted) until the canonical write
+   path is proven on every migrated line; it is the layers→record mirror that the canonical
+   model replaces, and nothing may call it again on a migrated line. */
 async function resyncRecord(mfr, who){
   const e=encodeURIComponent;
   const [base,custom,ovRows,pages]=await Promise.all([
@@ -1700,33 +1750,212 @@ function schemaFailure(err, setupFile){
                             supabase:m.slice(0, 300) } };
 }
 
-/* Mirror every line touched by this request, once, after the work is done.
+/* Check every line touched by this request, once, after the work is done.
    A failure is RECORDED rather than swallowed: the feed refuses authority while
-   record_resync_error is set, so a broken mirror drops that line back to the
-   layers on its own instead of serving prices that quietly stopped updating.
-   It never fails the request — the layer write genuinely succeeded, and telling
-   a person their price edit failed when it did not is its own kind of wrong. */
+   record_resync_error is set. It never fails the request — the write genuinely
+   succeeded, and telling a person their edit failed when it did not is its own
+   kind of wrong. (Until Phase 2.2 this mirrored the layers into the record; see
+   the comment inside.) */
 async function flushRecordResync(){
   if(!DIRTY_LINES.size) return;
   const slugs=[...DIRTY_LINES]; DIRTY_LINES.clear();
+  const touched=new Map(DIRTY_CODES); DIRTY_CODES.clear();
   for(const slug of slugs){
+    /* THE RECORD IS NO LONGER REBUILT FROM THE LAYERS (Phase 2.2).
+       This used to re-run the reconciler over the layers and upsert the result into
+       product_skus — the mirror model, where every price edit landed on an override first
+       and was copied into the record afterwards, and where an ordinary edit came back as a
+       conflict between the override and the catalog file. On a migrated line the record is
+       now written FIRST by commitCommercial and the layers are a projection of it. What is
+       left for this hook to do is to notice when a layer write did NOT go through that path
+       — an action not yet converted, a direct edit — and say so where it cannot be missed:
+       record_resync_error, which the feed already reads as "do not hand this line
+       authority". It never writes product_skus. */
     try{
-      const meta=await sb("GET",
-        `manufacturer_meta?slug=eq.${encodeURIComponent(slug)}&select=record_authoritative`).catch(()=>[]);
-      if(!(meta && meta[0] && meta[0].record_authoritative===true)) continue;
-      let err=null;
-      try{ await resyncRecord(slug,"auto-resync"); }
-      catch(e){ err=String((e&&e.message)||e).slice(0,500); }
-      try{
-        await sb("POST","manufacturer_meta?on_conflict=slug",
-          {slug, record_resync_at:new Date().toISOString(), record_resync_error:err},
-          {Prefer:"resolution=merge-duplicates,return=minimal"});
-      }catch(e){}
-      if(err) try{ console.error("[HCPS] record resync failed for "+slug+": "+err); }catch(e){}
+      let migrated;
+      try{ migrated=await lineMigrated(slug); }
+      catch(e){ await noteParity(slug,"parity: could not read product_skus — "+String((e&&e.message)||e).slice(0,300)); continue; }
+      if(!migrated) continue;                       // legacy lines keep legacy behaviour
+      let report;
+      try{ report=await parityCheck(slug, touched.get(slug)); }
+      catch(e){ await noteParity(slug,"parity: check failed to read a layer — "+String((e&&e.message)||e).slice(0,300)); continue; }
+      await noteParity(slug, report.drift.length ? parityMessage(report) : null);
+      if(report.drift.length) try{ console.error("[HCPS] "+parityMessage(report)); }catch(e){}
     }catch(e){
-      try{ console.error("[HCPS] record resync hook failed for "+slug+": "+String((e&&e.message)||e)); }catch(_){}
+      try{ console.error("[HCPS] parity hook failed for "+slug+": "+String((e&&e.message)||e)); }catch(_){}
     }
   }
+}
+
+/* ═══ THE CANONICAL COMMERCIAL WRITE (Phase 2.2) ═════════════════════════════════
+   For a manufacturer migrated into product_skus the order is:
+
+       admin commercial edit → product_skus (canonical) → legacy projection (temporary)
+
+   never "edit the override, then copy it into the record". The projection exists only
+   so the storefront, which still prices from the layers while record_authoritative is
+   false, shows the same numbers; it is marked as derived (patch.record_projection) and
+   the reconciler settles a projected field from it alone, never as a vote against the
+   catalog file.
+
+   A line with no product_skus rows keeps the legacy behaviour untouched: commitCommercial
+   does nothing and says so. Every read here is strict — a failed read throws, it is never
+   taken to mean "nothing there". */
+const RECORD_FIELDS=["base_price","msrp","msrp_auto","map","tiers","status"];
+const LIVE_STATUS="active";
+async function lineMigrated(mfr){
+  const rows=await sb("GET",`product_skus?manufacturer=eq.${encodeURIComponent(mfr)}&select=code&limit=1`);
+  return !!(rows&&rows.length);
+}
+/* What an admin edit asks of the record, expressed in record terms. `active:false` with a
+   disposition maps onto the record's status vocabulary; anything else is passed through. */
+function statusFromEdit(active, disposition){
+  if(active===true) return LIVE_STATUS;
+  if(active===false) return String(disposition||"")==="discontinued" ? "discontinued" : "not_listed";
+  return undefined;
+}
+const tierKey=t=>JSON.stringify(cleanTiers(t)||null);
+/* PURE. Given the current record row (or null) and the fields an edit asks for, return only
+   the fields that actually change — plus the MSRP the platform rule re-derives: a flagged
+   (msrp_auto) MSRP follows its dealer price; an unflagged one is never rewritten. */
+function commercialChanges(cur, want){
+  const c=cur||{}, out={};
+  const money=v=>{ const n=num(v); return n==null?null:Math.round(n*100)/100; };
+  const diffMoney=(k)=>{ if(!(k in want)) return; const v=money(want[k]);
+    const was=c[k]==null?null:money(c[k]); if(v!==was) out[k]=v; };
+  diffMoney("base_price"); diffMoney("msrp"); diffMoney("map");
+  if("msrp_auto" in want){ const v=want.msrp_auto===true; if(v!==(c.msrp_auto===true)) out.msrp_auto=v; }
+  if("tiers" in want){ const v=cleanTiers(want.tiers); if(tierKey(v)!==tierKey(c.tiers)) out.tiers=v; }
+  if("status" in want && want.status!==undefined){ if(want.status!==(c.status||LIVE_STATUS)) out.status=want.status; }
+  /* The flagged-MSRP rule, applied where the record lives. */
+  const newBase=("base_price" in out)?out.base_price:null;
+  const autoAfter=("msrp_auto" in out)?out.msrp_auto:(c.msrp_auto===true);
+  if(newBase!=null && newBase>0 && !("msrp" in want) && autoAfter){
+    const d=Math.round(newBase*MSRP_MULTIPLIER*100)/100;
+    if(d!==(c.msrp==null?null:money(c.msrp))) out.msrp=d;
+  }
+  return out;
+}
+/* Write the record first. Returns {migrated, changed, projection}: `projection` is the set of
+   record values the caller must copy onto the legacy layer so the storefront agrees with the
+   record — and nothing else. Throws on any read or write failure, so the caller stops before
+   it touches the layers. */
+async function commitCommercial(mfr, code, want, who){
+  if(!(await lineMigrated(mfr))) return { migrated:false, changed:[], projection:{} };
+  const e=encodeURIComponent, norm=normCode(code);
+  if(!norm) throw new Error("commitCommercial: blank code");
+  const rows=await sb("GET",`product_skus?manufacturer=eq.${e(mfr)}&code_norm=eq.${e(norm)}&select=code,base_price,msrp,msrp_auto,map,tiers,status`);
+  const cur=(rows&&rows[0])||null;
+  const ch=commercialChanges(cur, want||{});
+  const now=new Date().toISOString(), by=String(who||"admin").slice(0,80);
+  if(Object.keys(ch).length){
+    const statusBits = ("status" in ch) ? {status_at:now, status_by:by, status_note:ch.status===LIVE_STATUS?null:(want.status_note||null)} : {};
+    if(cur){
+      await sb("PATCH",`product_skus?manufacturer=eq.${e(mfr)}&code_norm=eq.${e(norm)}`,
+        Object.assign({},ch,statusBits,{updated_at:now,updated_by:by}),{Prefer:"return=minimal"});
+    }else{
+      await sb("POST","product_skus",
+        Object.assign({manufacturer:mfr,code:String(code).trim(),status:LIVE_STATUS},ch,statusBits,{updated_at:now,updated_by:by}),
+        {Prefer:"return=minimal"});
+    }
+  }
+  /* The projection is every commercial field the EDIT named (changed or not — an unchanged
+     value is still the record's value), plus any MSRP the rule re-derived. */
+  const after=Object.assign({},cur||{},ch);
+  const projection={};
+  ["base_price","msrp","msrp_auto","map","tiers"].forEach(k=>{ if(k in (want||{}) || k in ch) projection[k]=after[k]==null?null:after[k]; });
+  /* THE LADDER TRAVELS WITH THE PRICE. The deployed catalog file writes the unit price as a
+     quantity-1 rung, and unitPrice() charges the highest rung reached — so changing only
+     base_price on a catalog-file SKU left the OLD price in force at quantity 1. Whenever the
+     price or the ladder changes, the record's ladder is projected too; "no ladder" is
+     projected as [] because the storefront skips a null override and would fall back to
+     the file's stale rungs. */
+  if("base_price" in (want||{}) || "tiers" in (want||{})){
+    const lad=cleanTiers(after.tiers);
+    projection.tiers=lad?lad:[];
+  }
+  return { migrated:true, created:!cur, changed:Object.keys(ch), projection };
+}
+/* Merge a projection into an override patch and mark which fields are derived from the
+   record. Pure. Status is projected as `active`, the only status word the shop reads. */
+function applyProjection(patch, projection, status){
+  const out=Object.assign({},patch||{});
+  const fields=new Set(((out.record_projection&&out.record_projection.fields)||[]));
+  Object.keys(projection||{}).forEach(k=>{ out[k]=projection[k]; fields.add(k); });
+  if(status!==undefined){ out.active=(status===LIVE_STATUS); fields.add("active"); }
+  if(fields.size) out.record_projection={fields:[...fields].sort(), at:new Date().toISOString()};
+  return out;
+}
+
+/* ── PARITY: does what the storefront will show match the record? ─────────────────────
+   Computes, for the given codes (or every code), the value the storefront's legacy merge
+   produces — override over catalog file, an added product only where the file has no such
+   code, hidden when active:false — and compares it with product_skus. Only DEFINITE
+   differences are reported: where the layer has no value the storefront fills one by
+   inheritance or the 2× MSRP rule, and the browser's own comparison (window.CATALOG_SOURCE)
+   is the authority for those. Strict reads throughout. */
+async function parityCheck(mfr, codes){
+  const e=encodeURIComponent;
+  const all=!codes || codes.has("*") || !codes.size;
+  const want=all?null:new Set([...codes].map(normCode));
+  const base=await catalogFile(mfr);
+  const custom=await sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code,base_price,msrp,map,tiers,active`);
+  const ovRows=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`);
+  const rec=await sb("GET",`product_skus?manufacturer=eq.${e(mfr)}&select=code,base_price,msrp,map,tiers,status&limit=10000`);
+  return parityCompare({base:base||[], custom:custom||[], overrides:ovRows||[], record:rec||[], want, mfr});
+}
+/* PURE half of the above, so it can be tested against real line data without a database. */
+function parityCompare({base, custom, overrides, record, want, mfr}){
+  const om={}; (overrides||[]).forEach(o=>{ om[String(o.code)]=o.patch||{}; });
+  const eff={};
+  const KEYS=["base_price","msrp","map","tiers"];
+  (base||[]).forEach(p=>{ const c=String(p.code); const pa=om[c]||{}; const row={code:c};
+    KEYS.forEach(k=>{ row[k]=p[k]; if(k in pa && pa[k]!=null) row[k]=pa[k]; });
+    row.hidden=pa.active===false; eff[normCode(c)]=row; });
+  const inBase=new Set((base||[]).map(p=>String(p.code)));
+  (custom||[]).forEach(cu=>{ const c=String(cu.code); if(inBase.has(c)) return;
+    const pa=om[c]||{}; const row={code:c};
+    KEYS.forEach(k=>{ row[k]=cu[k]; if(k in pa && pa[k]!=null) row[k]=pa[k]; });
+    row.hidden=cu.active===false || pa.active===false;
+    const k=normCode(c); if(!eff[k] || eff[k].hidden) eff[k]=row; });
+  const money=v=>{ const n=num(v); return n==null?null:Math.round(n*100)/100; };
+  const ladder=(t,bp)=>{ const r=(cleanTiers(t)||[]).filter(x=>!(x.min_qty===1 && bp!=null && Math.abs(x.price-bp)<0.005));
+    return r.length?r.map(x=>x.min_qty+":"+x.price).join(","):""; };
+  const drift=[]; let compared=0;
+  (record||[]).forEach(r=>{
+    const k=normCode(r.code); if(want && !want.has(k)) return;
+    const l=eff[k]; const live=(r.status||LIVE_STATUS)===LIVE_STATUS;
+    compared++;
+    if(!l){ if(live) drift.push({code:r.code, field:"presence", layers:"(no layer row)", record:"active"}); return; }
+    if(live && l.hidden){ drift.push({code:r.code, field:"status", layers:"hidden", record:r.status||LIVE_STATUS}); return; }
+    if(!live && !l.hidden){ drift.push({code:r.code, field:"status", layers:"shown", record:r.status}); return; }
+    if(!live) return;
+    ["base_price","msrp","map"].forEach(f=>{
+      const a=money(l[f]), b=money(r[f]);
+      if(a!=null && b!=null && a!==b) drift.push({code:r.code, field:f, layers:a, record:b});
+      else if(f==="map" && a!=null && b==null) drift.push({code:r.code, field:f, layers:a, record:null});
+    });
+    const bp=money(r.base_price);
+    const la=ladder(l.tiers,money(l.base_price)), lb=ladder(r.tiers,bp);
+    if(la && la!==lb) drift.push({code:r.code, field:"tiers", layers:la, record:lb||null});
+  });
+  return { manufacturer:mfr, compared, drift };
+}
+function parityMessage(rep){
+  const s=rep.drift.slice(0,8).map(d=>`${d.code} ${d.field} ${JSON.stringify(d.layers)}→${JSON.stringify(d.record)}`).join("; ");
+  return `parity: ${rep.drift.length} difference(s) between what the shop shows and product_skus — ${s}${rep.drift.length>8?" …":""}`;
+}
+/* record_resync_error is shared with other failures; this only ever writes or clears its OWN
+   "parity:" message, so it can never wipe an error something else recorded. */
+async function noteParity(slug, msg){
+  const rows=await sb("GET",`manufacturer_meta?slug=eq.${encodeURIComponent(slug)}&select=record_resync_error`);
+  const cur=(rows&&rows[0]&&rows[0].record_resync_error)||null;
+  if(cur && !/^parity:/.test(cur)) return;            // someone else's error stands
+  if(msg===cur) return;
+  if(!msg && !cur) return;
+  await sb("POST","manufacturer_meta?on_conflict=slug",
+    {slug, record_resync_at:new Date().toISOString(), record_resync_error:msg},
+    {Prefer:"resolution=merge-duplicates,return=minimal"});
 }
 
 exports.handler = async (event)=>{
@@ -1831,10 +2060,15 @@ exports.handler = async (event)=>{
            is refused, and the caller is told what it collided with so it can enrich that
            record instead. Pass allow_duplicate:true only for a genuinely different variant. */
         const codeIn=String(p.code).trim();
-        const [baseAll,customAll]=await Promise.all([
-          fetchJson(`${ORDERING_BASE}/data/${mfr}.json`).catch(()=>[]),
-          sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&select=code,name`).catch(()=>[]),
-        ]);
+        /* Strict: the duplicate guard below is only as good as these reads. */
+        let baseAll, customAll;
+        try{
+          [baseAll,customAll]=await Promise.all([
+            catalogFile(mfr),
+            sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&select=code,name`),
+          ]);
+        }catch(err){ return json(503,{error:"layer_unreadable", message:
+          "A catalog layer could not be read, so nothing was saved: "+String((err&&err.message)||err).slice(0,300)}); }
         if(b.allow_duplicate!==true){
           const nk=normCode(codeIn);
           const clash=[]
@@ -1859,6 +2093,32 @@ exports.handler = async (event)=>{
            overwrites a name or a category someone already settled on. */
         const inCustom=(customAll||[]).some(x=>String(x.code)===codeIn);
         const baseRec=(baseAll||[]).find(x=>String(x.code)===codeIn)||null;
+        /* Phase 2.2 — the record first on a migrated line; the layer below receives the
+           record's resulting values. Nothing is written to the layers if this fails. */
+        let projSP=null, statusSP;
+        {
+          const want={};
+          if(num(p.base_price)!=null) want.base_price=p.base_price;
+          if(num(p.msrp)!=null) want.msrp=p.msrp;
+          if(num(p.map)!=null) want.map=p.map;
+          if(p.msrp_auto===true) want.msrp_auto=true;
+          if(cleanTiers(p.tiers)) want.tiers=p.tiers;
+          statusSP=(p.active===false)?statusFromEdit(false,null):undefined;
+          if(statusSP!==undefined) want.status=statusSP;
+          /* Phase 2.3 — an edit names the fields the person changed; only those reach the
+             record. A field the form merely re-sent must never overwrite the record. */
+          if(Array.isArray(b.changed)){
+            const allow=new Set(b.changed.map(String));
+            Object.keys(want).forEach(k=>{ const key=k==="status"?"active":k; if(!allow.has(key)) delete want[k]; });
+            if(statusSP!==undefined && !allow.has("active")) statusSP=undefined;
+          }
+          if(Object.keys(want).length){
+            try{ const cc=await commitCommercial(mfr, codeIn, want, b.reviewer||"product-catalog");
+                 if(cc.migrated) projSP=cc.projection; }
+            catch(err){ return json(502,{error:"record_write_failed", message:
+              "The master price record could not be updated, so nothing was saved: "+String((err&&err.message)||err).slice(0,300)}); }
+          }
+        }
         if(!inCustom && baseRec){
           const now2=new Date().toISOString();
           const ex=await sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(codeIn)}&select=patch`).catch(()=>[]);
@@ -1874,18 +2134,23 @@ exports.handler = async (event)=>{
             if(v!=null&&v!=="" && !(baseRec[k]!=null&&String(baseRec[k]).trim()!=="")) put(k,v);
           });
           if(p.active===false) patch.active=false;
+          const patchOut=projSP?applyProjection(patch, projSP, statusSP):patch;
           await sb("POST","product_overrides?on_conflict=manufacturer,code",
-            {manufacturer:mfr,code:codeIn,patch,updated_at:now2},
+            {manufacturer:mfr,code:codeIn,patch:patchOut,updated_at:now2},
             {Prefer:"resolution=merge-duplicates,return=minimal"});
           return json(200,{ok:true, layer:"override", code:codeIn, carried,
             message:`"${codeIn}" is already a catalog product — it was updated in place instead of being added a second time.`});
         }
+        const pv=k=>(projSP && k in projSP)?projSP[k]:undefined;
         await sb("POST","custom_products?on_conflict=manufacturer,code",{
           manufacturer:mfr, code:String(p.code).trim(), name:String(p.name).trim(),
-          category:p.category||null, base_price:num(p.base_price), msrp:num(p.msrp),
-          map:num(p.map), msrp_auto:p.msrp_auto===true,
+          category:p.category||null,
+          base_price:pv("base_price")!==undefined?pv("base_price"):num(p.base_price),
+          msrp:pv("msrp")!==undefined?pv("msrp"):num(p.msrp),
+          map:pv("map")!==undefined?pv("map"):num(p.map),
+          msrp_auto:pv("msrp_auto")!==undefined?pv("msrp_auto")===true:p.msrp_auto===true,
           image:p.image||null, description:p.description||null,
-          tiers:cleanTiers(p.tiers), price_note:p.price_note||null,
+          tiers:pv("tiers")!==undefined?pv("tiers"):cleanTiers(p.tiers), price_note:p.price_note||null,
           active:p.active===false?false:true, updated_at:new Date().toISOString()
         },{Prefer:"resolution=merge-duplicates,return=minimal"});
         return json(200,{ok:true});
@@ -2017,8 +2282,23 @@ exports.handler = async (event)=>{
         const enc1=encodeURIComponent, codeK=String(b.code).trim();
         let merged=patch;
         if(b.replace!==true){
-          const ex=await sb("GET",`product_overrides?manufacturer=eq.${enc1(b.manufacturer)}&code=eq.${enc1(codeK)}&select=patch`).catch(()=>[]);
+          /* Strict: an unreadable override must not be read as "no override", or the merge
+             below would drop every field it holds. */
+          const ex=await sb("GET",`product_overrides?manufacturer=eq.${enc1(b.manufacturer)}&code=eq.${enc1(codeK)}&select=patch`);
           merged=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{},patch);
+        }
+        /* Phase 2.2 — on a migrated line the record is written FIRST, and only the record's
+           resulting values are projected onto the override. If the record write fails,
+           nothing is written to the layers. */
+        const want={}; ["base_price","msrp","msrp_auto","map","tiers"].forEach(k=>{ if(k in patch) want[k]=patch[k]; });
+        const wantStatus=("active" in patch)?statusFromEdit(patch.active, merged.disposition):undefined;
+        if(wantStatus!==undefined){ want.status=wantStatus; if(merged.disposition_note) want.status_note=merged.disposition_note; }
+        if(Object.keys(want).length){
+          let cc;
+          try{ cc=await commitCommercial(b.manufacturer, codeK, want, b.reviewer||"product-catalog"); }
+          catch(err){ return json(502,{error:"record_write_failed", message:
+            "The master price record could not be updated, so nothing was saved: "+String((err&&err.message)||err).slice(0,300)}); }
+          if(cc.migrated) merged=applyProjection(merged, cc.projection, wantStatus);
         }
         await sb("POST","product_overrides?on_conflict=manufacturer,code",
           {manufacturer:b.manufacturer,code:codeK,patch:merged,updated_at:new Date().toISOString()},
@@ -2027,6 +2307,14 @@ exports.handler = async (event)=>{
       }
       if(b.action==="clear_override"){
         if(!b.manufacturer||!b.code) return json(400,{error:"manufacturer, code required"});
+        /* An override that carries the record's prices is the only thing making the shop
+           agree with the record while the line still reads the layers. Deleting it would put
+           the catalog file's older numbers back in front of dealers with no error anywhere. */
+        const exC=await sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(b.manufacturer)}&code=eq.${encodeURIComponent(b.code)}&select=patch`);
+        const prC=exC&&exC[0]&&exC[0].patch&&exC[0].patch.record_projection;
+        if(prC && Array.isArray(prC.fields) && prC.fields.length && b.force!==true)
+          return json(409,{error:"carries_record_prices", fields:prC.fields, message:
+            "This SKU's override carries prices from the master record ("+prC.fields.join(", ")+"). Clearing it would show the older catalog-file prices to dealers. Edit the price instead."});
         await sb("DELETE",`product_overrides?manufacturer=eq.${encodeURIComponent(b.manufacturer)}&code=eq.${encodeURIComponent(b.code)}`,null,{Prefer:"return=minimal"});
         return json(200,{ok:true});
       }
@@ -2049,10 +2337,17 @@ exports.handler = async (event)=>{
            produced 243. The catalog file is now read too: a code that already exists there is
            PRICED THROUGH THE OVERRIDE LAYER, which is where a change to a catalog product
            belongs, and no second record is created. */
-        const [cust,baseAll]=await Promise.all([
-          sb("GET",`custom_products?manufacturer=eq.${enc(mfr)}&select=code`).catch(()=>[]),
-          fetchJson(`${ORDERING_BASE}/data/${mfr}.json`).catch(()=>[]),
-        ]);
+        /* Strict reads: a failed read of either layer used to look like "this code is not
+           there", which routed a catalog product into a NEW added row — a duplicate. */
+        let cust, baseAll, migratedLine;
+        try{
+          [cust,baseAll,migratedLine]=await Promise.all([
+            sb("GET",`custom_products?manufacturer=eq.${enc(mfr)}&select=code`),
+            catalogFile(mfr),
+            lineMigrated(mfr),
+          ]);
+        }catch(err){ return json(503,{error:"layer_unreadable", message:
+          "A catalog layer could not be read, so no prices were applied: "+String((err&&err.message)||err).slice(0,300)}); }
         const customCodes=new Set((cust||[]).map(r=>String(r.code)));
         const baseCodes=new Set((baseAll||[]).map(r=>String(r.code)));
         /* Fields an imported price row can carry. Case quantity and effective date are
@@ -2079,9 +2374,22 @@ exports.handler = async (event)=>{
           else if(bits.length) f.price_note=bits.join(" · ");
           return f; };
         let applied=0, created=0, failed=0, priced_in_place=0; const now=new Date().toISOString();
+        let recordWrites=0; const recordFailures=[];
         for(const r of rows){
           const code=String(r.code||"").trim(); if(!code) continue;
-          const pf=priceFields(r);
+          let pf=priceFields(r);
+          /* Phase 2.2 — migrated line: the record first, then the projection. A row whose
+             record write fails is skipped entirely, so the layers never get ahead of it. */
+          let projected=null;
+          if(migratedLine){
+            const want={}; ["base_price","msrp","msrp_auto","map","tiers"].forEach(k=>{ if(k in pf) want[k]=pf[k]; });
+            if(Object.keys(want).length){
+              try{ const cc=await commitCommercial(mfr, code, want, b.reviewer||"price-import");
+                   projected=cc.projection; if(cc.changed.length) recordWrites++; }
+              catch(err){ failed++; recordFailures.push({code, error:String((err&&err.message)||err).slice(0,200)}); continue; }
+              pf=Object.assign({},pf,projected);
+            }
+          }
           try{
             if(customCodes.has(code)){
               await sb("PATCH",`custom_products?manufacturer=eq.${enc(mfr)}&code=eq.${enc(code)}`,
@@ -2093,15 +2401,17 @@ exports.handler = async (event)=>{
                 {Prefer:"resolution=merge-duplicates,return=minimal"});
               customCodes.add(code); created++;
             } else {
-              const ex=await sb("GET",`product_overrides?manufacturer=eq.${enc(mfr)}&code=eq.${enc(code)}&select=patch`).catch(()=>[]);
-              const patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{},pf);
+              const ex=await sb("GET",`product_overrides?manufacturer=eq.${enc(mfr)}&code=eq.${enc(code)}&select=patch`);
+              let patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{},pf);
+              if(projected) patch=applyProjection(patch, projected);
               await sb("POST","product_overrides?on_conflict=manufacturer,code",
                 {manufacturer:mfr,code,patch,updated_at:now},{Prefer:"resolution=merge-duplicates,return=minimal"});
               applied++; if(baseCodes.has(code)) priced_in_place++;
             }
           }catch(e){ failed++; }
         }
-        return json(200,{ok:true,applied,created,failed,priced_in_place});
+        return json(200,{ok:true,applied,created,failed,priced_in_place,
+          record:migratedLine?{written:recordWrites, failures:recordFailures}:null});
       }
       // Set the shop CATEGORY for a set of SKU codes so the ordering platform re-files them —
       // this is what makes an accepted category in the Catalog Review actually move the product on
@@ -2380,17 +2690,33 @@ exports.handler = async (event)=>{
       if(b.action==="reconcile"){
         const mfr=b.manufacturer; if(!mfr) return json(400,{error:"manufacturer required"});
         const e=encodeURIComponent;
-        const [base,custom,ovRows,pages]=await Promise.all([
-          fetchJson(`${ORDERING_BASE}/data/${e(mfr)}.json`).catch(()=>[]),
-          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`).catch(()=>[]),
-          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]),
-          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=page_key,name,skus&limit=5000`).catch(()=>[]),
-        ]);
+        /* Strict (Phase 2.2): a layer that cannot be read stops the reconcile. Reading it as
+           empty would report every SKU on it as missing, and an apply would rebuild the
+           record without it. */
+        let base,custom,ovRows,pages;
+        try{
+          [base,custom,ovRows,pages]=await Promise.all([
+            catalogFile(mfr),
+            sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`),
+            sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`),
+            sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=page_key,name,skus&limit=5000`),
+          ]);
+        }catch(err){ return json(503,{error:"layer_unreadable", message:
+          "A layer could not be read, so nothing was reconciled: "+String((err&&err.message)||err).slice(0,300)}); }
         const overrides=Object.fromEntries((ovRows||[]).map(o=>[String(o.code),o.patch||{}]));
         const r=reconcileSkus({slug:mfr, base:base||[], custom:custom||[], overrides, pages:pages||[]});
         const byField={}; r.conflicts.forEach(c=>{ byField[c.field]=(byField[c.field]||0)+1; });
+        /* On a migrated line the useful answer is parity: what the shop shows vs the record. */
+        let parity=null;
+        try{ if(await lineMigrated(mfr)){ const rec=await sb("GET",`product_skus?manufacturer=eq.${e(mfr)}&select=code,base_price,msrp,map,tiers,status&limit=10000`);
+               parity=parityCompare({base, custom, overrides:ovRows, record:rec, want:null, mfr}); } }
+        catch(err){ return json(503,{error:"record_unreadable", message:"product_skus could not be read: "+String((err&&err.message)||err).slice(0,300)}); }
+        const canonicalEdits=(ovRows||[]).filter(o=>o.patch&&o.patch.record_projection).map(o=>String(o.code));
 
         /* ---- APPLY. The first write of the rebuild. --------------------- */
+        if(b.apply===true && canonicalEdits.length && b.replace===true)
+          return json(409,{error:"canonical_edits_present", codes:canonicalEdits.slice(0,50), message:
+            `${canonicalEdits.length} SKU(s) on ${mfr} were edited through the master record. Rebuilding the record from the layers would revert those edits, so nothing was written.`});
         if(b.apply===true){
           /* Decisions come from the record, never from a rule invented here.
              A field the reconciler refused to settle is written only because a
@@ -2418,7 +2744,7 @@ exports.handler = async (event)=>{
 
           /* Never overwrite a populated line by accident. */
           const existing=await sb("GET",
-            `product_skus?manufacturer=eq.${e(mfr)}&select=code&limit=1`).catch(()=>[]);
+            `product_skus?manufacturer=eq.${e(mfr)}&select=code&limit=1`);
           if(existing && existing.length && b.replace!==true)
             return json(409,{error:"already_populated",
               message:`product_skus already holds rows for ${mfr}. Pass replace:true to rebuild them.`});
@@ -2450,6 +2776,7 @@ exports.handler = async (event)=>{
         }
 
         return json(200,{ok:true, dry_run:true, wrote_nothing:true,
+          parity, canonical_edits:canonicalEdits.length,
           stats:r.stats, conflicts_by_field:byField,
           conflicts:r.conflicts.slice(0, Math.min(500, Number(b.limit)||500)),
           superseded:r.superseded, skipped:r.skipped,
@@ -2616,13 +2943,19 @@ exports.handler = async (event)=>{
           connectionsFor(mfr,code).catch(()=>null),
           sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=code`).catch(()=>[]),
         ]);
-        const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`).catch(()=>[]);
-        const patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{});
+        const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`);
+        let patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{});
         patch.active=false;
         patch.disposition=reason;
         patch.disposition_note=b.note?String(b.note).slice(0,300):"No longer available from the manufacturer.";
         patch.disposition_at=now;
         patch.disposition_by=b.reviewer?String(b.reviewer).slice(0,80):null;
+        /* Phase 2.2 — the record's status first. */
+        { const st=statusFromEdit(false, reason);
+          try{ const cc=await commitCommercial(mfr, code, {status:st, status_note:patch.disposition_note}, b.reviewer||"discontinue");
+               if(cc.migrated) patch=applyProjection(patch, {}, st); }
+          catch(err){ return json(502,{error:"record_write_failed", message:
+            "The master record could not be updated, so nothing was changed: "+String((err&&err.message)||err).slice(0,300)}); } }
         await sb("POST","product_overrides?on_conflict=manufacturer,code",
           {manufacturer:mfr,code,patch,updated_at:now},{Prefer:"resolution=merge-duplicates,return=minimal"});
         const hadAdded=!!(cust&&cust.length);
@@ -3114,14 +3447,19 @@ exports.handler = async (event)=>{
         const mfr=b.manufacturer, code=String(b.code||"").trim();
         if(!mfr||!code) return json(400,{error:"manufacturer and code are required"});
         const e=encodeURIComponent, now=new Date().toISOString();
-        const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`).catch(()=>[]);
-        const patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{});
+        const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`);
+        let patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{});
         patch.active=false;
         patch.disposition=["do_not_list","discontinued","not_offered","archived"].includes(String(b.reason||""))
           ? String(b.reason) : "not_offered";
         patch.disposition_note=b.note?String(b.note).slice(0,300):"Retired from the link audit — no enrichment record claims this SKU.";
         patch.disposition_at=now;
         patch.disposition_by=b.reviewer?String(b.reviewer).slice(0,80):null;
+        { const st=statusFromEdit(false, patch.disposition);
+          try{ const cc=await commitCommercial(mfr, code, {status:st, status_note:patch.disposition_note}, b.reviewer||"retire");
+               if(cc.migrated) patch=applyProjection(patch, {}, st); }
+          catch(err){ return json(502,{error:"record_write_failed", message:
+            "The master record could not be updated, so nothing was changed: "+String((err&&err.message)||err).slice(0,300)}); } }
         await sb("POST","product_overrides?on_conflict=manufacturer,code",
           {manufacturer:mfr,code,patch,updated_at:now},{Prefer:"resolution=merge-duplicates,return=minimal"});
         await sb("PATCH",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}`,
@@ -3134,10 +3472,14 @@ exports.handler = async (event)=>{
         const mfr=b.manufacturer, code=String(b.code||"").trim();
         if(!mfr||!code) return json(400,{error:"manufacturer and code are required"});
         const e=encodeURIComponent, now=new Date().toISOString();
-        const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`).catch(()=>[]);
-        const patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{});
+        const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`);
+        let patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{});
         patch.active=true; delete patch.disposition; delete patch.disposition_note;
         delete patch.disposition_at; delete patch.disposition_by;
+        { try{ const cc=await commitCommercial(mfr, code, {status:LIVE_STATUS}, b.reviewer||"restore");
+               if(cc.migrated) patch=applyProjection(patch, {}, LIVE_STATUS); }
+          catch(err){ return json(502,{error:"record_write_failed", message:
+            "The master record could not be updated, so nothing was changed: "+String((err&&err.message)||err).slice(0,300)}); } }
         await sb("POST","product_overrides?on_conflict=manufacturer,code",
           {manufacturer:mfr,code,patch,updated_at:now},{Prefer:"resolution=merge-duplicates,return=minimal"});
         await sb("PATCH",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}`,
@@ -3281,18 +3623,28 @@ exports.handler = async (event)=>{
         if(!(any && any.length))
           return json(409,{error:"not_migrated",
             message:`${slug} has no rows in product_skus. Run reconcile with apply:true first — switching authority on now would empty the line.`});
-        let stats, err=null;
-        try{ stats=await resyncRecord(slug, String(b.reviewer||"authority-switch").slice(0,80)); }
-        catch(e){
-          /* No file is named here on purpose: the mirror reads product_skus and the decision
-             table, which three different migrations create between them, and pointing at the
-             wrong one is worse than pointing at none. Supabase's own message names the missing
-             table or column, so it is passed through instead of being guessed at. */
+        /* PHASE 2.2 — AUTHORITY IS GRANTED ON PARITY, NOT BY REBUILDING THE RECORD.
+           This used to re-run the layers→record mirror and then switch on, which is the
+           mirror model: whatever the layers said became the record. The record is now
+           canonical, so switching on must never rewrite it. Instead the line must show no
+           difference between what the shop displays and the record, and a person must have
+           reviewed the reconciliation report (confirm_parity:true). */
+        let stats=null;
+        if(b.confirm_parity!==true)
+          return json(409,{error:"parity_not_confirmed", message:
+            "Nothing was switched on. Review the reconciliation report for this line and resend with confirm_parity:true."});
+        try{
+          const meta0=await sb("GET",`manufacturer_meta?slug=eq.${encodeURIComponent(slug)}&select=record_resync_error`);
+          const er0=meta0&&meta0[0]&&meta0[0].record_resync_error;
+          if(er0) return json(409,{error:"record_has_error", message:"Nothing was switched on: "+er0});
+          stats=await parityCheck(slug, null);
+        }catch(e){
           const f=schemaFailure(e); if(f) return json(f.code,f.body);
-          err=String((e&&e.message)||e).slice(0,500);
+          return json(502,{error:"parity_unreadable", message:"Nothing was switched on — the parity check could not read a layer: "+String((e&&e.message)||e).slice(0,300)});
         }
-        if(err) return json(502,{error:"resync_failed", message:
-          `Nothing was switched on. The record could not be brought up to date with the layers: ${err}`});
+        if(stats.drift.length)
+          return json(409,{error:"parity_drift", drift:stats.drift.slice(0,100), message:
+            "Nothing was switched on. "+parityMessage(stats)});
         /* THE FLAG IS WRITTEN LAST, AND ITS OWN FAILURE IS NOT THE MIRROR'S FAILURE.
            The mirror has already run at this point, so a failure here leaves the record correct
            and the line still reading from the layers — the safe half of the pair. Saying which
@@ -3305,10 +3657,10 @@ exports.handler = async (event)=>{
             {Prefer:"resolution=merge-duplicates,return=minimal"});
         }catch(e){
           const f=schemaFailure(e,META);
-          if(f){ f.body.mirrored=stats; f.body.detail+=" The record itself was brought up to date; only the authority flag could not be stored, so the line still prices from the layers."; return json(f.code,f.body); }
+          if(f){ f.body.parity=stats; f.body.detail+=" Parity was confirmed; only the authority flag could not be stored, so the line still prices from the layers."; return json(f.code,f.body); }
           throw e;
         }
-        return json(200,{ok:true,manufacturer:slug,authoritative:true,resynced:stats});
+        return json(200,{ok:true,manufacturer:slug,authoritative:true,parity:{compared:stats.compared,drift:0}});
       }
 
       if(b.action==="save_link"){
