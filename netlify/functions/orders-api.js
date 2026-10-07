@@ -2,6 +2,11 @@
 // Dealers reach ONLY their own orders, gated by their Supabase Auth JWT.
 //   POST {action:"create", orders:[...], dealer:{...}}  + Bearer <jwt>  -> saves orders+items
 //   POST {action:"list"}                                 + Bearer <jwt>  -> {orders:[{...,items:[]}]}
+//   POST {action:"price_check", orders:[...]}            + Bearer <jwt>  -> {changed, orders:[priced]}
+// THE SERVER IS THE PRICING AUTHORITY (Phase 2.7). Every unit price stored on an order is the
+// one _pricing.js computes for this dealer now, from the storefront's own engine — never the
+// number the browser sent. If that differs from what the dealer last reviewed, nothing is saved
+// and the new prices go back to the browser for the dealer to review.
 // The email to HCPS is still sent by submit-order.js; this only records the order so the
 // dealer's dashboard can show history and reorder.
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -14,6 +19,7 @@ const CORS = {
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store",...CORS},body:JSON.stringify(o)});
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 const P = require("./_platform.js");
+const PRICING = require("./_pricing.js");
 
 async function sb(method,path,body,extra){
   const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,
@@ -24,6 +30,16 @@ async function sb(method,path,body,extra){
   return j;
 }
 const num = (v)=>{ const n=Number(v); return Number.isFinite(n)?n:0; };
+/* Price the HCPS lines of an order set for this dealer. Golden orders are priced by Golden's
+   own commerce API and pass through untouched. A layer that cannot be read throws. */
+async function serverPrice(orders, dealerId){
+  const files=PRICING.remoteFiles(process.env.ORDERING_BASE||"https://hcpsonlineordering.netlify.app");
+  return PRICING.priceOrders({orders, dealerId, sb, catalogFile:files.catalogFile, contentFile:files.contentFile});
+}
+const pricedView=o=>({manufacturer_slug:o.manufacturer_slug||o.manufacturer||null, subtotal:o.subtotal,
+  items:(o.items||[]).map(it=>({code:it.code, name:it.name, qty:it.qty, unit:it.unit, line_total:it.line_total,
+    client_unit:it.client_unit, changed:!!it.changed, available:it.available!==false, contract:it.contract==null?null:it.contract,
+    commercial:it.commercial||null}))});
 
 // ---- dealer order confirmation (transactional email, via Resend) ------------
 const MAIL_FROM=process.env.HCPS_MAIL_FROM||"HCPS Partner Portal <orders@homecareproviderservices.us>";
@@ -108,9 +124,25 @@ exports.handler = async (event)=>{
     const who=await dealerFromToken(event);
     if(!who) return json(200,{ok:false,status:"unauthorized"});   // not signed in / not approved
 
-    if(b.action==="create"){
+    if(b.action==="price_check"){
       const orders=Array.isArray(b.orders)?b.orders:[];
       if(!orders.length) return json(400,{error:"no orders"});
+      let priced;
+      try{ priced=await serverPrice(orders, who.dealer_id); }
+      catch(e){ console.error("price_check failed",e&&e.message); return json(503,{ok:false,status:"pricing_unavailable",error:String(e.message||e)}); }
+      return json(200,{ok:true, changed:priced.changed, orders:priced.orders.filter(o=>!PRICING.isGolden(o.manufacturer_slug||o.manufacturer)).map(pricedView)});
+    }
+
+    if(b.action==="create"){
+      let orders=Array.isArray(b.orders)?b.orders:[];
+      if(!orders.length) return json(400,{error:"no orders"});
+      /* Re-price before anything is written. A total the dealer has not seen is never saved. */
+      let priced;
+      try{ priced=await serverPrice(orders, who.dealer_id); }
+      catch(e){ console.error("order pricing failed",e&&e.message); return json(503,{ok:false,status:"pricing_unavailable",error:String(e.message||e)}); }
+      if(priced.changed) return json(409,{ok:false,status:"prices_changed",
+        orders:priced.orders.filter(o=>!PRICING.isGolden(o.manufacturer_slug||o.manufacturer)).map(pricedView)});
+      orders=priced.orders;
       const d=b.dealer||{};
       // Operating env for this order (test account, or the current platform mode).
       const st=await P.getState();
@@ -133,7 +165,7 @@ exports.handler = async (event)=>{
           ship_name:d.business||null, ship_address:d.address||null, ship_city:d.city||null,
           ship_state:d.state||null, ship_zip:d.zip||null,
           contact_name:d.contact||null, contact_email:d.email||null, contact_phone:d.phone||null,
-          subtotal:num(o.items_subtotal!=null?o.items_subtotal:o.estimated_total),
+          subtotal:PRICING.isGolden(slug)?num(o.items_subtotal!=null?o.items_subtotal:o.estimated_total):num(o.subtotal),
           env,
         };
         let ins;
@@ -183,7 +215,8 @@ exports.handler = async (event)=>{
         // commission upload can't see a same-day online order, so this IS the real reset.)
         for(const slug of slugs){ try{ await sb("DELETE",`intent_events?dealer_id=eq.${who.dealer_id}&manufacturer=eq.${encodeURIComponent(slug)}`,null,{Prefer:"return=minimal"}); }catch(e){} }
       }
-      return json(200,{ok:true,saved});
+      return json(200,{ok:true,saved,orders:summaries.map(su=>({order_id:su.order_id,manufacturer_slug:su.slug,subtotal:su.subtotal,
+        items:su.items.map(it=>({code:it.code,name:it.name,qty:it.qty,unit:it.unit_price,line_total:it.line_total}))}))});
     }
 
     if(b.action==="list"){

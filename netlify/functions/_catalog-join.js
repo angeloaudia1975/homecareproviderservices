@@ -40,7 +40,8 @@ function indexPages(pages) {
     all.push(k);
     // variant_group may hold ONE catalog group or a pipe-delimited list.
     const vg = pg.variant_group;
-    if (vg) String(vg).split("|").forEach(g => { g = g.trim(); if (g && !byGroup[g]) byGroup[g] = k; });
+    // Last page wins a group — the storefront builds variantByGroup the same way (Phase 2.5).
+    if (vg) String(vg).split("|").forEach(g => { g = g.trim(); if (g) byGroup[g] = k; });
     for (const sx of arr(pg.skus)) {
       const c = upper(sx && (sx.sku || sx.code));
       if (!c) continue;
@@ -84,17 +85,23 @@ function resolveCategory(input) {
   const page = (input && input.page) || null;
   const map = (input && input.categoryMap) || null;
   const internal = str(p.category);
-  const sub = (page && str(page.subcategory)) || str(p.subcategory);
+  /* Phase 2.5 — exactly the storefront's rule: only a LIVE page supplies the subcategory and
+     only a SKU on a live page is filed by the map. A draft page, or a SKU no live page claims,
+     keeps its catalog category in the shop, so the admin must say the same. */
+  const livePage = page && isLive(page) ? page : null;
+  const sub = (livePage && str(livePage.subcategory)) || str(p.subcategory);
 
   // A category typed in the admin is a decision. The map fills the answer, it never overrules one.
   if (p.category_from_override && internal)
     return { category: internal, source: "pinned", internal, subcategory: sub };
-  if (map && sub && map[sub])
+  if (livePage && map && sub && map[sub])
     return { category: String(map[sub]), source: "map", internal, subcategory: sub };
   if (internal)
     return { category: internal, source: p.kind === "custom" ? "added" : "catalog", internal, subcategory: sub };
   return { category: "", source: "none", internal: "", subcategory: sub };
 }
+
+function sxEntryImg(idx, code) { const sx = idx.skuEntry[upper(code)]; return sx ? str(sx.image) : ""; }
 
 /* ── the join ─────────────────────────────────────────────────────────────────
    products : resolved catalog SKUs — the five price layers already applied by the caller.
@@ -136,9 +143,14 @@ function buildJoin(input) {
     const category = rc.category;
 
     const sxEntry = idx.skuEntry[upper(code)] || null;
+    /* The one image rule (Phase 2.4): SKU photo → page primary (a gallery without one falls
+       back to the page image, then its first photo) → the catalog layer. */
     const gallery = pg ? arr(pg.images_gallery) : [];
-    const prim = gallery.find(g => g && g.primary);
-    const image = (prim && prim.url) || str(p.image) || (pg && str(pg.image)) || "";
+    const gl = gallery.filter(g => g && str(g.url));
+    let gi = gl.findIndex(g => g.primary === true);
+    if (gi < 0) { gi = gl.findIndex(g => str(g.url) === str(pg && pg.image)); if (gi < 0) gi = 0; }
+    const pagePrimary = gl.length ? str(gl[gi].url) : (pg ? str(pg.image) : "");
+    const image = (sxEntryImg(idx, code)) || pagePrimary || str(p.image) || "";
 
     // THE LISTING GATE, exactly as the shop applies it: a SKU no LIVE page claims is not a
     // finished product on an enriched-only line, so it is not offered to dealers.

@@ -23,5 +23,5 @@ function grabDecl(src, anchor){
   throw new Error('unterminated: '+anchor);
 }
 function extract(src){ return NAMES.map(a=>grabDecl(src,a)).join('\n'); }
-module.exports={extract,NAMES};
+module.exports={extract,NAMES,grabDecl};
 if(require.main===module){ const src=fs.readFileSync(process.argv[2],'utf8'); process.stdout.write(extract(src)); }

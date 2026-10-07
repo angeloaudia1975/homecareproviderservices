@@ -611,11 +611,22 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   must never pin name, category or description as an override.
 - **Price changes are confirmed against the manufacturer's approved price list before anything
   changes;** a conflict is reported to Angelo, not fixed silently.
-- **Saved carts (agreed, implementing in 2.7):** a cart loads at current authorised pricing; a
-  changed line shows **Price updated** (old → new where practical); totals and tiers recalculate;
-  contract prices still win; checkout recalculates the price on the server and, if it changed
-  after the dealer last reviewed, returns the cart for review instead of submitting. The server is
-  the final pricing authority.
+- **The server is the final pricing authority (Phase 2.7).** `orders-api` prices every HCPS line
+  with `_pricing.js`, which runs the storefront's OWN engine (`_shop_engine.js`, a verbatim copy of
+  the shop page's familyQty/tierQty/contractPrice/unitPrice + catalog merge — never edit it by hand;
+  regenerate with `test/extract-engine.js`; `test/pricing-parity.test.js` fails on any drift, and also
+  holds `feedRows`/`recordAuthority` to catalog-feed's and contract prices to dealer-auth's). Every
+  read is strict: a layer that cannot be read stops the pricing (503 `pricing_unavailable`) — an
+  order is never priced from a partial catalog. The unit price, line total and subtotal stored on
+  an order are the server's, never the browser's.
+- **Saved carts never re-price silently.** A restored cart (and the cart page, at most once a
+  minute) is checked with `price_check`; each moved line shows **Price updated $old → $new**, totals
+  and tiers recalculate, the dealer's current contract prices are refreshed, and a withdrawn item
+  must be removed before ordering. **Checkout:** the page checks again; then `submit-order` (shop)
+  forwards the dealer's sign-in to `orders-api create`, which re-prices and, if anything differs from
+  what the dealer reviewed, saves nothing and returns 409 `prices_changed` with the new prices for
+  review. Only a recorded order is emailed to HCPS, and the email carries the recorded prices.
+  Golden orders are priced by Golden and pass through untouched.
 - **One image authority (Phase 2.4).** A product's photos live on its enrichment page:
   `images_gallery` is ordered with exactly one `primary`, and `product_content.image` is always that
   primary (normalised on every save). A SKU that genuinely needs its own photo uses
