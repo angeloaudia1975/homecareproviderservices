@@ -580,6 +580,35 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   still reach Zoho: create none unless the task requires it and Angelo has approved it, and live tests use
   what exists (the TEST sandbox dealer, read-only checks). Once 2F-2 is verified live they stay out of
   Zoho, but live tests still create only what a check needs, on the TEST sandbox dealer.
+- **Zoho webhook credential + payload (2F-3).** The webhook's credential is the HTTP request header
+  `x-hcps-secret`, checked (timing-safe) against Netlify env `ZOHO_WEBHOOK_HEADER_SECRET` — header ONLY: the same
+  value sent as a URL/body parameter is refused (401). A webhook secret never goes in a URL, query string, body,
+  log, payload, screenshot, report or source control, and Claude never views it: Angelo generates it locally and
+  enters it in Netlify and Zoho himself. `ZOHO_WEBHOOK_SECRET` is the RETIRED secret (exposed on screen during the
+  2026-10-07 inspection): accepted the old way only while it is still set, so the webhooks can be moved over one
+  at a time; it is deleted from Netlify (and the site redeployed) once all three Zoho webhooks are proven on the
+  header, which ends the old way for good. Rotation order: add the new env var → deploy → move each webhook →
+  one safe test per module → delete the old env var → redeploy → prove an old-secret call gets 401.
+  `zoho-webhook.js normalize()` is the ONE place inbound payloads are read (URL query, urlencoded or multipart
+  form, JSON incl. lookups and `{data:[…]}`, base64 bodies); `pick()` then reads module, record id (a generic
+  `id`, else the module's own id — never another module's), Modified_Time, Modified_By, Account_Name, Email,
+  matching names case/punctuation-insensitively; everything is sanitized (`_zoho_log.js redact`, which also
+  masks `ZOHO_WEBHOOK_HEADER_SECRET`) before it is stored or logged. A receipt's `detail` is JSON
+  `{summary, modified_time, modified_by, accepted_via, shape}` — `shape` = content type, body kind, query/body
+  key NAMES only (a long token-like name is kept as `[long-key]`). A refused call that presented a credential
+  or looks like a Zoho event is recorded as an `action:"auth"` failure row with the reason (at most 20 an
+  hour); no value is ever kept. The Zoho webhooks are configured as POST, header `x-hcps-secret`, body
+  Form-Data with `module`, `id`, `Modified_Time`, `Modified_By`, `Account_Name` (and `Email` on Contacts) — no
+  credential in Custom Parameters or the URL. The response, the GET probe and the queue write are unchanged
+  (the queue's 42P10 failure stays visible until 2F-4 repairs it).
+- **Zoho inspection decisions (2026-10-07, Angelo).** The 183 Zoho-only Deals are NOT imported into HCPS
+  automatically. The 175 Closed Won sales roll-ups are not HCPS opportunities. The 8 orphan TEST Deals are
+  cleanup candidates for later. The 8 orphan Accounts are real businesses — review/merge candidates, never
+  automatic deletions. The 22 historical duplicate Accounts need a reviewed cleanup later, never a bulk delete.
+  **No Zoho cleanup is authorized** until Angelo approves a specific cleanup step. Order agreed: 2F-3 webhook
+  repair + rotation → 2F-4 echo filtering + inbound queue repair → 2F-5 deal conflict / stage preservation
+  (F4/F6) → 2F-6 provisional close-date handling (F5); F1.1, sync order and stage mapping stay as they are
+  until their unit.
 
 ## 17. Online Ordering — one master record per field (RULE, agreed 2026-10-07)
 

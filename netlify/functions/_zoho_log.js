@@ -15,7 +15,8 @@ const DETAIL_MAX = 8000;   // per failed record — generous; the summary row no
 const REDACTED = "[redacted]";
 
 function secrets(){
-  return [process.env.ZOHO_WEBHOOK_SECRET, process.env.ZOHO_CLIENT_SECRET, process.env.SUPABASE_SERVICE_ROLE]
+  // 2F-3: the webhook header secret (ZOHO_WEBHOOK_HEADER_SECRET) and, while it is still set, the retired one.
+  return [process.env.ZOHO_WEBHOOK_HEADER_SECRET, process.env.ZOHO_WEBHOOK_SECRET, process.env.ZOHO_CLIENT_SECRET, process.env.SUPABASE_SERVICE_ROLE]
     .map(s => String(s || "")).filter(s => s.length >= 6);
 }
 // 2F-1.1: besides this deployment's own secret values, anything SHAPED like a credential is masked

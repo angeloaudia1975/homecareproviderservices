@@ -53,8 +53,8 @@ const form = o => Object.entries(o).map(([k, v]) => encodeURIComponent(k) + '=' 
     assert.strictEqual(p.Description, 'note [redacted] end'); assert.strictEqual(p.Phone, '270-555'); assert.strictEqual(p['Account Name'], 'Glasgow Prescription Center');
     assert.ok(!everything(w).includes(WH_SECRET), 'the webhook secret is somewhere in the database');
     assert.ok(!everything(w).includes('abc-token'));
-    // The receipt is logged exactly as before (module, id, account).
-    const rec = logs(w).find(l => l.action === 'webhook'); assert.strictEqual(rec.result, 'ok'); assert.strictEqual(rec.detail, 'Accounts #7530569000000123 Glasgow Prescription Center');
+    // The receipt carries the same summary as before (module, id, account); since 2F-3 it is the "summary" of a JSON detail.
+    const rec = logs(w).find(l => l.action === 'webhook'); assert.strictEqual(rec.result, 'ok'); assert.strictEqual(JSON.parse(rec.detail).summary, 'Accounts #7530569000000123 Glasgow Prescription Center');
   });
 
   await t('F2.1 webhook: the header form (x-hcps-secret) is honoured and not stored either; a wrong secret stores nothing', async () => {
@@ -63,7 +63,9 @@ const form = o => Object.entries(o).map(([k, v]) => encodeURIComponent(k) + '=' 
     assert.strictEqual(r.statusCode, 200);
     assert.ok(!everything(w).includes(WH_SECRET)); assert.strictEqual(w.db.zoho_sync_queue[0].payload.Stage, 'Closed Won');
     const w2 = W(); const bad = await webhook(w2, { queryStringParameters: { secret: 'nope' }, body: form({ module: 'Deals', id: '9' }) });
-    assert.strictEqual(bad.statusCode, 401); assert.strictEqual(logs(w2).length + w2.db.zoho_sync_queue.length, 0);
+    // 2F-3: a rejected call is no longer silent — one "auth" failure row (names only), no receipt, nothing queued.
+    assert.strictEqual(bad.statusCode, 401); assert.strictEqual(w2.db.zoho_sync_queue.length, 0);
+    assert.deepStrictEqual(logs(w2).map(l => l.action + ':' + l.result), ['auth:fail']); assert.ok(!everything(w2).includes('nope'));
   });
 
   await t('F9.1 webhook: the queue write is unchanged — and when the database refuses it (live: 42P10), a failure row says so', async () => {
