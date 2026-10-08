@@ -589,6 +589,10 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   at a time; it is deleted from Netlify (and the site redeployed) once all three Zoho webhooks are proven on the
   header, which ends the old way for good. Rotation order: add the new env var → deploy → move each webhook →
   one safe test per module → delete the old env var → redeploy → prove an old-secret call gets 401.
+  **Done 2026-10-08:** all three webhooks accepted on the header; `ZOHO_WEBHOOK_SECRET` deleted and the site
+  redeployed, so the old way is off. **Netlify env changes reach functions only after a new deploy** — after
+  adding, changing or deleting a variable, Trigger deploy and confirm "Published" in the deploy list before
+  testing (the first acceptance test failed only because the new variable had not been deployed yet).
   `zoho-webhook.js normalize()` is the ONE place inbound payloads are read (URL query, urlencoded or multipart
   form, JSON incl. lookups and `{data:[…]}`, base64 bodies); `pick()` then reads module, record id (a generic
   `id`, else the module's own id — never another module's), Modified_Time, Modified_By, Account_Name, Email,
@@ -597,10 +601,19 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   `{summary, modified_time, modified_by, accepted_via, shape}` — `shape` = content type, body kind, query/body
   key NAMES only (a long token-like name is kept as `[long-key]`). A refused call that presented a credential
   or looks like a Zoho event is recorded as an `action:"auth"` failure row with the reason (at most 20 an
-  hour); no value is ever kept. The Zoho webhooks are configured as POST, header `x-hcps-secret`, body
-  Form-Data with `module`, `id`, `Modified_Time`, `Modified_By`, `Account_Name` (and `Email` on Contacts) — no
-  credential in Custom Parameters or the URL. The response, the GET probe and the queue write are unchanged
-  (the queue's 42P10 failure stays visible until 2F-4 repairs it).
+  hour); no value is ever kept. The response, the GET probe and the queue write are unchanged (the queue's
+  42P10 failure stays visible until 2F-4 repairs it).
+  **Zoho webhook form (learned 2026-10-08):** everything under the form's **Header** section (its Module
+  Parameters AND Custom Parameters) is sent as HTTP **headers**; the **Body** section (Form-Data) is the body.
+  A header name cannot contain a space — the old Contacts webhook sent a header named "Account Name", so every
+  Contacts call was rejected as "Bad request" before reaching HCPS (the 16 failures), and module/id arrived as
+  headers, which is why every older receipt logged "Unknown". Live config of all three webhooks: POST to
+  `…/.netlify/functions/zoho-webhook` (nothing after it); Header = ONLY `x-hcps-secret` (the new secret, entered
+  by Angelo); Body = Form-Data with module fields `id`, `Modified_Time`, `Modified_By`, `Account_Name` (+ `Email`
+  on Contacts) and custom field `module` = Accounts / Contacts / Deals; DateTime format yyyy-mm-dd, Central
+  time. Zoho sends it as urlencoded. On Contacts and Deals `Account_Name` arrives as the account's Zoho id (a
+  lookup), on Accounts as the name. Claude never views a webhook page once the secret is in it (the saved
+  details page shows header values).
 - **Zoho inspection decisions (2026-10-07, Angelo).** The 183 Zoho-only Deals are NOT imported into HCPS
   automatically. The 175 Closed Won sales roll-ups are not HCPS opportunities. The 8 orphan TEST Deals are
   cleanup candidates for later. The 8 orphan Accounts are real businesses — review/merge candidates, never
