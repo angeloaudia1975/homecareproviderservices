@@ -41,8 +41,9 @@ const MUTANTS = [
     to:   '  ;' },
 
   { name: 'ignore a batch body, so only single-row upserts are attributed',
-    from: '  const rows = Array.isArray(body) ? body : (body ? [body] : []);',
-    to:   '  const rows = Array.isArray(body) ? [] : (body ? [body] : []);' },
+    // anchored with the next line: codesOfWrite (2.2) reads its body the same way
+    from: '  const rows = Array.isArray(body) ? body : (body ? [body] : []);\n  for(const r of rows) if(r && r.manufacturer)',
+    to:   '  const rows = Array.isArray(body) ? [] : (body ? [body] : []);\n  for(const r of rows) if(r && r.manufacturer)' },
 
   // --- matching too much
   { name: 'match any table that merely starts with a layer name',
@@ -58,8 +59,9 @@ const MUTANTS = [
     to:   '  ;' },
 
   { name: 'guess a manufacturer when the write cannot be attributed',
-    from: '  return null;\n}\nasync function sb(method,path,body,extra){',
-    to:   '  return "bemis";\n}\nasync function sb(method,path,body,extra){' },
+    // slugOfWrite is no longer followed by sb() (2.2 put codesOfWrite between them)
+    from: '  for(const r of rows) if(r && r.manufacturer) return String(r.manufacturer);\n  return null;\n}',
+    to:   '  for(const r of rows) if(r && r.manufacturer) return String(r.manufacturer);\n  return "bemis";\n}' },
 
   // --- the loop the hook must not create
   { name: 'treat the record itself as a layer, so the mirror re-triggers itself',
