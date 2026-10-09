@@ -11,6 +11,14 @@
 // side only ever writes the fields it owns; the other side's columns are left untouched.
 // Real-time inbound *signal* is delivered separately by zoho-webhook.js; this scheduler is the
 // steady heartbeat that reconciles both directions and is the outbound (portal→Zoho) engine.
+//
+// Phase 2F-4 — inbound events are CLASSIFIED here, never applied. Each captured webhook event is compared
+// with HCPS's own record of what it last pushed successfully: Zoho's current values of the fields HCPS pushes
+// (hashed exactly as the push hashed them) must equal HCPS's last push fingerprint (zoho_push_hashes) AND the
+// event must have happened at that push (zoho_push_times) — then it is an HCPS echo ("ignored"). Anything
+// else is an external Zoho change, or "unresolved" when it can't be tied to one HCPS record; both stay
+// pending for the conflict-safe processor (2F-5). Modified_By is never used: the integration signs in as a
+// real person. Classification writes only the queue row — no dealer, contact, deal, activity or Zoho write.
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
@@ -57,6 +65,13 @@ async function getHashes(){ try{ const rows=await sbGet("app_settings?key=eq.zoh
   catch(e){ if(F) F.fail({phase:"hashes_read",entity:"sync_state",action:"read",msg:"push fingerprints couldn't be read, so every record counts as changed this run: "+failMsg(e)}); return {}; } }
 async function setHashes(v){ try{ await sbSend("POST","app_settings?on_conflict=key",{key:"zoho_push_hashes",value:v,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
   catch(e){ if(F) F.fail({phase:"hashes_write",entity:"sync_state",action:"write",msg:"push fingerprints weren't saved, so this run's records will be pushed again: "+failMsg(e)}); } }
+// Phase 2F-4: when each record was last ACCEPTED by Zoho (app_settings.zoho_push_times, key → ISO time). It only
+// supports echo classification: what is pushed, and when, still depends on zoho_push_hashes alone. If the times
+// can't be read they are not rewritten this run (no wipe), and no event can be proven an echo.
+async function getPushTimes(){ try{ const rows=await sbGet("app_settings?key=eq.zoho_push_times&select=value"); return { ok:true, v:(rows&&rows[0]&&rows[0].value)||{} }; }
+  catch(e){ if(F) F.fail({phase:"push_times_read",entity:"sync_state",action:"read",msg:"HCPS push times couldn't be read — they are left as they are, and no inbound event can be proven an echo this run: "+failMsg(e)}); return { ok:false, v:{} }; } }
+async function setPushTimes(v){ try{ await sbSend("POST","app_settings?on_conflict=key",{key:"zoho_push_times",value:v,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); return true; }
+  catch(e){ if(F) F.fail({phase:"push_times_write",entity:"sync_state",action:"write",msg:"HCPS push times weren't saved, so echoes of this run's pushes can't be proven: "+failMsg(e)}); return false; } }
 async function stampSync(k){ try{ const rows=await sbGet("app_settings?key=eq.zoho_sync&select=value"); const v=(rows&&rows[0]&&rows[0].value)||{}; v[k]=new Date().toISOString(); await sbSend("POST","app_settings?on_conflict=key",{key:"zoho_sync",value:v,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
   catch(e){ if(F) F.fail({phase:"stamp",entity:"sync_state",action:"write",msg:"last-sync time not saved ("+k+"): "+failMsg(e)}); } }
 async function logRow(row){ try{ await sbSend("POST","zoho_sync_log",row,{Prefer:"return=minimal"}); }catch(e){ console.error("zoho_sync_log write failed:", ZL.scrubString(failMsg(e))); } }
@@ -64,6 +79,127 @@ async function logRow(row){ try{ await sbSend("POST","zoho_sync_log",row,{Prefer
 function readCheck(list, phase){ if(list && list.incomplete && F) F.fail({phase,entity:String(list.incomplete.module||"zoho").toLowerCase(),action:"read",msg:"Zoho read stopped early: "+list.incomplete.message,extra:{page:list.incomplete.page,status:list.incomplete.status,records_read:list.incomplete.records_read}}); return list||[]; }
 // Every record a Zoho upsert refused, one failure row each.
 function upsertFails(res, phase, entity, idOf){ for(const f of ((res&&res.failed)||[])){ const id=idOf(f.key); F.fail({phase,entity,entity_id:id.entity_id,dealer_id:id.dealer_id||null,action:"push",msg:(f.code?f.code+": ":"")+(f.message||"not accepted"),extra:{zoho_details:f.details||null}}); } }
+
+// ---------- Phase 2F-4: inbound classification ----------
+const CLASSIFY_BATCH=200;
+const ZMOD={accounts:"Accounts",contacts:"Contacts",deals:"Deals"};
+// The Zoho fields each push writes (+ Modified_Time) — read back to compare with HCPS's last push.
+const ZFIELDS={ accounts:"Account_Name,Phone,Website,Billing_Street,Billing_City,Billing_State,Billing_Code,Modified_Time",
+  contacts:"Last_Name,First_Name,Email,Phone,Title,Account_Name,Modified_Time",
+  deals:"Deal_Name,Amount,Stage,Closing_Date,Description,Account_Name,Modified_Time" };
+// An echo's change happens at HCPS's push: Zoho stamps Modified_Time just before it answers, and HCPS records the
+// push time just after (a batch of up to 100 accounts or contacts takes a little while).
+const ECHO_BEFORE_MS=10*60e3, ECHO_AFTER_MS=2*60e3;
+// The webhooks send Modified_Time as "yyyy-mm-dd HH:MM:SS" in the Zoho org's time zone (America/Chicago), or ISO.
+const ZOHO_TZ=process.env.ZOHO_WEBHOOK_TZ||"America/Chicago";
+function tzOffsetMs(utcMs, tz){
+  const p=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:tz,hourCycle:"h23",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"}).formatToParts(new Date(utcMs)).map(x=>[x.type,x.value]));
+  return Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute,+p.second)-utcMs;
+}
+function parseZohoTime(s){
+  s=String(s||"").trim(); if(!s) return null;
+  if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.test(s)){ const d=new Date(s); return isNaN(d)?null:d; }
+  const m=/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(s); if(!m) return null;
+  const wall=Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+(m[6]||0));
+  try{ let t=wall-tzOffsetMs(wall,ZOHO_TZ); t=wall-tzOffsetMs(t,ZOHO_TZ); return new Date(t); }catch(e){ return null; }
+}
+const lookupName=x=>x&&typeof x==="object"?(x.name==null?null:String(x.name)):(x==null?null:String(x));
+const lookupId=x=>x&&typeof x==="object"?(x.id==null?null:String(x.id)):null;
+const pushedAcctName=d=>(clean(d.business_name)||("Dealer "+d.id)).slice(0,255);
+
+// HCPS's last ACCEPTED push to each Zoho record: zoho_push_times[key] = {at, id} (key as in zoho_push_hashes).
+const pushRec=v=>(v&&typeof v==="object"&&v.at&&v.id)?v:null;
+const KEY_ENTITY={acct:"accounts",contact:"contacts",opp:"deals"};
+
+// One event → {cls, reason}. z = the record's CURRENT Zoho values (undefined when Zoho has no such record).
+// Echo needs ALL of: (1) exactly one HCPS record whose last accepted push went to THIS Zoho record (module + id);
+// (2) Zoho's current values of the fields that push writes, rebuilt exactly as the push hashed them (same fields,
+// same cleaning, same hidden link keys), hash to that push's fingerprint; (3) the event's Modified_Time falls at
+// that push. Anything else is external, or unresolved when it can't be tied to one HCPS record. Nothing about
+// who made the change (Modified_By) is used.
+function classifyOne(q, z, ctx, m){
+  if(!z) return {cls:"unresolved", reason:"the record was not found in Zoho (deleted, merged or not readable), so it can't be compared"};
+  const zid=String(z.id), keys=m.keysByZid.get(q.entity+":"+zid)||[];
+  if(keys.length>1) return {cls:"unresolved", reason:keys.length+" HCPS records were last pushed to this Zoho record ("+keys.join(", ")+"), so it can't be tied to one HCPS record"};
+  if(!keys.length) return {cls:"external", reason:"HCPS has no recorded successful push to this Zoho record"+testNote(q.entity,z,ctx,m)+", so it isn't an HCPS echo"};
+  const key=keys[0], push=ctx.times[key]; let rec;
+  if(q.entity==="accounts"){
+    rec=prune({ Account_Name:clean(z.Account_Name), Phone:clean(z.Phone), Website:clean(z.Website), Billing_Street:clean(z.Billing_Street), Billing_City:clean(z.Billing_City), Billing_State:clean(z.Billing_State), Billing_Code:clean(z.Billing_Code) });
+    if(rec.Account_Name!=null) rec.Account_Name=String(rec.Account_Name).slice(0,255);
+  } else if(q.entity==="contacts"){
+    rec={...prune({ Last_Name:clean(z.Last_Name), First_Name:clean(z.First_Name), Email:clean(z.Email), Phone:clean(z.Phone), Title:clean(z.Title) }), _company:lookupName(z.Account_Name)||""};
+  } else {
+    const o=m.oppById.get(key.slice(4)); if(!o) return {cls:"external", reason:"the HCPS deal last pushed to this Zoho record ("+key+") no longer exists, so it can't be compared"};
+    const d=prune({ Deal_Name:clean(z.Deal_Name), Amount:Number(z.Amount)||0, Stage:clean(z.Stage), Closing_Date:clean(z.Closing_Date) });
+    if(o.line) d.Description=z.Description==null?"":String(z.Description);
+    rec={...d, _acct:lookupId(z.Account_Name)||"", _zid:zid};
+  }
+  const stored=ctx.hashes[key];
+  if(!stored) return {cls:"external", reason:"HCPS has no push fingerprint for "+key+", so it can't be proven an echo"};
+  if(hashOf(rec)!==stored) return {cls:"external", reason:"Zoho's current values of the fields HCPS pushes differ from HCPS's last successful push for "+key+": an external Zoho change"};
+  const evt=parseZohoTime(q.modified_time);
+  if(!evt) return {cls:"external", reason:"Zoho's values equal HCPS's last push for "+key+", but the event's Modified_Time ("+(q.modified_time||"none")+") can't be read, so it can't be proven an echo"};
+  const dt=evt.getTime()-Date.parse(push.at);
+  if(!(dt>=-ECHO_BEFORE_MS && dt<=ECHO_AFTER_MS)) return {cls:"external", reason:"Zoho's values equal HCPS's last push for "+key+" (at "+push.at+"), but this change ("+evt.toISOString()+") was not made by that push: a change to fields HCPS doesn't push, or one a later HCPS push replaced"};
+  return {cls:"echo", reason:"HCPS echo: Zoho record "+zid+" holds exactly what HCPS pushed for "+key+" at "+push.at+" (fingerprint "+stored+"), and this change ("+evt.toISOString()+") happened at that push"};
+}
+// A note only (never part of the decision): the record belongs to a TEST dealer, which HCPS never pushes.
+function testNote(ent, z, ctx, m){
+  const T=ctx.T; if(!T) return "";
+  try{
+    if(ent==="accounts"){ const l=m.dealersByName.get(String(z.Account_Name==null?"":z.Account_Name))||[]; return l.some(d=>T.dealer(d.id))?" (it carries a TEST dealer's name; TEST records are never pushed)":""; }
+    if(ent==="contacts") return (clean(z.Email)&&T.email(clean(z.Email)))?" (a TEST contact; TEST records are never pushed)":"";
+    if(ent==="deals"){ const o=m.oppByZoho.get(String(z.id)); return (o&&T.dealer(o.dealer_id))?" (a TEST dealer's deal; TEST records are never pushed)":""; }
+  }catch(e){}
+  return "";
+}
+
+async function classifyInbound(pend, ctx){
+  const out={classified:0, echo:0, external:0, unresolved:0, left_unclassified:0};
+  // Without HCPS's push records nothing can be proven an echo, and calling everything external would be a guess:
+  // leave every event unclassified (the read failure is already recorded) and try again next run.
+  if(!ctx.timesOk){ out.left_unclassified=pend.length; return out; }
+  const need=new Set(pend.map(q=>q.entity));
+  let dealers=[], opps=[];
+  try{
+    if(need.has("accounts")) dealers=await sbGetAll("dealers?select=id,business_name","id");
+    if(need.has("deals")) opps=await sbGetAll("opportunities?select=id,dealer_id,zoho_id,line","id");
+  }catch(e){ F.fail({phase:"inbound_classify",entity:"queue",direction:"in",action:"read",msg:"the HCPS records needed to classify inbound events couldn't be read, so none were classified: "+failMsg(e)}); out.left_unclassified=pend.length; return out; }
+  const m={ keysByZid:new Map(), dealersByName:new Map(), oppByZoho:new Map(), oppById:new Map() };
+  for(const [key,v] of Object.entries(ctx.times||{})){ const pr=pushRec(v), ent=KEY_ENTITY[key.split(":")[0]]; if(!pr||!ent) continue;
+    const k=ent+":"+String(pr.id); if(!m.keysByZid.has(k)) m.keysByZid.set(k,[]); m.keysByZid.get(k).push(key); }
+  for(const d of dealers){ const n=pushedAcctName(d); if(!m.dealersByName.has(n)) m.dealersByName.set(n,[]); m.dealersByName.get(n).push(d); }
+  for(const o of opps){ m.oppById.set(String(o.id), o); if(o.zoho_id) m.oppByZoho.set(String(o.zoho_id), o); }
+  // The CURRENT Zoho values of each record, read by id (100 per call). A module that can't be read leaves its
+  // events unclassified for the next run.
+  const zrec={}, readOk={};
+  for(const ent of need){
+    const mod=ZMOD[ent]; if(!mod) continue; readOk[ent]=true;
+    const ids=[...new Set(pend.filter(q=>q.entity===ent && q.zoho_id).map(q=>String(q.zoho_id)))];
+    for(let i=0;i<ids.length;i+=100){
+      const chunk=ids.slice(i,i+100);
+      const r=await zoho("GET",ctx.apiDomain,ctx.token,`/crm/v8/${mod}?ids=${chunk.map(encodeURIComponent).join(",")}&fields=${ZFIELDS[ent]}`);
+      if(r.status===204) continue;   // none of these records exists in Zoho
+      if(!r.ok || !r.json || !Array.isArray(r.json.data)){ readOk[ent]=false;
+        F.fail({phase:"inbound_classify",entity:ent,direction:"in",action:"read",msg:"Zoho "+mod+" couldn't be read to classify inbound events (they stay unclassified until the next run): "+((r.json&&(r.json.code||r.json.message))?[r.json.code,r.json.message].filter(Boolean).join(": "):"http "+r.status),extra:{records:chunk.length}});
+        break; }
+      for(const z of r.json.data) zrec[ent+":"+z.id]=z;
+    }
+  }
+  for(const q of pend){
+    if(ZMOD[q.entity] && !readOk[q.entity]){ out.left_unclassified++; continue; }
+    const v=ZMOD[q.entity] ? classifyOne(q, zrec[q.entity+":"+q.zoho_id], ctx, m)
+      : {cls:"unresolved", reason:"the event's module ("+q.entity+") isn't one HCPS classifies"};
+    const now=new Date().toISOString();
+    // Only a row still unclassified is written (an overlapping run can't classify it twice or overwrite it).
+    try{ const upd=await sbSend("PATCH",`zoho_sync_queue?id=eq.${encodeURIComponent(q.id)}&classification=is.null`,{classification:v.cls, class_reason:v.reason.slice(0,1000), classified_at:now,
+        status:v.cls==="echo"?"ignored":"pending", processed_at:v.cls==="echo"?now:null, updated_at:now},{Prefer:"return=representation"});
+      if(Array.isArray(upd) && !upd.length) continue;
+      out.classified++; out[v.cls]++; }
+    catch(e){ out.left_unclassified++; F.fail({phase:"inbound_classify",entity:"queue",entity_id:String(q.id),zoho_id:q.zoho_id||null,direction:"in",action:"write",msg:"an inbound event was classified ("+v.cls+") but the result wasn't saved; it is classified again next run: "+failMsg(e)}); }
+  }
+  return out;
+}
 
 async function run(){
   const runAt=new Date().toISOString();
@@ -80,6 +216,9 @@ async function runInner(runAt){
   const token=at.access_token;
 
   const hashes=await getHashes(); const next={...hashes};
+  const PT=await getPushTimes(); const times={...PT.v}; let timesDirty=false;
+  const pushedOk=(key,zid)=>{ times[key]={at:new Date().toISOString(), id:String(zid)}; timesDirty=true; };
+  const saveTimes=async()=>{ if(PT.ok && timesDirty && await setPushTimes(times)) timesDirty=false; };
   const summary={accounts:{changed:0,ok:0}, contacts:{changed:0,ok:0}, opportunities:{changed:0,ok:0}, deals_pulled:0, errors:[]};
   // Phase 2F-2: which dealers are TEST. If that can't be read, NOTHING is pushed this run (fail closed);
   // the pulls below still run (they only write to HCPS).
@@ -107,9 +246,10 @@ async function runInner(runAt){
     summary.accounts.changed=changed.length;
     if(changed.length){
       const res=await upsertRecords(apiDomain,token,"Accounts",changed,["Account_Name"]);
-      for(const c of changed){ const id=res.idByKey[c.key]; if(id){ next[c.key]=c._h; summary.accounts.ok++; if(c.record.Account_Name) acctIdByName[c.record.Account_Name]=id; } }
+      for(const c of changed){ const id=res.idByKey[c.key]; if(id){ next[c.key]=c._h; pushedOk(c.key,id); summary.accounts.ok++; if(c.record.Account_Name) acctIdByName[c.record.Account_Name]=id; } }
       upsertFails(res,"accounts","dealer",k=>({entity_id:String(k||"").replace(/^acct:/,""),dealer_id:String(k||"").replace(/^acct:/,"")}));
       await setHashes(next);   // persist progress before the next (heavier) phase
+      await saveTimes();
     }
   }catch(e){ summary.errors.push({phase:"accounts",msg:String(e.message||e)}); }
   await F.flush();
@@ -136,9 +276,10 @@ async function runInner(runAt){
     summary.contacts.changed=changed.length;
     if(changed.length){
       const res=await upsertRecords(apiDomain,token,"Contacts",changed,["Email"]);
-      for(const c of changed){ if(res.idByKey[c.key]){ next[c.key]=c._h; summary.contacts.ok++; } }
+      for(const c of changed){ if(res.idByKey[c.key]){ next[c.key]=c._h; pushedOk(c.key,res.idByKey[c.key]); summary.contacts.ok++; } }
       upsertFails(res,"contacts","contact",k=>({entity_id:String(k||"").replace(/^contact:/,""),dealer_id:dealerOfKey[k]||null}));
       await setHashes(next);
+      await saveTimes();
     }
   }catch(e){ summary.errors.push({phase:"contacts",msg:String(e.message||e)}); }
   await F.flush();
@@ -160,7 +301,7 @@ async function runInner(runAt){
       if(o.zoho_id){ r=await zoho("PUT",apiDomain,token,"/crm/v8/Deals",{data:[{id:o.zoho_id,...body}]}); }
       else { r=await zoho("POST",apiDomain,token,"/crm/v8/Deals",{data:[body]}); }
       const row=r.ok&&r.json&&Array.isArray(r.json.data)&&r.json.data[0];
-      if(row&&row.code==="SUCCESS"){ next[key]=h; summary.opportunities.ok++; if(!o.zoho_id){ const id=row.details&&row.details.id;
+      if(row&&row.code==="SUCCESS"){ next[key]=h; const dzid=o.zoho_id||(row.details&&row.details.id); if(dzid) pushedOk(key,dzid); summary.opportunities.ok++; if(!o.zoho_id){ const id=row.details&&row.details.id;
           if(id){ try{ await sbSend("PATCH",`opportunities?id=eq.${encodeURIComponent(o.id)}`,{zoho_id:id},{Prefer:"return=minimal"}); }
             catch(e){ F.fail({phase:"opps_zoho_id",entity:"opportunity",entity_id:o.id,dealer_id:o.dealer_id,zoho_id:id,action:"write",msg:"the new Zoho Deal id wasn't saved on the HCPS deal — the next run would create the deal in Zoho again: "+failMsg(e)}); } }
           else F.fail({phase:"opps_zoho_id",entity:"opportunity",entity_id:o.id,dealer_id:o.dealer_id,action:"push",msg:"Zoho created the deal but returned no id"}); } }
@@ -168,6 +309,7 @@ async function runInner(runAt){
     }
     summary.opportunities.changed=summary.opportunities.ok;
     await setHashes(next);
+    await saveTimes();
   }catch(e){ summary.errors.push({phase:"opps",msg:String(e.message||e)}); }
   await F.flush();
 
@@ -193,53 +335,20 @@ async function runInner(runAt){
   }catch(e){ summary.errors.push({phase:"pull_deals",msg:String(e.message||e)}); }
   await F.flush();
 
-  // ---- INBOUND webhook queue: process the real-time Zoho change events captured by zoho-webhook.js.
-  // Ownership-safe: we NEVER overwrite Dealer-360-owned profile fields from here. For each event we
-  //   (1) resolve the dealer (by the webhook's email match, else by the Account name),
-  //   (2) grow the address book — a known dealer + a business email we don't have yet becomes a
-  //       dealer_contact (which also improves inbound email auto-matching), and
-  //   (3) drop a touch-point on the dealer timeline so reps see Zoho-side activity,
-  // then mark the queue row done so it never re-processes. Bounded per run to stay well inside the
-  // function budget; leftover rows drain on the next heartbeat.
+  // ---- INBOUND webhook queue (Phase 2F-4): CLASSIFY ONLY. Each captured event becomes "echo" (status ignored),
+  // "external" or "unresolved" (both stay pending for 2F-5), with the reason. Nothing is applied: no dealer,
+  // contact, deal, activity or Zoho write happens here. An event that can't be classified this run (Zoho or
+  // HCPS couldn't be read) stays unclassified, is recorded as a failure and is tried again next run.
   try{
-    const pend=await sbGetAll("zoho_sync_queue?select=id,entity,entity_id,dealer_id,payload,attempts&direction=eq.in&status=eq.pending&order=id.asc&limit=400","id").catch(e=>{ F.fail({phase:"inbound_read",entity:"queue",direction:"in",action:"read",msg:"the inbound queue couldn't be read: "+failMsg(e)}); return []; });
-    if(pend.length){
-      const dealers=await sbGetAll("dealers?select=id,business_name","id");
-      const norm2id=new Map(); for(const d of dealers) norm2id.set(dnorm(d.business_name), d.id);
-      const aliases=await sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(e=>{ F.fail({phase:"inbound_read",entity:"dealer_aliases",direction:"in",action:"read",msg:"dealer aliases couldn't be read (events matched by exact name only): "+failMsg(e)}); return []; });
-      for(const a of (aliases||[])){ if(a&&a.alias_norm&&!norm2id.has(a.alias_norm)) norm2id.set(a.alias_norm,a.dealer_id); }
-      let processed=0, touched=0, newContacts=0;
-      for(const q of pend){
-        const p=q.payload||{};
-        const email=String(p.Email||p.email||"").trim().toLowerCase();
-        const account=String(p["Account Name"]||p.Account_Name||p.account_name||p.Account||"").trim();
-        let dealer_id=q.dealer_id||null;
-        if(!dealer_id && account){ const id=norm2id.get(dnorm(account)); if(id) dealer_id=id; }
-        // Grow the address book (known dealer + new business email).
-        if(dealer_id && email && EMAIL_RE.test(email)){
-          try{
-            const ex=await sbGet(`dealer_contacts?dealer_id=eq.${encodeURIComponent(dealer_id)}&email=eq.${encodeURIComponent(email)}&select=id&limit=1`);
-            if(!(Array.isArray(ex)&&ex.length)){
-              const nm=[clean(p.First_Name),clean(p.Last_Name)].filter(Boolean).join(" ")||undefined;
-              await sbSend("POST","dealer_contacts?on_conflict=dealer_id,email",prune({dealer_id,email,name:nm}),{Prefer:"resolution=merge-duplicates,return=minimal"});
-              newContacts++;
-            }
-          }catch(e){ F.fail({phase:"inbound_contact",entity:"contact",entity_id:email,dealer_id,direction:"in",action:"apply",msg:"a new contact from a Zoho event wasn't added: "+failMsg(e),extra:{queue_id:q.id}}); }
-        }
-        // Timeline touch-point (visible to reps; leaves owned profile fields untouched).
-        if(dealer_id){
-          const subj=("Zoho "+(q.entity||"record")+" updated"+(email?(" — "+email):account?(" — "+account):"")).slice(0,180);
-          try{ await sbSend("POST","dealer_activity",{dealer_id,kind:"system",subject:subj,actor:"Zoho sync"},{Prefer:"return=minimal"}); touched++; }
-          catch(e){ F.fail({phase:"inbound_timeline",entity:"dealer_activity",dealer_id,direction:"in",action:"apply",msg:"the timeline entry for a Zoho event wasn't added: "+failMsg(e),extra:{queue_id:q.id}}); }
-        }
-        try{ await sbSend("PATCH",`zoho_sync_queue?id=eq.${encodeURIComponent(q.id)}`,{status:"synced",dealer_id,processed_at:new Date().toISOString(),updated_at:new Date().toISOString()},{Prefer:"return=minimal"}); processed++; }
-        catch(e){ F.fail({phase:"inbound_mark",entity:"queue",entity_id:String(q.id),dealer_id,direction:"in",action:"write",msg:"a processed event wasn't marked done, so it will be processed again: "+failMsg(e)}); }
-      }
-      summary.inbound={processed,touched,new_contacts:newContacts};
-    }
-  }catch(e){ summary.errors.push({phase:"inbound_queue",msg:String(e.message||e)}); }
+    let pend=[];
+    try{ pend=await sbGet("zoho_sync_queue?select=id,entity,entity_id,zoho_id,modified_time&direction=eq.in&status=eq.pending&classification=is.null&order=id.asc&limit="+CLASSIFY_BATCH); }
+    catch(e){ F.fail({phase:"inbound_read",entity:"queue",direction:"in",action:"read",msg:"the inbound queue couldn't be read, so no event was classified: "+failMsg(e)}); }
+    if(pend && pend.length) summary.inbound=await classifyInbound(pend,{apiDomain,token,hashes:next,times,timesOk:PT.ok,T});
+  }catch(e){ summary.errors.push({phase:"inbound_classify",msg:String(e.message||e)}); }
+  await F.flush();
 
   await setHashes(next);
+  await saveTimes();
   await stampSync("autosync_at");
   // The run's summary row: counts only (each failure has its own row, with its full reason) and never cut.
   const fl=await F.flush();
@@ -250,6 +359,7 @@ async function runInner(runAt){
   return {ok:true, summary};
 }
 
+exports._classifyOne = classifyOne; exports._parseZohoTime = parseZohoTime;   // for the tests
 exports.handler = async ()=>{
   try{ const res=await run(); return {statusCode:200, headers:{"content-type":"application/json"}, body:JSON.stringify(res)}; }
   catch(e){

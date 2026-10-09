@@ -2,7 +2,7 @@
 
    F2.1  Nothing that looks like a credential is stored or logged by the webhook: the ?secret= (or the
          x-hcps-secret header), any secret/token/auth-named field, and any value containing one of this
-         deployment's secrets. The queue write itself is unchanged (it still fails on the live partial index).
+         deployment's secrets. (2F-4: the event is captured through hcps_zoho_capture_event.)
    F9.1  Every failure the sync used to swallow becomes a failure row (zoho_sync_log, result "fail") and
          the autosync run is logged "partial". What the sync sends to Zoho and writes to HCPS is unchanged.
    F9.2  One failure row per failed record, with its full reason (Zoho's code, message and details); the
@@ -25,7 +25,7 @@ function seed(o) {
     zoho_sync_queue: [], zoho_sync_log: [],
   });
   S.zoho = Object.assign({ modules: { Accounts: [{ id: 'A1', Account_Name: 'Glasgow Prescription Center' }], Deals: [{ id: 'Z0', Deal_Name: 'Deal 0', Stage: 'Closed Won', Amount: 0, Closing_Date: '2026-11-01' }, { id: 'Z1', Deal_Name: 'Deal 1', Stage: 'Qualification', Amount: 10, Closing_Date: '2026-11-02' }] } }, o.zoho || {});
-  if (o.rejectQueue) S.rejectConflict = { zoho_sync_queue: 'direction,entity,entity_id' };   // the live partial unique index
+  if (o.rejectQueue) S.missingRpc = ['hcps_zoho_capture_event'];   // a refused capture (the database before the 2F-4 migration)
   if (o.failWrite) S.failWrite = o.failWrite; if (o.failRead) S.failRead = o.failRead;
   return S;
 }
@@ -68,16 +68,16 @@ const form = o => Object.entries(o).map(([k, v]) => encodeURIComponent(k) + '=' 
     assert.deepStrictEqual(logs(w2).map(l => l.action + ':' + l.result), ['auth:fail']); assert.ok(!everything(w2).includes('nope'));
   });
 
-  await t('F9.1 webhook: the queue write is unchanged — and when the database refuses it (live: 42P10), a failure row says so', async () => {
+  await t('F9.1 webhook: when the database refuses the capture, a failure row says so (2F-4: Zoho gets 503 and retries)', async () => {
     const w = W({ rejectQueue: true });
     const r = await webhook(w, { body: form({ module: 'Accounts', id: '55', secret: WH_SECRET }) });
-    assert.strictEqual(r.statusCode, 200, 'Zoho must still get 200 (no retry storm)');
-    const qw = w.calls.find(c => /zoho_sync_queue\?on_conflict=direction,entity,entity_id/.test(c.url));
-    assert.ok(qw && qw.method === 'POST' && /merge-duplicates/.test(qw.headers.prefer), 'the queue write changed');
+    assert.strictEqual(r.statusCode, 503, 'a refused capture must be retried by Zoho');
+    const qw = w.calls.find(c => /\/rpc\/hcps_zoho_capture_event$/.test(c.url));
+    assert.ok(qw && qw.method === 'POST', 'the capture call changed');
     assert.strictEqual(w.db.zoho_sync_queue.length, 0);
-    const f = fails(w); assert.strictEqual(f.length, 1, 'no failure row for the refused queue write');
+    const f = fails(w); assert.strictEqual(f.length, 1, 'no failure row for the refused capture');
     assert.strictEqual(f[0].action, 'queue'); assert.strictEqual(f[0].direction, 'in'); assert.strictEqual(f[0].entity_id, '55');
-    const d = JSON.parse(f[0].detail); assert.ok(/42P10/.test(d.msg) && /ON CONFLICT/.test(d.msg), d.msg); assert.strictEqual(d.http, 400);
+    const d = JSON.parse(f[0].detail); assert.ok(/PGRST202/.test(d.msg), d.msg); assert.strictEqual(d.http, 404);
     assert.ok(!everything(w).includes(WH_SECRET));
     assert.strictEqual(logs(w).find(l => l.action === 'webhook').result, 'ok', 'the receipt row is still written');
   });

@@ -8,8 +8,9 @@
        anonymous junk without a credential or a Zoho field is not recorded.
    W4  ONE normalization boundary: URL query, urlencoded form, multipart form, JSON (incl. lookups and Zoho's
        {data:[…]}), base64 bodies → module, record id, Modified_Time, Modified_By, Account_Name, Email.
-   W5  Nothing else changed: the response, the GET probe, the queue write (and its 42P10 failure row), and the
-       webhook writes nothing but zoho_sync_log / zoho_sync_queue (no business record).
+   W5  Nothing else changed: the response, the GET probe, and the webhook writes nothing but zoho_sync_log and
+       the queue (no business record). (2F-4 replaced the queue write: capture goes through the
+       hcps_zoho_capture_event function, and a refused capture answers 503 so Zoho retries — see phase2f4.)
    No secret value reaches the database, a write, a log line or a response — checked on every test. */
 const assert = require('assert');
 const { createWorld, load, standardSeed, t, done } = require('./phase0-mock');
@@ -22,7 +23,7 @@ const ENV_ROTATED = { ZOHO_CLIENT_SECRET: CLIENT_SECRET, ZOHO_WEBHOOK_HEADER_SEC
 function W(o) {
   o = o || {};
   const S = standardSeed({ dealer_contacts: [{ id: 'c1', dealer_id: 'd-greg', name: 'Rita Owner', email: 'rita@glasgow.test' }], zoho_sync_queue: [], zoho_sync_log: o.log || [] });
-  if (o.rejectQueue) S.rejectConflict = { zoho_sync_queue: 'direction,entity,entity_id' };   // the live partial unique index
+  if (o.noCapture) S.missingRpc = ['hcps_zoho_capture_event'];   // the database before the 2F-4 migration
   return createWorld(S);
 }
 const logs = w => w.db.zoho_sync_log || [];
@@ -217,16 +218,20 @@ const detailOf = row => JSON.parse(row.detail);
   });
 
   /* ---------------- W5 — nothing else changed ---------------- */
-  await t('W5 the queue write is unchanged, and the live 42P10 refusal is still recorded as a failure (receipt still written, Zoho still gets 200)', async () => {
-    const w = W({ rejectQueue: true });
+  await t('W5 (2F-4) the event is captured by ONE call to hcps_zoho_capture_event; a refused capture is a failure row, the receipt is still written, and Zoho gets 503 to retry', async () => {
+    const w = W();
     const r = await hook(w, { headers: H(FORM), body: form({ module: 'Accounts', id: '7530569000000833001', Account_Name: 'TEST — Golden Sandbox' }) });
     assert.strictEqual(r.statusCode, 200); assert.deepStrictEqual(JSON.parse(r.body), { ok: true, received: 'Accounts #7530569000000833001 TEST — Golden Sandbox' });
-    const qw = w.calls.filter(c => /zoho_sync_queue/.test(c.url) && c.method !== 'GET'); assert.strictEqual(qw.length, 1);
-    assert.ok(/zoho_sync_queue\?on_conflict=direction,entity,entity_id$/.test(qw[0].url) && qw[0].method === 'POST' && qw[0].headers.prefer === 'resolution=merge-duplicates,return=minimal');
-    assert.deepStrictEqual(Object.keys(qw[0].body).sort(), ['dealer_id', 'direction', 'entity', 'entity_id', 'op', 'payload', 'status', 'updated_at', 'zoho_id']);
-    assert.strictEqual(qw[0].body.entity, 'accounts'); assert.strictEqual(qw[0].body.entity_id, '7530569000000833001'); assert.strictEqual(qw[0].body.status, 'pending');
-    const f = logs(w).filter(l => l.result === 'fail'); assert.strictEqual(f.length, 1); assert.strictEqual(f[0].action, 'queue');
-    assert.ok(/42P10/.test(detailOf(f[0]).msg)); assert.strictEqual(receipts(w).length, 1); noSecrets(w, r);
+    const qw = w.calls.filter(c => /zoho_sync_queue|\/rpc\//.test(c.url) && c.method !== 'GET'); assert.strictEqual(qw.length, 1);
+    assert.ok(/\/rest\/v1\/rpc\/hcps_zoho_capture_event$/.test(qw[0].url) && qw[0].method === 'POST');
+    assert.deepStrictEqual(Object.keys(qw[0].body.p).sort(), ['dealer_id', 'entity', 'entity_id', 'event_key', 'last_error', 'modified_by', 'modified_time', 'module', 'payload', 'status', 'zoho_id']);
+    assert.strictEqual(qw[0].body.p.entity, 'accounts'); assert.strictEqual(qw[0].body.p.entity_id, '7530569000000833001'); assert.strictEqual(qw[0].body.p.status, 'pending');
+    noSecrets(w, r);
+    const w2 = W({ noCapture: true });
+    const r2 = await hook(w2, { headers: H(FORM), body: form({ module: 'Accounts', id: '7530569000000833001', Account_Name: 'TEST — Golden Sandbox' }) });
+    assert.strictEqual(r2.statusCode, 503); assert.deepStrictEqual(JSON.parse(r2.body), { ok: false, error: 'not_captured' });
+    const f = logs(w2).filter(l => l.result === 'fail'); assert.strictEqual(f.length, 1); assert.strictEqual(f[0].action, 'queue');
+    assert.ok(/PGRST202/.test(detailOf(f[0]).msg)); assert.strictEqual(receipts(w2).length, 1); assert.strictEqual(detailOf(receipts(w2)[0]).outcome, 'not_captured'); noSecrets(w2, r2);
   });
 
   await t('W5 the webhook writes only to zoho_sync_log / zoho_sync_queue — no business record, on any path', async () => {
@@ -240,7 +245,7 @@ const detailOf = row => JSON.parse(row.detail);
       const w = W(); const before = JSON.stringify(Object.assign({}, w.db, { zoho_sync_log: null, zoho_sync_queue: null }));
       await hook(w, ev, env);
       const tables = w.calls.filter(c => c.method !== 'GET').map(c => String(c.url).split('/rest/v1/')[1].split('?')[0]);
-      assert.ok(tables.every(x => x === 'zoho_sync_log' || x === 'zoho_sync_queue'), 'wrote to ' + tables.join(','));
+      assert.ok(tables.every(x => x === 'zoho_sync_log' || x === 'rpc/hcps_zoho_capture_event'), 'wrote to ' + tables.join(','));
       assert.strictEqual(JSON.stringify(Object.assign({}, w.db, { zoho_sync_log: null, zoho_sync_queue: null })), before, 'a business table changed');
       assert.ok(!w.calls.some(c => /zoho\.com|zohoapis/.test(String(c.url))), 'the webhook called Zoho');
     }

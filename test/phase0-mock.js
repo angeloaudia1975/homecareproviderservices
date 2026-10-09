@@ -35,6 +35,7 @@ function createWorld(seed) {
   const outbound = [];                                          // email / graph sends
   const MAX_ROWS = seed.maxRows || 1000;
   const missingTables = new Set(seed.missingTables || []);
+  const world_seq = {};
 
   const decode = s => decodeURIComponent(String(s).replace(/\+/g, ' '));
   // Postgres stores a jsonb value with its OWN key order (shorter keys first, then by bytes), so an
@@ -121,6 +122,30 @@ function createWorld(seed) {
     }
     if (u.startsWith(BASE + '/auth/v1/recover')) { writes.push({ kind: 'supabase_recover', email: body && body.email, url: u }); return res(200, {}); }
     if (u.startsWith(BASE + '/auth/v1/verify')) return res(200, { access_token: 'imp', refresh_token: 'r', expires_in: 3600 });
+
+    // ---- PostgREST RPC (Phase 2F-4): hcps_zoho_capture_event(p jsonb), the migration's function. One queue row
+    // per event_key: a new key inserts (deliveries 1); a repeat only counts (deliveries+1, last_delivery_at).
+    // seed.missingRpc = ['name'] → 404 PGRST202 (the migration hasn't run); failWrite('POST', 'rpc/<name>', …) applies.
+    if (u.startsWith(BASE + '/rest/v1/rpc/')) {
+      const fn = u.slice((BASE + '/rest/v1/rpc/').length).split('?')[0];
+      if ((seed.missingRpc || []).includes(fn) || fn !== 'hcps_zoho_capture_event') return res(404, { code: 'PGRST202', message: `Could not find the function public.${fn}(p) in the schema cache` });
+      if (seed.failWrite) { const st = seed.failWrite('POST', 'rpc/' + fn, body, ''); if (st) return res(st, { code: 'XX000', message: 'forced write failure on rpc/' + fn }); }
+      const p = (body && body.p) || {}; const q = db.zoho_sync_queue = db.zoho_sync_queue || [];
+      const ex = p.event_key != null ? q.find(r => r.event_key === p.event_key) : null;
+      if (ex) { ex.deliveries = (ex.deliveries || 1) + 1; ex.last_delivery_at = new Date().toISOString(); writes.push({ kind: 'rpc', fn, inserted: false, id: ex.id });
+        return res(200, { id: ex.id, inserted: false, status: ex.status, deliveries: ex.deliveries }); }
+      const now = new Date().toISOString(); world_seq.q = (world_seq.q || 0) + 1;
+      const row = jsonbRow({ id: world_seq.q, direction: 'in', entity: p.entity, entity_id: p.entity_id == null ? null : p.entity_id, dealer_id: p.dealer_id == null ? null : p.dealer_id,
+        op: 'upsert', payload: p.payload == null ? null : p.payload, status: p.status || 'pending', attempts: 0, last_error: p.last_error == null ? null : p.last_error,
+        zoho_id: p.zoho_id == null ? null : p.zoho_id, event_key: p.event_key == null ? null : p.event_key, module: p.module == null ? null : p.module,
+        modified_time: p.modified_time == null ? null : p.modified_time, modified_by: p.modified_by == null ? null : p.modified_by,
+        classification: null, class_reason: null, classified_at: null, deliveries: 1, last_delivery_at: now, created_at: now, updated_at: now, processed_at: null });
+      // The migration's checks: an inbound row always carries its identity; status is one the table allows.
+      if (row.event_key == null || row.event_key === '') return res(400, { code: '22023', message: 'hcps_zoho_capture_event: event_key is required' });
+      if (!['pending', 'processing', 'synced', 'failed', 'skipped', 'conflict', 'ignored'].includes(row.status)) return res(400, { code: '23514', message: 'new row violates check constraint "zoho_sync_queue_status_check"' });
+      q.push(row); writes.push({ kind: 'rpc', fn, inserted: true, id: row.id, row: { ...row } });
+      return res(200, { id: row.id, inserted: true, status: row.status, deliveries: 1 });
+    }
 
     // ---- PostgREST ----
     if (u.startsWith(BASE + '/rest/v1/')) {
@@ -225,7 +250,14 @@ function createWorld(seed) {
       if (method === 'GET' && parts.length === 3) {
         const page = Number(sp.get('page') || 1), per = Number(sp.get('per_page') || 200);
         const rf = (z.readFail || {})[mod]; if (rf && page >= (rf.page || 1)) return res(rf.status || 500, { code: 'INTERNAL_ERROR', message: 'zoho read failed' });
-        const all = z.modules[mod] || []; if (!all.length) return res(204, '');
+        let all = z.modules[mod] || [];
+        // GET …?ids=a,b (Phase 2F-4): only those records — with only the asked-for fields (+ id), as Zoho answers.
+        // A lookup comes back as {name, id} (the fake's stored link may hold only the id). seed.zoho.idsFail[module] = an HTTP status.
+        if (sp.get('ids')) { if ((z.idsFail || {})[mod]) return res(z.idsFail[mod], { code: 'INTERNAL_ERROR', message: 'zoho read failed' });
+          const want = new Set(sp.get('ids').split(',')); const fl = sp.get('fields') ? sp.get('fields').split(',') : null;
+          const named = v => (v && typeof v === 'object' && v.id != null && v.name == null) ? { id: v.id, name: ((z.modules.Accounts || []).slice().reverse().find(a => String(a.id) === String(v.id)) || {}).Account_Name || null } : v;
+          all = all.filter(r => want.has(String(r.id))).map(r => Object.fromEntries([['id', r.id]].concat((fl || Object.keys(r)).filter(f => f !== 'id' && f in r).map(f => [f, named(r[f])])))); }
+        if (!all.length) return res(204, '');
         return res(200, { data: all.slice((page - 1) * per, page * per), info: { more_records: page * per < all.length, page } });
       }
       if (method === 'POST' && parts[3] === 'upsert') {

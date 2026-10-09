@@ -353,9 +353,10 @@ exports.handler = async (event)=>{
       try{ dealers=(await sbGetAll("dealers?select=id","id")).length; }catch(e){}
       try{ contacts=(await sbGetAll("dealer_contacts?select=email","email")).length; }catch(e){}
       // Queue health — overall pending/failed plus inbound-specific (webhook events awaiting drain).
-      let pending=0, failed=0, inPending=0, inSynced=0, haveQueue=false;
+      // Phase 2F-4: inbound HCPS echoes end "ignored" (counted separately; never applied).
+      let pending=0, failed=0, inPending=0, inSynced=0, inIgnored=0, haveQueue=false;
       try{ const q=await sbGetAll("zoho_sync_queue?select=direction,status","direction"); haveQueue=true;
-        for(const x of (q||[])){ if(x.status==="pending"){ pending++; if(x.direction==="in") inPending++; } else if(x.status==="failed") failed++; else if(x.status==="synced" && x.direction==="in") inSynced++; } }catch(e){}
+        for(const x of (q||[])){ if(x.status==="pending"){ pending++; if(x.direction==="in") inPending++; } else if(x.status==="failed") failed++; else if(x.status==="synced" && x.direction==="in") inSynced++; else if(x.status==="ignored" && x.direction==="in") inIgnored++; } }catch(e){}
       // Automatic-sync heartbeat + inbound webhook activity + last-20 event feed (all best-effort;
       // the log/queue tables come from supabase/zoho_sync.sql — silent, empty until that's run).
       const autosync_at = st.autosync_at || null;
@@ -370,9 +371,9 @@ exports.handler = async (event)=>{
       try{ recent=await sbGet("zoho_sync_log?select=direction,entity,action,result,detail,created_at&order=created_at.desc&limit=20"); }catch(e){ recent=[]; }
       return json(200,{ ok:true, connected:!!(cfg&&cfg.refresh_token), last:st,
         opportunities:{ total:(opps||[]).length, linked, unlinked:(opps||[]).length-linked },
-        counts:{ dealers, contacts }, queue:{ pending, failed, in_pending:inPending, in_synced:inSynced },
+        counts:{ dealers, contacts }, queue:{ pending, failed, in_pending:inPending, in_synced:inSynced, in_ignored:inIgnored },
         autosync:{ on:!!autosync_at, at:autosync_at, last:auto_last }, have_queue:haveQueue,
-        webhooks:{ in_24h:wh_in_24h, last:wh_last, pending:inPending, synced:inSynced },
+        webhooks:{ in_24h:wh_in_24h, last:wh_last, pending:inPending, synced:inSynced, ignored:inIgnored },
         failures:{ in_24h:fail_24h, last:fail_last },
         recent:(recent||[]) });
     }

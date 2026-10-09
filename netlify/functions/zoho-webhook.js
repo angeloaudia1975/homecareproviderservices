@@ -1,10 +1,18 @@
 // HCPS ⇄ Zoho — INBOUND webhook receiver (Zoho CRM → Dealer 360).
 // Zoho workflow rules call this endpoint the instant a Contact / Account / Deal changes.
-// v1 is capture-safe: it authenticates the caller, records the event to zoho_sync_log and
-// queues it in zoho_sync_queue (direction 'in', status 'pending'), and returns 200 fast — so
-// you can wire and TEST webhooks in Zoho today and watch them land on the health dashboard.
-// It does NOT yet auto-apply field changes; that step comes with the locked field-ownership
-// map so inbound writes can never overwrite Dealer-360-owned data.
+// It is CAPTURE ONLY: it authenticates the caller, records a receipt in zoho_sync_log and captures the
+// event in zoho_sync_queue (direction 'in'). It never changes a dealer, contact, deal or activity, and
+// never calls Zoho. Applying inbound changes waits for the conflict-safe processor (2F-5).
+//
+// Phase 2F-4 — event identity:
+//  • Every event gets a stable key: module + Zoho record id + Modified_Time + a hash of the cleaned payload
+//    (eventIdentity below). The database holds ONE queue row per key (unique index zoho_queue_event_key_uniq);
+//    hcps_zoho_capture_event() inserts the event or, when Zoho delivers the same event again, only counts the
+//    repeat (deliveries) — so retries never create a second queue item, even when they race.
+//  • Outcomes, all logged on the receipt: captured (status pending, awaiting classification), duplicate,
+//    failed (no record id / unknown module — kept as a failed queue row with the reason), not_captured (the
+//    database refused: a failure row is written and Zoho gets 503 so it retries; duplicates are harmless).
+//  • Classification (HCPS echo vs external change) happens in zoho-autosync, not here.
 //
 // Phase 2F-3 — credential and payload:
 //  • The credential is the HTTP request header `x-hcps-secret`, checked against ZOHO_WEBHOOK_HEADER_SECRET.
@@ -100,6 +108,14 @@ function normalize(event){
     query_keys: names(query), body_keys: names(body.params), hcps_header: !!headers["x-hcps-secret"] };
   return { headers, params, shape };
 }
+// ---------- 2F-4: event identity ----------
+const KNOWN_MODULES = new Set(["accounts","contacts","deals"]);
+// Key order and surrounding spaces never change the identity; any other difference in what Zoho sent does.
+const canonical = o => JSON.stringify(Object.keys(o||{}).sort().map(k=>[k, String(o[k]==null?"":o[k]).trim()]));
+function eventIdentity(entity, recordId, modifiedTime, safe){
+  const h=crypto.createHash("sha256").update(canonical(safe)).digest("hex").slice(0,24);
+  return ["in", entity||"unknown", recordId||"noid", modifiedTime||"-", h].join(":");
+}
 // ---------- 2F-3: authentication ----------
 const same=(a,b)=>{ if(!a||!b) return false; const x=Buffer.from(String(a)), y=Buffer.from(String(b)); return x.length===y.length && crypto.timingSafeEqual(x,y); };
 function authenticate(headers, params){
@@ -155,19 +171,28 @@ exports.handler = async (event)=>{
       if(r.ok && Array.isArray(r.body) && r.body[0]) dealer_id=r.body[0].dealer_id;
       else if(!r.ok) fails.push({phase:"webhook_dealer",action:"read",msg:"the dealer lookup for this event failed: "+why(r)}); }
 
-    // Log it (history + dashboard counts): the summary plus what Zoho sent about the change and how it arrived.
-    // Sanitized field by field (redact), THEN serialized — so the stored detail is always valid JSON.
-    const detail=JSON.stringify(ZL.redact({ summary, modified_time:clean(f.modified_time,60), modified_by:clean(f.modified_by,120), accepted_via:auth.via, shape:n.shape }));
-    const lg=await sbSend("POST","zoho_sync_log",{direction:"in",entity:module.toLowerCase(),entity_id:recordId,dealer_id,action:"webhook",result:"ok",detail,zoho_id:recordId},{Prefer:"return=minimal"});
-    if(!lg.ok) console.error("zoho-webhook: receipt not logged:", ZL.scrubString(why(lg)));
-    // The queue write is unchanged (repairing it is a later unit) — if it is refused, that is recorded as a
-    // failure row with the database's reason, instead of being dropped.
-    const qr=await sbSend("POST","zoho_sync_queue?on_conflict=direction,entity,entity_id",
-      {direction:"in",entity:module.toLowerCase(),entity_id:recordId,dealer_id,op:"upsert",payload:safe,status:"pending",zoho_id:recordId,updated_at:new Date().toISOString()},
-      {Prefer:"resolution=merge-duplicates,return=minimal"});
-    if(!qr.ok) fails.push({phase:"webhook_queue",action:"queue",msg:"the event was received but not queued: "+why(qr),extra:{http:qr.status}});
-    if(fails.length) await ZL.writeLog(fails.map(x=>ZL.failRow(Object.assign({direction:"in",entity:module.toLowerCase(),entity_id:recordId,dealer_id,zoho_id:recordId},x))));
+    // ---- 2F-4: capture the event under its identity (one queue row per event, however often it arrives) ----
+    const entity=module.toLowerCase();
+    const modifiedTime=clean(f.modified_time,60), modifiedBy=clean(f.modified_by,120);
+    const event_key=eventIdentity(entity, recordId, modifiedTime, safe);
+    const problem = !KNOWN_MODULES.has(entity) ? "the event names no module HCPS captures ("+module+")" : !recordId ? "the event carries no Zoho record id" : null;
+    const cap=await sbSend("POST","rpc/hcps_zoho_capture_event",{p:{ event_key, entity, entity_id:recordId, zoho_id:recordId, dealer_id,
+      module:entity, modified_time:modifiedTime, modified_by:modifiedBy, payload:safe, status:problem?"failed":"pending", last_error:problem }});
+    const c=(cap.ok && cap.body && typeof cap.body==="object") ? cap.body : null;
+    const outcome = !c ? "not_captured" : !c.inserted ? "duplicate" : problem ? "failed" : "captured";
+    if(!c) fails.push({phase:"webhook_queue",action:"queue",msg:"the event was received but not captured: "+why(cap),extra:{http:cap.status,event_key}});
+    else if(problem && c.inserted) fails.push({phase:"webhook_identity",action:"queue",msg:"the event was captured as failed: "+problem,extra:{queue_id:c.id,event_key}});
 
+    // Receipt (history + dashboard counts): the summary, what Zoho sent about the change, how it arrived, and
+    // what happened to it. Sanitized field by field (redact), THEN serialized — always valid JSON.
+    const detail=JSON.stringify(ZL.redact({ summary, modified_time:modifiedTime, modified_by:modifiedBy, accepted_via:auth.via, shape:n.shape,
+      outcome, queue_id:c?c.id:null, deliveries:c?c.deliveries:null, event_key }));
+    const lg=await sbSend("POST","zoho_sync_log",{direction:"in",entity,entity_id:recordId,dealer_id,action:"webhook",result:outcome==="duplicate"?"duplicate":"ok",detail,zoho_id:recordId},{Prefer:"return=minimal"});
+    if(!lg.ok) console.error("zoho-webhook: receipt not logged:", ZL.scrubString(why(lg)));
+    if(fails.length) await ZL.writeLog(fails.map(x=>ZL.failRow(Object.assign({direction:"in",entity,entity_id:recordId,dealer_id,zoho_id:recordId},x))));
+
+    // Not captured → 503, so Zoho delivers it again (a repeat is recognised and counted, never doubled).
+    if(!c) return json(503,{ok:false,error:"not_captured"});
     return json(200,{ok:true, received:summary});
   }catch(e){
     // Always 200 to avoid Zoho retry storms; the failure is logged best-effort.
@@ -176,4 +201,4 @@ exports.handler = async (event)=>{
   }
 };
 // Exposed for the tests only.
-exports._normalize = normalize; exports._pick = pick;
+exports._normalize = normalize; exports._pick = pick; exports._eventIdentity = eventIdentity;

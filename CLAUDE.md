@@ -602,7 +602,7 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   key NAMES only (a long token-like name is kept as `[long-key]`). A refused call that presented a credential
   or looks like a Zoho event is recorded as an `action:"auth"` failure row with the reason (at most 20 an
   hour); no value is ever kept. The response, the GET probe and the queue write are unchanged (the queue's
-  42P10 failure stays visible until 2F-4 repairs it).
+  42P10 failure stays visible until 2F-4 repairs it — repaired in 2F-4, see below).
   **Zoho webhook form (learned 2026-10-08):** everything under the form's **Header** section (its Module
   Parameters AND Custom Parameters) is sent as HTTP **headers**; the **Body** section (Form-Data) is the body.
   A header name cannot contain a space — the old Contacts webhook sent a header named "Account Name", so every
@@ -614,6 +614,36 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   time. Zoho sends it as urlencoded. On Contacts and Deals `Account_Name` arrives as the account's Zoho id (a
   lookup), on Accounts as the name. Claude never views a webhook page once the secret is in it (the saved
   details page shows header values).
+- **Inbound Zoho events: capture + classify ONLY (2F-4, RULE agreed 2026-10-08).** Until 2F-5 establishes field
+  authority and conflict handling, an inbound webhook event never changes HCPS business data: no dealer,
+  contact, deal (stage / value / close date), new contact, Dealer 360 activity/timeline entry, and never
+  triggers a Zoho push. (The existing 15-minute Deals PULL — Zoho stage/amount/close onto linked HCPS deals —
+  is separate and unchanged; changing it is 2F-5/F4–F6 work.)
+  **Identity:** each event's key is `in:<module>:<Zoho id>:<Modified_Time>:<sha256 of the cleaned payload, 24
+  hex>` (`zoho-webhook.js eventIdentity`; key order and surrounding spaces don't change it). The database holds
+  ONE queue row per key: full unique index `zoho_queue_event_key_uniq` + `hcps_zoho_capture_event(p jsonb)`
+  (insert, or on the same key only `deliveries+1`) — never an application-side check, and never the old
+  partial index (dropped). Migration `supabase/phase2f4_inbound_identity.sql` (rollback
+  `…_rollback.sql`: redeploy the 2F-3 code FIRST, then run it). **Deploy order: run the SQL, THEN push the
+  code** — without the function every event answers 503 and is logged as a failure.
+  **States (every event ends explainable, never silently dropped):** `pending` + classification null =
+  captured, awaiting classification; `pending/external`, `pending/unresolved` = for 2F-5; `ignored/echo` =
+  HCPS echo (with its reason; the database refuses `ignored` without `echo` and a classification without a
+  reason); `failed` = no record id / unknown module / unreadable body (reason in `last_error` + a failure row);
+  a repeat = `deliveries` count + a receipt with result `duplicate`; capture refused = failure row (with the
+  event key) + receipt outcome `not_captured` + **503** (deliberately not 200, so Zoho may retry; a retry is
+  recognised, never doubled).
+  **Echo rule — Modified_By is NEVER used** (the integration signs in as Angelo Audia, also a real Zoho user,
+  so "Modified_By = Angelo" must never mean "ignore"). `zoho-autosync` classifies pending events: echo ONLY if
+  (1) exactly one HCPS record's last ACCEPTED push went to that Zoho record — `app_settings.zoho_push_times`
+  `{key: {at, id}}`, written only for records Zoho accepted, key as in `zoho_push_hashes`; (2) Zoho's CURRENT
+  values of the pushed fields, rebuilt exactly as the push hashed them, equal that push's fingerprint; and
+  (3) the event's Modified_Time (Chicago wall clock, `ZOHO_WEBHOOK_TZ`) is within −10 min … +2 min of that
+  push. Values differ → external; no recorded push (incl. every TEST record) → external; record not in Zoho
+  or tied to 2+ HCPS records → unresolved. Time proximity alone never makes an echo. If Zoho or the push
+  times can't be read, events stay unclassified (failure row, run partial) — nothing is guessed, and unread
+  push times are never overwritten. Proving the echo rule live uses the next NATURAL HCPS push — never a
+  manufactured edit to a real dealer.
 - **Zoho inspection decisions (2026-10-07, Angelo).** The 183 Zoho-only Deals are NOT imported into HCPS
   automatically. The 175 Closed Won sales roll-ups are not HCPS opportunities. The 8 orphan TEST Deals are
   cleanup candidates for later. The 8 orphan Accounts are real businesses — review/merge candidates, never
