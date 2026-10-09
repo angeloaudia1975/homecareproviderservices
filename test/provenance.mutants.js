@@ -6,9 +6,9 @@ const M=[
  ['retired records stamped','else if(r.status!==LIVE_STATUS) inactive.push(c);',''],
  ['read failure swallowed','catch(err){ return json(503,{error:"layer_unreadable",message:String((err&&err.message)||err)}); }\n        const byNorm={};','catch(err){ rows=[]; }\n        const byNorm={};'],
  ['write failure swallowed','            return json(502,{error:"provenance_incomplete",stamped,failed:r.code,','            continue; return json(502,{error:"provenance_incomplete",stamped,failed:r.code,'],
- ['dry run writes',"if(b.dry_run===true) return json(200,{ok:true,dry_run:true,","if(false) return json(200,{ok:true,dry_run:true,"],
+ ['dry run writes',"if(b.dry_run===true) return json(200,{ok:true,dry_run:true,would_stamp","if(false) return json(200,{ok:true,dry_run:true,would_stamp"],
  ['price touched too','{source_file:file.slice(0,160), effective_date:eff||null, updated_at:now','{source_file:file.slice(0,160), effective_date:eff||null, base_price:0, updated_at:now'],
- ['date unchecked',"if(eff && !/^\\d{4}-\\d{2}-\\d{2}$/.test(eff)) return","if(false) return"],
+ ['date unchecked',"if(eff && !/^\\d{4}-\\d{2}-\\d{2}$/.test(eff)) return json(400,{error:\"effective_date must be YYYY-MM-DD\"});\n        const codes=","if(false) return json(400,{error:\"effective_date must be YYYY-MM-DD\"});\n        const codes="],
 ];
 let surv=0;
 for(const [n,f,t] of M){ const c=src.split(f).length-1; if(c!==1){console.log(`BAD ANCHOR(${c}) ${n}`);surv++;continue;}

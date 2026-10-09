@@ -793,6 +793,26 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     UNCONFIRMED, so Strongback quantities are not pooled yet. Freight facts (wheelchairs and
     rollators ship included; accessories $15 per box) wait for the Manufacturer/Freight Center —
     no second freight authority.
+- **MSRP has three states (agreed 2026-10-09).** MSRP populated → shown; MSRP empty and not
+  marked → derived at 2× dealer price, as before; MSRP empty and `msrp_auto:false` stated by a
+  SAVED EDIT (override patch) or the MASTER RECORD → no MSRP is shown, never a made-up one. The
+  added-product table's `msrp_auto` column is not that signal (false is its default; 28 live
+  Ovation rows rely on the derived MSRP). Partner 360 (`noMsrpRule`, `fillMsrp`, the record
+  reconcile), the record feed (`msrp_auto:false` is sent, not dropped) and the admin parity check
+  all apply it; parity also flags a record saying "none" where the storefront still derives one.
+  Never infer "no MSRP" from a blank field.
+- **Climbing Steps complete (2026-10-09):** provenance stamped on all 21 records; verification
+  order VERIFY-CS-GOLD-TEST (MP-P09, $69.99 browser = server = stored) placed, seen in dealer
+  history, then cancelled in admin.
+- **A manufacturer source is staged into the record before activation (agreed 2026-10-09).**
+  `catalog-api stage_record_source` writes an approved source's rows (prices, breaks, MAP, MSRP /
+  msrp_auto, uom, case_qty, status, source file + date) to product_skus ONLY — never a layer — and
+  answers with the activation preview: every field dealers would see change when record authority
+  is switched on. `dry_run:true` first. Refused on a line already record-authoritative.
+- **Pack units (agreed 2026-10-09, Strongback A1005).** A SKU with `case_qty > 1` is ordered and
+  priced per pack: Partner 360 shows "$50.00 per 4-pack · Dealer order unit = 1 4-pack (4 each)",
+  a per-piece MAP as "MAP $24.95 each", the cart "1 × 4-pack = 4 each", and both order emails
+  "4-pack (4 each)". The unit comes from the master record (server-priced lines carry it).
 - **Provenance lives on the master record (agreed 2026-10-09).** `catalog-api set_record_provenance`
   stamps `source_file` / `effective_date` on the product_skus rows a source file lists — record-only,
   never a price, MAP, MSRP, tier, status or layer. Every listed code must have an ACTIVE record or

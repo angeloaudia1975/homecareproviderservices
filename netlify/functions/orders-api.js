@@ -55,9 +55,16 @@ async function sendMail({to,subject,html,text}){
     body:JSON.stringify({from:MAIL_FROM,to:[to],subject,html,text})});
     return {ok:res.ok}; }catch(e){ return {ok:false}; }
 }
+/* The unit the quantity counts (agreed 2026-10-09): "4-pack (4 each)" for a pack SKU. Read from the
+   order line the dealer sent; never stored, never priced (the price is the server's, per order unit). */
+function unitLabel(it){
+  const n=Number(it&&it.case_qty), u=String((it&&it.uom)||"").trim();
+  if(n>1) return `${u||n+"-pack"} (${n} each)`;
+  return "";
+}
 function orderConfirmation(to,d,summaries){
   const blocks=summaries.map(s=>{
-    const rows=(s.items||[]).map(it=>`<tr><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px">${esc(it.name||it.code||"Item")}${it.code?` <span style="color:#9aa4ae">(${esc(it.code)})</span>`:""}</td><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:center">${num(it.qty)}</td><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:right">${money(it.unit_price)}</td><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:right">${money(it.line_total)}</td></tr>`).join("");
+    const rows=(s.items||[]).map(it=>`<tr><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px">${esc(it.name||it.code||"Item")}${it.code?` <span style="color:#9aa4ae">(${esc(it.code)})</span>`:""}${it.unit_label?` <span style="color:#10263f;font-weight:700">&middot; ${esc(it.unit_label)}</span>`:""}</td><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:center">${num(it.qty)}</td><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:right">${money(it.unit_price)}</td><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:right">${money(it.line_total)}</td></tr>`).join("");
     return `<div style="margin:0 0 16px"><div style="font-weight:700;color:#2B4071;font-size:14px;margin:0 0 6px">${esc(s.line)}${s.po?` &middot; PO ${esc(s.po)}`:""}</div><table style="border-collapse:collapse;width:100%"><thead><tr><th style="text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#8a96a3;padding:0 10px 4px">Item</th><th style="font-size:10px;color:#8a96a3;padding:0 10px 4px">Qty</th><th style="text-align:right;font-size:10px;color:#8a96a3;padding:0 10px 4px">Unit</th><th style="text-align:right;font-size:10px;color:#8a96a3;padding:0 10px 4px">Total</th></tr></thead><tbody>${rows}</tbody></table><div style="text-align:right;font-size:13px;font-weight:700;color:#1b2733;margin:6px 10px 0">Subtotal: ${money(s.subtotal)}</div></div>`;
   }).join("");
   const html=`<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:600px">
@@ -68,7 +75,7 @@ function orderConfirmation(to,d,summaries){
     <p style="font-size:12.5px;line-height:1.6;color:#6b7280;margin:16px 0 0">Pricing shown is your contract pricing; the manufacturer's invoice is the final billing document. Questions about this order? Reply to this email or reach your HCPS rep.</p>
     <p style="font-size:12px;color:#9aa4ae;margin:14px 0 0">HomeCare Provider Services &middot; Your partner in mobility &amp; home medical equipment.</p></div>`;
   const text=`Order received${d.business?", "+d.business:""}\n\nThanks for ordering through the HomeCare Provider Services portal. We've received your order and it's on its way to the manufacturer.\n\n`
-    +summaries.map(s=>`${s.line}${s.po?" (PO "+s.po+")":""}\n`+(s.items||[]).map(it=>`  ${num(it.qty)} x ${it.name||it.code||"Item"} @ ${money(it.unit_price)} = ${money(it.line_total)}`).join("\n")+`\n  Subtotal: ${money(s.subtotal)}`).join("\n\n")
+    +summaries.map(s=>`${s.line}${s.po?" (PO "+s.po+")":""}\n`+(s.items||[]).map(it=>`  ${num(it.qty)} x ${it.name||it.code||"Item"}${it.unit_label?" ("+it.unit_label+")":""} @ ${money(it.unit_price)} = ${money(it.line_total)}`).join("\n")+`\n  Subtotal: ${money(s.subtotal)}`).join("\n\n")
     +`\n\nView your order history: ${PORTAL_URL}`;
   return {to,subject:"Your HCPS order confirmation",html,text};
 }
@@ -190,7 +197,8 @@ exports.handler = async (event)=>{
             failed.push({manufacturer_slug:slug,error:"order_not_recorded"}); continue;
           }
         }
-        summaries.push({request_slug:slug, slug:cleanSlug, line:cleanSlug?(mfrName[cleanSlug]||cleanSlug):(slug||"Order"), po:o.po||"", items, subtotal:row.subtotal, order_id:oid});
+        summaries.push({request_slug:slug, slug:cleanSlug, line:cleanSlug?(mfrName[cleanSlug]||cleanSlug):(slug||"Order"), po:o.po||"",
+          items:items.map((x,i)=>{ const lb=unitLabel((o.items||[])[i]); return lb?Object.assign({},x,{unit_label:lb}):x; }), subtotal:row.subtotal, order_id:oid});
         if(cleanSlug) slugs.add(cleanSlug);
         saved++;
       }

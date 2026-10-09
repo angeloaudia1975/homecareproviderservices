@@ -1968,23 +1968,29 @@ async function parityCheck(mfr, codes){
   const all=!codes || codes.has("*") || !codes.size;
   const want=all?null:new Set([...codes].map(normCode));
   const base=await catalogFile(mfr);
-  const custom=await sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code,base_price,msrp,map,tiers,active`);
+  const custom=await sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code,base_price,msrp,msrp_auto,map,tiers,active`);
   const ovRows=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`);
-  const rec=await sb("GET",`product_skus?manufacturer=eq.${e(mfr)}&select=code,base_price,msrp,map,tiers,status&limit=10000`);
+  const rec=await sb("GET",`product_skus?manufacturer=eq.${e(mfr)}&select=code,base_price,msrp,msrp_auto,map,tiers,status&limit=10000`);
   return parityCompare({base:base||[], custom:custom||[], overrides:ovRows||[], record:rec||[], want, mfr});
 }
 /* PURE half of the above, so it can be tested against real line data without a database. */
-function parityCompare({base, custom, overrides, record, want, mfr}){
+function parityCompare({base, custom, overrides, record, want, mfr, strictTiers}){
   const om={}; (overrides||[]).forEach(o=>{ om[String(o.code)]=o.patch||{}; });
   const eff={};
   const KEYS=["base_price","msrp","map","tiers"];
+  /* The storefront's three-state MSRP rule (index.html noMsrpRule): a SAVED EDIT that says
+     msrp_auto:false with no MSRP of its own clears any MSRP a lower layer carried. (The added
+     row's msrp_auto column is not that signal: false is its default.) */
+  const noMsrp=(row,layer)=>{ if(layer&&layer.msrp_auto===false){ row.msrp_auto=false; if(layer.msrp==null||layer.msrp==="") row.msrp=null; } };
   (base||[]).forEach(p=>{ const c=String(p.code); const pa=om[c]||{}; const row={code:c};
     KEYS.forEach(k=>{ row[k]=p[k]; if(k in pa && pa[k]!=null) row[k]=pa[k]; });
+    noMsrp(row,pa);
     row.hidden=pa.active===false; eff[normCode(c)]=row; });
   const inBase=new Set((base||[]).map(p=>String(p.code)));
   (custom||[]).forEach(cu=>{ const c=String(cu.code); if(inBase.has(c)) return;
     const pa=om[c]||{}; const row={code:c};
     KEYS.forEach(k=>{ row[k]=cu[k]; if(k in pa && pa[k]!=null) row[k]=pa[k]; });
+    noMsrp(row,pa);
     row.hidden=cu.active===false || pa.active===false;
     const k=normCode(c); if(!eff[k] || eff[k].hidden) eff[k]=row; });
   const money=v=>{ const n=num(v); return n==null?null:Math.round(n*100)/100; };
@@ -2003,10 +2009,19 @@ function parityCompare({base, custom, overrides, record, want, mfr}){
       const a=money(l[f]), b=money(r[f]);
       if(a!=null && b!=null && a!==b) drift.push({code:r.code, field:f, layers:a, record:b});
       else if(f==="map" && a!=null && b==null) drift.push({code:r.code, field:f, layers:a, record:null});
+      /* The record says there is NO MSRP; a storefront that still shows one disagrees with it. */
+      else if(f==="msrp" && a!=null && b==null && r.msrp_auto===false) drift.push({code:r.code, field:f, layers:a, record:null});
+      /* The storefront DERIVES an MSRP (2x) wherever a row has none and nobody said "none" on the
+         saved edit. A record that says "none" would remove it on activation — a visible change. */
+      else if(f==="msrp" && a==null && b==null && r.msrp_auto===false && l.msrp_auto!==false && money(l.base_price)>0)
+        drift.push({code:r.code, field:f, layers:"derived "+(Math.round(money(l.base_price)*MSRP_MULTIPLIER*100)/100), record:null});
     });
     const bp=money(r.base_price);
     const la=ladder(l.tiers,money(l.base_price)), lb=ladder(r.tiers,bp);
     if(la && la!==lb) drift.push({code:r.code, field:"tiers", layers:la, record:lb||null});
+    /* Preview mode (staging a source): a break the record adds where the storefront has none is
+       also a change dealers would see on activation. Not used for granting authority. */
+    else if(strictTiers && !la && lb) drift.push({code:r.code, field:"tiers", layers:null, record:lb});
   });
   return { manufacturer:mfr, compared, drift };
 }
@@ -2835,7 +2850,7 @@ exports.handler = async (event)=>{
         const byField={}; r.conflicts.forEach(c=>{ byField[c.field]=(byField[c.field]||0)+1; });
         /* On a migrated line the useful answer is parity: what the shop shows vs the record. */
         let parity=null;
-        try{ if(await lineMigrated(mfr)){ const rec=await sb("GET",`product_skus?manufacturer=eq.${e(mfr)}&select=code,base_price,msrp,map,tiers,status&limit=10000`);
+        try{ if(await lineMigrated(mfr)){ const rec=await sb("GET",`product_skus?manufacturer=eq.${e(mfr)}&select=code,base_price,msrp,msrp_auto,map,tiers,status&limit=10000`);
                parity=parityCompare({base, custom, overrides:ovRows, record:rec, want:null, mfr}); } }
         catch(err){ return json(503,{error:"record_unreadable", message:"product_skus could not be read: "+String((err&&err.message)||err).slice(0,300)}); }
         const canonicalEdits=(ovRows||[]).filter(o=>o.patch&&o.patch.record_projection).map(o=>String(o.code));
@@ -3732,6 +3747,72 @@ exports.handler = async (event)=>{
          not at all — the ordering IS the safety property.
          Turning it OFF is unconditional and instant: the layers are still being
          maintained underneath, so falling back is always safe. */
+      /* STAGE A MANUFACTURER SOURCE INTO THE MASTER RECORD (agreed 2026-10-09, Strongback Rev C).
+         Record-only and preview-first: the approved source's rows are written to product_skus and
+         nothing else — no override, no added row, no Featured, no image — so nothing a dealer sees
+         moves. The answer is the activation preview: every field where the storefront today
+         differs from the staged record (the parity check), i.e. exactly what would change for
+         dealers when record authority is switched on. Refused on a line that is already
+         record-authoritative (there the canonical edit path is the only way in). Strict reads;
+         a write failure stops and names what was staged. */
+      if(b.action==="stage_record_source"){
+        const mfr=String(b.manufacturer||"").trim(), e=encodeURIComponent;
+        const file=String(b.source_file||"").trim(), eff=String(b.effective_date||"").trim();
+        const rows=Array.isArray(b.rows)?b.rows:[];
+        if(!mfr||!file||!rows.length) return json(400,{error:"manufacturer, source_file and rows required"});
+        if(eff && !/^\d{4}-\d{2}-\d{2}$/.test(eff)) return json(400,{error:"effective_date must be YYYY-MM-DD"});
+        const ALLOWED_STATUS=[LIVE_STATUS,"not_listed","discontinued"];
+        const clean=[], bad=[];
+        for(const r of rows){
+          const code=String((r&&r.code)||"").trim(); if(!code){ bad.push({code:"",why:"no code"}); continue; }
+          const status=r.status==null?LIVE_STATUS:String(r.status);
+          if(ALLOWED_STATUS.indexOf(status)<0){ bad.push({code,why:"status "+status}); continue; }
+          const bp=num(r.base_price);
+          if(status===LIVE_STATUS && !(bp>0)){ bad.push({code,why:"an active row needs a base price"}); continue; }
+          const row={code, base_price:bp, tiers:cleanTiers(r.tiers), map:num(r.map), msrp:num(r.msrp),
+            msrp_auto:r.msrp_auto===true, status, source_file:file.slice(0,160), effective_date:eff||null};
+          if(r.uom!=null&&String(r.uom).trim()) row.uom=String(r.uom).trim().slice(0,40);
+          if(r.case_qty!=null){ const cq=num(r.case_qty); if(!(cq>0)){ bad.push({code,why:"case_qty"}); continue; } row.case_qty=cq; }
+          if(r.status_note!=null) row.status_note=String(r.status_note).slice(0,300);
+          clean.push(row);
+        }
+        const dup=clean.map(r=>normCode(r.code)).filter((c,i,a)=>a.indexOf(c)!==i);
+        if(bad.length||dup.length) return json(400,{error:"bad_rows",bad,duplicates:[...new Set(dup)],message:"Nothing was staged."});
+        let meta, existing;
+        try{
+          [meta, existing]=await Promise.all([
+            sb("GET",`manufacturer_meta?slug=eq.${e(mfr)}&select=record_authoritative`),
+            sb("GET",`product_skus?manufacturer=eq.${e(mfr)}&select=code,code_norm,base_price,msrp,msrp_auto,map,tiers,status,uom,case_qty,source_file&limit=10000`)]);
+        }catch(err){ return json(503,{error:"layer_unreadable",message:String((err&&err.message)||err)}); }
+        if(meta&&meta[0]&&meta[0].record_authoritative===true)
+          return json(409,{error:"line_is_authoritative",message:"This line already prices from its record; change it through the canonical edit path. Nothing was staged."});
+        const byNorm={}; (existing||[]).forEach(r=>{ byNorm[r.code_norm||normCode(r.code)]=r; });
+        const plan=clean.map(r=>({code:r.code, action:byNorm[normCode(r.code)]?"update":"create", before:byNorm[normCode(r.code)]||null, after:r}));
+        /* What would change for dealers on activation: compare the storefront's current values
+           with the staged rows, using the same parity rule authority is granted on. */
+        let preview;
+        try{
+          const [base,custom,ovRows]=await Promise.all([catalogFile(mfr),
+            sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code,base_price,msrp,msrp_auto,map,tiers,active`),
+            sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`)]);
+          preview=parityCompare({base:base||[],custom:custom||[],overrides:ovRows||[],record:clean,want:null,mfr,strictTiers:true});
+        }catch(err){ return json(503,{error:"layer_unreadable",message:String((err&&err.message)||err)}); }
+        if(b.dry_run===true) return json(200,{ok:true,dry_run:true,plan,activation_preview:preview});
+        const now=new Date().toISOString(), by=String((me&&me.email)||b.reviewer||"admin").slice(0,80);
+        const staged=[];
+        for(const p of plan){
+          try{
+            const body=Object.assign({},p.after,{updated_at:now,updated_by:by});
+            if(p.action==="update") await sb("PATCH",`product_skus?manufacturer=eq.${e(mfr)}&code_norm=eq.${e(normCode(p.code))}`,body,{Prefer:"return=minimal"});
+            else await sb("POST","product_skus",Object.assign({manufacturer:mfr},body),{Prefer:"return=minimal"});
+            staged.push(p.code);
+          }catch(err){
+            return json(502,{error:"stage_incomplete",staged,failed:p.code,message:String((err&&err.message)||err).slice(0,300)});
+          }
+        }
+        return json(200,{ok:true,staged,activation_preview:preview});
+      }
+
       /* PROVENANCE ON THE MASTER RECORD (agreed 2026-10-09). Which approved manufacturer file a
          record's commercial values come from, and the date it takes effect. Record-only: it
          never writes a layer and never changes a price, MAP, MSRP, tier or status, so nothing a

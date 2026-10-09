@@ -14,7 +14,7 @@ const html=fs.readFileSync(SHOP,'utf8');
 const slice=(a,b)=>{ const i=html.indexOf(a), j=html.indexOf(b,i); if(i<0||j<0) throw new Error('anchor '+(i<0?a:b)); return html.slice(i,j); };
 const lineOf=a=>{ const i=html.indexOf('\n'+a); if(i<0) throw new Error('anchor '+a); return html.slice(i+1,html.indexOf('\n',i+1)); };
 const CODE=[lineOf('const money = '),lineOf('const esc = '),
-  ...['function familyQty','function tierQty','function contractPrice','function unitPrice','const cartKey=','function groupCart','function linesSubtotal'].map(a=>grabDecl(html,a)),
+  ...['function familyQty','function tierQty','function contractPrice','function unitPrice','const cartKey=','function groupCart','function linesSubtotal','function packOf'].map(a=>grabDecl(html,a)),
   slice('/* ---------- SERVER PRICING','/* ---------- submit (one order'), slice('async function submitOrder(){','/* ---- Stage 6: submit one Golden order'), slice('function hydrateCart(saved){','/* ---- persistent cart')].join('\n');
 
 let fail=0, pass=0;

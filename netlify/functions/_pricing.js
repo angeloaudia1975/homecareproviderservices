@@ -28,6 +28,7 @@ function feedRows(rows) {
     if (n(r.base_price) != null) o.base_price = n(r.base_price);
     if (n(r.msrp) != null) o.msrp = n(r.msrp);
     if (r.msrp_auto === true) o.msrp_auto = true;
+    else if (r.msrp_auto === false) o.msrp_auto = false;   // "no MSRP" is a fact, not an absence (2026-10-09)
     if (n(r.map) != null) o.map = n(r.map);
     if (Array.isArray(r.tiers) && r.tiers.length) {
       o.tiers = r.tiers
@@ -172,7 +173,11 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile }) {
     /* The contract price travels back too, so a browser holding a stale one from sign-in
        prices the next check the same way the server does instead of disagreeing forever. */
     const k = l.slug + "::" + l.p.code;
-    o.items.push({ code: l.code, name: l.p.name, qty: l.qty, available: true, unit,
+    /* The order unit is the server's too: a pack SKU (case_qty > 1) is priced and counted per pack. */
+    const unitBits = {};
+    if (l.p.uom) unitBits.uom = String(l.p.uom);
+    if (Number(l.p.case_qty) > 1) unitBits.case_qty = Number(l.p.case_qty);
+    o.items.push({ code: l.code, name: l.p.name, qty: l.qty, available: true, unit, ...unitBits,
       contract: contract[k] != null ? contract[k] : null,
       line_total: Math.round(unit * l.qty * 100) / 100, client_unit: l.client, changed: diff,
       commercial: { base_price: l.p.base_price, msrp: l.p.msrp, map: l.p.map, tiers: l.p.tiers || null,
