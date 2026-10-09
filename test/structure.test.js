@@ -69,6 +69,14 @@ await t('the authored size distinguishes SKUs whose names do not',async()=>{
   const r=await run({product_content:[pg('ts','Boot',[{sku:'T1',name:'Boot – Blue',size:'Small'},{sku:'T2',name:'Boot – Blue',size:'Large'}])]},[{code:'T1'},{code:'T2'}]);
   eq(kinds(r),[],'sizes make them distinct');
 });
+await t('the picker is built from the pages dealers can see: a discontinued page counts, a disabled one does not',async()=>{
+  const r=await run({product_content:[pg('x','Old',[{sku:'P1',name:'Same – Small'},{sku:'P3',name:'Same – Small'}],{disabled:true}),pg('p','Pad',[{sku:'P1',name:'Pad – Regular'},{sku:'P2',name:'Pad – Large'}]),
+                                      pg('o','Retired line',[{sku:'R1',name:'Thing – Small'},{sku:'R2',name:'Thing – Small'}],{status:'discontinued'})]},[{code:'P1'},{code:'P2'},{code:'P3'},{code:'R1'},{code:'R2'}]);
+  eq(r.status,200,'status');
+  ok(!r.body.findings.some(f=>f.page_key==='x'&&f.severity==='fault'),'a disabled page is not a picker: '+JSON.stringify(r.body.findings.filter(f=>f.page_key==='x').map(f=>f.kind)));
+  ok(!r.body.findings.some(f=>f.page_key==='p'&&f.severity==='fault'),'disabled page does not take P1 from the live page: '+JSON.stringify(r.body.findings.filter(f=>f.page_key==='p')));
+  ok(r.body.findings.some(f=>f.page_key==='o'&&f.severity==='fault'),'a discontinued page is still audited (dealers see it): '+JSON.stringify(r.body.findings.filter(f=>f.page_key==='o').map(f=>f.kind)));
+});
 await t('a draft page listing a SKU first does not take it from the live page',async()=>{
   const r=await run({product_content:[pg('d','Draft',[{sku:'P1'}],{status:'pending_review'}),pg('p','Pad',[{sku:'P1',name:'Pad – Regular'},{sku:'P2',name:'Pad – Regular'}])]},[{code:'P1'},{code:'P2'}]);
   eq(kinds(r),['sku_option_duplicated:p'],'the live page owns P1, so its duplicate is seen');

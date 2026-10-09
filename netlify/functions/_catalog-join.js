@@ -20,6 +20,11 @@
 // A page reaches Partner 360 only in these states. 'approved' is INTERNAL sign-off and is
 // deliberately not live — the shop has always applied this gate, so the admin must too.
 const LIVE_STATUSES = ["published", "active"];
+/* VISIBLE ≠ SELLABLE (agreed 2026-10-08). A page that is published/active is live and orderable;
+   a DISCONTINUED page stays visible to dealers for reference (history, documents, a pointer to
+   the current product) but nothing on it can be ordered. hidden / disabled removes it entirely.
+   The storefront applies exactly this, and so does server pricing. */
+const VISIBLE_STATUSES = ["published", "active", "discontinued"];
 
 const upper = c => String(c == null ? "" : c).trim().toUpperCase();
 // The join a person actually means: case-folded, punctuation-stripped. Used to FIND
@@ -65,6 +70,11 @@ function resolvePage(product, idx, pages) {
 }
 
 const isLive = pg => !!pg && LIVE_STATUSES.indexOf(str(pg.status)) >= 0;
+const isVisible = pg => !!pg && pg.disabled !== true && VISIBLE_STATUSES.indexOf(str(pg.status)) >= 0;
+/* A SKU entry on its page: "hidden" or switched Off removes it; "discontinued" keeps it visible
+   but not orderable. */
+const skuHidden = sx => !!sx && (sx.disabled === true || str(sx.status) === "hidden");
+const skuDiscontinued = sx => !!sx && str(sx.status) === "discontinued";
 
 /* ── WHAT IS THIS PRODUCT'S CATEGORY, AND WHO SAID SO ─────────────────────────
    A category has four possible homes, and until now every screen picked its own subset:
@@ -88,7 +98,7 @@ function resolveCategory(input) {
   /* Phase 2.5 — exactly the storefront's rule: only a LIVE page supplies the subcategory and
      only a SKU on a live page is filed by the map. A draft page, or a SKU no live page claims,
      keeps its catalog category in the shop, so the admin must say the same. */
-  const livePage = page && isLive(page) ? page : null;
+  const livePage = page && isVisible(page) ? page : null;
   const sub = (livePage && str(livePage.subcategory)) || str(p.subcategory);
 
   // A category typed in the admin is a decision. The map fills the answer, it never overrules one.
@@ -118,12 +128,16 @@ function buildJoin(input) {
 
   const idx = indexPages(pages);
   const livePages = {};
-  for (const k of idx.all) if (isLive(pages[k])) livePages[k] = pages[k];
+  for (const k of idx.all) if (isVisible(pages[k])) livePages[k] = pages[k];
   const liveIdx = indexPages(livePages);
 
-  // Same-code duplicates: two catalog rows one human would call one product.
+  // Same-code duplicates: two catalog rows one human would call one product. Only rows that
+  // are still offered compete (agreed 2026-10-08): a RETIRED legacy twin ("fcom-02", switched
+  // off) is history, not a rival, so it never flags the live "FCOM-02". Two active rows with
+  // the same normalised part number are still a real conflict.
   const byNorm = {};
   for (const p of products) {
+    if (p && p.active === false) continue;
     const n = normCode(p && p.code);
     if (!n) continue;
     (byNorm[n] = byNorm[n] || []).push(str(p.code));
@@ -148,13 +162,18 @@ function buildJoin(input) {
     const gallery = pg ? arr(pg.images_gallery) : [];
     const gl = gallery.filter(g => g && str(g.url));
     let gi = gl.findIndex(g => g.primary === true);
-    if (gi < 0) { gi = gl.findIndex(g => str(g.url) === str(pg && pg.image)); if (gi < 0) gi = 0; }
-    const pagePrimary = gl.length ? str(gl[gi].url) : (pg ? str(pg.image) : "");
+    if (gi < 0) gi = gl.findIndex(g => str(g.url) === str(pg && pg.image));
+    /* no flagged primary: the page image (even one not in the gallery), else the first photo */
+    const pagePrimary = gi >= 0 ? str(gl[gi].url) : ((pg && str(pg.image)) || (gl.length ? str(gl[0].url) : ""));
     const image = (sxEntryImg(idx, code)) || pagePrimary || str(p.image) || "";
 
     // THE LISTING GATE, exactly as the shop applies it: a SKU no LIVE page claims is not a
     // finished product on an enriched-only line, so it is not offered to dealers.
-    const visible = p.active === false ? false : (enrichedOnly ? !!livePageKey : true);
+    const lpg = livePageKey ? livePages[livePageKey] : null;
+    const lsx = lpg ? arr(lpg.skus).find(sx => upper(sx && (sx.sku || sx.code)) === upper(code)) : null;
+    const visible = p.active === false || skuHidden(lsx) ? false : (enrichedOnly ? !!livePageKey : true);
+    const discontinued = !!(lpg && (str(lpg.status) === "discontinued" || skuDiscontinued(lsx)));
+    const sellable = visible && !discontinued;
 
     rows.push({
       source: "catalog",
@@ -175,7 +194,7 @@ function buildJoin(input) {
       has_description: !!(str(p.description) || (pg && str(pg.description))),
       has_features: !!(pg && arr(pg.features).length),
       active: p.active !== false,
-      visible,
+      visible, sellable, discontinued,
       duplicate_of: (byNorm[normCode(code)] || []).filter(c => c !== code),
       unlinked: !pageKey,
     });
@@ -192,12 +211,12 @@ function buildJoin(input) {
       claimed[c] = true;
       rows.push({
         source: "page", code: str(sx.sku || sx.code), name: str(sx.name),
-        page_key: k, live_page_key: isLive(pg) ? k : null,
+        page_key: k, live_page_key: isVisible(pg) ? k : null,
         page_status: str(pg.status), page_name: str(pg.name),
         category: "", subcategory: str(pg.subcategory),
         price: null, tiers: [], image: "", media_count: 0,
         has_description: !!str(pg.description), has_features: !!arr(pg.features).length,
-        active: true, visible: false, duplicate_of: [], unlinked: false, no_catalog_row: true,
+        active: true, visible: false, sellable: false, discontinued: false, duplicate_of: [], unlinked: false, no_catalog_row: true,
       });
     }
   }
@@ -224,6 +243,7 @@ const LABELS = {
   needs_images: "Needs Images", needs_content: "Needs Content",
   ready_to_publish: "Ready to Publish", published: "Published",
   retired: "Retired",
+  discontinued: "Discontinued (visible, not orderable)",
 };
 
 function statusFor(row, opts) {
@@ -235,6 +255,7 @@ function statusFor(row, opts) {
   // Retired is not a work queue. A discontinued product keeps its order history and its
   // commissions — it is simply not for sale — so it is counted apart from the eight.
   if (row.active === false) return { status: "retired", why: "retired or hidden" };
+  if (row.discontinued) return { status: "discontinued", why: "shown to dealers for reference; cannot be ordered" };
 
   if (row.duplicate_of && row.duplicate_of.length && !settled[row.code])
     return { status: "possible_duplicate", why: "same part number as " + row.duplicate_of.join(", ") };
@@ -277,7 +298,7 @@ function sweep(input) {
     dealerCategories: arr(input && input.dealerCategories),
     settled: (input && input.settled) || {},
   };
-  const counts = {}; STATUSES.forEach(s => { counts[s] = 0; }); counts.retired = 0;
+  const counts = {}; STATUSES.forEach(s => { counts[s] = 0; }); counts.retired = 0; counts.discontinued = 0;
   const rows = joined.rows.map(r => {
     const s = statusFor(r, opts);
     counts[s.status] = (counts[s.status] || 0) + 1;
@@ -291,8 +312,8 @@ function sweep(input) {
     no_catalog_row: rows.filter(r => r.no_catalog_row).length,
     enriched_only: joined.enriched_only,
     // Retired products are finished business, so they do not drag the percentage down.
-    percent_published: total - counts.retired > 0
-      ? Math.round((done / (total - counts.retired)) * 100) : 0,
+    percent_published: total - counts.retired - counts.discontinued > 0
+      ? Math.round((done / (total - counts.retired - counts.discontinued)) * 100) : 0,
   };
 }
 
@@ -458,8 +479,8 @@ function optionConflicts(blob, labels){
 }
 
 module.exports = {
-  LIVE_STATUSES, STATUSES, LABELS,
-  upper, normCode, indexPages, resolvePage, isLive,
+  LIVE_STATUSES, VISIBLE_STATUSES, STATUSES, LABELS,
+  upper, normCode, indexPages, resolvePage, isLive, isVisible, skuHidden, skuDiscontinued,
   resolveCategory, buildJoin, statusFor, sweep,
   OPTION_COLORS, OPTION_SIDES, AXIS_ORDER, sizeRank, titleWord,
   optionTokens, optionAxesOf, optionAxes, skuOptionText, optionConflicts, variantGrid,

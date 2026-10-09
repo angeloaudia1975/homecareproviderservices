@@ -74,13 +74,16 @@ function pageIndex(pages){
   return idx;
 }
 /* A gallery with exactly one primary, and the image that follows from it. Pure. A gallery with
-   no primary takes the entry matching the page's image, else its first entry; extra primaries
-   are demoted. Returns {gallery, image}. */
+   no primary takes the entry matching the page's image; a page image that is not in the gallery
+   at all becomes its primary (it is the photo dealers have been shown); only a page with no
+   image takes the gallery's first entry. Extra primaries are demoted. Returns {gallery, image}. */
 function normalizeGallery(gallery, image){
   const g=(Array.isArray(gallery)?gallery:[]).filter(x=>x&&str(x.url)).map(x=>Object.assign({},x));
   if(!g.length) return { gallery:[], image:str(image)||null };
   let i=g.findIndex(x=>x.primary===true);
-  if(i<0){ i=g.findIndex(x=>str(x.url)===str(image)); if(i<0) i=0; }
+  if(i<0){ i=g.findIndex(x=>str(x.url)===str(image));
+    if(i<0 && str(image)){ g.unshift({url:str(image), source:"page-image", caption:""}); i=0; }
+    if(i<0) i=0; }
   g.forEach((x,k)=>{ x.primary=(k===i); });
   return { gallery:g, image:g[i].url };
 }
@@ -215,15 +218,17 @@ exports.handler = async (event)=>{
            legacy=await sb("GET",`product_images?manufacturer=eq.${enc(slug)}&select=code,url`); }
       catch(e){ return json(503,{error:"layer_unreadable", message:String((e&&e.message)||e).slice(0,300)}); }
       const idx=pageIndex(L.pages);
-      const om={}; L.overrides.forEach(o=>{ om[up(o.code)]=o.patch||{}; });
-      const cm={}; L.custom.forEach(r=>{ cm[up(r.code)]=r; });
+      /* Catalog layers match a part number EXACTLY, as the storefront does: a legacy lower-case
+         row ("fcom-02", switched off) is a different record from "FCOM-02" and must not hide it. */
+      const om={}; L.overrides.forEach(o=>{ om[String(o.code)]=o.patch||{}; });
+      const cm={}; L.custom.forEach(r=>{ cm[String(r.code)]=r; });
       const lm={}; (legacy||[]).forEach(r=>{ lm[up(r.code)]=r.url; });
       const rows=L.base.map(p=>({code:String(p.code),name:p.name,category:p.category||"",base:p,added:false}));
-      const have=new Set(rows.map(r=>up(r.code)));
-      L.custom.forEach(c=>{ if(!have.has(up(c.code))) rows.push({code:String(c.code),name:c.name,category:c.category||"",custom:c,added:true}); });
-      const products=rows.filter(r=>(om[up(r.code)]||{}).active!==false && !(r.custom&&r.custom.active===false)).map(r=>{
+      const have=new Set(rows.map(r=>String(r.code)));
+      L.custom.forEach(c=>{ if(!have.has(String(c.code))) rows.push({code:String(c.code),name:c.name,category:c.category||"",custom:c,added:true}); });
+      const products=rows.filter(r=>(om[r.code]||{}).active!==false && !(r.custom&&r.custom.active===false)).map(r=>{
         const page=idx[up(r.code)]||null;
-        const res=resolveImage({code:r.code, page, override:om[up(r.code)], custom:r.custom||cm[up(r.code)], base:r.base});
+        const res=resolveImage({code:r.code, page, override:om[r.code], custom:r.custom||cm[r.code], base:r.base});
         const sx=page?(page.skus||[]).find(s=>up(s&&(s.sku||s.code))===up(r.code)):null;
         return { code:r.code, name:(sx&&sx.name)||r.name, category:r.category, added:r.added,
           page_key:page?page.page_key:null, page_name:page?page.name:null, page_skus:page?(page.skus||[]).length:0,

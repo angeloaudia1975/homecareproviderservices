@@ -617,7 +617,10 @@ exports.handler = async (event)=>{
       // ---- Per-product contract pricing (dealer_contract_prices) ----
       if(act==="list_contract_prices"){
         if(!b.dealer_id) return json(400,{error:"dealer_id required"});
-        const rows=await sbGet(`dealer_contract_prices?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,code,name,price,note,active&order=manufacturer,code`).catch(()=>[]);
+        // Strict (2026-10-09): an unreadable list is not "this dealer has no contract prices".
+        let rows;
+        try{ rows=await sbGet(`dealer_contract_prices?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,code,name,price,note,active&order=manufacturer,code`); }
+        catch(e){ return json(503,{error:"layer_unreadable",message:"Could not read this dealer's contract prices: "+String((e&&e.message)||e)}); }
         return json(200,{ok:true,prices:rows||[]});
       }
       if(act==="set_contract_price"){

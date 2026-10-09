@@ -63,7 +63,7 @@ async function api(path,opts){const h={"content-type":"application/json"};if(TOK
   const r=await fetch(API+path,{...(opts||{}),headers:{...h,...((opts&&opts.headers)||{})}});
   if(r.status===401){gate();throw new Error("unauthorized");}
   if(r.status===403){$("#wrap").innerHTML='<div class="msg err">President only — this tool is limited to President accounts. <button class="go" onclick="lock()">Sign in as a different user</button></div>';throw new Error("unauthorized");}
-  const j=await r.json().catch(()=>({}));if(!r.ok||j.error)throw new Error(j.error||("HTTP "+r.status));return j;}
+  const j=await r.json().catch(()=>({}));if(!r.ok||j.error)throw new Error(j.message||j.error||("HTTP "+r.status));return j;}
 function gate(msg){$("#wrap").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p style="margin:2px 0 12px;color:#607089;font-size:13px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username" style="margin:0 0 8px;width:100%"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" style="margin:0 0 12px;width:100%" onkeydown="if(event.key==='Enter')submitTok()"><br><button class="go" onclick="submitTok()">Sign in</button> <a href="reset.html" style="display:inline-block;margin-left:6px;color:#10263f;font-size:13px;font-weight:600">Forgot password?</a><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{var t=$("#lemail");if(t)t.focus();},50);}
 async function submitTok(){
   var email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
@@ -80,7 +80,12 @@ async function boot(){
     SLUG=MFRS[0].slug;await loadMfr();
   }catch(e){if(String(e.message)!=="unauthorized")$("#wrap").innerHTML=`<div class="msg err">Couldn't load: ${esc(e.message)}</div>`;}
 }
-async function loadMfr(){ const j=await api("?manufacturer="+encodeURIComponent(SLUG),{method:"GET"}); PRODUCTS=j.products||[];FEAT=j.featured||{};render(); }
+async function loadMfr(){
+  /* A failed read clears the screen and says so — it never leaves the previous line's products
+     (or an empty list) on screen under this line's name, where a click would save against them. */
+  try{ const j=await api("?manufacturer="+encodeURIComponent(SLUG),{method:"GET"}); PRODUCTS=j.products||[];FEAT=j.featured||{};render(); }
+  catch(e){ PRODUCTS=[];FEAT={}; if(String(e.message)!=="unauthorized") $("#wrap").innerHTML=`<div class="msg err">Couldn't load ${esc(SLUG)}: ${esc(e.message)} <button class="btn" onclick="loadMfr()">Try again</button></div>`; }
+}
 function imgFor(p){ if(!p.image) return ""; return /^https?:/i.test(p.image)?p.image:ORDERING+p.image; }
 function nameFor(mfr,code){ if(mfr===SLUG){const p=PRODUCTS.find(x=>x.code===code);if(p)return p.name;} const a=ALLFEAT.find(x=>x.manufacturer===mfr&&x.code===code);return a&&a.name?a.name:code; }
 function mfrName(slug){const m=MFRS.find(x=>x.slug===slug);return m?m.name:slug;}

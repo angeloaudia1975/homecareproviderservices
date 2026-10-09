@@ -186,6 +186,15 @@ await t('a failed HCPS notification flags the dealer\'s own recorded order, and 
   const r=await call(C,{action:'notification_failed',order_ids:['o1','o2']});
   eq(r.status,200,'ok'); ok(/email failed/.test(W.db.orders[0].admin_notes||''),'own order flagged'); eq(W.db.orders[1].admin_notes,undefined,'other dealer untouched');
 });
+await t('visible is not sellable: a discontinued page or SKU is refused, a hidden SKU is not offered',async()=>{
+  const pages=[{manufacturer:LINE,page_key:'pd',status:'discontinued',disabled:false,skus:[{sku:'A1'}]},
+               {manufacturer:LINE,page_key:'pl',status:'published',disabled:false,skus:[{sku:'B1',status:'discontinued'},{sku:'B2',status:'hidden'},{sku:'C1'}]}];
+  const W=world({tables:{product_content:pages}}); const C=mod(W);
+  const r=await call(C,{action:'price_check',orders:[order([{code:'A1',qty:1,unit:50},{code:'B1',qty:1,unit:50},{code:'B2',qty:1,unit:50},{code:'C1',qty:1,unit:20}])]});
+  eq(['A1','B1','B2','C1'].map(c=>item(r,c).available),[false,false,false,true],'availability');
+  const c=await call(C,{action:'create',orders:[order([{code:'A1',qty:1,unit:50}])],dealer:{}});
+  eq([c.status,W.db.orders.length],[409,0],'a discontinued product cannot be ordered');
+});
 await t('an unauthenticated caller gets nothing priced',async()=>{
   const W=world({}); const C=mod(W);
   const r=await M.call(C,{action:'price_check',orders:[order([{code:'A1',qty:1,unit:50}])]},{});

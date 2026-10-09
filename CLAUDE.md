@@ -715,14 +715,14 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   (images-api writes the page/SKU/catalog record, never `product_images`); on a multi-SKU product it
   asks "whole product or this SKU". `product_images` is legacy: migrated by `migrate_legacy`
   (dry run first; a collision with an approved primary is never auto-replaced), then kept read-only.
-- **Gallery with no photo marked main (agreed 2026-10-08; code staged, deploys with the next Phase 2 shop/admin release):** the page's own image is the main photo,
+- **Gallery with no photo marked main (agreed 2026-10-08):** the page's own image is the main photo,
   even if it is not in the gallery (it is what dealers were shown); only a page with no image falls
   back to the gallery's first photo. A photo the person deletes in Enrichment is never brought back.
   The same rule lives in images-api, product-content, _catalog-join and the shop (`pageImageFor`).
 - **Part numbers match exactly in the catalog layers.** An override / added row applies to the
   exact `code` it was written for, as the storefront does — a switched-off lower-case legacy row
   ("fcom-02") never hides its upper-case twin. (Enrichment SKU lists still match case-insensitively.)
-- **Visible ≠ sellable (agreed 2026-10-08; code staged, deploys with the next Phase 2 shop/admin release).** Page status published/active = visible and orderable;
+- **Visible ≠ sellable (agreed 2026-10-08).** Page status published/active = visible and orderable;
   **discontinued = visible for reference (content, documents, related products) but nothing on it
   can be ordered**; hidden or disabled = removed. A SKU entry marked discontinued is shown as
   "Discontinued" and cannot be ordered; hidden/Off removes it. Partner 360 (`VISIBLE_STATUSES`),
@@ -738,8 +738,71 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
 - **Old Partner 360 `/admin` pages** are contained with temporary redirects to the main admin; their
   functions stay until usage logs show nothing calls them.
 - **Corrections to earlier notes:** Price Check is NOT read-only (it writes through bulk_price /
-  save_override, now via the canonical path). `rename_code` does NOT yet re-point
-  `dealer_contract_prices` or `product_images` (open defect; see the Integration Audit doc).
+  save_override, now via the canonical path).
+- **Renaming a part number moves the commercial master and contract prices (agreed 2026-10-09).**
+  `rename_code` reads every layer strictly (any unreadable layer → 503, nothing written), refuses a
+  code already used in the catalog file, an added row OR the master record (409 `sku_in_use`; a
+  re-spelling of the same normalised code is allowed), and refuses when one dealer has contract
+  prices on both codes (409 `contract_conflict`). Then, in order: master record (re-spell in place,
+  or a new row carrying every commercial field + the old row set `not_listed`, `superseded_by` the
+  new code) → `dealer_contract_prices` → catalog layers (an added row on a migrated line carries
+  the RECORD's prices, never the browser's) → links / media / Featured → retire the old code. Any
+  failed step stops and answers 502 `rename_incomplete` with `failed_step` and what was `done` —
+  never a silent partial. Legacy `product_images` is read-only and not re-pointed.
+- **Retired legacy records are not duplicates (agreed 2026-10-09).** A same-normalised-code twin
+  that is switched off (`active:false`, e.g. "fcom-02") is history and never makes the active
+  "FCOM-02" show "Possible Duplicate". Two ACTIVE records claiming one normalised SKU are still a
+  real conflict. (`_catalog-join.js` duplicate check.)
+- **One category resolver (agreed 2026-10-09).** Every screen answers "what category is this?" with
+  `_catalog-join.js resolveCategory`, per SKU: a pinned category wins; the subcategory map files a
+  SKU only when its page is VISIBLE (published/active/discontinued, not disabled); otherwise the
+  SKU's own record category. The Structure Map runs a verbatim copy (`<shared:resolveCategory>` in
+  product-content-review.html, drift-tested by `test/structure-resolver.test.js`); a draft page
+  shows "→ X once published" instead of being filed early, and a page whose SKUs land under
+  different headings is flagged "SKUs split". catalog-api's page read includes `disabled`.
+- **Reads that feed a decision are strict everywhere (agreed 2026-10-09).** catalog-api (every
+  read path — GET, audits, sweeps, merges, deletes, renames), featured-api, the Contract Pricing
+  editor and the admin pages that call them: an unreadable layer is a 503 / a visible error,
+  never an empty list. The dealer session (dealer-auth) is the one place that must not fail as a
+  whole: unreadable contract prices come back as `prices:null, prices_unavailable:true`; the shop
+  keeps the last prices it had and shows "Your account pricing could not be loaded just now";
+  checkout re-prices strictly on the server either way.
+- **Approved manufacturer sources (2026-10-09).**
+  - Climbing Steps: `Climbing Steps 2026 Pricing website 982026.xlsx` is the current price
+    authority (the January `2026 Climbing Steps Pricelist.xls` is superseded). Its 21 products are
+    the line. The 12 SKUs that appear only on the old list are NOT added; retired records stay
+    retired; anything absent from the current source stays not offered until a newer source
+    restores it.
+  - Climbing Steps images: Angelo's `MP-P08.jpg` (blue/white rolling shower/commode chair) is the
+    approved primary for MP-P08 — never replaced by an older legacy upload. `MS-P02-GEN.jpg`
+    (yellow Genesis stairlift) is the approved primary for MS-P02-GEN; the earlier photo stays as a
+    gallery alternate if it shows the same product.
+  - Ovation: `2026 ovation medical pricelist 1092026.xlsx`. Its third price column is labelled
+    "Price 5-10 Units" after "Price 2-5 Units" (overlap at 5) — recorded as a source anomaly; HCPS
+    normalises the breaks to 1 / 2–5 / 6–10 / 11–20 / 21+ unless a source says otherwise. A
+    non-monotonic source row (4900-Wrap 11–20 $9.90 → 21+ $9.95) is kept exactly as published,
+    never "fixed". A dealer-facing price change is shown (current vs proposed at qty 1/2/6/11/21,
+    contract overrides, affected carts/orders) and approved before it is applied.
+  - Strongback: `Strongback Mobility · Dealer Pricing 2026 V2.pdf` (Rev C, Aug 27 2026). Its
+    right-hand column is **MAP, not MSRP** — MAP goes in `map`; `msrp` stays blank unless another
+    approved source gives one. Wheelchair/rollator levels are 1 / 2+ / 8+. A1005 is sold in
+    4-packs: dealer order unit = 4-pack at $50, MAP = $24.95 EACH — a unit-of-measure difference
+    (`uom`/`case_qty`), not a bad price; no pack-level MAP is invented. RC100 is not on the sheet:
+    legacy/unverified, and it blocks Strongback record authority until sourced or removed.
+    "Can mix and match all models to get 2+ pricing" is recorded; whether 8+ pools too is
+    UNCONFIRMED, so Strongback quantities are not pooled yet. Freight facts (wheelchairs and
+    rollators ship included; accessories $15 per box) wait for the Manufacturer/Freight Center —
+    no second freight authority.
+- **tier_family (approved concept, 2026-10-09):** commercial pooling will use an explicit pricing
+  family in the commercial master, not pages or display groups — but no one-field version until
+  the Strongback threshold question is answered (a single family field would pool 2+ AND 8+).
+  Ovation keeps today's pooling. No dealer price moves merely because the schema gets cleaner.
+- **Climbing Steps Gold Standard (order agreed 2026-10-09):** deploy the 2.4b/2.5c release + the
+  integration fixes → full validation against the NEW workbook (21/21 prices, 0 structure faults,
+  0 true duplicates, approved MP-P08 / MS-P02-GEN images, unified images, content complete, server
+  checkout parity, category consistency, no parity drift) → only then `record_authoritative=true`
+  → re-verify (feed uses the record, 21 prices / cart / server / categories / images unchanged,
+  ordering works) → report PASS/FAIL and stop before Strongback activation. No Bemis yet.
 
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.

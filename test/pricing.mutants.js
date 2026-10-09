@@ -25,6 +25,7 @@ const M=[
  ['orders-api.js','failed lines still confirmed', 'failed.push({manufacturer_slug:slug,error:"order_not_recorded"}); continue;\n          }', '}'],
  ['orders-api.js','nothing saved reported as success', 'if(!saved) return json(503,{ok:false,status:"record_failed"', 'if(false) return json(503,{ok:false,status:"record_failed"'],
  ['orders-api.js','flag ignores dealer scope', '&dealer_id=eq.${encodeURIComponent(who.dealer_id)}`,{admin_notes:note}', '`,{admin_notes:note}'],
+ ['_pricing.js','discontinued sold', 'if (!l.p || l.p._discontinued) {', 'if (!l.p) {'],
 ];
 let surv=0;
 for(const [file,n,f,t] of M){ const src=fs.readFileSync(A+'/'+file,'utf8').replace(/\r\n/g,'\n'); const c=src.split(f).length-1; if(c!==1){console.log(`BAD ANCHOR(${c}) ${n}`);surv++;continue;}

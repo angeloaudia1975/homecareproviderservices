@@ -1541,24 +1541,80 @@ const SM_NONE='\u0000none';           // the bucket for "no category set" — ne
    removable from here. */
 let SM={cat:null, sub:null, pick:new Set(), q:'', map:{}, pinned:{}, loaded:false};
 
+/* ── ONE CATEGORY RESOLVER (agreed 2026-10-09) ──────────────────────────────────
+   This screen used to resolve a page's heading itself: any pin on any of its SKUs, else the
+   subcategory map, else the PAGE's own category — and it applied the map to draft pages too.
+   The shop does neither: it files each SKU by the SKU's own record, and the map only files a
+   SKU that sits on a VISIBLE page. So a draft page could sit under "Foot & Ankle" here while
+   its products sat under "Orthopedic Bracing" in Partner 360.
+
+   The block between the markers is a verbatim copy of resolveCategory / isVisible from
+   netlify/functions/_catalog-join.js (the module the shop, status sweep and catalog-api run).
+   test/structure-resolver.test.js fails the build if the two ever drift. */
+// <shared:resolveCategory>
+const SMJ_VISIBLE_STATUSES = ["published", "active", "discontinued"];
+const SMJ_str = v => String(v == null ? "" : v).trim();
+const SMJ_isVisible = pg => !!pg && pg.disabled !== true && SMJ_VISIBLE_STATUSES.indexOf(SMJ_str(pg.status)) >= 0;
+function SMJ_resolveCategory(input) {
+  const str = SMJ_str, isVisible = SMJ_isVisible;
+  const p = (input && input.product) || {};
+  const page = (input && input.page) || null;
+  const map = (input && input.categoryMap) || null;
+  const internal = str(p.category);
+  const livePage = page && isVisible(page) ? page : null;
+  const sub = (livePage && str(livePage.subcategory)) || str(p.subcategory);
+  if (p.category_from_override && internal)
+    return { category: internal, source: "pinned", internal, subcategory: sub };
+  if (livePage && map && sub && map[sub])
+    return { category: String(map[sub]), source: "map", internal, subcategory: sub };
+  if (internal)
+    return { category: internal, source: p.kind === "custom" ? "added" : "catalog", internal, subcategory: sub };
+  return { category: "", source: "none", internal: "", subcategory: sub };
+}
+/* One page → the categories its SKUs resolve to, each SKU exactly as the shop files it.
+   catalog: {code:{category,kind}} (exact code first, then upper-case — the join's own key).
+   pinned:  {code:category} from the override layer. */
+function smPageCategory(page, skuCodes, catalog, pinned, map){
+  const look=c=>{ c=String(c); if(catalog[c]) return catalog[c];
+    const u=c.trim().toUpperCase(); const k=Object.keys(catalog).find(x=>x.trim().toUpperCase()===u);
+    return k?catalog[k]:null; };
+  const per=[];
+  for(const code of skuCodes){
+    const rec=look(code); if(!rec) continue;             // a SKU the catalog has never heard of is not filed anywhere
+    const pin=pinned[String(code)];
+    const product={category: (pin!=null&&pin!=='')?pin:rec.category, kind: rec.kind,
+      category_from_override: pin!=null&&pin!==''};
+    per.push(SMJ_resolveCategory({product, page, categoryMap:map}));
+  }
+  if(!per.length) per.push(SMJ_resolveCategory({product:{category:page.category,kind:'page'}, page, categoryMap:map}));
+  const tally={}; per.forEach(r=>{ tally[r.category]=(tally[r.category]||0)+1; });
+  const cats=Object.keys(tally).sort((a,b)=>tally[b]-tally[a]||a.localeCompare(b));
+  const sub=SMJ_str(page.subcategory);
+  // What the map WOULD say once this page goes live — shown, never used to file it early.
+  const onPublish = (!SMJ_isVisible(page) && map && sub && map[sub]) ? String(map[sub]) : '';
+  return {category:cats[0]||'', split:cats.length>1, categories:cats,
+    pinned:per.some(r=>r.source==='pinned'), sources:per.map(r=>r.source), onPublish};
+}
+// </shared:resolveCategory>
+
 // Every non-parent product, with the facts the map needs, computed once per open.
 function smRows(){
   const flagged=new Set(structureFlags().map(f=>f.key||f.k).filter(Boolean));
-  const map=SM.map||{}, pinned=SM.pinned||{};
+  const map=SM.map||{}, pinned=SM.pinned||{}, catalog=SM.catalog||{};
   return Object.keys(pages).filter(k=>!pages[k].is_parent).map(k=>{
     const p=pages[k], skus=skusOf(k);
     const internal=String(p.category||'').trim(), sub=String(p.subcategory||'').trim();
-    /* The same resolution Partner 360 does, in the same order: a pinned category on a SKU
-       wins, then the subcategory's mapping, then the record's own category. */
-    const pin=skus.map(x=>pinned[String(x.sku)]).find(v=>v!=null&&v!=='')||null;
-    const dealer = pin || (sub && map[sub]) || internal;
+    const r=smPageCategory(p, skus.map(x=>x.sku), catalog, pinned, map);
+    const dealer=r.category;
+    const pending=(r.onPublish && r.onPublish!==dealer && !r.pinned) ? r.onPublish : '';
     let state='pending';
     if(p.disabled) state='disabled';
     else if(!dealer) state='needcat';
     else if(PUBLIC_SET.has(String(p.status||''))) state='published';
     return {k, name:p.name||k, family:String(p.family||'').trim(),
       internal:internal||'', sub:sub||'', skus:skus.length, state,
-      cat:dealer||SM_NONE, pinned:!!pin, unmapped:!!(sub && !map[sub] && !pin),
+      cat:dealer||SM_NONE, pinned:r.pinned, unmapped:!!(sub && !map[sub] && !r.pinned),
+      split:r.split, splitCats:r.categories, onPublish:pending,
       grouping:flagged.has(k), status:p.status||''};
   });
 }
@@ -1576,23 +1632,35 @@ const SM_CHIP={
 function smChip(r){
   const [cls,lab]=SM_CHIP[r.state]||SM_CHIP.pending;
   return `<span class="sm-chip ${cls}">${lab}</span>`
-    + (r.grouping?`<span class="sm-chip c-dup" title="Flagged in Structure review — its SKUs may be several products">Review grouping</span>`:'');
+    + (r.grouping?`<span class="sm-chip c-dup" title="Flagged in Structure review — its SKUs may be several products">Review grouping</span>`:'')
+    + (r.split?`<span class="sm-chip c-dup" title="Its SKUs file under different headings in Partner 360: ${esc((r.splitCats||[]).join(' / '))}">SKUs split</span>`:'')
+    + (r.onPublish?`<span class="sm-chip c-pend" title="Partner 360 files a SKU by the map only once its page is visible. Until then it shows under its own catalog category.">→ ${esc(r.onPublish)} once published</span>`:'');
 }
 async function openStructureMap(){
-  SM={cat:null,sub:null,pick:new Set(),q:'',map:{},pinned:{},loaded:false,move:null};
+  SM={cat:null,sub:null,pick:new Set(),q:'',map:{},pinned:{},catalog:{},loaded:false,move:null};
   modalHTML('🌳 Structure map · '+esc(MFR),'<div class="tut"><p class="mut">Reading the dealer structure…</p></div>');
+  /* A failed read is NOT an empty map. Showing every product as "Needs category" because a
+     request timed out is how a person ends up re-filing a whole line that was fine. */
+  const h=authHeaders();
+  const get=async url=>{ const r=await fetch(url,{headers:h}); let j=null; try{ j=await r.json(); }catch(e){}
+    if(!r.ok||!j||j.error) throw new Error((j&&j.error)||('HTTP '+r.status)); return j; };
+  let mf, cat;
   try{
-    const h=authHeaders();
-    const [mf,cat]=await Promise.all([
-      fetch('/.netlify/functions/catalog-api',{headers:h}).then(r=>r.json()).catch(()=>({})),
-      fetch('/.netlify/functions/catalog-api?manufacturer='+encodeURIComponent(MFR),{headers:h}).then(r=>r.json()).catch(()=>({}))
-    ]);
-    const me=((mf&&mf.manufacturers)||[]).find(x=>x.slug===MFR)||{};
-    SM.map=(me.category_map&&typeof me.category_map==='object')?me.category_map:{};
-    SM.order=Array.isArray(me.category_order)?me.category_order:null;
-    const ov=(cat&&cat.overrides)||{};
-    Object.keys(ov).forEach(c=>{ const v=ov[c]&&ov[c].category; if(v!=null&&v!=='') SM.pinned[c]=v; });
-  }catch(e){}
+    [mf,cat]=await Promise.all([
+      get('/.netlify/functions/catalog-api'),
+      get('/.netlify/functions/catalog-api?manufacturer='+encodeURIComponent(MFR))]);
+  }catch(e){
+    modalHTML('🌳 Structure map · '+esc(MFR),`<div class="tut"><p><b>Could not read the catalog</b> — the map is not shown rather than shown wrong.</p><p class="mut">${esc(e.message||e)}</p><p><button class="btn" onclick="openStructureMap()">Try again</button></p></div>`);
+    return;
+  }
+  const me=((mf&&mf.manufacturers)||[]).find(x=>x.slug===MFR)||{};
+  SM.map=(me.category_map&&typeof me.category_map==='object')?me.category_map:{};
+  SM.order=Array.isArray(me.category_order)?me.category_order:null;
+  const ov=(cat&&cat.overrides)||{};
+  Object.keys(ov).forEach(c=>{ const v=ov[c]&&ov[c].category; if(v!=null&&v!=='') SM.pinned[c]=v; });
+  // The SKU's OWN category — the record the shop files it by (added rows after catalog rows, as the server does).
+  (cat.products||[]).forEach(x=>{ SM.catalog[String(x.code)]={category:x.category||'',kind:'catalog'}; });
+  (cat.custom||[]).forEach(x=>{ SM.catalog[String(x.code)]={category:x.category||'',kind:'custom'}; });
   SM.loaded=true; smRender();
 }
 /* ── THE ORDER DEALERS SEE ────────────────────────────────────────────────────
@@ -2246,7 +2314,7 @@ function sizeCandidates(k,pool){
 }
 async function openSizeAdd(k){
   toast('Reading the catalog…');
-  const cat=await catalogGet();
+  let cat; try{ cat=await catalogGet(); }catch(e){ toast('Could not read the catalog — '+(e.message||e),true); return; }
   const pool=unclaimedCatalog(cat);
   _sizeAdd={k,pool,cands:sizeCandidates(k,pool),pick:new Set(),q:''};
   renderSizeAdd();
@@ -2395,9 +2463,13 @@ async function doRemoveBulk(){
 let _catalogCache=null;
 async function catalogGet(){
   if(_catalogCache) return _catalogCache;
-  try{ const r=await fetch('/.netlify/functions/catalog-api?manufacturer='+encodeURIComponent(MFR),{headers:authHeaders()});
-    const j=await r.json().catch(()=>({})); _catalogCache=(j&&j.products)?j:{products:[],custom:[]}; }
-  catch(e){ _catalogCache={products:[],custom:[]}; }
+  /* Strict (2026-10-09): a catalog that could not be read is an ERROR, never an empty catalog —
+     an empty one made a rename skip the catalog side, Price Check call every SKU unpriced and
+     Catalog Health call every SKU "not in catalog". Failures are not cached. */
+  const r=await fetch('/.netlify/functions/catalog-api?manufacturer='+encodeURIComponent(MFR),{headers:authHeaders()});
+  const j=await r.json().catch(()=>null);
+  if(!r.ok||!j||j.error||!Array.isArray(j.products)) throw new Error((j&&(j.message||j.error))||('catalog HTTP '+r.status));
+  _catalogCache=j;
   return _catalogCache;
 }
 /* ===================== Price Audit — final QC before publish =====================
@@ -2569,7 +2641,10 @@ function buildPriceState(cat){
 
 async function doPriceCheck(){ return openPriceAudit(); }
 async function openPriceAudit(){
-  toast('Cross-checking pricing…'); _catalogCache=null; const cat=await catalogGet();
+  toast('Cross-checking pricing…'); _catalogCache=null;
+  let cat=null, readErr='';
+  try{ cat=await catalogGet(); }catch(e){ readErr=String(e.message||e); }
+  if(readErr){ modalHTML('💲 Price Check','<div class="tut"><p><b>Could not read the catalog price list</b> — nothing is shown rather than every SKU shown as unpriced.</p><p class="mut">'+esc(readErr)+'</p></div>'); return; }
   if(!cat || (!(cat.products||[]).length && !(cat.custom||[]).length)){
     modalHTML('💲 Price Check', '<div class="tut"><p class="mut">Couldn\'t read the catalog price list. Price Check reads the Product Catalog (President-only) — make sure you\'re signed in as president. If you are, this manufacturer may not have a catalog loaded yet — use <b>Import pricelist</b> once a catalog exists.</p></div>'); return; }
   _priceState=buildPriceState(cat); _priceSel=new Set();
@@ -2774,7 +2849,7 @@ async function paFixSku(code){
   const r=await catalogPost({action:'rename_code',manufacturer:MFR,old_code:code,new_code:newCode,
     product:{name:cur.name,category:cur.category,base_price:cur.base_price,msrp:cur.msrp,map:cur.map}});
   if(r.ok&&r.json&&r.json.ok!==false){ toast(code+' → '+newCode); openPriceAudit(); }
-  else toast((r.json&&r.json.error)||'Could not rename that SKU',true);
+  else toast((r.json&&(r.json.message||r.json.error))||'Could not rename that SKU',true);
 }
 
 function paChip(n,label,color){ return `<span class="pachip" style="${n?('background:'+(color||'#fdecec')+';border-color:'+(color?'#e3caa0':'#f0c7c7')):''}">${n} ${esc(label)}</span>`; }
@@ -3886,7 +3961,8 @@ function healthBlockers(k, S, cat, idx, dupeKeys){ const p=pages[k]||{}; const b
   if(dupeKeys&&dupeKeys.has(k)) b.push('duplicate');
   return b; }
 async function openCatalogHealth(){
-  toast('Running catalog health…'); _catalogCache=null; const cat=await catalogGet();
+  toast('Running catalog health…'); _catalogCache=null;
+  let cat; try{ cat=await catalogGet(); }catch(e){ modalHTML('Catalog health','<div class="tut"><p><b>Could not read the catalog</b> — the health check is not run on a partial picture.</p><p class="mut">'+esc(String(e.message||e))+'</p></div>'); return; }
   const S=(cat&&((cat.products||[]).length||(cat.custom||[]).length))?buildPriceState(cat):null;
   const idx=cat?contentMatchIndex(cat):null;
   const keys=Object.keys(pages).filter(k=>!pages[k].is_parent && pages[k].name);
@@ -4019,7 +4095,7 @@ function renderBlockReason(k, idx){
 async function doPublishGuarded(k){ const p=pages[k]; const quick=[];
   if(!p.image && !(p.images_gallery&&p.images_gallery.length)) quick.push('no image');
   if(!p.category) quick.push('no category');
-  let cat=null; try{ cat=await catalogGet(); }catch(e){}
+  let cat=null; try{ cat=await catalogGet(); }catch(e){ quick.push('the catalog could not be read, so prices and rendering were NOT checked'); }
   const S=(cat&&((cat.products||[]).length||(cat.custom||[]).length))?buildPriceState(cat):null;
   const idx=cat?contentMatchIndex(cat):null;
   if(S && skusOf(k).some(s=>{ const r=S.recOf(String(s.sku)); return !(r&&r.base_price>0); })) quick.push('one or more SKUs have no price');
@@ -4044,7 +4120,8 @@ function qScoreRows(k, priceInfo){
   add('Warranty', p.warranty?'pass':'warn', p.warranty?'':'—');
   add('Documents', ((p.documents||[]).length)?'pass':'warn', ((p.documents||[]).length||0)+' attached');
   add('SKUs present', skus.length?'pass':'fail', skus.length+' SKU(s)');
-  if(priceInfo) add('Pricing loaded', (priceInfo.missing===0&&priceInfo.notInCat===0&&priceInfo.total>0)?'pass':((priceInfo.missing||priceInfo.notInCat)?'fail':'warn'), priceInfo.priced+'/'+priceInfo.total+' priced'+(priceInfo.notInCat?' · '+priceInfo.notInCat+' not in catalog':''));
+  if(priceInfo&&priceInfo.unread) add('Pricing loaded','fail','Catalog could not be read — '+priceInfo.unread);
+  else if(priceInfo) add('Pricing loaded', (priceInfo.missing===0&&priceInfo.notInCat===0&&priceInfo.total>0)?'pass':((priceInfo.missing||priceInfo.notInCat)?'fail':'warn'), priceInfo.priced+'/'+priceInfo.total+' priced'+(priceInfo.notInCat?' · '+priceInfo.notInCat+' not in catalog':''));
   return R;
 }
 async function openCatalogReview(k){
@@ -4057,7 +4134,7 @@ async function openCatalogReview(k){
     let total=0,priced=0,missing=0,notInCat=0;
     skusOf(k).forEach(s=>{const c=String(s.sku||'');if(!c)return;total++;if(!(custom[c]||std[c])){notInCat++;return;}const pr=priceOf(c);if(pr!=null&&pr>0)priced++;else missing++;});
     priceInfo={total,priced,missing,notInCat};
-  }catch(e){}
+  }catch(e){ priceInfo={unread:String(e.message||e)}; }   // an unread catalog fails the check; it is never skipped
   const rows=qScoreRows(k,priceInfo);
   const fails=rows.filter(r=>r.state==='fail').length, warns=rows.filter(r=>r.state==='warn').length, passes=rows.filter(r=>r.state==='pass').length;
   const score=Math.round((passes+warns*0.5)/rows.length*100);
@@ -4403,8 +4480,9 @@ async function doRenameSku(k, oldSku){
   if(!newSku || newSku===oldSku) return;
   if(skusOf(k).some(s=>String(s.sku)===newSku)){ toast('That SKU already exists on this product',true); return; }
   toast('Renaming '+oldSku+' → '+newSku+'…');
-  // 1) catalog side — only if the code exists in the catalog
-  const cat=await catalogGet();
+  // 1) catalog side — only if the code exists in the catalog. An unreadable catalog stops the
+  //    rename: renaming the content alone is exactly how the two sides drift apart.
+  let cat; try{ _catalogCache=null; cat=await catalogGet(); }catch(e){ toast('Rename stopped — could not read the catalog: '+(e.message||e),true); return; }
   const inCustom=(cat.custom||[]).find(p=>String(p.code)===oldSku);
   const prod=inCustom||(cat.products||[]).find(p=>String(p.code)===oldSku);
   let catalogNote='';
@@ -4420,8 +4498,10 @@ async function doRenameSku(k, oldSku){
          catalog holding the new price with no product attached: it is exactly why it showed
          up in Price Check as unassigned. Refusing here left the correction impossible from
          this screen, so the conflict now opens the way through instead of closing it. */
-      if(cr.status===409){ _skuMove={k,oldSku,newSku,info:cj,oldRec:prod,wasCustom:!!inCustom}; return skuMoveModal(); }
-      if(!cr.ok || cj.ok===false){ toast('Catalog rename failed'+(cj.error?': '+cj.error:''),true); return; }
+      if(cr.status===409 && cj.error==='sku_in_use'){ _skuMove={k,oldSku,newSku,info:cj,oldRec:prod,wasCustom:!!inCustom}; return skuMoveModal(); }
+      /* A rename now moves the master record and dealers' contract prices too, and stops loudly:
+         the server's message says what blocked it or exactly which steps were done. */
+      if(!cr.ok || cj.ok===false){ toast('Catalog rename failed'+(cj.message?': '+cj.message:(cj.error?': '+cj.error:'')),true); return; }
       _catalogCache=null; catalogNote=' · catalog + pricing updated';
     }catch(e){ toast('Catalog rename failed — nothing changed',true); return; }
   } else { catalogNote=' · not in catalog (content only)'; }
@@ -4689,16 +4769,16 @@ async function doUndo(id,btn){ btn.disabled=true; const r=await apiWrite({action
    ═══════════════════════════════════════════════════════════════════════════════ */
 const CB={data:null,filter:'',q:'',flow:null,audit:null,plan:null,loading:false,pick:new Set()};
 const CB_ORDER=['possible_duplicate','needs_sku_review','needs_pricing','needs_category',
-                'needs_images','needs_content','ready_to_publish','published','retired'];
+                'needs_images','needs_content','ready_to_publish','published','discontinued','retired'];
 const CB_LABEL={possible_duplicate:'Possible Duplicate',needs_sku_review:'Needs SKU Review',
   needs_pricing:'Needs Pricing',needs_category:'Needs Category',needs_images:'Needs Images',
   needs_content:'Needs Content',ready_to_publish:'Ready to Publish',published:'Published',
-  retired:'Retired'};
+  discontinued:'Discontinued (visible, not orderable)',retired:'Retired'};
 /* Status colour is semantic, not decorative: red = the product cannot be sold as it stands,
    amber = something is missing, green = done. Never reused for anything else. */
 const CB_TONE={possible_duplicate:'bad',needs_sku_review:'bad',needs_pricing:'warn',
   needs_category:'warn',needs_images:'warn',needs_content:'warn',
-  ready_to_publish:'ok',published:'ok',retired:'mut'};
+  ready_to_publish:'ok',published:'ok',discontinued:'mut',retired:'mut'};
 
 async function openCompletionBoard(force){
   if(CB.loading) return;

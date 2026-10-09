@@ -657,7 +657,7 @@ async function saveProduct(){
        the one thing that would NOT fix the problem: a third number. */
     const hit=effProducts().find(p=>p.code!==oldCode && normSku(p.code)===normSku(newCode));
     if(hit) return offerMergeInstead(oldCode,newCode,hit);
-    if(!confirm("Change SKU from “"+oldCode+"” to “"+newCode+"”?\n\nThe product’s price, featured status, More-Information link and images move to the new SKU, and the old SKU is retired from the portal.")) return;
+    if(!confirm("Change SKU from “"+oldCode+"” to “"+newCode+"”?\n\nThe product’s price (master record), dealers’ contract prices, featured status, More-Information link and images move to the new SKU, and the old SKU is retired from the portal.")) return;
     const r=await apiRaw("",{method:"POST",body:JSON.stringify({action:"rename_code",manufacturer:SLUG,old_code:oldCode,new_code:newCode,was_custom:PDRAFT.kind==="custom",
       product:{code:newCode,name:PDRAFT.name,category:PDRAFT.category,description:PDRAFT.description,price_note:PDRAFT.price_note,
         base_price:PDRAFT.base_price===""?null:Number(PDRAFT.base_price),msrp:PDRAFT.msrp===""?null:Number(PDRAFT.msrp),map:PDRAFT.map===""||PDRAFT.map==null?null:Number(PDRAFT.map),image:PDRAFT.image||null,tiers,active:PDRAFT.active!==false}})});

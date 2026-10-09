@@ -17,6 +17,13 @@ async function sb(method,path,body,extra){
   const t=await r.text(); if(!r.ok) throw new Error(`Supabase ${r.status}: ${t}`); return t?JSON.parse(t):null;
 }
 async function fetchJson(url){ const r=await fetch(url,{headers:{"cache-control":"no-cache"}}); if(!r.ok) throw new Error(`${url} ${r.status}`); return r.json(); }
+// A line with no deployed catalog file yet (404) is genuinely empty; any other failure is an error.
+async function catalogFile(slug){
+  const r=await fetch(`${ORDERING_BASE}/data/${encodeURIComponent(slug)}.json`,{headers:{"cache-control":"no-cache"}});
+  if(r.status===404) return [];
+  if(!r.ok) throw new Error(`catalog file for ${slug}: HTTP ${r.status}`);
+  const j=await r.json(); if(!Array.isArray(j)) throw new Error(`catalog file for ${slug} is not a list`); return j;
+}
 
 // Staff auth: email/password JWT resolved against staff_users; legacy passcode = president.
 async function whoami(event){
@@ -45,23 +52,31 @@ exports.handler = async (event)=>{
     if(event.httpMethod==="GET"){
       const slug=(event.queryStringParameters||{}).manufacturer||"";
       if(!slug){
-        const [feat,mfrs]=await Promise.all([
-          sb("GET","featured_products?select=manufacturer,code,name,note,rank,active&order=rank.asc").catch(()=>[]),
-          fetchJson(`${ORDERING_BASE}/data/manufacturers.json`).catch(()=>[]),
-        ]);
+        /* Strict (2026-10-09): an unreadable Featured list is not an empty one. Shown empty, the
+           next save from this screen would have re-ranked or dropped what dealers see. */
+        let feat,mfrs;
+        try{
+          [feat,mfrs]=await Promise.all([
+            sb("GET","featured_products?select=manufacturer,code,name,note,rank,active&order=rank.asc"),
+            fetchJson(`${ORDERING_BASE}/data/manufacturers.json`),
+          ]);
+        }catch(e){ return json(503,{error:"layer_unreadable",message:"Could not read Featured Products: "+String((e&&e.message)||e)}); }
         return json(200,{featured:feat||[],manufacturers:(mfrs||[]).map(m=>({slug:m.slug,name:m.name,hasData:!!m.hasData}))});
       }
       /* Phase 2.4 — images resolve through the ONE image rule (images-api resolveImage):
          SKU photo → the product page's primary → the catalog layer. product_images is legacy
          and is no longer read. */
       const IMG=require("./images-api.js")._pure;
-      const [prods,featRows,custom,overRows,pages]=await Promise.all([
-        fetchJson(`${ORDERING_BASE}/data/${slug}.json`).catch(()=>[]),
-        sb("GET",`featured_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,note,rank,active`).catch(()=>[]),
-        sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,name,category,image,active`).catch(()=>[]),
-        sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(slug)}&select=code,patch`).catch(()=>[]),
-        sb("GET",`product_content?manufacturer=eq.${encodeURIComponent(slug)}&select=page_key,status,image,images_gallery,skus&limit=5000`).catch(()=>[]),
-      ]);
+      let prods,featRows,custom,overRows,pages;
+      try{
+        [prods,featRows,custom,overRows,pages]=await Promise.all([
+          catalogFile(slug),
+          sb("GET",`featured_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,note,rank,active`),
+          sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,name,category,image,active`),
+          sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(slug)}&select=code,patch`),
+          sb("GET",`product_content?manufacturer=eq.${encodeURIComponent(slug)}&select=page_key,status,image,images_gallery,skus&limit=5000`),
+        ]);
+      }catch(e){ return json(503,{error:"layer_unreadable",message:`Could not read the ${slug} catalog: `+String((e&&e.message)||e)}); }
       const featured=Object.fromEntries((featRows||[]).map(f=>[f.code,{note:f.note,rank:f.rank,active:f.active}]));
       const over=Object.fromEntries((overRows||[]).map(o=>[o.code,o.patch||{}]));
       const pidx=IMG.pageIndex(pages||[]);

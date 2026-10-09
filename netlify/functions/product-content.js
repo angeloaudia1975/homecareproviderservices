@@ -178,13 +178,16 @@ function flatRows(x) {
 }
 
 /* A gallery with exactly one primary, and the image that follows from it. Pure; the same rule
-   as images-api.js normalizeGallery. No primary → the entry matching `image`, else the first. */
+   as images-api.js normalizeGallery. No primary → the entry matching `image`; an `image` not in
+   the gallery becomes its primary; no image at all → the first entry. */
 function normalizeGallery(gallery, image) {
   const s = v => String(v == null ? '' : v).trim();
   const g = (Array.isArray(gallery) ? gallery : []).filter(x => x && s(x.url)).map(x => Object.assign({}, x));
   if (!g.length) return { gallery: [], image: s(image) || null };
   let i = g.findIndex(x => x.primary === true);
-  if (i < 0) { i = g.findIndex(x => s(x.url) === s(image)); if (i < 0) i = 0; }
+  if (i < 0) { i = g.findIndex(x => s(x.url) === s(image));
+    if (i < 0 && s(image)) { g.unshift({ url: s(image), source: 'page-image', caption: '' }); i = 0; }
+    if (i < 0) i = 0; }
   g.forEach((x, k) => { x.primary = (k === i); });
   return { gallery: g, image: g[i].url };
 }
@@ -570,7 +573,13 @@ exports.handler = async (event) => {
            primary all used to leave a gallery with no primary — and the storefront then ignored
            the page image and showed an older layer's photo. Normalised on every save. */
         if ('images_gallery' in patch) {
-          const n = normalizeGallery(patch.images_gallery, 'image' in patch ? patch.image : (before && before.image));
+          /* A photo the person just deleted from the gallery is not brought back as the page
+             image; a page image that was never in the gallery is kept (dealers were shown it). */
+          const was = (before && Array.isArray(before.images_gallery) ? before.images_gallery : []).map(g => String((g && g.url) || '').trim());
+          const nowUrls = (Array.isArray(patch.images_gallery) ? patch.images_gallery : []).map(g => String((g && g.url) || '').trim());
+          let keepImg = 'image' in patch ? patch.image : (before && before.image);
+          if (!('image' in patch) && keepImg && was.includes(String(keepImg).trim()) && !nowUrls.includes(String(keepImg).trim())) keepImg = null;
+          const n = normalizeGallery(patch.images_gallery, keepImg);
           patch.images_gallery = n.gallery;
           if (n.image) patch.image = n.image;
         }

@@ -70,7 +70,7 @@ async function callerFromToken(event){
 // contract prices + addresses) for a dealer_id. Shared by "me" (a signed-in dealer) and "preview"
 // (staff previewing that dealer read-only). Reads only.
 async function loadDealerPayload(dealer_id, fallbackEmail){
-  let dealer=null, lines=[], access=null, prices={};
+  let dealer=null, lines=[], access=null, prices={}, pricesUnavailable=false;
   if(dealer_id){
     const d=await sb("GET",`dealers?id=eq.${dealer_id}&select=id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id,golden_status,ovation_access,golden_url`);
     dealer=d&&d[0]?{id:d[0].id,name:d[0].business_name,hcps_account:d[0].hcps_account||"",contact_name:d[0].contact_name||"",
@@ -96,12 +96,18 @@ async function loadDealerPayload(dealer_id, fallbackEmail){
     }catch(e){}
     // Per-product contract prices (company-level): the governing/master account's prices apply to
     // all its branches; a branch's own rows override. Keyed "slug::code" for the portal's unitPrice().
+    /* A failed read is NOT "this dealer has no contract prices" (agreed 2026-10-09). Swallowing it
+       showed a contract dealer list prices with nothing on screen to say so. The session still
+       loads (a dealer is never signed out by a pricing hiccup), but the answer says the prices are
+       UNKNOWN — `prices:null, prices_unavailable:true` — and the shop says so. Checkout re-prices
+       on the server, strictly, so nothing can be ordered at a wrong price either way. */
     try{
       const rec=d&&d[0]; const ids=[dealer_id]; if(rec&&rec.parent_id) ids.push(rec.parent_id);
-      const pr=await sb("GET",`dealer_contract_prices?dealer_id=in.(${ids.join(",")})&active=eq.true&select=dealer_id,manufacturer,code,price`).catch(()=>[]);
-      (pr||[]).sort((a,b)=>(a.dealer_id===dealer_id?1:0)-(b.dealer_id===dealer_id?1:0));   // master first, dealer overrides
-      for(const r of (pr||[])){ if(r.manufacturer&&r.code&&r.price!=null) prices[`${r.manufacturer}::${r.code}`]=Number(r.price); }
-    }catch(e){}
+      const pr=await sb("GET",`dealer_contract_prices?dealer_id=in.(${ids.join(",")})&active=eq.true&select=dealer_id,manufacturer,code,price`);
+      if(!Array.isArray(pr)) throw new Error("contract prices: unexpected response");
+      pr.sort((a,b)=>(a.dealer_id===dealer_id?1:0)-(b.dealer_id===dealer_id?1:0));   // master first, dealer overrides
+      for(const r of pr){ if(r.manufacturer&&r.code&&r.price!=null) prices[`${r.manufacturer}::${r.code}`]=Number(r.price); }
+    }catch(e){ pricesUnavailable=true; console.error("dealer-auth: contract prices unreadable for "+dealer_id+": "+String((e&&e.message)||e)); }
     // attach stored shipping / billing addresses (if any) so the "My account" editor can prefill
     if(dealer){
       try{
@@ -115,7 +121,7 @@ async function loadDealerPayload(dealer_id, fallbackEmail){
       }catch(e){}
     }
   }
-  return {dealer,lines,access,prices};
+  return {dealer,lines,access,prices:pricesUnavailable?null:prices,pricesUnavailable};
 }
 
 exports.handler = async (event)=>{
@@ -196,11 +202,12 @@ exports.handler = async (event)=>{
       if(!du) return json(200,{ok:true,status:"none",email:u.email});
       if(du.status!=="approved") return json(200,{ok:true,status:du.status,email:du.email});
       // approved -> return dealer profile + entitled lines for gating + cart prefill
-      const {dealer,lines,access,prices}=await loadDealerPayload(du.dealer_id, du.email);
+      const {dealer,lines,access,prices,pricesUnavailable}=await loadDealerPayload(du.dealer_id, du.email);
       // saved cart (persists across logout/login until ordered or cleared)
       let cart=null;
       try{ const cr=await sb("GET",`dealer_carts?uid=eq.${uid}&select=cart`); if(cr&&cr[0]&&cr[0].cart&&Array.isArray(cr[0].cart.items)&&cr[0].cart.items.length) cart=cr[0].cart; }catch(e){}
-      return json(200,{ok:true,status:"approved",email:du.email,dealer,lines,access,cart,prices});
+      return json(200,{ok:true,status:"approved",email:du.email,dealer,lines,access,cart,prices,
+        ...(pricesUnavailable?{prices_unavailable:true}:{})});
     }
 
     if(b.action==="preview"){
@@ -215,9 +222,10 @@ exports.handler = async (event)=>{
       if(!t||!t.dealer_id) return json(200,{ok:false,code:"invalid",message:"This preview link is invalid."});
       if(t.expires_at && new Date(t.expires_at).getTime()<Date.now()) return json(200,{ok:false,code:"expired",message:"This preview link has expired. Reopen it from Dealer 360 & CRM."});
       if(!t.used_at){ try{ await sb("PATCH",`dealer_preview_tokens?token=eq.${encodeURIComponent(token)}`,{used_at:new Date().toISOString()},{Prefer:"return=minimal"}); }catch(e){} }
-      const {dealer,lines,access,prices}=await loadDealerPayload(t.dealer_id, null);
+      const {dealer,lines,access,prices,pricesUnavailable}=await loadDealerPayload(t.dealer_id, null);
       if(!dealer) return json(200,{ok:false,code:"no_dealer",message:"Dealer record not found."});
-      return json(200,{ok:true,status:"approved",preview:true,email:(dealer&&dealer.email)||"",dealer,lines,access,prices});
+      return json(200,{ok:true,status:"approved",preview:true,email:(dealer&&dealer.email)||"",dealer,lines,access,prices,
+        ...(pricesUnavailable?{prices_unavailable:true}:{})});
     }
 
     // ---- persistent cart ----

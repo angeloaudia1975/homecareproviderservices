@@ -32,6 +32,8 @@ await t('pure: a gallery always ends with exactly one primary, and the image fol
   eq(P.normalizeGallery([img('a'),img('b')],null).image,'a','first when nothing matches');
   eq(P.normalizeGallery([img('a',1),img('b',1)],null).gallery.filter(x=>x.primary).length,1,'extra primaries demoted');
   eq(P.normalizeGallery([], 'x').image,'x','no gallery keeps the image');
+  const pi=P.normalizeGallery([img('a'),img('b')],'p');
+  eq([pi.image,pi.gallery.map(x=>[x.url,x.primary])],['p',[['p',true],['a',false],['b',false]]],'a page image outside the gallery becomes its primary (what dealers were shown)');
 });
 await t('pure: SKU photo → page primary → catalog override → added → file',async()=>{
   const P=require(ROOT+'/images-api.js')._pure;
@@ -78,6 +80,14 @@ await t('GET shows what dealers see, with its source',async()=>{
   const a=r.body.products.find(p=>p.code==='A1'), c=r.body.products.find(p=>p.code==='C1');
   eq([a.image,a.source,a.legacy],['g.jpg','page','legacy.jpg'],'A1'); eq([c.image,c.source],['/assets/c1.jpg','catalog-file'],'C1');
 });
+await t('GET matches part numbers exactly, as the storefront does: a switched-off lower-case row does not hide its upper-case twin',async()=>{
+  const W=world({product_overrides:[{manufacturer:L,code:'a1',patch:{active:false}},{manufacturer:L,code:'c1',patch:{image:'/wrong.jpg'}}],
+                 custom_products:[{manufacturer:L,code:'b9',name:'old',active:false},{manufacturer:L,code:'B9',name:'Added',active:true,image:'/b9.jpg'},{manufacturer:L,code:'b1',name:'lower-case added',active:true}]},files);
+  const C=load(W,'images-api.js');
+  const r=await M.call(C,null,{method:'GET',qs:{manufacturer:L},headers:{'x-analytics-token':'pass'}});
+  const by=Object.fromEntries(r.body.products.map(p=>[p.code,p]));
+  ok(by.A1,'A1 listed'); eq(by.C1.image,'/assets/c1.jpg','c1 override does not apply to C1'); eq(by.B9&&by.B9.image,'/b9.jpg','added B9 listed with its photo'); ok(by.b1&&by.B1,'an added "b1" is its own product beside the file\'s "B1", as in the shop');
+});
 await t('migration dry run writes nothing and classifies every legacy row',async()=>{
   const T={product_content:[pg('a',['A1'],{images_gallery:[img('g.jpg',1)],image:'g.jpg'}),pg('b',['B1','B2'])],
     product_overrides:[{manufacturer:L,code:'C1',patch:{image:'ov.jpg'}}],
@@ -117,6 +127,9 @@ await t('Enrichment save: a gallery saved without a primary gets one, and the im
   eq(p.images_gallery.filter(x=>x.primary).map(x=>x.url),['g1.jpg'],'primary restored from the page image');
   const r2=await M.call(C,{action:'save_fields',manufacturer:L,page_key:'a',patch:{images_gallery:[img('new.jpg')]}},{token:'pres'});
   eq(W.db.product_content[0].image,'new.jpg','deleting the primary moves the image to the remaining photo');
+  W.db.product_content[0].image='/legacy-page.jpg'; W.db.product_content[0].images_gallery=[img('x.jpg')];
+  await M.call(C,{action:'save_fields',manufacturer:L,page_key:'a',patch:{images_gallery:[img('x.jpg'),img('y.jpg')]}},{token:'pres'});
+  eq([W.db.product_content[0].image,W.db.product_content[0].images_gallery.map(g=>[g.url,g.primary])],['/legacy-page.jpg',[['/legacy-page.jpg',true],['x.jpg',false],['y.jpg',false]]],'a page image that was never in the gallery is kept as its primary');
 });
 await t('Featured Products shows the same photo dealers see (page primary, not the legacy upload)',async()=>{
   const W=world({product_content:[pg('a',['A1'],{images_gallery:[img('g.jpg',1)],image:'g.jpg'})],product_images:[{manufacturer:L,code:'A1',url:'legacy.jpg'}]},files);

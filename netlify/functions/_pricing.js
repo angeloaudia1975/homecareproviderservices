@@ -160,7 +160,8 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile }) {
   for (const l of lines) {
     const o = out[l.oi];
     if (isGolden(l.slug)) { o.items.push(Object.assign({}, orders[l.oi].items[l.ii])); continue; }
-    if (!l.p) {
+    /* Visible is not sellable: a discontinued product is shown for reference only. */
+    if (!l.p || l.p._discontinued) {
       changed = true;
       o.items.push({ code: l.code, qty: l.qty, available: false, unit: null, line_total: null, client_unit: l.client, changed: true });
       continue;

@@ -129,12 +129,12 @@ async function connectionsForMany(mfr, codes){
   const inList="("+list.map(c=>'"'+String(c).replace(/"/g,'\\"')+'"').join(",")+")";
   const q=`manufacturer=eq.${e(mfr)}&code=in.${e(inList)}`;
   const [links,media,feat,ovr,items]=await Promise.all([
-    sb("GET",`product_links?${q}&select=code`).catch(()=>[]),
-    sb("GET",`product_media?${q}&select=code`).catch(()=>[]),
-    sb("GET",`featured_products?${q}&select=code`).catch(()=>[]),
-    sb("GET",`product_overrides?${q}&select=code,patch`).catch(()=>[]),
+    sb("GET",`product_links?${q}&select=code`),
+    sb("GET",`product_media?${q}&select=code`),
+    sb("GET",`featured_products?${q}&select=code`),
+    sb("GET",`product_overrides?${q}&select=code,patch`),
     // order_items is not scoped by manufacturer — a code is a code there.
-    sb("GET",`order_items?code=in.${e(inList)}&select=code&limit=5000`).catch(()=>[]),
+    sb("GET",`order_items?code=in.${e(inList)}&select=code&limit=5000`),
   ]);
   const bump=(rows,key)=>(rows||[]).forEach(r=>{ const c=String(r.code||""); if(out[c]) out[c][key]++; });
   bump(links,"links"); bump(media,"media"); bump(feat,"featured"); bump(items,"orders");
@@ -144,13 +144,13 @@ async function connectionsForMany(mfr, codes){
 async function connectionsFor(mfr, code){
   const e=encodeURIComponent, q=`manufacturer=eq.${e(mfr)}&code=eq.${e(code)}`;
   const [links,media,feat,ovr,items]=await Promise.all([
-    sb("GET",`product_links?${q}&select=code`).catch(()=>[]),
-    sb("GET",`product_media?${q}&select=id`).catch(()=>[]),
-    sb("GET",`featured_products?${q}&select=code`).catch(()=>[]),
-    sb("GET",`product_overrides?${q}&select=patch`).catch(()=>[]),
+    sb("GET",`product_links?${q}&select=code`),
+    sb("GET",`product_media?${q}&select=id`),
+    sb("GET",`featured_products?${q}&select=code`),
+    sb("GET",`product_overrides?${q}&select=patch`),
     // Order history is the one connection that must never be rewritten — an order says
     // what was actually bought. It is counted so a merge can warn, not migrated.
-    sb("GET",`order_items?code=eq.${e(code)}&select=id&limit=200`).catch(()=>[]),
+    sb("GET",`order_items?code=eq.${e(code)}&select=id&limit=200`),
   ]);
   const patch=(ovr&&ovr[0]&&ovr[0].patch)||null;
   return {
@@ -980,10 +980,10 @@ async function whoami(event){
 async function resolveCatalog(slug){
   const e=encodeURIComponent;
   const [base,custom,overRows,mediaRows]=await Promise.all([
-    fetchJson(`${ORDERING_BASE}/data/${slug}.json`).catch(()=>[]),
-    sb("GET",`custom_products?manufacturer=eq.${e(slug)}&select=code,name,category,base_price,msrp,image,description,active,tiers,price_note`).catch(()=>[]),
-    sb("GET",`product_overrides?manufacturer=eq.${e(slug)}&select=code,patch`).catch(()=>[]),
-    sb("GET",`product_media?manufacturer=eq.${e(slug)}&select=code`).catch(()=>[]),
+    catalogFile(slug),
+    sb("GET",`custom_products?manufacturer=eq.${e(slug)}&select=code,name,category,base_price,msrp,image,description,active,tiers,price_note`),
+    sb("GET",`product_overrides?manufacturer=eq.${e(slug)}&select=code,patch`),
+    sb("GET",`product_media?manufacturer=eq.${e(slug)}&select=code`),
   ]);
   const over=Object.fromEntries((overRows||[]).map(o=>[o.code,o.patch||{}]));
   const mediaCount={}; (mediaRows||[]).forEach(r=>{ mediaCount[r.code]=(mediaCount[r.code]||0)+1; });
@@ -1009,13 +1009,16 @@ async function resolveCatalog(slug){
 /* ALL pages, every status — the admin has to see drafts. The shop's live gate is applied
    inside the join, so "written" and "visible" stay two separate, reportable facts. */
 async function loadPages(slug){
-  const rows=await sb("GET",`product_content?manufacturer=eq.${encodeURIComponent(slug)}&select=page_key,name,status,subcategory,description,features,images_gallery,image,skus,variant_group`).catch(()=>[]);
+  /* `disabled` is read because the shop drops a switched-off page entirely — without it a
+     disabled page counted as visible here and the map filed its SKUs where the shop never
+     shows them. Strict: a failed read throws (the caller answers 5xx), it is never "no pages". */
+  const rows=await sb("GET",`product_content?manufacturer=eq.${encodeURIComponent(slug)}&select=page_key,name,status,disabled,category,subcategory,description,features,images_gallery,image,skus,variant_group&limit=5000`);
   const pages={}; (rows||[]).forEach(r=>{ if(r&&r.page_key) pages[r.page_key]=r; });
   return pages;
 }
 
 async function loadMeta(slug){
-  const rows=await sb("GET",`manufacturer_meta?slug=eq.${encodeURIComponent(slug)}&select=slug,enriched_only,category_order,category_map`).catch(()=>[]);
+  const rows=await sb("GET",`manufacturer_meta?slug=eq.${encodeURIComponent(slug)}&select=slug,enriched_only,category_order,category_map`);   // strict: no map ≠ unreadable map
   return (rows&&rows[0])||{};
 }
 
@@ -1051,10 +1054,11 @@ async function loadMeta(slug){
 async function threeWay(slug){
   const e=encodeURIComponent;
   const [base,custom,ovRows,pages,meta]=await Promise.all([
-    fetchJson(`${ORDERING_BASE}/data/${e(slug)}.json`).catch(()=>[]),
-    sb("GET",`custom_products?manufacturer=eq.${e(slug)}&select=code,name,category,base_price,msrp,image,description,active,price_note`).catch(()=>[]),
-    sb("GET",`product_overrides?manufacturer=eq.${e(slug)}&select=code,patch`).catch(()=>[]),
-    sb("GET",`product_content?manufacturer=eq.${e(slug)}&select=page_key,name,status,disabled,subcategory,category,family,skus,image,images_gallery,sizing_table,description,options&limit=5000`).catch(()=>[]),
+    // strict (2026-10-09): an audit that reads nothing reports nothing wrong — the worst possible answer
+    catalogFile(slug),
+    sb("GET",`custom_products?manufacturer=eq.${e(slug)}&select=code,name,category,base_price,msrp,image,description,active,price_note`),
+    sb("GET",`product_overrides?manufacturer=eq.${e(slug)}&select=code,patch`),
+    sb("GET",`product_content?manufacturer=eq.${e(slug)}&select=page_key,name,status,disabled,subcategory,category,family,skus,image,images_gallery,sizing_table,description,options&limit=5000`),
     loadMeta(slug),
   ]);
   const ov={}; (ovRows||[]).forEach(r=>{ ov[String(r.code)]=r.patch||{}; });
@@ -1074,13 +1078,13 @@ async function threeWay(slug){
 
   /* Which page owns a SKU, resolved the way the shop resolves it: first live page wins. */
   const owner={};
-  (pages||[]).forEach(pg=>{ if(!JOIN.isLive(pg)||pg.disabled===true) return;
+  (pages||[]).forEach(pg=>{ if(!JOIN.isVisible(pg)) return;
     (Array.isArray(pg.skus)?pg.skus:[]).forEach(sx=>{ const c=JOIN.normCode(String((sx&&(sx.sku||sx.code))||""));
       if(c && !owner[c]) owner[c]=pg.page_key; }); });
 
   const rows=(pages||[]).map(pg=>{
     const skus=Array.isArray(pg.skus)?pg.skus:[];
-    const live=JOIN.isLive(pg) && pg.disabled!==true;
+    const live=JOIN.isVisible(pg);
     const mismatch=[];
     const members=skus.map(sx=>{
       const code=String((sx&&(sx.sku||sx.code))||"");
@@ -1210,7 +1214,9 @@ async function structureAudit(slug){
    choose. A finding here is a finding on the real page. */
 const PICK = require("./_shop_picker.js");
 function structureFindings({slug, pages, rel, base, custom, overrides, enrichedOnly}){
-  const LIVEST=["published","active"];
+  /* The pages a dealer can SEE (discontinued pages are shown for reference, not ordered) —
+     the storefront loads exactly these, so the picker is built from them. */
+  const LIVEST=["published","active","discontinued"];
   const om={}; (overrides||[]).forEach(o=>{ om[String(o.code)]=o.patch||{}; });
   /* 1. The shop's product list. */
   let prods=(base||[]).map(p=>{ const pa=om[String(p.code)]||{}; const q=Object.assign({},p,{code:String(p.code)});
@@ -1224,7 +1230,7 @@ function structureFindings({slug, pages, rel, base, custom, overrides, enrichedO
     if(pa.name!=null && pa.name!=="") q._nameFromOverride=true; prods.push(q); });
   /* 2. Page ownership, exactly as the shop resolves it (live pages only, first listing wins;
         then the variant group). */
-  const live=(pages||[]).filter(pg=>LIVEST.indexOf(pg.status)>=0);
+  const live=(pages||[]).filter(pg=>LIVEST.indexOf(pg.status)>=0 && pg.disabled!==true);
   const pageBySku={}, skuEntry={}, byGroup={};
   live.forEach(pg=>{ (Array.isArray(pg.skus)?pg.skus:[]).forEach(sx=>{ const c=String((sx&&(sx.sku||sx.code))||"").trim().toUpperCase();
       if(!c) return; if(!pageBySku[c]) pageBySku[c]=pg; if(!skuEntry[c]) skuEntry[c]=sx; });
@@ -1365,12 +1371,12 @@ const EDITED_IN = {
 async function pageSource(slug, wantCode, wantPage){
   const e=encodeURIComponent;
   const [base,custom,ovRows,content,meta,mediaRows]=await Promise.all([
-    fetchJson(`${ORDERING_BASE}/data/${e(slug)}.json`).catch(()=>[]),
-    sb("GET",`custom_products?manufacturer=eq.${e(slug)}&select=*`).catch(()=>[]),
-    sb("GET",`product_overrides?manufacturer=eq.${e(slug)}&select=code,patch,updated_at`).catch(()=>[]),
-    sb("GET",`product_content?manufacturer=eq.${e(slug)}&select=page_key,name,tagline,description,features,options,billing_codes,image,images_gallery,skus,status,disabled,subcategory,category,variant_group,parent_key,variant_label,specs,sizing_table,documents,videos,updated_at,published_at&limit=5000`).catch(()=>[]),
+    catalogFile(slug),
+    sb("GET",`custom_products?manufacturer=eq.${e(slug)}&select=*`),
+    sb("GET",`product_overrides?manufacturer=eq.${e(slug)}&select=code,patch,updated_at`),
+    sb("GET",`product_content?manufacturer=eq.${e(slug)}&select=page_key,name,tagline,description,features,options,billing_codes,image,images_gallery,skus,status,disabled,subcategory,category,variant_group,parent_key,variant_label,specs,sizing_table,documents,videos,updated_at,published_at&limit=5000`),
     loadMeta(slug),
-    sb("GET",`product_media?manufacturer=eq.${e(slug)}&select=code`).catch(()=>[]),
+    sb("GET",`product_media?manufacturer=eq.${e(slug)}&select=code`),
   ]);
   const baseBy={}; (base||[]).forEach(r=>{ if(r&&r.code!=null) baseBy[String(r.code)]=r; });
   const custBy={}; (custom||[]).forEach(r=>{ if(r&&r.code!=null) custBy[String(r.code)]=r; });
@@ -1534,7 +1540,7 @@ async function auditManufacturer(slug, sample){
   const cap=Math.max(1,Math.min(200,sample||10));
   const [products,pages,meta,mediaRows]=await Promise.all([
     resolveCatalog(slug), loadPages(slug), loadMeta(slug),
-    sb("GET",`product_media?manufacturer=eq.${encodeURIComponent(slug)}&select=code`).catch(()=>[]),
+    sb("GET",`product_media?manufacturer=eq.${encodeURIComponent(slug)}&select=code`),
   ]);
   const categoryMap=(meta.category_map&&typeof meta.category_map==="object")?meta.category_map:null;
   const dealerCats=Array.isArray(meta.category_order)&&meta.category_order.length
@@ -1549,16 +1555,16 @@ async function auditManufacturer(slug, sample){
   /* One SKU in two layers is the duplicate that regenerates: the deployed catalog file and
      an added row both holding the same code. It is counted separately from two SPELLINGS of
      one code, because they are resolved by different actions. */
-  const rawBase=await fetchJson(`${ORDERING_BASE}/data/${slug}.json`).catch(()=>[]);
+  const rawBase=await catalogFile(slug);
   const baseCodes=new Set((rawBase||[]).map(x=>String(x.code)));
   const custCodes=await sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code`)
-    .then(r=>new Set((r||[]).map(x=>String(x.code)))).catch(()=>new Set());
+    .then(r=>new Set((r||[]).map(x=>String(x.code))));   // strict: an unread layer is not an empty one
   /* A FINDING IS SOMETHING LEFT TO DO. A code living in two layers that has already been
      consolidated is not a problem any more — it is a decision someone made, recorded on the
      record. Counting those made the report say 243 when the answer was 0, which is the fastest
      way to teach someone to stop reading a report. Settled ones are reported as a fact, apart
      from the findings. */
-  const ovRows=await sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(slug)}&select=code,patch`).catch(()=>[]);
+  const ovRows=await sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(slug)}&select=code,patch`);
   const ovBy=Object.fromEntries((ovRows||[]).map(r=>[String(r.code),r.patch||{}]));
   const settled=c=>{ const o=ovBy[c]||{}; return !!(o.layers_merged_at || o.dup_ok || o.disposition || o.active===false); };
   let consolidated=0;
@@ -1722,10 +1728,10 @@ async function flowTest(slug, sample){
 async function resyncRecord(mfr, who){
   const e=encodeURIComponent;
   const [base,custom,ovRows,pages]=await Promise.all([
-    fetchJson(`${ORDERING_BASE}/data/${e(mfr)}.json`).catch(()=>[]),
-    sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`).catch(()=>[]),
-    sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]),
-    sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=page_key,name,skus&limit=5000`).catch(()=>[]),
+    catalogFile(mfr),
+    sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`),
+    sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`),
+    sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=page_key,name,skus&limit=5000`),
   ]);
   const overrides=Object.fromEntries((ovRows||[]).map(o=>[String(o.code),o.patch||{}]));
   const r=reconcileSkus({slug:mfr, base:base||[], custom:custom||[], overrides, pages:pages||[]});
@@ -1783,7 +1789,7 @@ async function resyncRecord(mfr, who){
      would simply stop being updated and keep its last price for ever, which is
      the most expensive shape of stale there is. */
   const live=new Set(all.map(x=>String(x.code)));
-  const have=await sb("GET",`product_skus?manufacturer=eq.${e(mfr)}&select=code`).catch(()=>[]);
+  const have=await sb("GET",`product_skus?manufacturer=eq.${e(mfr)}&select=code`);
   const stale=(have||[]).map(x=>String(x.code)).filter(c=>!live.has(c));
   for(const code of stale)
     await sb("DELETE",`product_skus?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}`,null,{Prefer:"return=minimal"});
@@ -2032,10 +2038,16 @@ exports.handler = async (event)=>{
     if(event.httpMethod==="GET"){
       const slug=(event.queryStringParameters||{}).manufacturer||"";
       if(!slug){
-        const [mfrs,logos]=await Promise.all([
-          fetchJson(`${ORDERING_BASE}/data/manufacturers.json`).catch(()=>[]),
-          sb("GET","manufacturer_meta?select=slug,logo_url,enriched_only,category_order,category_map").catch(()=>[]),
-        ]);
+        /* Strict (2026-10-09): a failed read of the line list or of manufacturer_meta is not
+           "no lines" or "no category map". The Structure Map files every product by that map;
+           an empty one, served as if it were real, re-heads a whole line. Fail loudly instead. */
+        let mfrs,logos;
+        try{
+          [mfrs,logos]=await Promise.all([
+            fetchJson(`${ORDERING_BASE}/data/manufacturers.json`),
+            sb("GET","manufacturer_meta?select=slug,logo_url,enriched_only,category_order,category_map"),
+          ]);
+        }catch(e){ return json(503,{error:"layer_unreadable",message:`Could not read the manufacturer list: ${e.message||e}`}); }
         const lm=Object.fromEntries((logos||[]).map(o=>[o.slug,o.logo_url]));
         const em=Object.fromEntries((logos||[]).map(o=>[o.slug,o.enriched_only===true]));
         const co=Object.fromEntries((logos||[]).map(o=>[o.slug,Array.isArray(o.category_order)?o.category_order:null]));
@@ -2044,16 +2056,22 @@ exports.handler = async (event)=>{
           logo_url:lm[m.slug]||"", enriched_only:!!em[m.slug], category_order:co[m.slug]||null,
           category_map:cmp[m.slug]||null}))});
       }
-      const [prods,custom,links]=await Promise.all([
-        fetchJson(`${ORDERING_BASE}/data/${slug}.json`).catch(()=>[]),
-        sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,name,category,base_price,msrp,map,msrp_auto,image,description,active,tiers,price_note,updated_at`).catch(()=>[]),
-        sb("GET",`product_links?manufacturer=eq.${encodeURIComponent(slug)}&select=code,label,url`).catch(()=>[]),
-      ]);
-      const [overRows,featRows,mediaRows]=await Promise.all([
-        sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(slug)}&select=code,patch,updated_at`).catch(()=>[]),
-        sb("GET",`featured_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,active`).catch(()=>[]),
-        sb("GET",`product_media?manufacturer=eq.${encodeURIComponent(slug)}&select=id,code,kind,url,title,sort&order=sort`).catch(()=>[]),
-      ]);
+      /* Strict (2026-10-09): every layer this screen edits or files by is read or the request
+         fails. A catalog file that timed out used to come back as an empty catalog, and the
+         editor (and the Structure Map) then showed a line with nothing in it as if that were
+         true. A line with no deployed file yet is a 404 — catalogFile() returns [] for that,
+         and only for that. */
+      let prods,custom,links,overRows,featRows,mediaRows;
+      try{
+        [prods,custom,links,overRows,featRows,mediaRows]=await Promise.all([
+          catalogFile(slug),
+          sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,name,category,base_price,msrp,map,msrp_auto,image,description,active,tiers,price_note,updated_at`),
+          sb("GET",`product_links?manufacturer=eq.${encodeURIComponent(slug)}&select=code,label,url`),
+          sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(slug)}&select=code,patch,updated_at`),
+          sb("GET",`featured_products?manufacturer=eq.${encodeURIComponent(slug)}&select=code,active`),
+          sb("GET",`product_media?manufacturer=eq.${encodeURIComponent(slug)}&select=id,code,kind,url,title,sort&order=sort`),
+        ]);
+      }catch(e){ return json(503,{error:"layer_unreadable",message:`Could not read the ${slug} catalog: ${e.message||e}`}); }
       const linkMap=Object.fromEntries((links||[]).map(l=>[l.code,{label:l.label||"More Information",url:l.url}]));
       const overrides=Object.fromEntries((overRows||[]).map(o=>[o.code,Object.assign({},o.patch||{},{_updated_at:o.updated_at||null})]));
       const featured=(featRows||[]).filter(f=>f.active!==false).map(f=>f.code);
@@ -2139,7 +2157,7 @@ exports.handler = async (event)=>{
             .concat((customAll||[]).map(x=>({code:String(x.code),name:x.name||"",kind:"added"})))
             .find(x=>x.code!==codeIn && normCode(x.code)===nk);
           if(clash){
-            const conn=await connectionsFor(mfr,clash.code).catch(()=>null);
+            const conn=await connectionsFor(mfr,clash.code);
             return json(409,{error:"duplicate_sku", code:codeIn, existing:clash, connections:conn,
               message:`SKU "${codeIn}" is the same item as "${clash.code}", which is already in the catalog. `
                     + `Enrich that record instead of creating a second copy — or resend with allow_duplicate:true if this really is a different model.`});
@@ -2184,7 +2202,7 @@ exports.handler = async (event)=>{
         }
         if(!inCustom && baseRec){
           const now2=new Date().toISOString();
-          const ex=await sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(codeIn)}&select=patch`).catch(()=>[]);
+          const ex=await sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(codeIn)}&select=patch`);
           const patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{});
           const carried=[];
           const put=(k,v)=>{ if(v!=null&&v!==""){ patch[k]=v; carried.push(k); } };
@@ -2229,55 +2247,101 @@ exports.handler = async (event)=>{
         const p=b.product||{};
         if(!mfr||!oldCode||!newCode) return json(400,{error:"manufacturer, old_code and new_code are required"});
         if(oldCode===newCode) return json(400,{error:"new_code matches old_code"});
-        /* THE COLLISION IS AN ANSWER, NOT A REFUSAL.
-           This checked custom_products only, so renaming a product onto a code that exists
-           in the DEPLOYED CATALOG FILE was not caught at all — it created an added row that
-           silently shadowed a real catalog product, which is one more way a second copy of
-           one product got made. Both layers are checked now.
+        /* THE COLLISION IS AN ANSWER, NOT A REFUSAL — reported as data, with what is attached to
+           the record that was hit, so the screen can offer a merge instead.
 
-           And a collision is reported as data. Someone renumbering a part almost always
-           means "this is the same item as that one" — so the screen is given the record that
-           was hit and everything attached to it, and can offer to merge into it. Refusing
-           with a bare string left them stuck with two records and no way forward. */
-        const eN=encodeURIComponent;
-        const [baseAll,customAll]=await Promise.all([
-          fetchJson(`${ORDERING_BASE}/data/${mfr}.json`).catch(()=>[]),
-          sb("GET",`custom_products?manufacturer=eq.${eN(mfr)}&select=code,name,base_price,active`).catch(()=>[]),
-        ]);
+           A RENAME MOVES EVERYTHING THAT POINTS AT THE CODE, OR NOTHING (Phase 2, agreed
+           2026-10-09). It used to move links, media and Featured only, best-effort, so a renamed
+           SKU silently lost its dealers' contract prices and left the master record on the old
+           code — exactly the drift record authority cannot tolerate. Now:
+             1. every read is strict and every precondition (code free in the catalog file, the
+                added rows and the master record; no dealer holding a contract price on both
+                codes) is checked BEFORE anything is written;
+             2. the master record moves FIRST (a record failure writes nothing else);
+             3. dealer contract prices move;
+             4. the catalog layers and the link / media / Featured rows follow.
+           Any failure stops and says exactly which steps were done — nothing is swallowed. */
+        const eN=encodeURIComponent, nOld=normCode(oldCode), nNew=normCode(newCode);
+        const respell = nOld===nNew;   // "fcom-02" → "FCOM-02": the same part number, re-spelled
+        let baseAll, customAll, migrated, recRows, cps;
+        try{
+          [baseAll,customAll,migrated,cps]=await Promise.all([
+            catalogFile(mfr),
+            sb("GET",`custom_products?manufacturer=eq.${eN(mfr)}&select=code,name,base_price,active`),
+            lineMigrated(mfr),
+            sb("GET",`dealer_contract_prices?manufacturer=eq.${eN(mfr)}&code=in.(${[oldCode,newCode].map(c=>'"'+c.replace(/"/g,'')+'"').join(",")})&select=dealer_id,code`),
+          ]);
+          recRows = migrated ? await sb("GET",`product_skus?manufacturer=eq.${eN(mfr)}&code_norm=in.(${[nOld,nNew].map(c=>'"'+c+'"').join(",")})&select=*`) : [];
+        }catch(err){ return json(503,{error:"layer_unreadable", message:"Nothing was renamed: "+String((err&&err.message)||err).slice(0,300)}); }
         const hit=[]
           .concat((baseAll||[]).map(x=>({code:String(x.code),name:x.name||"",price:x.base_price,kind:"catalog"})))
           .concat((customAll||[]).map(x=>({code:String(x.code),name:x.name||"",price:x.base_price,kind:"added"})))
-          .find(x=>normCode(x.code)===normCode(newCode));
+          .concat((recRows||[]).map(x=>({code:String(x.code),name:"",price:x.base_price,kind:"record"})))
+          .find(x=>normCode(x.code)===nNew && x.code!==oldCode && !(respell && normCode(x.code)===nOld && x.kind==="record"));
         if(hit){
-          const conn=await connectionsFor(mfr,hit.code).catch(()=>null);
+          const conn=await connectionsFor(mfr,hit.code);
           return json(409,{error:"sku_in_use", old_code:oldCode, new_code:newCode,
             existing:hit, connections:conn,
             same_spelling: hit.code===newCode,
             message:`SKU "${newCode}" already belongs to "${hit.name||hit.code}". `
                   + `If that is the same item, merge ${oldCode} into it instead of renumbering.`});
         }
-        // 1) create the product under the new code with all fields carried from the client
-        await sb("POST","custom_products?on_conflict=manufacturer,code",{
-          manufacturer:mfr, code:newCode, name:String(p.name||"").trim()||newCode,
-          category:p.category||null, base_price:num(p.base_price), msrp:num(p.msrp),
-          image:p.image||null, description:p.description||null,
-          tiers:cleanTiers(p.tiers), price_note:p.price_note||null,
-          active:p.active===false?false:true, updated_at:new Date().toISOString()
-        },{Prefer:"resolution=merge-duplicates,return=minimal"});
-        // 2) move link / media / featured rows from the old code to the new code (best-effort)
-        for(const tbl of ["product_links","product_media","featured_products"]){
-          try{ await sb("PATCH",`${tbl}?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(oldCode)}`,{code:newCode},{Prefer:"return=minimal"}); }catch(e){}
+        const onOld=new Set((cps||[]).filter(r=>r.code===oldCode).map(r=>r.dealer_id));
+        const both=[...new Set((cps||[]).filter(r=>r.code===newCode && onOld.has(r.dealer_id)).map(r=>r.dealer_id))];
+        if(both.length) return json(409,{error:"contract_conflict", dealers:both,
+          message:`${both.length} dealer(s) already have a contract price on ${newCode} as well as on ${oldCode}. Settle those first; nothing was renamed.`});
+
+        const now=new Date().toISOString(), by=String(b.reviewer||"rename").slice(0,80), done=[];
+        const step=async(name,fn)=>{ try{ await fn(); done.push(name); }
+          catch(err){ throw Object.assign(new Error(String((err&&err.message)||err)),{step:name}); } };
+        try{
+          /* 1. The master record first. */
+          const oldRec=(recRows||[]).find(r=>r.code_norm===nOld)||null;
+          if(migrated && oldRec){
+            await step("master record", async ()=>{
+              if(respell){
+                await sb("PATCH",`product_skus?manufacturer=eq.${eN(mfr)}&code_norm=eq.${eN(nOld)}`,{code:newCode,updated_at:now,updated_by:by},{Prefer:"return=minimal"});
+              }else{
+                const carry={}; ["option_label","base_price","msrp","map","msrp_auto","tiers","price_note","uom","case_qty","hcpcs","effective_date","source_file","status"]
+                  .forEach(k=>{ if(oldRec[k]!==undefined) carry[k]=oldRec[k]; });
+                await sb("POST","product_skus",Object.assign({manufacturer:mfr,code:newCode},carry,{updated_at:now,updated_by:by}),{Prefer:"return=minimal"});
+                await sb("PATCH",`product_skus?manufacturer=eq.${eN(mfr)}&code_norm=eq.${eN(nOld)}`,
+                  {status:"not_listed",superseded_by:newCode,status_note:`renamed to ${newCode}`,status_at:now,status_by:by,updated_at:now,updated_by:by},{Prefer:"return=minimal"});
+              }
+            });
+          }
+          /* 2. Dealers' contract prices follow the code. */
+          if(onOld.size) await step("contract prices", ()=>sb("PATCH",
+            `dealer_contract_prices?manufacturer=eq.${eN(mfr)}&code=eq.${eN(oldCode)}`,{code:newCode},{Prefer:"return=minimal"}));
+          /* 3. The catalog layers: the product under its new code. On a migrated line the
+                commercial fields are the record's, never the browser's copy. */
+          const rc=(migrated && oldRec)?oldRec:null;
+          await step("catalog row", ()=>sb("POST","custom_products?on_conflict=manufacturer,code",{
+            manufacturer:mfr, code:newCode, name:String(p.name||"").trim()||newCode,
+            category:p.category||null,
+            base_price:rc?rc.base_price:num(p.base_price), msrp:rc?rc.msrp:num(p.msrp),
+            map:rc?rc.map:num(p.map), msrp_auto:rc?rc.msrp_auto===true:p.msrp_auto===true,
+            image:p.image||null, description:p.description||null,
+            tiers:rc?cleanTiers(rc.tiers):cleanTiers(p.tiers), price_note:rc?(rc.price_note||null):(p.price_note||null),
+            active:p.active===false?false:true, updated_at:now
+          },{Prefer:"resolution=merge-duplicates,return=minimal"}));
+          for(const tbl of ["product_links","product_media","featured_products"])
+            await step(tbl, ()=>sb("PATCH",`${tbl}?manufacturer=eq.${eN(mfr)}&code=eq.${eN(oldCode)}`,{code:newCode},{Prefer:"return=minimal"}));
+          /* 4. Retire the old code. */
+          if(b.was_custom){
+            await step("old added row", ()=>sb("DELETE",`custom_products?manufacturer=eq.${eN(mfr)}&code=eq.${eN(oldCode)}`,null,{Prefer:"return=minimal"}));
+            await step("old override", ()=>sb("DELETE",`product_overrides?manufacturer=eq.${eN(mfr)}&code=eq.${eN(oldCode)}`,null,{Prefer:"return=minimal"}));
+          }else{
+            await step("old code retired", ()=>sb("POST","product_overrides?on_conflict=manufacturer,code",
+              {manufacturer:mfr,code:oldCode,patch:{active:false,disposition:"not_offered",disposition_note:`renamed to ${newCode}`,disposition_at:now},updated_at:now},
+              {Prefer:"resolution=merge-duplicates,return=minimal"}));
+          }
+        }catch(err){
+          console.error("rename_code stopped",oldCode,newCode,err.step,err.message);
+          return json(502,{error:"rename_incomplete", failed_step:err.step||"unknown", done,
+            message:`The rename stopped at "${err.step}". Done so far: ${done.join(", ")||"nothing"}. `+String(err.message).slice(0,300)});
         }
-        // 3) retire the old code
-        if(b.was_custom){
-          try{ await sb("DELETE",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(oldCode)}`,null,{Prefer:"return=minimal"}); }catch(e){}
-          try{ await sb("DELETE",`product_overrides?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(oldCode)}`,null,{Prefer:"return=minimal"}); }catch(e){}
-        }else{
-          await sb("POST","product_overrides?on_conflict=manufacturer,code",
-            {manufacturer:mfr,code:oldCode,patch:{active:false},updated_at:new Date().toISOString()},
-            {Prefer:"resolution=merge-duplicates,return=minimal"});
-        }
-        return json(200,{ok:true});
+        return json(200,{ok:true, done, record_moved:done.includes("master record"), contract_prices_moved:onOld.size});
       }
 
       // Edit a STANDARD catalog product without a redeploy: store only the changed fields as
@@ -2485,7 +2549,7 @@ exports.handler = async (event)=>{
         const codes=Array.isArray(b.codes)?[...new Set(b.codes.map(c=>String(c).trim()).filter(Boolean))]:[];
         const category=(b.category==null||b.category==="")?null:String(b.category).trim();
         if(!mfr||!codes.length) return json(400,{error:"manufacturer, codes[] required"});
-        const cust=await sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&select=code`).catch(()=>[]);
+        const cust=await sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&select=code`);
         const isCustom=new Set((cust||[]).map(r=>String(r.code)));
         let custN=0, ovN=0;
         for(const code of codes){
@@ -2493,7 +2557,7 @@ exports.handler = async (event)=>{
             await sb("PATCH",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(code)}`,{category,updated_at:new Date().toISOString()},{Prefer:"return=minimal"});
             custN++;
           } else {
-            const ex=await sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(code)}&select=patch`).catch(()=>[]);
+            const ex=await sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(code)}&select=patch`);
             const patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{},{category});
             await sb("POST","product_overrides?on_conflict=manufacturer,code",{manufacturer:mfr,code,patch,updated_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
             ovN++;
@@ -2515,7 +2579,7 @@ exports.handler = async (event)=>{
         if(!mfr||!codes.length) return json(400,{error:"manufacturer, codes[] required"});
         if(codes.length>200) return json(400,{error:"too_many"});
         const e=encodeURIComponent, now=new Date().toISOString();
-        const ovAll=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]);
+        const ovAll=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`);
         const ovBy={}; (ovAll||[]).forEach(r=>{ ovBy[String(r.code)]=r.patch||{}; });
         const rows=codes.map(code=>({manufacturer:mfr,code,
           patch:Object.assign({},ovBy[code]||{},{group}), updated_at:now}));
@@ -2546,7 +2610,7 @@ exports.handler = async (event)=>{
       if(b.action==="delete_product"){
         if(!b.manufacturer||!b.code) return json(400,{error:"manufacturer, code required"});
         const mfr=b.manufacturer, code=String(b.code).trim(), e=encodeURIComponent;
-        const conn=await connectionsFor(mfr,code).catch(()=>null);
+        const conn=await connectionsFor(mfr,code);
         if(conn && b.force!==true){
           const held=[];
           if(conn.orders)   held.push(`${conn.orders} order line${conn.orders===1?"":"s"}`);
@@ -2581,8 +2645,8 @@ exports.handler = async (event)=>{
         if(codes.length>200) return json(400,{error:"too_many", message:"Send at most 200 codes per call."});
         const e=encodeURIComponent;
         const [custom,connAll]=await Promise.all([
-          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code`).catch(()=>[]),
-          connectionsForMany(mfr,codes).catch(()=>({})),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code`),
+          connectionsForMany(mfr,codes),
         ]);
         const isAdded=new Set((custom||[]).map(x=>String(x.code)));
         const deleted=[], refused=[];
@@ -2616,16 +2680,16 @@ exports.handler = async (event)=>{
         const codes=[...new Set((Array.isArray(b.codes)?b.codes:[]).map(c=>String(c).trim()).filter(Boolean))].slice(0,60);
         if(!codes.length) return json(400,{error:"codes required"});
         const e=encodeURIComponent;
-        const connAll=await connectionsForMany(mfr,codes).catch(()=>({}));
+        const connAll=await connectionsForMany(mfr,codes);
         const [base,custom,ovRows,content]=await Promise.all([
-          fetchJson(`${ORDERING_BASE}/data/${e(mfr)}.json`).catch(()=>[]),
-          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`).catch(()=>[]),
-          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch,updated_at`).catch(()=>[]),
+          catalogFile(mfr),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`),
+          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch,updated_at`),
           /* The approved record. The title a person signed off lives HERE — custom_products
              only ever held a snapshot of the enrichment PAGE name at publish time, which is
              why merged records kept showing a generic family name instead of the specific
              title that was approved. Always resolve the enriched title live. */
-          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=page_key,name,family,category,subcategory,skus,status,disabled,image,images_gallery,updated_at,published_at&limit=5000`).catch(()=>[]),
+          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=page_key,name,family,category,subcategory,skus,status,disabled,image,images_gallery,updated_at,published_at&limit=5000`),
         ]);
         const baseBy={}; (base||[]).forEach(p=>{ baseBy[String(p.code)]=p; });
         const custBy={}; (custom||[]).forEach(p=>{ custBy[String(p.code)]=p; });
@@ -2849,9 +2913,9 @@ exports.handler = async (event)=>{
       if(b.action==="duplicate_scan"){
         const mfr=b.manufacturer; if(!mfr) return json(400,{error:"manufacturer required"});
         const [base,custom,ovRows]=await Promise.all([
-          fetchJson(`${ORDERING_BASE}/data/${mfr}.json`).catch(()=>[]),
-          sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&select=code,name,category,base_price,msrp,active,image`).catch(()=>[]),
-          sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(mfr)}&select=code,patch`).catch(()=>[]),
+          catalogFile(mfr),
+          sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&select=code,name,category,base_price,msrp,active,image`),
+          sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(mfr)}&select=code,patch`),
         ]);
         const overrides=Object.fromEntries((ovRows||[]).map(o=>[o.code,o.patch||{}]));
         let groups=duplicateGroups(base,custom,overrides);
@@ -2863,7 +2927,7 @@ exports.handler = async (event)=>{
            up to two hundred codes. A thousand round trips in single file, measured at 7 to
            12 seconds on the live site, and it ran on every page load and after every merge.
            The same answer for every code costs five queries in total. */
-        const conn=await connectionsForMany(mfr,codes).catch(()=>({}));
+        const conn=await connectionsForMany(mfr,codes);
         groups.forEach(g=>g.members.forEach(m=>{ m.connections=conn[m.code]||null; }));
 
         /* SETTLE THE ONES THAT ARE NOT DECISIONS. A same-code pair whose layers agree is
@@ -2923,10 +2987,10 @@ exports.handler = async (event)=>{
         if(!mfr||!code) return json(400,{error:"manufacturer and code are required"});
         const e=encodeURIComponent, now=new Date().toISOString();
         const [base,custom,ovRows,content]=await Promise.all([
-          fetchJson(`${ORDERING_BASE}/data/${e(mfr)}.json`).catch(()=>[]),
-          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=*`).catch(()=>[]),
-          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`).catch(()=>[]),
-          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=name,skus,status,category,subcategory,image&limit=5000`).catch(()=>[]),
+          catalogFile(mfr),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=*`),
+          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`),
+          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=name,skus,status,category,subcategory,image&limit=5000`),
         ]);
         const bp=(base||[]).find(x=>String(x.code)===code)||null;
         const cp=(custom&&custom[0])||null;
@@ -3003,8 +3067,8 @@ exports.handler = async (event)=>{
         const reason=["discontinued","not_offered","do_not_list","archived"].includes(String(b.reason||""))
           ? String(b.reason) : "discontinued";
         const [conn,cust]=await Promise.all([
-          connectionsFor(mfr,code).catch(()=>null),
-          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=code`).catch(()=>[]),
+          connectionsFor(mfr,code),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=code`),
         ]);
         const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`);
         let patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{});
@@ -3058,10 +3122,10 @@ exports.handler = async (event)=>{
         if(codes.length>200) return json(400,{error:"too_many", message:"Send at most 200 codes per call."});
         const e=encodeURIComponent, now=new Date().toISOString();
         const [base,customAll,ovAll,content]=await Promise.all([
-          fetchJson(`${ORDERING_BASE}/data/${e(mfr)}.json`).catch(()=>[]),
-          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`).catch(()=>[]),
-          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]),
-          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=name,skus,status&limit=5000`).catch(()=>[]),
+          catalogFile(mfr),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`),
+          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`),
+          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=name,skus,status&limit=5000`),
         ]);
         const baseBy={}; (base||[]).forEach(x=>{ baseBy[String(x.code)]=x; });
         const custBy={}; (customAll||[]).forEach(x=>{ custBy[String(x.code)]=x; });
@@ -3119,7 +3183,7 @@ exports.handler = async (event)=>{
         const mfr=b.manufacturer, code=String(b.code||"").trim();
         if(!mfr||!code) return json(400,{error:"manufacturer and code required"});
         const e=encodeURIComponent, now=new Date().toISOString();
-        const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`).catch(()=>[]);
+        const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`);
         const patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{});
         delete patch.layers_merged_at; delete patch.layers_merged_by;
         await sb("POST","product_overrides?on_conflict=manufacturer,code",
@@ -3143,10 +3207,10 @@ exports.handler = async (event)=>{
         if(pairs.length>25) return json(400,{error:"too_many", message:"Send at most 25 pairs per call."});
         const e=encodeURIComponent, now=new Date().toISOString();
         const [base,custom,ovAll,content]=await Promise.all([
-          fetchJson(`${ORDERING_BASE}/data/${e(mfr)}.json`).catch(()=>[]),
-          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`).catch(()=>[]),
-          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]),
-          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=name,skus&limit=5000`).catch(()=>[]),
+          catalogFile(mfr),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`),
+          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`),
+          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=name,skus&limit=5000`),
         ]);
         const findB=c=>(base||[]).find(x=>String(x.code)===c);
         const findC=c=>(custom||[]).find(x=>String(x.code)===c);
@@ -3186,10 +3250,10 @@ exports.handler = async (event)=>{
             const moved={links:0,media:0,featured:0};
             for(const [tbl,key] of [["product_links","links"],["product_media","media"],["featured_products","featured"]]){
               try{
-                const rows=await sb("GET",`${tbl}?manufacturer=eq.${e(mfr)}&code=eq.${e(lose)}&select=*`).catch(()=>[]);
+                const rows=await sb("GET",`${tbl}?manufacturer=eq.${e(mfr)}&code=eq.${e(lose)}&select=*`);
                 if(!rows||!rows.length) continue;
                 if(tbl!=="product_media"){
-                  const winHas=await sb("GET",`${tbl}?manufacturer=eq.${e(mfr)}&code=eq.${e(win)}&select=code&limit=1`).catch(()=>[]);
+                  const winHas=await sb("GET",`${tbl}?manufacturer=eq.${e(mfr)}&code=eq.${e(win)}&select=code&limit=1`);
                   if(winHas&&winHas.length) continue;
                 }
                 await sb("PATCH",`${tbl}?manufacturer=eq.${e(mfr)}&code=eq.${e(lose)}`,{code:win},{Prefer:"return=minimal"});
@@ -3217,15 +3281,15 @@ exports.handler = async (event)=>{
           message:`${win} is one SKU stored in two layers, not two products. Consolidate it instead of merging.`});
         const e=encodeURIComponent, now=new Date().toISOString();
         const [base,custom]=await Promise.all([
-          fetchJson(`${ORDERING_BASE}/data/${mfr}.json`).catch(()=>[]),
-          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`).catch(()=>[]),
+          catalogFile(mfr),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=*`),
         ]);
         const findB=c=>(base||[]).find(x=>String(x.code)===c);
         const findC=c=>(custom||[]).find(x=>String(x.code)===c);
         const winB=findB(win), winC=findC(win), loseB=findB(lose), loseC=findC(lose);
         if(!winB&&!winC) return json(404,{error:`winner ${win} not found`});
         if(!loseB&&!loseC) return json(404,{error:`loser ${lose} not found`});
-        const ovAll=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]);
+        const ovAll=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`);
         const ovOf=c=>{ const r=(ovAll||[]).find(x=>String(x.code)===c); return (r&&r.patch)||{}; };
         const loseOv=ovOf(lose), winOv=ovOf(win);
         // Effective value of a field on the losing record, across its layers.
@@ -3249,7 +3313,7 @@ exports.handler = async (event)=>{
            An explicit keep.name from the review screen still overrides it. */
         if(keep.name==null||keep.name===""){
           try{
-            const pc=await sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=name,skus,status&limit=5000`).catch(()=>[]);
+            const pc=await sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=name,skus,status&limit=5000`);
             const want=String(win).toUpperCase();
             for(const row of (pc||[])){
               const hit=(Array.isArray(row.skus)?row.skus:[]).find(sk=>
@@ -3276,15 +3340,15 @@ exports.handler = async (event)=>{
         const moved={links:0,media:0,featured:0};
         for(const [tbl,key] of [["product_links","links"],["product_media","media"],["featured_products","featured"]]){
           try{
-            const rows=await sb("GET",`${tbl}?manufacturer=eq.${e(mfr)}&code=eq.${e(lose)}&select=*`).catch(()=>[]);
+            const rows=await sb("GET",`${tbl}?manufacturer=eq.${e(mfr)}&code=eq.${e(lose)}&select=*`);
             if(!rows||!rows.length) continue;
-            const winHas=await sb("GET",`${tbl}?manufacturer=eq.${e(mfr)}&code=eq.${e(win)}&select=code&limit=1`).catch(()=>[]);
+            const winHas=await sb("GET",`${tbl}?manufacturer=eq.${e(mfr)}&code=eq.${e(win)}&select=code&limit=1`);
             if(tbl!=="product_media" && winHas && winHas.length) continue;   // one row per code; winner keeps its own
             await sb("PATCH",`${tbl}?manufacturer=eq.${e(mfr)}&code=eq.${e(lose)}`,{code:win},{Prefer:"return=minimal"});
             moved[key]=rows.length;
           }catch(err){ /* a clash leaves the loser's row where it is; nothing is destroyed */ }
         }
-        const orders=await sb("GET",`order_items?code=eq.${e(lose)}&select=id&limit=500`).catch(()=>[]);
+        const orders=await sb("GET",`order_items?code=eq.${e(lose)}&select=id&limit=500`);
         /* Retire the loser. A custom row is deactivated (not deleted) so its history and any
            late-arriving reference still resolve; a standard catalog product is hidden with an
            override, which is the only way to retire one without a redeploy. */
@@ -3323,7 +3387,7 @@ exports.handler = async (event)=>{
         const mfr=b.manufacturer, code=String(b.code||"").trim();
         if(!mfr||!code) return json(400,{error:"manufacturer and code required"});
         const e=encodeURIComponent, now=new Date().toISOString();
-        const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`).catch(()=>[]);
+        const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(code)}&select=patch`);
         const patch=Object.assign({},(ex&&ex[0]&&ex[0].patch)||{});
         const winner=String(patch.merged_into||"").trim();
         const carried=(patch.merged_carry&&typeof patch.merged_carry==="object")?patch.merged_carry:null;
@@ -3342,14 +3406,14 @@ exports.handler = async (event)=>{
         const returned=[], kept=[];
         if(winner && carried && Object.keys(carried).length){
           const [wOvRows,wCustom]=await Promise.all([
-            sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(winner)}&select=patch`).catch(()=>[]),
-            sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(winner)}&select=code`).catch(()=>[]),
+            sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=eq.${e(winner)}&select=patch`),
+            sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(winner)}&select=code`),
           ]);
           const same=(a,b2)=>JSON.stringify(a==null?null:a)===JSON.stringify(b2==null?null:b2);
           if(wCustom&&wCustom.length){
             const clear={};
             for(const k of Object.keys(carried)){
-              const cur=await sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(winner)}&select=${e(k)}`).catch(()=>[]);
+              const cur=await sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&code=eq.${e(winner)}&select=${e(k)}`);
               const v=cur&&cur[0]?cur[0][k]:undefined;
               if(same(v,carried[k])){ clear[k]=null; returned.push(k); } else kept.push(k);
             }
@@ -3379,10 +3443,10 @@ exports.handler = async (event)=>{
         if(!mfr) return json(400,{error:"manufacturer required"});
         const e=encodeURIComponent;
         const [ovRows,custom,base,pages]=await Promise.all([
-          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch,updated_at`).catch(()=>[]),
-          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code,name,base_price,msrp,active`).catch(()=>[]),
-          fetchJson(`${ORDERING_BASE}/data/${e(mfr)}.json`).catch(()=>[]),
-          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=page_key,name,status,disabled,skus&limit=5000`).catch(()=>[]),
+          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch,updated_at`),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code,name,base_price,msrp,active`),
+          catalogFile(mfr),
+          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=page_key,name,status,disabled,skus&limit=5000`),
         ]);
         const nameOf=c=>{ const cu=(custom||[]).find(x=>String(x.code)===c);
           if(cu&&cu.name) return String(cu.name);
@@ -3444,8 +3508,8 @@ exports.handler = async (event)=>{
            removed: added rows still held the string. Both layers are cleared now, so the
            heading actually disappears and the subcategory map decides. */
         const [ovAll,custAll]=await Promise.all([
-          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]),
-          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code,category`).catch(()=>[]),
+          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code,category`),
         ]);
         /* `only` narrows it to the pins holding one doomed heading in place — used when a
            category is being emptied, so the rest of the pins are left exactly as they are. */
@@ -3554,10 +3618,10 @@ exports.handler = async (event)=>{
         const mfr=b.manufacturer; if(!mfr) return json(400,{error:"manufacturer required"});
         const e=encodeURIComponent;
         const [base,custom,ovRows,content]=await Promise.all([
-          fetchJson(`${ORDERING_BASE}/data/${e(mfr)}.json`).catch(()=>[]),
-          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code,name,active`).catch(()=>[]),
-          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`).catch(()=>[]),
-          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=page_key,name,status,skus,variant_group`).catch(()=>[]),
+          catalogFile(mfr),
+          sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code,name,active`),
+          sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`),
+          sb("GET",`product_content?manufacturer=eq.${e(mfr)}&select=page_key,name,status,skus,variant_group`),
         ]);
         const ov={}; (ovRows||[]).forEach(o=>{ ov[String(o.code)]=o.patch||{}; });
         const live=[];
@@ -3579,10 +3643,10 @@ exports.handler = async (event)=>{
         });
         const e2=encodeURIComponent;
         const [lnkRows,medRows,featRows,ordRows]=await Promise.all([
-          sb("GET",`product_links?manufacturer=eq.${e2(mfr)}&select=code`).catch(()=>[]),
-          sb("GET",`product_media?manufacturer=eq.${e2(mfr)}&select=code`).catch(()=>[]),
-          sb("GET",`featured_products?manufacturer=eq.${e2(mfr)}&select=code,active`).catch(()=>[]),
-          sb("GET",`order_items?select=code&limit=5000`).catch(()=>[]),
+          sb("GET",`product_links?manufacturer=eq.${e2(mfr)}&select=code`),
+          sb("GET",`product_media?manufacturer=eq.${e2(mfr)}&select=code`),
+          sb("GET",`featured_products?manufacturer=eq.${e2(mfr)}&select=code,active`),
+          sb("GET",`order_items?select=code&limit=5000`),
         ]);
         const cnt=(rows,f)=>{ const m={}; (rows||[]).forEach(r=>{ if(f&&!f(r)) return;
           const c=String(r.code||""); if(c) m[c]=(m[c]||0)+1; }); return m; };
@@ -3682,7 +3746,7 @@ exports.handler = async (event)=>{
             message:"Prices for this line come from the legacy layers again."});
         }
         const any=await sb("GET",
-          `product_skus?manufacturer=eq.${encodeURIComponent(slug)}&select=code&limit=1`).catch(()=>[]);
+          `product_skus?manufacturer=eq.${encodeURIComponent(slug)}&select=code&limit=1`);
         if(!(any && any.length))
           return json(409,{error:"not_migrated",
             message:`${slug} has no rows in product_skus. Run reconcile with apply:true first — switching authority on now would empty the line.`});
@@ -3836,7 +3900,7 @@ exports.handler = async (event)=>{
         if(members.length<2) return json(400,{error:"members[] required — a decision needs the products it is about"});
         const e=encodeURIComponent, now=new Date().toISOString();
         const inList="("+members.map(c=>'"'+c.replace(/"/g,'\\"')+'"').join(",")+")";
-        const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=in.${e(inList)}&select=code,patch`).catch(()=>[]);
+        const ex=await sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&code=in.${e(inList)}&select=code,patch`);
         const have=Object.fromEntries((ex||[]).map(r=>[String(r.code),r.patch||{}]));
         const rows=members.map(code=>{
           const patch=Object.assign({},have[code]||{});

@@ -470,6 +470,7 @@ async function cpLoadLine(dealerId){
     const cr=await fetch("/.netlify/functions/catalog-api?manufacturer="+encodeURIComponent(slug),{headers:h});
     if(cr.status===401){ lock(); return; }
     const cj=await cr.json().catch(()=>({}));
+    if(!cr.ok||cj.error) throw new Error(cj.message||cj.error||("catalog HTTP "+cr.status));   // an unread catalog is not an empty one
     const prods=[...(cj.products||[]),...((cj.custom||[]).map(c=>({code:c.code,name:c.name,base_price:c.base_price})))].filter(p=>p&&p.code);
     const pj=await post({action:"list_contract_prices",dealer_id:dealerId});
     const over={}; (pj.prices||[]).filter(r=>r.manufacturer===slug).forEach(r=>over[r.code]=Number(r.price));
