@@ -685,6 +685,24 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   (images-api writes the page/SKU/catalog record, never `product_images`); on a multi-SKU product it
   asks "whole product or this SKU". `product_images` is legacy: migrated by `migrate_legacy`
   (dry run first; a collision with an approved primary is never auto-replaced), then kept read-only.
+- **Gallery with no photo marked main (agreed 2026-10-08; code staged, deploys with the next Phase 2 shop/admin release):** the page's own image is the main photo,
+  even if it is not in the gallery (it is what dealers were shown); only a page with no image falls
+  back to the gallery's first photo. A photo the person deletes in Enrichment is never brought back.
+  The same rule lives in images-api, product-content, _catalog-join and the shop (`pageImageFor`).
+- **Part numbers match exactly in the catalog layers.** An override / added row applies to the
+  exact `code` it was written for, as the storefront does — a switched-off lower-case legacy row
+  ("fcom-02") never hides its upper-case twin. (Enrichment SKU lists still match case-insensitively.)
+- **Visible ≠ sellable (agreed 2026-10-08; code staged, deploys with the next Phase 2 shop/admin release).** Page status published/active = visible and orderable;
+  **discontinued = visible for reference (content, documents, related products) but nothing on it
+  can be ordered**; hidden or disabled = removed. A SKU entry marked discontinued is shown as
+  "Discontinued" and cannot be ordered; hidden/Off removes it. Partner 360 (`VISIBLE_STATUSES`),
+  the admin join (`visible` / `sellable`), the structure audit, the completion board (its own
+  "Discontinued" count, outside the percentage, like Retired) and server pricing (refuses
+  `_discontinued`) all use this one definition. Catalog-level Retire/Discontinue in Product Catalog
+  still removes a SKU from Partner 360 entirely.
+- **Quantity pooling follows an explicit commercial family, never presentation grouping** (agreed
+  2026-10-08). Until a `tier_family` exists in the commercial master, dealer pricing keeps pooling by
+  the catalog `group`; do not switch pooling to product pages.
 - **No broken images on dealer pages (standing rule):** every product image has an `onerror`
   placeholder; a failed thumbnail leaves the strip.
 - **Old Partner 360 `/admin` pages** are contained with temporary redirects to the main admin; their
