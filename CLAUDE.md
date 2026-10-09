@@ -823,6 +823,18 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   Images, Featured, Structure Map and the admin resolver, server price check unchanged, parity drift
   0) and `record_authoritative=true` was set; the storefront now prices it from product_skus with
   0 differences. Commercial edits on this line go to the record (the canonical path already does).
+- **Strongback decisions (Angelo, 2026-10-09).** Rev C is the commercial authority. 2+ mix-and-match
+  covers the MODELS only: 1003AB, 1012AB, 1017, 1007AB, 1010AB, 1019, 1036DB, ES0001, R0001; 8+
+  stays per SKU. Accessories (incl. A1000/A1001) never pool, not even with each other. Pooling is
+  threshold-specific: a price break may name its family (`pool`), a break without one counts the
+  SKU alone; a product with no family keeps today's behaviour, so Ovation pooling is untouched.
+  RC100 is `not_listed` ("Not offered on current Strongback Dealer Pricing 2026 Rev C"), NOT
+  discontinued; history kept, restorable. Accessory freight is "$15 per box — box definition
+  pending"; today's free freight stays until the box rule is confirmed, and it is a known Strongback
+  activation exception (freight is not complete). No speculative box logic.
+- **4900-Wrap corrected (2026-10-09):** $19.50 / 2–5 $15.95 / 6–10 $12.95 / 11–20 $9.90 / 21+ $9.95,
+  no MSRP (`msrp_auto:false`); provenance on the record notes the source's "5-10" column normalised
+  to 6–10. Ovation parity 0 drift; Ovation authority still waits on its other checks.
 - **tier_family (approved concept, 2026-10-09):** commercial pooling will use an explicit pricing
   family in the commercial master, not pages or display groups — but no one-field version until
   the Strongback threshold question is answered (a single family field would pool 2+ AND 8+).
