@@ -3732,6 +3732,44 @@ exports.handler = async (event)=>{
          not at all — the ordering IS the safety property.
          Turning it OFF is unconditional and instant: the layers are still being
          maintained underneath, so falling back is always safe. */
+      /* PROVENANCE ON THE MASTER RECORD (agreed 2026-10-09). Which approved manufacturer file a
+         record's commercial values come from, and the date it takes effect. Record-only: it
+         never writes a layer and never changes a price, MAP, MSRP, tier or status, so nothing a
+         dealer sees can move. Strict: an unreadable record, a code with no record, or a code
+         whose record is not active is refused before anything is written, and the answer lists
+         exactly which rows were stamped. */
+      if(b.action==="set_record_provenance"){
+        const mfr=String(b.manufacturer||"").trim(), e=encodeURIComponent;
+        const file=String(b.source_file||"").trim(), eff=String(b.effective_date||"").trim();
+        if(!mfr||!file) return json(400,{error:"manufacturer and source_file required"});
+        if(eff && !/^\d{4}-\d{2}-\d{2}$/.test(eff)) return json(400,{error:"effective_date must be YYYY-MM-DD"});
+        const codes=Array.isArray(b.codes)?b.codes.map(c=>String(c||"").trim()).filter(Boolean):[];
+        if(!codes.length) return json(400,{error:"codes required (the codes the source file lists)"});
+        let rows;
+        try{ rows=await sb("GET",`product_skus?manufacturer=eq.${e(mfr)}&select=code,code_norm,status,source_file,effective_date&limit=10000`); }
+        catch(err){ return json(503,{error:"layer_unreadable",message:String((err&&err.message)||err)}); }
+        const byNorm={}; (rows||[]).forEach(r=>{ byNorm[r.code_norm||normCode(r.code)]=r; });
+        const missing=[], inactive=[];
+        for(const c of codes){ const r=byNorm[normCode(c)]; if(!r) missing.push(c); else if(r.status!==LIVE_STATUS) inactive.push(c); }
+        if(missing.length||inactive.length) return json(409,{error:"not_stamped",missing,inactive,
+          message:"Every listed code must have an active master record. Nothing was written."});
+        if(b.dry_run===true) return json(200,{ok:true,dry_run:true,would_stamp:codes.length,
+          before:codes.map(c=>{ const r=byNorm[normCode(c)]; return {code:r.code,source_file:r.source_file||null,effective_date:r.effective_date||null}; })});
+        const now=new Date().toISOString(), by=String((me&&me.email)||b.reviewer||"admin").slice(0,80);
+        const stamped=[];
+        for(const c of codes){
+          const r=byNorm[normCode(c)];
+          try{
+            await sb("PATCH",`product_skus?manufacturer=eq.${e(mfr)}&code_norm=eq.${e(normCode(c))}`,
+              {source_file:file.slice(0,160), effective_date:eff||null, updated_at:now, updated_by:by},{Prefer:"return=minimal"});
+            stamped.push(r.code);
+          }catch(err){
+            return json(502,{error:"provenance_incomplete",stamped,failed:r.code,message:String((err&&err.message)||err)});
+          }
+        }
+        return json(200,{ok:true,stamped,source_file:file,effective_date:eff||null});
+      }
+
       if(b.action==="set_record_authority"){
         const slug=String(b.manufacturer||"").trim();
         if(!slug) return json(400,{error:"manufacturer required"});

@@ -793,6 +793,16 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     UNCONFIRMED, so Strongback quantities are not pooled yet. Freight facts (wheelchairs and
     rollators ship included; accessories $15 per box) wait for the Manufacturer/Freight Center —
     no second freight authority.
+- **Provenance lives on the master record (agreed 2026-10-09).** `catalog-api set_record_provenance`
+  stamps `source_file` / `effective_date` on the product_skus rows a source file lists — record-only,
+  never a price, MAP, MSRP, tier, status or layer. Every listed code must have an ACTIVE record or
+  nothing is written; `dry_run:true` shows the current provenance first.
+- **Climbing Steps is the first record-authoritative line (2026-10-09).** Gold Standard passed
+  against the 9/8/2026 workbook (21/21 price/MAP/MSRP, 0 structure faults, 0 true duplicates,
+  approved MP-P08 / MS-P02-GEN photos, images and categories identical across Partner 360, Product
+  Images, Featured, Structure Map and the admin resolver, server price check unchanged, parity drift
+  0) and `record_authoritative=true` was set; the storefront now prices it from product_skus with
+  0 differences. Commercial edits on this line go to the record (the canonical path already does).
 - **tier_family (approved concept, 2026-10-09):** commercial pooling will use an explicit pricing
   family in the commercial master, not pages or display groups — but no one-field version until
   the Strongback threshold question is answered (a single family field would pool 2+ AND 8+).
