@@ -11,8 +11,13 @@
     'academy_course_versions','academy_modules','academy_lessons','academy_questions','academy_media','product_facts',
     'academy_content_refs','academy_enrollments','academy_progress','academy_attempts','academy_certificates',
     'academy_external_certs','academy_events'];
+  // Control: the key must work on something that IS public, or a wrong key would look like "blocked".
+  const c = await fetch(`${URL}/rest/v1/product_content?select=page_key&limit=1`, { headers: H });
+  if (c.status !== 200) return console.log(`KEY NOT ACCEPTED (HTTP ${c.status}) — this is not the right public key; nothing was tested. ` + (await c.text()).slice(0, 200));
+  console.log('Control passed: the public key works on a public table (HTTP 200). Probing the Academy…');
   const rows = []; let open = 0;
-  const blocked = (s, body) => s === 401 || s === 403 || /42501/.test(body);
+  // Blocked = refused for lack of permission (Postgres code 42501), not just any error.
+  const blocked = (s, body) => (s === 401 || s === 403) && /42501|permission denied/i.test(body);
   for (const t of tables) {
     const r = await fetch(`${URL}/rest/v1/${t}?select=*&limit=1`, { headers: H }); const b = await r.text();
     const w = await fetch(`${URL}/rest/v1/${t}`, { method: 'POST', headers: { ...H, 'Content-Type': 'application/json' }, body: '{}' });
@@ -33,5 +38,5 @@
   const pubOk = pub.status !== 200; if (!pubOk) open++;
   rows.push({ check: 'storage: public file URL', read: pub.status, write: '', result: pubOk ? 'BLOCKED' : 'OPEN!!', detail: '' });
   console.table(rows);
-  console.log(open === 0 ? `ALL ${rows.length} CHECKS BLOCKED` : `${open} CHECK(S) OPEN — stop and send this table`);
+  console.log(open === 0 ? `ALL ${rows.length} CHECKS BLOCKED (key verified)` : `${open} CHECK(S) OPEN — stop and send this table`);
 })();
