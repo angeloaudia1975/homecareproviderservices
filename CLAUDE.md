@@ -946,6 +946,21 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   Brace, Flex Power Plus, Tri-Mod, Premium Plus Back); Ovation freight terms; 21 legacy photo collisions.
   Pooling families mixing different prices or products (night splint + strap, single + 10-pack extension belt,
   casting-tape widths with black split out, gauze sizes) are UNCONFIRMED by Ovation — kept exactly as they are.
+- **Ovation decisions (Angelo, 2026-10-10).** UNITS: `Each` (= one manufacturer orderable unit, never an implied
+  inner count) unless the approved source/product name states a pack; "12 Rolls" items → `12-roll pack`, case_qty 12
+  (cohesive wrap, conforming gauze, elastic bandage, cast padding — 15); 61000-210 → `10-pack` ×10; nitrile gloves →
+  `Box` ×100 (the 100/box is in HCPS's catalog names, not the 2026 price list); gauze sponges / casting tape → Each,
+  no case_qty, until Ovation supplies a U/M or case-pack sheet (use manufacturer U/M where Ovation publishes it).
+  Written to all 303 active records; provenance "2026 ovation medical pricelist 1092026.xlsx", effective 2026-10-09,
+  on 303/303. 4900 items → Knee / Knee Braces & Supports. The 18 retired codes still on the 2026 list stay RETIRED —
+  a current price is not authorization to reactivate (that is a separate business decision). Freight stays
+  "calculated / confirmed by HCPS" until Ovation dealer freight terms exist. The 21 legacy photo collisions stay
+  unused and undeleted; a legacy photo joins a gallery only if it is the same product, a useful extra view, equal or
+  better quality and not redundant. Pooling families that mix prices/products are recorded as **"Manufacturer
+  pooling confirmation pending — current dealer behavior preserved"** and change only on Ovation's written
+  confirmation. 30000S strap photo: manufacturer-owned image preferred, verified to show the strap, rehosted; never a
+  reseller image without Angelo's approval; if none exists, stop and ask — Ovation's page lists 30000S as text only
+  (its "detail" photo is the splint's own stretch-indicator strap, not the accessory), so the photo is with Angelo.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
