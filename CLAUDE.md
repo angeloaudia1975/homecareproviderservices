@@ -1153,6 +1153,15 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   Privileges: anon/authenticated 0 on all 6 tables, the sequence and all 10 functions; service_role 24/24 + 10/10;
   public key → 401 / 42501 on every table and RPC (rule 19 outside check). 0 enrolled, 0 batches, switches OFF; live
   previews (Strongback, PediFix, ABM, AirAvant; PediFix + Ovation commission) still use today's import, nothing written.
+  **Part 2 DONE 2026-10-10** (approved by Angelo; file on main, sha256 93499283…, run verbatim — the dialog flagged only
+  the temp table `mi1a_before`): 143/143 Strongback sales_report rows re-keyed to v2 with order_key/line_key/line_hash,
+  143 distinct keys = the D5 dry-run keys exactly; `mi1a_rekey_backup` 143 rows = the old keys exactly (RLS on, no
+  policies, anon/authenticated 0, service_role 4/4, public key 401/42501); enrolment = strongback-mobility/sales_report
+  only. A1: D7 fingerprint dde7a2ce… unchanged (11,997 rows, $10,802,558.50 / $493,077.06); B1: 26 dealer rows,
+  $43,021.50 / $3,871.94, per-dealer fingerprint unchanged; dealer/rep/channel attribution of every row unchanged;
+  every other row's key untouched; 0 batches, 0 superseded; switches OFF. **Strongback Sales Report Import now
+  answers 409 `import_paused` until `mi_import_v2` is turned on (by design — the write guard protects its rows);**
+  every other manufacturer's sales import and all commission imports (incl. Strongback) still use today's path.
 - **Tests:** `test/mi1a-identity.pg.test.js` (runs the committed SQL in Postgres, bigint + uuid ids),
   `test/mi1a-compat.test.js` + `.mutants.js` (other manufacturers unaffected; switches; alias guard).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
