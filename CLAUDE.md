@@ -1145,6 +1145,14 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   `mi1a_rekey_backup` (Part 2); RLS on, no policies; the owner and `service_role` keep select/insert/update/delete.
   No MI-1a function is executable by PUBLIC / anon / authenticated either (service_role only), so the write guard
   fails closed for an ordinary-user write to `monthly_sales`. Any new MI table or function gets the same treatment (RULE 19).
+  **Part 1 DONE 2026-10-10** (approved by Angelo; file on main ed2a6a1, sha256 a8cf4849…; run verbatim — Supabase's
+  "potential issues" dialog answered "Run without RLS" so nothing was added to the file, which enables RLS itself):
+  4 tables + 4 nullable monthly_sales columns (all empty) + 10 functions + trigger `hcps_ms_write_guard` installed,
+  `hcps_commission_month_apply` absent; 11,997 rows, fingerprint dde7a2ce…, $10,802,558.50 / $493,077.06, Strongback
+  143 / $43,021.50 / $3,871.94 unchanged; live = snapshot row-for-row; both snapshot tables byte-identical to before.
+  Privileges: anon/authenticated 0 on all 6 tables, the sequence and all 10 functions; service_role 24/24 + 10/10;
+  public key → 401 / 42501 on every table and RPC (rule 19 outside check). 0 enrolled, 0 batches, switches OFF; live
+  previews (Strongback, PediFix, ABM, AirAvant; PediFix + Ovation commission) still use today's import, nothing written.
 - **Tests:** `test/mi1a-identity.pg.test.js` (runs the committed SQL in Postgres, bigint + uuid ids),
   `test/mi1a-compat.test.js` + `.mutants.js` (other manufacturers unaffected; switches; alias guard).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
