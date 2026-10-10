@@ -99,6 +99,23 @@ for (const idType of ['bigint', 'uuid']) {
       assert.throws(() => run(DB, `set role anon; select count(*) from public.mi1a_rekey_backup`), /permission denied/);
       assert.ok(!/=true/.test(privOf(DB, PRIV_TABLES)), 'Part 2 left the Part 1 tables closed');
     });
+    t('MI-1a functions: not callable by anon/authenticated (RULE 19); service_role runs imports and the guard', () => {
+      const fns = run(DB, `select string_agg(p.oid::regprocedure::text||':'||r||'='||has_function_privilege(r,p.oid,'execute')::text, ',' order by 1)
+        from pg_proc p, unnest(array['anon','authenticated']) r where p.pronamespace='public'::regnamespace
+         and (p.proname like 'hcps_ms_%' or p.proname in ('hcps_sales_report_apply','hcps_commission_file_apply','hcps_import_batch_rollback'))`);
+      assert.strictEqual((fns.match(/:/g) || []).length, 20, '10 functions × 2 roles: ' + fns);
+      assert.ok(!/=true/.test(fns), 'an ordinary role can execute: ' + fns);
+      assert.throws(() => run(DB, `set role anon; select public.hcps_ms_guarded('strongback-mobility','sales_report',null)`), /permission denied/);
+      assert.throws(() => run(DB, `set role authenticated; select public.hcps_sales_report_apply('{}'::jsonb)`), /permission denied/);
+      // service_role: the guard runs on its writes (non-enrolled row passes, enrolled row is refused) …
+      run(DB, `set role service_role; insert into monthly_sales(manufacturer,period,amount,source,external_ref) values ('pedifix','2026-10-01',1,'sales_report','pedifix|svc|0'); delete from monthly_sales where external_ref='pedifix|svc|0'`);
+      assert.throws(() => run(DB, `set role service_role; insert into monthly_sales(manufacturer,period,amount,source,external_ref) values ('strongback-mobility','2026-10-01',1,'sales_report','strongback-mobility|svc|0')`), /mi1a_write_guard/);
+      // … and the import functions run for it (a preview writes nothing).
+      const before = run(DB, SNAP);
+      const r = run(DB, `set role service_role; select hcps_sales_report_apply(jsonb_build_object('manufacturer','strongback-mobility','apply',false,'actor','t','rows','[]'::jsonb))::text`);
+      assert.ok(/\{/.test(r), 'service_role preview returned ' + r);
+      assert.strictEqual(run(DB, SNAP), before);
+    });
     t('behaviour checks (test/mi1a/checks.sql) all pass', () => {
       const out = file(DB, CHECKS);
       const ok = (out.match(/ok {3}/g) || []).length;

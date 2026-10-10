@@ -1116,7 +1116,8 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   PUBLIC) hold NO privileges on `mi1a_snapshot_monthly_sales`, `mi1a_snapshot_meta`, `mfr_report_batches`,
   `monthly_sales_superseded` (+ its id sequence), `commission_period_locks`, `mi1a_enrollment` (Part 1) and
   `mi1a_rekey_backup` (Part 2); RLS on, no policies; the owner and `service_role` keep select/insert/update/delete.
-  Any new MI table gets the same treatment in its own migration.
+  No MI-1a function is executable by PUBLIC / anon / authenticated either (service_role only), so the write guard
+  fails closed for an ordinary-user write to `monthly_sales`. Any new MI table or function gets the same treatment (RULE 19).
 - **Tests:** `test/mi1a-identity.pg.test.js` (runs the committed SQL in Postgres, bigint + uuid ids),
   `test/mi1a-compat.test.js` + `.mutants.js` (other manufacturers unaffected; switches; alias guard).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
