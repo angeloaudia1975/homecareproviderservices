@@ -974,6 +974,47 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   Still open (not blockers): manufacturer pooling confirmation pending on the mixed-price families; 31 same-name
   master records and 56 option tidiness notes (dealer labels verified distinct). Climbing Steps, Strongback and
   Ovation are all Gold Standard — Bemis may be planned once Angelo reviews this report.
+- **Three lines Gold Standard; no further changes without a regression (2026-10-10).** Climbing Steps, Strongback
+  and Ovation are complete and authoritative from product_skus — change them only to fix a regression.
+- **Manufacturer Center orchestrates; it is not a second database or pricing engine (agreed 2026-10-10).** It guides
+  a manufacturer from source files to Gold Standard through the EXISTING systems — Structure Map (organisation),
+  Product Content Enrichment (identity/content/images), product_skus (commercial master), Partner 360 (dealer
+  output) — using their existing actions (stage_record_source, set_record_provenance, rename_code, save_override
+  canonical edit, set_record_authority, product-content, images-api, manufacturers.json). Workflow: Upload sources →
+  Extract → Match SKUs → Review conflicts → Structure/content/images → Commercial rules → Freight/UOM → Stage master →
+  Compare dealer output → Approve → Activate → Verify. Only new storage allowed: a metadata register of source files.
+  Bemis is the pilot; **no Bemis production writes until Angelo approves the pilot plan.**
+- **Bemis audit (2026-10-10, read-only).** Bemis is ALREADY `record_authoritative=true` (10 product_skus rows, 9 active,
+  parity 0) but was never Gold-Standard checked: no source file / provenance, no MAP, no enrichment pages (9
+  unassigned SKUs), case prices 1¢ off unit × case on two seats, per-unit MSRP shown beside per-case prices, "2/CS"
+  unit labels. Sources held: 2026 dealer application (Terms of Agreement eff. 2022-03-01: case-quantity ordering,
+  $10/line less-than-case, $500 prepaid-freight minimum else +$40 S&H, MAP policy, 2/10 net 30), 2026 Bath Safety
+  catalog (item numbers, no prices), 2026 Assurance display program. **No Bemis price list held; the $20 dropship
+  charge appears in no Bemis source** — not implemented. Authority flag left as is pending Angelo's decision.
+- **Bemis pilot decisions (Angelo, 2026-10-10).** Pilot plan and 12-step Manufacturer Center APPROVED, with two
+  human gates (conflict/business-rule approval; final activation approval). Bemis `record_authoritative` switched
+  OFF (it had never been validated against a source) and stays OFF until Bemis passes the full process. Today's
+  Bemis prices, MSRP and packaging are legacy/current-state data, NOT manufacturer truth: do not "fix" the 1¢ case
+  prices, per-unit MSRP beside case price, "2/CS" wording, Steadfast case qty, display-kit UOM, MAP or 7Y… mapping
+  until the source pack settles them. Keep 7Y… codes; manufacturer item numbers become aliases; renames are a
+  separate approved action. Freight wording keeps Bemis's terms: "$500 minimum for prepaid freight; below $500,
+  +$40 shipping & handling" (never "free freight" in provenance). The $10 less-than-case fee is recorded, not
+  coded, until the storefront can create a less-than-case order. The $20 dropship fee is NOT valid unless Bemis
+  confirms it in writing. No Bemis enrichment pages until the source pack and SKU matching are done; existing nine
+  photos may stay meanwhile, official Bemis assets win when supplied, all hosted by HCPS. Before the files arrive
+  only the read-only Manufacturer Center framework may be built (source register, metadata/effective date/
+  supersedes, extraction preview, saved column mapping, SKU-match proposals, conflict queue, dry-run comparison).
+  Human approval required for: source selection, source conflicts, dealer-facing price changes, MAP/MSRP
+  interpretation, UOM/case where sources disagree, aliases/renames, active/retired, pooling, freight and fees,
+  third-party imagery, the final canonical edit, authority activation. A failed/unreadable source fails loudly.
+- **Bemis Digital Price List 2026 received (2026-10-10, not yet approved as the source).** Model numbers = the 9 HCPS
+  7Y… codes; MSRP = MAP per unit on every row; case packs 2/4/3. On every case row "Dealer Cost Per Unit" is exactly
+  $10.00 above Master Case Cost ÷ case qty — question for Bemis before anything is staged. No effective date,
+  freight, dropship or breaks on the list; Steadfast and the display kit have no case qty.
+- **Turning authority OFF can change display even at parity 0 (learned 2026-10-10, Bemis).** The parity gate does not
+  compare uom/case_qty: the record held case_qty 2, the catalog file holds the text "2/CS", so with authority off the
+  storefront lost "per 2/CS · Dealer order unit = 1 2/CS (2 each)". Before switching authority either way, compare the
+  storefront's full rendered output (fields + price block), not only prices.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
