@@ -58,6 +58,8 @@ select jsonb_build_object(
                               ((coalesce(qual,'') || coalesce(with_check,'')) like '%bucket_id%')::text order by policyname), '[]')
                          from pg_policies where schemaname = 'storage' and tablename = 'objects')),
   'event_triggers', (select coalesce(jsonb_agg(evtname || ' ' || evtevent), '[]') from pg_event_trigger),
+  'storage_bucket_triggers', (select coalesce(jsonb_agg(tgname order by tgname), '[]') from pg_trigger
+                              where tgrelid = 'storage.buckets'::regclass and not tgisinternal),
   'security_baseline', jsonb_build_object(
      'order_items_policies', (select string_agg(policyname, ',' order by policyname) from pg_policies where schemaname='public' and tablename='order_items'),
      'views_anon_select', (select jsonb_object_agg(v, case when to_regclass('public.' || v) is null then null

@@ -29,6 +29,8 @@ begin
     raise exception 'academy-private still holds files. Remove them through Storage first.';
   end if;
 end $$;
+-- Supabase blocks direct deletes on storage tables unless this session flag is set (no effect elsewhere).
+set local storage.allow_delete_query = 'true';
 delete from storage.buckets where id = 'academy-private';
 
 delete from public.app_settings where key = 'academy';
