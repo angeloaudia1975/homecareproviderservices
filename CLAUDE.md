@@ -1037,6 +1037,66 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   `msrp_each:true` on a pack row (catalog file) labels MSRP "each" and compares it with case price ÷ qty; a pack
   MSRP quoted per pack (Ovation) carries no flag and is unchanged. Unchanged: $500 prepaid freight / +$40 S&H below
   $500, $10 less-than-case fee recorded not coded, $20 dropship on HOLD, 7Y codes, retired DO5300RD444.
+- **Bemis Gold Standard COMPLETE (2026-10-10, ~15:00 CT).** `record_authoritative=true` after the final pre-activation
+  check (9/9 source-aligned, parity 0 normal + strict, browser = server on 7 carts, freight $499.99/$500.00/$500.01 =
+  $40 / prepaid / prepaid, no Bemis contract prices or saved carts, retired DO5300RD444 refused, Ovation/Strongback/
+  Climbing Steps fingerprints identical). Post-activation: Bemis prices from the record with 0 differences; the only
+  field that moved is 444DISPLAY uom "" → "Display" (approved; shows only in the HCPS email). Do not change Bemis again
+  unless a regression is found or Bemis sends a new source (Manufacturer Center flow). Open: manufacturer effective
+  date (pending, not a blocker); no Bemis enrichment pages yet (catalog_audit lists 9 "needs SKU review" for that
+  reason only).
+- **FROZEN: Climbing Steps, Strongback, Ovation and Bemis (Angelo, 2026-10-10 15:13).** All four are Gold Standard
+  COMPLETE and record-authoritative. No commercial, content, image, category, UOM, freight or wording change to any
+  of them unless a regression is found (then: show the regression, propose the fix, wait for approval) or the
+  manufacturer sends a new source (Manufacturer Center flow, two human gates). A shared code change must prove zero
+  dealer-facing change on all four (full-field fingerprint before/after). Do not start another manufacturer until
+  Angelo says so.
+- **Bemis product pages were intentionally DEFERRED (Angelo, 2026-10-10).** Bemis has no enrichment pages by decision;
+  catalog_audit's 9 "needs SKU review" for Bemis reflects that deferral only and is NOT a Gold Standard regression.
+  Pages come later from manufacturer-supported families/content, with a structure/content/image proposal first.
+- **Manufacturer Center lessons from the Bemis pilot (2026-10-10).** (1) Compare the FULL rendered output (fields +
+  price block + cart + both emails), not only prices — parity covers base/msrp/map/tiers, not uom/case_qty, wording
+  or freight labels. (2) Keep manufacturer facts and HCPS interpretations apart: price_imports holds the file as
+  received (raw columns untouched) plus `_hcps_*` notes; product_skus holds the decision. (3) Two dates, never one:
+  received vs manufacturer effective. (4) Never derive one price from another (unit vs case); store both as given.
+  (5) Manufacturer wording is data (freight labels, MSRP basis), never a global code change — Ovation and Bemis quote
+  pack MSRP differently. (6) A staging row that omits a field must not blank it — send unchanged UOMs explicitly.
+  (7) The catalog file and the override layer must both be corrected before authority switches either way, or the
+  storefront changes when the flag moves. Needed as structured fields: unit cost, received date, MSRP/MAP basis,
+  freight terms per source.
+- **Manufacturer Center Phases 1–3 (approved by Angelo 2026-10-10; one release, run and verified in order — a
+  failure stops it).** Manufacturer Center orchestrates Structure Map / Content Enrichment / product_skus /
+  Partner 360; it is never a second product database or pricing engine. Decisions:
+  (1) **Freight terms** live in `manufacturer_meta.freight_terms` (merged over manufacturers.json from Phase 5); every
+  rule set carries `trace` {source_id and/or decision_id} — a CHECK refuses untraced terms.
+  (2) **`product_skus.dealer_unit_cost`** = the accepted manufacturer per-piece cost; the raw value stays in
+  `price_imports.raw`. Never dealer-facing, never used to calculate a dealer price. `msrp_basis` / `map_basis`
+  (`each` | `order_unit` | null = today's rule) are recorded now and read by the storefront only from Phase 4.
+  (3) **Source files** go to the private bucket `mfr-sources`; SHA-256 in `mfr_sources`. A new source must have a
+  received date (legacy backfills are flagged `legacy`, never given an invented date); `effective_date_status`
+  stated|pending|not_applicable, and "stated" exists exactly when the manufacturer date does.
+  (4) **The freeze is a hard block** at two levels: catalog-api `freezeGate` refuses every commercial action on a
+  `manufacturer_meta.frozen` line before writing (423 line_frozen), and the database trigger `mfr_freeze_guard`
+  refuses the write itself whatever path sends it (catalog-api, images tool, the ordering site's old catalog
+  endpoint, hand-run SQL). The only override is an unused `mfr_decisions` row of kind `regression_fix` for that
+  line, sent as `regression_fix:{decision_id, reason}` (catalog-api forwards it as header x-hcps-regression-fix and
+  marks it used after success). No silent unfreeze; authority and freight terms of a frozen line are guarded too.
+  Hand SQL on a frozen line: record the decision, then `select set_config('request.headers','{"x-hcps-regression-fix":"<id>"}', true);`
+  in the same transaction. `mfr_freeze_guard_selftest()` (catalog-api `mc_guard_selftest`) tries one write per
+  table per frozen line inside rolled-back sub-transactions and must report every attempt "blocked".
+  (5) **Safe staging** (stage_record_source): a field a source row omits is KEPT; a value is cleared only when listed
+  in `clear` AND `clear_decision_id` names a decision of that line; the dry run reports per SKU changed / unchanged /
+  would_clear / not_in_source; a new file never inherits the old file's effective date; `source_id` must be an
+  accepted source of the line.
+  (6) **Verification = `mc_verify`, not parity alone**: server copies of the storefront engine and card/freight
+  rendering are re-extracted from the LIVE index.html every run (`_extract.js`; mismatch = fail); full-field parity
+  (price, MSRP, MAP, tiers, UOM, case qty); source alignment vs price_imports + decisions; product-card rules;
+  cart pack line; browser = server on every SKU and the closest real carts either side of each freight threshold;
+  freight fee + wording at −1¢/exact/+1¢; dealer confirmation and HCPS email rendered (nothing sent); contract and
+  saved-cart impact; retired SKUs refused; every image loads; the line fingerprint (same canonical lines as the
+  Partner 360 browser fingerprint) against the last passing baseline. Evidence saved in `mfr_verification_runs`.
+  `_shop_render.js` / `_hcps_email.js` are verbatim copies — regenerate with `node test/mc-copies.js`, never by hand.
+  Rule 19 applies to every MC object (RLS on, no policies, revoked from public/anon/authenticated, public-key check).
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
@@ -1112,6 +1172,43 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   rows. Daily backup 10 Oct 09:10 UTC was present. Part 1 / Part 2 not run; both MI switches OFF. Migrations run in the
   Supabase SQL editor itself (its Run button) with the committed file pasted verbatim and its sha256 checked in the
   editor first — the read-only query helper wraps statements and cannot run DDL.
+- **MI-1a tables are closed to ordinary app users (approved 2026-10-10, Part 1 rev 3).** `anon` / `authenticated` (and
+  PUBLIC) hold NO privileges on `mi1a_snapshot_monthly_sales`, `mi1a_snapshot_meta`, `mfr_report_batches`,
+  `monthly_sales_superseded` (+ its id sequence), `commission_period_locks`, `mi1a_enrollment` (Part 1) and
+  `mi1a_rekey_backup` (Part 2); RLS on, no policies; the owner and `service_role` keep select/insert/update/delete.
+  No MI-1a function is executable by PUBLIC / anon / authenticated either (service_role only), so the write guard
+  fails closed for an ordinary-user write to `monthly_sales`. Any new MI table or function gets the same treatment (RULE 19).
+  **Part 1 DONE 2026-10-10** (approved by Angelo; file on main ed2a6a1, sha256 a8cf4849…; run verbatim — Supabase's
+  "potential issues" dialog answered "Run without RLS" so nothing was added to the file, which enables RLS itself):
+  4 tables + 4 nullable monthly_sales columns (all empty) + 10 functions + trigger `hcps_ms_write_guard` installed,
+  `hcps_commission_month_apply` absent; 11,997 rows, fingerprint dde7a2ce…, $10,802,558.50 / $493,077.06, Strongback
+  143 / $43,021.50 / $3,871.94 unchanged; live = snapshot row-for-row; both snapshot tables byte-identical to before.
+  Privileges: anon/authenticated 0 on all 6 tables, the sequence and all 10 functions; service_role 24/24 + 10/10;
+  public key → 401 / 42501 on every table and RPC (rule 19 outside check). 0 enrolled, 0 batches, switches OFF; live
+  previews (Strongback, PediFix, ABM, AirAvant; PediFix + Ovation commission) still use today's import, nothing written.
+  **Part 2 DONE 2026-10-10** (approved by Angelo; file on main, sha256 93499283…, run verbatim — the dialog flagged only
+  the temp table `mi1a_before`): 143/143 Strongback sales_report rows re-keyed to v2 with order_key/line_key/line_hash,
+  143 distinct keys = the D5 dry-run keys exactly; `mi1a_rekey_backup` 143 rows = the old keys exactly (RLS on, no
+  policies, anon/authenticated 0, service_role 4/4, public key 401/42501); enrolment = strongback-mobility/sales_report
+  only. A1: D7 fingerprint dde7a2ce… unchanged (11,997 rows, $10,802,558.50 / $493,077.06); B1: 26 dealer rows,
+  $43,021.50 / $3,871.94, per-dealer fingerprint unchanged; dealer/rep/channel attribution of every row unchanged;
+  every other row's key untouched; 0 batches, 0 superseded; switches OFF. **Strongback Sales Report Import now
+  answers 409 `import_paused` until `mi_import_v2` is turned on (by design — the write guard protects its rows);**
+  every other manufacturer's sales import and all commission imports (incl. Strongback) still use today's path.
+  **mi_import_v2 activation attempt 2026-10-10 — FAILED SAFELY, switch back OFF.** The first live preview (Strongback,
+  143 rows) returned 500 "UPDATE requires a WHERE clause": Supabase API sessions load **pg-safeupdate** (authenticator
+  `session_preload_libraries = supautils, safeupdate`), which refuses any UPDATE / DELETE without WHERE — inside functions
+  and on temp tables too. `hcps_sales_report_apply` had two (`update _in set …`). Nothing was written (baseline, keys,
+  attribution, account numbers, aliases identical; 0 batches); `mi_import_v2` set to false. Fix: `where true` on both
+  (Part 1 rev 3c) + on the rollback file's enrolment delete; the PG test fixture now loads safeupdate on every session
+  so this class of bug fails locally. **RULE: every UPDATE / DELETE in SQL that can run through the API carries a WHERE
+  clause (use `where true` for a deliberate whole-table/temp-table change); test databases load pg-safeupdate.**
+  **Part 1 rev 3c RE-RUN DONE 2026-10-10 ~16:25 CT** (approved by Angelo; main 8e072e7, sha256 e7f7a304…, verbatim):
+  `hcps_sales_report_apply` now carries the `where true` clauses; 10 functions, trigger, privileges unchanged (ordinary
+  users 0, service_role 10/10); baseline, keys, attribution, account numbers, aliases, snapshot, backup and enrolment
+  byte-identical; 0 batches; `mi_import_v2` still false. Original workbook "Stongback Orders and Account Report
+  YTDa.xlsx" (sha256 b7a17e64…) checked OFFLINE: 143 lines / 57 orders / $43,021.50 = HCPS row-for-row (order, SKU,
+  qty, amount, date fingerprint de869e5f…; order/account/company/ZIP fingerprint e466ddc4…).
 - **Tests:** `test/mi1a-identity.pg.test.js` (runs the committed SQL in Postgres, bigint + uuid ids),
   `test/mi1a-compat.test.js` + `.mutants.js` (other manufacturers unaffected; switches; alias guard).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import

@@ -30,6 +30,10 @@ end $$;
 create table if not exists public.mi1a_rekey_backup (
   sales_row_id text primary key, manufacturer text not null, old_external_ref text,
   old_order_key text, old_line_key text, old_line_hash text, backed_up_at timestamptz not null default now());
+-- Same protection as the other MI-1a tables: no privileges for ordinary app users; owner + service_role only.
+alter table public.mi1a_rekey_backup enable row level security;
+revoke all on table public.mi1a_rekey_backup from public, anon, authenticated;
+grant select, insert, update, delete on table public.mi1a_rekey_backup to service_role;
 insert into public.mi1a_rekey_backup(sales_row_id, manufacturer, old_external_ref, old_order_key, old_line_key, old_line_hash)
 select id::text, manufacturer, external_ref, order_key, line_key, line_hash
 from public.monthly_sales where manufacturer = 'strongback-mobility' and source = 'sales_report'

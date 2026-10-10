@@ -1,0 +1,171 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Manufacturer Center</title>
+<style>
+ :root{--ink:#1b2733;--blue:#3B599A;--blue-dk:#2B4071;--orange:#F5821F;--silver:#D8DEE4;--light:#F3F6FA;--gray:#5b6672;--green:#1A7A4A;--red:#B91C1C;--amber:#B45309}
+ *{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;background:var(--light);color:var(--ink);padding-bottom:60px}
+ .wrap{max-width:1240px;margin:22px auto;padding:0 20px}
+ h1{font-size:22px;margin:0 0 3px}h2{font-size:17px;margin:0 0 8px}h3{font-size:14px;margin:14px 0 6px}
+ .sub{color:var(--gray);font-size:13px;margin:0 0 12px;max-width:900px;line-height:1.45}
+ .infobar{background:#eaf1f8;border:1px solid #cfe0f2;color:var(--blue-dk);border-radius:9px;padding:9px 13px;font-size:12.5px;margin-bottom:14px;line-height:1.5}
+ .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+ .card{background:#fff;border:1px solid var(--silver);border-radius:12px;padding:14px 16px;margin-bottom:14px;overflow-x:auto}
+ table{border-collapse:collapse;width:100%;font-size:12.5px}
+ th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);padding:6px 8px;border-bottom:1px solid var(--silver);white-space:nowrap}
+ td{padding:8px;border-bottom:1px solid #eef2f6;vertical-align:top}
+ tr.sel td{background:#f5f8fc}
+ .pill{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;padding:3px 8px;border-radius:9px;white-space:nowrap}
+ .p-frozen{background:#e8eefc;color:var(--blue-dk)}.p-pass{background:#e6f5ee;color:var(--green)}.p-fail{background:#fee2e2;color:var(--red)}
+ .p-adv{background:#f1f4f8;color:var(--gray)}.p-warn{background:#fef3c7;color:var(--amber)}.p-auth{background:#eef6f1;color:var(--green)}
+ .btn{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:8px 13px;font-weight:700;font-size:12.5px;cursor:pointer}
+ .btn:hover{background:var(--blue-dk)}.btn:disabled{opacity:.55;cursor:default}
+ .btn.ghost{background:#fff;color:var(--blue-dk);border:1px solid var(--silver)}.btn.warn{background:var(--amber)}
+ .tabs{display:flex;gap:4px;border-bottom:1px solid var(--silver);margin:4px 0 12px}
+ .tabs button{background:none;border:none;border-bottom:3px solid transparent;padding:8px 12px;font-weight:700;font-size:13px;color:var(--gray);cursor:pointer}
+ .tabs button.on{color:var(--ink);border-bottom-color:var(--orange)}
+ .mut{color:var(--gray)}.err{color:var(--red)}.ok{color:var(--green)}
+ .chk{border:1px solid #e6ebf1;border-radius:9px;margin:6px 0;background:#fff}
+ .chk summary{cursor:pointer;padding:8px 10px;display:flex;gap:8px;align-items:center;font-size:13px;list-style:none}
+ .chk summary::-webkit-details-marker{display:none}
+ .chk .det{padding:4px 12px 10px;font-size:12px}
+ pre{white-space:pre-wrap;word-break:break-word;background:#f7f9fb;border:1px solid #eef2f6;border-radius:7px;padding:8px;font-size:11.5px;max-height:340px;overflow:auto}
+ .gate,.msg{background:#fff;border:1px solid var(--silver);border-radius:12px;padding:24px;max-width:420px;margin:30px auto;text-align:center}
+ .go{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer}
+ input[type=text],input[type=email],input[type=password],textarea,select{padding:8px 10px;border:1px solid var(--silver);border-radius:8px;font-size:13px;background:#fff;font-family:inherit}
+ textarea{width:100%;min-height:64px}
+ .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+ @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+ .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50}
+ .toast.show{opacity:1}
+</style><link rel="stylesheet" href="/admin/admin-shell.css"></head><body>
+<header id="ac-head"></header>
+<div class="wrap" id="wrap"><div class="msg">Loading…</div></div>
+<div class="toast" id="toast"></div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+/* MANUFACTURER CENTER — Phases 1–3 (approved 2026-10-10). Read-only over the source register, the
+   HCPS decisions log and the verification history, plus three actions that change no product data:
+   run the verification suite (saves its evidence), record a decision (e.g. a regression_fix), and
+   run the freeze-guard self-test (every attempted write is rolled back). Products, categories and
+   prices are edited where they always were: Product Catalog, Structure Map, Product Content
+   Enrichment. Manufacturer Center orchestrates; it is not another product database. */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const API="/.netlify/functions/catalog-api";
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), LINES=[], OPEN=null, TAB="verify", LINE=null, RUN=null, BUSY=false;
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2600);}
+async function api(body){const h={"content-type":"application/json"};if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch(API,{method:"POST",headers:h,body:JSON.stringify(body)});
+  if(r.status===401){gate();throw new Error("unauthorized");}
+  if(r.status===403){$("#wrap").innerHTML='<div class="msg err">President only — Manufacturer Center is limited to President accounts. <button class="go" onclick="lock()">Sign in as a different user</button></div>';throw new Error("unauthorized");}
+  const j=await r.json().catch(()=>({}));if(!r.ok||j.error)throw new Error((j.message||j.error)||("HTTP "+r.status));return j;}
+function gate(msg){$("#wrap").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p style="margin:2px 0 12px;color:#607089;font-size:13px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username" style="margin:0 0 8px;width:100%"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" style="margin:0 0 12px;width:100%" onkeydown="if(event.key==='Enter')submitTok()"><br><button class="go" onclick="submitTok()">Sign in</button> <a href="reset.html" style="display:inline-block;margin-left:6px;color:#10263f;font-size:13px;font-weight:600">Forgot password?</a><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{var t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  var email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  var e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; boot();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+const fmtD=s=>s?String(s).slice(0,10):"";
+const fmtT=s=>{ if(!s) return ""; try{ return new Date(s).toLocaleString(undefined,{dateStyle:"medium",timeStyle:"short"}); }catch(e){ return String(s); } };
+function sourceCell(s){ if(!s) return '<span class="mut">none registered</span>';
+  const rec=s.legacy?'<span class="mut">received date not recorded (legacy)</span>':'received '+esc(fmtD(s.received_date));
+  return `${esc(s.title)}<div class="mut" style="font-size:11.5px">${rec}</div>`; }
+function effCell(s){ if(!s) return ""; return s.effective_date_status==="stated"?esc(fmtD(s.manufacturer_effective_date)):(s.effective_date_status==="pending"?'<span class="pill p-warn">pending</span>':'<span class="mut">n/a</span>'); }
+async function boot(){
+  try{ const j=await api({action:"mc_overview"}); LINES=j.lines||[]; render(); if(OPEN) await openLine(OPEN,true); }
+  catch(e){ if(String(e.message)!=="unauthorized") $("#wrap").innerHTML=`<div class="msg err">Manufacturer Center could not load: ${esc(e.message)}</div>`; }
+}
+function render(){
+  const rows=LINES.map(l=>`<tr class="${OPEN===l.slug?'sel':''}">
+    <td><b>${esc(l.name)}</b><div class="mut" style="font-size:11px">${esc(l.slug)}</div></td>
+    <td>${l.frozen?'<span class="pill p-frozen" title="Gold Standard COMPLETE — commercial changes refused unless a regression_fix is recorded">Frozen</span> ':''}${l.authoritative?'<span class="pill p-auth">Record authority</span>':'<span class="pill p-adv">Layers</span>'}</td>
+    <td>${sourceCell(l.source)}</td><td>${effCell(l.source)}</td>
+    <td>${l.decisions||0}${l.open_regression_fixes?` <span class="pill p-warn">${l.open_regression_fixes} open fix</span>`:''}</td>
+    <td>${(l.deferrals||[]).map(d=>`<span class="pill p-adv" title="${esc(d.note||'')}">${esc(String(d.item||'').replace(/_/g,' '))} deferred</span>`).join(' ')||'<span class="mut">—</span>'}</td>
+    <td>${l.last_run?`<span class="pill ${l.last_run.result==='pass'?'p-pass':'p-fail'}">${esc(l.last_run.result)}</span> <span class="mut" style="font-size:11.5px">${esc(l.last_run.phase)} · ${esc(fmtT(l.last_run.run_at))}</span>`:'<span class="mut">never</span>'}</td>
+    <td style="white-space:nowrap"><button class="btn ghost" onclick="openLine('${esc(l.slug)}')">Open</button></td></tr>`).join("");
+  $("#wrap").innerHTML=`<h1>Manufacturer Center</h1>
+  <p class="sub">From a manufacturer's files to a verified, record-authoritative line. Manufacturer Center coordinates the Structure Map, Product Content Enrichment, the commercial master (<code>product_skus</code>) and Partner 360 — it does not hold products or set prices itself.</p>
+  <div class="infobar"><b>Frozen lines</b> (Climbing Steps, Strongback, Ovation, Bemis) refuse every commercial change — in catalog-api and in the database — unless a <b>regression_fix</b> decision is recorded and sent with the change. Bemis product pages are an <b>approved deferral</b>, not a regression.</div>
+  <div class="bar"><button class="btn ghost" id="stbtn" onclick="selftest()">Test the freeze guard</button><span class="mut" style="font-size:12px">Tries one commercial write per table on every frozen line; each attempt is rolled back.</span></div>
+  <div id="st"></div>
+  <div class="card"><table><thead><tr><th>Line</th><th>Status</th><th>Accepted source</th><th>Mfr effective date</th><th>Decisions</th><th>Deferrals</th><th>Last verification</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="8" class="mut">No lines.</td></tr>'}</tbody></table></div>
+  <div id="line"></div>`;
+}
+async function selftest(){
+  const b=$("#stbtn"); b.disabled=true; b.textContent="Testing…";
+  try{ const j=await api({action:"mc_guard_selftest"});
+    const byLine={}; (j.attempts||[]).forEach(a=>{ (byLine[a.line]=byLine[a.line]||[]).push(a); });
+    $("#st").innerHTML=`<div class="card"><h3 style="margin-top:0">${j.pass?'<span class="pill p-pass">pass</span>':'<span class="pill p-fail">fail</span>'} Freeze guard self-test</h3><table><thead><tr><th>Line</th>${(j.attempts||[]).slice(0,5).map(a=>`<th>${esc(a.attempt)}</th>`).join('')}</tr></thead><tbody>${Object.entries(byLine).map(([l,as])=>`<tr><td><b>${esc(l)}</b></td>${as.map(a=>`<td><span class="pill ${a.result==='blocked'?'p-pass':'p-fail'}">${esc(a.result)}</span></td>`).join('')}</tr>`).join('')}</tbody></table><p class="mut" style="font-size:11.5px;margin-top:6px">Every attempt ran inside a sub-transaction that was rolled back — no data changed.</p></div>`;
+  }catch(e){ $("#st").innerHTML=`<div class="card err">Self-test could not run: ${esc(e.message)}</div>`; }
+  b.disabled=false; b.textContent="Test the freeze guard";
+}
+async function openLine(slug, keep){
+  OPEN=slug; if(!keep){ TAB="verify"; RUN=null; } render();
+  $("#line").innerHTML='<div class="card mut">Loading '+esc(slug)+'…</div>';
+  try{ LINE=await api({action:"mc_line",manufacturer:slug}); renderLine(); }
+  catch(e){ if(String(e.message)!=="unauthorized") $("#line").innerHTML=`<div class="card err">Could not load ${esc(slug)}: ${esc(e.message)}</div>`; }
+}
+function renderLine(){
+  const L=LINE, m=L.meta||{}, l=LINES.find(x=>x.slug===L.manufacturer)||{};
+  const tabs=[["verify","Verify"],["sources","Sources"],["decisions","Decisions"]].map(([k,n])=>`<button class="${TAB===k?'on':''}" onclick="TAB='${k}';renderLine()">${n}</button>`).join("");
+  let body="";
+  if(TAB==="sources"){
+    body=`<table><thead><tr><th>#</th><th>Kind</th><th>Title / file</th><th>Received</th><th>Mfr effective date</th><th>Status</th><th>Note</th></tr></thead><tbody>${(L.sources||[]).map(s=>`<tr><td>${s.id}</td><td>${esc(s.kind)}</td><td><b>${esc(s.title)}</b><div class="mut" style="font-size:11px">${esc(s.file_name||'')}${s.file_sha256?' · sha256 '+esc(s.file_sha256.slice(0,12))+'…':''}</div></td>
+      <td>${s.legacy?'<span class="mut">not recorded (legacy)</span>':esc(fmtD(s.received_date))}</td><td>${s.effective_date_status==='stated'?esc(fmtD(s.manufacturer_effective_date)):'<span class="pill p-warn">'+esc(s.effective_date_status)+'</span>'}</td>
+      <td><span class="pill ${s.status==='accepted'?'p-pass':'p-adv'}">${esc(s.status)}</span>${s.accepted_by?'<div class="mut" style="font-size:11px">'+esc(s.accepted_by)+'</div>':''}</td><td style="max-width:320px" class="mut">${esc(s.note||'')}</td></tr>`).join('')||'<tr><td colspan="7" class="mut">No sources registered.</td></tr>'}</tbody></table>
+      <p class="mut" style="font-size:11.5px;margin-top:8px">Uploading and accepting new sources arrives with the guided workflow (Phase 6). Files will be stored privately in the <code>mfr-sources</code> bucket.</p>`;
+  } else if(TAB==="decisions"){
+    body=`${m.frozen?`<div class="card" style="background:#fffaf0;border-color:#f3d9a4"><h3 style="margin-top:0">Report a regression</h3><p class="mut" style="font-size:12px;margin-bottom:8px">A frozen line accepts a commercial change only with a recorded <b>regression_fix</b>. Recording it changes nothing by itself; it is single-use and must be sent with the fix.</p>
+      <div class="grid2"><input type="text" id="rf_field" placeholder="Field (e.g. base_price, uom, map)"><input type="text" id="rf_code" placeholder="SKU code (blank = whole line)"></div>
+      <textarea id="rf_reason" placeholder="What regression was found, and how it was seen (required)" style="margin-top:8px"></textarea>
+      <div style="margin-top:8px"><button class="btn warn" onclick="recordFix()">Record regression_fix decision</button></div></div>`:''}
+      <table><thead><tr><th>#</th><th>When</th><th>Kind</th><th>SKU</th><th>Field</th><th>Manufacturer value</th><th>HCPS value</th><th>Reason</th></tr></thead><tbody>${(L.decisions||[]).map(d=>`<tr><td>${d.id}</td><td style="white-space:nowrap">${esc(fmtD(d.decided_at))}<div class="mut" style="font-size:11px">${esc(d.decided_by||'')}</div></td><td><span class="pill p-adv">${esc(d.kind)}</span>${d.kind==='regression_fix'?(d.used_at?' <span class="pill p-adv">used</span>':' <span class="pill p-warn">open</span>'):''}</td><td>${esc(d.code||'line')}</td><td>${esc(d.field)}</td><td><code style="font-size:11px">${esc(d.manufacturer_value==null?'—':JSON.stringify(d.manufacturer_value))}</code></td><td><code style="font-size:11px">${esc(d.hcps_value==null?'—':JSON.stringify(d.hcps_value))}</code></td><td style="max-width:340px">${esc(d.reason)}</td></tr>`).join('')||'<tr><td colspan="8" class="mut">No decisions.</td></tr>'}</tbody></table>`;
+  } else {
+    const runs=(L.runs||[]).map(r=>`<tr class="${RUN&&RUN.id===r.id?'sel':''}"><td>${r.id}</td><td>${esc(fmtT(r.run_at))}<div class="mut" style="font-size:11px">${esc(r.run_by||'')}</div></td><td>${esc(r.phase)}</td><td><span class="pill ${r.result==='pass'?'p-pass':'p-fail'}">${esc(r.result)}</span></td><td><code>${esc(r.fingerprint||'')}</code></td><td><button class="btn ghost" onclick="showRun(${r.id})">View</button></td></tr>`).join("");
+    const hasBase=(L.runs||[]).some(r=>r.result==='pass'&&(r.phase==='baseline'||r.phase==='post'));
+    body=`<div class="bar"><button class="btn" id="vbtn" onclick="verify('${hasBase?'release':'baseline'}')">${hasBase?'Run verification':'Run first verification (sets the baseline)'}</button>
+      <span class="mut" style="font-size:12px">Product cards, cart, server pricing, freight at each threshold, both emails, contract/cart impact, retired SKUs, images and the line fingerprint — on the server, against the live storefront code.</span></div>
+      <div id="runview">${RUN?runHtml(RUN):''}</div>
+      <h3>History</h3><table><thead><tr><th>#</th><th>When</th><th>Phase</th><th>Result</th><th>Fingerprint</th><th></th></tr></thead><tbody>${runs||'<tr><td colspan="6" class="mut">No runs yet.</td></tr>'}</tbody></table>`;
+  }
+  $("#line").innerHTML=`<div class="card"><h2>${esc(l.name||L.manufacturer)} ${m.frozen?'<span class="pill p-frozen">Frozen</span>':''}</h2>${m.frozen_reason?`<p class="mut" style="font-size:12px;margin:-4px 0 8px">${esc(m.frozen_reason)}</p>`:''}<div class="tabs">${tabs}</div>${body}</div>`;
+}
+async function verify(phase){
+  if(BUSY) return; BUSY=true; const b=$("#vbtn"); if(b){ b.disabled=true; b.textContent="Verifying… (up to a minute)"; }
+  try{ const j=await api({action:"mc_verify",manufacturer:OPEN,phase}); RUN={id:j.run_id,phase:j.phase,result:j.result,checks:j.checks,fingerprint:j.fingerprint,run_at:new Date().toISOString(),baseline_run:j.baseline_run};
+    toast(j.result==='pass'?'Verification passed':'Verification FAILED — see the checks'); const o=await api({action:"mc_overview"}); LINES=o.lines||LINES; LINE=await api({action:"mc_line",manufacturer:OPEN}); render(); renderLine(); }
+  catch(e){ toast("Verification did not finish: "+e.message); if(b){ b.disabled=false; b.textContent="Run verification"; } }
+  BUSY=false;
+}
+async function showRun(id){ try{ const j=await api({action:"mc_run",id}); RUN=j.run; renderLine(); }catch(e){ toast(e.message); } }
+function detailHtml(c){
+  const d=c.detail; if(d==null) return '<span class="mut">—</span>';
+  if(c.id==="freight_boundaries"&&Array.isArray(d)&&d.length&&d[0].amount!=null) return `<table><thead><tr><th>Group</th><th>Order amount</th><th>Fee</th><th>Words in the cart</th></tr></thead><tbody>${d.map(r=>`<tr><td>${esc(r.group)}</td><td>$${Number(r.amount).toFixed(2)}</td><td>$${Number(r.fee).toFixed(2)}</td><td>${esc(r.words)}</td></tr>`).join('')}</tbody></table>`;
+  if(c.id==="emails"&&d.dealer_lines) return `<b>Dealer confirmation</b><pre>${esc(d.dealer_lines.join('\n'))}\nFreight: ${esc(d.dealer_freight||'—')}</pre><b>HCPS email</b><pre>${esc(d.hcps_lines.join('\n'))}\nFreight: ${esc(d.hcps_freight||'—')}</pre>`;
+  if(c.id==="fingerprint"){ const x=Object.assign({},d); const n=(x.lines||[]).length; delete x.lines; return `<pre>${esc(JSON.stringify(x,null,1))}</pre><span class="mut">${n} product lines hashed</span>`; }
+  return `<pre>${esc(typeof d==='string'?d:JSON.stringify(d,null,1))}</pre>`;
+}
+function runHtml(r){
+  const checks=(r.checks||[]);
+  const blk=checks.filter(c=>c.severity==='blocking'), adv=checks.filter(c=>c.severity!=='blocking');
+  const row=c=>`<details class="chk" ${!c.pass?'open':''}><summary><span class="pill ${c.pass?(c.severity==='blocking'?'p-pass':'p-adv'):'p-fail'}">${c.pass?(c.severity==='blocking'?'pass':'info'):'fail'}</span><b>${esc(c.label)}</b></summary><div class="det">${detailHtml(c)}</div></details>`;
+  return `<div class="card" style="border-color:${r.result==='pass'?'#bfe3cf':'#f3c0c0'}"><h3 style="margin-top:0"><span class="pill ${r.result==='pass'?'p-pass':'p-fail'}">${esc(r.result)}</span> Run #${esc(r.id||'')} · ${esc(r.phase)} · fingerprint <code>${esc(r.fingerprint||'')}</code>${r.baseline_run?` <span class="mut" style="font-size:12px">compared with baseline run #${esc(r.baseline_run)}</span>`:''}</h3>
+    ${blk.map(row).join('')}<h3>Information</h3>${adv.map(row).join('')}</div>`;
+}
+async function recordFix(){
+  const field=($("#rf_field").value||"").trim(), code=($("#rf_code").value||"").trim(), reason=($("#rf_reason").value||"").trim();
+  if(!field||!reason){ toast("Field and reason are required"); return; }
+  try{ const j=await api({action:"mc_record_decision",manufacturer:OPEN,kind:"regression_fix",field,code:code||null,reason});
+    toast("Recorded regression_fix #"+j.decision.id+" — send it with the fix"); LINE=await api({action:"mc_line",manufacturer:OPEN}); renderLine(); }
+  catch(e){ toast("Not recorded: "+e.message); }
+}
+/* masthead provides Lock */
+if(TOKEN)boot();else gate();
+</script></body></html>

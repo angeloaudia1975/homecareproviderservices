@@ -62,7 +62,7 @@
         { href:"/admin/images.html",             label:"Product Images",             icon:"🖼️", group:"enrich",   desc:"Upload & manage product photography used across the catalog and dealer portal" },
         { href:"/admin/dealers.html",            label:"Contract Pricing",           icon:"💲", group:"commerce", xref:true, desc:"Per-dealer negotiated pricing that overrides the standard dealer price" },
         { href:"/admin/order-fulfillment.html",  label:"Order Review & Fulfillment", icon:"🧾", group:"commerce", desc:"See, confirm & track submitted dealer orders" },
-        { href:"",                               label:"Manufacturer Lines & Freight", icon:"🚚", status:"planned", group:"commerce", desc:"Line setup, freight rules & territory eligibility" },
+        { href:"/admin/manufacturer-center.html", label:"Manufacturer Center",       icon:"🏭", status:"new", group:"commerce", desc:"From a manufacturer's files to a verified line: source register, HCPS decisions, freight terms, the freeze on Gold Standard lines, and the full verification suite (cards, cart, server pricing, freight, emails)" },
         { href:"/admin/featured.html",           label:"Featured Products",          icon:"⭐", group:"partner",  desc:"Curate the promoted items dealers see first" },
         { href:"/admin/home-editor.html",        label:"Portal Home Content",        icon:"🏠", group:"partner",  desc:"Hero banner, promos & the “what's new” tiles" },
         { href:"/admin/dealers.html#logins",     label:"Dealer Portal Accounts",     icon:"🔑", group:"partner", xref:true,  desc:"Registrations, approvals & which manufacturer lines each dealer can order" },

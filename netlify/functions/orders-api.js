@@ -297,3 +297,7 @@ exports.handler = async (event)=>{
     return json(400,{error:"unknown action"});
   }catch(e){return json(500,{error:String(e.message||e)});}
 };
+/* Manufacturer Center verification renders the dealer confirmation without sending it (catalog-api
+   mc_verify): the same builder and unit label the order flow uses. */
+exports._orderConfirmation = orderConfirmation;
+exports._unitLabel = unitLabel;
