@@ -249,6 +249,8 @@ function createWorld(seed) {
       const newId = () => '75305690000' + String(z.seq++).padStart(8, '0');
       const ok = (row, rec) => Object.assign({ code: 'SUCCESS', status: 'success', message: 'record added', action: 'insert', details: { id: (rec && rec.id) || newId() } }, row || {});
       if (method === 'GET' && parts[3] === 'search') return res(204, '');
+      // GET /crm/v8/settings/<fields|layouts>?module=… (Phase 2F-6 probe): seed.zoho.settings = {fields:{…}, layouts:{…}}.
+      if (method === 'GET' && mod === 'settings') return (z.settings && z.settings[parts[3]]) ? res(200, z.settings[parts[3]]) : res(404, { code: 'INVALID_URL_PATTERN' });
       if (method === 'GET' && parts.length === 3) {
         const page = Number(sp.get('page') || 1), per = Number(sp.get('per_page') || 200);
         const rf = (z.readFail || {})[mod]; if (rf && page >= (rf.page || 1)) return res(rf.status || 500, { code: 'INTERNAL_ERROR', message: 'zoho read failed' });

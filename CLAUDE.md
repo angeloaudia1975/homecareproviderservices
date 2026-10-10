@@ -677,6 +677,25 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   Migration `supabase/phase2f5_deal_sync.sql` (additive; rollback `…_rollback.sql`: redeploy 58bfbe0 first).
   Live proof of HCPS→Zoho pushes uses the next NATURAL HCPS deal edit (TEST deals can't be pushed); unmapped-stage
   proof is automated (Zoho's picklist has no unmapped stage) — agreed 2026-10-09.
+  **2F-5 approved COMPLETE (2026-10-10).** Still open, NOT blocking: on the next NATURAL HCPS-only real deal change,
+  confirm only the changed field is pushed, its webhook is classified echo with no second write, and an equivalent
+  exact `zoho_stage` stays untouched when another field is pushed. Never manufacture a real-deal change to prove these.
+- **Close dates (2F-6, F5 — RULES agreed 2026-10-10).** HCPS `expected_close = null` stays null until a person
+  actually chooses a date; an HCPS-generated/provisional Zoho date is never pulled back into HCPS as if it were real;
+  a genuine Zoho close-date change with its valid external Deal webhook still goes through the 2F-5 field-level
+  engine, and HCPS-only real close-date changes still push through it; both sides changed = conflict, never silently
+  pick one. Stage and amount behaviour, Accounts/Contacts and TEST/orphan/duplicate Zoho records are not touched.
+  **Zoho's actual API behaviour is established FIRST, on the TEST deal only** (can Closing_Date be cleared? can an
+  update omit it? is it required on create?). If Zoho accepts a genuinely blank date: HCPS null = Zoho null and the
+  invented-date behaviour is removed entirely (no provisional mechanism that isn't needed). If Zoho requires a date:
+  STOP and report before any placeholder policy — never invent a 30/60/90-day or other business date without
+  approval. The three real open deals' old-sync dates are NOT cleared or rewritten at deployment: after 2F-6 is
+  proven, a separate review shows those records and the exact proposed cleanup before anything changes. The four TEST
+  deal dates belong to the later TEST cleanup. Discovery tool: `zoho-api probe_close_date` (president only; refuses
+  any Zoho deal not linked to exactly one TEST dealer's deal, and fails closed when the TEST rule or the link can't be
+  read; steps read / meta / clear / clear_blank / omit / restore / create; writes carry `trigger:[]` so no workflow or
+  webhook fires; each write is logged as action `probe`, result ok / refused). It is the one deliberate exception to
+  "TEST records never reach Zoho" — authorized for 2F-6 discovery only.
 - **Zoho inspection decisions (2026-10-07, Angelo).** The 183 Zoho-only Deals are NOT imported into HCPS
   automatically. The 175 Closed Won sales roll-ups are not HCPS opportunities. The 8 orphan TEST Deals are
   cleanup candidates for later. The 8 orphan Accounts are real businesses — review/merge candidates, never
@@ -901,6 +920,50 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   $7.70 + $15.00 = $22.70 — browser = server = stored (freight_fee 15, estimated_total 22.70), one
   order, no notification flag, both emails render $15.00 / $22.70; cancelled in admin. The RC100
   enrichment page is hidden (not deleted); the Strongback catalog audit is clean.
+- **Strongback Gold Standard COMPLETE (2026-10-10).** Second record-authoritative line. Activation
+  order used (and the order for every line whose storefront must change on activation): snapshot any
+  open cart holding the line → re-save each SKU through the canonical edit with the record's own values
+  (record first, projection onto the layer — the moment dealers see the new prices) → parity gate 0 →
+  `set_record_authority` → full post-activation suite. Units (`uom` / `case_qty`) reach the storefront
+  only from the record once authority is on; `price_check` responses do not echo them (the stored order
+  and emails get them from the server's internal pricing). Result: 168/168 storefront + server checks
+  (every SKU at 1 / 2 / 8, six mix-and-match carts, six freight carts, MAP, no MSRP, units, A1005 4-pack,
+  RC100 refused), parity 0/15, Ovation 358/358 unchanged in browser and server. **Legacy-cart item:** one
+  saved cart (jennifer.johansson@strongbackmobility.com) holds the old code `SEATA` (1 × $320, Aug 2026);
+  it was already unknown to the server before activation, stays in the cart untouched, is shown as "no
+  longer available — remove", blocks checkout, and is never converted to R0001 without an approved alias.
+- **Bemis is the first Manufacturer Center pilot — and waits (agreed 2026-10-10).** Bemis starts only after
+  Climbing Steps, Strongback AND Ovation are all Gold Standard COMPLETE; its onboarding workflow is then
+  designed from what those three lines taught, not built ahead of them.
+- **Ovation Gold Standard audit (2026-10-10, authority still OFF).** Commercial master = the 2026 price list on
+  303/303 active SKUs (colour SKUs checked against their base code); storefront and master identical on every
+  field (price, tiers, pools, MSRP, MAP, uom, case_qty) — activation needs no canonical edit. Done: neoprene-knee
+  primary marked; 16 photos on 14 pages rehosted from ovationmed.com to our storage (same pictures, order and
+  primary kept); 4900-OKBU-S-M / -L-XL / 4900-Wrap category → Knee (per their approved pages); nitrile-glove
+  description/features from Ovation's own page + the price list; elastic-bandage page SKU names = master names.
+  Open, Angelo's call: strap 30000S photo; units on all 303 records (price list has no unit column — named packs
+  only); provenance stamp on the other 302; 4900 subcategory; 18 retired codes still on the 2026 list (Spine
+  Brace, Flex Power Plus, Tri-Mod, Premium Plus Back); Ovation freight terms; 21 legacy photo collisions.
+  Pooling families mixing different prices or products (night splint + strap, single + 10-pack extension belt,
+  casting-tape widths with black split out, gauze sizes) are UNCONFIRMED by Ovation — kept exactly as they are.
+- **Ovation decisions (Angelo, 2026-10-10).** UNITS: `Each` (= one manufacturer orderable unit, never an implied
+  inner count) unless the approved source/product name states a pack; "12 Rolls" items → `12-roll pack`, case_qty 12
+  (cohesive wrap, conforming gauze, elastic bandage, cast padding — 15); 61000-210 → `10-pack` ×10; nitrile gloves →
+  `Box` ×100 (the 100/box is in HCPS's catalog names, not the 2026 price list); gauze sponges / casting tape → Each,
+  no case_qty, until Ovation supplies a U/M or case-pack sheet (use manufacturer U/M where Ovation publishes it).
+  Written to all 303 active records; provenance "2026 ovation medical pricelist 1092026.xlsx", effective 2026-10-09,
+  on 303/303. 4900 items → Knee / Knee Braces & Supports. The 18 retired codes still on the 2026 list stay RETIRED —
+  a current price is not authorization to reactivate (that is a separate business decision). Freight stays
+  "calculated / confirmed by HCPS" until Ovation dealer freight terms exist. The 21 legacy photo collisions stay
+  unused and undeleted; a legacy photo joins a gallery only if it is the same product, a useful extra view, equal or
+  better quality and not redundant. Pooling families that mix prices/products are recorded as **"Manufacturer
+  pooling confirmation pending — current dealer behavior preserved"** and change only on Ovation's written
+  confirmation. 30000S strap photo: manufacturer-owned image preferred, verified to show the strap, rehosted; never a
+  reseller image without Angelo's approval; if none exists, stop and ask — Ovation's page lists 30000S as text only
+  (its "detail" photo is the splint's own stretch-indicator strap, not the accessory), so the photo is with Angelo.
+- **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
+  storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
+  vanish and break a dealer page.
 - **4900-Wrap corrected (2026-10-09):** $19.50 / 2–5 $15.95 / 6–10 $12.95 / 11–20 $9.90 / 21+ $9.95,
   no MSRP (`msrp_auto:false`); provenance on the record notes the source's "5-10" column normalised
   to 6–10. Ovation parity 0 drift; Ovation authority still waits on its other checks.

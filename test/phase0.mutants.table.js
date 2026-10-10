@@ -573,4 +573,17 @@ module.exports = {
   '2F5 stale wait not reported':           { file: '_zoho_deals.js', from: 'const sig=(drifted.length||unconfirmed)?((unconfirmed?', to: 'const sig=(drifted.length)?((false?' },
   '2F5 duplicate link synchronized':       { file: '_zoho_deals.js', from: 'until one link is removed"});\n      continue; }', to: 'until one link is removed"});\n      }' },
   '2F5 unmapped preserved from a stale state': { file: '_zoho_deals.js', from: '&& ctx.apply && authorized) zohoStage=d.preserve;', to: '&& ctx.apply && hasEvent) zohoStage=d.preserve;' },
+  // Phase 2F-6 discovery probe (zoho-api probe_close_date): TEST deal only, president only, no workflow, logged.
+  '2F6P real deal probed':                 { file: 'zoho-api.js', from: "if(!Array.isArray(links) || links.length!==1 || !T.dealer(links[0].dealer_id))", to: "if(!Array.isArray(links) || links.length!==1)" },
+  '2F6P twice-linked deal probed':         { file: 'zoho-api.js', from: "if(!Array.isArray(links) || links.length!==1 || !T.dealer(", to: "if(!Array.isArray(links) || !links.length || !T.dealer(" },
+  '2F6P TEST rule down not closed':        { file: 'zoho-api.js', from: "const T=await testRule(); if(!T) return TEST_RULE_DOWN();\n      const zid=", to: "const T=(await testRule())||{dealer:()=>true,name:()=>true};\n      const zid=" },
+  '2F6P unreadable link guessed':          { file: 'zoho-api.js', from: "catch(e){ return json(503,{ok:false,error:\"links_unreadable\"", to: "catch(e){ links=[{dealer_id:\"d-test\"}]; } if(0) return json(503,{ok:false,error:\"links_unreadable\"" },
+  '2F6P probe fires workflows':            { file: 'zoho-api.js', from: "\"/crm/v8/Deals\",{data:[rec],trigger:[]});", to: "\"/crm/v8/Deals\",{data:[rec]});" },
+  '2F6P create under any account':         { file: 'zoho-api.js', from: "if(!before.account || !before.account.id || !T.name(before.account.name))", to: "if(!before.account || !before.account.id)" },
+  '2F6P create sends a date':              { file: 'zoho-api.js', from: "Stage:\"Qualification\", Amount:0, Account_Name:{id:before.account.id}};", to: "Stage:\"Qualification\", Amount:0, Closing_Date:\"2026-12-31\", Account_Name:{id:before.account.id}};" },
+  '2F6P omit sends the date':              { file: 'zoho-api.js', from: "rec={id:zid, Description:before.Description};", to: "rec={id:zid, Description:before.Description, Closing_Date:before.Closing_Date};" },
+  '2F6P refusal logged as a failure':      { file: 'zoho-api.js', from: "result:res.code===\"SUCCESS\"?\"ok\":\"refused\"", to: "result:res.code===\"SUCCESS\"?\"ok\":\"fail\"" },
+  '2F6P restore takes any date':           { file: 'zoho-api.js', from: "if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(d)) return json(400,{ok:false,error:\"date (yyyy-mm-dd) required\"});", to: "" },
+  '2F6P meta writes':                      { file: 'zoho-api.js', from: "      if(step===\"meta\"){\n", to: "      if(step===\"meta\"){ await zoho(\"PUT\",c.apiDomain,c.token,\"/crm/v8/Deals\",{data:[{id:zid, Closing_Date:before.Closing_Date}],trigger:[]});\n" },
+  '2F6P not president only':               { file: 'zoho-api.js', from: "    if(me.role!==\"president\") return json(403,{error:\"President only\"});\n", to: "" },
 };
