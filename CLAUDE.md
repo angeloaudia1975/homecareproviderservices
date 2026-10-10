@@ -881,6 +881,26 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   validator keeps `pool`; a later save that omits it (Product Catalog, Price Check, imports) keeps
   the record's pool on the same break; the feed carries it; browser and server share the code.
   Ovation has no pools, so its pricing is unchanged. Pooled breaks read "(mix models)".
+- **Every active master record states its unit (agreed 2026-10-09).** Before a line goes
+  record-authoritative, each active `product_skus` row carries an explicit `uom` (and `case_qty`
+  for a pack) — never a storefront display default. Strongback: SB100 / A1000 / A1001 / A1004 =
+  Each (individual dealer units under Rev C), A1005 = 4-pack, case_qty 4; the 9 models = Each.
+- **The activation check is automated on every commercial field (agreed 2026-10-09).** A line is
+  not declared Gold Standard while any field is only inspected by eye. The final check asserts,
+  against an independently typed copy of the approved source: base price, every tier, tier pool,
+  MAP, MSRP state (null + `msrp_auto:false` = none), uom, case_qty, status, source file — on the
+  record before activation and on the storefront (browser) and server after it — plus freight
+  behaviour (the live freight rule and each SKU's category). `parityCompare` covers base / MSRP /
+  tiers / pools only, so MAP / uom / case_qty / status are asserted alongside it.
+- **My Orders shows what the dealer paid (agreed 2026-10-09).** order-history-api returns each
+  portal order's stored `freight` and `total` (orders.freight_fee / estimated_total); My Orders and
+  the dashboard's recent orders show that total to the cent with "incl. $X freight", the footer is
+  "Total (incl. freight)", and the CSV adds a Freight line. `cost` (and every spend KPI / report)
+  stays merchandise. Found by the Strongback freight test order, which showed $8 instead of $22.70.
+- **Strongback freight verification order (2026-10-09):** VERIFY-SB-FREIGHT-TEST, 1 × SB100 =
+  $7.70 + $15.00 = $22.70 — browser = server = stored (freight_fee 15, estimated_total 22.70), one
+  order, no notification flag, both emails render $15.00 / $22.70; cancelled in admin. The RC100
+  enrichment page is hidden (not deleted); the Strongback catalog audit is clean.
 - **4900-Wrap corrected (2026-10-09):** $19.50 / 2–5 $15.95 / 6–10 $12.95 / 11–20 $9.90 / 21+ $9.95,
   no MSRP (`msrp_auto:false`); provenance on the record notes the source's "5-10" column normalised
   to 6–10. Ovation parity 0 drift; Ovation authority still waits on its other checks.

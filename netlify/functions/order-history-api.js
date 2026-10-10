@@ -102,12 +102,12 @@ async function consolidate(dealerId, mfrName) {
     g.lines.push({ code: r.product_code || "", name: r.product_name || (r.product_code || "Item"), qty, cost: amt, line: amt });
     g.cost = round2(g.cost + amt); g.units += qty;
   }
-  for (const g of groups.values()) out.push(g);
+  for (const g of groups.values()) { g.freight = null; g.total = g.cost; out.push(g); }
 
   // 2) Portal / Golden orders (orders + order_items).
   let ord = [];
   try {
-    ord = await sb("GET", `orders?dealer_id=eq.${encodeURIComponent(dealerId)}&select=id,manufacturer,status,po_number,subtotal,submitted_at,env,order_items(code,name,qty,unit_price,line_total)&order=submitted_at.desc&limit=1000`);
+    ord = await sb("GET", `orders?dealer_id=eq.${encodeURIComponent(dealerId)}&select=id,manufacturer,status,po_number,subtotal,freight_fee,estimated_total,submitted_at,env,order_items(code,name,qty,unit_price,line_total)&order=submitted_at.desc&limit=1000`);
   } catch (e) { ord = []; }
   for (const o of (ord || [])) {
     const slug = o.manufacturer || "";
@@ -120,6 +120,14 @@ async function consolidate(dealerId, mfrName) {
       lines: items, cost: round2(o.subtotal != null ? o.subtotal : items.reduce((s, i) => s + i.line, 0)),
       units: items.reduce((s, i) => s + i.qty, 0),
     });
+    /* WHAT THE DEALER PAID (agreed 2026-10-09). `cost` stays the merchandise subtotal — spend,
+       reports and analytics are about products. `freight` and `total` are the figures the
+       server stored on the order (orders.freight_fee / estimated_total), so My Orders shows the
+       same total as the dealer's confirmation email. An order recorded before freight was
+       stored has freight null and total = its merchandise. */
+    const last = out[out.length - 1];
+    last.freight = o.freight_fee == null ? null : round2(o.freight_fee);
+    last.total = o.estimated_total != null ? round2(o.estimated_total) : round2(last.cost + (last.freight || 0));
   }
 
   // newest first
@@ -179,7 +187,7 @@ exports.handler = async (event) => {
     const recent = list.slice(0, 8).map((o) => ({
       id: o.id, date: o.date, source: o.source, status: o.status,
       manufacturer: o.manufacturer, manufacturerName: o.manufacturerName,
-      itemsCount: o.lines.length, units: o.units, cost: o.cost,
+      itemsCount: o.lines.length, units: o.units, cost: o.cost, freight: o.freight, total: o.total,
       preview: o.lines.slice(0, 3).map((l) => l.name),
     }));
     return json(200, { ok: true, dealer: who.dealer, ...agg, recent });
