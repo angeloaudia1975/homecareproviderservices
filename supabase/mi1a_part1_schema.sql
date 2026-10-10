@@ -182,8 +182,10 @@ begin
   from jsonb_populate_recordset(null::public.monthly_sales, p->'rows') r;
   if exists (select 1 from _in where manufacturer is distinct from v_mfr) then
     raise exception 'mi1a_row_manufacturer_mismatch'; end if;
+  -- "where true": Supabase's API sessions load pg-safeupdate, which refuses an UPDATE / DELETE without WHERE.
   update _in set k_order = hcps_ms_order_part(invoice_no, order_date, period, customer_name),
-                 k_sku   = hcps_ms_sku_part(product_code, product_name);
+                 k_sku   = hcps_ms_sku_part(product_code, product_name)
+   where true;
   update _in i set k_n = s.n from (
     select k_pos, row_number() over (partition by k_order, k_sku
              order by qty asc nulls first, amount asc nulls first, coalesce(product_name,''), order_date nulls first, k_pos) n
@@ -192,7 +194,8 @@ begin
                  line_key  = k_order || '|' || k_sku || '|' || k_n,
                  external_ref = v_mfr || '|v2|' || k_order || '|' || k_sku || '|' || k_n,
                  line_hash = hcps_ms_line_hash(qty, amount, commission_rate, order_date),
-                 source = 'sales_report';
+                 source = 'sales_report'
+   where true;
   v_sha := md5(coalesce((select string_agg(line_key || '=' || line_hash, ',' order by line_key) from _in), ''));
 
   if exists (select 1 from monthly_sales where manufacturer = v_mfr and source = 'sales_report' and order_key is null) then
