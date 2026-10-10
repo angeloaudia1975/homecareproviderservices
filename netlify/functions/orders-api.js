@@ -34,9 +34,10 @@ const num = (v)=>{ const n=Number(v); return Number.isFinite(n)?n:0; };
    own commerce API and pass through untouched. A layer that cannot be read throws. */
 async function serverPrice(orders, dealerId){
   const files=PRICING.remoteFiles(process.env.ORDERING_BASE||"https://hcpsonlineordering.netlify.app");
-  return PRICING.priceOrders({orders, dealerId, sb, catalogFile:files.catalogFile, contentFile:files.contentFile});
+  return PRICING.priceOrders({orders, dealerId, sb, catalogFile:files.catalogFile, contentFile:files.contentFile, manufacturersFile:files.manufacturersFile});
 }
 const pricedView=o=>({manufacturer_slug:o.manufacturer_slug||o.manufacturer||null, subtotal:o.subtotal,
+  freight_fee:o.freight_fee==null?null:o.freight_fee, estimated_total:o.estimated_total==null?null:o.estimated_total,
   items:(o.items||[]).map(it=>({code:it.code, name:it.name, qty:it.qty, unit:it.unit, line_total:it.line_total,
     client_unit:it.client_unit, changed:!!it.changed, available:it.available!==false, contract:it.contract==null?null:it.contract,
     commercial:it.commercial||null}))});
@@ -62,10 +63,27 @@ function unitLabel(it){
   if(n>1) return `${u||n+"-pack"} (${n} each)`;
   return "";
 }
+/* Freight on the dealer's confirmation (2026-10-09): the server's number, the same one stored on the
+   order and sent to HCPS. "Free" only when the manufacturer's rule says free; nothing when unknown. */
+function freightLineHtml(s){
+  if(s.freight_fee==null) return "";
+  const fee=num(s.freight_fee);
+  const free=(s.freight_lines||[]).length && (s.freight_lines||[]).every(r=>r.status==="free");
+  if(fee<=0 && !free) return "";
+  return `<div style="text-align:right;font-size:13px;color:#374151;margin:2px 10px 0">Freight: ${fee>0?money(fee):"Free"}</div>`
+    +`<div style="text-align:right;font-size:13px;font-weight:700;color:#1b2733;margin:2px 10px 0">Total: ${money(s.estimated_total)}</div>`;
+}
+function freightLineText(s){
+  if(s.freight_fee==null) return "";
+  const fee=num(s.freight_fee);
+  const free=(s.freight_lines||[]).length && (s.freight_lines||[]).every(r=>r.status==="free");
+  if(fee<=0 && !free) return "";
+  return `\n  Freight: ${fee>0?money(fee):"Free"}\n  Total: ${money(s.estimated_total)}`;
+}
 function orderConfirmation(to,d,summaries){
   const blocks=summaries.map(s=>{
     const rows=(s.items||[]).map(it=>`<tr><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px">${esc(it.name||it.code||"Item")}${it.code?` <span style="color:#9aa4ae">(${esc(it.code)})</span>`:""}${it.unit_label?` <span style="color:#10263f;font-weight:700">&middot; ${esc(it.unit_label)}</span>`:""}</td><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:center">${num(it.qty)}</td><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:right">${money(it.unit_price)}</td><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:right">${money(it.line_total)}</td></tr>`).join("");
-    return `<div style="margin:0 0 16px"><div style="font-weight:700;color:#2B4071;font-size:14px;margin:0 0 6px">${esc(s.line)}${s.po?` &middot; PO ${esc(s.po)}`:""}</div><table style="border-collapse:collapse;width:100%"><thead><tr><th style="text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#8a96a3;padding:0 10px 4px">Item</th><th style="font-size:10px;color:#8a96a3;padding:0 10px 4px">Qty</th><th style="text-align:right;font-size:10px;color:#8a96a3;padding:0 10px 4px">Unit</th><th style="text-align:right;font-size:10px;color:#8a96a3;padding:0 10px 4px">Total</th></tr></thead><tbody>${rows}</tbody></table><div style="text-align:right;font-size:13px;font-weight:700;color:#1b2733;margin:6px 10px 0">Subtotal: ${money(s.subtotal)}</div></div>`;
+    return `<div style="margin:0 0 16px"><div style="font-weight:700;color:#2B4071;font-size:14px;margin:0 0 6px">${esc(s.line)}${s.po?` &middot; PO ${esc(s.po)}`:""}</div><table style="border-collapse:collapse;width:100%"><thead><tr><th style="text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#8a96a3;padding:0 10px 4px">Item</th><th style="font-size:10px;color:#8a96a3;padding:0 10px 4px">Qty</th><th style="text-align:right;font-size:10px;color:#8a96a3;padding:0 10px 4px">Unit</th><th style="text-align:right;font-size:10px;color:#8a96a3;padding:0 10px 4px">Total</th></tr></thead><tbody>${rows}</tbody></table><div style="text-align:right;font-size:13px;font-weight:700;color:#1b2733;margin:6px 10px 0">Subtotal: ${money(s.subtotal)}</div>${freightLineHtml(s)}</div>`;
   }).join("");
   const html=`<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:600px">
     <h2 style="color:#2B4071;margin:0 0 4px">Order received${d.business?", "+esc(d.business):""}</h2>
@@ -75,7 +93,7 @@ function orderConfirmation(to,d,summaries){
     <p style="font-size:12.5px;line-height:1.6;color:#6b7280;margin:16px 0 0">Pricing shown is your contract pricing; the manufacturer's invoice is the final billing document. Questions about this order? Reply to this email or reach your HCPS rep.</p>
     <p style="font-size:12px;color:#9aa4ae;margin:14px 0 0">HomeCare Provider Services &middot; Your partner in mobility &amp; home medical equipment.</p></div>`;
   const text=`Order received${d.business?", "+d.business:""}\n\nThanks for ordering through the HomeCare Provider Services portal. We've received your order and it's on its way to the manufacturer.\n\n`
-    +summaries.map(s=>`${s.line}${s.po?" (PO "+s.po+")":""}\n`+(s.items||[]).map(it=>`  ${num(it.qty)} x ${it.name||it.code||"Item"}${it.unit_label?" ("+it.unit_label+")":""} @ ${money(it.unit_price)} = ${money(it.line_total)}`).join("\n")+`\n  Subtotal: ${money(s.subtotal)}`).join("\n\n")
+    +summaries.map(s=>`${s.line}${s.po?" (PO "+s.po+")":""}\n`+(s.items||[]).map(it=>`  ${num(it.qty)} x ${it.name||it.code||"Item"}${it.unit_label?" ("+it.unit_label+")":""} @ ${money(it.unit_price)} = ${money(it.line_total)}`).join("\n")+`\n  Subtotal: ${money(s.subtotal)}`+freightLineText(s)).join("\n\n")
     +`\n\nView your order history: ${PORTAL_URL}`;
   return {to,subject:"Your HCPS order confirmation",html,text};
 }
@@ -179,6 +197,8 @@ exports.handler = async (event)=>{
           subtotal:PRICING.isGolden(slug)?num(o.items_subtotal!=null?o.items_subtotal:o.estimated_total):num(o.subtotal),
           env,
         };
+        /* The server's freight and total are stored with the order (2026-10-09); Golden prices its own. */
+        if(!PRICING.isGolden(slug) && o.freight_fee!=null){ row.freight_fee=num(o.freight_fee); row.estimated_total=num(o.estimated_total); }
         let ins;
         try{ ins=await sb("POST","orders",row,{Prefer:"return=representation"}); }
         catch(e){ console.error("order insert failed",slug,e&&e.message); failed.push({manufacturer_slug:slug,error:"order_not_recorded"}); continue; }
@@ -198,6 +218,7 @@ exports.handler = async (event)=>{
           }
         }
         summaries.push({request_slug:slug, slug:cleanSlug, line:cleanSlug?(mfrName[cleanSlug]||cleanSlug):(slug||"Order"), po:o.po||"",
+          freight_fee:row.freight_fee==null?null:row.freight_fee, estimated_total:row.estimated_total==null?null:row.estimated_total, freight_lines:o.freight_lines||[],
           items:items.map((x,i)=>{ const lb=unitLabel((o.items||[])[i]); return lb?Object.assign({},x,{unit_label:lb}):x; }), subtotal:row.subtotal, order_id:oid});
         if(cleanSlug) slugs.add(cleanSlug);
         saved++;
@@ -236,6 +257,7 @@ exports.handler = async (event)=>{
         for(const slug of slugs){ try{ await sb("DELETE",`intent_events?dealer_id=eq.${who.dealer_id}&manufacturer=eq.${encodeURIComponent(slug)}`,null,{Prefer:"return=minimal"}); }catch(e){} }
       }
       const recorded=summaries.map(su=>({order_id:su.order_id,manufacturer_slug:su.request_slug,subtotal:su.subtotal,
+        freight_fee:su.freight_fee, estimated_total:su.estimated_total, freight_lines:su.freight_lines,
         items:su.items.map(it=>({code:it.code,name:it.name,qty:it.qty,unit:it.unit_price,line_total:it.line_total}))}));
       if(!saved) return json(503,{ok:false,status:"record_failed",saved:0,failed,orders:[]});
       return json(200,{ok:!failed.length,status:failed.length?"partial":"recorded",saved,failed,orders:recorded});
@@ -253,10 +275,11 @@ exports.handler = async (event)=>{
 
     if(b.action==="list"){
       const rows=await sb("GET",
-        `orders?dealer_id=eq.${who.dealer_id}&select=id,manufacturer,status,po_number,notes,subtotal,submitted_at,order_items(code,name,qty,unit_price,line_total)&order=submitted_at.desc&limit=25`);
+        `orders?dealer_id=eq.${who.dealer_id}&select=id,manufacturer,status,po_number,notes,subtotal,freight_fee,estimated_total,submitted_at,order_items(code,name,qty,unit_price,line_total)&order=submitted_at.desc&limit=25`);
       const orders=(rows||[]).map(o=>({
         id:o.id, manufacturer:o.manufacturer||"", status:o.status||"submitted",
         po:o.po_number||"", notes:o.notes||"", subtotal:num(o.subtotal),
+        freight_fee:o.freight_fee==null?null:num(o.freight_fee), estimated_total:o.estimated_total==null?null:num(o.estimated_total),
         submitted_at:o.submitted_at,
         items:(o.order_items||[]).map(i=>({code:i.code,name:i.name,qty:i.qty,unit:num(i.unit_price),line:num(i.line_total)})),
         items_count:(o.order_items||[]).reduce((n,i)=>n+num(i.qty),0),

@@ -831,7 +831,23 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   RC100 is `not_listed` ("Not offered on current Strongback Dealer Pricing 2026 Rev C"), NOT
   discontinued; history kept, restorable. Accessory freight is "$15 per box — box definition
   pending"; today's free freight stays until the box rule is confirmed, and it is a known Strongback
-  activation exception (freight is not complete). No speculative box logic.
+  activation exception — RESOLVED the same day by the confirmed $15-per-order rule below.
+- **Strongback freight CONFIRMED (Angelo, 2026-10-09; replaces "$15 per box").** $15 flat shipping
+  & handling ONCE per Strongback order that contains one or more accessories, whatever their number
+  or SKUs; models (wheelchairs, ErgoSteel, SEATA) ship included; never stacked. Expressed in the
+  existing freight engine: a freight group may select lines by CATEGORY (the canonical dealer
+  category — "Accessories"), so new accessories need no code. manufacturers.json Strongback groups:
+  Accessories → flatFee 15; everything else → free.
+- **Freight is server-computed and stored (2026-10-09).** orders-api works out each order's freight
+  with the storefront's own `computeFreight` (now part of `_shop_engine.js`) from manufacturers.json,
+  stores `orders.freight_fee` / `estimated_total` (SQL: `orders_freight.sql`, run BEFORE the code),
+  and both emails carry that figure (the HCPS email never trusts a browser freight number).
+- **Threshold-specific pooling is built (2026-10-09).** A break may carry `pool` (e.g.
+  `{min_qty:2, price:497, pool:"strongback-models"}`): it qualifies on the combined cart quantity of
+  the line's products whose breaks name that pool; a break without `pool` counts as before. The tier
+  validator keeps `pool`; a later save that omits it (Product Catalog, Price Check, imports) keeps
+  the record's pool on the same break; the feed carries it; browser and server share the code.
+  Ovation has no pools, so its pricing is unchanged. Pooled breaks read "(mix models)".
 - **4900-Wrap corrected (2026-10-09):** $19.50 / 2–5 $15.95 / 6–10 $12.95 / 11–20 $9.90 / 21+ $9.95,
   no MSRP (`msrp_auto:false`); provenance on the record notes the source's "5-10" column normalised
   to 6–10. Ovation parity 0 drift; Ovation authority still waits on its other checks.

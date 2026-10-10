@@ -89,10 +89,18 @@ async function catalogFile(mfr){
 async function fetchJson(url){ const r=await fetch(url,{headers:{"cache-control":"no-cache"}}); if(!r.ok) throw new Error(`${url} ${r.status}`); return r.json(); }
 const num=v=>{ if(v===""||v==null) return null; const n=Number(v); return isFinite(n)?n:null; };
 // normalize a quantity-break tier list to [{min_qty:int>=1, price:number}], sorted ascending
+/* A break may name a POOL (agreed 2026-10-09): its quantity is the combined cart quantity of every
+   product whose breaks name the same pool ("strongback-models"). Kept through every tier write. */
 const cleanTiers=t=>{ if(!Array.isArray(t)) return null;
-  const out=t.map(r=>({min_qty:Math.max(1,parseInt(r.min_qty??r.minQty??1,10)||1),price:num(r.price)}))
+  const out=t.map(r=>{ const o={min_qty:Math.max(1,parseInt(r.min_qty??r.minQty??1,10)||1),price:num(r.price)};
+      const pl=String((r&&r.pool)==null?"":r.pool).trim().toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,40); if(pl) o.pool=pl; return o; })
     .filter(r=>r.price!=null).sort((a,b)=>a.min_qty-b.min_qty);
   return out.length?out:null; };
+/* An edit that sends a ladder without pools (Product Catalog, Price Check, an import) never drops
+   the pool a break already has on the record: the same break keeps it. */
+const keepPools=(next, cur)=>{ const n=cleanTiers(next); if(!n) return n;
+  const had={}; (cleanTiers(cur)||[]).forEach(r=>{ if(r.pool) had[r.min_qty]=r.pool; });
+  return n.map(r=>(r.pool||!had[r.min_qty])?r:Object.assign({},r,{pool:had[r.min_qty]})); };
 
 /* ─────────────────────── Duplicate detection & merge ───────────────────────
    The Product Catalog is the master record. Two mechanisms were quietly creating a
@@ -1894,7 +1902,7 @@ function commercialChanges(cur, want){
     const was=c[k]==null?null:money(c[k]); if(v!==was) out[k]=v; };
   diffMoney("base_price"); diffMoney("msrp"); diffMoney("map");
   if("msrp_auto" in want){ const v=want.msrp_auto===true; if(v!==(c.msrp_auto===true)) out.msrp_auto=v; }
-  if("tiers" in want){ const v=cleanTiers(want.tiers); if(tierKey(v)!==tierKey(c.tiers)) out.tiers=v; }
+  if("tiers" in want){ const v=keepPools(want.tiers, c.tiers); if(tierKey(v)!==tierKey(c.tiers)) out.tiers=v; }
   if("status" in want && want.status!==undefined){ if(want.status!==(c.status||LIVE_STATUS)) out.status=want.status; }
   /* The flagged-MSRP rule, applied where the record lives. */
   const newBase=("base_price" in out)?out.base_price:null;
@@ -1995,7 +2003,7 @@ function parityCompare({base, custom, overrides, record, want, mfr, strictTiers}
     const k=normCode(c); if(!eff[k] || eff[k].hidden) eff[k]=row; });
   const money=v=>{ const n=num(v); return n==null?null:Math.round(n*100)/100; };
   const ladder=(t,bp)=>{ const r=(cleanTiers(t)||[]).filter(x=>!(x.min_qty===1 && bp!=null && Math.abs(x.price-bp)<0.005));
-    return r.length?r.map(x=>x.min_qty+":"+x.price).join(","):""; };
+    return r.length?r.map(x=>x.min_qty+":"+x.price+(x.pool?"@"+x.pool:"")).join(","):""; };
   const drift=[]; let compared=0;
   (record||[]).forEach(r=>{
     const k=normCode(r.code); if(want && !want.has(k)) return;

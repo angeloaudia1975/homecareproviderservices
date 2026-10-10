@@ -32,7 +32,8 @@ function feedRows(rows) {
     if (n(r.map) != null) o.map = n(r.map);
     if (Array.isArray(r.tiers) && r.tiers.length) {
       o.tiers = r.tiers
-        .map(t => ({ min_qty: Number(t.min_qty), price: Number(t.price) }))
+        .map(t => (t.pool ? { min_qty: Number(t.min_qty), price: Number(t.price), pool: String(t.pool) }
+                          : { min_qty: Number(t.min_qty), price: Number(t.price) }))   // a break's pool travels with it (2026-10-09)
         .filter(t => isFinite(t.min_qty) && isFinite(t.price))
         .sort((a, b) => a.min_qty - b.min_qty);
       if (!o.tiers.length) delete o.tiers;
@@ -75,7 +76,7 @@ async function contractPrices(sb, dealerId) {
 
 /* One line's products, built by the shop's own mergeCatalogEdits with the server answering its
    reads. Returns { products, engine } — engine.unitPrice prices against the CART map given. */
-async function lineProducts({ slug, sb, catalogFile, contentFile, contract, cart }) {
+async function lineProducts({ slug, sb, catalogFile, contentFile, contract, cart, freightCfg }) {
   const [file, metaRows] = await Promise.all([
     catalogFile(slug),
     sb("GET", `manufacturer_meta?slug=eq.${enc(slug)}&select=slug,enriched_only,category_map,record_authoritative,record_resync_error`),
@@ -118,8 +119,11 @@ async function lineProducts({ slug, sb, catalogFile, contentFile, contract, cart
     categoryMap: (meta.category_map && typeof meta.category_map === "object") ? meta.category_map : null }] };
   const AUTH = { session: { access_token: "server" }, status: "approved", prices: contract || {} };
   const quiet = { log() {}, warn() {}, error() {} };
-  const engine = new Function("fetch", "window", "console", "document", "CONFIG", "state", "AUTH", "PREVIEW", "CART",
-    ENGINE.SOURCE + "\n;return { mergeCatalogEdits, unitPrice, CATALOG_SOURCE };")(shimFetch, {}, quiet, {}, CONFIG, state, AUTH, null, cart);
+  /* Freight is the shop's rule too (computeFreight, verbatim): the line's manufacturers.json entry. */
+  const mfrEntry = Object.assign({ slug }, (freightCfg && freightCfg[slug]) || {});
+  const mfrInfo = s => (s === slug ? mfrEntry : { slug: s });
+  const engine = new Function("fetch", "window", "console", "document", "CONFIG", "state", "AUTH", "PREVIEW", "CART", "mfrInfo",
+    ENGINE.SOURCE + "\n;return { mergeCatalogEdits, unitPrice, computeFreight, CATALOG_SOURCE };")(shimFetch, {}, quiet, {}, CONFIG, state, AUTH, null, cart, mfrInfo);
   const products = await engine.mergeCatalogEdits(slug, JSON.parse(JSON.stringify(file || [])));
   /* The shop forgives a failed read and carries on with what it has; an order may not. */
   if (failures.length) throw new Error("layer_unreadable: " + failures[0].slice(0, 300));
@@ -131,12 +135,20 @@ async function lineProducts({ slug, sb, catalogFile, contentFile, contract, cart
    Returns { orders:[{manufacturer_slug, items:[{code, qty, unit, line_total, client_unit, changed,
    available, commercial}] , subtotal}], changed:boolean }. Golden orders are passed through
    untouched — Golden prices its own orders through its own commerce API. */
-async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile }) {
+async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, manufacturersFile }) {
   const contract = await contractPrices(sb, dealerId);
+  /* Freight terms (manufacturers.json, the shop's own file). Strict like every other read: an order
+     is never quoted freight from a file that could not be read. No reader given = no freight. */
+  let freightCfg = null;
+  if (manufacturersFile) {
+    const list = await manufacturersFile();
+    freightCfg = {};
+    (Array.isArray(list) ? list : []).forEach(m => { if (m && m.slug) freightCfg[m.slug] = m; });
+  }
   const cart = new Map();
   const bySlug = {};
   const slugs = [...new Set((orders || []).map(o => String(o.manufacturer_slug || o.manufacturer || "")).filter(s => s && !isGolden(s)))];
-  for (const slug of slugs) bySlug[slug] = await lineProducts({ slug, sb, catalogFile, contentFile, contract, cart });
+  for (const slug of slugs) bySlug[slug] = await lineProducts({ slug, sb, catalogFile, contentFile, contract, cart, freightCfg });
   /* The family quantity is the shop's: every cart line, priced from its CURRENT product. */
   const lines = [];
   (orders || []).forEach((o, oi) => {
@@ -184,6 +196,19 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile }) {
                     group: l.p.group || "", manufacturer: l.slug, price_note: l.p.price_note || "" } });
   }
   out.forEach(o => { if (!isGolden(o.manufacturer_slug)) o.subtotal = Math.round(o.items.reduce((n, it) => n + (it.line_total || 0), 0) * 100) / 100; });
+  /* FREIGHT, BY THE SHOP'S OWN RULE (2026-10-09). The server works out each order's freight from its
+     own priced lines with the storefront's computeFreight, so the stored order, both emails and the
+     browser show one number (Strongback: one $15 per order containing accessories). */
+  if (freightCfg) out.forEach((o, oi) => {
+    const slug = String(o.manufacturer_slug || o.manufacturer || "");
+    if (isGolden(slug) || !bySlug[slug]) return;
+    const ls = lines.filter(l => l.oi === oi && l.p && !l.p._discontinued).map(l => ({ p: l.p, qty: l.qty }));
+    const f = bySlug[slug].engine.computeFreight(slug, ls);
+    o.freight_fee = Math.round(Number(f.fee || 0) * 100) / 100;
+    o.freight_lines = f.rows || [];
+    o.freight_note = f.actualNote || "";
+    o.estimated_total = Math.round((o.subtotal + o.freight_fee) * 100) / 100;
+  });
   return { orders: out, changed, contract_prices: Object.keys(contract).length };
 }
 
@@ -203,6 +228,7 @@ function remoteFiles(base) {
       return j;
     },
     contentFile: slug => get(`${base}/data/content/${encodeURIComponent(slug)}.json`, null),
+    manufacturersFile: () => get(`${base}/data/manufacturers.json`, []),
   };
 }
 

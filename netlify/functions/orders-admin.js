@@ -46,7 +46,7 @@ exports.handler = async (event)=>{
 
     if(b.action==="list"){
       const [orders,dealers,OI,mfrs]=await Promise.all([
-        sbGet("orders?select=id,dealer_id,hcps_account,manufacturer,status,po_number,notes,admin_notes,tracking_number,subtotal,submitted_at,updated_at,ship_name,ship_address,ship_city,ship_state,ship_zip,contact_name,contact_email,contact_phone,order_items(code,name,qty,unit_price,line_total)&order=submitted_at.desc&limit=500").catch(()=>[]),
+        sbGet("orders?select=id,dealer_id,hcps_account,manufacturer,status,po_number,notes,admin_notes,tracking_number,subtotal,freight_fee,estimated_total,submitted_at,updated_at,ship_name,ship_address,ship_city,ship_state,ship_zip,contact_name,contact_email,contact_phone,order_items(code,name,qty,unit_price,line_total)&order=submitted_at.desc&limit=500").catch(()=>[]),
         sbGet("dealers?select=id,business_name").catch(()=>[]),
         SC.ownerIndex(sbGet).catch(()=>null),           // who owns each dealer (Phase 0D)
         sbGet("manufacturers?select=slug,name").catch(()=>[]),
@@ -60,7 +60,7 @@ exports.handler = async (event)=>{
           id:o.id, dealer_id:o.dealer_id, dealer, rep:(OI&&o.dealer_id&&OI.repOf(o.dealer_id))||repByName[dealer]||"",
           manufacturer:mfrName[o.manufacturer]||o.manufacturer||"—",
           status:o.status||"submitted", po:o.po_number||"", notes:o.notes||"", admin_notes:o.admin_notes||"",
-          tracking:o.tracking_number||"", subtotal:num(o.subtotal), submitted_at:o.submitted_at, updated_at:o.updated_at,
+          tracking:o.tracking_number||"", subtotal:num(o.subtotal), freight_fee:o.freight_fee==null?null:num(o.freight_fee), estimated_total:o.estimated_total==null?null:num(o.estimated_total), submitted_at:o.submitted_at, updated_at:o.updated_at,
           ship:[o.ship_address,o.ship_city,[o.ship_state,o.ship_zip].filter(Boolean).join(" ")].filter(Boolean).join(", "),
           contact:{name:o.contact_name||"",email:o.contact_email||"",phone:o.contact_phone||""},
           items:(o.order_items||[]).map(i=>({code:i.code,name:i.name,qty:i.qty,unit:num(i.unit_price),line:num(i.line_total)})),
