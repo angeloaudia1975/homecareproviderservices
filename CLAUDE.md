@@ -1160,6 +1160,16 @@ Findings" (decisions 1–41, incl. "Golden Technologies confirmations", 10 Oct 2
   `academy_external_certs` checks). Discontinued: PR515 (→ PR519), PR763 (→ PR750), PR735, PR545, PR504, PR632 —
   archive only. Zones = motors. Product checks use Golden's website, catalogs, sell sheets, brochures, manuals,
   warranty documents and approved videos; spec/explanation/exam/certification changes need admin approval.
+- **Phase A1 database foundation LIVE (10 Oct 2026, approved by Angelo).** Migration `supabase/academy_a1_foundation.sql`
+  (sha256 a3d6b1f9…cacf4) run in the SQL editor: 18 tables, 5 rule functions, 7 triggers, private bucket
+  `academy-private`, app_settings `academy` (monitoring/auto-update off). Verified: acceptance tests 26/26 + no-leftover
+  check (`academy_a1_acceptance_tests.sql`, sha256 587a5712…), public-key probe 22/22 blocked
+  (`scripts/academy_a1_public_probe_browser.js`, key checked on a public table first), regression fingerprints identical
+  to the preflight (grants 2755, policies 29, 105 tables; only app_settings +1). Rollback
+  `academy_a1_foundation_rollback.sql` (sha256 ee37021c…) refuses while learner/attempt/certificate rows or bucket files
+  exist. Production storage.buckets carries Supabase triggers: a new bucket must leave the lifecycle columns NULL, and a
+  direct bucket delete needs `set local storage.allow_delete_query = 'true'`. **The Supabase SQL editor shows only the
+  LAST statement's result** — a test script must end with its results query (undo test data in a sub-transaction).
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
