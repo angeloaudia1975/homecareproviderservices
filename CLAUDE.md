@@ -1037,6 +1037,24 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   `msrp_each:true` on a pack row (catalog file) labels MSRP "each" and compares it with case price ÷ qty; a pack
   MSRP quoted per pack (Ovation) carries no flag and is unchanged. Unchanged: $500 prepaid freight / +$40 S&H below
   $500, $10 less-than-case fee recorded not coded, $20 dropship on HOLD, 7Y codes, retired DO5300RD444.
+- **Bemis Gold Standard COMPLETE (2026-10-10, ~15:00 CT).** `record_authoritative=true` after the final pre-activation
+  check (9/9 source-aligned, parity 0 normal + strict, browser = server on 7 carts, freight $499.99/$500.00/$500.01 =
+  $40 / prepaid / prepaid, no Bemis contract prices or saved carts, retired DO5300RD444 refused, Ovation/Strongback/
+  Climbing Steps fingerprints identical). Post-activation: Bemis prices from the record with 0 differences; the only
+  field that moved is 444DISPLAY uom "" → "Display" (approved; shows only in the HCPS email). Do not change Bemis again
+  unless a regression is found or Bemis sends a new source (Manufacturer Center flow). Open: manufacturer effective
+  date (pending, not a blocker); no Bemis enrichment pages yet (catalog_audit lists 9 "needs SKU review" for that
+  reason only).
+- **Manufacturer Center lessons from the Bemis pilot (2026-10-10).** (1) Compare the FULL rendered output (fields +
+  price block + cart + both emails), not only prices — parity covers base/msrp/map/tiers, not uom/case_qty, wording
+  or freight labels. (2) Keep manufacturer facts and HCPS interpretations apart: price_imports holds the file as
+  received (raw columns untouched) plus `_hcps_*` notes; product_skus holds the decision. (3) Two dates, never one:
+  received vs manufacturer effective. (4) Never derive one price from another (unit vs case); store both as given.
+  (5) Manufacturer wording is data (freight labels, MSRP basis), never a global code change — Ovation and Bemis quote
+  pack MSRP differently. (6) A staging row that omits a field must not blank it — send unchanged UOMs explicitly.
+  (7) The catalog file and the override layer must both be corrected before authority switches either way, or the
+  storefront changes when the flag moves. Needed as structured fields: unit cost, received date, MSRP/MAP basis,
+  freight terms per source.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
