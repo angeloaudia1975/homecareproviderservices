@@ -932,6 +932,23 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   saved cart (jennifer.johansson@strongbackmobility.com) holds the old code `SEATA` (1 × $320, Aug 2026);
   it was already unknown to the server before activation, stays in the cart untouched, is shown as "no
   longer available — remove", blocks checkout, and is never converted to R0001 without an approved alias.
+- **Bemis is the first Manufacturer Center pilot — and waits (agreed 2026-10-10).** Bemis starts only after
+  Climbing Steps, Strongback AND Ovation are all Gold Standard COMPLETE; its onboarding workflow is then
+  designed from what those three lines taught, not built ahead of them.
+- **Ovation Gold Standard audit (2026-10-10, authority still OFF).** Commercial master = the 2026 price list on
+  303/303 active SKUs (colour SKUs checked against their base code); storefront and master identical on every
+  field (price, tiers, pools, MSRP, MAP, uom, case_qty) — activation needs no canonical edit. Done: neoprene-knee
+  primary marked; 16 photos on 14 pages rehosted from ovationmed.com to our storage (same pictures, order and
+  primary kept); 4900-OKBU-S-M / -L-XL / 4900-Wrap category → Knee (per their approved pages); nitrile-glove
+  description/features from Ovation's own page + the price list; elastic-bandage page SKU names = master names.
+  Open, Angelo's call: strap 30000S photo; units on all 303 records (price list has no unit column — named packs
+  only); provenance stamp on the other 302; 4900 subcategory; 18 retired codes still on the 2026 list (Spine
+  Brace, Flex Power Plus, Tri-Mod, Premium Plus Back); Ovation freight terms; 21 legacy photo collisions.
+  Pooling families mixing different prices or products (night splint + strap, single + 10-pack extension belt,
+  casting-tape widths with black split out, gauze sizes) are UNCONFIRMED by Ovation — kept exactly as they are.
+- **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
+  storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
+  vanish and break a dealer page.
 - **4900-Wrap corrected (2026-10-09):** $19.50 / 2–5 $15.95 / 6–10 $12.95 / 11–20 $9.90 / 21+ $9.95,
   no MSRP (`msrp_auto:false`); provenance on the record notes the source's "5-10" column normalised
   to 6–10. Ovation parity 0 drift; Ovation authority still waits on its other checks.
