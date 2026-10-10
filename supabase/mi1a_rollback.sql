@@ -14,6 +14,10 @@
 -- R1. Restore old keys + un-enrol, atomically.
 begin;
 select set_config('hcps.ms_writer', 'mi1a', true);
+-- Write freeze: no other session can insert, update or delete monthly_sales until this commits
+-- (reads continue). Waits at most 10 s for a running import to finish, then stops with nothing changed.
+set local lock_timeout = '10s';
+lock table public.monthly_sales in share row exclusive mode;
 do $$ begin
   if exists (select 1 from public.mfr_report_batches where status = 'imported') then
     raise exception 'MI-1a rollback refused: imported batches exist; roll them back first (newest first)';

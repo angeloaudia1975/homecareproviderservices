@@ -8,6 +8,10 @@
 -- ============================================================================
 begin;
 select set_config('hcps.ms_writer', 'mi1a', true);
+-- Write freeze: no other session can insert, update or delete monthly_sales until this commits
+-- (reads continue). Waits at most 10 s for a running import to finish, then stops with nothing changed.
+set local lock_timeout = '10s';
+lock table public.monthly_sales in share row exclusive mode;
 
 -- Refuse if Strongback has not passed the identity audit (no semantic collisions in D8).
 do $$ begin
