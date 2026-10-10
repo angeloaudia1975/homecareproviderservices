@@ -1101,6 +1101,12 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   ONLY after Angelo approves the audited correction (`mi1a_airavant_duplicate_correction.sql`, rollback file).
 - **Before any MI production SQL:** Part 0 snapshot (`mi1a_snapshot_monthly_sales`) — Supabase daily backups exist
   but Point-in-Time Recovery is NOT enabled, and a daily restore would discard other changes.
+  **Part 0 DONE 2026-10-10 18:50 UTC** (approved by Angelo; file on main, sha256 7556e1cb…): snapshot 11,997 rows =
+  live row-for-row (EXCEPT ALL both ways = 0), fingerprint dde7a2cef62eb5e5d3525a7a49e9b949 (meta + recomputed), totals
+  $10,802,558.50 / $493,077.06, Strongback 143 / $43,021.50 / $3,871.94; RLS on, no policies — the public API returns 0
+  rows. Daily backup 10 Oct 09:10 UTC was present. Part 1 / Part 2 not run; both MI switches OFF. Migrations run in the
+  Supabase SQL editor itself (its Run button) with the committed file pasted verbatim and its sha256 checked in the
+  editor first — the read-only query helper wraps statements and cannot run DDL.
 - **Tests:** `test/mi1a-identity.pg.test.js` (runs the committed SQL in Postgres, bigint + uuid ids),
   `test/mi1a-compat.test.js` + `.mutants.js` (other manufacturers unaffected; switches; alias guard).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
