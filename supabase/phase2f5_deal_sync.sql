@@ -8,7 +8,7 @@
 --     (which stays one of identified / contacted / quoted / won / lost via the existing mapping). Null until the
 --     deal is next synchronized. Adding it does not fire the stage-history trigger (that watches stage/status).
 --  2. zoho_deal_baseline — the last-synchronized value of each two-way field (stage + exact Zoho stage, amount,
---     close date) per linked deal. A field changed on one side is measured against THIS, never against
+--     close date) per linked deal; a Zoho Deal id appears in it at most once (unique). A field changed on one side is measured against THIS, never against
 --     updated_at. A key missing from `base` = no agreed value yet (the field is reviewed, not guessed).
 --  3. zoho_deal_conflicts — a conflict (both sides changed), an unmapped Zoho stage, or a field with no agreed
 --     value: one OPEN row per deal + field until both sides agree again; then resolved in place (kept).
@@ -27,7 +27,10 @@ create table if not exists public.zoho_deal_baseline (
   synced_at      timestamptz,
   updated_at     timestamptz not null default now()
 );
-create index if not exists zoho_deal_baseline_zoho_idx on public.zoho_deal_baseline (zoho_id);
+-- One Zoho Deal id belongs to at most ONE HCPS opportunity (amendment 2026-10-10). (The non-unique index of the
+-- first draft is dropped if it was ever created.)
+drop index if exists public.zoho_deal_baseline_zoho_idx;
+create unique index if not exists zoho_deal_baseline_zoho_uniq on public.zoho_deal_baseline (zoho_id);
 alter table public.zoho_deal_baseline enable row level security;
 
 create table if not exists public.zoho_deal_conflicts (

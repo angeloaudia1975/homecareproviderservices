@@ -4,7 +4,7 @@
 -- It removes only what 2F-5 added: the two tables (with every baseline and conflict record in them) and the two
 -- added columns (opportunities.zoho_stage, zoho_sync_queue.outcome). No deal, stage, amount or close date is
 -- changed. Inbound Deal events that 2F-5 processed keep their status ('synced' / 'conflict'); the 2F-4 code
--- never reprocesses them.
+-- never reprocesses them. After the rollback the pre-2F-5 deal behaviour is back (whole-record push, blind pull).
 -- ============================================================================
 begin;
 drop table if exists public.zoho_deal_conflicts;
