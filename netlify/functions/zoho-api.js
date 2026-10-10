@@ -404,6 +404,69 @@ exports.handler = async (event)=>{
       return json(200,{ ok, linked:D.linked, changed:D.applied, changes:[], failed:failures, errors, conflicts:D.conflicts_open, events_processed:D.events_processed, drift:D.drift, deals:D, zoho_read_incomplete:READ_GAPS });
     }
 
+    // Phase 2F-6 discovery — TEST deal ONLY. What does Zoho's API actually do with a Deal's Closing_Date?
+    //   step "read"        the deal as Zoho holds it (read-only)
+    //   step "meta"        Closing_Date's field settings + whether each Deals layout requires it (read-only)
+    //   step "clear"       PUT Closing_Date:null            step "clear_blank"  PUT Closing_Date:""
+    //   step "omit"        an update WITHOUT Closing_Date (re-sends the deal's own Description, unchanged)
+    //   step "restore"     PUT Closing_Date:<date given>
+    //   step "create"      POST a new deal with NO Closing_Date, under the TEST deal's own TEST account
+    // Refused unless the Zoho deal is linked to exactly ONE HCPS deal and that deal's dealer is a TEST dealer (an
+    // unreadable TEST rule refuses too) — never a real opportunity. Writes carry trigger:[] (no workflow → no webhook,
+    // so the deal engine has no event to act on) and each is logged (action "probe"; result ok / refused).
+    if(b.action==="probe_close_date"){
+      const c=await connect(); if(!c.ok) return json(200,{ok:false,message:"Not connected.",reason:c.reason});
+      const T=await testRule(); if(!T) return TEST_RULE_DOWN();
+      const zid=String(b.zoho_id||"").trim();
+      if(!/^\d{6,30}$/.test(zid)) return json(400,{ok:false,error:"zoho_id required"});
+      let links; try{ links=await sbGet(`opportunities?select=id,dealer_id&zoho_id=eq.${encodeURIComponent(zid)}`); }
+      catch(e){ return json(503,{ok:false,error:"links_unreadable",message:"Couldn't confirm the deal is a TEST deal, so nothing was done."}); }
+      if(!Array.isArray(links) || links.length!==1 || !T.dealer(links[0].dealer_id))
+        return json(403,{ok:false,error:"not_a_test_deal",message:"The probe runs only on a Zoho deal linked to exactly one TEST dealer's deal."});
+      const opp=links[0], step=String(b.step||"read");
+      const PF="Deal_Name,Closing_Date,Stage,Amount,Description,Account_Name,Modified_Time";
+      const readDeal=async id=>{ const r=await zoho("GET",c.apiDomain,c.token,`/crm/v8/Deals?ids=${encodeURIComponent(id)}&fields=${PF}`);
+        const z=r.ok&&r.json&&Array.isArray(r.json.data)?r.json.data.find(x=>String(x.id)===String(id)):null;
+        if(!z) return {ok:false, http:r.status};
+        const a=z.Account_Name&&typeof z.Account_Name==="object"?z.Account_Name:null;
+        return {ok:true, id:String(z.id), Deal_Name:z.Deal_Name==null?null:z.Deal_Name, Closing_Date:z.Closing_Date==null?null:z.Closing_Date, Stage:z.Stage==null?null:z.Stage,
+          Amount:z.Amount==null?null:z.Amount, Description:z.Description==null?null:z.Description, Modified_Time:z.Modified_Time||null, account:a?{id:a.id==null?null:String(a.id), name:a.name==null?null:a.name}:null}; };
+      const before=await readDeal(zid);
+      if(!before.ok) return json(200,{ok:false,step,error:"deal_unreadable",http:before.http});
+      if(step==="read") return json(200,{ok:true,step,deal:before});
+      if(step==="meta"){
+        const f=await zoho("GET",c.apiDomain,c.token,"/crm/v8/settings/fields?module=Deals");
+        const fld=f.ok&&f.json&&Array.isArray(f.json.fields)?f.json.fields.find(x=>x&&x.api_name==="Closing_Date"):null;
+        const l=await zoho("GET",c.apiDomain,c.token,"/crm/v8/settings/layouts?module=Deals");
+        const layouts=(l.ok&&l.json&&Array.isArray(l.json.layouts)?l.json.layouts:[]).map(L=>{ let inLayout=false, required=null;
+          for(const s of (L.sections||[])) for(const x of (s.fields||[])) if(x&&x.api_name==="Closing_Date"){ inLayout=true; required=x.required===true; }
+          return {id:L.id==null?null:String(L.id), name:L.name||null, status:L.status||null, closing_date_in_layout:inLayout, closing_date_required:required}; });
+        return json(200,{ok:!!(f.ok&&l.ok), step, fields_http:f.status, layouts_http:l.status,
+          field:fld?{api_name:fld.api_name, data_type:fld.data_type||null, system_mandatory:fld.system_mandatory===true, read_only:fld.read_only===true, custom_field:fld.custom_field===true}:null,
+          layouts, deal:{Closing_Date:before.Closing_Date, Modified_Time:before.Modified_Time}});
+      }
+      let rec, method="PUT";
+      if(step==="clear") rec={id:zid, Closing_Date:null};
+      else if(step==="clear_blank") rec={id:zid, Closing_Date:""};
+      else if(step==="omit") rec={id:zid, Description:before.Description};
+      else if(step==="restore"){ const d=String(b.date||""); if(!/^\d{4}-\d{2}-\d{2}$/.test(d)) return json(400,{ok:false,error:"date (yyyy-mm-dd) required"}); rec={id:zid, Closing_Date:d}; }
+      else if(step==="create"){ method="POST";
+        if(!before.account || !before.account.id || !T.name(before.account.name))
+          return json(403,{ok:false,error:"not_test_account",message:"The create probe goes only under the TEST deal's own TEST account."});
+        rec={Deal_Name:"TEST 2F-6 create probe — sandbox", Stage:"Qualification", Amount:0, Account_Name:{id:before.account.id}}; }
+      else return json(400,{ok:false,error:"unknown step"});
+      const r=await zoho(method,c.apiDomain,c.token,"/crm/v8/Deals",{data:[rec],trigger:[]});
+      const row=r.json&&Array.isArray(r.json.data)?r.json.data[0]:null;
+      const res={http:r.status, code:row?row.code||null:(r.json&&r.json.code)||null, status:row?row.status||null:(r.json&&r.json.status)||null,
+        message:row?row.message||null:(r.json&&r.json.message)||null, details:row?row.details||null:(r.json&&r.json.details)||null};
+      const newId=method==="POST"&&res.code==="SUCCESS"&&res.details&&res.details.id?String(res.details.id):null;
+      const after=method==="PUT"?await readDeal(zid):(newId?await readDeal(newId):null);
+      const shown=x=>x&&x.ok?{id:x.id, Closing_Date:x.Closing_Date, Modified_Time:x.Modified_Time, Description:x.Description}:x;
+      await sbSend("POST","zoho_sync_log",{direction:"out",entity:"opportunity",entity_id:opp.id,dealer_id:opp.dealer_id,zoho_id:newId||zid,action:"probe",
+        result:res.code==="SUCCESS"?"ok":"refused",detail:ZL.scrubString(JSON.stringify({phase:"2F-6 close-date probe",step,sent:rec,zoho:res,after:shown(after)}))},{Prefer:"return=minimal"}).catch(()=>{});
+      return json(200,{ok:true, step, sent:rec, zoho:res, before:{Closing_Date:before.Closing_Date, Modified_Time:before.Modified_Time, Description:before.Description}, after:shown(after), created_id:newId});
+    }
+
     // PULL Zoho Account contact-info updates (phone / address) back onto matched dealers, and
     // surface Zoho-only accounts (not in our dealer list) as a review list — never auto-created,
     // so Supabase stays the system of record.

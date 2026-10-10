@@ -677,6 +677,25 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   Migration `supabase/phase2f5_deal_sync.sql` (additive; rollback `…_rollback.sql`: redeploy 58bfbe0 first).
   Live proof of HCPS→Zoho pushes uses the next NATURAL HCPS deal edit (TEST deals can't be pushed); unmapped-stage
   proof is automated (Zoho's picklist has no unmapped stage) — agreed 2026-10-09.
+  **2F-5 approved COMPLETE (2026-10-10).** Still open, NOT blocking: on the next NATURAL HCPS-only real deal change,
+  confirm only the changed field is pushed, its webhook is classified echo with no second write, and an equivalent
+  exact `zoho_stage` stays untouched when another field is pushed. Never manufacture a real-deal change to prove these.
+- **Close dates (2F-6, F5 — RULES agreed 2026-10-10).** HCPS `expected_close = null` stays null until a person
+  actually chooses a date; an HCPS-generated/provisional Zoho date is never pulled back into HCPS as if it were real;
+  a genuine Zoho close-date change with its valid external Deal webhook still goes through the 2F-5 field-level
+  engine, and HCPS-only real close-date changes still push through it; both sides changed = conflict, never silently
+  pick one. Stage and amount behaviour, Accounts/Contacts and TEST/orphan/duplicate Zoho records are not touched.
+  **Zoho's actual API behaviour is established FIRST, on the TEST deal only** (can Closing_Date be cleared? can an
+  update omit it? is it required on create?). If Zoho accepts a genuinely blank date: HCPS null = Zoho null and the
+  invented-date behaviour is removed entirely (no provisional mechanism that isn't needed). If Zoho requires a date:
+  STOP and report before any placeholder policy — never invent a 30/60/90-day or other business date without
+  approval. The three real open deals' old-sync dates are NOT cleared or rewritten at deployment: after 2F-6 is
+  proven, a separate review shows those records and the exact proposed cleanup before anything changes. The four TEST
+  deal dates belong to the later TEST cleanup. Discovery tool: `zoho-api probe_close_date` (president only; refuses
+  any Zoho deal not linked to exactly one TEST dealer's deal, and fails closed when the TEST rule or the link can't be
+  read; steps read / meta / clear / clear_blank / omit / restore / create; writes carry `trigger:[]` so no workflow or
+  webhook fires; each write is logged as action `probe`, result ok / refused). It is the one deliberate exception to
+  "TEST records never reach Zoho" — authorized for 2F-6 discovery only.
 - **Zoho inspection decisions (2026-10-07, Angelo).** The 183 Zoho-only Deals are NOT imported into HCPS
   automatically. The 175 Closed Won sales roll-ups are not HCPS opportunities. The 8 orphan TEST Deals are
   cleanup candidates for later. The 8 orphan Accounts are real businesses — review/merge candidates, never
@@ -901,6 +920,18 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   $7.70 + $15.00 = $22.70 — browser = server = stored (freight_fee 15, estimated_total 22.70), one
   order, no notification flag, both emails render $15.00 / $22.70; cancelled in admin. The RC100
   enrichment page is hidden (not deleted); the Strongback catalog audit is clean.
+- **Strongback Gold Standard COMPLETE (2026-10-10).** Second record-authoritative line. Activation
+  order used (and the order for every line whose storefront must change on activation): snapshot any
+  open cart holding the line → re-save each SKU through the canonical edit with the record's own values
+  (record first, projection onto the layer — the moment dealers see the new prices) → parity gate 0 →
+  `set_record_authority` → full post-activation suite. Units (`uom` / `case_qty`) reach the storefront
+  only from the record once authority is on; `price_check` responses do not echo them (the stored order
+  and emails get them from the server's internal pricing). Result: 168/168 storefront + server checks
+  (every SKU at 1 / 2 / 8, six mix-and-match carts, six freight carts, MAP, no MSRP, units, A1005 4-pack,
+  RC100 refused), parity 0/15, Ovation 358/358 unchanged in browser and server. **Legacy-cart item:** one
+  saved cart (jennifer.johansson@strongbackmobility.com) holds the old code `SEATA` (1 × $320, Aug 2026);
+  it was already unknown to the server before activation, stays in the cart untouched, is shown as "no
+  longer available — remove", blocks checkout, and is never converted to R0001 without an approved alias.
 - **4900-Wrap corrected (2026-10-09):** $19.50 / 2–5 $15.95 / 6–10 $12.95 / 11–20 $9.90 / 21+ $9.95,
   no MSRP (`msrp_auto:false`); provenance on the record notes the source's "5-10" column normalised
   to 6–10. Ovation parity 0 drift; Ovation authority still waits on its other checks.
