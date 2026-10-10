@@ -961,6 +961,19 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   confirmation. 30000S strap photo: manufacturer-owned image preferred, verified to show the strap, rehosted; never a
   reseller image without Angelo's approval; if none exists, stop and ask — Ovation's page lists 30000S as text only
   (its "detail" photo is the splint's own stretch-indicator strap, not the accessory), so the photo is with Angelo.
+- **Ovation master authority activation PASS (2026-10-10).** Third record-authoritative line;
+  `record_authoritative=true` with parity 0/369 and no canonical edit needed (storefront already equalled the
+  record). Post-activation: storefront prices from the record (303 matched, 0 differences) and its full-field
+  fingerprint (price, tiers, pools, MSRP, MAP, uom, case_qty) equals the record's; 358/358 baseline prices unchanged
+  in browser AND live server (every SKU at 1–21, all 55 family pairs); MSRP = automatic 2× except 4900-Wrap (none);
+  no MAP; pack wording "per 12-roll pack / per Box / per 10-pack · Dealer order unit = 1 … (n each)", Each shows no
+  unit; freight unchanged (HCPS-confirmed, $0 computed); retired codes refused by the server; 1,117 snapshot: only
+  the approved Strongback activation (15) and Ovation units (302 + 4900-Wrap) changed. 30000S primary photo is a
+  THIRD-PARTY RESELLER image (Amazon listing B00N3J0ZY6, Ovation Medical store — Ovation publishes none), approved by
+  Angelo and recorded as `source:"third-party-reseller"` with the listing URL on the gallery entry; 30014/30016 untouched.
+  Still open (not blockers): manufacturer pooling confirmation pending on the mixed-price families; 31 same-name
+  master records and 56 option tidiness notes (dealer labels verified distinct). Climbing Steps, Strongback and
+  Ovation are all Gold Standard — Bemis may be planned once Angelo reviews this report.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
