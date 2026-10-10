@@ -1203,7 +1203,12 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   (Part 1 rev 3c) + on the rollback file's enrolment delete; the PG test fixture now loads safeupdate on every session
   so this class of bug fails locally. **RULE: every UPDATE / DELETE in SQL that can run through the API carries a WHERE
   clause (use `where true` for a deliberate whole-table/temp-table change); test databases load pg-safeupdate.**
-  Re-running the revised Part 1 in production (create or replace — tested re-runnable) needs Angelo's approval.
+  **Part 1 rev 3c RE-RUN DONE 2026-10-10 ~16:25 CT** (approved by Angelo; main 8e072e7, sha256 e7f7a304…, verbatim):
+  `hcps_sales_report_apply` now carries the `where true` clauses; 10 functions, trigger, privileges unchanged (ordinary
+  users 0, service_role 10/10); baseline, keys, attribution, account numbers, aliases, snapshot, backup and enrolment
+  byte-identical; 0 batches; `mi_import_v2` still false. Original workbook "Stongback Orders and Account Report
+  YTDa.xlsx" (sha256 b7a17e64…) checked OFFLINE: 143 lines / 57 orders / $43,021.50 = HCPS row-for-row (order, SKU,
+  qty, amount, date fingerprint de869e5f…; order/account/company/ZIP fingerprint e466ddc4…).
 - **Tests:** `test/mi1a-identity.pg.test.js` (runs the committed SQL in Postgres, bigint + uuid ids),
   `test/mi1a-compat.test.js` + `.mutants.js` (other manufacturers unaffected; switches; alias guard).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
