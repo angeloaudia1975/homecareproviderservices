@@ -1,5 +1,5 @@
 -- =============================================================================================
--- HCPS Academy — Phase A1 acceptance tests (24)         supabase/academy_a1_acceptance_tests.sql
+-- HCPS Academy — Phase A1 acceptance tests (26)         supabase/academy_a1_acceptance_tests.sql
 -- Run right after the migration. Everything happens inside one transaction that is ROLLED BACK:
 -- test rows are created and thrown away; nothing persists. Output: one row per test, PASS or FAIL.
 -- Uses existing rows only as references (one dealer, the Golden manufacturer, one auth user).
@@ -178,6 +178,22 @@ begin
     update academy_course_versions set pass_mark = 50 where id = v_ver; ok := false;
   exception when others then ok := true; end;
   insert into t_results values (24, 'A published version''s pass mark cannot change', case when ok then 'PASS' else 'FAIL' end, '');
+  begin
+    insert into academy_external_certs (learner_id, course_id, manufacturer_slug, status, exam_opened_at, exam_reported_at,
+                                        verified_by, verified_at)
+      values (v_learner, v_course, 'golden-technologies', 'verified', now(), now(), 'test', now());
+    ok := false;
+  exception when check_violation then ok := true; end;
+  insert into t_results values (25, 'A Golden credential cannot be verified from an exam click or self-report alone', case when ok then 'PASS' else 'FAIL' end, '');
+
+  begin
+    insert into academy_media (kind, storage_path, rights) values ('pdf', 'academy-private/test.pdf', 'hcps_owned') returning id into v_q;
+    insert into academy_external_certs (learner_id, course_id, manufacturer_slug, status, upload_media_id, certificate_uploaded_at,
+                                        evidence_type, verified_by, verified_at)
+      values (v_learner, v_course, 'golden-technologies', 'verified', v_q, now(), 'golden_certificate', 'test', now());
+    ok := true;
+  exception when others then ok := false; procedure_result := sqlerrm; end;
+  insert into t_results values (26, 'A Golden credential can be verified with an uploaded certificate', case when ok then 'PASS' else 'FAIL' end, coalesce(procedure_result,''));
 end $$;
 
 select n as "#", test, result, detail from t_results order by n;

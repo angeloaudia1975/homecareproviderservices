@@ -308,22 +308,37 @@ comment on table public.academy_certificates is
    shown on the HCPS public verification page.';
 
 create table public.academy_external_certs (
-  id                 uuid primary key default gen_random_uuid(),
-  learner_id         uuid not null references public.academy_learners(id) on delete restrict,
-  course_id          uuid not null references public.academy_courses(id) on delete restrict,
-  manufacturer_slug  text not null references public.manufacturers(slug),
-  status             text not null default 'in_progress'
-                     check (status in ('in_progress','exam_submitted','certificate_uploaded','verified','rejected')),
-  exam_submitted_at  timestamptz,
-  upload_media_id    uuid references public.academy_media(id),
-  verified_by        text,
-  verified_at        timestamptz,
-  certificate_ref    text,
-  expires_at         timestamptz,
-  note               text,
-  created_at         timestamptz not null default now(),
-  check (status <> 'verified' or (verified_by is not null and verified_at is not null and upload_media_id is not null))
+  id                       uuid primary key default gen_random_uuid(),
+  learner_id               uuid not null references public.academy_learners(id) on delete restrict,
+  course_id                uuid not null references public.academy_courses(id) on delete restrict,
+  manufacturer_slug        text not null references public.manufacturers(slug),
+  status                   text not null default 'training_started' check (status in (
+                             'training_started','training_completed','exam_opened','exam_reported',
+                             'awaiting_certificate','certificate_uploaded','verified','rejected')),
+  training_started_at      timestamptz not null default now(),
+  training_completed_at    timestamptz,
+  exam_opened_at           timestamptz,
+  exam_reported_at         timestamptz,
+  certificate_uploaded_at  timestamptz,
+  upload_media_id          uuid references public.academy_media(id),
+  evidence_type            text check (evidence_type in ('golden_certificate','manufacturer_confirmation')),
+  evidence_ref             text,
+  verified_by              text,
+  verified_at              timestamptz,
+  certificate_ref          text,
+  expires_at               timestamptz,
+  note                     text,
+  created_at               timestamptz not null default now(),
+  check (status <> 'certificate_uploaded' or upload_media_id is not null),
+  check (status <> 'verified' or (
+           verified_by is not null and verified_at is not null and (
+             (evidence_type = 'golden_certificate' and upload_media_id is not null) or
+             (evidence_type = 'manufacturer_confirmation' and evidence_ref is not null))))
 );
+comment on table public.academy_external_certs is
+  'Manufacturer-issued credentials (decision 37). Opening the exam link or a learner''s own report never means
+   passed: only a manufacturer certificate (uploaded) or another approved manufacturer confirmation, checked by
+   HCPS staff, makes a row verified. Never shown on the HCPS certificate verification page.';
 
 -- ---------------------------------------------------------------------------------------------
 -- OPERATIONS (1)
