@@ -64,5 +64,39 @@ await t('Partner 360 card: "$50.00 per 4-pack", "Dealer order unit = 1 4-pack (4
   ok(!/Dealer order unit|per Each|each/.test(each),'a single unit is not a pack: '+each);
   ok(/\$\{qty\} × \$\{esc\(packOf\(p\)\.label\)\} = \$\{qty\*packOf\(p\)\.n\} each/.test(h),'cart line counts packs');
 });
+const BEMIS=process.env.BEMIS_JSON||path.join(__dirname,'..','..','homecareproviderservicesordering','public','data','bemis.json');
+function card(){ const h=fs.readFileSync(SHOP,'utf8');
+  const grab=(a,b)=>h.slice(h.indexOf(a),h.indexOf(b,h.indexOf(a)));
+  const code=grab('function packOf(p){','function priceHtml(p){')+grab('function priceHtml(p){','\n}\n')+'\n}';
+  const ctx={state:{dealer:{}},contractPrice:()=>null,money:n=>'$'+Number(n).toFixed(2),esc:s=>String(s),dealerPriceNote:()=>'' };
+  vm.createContext(ctx); vm.runInContext(code+';this.priceHtml=priceHtml;',ctx); return ctx.priceHtml; }
+await t('Bemis (2026-10-10): per-Case dealer price, MSRP and MAP "each"; a pack MSRP quoted per pack (Ovation) is unchanged',async()=>{
+  const ph=card();
+  const seat=ph({code:'7YR05310TSS',base_price:109.98,msrp:109.99,map:109.99,uom:'Case',case_qty:2,msrp_each:true});
+  ok(/\$<\/sup>109<sup>\.98<\/sup> <span class="pnote">per Case<\/span>/.test(seat),'per Case: '+seat);
+  ok(/Dealer order unit = 1 Case \(2 each\)/.test(seat),'order unit: '+seat);
+  ok(/MSRP \$109\.99 each/.test(seat)&&/MAP \$109\.99 each/.test(seat),'MSRP/MAP each: '+seat);
+  const arms=ph({code:'7YA05313GRY',base_price:119.96,msrp:59.99,map:59.99,uom:'Case',case_qty:4,msrp_each:true});
+  ok(/MSRP \$59\.99 each/.test(arms),'a per-piece MSRP is weighed against the per-piece price ($29.99), not the case: '+arms);
+  const ov=ph({code:'61000-210',base_price:139.95,msrp:279.9,uom:'10-pack',case_qty:10});
+  ok(/MSRP \$279\.90<\/div>/.test(ov),'Ovation pack MSRP stays per pack: '+ov);
+  ok(!/MSRP \$279\.90 each/.test(ov),'no "each" without msrp_each');
+  ok(!/MSRP/.test(ph({code:'X',base_price:300,msrp:279.9,uom:'10-pack',case_qty:10})),'a per-pack MSRP below the pack price stays hidden');
+  const st=ph({code:'7YE82350TC',base_price:54.99,msrp:109.99,map:109.99,uom:'Each',case_qty:1,msrp_each:true});
+  ok(/MSRP \$109\.99<\/div>/.test(st)&&!/each|per /.test(st),'a single unit is never "each"/"per": '+st);
+});
+await t('Bemis catalog file = 2026 price list: Case + numeric qty, no derived unit price, Steadfast Each / 1',async()=>{
+  const rows=JSON.parse(fs.readFileSync(BEMIS,'utf8')); const by={}; rows.forEach(r=>{ by[r.code]=r; });
+  const want={'7YR05310TSS':[2,109.98,109.99,109.99],'7YE05310TSS':[2,109.98,109.99,109.99],'7YA05313GRY':[4,119.96,59.99,59.99],'7YA05313BLK':[4,119.96,59.99,59.99],
+    '7YA06303TWA':[2,74.98,74.99,74.99],'7YA04505T':[3,119.97,79.99,79.99],'7YA0AS100':[2,99.98,99.99,99.99]};
+  for(const [c,[q,bp,ms,mp]] of Object.entries(want)){ const r=by[c]; ok(r,'missing '+c);
+    eq([r.uom,r.case_qty,r.base_price,r.msrp,r.map,r.msrp_each,r.price_note],['Case',q,bp,ms,mp,true,''],c);
+    eq((r.tiers||[]).map(t=>[t.minQty,t.price]),[[1,bp]],c+' tiers');
+    ok(!('unit_cost' in r),c+' carries a derived unit_cost'); }
+  const s=by['7YE82350TC']; eq([s.uom,Number(s.case_qty),s.base_price,s.msrp,s.map,s.price_note],['Each',1,54.99,109.99,109.99,''],'Steadfast');
+  ok(!('unit_cost' in s),'Steadfast unit_cost');
+  rows.filter(r=>r.code!=='DO5300RD444').forEach(r=>ok(!/\/unit|MSRP \$/.test(r.price_note||''),r.code+' legacy note: '+r.price_note));
+  ok(by['DO5300RD444'],'the retired display record is left as it was');
+});
 console.log(`pack units: ${pass} passed, ${fail} failed`); process.exit(fail?1:0);
 })();

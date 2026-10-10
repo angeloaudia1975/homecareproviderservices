@@ -1015,6 +1015,23 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   compare uom/case_qty: the record held case_qty 2, the catalog file holds the text "2/CS", so with authority off the
   storefront lost "per 2/CS · Dealer order unit = 1 2/CS (2 each)". Before switching authority either way, compare the
   storefront's full rendered output (fields + price block), not only prices.
+- **Bemis 2026 source APPROVED and staged; authority stays OFF (Angelo, 2026-10-10).** `Bemis Digital Price List
+  2026(20261010-175622).xlsx` is the authoritative commercial source. Dealer price = the explicit Dealer Master Case
+  Cost with `uom = Case`, `case_qty = Master Case Qty` — never derived from the unit cost, and the unit cost is never
+  derived from the case. MAP and MSRP are separate per-piece fields; on a case item the card reads "$X per Case ·
+  Dealer order unit = 1 Case (N each) · MSRP $Y each · MAP $Z each". The only price changes were 7YR05310TSS and
+  7YE05310TSS $109.99 → $109.98 and 7YA0AS100 $99.99 → $99.98. **Two dates, never one:** HCPS received the file
+  2026-10-10 (price_imports raw `_received_date`); the manufacturer effective date stays NULL on product_skus until
+  Bemis confirms it — never invented, never the received date. The authority gate does not require an effective
+  date; activation is held by decision, not by the gate. **Steadfast (7YE82350TC) and 444DISPLAY are unresolved:**
+  Bemis says everything sells in cases but the list gives them no case qty — keep today's behaviour (Steadfast
+  Each / 1, display kit unit) and do NOT activate Bemis authority until both are resolved or Angelo approves an
+  exception. Legacy price notes that divided the case price into a "/unit" figure, or repeated MSRP already shown as a
+  field, are removed. "Dealer Cost Per Unit" lives only in price_imports.raw for this pilot — Manufacturer Center
+  should get structured source fields for unit cost, received date and MSRP/MAP basis rather than free text.
+  `msrp_each:true` on a pack row (catalog file) labels MSRP "each" and compares it with case price ÷ qty; a pack
+  MSRP quoted per pack (Ovation) carries no flag and is unchanged. Unchanged: $500 prepaid freight / +$40 S&H below
+  $500, $10 less-than-case fee recorded not coded, $20 dropship on HOLD, 7Y codes, retired DO5300RD444.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
