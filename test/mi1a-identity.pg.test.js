@@ -48,6 +48,34 @@ for (const idType of ['bigint', 'uuid']) {
       assert.strictEqual(run(DB, SNAP), before);
       assert.strictEqual(run(DB, 'select count(*) from mi1a_enrollment'), '0', 'Part 1 enrols nothing');
     });
+    const PRIV_TABLES = ['mi1a_snapshot_monthly_sales','mi1a_snapshot_meta','mfr_report_batches','monthly_sales_superseded','commission_period_locks','mi1a_enrollment'];
+    const privOf = (db, tables) => run(db, `select string_agg(t||':'||r||'='||
+        (has_table_privilege(r,'public.'||t,'select') or has_table_privilege(r,'public.'||t,'insert') or has_table_privilege(r,'public.'||t,'update')
+         or has_table_privilege(r,'public.'||t,'delete') or has_table_privilege(r,'public.'||t,'truncate') or has_table_privilege(r,'public.'||t,'references')
+         or has_table_privilege(r,'public.'||t,'trigger'))::text, ',' order by t, r)
+      from unnest(array[${tables.map(x => `'${x}'`).join(',')}]) t, unnest(array['anon','authenticated']) r`);
+    t('Part 1 removes every ordinary-user privilege on the MI-1a + snapshot tables; service_role keeps read/write', () => {
+      // Own database: Part 0 alone first (Supabase default grants present), then Part 1 must close them.
+      const D0 = DB + '_priv'; fresh(D0, idType, ['mi1a_part0_snapshot.sql']);
+      const before = run(D0, `select string_agg(r||'='||has_table_privilege(r,'public.mi1a_snapshot_meta','select')::text, ',' order by r) from unnest(array['anon','authenticated']) r`);
+      assert.strictEqual(before, 'anon=true,authenticated=true', 'fixture mimics Supabase default grants');
+      file(D0, SUP('mi1a_part1_schema.sql'));
+      assert.ok(!/=true/.test(privOf(D0, PRIV_TABLES)), 'fresh Part 0 → Part 1 leaves no ordinary-user privilege');
+      run('postgres', `drop database if exists ${D0}`);
+      const p = privOf(DB, PRIV_TABLES);
+      assert.ok(!/=true/.test(p), 'an ordinary role still holds a privilege: ' + p);
+      for (const tb of PRIV_TABLES) for (const pr of ['select','insert','update','delete'])
+        assert.strictEqual(run(DB, `select has_table_privilege('service_role','public.${tb}','${pr}')`), 't', `service_role ${pr} on ${tb}`);
+      assert.strictEqual(run(DB, `select bool_and(relrowsecurity) from pg_class where relnamespace='public'::regnamespace and relname = any(array[${PRIV_TABLES.map(x => `'${x}'`).join(',')}])`), 't', 'RLS on every table');
+      const seq = run(DB, `select pg_get_serial_sequence('public.monthly_sales_superseded','id')`);
+      assert.strictEqual(run(DB, `select has_sequence_privilege('anon','${seq}','usage') or has_sequence_privilege('authenticated','${seq}','usage')`), 'f', 'sequence closed to ordinary users');
+      assert.strictEqual(run(DB, `select has_sequence_privilege('service_role','${seq}','usage')`), 't');
+      for (const role of ['anon','authenticated']) for (const tb of ['mi1a_snapshot_monthly_sales','mfr_report_batches','mi1a_enrollment'])
+        assert.throws(() => run(DB, `set role ${role}; select count(*) from public.${tb}`), /permission denied/, `${role} reading ${tb}`);
+      assert.throws(() => run(DB, `set role authenticated; insert into public.mi1a_enrollment(manufacturer,lane,enrolled_by) values ('pedifix','sales_report','x')`), /permission denied/);
+      assert.strictEqual(run(DB, `set role service_role; select count(*) from public.mi1a_snapshot_monthly_sales`), run(DB, 'select count(*) from monthly_sales'), 'service_role reads the snapshot');
+      assert.strictEqual(run(DB, 'select count(*) from mi1a_enrollment'), '0');
+    });
     t('after Part 1 (nothing enrolled), old-style writes for every manufacturer still work', () => {
       run(DB, `insert into monthly_sales(manufacturer,period,amount,source,external_ref) values ('pedifix','2026-10-01',1,'sales_report','pedifix|t|0'),('strongback-mobility','2026-10-01',1,'sales_report','strongback-mobility|t|X|0')`);
       run(DB, `delete from monthly_sales where external_ref in ('pedifix|t|0','strongback-mobility|t|X|0')`);
@@ -63,6 +91,30 @@ for (const idType of ['bigint', 'uuid']) {
       const written = run(DB, `select string_agg(id::text||'='||external_ref, ',' order by id::text) from monthly_sales where manufacturer='strongback-mobility' and source='sales_report'`);
       assert.strictEqual(written, proposed);
       assert.strictEqual(run(DB, `select manufacturer||'/'||lane from mi1a_enrollment`), 'strongback-mobility/sales_report');
+    });
+    t('Part 2 gives mi1a_rekey_backup the same protection (no ordinary-user privileges, service_role kept)', () => {
+      assert.ok(!/=true/.test(privOf(DB, ['mi1a_rekey_backup'])), 'ordinary role holds a privilege on mi1a_rekey_backup');
+      assert.strictEqual(run(DB, `select has_table_privilege('service_role','public.mi1a_rekey_backup','select') and has_table_privilege('service_role','public.mi1a_rekey_backup','insert')`), 't');
+      assert.strictEqual(run(DB, `select relrowsecurity from pg_class where oid='public.mi1a_rekey_backup'::regclass`), 't');
+      assert.throws(() => run(DB, `set role anon; select count(*) from public.mi1a_rekey_backup`), /permission denied/);
+      assert.ok(!/=true/.test(privOf(DB, PRIV_TABLES)), 'Part 2 left the Part 1 tables closed');
+    });
+    t('MI-1a functions: not callable by anon/authenticated (RULE 19); service_role runs imports and the guard', () => {
+      const fns = run(DB, `select string_agg(p.oid::regprocedure::text||':'||r||'='||has_function_privilege(r,p.oid,'execute')::text, ',' order by 1)
+        from pg_proc p, unnest(array['anon','authenticated']) r where p.pronamespace='public'::regnamespace
+         and (p.proname like 'hcps_ms_%' or p.proname in ('hcps_sales_report_apply','hcps_commission_file_apply','hcps_import_batch_rollback'))`);
+      assert.strictEqual((fns.match(/:/g) || []).length, 20, '10 functions × 2 roles: ' + fns);
+      assert.ok(!/=true/.test(fns), 'an ordinary role can execute: ' + fns);
+      assert.throws(() => run(DB, `set role anon; select public.hcps_ms_guarded('strongback-mobility','sales_report',null)`), /permission denied/);
+      assert.throws(() => run(DB, `set role authenticated; select public.hcps_sales_report_apply('{}'::jsonb)`), /permission denied/);
+      // service_role: the guard runs on its writes (non-enrolled row passes, enrolled row is refused) …
+      run(DB, `set role service_role; insert into monthly_sales(manufacturer,period,amount,source,external_ref) values ('pedifix','2026-10-01',1,'sales_report','pedifix|svc|0'); delete from monthly_sales where external_ref='pedifix|svc|0'`);
+      assert.throws(() => run(DB, `set role service_role; insert into monthly_sales(manufacturer,period,amount,source,external_ref) values ('strongback-mobility','2026-10-01',1,'sales_report','strongback-mobility|svc|0')`), /mi1a_write_guard/);
+      // … and the import functions run for it (a preview writes nothing).
+      const before = run(DB, SNAP);
+      const r = run(DB, `set role service_role; select hcps_sales_report_apply(jsonb_build_object('manufacturer','strongback-mobility','apply',false,'actor','t','rows','[]'::jsonb))::text`);
+      assert.ok(/\{/.test(r), 'service_role preview returned ' + r);
+      assert.strictEqual(run(DB, SNAP), before);
     });
     t('behaviour checks (test/mi1a/checks.sql) all pass', () => {
       const out = file(DB, CHECKS);
