@@ -520,9 +520,9 @@ function renderReview(rv){
   const clean = !unm.length && !nz.length && !amb.length && !na.length && !ub.length;
   el.innerHTML=`<div class="card" style="margin-top:14px;border-color:#c7d7ef;background:#fbfdff">
     <h2 style="font-size:16px;margin:0 0 2px">Review &amp; correct before committing <span class="sub" style="font-weight:400;text-transform:none">— nothing is written until you commit; fixes here are saved as rules for next month</span></h2>
-    ${tiles}${unmHtml}${ubHtml}${nzHtml}${ambHtml}${naHtml}
+    ${tiles}${unmHtml}${ubHtml}${nzHtml}${ambHtml}${naHtml}${stmtCheckHtml(rv)}
     <div style="margin-top:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <button class="go dk" id="commitBtn" onclick="doImport()">✓ Commit import — write ${tot} rows</button>
+      <button class="go dk" id="commitBtn" onclick="doImport()" ${rv.import_paused?"disabled":""}>✓ Commit import — write ${tot} rows${rv.statement_check?" (whole file, one transaction)":""}</button>
       <button class="go gray" onclick="doAnalyze()">↻ Re-check</button>
       <button class="go gray" onclick="$('#reviewCard').innerHTML='';RVAPPROVED.clear();">Cancel</button>
       <span id="cmsg" class="st">${clean?"All exceptions resolved — ready to commit ✓":""}</span></div>
@@ -571,12 +571,57 @@ function rvApprove(kind,i){ const rv=LASTREVIEW; if(!rv) return;
   else if(kind==='amb') RVAPPROVED.add("amb:"+rv.ambiguous_zips[i].zip);
   else if(kind==='acct'){ const a=rv.new_accounts[i]; RVAPPROVED.add("acct:"+a.dealer_id+"|"+a.account_ref); }
   renderReview(rv); }
+// MI-1a (switch mi_commission_v2): the database checked this file against every statement already on file
+// for each month — including ones loaded before MI-1a. A month that already holds a statement needs your
+// decision; a file name is never treated as proof of a new statement. Nothing is written yet.
+function stmtCheckHtml(rv){
+  if(rv.import_paused) return `<div class="warn" style="margin-top:10px">${esc(rv.import_paused)}</div>`;
+  const sc=rv.statement_check; if(!sc) return "";
+  const months=sc.months||[]; let anyPaid=false;
+  const fmt=n=>"$"+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const rowsHtml=months.map(m=>{ if(m.needs_paid_approval) anyPaid=true;
+    const k=m.month, files=m.existing_files||[];
+    const fl=files.length?files.map(f=>`<div class="dim" style="font-size:12px">• ${esc(f.file)} — ${f.rows} rows, ${fmt(f.commission)} commission (${esc(f.loaded)})${f.identical?' — <b style="color:#b42323">identical to this file</b>':""}
+        <label style="margin-left:6px"><input type="checkbox" class="sc_rf" data-m="${esc(k)}" value="${esc(f.file)}"> replace this file</label></div>`).join(""):`<div class="dim" style="font-size:12px">No statement on file for this month.</div>`;
+    const choice=files.length?`<div style="margin-top:4px;font-size:12.5px">
+        <label><input type="radio" name="sc_${esc(k)}" value="replace"> Replace the ticked file(s)</label>
+        <label style="margin-left:10px"><input type="radio" name="sc_${esc(k)}" value="append"> Add as a separate statement</label>
+        <label style="margin-left:10px"><input type="radio" name="sc_${esc(k)}" value="reject"> Skip this month</label>
+        ${m.overlapping_lines?`<label style="margin-left:10px"><input type="checkbox" id="sc_ov_${esc(k)}"> I checked the ${m.overlapping_lines} overlapping line(s)</label>`:""}
+        <input id="sc_rs_${esc(k)}" placeholder="Reason (needed to add a separate statement)" style="display:block;margin-top:4px;width:100%;max-width:520px;padding:6px 8px;border:1px solid var(--silver);border-radius:7px;font-size:16px"></div>`:"";
+    const x=m.cross_lane_matches?`<div style="color:#9a3412;font-size:12px;margin-top:3px">${m.cross_lane_matches} line(s) match a sales-report line for this month — the same sale may already be counted.
+        <label><input type="checkbox" id="sc_x_${esc(k)}"> These are different sales</label></div>`:"";
+    return `<div style="border-top:1px solid var(--silver);padding:8px 0"><b>${esc(k)}</b> — this file: ${m.rows} rows, ${fmt(m.commission)} commission${m.overlapping_lines?` · <span style="color:#9a3412">${m.overlapping_lines} line(s) already on file</span>`:""}
+      <div style="font-size:12px;margin-top:3px">Statement total from the report (optional): <input id="sc_ct_${esc(k)}" inputmode="decimal" style="width:120px;padding:4px 6px;border:1px solid var(--silver);border-radius:6px;font-size:16px"></div>
+      ${fl}${choice}${x}</div>`; }).join("");
+  const paid=anyPaid?`<div class="warn" style="margin-top:8px">Some months already hold a statement or are locked as paid. Replacing or adding to them changes a paid record.
+      <label style="display:block;margin-top:4px"><input type="checkbox" id="sc_paid"> I approve these changes</label>
+      <input id="sc_paid_rs" placeholder="Reason (stored with the import)" style="display:block;margin-top:4px;width:100%;max-width:520px;padding:6px 8px;border:1px solid var(--silver);border-radius:7px;font-size:16px"></div>`:"";
+  return secHead("Statement check — whole file, every month (nothing written yet)")+rowsHtml+paid;
+}
+function stmtDecisions(){
+  const sc=LASTREVIEW&&LASTREVIEW.statement_check; if(!sc) return null;
+  const decisions={}, control_totals={};
+  for(const m of (sc.months||[])){ const k=m.month;
+    const pick=document.querySelector(`input[name="sc_${CSS.escape(k)}"]:checked`);
+    const ct=(($("#sc_ct_"+CSS.escape(k))||{}).value||"").trim(); if(ct) control_totals[k]=ct.replace(/[$,]/g,"");
+    const x=!!(($("#sc_x_"+CSS.escape(k))||{}).checked);
+    if(pick){ const d={action:pick.value, reason:(($("#sc_rs_"+CSS.escape(k))||{}).value||"").trim(), confirm_overlap:!!(($("#sc_ov_"+CSS.escape(k))||{}).checked), confirm_cross_lane:x};
+      if(pick.value==="replace") d.replace_files=[...document.querySelectorAll(`.sc_rf[data-m="${CSS.escape(k)}"]:checked`)].map(e=>e.value);
+      decisions[k]=d; }
+    else if(x) decisions[k]={action:"",confirm_cross_lane:true};
+  }
+  return { decisions, control_totals, approve_paid:!!(($("#sc_paid")||{}).checked), approve_reason:(($("#sc_paid_rs")||{}).value||"").trim() };
+}
 // Step 2 — commit: write the rows (replacing any prior load of this file+month), then resolve unmatched.
 async function doImport(){
   const v=validImport(); if(!v) return;
   const btn=$("#commitBtn"); if(btn)btn.disabled=true; const cm=$("#cmsg"); if(cm){cm.textContent="Writing "+v.rows.length+" rows…";cm.className="st";}
   try{
-    const r=await api({action:"import",manufacturer:v.slug,period:v.period,multi_month:v.multi,source_file:FILENAME,rows:v.rows});
+    const sd=stmtDecisions()||{};
+    const r=await api({action:"import",manufacturer:v.slug,period:v.period,multi_month:v.multi,source_file:FILENAME,rows:v.rows,...sd});
+    if(r&&r.refused){ if(cm){cm.innerHTML=`Nothing was written — ${esc(r.message||r.error)}`;cm.className="st warn";} return; }
+    if(r&&r.error==="import_paused"){ if(cm){cm.textContent=r.message;cm.className="st warn";} return; }
     if(r&&r.ok){
       if(cm){cm.textContent=`Imported ${r.inserted} rows ✓`;cm.className="st ok";}
       const nun=r.unmatched_count||0;
