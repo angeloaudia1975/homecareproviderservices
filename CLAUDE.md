@@ -1064,6 +1064,39 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   (7) The catalog file and the override layer must both be corrected before authority switches either way, or the
   storefront changes when the flag moves. Needed as structured fields: unit cost, received date, MSRP/MAP basis,
   freight terms per source.
+- **Manufacturer Center Phases 1–3 (approved by Angelo 2026-10-10; one release, run and verified in order — a
+  failure stops it).** Manufacturer Center orchestrates Structure Map / Content Enrichment / product_skus /
+  Partner 360; it is never a second product database or pricing engine. Decisions:
+  (1) **Freight terms** live in `manufacturer_meta.freight_terms` (merged over manufacturers.json from Phase 5); every
+  rule set carries `trace` {source_id and/or decision_id} — a CHECK refuses untraced terms.
+  (2) **`product_skus.dealer_unit_cost`** = the accepted manufacturer per-piece cost; the raw value stays in
+  `price_imports.raw`. Never dealer-facing, never used to calculate a dealer price. `msrp_basis` / `map_basis`
+  (`each` | `order_unit` | null = today's rule) are recorded now and read by the storefront only from Phase 4.
+  (3) **Source files** go to the private bucket `mfr-sources`; SHA-256 in `mfr_sources`. A new source must have a
+  received date (legacy backfills are flagged `legacy`, never given an invented date); `effective_date_status`
+  stated|pending|not_applicable, and "stated" exists exactly when the manufacturer date does.
+  (4) **The freeze is a hard block** at two levels: catalog-api `freezeGate` refuses every commercial action on a
+  `manufacturer_meta.frozen` line before writing (423 line_frozen), and the database trigger `mfr_freeze_guard`
+  refuses the write itself whatever path sends it (catalog-api, images tool, the ordering site's old catalog
+  endpoint, hand-run SQL). The only override is an unused `mfr_decisions` row of kind `regression_fix` for that
+  line, sent as `regression_fix:{decision_id, reason}` (catalog-api forwards it as header x-hcps-regression-fix and
+  marks it used after success). No silent unfreeze; authority and freight terms of a frozen line are guarded too.
+  Hand SQL on a frozen line: record the decision, then `select set_config('request.headers','{"x-hcps-regression-fix":"<id>"}', true);`
+  in the same transaction. `mfr_freeze_guard_selftest()` (catalog-api `mc_guard_selftest`) tries one write per
+  table per frozen line inside rolled-back sub-transactions and must report every attempt "blocked".
+  (5) **Safe staging** (stage_record_source): a field a source row omits is KEPT; a value is cleared only when listed
+  in `clear` AND `clear_decision_id` names a decision of that line; the dry run reports per SKU changed / unchanged /
+  would_clear / not_in_source; a new file never inherits the old file's effective date; `source_id` must be an
+  accepted source of the line.
+  (6) **Verification = `mc_verify`, not parity alone**: server copies of the storefront engine and card/freight
+  rendering are re-extracted from the LIVE index.html every run (`_extract.js`; mismatch = fail); full-field parity
+  (price, MSRP, MAP, tiers, UOM, case qty); source alignment vs price_imports + decisions; product-card rules;
+  cart pack line; browser = server on every SKU and the closest real carts either side of each freight threshold;
+  freight fee + wording at −1¢/exact/+1¢; dealer confirmation and HCPS email rendered (nothing sent); contract and
+  saved-cart impact; retired SKUs refused; every image loads; the line fingerprint (same canonical lines as the
+  Partner 360 browser fingerprint) against the last passing baseline. Evidence saved in `mfr_verification_runs`.
+  `_shop_render.js` / `_hcps_email.js` are verbatim copies — regenerate with `node test/mc-copies.js`, never by hand.
+  Rule 19 applies to every MC object (RLS on, no policies, revoked from public/anon/authenticated, public-key check).
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.

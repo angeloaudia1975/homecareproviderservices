@@ -24,6 +24,18 @@ const EXT={"image/jpeg":"jpg","image/jpg":"jpg","image/png":"png","image/webp":"
    see", because the only code that knew how a catalog SKU meets an enrichment page lived
    inside the shop's page file. Importing it here is what makes the tools one system. */
 const JOIN = require("./_catalog-join.js");
+/* MANUFACTURER CENTER (Phases 1–3, approved 2026-10-10): the freeze, safe staging and the
+   verification suite live in _mc.js; the storefront copies they verify against in _extract.js,
+   _shop_engine.js, _shop_render.js and _hcps_email.js. */
+const MC = require("./_mc.js");
+const MC_EXTRACT = require("./_extract.js");
+/* THE FREEZE, PER REQUEST. Climbing Steps, Strongback, Ovation and Bemis are frozen
+   (manufacturer_meta.frozen). A commercial action on a frozen line is refused before anything is
+   written (freezeGate below), and the database refuses the write itself whichever path sends it
+   (mfr_freeze_guard trigger). The one way through is an approved regression fix: REGRESSION holds
+   it for this request, sb() sends it to the database as x-hcps-regression-fix, and the decision is
+   marked used once the request succeeds. Reset at the start of every request. */
+let REGRESSION = null;
 
 /* ─────────────── THE ONE PLACE A LAYER WRITE CAN BE NOTICED ───────────────
    Seventeen actions in this file change a commercial fact — price, MSRP, MAP,
@@ -62,7 +74,8 @@ function codesOfWrite(path, body){
   return out.length ? out : ["*"];
 }
 async function sb(method,path,body,extra){
-  const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined});
+  const fix=(method!=="GET" && REGRESSION) ? {"x-hcps-regression-fix":String(REGRESSION.id)} : {};
+  const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...fix,...(extra||{})},body:body!=null?JSON.stringify(body):undefined});
   const t=await r.text(); if(!r.ok) throw new Error(`Supabase ${r.status}: ${t}`);
   if(method!=="GET" && LAYER_TABLE.test(path)){
     const slug=slugOfWrite(path,body);
@@ -971,7 +984,7 @@ async function whoami(event){
     try{ const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${tok}`}});
       if(r.ok){ const u=await r.json(); const email=u&&u.email&&String(u.email).toLowerCase();
         if(email){ const sr=await fetch(`${SUPABASE_URL}/rest/v1/staff_users?email=eq.${encodeURIComponent(email)}&select=*`,{headers:{apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`}}); const s=sr.ok?await sr.json():[]; const su=s&&s[0];
-          if(su&&su.active!==false) return {role:su.role||"rep"}; } } }catch(e){}
+          if(su&&su.active!==false) return {role:su.role||"rep", email}; } } }catch(e){}
     return null;
   }
   const need=process.env.ANALYTICS_TOKEN, got=event.headers["x-analytics-token"]||(event.queryStringParameters||{}).token||"";
@@ -2050,7 +2063,52 @@ async function noteParity(slug, msg){
     {Prefer:"resolution=merge-duplicates,return=minimal"});
 }
 
+/* ── THE FREEZE GATE (Manufacturer Center Phase 2) ──────────────────────────────────────────
+   A commercial action (MC.isCommercialAction) on a frozen line is refused here, before any read-
+   modify-write starts, so nothing is half-written. Strict: if the freeze state cannot be read, the
+   commercial action is refused too. The only override is b.regression_fix = {decision_id, reason}
+   naming an unused mfr_decisions row of kind regression_fix for this same line. */
+async function freezeGate(b, me){
+  if(!MC.isCommercialAction(b)) return null;
+  const slug=MC.lineOf(b);
+  if(!slug) return null;                         // unattributed: the database guard still applies
+  let rows;
+  try{ rows=await sb("GET",`manufacturer_meta?slug=eq.${encodeURIComponent(slug)}&select=slug,frozen`); }
+  catch(e){ return json(503,{error:"freeze_state_unreadable", message:"The freeze state of "+slug+" could not be read, so no commercial change was made: "+String((e&&e.message)||e).slice(0,300)}); }
+  if(!(rows && rows[0] && rows[0].frozen===true)) return null;
+  const rf=b.regression_fix;
+  if(!rf) return json(423,{error:"line_frozen", manufacturer:slug, message:
+    slug+" is frozen (Gold Standard COMPLETE). Commercial changes are refused unless a regression is found: record a regression_fix decision in Manufacturer Center and send it with the change. Nothing was changed."});
+  const id=parseInt(rf.decision_id,10), reason=String(rf.reason||"").trim();
+  if(!(id>0) || !reason) return json(400,{error:"regression_fix_incomplete", message:"A regression fix needs decision_id and a reason. Nothing was changed."});
+  let dec;
+  try{ dec=await sb("GET",`mfr_decisions?id=eq.${id}&select=id,manufacturer,kind,used_at`); }
+  catch(e){ return json(503,{error:"decision_unreadable", message:"The regression_fix decision could not be read. Nothing was changed."}); }
+  const dd=dec&&dec[0];
+  if(!dd || dd.kind!=="regression_fix" || dd.manufacturer!==slug || dd.used_at)
+    return json(423,{error:"regression_fix_invalid", manufacturer:slug, message:"Decision "+id+" is not an unused regression_fix for "+slug+". Nothing was changed."});
+  REGRESSION={id, manufacturer:slug, reason, by:String((me&&me.email)||"president").slice(0,80)};
+  return null;
+}
+
 exports.handler = async (event)=>{
+  REGRESSION = null;
+  const res = await handleCatalog(event);
+  /* A regression fix is single-use: once the request it authorised has succeeded, it is spent. */
+  if(REGRESSION && res && res.statusCode < 300){
+    const used = REGRESSION; REGRESSION = null;
+    try{ await sb("PATCH",`mfr_decisions?id=eq.${used.id}&used_at=is.null`,{used_at:new Date().toISOString(), used_by:used.by},{Prefer:"return=minimal"}); }
+    catch(e){ try{ console.error("[HCPS] could not mark regression_fix "+used.id+" used: "+String((e&&e.message)||e)); }catch(_){} }
+  }
+  REGRESSION = null;
+  /* The database's own refusal, whichever action reached it, reads as what it is. */
+  if(res && res.statusCode >= 500 && /line_frozen/.test(String(res.body||""))){
+    let detail=""; try{ detail=(JSON.parse(res.body).error||JSON.parse(res.body).message||""); }catch(e){}
+    return json(423,{error:"line_frozen", message:"This line is frozen (Gold Standard). Nothing was changed. "+String(detail).slice(0,300)});
+  }
+  return res;
+};
+async function handleCatalog(event){
   if(event.httpMethod==="OPTIONS") return {statusCode:204,headers:CORS,body:""};
   try{
     if(!SUPABASE_URL||!SERVICE_ROLE) return json(500,{error:"Supabase env vars not set (SUPABASE_URL, SUPABASE_SERVICE_ROLE)"});
@@ -2129,6 +2187,8 @@ exports.handler = async (event)=>{
 
     if(event.httpMethod==="POST"){
       let b; try{b=JSON.parse(event.body||"{}");}catch{return json(400,{error:"bad JSON"});}
+      const frozenRefusal=await freezeGate(b, me);
+      if(frozenRefusal) return frozenRefusal;
 
       if(b.action==="upload"){
         if(!b.data) return json(400,{error:"data required"});
@@ -3764,55 +3824,80 @@ exports.handler = async (event)=>{
          record-authoritative (there the canonical edit path is the only way in). Strict reads;
          a write failure stops and names what was staged. */
       if(b.action==="stage_record_source"){
+        /* SAFE STAGING (Manufacturer Center Phase 2, 2026-10-10). A field the source row leaves out
+           is kept exactly as it is; it used to be written as empty (MAP, MSRP and tiers were blanked
+           whenever a row omitted them). A value is cleared only when the field is listed in
+           b.clear AND b.clear_decision_id names a recorded decision for this line. The dry run shows,
+           per SKU, what changes, what stays, what would be cleared and what the source does not
+           mention. Provenance (source_file, source_id, effective_date) is stamped on every row the
+           source lists; the effective date is only set when given (or taken from the register). */
         const mfr=String(b.manufacturer||"").trim(), e=encodeURIComponent;
-        const file=String(b.source_file||"").trim(), eff=String(b.effective_date||"").trim();
+        let file=String(b.source_file||"").trim(), eff=String(b.effective_date||"").trim();
         const rows=Array.isArray(b.rows)?b.rows:[];
-        if(!mfr||!file||!rows.length) return json(400,{error:"manufacturer, source_file and rows required"});
+        const sourceId=b.source_id!=null?parseInt(b.source_id,10):null;
+        if(!mfr||(!file&&!sourceId)||!rows.length) return json(400,{error:"manufacturer, source_file (or source_id) and rows required"});
         if(eff && !/^\d{4}-\d{2}-\d{2}$/.test(eff)) return json(400,{error:"effective_date must be YYYY-MM-DD"});
-        const ALLOWED_STATUS=[LIVE_STATUS,"not_listed","discontinued"];
-        const clean=[], bad=[];
-        for(const r of rows){
-          const code=String((r&&r.code)||"").trim(); if(!code){ bad.push({code:"",why:"no code"}); continue; }
-          const status=r.status==null?LIVE_STATUS:String(r.status);
-          if(ALLOWED_STATUS.indexOf(status)<0){ bad.push({code,why:"status "+status}); continue; }
-          const bp=num(r.base_price);
-          if(status===LIVE_STATUS && !(bp>0)){ bad.push({code,why:"an active row needs a base price"}); continue; }
-          const row={code, base_price:bp, tiers:cleanTiers(r.tiers), map:num(r.map), msrp:num(r.msrp),
-            msrp_auto:r.msrp_auto===true, status, source_file:file.slice(0,160), effective_date:eff||null};
-          if(r.uom!=null&&String(r.uom).trim()) row.uom=String(r.uom).trim().slice(0,40);
-          if(r.case_qty!=null){ const cq=num(r.case_qty); if(!(cq>0)){ bad.push({code,why:"case_qty"}); continue; } row.case_qty=cq; }
-          if(r.status_note!=null) row.status_note=String(r.status_note).slice(0,300);
-          clean.push(row);
+        let source=null;
+        if(sourceId!=null){
+          let sr; try{ sr=await sb("GET",`mfr_sources?id=eq.${sourceId}&select=id,manufacturer,file_name,title,status,manufacturer_effective_date`); }
+          catch(err){ return json(503,{error:"source_unreadable",message:String((err&&err.message)||err)}); }
+          source=sr&&sr[0];
+          if(!source || source.manufacturer!==mfr) return json(400,{error:"unknown_source",message:"Source "+sourceId+" is not registered for "+mfr+". Nothing was staged."});
+          if(source.status!=="accepted") return json(409,{error:"source_not_accepted",message:"Source "+sourceId+" is "+source.status+"; only an accepted source can be staged. Nothing was staged."});
+          if(!file) file=String(source.file_name||source.title||"");
+          if(!eff && source.manufacturer_effective_date) eff=String(source.manufacturer_effective_date).slice(0,10);
         }
-        const dup=clean.map(r=>normCode(r.code)).filter((c,i,a)=>a.indexOf(c)!==i);
-        if(bad.length||dup.length) return json(400,{error:"bad_rows",bad,duplicates:[...new Set(dup)],message:"Nothing was staged."});
+        const ALLOWED_STATUS=[LIVE_STATUS,"not_listed","discontinued"];
         let meta, existing;
         try{
           [meta, existing]=await Promise.all([
             sb("GET",`manufacturer_meta?slug=eq.${e(mfr)}&select=record_authoritative`),
-            sb("GET",`product_skus?manufacturer=eq.${e(mfr)}&select=code,code_norm,base_price,msrp,msrp_auto,map,tiers,status,uom,case_qty,source_file&limit=10000`)]);
+            sb("GET",`product_skus?manufacturer=eq.${e(mfr)}&select=code,code_norm,base_price,msrp,msrp_auto,map,tiers,status,status_note,uom,case_qty,dealer_unit_cost,msrp_basis,map_basis,source_file,source_id,effective_date&limit=10000`)]);
         }catch(err){ return json(503,{error:"layer_unreadable",message:String((err&&err.message)||err)}); }
         if(meta&&meta[0]&&meta[0].record_authoritative===true)
           return json(409,{error:"line_is_authoritative",message:"This line already prices from its record; change it through the canonical edit path. Nothing was staged."});
         const byNorm={}; (existing||[]).forEach(r=>{ byNorm[r.code_norm||normCode(r.code)]=r; });
-        const plan=clean.map(r=>({code:r.code, action:byNorm[normCode(r.code)]?"update":"create", before:byNorm[normCode(r.code)]||null, after:r}));
+        // A clearance is approved only by a recorded decision for this line.
+        let clearApproved=false;
+        if(Array.isArray(b.clear)&&b.clear.length){
+          const did=parseInt(b.clear_decision_id,10);
+          if(did>0){
+            let dr; try{ dr=await sb("GET",`mfr_decisions?id=eq.${did}&manufacturer=eq.${e(mfr)}&select=id`); }
+            catch(err){ return json(503,{error:"decision_unreadable",message:String((err&&err.message)||err)}); }
+            clearApproved=!!(dr&&dr[0]);
+          }
+        }
+        const sp=MC.planStage({rows, existingByNorm:byNorm, clear:b.clear, clearApproved, normCode, num, cleanTiers, LIVE_STATUS, ALLOWED_STATUS});
+        if(sp.bad.length||sp.duplicates.length) return json(400,{error:"bad_rows",bad:sp.bad,duplicates:sp.duplicates,message:"Nothing was staged."});
+        const prov=r=>{ const o={source_file:file.slice(0,160)}; if(sourceId!=null) o.source_id=sourceId;
+          const before=byNorm[normCode(r.code)];
+          if(eff) o.effective_date=eff;
+          else if(!before || String(before.source_file||"")!==file) o.effective_date=null;   // a different file's date never carries over
+          return o; };
+        const plan=sp.plan.map(p=>Object.assign(p,{provenance:prov(p)}));
         /* What would change for dealers on activation: compare the storefront's current values
-           with the staged rows, using the same parity rule authority is granted on. */
+           with the staged record (existing values kept where the source is silent). */
         let preview;
         try{
           const [base,custom,ovRows]=await Promise.all([catalogFile(mfr),
             sb("GET",`custom_products?manufacturer=eq.${e(mfr)}&select=code,base_price,msrp,msrp_auto,map,tiers,active`),
             sb("GET",`product_overrides?manufacturer=eq.${e(mfr)}&select=code,patch`)]);
-          preview=parityCompare({base:base||[],custom:custom||[],overrides:ovRows||[],record:clean,want:null,mfr,strictTiers:true});
+          preview=parityCompare({base:base||[],custom:custom||[],overrides:ovRows||[],record:plan.map(p=>p.after),want:null,mfr,strictTiers:true});
         }catch(err){ return json(503,{error:"layer_unreadable",message:String((err&&err.message)||err)}); }
-        if(b.dry_run===true) return json(200,{ok:true,dry_run:true,plan,activation_preview:preview});
+        const refused=plan.filter(p=>(p.refused_clears||[]).length).map(p=>({code:p.code,fields:p.refused_clears}));
+        if(b.dry_run===true) return json(200,{ok:true,dry_run:true,plan,activation_preview:preview,would_clear_refused:refused});
+        if(refused.length) return json(409,{error:"would_clear",refused,message:
+          "These fields would be cleared, which needs b.clear plus a recorded decision (clear_decision_id). Nothing was staged."});
         const now=new Date().toISOString(), by=String((me&&me.email)||b.reviewer||"admin").slice(0,80);
         const staged=[];
         for(const p of plan){
           try{
-            const body=Object.assign({},p.after,{updated_at:now,updated_by:by});
-            if(p.action==="update") await sb("PATCH",`product_skus?manufacturer=eq.${e(mfr)}&code_norm=eq.${e(normCode(p.code))}`,body,{Prefer:"return=minimal"});
-            else await sb("POST","product_skus",Object.assign({manufacturer:mfr},body),{Prefer:"return=minimal"});
+            if(p.action==="update"){
+              const body=Object.assign({},p.set,p.provenance,{updated_at:now,updated_by:by});
+              await sb("PATCH",`product_skus?manufacturer=eq.${e(mfr)}&code_norm=eq.${e(normCode(p.code))}`,body,{Prefer:"return=minimal"});
+            } else {
+              await sb("POST","product_skus",Object.assign({manufacturer:mfr},p.set,p.provenance,{updated_at:now,updated_by:by}),{Prefer:"return=minimal"});
+            }
             staged.push(p.code);
           }catch(err){
             return json(502,{error:"stage_incomplete",staged,failed:p.code,message:String((err&&err.message)||err).slice(0,300)});
@@ -3834,6 +3919,15 @@ exports.handler = async (event)=>{
         if(eff && !/^\d{4}-\d{2}-\d{2}$/.test(eff)) return json(400,{error:"effective_date must be YYYY-MM-DD"});
         const codes=Array.isArray(b.codes)?b.codes.map(c=>String(c||"").trim()).filter(Boolean):[];
         if(!codes.length) return json(400,{error:"codes required (the codes the source file lists)"});
+        /* Manufacturer Center: provenance can name its register entry (mfr_sources.id), which must be
+           an ACCEPTED source of this same line. */
+        const provSource=b.source_id!=null?parseInt(b.source_id,10):null;
+        if(provSource!=null){
+          let sr; try{ sr=await sb("GET",`mfr_sources?id=eq.${provSource}&select=id,manufacturer,status`); }
+          catch(err){ return json(503,{error:"source_unreadable",message:String((err&&err.message)||err)}); }
+          const so=sr&&sr[0];
+          if(!so||so.manufacturer!==mfr||so.status!=="accepted") return json(400,{error:"unknown_source",message:"source_id "+provSource+" is not an accepted source of "+mfr+". Nothing was written."});
+        }
         let rows;
         try{ rows=await sb("GET",`product_skus?manufacturer=eq.${e(mfr)}&select=code,code_norm,status,source_file,effective_date&limit=10000`); }
         catch(err){ return json(503,{error:"layer_unreadable",message:String((err&&err.message)||err)}); }
@@ -3850,7 +3944,7 @@ exports.handler = async (event)=>{
           const r=byNorm[normCode(c)];
           try{
             await sb("PATCH",`product_skus?manufacturer=eq.${e(mfr)}&code_norm=eq.${e(normCode(c))}`,
-              {source_file:file.slice(0,160), effective_date:eff||null, updated_at:now, updated_by:by},{Prefer:"return=minimal"});
+              Object.assign({source_file:file.slice(0,160), effective_date:eff||null, updated_at:now, updated_by:by}, provSource!=null?{source_id:provSource}:{}),{Prefer:"return=minimal"});
             stamped.push(r.code);
           }catch(err){
             return json(502,{error:"provenance_incomplete",stamped,failed:r.code,message:String((err&&err.message)||err)});
@@ -4068,6 +4162,102 @@ exports.handler = async (event)=>{
         return json(200,await flowTest(slug, Math.max(1, Math.min(50, parseInt(b.sample,10)||5))));
       }
 
+      /* ── MANUFACTURER CENTER (Phases 1–3, 2026-10-10) ─────────────────────────────────────
+         Read the register, decisions and verification history; record a decision; run the
+         verification suite; prove the database freeze guard is live. Strict reads: a table that
+         cannot be read is an error on screen, never an empty list. */
+      if(b.action==="mc_overview"){
+        let lines, meta, sources, decisions, runs;
+        try{
+          [lines, meta, sources, decisions, runs]=await Promise.all([
+            fetchJson(`${ORDERING_BASE}/data/manufacturers.json`),
+            sb("GET","manufacturer_meta?select=slug,record_authoritative,record_resync_error,frozen,frozen_at,frozen_reason,deferrals,freight_terms"),
+            sb("GET","mfr_sources?select=id,manufacturer,kind,title,file_name,received_date,legacy,manufacturer_effective_date,effective_date_status,status,accepted_at&order=id.asc&limit=2000"),
+            sb("GET","mfr_decisions?select=id,manufacturer,kind,used_at&limit=5000"),
+            sb("GET","mfr_verification_runs?select=id,manufacturer,phase,result,fingerprint,run_at,run_by&order=run_at.desc&limit=500")]);
+        }catch(e){ return json(503,{error:"mc_unreadable", message:"Manufacturer Center could not read its records: "+String((e&&e.message)||e).slice(0,300)}); }
+        const by=(rows,k)=>{ const o={}; (rows||[]).forEach(r=>{ (o[r[k]]=o[r[k]]||[]).push(r); }); return o; };
+        const M=Object.fromEntries((meta||[]).map(m=>[m.slug,m])), S=by(sources,"manufacturer"), D=by(decisions,"manufacturer"), R=by(runs,"manufacturer");
+        const out=(lines||[]).filter(l=>l&&l.slug).map(l=>{ const m=M[l.slug]||{}, src=S[l.slug]||[], dec=D[l.slug]||[], rr=R[l.slug]||[];
+          const accepted=src.filter(x=>x.status==="accepted"&&x.kind==="price_list");
+          const cur=accepted.filter(x=>!x.legacy).slice(-1)[0]||accepted.slice(-1)[0]||null;
+          return {slug:l.slug, name:l.name||l.slug, authoritative:m.record_authoritative===true, frozen:m.frozen===true, frozen_at:m.frozen_at||null,
+            deferrals:Array.isArray(m.deferrals)?m.deferrals:[], freight_traced:!!(m.freight_terms&&m.freight_terms.trace),
+            source:cur?{id:cur.id,title:cur.title,received_date:cur.received_date,legacy:cur.legacy,effective_date_status:cur.effective_date_status,manufacturer_effective_date:cur.manufacturer_effective_date}:null,
+            sources:src.length, decisions:dec.length, open_regression_fixes:dec.filter(x=>x.kind==="regression_fix"&&!x.used_at).length,
+            last_run:rr[0]?{id:rr[0].id,phase:rr[0].phase,result:rr[0].result,fingerprint:rr[0].fingerprint,run_at:rr[0].run_at}:null}; });
+        return json(200,{ok:true, lines:out});
+      }
+      if(b.action==="mc_line"){
+        const slug=String(b.manufacturer||"").trim(); if(!slug) return json(400,{error:"manufacturer required"});
+        const e=encodeURIComponent; let sources, decisions, runs, meta;
+        try{
+          [sources, decisions, runs, meta]=await Promise.all([
+            sb("GET",`mfr_sources?manufacturer=eq.${e(slug)}&select=*&order=id.asc`),
+            sb("GET",`mfr_decisions?manufacturer=eq.${e(slug)}&select=*&order=decided_at.desc`),
+            sb("GET",`mfr_verification_runs?manufacturer=eq.${e(slug)}&select=id,phase,result,fingerprint,run_at,run_by,engine_version&order=run_at.desc&limit=100`),
+            sb("GET",`manufacturer_meta?slug=eq.${e(slug)}&select=slug,record_authoritative,frozen,frozen_at,frozen_reason,deferrals,freight_terms`)]);
+        }catch(e2){ return json(503,{error:"mc_unreadable", message:String((e2&&e2.message)||e2).slice(0,300)}); }
+        return json(200,{ok:true, manufacturer:slug, meta:(meta&&meta[0])||null, sources:sources||[], decisions:decisions||[], runs:runs||[]});
+      }
+      if(b.action==="mc_run"){
+        const id=parseInt(b.id,10); if(!(id>0)) return json(400,{error:"id required"});
+        let r; try{ r=await sb("GET",`mfr_verification_runs?id=eq.${id}&select=*`); }
+        catch(e2){ return json(503,{error:"mc_unreadable", message:String((e2&&e2.message)||e2).slice(0,300)}); }
+        if(!(r&&r[0])) return json(404,{error:"no such run"});
+        return json(200,{ok:true, run:r[0]});
+      }
+      if(b.action==="mc_record_decision"){
+        const KINDS=["interpretation","conflict","exception","regression_fix","freight_terms","deferral","acceptance"];
+        const slug=String(b.manufacturer||"").trim(), kind=String(b.kind||""), field=String(b.field||"").trim(), reason=String(b.reason||"").trim();
+        if(!slug||!field||!reason) return json(400,{error:"manufacturer, field and reason are required"});
+        if(KINDS.indexOf(kind)<0) return json(400,{error:"kind must be one of "+KINDS.join(", ")});
+        const row={manufacturer:slug, kind, field:field.slice(0,80), reason:reason.slice(0,2000), code:b.code?String(b.code).trim().slice(0,80):null,
+          manufacturer_value:b.manufacturer_value===undefined?null:b.manufacturer_value, hcps_value:b.hcps_value===undefined?null:b.hcps_value,
+          source_id:b.source_id!=null?parseInt(b.source_id,10):null, decided_by:String((me&&me.email)||b.reviewer||"president").slice(0,80)};
+        let ins; try{ ins=await sb("POST","mfr_decisions",row,{Prefer:"return=representation"}); }
+        catch(e2){ return json(502,{error:"decision_not_recorded", message:String((e2&&e2.message)||e2).slice(0,300)}); }
+        return json(200,{ok:true, decision:ins&&ins[0]});
+      }
+      if(b.action==="mc_guard_selftest"){
+        let r; try{ r=await sb("POST","rpc/mfr_freeze_guard_selftest",{}); }
+        catch(e2){ return json(503,{error:"selftest_failed", message:String((e2&&e2.message)||e2).slice(0,300)}); }
+        const rows=Array.isArray(r)?r:[];
+        const notBlocked=rows.filter(x=>x.result!=="blocked" && x.result!=="no active record");
+        return json(200,{ok:true, pass:rows.length>0 && !notBlocked.length, attempts:rows, not_blocked:notBlocked});
+      }
+      if(b.action==="mc_verify"){
+        const slug=String(b.manufacturer||"").trim(); if(!slug) return json(400,{error:"manufacturer required"});
+        const PHASES=["baseline","pre","post","regression","release"]; const phase=PHASES.indexOf(b.phase)>=0?b.phase:"release";
+        const e=encodeURIComponent;
+        const PRICING=require("./_pricing.js"), ORDERS=require("./orders-api.js");
+        let liveIndexHtml="", baseline=null;
+        try{
+          const lr=await fetch(`${ORDERING_BASE}/index.html`,{headers:{"cache-control":"no-cache"}});
+          if(!lr.ok) throw new Error("storefront page HTTP "+lr.status);
+          liveIndexHtml=await lr.text();
+          if(phase!=="baseline"){
+            const br=await sb("GET",`mfr_verification_runs?manufacturer=eq.${e(slug)}&result=eq.pass&phase=in.(baseline,post)&fingerprint=not.is.null&select=id,fingerprint,checks,run_at&order=run_at.desc&limit=1`);
+            baseline=(br&&br[0])||null;
+          }
+        }catch(e2){ return json(503,{error:"verify_unreadable", message:"Verification could not start: "+String((e2&&e2.message)||e2).slice(0,300)}); }
+        let rep;
+        try{
+          rep=await MC.verifyLine({ slug, sb, PRICING, files:PRICING.remoteFiles(ORDERING_BASE),
+            ENGINE_SOURCE:require("./_shop_engine.js").SOURCE, RENDER_SOURCE:require("./_shop_render.js").SOURCE, EMAIL_SOURCE:require("./_hcps_email.js").SOURCE,
+            EXTRACT:MC_EXTRACT, liveIndexHtml, orderConfirmation:ORDERS._orderConfirmation, unitLabel:ORDERS._unitLabel,
+            fetchImpl:fetch, ORDERING_BASE, baseline, imageBudgetMs:parseInt(b.image_budget_ms,10)||7000 });
+        }catch(e2){ return json(502,{error:"verify_failed", message:"Verification could not finish — it is NOT a pass: "+String((e2&&e2.message)||e2).slice(0,300)}); }
+        let saved=null;
+        if(b.save!==false){
+          try{ const ins=await sb("POST","mfr_verification_runs",{manufacturer:slug, phase, result:rep.result, checks:rep.checks, fingerprint:rep.fingerprint,
+                 engine_version:MC.sha(require("./_shop_engine.js").SOURCE+require("./_shop_render.js").SOURCE).slice(0,12), run_by:String((me&&me.email)||"president").slice(0,80)},{Prefer:"return=representation"});
+               saved=ins&&ins[0]&&ins[0].id; }
+          catch(e2){ return json(502,{error:"run_not_saved", report:rep, message:"The run completed but could not be saved: "+String((e2&&e2.message)||e2).slice(0,300)}); }
+        }
+        return json(200,{ok:true, run_id:saved, phase, baseline_run:baseline?baseline.id:null, ...rep});
+      }
+
       return json(400,{error:"unknown action"});
     }
     return json(405,{error:"method not allowed"});
@@ -4076,4 +4266,4 @@ exports.handler = async (event)=>{
      before a later step threw still has to reach the record. The Set is cleared
      inside the flush, so a warm container never inherits another request's work. */
   finally{ try{ await flushRecordResync(); }catch(e){} }
-};
+}
