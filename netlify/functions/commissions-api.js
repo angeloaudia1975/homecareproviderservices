@@ -455,9 +455,11 @@ exports.handler = async (event)=>{
       for(const bt of batches){
         const {out}=mapRows(slug,bt.per,source_file,bt.rows,ctx);
         const clean=clean1(out);
-        // MI-1a safeguard: replace only COMMISSION-lane rows (never Sales Report Import rows), and if the
+        // MI-1a safeguard: replace only EXPLICITLY IDENTIFIED commission-lane rows — the same definition as the
+        // database's hcps_ms_is_commission_lane: source='commission', or a legacy row with no source AND no
+        // external_ref. Rows of any other source (sales_report, or anything else) are never touched. If the
         // delete fails, stop BEFORE inserting — a failed delete must never leave the month doubled.
-        let del=`monthly_sales?manufacturer=eq.${encodeURIComponent(slug)}&period=eq.${encodeURIComponent(bt.per)}&or=(source.is.null,source.neq.sales_report)`;
+        let del=`monthly_sales?manufacturer=eq.${encodeURIComponent(slug)}&period=eq.${encodeURIComponent(bt.per)}&or=(source.eq.commission,and(source.is.null,external_ref.is.null))`;
         if(source_file) del+=`&source_file=eq.${encodeURIComponent(source_file)}`;
         try{ await sbSend("DELETE",del,null,{Prefer:"return=minimal"}); }
         catch(e){ return json(502,{ok:false,error:"replace_failed",

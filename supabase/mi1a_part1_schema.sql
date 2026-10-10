@@ -112,20 +112,28 @@ returns boolean language sql immutable as $$ select p_source = 'commission' or (
 --    their own transaction only). Dealer/rep re-attribution (dealer_id, rep_name, rep_id, channel)
 --    stays allowed. PostgREST callers cannot set hcps.ms_writer, so old import endpoints are
 --    blocked for enrolled rows — including during a rollback, until R1 removes the enrolment.
+--    The row is protected when EITHER its OLD or its NEW classification (manufacturer + lane) is
+--    enrolled: an enrolled row cannot escape by changing its manufacturer, source or external_ref,
+--    and a row cannot be moved INTO an enrolled manufacturer/lane outside the MI-1a functions.
+create or replace function public.hcps_ms_guarded(p_manufacturer text, p_source text, p_external_ref text)
+returns boolean language sql stable security definer set search_path = public as $$
+  -- security definer: the enrolment is always read in full, whoever triggers the write (RLS can't hide it).
+  select exists (select 1 from public.mi1a_enrollment e
+                  where e.lane = case when p_source = 'sales_report' then 'sales_report'
+                                      when public.hcps_ms_is_commission_lane(p_source, p_external_ref) then 'commission' end
+                    and (e.manufacturer = p_manufacturer or e.manufacturer = '*')) $$;
+
 create or replace function public.hcps_ms_write_guard()
 returns trigger language plpgsql as $$
-declare r record; v_lane text;
+declare v_old boolean := false; v_new boolean := false;
 begin
   if current_setting('hcps.ms_writer', true) = 'mi1a' then return coalesce(new, old); end if;
-  r := coalesce(new, old);
-  v_lane := case when r.source = 'sales_report' then 'sales_report'
-                 when hcps_ms_is_commission_lane(r.source, r.external_ref) then 'commission' end;
-  if v_lane is null or not exists (select 1 from mi1a_enrollment e
-       where e.lane = v_lane and (e.manufacturer = r.manufacturer or e.manufacturer = '*')) then
-    return coalesce(new, old);
-  end if;
+  if tg_op in ('UPDATE','DELETE') then v_old := hcps_ms_guarded(old.manufacturer, old.source, old.external_ref); end if;
+  if tg_op in ('UPDATE','INSERT') then v_new := hcps_ms_guarded(new.manufacturer, new.source, new.external_ref); end if;
+  if not (v_old or v_new) then return coalesce(new, old); end if;
   if tg_op in ('INSERT','DELETE') then
-    raise exception 'mi1a_write_guard: % % rows for % are written only through the MI-1a import functions', tg_op, v_lane, r.manufacturer;
+    raise exception 'mi1a_write_guard: % on % rows for % happens only through the MI-1a import functions',
+      tg_op, coalesce(new.source, old.source, 'commission'), coalesce(new.manufacturer, old.manufacturer);
   end if;
   if (new.manufacturer, new.period, new.amount, new.qty, new.commission, new.commission_rate, new.source,
       new.external_ref, new.order_key, new.line_key, new.line_hash, new.batch_id, new.invoice_no,
@@ -134,7 +142,8 @@ begin
      (old.manufacturer, old.period, old.amount, old.qty, old.commission, old.commission_rate, old.source,
       old.external_ref, old.order_key, old.line_key, old.line_hash, old.batch_id, old.invoice_no,
       old.product_code, old.order_date, old.source_file) then
-    raise exception 'mi1a_write_guard: money/key columns on % rows for % change only through the MI-1a import functions', v_lane, r.manufacturer;
+    raise exception 'mi1a_write_guard: money/key/classification columns on enrolled rows (% → %) change only through the MI-1a import functions',
+      old.manufacturer, new.manufacturer;
   end if;
   return new;
 end $$;

@@ -198,6 +198,30 @@ do $$ begin
   delete from monthly_sales where manufacturer='pedifix' and external_ref='pedifix|x|0';
   raise notice 'ok   guard: re-attribution allowed; un-enrolled manufacturers unaffected';
 end $$;
+-- OLD + NEW classification: an enrolled row cannot escape by changing its classification, and a row
+-- cannot be moved INTO an enrolled manufacturer/lane outside the MI-1a functions.
+select t_expect_error($q$update monthly_sales set source='commission' where manufacturer='strongback-mobility' and invoice_no='6854'$q$, 'mi1a_write_guard%');
+select t_expect_error($q$update monthly_sales set source=null, external_ref=null where manufacturer='strongback-mobility' and invoice_no='6854'$q$, 'mi1a_write_guard%');
+select t_expect_error($q$update monthly_sales set source='portal' where manufacturer='strongback-mobility' and invoice_no='6854'$q$, 'mi1a_write_guard%');
+select t_expect_error($q$update monthly_sales set manufacturer='pedifix' where manufacturer='strongback-mobility' and invoice_no='6854'$q$, 'mi1a_write_guard%');
+do $$ begin
+  insert into monthly_sales(manufacturer,period,amount,source,external_ref) values ('pedifix','2026-10-01',3,'sales_report','pedifix|move|0');
+end $$;
+select t_expect_error($q$update monthly_sales set manufacturer='strongback-mobility' where external_ref='pedifix|move|0'$q$, 'mi1a_write_guard%');
+do $$ begin
+  assert (select count(*) from monthly_sales where manufacturer='strongback-mobility' and invoice_no='6854' and source='sales_report') > 0,
+    'enrolled rows kept their classification';
+  -- a row whose OLD and NEW classifications are both un-enrolled is still freely editable
+  update monthly_sales set source='portal' where external_ref='pedifix|move|0';
+  update monthly_sales set source='sales_report' where external_ref='pedifix|move|0';
+  delete from monthly_sales where external_ref='pedifix|move|0';
+  raise notice 'ok   guard: OLD and NEW classification both checked (no escape out of, or move into, an enrolled lane)';
+end $$;
+-- RLS cannot hide the enrolment from the guard (lookup is security definer)
+do $$ begin
+  assert (select prosecdef from pg_proc where oid='public.hcps_ms_guarded(text,text,text)'::regprocedure), 'guard lookup is security definer';
+  raise notice 'ok   guard: enrolment lookup is security definer (RLS cannot hide it)';
+end $$;
 insert into mi1a_enrollment(manufacturer,lane,enrolled_by) values ('*','commission','angelo');
 select t_expect_error($q$insert into monthly_sales(manufacturer,period,amount,commission,source) values ('pedifix','2026-11-01',1,1,'commission')$q$, 'mi1a_write_guard%');
 select t_expect_error($q$delete from monthly_sales where manufacturer='ovation-medical' and source='commission'$q$, 'mi1a_write_guard%');

@@ -46,6 +46,7 @@ do $$ begin
 end $$;
 drop trigger  if exists hcps_ms_write_guard on public.monthly_sales;
 drop function if exists public.hcps_ms_write_guard();
+drop function if exists public.hcps_ms_guarded(text, text, text);
 drop function if exists public.hcps_import_batch_rollback(jsonb);
 drop function if exists public.hcps_commission_file_apply(jsonb);
 drop function if exists public.hcps_commission_month_apply(jsonb);

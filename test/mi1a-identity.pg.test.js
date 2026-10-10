@@ -68,7 +68,7 @@ for (const idType of ['bigint', 'uuid']) {
       const out = file(DB, CHECKS);
       const ok = (out.match(/ok {3}/g) || []).length;
       assert.ok(!/ERROR|FAIL/.test(out), out.split('\n').find(l => /ERROR|FAIL/.test(l)));
-      assert.strictEqual(ok, 29, 'expected 29 checks, saw ' + ok);
+      assert.strictEqual(ok, 36, 'expected 36 checks, saw ' + ok);
     });
     t('rollback: old-style write refused before R1, accepted after R1+R2', () => {
       assert.throws(() => run(DB, `insert into monthly_sales(manufacturer,period,amount,source,external_ref) values ('strongback-mobility','2026-08-01',10,'sales_report','strongback-mobility|9999|X|0')`), /mi1a_write_guard/);

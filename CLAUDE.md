@@ -948,11 +948,16 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
 - **Non-financial differences** (dealer, customer name, account ref, ship-to, product name) are listed in the
   preview and stored on the batch; confirmed HCPS dealer/rep attribution is always kept.
 - **Write guard.** Trigger `hcps_ms_write_guard`: on enrolled manufacturer/lanes only the MI-1a functions may
-  insert, delete or change money/key columns; re-attribution (dealer, rep, channel) stays allowed. Rollback order:
+  insert, delete or change money/key columns; re-attribution (dealer, rep, channel) stays allowed. A row is protected
+  when its OLD **or** NEW classification (manufacturer + lane) is enrolled (`hcps_ms_guarded`, security definer so RLS
+  can't hide the enrolment) — an enrolled row can't escape by changing manufacturer/source/external_ref, and a row
+  can't be moved into an enrolled lane outside the MI-1a functions. Rollback order:
   switch off → revert code (imports for enrolled lines stay FROZEN by the guard) → undo batches newest first → R1
   (old keys + un-enrol in one transaction) → R2 optional.
-- **Legacy commission import (always on, 2026-10-10):** replaces only commission-lane rows (never Sales Report
-  Import rows) and stops before inserting if the replace-delete fails (502 `replace_failed`).
+- **Legacy commission import (always on, 2026-10-10):** deletes ONLY explicitly identified commission-lane rows —
+  `source='commission'`, or legacy rows with no source AND no external_ref (the same test as SQL
+  `hcps_ms_is_commission_lane`); every other source is untouched — and stops before inserting if the delete fails
+  (502 `replace_failed`).
 - **Aliases are global** (all manufacturers, both importers, Analytics). With `mi_import_v2` on, assigning a name
   that already points to another dealer is refused (409 `alias_conflict`) until confirmed; past sales never move.
   **Wyatt's Pharmacy → Weaver Medical Equipment Metro stays unchanged** until the business relationship is

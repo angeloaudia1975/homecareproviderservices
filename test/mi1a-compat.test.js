@@ -138,6 +138,20 @@ const PRES = { token: 'pres' };
     assert.ok(w.db.monthly_sales.some(x => x.id === 'pf-s'), 'the PediFix sales-report row survived');
     assert.ok(!w.db.monthly_sales.some(x => x.id === 'pf-c'), 'the old commission row was replaced');
   });
+  await t('legacy commission import deletes ONLY explicitly identified commission-lane rows', async () => {
+    const { w, m } = boot('commissions-api.js', seed());
+    w.db.monthly_sales.push(
+      { id: 'pf-legacy', manufacturer: 'pedifix', period: '2026-07-01', source: null, external_ref: null, amount: 5, commission: 1 },
+      { id: 'pf-other', manufacturer: 'pedifix', period: '2026-07-01', source: 'portal', amount: 9, commission: 0 },
+      { id: 'pf-otherref', manufacturer: 'pedifix', period: '2026-07-01', source: 'golden', external_ref: 'g|1', amount: 8, commission: 0 },
+      { id: 'pf-nullsrc-ref', manufacturer: 'pedifix', period: '2026-07-01', source: null, external_ref: 'pedifix|legacy|1', amount: 7, commission: 0 });
+    const r = await call(m, { action: 'import', manufacturer: 'pedifix', period: '2026-07', rows: commRows }, PRES);
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+    const ids = w.db.monthly_sales.map(x => x.id);
+    assert.ok(!ids.includes('pf-c'), "source='commission' replaced");
+    assert.ok(!ids.includes('pf-legacy'), 'legacy row with no source and no external_ref replaced');
+    for (const keep of ['pf-s', 'pf-other', 'pf-otherref', 'pf-nullsrc-ref']) assert.ok(ids.includes(keep), keep + ' kept');
+  });
   await t('legacy commission import: a failed delete writes nothing for that month (no doubling)', async () => {
     const { w, m } = boot('commissions-api.js', seed({ failWrite: (meth, tb) => (meth === 'DELETE' && tb === 'monthly_sales') ? 500 : 0 }));
     const r = await call(m, { action: 'import', manufacturer: 'pedifix', period: '2026-07', source_file: 'pf-jul.csv', rows: commRows }, PRES);
