@@ -1107,6 +1107,11 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   rows. Daily backup 10 Oct 09:10 UTC was present. Part 1 / Part 2 not run; both MI switches OFF. Migrations run in the
   Supabase SQL editor itself (its Run button) with the committed file pasted verbatim and its sha256 checked in the
   editor first — the read-only query helper wraps statements and cannot run DDL.
+- **MI-1a tables are closed to ordinary app users (approved 2026-10-10, Part 1 rev 3).** `anon` / `authenticated` (and
+  PUBLIC) hold NO privileges on `mi1a_snapshot_monthly_sales`, `mi1a_snapshot_meta`, `mfr_report_batches`,
+  `monthly_sales_superseded` (+ its id sequence), `commission_period_locks`, `mi1a_enrollment` (Part 1) and
+  `mi1a_rekey_backup` (Part 2); RLS on, no policies; the owner and `service_role` keep select/insert/update/delete.
+  Any new MI table gets the same treatment in its own migration.
 - **Tests:** `test/mi1a-identity.pg.test.js` (runs the committed SQL in Postgres, bigint + uuid ids),
   `test/mi1a-compat.test.js` + `.mutants.js` (other manufacturers unaffected; switches; alias guard).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import

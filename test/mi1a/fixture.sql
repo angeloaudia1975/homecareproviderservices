@@ -1,6 +1,10 @@
 -- LOCAL TEST FIXTURE ONLY — approximates the live shape of the tables MI-1a touches.
 -- Never run against production.
-do $$ begin create role anon; create role authenticated; create role service_role; exception when duplicate_object then null; end $$;
+do $$ begin create role anon; create role authenticated; create role service_role bypassrls; exception when duplicate_object then null; end $$;
+alter role service_role bypassrls;   -- as on Supabase: the service role is not subject to RLS
+-- Like Supabase: every new table / sequence in public is granted to anon, authenticated and service_role by default.
+alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
 create extension if not exists pgcrypto;
 create table manufacturers(slug text primary key, name text);
 insert into manufacturers values ('strongback-mobility','Strongback Mobility'),('pedifix','PediFix'),('ovation-medical','Ovation Medical');

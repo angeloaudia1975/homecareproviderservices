@@ -526,9 +526,25 @@ revoke all on function public.hcps_import_batch_rollback(jsonb)  from public, an
 grant execute on function public.hcps_sales_report_apply(jsonb)    to service_role;
 grant execute on function public.hcps_commission_file_apply(jsonb) to service_role;
 grant execute on function public.hcps_import_batch_rollback(jsonb) to service_role;
-alter table public.mfr_report_batches       enable row level security;
-alter table public.monthly_sales_superseded enable row level security;
-alter table public.commission_period_locks  enable row level security;
-alter table public.mi1a_enrollment          enable row level security;
+-- 10. TABLE PRIVILEGES (rev 3, approved 2026-10-10). Supabase gives anon / authenticated table privileges on every new
+--     table by default; RLS with no policies already returns nothing, but MI-1a tables carry money history, so ordinary
+--     app users get NO privileges at all. The owner and service_role (the HCPS functions and recovery) keep theirs.
+--     Covers Part 0's snapshot tables too when they exist. Part 2 applies the same to mi1a_rekey_backup.
+do $$ declare t text; q text;
+begin
+  foreach t in array array['mi1a_snapshot_monthly_sales','mi1a_snapshot_meta','mfr_report_batches',
+                           'monthly_sales_superseded','commission_period_locks','mi1a_enrollment'] loop
+    if to_regclass('public.' || t) is not null then
+      execute format('alter table public.%I enable row level security', t);
+      execute format('revoke all on table public.%I from public, anon, authenticated', t);
+      execute format('grant select, insert, update, delete on table public.%I to service_role', t);
+    end if;
+  end loop;
+  q := pg_get_serial_sequence('public.monthly_sales_superseded', 'id');
+  if q is not null then
+    execute format('revoke all on sequence %s from public, anon, authenticated', q);
+    execute format('grant usage, select on sequence %s to service_role', q);
+  end if;
+end $$;
 
 commit;
