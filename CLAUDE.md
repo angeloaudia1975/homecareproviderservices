@@ -1134,7 +1134,7 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
 
 ## 20. HCPS Training & Certification Academy (RULE, agreed 2026-10-10)
 The project specification and decision log are the Claude Docs "HCPS Academy — Project Specification & Phase A0
-Findings" (decisions 1–41, incl. "Golden Technologies confirmations", 10 Oct 2026). Summary of what binds code in this repo:
+Findings" (decisions 1–44, incl. "Golden Technologies confirmations", 10 Oct 2026). Summary of what binds code in this repo:
 - **Place:** courses live at `/academy/`; Dealer Services carries a promo section; the Dealer Hub keeps live
   training bookings and links to the academy; the Academy Command Center is a Connect 360 tool added to `HUBS`
   (rule 9). No separate admin site and no duplicate training system or product database.
