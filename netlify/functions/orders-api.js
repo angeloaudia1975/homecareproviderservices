@@ -65,12 +65,19 @@ function unitLabel(it){
 }
 /* Freight on the dealer's confirmation (2026-10-09): the server's number, the same one stored on the
    order and sent to HCPS. "Free" only when the manufacturer's rule says free; nothing when unknown. */
+/* The manufacturer's own words when its freight rule names them (freeLabel "Prepaid freight",
+   flatLabel "shipping & handling" — Bemis, 2026-10-10); otherwise "Free" / the amount, as before. */
+function freightWords(s, fee){
+  const L=s.freight_lines||[];
+  if(fee>0){ const f=L.find(r=>r.status==="flat"&&r.flatLabel); return money(fee)+(f?" "+f.flatLabel:""); }
+  const f=L.find(r=>r.status==="free"&&r.freeLabel); return f?f.freeLabel:"Free";
+}
 function freightLineHtml(s){
   if(s.freight_fee==null) return "";
   const fee=num(s.freight_fee);
   const free=(s.freight_lines||[]).length && (s.freight_lines||[]).every(r=>r.status==="free");
   if(fee<=0 && !free) return "";
-  return `<div style="text-align:right;font-size:13px;color:#374151;margin:2px 10px 0">Freight: ${fee>0?money(fee):"Free"}</div>`
+  return `<div style="text-align:right;font-size:13px;color:#374151;margin:2px 10px 0">Freight: ${esc(freightWords(s,fee))}</div>`
     +`<div style="text-align:right;font-size:13px;font-weight:700;color:#1b2733;margin:2px 10px 0">Total: ${money(s.estimated_total)}</div>`;
 }
 function freightLineText(s){
@@ -78,7 +85,7 @@ function freightLineText(s){
   const fee=num(s.freight_fee);
   const free=(s.freight_lines||[]).length && (s.freight_lines||[]).every(r=>r.status==="free");
   if(fee<=0 && !free) return "";
-  return `\n  Freight: ${fee>0?money(fee):"Free"}\n  Total: ${money(s.estimated_total)}`;
+  return `\n  Freight: ${freightWords(s,fee)}\n  Total: ${money(s.estimated_total)}`;
 }
 function orderConfirmation(to,d,summaries){
   const blocks=summaries.map(s=>{

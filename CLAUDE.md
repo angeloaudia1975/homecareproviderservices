@@ -1023,10 +1023,15 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   7YE05310TSS $109.99 → $109.98 and 7YA0AS100 $99.99 → $99.98. **Two dates, never one:** HCPS received the file
   2026-10-10 (price_imports raw `_received_date`); the manufacturer effective date stays NULL on product_skus until
   Bemis confirms it — never invented, never the received date. The authority gate does not require an effective
-  date; activation is held by decision, not by the gate. **Steadfast (7YE82350TC) and 444DISPLAY are unresolved:**
-  Bemis says everything sells in cases but the list gives them no case qty — keep today's behaviour (Steadfast
-  Each / 1, display kit unit) and do NOT activate Bemis authority until both are resolved or Angelo approves an
-  exception. Legacy price notes that divided the case price into a "/unit" figure, or repeated MSRP already shown as a
+  date. **Final decisions (Angelo, 2026-10-10 14:35):** the file is accepted by HCPS as the current 2026 Bemis price
+  list; the missing manufacturer effective date is recorded as pending and is NOT an activation blocker. The "sold in
+  case quantities" rule applies only where the list gives a Master Case Qty. Steadfast 7YE82350TC = Each / 1 and
+  444DISPLAY = one orderable Display / 1 (record uom "Display", never a multi-unit Case): neither is a case item, the
+  2026 list prices each as a single unit, and neither is flagged as missing a case quantity (price_imports raw
+  `_hcps_uom`). A later Bemis source that gives either a pack quantity is a source change Manufacturer Center flags. **Bemis freight words:** `freeLabel` "Prepaid freight" ($500+) and `flatLabel` "shipping & handling" ($40
+  below $500) on the Bemis group in manufacturers.json; cart, HCPS email and dealer confirmation use them. A freight
+  group without labels keeps the old wording ("FREE freight", "$15.00 freight").
+  Legacy price notes that divided the case price into a "/unit" figure, or repeated MSRP already shown as a
   field, are removed. "Dealer Cost Per Unit" lives only in price_imports.raw for this pilot — Manufacturer Center
   should get structured source fields for unit cost, received date and MSRP/MAP basis rather than free text.
   `msrp_each:true` on a pack row (catalog file) labels MSRP "each" and compares it with case price ÷ qty; a pack
@@ -1117,6 +1122,44 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
+
+## 19. Database objects are NOT private by default — review every new view and table (RULE, agreed 2026-10-10)
+- **Require every new database view and table to be reviewed for public grants, RLS behaviour, and access through
+  exposed API schemas. Do not assume any new database object is private by default.** In this Supabase project new
+  objects in `public` inherit default grants to `anon` and `authenticated`, so a new table or view is reachable with
+  the public key unless the migration revokes it.
+- Every migration that creates a table or view states, in the file: RLS on or off and why; the policies; an explicit
+  `revoke all ... from public, anon, authenticated` unless public access is intended and written down; and, for a
+  view, `security_invoker = true` (a view without it runs with its owner's rights and bypasses RLS).
+- After running it, check from outside with the public key (expect 401 / `42501` for anything private) and record the
+  result. Reference: the 10 Oct 2026 fix to `v_commission_by_rep`, `v_sales_by_account`, `v_dealer_activity`,
+  `hcps_dealer_rep`, `product_content_review_queue` and the `order_items` insert policy.
+- **A rollback is not a reaction to suspicion.** Do not run a security rollback merely because a problem is
+  suspected; investigate first. That rollback would reopen the exposure it closed.
+
+## 20. HCPS Training & Certification Academy (RULE, agreed 2026-10-10)
+The project specification and decision log are the Claude Docs "HCPS Academy — Project Specification & Phase A0
+Findings" (decisions 1–21). Summary of what binds code in this repo:
+- **Place:** courses live at `/academy/`; Dealer Services carries a promo section; the Dealer Hub keeps live
+  training bookings and links to the academy; the Academy Command Center is a Connect 360 tool added to `HUBS`
+  (rule 9). No separate admin site and no duplicate training system or product database.
+- **Accounts:** training-only learners never receive ordering or pricing access. Dealer Training Managers manage
+  academy access for their own dealership only; HCPS alone grants the Training Manager role. Partner 360 hands
+  off with a single-use, short-lived, server-validated code — never a reusable credential in a URL.
+- **Certificates:** HCPS-issued certificates default to 12 months (configurable). Golden-issued credentials have no
+  assumed expiry, are tracked separately (exam submitted is not certified), and are never presented as HCPS
+  credentials — and the HCPS Sales Certification is never presented as a Golden credential.
+- **Product facts:** one verified product-facts layer (proposed `product_facts`), each fact with source and date.
+  Never copy the Golden ordering catalog. Never mark a model discontinued because a page or listing is missing.
+  Automatic monitoring and publishing are OFF at launch; lesson wording, safety claims, exam answers and
+  certification requirements always need admin approval; published course versions, attempts and certificates are
+  never rewritten.
+- **Content:** one standard interactive lesson format for every manufacturer. Link to official Golden material;
+  copy or rehost it only with Golden's permission. Health or clinical statements appear only as the manufacturer's
+  own attributed words. Zero broken images: use a labelled placeholder and ask for the image.
+- **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
+  go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
+  features or start a phase without explicit approval.
 
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
