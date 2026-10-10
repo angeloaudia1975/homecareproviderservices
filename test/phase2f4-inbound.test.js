@@ -43,9 +43,9 @@ function seed(o) {
   S.zoho = Object.assign({ modules: {
     Accounts: [{ id: 'A1', Account_Name: 'Glasgow Prescription Center' }, { id: 'AT', Account_Name: 'TEST — Golden Sandbox' }],
     Contacts: [{ id: 'CT1', Last_Name: 'Sandbox', Email: 'orders@hcps.test' }],
-    Deals: [{ id: 'Z1', Deal_Name: 'Real deal 1', Stage: 'Qualification', Amount: 100, Closing_Date: '2026-11-01' },
-      { id: 'ZT1', Deal_Name: 'Sandbox deal A', Stage: 'Closed Lost', Amount: 1, Closing_Date: '2026-10-02' },
-      { id: 'ZX9', Deal_Name: 'Someone else\'s deal', Stage: 'Qualification', Amount: 5, Closing_Date: '2026-11-05' }] } }, o.zoho || {});
+    Deals: [{ id: 'Z1', Deal_Name: 'Real deal 1', Stage: 'Qualification', Amount: 100, Closing_Date: '2026-11-01', Modified_Time: '2026-10-01T15:00:00Z' },
+      { id: 'ZT1', Deal_Name: 'Sandbox deal A', Stage: 'Closed Lost', Amount: 1, Closing_Date: '2026-10-02', Modified_Time: '2026-10-01T15:00:00Z' },
+      { id: 'ZX9', Deal_Name: 'Someone else\'s deal', Stage: 'Qualification', Amount: 5, Closing_Date: '2026-11-05', Modified_Time: '2026-10-01T15:00:00Z' }] } }, o.zoho || {});
   if (o.failRead) S.failRead = o.failRead; if (o.failWrite) S.failWrite = o.failWrite; if (o.missingRpc) S.missingRpc = o.missingRpc;
   return S;
 }
@@ -200,7 +200,9 @@ function setPushAt(w, key, iso) { const v = pushTimes(w); v[key] = Object.assign
   });
 
   await t('I3 a natural HCPS echo — account, contact and deal — is "ignored" with an auditable reason (tied to the Zoho id HCPS pushed to)', async () => {
-    const w = world(); await autosync(w); await autosync(w);   // run 2 re-sends the deal created in run 1, now under its Zoho id
+    // run 1 creates o2 in Zoho and records the baselines; an HCPS change to o1 is then pushed by run 2 (2F-5: a
+    // linked deal is pushed only for a field HCPS changed)
+    const w = world(); await autosync(w); w.db.opportunities.find(o => o.id === 'o1').value = 120; await autosync(w);
     const T = pushTimes(w);
     for (const k of ['acct:d-greg', 'contact:rita@glasgow.test', 'opp:o1', 'opp:o2']) assert.ok(T[k] && T[k].at && T[k].id, 'no push record for ' + k);
     assert.strictEqual(T['opp:o1'].id, 'Z1');
@@ -249,7 +251,9 @@ function setPushAt(w, key, iso) { const v = pushTimes(w); v[key] = Object.assign
     await deliver(w, { module: 'Deals', id: 'ZT1', Modified_Time: now });
     await deliver(w, { module: 'Deals', id: 'ZX9', Modified_Time: now });
     await autosync(w);
-    const q = queue(w); assert.ok(q.every(x => x.classification === 'external' && x.status === 'pending'), JSON.stringify(q.map(x => [x.zoho_id, x.classification])));
+    const q = queue(w); assert.ok(q.every(x => x.classification === 'external'), JSON.stringify(q.map(x => [x.zoho_id, x.classification])));
+    // Accounts, Contacts and unlinked Deals stay pending; a LINKED deal's external event is processed by 2F-5 (no change here).
+    assert.deepStrictEqual(q.map(x => x.status), ['pending', 'pending', 'synced', 'pending'], JSON.stringify(q.map(x => [x.zoho_id, x.status, x.outcome])));
     assert.ok(q.every(x => /HCPS has no recorded successful push to this Zoho record/.test(x.class_reason)));
     assert.ok(q.slice(0, 3).every(x => /TEST/.test(x.class_reason)), JSON.stringify(q.map(x => x.class_reason)));
     assert.ok(!/TEST/.test(q[3].class_reason));
@@ -333,11 +337,14 @@ function setPushAt(w, key, iso) { const v = pushTimes(w); v[key] = Object.assign
     assert.strictEqual(zohoWrites(w).length, zw, 'something was pushed to Zoho');
     assert.strictEqual(zw, zBefore);
     assert.ok(queue(w).every(q => q.classification), 'not everything was classified');
-    assert.ok(queue(w).filter(q => q.classification !== 'echo').every(q => q.status === 'pending'));
+    // Account/Contact events and the unlinked deal stay pending; the linked deal's event (Z1, nothing changed) is processed by 2F-5.
+    assert.ok(queue(w).filter(q => q.classification !== 'echo' && !(q.entity === 'deals' && q.zoho_id === 'Z1')).every(q => q.status === 'pending'));
+    assert.ok(queue(w).filter(q => q.entity === 'deals' && q.zoho_id === 'Z1').every(q => q.status === 'ignored' || (q.status === 'synced' && /no change to a shared field/.test(q.outcome))));
     assert.strictEqual((w.db.dealer_contacts || []).filter(c => /nina@/.test(c.email)).length, 0, 'a new contact was created from an inbound event');
     assert.strictEqual((w.db.dealer_activity || []).length, 0, 'a timeline entry was created from an inbound event');
     assert.strictEqual(w.db.opportunities.find(o => o.id === 'o1').stage, 'identified', 'the deal stage was changed');
-    assert.deepStrictEqual(queue(w).map(q => q.classification), ['external', 'external', 'echo', 'external', 'echo'], JSON.stringify(queue(w).map(q => q.class_reason)));
+    // (2F-5: o1 was never pushed — its fields were already in step — so its event is external, not an echo)
+    assert.deepStrictEqual(queue(w).map(q => q.classification), ['external', 'external', 'echo', 'external', 'external'], JSON.stringify(queue(w).map(q => q.class_reason)));
     assert.strictEqual(business(w), before);
   });
 
@@ -356,7 +363,7 @@ function setPushAt(w, key, iso) { const v = pushTimes(w); v[key] = Object.assign
     const sent = JSON.stringify(zohoWrites(w).map(x => [x.path, x.body]));
     for (const m of ['TEST — Golden Sandbox', 'orders@hcps.test', 'Sandbox deal']) assert.ok(!sent.includes(m), 'TEST data pushed: ' + m);
     assert.deepStrictEqual(r.summary.test_excluded, { accounts: 1, contacts: 2, deals: 1 });
-    assert.deepStrictEqual(Object.keys(r.summary).sort(), ['accounts', 'contacts', 'deals_pulled', 'errors', 'failures', 'opportunities', 'run', 'test_excluded']);
+    assert.deepStrictEqual(Object.keys(r.summary).sort(), ['accounts', 'contacts', 'deals', 'deals_pulled', 'errors', 'failures', 'opportunities', 'run', 'test_excluded']);
     assert.strictEqual(runRow(w).result, 'ok');
   });
 

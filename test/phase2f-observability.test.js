@@ -22,9 +22,9 @@ function seed(o) {
     app_settings: [{ key: 'zoho_auth', value: { refresh_token: 'rt', api_domain: 'https://www.zohoapis.com' } }, { key: 'zoho_push_hashes', value: {} }],
     dealer_contacts: [{ id: 'c1', dealer_id: 'd-greg', name: 'Rita Owner', email: 'rita@glasgow.test' }, { id: 'c2', dealer_id: 'd-ang', name: 'Bob Buyer', email: 'bob@rms.test' }],
     opportunities: Array.from({ length: o.opps || 3 }, (_, i) => ({ id: 'o' + i, dealer_id: i % 2 ? 'd-ang' : 'd-greg', title: 'Deal ' + i, stage: 'identified', value: 10 * i, expected_close: '2026-11-0' + (i % 9 + 1), zoho_id: i < 2 ? 'Z' + i : null })),
-    zoho_sync_queue: [], zoho_sync_log: [],
+    zoho_sync_queue: o.queue || [], zoho_sync_log: [], zoho_deal_baseline: o.baselines || [], zoho_deal_conflicts: [],
   });
-  S.zoho = Object.assign({ modules: { Accounts: [{ id: 'A1', Account_Name: 'Glasgow Prescription Center' }], Deals: [{ id: 'Z0', Deal_Name: 'Deal 0', Stage: 'Closed Won', Amount: 0, Closing_Date: '2026-11-01' }, { id: 'Z1', Deal_Name: 'Deal 1', Stage: 'Qualification', Amount: 10, Closing_Date: '2026-11-02' }] } }, o.zoho || {});
+  S.zoho = Object.assign({ modules: { Accounts: [{ id: 'A1', Account_Name: 'Glasgow Prescription Center' }], Deals: [{ id: 'Z0', Deal_Name: 'Deal 0', Stage: 'Closed Won', Amount: 0, Closing_Date: '2026-11-01', Modified_Time: '2026-10-01T15:00:00Z' }, { id: 'Z1', Deal_Name: 'Deal 1', Stage: 'Qualification', Amount: 10, Closing_Date: '2026-11-02', Modified_Time: '2026-10-01T15:00:00Z' }] } }, o.zoho || {});
   if (o.rejectQueue) S.missingRpc = ['hcps_zoho_capture_event'];   // a refused capture (the database before the 2F-4 migration)
   if (o.failWrite) S.failWrite = o.failWrite; if (o.failRead) S.failRead = o.failRead;
   return S;
@@ -110,7 +110,12 @@ const form = o => Object.entries(o).map(([k, v]) => encodeURIComponent(k) + '=' 
   });
 
   await t('Every refused deal gets its own row — 12 of 12, where the summary used to keep 8', async () => {
-    const w = W({ opps: 12, zoho: { deal: () => ({ code: 'MANDATORY_NOT_FOUND', message: 'required field not found', details: { api_name: 'Closing_Date' } }) } });
+    // 2F-5: a linked deal is pushed only when HCPS changed a field since the last-synchronized baseline — so the two
+    // linked deals here carry a baseline and an HCPS amount change; the other ten are new deals (created as before).
+    const w = W({ opps: 12, zoho: { deal: () => ({ code: 'MANDATORY_NOT_FOUND', message: 'required field not found', details: { api_name: 'Closing_Date' } }) },
+      baselines: [{ opportunity_id: 'o0', zoho_id: 'Z0', base: { stage: 'won', zoho_stage: 'Closed Won', amount: 0, close_date: '2026-11-01' }, owned_hash: 'h' },
+        { opportunity_id: 'o1', zoho_id: 'Z1', base: { stage: 'identified', zoho_stage: 'Qualification', amount: 10, close_date: '2026-11-02' }, owned_hash: 'h' }] });
+    w.db.opportunities.find(o => o.id === 'o1').value = 55;
     await autosync(w);
     const f = fails(w).filter(x => x.entity === 'opportunity'); assert.strictEqual(f.length, 12);
     assert.ok(f.every(x => /MANDATORY_NOT_FOUND/.test(x.detail) && /Closing_Date/.test(x.detail)));
@@ -118,17 +123,21 @@ const form = o => Object.entries(o).map(([k, v]) => encodeURIComponent(k) + '=' 
   });
 
   await t('Swallowed failures now recorded: Zoho id write-back, pulled change, incomplete Zoho read, fingerprints, HCPS reads', async () => {
-    // New deal created in Zoho but its id can't be saved; a pulled change can't be saved.
-    let w = W({ failWrite: (m, tb) => m === 'PATCH' && tb === 'opportunities' ? 500 : 0, zoho: { keep: { Deals: true } } }); await autosync(w);
+    // New deal created in Zoho but its id can't be saved; a pulled change can't be saved (2F-5: a Zoho change is applied
+    // only for an external/pending Deal event, measured against the deal's baseline).
+    let w = W({ failWrite: (m, tb) => m === 'PATCH' && tb === 'opportunities' ? 500 : 0, zoho: { keep: { Deals: true } },
+      baselines: [{ opportunity_id: 'o0', zoho_id: 'Z0', base: { stage: 'identified', zoho_stage: 'Qualification', amount: 0, close_date: '2026-11-01' }, owned_hash: 'h' }],
+      queue: [{ id: 1, direction: 'in', entity: 'deals', entity_id: 'Z0', zoho_id: 'Z0', event_key: 'k-z0', status: 'pending', classification: 'external', class_reason: 'x', classified_at: '2026-10-09T10:00:00Z', modified_time: '2026-10-01T15:00:00Z' }] });
+    await autosync(w);
     let f = fails(w); const zid = f.find(x => JSON.parse(x.detail).phase === 'opps_zoho_id');
     assert.ok(zid && zid.entity_id === 'o2' && zid.zoho_id && /create the deal in Zoho again/.test(zid.detail));
     const pl = f.find(x => JSON.parse(x.detail).phase === 'pull_deals'); assert.ok(pl && pl.direction === 'in' && pl.entity_id === 'o0' && pl.zoho_id === 'Z0');
     assert.strictEqual(runRow(w).result, 'partial');
-    // Zoho Deals read fails on page 1: recorded with page and status; nothing is pulled (as before).
+    // Zoho Deals can't be read: recorded with Zoho's status; no linked deal is pushed or changed (2F-5 reads by id).
     w = W({ zoho: { readFail: { Deals: { page: 1, status: 500 } } } }); await autosync(w);
-    f = fails(w); const rd = f.find(x => JSON.parse(x.detail).phase === 'pull_read'); const d = JSON.parse(rd.detail);
-    assert.strictEqual(d.page, 1); assert.strictEqual(d.status, 500); assert.ok(/stopped early/.test(d.msg));
-    assert.ok(!w.writes.some(x => x.kind === 'patch' && x.table === 'opportunities' && !('zoho_id' in (x.body || {}))), 'something was pulled');
+    f = fails(w); const rd = f.find(x => JSON.parse(x.detail).phase === 'deals_read'); const d = JSON.parse(rd.detail);
+    assert.strictEqual(d.status, 500); assert.ok(/couldn't be read/.test(d.msg));
+    assert.ok(!w.writes.some(x => x.kind === 'patch' && x.table === 'opportunities' && ['stage', 'value', 'status', 'probability'].some(k => k in (x.body || {}))), 'something was pulled');
     // Accounts read fails: recorded (contacts and deals still go out, unlinked, as before).
     w = W({ zoho: { readFail: { Accounts: { page: 1, status: 503 } } } }); await autosync(w);
     assert.ok(fails(w).some(x => JSON.parse(x.detail).phase === 'accounts_read'));
@@ -151,7 +160,7 @@ const form = o => Object.entries(o).map(([k, v]) => encodeURIComponent(k) + '=' 
   });
 
   await t('A Zoho error that echoes a secret is masked in the failure row', async () => {
-    const w = W({ opps: 1, zoho: { deal: () => ({ code: 'INVALID_DATA', message: 'bad value ' + CLIENT_SECRET }) } });
+    const w = W({ opps: 3, zoho: { deal: () => ({ code: 'INVALID_DATA', message: 'bad value ' + CLIENT_SECRET }) } });   // o2 is new → created → refused
     await autosync(w);
     assert.ok(fails(w).length && !everything(w).includes(CLIENT_SECRET));
   });
@@ -216,13 +225,18 @@ const form = o => Object.entries(o).map(([k, v]) => encodeURIComponent(k) + '=' 
 
   await t('On-demand swallowed writes recorded: deal id not saved, mirror not stamped, incomplete Zoho read', async () => {
     let w = W({ failWrite: (m, tb) => m === 'PATCH' && tb === 'opportunities' ? 500 : 0 }); let r = await api(w, 'sync_opportunities');
-    assert.strictEqual(r.body.ok, false); assert.strictEqual(r.body.failed, 1); assert.ok(/would create it again/.test(JSON.stringify(r.body.errors)));
-    assert.strictEqual(fails(w)[0].entity_id, 'o2');
+    assert.strictEqual(r.body.ok, false); assert.ok(/create the deal in Zoho again/.test(JSON.stringify(r.body.errors)));
+    const idLost = fails(w).filter(x => JSON.parse(x.detail).phase === 'opps_zoho_id'); assert.strictEqual(idLost.length, 1); assert.strictEqual(idLost[0].entity_id, 'o2');
+    // (2F-5: recording Zoho's exact stage on the first linked deal also fails here — its own row, nothing else.)
+    assert.ok(fails(w).every(x => ['opps_zoho_id', 'deal_zoho_stage'].includes(JSON.parse(x.detail).phase)), JSON.stringify(fails(w).map(x => JSON.parse(x.detail).phase)));
     w = W({ failWrite: (m, tb) => m === 'PATCH' && tb === 'dealer_notes' ? 500 : 0 });
     w.db.dealer_notes = [{ id: 'n1', dealer_id: 'd-greg', body: 'hello', author_name: 'Greg' }];
     r = await api(w, 'mirror_to_zoho'); assert.strictEqual(r.body.ok, false); assert.ok(fails(w).some(x => x.entity === 'note' && /duplicate/.test(x.detail)));
     w = W({ zoho: { readFail: { Deals: { page: 1, status: 500 } } } }); r = await api(w, 'pull_deals');
-    assert.strictEqual(r.body.ok, false); assert.strictEqual(r.body.zoho_read_incomplete.length, 1); assert.strictEqual(fails(w)[0].action, 'read');
+    assert.strictEqual(r.body.ok, false); assert.strictEqual(fails(w)[0].action, 'read'); assert.strictEqual(JSON.parse(fails(w)[0].detail).phase, 'deals_read');
+    // an incomplete paged Zoho read on demand (2F-5: the Accounts read behind "Pipeline → Zoho") is listed and recorded
+    w = W({ zoho: { readFail: { Accounts: { page: 1, status: 500 } } } }); r = await api(w, 'sync_opportunities');
+    assert.strictEqual(r.body.ok, false); assert.strictEqual(r.body.zoho_read_incomplete.length, 1); assert.ok(fails(w).some(x => x.action === 'read' && x.entity === 'accounts'));
   });
 
   await t('Zoho sync page: failures in the last 24 hours are counted for the "Sync failures" tile', async () => {

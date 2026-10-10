@@ -216,7 +216,7 @@ const CONV = (w, tok, ws, extra) => P(w, Object.assign({ action: 'conversion', d
       if (f === '_conversion.js') assert.ok(!/sbGet|sbSend|fetch\(/.test(src), 'the report module does I/O');
     }
     // The Zoho pull still patches the deal the way it always did (no context) — the database records it as unknown.
-    const pull = fs.readFileSync(path.join(dir, 'zoho-autosync.js'), 'utf8');
+    const pull = fs.readFileSync(path.join(dir, '_zoho_deals.js'), 'utf8');   // 2F-5: the deal engine applies Zoho changes (zoho-autosync / zoho-api call it)
     assert.ok(/sbSend\("PATCH",`opportunities\?id=eq\.\$\{encodeURIComponent\(o\.id\)\}`,patch,\{Prefer:"return=minimal"\}\)/.test(pull));
   });
 

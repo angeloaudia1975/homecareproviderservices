@@ -45,7 +45,9 @@ const api = (w, body) => call(load('zoho-api.js', w, ENV), body, { token: 'pres'
 
 (async () => {
   await t('Autosync: no TEST account, contact or deal is pushed; real ones are, and a real dealer\'s copy of a shared email still goes', async () => {
-    const w = W(); const mod = load('zoho-autosync.js', w, ENV); const r = JSON.parse((await mod.handler({})).body);
+    // 2F-5: a linked deal is pushed when HCPS changed something since its last-synchronized baseline (here: its name).
+    const w = W(); w.db.zoho_deal_baseline = [{ opportunity_id: 'o1', zoho_id: 'Z1', base: { stage: 'identified', zoho_stage: 'Qualification', amount: 100, close_date: '2026-11-01' }, owned_hash: 'renamed-since' }];
+    const mod = load('zoho-autosync.js', w, ENV); const r = JSON.parse((await mod.handler({})).body);
     noTest(w, 'autosync');
     const s = sent(w);
     for (const m of ['Glasgow Prescription Center', 'Retail Medical Solutions', 'rita@glasgow.test', 'shared@both.test', 'Real deal 1', 'Real deal 2']) assert.ok(s.includes(m), m + ' was not pushed');

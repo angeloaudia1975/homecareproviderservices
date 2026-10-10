@@ -617,8 +617,8 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
 - **Inbound Zoho events: capture + classify ONLY (2F-4, RULE agreed 2026-10-08).** Until 2F-5 establishes field
   authority and conflict handling, an inbound webhook event never changes HCPS business data: no dealer,
   contact, deal (stage / value / close date), new contact, Dealer 360 activity/timeline entry, and never
-  triggers a Zoho push. (The existing 15-minute Deals PULL — Zoho stage/amount/close onto linked HCPS deals —
-  is separate and unchanged; changing it is 2F-5/F4–F6 work.)
+  triggers a Zoho push. (The old 15-minute Deals PULL — Zoho stage/amount/close onto linked HCPS deals — was
+  replaced in 2F-5 by the conflict-safe deal engine, see below. Account and Contact events stay capture-only.)
   **Identity:** each event's key is `in:<module>:<Zoho id>:<Modified_Time>:<sha256 of the cleaned payload, 24
   hex>` (`zoho-webhook.js eventIdentity`; key order and surrounding spaces don't change it). The database holds
   ONE queue row per key: full unique index `zoho_queue_event_key_uniq` + `hcps_zoho_capture_event(p jsonb)`
@@ -644,6 +644,39 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   times can't be read, events stay unclassified (failure row, run partial) — nothing is guessed, and unread
   push times are never overwritten. Proving the echo rule live uses the next NATURAL HCPS push — never a
   manufactured edit to a real dealer.
+- **Deals: field-level two-way sync with conflict protection (2F-5, RULE agreed 2026-10-09).** ONE engine,
+  `_zoho_deals.js`, moves a linked deal's two-way fields — **stage, amount (HCPS `value`), close date** — for the
+  15-minute zoho-autosync AND the on-demand zoho-api actions; nothing else may push or pull those fields. Each field
+  is compared independently with the **last-synchronized baseline** (`zoho_deal_baseline.base`), never with
+  `updated_at` (any unrelated HCPS edit changes it): only Zoho changed → applied to HCPS; only HCPS changed → that
+  field ALONE is pushed (partial PUT); neither → nothing; **both → a `zoho_deal_conflicts` row (open) and NEITHER side
+  is changed** — a conflict never silently picks a winner (both changed to the same value = they agree). An open
+  conflict clears only when both sides agree again (resolved in place, kept). The baseline moves only for a field
+  that was agreed, applied or pushed successfully; a refused/failed write leaves it (retried next run, never doubled).
+  **Zoho → HCPS only through an inbound Deal event that 2F-4 classified external and still pending** (agreed: events
+  only); a Zoho difference with no event is **drift** — logged once, never applied. **A stale event never authorizes
+  a newer change** (amendment 2026-10-10): an event authorizes the Zoho state read only if Zoho's current
+  Modified_Time ≤ the newest Modified_Time of any CAPTURED event for that deal (applied, echo or pending alike);
+  otherwise the state holds an uncaptured change — nothing from it reaches HCPS, the drift is reported once, and the
+  event stays pending until the newer change's own webhook arrives. A Zoho record or event without a readable
+  Modified_Time authorizes nothing. **One Zoho Deal id belongs to at most one HCPS deal** (unique index on
+  `zoho_deal_baseline(zoho_id)`); a Zoho deal linked to 2+ HCPS deals is not synchronized at all (failure row). Events of Zoho-only (unlinked)
+  deals, echoes, unresolved, Account and Contact events are not touched. A processed event ends `synced` or `conflict`
+  with an `outcome` text. **Stage:** HCPS keeps its five stages; Zoho's EXACT stage is kept in
+  `opportunities.zoho_stage` (nullable) and the baseline. A Zoho move between stages that map to the same HCPS stage
+  (Needs Analysis ↔ Value Proposition ↔ Identify Decision Makers) changes no HCPS stage and is never rewritten to
+  HCPS's preferred Zoho stage; HCPS pushes a stage only for its OWN stage change and never when Zoho's stage already
+  maps to it; an **unmapped Zoho stage is preserved, recorded for review (`unmapped_stage`) and never overwritten**.
+  The mapping itself is unchanged (not redesigned). A blank HCPS close date is "no value" — never pushed, never a
+  change (provisional close-date handling is 2F-6; new deals still get the provisional date as before). **First
+  sight of a linked deal (no baseline):** fields that already agree become the baseline; a field that differs is a
+  `no_baseline` review — nothing is guessed, nothing written on either side. HCPS-owned Deal fields (name, line →
+  Description, account link) stay one-way and are pushed only when they change. TEST deals are never pushed (2F-2)
+  but are kept in step FROM Zoho. A push records the 2F-4 push time + fingerprint (`_zoho_deals.js fingerprint`, the
+  same function the echo classifier uses). Order in a run: Accounts → Contacts → classify inbound (2F-4) → Deals.
+  Migration `supabase/phase2f5_deal_sync.sql` (additive; rollback `…_rollback.sql`: redeploy 58bfbe0 first).
+  Live proof of HCPS→Zoho pushes uses the next NATURAL HCPS deal edit (TEST deals can't be pushed); unmapped-stage
+  proof is automated (Zoho's picklist has no unmapped stage) — agreed 2026-10-09.
 - **Zoho inspection decisions (2026-10-07, Angelo).** The 183 Zoho-only Deals are NOT imported into HCPS
   automatically. The 175 Closed Won sales roll-ups are not HCPS opportunities. The 8 orphan TEST Deals are
   cleanup candidates for later. The 8 orphan Accounts are real businesses — review/merge candidates, never

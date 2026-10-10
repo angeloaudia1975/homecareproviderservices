@@ -4,7 +4,7 @@ const path = require('path');
 const table = require('./phase0.mutants.table.js');
 const SUITES = ['phase0-security.test.js', 'phase0-ownership.test.js', 'phase0-scope.test.js', 'phase0-visits.test.js', 'phase0-outbox.test.js', 'phase0-contacts.test.js', 'phase0-tasks.test.js', 'phase0-roles.test.js', 'phase0-landing.test.js',
                 'phase1-visits.test.js', 'phase1-cc.test.js', 'phase1-workspace.test.js',
-                'phase2-adhoc.test.js', 'phase2-brief.test.js', 'phase2-recap.test.js', 'phase2-account-class.test.js', 'phase2-timeline.test.js', 'phase2-conversion.test.js', 'phase2f-observability.test.js', 'phase2f-test-isolation.test.js', 'phase2f3-webhook.test.js', 'phase2f4-inbound.test.js'];
+                'phase2-adhoc.test.js', 'phase2-brief.test.js', 'phase2-recap.test.js', 'phase2-account-class.test.js', 'phase2-timeline.test.js', 'phase2-conversion.test.js', 'phase2f-observability.test.js', 'phase2f-test-isolation.test.js', 'phase2f3-webhook.test.js', 'phase2f4-inbound.test.js', 'phase2f5-deals.test.js'];
 // P0_ONLY=<prefix> runs only the mutants whose name starts with it (e.g. P0_ONLY=1 for Phase 1).
 const NAMES = Object.keys(table).filter(n => !process.env.P0_ONLY || n.startsWith(process.env.P0_ONLY));
 function run(mutant) {

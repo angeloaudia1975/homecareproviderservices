@@ -263,7 +263,7 @@ function createWorld(seed) {
       if (method === 'POST' && parts[3] === 'upsert') {
         const bf = (z.batchFail || {})[mod]; if (bf) return res(bf, { data: [{ code: 'INVALID_DATA', details: { api_name: 'Email' }, message: 'invalid data', status: 'error' }] });
         const data = (body && body.data || []).map((rec, i) => { const r = z.upsert && z.upsert(mod, rec, i); if (r && r.code && r.code !== 'SUCCESS') return Object.assign({ status: 'error' }, r);
-          const row = ok(r, rec); (z.modules[mod] = z.modules[mod] || []).push(Object.assign({ id: row.details.id }, rec)); return row; });
+          const row = ok(r, rec); (z.modules[mod] = z.modules[mod] || []).push(Object.assign({ id: row.details.id }, rec, { Modified_Time: new Date().toISOString() })); return row; });
         return res(200, { data });
       }
       if ((method === 'PUT' || method === 'POST') && parts.length === 3) {
@@ -272,7 +272,8 @@ function createWorld(seed) {
           const row = ok(Object.assign(method === 'PUT' ? { action: 'update', details: { id: rec.id } } : {}, r || {}), rec);
           // z.keep[module]: Zoho's copy is changed again by someone else right after our write (the write is accepted, the record isn't).
           const list = (z.modules[mod] = z.modules[mod] || []); const ex = list.find(x => x.id === row.details.id);
-          if (!(z.keep && z.keep[mod])) { if (ex) Object.assign(ex, rec); else list.push(Object.assign({ id: row.details.id }, rec)); }
+          // Zoho stamps Modified_Time on every accepted write (Phase 2F-5 compares it with the captured events').
+          if (!(z.keep && z.keep[mod])) { const now = new Date().toISOString(); if (ex) Object.assign(ex, rec, { Modified_Time: now }); else list.push(Object.assign({ id: row.details.id }, rec, { Modified_Time: now })); }
           return row; });
         return res(z.httpFail && z.httpFail[mod] ? z.httpFail[mod] : 200, { data });
       }

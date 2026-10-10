@@ -40,8 +40,8 @@ const clean = v => { const s=(v==null?"":String(v)).trim(); return s||undefined;
 const PERSONAL = new Set(["gmail.com","yahoo.com","hotmail.com","aol.com","outlook.com","icloud.com","comcast.net","att.net","msn.com","live.com","sbcglobal.net","bellsouth.net","ymail.com","me.com","cox.net","verizon.net","charter.net","windstream.net"]);
 const websiteFrom = email => { const m=String(email||"").trim().toLowerCase().match(/@([^@\s]+)$/); if(!m) return undefined; const dom=m[1]; return PERSONAL.has(dom)?undefined:("https://"+dom); };
 const splitName = n => { const p=String(n||"").trim().split(/\s+/).filter(Boolean); if(!p.length) return {first:"",last:""}; return { first:p.slice(0,-1).join(" ")||p[0], last:p.length>1?p[p.length-1]:p[0] }; };
-const STAGE_TO_ZOHO={identified:"Qualification",contacted:"Needs Analysis",quoted:"Proposal/Price Quote",won:"Closed Won",lost:"Closed Lost"};
-const ZOHO_TO_STAGE={"Qualification":"identified","Needs Analysis":"contacted","Value Proposition":"contacted","Identify Decision Makers":"contacted","Proposal/Price Quote":"quoted","Negotiation/Review":"quoted","Closed Won":"won","Closed Lost":"lost","Closed-Lost":"lost","Closed Lost to Competition":"lost"};
+// Phase 2F-5: Deals (and the stage mapping) are handled by the one deal engine.
+const DS = require("./_zoho_deals.js");
 // Business-name normalization (same dnorm the rest of the app uses) so a Zoho Account name on an
 // inbound webhook event resolves to the same dealer; + the email shape used everywhere.
 const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
@@ -90,19 +90,8 @@ const ZFIELDS={ accounts:"Account_Name,Phone,Website,Billing_Street,Billing_City
 // An echo's change happens at HCPS's push: Zoho stamps Modified_Time just before it answers, and HCPS records the
 // push time just after (a batch of up to 100 accounts or contacts takes a little while).
 const ECHO_BEFORE_MS=10*60e3, ECHO_AFTER_MS=2*60e3;
-// The webhooks send Modified_Time as "yyyy-mm-dd HH:MM:SS" in the Zoho org's time zone (America/Chicago), or ISO.
-const ZOHO_TZ=process.env.ZOHO_WEBHOOK_TZ||"America/Chicago";
-function tzOffsetMs(utcMs, tz){
-  const p=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:tz,hourCycle:"h23",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"}).formatToParts(new Date(utcMs)).map(x=>[x.type,x.value]));
-  return Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute,+p.second)-utcMs;
-}
-function parseZohoTime(s){
-  s=String(s||"").trim(); if(!s) return null;
-  if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.test(s)){ const d=new Date(s); return isNaN(d)?null:d; }
-  const m=/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(s); if(!m) return null;
-  const wall=Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+(m[6]||0));
-  try{ let t=wall-tzOffsetMs(wall,ZOHO_TZ); t=wall-tzOffsetMs(t,ZOHO_TZ); return new Date(t); }catch(e){ return null; }
-}
+// Zoho times (webhook "yyyy-mm-dd HH:MM:SS" Chicago, or ISO): one parser, shared with the deal engine.
+const parseZohoTime=DS.parseZohoTime;
 const lookupName=x=>x&&typeof x==="object"?(x.name==null?null:String(x.name)):(x==null?null:String(x));
 const lookupId=x=>x&&typeof x==="object"?(x.id==null?null:String(x.id)):null;
 const pushedAcctName=d=>(clean(d.business_name)||("Dealer "+d.id)).slice(0,255);
@@ -122,7 +111,7 @@ function classifyOne(q, z, ctx, m){
   const zid=String(z.id), keys=m.keysByZid.get(q.entity+":"+zid)||[];
   if(keys.length>1) return {cls:"unresolved", reason:keys.length+" HCPS records were last pushed to this Zoho record ("+keys.join(", ")+"), so it can't be tied to one HCPS record"};
   if(!keys.length) return {cls:"external", reason:"HCPS has no recorded successful push to this Zoho record"+testNote(q.entity,z,ctx,m)+", so it isn't an HCPS echo"};
-  const key=keys[0], push=ctx.times[key]; let rec;
+  const key=keys[0], push=ctx.times[key]; let rec, dealFp=null;
   if(q.entity==="accounts"){
     rec=prune({ Account_Name:clean(z.Account_Name), Phone:clean(z.Phone), Website:clean(z.Website), Billing_Street:clean(z.Billing_Street), Billing_City:clean(z.Billing_City), Billing_State:clean(z.Billing_State), Billing_Code:clean(z.Billing_Code) });
     if(rec.Account_Name!=null) rec.Account_Name=String(rec.Account_Name).slice(0,255);
@@ -130,13 +119,11 @@ function classifyOne(q, z, ctx, m){
     rec={...prune({ Last_Name:clean(z.Last_Name), First_Name:clean(z.First_Name), Email:clean(z.Email), Phone:clean(z.Phone), Title:clean(z.Title) }), _company:lookupName(z.Account_Name)||""};
   } else {
     const o=m.oppById.get(key.slice(4)); if(!o) return {cls:"external", reason:"the HCPS deal last pushed to this Zoho record ("+key+") no longer exists, so it can't be compared"};
-    const d=prune({ Deal_Name:clean(z.Deal_Name), Amount:Number(z.Amount)||0, Stage:clean(z.Stage), Closing_Date:clean(z.Closing_Date) });
-    if(o.line) d.Description=z.Description==null?"":String(z.Description);
-    rec={...d, _acct:lookupId(z.Account_Name)||"", _zid:zid};
+    rec=null; dealFp=DS.fingerprint(z, o.line);   // the same fingerprint the deal engine records for its pushes
   }
   const stored=ctx.hashes[key];
   if(!stored) return {cls:"external", reason:"HCPS has no push fingerprint for "+key+", so it can't be proven an echo"};
-  if(hashOf(rec)!==stored) return {cls:"external", reason:"Zoho's current values of the fields HCPS pushes differ from HCPS's last successful push for "+key+": an external Zoho change"};
+  if((rec?hashOf(rec):dealFp)!==stored) return {cls:"external", reason:"Zoho's current values of the fields HCPS pushes differ from HCPS's last successful push for "+key+": an external Zoho change"};
   const evt=parseZohoTime(q.modified_time);
   if(!evt) return {cls:"external", reason:"Zoho's values equal HCPS's last push for "+key+", but the event's Modified_Time ("+(q.modified_time||"none")+") can't be read, so it can't be proven an echo"};
   const dt=evt.getTime()-Date.parse(push.at);
@@ -284,57 +271,6 @@ async function runInner(runAt){
   }catch(e){ summary.errors.push({phase:"contacts",msg:String(e.message||e)}); }
   await F.flush();
 
-  // ---- OUTBOUND: pipeline -> Deals (changed only; PUT when we already know the Zoho Deal id) ----
-  if(T) try{
-    const opps=await sbGetAll("opportunities?select=id,dealer_id,title,line,stage,value,expected_close,zoho_id","id").catch(e=>{ F.fail({phase:"opps_read",entity:"opportunities",action:"read",msg:"HCPS deals couldn't be read, so none were pushed: "+failMsg(e)}); return []; });
-    const dealers=await sbGetAll("dealers?select=id,business_name","id"); const nameById={}; for(const d of dealers) nameById[d.id]=(clean(d.business_name)||("Dealer "+d.id)).slice(0,255);
-    const today=new Date().toISOString().slice(0,10);
-    for(const o of opps){
-      if(T.dealer(o.dealer_id)){ summary.test_excluded.deals++; continue; }   // a TEST dealer's deal is never pushed
-      const rec=prune({ Deal_Name:String(o.title||"Opportunity").slice(0,255), Amount:Number(o.value)||0, Stage:STAGE_TO_ZOHO[o.stage]||"Qualification", Closing_Date:/^\d{4}-\d{2}-\d{2}$/.test(String(o.expected_close||""))?o.expected_close:today });
-      if(o.line) rec.Description="Line: "+o.line;
-      const acctId=o.dealer_id?acctIdByName[nameById[o.dealer_id]]:null;
-      const key="opp:"+o.id, h=hashOf({...rec, _acct:acctId||"", _zid:o.zoho_id||""});
-      if(hashes[key]===h) continue;
-      const body={...rec}; if(acctId) body.Account_Name={id:acctId};
-      let r;
-      if(o.zoho_id){ r=await zoho("PUT",apiDomain,token,"/crm/v8/Deals",{data:[{id:o.zoho_id,...body}]}); }
-      else { r=await zoho("POST",apiDomain,token,"/crm/v8/Deals",{data:[body]}); }
-      const row=r.ok&&r.json&&Array.isArray(r.json.data)&&r.json.data[0];
-      if(row&&row.code==="SUCCESS"){ next[key]=h; const dzid=o.zoho_id||(row.details&&row.details.id); if(dzid) pushedOk(key,dzid); summary.opportunities.ok++; if(!o.zoho_id){ const id=row.details&&row.details.id;
-          if(id){ try{ await sbSend("PATCH",`opportunities?id=eq.${encodeURIComponent(o.id)}`,{zoho_id:id},{Prefer:"return=minimal"}); }
-            catch(e){ F.fail({phase:"opps_zoho_id",entity:"opportunity",entity_id:o.id,dealer_id:o.dealer_id,zoho_id:id,action:"write",msg:"the new Zoho Deal id wasn't saved on the HCPS deal — the next run would create the deal in Zoho again: "+failMsg(e)}); } }
-          else F.fail({phase:"opps_zoho_id",entity:"opportunity",entity_id:o.id,dealer_id:o.dealer_id,action:"push",msg:"Zoho created the deal but returned no id"}); } }
-      else F.fail({phase:"opps",entity:"opportunity",entity_id:o.id,dealer_id:o.dealer_id,zoho_id:o.zoho_id||null,action:"push",msg:(row&&row.code?row.code+": "+(row.message||""):"http "+r.status),extra:{zoho:r.json||null}});
-    }
-    summary.opportunities.changed=summary.opportunities.ok;
-    await setHashes(next);
-    await saveTimes();
-  }catch(e){ summary.errors.push({phase:"opps",msg:String(e.message||e)}); }
-  await F.flush();
-
-  // ---- INBOUND: Zoho Deal stage/amount/close -> linked opportunities (Zoho owns pipeline moves) ----
-  try{
-    const opps=await sbGetAll("opportunities?select=id,zoho_id,stage,value,expected_close&zoho_id=not.is.null","id").catch(e=>{ F.fail({phase:"pull_read",entity:"opportunities",action:"read",msg:"HCPS linked deals couldn't be read, so nothing was pulled: "+failMsg(e)}); return []; });
-    if(opps.length){
-      const byZoho={}; for(const o of opps) byZoho[o.zoho_id]=o;
-      const deals=readCheck(await getAllRecords(apiDomain,token,"Deals","Deal_Name,Stage,Amount,Closing_Date,Modified_Time"),"pull_read");
-      for(const d of (deals||[])){ const o=byZoho[d.id]; if(!o) continue;
-        const mapped=ZOHO_TO_STAGE[d.Stage]||null; const patch={};
-        if(mapped && mapped!==o.stage) patch.stage=mapped;
-        if(d.Amount!=null && Math.round(Number(d.Amount))!==Math.round(Number(o.value||0))) patch.value=Number(d.Amount)||0;
-        if(d.Closing_Date && d.Closing_Date!==o.expected_close) patch.expected_close=d.Closing_Date;
-        if(Object.keys(patch).length){
-          if(patch.stage){ patch.status=patch.stage==="won"?"won":patch.stage==="lost"?"lost":"open"; const P={identified:0.1,contacted:0.3,quoted:0.6,won:1,lost:0}; patch.probability=P[patch.stage]; }
-          patch.updated_at=new Date().toISOString();
-          try{ await sbSend("PATCH",`opportunities?id=eq.${encodeURIComponent(o.id)}`,patch,{Prefer:"return=minimal"}); summary.deals_pulled++; }
-          catch(e){ F.fail({phase:"pull_deals",entity:"opportunity",entity_id:o.id,zoho_id:d.id,direction:"in",action:"pull",msg:"a Zoho change couldn't be saved on the HCPS deal: "+failMsg(e),extra:{fields:Object.keys(patch)}}); }
-        }
-      }
-    }
-  }catch(e){ summary.errors.push({phase:"pull_deals",msg:String(e.message||e)}); }
-  await F.flush();
-
   // ---- INBOUND webhook queue (Phase 2F-4): CLASSIFY ONLY. Each captured event becomes "echo" (status ignored),
   // "external" or "unresolved" (both stay pending for 2F-5), with the reason. Nothing is applied: no dealer,
   // contact, deal, activity or Zoho write happens here. An event that can't be classified this run (Zoho or
@@ -345,6 +281,19 @@ async function runInner(runAt){
     catch(e){ F.fail({phase:"inbound_read",entity:"queue",direction:"in",action:"read",msg:"the inbound queue couldn't be read, so no event was classified: "+failMsg(e)}); }
     if(pend && pend.length) summary.inbound=await classifyInbound(pend,{apiDomain,token,hashes:next,times,timesOk:PT.ok,T});
   }catch(e){ summary.errors.push({phase:"inbound_classify",msg:String(e.message||e)}); }
+  await F.flush();
+
+  // ---- DEALS (Phase 2F-5): field-level two-way sync with conflict protection — _zoho_deals.js, the one engine.
+  // Runs AFTER classification so this run's external Deal events are seen. Stage, amount and close date are each
+  // compared with the last-synchronized baseline: only-HCPS → pushed (never for a TEST deal), only-Zoho → applied
+  // to HCPS only with an external/pending Deal event (otherwise reported as drift), both → conflict, nothing
+  // changed. New HCPS deals are created in Zoho as before. (Replaces the old whole-record push and the blind pull.)
+  try{
+    const D=await DS.run({sbGet, sbGetAll, sbSend, zoho, fail:x=>F.fail(x), log:logRow},
+      {apiDomain, token, T, acctIdByName, push:true, apply:true, hashes:next, pushedOk});
+    summary.deals=D; summary.test_excluded.deals=D.test_excluded;
+    summary.opportunities.ok=summary.opportunities.changed=D.created+D.pushed; summary.deals_pulled=D.applied;
+  }catch(e){ summary.errors.push({phase:"deals",msg:String(e.message||e)}); }
   await F.flush();
 
   await setHashes(next);
