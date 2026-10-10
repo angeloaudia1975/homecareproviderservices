@@ -1023,10 +1023,15 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   7YE05310TSS $109.99 → $109.98 and 7YA0AS100 $99.99 → $99.98. **Two dates, never one:** HCPS received the file
   2026-10-10 (price_imports raw `_received_date`); the manufacturer effective date stays NULL on product_skus until
   Bemis confirms it — never invented, never the received date. The authority gate does not require an effective
-  date; activation is held by decision, not by the gate. **Steadfast (7YE82350TC) and 444DISPLAY are unresolved:**
-  Bemis says everything sells in cases but the list gives them no case qty — keep today's behaviour (Steadfast
-  Each / 1, display kit unit) and do NOT activate Bemis authority until both are resolved or Angelo approves an
-  exception. Legacy price notes that divided the case price into a "/unit" figure, or repeated MSRP already shown as a
+  date. **Final decisions (Angelo, 2026-10-10 14:35):** the file is accepted by HCPS as the current 2026 Bemis price
+  list; the missing manufacturer effective date is recorded as pending and is NOT an activation blocker. The "sold in
+  case quantities" rule applies only where the list gives a Master Case Qty. Steadfast 7YE82350TC = Each / 1 and
+  444DISPLAY = one orderable Display / 1 (record uom "Display", never a multi-unit Case): neither is a case item, the
+  2026 list prices each as a single unit, and neither is flagged as missing a case quantity (price_imports raw
+  `_hcps_uom`). A later Bemis source that gives either a pack quantity is a source change Manufacturer Center flags. **Bemis freight words:** `freeLabel` "Prepaid freight" ($500+) and `flatLabel` "shipping & handling" ($40
+  below $500) on the Bemis group in manufacturers.json; cart, HCPS email and dealer confirmation use them. A freight
+  group without labels keeps the old wording ("FREE freight", "$15.00 freight").
+  Legacy price notes that divided the case price into a "/unit" figure, or repeated MSRP already shown as a
   field, are removed. "Dealer Cost Per Unit" lives only in price_imports.raw for this pilot — Manufacturer Center
   should get structured source fields for unit cost, received date and MSRP/MAP basis rather than free text.
   `msrp_each:true` on a pack row (catalog file) labels MSRP "each" and compares it with case price ÷ qty; a pack
