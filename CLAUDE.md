@@ -1045,6 +1045,15 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   unless a regression is found or Bemis sends a new source (Manufacturer Center flow). Open: manufacturer effective
   date (pending, not a blocker); no Bemis enrichment pages yet (catalog_audit lists 9 "needs SKU review" for that
   reason only).
+- **FROZEN: Climbing Steps, Strongback, Ovation and Bemis (Angelo, 2026-10-10 15:13).** All four are Gold Standard
+  COMPLETE and record-authoritative. No commercial, content, image, category, UOM, freight or wording change to any
+  of them unless a regression is found (then: show the regression, propose the fix, wait for approval) or the
+  manufacturer sends a new source (Manufacturer Center flow, two human gates). A shared code change must prove zero
+  dealer-facing change on all four (full-field fingerprint before/after). Do not start another manufacturer until
+  Angelo says so.
+- **Bemis product pages were intentionally DEFERRED (Angelo, 2026-10-10).** Bemis has no enrichment pages by decision;
+  catalog_audit's 9 "needs SKU review" for Bemis reflects that deferral only and is NOT a Gold Standard regression.
+  Pages come later from manufacturer-supported families/content, with a structure/content/image proposal first.
 - **Manufacturer Center lessons from the Bemis pilot (2026-10-10).** (1) Compare the FULL rendered output (fields +
   price block + cart + both emails), not only prices — parity covers base/msrp/map/tiers, not uom/case_qty, wording
   or freight labels. (2) Keep manufacturer facts and HCPS interpretations apart: price_imports holds the file as
