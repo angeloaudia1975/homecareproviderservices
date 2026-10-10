@@ -20,6 +20,7 @@ async function sbGetAll(base, orderCol="id"){ const PAGE=1000; let from=0,out=[]
 const orgAccounts=require("./_accountorg.js")(sbGet,sbSend);
 const { NAME_FIRST, NO_ACCOUNT_CAPTURE } = require("./_mfr_rules.js");
 const SC=require("./_scope.js");
+const MI=require("./_mi1a.js"); const { flagOn }=require("./_flags.js");
 const clean=(v,n)=>{ const s=(v==null?"":String(v)).trim(); return s?s.slice(0,n||400):null; };
 const num=v=>{ if(v==null||v==="") return null; const n=Number(String(v).replace(/[$,\s]/g,"")); return Number.isFinite(n)?n:null; };
 const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
@@ -46,12 +47,13 @@ async function whoami(event){
 
 // Build the dealer resolver: account_ref (per manufacturer) + name/alias, with
 // branch selection by shipping zip/city inside the dealer family.
-async function buildResolver(slug){
+async function buildResolver(slug, strict){
+  const soft=(p,fb)=>strict?p:p.catch(()=>fb);   // legacy path keeps its old tolerance; MI-1a v2 is strict
   const [dealers,dms,aliases,dir]=await Promise.all([
-    sbGetAll("dealers?select=id,business_name,parent_id,city,zip","id").catch(()=>[]),
-    sbGetAll(`dealer_manufacturers?manufacturer=eq.${encodeURIComponent(slug)}&select=dealer_id,account_ref`,"dealer_id").catch(()=>[]),
-    sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]),
-    SC.ownerIndex(sbGet).catch(()=>null),     // who owns each dealer (Phase 0D)
+    soft(sbGetAll("dealers?select=id,business_name,parent_id,city,zip","id"),[]),
+    soft(sbGetAll(`dealer_manufacturers?manufacturer=eq.${encodeURIComponent(slug)}&select=dealer_id,account_ref`,"dealer_id"),[]),
+    soft(sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm"),[]),
+    soft(SC.ownerIndex(sbGet),null),     // who owns each dealer (Phase 0D)
   ]);
   const byId=new Map(); for(const d of dealers) byId.set(d.id,d);
   const rootOf=id=>{ const d=byId.get(id); return (d&&d.parent_id)?d.parent_id:id; };
@@ -108,6 +110,52 @@ function mapRow(slug, rate, source_file, row, idx){
   };
 }
 
+// MI-1a v2 path: map + resolve exactly as today, then ONE call to hcps_sales_report_apply, which keys
+// every line, compares whole orders with what HCPS holds and (apply) writes them in one transaction.
+// Account numbers are reconciled AFTER the sales are written, and only if they were.
+async function importV2(mi, b, me, slug, rate, rows){
+  const apply=(b.action==="import");
+  const { resolve, byId, repOf } = await buildResolverStrict(slug);
+  const recs=rows.map((r,i)=>{ const dealer_id=resolve(r); const rec=mapRow(slug,rate,clean(b.source_file,200),r,i);
+    delete rec.external_ref; rec.rep_name=repOf(dealer_id); rec.dealer_id=dealer_id||null; return { rec, raw:r }; });
+  const p={ manufacturer:slug, apply, actor:me.email||me.name||"", source_file:clean(b.source_file,200),
+    rows:recs.map(x=>x.rec),
+    retire_orders:Array.isArray(b.retire_orders)?b.retire_orders.map(x=>String(x)):[],
+    approve_paid:b.approve_paid===true, approve_reason:clean(b.approve_reason,500)||"",
+    confirm_cross_lane:b.confirm_cross_lane===true };
+  const r=await mi.rpc("hcps_sales_report_apply",p);
+  if(!r.ok) return json(409,{ok:false,refused:true,error:r.code,message:r.message});
+  const v2=r.result||{};
+  // Show dealer NAMES (not ids) in the attribution differences.
+  for(const d of (v2.nonfinancial_differences||[])) if(d.field==="dealer_id"){
+    const nm=id=>id?((byId.get(id)||{}).business_name||id):null; d.field="dealer"; d.hcps=nm(d.hcps); d.file=nm(d.file); }
+  // Account-number maintenance (RULE 13): dry run on preview; applied only after a successful write.
+  const acct={updated:[],confirmed:[],conflicts:[],active:0};
+  const wrote = apply && v2.applied===true && !v2.noop;
+  if(!NO_ACCOUNT_CAPTURE.has(slug)){
+    const dealerRefs=new Map();
+    for(const x of recs){ const did=x.rec.dealer_id; if(!did) continue; const ref=clean(x.raw.account_ref,80)||"";
+      const o=dealerRefs.get(did)||{name:(byId.get(did)||{}).business_name||"",refs:new Set()}; if(ref) o.refs.add(ref); dealerRefs.set(did,o); }
+    for(const [dealerId,o] of dealerRefs){ const refs=[...o.refs];
+      if(refs.length>1){ acct.conflicts.push({dealer_id:dealerId,name:o.name,reason:"report_lists_multiple_numbers",values:refs}); continue; }
+      const res=await orgAccounts.reconcileAccountRef(slug,dealerId,refs[0]||"",{apply:wrote});
+      if(res.status==="set") acct.updated.push({dealer_id:dealerId,name:o.name,account_ref:refs[0]});
+      else if(res.status==="conflict") acct.conflicts.push({dealer_id:dealerId,name:o.name,existing:res.existing,incoming:res.incoming,reason:"differs_from_record"});
+      else if(res.status==="confirmed") acct.confirmed.push({dealer_id:dealerId,name:o.name,account_ref:res.existing});
+      else if(res.status==="active_only") acct.active++; }
+  }
+  let total=0, comm=0, matched=0; const unmatched=new Set();
+  for(const x of recs){ total+=x.rec.amount; comm+=x.rec.commission; if(x.rec.dealer_id) matched++; else if(x.raw.company) unmatched.add(String(x.raw.company).trim()); }
+  const summary={ path:"v2", rows:recs.length, matched_lines:matched, unmatched_lines:recs.length-matched, unmatched:[...unmatched].slice(0,100),
+    total_sales:Math.round(total*100)/100, total_commission:Math.round(comm*100)/100, commission_rate:rate,
+    accounts:{ updated:acct.updated.length, confirmed:acct.confirmed.length, active_marked:acct.active, conflicts:acct.conflicts.length,
+      updated_list:acct.updated.slice(0,200), conflict_list:acct.conflicts.slice(0,200) }, v2 };
+  if(!apply) return json(200,{ok:true,preview:summary});
+  return json(200,{ok:true,imported:v2.noop?0:(v2.inserted||0),summary});
+}
+// The v2 path's resolver reads strictly: a dealer/alias/account read that fails stops the import.
+async function buildResolverStrict(slug){ return buildResolver(slug, true); }
+
 exports.handler = async (event)=>{
   try{
     if(!SUPABASE_URL||!SERVICE_ROLE) return json(500,{error:"Supabase env vars not set"});
@@ -130,6 +178,19 @@ exports.handler = async (event)=>{
       const company=clean(b.company,180), dealer_id=clean(b.dealer_id,80);
       if(!company||!dealer_id) return json(400,{error:"company and dealer_id required"});
       const alias_norm=dnorm(company); if(!alias_norm) return json(400,{error:"empty name"});
+      // MI-1a (switch mi_import_v2): an alias that already points to ANOTHER dealer is never overwritten
+      // silently — the reply names both dealers and the replacement needs replace:true. Switch off = today.
+      if(await flagOn(sbGet,"mi_import_v2")){
+        const ex=await sbGet(`dealer_aliases?alias_norm=eq.${encodeURIComponent(alias_norm)}&select=alias_norm,raw_name,dealer_id`);
+        const cur=ex&&ex[0];
+        if(cur && cur.dealer_id && cur.dealer_id!==dealer_id && b.replace!==true){
+          const ds=await sbGet(`dealers?id=in.(${encodeURIComponent(cur.dealer_id)},${encodeURIComponent(dealer_id)})&select=id,business_name,city,state`);
+          return json(409,{ok:false,error:"alias_conflict",alias_norm,
+            message:`"${company}" is already matched to another dealer. Nothing was changed; confirm to replace it.`,
+            current:(ds||[]).find(d=>d.id===cur.dealer_id)||{id:cur.dealer_id},
+            requested:(ds||[]).find(d=>d.id===dealer_id)||{id:dealer_id}});
+        }
+      }
       await sbSend("POST","dealer_aliases?on_conflict=alias_norm",{alias_norm,raw_name:company,dealer_id},{Prefer:"resolution=merge-duplicates,return=minimal"});
       return json(200,{ok:true,alias_norm,dealer_id});
     }
@@ -140,6 +201,13 @@ exports.handler = async (event)=>{
     const rate=(b.commission_rate!=null&&b.commission_rate!=="")?(Number(b.commission_rate)>1?Number(b.commission_rate)/100:Number(b.commission_rate)):0;
     const rows=Array.isArray(b.rows)?b.rows:[];
     if(!rows.length) return json(200,{ok:true, rows:0, matched:0, unmatched:[]});
+
+    // MI-1a routing (see _mi1a.js). Not enrolled → today's path below, unchanged. Enrolled → the
+    // atomic database function when the switch is on, or a clear pause when it is off.
+    const mi=MI.make(sbGet,sbSend);
+    const miRoute=MI.routeSales(await flagOn(sbGet,"mi_import_v2"), await mi.enrolled(slug,"sales_report"));
+    if(miRoute==="paused") return json(409,{ok:false,error:"import_paused",message:MI.PAUSED_SALES});
+    if(miRoute==="v2") return await importV2(mi, b, me, slug, rate, rows);
 
     // Column present? (friendly message if the migration hasn't run yet.)
     try{ await sbGet("monthly_sales?select=external_ref&limit=1"); }

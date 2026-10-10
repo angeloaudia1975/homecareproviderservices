@@ -991,6 +991,64 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   → re-verify (feed uses the record, 21 prices / cart / server / categories / images unchanged,
   ordering works) → report PASS/FAIL and stop before Strongback activation. No Bemis yet.
 
+## 18. Manufacturer report imports — MI-1a transaction identity & safe replacement (RULE, agreed 2026-10-09/10)
+
+Project MI (Manufacturer Reporting & Intelligence) extends the EXISTING Sales Report Import and Commission
+Report Import — no second importer, no Strongback-only system. MI-1a is the financial-safety foundation.
+
+- **The PDF dealer report never writes `monthly_sales`.** Manufacturer summary figures (e.g. Strongback's
+  September report, its Aug/Sep totals) are reference/reconciliation data only; transactional sales and
+  commission come only from transaction exports or commission statements.
+- **One transaction identity, per manufacturer, by approval.** A sales line = order + SKU + rank among
+  identical lines (`hcps_ms_order_part` / `hcps_ms_sku_part`, SQL — the only definition); the ORDER is the unit
+  of replacement; `line_hash` = qty, amount, rate, order date only. A manufacturer uses it only when listed in
+  `mi1a_enrollment` — written ONLY by reviewed SQL (Strongback via `mi1a_part2_rekey_strongback.sql`), never by
+  code. Every other manufacturer keeps today's import untouched until its own identity audit (dry run D8:
+  invoice numbers reused across customers / >31 days / files) passes and Angelo approves. PediFix is NOT
+  eligible yet (reused invoice INV173133; no SKU on its 172 rows).
+- **Switches** (`phase2_flags`, exactly `true` = on): `mi_import_v2` (Sales Report Import → `hcps_sales_report_apply`
+  for ENROLLED manufacturers; also turns on the alias guard) and `mi_commission_v2` (Commission Report Import →
+  `hcps_commission_file_apply`). Routing lives in `_mi1a.js`: not enrolled → legacy path, unchanged; enrolled +
+  switch off → paused (409 `import_paused`); an unreadable enrolment table is an error, never "not enrolled".
+- **Atomic, whole-file writes.** A sales file and a commission file (ALL its months) are each ONE database
+  transaction; any failure writes nothing. Replaced rows are archived whole in `monthly_sales_superseded`; any
+  batch (`mfr_report_batches`) can be undone exactly, newest first (`hcps_import_batch_rollback`).
+- **Statements are never appended by file name.** Every month already holding commission-lane rows (any file,
+  before or after MI-1a) needs a reviewed decision: replace (named files), append (reason; refused if identical;
+  overlapping lines need confirmation) or reject. A statement control total, when given, must match.
+- **Paid records.** A month locked in `commission_period_locks`, or holding a commission statement, changes only
+  with `approve_paid` + a written reason, stored on the batch.
+- **Cross-lane duplicates are refused** without confirmation: a sales-report line matching a commission-lane line
+  (same manufacturer, month, qty, amount), and vice versa. Found live 2026-10-09: AirAvant/BongoRx June 2026.
+- **Semantic collisions block an import:** one order number with different account refs or dates > 31 days apart.
+- **Non-financial differences** (dealer, customer name, account ref, ship-to, product name) are listed in the
+  preview and stored on the batch; confirmed HCPS dealer/rep attribution is always kept.
+- **Write guard.** Trigger `hcps_ms_write_guard`: on enrolled manufacturer/lanes only the MI-1a functions may
+  insert, delete or change money/key columns; re-attribution (dealer, rep, channel) stays allowed. A row is protected
+  when its OLD **or** NEW classification (manufacturer + lane) is enrolled (`hcps_ms_guarded`, security definer so RLS
+  can't hide the enrolment) — an enrolled row can't escape by changing manufacturer/source/external_ref, and a row
+  can't be moved into an enrolled lane outside the MI-1a functions. Rollback order:
+  switch off → revert code (imports for enrolled lines stay FROZEN by the guard) → undo batches newest first → R1
+  (old keys + un-enrol in one transaction) → R2 optional.
+- **Legacy commission import (always on, 2026-10-10):** deletes ONLY explicitly identified commission-lane rows —
+  `source='commission'`, or legacy rows with no source AND no external_ref (the same test as SQL
+  `hcps_ms_is_commission_lane`); every other source is untouched — and stops before inserting if the delete fails
+  (502 `replace_failed`).
+- **Aliases are global** (all manufacturers, both importers, Analytics). With `mi_import_v2` on, assigning a name
+  that already points to another dealer is refused (409 `alias_conflict`) until confirmed; past sales never move.
+  **Wyatt's Pharmacy → Weaver Medical Equipment Metro stays unchanged** until the business relationship is
+  confirmed; no merge, no reassignment; ambiguous manufacturer intelligence for it is held for review.
+- **AirAvant/BongoRx June 2026 duplicate (decision 2026-10-10):** keep the Excel commission-statement row
+  (f6b9b070…) as the financial authority; archive the PDF sales-report row (b09d0e04…) with its evidence —
+  ONLY after Angelo approves the audited correction (`mi1a_airavant_duplicate_correction.sql`, rollback file).
+- **Before any MI production SQL:** Part 0 snapshot (`mi1a_snapshot_monthly_sales`) — Supabase daily backups exist
+  but Point-in-Time Recovery is NOT enabled, and a daily restore would discard other changes.
+- **Tests:** `test/mi1a-identity.pg.test.js` (runs the committed SQL in Postgres, bigint + uuid ids),
+  `test/mi1a-compat.test.js` + `.mutants.js` (other manufacturers unaffected; switches; alias guard).
+- **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
+  into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
+  tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
+
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
 - [ ] Hero headline is short + single-row on desktop, wraps on mobile.

@@ -12,7 +12,7 @@ const Module = require('module');
 const fs = require('fs');
 /* MUTANTS. phase0.mutants.js runs the suites with P0_MUTANT set; the matching edit is applied to
    the source IN MEMORY as each file is loaded. Nothing on disk is ever changed. */
-const MUTANT = process.env.P0_MUTANT ? require('./phase0.mutants.table.js')[process.env.P0_MUTANT] : null;
+const MUTANT = process.env.P0_MUTANT ? require(process.env.P0_MUTANT_TABLE || './phase0.mutants.table.js')[process.env.P0_MUTANT] : null;   // P0_MUTANT_TABLE: another suite's table (MI-1a)
 function compileInto(full) {
   let src = fs.readFileSync(full, 'utf8');
   if (MUTANT && path.basename(full) === MUTANT.file && path.dirname(full) === (MUTANT.ordering ? ORDER_REPO : REPO)) {
@@ -73,15 +73,17 @@ function createWorld(seed) {
     const inner = s.replace(/^\(|\)$/g, ''); const parts = []; let depth = 0, cur = '';
     for (const ch of inner) { if (ch === '(') depth++; if (ch === ')') depth--; if (ch === ',' && depth === 0) { parts.push(cur); cur = ''; } else cur += ch; }
     if (cur) parts.push(cur);
-    return parts.map(p => { const i = p.indexOf('.'); return { col: p.slice(0, i), expr: p.slice(i + 1) }; });
+    return parts.map(p => { if (/^(and|or)\(/.test(p)) { const k = p.startsWith('and') ? 'and' : 'or'; return { group: k, conds: parseOr(p.slice(k.length)) }; }
+      const i = p.indexOf('.'); return { col: p.slice(0, i), expr: p.slice(i + 1) }; });
   }
+  function matchAny(row, c) { return c.group ? (c.group === 'and' ? c.conds.every(x => matchAny(row, x)) : c.conds.some(x => matchAny(row, x))) : matchCond(row, c.col, c.expr); }
   function query(table, qs) {
     const params = []; const meta = {};
     for (const part of qs.split('&').filter(Boolean)) {
       const i = part.indexOf('='); const k = decode(part.slice(0, i)); const v = decode(part.slice(i + 1));
       if (['select', 'order', 'limit', 'offset', 'on_conflict', 'columns'].includes(k)) meta[k] = v; else params.push([k, v]);
     }
-    const filt = row => params.every(([k, v]) => k === 'or' ? parseOr(v).some(c => matchCond(row, c.col, c.expr)) : matchCond(row, k, v));
+    const filt = row => params.every(([k, v]) => k === 'or' ? parseOr(v).some(c => matchAny(row, c)) : matchCond(row, k, v));
     return { filt, meta };
   }
   function project(row, select) {
@@ -162,7 +164,7 @@ function createWorld(seed) {
         const used = [];
         if (meta.select && meta.select !== '*') for (const c of meta.select.split(',').map(x => x.trim())) if (c && !c.includes('(')) used.push(c);
         for (const part of qs.split('&').filter(Boolean)) { const k = decode(part.slice(0, part.indexOf('='))); const v = decode(part.slice(part.indexOf('=') + 1));
-          if (k === 'or') { for (const c of parseOr(v)) used.push(c.col); } else if (!['select', 'order', 'limit', 'offset', 'on_conflict', 'columns'].includes(k)) used.push(k); }
+          if (k === 'or') { const walk = cs => cs.forEach(c => c.group ? walk(c.conds) : used.push(c.col)); walk(parseOr(v)); } else if (!['select', 'order', 'limit', 'offset', 'on_conflict', 'columns'].includes(k)) used.push(k); }
         if (method === 'PATCH' && body && typeof body === 'object') for (const c of Object.keys(body)) if (!known.includes(c)) return res(400, { code: 'PGRST204', message: `Could not find the '${c}' column of '${table}' in the schema cache` });
         const bad = used.find(c => !known.includes(c)); if (bad) return res(400, { code: '42703', message: `column ${table}.${bad} does not exist` });
       }

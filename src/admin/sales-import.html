@@ -195,7 +195,7 @@ async function doPreview(){
   const rows=buildRows(); const mfr=($("#mfr")||{}).value, rate=($("#rate")||{}).value;
   const r=await si({action:"preview",manufacturer:mfr,commission_rate:rate,rows}); BUSY=false; $("#pmsg").textContent="";
   if(r.body&&r.body.error==="tables_missing"){ $("#out").innerHTML=`<div class="card"><div class="msg">Run <b>supabase/sales_import.sql</b> in Supabase first, then reload.</div></div>`; return; }
-  if(!r.body||!r.body.ok){ $("#out").innerHTML=`<div class="card"><div class="hint warn">Preview failed: ${esc((r.body&&(r.body.error||r.body.message))||"error")}</div></div>`; return; }
+  if(!r.body||!r.body.ok){ $("#out").innerHTML=`<div class="card"><div class="hint warn">Preview failed: ${esc((r.body&&(r.body.message||r.body.error))||"error")}</div></div>`; return; }
   PREVIEW=r.body.preview;
   if(PREVIEW.unmatched&&PREVIEW.unmatched.length&&!DEALERS.length){ const d=await si({action:"dealers"}); if(d.body&&d.body.ok) DEALERS=d.body.dealers||[]; }
   renderPreview();
@@ -206,7 +206,13 @@ async function assignAlias(i){
   const company=(PREVIEW.unmatched||[])[i];
   if(!dealer_id){ if(ok) ok.innerHTML='<span class="warn">pick a dealer first</span>'; return; }
   if(!company) return; if(ok) ok.textContent="saving…";
-  const r=await si({action:"add_alias",company,dealer_id});
+  let r=await si({action:"add_alias",company,dealer_id});
+  if(r.status===409&&r.body&&r.body.error==="alias_conflict"){
+    const cur=r.body.current||{}, req=r.body.requested||{};
+    const msg=`"${company}" already matches ${cur.business_name||"another dealer"}${cur.city?" ("+cur.city+", "+(cur.state||"")+")":""}.\n\nReplace it with ${req.business_name||"the dealer you picked"}? Every future import of this name — for every manufacturer — would follow the new dealer. Past sales are not moved.`;
+    if(!confirm(msg)){ if(ok) ok.innerHTML='<span class="warn">kept the existing match</span>'; return; }
+    r=await si({action:"add_alias",company,dealer_id,replace:true});
+  }
   if(r.body&&r.body.ok){ if(ok) ok.innerHTML='<span class="ok">✓ remembered</span>'; }
   else if(ok) ok.innerHTML='<span class="warn">failed</span>';
 }
@@ -250,14 +256,41 @@ function renderPreview(){
     </tr>`).join("")}</tbody></table>
     <div style="margin-top:8px"><button class="btn sm" onclick="doPreview()">Re-check matches</button> <span class="hint">— re-runs the match after your assignments</span></div>
     ${DEALERS.length?"":'<div class="hint warn" style="margin-top:4px">Dealer list didn\'t load — reload and try again.</div>'}</div>`:"";
+  const v2=p.v2?v2Panel(p.v2):"";
+  const blocked=p.v2&&(p.v2.semantic_collisions||[]).length>0;
   $("#out").innerHTML=`<div class="card">${kpis}
-    <div style="display:flex;gap:8px;align-items:center;margin:4px 0 2px"><button class="btn orange" onclick="doImport()">Load ${p.rows} lines into the platform</button><span id="imsg" class="hint" style="margin:0"></span></div>
+    ${v2}
+    <div style="display:flex;gap:8px;align-items:center;margin:4px 0 2px;flex-wrap:wrap"><button class="btn orange" onclick="doImport()" ${blocked?"disabled":""}>${p.v2?(blocked?"Resolve the order-number collisions first":"Apply this file (one transaction)"):`Load ${p.rows} lines into the platform`}</button><span id="imsg" class="hint" style="margin:0"></span></div>
     ${acctPanel}${pd}${un}</div>`;
+}
+// MI-1a v2 preview: what the database will do with this file, order by order. Nothing is written yet.
+function v2Panel(v){
+  const o=v.orders||{}; const t=(l,n,w)=>`<div class="kpi ${w&&n?'w':''}"><div class="l">${l}</div><div class="v">${n||0}</div></div>`;
+  const rowsT=(list,cols)=>`<div style="max-height:260px;overflow:auto"><table><thead><tr>${cols.map(c=>`<th>${esc(c[0])}</th>`).join("")}</tr></thead><tbody>${list.map(x=>`<tr>${cols.map(c=>`<td>${esc(c[1](x)==null?"—":c[1](x))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+  const ord=k=>String(k||"").replace(/^[^|]*\|/,"");
+  let h=`<div class="step"><h3>Order check — what applying this file will do</h3>
+    <div class="hint" style="margin-bottom:6px">Orders are matched to what HCPS already holds. Unchanged orders are not touched; a changed order is replaced as a whole and the old lines are kept in history. Nothing has been written.</div>
+    <div class="kpis">${t("New orders",o.new)}${t("Unchanged",o.unchanged)}${t("Changed",o.changed,1)}${t("To retire",o.retire,1)}</div>`;
+  if((v.semantic_collisions||[]).length) h+=`<h3 class="warn" style="margin-top:8px">Order numbers that look like two different orders (${v.semantic_collisions.length}) — import blocked</h3>`+rowsT(v.semantic_collisions,[["Order",x=>ord(x.order_key)],["Where",x=>x.where==="vs_hcps"?"vs HCPS":"within file"],["Account ref (file / HCPS)",x=>x.where==="vs_hcps"?`${x.file_customer_ref||"—"} / ${x.hcps_customer_ref||"—"}`:(x.customer_refs||[]).join(", ")],["Dates",x=>x.where==="vs_hcps"?`${x.file_date} / ${x.hcps_date}`:`${x.first_date} → ${x.last_date}`]]);
+  if((v.changed_detail||[]).length) h+=`<h3 style="margin-top:8px">Changed or retired orders</h3>`+rowsT(v.changed_detail,[["Order",x=>ord(x.order_key)],["Change",x=>x.kind],["HCPS lines · $",x=>x.old_lines==null?null:`${x.old_lines} · ${money(x.old_amount)}`],["File lines · $",x=>x.new_lines==null?null:`${x.new_lines} · ${money(x.new_amount)}`]]);
+  if((v.missing_from_file||[]).length) h+=`<h3 style="margin-top:8px">Orders HCPS holds in this date range that the file does not list (${v.missing_from_file.length})</h3><div class="hint">Kept as they are unless you tick them. A ticked order is removed and kept in history.</div>`+
+    `<div style="max-height:180px;overflow:auto">${v.missing_from_file.map(k=>`<label style="display:block;font-size:12.5px"><input type="checkbox" class="v2retire" value="${esc(ord(k))}"> ${esc(ord(k))}</label>`).join("")}</div>`;
+  if((v.nonfinancial_differences||[]).length) h+=`<h3 style="margin-top:8px">Differences that are not money (${v.nonfinancial_differences.length})</h3><div class="hint">Shown so wrong source details are not ignored. Confirmed dealer and rep attribution in HCPS is always kept.</div>`+
+    rowsT(v.nonfinancial_differences,[["Line",x=>ord(x.line_key)],["Field",x=>x.field],["HCPS",x=>x.hcps],["File",x=>x.file],["Kept",x=>x.kept==="hcps"?"HCPS":"file, if the order is corrected"]]);
+  const needPaid=v.needs_paid_approval, needX=(v.cross_lane_matches||0)>0;
+  if(needX) h+=`<div class="hint warn" style="margin-top:8px"><b>${v.cross_lane_matches}</b> line(s) match a commission-statement line for the same month, quantity and amount — the same sale may already be counted. <label><input type="checkbox" id="v2xlane"> These are different sales; import them</label></div>`;
+  if(needPaid) h+=`<div class="hint warn" style="margin-top:8px">This file changes months you have locked or that hold a commission statement: <b>${esc((v.locked_months_touched||[]).join(", "))}</b>. <label><input type="checkbox" id="v2paid"> I approve changing these months</label></div>`;
+  if(needPaid||needX) h+=`<div style="margin-top:6px"><label class="hint" style="display:block">Reason (stored with the import)</label><input id="v2reason" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-family:inherit;font-size:16px"></div>`;
+  return h+`</div>`;
 }
 async function doImport(){
   if(BUSY)return; BUSY=true; $("#imsg").textContent="Importing…";
   const rows=buildRows(); const mfr=($("#mfr")||{}).value, rate=($("#rate")||{}).value;
-  const r=await si({action:"import",manufacturer:mfr,commission_rate:rate,source_file:FILENAME,rows}); BUSY=false;
+  const extra={}; if(PREVIEW&&PREVIEW.v2){ extra.retire_orders=[...document.querySelectorAll(".v2retire:checked")].map(x=>x.value);
+    extra.approve_paid=!!(($("#v2paid")||{}).checked); extra.confirm_cross_lane=!!(($("#v2xlane")||{}).checked); extra.approve_reason=(($("#v2reason")||{}).value||"").trim(); }
+  const r=await si({action:"import",manufacturer:mfr,commission_rate:rate,source_file:FILENAME,rows,...extra}); BUSY=false;
+  if(r.body&&r.body.refused){ $("#imsg").innerHTML=`<span class="warn">Nothing was written: ${esc(r.body.message||r.body.error)}</span>`; return; }
+  if(r.body&&r.body.error==="import_paused"){ $("#imsg").innerHTML=`<span class="warn">${esc(r.body.message)}</span>`; return; }
   if(r.body&&r.body.ok){ const s=r.body.summary||{}; const a=s.accounts||{};
     const acctMsg = a.updated?` · ${a.updated} account # set`:""; const conMsg=a.conflicts?` · <b>${a.conflicts} conflict${a.conflicts===1?"":"s"} to review</b>`:"";
     $("#imsg").innerHTML=`<span class="ok">✓ Loaded ${r.body.imported} lines — ${money(s.total_sales)} sales, ${money(s.total_commission)} commission, ${s.matched_lines} matched to a branch${acctMsg}.</span>${conMsg} Open a dealer's 360 to see it.`; }
