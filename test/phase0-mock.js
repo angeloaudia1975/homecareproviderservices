@@ -12,7 +12,7 @@ const Module = require('module');
 const fs = require('fs');
 /* MUTANTS. phase0.mutants.js runs the suites with P0_MUTANT set; the matching edit is applied to
    the source IN MEMORY as each file is loaded. Nothing on disk is ever changed. */
-const MUTANT = process.env.P0_MUTANT ? require('./phase0.mutants.table.js')[process.env.P0_MUTANT] : null;
+const MUTANT = process.env.P0_MUTANT ? require(process.env.P0_MUTANT_TABLE || './phase0.mutants.table.js')[process.env.P0_MUTANT] : null;   // P0_MUTANT_TABLE: another suite's table (MI-1a)
 function compileInto(full) {
   let src = fs.readFileSync(full, 'utf8');
   if (MUTANT && path.basename(full) === MUTANT.file && path.dirname(full) === (MUTANT.ordering ? ORDER_REPO : REPO)) {

@@ -30,6 +30,7 @@ async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_U
 async function fetchJson(url){ const r=await fetch(url); if(!r.ok) throw new Error("fetch "+r.status); return r.json(); }
 // Organization-level manufacturer account numbers (parent + branches share one number, fill-blanks).
 const orgAccounts=require("./_accountorg.js")(sbGet,sbSend);
+const MI=require("./_mi1a.js"); const { flagOn }=require("./_flags.js");
 
 // dealer name normalizer — MUST match the alias seeding used elsewhere.
 const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
@@ -290,6 +291,52 @@ function mapRows(slug, per, source_file, rows, ctx){
   return {out, review};
 }
 
+// MI-1a: the file's months, mapped exactly as the legacy import maps them (mapRows per month).
+function commissionMonths(slug, period, multi, source_file, rows, ctx){
+  let batches, undated=0;
+  if(multi){ const g=groupRowsByMonth(rows); undated=g.undated.length;
+    batches=Object.keys(g.groups).sort().map(m=>({per:`${m}-01`,rows:g.groups[m]})); }
+  else batches=[{per:`${period}-01`,rows}];
+  const months=[], allOut=[];
+  for(const bt of batches){ const {out}=mapRows(slug,bt.per,source_file,bt.rows,ctx); allOut.push(...out);
+    months.push({period:bt.per, rows:out, control_total:null}); }
+  return { months, allOut, undated };
+}
+// MI-1a v2 commit: the whole file — every month — in ONE database transaction, with the reviewed
+// decision for each month that already holds a statement. Account numbers only after a successful write.
+async function commissionImportV2(mi, b, me, slug, period, multi, source_file, rows){
+  const ctx=await buildCtx(slug);
+  const { months, allOut, undated }=commissionMonths(slug, period, multi, source_file, rows, ctx);
+  if(!months.length) return json(200,{ok:false,error:"No usable Order Date on any row — can't split by month."});
+  const ctl=(b.control_totals&&typeof b.control_totals==="object")?b.control_totals:{};
+  for(const m of months){ const k=m.period.slice(0,7); if(ctl[k]!=null&&ctl[k]!=="") m.control_total=Number(ctl[k]); }
+  const r=await mi.rpc("hcps_commission_file_apply",{ manufacturer:slug, source_file, apply:true, actor:me.email||me.name||"",
+    months, decisions:(b.decisions&&typeof b.decisions==="object")?b.decisions:{},
+    approve_paid:b.approve_paid===true, approve_reason:String(b.approve_reason||"").trim() });
+  if(!r.ok) return json(409,{ok:false,refused:true,error:r.code,message:r.message});
+  const res=r.result||{};
+  const review=mapRows(slug,"2000-01-01",source_file,rows,ctx).review;
+  review.months=(res.months||[]).map(m=>({period:m.month,rows:m.rows,decision:m.decision})); if(undated) review.undated_rows=undated;
+  let accounts_set=0; const acctConflicts=[];
+  const wrote=res.applied===true && !res.noop;
+  if(wrote && !(ctx.orderLines&&ctx.orderLines.has(slug)) && !NO_ACCOUNT_CAPTURE.has(slug)){
+    const rejected=new Set(Object.entries(b.decisions||{}).filter(([,d])=>d&&d.action==="reject").map(([k])=>k));
+    const acctByDealer=new Map();
+    for(const o of allOut){ if(!o.dealer_id||rejected.has(String(o.period).slice(0,7))) continue;
+      const ref = NAME_AS_ACCOUNT.has(slug) ? String(o.customer_name||"").trim() : String(o.customer_ref||"").trim();
+      const e=acctByDealer.get(o.dealer_id)||new Set(); if(ref) e.add(ref); acctByDealer.set(o.dealer_id, e); }
+    for(const [dealerId,set] of acctByDealer){ const refs=[...set];
+      if(refs.length>1){ acctConflicts.push({dealer_id:dealerId,reason:"report_lists_multiple_numbers",values:refs}); continue; }
+      const res2=await orgAccounts.reconcileAccountRef(slug, dealerId, refs[0]||"", {apply:true});
+      if(res2.status==="set") accounts_set++;
+      else if(res2.status==="conflict") acctConflicts.push({dealer_id:dealerId,existing:res2.existing,incoming:res2.incoming,reason:"differs_from_record"}); }
+  }
+  review.account_conflicts=acctConflicts;
+  const inserted=wrote?((res.will_write&&res.will_write.rows)||0):0;
+  return json(200,{ok:true,path:"v2",inserted,batch_id:res.batch_id||null,noop:!!res.noop,review,accounts_set,months:review.months,
+    matched:review.matched, unmatched:review.unmatched.slice(0,200), unmatched_count:review.unmatched_count});
+}
+
 exports.handler = async (event)=>{
   try{
     if(!SUPABASE_URL||!SERVICE_ROLE) return json(500,{error:"Supabase env vars not set"});
@@ -352,6 +399,17 @@ exports.handler = async (event)=>{
         review.undated_rows=undated.length;
         if(!review.months.length) return json(200,{ok:false,error:"No usable Order Date on any row — map the Order Date column, or uncheck ‘multiple months’ and pick one report month."});
       }
+      // MI-1a (switch mi_commission_v2): the database reviews the WHOLE file against every statement
+      // already on file for each month (pre-MI-1a rows included). Nothing is written.
+      const miA=MI.make(sbGet,sbSend);
+      const routeA=MI.routeCommission(await flagOn(sbGet,"mi_commission_v2"), await miA.enrolled(slug,"commission"));
+      if(routeA==="paused") review.import_paused=MI.PAUSED_COMMISSION;
+      if(routeA==="v2"){
+        const months=commissionMonths(slug, period, multi, String(b.source_file||"").trim()||null, rows, ctx).months;
+        const r=await miA.rpc("hcps_commission_file_apply",{manufacturer:slug, source_file:String(b.source_file||"").trim()||null, apply:false, months, decisions:{}});
+        if(!r.ok) return json(409,{ok:false,refused:true,error:r.code,message:r.message});
+        review.statement_check=r.result;
+      }
       return json(200,{ok:true,review});
     }
 
@@ -368,6 +426,11 @@ exports.handler = async (event)=>{
       if(!slug) return json(400,{error:"manufacturer required"});
       if(!multi && !/^\d{4}-\d{2}$/.test(period)) return json(400,{error:"manufacturer + period (YYYY-MM) required"});
       if(!rows.length) return json(400,{error:"no rows"});
+      // MI-1a routing (see _mi1a.js): switch off and lane not enrolled → today's path below, unchanged.
+      const miI=MI.make(sbGet,sbSend);
+      const routeI=MI.routeCommission(await flagOn(sbGet,"mi_commission_v2"), await miI.enrolled(slug,"commission"));
+      if(routeI==="paused") return json(409,{ok:false,error:"import_paused",message:MI.PAUSED_COMMISSION});
+      if(routeI==="v2") return await commissionImportV2(miI, b, me, slug, period, multi, source_file, rows);
       const ctx=await buildCtx(slug);
       // Column-existence probes: enrichment cols (golden_import.sql) + ship cols (attribution.sql).
       let hasEnrich=true; try{ const p=await fetch(`${SUPABASE_URL}/rest/v1/monthly_sales?select=channel&limit=1`,{headers:H()}); hasEnrich=p.ok; }catch(e){ hasEnrich=false; }
@@ -392,9 +455,14 @@ exports.handler = async (event)=>{
       for(const bt of batches){
         const {out}=mapRows(slug,bt.per,source_file,bt.rows,ctx);
         const clean=clean1(out);
-        try{ let del=`monthly_sales?manufacturer=eq.${encodeURIComponent(slug)}&period=eq.${encodeURIComponent(bt.per)}`;
-          if(source_file) del+=`&source_file=eq.${encodeURIComponent(source_file)}`;
-          await sbSend("DELETE",del,null,{Prefer:"return=minimal"}); }catch(e){}
+        // MI-1a safeguard: replace only COMMISSION-lane rows (never Sales Report Import rows), and if the
+        // delete fails, stop BEFORE inserting — a failed delete must never leave the month doubled.
+        let del=`monthly_sales?manufacturer=eq.${encodeURIComponent(slug)}&period=eq.${encodeURIComponent(bt.per)}&or=(source.is.null,source.neq.sales_report)`;
+        if(source_file) del+=`&source_file=eq.${encodeURIComponent(source_file)}`;
+        try{ await sbSend("DELETE",del,null,{Prefer:"return=minimal"}); }
+        catch(e){ return json(502,{ok:false,error:"replace_failed",
+          message:`Could not clear the earlier load for ${bt.period}; nothing was written for that month.`+(monthsWritten.length?` Months already written from this file: ${monthsWritten.map(m=>m.period).join(", ")}.`:""),
+          months_written:monthsWritten, inserted}); }
         for(let i=0;i<clean.length;i+=500){ const part=clean.slice(i,i+500); await sbSend("POST","monthly_sales",part,{Prefer:"return=minimal"}); inserted+=part.length; }
         allOut.push(...out); monthsWritten.push({period:bt.period,rows:clean.length});
       }
