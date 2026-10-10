@@ -33,7 +33,7 @@ do $$ begin
     raise exception 'MI-1a rollback aborted: v2 keys remain';
   end if;
 end $$;
-delete from public.mi1a_enrollment;
+delete from public.mi1a_enrollment where true;   -- explicit WHERE: safe under pg-safeupdate
 commit;
 
 -- R2. Remove the MI-1a schema (only after R1).

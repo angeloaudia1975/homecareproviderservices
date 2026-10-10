@@ -1162,6 +1162,15 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   every other row's key untouched; 0 batches, 0 superseded; switches OFF. **Strongback Sales Report Import now
   answers 409 `import_paused` until `mi_import_v2` is turned on (by design — the write guard protects its rows);**
   every other manufacturer's sales import and all commission imports (incl. Strongback) still use today's path.
+  **mi_import_v2 activation attempt 2026-10-10 — FAILED SAFELY, switch back OFF.** The first live preview (Strongback,
+  143 rows) returned 500 "UPDATE requires a WHERE clause": Supabase API sessions load **pg-safeupdate** (authenticator
+  `session_preload_libraries = supautils, safeupdate`), which refuses any UPDATE / DELETE without WHERE — inside functions
+  and on temp tables too. `hcps_sales_report_apply` had two (`update _in set …`). Nothing was written (baseline, keys,
+  attribution, account numbers, aliases identical; 0 batches); `mi_import_v2` set to false. Fix: `where true` on both
+  (Part 1 rev 3c) + on the rollback file's enrolment delete; the PG test fixture now loads safeupdate on every session
+  so this class of bug fails locally. **RULE: every UPDATE / DELETE in SQL that can run through the API carries a WHERE
+  clause (use `where true` for a deliberate whole-table/temp-table change); test databases load pg-safeupdate.**
+  Re-running the revised Part 1 in production (create or replace — tested re-runnable) needs Angelo's approval.
 - **Tests:** `test/mi1a-identity.pg.test.js` (runs the committed SQL in Postgres, bigint + uuid ids),
   `test/mi1a-compat.test.js` + `.mutants.js` (other manufacturers unaffected; switches; alias guard).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import

@@ -2,6 +2,10 @@
 -- Never run against production.
 do $$ begin create role anon; create role authenticated; create role service_role bypassrls; exception when duplicate_object then null; end $$;
 alter role service_role bypassrls;   -- as on Supabase: the service role is not subject to RLS
+-- As on Supabase's API: every session loads pg-safeupdate (authenticator role:
+-- session_preload_libraries = supautils, safeupdate), which refuses UPDATE / DELETE without a WHERE clause —
+-- including inside functions and on temp tables. Found live 2026-10-10 (hcps_sales_report_apply preview).
+do $$ begin execute format('alter database %I set session_preload_libraries = %L', current_database(), 'safeupdate'); end $$;
 -- Like Supabase: every new table / sequence in public is granted to anon, authenticated and service_role by default.
 alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
 alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
