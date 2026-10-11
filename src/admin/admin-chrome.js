@@ -120,7 +120,7 @@
         { href:"/admin/traffic.html",            label:"Website Traffic",         icon:"🌐", xref:true, desc:"Live visits, top pages & sources" },
         { href:"/admin/import-commissions.html", label:"Commission Report Import", icon:"📥", desc:"Load manufacturer reports & reconcile sales" },
         { href:"/admin/sales-import.html",       label:"Sales Report Import",     icon:"📄", desc:"Load order/sales reports — products, qty, branches" },
-        { href:"/admin/report-history.html",     label:"Manufacturer Report History", icon:"🗂️", status:"new", desc:"Every report file a manufacturer sends — kept as the original, with received date, period, decisions and corrections" },
+        { href:"/admin/report-history.html",     label:"Manufacturer Report History", icon:"🗂️", status:"new", desc:"Every report file a manufacturer sends — kept as the original, with received date, period and decisions; Inbox + Needs attention for report email captured from Outlook" },
         { href:"/admin/dealer-intel.html",       label:"Dealer Intelligence Import", icon:"🔎", status:"new", desc:"Read a manufacturer's dealer report (Strongback's monthly PDF), match its dealers to HCPS and keep it as the manufacturer's statements" },
         { href:"/admin/email-sync.html",         label:"Email Sync & Deliverability", icon:"📧", desc:"Outlook email matched to dealers — plus SPF/DKIM/DMARC monitoring" },
         { href:"/admin/golden-activity.html",    label:"Golden Activity",         icon:"🟡", status:"new", desc:"Live Golden portal behavior — logins, product interest, carts & orders" },
