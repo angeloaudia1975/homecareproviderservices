@@ -12,6 +12,7 @@ const PSQL = process.env.PGTEST_PSQL || 'psql';
 const SUP = f => path.join(__dirname, '..', 'supabase', f);
 const FIX = path.join(__dirname, 'academy', 'fixture.sql');
 const ATOM = path.join(__dirname, 'academy', 'atomicity.sql');
+const HARD = path.join(__dirname, 'academy', 'm1_hardening.sql');
 const psql = (db, args) => spawnSync(PSQL, ['-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-d', db].concat(args), { encoding: 'utf8' });
 const run = (db, sql) => { const r = psql(db, ['-c', sql]); if (r.error || r.status !== 0) throw new Error((r.error && r.error.message) || r.stderr); return r.stdout.trim(); };
 const file = (db, f) => { const r = psql(db, ['-f', f]); if (r.status !== 0) throw new Error(r.stderr); return r.stdout.trim(); };
@@ -47,32 +48,46 @@ try {
     assert.ok(Object.values(pre.academy_rows).every(n => n === 0));
   });
   file(DB, SUP('academy_a2a_m1_audited_ops.sql'));
-  t('M1 preflight after M1: 15 functions + 6 guard triggers; Academy grants/policies/columns/RLS and outside fingerprints identical', () => {
+  t('M1 preflight after M1: 19 functions (11 operations, 7 helpers, the guard) + 6 guard triggers; Academy grants/policies/columns/RLS and outside fingerprints identical', () => {
     const post = JSON.parse(file(DB, SUP('academy_a2a_m1_preflight.sql')));
     assert.strictEqual(post.ready_for_m1, false); assert.strictEqual(post.m1_installed, true);
-    assert.strictEqual(post.m1_objects.functions.length, 15); assert.strictEqual(post.m1_objects.guard_triggers_on.length, 6);
+    assert.strictEqual(post.m1_objects.functions.length, 19); assert.strictEqual(post.m1_objects.guard_triggers_on.length, 6);
     assert.deepStrictEqual(post.academy_fingerprints, pre.academy_fingerprints);
     assert.deepStrictEqual(post.fingerprints, pre.fingerprints);
     assert.deepStrictEqual(post.a1_installed.a1_triggers, pre.a1_installed.a1_triggers);
   });
   t('M1 changes nothing outside the Academy (grants, policies, columns, key row counts identical)', () => assert.strictEqual(FP(DB), before));
   t('M1 refuses to run twice', () => assert.notStrictEqual(fileStatus(DB, SUP('academy_a2a_m1_audited_ops.sql')).status, 0));
-  t('M1 acceptance tests: 30 + leftover check pass', () => {
+  t('M1 acceptance tests: 42 + leftover/phase2_flags check pass (sent as ONE request, like the SQL editor)', () => {
     const r = results(asEditor(DB, SUP('academy_a2a_m1_acceptance_tests.sql')));
-    assert.strictEqual(r.length, 31); assert.deepStrictEqual(r.filter(x => x.result !== 'PASS'), []);
+    assert.strictEqual(r.length, 43); assert.deepStrictEqual(r.filter(x => x.result !== 'PASS'), []);
+  });
+  t('Final security refinements A–E (10 Oct 22:29): all 28 targeted tests pass', () => {
+    const out = file(DB, HARD).split('\n').filter(l => /^\d\d\|/.test(l));
+    assert.strictEqual(out.length, 28, out.join(' / '));
+    assert.deepStrictEqual(out.filter(l => !/^\d\d\|PASS\|/.test(l)), []);
   });
   t('A1 acceptance tests still pass with M1 installed (setup goes through the audited operations)', () => {
     const r = results(asEditor(DB, SUP('academy_a1_acceptance_tests.sql')));
     assert.strictEqual(r.length, 27); assert.deepStrictEqual(r.filter(x => x.result !== 'PASS'), []);
   });
-  t('All or nothing: with the audit store refusing writes, each of the 10 operations fails and changes nothing', () => {
+  t('All or nothing: with the audit store refusing writes, each of the 11 operations fails and changes nothing', () => {
     const out = file(DB, ATOM).split('\n').filter(l => l.includes('|'));
-    assert.strictEqual(out.length, 10, out.join(' / '));
+    assert.strictEqual(out.length, 11, out.join(' / '));
     assert.deepStrictEqual(out.filter(l => !l.endsWith('|PASS')), []);
   });
   t('The public key roles cannot run any operation (anon, authenticated)', () => {
     for (const role of ['anon', 'authenticated'])
-      assert.throws(() => run(DB, `set role ${role}; select academy_op_withdraw_fact('x', gen_random_uuid(), 'x')`), /permission denied/);
+      for (const call of [`academy_op_withdraw_fact('x', gen_random_uuid(), 'x')`, `academy_op_begin('x', 'x')`, `academy_op_start_attempt('x', gen_random_uuid())`])
+        assert.throws(() => run(DB, `set role ${role}; select ${call}`), /permission denied/);
+  });
+  t('The server role cannot call the internal helpers (marker, audit row, actor checks)', () => {
+    for (const call of [`academy_op_begin('x', 'x')`, `academy_op_audit('system','x','x','x','x',null,null)`, `academy_op_actor_staff('staff:admin@test.example')`])
+      assert.throws(() => run(DB, `set role service_role; select ${call}`), /permission denied/);
+  });
+  t('The server role cannot bypass the guards with a direct write, even after setting the marker by hand', () => {
+    assert.throws(() => run(DB, `set role service_role; select set_config('academy.op','forged',false); insert into academy_certificates (cert_number, learner_id, enrollment_id, version_id, attempt_id, learner_name)
+      values ('HCPS-AAAA-BBBB', gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 'x')`), /audited operation/);
   });
   t('The server role cannot bypass the guards with a direct write (RLS bypass does not help)', () => {
     run(DB, "grant all on all tables in schema public to service_role");   // as on Supabase

@@ -28,3 +28,7 @@ insert into public.dealers (id, business_name, parent_id) values ('00000000-0000
 insert into public.dealers (id, business_name) values ('00000000-0000-0000-0000-0000000000b1','Other Dealer');
 insert into auth.users (id, email) values ('00000000-0000-0000-0000-00000000aaaa','learner@test.example'),
                                           ('00000000-0000-0000-0000-00000000bbbb','manager@test.example');
+-- Connect 360 staff (as in production: email, name, role, rep_name, active). M1 checks staff actors against it.
+create table public.staff_users (email text primary key, name text, role text, rep_name text, active boolean default true);
+insert into public.staff_users (email, name, role, active) values ('admin@test.example', 'Test Admin', 'president', true),
+  ('rep@test.example', 'Test Rep', 'rep', true), ('former@test.example', 'Former Admin', 'admin', false);
