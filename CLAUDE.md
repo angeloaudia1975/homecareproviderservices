@@ -1230,6 +1230,11 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   the freeze (a change needs a regression_fix). Must stay exactly: Climbing Steps free on every order (`freeAt: 0`);
   Strongback $15 once per order with accessories, $0 models only; Ovation freight confirmed by HCPS, no threshold;
   Bemis under $500 = $40 shipping & handling, $500+ = "Prepaid freight". Phase 6 is not approved.
+  **Phase 5 PASS / COMPLETE (2026-10-10).** Post runs Bemis #11, Strongback #12, Climbing Steps #13, Ovation #14 pass with
+  `freight_source` = record on all four; every freight check, both emails, cards and parity equal the Phase 4 runs value
+  for value; fingerprints equal `gs_fp_pre_mc_p5`; Corsicana and PediFix verify as file. Invalid/missing record terms
+  stay test- and mutant-backed — never change production freight data just to exercise them. Phase 6 waits for
+  Angelo's approval of the Phase 5 post-release report.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
