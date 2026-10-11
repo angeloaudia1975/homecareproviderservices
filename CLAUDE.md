@@ -1862,6 +1862,32 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   multi-branch account is never silently assigned to the wrong location. Cases: one account number over several
   branches; no ship-to ZIP; corporate billing address ≠ delivery; several invoice lines of one order; a verified
   recurring ship-to identifier; a new shipping location; a corporate / drop-ship sale explicitly confirmed as such.
+- **PHASE A ACCEPTED; Phase B1–B4 development APPROVED as ONE coordinated release (Angelo, 2026-10-11 16:44 CT).**
+  Build on a feature branch, behind `phase2_flags.mi_report_capture` (exactly `true` = on; default OFF): tables
+  `mfr_report_messages` + `mfr_report_profiles` (+ attachments, checkpoint state, run log), protected capture functions,
+  `_report_capture.js`, hourly `report-capture-cron`, Report History **Inbox** and **Needs Attention** screens
+  (searchable / filterable by manufacturer, period, status). Reuse Graph, the Netlify integration, MI-1b Report History and
+  its private storage — no second email system or manufacturer database. Rules: (1) three ACTIVE Strongback profiles —
+  commission statement = monthly `YYYY-MM SR032.pdf` (register as commission_statement, never a sales export, no
+  financial import); sales export = on-request CSV/XLSX with order/SKU/qty/amount content, whatever the subject; dealer
+  overview PDF = dealer_report. Verified sender/forwarder identities AND the file's actual content decide, never the
+  subject or extension alone. (2) The 8 Oct overview email LINKS to record #7 by its identical SHA-256 — never a duplicate.
+  (3) Reliable capture: all folders, paging, checkpoint + overlap, throttling retries, outage recovery; separate states
+  discovered → classified → registered (or linked) / exception (queued for retry) → processed by importer. A failed,
+  oversized or unreadable attachment goes to a DURABLE retry/exception queue and never blocks later valid email; the
+  checkpoint never passes a message that is not durably accounted for (completed capture or queued exception). Each
+  report attachment in a message is handled individually; Outlook identity = provenance, file SHA-256 = content dedupe,
+  and every email carrying the same file keeps its own source-email reference. (4) DRAFT (inactive) profiles for Ohio
+  Medical, Access4U, AirAvant, Climbing Steps, Bemis, Complete Medical, Ovation, PediFix, Golden; support cumulative,
+  combined-month, corrected, body-only and irregular reports. Rose Healthcare and Stellor Medical stay in an
+  unidentified-manufacturer review category until Angelo decides. The report period comes from the report's content /
+  file when it states one — never assumed from the received date when the content is more reliable. (5) Phase B =
+  automatic registration ONLY: no financial import, no automatic acceptance or intelligence import; `mi_import_v2` ON,
+  `mi_commission_v2` OFF, `mi_intel_publish` OFF; no dealer, rep, alias, contact, opportunity, campaign or historical
+  financial change; no outgoing email. (6) Ship-To next: the shared `_shipto.js` resolver + Needs Ship-To Review are the
+  prerequisite for any automatic sales-report import; the manual importer keeps working but its preview flags
+  questionable fallback assignments. (7) Deliver: branch reconciled with main, then ONE consolidated rollout proposal
+  (migration, switch settings, test results, verification). STOP before production SQL, merge, deploy or switch on.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
