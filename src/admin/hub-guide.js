@@ -189,6 +189,17 @@ window.HUB_GUIDE = {
     problems: "Turns raw manufacturer spreadsheets into clean, attributed sales the whole platform can trust.",
     intelligence: "Automatic period-dating and fuzzy customer matching to canonical dealers."
   },
+  "Manufacturer Report History": {
+    tagline: "Every report file a manufacturer sends, kept as the original — with when HCPS received it, the period it covers and every decision.",
+    what: "The register of manufacturer REPORT files (MI-1b): order/sales exports, commission statements and dealer-intelligence reports such as Strongback's monthly PDF. Each file is stored privately exactly as received, identified by its SHA-256 so the same file is never registered twice, and carries its received date, the manufacturer's prepared date (only when the report states one), the months it covers, and an audit trail of who accepted, rejected or corrected it. A corrected report supersedes the earlier one without deleting it. Registering a file imports nothing; publishing a dealer report's intelligence to Dealer 360 is a separate step that arrives with MI-1c.",
+    features: ["Original file kept in private storage", "Same file never registered twice (SHA-256)", "Received date vs manufacturer prepared date — never invented", "Report period", "Accept / reject with reasons", "Corrections supersede, never overwrite", "Publication kept separate from acceptance", "Append-only audit trail"],
+    data: "mfr_sources (the Manufacturer Center register, report kinds) and mfr_source_events; files in the private mfr-sources bucket.",
+    actions: ["Register a report file", "Accept or reject it", "Register a correction", "Download the original"],
+    reports: ["Report history by manufacturer and kind", "Audit trail per file"],
+    connects: ["Shares the Manufacturer Center source register", "Sales Report Import and Commission Report Import load the transactions; MI-1c will stage dealer intelligence from accepted dealer reports"],
+    problems: "Proves which manufacturer file every number came from, and keeps corrections from silently replacing history.",
+    intelligence: "Server-side hashing and file-type checks; database-enforced rules for dates, periods, corrections and publication."
+  },
   "Email Sync": {
     tagline: "Outlook email matched to dealers in Dealer 360 — plus live SPF/DKIM/DMARC deliverability monitoring.",
     what: "Pulls staff Outlook mail through Microsoft Graph and automatically attaches each message to the right dealer — building a shared communication history on every account, flagging senders it couldn't place for a one-click assign. It also carries a Deliverability panel that pulls DMARC monitoring data (via Postmark) so you can see, from the mailbox providers' own reports, how much of your outbound mail is passing SPF, DKIM, and DMARC — and which sources are sending as your domain.",

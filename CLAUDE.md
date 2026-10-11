@@ -1366,6 +1366,24 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   sister-branch information must not leak across rep scopes. (8) The Strongback September CSV stays separate from the
   PDF; no new sales or commission import is approved. (9) The 5% Premium Chair offer is stored only as unverified
   manufacturer-supplied text — no pricing or campaign action. SB-1 / MI-1c needs its own authorization.
+- **MI-1b BUILT on branch `mi1b-report-register` (2026-10-10, NOT merged, NOT deployed, NO production SQL, no backfill).**
+  `supabase/mi1b_report_register.sql` (sha256 e4f5b5e2…, rollback `…_rollback.sql` fac9febe…): report kinds
+  sales_export / commission_statement / dealer_report on `mfr_sources` beside the 7 catalog kinds; the unique
+  (manufacturer, file_sha256) index unchanged; report columns (period, prepared_date + stated/not_stated, file size/type,
+  supersede_reason, decided_reason, publication_status unpublished/published/withdrawn for dealer reports only,
+  import_batch_id); constraints keep catalog rows free of report fields; guard trigger `mfr_report_guard` (report rows
+  written only by the `hcps_mfr_report_*` functions, file facts immutable, never deleted; catalog rows unaffected);
+  append-only `mfr_source_events` (service_role select+insert only — its default update/delete/truncate grants are
+  revoked); functions register (idempotent by hash; same file under another kind refused; second file for a period
+  only as a correction) / decide (accepting a correction supersedes the old record and withdraws its publication in
+  one transaction) / publication (publish refused until MI-1c staged intelligence exists) / link_batch (never to a
+  batch older than the registration, lane/manufacturer/file name must match). API `mfr-reports-api.js` (president/admin/
+  owner only; server hashes the bytes, checks the file signature, stores at `reports/<mfr>/<kind>/<sha>.<ext>` in the
+  private `mfr-sources` bucket with x-upsert false; 2-minute signed download). Page `/admin/report-history.html`
+  (HUBS: Sales Data & Analytics → Manufacturer Report History). Tests: mi1b-register.pg 34, mi1b-api 22, mutants 32/32;
+  all other suites unchanged (phase1-visits / phase2-account-class / phase2-timeline fail identically on main — clock).
+  Production observation (read-only): `mfr_sources` ids 2 and 3 are two legacy registrations of the same Ovation 2026
+  price list (no hash); left as they are.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
