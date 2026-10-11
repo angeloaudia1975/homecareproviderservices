@@ -242,10 +242,15 @@ async function importRows(id, dry){
 }
 
 /* ── 2. MATCH & DECIDE ──────────────────────────────────────────────────────────────────────────── */
-const ST_LABEL={new:"new on the record",same:"matches the record",changes:"record would change",not_in_source:"on record, not in source",retired:"retired"};
+const ST_LABEL={new:"new on the record",same:"matches the record",changes:"record would change",not_in_source:"on record, not in source",retired:"retired",not_compared:"not compared (legacy source)"};
 function stepMatch(){
   const M=WF.match, s=M.summary||{};
   if(!M.source) return `${frozen()?ro():''}<p class="mut">No accepted price list for this line yet. Register and accept one in <b>1 · Sources</b>, then import its rows.</p>`;
+  /* Phase 6 correction: an accepted LEGACY source registered without row-level rows cannot be compared. That is
+     information — not a conflict and not a request for a decision. */
+  if(M.comparison&&M.comparison.available===false) return `${frozen()?ro("The match is shown for reference."):''}
+  <div class="rob" style="background:#f5f7fb;border-color:#d8e0ec">ℹ️ <b>${esc(M.comparison.message||'Match comparison unavailable.')}</b><br><span class="mut" style="font-size:12px">Source #${M.source.id} ${esc(M.source.title)} was accepted before row-level source data was stored. No SKU is reported as missing from it and nothing here asks for a decision; the line's record stays as verified.</span></div>
+  <div style="margin:4px 0 10px"><span class="chip">${esc(ST_LABEL.not_compared)}: <b>${s.not_compared||0}</b></span> <span class="chip">retired: <b>${s.retired||0}</b></span> <span class="chip">needs a decision: <b>0</b></span> <span class="chip">proposed changes: <b>0</b></span></div>`;
   const chips=[["new",s.new],["changes",s.changes],["same",s.same],["not_in_source",s.not_in_source],["retired",s.retired]].map(([k,n])=>`<span class="chip">${esc(ST_LABEL[k])}: <b>${n||0}</b></span>`).join(" ");
   const rows=M.rows.map((r,i)=>{ const need=r.needs_decision.length;
     return `<tr class="${need?'needrow':''}"><td><b>${esc(r.code)}</b>${r.on_storefront?'':'<div class="mut" style="font-size:11px">not on the storefront</div>'}</td><td>${pill(need?'p-warn':(r.status==='same'?'p-pass':'p-adv'),need?'needs a decision':ST_LABEL[r.status])}</td>
@@ -256,7 +261,8 @@ function stepMatch(){
       <td>${frozen()?'':`<button class="btn ghost" onclick="openDecision(${i})">Decide…</button>`}</td></tr>`; }).join('');
   return `${frozen()?ro("The match is shown for reference."):''}
   <p class="sub">Source <b>#${M.source.id} ${esc(M.source.title)}</b> against the master record. <b>Source facts</b> (left, as received) and <b>HCPS interpretations</b> (decisions) are kept apart; only their combination is proposed for staging, and nothing is written here except a decision.</p>
-  <div style="margin:4px 0 10px">${chips} <span class="chip ${s.needs_decision?'chip-warn':''}">needs a decision: <b>${s.needs_decision||0}</b></span> <span class="chip">ready to stage: <b>${s.ready_to_stage||0}</b></span></div>
+  <div style="margin:4px 0 10px">${chips} <span class="chip ${s.needs_decision?'chip-warn':''}">needs a decision: <b>${s.needs_decision||0}</b></span> <span class="chip">ready to stage: <b>${s.ready_to_stage||0}</b></span> <span class="chip ${s.proposed_changes?'chip-warn':''}">proposed changes (new or different): <b>${s.proposed_changes||0}</b></span></div>
+  ${(M.unapplied||[]).length?`<div class="needtxt" style="margin-bottom:8px">Not applied — the "applies to" wording is not understood, so it was not guessed at: ${M.unapplied.map(u=>'decision #'+esc(u.id)+' ('+esc(u.field)+': '+esc(u.applies_to)+')').join('; ')}. Record it again as the whole line or as packs.</div>`:''}
   ${WF.decFor!=null&&!frozen()?decisionPanel(WF.decFor):''}
   <table><thead><tr><th>SKU</th><th>Status</th><th>Source facts (as received)</th><th>HCPS interpretation</th><th>Master record now</th><th>What would change / why a decision is needed</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
 }
@@ -265,7 +271,7 @@ function decisionPanel(i){
   const r=WF.match.rows[i], need=(r.needs_decision[0]||{}).field||"", d=WF.decDry;
   const mv=r.source?{base_price:r.source.base_price,msrp:r.source.msrp,map:r.source.map,case_qty:r.source.case_qty,unit_cost:r.source.dealer_unit_cost}:null;
   return `<div class="card sub2"><h3 style="margin-top:0">Decision for ${esc(r.code)}</h3>
-   <p class="mut" style="font-size:12px">The manufacturer value is filled from the source and kept as written. Put HCPS's interpretation in <b>HCPS value</b> as JSON using the staging fields (e.g. <code>{"uom":"Each","case_qty":1}</code>, <code>{"msrp_basis":"each"}</code>, <code>{"status":"discontinued"}</code>). It is recorded with your name and reason and never edited afterwards.</p>
+   <p class="mut" style="font-size:12px">The manufacturer value is filled from the source and kept as written. Put HCPS's interpretation in <b>HCPS value</b> as JSON using the staging fields (e.g. <code>{"uom":"Each","case_qty":1}</code>, <code>{"msrp_basis":"each"}</code>, <code>{"status":"discontinued"}</code>). It is recorded with your name and reason and never edited afterwards. Only the keys of the <b>Field</b> are used (uom with case_qty; msrp_basis with map_basis; status with status_note) — any other key is ignored.</p>
    <div class="grid3"><label>Kind<br><select id="dc_kind"><option>interpretation</option><option>conflict</option><option>exception</option></select></label>
    <label>Field<br><input type="text" id="dc_field" value="${esc(need)}"></label><label>Applies to<br><select id="dc_scope"><option value="sku">this SKU (${esc(r.code)})</option><option value="line">the whole line</option><option value="packs">every pack SKU on the line</option></select></label></div>
    <label>Manufacturer value (as received)<br><input type="text" id="dc_mv" value="${esc(mv?JSON.stringify(mv):'')}" style="width:100%" readonly></label>

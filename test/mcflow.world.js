@@ -9,6 +9,14 @@ const SHOPD=path.join(__dirname,'..','..','homecareproviderservicesordering');
 const SHOP=process.env.SHOP_HTML||path.join(SHOPD,'public','index.html');
 const GATES=require('./mc-gates.js');
 const fx=require('./fixtures/bemis-copy.json');
+/* The fixture keeps the storefront's storage host as {{SUPABASE_URL}}: Netlify secret scanning fails the build when the
+   real project URL appears in a repo file, and the scan is not widened for tests. With MC_FIXTURE_SUPABASE_URL set to the real
+   project URL the walkthrough must reproduce the live Gold Standard fingerprint (fx.real.fingerprint); without it the image
+   points at the mock host and the expected fingerprint is the recorded offline one — same data, only the image host differs. */
+const FIXTURE_HOST=String(process.env.MC_FIXTURE_SUPABASE_URL||'').replace(/\/+$/,'');
+(function fill(o){ Object.keys(o).forEach(k=>{ const v=o[k];
+  if(typeof v==='string') o[k]=v.split('{{SUPABASE_URL}}').join(FIXTURE_HOST||M.BASE); else if(v&&typeof v==='object') fill(v); }); })(fx);
+fx.expectedFingerprint=FIXTURE_HOST?fx.real.fingerprint:fx.real.fingerprint_offline;
 const norm=c=>String(c||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 const clone=v=>JSON.parse(JSON.stringify(v));
 const html=fs.readFileSync(SHOP,'utf8');

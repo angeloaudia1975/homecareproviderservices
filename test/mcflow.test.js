@@ -71,13 +71,16 @@ await t('2 · match: 9 new SKUs; every one waits for a decision (7 packs have no
 });
 await t('2 · decide (dry run, then write): packs = "Case" with MSRP/MAP each; Steadfast = Each/1; display = Display/1 — source facts untouched',async()=>{
   const factsBefore=JSON.stringify(W.db.price_imports);
-  const D=[{field:'uom',code:null,hcps_value:{uom:'Case',msrp_basis:'each',map_basis:'each',applies_to:'packs'},reason:'Bemis quotes dealer price per master case and MSRP/MAP per piece'},
+  /* Field-scoped decisions (Phase 6 correction, 2026-10-11): a decision changes only the field it names, so the
+     order unit and the MSRP/MAP basis of the packs are two decisions. */
+  const D=[{field:'uom',code:null,hcps_value:{uom:'Case',applies_to:'packs'},reason:'Bemis quotes dealer price per master case'},
+           {field:'msrp_basis',code:null,hcps_value:{msrp_basis:'each',map_basis:'each',applies_to:'packs'},reason:'Bemis quotes MSRP/MAP per piece'},
            {field:'uom',code:'7YE82350TC',hcps_value:{uom:'Each',case_qty:1},reason:'No master case quantity: Steadfast is sold singly'},
            {field:'uom',code:'444DISPLAY',hcps_value:{uom:'Display',case_qty:1},reason:'One floor display program per order'}];
   for(const d of D){
     const body=Object.assign({action:'mc_record_decision',manufacturer:COPY,kind:'interpretation',source_id:srcId},d);
-    const dry=await step(C,'decision '+(d.code||'packs')+' (dry run)',Object.assign({},body,{dry_run:true})); eq(dry.status,200,JSON.stringify(dry.body));
-    const r=await step(C,'decision '+(d.code||'packs'),body); eq(r.status,200,JSON.stringify(r.body));
+    const dry=await step(C,'decision '+(d.code||'packs '+d.field)+' (dry run)',Object.assign({},body,{dry_run:true})); eq(dry.status,200,JSON.stringify(dry.body));
+    const r=await step(C,'decision '+(d.code||'packs '+d.field),body); eq(r.status,200,JSON.stringify(r.body));
   }
   eq(JSON.stringify(W.db.price_imports),factsBefore,'the manufacturer facts are never changed by a decision');
   const forged=await call(C,{action:'mc_record_decision',manufacturer:COPY,kind:'acceptance',field:'gate:stage',reason:'forged',hcps_value:{plan_hash:'0'.repeat(64),plan_kind:'records'}});
@@ -136,7 +139,7 @@ await t('6 · Approval 2 needs a passing pre-activation run; activation without 
   const noRun=await call(C,{action:'set_record_authority',manufacturer:COPY,authoritative:true,confirm_parity:true}); eq([noRun.status,noRun.body.error],[409,'approval_required']);
   const v=await step(C,'pre-activation verification',{action:'mc_verify',manufacturer:COPY,phase:'pre'}); eq(v.status,200,JSON.stringify(v.body).slice(0,300));
   eq([v.body.result,v.body.failed],['pass',[]],JSON.stringify((v.body.checks||[]).filter(c=>!c.pass)).slice(0,600)); preRun=v.body;
-  ok(v.body.fingerprint!==fx.real.fingerprint,'before activation the copy still shows the layers (no pack wording) — activation is what changes it');
+  ok(v.body.fingerprint!==fx.expectedFingerprint,'before activation the copy still shows the layers (no pack wording) — activation is what changes it');
   const badGate=await call(C,{action:'mc_approve_gate',manufacturer:COPY,gate:'activate',run_id:999999,reason:'x'}); eq(badGate.status,409,'no such run');
   actApproval=(await step(C,'Approval 2 (activation)',{action:'mc_approve_gate',manufacturer:COPY,gate:'activate',run_id:preRun.run_id,reason:'Pre-activation run passed; fingerprint equals the Gold Standard'})).body.approval;
   eq(actApproval.hcps_value.run_id,preRun.run_id);
@@ -148,7 +151,7 @@ await t('6 · activate with Approval 2 (single use), then the post-activation ve
   eq([r.status,r.body.authoritative,r.body.approval_used],[200,true,actApproval.id],JSON.stringify(r.body).slice(0,300));
   const again=await call(C,{action:'set_record_authority',manufacturer:COPY,authoritative:true,confirm_parity:true,approval_decision_id:actApproval.id}); eq(again.status,409,'single use');
   const v=await step(C,'post-activation verification',{action:'mc_verify',manufacturer:COPY,phase:'post'});
-  eq([v.body.result,v.body.failed,v.body.fingerprint],['pass',[],fx.real.fingerprint],JSON.stringify((v.body.checks||[]).filter(c=>!c.pass)).slice(0,600));
+  eq([v.body.result,v.body.failed,v.body.fingerprint],['pass',[],fx.expectedFingerprint],JSON.stringify((v.body.checks||[]).filter(c=>!c.pass)).slice(0,600));
   const ck=id=>(v.body.checks||[]).find(c=>c.id===id)||{};
   eq([ck('freight_source').detail.source,ck('full_field_parity').pass,ck('source_alignment').pass],['record',true,true]);
   const cmp=await step(C,'compare pre vs post',{action:'mc_compare_runs',a:preRun.run_id,b:v.body.run_id}); eq([cmp.status,cmp.body.fingerprint_same],[200,false],'activation changed what dealers see');
