@@ -1,7 +1,10 @@
 -- =============================================================================================
 -- HCPS Academy — A2A M1 rev 2 POST-MIGRATION CHECK (READ-ONLY)   supabase/academy_a2a_m1_postcheck.sql
 -- Changes nothing. Run right after the migration, and again after the tests. Expected (rev 2, sha256 7253ff80…a864):
---   m1_code_fingerprint 130e45fa36f768e032a89da43b645f8a  (the installed code IS the approved file, whatever was pasted)
+--   m1_code_fingerprint 130e45fa36f768e032a89da43b645f8a when installed with the file's own (Unix) line endings, or
+--                       e70543ba23d96ca7c5aec8eeff0ea341 when pasted into the SQL editor from Windows (every line ending \r\n).
+--                       Both are the approved file byte for byte apart from line endings (verified 10 Oct 2026: the CRLF copy
+--                       reproduces e70543ba exactly and passes all 28 + 43 + 27 + 11 tests). Any other value = stop.
 --   functions 19 · operations_server_only 11 · helpers_callable_by_server 0 · guard_triggers_on the 6 tables
 --   academy_tables_rls_on "18 / 18" · academy_switches {} (or every value false) · academy_rows 0
 -- =============================================================================================

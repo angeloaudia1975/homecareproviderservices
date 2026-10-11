@@ -1413,7 +1413,9 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   (28; 19 of them fail on the original M1), the acceptance file (42 + check 43, which also proves phase2_flags unchanged).
 - **M1 rev 2 APPROVED for production by Angelo (10 Oct 2026 22:49)** — exact sha256 7253ff80…a864 (supersedes 85e87157…);
   Angelo runs it by hand in the SQL editor; Claude never runs it. Expected installed-code fingerprint
-  130e45fa36f768e032a89da43b645f8a (`supabase/academy_a2a_m1_postcheck.sql`). Post-migration: 19 functions, 6 guard
+  130e45fa36f768e032a89da43b645f8a (`supabase/academy_a2a_m1_postcheck.sql`) — or e70543ba23d96ca7c5aec8eeff0ea341 when the
+  file is pasted into the SQL editor from Windows (CRLF line endings; same code otherwise, reproduced exactly locally). Lesson:
+  a code fingerprint taken from prosrc must be computed for BOTH line-ending forms before the run. Post-migration: 19 functions, 6 guard
   triggers, RLS 18/18, switches OFF, acceptance 43/43, A1 27/27, no test rows, probe all BLOCKED, outside fingerprints =
   the 21:45 baseline. A SKIP in the editor is not a pass: it needs the alternative check before M1 is declared complete.
   A failed test = stop and investigate; never an automatic rollback. PR #4 stays draft until verified and approved.
