@@ -3,6 +3,8 @@ const A = 'mfr-reports-api.js', S = 'sql';
 module.exports = {
   'api: actor taken from the request':           { file: A, from: 'const actor = me.email;', to: 'const actor = b.actor || me.email;' },
   'api: role gate removed':                       { file: A, from: 'if (!ADMIN.has(me.role))', to: 'if (false)' },
+  'api: publish switch not checked (MI-1c review)': { file: A, from: 'if (String(b.publication || "") === "publish" && !(await flagOn(sbGet, "mi_intel_publish")))', to: 'if (false)' },
+  'api: publish switch read loosely (truthy)':    { file: A, from: '!(await flagOn(sbGet, "mi_intel_publish"))', to: '!((await require("./_flags.js").flags(sbGet)).mi_intel_publish)' },
   'api: file signature not checked':              { file: A, from: 'if (!T.sniff(bytes))', to: 'if (false)' },
   'api: idempotence check skipped':               { file: A, from: 'if (existing && existing[0]) {', to: 'if (false) {' },
   'api: other-kind clash not refused':            { file: A, from: 'if (existing[0].kind !== kind)', to: 'if (false)' },

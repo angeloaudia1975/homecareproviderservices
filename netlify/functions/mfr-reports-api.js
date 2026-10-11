@@ -30,6 +30,7 @@
 // deletes a file. A person may remove one only after re-checking, right before deleting, that no record names
 // that exact path (a registration of the same file may be in flight) — that cleanup is not automated.
 const crypto = require("crypto");
+const { flagOn } = require("./_flags.js");
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const BUCKET = "mfr-sources";
@@ -174,6 +175,11 @@ exports.handler = async (event) => {
   }
   if (b.action === "publication") {
     const id = parseInt(b.id, 10); if (!(id > 0)) return json(400, { error: "id_required" });
+    // Publishing manufacturer dealer intelligence is OFF until a separately approved publishing phase turns the switch
+    // phase2_flags.mi_intel_publish to exactly true (MI-1c review, 2026-10-11). An unreadable switch = off. The database
+    // refuses it too (trigger mfr_sources_publication_gate), whatever path a write takes. Withdrawing is not gated.
+    if (String(b.publication || "") === "publish" && !(await flagOn(sbGet, "mi_intel_publish")))
+      return json(403, { error: "publication_not_authorized", message: "Publishing manufacturer dealer intelligence is not authorized yet. Accepted and imported reports stay unpublished until the publishing phase is approved." });
     const rr = await rpc("hcps_mfr_report_publication", { id, action: String(b.publication || ""), reason: clean(b.reason, 1000) || "", actor });
     return rr.ok ? json(200, rr.body) : refusal(rr);
   }
