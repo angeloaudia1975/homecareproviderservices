@@ -31,6 +31,16 @@ async function fetchJson(url){ const r=await fetch(url); if(!r.ok) throw new Err
 // Organization-level manufacturer account numbers (parent + branches share one number, fill-blanks).
 const orgAccounts=require("./_accountorg.js")(sbGet,sbSend);
 const MI=require("./_mi1a.js"); const { flagOn }=require("./_flags.js");
+// One definition of "commission report received" + the gate that refuses blank statements (RULE 2026-10-10).
+const CC=require("./_commission_coverage.js");
+// Every write path checks the WHOLE file before anything is written. Blank is never turned into 0.
+function statementGate(b, slug, period, multi, source_file, rows, ctx){
+  const { allOut }=commissionMonths(slug, multi?"2000-01":period, multi, source_file, rows, ctx);
+  const ledger=b.ledger===true;
+  const mapped=Array.isArray(b.mapped_fields)?b.mapped_fields.map(String):null;
+  return CC.validateStatement(allOut, { ledger, mapped_fields:mapped });
+}
+const refuse=v=>json(422,{ok:false,refused:true,...v});
 
 // dealer name normalizer — MUST match the alias seeding used elsewhere.
 const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
@@ -365,14 +375,16 @@ exports.handler = async (event)=>{
       // commission data, regardless of which importer loaded it (STANDARD RULE): the commission lane
       // (source='commission'), OR any row with a non-zero commission (e.g. a sales-report upload that
       // also carries commission, like PediFix / Ovation). Returns every YYYY-MM that qualifies.
-      let received={};
-      try{ const rows=await sbGetAll("monthly_sales?select=manufacturer,period,source,commission","id");
-        const acc={}; for(const r of (rows||[])){ const p=(r.period||"").slice(0,7); if(!r.manufacturer||!p) continue;
-          const isCommission = r.source==="commission" || (r.commission!=null && Number(r.commission)!==0);
-          if(!isCommission) continue;
-          (acc[r.manufacturer]||(acc[r.manufacturer]=new Set())).add(p); }
-        for(const k in acc) received[k]=[...acc[k]].sort(); }catch(e){}
-      return json(200,{ok:true,manufacturers,templates,dealers,received});
+      // AMENDED 2026-10-10 (_commission_coverage.js): only validated statement data marks a month received —
+      // a row with a blank commission never does; sales-report commission is an estimate, reported apart.
+      let received={}, estimated={}, incomplete={}, coverage_error=null, statement_sales_reports=CC.DEFAULT_STATEMENT_SALES_REPORTS;
+      try{
+        const cc=await sbGet("app_settings?key=eq.commission_config&select=value");
+        const v=cc&&cc[0]&&cc[0].value; if(v&&Array.isArray(v.statement_sales_reports)) statement_sales_reports=v.statement_sales_reports;
+        const rows=await sbGetAll("monthly_sales?select=id,manufacturer,period,source,external_ref,line_type,amount,commission,billed_amount","id");
+        ({received,estimated,incomplete}=CC.coverage(rows,{statement_sales_reports}));
+      }catch(e){ coverage_error="Reports on file could not be read just now — nothing is shown as received until it can be."; }
+      return json(200,{ok:true,manufacturers,templates,dealers,received,estimated,incomplete,coverage_error,statement_sales_reports});
     }
 
     if(b.action==="save_template"){
@@ -391,6 +403,8 @@ exports.handler = async (event)=>{
       if(!multi && !/^\d{4}-\d{2}$/.test(period)) return json(400,{error:"manufacturer + period (YYYY-MM) required"});
       if(!rows.length) return json(400,{error:"no rows"});
       const ctx=await buildCtx(slug);
+      const gateA=statementGate(b, slug, period, multi, String(b.source_file||"").trim()||null, rows, ctx);
+      if(!gateA.ok) return refuse(gateA);
       // Dealer matching does not depend on the period, so a single pass scores the whole file for review.
       const {review}=mapRows(slug,`${(multi?"2000-01":period)}-01`,String(b.source_file||"").trim()||null,rows,ctx);
       if(multi){
@@ -426,12 +440,16 @@ exports.handler = async (event)=>{
       if(!slug) return json(400,{error:"manufacturer required"});
       if(!multi && !/^\d{4}-\d{2}$/.test(period)) return json(400,{error:"manufacturer + period (YYYY-MM) required"});
       if(!rows.length) return json(400,{error:"no rows"});
+      // Refuse an incomplete statement BEFORE any path writes (legacy delete+insert or the MI-1a transaction).
+      const gateCtx=await buildCtx(slug);
+      const gateI=statementGate(b, slug, period, multi, source_file, rows, gateCtx);
+      if(!gateI.ok) return refuse(gateI);
       // MI-1a routing (see _mi1a.js): switch off and lane not enrolled → today's path below, unchanged.
       const miI=MI.make(sbGet,sbSend);
       const routeI=MI.routeCommission(await flagOn(sbGet,"mi_commission_v2"), await miI.enrolled(slug,"commission"));
       if(routeI==="paused") return json(409,{ok:false,error:"import_paused",message:MI.PAUSED_COMMISSION});
       if(routeI==="v2") return await commissionImportV2(miI, b, me, slug, period, multi, source_file, rows);
-      const ctx=await buildCtx(slug);
+      const ctx=gateCtx;
       // Column-existence probes: enrichment cols (golden_import.sql) + ship cols (attribution.sql).
       let hasEnrich=true; try{ const p=await fetch(`${SUPABASE_URL}/rest/v1/monthly_sales?select=channel&limit=1`,{headers:H()}); hasEnrich=p.ok; }catch(e){ hasEnrich=false; }
       let hasShip=true;   try{ const p=await fetch(`${SUPABASE_URL}/rest/v1/monthly_sales?select=ship_city&limit=1`,{headers:H()}); hasShip=p.ok; }catch(e){ hasShip=false; }
@@ -506,12 +524,17 @@ exports.handler = async (event)=>{
       // Don't promote a report "customer #" to a stored account number for order-number lines.
       let orderLines=new Set();
       try{ const cc=await sbGet("app_settings?key=eq.commission_config&select=value"); orderLines=new Set(((cc&&cc[0]&&cc[0].value&&cc[0].value.order_number_lines))||[]); }catch(e){}
-      let resolved=0, relinked=0;
+      let resolved=0, relinked=0; const alias_conflicts=[];
+      const fam=maps.length?await sbGetAll("dealers?select=id,business_name,city,parent_id","id"):[];
       for(const m of maps){
         const name=String(m.name||"").trim(); const did=m.dealer_id;
         if(!name||!did) continue;
-        // 1) learn the alias so this name auto-matches next time
-        await sbSend("POST","dealer_aliases?on_conflict=alias_norm",{alias_norm:dnorm(name),raw_name:name,dealer_id:did},{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{});
+        // 1) learn the alias so this name auto-matches next time — on the COMPANY unless the name names the
+        //    branch (RULE 2026-10-10), and never over an alias that already points to a different dealer.
+        const tgt=CC.aliasTarget(fam, did, name, dnorm), alias_norm=dnorm(name);
+        const ex=await sbGet(`dealer_aliases?alias_norm=eq.${encodeURIComponent(alias_norm)}&select=dealer_id`);
+        if(ex&&ex[0]&&ex[0].dealer_id&&ex[0].dealer_id!==tgt.dealer_id&&m.replace!==true) alias_conflicts.push({name,current:ex[0].dealer_id,requested:tgt.dealer_id});
+        else await sbSend("POST","dealer_aliases?on_conflict=alias_norm",{alias_norm,raw_name:name,dealer_id:tgt.dealer_id},{Prefer:"resolution=merge-duplicates,return=minimal"});
         // 2) relink every still-unmatched sales row for this line + name
         const patched=await sbSend("PATCH",`monthly_sales?manufacturer=eq.${encodeURIComponent(slug)}&customer_name=eq.${encodeURIComponent(name)}&dealer_id=is.null`,{dealer_id:did},{Prefer:"return=representation"}).catch(()=>null);
         if(Array.isArray(patched)) relinked+=patched.length;
@@ -521,7 +544,7 @@ exports.handler = async (event)=>{
         if(acct && !orderLines.has(slug)){ await orgAccounts.propagateAccountRef(slug,did,acct).catch(()=>{}); }
         resolved++;
       }
-      return json(200,{ok:true,resolved,relinked});
+      return json(200,{ok:true,resolved,relinked,alias_conflicts});
     }
 
     // Pre-commit correction from the review screen: learn a name→dealer alias and (optionally) store
@@ -531,14 +554,32 @@ exports.handler = async (event)=>{
       const name=String(b.name||"").trim();
       const did=b.dealer_id;
       if(!slug||!did) return json(400,{error:"manufacturer + dealer_id required"});
-      if(name) await sbSend("POST","dealer_aliases?on_conflict=alias_norm",{alias_norm:dnorm(name),raw_name:name,dealer_id:did},{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{});
+      // An alias names the COMPANY (RULE 2026-10-10): the importers pick the branch by ship-to ZIP inside the
+      // family, so a generic name chosen on a branch is stored on the family root — unless the name itself
+      // names that branch. An alias that already points to a different dealer is never overwritten silently.
+      let saved=null;
+      if(name){
+        const fam=await sbGetAll("dealers?select=id,business_name,city,parent_id","id");
+        const tgt=CC.aliasTarget(fam, did, name, dnorm);
+        const alias_norm=dnorm(name);
+        const ex=await sbGet(`dealer_aliases?alias_norm=eq.${encodeURIComponent(alias_norm)}&select=alias_norm,raw_name,dealer_id`);
+        const cur=ex&&ex[0];
+        if(cur&&cur.dealer_id&&cur.dealer_id!==tgt.dealer_id&&b.replace!==true){
+          const nm=id=>{ const d=fam.find(x=>x.id===id); return d?{id,name:d.business_name,city:d.city||""}:{id}; };
+          return json(409,{ok:false,error:"alias_conflict",alias_norm,
+            message:`"${name}" is already matched to ${nm(cur.dealer_id).name||"another dealer"}. Nothing was changed; confirm to replace it.`,
+            current:nm(cur.dealer_id), requested:nm(tgt.dealer_id)});
+        }
+        await sbSend("POST","dealer_aliases?on_conflict=alias_norm",{alias_norm,raw_name:name,dealer_id:tgt.dealer_id},{Prefer:"resolution=merge-duplicates,return=minimal"});
+        saved={alias_norm,dealer_id:tgt.dealer_id,scope:tgt.scope,moved_from:tgt.moved_from||null};
+      }
       const acct=String(b.account_ref||"").trim();
       if(acct){
         let orderLines=new Set();
         try{ const cc=await sbGet("app_settings?key=eq.commission_config&select=value"); orderLines=new Set(((cc&&cc[0]&&cc[0].value&&cc[0].value.order_number_lines))||[]); }catch(e){}
         if(!orderLines.has(slug)) await orgAccounts.propagateAccountRef(slug,did,acct).catch(()=>{});
       }
-      return json(200,{ok:true});
+      return json(200,{ok:true,alias:saved});
     }
 
     // Assign a ship-to ZIP to a specific branch (resolves ambiguous/dropship ZIPs). Stored per line
