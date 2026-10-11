@@ -89,7 +89,8 @@ function render(){
   const mopts=mf.map(m=>`<option value="${esc(m.slug)}">${esc(m.name)}</option>`).join("");
   const reps=(DATA.reports||[]).filter(r=>(!FILTER.mfr||r.manufacturer===FILTER.mfr)&&(!FILTER.kind||r.kind===FILTER.kind));
   $("#body").innerHTML=`
-  <div class="note">Separate on purpose: <b>received / accepted</b> says whether HCPS accepts the file as the manufacturer's report; <b>publication</b> (dealer reports only) says whether its intelligence is shown in Dealer 360. Accepting never publishes. Publishing needs the dealer-intelligence import (MI-1c), which is not built yet — so nothing here reaches Dealer 360, reps, tasks, deals, sales or commissions.</div>
+  <div class="note">Separate on purpose: <b>received / accepted</b> says whether HCPS accepts the file as the manufacturer's report; <b>publication</b> (dealer reports only) says whether its intelligence is shown in Dealer 360. Accepting never publishes. Publishing needs the dealer-intelligence import (MI-1c), which is not built yet — so nothing here reaches Dealer 360, reps, tasks, deals, sales or commissions.<br><br>
+  <b>Not automatic yet:</b> files loaded through Sales Report Import or Commission Report Import are not registered here — only files registered on this page are listed. Several different exports or statements may cover the same period; only dealer-intelligence reports are one per period. A correction replaces one named record for the <b>same</b> period.</div>
   <div class="card"><h2>Register a report file</h2>
     <div class="form" id="regform">
       <div><label for="r_mfr">Manufacturer</label><select id="r_mfr" onchange="refreshSupersede()"><option value="">Choose…</option>${mopts}</select></div>
@@ -99,8 +100,8 @@ function render(){
       <div class="wide"><label for="r_title">Title (optional — the file name is used otherwise)</label><input id="r_title" maxlength="200" placeholder="e.g. Strongback dealer report — September 2026"></div>
       <div><label for="r_recv">Received by HCPS</label><input id="r_recv" type="date" max="${todayCT()}" value="${todayCT()}"></div>
       <div><label for="r_prep">Prepared date stated on the report</label><input id="r_prep" type="date" max="${todayCT()}"><div class="hint">Leave empty if the report states none — it is never filled in for you.</div></div>
-      <div><label for="r_from">Covers from (month)</label><input id="r_from" type="month"></div>
-      <div><label for="r_to">Covers to (month)</label><input id="r_to" type="month"></div>
+      <div><label for="r_from">Covers from (month)</label><input id="r_from" type="month" onchange="refreshSupersede()"></div>
+      <div><label for="r_to">Covers to (month)</label><input id="r_to" type="month" onchange="refreshSupersede()"></div>
       <div class="wide"><label for="r_sup">Corrects an earlier report?</label><select id="r_sup" onchange="supChanged()"><option value="">No — this is a new report</option></select></div>
       <div class="wide" id="r_supwhy_w" style="display:none"><label for="r_supwhy">Why it replaces that report (kept in the audit trail)</label><input id="r_supwhy" maxlength="1000"></div>
       <div class="wide"><label for="r_note">Note (optional)</label><input id="r_note" maxlength="1000"></div>
@@ -154,8 +155,10 @@ function card(r){
   </div>`;
 }
 function refreshSupersede(){
-  const mfr=$("#r_mfr").value, kind=$("#r_kind").value, s=$("#r_sup");
-  const cands=(DATA.reports||[]).filter(r=>r.manufacturer===mfr&&r.kind===kind&&r.status==="accepted");
+  const mfr=$("#r_mfr").value, kind=$("#r_kind").value, s=$("#r_sup"), from=$("#r_from").value, to=$("#r_to").value;
+  // A correction covers exactly the same period as the record it replaces: only those records are offered.
+  const cands=(DATA.reports||[]).filter(r=>r.manufacturer===mfr&&r.kind===kind&&r.status==="accepted"&&from&&to
+    &&String(r.report_period_start).slice(0,7)===from&&String(r.report_period_end).slice(0,7)===to);
   s.innerHTML=`<option value="">No — this is a new report</option>`+cands.map(r=>`<option value="${r.id}">Record ${r.id} · ${esc(period(r))} · ${esc(r.title||r.file_name)}</option>`).join("");
   supChanged();
 }
@@ -177,7 +180,7 @@ async function register(){
     const r=await api(p);
     if(r.status===200){ out.className="okm"; out.textContent=r.body.existing?(r.body.message||"Already registered — nothing new was stored."):`Registered as record ${r.body.id} (received — awaiting review).`;
       const keep=out.textContent; await boot(); const o2=$("#r_msg"); if(o2){ o2.className="okm"; o2.textContent=keep; } }
-    else { out.className="err"; out.textContent=(r.body&&(r.body.message||r.body.error))||("Refused ("+r.status+")"); }
+    else { out.className="err"; out.textContent=((r.body&&(r.body.message||r.body.error))||("Refused ("+r.status+")"))+(r.body&&r.body.file_stored?" — "+r.body.file_note:""); }
   }catch(e){ out.className="err"; out.textContent="Could not reach the server — nothing was registered."; }
   BUSY=false; const g=$("#r_go"); if(g) g.disabled=false;
 }

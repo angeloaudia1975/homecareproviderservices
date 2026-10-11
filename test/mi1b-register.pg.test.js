@@ -225,11 +225,92 @@ try {
     refused(`select hcps_mfr_report_link_batch('{"id":${se},"batch_id":"${mk('strongback-mobility', 'commission', null)}","actor":"a"}')`, /commission batch/);
     refused(`select hcps_mfr_report_link_batch('{"id":${se},"batch_id":"${mk('pedifix', 'sales_report', null)}","actor":"a"}')`, /is for pedifix/);
     refused(`select hcps_mfr_report_link_batch('{"id":${se},"batch_id":"${mk('strongback-mobility', 'sales_report', 'other.csv')}","actor":"a"}')`, /imported from/);
+    // NEGATIVE (review 2026-10-10): a batch with no source file name, or a blank one, is never linked.
+    refused(`select hcps_mfr_report_link_batch('{"id":${se},"batch_id":"${mk('strongback-mobility', 'sales_report', null)}","actor":"a"}')`, /carries no source file name/);
+    refused(`select hcps_mfr_report_link_batch('{"id":${se},"batch_id":"${mk('strongback-mobility', 'sales_report', '   ')}","actor":"a"}')`, /carries no source file name/);
+    refused(`select hcps_mfr_report_link_batch('{"id":${se},"batch_id":"${mk('strongback-mobility', 'sales_report', 'strongback_report_overview_september_2026.pdf')}","actor":"a"}')`, /imported from/);   // exact, not case-folded
     refused(`select hcps_mfr_report_link_batch('{"id":${corr},"batch_id":"${mk('strongback-mobility', 'sales_report', null)}","actor":"a"}')`, /only a sales export/);
     const good = mk('strongback-mobility', 'sales_report', 'Strongback_Report_Overview_September_2026.pdf');
     sr(`select hcps_mfr_report_link_batch('{"id":${se},"batch_id":"${good}","actor":"angelo"}')`);
     assert.strictEqual(q(`select import_batch_id from mfr_sources where id=${se}`), good);
     refused(`select hcps_mfr_report_link_batch('{"id":${se},"batch_id":"${mk('strongback-mobility', 'sales_report', null)}","actor":"a"}')`, /already linked/);
+  });
+
+  console.log('\n— several legitimate financial files for one period (review 2026-10-10) —');
+  const CS = (o) => Object.assign({ manufacturer: 'pedifix', kind: 'commission_statement', ext: 'xlsx', content_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    prepared_date: '', report_period_start: '2026-07-01', report_period_end: '2026-07-31' }, o);
+  let cs1, cs2;
+  t('two DIFFERENT commission statements for the same month register and are accepted independently (no fake correction)', () => {
+    cs1 = regq(CS({ file_sha256: H('1'), file_name: 'PediFix July statement — orthotics.xlsx' })).id;
+    cs2 = regq(CS({ file_sha256: H('2'), file_name: 'PediFix July statement — footcare.xlsx' })).id;
+    sr(`select hcps_mfr_report_decide('{"id":${cs1},"decision":"accepted","actor":"angelo"}')`);
+    sr(`select hcps_mfr_report_decide('{"id":${cs2},"decision":"accepted","actor":"angelo"}')`);
+    assert.strictEqual(q(`select string_agg(status||':'||coalesce(supersedes_id::text,'-'),',' order by id) from mfr_sources where id in (${cs1},${cs2})`), 'accepted:-,accepted:-');
+  });
+  t('two different sales exports for the same period are both accepted too', () => {
+    const a = regq({ kind: 'sales_export', manufacturer: 'pedifix', file_sha256: H('3'), ext: 'csv', content_type: 'text/csv', file_name: 'pedifix-q3-a.csv', prepared_date: '', report_period_start: '2026-07-01', report_period_end: '2026-09-30' }).id;
+    const b = regq({ kind: 'sales_export', manufacturer: 'pedifix', file_sha256: H('4'), ext: 'csv', content_type: 'text/csv', file_name: 'pedifix-q3-b.csv', prepared_date: '', report_period_start: '2026-07-01', report_period_end: '2026-09-30' }).id;
+    for (const id of [a, b]) sr(`select hcps_mfr_report_decide('{"id":${id},"decision":"accepted","actor":"angelo"}')`);
+    assert.strictEqual(q(`select count(*) from mfr_sources where id in (${a},${b}) and status='accepted'`), '2');
+  });
+  t('the identical statement again is the existing record (idempotent), never a third one', () => {
+    const r = regq(CS({ file_sha256: H('1'), file_name: 'renamed copy.xlsx' }));
+    assert.deepStrictEqual([r.existing, r.id], [true, cs1]);
+    assert.strictEqual(q(`select count(*) from mfr_sources where manufacturer='pedifix' and kind='commission_statement'`), '2');
+  });
+  t('an ACTUAL correction replaces only the statement it names — its sibling for the same month stays accepted', () => {
+    refused(reg(Object.assign(CS({ file_sha256: H('5'), file_name: 'fix.xlsx' }), { storage_path: path_('commission_statement', H('5'), 'xlsx', 'pedifix'), supersedes_id: cs1 })), /mi1b_supersede_reason_required/);
+    const c = regq(CS({ file_sha256: H('5'), file_name: 'PediFix July statement — orthotics (corrected).xlsx', supersedes_id: cs1, supersede_reason: 'PediFix re-issued the orthotics statement' })).id;
+    sr(`select hcps_mfr_report_decide('{"id":${c},"decision":"accepted","actor":"angelo"}')`);
+    assert.strictEqual(q(`select string_agg(id||':'||status,',' order by id) from mfr_sources where id in (${cs1},${cs2},${c})`), `${cs1}:superseded,${cs2}:accepted,${c}:accepted`);
+  });
+
+  console.log('\n— corrections keep their period (review 2026-10-10) —');
+  t('NEGATIVE: a September report can never supersede an October report — register refuses', () => {
+    const oct = regq({ file_sha256: H('e'), report_period_start: '2026-10-01', report_period_end: '2026-10-31', prepared_date: '' }).id;
+    sr(`select hcps_mfr_report_decide('{"id":${oct},"decision":"accepted","actor":"angelo"}')`);
+    refused(reg({ file_sha256: H('f'), storage_path: path_('dealer_report', H('f')), supersedes_id: oct, supersede_reason: 'wrong month' }), /mi1b_bad_supersedes: a correction covers the same period/);
+    refused(reg(Object.assign(CS({ file_sha256: H('f'), file_name: 'x.xlsx', supersedes_id: cs2, supersede_reason: 'x', report_period_start: '2026-08-01', report_period_end: '2026-08-31' }), { storage_path: path_('commission_statement', H('f'), 'xlsx', 'pedifix') })), /same period/);
+    assert.strictEqual(q(`select count(*) from mfr_sources where file_sha256='${H('f')}'`), '0');
+  });
+  t('NEGATIVE: even with the function flag set, the guard refuses a cross-period correction row', () => {
+    const oct = q(`select id from mfr_sources where file_sha256='${H('e')}'`);
+    assert.throws(() => q(`begin; select set_config('hcps.mfr_report_op','on',true);
+      insert into mfr_sources (manufacturer,kind,title,file_name,file_sha256,storage_path,file_size,content_type,received_date,prepared_date_status,
+        report_period_start,report_period_end,effective_date_status,supersedes_id,supersede_reason,status,publication_status,created_by)
+      values ('strongback-mobility','dealer_report','x','x.pdf','${H('f')}','reports/strongback-mobility/dealer_report/${H('f')}.pdf',10,'application/pdf','2026-10-10','not_stated',
+        '2026-09-01','2026-09-30','not_applicable',${oct},'wrong month','received','unpublished','x'); commit;`), /same period/);
+  });
+
+  console.log('\n— concurrent registrations (two real sessions) —');
+  // Session A registers and holds its transaction open for 1.5 s; session B starts 0.4 s later. Both as service_role.
+  const race = (sqlA, sqlB) => {
+    const ps = (s) => `${PSQL} -X -q -A -t -v ON_ERROR_STOP=1 -d ${DB} -c "begin; set local role service_role; ${s.replace(/"/g, '\\"')}"`;
+    const r = spawnSync('bash', ['-c', `(${ps(sqlA + '; select pg_sleep(1.5); commit;')}) > /tmp/mi1b_a_$$.out 2>&1 & sleep 0.4; (${ps(sqlB + '; commit;')}) > /tmp/mi1b_b_$$.out 2>&1; wait; echo "A:"; cat /tmp/mi1b_a_$$.out; echo "B:"; cat /tmp/mi1b_b_$$.out; rm -f /tmp/mi1b_a_$$.out /tmp/mi1b_b_$$.out`], { encoding: 'utf8' });
+    const out = r.stdout || ''; const i = out.indexOf('\nB:'); return { a: out.slice(3, i), b: out.slice(i + 3) };
+  };
+  t('the same file registered by two sessions at once → ONE record, the second gets "existing", one audit event', () => {
+    const p = { manufacturer: 'pedifix', kind: 'commission_statement', file_name: 'race.xlsx', file_sha256: H('7'), storage_path: path_('commission_statement', H('7'), 'xlsx', 'pedifix'),
+      file_size: 99, content_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', received_date: '2026-10-10', report_period_start: '2026-06-01', report_period_end: '2026-06-30', actor: 'a' };
+    const sql = `select public.hcps_mfr_report_register('${JSON.stringify(p)}'::jsonb)`;
+    const r = race(sql, sql);
+    assert.ok(/"existing": false/.test(r.a), 'A inserts: ' + r.a); assert.ok(/"existing": true/.test(r.b), 'B finds it: ' + r.b);
+    assert.strictEqual(q(`select count(*) from mfr_sources where file_sha256='${H('7')}'`), '1');
+    assert.strictEqual(q(`select count(*) from mfr_source_events e join mfr_sources s on s.id=e.source_id where s.file_sha256='${H('7')}'`), '1');
+  });
+  t('two DIFFERENT dealer reports for one period at once → the second is refused once the first commits', () => {
+    const mk = (c) => `select public.hcps_mfr_report_register('${JSON.stringify({ manufacturer: 'strongback-mobility', kind: 'dealer_report', file_name: c + '.pdf', file_sha256: H(c),
+      storage_path: path_('dealer_report', H(c)), file_size: 9, content_type: 'application/pdf', received_date: '2026-10-10', report_period_start: '2026-06-01', report_period_end: '2026-06-30', actor: 'a' })}'::jsonb)`;
+    const r = race(mk('8'), mk('d'));
+    assert.ok(/"existing": false/.test(r.a), r.a); assert.ok(/mi1b_period_already_registered/.test(r.b), 'B: ' + JSON.stringify(r));
+    assert.strictEqual(q(`select count(*) from mfr_sources where kind='dealer_report' and report_period_start='2026-06-01'`), '1');
+  });
+  t('two DIFFERENT commission statements for one period at once → both registered (legitimate)', () => {
+    const mk = (c) => `select public.hcps_mfr_report_register('${JSON.stringify({ manufacturer: 'pedifix', kind: 'commission_statement', file_name: c + '.xlsx', file_sha256: H(c),
+      storage_path: path_('commission_statement', H(c), 'xlsx', 'pedifix'), file_size: 9, content_type: 'x', received_date: '2026-10-10', report_period_start: '2026-05-01', report_period_end: '2026-05-31', actor: 'a' })}'::jsonb)`;
+    const r = race(mk('b'), mk('c'));
+    assert.ok(/"existing": false/.test(r.a) && /"existing": false/.test(r.b), r.a + ' / ' + r.b);
+    assert.strictEqual(q(`select count(*) from mfr_sources where kind='commission_statement' and report_period_start='2026-05-01'`), '2');
   });
 
   console.log('\n— catalog rows still untouched; rollback —');

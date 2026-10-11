@@ -38,6 +38,12 @@ function world(o) {
       if (fn === 'hcps_mfr_report_register') { const id = 100 + st.rpcs.length; st.sources.push({ id, manufacturer: p.manufacturer, kind: p.kind, file_sha256: p.file_sha256, storage_path: p.storage_path, file_name: p.file_name, status: 'received' });
         return res(200, { ok: true, existing: false, id, status: 'received' }); }
       return res(200, { ok: true, id: p.id }); }
+    if (u.startsWith(BASE + '/storage/v1/object/list/')) { const prefix = JSON.parse(opts.body).prefix; st.lists = (st.lists || 0) + 1;
+      if (o.failList) return res(500, { message: 'down' });
+      const objs = o.objects || []; const kids = new Map();
+      for (const pth of objs) if (pth.startsWith(prefix)) { const rest = pth.slice(prefix.length); const seg = rest.split('/')[0];
+        kids.set(seg, rest.includes('/') ? { name: seg, id: null } : { name: seg, id: 'obj-' + seg, metadata: { size: 10 }, created_at: '2026-10-11T00:00:00Z' }); }
+      return res(200, [...kids.values()]); }
     if (u.startsWith(BASE + '/storage/v1/object/sign/')) return res(200, { signedURL: '/object/sign/mfr-sources/' + u.split('/mfr-sources/')[1] + '?token=t' });
     if (u.startsWith(BASE + '/storage/v1/object/')) { st.uploads.push({ path: u.split('/mfr-sources/')[1], headers: opts.headers, size: opts.body.length, body: opts.body });
       if (o.upload) return o.upload(st); return res(200, { Key: 'x' }); }
@@ -147,6 +153,30 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
   await t('register never writes a business table (only storage + the register RPC)', async () => {
     const { w, m } = boot(); await call(m, REG(), as('pres'));
     for (const c of writesOf(w)) assert.ok(/\/storage\/v1\/object\/mfr-sources\/|\/rest\/v1\/rpc\/hcps_mfr_report_register$/.test(c.u), c.u);
+  });
+
+  await t('a database refusal AFTER the file was stored says so: kept privately, NOT registered, reused if registered again', async () => {
+    const { w, m } = boot({ rpc: () => ({ status: 400, body: { message: 'mi1b_period_already_registered: dealer report 9 already covers this period' } }) });
+    const r = await call(m, REG(), as('pres'));
+    assert.strictEqual(r.status, 409); assert.strictEqual(r.body.file_stored, true);
+    assert.strictEqual(r.body.storage_path, `reports/strongback-mobility/dealer_report/${sha(PDF)}.pdf`); assert.ok(/NOT registered/.test(r.body.file_note));
+    assert.strictEqual(w.calls.filter(c => c.m === 'DELETE').length, 0, 'nothing is deleted');
+  });
+
+  console.log('\n— stored files without a record (read-only) —');
+  await t('orphans lists stored report files no record names — and deletes nothing', async () => {
+    const reg1 = 'reports/strongback-mobility/dealer_report/' + 'a'.repeat(64) + '.pdf', orph = 'reports/strongback-mobility/dealer_report/' + 'b'.repeat(64) + '.pdf',
+      orph2 = 'reports/pedifix/commission_statement/' + 'c'.repeat(64) + '.xlsx';
+    const { w, m } = boot({ objects: [reg1, orph, orph2, 'catalog/bemis/x.xlsx'], sources: [{ id: 9, manufacturer: 'strongback-mobility', kind: 'dealer_report', storage_path: reg1 }] });
+    const r = await call(m, { action: 'orphans' }, as('pres'));
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body)); assert.deepStrictEqual([r.body.stored, r.body.registered], [3, 1]);
+    assert.deepStrictEqual(r.body.orphans.map(x => x.path).sort(), [orph2, orph].sort());
+    assert.strictEqual(writesOf(w).filter(c => !/object\/list\//.test(c.u)).length, 0, 'read-only');
+  });
+  await t('orphans: storage or register unreadable → 503, never a guess; reps cannot ask', async () => {
+    const a = boot({ failList: true }); assert.strictEqual((await call(a.m, { action: 'orphans' }, as('pres'))).status, 503);
+    const b = boot({ objects: ['reports/x/dealer_report/' + 'a'.repeat(64) + '.pdf'], failRead: u => /mfr_sources/.test(u) }); assert.strictEqual((await call(b.m, { action: 'orphans' }, as('pres'))).status, 503);
+    const c = boot(); assert.strictEqual((await call(c.m, { action: 'orphans' }, as('greg'))).status, 403);
   });
 
   console.log('\n— decide / publication / link / download —');

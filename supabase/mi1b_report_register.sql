@@ -22,6 +22,11 @@
 --   5. Functions (service_role only): register (idempotent), decide (accept / reject, supersession in the
 --      same transaction), publication (publish needs MI-1c intelligence, which does not exist yet — so in
 --      MI-1b nothing can be published), link_batch.
+--   Periods (review 2026-10-10): several distinct sales exports / commission statements may cover the same period
+--   and be accepted independently; only dealer-intelligence reports are one-accepted-per-period. A correction of
+--   ANY kind names the record it supersedes, gives a reason, and covers exactly the same period.
+--   NOT in MI-1b: the Sales Report Import and Commission Report Import do not register their files yet (a later,
+--   separately approved unit) — the register holds only files a person registers on the Report History page.
 --
 -- RULE 19 — stated per object:
 --   * mfr_sources: unchanged (RLS on, no policies, closed to public/anon/authenticated, service_role only).
@@ -109,9 +114,13 @@ do $$ begin
       (kind in ('sales_export','commission_statement') and status in ('accepted','superseded')));
   end if;
 end $$;
--- One ACCEPTED report per manufacturer + kind + period (a correction supersedes; it never sits beside).
-create unique index if not exists mfr_sources_report_period_uk on public.mfr_sources (manufacturer, kind, report_period_start, report_period_end)
-  where kind in ('sales_export','commission_statement','dealer_report') and status = 'accepted';
+-- One ACCEPTED DEALER-INTELLIGENCE report per manufacturer + period (a correction supersedes it; it never sits beside).
+-- Sales exports and commission statements are NOT limited: several distinct, legitimate files may cover the same
+-- period and be accepted independently (review 2026-10-10). The (manufacturer, file_sha256) index still stops the
+-- same file twice. The index name of the first draft is dropped in case a test database holds it.
+drop index if exists public.mfr_sources_report_period_uk;
+create unique index if not exists mfr_sources_dealer_report_period_uk on public.mfr_sources (manufacturer, report_period_start, report_period_end)
+  where kind = 'dealer_report' and status = 'accepted';
 -- One open correction per superseded report.
 create unique index if not exists mfr_sources_open_correction_uk on public.mfr_sources (supersedes_id)
   where kind in ('sales_export','commission_statement','dealer_report') and status = 'received' and supersedes_id is not null;
@@ -161,6 +170,11 @@ begin
   if coalesce(current_setting('hcps.mfr_report_op', true), '') <> 'on' then
     raise exception 'mfr_report_guard: % of a manufacturer report record happens only through the hcps_mfr_report_* functions', tg_op;
   end if;
+  if tg_op = 'INSERT' and new.supersedes_id is not null and not exists (select 1 from public.mfr_sources o
+       where o.id = new.supersedes_id and o.manufacturer = new.manufacturer and o.kind = new.kind
+         and o.report_period_start = new.report_period_start and o.report_period_end = new.report_period_end) then
+    raise exception 'mfr_report_guard: a correction must supersede a % report of % for the same period', new.kind, new.manufacturer;
+  end if;
   if tg_op = 'UPDATE' and (new.manufacturer, new.kind, new.title, new.file_name, new.file_sha256, new.storage_path, new.file_size, new.content_type,
         new.received_date, new.legacy, new.prepared_date, new.prepared_date_status, new.report_period_start, new.report_period_end,
         new.manufacturer_effective_date, new.effective_date_status, new.supersedes_id, new.supersede_reason, new.note, new.created_at, new.created_by)
@@ -189,6 +203,8 @@ begin
   if v_actor is null then raise exception 'mi1b_actor_required'; end if;
   if v_mfr is null or not hcps_mfr_is_report_kind(v_kind) then raise exception 'mi1b_bad_kind: manufacturer and a report kind (sales_export, commission_statement, dealer_report) are required'; end if;
   if v_sha is null or v_sha !~ '^[0-9a-f]{64}$' then raise exception 'mi1b_bad_hash'; end if;
+  -- Concurrent registrations of the SAME file wait for each other; the second then finds the first and writes nothing.
+  perform pg_advisory_xact_lock(hashtextextended('mi1b:file:' || v_mfr || ':' || v_sha, 0));
   select * into v_ex from public.mfr_sources where manufacturer = v_mfr and file_sha256 = v_sha;
   if found then
     if v_ex.kind <> v_kind then
@@ -198,19 +214,27 @@ begin
   end if;
   if v_recv is null then raise exception 'mi1b_received_date_required'; end if;
   if v_start is null or v_end is null or v_start > v_end then raise exception 'mi1b_bad_period'; end if;
+  -- Dealer reports: one per period, so concurrent registrations for the same period are serialized too.
+  if v_kind = 'dealer_report' then
+    perform pg_advisory_xact_lock(hashtextextended('mi1b:period:' || v_mfr || ':dealer_report:' || v_start || ':' || v_end, 0));
+  end if;
   if v_supid is not null then
     select * into v_sup from public.mfr_sources where id = v_supid for update;
     if not found or v_sup.manufacturer <> v_mfr or v_sup.kind <> v_kind then
       raise exception 'mi1b_bad_supersedes: record % is not a % report of %', v_supid, v_kind, v_mfr; end if;
     if v_sup.status <> 'accepted' then raise exception 'mi1b_bad_supersedes: only an accepted report is corrected (record % is %)', v_supid, v_sup.status; end if;
+    if v_sup.report_period_start <> v_start or v_sup.report_period_end <> v_end then
+      raise exception 'mi1b_bad_supersedes: a correction covers the same period as the record it replaces (record % covers % to %)', v_supid, v_sup.report_period_start, v_sup.report_period_end; end if;
     if v_supr is null then raise exception 'mi1b_supersede_reason_required'; end if;
   else
     if v_supr is not null then raise exception 'mi1b_bad_supersedes: a reason was given without the record it corrects'; end if;
-    select id into v_dup from public.mfr_sources
-     where manufacturer = v_mfr and kind = v_kind and report_period_start = v_start and report_period_end = v_end
-       and status in ('received','accepted') limit 1;
-    if v_dup is not null then
-      raise exception 'mi1b_period_already_registered: record % already covers this period — register this file as a correction of it, or reject that one first', v_dup;
+    if v_kind = 'dealer_report' then
+      select id into v_dup from public.mfr_sources
+       where manufacturer = v_mfr and kind = 'dealer_report' and report_period_start = v_start and report_period_end = v_end
+         and status in ('received','accepted') limit 1;
+      if v_dup is not null then
+        raise exception 'mi1b_period_already_registered: dealer report % already covers this period — register this file as a correction of it, or reject that one first', v_dup;
+      end if;
     end if;
   end if;
   perform set_config('hcps.mfr_report_op', 'on', true);
@@ -265,10 +289,10 @@ begin
         insert into public.mfr_source_events (source_id, action, actor, reason, detail)
         values (v_old.id, 'withdrawn', v_actor, 'superseded by record ' || v_r.id, jsonb_build_object('by', v_r.id));
       end if;
-    else
-      select id into v_dup from public.mfr_sources where manufacturer = v_r.manufacturer and kind = v_r.kind and status = 'accepted'
+    elsif v_r.kind = 'dealer_report' then
+      select id into v_dup from public.mfr_sources where manufacturer = v_r.manufacturer and kind = 'dealer_report' and status = 'accepted'
          and report_period_start = v_r.report_period_start and report_period_end = v_r.report_period_end and id <> v_r.id limit 1;
-      if v_dup is not null then raise exception 'mi1b_period_already_accepted: record % is the accepted report for this period', v_dup; end if;
+      if v_dup is not null then raise exception 'mi1b_period_already_accepted: dealer report % is the accepted report for this period', v_dup; end if;
     end if;
     update public.mfr_sources set status = 'accepted', accepted_by = v_actor, accepted_at = now(), decided_reason = v_reason where id = v_id;
   else
@@ -314,7 +338,8 @@ end $$;
 
 -- 5d. LINK BATCH — an accepted sales export / commission statement → the MI-1a batch it produced.
 --     Refused for a batch created BEFORE the file was registered (no links to historical imports), a
---     different manufacturer, the wrong lane, a rolled-back batch, or a batch whose file name differs.
+--     different manufacturer, the wrong lane, a rolled-back batch, a batch with NO source file name, or a batch
+--     whose source file name is not exactly the registered file name.
 create or replace function public.hcps_mfr_report_link_batch(p jsonb)
 returns jsonb language plpgsql as $$
 declare v_id bigint := (p->>'id')::bigint; v_bid uuid := (p->>'batch_id')::uuid; v_actor text := nullif(trim(p->>'actor'), '');
@@ -336,7 +361,9 @@ begin
   if v_b.status <> 'imported' then raise exception 'mi1b_bad_link: batch % is %', v_bid, v_b.status; end if;
   if v_b.created_at < v_r.created_at then
     raise exception 'mi1b_bad_link: batch % predates the registration of record % — historical imports are never linked', v_bid, v_id; end if;
-  if v_b.source_file is not null and v_b.source_file <> v_r.file_name then
+  if nullif(trim(coalesce(v_b.source_file, '')), '') is null then
+    raise exception 'mi1b_bad_link: batch % carries no source file name, so it cannot be matched to a registered file', v_bid; end if;
+  if v_b.source_file <> v_r.file_name then
     raise exception 'mi1b_bad_link: batch % was imported from "%", not "%"', v_bid, v_b.source_file, v_r.file_name; end if;
   perform set_config('hcps.mfr_report_op', 'on', true);
   update public.mfr_sources set import_batch_id = v_bid where id = v_id;
@@ -379,7 +406,7 @@ select * from (
          (select relrowsecurity from pg_class where oid = 'public.mfr_source_events'::regclass) and not exists (select 1 from pg_policy where polrelid = 'public.mfr_source_events'::regclass)
   union all select 4, 'grants to anon / authenticated / PUBLIC on mfr_source_events (expect 0)', count(*)::text, count(*) = 0
     from information_schema.role_table_grants where table_schema = 'public' and table_name = 'mfr_source_events' and grantee in ('anon','authenticated','PUBLIC')
-  union all select 45, 'service_role cannot update / delete / truncate mfr_source_events',
+  union all select 8, 'service_role cannot update / delete / truncate mfr_source_events',
          (has_table_privilege('service_role','public.mfr_source_events','update') or has_table_privilege('service_role','public.mfr_source_events','delete')
           or has_table_privilege('service_role','public.mfr_source_events','truncate'))::text,
          not (has_table_privilege('service_role','public.mfr_source_events','update') or has_table_privilege('service_role','public.mfr_source_events','delete')
@@ -387,6 +414,11 @@ select * from (
   union all select 5, 'MI-1b functions executable by anon / authenticated (expect 0)', count(*)::text, count(*) = 0
     from pg_proc p cross join unnest(array['anon','authenticated']) r
    where p.pronamespace = 'public'::regnamespace and p.proname like 'hcps_mfr_%' and has_function_privilege(r, p.oid, 'execute')
+  union all select 9, 'one-accepted-per-period index covers dealer reports only',
+         (select indexdef from pg_indexes where indexname = 'mfr_sources_dealer_report_period_uk'),
+         coalesce((select indexdef like '%WHERE ((kind = ''dealer_report''::text) AND (status = ''accepted''::text))%'
+                   from pg_indexes where indexname = 'mfr_sources_dealer_report_period_uk'), false)
+         and not exists (select 1 from pg_indexes where indexname = 'mfr_sources_report_period_uk')
   union all select 6, 'guard trigger installed on mfr_sources', count(*)::text, count(*) = 1
     from pg_trigger where tgrelid = 'public.mfr_sources'::regclass and tgname = 'mfr_report_guard'
   union all select 7, 'report records (expect 0 right after install)', count(*)::text, count(*) = 0

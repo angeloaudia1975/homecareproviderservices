@@ -17,6 +17,18 @@
 //   POST {action:"publication", id, publication:"publish"|"withdraw", reason?}
 //   POST {action:"link_batch", id, batch_id}
 //   POST {action:"download", id}                                          → short-lived signed URL (2 minutes)
+//   POST {action:"orphans"}  → READ-ONLY: stored report files no register record points to (see below)
+//
+// NOT in MI-1b: Sales Report Import and Commission Report Import do not register their files here yet. That is a
+// later, separately approved unit; until then this register holds only the files a person registers on the page.
+//
+// Files stored before a database refusal. Register stores the file FIRST (so a record never points at a missing
+// file), then asks the database. If the database refuses (e.g. a dealer report for a period that already has one),
+// the file stays in the private bucket at its hash-named path, unregistered, and the reply says so
+// (file_stored:true + storage_path). It is harmless — private, and reused as-is if the same file is registered
+// later. "orphans" lists every such file: a path under reports/ that no mfr_sources row names. Nothing here
+// deletes a file. A person may remove one only after re-checking, right before deleting, that no record names
+// that exact path (a registration of the same file may be in flight) — that cleanup is not automated.
 const crypto = require("crypto");
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
@@ -147,7 +159,10 @@ exports.handler = async (event) => {
       file_sha256: sha, storage_path: storagePath, file_size: bytes.length, content_type: T.mime, received_date: received, prepared_date: prepared || "",
       report_period_start: ps, report_period_end: pe, supersedes_id: b.supersedes_id != null && b.supersedes_id !== "" ? String(parseInt(b.supersedes_id, 10)) : "",
       supersede_reason: clean(b.supersede_reason, 1000) || "", note: clean(b.note, 1000) || "", actor });
-    if (!rr.ok) return refusal(rr);
+    if (!rr.ok) { const out = refusal(rr); const o = JSON.parse(out.body);
+      o.file_stored = true; o.storage_path = storagePath;
+      o.file_note = "The original is kept privately but is NOT registered. Registering the same file later reuses it; nothing else uses it.";
+      out.body = JSON.stringify(o); return out; }
     let rep = null; try { rep = (await sbGet(`mfr_sources?id=eq.${parseInt(rr.body.id, 10)}&select=${SRC_COLS}`))[0] || null; } catch (x) {}
     return json(200, { ok: true, existing: !!rr.body.existing, id: rr.body.id, report: rep, file_sha256: sha });
   }
@@ -179,6 +194,25 @@ exports.handler = async (event) => {
     const s = await r.json(); const signed = s.signedURL || s.signedUrl;
     if (!signed) return json(502, { error: "sign_failed" });
     return json(200, { ok: true, url: `${SUPABASE_URL}/storage/v1${signed.startsWith("/") ? "" : "/"}${signed}&download=${e(row.file_name || "report")}`, expires_in: 120 });
+  }
+  if (b.action === "orphans") {
+    // Read-only. Walk reports/<manufacturer>/<kind>/ and compare with every report record's storage_path.
+    const list = async prefix => { let out = [], offset = 0;
+      for (;;) { const r = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${BUCKET}`, { method: "POST", headers: { ...H(), "content-type": "application/json" },
+          body: JSON.stringify({ prefix, limit: 1000, offset, sortBy: { column: "name", order: "asc" } }) });
+        if (!r.ok) throw new Error(`storage list ${r.status}`); const rows = await r.json();
+        out = out.concat(rows); if (rows.length < 1000) return out; offset += 1000; } };
+    let files = [], rows;
+    try {
+      for (const m of (await list("reports/")).filter(x => !x.id))
+        for (const k of (await list(`reports/${m.name}/`)).filter(x => !x.id && KINDS.indexOf(x.name) >= 0))
+          for (const f of (await list(`reports/${m.name}/${k.name}/`)).filter(x => x.id))
+            files.push({ path: `reports/${m.name}/${k.name}/${f.name}`, size: f.metadata && f.metadata.size, created_at: f.created_at });
+      rows = await sbGetAll(`mfr_sources?storage_path=like.reports%2F*&select=id,storage_path`, "id");
+    } catch (x) { return json(503, { error: "unreadable", message: "Could not compare the stored files with the register: " + String(x.message || x).slice(0, 200) }); }
+    const named = new Set(rows.map(r => r.storage_path));
+    return json(200, { ok: true, stored: files.length, registered: files.filter(f => named.has(f.path)).length,
+      orphans: files.filter(f => !named.has(f.path)), note: "Read-only. Nothing is deleted here." });
   }
   return json(400, { error: "unknown_action" });
 };

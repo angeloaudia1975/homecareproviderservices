@@ -28,6 +28,7 @@ drop function if exists public.hcps_mfr_report_guard();
 drop table if exists public.mfr_source_events;
 drop function if exists public.hcps_mfr_source_events_append_only();
 drop index if exists public.mfr_sources_report_period_uk;
+drop index if exists public.mfr_sources_dealer_report_period_uk;
 drop index if exists public.mfr_sources_open_correction_uk;
 drop index if exists public.mfr_sources_batch_uk;
 drop index if exists public.mfr_sources_report_idx;

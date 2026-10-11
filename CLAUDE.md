@@ -1419,6 +1419,22 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   Files stored before a database refusal are identified by their hash-named path having no register row, and are
   reconciled only by a person, never by an automatic delete. (5) Keep the branch current with main and re-run the MI-1b,
   Manufacturer Center, MI-1a and regression suites before review. `mi_import_v2` stays ON, `mi_commission_v2` OFF.
+- **MI-1b corrections BUILT on the branch (2026-10-10 ~23:30 CT; still NOT merged / deployed / run).** Branch merged with
+  main (3ffb9f6, incl. Manufacturer Center freight-terms work; no conflicts). `mi1b_report_register.sql` sha256
+  7761828e… (rollback b79dde05…). (1) One-accepted-per-period is now `mfr_sources_dealer_report_period_uk` (dealer reports
+  only); the register's period clash check and decide's "already accepted" check apply to dealer reports only; several
+  sales exports / commission statements per period register and are accepted independently. (2) A correction must
+  cover the superseded record's exact period — refused in register AND re-checked by the guard trigger on insert.
+  (3) link_batch refuses a NULL/blank batch source_file and needs an exact (case-sensitive) file-name match.
+  (4) Concurrency: `pg_advisory_xact_lock` on (manufacturer, file hash) and, for dealer reports, on (manufacturer, period)
+  — proven with two real sessions (same file → one record + "existing"; two dealer reports for one period → the second
+  refused; two commission statements → both kept); without the period lock both dealer reports got in. (5) API: a
+  database refusal after the file was stored answers `file_stored:true` + `storage_path` (kept privately, NOT
+  registered, reused if the same file is registered later); read-only `orphans` action lists stored files under
+  reports/ that no record names — nothing is deleted. Import screens still do not register files (deferred). Tests:
+  mi1b-register.pg 43, mi1b-api 25, mi1b mutants 42/42; MC guard pg 17, mcfreeze 17, mcverify 25, freightterms 11 (+mutants),
+  MI-1a identity.pg 28 / compat 16 (+14/14), commission-coverage 42 (+43/43), Phase 0 suites all pass; phase1-visits /
+  phase2-account-class / phase2-timeline fail identically on main 3ffb9f6 (late-evening clock).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
