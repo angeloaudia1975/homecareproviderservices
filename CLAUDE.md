@@ -1425,7 +1425,11 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   fingerprint e70543ba… (the approved file pasted with Windows line endings — reproduced exactly locally); operations
   server-only 11, helpers callable by the server 0; M1 acceptance 43/43 (no SKIP — the server-role checks 34/39 ran);
   A1 compatibility 27/27; Academy rows 0 and switches {} after the tests; public-key probe ALL 19 BLOCKED (401).
-  **A2A (code + M1) COMPLETE.** All Academy switches OFF; certificates stay off until separately authorized. PR #4
+  **Fingerprint ACCEPTED by Angelo (10 Oct 2026 23:12):** installed e70543ba23d96ca7c5aec8eeff0ea341 (expected
+  130e45fa36f768e032a89da43b645f8a with Unix line endings); cause = the editor paste saved every line ending as \r\n;
+  evidence = the approved file installed locally with CRLF reproduces e70543ba exactly and passes 28 + 43 + 27 + 11 tests,
+  and production passed 43/43, 27/27 and 19/19 BLOCKED. Never roll back or reinstall M1 just to change the fingerprint.
+  **A2A (code + M1) COMPLETE — accepted by Angelo 10 Oct 2026 23:12.** All Academy switches OFF; certificates stay off until separately authorized. PR #4
   (M1 rev 2 files) stays DRAFT until Angelo approves its merge. A2C and later units not started.
 - **Exam retake policy (approved; build in A2E, NOT yet):** one open attempt (already enforced by start_attempt), a
   one-hour cooldown between attempts, at most three attempts per day, unlimited lifetime retakes — enforced on the
