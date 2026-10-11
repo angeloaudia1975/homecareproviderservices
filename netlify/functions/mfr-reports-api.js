@@ -220,6 +220,78 @@ exports.handler = async (event) => {
     return json(200, { ok: true, stored: files.length, registered: files.filter(f => named.has(f.path)).length,
       orphans: files.filter(f => !named.has(f.path)), note: "Read-only. Nothing is deleted here." });
   }
+  // ── MI Inbox Automation, Phase B: what the capture found (read-only) and a person's decisions on its queue ──
+  if (b.action === "capture_status") {
+    try {
+      const [state, runs, profiles, items, flags] = await Promise.all([
+        sbGet("mfr_report_capture_state?select=mailbox,checkpoint_at,overlap_minutes,lock_until,last_run_at,last_ok_at,last_error&order=mailbox"),
+        sbGet("mfr_report_capture_runs?select=id,mailbox,started_at,finished_at,checkpoint_before,checkpoint_after,complete,counts,error&order=id.desc&limit=15"),
+        sbGet("mfr_report_profiles?select=id,code,manufacturer,kind,label,status,auto_register,auto_import,rules,note&order=status,manufacturer,id"),
+        sbGetAll("mfr_report_items?select=state,attention,resolved_at", "id"),
+        sbGet("app_settings?key=eq.phase2_flags&select=value")]);
+      const by = {}; let open = 0;
+      for (const i of items) { by[i.state] = (by[i.state] || 0) + 1; if (i.attention && !i.resolved_at) open++; }
+      const f = (flags && flags[0] && flags[0].value) || {};
+      return json(200, { ok: true, switch_on: f.mi_report_capture === true, state, runs, profiles, counts: by, needs_attention: open });
+    } catch (x) { return json(503, { error: "capture_not_installed_or_unreadable", message: String(x.message || x).slice(0, 300) }); }
+  }
+  if (b.action === "inbox" || b.action === "attention") {
+    const mfr = clean(b.manufacturer, 80), st = clean(b.status, 30), per = /^\d{4}-\d{2}$/.test(b.period || "") ? b.period : null;
+    const q = (clean(b.q, 120) || "").toLowerCase();
+    const days = Math.min(Math.max(parseInt(b.days, 10) || 120, 1), 800);
+    const since = new Date(Date.now() - days * 864e5).toISOString();
+    let msgs, items, sources = [];
+    try {
+      if (b.action === "attention") {
+        items = await sbGetAll("mfr_report_items?attention=not.is.null&resolved_at=is.null&select=*", "id");
+        const ids = [...new Set(items.map(i => i.message_id))]; msgs = [];
+        for (let k = 0; k < ids.length; k += 200) msgs = msgs.concat(await sbGet(`mfr_report_messages?id=in.(${ids.slice(k, k + 200).join(",")})&select=*`));
+      } else {
+        msgs = await sbGetAll(`mfr_report_messages?received_at=gte.${e(since)}${mfr ? `&manufacturer=eq.${e(mfr)}` : ""}&select=*`, "received_at.desc");
+        items = [];
+        const ids = msgs.map(m => m.id);
+        for (let k = 0; k < ids.length; k += 200) items = items.concat(await sbGet(`mfr_report_items?message_id=in.(${ids.slice(k, k + 200).join(",")})&select=*&order=id`));
+      }
+      const sids = [...new Set(items.map(i => i.source_id).filter(Boolean))];
+      for (let k = 0; k < sids.length; k += 200) sources = sources.concat(await sbGet(`mfr_sources?id=in.(${sids.slice(k, k + 200).join(",")})&select=id,title,status,kind,report_period_start,report_period_end,publication_status`));
+    } catch (x) { return json(503, { error: "unreadable", message: "The capture inbox could not be read just now: " + String(x.message || x).slice(0, 200) }); }
+    const src = new Map(sources.map(r => [r.id, r]));
+    const byMsg = new Map(msgs.map(m => [m.id, { ...m, items: [] }]));
+    for (const i of items) { const m = byMsg.get(i.message_id); if (m) m.items.push({ ...i, source: i.source_id ? src.get(i.source_id) || null : null }); }
+    let list = [...byMsg.values()];
+    const inPeriod = i => !per || (i.period_start && i.period_start.slice(0, 7) <= per && i.period_end && i.period_end.slice(0, 7) >= per);
+    list = list.filter(m => (!mfr || m.manufacturer === mfr || m.items.some(i => i.manufacturer === mfr))
+      && (!st || m.items.some(i => i.state === st || (st === "attention" && i.attention && !i.resolved_at)))
+      && (!per || m.items.some(inPeriod))
+      && (!q || [m.subject, m.from_address, m.from_name, ...m.items.map(i => i.file_name)].some(v => String(v || "").toLowerCase().includes(q))));
+    list.sort((x, y) => String(y.received_at).localeCompare(String(x.received_at)));
+    const total = list.length, off = Math.max(parseInt(b.offset, 10) || 0, 0), lim = Math.min(Math.max(parseInt(b.limit, 10) || 100, 1), 300);
+    return json(200, { ok: true, total, offset: off, messages: list.slice(off, off + lim) });
+  }
+  if (b.action === "resolve") {
+    const id = parseInt(b.item_id, 10); if (!(id > 0)) return json(400, { error: "item_id_required" });
+    const act = String(b.decision || "");
+    if (["dismiss", "ignore", "retry"].indexOf(act) < 0) return json(400, { error: "bad_decision" });
+    const reason = clean(b.reason, 1000); if (!reason || reason.length < 3) return json(422, { error: "reason_required", message: "Say why — it is kept in the audit trail." });
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/hcps_mfr_capture_resolve`, { method: "POST", headers: { ...H(), "content-type": "application/json" },
+      body: JSON.stringify({ p: { item_id: id, action: act, reason, actor: "staff:" + actor } }) });
+    const t = await r.text(); let j; try { j = JSON.parse(t); } catch (x) { j = { message: t }; }
+    if (r.ok) return json(200, j);
+    const code = (String((j && j.message) || "").match(/\bcapture_[a-z_]+/) || ["database_error"])[0];
+    return json(/capture_(nothing|cannot)/.test(code) ? 409 : /capture_(reason|actor|bad)/.test(code) ? 422 : 502, { error: code, message: String((j && j.message) || t).slice(0, 300) });
+  }
+  if (b.action === "capture_now") {
+    // A person may run the hourly capture now (e.g. to verify the rollout). Same switch, same lease, same rules.
+    if (!(await flagOn(sbGet, "mi_report_capture"))) return json(403, { error: "capture_switch_off", message: "Automatic report capture is switched off." });
+    try {
+      const { runCapture, liveDeps } = require("./_report_capture.js");
+      const deps = liveDeps(process.env);
+      const boxes = await sbGet("mfr_report_capture_state?select=mailbox&order=mailbox");
+      const internal = [...new Set(String(process.env.GRAPH_MAILBOXES || "").split(/[,\s]+/).map(x => x.trim().toLowerCase().split("@")[1]).filter(Boolean))];
+      const runs = []; for (const x of boxes) runs.push(await runCapture({ mailbox: x.mailbox, budget_ms: 20000 / Math.max(1, boxes.length), internal_domains: internal }, deps));
+      return json(200, { ok: true, runs });
+    } catch (x) { return json(502, { error: "capture_failed", message: String(x.message || x).slice(0, 300) }); }
+  }
   return json(400, { error: "unknown_action" });
 };
 // For tests only.

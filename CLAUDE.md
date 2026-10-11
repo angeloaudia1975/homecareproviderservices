@@ -1869,6 +1869,74 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   multi-branch account is never silently assigned to the wrong location. Cases: one account number over several
   branches; no ship-to ZIP; corporate billing address ≠ delivery; several invoice lines of one order; a verified
   recurring ship-to identifier; a new shipping location; a corporate / drop-ship sale explicitly confirmed as such.
+- **PHASE A ACCEPTED; Phase B1–B4 development APPROVED as ONE coordinated release (Angelo, 2026-10-11 16:44 CT).**
+  Build on a feature branch, behind `phase2_flags.mi_report_capture` (exactly `true` = on; default OFF): tables
+  `mfr_report_messages` + `mfr_report_profiles` (+ attachments, checkpoint state, run log), protected capture functions,
+  `_report_capture.js`, hourly `report-capture-cron`, Report History **Inbox** and **Needs Attention** screens
+  (searchable / filterable by manufacturer, period, status). Reuse Graph, the Netlify integration, MI-1b Report History and
+  its private storage — no second email system or manufacturer database. Rules: (1) three ACTIVE Strongback profiles —
+  commission statement = monthly `YYYY-MM SR032.pdf` (register as commission_statement, never a sales export, no
+  financial import); sales export = on-request CSV/XLSX with order/SKU/qty/amount content, whatever the subject; dealer
+  overview PDF = dealer_report. Verified sender/forwarder identities AND the file's actual content decide, never the
+  subject or extension alone. (2) The 8 Oct overview email LINKS to record #7 by its identical SHA-256 — never a duplicate.
+  (3) Reliable capture: all folders, paging, checkpoint + overlap, throttling retries, outage recovery; separate states
+  discovered → classified → registered (or linked) / exception (queued for retry) → processed by importer. A failed,
+  oversized or unreadable attachment goes to a DURABLE retry/exception queue and never blocks later valid email; the
+  checkpoint never passes a message that is not durably accounted for (completed capture or queued exception). Each
+  report attachment in a message is handled individually; Outlook identity = provenance, file SHA-256 = content dedupe,
+  and every email carrying the same file keeps its own source-email reference. (4) DRAFT (inactive) profiles for Ohio
+  Medical, Access4U, AirAvant, Climbing Steps, Bemis, Complete Medical, Ovation, PediFix, Golden; support cumulative,
+  combined-month, corrected, body-only and irregular reports. Rose Healthcare and Stellor Medical stay in an
+  unidentified-manufacturer review category until Angelo decides. The report period comes from the report's content /
+  file when it states one — never assumed from the received date when the content is more reliable. (5) Phase B =
+  automatic registration ONLY: no financial import, no automatic acceptance or intelligence import; `mi_import_v2` ON,
+  `mi_commission_v2` OFF, `mi_intel_publish` OFF; no dealer, rep, alias, contact, opportunity, campaign or historical
+  financial change; no outgoing email. (6) Ship-To next: the shared `_shipto.js` resolver + Needs Ship-To Review are the
+  prerequisite for any automatic sales-report import; the manual importer keeps working but its preview flags
+  questionable fallback assignments. (7) Deliver: branch reconciled with main, then ONE consolidated rollout proposal
+  (migration, switch settings, test results, verification). STOP before production SQL, merge, deploy or switch on.
+- **Phase B1–B4 BUILT on branch `mi-b-report-capture` (2026-10-11; NOT merged, NOT deployed, NO production SQL, switch not
+  created).** Migration `supabase/mi_b_report_capture.sql` (sha256 5de92842…; rollback `…_rollback.sql` 18b94a29…, refuses
+  while any captured email / item / event exists): tables `mfr_report_profiles` (3 ACTIVE Strongback: SR032 commission
+  statement, order export by content, dealer overview by the MI-1c reader; 9 DRAFT; `auto_import` CHECK = false),
+  `mfr_report_capture_state` (mailbox angelo@…, checkpoint 1 Oct 2026 00:00 CT, overlap 6 h, run lease), `_runs`,
+  `mfr_report_messages` (unique mailbox + internetMessageId; received time never edited), `mfr_report_items` (one per
+  attachment / body / listing placeholder; states discovered → classified | registered | linked | exception | ignored |
+  processed), append-only `mfr_report_capture_events`. Writes only through `hcps_mfr_capture_begin/record/classify/fail/
+  register/finish/resolve` (security definer, service_role only); guard trigger needs the session marker AND the owner's
+  rights; RULE 19 (RLS on, no policies, service_role SELECT only). The DATABASE checks `phase2_flags.mi_report_capture`
+  (exactly true) on every capture write (a person's resolve does not need it); `finish` refuses a checkpoint past an email
+  with an item still 'discovered' or items never listed; `register` calls MI-1b `hcps_mfr_report_register` in the same
+  transaction, only for an ACTIVE auto-registering profile and a request that matches the item exactly (Outlook received
+  date in Chicago, period, hash-named storage path, no supersession) — existing hash → 'linked' (record 7), a second
+  dealer report for a period → exception `correction_needs_decision`, same file as another kind → `duplicate_conflict`, a
+  second statement for the same period → registered + `possible_correction`. Retry queue backoff 15 min × 2^n (cap 24 h),
+  8 attempts then a person. Code: `_report_capture.js` (shares `_report_inventory.js` Graph client / identification /
+  inspection; period from file name / report text / content dates / MI-1c reader / subject before the received-date rule;
+  file-name vs text disagreement = conflict; every run handles at least one email newer than the old checkpoint; an
+  email that can't be handled in one run is queued, never blocks), `report-capture-cron.js` (hourly :20, does nothing
+  while the switch is off), `mfr-reports-api` actions capture_status / inbox / attention / resolve (actor = verified
+  sign-in) / capture_now (switch-gated); Report History tabs Report register · Inbox · Needs attention. Ship-To:
+  `_shipto.js` (strict = never HQ / first branch without evidence; legacy = the exact old picks, labelled);
+  `sales-import-api` previews now carry `ship_to_flags` (HQ fallback / shared ZIP / city / name guesses) shown on the Sales
+  Report Import page — picks unchanged; the v2 "Dealers" tile no longer shows "undefined". Tests: mi-b-capture.pg 38,
+  report-capture 27 (real SQL + real September PDF), mi-b-api 11, shipto 17, mi-b.ui (Chromium, 360/390/768/1280), Phase B
+  mutants 35/35; report-inventory 28 (+29/29), mi1b 44/44, mi1a-compat 14/14, commission-coverage 43/43 mutants; all suites
+  pass except the pre-existing resources-render (documents.json). Installed-code fingerprint 12 functions: bea3b94e… (LF) /
+  89389ae0… (CRLF paste). Rollout queries: `supabase/mi_b_rollout_baseline.sql`, `…_postcheck.sql`; probe
+  `scripts/mi_b_public_probe_browser.js` (31 checks). STOP: awaiting Angelo's one approval of the consolidated rollout.
+  **Phase B migration RUN by Angelo 2026-10-11 ~18:20 CT (verified):** sha256 5de92842…, all 9 install checks ok. Postcheck
+  11/11 (fixed first: check 8's label had unescaped quotes — commit 911d954): code 12 / 89389ae0… (the CRLF form, as
+  precomputed), 3 active Strongback + 9 draft profiles (rules 518a40c4 / 4edc244d / d4302bdd …), checkpoint 1 Oct 00:00 CT /
+  360 min / free, switch absent, 0 runs / messages / items / events, anon/authenticated/PUBLIC 0 grants, service_role SELECT,
+  execute 0 / 0 / 7, 10 of 12 security definer, RLS 6/6, 0 policies, 12 guard triggers, 0 capture-registered records.
+  Baseline after = the MI-1c post-install values on every financial / dealer / function row (11,997 / $10,802,558.50 /
+  $493,077.06, D7 dde7a2ce…, full-row 83fa3b5b…, Strongback 143, 0 / 0 / 7, catalog acf6e62b…, record 7 only report, 1 event,
+  dealers 3e27e8ce…, aliases 3da52cea…, dealer_manufacturers 597811b5…, 770 / 7 / 429, MI-1a 162f107a…, MI-1b 82cd50d8…,
+  MI-1c 887809bd…, policies 29 / 5fc16d5b…, 1 private file). Explained differences: flags md5 (academy_admin ON at 16:45),
+  mfr_decisions 15 → 21 (Bemis window #320 + Review Issues decisions), grants 3072 → 3112 (the MI-1c baseline left its 5
+  tables out of the count; 5 × 8 = 40 — no other new table since, by object id). Outside probe (Angelo, 18:39 CT): ALL 31
+  BLOCKED (401). Lesson: compare grant counts only between queries with the same exclusion list.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.

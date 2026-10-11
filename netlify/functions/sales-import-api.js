@@ -21,7 +21,8 @@ const orgAccounts=require("./_accountorg.js")(sbGet,sbSend);
 const { NAME_FIRST, NO_ACCOUNT_CAPTURE } = require("./_mfr_rules.js");
 const SC=require("./_scope.js");
 const MI=require("./_mi1a.js"); const { flagOn }=require("./_flags.js");
-const CC=require("./_commission_coverage.js");   // aliasTarget: a learned alias names the company (RULE 2026-10-10)
+const CC=require("./_commission_coverage.js");
+const SH=require("./_shipto.js");   // the one Ship-To resolver (legacy mode here: same picks, now labelled)   // aliasTarget: a learned alias names the company (RULE 2026-10-10)
 const clean=(v,n)=>{ const s=(v==null?"":String(v)).trim(); return s?s.slice(0,n||400):null; };
 const num=v=>{ if(v==null||v==="") return null; const n=Number(String(v).replace(/[$,\s]/g,"")); return Number.isFinite(n)?n:null; };
 const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
@@ -51,7 +52,7 @@ async function whoami(event){
 async function buildResolver(slug, strict){
   const soft=(p,fb)=>strict?p:p.catch(()=>fb);   // legacy path keeps its old tolerance; MI-1a v2 is strict
   const [dealers,dms,aliases,dir]=await Promise.all([
-    soft(sbGetAll("dealers?select=id,business_name,parent_id,city,zip","id"),[]),
+    soft(sbGetAll("dealers?select=id,business_name,parent_id,city,state,zip,address","id"),[]),
     soft(sbGetAll(`dealer_manufacturers?manufacturer=eq.${encodeURIComponent(slug)}&select=dealer_id,account_ref`,"dealer_id"),[]),
     soft(sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm"),[]),
     soft(SC.ownerIndex(sbGet),null),     // who owns each dealer (Phase 0D)
@@ -69,28 +70,38 @@ async function buildResolver(slug, strict){
   const norm2id=new Map(); for(const d of dealers) norm2id.set(dnorm(d.business_name), d.id);
   for(const a of aliases){ if(a&&a.alias_norm&&!norm2id.has(a.alias_norm)) norm2id.set(a.alias_norm, a.dealer_id); }
   function family(id){ const r=rootOf(id); return familyByRoot.get(r)||[byId.get(id)].filter(Boolean); }
-  function pickBranch(cands, row){
-    if(cands.length<=1) return cands[0]||null;
-    const zip=znorm(row.ship_zip), city=dnorm(row.ship_city), shipName=dnorm(row.ship_name);
-    let hit=zip&&cands.find(d=>znorm(d.zip)===zip); if(hit) return hit;
-    hit=city&&cands.find(d=>dnorm(d.city)===city); if(hit) return hit;
-    hit=shipName&&cands.find(d=>dnorm(d.business_name)===shipName); if(hit) return hit;
-    return cands.find(d=>!d.parent_id)||cands[0];   // fall back to the HQ/root
-  }
+  // Branch choice inside a family. The manual import keeps EXACTLY the old choice (ZIP → city → ship-to name → HQ /
+  // first) through the shared resolver's legacy mode, which also says WHY — so the preview can flag a fallback.
+  // (The automated path will use the strict mode, which never falls back: CLAUDE.md §18, Ship-To Correction.)
+  function pickDetail(cands, row){ return SH.resolveBranch(cands, row, { mode:"legacy" }); }
   const nameFirst=NAME_FIRST.has(slug);
   function byName(row){ if(!row.company) return null; const id=norm2id.get(dnorm(row.company)); return id?family(id):null; }
   function byRef(row){ const ref=String(row.account_ref||"").trim().toLowerCase();
     if(ref&&refToIds.has(ref)){ const ids=refToIds.get(ref); const cands=ids.map(i=>byId.get(i)).filter(Boolean);
       return cands.length===1?family(cands[0].id):cands; }               // expand a single hit to its family for branch pick
     return null; }
-  function resolve(row){
+  function resolveDetail(row){
     // Reused-number manufacturers resolve by NAME first (a shared number can't misroute the sale);
     // everyone else keeps number-first, then name.
     let cands = nameFirst ? (byName(row)||byRef(row)) : (byRef(row)||byName(row));
-    if(!cands||!cands.length) return null;
-    const d=pickBranch(cands,row); return d?d.id:null;
+    if(!cands||!cands.length) return { dealer_id:null, basis:"unmatched", questionable:false };
+    return pickDetail(cands,row);
   }
-  return { resolve, byId, repOf };
+  function resolve(row){ return resolveDetail(row).dealer_id||null; }
+  return { resolve, resolveDetail, byId, repOf };
+}
+
+// Questionable branch picks for the preview (manual import): the same sale, now with WHY it went to that branch.
+// Nothing about the pick changes; the operator sees every line that rests on a fallback or a guess.
+function shipToFlags(rows, details, byId){
+  const g=new Map(); let lines=0;
+  rows.forEach((r,i)=>{ const d=details[i]; if(!d||!d.questionable) return; lines++;
+    const k=[String(r.company||""),String(r.order_number||""),d.basis,d.dealer_id].join("|");
+    const o=g.get(k)||{company:clean(r.company,180)||"",order:clean(r.order_number,60)||"",basis:d.basis,dealer_id:d.dealer_id,
+      dealer:(byId.get(d.dealer_id)||{}).business_name||"",ship_zip:clean(r.ship_zip,20)||"",ship_city:clean(r.ship_city,80)||"",lines:0,
+      suggestions:(d.suggestions||[]).slice(0,5)};
+    o.lines++; g.set(k,o); });
+  return { lines, groups:[...g.values()].slice(0,200) };
 }
 
 function mapRow(slug, rate, source_file, row, idx){
@@ -116,8 +127,9 @@ function mapRow(slug, rate, source_file, row, idx){
 // Account numbers are reconciled AFTER the sales are written, and only if they were.
 async function importV2(mi, b, me, slug, rate, rows){
   const apply=(b.action==="import");
-  const { resolve, byId, repOf } = await buildResolverStrict(slug);
-  const recs=rows.map((r,i)=>{ const dealer_id=resolve(r); const rec=mapRow(slug,rate,clean(b.source_file,200),r,i);
+  const { resolve, resolveDetail, byId, repOf } = await buildResolverStrict(slug);
+  const details=rows.map(r=>resolveDetail(r));
+  const recs=rows.map((r,i)=>{ const dealer_id=details[i].dealer_id||null; const rec=mapRow(slug,rate,clean(b.source_file,200),r,i);
     delete rec.external_ref; rec.rep_name=repOf(dealer_id); rec.dealer_id=dealer_id||null; return { rec, raw:r }; });
   const p={ manufacturer:slug, apply, actor:me.email||me.name||"", source_file:clean(b.source_file,200),
     rows:recs.map(x=>x.rec),
@@ -149,6 +161,7 @@ async function importV2(mi, b, me, slug, rate, rows){
   for(const x of recs){ total+=x.rec.amount; comm+=x.rec.commission; if(x.rec.dealer_id) matched++; else if(x.raw.company) unmatched.add(String(x.raw.company).trim()); }
   const summary={ path:"v2", rows:recs.length, matched_lines:matched, unmatched_lines:recs.length-matched, unmatched:[...unmatched].slice(0,100),
     total_sales:Math.round(total*100)/100, total_commission:Math.round(comm*100)/100, commission_rate:rate,
+    ship_to_flags:shipToFlags(rows,details,byId),
     accounts:{ updated:acct.updated.length, confirmed:acct.confirmed.length, active_marked:acct.active, conflicts:acct.conflicts.length,
       updated_list:acct.updated.slice(0,200), conflict_list:acct.conflicts.slice(0,200) }, v2 };
   if(!apply) return json(200,{ok:true,preview:summary});
@@ -218,8 +231,9 @@ exports.handler = async (event)=>{
     try{ await sbGet("monthly_sales?select=external_ref&limit=1"); }
     catch(e){ return json(200,{ok:false,error:"tables_missing",message:"Run supabase/sales_import.sql in Supabase, then reload."}); }
 
-    const { resolve, byId, repOf } = await buildResolver(slug);
-    const mapped=rows.map((r,i)=>{ const dealer_id=resolve(r); const rec=mapRow(slug,rate,clean(b.source_file,200),r,i); rec.rep_name=repOf(dealer_id); return { rec, dealer_id, raw:r }; });
+    const { resolve, resolveDetail, byId, repOf } = await buildResolver(slug);
+    const details=rows.map(r=>resolveDetail(r));
+    const mapped=rows.map((r,i)=>{ const dealer_id=details[i].dealer_id||null; const rec=mapRow(slug,rate,clean(b.source_file,200),r,i); rec.rep_name=repOf(dealer_id); return { rec, dealer_id, raw:r }; });
     // aggregate
     let total=0, comm=0, matchedLines=0; const byDealer=new Map(); const unmatchedNames=new Set();
     for(const m of mapped){ total+=m.rec.amount; comm+=m.rec.commission;
@@ -259,7 +273,7 @@ exports.handler = async (event)=>{
     const summary={ rows:mapped.length, matched_lines:matchedLines, unmatched_lines:mapped.length-matchedLines,
       dealers:perDealer.length, unmatched:[...unmatchedNames].slice(0,100),
       total_sales:Math.round(total*100)/100, total_commission:Math.round(comm*100)/100,
-      commission_rate:rate, per_dealer:perDealer.slice(0,500), accounts };
+      commission_rate:rate, per_dealer:perDealer.slice(0,500), accounts, ship_to_flags:shipToFlags(rows,details,byId) };
 
     if(b.action==="preview") return json(200,{ok:true, preview:summary});
 
