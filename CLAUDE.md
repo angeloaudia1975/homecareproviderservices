@@ -1392,6 +1392,25 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   fraction. A disputed or unsafe fact is withdrawn with NO replacement value (`academy_op_withdraw_fact`: an
   `awaiting_manufacturer` row with value null), never left published (D2). A TEST course (slug `test-…`) never issues a
   certificate. The A1 acceptance tests run before and after M1 (setup goes through the operations once M1 exists).
+- **M1 rev 2 — final security refinements (Angelo, 10 Oct 2026 22:29; A–E).** (A) An exam correction takes a SCORE only
+  (0–100) and a reason; pass/fail always follows the version's pass mark — there is no override that records a pass the
+  score does not support (an override would need its own approved design). (B) A certified pass is never corrected to a
+  fail while its certificate is valid: the correction is refused until the certificate is revoked as its own audited
+  decision (recommended over automatic revocation, so revoking a credential is always a deliberate, separately recorded
+  act). (C) Attempts are created only by `academy_op_start_attempt` (the database draws exactly `exam_questions` distinct
+  active exam questions of the ENROLLED, PUBLISHED version; one open attempt at a time); submission and issuance re-check
+  the set (same version, active exam questions, count, no duplicates, enrollment not withdrawn, version published or
+  since retired), and the submitting learner must be the attempt's learner. (D) The 11 operations are SECURITY DEFINER
+  with a pinned search path, executable by the server role only; the 7 helpers and the guard by the owner only. The guard
+  accepts a marked change only with the owner's rights, so the server role cannot set `academy.op` by hand. Staff actors
+  must be `staff:<email>` of an ACTIVE president/admin/owner in staff_users (approvers of approval-required facts too);
+  learner actors exactly `learner:<id>` of the record's learner, active, not HCPS staff. (E) Issuance needs
+  `phase2_flags.academy_certificates` exactly true (the database refuses otherwise, as well as the application layer), an
+  issuer of `system:grader` or an administrator, a submitted+graded+passed attempt on a valid set, an active non-staff
+  learner, a non-withdrawn enrollment, a non-TEST HCPS certification course, and no earlier certificate for the
+  enrollment. Note: enrollments are unique per learner+version, so after a revocation re-certification on the same
+  version needs a decision (new version or a reviewed schema change) — not built. Tests: `test/academy/m1_hardening.sql`
+  (28; 19 of them fail on the original M1), the acceptance file (42 + check 43, which also proves phase2_flags unchanged).
 - **Academy sign-in (security review 10 Oct 2026).** Learners get the Academy's OWN session — an HMAC-signed 8-hour value
   in an HttpOnly, Secure, SameSite=Strict `__Host-hcps_academy` cookie (`_academy_session.js`, secret
   `ACADEMY_SESSION_SECRET`, Production-scoped, 32+ random bytes, set by Angelo). It is accepted only by `academy-api`;
@@ -1404,8 +1423,8 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   verified: academy-handoff status `{enabled:false}`; admin API 401 with no token / public key / forged token; learner
   API and handoff mint 403 `flag_off`; no-store on every response; `/academy/*` 404 with DENY / noindex / CSP;
   netlify.app/academy and the bare domain land on www/academy (no loop); site pages and Connect 360 unchanged. All seven
-  switches OFF. M1 (`academy_a2a_m1_audited_ops.sql`, sha256 85e87157…22a01) is committed but NOT run — awaits Angelo's
-  execution approval; its baseline is the 21:45 preflight (outside grants 1c268eb2…/2811, policies 219ac18e…/29,
+  switches OFF. M1 is NOT run — the original (sha256 85e87157…22a01) was held by Angelo for refinements A–E; rev 2 awaits his
+  approval; its baseline is the 21:45 preflight (outside grants 1c268eb2…/2811, policies 219ac18e…/29,
   columns d039b75f…/109; Academy grants 7af6d10e…/252, columns ca214093…/179, RLS 18/18, 0 policies).
 - **D14 — Academy-only email sign-in codes (approved by Angelo 10 Oct 2026 for A2B DESIGN only; not implemented).**
   Training-only employees sign in with Academy-only email codes. Requirements: training-only credentials never

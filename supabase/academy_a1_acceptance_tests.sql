@@ -6,7 +6,8 @@
 -- results table is the final statement. Output: one row per test, PASS or FAIL, plus check 27 confirming
 -- that no test data was left behind. Uses existing rows only as references (one dealer, Golden, one auth user).
 -- Works before and after A2A M1: once M1's audited operations exist, the setup goes through them (M1 refuses direct
--- writes to its guarded tables, by design).
+-- writes to its guarded tables, by design). With M1 (rev 2) the setup names an active HCPS administrator as actor and turns
+-- the certificates switch on inside the undone sub-transaction (never visible to anyone else; phase2_flags is unchanged after).
 -- =============================================================================================
 drop table if exists t_results;
 create temp table t_results (n int, test text, result text, detail text);
@@ -72,14 +73,16 @@ declare
   v_user uuid; v_dealer uuid; v_learner uuid; v_course uuid; v_ver uuid; v_mod uuid; v_les uuid; v_q uuid;
   v_fact uuid; v_fact2 uuid; v_enr uuid; v_att uuid; v_cert uuid; ok boolean;
   procedure_result text; v_saved text;
-  v_m1 boolean := to_regproc('public.academy_op_publish_version') is not null;  -- A2A M1 installed: set up through the audited operations
-  v_ext uuid; v_med uuid;
+  v_m1 boolean := to_regprocedure('public.academy_op_start_attempt(text,uuid)') is not null;  -- A2A M1 installed: set up through the audited operations
+  v_ext uuid; v_med uuid; ADMIN text;
 begin
   begin  -- sub-transaction: every write in here is undone at the end
     select id into v_user from auth.users order by created_at limit 1;
     select id into v_dealer from public.dealers limit 1;
-    if v_user is null or v_dealer is null then
-      insert into t_results values (20, 'Behaviour tests', 'SKIP', 'needs one auth user and one dealer'); return;
+    select 'staff:' || lower(email) into ADMIN from staff_users
+     where coalesce(active, true) and lower(coalesce(role, '')) in ('president','admin','owner') order by email limit 1;
+    if v_user is null or v_dealer is null or (v_m1 and ADMIN is null) then
+      insert into t_results values (20, 'Behaviour tests', 'SKIP', 'needs one auth user, one dealer and (with M1) one active HCPS administrator'); return;
     end if;
 
     insert into academy_learners (auth_user_id, full_name, email) values (v_user, 'Test Learner', 'test@example.com') returning id into v_learner;
@@ -90,7 +93,7 @@ begin
     insert into academy_lessons (module_id, position, title, est_minutes) values (v_mod, 1, 'L1', 5) returning id into v_les;
     insert into academy_questions (version_id, module_id, kind, prompt, choices, answer_key, explanation)
       values (v_ver, v_mod, 'single', 'Q?', '[{"id":"a","text":"A"},{"id":"b","text":"B"}]', '"a"', 'Because') returning id into v_q;
-    if v_m1 then perform academy_op_publish_version('test', v_ver);
+    if v_m1 then perform academy_op_publish_version(ADMIN, v_ver);
     else update academy_course_versions set status = 'published', published_at = now(), published_by = 'test' where id = v_ver; end if;
 
     -- 11 published version is frozen
@@ -106,9 +109,9 @@ begin
 
     -- product facts
     if v_m1 then
-      v_fact := (academy_op_record_fact('test', jsonb_build_object('manufacturer_slug','golden-technologies','model_code','PR999','field','capacity.med',
+      v_fact := (academy_op_record_fact(ADMIN, jsonb_build_object('manufacturer_slug','golden-technologies','model_code','PR999','field','capacity.med',
         'value',400,'unit','lb','field_class','approval_required','status','verified','source_url','https://example.com','source_label','test',
-        'verified_on',current_date,'verified_by','test'), null, 'test')->>'id')::uuid;
+        'verified_on',current_date,'verified_by','test'), null, ADMIN)->>'id')::uuid;
     else
       insert into product_facts (manufacturer_slug, model_code, field, value, unit, field_class, status, source_url, source_label, verified_on, verified_by)
         values ('golden-technologies', 'PR999', 'capacity.med', '400', 'lb', 'approval_required', 'verified', 'https://example.com', 'test', current_date, 'test')
@@ -121,9 +124,9 @@ begin
 
     begin
       if v_m1 then
-        perform academy_op_record_fact('test', jsonb_build_object('manufacturer_slug','golden-technologies','model_code','PR999','field','capacity.med',
+        perform academy_op_record_fact(ADMIN, jsonb_build_object('manufacturer_slug','golden-technologies','model_code','PR999','field','capacity.med',
           'value',500,'field_class','approval_required','status','verified','source_url','https://example.com','source_label','test',
-          'verified_on',current_date,'verified_by','test'), null, 'test');
+          'verified_on',current_date,'verified_by','test'), null, ADMIN);
       else
         insert into product_facts (manufacturer_slug, model_code, field, value, field_class, status, source_url, source_label, verified_on, verified_by)
           values ('golden-technologies', 'PR999', 'capacity.med', '500', 'approval_required', 'verified', 'https://example.com', 'test', current_date, 'test');
@@ -135,9 +138,9 @@ begin
     begin
       -- the approved way: close the current row pointing at the new id, then insert the new row (one transaction)
       if v_m1 then
-        v_fact2 := (academy_op_record_fact('test', jsonb_build_object('manufacturer_slug','golden-technologies','model_code','PR999','field','capacity.med',
+        v_fact2 := (academy_op_record_fact(ADMIN, jsonb_build_object('manufacturer_slug','golden-technologies','model_code','PR999','field','capacity.med',
           'value',500,'unit','lb','field_class','approval_required','status','verified','source_url','https://example.com','source_label','test',
-          'verified_on',current_date,'verified_by','test'), v_fact, 'test')->>'id')::uuid;
+          'verified_on',current_date,'verified_by','test'), v_fact, ADMIN)->>'id')::uuid;
       else
         v_fact2 := gen_random_uuid();
         update product_facts set valid_to = now(), replaced_by = v_fact2 where id = v_fact;
@@ -171,9 +174,15 @@ begin
     -- certificates
     insert into academy_enrollments (learner_id, version_id, access_source) values (v_learner, v_ver, 'admin_grant') returning id into v_enr;
     if v_m1 then
-      insert into academy_attempts (enrollment_id, question_ids) values (v_enr, array[v_q]) returning id into v_att;
-      perform academy_op_submit_attempt('test', v_att, jsonb_build_object(v_q::text, 'a'));
-      v_cert := (academy_op_issue_certificate('system', 'test', v_att, null)->>'id')::uuid;
+      v_att := (academy_op_start_attempt('learner:' || v_learner, v_enr)->>'id')::uuid;
+      perform academy_op_submit_attempt('learner:' || v_learner, v_att, jsonb_build_object(v_q::text, 'a'));
+      -- the certificates switch, on for this undone sub-transaction only
+      if exists (select 1 from app_settings where key = 'phase2_flags') then
+        update app_settings set value = value || '{"academy_certificates": true}' where key = 'phase2_flags';
+      else
+        insert into app_settings (key, value) values ('phase2_flags', '{"academy_certificates": true}');
+      end if;
+      v_cert := (academy_op_issue_certificate('system:grader', v_att, null)->>'id')::uuid;
     else
       insert into academy_attempts (enrollment_id, question_ids, answers, submitted_at, score, passed, graded_at)
         values (v_enr, array[v_q], '{}'::jsonb, now(), 100, true, now()) returning id into v_att;
@@ -186,7 +195,7 @@ begin
     insert into t_results values (19, 'Certificate details cannot be altered', case when ok then 'PASS' else 'FAIL' end, '');
 
     begin
-      if v_m1 then perform academy_op_revoke_certificate('test', v_cert, 'test');
+      if v_m1 then perform academy_op_revoke_certificate(ADMIN, v_cert, 'test');
       else update academy_certificates set status = 'revoked', revoked_at = now(), revoked_by = 'test', revoked_reason = 'test' where id = v_cert; end if;
       ok := true;
     exception when others then ok := false; end;
@@ -214,7 +223,7 @@ begin
       if v_m1 then
         insert into academy_external_certs (learner_id, course_id, manufacturer_slug, status, exam_opened_at, exam_reported_at)
           values (v_learner, v_course, 'golden-technologies', 'exam_reported', now(), now()) returning id into v_ext;
-        perform academy_op_review_external_cert('test', v_ext, 'verified', null, null, null);
+        perform academy_op_review_external_cert(ADMIN, v_ext, 'verified', null, null, null);
       else
         insert into academy_external_certs (learner_id, course_id, manufacturer_slug, status, exam_opened_at, exam_reported_at,
                                             verified_by, verified_at)
@@ -229,7 +238,7 @@ begin
       if v_m1 then
         insert into academy_external_certs (learner_id, course_id, manufacturer_slug, status, upload_media_id, certificate_uploaded_at)
           values (v_learner, v_course, 'golden-technologies', 'certificate_uploaded', v_med, now()) returning id into v_ext;
-        perform academy_op_review_external_cert('test', v_ext, 'verified', 'golden_certificate', null, null);
+        perform academy_op_review_external_cert(ADMIN, v_ext, 'verified', 'golden_certificate', null, null);
       else
         insert into academy_external_certs (learner_id, course_id, manufacturer_slug, status, upload_media_id, certificate_uploaded_at,
                                             evidence_type, verified_by, verified_at)
