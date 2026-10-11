@@ -16,6 +16,7 @@ const M=[
  ['_mc.js','clearing allowed without a decision','        const approved = clearSet.has(f) && clearApproved;','        const approved = clearSet.has(f);'],
  ['catalog-api.js','old file date carried over','          else if(!before || String(before.source_file||"")!==file) o.effective_date=null;','          else {}'],
  ['catalog-api.js','unaccepted source staged','          if(source.status!=="accepted") return json(409','          if(false) return json(409'],
+ ['_mc.js','cart priced line by line (pooled breaks ignored)','    cart.clear(); c.forEach(([p, q]) => cart.set(slug + "::" + p.code, { p, qty: q }));\n','    cart.clear();\n'],
  ['_mc.js','engine drift ignored','  add(check("engine_in_sync", "Server pricing engine = live storefront code", engineSame,','  add(check("engine_in_sync", "Server pricing engine = live storefront code", true,'],
  ['_mc.js','render drift ignored','  add(check("render_in_sync", "Server card/freight rendering = live storefront code", renderSame,','  add(check("render_in_sync", "Server card/freight rendering = live storefront code", true,'],
  ['_mc.js','unrecorded products allowed','    add(check("every_product_has_record", "Every visible product has an active master record", !noRecord.length,','    add(check("every_product_has_record", "Every visible product has an active master record", true,'],

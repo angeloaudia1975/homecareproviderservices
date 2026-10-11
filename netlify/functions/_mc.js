@@ -241,8 +241,12 @@ async function verifyLine(d){
   const priceIssues = [], cartResults = [];
   for(const c of carts){
     if(!c.length) continue;
+    /* The storefront prices each line against the WHOLE cart (family and pooled tier breaks count
+       every line), so the engine's cart holds exactly this cart while it prices it — as a dealer's would. */
+    cart.clear(); c.forEach(([p, q]) => cart.set(slug + "::" + p.code, { p, qty: q }));
     const items = c.map(([p, q]) => ({ code: p.code, family: p.family == null ? undefined : p.family, qty: q, unit: Number(L.engine.unitPrice(p, q)) }));
     const eng = L.engine.computeFreight(slug, c.map(([p, q]) => ({ p, qty: q })));
+    cart.clear();
     const res = await d.PRICING.priceOrders({ orders: [{ manufacturer_slug: slug, items }], dealerId: null, sb: d.sb,
       catalogFile: d.files.catalogFile, contentFile: d.files.contentFile, manufacturersFile: d.files.manufacturersFile });
     const o = res.orders[0];

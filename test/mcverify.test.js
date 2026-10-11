@@ -65,6 +65,14 @@ await t('a sound line passes every blocking check, and the run is saved',async()
   eq(W.db.mfr_verification_runs.length,1); eq(W.db.mfr_verification_runs[0].result,'pass');
   for(const id of ['engine_in_sync','render_in_sync','cart_template','full_field_parity','every_product_has_record','source_alignment','product_cards','cart_lines','browser_equals_server','freight_boundaries','emails','retired_refused','images','fingerprint']) ok(ck(r,id).pass,id+' missing or failed');
 });
+await t('a multi-SKU cart is priced against the whole cart, as the storefront does (pooled breaks count every line)',async()=>{
+  const recs=[{manufacturer:LINE,code:'7YR05310TSS',base_price:109.98,msrp:109.99,map:109.99,msrp_auto:false,status:'active',uom:'Case',case_qty:2,source_id:1,dealer_unit_cost:64.99,tiers:[{min_qty:1,price:109.98},{min_qty:2,price:99.98,pool:'mc-pool'}]},
+              {manufacturer:LINE,code:'7YE82350TC',base_price:54.99,msrp:109.99,map:109.99,msrp_auto:false,status:'active',uom:'Each',case_qty:1,source_id:1,dealer_unit_cost:54.99,tiers:[{min_qty:1,price:54.99},{min_qty:2,price:49.99,pool:'mc-pool'}]},
+              {manufacturer:LINE,code:'444DISPLAY',base_price:634.86,msrp:1269.72,map:1269.72,msrp_auto:false,status:'active',uom:'Display',case_qty:1,source_id:1,dealer_unit_cost:634.86},
+              {manufacturer:LINE,code:'DO5300RD444',status:'discontinued'}];
+  const W=world({records:recs}); const C=mod(W); const r=await verify(C,{save:false});
+  const c=ck(r,'browser_equals_server'); ok(c.pass,JSON.stringify(c.detail).slice(0,600));
+});
 await t('freight boundaries: $499.99 = $40 shipping & handling, $500.00 and $500.01 = Prepaid freight',async()=>{
   const W=world(); const C=mod(W); const r=await verify(C);
   const rows=ck(r,'freight_boundaries').detail; ok(Array.isArray(rows),'rows');
