@@ -382,7 +382,7 @@ Whichever importer loads them, they must count as commission reports.
   unchanged, live = Part 0 snapshot (EXCEPT ALL 0/0), 0 batches / 0 superseded, quarantine RLS on / 0 policies / anon +
   authenticated no privileges / service_role yes. A second run was correctly refused ("expected exactly 7 matching
   rows, found 0 — nothing written"). Outside public-key check (`scripts/quarantine_public_probe_browser.js`, run by Angelo
-  2026-10-11 02:52 UTC, key accepted on a public table first): read 401/42501 BLOCKED, write 401/42501 BLOCKED. Still NOT done: the alias fix (alias still on Princeton), the code merge/deploy.
+  2026-10-11 02:52 UTC, key accepted on a public table first): read 401/42501 BLOCKED, write 401/42501 BLOCKED. (Alias fix and code deploy since DONE — see "Controlled steps" below.)
   **Angelo's decisions 2026-10-10 (after independent verification of the cleanup — do NOT run it again):** approach
   approved with one change — a month holding valid statement lines AND lines without a commission figure is
   **"Received — incomplete, requires review"** (partial, with the count), never plain green; kept apart per month:
@@ -406,6 +406,30 @@ Whichever importer loads them, they must count as commission reports.
   invoices, 2026-06 / 2026-07 = open invoices only); Strongback 2026-09 not on file. Production unchanged: 11,997 rows,
   $10,802,558.50 / $493,077.06, D7 / B1 / keys / attribution fingerprints = the original Part 0/Part 2 values, 0 batches,
   both switches OFF, alias still on Princeton (459 aliases).
+  **Controlled steps 2026-10-10 ~22:25–22:40 CT (authorized by Angelo 22:20):**
+  (1) **Williams Brothers alias fix RUN** (`williams_brothers_alias_fix.sql`, sha256 9c2773f6…, pasted verbatim): only
+  "WILLIAMS BROTHERS HEALTHCARE PHARMACY" moved Princeton 3396b841… → HQ 86baecc2… (root; Princeton's parent). Unchanged:
+  459 aliases, every other alias (fingerprint), the two older generic aliases (WILLIAMS BROS HEALTHCARE → Columbus,
+  WILLIAMS BROTHERS HEALTHCARE → Henderson — still pending their own review), dealers, monthly_sales, dealer_manufacturers,
+  the quarantine (September WB row still on Princeton, fingerprint c7b81f69…). Rollback file: sha256 9044287a…, not run.
+  (2) **`mi_import_v2` ON for operator-reviewed Strongback sales imports** (`mi_commission_v2` stays OFF). Smoke test =
+  preview only on the live page, original workbook (sha b7a17e64…): v2 path, 143 rows, 142 matched, $43,021.50 / $3,871.94,
+  57 unchanged / 0 new / 0 changed / 0 retire, 0 collisions / cross-lane / differences, 25 account numbers confirmed,
+  applied false. Production after: 11,997 rows, $10,802,558.50 / $493,077.06, D7 / B1 / keys / attribution fingerprints
+  unchanged, 0 batches. Imports are run by an operator after reviewing the preview; nothing imports or retires on its own.
+  The Strongback September order CSV is NOT imported until its own preview + reconciliation is approved.
+  (3) **Provisional months are reported apart (main 027f961, Published):** a month resting only on the RULE 14
+  sales-report exception has status `provisional`, is NOT in `received` and is never counted as a verified receipt;
+  `config.summary` counts months per status and the grid shows it. Live: **58 verified received · 16 provisional
+  (PediFix) · 5 received — incomplete · 23 estimated (ABM 11, Strongback 12) · 4 not entered**. Open invoices keep their
+  own status. Tests 42 + mutants 43/43; commission-sept2026.pg 11.
+  (4) **Historical exceptions — RECORDED for later source-document review; NOT changed (no record altered, no $0 entered):**
+  Ohio Medical 2026-04: 16 blank PAYMENT rows (invoice no, order date, customer, dealer present; no amount/commission) +
+  19 open invoices; Ohio Medical 2026-06 / 2026-07: open invoices only (13 / 12). Bemis 2026-06: 4 blank part lines
+  (7YE85320H20 ARM, 9YA040002, 9YA040001, 1BALLMISC ×50) beside 13 valid lines. Access4u 2025-10 (4), 2026-05 / 06 / 07
+  (1 each): $0.00 payment lines without a commission figure (3 of the 7 are voided) — never auto-entered as $0; a future
+  file with such lines is refused by the import gate (decision on how to enter voids pending). Climbing Steps 2026-05: one
+  cash sale $1,466.50 with no commission figure. Each needs the manufacturer's source document before anything changes.
 - The **Commission Report Import coverage grid** shows **every year that has data** (not just the current
   year), so loaded history stays visible; green = received, amber = still needed (current year), grey =
   gap in a past year.
