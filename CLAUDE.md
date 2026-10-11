@@ -1286,6 +1286,16 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   fixtures never contain the Supabase project URL — Netlify secret scanning fails the build on it; fixtures use
   `{{SUPABASE_URL}}` (filled by the test world) and the scan is never widened. Regression tests on the live wording
   of all 15 decisions: test/mcmatch.live.test.js + test/mcmatch.ui.js (test/fixtures/mc-live-frozen.json).
+  **Phase 6 ACCEPTED — PASS / COMPLETE (Angelo, 2026-10-11).** Final live check with the correction deployed:
+  Bemis Match 9/9 SKUs match the Gold Standard record, 0 proposed changes, 0 decisions needed, 0 false HOLD, retired
+  DO5300RD444 still retired; 7YE82350TC Each/1 and 444DISPLAY Display/1 without pack basis; the 7 case SKUs keep
+  MSRP/MAP each; Climbing Steps / Strongback / Ovation show the legacy-source label with 0 decisions and 0 proposed
+  changes; 28/28 frozen write probes refused; freeze self-test 20/20 blocked; counts 14 runs / 15 decisions /
+  0 approvals (verification run with save:false); fingerprints unchanged — Climbing Steps 270c15b4991d580a,
+  Strongback d35dcdff0cf9816c, Ovation 46f8ed0f02c81067, Bemis 3620a321933995db. The first, faulty live Match
+  evidence is kept as history in the plan doc's Phase 6 release review; no run or decision was rewritten.
+  **Manufacturer Center Phases 1–6 are COMPLETE.** Still open: re-check anonymous listing of `mfr-sources` once the
+  first real source file is stored there. No new manufacturer starts until Angelo approves it.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
@@ -1669,6 +1679,22 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   The database checks only that an actor is named; the trust boundary is the server role. Every `op()` call passes
   `actorLabel()` of the actor `staffActor` / `learnerActor` returned; the A2C unit adds a test proving a request-body
   actor is ignored.
+- **A2C Part C1 — Academy Command Center (Angelo, 11 Oct 2026 08:27: design ACCEPTED; PR #5 not merged until his GO).**
+  `/admin/academy.html` (Connect 360 → Sales & Marketing; admins only — reps/Relations keep their menus unchanged) +
+  `academy-admin-api.js`. Six tabs are fixed: Overview, Courses, Learners & Dealerships, Product Facts, Certifications,
+  Activity. HCPS-issued and manufacturer-issued credentials are always shown apart. President-only: publish/retire a
+  version, approval-required facts (the President is the recorded approver), edits to a course learners have seen.
+  Role assignments and credential verification go only through M1 operations. **Ordinary content writes record first:**
+  the audit row (with `_ref`) is written BEFORE the change and a failure to write it refuses the change (503); a change
+  that then fails gets `<action>_failed` with the same `_ref`; `audit_check` (records check) reconciles every course /
+  version / module / lesson with its latest effective audit row. **Before production authoring** these writes become
+  atomic database operations (M2, Option A in `docs/academy/A2C_C1_COMMAND_CENTER.md`) — awaiting Angelo's approval.
+  **Course record status** (`academy_courses.status`) is not changed in C1; the UI shows "Training available" from the
+  versions so a course with a published version never looks unpublished; the permanent rule is a C2 decision (proposal
+  in the doc). **TEST data:** TEST dealers (`is_test`), pilot learners (all active memberships at TEST dealers) and
+  TEST-course (`test-…`) enrollments/credentials are excluded from real Academy figures and shown apart; every future
+  Academy metric uses the same rule; a TEST course never issues a genuine certificate (M1). Do not begin A2D until
+  Angelo approves it separately. All Academy switches stay OFF.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
