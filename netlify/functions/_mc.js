@@ -610,12 +610,28 @@ async function contentGate({ body, lines, read, windowRule }){
   catch(e){ return { refusal: { status: 503, body: { ok: false, error: "freeze_state_unreadable",
     message: "Whether " + L.join(", ") + " is frozen could not be read, so nothing was changed: " + String((e && e.message) || e).slice(0, 200) } } }; }
   const frozen = L.filter(s => (rows || []).some(r => r && r.slug === s && r.frozen === true));
+  const rf = body && body.regression_fix, ew = body && body.enrichment_window;
+  const readDecision = async id => { const r = await read("mfr_decisions?id=eq." + id + "&select=id,manufacturer,kind,used_at"); return r && r[0]; };
+  /* Release B: a window presented with a request must be that line's own open window, whatever the line — it is
+     never carried to another line (frozen or not), never across several lines, and never to images-api. */
+  if(ew && !rf){
+    if(!windowRule) return { refusal: { status: 423, body: { ok: false, error: "outside_enrichment_window", manufacturer: L[0],
+      message: "An enrichment window covers hidden draft pages in Product Enrichment only; it never opens catalog-layer images. Nothing was changed." } } };
+    if(L.length > 1) return { refusal: { status: 423, body: { ok: false, error: "enrichment_window_invalid", manufacturer: L[0],
+      message: "An enrichment window covers one line; this change spans " + L.join(", ") + ". Nothing was changed." } } };
+    if(!frozen.length){
+      const id = parseInt(typeof ew === "object" ? ew.decision_id : ew, 10);
+      if(!(id > 0)) return { refusal: { status: 400, body: { ok: false, error: "enrichment_window_incomplete", message: "An enrichment window needs its decision_id. Nothing was changed." } } };
+      let d; try{ d = await readDecision(id); } catch(e){ return { refusal: { status: 503, body: { ok: false, error: "decision_unreadable", message: "The enrichment window could not be read. Nothing was changed." } } }; }
+      const p = exceptionProblem(d, "enrichment_window", L[0]);
+      if(p) return { refusal: { status: 423, body: { ok: false, error: "enrichment_window_invalid", manufacturer: L[0], message: p + ". Nothing was changed." } } };
+      return open;                                                   // an unfrozen line needs no window; it grants nothing there
+    }
+  }
   if(!frozen.length) return open;
   const slug = frozen[0];
   if(L.length > 1) return { refusal: { status: 423, body: { ok: false, error: "line_frozen", manufacturer: slug,
     message: "This change spans several lines and " + frozen.join(", ") + (frozen.length > 1 ? " are" : " is") + " frozen (Gold Standard). Change one line at a time. Nothing was changed." } } };
-  const readDecision = async id => { const r = await read("mfr_decisions?id=eq." + id + "&select=id,manufacturer,kind,used_at"); return r && r[0]; };
-  const rf = body && body.regression_fix, ew = body && body.enrichment_window;
   if(rf){
     const id = parseInt(rf.decision_id, 10), reason = String(rf.reason || "").trim();
     if(!(id > 0) || !reason) return { refusal: { status: 400, body: { ok: false, error: "regression_fix_incomplete", message: "A regression fix needs decision_id and a reason. Nothing was changed." } } };
@@ -639,7 +655,22 @@ async function contentGate({ body, lines, read, windowRule }){
     "A correction needs a regression_fix decision in Manufacturer Center" + (windowRule ? "; enriching hidden draft pages needs the line's open enrichment window." : ".") } } };
 }
 
+/* RELEASE B, GATE 1 — draft media. Under an enrichment window every image on a draft page is a copy in HCPS storage
+   filed under that window: product-content/<line>/drafts/w<window>/<page>/... (the database refuses anything else:
+   supabase/mc_release_b_draft_media.sql, mfr_draft_media_problem). These mirror that rule for the functions. */
+const DRAFT_MEDIA_BUCKET = "product-content";
+function draftMediaPrefix(slug, winId){ return String(slug) + "/drafts/w" + String(parseInt(winId, 10)) + "/"; }
+function isDraftMediaUrl(url, slug, winId){
+  const esc = String(slug).replace(/[^a-z0-9]/g, c => "\\" + c);
+  return new RegExp("^https://[a-z0-9]+\\.supabase\\.co/storage/v1/object/public/" + DRAFT_MEDIA_BUCKET + "/" + esc + "/drafts/w" + parseInt(winId, 10) + "/[^?#\\s]+$").test(String(url || ""));
+}
+/* Every link-like string in the image-bearing fields of a page row (image, images_gallery, skus, options) — what the guard inspects. */
+function rowMediaUrls(row){
+  const out = [], walk = v => { if(typeof v === "string"){ if(/^\s*(https?:|\/\/|\/)/i.test(v)) out.push(v); } else if(Array.isArray(v)) v.forEach(walk); else if(v && typeof v === "object") Object.keys(v).forEach(k => walk(v[k])); };
+  ["image", "images_gallery", "skus", "options"].forEach(k => walk(row && row[k])); return out;
+}
+
 module.exports = { COMMERCIAL_ACTIONS, OVERRIDE_COMMERCIAL_KEYS, isCommercialAction, lineOf, STAGE_FIELDS, planStage, verifyLine, text, expectedFreightWords, sha,
   canon, planHash, parseCaseQty, decisionValues, appliesTo, interpretationFor, matchLine, gateProblem, activationRunProblem, freightPreview, compareRuns,
   CONTENT_ACTIONS, MEDIA_ID_ACTIONS, isFrozenProtected, VISIBLE_STATUSES, isVisibleStatus, PC_WRITE_ACTIONS, PC_WINDOW_ACTIONS, isImageWrite,
-  windowProblem, exceptionProblem, contentGate };
+  windowProblem, exceptionProblem, contentGate, DRAFT_MEDIA_BUCKET, draftMediaPrefix, isDraftMediaUrl, rowMediaUrls };

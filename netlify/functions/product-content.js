@@ -35,6 +35,13 @@ const { computeMerge } = require('./_content-merge.js');
 const MC = require('./_mc.js');
 let EXCEPTION_HEADERS = {};
 let PC_REGRESSION = null;
+/* Release B gate 1: the open enrichment window this request carries (set by the gate). Uploads and rehosts made under it
+   are filed under product-content/<line>/drafts/w<window>/ and never overwrite anything (the database accepts no other image on a draft). */
+let PC_WINDOW = null;
+function mediaBase(m, pageKey) {
+  const key = String(pageKey || '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'page';
+  return PC_WINDOW ? MC.draftMediaPrefix(m, PC_WINDOW.id) + key : `${m}/${pageKey}`;
+}
 // Central AI voice/style guide (RULE 12) — used for the prose fields the workspace generates.
 let loadStyleGuide = null, findBanned = null;
 try { ({ loadStyleGuide, findBanned } = require('./_ai_style.js')); } catch (e) { /* optional */ }
@@ -360,10 +367,10 @@ function aiPrompt(field, ctx, styleGuide) {
 }
 
 exports.handler = async (event) => {
-  EXCEPTION_HEADERS = {}; PC_REGRESSION = null;
+  EXCEPTION_HEADERS = {}; PC_REGRESSION = null; PC_WINDOW = null;
   let res;
   try { res = await handleContent(event); }
-  finally { EXCEPTION_HEADERS = {}; }
+  finally { EXCEPTION_HEADERS = {}; PC_WINDOW = null; }
   /* A regression fix is single-use: once the request it authorised has succeeded, it is spent. */
   if (PC_REGRESSION && res && res.statusCode < 300) {
     const used = PC_REGRESSION; PC_REGRESSION = null;
@@ -462,6 +469,7 @@ async function handleContent(event) {
         if (g.refusal) return reply(g.refusal.status, g.refusal.body);
         EXCEPTION_HEADERS = g.headers || {};
         if (g.regression) PC_REGRESSION = Object.assign({ by: who }, g.regression);
+        PC_WINDOW = g.window || null;
       }
 
       // ================= REVIEW ACTIONS =================
@@ -528,13 +536,13 @@ async function handleContent(event) {
         const ct = body.content_type || 'image/png';
         const ext = (ct.split('/')[1] || 'png').replace('jpeg', 'jpg').replace(/[^a-z0-9]/g, '') || 'png';
         const safe = String(body.filename || 'image').replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.[^.]*$/, '').slice(0, 40) || 'image';
-        const path = `${m}/${body.page_key}/${Date.now()}-${safe}.${ext}`;
+        const path = `${mediaBase(m, body.page_key)}/${Date.now()}-${safe}.${ext}`;
         let buf; try { buf = Buffer.from(body.content_base64, 'base64'); } catch (e) { return reply(400, { ok: false, error: 'bad base64' }); }
         if (!buf.length) return reply(400, { ok: false, error: 'empty image' });
         if (buf.length > 6 * 1024 * 1024) return reply(413, { ok: false, error: 'image too large (max ~6MB)' });
         const up = await fetch(`${SUPABASE_URL}/storage/v1/object/product-content/${path}`, {
           method: 'POST',
-          headers: { apikey: SERVICE_ROLE, authorization: 'Bearer ' + SERVICE_ROLE, 'content-type': ct, 'x-upsert': 'true' },
+          headers: { apikey: SERVICE_ROLE, authorization: 'Bearer ' + SERVICE_ROLE, 'content-type': ct, 'x-upsert': PC_WINDOW ? 'false' : 'true' },
           body: buf
         });
         if (!up.ok) { const t = await up.text(); return reply(502, { ok: false, error: 'storage upload failed: ' + t }); }
@@ -548,13 +556,13 @@ async function handleContent(event) {
         const extM = rawName.match(/\.([A-Za-z0-9]{1,8})$/);
         const ext = (extM ? extM[1] : 'pdf').toLowerCase();
         const base = rawName.replace(/\.[^.]*$/, '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 60) || 'document';
-        const path = `${m}/${body.page_key}/docs/${Date.now()}-${base}.${ext}`;
+        const path = `${mediaBase(m, body.page_key)}/docs/${Date.now()}-${base}.${ext}`;
         let buf; try { buf = Buffer.from(body.content_base64, 'base64'); } catch (e) { return reply(400, { ok: false, error: 'bad base64' }); }
         if (!buf.length) return reply(400, { ok: false, error: 'empty file' });
         if (buf.length > 6 * 1024 * 1024) return reply(413, { ok: false, error: 'file too large (max ~6MB)' });
         const up = await fetch(`${SUPABASE_URL}/storage/v1/object/product-content/${path}`, {
           method: 'POST',
-          headers: { apikey: SERVICE_ROLE, authorization: 'Bearer ' + SERVICE_ROLE, 'content-type': body.content_type || 'application/octet-stream', 'x-upsert': 'true' },
+          headers: { apikey: SERVICE_ROLE, authorization: 'Bearer ' + SERVICE_ROLE, 'content-type': body.content_type || 'application/octet-stream', 'x-upsert': PC_WINDOW ? 'false' : 'true' },
           body: buf
         });
         if (!up.ok) { const t = await up.text(); return reply(502, { ok: false, error: 'storage upload failed: ' + t }); }
@@ -566,7 +574,7 @@ async function handleContent(event) {
         const src = body.source_url;
         if (!m || !body.page_key || !src) return reply(400, { ok: false, error: 'manufacturer, page_key, source_url required' });
         if (!/^https?:\/\//i.test(src)) return reply(400, { ok: false, error: 'a valid http(s) source_url is required' });
-        if (src.indexOf('/storage/v1/object/public/product-content/') >= 0) return reply(200, { ok: true, url: src, skipped: true });
+        if (src.indexOf('/storage/v1/object/public/product-content/') >= 0 && (!PC_WINDOW || MC.isDraftMediaUrl(src, m, PC_WINDOW.id))) return reply(200, { ok: true, url: src, skipped: true });
         let r; try {
           r = await fetch(src, { redirect: 'follow', headers: { 'user-agent': 'HCPS-Partner360-Rehost/1.0' } });
         } catch (e) { return reply(502, { ok: false, error: 'download failed: ' + String((e && e.message) || e) }); }
@@ -576,9 +584,9 @@ async function handleContent(event) {
         if (!buf.length) return reply(502, { ok: false, error: 'empty download' });
         if (buf.length > 50 * 1024 * 1024) return reply(413, { ok: false, error: 'file too large to rehost (>50MB) — keep the link or upload manually' });
         const nm = (src.split('?')[0].split('#')[0].split('/').pop() || 'file').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 90) || 'file';
-        const path = `${m}/${body.page_key}/rehost/${Date.now()}-${nm}`;
+        const path = `${mediaBase(m, body.page_key)}/rehost/${Date.now()}-${nm}`;
         const up = await fetch(`${SUPABASE_URL}/storage/v1/object/product-content/${path}`, {
-          method: 'POST', headers: { apikey: SERVICE_ROLE, authorization: 'Bearer ' + SERVICE_ROLE, 'content-type': ct, 'x-upsert': 'true' }, body: buf
+          method: 'POST', headers: { apikey: SERVICE_ROLE, authorization: 'Bearer ' + SERVICE_ROLE, 'content-type': ct, 'x-upsert': PC_WINDOW ? 'false' : 'true' }, body: buf
         });
         if (!up.ok) { const t = await up.text(); return reply(502, { ok: false, error: 'store failed: ' + t }); }
         return reply(200, { ok: true, url: `${SUPABASE_URL}/storage/v1/object/public/product-content/${path}`, bytes: buf.length });

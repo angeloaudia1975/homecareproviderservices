@@ -177,7 +177,8 @@ await t('images-api: on a frozen line upload, clear and an applied migration are
   for(const b of [{action:'upload',manufacturer:'bemis',code:'7YR05310TSS',filename:'a.jpg',contentType:'image/jpeg',data:'AAAA'},{action:'clear',manufacturer:'bemis',code:'7YR05310TSS'},
                   {action:'migrate_legacy',manufacturer:'bemis',apply:true},{action:'upload',manufacturer:'bemis',code:'7YR05310TSS',filename:'a.jpg',contentType:'image/jpeg',data:'AAAA',enrichment_window:{decision_id:13}}]){
     const W=world(); const C=load(W,'images-api.js'); const before=snap(W);
-    const r=await asCat(C,b); eq([r.status,r.body.error],[423,'line_frozen'],b.action+': '+JSON.stringify(r.body).slice(0,200)); eq(snap(W),before); eq(W.stored.length,0,'no file stored'); }
+    const r=await asCat(C,b); eq([r.status,r.body.error],[423,b.enrichment_window?'outside_enrichment_window':'line_frozen'],b.action+': '+JSON.stringify(r.body).slice(0,200)); eq(snap(W),before); eq(W.stored.length,0,'no file stored');
+    if(b.enrichment_window) ok(/never opens catalog-layer images/.test(r.body.message),'images-api refuses a window outright: '+r.body.message); }
   const W=world(); const C=load(W,'images-api.js');
   const dry=await asCat(C,{action:'migrate_legacy',manufacturer:'bemis'}); eq(dry.status,200,'a dry run reads only');
   const all=await asCat(C,{action:'migrate_legacy',apply:true}); eq([all.status,all.body.skipped_frozen],[200,['bemis']],JSON.stringify(all.body).slice(0,300));
