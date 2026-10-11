@@ -44,8 +44,11 @@
     rows.push({ check: fn, http: r.status, result, detail: result === 'OPEN!!' ? b.slice(0, 160) : '' });
   }
   // Direct writes on the four content tables (insert, edit, delete), as the public key.
+  // Each edit names a column the table really has (academy_course_versions has no title): an unknown column is refused
+  // by the API before the database is asked (PGRST204), which would prove nothing about permissions.
+  const EDIT = { academy_courses: '{"title":"probe"}', academy_course_versions: '{"pass_mark":80}', academy_modules: '{"title":"probe"}', academy_lessons: '{"title":"probe"}' };
   for (const t of ['academy_courses', 'academy_course_versions', 'academy_modules', 'academy_lessons']) {
-    for (const [how, method, path, body] of [['insert', 'POST', t, '{}'], ['edit', 'PATCH', `${t}?id=eq.${Z}`, '{"title":"probe"}'], ['delete', 'DELETE', `${t}?id=eq.${Z}`, null]]) {
+    for (const [how, method, path, body] of [['insert', 'POST', t, '{}'], ['edit', 'PATCH', `${t}?id=eq.${Z}`, EDIT[t]], ['delete', 'DELETE', `${t}?id=eq.${Z}`, null]]) {
       const r = await fetch(`${URL}/rest/v1/${path}`, { method, headers: Object.assign({ Prefer: 'return=minimal' }, H), body: body || undefined });
       const b = await r.text(); const ok = refused(r, b);
       if (ok) blocked++; else open++;
