@@ -1400,6 +1400,13 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   read (named read actions); every change is POST with the `x-academy-request` header and an allowed Origin. Academy
   pages live only on www.homecareproviderservices.org — the primary domain; Netlify sends the bare domain to www, and netlify.toml sends homecareproviderservices.netlify.app/academy/* there (301). Never add a www→bare-domain rule: it loops, under the strict `/academy/*` security
   headers in netlify.toml: no inline script and no third-party scripts on Academy pages.
+- **A2A code MERGED and LIVE (10 Oct 2026 ~22:00 CT, PR #3 → main 16805ed, approved by Angelo 21:47).** Production
+  verified: academy-handoff status `{enabled:false}`; admin API 401 with no token / public key / forged token; learner
+  API and handoff mint 403 `flag_off`; no-store on every response; `/academy/*` 404 with DENY / noindex / CSP;
+  netlify.app/academy and the bare domain land on www/academy (no loop); site pages and Connect 360 unchanged. All seven
+  switches OFF. M1 (`academy_a2a_m1_audited_ops.sql`, sha256 85e87157…22a01) is committed but NOT run — awaits Angelo's
+  execution approval; its baseline is the 21:45 preflight (outside grants 1c268eb2…/2811, policies 219ac18e…/29,
+  columns d039b75f…/109; Academy grants 7af6d10e…/252, columns ca214093…/179, RLS 18/18, 0 policies).
 - **D14 — Academy-only email sign-in codes (approved by Angelo 10 Oct 2026 for A2B DESIGN only; not implemented).**
   Training-only employees sign in with Academy-only email codes. Requirements: training-only credentials never
   authenticate to Partner 360 ordering or pricing; existing dealer accounts keep their ordering permissions; Academy
