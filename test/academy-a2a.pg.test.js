@@ -40,7 +40,21 @@ try {
     const r = results(asEditor(DB, SUP('academy_a1_acceptance_tests.sql')));
     assert.strictEqual(r.length, 27); assert.deepStrictEqual(r.filter(x => x.result !== 'PASS'), []);
   });
+  const pre = JSON.parse(file(DB, SUP('academy_a2a_m1_preflight.sql')));
+  t('M1 preflight (read-only) before M1: ready, A1 present 18/18, no M1 objects, no Academy rows', () => {
+    assert.strictEqual(pre.ready_for_m1, true); assert.strictEqual(pre.m1_installed, false);
+    assert.strictEqual(pre.a1_installed.tables_present, '18 / 18');
+    assert.ok(Object.values(pre.academy_rows).every(n => n === 0));
+  });
   file(DB, SUP('academy_a2a_m1_audited_ops.sql'));
+  t('M1 preflight after M1: 15 functions + 6 guard triggers; Academy grants/policies/columns/RLS and outside fingerprints identical', () => {
+    const post = JSON.parse(file(DB, SUP('academy_a2a_m1_preflight.sql')));
+    assert.strictEqual(post.ready_for_m1, false); assert.strictEqual(post.m1_installed, true);
+    assert.strictEqual(post.m1_objects.functions.length, 15); assert.strictEqual(post.m1_objects.guard_triggers_on.length, 6);
+    assert.deepStrictEqual(post.academy_fingerprints, pre.academy_fingerprints);
+    assert.deepStrictEqual(post.fingerprints, pre.fingerprints);
+    assert.deepStrictEqual(post.a1_installed.a1_triggers, pre.a1_installed.a1_triggers);
+  });
   t('M1 changes nothing outside the Academy (grants, policies, columns, key row counts identical)', () => assert.strictEqual(FP(DB), before));
   t('M1 refuses to run twice', () => assert.notStrictEqual(fileStatus(DB, SUP('academy_a2a_m1_audited_ops.sql')).status, 0));
   t('M1 acceptance tests: 30 + leftover check pass', () => {
