@@ -76,6 +76,7 @@ begin
     insert into academy_learners (auth_user_id, full_name, email) values (v_u2, 'Test Learner 2', 'm1test2@example.com') returning id into v_l2;
     insert into academy_memberships (learner_id, dealer_id, role, access_type, created_by)
       values (v_learner, v_dealer, 'learner', 'training_only', 'test') returning id into v_mem;
+    perform set_config('academy.op', 'test-setup', true);  -- A2C M2: content is written only by audited operations; test setup is the owner with the marker
     insert into academy_courses (slug, manufacturer_slug, title, course_type, issuer)
       values ('m1-test-course', 'golden-technologies', 'M1 test', 'hcps_certification', 'hcps') returning id into v_course;
     insert into academy_courses (slug, title, course_type, issuer)
@@ -87,6 +88,7 @@ begin
     insert into academy_course_versions (course_id, version, exam_questions) values (v_c2, 1, 1) returning id into v_v2;
     insert into academy_course_versions (course_id, version, exam_questions) values (v_cd, 1, 1) returning id into v_vd;
     insert into academy_modules (version_id, position, title) values (v_ver, 1, 'M1') returning id into v_mod;
+    perform set_config('academy.op', '', true);
     for i in 1..5 loop
       insert into academy_questions (version_id, module_id, kind, prompt, choices, answer_key, explanation, objective_tags)
         values (v_ver, v_mod, case when i = 5 then 'multi' else 'single' end, 'Q' || i, '[{"id":"a"},{"id":"b"},{"id":"c"}]',

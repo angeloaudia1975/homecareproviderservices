@@ -55,20 +55,30 @@ async function sbSend(method, path, body, prefer) {
 
 /* A security-sensitive change: one database function = one transaction = the change AND its audit row, or neither.
    (Training Manager role, Golden verification, HCPS certificates, publishing, exam results, product facts.) */
-async function op(name, args) {
-  if (!/^[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
+async function rpc(fn, args) {
   let r; try {
-    r = await fetch(`${env().url}/rest/v1/rpc/academy_op_${name}`, { method: 'POST', headers: svc({ 'content-type': 'application/json' }), body: JSON.stringify(args || {}) });
+    r = await fetch(`${env().url}/rest/v1/rpc/${fn}`, { method: 'POST', headers: svc({ 'content-type': 'application/json' }), body: JSON.stringify(args || {}) });
   } catch (e) { refuse(502, 'write_failed', 'The change could not be saved.'); }
   const t = await r.text(); let j = null; try { j = t ? JSON.parse(t) : null; } catch (e) { j = null; }
   if (r.ok) return j;
-  const code = j && j.code, msg = j && typeof j.message === 'string' ? j.message.replace(/^academy:\s*/, '') : '';
+  const code = j && j.code, msg = j && typeof j.message === 'string' && /^academy:\s*/.test(j.message) ? j.message.replace(/^academy:\s*/, '') : '';
   if (code === 'P0002') refuse(404, 'not_found', 'Not found.');
   if (code === '22023' || code === '23514') refuse(400, 'refused', msg || 'That change is not allowed.');
   if (code === '23505') refuse(409, 'conflict', 'That already exists.');
-  if (code === '42501') refuse(403, 'forbidden', 'Not allowed.');
+  if (code === '55000') refuse(409, 'locked', msg || 'This can no longer change.');
+  if (code === '42501') refuse(403, 'forbidden', msg || 'Not allowed.');
   if (code === 'PGRST202' || r.status === 404) refuse(503, 'not_installed', 'This Academy step is not available yet.');
   refuse(502, 'write_failed', 'The change could not be saved, and nothing was changed.');
+}
+async function op(name, args) {
+  if (!/^[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
+  return rpc('academy_op_' + name, args);
+}
+/* Ordinary content (A2C M2): courses, draft versions, modules and lessons. Same contract as op(): the change and its
+   audit row in one transaction, or neither. Never falls back to a plain write: not installed = 503. */
+async function contentOp(name, args) {
+  if (!/^[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
+  return rpc('academy_content_op_' + name, args);
 }
 
 /* ---------- switches ---------- */
@@ -243,7 +253,7 @@ function handler(fn, opts) {
 
 module.exports = {
   SWITCHES, SITE_ORIGINS, PARTNER360_ORIGINS, MAX_BODY, AcademyError, refuse,
-  sbGet, sbSend, op, switchOn, switches,
+  sbGet, sbSend, op, contentOp, switchOn, switches,
   bearer, bearerUser, staffActor, learnerActor,
   isAdmin, isRelations, isRep, family, dealerScope, canSeeDealer, canSeeScores, requireDealer, requireAdmin, actorLabel,
   audit, redact, body, uuid, oneOf, text, respond, handler, SESSION,

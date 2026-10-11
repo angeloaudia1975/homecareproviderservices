@@ -63,6 +63,7 @@ begin
   insert into academy_learners (auth_user_id, full_name, email) values (v_u2, 'H Two', 'h2@example.com') returning id into v_l2;
   insert into academy_memberships (learner_id, dealer_id, role, access_type, created_by) values (v_l1, v_dealer, 'learner', 'training_only', 't') returning id into v_mem;
   -- C/V: the real exam (2 questions, pass mark 80) + a practice question; C2/V2: another course; CD/VD: a draft; CT/VT: TEST
+  perform set_config('academy.op', 'test-setup', true);  -- A2C M2: content is written only by audited operations; test setup is the owner with the marker
   insert into academy_courses (slug, title, course_type, issuer) values ('h-course', 'H', 'hcps_certification', 'hcps') returning id into v_c;
   insert into academy_course_versions (course_id, version, exam_questions, pass_mark) values (v_c, 1, 2, 80) returning id into v_v;
   insert into academy_questions (version_id, kind, prompt, choices, answer_key, explanation, objective_tags)
@@ -83,6 +84,7 @@ begin
   insert into academy_course_versions (course_id, version, exam_questions) values (v_ct, 1, 1) returning id into v_vt;
   insert into academy_questions (version_id, kind, prompt, choices, answer_key, explanation)
     values (v_vt, 'single', 'T1', '[{"id":"a"},{"id":"b"}]', '"a"', 'B') returning id into t1;
+  perform set_config('academy.op', '', true);
   perform academy_op_publish_version(ADMIN, v_v);
   perform academy_op_publish_version(ADMIN, v_v2);
   perform academy_op_publish_version(ADMIN, v_vt);

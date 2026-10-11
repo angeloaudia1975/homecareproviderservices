@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
 const { createWorld, load, BASE } = require('./phase0-mock.js');
+const { contentOps } = require('./academy-content-ops.fake.js');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 const SRC = path.join(__dirname, '..', 'src', 'admin');
@@ -120,7 +121,7 @@ function server(world, opsLog, opts) {
 }
 
 async function withSite(seed, fn, opts) {
-  const world = createWorld(seed); const ops = [];
+  const world = contentOps(createWorld(seed)); const ops = [];
   const srv = server(world, ops, opts); await new Promise(r => srv.listen(0, '127.0.0.1', r));
   const origin = `http://127.0.0.1:${srv.address().port}`;
   try { return await fn({ origin, world, ops }); } finally { srv.close(); }
@@ -211,7 +212,11 @@ async function t(name, fn) { try { await fn(); pass++; console.log('ok   ' + nam
       });
     });
     await t('navigation: reps and Relations never see the Academy entry; admins gain exactly that one entry; nothing else changes', async () => {
-      const mainChrome = require('child_process').execFileSync('git', ['show', 'origin/main:src/admin/admin-chrome.js'], { cwd: path.join(__dirname, '..') }).toString();
+      // Compared with today's navigation WITHOUT the Academy entry (other tools keep arriving on main, e.g. MI-1c's
+      // Dealer Intelligence Import, so a fixed old commit would count them as Academy changes).
+      const current = fs.readFileSync(path.join(__dirname, '..', 'src', 'admin', 'admin-chrome.js'), 'utf8');
+      const mainChrome = current.replace(/,?\s*\{\s*href:"\/admin\/academy\.html"[^}]*\}/, '');
+      assert.notStrictEqual(mainChrome, current, 'the Academy entry was found and removed for the comparison');
       const collect = async (origin, role) => {
         const out = {};
         for (const url of ['/admin/', '/admin/hub.html?cat=sales', '/admin/ai-style-guide.html', '/admin/academy.html']) {

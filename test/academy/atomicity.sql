@@ -17,12 +17,14 @@ begin
   insert into academy_learners (auth_user_id, full_name, email) values (v_user, 'Atomic', 'atomic@example.com') returning id into v_learner;
   insert into academy_learners (auth_user_id, full_name, email) values (v_user2, 'Atomic 2', 'atomic2@example.com') returning id into v_learner2;
   insert into academy_memberships (learner_id, dealer_id, role, access_type, created_by) values (v_learner, v_dealer, 'learner', 'training_only', 't') returning id into v_mem;
+  perform set_config('academy.op', 'test-setup', true);  -- A2C M2: content is written only by audited operations; test setup is the owner with the marker
   insert into academy_courses (slug, title, course_type, issuer) values ('atomic-course', 'Atomic', 'hcps_certification', 'hcps') returning id into v_course;
   insert into academy_course_versions (course_id, version, exam_questions) values (v_course, 1, 1) returning id into v_ver;
   insert into academy_courses (slug, title, course_type, issuer) values ('atomic-course-2', 'Atomic 2', 'hcps_certification', 'hcps') returning id into v_course2;
   insert into academy_course_versions (course_id, version, exam_questions) values (v_course2, 1, 1) returning id into v_ver2;
   insert into academy_modules (version_id, position, title) values (v_ver, 1, 'M') returning id into v_mod;
   insert into academy_modules (version_id, position, title) values (v_ver2, 1, 'M') returning id into v_mod2;
+  perform set_config('academy.op', '', true);
   insert into academy_questions (version_id, module_id, kind, prompt, choices, answer_key, explanation, objective_tags)
     values (v_ver, v_mod, 'single', 'Q', '[{"id":"a"},{"id":"b"}]', '"a"', 'B', '{t}') returning id into v_q;
   insert into academy_questions (version_id, module_id, kind, prompt, choices, answer_key, explanation, objective_tags)

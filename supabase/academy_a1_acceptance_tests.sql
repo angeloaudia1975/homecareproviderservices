@@ -86,11 +86,13 @@ begin
     end if;
 
     insert into academy_learners (auth_user_id, full_name, email) values (v_user, 'Test Learner', 'test@example.com') returning id into v_learner;
+    perform set_config('academy.op', 'test-setup', true);  -- A2C M2: content is written only by audited operations; test setup is the owner with the marker
     insert into academy_courses (slug, manufacturer_slug, title, course_type, issuer)
       values ('a1-test-course', 'golden-technologies', 'Test', 'hcps_certification', 'hcps') returning id into v_course;
     insert into academy_course_versions (course_id, version, exam_questions) values (v_course, 1, 1) returning id into v_ver;
     insert into academy_modules (version_id, position, title) values (v_ver, 1, 'M1') returning id into v_mod;
     insert into academy_lessons (module_id, position, title, est_minutes) values (v_mod, 1, 'L1', 5) returning id into v_les;
+    perform set_config('academy.op', '', true);
     insert into academy_questions (version_id, module_id, kind, prompt, choices, answer_key, explanation)
       values (v_ver, v_mod, 'single', 'Q?', '[{"id":"a","text":"A"},{"id":"b","text":"B"}]', '"a"', 'Because') returning id into v_q;
     if v_m1 then perform academy_op_publish_version(ADMIN, v_ver);
@@ -202,13 +204,17 @@ begin
     insert into t_results values (20, 'A certificate can be revoked', case when ok then 'PASS' else 'FAIL' end, '');
 
     begin
+      perform set_config('academy.op', 'test-setup', true);
       insert into academy_courses (slug, title, course_type, issuer) values ('golden-tech', 'Golden tech', 'manufacturer_program', 'manufacturer'); ok := false;
     exception when check_violation then ok := true; end;
+    perform set_config('academy.op', '', true);
     insert into t_results values (21, 'A manufacturer program must name the manufacturer and link to its course', case when ok then 'PASS' else 'FAIL' end, '');
 
     begin
+      perform set_config('academy.op', 'test-setup', true);
       insert into academy_courses (slug, title, course_type, issuer) values ('fake-cert', 'x', 'hcps_certification', 'manufacturer'); ok := false;
     exception when check_violation then ok := true; end;
+    perform set_config('academy.op', '', true);
     insert into t_results values (22, 'An HCPS certification cannot be marked as manufacturer-issued', case when ok then 'PASS' else 'FAIL' end, '');
     begin
       update academy_course_versions set status = 'draft', published_at = null, published_by = null where id = v_ver; ok := false;
