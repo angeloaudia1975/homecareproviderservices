@@ -382,7 +382,7 @@ Whichever importer loads them, they must count as commission reports.
   unchanged, live = Part 0 snapshot (EXCEPT ALL 0/0), 0 batches / 0 superseded, quarantine RLS on / 0 policies / anon +
   authenticated no privileges / service_role yes. A second run was correctly refused ("expected exactly 7 matching
   rows, found 0 — nothing written"). Outside public-key check (`scripts/quarantine_public_probe_browser.js`, run by Angelo
-  2026-10-11 02:52 UTC, key accepted on a public table first): read 401/42501 BLOCKED, write 401/42501 BLOCKED. Still NOT done: the alias fix (alias still on Princeton), the code merge/deploy.
+  2026-10-11 02:52 UTC, key accepted on a public table first): read 401/42501 BLOCKED, write 401/42501 BLOCKED. (Alias fix and code deploy since DONE — see "Controlled steps" below.)
   **Angelo's decisions 2026-10-10 (after independent verification of the cleanup — do NOT run it again):** approach
   approved with one change — a month holding valid statement lines AND lines without a commission figure is
   **"Received — incomplete, requires review"** (partial, with the count), never plain green; kept apart per month:
@@ -406,6 +406,30 @@ Whichever importer loads them, they must count as commission reports.
   invoices, 2026-06 / 2026-07 = open invoices only); Strongback 2026-09 not on file. Production unchanged: 11,997 rows,
   $10,802,558.50 / $493,077.06, D7 / B1 / keys / attribution fingerprints = the original Part 0/Part 2 values, 0 batches,
   both switches OFF, alias still on Princeton (459 aliases).
+  **Controlled steps 2026-10-10 ~22:25–22:40 CT (authorized by Angelo 22:20):**
+  (1) **Williams Brothers alias fix RUN** (`williams_brothers_alias_fix.sql`, sha256 9c2773f6…, pasted verbatim): only
+  "WILLIAMS BROTHERS HEALTHCARE PHARMACY" moved Princeton 3396b841… → HQ 86baecc2… (root; Princeton's parent). Unchanged:
+  459 aliases, every other alias (fingerprint), the two older generic aliases (WILLIAMS BROS HEALTHCARE → Columbus,
+  WILLIAMS BROTHERS HEALTHCARE → Henderson — still pending their own review), dealers, monthly_sales, dealer_manufacturers,
+  the quarantine (September WB row still on Princeton, fingerprint c7b81f69…). Rollback file: sha256 9044287a…, not run.
+  (2) **`mi_import_v2` ON for operator-reviewed Strongback sales imports** (`mi_commission_v2` stays OFF). Smoke test =
+  preview only on the live page, original workbook (sha b7a17e64…): v2 path, 143 rows, 142 matched, $43,021.50 / $3,871.94,
+  57 unchanged / 0 new / 0 changed / 0 retire, 0 collisions / cross-lane / differences, 25 account numbers confirmed,
+  applied false. Production after: 11,997 rows, $10,802,558.50 / $493,077.06, D7 / B1 / keys / attribution fingerprints
+  unchanged, 0 batches. Imports are run by an operator after reviewing the preview; nothing imports or retires on its own.
+  The Strongback September order CSV is NOT imported until its own preview + reconciliation is approved.
+  (3) **Provisional months are reported apart (main 027f961, Published):** a month resting only on the RULE 14
+  sales-report exception has status `provisional`, is NOT in `received` and is never counted as a verified receipt;
+  `config.summary` counts months per status and the grid shows it. Live: **58 verified received · 16 provisional
+  (PediFix) · 5 received — incomplete · 23 estimated (ABM 11, Strongback 12) · 4 not entered**. Open invoices keep their
+  own status. Tests 42 + mutants 43/43; commission-sept2026.pg 11.
+  (4) **Historical exceptions — RECORDED for later source-document review; NOT changed (no record altered, no $0 entered):**
+  Ohio Medical 2026-04: 16 blank PAYMENT rows (invoice no, order date, customer, dealer present; no amount/commission) +
+  19 open invoices; Ohio Medical 2026-06 / 2026-07: open invoices only (13 / 12). Bemis 2026-06: 4 blank part lines
+  (7YE85320H20 ARM, 9YA040002, 9YA040001, 1BALLMISC ×50) beside 13 valid lines. Access4u 2025-10 (4), 2026-05 / 06 / 07
+  (1 each): $0.00 payment lines without a commission figure (3 of the 7 are voided) — never auto-entered as $0; a future
+  file with such lines is refused by the import gate (decision on how to enter voids pending). Climbing Steps 2026-05: one
+  cash sale $1,466.50 with no commission figure. Each needs the manufacturer's source document before anything changes.
 - The **Commission Report Import coverage grid** shows **every year that has data** (not just the current
   year), so loaded history stays visible; green = received, amber = still needed (current year), grey =
   gap in a past year.
@@ -1336,6 +1360,14 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   it. Left untouched pending Angelo's decision.
 - **Tests:** `test/mi1a-identity.pg.test.js` (runs the committed SQL in Postgres, bigint + uuid ids),
   `test/mi1a-compat.test.js` + `.mutants.js` (other manufacturers unaffected; switches; alias guard).
+- **SB-0 plan (2026-10-10, design only — nothing built):** Claude Doc "SB-0" (claude.ai/code/artifact/d86d9dbc-2856-4761-9e35-7c5333b645f3).
+  Three Strongback sources stay in three lanes with their own provenance: order exports → Sales Report Import
+  (`monthly_sales`); commission statements → Commission Report Import; the monthly dealer-intelligence PDF → MI-1c
+  intelligence only (never `monthly_sales`, commissions, tasks, deals, contacts or Zoho). Proposed: MI-1b = extend
+  `mfr_sources` as the one register of manufacturer report files (kinds sales_export / commission_statement /
+  dealer_report, period, prepared_date, batch link); MI-1c = `mfr_dealer_snapshots` + `mfr_dealer_observations`
+  (RULE 19 locked), match review queue, publish step. September expected matches: 15 auto, 7 review, Wyatt's held,
+  GF Health + Nebcare unmatched (never created). Awaiting Angelo's decisions before SB-1.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
@@ -1417,6 +1449,13 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   read (named read actions); every change is POST with the `x-academy-request` header and an allowed Origin. Academy
   pages live only on www.homecareproviderservices.org — the primary domain; Netlify sends the bare domain to www, and netlify.toml sends homecareproviderservices.netlify.app/academy/* there (301). Never add a www→bare-domain rule: it loops, under the strict `/academy/*` security
   headers in netlify.toml: no inline script and no third-party scripts on Academy pages.
+- **A2A code MERGED and LIVE (10 Oct 2026 ~22:00 CT, PR #3 → main 16805ed, approved by Angelo 21:47).** Production
+  verified: academy-handoff status `{enabled:false}`; admin API 401 with no token / public key / forged token; learner
+  API and handoff mint 403 `flag_off`; no-store on every response; `/academy/*` 404 with DENY / noindex / CSP;
+  netlify.app/academy and the bare domain land on www/academy (no loop); site pages and Connect 360 unchanged. All seven
+  switches OFF. M1 (`academy_a2a_m1_audited_ops.sql`, sha256 85e87157…22a01) is committed but NOT run — awaits Angelo's
+  execution approval; its baseline is the 21:45 preflight (outside grants 1c268eb2…/2811, policies 219ac18e…/29,
+  columns d039b75f…/109; Academy grants 7af6d10e…/252, columns ca214093…/179, RLS 18/18, 0 policies).
 - **D14 — Academy-only email sign-in codes (approved by Angelo 10 Oct 2026 for A2B DESIGN only; not implemented).**
   Training-only employees sign in with Academy-only email codes. Requirements: training-only credentials never
   authenticate to Partner 360 ordering or pricing; existing dealer accounts keep their ordering permissions; Academy

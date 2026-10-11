@@ -59,8 +59,10 @@ const rowIsEstimate = (r, stmtSR) => r.source === "sales_report" && !(stmtSR && 
 //     estimated:{slug:[YYYY-MM]}, incomplete:{slug:[{period, rows, reason}]}, provisional:{slug:[YYYY-MM]},
 //     detail:{slug:{YYYY-MM:{status, statement_rows, zero_commission_rows, missing_commission_rows, open_invoices,
 //     estimate_rows, provisional}}} }
-// A month is in exactly one of received / partial / incomplete / estimated (in that order of precedence);
-// provisional marks a received or partial month that rests only on the RULE 14 sales-report exception.
+// A month has exactly one status: partial / provisional / received / incomplete / estimated (in that order).
+// `received` holds VERIFIED statement months only. `provisional` lists every month resting only on the RULE 14
+// sales-report exception (status "provisional", or "partial" with detail.provisional) — never in `received`.
+// summary = month counts per status.
 function coverage(rows, opts){
   const stmtSR = statementSet(opts);
   const m = new Map();   // slug|YYYY-MM -> tally
@@ -81,6 +83,8 @@ function coverage(rows, opts){
     m.set(k, t);
   }
   const received = {}, partial = {}, estimated = {}, incomplete = {}, provisional = {}, detail = {};
+  // Month counts by status — `received` = verified statements only; provisional months are counted apart.
+  const summary = { received:0, provisional:0, partial:0, incomplete:0, estimated:0 };
   const add = (o, slug, v) => (o[slug] || (o[slug] = [])).push(v);
   const pl = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   for(const t of [...m.values()].sort((a, b) => (a.slug + a.p).localeCompare(b.slug + b.p))){
@@ -90,18 +94,22 @@ function coverage(rows, opts){
     if(t.noComm) why.push(`${pl(t.noComm, "row", "rows")} with sales but no commission figure`);
     if(t.zeroSale) why.push(`${pl(t.zeroSale, "row", "rows")} with a $0 sale and no commission figure`);
     const inv = t.invoice ? `${pl(t.invoice, "open invoice", "open invoices")} (commission not yet paid)` : "";
+    const prov = t.stmt > 0 && t.laneStmt === 0;          // rests only on the RULE 14 sales-report exception
     let status;
     if(t.stmt > 0 && missing > 0){ status = "partial"; add(partial, t.slug, { period:t.p, statement_rows:t.stmt, missing_rows:missing, reason:why.join("; ") }); }
+    // A provisional month is NOT a verified receipt (Angelo 2026-10-10): it is reported apart from `received`
+    // and never counted in received totals.
+    else if(t.stmt > 0 && prov){ status = "provisional"; }
     else if(t.stmt > 0){ status = "received"; add(received, t.slug, t.p); }
     else if(t.lane > 0){ status = "incomplete"; add(incomplete, t.slug, { period:t.p, rows:t.lane, reason:why.concat(inv ? [inv] : []).join("; ") }); }
     else if(t.est > 0){ status = "estimated"; add(estimated, t.slug, t.p); }
     else continue;
-    const prov = t.stmt > 0 && t.laneStmt === 0;          // rests only on the RULE 14 sales-report exception
     if(prov) add(provisional, t.slug, t.p);
+    summary[status]++;
     (detail[t.slug] || (detail[t.slug] = {}))[t.p] = { status, statement_rows:t.stmt, zero_commission_rows:t.zero,
       missing_commission_rows:missing, open_invoices:t.invoice, estimate_rows:t.est, provisional:prov };
   }
-  return { received, partial, estimated, incomplete, provisional, detail };
+  return { received, partial, estimated, incomplete, provisional, detail, summary };
 }
 
 // ---- Import gate -------------------------------------------------------------------------------------

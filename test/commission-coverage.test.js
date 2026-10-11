@@ -61,9 +61,12 @@ const LEGACY = [{ id: 'l-1', manufacturer: 'golden-technologies', period: '2025-
     const c = CCmod().coverage(SB_SR);
     assert.deepStrictEqual(c.received, {}); assert.deepStrictEqual(c.estimated, { 'strongback-mobility': ['2026-07'] });
   });
-  await t('PediFix sales report counts as its statement (RULE 14 list) — and only while it is on the list', async () => {
+  await t('PediFix sales report counts as its statement only PROVISIONALLY (RULE 14 list) — never as a verified receipt, and only while on the list', async () => {
     const M = CCmod();
-    assert.deepStrictEqual(M.coverage(PF_SR).received, { pedifix: ['2026-03'] });
+    const c = M.coverage(PF_SR);
+    assert.deepStrictEqual(c.received, {}); assert.deepStrictEqual(c.provisional, { pedifix: ['2026-03'] });
+    assert.strictEqual(c.detail.pedifix['2026-03'].status, 'provisional');
+    assert.deepStrictEqual(c.summary, { received: 0, provisional: 1, partial: 0, incomplete: 0, estimated: 0 });
     const off = M.coverage(PF_SR, { statement_sales_reports: [] });
     assert.deepStrictEqual(off.received, {}); assert.deepStrictEqual(off.estimated, { pedifix: ['2026-03'] });
   });
@@ -98,13 +101,20 @@ const LEGACY = [{ id: 'l-1', manufacturer: 'golden-technologies', period: '2025-
     const c = M.coverage(PF_SR);
     assert.deepStrictEqual(c.provisional, { pedifix: ['2026-03'] }); assert.strictEqual(c.detail.pedifix['2026-03'].provisional, true);
     const both = M.coverage(PF_SR.concat([{ manufacturer: 'pedifix', period: '2026-03-01', source: 'commission', amount: 100, commission: 10 }]));
-    assert.deepStrictEqual(both.provisional, {});
+    assert.deepStrictEqual(both.provisional, {}); assert.deepStrictEqual(both.received, { pedifix: ['2026-03'] });
+    assert.strictEqual(both.detail.pedifix['2026-03'].status, 'received');
     assert.ok(/PROVISIONAL/.test(M.STATEMENT_SALES_REPORT_EVIDENCE.pedifix) && /computed by HCPS/.test(M.STATEMENT_SALES_REPORT_EVIDENCE.pedifix));
   });
   await t('provenance: a sales export with populated (estimated) commission never becomes a statement — ABM and Strongback stay estimated', async () => {
     const c = CCmod().coverage([{ manufacturer: 'abm-respiratory-care', period: '2026-05-01', source: 'sales_report', external_ref: 'abm|1|x|0', amount: 664, commission: 66.4 }].concat(SB_SR));
     assert.deepStrictEqual(c.received, {}); assert.deepStrictEqual(c.provisional, {});
     assert.deepStrictEqual(c.estimated, { 'abm-respiratory-care': ['2026-05'], 'strongback-mobility': ['2026-07'] });
+  });
+  await t('summary counts each month once: verified received apart from provisional, partial, estimated, not entered', async () => {
+    const c = CCmod().coverage(MIXED.concat(PF_SR, SB_SR, SB_SEPT, AIRAVANT));
+    assert.deepStrictEqual(c.summary, { received: 1, provisional: 1, partial: 1, incomplete: 1, estimated: 1 });
+    const n = o => Object.values(o).reduce((a, x) => a + x.length, 0);
+    assert.strictEqual(c.summary.received, n(c.received)); assert.strictEqual(c.summary.estimated, n(c.estimated));
   });
   await t('legacy commission rows (no source, no external_ref) count; a no-source row WITH an external_ref is not commission-lane', async () => {
     const c = CCmod().coverage(LEGACY);
@@ -209,7 +219,8 @@ const LEGACY = [{ id: 'l-1', manufacturer: 'golden-technologies', period: '2025-
     const { m } = boot('commissions-api.js', { monthly_sales: MIXED.concat(PF_SR) });
     const r = await call(m, { action: 'config' }, PRES);
     assert.strictEqual(r.body.partial.bemis[0].missing_rows, 1); assert.ok(!r.body.received.bemis);
-    assert.deepStrictEqual(r.body.provisional, { pedifix: ['2026-03'] });
+    assert.deepStrictEqual(r.body.provisional, { pedifix: ['2026-03'] }); assert.ok(!r.body.received.pedifix, 'provisional is not a verified receipt');
+    assert.deepStrictEqual(r.body.summary, { received: 0, provisional: 1, partial: 1, incomplete: 0, estimated: 0 });
     assert.ok(/PROVISIONAL/.test(r.body.statement_evidence.pedifix) && /PediFix_ALL_2025-2026\.csv/.test(r.body.statement_evidence.pedifix), 'the recorded evidence, not a placeholder');
     assert.strictEqual(r.body.detail.bemis['2026-06'].status, 'partial');
   });
@@ -287,7 +298,8 @@ const LEGACY = [{ id: 'l-1', manufacturer: 'golden-technologies', period: '2025-
   const page = fs.readFileSync(path.join(__dirname, '..', 'src', 'admin', 'import-commissions.html'), 'utf8');
   await t('page: sales amount and commission are required mappings and the grid shows the three states', async () => {
     assert.ok(/\{k:"amount",label:"Sales amount \(\$\)",req:true\}/.test(page) && /\{k:"commission",label:"Commission \(\$\)",req:true\}/.test(page));
-    assert.ok(/const cls=\(on\?"on":pr\?"part":ix\?"inc":e\?"est"/.test(page), 'grid states');
+    assert.ok(/const cls=\(on\?"on":pvOnly\?"on":pr\?"part":ix\?"inc":e\?"est"/.test(page), 'grid states');
+    assert.ok(/PROVISIONAL — not a verified commission statement/.test(page) && /CONFIG\.summary/.test(page) && /not counted as received/.test(page), 'provisional shown apart + summary line');
     assert.ok(/RECEIVED — INCOMPLETE, requires review/.test(page) && /onclick="recvTip\(/.test(page), 'partial wording + tap for touch');
     assert.ok(/mapped_fields:v\.mapped_fields/.test(page) && /refusalHtml\(r\)/.test(page));
   });

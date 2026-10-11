@@ -152,7 +152,7 @@ function renderReceived(){
   if(!mfrs.length){ el.textContent="No manufacturers configured."; return; }
   // Show EVERY year that has commission data, not just the current one, so loaded history stays visible.
   const years=new Set([yr]); const addY=p=>{ const y=parseInt(String(p).slice(0,4),10); if(y) years.add(y); };
-  [rec,est].forEach(o=>Object.values(o).forEach(arr=>(arr||[]).forEach(addY)));
+  [rec,est,prov].forEach(o=>Object.values(o).forEach(arr=>(arr||[]).forEach(addY)));
   [part,inc].forEach(o=>Object.values(o).forEach(arr=>(arr||[]).forEach(x=>addY(x.period))));
   const YRS=[...years].sort();
   // RULE 2026-10-10 (CLAUDE.md §14): only VALIDATED statement data is green. A month with valid lines AND lines
@@ -161,8 +161,11 @@ function renderReceived(){
   // not received / not entered. A dashed green month rests only on the provisional RULE 14 sales-report exception.
   // Tap or hover a month for its counts (valid lines, $0 lines, missing, open invoices, estimates).
   window.__RECVTIP={};
-  el.innerHTML=(CONFIG.coverage_error?`<div class="hint" style="margin:0 0 8px;color:#b42323"><b>${esc(CONFIG.coverage_error)}</b></div>`:"")
-    +`<div class="hint" style="margin:0 0 8px"><span class="mchip on">✓</span> commission statement received · <span class="mchip on prov">P</span> provisional (sales report treated as the statement — not verified) · <span class="mchip part">!</span> received — incomplete, requires review · <span class="mchip est">E</span> sales report only — commission estimated · <span class="mchip inc">!</span> rows on file without commission figures — not received / not entered · <span class="mchip off">·</span> still needed (current year) · <span class="mchip none">·</span> not on file (past year). Tap or hover a month for its counts.</div>`
+  // Management totals: verified receipts only; provisional months are counted apart (Angelo 2026-10-10).
+  const S=CONFIG.summary;
+  const sumLine=S?`<div class="hint" style="margin:0 0 8px"><b>${S.received}</b> month(s) with a verified commission statement · <b>${S.provisional}</b> provisional (sales report treated as the statement — not counted as received) · <b>${S.partial}</b> received — incomplete · <b>${S.estimated}</b> sales report only (estimated) · <b>${S.incomplete}</b> not entered</div>`:"";
+  el.innerHTML=(CONFIG.coverage_error?`<div class="hint" style="margin:0 0 8px;color:#b42323"><b>${esc(CONFIG.coverage_error)}</b></div>`:"")+sumLine
+    +`<div class="hint" style="margin:0 0 8px"><span class="mchip on">✓</span> commission statement received · <span class="mchip on prov">P</span> provisional — sales report treated as the statement, NOT a verified receipt · <span class="mchip part">!</span> received — incomplete, requires review · <span class="mchip est">E</span> sales report only — commission estimated · <span class="mchip inc">!</span> rows on file without commission figures — not received / not entered · <span class="mchip off">·</span> still needed (current year) · <span class="mchip none">·</span> not on file (past year). Tap or hover a month for its counts.</div>`
     +mfrs.map(mf=>{
     const got=new Set(rec[mf.slug]||[]), gotE=new Set(est[mf.slug]||[]), gotP=new Set(prov[mf.slug]||[]);
     const gotI=new Map((inc[mf.slug]||[]).map(x=>[x.period,x])), gotR=new Map((part[mf.slug]||[]).map(x=>[x.period,x]));
@@ -170,9 +173,11 @@ function renderReceived(){
     const groups=YRS.map(y=>{
       const last=(y===yr)?cm:12; let chips="";
       for(let m=1;m<=last;m++){ const mm=y+"-"+String(m).padStart(2,"0"); const on=got.has(mm), pr=gotR.get(mm), ix=gotI.get(mm), e=gotE.has(mm), pv=gotP.has(mm), d=D[mm];
-        const cls=(on?"on":pr?"part":ix?"inc":e?"est":(y===yr?"off":"none"))+(pv?" prov":"");
+        const pvOnly=pv&&!on&&!pr;   // provisional month: shown apart, never as a verified receipt
+        const cls=(on?"on":pvOnly?"on":pr?"part":ix?"inc":e?"est":(y===yr?"off":"none"))+(pv?" prov":"");
         const counts=d?` — ${d.statement_rows} statement line(s), ${d.zero_commission_rows} with an explicit $0 commission, ${d.missing_commission_rows} missing a commission figure, ${d.open_invoices} open invoice(s), ${d.estimate_rows} sales-report estimate(s)`:"";
         let tip=on?`${mm}: commission statement received${counts}`
+          :pvOnly?`${mm}: PROVISIONAL — not a verified commission statement${counts}`
           :pr?`${mm}: RECEIVED — INCOMPLETE, requires review: ${pr.missing_rows} row(s) missing a commission figure (${pr.reason})${counts}`
           :ix?`${mm}: NOT received / not entered — ${ix.rows} row(s) on file without commission figures (${ix.reason})${counts}`
           :e?`${mm}: sales report only — commission is an estimate; no statement received${counts}`:`${mm}: not received`;
