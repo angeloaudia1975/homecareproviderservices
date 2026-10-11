@@ -232,7 +232,7 @@ function parseDealerPages(pages, tableEnd, owner) {
         fields: {} };
       dealers.push(d); group.dealers.push(l.text); pendingTier = null; flushField(); continue;
     }
-    if (/^Strongback Mobility USA · prepared /.test(l.text)) {   // report footer (last page), may wrap
+    if (/^Strongback Mobility USA · /.test(l.text)) {   // report footer (last page), may wrap; "prepared <date>" is read from it when printed
       const parts = [l]; while (lines[i + 1] && lines[i + 1].page === l.page && l.y - lines[i + 1].y < 20 && lines[i + 1].size <= l.size) parts.push(lines[++i]);
       report_notes.push({ kind: "footer", text: joinText(parts.map(x => x.text)), pos: posKey(l.page, l.y) });
       d = null; flushField(); continue;
@@ -358,7 +358,12 @@ function parseReport(layout) {
     }
   }
   for (const n of pagesPart.report_notes.filter(n => n.kind === "unplaced")) check(`unplaced_${n.pos}`, false, `text outside any dealer: "${n.text}"`);
-  check("prepared_date", !!header.prepared_date, `prepared: ${header.prepared_text || "not found"}`);
+  // The prepared date as printed. A footer that says "prepared …" but whose date cannot be read is an ERROR (never
+  // guessed); a report that prints no prepared date at all is "not stated" (a warning) — the import then needs the
+  // register to say "not stated" too, and an upload or received date is never put in its place.
+  const preparedPrinted = !!(footer && /\bprepared\b/i.test(footer.text));
+  if (preparedPrinted) check("prepared_date", !!header.prepared_date, `prepared: ${header.prepared_text || "printed, but the date could not be read"}`);
+  else check("prepared_date", false, "the report does not state a prepared date (not stated)", "warning");
   // Headline figures against the table (Strongback's own numbers; a gap is shown, never corrected).
   const sum = k => table.rows.reduce((s, r) => s + (r[k] || 0), 0);
   const k0 = kpis[0], k3 = kpis.find(k => /to /.test(k.label)), kN = kpis.find(k => /dealers that ordered/.test(k.label));

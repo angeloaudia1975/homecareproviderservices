@@ -4,7 +4,9 @@
 -- Run only after Angelo approves it: Supabase SQL editor, the committed file pasted verbatim, its sha256 checked
 -- first. Safe to re-run. Rollback: supabase/mi1c_dealer_intel_rollback.sql. Needs MI-1b (mfr_sources report kinds).
 --
--- What it adds (one transaction; nothing existing is changed — not mfr_sources, not dealers, not monthly_sales):
+-- Revision 2 (Angelo's review, 2026-10-11 11:12 CT): publication gate, recorded holds, prepared-date check (below).
+--
+-- What it adds (one transaction; no existing ROW is changed — not mfr_sources, not dealers, not monthly_sales):
 --   mfr_intel_reports      — one row per imported report FILE (an accepted dealer_report in mfr_sources): the report's
 --                            own headline figures, sections, footnote, footer and every validation check, as printed.
 --   mfr_dealer_snapshots   — one row per dealer the report prints: Strongback's tier, trend, amounts, last order,
@@ -14,6 +16,18 @@
 --   mfr_intel_events       — append-only audit: every import and every match decision, who / when / why.
 --   hcps_mfr_intel_import(p jsonb) — the ONLY way rows are written (one transaction, idempotent).
 --   hcps_mfr_intel_match(p jsonb)  — the ONLY way a match changes (a person's decision, with a reason).
+--   mfr_intel_holds        — recorded owner decisions that HOLD a printed dealer (seeded: Strongback "Wyatt's Pharmacy
+--                            Inc", RULE 18). An import must store such a row as held; no match decision may change it.
+--                            A release is a future, separately designed owner-authorized step — not built here.
+--   hcps_mfr_intel_name_key(text) — the one name key for holds (upper case, apostrophes dropped, punctuation → space,
+--                            INC / LLC / CORP / CO / LTD / THE dropped). The JS matcher uses the same rule.
+--   PUBLICATION GATE (changes MI-1b behaviour; reversible — the rollback drops it): trigger
+--     mfr_sources_publication_gate refuses ANY change that makes a dealer report "published" unless
+--     app_settings.phase2_flags.mi_intel_publish is exactly true (missing row / key / unreadable = OFF). It fires on
+--     every path — hcps_mfr_report_publication, a REST write, hand SQL as the owner. The switch is NOT turned on here:
+--     publishing is a separately approved phase. Withdrawing is not affected. The MI-1b function itself is unchanged.
+--   PREPARED DATE: an import is refused unless the date the report prints ("prepared 8 October 2026") equals the
+--     register's prepared date — both stated and equal, or both not stated. Never an upload date, never invented.
 --
 -- Separation (RULE, MI-1c authorization 2026-10-11):
 --   * Manufacturer-reported amounts, trends, tiers, contacts and notes live ONLY here. Nothing here writes or is
@@ -26,12 +40,13 @@
 --     and printed position (page + baseline, + column for contacts). Re-importing the same file adds nothing; two
 --     identical notes printed in two places stay two notes.
 --
--- RULE 19 — stated per object: all four tables RLS ON, NO policies, revoke all from public / anon / authenticated;
---   service_role gets SELECT only (the API reads; it cannot insert, update or delete a row directly).
---   The two functions are SECURITY DEFINER with a pinned search_path, executable by service_role only; the guard
---   triggers accept a write only when it runs with the TABLE OWNER's rights inside one of them, so neither the API
---   nor any other role can write these tables by hand. After running: outside public-key probe on the four tables
---   and the two functions (expect 401 / 42501).
+-- RULE 19 — stated per object: all five tables (the four above + mfr_intel_holds) RLS ON, NO policies, revoke all from
+--   public / anon / authenticated; service_role gets SELECT only (the API reads; it cannot insert, update or delete a row
+--   directly). Import and match are SECURITY DEFINER with a pinned search_path, executable by service_role only; the
+--   guard triggers accept a write only when it runs with the TABLE OWNER's rights inside one of them, so neither the API
+--   nor any other role can write these tables by hand. The guard, hold-guard, publication-gate and name-key functions
+--   are executable by nobody but the owner. After running: outside public-key probe on the five tables and the two
+--   functions (expect 401 / 42501). This file needs public.app_settings (production has it; RLS on, service_role only).
 -- pg-safeupdate: every UPDATE / DELETE below carries a WHERE clause.
 -- ============================================================================================
 begin;
@@ -40,6 +55,7 @@ do $$ begin
   if to_regclass('public.mfr_sources') is null or to_regclass('public.mfr_source_events') is null then
     raise exception 'mi1c: MI-1b (mfr_sources report register) must be installed first'; end if;
   if to_regclass('public.dealers') is null then raise exception 'mi1c: dealers missing'; end if;
+  if to_regclass('public.app_settings') is null then raise exception 'mi1c: app_settings missing (holds the publication switch)'; end if;
 end $$;
 
 -- 1. Report header (one per imported report file).
@@ -142,6 +158,46 @@ create table if not exists public.mfr_intel_events (
 );
 create index if not exists mfr_intel_events_src_idx on public.mfr_intel_events (source_id, at);
 
+-- 4b. Recorded holds (owner decisions). The name key is one SQL definition; _dealer_intel_match.js holdKey mirrors it
+--     (test/mi1c-intel.pg.test.js compares the two on every printed name of the real report).
+create or replace function public.hcps_mfr_intel_name_key(p text)
+returns text language sql immutable set search_path = pg_catalog as $$
+  select nullif(string_agg(w, ' ' order by o), '')
+    from regexp_split_to_table(regexp_replace(upper(replace(replace(coalesce(p, ''), '''', ''), '’', '')), '[^A-Z0-9]+', ' ', 'g'), ' ')
+         with ordinality as t(w, o)
+   where w <> '' and w not in ('INC','LLC','CORP','CO','LTD','THE')
+$$;
+create table if not exists public.mfr_intel_holds (
+  id            bigserial primary key,
+  manufacturer  text not null,
+  name_key      text not null,
+  printed_name  text not null check (length(trim(printed_name)) > 0),
+  reason        text not null check (length(trim(reason)) > 0),
+  decided_by    text not null check (length(trim(decided_by)) > 0),
+  decided_on    date not null,
+  created_at    timestamptz not null default now(),
+  constraint mfr_intel_holds_key check (name_key = public.hcps_mfr_intel_name_key(printed_name)),
+  constraint mfr_intel_holds_uk unique (manufacturer, name_key)
+);
+comment on table public.mfr_intel_holds is 'MI-1c: owner decisions that hold a printed dealer out of matching. Rows are added only by reviewed SQL run by the owner; never changed or deleted (a release is a future, separately approved design).';
+insert into public.mfr_intel_holds (manufacturer, name_key, printed_name, reason, decided_by, decided_on)
+values ('strongback-mobility', public.hcps_mfr_intel_name_key('Wyatt''s Pharmacy Inc'), 'Wyatt''s Pharmacy Inc',
+  'Held by Angelo''s decision (2026-10-10): the relationship between Wyatt''s Pharmacy and Weaver Medical Equipment Metro is unconfirmed — no match, merge or reassignment until it is confirmed.',
+  'Angelo Audia (CLAUDE.md RULE 18)', date '2026-10-10')
+on conflict (manufacturer, name_key) do nothing;
+create or replace function public.hcps_mfr_intel_holds_guard()
+returns trigger language plpgsql as $$
+declare v_owner text;
+begin
+  select pg_get_userbyid(relowner) into v_owner from pg_class where oid = tg_relid;
+  if tg_op = 'INSERT' and current_user = v_owner then return new; end if;
+  raise exception 'mi1c_hold_guard: a recorded hold is never % — releasing a hold is a separate, owner-authorized step', lower(tg_op);
+end $$;
+drop trigger if exists mfr_intel_holds_guard on public.mfr_intel_holds;
+create trigger mfr_intel_holds_guard before insert or update or delete on public.mfr_intel_holds for each row execute function public.hcps_mfr_intel_holds_guard();
+drop trigger if exists mfr_intel_holds_no_truncate on public.mfr_intel_holds;
+create trigger mfr_intel_holds_no_truncate before truncate on public.mfr_intel_holds for each statement execute function public.hcps_mfr_intel_holds_guard();
+
 -- 5. Guard: the four tables change only inside the two functions, running with the owner's rights.
 create or replace function public.hcps_mfr_intel_guard()
 returns trigger language plpgsql as $$
@@ -196,6 +252,11 @@ begin
     raise exception 'mi1c_wrong_file: the parsed file is not the file registered as source %', v_src.id; end if;
   if (p->>'period_start')::date is distinct from v_src.report_period_start or (p->>'period_end')::date is distinct from v_src.report_period_end then
     raise exception 'mi1c_period_mismatch: the report says % to %, the register says % to %', p->>'period_start', p->>'period_end', v_src.report_period_start, v_src.report_period_end; end if;
+  -- The manufacturer's prepared date: what the report prints must be what the register holds (both stated and equal,
+  -- or both not stated). A mismatch is never accepted as the same source record.
+  if nullif(p->>'prepared_date', '')::date is distinct from v_src.prepared_date then
+    raise exception 'mi1c_prepared_date_mismatch: the report prints prepared %, the register says % — correct the register or the file; nothing is imported',
+      coalesce(nullif(p->>'prepared_date', ''), 'NOT STATED'), coalesce(v_src.prepared_date::text, 'NOT STATED'); end if;
   if jsonb_array_length(coalesce(p->'errors', '[]'::jsonb)) > 0 then
     raise exception 'mi1c_parse_errors: the parse has % error(s) — nothing is imported', jsonb_array_length(p->'errors'); end if;
   v_count := jsonb_array_length(v_rows);
@@ -219,6 +280,14 @@ begin
 
   for d in select * from jsonb_array_elements(v_rows) loop
     v_m := d->'match'; v_status := v_m->>'status'; v_dealer := nullif(v_m->>'dealer_id','')::uuid;
+    -- Recorded holds: a held name is stored held (no dealer), and "held" comes only from a recorded hold.
+    if exists (select 1 from public.mfr_intel_holds h where h.manufacturer = v_src.manufacturer
+                and h.name_key = public.hcps_mfr_intel_name_key(d->>'printed_name')) then
+      if v_status is distinct from 'held' or v_dealer is not null or coalesce(v_m->>'method', '') <> 'held' then
+        raise exception 'mi1c_hold_violated: row % ("%") is held by a recorded owner decision and must be imported as held', d->>'row_no', d->>'printed_name'; end if;
+    elsif v_status = 'held' then
+      raise exception 'mi1c_hold_unknown: row % ("%") is marked held, but no recorded hold names it', d->>'row_no', d->>'printed_name';
+    end if;
     if v_status = 'matched' then
       if not exists (select 1 from public.dealers x where x.id = v_dealer and coalesce((to_jsonb(x)->>'is_test')::boolean, false) = false) then
         raise exception 'mi1c_bad_match: row % — dealer % is not an HCPS dealer that may be matched', d->>'row_no', v_dealer; end if;
@@ -277,6 +346,11 @@ begin
   if (v_dec = 'matched') <> (v_dealer is not null) then raise exception 'mi1c_bad_decision: a dealer is named exactly when the decision is "matched"'; end if;
   select * into v_s from public.mfr_dealer_snapshots where id = (p->>'snapshot_id')::bigint for update;
   if not found then raise exception 'mi1c_no_snapshot: %', p->>'snapshot_id'; end if;
+  -- A dealer held by a recorded owner decision is never changed by a match decision — not to matched, review,
+  -- unmatched, nor "held" again. Releasing it is a future, separately designed owner-authorized step.
+  if exists (select 1 from public.mfr_intel_holds h where h.manufacturer = v_s.manufacturer
+              and h.name_key = public.hcps_mfr_intel_name_key(v_s.printed_name)) then
+    raise exception 'mi1c_held_locked: "%" is held by a recorded owner decision — the standard decision workflow cannot change it', v_s.printed_name; end if;
   select * into v_src from public.mfr_sources where id = v_s.source_id;
   if v_src.status <> 'accepted' then raise exception 'mi1c_source_closed: report % is % — its matches no longer change', v_src.id, v_src.status; end if;
   if v_s.match_status = v_dec and v_s.dealer_id is not distinct from v_dealer then
@@ -298,9 +372,36 @@ begin
   return jsonb_build_object('ok', true, 'unchanged', false, 'snapshot_id', v_s.id, 'match_status', v_dec, 'dealer_id', v_dealer, 'match_version', v_s.match_version + 1);
 end $$;
 
+-- 7b. PUBLICATION GATE on mfr_sources (MI-1b's table). Before MI-1c, every publish was refused because no
+--     intelligence existed; once a report is imported, MI-1b's hcps_mfr_report_publication would accept it. This trigger
+--     keeps every accepted or imported report unpublished until the publishing phase is separately approved and the
+--     switch app_settings.phase2_flags.mi_intel_publish is set to exactly true. It runs with the owner's rights (so it
+--     can always read the switch), on every write path, for every role including the owner. Missing settings table,
+--     row or key, a non-true value, or a read error = OFF. Only the step INTO "published" is gated; withdrawing and
+--     every other change are untouched. The rollback drops this trigger and function (MI-1b's function never changed).
+create or replace function public.hcps_mfr_publication_gate()
+returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_on boolean := false;
+begin
+  if new.kind is distinct from 'dealer_report' or new.publication_status is distinct from 'published' then return new; end if;
+  if tg_op = 'UPDATE' and old.publication_status is not distinct from 'published' then return new; end if;
+  if to_regclass('public.app_settings') is not null then
+    begin
+      execute $q$select (value->'mi_intel_publish') = 'true'::jsonb from public.app_settings where key = 'phase2_flags'$q$ into v_on;
+    exception when others then v_on := false; end;
+  end if;
+  if v_on is not true then
+    raise exception 'mi1b_publication_not_authorized: publishing manufacturer dealer intelligence is not authorized yet (phase2_flags.mi_intel_publish is off) — report % stays unpublished', new.id;
+  end if;
+  return new;
+end $$;
+drop trigger if exists mfr_sources_publication_gate on public.mfr_sources;
+create trigger mfr_sources_publication_gate before insert or update on public.mfr_sources
+  for each row execute function public.hcps_mfr_publication_gate();
+
 -- 8. RULE 19 privileges.
 do $$ declare t text; begin
-  foreach t in array array['mfr_intel_reports','mfr_dealer_snapshots','mfr_dealer_observations','mfr_intel_events'] loop
+  foreach t in array array['mfr_intel_reports','mfr_dealer_snapshots','mfr_dealer_observations','mfr_intel_events','mfr_intel_holds'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('revoke all on public.%I from public, anon, authenticated, service_role', t);
     execute format('grant select on public.%I to service_role', t);
@@ -308,7 +409,8 @@ do $$ declare t text; begin
   end loop;
 end $$;
 do $$ declare f text; begin
-  foreach f in array array['public.hcps_mfr_intel_guard()'] loop
+  foreach f in array array['public.hcps_mfr_intel_guard()', 'public.hcps_mfr_intel_holds_guard()', 'public.hcps_mfr_publication_gate()',
+                           'public.hcps_mfr_intel_name_key(text)'] loop
     execute format('revoke all on function %s from public, anon, authenticated, service_role', f); end loop;
   foreach f in array array['public.hcps_mfr_intel_import(jsonb)', 'public.hcps_mfr_intel_match(jsonb)'] loop
     execute format('revoke all on function %s from public, anon, authenticated', f);
@@ -320,29 +422,39 @@ commit;
 -- ---------------------------------------------------------------------------------------------
 -- CHECK (read-only; the SQL editor shows only this last result). Every row: ok = true.
 select * from (
-  select 1 n, 'four MI-1c tables exist, RLS on, 0 policies' check_name,
+  select 1 n, 'five MI-1c tables exist, RLS on, 0 policies' check_name,
          count(*)::text value,
-         count(*) = 4 and bool_and(c.relrowsecurity) and not exists (select 1 from pg_policy p where p.polrelid = any(array['public.mfr_intel_reports'::regclass,'public.mfr_dealer_snapshots'::regclass,'public.mfr_dealer_observations'::regclass,'public.mfr_intel_events'::regclass])) ok
-    from pg_class c where c.oid in ('public.mfr_intel_reports'::regclass,'public.mfr_dealer_snapshots'::regclass,'public.mfr_dealer_observations'::regclass,'public.mfr_intel_events'::regclass)
-  union all select 2, 'grants to anon / authenticated / PUBLIC on the four tables (expect 0)', count(*)::text, count(*) = 0
+         count(*) = 5 and bool_and(c.relrowsecurity) and not exists (select 1 from pg_policy p where p.polrelid = any(array['public.mfr_intel_reports'::regclass,'public.mfr_dealer_snapshots'::regclass,'public.mfr_dealer_observations'::regclass,'public.mfr_intel_events'::regclass,'public.mfr_intel_holds'::regclass])) ok
+    from pg_class c where c.oid in ('public.mfr_intel_reports'::regclass,'public.mfr_dealer_snapshots'::regclass,'public.mfr_dealer_observations'::regclass,'public.mfr_intel_events'::regclass,'public.mfr_intel_holds'::regclass)
+  union all select 2, 'grants to anon / authenticated / PUBLIC on the five tables (expect 0)', count(*)::text, count(*) = 0
     from information_schema.role_table_grants where table_schema = 'public'
-     and table_name in ('mfr_intel_reports','mfr_dealer_snapshots','mfr_dealer_observations','mfr_intel_events') and grantee in ('anon','authenticated','PUBLIC')
-  union all select 3, 'service_role privileges on the four tables = SELECT only', string_agg(distinct privilege_type, ','),
-         coalesce(bool_and(privilege_type = 'SELECT'), false) and count(*) = 4
+     and table_name in ('mfr_intel_reports','mfr_dealer_snapshots','mfr_dealer_observations','mfr_intel_events','mfr_intel_holds') and grantee in ('anon','authenticated','PUBLIC')
+  union all select 3, 'service_role privileges on the five tables = SELECT only', string_agg(distinct privilege_type, ','),
+         coalesce(bool_and(privilege_type = 'SELECT'), false) and count(*) = 5
     from information_schema.role_table_grants where table_schema = 'public'
-     and table_name in ('mfr_intel_reports','mfr_dealer_snapshots','mfr_dealer_observations','mfr_intel_events') and grantee = 'service_role'
+     and table_name in ('mfr_intel_reports','mfr_dealer_snapshots','mfr_dealer_observations','mfr_intel_events','mfr_intel_holds') and grantee = 'service_role'
   union all select 4, 'MI-1c functions executable by anon / authenticated (expect 0)', count(*)::text, count(*) = 0
     from pg_proc p cross join unnest(array['anon','authenticated']) r
-   where p.pronamespace = 'public'::regnamespace and p.proname like 'hcps_mfr_intel_%' and has_function_privilege(r, p.oid, 'execute')
+   where p.pronamespace = 'public'::regnamespace and (p.proname like 'hcps_mfr_intel_%' or p.proname = 'hcps_mfr_publication_gate')
+     and has_function_privilege(r, p.oid, 'execute')
   union all select 5, 'import + match are SECURITY DEFINER with a pinned search_path, executable by service_role', count(*)::text,
          count(*) = 2 and bool_and(p.prosecdef) and bool_and(p.proconfig::text like '%search_path=public%') and bool_and(has_function_privilege('service_role', p.oid, 'execute'))
     from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname in ('hcps_mfr_intel_import','hcps_mfr_intel_match')
-  union all select 6, 'guard triggers installed (row + truncate on each table)', count(*)::text, count(*) = 8
-    from pg_trigger where not tgisinternal
-     and tgrelid in ('public.mfr_intel_reports'::regclass,'public.mfr_dealer_snapshots'::regclass,'public.mfr_dealer_observations'::regclass,'public.mfr_intel_events'::regclass)
+  union all select 6, 'guard triggers installed (row + truncate on each of the five tables)', count(*)::text, count(*) = 10
+    from pg_trigger where not tgisinternal and tgrelid in ('public.mfr_intel_reports'::regclass,'public.mfr_dealer_snapshots'::regclass,'public.mfr_dealer_observations'::regclass,'public.mfr_intel_events'::regclass,'public.mfr_intel_holds'::regclass)
   union all select 7, 'no MI-1c data yet (expect 0 reports, snapshots, observations, events)',
          ((select count(*) from public.mfr_intel_reports) + (select count(*) from public.mfr_dealer_snapshots)
           + (select count(*) from public.mfr_dealer_observations) + (select count(*) from public.mfr_intel_events))::text,
          ((select count(*) from public.mfr_intel_reports) + (select count(*) from public.mfr_dealer_snapshots)
           + (select count(*) from public.mfr_dealer_observations) + (select count(*) from public.mfr_intel_events)) = 0
+  union all select 8, 'publication gate on mfr_sources installed; mi_intel_publish switch NOT on; 0 dealer reports published',
+         coalesce((select (value->'mi_intel_publish')::text from public.app_settings where key = 'phase2_flags'), 'absent') || ' / '
+           || (select count(*) from public.mfr_sources where kind = 'dealer_report' and publication_status = 'published'),
+         exists (select 1 from pg_trigger where tgname = 'mfr_sources_publication_gate' and tgrelid = 'public.mfr_sources'::regclass and tgenabled = 'O')
+           and coalesce((select value->'mi_intel_publish' from public.app_settings where key = 'phase2_flags'), 'null'::jsonb) is distinct from 'true'::jsonb
+           and not exists (select 1 from public.mfr_sources where kind = 'dealer_report' and publication_status = 'published')
+  union all select 9, 'recorded hold: Strongback "Wyatt''s Pharmacy Inc" (key WYATTS PHARMACY)',
+         (select string_agg(manufacturer || ':' || name_key, ', ') from public.mfr_intel_holds),
+         (select count(*) from public.mfr_intel_holds) = 1
+           and exists (select 1 from public.mfr_intel_holds where manufacturer = 'strongback-mobility' and name_key = 'WYATTS PHARMACY')
 ) x order by n;

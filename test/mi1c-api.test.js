@@ -14,22 +14,27 @@ const HAVE_PDF = fs.existsSync(PDF_PATH);
 const PDF = HAVE_PDF ? fs.readFileSync(PDF_PATH) : Buffer.from('%PDF-1.4\n%%EOF');
 const sha = b => crypto.createHash('sha256').update(b).digest('hex');
 const FX = require('./fixtures/mi1c-hcps-2026-10-11.json');
+const HOLDS = require('./mi1c-holds.js').strongback();   // as the migration seeds mfr_intel_holds
 
 function world(o) {
   o = o || {};
   const st = { calls: [], rpcs: [] };
   const src = (o.sources || [{ id: 7, manufacturer: 'strongback-mobility', kind: 'dealer_report', title: 'Strongback — September 2026', file_name: 'Strongback_Report_Overview_September_2026.pdf',
-    file_sha256: sha(PDF), storage_path: `reports/strongback-mobility/dealer_report/${sha(PDF)}.pdf`, received_date: '2026-10-10', prepared_date: '2026-10-08',
+    file_sha256: sha(PDF), storage_path: `reports/strongback-mobility/dealer_report/${sha(PDF)}.pdf`, received_date: '2026-10-10', prepared_date: '2026-10-08', prepared_date_status: 'stated',
     report_period_start: '2026-09-01', report_period_end: '2026-09-30', status: 'accepted', publication_status: 'unpublished' }]);
   const dealers = FX.dealers.map(d => ({ ...d, rep_email: d.rep === 'Greg' ? 'greg@hcps.us' : 'angelo@hcps.us', rep_name: null }));
   // monthly_sales rows: the fixture's per-name totals spread over months inside the report's 12 months.
   const sales = []; let k = 0;
   for (const s of FX.sales) for (let i = 0; i < s.n; i++) sales.push({ id: 'ms' + (++k), customer_name: s.customer_name, ship_city: s.ship_city, ship_state: s.ship_state,
-    dealer_id: s.dealer_id, amount: Math.round(s.amount / s.n * 100) / 100, period: `2026-0${1 + (i % 8)}-01`, order_date: `2026-0${1 + (i % 8)}-15` });
+    dealer_id: s.dealer_id, amount: Math.round(s.amount / s.n * 100) / 100, qty: 1, period: `2026-0${1 + (i % 8)}-01`, order_date: `2026-0${1 + (i % 8)}-15`, source: 'sales_report', external_ref: 'sb:' + k });
+  // Optional: commission-statement / other-lane rows (e.g. a statement that repeats sales-report orders).
+  for (const x of (o.extraSales ? o.extraSales(sales) : [])) sales.push(x);
   const tables = { dealers, dealer_aliases: FX.aliases, monthly_sales: sales, mfr_dealer_snapshots: o.snapshots || [], mfr_intel_reports: o.reports || [],
     dealer_manufacturers: [{ dealer_id: dealers[0].id, manufacturer: 'strongback-mobility', active: true, account_ref: 'SB-1' }],
     staff_users_all: [{ email: 'angelo@hcps.us', name: 'Angelo Audia' }, { email: 'greg@hcps.us', name: 'Greg Campbell' }],
-    mfr_dealer_observations: [], mfr_intel_events: [] };
+    mfr_dealer_observations: [], mfr_intel_events: [], mfr_intel_holds: o.holds || HOLDS.map((h, i) => ({ id: i + 1, ...h })) };
+  const snapById = o.snapById || { 5: { id: 5, manufacturer: 'strongback-mobility', printed_name: 'Larco Medical' },
+    6: { id: 6, manufacturer: 'strongback-mobility', printed_name: "Wyatt's Pharmacy Inc" }, 8: { id: 8, manufacturer: 'strongback-mobility', printed_name: 'WYATTS PHARMACY' } };
   const res = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body, text: async () => typeof body === 'string' ? body : JSON.stringify(body),
     arrayBuffer: async () => { const b = Buffer.isBuffer(body) ? body : Buffer.from(String(body)); return b.buffer.slice(b.byteOffset, b.byteOffset + b.length); } });
   st.fetch = async (url, opts) => {
@@ -54,6 +59,7 @@ function world(o) {
     if (t === 'dealers' && /business_name=ilike/.test(u)) { const qq = decodeURIComponent(u.match(/ilike\.\*([^*]*)\*/)[1]).toLowerCase(); st.search = u;
       return res(200, dealers.filter(d => d.business_name.toLowerCase().includes(qq)).slice(0, 25)); }
     if (t === 'dealers' && /id=in\./.test(u)) { const ids = u.match(/id=in\.\(([^)]*)\)/)[1].split(','); return res(200, dealers.filter(d => ids.includes(d.id))); }
+    if (t === 'mfr_dealer_snapshots' && /[?&]id=eq\./.test(u)) { const id = u.match(/[?&]id=eq\.(\d+)/)[1]; return res(200, snapById[id] ? [snapById[id]] : []); }
     if (t === 'mfr_intel_reports' && /source_id=eq\./.test(u)) { const id = u.match(/source_id=eq\.(\d+)/)[1]; return res(200, tables.mfr_intel_reports.filter(r => String(r.source_id) === id)); }
     if (t && tables[t]) return res(200, page ? [] : tables[t]);
     return res(404, { message: 'unexpected call ' + m + ' ' + u });
@@ -104,7 +110,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
     const r = await call(b.m, { action: 'preview', source_id: 7 }, as('pres')); assert.strictEqual(r.status, 422); assert.ok(/unreadable_pdf|not_a_strongback_report/.test(r.body.error), r.body.error);
   });
   await t('an unreadable evidence table stops the preview (503) — never treated as "no evidence"', async () => {
-    for (const tb of ['dealers', 'dealer_aliases', 'monthly_sales', 'mfr_dealer_snapshots', 'dealer_manufacturers']) {
+    for (const tb of ['dealers', 'dealer_aliases', 'monthly_sales', 'mfr_dealer_snapshots', 'dealer_manufacturers', 'mfr_intel_holds']) {
       const b = boot({ failRead: u => u.includes('/rest/v1/' + tb + '?') }); const r = await call(b.m, { action: 'preview', source_id: 7 }, as('pres'));
       assert.strictEqual(r.status, HAVE_PDF ? 503 : 422, tb + ' → ' + r.status);
     }
@@ -179,7 +185,49 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
       try { const r = await call(m, { action: 'import', source_id: 7, preview_hash: PV.preview_hash }, as('pres'));
         assert.strictEqual(r.body.error, 'preview_changed'); assert.strictEqual(w.rpcs.length, 0); } finally { FX.aliases.pop(); }
     });
-  } else console.log('  (the real September PDF is not present here — the real-report API tests did not run; set MI1C_PDF)');
+    console.log('\n— prepared date (report vs register) —');
+    for (const [label, srcOver, want] of [['the register says 2026-10-07, the report prints 8 October 2026', { prepared_date: '2026-10-07', prepared_date_status: 'stated' }, /prints prepared 8 October 2026 \(2026-10-08\), the register says 2026-10-07/],
+                                          ['the register says NOT STATED, the report prints 8 October 2026', { prepared_date: null, prepared_date_status: 'not_stated' }, /the register says not stated/]]) {
+      await t(`MISMATCH shown first in the preview and the import refused (422), nothing written — ${label}`, async () => {
+        const src = { id: 7, manufacturer: 'strongback-mobility', kind: 'dealer_report', file_name: 'S.pdf', file_sha256: sha(PDF), storage_path: 'reports/x.pdf', received_date: '2026-10-10',
+          report_period_start: '2026-09-01', report_period_end: '2026-09-30', status: 'accepted', publication_status: 'unpublished', ...srcOver };
+        const { w, m } = boot({ sources: [src] }); const pv = await call(m, { action: 'preview', source_id: 7 }, as('pres'));
+        assert.strictEqual(pv.status, 200); assert.strictEqual(pv.body.prepared_date.status, 'mismatch'); assert.ok(want.test(pv.body.prepared_date.message), pv.body.prepared_date.message);
+        assert.strictEqual(pv.body.unresolved[0].status, 'prepared_date_mismatch'); assert.ok(!/2026-10-10/.test(pv.body.prepared_date.message), 'the received date is never offered');
+        const r = await call(m, { action: 'import', source_id: 7, preview_hash: pv.body.preview_hash }, as('pres'));
+        assert.strictEqual(r.status, 422); assert.strictEqual(r.body.error, 'mi1c_prepared_date_mismatch'); assert.strictEqual(w.rpcs.length, 0); assert.strictEqual(writesOf(w).length, 0);
+      });
+    }
+    await t('the register and the report agree (2026-10-08, stated) → shown as agreeing', async () => {
+      assert.strictEqual(PV.prepared_date.status, 'agrees'); assert.strictEqual(PV.prepared_date.pdf, '2026-10-08'); assert.strictEqual(PV.prepared_date.register, '2026-10-08');
+    });
+
+    console.log('\n— recorded holds come from the database —');
+    await t('the preview holds Wyatt\'s because mfr_intel_holds names it; the payload carries it as held', async () => {
+      assert.deepStrictEqual(PV.holds.map(h => h.printed_name), ["Wyatt's Pharmacy Inc"]);
+      assert.strictEqual(imp.p.dealers.find(d => /Wyatt/.test(d.printed_name)).match.method, 'held');
+    });
+    await t('with no recorded hold the matcher holds nothing (no hidden copy in code) — and the database import would then refuse nothing it did not hold', async () => {
+      const { m } = boot({ holds: [] }); const r = await call(m, { action: 'preview', source_id: 7 }, as('pres'));
+      assert.strictEqual(r.body.counts.held, 0); assert.notStrictEqual(r.body.preview_hash, PV.preview_hash);
+    });
+
+    console.log('\n— reconciliation uses the sales-report lane only —');
+    await t('commission-statement rows repeating sales-report orders (and an "other" source) do NOT change the HCPS sales figures; they are listed apart', async () => {
+      const dup = sales => sales.filter(x => x.period === '2026-09-01' || x.period === '2026-08-01').slice(0, 6)
+        .map((x, i) => ({ ...x, id: 'c' + i, source: i < 5 ? 'commission' : null, external_ref: null, commission: 9 }))
+        .concat([{ id: 'o1', customer_name: 'X', dealer_id: null, amount: 777, qty: 1, period: '2026-09-01', source: 'portal', external_ref: 'p1' }]);
+      const { m } = boot({ extraSales: dup }); const r = await call(m, { action: 'preview', source_id: 7 }, as('pres'));
+      assert.strictEqual(r.status, 200);
+      assert.deepStrictEqual(r.body.reconciliation.map(x => [x.hcps, x.hcps_lines]), PV.reconciliation.map(x => [x.hcps, x.hcps_lines]), 'the sales figures are unchanged');
+      assert.deepStrictEqual(r.body.counts, PV.counts, 'the matches are unchanged');
+      assert.strictEqual(r.body.preview_hash, PV.preview_hash, 'the import payload (matches + evidence) is unchanged — commission rows never add to the sales evidence');
+      const lanes = r.body.reconciliation[1].other_lanes; const com = lanes.find(l => l.lane === 'commission');
+      assert.strictEqual(com.rows, 6); assert.strictEqual(com.same_as_sales_report, 6); assert.ok(lanes.some(l => l.lane === 'other:portal' && l.amount === 777));
+      assert.ok(PV.reconciliation.every(x => x.other_lanes.length === 0), 'production today: Strongback has sales-report rows only');
+    });
+  } else if (process.env.MI1C_ALLOW_NO_PDF === '1') console.log('  (the real September PDF is not present — real-report API tests NOT run, allowed by MI1C_ALLOW_NO_PDF=1)');
+  else await t('the REAL September PDF is present (set MI1C_PDF; MI1C_ALLOW_NO_PDF=1 to run without it)', async () => { throw new Error('real PDF missing: ' + PDF_PATH); });
 
   console.log('\n— decisions, search, report —');
   await t('decide: one call to hcps_mfr_intel_match; actor from the sign-in; a database refusal comes back with its code', async () => {
@@ -191,6 +239,19 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
     r = await call(b.m, { action: 'decide', snapshot_id: 5, decision: 'review', reason: 'x', expected_version: 0 }, as('pres')); assert.strictEqual(r.status, 409); assert.strictEqual(r.body.error, 'mi1c_stale');
     b = boot(); r = await call(b.m, { action: 'decide', snapshot_id: 5, decision: 'matched', dealer_id: 'not-a-uuid', reason: 'x' }, as('pres')); assert.strictEqual(r.status, 400); assert.strictEqual(b.w.rpcs.length, 0);
     b = boot(); r = await call(b.m, { action: 'decide', decision: 'review', reason: 'x' }, as('pres')); assert.strictEqual(r.status, 400);
+  });
+  await t('decide on the HELD dealer (recorded hold): refused 423 for every decision, before the database, nothing written', async () => {
+    for (const [sid, decision] of [[6, 'matched'], [6, 'review'], [6, 'unmatched'], [6, 'held'], [8, 'unmatched']]) {
+      const b = boot(); const r = await call(b.m, { action: 'decide', snapshot_id: sid, decision, dealer_id: decision === 'matched' ? FX.dealers[0].id : '', reason: 'owner says so', expected_version: 0 }, as('pres'));
+      assert.strictEqual(r.status, 423, `${sid} ${decision} → ${r.status}`); assert.strictEqual(r.body.error, 'mi1c_held_locked'); assert.strictEqual(b.w.rpcs.length, 0); assert.strictEqual(writesOf(b.w).length, 0);
+    }
+  });
+  await t('decide: the database refusal mi1c_held_locked also comes back as 423 (second line of defence); unreadable holds → 503, nothing written; unknown snapshot → 404', async () => {
+    let b = boot({ holds: [], rpc: () => ({ status: 400, body: { message: 'mi1c_held_locked: "Wyatt\'s Pharmacy Inc" is held by a recorded owner decision' } }) });
+    let r = await call(b.m, { action: 'decide', snapshot_id: 6, decision: 'unmatched', reason: 'x', expected_version: 0 }, as('pres')); assert.strictEqual(r.status, 423); assert.strictEqual(r.body.error, 'mi1c_held_locked');
+    b = boot({ failRead: u => /mfr_intel_holds/.test(u) }); r = await call(b.m, { action: 'decide', snapshot_id: 5, decision: 'review', reason: 'x', expected_version: 0 }, as('pres'));
+    assert.strictEqual(r.status, 503); assert.strictEqual(b.w.rpcs.length, 0);
+    b = boot(); r = await call(b.m, { action: 'decide', snapshot_id: 99, decision: 'review', reason: 'x', expected_version: 0 }, as('pres')); assert.strictEqual(r.status, 404); assert.strictEqual(b.w.rpcs.length, 0);
   });
   await t('reps and Relations cannot decide or search', async () => {
     for (const tok of ['greg', 'lori']) { const b = boot();

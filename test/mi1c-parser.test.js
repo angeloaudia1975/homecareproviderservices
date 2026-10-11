@@ -9,8 +9,9 @@ const { spawnSync } = require('child_process');
 const FN = process.env.MI1C_FN_DIR || require('path').join(__dirname, '..', 'netlify', 'functions');   // MI1C_FN_DIR: a mutant copy (test/mi1c.mutants.js)
 const { mapGlyphs, PUA } = require(FN + '/_strongback_layout.js');
 const R = require(FN + '/_strongback_report.js');
-const { matchDealers, keyOf } = require(FN + '/_dealer_intel_match.js');
-const { HELD } = require(FN + '/_dealer_intel.js');
+const { matchDealers, keyOf, holdKey } = require(FN + '/_dealer_intel_match.js');
+const DI = require(FN + '/_dealer_intel.js');
+const HOLDS = require('./mi1c-holds.js').strongback();   // as the migration seeds mfr_intel_holds
 const FX = require('./fixtures/mi1c-hcps-2026-10-11.json');
 const PDF = process.env.MI1C_PDF || '/mnt/user-data/uploads/Strongback_Report_Overview_September_2026.pdf';
 
@@ -107,8 +108,61 @@ const MATCH = {
     assert.strictEqual(matchDealers({ rows: [row('Larco Medical', 'Cookeville', 'TN')], hcps: { dealers: [D('a', 'Larco Medical', 'Cookeville', 'TN', { account_class: 'manufacturer' })] } })[0].status, 'review');
   });
   await t('a held name stays held even when an alias points somewhere; the evidence is still shown', () => {
-    const m = matchDealers({ rows: [row("Wyatt's Pharmacy Inc", 'Lithia Springs', 'GA')], hcps: { dealers: [D('w', 'Weaver Medical Equipment Metro', 'Lithia Springs', 'GA')], aliases: [{ alias_norm: 'WYATT S PHARMACY', dealer_id: 'w' }] }, held: HELD['strongback-mobility'] })[0];
+    const m = matchDealers({ rows: [row("Wyatt's Pharmacy Inc", 'Lithia Springs', 'GA')], hcps: { dealers: [D('w', 'Weaver Medical Equipment Metro', 'Lithia Springs', 'GA')], aliases: [{ alias_norm: 'WYATT S PHARMACY', dealer_id: 'w' }] }, held: HOLDS })[0];
     assert.strictEqual(m.status, 'held'); assert.strictEqual(m.dealer_id, null); assert.strictEqual(m.candidates[0].dealer_id, 'w');
+  });
+  await t('the hold key (same rule as SQL hcps_mfr_intel_name_key) catches spelling variants of the held name', () => {
+    for (const n of ["Wyatts Pharmacy", "WYATT'S PHARMACY, INC.", "Wyatt’s Pharmacy Inc", "wyatt's pharmacy llc"]) {
+      assert.strictEqual(holdKey(n), 'WYATTS PHARMACY', n);
+      assert.strictEqual(matchDealers({ rows: [row(n, 'Lithia Springs', 'GA')], hcps: { dealers: [D('w', "Wyatt's Pharmacy", 'Lithia Springs', 'GA')] }, held: HOLDS })[0].status, 'held', n);
+    }
+    assert.notStrictEqual(holdKey('Wyatt Pharmacy Group'), holdKey("Wyatt's Pharmacy Inc"));
+    assert.strictEqual(matchDealers({ rows: [row("Wyatt's Pharmacy Inc", 'Lithia Springs', 'GA')], hcps: { dealers: [] }, held: [] })[0].status, 'unmatched', 'without the recorded hold nothing is held (the hold comes only from the database)');
+  });
+  await t('the recorded hold read from the migration is Wyatt\'s Pharmacy Inc, with Angelo\'s reason', () => {
+    assert.deepStrictEqual(HOLDS.map(h => h.printed_name), ["Wyatt's Pharmacy Inc"]); assert.ok(/Weaver Medical Equipment Metro is unconfirmed/.test(HOLDS[0].reason));
+  });
+
+  console.log('\n— reconciliation by lane (read-only) —');
+  await t('a sales-report line and a commission-statement line for the SAME transaction: the sales figure counts it ONCE; the commission lane is shown apart', () => {
+    const parse = { header: { through_month: '2026-09', through_text: 'September 2026', owner: 'Angelo Audia' }, kpis: [{ value: 536, value_text: '$536' }, {}, {}, { label: 'Jan to Sep 2026', value: 1072, value_text: '$1,072' }],
+      dealers: [{ row_no: 1, name: 'Lacey Drug Company', city: 'Acworth', state: 'GA', l12m: 1072, l12m_text: '$1,072', last_order_date: '2026-09-15' }] };
+    const L = 'a8697eec-0000-4000-8000-000000000000';
+    const rows = [
+      { dealer_id: L, amount: 536, qty: 1, period: '2026-09-01', order_date: '2026-09-15', source: 'sales_report', external_ref: 'sb:5775:1010AB:1' },
+      { dealer_id: L, amount: 536, qty: 1, period: '2026-08-01', order_date: '2026-08-12', source: 'sales_report', external_ref: 'sb:5701:1010AB:1' },
+      { dealer_id: L, amount: 536, qty: 1, commission: 48.24, period: '2026-09-01', source: 'commission', external_ref: null },     // the same September order, from a statement
+      { dealer_id: L, amount: 99, qty: 1, commission: 8.91, period: '2026-09-01', source: null, external_ref: null },              // legacy commission-lane row
+      { dealer_id: L, amount: 10, qty: 1, period: '2026-09-01', source: 'portal', external_ref: 'x' },                               // another source
+    ];
+    const d = DI.differences({ parse, matches: [{ row_no: 1, printed_name: 'Lacey Drug Company', status: 'matched', dealer_id: L, candidates: [] }],
+      hcps: { dealers: [{ id: L, business_name: 'Lacey Drug Company', city: 'Acworth', state: 'GA' }], sales_rows: rows, dealer_manufacturers: [] }, manufacturer: 'strongback-mobility' });
+    const [mon, l12] = d.reconciliation;
+    assert.strictEqual(mon.hcps, 536, 'September = the one sales-report line, not 536 + 536 + 99 + 10'); assert.strictEqual(mon.hcps_lines, 1); assert.strictEqual(mon.gap, 0);
+    assert.strictEqual(l12.hcps, 1072); assert.strictEqual(l12.gap, 0);
+    const com = mon.other_lanes.find(o => o.lane === 'commission');
+    assert.deepStrictEqual([com.rows, com.amount, com.commission, com.same_as_sales_report], [2, 635, 57.15, 1]);
+    assert.ok(/never added/.test(com.note) && /same transaction/.test(com.note));
+    assert.deepStrictEqual(mon.other_lanes.find(o => o.lane === 'other:portal').rows, 1);
+    const x = d.dealers[0].dealers[0];
+    assert.strictEqual(x.hcps_l12m, 1072); assert.strictEqual(x.hcps_l12m_lines, 2); assert.strictEqual(x.hcps_last_order, '2026-09-15');
+    assert.ok(!x.differences.some(s => /^last 12 months/.test(s)), 'no false gap from the commission lane');
+    assert.ok(x.differences.some(s => /Commission Report Import \(statements\): 2 row\(s\), \$635 .*not added/.test(s)), x.differences.join(' | '));
+    assert.deepStrictEqual(rows.map(DI.laneOf), ['sales_report', 'sales_report', 'commission', 'commission', 'other:portal']);
+  });
+
+  console.log('\n— the manufacturer\'s prepared date vs the register —');
+  await t('prepared date: agrees / both not stated pass; a different date, a register date the report lacks, or a date the register lacks → mismatch', () => {
+    const P = (date, text) => ({ header: { prepared_date: date, prepared_text: text } });
+    const ok = DI.preparedDateCheck(P('2026-10-08', '8 October 2026'), { prepared_date: '2026-10-08', prepared_date_status: 'stated' });
+    assert.deepStrictEqual([ok.ok, ok.status], [true, 'agrees']);
+    const none = DI.preparedDateCheck(P(null, null), { prepared_date: null, prepared_date_status: 'not_stated' });
+    assert.deepStrictEqual([none.ok, none.status], [true, 'not_stated_both']);
+    for (const [pdf, reg, st] of [['2026-10-08', '2026-10-07', 'stated'], [null, '2026-10-08', 'stated'], ['2026-10-08', null, 'not_stated']]) {
+      const c = DI.preparedDateCheck(P(pdf, pdf ? 'x' : null), { prepared_date: reg, prepared_date_status: st, received_date: '2026-10-10' });
+      assert.deepStrictEqual([c.ok, c.status], [false, 'mismatch'], `${pdf} vs ${reg}`); assert.ok(/MISMATCH/.test(c.message));
+      assert.ok(!/2026-10-10/.test(c.message), 'the received date is never offered as the prepared date');
+    }
   });
   await t('a person-confirmed match from an earlier report is reused for the same printed name + city', () => {
     const h = { dealers: [D('hq', 'Williams Brothers Washington HQ', 'Washington', 'IN'), D('p', 'Williams Brothers Princeton', 'Princeton', 'IN')],
@@ -129,11 +183,25 @@ const MATCH = {
     assert.strictEqual(m.status, 'unmatched'); assert.strictEqual(m.dealer_id, null); assert.deepStrictEqual(m.sales_unattributed.map(s => s.amount), [320]);
   });
 
-  if (!fs.existsSync(PDF)) { console.log('\n  (the real September PDF is not present here — golden checks did not run; set MI1C_PDF)'); return done(); }
+  if (!fs.existsSync(PDF)) {
+    if (process.env.MI1C_ALLOW_NO_PDF === '1') { console.log('\n  (the real September PDF is not present — golden checks NOT run, allowed by MI1C_ALLOW_NO_PDF=1)'); return done(); }
+    await t('the REAL September PDF is present (set MI1C_PDF; MI1C_ALLOW_NO_PDF=1 to run without it)', () => { throw new Error('real PDF missing: ' + PDF); }); return done(); }
   console.log('\n— the REAL September 2026 report —');
   const { extractLayout } = require(FN + '/_strongback_layout.js');
   const bytes = fs.readFileSync(PDF);
-  const parse = R.parseReport(await extractLayout(bytes));
+  const LAYOUT = await extractLayout(bytes);
+  const parse = R.parseReport(LAYOUT);
+  await t('REAL file, prepared date: a footer that prints no "prepared" date reads as NOT STATED (warning, 0 errors); "prepared" with an unreadable date is an ERROR', () => {
+    const edit = (fn) => { const L = JSON.parse(JSON.stringify(LAYOUT)); let n = 0;
+      for (const pg of L.pages) for (const l of pg.lines) if (/^Strongback Mobility USA · prepared /.test(l.text)) { l.text = fn(l.text); n++; }
+      assert.strictEqual(n, 1, 'one footer line'); return R.parseReport(L); };
+    const none = edit(x => x.replace(/prepared 8 October 2026 · /, ''));
+    assert.strictEqual(none.header.prepared_date, null); assert.deepStrictEqual(none.errors, []);
+    assert.ok(/^Strongback Mobility USA · orders from the last few days/.test(none.header.footer_text || ''), 'the footer is still read as the footer (never absorbed into the last dealer page)');
+    assert.deepStrictEqual(none.warnings.map(w => w.id), ['prepared_date']); assert.ok(/not stated/.test(none.warnings[0].detail));
+    const bad = edit(x => x.replace('prepared 8 October 2026', 'prepared early October'));
+    assert.strictEqual(bad.header.prepared_date, null); assert.deepStrictEqual(bad.errors.map(e => e.id), ['prepared_date']);
+  });
   await t('17 pages, 25 table rows, 22 dealer pages in 5 groups (3 + 3 + 2 + 6 + 8), every check passes', () => {
     assert.strictEqual(parse.header.pdf.pages, 17); assert.strictEqual(parse.dealers.length, 25);
     assert.deepStrictEqual(parse.groups.map(g => [g.heading, g.count, g.dealers.length]), [['Slowing down', 3, 3], ['New accounts', 3, 3], ['Going strong', 2, 2], ['Trending up', 6, 6], ['Quiet lately', 8, 8]]);
@@ -200,7 +268,7 @@ const MATCH = {
   });
 
   console.log('\n— the agreed match table on the production snapshot (2026-10-11) —');
-  const M = matchDealers({ rows: parse.dealers, hcps: FX, held: HELD['strongback-mobility'] });
+  const M = matchDealers({ rows: parse.dealers, hcps: FX, held: HOLDS });
   const name = id => (FX.dealers.find(d => d.id === id) || {}).business_name || null;
   await t('15 matched, 7 review, 1 held, 2 unmatched — each printed dealer exactly as agreed', () => {
     const got = Object.fromEntries(M.map(m => [m.printed_name, [m.status, m.dealer_id ? name(m.dealer_id) : null]]));

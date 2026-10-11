@@ -2,18 +2,14 @@
 // recorded match holds, the import payload (snapshots + observations with SOURCE-POSITION keys), and the read-only
 // comparison with HCPS records shown in the preview. Nothing here writes anything.
 const { matchDealers } = require("./_dealer_intel_match.js");
+const { isCommissionLane } = require("./_commission_coverage.js");
 
 // One parser per manufacturer report format. A manufacturer without one is refused, never guessed.
 const PARSERS = { "strongback-mobility": () => require("./_strongback_report.js") };
 
-// Recorded business decisions that stop a match being made (CLAUDE.md RULE 18, Angelo 2026-10-10):
-// "Wyatt's Pharmacy → Weaver Medical Equipment Metro stays unchanged until the business relationship is confirmed;
-//  no merge, no reassignment; ambiguous manufacturer intelligence for it is held for review."
-const HELD = {
-  "strongback-mobility": [
-    { name: "Wyatt's Pharmacy Inc", reason: "Held by Angelo's decision (2026-10-10): the relationship between Wyatt's Pharmacy and Weaver Medical Equipment Metro is unconfirmed — no match, merge or reassignment until it is confirmed." },
-  ],
-};
+// Recorded holds (owner decisions that stop a match, e.g. Wyatt's Pharmacy — CLAUDE.md RULE 18) live in ONE place: the
+// database table mfr_intel_holds, which the import and the match decision enforce. The API reads them (strictly) and
+// passes them in; there is no second copy here.
 
 const OBS_KINDS = ["contact_person", "product_line", "told_us", "contact_log", "offer"];
 
@@ -65,15 +61,45 @@ function buildPayload({ source, parse, matches, actor }) {
 }
 function monthEnd(ym) { const [y, m] = ym.split("-").map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); }
 
+// Which lane a monthly_sales row belongs to. The reconciliation with the manufacturer's invoiced figures uses ONLY the
+// sales-report lane (order exports: source = 'sales_report'). Commission statements (the commission lane, the same test
+// as SQL hcps_ms_is_commission_lane) and any other source are shown SEPARATELY and never added in: a commission
+// statement can describe the very transactions a sales export already holds, so adding lanes would double-count.
+function laneOf(r) {
+  if (r.source === "sales_report") return "sales_report";
+  if (isCommissionLane(r)) return "commission";
+  return "other:" + r.source;
+}
+const LANE_LABEL = { sales_report: "Sales Report Import (order exports)", commission: "Commission Report Import (statements)" };
+const r2 = n => Math.round(n * 100) / 100;
+const moneyKey = v => Math.round(Number(v || 0) * 100);
+
 // Read-only comparison of a report with HCPS records (the preview). Strongback's figures and HCPS's are shown side by
-// side; neither is adjusted, and a difference is a fact to look at, not an error.
+// side; neither is adjusted, and a difference is a fact to look at, not an error. Nothing here writes or moves a row.
 function differences({ parse, matches, hcps, manufacturer }) {
   const end = monthEnd(parse.header.through_month);
   const startDate = new Date(end + "T00:00:00Z"); startDate.setUTCMonth(startDate.getUTCMonth() - 11); startDate.setUTCDate(1);
   const start = startDate.toISOString().slice(0, 10), monthStart = `${parse.header.through_month}-01`;
   const D = new Map((hcps.dealers || []).map(d => [d.id, d]));
-  const salesRows = hcps.sales_rows || [];
+  const allRows = hcps.sales_rows || [];
+  const salesRows = allRows.filter(s => laneOf(s) === "sales_report");
+  const otherRows = allRows.filter(s => laneOf(s) !== "sales_report");
   const inWin = (r, a, b) => { const p = String(r.period || "").slice(0, 10); return p >= a && p <= b; };
+  // A row of another lane that looks like a sales-report transaction (same month, quantity and amount; same dealer
+  // when both carry one) — the cross-lane duplicate test of MI-1a. Counted, never removed.
+  const sameTxn = (o, s) => String(o.period || "").slice(0, 7) === String(s.period || "").slice(0, 7) && moneyKey(o.amount) === moneyKey(s.amount)
+    && (o.qty == null || s.qty == null || Number(o.qty) === Number(s.qty)) && (!o.dealer_id || !s.dealer_id || o.dealer_id === s.dealer_id);
+  const lanesIn = (rows, a, b) => {
+    const by = new Map();
+    for (const o of rows.filter(x => inWin(x, a, b))) {
+      const l = laneOf(o); const t = by.get(l) || { lane: l, label: LANE_LABEL[l] || `other source "${l.slice(6)}"`, rows: 0, amount: 0, commission: 0, same_as_sales_report: 0 };
+      t.rows++; t.amount += Number(o.amount || 0); if (o.commission != null && o.commission !== "") t.commission += Number(o.commission);
+      if (salesRows.some(s => sameTxn(o, s))) t.same_as_sales_report++;
+      by.set(l, t);
+    }
+    return [...by.values()].map(t => ({ ...t, amount: r2(t.amount), commission: r2(t.commission),
+      note: "Shown separately — never added to the sales figure" + (t.same_as_sales_report ? `; ${t.same_as_sales_report} row(s) look like the same transaction as a sales-report line` : "") }));
+  };
   const perDealer = matches.map(m => {
     const r = parse.dealers.find(x => x.row_no === m.row_no);
     const ids = m.dealer_id ? [m.dealer_id] : m.candidates.map(c => c.dealer_id);
@@ -81,37 +107,58 @@ function differences({ parse, matches, hcps, manufacturer }) {
       const d = D.get(id) || {}; const rows = salesRows.filter(s => s.dealer_id === id);
       const l12 = rows.filter(s => inWin(s, start, end)); const amt = l12.reduce((a, s) => a + Number(s.amount || 0), 0);
       const last = rows.map(s => s.order_date || String(s.period || "").slice(0, 10)).filter(Boolean).sort().pop() || null;
+      const other = lanesIn(otherRows.filter(s => s.dealer_id === id), start, end);
       const dm = (hcps.dealer_manufacturers || []).find(x => x.dealer_id === id && x.manufacturer === manufacturer);
       const items = [];
       if (d.city && r.city && String(d.city).toLowerCase() !== String(r.city).toLowerCase()) items.push(`HCPS city ${d.city}, ${d.state || "?"} · printed ${r.city}, ${r.state || r.state_text || "?"}`);
-      if (Math.round(amt * 100) !== Math.round((r.l12m || 0) * 100)) items.push(`last 12 months: HCPS Strongback sales $${amt.toLocaleString("en-US", { maximumFractionDigits: 2 })} (${l12.length} lines) · Strongback reports ${r.l12m_text} invoiced`);
+      if (Math.round(amt * 100) !== Math.round((r.l12m || 0) * 100)) items.push(`last 12 months: HCPS Strongback sales-report lines $${amt.toLocaleString("en-US", { maximumFractionDigits: 2 })} (${l12.length} lines) · Strongback reports ${r.l12m_text} invoiced`);
+      for (const o of other) items.push(`${o.label}: ${o.rows} row(s), $${o.amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} in the same 12 months — shown separately, not added`);
       if (r.last_order_date && last && last !== r.last_order_date) items.push(`last order: HCPS ${last} · Strongback ${r.last_order_date}`);
       if (parse.header.owner && d.rep_name && d.rep_name !== parse.header.owner) items.push(`HCPS rep ${d.rep_name} · report addressed to ${parse.header.owner} (HCPS ownership is not changed)`);
       if (!dm) items.push(`no ${manufacturer} line on the HCPS dealer record`);
       else if (dm.active === false) items.push(`${manufacturer} line on the HCPS record is inactive`);
       return { dealer_id: id, business_name: d.business_name || null, city: d.city || null, state: d.state || null,
-        hcps_rep: d.rep_name || null, hcps_l12m: Math.round(amt * 100) / 100, hcps_l12m_lines: l12.length, hcps_last_order: last,
+        hcps_rep: d.rep_name || null, hcps_l12m: r2(amt), hcps_l12m_lines: l12.length, hcps_last_order: last, other_lanes_l12m: other,
         account_ref: dm ? dm.account_ref || null : null, differences: items };
     }) };
   });
-  const sum = (a, b) => Math.round(salesRows.filter(s => inWin(s, a, b)).reduce((x, s) => x + Number(s.amount || 0), 0) * 100) / 100;
+  const sum = (a, b) => r2(salesRows.filter(s => inWin(s, a, b)).reduce((x, s) => x + Number(s.amount || 0), 0));
+  const cnt = (a, b) => salesRows.filter(s => inWin(s, a, b)).length;
   const k = parse.kpis || [];
   const reconciliation = [
     { what: `${parse.header.through_text}`, strongback_text: k[0] ? k[0].value_text : null, strongback: k[0] ? k[0].value : null,
-      hcps: sum(monthStart, end), hcps_note: "HCPS monthly_sales, this manufacturer, this month (all lanes as stored)" },
+      hcps: sum(monthStart, end), hcps_lines: cnt(monthStart, end), other_lanes: lanesIn(otherRows, monthStart, end),
+      hcps_note: "HCPS sales-report lines (Sales Report Import), this manufacturer, this month. Commission statements and other sources are listed separately and never added." },
     { what: k[3] ? k[3].label : "last 12 months", strongback_text: k[3] ? k[3].value_text : null, strongback: k[3] ? k[3].value : null,
-      hcps: sum(start, end), hcps_note: `HCPS monthly_sales ${start} to ${end}` },
-  ].map(x => ({ ...x, gap: x.strongback === null ? null : Math.round((x.strongback - x.hcps) * 100) / 100,
-    note: "Strongback reports what it invoiced the dealer; HCPS holds the lines it has imported. Neither side is adjusted." }));
+      hcps: sum(start, end), hcps_lines: cnt(start, end), other_lanes: lanesIn(otherRows, start, end),
+      hcps_note: `HCPS sales-report lines ${start} to ${end}. Commission statements and other sources are listed separately and never added.` },
+  ].map(x => ({ ...x, gap: x.strongback === null ? null : r2(x.strongback - x.hcps),
+    note: "Strongback reports what it invoiced the dealer; HCPS holds the order lines it has imported. Neither side is adjusted." }));
   return { window: { start, end }, dealers: perDealer, reconciliation };
 }
 
+// The manufacturer's prepared date: what the report prints vs what the MI-1b register holds. Never an upload or
+// received date, never invented. Anything but "both stated and equal" or "both not stated" is a mismatch, which blocks
+// the import (the database refuses it too: mi1c_prepared_date_mismatch).
+function preparedDateCheck(parse, src) {
+  const pdf = parse.header.prepared_date || null, reg = src.prepared_date || null;
+  const regStatus = src.prepared_date_status || (reg ? "stated" : "not_stated");
+  const ok = pdf === reg && (regStatus === "stated") === !!reg;
+  const shown = v => v || "not stated";
+  return { ok, status: ok ? (pdf ? "agrees" : "not_stated_both") : "mismatch", pdf: pdf, pdf_text: parse.header.prepared_text || null,
+    register: reg, register_status: regStatus,
+    message: ok ? (pdf ? `The report prints prepared ${parse.header.prepared_text}; the register says ${reg}.` : "Neither the report nor the register states a prepared date.")
+      : `MISMATCH — the report prints prepared ${pdf ? `${parse.header.prepared_text || pdf} (${pdf})` : "nothing (not stated)"}, the register says ${shown(reg)}. Correct the register entry (or the file) before importing; nothing is accepted as the same source record.` };
+}
+
 // Everything a preview needs, from the parse and the HCPS evidence. Pure.
-function preview({ manufacturer, parse, hcps }) {
-  const matches = matchDealers({ rows: parse.dealers, hcps, held: HELD[manufacturer] || [] });
+// held: the recorded holds of this manufacturer (mfr_intel_holds rows), read strictly by the caller.
+function preview({ manufacturer, parse, hcps, held }) {
+  if (!Array.isArray(held)) throw new Error("preview needs the recorded holds (an array, read from mfr_intel_holds)");
+  const matches = matchDealers({ rows: parse.dealers, hcps, held });
   const counts = { matched: 0, review: 0, unmatched: 0, held: 0 };
   for (const m of matches) counts[m.status]++;
   return { matches, counts, diff: differences({ parse, matches, hcps, manufacturer }) };
 }
 
-module.exports = { PARSERS, HELD, OBS_KINDS, buildPayload, differences, preview, monthEnd };
+module.exports = { PARSERS, OBS_KINDS, buildPayload, differences, preparedDateCheck, laneOf, preview, monthEnd };

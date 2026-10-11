@@ -38,9 +38,19 @@ function keyOf(name, cities = []) {
   return words(name).filter(w => w !== "S" && !GENERIC.has(w) && !STATE_WORDS.has(w) && !cityWords.has(w)).map(sing).join("");
 }
 
+// The name key of a recorded hold — the SAME rule as SQL public.hcps_mfr_intel_name_key (upper case, apostrophes
+// dropped, anything else non-alphanumeric → space, INC / LLC / CORP / CO / LTD / THE dropped). "Wyatt's Pharmacy Inc",
+// "WYATTS PHARMACY" and "Wyatt’s Pharmacy, Inc." all key to "WYATTS PHARMACY".
+const HOLD_DROP = new Set(["INC", "LLC", "CORP", "CO", "LTD", "THE"]);
+function holdKey(name) {
+  const k = String(name || "").replace(/['’]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").split(" ").filter(w => w && !HOLD_DROP.has(w)).join(" ");
+  return k || null;
+}
+
+// held: the recorded holds (mfr_intel_holds rows: {printed_name, reason}) — a held name is never matched.
 function matchDealers({ rows, hcps, held = [] }) {
   const D = new Map((hcps.dealers || []).map(d => [d.id, d]));
-  const heldBy = new Map(held.map(h => [dnorm(h.name), h]));
+  const heldBy = new Map(held.map(h => [holdKey(h.printed_name || h.name), h]));
   const out = [];
   for (const r of rows) {
     const n = dnorm(r.name), k = keyOf(r.name);
@@ -52,8 +62,8 @@ function matchDealers({ rows, hcps, held = [] }) {
     const prev = (hcps.previous || []).filter(p => dnorm(p.printed_name) === n && cityNorm(p.printed_city) === cityNorm(r.city) && D.has(p.dealer_id));
     const prevIds = [...new Set(prev.map(p => p.dealer_id))];
 
-    if (heldBy.has(n)) {
-      const h = heldBy.get(n);
+    if (heldBy.has(holdKey(r.name))) {
+      const h = heldBy.get(holdKey(r.name));
       // Evidence is still collected and shown — the hold only stops a match being made.
       for (const a of (hcps.aliases || [])) if (a.alias_norm === n) add(a.dealer_id, `alias "${a.alias_norm}"`);
       for (const s of (hcps.sales || [])) if (dnorm(s.customer_name) === n && s.dealer_id) add(s.dealer_id, `sales "${s.customer_name}"`);
@@ -130,4 +140,4 @@ function unattributed(hcps, n, k) {
     .map(s => ({ customer_name: s.customer_name, ship_city: s.ship_city || null, rows: s.n, amount: s.amount }));
 }
 
-module.exports = { matchDealers, keyOf, _internal: { cityNorm, GENERIC } };
+module.exports = { matchDealers, keyOf, holdKey, _internal: { cityNorm, GENERIC } };

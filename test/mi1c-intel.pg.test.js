@@ -22,7 +22,7 @@ const SB = f => (f === 'mi1c_dealer_intel.sql' && process.env.MI1C_SQL) ? proces
 const FX = require('./fixtures/mi1c-hcps-2026-10-11.json');
 const { buildPayload } = require('../netlify/functions/_dealer_intel.js');
 const { matchDealers } = require('../netlify/functions/_dealer_intel_match.js');
-const { HELD } = require('../netlify/functions/_dealer_intel.js');
+const { holdKey } = require('../netlify/functions/_dealer_intel_match.js');
 
 let pass = 0, fail = 0;
 function t(name, fn) { try { fn(); pass++; console.log('  ok   ' + name); } catch (e) { fail++; console.log('  FAIL ' + name + '\n       ' + String(e && e.message || e).split('\n')[0]); } }
@@ -73,7 +73,11 @@ function synthParse(o) {
     dealers, offers: [{ text: 'No orders in a while. If it helps: 5% on the next Premium Chair order, Amanda sets it up.', where: 'group: Quiet lately', pos: 'p12:y725.3' }],
     checks: [{ id: 'dealer_count', ok: true, level: 'error', detail: 'x' }], errors: [], warnings: [] }, o);
 }
-const matchOf = parse => matchDealers({ rows: parse.dealers, hcps: FX, held: HELD['strongback-mobility'] });
+// The recorded holds come from the database (mfr_intel_holds), as in the API.
+const holdsOf = db => JSON.parse(run(db, `select coalesce(json_agg(json_build_object('printed_name', printed_name, 'reason', reason) order by id), '[]') from mfr_intel_holds where manufacturer = 'strongback-mobility'`));
+const matchOf = (parse, db) => matchDealers({ rows: parse.dealers, hcps: FX, held: holdsOf(db || DB) });
+const APPSET = `create table if not exists app_settings (key text primary key, value jsonb); alter table app_settings enable row level security;
+  revoke all on app_settings from anon, authenticated; insert into app_settings (key, value) values ('phase2_flags', '{"mi_import_v2": true}') on conflict do nothing`;
 
 run('postgres', `drop database if exists ${DB}`); run('postgres', `create database ${DB}`);
 (async () => {
@@ -96,6 +100,7 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
        alter default privileges in schema public grant all on functions to anon, authenticated, service_role`);
     // Production dealers carry these columns; the MI-1a fixture's minimal table does not.
     q(`alter table dealers add column if not exists is_test boolean default false, add column if not exists active boolean default true, add column if not exists account_class text`);
+    q(APPSET);   // production has app_settings (phase2_flags; RLS on, service_role only)
     q(`create table if not exists dealer_aliases (alias_norm text primary key, raw_name text, dealer_id uuid references dealers(id), created_at timestamptz default now())`);
     const vals = FX.dealers.map(d => `('${d.id}', $n$${d.business_name}$n$, ${d.parent_id ? `'${d.parent_id}'` : 'null'}, $c$${d.city || ''}$c$, '${d.state || ''}')`);
     q(`insert into dealers (id, business_name, parent_id, city, state) values ${vals.join(',')}`);
@@ -112,7 +117,7 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
     let fp0;
     t('MI-1c applies, and applies again; every install check ok', () => {
       file(DB, SB('mi1c_dealer_intel.sql')); const out = file(DB, SB('mi1c_dealer_intel.sql'));
-      const rows = out.trim().split('\n').filter(l => /^\d+\|/.test(l)); assert.strictEqual(rows.length, 7, out);
+      const rows = out.trim().split('\n').filter(l => /^\d+\|/.test(l)); assert.strictEqual(rows.length, 9, out);
       for (const r of rows) assert.ok(/\|t$/.test(r), 'check failed: ' + r);
       fp0 = q(FP);
     });
@@ -123,10 +128,10 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
     });
 
     console.log('\n— RULE 19: who can read or write —');
-    for (const tb of ['mfr_intel_reports', 'mfr_dealer_snapshots', 'mfr_dealer_observations', 'mfr_intel_events']) {
+    for (const tb of ['mfr_intel_reports', 'mfr_dealer_snapshots', 'mfr_dealer_observations', 'mfr_intel_events', 'mfr_intel_holds']) {
       t(`${tb}: anon and authenticated cannot read; service_role reads but cannot insert/update/delete`, () => {
         for (const r of ['anon', 'authenticated']) refused(() => as(r, `select count(*) from ${tb}`), /permission denied/);
-        assert.strictEqual(sr(`select count(*) from ${tb}`).split('\n').pop(), '0');
+        assert.strictEqual(sr(`select count(*) from ${tb}`).split('\n').pop(), q(`select count(*) from ${tb}`));
         refused(() => sr(`insert into ${tb} (id) values (1)`), /permission denied/);
         refused(() => sr(`update ${tb} set id = id where true`), /permission denied/);
         refused(() => sr(`delete from ${tb} where true`), /permission denied/);
@@ -165,8 +170,26 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
       ['an observation for a row the report does not have', (() => { const p = P(); p.observations.push({ row_no: 77, kind: 'told_us', position_key: 'p9:y1.0', text: 'x' }); return p; })(), /mi1c_orphan_observation/],
       ['an unknown chair-on-floor wording', (() => { const p = P(); p.dealers[2].floor_text = 'on display'; return p; })(), /display_status|not-null|null value/],
       ['an unknown observation kind', (() => { const p = P(); p.observations[0].kind = 'task'; return p; })(), /mfr_dealer_observations_kind_check|check constraint/],
+      // Prepared date (the register says 2026-10-08, stated).
+      ['a prepared date that differs from the register (report 2026-10-07, register 2026-10-08)', P({ prepared_date: '2026-10-07' }), /mi1c_prepared_date_mismatch/],
+      ['a report with NO prepared date while the register states one', P({ prepared_date: null }), /mi1c_prepared_date_mismatch: the report prints prepared NOT STATED/],
+      // Recorded holds (Wyatt's is row 4 of the synthetic report).
+      ['the held dealer (Wyatt\'s) imported as unmatched', (() => { const p = P(); Object.assign(p.dealers[3].match, { status: 'unmatched', method: 'none' }); return p; })(), /mi1c_hold_violated/],
+      ['the held dealer imported as matched to Weaver', (() => { const p = P(); Object.assign(p.dealers[3].match, { status: 'matched', method: 'exact', dealer_id: FX.dealers.find(d => /Weaver/.test(d.business_name)).id }); return p; })(), /mi1c_hold_violated/],
+      ['the held dealer imported as "review"', (() => { const p = P(); Object.assign(p.dealers[3].match, { status: 'review', method: 'exact' }); return p; })(), /mi1c_hold_violated/],
+      ['a variant spelling of the held name ("Wyatts Pharmacy") imported as unmatched', (() => { const p = P(); p.dealers[3].printed_name = 'Wyatts Pharmacy'; Object.assign(p.dealers[3].match, { status: 'unmatched', method: 'none' }); return p; })(), /mi1c_hold_violated/],
+      ['a dealer marked "held" with no recorded hold (Nebcare)', (() => { const p = P(); Object.assign(p.dealers[2].match, { status: 'held', method: 'held' }); return p; })(), /mi1c_hold_unknown/],
     ];
     for (const [name, p, re] of cases) t(`refused: ${name}`, () => { refused(() => imp(p), re); assert.strictEqual(before(), empty); });
+    t('prepared date NOT STATED in the register but printed on the report → refused; both not stated → imports', () => {
+      const s = register(H('7'), '2026-04-01', '2026-04-30', { prepared_date: null }); accept(s.id);
+      assert.strictEqual(q(`select coalesce(prepared_date::text,'-')||'/'||prepared_date_status from mfr_sources where id=${s.id}`), '-/not_stated');
+      const base = { source_id: s.id, file_sha256: H('7'), period_start: '2026-04-01', period_end: '2026-04-30' };
+      refused(() => imp(Object.assign(P(), base)), /mi1c_prepared_date_mismatch: the report prints prepared 2026-10-08, the register says NOT STATED/);
+      assert.strictEqual(q(`select count(*) from mfr_intel_reports where source_id=${s.id}`), '0');
+      const r = imp(Object.assign(P(), base, { prepared_date: null })); assert.strictEqual(r.existing, false);
+      assert.strictEqual(q(`select coalesce(prepared_date::text,'NULL') from mfr_intel_reports where source_id=${s.id}`), 'NULL', 'no date invented');
+    });
 
     console.log('\n— import: one transaction, idempotent, nothing else touched —');
     let res;
@@ -250,10 +273,30 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
       assert.strictEqual(ver(), 1);
     });
     t('a match never changes the dealer, its family, its rep or its aliases (fingerprints)', () => assert.deepStrictEqual(q(FP).split('|').slice(0, 3), fp0.split('|').slice(0, 3)));
-    t('Wyatt\'s stays held until a person decides — and a person may decide, with a reason', () => {
+    t('Wyatt\'s (recorded hold) can NOT be changed by a decision — matched, review, unmatched or held, with a reason and the right version', () => {
       const w = q(`select id||'/'||match_version from mfr_dealer_snapshots where source_id=${sep.id} and row_no=4`).split('/');
-      const r = dec({ snapshot_id: +w[0], decision: 'unmatched', reason: 'confirmed: not a Weaver location', actor: 'angelo@hcps.us', expected_version: +w[1] });
-      assert.strictEqual(r.match_status, 'unmatched');
+      const WEAVER = FX.dealers.find(d => /Weaver/.test(d.business_name)).id;
+      const n0 = q(`select count(*) from mfr_intel_events where snapshot_id=${w[0]}`);
+      for (const [decision, dealer_id] of [['matched', WEAVER], ['review', ''], ['unmatched', ''], ['held', '']])
+        refused(() => dec({ snapshot_id: +w[0], decision, dealer_id, reason: 'owner says so', actor: 'angelo@hcps.us', expected_version: +w[1] }), /mi1c_held_locked/);
+      assert.strictEqual(q(`select match_status||'/'||coalesce(dealer_id::text,'-')||'/'||match_method||'/'||match_version from mfr_dealer_snapshots where id=${w[0]}`), `held/-/held/${w[1]}`);
+      assert.strictEqual(q(`select count(*) from mfr_intel_events where snapshot_id=${w[0]}`), n0, 'no audit event: nothing changed');
+    });
+    t('the general review workflow is unchanged: a review row may still be set to held by a person, and back', () => {
+      const id = q(`select id||'/'||match_version from mfr_dealer_snapshots where source_id=${sep.id} and row_no=3`).split('/');   // Nebcare, unmatched
+      let r = dec({ snapshot_id: +id[0], decision: 'held', reason: 'waiting for Strongback', actor: 'angelo@hcps.us', expected_version: +id[1] }); assert.strictEqual(r.match_status, 'held');
+      r = dec({ snapshot_id: +id[0], decision: 'unmatched', reason: 'not an HCPS dealer', actor: 'angelo@hcps.us', expected_version: +id[1] + 1 }); assert.strictEqual(r.match_status, 'unmatched');
+    });
+    t('the recorded hold itself cannot be changed: update / delete / truncate refused (owner included); service_role cannot insert', () => {
+      refused(() => q(`update mfr_intel_holds set reason='x' where true`), /mi1c_hold_guard: a recorded hold is never update/);
+      refused(() => q(`delete from mfr_intel_holds where true`), /mi1c_hold_guard: a recorded hold is never delete/);
+      refused(() => q(`truncate mfr_intel_holds`), /mi1c_hold_guard/);
+      refused(() => sr(`insert into mfr_intel_holds (manufacturer, name_key, printed_name, reason, decided_by, decided_on) values ('strongback-mobility','NEBCARE','Nebcare','x','x','2026-10-11')`), /permission denied/);
+      assert.strictEqual(q(`select count(*) from mfr_intel_holds`), '1');
+    });
+    t('a forged op flag as a write-capable role cannot change a held snapshot either (guard needs the owner\'s rights)', () => {
+      const w = q(`select id from mfr_dealer_snapshots where source_id=${sep.id} and row_no=4`);
+      refused(() => sr(`select set_config('hcps.mfr_intel_op','match',true); update mfr_dealer_snapshots set match_status='unmatched' where id=${w}`), /permission denied/);
     });
 
     console.log('\n— concurrency (two real sessions) —');
@@ -293,10 +336,39 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
       assert.strictEqual(q(`select count(*) from mfr_dealer_snapshots where source_id=${sep.id}`), '4');
       refused(() => imp(P()), /mi1c_not_accepted/);
     });
-    t('MI-1b publish of the imported May report is possible once intelligence exists (publication stays a separate, explicit step)', () => {
-      const s = q(`select id from mfr_sources where file_sha256='${H('5')}'`);
-      const r = JSON.parse(sr(`select public.hcps_mfr_report_publication(${J({ id: +s, action: 'publish', actor: 'angelo@hcps.us' })})`));
-      assert.strictEqual(r.publication_status, 'published');
+    console.log('\n— publication stays OFF (gate on mfr_sources) —');
+    const may = +q(`select id from mfr_sources where file_sha256='${H('5')}'`);
+    const pubOf = id => q(`select publication_status from mfr_sources where id=${id}`);
+    const publish = (id, role) => (role ? as(role, `select public.hcps_mfr_report_publication(${J({ id, action: 'publish', actor: 'angelo@hcps.us', reason: 'try' })})`)
+      : q(`select public.hcps_mfr_report_publication(${J({ id, action: 'publish', actor: 'angelo@hcps.us', reason: 'try' })})`));
+    const setFlag = v => q(`update app_settings set value = ${v === undefined ? `value - 'mi_intel_publish'` : `value || jsonb_build_object('mi_intel_publish', ${v})`} where key='phase2_flags'`);
+    t('an accepted AND fully imported report cannot be published through MI-1b\'s function (service_role) — switch absent', () => {
+      assert.strictEqual(q(`select count(*) from mfr_dealer_snapshots where source_id=${may}`), '4'); assert.strictEqual(q(`select status from mfr_sources where id=${may}`), 'accepted');
+      const ev = q(`select count(*) from mfr_source_events where source_id=${may}`);
+      refused(() => publish(may, 'service_role'), /mi1b_publication_not_authorized/);
+      assert.strictEqual(pubOf(may), 'unpublished'); assert.strictEqual(q(`select count(*) from mfr_source_events where source_id=${may}`), ev, 'no audit event written');
+    });
+    t('nor with the switch false, the STRING "true", 1, or the settings row missing — only exactly true opens it', () => {
+      for (const v of [`false`, `'"true"'::jsonb`, `1`, `'null'::jsonb`]) { setFlag(v); refused(() => publish(may, 'service_role'), /mi1b_publication_not_authorized/); }
+      setFlag(undefined);
+      const keep = q(`select value::text from app_settings where key='phase2_flags'`);
+      q(`delete from app_settings where key='phase2_flags'`);
+      try { refused(() => publish(may, 'service_role'), /mi1b_publication_not_authorized/); }
+      finally { q(`insert into app_settings (key, value) values ('phase2_flags', $v$${keep}$v$::jsonb)`); }
+      assert.strictEqual(pubOf(may), 'unpublished');
+    });
+    t('nor by any other path: a direct REST-style update as service_role, hand SQL as the OWNER with MI-1b\'s own op flag', () => {
+      refused(() => sr(`update mfr_sources set publication_status='published', published_at=now(), published_by='x' where id=${may}`), /permission denied|mfr_report_guard|mi1b_publication_not_authorized/);
+      refused(() => q(`begin; select set_config('hcps.mfr_report_op','on',true); update mfr_sources set publication_status='published', published_at=now(), published_by='x' where id=${may}; commit;`), /mi1b_publication_not_authorized/);
+      refused(() => publish(may), /mi1b_publication_not_authorized/);
+      assert.strictEqual(pubOf(may), 'unpublished');
+    });
+    t('the gate is the only thing that changed: with the switch exactly true (a future, approved phase) the same publish succeeds; withdraw is not gated', () => {
+      setFlag('true');
+      try { assert.strictEqual(JSON.parse(publish(may, 'service_role')).publication_status, 'published');
+        setFlag('false');   // switch back off: withdrawing a published report still works
+        assert.strictEqual(JSON.parse(as('service_role', `select public.hcps_mfr_report_publication(${J({ id: may, action: 'withdraw', actor: 'angelo@hcps.us', reason: 'test' })})`)).publication_status, 'withdrawn');
+      } finally { setFlag(undefined); }
     });
 
     if (real) {
@@ -308,7 +380,8 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
       const as2 = (role, sql) => { fs.writeFileSync(tmp, `begin; set local role ${role}; ${sql}; commit;\n`); return file(D2, tmp).trim(); };
       for (const f of [T('mi1a/fixture.sql'), SB('mi1a_part0_snapshot.sql'), SB('mi1a_part1_schema.sql'), T('mc-guard.stub.sql'), ROOTF('migrate-phase2-product-skus.sql'),
         T('mc-guard.data.sql'), SB('mc_phase1_foundation.sql'), SB('mc_phase1_backfill.sql'), SB('mc_phase2_freeze_guard.sql'), SB('mc_phase6_append_only.sql'),
-        SB('mi1b_report_register.sql'), SB('mi1c_dealer_intel.sql')]) file(D2, f);
+        SB('mi1b_report_register.sql')]) file(D2, f);
+      q2(APPSET); file(D2, SB('mi1c_dealer_intel.sql'));
       q2(`alter table dealers add column if not exists is_test boolean default false, add column if not exists active boolean default true, add column if not exists account_class text`);
       q2(`insert into dealers (id, business_name, parent_id, city, state) values ${vals.join(',')}`);
       const fpReal0 = run(D2, FP.replace(/md5\(coalesce\(\(select string_agg\(t::text, ';' order by t.alias_norm\) from dealer_aliases t\),''\)\) \|\| '\|' \|\|/, ''));
@@ -316,7 +389,7 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
         file_sha256: real.sha, storage_path: `reports/strongback-mobility/dealer_report/${real.sha}.pdf`, file_size: 515614, content_type: 'application/pdf', received_date: '2026-10-10',
         prepared_date: '2026-10-08', report_period_start: '2026-09-01', report_period_end: '2026-09-30', actor: 'angelo@hcps.us' })})`));
       as2('service_role', `select public.hcps_mfr_report_decide(${J({ id: s.id, decision: 'accepted', actor: 'angelo@hcps.us' })})`);
-      const m = matchOf(real.parse);
+      const m = matchOf(real.parse, D2);
       const p = buildPayload({ source: { id: s.id, file_sha256: real.sha }, parse: real.parse, matches: m, actor: 'angelo@hcps.us' });
       let r;
       t('the real report imports: 25 dealers, 0 parse errors', () => {
@@ -339,8 +412,34 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
       t('importing the real report changed no dealer, sale or source record', () =>
         assert.strictEqual(run(D2, FP.replace(/md5\(coalesce\(\(select string_agg\(t::text, ';' order by t.alias_norm\) from dealer_aliases t\),''\)\) \|\| '\|' \|\|/, '')).split('|').slice(0, 2).join('|'), fpReal0.split('|').slice(0, 2).join('|')));
       t('the real import is idempotent', () => { const r2 = JSON.parse(as2('service_role', `select public.hcps_mfr_intel_import(${J(p)})`)); assert.strictEqual(r2.existing, true); });
+      t('REAL September, accepted and fully imported: publication refused (function as service_role, and hand SQL as the owner); stays unpublished', () => {
+        refused(() => as2('service_role', `select public.hcps_mfr_report_publication(${J({ id: s.id, action: 'publish', actor: 'angelo@hcps.us', reason: 'try' })})`), /mi1b_publication_not_authorized/);
+        refused(() => q2(`begin; select set_config('hcps.mfr_report_op','on',true); update mfr_sources set publication_status='published', published_at=now(), published_by='x' where id=${s.id}; commit;`), /mi1b_publication_not_authorized/);
+        assert.strictEqual(q2(`select status||'/'||publication_status from mfr_sources where id=${s.id}`), 'accepted/unpublished');
+      });
+      t('REAL September: Wyatt\'s Pharmacy Inc is held and no decision can change it', () => {
+        const w = q2(`select id||'/'||match_version||'/'||match_status from mfr_dealer_snapshots where printed_name like 'Wyatt%'`).split('/');
+        assert.strictEqual(w[2], 'held');
+        for (const d of ['matched', 'review', 'unmatched', 'held']) refused(() => as2('service_role', `select public.hcps_mfr_intel_match(${J({ snapshot_id: +w[0], decision: d,
+          dealer_id: d === 'matched' ? FX.dealers.find(x => /Weaver/.test(x.business_name)).id : '', reason: 'try', actor: 'angelo@hcps.us', expected_version: +w[1] })})`), /mi1c_held_locked/);
+        assert.strictEqual(q2(`select match_status||'/'||match_version from mfr_dealer_snapshots where id=${w[0]}`), `held/${w[1]}`);
+      });
+      t('REAL September: the SQL hold key and the JS hold key agree on all 25 printed names (and on spelling variants)', () => {
+        const names = real.parse.dealers.map(d => d.name).concat(["Wyatts Pharmacy", "WYATT'S PHARMACY, INC.", "Wyatt’s Pharmacy Inc", "The Glasgow Prescription Center", "All Star medical-TN"]);
+        for (const n of names) assert.strictEqual(q2(`select coalesce(public.hcps_mfr_intel_name_key($k$${n}$k$),'NULL')`), holdKey(n) || 'NULL', n);
+        assert.strictEqual(holdKey("Wyatts Pharmacy"), holdKey("Wyatt's Pharmacy Inc"));
+      });
+      t('REAL September: a register whose prepared date differs from the printed one (2026-10-08) refuses the import', () => {
+        const s2 = JSON.parse(as2('service_role', `select public.hcps_mfr_report_register(${J({ manufacturer: 'strongback-mobility', kind: 'dealer_report', file_name: 'copy.pdf',
+          file_sha256: H('9'), storage_path: `reports/strongback-mobility/dealer_report/${H('9')}.pdf`, file_size: 1, content_type: 'application/pdf', received_date: '2026-10-10',
+          prepared_date: '2026-10-09', report_period_start: '2026-08-01', report_period_end: '2026-08-31', actor: 'angelo@hcps.us' })})`));
+        as2('service_role', `select public.hcps_mfr_report_decide(${J({ id: s2.id, decision: 'accepted', actor: 'angelo@hcps.us' })})`);
+        const p2 = Object.assign({}, p, { source_id: s2.id, file_sha256: H('9'), period_start: '2026-08-01', period_end: '2026-08-31' });
+        refused(() => as2('service_role', `select public.hcps_mfr_intel_import(${J(p2)})`), /mi1c_prepared_date_mismatch: the report prints prepared 2026-10-08, the register says 2026-10-09/);
+      });
       run('postgres', `drop database if exists ${D2}`);
-    } else console.log('\n  (the real September PDF is not present here — the real-report section did not run; set MI1C_PDF)');
+    } else if (process.env.MI1C_ALLOW_NO_PDF === '1') console.log('\n  (the real September PDF is not present — real-report section NOT run, allowed by MI1C_ALLOW_NO_PDF=1)');
+    else t('the REAL September PDF is present (set MI1C_PDF; MI1C_ALLOW_NO_PDF=1 to run without it)', () => { throw new Error('real PDF missing: ' + PDF); });
 
     console.log('\n— rollback —');
     t('rollback refuses while imported intelligence exists — nothing written', () => {
@@ -351,10 +450,14 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
       const D3 = DB + '_rb'; run('postgres', `drop database if exists ${D3}`); run('postgres', `create database ${D3}`);
       for (const f of [T('mi1a/fixture.sql'), SB('mi1a_part0_snapshot.sql'), SB('mi1a_part1_schema.sql'), T('mc-guard.stub.sql'), ROOTF('migrate-phase2-product-skus.sql'),
         T('mc-guard.data.sql'), SB('mc_phase1_foundation.sql'), SB('mc_phase1_backfill.sql'), SB('mc_phase2_freeze_guard.sql'), SB('mc_phase6_append_only.sql'), SB('mi1b_report_register.sql')]) file(D3, f);
-      const shape = `select count(*) || '/' || (select count(*) from pg_proc where proname like 'hcps_mfr_%') || '/' || (select md5(string_agg(conname, ',' order by conname)) from pg_constraint where conrelid='public.mfr_sources'::regclass) from pg_class where relname like 'mfr\\_%'`;
+      run(D3, APPSET);
+      const shape = `select count(*) || '/' || (select count(*) from pg_proc where proname like 'hcps_mfr_%') || '/' || (select md5(string_agg(conname, ',' order by conname)) from pg_constraint where conrelid='public.mfr_sources'::regclass)
+        || '/' || (select md5(string_agg(tgname, ',' order by tgname)) from pg_trigger where tgrelid='public.mfr_sources'::regclass and not tgisinternal) from pg_class where relname like 'mfr\\_%'`;
       const b = run(D3, shape);
-      file(D3, SB('mi1c_dealer_intel.sql')); file(D3, SB('mi1c_dealer_intel_rollback.sql'));
-      assert.strictEqual(run(D3, shape), b);
+      file(D3, SB('mi1c_dealer_intel.sql'));
+      assert.strictEqual(run(D3, `select count(*) from pg_trigger where tgname='mfr_sources_publication_gate'`), '1');
+      file(D3, SB('mi1c_dealer_intel_rollback.sql'));
+      assert.strictEqual(run(D3, shape), b, 'MI-1b exactly as before MI-1c: tables, functions, constraints AND triggers on mfr_sources');
       file(D3, SB('mi1c_dealer_intel.sql'));
       run('postgres', `drop database if exists ${D3}`);
     });

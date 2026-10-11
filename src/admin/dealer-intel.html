@@ -106,6 +106,7 @@ function renderPreview(){
   const canImport=!p.already_imported&&src.status==="accepted"&&!errs;
   $("#out").innerHTML=`
   <div class="card"><h2>${esc(p.header.title)} <span class="chip src-tag">Strongback-reported</span></h2>
+    <div class="${p.prepared_date&&!p.prepared_date.ok?"err":"hint"}">${p.prepared_date?esc(p.prepared_date.message):""}</div>
     <div class="hint">${esc(p.header.subtitle)} · prepared ${esc(p.header.prepared_text||"— not printed")} · file received ${esc(src.received_date)} · SHA-256 ${esc(String(src.file_sha256).slice(0,12))}… checked against the register</div>
     <div class="kpis">${p.kpis.map(kpiHtml).join("")}</div>
     ${p.sections.map(s=>`<details><summary>${esc(s.heading)}</summary>${s.paragraphs.map(x=>`<p>${esc(x)}</p>`).join("")}</details>`).join("")}
@@ -120,7 +121,7 @@ function renderPreview(){
   </div>
   <div class="card"><h2>Against HCPS records (read-only)</h2>
     <div class="tbl-wrap"><table class="t"><tr><th>Period</th><th>Strongback reports</th><th>HCPS holds</th><th>Gap</th></tr>
-    ${p.reconciliation.map(x=>`<tr><td>${esc(x.what)}</td><td>${esc(x.strongback_text||"—")}</td><td>${money(x.hcps)} <div class="hint">${esc(x.hcps_note)}</div></td><td>${money(x.gap)}</td></tr>`).join("")}</table></div>
+    ${p.reconciliation.map(x=>`<tr><td>${esc(x.what)}</td><td>${esc(x.strongback_text||"—")}</td><td>${money(x.hcps)} (${x.hcps_lines} lines) <div class="hint">${esc(x.hcps_note)}</div>${(x.other_lanes||[]).map(o=>`<div class="hint warn">${esc(o.label)}: ${o.rows} row(s), ${money(o.amount)} — ${esc(o.note)}</div>`).join("")}</td><td>${money(x.gap)}</td></tr>`).join("")}</table></div>
     <div class="hint">${esc(p.reconciliation[0]?p.reconciliation[0].note:"")}</div>
   </div>
   <div class="card"><h2>Dealers (${p.dealers.length})</h2>
@@ -133,6 +134,7 @@ function renderPreview(){
     ${p.already_imported?`<div class="okm">Already imported ${esc(fmtWhen(p.already_imported.imported_at))} by ${esc(p.already_imported.imported_by)}. <button class="go ghost sm" onclick="openReport()">Open the review queue</button></div>`
      :src.status!=="accepted"?`<div class="err">This report is ${esc(src.status)}. Accept it in Manufacturer Report History before importing.</div>`
      :errs?`<div class="err">Reading errors must be resolved first — nothing can be imported.</div>`
+     :p.prepared_date&&!p.prepared_date.ok?`<div class="err">${esc(p.prepared_date.message)}</div>`
      :`<label style="display:flex;gap:8px;align-items:center;min-height:44px"><input type="checkbox" id="ack"> I reviewed all ${p.dealers.length} dealers, the match proposals and the differences above.</label>
        <button class="go" id="impbtn" onclick="doImport()">Import as Strongback-reported intelligence</button>
        <div class="hint">One transaction: ${p.dealers.length} dealer snapshots and every observation, with ${c.matched} automatic match(es); ${c.review+c.held+c.unmatched} dealer(s) go to the review queue. Nothing else in HCPS changes.</div>`}
@@ -201,13 +203,13 @@ function snapCard(x){
     ${x.dealer_id?`<div class="hint" style="margin-top:6px">Linked to <b>${esc(dname(x.dealer_id))}</b> · ${esc(x.match_method)}${x.matched_by?" by "+esc(x.matched_by):""}${x.match_reason?" — "+esc(x.match_reason):""}</div>`:""}
     <ul class="why">${(ev.reasons||[]).map(r=>`<li>${esc(r)}</li>`).join("")}</ul>
     ${cands.length?`<div class="cand"><b>Evidence</b><ul class="why">${cands.map(k=>`<li><b>${esc(k.business_name)}</b> (${esc(k.city||"?")}, ${esc(k.state||"?")}) — ${esc((k.why||[]).join("; "))}</li>`).join("")}</ul></div>`:""}
-    <details><summary>Decide this match</summary><div class="decide">
+    ${x.held_locked?`<div class="err" style="margin-top:6px"><b>Held by a recorded owner decision</b> (${esc(x.hold.decided_by)}, ${esc(x.hold.decided_on)}) — this row cannot be changed in the review queue. ${esc(x.hold.reason)}</div>`:`<details><summary>Decide this match</summary><div class="decide">
       <div class="opts">${["matched","review","unmatched","held"].map(v=>`<label><input type="radio" name="d_${x.id}" value="${v}" ${x.match_status===v?"checked":""}> ${STATUS[v]}</label>`).join("")}</div>
       <div class="row"><select id="dc_${x.id}" aria-label="HCPS dealer"><option value="">${cands.length?"Choose from the evidence…":"Search below…"}</option>${opts}</select></div>
       <div class="row"><input type="text" id="ds_${x.id}" placeholder="Search HCPS dealers by name" style="flex:1 1 220px"><button class="go ghost sm" onclick="search(${x.id})">Search</button></div>
       <div class="row"><input type="text" id="dr_${x.id}" maxlength="1000" placeholder="Reason (required — kept in the audit trail)" style="flex:1 1 260px"></div>
       <div class="row"><button class="go sm" onclick="decide(${x.id},${x.match_version})">Save decision</button><span class="hint">A decision only links this Strongback row to an HCPS dealer. It never changes the dealer, its rep, its family or its aliases.</span></div>
-      <div id="dm_${x.id}"></div></div></details></div>`;
+      <div id="dm_${x.id}"></div></div></details>`}</div>`;
 }
 async function search(id){
   const q=$("#ds_"+id).value.trim(); const r=await api({action:"dealer_search",q});

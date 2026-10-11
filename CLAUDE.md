@@ -1568,6 +1568,31 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   accept a publish — the Report History button stays disabled ("not enabled"); publishing needs its own approval.
   Pre-existing, unrelated: `test/resources-render.test.js` fails on main since documents.json update de939e7 (4 items
   without `models`; admin-managed — not hand-edited).
+- **MI-1c CONDITIONALLY ACCEPTED (development) — four corrections required before rollout (Angelo, 2026-10-11 11:12 CT).
+  Production installation NOT approved.** Rules (binding from now on):
+  (1) **Publication stays OFF at the server AND database level.** An accepted or imported dealer report stays
+  unpublished until a separately approved publishing phase. Switch `phase2_flags.mi_intel_publish` (exactly `true` = on;
+  missing / non-true / unreadable = off) — NOT turned on by any migration. Database: trigger `mfr_sources_publication_gate`
+  (MI-1c migration; security definer) refuses any write that makes a dealer report "published" on every path (MI-1b's
+  function, REST, hand SQL as the owner); withdraw is not gated; MI-1b's function body is unchanged; the MI-1c rollback
+  drops the trigger. API: `mfr-reports-api` publish → 403 `publication_not_authorized` before the database.
+  (2) **A recorded hold is never changed by the standard decision workflow.** Holds live ONLY in `mfr_intel_holds`
+  (seeded: Strongback "Wyatt's Pharmacy Inc", RULE 18), keyed by `hcps_mfr_intel_name_key` (JS `holdKey`, same rule —
+  catches "Wyatts Pharmacy" etc.). Import: a held name must be stored held (no dealer), and "held" only from a recorded
+  hold. `hcps_mfr_intel_match` refuses EVERY decision on a held name (`mi1c_held_locked`); the API refuses it first (423).
+  Holds can't be updated/deleted/truncated (owner included); a release is a future owner-authorized design. Manual
+  "held" decisions on other rows (the seven-dealer review workflow) are unchanged.
+  (3) **Manufacturer-vs-HCPS reconciliation uses the sales-report lane only** (`source='sales_report'`); commission-lane
+  rows (`hcps_ms_is_commission_lane`) and other sources are listed apart, never added, with a count of rows that look
+  like the same transaction (MI-1a cross-lane test). Matcher name evidence = sales-report lane too. Read-only.
+  (4) **The manufacturer's prepared date must equal the register's** — both stated and equal, or both not stated. A
+  mismatch is shown first in Preview and refuses the import (API 422 and SQL `mi1c_prepared_date_mismatch`); never an
+  upload/received date, never invented. The reader: "prepared" printed but unreadable = error; not printed = not stated.
+  Real-file tests FAIL (not skip) when the September PDF is absent unless `MI1C_ALLOW_NO_PDF=1`.
+  **Corrections BUILT (2026-10-11, branch `mi1c-dealer-intel`; NOT merged / deployed / run):** migration rev 2 sha256
+  550c64f8…, rollback 345512fd…; 9 install checks; outside probe 22 checks (5 tables + 2 RPCs). Tests: mi1c-intel.pg 76,
+  mi1c-api 29, mi1c-parser 26 (real PDF used, nothing skipped), MI-1c mutants 79/79, MI-1b api 28 + mutants 44/44,
+  mi1b-register.pg 46; full regression 80/81 suites (only the pre-existing resources-render failure).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.

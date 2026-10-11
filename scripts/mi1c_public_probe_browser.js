@@ -1,5 +1,5 @@
-// HCPS — RULE 19 outside check for MI-1c (supabase/mi1c_dealer_intel.sql): the four dealer-intelligence tables and the
-// two MI-1c functions, using ONLY the PUBLIC (anon) key, exactly as a stranger could.
+// HCPS — RULE 19 outside check for MI-1c (supabase/mi1c_dealer_intel.sql): the five dealer-intelligence tables (incl. the
+// recorded holds) and the two MI-1c functions, using ONLY the PUBLIC (anon) key, exactly as a stranger could (22 checks).
 // Paste into the console of a blank tab (about:blank). It asks for the key; nothing is stored or sent anywhere else.
 // Expect: "ALL n CHECKS BLOCKED (key verified)". Any OPEN!! = stop, do not merge or deploy.
 // The RPC bodies are harmless even if a call were somehow allowed: empty / zero ids that both functions refuse.
@@ -21,7 +21,7 @@
     else { result = 'OPEN!!'; open++; }
     rows.push({ check: label, http: r.status, result, detail: result === 'BLOCKED' ? '' : b.slice(0, 160) });
   };
-  for (const t of ['mfr_intel_reports', 'mfr_dealer_snapshots', 'mfr_dealer_observations', 'mfr_intel_events']) {
+  for (const t of ['mfr_intel_reports', 'mfr_dealer_snapshots', 'mfr_dealer_observations', 'mfr_intel_events', 'mfr_intel_holds']) {
     const T = `${URL}/rest/v1/${t}`;
     await check(`read ${t}`, `${T}?select=*&limit=1`, { headers: H });
     await check(`insert ${t}`, T, { method: 'POST', headers: H, body: '{}' });
