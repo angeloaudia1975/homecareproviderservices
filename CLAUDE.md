@@ -1209,6 +1209,22 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   byte-identical; 0 batches; `mi_import_v2` still false. Original workbook "Stongback Orders and Account Report
   YTDa.xlsx" (sha256 b7a17e64…) checked OFFLINE: 143 lines / 57 orders / $43,021.50 = HCPS row-for-row (order, SKU,
   qty, amount, date fingerprint de869e5f…; order/account/company/ZIP fingerprint e466ddc4…).
+  **mi_import_v2 preview-only acceptance PASSED 2026-10-10 ~20:15 CT** (approved by Angelo; switch ON only for the
+  previews, then OFF — it stays OFF until Angelo approves normal operation). Live Sales Report Import page, real workbook
+  (sha256 b7a17e64…, verified in the browser): path v2 (`hcps_sales_report_apply`, applied:false), 143 rows, 57 orders
+  unchanged / 0 new / 0 changed / 0 to retire / 0 missing, $43,021.50, $3,871.94 at 9%, 142 lines matched (GF Health
+  Products, order 5804, $320, is unmatched in HCPS too), 0 non-financial differences, 0 collisions, 0 cross-lane, account
+  numbers 25 already correct / 0 conflicts. Modified copy (order 5775 qty 1→2): exactly 1 changed order, $536 → $1,072,
+  56 unchanged. File without order 5775: listed as missing, retire 0; retired only when named in `retire_orders`
+  (page checkboxes start unticked). 9 non-enrolled manufacturers previewed on the legacy path; 5 commission analyses
+  stayed on today's path. A browser guard blocked any non-preview call (0 attempted). After: every row except the 7
+  September rows = Part 0 snapshot (EXCEPT ALL 0/0), backup 143, 0 batches, 0 superseded, baseline identical; with the
+  switch OFF Strongback answers 409 `import_paused` again. Known display bug: the v2 preview's "Dealers" tile shows
+  "undefined" (the v2 summary has no dealer count) — cosmetic, not fixed yet.
+  **Strongback September CSV was loaded on the legacy commission path at 2026-10-10 23:49 UTC** ("Strongback Sept
+  Commission Report 2026.csv", 7 rows, period 2026-09, source commission, no batch) — not by Claude. All 7 have BLANK
+  amount and commission (the file's $2,159 did not land); alias "Williams Brothers Healthcare Pharmacy" was created by
+  it. Left untouched pending Angelo's decision.
 - **Tests:** `test/mi1a-identity.pg.test.js` (runs the committed SQL in Postgres, bigint + uuid ids),
   `test/mi1a-compat.test.js` + `.mutants.js` (other manufacturers unaffected; switches; alias guard).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
