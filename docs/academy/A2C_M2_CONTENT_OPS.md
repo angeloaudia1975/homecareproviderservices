@@ -141,7 +141,7 @@ After M2, the preflight must show these same values. Only `m2_installed`, `m2_ob
 **Outside-Academy changes since the M1 baseline are the authorized MI work:**
 - **Tables:** 109 → 115 (+6), exactly MI-1b's `mfr_source_events` (run by Angelo 11 Oct ~08:47 CT) plus MI-1c's 5 tables (`mfr_intel_reports`, `mfr_dealer_snapshots`, `mfr_dealer_observations`, `mfr_intel_events`, `mfr_intel_holds`; run ~12:58 CT). Both are recorded and verified in CLAUDE.md rule 18.
 - **Policies:** unchanged (29).
-- **Grants:** 2811 → 2860 (+49), the grants on those new tables. An optional read-only check: `select count(*) from information_schema.role_table_grants where table_schema = 'public' and table_name in ('mfr_source_events','mfr_intel_reports','mfr_dealer_snapshots','mfr_dealer_observations','mfr_intel_events','mfr_intel_holds');` should return 49.
+- **Grants:** 2811 → 2860 (+49), the grants on those new tables. An optional read-only check: `select count(*) from information_schema.role_table_grants where table_schema = 'public' and table_name in ('mfr_source_events','mfr_intel_reports','mfr_dealer_snapshots','mfr_dealer_observations','mfr_intel_events','mfr_intel_holds');` should return 49. **Run by Angelo 11 Oct 2026 14:22 CT: 49. Confirmed: the whole outside-Academy grant change since M1 is the six MI tables.**
 
 **Safeguard not available in the local Postgres 17.6 build: pg-safeupdate.** pg-safeupdate refuses an UPDATE or DELETE with no WHERE clause; Supabase loads it in API sessions. It is a compiled add-on, so the Postgres 16 build of it cannot load into 17.6. Its protection is still covered three ways:
 1. Runtime: the full suite with pg-safeupdate loaded passes on Postgres 16.
