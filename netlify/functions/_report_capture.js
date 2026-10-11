@@ -386,6 +386,7 @@ async function runCapture(o, deps) {
 
     // 3. Discovery: everything received from (checkpoint − overlap) up to this run's start, oldest first.
     const runStart = new Date(started).toISOString();
+    const cpBefore = Date.parse(b.checkpoint_at);
     const from = new Date(Date.parse(b.checkpoint_at) - (b.overlap_minutes || 360) * 60000).toISOString();
     const filter = `receivedDateTime ge ${from} and receivedDateTime lt ${runStart}`;
     let path = `/users/${mb}/messages?$select=id,internetMessageId,subject,from,receivedDateTime,hasAttachments,parentFolderId,isDraft,webLink`
@@ -399,9 +400,10 @@ async function runCapture(o, deps) {
       for (const m of j.value || []) {
         counts.listed++;
         if (watermarkMoved && now() > soft) { stopped = true; break outer; }   // every run handles at least one email
-        if (m.isDraft) { watermark = m.receivedDateTime; watermarkMoved = true; continue; }
+        if (m.isDraft) { watermark = m.receivedDateTime; if (Date.parse(m.receivedDateTime) > cpBefore) watermarkMoved = true; continue; }
         await handleMessage(m);
-        watermark = m.receivedDateTime; watermarkMoved = true;
+        // Progress = an email newer than the old checkpoint (the overlap window re-reads older ones quickly).
+        watermark = m.receivedDateTime; if (Date.parse(m.receivedDateTime) > cpBefore) watermarkMoved = true;
       }
       path = j["@odata.nextLink"] || null;
     }

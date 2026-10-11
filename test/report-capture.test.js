@@ -27,7 +27,9 @@ const T = f => path.join(__dirname, f), ROOTF = f => path.join(__dirname, '..', 
 const q = sql => run(DB, sql);
 const sha = b => crypto.createHash('sha256').update(b).digest('hex');
 const lit = s => `'${String(s).replace(/'/g, "''")}'`;
-const RC = require('../netlify/functions/_report_capture.js');
+// Mutation runs load the module through phase0-mock's loader (the mutant is applied in memory); normal runs require it.
+const RC = process.env.P0_MUTANT ? require('./phase0-mock').load('_report_capture.js', { fetch: async () => { throw new Error('no network'); } })
+  : require('../netlify/functions/_report_capture.js');
 
 /* ── fixtures ─────────────────────────────────────────────────────────────── */
 function pdf(lines) {
@@ -105,6 +107,7 @@ function graph(box, o) {
     if (o.tick) o.tick(u);
     if (m !== 'GET') return res(405, { error: { message: 'GET only' } });
     if (throttles > 0) { throttles--; return res(429, {}, { 'retry-after': '1' }); }
+    if (o.throttleOn && o.throttleOn(u)) return res(429, {}, { 'retry-after': '120' });   // a file Graph will not hand over within this run
     const p = u.replace('https://graph.microsoft.com/v1.0', ''); let x;
     if ((x = p.match(/^\/users\/[^/]+\/messages\?(.*)$/))) {
       const qs = new URLSearchParams(x[1]); const f = qs.get('$filter'); const ge = f.match(/ge (\S+)/)[1], lt = f.match(/lt (\S+)/)[1];
@@ -337,6 +340,15 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
     assert.strictEqual(q(`select count(*) from mfr_report_items where file_name like '%SR032 b%' and state = 'registered'`), '6');
     assert.strictEqual(q(`select count(*) - count(distinct (message_id, item_key)) from mfr_report_items`), '0');
   });
+  await t('a listing so slow it uses most of the budget still handles one email per run (the checkpoint always moves)', async () => {
+    owner(`update mfr_report_capture_state set checkpoint_at = '2026-10-02T00:00:00Z' where true`);
+    let clock = Date.parse('2026-10-11T19:00:00Z'); const cps = [];
+    for (let k = 0; k < 3; k++) {
+      const r = await cap({ budget_ms: 3000 }, deps(mailbox(), { now: () => clock, tick: u => { clock += /\/messages\?/.test(u) ? 2600 : 10; } }));
+      cps.push(r.checkpoint_after);
+    }
+    assert.ok(new Date(cps[2]) > new Date(cps[0]), 'the checkpoint moved: ' + cps.join(' → '));
+  });
   await t('throttling (429 + Retry-After) is waited out, not dropped', async () => {
     const r = await cap({}, deps(mailbox(), { throttle: 2 })); if (process.env.DBG) console.log(JSON.stringify(r)); assert.strictEqual(r.ok, true); assert.strictEqual(r.complete, true);
   });
@@ -355,6 +367,35 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
     owner(`update mfr_report_capture_state set lock_token = 'someone-else-0123456789', lock_until = now() + interval '1 minute' where true`);
     const x = deps(mailbox()); const r = await cap({}, x); assert.strictEqual(r.busy, true); assert.strictEqual(x.G.calls.length, 0);
     owner(`update mfr_report_capture_state set lock_token = null, lock_until = null where true`);
+  });
+  await t('an email whose single attachment cannot be handled within one run is queued as an exception; the next run moves past it', async () => {
+    owner(`update mfr_report_capture_state set checkpoint_at = '2026-10-11T13:00:00Z' where true`);
+    const box = mailbox().concat([
+      M({ extra: 1, id: 'gS', subject: 'Commission report slow file', from: em('amanda.erickson@strongbackmobility.com'), receivedDateTime: '2026-10-11T13:30:00Z' },
+        [A('2026-05 SR032 slow.pdf', 'application/pdf', pdf(['Commission', 'Period 2026-05']))]),
+      M({ extra: 1, subject: 'Commission report after the slow one', from: em('amanda.erickson@strongbackmobility.com'), receivedDateTime: '2026-10-11T13:40:00Z' },
+        [A('2026-04 SR032 after.pdf', 'application/pdf', pdf(['Commission', 'Period 2026-04']))])]);
+    let throttled = true;
+    const slow = () => deps(box, { throttleOn: u => throttled && /\/messages\/gS\/attachments\/[^/]+\/\$value$/.test(u) });
+    const r1 = await cap({ budget_ms: 6000 }, slow()); if (process.env.DBG) console.log(JSON.stringify(r1), JSON.stringify(byFile('2026-05 SR032 slow.pdf')));
+    assert.strictEqual(byFile('2026-05 SR032 slow.pdf')[0].state, 'exception');
+    let r2 = r1; for (let k = 0; k < 4 && !r2.complete; k++) r2 = await cap({ budget_ms: 6000 }, slow());
+    assert.strictEqual(r2.complete, true); assert.strictEqual(byFile('2026-04 SR032 after.pdf')[0].state, 'registered');
+    // Graph serves it again later: the queued retry captures it.
+    throttled = false; owner(`update mfr_report_items set next_retry_at = now() - interval '1 minute' where file_name = '2026-05 SR032 slow.pdf'`);
+    await cap({}, slow()); assert.strictEqual(byFile('2026-05 SR032 slow.pdf')[0].state, 'registered');
+  });
+  await t('period rules: file name vs report text disagree → a conflict for a person; the received date is only the labelled last resort', async () => {
+    const P = RC._internal.periodOf, prof = { rules: { period: { order: ['file_name', 'content', 'received_prior_month'] } } };
+    assert.ok(P(prof, { name: '2026-09 SR032.pdf', text_periods: ['2026-08'] }, { subject: '', received_at: '2026-10-07T14:00:00Z' }).conflict);
+    assert.deepStrictEqual(P(prof, { name: 'statement.pdf', text_periods: [] }, { subject: '', received_at: '2026-10-07T14:00:00Z' }),
+      { start: '2026-09-01', end: '2026-09-30', basis: 'received_date_rule' });
+    assert.strictEqual(P({ rules: { period: { order: ['file_name'] } } }, { name: 'x.pdf' }, { subject: 'September', received_at: '2026-10-07T14:00:00Z' }), null);
+    const d = RC._internal.decide({ name: 'x.pdf', format: 'pdf', signals: ['commission'], suggested: 'commission_statement' },
+      { from_address: 'a@strongbackmobility.com', subject: '', received_at: '2026-10-07T14:00:00Z' },
+      [{ id: 1, code: 'c', status: 'active', auto_register: true, manufacturer: 'strongback-mobility', kind: 'commission_statement', rules: { senders: { domains: ['strongbackmobility.com'] }, formats: ['pdf'], period: { order: ['file_name'] } } }],
+      { slug: 'strongback-mobility' });
+    assert.deepStrictEqual([d.outcome, d.attention], ['exception', 'period_unknown']);
   });
   await t('every exception is in the event log; no capture row was ever deleted', async () => {
     assert.strictEqual(q(`select count(*) from mfr_report_items where state = 'exception' and id not in (select item_id from mfr_report_capture_events where action = 'exception' and item_id is not null)`), '0');

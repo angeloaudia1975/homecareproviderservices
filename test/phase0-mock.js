@@ -18,6 +18,7 @@ function compileInto(full) {
   if (MUTANT && path.basename(full) === MUTANT.file && path.dirname(full) === (MUTANT.ordering ? ORDER_REPO : REPO)) {
     if (!src.includes(MUTANT.from)) throw new Error('MUTANT ANCHOR NOT FOUND: ' + process.env.P0_MUTANT);
     src = src.split(MUTANT.from).join(MUTANT.to);
+    if (MUTANT.also) { if (!src.includes(MUTANT.also.from)) throw new Error('MUTANT ANCHOR NOT FOUND: ' + process.env.P0_MUTANT + ' (also)'); src = src.split(MUTANT.also.from).join(MUTANT.also.to); }   // a second edit, same file
   }
   const m = new Module(full, module); m.filename = full; m.paths = Module._nodeModulePaths(path.dirname(full));
   require.cache[full] = m; m._compile(src, full); m.loaded = true; return m.exports;
