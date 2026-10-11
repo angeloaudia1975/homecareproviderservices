@@ -80,7 +80,8 @@ function demo(hostile) {
   };
 }
 
-function server(world, opsLog) {
+function server(world, opsLog, opts) {
+  opts = opts || {};
   let mod = null;
   const ensure = () => {
     if (mod) return mod;
@@ -108,7 +109,8 @@ function server(world, opsLog) {
       res.writeHead(out.statusCode, out.headers); return res.end(out.body);
     }
     if (p.startsWith('/.netlify/functions/')) { res.writeHead(200, { 'content-type': 'application/json' }); return res.end('{"ok":true,"favorites":[],"count":0}'); }
-    const file = p.startsWith('/admin/') ? path.join(SRC, path.basename(p)) : null;
+    if (p === '/admin/admin-chrome.js' && opts.chrome) { res.writeHead(200, { 'content-type': 'application/javascript' }); return res.end(opts.chrome); }
+    const file = p === '/admin/' ? path.join(SRC, 'index.html') : p.startsWith('/admin/') ? path.join(SRC, path.basename(p)) : null;
     if (file && fs.existsSync(file)) {
       res.writeHead(200, { 'content-type': file.endsWith('.css') ? 'text/css' : file.endsWith('.js') ? 'application/javascript' : 'text/html' });
       return res.end(fs.readFileSync(file));
@@ -117,16 +119,17 @@ function server(world, opsLog) {
   });
 }
 
-async function withSite(seed, fn) {
+async function withSite(seed, fn, opts) {
   const world = createWorld(seed); const ops = [];
-  const srv = server(world, ops); await new Promise(r => srv.listen(0, '127.0.0.1', r));
+  const srv = server(world, ops, opts); await new Promise(r => srv.listen(0, '127.0.0.1', r));
   const origin = `http://127.0.0.1:${srv.address().port}`;
   try { return await fn({ origin, world, ops }); } finally { srv.close(); }
 }
-async function page(browser, origin, token, width) {
+async function page(browser, origin, token, width, roleOverride) {
   const ctx = await browser.newContext({ viewport: { width: width || 1280, height: 900 }, deviceScaleFactor: width && width < 500 ? 2 : 1 });
   await ctx.addInitScript(([tok, role]) => { try { localStorage.setItem('hcps_staff_token', tok); localStorage.setItem('hcps_staff_profile', JSON.stringify({ email: tok + '@hcps.us', name: tok, role })); } catch (e) {} },
-                          [token, token === 'pres' ? 'president' : token === 'admin' ? 'admin' : 'rep']);
+                          [token, roleOverride || (token === 'pres' ? 'president' : token === 'admin' ? 'admin' : 'rep')]);
+  await ctx.route(u => !/^http:\/\/127\.0\.0\.1[:/]/.test(String(u)), r => r.abort());   // nothing leaves this machine (fonts etc.)
   const pg = await ctx.newPage(); const errors = [];
   pg.on('pageerror', e => errors.push(String(e))); pg.on('dialog', d => { errors.push('dialog: ' + d.message()); d.dismiss(); });
   pg.errors = errors; return pg;
@@ -154,6 +157,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('ok   ' + nam
         for (const tab of TABS) {
           await pg.click(`#tabs .tab[data-t="${tab}"]`); await pg.waitForFunction(() => !document.querySelector('#view').textContent.includes('Loading…'));
           assert.ok(!(await pg.textContent('#view')).match(/Something went wrong|could not read/i), tab);
+          if (tab === 'activity') { await pg.click('#rcheck'); await pg.waitForSelector('#rcout .note'); assert.ok(/records checked/.test(await pg.textContent('#rcout'))); }
           if (width < 500) await noSideScroll(pg);
           await shot(pg, `${width < 500 ? 'phone' : 'desktop'}-${tab}`);
         }
@@ -205,6 +209,39 @@ async function t(name, fn) { try { await fn(); pass++; console.log('ok   ' + nam
         const pg = await page(browser, origin, 'greg'); await pg.goto(origin + '/admin/academy.html'); await pg.waitForSelector('#off h2');
         assert.ok((await pg.textContent('#off')).includes('HCPS administrators only')); await shot(pg, 'desktop-rep-refused'); await pg.context().close();
       });
+    });
+    await t('navigation: reps and Relations never see the Academy entry; admins gain exactly that one entry; nothing else changes', async () => {
+      const mainChrome = require('child_process').execFileSync('git', ['show', 'origin/main:src/admin/admin-chrome.js'], { cwd: path.join(__dirname, '..') }).toString();
+      const collect = async (origin, role) => {
+        const out = {};
+        for (const url of ['/admin/', '/admin/hub.html?cat=sales', '/admin/ai-style-guide.html', '/admin/academy.html']) {
+          const pg = await page(browser, origin, 'nav-' + role, 1280, role);
+          await pg.goto(origin + url); await pg.waitForSelector('#ac-head nav, #ac-head .ac-nav', { timeout: 10000 }).catch(() => {});
+          let links = null;
+          for (let i = 0; i < 5 && !links; i++) {          // a non-admin is sent on to their own home page: wait for it to settle
+            await pg.waitForTimeout(600); await pg.waitForLoadState('load').catch(() => {});
+            links = await pg.$$eval('a[href^="/admin/"]', as => as.map(a => a.getAttribute('href').split('#')[0])).catch(() => null);
+          }
+          out[url] = { landed: new URL(pg.url()).pathname, links: (links || []).filter((h, i, a) => a.indexOf(h) === i).sort() };
+          await pg.context().close();
+        }
+        return out;
+      };
+      const roles = ['president', 'admin', 'owner', 'rep', 'relations'];
+      const before = {}, after = {};
+      await withSite(demo(false), async ({ origin }) => { for (const r of roles) before[r] = await collect(origin, r); }, { chrome: mainChrome });
+      await withSite(demo(false), async ({ origin }) => { for (const r of roles) after[r] = await collect(origin, r); });
+      for (const r of roles) for (const url of Object.keys(after[r])) {
+        if (url === '/admin/academy.html') continue;           // the page itself is new: compared for reps/Relations below
+        assert.strictEqual(after[r][url].landed, before[r][url].landed, `${r} ${url} lands somewhere else`);
+        const A1 = after[r][url].links, B1 = before[r][url].links;
+        const added = A1.filter(h => !B1.includes(h)), removed = B1.filter(h => !A1.includes(h));
+        assert.deepStrictEqual(removed, [], `${r} ${url}: lost ${removed}`);
+        if (r === 'rep' || r === 'relations') assert.deepStrictEqual(added, [], `${r} ${url}: gained ${added}`);
+        else if (url !== '/admin/ai-style-guide.html' || added.length) assert.deepStrictEqual(added, ['/admin/academy.html'], `${r} ${url}: ${added}`);
+      }
+      for (const r of ['rep', 'relations']) for (const url of Object.keys(after[r])) assert.ok(!after[r][url].links.includes('/admin/academy.html'), r + url);
+      console.log('     links on the dashboard after (before):', roles.map(r => `${r} ${after[r]['/admin/'].links.length} (${before[r]['/admin/'].links.length}) → ${after[r]['/admin/'].landed}`).join(', '));
     });
     await t('HOSTILE data: every screen and dialog renders payloads as text — nothing executes, nothing is injected', async () => withSite(demo(true), async ({ origin }) => {
       for (const width of [1280, 390]) {

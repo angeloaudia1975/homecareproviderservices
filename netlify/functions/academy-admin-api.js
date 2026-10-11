@@ -99,13 +99,38 @@ function courseOut(c, versions) {
     is_test: isTest(c), versions: vs.length, latest_version: vs.length ? vs[vs.length - 1].version : null,
     published_version: pub ? pub.version : null, open_drafts: vs.filter(v => v.status === 'draft' || v.status === 'in_review').length,
     locked: vs.some(v => v.status === 'published' || v.status === 'retired'),
+    // The course RECORD status (academy_courses.status) is not changed by C1 and does not follow the versions (C2 decides
+    // the permanent rule). What learners can take is shown from the versions, so a course with a published version never
+    // looks like it has no published training.
+    version_counts: { draft: vs.filter(v => v.status === 'draft').length, in_review: vs.filter(v => v.status === 'in_review').length,
+                      published: vs.filter(v => v.status === 'published').length, retired: vs.filter(v => v.status === 'retired').length },
+    training: c.course_type === 'manufacturer_program' ? 'manufacturer_hosted'
+      : pub ? 'published' : vs.some(v => v.status === 'in_review') ? 'in_review' : vs.some(v => v.status === 'draft') ? 'draft_only'
+      : vs.length ? 'retired' : 'no_versions',
   };
 }
 const COURSE_COLS = 'id,slug,title,course_type,issuer,manufacturer_slug,category,external_url,status,created_at';
 const VERSION_COLS = 'id,course_id,version,status,pass_mark,exam_questions,validity_months,retake_policy,published_at,published_by,created_at';
 
-/* An ordinary write followed by its audit row. */
-async function audited(staff, entity, id, action, before, after) { return A.audit(staff, entity, id, action, before, after); }
+/* Ordinary content writes (draft courses, draft versions, modules, lessons). The web API cannot put a change and its
+   audit row in one transaction (the M2 proposal in docs/academy/A2C_C1_COMMAND_CENTER.md would), so the order is:
+     1. the audit row FIRST, carrying the intended result and a reference (_ref). If it cannot be written, NOTHING is
+        changed (503) — a change can never happen without its record.
+     2. the change. If it fails, a "<action>_failed" row with the same _ref is added and the error is returned.
+   What can still go wrong: the change fails AND its _failed row cannot be written — the history then claims a change
+   that did not happen. That is the safe direction (never a silent change), and audit_check finds it: every Academy
+   content row is compared with its latest effective audit row. */
+async function recorded(staff, entity, id, action, before, intended, write) {
+  const ref = randomUUID();
+  const after = Object.assign({}, intended || {}, { _ref: ref });
+  if (!(await A.audit(staff, entity, id, action, before, after))) A.refuse(503, 'audit_unavailable', 'The activity history could not be written just now, so nothing was changed.');
+  try { return await write(); }
+  catch (e) {
+    if (!(await A.audit(staff, entity, id, action + '_failed', null, { _ref: ref, error: (e && e.code) || 'error' })))
+      console.error('academy audit: the failure record could not be written', entity, action, ref);
+    throw e;
+  }
+}
 
 /* The version a module / lesson belongs to, refused unless it is still an editable draft. */
 async function draftVersion(versionId) {
@@ -127,29 +152,53 @@ async function manufacturerExists(slug) {
 const READ = {}, WRITE = {};
 
 /* ---------- overview ---------- */
+/* TEST pilot data never counts as real dealership activity (CLAUDE.md rule 16 TEST isolation; rule 20):
+   a TEST dealer is dealers.is_test = true; a TEST course has a slug starting "test-". A PILOT learner is one whose
+   active memberships are all at TEST dealers. Real figures exclude pilot learners, TEST dealers, and enrollments /
+   credentials on TEST courses; the excluded amounts are reported beside them, never mixed in. */
+async function pilotContext(courses, versions) {
+  const testDealers = new Set((await all(`dealers?is_test=eq.true&select=id`)).map(d => String(d.id)));
+  const testCourses = new Set(courses.filter(isTest).map(c => String(c.id)));
+  const testVersions = new Set(versions.filter(v => testCourses.has(String(v.course_id))).map(v => String(v.id)));
+  return { testDealers, testCourses, testVersions };
+}
+function pilotLearners(members, testDealers) {
+  const by = {}; for (const m of members) if (m.status === 'active') (by[String(m.learner_id)] = by[String(m.learner_id)] || []).push(m);
+  return new Set(Object.entries(by).filter(([, ms]) => ms.every(m => testDealers.has(String(m.dealer_id)))).map(([k]) => k));
+}
 READ.overview = async () => {
   const [courses, versions, learners, members, enrolls, certs, ext, facts, events, sw] = await Promise.all([
     all(`academy_courses?select=id,slug,status,course_type,issuer,manufacturer_slug`),
     all(`academy_course_versions?select=id,course_id,status`),
     all(`academy_learners?select=id,status`),
-    all(`academy_memberships?status=eq.active&select=id,dealer_id,role`),
-    all(`academy_enrollments?select=id,status`),
-    all(`academy_certificates?select=id,status`),
-    all(`academy_external_certs?select=id,status`),
+    all(`academy_memberships?status=eq.active&select=id,learner_id,dealer_id,role,status`),
+    all(`academy_enrollments?select=id,learner_id,version_id,status`),
+    all(`academy_certificates?select=id,learner_id,version_id,status`),
+    all(`academy_external_certs?select=id,learner_id,course_id,status`),
     all(`product_facts?valid_to=is.null&select=id,status,field_class`),
     A.sbGet(`academy_events?select=id,at,actor_type,actor,entity,entity_id,action,before,after&order=id.desc&limit=12`),
     A.switches(),
   ]);
+  const P = await pilotContext(courses, versions); const pilot = pilotLearners(members, P.testDealers);
+  const realL = l => !pilot.has(String(l));
+  const split = (rows, isReal) => { const r = rows.filter(isReal); return [r, rows.length - r.length]; };
+  const [rLearners, xLearners] = split(learners, l => realL(l.id));
+  const [rMembers, xMembers] = split(members, m => !P.testDealers.has(String(m.dealer_id)));
+  const [rEnrolls, xEnrolls] = split(enrolls, e => realL(e.learner_id) && !P.testVersions.has(String(e.version_id)));
+  const [rCerts, xCerts] = split(certs, c => realL(c.learner_id) && !P.testVersions.has(String(c.version_id)));
+  const [rExt, xExt] = split(ext, c => realL(c.learner_id) && !P.testCourses.has(String(c.course_id)));
   return {
     ok: true, switches: sw,
     courses: { total: courses.length, by_status: tally(courses, 'status'), by_type: tally(courses, 'course_type'),
                test: courses.filter(isTest).length, manufacturers: [...new Set(courses.map(c => c.manufacturer_slug).filter(Boolean))].length },
     versions: { total: versions.length, by_status: tally(versions, 'status') },
-    learners: { total: learners.length, by_status: tally(learners, 'status') },
-    dealerships: { with_learners: new Set(members.map(m => String(m.dealer_id))).size, training_managers: members.filter(m => m.role === 'training_manager').length },
-    enrollments: { total: enrolls.length, by_status: tally(enrolls, 'status') },
-    hcps_certificates: { total: certs.length, by_status: tally(certs, 'status') },
-    manufacturer_credentials: { total: ext.length, by_status: tally(ext, 'status') },
+    learners: { total: rLearners.length, by_status: tally(rLearners, 'status') },
+    dealerships: { with_learners: new Set(rMembers.map(m => String(m.dealer_id))).size, training_managers: rMembers.filter(m => m.role === 'training_manager').length },
+    enrollments: { total: rEnrolls.length, by_status: tally(rEnrolls, 'status') },
+    hcps_certificates: { total: rCerts.length, by_status: tally(rCerts, 'status') },
+    manufacturer_credentials: { total: rExt.length, by_status: tally(rExt, 'status') },
+    test_pilot: { excluded: true, dealerships: new Set(members.filter(m => P.testDealers.has(String(m.dealer_id))).map(m => String(m.dealer_id))).size,
+                  memberships: xMembers, learners: xLearners, enrollments: xEnrolls, hcps_certificates: xCerts, manufacturer_credentials: xExt },
     product_facts: { current: facts.length, by_status: tally(facts, 'status'), approval_required: facts.filter(f => f.field_class === 'approval_required').length },
     recent: events.map(eventOut),
   };
@@ -190,9 +239,8 @@ WRITE.create_course = async (staff, b) => {
     if (!row.manufacturer_slug) A.refuse(400, 'invalid', 'A manufacturer program needs its manufacturer.');
     row.external_url = httpsUrl(b.external_url, 'Manufacturer training link');
   } else if (b.external_url) A.refuse(400, 'invalid', 'Only a manufacturer program links to outside training.');
-  const made = one(await A.sbSend('POST', 'academy_courses', row));
-  const ok = await audited(staff, 'academy_courses', made && made.id, 'create_course', null, made);
-  return { ok: true, audited: ok, course: courseOut(made, []) };
+  const made = await recorded(staff, 'academy_courses', row.id, 'create_course', null, row, async () => one(await A.sbSend('POST', 'academy_courses', row)));
+  return { ok: true, audited: true, course: courseOut(made || row, []) };
 };
 WRITE.update_course = async (staff, b) => {
   const id = A.uuid(b.id, 'course');
@@ -207,9 +255,9 @@ WRITE.update_course = async (staff, b) => {
     patch.external_url = httpsUrl(b.external_url, 'Manufacturer training link');
   }
   if (!Object.keys(patch).length) A.refuse(400, 'invalid', 'Nothing to change.');
-  const after = one(await A.sbSend('PATCH', `academy_courses?id=eq.${enc(id)}`, patch));
-  const ok = await audited(staff, 'academy_courses', id, 'update_course', c, after);
-  return { ok: true, audited: ok, course: courseOut(after || Object.assign({}, c, patch), []) };
+  const after = await recorded(staff, 'academy_courses', id, 'update_course', c, Object.assign({}, c, patch),
+    async () => one(await A.sbSend('PATCH', `academy_courses?id=eq.${enc(id)}`, patch)));
+  return { ok: true, audited: true, course: courseOut(after || Object.assign({}, c, patch), []) };
 };
 
 /* ---------- versions ---------- */
@@ -237,9 +285,9 @@ WRITE.create_version = async (staff, b) => {
   const row = { id: randomUUID(), course_id, version: vs.length ? Number(vs[0].version) + 1 : 1, status: 'draft',
                 pass_mark: int(b.pass_mark, 1, 100, 'Pass mark', 80), exam_questions: int(b.exam_questions, 1, 200, 'Exam questions', 25),
                 validity_months: (b.validity_months == null || b.validity_months === '') ? null : int(b.validity_months, 1, 120, 'Valid for (months)') };
-  const made = one(await A.sbSend('POST', 'academy_course_versions', row));   // two at once: the unique (course, version) refuses one (409)
-  const ok = await audited(staff, 'academy_course_versions', made && made.id, 'create_version', null, made);
-  return { ok: true, audited: ok, version: made };
+  // two at once: the unique (course, version) refuses one (409), which is then recorded as create_version_failed
+  const made = await recorded(staff, 'academy_course_versions', row.id, 'create_version', null, row, async () => one(await A.sbSend('POST', 'academy_course_versions', row)));
+  return { ok: true, audited: true, version: made || row };
 };
 WRITE.update_version = async (staff, b) => {
   const id = A.uuid(b.id, 'version'); const v = await draftVersion(id);
@@ -248,19 +296,23 @@ WRITE.update_version = async (staff, b) => {
   if ('exam_questions' in b) patch.exam_questions = int(b.exam_questions, 1, 200, 'Exam questions');
   if ('validity_months' in b) patch.validity_months = (b.validity_months == null || b.validity_months === '') ? null : int(b.validity_months, 1, 120, 'Valid for (months)');
   if (!Object.keys(patch).length) A.refuse(400, 'invalid', 'Nothing to change.');
-  const hit = await A.sbSend('PATCH', `academy_course_versions?id=eq.${enc(id)}&status=eq.draft`, patch);   // only while still a draft
-  if (!hit || !hit.length) A.refuse(409, 'locked', 'This version changed status while you were editing. Reload it.');
-  const ok = await audited(staff, 'academy_course_versions', id, 'update_version', v, hit[0]);
-  return { ok: true, audited: ok, version: hit[0] };
+  const hit = await recorded(staff, 'academy_course_versions', id, 'update_version', v, Object.assign({}, v, patch), async () => {
+    const h = await A.sbSend('PATCH', `academy_course_versions?id=eq.${enc(id)}&status=eq.draft`, patch);   // only while still a draft
+    if (!h || !h.length) A.refuse(409, 'locked', 'This version changed status while you were editing. Reload it.');
+    return h;
+  });
+  return { ok: true, audited: true, version: hit[0] };
 };
 async function moveVersion(staff, b, from, to, action) {
   const id = A.uuid(b.id, 'version');
   const v = need(one(await A.sbGet(`academy_course_versions?id=eq.${enc(id)}&select=${VERSION_COLS}`)), 'Course version');
   if (v.status !== from) A.refuse(409, 'locked', `This version is ${v.status}.`);
-  const hit = await A.sbSend('PATCH', `academy_course_versions?id=eq.${enc(id)}&status=eq.${from}`, { status: to });
-  if (!hit || !hit.length) A.refuse(409, 'locked', 'This version changed status while you were editing. Reload it.');
-  const ok = await audited(staff, 'academy_course_versions', id, action, v, hit[0]);
-  return { ok: true, audited: ok, version: hit[0] };
+  const hit = await recorded(staff, 'academy_course_versions', id, action, v, Object.assign({}, v, { status: to }), async () => {
+    const h = await A.sbSend('PATCH', `academy_course_versions?id=eq.${enc(id)}&status=eq.${from}`, { status: to });
+    if (!h || !h.length) A.refuse(409, 'locked', 'This version changed status while you were editing. Reload it.');
+    return h;
+  });
+  return { ok: true, audited: true, version: hit[0] };
 }
 WRITE.submit_for_review = (staff, b) => moveVersion(staff, b, 'draft', 'in_review', 'submit_for_review');
 WRITE.return_to_draft = (staff, b) => moveVersion(staff, b, 'in_review', 'draft', 'return_to_draft');
@@ -282,9 +334,8 @@ WRITE.create_module = async (staff, b) => {
   const last = await A.sbGet(`academy_modules?version_id=eq.${enc(version_id)}&select=position&order=position.desc&limit=1`);
   const row = { id: randomUUID(), version_id, position: last.length ? Number(last[0].position) + 1 : 1, title: A.text(b.title, 200, 'Module title'),
                 objectives: strList(b.objectives, 12, 300, 'Objectives') };
-  const made = one(await A.sbSend('POST', 'academy_modules', row));
-  const ok = await audited(staff, 'academy_modules', made && made.id, 'create_module', null, made);
-  return { ok: true, audited: ok, module: made };
+  const made = await recorded(staff, 'academy_modules', row.id, 'create_module', null, row, async () => one(await A.sbSend('POST', 'academy_modules', row)));
+  return { ok: true, audited: true, module: made || row };
 };
 WRITE.update_module = async (staff, b) => {
   const m = await moduleOf(A.uuid(b.id, 'module')); await draftVersion(m.version_id);
@@ -292,26 +343,24 @@ WRITE.update_module = async (staff, b) => {
   if ('title' in b) patch.title = A.text(b.title, 200, 'Module title');
   if ('objectives' in b) patch.objectives = strList(b.objectives, 12, 300, 'Objectives');
   if (!Object.keys(patch).length) A.refuse(400, 'invalid', 'Nothing to change.');
-  const after = one(await A.sbSend('PATCH', `academy_modules?id=eq.${enc(m.id)}`, patch));
-  const ok = await audited(staff, 'academy_modules', m.id, 'update_module', m, after);
-  return { ok: true, audited: ok, module: after };
+  const after = await recorded(staff, 'academy_modules', m.id, 'update_module', m, Object.assign({}, m, patch),
+    async () => one(await A.sbSend('PATCH', `academy_modules?id=eq.${enc(m.id)}`, patch)));
+  return { ok: true, audited: true, module: after };
 };
 WRITE.delete_module = async (staff, b) => {
   const m = await moduleOf(A.uuid(b.id, 'module')); await draftVersion(m.version_id);
   if ((await A.sbGet(`academy_lessons?module_id=eq.${enc(m.id)}&select=id&limit=1`)).length) A.refuse(409, 'not_empty', 'Remove this module\'s lessons first.');
   if ((await A.sbGet(`academy_questions?module_id=eq.${enc(m.id)}&select=id&limit=1`)).length) A.refuse(409, 'not_empty', 'Questions are linked to this module.');
-  await A.sbSend('DELETE', `academy_modules?id=eq.${enc(m.id)}`, null, 'return=minimal');
-  const ok = await audited(staff, 'academy_modules', m.id, 'delete_module', m, null);
-  return { ok: true, audited: ok };
+  await recorded(staff, 'academy_modules', m.id, 'delete_module', m, null, () => A.sbSend('DELETE', `academy_modules?id=eq.${enc(m.id)}`, null, 'return=minimal'));
+  return { ok: true, audited: true };
 };
 WRITE.create_lesson = async (staff, b) => {
   const m = await moduleOf(A.uuid(b.module_id, 'module')); await draftVersion(m.version_id);
   const last = await A.sbGet(`academy_lessons?module_id=eq.${enc(m.id)}&select=position&order=position.desc&limit=1`);
   const row = { id: randomUUID(), module_id: m.id, position: last.length ? Number(last[0].position) + 1 : 1, title: A.text(b.title, 200, 'Lesson title'),
                 est_minutes: int(b.est_minutes, 1, 30, 'Minutes', 10) };
-  const made = one(await A.sbSend('POST', 'academy_lessons', row));
-  const ok = await audited(staff, 'academy_lessons', made && made.id, 'create_lesson', null, made);
-  return { ok: true, audited: ok, lesson: made };
+  const made = await recorded(staff, 'academy_lessons', row.id, 'create_lesson', null, row, async () => one(await A.sbSend('POST', 'academy_lessons', row)));
+  return { ok: true, audited: true, lesson: made || row };
 };
 WRITE.update_lesson = async (staff, b) => {
   const l = await lessonOf(A.uuid(b.id, 'lesson')); const m = await moduleOf(l.module_id); await draftVersion(m.version_id);
@@ -319,56 +368,63 @@ WRITE.update_lesson = async (staff, b) => {
   if ('title' in b) patch.title = A.text(b.title, 200, 'Lesson title');
   if ('est_minutes' in b) patch.est_minutes = int(b.est_minutes, 1, 30, 'Minutes');
   if (!Object.keys(patch).length) A.refuse(400, 'invalid', 'Nothing to change.');
-  const after = one(await A.sbSend('PATCH', `academy_lessons?id=eq.${enc(l.id)}`, patch));
-  const ok = await audited(staff, 'academy_lessons', l.id, 'update_lesson', l, after);
-  return { ok: true, audited: ok, lesson: after };
+  const after = await recorded(staff, 'academy_lessons', l.id, 'update_lesson', l, Object.assign({}, l, patch),
+    async () => one(await A.sbSend('PATCH', `academy_lessons?id=eq.${enc(l.id)}`, patch)));
+  return { ok: true, audited: true, lesson: after };
 };
 WRITE.delete_lesson = async (staff, b) => {
   const l = await lessonOf(A.uuid(b.id, 'lesson')); const m = await moduleOf(l.module_id); await draftVersion(m.version_id);
-  await A.sbSend('DELETE', `academy_lessons?id=eq.${enc(l.id)}`, null, 'return=minimal');
-  const ok = await audited(staff, 'academy_lessons', l.id, 'delete_lesson', l, null);
-  return { ok: true, audited: ok };
+  await recorded(staff, 'academy_lessons', l.id, 'delete_lesson', l, null, () => A.sbSend('DELETE', `academy_lessons?id=eq.${enc(l.id)}`, null, 'return=minimal'));
+  return { ok: true, audited: true };
 };
 
 /* ---------- learners and dealerships (summaries; no exam answers, no scores in C1) ---------- */
 async function people() {
-  const [learners, members, enrolls] = await Promise.all([
+  const [learners, members, enrolls, courses, versions] = await Promise.all([
     all(`academy_learners?select=id,full_name,email,status,created_at`),
     all(`academy_memberships?select=id,learner_id,dealer_id,role,access_type,status,started_at,ended_at`),
-    all(`academy_enrollments?select=id,learner_id,status`),
+    all(`academy_enrollments?select=id,learner_id,version_id,status`),
+    all(`academy_courses?select=id,slug`),
+    all(`academy_course_versions?select=id,course_id`),
   ]);
-  const dealers = await byIds('dealers', members.map(m => m.dealer_id), 'id,business_name,parent_id');
+  const dealers = await byIds('dealers', members.map(m => m.dealer_id), 'id,business_name,parent_id,is_test');
   const dname = Object.fromEntries(dealers.map(d => [String(d.id), d]));
-  return { learners, members, enrolls, dname };
+  const P = await pilotContext(courses, versions);
+  return { learners, members, enrolls, dname, P, pilot: pilotLearners(members, P.testDealers) };
 }
 READ.list_learners = async () => {
-  const { learners, members, enrolls, dname } = await people();
+  const { learners, members, enrolls, dname, P, pilot } = await people();
   return { ok: true, learners: learners.map(l => ({
-    id: l.id, full_name: l.full_name, email: l.email, status: l.status, created_at: l.created_at,
+    id: l.id, full_name: l.full_name, email: l.email, status: l.status, created_at: l.created_at, pilot: pilot.has(String(l.id)),
     memberships: members.filter(m => String(m.learner_id) === String(l.id)).map(m => ({
       id: m.id, dealer_id: m.dealer_id, dealer: (dname[String(m.dealer_id)] || {}).business_name || null, role: m.role,
-      access_type: m.access_type, status: m.status })),
-    enrollments: tally(enrolls.filter(e => String(e.learner_id) === String(l.id)), 'status'),
-  })).sort((a, b) => String(a.full_name).localeCompare(String(b.full_name))) };
+      access_type: m.access_type, status: m.status, test_dealer: P.testDealers.has(String(m.dealer_id)) })),
+    enrollments: tally(enrolls.filter(e => String(e.learner_id) === String(l.id) && !P.testVersions.has(String(e.version_id))), 'status'),
+    test_enrollments: enrolls.filter(e => String(e.learner_id) === String(l.id) && P.testVersions.has(String(e.version_id))).length,
+  })).sort((a, b) => (a.pilot - b.pilot) || String(a.full_name).localeCompare(String(b.full_name))) };
 };
 READ.dealer_summary = async () => {
-  const { learners, members, enrolls, dname } = await people();
-  const [certs, ext] = await Promise.all([all(`academy_certificates?select=id,learner_id,status`), all(`academy_external_certs?select=id,learner_id,status`)]);
+  const { learners, members, enrolls, dname, P } = await people();
+  const [certs, ext] = await Promise.all([all(`academy_certificates?select=id,learner_id,version_id,status`), all(`academy_external_certs?select=id,learner_id,course_id,status`)]);
   const active = members.filter(m => m.status === 'active');
   const lstatus = Object.fromEntries(learners.map(l => [String(l.id), l.status]));
   const out = {};
   for (const m of active) {
     const k = String(m.dealer_id), d = dname[k] || {};
-    const o = out[k] || (out[k] = { dealer_id: m.dealer_id, dealer: d.business_name || null, parent_id: d.parent_id || null, learners: 0, training_managers: 0,
-                                    training_only: 0, inactive_learners: 0, enrollments: {}, hcps_certificates_valid: 0, manufacturer_credentials_verified: 0 });
+    const o = out[k] || (out[k] = { dealer_id: m.dealer_id, dealer: d.business_name || null, parent_id: d.parent_id || null, is_test: P.testDealers.has(k),
+                                    learners: 0, training_managers: 0, training_only: 0, inactive_learners: 0, enrollments: {}, test_course_enrollments: 0,
+                                    hcps_certificates_valid: 0, manufacturer_credentials_verified: 0 });
     o.learners++; if (m.role === 'training_manager') o.training_managers++; if (m.access_type === 'training_only') o.training_only++;
     if (lstatus[String(m.learner_id)] !== 'active') o.inactive_learners++;
-    for (const e of enrolls.filter(x => String(x.learner_id) === String(m.learner_id))) o.enrollments[e.status] = (o.enrollments[e.status] || 0) + 1;
-    o.hcps_certificates_valid += certs.filter(c => String(c.learner_id) === String(m.learner_id) && c.status === 'valid').length;
-    o.manufacturer_credentials_verified += ext.filter(c => String(c.learner_id) === String(m.learner_id) && c.status === 'verified').length;
+    for (const e of enrolls.filter(x => String(x.learner_id) === String(m.learner_id))) {
+      if (P.testVersions.has(String(e.version_id))) { o.test_course_enrollments++; continue; }   // TEST courses never count as training
+      o.enrollments[e.status] = (o.enrollments[e.status] || 0) + 1;
+    }
+    o.hcps_certificates_valid += certs.filter(c => String(c.learner_id) === String(m.learner_id) && c.status === 'valid' && !P.testVersions.has(String(c.version_id))).length;
+    o.manufacturer_credentials_verified += ext.filter(c => String(c.learner_id) === String(m.learner_id) && c.status === 'verified' && !P.testCourses.has(String(c.course_id))).length;
   }
   for (const o of Object.values(out)) o.parent = o.parent_id ? ((dname[String(o.parent_id)] || {}).business_name || null) : null;
-  return { ok: true, dealerships: Object.values(out).sort((a, b) => String(a.dealer).localeCompare(String(b.dealer))) };
+  return { ok: true, dealerships: Object.values(out).sort((a, b) => (a.is_test - b.is_test) || String(a.dealer).localeCompare(String(b.dealer))) };
 };
 WRITE.set_training_manager = async (staff, b) => {
   const make = b.make === true ? true : b.make === false ? false : A.refuse(400, 'invalid', 'Say whether to grant or remove the role.');
@@ -438,7 +494,7 @@ READ.list_external_certs = async (staff, b) => {
   ]);
   const L = Object.fromEntries(ls.map(x => [String(x.id), x])), C = Object.fromEntries(cs.map(x => [String(x.id), x])), M = Object.fromEntries(ms.map(x => [x.slug, x.name]));
   return { ok: true, issuer: CREDENTIAL.manufacturer, credentials: rows.map(r => Object.assign({}, r, {
-    issuer: 'manufacturer', issued_by: M[r.manufacturer_slug] || r.manufacturer_slug,
+    issuer: 'manufacturer', issued_by: M[r.manufacturer_slug] || r.manufacturer_slug, upload_media_id: undefined, has_upload: !!r.upload_media_id,
     learner: (L[String(r.learner_id)] || {}).full_name || null, learner_email: (L[String(r.learner_id)] || {}).email || null,
     course: (C[String(r.course_id)] || {}).title || null, awaiting_review: ['exam_reported', 'awaiting_certificate', 'certificate_uploaded'].includes(r.status) })) };
 };
@@ -462,6 +518,48 @@ READ.list_events = async (staff, b) => {
   const limit = int(b.limit, 1, 100, 'limit', 50);
   const rows = await A.sbGet(`${q}&order=id.desc&limit=${limit}`);
   return { ok: true, events: rows.map(eventOut), next_before_id: rows.length === limit ? rows[rows.length - 1].id : null };
+};
+
+/* ---------- records check (reconciliation of ordinary writes) ----------
+   Every course, version, module and lesson row is compared with its latest EFFECTIVE audit row (an action whose _ref
+   has a matching "_failed" row did not happen). Reports: rows with no audit row at all (unrecorded), rows whose current
+   values differ from what the history says (drift — a change made outside the Command Center, or a failure whose
+   failure record could not be written), and recorded rows that no longer exist (missing). Read only. */
+const TRACKED = {
+  academy_courses: ['slug', 'title', 'course_type', 'issuer', 'manufacturer_slug', 'category', 'external_url', 'status'],
+  academy_course_versions: ['course_id', 'version', 'status', 'pass_mark', 'exam_questions', 'validity_months'],
+  academy_modules: ['version_id', 'position', 'title', 'objectives'],
+  academy_lessons: ['module_id', 'position', 'title', 'est_minutes'],
+};
+const same = (a, b) => JSON.stringify(a == null ? null : a) === JSON.stringify(b == null ? null : b);
+READ.audit_check = async () => {
+  const tables = Object.keys(TRACKED);
+  const [events, ...rows] = await Promise.all([
+    all(`academy_events?entity=in.(${tables.join(',')})&select=id,entity,entity_id,action,after`, 'id.asc'),
+    ...tables.map(t => all(`${t}?select=id,${TRACKED[t].join(',')}`)),
+  ]);
+  const failed = new Set(events.filter(e => /_failed$/.test(e.action) && e.after && e.after._ref).map(e => e.after._ref));
+  const latest = {};
+  for (const e of events) {
+    if (/_failed$/.test(e.action) || (e.after && e.after._ref && failed.has(e.after._ref)) || !e.entity_id) continue;
+    latest[e.entity + '/' + e.entity_id] = e;                         // events arrive oldest first
+  }
+  const out = { unrecorded: [], drift: [], missing: [] }; const seen = new Set();
+  tables.forEach((t, i) => {
+    for (const r of rows[i]) {
+      const k = t + '/' + r.id; seen.add(k); const e = latest[k];
+      if (!e) { out.unrecorded.push({ entity: t, id: r.id }); continue; }
+      if (/^delete_/.test(e.action)) { out.drift.push({ entity: t, id: r.id, event_id: e.id, fields: ['(recorded as removed)'] }); continue; }
+      const fields = TRACKED[t].filter(f => e.after && Object.prototype.hasOwnProperty.call(e.after, f) && !same(e.after[f], r[f]));
+      if (fields.length) out.drift.push({ entity: t, id: r.id, event_id: e.id, fields });
+    }
+  });
+  for (const [k, e] of Object.entries(latest)) if (!seen.has(k) && !/^delete_/.test(e.action)) out.missing.push({ entity: e.entity, id: e.entity_id, event_id: e.id, action: e.action });
+  const cap = l => l.slice(0, 200);
+  return { ok: true, checked: rows.reduce((a, r) => a + r.length, 0), events: events.length, failed_actions: failed.size,
+           clean: !out.unrecorded.length && !out.drift.length && !out.missing.length,
+           counts: { unrecorded: out.unrecorded.length, drift: out.drift.length, missing: out.missing.length },
+           unrecorded: cap(out.unrecorded), drift: cap(out.drift), missing: cap(out.missing) };
 };
 
 /* ================================== HANDLER ================================== */

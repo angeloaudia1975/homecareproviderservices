@@ -83,6 +83,10 @@ const sum=o=>Object.values(o||{}).reduce((a,b)=>a+n(b),0);
 const CRED={hcps:["p-hcps","HCPS-issued certification"],manufacturer:["p-mfr","Manufacturer-issued credential"],none:["p-none","Training only"]};
 const credPill=i=>{const c=CRED[i]||CRED.none;return `<span class="pill ${c[0]}">${esc(c[1])}</span>`;};
 const stPill=s=>`<span class="pill p-${esc(String(s||"").replace(/[^a-z_]/g,""))}">${esc(String(s||"").replace("_"," "))}</span>`;
+const TRAINING={published:["p-published","Published training"],in_review:["p-in_review","In review — not yet published"],draft_only:["p-draft","Draft only — not yet published"],retired:["p-retired","Retired — no current version"],no_versions:["p-draft","No versions yet"],manufacturer_hosted:["p-mfr","Manufacturer-hosted training"]};
+const trainPill=c=>{const t=TRAINING[c.training]||TRAINING.no_versions;return `<span class="pill ${t[0]}">${esc(t[1])}${c.training==="published"&&c.published_version?" (v"+n(c.published_version)+")":""}</span>`;};
+const vCounts=c=>{const k=c.version_counts||{};return ["draft","in_review","published","retired"].filter(x=>k[x]).map(x=>`${n(k[x])} ${esc(x.replace("_"," "))}`).join(" · ")||"none";};
+const recPill=s=>`<span class="pill p-none" title="The course record's own status. In C1 it does not change when a version is published.">record: ${esc(s)}</span>`;
 const TYPE_LABEL={hcps_certification:"HCPS certification course",manufacturer_program:"Manufacturer program (e.g. Golden)",training:"Training (no credential)"};
 
 async function api(body){
@@ -122,8 +126,7 @@ async function change(body,msgId,after){
   const m=document.getElementById(msgId); if(m){m.className="msg";m.textContent="Saving…";}
   const r=await api(body);
   if(r.status===200&&r.body.ok){
-    if(r.body.audited===false){ if(m){m.className="msg err";m.textContent="Saved, but the activity record could not be written. Tell the President.";} }
-    else closeModal();
+    closeModal();
     if(after)await after(r.body); return r.body;
   }
   if(m){m.className="msg err";m.textContent=errText(r);} return null;
@@ -189,6 +192,7 @@ async function viewOverview(){
        ${M.filter(m=>m.in_academy||m.slug==="golden-technologies").map(m=>`<tr><td data-l="Manufacturer">${esc(m.name)}</td><td data-l="Courses">${n(m.courses)}</td></tr>`).join("")||`<tr><td colspan="2" class="muted">No manufacturer courses yet.</td></tr>`}
        </tbody></table><p class="muted small" style="margin-top:8px">${n(M.length)} manufacturers are on the HCPS list; a course can be added for any of them. The manufacturer list itself is managed in Online Ordering and is not changed here.</p></div>
    </div>
+   ${(o.test_pilot&&(o.test_pilot.learners||o.test_pilot.enrollments||o.test_pilot.hcps_certificates||o.test_pilot.manufacturer_credentials||o.test_pilot.dealerships))?`<div class="note warn" style="margin-bottom:14px"><b>TEST pilot data is left out of the figures above:</b> ${n(o.test_pilot.dealerships)} TEST dealership(s), ${n(o.test_pilot.learners)} pilot learner(s), ${n(o.test_pilot.enrollments)} enrollment(s), ${n(o.test_pilot.hcps_certificates)} HCPS certificate(s), ${n(o.test_pilot.manufacturer_credentials)} manufacturer credential(s).</div>`:""}
    <div class="card"><div class="bar"><h2 class="grow" style="margin:0">Recent activity</h2><button class="go ghost sm" id="allact">All activity</button></div>${eventsTable(o.recent)}</div>`;
   $("#allact").onclick=()=>go("activity");
 }
@@ -202,10 +206,10 @@ async function viewCourses(){
   $("#view").innerHTML=`<div class="card"><div class="bar" style="margin-bottom:10px">
       <select class="i" id="cfilt" style="max-width:260px"><option value="">All manufacturers</option>${M.map(m=>`<option value="${esc(m.slug)}"${m.slug===COURSE_FILTER?" selected":""}>${esc(m.name)}</option>`).join("")}</select>
       <span class="grow"></span><button class="go dk" id="newc">+ New course</button></div>
-    <table class="stack"><thead><tr><th>Course</th><th>Credential</th><th>Manufacturer</th><th>Versions</th><th>Published</th><th>Status</th></tr></thead><tbody>
+    <table class="stack"><thead><tr><th>Course</th><th>Credential</th><th>Manufacturer</th><th>Training available</th><th>Versions</th><th>Course record</th></tr></thead><tbody>
     ${cs.map(c=>`<tr class="click" data-id="${esc(c.id)}"><td data-l="Course"><b>${esc(c.title)}</b> ${c.is_test?`<span class="pill p-test">TEST</span>`:""}<div class="muted mono">${esc(c.slug)}</div></td>
       <td data-l="Credential">${credPill(c.issuer)}</td><td data-l="Manufacturer">${esc(mname(c.manufacturer_slug))}</td>
-      <td data-l="Versions">${n(c.versions)}${c.open_drafts?` <span class="muted">(${n(c.open_drafts)} open)</span>`:""}</td><td data-l="Published">${c.published_version?"v"+esc(c.published_version):"—"}</td><td data-l="Status">${stPill(c.status)}</td></tr>`).join("")
+      <td data-l="Training available">${trainPill(c)}</td><td data-l="Versions" class="small">${vCounts(c)}</td><td data-l="Course record">${recPill(c.status)}</td></tr>`).join("")
       ||`<tr><td colspan="6" class="muted">No courses yet. Start with “New course”.</td></tr>`}
     </tbody></table></div>`;
   $("#cfilt").onchange=e=>{COURSE_FILTER=e.target.value;viewCourses();};
@@ -242,8 +246,9 @@ async function viewCourse(id){
   const isMfr=c.course_type==="manufacturer_program";
   $("#view").innerHTML=`<div class="crumbs"><a id="back">← All courses</a></div>
    <div class="card"><div class="bar"><div class="grow"><h2 style="margin:0">${esc(c.title)} ${c.is_test?`<span class="pill p-test">TEST</span>`:""}</h2>
-      <div class="muted mono">${esc(c.slug)}</div></div>${credPill(c.issuer)} ${stPill(c.status)}</div>
-    <div class="note" style="margin-top:10px">${esc((c.credential||{}).note||"")}</div>
+      <div class="muted mono">${esc(c.slug)}</div></div>${credPill(c.issuer)}</div>
+    <div class="bar" style="margin-top:8px">${trainPill(c)} ${recPill(c.status)} <span class="muted small">Versions: ${vCounts(c)}</span></div>
+    <div class="note" style="margin-top:10px">${esc((c.credential||{}).note||"")}${c.is_test?" This is a TEST course: it never issues a genuine certificate and is left out of dealership reporting.":""}</div>
     <table class="stack" style="margin-top:10px"><tbody>
       <tr><td data-l="Type"><b>Type</b></td><td>${esc(TYPE_LABEL[c.course_type]||c.course_type)}</td></tr>
       <tr><td data-l="Manufacturer"><b>Manufacturer</b></td><td>${esc(mname(c.manufacturer_slug))}</td></tr>
@@ -331,14 +336,14 @@ async function viewPeople(){
   if(PEOPLE==="dealers"){
     const d=r.body.dealerships;
     $("#view").innerHTML=`<div class="card">${head}<table class="stack"><thead><tr><th>Dealership</th><th>Learners</th><th>Training Managers</th><th>Enrollments</th><th>HCPS certificates</th><th>Manufacturer credentials</th></tr></thead><tbody>
-      ${d.map(x=>`<tr><td data-l="Dealership"><b>${esc(x.dealer||"(unknown dealer)")}</b>${x.parent?`<div class="muted small">Branch of ${esc(x.parent)}</div>`:""}</td><td data-l="Learners">${n(x.learners)}${x.inactive_learners?` <span class="muted">(${n(x.inactive_learners)} inactive)</span>`:""}${x.training_only?`<div class="muted small">${n(x.training_only)} training-only</div>`:""}</td>
+      ${d.map(x=>`<tr><td data-l="Dealership"><b>${esc(x.dealer||"(unknown dealer)")}</b>${x.is_test?` <span class="pill p-test">TEST — not in reporting</span>`:""}${x.test_course_enrollments?`<div class="muted small">${n(x.test_course_enrollments)} TEST-course enrollment(s) not counted</div>`:""}${x.parent?`<div class="muted small">Branch of ${esc(x.parent)}</div>`:""}</td><td data-l="Learners">${n(x.learners)}${x.inactive_learners?` <span class="muted">(${n(x.inactive_learners)} inactive)</span>`:""}${x.training_only?`<div class="muted small">${n(x.training_only)} training-only</div>`:""}</td>
         <td data-l="Training Managers">${n(x.training_managers)}</td><td data-l="Enrollments">${sum(x.enrollments)}${x.enrollments.completed?` <span class="muted">(${n(x.enrollments.completed)} completed)</span>`:""}</td>
         <td data-l="HCPS certificates">${n(x.hcps_certificates_valid)}</td><td data-l="Mfr credentials">${n(x.manufacturer_credentials_verified)}</td></tr>`).join("")||`<tr><td colspan="6" class="muted">No dealership has Academy learners yet.</td></tr>`}
       </tbody></table><p class="muted small" style="margin-top:8px">Training-only access never grants ordering or pricing. Dealership boundaries follow Connect 360: a branch is shown under its parent.</p></div>`;
   } else {
     const L=r.body.learners;
     $("#view").innerHTML=`<div class="card">${head}<table class="stack"><thead><tr><th>Learner</th><th>Dealership &amp; role</th><th>Enrollments</th><th>Status</th></tr></thead><tbody>
-      ${L.map(l=>`<tr><td data-l="Learner"><b>${esc(l.full_name)}</b><div class="muted small">${esc(l.email)}</div></td>
+      ${L.map(l=>`<tr><td data-l="Learner"><b>${esc(l.full_name)}</b>${l.pilot?` <span class="pill p-test">TEST pilot</span>`:""}<div class="muted small">${esc(l.email)}</div></td>
         <td data-l="Dealership">${l.memberships.map(m=>`<div style="margin-bottom:4px">${esc(m.dealer||"?")} · ${m.role==="training_manager"?"<b>Training Manager</b>":"Learner"} <span class="muted small">(${esc(m.access_type==="training_only"?"training only":"dealer user")}${m.status!=="active"?", "+esc(m.status):""})</span>
           ${m.status==="active"?`<button class="go ghost sm" data-tm="${esc(m.id)}" data-make="${m.role==="training_manager"?"0":"1"}">${m.role==="training_manager"?"Remove TM role":"Make TM"}</button>`:""}</div>`).join("")||`<span class="muted">—</span>`}</td>
         <td data-l="Enrollments">${sum(l.enrollments)}</td><td data-l="Status">${stPill(l.status)}</td></tr>`).join("")||`<tr><td colspan="4" class="muted">No learners yet.</td></tr>`}
@@ -423,7 +428,7 @@ async function viewCreds(){
     <table class="stack"><thead><tr><th>Learner</th><th>Program</th><th>Issued by</th><th>Status</th><th>Evidence</th><th></th></tr></thead><tbody>
     ${X.map(c=>`<tr><td data-l="Learner">${esc(c.learner||"")}<div class="muted small">${esc(c.learner_email||"")}</div></td><td data-l="Program">${esc(c.course||"")}</td><td data-l="Issued by">${esc(c.issued_by)}</td>
       <td data-l="Status"><span class="pill ${c.status==="verified"?"p-published":c.status==="rejected"?"p-off":"p-in_review"}">${esc(String(c.status||"").replace(/_/g," "))}</span>${c.awaiting_review?`<div class="muted small">needs review</div>`:""}</td>
-      <td data-l="Evidence">${c.evidence_type?esc(c.evidence_type.replace("_"," "))+(c.evidence_ref?" · "+esc(c.evidence_ref):""):"—"}${c.verified_by?`<div class="muted small">checked by ${esc(String(c.verified_by).replace("staff:",""))} ${day(c.verified_at)}</div>`:""}${c.note?`<div class="muted small">${esc(c.note)}</div>`:""}</td>
+      <td data-l="Evidence">${c.evidence_type?esc(c.evidence_type.replace("_"," "))+(c.evidence_ref?" · "+esc(c.evidence_ref):""):(c.has_upload?"Certificate file uploaded — not yet checked":"—")}${c.verified_by?`<div class="muted small">checked by ${esc(String(c.verified_by).replace("staff:",""))} ${day(c.verified_at)}</div>`:""}${c.note?`<div class="muted small">${esc(c.note)}</div>`:""}</td>
       <td data-l="">${(c.status!=="verified"&&c.status!=="rejected")?`<button class="go ghost sm" data-rv="${esc(c.id)}">Review…</button>`:""}</td></tr>`).join("")
       ||`<tr><td colspan="6" class="muted">No manufacturer credentials are being tracked yet.</td></tr>`}</tbody></table></div>`;
   $("#view").querySelectorAll("[data-rv]").forEach(b=>b.onclick=()=>{
@@ -452,11 +457,22 @@ async function viewActivity(more){
   const r=await api(b); if(r.status!==200)return failed(r);
   EVENTS=EVENTS.concat(r.body.events); NEXT=r.body.next_before_id;
   $("#view").innerHTML=`<div class="card"><div class="bar" style="margin-bottom:10px">${select("af","",ENT,ACTF).replace(/<label[^>]*><\/label>/,"")}<span class="grow"></span><span class="muted small">Every change, by whom and when. The history cannot be edited or deleted.</span></div>
-    ${eventsTable(EVENTS)}${NEXT?`<div class="bar end" style="margin-top:10px"><button class="go ghost sm" id="more">Load older</button></div>`:""}</div>`;
+    ${eventsTable(EVENTS)}${NEXT?`<div class="bar end" style="margin-top:10px"><button class="go ghost sm" id="more">Load older</button></div>`:""}</div>
+    <div class="card"><div class="bar"><h2 class="grow" style="margin:0">Records check</h2><button class="go ghost sm" id="rcheck">Run records check</button></div>
+      <p class="muted small" style="margin-top:6px">Compares every course, version, module and lesson with its latest recorded change. Course content changes are recorded before they are made; anything changed outside the Command Center, or a change whose failure could not be recorded, shows up here.</p><div id="rcout"></div></div>`;
   $("#af").style.maxWidth="260px"; $("#af").onchange=e=>{ACTF=e.target.value;viewActivity();};
+  $("#rcheck").onclick=runCheck;
   if($("#more")) $("#more").onclick=()=>viewActivity(true);
 }
 
+async function runCheck(){
+  const o=$("#rcout"); o.innerHTML=`<p class="muted">Checking…</p>`;
+  const r=await api({action:"audit_check"}); if(r.status!==200){ o.innerHTML=`<div class="note warn">${esc(errText(r))}</div>`; return; }
+  const c=r.body, row=(x,extra)=>`<tr><td data-l="Record">${esc(String(x.entity||"").replace("academy_",""))}</td><td data-l="Id" class="mono">${esc(String(x.id||"").slice(0,13))}</td><td data-l="Detail">${esc(extra||"")}</td></tr>`;
+  o.innerHTML=`<div class="note ${c.clean?"ok":"warn"}" style="margin-top:8px">${c.clean?"All records match their history.":"Some records need a look."} ${n(c.checked)} records checked against ${n(c.events)} history entries · ${n(c.counts.unrecorded)} with no history · ${n(c.counts.drift)} differ from their history · ${n(c.counts.missing)} recorded but missing · ${n(c.failed_actions)} recorded failure(s).</div>
+    ${c.clean?"":`<table class="stack" style="margin-top:8px"><thead><tr><th>Record</th><th>Id</th><th>Detail</th></tr></thead><tbody>
+      ${c.drift.map(x=>row(x,"Differs from its history: "+(x.fields||[]).join(", "))).join("")}${c.unrecorded.map(x=>row(x,"No history entry")).join("")}${c.missing.map(x=>row(x,"Recorded ("+String(x.action||"").replace(/_/g," ")+") but not found")).join("")}</tbody></table>`}`;
+}
 if(TOKEN) boot(); else gate();
 </script>
 </body></html>
