@@ -3,7 +3,7 @@ const fs=require('fs'),path=require('path'),os=require('os'),{execFileSync}=requ
 const DIR=path.join(__dirname,'..','netlify','functions');
 const M=[
  ['catalog-api.js','freeze gate skipped','      const frozenRefusal=await freezeGate(b, me);\n      if(frozenRefusal) return frozenRefusal;\n',''],
- ['catalog-api.js','freeze state read failure ignored','  catch(e){ return json(503,{error:"freeze_state_unreadable"','  catch(e){ return null; return json(503,{error:"freeze_state_unreadable"'],
+ ['catalog-api.js','freeze state read failure ignored','  catch(e){ return json(503,{error:"freeze_state_unreadable", message:"The freeze state of "','  catch(e){ return null; return json(503,{error:"freeze_state_unreadable", message:"The freeze state of "'],
  ['catalog-api.js','regression fix of any kind accepted','  if(!dd || dd.kind!=="regression_fix" || dd.manufacturer!==slug || dd.used_at)','  if(!dd)'],
  ['catalog-api.js','regression fix without a reason accepted','  if(!(id>0) || !reason) return json(400','  if(!(id>0)) return json(400'],
  ['catalog-api.js','token not sent to the database','  const fix=(method!=="GET" && REGRESSION) ? {"x-hcps-regression-fix":String(REGRESSION.id)} : {};','  const fix={};'],

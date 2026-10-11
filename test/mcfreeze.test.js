@@ -47,10 +47,13 @@ await t('frozen line: every commercial action is refused (staging, provenance, a
     eq([b.action,r.status,r.body.error],[b.action,423,'line_frozen']); eq(W.writes.length,n,b.action+' wrote');
   }
 });
-await t('frozen line: a non-commercial edit (image only) still goes through',async()=>{
-  const W=world(); const C=mod(W);
+await t('frozen line: an image-only edit is refused too since Release A (content is frozen); a regression_fix lets it through',async()=>{
+  /* Phase 2 let non-commercial edits through; Release A (approved 2026-10-11) freezes what dealers see as well. */
+  const W=world(); const C=mod(W); const before=JSON.stringify(W.db.product_overrides);
   const r=await call(C,{action:'save_override',manufacturer:FROZEN,code:'7YR05310TSS',patch:{image:'https://x/y.jpg'}});
-  eq(r.status,200,JSON.stringify(r.body)); eq(W.db.product_overrides[0].patch.image,'https://x/y.jpg');
+  eq([r.status,r.body.error],[423,'line_frozen'],JSON.stringify(r.body)); eq(JSON.stringify(W.db.product_overrides),before,'nothing written');
+  const f=await call(C,{action:'save_override',manufacturer:FROZEN,code:'7YR05310TSS',patch:{image:'https://x/y.jpg'},regression_fix:{decision_id:7,reason:'wrong photo'}});
+  eq(f.status,200,JSON.stringify(f.body)); eq(W.db.product_overrides[0].patch.image,'https://x/y.jpg');
 });
 await t('frozen line: read-only reconcile still answers (no apply)',async()=>{
   const W=world(); const C=mod(W); const r=await call(C,{action:'reconcile',manufacturer:FROZEN}); eq(r.status,200,JSON.stringify(r.body).slice(0,200));
