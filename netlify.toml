@@ -33,6 +33,29 @@
   [headers.values]
     X-Robots-Tag = "noindex, nofollow"
 
+# HCPS Academy: one canonical host. The learner session cookie (__Host-) belongs to exactly one host, so Academy pages
+# are only ever served from www.homecareproviderservices.org — the site's PRIMARY domain (Netlify already sends the bare
+# domain to www; a rule pointing www back at the bare domain would loop). Only the netlify.app host needs a rule here
+# (security review 10 Oct 2026, S2; canonical host corrected at the A2A merge gate after a live check).
+[[redirects]]
+  from = "https://homecareproviderservices.netlify.app/academy/*"
+  to = "https://www.homecareproviderservices.org/academy/:splat"
+  status = 301
+  force = true
+
+# HCPS Academy (A2A, 10 Oct 2026). No Academy pages exist yet; these headers apply the moment they do. Kept out of
+# search until launch is approved; never framed by another site; no referrer leaves the page; a strict content
+# security policy (own scripts only, no inline script, connections only back to this site) so a page cannot leak the
+# learner's session or be turned against it. Academy pages are built to this policy: no inline <script>.
+[[headers]]
+  for = "/academy/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "no-referrer"
+    X-Content-Type-Options = "nosniff"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.supabase.co; media-src 'self' https://*.supabase.co; connect-src 'self'; frame-src https://www.youtube-nocookie.com https://player.vimeo.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+
 # Automation engine scheduled functions. engine-hourly self-gates to weekday ET business
 # hours (returns immediately otherwise) and only DELIVERS inside the configured send
 # windows. engine-nightly runs once overnight (06:00 UTC ≈ 1–2am ET) to recompute
