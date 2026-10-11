@@ -21,6 +21,7 @@ const orgAccounts=require("./_accountorg.js")(sbGet,sbSend);
 const { NAME_FIRST, NO_ACCOUNT_CAPTURE } = require("./_mfr_rules.js");
 const SC=require("./_scope.js");
 const MI=require("./_mi1a.js"); const { flagOn }=require("./_flags.js");
+const CC=require("./_commission_coverage.js");   // aliasTarget: a learned alias names the company (RULE 2026-10-10)
 const clean=(v,n)=>{ const s=(v==null?"":String(v)).trim(); return s?s.slice(0,n||400):null; };
 const num=v=>{ if(v==null||v==="") return null; const n=Number(String(v).replace(/[$,\s]/g,"")); return Number.isFinite(n)?n:null; };
 const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
@@ -175,8 +176,12 @@ exports.handler = async (event)=>{
     }
     // Remember an unmatched report name → dealer, so this and future imports match it.
     if(b.action==="add_alias"){
-      const company=clean(b.company,180), dealer_id=clean(b.dealer_id,80);
-      if(!company||!dealer_id) return json(400,{error:"company and dealer_id required"});
+      const company=clean(b.company,180), chosen_id=clean(b.dealer_id,80);
+      if(!company||!chosen_id) return json(400,{error:"company and dealer_id required"});
+      // An alias names the COMPANY (RULE 2026-10-10): resolve() already picks the branch by ship-to ZIP inside
+      // the family, so a generic name chosen on a branch is stored on the family root unless it names the branch.
+      const fam=await sbGetAll("dealers?select=id,business_name,city,parent_id","id");
+      const tgt=CC.aliasTarget(fam, chosen_id, company, dnorm), dealer_id=tgt.dealer_id;
       const alias_norm=dnorm(company); if(!alias_norm) return json(400,{error:"empty name"});
       // MI-1a (switch mi_import_v2): an alias that already points to ANOTHER dealer is never overwritten
       // silently — the reply names both dealers and the replacement needs replace:true. Switch off = today.
@@ -192,7 +197,7 @@ exports.handler = async (event)=>{
         }
       }
       await sbSend("POST","dealer_aliases?on_conflict=alias_norm",{alias_norm,raw_name:company,dealer_id},{Prefer:"resolution=merge-duplicates,return=minimal"});
-      return json(200,{ok:true,alias_norm,dealer_id});
+      return json(200,{ok:true,alias_norm,dealer_id,scope:tgt.scope,moved_from:tgt.moved_from||null});
     }
 
     if(b.action!=="preview"&&b.action!=="import") return json(400,{error:"unknown action"});
