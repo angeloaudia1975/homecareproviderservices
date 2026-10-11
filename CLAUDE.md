@@ -1667,6 +1667,14 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   (`scripts/mi1c_public_probe_browser.js`, run by Angelo 12:58 CT, key verified first): ALL 22 BLOCKED (401). Before the
   merge, main 0751266 (MC content-freeze SQL only) brought in; MI-1c SQL byte-identical; MI-1c 76/29/26 (real PDF),
   MI-1b 46/28, MI-1a 28/16, commission 42/11, MC content-freeze 19/18/3, guard 17, append 6, flow 13, gates 12, freeze 17.
+  **MI-1c DEPLOYED 2026-10-11 ~13:00 CT** (branch merged → main 86b4958, Netlify "Production: main@86b4958 Published").
+  Live: Dealer Intelligence Import opens for the President under Sales Data & Analytics and shows "No dealer-intelligence
+  report is registered yet"; API `sources` (signed in) → 200, no-store, 0 sources, reader strongback-mobility; no token /
+  forged token / junk token → 401 sign_in_required (XMLHttpRequest, not the wrapped fetch); rep / Relations → 403
+  management_only (code ADMIN = president/admin/owner + mi1c-api tests; no non-admin login used live); Report History
+  API list → 200. Nothing registered, imported, matched or published; `mi_intel_publish` absent; `mi_import_v2` ON,
+  `mi_commission_v2` off. Awaiting Angelo's MI-1c installation acceptance; the September PDF registration and the
+  25-dealer import each need their own approval.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
