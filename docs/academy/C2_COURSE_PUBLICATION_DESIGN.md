@@ -26,7 +26,7 @@ what C2 will need. All seven Academy switches stay OFF.
 | 7. TEST isolation | M1 refuses a certificate on a `test-…` course. The C1 Overview leaves TEST data out of the real figures. | Every C2 status view and count must apply the same rule. |
 
 ## Proposed design (for approval)
-All of the following would be **one new migration ("M3")**, built and tested like M1 and M2 (preflight, exact SQL, sha256, rollback, acceptance tests, public-key probe, local hardening). Angelo would run it himself.
+All of the following would be **one new migration ("M4"; M3 is reserved for the A2D lesson-content operations)**, built and tested like M1 and M2 (preflight, exact SQL, sha256, rollback, acceptance tests, public-key probe, local hardening). Angelo would run it himself.
 
 **1. Course status is maintained only by audited operations, in the same transaction:**
 - `published` while the course has a published version (HCPS courses), or after `publish_course` (manufacturer programs);
@@ -85,7 +85,7 @@ The learner catalog (A2D/A2E, later) lists only published courses.
 ## Dependencies and order
 1. M2 installed in production and verified. The content guard is what keeps course status out of plain writes.
 2. Angelo's decisions A–E.
-3. M3 SQL, rollback, acceptance tests and local tests, presented as a draft PR. Angelo reviews it and runs it himself.
+3. M4 SQL, rollback, acceptance tests and local tests, presented as a draft PR. Angelo reviews it and runs it himself.
 4. Command Center code switches publish and retire to the new operations, and adds course publication and a history view (C2 code PR).
 5. The learner catalog reads course status only after A2D/A2E are approved and the `academy_learner` switch is turned on by Angelo.
 
