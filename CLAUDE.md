@@ -340,10 +340,62 @@ Whichever importer loads them, they must count as commission reports.
 - Both importers write to `monthly_sales` and both store a per-line `commission`. Each row is tagged
   by lane: the commission importer stamps `source='commission'`, the sales-report importer
   `source='sales_report'`. Keep both tags set.
-- **Coverage & commission reporting key off commission DATA, not the importer**: a manufacturer-month
-  counts as a commission report received when it has `source='commission'` OR any row with a non-zero
-  `commission` (commissions-api `config.received`). Never gate commission coverage/reporting on `source`
-  alone.
+- **Coverage & commission reporting key off commission DATA, not the importer** — but a row is not data
+  just because it exists (amended 2026-10-10, see the next bullet). Never gate commission coverage/reporting
+  on `source` alone.
+- **A blank row is not a received report (RULE, Angelo 2026-10-10).** A commission report counts as received
+  / entered for a manufacturer-month ONLY when that month holds validated statement data: a commission-lane
+  row (`source='commission'`, or legacy no-source/no-external_ref) that is not an open INVOICE line and
+  carries an explicit commission figure. An explicit 0 is a documented zero-dollar statement and counts;
+  NULL never does and is never shown or summed as $0. A month whose only commission-lane rows have no
+  commission figure shows **Not received / Not entered** (with the reason), never Received or $0.
+  Sales-report rows carry a commission COMPUTED at the rate typed in (amount × rate): that is an **estimate**,
+  shown separately ("Sales report only — estimated"), never as a received statement — unless the
+  manufacturer's sales report is its own commission statement (`commission_config.statement_sales_reports`,
+  default PediFix + Ovation per RULE 14, pending Angelo's confirmation). An order-line export (e.g. the
+  Strongback September CSV, $2,159 wholesale) is NOT proof a commission statement was received or paid; a 9%
+  commission from it is an estimate only, and it belongs in the Sales Report Import, never the Commission
+  Report Import. One definition: `_commission_coverage.js` (coverage + import validation).
+- **Commission imports refuse incomplete statements before writing anything.** Sales amount and commission $
+  must be mapped (column-mapped files); every non-invoice row must carry a numeric amount AND commission;
+  every open-invoice ledger row a billed amount; the file must hold at least one commission figure. A blank is
+  never turned into 0 — the import is refused (422 `statement_incomplete`) naming the unmapped column(s) and
+  the rows missing a value, in analyze AND import (legacy and MI-1a paths).
+- **A learned name alias names the COMPANY, not a branch** (Williams Brothers, 2026-10-10). The importers pick the
+  branch by ship-to ZIP inside the dealer family, so an alias saved from Review & correct is stored on the family
+  root (HQ) unless the name itself names that branch (its own business name or city). Branch routing that a name
+  can't carry is a per-manufacturer ZIP assignment. An alias already pointing to a different dealer is never
+  overwritten silently (409 `alias_conflict`, confirm to replace).
+- **Status 2026-10-10 (PROPOSED, branch `commission-coverage-fix` — not merged, not deployed, no SQL run):** code above +
+  `test/commission-coverage.test.js` (34, mutants 32/32) + `test/commission-sept2026.pg.test.js` (11). Cleanup
+  `supabase/commission_sept2026_cleanup.sql` (+ `_rollback.sql`, read-only `_preview.sql`) moves exactly the 7 blank
+  Strongback 2026-09 rows into `monthly_sales_quarantine` (whole rows, original ids, evidence; RULE 19 locked) —
+  preview: 7 match, fingerprint c7b81f69…, 12,004 → 11,997 rows, totals unchanged. `williams_brothers_alias_fix.sql`
+  (+ rollback) moves the generic alias from Princeton to the HQ. Coverage impact: 107 received → 79 (all kept; 0
+  gained), 23 → estimated (ABM 11, Strongback 12), 5 → not entered (Strongback 2026-09, Ohio Medical 2026-04/06/07,
+  Climbing Steps 2026-05). Found, not in the cleanup: Ohio Medical 2026-04 has 16 blank PAYMENT rows; Bemis 2026-06
+  has 4 blank rows of 17; Access4u has 7 payment lines with a sale but no commission (a future file like that is now
+  refused). Decisions pending: confirm PediFix/Ovation (and whether ABM) sales reports are statements; the two older
+  generic Williams aliases (→ Henderson, → Columbus). `mi_import_v2` stays OFF until this is reviewed.
+  **September cleanup RUN by Angelo 2026-10-11 02:43 UTC (verified):** 7 rows quarantined (whole, fingerprints valid,
+  preview fingerprint c7b81f69… = the stored copies), 0 left in monthly_sales, 11,997 rows, $10,802,558.50 / $493,077.06
+  unchanged, live = Part 0 snapshot (EXCEPT ALL 0/0), 0 batches / 0 superseded, quarantine RLS on / 0 policies / anon +
+  authenticated no privileges / service_role yes. A second run was correctly refused ("expected exactly 7 matching
+  rows, found 0 — nothing written"). Outside public-key check (`scripts/quarantine_public_probe_browser.js`, run by Angelo
+  2026-10-11 02:52 UTC, key accepted on a public table first): read 401/42501 BLOCKED, write 401/42501 BLOCKED. Still NOT done: the alias fix (alias still on Princeton), the code merge/deploy.
+  **Angelo's decisions 2026-10-10 (after independent verification of the cleanup — do NOT run it again):** approach
+  approved with one change — a month holding valid statement lines AND lines without a commission figure is
+  **"Received — incomplete, requires review"** (partial, with the count), never plain green; kept apart per month:
+  valid statement lines · explicit $0 commission · missing commission · open/unpaid invoices · sales-report estimates;
+  never manufacture a zero. ABM sales-report commission stays an ESTIMATE unless the actual manufacturer file is
+  verified as its statement. PediFix/Ovation exceptions kept **provisionally**, with their evidence documented
+  (`STATEMENT_SALES_REPORT_EVIDENCE`): PediFix = 172 rows from one sales export `PediFix_ALL_2025-2026.csv`, every
+  commission = amount × 10% computed at import (not read from a statement) → months resting on it are marked
+  provisional (dashed); Ovation has no rows. A sales export never becomes a confirmed statement because estimated
+  commission values are populated. Ohio Medical / Bemis / Access4u / Climbing Steps exceptions = READ-ONLY review, no
+  cleanup, no other financial record changed. Williams Brothers generic alias → HQ approved in principle, NOT to be run
+  yet (exact guards + a fresh production pre-check first); September shipment stays on Princeton via ZIP 47670; the two
+  older generic aliases unchanged pending a separate review. Both MI switches stay OFF; AirAvant correction not started.
 - The **Commission Report Import coverage grid** shows **every year that has data** (not just the current
   year), so loaded history stays visible; green = received, amber = still needed (current year), grey =
   gap in a past year.
