@@ -10,7 +10,7 @@ const JS=[
  ['_mc.js','a window publishes through set_status','  if(a === "set_status" && isVisibleStatus(b.status)) return publishing;\n',''],
  ['_mc.js','a window publishes through bulk','  if(a === "bulk" && b.patch && isVisibleStatus(b.patch.status)) return publishing;\n',''],
  ['_mc.js','a window publishes through upsert','if(rows.some(r => r && isVisibleStatus(r.status))) return publishing;','if(false) return publishing;'],
- ['_mc.js','a window reaches related products','"merge_products","delete_product","create_product","save_sizing","bulk","undo"]);','"merge_products","delete_product","create_product","save_sizing","bulk","undo","save_related"]);'],
+ ['_mc.js','a window reaches related products','"bulk","undo",\n  "enrich_page","enrich_images","enrich_resolve","enrich_set_image"]);   // Release B','"bulk","undo","save_related",\n  "enrich_page","enrich_images","enrich_resolve","enrich_set_image"]);   // Release B'],
  ['_mc.js','any decision kind accepted as an exception','  if(d.kind !== kind) return','  if(false) return'],
  ['_mc.js','another line\'s exception accepted','  if(d.manufacturer !== slug) return','  if(false) return'],
  ['_mc.js','a spent fix or closed window accepted','  if(d.used_at != null) return kind','  if(false) return kind'],

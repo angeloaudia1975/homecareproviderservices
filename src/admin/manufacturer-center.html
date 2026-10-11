@@ -50,6 +50,12 @@
  .sub2{background:#fbfcfe}
  tr.needrow td{background:#fffbeb}.needtxt{color:var(--amber);font-size:11.5px}
  td.facts{background:#fbfcfd}td.interp{background:#f8fbf8}
+ .enstages{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin:12px 0}
+ @media(max-width:900px){.enstages{grid-template-columns:repeat(2,1fr)}}
+ .enst{background:#f7f9fc;border:1px solid var(--silver);border-radius:9px;padding:7px 9px;text-align:left;cursor:pointer;font-family:inherit}
+ .enst b{display:block;font-size:12px;color:var(--ink)}.enst span{font-size:11px;color:var(--gray)}
+ .enst.on{border-color:var(--orange);background:#fff7ef;box-shadow:inset 0 -3px 0 var(--orange)}.enst.later{opacity:.55}
+ .enissue{border-left:4px solid #f3d9a4}.enissue span,.enissue b{overflow-wrap:anywhere}
 </style><link rel="stylesheet" href="/admin/admin-shell.css"></head><body>
 <header id="ac-head"></header>
 <div class="wrap" id="wrap"><div class="msg">Loading…</div></div>
@@ -91,7 +97,11 @@ function sourceCell(s){ if(!s) return '<span class="mut">none registered</span>'
   return `${esc(s.title)}<div class="mut" style="font-size:11.5px">${rec}</div>`; }
 function effCell(s){ if(!s) return ""; return s.effective_date_status==="stated"?esc(fmtD(s.manufacturer_effective_date)):(s.effective_date_status==="pending"?'<span class="pill p-warn">pending</span>':'<span class="mut">n/a</span>'); }
 async function boot(){
-  try{ const j=await api({action:"mc_overview"}); LINES=j.lines||[]; render(); if(OPEN) await openLine(OPEN,true); }
+  try{ const j=await api({action:"mc_overview"}); LINES=j.lines||[]; render();
+    const h=new URLSearchParams(String(location.hash||"").replace(/^#/,""));
+    if(h.get("enrich")) await openEnrichment(h.get("enrich"));
+    else if(h.get("line")){ OPEN=h.get("line"); await openLine(OPEN); if(h.get("tab")&&STEPS.some(s=>s[0]===h.get("tab"))) go(h.get("tab")); }
+    else if(OPEN) await openLine(OPEN,true); }
   catch(e){ if(String(e.message)!=="unauthorized") $("#wrap").innerHTML=`<div class="msg err">Manufacturer Center could not load: ${esc(e.message)}</div>`; }
 }
 function render(){
@@ -102,7 +112,7 @@ function render(){
     <td>${l.decisions||0}${l.open_regression_fixes?` <span class="pill p-warn">${l.open_regression_fixes} open fix</span>`:''}</td>
     <td>${(l.deferrals||[]).map(d=>`<span class="pill p-adv" title="${esc(d.note||'')}">${esc(String(d.item||'').replace(/_/g,' '))} deferred</span>`).join(' ')||'<span class="mut">—</span>'}</td>
     <td>${l.last_run?`<span class="pill ${l.last_run.result==='pass'?'p-pass':'p-fail'}">${esc(l.last_run.result)}</span> <span class="mut" style="font-size:11.5px">${esc(l.last_run.phase)} · ${esc(fmtT(l.last_run.run_at))}</span>`:'<span class="mut">never</span>'}</td>
-    <td style="white-space:nowrap"><button class="btn ghost" onclick="openLine('${esc(l.slug)}')">Open</button></td></tr>`).join("");
+    <td style="white-space:nowrap"><button class="btn ghost" onclick="openLine('${esc(l.slug)}')">Open</button> ${(l.enrichment_window||(l.deferrals||[]).some(d=>d&&d.item==="enrichment_pages"))?`<button class="btn" onclick="openEnrichment('${esc(l.slug)}')" title="Products → Auto-Enrich → Review Issues. Drafts only; dealers see nothing until the line is published.">Continue Product Enrichment</button>`:''}</td></tr>`).join("");
   $("#wrap").innerHTML=`<h1>Manufacturer Center</h1>
   <p class="sub">From a manufacturer's files to a verified, record-authoritative line. Manufacturer Center coordinates the Structure Map, Product Content Enrichment, the commercial master (<code>product_skus</code>) and Partner 360 — it does not hold products or set prices itself.</p>
   <div class="infobar"><b>Guided workflow:</b> Sources → Match &amp; decide → Structure &amp; content → Commercial &amp; freight → Stage (<b>Approval 1</b>) → Verify &amp; activate (<b>Approval 2</b>). Every write shows a dry run first. <b>Frozen lines</b> (Climbing Steps, Strongback, Ovation, Bemis) open read-only and refuse every change — in catalog-api and in the database — unless a <b>regression_fix</b> decision is recorded and sent with it. Bemis product pages are an <b>approved deferral</b>, not a regression.</div>
@@ -120,7 +130,7 @@ async function selftest(){
   b.disabled=false; b.textContent="Test the freeze guard";
 }
 async function openLine(slug, keep){
-  OPEN=slug; if(!keep){ RUN=null; wfReset(); } render();
+  OPEN=slug; EN=null; if(!keep){ RUN=null; wfReset(); } render();
   $("#line").innerHTML='<div class="card mut">Loading '+esc(slug)+'…</div>';
   try{ LINE=await api({action:"mc_line",manufacturer:slug}); if(!keep) TAB=(LINE.meta&&LINE.meta.frozen)?"activate":"sources"; renderLine(); }
   catch(e){ if(String(e.message)!=="unauthorized") $("#line").innerHTML=`<div class="card err">Could not load ${esc(slug)}: ${esc(e.message)}</div>`; }
@@ -461,6 +471,156 @@ function runHtml(r){
   const row=c=>`<details class="chk" ${!c.pass?'open':''}><summary><span class="pill ${c.pass?(c.severity==='blocking'?'p-pass':'p-adv'):'p-fail'}">${c.pass?(c.severity==='blocking'?'pass':'info'):'fail'}</span><b>${esc(c.label)}</b></summary><div class="det">${detailHtml(c)}</div></details>`;
   return `<div class="card" style="border-color:${r.result==='pass'?'#bfe3cf':'#f3c0c0'}"><h3 style="margin-top:0"><span class="pill ${r.result==='pass'?'p-pass':'p-fail'}">${esc(r.result)}</span> Run #${esc(r.id||'')} · ${esc(r.phase)} · fingerprint <code>${esc(r.fingerprint||'')}</code>${r.baseline_run?` <span class="mut" style="font-size:12px">compared with baseline run #${esc(r.baseline_run)}</span>`:''}</h3>
     ${blk.map(row).join('')}<h3>Information</h3>${adv.map(row).join('')}</div>`;
+}
+/* ═══ PRODUCT ENRICHMENT — Release B (approved 2026-10-11) ═════════════════════════════════════════════════
+   The front door's stages 2–4 for one line: Products → Auto-Enrich → Review Issues. The system proposes the pages,
+   reads the manufacturer's pages, drafts copy and copies photos into HCPS storage; Angelo works from Review Issues,
+   never field by field. Every draft is hidden from dealers; on a frozen line every write carries the line's open
+   enrichment window. Dealer Preview (Release C) and Publish & Verify (Release D) come later. Prices never change here. */
+const PAPI="/.netlify/functions/product-content";
+let EN=null;   // {slug, tab, plan, busy, log:[], pend:{}}
+async function papi(body){ const h={"content-type":"application/json"}; if(TOKEN) h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch(PAPI,{method:"POST",headers:h,body:JSON.stringify(body)});
+  if(r.status===401){ gate(); throw new Error("unauthorized"); }
+  const j=await r.json().catch(()=>({})); if(!r.ok||j.ok===false||j.error) { const e=new Error(j.message||j.error||("HTTP "+r.status)); e.status=r.status; e.body=j; throw e; } return j; }
+const ENRICH_STAGES=[["sources","1 · Manufacturer & Sources"],["products","2 · Products"],["auto","3 · Auto-Enrich"],["issues","4 · Review Issues"],["preview","5 · Dealer Preview"],["publish","6 · Publish & Verify"]];
+const ST_PILL={ready:"p-pass",conflict:"p-fail",needs_grouping:"p-warn",needs_content:"p-warn",needs_image:"p-warn",needs_category:"p-warn",held_back:"p-adv",not_enriched:"p-adv"};
+function enWin(){ return EN&&EN.plan&&EN.plan.window; }
+function winBody(b){ const w=enWin(); return Object.assign({manufacturer:EN.slug}, w?{enrichment_window:{decision_id:w.id}}:{}, b); }
+async function openEnrichment(slug, tab){
+  OPEN=slug; EN={slug, tab:tab||"products", plan:null, busy:false, log:[], pend:{}, winDry:null};
+  render(); $("#line").innerHTML='<div class="card mut">Reading '+esc(slug)+'’s products…</div>';
+  try{ history.replaceState(null,"","#enrich="+encodeURIComponent(slug)); }catch(e){}
+  await enReload();
+}
+async function enReload(){ try{ EN.plan=await papi({action:"enrich_plan",manufacturer:EN.slug}); }
+  catch(e){ if(String(e.message)!=="unauthorized") $("#line").innerHTML=`<div class="card err">Product Enrichment could not load: ${esc(e.message)}</div>`; return; }
+  if(!EN.tabPicked){ EN.tab=EN.plan.pages.some(p=>p.status!=="not_enriched")?"issues":"products"; EN.tabPicked=true; } enDraw(); }
+function enGo(t){ if(t==="preview"||t==="publish"){ toast("Comes with Release "+(t==="preview"?"C":"D")+" — not built yet"); return; } if(t==="sources"){ openLine(EN.slug); return; } EN.tab=t; enDraw(); }
+function enDraw(){
+  const P=EN.plan, l=LINES.find(x=>x.slug===EN.slug)||{}, notEnr=P.pages.filter(p=>p.status==="not_enriched").length;
+  const issues=P.pages.reduce((n,p)=>n+p.issues.filter(i=>!i.pending).length,0);
+  const sub={sources:"Done",products:P.pages.length+" pages",auto:notEnr?notEnr+" to go":(P.ready+" ready"),issues:issues?issues+" open":"none open",preview:"Release C",publish:"Release D"};
+  const stages=ENRICH_STAGES.map(([k,n])=>`<button class="enst ${EN.tab===k?'on':''} ${(k==='preview'||k==='publish')?'later':''}" onclick="enGo('${k}')"><b>${esc(n)}</b><span>${esc(sub[k]||'')}</span></button>`).join("");
+  $("#line").innerHTML=`<div class="card"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">${esc(l.name||EN.slug)} — Product Enrichment</h2>
+    ${P.frozen?pill("p-frozen","Frozen · prices locked"):""}<span style="flex:1"></span>
+    <a class="btn ghost" href="/admin/product-content-review.html?manufacturer=${encodeURIComponent(EN.slug)}" target="_blank" title="The Advanced Product Editor: for unusual cases only. Prices are not edited there.">Open Advanced Editor</a>
+    <button class="btn ghost" onclick="openLine('${esc(EN.slug)}')">Line workflow</button></div>
+    <div class="enstages">${stages}</div>${enWindowBox()}<div id="enbody">${enBody()}</div></div>`;
+}
+function enWindowBox(){
+  const P=EN.plan; if(!P.frozen) return "";
+  const w=P.window;
+  if(w) return `<div class="rob" style="background:#eef8f1;border-color:#bfe3cf;color:#14532d">✅ <b>Enrichment window #${w.id} is open</b>${(w.by||w.at)?' ('+[w.by?'opened by '+esc(w.by):'',w.at?esc(fmtT(w.at)):''].filter(Boolean).join(', ')+')':''}. It covers <b>hidden draft pages only</b>: copy, specs, categories, groupings and photos copied into HCPS storage. Prices, tiers, UOM/case qty, MSRP/MAP, freight and commercial status stay locked, and nothing goes live without Approve &amp; Publish Manufacturer and a passing verification.</div>`;
+  const d=EN.winDry;
+  return `<div class="gatebox g-wait"><div class="gh"><span class="gn">Needs you once</span> <b>${esc(EN.slug)} is frozen (Gold Standard)</b></div>
+    <p style="font-size:12.5px;margin:0 0 8px">Drafting product pages needs a one-time <b>enrichment window</b>. Drafts are invisible to dealers; prices stay locked; nothing goes live without your approval and a passing verification.</p>
+    ${d?`<div class="dry"><b>Dry run — this would be recorded</b> (nothing written yet):<div class="grid2" style="margin-top:6px"><div><b>May write</b><ul>${d.hcps_value.may_write.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div><div><b>May not change</b><ul>${d.hcps_value.may_not_change.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div></div><p class="mut" style="font-size:12px">Publish: ${esc(d.hcps_value.publish)}</p>
+      <button class="btn" onclick="enOpenWindow(false)">Approve enrichment window</button> <button class="btn ghost" onclick="EN.winDry=null;enDraw()">Cancel</button></div>`
+     :`<div style="display:flex;gap:8px;flex-wrap:wrap"><input type="text" id="en_winreason" placeholder="Reason (e.g. Bemis product pages, Release B)" style="flex:1;min-width:240px" value="${esc(EN.slug==='bemis'?'Bemis product pages — Release B enrichment (content only)':'')}"><button class="btn" onclick="enOpenWindow(true)">Review what the window allows</button></div>`}</div>`;
+}
+async function enOpenWindow(dry){
+  const reason=dry?(($("#en_winreason")||{}).value||"").trim():EN.winReason;
+  if(!reason){ toast("A reason is required"); return; }
+  try{ const j=await api({action:"mc_open_enrichment_window",manufacturer:EN.slug,reason,dry_run:dry});
+    if(dry){ EN.winDry=j.would_record; EN.winReason=reason; enDraw(); return; }
+    toast("Enrichment window #"+j.window.id+" opened"); EN.winDry=null; await enReload(); }
+  catch(e){ toast("Not opened: "+e.message); }
+}
+function enBody(){ return EN.tab==="products"?enProducts():(EN.tab==="auto"?enAuto():enIssues()); }
+function unitOf(s){ return s.case_qty>1?("Case of "+s.case_qty):(s.uom||"Each"); }
+function enProducts(){
+  const P=EN.plan;
+  const rows=P.pages.map(p=>`<tr><td><b>${esc(p.name)}</b>${p.bundle?'<div class="needtxt">A display or bundle — your call in Review Issues</div>':''}</td>
+    <td>${p.skus.map(s=>`<div><code>${esc(s.code)}</code>${s.option?' — '+esc(s.option):''}</div>`).join('')}${Object.keys(p.options||{}).length?`<div class="mut" style="font-size:11.5px">Option: ${esc(Object.keys(p.options).join(', '))}</div>`:''}</td>
+    <td>${[...new Set(p.skus.map(unitOf))].map(esc).join('<br>')} 🔒</td><td class="mut" style="font-size:11.5px">${esc(p.group_reason)}</td><td>${pill(ST_PILL[p.status]||'p-adv',p.label)}</td></tr>`).join('');
+  return `<h3>${P.active} active SKUs become ${P.pages.length} product pages</h3>
+    <p class="sub">Brought in automatically from the commercial record. SKUs whose names differ only by shape, colour, side or size — and that point at the same manufacturer page — share one page with an option picker. Displays and bundles are never merged on their own. Sharing a page is presentation only: it never creates or changes a pricing family.</p>
+    <table><thead><tr><th>Proposed page</th><th>SKUs and option</th><th>Order unit (locked)</th><th>Why grouped</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
+    ${P.excluded.length?`<p class="mut" style="font-size:12px;margin-top:8px">Left out automatically: ${P.excluded.map(x=>`<code>${esc(x.code)}</code> (${esc(x.why)})`).join(', ')}. Order unit, price, MSRP and MAP come only from the commercial record and can't be changed here.</p>`:''}
+    <div style="margin-top:12px"><button class="btn" onclick="enGo('auto')">Next: Auto-Enrich ${P.pages.length} pages →</button></div>`;
+}
+function enAuto(){
+  const P=EN.plan, w=!P.frozen||enWin();
+  const todo=P.pages.filter(p=>p.status==="not_enriched"||(p.draft&&p.draft.images&&!p.draft.images.done));
+  const rows=P.pages.map(p=>{ const d=p.draft, pr=EN.pend[p.page_key];
+    const src=d&&d.sources&&d.sources.length?d.sources.map(s=>`<div style="font-size:11.5px">${esc(s.role==='product'?'Product page':(s.role==='landing'?'Landing page':'Bundle page (parts about it)'))}: <a href="${esc(s.url)}" target="_blank">${esc(String(s.url).replace(/^https?:\/\/(www\.)?/,'').slice(0,48))}</a>${s.model?' · model '+esc(s.model):''}</div>`).join(''):(d?'<span class="needtxt">No manufacturer page — catalog line only</span>':'<span class="mut">—</span>');
+    const img=d&&d.images?(d.images.done?`✓ ${d.gallery.length} photo${d.gallery.length===1?'':'s'}${d.images.failed.length?` <span class="needtxt">(${d.images.failed.length} failed)</span>`:''}`:`${d.images.copied}/${d.images.candidates} copying…`):'—';
+    return `<tr><td><b>${esc(p.name)}</b>${pr?`<div class="needtxt">${esc(pr)}</div>`:''}</td><td>${src}</td>
+      <td>${d?(d.description?'✓ Description':'<span class="needtxt">no description</span>')+', '+d.features.length+' features':'—'}</td>
+      <td>${d?(d.specs.length?'✓ '+d.specs.length+' stated':'<span class="mut">none stated</span>'):'—'}</td>
+      <td>${d?(d.warranty?'✓ stated':'<span class="mut">Not stated</span>'):'—'}</td><td>${img}</td>
+      <td>${d?esc([d.category,d.subcategory].filter(Boolean).join(' › ')||'—'):'—'}</td><td>${pill(ST_PILL[p.status]||'p-adv',p.label)}</td></tr>`; }).join('');
+  return `<h3>${todo.length?(P.pages.length-todo.length)+' of '+P.pages.length+' pages enriched':'Enrichment finished: '+P.ready+' ready, '+(P.pages.length-P.ready-(P.counts.held_back||0))+' need a look'}</h3>
+    <p class="sub">For each page the system reads the manufacturer's site and your catalog, drafts the copy from what the source states, copies the photos into HCPS storage and suggests the category dealers see today. Drafts are invisible to dealers. Facts a source didn't state are left blank, never made up.</p>
+    <div class="bar">${w?`<button class="btn" id="enrun" onclick="enRun(false)" ${EN.busy?'disabled':''}>${todo.length?(todo.length===P.pages.length?'Run Auto-Enrich':'Continue Auto-Enrich ('+todo.length+' to go)'):'Auto-Enrich is done'}</button>
+      <button class="btn ghost" onclick="enRun(true)" ${EN.busy?'disabled':''} title="Reads every page again and rebuilds every draft and its photos. Resolutions you recorded are kept.">Re-run every page</button>`:'<span class="needtxt">Approve the enrichment window above first.</span>'}</div>
+    <table><thead><tr><th>Page</th><th>Source found</th><th>Copy &amp; features</th><th>Specs</th><th>Warranty</th><th>Photos</th><th>Category</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
+    ${!todo.length?`<div style="margin-top:12px"><button class="btn" onclick="enGo('issues')">Next: Review Issues →</button></div>`:''}`;
+}
+async function enRun(all){
+  if(EN.busy) return; EN.busy=true; const P=EN.plan;
+  const list=P.pages.filter(p=>all||p.status==="not_enriched"||(p.draft&&p.draft.images&&!p.draft.images.done));
+  let n=0;
+  for(const p of list){
+    n++; try{
+      if(all||p.status==="not_enriched"){ EN.pend[p.page_key]="Reading the manufacturer's pages… ("+n+"/"+list.length+")"; enDraw(); await papi(winBody({action:"enrich_page",page_key:p.page_key})); }
+      for(let i=0;i<12;i++){ EN.pend[p.page_key]="Copying photos into HCPS storage…"; enDraw(); const r=await papi(winBody({action:"enrich_images",page_key:p.page_key})); if(!r.remaining) break; }
+      delete EN.pend[p.page_key];
+    }catch(e){ EN.pend[p.page_key]="Stopped: "+e.message+" — Continue picks up from here."; if(String(e.message)==="unauthorized") break; }
+    try{ EN.plan=await papi({action:"enrich_plan",manufacturer:EN.slug}); }catch(e){}
+    enDraw();
+  }
+  EN.busy=false; await enReload(); toast("Auto-Enrich finished");
+}
+function enIssues(){
+  const P=EN.plan, open=[], ready=[], held=[];
+  P.pages.forEach(p=>{ if(p.status==="ready") ready.push(p); else if(p.status==="held_back") held.push(p); p.issues.filter(i=>!i.pending).forEach((i,ix)=>open.push({p,i,ix})); });
+  const notEnr=P.pages.filter(p=>p.status==="not_enriched");
+  const card=({p,i,ix})=>{ const id=p.page_key+"__"+ix; const ev=i.evidence?`<div class="grid2" style="margin:6px 0"><div class="dry" style="margin:0"><b>Manufacturer page says</b><div>${esc(i.evidence.page||'')}</div></div><div class="dry" style="margin:0"><b>Your record says</b><div>${esc(i.evidence.record||'')}</div></div></div>`:'';
+    const choices=(i.choices||[]).map(c=>`<button class="btn ghost" onclick="enPick('${esc(id)}','${esc(c.id)}')">${esc(c.label)}</button>`).join(' ');
+    return `<div class="card enissue" id="iss_${esc(id)}"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0">${pill(ST_PILL[i.type==='conflict'?'conflict':i.type]||'p-warn',(EN.plan&&{conflict:'Conflict',needs_grouping:'Needs grouping decision',needs_content:'Needs content',needs_image:'Needs image',needs_category:'Needs category'}[i.type])||i.type)}<b>${esc(p.name)}</b><span class="mut">·</span><span>${esc(i.title)}</span></div>
+      <p style="font-size:12.5px;margin:6px 0">${esc(i.detail||'')}</p>${ev}
+      ${choices?`<div style="display:flex;gap:6px;flex-wrap:wrap">${choices}</div>`:'<p class="mut" style="font-size:12px">Fix this where it lives (named above); it clears on the next refresh.</p>'}<div id="pick_${esc(id)}"></div></div>`; };
+  return `<h3>Review Issues (${open.length})</h3><p class="sub">Only what needs you. Each choice is recorded with its reason as a decision that is never rewritten (a later choice supersedes it).</p>
+    ${notEnr.length?`<div class="rob">${notEnr.length} page(s) not enriched yet — run <a href="#" onclick="enGo('auto');return false">Auto-Enrich</a> first.</div>`:''}
+    ${open.map(card).join('')||'<p class="ok"><b>No open issues.</b></p>'}
+    ${ready.length?`<div class="card" style="background:#f3fbf6;border-color:#bfe3cf"><b>${ready.length} page${ready.length===1?'':'s'} ready — nothing to review:</b> ${ready.map(p=>esc(p.name)).join(' · ')}</div>`:''}
+    ${held.length?`<div class="card sub2"><b>Held back (not blocking):</b> ${held.map(p=>esc(p.name)).join(' · ')}</div>`:''}
+    <p class="mut" style="font-size:12px">Next: Dealer Preview (Release C) unlocks when every issue is resolved or held back. Unusual cases: <a href="/admin/product-content-review.html?manufacturer=${encodeURIComponent(EN.slug)}" target="_blank">Open Advanced Editor</a> for that page, then come back.</p>`;
+}
+function enFind(id){ const [pk,ix]=id.split("__"); const p=EN.plan.pages.find(x=>x.page_key===pk); return {p, i:p&&p.issues.filter(x=>!x.pending)[+ix]}; }
+function enPick(id, choice){
+  const {p,i}=enFind(id); if(!p||!i) return; const box=$("#pick_"+CSS.escape(id)); const c=(i.choices||[]).find(x=>x.id===choice)||{};
+  const issue=i.resolution_key||i.type;
+  if(c.action==="upload"){ box.innerHTML=`<div class="dry">${p.skus.length>1?`<label>Photo for</label> <select id="up_code_${esc(id)}">${(i.codes||p.skus.map(s=>s.code)).map(cd=>`<option value="${esc(cd)}">${esc(cd)}${(p.skus.find(s=>s.code===cd)||{}).option?' — '+esc(p.skus.find(s=>s.code===cd).option):''}</option>`).join('')}</select> `:''}
+    <input type="file" id="up_file_${esc(id)}" accept="image/jpeg,image/png,image/webp"> <button class="btn" onclick="enUpload('${esc(id)}')">Upload into the draft</button><div class="mut" style="font-size:11.5px;margin-top:4px">Stored in HCPS storage under this enrichment window; dealers can't see it until the line is published.</div></div>`; return; }
+  box.innerHTML=`<div class="dry"><b>${esc(c.label)}</b>
+    ${c.needs==="source_url"?`<div style="margin-top:6px"><input type="text" id="v_url_${esc(id)}" placeholder="https://… the manufacturer page or PDF for this product" style="width:100%"></div>`:''}
+    ${c.needs==="category"?`<div class="grid2" style="margin-top:6px"><input type="text" id="v_cat_${esc(id)}" placeholder="Category (e.g. Bath Safety)"><input type="text" id="v_sub_${esc(id)}" placeholder="Subcategory (e.g. Toilet Seats)"></div>`:''}
+    <div style="margin-top:6px"><input type="text" id="v_reason_${esc(id)}" placeholder="Why (required — saved with the decision)" style="width:100%"></div>
+    <div style="margin-top:6px"><button class="btn" onclick="enResolve('${esc(id)}','${esc(issue)}','${esc(choice)}')">Record this decision</button></div></div>`;
+}
+async function enResolve(id, issue, choice){
+  const {p}=enFind(id); const g=k=>(($("#"+k+"_"+CSS.escape(id))||{}).value||"").trim();
+  const value={}; if(g("v_url")) value.source_url=g("v_url"); if(g("v_cat")) value.category=g("v_cat"); if(g("v_sub")) value.subcategory=g("v_sub");
+  const reason=g("v_reason"); if(!reason){ toast("Say why — it is saved with the decision"); return; }
+  try{ const dry=await papi(winBody({action:"enrich_resolve",page_key:p.page_key,issue,choice,value,reason,dry_run:true}));
+    await papi(winBody({action:"enrich_resolve",page_key:p.page_key,issue,choice,value,reason}));
+    toast("Recorded"+(dry&&dry.would_record&&dry.would_record.supersedes_id?" (supersedes decision #"+dry.would_record.supersedes_id+")":""));
+    if(choice==="rerun_with_source"||(issue==="conflict"&&choice==="different_product")){ EN.pend[p.page_key]="Re-running with your decision…"; enDraw();
+      await papi(winBody({action:"enrich_page",page_key:p.page_key})); for(let k=0;k<12;k++){ const r=await papi(winBody({action:"enrich_images",page_key:p.page_key})); if(!r.remaining) break; } delete EN.pend[p.page_key]; }
+    await enReload(); }
+  catch(e){ toast("Not recorded: "+e.message); }
+}
+async function enUpload(id){
+  const {p}=enFind(id); const f=($("#up_file_"+CSS.escape(id))||{}).files; const file=f&&f[0]; if(!file){ toast("Choose a photo"); return; }
+  if(file.size>6*1024*1024){ toast("Photo larger than 6 MB"); return; }
+  const code=(($("#up_code_"+CSS.escape(id))||{}).value)||null;
+  const b64=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(",")[1]); r.onerror=rej; r.readAsDataURL(file); });
+  try{ const up=await papi(winBody({action:"upload_image",page_key:p.page_key,filename:file.name,content_type:file.type||"image/jpeg",content_base64:b64}));
+    await papi(winBody({action:"enrich_set_image",page_key:p.page_key,code,url:up.url})); toast("Photo added to the draft"); await enReload(); }
+  catch(e){ toast("Not uploaded: "+e.message); }
 }
 /* masthead provides Lock */
 if(TOKEN)boot();else gate();

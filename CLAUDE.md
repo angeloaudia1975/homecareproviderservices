@@ -1353,6 +1353,39 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   images "allowed"; live-page images, outside images, another window's folder, another line's window, publishing a draft
   with its image, a live status switched off, a closed window, a page the window didn't build — "blocked").
   Tests: test/mc-draft-media.pg.test.js, test/mcdraftmedia.test.js, test/mcdraftmedia.mutants.js.
+  Gate 1 proven live 2026-10-11 (self-test 20 commercial + 100 content, every row as expected; four fingerprints
+  unchanged); Bemis enrichment window #320 opened the same day on Angelo's approval. One window for the whole run.
+  **Release B — the Product Enrichment workflow (approved 2026-10-11).** (t) Manufacturer Center → Continue Product
+  Enrichment (shown only for a line with the approved `enrichment_pages` deferral or an open window — no other
+  manufacturer starts) opens stages 2–4: Products → Auto-Enrich → Review Issues; 5 Dealer Preview (Release C) and 6
+  Publish & Verify (Release D) are not built. Engine: netlify/functions/_enrich.js (pure); actions in product-content.js:
+  enrich_plan (read-only), enrich_page, enrich_images, enrich_resolve, enrich_set_image (writes — in PC_WRITE_ACTIONS and
+  PC_WINDOW_ACTIONS, so a frozen line needs its open window and the database still decides row by row).
+  Products: the line's ACTIVE product_skus rows (retired left out; a line without records falls back to its catalog
+  layers, read-only); names that differ only by shape / colour / side / size AND share the manufacturer link share one page
+  with options; displays/bundles never merge (Needs grouping decision); grouping is presentation only — no commercial field
+  is ever on a proposed page or draft. Nothing is hard-coded per line. A SKU on a live page is never drafted over (409).
+  Auto-Enrich reads the catalog's manufacturer link; a landing page is followed to the product page that matches the page's
+  own words, and a candidate naming another KIND of product (a seat-with-arms bundle for an arms page) is refused but may
+  be read as "related" for the sentences about this product only (never its photos or specs). Copy, feature bullets and
+  "Label: value" specs (specification sections only) are the source's own words, deterministic, no AI; warranty only when
+  the source states terms (a "Warranty" link is a document) — otherwise blank with provenance "not stated". Photos: each
+  copied server-side into product-content/<line>/drafts/w<window>/<page>/rehost/ (x-upsert false), only real images
+  (image/*, ≥1 KB, ≤8 MB); a failed copy is recorded and never linked; the SKUs' current dealer photos are copied too;
+  byte-identical option photos are found (sha256). Field provenance in field_provenance (strings) and
+  enrichment_flags.mc (sources, fields, conflicts, image candidates/results).
+  Review Issues: six statuses by priority Conflict > Needs grouping decision > Needs content > Needs image > Needs category
+  > Ready (Ready = description ≥80 chars, ≥3 features, a category, a photo in HCPS storage, a price on the record).
+  Conflicts carry evidence (a manufacturer page MSRP ≠ the record's; catalog facts no source states; no price; a live
+  page). Each one-click resolution needs a reason, shows a dry run, and is an append-only content_resolution decision;
+  a later choice supersedes (supersedes_id). Hold back = not blocking. "Different product" re-runs without that page.
+  (u) The Advanced Product Editor (src/admin/product-content-review.html, renamed, banner: for unusual cases) has NO
+  commercial write path: catalogPost() refuses every request catalog-api calls commercial (the same list as _mc.js —
+  test/mceditor.commercial.test.js keeps them identical); Price Check is a read-only Commercial summary with "Open
+  Commercial & Pricing in Manufacturer Center" (#line=<slug>&tab=commercial); New product creates a page only for SKUs
+  already on the commercial record (new SKUs → Manufacturer Center → Sources). Price import / bulk / auto-MSRP removed.
+  Tests: test/enrich.unit.test.js, test/mcenrich.test.js (+ mcenrich.world.js, fixtures/mfr-pages), test/mcenrich.ui.js
+  (Playwright), test/mceditor.commercial.test.js, test/mcenrich.mutants.js.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
@@ -1695,6 +1728,71 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   API list → 200. Nothing registered, imported, matched or published; `mi_intel_publish` absent; `mi_import_v2` ON,
   `mi_commission_v2` off. Awaiting Angelo's MI-1c installation acceptance; the September PDF registration and the
   25-dealer import each need their own approval.
+  **MI-1c installation + deployment ACCEPTED (Angelo, 2026-10-11 13:42 CT).** Next gate = the September PDF: registration,
+  then (separately approved) acceptance and a PREVIEW ONLY in Dealer Intelligence Import — never Import, match decisions,
+  publishing, contacts/CRM activity or financial changes until each is approved; switches stay mi_import_v2 ON /
+  mi_commission_v2 OFF / mi_intel_publish OFF.
+  **September PDF REGISTERED (approved by Angelo 13:52 CT; done 2026-10-11 18:54 UTC) — record 7.** Details Angelo
+  confirmed: Strongback Mobility, dealer_report, title "Strongback — September 2026 Dealer Report", file
+  Strongback_Report_Overview_September_2026.pdf, period 2026-09-01..2026-09-30, prepared 2026-10-08 (stated; the report
+  prints "prepared 8 October 2026"), HCPS received 2026-10-11 (Angelo's confirmation — the PDF itself was created
+  8 Oct 15:46 CDT), sha256 f708ebaf0290bb736c7499b818655167c436c8867f16142cf122fd663bd790b5, 515,614 bytes, 17 pages.
+  Registered through the Report History page (file attached with the browser tool, bytes hashed in the browser = the
+  approved sha256 before submitting). Result: status received ("Received — awaiting review"), publication unpublished,
+  not accepted; 1 audit event `registered` by angelo@; stored privately at
+  reports/strongback-mobility/dealer_report/<sha>.pdf (the first file in `mfr-sources`, bucket private, no storage
+  policy names the bucket, none applies to anon/authenticated without a bucket filter); the stored bytes downloaded
+  through the signed 2-minute link hash to the same sha256; orphan check 1 stored / 1 registered / 0 orphans. Baseline
+  before/after: identical except the expected report row / event / stored file, and mfr_decisions 15 → 16 = decision 320
+  (Bemis enrichment_window opened 18:53:59 UTC by the separately approved Manufacturer Center Release B work, not by the
+  registration). Outside public-key check: `scripts/mfr_sources_public_probe_browser.js` (11 checks; Angelo runs it).
+- **PRIORITY CHANGE — automated Outlook report processing (Angelo, 2026-10-11 13:59 CT).** Primary goal: manufacturer
+  reports arrive by Outlook email and are captured, identified (sender, attachment, file name, content: sales export /
+  commission statement / dealer report / price list), registered in the EXISTING Report History register (received
+  date = the Outlook received timestamp; duplicates refused by message identity + SHA-256) and processed through the
+  EXISTING importers; a dashboard shows who sent what, periods, arrival, processing and attention items; on the 15th of
+  every month a reconciliation reports completed imports, missing manufacturers, incomplete reports and exceptions, and
+  late reports keep processing. Rules: reuse MI-1a / MI-1b / MI-1c and the existing Graph sync (`email-sync-cron`) — no
+  new manufacturer database or import platform; approvals move from per-file to per-rule (a report profile per
+  manufacturer + type); alert only on real exceptions; commission v2 and unrestricted financial writes stay off without
+  separate approval; financial safeguards, dealer ownership and audit history kept; never create contacts, deals,
+  campaigns or send emails automatically. Strongback is the pilot, then other manufacturers. Plan: Claude Doc "MI Inbox
+  Automation — Pilot Plan (Strongback)" (claude.ai/code/artifact/4ca4e85c-1125-4521-92b3-051ed119bcf6). NO production
+  changes until Angelo agrees the pilot workflow (open decisions listed at the end of that doc).
+  **Direction approved + Phase A authorized (Angelo, 2026-10-11 14:25 CT).** Goal = HCPS-wide automation for all
+  manufacturers, not a Strongback-only project. Defaults (no further questions): existing Outlook connection and the
+  current mailbox; READ-ONLY 12-month discovery; NO automatic historical backfill (a scan never registers or imports);
+  Strongback = first automatic profile; the five sample manufacturers (Ohio Medical cumulative workbooks with credits,
+  Strongback CSV order exports even when the subject says commission, Access4U combined-month ledgers, AirAvant
+  cash-basis PDFs, Climbing Steps commissions in the email body) in classification tests from the start; 15th
+  reconciliation; one DAILY DIGEST of unresolved exceptions (no per-file alerts); dashboard = primary record, the 15th
+  summary emailed to Angelo alone only once email delivery is approved; late reports process on arrival; a report is
+  Missing only when its profile expects it. Rules: use Outlook timestamps (never ask for received dates); identity =
+  stable email/attachment ids + file hash, surviving forwards and moves; profiles approved once, then no per-file
+  approval; commissions earned / payable / withheld / paid are NEVER interchangeable; commission v2 OFF — statements may
+  be captured + validated automatically but post no financial entries; price lists never bypass Manufacturer Center
+  gates / the freeze; Strongback clean order exports auto-import only after SHADOW tests prove unchanged results; record 7
+  is not re-registered and is accepted/imported only under the approved profile (expected 25 / 15 auto / 7 review /
+  Wyatt's held / GF Health + Nebcare unmatched); never assume files given to another tool are in this workspace; keep
+  automated regression / permission / duplicate checks but no repeated manual production audits. Phases: A discovery →
+  B capture + classification + exception queue → C Strongback shadow tests → D automatic Strongback behind
+  manufacturer switches → E dashboard/15th + remaining profiles.
+  **Phase A findings (read-only, 2026-10-11):** Graph app holds Mail.Read, Mail.ReadWrite, Mail.Send, Mail.ReadBasic(.All),
+  Calendars.ReadWrite (application) — attachments readable, no new permission; GRAPH_MAILBOXES = angelo / greg / lori
+  (reports arrive in Angelo's; copies of manufacturer threads reach Greg/Lori → dedupe by internetMessageId);
+  email_messages = 16,384 messages from 2026-01-01 (nothing earlier). Sync gaps: hourly cron = 3-day window, 1 page, no
+  checkpoint; Inbox + Sent only; stored graph_id is folder-dependent (internetMessageId is stable); no attachment metadata
+  kept. Report mail located 2026: Strongback (amanda.erickson "Commission report <Month> 2026 - Angelo Audia", monthly
+  2nd–7th, = the order CSV; melanie.psychas dealer overview Oct 8), Ohio Medical (michael.belcaster "Commissions through
+  <Month>", 21st–29th), Access4U (dlouallen "<Mon> 2026 Commissions Report", Nov+Dec 2025 combined Jan 16; none found
+  Jul–Sep), AirAvant (jcollazo/masch "Commission Reports and Payments", Jul 17 / Aug 25), Climbing Steps (sdiamond
+  "<Month> 2026 Commissions - Climbing Steps", 4th–12th, some without attachment), Bemis (faxstar03 "COMMISSION REPORT
+  for Rep/Month: 705 / 2026-0x", 17th), Complete Medical, Ovation (once), PediFix (once), Golden ("Rep Commissions");
+  none from ABM / Corsicana / Dalton. Readers: only MI-1c's PDF reader is server-side; Ohio two-tab, Access4U ledger,
+  generic mapping (ctpl:<slug> templates) and AirAvant cash-basis PDF run in the BROWSER — automation moves that same code
+  into shared server modules with drift tests (no rewrite). Smallest first production change PROPOSED (not built/deployed):
+  read-only `report_inventory` action in email-sync-api (management only; month window; all folders; attachment name /
+  type / size / inline / in-memory SHA-256; stores, moves, marks or returns nothing else). Plan doc revised accordingly.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.

@@ -71,7 +71,9 @@ const PC_WRITES=[
   {action:'rehost',page_key:'gen2',url:'https://elsewhere.test/a.jpg'}, {action:'ingest_source',page_key:'gen2',source:'website',data:{name:'x'}},
   {action:'approve',page_key:'gen2',patch:{name:'x'}}, {action:'reject',page_key:'gen2'}, {action:'approve_all'},
   {action:'upsert',rows:[{manufacturer:'ovation-medical',page_key:'gen2',name:'x'}]}, {action:'save_related',page_key:'gen2',code:'61000-210',items:[]},
-  {action:'undo',id:1}];
+  {action:'undo',id:1},
+  {action:'enrich_page',page_key:'gen2'}, {action:'enrich_images',page_key:'gen2'}, {action:'enrich_resolve',page_key:'gen2',issue:'needs_grouping',choice:'own_page',reason:'x'},
+  {action:'enrich_set_image',page_key:'gen2',url:'https://x/a.jpg'}];   // Release B: Product Enrichment writes
 
 (async()=>{
 await t('rules: every product-content write is listed; a window covers only hidden-draft work and never publishing',async()=>{

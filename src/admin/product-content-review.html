@@ -1,6 +1,6 @@
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="/admin/admin-shell.css">
-<title>Partner 360 · Catalog Management Workspace</title>
+<title>HCPS Admin — Advanced Product Editor</title>
 <style>
 :root{--navy:#12253c;--navy2:#17456e;--orange:#ef6325;--gold:#fcb21e;--blue:#1681c2;--blue-dk:#0f5c8f;
 --paper:#f6f7f5;--line:#e7e2d8;--gray:#6b7280;--ink:#39424e;
@@ -430,7 +430,8 @@ body.sm-dragging .sm-pin,body.sm-dragging .sm-sub{outline:1px dashed #c9d6e6;out
 </style></head><body>
 <header id="ac-head"></header>
 <div class="pagehd">
-  <h1>Product Content Enrichment &amp; Review</h1>
+  <h1>Advanced Product Editor</h1>
+  <div class="dupbanner exact" id="ape-banner" style="margin:6px 0 10px"><b>For unusual cases.</b> Everyday enrichment runs in <a id="ape-mc" href="/admin/manufacturer-center.html">Manufacturer Center → Continue Product Enrichment</a> (Products → Auto-Enrich → Review Issues). Prices, order units, MSRP/MAP, freight and commercial status are not edited here — <a id="ape-mcc" href="/admin/manufacturer-center.html">Open Commercial &amp; Pricing in Manufacturer Center</a>. Frozen (Gold Standard) lines stay read-only except hidden drafts under an open enrichment window.</div>
   <div class="sub">Import → <b>review structure</b> → correct products &amp; categories → enrich images &amp; content → add sizing/specs → disable obsolete → preview → approve → <b>publish to Partner 360</b>.</div>
 </div>
 <div class="wrap">
@@ -448,9 +449,9 @@ body.sm-dragging .sm-pin,body.sm-dragging .sm-sub{outline:1px dashed #c9d6e6;out
   <div class="toolbar">
     <button class="btn ghost" data-act="run-structure" title="Checks this manufacturer&apos;s records for grouping problems — one record holding several products, the same SKU on two products, sizes split apart. Straight after an import, before you touch anything else. Instant, no AI.">⚑ Structure review</button>
     <button class="btn grad" data-act="completion-board" title="Every SKU in the Product Catalog for this manufacturer with a status worked out from what is actually there — including the ones no enrichment record has ever been created for. Also runs the ten-step flow test for the line. First, and any time you want to know what is left. It is the only screen that shows catalog SKUs that have no enrichment page, which is where most unfinished work hides.">📋 Completion board</button>
-    <button class="btn ghost" data-act="new-product" title="Creates one product record by hand, with its SKUs and prices. A single item you already know. For a whole line use Start new enrichment; for more sizes of a product that already exists use ＋＋ Add sizes inside it.">＋ New product</button>
+    <button class="btn ghost" data-act="new-product" title="Creates one product page for SKUs already on the commercial record. New SKUs and prices are added in Manufacturer Center.">＋ New product</button>
     <button class="btn ghost" data-act="start-enrichment" title="Brings a manufacturer&apos;s line in from product URLs, pasted catalog rows or a catalog PDF. Checks every item against the catalog first, so a match enriches the existing record instead of creating a duplicate. First, for a manufacturer you have not loaded yet.">🚀 Start new enrichment</button>
-    <button class="btn ghost" data-act="price-check" title="Cross-checks every SKU against the price layers: missing prices, codes priced but on no product, conflicts, duplicates. Also where a manufacturer price list is imported. Before publishing, and any time a price list arrives.">💲 Price check</button>
+    <button class="btn ghost" data-act="price-check" title="Read-only: the commercial record for this line (dealer price, tiers, order unit, MSRP/MAP, status) and the gaps it finds. Prices are set in Manufacturer Center → Commercial &amp; freight.">💲 Commercial summary (read-only)</button>
     <button class="btn ghost" data-act="catalog-health" title="A read-only report on this manufacturer: duplicate product names, a SKU claimed by two products, records that will not reach the shop. When something looks wrong and you want to know what. It changes nothing.">🩺 Catalog Health</button>
     <button class="btn ghost" data-act="catalog-structure" title="An AI review of your CATEGORY NAMES against the shared HCPS taxonomy, so a dealer sees every brand&apos;s walking boots together instead of one brand&apos;s. After Align all, when this line&apos;s categories exist but may not match everyone else&apos;s. About 20 seconds. Proposals only.">🌐 Catalog structure</button>
     <button class="btn ghost" data-act="batch-align" title="An AI pass over every loaded product proposing Family / Category / Subcategory against the HCPS structure. Once the grouping is right. Takes a few minutes and costs AI usage. Nothing changes until you Apply.">🎯 Align all</button>
@@ -818,7 +819,10 @@ function allCategories(){ const s=new Set(); for(const k in pages){ if(pages[k].
 function allFamilies(){ const s=new Set(); for(const k in pages){ if(pages[k].family) s.add(pages[k].family);} return [...s].sort(); }
 
 /* ---------- render ---------- */
+function apeLinks(){ try{ const a=document.getElementById('ape-mc'), b=document.getElementById('ape-mcc');
+  if(a) a.href='/admin/manufacturer-center.html#enrich='+encodeURIComponent(MFR||''); if(b) b.href=mcCommercialHref(); }catch(e){} }
 function render(){
+  apeLinks();
   const c=counts();
   renderSteps(); renderGuide();
   /* Enrichment's own numbers first — what is on THIS screen — then the master catalog's,
@@ -1251,7 +1255,7 @@ document.addEventListener('click',async function(e){
       g('np-name',P.name); g('np-cat',P.cat); g('np-fam',P.fam); g('np-url',P.url);
       const c=document.getElementById('np-skurows'); if(c&&P.rows.length){ c.innerHTML='';
         P.rows.forEach(r=>{ c.insertAdjacentHTML('beforeend',npRowHTML()); const row=c.lastElementChild;
-          row.querySelector('.np-sku').value=r.code; row.querySelector('.np-skuname').value=r.name||''; row.querySelector('.np-skuprice').value=r.price||''; }); }
+          row.querySelector('.np-sku').value=r.code; row.querySelector('.np-skuname').value=r.name||''; }); }
       doNewProduct(true); },30); return; }
   if(act==='mfr-dash') return openMfrDashboard();
   if(act==='catalog-health') return openCatalogHealth();
@@ -1317,15 +1321,6 @@ document.addEventListener('click',async function(e){
   if(act==='open-history') return openHistory();
   if(act==='price-check') return doPriceCheck();
   if(act==='price-refresh') return openPriceAudit();
-  if(act==='price-save') return doPriceSaveRow(t.getAttribute('data-code'));
-  if(act==='reconcile-group') return doReconcileGroup(+i);
-  if(act==='auto-msrp-all') return doAutoMsrpAll();
-  if(act==='price-bulk-apply') return doPriceBulkApply();
-  if(act==='price-sel-clear'){ _priceSel=new Set(); renderPriceAudit(); return; }
-  if(act==='price-import') return openPriceImport();
-  if(act==='pa-fixsku') return paFixSku(t.getAttribute('data-code'));
-  if(act==='price-import-parse') return doPriceImportParse();
-  if(act==='price-import-apply') return doPriceImportApply();
   if(act==='dealer-price-preview') return openDealerPricePreview();
   if(act==='close-drawer'){ document.getElementById('drawer').classList.remove('show'); return; }
   if(act==='move-skus') return doMove();
@@ -2177,9 +2172,9 @@ const TOOLS=[
  {act:'naming-review', label:'✍️ Naming review', phase:'new',
   what:"An AI check of product NAMES for consistent titles.",
   when:"Late — after the structure is settled. Renaming before grouping means renaming twice.", ai:true},
- {act:'price-check', label:'💲 Price check', phase:'both',
-  what:"Cross-checks every SKU against the price layers: missing prices, codes priced but on no product, conflicts, duplicates. Also where a manufacturer price list is imported.",
-  when:"Before publishing, and any time a price list arrives.", ai:false},
+ {act:'price-check', label:'💲 Commercial summary (read-only)', phase:'both',
+  what:"Shows the commercial record for this line — dealer price, tiers, order unit, MSRP/MAP, status — and the gaps it finds. It changes nothing: prices are set in Manufacturer Center → Commercial & freight.",
+  when:"Before publishing, to see what dealers will be charged.", ai:false},
  {act:'catalog-health', label:'🩺 Catalog Health', phase:'both',
   what:"A read-only report on this manufacturer: duplicate product names, a SKU claimed by two products, records that will not reach the shop.",
   when:"When something looks wrong and you want to know what. It changes nothing.", ai:false},
@@ -2211,7 +2206,7 @@ function openToolsGuide(){
       <li><b>Align all</b> — propose Family / Category / Subcategory for each product.</li>
       <li><b>Catalog structure</b> — line those category names up with the other manufacturers.</li>
       <li><b>Naming review</b> — tidy the titles, now that nothing else will move.</li>
-      <li><b>Price check → Import pricelist</b> — load the manufacturer's prices, settle what it flags.</li>
+      <li><b>Prices</b> — loaded and approved in Manufacturer Center (Sources → Stage → Commercial &amp; freight); the Commercial summary here shows them, read-only.</li>
       <li><b>Catalog Health</b> — read the report; it should be clean before you publish.</li>
       <li><b>Publish</b> — from the product, or <b>Select</b> → Publish selected in bulk.</li>
     </ol>
@@ -2223,7 +2218,7 @@ function openToolsGuide(){
       <li>Already a product here, just more sizes? Open it → <b>＋＋ Add sizes</b>. It lists the catalog codes that look like they belong, so you tick rather than type.</li>
       <li>Brand new item? <b>＋ New product</b>, then add its SKUs.</li>
       <li>Wrong SKU number? The <b>✎</b> beside it. If the correct code already exists in the catalog you will be asked whether to merge the two records or just repoint this one.</li>
-      <li><b>Price check</b> to confirm it is priced and nothing is left unassigned.</li>
+      <li><b>Commercial summary</b> to confirm it is priced (prices themselves are set in Manufacturer Center).</li>
       <li>Set its status to <b>Published</b>.</li>
     </ol>
     ${tbl(TOOLS.filter(t=>t.phase==='one'||t.phase==='both'))}
@@ -2481,7 +2476,20 @@ async function catalogGet(){
    (11102RED ↔ 11102), unassigned/orphan prices, cross-layer conflicts, duplicates,
    discontinued-with-price, and missing MSRP. Inline add/edit + reconcile + import +
    bulk + auto-MSRP + dealer preview — all without SQL. */
+/* ONE COMMERCIAL WRITE PATH (Release B). The same rule catalog-api applies (netlify/functions/_mc.js
+   COMMERCIAL_ACTIONS / OVERRIDE_COMMERCIAL_KEYS): this editor never sends a commercial write. */
+const MC_COMMERCIAL_ACTIONS=["stage_record_source","set_record_provenance","set_record_authority","bulk_price","save_product","delete_product","delete_products_bulk","discontinue_sku","retire_sku","restore_sku","rename_code","merge_layers","merge_layers_bulk","merge_products","merge_products_bulk","unmerge_layers","unmerge_product","clear_override","set_group","mc_register_source","mc_accept_source","mc_import_source_rows","mc_approve_gate","mc_set_freight_terms"];
+const MC_OVERRIDE_COMMERCIAL_KEYS=["base_price","msrp","map","msrp_auto","tiers","active","disposition","price_note","case_qty","effective_date","source_file"];
+function isCommercialBody(b){
+  if(!b||!b.action) return false;
+  if(MC_COMMERCIAL_ACTIONS.indexOf(b.action)>=0) return true;
+  if(b.action==='save_override') return MC_OVERRIDE_COMMERCIAL_KEYS.some(k=>b.patch&&Object.prototype.hasOwnProperty.call(b.patch,k))||b.replace===true;
+  if(b.action==='reconcile') return b.apply===true;
+  return false;
+}
 async function catalogPost(body){
+  if(isCommercialBody(body)) return {ok:false,status:409,json:{ok:false,error:'commercial_in_mc',
+    message:'Prices, catalog SKUs and commercial status are changed in Manufacturer Center (Commercial & freight, or Sources for new SKUs) — not in the Advanced Product Editor. Nothing was changed.'}};
   try{ const r=await fetch('/.netlify/functions/catalog-api',{method:'POST',headers:authHeaders(),body:JSON.stringify(body)});
     const j=await r.json().catch(()=>({}));
     if(r.status===423 && j && j.message) j.error=j.message;     // a frozen line: show the reason, not the code (Release A)
@@ -2492,19 +2500,20 @@ async function catalogPost(body){
     return {ok:r.ok,status:r.status,json:j}; }
   catch(e){ return {ok:false,status:0,json:{error:String(e)}}; }
 }
-let _pubCollisions=[];
+let _pubCollisions=[], _newSkusForMc=[];
 /* Publish one SKU to the master catalog. The catalog refuses to create a second copy of a
    SKU it already holds (MP-P09 vs mp-p09 used to slip through as two products), answering
    409 with the record it collided with. That is not a failure to swallow — it means the
    master record already exists and should be enriched instead, so it is collected and
    reported rather than silently dropped. */
 async function publishToCatalog(prod, collisions){
-  const r=await catalogPost({action:'save_product',manufacturer:MFR,product:prod});
-  if(r.status===409 && r.json && r.json.error==='duplicate_sku'){
-    if(collisions) collisions.push({code:prod.code, existing:r.json.existing||{}, connections:r.json.connections||null});
-    return {ok:false, duplicate:true};
-  }
-  return {ok:!!(r.ok && (!r.json || r.json.ok!==false)), duplicate:false, status:r.status, json:r.json};
+  /* Release B: this editor creates no catalog SKU. A SKU the commercial master already holds is used as it is (the
+     page lists it); a new SKU is added through Manufacturer Center → Sources first. */
+  let cat=null; try{ cat=await catalogGet(); }catch(e){ cat=null; }
+  const have=new Set([...((cat&&cat.products)||[]),...((cat&&cat.custom)||[])].map(x=>String(x.code).toUpperCase()));
+  if(have.has(String(prod.code).toUpperCase())) return {ok:false, duplicate:true};
+  _newSkusForMc.push(prod.code);
+  return {ok:false, duplicate:false, commercial:true, status:409, json:{error:'commercial_in_mc'}};
 }
 function reportCollisions(collisions){
   if(!collisions || !collisions.length) return;
@@ -2528,9 +2537,7 @@ function reportCollisions(collisions){
 }
 function pmoney(n){ if(n==null||n===''||!isFinite(Number(n))) return '—'; return '$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function firstNum(){ for(let i=0;i<arguments.length;i++){ const v=arguments[i]; if(v!=null&&v!==''){ const n=Number(v); if(isFinite(n)) return n; } } return null; }
-function roundMsrp(n){ if(n==null||!isFinite(n)) return null; const v=Math.round(n*100)/100; return v; }
-let PRICE_MARKUP=2.0;   // default auto-MSRP multiplier (100% over the dealer price)
-let _priceState=null, _priceSel=new Set();
+let _priceState=null;
 
 function buildPriceState(cat){
   const std={}, custom={}, ov=cat.overrides||{};
@@ -2651,806 +2658,61 @@ async function openPriceAudit(){
   if(readErr){ modalHTML('💲 Price Check','<div class="tut"><p><b>Could not read the catalog price list</b> — nothing is shown rather than every SKU shown as unpriced.</p><p class="mut">'+esc(readErr)+'</p></div>'); return; }
   if(!cat || (!(cat.products||[]).length && !(cat.custom||[]).length)){
     modalHTML('💲 Price Check', '<div class="tut"><p class="mut">Couldn\'t read the catalog price list. Price Check reads the Product Catalog (President-only) — make sure you\'re signed in as president. If you are, this manufacturer may not have a catalog loaded yet — use <b>Import pricelist</b> once a catalog exists.</p></div>'); return; }
-  _priceState=buildPriceState(cat); _priceSel=new Set();
+  _priceState=buildPriceState(cat);
+  await loadCommercialRecords();
   renderPriceAudit();
 }
-const PA_DISPO={archived:'Removed',do_not_list:'Confirmed – do not list',discontinued:'Discontinued',not_offered:'Not offered by HCPS',ignore:'Ignored price record'};
-/* Reasons are bookkeeping; getting the thing off the shelf is the job. So the queue has
-   one button and no menu, and the reason can be stated afterwards from the resolved list
-   — where there is time to care — or left as "Removed", which claims nothing untrue. */
-const PA_REASONS=[['archived','Removed'],['discontinued','Discontinued — manufacturer no longer makes it'],
-  ['not_offered','Not offered by HCPS — still made, we do not carry it'],
-  ['do_not_list','Confirmed – do not list — we could carry it, we choose not to'],
-  ['ignore','Ignore this price record — junk row, item stays active']];
-
-/* Record (or clear) a decision that HCPS will not list a priced code. Written to the
-   override layer, so it rides with the code and survives the next price-list import —
-   re-importing the manufacturer's sheet will not quietly resurrect something we have
-   already decided against. */
-/* Three of the four decisions mean "this is not something a dealer can buy from us", and
-   one — Ignore — means only "stop asking me about this price row". They were all written
-   the same way: a disposition and nothing else. But Partner 360 hides a product on
-   active===false, NOT on disposition, so a record marked Discontinued stayed orderable
-   the moment anything else made it visible. The three real removals now go through
-   retire_sku, which sets both and is reversible; Ignore still only annotates. */
-const PA_REMOVES=['do_not_list','discontinued','not_offered','archived'];
-/* One click, one confirm, done. "Removed" is the honest default: the record is off the
-   shelf and the reason has not been claimed. */
-async function paRemove(code){
-  const S=_priceState, rec=(S&&S.allCodes.has(code))?S.recOf(code):null;
-  if(!window.confirm('Remove '+code+(rec&&rec.name?' — '+rec.name:'')+' from '+MFR+'?\n\n'
-    +'It stops being listed or sold on Partner 360 and moves to the Resolved list, where you can undo it.\n\n'
-    +'Its price, images and order history are kept.')) return;
-  const r=await catalogPost({action:'retire_sku',manufacturer:MFR,code,reason:'archived',
-    note:null,reviewer:(window.REVIEWER||'admin')});
-  if(!(r.ok&&r.json&&r.json.ok!==false)){ toast((r.json&&r.json.error)||'Could not remove that',true); return; }
-  toast(code+' removed — undo it under Resolved');
-  _catalogCache=null; openPriceAudit();
-}
-// Refine why, after the fact, from the resolved list. The record is already inactive;
-// this only changes what the decision says — except Ignore, which puts it back in use.
-async function paSetReason(code,val){
-  if(!val) return;
-  const r=(val==='ignore')
-    ? await catalogPost({action:'save_override',manufacturer:MFR,code,patch:{disposition:'ignore',
-        disposition_by:(window.REVIEWER||'admin'),active:true}})
-    : await catalogPost({action:'retire_sku',manufacturer:MFR,code,reason:val,reviewer:(window.REVIEWER||'admin')});
-  if(!(r.ok&&r.json&&r.json.ok!==false)){ toast((r.json&&r.json.error)||'Could not change that',true); return; }
-  toast(code+' — '+(PA_DISPO[val]||val));
-  _catalogCache=null; openPriceAudit();
-}
-async function paDispose(code,val,el){
-  if(val){
-    const label=PA_DISPO[val]||val;
-    const removes=PA_REMOVES.indexOf(val)>=0;
-    const note=window.prompt('Why is '+code+' not being listed? (optional — shown in the resolved list)','')||'';
-    if(!window.confirm('Record "'+label+'" for '+code+'?\n\n'
-        +(removes ? 'It is marked inactive, so Partner 360 will not list or sell it, and it leaves the unassigned queue.'
-                  : 'It leaves the unassigned queue. The record stays active — Ignore only silences this row, it does not remove the item.')
-        +'\n\nYou can undo it here at any time.')){
-      if(el) el.value=''; return; }
-    const r=removes
-      ? await catalogPost({action:'retire_sku',manufacturer:MFR,code,reason:val,
-          note:note||null,reviewer:(window.REVIEWER||'admin')})
-      : await catalogPost({action:'save_override',manufacturer:MFR,code,
-          patch:{disposition:val,disposition_note:note,disposition_by:(window.REVIEWER||'admin')}});
-    if(!(r.ok&&r.json&&r.json.ok!==false)){ toast((r.json&&r.json.error)||'Could not record that',true); if(el) el.value=''; return; }
-    toast(code+' — '+label+(removes?' · removed from Partner 360':''));
-  } else {
-    // Undo has to reverse whichever of the two was done, or a retired code would keep
-    // its inactive flag while losing the decision that explains it.
-    const cur=(_priceState&&_priceState.allCodes.has(code))?(_priceState.recOf(code).disposition||''):'';
-    const r=(PA_REMOVES.indexOf(cur)>=0)
-      ? await catalogPost({action:'restore_sku',manufacturer:MFR,code})
-      : await catalogPost({action:'save_override',manufacturer:MFR,code,patch:{disposition:''}});
-    if(!(r.ok&&r.json&&r.json.ok!==false)){ toast('Could not undo that',true); return; }
-    toast(code+' back in the queue');
-  }
-  _catalogCache=null;
-  openPriceAudit();
-}
-
-/* Settle a conflict by writing the winning value as an override — the layer dealers
-   actually read. Picking a value here is what "the override wins" means in practice. */
-async function paSettle(code,val){
-  const v=Number(val); if(!isFinite(v)) return;
-  if(!window.confirm('Make '+pmoney(v)+' the dealer price for '+code+'?\n\nWritten as an override, so it wins over the base file and any added product.')) return;
-  const r=await catalogPost({action:'save_override',manufacturer:MFR,code,patch:{base_price:v}});
-  if(r.ok&&r.json&&r.json.ok!==false){ toast(code+' set to '+pmoney(v)); openPriceAudit(); }
-  else toast((r.json&&r.json.error)||'Could not set that price',true);
-}
-async function paSettleManual(code){
-  const S=_priceState; const cur=S?S.recOf(code):null;
-  const v=window.prompt('Dealer price for '+code+':', cur&&cur.base_price!=null?String(cur.base_price):'');
-  if(v==null||String(v).trim()==='') return;
-  const n=Number(String(v).replace(/[^0-9.\-]/g,''));
-  if(!isFinite(n)||n<0){ toast('That is not a price',true); return; }
-  return paSettle(code,n);
-}
-
-/* ---- Imported pricing that DISAGREES with what we already have ----------------
-   An import that silently overwrites existing pricing is how a wrong number reaches
-   dealers. So a row whose price differs from the record we hold is not applied — it is
-   parked in a review queue, held per manufacturer so it survives a refresh, and cleared
-   one decision at a time. Rows that are new, or that match what we have, still apply
-   straight through: only genuine disagreements ask for a person. ---------------- */
-function piqKey(){ return 'pcr_priceq_'+MFR; }
-function piqLoad(){ try{ const a=JSON.parse(localStorage.getItem(piqKey())||'[]'); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
-function piqSave(a){ try{ localStorage.setItem(piqKey(), JSON.stringify((a||[]).slice(0,3000))); }catch(e){} }
-function piqDrop(code){ piqSave(piqLoad().filter(r=>String(r.code)!==String(code))); }
-function piqAdd(rows){
-  const by={}; piqLoad().forEach(r=>{ by[String(r.code)]=r; });
-  (rows||[]).forEach(r=>{ by[String(r.code)]=r; });   // a newer file supersedes an older queued row
-  piqSave(Object.keys(by).map(k=>by[k]));
-}
-/* What counts as a disagreement: the file states a value AND we hold a different one.
-   A blank in the file is not a claim that the price is blank, and a value we simply
-   don't have yet is an addition, not a conflict. */
-function piqDiff(row, rec){
-  const out=[]; if(!rec) return out;
-  [['base_price','Dealer cost'],['map','MAP'],['msrp','MSRP']].forEach(([k,label])=>{
-    const nv=row[k], cv=rec[k];
-    if(nv==null||nv==='') return;
-    if(cv==null||cv==='') return;
-    if(Number(cv)===Number(nv)) return;
-    out.push({key:k,label,from:Number(cv),to:Number(nv)});
-  });
-  /* A ladder that differs is a price change even when the qty-1 price is identical —
-     most of a dealer's spend sits on the breaks, so a silent ladder swap moves more
-     money than a moved base price. Compared as a whole: a break added, removed or
-     re-pointed all count. */
-  if(row.tiers&&row.tiers.length&&piTierDiffers(row.tiers,rec.tiers)){
-    out.push({key:'tiers',label:'Quantity breaks',
-      text_from:piTierText(rec.tiers),text_to:piTierText(row.tiers)});
-  }
-  return out;
-}
-async function piqAccept(code){
-  const q=piqLoad().find(r=>String(r.code)===String(code)); if(!q) return;
-  const r=await catalogPost({action:'bulk_price',manufacturer:MFR,rows:[Object.assign({},q,{create:false})]});
-  if(r.ok&&r.json&&r.json.ok!==false){ piqDrop(code); toast(code+' updated from the file'); openPriceAudit(); }
-  else toast((r.json&&r.json.error)||'Could not apply that price',true);
-}
-function piqKeep(code){ piqDrop(code); toast(code+' — kept our price'); openPriceAudit(); }
-async function piqEdit(code){
-  const q=piqLoad().find(r=>String(r.code)===String(code)); if(!q) return;
-  const S=_priceState, cur=S?S.recOf(code):null;
-  const v=window.prompt('Dealer price for '+code+':\n\nOurs: '+pmoney(cur&&cur.base_price)+'   ·   File: '+pmoney(q.base_price),
-    q.base_price!=null?String(q.base_price):(cur&&cur.base_price!=null?String(cur.base_price):''));
-  if(v==null||String(v).trim()==='') return;
-  const n=Number(String(v).replace(/[^0-9.\-]/g,''));
-  if(!isFinite(n)||n<0){ toast('That is not a price',true); return; }
-  const r=await catalogPost({action:'save_override',manufacturer:MFR,code,patch:{base_price:n,source_file:q.source_file||'',effective_date:q.effective_date||''}});
-  if(r.ok&&r.json&&r.json.ok!==false){ piqDrop(code); toast(code+' set to '+pmoney(n)); openPriceAudit(); }
-  else toast((r.json&&r.json.error)||'Could not set that price',true);
-}
-async function piqAcceptAll(){
-  const q=piqLoad(); if(!q.length) return;
-  if(!window.confirm('Apply all '+q.length+' imported price(s) over what we currently hold?\n\nThis is what dealers will pay.')) return;
-  const r=await catalogPost({action:'bulk_price',manufacturer:MFR,rows:q.map(x=>Object.assign({},x,{create:false}))});
-  if(r.ok&&r.json&&r.json.ok!==false){ piqSave([]); toast('Applied '+((r.json.applied||0)+(r.json.created||0))+' price(s)'); openPriceAudit(); }
-  else toast((r.json&&r.json.error)||'Import failed',true);
-}
-function piqKeepAll(){
-  const n=piqLoad().length; if(!n) return;
-  if(!window.confirm('Discard all '+n+' imported price(s) and keep what we have?')) return;
-  piqSave([]); toast('Kept our pricing'); openPriceAudit();
-}
-
-/* ---- Merge a duplicate ---------------------------------------------------------
-   The same code existing as both a catalog product and an added product is not just a
-   price disagreement — two records describe one SKU. Merging writes the surviving
-   values as an override (the layer dealers read) and stamps merged_at, so the pair is
-   recorded as reconciled rather than quietly re-flagged on the next check. -------- */
-async function paMerge(code){
-  const S=_priceState, r=S?S.recOf(code):null; if(!r) return;
-  const prices=[...new Set(r.layers.map(l=>l.price))];
-  const pick=window.prompt('"'+code+'" exists as both a catalog product and an added product.\n\n'
-    +r.layers.map(l=>'  '+l.src+': '+pmoney(l.price)).join('\n')
-    +'\n\nWhich dealer price should survive? (it is written as an override, so it wins everywhere)',
-    String(prices[prices.length-1]!=null?prices[prices.length-1]:(r.base_price||'')));
-  if(pick==null||String(pick).trim()==='') return;
-  const n=Number(String(pick).replace(/[^0-9.\-]/g,''));
-  if(!isFinite(n)||n<0){ toast('That is not a price',true); return; }
-  const patch={base_price:n, merged_at:new Date().toISOString()};
-  if(r.msrp!=null) patch.msrp=r.msrp;
-  if(r.map!=null) patch.map=r.map;
-  const res=await catalogPost({action:'save_override',manufacturer:MFR,code,patch});
-  if(res.ok&&res.json&&res.json.ok!==false){ toast(code+' merged at '+pmoney(n)); openPriceAudit(); }
-  else toast((res.json&&res.json.error)||'Could not merge that record',true);
-}
-
-/* Correct a SKU that is simply wrong on our side — a formatting difference, a typo, a
-   code the manufacturer has since changed. Renaming carries the price with it, which is
-   what makes the row disappear from the unassigned queue for the right reason rather
-   than being papered over with a duplicate. */
-async function paFixSku(code){
-  const S=_priceState; const cur=S?S.recOf(code):null; if(!cur) return;
-  const to=window.prompt('This price is filed under "'+code+'".\n\nWhat is the correct SKU?\n(The price, MSRP and MAP move with it.)', code);
-  if(!to||String(to).trim()===code) return;
-  const newCode=String(to).trim();
-  if(S.allCodes.has(newCode)&&!window.confirm(newCode+' already exists in the catalog. Continue and let the existing record keep its own price?')) return;
-  const r=await catalogPost({action:'rename_code',manufacturer:MFR,old_code:code,new_code:newCode,
-    product:{name:cur.name,category:cur.category,base_price:cur.base_price,msrp:cur.msrp,map:cur.map}});
-  if(r.ok&&r.json&&r.json.ok!==false){ toast(code+' → '+newCode); openPriceAudit(); }
-  else toast((r.json&&(r.json.message||r.json.error))||'Could not rename that SKU',true);
-}
-
-function paChip(n,label,color){ return `<span class="pachip" style="${n?('background:'+(color||'#fdecec')+';border-color:'+(color?'#e3caa0':'#f0c7c7')):''}">${n} ${esc(label)}</span>`; }
-function renderPriceAudit(){
-  const S=_priceState; if(!S) return;
-  const scoreColor=S.score>=100?'#1a7f4b':(S.score>=80?'#b8791b':'#b42323');
-  // reconcile groups (mismatch grouped by product + baseCode)
-  const mmGroups={}; S.mismatch.forEach(m=>{ const key=m.pk+'|'+m.baseCode; (mmGroups[key]=mmGroups[key]||{product:m.product,baseCode:m.baseCode,basePrice:m.basePrice,baseMsrp:m.baseMsrp,baseMap:m.baseMap,codes:[]}).codes.push(m.code); });
-  const mmArr=Object.keys(mmGroups).map(k=>mmGroups[k]);
-  const grpProd=list=>{ const by={}; list.forEach(x=>{(by[x.product]=by[x.product]||[]).push(x.code);}); return by; };
-  const tbl=(headers,rowsHtml)=>`<div class="tabscroll"><table style="width:100%;font-size:12px"><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
-  // priced/assigned SKUs table (editable)
-  const editable=S.content.filter(cs=>S.allCodes.has(cs.code));
-  const priceRow=cs=>{ const r=S.recOf(cs.code); const id=cssId(cs.code);
-    const hay=(cs.product+' '+cs.code+' '+cs.family+' '+cs.category+' '+cs.subcategory).toLowerCase();
-    return `<tr data-pahay="${escA(hay)}">
-      <td><input type="checkbox" class="pa-pick" data-code="${escA(cs.code)}" ${_priceSel.has(cs.code)?'checked':''} onclick="paPick(this)"></td>
-      <td>${esc(cs.product)}<div class="mut" style="font-size:10px">${esc(cs.code)}${cs.size?' · '+esc(cs.size):''}${cs.disabled?' · <b style="color:#b42323">off</b>':''}</div></td>
-      <td><input class="ed pa-b" id="pe-b-${id}" value="${r.base_price!=null?r.base_price:''}" placeholder="—" style="max-width:82px" inputmode="decimal"></td>
-      <td><input class="ed pa-m" id="pe-m-${id}" value="${r.msrp!=null?r.msrp:''}" placeholder="—" style="max-width:82px" inputmode="decimal">${r.msrp_auto?'<div class="mut" style="font-size:9px">auto</div>':''}</td>
-      <td><input class="ed pa-a" id="pe-a-${id}" value="${r.map!=null?r.map:''}" placeholder="—" style="max-width:72px" inputmode="decimal"></td>
-      <td class="mut" style="font-size:10px">${esc(r.source)}${r.updated?'<br>'+esc(new Date(r.updated).toLocaleDateString()):''}</td>
-      <td><button class="btn" data-act="price-save" data-code="${escA(cs.code)}" style="padding:3px 9px;font-size:11px">Save</button></td></tr>`; };
-  const body=`
-    <div class="pa-head">
-      <div class="pa-score" style="border-color:${scoreColor}"><div class="pa-scv" style="color:${scoreColor}">${S.score}%</div><div class="pa-scl">Pricing complete<br><span class="mut">${S.ok} of ${S.denom} active SKUs priced${(S.resolved&&S.resolved.length)?` · ${S.resolved.length} resolved`:''}</span></div></div>
-      <div class="pa-actions">
-        <button class="btn" data-act="price-import">⬆ Import pricelist</button>
-        <button class="btn" data-act="dealer-price-preview">👁 Preview as dealer</button>
-        <button class="btn" data-act="price-refresh">↻ Re-check</button>
-      </div>
-    </div>
-    <div class="pa-chips">
-      ${paChip(S.missingPrice.length,'live · no price')}
-      ${paChip(mmArr.reduce((n,g)=>n+g.codes.length,0),'code mismatch')}
-      ${paChip(S.orphans.length,'unassigned price')}
-      ${(S.resolved&&S.resolved.length)?paChip(S.resolved.length,'resolved · not listed','#e7f0e9'):''}
-      ${paChip(S.conflicts.length,'conflict')}
-      ${paChip(S.dupes.length,'duplicate')}
-      ${(function(){const n=piqLoad().length; return n?paChip(n,'imported · to review','#fff4d6'):'';})()}
-      ${paChip(S.needsMsrp.length,'need MSRP','#eef5ff')}
-      ${paChip(S.discWithPrice.length,'discontinued · priced')}
-      ${paChip(S.notInCat.length,'not in catalog')}
-      ${paChip(S.outdated.length,'price >1yr old','#eef5ff')}
-    </div>
-    ${(function(){
-      /* PRICE CHECK SUMMARY — the one place that answers "is this manufacturer done?".
-         Ready to publish means every live SKU is either priced or deliberately not
-         listed, and nothing is left conflicting. Anything short of that is named. */
-      const matched=S.content.filter(cs=>!cs.disabled&&S.allCodes.has(cs.code)).length;
-      const newSkus=S.notInCat.length;
-      const unassigned=S.orphans.length;
-      const conflicts=S.conflicts.length, dupes=S.dupes.length;
-      const inQueue=piqLoad().length;
-      const doNotList=(S.resolved||[]).length;
-      const missing=S.missingPrice.length;
-      const blockers=[];
-      if(missing) blockers.push(missing+' live SKU'+(missing===1?'':'s')+' with no price');
-      if(unassigned) blockers.push(unassigned+' unassigned price'+(unassigned===1?'':'s'));
-      if(conflicts) blockers.push(conflicts+' price conflict'+(conflicts===1?'':'s'));
-      if(dupes) blockers.push(dupes+' duplicate'+(dupes===1?'':'s'));
-      if(inQueue) blockers.push(inQueue+' imported price'+(inQueue===1?'':'s')+' awaiting a decision');
-      const ready=!blockers.length;
-      const cell=(n,l,tone)=>`<div class="pa-sumc"><div class="pa-sumv"${tone?' style="color:'+tone+'"':''}>${n}</div><div class="pa-suml">${l}</div></div>`;
-      return `<div class="pa-sec" style="margin-top:14px">
-        <h3>Price Check summary</h3>
-        <div class="pa-sum">
-          ${cell(matched,'Products matched')}
-          ${cell(S.ok,'Prices in place','#1a7f4b')}
-          ${cell(newSkus,'New SKUs found', newSkus?'#b8791b':'')}
-          ${cell(unassigned,'Unassigned prices', unassigned?'#b42323':'')}
-          ${cell(conflicts,'Conflicts open', conflicts?'#b42323':'')}
-          ${cell(dupes,'Duplicates open', dupes?'#b42323':'')}
-          ${cell(inQueue,'Imported · to review', inQueue?'#b8791b':'')}
-          ${cell(doNotList,'Marked do-not-list')}
-          ${cell(missing,'Missing pricing', missing?'#b42323':'')}
-        </div>
-        ${(function(){
-          /* The named workflow, with each step answering itself from real counts rather
-             than from a stored "I clicked next". A step is done when the thing it is
-             about is actually clear, so the strip can never claim progress the data
-             doesn't support. */
-          const steps=[
-            {n:'Import price list', done:true, note:'XLSX, CSV or paste'},
-            {n:'Match SKUs', done:!(S.notInCat.length||S.mismatch.length), left:S.notInCat.length+S.mismatch.length},
-            {n:'Correct unassigned', done:!unassigned, left:unassigned},
-            {n:'Review imported pricing', done:!inQueue, left:inQueue},
-            {n:'Resolve conflicts & duplicates', done:!(conflicts||dupes), left:conflicts+dupes},
-            {n:'Confirm do-not-list', done:true, note:doNotList?doNotList+' recorded':'none needed'},
-            {n:'Complete pricing', done:!missing, left:missing},
-            {n:'Publish catalog', done:ready, note:ready?'ready':'blocked'}
-          ];
-          return `<div class="pa-steps">${steps.map(st=>`<span class="pa-step ${st.done?'done':'open'}">
-            <b>${st.done?'✓':'•'}</b> ${esc(st.n)}${st.left?` <i>${st.left}</i>`:(st.note?` <i>${esc(st.note)}</i>`:'')}</span>`).join('')}</div>`;
-        })()}
-        <div class="rule" style="margin-top:10px;border-color:${ready?'#b6d8c1':'#f0c7c7'};background:${ready?'#f2f8f4':'#fdf5f5'}">
-          ${ready
-            ? `<b style="color:#1a7f4b">Ready to publish.</b> Every live SKU is priced or recorded as not listed, and nothing is left conflicting.
-               Pricing here is what Partner 360 reads — product pages, Shop, dealer and contract pricing, quotes, exports and MSRP margins all come from these same records, so publishing the catalog carries it everywhere.`
-            : `<b style="color:#b42323">Not ready yet.</b> Outstanding: ${blockers.join(' · ')}. Resolve or record a decision for each — a decision counts as resolved.`}
-        </div>
-      </div>`;
-    })()}
-
-    ${mmArr.length?`<div class="pa-sec"><h3>Code mismatches — pricing exists under a base code (${mmArr.reduce((n,g)=>n+g.codes.length,0)} SKU${mmArr.reduce((n,g)=>n+g.codes.length,0)===1?'':'s'})</h3>
-      <p class="mut">These live SKUs aren't in the catalog, but a matching base code IS priced (e.g. <b>11102RED → 11102</b>). Assign the base price to each variant so every color/side becomes orderable.</p>
-      ${tbl(['Product','Base code','Base price','Variant SKUs','Action'], mmArr.map((g,i)=>`<tr>
-        <td>${esc(g.product)}</td><td><b>${esc(g.baseCode)}</b></td><td>${pmoney(g.basePrice)}</td>
-        <td class="mut" style="font-size:11px">${g.codes.map(esc).join(', ')}</td>
-        <td><button class="btn dark" data-act="reconcile-group" data-i="${i}" style="padding:3px 9px;font-size:11px">Assign to ${g.codes.length}</button></td></tr>`).join(''))}
-      </div>`:''}
-
-    ${S.missingPrice.length?`<div class="pa-sec"><h3>Live but missing a price (${S.missingPrice.length})</h3>
-      <p class="mut">In the catalog but the dealer price is blank or zero — set it below in the SKU table.</p>
-      ${tbl(['Product','SKU(s)'], Object.entries(grpProd(S.missingPrice)).map(([pn,codes])=>`<tr><td>${esc(pn)}</td><td class="mut" style="font-size:11px">${codes.map(esc).join(', ')}</td></tr>`).join(''))}
-      </div>`:''}
-
-    ${S.orphans.length?`<div class="pa-sec"><h3>Unassigned pricing — priced but on no live SKU (${S.orphans.length})</h3>
-      <p class="mut">A price exists in the catalog for these codes, but no product here uses them. Three ways to clear each one:
-        <b>correct the SKU</b> if ours is wrong or formatted differently, <b>add it</b> to a product, or record a decision that HCPS will not list it.
-        A recorded decision stops counting against the score — it is an answer, not an outstanding error.</p>
-      <p class="mut" style="font-size:11.5px">Not sold any more? <b>🚫 Remove</b> — one click. It stops being listed or sold on Partner 360 and moves to <b>Resolved</b> below, where you can undo it or say why if it matters.</p>
-      ${tbl(['Code','Name','Dealer price','MSRP','Resolve'], S.orphans.slice(0,200).map(r=>`<tr>
-        <td><b>${esc(r.code)}</b></td><td>${esc(r.name||'—')}</td><td>${pmoney(r.base_price)}</td><td>${pmoney(r.msrp)}</td>
-        <td style="white-space:nowrap">
-          <button class="btn ghost" style="padding:3px 8px" data-act="pa-fixsku" data-code="${escA(r.code)}" title="Our SKU is wrong or formatted differently">✎ Correct SKU</button>
-          <button class="btn ghost" style="padding:3px 8px" onclick="paRemove('${escA(r.code)}')" title="Stop listing and selling this — reversible">🚫 Remove</button>
-        </td></tr>`).join(''))}
-      </div>`:''}
-
-    ${(S.anchors&&S.anchors.length)?`<div class="pa-sec"><h3>Pricing anchors — base part numbers your colour SKUs inherit from (${S.anchors.length})</h3>
-      <p class="mut">The manufacturer prices the bare part number; dealers order the colour SKU. These carry no live SKU of their own <b>on purpose</b>, so they are not outstanding and need no decision.
-        An imported price list writes the base code and fans the same price and quantity breaks out to every colour variant. A variant priced differently from its anchor is flagged below — that is the case worth looking at.</p>
-      ${tbl(['Base code','Name','Anchor price','Colour SKUs','Their price'], S.anchors.slice(0,200).map(r=>{
-        const vals=r.kidPrices.filter(v=>v!=null);
-        const off=(!vals.length)||vals.length>1||(r.base_price!=null&&Math.abs(Number(vals[0])-Number(r.base_price))>=0.005);
-        return `<tr>
-        <td><b>${esc(r.code)}</b></td><td>${esc(r.name||'—')}</td><td>${pmoney(r.base_price)}</td>
-        <td class="mut" style="font-size:11px">${esc(r.kids.join(', '))}</td>
-        <td${off?' style="color:#b42323"':''}>${vals.length?vals.map(v=>pmoney(v)).join(' / '):'none priced — they inherit'}</td>
-      </tr>`; }).join(''))}
-      </div>`:''}
-
-    ${(S.resolved&&S.resolved.length)?`<div class="pa-sec"><h3>Resolved — deliberately not listed (${S.resolved.length})</h3>
-      <p class="mut">Decisions already recorded. These no longer count against the pricing score. Undo one to put it back in the queue.</p>
-      ${tbl(['Code','Name','Decision','Recorded','Undo'], S.resolved.slice(0,200).map(r=>`<tr>
-        <td><b>${esc(r.code)}</b></td><td>${esc(r.name||'—')}</td>
-        <td><select class="ed" style="padding:3px 6px;font-size:11px;max-width:210px" onchange="paSetReason('${escA(r.code)}',this.value)">
-            ${PA_REASONS.map(([v,lab])=>`<option value="${v}"${r.disposition===v?' selected':''}>${esc(lab)}</option>`).join('')}
-          </select>${r.disposition_note?`<div class="mut" style="font-size:11px">${esc(r.disposition_note)}</div>`:''}</td>
-        <td class="mut">${r.disposition_at?esc(String(r.disposition_at).slice(0,10)):'—'}</td>
-        <td><button class="btn ghost" style="padding:3px 8px" onclick="paDispose('${escA(r.code)}','',null)">↩ Undo</button></td>
-      </tr>`).join(''))}
-      </div>`:''}
-
-    ${(function(){
-      /* IMPORTED PRICING AWAITING A DECISION — the manufacturer's file against ours,
-         side by side, with the file it came from and the date it takes effect. Nothing
-         here has been written yet; each row leaves the queue only when someone chooses. */
-      const q=piqLoad(); if(!q.length) return '';
-      const rows=q.slice(0,400).map(r=>{
-        const rec=S.allCodes.has(String(r.code))?S.recOf(r.code):null;
-        const diffs=(r._diff&&r._diff.length)?r._diff:piqDiff(r,rec);
-        return `<tr>
-          <td><b>${esc(r.code)}</b><div class="mut" style="font-size:11px">${esc(r.name||(rec&&rec.name)||'')}</div></td>
-          <td>${diffs.map(d=>`<span class="mut" style="font-size:11px">${esc(d.label)}</span> ${d.text_from!=null?esc(d.text_from):pmoney(d.from)}`).join('<br>')}</td>
-          <td>${diffs.map(d=>`<span class="mut" style="font-size:11px">${esc(d.label)}</span> <b style="color:#b8791b">${d.text_to!=null?esc(d.text_to):pmoney(d.to)}</b>`).join('<br>')}</td>
-          <td class="mut" style="font-size:11px">${esc(r.source_file||'—')}</td>
-          <td class="mut" style="font-size:11px">${esc(r.effective_date||'—')}</td>
-          <td style="white-space:nowrap">
-            <button class="btn dark" style="padding:3px 8px" onclick="piqAccept('${escA(r.code)}')" title="Use the manufacturer's new price">Accept new</button>
-            <button class="btn ghost" style="padding:3px 8px" onclick="piqKeep('${escA(r.code)}')" title="Leave our price as it is">Keep current</button>
-            <button class="btn ghost" style="padding:3px 8px" onclick="piqEdit('${escA(r.code)}')">✎ Edit</button>
-            <button class="btn ghost" style="padding:3px 8px" data-act="pa-fixsku" data-code="${escA(r.code)}" title="Our SKU is wrong or formatted differently">✎ SKU</button>
-            <button class="btn ghost" style="padding:3px 8px" onclick="paRemove('${escA(r.code)}')" title="Stop listing and selling this — reversible">🚫 Remove</button>
-          </td></tr>`; }).join('');
-      return `<div class="pa-sec" style="border-color:#e6b800;background:#fffdf7">
-        <h3>Imported pricing to review — the file disagrees with ours (${q.length})</h3>
-        <p class="mut">These rows were <b>not</b> applied. For each one the manufacturer's file states a price we already hold differently,
-          so the change is held here rather than overwritten — an overwrite is what would reach dealers unnoticed.
-          New SKUs and rows that matched were imported normally.</p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-          <button class="btn dark" style="padding:4px 10px" onclick="piqAcceptAll()">Accept all ${q.length} new price(s)</button>
-          <button class="btn ghost" style="padding:4px 10px" onclick="piqKeepAll()">Keep all current</button>
-        </div>
-        ${tbl(['Code','Current (HCPS)','New (manufacturer)','Source file','Effective','Decision'], rows)}
-        ${q.length>400?`<p class="mut">Showing the first 400 of ${q.length}.</p>`:''}
-      </div>`;
-    })()}
-
-    ${(S.conflicts.length||S.dupes.length)?`<div class="pa-sec"><h3>Price conflicts &amp; duplicates (${new Set([...S.conflicts,...S.dupes].map(r=>r.code)).size})</h3>
-      <p class="mut">The same code carries different prices across layers (base file / added product / override), or exists as both.
-        The <b>override</b> is what dealers actually see. Choose which value wins — the choice is written as an override, so it survives the next import.</p>
-      ${tbl(['Code','Layers','Dealer sees','Settle it'], [...S.conflicts,...S.dupes.filter(d=>!S.conflicts.find(c=>c.code===d.code))].map(r=>{
-        const uniq=[...new Set(r.layers.map(l=>l.price))];
-        return `<tr>
-          <td><b>${esc(r.code)}</b>${r.duplicate?' <span class="mut">(base+custom)</span>':''}<div class="mut" style="font-size:11px">${esc(r.name||'')}</div></td>
-          <td class="mut" style="font-size:11px">${r.layers.map(l=>esc(l.src)+' '+pmoney(l.price)).join('<br>')}</td>
-          <td><b>${pmoney(r.base_price)}</b></td>
-          <td style="white-space:nowrap">
-            ${uniq.map(v=>`<button class="btn ghost" style="padding:3px 8px" onclick="paSettle('${escA(r.code)}',${v})" title="Make ${pmoney(v)} the price dealers see">Use ${pmoney(v)}</button>`).join(' ')}
-            <button class="btn ghost" style="padding:3px 8px" onclick="paSettleManual('${escA(r.code)}')">✎ Enter</button>
-            ${r.duplicate?`<button class="btn ghost" style="padding:3px 8px" onclick="paMerge('${escA(r.code)}')" title="Reconcile the two records into one">⇄ Merge duplicate</button>`:''}
-            <button class="btn ghost" style="padding:3px 8px" data-act="pa-fixsku" data-code="${escA(r.code)}" title="Our SKU is wrong or formatted differently">✎ SKU</button>
-          </td></tr>`; }).join(''))}
-      </div>`:''}
-
-    ${S.discWithPrice.length?`<div class="pa-sec"><h3>Discontinued / hidden but still priced (${S.discWithPrice.length})</h3>
-      <p class="mut">These SKUs are turned off here but still carry an active price. That's usually fine (they just won't show), but confirm they shouldn't be sold.</p>
-      ${tbl(['Product','SKU','Status','Dealer price'], S.discWithPrice.map(cs=>`<tr><td>${esc(cs.product)}</td><td>${esc(cs.code)}</td><td class="mut">${esc(cs.disabled?'off':cs.status)}</td><td>${pmoney(cs.rec.base_price)}</td></tr>`).join(''))}
-      </div>`:''}
-
-    ${S.notInCat.length?`<div class="pa-sec"><h3>Not in the catalog (${S.notInCat.length})</h3>
-      <p class="mut">On a product here but not in the ordering catalog, and no matching base code found. Import a pricelist, or add them in Product Catalog.</p>
-      ${tbl(['Product','SKU(s)'], Object.entries(grpProd(S.notInCat)).map(([pn,codes])=>`<tr><td>${esc(pn)}</td><td class="mut" style="font-size:11px">${codes.map(esc).join(', ')}</td></tr>`).join(''))}
-      </div>`:''}
-
-    <div class="pa-sec"><h3>All live SKUs — edit pricing (${editable.length})</h3>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-        <input class="ed" id="pa-q" placeholder="Filter by product, code, family, category…" style="flex:1;min-width:200px" oninput="filterPriceRows(this.value)">
-        <span style="display:inline-flex;gap:6px;align-items:center">MSRP = dealer×<input class="ed" id="pa-mk" value="${PRICE_MARKUP}" style="max-width:56px" inputmode="decimal"><button class="btn" data-act="auto-msrp-all">✨ Fill missing MSRP</button></span>
-      </div>
-      <div id="pa-bulkbar" class="pa-bulk" style="display:none">
-        <b><span id="pa-seln">0</span> selected</b>
-        <span>Set dealer $<input class="ed" id="pa-bulk-b" style="max-width:80px" inputmode="decimal"></span>
-        <span>MSRP $<input class="ed" id="pa-bulk-m" style="max-width:80px" inputmode="decimal"></span>
-        <span>MAP $<input class="ed" id="pa-bulk-a" style="max-width:80px" inputmode="decimal"></span>
-        <button class="btn dark" data-act="price-bulk-apply">Apply to selected</button>
-        <button class="btn ghost" data-act="price-sel-clear">Clear</button>
-      </div>
-      ${tbl([`<input type="checkbox" onclick="paToggleAll(this.checked)">`,'Product / SKU','Dealer $','MSRP','MAP','Source','&nbsp;'], editable.map(priceRow).join(''))}
-    </div>`;
-  modalHTML('💲 Price Check · '+esc(MFR), body);
-}
-function filterPriceRows(q){ q=(q||'').toLowerCase().trim();
-  document.querySelectorAll('tr[data-pahay]').forEach(tr=>{ tr.style.display=(!q||tr.getAttribute('data-pahay').indexOf(q)>=0)?'':'none'; }); }
-function paToggleAll(on){ const S=_priceState; if(!S) return; _priceSel=new Set(); if(on){ S.content.filter(cs=>S.allCodes.has(cs.code)).forEach(cs=>_priceSel.add(cs.code)); }
-  document.querySelectorAll('.pa-pick').forEach(cb=>{ cb.checked=on; }); paBulkBar(); }
-function paBulkBar(){ const bar=document.getElementById('pa-bulkbar'); if(!bar) return; const n=_priceSel.size;
-  bar.style.display=n?'flex':'none'; const el=document.getElementById('pa-seln'); if(el) el.textContent=n; }
-function paPick(cb){ const code=cb.getAttribute('data-code'); if(cb.checked) _priceSel.add(code); else _priceSel.delete(code); paBulkBar(); }
-async function doPriceSaveRow(code){ const S=_priceState; if(!S) return; const r=S.recOf(code); const id=cssId(code);
-  const gb=x=>{ const el=document.getElementById(x); return el?el.value.trim():''; };
-  const base=gb('pe-b-'+id), msrp=gb('pe-m-'+id), map=gb('pe-a-'+id);
-  const body={manufacturer:MFR};
-  if(r.editTarget==='custom'){ body.action='save_product'; body.product={code, name:r.name||code, category:r.category||null,
-    base_price:base===''?null:Number(base), msrp:msrp===''?null:Number(msrp), map:map===''?null:Number(map), msrp_auto:false}; }
-  else { body.action='save_override'; body.code=code; body.patch={base_price:base===''?null:Number(base), msrp:msrp===''?null:Number(msrp), map:map===''?null:Number(map), msrp_auto:false}; }
-  const res=await catalogPost(body);
-  if(res.ok&&(!res.json||res.json.ok!==false)) { toast('Saved '+code); openPriceAudit(); }
-  else toast((res.json&&res.json.error)||(res.status===403?'Pricing edits need President access':'Save failed'),true);
-}
-async function doReconcileGroup(i){ const S=_priceState; if(!S) return;
-  const mmGroups={}; S.mismatch.forEach(m=>{ const key=m.pk+'|'+m.baseCode; (mmGroups[key]=mmGroups[key]||{product:m.product,baseCode:m.baseCode,basePrice:m.basePrice,baseMsrp:m.baseMsrp,baseMap:m.baseMap,codes:[]}).codes.push(m.code); });
-  const g=Object.values(mmGroups)[i]; if(!g) return;
-  if(!window.confirm('Create catalog + pricing for '+g.codes.length+' variant SKU(s) using base code '+g.baseCode+' ('+pmoney(g.basePrice)+')?')) return;
-  const rows=g.codes.map(c=>({code:c, name:g.product, base_price:g.basePrice, msrp:g.baseMsrp, map:g.baseMap, create:true}));
-  const res=await catalogPost({action:'bulk_price',manufacturer:MFR,rows});
-  if(res.ok&&res.json&&res.json.ok){ toast('Assigned price to '+(res.json.created+res.json.applied)+' SKU(s)'); openPriceAudit(); }
-  else toast((res.json&&res.json.error)||'Assign failed',true);
-}
-async function doAutoMsrpAll(){ const S=_priceState; if(!S) return;
-  const mkEl=document.getElementById('pa-mk'); const mk=Number(mkEl&&mkEl.value)||PRICE_MARKUP; PRICE_MARKUP=mk;
-  const rows=S.needsMsrp.map(cs=>({code:cs.code, msrp:roundMsrp(cs.rec.base_price*mk), msrp_auto:true})).filter(r=>r.msrp>0);
-  if(!rows.length){ toast('No priced SKUs are missing an MSRP'); return; }
-  if(!window.confirm('Auto-set MSRP for '+rows.length+' SKU(s) at dealer price × '+mk+'? (Manufacturer MSRPs already entered are left alone.)')) return;
-  const res=await catalogPost({action:'bulk_price',manufacturer:MFR,rows});
-  if(res.ok&&res.json&&res.json.ok){ toast('Generated '+(res.json.applied+res.json.created)+' MSRP(s)'); openPriceAudit(); }
-  else toast((res.json&&res.json.error)||'Auto-MSRP failed',true);
-}
-async function doPriceBulkApply(){ const S=_priceState; if(!S) return; if(!_priceSel.size){ toast('Nothing selected',true); return; }
-  const gb=x=>{ const el=document.getElementById(x); return el?el.value.trim():''; };
-  const b=gb('pa-bulk-b'), m=gb('pa-bulk-m'), a=gb('pa-bulk-a');
-  if(b===''&&m===''&&a===''){ toast('Enter a price to apply',true); return; }
-  const rows=[..._priceSel].map(code=>{ const r={code}; if(b!=='')r.base_price=Number(b); if(m!==''){r.msrp=Number(m);r.msrp_auto=false;} if(a!=='')r.map=Number(a); return r; });
-  if(!window.confirm('Apply these values to '+rows.length+' selected SKU(s)?')) return;
-  const res=await catalogPost({action:'bulk_price',manufacturer:MFR,rows});
-  if(res.ok&&res.json&&res.json.ok){ toast('Updated '+(res.json.applied+res.json.created)+' SKU(s)'); _priceSel=new Set(); openPriceAudit(); }
-  else toast((res.json&&res.json.error)||'Bulk update failed',true);
-}
-/* ---- Pricelist importer ---- */
-/* ═══ PRICE LIST IMPORTER ══════════════════════════════════════════════════════
-   Upload → map columns → preview → apply. XLSX, CSV or a paste all end up in the
-   same place: a header row plus data rows, which the mapping step then interprets.
-
-   Columns are GUESSED, never assumed. A manufacturer sheet might label dealer cost
-   "Dealer", "Your Cost", "DLR", or "Net" — so the guess is a starting point the
-   admin confirms, and a wrong guess is one dropdown away from right rather than a
-   silently mispriced catalog. */
-const PI_FIELDS=[
-  {key:'code',  label:'SKU / item code', required:true,
-   hints:['code','sku','item','item #','item no','part','part #','part number','model','model #','catalog','catalog #']},
-  {key:'name',  label:'Product name',    hints:['name','description','product','item description','desc']},
-  {key:'base_price', label:'Dealer cost', hints:['dealer','dealer price','dealer cost','cost','net','net price','your price','your cost','wholesale','base','base price','price','dlr']},
-  {key:'map',   label:'MAP',             hints:['map','map price','min advertised','minimum advertised','minimum advertised price']},
-  {key:'msrp',  label:'MSRP',            hints:['msrp','retail','list','list price','suggested retail','srp','msrp price']},
-  {key:'case_qty', label:'Case quantity',hints:['case','case qty','case quantity','qty per case','pack','pack qty','uom qty','units per case']},
-  {key:'effective_date', label:'Effective date', hints:['effective','effective date','eff date','price date','date','valid from']},
-];
-/* ── Colour variants ────────────────────────────────────────────────────────────
-   Ovation — and most manufacturers — price a bare part number (10002). HCPS sells the
-   colour SKU (10002BLUE). Partner 360 already knows this: a colour SKU with no price of
-   its own falls back to its base part number. Two places here have to know it too, or the
-   bare code looks like an error and the price list never reaches the SKUs dealers buy.
-
-   The tail must be the WHOLE remainder and a colour word, so 10002 claims 10002BLUE and
-   never 100021. */
+/* ── THE COMMERCIAL SUMMARY (read-only) — Release B, approved by Angelo 2026-10-11 ─────────────────────────────
+   The Advanced Product Editor no longer writes prices, tiers, UOM / case qty, MSRP / MAP, catalog SKUs or commercial
+   status: there is ONE commercial write path, Manufacturer Center → Commercial & freight (and Sources for new SKUs).
+   What used to be Price Check is this read-only view of the commercial record plus the gaps it finds, with a link to
+   where they are fixed. catalogPost() refuses every commercial request below as a backstop. */
 const PI_COLOR_TAIL=/^[-_ ]?(BLUE|RED|GREY|GRAY|BLACK|WHITE|PINK|TAN|NAVY|GREEN|PURPLE|ORANGE|BEIGE|BK|WH|PK|DB|BL|GY|RD|NV|TN)$/i;
 function piIsColorOf(base,code){
   const b=String(base||'').toUpperCase(), c=String(code||'').toUpperCase();
   if(!b||!c||c===b||!c.startsWith(b)) return false;
   return PI_COLOR_TAIL.test(c.slice(b.length));
 }
-// the live SKUs that inherit from this base part number
 function piColorKids(code, liveCodes){
   const out=[]; (liveCodes||[]).forEach(c=>{ if(piIsColorOf(code,c)&&out.indexOf(c)<0) out.push(c); });
   return out;
 }
-
-/* ── Quantity breaks ────────────────────────────────────────────────────────────
-   A manufacturer's price list holds the ladder as COLUMNS — "2-5", "6-10", "11-20",
-   "21+" — one price per break, not one row per break. So a tier slot is a pair: which
-   column holds the price, and the quantity that price starts at. The quantity is
-   guessed from the header and stays editable, because the break points are the part
-   manufacturers move most often and a wrong one silently mis-prices every order at
-   that quantity — the kind of error nobody sees until a dealer is billed. */
-const PI_TIERS=[{key:'t1'},{key:'t2'},{key:'t3'},{key:'t4'},{key:'t5'},{key:'t6'}];
-let _piTierCol={}, _piTierMin={};
-
 // normalise any stored ladder to [{min_qty,price}] ascending — the shape Partner 360 reads
 function piTierList(t){ if(!Array.isArray(t)) return [];
   return t.map(x=>({min_qty:Math.max(1,parseInt(x.min_qty!=null?x.min_qty:(x.minQty!=null?x.minQty:1),10)||1),
                     price:(x.price==null||x.price==='')?null:Number(x.price)}))
     .filter(x=>x.price!=null&&isFinite(x.price)).sort((a,b)=>a.min_qty-b.min_qty); }
 function piTierText(t){ const l=piTierList(t); return l.length?l.map(x=>x.min_qty+'+ '+pmoney(x.price)).join(' · '):'—'; }
-// true when the two ladders are not the same ladder — a break added, dropped, repriced
-// or moved to a different quantity all count.
-function piTierDiffers(a,b){ const x=piTierList(a), y=piTierList(b);
-  if(x.length!==y.length) return true;
-  return !x.every((t,i)=>t.min_qty===y[i].min_qty&&Math.abs(Number(t.price)-Number(y[i].price))<0.005); }
-// "qty 6", "6-10", "11 - 20", "21+", "6 or more" → 6, 11, 21 …
-function piTierMinFromHeader(h){ const s=String(h||'').toLowerCase();
-  let m=s.match(/qty[^0-9]{0,6}(\d+)/); if(m) return parseInt(m[1],10);
-  m=s.match(/(\d+)\s*(?:[-\u2013\u2014]\s*\d+|\+|\s*or\s*(?:more|up)|\s*and\s*(?:up|over))/); if(m) return parseInt(m[1],10);
-  m=s.match(/^\s*(\d+)\s*$/); if(m) return parseInt(m[1],10);
-  return null; }
-function piIsTierHeader(h){ const s=String(h||'').trim().toLowerCase();
-  if(!s) return false;
-  if(/case|pack|uom/.test(s)) return false;          // that is case quantity, not a break
-  if(/tier|break|qty|quantity|\bea\b/.test(s)) return true;
-  return /^\d+\s*(?:[-\u2013\u2014]\s*\d+|\+)$/.test(s); }
+function mcCommercialHref(){ return '/admin/manufacturer-center.html#line='+encodeURIComponent(MFR)+'&tab=commercial'; }
+let _commercialRecords=null;
+async function loadCommercialRecords(){
+  try{ const r=await fetch('/.netlify/functions/catalog-api',{method:'POST',headers:authHeaders(),body:JSON.stringify({action:'mc_commercial',manufacturer:MFR})});
+    const j=await r.json().catch(()=>null); _commercialRecords=(r.ok&&j&&j.ok)?j:null; }catch(e){ _commercialRecords=null; }
+  return _commercialRecords;
+}
+function renderPriceAudit(){
+  const S=_priceState; if(!S) return;
+  const C=_commercialRecords, auth=!!(C&&C.authoritative);
+  const recs=auth?(C.records||[]):null;
+  const recBy={}; (recs||[]).forEach(r=>{ recBy[String(r.code).toUpperCase().replace(/[^A-Z0-9]/g,'')]=r; });
+  const val=cs=>{ if(auth){ const r=recBy[String(cs.code).toUpperCase().replace(/[^A-Z0-9]/g,'')]; return r?{base:r.base_price,msrp:r.msrp,map:r.map,tiers:r.tiers,unit:(Number(r.case_qty)>1?'Case of '+r.case_qty:(r.uom||'Each')),status:r.status||'active',src:'commercial record'}:null; }
+    if(!S.allCodes.has(cs.code)) return null; const r=S.recOf(cs.code); return {base:r.base_price,msrp:r.msrp,map:r.map,tiers:r.tiers,unit:'—',status:r.active===false?'inactive':'active',src:r.source+' layer'}; };
+  const byProd={}; S.content.forEach(cs=>{ (byProd[cs.product]=byProd[cs.product]||[]).push(cs); });
+  const gaps=[['No dealer price',S.missingPrice.length],['Not in the catalog',S.notInCat.length+S.mismatch.length],['Prices disagree across layers',S.conflicts.length],
+    ['Duplicate records',S.dupes.length],['Priced but on no product',S.orphans.length],['No MSRP',S.needsMsrp.length]];
+  modalHTML('💲 Commercial summary · '+esc(MFR)+' · read-only', `<div class="tut">
+    <div class="dupbanner exact"><b>Prices are set in Manufacturer Center, not here.</b>
+      <div>Dealer price, tiers / pooling, UOM / case qty, MSRP / MAP, freight and commercial status have one home: <b>Manufacturer Center → Commercial &amp; freight</b> (new SKUs: <b>Sources</b>). This editor shows them and cannot change them.</div>
+      <div style="margin-top:8px"><a class="btn dark" href="${mcCommercialHref()}" target="_blank">Open Commercial &amp; Pricing in Manufacturer Center</a></div></div>
+    <p class="mut" style="margin:10px 0 6px">${auth?'Values below are the commercial record (product_skus) — the line is record-authoritative.':'Values below are what the catalog layers resolve to today.'} Priced: <b>${S.ok}</b> of ${S.denom} live SKUs (${S.score}%).</p>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${gaps.map(([l,n])=>`<span class="pachip" style="${n?'background:#fdecec;border-color:#f0c7c7':''}">${esc(l)}: <b>${n}</b></span>`).join('')}</div>
+    ${Object.keys(byProd).sort().map(pn=>`<div class="pa-sec"><h3 style="margin:8px 0 4px">${esc(pn)}</h3><div class="tabscroll"><table style="width:100%;font-size:12px">
+      <thead><tr><th>SKU</th><th>Dealer price</th><th>Tiers</th><th>Order unit</th><th>MSRP</th><th>MAP</th><th>Status</th><th>From</th></tr></thead><tbody>
+      ${byProd[pn].map(cs=>{ const v=val(cs); return v?`<tr><td>${esc(cs.code)}${cs.size?' · '+esc(cs.size):''}</td><td><b>${pmoney(v.base)}</b></td><td class="mut">${esc(piTierText(v.tiers))}</td><td>${esc(v.unit)}</td><td>${pmoney(v.msrp)}</td><td>${v.map!=null?pmoney(v.map):'—'}</td><td>${esc(v.status)}</td><td class="mut">${esc(v.src)}</td></tr>`
+        :`<tr><td>${esc(cs.code)}</td><td colspan="7" class="err">Not on the commercial record — add it through Manufacturer Center → Sources.</td></tr>`; }).join('')}</tbody></table></div></div>`).join('')}
+    <div class="savebar"><button class="btn ghost" data-act="dealer-price-preview">👁 Preview as dealer</button><button class="btn" onclick="closeModal&&closeModal()">Close</button></div></div>`);
+}
 
-let _piGrid=null, _piMap={}, _piRows=[], _piFile='';
-
-function openPriceImport(){
-  modalHTML('⬆ Import pricelist · '+esc(MFR), `<div class="tut">
-    <p class="mut">Upload the manufacturer's price list — <b>.xlsx</b>, <b>.xls</b> or <b>.csv</b> — or paste rows below. You'll confirm which column is which before anything is written.</p>
-    <div class="dropzone" id="pi-drop" tabindex="0" style="padding:18px;text-align:center"
-         onclick="if(event.target===this)document.getElementById('pi-file').click()"
-         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();document.getElementById('pi-file').click()}"
-         ondragover="event.preventDefault();this.classList.add('drag')"
-         ondragleave="this.classList.remove('drag')"
-         ondrop="piDropFile(event,this)">
-      <input type="file" id="pi-file" accept=".xlsx,.xls,.csv,.tsv,.txt" style="display:none" onchange="piPickFile(event)">
-      <button class="btn dark" onclick="event.stopPropagation();document.getElementById('pi-file').click()">Choose a price list file</button>
-      <div class="mut" style="font-size:12px;margin-top:8px">Or drop the file here. Excel workbooks with a title row, merged cells or several sheets are fine — you'll pick the sheet.</div>
-    </div>
-    <details style="margin-top:10px"><summary class="mut" style="cursor:pointer;font-size:12px">or paste rows instead</summary>
-      <textarea class="ed" id="pi-txt" rows="6" placeholder="code&#9;name&#9;dealer&#9;msrp&#9;map"></textarea>
-      <div style="margin-top:6px"><button class="btn" onclick="piPasteParse()">Read pasted rows</button></div>
-    </details>
-    <div id="pi-prev" style="margin-top:12px"></div>
-  </div>`);
-}
-/* The box carried the dropzone class — dashed border, pointer cursor, the whole visual
-   grammar of "drop a file here" — with no drop handler and no click target except the
-   small button inside it. Dropping did nothing and clicking the box did nothing, which
-   is indistinguishable from the page refusing the file. Both now do what they look like
-   they do. */
-function piDropFile(ev,el){
-  ev.preventDefault(); if(el) el.classList.remove('drag');
-  const f=((ev.dataTransfer&&ev.dataTransfer.files)||[])[0]; if(!f) return;
-  piPickFile({target:{files:[f]}});
-}
-function piPickFile(ev){
-  const f=(ev.target.files||[])[0]; if(!f) return;
-  _piFile=f.name;
-  const prev=document.getElementById('pi-prev'); prev.innerHTML='<div class="hint">Reading '+esc(f.name)+'…</div>';
-  const isCsv=/\.(csv|tsv|txt)$/i.test(f.name);
-  loadXlsx().then(XLSX=>{
-    const rd=new FileReader();
-    rd.onload=e=>{
-      try{
-        const wb=isCsv ? XLSX.read(String(e.target.result),{type:'string'})
-                       : XLSX.read(new Uint8Array(e.target.result),{type:'array'});
-        const names=wb.SheetNames||[];
-        if(!names.length){ prev.innerHTML='<div class="hint">That file has no readable sheets.</div>'; return; }
-        window._piWb=wb;
-        if(names.length>1){
-          prev.innerHTML='<div class="rule">Which sheet holds the price list?</div>'
-            +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'
-            +names.map(n=>`<button class="btn" onclick="piUseSheet('${escA(n)}')">${esc(n)}</button>`).join('')+'</div>';
-        } else piUseSheet(names[0]);
-      }catch(err){ prev.innerHTML='<div class="hint">Could not read that file: '+esc(err.message||String(err))+'</div>'; }
-    };
-    rd.onerror=()=>{ prev.innerHTML='<div class="hint">Could not read that file.</div>'; };
-    isCsv ? rd.readAsText(f) : rd.readAsArrayBuffer(f);
-  }).catch(e=>{ prev.innerHTML='<div class="hint">'+esc(e.message||'Could not load the spreadsheet reader')+'</div>'; });
-}
-function piUseSheet(name){
-  const XLSX=window.XLSX, wb=window._piWb; if(!XLSX||!wb) return;
-  _piGrid=sheetToGrid(XLSX,wb,name);
-  if(!_piGrid.headers.length||!_piGrid.rows.length){
-    document.getElementById('pi-prev').innerHTML='<div class="hint">That sheet has no usable rows.</div>'; return; }
-  piGuessMap(); piRenderMap();
-}
-function piPasteParse(){
-  const txt=(document.getElementById('pi-txt')||{}).value||'';
-  const lines=String(txt).split(/\r?\n/).map(l=>l.replace(/\s+$/,'')).filter(l=>l.trim());
-  if(lines.length<2){ document.getElementById('pi-prev').innerHTML='<div class="hint">Paste a header row plus at least one data row.</div>'; return; }
-  const split=l=>l.indexOf('\t')>=0?l.split('\t'):l.split(',');
-  _piFile='pasted rows';
-  _piGrid={headers:split(lines[0]).map(h=>h.trim()), rows:lines.slice(1).map(split), sheet:'paste', header_row:1};
-  piGuessMap(); piRenderMap();
-}
-// Best guess per field: exact header match first, then a contains match.
-function piGuessMap(){
-  const heads=_piGrid.headers.map(h=>String(h||'').trim().toLowerCase());
-  _piMap={};
-  PI_FIELDS.forEach(f=>{
-    let i=heads.findIndex(h=>f.hints.indexOf(h)>=0);
-    if(i<0) i=heads.findIndex(h=>h&&f.hints.some(x=>h.indexOf(x)>=0));
-    if(i>=0 && Object.values(_piMap).indexOf(i)<0) _piMap[f.key]=i;
-  });
-  /* Break columns, left to right, skipping anything a named field already claimed —
-     the dealer-cost column is itself a quantity break (qty 1) and must not be counted
-     twice. A slot with no detected quantity is left blank rather than guessed at 1;
-     an unanswered question is safer here than a confident wrong ladder. */
-  _piTierCol={}; _piTierMin={};
-  const taken=Object.values(_piMap);
-  let slot=0;
-  heads.forEach((h,i)=>{ if(slot>=PI_TIERS.length) return; if(taken.indexOf(i)>=0) return;
-    if(!piIsTierHeader(_piGrid.headers[i])) return;
-    const k=PI_TIERS[slot].key; _piTierCol[k]=i; _piTierMin[k]=piTierMinFromHeader(_piGrid.headers[i]); slot++; });
-}
-function piRenderMap(){
-  const prev=document.getElementById('pi-prev'); if(!prev) return;
-  const opts=(sel)=>'<option value="-1">— not in this file —</option>'
-    +_piGrid.headers.map((h,i)=>`<option value="${i}"${sel===i?' selected':''}>${esc(h)}</option>`).join('');
-  const sample=_piGrid.rows.slice(0,3);
-  prev.innerHTML=`<div class="rule"><b>${_piGrid.rows.length}</b> row(s) read from <b>${esc(_piGrid.sheet||'file')}</b>${_piGrid.header_row?` · headers on row ${_piGrid.header_row}`:''}. Confirm the columns:</div>
-    <table style="width:100%;font-size:12px;margin-top:8px"><tbody>
-    ${PI_FIELDS.map(f=>`<tr>
-      <td style="width:150px;padding:4px 6px">${esc(f.label)}${f.required?' <span style="color:var(--bad)">*</span>':''}</td>
-      <td style="padding:4px 6px"><select class="ed" id="pim-${f.key}" onchange="piRemap()" style="width:100%">${opts(_piMap[f.key]!=null?_piMap[f.key]:-1)}</select></td>
-      <td class="mut" style="padding:4px 6px;font-size:11px">${_piMap[f.key]!=null?sample.map(r=>esc(String((r||[])[_piMap[f.key]]||''))).filter(Boolean).slice(0,2).join(' · '):''}</td>
-    </tr>`).join('')}
-    </tbody></table>
-    ${piTierMapHtml(opts,sample)}
-    <div id="pi-prev2" style="margin-top:10px"></div>`;
-  piRemap();
-}
-/* The break columns, shown open when the file has any so they are confirmed rather than
-   discovered later, and collapsed when it doesn't so a flat price list stays a two-line job. */
-function piTierMapHtml(opts,sample){
-  const found=PI_TIERS.filter(t=>_piTierCol[t.key]!=null).length;
-  const rows=PI_TIERS.map((t,i)=>{ const ci=_piTierCol[t.key];
-    return `<tr>
-      <td style="width:150px;padding:4px 6px">Break ${i+1}</td>
-      <td style="padding:4px 6px"><select class="ed" id="pit-${t.key}" onchange="piRemap()" style="width:100%">${opts(ci!=null?ci:-1)}</select></td>
-      <td class="mut" style="padding:4px 6px;font-size:11px;white-space:nowrap">at qty
-        <input class="ed" id="pitq-${t.key}" type="number" min="1" step="1" style="width:64px;padding:2px 4px"
-               value="${_piTierMin[t.key]!=null?_piTierMin[t.key]:''}" onchange="piRemap()"> or more
-        ${ci!=null&&sample.length?`<span style="margin-left:6px">${esc(sample.map(r=>String((r||[])[ci]||'')).filter(Boolean).slice(0,2).join(' · '))}</span>`:''}</td>
-    </tr>`; }).join('');
-  return `<details style="margin-top:8px"${found?' open':''}>
-    <summary class="mut" style="cursor:pointer;font-size:12px">Quantity breaks ${found?`— <b>${found}</b> column(s) detected, confirm the quantity each one starts at`:'— none detected in this file'}</summary>
-    <table style="width:100%;font-size:12px;margin-top:6px"><tbody>${rows}</tbody></table>
-    <div class="mut" style="font-size:11px;margin-top:4px">A break needs both a column and a quantity. Dealer cost is the qty-1 price and is not a break.</div>
-  </details>`;
-}
-/* A price row for a bare part number is also a price row for every colour SKU that
-   inherits from it. Without this the 2026 list would update twenty codes nobody can
-   order and leave the eighty SKUs dealers actually buy on last year's price — an import
-   that reports success and changes nothing a dealer would ever see. The base row is kept
-   as well: it stays the anchor a new colour falls back to before it is priced. */
-function piFanOutColors(rows){
-  const S=_priceState; if(!S||!S.liveCodes) return rows;
-  const out=[], seen=new Set(rows.map(r=>String(r.code||'').toUpperCase()));
-  rows.forEach(r=>{
-    out.push(r);
-    const code=String(r.code||'').trim(); if(!code) return;
-    if(S.assigned&&S.assigned.has(code)) return;      // the file's code IS a live SKU
-    piColorKids(code,S.liveCodes).forEach(k=>{
-      // If the file priced the colour SKU itself, that row wins — never overwrite an
-      // explicit price with an inherited one.
-      if(seen.has(k.toUpperCase())) return;
-      seen.add(k.toUpperCase());
-      const kn=(S.allCodes&&S.allCodes.has(k))?(S.recOf(k).name||''):'';
-      out.push(Object.assign({},r,{code:k,name:kn||r.name,_fanFrom:code}));
-    });
-  });
-  return out;
-}
-function piRemap(){
-  PI_FIELDS.forEach(f=>{ const el=document.getElementById('pim-'+f.key); if(el){ const v=Number(el.value); _piMap[f.key]=v>=0?v:null; } });
-  PI_TIERS.forEach(t=>{ const c=document.getElementById('pit-'+t.key), q=document.getElementById('pitq-'+t.key);
-    if(c){ const v=Number(c.value); _piTierCol[t.key]=v>=0?v:null; }
-    if(q){ const v=parseInt(q.value,10); _piTierMin[t.key]=(isFinite(v)&&v>=1)?v:null; } });
-  // A slot only counts once it has both halves — a column and the quantity it starts at.
-  const tierSlots=PI_TIERS.filter(t=>_piTierCol[t.key]!=null&&_piTierMin[t.key]>=1);
-  const out=document.getElementById('pi-prev2'); if(!out) return;
-  if(_piMap.code==null){ out.innerHTML='<div class="hint">Pick the column holding the SKU / item code — nothing can be matched without it.</div>'; _piRows=[]; return; }
-  const num=v=>{ if(v==null) return null; const t=String(v).replace(/[^0-9.\-]/g,''); if(!t) return null; const n=Number(t); return isFinite(n)?n:null; };
-  const seen={}; const dupInFile=[];
-  _piRows=[];
-  _piGrid.rows.forEach(r=>{
-    const code=String((r||[])[_piMap.code]||'').trim(); if(!code) return;
-    const row={code, source_file:_piFile};
-    if(_piMap.name!=null) row.name=String(r[_piMap.name]||'').trim();
-    if(_piMap.base_price!=null) row.base_price=num(r[_piMap.base_price]);
-    if(_piMap.map!=null) row.map=num(r[_piMap.map]);
-    if(_piMap.msrp!=null) row.msrp=num(r[_piMap.msrp]);
-    if(_piMap.case_qty!=null) row.case_qty=String(r[_piMap.case_qty]||'').trim();
-    if(_piMap.effective_date!=null) row.effective_date=String(r[_piMap.effective_date]||'').trim();
-    /* Only attach a ladder when this row actually has break prices. Sending an empty
-       one would CLEAR the breaks the product already has, so a file with a blank cell
-       — the 2026 Ovation sheet has eighteen of them — would quietly delete real
-       pricing. Silence in a spreadsheet is not an instruction to erase. */
-    if(tierSlots.length){
-      const tl=tierSlots.map(t=>({min_qty:_piTierMin[t.key],price:num(r[_piTierCol[t.key]])}))
-        .filter(x=>x.price!=null).sort((a,b)=>a.min_qty-b.min_qty);
-      if(tl.length) row.tiers=tl;
-    }
-    // The same SKU twice in one file is a real and common problem — flag it here
-    // rather than letting the last row silently win.
-    if(seen[code]!=null){ dupInFile.push({code,first:seen[code],again:row}); }
-    seen[code]=row;
-    _piRows.push(row);
-  });
-  _piRows=piFanOutColors(_piRows);
-  const S=_priceState;
-  const known=c=>S?S.allCodes.has(String(c)):false;
-  const changed=r=>{ if(!S||!known(r.code)) return null; const cur=S.recOf(r.code);
-    if(r.base_price!=null && cur.base_price!=null && Number(cur.base_price)!==Number(r.base_price)) return {from:cur.base_price,to:r.base_price};
-    return null; };
-  const nNew=_piRows.filter(r=>!known(r.code)).length;
-  const nChg=_piRows.filter(r=>changed(r)).length;
-  const nTier=_piRows.filter(r=>r.tiers&&r.tiers.length).length;
-  const fanned=_piRows.filter(r=>r._fanFrom);
-  const nFanBase=new Set(fanned.map(r=>r._fanFrom)).size;
-  // Rows the file prices but leaves without breaks, where we hold breaks today. Their
-  // ladder is kept, not cleared — this line says so out loud rather than leaving it
-  // to be discovered from a dealer's invoice.
-  const nKeptTier=tierSlots.length?_piRows.filter(r=>!(r.tiers&&r.tiers.length)&&known(r.code)&&(S.recOf(r.code).tiers||[]).length).length:0;
-  out.innerHTML=`<div class="rule"><b>${_piRows.length}</b> priced row(s) · <b>${_piRows.length-nNew}</b> match existing codes · <b>${nNew}</b> new
-      ${nChg?` · <b style="color:#b8791b">${nChg}</b> price change(s)`:''}${nTier?` · <b>${nTier}</b> with quantity breaks`:''}${dupInFile.length?` · <b style="color:var(--bad)">${dupInFile.length}</b> duplicate code(s) in the file`:''}</div>
-    ${dupInFile.length?`<div class="hint" style="border-color:#e6b800;background:#fffdf3">The same code appears more than once in this file: <b>${dupInFile.slice(0,8).map(d=>esc(d.code)).join(', ')}</b>${dupInFile.length>8?' …':''}. The last row wins — check the file if that isn't what you intend.</div>`:''}
-    ${fanned.length?`<div class="hint" style="border-color:#9ec5a8;background:#f4faf5"><b>${fanned.length}</b> colour SKU(s) will take the price of their base part number — ${nFanBase} base code(s) in this file are not ordered directly, their colour variants are. The base codes are still written, so they stay the fallback for a colour added later.</div>`:''}
-    ${nKeptTier?`<div class="hint">${nKeptTier} row(s) have no break prices in this file but have breaks today — those ladders are <b>kept as they are</b>. Clear them per product in the Product Catalog if the manufacturer really has dropped the breaks.</div>`:''}
-    <div class="tabscroll" style="max-height:260px;overflow:auto;margin-top:8px"><table style="width:100%;font-size:12px"><thead><tr><th>Code</th><th>Name</th><th>Dealer</th><th>MAP</th><th>MSRP</th>${tierSlots.length?'<th>Quantity breaks</th>':''}<th>Change</th></tr></thead>
-    <tbody>${_piRows.slice(0,300).map(r=>{ const ch=changed(r);
-      return `<tr><td><b>${esc(r.code)}</b>${r._fanFrom?`<div class="mut" style="font-size:10px">from ${esc(r._fanFrom)}</div>`:''}</td><td>${esc(r.name||'—')}</td><td>${pmoney(r.base_price)}</td><td>${pmoney(r.map)}</td><td>${pmoney(r.msrp)}</td>
-      ${tierSlots.length?`<td class="mut" style="font-size:11px">${esc(piTierText(r.tiers))}</td>`:''}
-      <td class="mut">${ch?`<span style="color:#b8791b">${pmoney(ch.from)} → <b>${pmoney(ch.to)}</b></span>`:(known(r.code)?'no change':'new')}</td></tr>`; }).join('')}</tbody></table></div>
-    <div style="margin-top:10px"><button class="btn dark" data-act="price-import-apply">Apply ${_piRows.length} price(s)</button>
-      <span class="mut" style="font-size:12px;margin-left:8px">Effective date and case quantity are recorded on each price as a note.</span></div>`;
-}
-async function doPriceImportApply(){
-  if(!_piRows.length){ toast('Nothing to import',true); return; }
-  /* Split the file before writing any of it. New codes and rows that agree with what we
-     hold go straight in — there is nothing to decide. Rows that contradict an existing
-     price are parked for review instead of overwriting it, because that overwrite is
-     exactly what would reach dealers unnoticed. */
-  const S=_priceState;
-  const apply=[], queue=[];
-  _piRows.forEach(r=>{
-    const rec=(S&&S.allCodes.has(String(r.code)))?S.recOf(r.code):null;
-    const diff=rec?piqDiff(r,rec):[];
-    if(diff.length) queue.push(Object.assign({},r,{_diff:diff,_at:new Date().toISOString()}));
-    else apply.push(Object.assign({},r,{create:true}));
-  });
-  if(apply.length){
-    const res=await catalogPost({action:'bulk_price',manufacturer:MFR,rows:apply});
-    if(!(res.ok&&res.json&&res.json.ok)){ toast((res.json&&res.json.error)||'Import failed',true); return; }
-    toast('Imported '+((res.json.applied||0)+(res.json.created||0))+' price(s)'
-      +(queue.length?' · '+queue.length+' to review':''));
-  } else if(queue.length){
-    toast(queue.length+' price(s) differ from ours — review below');
-  }
-  if(queue.length) piqAdd(queue);
-  _piRows=[]; _piGrid=null; openPriceAudit();
-}
-// Kept so the old paste-only entry point still works if anything calls it.
-function doPriceImportParse(){ return piPasteParse(); }
-
-/* ---- Preview as dealer: exactly what a dealer sees in Partner 360 ---- */
 function openDealerPricePreview(){ const S=_priceState; if(!S){ return; }
   const byProd={}; S.content.forEach(cs=>{ if(cs.disabled) return; if(!S.allCodes.has(cs.code)) return; const r=S.recOf(cs.code);
     (byProd[cs.product]=byProd[cs.product]||[]).push({code:cs.code,size:cs.size,base:r.base_price,msrp:r.msrp,map:r.map}); });
@@ -3466,62 +2728,6 @@ function openDealerPricePreview(){ const S=_priceState; if(!S){ return; }
 /* ---- PDF catalog reading: pdf.js extracts the text IN THE BROWSER (no server-side PDF
    dependency), then the AI interprets it into products + variant SKUs. Loaded lazily so the
    page only pays for pdf.js when a catalog PDF is actually used. ---- */
-/* XLSX reading happens IN THE BROWSER, same approach as the catalog PDF reader: the
-   price list never leaves the admin's machine on its way to being parsed, and there is
-   no server-side spreadsheet dependency to keep alive. Loaded only when a workbook is
-   actually opened, so the page does not pay for it otherwise. */
-/* SheetJS stopped publishing to npm and cdnjs after 0.18.5, so anything later here is a
-   404 — and a 404 on the reader looks nothing like a missing library from the outside:
-   the file dialog opens, the file is chosen, and a one-line message appears in a corner,
-   which reads as "it won't take my file". Keep this equal to the version import-commissions
-   and sales-import already load; all three pages should use one reader. */
-const XLSX_VER='0.18.5';
-const XLSX_SRC=[`https://cdnjs.cloudflare.com/ajax/libs/xlsx/${XLSX_VER}/xlsx.full.min.js`,
-                `https://cdn.jsdelivr.net/npm/xlsx@${XLSX_VER}/dist/xlsx.full.min.js`];
-let _xlsxReady=null;
-function loadXlsx(){
-  if(_xlsxReady) return _xlsxReady;
-  const p=new Promise((res,rej)=>{
-    if(window.XLSX) return res(window.XLSX);
-    // Two sources, tried in order, so one CDN having a bad day doesn't take the
-    // importer down with it.
-    let i=0;
-    const next=()=>{
-      if(i>=XLSX_SRC.length){ rej(new Error('Could not load the spreadsheet reader — check the connection, or use "or paste rows instead" below.')); return; }
-      const s=document.createElement('script');
-      s.src=XLSX_SRC[i++];
-      s.onload=()=>{ if(window.XLSX) res(window.XLSX); else next(); };
-      s.onerror=next;
-      document.head.appendChild(s);
-    };
-    next();
-  // A rejected promise would otherwise be cached for the life of the page, so a
-  // dropped connection would keep failing after it came back. Clear it and let the
-  // next attempt start over.
-  }).catch(e=>{ _xlsxReady=null; throw e; });
-  _xlsxReady=p;
-  return p;
-}
-/* Turn any sheet into a header row + data rows. Manufacturer sheets rarely start at A1 —
-   there is usually a title, a logo row, maybe a blank line — so the header is found by
-   looking for the first row that actually looks like column headings rather than
-   assuming row 1. Getting this wrong imports the title row as a product. */
-function sheetToGrid(XLSX, wb, sheetName){
-  const ws=wb.Sheets[sheetName]; if(!ws) return {headers:[],rows:[]};
-  const grid=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''});
-  const looksHeader=row=>{
-    const cells=(row||[]).map(c=>String(c||'').trim()).filter(Boolean);
-    if(cells.length<2) return false;
-    // A header row is mostly words, not numbers.
-    const numeric=cells.filter(c=>/^[$]?[\d,.]+$/.test(c)).length;
-    return numeric<=Math.floor(cells.length/2);
-  };
-  let hi=0;
-  for(let i=0;i<Math.min(grid.length,25);i++){ if(looksHeader(grid[i])){ hi=i; break; } }
-  const headers=(grid[hi]||[]).map((c,i)=>String(c||'').trim()||('Column '+(i+1)));
-  const rows=grid.slice(hi+1).filter(r=>(r||[]).some(c=>String(c||'').trim()!==''));
-  return {headers,rows,header_row:hi+1,sheet:sheetName};
-}
 
 const PDFJS_VER='3.11.174';
 let _pdfjsReady=null;
@@ -3866,9 +3072,7 @@ async function dupEnrichExisting(pk){
   for(const it of rows){
     const r=await apiWrite({action:'set_sku',page_key:pk,sku:it.code,patch:{name:it.name||'',status:'active'}});
     if(r.ok && (!r.json||r.json.ok!==false)) added++; else failed++;
-    const price=it.price===''?null:Number(String(it.price).replace(/[^0-9.\-]/g,''));
     const prod={code:it.code, name:it.name||(pages[pk]&&pages[pk].name)||it.code, category:(pages[pk]&&pages[pk].category)||null, active:true};
-    if(price!=null && isFinite(price)) prod.base_price=price;
     try{ await publishToCatalog(prod, _pubCollisions); }catch(e){}
   }
   _npPending=null; _catalogCache=null;
@@ -4011,7 +3215,7 @@ async function openCatalogHealth(){
   const body=`
     <div class="pa-head">
       <div class="pa-score" style="border-color:${readyColor}"><div class="pa-scv" style="color:${readyColor}">${ready.length}</div><div class="pa-scl">Ready to publish<br><span class="mut">${live.length} live · ${blocked.length} blocked</span></div></div>
-      <div class="pa-actions"><button class="btn" data-act="price-check">💲 Open Price Check</button><button class="btn" data-act="health-refresh">↻ Re-run</button></div>
+      <div class="pa-actions"><button class="btn" data-act="price-check">💲 Commercial summary</button><button class="btn" data-act="health-refresh">↻ Re-run</button></div>
     </div>
     <div class="pa-chips">
       ${chip(keys.length,'products')}${chip(skuTotal,'SKUs')}${chip(live.length,'live')}${chip(review.length,'in review')}
@@ -4603,10 +3807,9 @@ async function doBulk(publish){ const keys=[...selProducts]; if(!keys.length) re
   else toast('Bulk update failed',true); }
 
 /* ===================== new product ===================== */
-function npRowHTML(){ return `<div class="np-skurow" style="display:grid;grid-template-columns:1fr 1.5fr .85fr 30px;gap:6px;margin-bottom:6px;align-items:center">
-  <input class="ed np-sku" placeholder="SKU #">
+function npRowHTML(){ return `<div class="np-skurow" style="display:grid;grid-template-columns:1fr 1.5fr 30px;gap:6px;margin-bottom:6px;align-items:center">
+  <input class="ed np-sku" placeholder="SKU # (already on the commercial record)">
   <input class="ed np-skuname" placeholder="Name / description (optional)">
-  <input class="ed np-skuprice" placeholder="Price $" inputmode="decimal">
   <button class="btn ghost np-rowdel" type="button" data-act="np-rowdel" title="Remove row" style="padding:6px 9px">✕</button>
 </div>`; }
 function openNewProduct(){ modalHTML('New product',`
@@ -4618,11 +3821,11 @@ function openNewProduct(){ modalHTML('New product',`
   </div>
   <div class="fld" style="margin-top:10px"><label>Manufacturer product URL <span class="mut" style="font-size:10px;text-transform:none">optional — used to catch duplicates</span></label><input class="ed" id="np-url" placeholder="https://…manufacturer product page"></div>
   <div class="fld" style="margin-top:12px"><label>SKUs — each becomes an orderable product on Partner 360</label>
-    <div style="display:grid;grid-template-columns:1fr 1.5fr .85fr 30px;gap:6px;margin-bottom:4px;font-size:10.5px;color:#6b7280;font-weight:800;text-transform:uppercase;letter-spacing:.04em">
-      <span>SKU #</span><span>Name / description</span><span>Price $</span><span></span></div>
+    <div style="display:grid;grid-template-columns:1fr 1.5fr 30px;gap:6px;margin-bottom:4px;font-size:10.5px;color:#6b7280;font-weight:800;text-transform:uppercase;letter-spacing:.04em">
+      <span>SKU #</span><span>Name / description</span><span></span></div>
     <div id="np-skurows">${npRowHTML()}${npRowHTML()}${npRowHTML()}</div>
     <button class="btn ghost" type="button" data-act="np-addrow" style="margin-top:4px">＋ Add SKU row</button>
-    <div class="hint" style="margin-top:8px">Each SKU is created as an orderable catalog item. Enter a <b>price</b> to make it buyable right away; leave price blank to show “Call for pricing” until you set one. Prices write to the Product Catalog (President access).</div>
+    <div class="hint" style="margin-top:8px">The page lists SKUs that are <b>already on the commercial record</b>. Prices, order units and new SKUs are set in <a href="/admin/manufacturer-center.html" target="_blank">Manufacturer Center</a> (Sources, then Commercial &amp; freight) — this editor never creates a catalog SKU or sets a price. SKUs not on the record yet are left off and listed.</div>
   </div>
   <div class="savebar"><button class="btn dark" data-act="new-save">Create product</button></div>`);
   document.getElementById('modal').querySelector('[data-act="new-save"]').addEventListener('click',doNewProduct);
@@ -4637,8 +3840,7 @@ async function doNewProduct(force){
   const cat=document.getElementById('np-cat').value.trim(), fam=document.getElementById('np-fam').value.trim();
   const rows=[...document.querySelectorAll('#np-skurows .np-skurow')].map(r=>({
     code:(r.querySelector('.np-sku').value||'').trim(),
-    name:(r.querySelector('.np-skuname').value||'').trim(),
-    price:(r.querySelector('.np-skuprice').value||'').trim()
+    name:(r.querySelector('.np-skuname').value||'').trim()
   })).filter(x=>x.code);
   const seen=new Set(); for(const x of rows){ if(seen.has(x.code)){ toast('Duplicate SKU '+x.code,true); return; } seen.add(x.code); }
   const url=((document.getElementById('np-url')||{}).value||'').trim();
@@ -4668,9 +3870,7 @@ async function doNewProduct(force){
   let made=0, priced=0, forbidden=false, dupBlocked=0;
   _pubCollisions=[];
   for(const it of rows){
-    const price=it.price===''?null:Number(it.price.replace(/[^0-9.\-]/g,''));
     const prod={code:it.code, name:it.name||name, category:cat||null, active:true};
-    if(price!=null && isFinite(price)) prod.base_price=price;
     let res=null;
     try{ res=await publishToCatalog(prod, _pubCollisions); }catch(e){ res=null; }
     if(res && res.ok){ made++; if(prod.base_price!=null) priced++; inCatalog.push(it); }
@@ -4683,9 +3883,7 @@ async function doNewProduct(force){
   if(!inCatalog.length){
     restore();
     if(dupBlocked) reportCollisions(_pubCollisions);
-    toast(forbidden
-      ? 'Adding to the Product Catalog needs President access. Nothing was created — a content record without catalog SKUs is what leaves products no dealer can order.'
-      : 'No SKU could be written to the Product Catalog, so no product record was created.', true);
+    toast('None of these SKUs is on the commercial record yet, so no page was created. Add them in Manufacturer Center → Sources first: '+refused.slice(0,6).join(', ')+'.', true);
     return;
   }
   // The page is DERIVED from the master list — only SKUs the catalog actually holds.
@@ -4707,7 +3905,7 @@ async function doNewProduct(force){
   document.getElementById('overlay').classList.remove('show'); openCards.add(npk);
   if(dupBlocked) reportCollisions(_pubCollisions);
   if(refused.length) toast('Created "'+name+'" with '+inCatalog.length+' SKU(s). '+refused.length+
-    ' could not be added to the catalog and were left off the record: '+refused.slice(0,6).join(', ')+'.',true);
+    ' are not on the commercial record yet and were left off — add them in Manufacturer Center → Sources: '+refused.slice(0,6).join(', ')+'.',true);
   else toast('Created "'+name+'" · '+made+' orderable SKU(s)'+(priced?' ('+priced+' priced)':'')+
     (dupBlocked?' · '+dupBlocked+' already in the catalog':'')+'.');
   render();
