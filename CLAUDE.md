@@ -1423,7 +1423,8 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   verified: academy-handoff status `{enabled:false}`; admin API 401 with no token / public key / forged token; learner
   API and handoff mint 403 `flag_off`; no-store on every response; `/academy/*` 404 with DENY / noindex / CSP;
   netlify.app/academy and the bare domain land on www/academy (no loop); site pages and Connect 360 unchanged. All seven
-  switches OFF. M1 is NOT run — the original (sha256 85e87157…22a01) was held by Angelo for refinements A–E; rev 2 awaits his
+  switches OFF. **A2A ACCEPTED by Angelo (10 Oct 2026 22:29)**, subject to the remaining authentication tests (the
+  request-body-actor test and the signed-in role/scope tests) before any learner or staff feature is switched on. M1 is NOT run — the original (sha256 85e87157…22a01) was held by Angelo for refinements A–E; rev 2 awaits his
   approval; its baseline is the 21:45 preflight (outside grants 1c268eb2…/2811, policies 219ac18e…/29,
   columns d039b75f…/109; Academy grants 7af6d10e…/252, columns ca214093…/179, RLS 18/18, 0 policies).
 - **D14 — Academy-only email sign-in codes (approved by Angelo 10 Oct 2026 for A2B DESIGN only; not implemented).**
