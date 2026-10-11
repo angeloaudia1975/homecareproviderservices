@@ -1,0 +1,208 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Manufacturer Report History</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;align-items:end}
+ .form label{font-size:11px;color:var(--gray);font-weight:700;display:block;margin-bottom:3px}
+ .form select,.form input,.form textarea{width:100%;padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-family:inherit;box-sizing:border-box}
+ .form .wide{grid-column:1/-1}
+ .hint{font-size:12px;color:var(--gray);margin:4px 0 0}
+ .filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+ .filters select{padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:13px}
+ .rep{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:#fff}
+ .rep .hd{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+ .rep .ttl{font-weight:800;color:var(--navy);font-size:14px;overflow-wrap:anywhere}
+ .rep .meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:4px 14px;font-size:12.5px;margin-top:8px}
+ .rep .meta b{color:var(--gray);font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;display:block}
+ .rep .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center}
+ .rep .acts input{flex:1 1 220px;padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:13px}
+ .chip{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:800;letter-spacing:.2px;border:1px solid transparent}
+ .k-sales_export{background:#e8f0fb;color:#1f4f8f}.k-commission_statement{background:#eaf6ee;color:#1f6a3e}.k-dealer_report{background:#fff3e6;color:#9a4b07}
+ .s-received{background:#fff7e0;color:#8a5a00;border-color:#f1d48a}.s-accepted{background:#e9f7ef;color:#1f7a44;border-color:#a9dcbc}
+ .s-rejected{background:#fdecec;color:#b42323;border-color:#f3b4b4}.s-superseded{background:#f0f2f5;color:#55606c;border-color:#d5dbe2}
+ .p-unpublished{background:#f0f2f5;color:#55606c}.p-published{background:#e8f0fb;color:#1f4f8f}.p-withdrawn{background:#fdecec;color:#b42323}
+ .ev{font-size:12px;border-top:1px dashed var(--line);margin-top:8px;padding-top:6px}
+ .ev div{padding:2px 0;overflow-wrap:anywhere}
+ .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+ .note{background:#f5f8fc;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12.5px;color:var(--navy2);margin-bottom:12px}
+ .err{color:#b42323;font-size:13px;margin-top:8px}.okm{color:#1f7a44;font-size:13px;margin-top:8px}
+ .empty{border:1px dashed var(--line);border-radius:10px;padding:16px;color:var(--gray);font-size:13px;background:#fafbfc}
+ button.go,.btn{min-height:40px}
+ @media(max-width:760px){
+  .form select,.form input,.form textarea,.filters select,.rep .acts input{font-size:16px;min-height:44px}
+  button.go,.btn{min-height:44px}
+  .wrap{padding:14px 14px 50px}
+ }
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Manufacturer Report History</h1>
+    <div class="sub">Every report file a manufacturer sends — order/sales exports, commission statements and dealer-intelligence reports — kept as the original file, with when HCPS received it, the period it covers and every decision made about it. Registering a file imports nothing.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), DATA=null, FILTER={mfr:"",kind:""}, BUSY=false, MSG={};
+const KIND_LABEL={sales_export:"Order / sales export",commission_statement:"Commission statement",dealer_report:"Dealer-intelligence report"};
+const KIND_HELP={sales_export:"Transactions (orders, lines). Loaded later through Sales Report Import.",
+  commission_statement:"The manufacturer's commission statement. Loaded later through Commission Report Import.",
+  dealer_report:"A manufacturer's dealer summary (e.g. Strongback's monthly PDF). Never sales or commission. Kept unpublished — nothing reaches Dealer 360 from here."};
+const STATUS_LABEL={received:"Received — awaiting review",accepted:"Accepted",rejected:"Rejected",superseded:"Superseded by a correction"};
+const PUB_LABEL={unpublished:"Not published",published:"Published to Dealer 360",withdrawn:"Withdrawn"};
+const fmtDate=d=>d?new Date(String(d).slice(0,10)+"T12:00:00Z").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric",timeZone:"UTC"}):"—";
+const fmtWhen=d=>d?new Date(d).toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit",timeZone:"America/Chicago"})+" CT":"—";
+const fmtMonth=d=>d?new Date(String(d).slice(0,10)+"T12:00:00Z").toLocaleDateString("en-US",{month:"short",year:"numeric",timeZone:"UTC"}):"";
+const period=r=>{ const a=fmtMonth(r.report_period_start), b=fmtMonth(r.report_period_end); return a===b?a:a+" – "+b; };
+const size=n=>n==null?"—":(n<1024?n+" B":n<1048576?(n/1024).toFixed(0)+" KB":(n/1048576).toFixed(1)+" MB");
+const todayCT=()=>new Date(new Date().toLocaleString("en-US",{timeZone:"America/Chicago"})).toISOString().slice(0,10);
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${esc(msg||"")}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; boot();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+async function api(payload){
+  const r=await fetch("/.netlify/functions/mfr-reports-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)});
+  let body={}; try{ body=await r.json(); }catch(e){}
+  return {status:r.status, body};
+}
+async function boot(){
+  if(!TOKEN){ gate(); return; }
+  const r=await api({action:"list"});
+  if(r.status===401){ gate(); return; }
+  if(r.status===403){ $("#body").innerHTML=`<div class="empty">Manufacturer report history is for President / Admin.</div>`; return; }
+  if(r.status!==200){ $("#body").innerHTML=`<div class="empty err">${esc((r.body&&r.body.message)||"Report history could not be read just now.")} Nothing is shown rather than an incomplete list.</div>`; return; }
+  DATA=r.body; render();
+}
+function mfrName(slug){ const m=(DATA.manufacturers||[]).find(x=>x.slug===slug); return m?m.name:slug; }
+
+function render(){
+  const mf=(DATA.manufacturers||[]).slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  const mopts=mf.map(m=>`<option value="${esc(m.slug)}">${esc(m.name)}</option>`).join("");
+  const reps=(DATA.reports||[]).filter(r=>(!FILTER.mfr||r.manufacturer===FILTER.mfr)&&(!FILTER.kind||r.kind===FILTER.kind));
+  $("#body").innerHTML=`
+  <div class="note">Separate on purpose: <b>received / accepted</b> says whether HCPS accepts the file as the manufacturer's report; <b>publication</b> (dealer reports only) says whether its intelligence is shown in Dealer 360. Accepting never publishes. Publishing needs the dealer-intelligence import (MI-1c), which is not built yet — so nothing here reaches Dealer 360, reps, tasks, deals, sales or commissions.<br><br>
+  <b>Not automatic yet:</b> files loaded through Sales Report Import or Commission Report Import are not registered here — only files registered on this page are listed. Several different exports or statements may cover the same period; only dealer-intelligence reports are one per period. A correction replaces one named record for the <b>same</b> period.</div>
+  <div class="card"><h2>Register a report file</h2>
+    <div class="form" id="regform">
+      <div><label for="r_mfr">Manufacturer</label><select id="r_mfr" onchange="refreshSupersede()"><option value="">Choose…</option>${mopts}</select></div>
+      <div><label for="r_kind">What it is</label><select id="r_kind" onchange="refreshSupersede()"><option value="">Choose…</option>${DATA.kinds.map(k=>`<option value="${k}">${esc(KIND_LABEL[k])}</option>`).join("")}</select></div>
+      <div class="wide hint" id="r_kindhelp"></div>
+      <div class="wide"><label for="r_file">File (PDF, XLSX, XLS or CSV, up to ${Math.round((DATA.max_bytes||4194304)/1048576)} MB)</label><input id="r_file" type="file" accept=".pdf,.xlsx,.xls,.csv"></div>
+      <div class="wide"><label for="r_title">Title (optional — the file name is used otherwise)</label><input id="r_title" maxlength="200" placeholder="e.g. Strongback dealer report — September 2026"></div>
+      <div><label for="r_recv">Received by HCPS</label><input id="r_recv" type="date" max="${todayCT()}" value="${todayCT()}"></div>
+      <div><label for="r_prep">Prepared date stated on the report</label><input id="r_prep" type="date" max="${todayCT()}"><div class="hint">Leave empty if the report states none — it is never filled in for you.</div></div>
+      <div><label for="r_from">Covers from (month)</label><input id="r_from" type="month" onchange="refreshSupersede()"></div>
+      <div><label for="r_to">Covers to (month)</label><input id="r_to" type="month" onchange="refreshSupersede()"></div>
+      <div class="wide"><label for="r_sup">Corrects an earlier report?</label><select id="r_sup" onchange="supChanged()"><option value="">No — this is a new report</option></select></div>
+      <div class="wide" id="r_supwhy_w" style="display:none"><label for="r_supwhy">Why it replaces that report (kept in the audit trail)</label><input id="r_supwhy" maxlength="1000"></div>
+      <div class="wide"><label for="r_note">Note (optional)</label><input id="r_note" maxlength="1000"></div>
+      <div class="wide"><button class="go" id="r_go" onclick="register()">Store the file &amp; register it</button><div id="r_msg"></div></div>
+    </div>
+  </div>
+  <div class="card"><h2>Report history</h2>
+    <div class="filters">
+      <select id="f_mfr" aria-label="Manufacturer" onchange="FILTER.mfr=this.value;render()"><option value="">All manufacturers</option>${mopts}</select>
+      <select id="f_kind" aria-label="Kind" onchange="FILTER.kind=this.value;render()"><option value="">All kinds</option>${DATA.kinds.map(k=>`<option value="${k}">${esc(KIND_LABEL[k])}</option>`).join("")}</select>
+      <span class="hint">${reps.length} of ${(DATA.reports||[]).length} record(s)</span>
+    </div>
+    ${reps.length?reps.map(card).join(""):`<div class="empty">No report files registered${FILTER.mfr||FILTER.kind?" for this filter":""} yet.</div>`}
+  </div>`;
+  $("#f_mfr").value=FILTER.mfr; $("#f_kind").value=FILTER.kind;
+  $("#r_kind").addEventListener("change",()=>{ $("#r_kindhelp").textContent=KIND_HELP[$("#r_kind").value]||""; });
+  const clr=()=>{ const o=$("#r_msg"); if(o&&o.className==="err"){ o.textContent=""; o.className=""; } };
+  $("#regform").addEventListener("input",clr); $("#regform").addEventListener("change",clr);
+}
+function card(r){
+  const by=id=>(DATA.reports||[]).find(x=>x.id===id);
+  const supBy=(DATA.reports||[]).find(x=>x.supersedes_id===r.id&&x.status==="accepted");
+  const m=MSG[r.id]||"";
+  let acts=`<button class="go ghost sm" onclick="download(${r.id})">Download original</button>`;
+  if(r.status==="received") acts+=`<button class="go sm" onclick="decide(${r.id},'accepted')">Accept</button><input id="rr_${r.id}" placeholder="Reason (required to reject; optional to accept)" maxlength="1000"><button class="go ghost sm" onclick="decide(${r.id},'rejected')">Reject</button>`;
+  if(r.kind==="dealer_report"&&r.status==="accepted"&&r.publication_status!=="published")
+    acts+=`<button class="go ghost sm" disabled title="Publishing needs the dealer-intelligence import (MI-1c), which is not built yet">Publish to Dealer 360 — not available yet</button>`;
+  if(r.kind==="dealer_report"&&r.publication_status==="published")
+    acts+=`<input id="rw_${r.id}" placeholder="Reason to withdraw" maxlength="1000"><button class="go ghost sm" onclick="withdraw(${r.id})">Withdraw</button>`;
+  const ev=(r.events||[]).map(x=>`<div>${esc(fmtWhen(x.at))} · <b>${esc(x.action)}</b> by ${esc(x.actor)}${x.reason?` — ${esc(x.reason)}`:""}</div>`).join("");
+  return `<div class="rep"><div class="hd"><div><div class="ttl">${esc(r.title||r.file_name)}</div>
+      <div class="hint">${esc(mfrName(r.manufacturer))} · ${esc(period(r))}</div></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip k-${esc(r.kind)}">${esc(KIND_LABEL[r.kind]||r.kind)}</span>
+      <span class="chip s-${esc(r.status)}">${esc(STATUS_LABEL[r.status]||r.status)}</span>
+      ${r.kind==="dealer_report"?`<span class="chip p-${esc(r.publication_status)}">${esc(PUB_LABEL[r.publication_status]||r.publication_status)}</span>`:""}</div></div>
+    <div class="meta">
+      <div><b>File</b>${esc(r.file_name)} · ${esc(size(r.file_size))}</div>
+      <div><b>SHA-256</b><span class="mono" title="${esc(r.file_sha256)}">${esc(String(r.file_sha256||"").slice(0,16))}…</span></div>
+      <div><b>Received by HCPS</b>${esc(fmtDate(r.received_date))}</div>
+      <div><b>Prepared (manufacturer)</b>${r.prepared_date_status==="stated"?esc(fmtDate(r.prepared_date)):"Not stated on the report"}</div>
+      <div><b>Registered</b>${esc(fmtWhen(r.created_at))} by ${esc(r.created_by||"—")}</div>
+      ${r.accepted_at?`<div><b>Accepted</b>${esc(fmtWhen(r.accepted_at))} by ${esc(r.accepted_by)}</div>`:""}
+      ${r.decided_reason?`<div><b>Decision note</b>${esc(r.decided_reason)}</div>`:""}
+      ${r.supersedes_id?`<div><b>Corrects</b>record ${r.supersedes_id}${by(r.supersedes_id)?" — "+esc(by(r.supersedes_id).title||""):""}<br><span class="hint">${esc(r.supersede_reason||"")}</span></div>`:""}
+      ${supBy?`<div><b>Superseded by</b>record ${supBy.id}</div>`:""}
+      ${r.import_batch_id?`<div><b>Import batch</b><span class="mono">${esc(r.import_batch_id)}</span></div>`:""}
+      ${r.note?`<div><b>Note</b>${esc(r.note)}</div>`:""}
+    </div>
+    <div class="acts">${acts}</div>${m?`<div class="${/^ok:/.test(m)?"okm":"err"}">${esc(m.replace(/^(ok|er):/,""))}</div>`:""}
+    <details class="ev"><summary>Audit trail (${(r.events||[]).length})</summary>${ev||"<div>—</div>"}</details>
+  </div>`;
+}
+function refreshSupersede(){
+  const mfr=$("#r_mfr").value, kind=$("#r_kind").value, s=$("#r_sup"), from=$("#r_from").value, to=$("#r_to").value;
+  // A correction covers exactly the same period as the record it replaces: only those records are offered.
+  const cands=(DATA.reports||[]).filter(r=>r.manufacturer===mfr&&r.kind===kind&&r.status==="accepted"&&from&&to
+    &&String(r.report_period_start).slice(0,7)===from&&String(r.report_period_end).slice(0,7)===to);
+  s.innerHTML=`<option value="">No — this is a new report</option>`+cands.map(r=>`<option value="${r.id}">Record ${r.id} · ${esc(period(r))} · ${esc(r.title||r.file_name)}</option>`).join("");
+  supChanged();
+}
+function supChanged(){ $("#r_supwhy_w").style.display=$("#r_sup").value?"":"none"; }
+function readB64(file){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(",")[1]||""); fr.onerror=()=>rej(fr.error); fr.readAsDataURL(file); }); }
+async function register(){
+  if(BUSY) return; const out=$("#r_msg"); out.className=""; out.textContent="";
+  const f=$("#r_file").files[0];
+  const p={action:"register", manufacturer:$("#r_mfr").value, kind:$("#r_kind").value, title:$("#r_title").value, received_date:$("#r_recv").value,
+    prepared_date:$("#r_prep").value||null, period_start:$("#r_from").value, period_end:$("#r_to").value,
+    supersedes_id:$("#r_sup").value||null, supersede_reason:$("#r_supwhy").value, note:$("#r_note").value};
+  const miss=[!p.manufacturer&&"manufacturer",!p.kind&&"what it is",!f&&"the file",!p.received_date&&"received date",!p.period_start&&"from month",!p.period_end&&"to month",
+    p.supersedes_id&&!p.supersede_reason.trim()&&"why it replaces the earlier report"].filter(Boolean);
+  if(miss.length){ out.className="err"; out.textContent="Still needed: "+miss.join(", ")+"."; return; }
+  if(f.size>(DATA.max_bytes||4194304)){ out.className="err"; out.textContent="That file is larger than the limit."; return; }
+  BUSY=true; $("#r_go").disabled=true; out.textContent="Storing the original and registering…";
+  try{
+    p.file_name=f.name; p.content_base64=await readB64(f);
+    const r=await api(p);
+    if(r.status===200){ out.className="okm"; out.textContent=r.body.existing?(r.body.message||"Already registered — nothing new was stored."):`Registered as record ${r.body.id} (received — awaiting review).`;
+      const keep=out.textContent; await boot(); const o2=$("#r_msg"); if(o2){ o2.className="okm"; o2.textContent=keep; } }
+    else { out.className="err"; out.textContent=((r.body&&(r.body.message||r.body.error))||("Refused ("+r.status+")"))+(r.body&&r.body.file_stored?" — "+r.body.file_note:""); }
+  }catch(e){ out.className="err"; out.textContent="Could not reach the server — nothing was registered."; }
+  BUSY=false; const g=$("#r_go"); if(g) g.disabled=false;
+}
+async function decide(id,decision){
+  const reason=(($("#rr_"+id)||{}).value||"").trim();
+  if(decision==="rejected"&&!reason){ MSG[id]="er:A rejection needs a reason."; render(); return; }
+  const r=await api({action:"decide",id,decision,reason});
+  MSG[id]=r.status===200?`ok:${decision==="accepted"?"Accepted":"Rejected"}.`:"er:"+((r.body&&(r.body.message||r.body.error))||"Refused");
+  if(r.status===200) await boot(); else render();
+}
+async function withdraw(id){
+  const reason=(($("#rw_"+id)||{}).value||"").trim();
+  if(!reason){ MSG[id]="er:Withdrawing needs a reason."; render(); return; }
+  const r=await api({action:"publication",id,publication:"withdraw",reason});
+  MSG[id]=r.status===200?"ok:Withdrawn.":"er:"+((r.body&&(r.body.message||r.body.error))||"Refused");
+  if(r.status===200) await boot(); else render();
+}
+async function download(id){
+  const r=await api({action:"download",id});
+  if(r.status===200&&r.body.url){ location.href=r.body.url; }   // a signed, 2-minute link served as a download
+  else { MSG[id]="er:The original could not be fetched just now."; render(); }
+}
+boot();
+</script>
+</body></html>
