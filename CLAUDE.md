@@ -1231,7 +1231,7 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
 
 ## 20. HCPS Training & Certification Academy (RULE, agreed 2026-10-10)
 The project specification and decision log are the Claude Docs "HCPS Academy — Project Specification & Phase A0
-Findings" (decisions 1–44, incl. "Golden Technologies confirmations", 10 Oct 2026). Summary of what binds code in this repo:
+Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2026). Summary of what binds code in this repo:
 - **Place:** courses live at `/academy/`; Dealer Services carries a promo section; the Dealer Hub keeps live
   training bookings and links to the academy; the Academy Command Center is a Connect 360 tool added to `HUBS`
   (rule 9). No separate admin site and no duplicate training system or product database.
@@ -1267,6 +1267,31 @@ Findings" (decisions 1–44, incl. "Golden Technologies confirmations", 10 Oct 2
   exist. Production storage.buckets carries Supabase triggers: a new bucket must leave the lifecycle columns NULL, and a
   direct bucket delete needs `set local storage.allow_delete_query = 'true'`. **The Supabase SQL editor shows only the
   LAST statement's result** — a test script must end with its results query (undo test data in a sub-transaction).
+- **Phase A2 (approved 10 Oct 2026 18:45; one unit at a time, each with its own approval).** Order: A2A security → A2C
+  part C1 → A2D → A2F → A2C part C2 → A2B → A2E. Everything ships behind `phase2_flags` switches that are OFF
+  (`academy_admin`, `academy_learner`, `academy_handoff`, `academy_invites`, `academy_external_uploads`,
+  `academy_certificates`, `academy_dealer360`), turned on only by a reviewed one-line SQL of the form
+  `value = value || '{"academy_x": true}'` that Angelo runs. All Academy server code goes through `_academy.js`
+  (who is calling, dealership scope, strict reads, audit, switches, input/output rules). Training Manager scope = the
+  dealer + its direct branches; a branch Training Manager sees the branch only (D3). Reps and Relations never see
+  numeric scores. HCPS staff emails are never learners in A2 (D6).
+- **Security-sensitive Academy changes are atomic with their audit row (RULE, Angelo 10 Oct 2026).** Training Manager
+  grant/revoke, Golden credential verify/reject, HCPS certificate issue/revoke, publishing/retiring a course version,
+  exam submission/grading/result correction, and product-fact record/supersede/withdraw run ONLY as the database
+  functions `academy_op_*` (migration `supabase/academy_a2a_m1_audited_ops.sql`): one transaction, the change and its
+  `academy_events` row together or neither. Guard triggers refuse the same changes made any other way. Calls go through
+  `_academy.js op()`. Exams are graded inside the database; answer keys never leave it; pass/fail uses the exact
+  fraction. A disputed or unsafe fact is withdrawn with NO replacement value (`academy_op_withdraw_fact`: an
+  `awaiting_manufacturer` row with value null), never left published (D2). A TEST course (slug `test-…`) never issues a
+  certificate. The A1 acceptance tests run before and after M1 (setup goes through the operations once M1 exists).
+- **Academy sign-in (security review 10 Oct 2026).** Learners get the Academy's OWN session — an HMAC-signed 8-hour value
+  in an HttpOnly, Secure, SameSite=Strict `__Host-hcps_academy` cookie (`_academy_session.js`, secret
+  `ACADEMY_SESSION_SECRET`, Production-scoped, 32+ random bytes, set by Angelo). It is accepted only by `academy-api`;
+  ordering, pricing, Partner 360 and Connect 360 never read it. **Never give the Academy a Supabase session** (the "View
+  as" magic-link method was reviewed and rejected: the token would also order and price on Partner 360). GET may only
+  read (named read actions); every change is POST with the `x-academy-request` header and an allowed Origin. Academy
+  pages live only on homecareproviderservices.org (301 from the other hosts), under the strict `/academy/*` security
+  headers in netlify.toml: no inline script and no third-party scripts on Academy pages.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
