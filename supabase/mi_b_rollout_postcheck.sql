@@ -15,7 +15,7 @@ select * from (
   union all select 7, 'functions executable by anon / authenticated / service_role (capture ops expect 0 / 0 / 7)',
          (select count(*) filter (where has_function_privilege('anon',oid,'execute'))||' / '||count(*) filter (where has_function_privilege('authenticated',oid,'execute'))||' / '||count(*) filter (where has_function_privilege('service_role',oid,'execute'))
             from pg_proc where pronamespace='public'::regnamespace and proname like 'hcps_mfr_capture_%')
-  union all select 8, 'security definer + pinned search_path on the capture functions (expect 10 of 12: the guard and the 'settled' helper run as the caller)',
+  union all select 8, 'security definer + pinned search_path on the capture functions (expect 10 of 12: the guard and the settled helper run as the caller)',
          (select count(*) filter (where prosecdef and array_to_string(proconfig,';') like 'search_path=%')||' of '||count(*) from pg_proc where pronamespace='public'::regnamespace and proname like 'hcps_mfr_capture_%')
   union all select 9, 'RLS on the 6 capture tables / policies', (select count(*) filter (where relrowsecurity)||' of '||count(*)||' / '||(select count(*) from pg_policy p join pg_class c on c.oid=p.polrelid where c.relnamespace='public'::regnamespace and c.relname like 'mfr_report_%' and c.relname <> 'mfr_report_batches')
             from pg_class where relnamespace='public'::regnamespace and relkind='r' and relname like 'mfr_report_%' and relname <> 'mfr_report_batches')
