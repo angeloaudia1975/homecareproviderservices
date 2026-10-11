@@ -35,7 +35,14 @@
 begin;
 
 -- 1. An enrichment window is a decision of its own kind; at most one is open per line.
-alter table public.mfr_decisions drop constraint if exists mfr_decisions_kind_check;
+do $$
+declare c record;
+begin   -- whatever the kind check is called in this project, replace it (never leave an old one beside the new)
+  for c in select conname from pg_constraint
+           where conrelid = 'public.mfr_decisions'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%regression_fix%' loop
+    execute format('alter table public.mfr_decisions drop constraint %I', c.conname);
+  end loop;
+end $$;
 alter table public.mfr_decisions add constraint mfr_decisions_kind_check
   check (kind in ('interpretation','conflict','exception','regression_fix','freight_terms','deferral','acceptance','enrichment_window'));
 create unique index if not exists mfr_decisions_one_open_window
@@ -245,10 +252,13 @@ select * from (
   union all
   select 2, 'Phase 2 commercial guard still installed (4 tables)', count(*)::text, count(*) = 4 from pg_trigger where tgname = 'mfr_freeze_guard'
   union all
-  select 3, 'decision kind enrichment_window allowed; one open window per line',
-         (pg_get_constraintdef(c.oid) like '%enrichment_window%')::text || ' / ' || (to_regclass('public.mfr_decisions_one_open_window') is not null)::text,
-         pg_get_constraintdef(c.oid) like '%enrichment_window%' and to_regclass('public.mfr_decisions_one_open_window') is not null
-    from pg_constraint c where c.conname = 'mfr_decisions_kind_check'
+  select 3, 'decision kind enrichment_window allowed (no older kind check left); one open window per line',
+         count(*) filter (where pg_get_constraintdef(c.oid) like '%enrichment_window%')::text || ' new, ' ||
+         count(*) filter (where pg_get_constraintdef(c.oid) not like '%enrichment_window%')::text || ' old / index ' || (to_regclass('public.mfr_decisions_one_open_window') is not null)::text,
+         count(*) filter (where pg_get_constraintdef(c.oid) like '%enrichment_window%') = 1
+           and count(*) filter (where pg_get_constraintdef(c.oid) not like '%enrichment_window%') = 0
+           and to_regclass('public.mfr_decisions_one_open_window') is not null
+    from pg_constraint c where c.conrelid = 'public.mfr_decisions'::regclass and c.contype = 'c' and pg_get_constraintdef(c.oid) like '%regression_fix%'
   union all
   select 4, 'anon/authenticated can execute the content guard or its self-test (expect false)',
          bool_or(has_function_privilege(r, 'public.mfr_content_guard()', 'execute') or has_function_privilege(r, 'public.mfr_content_guard_selftest()', 'execute'))::text,

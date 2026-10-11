@@ -32,6 +32,7 @@ function world(o) {
       if (g('id')) rows = rows.filter(r => String(r.id) === g('id'));
       if (/kind=in\./.test(u)) rows = rows.filter(r => ['sales_export', 'commission_statement', 'dealer_report'].includes(r.kind));
       if (/offset=([1-9])/.test(u)) rows = []; return res(200, rows); }
+    if (u.startsWith(BASE + '/rest/v1/app_settings')) { if (o.flags === 'fail') return res(500, { message: 'down' }); return res(200, o.flags ? [{ value: o.flags }] : []); }
     if (u.startsWith(BASE + '/rest/v1/mfr_source_events')) return res(200, /offset=([1-9])/.test(u) ? [] : st.events);
     if (u.startsWith(BASE + '/rest/v1/rpc/')) { const fn = u.split('/rpc/')[1]; const p = JSON.parse(opts.body).p; st.rpcs.push({ fn, p });
       if (o.rpc) { const r = o.rpc(fn, p, st); if (r) return res(r.status, r.body); }
@@ -180,8 +181,8 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
   });
 
   console.log('\n— decide / publication / link / download —');
-  await t('decide, publication, link_batch pass the verified actor and their inputs to the database functions', async () => {
-    const { w, m } = boot();
+  await t('decide, publication, link_batch pass the verified actor and their inputs to the database functions (publish switch on, as a future approved phase would)', async () => {
+    const { w, m } = boot({ flags: { mi_intel_publish: true } });
     await call(m, { action: 'decide', id: 5, decision: 'rejected', reason: 'wrong month', actor: 'x@y' }, as('admin'));
     await call(m, { action: 'publication', id: 5, publication: 'publish', reason: 'r' }, as('pres'));
     await call(m, { action: 'link_batch', id: 5, batch_id: '0f0e0d0c-0b0a-4908-8706-050403020100' }, as('pres'));
@@ -189,8 +190,23 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
     assert.deepStrictEqual([w.rpcs[0].p.actor, w.rpcs[0].p.decision, w.rpcs[0].p.reason], ['ad@hcps.us', 'rejected', 'wrong month']);
     assert.strictEqual(w.rpcs[1].p.action, 'publish'); assert.strictEqual(w.rpcs[2].p.batch_id, '0f0e0d0c-0b0a-4908-8706-050403020100');
   });
+  await t('PUBLISH IS OFF: switch absent / false / "true" (string) / settings unreadable → 403 publication_not_authorized, the database is never called', async () => {
+    for (const flags of [undefined, { mi_intel_publish: false }, { mi_intel_publish: 'true' }, { mi_intel_publish: 1 }, {}, 'fail']) {
+      const { w, m } = boot({ flags }); const r = await call(m, { action: 'publication', id: 5, publication: 'publish', reason: 'r' }, as('pres'));
+      assert.strictEqual(r.status, 403, JSON.stringify(flags)); assert.strictEqual(r.body.error, 'publication_not_authorized'); assert.strictEqual(w.rpcs.length, 0); assert.strictEqual(writesOf(w).length, 0);
+    }
+  });
+  await t('withdraw is not gated (it only ever takes a report OUT of publication)', async () => {
+    const { w, m } = boot(); await call(m, { action: 'publication', id: 5, publication: 'withdraw', reason: 'r' }, as('pres'));
+    assert.deepStrictEqual(w.rpcs.map(x => [x.fn, x.p.action]), [['hcps_mfr_report_publication', 'withdraw']]);
+  });
+  await t('the database gate refusal (mi1b_publication_not_authorized) comes back as 422 with its code', async () => {
+    const { m } = boot({ flags: { mi_intel_publish: true }, rpc: () => ({ status: 400, body: { message: 'mi1b_publication_not_authorized: publishing manufacturer dealer intelligence is not authorized yet' } }) });
+    const r = await call(m, { action: 'publication', id: 5, publication: 'publish' }, as('pres'));
+    assert.strictEqual(r.status, 422); assert.strictEqual(r.body.error, 'mi1b_publication_not_authorized');
+  });
   await t('publish refused by the database (no MI-1c intelligence) → 409 with that code', async () => {
-    const { m } = boot({ rpc: () => ({ status: 400, body: { message: 'mi1b_publish_unavailable: no dealer intelligence is staged for record 5 (MI-1c is not installed)' } }) });
+    const { m } = boot({ flags: { mi_intel_publish: true }, rpc: () => ({ status: 400, body: { message: 'mi1b_publish_unavailable: no dealer intelligence is staged for record 5 (MI-1c is not installed)' } }) });
     const r = await call(m, { action: 'publication', id: 5, publication: 'publish' }, as('pres'));
     assert.strictEqual(r.status, 409); assert.strictEqual(r.body.error, 'mi1b_publish_unavailable');
   });
