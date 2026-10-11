@@ -21,6 +21,8 @@ const M=[
  ['_mc.js','card MSRP basis wording not checked','    if(ms && !!ms[1] !== msrpEach) cardIssues.push','    if(false) cardIssues.push'],
  ['_mc.js','card MAP expected each on every pack','    const mapEach = !!pk && (basisOf(rb.map_basis) ? basisOf(rb.map_basis) === "each" : true);','    const mapEach = !!pk;'],
  ['_mc.js','card MSRP expectation ignores the record','    const msrpEach = !!pk && (basisOf(rb.msrp_basis) ? basisOf(rb.msrp_basis) === "each" : p.msrp_each === true);','    const msrpEach = !!pk && p.msrp_each === true;'],
+ ['_mc.js','verifier tests the file freight rule, not the effective one','  const groups = (L.freight || {}).groups || [];','  const groups = ((freightCfg[slug] || {}).freight || {}).groups || [];'],
+ ['_mc.js','invalid record freight terms pass the run','L.freightSource === "record" && !L.freightInvalid,','true,'],
  ['_mc.js','engine drift ignored','  add(check("engine_in_sync", "Server pricing engine = live storefront code", engineSame,','  add(check("engine_in_sync", "Server pricing engine = live storefront code", true,'],
  ['_mc.js','render drift ignored','  add(check("render_in_sync", "Server card/freight rendering = live storefront code", renderSame,','  add(check("render_in_sync", "Server card/freight rendering = live storefront code", true,'],
  ['_mc.js','unrecorded products allowed','    add(check("every_product_has_record", "Every visible product has an active master record", !noRecord.length,','    add(check("every_product_has_record", "Every visible product has an active master record", true,'],

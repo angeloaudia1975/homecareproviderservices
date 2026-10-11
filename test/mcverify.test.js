@@ -25,7 +25,7 @@ function world(o){
              {manufacturer:LINE,code:'444DISPLAY',base_price:634.86,msrp:1269.72,map:1269.72,msrp_auto:false,status:'active',uom:'Display',case_qty:1,source_id:1,dealer_unit_cost:634.86},
              {manufacturer:LINE,code:'DO5300RD444',status:'discontinued'}];
   const W=M.createWorld({ tables:{
-    manufacturer_meta:[{slug:LINE,record_authoritative:true,frozen:true,deferrals:[],freight_terms:null}],
+    manufacturer_meta:[{slug:LINE,record_authoritative:true,frozen:true,deferrals:[],freight_terms:o.freight_terms===undefined?null:o.freight_terms}],
     product_skus:(o.records||rec), product_content:[], product_links:[], product_media:[],
     product_overrides:o.overrides||[{manufacturer:LINE,code:'DO5300RD444',patch:{active:false}}],
     custom_products:[{manufacturer:LINE,code:'444DISPLAY',name:'Assurance Display Program',category:'Bath Safety',base_price:634.86,msrp:1269.72,map:1269.72,active:true,image:'/assets/products/bemis/DO5300RD444.jpg'}].concat(o.extraCustom||[]),
@@ -102,6 +102,26 @@ await t('Phase 4: storefront basis that disagrees with the record fails parity (
   const r=await verify(C,{save:false});
   ok(!ck(r,'full_field_parity').pass && ck(r,'full_field_parity').detail.some(d=>d.code==='7YR05310TSS'&&d.field==='msrp_basis'),JSON.stringify(ck(r,'full_field_parity')).slice(0,500));
   ok(!ck(r,'product_cards').pass && ck(r,'product_cards').detail.some(d=>d.issue==='MSRP basis wording'),JSON.stringify(ck(r,'product_cards')).slice(0,500));
+});
+const bemisFile=()=>JSON.parse(JSON.stringify(MFRS.find(m=>m.slug===LINE).freight));
+await t('Phase 5: freight from the record (backfilled terms) — source check passes, every freight check and the fingerprint are unchanged',async()=>{
+  const base=await verify(mod(world()),{save:false});
+  const r=await verify(mod(world({freight_terms:Object.assign(bemisFile(),{trace:{source_id:1,decision_id:1}})})),{save:false});
+  eq([r.body.result,r.body.failed],['pass',[]],JSON.stringify((r.body.checks||[]).filter(c=>!c.pass)).slice(0,600));
+  eq(ck(r,'freight_source').detail.source,'record'); eq(ck(r,'freight_record_vs_file').detail.same,true);
+  eq(r.body.fingerprint,base.body.fingerprint); eq(JSON.stringify(ck(r,'freight_boundaries').detail),JSON.stringify(ck(base,'freight_boundaries').detail));
+  eq(JSON.stringify(ck(r,'emails').detail),JSON.stringify(ck(base,'emails').detail));
+});
+await t('Phase 5: invalid record terms fail the run (the file rule still prices, nothing is wiped)',async()=>{
+  const r=await verify(mod(world({freight_terms:{groups:'all',trace:{decision_id:1}}})),{save:false});
+  eq(r.body.failed,['freight_source']); eq(ck(r,'freight_source').detail,{source:'file',invalid:true,trace:{decision_id:1}});
+  ok(ck(r,'freight_boundaries').pass&&ck(r,'browser_equals_server').pass&&ck(r,'emails').pass,'the file rule still prices correctly');
+});
+await t('Phase 5: the verifier tests the EFFECTIVE rule — a changed valid record moves the tested thresholds',async()=>{
+  const f=bemisFile(); f.groups[0].freeAt=600; f.trace={decision_id:1};
+  const r=await verify(mod(world({freight_terms:f})),{save:false});
+  const amts=(ck(r,'freight_boundaries').detail||[]).map(x=>x.amount); eq(amts,[599.99,600,600.01],JSON.stringify(ck(r,'freight_boundaries').detail).slice(0,300));
+  eq(ck(r,'freight_record_vs_file').detail.same,false);
 });
 await t('freight boundaries: $499.99 = $40 shipping & handling, $500.00 and $500.01 = Prepaid freight',async()=>{
   const W=world(); const C=mod(W); const r=await verify(C);

@@ -1189,6 +1189,23 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   against baselines #1/#5/#3/#6; all 347 products identical, the 28 basis rows (Bemis 7 each/each, Ovation 20 MSRP
   order_unit, Strongback A1005 MAP each) keep their wording, fingerprints equal `gs_fp_pre_mc_p4`. Saved run detail is
   stored as jsonb, so compare runs with sorted keys, never raw JSON text.
+  Phase 4 accepted by Angelo (2026-10-10). Accepted limitation: no live pack has both MSRP and MAP basis blank, so
+  that fallback stays test-backed — never create production data just to exercise it. Product detail pages,
+  featured tiles and quotes stay outside Phase 4 and unchanged.
+- **Manufacturer Center Phase 5 — freight terms as data (approved by Angelo 2026-10-10; its own release).** A line's
+  freight rule = `manufacturer_meta.freight_terms` when present AND valid (`validFreightTerms`; its `trace` is dropped)
+  → otherwise its manufacturers.json `freight` entry, exactly as before → otherwise no rule. The record replaces the
+  file entry WHOLE (never a field merge), so a partial record cannot combine with the file into a rule nobody wrote,
+  and a missing / null / empty / malformed / unreadable record can never wipe a rule — the file stands (the
+  storefront warns in the console; mc_verify fails `freight_source` when a line's record terms are invalid).
+  One function decides, `freightTermsFor` in index.html: the storefront runs it in loadManufacturers (manufacturer_meta
+  is read with the public key, freight_terms included), and the server runs the same text from `_shop_engine.js` in
+  `_pricing.lineProducts`, so cart, stored order, dealer confirmation and HCPS email can never pick differently.
+  manufacturers.json stays the compatibility / fallback layer: keep it in step until a later, separately approved
+  phase retires it. Corsicana and PediFix have no record terms and stay on the file. Frozen-line terms are guarded by
+  the freeze (a change needs a regression_fix). Must stay exactly: Climbing Steps free on every order (`freeAt: 0`);
+  Strongback $15 once per order with accessories, $0 models only; Ovation freight confirmed by HCPS, no threshold;
+  Bemis under $500 = $40 shipping & handling, $500+ = "Prepaid freight". Phase 6 is not approved.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
