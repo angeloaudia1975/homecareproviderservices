@@ -1793,6 +1793,39 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   into shared server modules with drift tests (no rewrite). Smallest first production change PROPOSED (not built/deployed):
   read-only `report_inventory` action in email-sync-api (management only; month window; all folders; attachment name /
   type / size / inline / in-memory SHA-256; stores, moves, marks or returns nothing else). Plan doc revised accordingly.
+  **Phase A completion APPROVED (Angelo, 2026-10-11 15:37 CT) — build, test, deploy `report_inventory`, then run it
+  Oct 1 2025 → Oct 11 2026 on Angelo's mailbox, then go straight to the Phase B design (no further option menus).**
+  Rules: reuse the existing Graph app + `graphToken`; no new integration. Angelo's mailbox, all folders; Greg's / Lori's
+  only later and narrowly (to find a missing report or confirm a duplicate), never a whole-mailbox scan. Identify by
+  known sender domains/addresses, subjects and the manufacturers table. Per item: Outlook received timestamp,
+  manufacturer, sender, subject, internetMessageId, attachment name / type / size / SHA-256, suggested classification;
+  email-body-only reports (Climbing Steps) included. Formats are verified by read-only in-memory content inspection
+  (CSV header, workbook sheets/columns via SheetJS 0.18.5 = the browser pages' version, PDF text via pdfjs) — the
+  Strongback order CSV is a SALES EXPORT whatever its subject says; AirAvant's PDF format is confirmed, never guessed.
+  Follow paging, honour Graph throttling (Retry-After), never drop a record silently: every month/file not fully checked
+  is reported as incomplete (resumable cursor). Management sign-in only; the response never carries attachment contents,
+  email bodies, credentials or unrelated mail (only manufacturer/report-keyword messages; raw column headers are reduced
+  to a fixed vocabulary). It registers nothing, writes nothing to Supabase, never marks read / moves / sends, invokes no
+  importer — tests prove every Graph call is a GET. Record 7 is never touched or duplicated. Financial imports, automatic
+  processing and intelligence publishing stay OFF.
+  **Ship-To Correction & Branch Assignment (Angelo, 2026-10-11 15:37 CT; part of Phase B/C of THIS plan — no separate
+  import system; not built yet, no production financial change or historical reassignment authorized):** before any
+  financial import of a captured report, find missing/ambiguous Ship-To details; resolve the branch from existing dealer
+  records, branches, manufacturer account numbers, known ship-to addresses, ZIPs and previously VERIFIED mappings;
+  auto-assign only on reliable evidence under an approved rule; otherwise the order goes to a **Needs Ship-To Review**
+  queue — never silently HQ or an arbitrary branch. Correction screen: original order + reported customer + any Ship-To
+  given; pick an EXISTING branch; add/correct ship-to name, address, city, state, ZIP; suggested locations and prior
+  verified assignments; one confirmation covers every line of the order; Save & Continue. The original attachment is
+  never altered; corrections are a separate versioned overlay (original value, corrected value, actor, timestamp,
+  reason). Verified mappings are remembered, scoped narrowly (manufacturer + account + ship-to identifier/address, never
+  "account → one branch" for a multi-branch account). Corrected report downloadable as Excel/CSV. Never create dealers,
+  change ownership, alter aliases or reassign historical financial records. If MI-1a cannot isolate unresolved orders
+  from clean ones, the WHOLE import is held — no partial financial writes. **Known defect:** `sales-import-api.js
+  pickBranch()` falls back to the HQ / first family member when ZIP / city / ship-to name don't match — the automated
+  path must instead return "needs ship-to review" (manual import kept compatible); regression tests must prove a
+  multi-branch account is never silently assigned to the wrong location. Cases: one account number over several
+  branches; no ship-to ZIP; corporate billing address ≠ delivery; several invoice lines of one order; a verified
+  recurring ship-to identifier; a new shipping location; a corporate / drop-ship sale explicitly confirmed as such.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
