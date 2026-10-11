@@ -1492,6 +1492,15 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   mfr_sources read/insert, the 5 RPCs. Lesson: the read-only query helper runs its queries THROUGH the SQL editor, so
   it overwrites whatever is loaded there — never run a check in the editor tab while a migration waits for Angelo's
   Run (the first Run at 08:44 executed a read-only check instead of the migration; nothing was written).
+  **MI-1b DEPLOYED 2026-10-11 ~08:57 CT** (branch merged with main c5233cc — MC test-fixture change only, no conflicts,
+  migration byte-identical; mi1b pg 46 / api 25 / mutants 42/42, mcflow 13 + mutants, mcgates 12, mcui 21 screens, MI-1a
+  28 / 16 → main 939de27, Netlify "Published"). Live checks: Report History page opens for the President under Sales Data
+  & Analytics, shows "No report files registered yet"; API POST list → 200, 0 reports, no-store; orphans → 200, 0 stored
+  / 0 orphans, read-only; no token / forged token / junk token → 401 sign_in_required (tested with XMLHttpRequest — the
+  admin pages' staff-session.js wraps window.fetch and adds the signed-in token, so a "forged" fetch from an admin page
+  is NOT a real forged-token test); rep / Relations → 403 management_only (code + mi1b-api tests; no non-admin login
+  used live). Production after: 6 sources, 0 report records, 0 events, 0 stored files, 11,997 rows / $10,802,558.50,
+  0 batches, `mi_import_v2` ON, `mi_commission_v2` absent (off). Nothing registered; MI-1c not started.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
