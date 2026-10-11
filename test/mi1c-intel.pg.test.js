@@ -89,6 +89,11 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
     for (const f of [T('mi1a/fixture.sql'), SB('mi1a_part0_snapshot.sql'), SB('mi1a_part1_schema.sql'), T('mc-guard.stub.sql'), ROOTF('migrate-phase2-product-skus.sql'),
       T('mc-guard.data.sql'), SB('mc_phase1_foundation.sql'), SB('mc_phase1_backfill.sql'), SB('mc_phase2_freeze_guard.sql'), SB('mc_phase6_append_only.sql'),
       SB('mi1b_report_register.sql')]) file(DB, f);
+    // As on Supabase: new tables, sequences and functions in public are granted to anon / authenticated / service_role
+    // by default (RULE 19) — the migration must revoke them itself.
+    q(`alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+       alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+       alter default privileges in schema public grant all on functions to anon, authenticated, service_role`);
     // Production dealers carry these columns; the MI-1a fixture's minimal table does not.
     q(`alter table dealers add column if not exists is_test boolean default false, add column if not exists active boolean default true, add column if not exists account_class text`);
     q(`create table if not exists dealer_aliases (alias_norm text primary key, raw_name text, dealer_id uuid references dealers(id), created_at timestamptz default now())`);
@@ -210,6 +215,14 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
     });
     t('truncating any MI-1c table is refused', () => { for (const tb of ['mfr_intel_reports', 'mfr_dealer_snapshots', 'mfr_dealer_observations', 'mfr_intel_events']) refused(() => q(`truncate ${tb} cascade`), /never truncated/); });
     t('an observation never changes once written', () => refused(() => q(`update mfr_dealer_observations set text='x' where source_id=${sep.id}`), /never change|only through/));
+    t('a role that somehow held write rights, with a forged op flag, is still refused (the guard needs the owner\'s rights)', () => {
+      q(`do $$ begin create role mi1c_probe; exception when duplicate_object then null; end $$; alter role mi1c_probe bypassrls; grant select, insert, update on mfr_intel_events, mfr_dealer_snapshots to mi1c_probe; grant usage on sequence mfr_intel_events_id_seq to mi1c_probe`);
+      try { refused(() => as('mi1c_probe', `select set_config('hcps.mfr_intel_op','import',true); insert into mfr_intel_events (source_id, action, actor) values (${sep.id},'imported','x')`), /only through hcps_mfr_intel_import/);
+        refused(() => as('mi1c_probe', `select set_config('hcps.mfr_intel_op','match',true); update mfr_dealer_snapshots set match_reason='x' where id=${snap}`), /only through hcps_mfr_intel_import/);
+      } finally { q(`revoke all on mfr_intel_events, mfr_dealer_snapshots from mi1c_probe; revoke all on sequence mfr_intel_events_id_seq from mi1c_probe`); }
+    });
+    t('even inside a match, only the match columns may change — never the printed figures', () =>
+      refused(() => q(`begin; select set_config('hcps.mfr_intel_op','match',true); update mfr_dealer_snapshots set l12m_text='$1' where id=${snap}; commit;`), /only the match of a dealer snapshot may change/));
 
     console.log('\n— match decisions —');
     const ver = () => +q(`select match_version from mfr_dealer_snapshots where id=${snap}`);
@@ -348,6 +361,7 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
   } finally {
     try { fs.unlinkSync(tmp); } catch (e) {}
     run('postgres', `drop database if exists ${DB}`);
+    try { run('postgres', 'drop role if exists mi1c_probe'); } catch (e) {}
   }
   console.log(`\nmi1c-intel (Postgres): ${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

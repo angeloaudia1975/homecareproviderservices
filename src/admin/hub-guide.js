@@ -189,6 +189,16 @@ window.HUB_GUIDE = {
     problems: "Turns raw manufacturer spreadsheets into clean, attributed sales the whole platform can trust.",
     intelligence: "Automatic period-dating and fuzzy customer matching to canonical dealers."
   },
+  "Dealer Intelligence Import": {
+    tagline: "A manufacturer's dealer report, read from the original file, matched to HCPS dealers and kept as the manufacturer's own statements.",
+    what: "MI-1c. Takes an accepted dealer-intelligence report from Manufacturer Report History (first: Strongback's monthly PDF), reads the stored original on the server after checking its SHA-256, and shows a preview of every dealer it prints: Strongback's tier, trend, amounts, last order, ErgoSteel and chair-on-the-floor wording exactly as printed, the contacts and notes on each dealer page, a match proposal with its evidence, and the differences from HCPS records. Nothing is written until an administrator imports it; dealers that are not an obvious single match go to a review queue where a person decides, with a reason. Strongback's figures are never added to HCPS sales or commissions, and an import never creates, merges or re-assigns a dealer.",
+    features: ["Server-side reading of the stored original (SHA-256 checked)", "Every figure kept as printed, with its page position", "Match proposals with evidence: sales history, aliases, names, cities", "Review queue: one decision at a time, reason required, conflict-safe", "Held names stay held (Wyatt's Pharmacy)", "Read-only comparison with HCPS sales and records", "Append-only audit trail"],
+    data: "mfr_intel_reports, mfr_dealer_snapshots, mfr_dealer_observations, mfr_intel_events — written only by hcps_mfr_intel_import / hcps_mfr_intel_match; source files from mfr_sources.",
+    actions: ["Preview a report", "Import it after review", "Decide a match", "Search HCPS dealers"],
+    reports: ["Per-dealer extraction and evidence", "Strongback vs HCPS reconciliation", "Audit trail"],
+    connects: ["Reads accepted reports from Manufacturer Report History", "Matches against Dealer Manager records and Sales Report Import history — read-only", "Dealer 360 display and suggestions are later, separately approved units"],
+    problems: "Turns a manufacturer's monthly PDF into dealer-level intelligence without letting the manufacturer's numbers or contacts leak into HCPS's own records.",
+  },
   "Manufacturer Report History": {
     tagline: "Every report file a manufacturer sends, kept as the original — with when HCPS received it, the period it covers and every decision.",
     what: "The register of manufacturer REPORT files (MI-1b): order/sales exports, commission statements and dealer-intelligence reports such as Strongback's monthly PDF. Each file is stored privately exactly as received, identified by its SHA-256 so the same file is never registered twice, and carries its received date, the manufacturer's prepared date (only when the report states one), the months it covers, and an audit trail of who accepted, rejected or corrected it. A corrected report supersedes the earlier one without deleting it. Registering a file imports nothing; publishing a dealer report's intelligence to Dealer 360 is a separate step that arrives with MI-1c.",

@@ -32,8 +32,13 @@ function pdfjs() {
     // pdf.js warns that canvas is missing; rendering is never used (text only), so the warning is silenced.
     const warn = console.warn, log = console.log;
     console.warn = () => {}; console.log = () => {};
-    try { _pdfjs = require("pdfjs-dist/legacy/build/pdf.js"); } finally { console.warn = warn; console.log = log; }
-    _pdfjs.GlobalWorkerOptions && (_pdfjs.GlobalWorkerOptions.workerSrc = undefined);
+    try {
+      // The worker is required STATICALLY and handed to pdf.js through globalThis.pdfjsWorker, which pdf.js checks
+      // first. Otherwise pdf.js loads it with eval("require"), which the Netlify bundler cannot see — the function
+      // would deploy without the worker file and fail on the first parse.
+      globalThis.pdfjsWorker = require("pdfjs-dist/legacy/build/pdf.worker.js");
+      _pdfjs = require("pdfjs-dist/legacy/build/pdf.js");
+    } finally { console.warn = warn; console.log = log; }
   }
   return _pdfjs;
 }

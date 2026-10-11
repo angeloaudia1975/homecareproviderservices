@@ -1,0 +1,230 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Dealer Intelligence Import</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .note{background:#f5f8fc;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12.5px;color:var(--navy2);margin-bottom:12px}
+ .hint{font-size:12px;color:var(--gray);margin:4px 0 0}
+ .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+ .row select,.row input[type=text],.row textarea{padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-family:inherit;box-sizing:border-box}
+ .row select{min-width:260px;flex:1 1 260px}
+ .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin:8px 0}
+ .kpi{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#fff}
+ .kpi .v{font-size:18px;font-weight:800;color:var(--navy)}.kpi .l{font-size:11.5px;color:var(--gray)}
+ .chip{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:800;letter-spacing:.2px;border:1px solid transparent;white-space:nowrap}
+ .m-matched{background:#e9f7ef;color:#1f7a44;border-color:#a9dcbc}.m-review{background:#fff7e0;color:#8a5a00;border-color:#f1d48a}
+ .m-unmatched{background:#f0f2f5;color:#55606c;border-color:#d5dbe2}.m-held{background:#fdecec;color:#b42323;border-color:#f3b4b4}
+ .src-tag{background:#fff3e6;color:#9a4b07}
+ .dl{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:#fff}
+ .dl .hd{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:flex-start}
+ .dl .nm{font-weight:800;color:var(--navy);font-size:14px;overflow-wrap:anywhere}
+ .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:4px 14px;font-size:12.5px;margin-top:8px}
+ .grid b{color:var(--gray);font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;display:block}
+ details{margin-top:8px;font-size:12.5px}details summary{cursor:pointer;font-weight:700;color:var(--navy2);min-height:32px;display:flex;align-items:center}
+ .why{font-size:12.5px;margin-top:6px}.why li{margin:2px 0;overflow-wrap:anywhere}
+ .cand{font-size:12.5px;border-top:1px dashed var(--line);margin-top:6px;padding-top:6px}
+ .diff{font-size:12.5px;background:#fafbfc;border:1px solid var(--line);border-radius:8px;padding:6px 9px;margin-top:6px}
+ .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+ table.t{border-collapse:collapse;width:100%;font-size:12.5px;min-width:520px}table.t th,table.t td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+ table.t th{font-size:10.5px;text-transform:uppercase;color:var(--gray);letter-spacing:.3px}
+ .bad{color:#b42323}.good{color:#1f7a44}.warn{color:#8a5a00}
+ .err{color:#b42323;font-size:13px;margin-top:8px}.okm{color:#1f7a44;font-size:13px;margin-top:8px}
+ .empty{border:1px dashed var(--line);border-radius:10px;padding:16px;color:var(--gray);font-size:13px;background:#fafbfc}
+ .decide{border-top:1px solid var(--line);margin-top:10px;padding-top:10px;display:grid;gap:8px}
+ .decide .opts{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px}.decide label{display:flex;gap:6px;align-items:center;min-height:32px}
+ .filters{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 12px}
+ .filters button{min-height:36px}
+ button.go,.btn{min-height:40px}
+ @media(max-width:760px){
+  .row select,.row input[type=text],.row textarea,.decide input,.decide select{font-size:16px;min-height:44px}
+  button.go,.btn,.filters button{min-height:44px}.decide label{min-height:44px}
+  .wrap{padding:14px 14px 50px}.row select{min-width:0}
+ }
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Dealer Intelligence Import</h1>
+    <div class="sub">A manufacturer's dealer report (Strongback's monthly PDF), read from the original file kept in Report History, matched to HCPS dealers and kept as <b>the manufacturer's statements</b> — never as HCPS sales, commissions, contacts or activity.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), SOURCES=null, SEL=null, PV=null, REP=null, VIEW="all", BUSY=false;
+const STATUS={matched:"Matched",review:"Needs review",unmatched:"Not an HCPS dealer",held:"Held"};
+const fmtWhen=d=>d?new Date(d).toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit",timeZone:"America/Chicago"})+" CT":"—";
+const money=n=>n==null?"—":"$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:2});
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${esc(msg||"")}</div></div>`;}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; boot(); }catch(err){ gate("Could not reach the server. Try again."); }
+}
+async function api(payload){
+  const r=await fetch("/.netlify/functions/mfr-intel-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)});
+  let body={}; try{ body=await r.json(); }catch(e){} return {status:r.status, body};
+}
+async function boot(){
+  if(!TOKEN){ gate(); return; }
+  const r=await api({action:"sources"});
+  if(r.status===401){ gate(); return; }
+  if(r.status===403){ $("#body").innerHTML=`<div class="empty">Dealer intelligence import is for President / Admin.</div>`; return; }
+  if(r.status!==200){ $("#body").innerHTML=`<div class="empty err">${esc((r.body&&r.body.message)||"Could not read the report list.")} Nothing is shown rather than an incomplete list.</div>`; return; }
+  SOURCES=r.body.sources; render();
+}
+function render(){
+  const usable=SOURCES.filter(s=>s.has_reader);
+  const opts=usable.map(s=>`<option value="${s.id}">${esc(s.title||s.file_name)} · ${esc(s.manufacturer)} · ${esc(s.status)}${s.imported?" · imported":""}</option>`).join("");
+  $("#body").innerHTML=`
+  <div class="note"><b>Order of work.</b> 1) Register and accept the report file in <a href="/admin/report-history.html">Manufacturer Report History</a>. 2) Preview it here — nothing is written. 3) Import after reviewing all dealers. 4) Settle the review queue, one decision at a time, each with a reason.<br>
+  An import <b>never</b> creates, merges or re-assigns a dealer, never writes an alias, contact, task, deal, campaign, price or anything to Zoho, and never adds Strongback's amounts to HCPS sales or commissions. Publishing to Dealer 360 is a separate step that is not enabled.</div>
+  <div class="card"><h2>Report</h2>
+    ${usable.length?`<div class="row"><select id="src" aria-label="Report">${opts}</select><button class="go" onclick="preview()">Preview</button><button class="go ghost" onclick="openReport()">Imported data &amp; review queue</button></div><div id="srcmsg"></div>`
+      :`<div class="empty">No dealer-intelligence report is registered yet. Register the file in Manufacturer Report History first.</div>`}
+  </div>
+  <div id="out"></div>`;
+  if(SEL&&$("#src")) $("#src").value=SEL;
+}
+function srcMsg(html,cls){ const o=$("#srcmsg"); if(o){ o.className=cls||""; o.innerHTML=html; } }
+
+async function preview(){
+  if(BUSY) return; SEL=$("#src").value; BUSY=true; srcMsg("Reading the stored original and matching every dealer…","hint");
+  const r=await api({action:"preview",source_id:SEL}); BUSY=false;
+  if(r.status!==200){ srcMsg(esc((r.body&&r.body.message)||r.body.error||"Preview failed."),"err"); return; }
+  srcMsg(""); PV=r.body; REP=null; VIEW="all"; renderPreview();
+}
+function kpiHtml(k){ return `<div class="kpi"><div class="v">${esc(k.value_text)}</div><div class="l">${esc(k.label)}</div></div>`; }
+function renderPreview(){
+  const p=PV, c=p.counts, src=p.source;
+  const errs=p.errors.length, warns=p.warnings.length, ok=p.checks.filter(x=>x.ok).length;
+  const list=p.dealers.filter(d=>VIEW==="all"||d.match.status===VIEW);
+  const canImport=!p.already_imported&&src.status==="accepted"&&!errs;
+  $("#out").innerHTML=`
+  <div class="card"><h2>${esc(p.header.title)} <span class="chip src-tag">Strongback-reported</span></h2>
+    <div class="hint">${esc(p.header.subtitle)} · prepared ${esc(p.header.prepared_text||"— not printed")} · file received ${esc(src.received_date)} · SHA-256 ${esc(String(src.file_sha256).slice(0,12))}… checked against the register</div>
+    <div class="kpis">${p.kpis.map(kpiHtml).join("")}</div>
+    ${p.sections.map(s=>`<details><summary>${esc(s.heading)}</summary>${s.paragraphs.map(x=>`<p>${esc(x)}</p>`).join("")}</details>`).join("")}
+    <details><summary>Table footnote, groups and offers (as printed)</summary><p>${esc(p.table.footnote)}</p>
+      <ul>${p.groups.map(g=>`<li><b>${esc(g.heading)} (${g.count})</b> — ${esc(g.description||"")}</li>`).join("")}</ul>
+      <p><b>Offers</b> (stored as unverified manufacturer text — no pricing or campaign action):</p><ul>${p.offers.map(o=>`<li>${esc(o.text)} <span class="hint">(${esc(o.where)})</span></li>`).join("")}</ul></details>
+  </div>
+  <div class="card"><h2>Reading checks</h2>
+    <div class="${errs?"bad":"good"}"><b>${ok} of ${p.checks.length} checks passed</b> — ${errs} error(s), ${warns} warning(s). ${errs?"An import is refused until the reading errors are resolved.":""}</div>
+    ${errs||warns?`<ul class="why">${p.errors.map(x=>`<li class="bad">${esc(x.detail)}</li>`).join("")}${p.warnings.map(x=>`<li class="warn">${esc(x.detail)}</li>`).join("")}</ul>`:""}
+    <div class="hint">Observations that would be stored: ${Object.entries(p.observations).map(([k,n])=>`${esc(k.replace(/_/g," "))} ${n}`).join(" · ")}</div>
+  </div>
+  <div class="card"><h2>Against HCPS records (read-only)</h2>
+    <div class="tbl-wrap"><table class="t"><tr><th>Period</th><th>Strongback reports</th><th>HCPS holds</th><th>Gap</th></tr>
+    ${p.reconciliation.map(x=>`<tr><td>${esc(x.what)}</td><td>${esc(x.strongback_text||"—")}</td><td>${money(x.hcps)} <div class="hint">${esc(x.hcps_note)}</div></td><td>${money(x.gap)}</td></tr>`).join("")}</table></div>
+    <div class="hint">${esc(p.reconciliation[0]?p.reconciliation[0].note:"")}</div>
+  </div>
+  <div class="card"><h2>Dealers (${p.dealers.length})</h2>
+    <div class="kpis">${["matched","review","held","unmatched"].map(s=>`<div class="kpi"><div class="v">${c[s]||0}</div><div class="l"><span class="chip m-${s}">${STATUS[s]}</span></div></div>`).join("")}</div>
+    ${p.unresolved.length?`<details open><summary>Unresolved items (${p.unresolved.length})</summary><ul class="why">${p.unresolved.map(u=>`<li>${u.printed_name?`<b>${esc(u.printed_name)}</b> — ${esc(STATUS[u.status]||u.status)}: `:""}${esc((u.why||[]).join(" / "))}</li>`).join("")}</ul></details>`:""}
+    <div class="filters">${["all","matched","review","held","unmatched"].map(v=>`<button class="go ${VIEW===v?"":"ghost"} sm" onclick="VIEW='${v}';renderPreview()">${v==="all"?"All":STATUS[v]}</button>`).join("")}</div>
+    ${list.map(dealerCard).join("")||`<div class="empty">None.</div>`}
+  </div>
+  <div class="card"><h2>Import</h2>
+    ${p.already_imported?`<div class="okm">Already imported ${esc(fmtWhen(p.already_imported.imported_at))} by ${esc(p.already_imported.imported_by)}. <button class="go ghost sm" onclick="openReport()">Open the review queue</button></div>`
+     :src.status!=="accepted"?`<div class="err">This report is ${esc(src.status)}. Accept it in Manufacturer Report History before importing.</div>`
+     :errs?`<div class="err">Reading errors must be resolved first — nothing can be imported.</div>`
+     :`<label style="display:flex;gap:8px;align-items:center;min-height:44px"><input type="checkbox" id="ack"> I reviewed all ${p.dealers.length} dealers, the match proposals and the differences above.</label>
+       <button class="go" id="impbtn" onclick="doImport()">Import as Strongback-reported intelligence</button>
+       <div class="hint">One transaction: ${p.dealers.length} dealer snapshots and every observation, with ${c.matched} automatic match(es); ${c.review+c.held+c.unmatched} dealer(s) go to the review queue. Nothing else in HCPS changes.</div>`}
+    <div id="impmsg"></div>
+  </div>`;
+}
+function dealerCard(d){
+  const m=d.match, pr=d.printed, pg=d.page;
+  const contacts=pg?pg.contacts.map(x=>`<li>${esc(x.lines.join(" · "))}${x.role==="report_owner"?` <span class="hint">(report owner — not a dealer contact)</span>`:` <span class="hint">(proposed by Strongback — not added to HCPS)</span>`}</li>`).join(""):"";
+  const lines=pg&&pg.last_order?pg.last_order.lines.map(l=>`<li>${esc(l.text)} <span class="hint">${esc(l.class)}</span></li>`).join(""):"";
+  const log=pg?pg.contact_log.map(x=>`<li>${esc(x.date)} ${esc(x.channel)}: ${esc(x.text)}</li>`).join(""):"";
+  const diffs=d.differences?d.differences.dealers.map(x=>`<div class="diff"><b>${esc(x.business_name||x.dealer_id)}</b> — HCPS rep ${esc(x.hcps_rep||"—")} · HCPS Strongback sales last 12 months ${money(x.hcps_l12m)} (${x.hcps_l12m_lines} lines) · last order ${esc(x.hcps_last_order||"—")}${x.account_ref?` · account ${esc(x.account_ref)}`:""}
+      ${x.differences.length?`<ul class="why">${x.differences.map(y=>`<li>${esc(y)}</li>`).join("")}</ul>`:`<div class="good">No differences.</div>`}</div>`).join(""):"";
+  return `<div class="dl"><div class="hd"><div><div class="nm">${d.row_no}. ${esc(pr.name)}</div><div class="hint">${esc(pr.city||"")}${pr.state_text?", "+esc(pr.state_text):""}${pr.group?" · "+esc(pr.group):" · table only"}</div></div>
+      <span class="chip m-${esc(m.status)}">${esc(STATUS[m.status])}</span></div>
+    <div class="grid"><div><b>Tier</b>${esc(pr.tier)}</div><div><b>Trend</b>${esc(pr.trend)}</div><div><b>Last 12 months</b>${esc(pr.l12m)}</div>
+      <div><b>12 months before</b>${esc(pr.prior12||"—")}</div><div><b>This month</b>${esc(pr.month)}</div><div><b>Last order</b>${esc(pr.last_order)}</div>
+      <div><b>ErgoSteel</b>${esc(pr.ergosteel)}</div><div><b>Chair on the floor</b>${esc(pr.floor)}</div></div>
+    <ul class="why">${m.reasons.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
+    ${m.candidates.length?`<div class="cand"><b>Evidence</b><ul class="why">${m.candidates.map(k=>`<li><b>${esc(k.business_name)}</b> (${esc(k.city||"?")}, ${esc(k.state||"?")}) — ${esc(k.why.join("; "))}</li>`).join("")}</ul></div>`:""}
+    ${m.sales_unattributed&&m.sales_unattributed.length?`<div class="cand">HCPS sales under this name with no dealer: ${m.sales_unattributed.map(s=>`${esc(s.customer_name)} (${s.rows} row(s), ${money(s.amount)})`).join("; ")} — shown only, nothing is changed.</div>`:""}
+    ${diffs}
+    ${pg?`<details><summary>What the dealer page says (as printed)</summary>
+      ${contacts?`<div><b>Contacts</b><ul class="why">${contacts}</ul></div>`:""}
+      ${pg.last_order?`<div><b>Last order</b> ${esc(pg.last_order.text)}<ul class="why">${lines}</ul></div>`:""}
+      ${pg.ergosteel?`<div><b>ErgoSteel</b> ${esc(pg.ergosteel.text)}</div>`:""}
+      ${pg.floor?`<div><b>Chair on the floor</b> ${esc(pg.floor.text)}</div>`:""}
+      ${pg.told_us?`<div><b>What they told us</b> ${esc(pg.told_us.text)}</div>`:""}
+      ${log?`<div><b>Strongback's last contacts</b> <span class="hint">(Strongback's notes — not HCPS activity)</span><ul class="why">${log}</ul></div>`:""}
+    </details>`:""}
+    ${d.not_extracted.length?`<div class="hint">Not extracted: ${esc(d.not_extracted.join("; "))}</div>`:""}
+  </div>`;
+}
+async function doImport(){
+  if(BUSY) return; if(!$("#ack").checked){ $("#impmsg").className="err"; $("#impmsg").textContent="Tick the box to confirm you reviewed every dealer."; return; }
+  BUSY=true; $("#impbtn").disabled=true; $("#impmsg").className="hint"; $("#impmsg").textContent="Importing…";
+  const r=await api({action:"import",source_id:SEL,preview_hash:PV.preview_hash}); BUSY=false;
+  if(r.status!==200){ $("#impbtn").disabled=false; $("#impmsg").className="err"; $("#impmsg").textContent=(r.body&&r.body.message)||r.body.error||"Import failed — nothing was written."; return; }
+  $("#impmsg").className="okm"; $("#impmsg").textContent=r.body.existing?"Already imported — nothing new was written.":`Imported: ${r.body.dealers} dealers, ${r.body.observations} observations.`;
+  setTimeout(openReport,600);
+}
+
+// ---------- imported data & review queue
+async function openReport(){
+  SEL=$("#src").value; srcMsg("Loading…","hint");
+  const r=await api({action:"report",source_id:SEL});
+  if(r.status===404){ srcMsg("This report has not been imported yet — preview it first.","hint"); return; }
+  if(r.status!==200){ srcMsg(esc((r.body&&r.body.message)||"Could not read the imported data."),"err"); return; }
+  srcMsg(""); REP=r.body; PV=null; VIEW="open"; renderReport();
+}
+function dname(id){ const d=(REP.dealers||[]).find(x=>x.id===id); return d?`${d.business_name} (${d.city||"?"}, ${d.state||"?"})`:id; }
+function renderReport(){
+  const s=REP.snapshots, cnt={}; s.forEach(x=>cnt[x.match_status]=(cnt[x.match_status]||0)+1);
+  const list=s.filter(x=>VIEW==="all"||(VIEW==="open"?x.match_status!=="matched":x.match_status===VIEW));
+  $("#out").innerHTML=`<div class="card"><h2>Imported ${esc(fmtWhen(REP.report.imported_at))} by ${esc(REP.report.imported_by)} <span class="chip src-tag">Strongback-reported</span></h2>
+    <div class="kpis">${["matched","review","held","unmatched"].map(k=>`<div class="kpi"><div class="v">${cnt[k]||0}</div><div class="l"><span class="chip m-${k}">${STATUS[k]}</span></div></div>`).join("")}</div>
+    <div class="filters">${[["open","Open queue"],["all","All"],["matched","Matched"],["review","Needs review"],["held","Held"],["unmatched","Not an HCPS dealer"]].map(([v,l])=>`<button class="go ${VIEW===v?"":"ghost"} sm" onclick="VIEW='${v}';renderReport()">${l}</button>`).join("")}</div>
+    ${list.map(snapCard).join("")||`<div class="empty">Nothing in this view.</div>`}
+    <details><summary>Audit trail (${REP.events.length})</summary><ul class="why">${REP.events.map(e=>`<li>${esc(fmtWhen(e.at))} · <b>${esc(e.action)}</b> by ${esc(e.actor)}${e.reason?" — "+esc(e.reason):""}${e.detail&&e.detail.printed_name?" · "+esc(e.detail.printed_name)+": "+esc(e.detail.from.status)+" → "+esc(e.detail.to.status):""}</li>`).join("")}</ul></details></div>`;
+}
+function snapCard(x){
+  const ev=x.match_evidence||{}; const cands=ev.candidates||[];
+  const opts=cands.map(c=>`<option value="${esc(c.dealer_id)}">${esc(c.business_name)} (${esc(c.city||"?")}, ${esc(c.state||"?")})</option>`).join("");
+  return `<div class="dl" id="s_${x.id}"><div class="hd"><div><div class="nm">${x.row_no}. ${esc(x.printed_name)}</div><div class="hint">${esc(x.printed_city||"")}${x.printed_state_text?", "+esc(x.printed_state_text):""} · ${esc(x.tier)} ${esc(x.trend)} · last 12 months ${esc(x.l12m_text)} (Strongback-reported)</div></div>
+    <span class="chip m-${esc(x.match_status)}">${esc(STATUS[x.match_status])}</span></div>
+    ${x.dealer_id?`<div class="hint" style="margin-top:6px">Linked to <b>${esc(dname(x.dealer_id))}</b> · ${esc(x.match_method)}${x.matched_by?" by "+esc(x.matched_by):""}${x.match_reason?" — "+esc(x.match_reason):""}</div>`:""}
+    <ul class="why">${(ev.reasons||[]).map(r=>`<li>${esc(r)}</li>`).join("")}</ul>
+    ${cands.length?`<div class="cand"><b>Evidence</b><ul class="why">${cands.map(k=>`<li><b>${esc(k.business_name)}</b> (${esc(k.city||"?")}, ${esc(k.state||"?")}) — ${esc((k.why||[]).join("; "))}</li>`).join("")}</ul></div>`:""}
+    <details><summary>Decide this match</summary><div class="decide">
+      <div class="opts">${["matched","review","unmatched","held"].map(v=>`<label><input type="radio" name="d_${x.id}" value="${v}" ${x.match_status===v?"checked":""}> ${STATUS[v]}</label>`).join("")}</div>
+      <div class="row"><select id="dc_${x.id}" aria-label="HCPS dealer"><option value="">${cands.length?"Choose from the evidence…":"Search below…"}</option>${opts}</select></div>
+      <div class="row"><input type="text" id="ds_${x.id}" placeholder="Search HCPS dealers by name" style="flex:1 1 220px"><button class="go ghost sm" onclick="search(${x.id})">Search</button></div>
+      <div class="row"><input type="text" id="dr_${x.id}" maxlength="1000" placeholder="Reason (required — kept in the audit trail)" style="flex:1 1 260px"></div>
+      <div class="row"><button class="go sm" onclick="decide(${x.id},${x.match_version})">Save decision</button><span class="hint">A decision only links this Strongback row to an HCPS dealer. It never changes the dealer, its rep, its family or its aliases.</span></div>
+      <div id="dm_${x.id}"></div></div></details></div>`;
+}
+async function search(id){
+  const q=$("#ds_"+id).value.trim(); const r=await api({action:"dealer_search",q});
+  if(r.status!==200){ $("#dm_"+id).className="err"; $("#dm_"+id).textContent="Search failed."; return; }
+  const sel=$("#dc_"+id); for(const d of r.body.dealers){ if(![...sel.options].some(o=>o.value===d.id)){ const o=document.createElement("option"); o.value=d.id; o.textContent=`${d.business_name} (${d.city||"?"}, ${d.state||"?"})`; sel.appendChild(o);} }
+  $("#dm_"+id).className="hint"; $("#dm_"+id).textContent=`${r.body.dealers.length} dealer(s) added to the list.`;
+  (REP.dealers=REP.dealers||[]).push(...r.body.dealers);
+}
+async function decide(id,ver){
+  if(BUSY) return; const dec=(document.querySelector(`input[name="d_${id}"]:checked`)||{}).value, dealer=$("#dc_"+id).value, reason=$("#dr_"+id).value.trim(), m=$("#dm_"+id);
+  if(!dec){ m.className="err"; m.textContent="Choose a decision."; return; }
+  if(dec==="matched"&&!dealer){ m.className="err"; m.textContent="Choose the HCPS dealer this report means."; return; }
+  if(!reason){ m.className="err"; m.textContent="A reason is required."; return; }
+  BUSY=true; const r=await api({action:"decide",snapshot_id:id,decision:dec,dealer_id:dec==="matched"?dealer:"",reason,expected_version:ver}); BUSY=false;
+  if(r.status!==200){ m.className="err"; m.textContent=(r.body&&r.body.message)||r.body.error||"Not saved."; return; }
+  openReport();
+}
+boot();
+</script>
+</body></html>
