@@ -1316,6 +1316,16 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   read (named read actions); every change is POST with the `x-academy-request` header and an allowed Origin. Academy
   pages live only on www.homecareproviderservices.org — the primary domain; Netlify sends the bare domain to www, and netlify.toml sends homecareproviderservices.netlify.app/academy/* there (301). Never add a www→bare-domain rule: it loops, under the strict `/academy/*` security
   headers in netlify.toml: no inline script and no third-party scripts on Academy pages.
+- **D14 — Academy-only email sign-in codes (approved by Angelo 10 Oct 2026 for A2B DESIGN only; not implemented).**
+  Training-only employees sign in with Academy-only email codes. Requirements: training-only credentials never
+  authenticate to Partner 360 ordering or pricing; existing dealer accounts keep their ordering permissions; Academy
+  sessions are accepted only by Academy APIs; codes are single-use, short-lived and rate-limited; revocation and
+  deactivation take effect at once; an existing dealer uses both systems without a duplicate identity; the sign-in and
+  account lifecycle are secured and audited. No D14 migration or code until A2B is separately approved.
+- **Operations take the acting person from the verified sign-in, never from the request (A2A merge gate, 10 Oct 2026).**
+  The database checks only that an actor is named; the trust boundary is the server role. Every `op()` call passes
+  `actorLabel()` of the actor `staffActor` / `learnerActor` returned; the A2C unit adds a test proving a request-body
+  actor is ignored.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
@@ -1335,6 +1345,9 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
       category page & sub-nav); guide card in `hub-guide.js`; audience/permissions verified.
 
 ## Open items / not-yet-applied (keep current)
+- `test/phase2-timeline.test.js` (2 tests) fails late in the evening Chicago time on main and every branch alike: its
+  fixtures are "now minus N hours" and cross a local-day boundary after ~21:00 CT. A test-clock fix, not an app bug;
+  not changed during A2A (found 10 Oct 2026 at the A2A merge gate).
 - Big-icon-on-top NOT yet retrofitted to: `manufacturers/index.njk` (pillars),
   `become-a-manufacturer-partner.njk` (capability icons). Pending user go-ahead.
 - Some service icons sit on a faint white square (not transparent) — optional cleanup.
