@@ -362,6 +362,16 @@ window.HUB_GUIDE = {
     problems: "Go from an idea to a ready-to-send, well-targeted campaign in minutes.",
     intelligence: "AI-generated audience, copy, and send sequence from a short brief."
   },
+  "Academy Command Center": {
+    tagline: "Run the HCPS Training & Certification Academy from Connect 360.",
+    what: "The administration desk for the Academy: build courses for any manufacturer, manage draft and published course versions with their modules and lessons, keep product facts with their sources, follow learners and dealerships, and review manufacturer credentials. HCPS-issued certifications and manufacturer-issued credentials (such as Golden's) are always kept apart. HCPS administrators only; publishing a version is reserved for the President.",
+    features: ["Overview of courses, learners, dealerships and credentials", "Course and version management — drafts, review, President-only publishing", "Modules and lessons on draft versions (published versions never change)", "Product facts with source, date and full history", "Learner and dealership summaries; Training Manager role", "HCPS-issued vs manufacturer-issued credentials, side by side", "Complete activity history"],
+    data: "The academy_* tables and product_facts (Supabase); sensitive changes run as audited database operations.",
+    actions: ["Create a course or a new draft version", "Add modules and lessons", "Submit for review / publish (President)", "Record, replace or withdraw a product fact", "Grant or remove a Training Manager", "Verify or reject a manufacturer credential"],
+    reports: ["Academy overview", "Dealership training summary", "Activity history"],
+    connects: ["Learners use the Academy on the HCPS website", "Product facts are shared HCPS product information", "Switched on and off by the Academy switches (all OFF until approved)"],
+    problems: "Give dealers consistent, accurate product training and credentials, with every change recorded and nothing published without the President.",
+  },
   "AI Style Guide": {
     tagline: "One set of writing rules every AI email generator follows.",
     what: "The centralized voice and phrasing rules for all AI-written dealer emails — the Dealer 360 AI composer and Automated Campaigns both read it. Edit the text here and it applies everywhere immediately, with no deploy.",

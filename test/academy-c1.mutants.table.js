@@ -1,0 +1,37 @@
+/* A2C Part C1 mutants: each undoes ONE protection of the Academy Command Center, in memory only (test/phase0-mock.js
+   applies it as the file loads). academy-c1.mutants.js runs the C1 suite against each; at least one test must fail.
+   CONTROL must survive. Page mutants (academy.html) go through adminSrc(); the page's browser-level escaping and link
+   checks are mutation-tested in academy-c1.browser.js (esc() and safeUrl() disabled -> the hostile pass fails). */
+const F = 'academy-admin-api.js';
+module.exports = {
+  'CONTROL: a comment only':                    { file: F, from: 'const PAGE = 1000, MAX_PAGES = 20;', to: 'const PAGE = 1000, MAX_PAGES = 20; /* control */', control: true },
+  'switch ignored':                             { file: F, from: "if (!(await A.switchOn('academy_admin')))", to: 'if (false)' },
+  'any staff administers':                      { file: F, from: '  A.requireAdmin(staff);                                                     // HCPS', to: '  //' },
+  'publish not president-only':                 { file: F, from: "WRITE.publish_version = async (staff, b) => {\n  requirePresident(staff);", to: 'WRITE.publish_version = async (staff, b) => {' },
+  'retire not president-only':                  { file: F, from: "WRITE.retire_version = async (staff, b) => {\n  requirePresident(staff);", to: 'WRITE.retire_version = async (staff, b) => {' },
+  'president = any admin':                      { file: F, from: "const isPresident = s => !!s && s.kind === 'staff' && s.role === 'president';", to: 'const isPresident = s => A.isAdmin(s);' },
+  'publish actor from the request':             { file: F, from: "const v = await A.op('publish_version', { p_actor: A.actorLabel(staff),", to: "const v = await A.op('publish_version', { p_actor: b.p_actor || A.actorLabel(staff)," },
+  'TM actor from the request':                  { file: F, from: "const m = await A.op('set_training_manager', { p_actor: A.actorLabel(staff),", to: "const m = await A.op('set_training_manager', { p_actor: b.actor || A.actorLabel(staff)," },
+  'review actor from the request':              { file: F, from: "const row = await A.op('review_external_cert', { p_actor: A.actorLabel(staff),", to: "const row = await A.op('review_external_cert', { p_actor: b.p_actor || A.actorLabel(staff)," },
+  'fact verifier from the request':             { file: F, from: 'verified_on, verified_by: A.actorLabel(staff),', to: 'verified_on, verified_by: b.verified_by || A.actorLabel(staff),' },
+  'fact approver from the request':             { file: F, from: "p_approved_by: field_class === 'approval_required' ? A.actorLabel(staff) : null", to: "p_approved_by: b.approved_by || (field_class === 'approval_required' ? A.actorLabel(staff) : null)" },
+  'approval facts by any admin':                { file: F, from: "if (field_class === 'approval_required') requirePresident(staff);", to: '' },
+  'publish as a plain write':                   { file: F, from: "const v = await A.op('publish_version', { p_actor: A.actorLabel(staff), p_version_id: A.uuid(b.id, 'version') });", to: "const v = (await A.sbSend('PATCH', `academy_course_versions?id=eq.${A.uuid(b.id)}`, { status: 'published', published_at: new Date().toISOString(), published_by: A.actorLabel(staff) }))[0];" },
+  'draft check skipped':                        { file: F, from: "  if (v.status !== 'draft') A.refuse(409, 'locked', v.status === 'in_review'", to: "  if (false) A.refuse(409, 'locked', v.status === 'in_review'" },
+  'version patch not limited to drafts':        { file: F, from: "`academy_course_versions?id=eq.${enc(id)}&status=eq.draft`, patch);", to: '`academy_course_versions?id=eq.${enc(id)}`, patch);' },
+  'seen course editable by any admin':          { file: F, from: "if (c.status !== 'draft' || locked) requirePresident(staff);", to: '' },
+  'issuer from the request':                    { file: F, from: 'course_type, issuer: ISSUER_FOR[course_type],', to: 'course_type, issuer: b.issuer || ISSUER_FOR[course_type],' },
+  'course status from the request':             { file: F, from: "external_url: null, status: 'draft' };", to: "external_url: null, status: b.status || 'draft' };" },
+  'unknown manufacturer accepted':              { file: F, from: "if (!one(await A.sbGet(`manufacturers?slug=eq.${enc(slug)}&select=slug`))) A.refuse", to: 'if (false) A.refuse' },
+  'manufacturer program without https':         { file: F, from: "if (u.protocol !== 'https:' || !u.hostname.includes('.'))", to: 'if (false)' },
+  'version body passes status':                 { file: F, from: "if ('pass_mark' in b) patch.pass_mark = int(b.pass_mark, 1, 100, 'Pass mark');", to: "if ('pass_mark' in b) patch.pass_mark = int(b.pass_mark, 1, 100, 'Pass mark'); if (b.status) patch.status = b.status;" },
+  'questions read in full':                     { file: F, from: "all(`academy_questions?version_id=eq.${enc(id)}&select=id,use,status`),", to: 'all(`academy_questions?version_id=eq.${enc(id)}&select=*`),' },
+  'answers not scrubbed from history':          { file: F, from: "const HIDDEN = /^(answers|answer_key|choices|question_ids|token_hash|code_hash)$/i;", to: 'const HIDDEN = /^(token_hash|code_hash)$/i;' },
+  'unreadable read = empty':                    { file: F, from: "const rows = await A.sbGet(`${path}${sep}order=", to: "const rows = await A.sbGet(`${path}${sep}order=${order || 'id.asc'}&limit=${PAGE}&offset=${p * PAGE}`).catch(() => []); void (`" },
+  'audit failure hidden':                       { file: F, from: "async function audited(staff, entity, id, action, before, after) { return A.audit(staff, entity, id, action, before, after); }", to: 'async function audited(staff, entity, id, action, before, after) { await A.audit(staff, entity, id, action, before, after); return true; }' },
+  'writes allowed by GET':                      { file: F, from: "if (a.write && event.httpMethod !== 'POST')", to: 'if (false)' },
+  'credentials mixed':                          { file: F, from: "return { ok: true, issuer: CREDENTIAL.hcps, certificates: rows.map(r => {", to: "rows.push(...(await A.sbGet('academy_external_certs?select=*'))); return { ok: true, issuer: CREDENTIAL.hcps, certificates: rows.map(r => {" },
+  'page sends an actor':                        { file: 'academy.html', from: 'await change({action:"publish_version",id},"mmsg",reload);', to: 'await change({action:"publish_version",id,p_actor:"staff:"+((ME||{}).email||"")},"mmsg",reload);' },
+  'page raw title':                             { file: 'academy.html', from: '<b>${esc(c.title)}</b> ${c.is_test', to: '<b>${c.title}</b> ${c.is_test' },
+  'page loses its nav entry':                   { file: 'admin-chrome.js', from: '{ href:"/admin/academy.html",', to: '{ href:"/admin/academy-old.html",' },
+};
