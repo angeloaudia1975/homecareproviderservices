@@ -1419,6 +1419,14 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   triggers, RLS 18/18, switches OFF, acceptance 43/43, A1 27/27, no test rows, probe all BLOCKED, outside fingerprints =
   the 21:45 baseline. A SKIP in the editor is not a pass: it needs the alternative check before M1 is declared complete.
   A failed test = stop and investigate; never an automatic rollback. PR #4 stays draft until verified and approved.
+- **M1 rev 2 RUN and VERIFIED in production (Angelo, 10 Oct 2026 ~23:00 CT).** Preflight after = the 21:45 baseline on every
+  fingerprint (outside grants 1c268eb2…/2811, policies 219ac18e…/29, columns d039b75f…/109; Academy 7af6d10e…/252,
+  ca214093…/179, RLS 18/18, 0 policies; key row counts identical); 19 functions, 6 guard triggers; installed-code
+  fingerprint e70543ba… (the approved file pasted with Windows line endings — reproduced exactly locally); operations
+  server-only 11, helpers callable by the server 0; M1 acceptance 43/43 (no SKIP — the server-role checks 34/39 ran);
+  A1 compatibility 27/27; Academy rows 0 and switches {} after the tests; public-key probe ALL 19 BLOCKED (401).
+  **A2A (code + M1) COMPLETE.** All Academy switches OFF; certificates stay off until separately authorized. PR #4
+  (M1 rev 2 files) stays DRAFT until Angelo approves its merge. A2C and later units not started.
 - **Exam retake policy (approved; build in A2E, NOT yet):** one open attempt (already enforced by start_attempt), a
   one-hour cooldown between attempts, at most three attempts per day, unlimited lifetime retakes — enforced on the
   server/database and tested under SIMULTANEOUS requests before the learner pilot. HCPS certificate issuance stays
