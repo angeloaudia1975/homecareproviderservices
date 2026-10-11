@@ -1825,6 +1825,25 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   to a fixed vocabulary). It registers nothing, writes nothing to Supabase, never marks read / moves / sends, invokes no
   importer — tests prove every Graph call is a GET. Record 7 is never touched or duplicated. Financial imports, automatic
   processing and intelligence publishing stay OFF.
+  **report_inventory DEPLOYED + RUN (2026-10-11).** `email-sync-api` action `report_inventory` → `_report_inventory.js`
+  (main b77091f … 2f903d3; tests `test/report-inventory.test.js` 28, mutants 29/29; xlsx 0.18.5 pinned). Management only;
+  one synced mailbox (default the caller's own); window ≤ 62 days; `budget_ms` up to 22 s (live functions allow it — use
+  20000; 8000 is too short for a 1,000-message month); cursor resumes; only report-worded manufacturer mail is inspected,
+  the rest is COUNTED per manufacturer (no_attachment / with_attachment / name_mention / hcps_internal);
+  `list_attachment_mail:true` lists attachment mail by name. HCPS's own X500 sends + delivery receipts are internal.
+  Run on Angelo's mailbox 1 Oct 2025 → 11 Oct 2026: 16,866 messages listed (13/13 months complete), 640 report emails,
+  one file not hashed (PediFix 2025 Retail.pdf > 15 MB). Findings (full table in the plan doc "Phase A inventory
+  results"): Strongback's real commission statement is the monthly 1-page `YYYY-MM SR032.pdf` (2nd–7th; Mar–Sep 2026;
+  September arrived 7 Oct) — the order CSV/xlsx comes only on request; the 8 Oct dealer-overview attachment = record 7's
+  SHA-256 (link, never re-register). Ohio Medical cumulative 3-sheet xlsx (Summary / Sales-Commission Data / Current month
+  payment) 21st–29th, every month, subject year typos Jan/Feb 2026. Access4U 1-sheet xlsx, 13th–28th, months combined
+  twice. AirAvant QuickBooks "Commissions – Cash Basis" PDF (confirmed by text), June + July only. Climbing Steps
+  NetSuite xls/xlsx ("Commision") or body-only; Feb/Apr/Jun/Jul 2026 missing. Bemis `705-YYYY-MM.csv` from
+  faxstar03@bemismfg.com on the 17th (ship-to + ZIP columns; Angelo hand-corrected July on 18 Aug). Complete Medical
+  through May 2026 only, after reminders. Ovation May + June only. Golden / PediFix irregular; Corsicana / Dalton / ABM
+  no reports. Unidentified senders needing a profile: Rose Healthcare (Sep–Dec 2025), Stellor Medical (Jul 2026).
+  Phase B design + Ship-To design are in the plan doc (sections "Phase B implementation design" and "Ship-To Correction
+  & Branch Assignment"); nothing of Phase B is built or run yet.
   **Ship-To Correction & Branch Assignment (Angelo, 2026-10-11 15:37 CT; part of Phase B/C of THIS plan — no separate
   import system; not built yet, no production financial change or historical reassignment authorized):** before any
   financial import of a captured report, find missing/ambiguous Ship-To details; resolve the branch from existing dealer
