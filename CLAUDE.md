@@ -1545,6 +1545,29 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   September PDF, importing the September order CSV, modifying financial records. `mi_import_v2` stays ON,
   `mi_commission_v2` OFF. STOP after implementation and tests; return the change manifest, tests, expected dealer-match
   table, security evidence and rollout plan.
+- **MI-1c BUILT on branch `mi1c-dealer-intel` (2026-10-11, NOT merged, NOT deployed, NO production SQL, September PDF
+  not registered).** Migration `supabase/mi1c_dealer_intel.sql` (sha256 4f69367f…, rollback `…_rollback.sql` c2873764…,
+  refuses while any MI-1c row exists): tables `mfr_intel_reports` (one per imported dealer_report file),
+  `mfr_dealer_snapshots` (one per printed dealer, Strongback's words/figures as printed + the HCPS match proposal),
+  `mfr_dealer_observations` (contacts, product lines, told-us notes, contact log, offers — each with its printed position),
+  append-only `mfr_intel_events`; writes ONLY through `hcps_mfr_intel_import(p)` (accepted dealer_report, same sha256 as
+  the register, same period, no parse errors; idempotent by content hash; advisory lock + source-row lock) and
+  `hcps_mfr_intel_match(p)` (a person's decision with a reason and the `match_version` he saw; only match columns change;
+  never a TEST dealer). Guard trigger: owner's rights + the function's marker, no delete/truncate. RULE 19: RLS on, no
+  policies, anon/authenticated nothing, service_role SELECT only + execute on the two functions. Server reads the stored
+  bytes (SHA-256 re-checked) with pdf.js 3.11.174 (legacy build; worker required statically so the bundler includes it;
+  `.npmrc omit=optional` keeps canvas out; function zip 11.2 MB). Six Skia private-use glyphs mapped (confirmed with
+  Poppler); any other one fails loudly. Parser checks 141/141 on the real PDF. Matcher: exact names/aliases/sales names,
+  then distinctive words only when nothing exact; automatic only with one ordinary candidate whose name agrees and whose
+  city agrees or sales corroborate; Wyatt's HELD. September result = SB-0: 15 matched, 7 review, 1 held, 2 unmatched.
+  Contacts are observations only (never dealer_contacts); the report owner is never a dealer contact; offers stored as
+  "unverified manufacturer text". API `mfr-intel-api.js` (management only, actor from the sign-in, preview_hash must equal
+  the server's recomputed preview); page `/admin/dealer-intel.html` (HUBS: Sales Data & Analytics → Dealer Intelligence
+  Import). Tests: mi1c-intel.pg 57, mi1c-api 21, mi1c-parser 21 (needs the PDF via MI1C_PDF; the PDF is never in git),
+  mutants 52/52 (clean control). **Known consequence:** once snapshots exist, MI-1b `hcps_mfr_report_publication` would
+  accept a publish — the Report History button stays disabled ("not enabled"); publishing needs its own approval.
+  Pre-existing, unrelated: `test/resources-render.test.js` fails on main since documents.json update de939e7 (4 items
+  without `models`; admin-managed — not hand-edited).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
