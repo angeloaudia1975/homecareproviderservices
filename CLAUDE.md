@@ -1519,6 +1519,22 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   is NOT a real forged-token test); rep / Relations → 403 management_only (code + mi1b-api tests; no non-admin login
   used live). Production after: 6 sources, 0 report records, 0 events, 0 stored files, 11,997 rows / $10,802,558.50,
   0 batches, `mi_import_v2` ON, `mi_commission_v2` absent (off). Nothing registered; MI-1c not started.
+- **MI-1b ACCEPTED COMPLETE (Angelo, 2026-10-11 09:31 CT)** after his own independent verification (schema, privileges,
+  six catalog records, 0 report records / stored files / audit events, financial baseline, code on GitHub main).
+- **MI-1c / SB-1 DEVELOPMENT AUTHORIZED (Angelo, 2026-10-11 09:31 CT) — branch only.** Build the September Strongback
+  Dealer Intelligence importer per SB-0: (1) use the MI-1b `mfr_sources` register — no second file registry; (2) parse the
+  original 17-page September PDF (25 dealer profiles in the table, 22 detailed dealer pages), keeping Strongback's exact
+  terms, dates, figures and source provenance; (3) snapshot + observation schema with stable SOURCE-POSITION identities,
+  full audit, RULE 19 locked; (4) preview + dealer-match review: 15 automatic, 7 manual review, Wyatt's Pharmacy HELD,
+  GF Health + Nebcare unmatched; (5) never create, merge, reassign or alter dealers / rep ownership; (6) manufacturer-
+  reported amounts, trends, tiers, contacts and notes stay separate from HCPS-confirmed activity and financial records;
+  (7) operator-reviewed preview of all 25 dealers: extraction results, match evidence, unresolved items, differences from
+  HCPS; (8) no automatic tasks, opportunities, contacts, campaigns, Zoho changes or pricing discounts; (9) PostgreSQL, API,
+  parser, permissions, concurrency, idempotence and regression tests + rollback plan. Preserve concurrent Manufacturer
+  Center, Academy and ordering changes. NOT authorized: installing MI-1c SQL in production, registering or publishing the
+  September PDF, importing the September order CSV, modifying financial records. `mi_import_v2` stays ON,
+  `mi_commission_v2` OFF. STOP after implementation and tests; return the change manifest, tests, expected dealer-match
+  table, security evidence and rollout plan.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
