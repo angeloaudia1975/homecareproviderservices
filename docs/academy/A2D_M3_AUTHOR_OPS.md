@@ -120,6 +120,27 @@ Changing this would mean changing M1's grading (`academy_op_submit_attempt`), wh
 
 The reviewer's approval of the start-attempt change assumes this decision.
 
+**Decided (Angelo, 11 Oct 2026 18:34 CT): APPROVED — facts are checked when an attempt begins.**
+- An attempt keeps the questions it drew (`academy_attempts.question_ids`, written once by start-attempt).
+- Those questions' fact versions stay fixed for the whole attempt: they are pinned per course version at publication
+  (`academy_content_refs.pinned_fact_id`), and after publication no operation can change a pin (fact links are guarded
+  and draft-only; M1 publishing pins only unpinned links of the version being published).
+- New attempts exclude any question whose pinned fact has since been replaced or withdrawn.
+
+### Future procedure (documented only — NOT built; needs its own design, review and approval)
+
+For a serious safety error or a material content error found while learners have attempts open, a future audited,
+administrator-controlled operation would:
+1. name the affected course version and the reason (safety / material content), recorded by an administrator;
+2. mark each affected **open** attempt as invalidated (never delete it; never change a submitted, graded attempt or a
+   certificate), with one audit row per attempt in the same transaction;
+3. let the learner start again at once, without counting the invalidated attempt against the retake limits (cooldown and
+   daily limit, A2E), and tell the learner plainly why;
+4. fix the content through a NEW course version (published content stays frozen).
+
+It touches M1's attempt rules, so it is not part of M3 and must not be added as an unreviewed M1 change. It belongs with
+A2E (retake rules), where the cooldown and daily limits are built and tested under simultaneous requests.
+
 ## Known limits (documented, not blocking)
 
 - **A Golden PDF can be mislabelled.** An administrator could store a Golden brochure PDF labelled `hcps_owned`. The President rule covers every stored image and every manufacturer-permitted file; the database cannot detect mislabelling.

@@ -2145,7 +2145,18 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   - Production fingerprints to expect: M3 `9f41ee27…` (Windows paste) / `e48e4c27…`; start-attempt `4ab3615a…` /
     `c433af0a…`; other 18 M1 functions `30a6a689…` / `e05951fc…`; M2 unchanged. The rollback cannot run once a version with
     a distribution is published (deliberate).
-  - Open decision for Angelo: facts are checked when the exam is DRAWN, not when it is graded (recommended: accept).
+  - **M3 final development review (Angelo, 11 Oct 2026 18:34 CT):** design ACCEPTED (12 operations, 14 blocks,
+    configurable distribution, fact references, draft-only, media approval, answer-key isolation, guards, published
+    protection); `exam_quota` approved provided it preserves existing behaviour. **Facts decision APPROVED:** fact
+    eligibility is checked when an attempt BEGINS; an attempt keeps its drawn questions and their pinned verified fact
+    versions for its whole life; questions on later-withdrawn facts are excluded from NEW attempts. For serious safety or
+    material content errors a FUTURE audited, administrator-controlled "invalidate an open attempt and allow a restart
+    without using a retake" procedure is documented (runbook) but must NOT be built as an unreviewed M1 change.
+    Next gate: READ-ONLY production preflight only (Angelo runs it by hand). Then the complete migration SQL is pasted for
+    his separate authorization. Never run the isolated start-attempt line on its own again. PR #8 stays DRAFT until
+    installation + compatibility verification are complete; no merge and no lesson engine without separate approval.
+    After an approved install, report any failed / skipped / unverified check before moving on. Completion target: the
+    first-course (Golden) launch.
   - A1 check 27 and M1 check 43 need EMPTY Academy tables; if records exist in production they FAIL by design — use the
     before/after leftover checks (M2 21, M3 25) and discuss first.
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
