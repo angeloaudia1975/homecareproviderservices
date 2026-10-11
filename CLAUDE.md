@@ -1925,6 +1925,18 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   pass except the pre-existing resources-render (documents.json). Installed-code fingerprint 12 functions: bea3b94e… (LF) /
   89389ae0… (CRLF paste). Rollout queries: `supabase/mi_b_rollout_baseline.sql`, `…_postcheck.sql`; probe
   `scripts/mi_b_public_probe_browser.js` (31 checks). STOP: awaiting Angelo's one approval of the consolidated rollout.
+  **Phase B migration RUN by Angelo 2026-10-11 ~18:20 CT (verified):** sha256 5de92842…, all 9 install checks ok. Postcheck
+  11/11 (fixed first: check 8's label had unescaped quotes — commit 911d954): code 12 / 89389ae0… (the CRLF form, as
+  precomputed), 3 active Strongback + 9 draft profiles (rules 518a40c4 / 4edc244d / d4302bdd …), checkpoint 1 Oct 00:00 CT /
+  360 min / free, switch absent, 0 runs / messages / items / events, anon/authenticated/PUBLIC 0 grants, service_role SELECT,
+  execute 0 / 0 / 7, 10 of 12 security definer, RLS 6/6, 0 policies, 12 guard triggers, 0 capture-registered records.
+  Baseline after = the MI-1c post-install values on every financial / dealer / function row (11,997 / $10,802,558.50 /
+  $493,077.06, D7 dde7a2ce…, full-row 83fa3b5b…, Strongback 143, 0 / 0 / 7, catalog acf6e62b…, record 7 only report, 1 event,
+  dealers 3e27e8ce…, aliases 3da52cea…, dealer_manufacturers 597811b5…, 770 / 7 / 429, MI-1a 162f107a…, MI-1b 82cd50d8…,
+  MI-1c 887809bd…, policies 29 / 5fc16d5b…, 1 private file). Explained differences: flags md5 (academy_admin ON at 16:45),
+  mfr_decisions 15 → 21 (Bemis window #320 + Review Issues decisions), grants 3072 → 3112 (the MI-1c baseline left its 5
+  tables out of the count; 5 × 8 = 40 — no other new table since, by object id). Outside probe (Angelo, 18:39 CT): ALL 31
+  BLOCKED (401). Lesson: compare grant counts only between queries with the same exclusion list.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
