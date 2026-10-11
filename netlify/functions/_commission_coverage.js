@@ -10,8 +10,19 @@
 //    (statement_sales_reports, RULE 14).
 //  • A month whose commission-lane rows hold no commission figure is INCOMPLETE: "not received / not
 //    entered", with the reason, so a blank import can never turn a month green.
+//  • A month with valid statement lines AND lines missing a commission figure is PARTIAL ("Received —
+//    incomplete, requires review", with the count) — never an unqualified green (Angelo 2026-10-10).
+//  • Kept apart, per month: valid statement lines · explicit $0 commission · missing commission · open
+//    (unpaid) invoices · sales-report estimates. A missing figure is never turned into 0.
 
-const DEFAULT_STATEMENT_SALES_REPORTS = ["pedifix", "ovation-medical"];   // RULE 14 — pending Angelo's confirmation
+// RULE 14 exception, PROVISIONAL (Angelo 2026-10-10): these lines' sales report is treated as their commission
+// statement until the manufacturer file is verified. Months that rest on it are marked provisional, never plain
+// green. The evidence recorded here is what the data shows — not a verification.
+const DEFAULT_STATEMENT_SALES_REPORTS = ["pedifix", "ovation-medical"];
+const STATEMENT_SALES_REPORT_EVIDENCE = {
+  "pedifix": "PROVISIONAL — RULE 14 says PediFix's report is also its commission statement. Production check 2026-10-10: all 172 PediFix rows come from one Sales Report Import file (PediFix_ALL_2025-2026.csv), and every commission equals amount x 10% (the rate typed at import) — computed by HCPS, not read from a statement. Not verified against a PediFix commission statement.",
+  "ovation-medical": "PROVISIONAL — RULE 14 says Ovation's report is also its commission statement. No Ovation rows are on file (2026-10-10), so nothing rests on this exception yet. Not verified.",
+};
 
 // A real number, explicitly given. "" / null / undefined / "abc" are NOT numbers; "0" and 0 are.
 function isNum(v){
@@ -44,41 +55,53 @@ function rowIsStatement(r, stmtSR){
 const rowIsEstimate = (r, stmtSR) => r.source === "sales_report" && !(stmtSR && stmtSR.has(r.manufacturer)) && isNum(r.amount);
 
 // rows: [{manufacturer, period, source, external_ref, line_type, amount, commission, billed_amount}]
-// → { received:{slug:[YYYY-MM]}, estimated:{slug:[YYYY-MM]}, incomplete:{slug:[{period, rows, reason}]} }
-// A month is in exactly one of the three (received wins, then incomplete, then estimated).
+// → { received:{slug:[YYYY-MM]}, partial:{slug:[{period, statement_rows, missing_rows, reason}]},
+//     estimated:{slug:[YYYY-MM]}, incomplete:{slug:[{period, rows, reason}]}, provisional:{slug:[YYYY-MM]},
+//     detail:{slug:{YYYY-MM:{status, statement_rows, zero_commission_rows, missing_commission_rows, open_invoices,
+//     estimate_rows, provisional}}} }
+// A month is in exactly one of received / partial / incomplete / estimated (in that order of precedence);
+// provisional marks a received or partial month that rests only on the RULE 14 sales-report exception.
 function coverage(rows, opts){
   const stmtSR = statementSet(opts);
   const m = new Map();   // slug|YYYY-MM -> tally
   for(const r of (rows || [])){
     const p = monthOf(r); if(!r || !r.manufacturer || !/^\d{4}-\d{2}$/.test(p)) continue;
     const k = r.manufacturer + "|" + p;
-    const t = m.get(k) || { slug:r.manufacturer, p, stmt:0, est:0, lane:0, blank:0, invoice:0, noComm:0 };
-    if(rowIsStatement(r, stmtSR)) t.stmt++;
+    const t = m.get(k) || { slug:r.manufacturer, p, stmt:0, laneStmt:0, zero:0, est:0, lane:0, blank:0, invoice:0, noComm:0, zeroSale:0 };
+    if(rowIsStatement(r, stmtSR)){ t.stmt++; if(isCommissionLane(r)) t.laneStmt++; if(Number(String(r.commission).replace(/[$,\s]/g, "")) === 0) t.zero++; }
     else if(rowIsEstimate(r, stmtSR)) t.est++;
     if(isCommissionLane(r)){
       t.lane++;
       if(isNum(r.commission)) {}
       else if(isOpenInvoice(r) && isNum(r.billed_amount)) t.invoice++;
       else if(!isNum(r.amount) && !isNum(r.billed_amount)) t.blank++;
+      else if(isNum(r.amount) && Number(String(r.amount).replace(/[$,\s]/g, "")) === 0) t.zeroSale++;
       else t.noComm++;
     }
     m.set(k, t);
   }
-  const received = {}, estimated = {}, incomplete = {};
+  const received = {}, partial = {}, estimated = {}, incomplete = {}, provisional = {}, detail = {};
   const add = (o, slug, v) => (o[slug] || (o[slug] = [])).push(v);
+  const pl = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   for(const t of [...m.values()].sort((a, b) => (a.slug + a.p).localeCompare(b.slug + b.p))){
-    if(t.stmt > 0){ add(received, t.slug, t.p); continue; }
-    if(t.lane > 0){
-      const why = [];
-      if(t.blank) why.push(`${t.blank} blank row${t.blank === 1 ? "" : "s"} (no amount, no commission)`);
-      if(t.noComm) why.push(`${t.noComm} row${t.noComm === 1 ? "" : "s"} with sales but no commission figure`);
-      if(t.invoice) why.push(`${t.invoice} open invoice${t.invoice === 1 ? "" : "s"} (commission not yet paid)`);
-      add(incomplete, t.slug, { period:t.p, rows:t.lane, reason:why.join("; ") });
-      continue;
-    }
-    if(t.est > 0) add(estimated, t.slug, t.p);
+    const missing = t.blank + t.noComm + t.zeroSale;
+    const why = [];
+    if(t.blank) why.push(`${pl(t.blank, "blank row", "blank rows")} (no amount, no commission)`);
+    if(t.noComm) why.push(`${pl(t.noComm, "row", "rows")} with sales but no commission figure`);
+    if(t.zeroSale) why.push(`${pl(t.zeroSale, "row", "rows")} with a $0 sale and no commission figure`);
+    const inv = t.invoice ? `${pl(t.invoice, "open invoice", "open invoices")} (commission not yet paid)` : "";
+    let status;
+    if(t.stmt > 0 && missing > 0){ status = "partial"; add(partial, t.slug, { period:t.p, statement_rows:t.stmt, missing_rows:missing, reason:why.join("; ") }); }
+    else if(t.stmt > 0){ status = "received"; add(received, t.slug, t.p); }
+    else if(t.lane > 0){ status = "incomplete"; add(incomplete, t.slug, { period:t.p, rows:t.lane, reason:why.concat(inv ? [inv] : []).join("; ") }); }
+    else if(t.est > 0){ status = "estimated"; add(estimated, t.slug, t.p); }
+    else continue;
+    const prov = t.stmt > 0 && t.laneStmt === 0;          // rests only on the RULE 14 sales-report exception
+    if(prov) add(provisional, t.slug, t.p);
+    (detail[t.slug] || (detail[t.slug] = {}))[t.p] = { status, statement_rows:t.stmt, zero_commission_rows:t.zero,
+      missing_commission_rows:missing, open_invoices:t.invoice, estimate_rows:t.est, provisional:prov };
   }
-  return { received, estimated, incomplete };
+  return { received, partial, estimated, incomplete, provisional, detail };
 }
 
 // ---- Import gate -------------------------------------------------------------------------------------
@@ -132,5 +155,5 @@ function aliasTarget(dealers, chosenId, rawName, dnorm){
   return { dealer_id:d.parent_id, scope:"company", moved_from:d.id };
 }
 
-module.exports = { DEFAULT_STATEMENT_SALES_REPORTS, isNum, isCommissionLane, isInvoiceLine, isOpenInvoice, rowIsStatement, rowIsEstimate,
+module.exports = { DEFAULT_STATEMENT_SALES_REPORTS, STATEMENT_SALES_REPORT_EVIDENCE, isNum, isCommissionLane, isInvoiceLine, isOpenInvoice, rowIsStatement, rowIsEstimate,
   coverage, validateStatement, aliasTarget, FIELD_LABEL };

@@ -67,8 +67,44 @@ const LEGACY = [{ id: 'l-1', manufacturer: 'golden-technologies', period: '2025-
     const off = M.coverage(PF_SR, { statement_sales_reports: [] });
     assert.deepStrictEqual(off.received, {}); assert.deepStrictEqual(off.estimated, { pedifix: ['2026-03'] });
   });
-  await t('a month with valid statement lines stays received even if some rows are blank (history preserved)', async () => {
-    assert.deepStrictEqual(CCmod().coverage(MIXED).received, { bemis: ['2026-06'] });
+  await t('valid lines + blank lines in one month = RECEIVED — INCOMPLETE (partial, with the count), never plain green', async () => {
+    const c = CCmod().coverage(MIXED);
+    assert.deepStrictEqual(c.received, {}); assert.deepStrictEqual(c.incomplete, {});
+    assert.deepStrictEqual(c.partial, { bemis: [{ period: '2026-06', statement_rows: 1, missing_rows: 1, reason: '1 blank row (no amount, no commission)' }] });
+    assert.deepStrictEqual(c.detail.bemis['2026-06'], { status: 'partial', statement_rows: 1, zero_commission_rows: 0, missing_commission_rows: 1, open_invoices: 0, estimate_rows: 0, provisional: false });
+  });
+  await t('Bemis June 2026 shape: 13 valid lines + 4 blank part lines = partial, 4 missing', async () => {
+    const rows = Array.from({ length: 13 }, (_, i) => ({ manufacturer: 'bemis', period: '2026-06-01', source: 'commission', amount: 40, commission: 16.5 }))
+      .concat(Array.from({ length: 4 }, () => ({ manufacturer: 'bemis', period: '2026-06-01', source: 'commission', amount: null, commission: null, qty: 1 })));
+    const x = CCmod().coverage(rows).partial.bemis[0];
+    assert.strictEqual(x.statement_rows, 13); assert.strictEqual(x.missing_rows, 4); assert.ok(/4 blank rows/.test(x.reason));
+  });
+  await t('open (unpaid) invoices beside paid lines keep the month RECEIVED and are counted apart, not as missing', async () => {
+    const c = CCmod().coverage(GCE_OPEN.concat([{ manufacturer: 'ohio-medical', period: '2026-06-01', source: 'commission', line_type: 'PAYMENT', amount: 400, commission: 20 }]));
+    assert.deepStrictEqual(c.received, { 'ohio-medical': ['2026-06'] }); assert.deepStrictEqual(c.partial, {});
+    assert.strictEqual(c.detail['ohio-medical']['2026-06'].open_invoices, 1); assert.strictEqual(c.detail['ohio-medical']['2026-06'].missing_commission_rows, 0);
+  });
+  await t('true $0 statement lines are counted as explicit zeros; a $0 sale with NO commission figure is missing, named as such', async () => {
+    const M = CCmod();
+    const z = M.coverage(ZERO.concat([{ manufacturer: 'bemis', period: '2026-02-01', source: 'commission', amount: 10, commission: 0 }]));
+    assert.deepStrictEqual(z.received, { bemis: ['2026-02'] }); assert.strictEqual(z.detail.bemis['2026-02'].zero_commission_rows, 2);
+    const a4 = M.coverage([{ manufacturer: 'access4u', period: '2026-05-01', source: 'commission', line_type: 'PAYMENT', amount: 500, commission: 25 },
+      { manufacturer: 'access4u', period: '2026-05-01', source: 'commission', line_type: 'PAYMENT', amount: 0, commission: null, memo: 'Voided' }]);
+    assert.strictEqual(a4.partial.access4u[0].missing_rows, 1); assert.ok(/\$0 sale and no commission figure/.test(a4.partial.access4u[0].reason), a4.partial.access4u[0].reason);
+    assert.strictEqual(a4.detail.access4u['2026-05'].zero_commission_rows, 0, 'a missing figure is never counted as a $0 commission');
+  });
+  await t('provenance: a month resting only on the RULE 14 sales-report exception is PROVISIONAL; a real statement line removes the flag', async () => {
+    const M = CCmod();
+    const c = M.coverage(PF_SR);
+    assert.deepStrictEqual(c.provisional, { pedifix: ['2026-03'] }); assert.strictEqual(c.detail.pedifix['2026-03'].provisional, true);
+    const both = M.coverage(PF_SR.concat([{ manufacturer: 'pedifix', period: '2026-03-01', source: 'commission', amount: 100, commission: 10 }]));
+    assert.deepStrictEqual(both.provisional, {});
+    assert.ok(/PROVISIONAL/.test(M.STATEMENT_SALES_REPORT_EVIDENCE.pedifix) && /computed by HCPS/.test(M.STATEMENT_SALES_REPORT_EVIDENCE.pedifix));
+  });
+  await t('provenance: a sales export with populated (estimated) commission never becomes a statement — ABM and Strongback stay estimated', async () => {
+    const c = CCmod().coverage([{ manufacturer: 'abm-respiratory-care', period: '2026-05-01', source: 'sales_report', external_ref: 'abm|1|x|0', amount: 664, commission: 66.4 }].concat(SB_SR));
+    assert.deepStrictEqual(c.received, {}); assert.deepStrictEqual(c.provisional, {});
+    assert.deepStrictEqual(c.estimated, { 'abm-respiratory-care': ['2026-05'], 'strongback-mobility': ['2026-07'] });
   });
   await t('legacy commission rows (no source, no external_ref) count; a no-source row WITH an external_ref is not commission-lane', async () => {
     const c = CCmod().coverage(LEGACY);
@@ -97,6 +133,12 @@ const LEGACY = [{ id: 'l-1', manufacturer: 'golden-technologies', period: '2025-
     assert.strictEqual(v.ok, false); assert.strictEqual(v.missing.commission, 1);
     assert.deepStrictEqual(v.examples[0], { row: 2, field: 'commission', customer: 'B', line_type: null });
     assert.strictEqual(rows[1].commission, '', 'the input is not rewritten');
+  });
+  await t('gate: a wrong mapping (text in the money columns) is refused, never read as 0', async () => {
+    const v = CCmod().validateStatement([{ customer_name: 'A', amount: 'Harmon Medical', commission: 'N/A' }, { customer_name: 'B', amount: '1007+AB-2025', commission: 'Vincennes' }],
+      { mapped_fields: ['customer_name', 'amount', 'commission'] });
+    assert.strictEqual(v.ok, false); assert.deepStrictEqual(v.missing_mappings.sort(), ['amount', 'commission'], 'all-text columns read as unmapped');
+    assert.strictEqual(v.missing.commission, 2);
   });
   await t('gate: explicit 0 commission passes (documented zero-dollar line)', async () => {
     assert.strictEqual(CCmod().validateStatement([{ amount: 0, commission: 0 }], { mapped_fields: ['amount', 'commission'] }).ok, true);
@@ -162,6 +204,14 @@ const LEGACY = [{ id: 'l-1', manufacturer: 'golden-technologies', period: '2025-
     assert.strictEqual(r.body.incomplete['strongback-mobility'][0].period, '2026-09');
     assert.deepStrictEqual(r.body.estimated['strongback-mobility'], ['2026-07']);
     assert.deepStrictEqual(r.body.received['airavant-bongorx'], ['2026-06']);
+  });
+  await t('endpoint: config reports partial months, provisional months and the recorded statement evidence', async () => {
+    const { m } = boot('commissions-api.js', { monthly_sales: MIXED.concat(PF_SR) });
+    const r = await call(m, { action: 'config' }, PRES);
+    assert.strictEqual(r.body.partial.bemis[0].missing_rows, 1); assert.ok(!r.body.received.bemis);
+    assert.deepStrictEqual(r.body.provisional, { pedifix: ['2026-03'] });
+    assert.ok(/PROVISIONAL/.test(r.body.statement_evidence.pedifix) && /PediFix_ALL_2025-2026\.csv/.test(r.body.statement_evidence.pedifix), 'the recorded evidence, not a placeholder');
+    assert.strictEqual(r.body.detail.bemis['2026-06'].status, 'partial');
   });
   await t('endpoint: config with an unreadable monthly_sales says so and shows nothing as received', async () => {
     const { m } = boot('commissions-api.js', { monthly_sales: AIRAVANT }, { failRead: tb => tb === 'monthly_sales' ? 500 : 0 });
@@ -237,7 +287,8 @@ const LEGACY = [{ id: 'l-1', manufacturer: 'golden-technologies', period: '2025-
   const page = fs.readFileSync(path.join(__dirname, '..', 'src', 'admin', 'import-commissions.html'), 'utf8');
   await t('page: sales amount and commission are required mappings and the grid shows the three states', async () => {
     assert.ok(/\{k:"amount",label:"Sales amount \(\$\)",req:true\}/.test(page) && /\{k:"commission",label:"Commission \(\$\)",req:true\}/.test(page));
-    assert.ok(/const cls=on\?"on":ix\?"inc":e\?"est"/.test(page));
+    assert.ok(/const cls=\(on\?"on":pr\?"part":ix\?"inc":e\?"est"/.test(page), 'grid states');
+    assert.ok(/RECEIVED — INCOMPLETE, requires review/.test(page) && /onclick="recvTip\(/.test(page), 'partial wording + tap for touch');
     assert.ok(/mapped_fields:v\.mapped_fields/.test(page) && /refusalHtml\(r\)/.test(page));
   });
   done('commission-coverage');

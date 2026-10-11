@@ -26,6 +26,7 @@
  .mchip.on{background:#eefaf0;color:#1f7a44;border:1px solid #bfe3ca}.mchip.off{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa}
  .mchip.none{background:#f3f4f6;color:#9aa4ae;border:1px solid #e5e7eb}
  .mchip.est{background:#eef4fb;color:#1f4f86;border:1px dashed #9cbbe0}.mchip.inc{background:#fff;color:#b42323;border:1.5px solid #b42323}
+ .mchip.part{background:#fffbeb;color:#92400e;border:1.5px solid #d97706}.mchip.prov{border-style:dashed}.mchip[role=button]{cursor:pointer}
  .recvrow{display:flex;align-items:center;gap:10px;padding:3px 0;border-bottom:1px solid #f0f2f5}.rname{flex:1;min-width:170px;font-size:13px}
  .rzrow{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eef1f4;flex-wrap:wrap}.rzrow .rn{flex:1;min-width:230px;font-size:13px}
  .warn{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;color:#9a3412;font-size:13px;margin-top:8px}
@@ -144,36 +145,47 @@ async function boot(){
 }
 function renderReceived(){
   const el=$("#recvBody"); if(!el) return;
-  const rec=CONFIG.received||{}, est=CONFIG.estimated||{}, inc=CONFIG.incomplete||{}; const now=new Date(), yr=now.getFullYear(), cm=now.getMonth()+1;
+  const rec=CONFIG.received||{}, part=CONFIG.partial||{}, est=CONFIG.estimated||{}, inc=CONFIG.incomplete||{}, prov=CONFIG.provisional||{}, det=CONFIG.detail||{}, ev=CONFIG.statement_evidence||{};
+  const now=new Date(), yr=now.getFullYear(), cm=now.getMonth()+1;
   const ML=["J","F","M","A","M","J","J","A","S","O","N","D"];
   const mfrs=(CONFIG.manufacturers||[]);
   if(!mfrs.length){ el.textContent="No manufacturers configured."; return; }
-  // Show EVERY year that has commission data, not just the current one — so loaded history (e.g. 2025)
-  // is visible. A month is green when a commission report is on file for it (either importer). For the
-  // current year, months still to come in / not yet received show amber ("still needed"); past-year
-  // gaps show neutral (not flagged as needed).
-  const years=new Set([yr]);
-  [rec,est].forEach(o=>Object.values(o).forEach(arr=>(arr||[]).forEach(p=>{ const y=parseInt(String(p).slice(0,4),10); if(y) years.add(y); })));
-  Object.values(inc).forEach(arr=>(arr||[]).forEach(x=>{ const y=parseInt(String(x.period).slice(0,4),10); if(y) years.add(y); }));
+  // Show EVERY year that has commission data, not just the current one, so loaded history stays visible.
+  const years=new Set([yr]); const addY=p=>{ const y=parseInt(String(p).slice(0,4),10); if(y) years.add(y); };
+  [rec,est].forEach(o=>Object.values(o).forEach(arr=>(arr||[]).forEach(addY)));
+  [part,inc].forEach(o=>Object.values(o).forEach(arr=>(arr||[]).forEach(x=>addY(x.period))));
   const YRS=[...years].sort();
-  // Only VALIDATED statement data is green (RULE 2026-10-10). Blue dashed = a sales report only — its
-  // commission is an estimate at the typed rate, not a received statement. Red outline = rows are on file
-  // but carry no commission figures: NOT received / not entered (never shown as received or $0).
+  // RULE 2026-10-10 (CLAUDE.md §14): only VALIDATED statement data is green. A month with valid lines AND lines
+  // missing a commission figure is "Received — incomplete, requires review" (amber outline), never plain green.
+  // Blue dashed = sales report only (commission estimated). Red outline = rows on file, no commission figures:
+  // not received / not entered. A dashed green month rests only on the provisional RULE 14 sales-report exception.
+  // Tap or hover a month for its counts (valid lines, $0 lines, missing, open invoices, estimates).
+  window.__RECVTIP={};
   el.innerHTML=(CONFIG.coverage_error?`<div class="hint" style="margin:0 0 8px;color:#b42323"><b>${esc(CONFIG.coverage_error)}</b></div>`:"")
-    +`<div class="hint" style="margin:0 0 8px"><span class="mchip on">✓</span> commission statement received · <span class="mchip est">E</span> sales report only — commission estimated, statement not received · <span class="mchip inc">!</span> rows on file without commission figures — not received / not entered · <span class="mchip off">·</span> still needed (current year) · <span class="mchip none">·</span> not on file (past year). Hover a month for the reason.</div>`
+    +`<div class="hint" style="margin:0 0 8px"><span class="mchip on">✓</span> commission statement received · <span class="mchip on prov">P</span> provisional (sales report treated as the statement — not verified) · <span class="mchip part">!</span> received — incomplete, requires review · <span class="mchip est">E</span> sales report only — commission estimated · <span class="mchip inc">!</span> rows on file without commission figures — not received / not entered · <span class="mchip off">·</span> still needed (current year) · <span class="mchip none">·</span> not on file (past year). Tap or hover a month for its counts.</div>`
     +mfrs.map(mf=>{
-    const got=new Set(rec[mf.slug]||[]), gotE=new Set(est[mf.slug]||[]); const gotI=new Map((inc[mf.slug]||[]).map(x=>[x.period,x]));
+    const got=new Set(rec[mf.slug]||[]), gotE=new Set(est[mf.slug]||[]), gotP=new Set(prov[mf.slug]||[]);
+    const gotI=new Map((inc[mf.slug]||[]).map(x=>[x.period,x])), gotR=new Map((part[mf.slug]||[]).map(x=>[x.period,x]));
+    const D=det[mf.slug]||{};
     const groups=YRS.map(y=>{
       const last=(y===yr)?cm:12; let chips="";
-      for(let m=1;m<=last;m++){ const mm=y+"-"+String(m).padStart(2,"0"); const on=got.has(mm), ix=gotI.get(mm), e=gotE.has(mm);
-        const cls=on?"on":ix?"inc":e?"est":(y===yr?"off":"none");
-        const tip=on?`${mm}: commission statement received`:ix?`${mm}: NOT received / not entered — ${ix.rows} row(s) on file without commission figures (${ix.reason})`:e?`${mm}: sales report only — commission is an estimate; no statement received`:`${mm}: not received`;
-        chips+=`<span class="mchip ${cls}" title="${esc(tip)}">${ML[m-1]}</span>`; }
+      for(let m=1;m<=last;m++){ const mm=y+"-"+String(m).padStart(2,"0"); const on=got.has(mm), pr=gotR.get(mm), ix=gotI.get(mm), e=gotE.has(mm), pv=gotP.has(mm), d=D[mm];
+        const cls=(on?"on":pr?"part":ix?"inc":e?"est":(y===yr?"off":"none"))+(pv?" prov":"");
+        const counts=d?` — ${d.statement_rows} statement line(s), ${d.zero_commission_rows} with an explicit $0 commission, ${d.missing_commission_rows} missing a commission figure, ${d.open_invoices} open invoice(s), ${d.estimate_rows} sales-report estimate(s)`:"";
+        let tip=on?`${mm}: commission statement received${counts}`
+          :pr?`${mm}: RECEIVED — INCOMPLETE, requires review: ${pr.missing_rows} row(s) missing a commission figure (${pr.reason})${counts}`
+          :ix?`${mm}: NOT received / not entered — ${ix.rows} row(s) on file without commission figures (${ix.reason})${counts}`
+          :e?`${mm}: sales report only — commission is an estimate; no statement received${counts}`:`${mm}: not received`;
+        if(pv) tip+=` · PROVISIONAL: ${ev[mf.slug]||"sales report treated as the statement — not verified"}`;
+        const key=mf.slug+"|"+mm; window.__RECVTIP[key]=tip;
+        chips+=`<span class="mchip ${cls}" title="${esc(tip)}" role="button" tabindex="0" onclick="recvTip('${esc(key)}')">${ML[m-1]}</span>`; }
       return `<span style="display:inline-flex;align-items:center;gap:3px;margin:0 12px 4px 0"><span style="font-size:10px;color:#9aa4ae;font-weight:800">${y}</span>${chips}</span>`;
     }).join("");
     return `<div class="recvrow"><div class="rname">${esc(mf.name)}</div><div style="display:flex;flex-wrap:wrap">${groups}</div></div>`;
-  }).join("");
+  }).join("")+`<div id="recvTip" class="hint" style="margin:8px 0 0;min-height:1.2em"></div>`;
 }
+// Touch has no hover: tapping a month shows its counts under the grid.
+function recvTip(key){ const t=(window.__RECVTIP||{})[key]; const e=$("#recvTip"); if(e) e.textContent=t||""; }
 function locByName(){ const m={}; mappedRows().forEach(r=>{ const n=String(r.customer_name||"").trim(); if(n&&!m[n]) m[n]={city:r.ship_city||"",state:r.ship_state||""}; }); return m; }
 function renderResolver(unmatched){
   if(!unmatched||!unmatched.length) return "";
