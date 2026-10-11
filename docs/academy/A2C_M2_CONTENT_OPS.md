@@ -152,6 +152,35 @@ The production files change **no database settings**: no ALTER DATABASE, ALTER S
 
 **Postgres 17.6 check (production's version).** The M2 suite was rerun on a local Postgres 17.6: 18/18 pass, including both installed-code fingerprints (f24e4f88… / 794f3c3e…), acceptance 21/21, hardening 9/9, and A1/M1 27/43 with M2. pg-safeupdate is not available for that local 17.6 build. Its runtime check passes on 16, and the WHERE-clause check is static.
 
+## M2 RUN and VERIFIED in production (Angelo, 11 Oct 2026, ~14:23–15:27 CT)
+Angelo ran the approved migration by hand in the SQL editor: sha256 b4e28fd0…9f9b, pasted from Windows.
+1. **Postcheck:** passed on every value.
+   - 15 functions;
+   - 11 operations only the server can run;
+   - 0 helpers the server can call, and 0 functions the public keys can call;
+   - the row guard and the TRUNCATE guard on all 4 content tables;
+   - M2 fingerprint **794f3c3e…** (the approved file pasted with CRLF line endings, as precomputed);
+   - M1 unchanged: 19 functions, 6 triggers, e70543ba…;
+   - switches {}; 0 content rows and 0 audit rows.
+2. **M2 acceptance tests:** 21/21 PASS. Test 15 passed with the expected note: there is no non-President administrator in production, and the local tests prove that refusal. Test 17 showed 11 / 11.
+3. **A1 compatibility tests:** 27/27 PASS.
+4. **M1 compatibility tests:** 43/43 PASS. Tests 34 and 39 (the server-role checks) ran; check 43 confirmed phase2_flags unchanged.
+5. **Preflight again:** every structural fingerprint is identical to the accepted baseline (Academy and outside). Only m2_installed, m2_objects and content_triggers changed (+8 M2 triggers).
+   - Three row counts moved: product_content 96→103, product_content_history 2459→2466, product_content_sources 54→59.
+   - A read-only query of product_content_history attributed all of them: Angelo's 7 Bemis Auto-Enrich drafts at 19:30 UTC, 5 of them with web sources. This is ordinary site work, unrelated to M2.
+   - **Post-M2 baseline:** those three counts at 103 / 2466 / 59, everything else as before.
+6. **Postcheck again:** identical to step 1. 0 content rows and 0 audit rows, so no test data was left behind.
+7. **Public-key probe:** the first run showed 25 BLOCKED and 1 "OPEN!!". That row was a script mistake: it sent PATCH {title} to academy_course_versions, which has no title column. The API refused with PGRST204 before the database was asked, so nothing was written and nothing about permissions was tested.
+   - The script now edits pass_mark instead (sha256 71f42e7f…2417).
+   - The rerun returned **ALL 26 CHECKS BLOCKED (401)**.
+   - Lesson: a probe's write check must name a column the table really has; otherwise it tests the API's request validation, not permissions.
+
+**Status after the run:**
+- All seven Academy switches OFF.
+- PR #7 still a DRAFT and unmerged; merge needs Angelo's separate approval.
+- The Command Center is not activated; staff-only activation needs its own approval.
+- No rollback and no rerun.
+
 ## Production runbook (Angelo runs every step; Claude never does)
 1. **Preflight** (read-only). Paste the result back.
    - `ready_for_m2` must be true;

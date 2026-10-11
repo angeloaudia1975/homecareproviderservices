@@ -1877,6 +1877,17 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   219ac18e…/29, other functions 5ac72858…/79 (the +6 tables / +49 grants since M1 = MI-1b + MI-1c, authorized).
   Production is Postgres 17.6: the M2 suite passes on a local 17.6 (pg-safeupdate is unavailable there; covered on 16
   plus the static WHERE check). M2 files change no database setting.
+  **M2 RUN and VERIFIED in production (Angelo, 11 Oct 2026 ~14:23–15:27 CT):**
+  - Angelo pasted the approved file (sha256 b4e28fd0…) himself.
+  - **Postcheck:** 15 functions, 11 server-only operations, 0 / 0 callable helpers and public-key functions, both guards on
+    the 4 tables, fingerprint 794f3c3e… (CRLF, as precomputed); M1 19 / 6 / e70543ba… unchanged.
+  - **Tests:** M2 acceptance 21/21, A1 27/27, M1 43/43 (34 and 39 ran); second postcheck 0 rows.
+  - **Preflight after:** every fingerprint equals the accepted baseline. Only row counts product_content 103 /
+    history 2466 / sources 59 moved: Angelo's 7 Bemis Auto-Enrich drafts at 14:30 CT, attributed by query. The post-M2
+    baseline uses those counts.
+  - **Public-key probe:** ALL 26 BLOCKED. The first run's one "OPEN" was a probe bug: PATCH of a column the table lacks
+    gives PGRST204 before any permission check; fixed (sha256 71f42e7f…). A probe write must name a real column.
+  - Switches all OFF. PR #7 still DRAFT; merging it and activating the Command Center each need Angelo's separate approval.
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
   the guard when a marker is set: any future cascade INTO the four content tables must be reviewed against it.
 - **Course publication rules (Angelo, 11 Oct 2026 — C2 design only, NOT implemented; `docs/academy/C2_COURSE_PUBLICATION_DESIGN.md`).**
