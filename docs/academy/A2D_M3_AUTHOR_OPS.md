@@ -283,6 +283,21 @@ Only one table's columns change (`academy_modules`), and the preflight reports t
 - Never rerun A1, M1, M2 or M3.
 - The Command Center does not call M3 until the builder PR is merged. Until then, M3 changes nothing anyone sees.
 
+### Production preflight RESULT (Angelo, 11 Oct 2026 18:40 CT) — PASS
+
+- `ready_for_m3` true; PostgreSQL 17.6 (the version M3 was tested on); daily backup from today confirmed by Angelo.
+- M1 19 functions / 6 guard triggers / `e70543ba23d96ca7c5aec8eeff0ea341`; M2 15 / 8 / `794f3c3e007bf3cc6d72b574aac614e3`.
+- start-attempt (pre-M3) `718f7cc5e1e18b21bcecc401c80c4155` = the approved M1 text as pasted from Windows (reproduced
+  locally), server true, public keys false.
+- Switches: only `academy_admin` true; the six learner-related switches absent (off). 1 active President.
+- Academy records: 0 in every content table, 0 audit rows (so A1 check 27 and M1 check 43 can pass).
+- Academy fingerprints = the accepted baseline: grants `7af6d10e…` / 252, columns `ca214093…` / 179, 0 policies, RLS 18 / 18.
+- Outside the Academy, changed since the post-M2 baseline, all explained by work run today and NOT by the Academy:
+  grants `3d974d58…` / 2908 (+48), columns `7ce9237b…` / 121 tables (+6), other functions `c6796807…` / 91 (+12) =
+  MI Phase B (`mi_b_report_capture.sql`: 6 tables, 12 functions; run by Angelo ~18:20 CT, verified);
+  product_content_history 2474 (+8) and product_content_sources 60 (+1) = Manufacturer Center enrichment work.
+  Policies `219ac18e…` / 29 unchanged. These values are the baseline for the post-M3 comparison.
+
 ## Rollback
 
 `supabase/academy_a2d_m3_rollback.sql` runs as one transaction. It:

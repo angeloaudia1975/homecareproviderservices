@@ -2157,6 +2157,9 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     installation + compatibility verification are complete; no merge and no lesson engine without separate approval.
     After an approved install, report any failed / skipped / unverified check before moving on. Completion target: the
     first-course (Golden) launch.
+    **M3 production preflight PASSED (Angelo, 18:40 CT):** ready_for_m3 true, PG 17.6, backup today, M1 e70543ba…, M2
+    794f3c3e…, start-attempt 718f7cc5…, only academy_admin on, 0 Academy rows, Academy fingerprints = baseline; outside
+    changes since M2 = MI Phase B (6 tables / 12 functions / +48 grants) and MC enrichment rows. Baseline recorded in the runbook.
   - A1 check 27 and M1 check 43 need EMPTY Academy tables; if records exist in production they FAIL by design — use the
     before/after leftover checks (M2 21, M3 25) and discuss first.
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
