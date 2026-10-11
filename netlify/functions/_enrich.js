@@ -344,6 +344,25 @@ function unsupportedFacts(catalogText, sourceText){
   const st = norm(sourceText).toLowerCase();
   return facts.filter(f => { const n = numbersIn(f)[0]; return n && !new RegExp("(^|[^0-9.])" + n.replace(".", "\\.") + "(?![0-9])").test(st); }).map(norm);
 }
+/* Named features / systems in our catalog line ("Stay-Tite", "Dual Lock™", "the Super Grip system"). One the manufacturer's
+   page never names — or shows only in badges while its product copy names a different system — is a source/content
+   discrepancy for review, never silently chosen (Angelo 2026-10-11, Steadfast: Stay-Tite vs Snap 2 Secure). */
+const NAME_STOP = /^(the|a|an|with|and|for|our|its|this|new)$/i;
+const nameKey = t => String(t || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+function namedTerms(text){
+  const t = String(text || ""), out = [];
+  let m; const tm = /([A-Z][\w-]*(?:\s+[A-Z0-9][\w-]*){0,3})\s*[\u2122\u00ae]/g; while((m = tm.exec(t))) out.push(m[1]);
+  const sy = /((?:[A-Z][\w\u00b7-]*|\d+)(?:\s+(?:[A-Z][\w\u00b7-]*|\d+)){0,3})[\u2122\u00ae]?\s+(?:(?:[Ii]nstallation|[Ff]astening)(?:\s+[Ss]ystem)?|[Ss]ystem|[Hh]inge|[Tt]echnology|[Mm]echanism)\b/g;
+  while((m = sy.exec(t))){ const w = m[1].split(/\s+/); while(w.length && NAME_STOP.test(w[0])) w.shift(); while(w.length && /^(installation|fastening|system)$/i.test(w[w.length - 1])) w.pop(); if(w.length && /[A-Za-z]/.test(w.join(""))) out.push(w.join(" ")); }
+  const seen = new Set(); return out.map(norm).filter(x => x.length > 2 && !NAME_STOP.test(x) && !seen.has(nameKey(x)) && seen.add(nameKey(x)));
+}
+/* Named fastening / installation systems in a text ("Snap 2 Secure system", "the Stay-Tite installation system"). */
+function systemNames(text){
+  const out = [], seen = new Set(); let m;
+  const sy = /((?:[A-Z][\w\u00b7-]*|\d+)(?:\s+(?:[A-Z][\w\u00b7-]*|\d+)){0,3})[\u2122\u00ae]?\s+(?:[Ii]nstallation\s+|[Ff]astening\s+)?(?:[Ss]ystem|[Hh]inge|[Mm]echanism)\b/g;
+  while((m = sy.exec(String(text || "")))){ const w = m[1].split(/\s+/); while(w.length && NAME_STOP.test(w[0])) w.shift(); while(w.length && /^(installation|fastening|system)$/i.test(w[w.length - 1])) w.pop(); const x = norm(w.join(" ")); if(x && /[A-Za-z]/.test(x) && !seen.has(nameKey(x))){ seen.add(nameKey(x)); out.push(x); } }
+  return out;
+}
 const firstSentences = (t, max) => { const s = norm(t).split(/(?<=[.!?])\s+/); let out = ""; for(const x of s){ if((out + " " + x).length > (max || 600) && out) break; out = (out ? out + " " : "") + x; } return out; };
 /* Image candidates, in order: photos named after the source page's model, then photos whose file name describes this
    product, then each SKU's current catalog photo (what dealers see today — copied into HCPS storage, never linked). */
@@ -429,6 +448,26 @@ function buildDraft(page, sources, opts){
       evidence: { page: "not stated on " + (prod || landing || related).url, record: page.skus.map(s => s.catalog_description).filter(Boolean)[0] || "" },
       suggestion: "Check the figure against the manufacturer's spec sheet. Nothing is published until you decide." });
   }
+  if(prod){
+    /* the product's own copy (description + features) vs the whole page (site badges, icon strips, links) */
+    const copy = [prod.extract.description, (prod.extract.features || []).join(" ")].filter(Boolean).join(" ");
+    const whole = [prod.extract.text, copy].filter(Boolean).join(" ");
+    const theirs = systemNames(copy);
+    const flagged = [];
+    for(const n of [...new Set(page.skus.flatMap(s => namedTerms(s.catalog_description)))]){
+      const inCopy = nameKey(copy).indexOf(nameKey(n)) >= 0, onPage = nameKey(whole).indexOf(nameKey(n)) >= 0;
+      const rival = theirs.filter(x => nameKey(x) !== nameKey(n));
+      if(!onPage) flagged.push({ n, why: "the manufacturer's page never names it" });
+      else if(!inCopy && rival.length) flagged.push({ n, why: "the manufacturer's product copy says " + rival.map(x => "\u201c" + x + "\u201d").join(", ") + " (\u201c" + n + "\u201d appears only in the page's badges / icons)" });
+    }
+    if(flagged.length){
+      const names = flagged.map(f => f.n);
+      conflicts.push({ kind: "catalog_name", title: "Your catalog line says " + names.map(n => "\u201c" + n + "\u201d").join(", ") + " — " + flagged.map(f => f.why).join("; "),
+        evidence: { page: flagged.map(f => f.n + ": " + f.why).join("; ") + " — " + prod.url, record: page.skus.map(s => s.catalog_description).filter(Boolean)[0] || "" },
+        suggestion: "A source/content discrepancy for review. The draft copy uses only the manufacturer's words; the catalog line and the commercial record are not changed. Nothing is published until you decide." });
+      notes.push("Source/content discrepancy: the HCPS catalog line names " + names.join(", ") + " — " + flagged.map(f => f.why).join("; ") + ". Flagged for review, not chosen.");
+    }
+  }
   const cat = page.skus.find(s => s.subcategory || s.category) || {};
   const row = {
     manufacturer: opts.slug, page_key: page.page_key, name: page.name, status: "pending_review",
@@ -494,6 +533,7 @@ function skuImageChoices(decisions, pageKey){
 const CHOICES = {
   conflict: [{ id: "same_product", label: "Same product: use its copy and photos" }, { id: "different_product", label: "Different product: don't use this page" }],
   catalog_fact: [{ id: "keep_catalog_fact", label: "Our figure is right: keep it out of the page copy" }, { id: "use_source", label: "Use only what the manufacturer states" }],
+  catalog_name: [{ id: "use_source", label: "Use the manufacturer's wording on the page" }, { id: "keep_catalog_name", label: "Our catalog term is right: keep it out of the page copy until the manufacturer confirms" }],
   needs_grouping: [{ id: "own_page", label: "Its own page under its category (suggested)" }, { id: "hidden_order_by_code", label: "Hidden from browsing; dealers order it by code" }],
   needs_content: [{ id: "rerun_with_source", label: "Add a source (web page or PDF) and re-run this page", needs: "source_url" }, { id: "hold_back", label: "Hold this page back (its SKUs stay as they are today)" }],
   needs_image: [{ id: "upload", label: "Upload a photo for it", action: "upload" }, { id: "use_source_image", label: "Use an official manufacturer photo for this option", needs: "image_url" }, { id: "keep_one_photo", label: "Keep one photo for both" }],
@@ -510,7 +550,7 @@ function classify(page, row, decisions, opts){
   const add = (type, title, detail, extra) => issues.push(Object.assign({ type, title, detail, choices: CHOICES[type] || [] }, extra || {}));
   /* Conflict */
   for(const c of (mc.conflicts || [])){
-    const key = c.kind === "catalog_fact" ? "catalog_fact" : "conflict";
+    const key = c.kind === "catalog_fact" || c.kind === "catalog_name" ? c.kind : "conflict";
     const r = res[key];
     if(r && key === "conflict" && r.choice === "different_product" && mc.sources && mc.sources.some(s => s.url && r.source_url && s.url === r.source_url)) {
       add("needs_content", "Re-run without the manufacturer page you rejected", "You said " + r.source_url + " is a different product; re-run this page so its copy and photos come from another source.", { rerun: true, choices: CHOICES.needs_content });
@@ -563,5 +603,5 @@ function resolutionProblem(issue, choice, value){
 const sha256 = buf => crypto.createHash("sha256").update(buf).digest("hex");
 
 module.exports = { STATUSES, STATUS_LABEL, VARIANT_DIMS, KIND_WORDS, variantOf, planPages, decode, blocksOf, sectionsOf, extractPage, productLinks,
-  scoreCandidate, pickProductLink, relevantFromLanding, unsupportedFacts, imageCandidates, buildDraft, assembleImages, resolutionsFor, CHOICES,
+  scoreCandidate, pickProductLink, relevantFromLanding, unsupportedFacts, namedTerms, systemNames, imageCandidates, buildDraft, assembleImages, resolutionsFor, CHOICES,
   classify, resolutionProblem, specsFrom, neutralize, skuImageChoices, photoStem, isPromoUrl, slug, codeNorm, isVisibleRow, sha256, sigWords };
