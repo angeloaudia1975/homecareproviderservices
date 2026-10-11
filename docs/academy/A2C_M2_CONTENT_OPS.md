@@ -91,7 +91,7 @@ Only the database owner can use the marker this way. The guard accepts the marke
 
 The earlier production runs (A1 27/27, M1 43/43) used the old files, and those results stand. The new files are what to run from now on.
 
-## Production preflight BEFORE M2 (Angelo, 11 Oct 2026 13:38 CT): the baseline
+## Production preflight BEFORE M2 (Angelo, 11 Oct 2026 13:38 CT): the baseline, ACCEPTED by Angelo at 13:56 CT
 Result: **`ready_for_m2: true`**.
 
 | Area | Result |
@@ -137,6 +137,18 @@ Result: **`ready_for_m2: true`**.
 | commission_splits | absent |
 
 After M2, the preflight must show these same values. Only `m2_installed`, `m2_objects` and `content_triggers` may change.
+
+**Outside-Academy changes since the M1 baseline are the authorized MI work:**
+- **Tables:** 109 → 115 (+6), exactly MI-1b's `mfr_source_events` (run by Angelo 11 Oct ~08:47 CT) plus MI-1c's 5 tables (`mfr_intel_reports`, `mfr_dealer_snapshots`, `mfr_dealer_observations`, `mfr_intel_events`, `mfr_intel_holds`; run ~12:58 CT). Both are recorded and verified in CLAUDE.md rule 18.
+- **Policies:** unchanged (29).
+- **Grants:** 2811 → 2860 (+49), the grants on those new tables. An optional read-only check: `select count(*) from information_schema.role_table_grants where table_schema = 'public' and table_name in ('mfr_source_events','mfr_intel_reports','mfr_dealer_snapshots','mfr_dealer_observations','mfr_intel_events','mfr_intel_holds');` should return 49.
+
+**Safeguard not available in the local Postgres 17.6 build: pg-safeupdate.** pg-safeupdate refuses an UPDATE or DELETE with no WHERE clause; Supabase loads it in API sessions. It is a compiled add-on, so the Postgres 16 build of it cannot load into 17.6. Its protection is still covered three ways:
+1. Runtime: the full suite with pg-safeupdate loaded passes on Postgres 16.
+2. Static: the M2 test runner checks that every UPDATE and DELETE in the migration, rollback and acceptance files has a WHERE clause.
+3. In production: whatever setting Supabase uses stays in force while the files run.
+
+The production files change **no database settings**: no ALTER DATABASE, ALTER SYSTEM, ALTER ROLE or preload change. The migration's only grants are execute rights on its own 11 operations. The acceptance tests switch role and set the operation marker only inside their own undone sub-transaction. The `alter database … session_preload_libraries` line exists only in the LOCAL test fixture (`test/academy/fixture.sql`).
 
 **Postgres 17.6 check (production's version).** The M2 suite was rerun on a local Postgres 17.6: 18/18 pass, including both installed-code fingerprints (f24e4f88… / 794f3c3e…), acceptance 21/21, hardening 9/9, and A1/M1 27/43 with M2. pg-safeupdate is not available for that local 17.6 build. Its runtime check passes on 16, and the WHERE-clause check is static.
 

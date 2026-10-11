@@ -1871,6 +1871,12 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   m1_hardening, atomicity — their sha256 changed for that reason only). **M2 is NOT run in production: Angelo approves
   the exact file and runs it himself; the Command Center is not switched on until M2 is installed, tested and
   separately approved for staff-only activation.** Expected fingerprint f24e4f88… (Unix) / 794f3c3e… (CRLF paste).
+  **Pre-M2 production baseline ACCEPTED by Angelo (11 Oct 2026 13:56 CT):** ready_for_m2 true; M1 19 / 6 / e70543ba…;
+  M2 absent; Academy content + audit rows 0; 1 active President; switches {} (all OFF); Academy grants 7af6d10e…/252,
+  columns ca214093…/179, 0 policies, RLS 18/18; outside grants 336bae11…/2860, columns add1e9f7…/115 tables, policies
+  219ac18e…/29, other functions 5ac72858…/79 (the +6 tables / +49 grants since M1 = MI-1b + MI-1c, authorized).
+  Production is Postgres 17.6: the M2 suite passes on a local 17.6 (pg-safeupdate is unavailable there; covered on 16
+  plus the static WHERE check). M2 files change no database setting.
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
   the guard when a marker is set: any future cascade INTO the four content tables must be reviewed against it.
 - **Course publication rules (Angelo, 11 Oct 2026 — C2 design only, NOT implemented; `docs/academy/C2_COURSE_PUBLICATION_DESIGN.md`).**
