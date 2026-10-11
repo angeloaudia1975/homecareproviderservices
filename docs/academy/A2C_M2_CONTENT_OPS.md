@@ -58,13 +58,38 @@ These guarantees apply to creating and editing courses, draft versions, modules 
 
 Both were computed by installing the file locally.
 
-**Changed for M2 compatibility only:** the A1 and M1 acceptance files (and two local test files) now set the
-operation marker, as the owner, around the inserts that build their test courses. Without that, M2's guard would
-refuse their setup. Their new sha256 values:
-- `academy_a1_acceptance_tests.sql`: 10c3ad57… (was 60c6f191…);
-- `academy_a2a_m1_acceptance_tests.sql`: 1046b528… (was 81766882…).
+## Why the A1 and M1 acceptance files changed
+**The reason.** Both files build their test course, version, module and lesson with plain `insert` statements as the
+database owner, inside a sub-transaction that is always undone. Once M2 is installed, its guard refuses those inserts,
+because nothing may write those tables except an audited operation. The original files therefore stop at their first
+setup line with: *"academy_courses changes must go through the Academy Command Center (audited operations)"*.
 
-They pass before M2 (27/27, 43/43) and after it.
+**The change: 12 added lines, nothing removed or edited.**
+- **A1 file (+6 lines):**
+  - set the operation marker before the setup inserts and clear it right after;
+  - do the same inside tests 21 and 22, which deliberately insert invalid courses to prove the database's check rules refuse them.
+- **M1 file (+2 lines):** set the marker before its setup inserts and clear it right after.
+- **Local test files (+2 lines each):** `test/academy/m1_hardening.sql` and `test/academy/atomicity.sql`, the same change.
+
+Only the database owner can use the marker this way. The guard accepts the marker only from the owner, and the server role is refused even when it sets the marker (M2 acceptance test 13, hardening test 3).
+
+**Their original security requirements are still covered.** Verified on a database with A1 and M1 only, as production is today:
+- **A1:** the original and the updated files give **identical results row by row**: 27/27 PASS each.
+- **M1:** the original and the updated files give **identical results row by row**: 43/43 PASS each.
+- **Every security assertion runs after the marker is cleared:**
+  - A1's rules (frozen published content, check constraints, append-only history, certificate rules) are enforced by A1 triggers and constraints that ignore the marker, so the marker cannot weaken them.
+  - M1's "direct change refused" tests do depend on the marker. A test copy of the M1 file with the clearing line removed makes **M1 test 4 FAIL**, so the suite would catch a leaked marker.
+  - M2 acceptance test 20 separately proves no marker is left behind.
+- **With M2 installed:** the original files stop at setup, and the updated files pass 27/27 and 43/43. M1 hardening passes 28/28 and M1 all-or-nothing passes 11/11.
+
+**Checksums:**
+
+| File | Before | After |
+|---|---|---|
+| `academy_a1_acceptance_tests.sql` | 60c6f191… | 10c3ad57… |
+| `academy_a2a_m1_acceptance_tests.sql` | 81766882… | 1046b528… |
+
+The earlier production runs (A1 27/27, M1 43/43) used the old files, and those results stand. The new files are what to run from now on.
 
 ## Production runbook (Angelo runs every step; Claude never does)
 1. **Preflight** (read-only). Paste the result back.

@@ -212,9 +212,11 @@ async function t(name, fn) { try { await fn(); pass++; console.log('ok   ' + nam
       });
     });
     await t('navigation: reps and Relations never see the Academy entry; admins gain exactly that one entry; nothing else changes', async () => {
-      // Compared with the navigation as it was before the Command Center (main just before PR #5 was merged, 11 Oct 2026).
-      const NAV_BASE = process.env.NAV_BASE || '1a942ce^1';
-      const mainChrome = require('child_process').execFileSync('git', ['show', NAV_BASE + ':src/admin/admin-chrome.js'], { cwd: path.join(__dirname, '..') }).toString();
+      // Compared with today's navigation WITHOUT the Academy entry (other tools keep arriving on main, e.g. MI-1c's
+      // Dealer Intelligence Import, so a fixed old commit would count them as Academy changes).
+      const current = fs.readFileSync(path.join(__dirname, '..', 'src', 'admin', 'admin-chrome.js'), 'utf8');
+      const mainChrome = current.replace(/,?\s*\{\s*href:"\/admin\/academy\.html"[^}]*\}/, '');
+      assert.notStrictEqual(mainChrome, current, 'the Academy entry was found and removed for the comparison');
       const collect = async (origin, role) => {
         const out = {};
         for (const url of ['/admin/', '/admin/hub.html?cat=sales', '/admin/ai-style-guide.html', '/admin/academy.html']) {
