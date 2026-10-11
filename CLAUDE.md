@@ -1600,7 +1600,8 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   **Corrections BUILT (2026-10-11, branch `mi1c-dealer-intel`; NOT merged / deployed / run):** migration rev 2 sha256
   550c64f8…, rollback 345512fd…; 9 install checks; outside probe 22 checks (5 tables + 2 RPCs). Tests: mi1c-intel.pg 76,
   mi1c-api 29, mi1c-parser 26 (real PDF used, nothing skipped), MI-1c mutants 79/79, MI-1b api 28 + mutants 44/44,
-  mi1b-register.pg 46; full regression 80/81 suites (only the pre-existing resources-render failure).
+  mi1b-register.pg 46; full regression after merging main 5d0c0fa (Academy C1, mobile masthead): 81/82 suites pass
+  (only the pre-existing resources-render failure).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
