@@ -1574,6 +1574,99 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   is NOT a real forged-token test); rep / Relations → 403 management_only (code + mi1b-api tests; no non-admin login
   used live). Production after: 6 sources, 0 report records, 0 events, 0 stored files, 11,997 rows / $10,802,558.50,
   0 batches, `mi_import_v2` ON, `mi_commission_v2` absent (off). Nothing registered; MI-1c not started.
+- **MI-1b ACCEPTED COMPLETE (Angelo, 2026-10-11 09:31 CT)** after his own independent verification (schema, privileges,
+  six catalog records, 0 report records / stored files / audit events, financial baseline, code on GitHub main).
+- **MI-1c / SB-1 DEVELOPMENT AUTHORIZED (Angelo, 2026-10-11 09:31 CT) — branch only.** Build the September Strongback
+  Dealer Intelligence importer per SB-0: (1) use the MI-1b `mfr_sources` register — no second file registry; (2) parse the
+  original 17-page September PDF (25 dealer profiles in the table, 22 detailed dealer pages), keeping Strongback's exact
+  terms, dates, figures and source provenance; (3) snapshot + observation schema with stable SOURCE-POSITION identities,
+  full audit, RULE 19 locked; (4) preview + dealer-match review: 15 automatic, 7 manual review, Wyatt's Pharmacy HELD,
+  GF Health + Nebcare unmatched; (5) never create, merge, reassign or alter dealers / rep ownership; (6) manufacturer-
+  reported amounts, trends, tiers, contacts and notes stay separate from HCPS-confirmed activity and financial records;
+  (7) operator-reviewed preview of all 25 dealers: extraction results, match evidence, unresolved items, differences from
+  HCPS; (8) no automatic tasks, opportunities, contacts, campaigns, Zoho changes or pricing discounts; (9) PostgreSQL, API,
+  parser, permissions, concurrency, idempotence and regression tests + rollback plan. Preserve concurrent Manufacturer
+  Center, Academy and ordering changes. NOT authorized: installing MI-1c SQL in production, registering or publishing the
+  September PDF, importing the September order CSV, modifying financial records. `mi_import_v2` stays ON,
+  `mi_commission_v2` OFF. STOP after implementation and tests; return the change manifest, tests, expected dealer-match
+  table, security evidence and rollout plan.
+- **MI-1c BUILT on branch `mi1c-dealer-intel` (2026-10-11, NOT merged, NOT deployed, NO production SQL, September PDF
+  not registered).** Migration `supabase/mi1c_dealer_intel.sql` (sha256 4f69367f…, rollback `…_rollback.sql` c2873764…,
+  refuses while any MI-1c row exists): tables `mfr_intel_reports` (one per imported dealer_report file),
+  `mfr_dealer_snapshots` (one per printed dealer, Strongback's words/figures as printed + the HCPS match proposal),
+  `mfr_dealer_observations` (contacts, product lines, told-us notes, contact log, offers — each with its printed position),
+  append-only `mfr_intel_events`; writes ONLY through `hcps_mfr_intel_import(p)` (accepted dealer_report, same sha256 as
+  the register, same period, no parse errors; idempotent by content hash; advisory lock + source-row lock) and
+  `hcps_mfr_intel_match(p)` (a person's decision with a reason and the `match_version` he saw; only match columns change;
+  never a TEST dealer). Guard trigger: owner's rights + the function's marker, no delete/truncate. RULE 19: RLS on, no
+  policies, anon/authenticated nothing, service_role SELECT only + execute on the two functions. Server reads the stored
+  bytes (SHA-256 re-checked) with pdf.js 3.11.174 (legacy build; worker required statically so the bundler includes it;
+  `.npmrc omit=optional` keeps canvas out; function zip 11.2 MB). Six Skia private-use glyphs mapped (confirmed with
+  Poppler); any other one fails loudly. Parser checks 141/141 on the real PDF. Matcher: exact names/aliases/sales names,
+  then distinctive words only when nothing exact; automatic only with one ordinary candidate whose name agrees and whose
+  city agrees or sales corroborate; Wyatt's HELD. September result = SB-0: 15 matched, 7 review, 1 held, 2 unmatched.
+  Contacts are observations only (never dealer_contacts); the report owner is never a dealer contact; offers stored as
+  "unverified manufacturer text". API `mfr-intel-api.js` (management only, actor from the sign-in, preview_hash must equal
+  the server's recomputed preview); page `/admin/dealer-intel.html` (HUBS: Sales Data & Analytics → Dealer Intelligence
+  Import). Tests: mi1c-intel.pg 57, mi1c-api 21, mi1c-parser 21 (needs the PDF via MI1C_PDF; the PDF is never in git),
+  mutants 52/52 (clean control). **Known consequence:** once snapshots exist, MI-1b `hcps_mfr_report_publication` would
+  accept a publish — the Report History button stays disabled ("not enabled"); publishing needs its own approval.
+  Pre-existing, unrelated: `test/resources-render.test.js` fails on main since documents.json update de939e7 (4 items
+  without `models`; admin-managed — not hand-edited).
+- **MI-1c CONDITIONALLY ACCEPTED (development) — four corrections required before rollout (Angelo, 2026-10-11 11:12 CT).
+  Production installation NOT approved.** Rules (binding from now on):
+  (1) **Publication stays OFF at the server AND database level.** An accepted or imported dealer report stays
+  unpublished until a separately approved publishing phase. Switch `phase2_flags.mi_intel_publish` (exactly `true` = on;
+  missing / non-true / unreadable = off) — NOT turned on by any migration. Database: trigger `mfr_sources_publication_gate`
+  (MI-1c migration; security definer) refuses any write that makes a dealer report "published" on every path (MI-1b's
+  function, REST, hand SQL as the owner); withdraw is not gated; MI-1b's function body is unchanged; the MI-1c rollback
+  drops the trigger. API: `mfr-reports-api` publish → 403 `publication_not_authorized` before the database.
+  (2) **A recorded hold is never changed by the standard decision workflow.** Holds live ONLY in `mfr_intel_holds`
+  (seeded: Strongback "Wyatt's Pharmacy Inc", RULE 18), keyed by `hcps_mfr_intel_name_key` (JS `holdKey`, same rule —
+  catches "Wyatts Pharmacy" etc.). Import: a held name must be stored held (no dealer), and "held" only from a recorded
+  hold. `hcps_mfr_intel_match` refuses EVERY decision on a held name (`mi1c_held_locked`); the API refuses it first (423).
+  Holds can't be updated/deleted/truncated (owner included); a release is a future owner-authorized design. Manual
+  "held" decisions on other rows (the seven-dealer review workflow) are unchanged.
+  (3) **Manufacturer-vs-HCPS reconciliation uses the sales-report lane only** (`source='sales_report'`); commission-lane
+  rows (`hcps_ms_is_commission_lane`) and other sources are listed apart, never added, with a count of rows that look
+  like the same transaction (MI-1a cross-lane test). Matcher name evidence = sales-report lane too. Read-only.
+  (4) **The manufacturer's prepared date must equal the register's** — both stated and equal, or both not stated. A
+  mismatch is shown first in Preview and refuses the import (API 422 and SQL `mi1c_prepared_date_mismatch`); never an
+  upload/received date, never invented. The reader: "prepared" printed but unreadable = error; not printed = not stated.
+  Real-file tests FAIL (not skip) when the September PDF is absent unless `MI1C_ALLOW_NO_PDF=1`.
+  **Corrections BUILT (2026-10-11, branch `mi1c-dealer-intel`; NOT merged / deployed / run):** migration rev 2 sha256
+  550c64f8…, rollback 345512fd…; 9 install checks; outside probe 22 checks (5 tables + 2 RPCs). Tests: mi1c-intel.pg 76,
+  mi1c-api 29, mi1c-parser 26 (real PDF used, nothing skipped), MI-1c mutants 79/79, MI-1b api 28 + mutants 44/44,
+  mi1b-register.pg 46; full regression after merging main 5d0c0fa (Academy C1, mobile masthead): 81/82 suites pass
+  (only the pre-existing resources-render failure).
+- **MI-1c CONTROLLED PRODUCTION ROLLOUT APPROVED (Angelo, 2026-10-11 12:04 CT)** — migration sha256 550c64f8…ce7,
+  rollback 345512fd…7a4, subject to final reconciliation + preflight. Order: (1) bring main in, SQL byte-identical, rerun
+  MI-1c / MI-1b / MI-1a / commission / affected MC tests + the real PDF (stop on a change or unexplained failure);
+  (2) preflight: financial baseline, MI-1b schema, six catalog sources, 0 dealer reports, 0 import batches, `mi_import_v2`
+  ON / `mi_commission_v2` OFF, `mi_intel_publish` absent/off, nothing published, recent backup; (3) Angelo runs the exact
+  migration in the SQL editor — all 9 checks ok, full baseline compared after; (4) 22-check public-key probe all BLOCKED
+  + read-only metadata checks of the publication gate and Wyatt's hold (never publish a real report to test); (5) merge +
+  deploy, Netlify Published at the expected commit, Dealer Intelligence Import opens for President/Admin, reps/Relations
+  refused, no report ready for import. STOP. NOT authorized: registering/accepting the September PDF, the 25-dealer
+  import, match decisions, publishing, the September CSV, the publish switch, rep changes, AirAvant, financial records.
+  Read-only rollout queries: `supabase/mi1c_rollout_baseline.sql` (before/after) and `supabase/mi1c_rollout_postcheck.sql`
+  (expected code fingerprint 618a4139… LF / 887809bd… CRLF). Reconciled with main c59a3ad (Release A content freeze;
+  no overlap) — SQL byte-identical; regression 84/85 (only resources-render).
+  **MI-1c migration RUN by Angelo 2026-10-11 ~12:45 CT (verified):** editor contents checked = sha256 550c64f8… (LF,
+  39,315 bytes) before his Run; all 9 install checks ok = true. Post-install baseline = the preflight on 22/24 rows
+  (ledger 11,997 / $10,802,558.50 / $493,077.06, D7 dde7a2ce…, full-row 83fa3b5b…, Strongback 143 / $43,021.50 / $3,871.94,
+  0 batches / 0 superseded / 7 quarantined, catalog sources acf6e62b…, 0 report records / 0 published / 0 events, flags
+  3f965e20… with mi_import_v2 ON / mi_commission_v2 + mi_intel_publish absent, dealers 3e27e8ce…, aliases 3da52cea…,
+  dealer_manufacturers 597811b5…, 770 / 7 / 429, 9 / 15 / 14, MI-1b functions 82cd50d8…, MI-1a 10 / 162f107a…, grants
+  3072 / 47b8b8e5…, policies 29 / 5fc16d5b…, bucket private 0 files); the 2 changed rows are the expected MI-1c additions
+  (mfr_sources triggers + publication gate; 5 tables + 6 functions). Metadata postcheck: code 6 / 887809bd… (the CRLF
+  form, precomputed), gate trigger enabled type 23, gate SECURITY DEFINER search_path=public, pg_temp, callable by
+  nobody (anon/authenticated/service_role false), switch absent, 0 published, the one Wyatt's hold (key WYATTS PHARMACY,
+  3 spellings → same key), hold guards enabled, match refuses held names, import enforces holds + prepared date, 0 MI-1c
+  rows, anon/authenticated 0 grants, service_role SELECT, RLS 5/5, 0 policies. Outside public-key probe
+  (`scripts/mi1c_public_probe_browser.js`, run by Angelo 12:58 CT, key verified first): ALL 22 BLOCKED (401). Before the
+  merge, main 0751266 (MC content-freeze SQL only) brought in; MI-1c SQL byte-identical; MI-1c 76/29/26 (real PDF),
+  MI-1b 46/28, MI-1a 28/16, commission 42/11, MC content-freeze 19/18/3, guard 17, append 6, flow 13, gates 12, freeze 17.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.

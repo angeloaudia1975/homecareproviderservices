@@ -1,0 +1,1211 @@
+{
+ "_note": "Read-only snapshot of production HCPS data relevant to the Strongback September 2026 report, taken 2026-10-11 (dealers in the matching families, their aliases, and how each Strongback customer name already resolves in monthly_sales). Dealer ids keep their real first 8 hex characters inside a placeholder UUID; rep emails are reduced to Angelo / Greg. Used by test/mi1c-match.test.js.",
+ "taken": "2026-10-11",
+ "dealers": [
+  {
+   "id": "48f92add-0000-4000-8000-000000000000",
+   "business_name": "All Star Medical Franklin",
+   "city": "Brentwood",
+   "state": "TN",
+   "parent_id": "bac65dd4-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "bac65dd4-0000-4000-8000-000000000000",
+   "business_name": "All Star Medical Hermitage CORP",
+   "city": "Hermitage",
+   "state": "TN",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "a090529f-0000-4000-8000-000000000000",
+   "business_name": "ARH Corporate",
+   "city": "Hazard",
+   "state": "KY",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "4a40d62f-0000-4000-8000-000000000000",
+   "business_name": "ARH Williamson",
+   "city": "South Williamson",
+   "state": "KY",
+   "parent_id": "a090529f-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "d3ff61f6-0000-4000-8000-000000000000",
+   "business_name": "CherriCare Inc",
+   "city": "Owensboro",
+   "state": "KY",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "a6fe6990-0000-4000-8000-000000000000",
+   "business_name": "Cloud Medical / James Medical Warehouse",
+   "city": "Russell Springs",
+   "state": "KY",
+   "parent_id": "3140bee6-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "3140bee6-0000-4000-8000-000000000000",
+   "business_name": "Cloud Medical Supply",
+   "city": "Corbin",
+   "state": "KY",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "af8acbb6-0000-4000-8000-000000000000",
+   "business_name": "Davis Drugs",
+   "city": "Paducah",
+   "state": "KY",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "2c49face-0000-4000-8000-000000000000",
+   "business_name": "Georges Medical Blue Ash",
+   "city": "Cincinnati",
+   "state": "OH",
+   "parent_id": "651b304e-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "651b304e-0000-4000-8000-000000000000",
+   "business_name": "Georges Pharmacy Batesville Corp",
+   "city": "Batesville",
+   "state": "IN",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "f894270d-0000-4000-8000-000000000000",
+   "business_name": "Georges Pharmacy Brookville",
+   "city": "Brookville",
+   "state": "IN",
+   "parent_id": "651b304e-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "319086e5-0000-4000-8000-000000000000",
+   "business_name": "Georges Pharmacy Connersville",
+   "city": "Connersville",
+   "state": "IN",
+   "parent_id": "651b304e-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "ff555b70-0000-4000-8000-000000000000",
+   "business_name": "Georges Pharmacy Fort Wayne (DME ONLY)",
+   "city": "Fort Wayne",
+   "state": "IN",
+   "parent_id": "651b304e-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "975a60b7-0000-4000-8000-000000000000",
+   "business_name": "Georges Pharmacy Indianapolis (DME ONLY)",
+   "city": "Indianapolis",
+   "state": "IN",
+   "parent_id": "651b304e-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "20f35f87-0000-4000-8000-000000000000",
+   "business_name": "Georges Pharmacy Indianapolis Warehouse",
+   "city": "Indianapolis",
+   "state": "IN",
+   "parent_id": "651b304e-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "7f62b486-0000-4000-8000-000000000000",
+   "business_name": "Georges Pharmacy Mobility Warehouse",
+   "city": "Brookville",
+   "state": "IN",
+   "parent_id": "651b304e-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "5e168f3a-0000-4000-8000-000000000000",
+   "business_name": "Georges Pharmacy North Vernon (DME ONLY)",
+   "city": "North Vernon",
+   "state": "IN",
+   "parent_id": "651b304e-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "e9d5aabd-0000-4000-8000-000000000000",
+   "business_name": "Glasgow Prescription Center",
+   "city": "Glasgow",
+   "state": "KY",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "989b329a-0000-4000-8000-000000000000",
+   "business_name": "Glasgow Prescription Center Hosparus Warehouse",
+   "city": "Glasgow",
+   "state": "KY",
+   "parent_id": "e9d5aabd-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "2f6f5041-0000-4000-8000-000000000000",
+   "business_name": "Harmon Medical Supply",
+   "city": "Vincennes",
+   "state": "IN",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "e7e2133a-0000-4000-8000-000000000000",
+   "business_name": "Integrity Home Medical Germantown",
+   "city": "Germantown",
+   "state": "TN",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "186eb95f-0000-4000-8000-000000000000",
+   "business_name": "Integrity Home Medical Memphis",
+   "city": "Memphis",
+   "state": "TN",
+   "parent_id": "e7e2133a-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "c5693cd1-0000-4000-8000-000000000000",
+   "business_name": "James Medical Equipment Bowling Green",
+   "city": "Bowling Green",
+   "state": "KY",
+   "parent_id": "5270ebcc-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "5270ebcc-0000-4000-8000-000000000000",
+   "business_name": "James Medical Equipment Corp Russell Springs",
+   "city": "Russell Springs",
+   "state": "KY",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "02db2eed-0000-4000-8000-000000000000",
+   "business_name": "Kentuckiana Mobility Scooter Rental, LLC",
+   "city": "Louisville",
+   "state": "KY",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "a8697eec-0000-4000-8000-000000000000",
+   "business_name": "Lacey Drug Company",
+   "city": "Acworth",
+   "state": "GA",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Greg"
+  },
+  {
+   "id": "4e9c6a43-0000-4000-8000-000000000000",
+   "business_name": "Larco Medical",
+   "city": "Cookeville",
+   "state": "TN",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "78727c85-0000-4000-8000-000000000000",
+   "business_name": "Louisville Mobility Scooter",
+   "city": "Louisville",
+   "state": "KY",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "04ffcd88-0000-4000-8000-000000000000",
+   "business_name": "Mathes Pharmacy Georgetown",
+   "city": "Georgetown",
+   "state": "IN",
+   "parent_id": "d1eb2e67-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "d1eb2e67-0000-4000-8000-000000000000",
+   "business_name": "Mathes Pharmacy New Albany",
+   "city": "New Albany",
+   "state": "IN",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "68bc59a2-0000-4000-8000-000000000000",
+   "business_name": "Med Mart Home Access",
+   "city": "Cincinnati",
+   "state": "OH",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "7b3986b1-0000-4000-8000-000000000000",
+   "business_name": "Med Mart HQ",
+   "city": "Cincinnati",
+   "state": "OH",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "99e0b97b-0000-4000-8000-000000000000",
+   "business_name": "Med Mart Kettering",
+   "city": "Kettering",
+   "state": "OH",
+   "parent_id": "7b3986b1-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "50dabf03-0000-4000-8000-000000000000",
+   "business_name": "Med Mart KY",
+   "city": null,
+   "state": null,
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "c3712881-0000-4000-8000-000000000000",
+   "business_name": "Mobility City of Lawrenceville",
+   "city": "Lawrenceville",
+   "state": "GA",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Greg"
+  },
+  {
+   "id": "8717eb7e-0000-4000-8000-000000000000",
+   "business_name": "Mobility City of Louisville",
+   "city": "Louisville",
+   "state": "KY",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "d0282c4a-0000-4000-8000-000000000000",
+   "business_name": "Mobility City of Murray Ky",
+   "city": "Murray",
+   "state": "KY",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "2042749f-0000-4000-8000-000000000000",
+   "business_name": "Mobility Plus Alpharetta",
+   "city": "Alpharetta",
+   "state": "GA",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Greg"
+  },
+  {
+   "id": "1fb001ce-0000-4000-8000-000000000000",
+   "business_name": "Mobility Plus Buford",
+   "city": "Buford",
+   "state": "GA",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Greg"
+  },
+  {
+   "id": "147fb447-0000-4000-8000-000000000000",
+   "business_name": "Mobility Plus Cincinnati",
+   "city": "Cincinnati",
+   "state": "OH",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "95173a8a-0000-4000-8000-000000000000",
+   "business_name": "Mobility Plus Crestwood",
+   "city": "Louisville",
+   "state": "KY",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "46e082f2-0000-4000-8000-000000000000",
+   "business_name": "Mobility Plus Evansville",
+   "city": "Evansville",
+   "state": "IN",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "9a668145-0000-4000-8000-000000000000",
+   "business_name": "Mobility Plus Florence",
+   "city": "Florence",
+   "state": "KY",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "b265a3d6-0000-4000-8000-000000000000",
+   "business_name": "Mobility Plus Lawrenceville",
+   "city": "Lawrenceville",
+   "state": "GA",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Greg"
+  },
+  {
+   "id": "e649c4c5-0000-4000-8000-000000000000",
+   "business_name": "Mobility Plus Lithia Springs",
+   "city": "lithia springs",
+   "state": "GA",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Greg"
+  },
+  {
+   "id": "65fe28f2-0000-4000-8000-000000000000",
+   "business_name": "Mobility Plus LLC",
+   "city": null,
+   "state": null,
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "331e23e3-0000-4000-8000-000000000000",
+   "business_name": "Mobility Plus Newnan",
+   "city": "newnan",
+   "state": "GA",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Greg"
+  },
+  {
+   "id": "dc2e5fd6-0000-4000-8000-000000000000",
+   "business_name": "Mobility Scooters and More",
+   "city": "Roswell",
+   "state": "GA",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Greg"
+  },
+  {
+   "id": "36951a9d-0000-4000-8000-000000000000",
+   "business_name": "My Mobility",
+   "city": "columbus",
+   "state": "IN",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "e87e7fd2-0000-4000-8000-000000000000",
+   "business_name": "Reeves Home Health Care",
+   "city": "Pulaski",
+   "state": "TN",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "c77ce3c0-0000-4000-8000-000000000000",
+   "business_name": "Reeves Medical",
+   "city": "Murfreesboro",
+   "state": "TN",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "30ff287a-0000-4000-8000-000000000000",
+   "business_name": "Retail Medical Solutions",
+   "city": "Lawrenceburg",
+   "state": "IN",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "cf688f09-0000-4000-8000-000000000000",
+   "business_name": "Scenic City Medical Equipment",
+   "city": "Chattanooga",
+   "state": "TN",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Greg"
+  },
+  {
+   "id": "b61ff079-0000-4000-8000-000000000000",
+   "business_name": "Weaver Medical Equipment Metro",
+   "city": "Lithia Springs",
+   "state": "GA",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Greg"
+  },
+  {
+   "id": "b34383af-0000-4000-8000-000000000000",
+   "business_name": "Williams Brothers Bloomington",
+   "city": "Bloomington",
+   "state": "IN",
+   "parent_id": "86baecc2-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "e5b631d9-0000-4000-8000-000000000000",
+   "business_name": "Williams Brothers Columbus",
+   "city": "Columbus",
+   "state": "IN",
+   "parent_id": "86baecc2-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "efecf0bd-0000-4000-8000-000000000000",
+   "business_name": "Williams Brothers Henderson",
+   "city": "Henderson",
+   "state": "KY",
+   "parent_id": "86baecc2-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "1338f8cf-0000-4000-8000-000000000000",
+   "business_name": "Williams Brothers New Albany",
+   "city": "New Albany",
+   "state": "IN",
+   "parent_id": "86baecc2-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "1094dc0d-0000-4000-8000-000000000000",
+   "business_name": "Williams Brothers Paoli",
+   "city": "Paoli",
+   "state": "IN",
+   "parent_id": "86baecc2-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "3396b841-0000-4000-8000-000000000000",
+   "business_name": "Williams Brothers Princeton",
+   "city": "Princeton",
+   "state": "IN",
+   "parent_id": "86baecc2-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "c45023e8-0000-4000-8000-000000000000",
+   "business_name": "Williams Brothers Terre Haute",
+   "city": "Terre Haute",
+   "state": "IN",
+   "parent_id": "86baecc2-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "30c9de61-0000-4000-8000-000000000000",
+   "business_name": "Williams Brothers Vincennes",
+   "city": "Vincennes",
+   "state": "IN",
+   "parent_id": "86baecc2-0000-4000-8000-000000000000",
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  },
+  {
+   "id": "86baecc2-0000-4000-8000-000000000000",
+   "business_name": "Williams Brothers Washington HQ",
+   "city": "Washington",
+   "state": "IN",
+   "parent_id": null,
+   "is_test": false,
+   "active": true,
+   "account_class": null,
+   "rep": "Angelo"
+  }
+ ],
+ "aliases": [
+  {
+   "alias_norm": "ALL STAR FRANKILN",
+   "dealer_id": "48f92add-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "ALL STAR MEDICAL FRANKLIN",
+   "dealer_id": "48f92add-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "ALL STAR MEDICAL HERMITAGE",
+   "dealer_id": "bac65dd4-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "ARH CORPORATE",
+   "dealer_id": "a090529f-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "ARH WILLIAMSON",
+   "dealer_id": "4a40d62f-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "CHERRICARE",
+   "dealer_id": "d3ff61f6-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "CLOUD MEDICAL SUPPLY",
+   "dealer_id": "3140bee6-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "DAVIS DRUGS",
+   "dealer_id": "af8acbb6-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "GEORGE S PHARMACY IN",
+   "dealer_id": "651b304e-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "GEORGES MEDICAL BLUE ASH",
+   "dealer_id": "2c49face-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "GEORGES PHARMACY BATESVILLE",
+   "dealer_id": "651b304e-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "GEORGES PHARMACY BROOKVILLE",
+   "dealer_id": "f894270d-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "GEORGES PHARMACY CONNERSVILLE",
+   "dealer_id": "319086e5-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "GEORGES PHARMACY FORT WAYNE (DME ONLY)",
+   "dealer_id": "ff555b70-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "GEORGES PHARMACY INDIANAPOLIS (DME ONLY)",
+   "dealer_id": "975a60b7-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "GEORGES PHARMACY INDIANAPOLIS WAREHOUSE",
+   "dealer_id": "20f35f87-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "GEORGES PHARMACY MOBILITY WAREHOUSE",
+   "dealer_id": "7f62b486-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "GEORGES PHARMACY NORTH VERNON (DME ONLY)",
+   "dealer_id": "5e168f3a-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "GLASGOW PRESCRIPTION CENTER",
+   "dealer_id": "e9d5aabd-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "GLASGOW PRESCRIPTION CENTER HOSPARUS WAREHOUSE",
+   "dealer_id": "989b329a-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "GLASGOW PRESCRIPTION CTR",
+   "dealer_id": "e9d5aabd-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "HARMON MEDICAL SUPPLY",
+   "dealer_id": "2f6f5041-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "INTEGRITY HOME MEDICAL",
+   "dealer_id": "e7e2133a-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "INTEGRITY HOME MEDICAL GERMANTOWN",
+   "dealer_id": "e7e2133a-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "INTEGRITY HOME MEDICAL MEMPHIS",
+   "dealer_id": "186eb95f-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "JAMES MEDICAL EQUIPMENT BOWLING GREEN",
+   "dealer_id": "c5693cd1-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "JAMES MEDICAL EQUIPMENT RUSSELL SPRINGS",
+   "dealer_id": "5270ebcc-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "KENTUCKIANA MOBILITY SCOOTER RENTAL",
+   "dealer_id": "02db2eed-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "LACEY DRUG",
+   "dealer_id": "a8697eec-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "LARCO MEDICAL",
+   "dealer_id": "4e9c6a43-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "LOUISVILLE MOBILITY SCOOTER",
+   "dealer_id": "78727c85-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MATHES PHARMACY GEORGETOWN",
+   "dealer_id": "04ffcd88-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MATHES PHARMACY NEW ALBANY",
+   "dealer_id": "d1eb2e67-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MED MART HOME ACCESS",
+   "dealer_id": "68bc59a2-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MED MART HQ",
+   "dealer_id": "7b3986b1-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MED MART KETTERING",
+   "dealer_id": "99e0b97b-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MED MART KY",
+   "dealer_id": "50dabf03-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MOBILITY CITY OF LAWRENCEVILLE",
+   "dealer_id": "c3712881-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MOBILITY CITY OF LOUISVILLE",
+   "dealer_id": "8717eb7e-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MOBILITY CITY OF LOUISVILLE KY",
+   "dealer_id": "8717eb7e-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MOBILITY CITY OF MURRAY KY",
+   "dealer_id": "d0282c4a-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MOBILITY PLUS",
+   "dealer_id": "65fe28f2-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MOBILITY PLUS ALPHARETTA",
+   "dealer_id": "2042749f-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MOBILITY PLUS BUFORD",
+   "dealer_id": "1fb001ce-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MOBILITY PLUS CINCINNATI",
+   "dealer_id": "147fb447-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MOBILITY PLUS CRESTWOOD",
+   "dealer_id": "95173a8a-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MOBILITY PLUS EVANSVILLE",
+   "dealer_id": "46e082f2-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MOBILITY PLUS FLORENCE",
+   "dealer_id": "9a668145-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MOBILITY PLUS LAWRENCEVILLE",
+   "dealer_id": "b265a3d6-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MOBILITY PLUS LITHIA SPRINGS",
+   "dealer_id": "e649c4c5-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MOBILITY PLUS NEWNAN",
+   "dealer_id": "331e23e3-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MOBILITY SCOOTERS AND MORE",
+   "dealer_id": "dc2e5fd6-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MOBILITY SCOOTERS MORE",
+   "dealer_id": "dc2e5fd6-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MY MOBILITY",
+   "dealer_id": "36951a9d-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "MY MOBILITY IN",
+   "dealer_id": "36951a9d-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "QUEEN CITY MED MART",
+   "dealer_id": "7b3986b1-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "REEVES HOME HEALTHCARE",
+   "dealer_id": "e87e7fd2-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "REEVES MEDICAL",
+   "dealer_id": "c77ce3c0-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "RETAIL MEDICAL SOLUTIONS",
+   "dealer_id": "30ff287a-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "SCENIC CITY MEDICAL EQUIPMENT",
+   "dealer_id": "cf688f09-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "SHEZ MEDICAL EQUIPMENT MOBILTY PLUS 119ST",
+   "dealer_id": "65fe28f2-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "WILLIAMS BROS HEALTHCARE",
+   "dealer_id": "e5b631d9-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "WILLIAMS BROS HEALTHCARE PHARMACY",
+   "dealer_id": "86baecc2-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "WILLIAMS BROTHERS BLOOMINGTON",
+   "dealer_id": "b34383af-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "WILLIAMS BROTHERS COLUMBUS",
+   "dealer_id": "e5b631d9-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "WILLIAMS BROTHERS HEALTHCARE",
+   "dealer_id": "efecf0bd-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "WILLIAMS BROTHERS HEALTHCARE PHARMACY",
+   "dealer_id": "86baecc2-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "WILLIAMS BROTHERS HENDERSON",
+   "dealer_id": "efecf0bd-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "WILLIAMS BROTHERS NEW ALBANY",
+   "dealer_id": "1338f8cf-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "WILLIAMS BROTHERS PAOLI",
+   "dealer_id": "1094dc0d-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "WILLIAMS BROTHERS PRINCETON",
+   "dealer_id": "3396b841-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "WILLIAMS BROTHERS TERRE HAUTE",
+   "dealer_id": "c45023e8-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "WILLIAMS BROTHERS VINCENNES",
+   "dealer_id": "30c9de61-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "WILLIAMS BROTHERS WASHINGTON HQ",
+   "dealer_id": "86baecc2-0000-4000-8000-000000000000"
+  },
+  {
+   "alias_norm": "WYATT S PHARMACY",
+   "dealer_id": "b61ff079-0000-4000-8000-000000000000"
+  }
+ ],
+ "sales": [
+  {
+   "customer_name": "All Star Medical Supply TN",
+   "ship_city": "Brentwood",
+   "ship_state": "Tennessee",
+   "dealer_id": "48f92add-0000-4000-8000-000000000000",
+   "n": 6,
+   "amount": 1127.5
+  },
+  {
+   "customer_name": "All Star Medical Supply TN",
+   "ship_city": "Hermitage",
+   "ship_state": "Tennessee",
+   "dealer_id": "bac65dd4-0000-4000-8000-000000000000",
+   "n": 6,
+   "amount": 1822.0
+  },
+  {
+   "customer_name": "CherriCare",
+   "ship_city": "Owensboro",
+   "ship_state": "Kentucky",
+   "dealer_id": "d3ff61f6-0000-4000-8000-000000000000",
+   "n": 1,
+   "amount": 440.0
+  },
+  {
+   "customer_name": "Davis Drugs",
+   "ship_city": "Paducah",
+   "ship_state": "Kentucky",
+   "dealer_id": "af8acbb6-0000-4000-8000-000000000000",
+   "n": 4,
+   "amount": 440.0
+  },
+  {
+   "customer_name": "George's Family Pharmacy",
+   "ship_city": "Blue Ash",
+   "ship_state": "Ohio",
+   "dealer_id": "2c49face-0000-4000-8000-000000000000",
+   "n": 12,
+   "amount": 4122.0
+  },
+  {
+   "customer_name": "GF Health Products, Inc.",
+   "ship_city": "Atlanta",
+   "ship_state": "Georgia",
+   "dealer_id": null,
+   "n": 1,
+   "amount": 320.0
+  },
+  {
+   "customer_name": "Integrity Home Medical",
+   "ship_city": "Germantown",
+   "ship_state": "TN",
+   "dealer_id": "e7e2133a-0000-4000-8000-000000000000",
+   "n": 5,
+   "amount": 1543.0
+  },
+  {
+   "customer_name": "Integrity Home Medical",
+   "ship_city": "Memphis",
+   "ship_state": "Tennessee",
+   "dealer_id": "186eb95f-0000-4000-8000-000000000000",
+   "n": 1,
+   "amount": 440.0
+  },
+  {
+   "customer_name": "James Medical Equipment",
+   "ship_city": "Bowling Green",
+   "ship_state": "Kentucky",
+   "dealer_id": "c5693cd1-0000-4000-8000-000000000000",
+   "n": 5,
+   "amount": 776.0
+  },
+  {
+   "customer_name": "Lacey Drug Company",
+   "ship_city": "Ackworth",
+   "ship_state": "Georgia",
+   "dealer_id": "a8697eec-0000-4000-8000-000000000000",
+   "n": 10,
+   "amount": 1988.0
+  },
+  {
+   "customer_name": "Larco Medical",
+   "ship_city": "Cookeville",
+   "ship_state": "Tennessee",
+   "dealer_id": "4e9c6a43-0000-4000-8000-000000000000",
+   "n": 8,
+   "amount": 2152.0
+  },
+  {
+   "customer_name": "Medical Supply Store",
+   "ship_city": "Chattanooga",
+   "ship_state": "TN",
+   "dealer_id": "cf688f09-0000-4000-8000-000000000000",
+   "n": 3,
+   "amount": 581.0
+  },
+  {
+   "customer_name": "Medmart Retail",
+   "ship_city": "Cincinnati",
+   "ship_state": "Ohio",
+   "dealer_id": "7b3986b1-0000-4000-8000-000000000000",
+   "n": 13,
+   "amount": 3662.0
+  },
+  {
+   "customer_name": "Mobility City Of Lawrenceville",
+   "ship_city": "Lawrenceville",
+   "ship_state": "Georgia",
+   "dealer_id": "c3712881-0000-4000-8000-000000000000",
+   "n": 15,
+   "amount": 5292.0
+  },
+  {
+   "customer_name": "Mobility City Of Louisville KY",
+   "ship_city": "Louisville",
+   "ship_state": "Kentucky",
+   "dealer_id": "8717eb7e-0000-4000-8000-000000000000",
+   "n": 1,
+   "amount": 536.0
+  },
+  {
+   "customer_name": "Mobility City Of Murray KY",
+   "ship_city": "Murray",
+   "ship_state": "Kentucky",
+   "dealer_id": "d0282c4a-0000-4000-8000-000000000000",
+   "n": 10,
+   "amount": 3522.0
+  },
+  {
+   "customer_name": "Mobility Plus Alpharetta",
+   "ship_city": "Alpharetta",
+   "ship_state": "Georgia",
+   "dealer_id": "2042749f-0000-4000-8000-000000000000",
+   "n": 5,
+   "amount": 940.0
+  },
+  {
+   "customer_name": "Mobility Plus Louisville",
+   "ship_city": "Crestwood",
+   "ship_state": "Kentucky",
+   "dealer_id": "95173a8a-0000-4000-8000-000000000000",
+   "n": 3,
+   "amount": 440.0
+  },
+  {
+   "customer_name": "Mobility Scooters And More",
+   "ship_city": "Roswell",
+   "ship_state": "Georgia",
+   "dealer_id": "dc2e5fd6-0000-4000-8000-000000000000",
+   "n": 4,
+   "amount": 831.0
+  },
+  {
+   "customer_name": "My Mobility",
+   "ship_city": "Columbus",
+   "ship_state": "Indiana",
+   "dealer_id": "36951a9d-0000-4000-8000-000000000000",
+   "n": 10,
+   "amount": 4139.0
+  },
+  {
+   "customer_name": "Retail Medical Solutions",
+   "ship_city": "Lawrenceburg",
+   "ship_state": "Indiana",
+   "dealer_id": "30ff287a-0000-4000-8000-000000000000",
+   "n": 4,
+   "amount": 1092.0
+  },
+  {
+   "customer_name": "The Glasgow Prescription Center",
+   "ship_city": "Glasgow",
+   "ship_state": "Kentucky",
+   "dealer_id": "989b329a-0000-4000-8000-000000000000",
+   "n": 6,
+   "amount": 1016.0
+  },
+  {
+   "customer_name": "Williams Brothers Healthcare Pharmacy",
+   "ship_city": "Bloomington",
+   "ship_state": "Indiana",
+   "dealer_id": "b34383af-0000-4000-8000-000000000000",
+   "n": 3,
+   "amount": 1512.0
+  },
+  {
+   "customer_name": "Williams Brothers Healthcare Pharmacy",
+   "ship_city": "Columbus",
+   "ship_state": "Indiana",
+   "dealer_id": "e5b631d9-0000-4000-8000-000000000000",
+   "n": 2,
+   "amount": 1072.0
+  },
+  {
+   "customer_name": "Williams Brothers Healthcare Pharmacy",
+   "ship_city": "Princeton",
+   "ship_state": "Indiana",
+   "dealer_id": "3396b841-0000-4000-8000-000000000000",
+   "n": 2,
+   "amount": 1072.0
+  },
+  {
+   "customer_name": "Williams Brothers Healthcare Pharmacy",
+   "ship_city": "Washington",
+   "ship_state": "Indiana",
+   "dealer_id": "86baecc2-0000-4000-8000-000000000000",
+   "n": 3,
+   "amount": 2144.0
+  }
+ ]
+}
