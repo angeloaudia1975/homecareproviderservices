@@ -10,7 +10,7 @@ const M=[
  ['catalog-api.js','regression fix never spent','  if(REGRESSION && res && res.statusCode < 300){','  if(false){'],
  ['catalog-api.js','database refusal shown as 500','  if(res && res.statusCode >= 500 && /line_frozen/.test(String(res.body||""))){','  if(false){'],
  ['_mc.js','reconcile apply not commercial','  if(b.action === "reconcile") return b.apply === true;','  if(b.action === "reconcile") return false;'],
- ['_mc.js','retire not commercial','"merge_layers","merge_layers_bulk","merge_products","merge_products_bulk","unmerge_layers","unmerge_product",\n  "clear_override","set_group"]);','"merge_layers","merge_layers_bulk","merge_products","merge_products_bulk","unmerge_layers","unmerge_product",\n  "clear_override"]);'],
+ ['_mc.js','retire not commercial','"merge_layers","merge_layers_bulk","merge_products","merge_products_bulk","unmerge_layers","unmerge_product",\n  "clear_override","set_group",','"merge_layers","merge_layers_bulk","merge_products","merge_products_bulk","unmerge_layers","unmerge_product",\n  "clear_override",'],
  ['_mc.js','omitted field written as empty','  const present = STAGE_FIELDS.filter(f => Object.prototype.hasOwnProperty.call(r, f));','  const present = STAGE_FIELDS.filter(f => f !== "status" && f !== "status_note");'],
  ['_mc.js','clearing allowed without approval','        const approved = clearSet.has(f) && clearApproved;','        const approved = true;'],
  ['_mc.js','clearing allowed without a decision','        const approved = clearSet.has(f) && clearApproved;','        const approved = clearSet.has(f);'],

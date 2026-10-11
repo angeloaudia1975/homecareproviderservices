@@ -1,4 +1,4 @@
-// HCPS Academy — A2A M1 external probe (browser console). Uses ONLY the PUBLIC key, as a stranger could.
+// HCPS Academy — A2A M1 (rev 2) external probe (browser console). Uses ONLY the PUBLIC key, as a stranger could.
 // Paste into the console of a blank tab (about:blank); it asks for the public key, stores nothing, sends nothing elsewhere.
 // Calls every M1 function through the public API with correctly named arguments (so "not found" can only mean the
 // function is not installed, never a wrong signature). Every argument is a random id / harmless text: even a broken
@@ -14,18 +14,24 @@
   if (c.status !== 200) return console.log(`KEY NOT ACCEPTED (HTTP ${c.status}) — not the right public key; nothing was tested.`);
   const Z = '00000000-0000-0000-0000-000000000000';
   const calls = {
+    // internal helpers (owner only)
     academy_op_begin: { p_op: 'probe', p_actor: 'probe' },
     academy_op_end: {},
     academy_op_audit: { p_actor_type: 'system', p_actor: 'probe', p_entity: 'probe', p_entity_id: 'probe', p_action: 'probe', p_before: null, p_after: null },
     academy_op_norm_answer: { p: '"a"' },
+    academy_op_actor_staff: { p_actor: 'staff:probe@example.invalid' },
+    academy_op_actor_learner: { p_actor: 'learner:' + Z, p_learner_id: Z },
+    academy_op_attempt_check: { p_enrollment_id: Z, p_question_ids: [Z], p_for: 'start' },
+    // the 11 operations (server role only)
     academy_op_set_training_manager: { p_actor: 'probe', p_membership_id: Z, p_make: true, p_reason: 'probe' },
     academy_op_review_external_cert: { p_actor: 'probe', p_id: Z, p_decision: 'rejected', p_evidence_type: null, p_evidence_ref: null, p_note: 'probe' },
-    academy_op_issue_certificate: { p_actor_type: 'system', p_actor: 'probe', p_attempt_id: Z, p_dealer_name: 'probe' },
+    academy_op_issue_certificate: { p_actor: 'probe', p_attempt_id: Z, p_dealer_name: 'probe' },
     academy_op_revoke_certificate: { p_actor: 'probe', p_certificate_id: Z, p_reason: 'probe' },
     academy_op_publish_version: { p_actor: 'probe', p_version_id: Z },
     academy_op_retire_version: { p_actor: 'probe', p_version_id: Z, p_reason: 'probe' },
+    academy_op_start_attempt: { p_actor: 'probe', p_enrollment_id: Z },
     academy_op_submit_attempt: { p_actor: 'probe', p_attempt_id: Z, p_answers: {} },
-    academy_op_correct_attempt: { p_actor: 'probe', p_attempt_id: Z, p_score: 0, p_passed: false, p_reason: 'probe' },
+    academy_op_correct_attempt: { p_actor: 'probe', p_attempt_id: Z, p_score: 0, p_reason: 'probe' },
     academy_op_record_fact: { p_actor: 'probe', p_fact: {}, p_supersedes: null, p_approved_by: null },
     academy_op_withdraw_fact: { p_actor: 'probe', p_fact_id: Z, p_reason: 'probe' },
   };
@@ -45,7 +51,7 @@
   rows.push({ function: '(direct write) academy_certificates', http: w.status, result: wOk ? 'BLOCKED' : 'OPEN!!', detail: wOk ? '' : wb.slice(0, 160) });
   console.table(rows);
   console.log(open ? `${open} CHECK(S) OPEN — stop and send this table`
-    : notInstalled === Object.keys(calls).length ? 'M1 NOT INSTALLED — all 14 functions absent; direct write BLOCKED (key verified)'
+    : notInstalled === Object.keys(calls).length ? 'M1 NOT INSTALLED — all 18 functions absent; direct write BLOCKED (key verified)'
     : notInstalled === 0 ? `ALL ${rows.length} CHECKS BLOCKED (key verified)`
     : `MIXED: ${notInstalled} not installed, ${blocked} blocked — M1 is partly installed; stop and send this table`);
 })();

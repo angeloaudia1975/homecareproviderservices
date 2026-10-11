@@ -1235,6 +1235,31 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   for value; fingerprints equal `gs_fp_pre_mc_p5`; Corsicana and PediFix verify as file. Invalid/missing record terms
   stay test- and mutant-backed — never change production freight data just to exercise them. Phase 6 waits for
   Angelo's approval of the Phase 5 post-release report.
+  Phase 5 ACCEPTED (Angelo, 2026-10-10); runs #11–14 and the pre/post Phase 5 fingerprints are kept. Production fallback
+  approved: valid `manufacturer_meta.freight_terms` → manufacturers.json → no rule. A bad or unreadable record may fall
+  back so dealers are not disrupted, but Manufacturer Center must keep flagging it as a verification failure.
+- **Manufacturer Center Phase 6 — the guided workflow (approved by Angelo 2026-10-10; its own release).** Screens in
+  manufacturer-center.html, per line: 1 Sources → 2 Match & decide → 3 Structure & content (status + links only) →
+  4 Commercial & freight → 5 Stage → 6 Verify & activate, plus History (compare two runs) and Decisions. Rules:
+  (a) Every write answers `dry_run:true` with exactly what it would write, and the screen shows that before the
+  write button exists. (b) **Approval 1** = `mc_approve_gate {gate:'stage', plan_hash, plan_kind:'records'|'freight'}`:
+  stage_record_source and mc_set_freight_terms write only with an unused approval whose hash equals the dry-run plan
+  the server recomputes (a changed plan needs a new approval). (c) **Approval 2** = `mc_approve_gate {gate:'activate',
+  run_id}`: a PASSING `pre` verification run of the same line, newer than every product_skus change; set_record_authority
+  (on) needs it, re-checks the run, and spends it. Approvals are mfr_decisions (kind acceptance, field gate:*),
+  single-use, recorded only by mc_approve_gate (mc_record_decision refuses gate:* fields). (d) Source facts
+  (price_imports, raw kept) and HCPS interpretations (mfr_decisions hcps_value using staging fields; line-wide or
+  `applies_to:'packs'`) are kept apart; mc_match only PROPOSES their combination. A source is imported once; a
+  corrected file is a new source; a source needs its received date; files go to private `mfr-sources` (sha256,
+  never overwritten). (e) The new line writes (mc_register_source, mc_accept_source, mc_import_source_rows,
+  mc_approve_gate, mc_set_freight_terms) are in COMMERCIAL_ACTIONS, so a frozen line refuses them (even dry runs) and
+  opens read-only; its only control is Decisions → regression_fix. (f) `supabase/mc_phase6_append_only.sql`: runs and
+  decisions are never updated, deleted or truncated — the one allowed change is stamping used_at/used_by once.
+  (g) Product data is still written only by stage_record_source / set_record_authority; structure, content, images
+  and categories stay in their own tools. (h) Tests that write records go through `test/mc-gates.js`. The dry
+  walkthrough (test/mcflow.test.js, screens: test/mcui.walkthrough.js) rebuilds a COPY of Bemis as a new line and must
+  end at the real Bemis fingerprint 3620a321933995db. Open follow-up: re-check anonymous listing of `mfr-sources` once
+  a real source file is stored. Do not onboard the next manufacturer until Angelo approves.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
@@ -1508,6 +1533,49 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   fraction. A disputed or unsafe fact is withdrawn with NO replacement value (`academy_op_withdraw_fact`: an
   `awaiting_manufacturer` row with value null), never left published (D2). A TEST course (slug `test-…`) never issues a
   certificate. The A1 acceptance tests run before and after M1 (setup goes through the operations once M1 exists).
+- **M1 rev 2 — final security refinements (Angelo, 10 Oct 2026 22:29; A–E).** (A) An exam correction takes a SCORE only
+  (0–100) and a reason; pass/fail always follows the version's pass mark — there is no override that records a pass the
+  score does not support (an override would need its own approved design). (B) A certified pass is never corrected to a
+  fail while its certificate is valid: the correction is refused until the certificate is revoked as its own audited
+  decision (recommended over automatic revocation, so revoking a credential is always a deliberate, separately recorded
+  act). (C) Attempts are created only by `academy_op_start_attempt` (the database draws exactly `exam_questions` distinct
+  active exam questions of the ENROLLED, PUBLISHED version; one open attempt at a time); submission and issuance re-check
+  the set (same version, active exam questions, count, no duplicates, enrollment not withdrawn, version published or
+  since retired), and the submitting learner must be the attempt's learner. (D) The 11 operations are SECURITY DEFINER
+  with a pinned search path, executable by the server role only; the 7 helpers and the guard by the owner only. The guard
+  accepts a marked change only with the owner's rights, so the server role cannot set `academy.op` by hand. Staff actors
+  must be `staff:<email>` of an ACTIVE president/admin/owner in staff_users (approvers of approval-required facts too);
+  learner actors exactly `learner:<id>` of the record's learner, active, not HCPS staff. (E) Issuance needs
+  `phase2_flags.academy_certificates` exactly true (the database refuses otherwise, as well as the application layer), an
+  issuer of `system:grader` or an administrator, a submitted+graded+passed attempt on a valid set, an active non-staff
+  learner, a non-withdrawn enrollment, a non-TEST HCPS certification course, and no earlier certificate for the
+  enrollment. Note: enrollments are unique per learner+version, so after a revocation re-certification on the same
+  version needs a decision (new version or a reviewed schema change) — not built. Tests: `test/academy/m1_hardening.sql`
+  (28; 19 of them fail on the original M1), the acceptance file (42 + check 43, which also proves phase2_flags unchanged).
+- **M1 rev 2 APPROVED for production by Angelo (10 Oct 2026 22:49)** — exact sha256 7253ff80…a864 (supersedes 85e87157…);
+  Angelo runs it by hand in the SQL editor; Claude never runs it. Expected installed-code fingerprint
+  130e45fa36f768e032a89da43b645f8a (`supabase/academy_a2a_m1_postcheck.sql`) — or e70543ba23d96ca7c5aec8eeff0ea341 when the
+  file is pasted into the SQL editor from Windows (CRLF line endings; same code otherwise, reproduced exactly locally). Lesson:
+  a code fingerprint taken from prosrc must be computed for BOTH line-ending forms before the run. Post-migration: 19 functions, 6 guard
+  triggers, RLS 18/18, switches OFF, acceptance 43/43, A1 27/27, no test rows, probe all BLOCKED, outside fingerprints =
+  the 21:45 baseline. A SKIP in the editor is not a pass: it needs the alternative check before M1 is declared complete.
+  A failed test = stop and investigate; never an automatic rollback. PR #4 stays draft until verified and approved.
+- **M1 rev 2 RUN and VERIFIED in production (Angelo, 10 Oct 2026 ~23:00 CT).** Preflight after = the 21:45 baseline on every
+  fingerprint (outside grants 1c268eb2…/2811, policies 219ac18e…/29, columns d039b75f…/109; Academy 7af6d10e…/252,
+  ca214093…/179, RLS 18/18, 0 policies; key row counts identical); 19 functions, 6 guard triggers; installed-code
+  fingerprint e70543ba… (the approved file pasted with Windows line endings — reproduced exactly locally); operations
+  server-only 11, helpers callable by the server 0; M1 acceptance 43/43 (no SKIP — the server-role checks 34/39 ran);
+  A1 compatibility 27/27; Academy rows 0 and switches {} after the tests; public-key probe ALL 19 BLOCKED (401).
+  **Fingerprint ACCEPTED by Angelo (10 Oct 2026 23:12):** installed e70543ba23d96ca7c5aec8eeff0ea341 (expected
+  130e45fa36f768e032a89da43b645f8a with Unix line endings); cause = the editor paste saved every line ending as \r\n;
+  evidence = the approved file installed locally with CRLF reproduces e70543ba exactly and passes 28 + 43 + 27 + 11 tests,
+  and production passed 43/43, 27/27 and 19/19 BLOCKED. Never roll back or reinstall M1 just to change the fingerprint.
+  **A2A (code + M1) COMPLETE — accepted by Angelo 10 Oct 2026 23:12.** All Academy switches OFF; certificates stay off until separately authorized. PR #4
+  (M1 rev 2 files) stays DRAFT until Angelo approves its merge. A2C and later units not started.
+- **Exam retake policy (approved; build in A2E, NOT yet):** one open attempt (already enforced by start_attempt), a
+  one-hour cooldown between attempts, at most three attempts per day, unlimited lifetime retakes — enforced on the
+  server/database and tested under SIMULTANEOUS requests before the learner pilot. HCPS certificate issuance stays
+  disabled (`academy_certificates` off) until Angelo authorizes it separately.
 - **Academy sign-in (security review 10 Oct 2026).** Learners get the Academy's OWN session — an HMAC-signed 8-hour value
   in an HttpOnly, Secure, SameSite=Strict `__Host-hcps_academy` cookie (`_academy_session.js`, secret
   `ACADEMY_SESSION_SECRET`, Production-scoped, 32+ random bytes, set by Angelo). It is accepted only by `academy-api`;
@@ -1520,8 +1588,9 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   verified: academy-handoff status `{enabled:false}`; admin API 401 with no token / public key / forged token; learner
   API and handoff mint 403 `flag_off`; no-store on every response; `/academy/*` 404 with DENY / noindex / CSP;
   netlify.app/academy and the bare domain land on www/academy (no loop); site pages and Connect 360 unchanged. All seven
-  switches OFF. M1 (`academy_a2a_m1_audited_ops.sql`, sha256 85e87157…22a01) is committed but NOT run — awaits Angelo's
-  execution approval; its baseline is the 21:45 preflight (outside grants 1c268eb2…/2811, policies 219ac18e…/29,
+  switches OFF. **A2A ACCEPTED by Angelo (10 Oct 2026 22:29)**, subject to the remaining authentication tests (the
+  request-body-actor test and the signed-in role/scope tests) before any learner or staff feature is switched on. M1 is NOT run — the original (sha256 85e87157…22a01) was held by Angelo for refinements A–E; rev 2 awaits his
+  approval; its baseline is the 21:45 preflight (outside grants 1c268eb2…/2811, policies 219ac18e…/29,
   columns d039b75f…/109; Academy grants 7af6d10e…/252, columns ca214093…/179, RLS 18/18, 0 policies).
 - **D14 — Academy-only email sign-in codes (approved by Angelo 10 Oct 2026 for A2B DESIGN only; not implemented).**
   Training-only employees sign in with Academy-only email codes. Requirements: training-only credentials never

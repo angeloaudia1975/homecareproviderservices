@@ -1,42 +1,41 @@
 -- =============================================================================================
--- HCPS Academy — Phase A2A migration M1: AUDITED OPERATIONS     supabase/academy_a2a_m1_audited_ops.sql
--- STATUS: proposed with A2A for review. Run ONLY after Angelo approves this exact file (same gate as A1:
--- preflight, review, approval, SQL editor Run button with the committed file pasted verbatim, sha256 checked).
--- Rollback: supabase/academy_a2a_m1_rollback.sql. Tests: supabase/academy_a2a_m1_acceptance_tests.sql
--- (and test/academy-a2a.pg.test.js locally).
+-- HCPS Academy — Phase A2A migration M1: AUDITED OPERATIONS (rev 2)   supabase/academy_a2a_m1_audited_ops.sql
+-- STATUS: proposed for review. Run ONLY after Angelo approves this exact file (preflight, review, approval, SQL editor
+-- Run button with the committed file pasted verbatim, sha256 checked). Rollback: supabase/academy_a2a_m1_rollback.sql.
+-- Tests: supabase/academy_a2a_m1_acceptance_tests.sql (and test/academy-a2a.pg.test.js locally).
 --
 -- WHY (Angelo, 10 Oct 2026 18:45): for security-sensitive operations "the database change and audit record must
--- succeed together or the operation must fail". A function called through the API runs as ONE transaction, so
--- each operation below makes its change AND writes its academy_events row together: if either fails, neither
--- is kept. Guard triggers then refuse the same changes made any other way (a plain API write, a code bug, a
--- hand-written statement), so the audited operation is the only road.
+-- succeed together or the operation must fail". Each operation below makes its change AND writes its academy_events
+-- row in one transaction. Guard triggers refuse the same changes made any other way.
 --
--- Operations (all: service_role only; RLS-bypassing server code calls them; never callable with the public key):
---   academy_op_set_training_manager   grant / revoke the Training Manager role
---   academy_op_review_external_cert   verify (with evidence) or reject (with a note) a Golden-issued credential
---   academy_op_issue_certificate      issue an HCPS certificate from a passed attempt (never from a TEST course)
---   academy_op_revoke_certificate     revoke an HCPS certificate (reason required)
---   academy_op_publish_version        publish a course version (checklist enforced; facts pinned)
---   academy_op_retire_version         retire a published course version (reason required)
---   academy_op_submit_attempt         submit + grade an exam attempt IN the database (answer keys never leave it)
---   academy_op_correct_attempt        an admin correction of an exam result (reason required)
---   academy_op_record_fact            add a product fact, or supersede the current one (approval-required
---                                     fields need an approver)
---   academy_op_withdraw_fact          withdraw a disputed or unsafe fact with NO replacement value: the current
---                                     row is closed and replaced by a "awaiting_manufacturer" row whose value is
---                                     JSON null, so lessons flag it and scored exams exclude it (decision D2)
+-- REV 2 (Angelo, 10 Oct 2026 22:29 — final security refinements A–E):
+--   A. Corrections take a score only; pass/fail is derived (score >= pass mark), score must be 0–100, a reason is
+--      required. There is no override that records a pass the score does not support.
+--   B. A correction that would turn a certified pass into a fail is refused while the certificate is valid: the
+--      certificate must be revoked first, as its own audited decision.
+--   C. Exam attempts are created only by academy_op_start_attempt, which draws exactly the version's number of
+--      distinct, active exam questions of the ENROLLED, PUBLISHED version. Submission and issuance re-check the set
+--      (version, active exam questions, count, duplicates). The learner submitting must be the attempt's learner.
+--   D. Operations are SECURITY DEFINER (fixed owner rights, pinned search path) and executable by the server role
+--      only; the internal helpers are executable by nobody but the owner. The guard accepts a marked change only
+--      when it is made with the owner's rights, so the server role cannot set the marker by hand. Staff actors must
+--      be an active HCPS administrator ("staff:<email>" in staff_users, role president/admin/owner); a learner actor
+--      must be the learner the record belongs to; an approval-required fact names an administrator as approver.
+--   E. Issuance requires: the certificates switch ON (phase2_flags.academy_certificates exactly true), an active
+--      learner who is not HCPS staff, an enrollment that is not withdrawn, an HCPS certification course that is not a
+--      TEST course, a published (or since-retired) version, a submitted, graded and passed attempt on a valid question
+--      set, and no certificate already issued for the enrollment.
 --
--- Guarded tables (changes refused unless made by one of the operations above):
---   academy_memberships     role changes (and inserting a Training Manager)
---   academy_external_certs  any move into, out of or within verified / rejected, and the evidence fields
---   academy_certificates    every insert, update and delete
---   academy_course_versions publishing and retiring
---   academy_attempts        submitting, grading, changing results, deleting
---   product_facts           every insert and update (deletes were already refused in A1)
+-- Operations (server role only):
+--   academy_op_set_training_manager, academy_op_review_external_cert, academy_op_issue_certificate,
+--   academy_op_revoke_certificate, academy_op_publish_version, academy_op_retire_version, academy_op_start_attempt,
+--   academy_op_submit_attempt, academy_op_correct_attempt, academy_op_record_fact, academy_op_withdraw_fact
+-- Internal helpers (owner only): academy_op_begin, academy_op_end, academy_op_audit, academy_op_norm_answer,
+--   academy_op_actor_staff, academy_op_actor_learner, academy_op_attempt_check
 --
--- Changes NOTHING outside the Academy: no existing HCPS table, grant, policy, function or row. Adds 14 functions
--- (10 operations, 4 internal helpers) + 1 guard function and 6 guard triggers. Every UPDATE / DELETE carries a
--- WHERE clause (Supabase API sessions load pg-safeupdate). Runs as ONE transaction.
+-- Changes NOTHING outside the Academy: reads staff_users and app_settings, writes neither; no existing HCPS table,
+-- grant, policy, function or row changes. Adds 18 functions + 1 guard function and 6 guard triggers on Academy
+-- tables. Every UPDATE / DELETE carries a WHERE clause (pg-safeupdate). Runs as ONE transaction.
 -- =============================================================================================
 begin;
 
@@ -49,15 +48,19 @@ begin
              where n.nspname = 'public' and (p.proname like 'academy\_op\_%' or p.proname = 'academy_audited_guard')) then
     raise exception 'M1 audited operations already exist. Stop and investigate; do not re-run.';
   end if;
+  if (select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'staff_users'
+        and column_name in ('email','role','active')) <> 3 then
+    raise exception 'staff_users (email, role, active) not found. Stop and investigate.';
+  end if;
 end $$;
 
 -- ---------------------------------------------------------------------------------------------
--- INTERNAL HELPERS
+-- INTERNAL HELPERS (owner only)
 -- ---------------------------------------------------------------------------------------------
--- Marks this transaction as running an audited operation. A transaction-local setting: it ends with the
--- transaction, and the API cannot set it (PostgREST only sets request.* settings).
+-- Marks this transaction as running an audited operation (transaction-local). The guard accepts it only together
+-- with the owner's rights, which a caller gets solely by running one of the operations below.
 create function public.academy_op_begin(p_op text, p_actor text) returns void
-language plpgsql set search_path = public as $$
+language plpgsql set search_path = pg_catalog, public, pg_temp as $$
 begin
   if p_actor is null or length(trim(p_actor)) = 0 then
     raise exception 'academy: an operation needs the acting person' using errcode = '22023';
@@ -66,7 +69,7 @@ begin
 end $$;
 
 create function public.academy_op_end() returns void
-language plpgsql set search_path = public as $$
+language plpgsql set search_path = pg_catalog, public, pg_temp as $$
 begin
   perform set_config('academy.op', '', true);
 end $$;
@@ -74,22 +77,97 @@ end $$;
 -- The audit row. Part of the same transaction as the change: if it fails, the whole operation fails.
 create function public.academy_op_audit(p_actor_type text, p_actor text, p_entity text, p_entity_id text,
                                         p_action text, p_before jsonb, p_after jsonb) returns void
-language plpgsql set search_path = public as $$
+language plpgsql set search_path = pg_catalog, public, pg_temp as $$
 begin
   insert into academy_events (actor_type, actor, entity, entity_id, action, before, after)
   values (p_actor_type, p_actor, p_entity, p_entity_id, p_action, p_before, p_after);
 end $$;
 
+-- One answer, as a sorted text array: "a" -> {a}; ["c","a"] -> {a,c}. Anything else -> null (never correct).
+create function public.academy_op_norm_answer(p jsonb) returns text[]
+language sql immutable set search_path = pg_catalog, public, pg_temp as $$
+  select case jsonb_typeof(p)
+           when 'string' then array[p #>> '{}']
+           when 'array'  then (select coalesce(array_agg(e order by e), '{}') from jsonb_array_elements_text(p) e)
+           else null end
+$$;
+
+-- A staff actor: "staff:<email>" naming an ACTIVE HCPS administrator (president / admin / owner). Returns the email.
+create function public.academy_op_actor_staff(p_actor text) returns text
+language plpgsql stable set search_path = pg_catalog, public, pg_temp as $$
+declare v_email text;
+begin
+  if p_actor is null or p_actor !~ '^staff:[^[:space:]@]+@[^[:space:]@]+$' then
+    raise exception 'academy: the acting person must be named as staff:<email>' using errcode = '42501';
+  end if;
+  v_email := lower(substr(p_actor, 7));
+  if not exists (select 1 from staff_users s where lower(s.email) = v_email and coalesce(s.active, true)
+                   and lower(coalesce(s.role, '')) in ('president','admin','owner')) then
+    raise exception 'academy: % is not an active HCPS administrator', v_email using errcode = '42501';
+  end if;
+  return v_email;
+end $$;
+
+-- A learner actor: exactly "learner:<id>" of the learner the record belongs to, who is active and not HCPS staff.
+create function public.academy_op_actor_learner(p_actor text, p_learner_id uuid) returns void
+language plpgsql stable set search_path = pg_catalog, public, pg_temp as $$
+declare v_l academy_learners;
+begin
+  if p_actor is distinct from 'learner:' || p_learner_id::text then
+    raise exception 'academy: the acting learner is not this record''s learner' using errcode = '42501';
+  end if;
+  select * into v_l from academy_learners where id = p_learner_id;
+  if not found or v_l.status <> 'active' then
+    raise exception 'academy: the learner is not active' using errcode = '42501';
+  end if;
+  if exists (select 1 from staff_users s where lower(s.email) = v_l.email and coalesce(s.active, true)) then
+    raise exception 'academy: HCPS staff are not learners' using errcode = '42501';   -- decision D6
+  end if;
+end $$;
+
+-- The exam rules for an attempt's question set. p_for = 'start' (version must be published) or 'grade' (published or
+-- since retired: a retirement never voids an exam taken on the published version). Returns the version.
+create function public.academy_op_attempt_check(p_enrollment_id uuid, p_question_ids uuid[], p_for text)
+returns academy_course_versions
+language plpgsql stable set search_path = pg_catalog, public, pg_temp as $$
+declare v_enr academy_enrollments; v_ver academy_course_versions; v_n int; v_ok int;
+begin
+  select * into v_enr from academy_enrollments where id = p_enrollment_id;
+  if not found then raise exception 'academy: enrollment not found' using errcode = 'P0002'; end if;
+  if v_enr.status = 'withdrawn' then raise exception 'academy: the enrollment was withdrawn' using errcode = '22023'; end if;
+  select * into v_ver from academy_course_versions where id = v_enr.version_id;
+  if v_ver.status <> 'published' and not (p_for = 'grade' and v_ver.status = 'retired') then
+    raise exception 'academy: exams run only on a published course version' using errcode = '22023';
+  end if;
+  v_n := coalesce(cardinality(p_question_ids), 0);
+  if v_n = 0 then raise exception 'academy: the attempt has no questions' using errcode = '22023'; end if;
+  if v_n <> (select count(distinct x) from unnest(p_question_ids) x) then
+    raise exception 'academy: the attempt repeats a question' using errcode = '22023';
+  end if;
+  if v_n <> v_ver.exam_questions then
+    raise exception 'academy: the attempt has % questions; this version requires %', v_n, v_ver.exam_questions using errcode = '22023';
+  end if;
+  select count(*) into v_ok from academy_questions
+   where id = any(p_question_ids) and version_id = v_ver.id and use = 'exam' and status = 'active';
+  if v_ok <> v_n then
+    raise exception 'academy: % question(s) are not active exam questions of this course version', v_n - v_ok using errcode = '22023';
+  end if;
+  return v_ver;
+end $$;
+
 -- ---------------------------------------------------------------------------------------------
 -- GUARD: the audited operation is the only road for sensitive changes
 -- ---------------------------------------------------------------------------------------------
+-- A change passes only when BOTH hold: the operation marker is set, and the statement runs with the owner's rights
+-- (inside a SECURITY DEFINER operation). The server role, even if it sets the marker by hand, never has those rights.
 create function public.academy_audited_guard() returns trigger
-language plpgsql set search_path = public as $$
+language plpgsql set search_path = pg_catalog, public, pg_temp as $$
 declare
   v_op text := coalesce(current_setting('academy.op', true), '');
   v_bad boolean := false;
 begin
-  if v_op <> '' then
+  if v_op <> '' and current_user = (select pg_get_userbyid(p.proowner) from pg_proc p
+                                     where p.oid = 'public.academy_audited_guard()'::regprocedure) then
     return case when tg_op = 'DELETE' then old else new end;
   end if;
   if tg_table_name = 'academy_memberships' then
@@ -111,15 +189,7 @@ begin
     v_bad := (tg_op = 'INSERT' and new.status in ('published','retired'))
           or (tg_op = 'UPDATE' and new.status is distinct from old.status and new.status in ('published','retired'));
   elsif tg_table_name = 'academy_attempts' then
-    if tg_op = 'INSERT' then
-      v_bad := new.answers is not null or new.submitted_at is not null or new.score is not null
-            or new.passed is not null or new.graded_at is not null;
-    elsif tg_op = 'UPDATE' then
-      v_bad := row(new.answers, new.submitted_at, new.score, new.passed, new.graded_at, new.question_ids, new.enrollment_id)
-               is distinct from row(old.answers, old.submitted_at, old.score, old.passed, old.graded_at, old.question_ids, old.enrollment_id);
-    else
-      v_bad := true;
-    end if;
+    v_bad := true;     -- attempts are created, submitted and corrected only by their operations; never deleted
   elsif tg_table_name = 'product_facts' then
     v_bad := tg_op in ('INSERT','UPDATE');
   end if;
@@ -147,9 +217,10 @@ create trigger academy_audited_guard before insert or update on public.product_f
 -- 1. Training Manager role
 -- ---------------------------------------------------------------------------------------------
 create function public.academy_op_set_training_manager(p_actor text, p_membership_id uuid, p_make boolean, p_reason text)
-returns jsonb language plpgsql set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
 declare v_old academy_memberships; v_new jsonb;
 begin
+  perform academy_op_actor_staff(p_actor);
   perform academy_op_begin('set_training_manager', p_actor);
   select * into v_old from academy_memberships where id = p_membership_id for update;
   if not found then raise exception 'academy: membership not found' using errcode = 'P0002'; end if;
@@ -168,11 +239,12 @@ end $$;
 -- ---------------------------------------------------------------------------------------------
 create function public.academy_op_review_external_cert(p_actor text, p_id uuid, p_decision text,
   p_evidence_type text, p_evidence_ref text, p_note text)
-returns jsonb language plpgsql set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
 declare v_old academy_external_certs; v_new jsonb;
 begin
+  perform academy_op_actor_staff(p_actor);
   perform academy_op_begin('review_external_cert', p_actor);
-  if p_decision not in ('verified','rejected') then
+  if p_decision is null or p_decision not in ('verified','rejected') then
     raise exception 'academy: the decision must be verified or rejected' using errcode = '22023';
   end if;
   if p_decision = 'rejected' and (p_note is null or length(trim(p_note)) = 0) then
@@ -198,19 +270,27 @@ end $$;
 -- ---------------------------------------------------------------------------------------------
 -- 3. HCPS certificates
 -- ---------------------------------------------------------------------------------------------
-create function public.academy_op_issue_certificate(p_actor_type text, p_actor text, p_attempt_id uuid, p_dealer_name text)
-returns jsonb language plpgsql set search_path = public as $$
+-- p_actor: 'system:grader' (issued automatically after a passed exam) or an administrator 'staff:<email>'.
+create function public.academy_op_issue_certificate(p_actor text, p_attempt_id uuid, p_dealer_name text)
+returns jsonb language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
 declare
   v_att academy_attempts; v_enr academy_enrollments; v_ver academy_course_versions; v_course academy_courses;
-  v_learner academy_learners; v_months int; v_num text; v_bytes bytea; v_new jsonb; i int;
+  v_learner academy_learners; v_months int; v_num text; v_bytes bytea; v_new jsonb; i int; v_type text;
   v_alpha constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 begin
+  if p_actor = 'system:grader' then v_type := 'system';
+  else perform academy_op_actor_staff(p_actor); v_type := 'staff'; end if;
   perform academy_op_begin('issue_certificate', p_actor);
+  if (select value->'academy_certificates' from app_settings where key = 'phase2_flags') is distinct from 'true'::jsonb then
+    raise exception 'academy: HCPS certificates are switched off' using errcode = '55000';
+  end if;
   select * into v_att from academy_attempts where id = p_attempt_id for update;
   if not found then raise exception 'academy: attempt not found' using errcode = 'P0002'; end if;
-  if v_att.passed is not true then raise exception 'academy: only a passed attempt earns a certificate' using errcode = '22023'; end if;
-  select * into v_enr from academy_enrollments where id = v_att.enrollment_id;
-  select * into v_ver from academy_course_versions where id = v_enr.version_id;
+  if v_att.submitted_at is null or v_att.graded_at is null or v_att.passed is not true then
+    raise exception 'academy: only a submitted, graded and passed attempt earns a certificate' using errcode = '22023';
+  end if;
+  v_ver := academy_op_attempt_check(v_att.enrollment_id, v_att.question_ids, 'grade');   -- enrollment, version, questions
+  select * into v_enr from academy_enrollments where id = v_att.enrollment_id for update;
   select * into v_course from academy_courses where id = v_ver.course_id;
   select * into v_learner from academy_learners where id = v_enr.learner_id;
   if v_course.course_type <> 'hcps_certification' or v_course.issuer <> 'hcps' then
@@ -220,6 +300,12 @@ begin
     raise exception 'academy: a TEST course never issues a certificate' using errcode = '22023';
   end if;
   if v_learner.status <> 'active' then raise exception 'academy: the learner is not active' using errcode = '22023'; end if;
+  if exists (select 1 from staff_users s where lower(s.email) = v_learner.email and coalesce(s.active, true)) then
+    raise exception 'academy: HCPS staff are not learners' using errcode = '22023';
+  end if;
+  if exists (select 1 from academy_certificates where enrollment_id = v_enr.id) then
+    raise exception 'academy: this enrollment already has an HCPS certificate' using errcode = '22023';
+  end if;
   v_months := coalesce(v_ver.validity_months,
     (select (value->>'hcps_cert_validity_months')::int from app_settings where key = 'academy'), 12);
   for attempt_no in 1..5 loop
@@ -235,15 +321,16 @@ begin
   values (v_num, v_learner.id, v_enr.id, v_ver.id, v_att.id, v_learner.full_name, p_dealer_name,
           now() + make_interval(months => v_months))
   returning to_jsonb(academy_certificates.*) into v_new;
-  perform academy_op_audit(p_actor_type, p_actor, 'academy_certificates', v_new->>'id', 'issue_certificate', null, v_new);
+  perform academy_op_audit(v_type, p_actor, 'academy_certificates', v_new->>'id', 'issue_certificate', null, v_new);
   perform academy_op_end();
   return v_new;
 end $$;
 
 create function public.academy_op_revoke_certificate(p_actor text, p_certificate_id uuid, p_reason text)
-returns jsonb language plpgsql set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
 declare v_old academy_certificates; v_new jsonb;
 begin
+  perform academy_op_actor_staff(p_actor);
   perform academy_op_begin('revoke_certificate', p_actor);
   if p_reason is null or length(trim(p_reason)) = 0 then
     raise exception 'academy: a revocation needs a reason' using errcode = '22023';
@@ -263,9 +350,10 @@ end $$;
 -- 4. Publishing and retiring course versions
 -- ---------------------------------------------------------------------------------------------
 create function public.academy_op_publish_version(p_actor text, p_version_id uuid)
-returns jsonb language plpgsql set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
 declare v_old academy_course_versions; v_new jsonb; v_exam int; v_unverified int;
 begin
+  perform academy_op_actor_staff(p_actor);
   perform academy_op_begin('publish_version', p_actor);
   select * into v_old from academy_course_versions where id = p_version_id for update;
   if not found then raise exception 'academy: course version not found' using errcode = 'P0002'; end if;
@@ -304,9 +392,10 @@ begin
 end $$;
 
 create function public.academy_op_retire_version(p_actor text, p_version_id uuid, p_reason text)
-returns jsonb language plpgsql set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
 declare v_old academy_course_versions; v_new jsonb;
 begin
+  perform academy_op_actor_staff(p_actor);
   perform academy_op_begin('retire_version', p_actor);
   if p_reason is null or length(trim(p_reason)) = 0 then
     raise exception 'academy: retiring a version needs a reason' using errcode = '22023';
@@ -323,33 +412,51 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------------------------
--- 5. Exam results: graded inside the database; corrections audited
+-- 5. Exams: questions drawn and graded inside the database; corrections audited
 -- ---------------------------------------------------------------------------------------------
--- One answer, as a sorted text array: "a" -> {a}; ["c","a"] -> {a,c}. Anything else -> null (never correct).
-create function public.academy_op_norm_answer(p jsonb) returns text[]
-language sql immutable set search_path = public as $$
-  select case jsonb_typeof(p)
-           when 'string' then array[p #>> '{}']
-           when 'array'  then (select coalesce(array_agg(e order by e), '{}') from jsonb_array_elements_text(p) e)
-           else null end
-$$;
+-- Starts an exam for the enrollment's learner: draws the version's number of distinct active exam questions at
+-- random. One open attempt at a time. Returns the attempt id and question ids only (never answer keys).
+create function public.academy_op_start_attempt(p_actor text, p_enrollment_id uuid)
+returns jsonb language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
+declare v_enr academy_enrollments; v_ver academy_course_versions; v_ids uuid[]; v_id uuid;
+begin
+  select * into v_enr from academy_enrollments where id = p_enrollment_id for update;
+  if not found then raise exception 'academy: enrollment not found' using errcode = 'P0002'; end if;
+  perform academy_op_actor_learner(p_actor, v_enr.learner_id);
+  perform academy_op_begin('start_attempt', p_actor);
+  if exists (select 1 from academy_attempts where enrollment_id = p_enrollment_id and submitted_at is null) then
+    raise exception 'academy: an exam attempt is already open for this course' using errcode = '22023';
+  end if;
+  select * into v_ver from academy_course_versions where id = v_enr.version_id;
+  v_ids := array(select id from academy_questions
+                  where version_id = v_ver.id and use = 'exam' and status = 'active'
+                  order by random() limit v_ver.exam_questions);
+  perform academy_op_attempt_check(p_enrollment_id, v_ids, 'start');      -- withdrawn, published, count, duplicates
+  insert into academy_attempts (enrollment_id, question_ids) values (p_enrollment_id, v_ids) returning id into v_id;
+  perform academy_op_audit('learner', p_actor, 'academy_attempts', v_id::text, 'start_attempt', null,
+    jsonb_build_object('enrollment_id', p_enrollment_id, 'questions', cardinality(v_ids)));
+  perform academy_op_end();
+  return jsonb_build_object('id', v_id, 'question_ids', to_jsonb(v_ids));
+end $$;
 
 create function public.academy_op_submit_attempt(p_actor text, p_attempt_id uuid, p_answers jsonb)
-returns jsonb language plpgsql set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
 declare
-  v_att academy_attempts; v_pass int; v_total int; v_correct int; v_score int; v_passed boolean;
-  v_tags text[]; v_new jsonb;
+  v_att academy_attempts; v_enr academy_enrollments; v_ver academy_course_versions; v_total int; v_correct int;
+  v_score int; v_passed boolean; v_tags text[];
 begin
+  select * into v_att from academy_attempts where id = p_attempt_id for update;
+  if not found then raise exception 'academy: attempt not found' using errcode = 'P0002'; end if;
+  select * into v_enr from academy_enrollments where id = v_att.enrollment_id;
+  perform academy_op_actor_learner(p_actor, v_enr.learner_id);
   perform academy_op_begin('submit_attempt', p_actor);
   if p_answers is null or jsonb_typeof(p_answers) <> 'object' then
     raise exception 'academy: answers must be an object of question id to answer' using errcode = '22023';
   end if;
-  select * into v_att from academy_attempts where id = p_attempt_id for update;
-  if not found then raise exception 'academy: attempt not found' using errcode = 'P0002'; end if;
   if v_att.submitted_at is not null then raise exception 'academy: this attempt was already submitted' using errcode = '22023'; end if;
-  select v.pass_mark into v_pass
-    from academy_enrollments e join academy_course_versions v on v.id = e.version_id where e.id = v_att.enrollment_id;
+  v_ver := academy_op_attempt_check(v_att.enrollment_id, v_att.question_ids, 'grade');
   v_total := cardinality(v_att.question_ids);
+  -- Only the attempt's own questions are graded; any other key in the answers is ignored.
   select count(*) filter (where academy_op_norm_answer(p_answers -> q.id::text) = academy_op_norm_answer(q.answer_key)),
          array(select distinct t from academy_questions q2, unnest(q2.objective_tags) t
                 where q2.id = any(v_att.question_ids)
@@ -358,10 +465,10 @@ begin
     into v_correct, v_tags
     from academy_questions q where q.id = any(v_att.question_ids);
   v_score := floor(v_correct * 100.0 / v_total);
-  v_passed := v_correct * 100 >= v_pass * v_total;     -- from the exact fraction, never a rounded score
+  v_passed := v_correct * 100 >= v_ver.pass_mark * v_total;     -- from the exact fraction, never a rounded score
   update academy_attempts
      set answers = p_answers, submitted_at = now(), score = v_score, passed = v_passed, graded_at = now()
-   where id = p_attempt_id returning to_jsonb(academy_attempts.*) into v_new;
+   where id = p_attempt_id;
   perform academy_op_audit('learner', p_actor, 'academy_attempts', p_attempt_id::text, 'submit_attempt', null,
     jsonb_build_object('score', v_score, 'passed', v_passed, 'correct', v_correct, 'total', v_total));
   perform academy_op_end();
@@ -369,36 +476,54 @@ begin
   return jsonb_build_object('score', v_score, 'passed', v_passed, 'study_topics', to_jsonb(v_tags));
 end $$;
 
-create function public.academy_op_correct_attempt(p_actor text, p_attempt_id uuid, p_score int, p_passed boolean, p_reason text)
-returns jsonb language plpgsql set search_path = public as $$
-declare v_old academy_attempts; v_new jsonb;
+-- An administrator's correction of an exam result (e.g. a question regraded). Takes the score only: pass/fail
+-- always follows the version's pass mark. A certified pass cannot become a fail while its certificate is valid.
+create function public.academy_op_correct_attempt(p_actor text, p_attempt_id uuid, p_score int, p_reason text)
+returns jsonb language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
+declare v_old academy_attempts; v_pass int; v_passed boolean;
 begin
+  perform academy_op_actor_staff(p_actor);
   perform academy_op_begin('correct_attempt', p_actor);
   if p_reason is null or length(trim(p_reason)) = 0 then
     raise exception 'academy: correcting an exam result needs a reason' using errcode = '22023';
   end if;
+  if p_score is null or p_score < 0 or p_score > 100 then
+    raise exception 'academy: a score must be between 0 and 100' using errcode = '22023';
+  end if;
   select * into v_old from academy_attempts where id = p_attempt_id for update;
   if not found then raise exception 'academy: attempt not found' using errcode = 'P0002'; end if;
   if v_old.graded_at is null then raise exception 'academy: only a graded attempt can be corrected' using errcode = '22023'; end if;
-  update academy_attempts set score = p_score, passed = p_passed where id = p_attempt_id
-   returning to_jsonb(academy_attempts.*) into v_new;
+  select v.pass_mark into v_pass from academy_enrollments e join academy_course_versions v on v.id = e.version_id
+   where e.id = v_old.enrollment_id;
+  v_passed := p_score >= v_pass;
+  if v_old.score = p_score then raise exception 'academy: the score is already %', p_score using errcode = '22023'; end if;
+  if v_old.passed and not v_passed
+     and exists (select 1 from academy_certificates where attempt_id = p_attempt_id and status = 'valid') then
+    raise exception 'academy: this attempt has a valid HCPS certificate; revoke it first (its own audited decision), then correct the result'
+      using errcode = '22023';
+  end if;
+  update academy_attempts set score = p_score, passed = v_passed where id = p_attempt_id;
   perform academy_op_audit('staff', p_actor, 'academy_attempts', p_attempt_id::text, 'correct_attempt',
     jsonb_build_object('score', v_old.score, 'passed', v_old.passed),
-    jsonb_build_object('score', p_score, 'passed', p_passed, 'reason', p_reason));
+    jsonb_build_object('score', p_score, 'passed', v_passed, 'pass_mark', v_pass, 'reason', p_reason));
   perform academy_op_end();
-  return jsonb_build_object('score', p_score, 'passed', p_passed);
+  return jsonb_build_object('score', p_score, 'passed', v_passed);
 end $$;
 
 -- ---------------------------------------------------------------------------------------------
 -- 6. Product facts
 -- ---------------------------------------------------------------------------------------------
 create function public.academy_op_record_fact(p_actor text, p_fact jsonb, p_supersedes uuid, p_approved_by text)
-returns jsonb language plpgsql set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
 declare v_old product_facts; v_id uuid := gen_random_uuid(); v_new jsonb;
 begin
+  perform academy_op_actor_staff(p_actor);
   perform academy_op_begin('record_fact', p_actor);
-  if p_fact->>'field_class' = 'approval_required' and (p_approved_by is null or length(trim(p_approved_by)) = 0) then
-    raise exception 'academy: this fact needs an approver' using errcode = '22023';
+  if p_fact->>'field_class' = 'approval_required' then
+    if p_approved_by is null or length(trim(p_approved_by)) = 0 then
+      raise exception 'academy: this fact needs an approver' using errcode = '22023';
+    end if;
+    perform academy_op_actor_staff(p_approved_by);    -- the approver is an active administrator too
   end if;
   if p_supersedes is not null then
     select * into v_old from product_facts where id = p_supersedes for update;
@@ -425,9 +550,10 @@ begin
 end $$;
 
 create function public.academy_op_withdraw_fact(p_actor text, p_fact_id uuid, p_reason text)
-returns jsonb language plpgsql set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
 declare v_old product_facts; v_id uuid := gen_random_uuid(); v_new jsonb;
 begin
+  perform academy_op_actor_staff(p_actor);
   perform academy_op_begin('withdraw_fact', p_actor);
   if p_reason is null or length(trim(p_reason)) = 0 then
     raise exception 'academy: withdrawing a fact needs a reason' using errcode = '22023';
@@ -448,15 +574,20 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------------------------
--- PRIVILEGES: server role only (rule 19). Nothing here is callable with the public key.
+-- PRIVILEGES (rule 19): the 11 operations — server role only. The 7 helpers and the guard — owner only.
 -- ---------------------------------------------------------------------------------------------
 do $$
 declare f record;
 begin
-  for f in select p.oid::regprocedure as sig from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  for f in select p.oid::regprocedure as sig, p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
             where n.nspname = 'public' and (p.proname like 'academy\_op\_%' or p.proname = 'academy_audited_guard') loop
-    execute format('revoke all on function %s from public, anon, authenticated', f.sig);
-    execute format('grant execute on function %s to service_role', f.sig);
+    execute format('revoke all on function %s from public, anon, authenticated, service_role', f.sig);
+    if f.proname in ('academy_op_set_training_manager','academy_op_review_external_cert','academy_op_issue_certificate',
+                     'academy_op_revoke_certificate','academy_op_publish_version','academy_op_retire_version',
+                     'academy_op_start_attempt','academy_op_submit_attempt','academy_op_correct_attempt',
+                     'academy_op_record_fact','academy_op_withdraw_fact') then
+      execute format('grant execute on function %s to service_role', f.sig);
+    end if;
   end loop;
 end $$;
 
