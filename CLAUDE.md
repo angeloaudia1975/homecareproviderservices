@@ -383,6 +383,19 @@ Whichever importer loads them, they must count as commission reports.
   authenticated no privileges / service_role yes. A second run was correctly refused ("expected exactly 7 matching
   rows, found 0 — nothing written"). Outside public-key check (`scripts/quarantine_public_probe_browser.js`, run by Angelo
   2026-10-11 02:52 UTC, key accepted on a public table first): read 401/42501 BLOCKED, write 401/42501 BLOCKED. Still NOT done: the alias fix (alias still on Princeton), the code merge/deploy.
+  **Angelo's decisions 2026-10-10 (after independent verification of the cleanup — do NOT run it again):** approach
+  approved with one change — a month holding valid statement lines AND lines without a commission figure is
+  **"Received — incomplete, requires review"** (partial, with the count), never plain green; kept apart per month:
+  valid statement lines · explicit $0 commission · missing commission · open/unpaid invoices · sales-report estimates;
+  never manufacture a zero. ABM sales-report commission stays an ESTIMATE unless the actual manufacturer file is
+  verified as its statement. PediFix/Ovation exceptions kept **provisionally**, with their evidence documented
+  (`STATEMENT_SALES_REPORT_EVIDENCE`): PediFix = 172 rows from one sales export `PediFix_ALL_2025-2026.csv`, every
+  commission = amount × 10% computed at import (not read from a statement) → months resting on it are marked
+  provisional (dashed); Ovation has no rows. A sales export never becomes a confirmed statement because estimated
+  commission values are populated. Ohio Medical / Bemis / Access4u / Climbing Steps exceptions = READ-ONLY review, no
+  cleanup, no other financial record changed. Williams Brothers generic alias → HQ approved in principle, NOT to be run
+  yet (exact guards + a fresh production pre-check first); September shipment stays on Princeton via ZIP 47670; the two
+  older generic aliases unchanged pending a separate review. Both MI switches stay OFF; AirAvant correction not started.
 - The **Commission Report Import coverage grid** shows **every year that has data** (not just the current
   year), so loaded history stays visible; green = received, amber = still needed (current year), grey =
   gap in a past year.
