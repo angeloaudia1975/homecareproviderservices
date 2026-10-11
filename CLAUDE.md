@@ -1477,6 +1477,21 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   mc-append pg 6, mc-guard pg 17, mcflow 13 (+mutants), mcgates 12, mcfreeze 17, mcverify 25, mc mutants; MI-1a 28 / 16
   (+14/14); commission 42 / 11; phase1-visits / phase2-account-class / phase2-timeline fail identically on main 08c9e58
   (late-evening clock), so the Phase 0 mutation run is not reported tonight (its control includes them).
+  **MI-1b migration RUN by Angelo 2026-10-11 ~08:47 CT (verified):** the approved file (sha256 7761828e…, from commit
+  550480b) pasted in the SQL editor; all 9 install checks ok = true. Preflight before (backup 11 Oct 09:11 UTC present):
+  6 catalog sources (5 price_list, 1 terms), fingerprint 425746f1…, 0 report records. After, re-checked: catalog rows
+  byte-identical (425746f1…), hash index unchanged; ledger 11,997 / $10,802,558.50 / $493,077.06, Strongback 143 /
+  $43,021.50 / $3,871.94, D7 dde7a2ce… / B1 d1f841ca… / keys 0d2908d1… / attribution 810065d6…, 0 batches / 0 superseded,
+  459 aliases; the 10 MI-1a functions byte-identical to committed Part 1 rev 3c (per-function md5(prosrc)); dealers 447,
+  contacts 770, opportunities 7, zoho_deal_baseline 7, dealer_manufacturers 597811b5…, quarantine 7, price_imports 9,
+  MC decisions 15 / runs 14 — all unchanged; flags unchanged (`mi_import_v2` ON, `mi_commission_v2` off), enrolment
+  Strongback sales_report only. New: 3 triggers, 4 constraints, 0 events, 0 report records, bucket private with 0 files;
+  anon/authenticated 0 grants on mfr_source_events / mfr_sources and 0 executable MI-1b functions; service_role
+  select+insert on events, execute on all 7. Outside public-key probe (`scripts/mi1b_public_probe_browser.js`, run by
+  Angelo 08:50 CT, key accepted on a public table first): ALL 11 BLOCKED (401) — events read/insert/update/delete,
+  mfr_sources read/insert, the 5 RPCs. Lesson: the read-only query helper runs its queries THROUGH the SQL editor, so
+  it overwrites whatever is loaded there — never run a check in the editor tab while a migration waits for Angelo's
+  Run (the first Run at 08:44 executed a read-only check instead of the migration; nothing was written).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
