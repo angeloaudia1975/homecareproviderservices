@@ -1411,6 +1411,16 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   enrollment. Note: enrollments are unique per learner+version, so after a revocation re-certification on the same
   version needs a decision (new version or a reviewed schema change) — not built. Tests: `test/academy/m1_hardening.sql`
   (28; 19 of them fail on the original M1), the acceptance file (42 + check 43, which also proves phase2_flags unchanged).
+- **M1 rev 2 APPROVED for production by Angelo (10 Oct 2026 22:49)** — exact sha256 7253ff80…a864 (supersedes 85e87157…);
+  Angelo runs it by hand in the SQL editor; Claude never runs it. Expected installed-code fingerprint
+  130e45fa36f768e032a89da43b645f8a (`supabase/academy_a2a_m1_postcheck.sql`). Post-migration: 19 functions, 6 guard
+  triggers, RLS 18/18, switches OFF, acceptance 43/43, A1 27/27, no test rows, probe all BLOCKED, outside fingerprints =
+  the 21:45 baseline. A SKIP in the editor is not a pass: it needs the alternative check before M1 is declared complete.
+  A failed test = stop and investigate; never an automatic rollback. PR #4 stays draft until verified and approved.
+- **Exam retake policy (approved; build in A2E, NOT yet):** one open attempt (already enforced by start_attempt), a
+  one-hour cooldown between attempts, at most three attempts per day, unlimited lifetime retakes — enforced on the
+  server/database and tested under SIMULTANEOUS requests before the learner pilot. HCPS certificate issuance stays
+  disabled (`academy_certificates` off) until Angelo authorizes it separately.
 - **Academy sign-in (security review 10 Oct 2026).** Learners get the Academy's OWN session — an HMAC-signed 8-hour value
   in an HttpOnly, Secure, SameSite=Strict `__Host-hcps_academy` cookie (`_academy_session.js`, secret
   `ACADEMY_SESSION_SECRET`, Production-scoped, 32+ random bytes, set by Angelo). It is accepted only by `academy-api`;
