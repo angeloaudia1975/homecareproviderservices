@@ -302,6 +302,26 @@ try {
     assert.strictEqual(q(`select count(*) from mfr_sources where created_by = 'system:report-capture' and status <> 'received'`), '0');
     assert.strictEqual(q(`select count(*) from mfr_sources where publication_status = 'published'`), '0');
   });
+  console.log('\n— rollback —');
+  t('the rollback refuses while captured provenance exists (nothing written)', () => {
+    const before = q(`select count(*) from mfr_report_items`);
+    assert.throws(() => file(DB, path.join(__dirname, '..', 'supabase', 'mi_b_report_capture_rollback.sql')), /mi_b_rollback/);
+    assert.strictEqual(q(`select count(*) from mfr_report_items`), before);
+  });
+  t('on an empty install the rollback removes every capture object and leaves MI-1b / record 7 untouched', () => {
+    const D2 = DB + '_rb'; run('postgres', `drop database if exists ${D2}`); run('postgres', `create database ${D2}`);
+    try {
+      for (const f of [T('mi1a/fixture.sql'), SB('mi1a_part0_snapshot.sql'), SB('mi1a_part1_schema.sql'), T('mc-guard.stub.sql'), ROOTF('migrate-phase2-product-skus.sql'),
+        T('mc-guard.data.sql'), SB('mc_phase1_foundation.sql'), SB('mc_phase1_backfill.sql'), SB('mc_phase2_freeze_guard.sql'), SB('mc_phase6_append_only.sql'),
+        SB('mi1b_report_register.sql')]) file(D2, f);
+      run(D2, APPSET); run(D2, `insert into manufacturers values ('ohio-medical','O'),('access4u','A'),('airavant-bongorx','B'),('climbing-steps','C'),('bemis','D'),('complete-medical-supplies','E'),('golden-technologies','G') on conflict do nothing`);
+      const fpA = run(D2, `select count(*) || md5(coalesce(string_agg(proname || md5(prosrc), ',' order by proname), '')) from pg_proc where pronamespace = 'public'::regnamespace and proname like 'hcps_mfr_report_%'`);
+      file(D2, SB('mi_b_report_capture.sql'));
+      const out = file(D2, path.join(__dirname, '..', 'supabase', 'mi_b_report_capture_rollback.sql'));
+      assert.ok(/mi_b capture rolled back\|0\|0/.test(out.replace(/\s+/g, '')) || /rolled back\|0\|0/.test(out), out);
+      assert.strictEqual(run(D2, `select count(*) || md5(coalesce(string_agg(proname || md5(prosrc), ',' order by proname), '')) from pg_proc where pronamespace = 'public'::regnamespace and proname like 'hcps_mfr_report_%'`), fpA);
+    } finally { run('postgres', `drop database if exists ${D2}`); }
+  });
 } catch (e) { fail++; console.log('  FAIL setup: ' + String(e.message || e).split('\n').slice(0, 3).join(' | ')); }
 finally { try { run('postgres', `drop database if exists ${DB}`); } catch (e) {} }
 console.log(`\nmi-b-capture (Postgres): ${pass} passed, ${fail} failed`);
