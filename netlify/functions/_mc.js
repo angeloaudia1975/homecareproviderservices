@@ -571,13 +571,15 @@ const isVisibleStatus = s => VISIBLE_STATUSES.indexOf(String(s == null ? "" : s)
 /* product-content.js: every action that writes. */
 const PC_WRITE_ACTIONS = new Set(["approve","reject","approve_all","upsert","ingest_source","upload_image","upload_file","rehost",
   "set_status","set_meta","set_content","save_fields","set_sku","save_skus","remove_skus","rename_sku","move_skus","split",
-  "merge_products","delete_product","create_product","save_sizing","bulk","recategorize","undo","save_related"]);
+  "merge_products","delete_product","create_product","save_sizing","bulk","recategorize","undo","save_related",
+  "enrich_page","enrich_images","enrich_resolve","enrich_set_image"]);
 /* …and the ones an enrichment window may carry: they work on one line's pages and its captured sources.
    The database still decides row by row that each page stays hidden before and after. Not here:
    recategorize (moves pages across every line) and save_related (shown on live pages at once). */
 const PC_WINDOW_ACTIONS = new Set(["approve","reject","approve_all","upsert","ingest_source","upload_image","upload_file","rehost",
   "set_status","set_meta","set_content","save_fields","set_sku","save_skus","remove_skus","rename_sku","move_skus","split",
-  "merge_products","delete_product","create_product","save_sizing","bulk","undo"]);
+  "merge_products","delete_product","create_product","save_sizing","bulk","undo",
+  "enrich_page","enrich_images","enrich_resolve","enrich_set_image"]);   // Release B: Product Enrichment writes hidden drafts only
 /* images-api.js: the actions that write (migrate_legacy only when applied). */
 function isImageWrite(b){ return !!b && (b.action === "upload" || b.action === "clear" || (b.action === "migrate_legacy" && b.apply === true)); }
 /* Why a product-content request falls outside an enrichment window (null = inside it). */

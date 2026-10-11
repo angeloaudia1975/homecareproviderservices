@@ -1353,6 +1353,39 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   images "allowed"; live-page images, outside images, another window's folder, another line's window, publishing a draft
   with its image, a live status switched off, a closed window, a page the window didn't build — "blocked").
   Tests: test/mc-draft-media.pg.test.js, test/mcdraftmedia.test.js, test/mcdraftmedia.mutants.js.
+  Gate 1 proven live 2026-10-11 (self-test 20 commercial + 100 content, every row as expected; four fingerprints
+  unchanged); Bemis enrichment window #320 opened the same day on Angelo's approval. One window for the whole run.
+  **Release B — the Product Enrichment workflow (approved 2026-10-11).** (t) Manufacturer Center → Continue Product
+  Enrichment (shown only for a line with the approved `enrichment_pages` deferral or an open window — no other
+  manufacturer starts) opens stages 2–4: Products → Auto-Enrich → Review Issues; 5 Dealer Preview (Release C) and 6
+  Publish & Verify (Release D) are not built. Engine: netlify/functions/_enrich.js (pure); actions in product-content.js:
+  enrich_plan (read-only), enrich_page, enrich_images, enrich_resolve, enrich_set_image (writes — in PC_WRITE_ACTIONS and
+  PC_WINDOW_ACTIONS, so a frozen line needs its open window and the database still decides row by row).
+  Products: the line's ACTIVE product_skus rows (retired left out; a line without records falls back to its catalog
+  layers, read-only); names that differ only by shape / colour / side / size AND share the manufacturer link share one page
+  with options; displays/bundles never merge (Needs grouping decision); grouping is presentation only — no commercial field
+  is ever on a proposed page or draft. Nothing is hard-coded per line. A SKU on a live page is never drafted over (409).
+  Auto-Enrich reads the catalog's manufacturer link; a landing page is followed to the product page that matches the page's
+  own words, and a candidate naming another KIND of product (a seat-with-arms bundle for an arms page) is refused but may
+  be read as "related" for the sentences about this product only (never its photos or specs). Copy, feature bullets and
+  "Label: value" specs (specification sections only) are the source's own words, deterministic, no AI; warranty only when
+  the source states terms (a "Warranty" link is a document) — otherwise blank with provenance "not stated". Photos: each
+  copied server-side into product-content/<line>/drafts/w<window>/<page>/rehost/ (x-upsert false), only real images
+  (image/*, ≥1 KB, ≤8 MB); a failed copy is recorded and never linked; the SKUs' current dealer photos are copied too;
+  byte-identical option photos are found (sha256). Field provenance in field_provenance (strings) and
+  enrichment_flags.mc (sources, fields, conflicts, image candidates/results).
+  Review Issues: six statuses by priority Conflict > Needs grouping decision > Needs content > Needs image > Needs category
+  > Ready (Ready = description ≥80 chars, ≥3 features, a category, a photo in HCPS storage, a price on the record).
+  Conflicts carry evidence (a manufacturer page MSRP ≠ the record's; catalog facts no source states; no price; a live
+  page). Each one-click resolution needs a reason, shows a dry run, and is an append-only content_resolution decision;
+  a later choice supersedes (supersedes_id). Hold back = not blocking. "Different product" re-runs without that page.
+  (u) The Advanced Product Editor (src/admin/product-content-review.html, renamed, banner: for unusual cases) has NO
+  commercial write path: catalogPost() refuses every request catalog-api calls commercial (the same list as _mc.js —
+  test/mceditor.commercial.test.js keeps them identical); Price Check is a read-only Commercial summary with "Open
+  Commercial & Pricing in Manufacturer Center" (#line=<slug>&tab=commercial); New product creates a page only for SKUs
+  already on the commercial record (new SKUs → Manufacturer Center → Sources). Price import / bulk / auto-MSRP removed.
+  Tests: test/enrich.unit.test.js, test/mcenrich.test.js (+ mcenrich.world.js, fixtures/mfr-pages), test/mcenrich.ui.js
+  (Playwright), test/mceditor.commercial.test.js, test/mcenrich.mutants.js.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.

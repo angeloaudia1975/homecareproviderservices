@@ -33,6 +33,7 @@ const { computeMerge } = require('./_content-merge.js');
    this request — x-hcps-regression-fix (any change, single use) or x-hcps-enrichment-window (hidden drafts only).
    Both are reset at the start of every request. */
 const MC = require('./_mc.js');
+const ENRICH = require('./_enrich.js');
 let EXCEPTION_HEADERS = {};
 let PC_REGRESSION = null;
 /* Release B gate 1: the open enrichment window this request carries (set by the gate). Uploads and rehosts made under it
@@ -366,6 +367,97 @@ function aiPrompt(field, ctx, styleGuide) {
   }
 }
 
+
+// ---- Product Enrichment (Release B): reading the line, fetching manufacturer pages, copying photos ----
+async function enrichContext(m) {
+  const read = async path => { const r = await fetch(rest(path), { headers: svcHeaders() }); if (!r.ok) throw new Error(path.split('?')[0] + ' ' + r.status); return r.json(); };
+  const [records, custom, overrides, pages, decisions, meta] = await Promise.all([
+    read(`product_skus?manufacturer=eq.${enc(m)}&select=code,code_norm,status,base_price,msrp,map,uom,case_qty,msrp_basis,option_label&limit=10000`),
+    read(`custom_products?manufacturer=eq.${enc(m)}&select=code,name,category,image,description,active`),
+    read(`product_overrides?manufacturer=eq.${enc(m)}&select=code,patch`),
+    read(`product_content?manufacturer=eq.${enc(m)}&select=*&limit=5000`),
+    read(`mfr_decisions?manufacturer=eq.${enc(m)}&kind=in.(enrichment_window,content_resolution)&select=id,kind,field,hcps_value,reason,decided_by,decided_at,used_at,supersedes_id&order=id`),
+    read(`manufacturer_meta?slug=eq.${enc(m)}&select=slug,frozen,record_authoritative`)]);
+  const cr = await fetch(`${ORDERING_BASE}/data/${enc(m)}.json`, { headers: { 'cache-control': 'no-cache' } });
+  let catalog = [];
+  if (cr.status !== 404) { if (!cr.ok) throw new Error('catalog file ' + cr.status); catalog = await cr.json(); if (!Array.isArray(catalog)) throw new Error('catalog file is not a list'); }
+  /* A line without commercial records yet (not record-authoritative): its catalog layers stand in, read-only. */
+  let recs = Array.isArray(records) ? records : [];
+  if (!recs.length) {
+    const ov = {}; (overrides || []).forEach(o => { ov[ENRICH.codeNorm(o.code)] = o.patch || {}; });
+    recs = catalog.map(c => ({ code: c.code, status: ov[ENRICH.codeNorm(c.code)].active === false ? 'inactive' : 'active', base_price: firstNumber(ov[ENRICH.codeNorm(c.code)].base_price, c.base_price), msrp: c.msrp, uom: c.uom, case_qty: c.case_qty }))
+      .concat((custom || []).filter(c => !catalog.some(x => ENRICH.codeNorm(x.code) === ENRICH.codeNorm(c.code))).map(c => ({ code: c.code, status: c.active === false ? 'inactive' : 'active', base_price: null })));
+  }
+  const mm = (meta && meta[0]) || {};
+  return { slug: m, frozen: mm.frozen === true, authoritative: mm.record_authoritative === true, records: recs, catalog, custom: custom || [], overrides: overrides || [],
+    pages: pages || [], decisions: decisions || [] };
+}
+function firstNumber() { for (const v of arguments) { if (v != null && v !== '' && isFinite(Number(v))) return Number(v); } return null; }
+/* Words shared by several of the line's pages ("Assurance", "raised", "seat") — what does NOT tell one page from another. */
+function enrichLineWords(plan) {
+  const count = new Map();
+  plan.pages.forEach(p => new Set(ENRICH.sigWords(p.name)).forEach(w => count.set(w, (count.get(w) || 0) + 1)));
+  const s = new Set(); count.forEach((n, w) => { if (n > 1) s.add(w); }); return s;
+}
+const FETCH_UA = 'Mozilla/5.0 (compatible; HCPS-ProductEnrichment/1.0; +https://homecareproviderservices.netlify.app)';
+async function fetchPage(url, ms) {
+  if (!/^https?:\/\//i.test(String(url || ''))) return { status: 0, error: 'not a web address' };
+  const ac = new AbortController(); const tm = setTimeout(() => ac.abort(), Math.max(1500, ms || 7000));
+  try {
+    const r = await fetch(url, { redirect: 'follow', signal: ac.signal, headers: { 'user-agent': FETCH_UA, accept: 'text/html,application/xhtml+xml' } });
+    const ct = (r.headers && r.headers.get && r.headers.get('content-type')) || '';
+    if (!r.ok) return { status: r.status, error: 'HTTP ' + r.status };
+    if (ct && !/html|xml|text\/plain/i.test(ct)) return { status: r.status, error: 'not a web page (' + ct.split(';')[0] + ')' };
+    const html = await r.text();
+    return { status: r.status, url: r.url || url, html: html.slice(0, 2000000) };
+  } catch (e) { return { status: 0, error: (e && e.name === 'AbortError') ? 'timed out' : String((e && e.message) || e).slice(0, 120) }; }
+  finally { clearTimeout(tm); }
+}
+/* One photo copied into HCPS storage (under the window's own folder on a frozen line). A source that does not answer with
+   an image is recorded as failed and never linked — no broken image reaches a draft. */
+async function copyImage(m, pageKey, src, n) {
+  const ac = new AbortController(); const tm = setTimeout(() => ac.abort(), 8000);
+  try {
+    const r = await fetch(src, { redirect: 'follow', signal: ac.signal, headers: { 'user-agent': FETCH_UA, accept: 'image/*' } });
+    if (!r.ok) return { error: 'HTTP ' + r.status };
+    const ct = String((r.headers && r.headers.get && r.headers.get('content-type')) || '').split(';')[0].trim().toLowerCase();
+    if (!/^image\/(jpeg|jpg|png|webp|gif)$/.test(ct)) return { error: 'not an image (' + (ct || 'no type') + ')' };
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.length < 1024) return { error: 'too small to be a photo (' + buf.length + ' bytes)' };
+    if (buf.length > 8 * 1024 * 1024) return { error: 'larger than 8 MB' };
+    const ext = ct.split('/')[1].replace('jpeg', 'jpg');
+    let base = 'photo'; try { base = decodeURIComponent(new URL(src).pathname.split('/').pop() || 'photo').replace(/\.[a-z0-9]+$/i, '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 60) || 'photo'; } catch (e) {}
+    const path = `${mediaBase(m, pageKey)}/rehost/${Date.now()}-${n}-${base}.${ext}`;
+    const up = await fetch(`${SUPABASE_URL}/storage/v1/object/product-content/${path}`, { method: 'POST',
+      headers: { apikey: SERVICE_ROLE, authorization: 'Bearer ' + SERVICE_ROLE, 'content-type': ct, 'x-upsert': PC_WINDOW ? 'false' : 'true' }, body: buf });
+    if (!up.ok) return { error: 'storage ' + up.status };
+    return { url: `${SUPABASE_URL}/storage/v1/object/public/product-content/${path}`, sha: ENRICH.sha256(buf), bytes: buf.length, type: ct };
+  } catch (e) { return { error: (e && e.name === 'AbortError') ? 'timed out' : String((e && e.message) || e).slice(0, 120) }; }
+  finally { clearTimeout(tm); }
+}
+/* The line as Review Issues sees it: every proposed page, its draft, status and open issues, and the totals. */
+function enrichSummary(m, X, plan) {
+  const win = X.decisions.find(d => d.kind === 'enrichment_window' && !d.used_at) || null;
+  const pages = plan.pages.map(p => {
+    const row = X.pages.find(r => r.page_key === p.page_key) || null;
+    const c = ENRICH.classify(p, row, X.decisions);
+    const mc = (row && row.enrichment_flags && row.enrichment_flags.mc) || null;
+    return { page_key: p.page_key, name: p.name, options: p.options, bundle: p.bundle, group_reason: p.group_reason, live_page: p.live_page || null,
+      skus: p.skus.map(s => ({ code: s.code, name: s.name, option: s.option, uom: s.uom, case_qty: s.case_qty, price_ok: s.price_ok, details_url: s.details_url || null })),
+      status: c.status, label: c.label, blocking: c.blocking, issues: c.issues, resolutions: c.resolutions,
+      draft: row ? { status: row.status, draft_window: row.draft_window == null ? null : row.draft_window, visible: ENRICH.isVisibleRow(row), description: row.description || '', features: row.features || [],
+        specs: row.specs || [], warranty: row.warranty || null, category: row.category || null, subcategory: row.subcategory || null, image: row.image || null,
+        gallery: (row.images_gallery || []).map(g => g.url), sku_images: (row.skus || []).map(s => ({ code: s.sku, option: s.size, image: s.image || null })),
+        documents: row.documents || [], provenance: row.field_provenance || {}, sources: mc ? mc.sources : [], notes: mc ? mc.notes : [], fetched: mc ? mc.fetched : [],
+        images: mc ? { candidates: (mc.image_candidates || []).length, copied: (mc.images || []).filter(x => x.url).length, failed: (mc.images || []).filter(x => x.error).map(x => ({ src: x.src, error: x.error })), done: !!mc.images_done } : null,
+        at: mc ? mc.at : null } : null };
+  });
+  const counts = {}; pages.forEach(p => { counts[p.status] = (counts[p.status] || 0) + 1; });
+  return { manufacturer: m, frozen: X.frozen, authoritative: X.authoritative, window: win ? { id: win.id, reason: win.reason, by: win.decided_by, at: win.decided_at } : null,
+    active: plan.active, excluded: plan.excluded, pages, counts, ready: counts.ready || 0, open_issues: pages.reduce((n, p) => n + p.issues.length, 0),
+    visible_drafts: pages.filter(p => p.draft && p.draft.visible).length };
+}
+
 exports.handler = async (event) => {
   EXCEPTION_HEADERS = {}; PC_REGRESSION = null; PC_WINDOW = null;
   let res;
@@ -603,6 +695,147 @@ async function handleContent(event) {
         if (!byKey.hcps && cur) byKey.hcps = hcpsFromContent(cur);
         const merged = computeMerge({ hcps: byKey.hcps || null, website: byKey.website || null, pdf: byKey.pdf || null });
         return reply(200, { ok: true, manufacturer: m, page_key: body.page_key, merge: merged, current: cur });
+      }
+
+      // ================= PRODUCT ENRICHMENT (Manufacturer Center Release B, approved 2026-10-11) =================
+      /* Products → Auto-Enrich → Review Issues for one line. The engine is pure (_enrich.js); these actions read the
+         line, fetch the manufacturer's pages, write HIDDEN drafts and photo copies, and record one-click resolutions.
+         On a frozen line every write needs the line's open enrichment window (the gate above, and the database).
+         Nothing commercial is read for writing or written: prices, tiers, UOM/case qty, MSRP/MAP, freight and commercial
+         status stay in product_skus, behind Phase 2's guard. */
+      if (action === 'enrich_plan' || action === 'enrich_page' || action === 'enrich_images' || action === 'enrich_resolve' || action === 'enrich_set_image') {
+        if (!m) return reply(400, { ok: false, error: 'manufacturer required' });
+        let X; try { X = await enrichContext(m); }
+        catch (e) { return reply(503, { ok: false, error: 'line_unreadable', message: 'The line could not be read, so nothing was enriched: ' + String((e && e.message) || e).slice(0, 300) }); }
+        const plan = ENRICH.planPages(X);
+        const rowOf = k => X.pages.find(r => r.page_key === k) || null;
+        if (action === 'enrich_plan') return reply(200, Object.assign({ ok: true }, enrichSummary(m, X, plan)));
+        const page = plan.pages.find(p => p.page_key === body.page_key);
+        if (!page) return reply(404, { ok: false, error: 'no_such_page', message: 'No proposed page "' + String(body.page_key || '') + '" on ' + m + '.' });
+        const cur = rowOf(page.page_key);
+        if (page.live_page || ENRICH.isVisibleRow(cur)) return reply(409, { ok: false, error: 'live_page', message: 'These SKUs are on a live page (' + (page.live_page || page.page_key) + '). Enrichment only writes hidden drafts. Nothing was changed.' });
+        if (X.frozen && cur && PC_WINDOW && cur.draft_window != null && String(cur.draft_window) !== String(PC_WINDOW.id))
+          return reply(423, { ok: false, error: 'outside_enrichment_window', message: 'This draft was built under enrichment window ' + cur.draft_window + '; window ' + PC_WINDOW.id + ' changes only its own drafts. Nothing was changed.' });
+
+        if (action === 'enrich_page') {
+          const res = ENRICH.resolutionsFor(X.decisions, page.page_key);
+          const rejected = res.conflict && res.conflict.choice === 'different_product' ? res.conflict.source_url : null;
+          const extra = res.needs_content && res.needs_content.choice === 'rerun_with_source' ? res.needs_content.source_url : null;
+          const t0 = Date.now(), budget = 19000, sources = [], tried = [];
+          const urls = [...new Set([extra].concat(page.skus.map(s => s.details_url)).filter(u => u && u !== rejected))].slice(0, 2);
+          for (const u of urls) {
+            if (Date.now() - t0 > budget - 6000) break;
+            const got = await fetchPage(u, Math.min(7000, budget - (Date.now() - t0)));
+            tried.push({ url: u, status: got.status, error: got.error || null });
+            if (!got.html) continue;
+            const ex = ENRICH.extractPage(got.html, got.url || u);
+            if (ex.product) { sources.push({ url: got.url || u, role: 'product', extract: ex, html: got.html, matched_by: u === extra ? 'the source you added' : 'the catalog\'s manufacturer link' }); break; }
+            sources.push({ url: got.url || u, role: 'landing', extract: ex, html: got.html, matched_by: 'the catalog\'s manufacturer link (a landing page)' });
+            const pick = ENRICH.pickProductLink(page, ex);
+            const next = pick.href || pick.related;
+            if (next && next !== rejected && Date.now() - t0 < budget - 6000) {
+              const g2 = await fetchPage(next, Math.min(7000, budget - (Date.now() - t0)));
+              tried.push({ url: next, status: g2.status, error: g2.error || null });
+              if (g2.html) { const e2 = ENRICH.extractPage(g2.html, g2.url || next);
+                sources.push({ url: g2.url || next, role: pick.href && e2.product ? 'product' : 'related', extract: e2, html: g2.html, matched_by: pick.why }); }
+            }
+            break;
+          }
+          const recBy = {}; X.records.forEach(r => { recBy[ENRICH.codeNorm(r.code)] = r; });
+          const lineWords = enrichLineWords(plan);
+          const built = ENRICH.buildDraft(page, sources, { slug: m, window: PC_WINDOW ? PC_WINDOW.id : null, records: recBy, orderingBase: ORDERING_BASE, lineWords });
+          built.report.fetched = tried;
+          if (body.dry_run === true) return reply(200, { ok: true, dry_run: true, page_key: page.page_key, would_write: built.row, report: Object.assign({}, built.report, { image_candidates: built.report.image_candidates.length }) });
+          const flags = Object.assign({}, (cur && cur.enrichment_flags) || {}, { mc: built.report });
+          const row = Object.assign({}, built.row, { enrichment_flags: flags, reviewed_by: who, image: null, images_gallery: [] });
+          if (cur && cur.status && ['approved', 'hidden', 'rejected'].indexOf(cur.status) >= 0) row.status = cur.status;
+          const w = cur ? await patchRow(m, page.page_key, Object.assign({}, row, { manufacturer: undefined })) : await insertRow(row);
+          if (!w.ok) return reply(500, { ok: false, error: 'draft_not_written', rows: w.rows });
+          const src0 = sources[0];
+          if (src0) { try { await fetch(rest('product_content_sources?on_conflict=manufacturer,page_key,source'), { method: 'POST', headers: svcHeaders({ Prefer: 'resolution=merge-duplicates,return=minimal' }),
+            body: JSON.stringify({ manufacturer: m, page_key: page.page_key, source: 'website', source_label: 'Auto-Enrich', source_url: (sources.find(s => s.role === 'product') || src0).url,
+              name: (sources.find(s => s.role === 'product') || src0).extract.title || null, description: built.row.description, features: built.row.features,
+              images: built.report.image_candidates.map(c => ({ url: c.src, role: c.role, code: c.code })), raw: { sources: sources.map(s => ({ url: s.url, role: s.role, model: s.extract.model, msrp: s.extract.msrp, specs: s.extract.specs, text: String(s.extract.text || '').slice(0, 20000) })) },
+              captured_at: new Date().toISOString() }) }); } catch (e) { /* the draft itself carries the provenance */ } }
+          await logHistory({ manufacturer: m, page_key: page.page_key, action: 'enrich_page', actor: who, summary: 'Auto-Enrich drafted the page from ' + (sources.map(s => s.url).join(', ') || 'the catalog line only'), before: cur, after: w.rows });
+          const after = flatRows(w.rows)[0] || Object.assign({}, cur || {}, row);
+          return reply(200, { ok: true, page_key: page.page_key, sources: sources.map(s => ({ url: s.url, role: s.role, matched_by: s.matched_by })), fetched: tried,
+            images_pending: built.report.image_candidates.length, classify: ENRICH.classify(page, after, X.decisions) });
+        }
+
+        if (action === 'enrich_images') {
+          if (!cur) return reply(409, { ok: false, error: 'not_enriched', message: 'Run Auto-Enrich on this page first.' });
+          const mc = Object.assign({}, (cur.enrichment_flags && cur.enrichment_flags.mc) || {});
+          const done = Array.isArray(mc.images) ? mc.images.slice() : [];
+          const cands = Array.isArray(mc.image_candidates) ? mc.image_candidates : [];
+          const pending = cands.filter(c => !done.some(d => d.src === c.src && d.role === c.role && (d.code || null) === (c.code || null)));
+          const t0 = Date.now();
+          for (const c of pending.slice(0, 4)) {
+            if (Date.now() - t0 > 15000) break;
+            done.push(Object.assign({}, c, await copyImage(m, page.page_key, c.src, done.length)));
+          }
+          const remaining = cands.length - done.length;
+          mc.images = done;
+          const patch = { enrichment_flags: Object.assign({}, cur.enrichment_flags || {}, { mc }) };
+          if (remaining <= 0) {
+            const a = ENRICH.assembleImages(page, cur, done);
+            Object.assign(patch, { images_gallery: a.images_gallery, image: a.image, skus: a.skus });
+            mc.images_done = true; mc.image_shared = a.shared; mc.image_failures = a.failed;
+          }
+          const w = await patchRow(m, page.page_key, patch);
+          if (!w.ok) return reply(500, { ok: false, error: 'images_not_written', rows: w.rows });
+          const after = flatRows(w.rows)[0] || Object.assign({}, cur, patch);
+          return reply(200, { ok: true, page_key: page.page_key, copied: done.filter(d => d.url).length, failed: done.filter(d => d.error).length, remaining: Math.max(0, remaining),
+            classify: ENRICH.classify(page, after, X.decisions) });
+        }
+
+        if (action === 'enrich_set_image') {
+          if (!cur) return reply(409, { ok: false, error: 'not_enriched', message: 'Run Auto-Enrich on this page first.' });
+          const url = String(body.url || '');
+          const own = `${SUPABASE_URL}/storage/v1/object/public/product-content/` + (PC_WINDOW ? MC.draftMediaPrefix(m, PC_WINDOW.id) : `${m}/`);
+          if (url.indexOf(own) !== 0 || /[?#\s]/.test(url.slice(own.length))) return reply(400, { ok: false, error: 'not_a_draft_copy', message: 'Only a photo uploaded here' + (PC_WINDOW ? ' under this enrichment window' : '') + ' can go on this draft. Nothing was changed.' });
+          let patch;
+          if (body.code) {
+            const skus = (cur.skus || []).map(s => ENRICH.codeNorm(s.sku) === ENRICH.codeNorm(body.code) ? Object.assign({}, s, { image: url }) : s);
+            if (!skus.some(s => ENRICH.codeNorm(s.sku) === ENRICH.codeNorm(body.code))) return reply(400, { ok: false, error: 'no_such_sku', message: body.code + ' is not on this page.' });
+            patch = { skus };
+          } else {
+            const g = [{ url, primary: true, caption: '', source: 'uploaded in Review Issues' }].concat((cur.images_gallery || []).filter(x => x && x.url !== url).map(x => Object.assign({}, x, { primary: false })));
+            patch = { images_gallery: g, image: url };
+          }
+          const mc = Object.assign({}, (cur.enrichment_flags && cur.enrichment_flags.mc) || {});
+          if (body.code) mc.image_shared = (mc.image_shared || []).filter(s => s.codes.map(ENRICH.codeNorm).indexOf(ENRICH.codeNorm(body.code)) < 0);
+          patch.enrichment_flags = Object.assign({}, cur.enrichment_flags || {}, { mc });
+          const w = await patchRow(m, page.page_key, patch);
+          if (!w.ok) return reply(500, { ok: false, error: 'image_not_set', rows: w.rows });
+          await logHistory({ manufacturer: m, page_key: page.page_key, action: 'enrich_set_image', actor: who, summary: 'Photo set in Review Issues' + (body.code ? ' for ' + body.code : ''), before: cur, after: w.rows });
+          return reply(200, { ok: true, classify: ENRICH.classify(page, flatRows(w.rows)[0] || Object.assign({}, cur, patch), X.decisions) });
+        }
+
+        if (action === 'enrich_resolve') {
+          const issue = String(body.issue || ''), choice = String(body.choice || ''), value = body.value || {};
+          const reason = String(body.reason || '').trim();
+          const p = ENRICH.resolutionProblem(issue, choice, value);
+          if (p) return reply(400, { ok: false, error: 'bad_resolution', message: p + '. Nothing was recorded.' });
+          if (!reason) return reply(400, { ok: false, error: 'reason_required', message: 'Say why, in a few words. Nothing was recorded.' });
+          const prev = ENRICH.resolutionsFor(X.decisions, page.page_key)[issue] || null;
+          const hv = Object.assign({ issue, choice, page_name: page.name }, value.source_url ? { source_url: String(value.source_url) } : {},
+            value.category ? { category: String(value.category).slice(0, 80) } : {}, value.subcategory ? { subcategory: String(value.subcategory).slice(0, 80) } : {});
+          if (issue === 'conflict' && choice === 'different_product') { const ss = (cur && cur.enrichment_flags && cur.enrichment_flags.mc && cur.enrichment_flags.mc.sources) || []; hv.source_url = ((ss.find(s => s.role === 'product') || ss[0]) || {}).url || null; }
+          const rec = { manufacturer: m, field: 'page:' + page.page_key, kind: 'content_resolution', reason: reason.slice(0, 500), decided_by: who, hcps_value: hv, supersedes_id: prev ? prev.id : null };
+          if (body.dry_run === true) return reply(200, { ok: true, dry_run: true, would_record: rec });
+          if (choice === 'set_category' && cur) {
+            const w0 = await patchRow(m, page.page_key, { category: hv.category || cur.category || null, subcategory: hv.subcategory || null });
+            if (!w0.ok) return reply(500, { ok: false, error: 'category_not_set', rows: w0.rows });
+          }
+          const r = await fetch(rest('mfr_decisions'), { method: 'POST', headers: svcHeaders({ Prefer: 'return=representation' }), body: JSON.stringify(rec) });
+          const j = await r.json().catch(() => null);
+          if (!r.ok) return reply(500, { ok: false, error: 'not_recorded', message: 'The resolution could not be recorded: ' + JSON.stringify(j).slice(0, 200) });
+          const d = Array.isArray(j) ? j[0] : j;
+          const X2 = await enrichContext(m).catch(() => null);
+          const page2 = X2 ? ENRICH.planPages(X2).pages.find(q => q.page_key === page.page_key) || page : page;
+          return reply(200, { ok: true, decision: d, classify: ENRICH.classify(page2, X2 ? X2.pages.find(q => q.page_key === page.page_key) || null : cur, X2 ? X2.decisions : X.decisions.concat([d])) });
+        }
       }
 
       // ================= CATALOG-MANAGEMENT ACTIONS =================
