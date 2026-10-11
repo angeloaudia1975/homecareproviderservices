@@ -1713,6 +1713,19 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   before/after: identical except the expected report row / event / stored file, and mfr_decisions 15 → 16 = decision 320
   (Bemis enrichment_window opened 18:53:59 UTC by the separately approved Manufacturer Center Release B work, not by the
   registration). Outside public-key check: `scripts/mfr_sources_public_probe_browser.js` (11 checks; Angelo runs it).
+- **PRIORITY CHANGE — automated Outlook report processing (Angelo, 2026-10-11 13:59 CT).** Primary goal: manufacturer
+  reports arrive by Outlook email and are captured, identified (sender, attachment, file name, content: sales export /
+  commission statement / dealer report / price list), registered in the EXISTING Report History register (received
+  date = the Outlook received timestamp; duplicates refused by message identity + SHA-256) and processed through the
+  EXISTING importers; a dashboard shows who sent what, periods, arrival, processing and attention items; on the 15th of
+  every month a reconciliation reports completed imports, missing manufacturers, incomplete reports and exceptions, and
+  late reports keep processing. Rules: reuse MI-1a / MI-1b / MI-1c and the existing Graph sync (`email-sync-cron`) — no
+  new manufacturer database or import platform; approvals move from per-file to per-rule (a report profile per
+  manufacturer + type); alert only on real exceptions; commission v2 and unrestricted financial writes stay off without
+  separate approval; financial safeguards, dealer ownership and audit history kept; never create contacts, deals,
+  campaigns or send emails automatically. Strongback is the pilot, then other manufacturers. Plan: Claude Doc "MI Inbox
+  Automation — Pilot Plan (Strongback)" (claude.ai/code/artifact/4ca4e85c-1125-4521-92b3-051ed119bcf6). NO production
+  changes until Angelo agrees the pilot workflow (open decisions listed at the end of that doc).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
