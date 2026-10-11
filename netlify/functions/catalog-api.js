@@ -2069,16 +2069,29 @@ async function noteParity(slug, msg){
    commercial action is refused too. The only override is b.regression_fix = {decision_id, reason}
    naming an unused mfr_decisions row of kind regression_fix for this same line. */
 async function freezeGate(b, me){
-  if(!MC.isCommercialAction(b)) return null;
-  const slug=MC.lineOf(b);
+  /* Release A (approved 2026-10-11): the freeze covers what dealers see, not only prices — the content
+     actions (MC.CONTENT_ACTIONS: catalog-layer names / categories / images, media, links, the line's
+     logo, listing mode and categories) are refused on a frozen line exactly like a price change. An
+     enrichment window never reaches catalog-api: everything here is visible the moment it is written. */
+  if(!MC.isFrozenProtected(b)) return null;
+  let slug=MC.lineOf(b);
+  if(!slug && MC.MEDIA_ID_ACTIONS.has(b.action)){        // a media row names no line: read whose it is
+    const id=b.action==="reorder_media"?(Array.isArray(b.ids)?b.ids[0]:null):b.id;
+    if(id!=null){
+      try{ const r=await sb("GET",`product_media?id=eq.${encodeURIComponent(id)}&select=manufacturer`); slug=(r&&r[0]&&r[0].manufacturer)||""; }
+      catch(e){ return json(503,{error:"freeze_state_unreadable", message:"Whose media this is could not be read, so nothing was changed: "+String((e&&e.message)||e).slice(0,300)}); }
+    }
+  }
   if(!slug) return null;                         // unattributed: the database guard still applies
   let rows;
   try{ rows=await sb("GET",`manufacturer_meta?slug=eq.${encodeURIComponent(slug)}&select=slug,frozen`); }
-  catch(e){ return json(503,{error:"freeze_state_unreadable", message:"The freeze state of "+slug+" could not be read, so no commercial change was made: "+String((e&&e.message)||e).slice(0,300)}); }
+  catch(e){ return json(503,{error:"freeze_state_unreadable", message:"The freeze state of "+slug+" could not be read, so no change was made: "+String((e&&e.message)||e).slice(0,300)}); }
   if(!(rows && rows[0] && rows[0].frozen===true)) return null;
   const rf=b.regression_fix;
-  if(!rf) return json(423,{error:"line_frozen", manufacturer:slug, message:
-    slug+" is frozen (Gold Standard COMPLETE). Commercial changes are refused unless a regression is found: record a regression_fix decision in Manufacturer Center and send it with the change. Nothing was changed."});
+  const commercial=MC.isCommercialAction(b);
+  if(!rf) return json(423,{error:"line_frozen", manufacturer:slug, message: commercial
+    ? slug+" is frozen (Gold Standard COMPLETE). Commercial changes are refused unless a regression is found: record a regression_fix decision in Manufacturer Center and send it with the change. Nothing was changed."
+    : slug+" is frozen (Gold Standard COMPLETE). What dealers see on this line — names, images, media, links, categories, its logo and listing — is protected like its prices: record a regression_fix decision in Manufacturer Center and send it with the change. Nothing was changed."});
   const id=parseInt(rf.decision_id,10), reason=String(rf.reason||"").trim();
   if(!(id>0) || !reason) return json(400,{error:"regression_fix_incomplete", message:"A regression fix needs decision_id and a reason. Nothing was changed."});
   let dec;
@@ -4428,7 +4441,7 @@ async function handleCatalog(event){
           return {slug:l.slug, name:l.name||l.slug, authoritative:m.record_authoritative===true, frozen:m.frozen===true, frozen_at:m.frozen_at||null,
             deferrals:Array.isArray(m.deferrals)?m.deferrals:[], freight_traced:!!(m.freight_terms&&m.freight_terms.trace),
             source:cur?{id:cur.id,title:cur.title,received_date:cur.received_date,legacy:cur.legacy,effective_date_status:cur.effective_date_status,manufacturer_effective_date:cur.manufacturer_effective_date}:null,
-            sources:src.length, decisions:dec.length, open_regression_fixes:dec.filter(x=>x.kind==="regression_fix"&&!x.used_at).length,
+            sources:src.length, decisions:dec.length, open_regression_fixes:dec.filter(x=>x.kind==="regression_fix"&&!x.used_at).length, enrichment_window:((dec.find(x=>x.kind==="enrichment_window"&&!x.used_at))||{}).id||null,
             last_run:rr[0]?{id:rr[0].id,phase:rr[0].phase,result:rr[0].result,fingerprint:rr[0].fingerprint,run_at:rr[0].run_at}:null}; });
         return json(200,{ok:true, lines:out});
       }
@@ -4455,6 +4468,7 @@ async function handleCatalog(event){
         const KINDS=["interpretation","conflict","exception","regression_fix","freight_terms","deferral","acceptance"];
         const slug=String(b.manufacturer||"").trim(), kind=String(b.kind||""), field=String(b.field||"").trim(), reason=String(b.reason||"").trim();
         if(!slug||!field||!reason) return json(400,{error:"manufacturer, field and reason are required"});
+        if(kind==="enrichment_window") return json(400,{error:"window_not_here",message:"An enrichment window is opened only through mc_open_enrichment_window (one per frozen line, content drafts only). Nothing was recorded."});
         if(KINDS.indexOf(kind)<0) return json(400,{error:"kind must be one of "+KINDS.join(", ")});
         if(/^gate:/i.test(field)) return json(400,{error:"gate_not_here",message:"Approval gates are recorded only through mc_approve_gate, which checks what is being approved. Nothing was recorded."});
         const row={manufacturer:slug, kind, field:field.slice(0,80), reason:reason.slice(0,2000), code:b.code?String(b.code).trim().slice(0,80):null,
@@ -4468,9 +4482,59 @@ async function handleCatalog(event){
       if(b.action==="mc_guard_selftest"){
         let r; try{ r=await sb("POST","rpc/mfr_freeze_guard_selftest",{}); }
         catch(e2){ return json(503,{error:"selftest_failed", message:String((e2&&e2.message)||e2).slice(0,300)}); }
-        const rows=Array.isArray(r)?r:[];
-        const notBlocked=rows.filter(x=>x.result!=="blocked" && x.result!=="no active record");
-        return json(200,{ok:true, pass:rows.length>0 && !notBlocked.length, attempts:rows, not_blocked:notBlocked});
+        /* Release A: the content guard's own self-test runs beside Phase 2's. Each attempt carries what is
+           expected ("blocked", or "allowed" for a hidden draft under an enrichment window); Phase 2's rows
+           expect "blocked". A content guard that is not installed is a failure, never a pass. */
+        let c, contentError=null;
+        try{ c=await sb("POST","rpc/mfr_content_guard_selftest",{}); }
+        catch(e2){ contentError="The content guard's self-test could not run (is supabase/mc_release_a_content_freeze.sql installed?): "+String((e2&&e2.message)||e2).slice(0,300); }
+        const commercialRows=(Array.isArray(r)?r:[]).map(x=>Object.assign({guard:"commercial", expect:"blocked"},x));
+        const contentRows=(Array.isArray(c)?c:[]).map(x=>Object.assign({guard:"content"},x));
+        const rows=commercialRows.concat(contentRows);
+        const SKIP=["no active record","nothing to try"];
+        const notBlocked=rows.filter(x=>x.result!==x.expect && SKIP.indexOf(x.result)<0);
+        return json(200,{ok:true, pass:commercialRows.length>0 && contentRows.length>0 && !contentError && !notBlocked.length,
+          attempts:rows, not_blocked:notBlocked, content_error:contentError,
+          counts:{commercial:commercialRows.length, content:contentRows.length, as_expected:rows.filter(x=>x.result===x.expect).length, nothing_to_try:rows.filter(x=>SKIP.indexOf(x.result)>=0).length}});
+      }
+      /* ENRICHMENT WINDOWS (Release A, approved 2026-10-11). A frozen line's content can be enriched as HIDDEN
+         DRAFTS only while its window is open. Opening and closing are recorded decisions: a window is an
+         mfr_decisions row of kind enrichment_window (one open per line, enforced by the database), closed by
+         stamping its used_at once — never rewritten or deleted. Both answer dry_run:true with what they would
+         write. A window opens nothing commercial and nothing a dealer can see. */
+      if(b.action==="mc_open_enrichment_window"){
+        const slug=String(b.manufacturer||"").trim(), reason=String(b.reason||"").trim();
+        if(!slug||!reason) return json(400,{error:"manufacturer and reason are required"});
+        let meta, open;
+        try{ [meta, open]=await Promise.all([
+          sb("GET",`manufacturer_meta?slug=eq.${encodeURIComponent(slug)}&select=slug,frozen`),
+          sb("GET",`mfr_decisions?manufacturer=eq.${encodeURIComponent(slug)}&kind=eq.enrichment_window&used_at=is.null&select=id,decided_at,decided_by,reason`)]); }
+        catch(e2){ return json(503,{error:"mc_unreadable",message:String((e2&&e2.message)||e2).slice(0,300)}); }
+        if(!(meta&&meta[0])) return json(404,{error:"no such line",manufacturer:slug});
+        if(meta[0].frozen!==true) return json(409,{error:"not_frozen",message:slug+" is not frozen, so it needs no enrichment window. Nothing was recorded."});
+        if(open&&open.length) return json(409,{error:"window_already_open",window:open[0],message:"An enrichment window is already open for "+slug+" (decision "+open[0].id+"). Nothing was recorded."});
+        const row={manufacturer:slug, kind:"enrichment_window", field:"enrichment_window", reason:reason.slice(0,2000),
+          decided_by:String((me&&me.email)||"president").slice(0,80),
+          hcps_value:{scope:"content_drafts",
+            may_write:["hidden draft pages","descriptions, features, specs, sizing","categories","page groupings and options","images copied into HCPS storage","manufacturer URLs and source provenance"],
+            may_not_change:["dealer price","tiers / pooling","UOM / case qty","MSRP / MAP","freight","commercial active / retired state","anything visible to dealers","publishing"],
+            publish:"only through Approve & Publish Manufacturer and a passing verification run"}};
+        if(b.dry_run===true) return json(200,{ok:true,dry_run:true,would_record:row});
+        let ins; try{ ins=await sb("POST","mfr_decisions",row,{Prefer:"return=representation"}); }
+        catch(e2){ return json(502,{error:"window_not_opened",message:String((e2&&e2.message)||e2).slice(0,300)}); }
+        return json(200,{ok:true,window:ins&&ins[0]});
+      }
+      if(b.action==="mc_close_enrichment_window"){
+        const slug=String(b.manufacturer||"").trim();
+        if(!slug) return json(400,{error:"manufacturer required"});
+        let open; try{ open=await sb("GET",`mfr_decisions?manufacturer=eq.${encodeURIComponent(slug)}&kind=eq.enrichment_window&used_at=is.null&select=id,decided_at,decided_by,reason`); }
+        catch(e2){ return json(503,{error:"mc_unreadable",message:String((e2&&e2.message)||e2).slice(0,300)}); }
+        if(!(open&&open.length)) return json(409,{error:"no_open_window",message:"No enrichment window is open for "+slug+". Nothing was changed."});
+        const stamp={used_at:new Date().toISOString(), used_by:String((me&&me.email)||"president").slice(0,80)};
+        if(b.dry_run===true) return json(200,{ok:true,dry_run:true,would_close:open[0],stamp});
+        try{ await sb("PATCH",`mfr_decisions?id=eq.${open[0].id}&used_at=is.null`,stamp,{Prefer:"return=minimal"}); }
+        catch(e2){ return json(502,{error:"window_not_closed",message:String((e2&&e2.message)||e2).slice(0,300)}); }
+        return json(200,{ok:true,closed:open[0].id});
       }
       if(b.action==="mc_verify"){
         const slug=String(b.manufacturer||"").trim(); if(!slug) return json(400,{error:"manufacturer required"});

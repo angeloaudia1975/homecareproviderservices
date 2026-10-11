@@ -27,6 +27,14 @@ const ADMIN_TOKEN  = process.env.CONTENT_ADMIN_TOKEN;
 const AI_KEY   = process.env.ANTHROPIC_API_KEY || '';
 const AI_MODEL = process.env.HCPS_AI_MODEL || 'claude-sonnet-5';
 const { computeMerge } = require('./_content-merge.js');
+/* THE CONTENT FREEZE (Release A, approved 2026-10-11). A frozen (Gold Standard) line's pages, grouping, content,
+   images and publish state are protected like its prices: MC.contentGate refuses the write here, and the database
+   refuses it too (mfr_content_guard). The two recorded ways through travel as request headers on every write of
+   this request — x-hcps-regression-fix (any change, single use) or x-hcps-enrichment-window (hidden drafts only).
+   Both are reset at the start of every request. */
+const MC = require('./_mc.js');
+let EXCEPTION_HEADERS = {};
+let PC_REGRESSION = null;
 // Central AI voice/style guide (RULE 12) — used for the prose fields the workspace generates.
 let loadStyleGuide = null, findBanned = null;
 try { ({ loadStyleGuide, findBanned } = require('./_ai_style.js')); } catch (e) { /* optional */ }
@@ -112,7 +120,7 @@ function svcHeaders(extra) {
     apikey: SERVICE_ROLE,
     authorization: 'Bearer ' + SERVICE_ROLE,
     'Content-Type': 'application/json'
-  }, extra || {});
+  }, EXCEPTION_HEADERS, extra || {});
 }
 const rest = (path) => `${SUPABASE_URL}/rest/v1/${path}`;
 
@@ -352,6 +360,28 @@ function aiPrompt(field, ctx, styleGuide) {
 }
 
 exports.handler = async (event) => {
+  EXCEPTION_HEADERS = {}; PC_REGRESSION = null;
+  let res;
+  try { res = await handleContent(event); }
+  finally { EXCEPTION_HEADERS = {}; }
+  /* A regression fix is single-use: once the request it authorised has succeeded, it is spent. */
+  if (PC_REGRESSION && res && res.statusCode < 300) {
+    const used = PC_REGRESSION; PC_REGRESSION = null;
+    try { await fetch(rest(`mfr_decisions?id=eq.${used.id}&used_at=is.null`), { method: 'PATCH', headers: svcHeaders({ Prefer: 'return=minimal' }),
+      body: JSON.stringify({ used_at: new Date().toISOString(), used_by: String(used.by || 'president').slice(0, 80) }) }); }
+    catch (e) { try { console.error('[HCPS] could not mark regression_fix ' + used.id + ' used: ' + String((e && e.message) || e)); } catch (_) {} }
+  }
+  PC_REGRESSION = null;
+  /* The database's own refusal, whichever action reached it, reads as what it is. */
+  if (res && res.statusCode >= 400 && res.statusCode !== 423 && /line_frozen/.test(String(res.body || ''))) {
+    let detail = ''; try { const j = JSON.parse(res.body); detail = String(j.error || j.message || JSON.stringify(j.rows || '')); } catch (e) {}
+    const m = /line_frozen:[^"\\]*/.exec(detail || String(res.body || ''));
+    return reply(423, { ok: false, error: 'line_frozen', message: (m ? m[0].replace(/^line_frozen:\s*/, '') : 'This line is frozen (Gold Standard).') + ' Nothing was changed.' });
+  }
+  return res;
+};
+
+async function handleContent(event) {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (!SUPABASE_URL || !SERVICE_ROLE) return reply(500, { ok: false, error: 'Supabase env not configured' });
 
@@ -418,17 +448,38 @@ exports.handler = async (event) => {
       const reviewer = body.reviewed_by || who;
       const m = body.manufacturer || mfr;
 
+      // ---- THE CONTENT FREEZE: every write is checked against the line's freeze before anything is written ----
+      if (MC.PC_WRITE_ACTIONS.has(action) && action !== 'recategorize') {
+        let lines = [m];
+        if (action === 'upsert') (Array.isArray(body.rows) ? body.rows : [body.row]).forEach(x => { if (x && x.manufacturer) lines.push(x.manufacturer); });
+        if (action === 'undo' && body.id != null) {
+          try { const hr = await fetch(rest(`product_content_history?id=eq.${enc(body.id)}&select=manufacturer`), { headers: svcHeaders() });
+                if (!hr.ok) throw new Error('history ' + hr.status); const hj = await hr.json(); if (hj && hj[0] && hj[0].manufacturer) lines.push(hj[0].manufacturer); }
+          catch (e) { return reply(503, { ok: false, error: 'freeze_state_unreadable', message: 'The change to undo could not be read, so nothing was changed.' }); }
+        }
+        const read = async path => { const r = await fetch(rest(path), { headers: svcHeaders() }); if (!r.ok) throw new Error('Supabase ' + r.status); return r.json(); };
+        const g = await MC.contentGate({ body, lines, read, windowRule: MC.windowProblem });
+        if (g.refusal) return reply(g.refusal.status, g.refusal.body);
+        EXCEPTION_HEADERS = g.headers || {};
+        if (g.regression) PC_REGRESSION = Object.assign({ by: who }, g.regression);
+      }
+
       // ================= REVIEW ACTIONS =================
       if (action === 'approve' || action === 'reject') {
         if (!m) return reply(400, { ok: false, error: 'manufacturer required' });
         if (!body.page_key) return reply(400, { ok: false, error: 'page_key required' });
-        const patch = Object.assign({}, body.patch || {}, {
+        /* Release A: the patch is whitelisted (the same fields set_meta / set_content may write) and the change is logged. */
+        const extra = {};
+        Object.keys(body.patch || {}).forEach(k => { if (SAVE_FIELDS.indexOf(k) >= 0 && k !== 'manufacturer') extra[k] = body.patch[k]; });
+        const patch = Object.assign(extra, {
           status: action === 'approve' ? 'approved' : 'rejected',
           reviewed_by: reviewer, updated_at: new Date().toISOString()
         });
+        const before = await getRow(m, body.page_key);
         const r = await fetch(rest(`product_content?manufacturer=eq.${enc(m)}&page_key=eq.${enc(body.page_key)}`),
           { method: 'PATCH', headers: svcHeaders({ Prefer: 'return=representation' }), body: JSON.stringify(patch) });
         const out = await r.json();
+        if (r.ok) await logHistory({ manufacturer: m, page_key: body.page_key, action: action, actor: reviewer, summary: action === 'approve' ? 'Approved' : 'Rejected', before: before, after: out });
         return reply(r.ok ? 200 : 500, { ok: r.ok, rows: out });
       }
 
@@ -437,6 +488,7 @@ exports.handler = async (event) => {
           { method: 'PATCH', headers: svcHeaders({ Prefer: 'return=representation' }),
             body: JSON.stringify({ status: 'approved', reviewed_by: reviewer, updated_at: new Date().toISOString() }) });
         const out = await r.json();
+        if (r.ok && Array.isArray(out) && out.length) await logHistory({ manufacturer: m, page_key: null, action: 'approve_all', actor: reviewer, summary: `Approved ${out.length} page(s)`, before: [], after: out });
         return reply(r.ok ? 200 : 500, { ok: r.ok, approved: Array.isArray(out) ? out.length : 0 });
       }
 
@@ -445,7 +497,9 @@ exports.handler = async (event) => {
         rows.forEach(x => { if (x && !x.status) x.status = 'pending_review'; if (x) x.updated_at = new Date().toISOString(); });
         const r = await fetch(rest('product_content?on_conflict=manufacturer,page_key'),
           { method: 'POST', headers: svcHeaders({ Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(rows) });
-        return reply(r.ok ? 200 : 500, { ok: r.ok, upserted: rows.length });
+        if (r.ok) await logHistory({ manufacturer: (rows[0] && rows[0].manufacturer) || m, page_key: null, action: 'upsert', actor: reviewer, summary: `Upserted ${rows.length} page(s)`, before: [], after: rows });
+        if (!r.ok) { const t = await r.text(); return reply(500, { ok: false, error: t }); }
+        return reply(200, { ok: true, upserted: rows.length });
       }
 
       // ---- Capture one source (hcps / website / pdf) for a product page ----
@@ -1174,15 +1228,21 @@ exports.handler = async (event) => {
         const from = String(body.from || '').trim(), to = String(body.to || '').trim();
         if (!from || !to) return reply(400, { ok: false, error: 'from, to required' });
         const sub = body.subcategory != null && String(body.subcategory).trim() ? String(body.subcategory).trim() : null;
-        const rows = await sbGet(`product_content?select=*&category=eq.${enc(from)}&limit=3000`);
-        if (!rows || !rows.length) return reply(200, { ok: true, updated: 0, affected: [] });
+        const all = await sbGet(`product_content?select=*&category=eq.${enc(from)}&limit=3000`);
+        /* Release A: a frozen line's pages are never moved by a cross-line re-categorize; they are skipped and named. */
+        let frozenSlugs;
+        try { const fr = await fetch(rest('manufacturer_meta?frozen=eq.true&select=slug'), { headers: svcHeaders() }); if (!fr.ok) throw new Error('Supabase ' + fr.status); frozenSlugs = (await fr.json()).map(x => x.slug); }
+        catch (e) { return reply(503, { ok: false, error: 'freeze_state_unreadable', message: 'Which lines are frozen could not be read, so nothing was re-categorized.' }); }
+        const rows = (all || []).filter(r => frozenSlugs.indexOf(r.manufacturer) < 0);
+        const skipped_frozen = [...new Set((all || []).filter(r => frozenSlugs.indexOf(r.manufacturer) >= 0).map(r => r.manufacturer))];
+        if (!rows.length) return reply(200, { ok: true, updated: 0, affected: [], skipped_frozen });
         const before = rows.map(r => Object.assign({}, r));
         for (const r of rows) { const patch = { category: to, reviewed_by: reviewer }; if (sub) patch.subcategory = sub; await patchRow(r.manufacturer, r.page_key, patch); }
         await logHistory({ manufacturer: rows[0].manufacturer, page_key: null, action: 'recategorize', actor: reviewer,
           summary: `Re-categorized ${rows.length} product(s): "${from}" → "${to}"${sub ? ` (subcategory "${sub}")` : ''}`, before: before, after: [] });
         const affected = {};
         rows.forEach(r => { const codes = normSkus(r.skus).map(s => skuKey(s)).filter(Boolean); (affected[r.manufacturer] = affected[r.manufacturer] || []).push(...codes); });
-        return reply(200, { ok: true, updated: rows.length, to, affected: Object.keys(affected).map(m => ({ manufacturer: m, codes: affected[m] })) });
+        return reply(200, { ok: true, updated: rows.length, to, affected: Object.keys(affected).map(m => ({ manufacturer: m, codes: affected[m] })), skipped_frozen });
       }
 
       // ---- Cross-sell: recommend accessories/related from the SAME manufacturer and the closest
@@ -1257,4 +1317,4 @@ exports.handler = async (event) => {
   } catch (e) {
     return reply(500, { ok: false, error: String(e && e.message || e) });
   }
-};
+}
