@@ -254,6 +254,18 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
     assert.ok(!flat([r]).some(x => x.internet_message_id === '<news@x>'));
     assert.strictEqual(r.body.not_reports_by_manufacturer['abm-respiratory-care'].name_mention, 1);
   });
+  await t('live-run findings: X500 / receipt senders are internal; "Commision" spelling; an order-ack PDF is not a sales report', async () => {
+    boot(); const { identify, classifyName, classifyContent } = require('../netlify/functions/_report_inventory.js')._internal; const ctx = { internalDomains: ['hcps.us'], tableNames: () => null };
+    const x500 = identify({ from: em('/o=exchangelabs/ou=exchange administrative group/cn=recipients/cn=abc-mailbox1'), subject: 'Commission statement Strongback' }, ctx);
+    assert.strictEqual(x500.internal, true);
+    assert.strictEqual(identify({ from: em('postmaster@hcpsrelay.example'), subject: 'Delivered: Commission report' }, ctx).internal, true);
+    assert.strictEqual(classifyName('November 2025 Commision Report'), 'commission_statement');
+    assert.strictEqual(classifyName('Angelo March Comms.xls'), 'commission_statement');
+    assert.strictEqual(classifyContent({ format: 'pdf', signals: ['order_lines'] }), null);
+    const list = msgs().concat([{ id: 'm16', internetMessageId: '<x500@x>', subject: 'Commission statement Strongback', from: em('/o=exchangelabs/cn=abc-mailbox1'), receivedDateTime: '2026-09-29T15:00:00Z', hasAttachments: false, parentFolderId: 'fIn' }]);
+    const { m } = boot({ messages: list }); const r = await call(m, INV({ from: '2026-09-01', to: '2026-10-01' }), as('pres'));
+    assert.ok(!flat([r]).some(x => x.internet_message_id === '<x500@x>'));
+  });
   await t('unrelated mail, HCPS\'s own mail and drafts never appear', async () => {
     for (const id of ['<dealer@x>', '<int@x>', '<draft@x>']) assert.strictEqual(byId(id), undefined, id);
     const txt = JSON.stringify(ALL.map(r => r.body)); assert.ok(!/somedealer|Question about a wheelchair|Commission report draft/.test(txt));

@@ -27,4 +27,7 @@ module.exports = {
   subject_wins: { file: RI, from: 'if (byContent) { att.classification = byContent; att.basis = "content"; }', to: 'if (byContent && !classifyName(att.name)) { att.classification = byContent; att.basis = "content"; }' },
   body_only_missed: { file: RI, from: 'looks_like_report: amounts >= 1 &&', to: 'looks_like_report: amounts >= 99 &&' },
   no_progress: { file: RI, from: 'if (i > start && now() > soft) break;', to: 'if (now() > soft) break;' },
+  x500_external: { file: RI, from: ' || !from.includes("@") ||', to: ' ||' },
+  misspelling_missed: { file: RI, from: 'if (/commi?ss?ion|\\bcomms?\\b/i.test(t)) return "commission_statement";', to: 'if (/commission/i.test(t)) return "commission_statement";' },
+  internal_inspected: { file: RI, from: 'if (who.internal) k.hcps_internal = (k.hcps_internal || 0) + 1;', to: 'if (false) k.hcps_internal = 1;' },
 };

@@ -52,8 +52,8 @@ const NAMES = [
   [/\bdalton medical\b/i, "dalton"],
   [/\bABM respiratory\b/i, "abm-respiratory-care"],
 ];
-const REPORT_WORDS = /commission|\bcomm\b|sales (report|summary)|monthly sales|\bytd\b|statement|price ?list|pricing|dealer (overview|report)|\breport\b|orders? (export|report)/i;
-const STRONG_WORDS = /commission|sales report|price ?list|dealer (overview|report)/i;
+const REPORT_WORDS = /commi?ss?ion|\bcomm\b|sales (report|summary)|monthly sales|\bytd\b|statement|price ?list|pricing|dealer (overview|report)|\breport\b|orders? (export|report)/i;
+const STRONG_WORDS = /commi?ss?ion|sales report|price ?list|dealer (overview|report)/i;
 
 const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 const MON_RE = /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\.?(?:\s*,?\s*(20\d\d))?/gi;
@@ -67,7 +67,8 @@ function identify(msg, ctx) {
   const from = String((msg.from && msg.from.emailAddress && msg.from.emailAddress.address) || "").toLowerCase();
   const dom = domainOf(from);
   const subject = msg.subject || "";
-  const internal = ctx.internalDomains.includes(dom);
+  // An Exchange X500 address (no "@") is HCPS's own mailbox; delivery receipts are system mail.
+  const internal = ctx.internalDomains.includes(dom) || !from.includes("@") || /^(postmaster|mailer-daemon|microsoftexchange)/.test(from);
   if (DOMAINS[dom]) return { slug: DOMAINS[dom], basis: "sender_domain", internal };
   for (const p of SUBJECT_PATTERNS) if (p.re.test(subject)) return { slug: p.slug, basis: "subject_pattern", internal };
   // A forward from inside HCPS, or an unknown relay: the manufacturer's name in the subject.
@@ -202,14 +203,13 @@ function classifyContent(a) {
     if (s.has("dealer_overview")) return "dealer_report";
     if (s.has("commission")) return "commission_statement";
     if (s.has("price_list")) return "price_list";
-    if (s.has("order_lines")) return "sales_export";
-    if (s.has("invoice")) return "other";
+    if (s.has("invoice")) return "other";        // a PDF with order lines alone is an order acknowledgement, not a report
     return null;
   }
   if (a.sheets && a.sheets.length) {
     const all = new Set(a.sheets.flatMap(x => x.columns));
     const names = a.sheets.map(x => x.name.toLowerCase());
-    if (names.some(n => /current month payment|commission/.test(n)) || all.has("commission")) return "commission_statement";
+    if (names.some(n => /current month payment|commi?ss?ion/.test(n)) || all.has("commission")) return "commission_statement";
     if (all.has("price_list") && !all.has("customer") && !all.has("order") && !all.has("invoice")) return "price_list";
     if ((all.has("order") || all.has("invoice")) && (all.has("sku") || all.has("product")) && (all.has("qty") || all.has("amount"))) return "sales_export";
     if (all.has("price_list")) return "price_list";
@@ -220,7 +220,7 @@ function classifyContent(a) {
 function classifyName(text) {
   const t = String(text || "");
   if (/dealer (overview|report)|report[_ ]overview/i.test(t)) return "dealer_report";
-  if (/commission/i.test(t)) return "commission_statement";
+  if (/commi?ss?ion|\bcomms?\b/i.test(t)) return "commission_statement";   // "Commision", "March Comms"
   if (/price ?list|pricing|pricelist/i.test(t)) return "price_list";
   if (/invoice|statement of account|remittance/i.test(t)) return "other";
   if (/\border|sales (report|summary)|monthly sales|\bytd\b/i.test(t)) return "sales_export";
@@ -297,7 +297,8 @@ async function inventory(o, deps) {
       // without attachments, name mentions) so nothing disappears; list_attachment_mail:true lists the attachment
       // mail by file name too (a file is downloaded only when its name looks like a report).
       const k = skipped[who.slug] = skipped[who.slug] || { no_attachment: 0, with_attachment: 0, name_mention: 0 };
-      if (REPORT_WORDS.test(subj)) keep.push({ m, who, deep: true });
+      if (who.internal) k.hcps_internal = (k.hcps_internal || 0) + 1;     // HCPS's own sends / forwards: copies, counted only
+      else if (REPORT_WORDS.test(subj)) keep.push({ m, who, deep: true });
       else if (who.basis !== "sender_domain") k.name_mention++;            // a newsletter / system mail naming the line
       else if (m.hasAttachments && o.list_attachment_mail) keep.push({ m, who, deep: false });
       else if (m.hasAttachments) k.with_attachment++;
