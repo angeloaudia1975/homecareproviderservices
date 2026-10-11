@@ -1406,6 +1406,19 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   all other suites unchanged (phase1-visits / phase2-account-class / phase2-timeline fail identically on main — clock).
   Production observation (read-only): `mfr_sources` ids 2 and 3 are two legacy registrations of the same Ovation 2026
   price list (no hash); left as they are.
+- **MI-1b review corrections (Angelo, 2026-10-10 23:10 CT) — migration NOT authorized, no merge/deploy until reviewed.**
+  (1) Several distinct, legitimate sales exports / commission statements may cover the SAME period and be registered and
+  accepted independently — never forced into a fictitious correction. The (manufacturer, file_sha256) uniqueness stays.
+  Only dealer-intelligence reports keep ONE accepted report per manufacturer + period, with the controlled correction
+  workflow. A genuine replacement (any kind) must name the record it supersedes and give a reason. (2) A correction must
+  cover the SAME reporting period as the record it supersedes (a September report can never supersede October); a
+  period-correction workflow would be its own separately approved design. (3) Linking a financial import batch needs a
+  NONBLANK batch source_file that exactly equals the registered file name (plus manufacturer, lane, imported status and
+  creation-after-registration). (4) The Sales Report Import and Commission Report Import do NOT register their files
+  yet — automatic registration is a later controlled unit; the register is not described as complete until then.
+  Files stored before a database refusal are identified by their hash-named path having no register row, and are
+  reconciled only by a person, never by an automatic delete. (5) Keep the branch current with main and re-run the MI-1b,
+  Manufacturer Center, MI-1a and regression suites before review. `mi_import_v2` stays ON, `mi_commission_v2` OFF.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
