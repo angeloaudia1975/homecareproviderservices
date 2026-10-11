@@ -1290,7 +1290,7 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   ordering, pricing, Partner 360 and Connect 360 never read it. **Never give the Academy a Supabase session** (the "View
   as" magic-link method was reviewed and rejected: the token would also order and price on Partner 360). GET may only
   read (named read actions); every change is POST with the `x-academy-request` header and an allowed Origin. Academy
-  pages live only on homecareproviderservices.org (301 from the other hosts), under the strict `/academy/*` security
+  pages live only on www.homecareproviderservices.org — the primary domain; Netlify sends the bare domain to www, and netlify.toml sends homecareproviderservices.netlify.app/academy/* there (301). Never add a www→bare-domain rule: it loops, under the strict `/academy/*` security
   headers in netlify.toml: no inline script and no third-party scripts on Academy pages.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy

@@ -301,5 +301,14 @@ cookieFor(null, L_PLAIN, U(9));
     } finally { global.fetch = saved; }
   });
 
+  await t('canonical host: Academy redirects end on www (the primary domain) and can never loop', async () => {
+    const toml = require('fs').readFileSync(require('path').join(__dirname, '..', 'netlify.toml'), 'utf8');
+    const rules = toml.split('[[redirects]]').slice(1).map(b => ({ from: (b.match(/from\s*=\s*"([^"]+)"/) || [])[1] || '', to: (b.match(/to\s*=\s*"([^"]+)"/) || [])[1] || '' }))
+      .filter(r => /\/academy/.test(r.from + r.to));
+    assert.deepStrictEqual(rules, [{ from: 'https://homecareproviderservices.netlify.app/academy/*', to: 'https://www.homecareproviderservices.org/academy/:splat' }]);
+    // Netlify already sends the bare domain to www; nothing may send www (or anything) back to the bare domain.
+    assert.ok(!/to\s*=\s*"https:\/\/homecareproviderservices\.org/.test(toml), 'a rule targets the bare domain (loop with the primary-domain redirect)');
+  });
+
   done('academy-a2a');
 })();
