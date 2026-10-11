@@ -1268,6 +1268,24 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   walkthrough (test/mcflow.test.js, screens: test/mcui.walkthrough.js) rebuilds a COPY of Bemis as a new line and must
   end at the real Bemis fingerprint 3620a321933995db. Open follow-up: re-check anonymous listing of `mfr-sources` once
   a real source file is stored. Do not onboard the next manufacturer until Angelo approves.
+  **Phase 6 correction (approved by Angelo 2026-10-11; appended to the same release — the 2026-10-11 live evidence
+  is kept, no run or decision rewritten).** Live Match on the frozen lines proposed every Bemis SKU active → "HOLD",
+  the pack basis on the singles, and a fake "needs a decision" queue on the legacy lines. Rules now:
+  (i) **Decisions are field-scoped.** A decision changes only the product field named in `field`, with its partner
+  (uom+case_qty, msrp_basis+map_basis, status+status_note); a plain hcps_value is that field's value. Any other key
+  describes the decision itself (#11 fee_dropship `{"status":"HOLD"}` is a fee on hold, never a product status); a
+  decision whose field is not a product field (fees, freight, deferral, acceptance…) changes no SKU. Never merge
+  arbitrary hcps_value keys into a SKU. (j) **Pack-only rules follow the facts:** `applies_to` "packs" or any
+  pack/case wording ("items with a Master Case Qty") covers only SKUs whose structured case quantity is > 1, after the
+  SKU's own order-unit decision (7YE82350TC Each/1 and 444DISPLAY Display/1 are not packs); wording that is not
+  understood is never guessed — Match lists it as not applied. A SKU's own decision beats a line-wide one.
+  (k) **Legacy sources without stored rows** show "Accepted legacy source — row-level source data not stored; Match
+  comparison unavailable." — information, not a conflict and not a decision queue (Climbing Steps, Strongback,
+  Ovation). A current (non-legacy) source with missing rows still asks per SKU. (l) A record that already names its
+  order unit keeps it (staging keeps omitted fields); `summary.proposed_changes` = new + changed SKUs. (m) Test
+  fixtures never contain the Supabase project URL — Netlify secret scanning fails the build on it; fixtures use
+  `{{SUPABASE_URL}}` (filled by the test world) and the scan is never widened. Regression tests on the live wording
+  of all 15 decisions: test/mcmatch.live.test.js + test/mcmatch.ui.js (test/fixtures/mc-live-frozen.json).
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
@@ -1406,6 +1424,109 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   dealer_report, period, prepared_date, batch link); MI-1c = `mfr_dealer_snapshots` + `mfr_dealer_observations`
   (RULE 19 locked), match review queue, publish step. September expected matches: 15 auto, 7 review, Wyatt's held,
   GF Health + Nebcare unmatched (never created). Awaiting Angelo's decisions before SB-1.
+- **SB-0 APPROVED with refinements; MI-1b development authorized (Angelo, 2026-10-10 22:46 CT).** Branch only — no
+  production SQL, no deploy, no historical backfill, no September PDF import until separately approved. Decisions:
+  (1) MI-1b reuses the Manufacturer Center register `mfr_sources`. (2) Its unique `(manufacturer, file_sha256)` safeguard
+  stays; the report kinds (sales_export, commission_statement, dealer_report) coexist with the six existing catalog
+  rows/kinds, which keep their behaviour unchanged. (3) A report's received/accepted status is SEPARATE from whether its
+  intelligence is published to Dealer 360: registering or accepting a file never makes a manufacturer PDF visible or
+  triggers any action. (4) Keep the original file, SHA-256, received date, manufacturer-prepared date, report period,
+  supersession history and an audit trail of approvals; never invent a missing date or a link to a historical financial
+  import batch. (5) MI-1c observations use stable SOURCE-POSITION identities (report + page/block/line position), never
+  text/date alone, so identical legitimate notes are kept. (6) September matching: 15 automatic candidates, 7 manual
+  review, Wyatt's Pharmacy HELD, GF Health + Nebcare unmatched; an import never creates dealers or changes aliases.
+  (7) HCPS rep assignments stand: a report's owner field never overrides `dealers.rep_email`, and family-level or
+  sister-branch information must not leak across rep scopes. (8) The Strongback September CSV stays separate from the
+  PDF; no new sales or commission import is approved. (9) The 5% Premium Chair offer is stored only as unverified
+  manufacturer-supplied text — no pricing or campaign action. SB-1 / MI-1c needs its own authorization.
+- **MI-1b BUILT on branch `mi1b-report-register` (2026-10-10, NOT merged, NOT deployed, NO production SQL, no backfill).**
+  `supabase/mi1b_report_register.sql` (sha256 e4f5b5e2…, rollback `…_rollback.sql` fac9febe…): report kinds
+  sales_export / commission_statement / dealer_report on `mfr_sources` beside the 7 catalog kinds; the unique
+  (manufacturer, file_sha256) index unchanged; report columns (period, prepared_date + stated/not_stated, file size/type,
+  supersede_reason, decided_reason, publication_status unpublished/published/withdrawn for dealer reports only,
+  import_batch_id); constraints keep catalog rows free of report fields; guard trigger `mfr_report_guard` (report rows
+  written only by the `hcps_mfr_report_*` functions, file facts immutable, never deleted; catalog rows unaffected);
+  append-only `mfr_source_events` (service_role select+insert only — its default update/delete/truncate grants are
+  revoked); functions register (idempotent by hash; same file under another kind refused; second file for a period
+  only as a correction) / decide (accepting a correction supersedes the old record and withdraws its publication in
+  one transaction) / publication (publish refused until MI-1c staged intelligence exists) / link_batch (never to a
+  batch older than the registration, lane/manufacturer/file name must match). API `mfr-reports-api.js` (president/admin/
+  owner only; server hashes the bytes, checks the file signature, stores at `reports/<mfr>/<kind>/<sha>.<ext>` in the
+  private `mfr-sources` bucket with x-upsert false; 2-minute signed download). Page `/admin/report-history.html`
+  (HUBS: Sales Data & Analytics → Manufacturer Report History). Tests: mi1b-register.pg 34, mi1b-api 22, mutants 32/32;
+  all other suites unchanged (phase1-visits / phase2-account-class / phase2-timeline fail identically on main — clock).
+  Production observation (read-only): `mfr_sources` ids 2 and 3 are two legacy registrations of the same Ovation 2026
+  price list (no hash); left as they are.
+- **MI-1b review corrections (Angelo, 2026-10-10 23:10 CT) — migration NOT authorized, no merge/deploy until reviewed.**
+  (1) Several distinct, legitimate sales exports / commission statements may cover the SAME period and be registered and
+  accepted independently — never forced into a fictitious correction. The (manufacturer, file_sha256) uniqueness stays.
+  Only dealer-intelligence reports keep ONE accepted report per manufacturer + period, with the controlled correction
+  workflow. A genuine replacement (any kind) must name the record it supersedes and give a reason. (2) A correction must
+  cover the SAME reporting period as the record it supersedes (a September report can never supersede October); a
+  period-correction workflow would be its own separately approved design. (3) Linking a financial import batch needs a
+  NONBLANK batch source_file that exactly equals the registered file name (plus manufacturer, lane, imported status and
+  creation-after-registration). (4) The Sales Report Import and Commission Report Import do NOT register their files
+  yet — automatic registration is a later controlled unit; the register is not described as complete until then.
+  Files stored before a database refusal are identified by their hash-named path having no register row, and are
+  reconciled only by a person, never by an automatic delete. (5) Keep the branch current with main and re-run the MI-1b,
+  Manufacturer Center, MI-1a and regression suites before review. `mi_import_v2` stays ON, `mi_commission_v2` OFF.
+- **MI-1b corrections BUILT on the branch (2026-10-10 ~23:30 CT; still NOT merged / deployed / run).** Branch merged with
+  main (3ffb9f6, incl. Manufacturer Center freight-terms work; no conflicts). `mi1b_report_register.sql` sha256
+  7761828e… (rollback b79dde05…). (1) One-accepted-per-period is now `mfr_sources_dealer_report_period_uk` (dealer reports
+  only); the register's period clash check and decide's "already accepted" check apply to dealer reports only; several
+  sales exports / commission statements per period register and are accepted independently. (2) A correction must
+  cover the superseded record's exact period — refused in register AND re-checked by the guard trigger on insert.
+  (3) link_batch refuses a NULL/blank batch source_file and needs an exact (case-sensitive) file-name match.
+  (4) Concurrency: `pg_advisory_xact_lock` on (manufacturer, file hash) and, for dealer reports, on (manufacturer, period)
+  — proven with two real sessions (same file → one record + "existing"; two dealer reports for one period → the second
+  refused; two commission statements → both kept); without the period lock both dealer reports got in. (5) API: a
+  database refusal after the file was stored answers `file_stored:true` + `storage_path` (kept privately, NOT
+  registered, reused if the same file is registered later); read-only `orphans` action lists stored files under
+  reports/ that no record names — nothing is deleted. Import screens still do not register files (deferred). Tests:
+  mi1b-register.pg 43, mi1b-api 25, mi1b mutants 42/42; MC guard pg 17, mcfreeze 17, mcverify 25, freightterms 11 (+mutants),
+  MI-1a identity.pg 28 / compat 16 (+14/14), commission-coverage 42 (+43/43), Phase 0 suites all pass; phase1-visits /
+  phase2-account-class / phase2-timeline fail identically on main 3ffb9f6 (late-evening clock).
+- **MI-1b APPROVED for controlled production rollout (Angelo, 2026-10-10 23:48 CT)** with the reviewed fingerprints
+  (migration 7761828e…, rollback b79dde05…). Order: reconcile the branch with main (SQL must stay identical; rerun
+  MI-1b / MC / MI-1a / regression; a mutation run with a failing control is not presented as valid) → production
+  preflight (6 catalog sources, 0 report records, hash index unchanged, MI-1a schema + financial baseline unchanged,
+  `mi_import_v2` ON / `mi_commission_v2` OFF, backup present) → run the SQL in the editor, every check ok → outside
+  public-key probe on `mfr_source_events` + the four functions → only then merge + deploy, confirm Published, verify the
+  page (President/Admin open, other roles refused, zero records) and run the read-only orphan check (no deletions).
+  Not authorized: registering/accepting the September Strongback PDF, importing the September CSV, changing either MI
+  switch, AirAvant corrections, MI-1c. Any failed check → STOP, no merge/deploy.
+  **Reconciliation (2026-10-10 ~23:58 CT):** main 08c9e58 merged (Academy M1 rev 2, Manufacturer Center Phase 6 guided
+  workflow + `mc_phase6_append_only.sql`); MI-1b SQL byte-identical. Compatibility: catalog-api `mc_register_source`
+  accepts only catalog kinds and stores files at `<slug>/<sha>/<name>` (MI-1b uses `reports/…`); `mc_accept_source`'s
+  direct PATCH on a report record is refused by `mfr_report_guard` (fails closed); the same file cannot be both a
+  catalog source and a report (hash index). Tests: mi1b pg 46 (MC Phase 6 in the chain) / api 25 / mutants 42/42;
+  mc-append pg 6, mc-guard pg 17, mcflow 13 (+mutants), mcgates 12, mcfreeze 17, mcverify 25, mc mutants; MI-1a 28 / 16
+  (+14/14); commission 42 / 11; phase1-visits / phase2-account-class / phase2-timeline fail identically on main 08c9e58
+  (late-evening clock), so the Phase 0 mutation run is not reported tonight (its control includes them).
+  **MI-1b migration RUN by Angelo 2026-10-11 ~08:47 CT (verified):** the approved file (sha256 7761828e…, from commit
+  550480b) pasted in the SQL editor; all 9 install checks ok = true. Preflight before (backup 11 Oct 09:11 UTC present):
+  6 catalog sources (5 price_list, 1 terms), fingerprint 425746f1…, 0 report records. After, re-checked: catalog rows
+  byte-identical (425746f1…), hash index unchanged; ledger 11,997 / $10,802,558.50 / $493,077.06, Strongback 143 /
+  $43,021.50 / $3,871.94, D7 dde7a2ce… / B1 d1f841ca… / keys 0d2908d1… / attribution 810065d6…, 0 batches / 0 superseded,
+  459 aliases; the 10 MI-1a functions byte-identical to committed Part 1 rev 3c (per-function md5(prosrc)); dealers 447,
+  contacts 770, opportunities 7, zoho_deal_baseline 7, dealer_manufacturers 597811b5…, quarantine 7, price_imports 9,
+  MC decisions 15 / runs 14 — all unchanged; flags unchanged (`mi_import_v2` ON, `mi_commission_v2` off), enrolment
+  Strongback sales_report only. New: 3 triggers, 4 constraints, 0 events, 0 report records, bucket private with 0 files;
+  anon/authenticated 0 grants on mfr_source_events / mfr_sources and 0 executable MI-1b functions; service_role
+  select+insert on events, execute on all 7. Outside public-key probe (`scripts/mi1b_public_probe_browser.js`, run by
+  Angelo 08:50 CT, key accepted on a public table first): ALL 11 BLOCKED (401) — events read/insert/update/delete,
+  mfr_sources read/insert, the 5 RPCs. Lesson: the read-only query helper runs its queries THROUGH the SQL editor, so
+  it overwrites whatever is loaded there — never run a check in the editor tab while a migration waits for Angelo's
+  Run (the first Run at 08:44 executed a read-only check instead of the migration; nothing was written).
+  **MI-1b DEPLOYED 2026-10-11 ~08:57 CT** (branch merged with main c5233cc — MC test-fixture change only, no conflicts,
+  migration byte-identical; mi1b pg 46 / api 25 / mutants 42/42, mcflow 13 + mutants, mcgates 12, mcui 21 screens, MI-1a
+  28 / 16 → main 939de27, Netlify "Published"). Live checks: Report History page opens for the President under Sales Data
+  & Analytics, shows "No report files registered yet"; API POST list → 200, 0 reports, no-store; orphans → 200, 0 stored
+  / 0 orphans, read-only; no token / forged token / junk token → 401 sign_in_required (tested with XMLHttpRequest — the
+  admin pages' staff-session.js wraps window.fetch and adds the signed-in token, so a "forged" fetch from an admin page
+  is NOT a real forged-token test); rep / Relations → 403 management_only (code + mi1b-api tests; no non-admin login
+  used live). Production after: 6 sources, 0 report records, 0 events, 0 stored files, 11,997 rows / $10,802,558.50,
+  0 batches, `mi_import_v2` ON, `mi_commission_v2` absent (off). Nothing registered; MI-1c not started.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.

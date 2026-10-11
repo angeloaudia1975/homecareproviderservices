@@ -1,5 +1,5 @@
 /* Mutants for Manufacturer Center Phase 6 (the guided workflow, the approval gates, the dry runs and the frozen
-   read-only rule): each edit must make test/mcflow.test.js or test/mcgates.test.js fail. */
+   read-only rule): each edit must make test/mcflow.test.js, test/mcgates.test.js or test/mcmatch.live.test.js fail. */
 const fs=require('fs'),path=require('path'),os=require('os'),{execFileSync}=require('child_process');
 const DIR=path.join(__dirname,'..','netlify','functions');
 const M=[
@@ -34,16 +34,34 @@ const M=[
  ['catalog-api.js','a stored file overwritten','"x-upsert":"false"},body:bytes});','"x-upsert":"true"},body:bytes});'],
  ['catalog-api.js','Approval 2 for any run','          const p=await activationRunCheck(slug, b.run_id); if(p) return p;\n',''],
  ['_mc.js','workflow writes allowed on a frozen line','  "mc_register_source","mc_accept_source","mc_import_source_rows","mc_approve_gate","mc_set_freight_terms"]);','  "mc_noop"]);'],
- ['_mc.js','a pack-only decision applied to single items','      if(lineWide && d.hcps_value.applies_to === "packs" && !isPack) continue;\n',''],
- ['_mc.js','a SKU with no unit staged without a decision','      if(proposed.case_qty == null && proposed.uom == null) needs.push','      if(false) needs.push'],
+ ['_mc.js','a pack-only decision applied to single items','    if(ap === "packs" && !isPack) continue;\n',''],
+ ['_mc.js','a SKU with no unit staged without a decision','      if(proposed.case_qty == null && proposed.uom == null && !recUom) needs.push','      if(false) needs.push'],
  ['_mc.js','a regression_fix read as an interpretation','const DECIDING_KINDS = ["interpretation", "conflict", "exception"];','const DECIDING_KINDS = ["interpretation", "conflict", "exception", "regression_fix"];'],
  ['_mc.js','older decision wins','    .slice().sort((a, b) => String(a.decided_at || "").localeCompare(String(b.decided_at || "")) || (a.id || 0) - (b.id || 0));','    .slice().sort((a, b) => String(b.decided_at || "").localeCompare(String(a.decided_at || "")) || (b.id || 0) - (a.id || 0));'],
  ['_mc.js','plan hash depends on key order','Object.keys(v).sort().map(k => JSON.stringify(k) + ":" + canon(v[k])).join(",") + "}") : JSON.stringify(v === undefined ? null : v);','Object.keys(v).map(k => JSON.stringify(k) + ":" + canon(v[k])).join(",") + "}") : JSON.stringify(v === undefined ? null : v);'],
+ /* Phase 6 correction (2026-10-11): field-scoped decisions, basis applicability, legacy sources without rows. */
+ ['_mc.js','every hcps_value key merged into the SKU (the live "HOLD" fault)','  const out = {}; fam.forEach(k => { if(Object.prototype.hasOwnProperty.call(hv, k)) out[k] = hv[k]; });','  const out = {}; Object.keys(hv).forEach(k => { if(STAGE_FIELDS.indexOf(k) >= 0) out[k] = hv[k]; });'],
+ ['_mc.js','a fee/freight/deferral decision changes a SKU','fam = FIELD_FAMILY[field], hv = d && d.hcps_value;','fam = FIELD_FAMILY[field] || STAGE_FIELDS, hv = d && d.hcps_value;'],
+ ['_mc.js','the MSRP/MAP basis pair split','msrp_basis: ["msrp_basis", "map_basis"], map_basis','msrp_basis: ["msrp_basis"], map_basis'],
+ ['_mc.js','the order unit pair split','uom: ["uom", "case_qty"], case_qty','uom: ["uom"], case_qty'],
+ ['_mc.js','a plain decision value ignored','  if(typeof hv !== "object" || Array.isArray(hv)) return { [field]: hv };','  if(typeof hv !== "object" || Array.isArray(hv)) return null;'],
+ ['_mc.js','only the exact word "packs" understood','const PACK_WORDS = /\\b(packs?|cases?|case[\\s_-]*qty|master[\\s_-]*case|multi[\\s_-]*unit)\\b/i;','const PACK_WORDS = /^packs$/i;'],
+ ['_mc.js','unknown applies_to wording guessed as the whole line','  return PACK_WORDS.test(String(a)) ? "packs" : "unknown";','  return PACK_WORDS.test(String(a)) ? "packs" : "all";'],
+ ['_mc.js','a SKU\'s own order-unit decision ignored when judging packs','  const isPack = sku.case_qty != null ? Number(sku.case_qty) > 1 : (','  const isPack = false ? 0 : ('],
+ ['_mc.js','the structured case quantity ignored','(given != null && given > 1));','false);'],
+ ['_mc.js','a line-wide rule beats the SKU\'s own decision','values: Object.assign({}, line, sku)','values: Object.assign({}, sku, line)'],
+ ['_mc.js','a not-understood decision not reported','    interp.unapplied.forEach(u => { unapplied[u.id] = u; });\n',''],
+ ['_mc.js','any empty source labelled as legacy','  if(source && source.legacy === true && !(sourceRows || []).length){','  if(!(sourceRows || []).length){'],
+ ['_mc.js','a legacy source without rows never labelled','  if(source && source.legacy === true && !(sourceRows || []).length){','  if(false){'],
+ ['_mc.js','legacy SKUs reported as missing from the source','status: active ? "not_compared" : "retired"','status: active ? "not_in_source" : "retired"'],
+ ['_mc.js','the record\'s own unit not honoured','      const recUom = r && r.uom ? r.uom : null;','      const recUom = null;'],
+ ['_mc.js','changed SKUs left out of the proposed changes','      proposed_changes: count("new") + count("changes"),','      proposed_changes: count("new"),'],
+ ['catalog-api.js','catalog-api does not tell Match which source it is','decisions, normCode, source:src});','decisions, normCode});'],
 ];
 let surv=0;
 for(const [file,n,f,t] of M){ const src=fs.readFileSync(path.join(DIR,file),'utf8'); const c=src.split(f).length-1; if(c!==1){console.log(`BAD ANCHOR(${c}) ${n}`);surv++;continue;}
   const MD=fs.mkdtempSync(path.join(os.tmpdir(),'mcflow-')); for(const x of fs.readdirSync(DIR)) if(/\.js$/.test(x)) fs.copyFileSync(path.join(DIR,x),path.join(MD,x));
   fs.writeFileSync(path.join(MD,file),src.replace(f,t)); const env=Object.assign({},process.env,{CAT_ROOT:MD});
-  let k=false; for(const tf of ['mcgates.test.js','mcflow.test.js']){ try{ execFileSync('node',[path.join(__dirname,tf)],{stdio:'pipe',env,timeout:240000}); }catch(e){ k=true; break; } }
+  let k=false; for(const tf of ['mcgates.test.js','mcmatch.live.test.js','mcflow.test.js']){ try{ execFileSync('node',[path.join(__dirname,tf)],{stdio:'pipe',env,timeout:240000}); }catch(e){ k=true; break; } }
   console.log((k?'killed  ':'SURVIVED')+' '+n); if(!k) surv++; }
 console.log(surv?`${surv} survived`:'all mutants killed'); process.exit(surv?1:0);

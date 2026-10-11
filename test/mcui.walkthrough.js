@@ -64,11 +64,13 @@ const fails=[]; const check=(c,w)=>{ if(!c){ fails.push(w); console.log('FAIL '+
   await clickText('Import rows (writes)'); await waitToast(/imported as received/); await shot('sources-done');
 
   await page.locator('.tabs.wf button',{hasText:'2 · Match & decide'}).click(); await page.waitForSelector('text=needs a decision:'); await shot('match-before-decisions');
-  const decide=async(code,scope,hv,reason)=>{ await page.locator('#wfbody tr',{hasText:code}).locator('button',{hasText:'Decide'}).click(); await page.waitForSelector('#dc_hv');
-    await page.selectOption('#dc_scope',scope); await page.fill('#dc_hv',JSON.stringify(hv)); await page.fill('#dc_reason',reason);
+  const decide=async(code,scope,hv,reason,field)=>{ await page.locator('#wfbody tr',{hasText:code}).locator('button',{hasText:'Decide'}).click(); await page.waitForSelector('#dc_hv');
+    if(field) await page.fill('#dc_field',field); await page.selectOption('#dc_scope',scope); await page.fill('#dc_hv',JSON.stringify(hv)); await page.fill('#dc_reason',reason);
     await clickText('Check decision (dry run)'); await page.waitForSelector('text=Dry run — would record'); if(code==='7YR05310TSS') await shot('decision-dry-run');
     await clickText('Record decision (writes)'); await waitToast(/Decision #\d+ recorded/); await page.waitForSelector('text=needs a decision:'); };
-  await decide('7YR05310TSS','packs',{uom:'Case',msrp_basis:'each',map_basis:'each'},'Bemis quotes dealer price per master case and MSRP/MAP per piece');
+  /* Field-scoped decisions (Phase 6 correction): the order unit and the MSRP/MAP basis are two decisions. */
+  await decide('7YR05310TSS','packs',{uom:'Case'},'Bemis quotes dealer price per master case','uom');
+  await decide('7YR05310TSS','packs',{msrp_basis:'each',map_basis:'each'},'Bemis quotes MSRP/MAP per piece','msrp_basis');
   await decide('7YE82350TC','sku',{uom:'Each',case_qty:1},'No master case quantity: Steadfast is sold singly');
   await decide('444DISPLAY','sku',{uom:'Display',case_qty:1},'One floor display program per order');
   await page.waitForSelector('text=ready to stage: 9'); await shot('match-after-decisions');
@@ -97,7 +99,7 @@ const fails=[]; const check=(c,w)=>{ if(!c){ fails.push(w); console.log('FAIL '+
   const meta=W.db.manufacturer_meta.find(m=>m.slug===S.COPY), runs=W.db.mfr_verification_runs.filter(r=>r.manufacturer===S.COPY);
   check(meta.record_authoritative===true,'the copy is activated');
   check(runs.length===2&&runs[1].phase==='post'&&runs[1].result==='pass','pre and post runs saved, post passes');
-  check(runs[1].fingerprint===S.fx.real.fingerprint,'post-activation fingerprint = real Bemis Gold Standard ('+runs[1].fingerprint+')');
+  check(runs[1].fingerprint===S.fx.expectedFingerprint,'post-activation fingerprint = real Bemis Gold Standard ('+runs[1].fingerprint+')');
   const writes=calls.filter(c=>!c.dry_run&&!/^(mc_overview|mc_line|mc_match|mc_structure|mc_commercial|mc_compare_runs|mc_run|mc_verify)$/.test(c.action));
   check(writes.every((w,i)=>w.action==='mc_approve_gate'||calls.slice(0,calls.indexOf(w)).some(c=>c.action===w.action&&c.dry_run)),'every write button ran its dry run first ('+writes.length+' writes)');
   check(!calls.some(c=>c.manufacturer===S.REAL&&!c.dry_run&&!/^(mc_line|mc_match|mc_structure|mc_commercial|mc_verify|mc_run)$/.test(c.action)),'no write was sent for the frozen line');

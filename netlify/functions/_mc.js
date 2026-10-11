@@ -400,35 +400,76 @@ function parseCaseQty(t){
   return n > 1 && Number.isFinite(n) ? n : null;
 }
 const DECIDING_KINDS = ["interpretation", "conflict", "exception"];
-/* The HCPS interpretation that applies to one SKU: line-wide decisions first (optionally only for packs),
-   then the SKU's own decisions, oldest to newest, so the latest word wins. Only staging fields count. */
-function interpretationFor(code, decisions, normCode, isPack){
-  const out = {}, ids = [];
-  const mine = (decisions || []).filter(d => DECIDING_KINDS.indexOf(d.kind) >= 0 && d.hcps_value && typeof d.hcps_value === "object" && !Array.isArray(d.hcps_value))
+/* FIELD-SCOPED DECISIONS (Phase 6 correction, approved 2026-10-11). A decision changes only the product field
+   it names in `field` — with that field's own partner, because the two always travel together: the order unit
+   (uom + case_qty), the MSRP/MAP basis (msrp_basis + map_basis), and status (+ status_note). Any other key in
+   hcps_value describes the DECISION, not the SKU: Bemis #11 (field fee_dropship, {"status":"HOLD"}) is a fee on
+   hold, never a product status. A decision whose field is not a product field (a fee, freight, a deferral, an
+   acceptance…) changes no SKU at all. A plain (non-object) hcps_value is the value of the named field itself. */
+const FIELD_FAMILY = { base_price: ["base_price"], msrp: ["msrp"], map: ["map"], tiers: ["tiers"], msrp_auto: ["msrp_auto"],
+  dealer_unit_cost: ["dealer_unit_cost"], uom: ["uom", "case_qty"], case_qty: ["uom", "case_qty"],
+  msrp_basis: ["msrp_basis", "map_basis"], map_basis: ["msrp_basis", "map_basis"], status: ["status", "status_note"], status_note: ["status_note"] };
+function decisionValues(d){
+  const field = String((d && d.field) || "").trim(), fam = FIELD_FAMILY[field], hv = d && d.hcps_value;
+  if(!fam || hv == null) return null;
+  if(typeof hv !== "object" || Array.isArray(hv)) return { [field]: hv };
+  const out = {}; fam.forEach(k => { if(Object.prototype.hasOwnProperty.call(hv, k)) out[k] = hv[k]; });
+  return Object.keys(out).length ? out : null;
+}
+/* Which SKUs a line-wide decision covers. No applies_to (or "all") → every SKU. Wording about packs or cases
+   ("packs", "items with a Master Case Qty", "case items"…) → only SKUs whose structured case quantity is > 1 —
+   the facts decide, not the sentence. Anything else is not guessed at: the decision is listed as not applied. */
+const PACK_WORDS = /\b(packs?|cases?|case[\s_-]*qty|master[\s_-]*case|multi[\s_-]*unit)\b/i;
+function appliesTo(d){
+  const hv = d && d.hcps_value, a = hv && typeof hv === "object" && !Array.isArray(hv) ? hv.applies_to : null;
+  if(a == null || String(a).trim() === "" || /^(all|all items|all skus|every sku|line|the whole line)$/i.test(String(a).trim())) return "all";
+  return PACK_WORDS.test(String(a)) ? "packs" : "unknown";
+}
+/* The HCPS interpretation that applies to one SKU: line-wide decisions first, then the SKU's own decisions,
+   oldest to newest within each, so the SKU's latest word wins. `ctx` is { caseQty } — the SKU's structured case
+   quantity (source, else record); a SKU decision on the order unit overrides it before pack-only rules are
+   judged (Bemis 7YE82350TC Each/1 and 444DISPLAY Display/1 are not packs). A boolean is still accepted. */
+function interpretationFor(code, decisions, normCode, ctx){
+  const sku = {}, line = {}, skuIds = [], lineIds = [], unapplied = [];
+  const mine = (decisions || []).filter(d => DECIDING_KINDS.indexOf(d.kind) >= 0 && decisionValues(d))
     .slice().sort((a, b) => String(a.decided_at || "").localeCompare(String(b.decided_at || "")) || (a.id || 0) - (b.id || 0));
-  for(const pass of ["line", "sku"]){
-    for(const d of mine){
-      const lineWide = d.code == null || d.code === "";
-      if(pass === "line" ? !lineWide : (lineWide || normCode(d.code) !== normCode(code))) continue;
-      if(lineWide && d.hcps_value.applies_to === "packs" && !isPack) continue;
-      let used = false;
-      for(const [k, v] of Object.entries(d.hcps_value)) if(STAGE_FIELDS.indexOf(k) >= 0){ out[k] = v; used = true; }
-      if(used) ids.push(d.id);
-    }
+  const lineWide = d => d.code == null || d.code === "";
+  for(const d of mine) if(!lineWide(d) && normCode(d.code) === normCode(code)){ Object.assign(sku, decisionValues(d)); skuIds.push(d.id); }
+  const given = typeof ctx === "boolean" ? null : (ctx && ctx.caseQty != null && ctx.caseQty !== "" ? Number(ctx.caseQty) : null);
+  const isPack = sku.case_qty != null ? Number(sku.case_qty) > 1 : (typeof ctx === "boolean" ? ctx : (given != null && given > 1));
+  for(const d of mine){
+    if(!lineWide(d)) continue;
+    const ap = appliesTo(d);
+    if(ap === "unknown"){ unapplied.push({ id: d.id, field: d.field, applies_to: d.hcps_value.applies_to }); continue; }
+    if(ap === "packs" && !isPack) continue;
+    Object.assign(line, decisionValues(d)); lineIds.push(d.id);
   }
-  return { values: out, decision_ids: ids };
+  return { values: Object.assign({}, line, sku), decision_ids: lineIds.concat(skuIds), unapplied };
 }
 const COMPARE = ["base_price", "msrp", "map", "uom", "case_qty", "dealer_unit_cost", "msrp_basis", "map_basis", "status"];
-function matchLine({ sourceRows, records, storefrontCodes, decisions, normCode }){
+const LEGACY_NO_ROWS = "Accepted legacy source — row-level source data not stored; Match comparison unavailable.";
+function matchLine({ sourceRows, records, storefrontCodes, decisions, normCode, source }){
   const S = {}, Rm = {}; (sourceRows || []).forEach(r => { S[normCode(r.code)] = r; }); (records || []).forEach(r => { Rm[r.code_norm || normCode(r.code)] = r; });
   const shop = new Set((storefrontCodes || []).map(c => normCode(c)));
+  const recordView = r => Object.fromEntries(COMPARE.concat(["tiers", "source_id", "source_file"]).map(f => [f, r[f] == null ? null : r[f]]));
+  /* An accepted LEGACY source registered without row-level price_imports cannot be compared row by row. That is
+     information, not a conflict: no SKU is "not in source" and nothing needs a decision because of it. */
+  if(source && source.legacy === true && !(sourceRows || []).length){
+    const rows = Object.keys(Rm).sort().map(k => { const r = Rm[k], active = (r.status || "active") === "active";
+      return { code: r.code, status: active ? "not_compared" : "retired", on_storefront: shop.has(k), source: null, hcps: {}, decision_ids: [], record: recordView(r), diffs: [], needs_decision: [] }; });
+    const n = st => rows.filter(x => x.status === st).length;
+    return { rows, stage_rows: [], blocked: [], unapplied: [], comparison: { available: false, reason: "legacy_rows_not_stored", message: LEGACY_NO_ROWS },
+      summary: { source_rows: 0, records: (records || []).length, new: 0, same: 0, changes: 0, not_in_source: 0, retired: n("retired"), not_compared: n("not_compared"),
+        needs_decision: 0, ready_to_stage: 0, proposed_changes: 0, comparison: "unavailable" } };
+  }
   const keys = [...new Set([...Object.keys(S), ...Object.keys(Rm)])].sort();
   const norm1 = (f, v) => (v == null || v === "") ? null : (["base_price", "msrp", "map", "dealer_unit_cost"].indexOf(f) >= 0 ? m2(v) : f === "case_qty" ? (Number(v) > 1 ? Number(v) : 1) : String(v));
-  const rows = [], stage_rows = [], blocked = [];
+  const rows = [], stage_rows = [], blocked = [], unapplied = {};
   for(const k of keys){
     const s = S[k], r = Rm[k], code = (s && s.code) || (r && r.code);
     const caseQty = s ? (s.parsed_case_qty != null ? Number(s.parsed_case_qty) : parseCaseQty(s.raw && (s.raw["Master Case Qty"] != null ? s.raw["Master Case Qty"] : s.raw.case_qty))) : null;
-    const interp = interpretationFor(code, decisions, normCode, (caseQty || (r && Number(r.case_qty)) || 1) > 1);
+    const interp = interpretationFor(code, decisions, normCode, { caseQty: caseQty != null ? caseQty : (r && r.case_qty != null ? Number(r.case_qty) : null) });
+    interp.unapplied.forEach(u => { unapplied[u.id] = u; });
     const facts = s ? { base_price: m2(s.base_price), msrp: m2(s.msrp), map: m2(s.map), case_qty: caseQty, dealer_unit_cost: s.parsed_unit_cost != null ? m2(s.parsed_unit_cost) : null,
       tiers: Array.isArray(s.tiers) && s.tiers.length ? s.tiers : null, description: s.description || null, raw: s.raw || null } : null;
     const needs = [];
@@ -437,25 +478,28 @@ function matchLine({ sourceRows, records, storefrontCodes, decisions, normCode }
       proposed = { code };
       for(const f of ["base_price", "msrp", "map", "tiers", "case_qty", "dealer_unit_cost"]) if(facts[f] != null) proposed[f] = facts[f];
       Object.assign(proposed, interp.values);
-      if(proposed.case_qty == null && proposed.uom == null) needs.push({ field: "uom", why: "The source gives no case or pack quantity: record what one order unit is (e.g. uom Each, case_qty 1)." });
-      else if(Number(proposed.case_qty) > 1 && !proposed.uom) needs.push({ field: "uom", why: "The source gives a pack of " + proposed.case_qty + " but does not name the order unit (e.g. Case)." });
+      /* The order unit is needed only when neither the source/decisions nor the existing record supply it —
+         staging keeps a field the row leaves out, so a record that already names its unit keeps it. */
+      const recUom = r && r.uom ? r.uom : null;
+      if(proposed.case_qty == null && proposed.uom == null && !recUom) needs.push({ field: "uom", why: "The source gives no case or pack quantity: record what one order unit is (e.g. uom Each, case_qty 1)." });
+      else if(Number(proposed.case_qty) > 1 && !proposed.uom && !recUom) needs.push({ field: "uom", why: "The source gives a pack of " + proposed.case_qty + " but does not name the order unit (e.g. Case)." });
       if(!(Number(proposed.base_price) > 0)) needs.push({ field: "base_price", why: "No dealer price in the source." });
     } else if(r && (r.status || "active") === "active"){
-      const said = interpretationFor(code, decisions, normCode, false).values;
+      const said = interpretationFor(code, decisions, normCode, { caseQty: r.case_qty }).values;
       if(said.status == null) needs.push({ field: "status", why: "On the master record but not in this source: decide whether it stays active or is retired." });
     }
     const diffs = (s && r) ? COMPARE.filter(f => f in proposed && norm1(f, proposed[f]) !== norm1(f, r[f])).map(f => ({ field: f, record: r[f] == null ? null : r[f], proposed: proposed[f] })) : [];
     const status = s && !r ? "new" : (!s && r ? ((r.status || "active") === "active" ? "not_in_source" : "retired") : (diffs.length ? "changes" : "same"));
     const row = { code, status, on_storefront: shop.has(k), source: facts, hcps: interp.values, decision_ids: interp.decision_ids,
-      record: r ? Object.fromEntries(COMPARE.concat(["tiers", "source_id", "source_file"]).map(f => [f, r[f] == null ? null : r[f]])) : null,
-      diffs, needs_decision: needs };
+      record: r ? recordView(r) : null, diffs, needs_decision: needs };
     rows.push(row);
     if(s && !needs.length) stage_rows.push(proposed); else if(needs.length) blocked.push({ code, needs });
   }
   const count = st => rows.filter(x => x.status === st).length;
-  return { rows, stage_rows, blocked,
+  return { rows, stage_rows, blocked, unapplied: Object.values(unapplied), comparison: { available: true },
     summary: { source_rows: (sourceRows || []).length, records: (records || []).length, new: count("new"), same: count("same"), changes: count("changes"),
-      not_in_source: count("not_in_source"), retired: count("retired"), needs_decision: rows.filter(x => x.needs_decision.length).length, ready_to_stage: stage_rows.length } };
+      not_in_source: count("not_in_source"), retired: count("retired"), not_compared: 0, needs_decision: rows.filter(x => x.needs_decision.length).length, ready_to_stage: stage_rows.length,
+      proposed_changes: count("new") + count("changes"), comparison: "available" } };
 }
 /* GATE 1 / GATE 2. An approval is an mfr_decisions row of kind "acceptance", field "gate:stage" or
    "gate:activate", recorded only through mc_approve_gate, single-use (used_at), for the same line, and
@@ -508,4 +552,4 @@ function compareRuns(a, b){
 }
 
 module.exports = { COMMERCIAL_ACTIONS, OVERRIDE_COMMERCIAL_KEYS, isCommercialAction, lineOf, STAGE_FIELDS, planStage, verifyLine, text, expectedFreightWords, sha,
-  canon, planHash, parseCaseQty, interpretationFor, matchLine, gateProblem, activationRunProblem, freightPreview, compareRuns };
+  canon, planHash, parseCaseQty, decisionValues, appliesTo, interpretationFor, matchLine, gateProblem, activationRunProblem, freightPreview, compareRuns };
