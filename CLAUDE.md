@@ -1759,6 +1759,40 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   campaigns or send emails automatically. Strongback is the pilot, then other manufacturers. Plan: Claude Doc "MI Inbox
   Automation — Pilot Plan (Strongback)" (claude.ai/code/artifact/4ca4e85c-1125-4521-92b3-051ed119bcf6). NO production
   changes until Angelo agrees the pilot workflow (open decisions listed at the end of that doc).
+  **Direction approved + Phase A authorized (Angelo, 2026-10-11 14:25 CT).** Goal = HCPS-wide automation for all
+  manufacturers, not a Strongback-only project. Defaults (no further questions): existing Outlook connection and the
+  current mailbox; READ-ONLY 12-month discovery; NO automatic historical backfill (a scan never registers or imports);
+  Strongback = first automatic profile; the five sample manufacturers (Ohio Medical cumulative workbooks with credits,
+  Strongback CSV order exports even when the subject says commission, Access4U combined-month ledgers, AirAvant
+  cash-basis PDFs, Climbing Steps commissions in the email body) in classification tests from the start; 15th
+  reconciliation; one DAILY DIGEST of unresolved exceptions (no per-file alerts); dashboard = primary record, the 15th
+  summary emailed to Angelo alone only once email delivery is approved; late reports process on arrival; a report is
+  Missing only when its profile expects it. Rules: use Outlook timestamps (never ask for received dates); identity =
+  stable email/attachment ids + file hash, surviving forwards and moves; profiles approved once, then no per-file
+  approval; commissions earned / payable / withheld / paid are NEVER interchangeable; commission v2 OFF — statements may
+  be captured + validated automatically but post no financial entries; price lists never bypass Manufacturer Center
+  gates / the freeze; Strongback clean order exports auto-import only after SHADOW tests prove unchanged results; record 7
+  is not re-registered and is accepted/imported only under the approved profile (expected 25 / 15 auto / 7 review /
+  Wyatt's held / GF Health + Nebcare unmatched); never assume files given to another tool are in this workspace; keep
+  automated regression / permission / duplicate checks but no repeated manual production audits. Phases: A discovery →
+  B capture + classification + exception queue → C Strongback shadow tests → D automatic Strongback behind
+  manufacturer switches → E dashboard/15th + remaining profiles.
+  **Phase A findings (read-only, 2026-10-11):** Graph app holds Mail.Read, Mail.ReadWrite, Mail.Send, Mail.ReadBasic(.All),
+  Calendars.ReadWrite (application) — attachments readable, no new permission; GRAPH_MAILBOXES = angelo / greg / lori
+  (reports arrive in Angelo's; copies of manufacturer threads reach Greg/Lori → dedupe by internetMessageId);
+  email_messages = 16,384 messages from 2026-01-01 (nothing earlier). Sync gaps: hourly cron = 3-day window, 1 page, no
+  checkpoint; Inbox + Sent only; stored graph_id is folder-dependent (internetMessageId is stable); no attachment metadata
+  kept. Report mail located 2026: Strongback (amanda.erickson "Commission report <Month> 2026 - Angelo Audia", monthly
+  2nd–7th, = the order CSV; melanie.psychas dealer overview Oct 8), Ohio Medical (michael.belcaster "Commissions through
+  <Month>", 21st–29th), Access4U (dlouallen "<Mon> 2026 Commissions Report", Nov+Dec 2025 combined Jan 16; none found
+  Jul–Sep), AirAvant (jcollazo/masch "Commission Reports and Payments", Jul 17 / Aug 25), Climbing Steps (sdiamond
+  "<Month> 2026 Commissions - Climbing Steps", 4th–12th, some without attachment), Bemis (faxstar03 "COMMISSION REPORT
+  for Rep/Month: 705 / 2026-0x", 17th), Complete Medical, Ovation (once), PediFix (once), Golden ("Rep Commissions");
+  none from ABM / Corsicana / Dalton. Readers: only MI-1c's PDF reader is server-side; Ohio two-tab, Access4U ledger,
+  generic mapping (ctpl:<slug> templates) and AirAvant cash-basis PDF run in the BROWSER — automation moves that same code
+  into shared server modules with drift tests (no rewrite). Smallest first production change PROPOSED (not built/deployed):
+  read-only `report_inventory` action in email-sync-api (management only; month window; all folders; attachment name /
+  type / size / inline / in-memory SHA-256; stores, moves, marks or returns nothing else). Plan doc revised accordingly.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
