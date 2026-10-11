@@ -78,6 +78,11 @@
 [functions."email-sync-cron"]
   schedule = "0 * * * *"
 
+# Manufacturer report capture (MI Inbox Automation, Phase B) — hourly at :20. Registers report attachments into
+# Manufacturer Report History; does nothing unless phase2_flags.mi_report_capture is exactly true.
+[functions."report-capture-cron"]
+  schedule = "20 * * * *"
+
 # Zoho two-way auto-sync — the outbound (portal→Zoho) engine + inbound pipeline-stage pull.
 # Every 15 min it pushes ONLY the dealers / contacts / opportunities whose content changed
 # since the last run (per-record hashes in app_settings.zoho_push_hashes), so it's cheap and
