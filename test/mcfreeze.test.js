@@ -20,7 +20,7 @@ function world(extra, opts){
                    {id:9,manufacturer:OPEN,kind:'regression_fix',field:'x',reason:'other line',used_at:null},
                    {id:10,manufacturer:'stage-line',kind:'interpretation',field:'map',reason:'MAP withdrawn by the manufacturer',used_at:null}],
     mfr_sources:[{id:3,manufacturer:'stage-line',kind:'price_list',title:'List 2027',file_name:'list-2027.xlsx',status:'accepted',manufacturer_effective_date:'2027-01-01'},
-                 {id:4,manufacturer:'stage-line',kind:'price_list',title:'Draft',file_name:'draft.xlsx',status:'under_review'}]},extra||{})},opts||{}));
+                 {id:4,manufacturer:'stage-line',kind:'price_list',title:'Draft',file_name:'draft.xlsx',status:'under_review'}]},extra||{}), serialIds:require('./mc-gates.js').SERIAL},opts||{}));
   const inner=W.fetch; W.fetch=async(u,o)=>{ u=String(u); if(u.startsWith(OB+'/data/')) return {ok:false,status:404,json:async()=>null,text:async()=>''};
     (W.db.product_skus||[]).forEach(r=>{ r.code_norm=norm(r.code); }); const r=await inner(u,o); (W.db.product_skus||[]).forEach(r=>{ r.code_norm=norm(r.code); }); return r; };
   return W; }
@@ -97,7 +97,9 @@ await t('a database refusal (line_frozen from the trigger) reads as 423, not a 5
 // ── SAFE STAGING ──
 const SL='stage-line';
 const stageWorld=()=>world({product_skus:[{manufacturer:SL,code:'A1',base_price:10,msrp:20,map:18,tiers:[{min_qty:2,price:9}],status:'active',uom:'Case',case_qty:4,source_file:'old.xlsx',effective_date:'2026-01-01'}]});
-const stage=(C,extra)=>call(C,Object.assign({action:'stage_record_source',manufacturer:SL,source_file:'old.xlsx'},extra));
+/* Writes go through the approval gate (Manufacturer Center Phase 6): dry run → approve → write. */
+const stage=(C,extra)=>{ const b=Object.assign({action:'stage_record_source',manufacturer:SL,source_file:'old.xlsx'},extra);
+  return b.dry_run===true?call(C,b):require('./mc-gates.js').approvedStage(call,C,b); };
 await t('safe staging: a field the source leaves out is kept (MAP, MSRP, tiers, UOM all survive a price-only row)',async()=>{
   const W=stageWorld(); const C=mod(W);
   const dry=await stage(C,{dry_run:true,rows:[{code:'A1',base_price:11}]}); eq(dry.status,200,JSON.stringify(dry.body));
@@ -109,7 +111,7 @@ await t('safe staging: an explicit empty value is "would clear" — reported in 
   const W=stageWorld(); const C=mod(W);
   const dry=await stage(C,{dry_run:true,rows:[{code:'A1',base_price:10,map:null,tiers:null}]});
   eq(dry.body.plan[0].would_clear.sort(),['map','tiers']); eq(dry.body.would_clear_refused.map(x=>({code:x.code,fields:x.fields.slice().sort()})),[{code:'A1',fields:['map','tiers']}]);
-  const n=W.writes.length; const r=await stage(C,{rows:[{code:'A1',base_price:10,map:null}]});
+  const n=W.writes.length; const r=await call(C,{action:'stage_record_source',manufacturer:SL,source_file:'old.xlsx',rows:[{code:'A1',base_price:10,map:null}]});
   eq([r.status,r.body.error],[409,'would_clear']); eq(W.writes.length,n,'nothing written'); eq(W.db.product_skus[0].map,18);
 });
 await t('safe staging: clearing works only with clear:[field] AND a recorded decision for this line',async()=>{
@@ -130,7 +132,7 @@ await t('safe staging: a new file without a date never inherits the old file\'s 
 });
 await t('safe staging: a registered, accepted source is stamped with its id and its manufacturer date',async()=>{
   const W=stageWorld(); const C=mod(W);
-  const r=await call(C,{action:'stage_record_source',manufacturer:SL,source_id:3,rows:[{code:'A1',base_price:12}]}); eq(r.status,200,JSON.stringify(r.body));
+  const r=await require('./mc-gates.js').approvedStage(call,C,{action:'stage_record_source',manufacturer:SL,source_id:3,rows:[{code:'A1',base_price:12}]}); eq(r.status,200,JSON.stringify(r.body));
   const rec=W.db.product_skus[0]; eq([rec.source_id,rec.source_file,rec.effective_date],[3,'list-2027.xlsx','2027-01-01']);
   const notAcc=await call(C,{action:'stage_record_source',manufacturer:SL,source_id:4,rows:[{code:'A1',base_price:12}]}); eq([notAcc.status,notAcc.body.error],[409,'source_not_accepted']);
   const other=await call(C,{action:'stage_record_source',manufacturer:OPEN,source_id:3,rows:[{code:'A1',base_price:12}]}); eq([other.status,other.body.error],[400,'unknown_source']);
