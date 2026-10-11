@@ -91,6 +91,55 @@ Only the database owner can use the marker this way. The guard accepts the marke
 
 The earlier production runs (A1 27/27, M1 43/43) used the old files, and those results stand. The new files are what to run from now on.
 
+## Production preflight BEFORE M2 (Angelo, 11 Oct 2026 13:38 CT): the baseline
+Result: **`ready_for_m2: true`**.
+
+| Area | Result |
+|---|---|
+| Postgres | 17.6 |
+| M1 | 19 functions, 6 guard triggers, fingerprint e70543ba… (as accepted 10 Oct) |
+| M2 | not installed |
+| Content and audit rows | 0 courses, 0 versions, 0 modules, 0 lessons, 0 audit rows |
+| Active Presidents | 1 |
+| `academy_switches` | `{}` (no switch set: all OFF) |
+
+**Academy fingerprints, unchanged since the M1 baseline:**
+- grants 7af6d10ef284760d9fb9ca840fad04b7 / 252;
+- columns ca21409347af0c7feba3e16a200fa482 / 179;
+- policies d41d8cd98f00b204e9800998ecf8427e / 0;
+- RLS 18 / 18.
+
+**Outside the Academy (the new baseline; it moved since M1 because of MI-1c's new tables):**
+- grants 336bae1160e56c3e95f5ecc9deb522c7 / 2860 (was 1c268eb2… / 2811);
+- columns add1e9f749e621d27d3c74ec775e79e8 / 115 tables (was d039b75f… / 109);
+- policies 219ac18ed7a25a0db2d9a50c5b8a88e7 / 29 (unchanged);
+- other functions 5ac72858169b2cf2dcac64306039360f / 79.
+
+**Key row counts:**
+
+| Table | Rows |
+|---|---|
+| dealers | 447 |
+| orders | 3 |
+| order_items | 3 |
+| monthly_sales | 11997 |
+| email_queue | 3488 |
+| product_content | 96 |
+| product_content_history | 2459 |
+| product_content_sources | 54 |
+| manufacturers | 13 |
+| staff_users | 3 |
+| app_settings | 21 |
+| dealer_users | 2 |
+| email_sends | 0 |
+| email_optout | 0 |
+| product_media | 0 |
+| commission_splits | absent |
+
+After M2, the preflight must show these same values. Only `m2_installed`, `m2_objects` and `content_triggers` may change.
+
+**Postgres 17.6 check (production's version).** The M2 suite was rerun on a local Postgres 17.6: 18/18 pass, including both installed-code fingerprints (f24e4f88… / 794f3c3e…), acceptance 21/21, hardening 9/9, and A1/M1 27/43 with M2. pg-safeupdate is not available for that local 17.6 build. Its runtime check passes on 16, and the WHERE-clause check is static.
+
 ## Production runbook (Angelo runs every step; Claude never does)
 1. **Preflight** (read-only). Paste the result back.
    - `ready_for_m2` must be true;
