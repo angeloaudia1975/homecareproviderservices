@@ -450,7 +450,7 @@ exports.handler = async (event)=>{
       const nameRes=(mfrs||[]).filter(m=>m&&m.name&&String(m.name).trim().length>=5).map(m=>[new RegExp("\\b"+esc(String(m.name).trim())+"\\b","i"),m.slug]);
       const RI=require("./_report_inventory.js");
       const r=await RI.inventory({ mailbox:mbox, from:new Date(fT).toISOString(), to:new Date(tT).toISOString(), cursor:b.cursor||null,
-        budget_ms:b.budget_ms, max_attachment_bytes:b.max_attachment_bytes, internal_domains:INTERNAL_DOMAINS,
+        budget_ms:b.budget_ms, max_attachment_bytes:b.max_attachment_bytes, list_attachment_mail:b.list_attachment_mail===true, internal_domains:INTERNAL_DOMAINS,
         tableNames:t=>{ for(const [re,slug] of nameRes) if(re.test(t||"")) return slug; return null; } },
         { getToken:force=>graphToken(!!force), fetch:(u,o)=>fetch(u,o) });
       return json(r.ok===false&&r.error==="window_changed"?409:200, Object.assign({read_only:true}, r));

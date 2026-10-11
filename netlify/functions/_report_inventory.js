@@ -293,12 +293,15 @@ async function inventory(o, deps) {
     const who = identify(m, ctx);
     const subj = m.subject || "";
     if (who.slug) {
-      // A manufacturer's report-worded mail is inspected in full; its other mail WITH attachments is listed too
-      // (names only; a file is downloaded only when its name looks like a report), so nothing report-like hides
-      // behind an unhelpful subject. Mail without attachments and without report words is only counted.
-      if (REPORT_WORDS.test(subj) || who.basis !== "sender_domain") keep.push({ m, who, deep: true });
-      else if (m.hasAttachments) keep.push({ m, who, deep: false });
-      else skipped[who.slug] = (skipped[who.slug] || 0) + 1;
+      // A manufacturer's report-worded mail is inspected in full. Its other mail is COUNTED per manufacturer (with /
+      // without attachments, name mentions) so nothing disappears; list_attachment_mail:true lists the attachment
+      // mail by file name too (a file is downloaded only when its name looks like a report).
+      const k = skipped[who.slug] = skipped[who.slug] || { no_attachment: 0, with_attachment: 0, name_mention: 0 };
+      if (REPORT_WORDS.test(subj)) keep.push({ m, who, deep: true });
+      else if (who.basis !== "sender_domain") k.name_mention++;            // a newsletter / system mail naming the line
+      else if (m.hasAttachments && o.list_attachment_mail) keep.push({ m, who, deep: false });
+      else if (m.hasAttachments) k.with_attachment++;
+      else k.no_attachment++;
     } else if (!who.internal && STRONG_WORDS.test(subj)) keep.push({ m, who, deep: true });
   }
 

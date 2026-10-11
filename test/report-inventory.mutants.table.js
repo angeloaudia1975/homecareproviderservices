@@ -20,6 +20,8 @@ module.exports = {
   inline_kept: { file: RI, from: '{ rec.inline_skipped++; continue; }', to: '{ rec.inline_skipped++; }' },
   too_large_hashed: { file: RI, from: 'if ((a.size || 0) > maxBytes) {', to: 'if ((a.size || 0) > maxBytes * 1000) {' },
   shallow_downloads: { file: RI, from: 'if (!deep && !/^(commission', to: 'if (false && !/^(commission' },
+  attachment_mail_dropped: { file: RI, from: 'else if (m.hasAttachments) k.with_attachment++;', to: '' },
+  newsletters_inspected: { file: RI, from: 'else if (who.basis !== "sender_domain") k.name_mention++;', to: 'else if (who.basis !== "sender_domain") keep.push({ m, who, deep: true });' },
   no_dup_flag: { file: RI, from: 'if (seenMsg.has(r.internet_message_id)) r.duplicate_of_message', to: 'if (false) r.duplicate_of_message' },
   read_error_silent: { file: RI, from: 'rec.incomplete.push(`attachment "${att.name}" could not be read: ${e.message}`);', to: '' },
   subject_wins: { file: RI, from: 'if (byContent) { att.classification = byContent; att.basis = "content"; }', to: 'if (byContent && !classifyName(att.name)) { att.classification = byContent; att.basis = "content"; }' },

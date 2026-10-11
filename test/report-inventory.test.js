@@ -240,10 +240,19 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
     assert.strictEqual(byId('<a4u-price@x>').classification, 'price_list');
     const u = ALL.flatMap(r => r.body.unidentified || []); assert.deepStrictEqual(u.map(x => x.internet_message_id), ['<unk@x>']); assert.strictEqual(u[0].manufacturer, null);
   });
-  await t('ordinary manufacturer mail is only counted; its order acknowledgement is listed by name, never downloaded', async () => {
-    const counted = ALL.reduce((n, r) => n + ((r.body.not_reports_by_manufacturer || {})['golden-technologies'] || 0), 0); assert.strictEqual(counted, 1);
-    const ack = byId('<golden-inv@x>'); assert.ok(ack); assert.strictEqual(ack.attachments[0].sha256, null); assert.ok(!(W.downloads || []).includes('a9'));
-    assert.strictEqual(byId('<golden-chat@x>'), undefined);
+  await t('ordinary manufacturer mail is counted, never dropped; attachment mail is listed by name only when asked, never downloaded', async () => {
+    const sum = k => ALL.reduce((n, r) => n + (((r.body.not_reports_by_manufacturer || {})['golden-technologies'] || {})[k] || 0), 0);
+    assert.strictEqual(sum('no_attachment'), 1); assert.strictEqual(sum('with_attachment'), 1);
+    assert.strictEqual(byId('<golden-chat@x>'), undefined); assert.strictEqual(byId('<golden-inv@x>'), undefined);
+    const b = boot(); const r = await call(b.m, INV({ from: '2026-08-01', to: '2026-09-01', list_attachment_mail: true }), as('pres'));
+    const ack = flat([r]).find(x => x.internet_message_id === '<golden-inv@x>'); assert.ok(ack);
+    assert.strictEqual(ack.attachments[0].sha256, null); assert.strictEqual(ack.classification, 'not_a_report'); assert.ok(!(b.w.downloads || []).includes('a9'));
+  });
+  await t('a newsletter that only NAMES a line (not report-worded, not from its domain) is counted as a mention, not inspected', async () => {
+    const list = msgs().concat([{ id: 'm15', internetMessageId: '<news@x>', subject: 'ABM Respiratory Care Newsletter | September', from: em('news@mailer.example'), receivedDateTime: '2026-09-30T15:00:00Z', hasAttachments: false, parentFolderId: 'fIn' }]);
+    const { m } = boot({ messages: list }); const r = await call(m, INV({ from: '2026-09-01', to: '2026-10-01' }), as('pres'));
+    assert.ok(!flat([r]).some(x => x.internet_message_id === '<news@x>'));
+    assert.strictEqual(r.body.not_reports_by_manufacturer['abm-respiratory-care'].name_mention, 1);
   });
   await t('unrelated mail, HCPS\'s own mail and drafts never appear', async () => {
     for (const id of ['<dealer@x>', '<int@x>', '<draft@x>']) assert.strictEqual(byId(id), undefined, id);
@@ -298,7 +307,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
     assert.ok(partial, 'budget never hit'); assert.ok(calls < 40);
     const ids = got.map(x => x.internet_message_id + '|' + x.folder);
     assert.strictEqual(new Set(ids).size, ids.length, 'a message was repeated');
-    assert.strictEqual(got.length, 11);
+    assert.strictEqual(got.length, 10);
   });
   await t('a cursor that no longer matches the window is refused (window_changed), never silently skipped', async () => {
     const w = world(); const clock = { t: 0 };
