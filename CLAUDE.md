@@ -1278,6 +1278,16 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   fixtures never contain the Supabase project URL — Netlify secret scanning fails the build on it; fixtures use
   `{{SUPABASE_URL}}` (filled by the test world) and the scan is never widened. Regression tests on the live wording
   of all 15 decisions: test/mcmatch.live.test.js + test/mcmatch.ui.js (test/fixtures/mc-live-frozen.json).
+  **Phase 6 ACCEPTED — PASS / COMPLETE (Angelo, 2026-10-11).** Final live check with the correction deployed:
+  Bemis Match 9/9 SKUs match the Gold Standard record, 0 proposed changes, 0 decisions needed, 0 false HOLD, retired
+  DO5300RD444 still retired; 7YE82350TC Each/1 and 444DISPLAY Display/1 without pack basis; the 7 case SKUs keep
+  MSRP/MAP each; Climbing Steps / Strongback / Ovation show the legacy-source label with 0 decisions and 0 proposed
+  changes; 28/28 frozen write probes refused; freeze self-test 20/20 blocked; counts 14 runs / 15 decisions /
+  0 approvals (verification run with save:false); fingerprints unchanged — Climbing Steps 270c15b4991d580a,
+  Strongback d35dcdff0cf9816c, Ovation 46f8ed0f02c81067, Bemis 3620a321933995db. The first, faulty live Match
+  evidence is kept as history in the plan doc's Phase 6 release review; no run or decision was rewritten.
+  **Manufacturer Center Phases 1–6 are COMPLETE.** Still open: re-check anonymous listing of `mfr-sources` once the
+  first real source file is stored there. No new manufacturer starts until Angelo approves it.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
