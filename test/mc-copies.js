@@ -9,7 +9,7 @@ const SHOPD=path.join(__dirname,'..','..','homecareproviderservicesordering');
 const OUT=process.env.CAT_ROOT||path.join(__dirname,'..','netlify','functions');
 const HEAD={
   render:`/* THE STOREFRONT'S PRODUCT-CARD AND FREIGHT-BOX WORDS, VERBATIM (Manufacturer Center, 2026-10-10).
-   SOURCE is the exact text of Partner 360's money / esc / packOf / packNote / tierLadder /
+   SOURCE is the exact text of Partner 360's money / esc / packOf / packNote / msrpIsEach / mapIsEach / tierLadder /
    PRICE_NOTE_* / dealerPriceNote / priceHtml / freightRowsHtml, copied from
    homecareproviderservicesordering/public/index.html by test/mc-copies.js. mc_verify renders every
    product card and freight box with THIS text, and re-extracts it from the live storefront page on

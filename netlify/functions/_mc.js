@@ -112,6 +112,7 @@ const decode = s => s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;
    form the Partner 360 fingerprint uses): block ends become spaces, tags vanish, entities decode. */
 const text = html => decode(String(html || "").replace(/<\/div>/g, " </div>").replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
 const m2 = v => (v == null || v === "" ? null : Math.round(Number(v) * 100) / 100);
+const basisOf = b => (b === "each" || b === "order_unit") ? b : null;
 const ladderKey = (t, bp) => (Array.isArray(t) ? t : []).map(x => ({ q: Math.round(Number(x.minQty != null ? x.minQty : x.min_qty)), p: m2(x.price), pool: x.pool || null }))
   .filter(x => !(x.q === 1 && bp != null && x.p === m2(bp))).sort((a, b) => a.q - b.q).map(x => x.q + ":" + x.p + (x.pool ? "@" + x.pool : "")).join(",");
 function check(id, label, ok, detail, severity){ return { id, label, pass: !!ok, severity: severity || "blocking", detail: detail == null ? null : detail }; }
@@ -167,12 +168,13 @@ async function verifyLine(d){
     const pairs = [["base_price", m2(p.base_price), m2(r.base_price)], ["msrp", m2(p.msrp), m2(r.msrp)], ["map", m2(p.map), m2(r.map)],
       ["tiers", ladderKey(p.tiers, p.base_price), ladderKey(r.tiers, r.base_price)],
       ["uom", p.uom ? String(p.uom) : null, r.uom ? String(r.uom) : null],
-      ["case_qty", Number(p.case_qty) > 1 ? Number(p.case_qty) : 1, Number(r.case_qty) > 1 ? Number(r.case_qty) : 1]];
+      ["case_qty", Number(p.case_qty) > 1 ? Number(p.case_qty) : 1, Number(r.case_qty) > 1 ? Number(r.case_qty) : 1],
+      ["msrp_basis", basisOf(p.msrp_basis), basisOf(r.msrp_basis)], ["map_basis", basisOf(p.map_basis), basisOf(r.map_basis)]];
     for(const [f, a, b] of pairs){ if(f === "msrp" && b == null && r.msrp_auto !== false) continue; if(JSON.stringify(a) !== JSON.stringify(b)) drift.push({ code: p.code, field: f, storefront: a, record: b }); }
   }
   const unlisted = active.filter(r => !products.some(p => norm(p.code) === (r.code_norm || norm(r.code)))).map(r => r.code);
   if(authoritative){
-    add(check("full_field_parity", "Storefront = record on price, MSRP, MAP, tiers, UOM and case qty", !drift.length, drift.length ? drift.slice(0, 50) : { compared: products.length - noRecord.length }));
+    add(check("full_field_parity", "Storefront = record on price, MSRP, MAP, tiers, UOM, case qty and MSRP/MAP basis", !drift.length, drift.length ? drift.slice(0, 50) : { compared: products.length - noRecord.length }));
     add(check("every_product_has_record", "Every visible product has an active master record", !noRecord.length, noRecord.length ? noRecord.slice(0, 50) : null));
     add(check("every_record_listed", "Every active record is visible on Partner 360", !unlisted.length, unlisted.length ? unlisted.slice(0, 50) : null, "advisory"));
   } else {
@@ -214,8 +216,16 @@ async function verifyLine(d){
     const pk = R.packOf(p);
     if(p.base_price != null && tx.indexOf("$" + Number(p.base_price).toFixed(2)) < 0) cardIssues.push({ code: p.code, issue: "price not shown", text: tx });
     if(pk){ if(tx.indexOf("per " + pk.label) < 0 || tx.indexOf(`Dealer order unit = 1 ${pk.label} (${pk.n} each)`) < 0) cardIssues.push({ code: p.code, issue: "pack wording missing", text: tx }); }
+    /* MSRP / MAP basis (Phase 4): "each" on a pack exactly when the record says each — or, with no basis
+       on the record, by the storefront's standing rule (MSRP each only for msrp_each rows, MAP each on a pack). */
+    const rb = recBy[norm(p.code)] || {};
+    const mapEach = !!pk && (basisOf(rb.map_basis) ? basisOf(rb.map_basis) === "each" : true);
+    const msrpEach = !!pk && (basisOf(rb.msrp_basis) ? basisOf(rb.msrp_basis) === "each" : p.msrp_each === true);
     const mapv = (p.map != null && p.map !== "" && Number(p.map) > 0) ? Number(p.map) : null;
-    if(mapv != null && tx.indexOf("MAP " + R.money(mapv) + (pk ? " each" : "")) < 0) cardIssues.push({ code: p.code, issue: "MAP wording", text: tx });
+    if(mapv != null){ const want = "MAP " + R.money(mapv) + (mapEach ? " each" : ""), at = tx.indexOf(want);
+      if(at < 0 || (!mapEach && tx.slice(at + want.length).startsWith(" each"))) cardIssues.push({ code: p.code, issue: "MAP wording", want, text: tx }); }
+    const ms = tx.match(/MSRP \$[\d,]+\.\d{2}( each)?/);
+    if(ms && !!ms[1] !== msrpEach) cardIssues.push({ code: p.code, issue: "MSRP basis wording", want: msrpEach ? "each" : "per order unit", text: tx });
     if((tx.match(/MSRP /g) || []).length > 1) cardIssues.push({ code: p.code, issue: "MSRP shown twice", text: tx });
     const note = R.dealerPriceNote(p.price_note, p);
     if(/\$[\d,.]+\s*\/\s*unit/i.test(note)) cardIssues.push({ code: p.code, issue: "derived per-unit price in note", text: note });

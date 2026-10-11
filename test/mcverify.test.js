@@ -73,6 +73,36 @@ await t('a multi-SKU cart is priced against the whole cart, as the storefront do
   const W=world({records:recs}); const C=mod(W); const r=await verify(C,{save:false});
   const c=ck(r,'browser_equals_server'); ok(c.pass,JSON.stringify(c.detail).slice(0,600));
 });
+const recWith=(over)=>[{manufacturer:LINE,code:'7YR05310TSS',base_price:109.98,msrp:109.99,map:109.99,msrp_auto:false,status:'active',uom:'Case',case_qty:2,source_id:1,dealer_unit_cost:64.99,...(over||{})},
+  {manufacturer:LINE,code:'7YE82350TC',base_price:54.99,msrp:109.99,map:109.99,msrp_auto:false,status:'active',uom:'Each',case_qty:1,source_id:1,dealer_unit_cost:54.99},
+  {manufacturer:LINE,code:'444DISPLAY',base_price:634.86,msrp:1269.72,map:1269.72,msrp_auto:false,status:'active',uom:'Display',case_qty:1,source_id:1,dealer_unit_cost:634.86},
+  {manufacturer:LINE,code:'DO5300RD444',status:'discontinued'}];
+await t('Phase 4: the backfilled basis (Bemis case item MSRP and MAP "each") changes no card and no fingerprint',async()=>{
+  const base=await verify(mod(world()),{save:false}); eq(base.body.result,'pass');
+  const r=await verify(mod(world({records:recWith({msrp_basis:'each',map_basis:'each'})})),{save:false});
+  eq([r.body.result,r.body.failed],['pass',[]],JSON.stringify((r.body.checks||[]).filter(c=>!c.pass)).slice(0,600));
+  eq(r.body.fingerprint,base.body.fingerprint,'fingerprint must not move');
+  ok(ck(r,'full_field_parity').pass&&ck(r,'product_cards').pass,'parity and cards');
+});
+await t('Phase 4: a record basis of order_unit reaches the card (no "each"), parity holds, and the fingerprint names the change',async()=>{
+  const base=await verify(mod(world()),{save:false});
+  const r=await verify(mod(world({records:recWith({msrp_basis:'order_unit',map_basis:'order_unit'})})),{save:false});
+  eq([r.body.result,r.body.failed],['pass',[]],JSON.stringify((r.body.checks||[]).filter(c=>!c.pass)).slice(0,600));
+  const line=ck(r,'fingerprint').detail.lines.find(l=>l.startsWith('7YR05310TSS|'));
+  ok(/MSRP \$109\.99(?! each)/.test(line)&&/MAP \$109\.99(?! each)/.test(line),line);
+  ok(r.body.fingerprint!==base.body.fingerprint,'a dealer-facing wording change must move the fingerprint');
+});
+await t('Phase 4: storefront basis that disagrees with the record fails parity (record says each, storefront shows none)',async()=>{
+  /* A storefront that does not receive the record's basis (old feed or old page) while the record says order_unit:
+     the feed rows lose msrp_basis, so the card falls back to the catalog row's msrp_each and still says "each". */
+  const W=world({records:recWith({msrp_basis:'order_unit'})}); const C=mod(W);
+  const inner=W.fetch; W.fetch=async(u,o)=>/\/rest\/v1\/product_skus/.test(String(u))&&/status=eq\.active&select=\*/.test(String(u))
+    ? inner(u,o).then(async res=>{ const j=await res.json(); (j||[]).forEach(x=>{ delete x.msrp_basis; }); return {ok:true,status:200,json:async()=>j,text:async()=>JSON.stringify(j)}; })
+    : inner(u,o); global.fetch=W.fetch;
+  const r=await verify(C,{save:false});
+  ok(!ck(r,'full_field_parity').pass && ck(r,'full_field_parity').detail.some(d=>d.code==='7YR05310TSS'&&d.field==='msrp_basis'),JSON.stringify(ck(r,'full_field_parity')).slice(0,500));
+  ok(!ck(r,'product_cards').pass && ck(r,'product_cards').detail.some(d=>d.issue==='MSRP basis wording'),JSON.stringify(ck(r,'product_cards')).slice(0,500));
+});
 await t('freight boundaries: $499.99 = $40 shipping & handling, $500.00 and $500.01 = Prepaid freight',async()=>{
   const W=world(); const C=mod(W); const r=await verify(C);
   const rows=ck(r,'freight_boundaries').detail; ok(Array.isArray(rows),'rows');

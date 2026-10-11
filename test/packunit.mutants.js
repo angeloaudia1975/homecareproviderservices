@@ -5,13 +5,13 @@ const ex=require('./extract-engine.js');
 const files={bemis:path.join(SHOPD,'public','data','bemis.json'),shop:path.join(SHOPD,'public','index.html'),submit:path.join(SHOPD,'netlify','functions','submit-order.js'),orders:path.join(DIR,'orders-api.js'),pricing:path.join(DIR,'_pricing.js')};
 const M=[
  ['shop','record unit not copied','    if(authoritative){ if(m.uom != null && m.uom !== "") p.uom = m.uom; if(m.case_qty != null) p.case_qty = Number(m.case_qty); }','    '],
- ['shop','MAP not labelled each','MAP ${money(mapv)}${packOf(p)?" each":""}','MAP ${money(mapv)}'],
+ ['shop','MAP not labelled each','MAP ${money(mapv)}${mapIsEach(p)?" each":""}','MAP ${money(mapv)}'],
  ['shop','pack note missing','function packNote(p){ const k=packOf(p); return k ? `Dealer order unit = 1 ${k.label} (${k.n} each)` : ""; }','function packNote(p){ return ""; }'],
  ['shop','single units treated as packs','  if(!(n>1)) return null;','  if(!(n>0)) return null;'],
  ['submit','HCPS email drops the pack','  if (n > 1) return `${u || n + "-pack"} (${n} each)`;','  if (false) return "";'],
  ['orders','dealer email drops the pack','  if(n>1) return `${u||n+"-pack"} (${n} each)`;','  if(false) return "";'],
  ['shop','MSRP never labelled each','${msrpEach?" each":""}</div>','</div>'],
- ['shop','every pack MSRP called each','msrpEach=!!(msrpPack && p.msrp_each===true)','msrpEach=!!msrpPack'],
+ ['shop','every pack MSRP called each',"? b==='each' : p.msrp_each===true; }","? b==='each' : true; }"],
  ['shop','per-piece MSRP weighed against the case price','const msrpFloor=msrpEach ? Number(p.base_price)/msrpPack.n : Number(p.base_price);','const msrpFloor=Number(p.base_price);'],
  ['bemis','Steadfast unit blanked','"uom": "Each",\r\n    "base_price": 54.99','"uom": "",\r\n    "base_price": 54.99'],
  ['bemis','case qty back to "3/CS"','"case_qty": 3,','"case_qty": "3/CS",'],

@@ -34,7 +34,7 @@ function extractEngine(src){
   return pricing+'\n'+merge+'\n'+color;
 }
 /* The card and freight-box words: priceHtml and everything it reads, plus freightRowsHtml. */
-const RENDER_DECLS=['const money = n','const esc = s','function packOf','function packNote','function tierLadder',
+const RENDER_DECLS=['const money = n','const esc = s','function packOf','function packNote','function msrpIsEach','function mapIsEach','function tierLadder',
   'const PRICE_NOTE_OPERATIONAL','const PRICE_NOTE_VOLUME','const PRICE_NOTE_TIERISH','const PRICE_NOTE_MAP',
   'function dealerPriceNote','function priceHtml','function freightRowsHtml'];
 /* The render constants are one-line declarations whose regexes hold quote characters, so they are

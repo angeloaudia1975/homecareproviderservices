@@ -1112,6 +1112,17 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   Phase 4 (MSRP/MAP basis reaching the storefront) is approved as its OWN release; accepted only with zero
   dealer-facing change and identical fingerprints on Climbing Steps, Strongback, Ovation and Bemis. Phase 5 is not
   approved yet.
+- **Manufacturer Center Phase 4 — MSRP/MAP basis on the storefront (approved by Angelo 2026-10-10; its own
+  release).** `product_skus.msrp_basis` / `map_basis` ('each' | 'order_unit' | empty) travel through catalog-feed
+  (and `_pricing.feedRows`, identical) and, on a record-authoritative line only, onto the product. They decide
+  only the PACK card words: `msrpIsEach(p)` / `mapIsEach(p)` in index.html. Empty basis = the standing rule,
+  unchanged (MSRP "each" only for catalog rows with msrp_each:true, MAP "each" on every pack); a single item never
+  gets a basis label; an unknown word is ignored. MSRP "each" is weighed against the per-piece price, per order unit
+  against the order-unit price. mc_verify compares the basis in full-field parity and checks the card wording
+  against the RECORD. Acceptance: zero dealer-facing change on Climbing Steps, Strongback, Ovation and Bemis — the
+  backfilled basis reproduces today's cards exactly. The product DETAIL page, featured tiles and quotes still show
+  MSRP/MAP without a basis label; changing them would be dealer-facing on frozen lines and needs separate approval.
+  Phase 5 (freight terms from manufacturer_meta) is not approved yet.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.

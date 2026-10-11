@@ -42,6 +42,9 @@ function feedRows(rows) {
     if (r.uom) o.uom = r.uom;
     if (r.hcpcs) o.hcpcs = r.hcpcs;
     if (n(r.case_qty) != null) o.case_qty = n(r.case_qty);
+    // MSRP / MAP basis on a pack (Manufacturer Center Phase 4): only the two known words travel.
+    if (r.msrp_basis === "each" || r.msrp_basis === "order_unit") o.msrp_basis = r.msrp_basis;
+    if (r.map_basis === "each" || r.map_basis === "order_unit") o.map_basis = r.map_basis;
     out.push(o);
   });
   out.sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
