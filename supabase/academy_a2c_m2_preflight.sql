@@ -68,7 +68,7 @@ m2_funcs as (
   from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname like 'academy\_content\_%'),
 m2_trigs as (
   select coalesce(jsonb_agg(c.relname order by c.relname), '[]') j, count(*) n
-  from pg_trigger t join pg_class c on c.oid = t.tgrelid where t.tgname = 'academy_content_guard'),
+  from pg_trigger t join pg_class c on c.oid = t.tgrelid where t.tgname in ('academy_content_guard', 'academy_content_guard_truncate')),
 content_triggers as (
   select coalesce(jsonb_agg(c.relname || '.' || t.tgname order by c.relname, t.tgname), '[]') j
   from pg_trigger t join pg_class c on c.oid = t.tgrelid

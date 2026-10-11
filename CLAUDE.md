@@ -1749,7 +1749,9 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   write. Test setups that insert content directly set `academy.op` as the owner around those inserts (A1/M1 acceptance,
   m1_hardening, atomicity — their sha256 changed for that reason only). **M2 is NOT run in production: Angelo approves
   the exact file and runs it himself; the Command Center is not switched on until M2 is installed, tested and
-  separately approved for staff-only activation.** Expected fingerprint 65e0d2f6… (Unix) / 349b09e6… (CRLF paste).
+  separately approved for staff-only activation.** Expected fingerprint f24e4f88… (Unix) / 794f3c3e… (CRLF paste).
+  TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
+  the guard when a marker is set: any future cascade INTO the four content tables must be reviewed against it.
 - **Course publication rules (Angelo, 11 Oct 2026 — C2 design only, NOT implemented; `docs/academy/C2_COURSE_PUBLICATION_DESIGN.md`).**
   Show clearly whether training is published and available. Only the President publishes or retires a course. Published
   versions are immutable. Publishing a replacement version retires the previous one and publishes the new one in ONE

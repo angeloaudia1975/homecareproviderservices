@@ -59,6 +59,7 @@ try {
     assert.strictEqual(post.functions, 15); assert.strictEqual(post.operations_server_only, 11);
     assert.strictEqual(post.helpers_callable_by_server, 0); assert.strictEqual(post.callable_by_public_keys, 0);
     assert.deepStrictEqual(post.guard_triggers_on, ['academy_course_versions', 'academy_courses', 'academy_lessons', 'academy_modules']);
+    assert.deepStrictEqual(post.truncate_guard_on, post.guard_triggers_on);
     assert.strictEqual(post.m1_code_fingerprint, '130e45fa36f768e032a89da43b645f8a');
     assert.strictEqual(post.m1_functions, 19); assert.strictEqual(post.m1_guard_triggers, 6);
   });
@@ -72,15 +73,15 @@ try {
     assert.deepStrictEqual(after.fingerprints, pre.fingerprints);
     assert.deepStrictEqual(after.academy_fingerprints, pre.academy_fingerprints);
     assert.deepStrictEqual(after.m1, pre.m1);
-    assert.deepStrictEqual(after.content_triggers.filter(x => !x.endsWith('.academy_content_guard')), pre.content_triggers);
+    assert.deepStrictEqual(after.content_triggers.filter(x => !/\.academy_content_guard(_truncate)?$/.test(x)), pre.content_triggers);
   });
   t('M2 refuses to run twice', () => assert.notStrictEqual(psql(DB, ['-f', SUP('academy_a2c_m2_content_ops.sql')]).status, 0));
   t('M2 acceptance tests: 20 + leftover check pass (sent as ONE request, like the SQL editor)', () => {
     allPass(results(asEditor(DB, SUP('academy_a2c_m2_acceptance_tests.sql'))), 21);
   });
-  t('M2 hardening (roles as the API uses them, a non-President administrator, a caught failure): all 7 pass', () => {
+  t('M2 hardening (roles as the API uses them, a non-President administrator, a caught failure): all 9 pass', () => {
     const out = file(DB, LOCAL('m2_content.sql')).split('\n').filter(l => /^\d\d\|/.test(l));
-    assert.strictEqual(out.length, 7, out.join(' / '));
+    assert.strictEqual(out.length, 9, out.join(' / '));
     assert.deepStrictEqual(out.filter(l => !/^\d\d\|PASS\|/.test(l)), []);
   });
   t('With M2 installed: A1 acceptance (27), M1 acceptance (43), M1 hardening (28) and M1 all-or-nothing (11) all still pass', () => {
@@ -106,7 +107,7 @@ try {
     const rows = run(DB, 'select (select count(*) from academy_courses) || \'/\' || (select count(*) from academy_events)');
     file(DB, SUP('academy_a2c_m2_rollback.sql'));
     assert.strictEqual(run(DB, "select count(*) from pg_proc where proname like 'academy\\_content\\_%'"), '0');
-    assert.strictEqual(run(DB, "select count(*) from pg_trigger where tgname = 'academy_content_guard'"), '0');
+    assert.strictEqual(run(DB, "select count(*) from pg_trigger where tgname like 'academy\\_content\\_guard%'"), '0');
     const after = json(file(DB, SUP('academy_a2c_m2_preflight.sql')));
     assert.deepStrictEqual(after.m1, pre.m1); assert.deepStrictEqual(after.fingerprints, pre.fingerprints);
     assert.deepStrictEqual(after.academy_fingerprints, pre.academy_fingerprints);
@@ -142,7 +143,7 @@ try {
     const sql = fs.readFileSync(SUP('academy_a2c_m2_content_ops.sql'), 'utf8').replace(/--[^\n]*/g, '');
     const written = new Set([...sql.matchAll(/\b(?:insert\s+into|update|delete\s+from)\s+(?:public\.)?([a-z_]+)/gi)].map(m => m[1].toLowerCase()).filter(x => x !== 'or'));   // 'before insert or update or delete on' is a trigger, not a write
     assert.deepStrictEqual([...written].filter(x => !['academy_courses', 'academy_course_versions', 'academy_modules', 'academy_lessons'].includes(x)), []);
-    assert.ok(!/\bdrop\b|\balter\s+table\b|\btruncate\b/i.test(sql));
+    assert.ok(!/\bdrop\b|\balter\s+table\b|(^|;)\s*truncate\b/im.test(sql));   // 'before truncate on' (the guard) is not a TRUNCATE
   });
 } finally {
   run('postgres', `drop database if exists ${DB}`); run('postgres', `drop database if exists ${DB2}`);

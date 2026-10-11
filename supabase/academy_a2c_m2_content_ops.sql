@@ -21,7 +21,12 @@
 -- Internal helpers (owner only): academy_content_actor_president, academy_content_lock_draft, academy_content_keys
 -- Guard: academy_content_guard() + trigger academy_content_guard on academy_courses, academy_course_versions,
 --   academy_modules, academy_lessons — refuses every insert/update/delete not made by an audited operation (the M1
---   publish/retire operations included: they already run as the owner with the operation marker set).
+--   publish/retire operations included: they already run as the owner with the operation marker set) — and a
+--   statement trigger academy_content_guard_truncate on the same tables refuses TRUNCATE.
+--   NOTE: Postgres runs foreign-key cascades as the table owner, so a cascade passes the guard when a marker is set.
+--   Today the only cascades INTO these tables start from versions and modules, which are guarded themselves (and the
+--   operations never delete a version, and delete a module only when it has no lessons). Any future ON DELETE
+--   CASCADE / SET NULL from another table into these four must be reviewed against this guard.
 --
 -- Reuses the M1 helpers academy_op_begin / academy_op_end / academy_op_audit / academy_op_actor_staff, which stay
 -- owner-only; M1's 19 functions and 6 triggers are NOT changed (their installed-code fingerprint is unchanged — the
@@ -110,6 +115,14 @@ create trigger academy_content_guard before insert or update or delete on public
   for each row execute function public.academy_content_guard();
 create trigger academy_content_guard before insert or update or delete on public.academy_lessons
   for each row execute function public.academy_content_guard();
+create trigger academy_content_guard_truncate before truncate on public.academy_courses
+  for each statement execute function public.academy_content_guard();
+create trigger academy_content_guard_truncate before truncate on public.academy_course_versions
+  for each statement execute function public.academy_content_guard();
+create trigger academy_content_guard_truncate before truncate on public.academy_modules
+  for each statement execute function public.academy_content_guard();
+create trigger academy_content_guard_truncate before truncate on public.academy_lessons
+  for each statement execute function public.academy_content_guard();
 
 -- ---------------------------------------------------------------------------------------------
 -- COURSES
@@ -167,6 +180,7 @@ begin
   if p_changes = '{}'::jsonb then raise exception 'academy: nothing to change' using errcode = '22023'; end if;
   select * into v_old from academy_courses where id = p_id for update;
   if not found then raise exception 'academy: course not found' using errcode = 'P0002'; end if;
+  perform 1 from academy_course_versions where course_id = p_id for share;   -- a publish in progress finishes first
   -- a course learners have seen (not a draft, or with a published / retired version) changes only with the President
   if v_old.status <> 'draft' or exists (select 1 from academy_course_versions where course_id = p_id and status in ('published','retired')) then
     perform academy_content_actor_president(p_actor);
@@ -286,7 +300,7 @@ begin
   perform academy_content_lock_draft(p_version_id);
   v_title := trim(coalesce(p_module->>'title', ''));
   if v_title = '' or length(v_title) > 200 then raise exception 'academy: the module title is required (up to 200 characters)' using errcode = '22023'; end if;
-  v_obj := coalesce(p_module->'objectives', '[]'::jsonb);
+  v_obj := coalesce(nullif(p_module->'objectives', 'null'::jsonb), '[]'::jsonb);
   if jsonb_typeof(v_obj) <> 'array' or jsonb_array_length(v_obj) > 12
      or exists (select 1 from jsonb_array_elements(v_obj) e where jsonb_typeof(e) <> 'string' or length(trim(e #>> '{}')) not between 1 and 300) then
     raise exception 'academy: objectives are up to 12 lines of up to 300 characters' using errcode = '22023';
@@ -319,7 +333,7 @@ begin
     if v_title = '' or length(v_title) > 200 then raise exception 'academy: the module title is required (up to 200 characters)' using errcode = '22023'; end if;
   end if;
   if p_changes ? 'objectives' then
-    v_obj := coalesce(p_changes->'objectives', '[]'::jsonb);
+    v_obj := coalesce(nullif(p_changes->'objectives', 'null'::jsonb), '[]'::jsonb);
     if jsonb_typeof(v_obj) <> 'array' or jsonb_array_length(v_obj) > 12
        or exists (select 1 from jsonb_array_elements(v_obj) e where jsonb_typeof(e) <> 'string' or length(trim(e #>> '{}')) not between 1 and 300) then
       raise exception 'academy: objectives are up to 12 lines of up to 300 characters' using errcode = '22023';
@@ -423,6 +437,9 @@ begin
   perform academy_content_lock_draft(v_ver);
   select * into v_old from academy_lessons where id = p_id for update;      -- read again under the version lock
   if not found then raise exception 'academy: lesson not found' using errcode = 'P0002'; end if;
+  if exists (select 1 from academy_content_refs where lesson_id = p_id) then   -- never removed silently by the cascade
+    raise exception 'academy: product facts are linked to this lesson' using errcode = '55000';
+  end if;
   delete from academy_lessons where id = p_id;
   if not found then raise exception 'academy: nothing was deleted' using errcode = 'P0002'; end if;
   perform academy_op_audit('staff', p_actor, 'academy_lessons', p_id::text, 'delete_lesson', to_jsonb(v_old), null);

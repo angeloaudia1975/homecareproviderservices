@@ -1,12 +1,12 @@
 -- =============================================================================================
 -- HCPS Academy — A2C M2 POST-MIGRATION CHECK (READ-ONLY)     supabase/academy_a2c_m2_postcheck.sql
 -- Changes nothing. Run right after the migration, and again after the tests. Expected:
---   m2_code_fingerprint  65e0d2f67a2e3dc7b74dad7a75ebf139 when installed with the file's own (Unix) line endings, or
---                        349b09e6f3e33d50545c2b8a3211f2c8 when pasted into the SQL editor from Windows (every line ending \r\n).
+--   m2_code_fingerprint  f24e4f888c8ed7a4e0765382737dfe35 when installed with the file's own (Unix) line endings, or
+--                        794f3c3e007bf3cc6d72b574aac614e3 when pasted into the SQL editor from Windows (every line ending \r\n).
 --                        Both are the approved file byte for byte apart from line endings. Any other value = stop.
 --   m1_code_fingerprint  unchanged: 130e45fa36f768e032a89da43b645f8a (or e70543ba23d96ca7c5aec8eeff0ea341)
 --   functions 15 · operations_server_only 11 · helpers_callable_by_server 0 · callable_by_public_keys 0
---   guard_triggers_on the 4 content tables · m1_functions 19 · m1_guard_triggers 6
+--   guard_triggers_on and truncate_guard_on: the 4 content tables · m1_functions 19 · m1_guard_triggers 6
 --   academy_switches {} (or every value false) · content_rows and audit_rows as in the preflight
 -- =============================================================================================
 select jsonb_build_object(
@@ -27,6 +27,7 @@ select jsonb_build_object(
                                where p.pronamespace = 'public'::regnamespace and p.proname like 'academy\_content\_%'
                                  and has_function_privilege(r, p.oid, 'EXECUTE')),
   'guard_triggers_on', (select jsonb_agg(c.relname order by c.relname) from pg_trigger t join pg_class c on c.oid = t.tgrelid where t.tgname = 'academy_content_guard'),
+  'truncate_guard_on', (select jsonb_agg(c.relname order by c.relname) from pg_trigger t join pg_class c on c.oid = t.tgrelid where t.tgname = 'academy_content_guard_truncate'),
   'm1_functions', (select count(*) from pg_proc where pronamespace = 'public'::regnamespace and (proname like 'academy\_op\_%' or proname = 'academy_audited_guard')),
   'm1_guard_triggers', (select count(*) from pg_trigger where tgname = 'academy_audited_guard' and not tgisinternal),
   'academy_switches', coalesce((select jsonb_object_agg(k, v) from app_settings, jsonb_each(value) e(k, v) where key = 'phase2_flags' and k like 'academy\_%'), '{}'),

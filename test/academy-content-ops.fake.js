@@ -166,6 +166,7 @@ function contentOps(w, opts) {
       actorStaff(a.p_actor);
       const l = t('academy_lessons').find(x => x.id === a.p_id); if (!l) no(404, 'P0002', 'lesson not found');
       const m = t('academy_modules').find(x => x.id === l.module_id); lockDraft(m && m.version_id);
+      if (t('academy_content_refs').some(r => r.lesson_id === l.id)) no(409, '55000', 'product facts are linked to this lesson');
       const before = clone(l); apply(() => db.academy_lessons.splice(db.academy_lessons.indexOf(l), 1));
       audit('academy_lessons', l.id, 'delete_lesson', before, null); return { deleted: l.id };
     },

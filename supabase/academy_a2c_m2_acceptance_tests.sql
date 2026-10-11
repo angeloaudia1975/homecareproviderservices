@@ -17,11 +17,14 @@ create temp table t_m2_before as
 
 -- ---------- Structure and privileges (read-only) ----------
 insert into t_m2
-select 1, 'M2 installed: 11 content operations, 3 helpers, the guard function, the guard trigger on the 4 content tables',
+select 1, 'M2 installed: 11 content operations, 3 helpers, the guard function; the row guard and the TRUNCATE guard on the 4 content tables',
   case when (select count(*) from pg_proc where pronamespace = 'public'::regnamespace and proname like 'academy\_content\_op\_%') = 11
         and (select count(*) from pg_proc where pronamespace = 'public'::regnamespace and proname like 'academy\_content\_%') = 15
         and (select string_agg(c.relname, ',' order by c.relname) from pg_trigger t join pg_class c on c.oid = t.tgrelid
               where t.tgname = 'academy_content_guard' and not t.tgisinternal)
+            = 'academy_course_versions,academy_courses,academy_lessons,academy_modules'
+        and (select string_agg(c.relname, ',' order by c.relname) from pg_trigger t join pg_class c on c.oid = t.tgrelid
+              where t.tgname = 'academy_content_guard_truncate' and not t.tgisinternal)
             = 'academy_course_versions,academy_courses,academy_lessons,academy_modules'
        then 'PASS' else 'FAIL' end, ''
 union all

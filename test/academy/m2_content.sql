@@ -98,6 +98,31 @@ begin
   insert into t_h2 values (6, 'Every change has one audit row with the named person; the recorded "after" equals the saved row',
     case when ok then 'PASS' else 'FAIL' end, '');
 
+  -- 8 TRUNCATE is refused like any other direct write (statement guard), for the owner and the server role
+  ok := true;
+  begin truncate academy_lessons cascade; ok := false; exception when insufficient_privilege then null; end;
+  begin
+    execute 'set local role service_role';
+    perform set_config('academy.op', 'forged', true);
+    truncate academy_modules cascade; ok := false;
+  exception when insufficient_privilege then null; end;
+  execute 'reset role';
+  insert into t_h2 values (8, 'TRUNCATE of a content table is refused (owner without an operation; server role with a forged marker)',
+    case when ok and exists (select 1 from academy_lessons where id = v_l) then 'PASS' else 'FAIL' end, '');
+
+  -- 9 a lesson with linked product facts is never deleted silently; JSON null objectives mean "none"
+  r := academy_content_op_create_course(PRES, null, '{"slug":"h2-refs","title":"R","course_type":"training"}');
+  v_v := (academy_content_op_create_version(PRES, null, (r->>'id')::uuid, null)->>'id')::uuid;
+  v_m := (academy_content_op_create_module(PRES, null, v_v, '{"title":"M","objectives":null}')->>'id')::uuid;
+  ok := (select objectives from academy_modules where id = v_m) = '[]'::jsonb;
+  v_l := (academy_content_op_create_lesson(PRES, null, v_m, '{"title":"L"}')->>'id')::uuid;
+  perform set_config('academy.op', 'test-setup', true);
+  insert into academy_content_refs (version_id, lesson_id, manufacturer_slug, model_code) values (v_v, v_l, 'golden-technologies', 'PR-1');
+  perform set_config('academy.op', '', true);
+  begin perform academy_content_op_delete_lesson(PRES, v_l); ok := false; exception when others then ok := ok and sqlstate = '55000'; end;
+  insert into t_h2 values (9, 'A lesson with linked product facts is not deleted (no silent cascade); a JSON null objectives list is stored as empty',
+    case when ok and exists (select 1 from academy_lessons where id = v_l) and exists (select 1 from academy_content_refs where lesson_id = v_l) then 'PASS' else 'FAIL' end, '');
+
   -- 7 a TEST course made through M2 still never issues a certificate (M1 rule unchanged)
   r := academy_content_op_create_course(PRES, null, '{"slug":"test-h2-pilot","title":"TEST","course_type":"hcps_certification"}');
   ok := r->>'slug' like 'test-%' and r->>'issuer' = 'hcps';
