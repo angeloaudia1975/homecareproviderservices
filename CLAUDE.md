@@ -265,6 +265,14 @@ every key page at desktop / tablet / iPhone / Android widths: zero horizontal ov
 shown on mobile / hidden on desktop, the panel opens, and dropdown accordions expand. Green =
 shippable; any red must be fixed first.
 
+**Connect 360 masthead on phones (agreed 2026-10-11).** Below 760px the shared admin masthead scrolls away with the page
+(not sticky), account controls (My Sales Workspace, favourites, Lock / Exit view-as) wrap onto their own row and stay on
+screen, each navigation row is ONE sideways-scrolling row with the current page's link scrolled into view, and every
+control is ≥44px tall. It lives in ONE place — `admin-chrome.js ensureMobileStyles()` / `revealCurrent()` (the dashboard's
+own header mirrors it in `index.html`); desktop and tablet (≥761px) are pixel-identical to before. Test every admin page
+with `node test/admin-header.mobile.js` (47 pages × president / My Sales Workspace / view-as / rep / relations × 360 /
+390 / 768 / 1280; needs Playwright: `PLAYWRIGHT_MODULE=…`). Green = shippable.
+
 ## 11. Variant-aware products — one model = one record, routed by catalog group (RULE)
 
 A single catalog "product" often bundles several **models** that each have their own manufacturer
@@ -1735,6 +1743,22 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   The database checks only that an actor is named; the trust boundary is the server role. Every `op()` call passes
   `actorLabel()` of the actor `staffActor` / `learnerActor` returned; the A2C unit adds a test proving a request-body
   actor is ignored.
+- **A2C Part C1 — Academy Command Center (Angelo, 11 Oct 2026 08:27: design ACCEPTED; PR #5 not merged until his GO).**
+  `/admin/academy.html` (Connect 360 → Sales & Marketing; admins only — reps/Relations keep their menus unchanged) +
+  `academy-admin-api.js`. Six tabs are fixed: Overview, Courses, Learners & Dealerships, Product Facts, Certifications,
+  Activity. HCPS-issued and manufacturer-issued credentials are always shown apart. President-only: publish/retire a
+  version, approval-required facts (the President is the recorded approver), edits to a course learners have seen.
+  Role assignments and credential verification go only through M1 operations. **Ordinary content writes record first:**
+  the audit row (with `_ref`) is written BEFORE the change and a failure to write it refuses the change (503); a change
+  that then fails gets `<action>_failed` with the same `_ref`; `audit_check` (records check) reconciles every course /
+  version / module / lesson with its latest effective audit row. **Before production authoring** these writes become
+  atomic database operations (M2, Option A in `docs/academy/A2C_C1_COMMAND_CENTER.md`) — awaiting Angelo's approval.
+  **Course record status** (`academy_courses.status`) is not changed in C1; the UI shows "Training available" from the
+  versions so a course with a published version never looks unpublished; the permanent rule is a C2 decision (proposal
+  in the doc). **TEST data:** TEST dealers (`is_test`), pilot learners (all active memberships at TEST dealers) and
+  TEST-course (`test-…`) enrollments/credentials are excluded from real Academy figures and shown apart; every future
+  Academy metric uses the same rule; a TEST course never issues a genuine certificate (M1). Do not begin A2D until
+  Angelo approves it separately. All Academy switches stay OFF.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

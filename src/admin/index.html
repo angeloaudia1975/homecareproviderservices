@@ -61,6 +61,17 @@
   .favchip .fi{font-size:16px;line-height:1}
   @media(max-width:640px){.favchip{flex:1 1 calc(50% - 9px);justify-content:flex-start}}
   @media(max-width:880px){.grid{grid-template-columns:1fr;}}
+  /* Phones: the same masthead rules as the shared header (admin-chrome.js ensureMobileStyles) — scrolls away with the
+     page, account controls on screen, one sideways-scrolling hub row, 44px tap targets. Desktop untouched. */
+  @media(max-width:760px){
+    header{position:relative;padding:10px 12px 0}
+    header .htop{flex-wrap:wrap;gap:8px}
+    header .who{flex-wrap:wrap;gap:6px 8px;width:100%;min-width:0}
+    header .who button,header .who .wsbtn{min-height:44px;display:inline-flex;align-items:center}
+    header .who button{margin-left:auto}
+    .hubnav{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;max-width:100%;margin-top:10px}
+    .hubnav a{flex:0 0 auto;min-height:44px;display:inline-flex;align-items:center}
+  }
   .hub{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;scroll-margin-top:150px;}
   .hub .top{padding:18px 20px 14px;border-top:5px solid var(--accent);}
   .hub .hd{display:flex;align-items:center;gap:12px;}
