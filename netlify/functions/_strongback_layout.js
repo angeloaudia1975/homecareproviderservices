@@ -60,7 +60,7 @@ function wordsOf(items, pageNo) {
     for (const it of R.items.sort((a, b) => a.x - b.x)) {
       if (it.str === "") continue;
       if (/^\s+$/.test(it.str)) { flush(); continue; }
-      if (w && (it.x - w.x2 > 1.5 || it.x < w.x)) flush();
+      if (w && it.x - w.x2 > 1.5) flush();
       if (!w) w = { text: "", x: it.x, x2: it.x, y: it.y, size: it.size, page: pageNo };
       w.text += mapGlyphs(it.str, `page ${pageNo}`); w.x2 = it.x + it.w; w.size = Math.max(w.size, it.size);
     }

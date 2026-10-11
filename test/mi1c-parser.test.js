@@ -158,6 +158,7 @@ const MATCH = {
     for (const n of ['Lacey Drug Company', 'James Medical Equipment', 'Harmon Medical Supply']) assert.strictEqual(p(n).group, 'New accounts');
     assert.deepStrictEqual([p('Medical Supply Store').l12m_text, p('Medical Supply Store').prior12_text], ['$65', '$5,686']);
     assert.ok(/renting out the ErgoSteel for \$100 a month/.test(p('CherriCare').detail.ergosteel.note));
+    assert.deepStrictEqual(p('My Mobility').detail.told_us, { text: 'Dec 17 2025: Dealer asked for more brochures; order placed.', dates: ['2025-12-17'], pos: 'p3:y437.3' }, 'a "Dec 17 2025" date is read, the text kept as printed');
     assert.deepStrictEqual(p('CherriCare').detail.contact_log.map(x => x.text), ['Cherri said the chairs are good, she rents the ErgoSteel and the Excursion has been at the Kentucky Derby twice.',
       'Cherri ordered 2 ErgoSteels after a long phone conversation; order submitted.'], 'wrapped entries are joined in full');
     assert.ok(/PO IO-36952/.test(p('All Star medical-TN').detail.contact_log.map(x => x.text).join(' ')));
