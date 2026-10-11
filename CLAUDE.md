@@ -1639,6 +1639,19 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   mi1c-api 29, mi1c-parser 26 (real PDF used, nothing skipped), MI-1c mutants 79/79, MI-1b api 28 + mutants 44/44,
   mi1b-register.pg 46; full regression after merging main 5d0c0fa (Academy C1, mobile masthead): 81/82 suites pass
   (only the pre-existing resources-render failure).
+- **MI-1c CONTROLLED PRODUCTION ROLLOUT APPROVED (Angelo, 2026-10-11 12:04 CT)** — migration sha256 550c64f8…ce7,
+  rollback 345512fd…7a4, subject to final reconciliation + preflight. Order: (1) bring main in, SQL byte-identical, rerun
+  MI-1c / MI-1b / MI-1a / commission / affected MC tests + the real PDF (stop on a change or unexplained failure);
+  (2) preflight: financial baseline, MI-1b schema, six catalog sources, 0 dealer reports, 0 import batches, `mi_import_v2`
+  ON / `mi_commission_v2` OFF, `mi_intel_publish` absent/off, nothing published, recent backup; (3) Angelo runs the exact
+  migration in the SQL editor — all 9 checks ok, full baseline compared after; (4) 22-check public-key probe all BLOCKED
+  + read-only metadata checks of the publication gate and Wyatt's hold (never publish a real report to test); (5) merge +
+  deploy, Netlify Published at the expected commit, Dealer Intelligence Import opens for President/Admin, reps/Relations
+  refused, no report ready for import. STOP. NOT authorized: registering/accepting the September PDF, the 25-dealer
+  import, match decisions, publishing, the September CSV, the publish switch, rep changes, AirAvant, financial records.
+  Read-only rollout queries: `supabase/mi1c_rollout_baseline.sql` (before/after) and `supabase/mi1c_rollout_postcheck.sql`
+  (expected code fingerprint 618a4139… LF / 887809bd… CRLF). Reconciled with main c59a3ad (Release A content freeze;
+  no overlap) — SQL byte-identical; regression 84/85 (only resources-render).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
