@@ -1296,6 +1296,43 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   evidence is kept as history in the plan doc's Phase 6 release review; no run or decision was rewritten.
   **Manufacturer Center Phases 1–6 are COMPLETE.** Still open: re-check anonymous listing of `mfr-sources` once the
   first real source file is stored there. No new manufacturer starts until Angelo approves it.
+  **Release A — the content freeze + enrichment windows (approved by Angelo 2026-10-11).** Plan from here (Angelo,
+  2026-10-11): A Safety → B Enrichment workflow (front door, + Add Manufacturer, Continue Product Enrichment, page
+  proposals, background Auto-Enrich, image rehosting, field provenance, Review Issues, Advanced Product Editor
+  repositioned — all drafts, zero dealer-facing change) → C Dealer Preview (staff-only draft rendering through Partner
+  360) → D Publish & Verify (dry run, single-use approval, atomic line publish, verification, back to draft on FAIL,
+  new Gold Standard fingerprint on PASS) → Bemis run. Acceptance test: open Bemis → Continue Product Enrichment → the
+  system enriches → Angelo resolves only exceptions → preview → publish. Rules:
+  (n) A frozen line protects everything dealers see, not only prices: product_content (pages, grouping, content,
+  images, category, publish/hidden), product_content_sources, product_media, product_links, product_related (rows FOR
+  the line), product_overrides (every patch key), custom_products (every column), manufacturer_meta logo_url / active /
+  enriched_only / category_order / category_map. The database refuses it (supabase/mc_release_a_content_freeze.sql,
+  mfr_content_guard, beside Phase 2's mfr_freeze_guard); catalog-api (freezeGate, MC.isFrozenProtected),
+  product-content.js and images-api.js (MC.contentGate) refuse it first with a plain 423. Not covered on purpose:
+  featured tiles (featured_products), storage files on their own (nothing shows until a row links them), the history log.
+  (o) Two recorded ways through, nothing else: a regression_fix of that line (any change; single use, spent when the
+  request succeeds; header x-hcps-regression-fix) or the line's OPEN enrichment_window (header
+  x-hcps-enrichment-window): hidden drafts only — a product_content row hidden before AND after the write (status not
+  published/active/discontinued, or disabled) and product_content_sources. Never a visible page, publishing, another
+  line, the catalog layer, media, links, related products, the line's settings, or anything commercial. catalog-api
+  and images-api never accept a window (their writes are visible at once).
+  (p) Windows are opened only by mc_open_enrichment_window (dry run first, reason required, frozen line only, one open
+  per line — unique index mfr_decisions_one_open_window) and closed only by mc_close_enrichment_window (used_at stamped
+  once). mc_record_decision refuses kind enrichment_window. Bemis's window opens only after Release A passes live, on
+  Angelo's go-ahead. Its scope (Angelo): may write hidden draft pages, descriptions/features/specs/sizing, categories,
+  page groupings/options, images copied into HCPS storage, manufacturer URLs/source provenance; must NOT change dealer
+  price, tiers/pooling, UOM/case qty, MSRP/MAP, freight or commercial active/retired state. Making a page live needs
+  Approve & Publish Manufacturer and a passing verification run; a new fingerprint becomes the Gold Standard only then.
+  (q) Decided 2026-10-11: the Advanced Product Editor (today's Product Content Enrichment page) loses its price write
+  path — a read-only commercial summary plus "Open Commercial & Pricing in Manufacturer Center" (Release B); one
+  commercial write path. Warranty and specifications are source-only: blank when the source doesn't state them, never
+  an AI default or an inference from similar products. Page grouping is presentation only: sharing a dealer page (Bemis
+  Round + Elongated) never creates or changes a commercial pricing family. Statuses stay six: Ready, Needs image,
+  Needs content, Needs category, Needs grouping decision, Conflict; review by exception, never field by field.
+  (r) mc_guard_selftest runs Phase 2's 20 commercial attempts plus the content guard's 16 per frozen line, each judged
+  against what it expects (an enrichment-window draft = "allowed"); a missing content guard is a failure.
+  Tests: test/mc-content-freeze.pg.test.js, test/mccontentfreeze.test.js, test/mccontentdrafts.test.js (hidden drafts
+  leave the fingerprint unchanged; one visible page moves it), test/mccontent.mutants.js.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.

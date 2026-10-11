@@ -551,5 +551,95 @@ function compareRuns(a, b){
     lines_only_in_a: la.filter(l => lb.indexOf(l) < 0).slice(0, 50), lines_only_in_b: lb.filter(l => la.indexOf(l) < 0).slice(0, 50) };
 }
 
+/* ── 5. THE CONTENT FREEZE (Release A, approved by Angelo 2026-10-11) ─────────────────────────────
+   A frozen line protects everything a dealer sees, not only its prices: product pages and their
+   grouping, content, images and media, product links, related products, catalog-layer names /
+   categories / images, the line's logo, visibility, listing mode and categories, and publish / hidden
+   state. The database refuses those writes itself (supabase/mc_release_a_content_freeze.sql,
+   mfr_content_guard); these rules refuse them first, with a plain message, in catalog-api,
+   product-content and images-api. Two explicit, recorded ways through, both mfr_decisions rows:
+     · a regression_fix of that line — any change, single use (spent when the request succeeds);
+     · the line's OPEN enrichment_window — hidden draft pages only (product-content, never a visible
+       page, never publishing, never the catalog layer, media, links, related or line settings).
+   Nothing commercial is reachable through a window: prices stay behind Phase 2's guard. */
+const CONTENT_ACTIONS = new Set(["save_override","set_category","set_category_map","set_category_order","clear_derived_categories",
+  "set_listing_mode","add_media","update_media","delete_media","reorder_media","save_link","clear_link","save_logo","clear_logo"]);
+const MEDIA_ID_ACTIONS = new Set(["update_media","delete_media","reorder_media"]);   // name a media row, not a line
+function isFrozenProtected(b){ return isCommercialAction(b) || !!(b && CONTENT_ACTIONS.has(b.action)); }
+const VISIBLE_STATUSES = ["published","active","discontinued"];          // the storefront's read rule (with disabled = false)
+const isVisibleStatus = s => VISIBLE_STATUSES.indexOf(String(s == null ? "" : s)) >= 0;
+/* product-content.js: every action that writes. */
+const PC_WRITE_ACTIONS = new Set(["approve","reject","approve_all","upsert","ingest_source","upload_image","upload_file","rehost",
+  "set_status","set_meta","set_content","save_fields","set_sku","save_skus","remove_skus","rename_sku","move_skus","split",
+  "merge_products","delete_product","create_product","save_sizing","bulk","recategorize","undo","save_related"]);
+/* …and the ones an enrichment window may carry: they work on one line's pages and its captured sources.
+   The database still decides row by row that each page stays hidden before and after. Not here:
+   recategorize (moves pages across every line) and save_related (shown on live pages at once). */
+const PC_WINDOW_ACTIONS = new Set(["approve","reject","approve_all","upsert","ingest_source","upload_image","upload_file","rehost",
+  "set_status","set_meta","set_content","save_fields","set_sku","save_skus","remove_skus","rename_sku","move_skus","split",
+  "merge_products","delete_product","create_product","save_sizing","bulk","undo"]);
+/* images-api.js: the actions that write (migrate_legacy only when applied). */
+function isImageWrite(b){ return !!b && (b.action === "upload" || b.action === "clear" || (b.action === "migrate_legacy" && b.apply === true)); }
+/* Why a product-content request falls outside an enrichment window (null = inside it). */
+function windowProblem(b){
+  const a = b && b.action;
+  if(!PC_WINDOW_ACTIONS.has(a)) return a + " changes what dealers see right away; an enrichment window covers hidden draft pages only";
+  const publishing = "making a page visible to dealers needs Approve & Publish Manufacturer, not an enrichment window";
+  if(a === "set_status" && isVisibleStatus(b.status)) return publishing;
+  if(a === "bulk" && b.patch && isVisibleStatus(b.patch.status)) return publishing;
+  if(a === "upsert"){ const rows = Array.isArray(b.rows) ? b.rows : [b.row]; if(rows.some(r => r && isVisibleStatus(r.status))) return publishing; }
+  return null;
+}
+/* Is decision d a usable exception of this kind for this line? (null = yes) */
+function exceptionProblem(d, kind, slug){
+  if(!d) return "no such decision";
+  if(d.kind !== kind) return "decision " + d.id + " is a " + d.kind + ", not a " + kind;
+  if(d.manufacturer !== slug) return "decision " + d.id + " belongs to " + d.manufacturer + ", not " + slug;
+  if(d.used_at != null) return kind === "enrichment_window" ? "the enrichment window " + d.id + " is closed" : "decision " + d.id + " is already used";
+  return null;
+}
+/* THE ONE GATE for product-content and images-api (catalog-api has freezeGate, same rules).
+   read(path) returns rows and throws when it can't read — a freeze state that can't be read refuses.
+   Returns { refusal:{status, body} } or { headers, regression, window } to send with the writes. */
+async function contentGate({ body, lines, read, windowRule }){
+  const L = [...new Set((lines || []).map(s => String(s || "").trim()).filter(Boolean))];
+  const open = { headers: {}, regression: null, window: null };
+  if(!L.length) return open;                                         // unattributed: the database guard still applies
+  let rows;
+  try{ rows = await read("manufacturer_meta?slug=in.(" + L.map(s => encodeURIComponent(s)).join(",") + ")&select=slug,frozen"); }
+  catch(e){ return { refusal: { status: 503, body: { ok: false, error: "freeze_state_unreadable",
+    message: "Whether " + L.join(", ") + " is frozen could not be read, so nothing was changed: " + String((e && e.message) || e).slice(0, 200) } } }; }
+  const frozen = L.filter(s => (rows || []).some(r => r && r.slug === s && r.frozen === true));
+  if(!frozen.length) return open;
+  const slug = frozen[0];
+  if(L.length > 1) return { refusal: { status: 423, body: { ok: false, error: "line_frozen", manufacturer: slug,
+    message: "This change spans several lines and " + frozen.join(", ") + (frozen.length > 1 ? " are" : " is") + " frozen (Gold Standard). Change one line at a time. Nothing was changed." } } };
+  const readDecision = async id => { const r = await read("mfr_decisions?id=eq." + id + "&select=id,manufacturer,kind,used_at"); return r && r[0]; };
+  const rf = body && body.regression_fix, ew = body && body.enrichment_window;
+  if(rf){
+    const id = parseInt(rf.decision_id, 10), reason = String(rf.reason || "").trim();
+    if(!(id > 0) || !reason) return { refusal: { status: 400, body: { ok: false, error: "regression_fix_incomplete", message: "A regression fix needs decision_id and a reason. Nothing was changed." } } };
+    let d; try{ d = await readDecision(id); } catch(e){ return { refusal: { status: 503, body: { ok: false, error: "decision_unreadable", message: "The regression_fix decision could not be read. Nothing was changed." } } }; }
+    const p = exceptionProblem(d, "regression_fix", slug);
+    if(p) return { refusal: { status: 423, body: { ok: false, error: "regression_fix_invalid", manufacturer: slug, message: p + ". Nothing was changed." } } };
+    return { headers: { "x-hcps-regression-fix": String(id) }, regression: { id, manufacturer: slug, reason }, window: null };
+  }
+  if(ew && windowRule){
+    const id = parseInt(typeof ew === "object" ? ew.decision_id : ew, 10);
+    if(!(id > 0)) return { refusal: { status: 400, body: { ok: false, error: "enrichment_window_incomplete", message: "An enrichment window needs its decision_id. Nothing was changed." } } };
+    let d; try{ d = await readDecision(id); } catch(e){ return { refusal: { status: 503, body: { ok: false, error: "decision_unreadable", message: "The enrichment window could not be read. Nothing was changed." } } }; }
+    const p = exceptionProblem(d, "enrichment_window", slug);
+    if(p) return { refusal: { status: 423, body: { ok: false, error: "enrichment_window_invalid", manufacturer: slug, message: p + ". Nothing was changed." } } };
+    const w = windowRule(body);
+    if(w) return { refusal: { status: 423, body: { ok: false, error: "outside_enrichment_window", manufacturer: slug, message: w + ". Nothing was changed." } } };
+    return { headers: { "x-hcps-enrichment-window": String(id) }, regression: null, window: { id, manufacturer: slug } };
+  }
+  return { refusal: { status: 423, body: { ok: false, error: "line_frozen", manufacturer: slug, message:
+    slug + " is frozen (Gold Standard). Its product pages, images, links, categories and publish state are protected like its prices. Nothing was changed. " +
+    "A correction needs a regression_fix decision in Manufacturer Center" + (windowRule ? "; enriching hidden draft pages needs the line's open enrichment window." : ".") } } };
+}
+
 module.exports = { COMMERCIAL_ACTIONS, OVERRIDE_COMMERCIAL_KEYS, isCommercialAction, lineOf, STAGE_FIELDS, planStage, verifyLine, text, expectedFreightWords, sha,
-  canon, planHash, parseCaseQty, decisionValues, appliesTo, interpretationFor, matchLine, gateProblem, activationRunProblem, freightPreview, compareRuns };
+  canon, planHash, parseCaseQty, decisionValues, appliesTo, interpretationFor, matchLine, gateProblem, activationRunProblem, freightPreview, compareRuns,
+  CONTENT_ACTIONS, MEDIA_ID_ACTIONS, isFrozenProtected, VISIBLE_STATUSES, isVisibleStatus, PC_WRITE_ACTIONS, PC_WINDOW_ACTIONS, isImageWrite,
+  windowProblem, exceptionProblem, contentGate };

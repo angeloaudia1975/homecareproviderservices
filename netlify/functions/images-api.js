@@ -25,11 +25,17 @@ const BUCKET = "product-images";
 const CORS = {"access-control-allow-origin":"*","access-control-allow-methods":"GET, POST, OPTIONS","access-control-allow-headers":"content-type, authorization, x-analytics-token"};
 const json=(c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store",...CORS},body:JSON.stringify(o)});
 const H=()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
+/* THE CONTENT FREEZE (Release A, approved 2026-10-11). On a frozen (Gold Standard) line every image write here is
+   refused (MC.contentGate), and the database refuses it too (mfr_content_guard). The one way through is a
+   regression_fix of that line, sent as a header on every write of the request and spent when it succeeds. An
+   enrichment window does not apply here: these writes reach the catalog layer, which dealers see at once. */
+const MC=require("./_mc.js");
+let IMG_EXCEPTION={}, IMG_REGRESSION=null;
 const enc=encodeURIComponent;
 
 /* Strict: a failed read throws. Nothing here may read "could not read" as "nothing there". */
 async function sb(method,path,body,extra){
-  const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined});
+  const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(method!=="GET"?IMG_EXCEPTION:{}),...(extra||{})},body:body!=null?JSON.stringify(body):undefined});
   const t=await r.text(); if(!r.ok) throw new Error(`Supabase ${r.status}: ${t}`); return t?JSON.parse(t):null;
 }
 async function fetchJson(url){ const r=await fetch(url,{headers:{"cache-control":"no-cache"}}); if(!r.ok) throw new Error(`${url} ${r.status}`); return r.json(); }
@@ -199,6 +205,22 @@ async function lineData(mfr){
 }
 
 exports.handler = async (event)=>{
+  IMG_EXCEPTION={}; IMG_REGRESSION=null;
+  let res;
+  try{ res=await handleImages(event); } finally { IMG_EXCEPTION={}; }
+  if(IMG_REGRESSION && res && res.statusCode<300){
+    const used=IMG_REGRESSION; IMG_REGRESSION=null;
+    try{ await sb("PATCH",`mfr_decisions?id=eq.${used.id}&used_at=is.null`,{used_at:new Date().toISOString(), used_by:String(used.by||"president").slice(0,80)},{Prefer:"return=minimal"}); }
+    catch(e){ try{ console.error("[HCPS] could not mark regression_fix "+used.id+" used: "+String((e&&e.message)||e)); }catch(_){} }
+  }
+  IMG_REGRESSION=null;
+  if(res && res.statusCode>=400 && res.statusCode!==423 && /line_frozen/.test(String(res.body||""))){
+    return json(423,{error:"line_frozen", message:"This line is frozen (Gold Standard): its images are protected like its prices. Nothing was changed."});
+  }
+  return res;
+};
+
+async function handleImages(event){
   if(event.httpMethod==="OPTIONS") return {statusCode:204,headers:CORS,body:""};
   try{
     if(!SUPABASE_URL||!SERVICE_ROLE) return json(500,{error:"Supabase env vars not set (SUPABASE_URL, SUPABASE_SERVICE_ROLE)"});
@@ -240,6 +262,12 @@ exports.handler = async (event)=>{
     if(event.httpMethod==="POST"){
       let b; try{b=JSON.parse(event.body||"{}");}catch{return json(400,{error:"bad JSON"});}
       const mfr=str(b.manufacturer), code=str(b.code);
+      if(MC.isImageWrite(b) && mfr){
+        const g=await MC.contentGate({body:b, lines:[mfr], read:path=>sb("GET",path), windowRule:null});
+        if(g.refusal){ const o=Object.assign({},g.refusal.body); delete o.ok; return json(g.refusal.status,o); }
+        IMG_EXCEPTION=g.headers||{};
+        if(g.regression) IMG_REGRESSION=Object.assign({by:actor},g.regression);
+      }
 
       if(b.action==="upload"){
         if(!mfr||!code||!b.data) return json(400,{error:"manufacturer, code, data required"});
@@ -279,7 +307,14 @@ exports.handler = async (event)=>{
       }
 
       if(b.action==="migrate_legacy"){
-        const slugs=mfr?[mfr]:[...new Set(((await sb("GET","product_images?select=manufacturer&limit=10000"))||[]).map(r=>r.manufacturer))];
+        let slugs=mfr?[mfr]:[...new Set(((await sb("GET","product_images?select=manufacturer&limit=10000"))||[]).map(r=>r.manufacturer))];
+        /* Release A: applied across every line, a frozen line is skipped and named (never half-written). */
+        let skipped_frozen=[];
+        if(b.apply===true && !mfr){
+          let fr; try{ fr=await sb("GET","manufacturer_meta?frozen=eq.true&select=slug"); }
+          catch(e){ return json(503,{error:"freeze_state_unreadable", message:"Which lines are frozen could not be read, so nothing was migrated."}); }
+          const F=new Set((fr||[]).map(x=>x.slug)); skipped_frozen=slugs.filter(x=>F.has(x)); slugs=slugs.filter(x=>!F.has(x));
+        }
         const report=[];
         for(const s of slugs){
           let L, legacy;
@@ -305,7 +340,7 @@ exports.handler = async (event)=>{
           const by={}; plan.forEach(p=>{ by[p.class]=(by[p.class]||0)+1; });
           report.push({manufacturer:s, rows:plan.length, by_class:by, plan, applied:b.apply===true?done:null});
         }
-        return json(200,{ok:true, dry_run:b.apply!==true, report,
+        return json(200,{ok:true, dry_run:b.apply!==true, report, skipped_frozen,
           note:"Legacy product_images rows are not deleted; the table is kept read-only for one release."});
       }
       return json(400,{error:"unknown action"});

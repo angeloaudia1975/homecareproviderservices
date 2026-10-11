@@ -710,6 +710,9 @@ async function _apiWrite(payload){
                : 'The server returned HTTP '+r.status+' instead of a result.',
              detail:String(raw||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,300) };
     }
+    /* A FROZEN LINE (Release A): the server answers 423 with a plain message (what is protected and how a correction
+       is made). Every toast here prints json.error, so the message takes its place rather than the bare code. */
+    if(r.status===423 && json && json.message) json.error=json.message;
     return {ok:r.ok, status:r.status, json}; }
   catch(e){ return {ok:false, status:0, json:{error:'network', message:'Could not reach the server. '+String(e)}}; }
 }
@@ -2481,6 +2484,7 @@ async function catalogGet(){
 async function catalogPost(body){
   try{ const r=await fetch('/.netlify/functions/catalog-api',{method:'POST',headers:authHeaders(),body:JSON.stringify(body)});
     const j=await r.json().catch(()=>({}));
+    if(r.status===423 && j && j.message) j.error=j.message;     // a frozen line: show the reason, not the code (Release A)
     /* A read never invalidates anything; a write to the catalog changes what the counts mean. */
     const READS={status_sweep:1, catalog_audit:1, repair_plan:1, flow_test:1, duplicate_scan:1,
                  record_detail:1, unassigned_pricing:1, history:1};
