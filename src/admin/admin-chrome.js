@@ -474,6 +474,41 @@
     s.textContent=".ac-imp{display:flex;align-items:center;gap:10px;background:#7a1f1f;color:#fff;padding:7px 16px;font-size:13px;font-weight:600}.ac-imp b{color:#ffe0a3}.ac-imp-tx{flex:1;min-width:0}.ac-imp-dot{font-size:15px}.ac-imp button{background:#fff;color:#7a1f1f;border:0;border-radius:7px;padding:5px 12px;font-weight:800;font-size:12px;cursor:pointer;white-space:nowrap}.ac-imp button:hover{background:#ffe9e9}";
     (document.head||document.documentElement).appendChild(s);
   }
+  /* PHONES (≤760px). The masthead is one long row on a desktop; on a phone it wrapped into ~450px of sticky header and
+     pushed Lock off the right edge (the page scrolled sideways). Here, and only below 760px: the masthead scrolls away
+     with the page instead of covering half the screen; account controls wrap onto their own row and stay on screen;
+     each navigation row becomes ONE sideways-scrolling row (the current page's link is scrolled into view); every
+     control is at least 44px tall (RULE 10). Injected by this file so every page that renders the shared masthead gets
+     it, including pages that carry their own copy of the masthead CSS (website.html). Desktop is untouched. */
+  function ensureMobileStyles(){
+    if(document.getElementById("ac-mobile-css")) return;
+    var s=document.createElement("style"); s.id="ac-mobile-css";
+    s.textContent="@media (max-width:760px){"
+      +".ac-head{position:relative;padding:10px 12px 0}"
+      +".ac-head .ac-wrap{max-width:100%}"
+      +".ac-head .ac-top{gap:8px}"
+      +".ac-head .ac-who{flex-wrap:wrap;gap:6px 8px;width:100%;min-width:0}"
+      +".ac-head .ac-who button,.ac-head .ac-who a.ac-wsbtn{min-height:44px;display:inline-flex;align-items:center;justify-content:center}"
+      +".ac-head .ac-who .ac-favbtn{min-width:44px}"
+      +".ac-head .ac-who #ac-lock{margin-left:auto}"
+      +".ac-head .ac-nav,.ac-head .ac-sub{position:relative;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;max-width:100%}"
+      +".ac-head .ac-nav a,.ac-head .ac-sub a{flex:0 0 auto;min-height:44px;display:inline-flex;align-items:center}"
+      +".ac-head .ac-sub-div{flex:0 0 1px}"
+      +".ac-head .ac-imp,.ac-head .ac-ws{flex-wrap:wrap;padding:8px 12px}"
+      +".ac-head .ac-imp button,.ac-head .ac-ws a.ac-ws-back{min-height:44px;display:inline-flex;align-items:center}"
+      +"}";
+    document.head.appendChild(s);
+  }
+  /* On a phone the current page's link may sit far along its scrolling row: bring it into view. */
+  function revealCurrent(host){
+    var rows=host.querySelectorAll(".ac-nav,.ac-sub");
+    for(var i=0;i<rows.length;i++){
+      var row=rows[i], on=row.querySelector("a.on");
+      if(!on || row.scrollWidth<=row.clientWidth+1) continue;
+      var rr=row.getBoundingClientRect(), ar=on.getBoundingClientRect();
+      row.scrollLeft += (ar.left-rr.left) - (rr.width-ar.width)/2;
+    }
+  }
   function ensureWsStyles(){
     if(document.getElementById("ac-ws-css")) return;
     var s=document.createElement("style"); s.id="ac-ws-css";
@@ -485,7 +520,7 @@
   }
   function render(){
     var host = document.getElementById("ac-head"); if(!host) return;
-    ensureImpStyles(); ensureFavStyles(); ensureWsStyles();
+    ensureImpStyles(); ensureFavStyles(); ensureWsStyles(); ensureMobileStyles();
     var me = (window.HCPS && HCPS.profile && HCPS.profile()) || null;
     var path = curPath();
     var admin = isAdmin(me);
@@ -554,6 +589,7 @@
       + '</div>'
       + '<nav class="ac-nav ac-wrap">' + tier1 + '</nav>'
       + tier2;
+    revealCurrent(host);
 
     var exitBtn = document.getElementById("ac-imp-exit");
     if(exitBtn) exitBtn.addEventListener("click", function(){ window.ACImpersonate.exit(); });

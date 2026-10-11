@@ -265,6 +265,14 @@ every key page at desktop / tablet / iPhone / Android widths: zero horizontal ov
 shown on mobile / hidden on desktop, the panel opens, and dropdown accordions expand. Green =
 shippable; any red must be fixed first.
 
+**Connect 360 masthead on phones (agreed 2026-10-11).** Below 760px the shared admin masthead scrolls away with the page
+(not sticky), account controls (My Sales Workspace, favourites, Lock / Exit view-as) wrap onto their own row and stay on
+screen, each navigation row is ONE sideways-scrolling row with the current page's link scrolled into view, and every
+control is ≥44px tall. It lives in ONE place — `admin-chrome.js ensureMobileStyles()` / `revealCurrent()` (the dashboard's
+own header mirrors it in `index.html`); desktop and tablet (≥761px) are pixel-identical to before. Test every admin page
+with `node test/admin-header.mobile.js` (47 pages × president / My Sales Workspace / view-as / rep / relations × 360 /
+390 / 768 / 1280; needs Playwright: `PLAYWRIGHT_MODULE=…`). Green = shippable.
+
 ## 11. Variant-aware products — one model = one record, routed by catalog group (RULE)
 
 A single catalog "product" often bundles several **models** that each have their own manufacturer
