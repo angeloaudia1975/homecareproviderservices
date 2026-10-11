@@ -1995,6 +1995,17 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   regressions, switches OFF). Activating `academy_admin` (administrators only) needs Angelo's separate approval. A2D and C2
   not started. Learner access, enrollment, real course publishing, certificates, payments and automatic Golden product
   updates stay disabled.
+  **PR #7 MERGED and VERIFIED (11 Oct 2026 ~15:50 CT, merge commit main e50608a).**
+  - **Before the merge:** main merged in with no conflicts and no Academy files touched; the M2 SQL and test files
+    byte-identical to the production run (no SQL change since b64daf4); 11 content operations each called through
+    `contentOp`, with no `sbSend` and no fallback; regressions passed (79 suites, the only failure resources-render, which
+    fails identically on main); Academy mutants 39/39 and 32/32; 13 Postgres suites (MI-1c real-PDF test skipped
+    locally); browser 6/6; switches all OFF.
+  - **Live after the merge:** Netlify "Published main@e50608a"; site and Connect 360 pages 200; crm-api / mfr-reports-api
+    200; Academy whoami enabled false with all 7 switches false; President overview / create_course 403 `flag_off`;
+    no token / forged token 401; learner API 403; handoff `{enabled:false}`; `/academy/` 404.
+  - **Staff-only activation plan:** `docs/academy/A2C_ADMIN_ACTIVATION_PLAN.md`. NOT approved; `academy_admin` stays
+    OFF.
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
   the guard when a marker is set: any future cascade INTO the four content tables must be reviewed against it.
 - **Course publication rules (Angelo, 11 Oct 2026 — C2 design only, NOT implemented; `docs/academy/C2_COURSE_PUBLICATION_DESIGN.md`).**
