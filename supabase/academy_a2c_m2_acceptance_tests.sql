@@ -49,11 +49,20 @@ select 3, 'M1 untouched: 19 functions, 6 guard triggers, installed-code fingerpr
   case when (select count(*) from pg_proc where pronamespace = 'public'::regnamespace
               and (proname like 'academy\_op\_%' or proname = 'academy_audited_guard')) = 19
         and (select count(*) from pg_trigger where tgname = 'academy_audited_guard' and not tgisinternal) = 6
-        and (select md5(string_agg(p.proname || ':' || pg_get_function_identity_arguments(p.oid) || ':' || p.prosecdef || ':' ||
+        and case when to_regprocedure('public.academy_author_exam_draw(uuid,boolean)') is null then
+          (select md5(string_agg(p.proname || ':' || pg_get_function_identity_arguments(p.oid) || ':' || p.prosecdef || ':' ||
                         coalesce(array_to_string(p.proconfig, ','), '') || ':' || p.prosrc, '|' order by p.proname))
                from pg_proc p where p.pronamespace = 'public'::regnamespace
                 and (p.proname like 'academy\_op\_%' or p.proname = 'academy_audited_guard'))
             in ('130e45fa36f768e032a89da43b645f8a', 'e70543ba23d96ca7c5aec8eeff0ea341')
+          else   -- A2D M3 installed: start-attempt draws through M3 (decision B); the other 18 M1 functions are exactly as approved
+          (select md5(string_agg(p.proname || ':' || pg_get_function_identity_arguments(p.oid) || ':' || p.prosecdef || ':' ||
+                        coalesce(array_to_string(p.proconfig, ','), '') || ':' || p.prosrc, '|' order by p.proname))
+               from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname <> 'academy_op_start_attempt'
+                and (p.proname like 'academy\_op\_%' or p.proname = 'academy_audited_guard'))
+            in ('e05951fca31652f7289b1be904cc079a', '30a6a689fca7ed63c0c24ce774d514be')
+          and (select prosrc from pg_proc where oid = 'public.academy_op_start_attempt(text,uuid)'::regprocedure) like '%academy_author_exam_draw(%'
+          end
         and (select count(*) from pg_trigger where not tgisinternal and tgname in ('academy_modules_frozen','academy_lessons_frozen',
              'academy_questions_frozen','academy_course_versions_guard','product_facts_append_only','academy_events_append_only',
              'academy_certificates_guard')) = 7
@@ -220,8 +229,10 @@ begin
            then 'PASS' else 'FAIL' end, '');
 
     -- 14 M1 publishing still works on content made by M2, and published content is then locked
+    perform set_config('academy.op', 'test-setup', true);  -- A2D M3: questions are written only by audited operations
     insert into academy_questions (version_id, module_id, kind, prompt, choices, answer_key, explanation)   -- exam questions are C2; one, for publishing
       values (v_v1, v_m1, 'single', 'Q', '[{"id":"a"},{"id":"b"}]', '"a"', 'Because');
+    perform set_config('academy.op', '', true);
     perform academy_op_publish_version(PRES, v_v1);
     ok := (select status from academy_course_versions where id = v_v1) = 'published'
           and exists (select 1 from academy_events where entity_id = v_v1::text and action = 'publish_version');

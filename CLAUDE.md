@@ -2102,6 +2102,45 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     The C2 publication migration is renumbered **M4**.
   - The outline keeps the approved 11 modules / 17 lessons (~183 min + 20-min exam) and a proposed 60-question bank
     (30 scenarios). Both wait for Angelo's decisions (A2D A–G, outline 1–4).
+  **A2D plan and Golden outline APPROVED; M3 development authorized (Angelo, 11 Oct 2026 17:23 CT).**
+  - A2D: (A) the 14 block kinds; (B) randomized final exam drawing from EVERY module, with the per-module
+    distribution CONFIGURABLE (stored per version, not hard-coded) — any change to M1's exam-attempt functions is
+    independently reviewed and tested; (C) descriptive alt text is mandatory for meaningful images, decorative images are
+    marked decorative (empty alt, hidden from screen readers); (D) opening a video counts for progress, and every
+    essential learning point is also in the lesson itself; (E) staged order M3 → lesson engine → builder, each with its
+    own review and merge approval; (F) Samples A and B are reviewed in desktop and mobile previews before the Golden
+    course is loaded; (G) Welcome lesson ~8 minutes.
+  - Golden course: 11 modules / 17 lessons and objectives approved; 60-question bank (initial target), 25 per attempt,
+    80% to pass; 6.4 (model finder) stays a full lesson; title "Golden Lift Chair Sales Certification".
+  - Certificate: HCPS-issued, valid 12 months, never represented as Golden-issued or Golden-endorsed.
+  - Lesson design: visual, slide-based (no PowerPoint, no voiceover): Golden photography/illustrations, side-by-side
+    comparisons, interactive feature/positioning explanations, scenarios, short checks, mobile layouts, progress saving
+    and resume; no long text-only pages; 10–15 minutes except the Welcome.
+  - Golden accuracy: never guess or invent a specification; keep the Golden verification tracker; label unverified
+    facts and keep questions that depend on them OUT of scored exams; discontinued models only as history / service /
+    replacement references; NO Golden photography downloaded until Angelo approves the specific files; HCPS sales
+    training stays separate from Golden's technical certifications.
+  - M3: design, development branch, local database tests and a DRAFT PR only. Must keep A1/M1/M2 protections and add:
+    atomic audited lesson-content operations, question-bank management, media + rights, product-fact references,
+    draft-only editing, published-content protection, administrator-only authoring, no exam-answer exposure, full
+    security / mutation / regression tests. Not run in production and not merged without Angelo's separate approval.
+    The six other switches stay OFF; no learner access; no real course published.
+  **M3 BUILT on branch `academy/m3-lesson-content-ops` (11 Oct 2026; draft PR; NOT run, NOT merged).** Runbook
+  `docs/academy/A2D_M3_AUTHOR_OPS.md`. Rules it adds (binding once installed):
+  - Lesson blocks, questions, media and fact links are written ONLY by `academy_author_op_*` (12 operations, server role
+    only; prefix chosen so M1/M2 fingerprints and rollbacks are untouched); guard `academy_author_guard` (+ `_truncate`) on
+    `academy_questions`, `academy_media`, `academy_content_refs`; publishing passes `academy_author_publish_check`.
+  - The exam draw (decision B) is `academy_author_exam_draw`, called by M1's `academy_op_start_attempt` — the ONE line of
+    M1 that changed (independently reviewed: approve). Only questions whose pinned facts are current and verified are
+    drawn; every module is represented (distribution in `academy_modules.exam_quota`, the one new column, or automatic).
+  - Every stored image, and every stored manufacturer file, is recorded or changed by the President only (Golden
+    photography rule). Answer keys never appear in an audit row. An exam question never appears in a lesson check.
+  - Production fingerprints to expect: M3 `9f41ee27…` (Windows paste) / `e48e4c27…`; start-attempt `4ab3615a…` /
+    `c433af0a…`; other 18 M1 functions `30a6a689…` / `e05951fc…`; M2 unchanged. The rollback cannot run once a version with
+    a distribution is published (deliberate).
+  - Open decision for Angelo: facts are checked when the exam is DRAWN, not when it is graded (recommended: accept).
+  - A1 check 27 and M1 check 43 need EMPTY Academy tables; if records exist in production they FAIL by design — use the
+    before/after leftover checks (M2 21, M3 25) and discuss first.
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
   the guard when a marker is set: any future cascade INTO the four content tables must be reviewed against it.
 - **Course publication rules (Angelo, 11 Oct 2026 — C2 design only, NOT implemented; `docs/academy/C2_COURSE_PUBLICATION_DESIGN.md`).**
