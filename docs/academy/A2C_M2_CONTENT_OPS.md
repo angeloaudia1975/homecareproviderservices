@@ -1,0 +1,130 @@
+# A2C M2: atomic content operations
+
+Status: **draft PR, for Angelo's review.** It is not merged and has not been run in production. All seven Academy
+switches stay OFF. The Command Center stays off until M2 is installed, tested and separately approved for staff-only
+activation. Design approved by Angelo on 11 Oct 2026 (Option A in `A2C_C1_COMMAND_CENTER.md`).
+
+## What M2 guarantees
+These guarantees apply to creating and editing courses, draft versions, modules and lessons, and to moving a version between draft and in review:
+- **One transaction.** The change and its `academy_events` row are saved together, or neither is.
+- **If the change fails, no audit row claims it.** Each operation reads its row again under the version lock. It must change exactly one row before it writes the audit row.
+- **If the audit row fails, the change is not saved.**
+- **Direct writes are refused.** The guard trigger `academy_content_guard` on `academy_courses`, `academy_course_versions`, `academy_modules` and `academy_lessons` refuses every insert, edit or delete that is not made by an audited operation. That includes:
+  - the database owner without an operation;
+  - the server role, even when it sets the operation marker itself.
+- **Published and retired content stays protected.** The A1 freeze triggers, the M1 guard and the M2 draft-only checks all still apply.
+- **M1 is unchanged.** It keeps its 19 functions and 6 triggers, and its installed-code fingerprint (130e45fa…, or e70543ba… as installed) does not change. The M2 names start with `academy_content_`, so they never match M1's `academy\_op\_%`.
+- **The acting person comes from verified authentication.** The server passes `staff:<signed-in email>` (`contentOp()` in `_academy.js`). The database accepts only an **active** president, admin or owner, and requires the President for a course learners have seen.
+- **Nothing else is touched.** M2 changes no other HCPS table, ordering function or sales system. It reads `staff_users` and `manufacturers` and writes only the four content tables (and `academy_events` through M1's audit helper).
+
+## Objects
+
+| Kind | Name | Who may run it |
+|---|---|---|
+| 11 operations | `academy_content_op_create_course`, `update_course`, `create_version`, `update_version`, `move_version`, `create_module`, `update_module`, `delete_module`, `create_lesson`, `update_lesson`, `delete_lesson` | server role only |
+| 3 helpers | `academy_content_actor_president`, `academy_content_lock_draft`, `academy_content_keys` | owner only |
+| Guard | `academy_content_guard()` + 4 triggers | owner only |
+
+**Operation rules:**
+- Operations are SECURITY DEFINER with a pinned search path. They reuse M1's owner-only helpers (`academy_op_begin` / `end` / `audit` / `actor_staff`).
+- **Error codes:**
+  - 42501: not allowed;
+  - P0002: not found;
+  - 22023: invalid input or a field that cannot be set;
+  - 55000: locked (in review, published or retired, or a module that still has lessons);
+  - 23505: duplicate.
+- **What the server sends back:** the server maps these to 403, 404, 400, 409 `locked` and 409. If M2 is not installed, the answer is 503 and the server never falls back to a plain write.
+- **Fields each operation accepts:**
+  - courses: slug, title, type, manufacturer, category and link;
+  - versions: pass mark, exam questions and validity;
+  - modules: title and objectives;
+  - lessons: title and minutes.
+- **Set only by the database:** the issuer (from the type), the status (always draft), positions and version numbers.
+
+## Files
+
+| File | sha256 |
+|---|---|
+| `supabase/academy_a2c_m2_content_ops.sql` (migration, one transaction) | 7193e59929e281864406c3c662d80b2cab57de7276975602eeba8f5cd184fae1 |
+| `supabase/academy_a2c_m2_rollback.sql` | 8ca80b66edbbf8ddada0549c7bd84ff73d6bc163bfe6e78aa0f26a612f81ada2 |
+| `supabase/academy_a2c_m2_preflight.sql` (read-only) | 426c2af166d0e1c2202edd267969ef15512674194e134ffaf62566ecca345695 |
+| `supabase/academy_a2c_m2_postcheck.sql` (read-only) | fd03a8d598dd089ada507ecde7dd6dbd4cfef23907ab4e7436589d4497d430e5 |
+| `supabase/academy_a2c_m2_acceptance_tests.sql` (20 tests + check 21) | 27725241fb54cf244f798c6a6bff7529fb0dec65f30127e27aa80a557129a14b |
+| `scripts/academy_m2_public_probe_browser.js` (public-key probe) | — |
+
+**Installed-code fingerprint** (postcheck `m2_code_fingerprint`):
+- 65e0d2f67a2e3dc7b74dad7a75ebf139 with the file's own line endings;
+- 349b09e6f3e33d50545c2b8a3211f2c8 when pasted from Windows (CRLF).
+
+Both were computed by installing the file locally.
+
+**Changed for M2 compatibility only:** the A1 and M1 acceptance files (and two local test files) now set the
+operation marker, as the owner, around the inserts that build their test courses. Without that, M2's guard would
+refuse their setup. Their new sha256 values:
+- `academy_a1_acceptance_tests.sql`: 10c3ad57… (was 60c6f191…);
+- `academy_a2a_m1_acceptance_tests.sql`: 1046b528… (was 81766882…).
+
+They pass before M2 (27/27, 43/43) and after it.
+
+## Production runbook (Angelo runs every step; Claude never does)
+1. **Preflight** (read-only). Paste the result back.
+   - `ready_for_m2` must be true;
+   - `m1.code_fingerprint` must be e70543ba… (as installed);
+   - `active_presidents` must be at least 1;
+   - every switch must be false.
+2. **Check the file.** Confirm the sha256 of the committed migration matches the approved value.
+3. **Run the migration.** Paste the file verbatim into the SQL editor and press Run once. If it fails, nothing is installed (it is one transaction). Stop and send the error.
+4. **Postcheck** (read-only). Expect:
+   - 15 functions;
+   - operations_server_only 11;
+   - helpers_callable_by_server 0;
+   - callable_by_public_keys 0;
+   - guard on the 4 tables;
+   - m1_functions 19 and m1_guard_triggers 6;
+   - the M1 fingerprint unchanged;
+   - the M2 fingerprint 65e0d2f6… or 349b09e6… (Windows paste);
+   - the same content and audit row counts as the preflight.
+5. **Acceptance tests.** Expect 21 rows, all PASS. Test 15 may say PASS with a note when there is no non-President administrator; that refusal is proven by the local tests.
+6. **Re-run the A1 and M1 acceptance files** (the updated versions). Expect 27/27 and 43/43.
+7. **Run the preflight again.** Every fingerprint must be identical to step 1; only `m2_installed`, `m2_objects` and `content_triggers` may change.
+8. **Public-key probe** (`scripts/academy_m2_public_probe_browser.js`, in a blank browser tab). Expect all 26 checks BLOCKED.
+9. **If anything fails:** stop and investigate. Never roll back automatically. The rollback (drop the 4 triggers and the `academy_content_%` functions) refuses to run unless M1 is intact. It is used only on Angelo's decision, and only after the Command Center code that calls M2 is switched off or reverted.
+
+Merging the code can come before or after the production run. With M2 absent, every content write answers 503, and the switch is OFF either way. The recommended order is: run M2 and verify it, then merge.
+
+## Local test results (this branch)
+
+| Suite | Result |
+|---|---|
+| `test/academy-m2.pg.test.js` (real Postgres 16 with pg-safeupdate; fixture → A1 → M1 → M2) | 18/18 |
+| ↳ M2 acceptance (sent as one request, like the editor) | 21/21 (Unix and CRLF installs) |
+| ↳ M2 local hardening (`test/academy/m2_content.sql`) | 7/7 |
+| ↳ with M2 installed: A1 acceptance / M1 acceptance / M1 hardening / M1 all-or-nothing | 27 / 43 / 28 / 11 |
+| ↳ rollback: refuses if M1 is incomplete; removes M2 only; M1 and every row intact; M2 re-applies | pass |
+| `test/academy-a2a.pg.test.js` (M1 suite, with the updated acceptance files) | 18/18 |
+| `node test/academy-c1.test.js` | 49/49 |
+| `node test/academy-c1.mutants.js` | 39/39 killed |
+| `test/academy-c1.browser.js` (Playwright) | 6/6 |
+
+The **acceptance tests** check:
+- structure, privileges, and M1 left untouched;
+- direct writes refused;
+- each operation's audit row;
+- refused input leaving no audit row;
+- manufacturer programs;
+- version numbering;
+- draft-only and in-review locks;
+- M1 publish and retire working on M2 content;
+- the President rule;
+- actor checks;
+- all-or-nothing for all 11 operations with the audit store refusing;
+- failed or empty changes leaving no audit row;
+- no marker left behind;
+- nothing left behind.
+
+The **local hardening tests** cover what the SQL editor cannot show:
+- roles as the API uses them (anon, authenticated, service_role, including a forged marker);
+- a non-President administrator;
+- a failed operation caught by its caller;
+- the audit "after" matching the saved row;
+- TEST courses.

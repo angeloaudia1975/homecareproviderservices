@@ -1679,22 +1679,47 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   The database checks only that an actor is named; the trust boundary is the server role. Every `op()` call passes
   `actorLabel()` of the actor `staffActor` / `learnerActor` returned; the A2C unit adds a test proving a request-body
   actor is ignored.
-- **A2C Part C1 — Academy Command Center (Angelo, 11 Oct 2026 08:27: design ACCEPTED; PR #5 not merged until his GO).**
+- **A2C Part C1 — Academy Command Center (Angelo, 11 Oct 2026 08:27: design ACCEPTED; PR #5 merged 11 Oct 2026, main 1a942ce).**
   `/admin/academy.html` (Connect 360 → Sales & Marketing; admins only — reps/Relations keep their menus unchanged) +
   `academy-admin-api.js`. Six tabs are fixed: Overview, Courses, Learners & Dealerships, Product Facts, Certifications,
   Activity. HCPS-issued and manufacturer-issued credentials are always shown apart. President-only: publish/retire a
   version, approval-required facts (the President is the recorded approver), edits to a course learners have seen.
-  Role assignments and credential verification go only through M1 operations. **Ordinary content writes record first:**
-  the audit row (with `_ref`) is written BEFORE the change and a failure to write it refuses the change (503); a change
-  that then fails gets `<action>_failed` with the same `_ref`; `audit_check` (records check) reconciles every course /
-  version / module / lesson with its latest effective audit row. **Before production authoring** these writes become
-  atomic database operations (M2, Option A in `docs/academy/A2C_C1_COMMAND_CENTER.md`) — awaiting Angelo's approval.
+  Role assignments and credential verification go only through M1 operations. Ordinary content writes (courses,
+  draft versions, modules, lessons) go only through the M2 content operations (next bullet); as merged in PR #5 they
+  were written audit-first (`_ref` / `<action>_failed`), which the records check (`audit_check`) still understands.
+  The switch never went on, so production has no audit-first rows.
   **Course record status** (`academy_courses.status`) is not changed in C1; the UI shows "Training available" from the
   versions so a course with a published version never looks unpublished; the permanent rule is a C2 decision (proposal
   in the doc). **TEST data:** TEST dealers (`is_test`), pilot learners (all active memberships at TEST dealers) and
   TEST-course (`test-…`) enrollments/credentials are excluded from real Academy figures and shown apart; every future
   Academy metric uses the same rule; a TEST course never issues a genuine certificate (M1). Do not begin A2D until
   Angelo approves it separately. All Academy switches stay OFF.
+- **PR #5 and PR #6 MERGED and VERIFIED in production (Angelo's approval 11 Oct 2026 11:22).** PR #5 (Command Center) →
+  main 1a942ce: Netlify Published; with `academy_admin` OFF the page says switched off, signed-in actions get 403
+  `flag_off`, no/forged token 401; site, Connect 360, crm-api, mfr-reports-api unchanged. PR #6 (Connect 360 mobile
+  masthead, rule 10) → main 2eceda2: 49 admin pages × 5 roles × 4 widths clean; desktop/tablet headers pixel-identical;
+  phone Lock and account controls on screen. All seven switches OFF.
+- **Ordinary Academy content is atomic with its audit row (RULE, Angelo 11 Oct 2026 — M2 design approved).** Creating
+  and editing courses, draft versions, modules and lessons, and moving a version draft ↔ in review, run ONLY as the
+  database functions `academy_content_op_*` (migration `supabase/academy_a2c_m2_content_ops.sql`; prefix chosen so
+  M1's `academy\_op\_%` fingerprint and rollback are untouched): one transaction — the change and its `academy_events`
+  row together or neither; each operation re-reads its row under the version lock and must change exactly one row
+  before it records. Guard trigger `academy_content_guard` on the four content tables refuses every other insert, edit
+  or delete (also the owner without an operation, and the server role even with a forged `academy.op`). The database
+  repeats every server check: active administrator named `staff:<email>` (from the verified sign-in, `contentOp()` in
+  `_academy.js`), the President for a course learners have seen, allowed fields only, drafts only (55000 → 409
+  `locked`). Published and retired content stays frozen (A1 triggers + M1 + M2). Not installed = 503, never a plain
+  write. Test setups that insert content directly set `academy.op` as the owner around those inserts (A1/M1 acceptance,
+  m1_hardening, atomicity — their sha256 changed for that reason only). **M2 is NOT run in production: Angelo approves
+  the exact file and runs it himself; the Command Center is not switched on until M2 is installed, tested and
+  separately approved for staff-only activation.** Expected fingerprint 65e0d2f6… (Unix) / 349b09e6… (CRLF paste).
+- **Course publication rules (Angelo, 11 Oct 2026 — C2 design only, NOT implemented; `docs/academy/C2_COURSE_PUBLICATION_DESIGN.md`).**
+  Show clearly whether training is published and available. Only the President publishes or retires a course. Published
+  versions are immutable. Publishing a replacement version retires the previous one and publishes the new one in ONE
+  transaction. Manufacturer-hosted training gets its own controlled (President-only, audited) publication. Published
+  history and certification records are preserved. TEST courses never issue real certificates; every dashboard and
+  report keeps TEST apart. Do not begin A2D, A2F, A2B, A2E or C2 without separate approval; never enable learner access,
+  issue certificates, publish real courses, activate payments or modify Golden Ordering without it.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

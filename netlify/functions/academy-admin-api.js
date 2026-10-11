@@ -112,25 +112,12 @@ function courseOut(c, versions) {
 const COURSE_COLS = 'id,slug,title,course_type,issuer,manufacturer_slug,category,external_url,status,created_at';
 const VERSION_COLS = 'id,course_id,version,status,pass_mark,exam_questions,validity_months,retake_policy,published_at,published_by,created_at';
 
-/* Ordinary content writes (draft courses, draft versions, modules, lessons). The web API cannot put a change and its
-   audit row in one transaction (the M2 proposal in docs/academy/A2C_C1_COMMAND_CENTER.md would), so the order is:
-     1. the audit row FIRST, carrying the intended result and a reference (_ref). If it cannot be written, NOTHING is
-        changed (503) — a change can never happen without its record.
-     2. the change. If it fails, a "<action>_failed" row with the same _ref is added and the error is returned.
-   What can still go wrong: the change fails AND its _failed row cannot be written — the history then claims a change
-   that did not happen. That is the safe direction (never a silent change), and audit_check finds it: every Academy
-   content row is compared with its latest effective audit row. */
-async function recorded(staff, entity, id, action, before, intended, write) {
-  const ref = randomUUID();
-  const after = Object.assign({}, intended || {}, { _ref: ref });
-  if (!(await A.audit(staff, entity, id, action, before, after))) A.refuse(503, 'audit_unavailable', 'The activity history could not be written just now, so nothing was changed.');
-  try { return await write(); }
-  catch (e) {
-    if (!(await A.audit(staff, entity, id, action + '_failed', null, { _ref: ref, error: (e && e.code) || 'error' })))
-      console.error('academy audit: the failure record could not be written', entity, action, ref);
-    throw e;
-  }
-}
+/* Ordinary content writes (courses, draft versions, modules, lessons) go through the A2C M2 audited content
+   operations: ONE database call saves the change and its audit row in one transaction, or neither (Angelo, 11 Oct 2026).
+   The checks below are kept for clear messages; the database repeats every one of them (draft-only, President for a
+   course learners have seen, allowed fields, the acting person) and refuses plain writes outright. If M2 is not
+   installed the answer is 503 — there is no fallback to a plain write. The actor is always the signed-in staff member. */
+const actor = staff => A.actorLabel(staff);
 
 /* The version a module / lesson belongs to, refused unless it is still an editable draft. */
 async function draftVersion(versionId) {
@@ -239,8 +226,10 @@ WRITE.create_course = async (staff, b) => {
     if (!row.manufacturer_slug) A.refuse(400, 'invalid', 'A manufacturer program needs its manufacturer.');
     row.external_url = httpsUrl(b.external_url, 'Manufacturer training link');
   } else if (b.external_url) A.refuse(400, 'invalid', 'Only a manufacturer program links to outside training.');
-  const made = await recorded(staff, 'academy_courses', row.id, 'create_course', null, row, async () => one(await A.sbSend('POST', 'academy_courses', row)));
-  return { ok: true, audited: true, course: courseOut(made || row, []) };
+  const course = { slug: row.slug, title: row.title, course_type: row.course_type };
+  for (const k of ['manufacturer_slug', 'category', 'external_url']) if (row[k] != null) course[k] = row[k];
+  const made = await A.contentOp('create_course', { p_actor: actor(staff), p_id: row.id, p_course: course });
+  return { ok: true, audited: true, course: courseOut(made, []) };
 };
 WRITE.update_course = async (staff, b) => {
   const id = A.uuid(b.id, 'course');
@@ -255,9 +244,8 @@ WRITE.update_course = async (staff, b) => {
     patch.external_url = httpsUrl(b.external_url, 'Manufacturer training link');
   }
   if (!Object.keys(patch).length) A.refuse(400, 'invalid', 'Nothing to change.');
-  const after = await recorded(staff, 'academy_courses', id, 'update_course', c, Object.assign({}, c, patch),
-    async () => one(await A.sbSend('PATCH', `academy_courses?id=eq.${enc(id)}`, patch)));
-  return { ok: true, audited: true, course: courseOut(after || Object.assign({}, c, patch), []) };
+  const after = await A.contentOp('update_course', { p_actor: actor(staff), p_id: id, p_changes: patch });
+  return { ok: true, audited: true, course: courseOut(after, []) };
 };
 
 /* ---------- versions ---------- */
@@ -281,41 +269,31 @@ WRITE.create_version = async (staff, b) => {
   const c = need(one(await A.sbGet(`academy_courses?id=eq.${enc(course_id)}&select=${COURSE_COLS}`)), 'Course');
   if (c.course_type === 'manufacturer_program') A.refuse(400, 'invalid', 'A manufacturer program is taught and examined by the manufacturer; it has no HCPS versions.');
   if (c.status === 'retired') A.refuse(409, 'locked', 'This course is retired.');
-  const vs = await A.sbGet(`academy_course_versions?course_id=eq.${enc(course_id)}&select=version&order=version.desc&limit=1`);
-  const row = { id: randomUUID(), course_id, version: vs.length ? Number(vs[0].version) + 1 : 1, status: 'draft',
-                pass_mark: int(b.pass_mark, 1, 100, 'Pass mark', 80), exam_questions: int(b.exam_questions, 1, 200, 'Exam questions', 25),
-                validity_months: (b.validity_months == null || b.validity_months === '') ? null : int(b.validity_months, 1, 120, 'Valid for (months)') };
-  // two at once: the unique (course, version) refuses one (409), which is then recorded as create_version_failed
-  const made = await recorded(staff, 'academy_course_versions', row.id, 'create_version', null, row, async () => one(await A.sbSend('POST', 'academy_course_versions', row)));
-  return { ok: true, audited: true, version: made || row };
+  const settings = { pass_mark: int(b.pass_mark, 1, 100, 'Pass mark', 80), exam_questions: int(b.exam_questions, 1, 200, 'Exam questions', 25) };
+  if (!(b.validity_months == null || b.validity_months === '')) settings.validity_months = int(b.validity_months, 1, 120, 'Valid for (months)');
+  // the version number is given by the database, under a lock on the course (two at once get 1 and 2, never a clash)
+  const made = await A.contentOp('create_version', { p_actor: actor(staff), p_id: randomUUID(), p_course_id: course_id, p_settings: settings });
+  return { ok: true, audited: true, version: made };
 };
 WRITE.update_version = async (staff, b) => {
-  const id = A.uuid(b.id, 'version'); const v = await draftVersion(id);
+  const id = A.uuid(b.id, 'version'); await draftVersion(id);
   const patch = {};
   if ('pass_mark' in b) patch.pass_mark = int(b.pass_mark, 1, 100, 'Pass mark');
   if ('exam_questions' in b) patch.exam_questions = int(b.exam_questions, 1, 200, 'Exam questions');
   if ('validity_months' in b) patch.validity_months = (b.validity_months == null || b.validity_months === '') ? null : int(b.validity_months, 1, 120, 'Valid for (months)');
   if (!Object.keys(patch).length) A.refuse(400, 'invalid', 'Nothing to change.');
-  const hit = await recorded(staff, 'academy_course_versions', id, 'update_version', v, Object.assign({}, v, patch), async () => {
-    const h = await A.sbSend('PATCH', `academy_course_versions?id=eq.${enc(id)}&status=eq.draft`, patch);   // only while still a draft
-    if (!h || !h.length) A.refuse(409, 'locked', 'This version changed status while you were editing. Reload it.');
-    return h;
-  });
-  return { ok: true, audited: true, version: hit[0] };
+  const v = await A.contentOp('update_version', { p_actor: actor(staff), p_id: id, p_changes: patch });   // the database re-checks "still a draft" under a lock
+  return { ok: true, audited: true, version: v };
 };
-async function moveVersion(staff, b, from, to, action) {
+async function moveVersion(staff, b, from, to) {
   const id = A.uuid(b.id, 'version');
   const v = need(one(await A.sbGet(`academy_course_versions?id=eq.${enc(id)}&select=${VERSION_COLS}`)), 'Course version');
   if (v.status !== from) A.refuse(409, 'locked', `This version is ${v.status}.`);
-  const hit = await recorded(staff, 'academy_course_versions', id, action, v, Object.assign({}, v, { status: to }), async () => {
-    const h = await A.sbSend('PATCH', `academy_course_versions?id=eq.${enc(id)}&status=eq.${from}`, { status: to });
-    if (!h || !h.length) A.refuse(409, 'locked', 'This version changed status while you were editing. Reload it.');
-    return h;
-  });
-  return { ok: true, audited: true, version: hit[0] };
+  // audited as submit_for_review / return_to_draft; draft <-> in_review only, re-checked under a lock
+  return { ok: true, audited: true, version: await A.contentOp('move_version', { p_actor: actor(staff), p_id: id, p_to: to }) };
 }
-WRITE.submit_for_review = (staff, b) => moveVersion(staff, b, 'draft', 'in_review', 'submit_for_review');
-WRITE.return_to_draft = (staff, b) => moveVersion(staff, b, 'in_review', 'draft', 'return_to_draft');
+WRITE.submit_for_review = (staff, b) => moveVersion(staff, b, 'draft', 'in_review');
+WRITE.return_to_draft = (staff, b) => moveVersion(staff, b, 'in_review', 'draft');
 /* Publishing and retiring: the President only, and only through the audited database operations. */
 WRITE.publish_version = async (staff, b) => {
   requirePresident(staff);
@@ -331,11 +309,9 @@ WRITE.retire_version = async (staff, b) => {
 /* ---------- modules and lessons (draft versions only) ---------- */
 WRITE.create_module = async (staff, b) => {
   const version_id = A.uuid(b.version_id, 'version'); await draftVersion(version_id);
-  const last = await A.sbGet(`academy_modules?version_id=eq.${enc(version_id)}&select=position&order=position.desc&limit=1`);
-  const row = { id: randomUUID(), version_id, position: last.length ? Number(last[0].position) + 1 : 1, title: A.text(b.title, 200, 'Module title'),
-                objectives: strList(b.objectives, 12, 300, 'Objectives') };
-  const made = await recorded(staff, 'academy_modules', row.id, 'create_module', null, row, async () => one(await A.sbSend('POST', 'academy_modules', row)));
-  return { ok: true, audited: true, module: made || row };
+  const module = { title: A.text(b.title, 200, 'Module title'), objectives: strList(b.objectives, 12, 300, 'Objectives') };
+  const made = await A.contentOp('create_module', { p_actor: actor(staff), p_id: randomUUID(), p_version_id: version_id, p_module: module });
+  return { ok: true, audited: true, module: made };
 };
 WRITE.update_module = async (staff, b) => {
   const m = await moduleOf(A.uuid(b.id, 'module')); await draftVersion(m.version_id);
@@ -343,24 +319,21 @@ WRITE.update_module = async (staff, b) => {
   if ('title' in b) patch.title = A.text(b.title, 200, 'Module title');
   if ('objectives' in b) patch.objectives = strList(b.objectives, 12, 300, 'Objectives');
   if (!Object.keys(patch).length) A.refuse(400, 'invalid', 'Nothing to change.');
-  const after = await recorded(staff, 'academy_modules', m.id, 'update_module', m, Object.assign({}, m, patch),
-    async () => one(await A.sbSend('PATCH', `academy_modules?id=eq.${enc(m.id)}`, patch)));
+  const after = await A.contentOp('update_module', { p_actor: actor(staff), p_id: m.id, p_changes: patch });
   return { ok: true, audited: true, module: after };
 };
 WRITE.delete_module = async (staff, b) => {
   const m = await moduleOf(A.uuid(b.id, 'module')); await draftVersion(m.version_id);
   if ((await A.sbGet(`academy_lessons?module_id=eq.${enc(m.id)}&select=id&limit=1`)).length) A.refuse(409, 'not_empty', 'Remove this module\'s lessons first.');
   if ((await A.sbGet(`academy_questions?module_id=eq.${enc(m.id)}&select=id&limit=1`)).length) A.refuse(409, 'not_empty', 'Questions are linked to this module.');
-  await recorded(staff, 'academy_modules', m.id, 'delete_module', m, null, () => A.sbSend('DELETE', `academy_modules?id=eq.${enc(m.id)}`, null, 'return=minimal'));
+  await A.contentOp('delete_module', { p_actor: actor(staff), p_id: m.id });
   return { ok: true, audited: true };
 };
 WRITE.create_lesson = async (staff, b) => {
   const m = await moduleOf(A.uuid(b.module_id, 'module')); await draftVersion(m.version_id);
-  const last = await A.sbGet(`academy_lessons?module_id=eq.${enc(m.id)}&select=position&order=position.desc&limit=1`);
-  const row = { id: randomUUID(), module_id: m.id, position: last.length ? Number(last[0].position) + 1 : 1, title: A.text(b.title, 200, 'Lesson title'),
-                est_minutes: int(b.est_minutes, 1, 30, 'Minutes', 10) };
-  const made = await recorded(staff, 'academy_lessons', row.id, 'create_lesson', null, row, async () => one(await A.sbSend('POST', 'academy_lessons', row)));
-  return { ok: true, audited: true, lesson: made || row };
+  const lesson = { title: A.text(b.title, 200, 'Lesson title'), est_minutes: int(b.est_minutes, 1, 30, 'Minutes', 10) };
+  const made = await A.contentOp('create_lesson', { p_actor: actor(staff), p_id: randomUUID(), p_module_id: m.id, p_lesson: lesson });
+  return { ok: true, audited: true, lesson: made };
 };
 WRITE.update_lesson = async (staff, b) => {
   const l = await lessonOf(A.uuid(b.id, 'lesson')); const m = await moduleOf(l.module_id); await draftVersion(m.version_id);
@@ -368,13 +341,12 @@ WRITE.update_lesson = async (staff, b) => {
   if ('title' in b) patch.title = A.text(b.title, 200, 'Lesson title');
   if ('est_minutes' in b) patch.est_minutes = int(b.est_minutes, 1, 30, 'Minutes');
   if (!Object.keys(patch).length) A.refuse(400, 'invalid', 'Nothing to change.');
-  const after = await recorded(staff, 'academy_lessons', l.id, 'update_lesson', l, Object.assign({}, l, patch),
-    async () => one(await A.sbSend('PATCH', `academy_lessons?id=eq.${enc(l.id)}`, patch)));
+  const after = await A.contentOp('update_lesson', { p_actor: actor(staff), p_id: l.id, p_changes: patch });
   return { ok: true, audited: true, lesson: after };
 };
 WRITE.delete_lesson = async (staff, b) => {
   const l = await lessonOf(A.uuid(b.id, 'lesson')); const m = await moduleOf(l.module_id); await draftVersion(m.version_id);
-  await recorded(staff, 'academy_lessons', l.id, 'delete_lesson', l, null, () => A.sbSend('DELETE', `academy_lessons?id=eq.${enc(l.id)}`, null, 'return=minimal'));
+  await A.contentOp('delete_lesson', { p_actor: actor(staff), p_id: l.id });
   return { ok: true, audited: true };
 };
 

@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
 const { createWorld, load, BASE } = require('./phase0-mock.js');
+const { contentOps } = require('./academy-content-ops.fake.js');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 const SRC = path.join(__dirname, '..', 'src', 'admin');
@@ -120,7 +121,7 @@ function server(world, opsLog, opts) {
 }
 
 async function withSite(seed, fn, opts) {
-  const world = createWorld(seed); const ops = [];
+  const world = contentOps(createWorld(seed)); const ops = [];
   const srv = server(world, ops, opts); await new Promise(r => srv.listen(0, '127.0.0.1', r));
   const origin = `http://127.0.0.1:${srv.address().port}`;
   try { return await fn({ origin, world, ops }); } finally { srv.close(); }
@@ -211,7 +212,9 @@ async function t(name, fn) { try { await fn(); pass++; console.log('ok   ' + nam
       });
     });
     await t('navigation: reps and Relations never see the Academy entry; admins gain exactly that one entry; nothing else changes', async () => {
-      const mainChrome = require('child_process').execFileSync('git', ['show', 'origin/main:src/admin/admin-chrome.js'], { cwd: path.join(__dirname, '..') }).toString();
+      // Compared with the navigation as it was before the Command Center (main just before PR #5 was merged, 11 Oct 2026).
+      const NAV_BASE = process.env.NAV_BASE || '1a942ce^1';
+      const mainChrome = require('child_process').execFileSync('git', ['show', NAV_BASE + ':src/admin/admin-chrome.js'], { cwd: path.join(__dirname, '..') }).toString();
       const collect = async (origin, role) => {
         const out = {};
         for (const url of ['/admin/', '/admin/hub.html?cat=sales', '/admin/ai-style-guide.html', '/admin/academy.html']) {

@@ -1,7 +1,8 @@
 /* HCPS Academy A2C Part C1 — the Academy Command Center (academy-admin-api.js + /admin/academy.html).
    The real function, loaded unmodified in the Phase 0 harness (in-memory PostgREST + Supabase Auth). The audited database
-   operations (academy_op_*) are represented by a recorder that captures exactly what the server sends them; what the
-   operations themselves do is proven against real Postgres by the M1 suites (test/academy/*.sql).
+   operations (academy_op_*) are represented by a recorder that captures exactly what the server sends them; the A2C M2
+   content operations (academy_content_op_*) by test/academy-content-ops.fake.js, which follows the SQL. What the
+   operations themselves do is proven against real Postgres by the M1 and M2 suites (test/academy*.pg.test.js).
    Run: node test/academy-c1.test.js
    Covers: the switch, who may do what (administrators; President-only publishing), identity taken from the sign-in and
    never from the request, draft-only editing, published/certified records untouched, HCPS vs manufacturer credentials,
@@ -10,6 +11,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { createWorld, load, call, t, done, BASE, adminSrc } = require('./phase0-mock.js');
+const { contentOps } = require('./academy-content-ops.fake.js');
 
 const HQ = '10000000-0000-4000-8000-0000000000a1', BR = '10000000-0000-4000-8000-0000000000a2', OTHER = '10000000-0000-4000-8000-0000000000b1';
 const id = (p, n) => `${p}0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -125,7 +127,7 @@ function numberEvents(w) {
   w.fetch = async (u, o) => { const r = await base(u, o); for (const e of w.db.academy_events || []) { if (typeof e.id !== 'number') e.id = ++next; if (!e.at) e.at = new Date().toISOString(); } return r; };
   return w;
 }
-const world = extra => numberEvents(createWorld(seed(extra)));
+const world = (extra, opsOpts) => numberEvents(contentOps(createWorld(seed(extra)), opsOpts));
 const mod = w => load('academy-admin-api.js', w, {});
 const as = tok => ({ token: tok });
 const FORBIDDEN_WRITE_TABLES = ['app_settings', 'manufacturers', 'dealers', 'staff_users', 'academy_certificates', 'academy_external_certs',
@@ -239,7 +241,7 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
     assert.strictEqual((await call(m, { action: 'publish_version', id: V_DRAFT }, as('pres'))).status, 503);
     assert.strictEqual(w.writes.length, 0);
   });
-  await t('version workflow: draft -> in review -> draft by an admin (plain audited writes; never to published/retired)', async () => {
+  await t('version workflow: draft -> in review -> draft by an admin (audited content operation; never to published/retired)', async () => {
     const w = world(); const m = mod(w);
     const a = await call(m, { action: 'submit_for_review', id: V_DRAFT }, as('admin'));
     assert.strictEqual(a.status, 200); assert.strictEqual(w.db.academy_course_versions.find(v => v.id === V_DRAFT).status, 'in_review');
@@ -249,7 +251,8 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
     assert.strictEqual((await call(m, { action: 'return_to_draft', id: V_PUB }, as('pres'))).status, 409);
     const ev = w.db.academy_events.filter(e => e.entity === 'academy_course_versions');
     assert.deepStrictEqual(ev.map(e => [e.action, e.actor]), [['submit_for_review', 'staff:ann@hcps.us'], ['return_to_draft', 'staff:ann@hcps.us']]);
-    for (const x of w.writes.filter(x => x.table === 'academy_course_versions')) assert.ok(!/published|retired/.test(JSON.stringify(x.body)), JSON.stringify(x.body));
+    assert.deepStrictEqual(w.contentCalls.map(c => [c.name, c.args.p_to]), [['move_version', 'in_review'], ['move_version', 'draft']]);
+    assert.deepStrictEqual(w.writes.filter(x => x.table), []);   // no plain table write
   });
 
   // ---------- 4. published and in-review content cannot be edited ----------
@@ -264,21 +267,25 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
     ];
     for (const b of tries) { const r = await call(m, b, as('pres')); assert.strictEqual(r.status, 409, JSON.stringify(b) + ' ' + JSON.stringify(r.body)); }
     assert.strictEqual(w.writes.length, 0);
+    assert.strictEqual(w.contentCalls.length, 0, 'refused by the server before the database is asked (the database refuses again)');
   });
-  await t('a version that turns published while being edited is not changed (the write only matches a draft)', async () => {
+  await t('a version that turns published while being edited is not changed (the database re-checks under a lock: 409 locked)', async () => {
     const w = world(); const m = mod(w);
-    // The status read says draft; by the time of the write it is published (simulated by the PATCH matching nothing).
+    // The status read says draft; by the time the operation runs it is published.
     const base = global.fetch; global.fetch = async (url, opts) => {
-      if (opts && opts.method === 'PATCH' && String(url).includes('academy_course_versions')) w.db.academy_course_versions.find(v => v.id === V_DRAFT).status = 'published';
+      if (String(url).includes('/rpc/academy_content_op_')) w.db.academy_course_versions.find(v => v.id === V_DRAFT).status = 'published';
       return base(url, opts);
     };
     const r = await call(m, { action: 'update_version', id: V_DRAFT, pass_mark: 60 }, as('pres'));
-    assert.strictEqual(r.status, 409); assert.strictEqual(w.db.academy_course_versions.find(v => v.id === V_DRAFT).pass_mark, 80);
+    assert.strictEqual(r.status, 409); assert.strictEqual(r.body.error, 'locked'); assert.ok(/published/.test(r.body.message), r.body.message);
+    assert.strictEqual(w.db.academy_course_versions.find(v => v.id === V_DRAFT).pass_mark, 80);
+    assert.strictEqual(w.db.academy_events.filter(e => e.action === 'update_version').length, 0);
   });
   await t('a course learners have seen (a published/retired version) changes only with the President; a draft course by any admin', async () => {
     const w = world(); const m = mod(w);
     const r1 = await call(m, { action: 'update_course', id: C_PUB, title: 'Renamed' }, as('admin'));
     assert.strictEqual(r1.status, 403); assert.strictEqual(w.db.academy_courses.find(c => c.id === C_PUB).title, 'Golden Basics');
+    assert.strictEqual(w.contentCalls.length, 0);
     const r2 = await call(m, { action: 'update_course', id: C_PUB, title: 'Golden Basics (2026)' }, as('pres'));
     assert.strictEqual(r2.status, 200); assert.strictEqual(w.db.academy_courses.find(c => c.id === C_PUB).title, 'Golden Basics (2026)');
     const r3 = await call(m, { action: 'update_course', id: C_CERT, title: 'Lift Chair Specialist I', category: 'Seating' }, as('admin'));
@@ -335,7 +342,7 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
     const w = world(); const m = mod(w);
     const r = await call(m, { action: 'create_version', course_id: C_PUB, status: 'published', published_at: '2026-01-01', pass_mark: 85 }, as('admin'));
     assert.strictEqual(r.status, 200); const v = w.db.academy_course_versions.find(x => x.course_id === C_PUB && x.version === 3);
-    assert.ok(v); assert.deepStrictEqual([v.status, v.pass_mark, v.exam_questions, v.published_at], ['draft', 85, 25, undefined]);
+    assert.ok(v); assert.deepStrictEqual([v.status, v.pass_mark, v.exam_questions, v.published_at], ['draft', 85, 25, null]);
     assert.strictEqual((await call(m, { action: 'create_version', course_id: C_GOLD }, as('admin'))).status, 400);
     for (const b of [{ pass_mark: 0 }, { pass_mark: 101 }, { exam_questions: 0 }, { pass_mark: '80; drop' }, { validity_months: -1 }, { pass_mark: 79.5 }])
       assert.strictEqual((await call(m, Object.assign({ action: 'update_version', id: V_DRAFT }, b), as('admin'))).status, 400, JSON.stringify(b));
@@ -425,28 +432,53 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
     assert.strictEqual(e.actor, 'staff:ann@hcps.us'); assert.strictEqual(e.actor_type, 'staff');
     assert.ok(!JSON.stringify(w.db.academy_events).includes('evil@else.com'));
   });
-  await t('audit first: if the activity history cannot be written, NOTHING is changed (503) — for every ordinary write', async () => {
-    const w = world({ failWrite: (method, table) => table === 'academy_events' ? 500 : 0 }); const m = mod(w);
-    const logs = []; const orig = console.error; console.error = (...a) => logs.push(a.join(' '));
-    const tries = [
-      { action: 'create_course', slug: 'blocked-course', title: 'B', course_type: 'training' }, { action: 'update_course', id: C_CERT, title: 'B' },
-      { action: 'create_version', course_id: C_CERT }, { action: 'update_version', id: V_DRAFT, pass_mark: 61 }, { action: 'submit_for_review', id: V_DRAFT },
-      { action: 'return_to_draft', id: V_REVIEW }, { action: 'create_module', version_id: V_DRAFT, title: 'B' }, { action: 'update_module', id: M_DRAFT, title: 'B' },
-      { action: 'delete_module', id: M_EMPTY }, { action: 'create_lesson', module_id: M_DRAFT, title: 'B' }, { action: 'update_lesson', id: LS_DRAFT, title: 'B' },
-      { action: 'delete_lesson', id: LS_DRAFT },
-    ];
-    try { for (const b of tries) { const r = await call(m, b, as('admin')); assert.strictEqual(r.status, 503, b.action); assert.strictEqual(r.body.error, 'audit_unavailable'); } }
-    finally { console.error = orig; }
-    assert.deepStrictEqual(w.writes.filter(x => x.table !== 'academy_events'), [], 'a change was made without its record');
+  const ORDINARY = [
+    { action: 'create_course', slug: 'blocked-course', title: 'B', course_type: 'training' }, { action: 'update_course', id: C_CERT, title: 'B' },
+    { action: 'create_version', course_id: C_CERT }, { action: 'update_version', id: V_DRAFT, pass_mark: 61 }, { action: 'submit_for_review', id: V_DRAFT },
+    { action: 'return_to_draft', id: V_REVIEW }, { action: 'create_module', version_id: V_DRAFT, title: 'B' }, { action: 'update_module', id: M_DRAFT, title: 'B' },
+    { action: 'delete_module', id: M_EMPTY }, { action: 'create_lesson', module_id: M_DRAFT, title: 'B' }, { action: 'update_lesson', id: LS_DRAFT, title: 'B' },
+    { action: 'delete_lesson', id: LS_DRAFT },
+  ];
+  const CONTENT = ['academy_courses', 'academy_course_versions', 'academy_modules', 'academy_lessons', 'academy_events'];
+  const snapshot = w => JSON.stringify(CONTENT.map(k => w.db[k]));
+  await t('M2: every ordinary write is ONE call to its academy_content_op_* operation, with the signed-in person as actor — never a plain table write', async () => {
+    const w = world(); const m = mod(w);
+    const seq = ORDINARY.filter(b => !/review|draft$/.test(b.action)).concat([{ action: 'submit_for_review', id: V_DRAFT }, { action: 'return_to_draft', id: V_DRAFT }]);
+    for (const b of seq) { const r = await call(m, Object.assign({}, b, IDENTITY_SPOOF), as('admin')); assert.strictEqual(r.status, 200, b.action + ' ' + JSON.stringify(r.body)); }
+    assert.deepStrictEqual(w.contentCalls.map(c => c.name), ['create_course', 'update_course', 'create_version', 'update_version',
+      'create_module', 'update_module', 'delete_module', 'create_lesson', 'update_lesson', 'delete_lesson', 'move_version', 'move_version']);
+    assert.ok(w.contentCalls.every(c => c.args.p_actor === 'staff:ann@hcps.us'), JSON.stringify(w.contentCalls.map(c => c.args.p_actor)));
+    assert.deepStrictEqual(w.writes.filter(x => x.table), [], 'a plain table write was made');
+    assert.strictEqual(w.writes.filter(x => x.kind === 'content_op').length, ORDINARY.length);
+    // each call carried only the fields the operation accepts (no status, issuer, position, version number or id smuggled in)
+    const sent = w.contentCalls.map(c => Object.keys(c.args.p_course || c.args.p_changes || c.args.p_settings || c.args.p_module || c.args.p_lesson || {}).sort().join(','));
+    assert.deepStrictEqual(sent, ['course_type,slug,title', 'title', 'exam_questions,pass_mark', 'pass_mark', 'objectives,title', 'title', '', 'est_minutes,title', 'title', '', '', '']);
   });
-  await t('a change that fails after its record is written gets a matching "_failed" record (same reference)', async () => {
-    const w = world({ failWrite: (method, table) => table === 'academy_modules' ? 500 : 0 }); const m = mod(w);
-    const r = await call(m, { action: 'create_module', version_id: V_DRAFT, title: 'Will fail' }, as('admin'));
-    assert.strictEqual(r.status, 502);
-    const ev = w.db.academy_events.slice(3);
-    assert.deepStrictEqual(ev.map(e => e.action), ['create_module', 'create_module_failed']);
-    assert.ok(ev[0].after._ref && ev[0].after._ref === ev[1].after._ref); assert.strictEqual(ev[0].entity_id, ev[1].entity_id);
-    assert.ok(!w.db.academy_modules.some(x => x.title === 'Will fail'));
+  await t('M2: if the audit row cannot be written the database refuses the whole change — 502, nothing changed, nothing recorded', async () => {
+    const w = world(null, { auditFails: true }); const m = mod(w); const before = snapshot(w);
+    for (const b of ORDINARY) { const r = await call(m, b, as('admin')); assert.strictEqual(r.status, 502, b.action); assert.strictEqual(r.body.error, 'write_failed'); }
+    assert.strictEqual(snapshot(w), before); assert.deepStrictEqual(w.writes, []);
+  });
+  await t('M2 not installed: every ordinary write answers 503 "not available" and nothing is written (no fallback to a plain write)', async () => {
+    const w = world(null, { missing: true }); const m = mod(w); const before = snapshot(w);
+    for (const b of ORDINARY) { const r = await call(m, b, as('admin')); assert.strictEqual(r.status, 503, b.action); assert.strictEqual(r.body.error, 'not_installed'); }
+    assert.strictEqual(snapshot(w), before); assert.deepStrictEqual(w.writes, []);
+  });
+  await t('M2: the database\'s own refusals come back plainly — 403 with its reason, 404, 409 conflict / locked, 400 with its reason', async () => {
+    const w = world(); const m = mod(w); const base = global.fetch; let answer = null;
+    global.fetch = async (url, opts) => String(url).includes('/rpc/academy_content_op_') && answer
+      ? { ok: false, status: answer[0], text: async () => JSON.stringify({ code: answer[1], message: answer[2] }) } : base(url, opts);
+    const cases = [[403, '42501', 'academy: only the President may change a course learners have seen', 403, 'forbidden', /only the President/],
+                   [404, 'P0002', 'academy: lesson not found', 404, 'not_found', /Not found/], [409, '23505', 'duplicate key', 409, 'conflict', /already exists/],
+                   [409, '55000', 'academy: this version is in review; return it to draft before editing', 409, 'locked', /in review/],
+                   [400, '22023', 'academy: objectives are up to 12 lines of up to 300 characters', 400, 'refused', /objectives/],
+                   [500, 'XX000', 'internal: secret detail', 502, 'write_failed', /nothing was changed/]];
+    for (const [st, code, msg, want, err, re] of cases) {
+      answer = [st, code, msg];
+      const r = await call(m, { action: 'update_lesson', id: LS_DRAFT, title: 'x' }, as('admin'));
+      assert.strictEqual(r.status, want, code); assert.strictEqual(r.body.error, err, code); assert.ok(re.test(r.body.message), r.body.message);
+      assert.ok(!/secret detail|academy:/.test(r.body.message), r.body.message);
+    }
   });
   await t('records check: clean after Command Center changes; finds outside edits, unrecorded rows and recorded-but-missing rows', async () => {
     const w = world(); const m = mod(w);
@@ -592,7 +624,7 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
   });
 
   // ---------- 8. nothing outside the Academy is touched ----------
-  await t('a full session of every C1 change by the President writes only Academy content tables and the audit log', async () => {
+  await t('a full session of every C1 change by the President goes only through the audited operations (M2 content, M1 the rest)', async () => {
     const w = world(); const m = mod(w); const ops = withOps(w);
     const seq = [
       { action: 'create_course', slug: 'new-course', title: 'New', course_type: 'hcps_certification', manufacturer_slug: 'golden-technologies' },
@@ -604,8 +636,10 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
       { action: 'review_external_cert', id: X1, decision: 'rejected', note: 'Blurry upload' },
     ];
     for (const b of seq) assert.strictEqual((await call(m, b, as('pres'))).status, 200, JSON.stringify(b));
-    const tables = [...new Set(w.writes.map(x => x.table))].sort();
-    assert.deepStrictEqual(tables, ['academy_course_versions', 'academy_courses', 'academy_events', 'academy_lessons', 'academy_modules']);
+    assert.deepStrictEqual(w.writes.filter(x => x.table), [], 'no plain table write at all');   // content: M2 operations; the rest: M1 operations
+    assert.deepStrictEqual([...new Set(w.writes.map(x => x.fn))].sort(), ['academy_content_op_create_course', 'academy_content_op_create_lesson', 'academy_content_op_create_module',
+      'academy_content_op_create_version', 'academy_content_op_move_version', 'academy_content_op_update_course', 'academy_content_op_update_lesson',
+      'academy_content_op_update_module', 'academy_content_op_update_version']);
     noForbiddenWrites(w);
     assert.deepStrictEqual(ops.map(o => o.name), ['publish_version', 'set_training_manager', 'withdraw_fact', 'review_external_cert']);
     assert.ok(ops.every(o => o.args.p_actor === 'staff:angelo@hcps.us'));
