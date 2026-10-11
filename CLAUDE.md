@@ -1343,6 +1343,14 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   it. Left untouched pending Angelo's decision.
 - **Tests:** `test/mi1a-identity.pg.test.js` (runs the committed SQL in Postgres, bigint + uuid ids),
   `test/mi1a-compat.test.js` + `.mutants.js` (other manufacturers unaffected; switches; alias guard).
+- **SB-0 plan (2026-10-10, design only — nothing built):** Claude Doc "SB-0" (claude.ai/code/artifact/d86d9dbc-2856-4761-9e35-7c5333b645f3).
+  Three Strongback sources stay in three lanes with their own provenance: order exports → Sales Report Import
+  (`monthly_sales`); commission statements → Commission Report Import; the monthly dealer-intelligence PDF → MI-1c
+  intelligence only (never `monthly_sales`, commissions, tasks, deals, contacts or Zoho). Proposed: MI-1b = extend
+  `mfr_sources` as the one register of manufacturer report files (kinds sales_export / commission_statement /
+  dealer_report, period, prepared_date, batch link); MI-1c = `mfr_dealer_snapshots` + `mfr_dealer_observations`
+  (RULE 19 locked), match review queue, publish step. September expected matches: 15 auto, 7 review, Wyatt's held,
+  GF Health + Nebcare unmatched (never created). Awaiting Angelo's decisions before SB-1.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
