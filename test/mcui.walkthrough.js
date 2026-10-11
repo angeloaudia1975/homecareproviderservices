@@ -97,7 +97,7 @@ const fails=[]; const check=(c,w)=>{ if(!c){ fails.push(w); console.log('FAIL '+
   const meta=W.db.manufacturer_meta.find(m=>m.slug===S.COPY), runs=W.db.mfr_verification_runs.filter(r=>r.manufacturer===S.COPY);
   check(meta.record_authoritative===true,'the copy is activated');
   check(runs.length===2&&runs[1].phase==='post'&&runs[1].result==='pass','pre and post runs saved, post passes');
-  check(runs[1].fingerprint===S.fx.real.fingerprint,'post-activation fingerprint = real Bemis Gold Standard ('+runs[1].fingerprint+')');
+  check(runs[1].fingerprint===S.fx.expectedFingerprint,'post-activation fingerprint = real Bemis Gold Standard ('+runs[1].fingerprint+')');
   const writes=calls.filter(c=>!c.dry_run&&!/^(mc_overview|mc_line|mc_match|mc_structure|mc_commercial|mc_compare_runs|mc_run|mc_verify)$/.test(c.action));
   check(writes.every((w,i)=>w.action==='mc_approve_gate'||calls.slice(0,calls.indexOf(w)).some(c=>c.action===w.action&&c.dry_run)),'every write button ran its dry run first ('+writes.length+' writes)');
   check(!calls.some(c=>c.manufacturer===S.REAL&&!c.dry_run&&!/^(mc_line|mc_match|mc_structure|mc_commercial|mc_verify|mc_run)$/.test(c.action)),'no write was sent for the frozen line');

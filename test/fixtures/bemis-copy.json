@@ -1,8 +1,9 @@
 {
- "note": "A copy of the live Bemis line, taken read-only on 2026-10-10 for the Manufacturer Center Phase 6 dry walkthrough: the price list rows exactly as stored in price_imports (Bemis Digital Price List 2026, received 2026-10-10), the custom product and the override layer from catalog-api, and the Bemis freight terms. The storefront catalog file and manufacturers.json are read from the sibling ordering repo. Nothing in this file is ever written to the live database.",
+ "note": "A copy of the live Bemis line, taken read-only on 2026-10-10 for the Manufacturer Center Phase 6 dry walkthrough: the price list rows exactly as stored in price_imports (Bemis Digital Price List 2026, received 2026-10-10), the custom product and the override layer from catalog-api, and the Bemis freight terms. The storefront catalog file and manufacturers.json are read from the sibling ordering repo. Nothing in this file is ever written to the live database. The storefront storage host is kept as {{SUPABASE_URL}} (Netlify secret scanning refuses the real project URL in repo files); test/mcflow.world.js fills it in.",
  "real": {
   "slug": "bemis",
   "fingerprint": "3620a321933995db",
+  "fingerprint_offline": "6389617275676934",
   "post_run": 11
  },
  "source": {
@@ -310,7 +311,7 @@
      "tiers"
     ]
    },
-   "image": "https://ycqmztthwldytkzyvmiv.supabase.co/storage/v1/object/public/product-images/bemis/7YA06303TWA.jpg?v=1786897952068"
+   "image": "{{SUPABASE_URL}}/storage/v1/object/public/product-images/bemis/7YA06303TWA.jpg?v=1786897952068"
   },
   "7YA04505T": {
    "map": 79.99,
