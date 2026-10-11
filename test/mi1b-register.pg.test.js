@@ -36,7 +36,7 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
 let catalogFp = '';
 try {
   for (const f of [T('mi1a/fixture.sql'), SB('mi1a_part0_snapshot.sql'), SB('mi1a_part1_schema.sql'), T('mc-guard.stub.sql'), ROOTF('migrate-phase2-product-skus.sql'),
-    T('mc-guard.data.sql'), SB('mc_phase1_foundation.sql'), SB('mc_phase1_backfill.sql'), SB('mc_phase2_freeze_guard.sql')]) file(DB, f);
+    T('mc-guard.data.sql'), SB('mc_phase1_foundation.sql'), SB('mc_phase1_backfill.sql'), SB('mc_phase2_freeze_guard.sql'), SB('mc_phase6_append_only.sql')]) file(DB, f);
   // Production holds a sixth catalog row: a second legacy registration of the Ovation 2026 price list (same file name).
   q(`insert into mfr_sources (manufacturer, kind, title, file_name, legacy, manufacturer_effective_date, effective_date_status, status, accepted_by, accepted_at, note, created_by)
      values ('ovation-medical','price_list','2026 ovation medical pricelist 1092026.xlsx · row 94','2026 ovation medical pricelist 1092026.xlsx', true, '2026-10-09','stated','accepted','backfill',now(),'Legacy registration','backfill')`);
@@ -77,6 +77,15 @@ try {
     const res = JSON.parse(q('select public.mfr_freeze_guard_selftest()'));
     const rows = Array.isArray(res) ? res : (res.attempts || []);
     assert.ok(rows.length > 0 && rows.every(x => x.result === 'blocked' || x.result === 'no active record'), JSON.stringify(rows).slice(0, 200));
+  });
+
+  t('Manufacturer Center catalog-api paths (main, 2026-10-10) still work beside MI-1b: register + accept a catalog source', () => {
+    // mc_register_source: INSERT of a catalog kind with a file at <slug>/<sha>/<name>; mc_accept_source: PATCH status by id.
+    sr(`insert into mfr_sources (manufacturer,kind,title,file_name,file_sha256,storage_path,received_date,legacy,effective_date_status,status,created_by)
+        values ('pedifix','price_list','PediFix 2027','p27.xlsx','${H('6')}','pedifix/${H('6')}/p27.xlsx','2026-10-10',false,'pending','received','x')`);
+    sr(`update mfr_sources set status='accepted', accepted_by='x', accepted_at=now() where file_sha256='${H('6')}' and status in ('received','under_review')`);
+    assert.strictEqual(q(`select status from mfr_sources where file_sha256='${H('6')}'`), 'accepted');
+    q(`delete from mfr_sources where file_sha256='${H('6')}'`);
   });
 
   console.log('\n— Rule 19 —');
@@ -156,6 +165,14 @@ try {
     assert.throws(() => q(`delete from mfr_source_events where source_id=${sep}`), /append-only/);
     assert.throws(() => q(`truncate mfr_source_events`), /append-only/);
   });
+
+  t('mc_accept_source\'s direct PATCH on a REPORT record is refused (fails closed) — reports are decided only through hcps_mfr_report_decide', () => {
+    refused(`update mfr_sources set status='accepted', accepted_by='x', accepted_at=now() where id=${sep} and status in ('received','under_review')`, /mfr_report_guard/);
+    assert.strictEqual(q(`select status from mfr_sources where id=${sep}`), 'received');
+  });
+  t('mc_register_source cannot store the same file a report already holds (one file, one kind)', () =>
+    refused(`insert into mfr_sources (manufacturer,kind,title,file_name,file_sha256,storage_path,received_date,legacy,effective_date_status,status,created_by)
+        values ('strongback-mobility','other','x','x.pdf','${H('a')}','strongback-mobility/${H('a')}/x.pdf','2026-10-10',false,'pending','received','x')`, /duplicate key|mfr_sources_file_uk/));
 
   console.log('\n— accept / reject / publication (separate) —');
   t('rejecting needs a reason; accepting records who/when; a decided report is not decided again', () => {
@@ -322,7 +339,7 @@ try {
   t('on a database with no report records, rollback restores the Phase 1 shape exactly and keeps the catalog rows', () => {
     const D2 = DB + '_rb'; run('postgres', `drop database if exists ${D2}`); run('postgres', `create database ${D2}`);
     for (const f of [T('mi1a/fixture.sql'), SB('mi1a_part0_snapshot.sql'), SB('mi1a_part1_schema.sql'), T('mc-guard.stub.sql'), ROOTF('migrate-phase2-product-skus.sql'),
-      T('mc-guard.data.sql'), SB('mc_phase1_foundation.sql'), SB('mc_phase1_backfill.sql'), SB('mc_phase2_freeze_guard.sql')]) file(D2, f);
+      T('mc-guard.data.sql'), SB('mc_phase1_foundation.sql'), SB('mc_phase1_backfill.sql'), SB('mc_phase2_freeze_guard.sql'), SB('mc_phase6_append_only.sql')]) file(D2, f);
     const shape = `select md5(string_agg(column_name||':'||data_type, ',' order by column_name)) || '|' ||
       (select md5(string_agg(conname||pg_get_constraintdef(oid), ',' order by conname)) from pg_constraint where conrelid='public.mfr_sources'::regclass) ||'|'||
       (select count(*) from pg_trigger where tgrelid='public.mfr_sources'::regclass and not tgisinternal)

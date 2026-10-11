@@ -1460,6 +1460,23 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   mi1b-register.pg 43, mi1b-api 25, mi1b mutants 42/42; MC guard pg 17, mcfreeze 17, mcverify 25, freightterms 11 (+mutants),
   MI-1a identity.pg 28 / compat 16 (+14/14), commission-coverage 42 (+43/43), Phase 0 suites all pass; phase1-visits /
   phase2-account-class / phase2-timeline fail identically on main 3ffb9f6 (late-evening clock).
+- **MI-1b APPROVED for controlled production rollout (Angelo, 2026-10-10 23:48 CT)** with the reviewed fingerprints
+  (migration 7761828e…, rollback b79dde05…). Order: reconcile the branch with main (SQL must stay identical; rerun
+  MI-1b / MC / MI-1a / regression; a mutation run with a failing control is not presented as valid) → production
+  preflight (6 catalog sources, 0 report records, hash index unchanged, MI-1a schema + financial baseline unchanged,
+  `mi_import_v2` ON / `mi_commission_v2` OFF, backup present) → run the SQL in the editor, every check ok → outside
+  public-key probe on `mfr_source_events` + the four functions → only then merge + deploy, confirm Published, verify the
+  page (President/Admin open, other roles refused, zero records) and run the read-only orphan check (no deletions).
+  Not authorized: registering/accepting the September Strongback PDF, importing the September CSV, changing either MI
+  switch, AirAvant corrections, MI-1c. Any failed check → STOP, no merge/deploy.
+  **Reconciliation (2026-10-10 ~23:58 CT):** main 08c9e58 merged (Academy M1 rev 2, Manufacturer Center Phase 6 guided
+  workflow + `mc_phase6_append_only.sql`); MI-1b SQL byte-identical. Compatibility: catalog-api `mc_register_source`
+  accepts only catalog kinds and stores files at `<slug>/<sha>/<name>` (MI-1b uses `reports/…`); `mc_accept_source`'s
+  direct PATCH on a report record is refused by `mfr_report_guard` (fails closed); the same file cannot be both a
+  catalog source and a report (hash index). Tests: mi1b pg 46 (MC Phase 6 in the chain) / api 25 / mutants 42/42;
+  mc-append pg 6, mc-guard pg 17, mcflow 13 (+mutants), mcgates 12, mcfreeze 17, mcverify 25, mc mutants; MI-1a 28 / 16
+  (+14/14); commission 42 / 11; phase1-visits / phase2-account-class / phase2-timeline fail identically on main 08c9e58
+  (late-evening clock), so the Phase 0 mutation run is not reported tonight (its control includes them).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
