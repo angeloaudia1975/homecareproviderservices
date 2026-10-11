@@ -105,17 +105,41 @@ await t('copy, features and specs come only from the source; warranty is blank w
   ok(/manufacturer page — https:\/\/www\.toiletseats\.com\/p\/4-5-inch/.test(rise.provenance.description),rise.provenance.description);
   const steadfast=page('7YE82350TC').draft; ok(/HCPS catalog line only/.test(steadfast.provenance.description),steadfast.provenance.description);
 });
+await t('a website retail price never creates a commercial conflict; the retail model is an alias in provenance, not a dealer spec',async()=>{
+  const rise=page('7YA04505T');
+  ok(!rise.issues.some(i=>i.type==='conflict'),'no conflict from the $89.99 retail price: '+JSON.stringify(rise.issues));
+  ok(!rise.draft.specs.some(s=>/model/i.test(s.label)),'no model-number spec: '+JSON.stringify(rise.draft.specs));
+  ok(/Retail Model A84505T 000 — alias only; the HCPS SKU is the ordering code/.test(rise.draft.provenance.retail_model||''),rise.draft.provenance.retail_model);
+  const row=W.db.product_content.find(r=>r.page_key===rise.page_key); eq(row.aliases,['A84505T 000']);
+  ok(!JSON.stringify(row).includes('89.99'),'the retail price is nowhere on the draft');
+});
+await t('first-person manufacturer wording is made neutral without adding or dropping facts',async()=>{
+  const d=page('7YA04505T').draft.description;
+  ok(/Bemis’s patented Dual Lock keeps the seat from loosening\./.test(d) && !/\b[Oo]ur\b|EMPOWERING/.test(d) && /300 lbs/.test(d),d);
+});
+await t('a landing or bundle page is never a component\'s description: the arms keep the catalog line and need a product source',async()=>{
+  const arms=page('7YA05313GRY');
+  ok(!/attach to the seat in seconds|raised seat lifts/.test(arms.draft.description),'no bundle-page text: '+arms.draft.description);
+  ok(/HCPS catalog line only/.test(arms.draft.provenance.description),arms.draft.provenance.description);
+  eq(arms.status,'needs_content'); ok(arms.issues.some(i=>/No product-specific manufacturer source/.test(i.title)),JSON.stringify(arms.issues));
+  eq(arms.draft.features,[],'no features borrowed from the bundle');
+});
+await t('photos: the main photo is a product photo (never landing promo art); resized copies of one photo collapse to the largest',async()=>{
+  const seat=page('7YR05310TSS').draft, rise=page('7YA04505T').draft;
+  ok(/E85320TSS-000/.test(seat.image),'seat main photo is a product photo: '+seat.image);
+  ok(!seat.gallery.some(u=>/landing/.test(u)),'no landing promo art on a page with a product page');
+  const ps=rise.gallery.filter(u=>/A84505T-000-P/.test(u)); eq(ps.length,1,'one copy of the P photo'); ok(/__Fill/.test(ps[0]),'the larger copy kept: '+ps[0]);
+});
 await t('Review Issues: each page gets one of the six statuses, from real evidence',async()=>{
   const st=k=>page(k).status;
   eq(st('7YR05310TSS'),'needs_image','Round and Elongated share one photo');
   ok(page('7YR05310TSS').issues.some(i=>i.type==='needs_image' && /7YR05310TSS and 7YE05310TSS/.test(i.title)),JSON.stringify(page('7YR05310TSS').issues));
-  eq(st('7YA04505T'),'conflict','the Rise page is model A84505T 000 at $89.99 retail; the record says $79.99');
-  const c=page('7YA04505T').issues.find(i=>i.type==='conflict'); ok(/89\.99/.test(c.evidence.page) && /79\.99/.test(c.evidence.record),JSON.stringify(c.evidence));
+  eq(st('7YA04505T'),'ready','a retail price on the manufacturer page is not a conflict');
   eq(st('7YE82350TC'),'needs_content','Steadfast has no manufacturer page');
   eq(st('444DISPLAY'),'needs_grouping');
-  eq(st('7YA0AS100'),'ready'); eq(st('7YA05313GRY'),'ready');
-  eq(st('7YA06303TWA'),'needs_content','the bidet attachment: nothing on the bundle page describes it well enough');
-  eq(Object.entries(plan.counts).sort(),[['conflict',1],['needs_content',2],['needs_grouping',1],['needs_image',1],['ready',2]]);
+  eq(st('7YA0AS100'),'ready'); eq(st('7YA05313GRY'),'needs_content','the arms have only a bundle page');
+  eq(st('7YA06303TWA'),'needs_content','the bidet attachment: only a bundle page');
+  eq(Object.entries(plan.counts).sort(),[['needs_content',3],['needs_grouping',1],['needs_image',1],['ready',2]]);
 });
 await t('resolutions: a reason is required; a dry run records nothing; recorded as content_resolution; the issue closes',async()=>{
   const pk=page('444DISPLAY').page_key; const nDec=W.db.mfr_decisions.length;
@@ -136,10 +160,10 @@ await t('a later choice supersedes the earlier one (never rewrites it); holding 
   r=await call(C,withWin({action:'enrich_resolve',page_key:pk,issue:'needs_content',choice:'hold_back',reason:'no display page yet'}));
   eq([r.body.classify.status,r.body.classify.blocking],['held_back',false]);
 });
-await t('the Rise conflict: "same product" closes it; "different product" asks for a re-run without that page, which then drops it',async()=>{
+await t('a manufacturer page you reject is not read again; choosing "same product" brings it back',async()=>{
   const pk=page('7YA04505T').page_key;
   let r=await call(C,withWin({action:'enrich_resolve',page_key:pk,issue:'conflict',choice:'different_product',reason:'not sure it is the same seat'}));
-  eq(r.status,200); ok(r.body.classify.issues.some(i=>i.type==='needs_content' && i.rerun),JSON.stringify(r.body.classify.issues));
+  eq(r.status,200);
   r=await call(C,withWin({action:'enrich_page',page_key:pk})); eq(r.status,200,JSON.stringify(r.body).slice(0,200));
   eq(r.body.sources.length,0,'the rejected page is not read again');
   r=await call(C,withWin({action:'enrich_resolve',page_key:pk,issue:'conflict',choice:'same_product',reason:'Bemis confirmed it is the same seat'}));
@@ -155,6 +179,26 @@ await t('Needs image: uploading the Elongated photo under the window clears the 
   r=await call(C,withWin({action:'enrich_set_image',page_key:pk,code:'7YE05310TSS',url:up.body.url.replace('/drafts/w'+WIN+'/','/drafts/w'+(WIN+1)+'/')})); eq([r.status,r.body.error],[400,'not_a_draft_copy'],'another window\'s folder');
   r=await call(C,withWin({action:'enrich_set_image',page_key:pk,code:'7YE05310TSS',url:up.body.url}));
   eq(r.status,200,JSON.stringify(r.body).slice(0,300)); ok(!r.body.classify.issues.some(i=>i.type==='needs_image'),JSON.stringify(r.body.classify.issues));
+});
+await t('an official per-option photo chosen in Review Issues replaces the shared photo and survives a re-run',async()=>{
+  const pk=page('7YR05310TSS').page_key;
+  let r=await call(C,withWin({action:'enrich_resolve',page_key:pk,issue:'needs_image',choice:'use_source_image',value:{code:'7YR05310TSS'},reason:'x'})); eq([r.status,r.body.error],[400,'bad_resolution'],'a photo address is required');
+  for(const [code,f] of [['7YR05310TSS','R85320TSS-000-P.jpg'],['7YE05310TSS','E85320TSS-000-F.jpg']]){
+    r=await call(C,withWin({action:'enrich_resolve',page_key:pk,issue:'needs_image',choice:'use_source_image',value:{code,image_url:'https://www.toiletseats.com/assets/'+f,why:'Bemis product page for this shape'},reason:'Official Bemis photo for this shape'}));
+    eq(r.status,200,JSON.stringify(r.body).slice(0,200)); }
+  for(let k=0;k<2;k++){ r=await call(C,withWin({action:'enrich_page',page_key:pk})); eq(r.status,200); for(let i=0;i<6;i++){ const im=await call(C,withWin({action:'enrich_images',page_key:pk})); if(!im.body.remaining) break; } }
+  const p=(await call(C,{action:'enrich_plan'})).body.pages.find(x=>x.page_key===pk);
+  ok(!p.issues.some(i=>i.type==='needs_image'),JSON.stringify(p.issues));
+  const sk=p.draft.sku_images; ok(/R85320TSS-000-P/.test(sk.find(s=>s.code==='7YR05310TSS').image) && /E85320TSS-000-F/.test(sk.find(s=>s.code==='7YE05310TSS').image),JSON.stringify(sk));
+});
+await t('an official source added in Review Issues is read on the re-run (Steadfast)',async()=>{
+  const pk=page('7YE82350TC').page_key; const url='https://www.toiletseats.com/p/elongated-open-front-plastic-elevated-toilet-seat-with-3-inch-lift-in-white-never-loosens/';
+  let r=await call(C,withWin({action:'enrich_resolve',page_key:pk,issue:'needs_content',choice:'rerun_with_source',value:{source_url:url},reason:'Official Bemis Steadfast page'})); eq(r.status,200);
+  r=await call(C,withWin({action:'enrich_page',page_key:pk})); eq(r.body.sources.map(s=>s.role),['product']);
+  for(let i=0;i<6;i++){ const im=await call(C,withWin({action:'enrich_images',page_key:pk})); if(!im.body.remaining) break; }
+  const p=(await call(C,{action:'enrich_plan'})).body.pages.find(x=>x.page_key===pk);
+  eq(p.status,'ready',JSON.stringify(p.issues)); ok(/E82350TC-000-P/.test(p.draft.image),p.draft.image);
+  ok(/Retail Model E82350TC 000/.test(p.draft.provenance.retail_model),'alias recorded');
 });
 await t('re-running is stable: same page keys, the same draft updated (no duplicate), the window stamped on every draft',async()=>{
   const keys=(await call(C,{action:'enrich_plan'})).body.pages.map(p=>p.page_key).sort();

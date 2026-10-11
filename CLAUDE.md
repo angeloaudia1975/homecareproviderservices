@@ -1376,8 +1376,8 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   enrichment_flags.mc (sources, fields, conflicts, image candidates/results).
   Review Issues: six statuses by priority Conflict > Needs grouping decision > Needs content > Needs image > Needs category
   > Ready (Ready = description ≥80 chars, ≥3 features, a category, a photo in HCPS storage, a price on the record).
-  Conflicts carry evidence (a manufacturer page MSRP ≠ the record's; catalog facts no source states; no price; a live
-  page). Each one-click resolution needs a reason, shows a dry run, and is an append-only content_resolution decision;
+  Conflicts carry evidence (catalog facts no source states; no price; a live page — a manufacturer website retail price
+  is never a conflict, see (v)). Each one-click resolution needs a reason, shows a dry run, and is an append-only content_resolution decision;
   a later choice supersedes (supersedes_id). Hold back = not blocking. "Different product" re-runs without that page.
   (u) The Advanced Product Editor (src/admin/product-content-review.html, renamed, banner: for unusual cases) has NO
   commercial write path: catalogPost() refuses every request catalog-api calls commercial (the same list as _mc.js —
@@ -1386,6 +1386,23 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   already on the commercial record (new SKUs → Manufacturer Center → Sources). Price import / bulk / auto-MSRP removed.
   Tests: test/enrich.unit.test.js, test/mcenrich.test.js (+ mcenrich.world.js, fixtures/mfr-pages), test/mcenrich.ui.js
   (Playwright), test/mceditor.commercial.test.js, test/mcenrich.mutants.js.
+  (v) **Enrichment rules from the Bemis Review Issues decisions (Angelo, 2026-10-11 15:31).** Product Enrichment never
+  creates a commercial price conflict from a manufacturer website's retail price — commercial pricing comes only through
+  Manufacturer Center sources; the web price is not stored in the draft or its metadata. A manufacturer's retail model
+  number (e.g. Bemis A84505T 000 for HCPS 7YA04505T) is an alias in provenance only (field_provenance.retail_model,
+  labelled "<Brand> Retail Model"); the HCPS SKU is always the ordering code and "Model/Item/SKU/UPC" spec rows are not
+  copied. Source copy is normalised to neutral language (first-person slogans dropped; "our patented…" → "Bemis's
+  patented…"; editorial only, noted in provenance). A landing or bundle page may support a component's existence /
+  compatibility but is never its description, features or specs — with no product-specific manufacturer source the page
+  is Needs content ("No product-specific manufacturer source"). The HCPS catalog line is used only without the facts no
+  manufacturer source confirms (e.g. "350 lb capacity per arm" stays out). Warranty stays blank unless a source states
+  terms. Photos: banner / promo / landing art is never the primary (promo only → Needs image "Only banner / promo art
+  was found"); exact duplicates (same bytes or the same photo at another resize) collapse to the largest; option
+  photos must be SKU/option-specific — the needs_image choice "Use an official manufacturer photo for this option"
+  (code + https image URL + reason) records it, and a re-run uses it. Grouping is presentation only and never creates a
+  pricing / pooling family. Bemis decisions: Rise = same product (#321); 444DISPLAY = its own page in its existing
+  category, no "Display Programs" subcategory (#322); Support Arms, Bidet, Steadfast and Display stay open until an
+  official product-specific source is added and re-run under window #320; Round needs its own official photo.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
