@@ -1097,6 +1097,14 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   Partner 360 browser fingerprint) against the last passing baseline. Evidence saved in `mfr_verification_runs`.
   `_shop_render.js` / `_hcps_email.js` are verbatim copies — regenerate with `node test/mc-copies.js`, never by hand.
   Rule 19 applies to every MC object (RLS on, no policies, revoked from public/anon/authenticated, public-key check).
+  Multi-SKU test carts are priced against the WHOLE cart (the engine's CART holds that cart while it prices it), as
+  the storefront does — family and pooled tier breaks count every line. Pricing each line alone was a checker defect
+  (failed runs #2 Strongback and #4 Ovation, kept as history); never delete or rewrite verification runs.
+  (7) **The freeze stays as built (Angelo, 2026-10-10).** On a frozen line the database also refuses override
+  saves that only change a name, image or description when that row's patch holds price keys (the save is an
+  upsert, so the INSERT is checked first). That is accepted under the freeze rule. Do NOT weaken the guard for
+  Bemis product-page work (or any other content work on a frozen line): it comes through an explicitly approved
+  `regression_fix` decision or a separately approved freeze-policy change, nothing else.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
