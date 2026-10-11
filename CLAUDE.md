@@ -1097,6 +1097,14 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   Partner 360 browser fingerprint) against the last passing baseline. Evidence saved in `mfr_verification_runs`.
   `_shop_render.js` / `_hcps_email.js` are verbatim copies — regenerate with `node test/mc-copies.js`, never by hand.
   Rule 19 applies to every MC object (RLS on, no policies, revoked from public/anon/authenticated, public-key check).
+  Multi-SKU test carts are priced against the WHOLE cart (the engine's CART holds that cart while it prices it), as
+  the storefront does — family and pooled tier breaks count every line. Pricing each line alone was a checker defect
+  (failed runs #2 Strongback and #4 Ovation, kept as history); never delete or rewrite verification runs.
+  (7) **The freeze stays as built (Angelo, 2026-10-10).** On a frozen line the database also refuses override
+  saves that only change a name, image or description when that row's patch holds price keys (the save is an
+  upsert, so the INSERT is checked first). That is accepted under the freeze rule. Do NOT weaken the guard for
+  Bemis product-page work (or any other content work on a frozen line): it comes through an explicitly approved
+  `regression_fix` decision or a separately approved freeze-policy change, nothing else.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
@@ -1209,6 +1217,22 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   byte-identical; 0 batches; `mi_import_v2` still false. Original workbook "Stongback Orders and Account Report
   YTDa.xlsx" (sha256 b7a17e64…) checked OFFLINE: 143 lines / 57 orders / $43,021.50 = HCPS row-for-row (order, SKU,
   qty, amount, date fingerprint de869e5f…; order/account/company/ZIP fingerprint e466ddc4…).
+  **mi_import_v2 preview-only acceptance PASSED 2026-10-10 ~20:15 CT** (approved by Angelo; switch ON only for the
+  previews, then OFF — it stays OFF until Angelo approves normal operation). Live Sales Report Import page, real workbook
+  (sha256 b7a17e64…, verified in the browser): path v2 (`hcps_sales_report_apply`, applied:false), 143 rows, 57 orders
+  unchanged / 0 new / 0 changed / 0 to retire / 0 missing, $43,021.50, $3,871.94 at 9%, 142 lines matched (GF Health
+  Products, order 5804, $320, is unmatched in HCPS too), 0 non-financial differences, 0 collisions, 0 cross-lane, account
+  numbers 25 already correct / 0 conflicts. Modified copy (order 5775 qty 1→2): exactly 1 changed order, $536 → $1,072,
+  56 unchanged. File without order 5775: listed as missing, retire 0; retired only when named in `retire_orders`
+  (page checkboxes start unticked). 9 non-enrolled manufacturers previewed on the legacy path; 5 commission analyses
+  stayed on today's path. A browser guard blocked any non-preview call (0 attempted). After: every row except the 7
+  September rows = Part 0 snapshot (EXCEPT ALL 0/0), backup 143, 0 batches, 0 superseded, baseline identical; with the
+  switch OFF Strongback answers 409 `import_paused` again. Known display bug: the v2 preview's "Dealers" tile shows
+  "undefined" (the v2 summary has no dealer count) — cosmetic, not fixed yet.
+  **Strongback September CSV was loaded on the legacy commission path at 2026-10-10 23:49 UTC** ("Strongback Sept
+  Commission Report 2026.csv", 7 rows, period 2026-09, source commission, no batch) — not by Claude. All 7 have BLANK
+  amount and commission (the file's $2,159 did not land); alias "Williams Brothers Healthcare Pharmacy" was created by
+  it. Left untouched pending Angelo's decision.
 - **Tests:** `test/mi1a-identity.pg.test.js` (runs the committed SQL in Postgres, bigint + uuid ids),
   `test/mi1a-compat.test.js` + `.mutants.js` (other manufacturers unaffected; switches; alias guard).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
