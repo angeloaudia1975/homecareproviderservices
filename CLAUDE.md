@@ -377,6 +377,12 @@ Whichever importer loads them, they must count as commission reports.
   has 4 blank rows of 17; Access4u has 7 payment lines with a sale but no commission (a future file like that is now
   refused). Decisions pending: confirm PediFix/Ovation (and whether ABM) sales reports are statements; the two older
   generic Williams aliases (→ Henderson, → Columbus). `mi_import_v2` stays OFF until this is reviewed.
+  **September cleanup RUN by Angelo 2026-10-11 02:43 UTC (verified):** 7 rows quarantined (whole, fingerprints valid,
+  preview fingerprint c7b81f69… = the stored copies), 0 left in monthly_sales, 11,997 rows, $10,802,558.50 / $493,077.06
+  unchanged, live = Part 0 snapshot (EXCEPT ALL 0/0), 0 batches / 0 superseded, quarantine RLS on / 0 policies / anon +
+  authenticated no privileges / service_role yes. A second run was correctly refused ("expected exactly 7 matching
+  rows, found 0 — nothing written"). Outside public-key check: `scripts/quarantine_public_probe_browser.js` (Angelo runs
+  it — Claude does not extract the key). Still NOT done: the alias fix (alias still on Princeton), the code merge/deploy.
 - The **Commission Report Import coverage grid** shows **every year that has data** (not just the current
   year), so loaded history stays visible; green = received, amber = still needed (current year), grey =
   gap in a past year.
