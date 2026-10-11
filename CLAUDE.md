@@ -396,6 +396,16 @@ Whichever importer loads them, they must count as commission reports.
   cleanup, no other financial record changed. Williams Brothers generic alias → HQ approved in principle, NOT to be run
   yet (exact guards + a fresh production pre-check first); September shipment stays on Princeton via ZIP 47670; the two
   older generic aliases unchanged pending a separate review. Both MI switches stay OFF; AirAvant correction not started.
+  **Coverage correction DEPLOYED 2026-10-10 22:02 CT** (main 935e1c7, Netlify "Published"; branch merged with the latest
+  main incl. Academy A2A, no conflicts). Tests: commission-coverage 41 (+39/39 mutants), commission-sept2026.pg 11,
+  mi1a-compat 16 (+14/14), mi1a-identity.pg 28, all Phase 0 suites, academy-a2a 31 + pg 15, mcverify 19 (after updating
+  the local ordering repo); phase1-visits / phase2-account-class / phase2-timeline fail identically on main (clock).
+  Live grid on production data: 74 received (incl. 16 PediFix provisional), 5 partial (Bemis 2026-06: 13 valid / 4
+  blank; Access4u 2025-10, 2026-05/06/07: $0-sale payment lines without a commission figure, 4/1/1/1), 23 estimated
+  (ABM 11, Strongback 12), 4 not entered (Climbing Steps 2026-05; Ohio Medical 2026-04 = 16 blank payments + 19 open
+  invoices, 2026-06 / 2026-07 = open invoices only); Strongback 2026-09 not on file. Production unchanged: 11,997 rows,
+  $10,802,558.50 / $493,077.06, D7 / B1 / keys / attribution fingerprints = the original Part 0/Part 2 values, 0 batches,
+  both switches OFF, alias still on Princeton (459 aliases).
 - The **Commission Report Import coverage grid** shows **every year that has data** (not just the current
   year), so loaded history stays visible; green = received, amber = still needed (current year), grey =
   gap in a past year.
