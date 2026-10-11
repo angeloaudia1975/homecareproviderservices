@@ -2091,6 +2091,36 @@ async function freezeGate(b, me){
   return null;
 }
 
+/* APPROVAL GATES (Manufacturer Center Phase 6). Strict reads: an approval that cannot be read is not an
+   approval. A used approval is spent (used_at), exactly like a regression_fix. */
+async function gateCheck(manufacturer, gate, decisionId, want){
+  const id=parseInt(decisionId,10);
+  if(!(id>0)) return {error:json(409,{error:"approval_required", gate, message:(gate==="stage"
+    ?"Writing staged data needs the first approval (gate 1): run the dry run, approve exactly what it shows, then write with approval_decision_id."
+    :"Activation needs the second approval (gate 2): a passing pre-activation verification run, approved, then activate with approval_decision_id.")+" Nothing was changed."})};
+  let d; try{ const r=await sb("GET",`mfr_decisions?id=eq.${id}&select=*`); d=r&&r[0]; }
+  catch(e){ return {error:json(503,{error:"approval_unreadable",message:"The approval could not be read. Nothing was changed."})}; }
+  const p=MC.gateProblem(d,{manufacturer,gate,want});
+  if(p) return {error:json(409,{error:"approval_invalid",gate,message:p+". Nothing was changed."})};
+  return {decision:d};
+}
+async function lastRecordChange(slug){
+  const r=await sb("GET",`product_skus?manufacturer=eq.${encodeURIComponent(slug)}&select=updated_at&order=updated_at.desc.nullslast&limit=1`);
+  return (r&&r[0]&&r[0].updated_at)||null;
+}
+async function activationRunCheck(slug, runId){
+  const id=parseInt(runId,10);
+  let run, last;
+  try{ const r=await sb("GET",`mfr_verification_runs?id=eq.${id}&select=id,manufacturer,phase,result,fingerprint,run_at`); run=r&&r[0]; last=await lastRecordChange(slug); }
+  catch(e){ return json(503,{error:"run_unreadable",message:"The verification run or the record could not be read. Nothing was changed."}); }
+  const p=MC.activationRunProblem(run,{manufacturer:slug,lastRecordChange:last});
+  return p?json(409,{error:"activation_run_invalid",message:p+". Nothing was changed."}):null;
+}
+async function useDecision(id, by){
+  try{ await sb("PATCH",`mfr_decisions?id=eq.${id}&used_at=is.null`,{used_at:new Date().toISOString(), used_by:String(by||"president").slice(0,80)},{Prefer:"return=minimal"}); }
+  catch(e){ try{ console.error("[HCPS] could not mark approval "+id+" used: "+String((e&&e.message)||e)); }catch(_){} }
+}
+
 exports.handler = async (event)=>{
   REGRESSION = null;
   const res = await handleCatalog(event);
@@ -3885,9 +3915,15 @@ async function handleCatalog(event){
           preview=parityCompare({base:base||[],custom:custom||[],overrides:ovRows||[],record:plan.map(p=>p.after),want:null,mfr,strictTiers:true});
         }catch(err){ return json(503,{error:"layer_unreadable",message:String((err&&err.message)||err)}); }
         const refused=plan.filter(p=>(p.refused_clears||[]).length).map(p=>({code:p.code,fields:p.refused_clears}));
-        if(b.dry_run===true) return json(200,{ok:true,dry_run:true,plan,activation_preview:preview,would_clear_refused:refused});
+        /* GATE 1 (Manufacturer Center Phase 6). The dry run names its plan by a hash of exactly what would be
+           written; a write is accepted only with an unused gate:stage approval recorded for that same hash. */
+        const stageHash=MC.planHash({manufacturer:mfr, source_id:sourceId, source_file:file, effective_date:eff||null,
+          plan:plan.map(p=>({code:p.code, action:p.action, set:p.set, provenance:p.provenance}))});
+        if(b.dry_run===true) return json(200,{ok:true,dry_run:true,plan,activation_preview:preview,would_clear_refused:refused,plan_hash:stageHash,plan_kind:"records"});
         if(refused.length) return json(409,{error:"would_clear",refused,message:
           "These fields would be cleared, which needs b.clear plus a recorded decision (clear_decision_id). Nothing was staged."});
+        const g1=await gateCheck(mfr,"stage",b.approval_decision_id,{plan_hash:stageHash, plan_kind:"records"});
+        if(g1.error) return g1.error;
         const now=new Date().toISOString(), by=String((me&&me.email)||b.reviewer||"admin").slice(0,80);
         const staged=[];
         for(const p of plan){
@@ -3903,7 +3939,8 @@ async function handleCatalog(event){
             return json(502,{error:"stage_incomplete",staged,failed:p.code,message:String((err&&err.message)||err).slice(0,300)});
           }
         }
-        return json(200,{ok:true,staged,activation_preview:preview});
+        await useDecision(g1.decision.id, by);
+        return json(200,{ok:true,staged,activation_preview:preview,approval_used:g1.decision.id});
       }
 
       /* PROVENANCE ON THE MASTER RECORD (agreed 2026-10-09). Which approved manufacturer file a
@@ -3958,6 +3995,8 @@ async function handleCatalog(event){
         if(!slug) return json(400,{error:"manufacturer required"});
         const on=b.authoritative===true;
         const META="supabase/record_authority.sql";
+        if(!on && b.dry_run===true) return json(200,{ok:true,dry_run:true,manufacturer:slug,authoritative:false,
+          message:"Would switch "+slug+" back to the legacy layers. Nothing was changed."});
         if(!on){
           try{
             await sb("POST","manufacturer_meta?on_conflict=slug",
@@ -3993,6 +4032,17 @@ async function handleCatalog(event){
         if(stats.drift.length)
           return json(409,{error:"parity_drift", drift:stats.drift.slice(0,100), message:
             "Nothing was switched on. "+parityMessage(stats)});
+        /* GATE 2 (Manufacturer Center Phase 6). Activation needs an unused gate:activate approval that names a
+           passing pre-activation verification run of this line, and the record must not have changed since. */
+        let g2=null;
+        if(b.dry_run!==true || b.approval_decision_id!=null){
+          g2=await gateCheck(slug,"activate",b.approval_decision_id,null);
+          if(g2.error) return g2.error;
+          const runP=await activationRunCheck(slug, g2.decision.hcps_value&&g2.decision.hcps_value.run_id);
+          if(runP) return runP;
+        }
+        if(b.dry_run===true) return json(200,{ok:true,dry_run:true,manufacturer:slug,authoritative:true,parity:{compared:stats.compared,drift:0},
+          approval:g2?g2.decision.id:null, message:"Parity holds"+(g2?" and the activation approval is valid":"; record the activation approval (gate 2) before activating")+". Nothing was changed."});
         /* THE FLAG IS WRITTEN LAST, AND ITS OWN FAILURE IS NOT THE MIRROR'S FAILURE.
            The mirror has already run at this point, so a failure here leaves the record correct
            and the line still reading from the layers — the safe half of the pair. Saying which
@@ -4008,7 +4058,8 @@ async function handleCatalog(event){
           if(f){ f.body.parity=stats; f.body.detail+=" Parity was confirmed; only the authority flag could not be stored, so the line still prices from the layers."; return json(f.code,f.body); }
           throw e;
         }
-        return json(200,{ok:true,manufacturer:slug,authoritative:true,parity:{compared:stats.compared,drift:0}});
+        await useDecision(g2.decision.id, String((me&&me.email)||"president").slice(0,80));
+        return json(200,{ok:true,manufacturer:slug,authoritative:true,parity:{compared:stats.compared,drift:0},approval_used:g2.decision.id});
       }
 
       if(b.action==="save_link"){
@@ -4166,6 +4217,199 @@ async function handleCatalog(event){
          Read the register, decisions and verification history; record a decision; run the
          verification suite; prove the database freeze guard is live. Strict reads: a table that
          cannot be read is an error on screen, never an empty list. */
+      /* ═══ MANUFACTURER CENTER PHASE 6 — THE GUIDED WORKFLOW (approved 2026-10-10) ═══════════════════
+         Reads: mc_match, mc_structure, mc_commercial, mc_compare_runs — they change nothing.
+         Writes: mc_register_source, mc_accept_source, mc_import_source_rows, mc_approve_gate, mc_set_freight_terms
+         — every one answers dry_run:true with exactly what it would write, every one is refused on a frozen
+         line (freezeGate, before this point), and the two that change what dealers can see (staged records,
+         freight terms) also need the first approval; activation needs the second. Product data is still
+         written only by stage_record_source / set_record_authority; Manufacturer Center holds no products. */
+      if(b.action==="mc_match"){
+        const slug=String(b.manufacturer||"").trim(); if(!slug) return json(400,{error:"manufacturer required"});
+        const e=encodeURIComponent;
+        let sources, records, decisions, file, custom;
+        try{
+          [sources, records, decisions, file, custom]=await Promise.all([
+            sb("GET",`mfr_sources?manufacturer=eq.${e(slug)}&kind=eq.price_list&select=id,title,status,legacy,received_date&order=id.asc`),
+            sb("GET",`product_skus?manufacturer=eq.${e(slug)}&select=*&limit=10000`),
+            sb("GET",`mfr_decisions?manufacturer=eq.${e(slug)}&select=*&order=decided_at.asc`),
+            catalogFile(slug),
+            sb("GET",`custom_products?manufacturer=eq.${e(slug)}&active=eq.true&select=code`)]);
+        }catch(err){ return json(503,{error:"layer_unreadable",message:"The match could not read a layer: "+String((err&&err.message)||err).slice(0,300)}); }
+        const accepted=(sources||[]).filter(x=>x.status==="accepted");
+        const srcId=b.source_id!=null?parseInt(b.source_id,10):((accepted.filter(x=>!x.legacy).slice(-1)[0]||accepted.slice(-1)[0]||{}).id||null);
+        const src=(sources||[]).find(x=>x.id===srcId)||null;
+        if(b.source_id!=null && !src) return json(400,{error:"unknown_source",message:"Source "+b.source_id+" is not a price list of "+slug+"."});
+        let rows=[];
+        if(srcId){ try{ rows=await sb("GET",`price_imports?manufacturer=eq.${e(slug)}&source_id=eq.${srcId}&select=*&limit=10000`); }
+          catch(err){ return json(503,{error:"layer_unreadable",message:String((err&&err.message)||err).slice(0,300)}); } }
+        const m=MC.matchLine({sourceRows:rows, records, storefrontCodes:(file||[]).map(x=>x.code).concat((custom||[]).map(x=>x.code)), decisions, normCode});
+        return json(200,Object.assign({ok:true, manufacturer:slug, source:src, sources:sources||[]}, m));
+      }
+      if(b.action==="mc_structure"){
+        const slug=String(b.manufacturer||"").trim(); if(!slug) return json(400,{error:"manufacturer required"});
+        let st, au;
+        try{ [st, au]=await Promise.all([structureAudit(slug), auditManufacturer(slug, 10)]); }
+        catch(err){ return json(503,{error:"layer_unreadable",message:"Structure and content status could not be read: "+String((err&&err.message)||err).slice(0,300)}); }
+        return json(200,{ok:true, manufacturer:slug,
+          structure:{pages:st.pages, products_affected:st.products_affected, findings_total:st.findings_total, faults_total:st.faults_total, gaps_total:st.gaps_total, by_kind:st.by_kind, findings:(st.findings||[]).slice(0,40)},
+          content:{counts:au.counts, total:au.total, percent_published:au.percent_published, enriched_only:au.enriched_only, steps:au.steps, passed:au.passed, of:au.of, next_step:au.next_step, next_action:au.next_action},
+          links:{structure_map:"/admin/product-content-review.html?manufacturer="+encodeURIComponent(slug), product_catalog:"/admin/catalog.html?manufacturer="+encodeURIComponent(slug), images:"/admin/images.html?manufacturer="+encodeURIComponent(slug)}});
+      }
+      if(b.action==="mc_commercial"){
+        const slug=String(b.manufacturer||"").trim(); if(!slug) return json(400,{error:"manufacturer required"});
+        const PRICING=require("./_pricing.js"), files=PRICING.remoteFiles(ORDERING_BASE), e=encodeURIComponent;
+        let records, meta, mfrList, L;
+        try{
+          [records, meta, mfrList]=await Promise.all([
+            sb("GET",`product_skus?manufacturer=eq.${e(slug)}&select=code,status,base_price,msrp,msrp_auto,map,tiers,uom,case_qty,dealer_unit_cost,msrp_basis,map_basis,source_id,source_file,effective_date,updated_at&order=code&limit=10000`),
+            sb("GET",`manufacturer_meta?slug=eq.${e(slug)}&select=slug,record_authoritative,frozen,freight_terms`), files.manufacturersFile()]);
+          const freightCfg={}; (Array.isArray(mfrList)?mfrList:[]).forEach(x=>{ if(x&&x.slug) freightCfg[x.slug]=x; });
+          L=await PRICING.lineProducts({slug, sb, catalogFile:files.catalogFile, contentFile:files.contentFile, contract:{}, cart:new Map(), freightCfg});
+          const R=new Function("state","contractPrice",require("./_shop_render.js").SOURCE+";return {freightRowsHtml};")({dealer:{}},()=>null);
+          const fileEntry=(freightCfg[slug]||{}).freight||null, mm=(meta&&meta[0])||{};
+          return json(200,{ok:true, manufacturer:slug, authoritative:mm.record_authoritative===true, frozen:mm.frozen===true,
+            records:records||[], freight:{source:L.freightSource, invalid:!!L.freightInvalid, effective:L.freight, record_terms:mm.freight_terms||null, file_entry:fileEntry,
+              boundaries:MC.freightPreview(L.engine, R, slug, L.freight)}});
+        }catch(err){ return json(503,{error:"layer_unreadable",message:"Commercial data could not be read: "+String((err&&err.message)||err).slice(0,300)}); }
+      }
+      if(b.action==="mc_compare_runs"){
+        const a=parseInt(b.a,10), c=parseInt(b.b,10); if(!(a>0&&c>0)) return json(400,{error:"a and b (run ids) required"});
+        let r; try{ r=await sb("GET",`mfr_verification_runs?id=in.(${a},${c})&select=*`); }
+        catch(err){ return json(503,{error:"mc_unreadable",message:String((err&&err.message)||err).slice(0,300)}); }
+        const A=(r||[]).find(x=>x.id===a), B=(r||[]).find(x=>x.id===c);
+        if(!A||!B) return json(404,{error:"no such run"});
+        if(A.manufacturer!==B.manufacturer) return json(400,{error:"runs of different lines"});
+        return json(200,Object.assign({ok:true, manufacturer:A.manufacturer}, MC.compareRuns(A,B)));
+      }
+      if(b.action==="mc_register_source"){
+        const slug=String(b.manufacturer||"").trim(), KINDS=["price_list","terms","catalog","images","cross_reference","status_list","other"];
+        const kind=String(b.kind||""), title=String(b.title||"").trim(), rec=String(b.received_date||"").trim();
+        const effS=String(b.effective_date_status||"pending"), effD=String(b.manufacturer_effective_date||"").trim();
+        if(!slug||!title) return json(400,{error:"manufacturer and title required"});
+        if(KINDS.indexOf(kind)<0) return json(400,{error:"kind must be one of "+KINDS.join(", ")});
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(rec)) return json(400,{error:"received_date (YYYY-MM-DD) is required — the day HCPS received the file; it is never invented"});
+        if(["stated","pending","not_applicable"].indexOf(effS)<0) return json(400,{error:"effective_date_status must be stated, pending or not_applicable"});
+        if((effS==="stated")!==/^\d{4}-\d{2}-\d{2}$/.test(effD)) return json(400,{error:"a manufacturer effective date is given exactly when its status is stated"});
+        let bytes=null, fileName=String(b.file_name||"").trim().slice(0,200)||null, digest=null, path=null;
+        if(b.file_b64){ bytes=Buffer.from(String(b.file_b64),"base64"); if(!bytes.length) return json(400,{error:"empty file"});
+          if(bytes.length>10*1024*1024) return json(400,{error:"file larger than 10 MB"});
+          if(!fileName) return json(400,{error:"file_name required with a file"});
+          digest=require("crypto").createHash("sha256").update(bytes).digest("hex");
+          path=`${slug}/${digest}/${fileName.replace(/[^A-Za-z0-9._() -]/g,"_")}`; }
+        const row={manufacturer:slug, kind, title:title.slice(0,200), file_name:fileName, file_sha256:digest, storage_path:path, received_date:rec, legacy:false,
+          manufacturer_effective_date:effS==="stated"?effD:null, effective_date_status:effS, status:"received", note:b.note?String(b.note).slice(0,1000):null,
+          created_by:String((me&&me.email)||"president").slice(0,80)};
+        if(b.dry_run===true) return json(200,{ok:true,dry_run:true,would_insert:row,file_bytes:bytes?bytes.length:0,
+          message:"Would register this source as received (not yet accepted)"+(path?" and store the file privately in mfr-sources":"")+". Nothing was written."});
+        if(bytes){ const up=await fetch(`${SUPABASE_URL}/storage/v1/object/mfr-sources/${path.split("/").map(encodeURIComponent).join("/")}`,{method:"POST",
+            headers:{...H(),"content-type":String(b.content_type||"application/octet-stream"),"x-upsert":"false"},body:bytes});
+          if(!up.ok && up.status!==409) return json(502,{error:"file_not_stored",message:"The file could not be stored ("+up.status+"). Nothing was registered."}); }
+        let ins; try{ ins=await sb("POST","mfr_sources",row,{Prefer:"return=representation"}); }
+        catch(err){ return json(502,{error:"source_not_registered",message:String((err&&err.message)||err).slice(0,300)}); }
+        return json(200,{ok:true, source:ins&&ins[0]});
+      }
+      if(b.action==="mc_accept_source"){
+        const slug=String(b.manufacturer||"").trim(), id=parseInt(b.source_id,10), reason=String(b.reason||"").trim();
+        if(!slug||!(id>0)||!reason) return json(400,{error:"manufacturer, source_id and reason are required"});
+        let src; try{ const r=await sb("GET",`mfr_sources?id=eq.${id}&select=*`); src=r&&r[0]; }
+        catch(err){ return json(503,{error:"source_unreadable",message:String((err&&err.message)||err).slice(0,300)}); }
+        if(!src||src.manufacturer!==slug) return json(400,{error:"unknown_source",message:"Source "+id+" is not registered for "+slug+"."});
+        if(["received","under_review"].indexOf(src.status)<0) return json(409,{error:"not_acceptable",message:"Source "+id+" is "+src.status+"; only a received source can be accepted."});
+        const by=String((me&&me.email)||"president").slice(0,80), at=new Date().toISOString();
+        const dec={manufacturer:slug, source_id:id, code:null, field:"source", manufacturer_value:{title:src.title, file_sha256:src.file_sha256||null, received_date:src.received_date},
+          hcps_value:{status:"accepted"}, kind:"acceptance", reason:reason.slice(0,2000), decided_by:by};
+        if(b.dry_run===true) return json(200,{ok:true,dry_run:true,would_update:{id, status:"accepted", accepted_by:by},would_record:dec,message:"Would accept source "+id+" and record why. Nothing was written."});
+        try{
+          await sb("PATCH",`mfr_sources?id=eq.${id}&status=in.(received,under_review)`,{status:"accepted",accepted_by:by,accepted_at:at},{Prefer:"return=minimal"});
+          const d=await sb("POST","mfr_decisions",dec,{Prefer:"return=representation"});
+          return json(200,{ok:true, source_id:id, status:"accepted", decision:d&&d[0]});
+        }catch(err){ return json(502,{error:"not_accepted",message:String((err&&err.message)||err).slice(0,300)}); }
+      }
+      if(b.action==="mc_import_source_rows"){
+        /* The source AS RECEIVED: every row keeps the manufacturer's own columns in raw; the parsed numbers sit
+           beside them. Append-only — a source is imported once; a corrected file is a new source. */
+        const slug=String(b.manufacturer||"").trim(), id=parseInt(b.source_id,10), rows=Array.isArray(b.rows)?b.rows:[];
+        if(!slug||!(id>0)||!rows.length) return json(400,{error:"manufacturer, source_id and rows are required"});
+        let src, have;
+        try{ const r=await sb("GET",`mfr_sources?id=eq.${id}&select=*`); src=r&&r[0];
+             have=await sb("GET",`price_imports?source_id=eq.${id}&select=code&limit=1`); }
+        catch(err){ return json(503,{error:"source_unreadable",message:String((err&&err.message)||err).slice(0,300)}); }
+        if(!src||src.manufacturer!==slug) return json(400,{error:"unknown_source",message:"Source "+id+" is not registered for "+slug+"."});
+        if(src.status!=="accepted"||src.kind!=="price_list") return json(409,{error:"source_not_accepted",message:"Only an accepted price list is imported (source "+id+" is a "+src.status+" "+src.kind+")."});
+        if(have&&have.length) return json(409,{error:"already_imported",message:"Source "+id+" was already imported; its rows are never rewritten. A corrected file is registered as a new source."});
+        const bad=[], seen=new Set(), out=[];
+        rows.forEach((x,i)=>{ const code=String(x.code||"").trim(); if(!code){ bad.push({row:i+1,why:"no code"}); return; }
+          const k=normCode(code); if(seen.has(k)){ bad.push({row:i+1,code,why:"duplicate code"}); return; } seen.add(k);
+          const raw=(x.raw&&typeof x.raw==="object")?x.raw:Object.assign({},x);
+          const caseText=x.case_qty_text!=null?x.case_qty_text:(raw["Master Case Qty"]!=null?raw["Master Case Qty"]:null);
+          out.push({manufacturer:slug, import_label:"mc-source-"+id, source_file:String(src.file_name||src.title).slice(0,160), effective_date:src.manufacturer_effective_date||null,
+            imported_by:String((me&&me.email)||"president").slice(0,80), code, description:x.description?String(x.description).slice(0,500):null,
+            base_price:num(x.base_price), msrp:num(x.msrp), map:num(x.map), tiers:cleanTiers(x.tiers), raw,
+            source_id:id, parsed_case_qty:MC.parseCaseQty(caseText), parsed_unit_cost:num(x.unit_cost)}); });
+        if(bad.length) return json(400,{error:"bad_rows",bad,message:"Nothing was imported."});
+        if(b.dry_run===true) return json(200,{ok:true,dry_run:true,would_insert:out.length,rows:out,message:"Would add "+out.length+" source rows exactly as received. Nothing was written."});
+        try{ await sb("POST","price_imports",out,{Prefer:"return=minimal"}); }
+        catch(err){ return json(502,{error:"not_imported",message:String((err&&err.message)||err).slice(0,300)}); }
+        return json(200,{ok:true, imported:out.length, source_id:id});
+      }
+      if(b.action==="mc_approve_gate"){
+        const slug=String(b.manufacturer||"").trim(), gate=String(b.gate||""), reason=String(b.reason||"").trim();
+        if(!slug||!reason) return json(400,{error:"manufacturer and reason are required"});
+        let hv;
+        if(gate==="stage"){
+          const h=String(b.plan_hash||""), kind=String(b.plan_kind||"");
+          if(!/^[0-9a-f]{64}$/.test(h)) return json(400,{error:"plan_hash from the dry run is required"});
+          if(["records","freight"].indexOf(kind)<0) return json(400,{error:"plan_kind must be records or freight"});
+          hv={plan_hash:h, plan_kind:kind};
+        } else if(gate==="activate"){
+          const p=await activationRunCheck(slug, b.run_id); if(p) return p;
+          let run; try{ const r=await sb("GET",`mfr_verification_runs?id=eq.${parseInt(b.run_id,10)}&select=id,fingerprint,run_at`); run=r&&r[0]; }catch(err){ return json(503,{error:"run_unreadable"}); }
+          hv={run_id:run.id, fingerprint:run.fingerprint||null, run_at:run.run_at};
+        } else return json(400,{error:"gate must be stage or activate"});
+        const row={manufacturer:slug, code:null, field:"gate:"+gate, manufacturer_value:null, hcps_value:hv, kind:"acceptance", reason:reason.slice(0,2000),
+          decided_by:String((me&&me.email)||"president").slice(0,80)};
+        if(b.dry_run===true) return json(200,{ok:true,dry_run:true,would_record:row});
+        let ins; try{ ins=await sb("POST","mfr_decisions",row,{Prefer:"return=representation"}); }
+        catch(err){ return json(502,{error:"approval_not_recorded",message:String((err&&err.message)||err).slice(0,300)}); }
+        return json(200,{ok:true, approval:ins&&ins[0]});
+      }
+      if(b.action==="mc_set_freight_terms"){
+        /* Freight terms change dealer freight the moment they are stored (Phase 5: the record is the source),
+           so the dry run prices every threshold before and after, and the write needs a gate-1 approval of
+           exactly that plan. The terms must be valid (the storefront's own validFreightTerms) and traced to
+           an accepted source and/or a decision of this line. */
+        const slug=String(b.manufacturer||"").trim(), terms=b.terms, trace=b.trace||{};
+        if(!slug||!terms||typeof terms!=="object"||Array.isArray(terms)) return json(400,{error:"manufacturer and terms required"});
+        const sid=trace.source_id!=null?parseInt(trace.source_id,10):null, did=trace.decision_id!=null?parseInt(trace.decision_id,10):null;
+        if(!(sid>0)&&!(did>0)) return json(400,{error:"trace_required",message:"Freight terms must be traced to an accepted source and/or a decision of this line."});
+        const PRICING=require("./_pricing.js"), files=PRICING.remoteFiles(ORDERING_BASE), e=encodeURIComponent;
+        try{
+          const [src, dec, meta, mfrList]=await Promise.all([
+            sid>0?sb("GET",`mfr_sources?id=eq.${sid}&select=id,manufacturer,status`):Promise.resolve([]),
+            did>0?sb("GET",`mfr_decisions?id=eq.${did}&select=id,manufacturer,kind`):Promise.resolve([]),
+            sb("GET",`manufacturer_meta?slug=eq.${e(slug)}&select=slug,freight_terms`), files.manufacturersFile()]);
+          if(sid>0 && !(src[0]&&src[0].manufacturer===slug&&src[0].status==="accepted")) return json(400,{error:"trace_invalid",message:"Source "+sid+" is not an accepted source of "+slug+"."});
+          if(did>0 && !(dec[0]&&dec[0].manufacturer===slug)) return json(400,{error:"trace_invalid",message:"Decision "+did+" is not a decision of "+slug+"."});
+          const freightCfg={}; (Array.isArray(mfrList)?mfrList:[]).forEach(x=>{ if(x&&x.slug) freightCfg[x.slug]=x; });
+          const clean=JSON.parse(JSON.stringify(terms)); delete clean.trace;
+          const base={slug, sb, catalogFile:files.catalogFile, contentFile:files.contentFile, contract:{}, cart:new Map(), freightCfg};
+          const before=await PRICING.lineProducts(base);
+          if(!before.engine.validFreightTerms(clean)) return json(400,{error:"terms_invalid",message:"These freight terms do not pass validation (labels, brands or categories, numeric thresholds and fees). Nothing was written."});
+          const after=await PRICING.lineProducts(Object.assign({},base,{freightOverride:clean}));
+          const R=new Function("state","contractPrice",require("./_shop_render.js").SOURCE+";return {freightRowsHtml};")({dealer:{}},()=>null);
+          const stored=Object.assign({},clean,{trace:Object.assign({}, sid>0?{source_id:sid}:{}, did>0?{decision_id:did}:{})});
+          const fh=MC.planHash({manufacturer:slug, freight_terms:stored});
+          const preview={before:{source:before.freightSource, rule:before.freight, boundaries:MC.freightPreview(before.engine,R,slug,before.freight)},
+                         after:{source:"record", rule:clean, boundaries:MC.freightPreview(after.engine,R,slug,clean)}};
+          if(b.dry_run===true) return json(200,{ok:true,dry_run:true,plan_hash:fh,plan_kind:"freight",would_store:stored,preview,
+            message:"These terms would replace the line's freight rule at once (the record is the freight source). Nothing was written."});
+          const g=await gateCheck(slug,"stage",b.approval_decision_id,{plan_hash:fh, plan_kind:"freight"}); if(g.error) return g.error;
+          await sb("POST","manufacturer_meta?on_conflict=slug",{slug, freight_terms:stored},{Prefer:"resolution=merge-duplicates,return=minimal"});
+          await useDecision(g.decision.id, String((me&&me.email)||"president"));
+          return json(200,{ok:true, stored, approval_used:g.decision.id, preview});
+        }catch(err){ return json(502,{error:"freight_not_set",message:"Nothing was written: "+String((err&&err.message)||err).slice(0,300)}); }
+      }
       if(b.action==="mc_overview"){
         let lines, meta, sources, decisions, runs;
         try{
@@ -4212,9 +4456,11 @@ async function handleCatalog(event){
         const slug=String(b.manufacturer||"").trim(), kind=String(b.kind||""), field=String(b.field||"").trim(), reason=String(b.reason||"").trim();
         if(!slug||!field||!reason) return json(400,{error:"manufacturer, field and reason are required"});
         if(KINDS.indexOf(kind)<0) return json(400,{error:"kind must be one of "+KINDS.join(", ")});
+        if(/^gate:/i.test(field)) return json(400,{error:"gate_not_here",message:"Approval gates are recorded only through mc_approve_gate, which checks what is being approved. Nothing was recorded."});
         const row={manufacturer:slug, kind, field:field.slice(0,80), reason:reason.slice(0,2000), code:b.code?String(b.code).trim().slice(0,80):null,
           manufacturer_value:b.manufacturer_value===undefined?null:b.manufacturer_value, hcps_value:b.hcps_value===undefined?null:b.hcps_value,
           source_id:b.source_id!=null?parseInt(b.source_id,10):null, decided_by:String((me&&me.email)||b.reviewer||"president").slice(0,80)};
+        if(b.dry_run===true) return json(200,{ok:true,dry_run:true,decision:row});
         let ins; try{ ins=await sb("POST","mfr_decisions",row,{Prefer:"return=representation"}); }
         catch(e2){ return json(502,{error:"decision_not_recorded", message:String((e2&&e2.message)||e2).slice(0,300)}); }
         return json(200,{ok:true, decision:ins&&ins[0]});

@@ -3,7 +3,7 @@ const DIR=process.env.CAT_ROOT||path.join(__dirname,'..','netlify','functions');
 const read=f=>fs.readFileSync(path.join(DIR,f),'utf8').replace(/\r\n/g,'\n');
 const M=[
  ['authoritative line staged','        if(meta&&meta[0]&&meta[0].record_authoritative===true)\n          return json(409','        if(false)\n          return json(409'],
- ['dry run writes',"        if(b.dry_run===true) return json(200,{ok:true,dry_run:true,plan,activation_preview:preview,would_clear_refused:refused});","        "],
+ ['dry run writes',"        if(b.dry_run===true) return json(200,{ok:true,dry_run:true,plan,activation_preview:preview,would_clear_refused:refused,plan_hash:stageHash,plan_kind:\"records\"});","        "],
  ['writes a layer too','            staged.push(p.code);','            await sb("POST","product_overrides?on_conflict=manufacturer,code",{manufacturer:mfr,code:p.code,patch:{base_price:p.after.base_price}},{Prefer:"resolution=merge-duplicates,return=minimal"}); staged.push(p.code);'],
  ['always inserts','            if(p.action==="update"){','            if(false){'],
  ['write failure swallowed','            return json(502,{error:"stage_incomplete",staged,failed:p.code,','            continue; return json(502,{error:"stage_incomplete",staged,failed:p.code,'],

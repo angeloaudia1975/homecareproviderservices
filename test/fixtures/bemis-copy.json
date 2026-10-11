@@ -1,0 +1,397 @@
+{
+ "note": "A copy of the live Bemis line, taken read-only on 2026-10-10 for the Manufacturer Center Phase 6 dry walkthrough: the price list rows exactly as stored in price_imports (Bemis Digital Price List 2026, received 2026-10-10), the custom product and the override layer from catalog-api, and the Bemis freight terms. The storefront catalog file and manufacturers.json are read from the sibling ordering repo. Nothing in this file is ever written to the live database.",
+ "real": {
+  "slug": "bemis",
+  "fingerprint": "3620a321933995db",
+  "post_run": 11
+ },
+ "source": {
+  "title": "Bemis Digital Price List 2026",
+  "file_name": "Bemis Digital Price List 2026(20261010-175622).xlsx",
+  "received_date": "2026-10-10",
+  "rows": [
+   {
+    "code": "7YR05310TSS",
+    "description": "Assurance Round Toilet Seat with Clean Shield, Raised 3\" with Stay-Tite Installation System, 1000 LB Seat Capacity,  SUPPORT ARMS SOLD SEPERATELY",
+    "base_price": 109.98,
+    "msrp": 109.99,
+    "map": 109.99,
+    "unit_cost": 64.99,
+    "case_qty_text": "2/CS",
+    "raw": {
+     "Model Number": "7YR05310TSS",
+     "Item Description": "Assurance Round Toilet Seat with Clean Shield, Raised 3\" with Stay-Tite Installation System, 1000 LB Seat Capacity,  SUPPORT ARMS SOLD SEPERATELY",
+     "Dealer Cost Per Unit": 64.99,
+     "Master Case Qty": "2/CS",
+     "Dealer Master Case Cost": 109.98,
+     "MSRP": 109.99,
+     "MAP": 109.99,
+     "_received_date": "2026-10-10",
+     "_manufacturer_effective_date": "pending Bemis confirmation",
+     "_sheet": "Sheet1"
+    }
+   },
+   {
+    "code": "7YE05310TSS",
+    "description": "Assurance Elongated Toilet Seat with Clean Shield, Raised 3\" with Stay-Tite Installation System, 1000 LB Seat Capacity, SUPPORT ARMS SOLD SEPERATELY",
+    "base_price": 109.98,
+    "msrp": 109.99,
+    "map": 109.99,
+    "unit_cost": 64.99,
+    "case_qty_text": "2/CS",
+    "raw": {
+     "Model Number": "7YE05310TSS",
+     "Item Description": "Assurance Elongated Toilet Seat with Clean Shield, Raised 3\" with Stay-Tite Installation System, 1000 LB Seat Capacity, SUPPORT ARMS SOLD SEPERATELY",
+     "Dealer Cost Per Unit": 64.99,
+     "Master Case Qty": "2/CS",
+     "Dealer Master Case Cost": 109.98,
+     "MSRP": 109.99,
+     "MAP": 109.99,
+     "_received_date": "2026-10-10",
+     "_manufacturer_effective_date": "pending Bemis confirmation",
+     "_sheet": "Sheet1"
+    }
+   },
+   {
+    "code": "7YA05313GRY",
+    "description": "Assurance Support Arms Only SET/2, 350 LB Capacity Each Arm, Gray Color Frame with White Grips",
+    "base_price": 119.96,
+    "msrp": 59.99,
+    "map": 59.99,
+    "unit_cost": 39.99,
+    "case_qty_text": "4/CS",
+    "raw": {
+     "Model Number": "7YA05313GRY",
+     "Item Description": "Assurance Support Arms Only SET/2, 350 LB Capacity Each Arm, Gray Color Frame with White Grips",
+     "Dealer Cost Per Unit": 39.99,
+     "Master Case Qty": "4/CS",
+     "Dealer Master Case Cost": 119.96,
+     "MSRP": 59.99,
+     "MAP": 59.99,
+     "_received_date": "2026-10-10",
+     "_manufacturer_effective_date": "pending Bemis confirmation",
+     "_sheet": "Sheet1"
+    }
+   },
+   {
+    "code": "7YA05313BLK",
+    "description": "Assurance Support Arms Only SET/2, 350 LB Capacity Each Arm, Black Color Frame with White Grips",
+    "base_price": 119.96,
+    "msrp": 59.99,
+    "map": 59.99,
+    "unit_cost": 39.99,
+    "case_qty_text": "4/CS",
+    "raw": {
+     "Model Number": "7YA05313BLK",
+     "Item Description": "Assurance Support Arms Only SET/2, 350 LB Capacity Each Arm, Black Color Frame with White Grips",
+     "Dealer Cost Per Unit": 39.99,
+     "Master Case Qty": "4/CS",
+     "Dealer Master Case Cost": 119.96,
+     "MSRP": 59.99,
+     "MAP": 59.99,
+     "_received_date": "2026-10-10",
+     "_manufacturer_effective_date": "pending Bemis confirmation",
+     "_sheet": "Sheet1"
+    }
+   },
+   {
+    "code": "7YA06303TWA",
+    "description": "Assurance Personal Wash Bidet attachment Only exclusivly for the Assurance Toilet Seat",
+    "base_price": 74.98,
+    "msrp": 74.99,
+    "map": 74.99,
+    "unit_cost": 47.49,
+    "case_qty_text": "2/CS",
+    "raw": {
+     "Model Number": "7YA06303TWA",
+     "Item Description": "Assurance Personal Wash Bidet attachment Only exclusivly for the Assurance Toilet Seat",
+     "Dealer Cost Per Unit": 47.49,
+     "Master Case Qty": "2/CS",
+     "Dealer Master Case Cost": 74.98,
+     "MSRP": 74.99,
+     "MAP": 74.99,
+     "_received_date": "2026-10-10",
+     "_manufacturer_effective_date": "pending Bemis confirmation",
+     "_sheet": "Sheet1"
+    }
+   },
+   {
+    "code": "7YA04505T",
+    "description": "Rise 4.5\" Raised Toilet Seat with Arms and w/Dual Lock Security, adjustable base fits both round and elongated toilets, 300 LB Capacity",
+    "base_price": 119.97,
+    "msrp": 79.99,
+    "map": 79.99,
+    "unit_cost": 49.99,
+    "case_qty_text": "3/CS",
+    "raw": {
+     "Model Number": "7YA04505T",
+     "Item Description": "Rise 4.5\" Raised Toilet Seat with Arms and w/Dual Lock Security, adjustable base fits both round and elongated toilets, 300 LB Capacity ",
+     "Dealer Cost Per Unit": 49.99,
+     "Master Case Qty": "3/CS",
+     "Dealer Master Case Cost": 119.97,
+     "MSRP": 79.99,
+     "MAP": 79.99,
+     "_received_date": "2026-10-10",
+     "_manufacturer_effective_date": "pending Bemis confirmation",
+     "_sheet": "Sheet1"
+    }
+   },
+   {
+    "code": "7YA0AS100",
+    "description": "Assist Non-Elevated Premium Toilet Seat with Arms and Stay Tite Installation, 500 LB Capacity",
+    "base_price": 99.98,
+    "msrp": 99.99,
+    "map": 99.99,
+    "unit_cost": 59.99,
+    "case_qty_text": "2/CS",
+    "raw": {
+     "Model Number": "7YA0AS100",
+     "Item Description": "Assist Non-Elevated Premium Toilet Seat with Arms and Stay Tite Installation, 500 LB Capacity",
+     "Dealer Cost Per Unit": 59.99,
+     "Master Case Qty": "2/CS",
+     "Dealer Master Case Cost": 99.98,
+     "MSRP": 99.99,
+     "MAP": 99.99,
+     "_received_date": "2026-10-10",
+     "_manufacturer_effective_date": "pending Bemis confirmation",
+     "_sheet": "Sheet1"
+    }
+   },
+   {
+    "code": "7YE82350TC",
+    "description": "Steadfast Elongated 3\" Raised Toilet Seat, Open Front Ring with Stay Tite Installation System",
+    "base_price": 54.99,
+    "msrp": 109.99,
+    "map": 109.99,
+    "unit_cost": 54.99,
+    "case_qty_text": null,
+    "raw": {
+     "Model Number": "7YE82350TC",
+     "Item Description": "Steadfast Elongated 3\" Raised Toilet Seat, Open Front Ring with Stay Tite Installation System",
+     "Dealer Cost Per Unit": 54.99,
+     "Master Case Qty": null,
+     "Dealer Master Case Cost": null,
+     "MSRP": 109.99,
+     "MAP": 109.99,
+     "_received_date": "2026-10-10",
+     "_manufacturer_effective_date": "pending Bemis confirmation",
+     "_sheet": "Sheet1"
+    }
+   },
+   {
+    "code": "444DISPLAY",
+    "description": "4 Assurance Round seats, 4 Elongated seats, 4 Support Arm sets (gray), and 2 Bidet attachments, plus the floor base display and a display toilet.",
+    "base_price": 634.86,
+    "msrp": 1269.72,
+    "map": 1269.72,
+    "unit_cost": 634.86,
+    "case_qty_text": null,
+    "raw": {
+     "Model Number": "444DISPLAY",
+     "Item Description": "4 Assurance Round seats, 4 Elongated seats, 4 Support Arm sets (gray), and 2 Bidet attachments, plus the floor base display and a display toilet.",
+     "Dealer Cost Per Unit": 634.86,
+     "Master Case Qty": null,
+     "Dealer Master Case Cost": null,
+     "MSRP": 1269.72,
+     "MAP": 1269.72,
+     "_received_date": "2026-10-10",
+     "_manufacturer_effective_date": "pending Bemis confirmation",
+     "_sheet": "Sheet1"
+    }
+   }
+  ]
+ },
+ "custom": [
+  {
+   "code": "444DISPLAY",
+   "name": "Assurance Bath Safety Display Program",
+   "category": "Bath Safety",
+   "base_price": 634.86,
+   "msrp": 1269.72,
+   "map": null,
+   "msrp_auto": false,
+   "image": "/assets/products/bemis/DO5300RD444.jpg",
+   "description": "Floor display program: 4 Assurance Round seats, 4 Elongated seats, 4 Support Arm sets (gray), and 2 Bidet attachments, plus the floor base display and a display toilet.",
+   "active": true,
+   "tiers": [
+    {
+     "price": 634.86,
+     "min_qty": 1
+    }
+   ],
+   "price_note": "MSRP $1,269.72"
+  }
+ ],
+ "overrides": {
+  "DO5300RD444": {
+   "active": false,
+   "merged_at": "2026-09-10T20:23:04.115Z",
+   "merged_by": "president",
+   "disposition": "archived",
+   "merged_into": "444DISPLAY",
+   "merged_carry": null
+  },
+  "7YR05310TSS": {
+   "map": 109.99,
+   "msrp": 109.99,
+   "tiers": [],
+   "base_price": 109.98,
+   "price_note": "",
+   "record_projection": {
+    "at": "2026-10-10T18:50:53.936Z",
+    "fields": [
+     "base_price",
+     "map",
+     "msrp",
+     "tiers"
+    ]
+   }
+  },
+  "7YE05310TSS": {
+   "map": 109.99,
+   "msrp": 109.99,
+   "tiers": [],
+   "base_price": 109.98,
+   "price_note": "",
+   "record_projection": {
+    "at": "2026-10-10T18:50:53.936Z",
+    "fields": [
+     "base_price",
+     "map",
+     "msrp",
+     "tiers"
+    ]
+   }
+  },
+  "7YA05313GRY": {
+   "map": 59.99,
+   "msrp": 59.99,
+   "tiers": [],
+   "base_price": 119.96,
+   "price_note": "",
+   "record_projection": {
+    "at": "2026-10-10T18:50:53.936Z",
+    "fields": [
+     "base_price",
+     "map",
+     "msrp",
+     "tiers"
+    ]
+   }
+  },
+  "7YA05313BLK": {
+   "map": 59.99,
+   "msrp": 59.99,
+   "tiers": [],
+   "base_price": 119.96,
+   "price_note": "",
+   "record_projection": {
+    "at": "2026-10-10T18:50:53.936Z",
+    "fields": [
+     "base_price",
+     "map",
+     "msrp",
+     "tiers"
+    ]
+   }
+  },
+  "7YA06303TWA": {
+   "map": 74.99,
+   "msrp": 74.99,
+   "tiers": [],
+   "base_price": 74.98,
+   "price_note": "",
+   "record_projection": {
+    "at": "2026-10-10T18:50:53.936Z",
+    "fields": [
+     "base_price",
+     "map",
+     "msrp",
+     "tiers"
+    ]
+   },
+   "image": "https://ycqmztthwldytkzyvmiv.supabase.co/storage/v1/object/public/product-images/bemis/7YA06303TWA.jpg?v=1786897952068"
+  },
+  "7YA04505T": {
+   "map": 79.99,
+   "msrp": 79.99,
+   "tiers": [],
+   "base_price": 119.97,
+   "price_note": "",
+   "record_projection": {
+    "at": "2026-10-10T18:50:53.936Z",
+    "fields": [
+     "base_price",
+     "map",
+     "msrp",
+     "tiers"
+    ]
+   }
+  },
+  "7YA0AS100": {
+   "map": 99.99,
+   "msrp": 99.99,
+   "tiers": [],
+   "base_price": 99.98,
+   "price_note": "",
+   "record_projection": {
+    "at": "2026-10-10T18:50:53.936Z",
+    "fields": [
+     "base_price",
+     "map",
+     "msrp",
+     "tiers"
+    ]
+   }
+  },
+  "7YE82350TC": {
+   "map": 109.99,
+   "msrp": 109.99,
+   "tiers": [],
+   "base_price": 54.99,
+   "price_note": "",
+   "record_projection": {
+    "at": "2026-10-10T18:50:53.936Z",
+    "fields": [
+     "base_price",
+     "map",
+     "msrp",
+     "tiers"
+    ]
+   }
+  },
+  "444DISPLAY": {
+   "map": 1269.72,
+   "msrp": 1269.72,
+   "tiers": [],
+   "base_price": 634.86,
+   "price_note": "",
+   "record_projection": {
+    "at": "2026-10-10T18:50:53.936Z",
+    "fields": [
+     "base_price",
+     "map",
+     "msrp",
+     "tiers"
+    ]
+   }
+  }
+ },
+ "freight": {
+  "summary": "Prepaid freight on orders of $500 or more; $40 shipping & handling on orders under $500.",
+  "actualNote": "",
+  "groups": [
+   {
+    "label": "All Bemis items",
+    "brandKeywords": [
+     "*"
+    ],
+    "freeAt": 500,
+    "flatUnder": 40,
+    "freeLabel": "Prepaid freight",
+    "flatLabel": "shipping & handling"
+   }
+  ],
+  "elseActual": false
+ }
+}

@@ -12,7 +12,7 @@ const eq=(a,b,w)=>{ if(JSON.stringify(a)!==JSON.stringify(b)) throw new Error((w
 const ok=(c,w)=>{ if(!c) throw new Error(w); };
 
 function world({files, tables, failOn}){
-  const W=M.createWorld({tables:Object.assign({manufacturer_meta:[], product_overrides:[], custom_products:[], product_skus:[], product_content:[]}, tables||{})});
+  const W=M.createWorld({tables:Object.assign({manufacturer_meta:[], product_overrides:[], custom_products:[], product_skus:[], product_content:[]}, tables||{}), serialIds:require('./mc-gates.js').SERIAL});
   const inner=W.fetch;
   const fixNorm=()=>{ (W.db.product_skus||[]).forEach(r=>{ r.code_norm=norm(r.code); }); };
   W.fetch=async(url,opts)=>{
@@ -142,7 +142,9 @@ await t('authority cannot be switched on without confirmed parity, and never rew
   const r2=await call(C,{action:'set_record_authority',manufacturer:LINE,authoritative:true,confirm_parity:true});
   eq(r2.status,409,'drift blocks'); eq(r2.body.error,'parity_drift','error');
   W.db.product_skus[0].base_price=100;
-  const r3=await call(C,{action:'set_record_authority',manufacturer:LINE,authoritative:true,confirm_parity:true});
+  const r3n=await call(C,{action:'set_record_authority',manufacturer:LINE,authoritative:true,confirm_parity:true});
+  eq([r3n.status,r3n.body.error,W.db.manufacturer_meta[0].record_authoritative],[409,'approval_required',false],'parity alone is not enough: activation needs gate 2');
+  const r3=await require('./mc-gates.js').approvedActivate(call,C,W,{action:'set_record_authority',manufacturer:LINE,authoritative:true,confirm_parity:true});
   eq(r3.status,200,'parity → on'); eq(W.db.manufacturer_meta[0].record_authoritative,true,'on');
   eq(JSON.stringify(W.db.product_skus.map(({code_norm,...x})=>x)),JSON.stringify(JSON.parse(before).map(({code_norm,...x})=>x)),'record untouched');
 });

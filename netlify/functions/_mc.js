@@ -16,7 +16,10 @@ const crypto = require("crypto");
 const COMMERCIAL_ACTIONS = new Set(["stage_record_source","set_record_provenance","set_record_authority","bulk_price",
   "save_product","delete_product","delete_products_bulk","discontinue_sku","retire_sku","restore_sku","rename_code",
   "merge_layers","merge_layers_bulk","merge_products","merge_products_bulk","unmerge_layers","unmerge_product",
-  "clear_override","set_group"]);
+  "clear_override","set_group",
+  /* Manufacturer Center Phase 6 line writes: they change a line's source register, its source facts,
+     its approvals or its freight terms, so a frozen line refuses them exactly like a price change. */
+  "mc_register_source","mc_accept_source","mc_import_source_rows","mc_approve_gate","mc_set_freight_terms"]);
 const OVERRIDE_COMMERCIAL_KEYS = ["base_price","msrp","map","msrp_auto","tiers","active","disposition","price_note","case_qty","effective_date","source_file"];
 function isCommercialAction(b){
   if(!b || !b.action) return false;
@@ -383,4 +386,126 @@ async function verifyLine(d){
   return { manufacturer: slug, result: failed.length ? "fail" : "pass", failed: failed.map(c => c.id), fingerprint: fp, checks, ms: Date.now() - t0 };
 }
 
-module.exports = { COMMERCIAL_ACTIONS, OVERRIDE_COMMERCIAL_KEYS, isCommercialAction, lineOf, STAGE_FIELDS, planStage, verifyLine, text, expectedFreightWords, sha };
+/* ── 4. GUIDED WORKFLOW (Manufacturer Center Phase 6, approved 2026-10-10) ───────────────────────
+   Pure helpers behind the guided screens. Source facts (price_imports, exactly as received) and HCPS
+   interpretations (mfr_decisions) are kept apart here and only combined into a PROPOSED staging row —
+   which still goes through stage_record_source's dry run and the first approval gate before anything is
+   written. Nothing in this section writes. */
+const canon = v => v && typeof v === "object" ? (Array.isArray(v) ? "[" + v.map(canon).join(",") + "]" : "{" + Object.keys(v).sort().map(k => JSON.stringify(k) + ":" + canon(v[k])).join(",") + "}") : JSON.stringify(v === undefined ? null : v);
+const planHash = obj => sha(canon(obj));
+/* "2/CS" → 2, "4" → 4, "Case of 6" → 6; empty, "Each", "1" or anything unreadable → null (a decision is needed). */
+function parseCaseQty(t){
+  if(t == null) return null; if(typeof t === "number") return t > 1 && Number.isFinite(t) ? t : null;
+  const m = String(t).match(/(\d+(?:\.\d+)?)/); if(!m) return null; const n = Number(m[1]);
+  return n > 1 && Number.isFinite(n) ? n : null;
+}
+const DECIDING_KINDS = ["interpretation", "conflict", "exception"];
+/* The HCPS interpretation that applies to one SKU: line-wide decisions first (optionally only for packs),
+   then the SKU's own decisions, oldest to newest, so the latest word wins. Only staging fields count. */
+function interpretationFor(code, decisions, normCode, isPack){
+  const out = {}, ids = [];
+  const mine = (decisions || []).filter(d => DECIDING_KINDS.indexOf(d.kind) >= 0 && d.hcps_value && typeof d.hcps_value === "object" && !Array.isArray(d.hcps_value))
+    .slice().sort((a, b) => String(a.decided_at || "").localeCompare(String(b.decided_at || "")) || (a.id || 0) - (b.id || 0));
+  for(const pass of ["line", "sku"]){
+    for(const d of mine){
+      const lineWide = d.code == null || d.code === "";
+      if(pass === "line" ? !lineWide : (lineWide || normCode(d.code) !== normCode(code))) continue;
+      if(lineWide && d.hcps_value.applies_to === "packs" && !isPack) continue;
+      let used = false;
+      for(const [k, v] of Object.entries(d.hcps_value)) if(STAGE_FIELDS.indexOf(k) >= 0){ out[k] = v; used = true; }
+      if(used) ids.push(d.id);
+    }
+  }
+  return { values: out, decision_ids: ids };
+}
+const COMPARE = ["base_price", "msrp", "map", "uom", "case_qty", "dealer_unit_cost", "msrp_basis", "map_basis", "status"];
+function matchLine({ sourceRows, records, storefrontCodes, decisions, normCode }){
+  const S = {}, Rm = {}; (sourceRows || []).forEach(r => { S[normCode(r.code)] = r; }); (records || []).forEach(r => { Rm[r.code_norm || normCode(r.code)] = r; });
+  const shop = new Set((storefrontCodes || []).map(c => normCode(c)));
+  const keys = [...new Set([...Object.keys(S), ...Object.keys(Rm)])].sort();
+  const norm1 = (f, v) => (v == null || v === "") ? null : (["base_price", "msrp", "map", "dealer_unit_cost"].indexOf(f) >= 0 ? m2(v) : f === "case_qty" ? (Number(v) > 1 ? Number(v) : 1) : String(v));
+  const rows = [], stage_rows = [], blocked = [];
+  for(const k of keys){
+    const s = S[k], r = Rm[k], code = (s && s.code) || (r && r.code);
+    const caseQty = s ? (s.parsed_case_qty != null ? Number(s.parsed_case_qty) : parseCaseQty(s.raw && (s.raw["Master Case Qty"] != null ? s.raw["Master Case Qty"] : s.raw.case_qty))) : null;
+    const interp = interpretationFor(code, decisions, normCode, (caseQty || (r && Number(r.case_qty)) || 1) > 1);
+    const facts = s ? { base_price: m2(s.base_price), msrp: m2(s.msrp), map: m2(s.map), case_qty: caseQty, dealer_unit_cost: s.parsed_unit_cost != null ? m2(s.parsed_unit_cost) : null,
+      tiers: Array.isArray(s.tiers) && s.tiers.length ? s.tiers : null, description: s.description || null, raw: s.raw || null } : null;
+    const needs = [];
+    let proposed = null;
+    if(s){
+      proposed = { code };
+      for(const f of ["base_price", "msrp", "map", "tiers", "case_qty", "dealer_unit_cost"]) if(facts[f] != null) proposed[f] = facts[f];
+      Object.assign(proposed, interp.values);
+      if(proposed.case_qty == null && proposed.uom == null) needs.push({ field: "uom", why: "The source gives no case or pack quantity: record what one order unit is (e.g. uom Each, case_qty 1)." });
+      else if(Number(proposed.case_qty) > 1 && !proposed.uom) needs.push({ field: "uom", why: "The source gives a pack of " + proposed.case_qty + " but does not name the order unit (e.g. Case)." });
+      if(!(Number(proposed.base_price) > 0)) needs.push({ field: "base_price", why: "No dealer price in the source." });
+    } else if(r && (r.status || "active") === "active"){
+      const said = interpretationFor(code, decisions, normCode, false).values;
+      if(said.status == null) needs.push({ field: "status", why: "On the master record but not in this source: decide whether it stays active or is retired." });
+    }
+    const diffs = (s && r) ? COMPARE.filter(f => f in proposed && norm1(f, proposed[f]) !== norm1(f, r[f])).map(f => ({ field: f, record: r[f] == null ? null : r[f], proposed: proposed[f] })) : [];
+    const status = s && !r ? "new" : (!s && r ? ((r.status || "active") === "active" ? "not_in_source" : "retired") : (diffs.length ? "changes" : "same"));
+    const row = { code, status, on_storefront: shop.has(k), source: facts, hcps: interp.values, decision_ids: interp.decision_ids,
+      record: r ? Object.fromEntries(COMPARE.concat(["tiers", "source_id", "source_file"]).map(f => [f, r[f] == null ? null : r[f]])) : null,
+      diffs, needs_decision: needs };
+    rows.push(row);
+    if(s && !needs.length) stage_rows.push(proposed); else if(needs.length) blocked.push({ code, needs });
+  }
+  const count = st => rows.filter(x => x.status === st).length;
+  return { rows, stage_rows, blocked,
+    summary: { source_rows: (sourceRows || []).length, records: (records || []).length, new: count("new"), same: count("same"), changes: count("changes"),
+      not_in_source: count("not_in_source"), retired: count("retired"), needs_decision: rows.filter(x => x.needs_decision.length).length, ready_to_stage: stage_rows.length } };
+}
+/* GATE 1 / GATE 2. An approval is an mfr_decisions row of kind "acceptance", field "gate:stage" or
+   "gate:activate", recorded only through mc_approve_gate, single-use (used_at), for the same line, and
+   bound to exactly what the president looked at: the dry-run plan's hash (gate 1) or a passing pre-activation
+   verification run that is newer than every record change (gate 2). */
+function gateProblem(d, { manufacturer, gate, want }){
+  if(!d) return "no such approval";
+  if(d.kind !== "acceptance" || d.field !== "gate:" + gate) return "decision " + d.id + " is not a gate:" + gate + " approval";
+  if(d.manufacturer !== manufacturer) return "approval " + d.id + " belongs to " + d.manufacturer;
+  if(d.used_at) return "approval " + d.id + " was already used " + String(d.used_at).slice(0, 16);
+  const hv = d.hcps_value || {};
+  for(const [k, v] of Object.entries(want || {})) if(canon(hv[k]) !== canon(v)) return "approval " + d.id + " was given for a different " + k.replace(/_/g, " ") + " — run the dry run again and approve what it shows";
+  return null;
+}
+function activationRunProblem(run, { manufacturer, lastRecordChange }){
+  if(!run) return "no such verification run";
+  if(run.manufacturer !== manufacturer) return "run " + run.id + " belongs to " + run.manufacturer;
+  if(run.phase !== "pre") return "run " + run.id + " is a " + run.phase + " run; activation needs a pre-activation run";
+  if(run.result !== "pass") return "run " + run.id + " did not pass";
+  if(lastRecordChange && String(lastRecordChange) > String(run.run_at)) return "the master record changed after run " + run.id + " (" + String(lastRecordChange).slice(0, 16) + ") — verify again";
+  return null;
+}
+/* Freight at every threshold for a given rule — the preview the Commercial & freight screen shows before
+   and after a freight-terms change (same carts and words as mc_verify's freight check). */
+function freightPreview(engine, R, slug, freight){
+  const rows = [], groups = (freight && Array.isArray(freight.groups)) ? freight.groups : [];
+  for(const g of groups){
+    const T = g.freeAt != null && Number(g.freeAt) > 0 ? Number(g.freeAt) : (g.flatBelow != null && Number(g.flatBelow) > 0 ? Number(g.flatBelow) : null);
+    const cat = Array.isArray(g.categories) && g.categories.length ? g.categories[0] : "";
+    const brand = Array.isArray(g.brandKeywords) && g.brandKeywords.length && g.brandKeywords[0] !== "*" ? g.brandKeywords[0] : "x";
+    for(const v of (T ? [T - 0.01, T, T + 0.01] : [100])){
+      const f = engine.computeFreight(slug, [{ p: { base_price: Math.round(v * 100) / 100, brand, category: cat }, qty: 1 }]);
+      rows.push({ group: g.label, amount: Math.round(v * 100) / 100, fee: f.fee, words: text(R.freightRowsHtml(f)) });
+    }
+  }
+  if(!groups.length && freight && freight.elseActual) rows.push({ group: freight.otherLabel || "All items", amount: null, fee: 0, words: "actual freight" + (freight.actualNote ? " — " + freight.actualNote : "") });
+  return rows;
+}
+/* Two verification runs, check by check, compared on their VALUES (keys sorted: runs are stored as jsonb,
+   which reorders keys) — never on raw JSON text. */
+function compareRuns(a, b){
+  const by = r => Object.fromEntries((r.checks || []).map(c => [c.id, c]));
+  const A = by(a), B = by(b), ids = [...new Set([...Object.keys(A), ...Object.keys(B)])];
+  const linesOf = r => (((r.checks || []).find(c => c.id === "fingerprint") || {}).detail || {}).lines || [];
+  const la = linesOf(a), lb = linesOf(b);
+  return { a: a.id, b: b.id, fingerprint_same: a.fingerprint === b.fingerprint,
+    checks: ids.map(id => ({ id, label: (B[id] || A[id]).label, in_a: !!A[id], in_b: !!B[id], pass_a: A[id] ? A[id].pass : null, pass_b: B[id] ? B[id].pass : null,
+      same_detail: !!(A[id] && B[id]) && canon(A[id].detail) === canon(B[id].detail) })),
+    lines_only_in_a: la.filter(l => lb.indexOf(l) < 0).slice(0, 50), lines_only_in_b: lb.filter(l => la.indexOf(l) < 0).slice(0, 50) };
+}
+
+module.exports = { COMMERCIAL_ACTIONS, OVERRIDE_COMMERCIAL_KEYS, isCommercialAction, lineOf, STAGE_FIELDS, planStage, verifyLine, text, expectedFreightWords, sha,
+  canon, planHash, parseCaseQty, interpretationFor, matchLine, gateProblem, activationRunProblem, freightPreview, compareRuns };

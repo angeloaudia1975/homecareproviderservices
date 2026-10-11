@@ -13,7 +13,7 @@ function world(extra,failWrite){
   const W=M.createWorld({tables:Object.assign({manufacturer_meta:[{slug:LINE}],product_content:[],product_skus:[],
     product_overrides:[{manufacturer:LINE,code:'1007AB',patch:{base_price:556,msrp:949,tiers:[{min_qty:1,price:556},{min_qty:2,price:536},{min_qty:8,price:526}]}}],
     custom_products:[{manufacturer:LINE,code:'A1000',base_price:124.98,msrp:249.95,map:249.95,active:true},{manufacturer:LINE,code:'RC100',base_price:5,msrp:10,map:10,active:true}]},extra||{}),
-    failWrite:(m,tb)=>tb===failWrite?500:0});
+    failWrite:(m,tb)=>tb===failWrite?500:0, serialIds:require('./mc-gates.js').SERIAL});
   const inner=W.fetch; W.fetch=async(u,o)=>{ u=String(u); if(u.startsWith(OB+'/data/')){ const s=decodeURIComponent(u.slice((OB+'/data/').length).replace(/\.json.*$/,''));
     return s in files?{ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(files[s])),text:async()=>JSON.stringify(files[s])}:{ok:false,status:404,json:async()=>null,text:async()=>''}; }
     (W.db.product_skus||[]).forEach(r=>{ r.code_norm=norm(r.code); }); const r=await inner(u,o); (W.db.product_skus||[]).forEach(r=>{ r.code_norm=norm(r.code); }); return r; };
@@ -24,7 +24,9 @@ const ROWS=[
   {code:'1007AB',base_price:546,tiers:[{min_qty:2,price:526},{min_qty:8,price:516}],map:949,msrp:null,msrp_auto:false,uom:'Each'},
   {code:'A1000',base_price:162.47,tiers:[{min_qty:2,price:124.98}],map:249.95,msrp:null,msrp_auto:false},
   {code:'RC100',status:'not_listed',status_note:'Not on Rev C'}];
-const stage=(C,extra)=>call(C,Object.assign({action:'stage_record_source',manufacturer:LINE,source_file:FILE,effective_date:'2026-08-27',rows:ROWS},extra||{}));
+/* Writes go through the approval gate (Manufacturer Center Phase 6): dry run → approve → write. */
+const stage=(C,extra)=>{ const b=Object.assign({action:'stage_record_source',manufacturer:LINE,source_file:FILE,effective_date:'2026-08-27',rows:ROWS},extra||{});
+  return b.dry_run===true?call(C,b):require('./mc-gates.js').approvedStage(call,C,b); };
 (async()=>{
 await t('dry run: nothing written; the preview lists every dealer-facing change',async()=>{
   const W=world(); const C=mod(W); const n=W.writes.length;
@@ -37,7 +39,8 @@ await t('apply: records only — no override, no added row touched',async()=>{
   const W=world(); const C=mod(W); const ov=JSON.stringify(W.db.product_overrides), cu=JSON.stringify(W.db.custom_products);
   const r=await stage(C); eq([r.status,r.body.staged],[200,['1007AB','A1000','RC100']]);
   eq([JSON.stringify(W.db.product_overrides),JSON.stringify(W.db.custom_products)],[ov,cu],'layers untouched');
-  eq(W.writes.filter(w=>w.table!=='product_skus').length,0,'only the record');
+  eq(W.writes.filter(w=>w.table!=='product_skus'&&w.table!=='mfr_decisions').length,0,'only the record');
+  eq(W.writes.filter(w=>w.table==='mfr_decisions').map(w=>w.kind),['insert','patch'],'the gate-1 approval and its single-use stamp');
   const rec=c=>W.db.product_skus.find(x=>x.code===c);
   eq([rec('1007AB').base_price,rec('1007AB').map,rec('1007AB').msrp,rec('1007AB').msrp_auto,rec('1007AB').source_file,rec('1007AB').effective_date],[546,949,null,false,FILE,'2026-08-27']);
   eq([rec('RC100').status,rec('A1000').tiers.map(x=>x.min_qty+':'+x.price)],['not_listed',['2:124.98']]);

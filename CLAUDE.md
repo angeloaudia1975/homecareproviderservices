@@ -1235,6 +1235,31 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   for value; fingerprints equal `gs_fp_pre_mc_p5`; Corsicana and PediFix verify as file. Invalid/missing record terms
   stay test- and mutant-backed — never change production freight data just to exercise them. Phase 6 waits for
   Angelo's approval of the Phase 5 post-release report.
+  Phase 5 ACCEPTED (Angelo, 2026-10-10); runs #11–14 and the pre/post Phase 5 fingerprints are kept. Production fallback
+  approved: valid `manufacturer_meta.freight_terms` → manufacturers.json → no rule. A bad or unreadable record may fall
+  back so dealers are not disrupted, but Manufacturer Center must keep flagging it as a verification failure.
+- **Manufacturer Center Phase 6 — the guided workflow (approved by Angelo 2026-10-10; its own release).** Screens in
+  manufacturer-center.html, per line: 1 Sources → 2 Match & decide → 3 Structure & content (status + links only) →
+  4 Commercial & freight → 5 Stage → 6 Verify & activate, plus History (compare two runs) and Decisions. Rules:
+  (a) Every write answers `dry_run:true` with exactly what it would write, and the screen shows that before the
+  write button exists. (b) **Approval 1** = `mc_approve_gate {gate:'stage', plan_hash, plan_kind:'records'|'freight'}`:
+  stage_record_source and mc_set_freight_terms write only with an unused approval whose hash equals the dry-run plan
+  the server recomputes (a changed plan needs a new approval). (c) **Approval 2** = `mc_approve_gate {gate:'activate',
+  run_id}`: a PASSING `pre` verification run of the same line, newer than every product_skus change; set_record_authority
+  (on) needs it, re-checks the run, and spends it. Approvals are mfr_decisions (kind acceptance, field gate:*),
+  single-use, recorded only by mc_approve_gate (mc_record_decision refuses gate:* fields). (d) Source facts
+  (price_imports, raw kept) and HCPS interpretations (mfr_decisions hcps_value using staging fields; line-wide or
+  `applies_to:'packs'`) are kept apart; mc_match only PROPOSES their combination. A source is imported once; a
+  corrected file is a new source; a source needs its received date; files go to private `mfr-sources` (sha256,
+  never overwritten). (e) The new line writes (mc_register_source, mc_accept_source, mc_import_source_rows,
+  mc_approve_gate, mc_set_freight_terms) are in COMMERCIAL_ACTIONS, so a frozen line refuses them (even dry runs) and
+  opens read-only; its only control is Decisions → regression_fix. (f) `supabase/mc_phase6_append_only.sql`: runs and
+  decisions are never updated, deleted or truncated — the one allowed change is stamping used_at/used_by once.
+  (g) Product data is still written only by stage_record_source / set_record_authority; structure, content, images
+  and categories stay in their own tools. (h) Tests that write records go through `test/mc-gates.js`. The dry
+  walkthrough (test/mcflow.test.js, screens: test/mcui.walkthrough.js) rebuilds a COPY of Bemis as a new line and must
+  end at the real Bemis fingerprint 3620a321933995db. Open follow-up: re-check anonymous listing of `mfr-sources` once
+  a real source file is stored. Do not onboard the next manufacturer until Angelo approves.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
