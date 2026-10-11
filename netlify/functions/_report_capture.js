@@ -173,7 +173,7 @@ async function runCapture(o, deps) {
   const now = deps.now || Date.now;
   const started = now();
   const budget = Math.min(Math.max(+o.budget_ms || 22000, 3000), 25000);
-  const deadline = started + budget, soft = deadline - 4000;
+  const deadline = started + budget, soft = deadline - Math.min(4000, Math.floor(budget / 3));
   const mailbox = String(o.mailbox || "").toLowerCase();
   const token = o.token || crypto.randomBytes(16).toString("hex");
   const counts = { listed: 0, candidates: 0, recorded: 0, registered: 0, linked: 0, classified: 0, exceptions: 0, retried: 0, skipped_settled: 0 };
@@ -189,7 +189,7 @@ async function runCapture(o, deps) {
   const ctx = { internalDomains: o.internal_domains || [], tableNames: t => { for (const [re, s] of nameRes) if (re.test(t || "")) return s; return null; } };
   const bodyProfileFor = slug => profiles.some(p => p.manufacturer === slug && p.rules && p.rules.body_only);
   const RPC = (fn, p) => deps.db.rpc(fn, Object.assign({ mailbox, token, run_id: runId }, p));
-  let error = null, complete = false, checkpoint = null, stopped = false, watermark = null;
+  let error = null, complete = false, checkpoint = null, stopped = false, watermark = null, watermarkMoved = false;
   const KNOWN = new Map();
 
   // One item, start to finish. Throws only for "stop the run" (time budget / throttling).
@@ -250,6 +250,9 @@ async function runCapture(o, deps) {
     const ext = att.format === "eml" ? "eml" : att.format;
     const prof = d.profile;
     const storagePath = `reports/${prof.manufacturer}/${prof.kind}/${att.sha256}.${ext}`;
+    // Already registered (e.g. record 7): the register links it — the original is not stored a second time.
+    const have = await deps.db.get(`mfr_sources?manufacturer=eq.${encodeURIComponent(prof.manufacturer)}&file_sha256=eq.${att.sha256}&select=id,kind`);
+    if (!(have && have[0] && have[0].kind === prof.kind))
     try { await deps.storage.upload(storagePath, buf, MIME[ext] || "application/octet-stream"); }
     catch (e) { counts.exceptions++; return RPC("hcps_mfr_capture_fail", { item_id: item.id, attention: "storage_failed", detail: String(e.message || e).slice(0, 300) }); }
     const periodLabel = d.period.start.slice(0, 7) === d.period.end.slice(0, 7) ? d.period.start.slice(0, 7) : `${d.period.start.slice(0, 7)} to ${d.period.end.slice(0, 7)}`;
@@ -319,10 +322,9 @@ async function runCapture(o, deps) {
         counts.exceptions++;
         await RPC("hcps_mfr_capture_fail", { item_id: it.id, attention: "attachment_failed", detail: "the attachment is no longer on the email" }); continue;
       }
-      const t0 = now();
       try { await processItem(it, msg, who); }
       catch (e) {
-        if (e.code === "budget" && deadline - t0 > budget * 0.6) {
+        if (e.code === "budget" && !watermarkMoved) {     // the run's FIRST email did not fit: queue the item, move on next run
           counts.exceptions++;
           await RPC("hcps_mfr_capture_fail", { item_id: it.id, attention: "attachment_failed", detail: "could not be processed within one run (" + String(e.message || "time") + ")" });
         }
@@ -396,10 +398,10 @@ async function runCapture(o, deps) {
       const j = await g.get(path);
       for (const m of j.value || []) {
         counts.listed++;
-        if (now() > soft) { stopped = true; break outer; }
-        if (m.isDraft) { watermark = m.receivedDateTime; continue; }
+        if (watermarkMoved && now() > soft) { stopped = true; break outer; }   // every run handles at least one email
+        if (m.isDraft) { watermark = m.receivedDateTime; watermarkMoved = true; continue; }
         await handleMessage(m);
-        watermark = m.receivedDateTime;
+        watermark = m.receivedDateTime; watermarkMoved = true;
       }
       path = j["@odata.nextLink"] || null;
     }
