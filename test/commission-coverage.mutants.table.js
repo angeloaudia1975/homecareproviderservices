@@ -1,6 +1,10 @@
 /* Commission coverage / statement gate / alias-target mutants — each must make test/commission-coverage.test.js fail. */
 const F = '_commission_coverage.js', C = 'commissions-api.js', S = 'sales-import-api.js';
 module.exports = {
+  'provisional: counted as a verified receipt (the old display)': { file: F, from: '    else if(t.stmt > 0 && prov){ status = "provisional"; }', to: '    else if(t.stmt > 0 && prov){ status = "received"; add(received, t.slug, t.p); }' },
+  'provisional: dropped from the provisional list':            { file: F, from: '    if(prov) add(provisional, t.slug, t.p);', to: '' },
+  'summary: not counted':                                      { file: F, from: '    summary[status]++;', to: '' },
+  'api: summary not returned':                                 { file: C, from: 'detail,summary,coverage_error,statement_sales_reports,statement_evidence});', to: 'detail,coverage_error,statement_sales_reports,statement_evidence});' },
   'coverage: any commission-lane row counts (the old bug)':   { file: F, from: '  if(isCommissionLane(r)) return isNum(r.commission);', to: '  if(isCommissionLane(r)) return true;' },
   'coverage: blank commission treated as 0':                  { file: F, from: '  if(v === null || v === undefined) return false;', to: '  if(v === null || v === undefined) return true;' },
   'coverage: empty string is a number':                       { file: F, from: '  if(s === "" || s === "-" || s === ".") return false;', to: '  if(s === "-" || s === ".") return false;' },
@@ -33,7 +37,7 @@ module.exports = {
   'api: analyze not gated':                                   { file: C, from: '      if(!gateA.ok) return refuse(gateA);', to: '' },
   'api: import not gated':                                    { file: C, from: '      if(!gateI.ok) return refuse(gateI);', to: '' },
   'api: browser mapping ignored':                             { file: C, from: '  return CC.validateStatement(allOut, { ledger, mapped_fields:mapped });', to: '  return CC.validateStatement(allOut, { ledger:true });' },
-  'api: config back to "any row / non-zero commission"':      { file: C, from: '        ({received,partial,estimated,incomplete,provisional,detail}=CC.coverage(rows,{statement_sales_reports}));', to: '        for(const r of rows){ const p=String(r.period||"").slice(0,7); if(r.source==="commission"||(r.commission!=null&&Number(r.commission)!==0)) (received[r.manufacturer]||(received[r.manufacturer]=[])).includes(p)||(received[r.manufacturer]=received[r.manufacturer]||[]).push(p); }' },
+  'api: config back to "any row / non-zero commission"':      { file: C, from: '        ({received,partial,estimated,incomplete,provisional,detail,summary}=CC.coverage(rows,{statement_sales_reports}));', to: '        for(const r of rows){ const p=String(r.period||"").slice(0,7); if(r.source==="commission"||(r.commission!=null&&Number(r.commission)!==0)) (received[r.manufacturer]||(received[r.manufacturer]=[])).includes(p)||(received[r.manufacturer]=received[r.manufacturer]||[]).push(p); }' },
   'api: unreadable coverage swallowed silently':              { file: C, from: '      }catch(e){ coverage_error="Reports on file could not be read just now', to: '      }catch(e){ if(0) coverage_error="Reports on file could not be read just now' },
   'api: learn_match stores the chosen branch':                { file: C, from: '        await sbSend("POST","dealer_aliases?on_conflict=alias_norm",{alias_norm,raw_name:name,dealer_id:tgt.dealer_id},{Prefer:"resolution=merge-duplicates,return=minimal"});\n        saved=', to: '        await sbSend("POST","dealer_aliases?on_conflict=alias_norm",{alias_norm,raw_name:name,dealer_id:did},{Prefer:"resolution=merge-duplicates,return=minimal"});\n        saved=' },
   'api: learn_match overwrites silently':                     { file: C, from: '        if(cur&&cur.dealer_id&&cur.dealer_id!==tgt.dealer_id&&b.replace!==true){', to: '        if(false){' },

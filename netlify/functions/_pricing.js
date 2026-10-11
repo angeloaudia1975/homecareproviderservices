@@ -82,7 +82,7 @@ async function contractPrices(sb, dealerId) {
 async function lineProducts({ slug, sb, catalogFile, contentFile, contract, cart, freightCfg }) {
   const [file, metaRows] = await Promise.all([
     catalogFile(slug),
-    sb("GET", `manufacturer_meta?slug=eq.${enc(slug)}&select=slug,enriched_only,category_map,record_authoritative,record_resync_error`),
+    sb("GET", `manufacturer_meta?slug=eq.${enc(slug)}&select=slug,enriched_only,category_map,record_authoritative,record_resync_error,freight_terms`),
   ]);
   const meta = (metaRows && metaRows[0]) || {};
   const failures = [];
@@ -126,12 +126,17 @@ async function lineProducts({ slug, sb, catalogFile, contentFile, contract, cart
   const mfrEntry = Object.assign({ slug }, (freightCfg && freightCfg[slug]) || {});
   const mfrInfo = s => (s === slug ? mfrEntry : { slug: s });
   const engine = new Function("fetch", "window", "console", "document", "CONFIG", "state", "AUTH", "PREVIEW", "CART", "mfrInfo",
-    ENGINE.SOURCE + "\n;return { mergeCatalogEdits, unitPrice, computeFreight, CATALOG_SOURCE };")(shimFetch, {}, quiet, {}, CONFIG, state, AUTH, null, cart, mfrInfo);
+    ENGINE.SOURCE + "\n;return { mergeCatalogEdits, unitPrice, computeFreight, freightTermsFor, CATALOG_SOURCE };")(shimFetch, {}, quiet, {}, CONFIG, state, AUTH, null, cart, mfrInfo);
+  /* FREIGHT TERMS AS DATA (Phase 5): the record's terms when present and valid, else the file's entry —
+     the storefront's own freightTermsFor, verbatim, so the server and the cart can never pick differently. */
+  let freightSource = "none", freightInvalid = false;
+  if (freightCfg) { const ft = engine.freightTermsFor(mfrEntry.freight, meta.freight_terms);
+    mfrEntry.freight = ft.freight; freightSource = ft.source; freightInvalid = ft.invalid; }
   const products = await engine.mergeCatalogEdits(slug, JSON.parse(JSON.stringify(file || [])));
   /* The shop forgives a failed read and carries on with what it has; an order may not. */
   if (failures.length) throw new Error("layer_unreadable: " + failures[0].slice(0, 300));
   const src = engine.CATALOG_SOURCE[slug] || {};
-  return { products, engine, source: src.source || "layers" };
+  return { products, engine, source: src.source || "layers", freight: mfrEntry.freight || null, freightSource, freightInvalid };
 }
 
 /* Price every line of every order. orders: [{manufacturer_slug, items:[{code, qty, unit?}]}].

@@ -238,7 +238,9 @@ async function verifyLine(d){
     example: packs.length ? `1 × ${R.packOf(packs[0]).label} = ${R.packOf(packs[0]).n} each · Unit ${R.money(L.engine.unitPrice(packs[0], 1))} per ${R.packOf(packs[0]).label}` : null }));
 
   // G. Server pricing = storefront engine, on every SKU and on the closest real carts either side of each freight threshold.
-  const groups = ((freightCfg[slug] || {}).freight || {}).groups || [];
+  /* The EFFECTIVE freight rule (Phase 5): the record's freight_terms when valid, else the file's entry —
+     exactly what lineProducts handed the engine, so every freight check tests what dealers get. */
+  const groups = (L.freight || {}).groups || [];
   const thresholds = [...new Set(groups.flatMap(g => [g.freeAt, g.flatBelow].filter(v => v != null && Number(v) > 0).map(Number)))];
   const carts = [products.map(p => [p, 1])];
   for(const T of thresholds){
@@ -284,6 +286,21 @@ async function verifyLine(d){
     }
   }
   add(check("freight_boundaries", "Freight fee and wording at each threshold (−1¢ / exact / +1¢)", !fIssues.length, fIssues.length ? fIssues : (fRows.length ? fRows : "no freight groups (freight confirmed per order)")));
+  /* Freight terms as data (Phase 5). A line whose record carries freight_terms must have VALID terms in
+     use; terms that fail validation are ignored (the file's rule stands), which is safe for dealers but
+     is a fault to fix, so it fails the run. Where both exist, a difference between record and file is
+     reported (the record wins). */
+  const fileFreight = (freightCfg[slug] || {}).freight || null;
+  const termsNoTrace = meta.freight_terms ? (() => { const t = JSON.parse(JSON.stringify(meta.freight_terms)); delete t.trace; return t; })() : null;
+  const canon = v => v && typeof v === "object" ? (Array.isArray(v) ? "[" + v.map(canon).join(",") + "]" : "{" + Object.keys(v).sort().map(k => JSON.stringify(k) + ":" + canon(v[k])).join(",") + "}") : JSON.stringify(v);
+  if(meta.freight_terms != null){
+    add(check("freight_source", "Freight comes from the record's freight_terms (valid, in use)", L.freightSource === "record" && !L.freightInvalid,
+      { source: L.freightSource, invalid: !!L.freightInvalid, trace: meta.freight_terms.trace || null }));
+    add(check("freight_record_vs_file", "Record freight terms vs manufacturers.json (the record is used)", true,
+      { same: fileFreight ? canon(termsNoTrace) === canon(fileFreight) : null, file_has_rule: !!fileFreight }, "advisory"));
+  } else {
+    add(check("freight_source", "Freight from manufacturers.json (no record terms)", true, { source: L.freightSource }, "advisory"));
+  }
 
   // I. Both emails, rendered — nothing sent, nothing stored.
   const sample = [...packs.slice(0, 2), ...products.filter(p => !R.packOf(p)).slice(0, 2)];

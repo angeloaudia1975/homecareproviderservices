@@ -382,7 +382,7 @@ Whichever importer loads them, they must count as commission reports.
   unchanged, live = Part 0 snapshot (EXCEPT ALL 0/0), 0 batches / 0 superseded, quarantine RLS on / 0 policies / anon +
   authenticated no privileges / service_role yes. A second run was correctly refused ("expected exactly 7 matching
   rows, found 0 — nothing written"). Outside public-key check (`scripts/quarantine_public_probe_browser.js`, run by Angelo
-  2026-10-11 02:52 UTC, key accepted on a public table first): read 401/42501 BLOCKED, write 401/42501 BLOCKED. Still NOT done: the alias fix (alias still on Princeton), the code merge/deploy.
+  2026-10-11 02:52 UTC, key accepted on a public table first): read 401/42501 BLOCKED, write 401/42501 BLOCKED. (Alias fix and code deploy since DONE — see "Controlled steps" below.)
   **Angelo's decisions 2026-10-10 (after independent verification of the cleanup — do NOT run it again):** approach
   approved with one change — a month holding valid statement lines AND lines without a commission figure is
   **"Received — incomplete, requires review"** (partial, with the count), never plain green; kept apart per month:
@@ -406,6 +406,30 @@ Whichever importer loads them, they must count as commission reports.
   invoices, 2026-06 / 2026-07 = open invoices only); Strongback 2026-09 not on file. Production unchanged: 11,997 rows,
   $10,802,558.50 / $493,077.06, D7 / B1 / keys / attribution fingerprints = the original Part 0/Part 2 values, 0 batches,
   both switches OFF, alias still on Princeton (459 aliases).
+  **Controlled steps 2026-10-10 ~22:25–22:40 CT (authorized by Angelo 22:20):**
+  (1) **Williams Brothers alias fix RUN** (`williams_brothers_alias_fix.sql`, sha256 9c2773f6…, pasted verbatim): only
+  "WILLIAMS BROTHERS HEALTHCARE PHARMACY" moved Princeton 3396b841… → HQ 86baecc2… (root; Princeton's parent). Unchanged:
+  459 aliases, every other alias (fingerprint), the two older generic aliases (WILLIAMS BROS HEALTHCARE → Columbus,
+  WILLIAMS BROTHERS HEALTHCARE → Henderson — still pending their own review), dealers, monthly_sales, dealer_manufacturers,
+  the quarantine (September WB row still on Princeton, fingerprint c7b81f69…). Rollback file: sha256 9044287a…, not run.
+  (2) **`mi_import_v2` ON for operator-reviewed Strongback sales imports** (`mi_commission_v2` stays OFF). Smoke test =
+  preview only on the live page, original workbook (sha b7a17e64…): v2 path, 143 rows, 142 matched, $43,021.50 / $3,871.94,
+  57 unchanged / 0 new / 0 changed / 0 retire, 0 collisions / cross-lane / differences, 25 account numbers confirmed,
+  applied false. Production after: 11,997 rows, $10,802,558.50 / $493,077.06, D7 / B1 / keys / attribution fingerprints
+  unchanged, 0 batches. Imports are run by an operator after reviewing the preview; nothing imports or retires on its own.
+  The Strongback September order CSV is NOT imported until its own preview + reconciliation is approved.
+  (3) **Provisional months are reported apart (main 027f961, Published):** a month resting only on the RULE 14
+  sales-report exception has status `provisional`, is NOT in `received` and is never counted as a verified receipt;
+  `config.summary` counts months per status and the grid shows it. Live: **58 verified received · 16 provisional
+  (PediFix) · 5 received — incomplete · 23 estimated (ABM 11, Strongback 12) · 4 not entered**. Open invoices keep their
+  own status. Tests 42 + mutants 43/43; commission-sept2026.pg 11.
+  (4) **Historical exceptions — RECORDED for later source-document review; NOT changed (no record altered, no $0 entered):**
+  Ohio Medical 2026-04: 16 blank PAYMENT rows (invoice no, order date, customer, dealer present; no amount/commission) +
+  19 open invoices; Ohio Medical 2026-06 / 2026-07: open invoices only (13 / 12). Bemis 2026-06: 4 blank part lines
+  (7YE85320H20 ARM, 9YA040002, 9YA040001, 1BALLMISC ×50) beside 13 valid lines. Access4u 2025-10 (4), 2026-05 / 06 / 07
+  (1 each): $0.00 payment lines without a commission figure (3 of the 7 are voided) — never auto-entered as $0; a future
+  file with such lines is refused by the import gate (decision on how to enter voids pending). Climbing Steps 2026-05: one
+  cash sale $1,466.50 with no commission figure. Each needs the manufacturer's source document before anything changes.
 - The **Commission Report Import coverage grid** shows **every year that has data** (not just the current
   year), so loaded history stays visible; green = received, amber = still needed (current year), grey =
   gap in a past year.
@@ -1189,6 +1213,28 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   against baselines #1/#5/#3/#6; all 347 products identical, the 28 basis rows (Bemis 7 each/each, Ovation 20 MSRP
   order_unit, Strongback A1005 MAP each) keep their wording, fingerprints equal `gs_fp_pre_mc_p4`. Saved run detail is
   stored as jsonb, so compare runs with sorted keys, never raw JSON text.
+  Phase 4 accepted by Angelo (2026-10-10). Accepted limitation: no live pack has both MSRP and MAP basis blank, so
+  that fallback stays test-backed — never create production data just to exercise it. Product detail pages,
+  featured tiles and quotes stay outside Phase 4 and unchanged.
+- **Manufacturer Center Phase 5 — freight terms as data (approved by Angelo 2026-10-10; its own release).** A line's
+  freight rule = `manufacturer_meta.freight_terms` when present AND valid (`validFreightTerms`; its `trace` is dropped)
+  → otherwise its manufacturers.json `freight` entry, exactly as before → otherwise no rule. The record replaces the
+  file entry WHOLE (never a field merge), so a partial record cannot combine with the file into a rule nobody wrote,
+  and a missing / null / empty / malformed / unreadable record can never wipe a rule — the file stands (the
+  storefront warns in the console; mc_verify fails `freight_source` when a line's record terms are invalid).
+  One function decides, `freightTermsFor` in index.html: the storefront runs it in loadManufacturers (manufacturer_meta
+  is read with the public key, freight_terms included), and the server runs the same text from `_shop_engine.js` in
+  `_pricing.lineProducts`, so cart, stored order, dealer confirmation and HCPS email can never pick differently.
+  manufacturers.json stays the compatibility / fallback layer: keep it in step until a later, separately approved
+  phase retires it. Corsicana and PediFix have no record terms and stay on the file. Frozen-line terms are guarded by
+  the freeze (a change needs a regression_fix). Must stay exactly: Climbing Steps free on every order (`freeAt: 0`);
+  Strongback $15 once per order with accessories, $0 models only; Ovation freight confirmed by HCPS, no threshold;
+  Bemis under $500 = $40 shipping & handling, $500+ = "Prepaid freight". Phase 6 is not approved.
+  **Phase 5 PASS / COMPLETE (2026-10-10).** Post runs Bemis #11, Strongback #12, Climbing Steps #13, Ovation #14 pass with
+  `freight_source` = record on all four; every freight check, both emails, cards and parity equal the Phase 4 runs value
+  for value; fingerprints equal `gs_fp_pre_mc_p5`; Corsicana and PediFix verify as file. Invalid/missing record terms
+  stay test- and mutant-backed — never change production freight data just to exercise them. Phase 6 waits for
+  Angelo's approval of the Phase 5 post-release report.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
@@ -1319,6 +1365,14 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   it. Left untouched pending Angelo's decision.
 - **Tests:** `test/mi1a-identity.pg.test.js` (runs the committed SQL in Postgres, bigint + uuid ids),
   `test/mi1a-compat.test.js` + `.mutants.js` (other manufacturers unaffected; switches; alias guard).
+- **SB-0 plan (2026-10-10, design only — nothing built):** Claude Doc "SB-0" (claude.ai/code/artifact/d86d9dbc-2856-4761-9e35-7c5333b645f3).
+  Three Strongback sources stay in three lanes with their own provenance: order exports → Sales Report Import
+  (`monthly_sales`); commission statements → Commission Report Import; the monthly dealer-intelligence PDF → MI-1c
+  intelligence only (never `monthly_sales`, commissions, tasks, deals, contacts or Zoho). Proposed: MI-1b = extend
+  `mfr_sources` as the one register of manufacturer report files (kinds sales_export / commission_statement /
+  dealer_report, period, prepared_date, batch link); MI-1c = `mfr_dealer_snapshots` + `mfr_dealer_observations`
+  (RULE 19 locked), match review queue, publish step. September expected matches: 15 auto, 7 review, Wyatt's held,
+  GF Health + Nebcare unmatched (never created). Awaiting Angelo's decisions before SB-1.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
