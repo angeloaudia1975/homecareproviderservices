@@ -1185,6 +1185,10 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   backfilled basis reproduces today's cards exactly. The product DETAIL page, featured tiles and quotes still show
   MSRP/MAP without a basis label; changing them would be dealer-facing on frozen lines and needs separate approval.
   Phase 5 (freight terms from manufacturer_meta) is not approved yet.
+  **Phase 4 PASS / COMPLETE (2026-10-10).** Post runs Bemis #7, Strongback #8, Climbing Steps #9, Ovation #10 all pass
+  against baselines #1/#5/#3/#6; all 347 products identical, the 28 basis rows (Bemis 7 each/each, Ovation 20 MSRP
+  order_unit, Strongback A1005 MAP each) keep their wording, fingerprints equal `gs_fp_pre_mc_p4`. Saved run detail is
+  stored as jsonb, so compare runs with sorted keys, never raw JSON text.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
