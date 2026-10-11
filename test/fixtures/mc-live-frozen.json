@@ -1,0 +1,639 @@
+{
+ "note": "Live-equivalent shapes of the four frozen lines, read read-only from production on 2026-10-11 for the Phase 6 Match & decide correction: all 15 mfr_decisions with their exact hcps_value / manufacturer_value wording (reason text shortened to its first 90 characters; it is never read by the match), the registered sources, Bemis's 10 product_skus records exactly as stored, and for the three legacy lines the record counts by status with a sample (their accepted price lists were registered without row-level price_imports). Bemis's price_imports rows for source 5 are in test/fixtures/bemis-copy.json. Nothing here is ever written to the live database.",
+ "live_match_before_fix": {
+  "bemis": {
+   "source_rows": 9,
+   "records": 10,
+   "changes": 9,
+   "retired": 1,
+   "needs_decision": 7,
+   "ready_to_stage": 2,
+   "false_hold": 9
+  },
+  "climbing-steps": {
+   "records": 26,
+   "not_in_source": 21,
+   "retired": 5,
+   "needs_decision": 21
+  },
+  "strongback-mobility": {
+   "records": 15,
+   "not_in_source": 14,
+   "retired": 1,
+   "needs_decision": 14
+  },
+  "ovation-medical": {
+   "records": 369,
+   "not_in_source": 303,
+   "retired": 66,
+   "needs_decision": 303
+  }
+ },
+ "fingerprints": {
+  "climbing-steps": "270c15b4991d580a",
+  "strongback-mobility": "d35dcdff0cf9816c",
+  "ovation-medical": "46f8ed0f02c81067",
+  "bemis": "3620a321933995db"
+ },
+ "decisions": {
+  "bemis": [
+   {
+    "id": 1,
+    "manufacturer": "bemis",
+    "source_id": 5,
+    "code": null,
+    "field": "source",
+    "manufacturer_value": null,
+    "hcps_value": {
+     "status": "accepted",
+     "received_date": "2026-10-10",
+     "manufacturer_effective_date": "pending"
+    },
+    "kind": "acceptance",
+    "reason": "Accepted by HCPS as the current 2026 Bemis price list; the manufacturer effective date is ",
+    "decided_at": "2026-10-10T19:35:00+00:00",
+    "used_at": null
+   },
+   {
+    "id": 2,
+    "manufacturer": "bemis",
+    "source_id": 5,
+    "code": null,
+    "field": "base_price",
+    "manufacturer_value": {
+     "columns": [
+      "Dealer Cost Per Unit",
+      "Master Case Qty",
+      "Dealer Master Case Cost"
+     ]
+    },
+    "hcps_value": {
+     "rule": "dealer price = Dealer Master Case Cost; uom Case; case_qty = Master Case Qty, where supplied",
+     "never": "derive one price from the other"
+    },
+    "kind": "interpretation",
+    "reason": "Normal case ordering uses the manufacturer's explicit Master Case Cost as the dealer price",
+    "decided_at": "2026-10-10T18:01:00+00:00",
+    "used_at": null
+   },
+   {
+    "id": 3,
+    "manufacturer": "bemis",
+    "source_id": 5,
+    "code": "7YR05310TSS",
+    "field": "base_price",
+    "manufacturer_value": {
+     "Dealer Master Case Cost": 109.98
+    },
+    "hcps_value": {
+     "previous": 109.99,
+     "base_price": 109.98
+    },
+    "kind": "conflict",
+    "reason": "1 cent correction to the 2026 list approved.",
+    "decided_at": "2026-10-10T18:42:00+00:00",
+    "used_at": null
+   },
+   {
+    "id": 4,
+    "manufacturer": "bemis",
+    "source_id": 5,
+    "code": "7YE05310TSS",
+    "field": "base_price",
+    "manufacturer_value": {
+     "Dealer Master Case Cost": 109.98
+    },
+    "hcps_value": {
+     "previous": 109.99,
+     "base_price": 109.98
+    },
+    "kind": "conflict",
+    "reason": "1 cent correction to the 2026 list approved.",
+    "decided_at": "2026-10-10T18:42:00+00:00",
+    "used_at": null
+   },
+   {
+    "id": 5,
+    "manufacturer": "bemis",
+    "source_id": 5,
+    "code": "7YA0AS100",
+    "field": "base_price",
+    "manufacturer_value": {
+     "Dealer Master Case Cost": 99.98
+    },
+    "hcps_value": {
+     "previous": 99.99,
+     "base_price": 99.98
+    },
+    "kind": "conflict",
+    "reason": "1 cent correction to the 2026 list approved.",
+    "decided_at": "2026-10-10T18:42:00+00:00",
+    "used_at": null
+   },
+   {
+    "id": 6,
+    "manufacturer": "bemis",
+    "source_id": 5,
+    "code": "7YE82350TC",
+    "field": "uom",
+    "manufacturer_value": {
+     "Master Case Qty": null,
+     "Dealer Cost Per Unit": 54.99,
+     "Dealer Master Case Cost": null
+    },
+    "hcps_value": {
+     "uom": "Each",
+     "case_qty": 1
+    },
+    "kind": "interpretation",
+    "reason": "Not a case item: sold individually, as listed in the 2026 price list. Not flagged as missi",
+    "decided_at": "2026-10-10T19:35:00+00:00",
+    "used_at": null
+   },
+   {
+    "id": 7,
+    "manufacturer": "bemis",
+    "source_id": 5,
+    "code": "444DISPLAY",
+    "field": "uom",
+    "manufacturer_value": {
+     "Master Case Qty": null,
+     "Dealer Cost Per Unit": 634.86,
+     "Dealer Master Case Cost": null
+    },
+    "hcps_value": {
+     "uom": "Display",
+     "case_qty": 1
+    },
+    "kind": "interpretation",
+    "reason": "One orderable display, as listed in the 2026 price list; never a multi-unit Case. A later ",
+    "decided_at": "2026-10-10T19:35:00+00:00",
+    "used_at": null
+   },
+   {
+    "id": 8,
+    "manufacturer": "bemis",
+    "source_id": 5,
+    "code": null,
+    "field": "msrp_basis",
+    "manufacturer_value": {
+     "MAP": "per unit",
+     "MSRP": "per unit"
+    },
+    "hcps_value": {
+     "map_basis": "each",
+     "applies_to": "items with a Master Case Qty",
+     "msrp_basis": "each"
+    },
+    "kind": "interpretation",
+    "reason": "Case-priced products read: dealer price per Case; MSRP $X each; MAP $X each.",
+    "decided_at": "2026-10-10T18:42:00+00:00",
+    "used_at": null
+   },
+   {
+    "id": 9,
+    "manufacturer": "bemis",
+    "source_id": 6,
+    "code": null,
+    "field": "freight",
+    "manufacturer_value": {
+     "terms": "$500 minimum for prepaid freight; below $500 +$40 shipping & handling"
+    },
+    "hcps_value": {
+     "freeAt": 500,
+     "flatLabel": "shipping & handling",
+     "flatUnder": 40,
+     "freeLabel": "Prepaid freight"
+    },
+    "kind": "freight_terms",
+    "reason": "Bemis-only wording matches the manufacturer's terms: Prepaid freight at $500+, $40 shippin",
+    "decided_at": "2026-10-10T19:35:00+00:00",
+    "used_at": null
+   },
+   {
+    "id": 10,
+    "manufacturer": "bemis",
+    "source_id": 6,
+    "code": null,
+    "field": "fee_less_than_case",
+    "manufacturer_value": {
+     "per": "line item",
+     "amount": 10
+    },
+    "hcps_value": {
+     "status": "recorded, not coded"
+    },
+    "kind": "exception",
+    "reason": "Supported by the terms but unreachable: Partner 360 sells Bemis case items in whole cases.",
+    "decided_at": "2026-10-10T17:56:00+00:00",
+    "used_at": null
+   },
+   {
+    "id": 11,
+    "manufacturer": "bemis",
+    "source_id": null,
+    "code": null,
+    "field": "fee_dropship",
+    "manufacturer_value": null,
+    "hcps_value": {
+     "status": "HOLD"
+    },
+    "kind": "exception",
+    "reason": "The old $20 dropship fee appears in no Bemis source. On HOLD unless Bemis provides it in w",
+    "decided_at": "2026-10-10T17:56:00+00:00",
+    "used_at": null
+   },
+   {
+    "id": 12,
+    "manufacturer": "bemis",
+    "source_id": null,
+    "code": null,
+    "field": "enrichment_pages",
+    "manufacturer_value": null,
+    "hcps_value": {
+     "status": "deferred"
+    },
+    "kind": "deferral",
+    "reason": "Bemis product pages are intentionally deferred. catalog_audit's \"needs SKU review\" for Bem",
+    "decided_at": "2026-10-10T20:13:00+00:00",
+    "used_at": null
+   }
+  ],
+  "climbing-steps": [
+   {
+    "id": 13,
+    "manufacturer": "climbing-steps",
+    "source_id": null,
+    "code": null,
+    "field": "freight",
+    "manufacturer_value": null,
+    "hcps_value": null,
+    "kind": "freight_terms",
+    "reason": "Legacy freight terms carried over unchanged from manufacturers.json at the freeze (2026-10",
+    "decided_at": "2026-10-10T20:13:00+00:00",
+    "used_at": null
+   }
+  ],
+  "strongback-mobility": [
+   {
+    "id": 14,
+    "manufacturer": "strongback-mobility",
+    "source_id": null,
+    "code": null,
+    "field": "freight",
+    "manufacturer_value": null,
+    "hcps_value": null,
+    "kind": "freight_terms",
+    "reason": "Legacy freight terms carried over unchanged from manufacturers.json at the freeze (2026-10",
+    "decided_at": "2026-10-10T20:13:00+00:00",
+    "used_at": null
+   }
+  ],
+  "ovation-medical": [
+   {
+    "id": 15,
+    "manufacturer": "ovation-medical",
+    "source_id": null,
+    "code": null,
+    "field": "freight",
+    "manufacturer_value": null,
+    "hcps_value": null,
+    "kind": "freight_terms",
+    "reason": "Legacy freight terms carried over unchanged from manufacturers.json at the freeze (2026-10",
+    "decided_at": "2026-10-10T20:13:00+00:00",
+    "used_at": null
+   }
+  ]
+ },
+ "sources": {
+  "bemis": [
+   {
+    "id": 5,
+    "kind": "price_list",
+    "title": "Bemis Digital Price List 2026",
+    "status": "accepted",
+    "legacy": false,
+    "received_date": "2026-10-10",
+    "effective_date_status": "pending",
+    "manufacturer_effective_date": null,
+    "file_name": "Bemis Digital Price List 2026(20261010-175622).xlsx"
+   },
+   {
+    "id": 6,
+    "kind": "terms",
+    "title": "Bemis Terms of Agreement (dealer application)",
+    "status": "accepted",
+    "legacy": true,
+    "received_date": null,
+    "effective_date_status": "stated",
+    "manufacturer_effective_date": "2022-03-01",
+    "file_name": null
+   }
+  ],
+  "climbing-steps": [
+   {
+    "id": 1,
+    "kind": "price_list",
+    "title": "Climbing Steps 2026 Pricing website 982026.xlsx",
+    "status": "accepted",
+    "legacy": true,
+    "received_date": null,
+    "effective_date_status": "stated",
+    "manufacturer_effective_date": "2026-09-08",
+    "file_name": "Climbing Steps 2026 Pricing website 982026.xlsx"
+   }
+  ],
+  "strongback-mobility": [
+   {
+    "id": 4,
+    "kind": "price_list",
+    "title": "Strongback Mobility · Dealer Pricing 2026 V2.pdf (Rev C)",
+    "status": "accepted",
+    "legacy": true,
+    "received_date": null,
+    "effective_date_status": "stated",
+    "manufacturer_effective_date": "2026-08-27",
+    "file_name": "Strongback Mobility · Dealer Pricing 2026 V2.pdf (Rev C)"
+   }
+  ],
+  "ovation-medical": [
+   {
+    "id": 2,
+    "kind": "price_list",
+    "title": "2026 ovation medical pricelist 1092026.xlsx",
+    "status": "accepted",
+    "legacy": true,
+    "received_date": null,
+    "effective_date_status": "stated",
+    "manufacturer_effective_date": "2026-10-09",
+    "file_name": "2026 ovation medical pricelist 1092026.xlsx"
+   },
+   {
+    "id": 3,
+    "kind": "price_list",
+    "title": "2026 ovation medical pricelist 1092026.xlsx · row 94 · source column '5-10 Units' normalised to 6-10",
+    "status": "accepted",
+    "legacy": true,
+    "received_date": null,
+    "effective_date_status": "stated",
+    "manufacturer_effective_date": "2026-10-09",
+    "file_name": "2026 ovation medical pricelist 1092026.xlsx · row 94 · source column '5-10 Units' normalised to 6-10"
+   }
+  ]
+ },
+ "bemis_records": [
+  {
+   "code": "444DISPLAY",
+   "status": "active",
+   "base_price": 634.86,
+   "msrp": 1269.72,
+   "map": 1269.72,
+   "msrp_auto": false,
+   "tiers": null,
+   "uom": "Display",
+   "case_qty": 1,
+   "dealer_unit_cost": 634.86,
+   "msrp_basis": null,
+   "map_basis": null,
+   "source_id": 5,
+   "source_file": "Bemis Digital Price List 2026(20261010-175622).xlsx",
+   "effective_date": null
+  },
+  {
+   "code": "7YA04505T",
+   "status": "active",
+   "base_price": 119.97,
+   "msrp": 79.99,
+   "map": 79.99,
+   "msrp_auto": false,
+   "tiers": null,
+   "uom": "Case",
+   "case_qty": 3,
+   "dealer_unit_cost": 49.99,
+   "msrp_basis": "each",
+   "map_basis": "each",
+   "source_id": 5,
+   "source_file": "Bemis Digital Price List 2026(20261010-175622).xlsx",
+   "effective_date": null
+  },
+  {
+   "code": "7YA05313BLK",
+   "status": "active",
+   "base_price": 119.96,
+   "msrp": 59.99,
+   "map": 59.99,
+   "msrp_auto": false,
+   "tiers": null,
+   "uom": "Case",
+   "case_qty": 4,
+   "dealer_unit_cost": 39.99,
+   "msrp_basis": "each",
+   "map_basis": "each",
+   "source_id": 5,
+   "source_file": "Bemis Digital Price List 2026(20261010-175622).xlsx",
+   "effective_date": null
+  },
+  {
+   "code": "7YA05313GRY",
+   "status": "active",
+   "base_price": 119.96,
+   "msrp": 59.99,
+   "map": 59.99,
+   "msrp_auto": false,
+   "tiers": null,
+   "uom": "Case",
+   "case_qty": 4,
+   "dealer_unit_cost": 39.99,
+   "msrp_basis": "each",
+   "map_basis": "each",
+   "source_id": 5,
+   "source_file": "Bemis Digital Price List 2026(20261010-175622).xlsx",
+   "effective_date": null
+  },
+  {
+   "code": "7YA06303TWA",
+   "status": "active",
+   "base_price": 74.98,
+   "msrp": 74.99,
+   "map": 74.99,
+   "msrp_auto": false,
+   "tiers": null,
+   "uom": "Case",
+   "case_qty": 2,
+   "dealer_unit_cost": 47.49,
+   "msrp_basis": "each",
+   "map_basis": "each",
+   "source_id": 5,
+   "source_file": "Bemis Digital Price List 2026(20261010-175622).xlsx",
+   "effective_date": null
+  },
+  {
+   "code": "7YA0AS100",
+   "status": "active",
+   "base_price": 99.98,
+   "msrp": 99.99,
+   "map": 99.99,
+   "msrp_auto": false,
+   "tiers": null,
+   "uom": "Case",
+   "case_qty": 2,
+   "dealer_unit_cost": 59.99,
+   "msrp_basis": "each",
+   "map_basis": "each",
+   "source_id": 5,
+   "source_file": "Bemis Digital Price List 2026(20261010-175622).xlsx",
+   "effective_date": null
+  },
+  {
+   "code": "7YE05310TSS",
+   "status": "active",
+   "base_price": 109.98,
+   "msrp": 109.99,
+   "map": 109.99,
+   "msrp_auto": false,
+   "tiers": null,
+   "uom": "Case",
+   "case_qty": 2,
+   "dealer_unit_cost": 64.99,
+   "msrp_basis": "each",
+   "map_basis": "each",
+   "source_id": 5,
+   "source_file": "Bemis Digital Price List 2026(20261010-175622).xlsx",
+   "effective_date": null
+  },
+  {
+   "code": "7YE82350TC",
+   "status": "active",
+   "base_price": 54.99,
+   "msrp": 109.99,
+   "map": 109.99,
+   "msrp_auto": false,
+   "tiers": null,
+   "uom": "Each",
+   "case_qty": 1,
+   "dealer_unit_cost": 54.99,
+   "msrp_basis": null,
+   "map_basis": null,
+   "source_id": 5,
+   "source_file": "Bemis Digital Price List 2026(20261010-175622).xlsx",
+   "effective_date": null
+  },
+  {
+   "code": "7YR05310TSS",
+   "status": "active",
+   "base_price": 109.98,
+   "msrp": 109.99,
+   "map": 109.99,
+   "msrp_auto": false,
+   "tiers": null,
+   "uom": "Case",
+   "case_qty": 2,
+   "dealer_unit_cost": 64.99,
+   "msrp_basis": "each",
+   "map_basis": "each",
+   "source_id": 5,
+   "source_file": "Bemis Digital Price List 2026(20261010-175622).xlsx",
+   "effective_date": null
+  },
+  {
+   "code": "DO5300RD444",
+   "status": "discontinued",
+   "base_price": null,
+   "msrp": null,
+   "map": null,
+   "msrp_auto": false,
+   "tiers": null,
+   "uom": null,
+   "case_qty": null,
+   "dealer_unit_cost": null,
+   "msrp_basis": null,
+   "map_basis": null,
+   "source_id": null,
+   "source_file": null,
+   "effective_date": null
+  }
+ ],
+ "legacy_records": {
+  "climbing-steps": {
+   "count": 26,
+   "by_status": {
+    "discontinued": 5,
+    "active": 21
+   },
+   "sample": [
+    [
+     "ARMS3",
+     "discontinued",
+     null,
+     null
+    ],
+    [
+     "ATLS",
+     "active",
+     "Each",
+     null
+    ],
+    [
+     "DSC00912",
+     "discontinued",
+     null,
+     null
+    ]
+   ]
+  },
+  "strongback-mobility": {
+   "count": 15,
+   "by_status": {
+    "active": 14,
+    "not_listed": 1
+   },
+   "sample": [
+    [
+     "1003AB",
+     "active",
+     "Each",
+     null
+    ],
+    [
+     "1007AB",
+     "active",
+     "Each",
+     null
+    ],
+    [
+     "1010AB",
+     "active",
+     "Each",
+     null
+    ]
+   ]
+  },
+  "ovation-medical": {
+   "count": 369,
+   "by_status": {
+    "discontinued": 66,
+    "active": 303
+   },
+   "sample": [
+    [
+     "10002",
+     "discontinued",
+     null,
+     null
+    ],
+    [
+     "10002BLACK",
+     "active",
+     "Each",
+     null
+    ],
+    [
+     "10002BLUE",
+     "active",
+     "Each",
+     null
+    ]
+   ]
+  }
+ }
+}

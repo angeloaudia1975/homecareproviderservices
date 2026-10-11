@@ -4243,7 +4243,7 @@ async function handleCatalog(event){
         let rows=[];
         if(srcId){ try{ rows=await sb("GET",`price_imports?manufacturer=eq.${e(slug)}&source_id=eq.${srcId}&select=*&limit=10000`); }
           catch(err){ return json(503,{error:"layer_unreadable",message:String((err&&err.message)||err).slice(0,300)}); } }
-        const m=MC.matchLine({sourceRows:rows, records, storefrontCodes:(file||[]).map(x=>x.code).concat((custom||[]).map(x=>x.code)), decisions, normCode});
+        const m=MC.matchLine({sourceRows:rows, records, storefrontCodes:(file||[]).map(x=>x.code).concat((custom||[]).map(x=>x.code)), decisions, normCode, source:src});
         return json(200,Object.assign({ok:true, manufacturer:slug, source:src, sources:sources||[]}, m));
       }
       if(b.action==="mc_structure"){

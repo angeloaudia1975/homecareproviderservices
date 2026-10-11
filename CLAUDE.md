@@ -1260,6 +1260,24 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   walkthrough (test/mcflow.test.js, screens: test/mcui.walkthrough.js) rebuilds a COPY of Bemis as a new line and must
   end at the real Bemis fingerprint 3620a321933995db. Open follow-up: re-check anonymous listing of `mfr-sources` once
   a real source file is stored. Do not onboard the next manufacturer until Angelo approves.
+  **Phase 6 correction (approved by Angelo 2026-10-11; appended to the same release — the 2026-10-11 live evidence
+  is kept, no run or decision rewritten).** Live Match on the frozen lines proposed every Bemis SKU active → "HOLD",
+  the pack basis on the singles, and a fake "needs a decision" queue on the legacy lines. Rules now:
+  (i) **Decisions are field-scoped.** A decision changes only the product field named in `field`, with its partner
+  (uom+case_qty, msrp_basis+map_basis, status+status_note); a plain hcps_value is that field's value. Any other key
+  describes the decision itself (#11 fee_dropship `{"status":"HOLD"}` is a fee on hold, never a product status); a
+  decision whose field is not a product field (fees, freight, deferral, acceptance…) changes no SKU. Never merge
+  arbitrary hcps_value keys into a SKU. (j) **Pack-only rules follow the facts:** `applies_to` "packs" or any
+  pack/case wording ("items with a Master Case Qty") covers only SKUs whose structured case quantity is > 1, after the
+  SKU's own order-unit decision (7YE82350TC Each/1 and 444DISPLAY Display/1 are not packs); wording that is not
+  understood is never guessed — Match lists it as not applied. A SKU's own decision beats a line-wide one.
+  (k) **Legacy sources without stored rows** show "Accepted legacy source — row-level source data not stored; Match
+  comparison unavailable." — information, not a conflict and not a decision queue (Climbing Steps, Strongback,
+  Ovation). A current (non-legacy) source with missing rows still asks per SKU. (l) A record that already names its
+  order unit keeps it (staging keeps omitted fields); `summary.proposed_changes` = new + changed SKUs. (m) Test
+  fixtures never contain the Supabase project URL — Netlify secret scanning fails the build on it; fixtures use
+  `{{SUPABASE_URL}}` (filled by the test world) and the scan is never widened. Regression tests on the live wording
+  of all 15 decisions: test/mcmatch.live.test.js + test/mcmatch.ui.js (test/fixtures/mc-live-frozen.json).
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.

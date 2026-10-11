@@ -44,10 +44,11 @@ await t('case quantity as written: "2/CS" → 2, "4" → 4; blank, "Each", "1" �
 });
 await t('match: source facts and HCPS interpretation stay apart; the latest decision wins; a pack-only rule never touches single items',async()=>{
   const src=[{code:'P1',base_price:20,msrp:12,map:12,parsed_case_qty:2,raw:{'Master Case Qty':'2/CS'}},{code:'S1',base_price:9,msrp:15,map:null,parsed_case_qty:null,raw:{}}];
-  const dec=[{id:1,kind:'interpretation',code:null,decided_at:'2026-01-01',hcps_value:{uom:'Case',msrp_basis:'each',applies_to:'packs'}},
-             {id:2,kind:'interpretation',code:'S1',decided_at:'2026-01-02',hcps_value:{uom:'Each',case_qty:1}},
-             {id:3,kind:'interpretation',code:'S1',decided_at:'2026-01-03',hcps_value:{uom:'Single'}},
-             {id:4,kind:'regression_fix',code:'S1',decided_at:'2026-01-04',hcps_value:{uom:'Nope'}}];
+  const dec=[{id:1,kind:'interpretation',field:'uom',code:null,decided_at:'2026-01-01',hcps_value:{uom:'Case',applies_to:'packs'}},
+             {id:5,kind:'interpretation',field:'msrp_basis',code:null,decided_at:'2026-01-01',hcps_value:{msrp_basis:'each',applies_to:'packs'}},
+             {id:2,kind:'interpretation',field:'uom',code:'S1',decided_at:'2026-01-02',hcps_value:{uom:'Each',case_qty:1}},
+             {id:3,kind:'interpretation',field:'uom',code:'S1',decided_at:'2026-01-03',hcps_value:{uom:'Single'}},
+             {id:4,kind:'regression_fix',field:'uom',code:'S1',decided_at:'2026-01-04',hcps_value:{uom:'Nope'}}];
   const m=MC.matchLine({sourceRows:src,records:[{code:'OLD',status:'active',base_price:1}],storefrontCodes:['P1'],decisions:dec,normCode:norm});
   const r=c=>m.rows.find(x=>x.code===c);
   eq([r('P1').source.base_price,r('P1').hcps.uom,r('P1').hcps.msrp_basis],[20,'Case','each'],'facts kept, interpretation beside them');

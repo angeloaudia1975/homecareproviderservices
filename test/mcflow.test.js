@@ -71,13 +71,16 @@ await t('2 · match: 9 new SKUs; every one waits for a decision (7 packs have no
 });
 await t('2 · decide (dry run, then write): packs = "Case" with MSRP/MAP each; Steadfast = Each/1; display = Display/1 — source facts untouched',async()=>{
   const factsBefore=JSON.stringify(W.db.price_imports);
-  const D=[{field:'uom',code:null,hcps_value:{uom:'Case',msrp_basis:'each',map_basis:'each',applies_to:'packs'},reason:'Bemis quotes dealer price per master case and MSRP/MAP per piece'},
+  /* Field-scoped decisions (Phase 6 correction, 2026-10-11): a decision changes only the field it names, so the
+     order unit and the MSRP/MAP basis of the packs are two decisions. */
+  const D=[{field:'uom',code:null,hcps_value:{uom:'Case',applies_to:'packs'},reason:'Bemis quotes dealer price per master case'},
+           {field:'msrp_basis',code:null,hcps_value:{msrp_basis:'each',map_basis:'each',applies_to:'packs'},reason:'Bemis quotes MSRP/MAP per piece'},
            {field:'uom',code:'7YE82350TC',hcps_value:{uom:'Each',case_qty:1},reason:'No master case quantity: Steadfast is sold singly'},
            {field:'uom',code:'444DISPLAY',hcps_value:{uom:'Display',case_qty:1},reason:'One floor display program per order'}];
   for(const d of D){
     const body=Object.assign({action:'mc_record_decision',manufacturer:COPY,kind:'interpretation',source_id:srcId},d);
-    const dry=await step(C,'decision '+(d.code||'packs')+' (dry run)',Object.assign({},body,{dry_run:true})); eq(dry.status,200,JSON.stringify(dry.body));
-    const r=await step(C,'decision '+(d.code||'packs'),body); eq(r.status,200,JSON.stringify(r.body));
+    const dry=await step(C,'decision '+(d.code||'packs '+d.field)+' (dry run)',Object.assign({},body,{dry_run:true})); eq(dry.status,200,JSON.stringify(dry.body));
+    const r=await step(C,'decision '+(d.code||'packs '+d.field),body); eq(r.status,200,JSON.stringify(r.body));
   }
   eq(JSON.stringify(W.db.price_imports),factsBefore,'the manufacturer facts are never changed by a decision');
   const forged=await call(C,{action:'mc_record_decision',manufacturer:COPY,kind:'acceptance',field:'gate:stage',reason:'forged',hcps_value:{plan_hash:'0'.repeat(64),plan_kind:'records'}});
