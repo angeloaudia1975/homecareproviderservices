@@ -12,8 +12,9 @@ const PAGES={
   'https://www.toiletseats.com/p/clean-shield-elongated-closed-front-plastic-raised-toilet-seat-in-white-with-support-arms-never-loosens-super-grip-bumpers-2':'assurance-seat-arms.html',
   'https://www.toiletseats.com/p/clean-shield-elongated-closed-front-plastic-raised-toilet-seat-in-white-with-personal-wash-bidet':'assurance-bidet.html',
   'https://www.toiletseats.com/bemis-assist':'assist.html',
-  'https://www.toiletseats.com/p/assist-standard-height-premium-toilet-seat-support-arms':'assist-product.html'};
-const bytes=(seed)=>{ const b=Buffer.alloc(4096); for(let i=0;i<b.length;i++) b[i]=(i*31+seed.length*7+seed.charCodeAt(i%seed.length))&255; return b; };
+  'https://www.toiletseats.com/p/assist-standard-height-premium-toilet-seat-support-arms':'assist-product.html',
+  'https://www.toiletseats.com/p/elongated-open-front-plastic-elevated-toilet-seat-with-3-inch-lift-in-white-never-loosens':'steadfast.html'};
+const bytes=(seed)=>{ const b=Buffer.alloc(/__Fill/.test(seed)?9000:4096); for(let i=0;i<b.length;i++) b[i]=(i*31+seed.length*7+seed.charCodeAt(i%seed.length))&255; return b; };
 const WIN=50;
 function world(opts){
   opts=opts||{};

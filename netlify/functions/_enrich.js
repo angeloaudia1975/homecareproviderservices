@@ -324,6 +324,18 @@ function relevantFromLanding(page, src, lineWords){
   return { description: paras.slice(0, 3).join(" "), features: [...new Set(lis)].slice(0, 8), distinct };
 }
 
+/* Model-number specification rows: kept in provenance as the retail model, never shown as an unlabeled dealer spec. */
+const RETAIL_MODEL_LABEL = /^(model(\s*(no\.?|number|#))?|item\s*(no\.?|number|#)|sku|upc)$/i;
+/* Editorial cleanup of a manufacturer's first-person marketing wording into neutral dealer-facing language. It removes
+   nothing factual and adds nothing: "our patented Dual Lock" → "Bemis's patented Dual Lock"; a sentence that is only
+   first-person promotion ("We're EMPOWERING INDEPENDENCE with this ultimate clean package.") is dropped. */
+function neutralize(text, brand){
+  const b = (brand || "the manufacturer") + "\u2019s";
+  const sentences = norm(text).split(/(?<=[.!?])\s+/).filter(Boolean);
+  const keep = sentences.filter(x => !(/^(we|we're|we are|we've)\b/i.test(x) && !/\d/.test(x)));
+  return keep.join(" ").replace(/\bOur\b/g, b.charAt(0).toUpperCase() + b.slice(1)).replace(/\bour\b/g, b)
+    .replace(/\bwe\b(?! are| have)/g, (brand || "the manufacturer")).replace(/\bWe\b/g, (brand || "The manufacturer")).replace(/\s{2,}/g, " ").trim();
+}
 /* ── 4. BUILD THE DRAFT ────────────────────────────────────────────────────────────────────────── */
 const numbersIn = s => (String(s || "").match(/\d+(?:\.\d+)?/g) || []);
 /* Facts in our catalog line that no source states (a "1000 lb" the page never mentions) — evidence for a Conflict. */
@@ -335,26 +347,33 @@ function unsupportedFacts(catalogText, sourceText){
 const firstSentences = (t, max) => { const s = norm(t).split(/(?<=[.!?])\s+/); let out = ""; for(const x of s){ if((out + " " + x).length > (max || 600) && out) break; out = (out ? out + " " : "") + x; } return out; };
 /* Image candidates, in order: photos named after the source page's model, then photos whose file name describes this
    product, then each SKU's current catalog photo (what dealers see today — copied into HCPS storage, never linked). */
-function imageCandidates(page, sources, orderingBase){
-  const out = [], seen = new Set();
-  const add = (url, role, code, from) => { const k = String(url).split(/[?#]/)[0]; if(!url || seen.has(k)) return; seen.add(k); out.push({ src: url, role, code: code || null, from }); };
+const PROMO_IMG = /(landing|banner|promo|hero|lifestyle|gallery|campaign|[-_]fb[-_.]|feature|benefit|thumbnail|badge|infographic)/i;
+const isPromoUrl = u => { let f = ""; try{ f = decodeURIComponent(new URL(u).pathname.split("/").pop()); }catch(e){ f = String(u); } return PROMO_IMG.test(f); };
+/* Image candidates, in order: photos named after the product page's model; an official manufacturer photo chosen for an
+   option in Review Issues; each SKU's current dealer photo. A landing page's images are used only when there is no
+   product page, and then never as the main photo (they are promo / banner art). Bundle pages give none. */
+function imageCandidates(page, sources, orderingBase, skuImages){
+  const out = [], seen = new Set(), chosen = skuImages || {};
+  const add = (url, role, code, from, promo) => { const k = String(url).split(/[?#]/)[0] + "|" + role + "|" + (code || ""); if(!url || seen.has(k)) return; seen.add(k); out.push({ src: url, role, code: code || null, from, promo: !!promo }); };
+  const hasProduct = sources.some(s => s && s.role === "product" && s.extract && s.extract.product);
   for(const s of sources){
-    if(!s || !s.extract || s.role === "related") continue;
+    if(!s || !s.extract || s.role === "related" || (hasProduct && s.role !== "product")) continue;
     const ex = s.extract, modelTok = ex.model ? ex.model.split(/\s+/)[0].toUpperCase() : "";
     const named = modelTok ? ex.images.filter(i => i.url.toUpperCase().indexOf(modelTok) >= 0) : [];
-    named.slice(0, 8).forEach(i => add(i.url, "gallery", null, "manufacturer page (model " + ex.model + ")"));
+    named.slice(0, 8).forEach(i => add(i.url, "gallery", null, "manufacturer product page (model " + ex.model + ")", isPromoUrl(i.url)));
     if(!named.length){
       const ranked = ex.images.map(i => { let f = ""; try{ f = decodeURIComponent(new URL(i.url).pathname.split("/").pop()); }catch(e){ f = i.url; }
         return Object.assign({ i }, scoreCandidate(page, { href: "https://x/" + f.replace(/\.[a-z]+$/i, ""), text: i.alt })); })
         .filter(x => x.score >= 1 && !x.foreign.length).sort((a, b) => b.score - a.score);
-      ranked.slice(0, 4).forEach(x => add(x.i.url, "gallery", null, "manufacturer page"));
+      ranked.slice(0, 4).forEach(x => add(x.i.url, "gallery", null, s.role === "landing" ? "manufacturer landing page (promo art — never the main photo)" : "manufacturer page", s.role === "landing" || isPromoUrl(x.i.url)));
     }
   }
-  for(const s of page.skus){
-    if(!s.catalog_image) continue;
-    const u = /^https?:/i.test(s.catalog_image) ? s.catalog_image : String(orderingBase || "").replace(/\/+$/, "") + (s.catalog_image.startsWith("/") ? "" : "/") + s.catalog_image;
-    if(page.skus.length > 1) out.push({ src: u, role: "sku", code: s.code, from: "current catalog photo" });
-    else add(u, "gallery", s.code, "current catalog photo");
+  for(const sk of page.skus){
+    const pick = chosen[codeNorm(sk.code)];
+    if(pick){ add(pick.url, page.skus.length > 1 ? "sku" : "gallery", sk.code, "official manufacturer photo chosen in Review Issues" + (pick.why ? " (" + pick.why + ")" : ""), false); continue; }
+    if(!sk.catalog_image) continue;
+    const u = /^https?:/i.test(sk.catalog_image) ? sk.catalog_image : String(orderingBase || "").replace(/\/+$/, "") + (sk.catalog_image.startsWith("/") ? "" : "/") + sk.catalog_image;
+    add(u, page.skus.length > 1 ? "sku" : "gallery", sk.code, "current catalog photo", false);
   }
   return out;
 }
@@ -372,38 +391,38 @@ function buildDraft(page, sources, opts){
     description = firstSentences(ex.description, 700);
     if(description) fields.description = { source: "manufacturer page", url: prod.url, evidence: description };
     features = ex.features.slice(0, 10).map(f => ({ text: f, url: prod.url }));
-    specs = ex.specs.filter(s => !/^(brand)$/i.test(s.label)).map(s => ({ label: s.label, value: s.value, url: prod.url, evidence: s.evidence }));
+    specs = ex.specs.filter(s => !/^(brand)$/i.test(s.label) && !RETAIL_MODEL_LABEL.test(s.label)).map(s => ({ label: s.label, value: s.value, url: prod.url, evidence: s.evidence }));
     if(ex.warranty) warranty = { text: ex.warranty.text, url: prod.url, evidence: ex.warranty.evidence };
     documents = ex.documents.slice(0, 8); videos = ex.videos.slice(0, 4);
-    if(ex.model) notes.push("Manufacturer page model " + ex.model + (ex.msrp != null ? " · retail MSRP $" + ex.msrp.toFixed(2) : ""));
+    if(ex.model) notes.push((opts.brand || "Manufacturer") + " Retail Model " + ex.model + " (alias only — the HCPS SKU is the ordering code)");
   } else if(landing || related){
-    /* the parts of a bundle page and of the landing page that are about this product */
-    const parts = [related, landing].filter(Boolean).map(src => ({ src, rel: relevantFromLanding(page, src, opts.lineWords) }));
-    const withText = parts.find(x => x.rel.description);
-    description = withText ? firstSentences(withText.rel.description, 600) : "";
-    if(description) fields.description = { source: (withText.src.role === "related" ? "manufacturer page for a bundle that includes it (the sentences about this product)" : "manufacturer landing page (the parts about this product)"), url: withText.src.url, evidence: description };
-    const seenF = new Set();
-    parts.forEach(x => x.rel.features.forEach(f => { if(!seenF.has(f.toLowerCase())){ seenF.add(f.toLowerCase()); features.push({ text: f, url: x.src.url }); } }));
-    features = features.slice(0, 8);
-    if(landing){ documents = landing.extract.documents.slice(0, 6); videos = landing.extract.videos.slice(0, 2); }
+    /* Angelo 2026-10-11: a landing page or a bundle page may show that the product exists and what it fits, but it is
+       never the standalone description or specification source for a component. They are recorded as evidence only. */
+    if(related) notes.push("A Bemis bundle page includes it (" + related.url + ") — evidence it exists and fits; not used as its description.");
+    if(landing) notes.push("The line's landing page mentions it (" + landing.url + ") — not product-specific; not used as its description.");
   }
+  const srcText = [prod && prod.extract.text, landing && landing.extract.text, related && related.extract.text].filter(Boolean).join(" ");
   if(!description){
-    const cd = page.skus.map(s => s.catalog_description).find(Boolean) || "";
-    if(cd){ description = cd; fields.description = { source: "HCPS catalog line only (no manufacturer page found)", url: null, evidence: cd }; }
+    let cd = page.skus.map(s => s.catalog_description).find(Boolean) || "";
+    /* a figure in our catalog line that no manufacturer source states stays out of the draft until one does */
+    const unsup = srcText ? unsupportedFacts(cd, srcText) : [];
+    if(unsup.length) cd = norm(cd.split(/(?<=[.!?])\s+/).filter(x => !unsupportedFacts(x, srcText).length).join(" "));
+    if(cd){ description = cd; fields.description = { source: "HCPS catalog line only (no product-specific manufacturer source)" + (unsup.length ? "; left out until a Bemis source confirms it: " + unsup.join(", ") : ""), url: null, evidence: cd }; }
+  }
+  if(prod){
+    const n0 = description, f0 = features.map(f => f.text).join("|");
+    description = neutralize(description, opts.brand);
+    features = features.map(f => Object.assign({}, f, { text: neutralize(f.text, opts.brand) })).filter(f => f.text);
+    if(fields.description) fields.description.evidence = n0;
+    if(description !== n0 || features.map(f => f.text).join("|") !== f0) notes.push("Editorial: first-person manufacturer wording made neutral (no facts added or removed).");
   }
   if(features.length) fields.features = { source: prod ? "manufacturer page" : "manufacturer pages (the parts about this product)", url: features[0].url };
   if(specs.length) fields.specs = { source: "manufacturer page — stated values only", url: prod.url };
   fields.warranty = warranty ? { source: "manufacturer page", url: prod.url, evidence: warranty.evidence } : { source: "not stated by the source — left blank", url: null };
   const sizing = specs.filter(s => /\b(width|depth|height|length|bolt spread|weight|seat height|rise|size|fits|capacity|dimensions?)\b/i.test(s.label));
-  /* conflicts: the manufacturer page's MSRP against the commercial record's, and catalog facts no source states */
-  if(prod && prod.extract.msrp != null && page.skus.length === 1 && opts.records){
-    const r = opts.records[codeNorm(page.skus[0].code)];
-    if(r && r.msrp != null && Math.abs(Number(r.msrp) - prod.extract.msrp) >= 1)
-      conflicts.push({ kind: "source_identity", title: "Is the manufacturer page the same product?",
-        evidence: { page: "Model " + (prod.extract.model || "?") + " · retail MSRP $" + prod.extract.msrp.toFixed(2), record: page.skus[0].code + (r.case_qty > 1 ? " · case of " + r.case_qty : "") + " · MSRP $" + Number(r.msrp).toFixed(2) + (r.msrp_basis === "each" ? " each" : (r.case_qty > 1 ? " per case" : "")) },
-        suggestion: "Likely the same item sold under a medical-channel code. Use the page's description and photos; your prices stay exactly as they are." });
-  }
-  const srcText = [prod && prod.extract.text, landing && landing.extract.text, related && related.extract.text].filter(Boolean).join(" ");
+  /* Angelo 2026-10-11: a manufacturer website's retail price never creates a commercial conflict — commercial pricing comes
+     only through Manufacturer Center sources. The page's retail model is kept as an alias in provenance, never as the
+     dealer ordering code. Conflicts here are content facts only (a catalog figure no source states). */
   if(srcText){
     const un = [...new Set(page.skus.flatMap(s => unsupportedFacts(s.catalog_description, srcText)))];
     if(un.length) conflicts.push({ kind: "catalog_fact", title: "Your catalog line states " + un.join(", ") + " — the manufacturer's page doesn't",
@@ -418,28 +437,42 @@ function buildDraft(page, sources, opts){
     options: page.options || {}, skus: page.skus.map(s => ({ sku: s.code, name: s.name, size: s.option || "", status: "active", disabled: false, image: "", images: [], source: "" })),
     sku_count: page.skus.length, source_url: (prod || landing || related || {}).url || null, documents: documents.map(d => ({ label: d.label, url: d.url })), videos,
     sizing_note: null, aliases: prod && prod.extract.model ? [prod.extract.model] : [],
-    field_provenance: Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, v.source + (v.url ? " — " + v.url : "")]).concat(cat.category ? [["category", "HCPS catalog (what dealers see today)"]] : []))
+    field_provenance: Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, v.source + (v.url ? " — " + v.url : "")])
+      .concat(cat.category ? [["category", "HCPS catalog (what dealers see today)"]] : [])
+      .concat(prod && prod.extract.model ? [["retail_model", (opts.brand || "Manufacturer") + " Retail Model " + prod.extract.model + " — alias only; the HCPS SKU is the ordering code — " + prod.url]] : []))
   };
-  const report = { v: 1, at: now, window: opts.window || null, sources: sources.filter(Boolean).map(s => ({ url: s.url, role: s.role, matched_by: s.matched_by || "", model: s.extract && s.extract.model || "", msrp: s.extract && s.extract.msrp })),
+  const report = { v: 1, at: now, window: opts.window || null, sources: sources.filter(Boolean).map(s => ({ url: s.url, role: s.role, matched_by: s.matched_by || "", model: s.extract && s.extract.model || "" })),   // no retail price kept: it is not HCPS commercial data
     fields: Object.assign({}, fields, { features_list: features, specs_list: specs, sizing: sizing.map(s => s.label) }), conflicts, notes,
-    group_reason: page.group_reason, bundle: !!page.bundle, image_candidates: imageCandidates(page, sources, opts.orderingBase), images: [], images_done: false };
+    group_reason: page.group_reason, bundle: !!page.bundle, image_candidates: imageCandidates(page, sources, opts.orderingBase, opts.skuImages), images: [], images_done: false, retail_models: prod && prod.extract.model ? [prod.extract.model] : [] };
   return { row, report };
 }
 
 /* Photos rehosted for a page: [{src, role, code, url (HCPS copy), sha, bytes, error?}] → the page's gallery, primary,
    per-SKU photos, and photos two option SKUs share byte for byte. */
+/* The same picture in two sizes ("A84505T-000-P.jpg" and "A84505T-000-P__FillWzgwMCw4MDBd.jpg"): one photo. */
+const photoStem = u => { let f = ""; try{ f = decodeURIComponent(new URL(u).pathname.split("/").pop()); }catch(e){ f = String(u || ""); }
+  return f.replace(/\.[a-z0-9]+$/i, "").replace(/__[A-Za-z]+Wz[A-Za-z0-9=_-]*$/, "").replace(/[-_]\d{2,4}x\d{2,4}$/, "").toLowerCase(); };
 function assembleImages(page, row, done){
   const ok = done.filter(d => d.url && !d.error);
-  const gallery = [], seen = new Set();
-  ok.filter(d => d.role === "gallery").forEach(d => { if(!seen.has(d.sha)){ seen.add(d.sha); gallery.push({ url: d.url, primary: false, caption: "", source: d.from || "rehosted" }); } });
+  /* exact duplicates (same bytes) and resized copies of one photo collapse to the largest file */
+  const groups = [];
+  ok.filter(d => d.role === "gallery").forEach(d => {
+    const g = groups.find(x => x.some(y => y.sha === d.sha || photoStem(y.src) === photoStem(d.src)));
+    if(g) g.push(d); else groups.push([d]); });
+  const uniq = groups.map(g => g.slice().sort((a, b) => (b.bytes || 0) - (a.bytes || 0))[0]).map(d => Object.assign({}, d, { promo: groupPromo(groups, d) }));
+  function groupPromo(gs, d){ const g = gs.find(x => x.indexOf(d) >= 0); return g ? g.every(y => y.promo) : !!d.promo; }
   const skuImg = {}; ok.filter(d => d.role === "sku").forEach(d => { skuImg[codeNorm(d.code)] = d; });
-  /* a page whose only photos are the SKUs' own: the first becomes the page photo too */
-  if(!gallery.length) ok.filter(d => d.role === "sku").forEach(d => { if(!seen.has(d.sha)){ seen.add(d.sha); gallery.push({ url: d.url, primary: false, caption: "", source: d.from || "rehosted" }); } });
-  if(gallery.length) gallery[0].primary = true;
+  let pool = uniq.slice();
+  if(!pool.some(d => !d.promo)) ok.filter(d => d.role === "sku").forEach(d => { if(!pool.some(x => x.sha === d.sha)) pool.push(d); });
+  /* banner / promo art is never the main photo: the first real product photo leads */
+  pool = pool.filter(d => !d.promo).concat(pool.filter(d => d.promo));
+  const lead = pool.findIndex(d => !d.promo);
+  const gallery = lead >= 0 ? pool.map((d, n) => ({ url: d.url, primary: n === lead, caption: "", source: d.from || "rehosted" })) : [];
   const skus = (row.skus || []).map(s => { const d = skuImg[codeNorm(s.sku)]; return Object.assign({}, s, { image: d ? d.url : "" }); });
   const bySha = {}; ok.filter(d => d.role === "sku").forEach(d => { (bySha[d.sha] = bySha[d.sha] || []).push(d.code); });
   const shared = Object.entries(bySha).filter(([, c]) => c.length > 1).map(([sha, codes]) => ({ sha: sha.slice(0, 16), codes }));
-  return { images_gallery: gallery, image: gallery[0] ? gallery[0].url : null, skus, shared,
+  return { images_gallery: gallery, image: lead >= 0 ? gallery[lead].url : null, skus, shared,
+    promo_only: lead < 0 && pool.length > 0, dropped_duplicates: ok.filter(d => d.role === "gallery").length - uniq.length,
     failed: done.filter(d => d.error).map(d => ({ src: d.src, error: d.error })) };
 }
 
@@ -451,12 +484,19 @@ function resolutionsFor(decisions, pageKey){
     .forEach(d => { const v = d.hcps_value || {}; if(v.issue) out[v.issue] = Object.assign({ id: d.id, reason: d.reason, by: d.decided_by }, v); });
   return out;
 }
+/* Official per-option photos chosen in Review Issues: the latest choice per SKU (they survive a re-run). */
+function skuImageChoices(decisions, pageKey){
+  const out = {};
+  (decisions || []).filter(d => d && d.kind === "content_resolution" && d.field === "page:" + pageKey && d.hcps_value && d.hcps_value.choice === "use_source_image")
+    .sort((a, b) => a.id - b.id).forEach(d => { out[codeNorm(d.hcps_value.code)] = { url: d.hcps_value.image_url, why: d.hcps_value.why || "", id: d.id }; });
+  return out;
+}
 const CHOICES = {
   conflict: [{ id: "same_product", label: "Same product: use its copy and photos" }, { id: "different_product", label: "Different product: don't use this page" }],
   catalog_fact: [{ id: "keep_catalog_fact", label: "Our figure is right: keep it out of the page copy" }, { id: "use_source", label: "Use only what the manufacturer states" }],
   needs_grouping: [{ id: "own_page", label: "Its own page under its category (suggested)" }, { id: "hidden_order_by_code", label: "Hidden from browsing; dealers order it by code" }],
   needs_content: [{ id: "rerun_with_source", label: "Add a source (web page or PDF) and re-run this page", needs: "source_url" }, { id: "hold_back", label: "Hold this page back (its SKUs stay as they are today)" }],
-  needs_image: [{ id: "upload", label: "Upload a photo for it", action: "upload" }, { id: "keep_one_photo", label: "Keep one photo for both" }],
+  needs_image: [{ id: "upload", label: "Upload a photo for it", action: "upload" }, { id: "use_source_image", label: "Use an official manufacturer photo for this option", needs: "image_url" }, { id: "keep_one_photo", label: "Keep one photo for both" }],
   needs_category: [{ id: "set_category", label: "Choose the category", needs: "category" }]
 };
 /* page: from planPages; row: its draft (product_content) or null; decisions: the line's decisions. */
@@ -486,15 +526,18 @@ function classify(page, row, decisions, opts){
   if(page.bundle && !res.needs_grouping) add("needs_grouping", "Where should it appear?", "A display or bundle is never merged with other pages on its own" + (page.skus[0] && page.skus[0].catalog_description ? ": \u201c" + norm(page.skus[0].catalog_description).slice(0, 200) + "\u201d" : "") + ".", {});
   /* Needs content */
   const desc = norm(row.description), feats = Array.isArray(row.features) ? row.features.length : 0;
-  const noSource = !(mc.sources || []).some(s => s.role === "product" || s.role === "landing" || s.role === "related");
+  const anySource = (mc.sources || []).some(s => s.role === "product" || s.role === "landing" || s.role === "related");
+  const noSource = !(mc.sources || []).some(s => s.role === "product");
   if(!held && !issues.some(i => i.rerun)){
-    if(noSource) add("needs_content", "No manufacturer page found", "Only your catalog line exists" + (desc ? ": “" + desc.slice(0, 160) + "”" : "") + ". That is too thin for a product page.", {});
+    if(noSource && anySource) add("needs_content", "No product-specific manufacturer source", "Bemis's " + [...new Set((mc.sources || []).filter(s => s.role !== "product").map(s => s.role === "related" ? "bundle page" : "landing page"))].join(" and ") + " show it exists, but a landing or bundle page is never a component's standalone description or specification source. Add an official source for this product and re-run.", {});
+    else if(noSource) add("needs_content", "No manufacturer page found", "Only your catalog line exists" + (desc ? ": “" + desc.slice(0, 160) + "”" : "") + ". That is too thin for a product page.", {});
     else if(desc.length < 80 || feats < 3) add("needs_content", "Too little from the source", "The source says too little about this product to make a page: " + [desc.length < 80 ? (desc.length ? "a " + desc.length + "-character description" : "no description") : "", feats < 3 ? (feats ? "only " + feats + " feature" + (feats === 1 ? "" : "s") : "no features") : ""].filter(Boolean).join(" and ") + ". Add a better source, or hold the page back.", {});
   }
   /* Needs image */
   const hasGallery = Array.isArray(row.images_gallery) && row.images_gallery.some(g => g && g.url) || !!row.image;
   if(mc.images_done || opts.imagesDone){
-    if(!hasGallery && !(res.needs_image && res.needs_image.choice === "keep_one_photo")) add("needs_image", "No photo could be copied into HCPS storage", (mc.image_failures && mc.image_failures.length ? mc.image_failures.length + " photo(s) failed to copy. " : "") + "Upload one.", { choices: [CHOICES.needs_image[0]] });
+    if(!hasGallery && mc.image_promo_only) add("needs_image", "Only banner / promo art was found", "A promo graphic is never a product's main photo. Add an official product photo.", { choices: [CHOICES.needs_image[0]] });
+    else if(!hasGallery && !(res.needs_image && res.needs_image.choice === "keep_one_photo")) add("needs_image", "No photo could be copied into HCPS storage", (mc.image_failures && mc.image_failures.length ? mc.image_failures.length + " photo(s) failed to copy. " : "") + "Upload one.", { choices: [CHOICES.needs_image[0]] });
     for(const sh of (mc.image_shared || [])) if(!(res.needs_image && res.needs_image.choice === "keep_one_photo"))
       add("needs_image", sh.codes.join(" and ") + " show the identical photo", "Both SKUs point at the same picture today. A dealer choosing one option would see the other.", { codes: sh.codes });
   } else if(!hasGallery) add("needs_image", "Photos not copied yet", "Auto-Enrich copies the photos into HCPS storage in its next step.", { pending: true, choices: [] });
@@ -514,10 +557,11 @@ function resolutionProblem(issue, choice, value){
   if(!c) return "“" + choice + "” is not a choice for " + issue;
   if(c.needs === "source_url" && !/^https?:\/\/[^\s]+$/i.test(String((value && value.source_url) || ""))) return "a source URL (http or https) is required";
   if(c.needs === "category" && !norm(value && (value.subcategory || value.category))) return "a category is required";
+  if(c.needs === "image_url" && (!/^https:\/\/[^\s]+\.(jpe?g|png|webp)(\?[^\s]*)?$/i.test(String((value && value.image_url) || "")) || !norm(value && value.code))) return "an https photo address and the SKU it is for are required";
   return null;
 }
 const sha256 = buf => crypto.createHash("sha256").update(buf).digest("hex");
 
 module.exports = { STATUSES, STATUS_LABEL, VARIANT_DIMS, KIND_WORDS, variantOf, planPages, decode, blocksOf, sectionsOf, extractPage, productLinks,
   scoreCandidate, pickProductLink, relevantFromLanding, unsupportedFacts, imageCandidates, buildDraft, assembleImages, resolutionsFor, CHOICES,
-  classify, resolutionProblem, specsFrom, slug, codeNorm, isVisibleRow, sha256, sigWords };
+  classify, resolutionProblem, specsFrom, neutralize, skuImageChoices, photoStem, isPromoUrl, slug, codeNorm, isVisibleRow, sha256, sigWords };

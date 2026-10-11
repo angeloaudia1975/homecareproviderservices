@@ -743,7 +743,10 @@ async function handleContent(event) {
           }
           const recBy = {}; X.records.forEach(r => { recBy[ENRICH.codeNorm(r.code)] = r; });
           const lineWords = enrichLineWords(plan);
-          const built = ENRICH.buildDraft(page, sources, { slug: m, window: PC_WINDOW ? PC_WINDOW.id : null, records: recBy, orderingBase: ORDERING_BASE, lineWords });
+          const brandRaw = String(((X.catalog || []).find(c => c && c.brand) || {}).brand || m).trim();
+          const brand = brandRaw ? brandRaw.charAt(0).toUpperCase() + brandRaw.slice(1).toLowerCase() : m;
+          const built = ENRICH.buildDraft(page, sources, { slug: m, window: PC_WINDOW ? PC_WINDOW.id : null, records: recBy, orderingBase: ORDERING_BASE, lineWords,
+            brand, skuImages: ENRICH.skuImageChoices(X.decisions, page.page_key) });
           built.report.fetched = tried;
           if (body.dry_run === true) return reply(200, { ok: true, dry_run: true, page_key: page.page_key, would_write: built.row, report: Object.assign({}, built.report, { image_candidates: built.report.image_candidates.length }) });
           const flags = Object.assign({}, (cur && cur.enrichment_flags) || {}, { mc: built.report });
@@ -755,7 +758,7 @@ async function handleContent(event) {
           if (src0) { try { await fetch(rest('product_content_sources?on_conflict=manufacturer,page_key,source'), { method: 'POST', headers: svcHeaders({ Prefer: 'resolution=merge-duplicates,return=minimal' }),
             body: JSON.stringify({ manufacturer: m, page_key: page.page_key, source: 'website', source_label: 'Auto-Enrich', source_url: (sources.find(s => s.role === 'product') || src0).url,
               name: (sources.find(s => s.role === 'product') || src0).extract.title || null, description: built.row.description, features: built.row.features,
-              images: built.report.image_candidates.map(c => ({ url: c.src, role: c.role, code: c.code })), raw: { sources: sources.map(s => ({ url: s.url, role: s.role, model: s.extract.model, msrp: s.extract.msrp, specs: s.extract.specs, text: String(s.extract.text || '').slice(0, 20000) })) },
+              images: built.report.image_candidates.map(c => ({ url: c.src, role: c.role, code: c.code })), raw: { sources: sources.map(s => ({ url: s.url, role: s.role, model: s.extract.model, specs: s.extract.specs, text: String(s.extract.text || '').slice(0, 20000) })) },
               captured_at: new Date().toISOString() }) }); } catch (e) { /* the draft itself carries the provenance */ } }
           await logHistory({ manufacturer: m, page_key: page.page_key, action: 'enrich_page', actor: who, summary: 'Auto-Enrich drafted the page from ' + (sources.map(s => s.url).join(', ') || 'the catalog line only'), before: cur, after: w.rows });
           const after = flatRows(w.rows)[0] || Object.assign({}, cur || {}, row);
@@ -780,7 +783,7 @@ async function handleContent(event) {
           if (remaining <= 0) {
             const a = ENRICH.assembleImages(page, cur, done);
             Object.assign(patch, { images_gallery: a.images_gallery, image: a.image, skus: a.skus });
-            mc.images_done = true; mc.image_shared = a.shared; mc.image_failures = a.failed;
+            mc.images_done = true; mc.image_shared = a.shared; mc.image_failures = a.failed; mc.image_promo_only = a.promo_only; mc.image_duplicates_dropped = a.dropped_duplicates;
           }
           const w = await patchRow(m, page.page_key, patch);
           if (!w.ok) return reply(500, { ok: false, error: 'images_not_written', rows: w.rows });
@@ -820,7 +823,8 @@ async function handleContent(event) {
           if (!reason) return reply(400, { ok: false, error: 'reason_required', message: 'Say why, in a few words. Nothing was recorded.' });
           const prev = ENRICH.resolutionsFor(X.decisions, page.page_key)[issue] || null;
           const hv = Object.assign({ issue, choice, page_name: page.name }, value.source_url ? { source_url: String(value.source_url) } : {},
-            value.category ? { category: String(value.category).slice(0, 80) } : {}, value.subcategory ? { subcategory: String(value.subcategory).slice(0, 80) } : {});
+            value.category ? { category: String(value.category).slice(0, 80) } : {}, value.subcategory ? { subcategory: String(value.subcategory).slice(0, 80) } : {},
+            value.code ? { code: String(value.code).slice(0, 40) } : {}, value.image_url ? { image_url: String(value.image_url).slice(0, 500) } : {}, value.why ? { why: String(value.why).slice(0, 200) } : {});
           if (issue === 'conflict' && choice === 'different_product') { const ss = (cur && cur.enrichment_flags && cur.enrichment_flags.mc && cur.enrichment_flags.mc.sources) || []; hv.source_url = ((ss.find(s => s.role === 'product') || ss[0]) || {}).url || null; }
           const rec = { manufacturer: m, field: 'page:' + page.page_key, kind: 'content_resolution', reason: reason.slice(0, 500), decided_by: who, hcps_value: hv, supersedes_id: prev ? prev.id : null };
           if (body.dry_run === true) return reply(200, { ok: true, dry_run: true, would_record: rec });

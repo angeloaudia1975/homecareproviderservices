@@ -134,4 +134,38 @@ t('a draft with no manufacturer source needs content even when the catalog line 
   const row={description:'y'.repeat(200),features:['a','b','c'],category:'C',subcategory:'S',images_gallery:[{url:'u',primary:true}],image:'u',enrichment_flags:{mc:{sources:[],images_done:true}}};
   const c=E.classify(page,row,[]); eq(c.status,'needs_content'); ok(c.issues.some(i=>/No manufacturer page/.test(i.title)),JSON.stringify(c.issues));
 });
+t('editorial: first-person wording is neutral — "our" becomes the brand\'s, a pure first-person slogan sentence is dropped, facts stay',()=>{
+  eq(E.neutralize('Our patented Dual Lock keeps it tight. Seat weight limit: 300 lbs. We\'re EMPOWERING INDEPENDENCE.','Bemis'),'Bemis’s patented Dual Lock keeps it tight. Seat weight limit: 300 lbs.');
+  eq(E.neutralize('Top priority for our 4.5" seat is security.','Bemis'),'Top priority for Bemis’s 4.5" seat is security.');
+  eq(E.neutralize('We tested it to 300 lbs.','Bemis'),'Bemis tested it to 300 lbs.','a first-person sentence with a fact keeps the fact');
+});
+t('a catalog figure no manufacturer source states is left out of the draft (350 lb per arm), and no retail model becomes a spec',()=>{
+  const page={page_key:'arms',name:'Arms',options:{},skus:[{code:'A',name:'Arms',option:'',catalog_description:'For the Assurance toilet seats. 350 lb capacity per arm. Sold as a set of 2.',category:'C',subcategory:'S'}]};
+  const landing={url:'https://m/l/',role:'landing',extract:{text:'Optional support arms can be added.',images:[],documents:[],videos:[],model:'',product:false}};
+  const d=E.buildDraft(page,[landing],{slug:'m',brand:'Bemis'});
+  ok(!/350/.test(d.row.description) && /Sold as a set of 2\./.test(d.row.description),d.row.description);
+  ok(/left out until a Bemis source confirms it: 350 lb/.test(d.row.field_provenance.description),d.row.field_provenance.description);
+  const prod={url:'https://m/p/',role:'product',extract:{text:'Model #ABC 000',model:'ABC 000',product:true,description:'A good seat for daily use, rated and tested.',features:['a','b','c'],specs:[{label:'Model No.',value:'ABC 000',evidence:'x'},{label:'Shape',value:'Round',evidence:'y'}],warranty:null,documents:[],videos:[],images:[],msrp:89.99}};
+  const p2=Object.assign({},page,{skus:[Object.assign({},page.skus[0],{catalog_description:''})]});
+  const d2=E.buildDraft(p2,[prod],{slug:'m',brand:'Bemis',records:{A:{msrp:79.99}}});
+  eq(d2.row.specs,[{label:'Shape',value:'Round'}]); eq(d2.report.conflicts,[],'no conflict from a retail price');
+  ok(/Bemis Retail Model ABC 000/.test(d2.row.field_provenance.retail_model),'retail model kept in provenance');
+});
+t('photos: promo art never leads; promo-only means no main photo; an official per-option photo wins over the catalog one',()=>{
+  const page={skus:[{code:'R'},{code:'E'}]}, row={skus:[{sku:'R'},{sku:'E'}]};
+  const a=E.assembleImages(page,row,[{role:'gallery',src:'https://m/assurance-landing-page-seat-fb.jpg',url:'u1',sha:'s1',bytes:5,promo:true},{role:'gallery',src:'https://m/E85-000-F.jpg',url:'u2',sha:'s2',bytes:5}]);
+  eq(a.image,'u2'); eq(a.images_gallery.map(g=>[g.url,g.primary]),[['u2',true],['u1',false]]);
+  const b=E.assembleImages({skus:[{code:'X'}]},{skus:[{sku:'X'}]},[{role:'gallery',src:'https://m/banner.jpg',url:'u1',sha:'s1',promo:true}]);
+  eq([b.image,b.promo_only],[null,true]);
+  const c=E.imageCandidates({skus:[{code:'R',catalog_image:'/a/R.jpg'},{code:'E',catalog_image:'/a/E.jpg'}]},[],'https://o',{R:{url:'https://m/R85-P.jpg',why:'round'}});
+  eq(c.map(x=>[x.role,x.code,x.src]),[['sku','R','https://m/R85-P.jpg'],['sku','E','https://o/a/E.jpg']]);
+  eq(E.skuImageChoices([{id:1,kind:'content_resolution',field:'page:p',hcps_value:{choice:'use_source_image',code:'R',image_url:'https://a/1.jpg'}},{id:2,kind:'content_resolution',field:'page:p',hcps_value:{choice:'use_source_image',code:'R',image_url:'https://a/2.jpg'}}],'p').R.url,'https://a/2.jpg');
+  eq(E.resolutionProblem('needs_image','use_source_image',{code:'R',image_url:'http://a/x.jpg'}),'an https photo address and the SKU it is for are required');
+  eq(E.resolutionProblem('needs_image','use_source_image',{code:'R',image_url:'https://a/x.jpg'}),null);
+});
+t('a landing page\'s images are not used when a product page exists',()=>{
+  const prod={role:'product',extract:{product:true,model:'E85320TSS 000',images:[{url:'https://m/E85320TSS-000-F.jpg'}]}};
+  const land={role:'landing',extract:{images:[{url:'https://m/assurance-landing-page-seat-fb.jpg'}]}};
+  eq(E.imageCandidates({name:'Assurance seat',skus:[{name:'Assurance seat'}]},[land,prod],'https://o').map(c=>c.src),['https://m/E85320TSS-000-F.jpg']);
+});
 console.log(`enrich engine (pure): ${pass} passed, ${fail} failed`); process.exit(fail?1:0);
