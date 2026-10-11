@@ -168,4 +168,18 @@ t('a landing page\'s images are not used when a product page exists',()=>{
   const land={role:'landing',extract:{images:[{url:'https://m/assurance-landing-page-seat-fb.jpg'}]}};
   eq(E.imageCandidates({name:'Assurance seat',skus:[{name:'Assurance seat'}]},[land,prod],'https://o').map(c=>c.src),['https://m/E85320TSS-000-F.jpg']);
 });
+t('catalog names vs the manufacturer: a term the page never names, or shows only in badges while its copy names another system, is a discrepancy',()=>{
+  eq(E.namedTerms('Open-front ring, raised 3", with the Stay-Tite installation system.'),['Stay-Tite']);
+  eq(E.namedTerms('Assist Non-Elevated Premium Toilet Seat with Arms and Stay Tite Installation System'),['Stay Tite']);
+  eq(E.systemNames('Seat is securely fastened with Snap 2 Secure system (installation tool included).'),['Snap 2 Secure']);
+  const page={page_key:'s',name:'Steadfast',skus:[{code:'7YE82350TC',catalog_description:'Open-front ring, raised 3", with the Stay-Tite installation system.'}]};
+  const mk=(desc,text)=>({url:'https://m/p',role:'product',extract:{product:true,model:'E1 000',description:'Raised 3 inches. '+desc,features:[],specs:[],documents:[],videos:[],images:[],text:'Raised 3 inches. '+(text||desc)}});
+  let b=E.buildDraft(page,[mk('Fastened with Snap 2 Secure system.','Never Loosens Stay·Tite® Fastened with Snap 2 Secure system.')],{brand:'Bemis'});
+  eq(b.report.conflicts.map(c=>c.kind),['catalog_name']); ok(/Snap 2 Secure/.test(b.report.conflicts[0].title));
+  b=E.buildDraft(page,[mk('Fastened with Snap 2 Secure system.')],{brand:'Bemis'}); ok(/never names it/.test(b.report.conflicts[0].title));
+  b=E.buildDraft(page,[mk('The Stay·Tite fastening system keeps it secure.')],{brand:'Bemis'}); eq(b.report.conflicts,[],'the same name with Bemis spelling');
+  b=E.buildDraft(page,[mk('A raised seat.','Never Loosens Stay·Tite® A raised seat.')],{brand:'Bemis'}); eq(b.report.conflicts,[],'shown in badges and no rival system named');
+  eq(E.CHOICES.catalog_name.map(c=>c.id),['use_source','keep_catalog_name']);
+  eq(E.classify({page_key:'s',skus:[{code:'X',price_ok:true}]},{description:'x'.repeat(90),features:['a','b','c'],category:'c',image:'https://x/a.jpg',enrichment_flags:{mc:{images_done:true,sources:[{role:'product'}],conflicts:[{kind:'catalog_name',title:'t'}]}}},[]).issues[0].resolution_key,'catalog_name');
+});
 console.log(`enrich engine (pure): ${pass} passed, ${fail} failed`); process.exit(fail?1:0);

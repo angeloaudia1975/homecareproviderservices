@@ -1403,6 +1403,13 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   pricing / pooling family. Bemis decisions: Rise = same product (#321); 444DISPLAY = its own page in its existing
   category, no "Display Programs" subcategory (#322); Support Arms, Bidet, Steadfast and Display stay open until an
   official product-specific source is added and re-run under window #320; Round needs its own official photo.
+  Named terms: a feature / system name in the HCPS catalog line ("Stay-Tite installation system") that the manufacturer's
+  page never names — or shows only in its badges / icons while the product copy names a different system — is a
+  Conflict "catalog_name" (choices: use the manufacturer's wording / our term is right, keep it out of the copy until the
+  manufacturer confirms). Spelling variants match (Bemis "Stay·Tite" = catalog "Stay-Tite"). Flagged, never chosen; the
+  draft copy is the manufacturer's words only; the catalog line and commercial record are not changed (Steadfast: copy
+  says Snap 2 Secure, catalog says Stay-Tite, Angelo 2026-10-11 16:01). Option photos: confirm the picture itself shows
+  the option (view it) before recording use_source_image — a file name alone is not confirmation.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
