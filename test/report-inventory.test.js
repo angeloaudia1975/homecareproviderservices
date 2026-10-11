@@ -309,6 +309,14 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
     assert.strictEqual(new Set(ids).size, ids.length, 'a message was repeated');
     assert.strictEqual(got.length, 10);
   });
+  await t('a slow listing that uses up the budget still advances the cursor (no endless loop)', async () => {
+    const w = world(); const clock = { t: 0 }; const f = w.fetch;
+    w.fetch = async (u, o) => { if (/\/messages\?/.test(u)) clock.t += 2600; else clock.t += 10; return f(u, o); };
+    let cursor = null, calls = 0, got = 0;
+    for (; calls < 30; calls++) { const r = await RI.inventory({ mailbox: 'a@hcps.us', from: '2025-10-01T00:00:00Z', to: '2026-10-12T00:00:00Z', internal_domains: ['hcps.us'], budget_ms: 3000, cursor }, deps(w, clock));
+      got += r.messages.length + r.unidentified.length; if (r.done) break; assert.ok(r.cursor.skip > (cursor ? cursor.skip : 0)); cursor = r.cursor; }
+    assert.ok(calls < 30); assert.strictEqual(got, 10);
+  });
   await t('a cursor that no longer matches the window is refused (window_changed), never silently skipped', async () => {
     const w = world(); const clock = { t: 0 };
     const r = await RI.inventory({ mailbox: 'a@hcps.us', from: '2025-10-01T00:00:00Z', to: '2026-10-12T00:00:00Z', internal_domains: ['hcps.us'], cursor: { skip: 2, last_id: 'nope' } }, deps(w, clock));

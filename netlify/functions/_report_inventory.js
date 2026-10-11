@@ -324,7 +324,7 @@ async function inventory(o, deps) {
   const out = [], unidentified = [], incomplete = [];
   let i = start;
   for (; i < keep.length; i++) {
-    if (now() > soft) break;
+    if (i > start && now() > soft) break;            // every call inspects at least one message, so a cursor always advances
     const { m, who, deep } = keep[i];
     let rec;
     try { rec = await inspectMessage(m, who, g, mb, maxBytes, folder, now, soft, deep); }

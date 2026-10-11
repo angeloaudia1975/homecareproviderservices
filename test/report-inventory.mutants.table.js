@@ -26,4 +26,5 @@ module.exports = {
   read_error_silent: { file: RI, from: 'rec.incomplete.push(`attachment "${att.name}" could not be read: ${e.message}`);', to: '' },
   subject_wins: { file: RI, from: 'if (byContent) { att.classification = byContent; att.basis = "content"; }', to: 'if (byContent && !classifyName(att.name)) { att.classification = byContent; att.basis = "content"; }' },
   body_only_missed: { file: RI, from: 'looks_like_report: amounts >= 1 &&', to: 'looks_like_report: amounts >= 99 &&' },
+  no_progress: { file: RI, from: 'if (i > start && now() > soft) break;', to: 'if (now() > soft) break;' },
 };
