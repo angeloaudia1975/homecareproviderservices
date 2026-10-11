@@ -1105,6 +1105,13 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   upsert, so the INSERT is checked first). That is accepted under the freeze rule. Do NOT weaken the guard for
   Bemis product-page work (or any other content work on a frozen line): it comes through an explicitly approved
   `regression_fix` decision or a separately approved freeze-policy change, nothing else.
+  **Phases 1–3 ACCEPTED / COMPLETE (Angelo, 2026-10-10).** Baselines: Bemis #1, Climbing Steps #3, Strongback #5,
+  Ovation #6, all pass; fingerprints unchanged at every step. Release review is on record in the Manufacturer Center
+  implementation plan doc. Open follow-ups: re-check anonymous listing of `mfr-sources` after the first real source
+  file is stored; live keep-vs-clear staging stays test-backed until a suitable non-frozen master record exists.
+  Phase 4 (MSRP/MAP basis reaching the storefront) is approved as its OWN release; accepted only with zero
+  dealer-facing change and identical fingerprints on Climbing Steps, Strongback, Ovation and Bemis. Phase 5 is not
+  approved yet.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
