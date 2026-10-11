@@ -1333,6 +1333,26 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   against what it expects (an enrichment-window draft = "allowed"); a missing content guard is a failure.
   Tests: test/mc-content-freeze.pg.test.js, test/mccontentfreeze.test.js, test/mccontentdrafts.test.js (hidden drafts
   leave the fingerprint unchanged; one visible page moves it), test/mccontent.mutants.js.
+  **Release A is APPROVED / COMPLETE (Angelo, 2026-10-11):** live proof accepted — all commercial/content freeze
+  checks passed, the four fingerprints unchanged, no window, approval, run or decision created.
+  **Release B, gate 1 — draft media (approved 2026-10-11).** (s) product_media can't prove an image belongs only to a
+  hidden draft (keyed by SKU, read publicly with no visibility rule), so it stays fully frozen — no exemption, window or
+  not. A draft's photos live on its own page row (image / images_gallery / skus[].image / options) and
+  supabase/mc_release_b_draft_media.sql (after Release A) makes that provable in the database: product_content.draft_window
+  records which window built a draft (the guard stamps it); a window changes or deletes ONLY the drafts it built (never a
+  live page, an older hidden page, or another line's page); under a window every image URL on the row must be a copy in
+  HCPS storage filed under that window — product-content/<line>/drafts/w<window id>/... (mfr_draft_media_problem) — so
+  outside links, the catalog's own /assets photos, another line's or another window's folder are refused; and a draft never
+  gets a dealer-visible status under a window, not even switched off (no single later flag can make it visible).
+  product-content.js files every upload / file / rehost made under a window in that folder with x-upsert false (never
+  overwrites) and re-copies an HCPS file from another folder instead of reusing it. MC.contentGate refuses a window on any
+  line but its own (frozen or not), across several lines, and on images-api outright (catalog-layer images). A closed
+  window opens nothing, and a NEW window cannot edit the old window's drafts — run one Bemis window to the end. Decision
+  kind content_resolution (Review Issues: field page:<page_key>, hcps_value {issue, choice}; a later choice supersedes,
+  never rewrites; Match ignores the kind). The self-test is now 25 attempts per frozen line (window drafts and draft
+  images "allowed"; live-page images, outside images, another window's folder, another line's window, publishing a draft
+  with its image, a live status switched off, a closed window, a page the window didn't build — "blocked").
+  Tests: test/mc-draft-media.pg.test.js, test/mcdraftmedia.test.js, test/mcdraftmedia.mutants.js.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
@@ -1667,6 +1687,14 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   (`scripts/mi1c_public_probe_browser.js`, run by Angelo 12:58 CT, key verified first): ALL 22 BLOCKED (401). Before the
   merge, main 0751266 (MC content-freeze SQL only) brought in; MI-1c SQL byte-identical; MI-1c 76/29/26 (real PDF),
   MI-1b 46/28, MI-1a 28/16, commission 42/11, MC content-freeze 19/18/3, guard 17, append 6, flow 13, gates 12, freeze 17.
+  **MI-1c DEPLOYED 2026-10-11 ~13:00 CT** (branch merged → main 86b4958, Netlify "Production: main@86b4958 Published").
+  Live: Dealer Intelligence Import opens for the President under Sales Data & Analytics and shows "No dealer-intelligence
+  report is registered yet"; API `sources` (signed in) → 200, no-store, 0 sources, reader strongback-mobility; no token /
+  forged token / junk token → 401 sign_in_required (XMLHttpRequest, not the wrapped fetch); rep / Relations → 403
+  management_only (code ADMIN = president/admin/owner + mi1c-api tests; no non-admin login used live); Report History
+  API list → 200. Nothing registered, imported, matched or published; `mi_intel_publish` absent; `mi_import_v2` ON,
+  `mi_commission_v2` off. Awaiting Angelo's MI-1c installation acceptance; the September PDF registration and the
+  25-dealer import each need their own approval.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.

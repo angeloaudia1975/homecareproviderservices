@@ -14,7 +14,7 @@ const JS=[
  ['_mc.js','any decision kind accepted as an exception','  if(d.kind !== kind) return','  if(false) return'],
  ['_mc.js','another line\'s exception accepted','  if(d.manufacturer !== slug) return','  if(false) return'],
  ['_mc.js','a spent fix or closed window accepted','  if(d.used_at != null) return kind','  if(false) return kind'],
- ['_mc.js','a change spanning a frozen line and another let through','  if(L.length > 1) return { refusal','  if(false) return { refusal'],
+ ['_mc.js','a change spanning a frozen line and another let through','  if(L.length > 1) return { refusal: { status: 423, body: { ok: false, error: "line_frozen"','  if(false) return { refusal: { status: 423, body: { ok: false, error: "line_frozen"'],
  ['_mc.js','an unreadable freeze state treated as not frozen','  catch(e){ return { refusal: { status: 503, body: { ok: false, error: "freeze_state_unreadable",','  catch(e){ return open; return { refusal: { status: 503, body: { ok: false, error: "freeze_state_unreadable",'],
  ['_mc.js','an applied migration not counted as a write','(b.action === "migrate_legacy" && b.apply === true)','b.action === "migrate_legacy"'],
  ['images-api.js','an enrichment window opens images-api','const g=await MC.contentGate({body:b, lines:[mfr], read:path=>sb("GET",path), windowRule:null});','const g=await MC.contentGate({body:b, lines:[mfr], read:path=>sb("GET",path), windowRule:MC.windowProblem});'],
