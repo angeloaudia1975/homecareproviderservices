@@ -1888,6 +1888,36 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   prerequisite for any automatic sales-report import; the manual importer keeps working but its preview flags
   questionable fallback assignments. (7) Deliver: branch reconciled with main, then ONE consolidated rollout proposal
   (migration, switch settings, test results, verification). STOP before production SQL, merge, deploy or switch on.
+- **Phase B1–B4 BUILT on branch `mi-b-report-capture` (2026-10-11; NOT merged, NOT deployed, NO production SQL, switch not
+  created).** Migration `supabase/mi_b_report_capture.sql` (sha256 5de92842…; rollback `…_rollback.sql` 18b94a29…, refuses
+  while any captured email / item / event exists): tables `mfr_report_profiles` (3 ACTIVE Strongback: SR032 commission
+  statement, order export by content, dealer overview by the MI-1c reader; 9 DRAFT; `auto_import` CHECK = false),
+  `mfr_report_capture_state` (mailbox angelo@…, checkpoint 1 Oct 2026 00:00 CT, overlap 6 h, run lease), `_runs`,
+  `mfr_report_messages` (unique mailbox + internetMessageId; received time never edited), `mfr_report_items` (one per
+  attachment / body / listing placeholder; states discovered → classified | registered | linked | exception | ignored |
+  processed), append-only `mfr_report_capture_events`. Writes only through `hcps_mfr_capture_begin/record/classify/fail/
+  register/finish/resolve` (security definer, service_role only); guard trigger needs the session marker AND the owner's
+  rights; RULE 19 (RLS on, no policies, service_role SELECT only). The DATABASE checks `phase2_flags.mi_report_capture`
+  (exactly true) on every capture write (a person's resolve does not need it); `finish` refuses a checkpoint past an email
+  with an item still 'discovered' or items never listed; `register` calls MI-1b `hcps_mfr_report_register` in the same
+  transaction, only for an ACTIVE auto-registering profile and a request that matches the item exactly (Outlook received
+  date in Chicago, period, hash-named storage path, no supersession) — existing hash → 'linked' (record 7), a second
+  dealer report for a period → exception `correction_needs_decision`, same file as another kind → `duplicate_conflict`, a
+  second statement for the same period → registered + `possible_correction`. Retry queue backoff 15 min × 2^n (cap 24 h),
+  8 attempts then a person. Code: `_report_capture.js` (shares `_report_inventory.js` Graph client / identification /
+  inspection; period from file name / report text / content dates / MI-1c reader / subject before the received-date rule;
+  file-name vs text disagreement = conflict; every run handles at least one email newer than the old checkpoint; an
+  email that can't be handled in one run is queued, never blocks), `report-capture-cron.js` (hourly :20, does nothing
+  while the switch is off), `mfr-reports-api` actions capture_status / inbox / attention / resolve (actor = verified
+  sign-in) / capture_now (switch-gated); Report History tabs Report register · Inbox · Needs attention. Ship-To:
+  `_shipto.js` (strict = never HQ / first branch without evidence; legacy = the exact old picks, labelled);
+  `sales-import-api` previews now carry `ship_to_flags` (HQ fallback / shared ZIP / city / name guesses) shown on the Sales
+  Report Import page — picks unchanged; the v2 "Dealers" tile no longer shows "undefined". Tests: mi-b-capture.pg 38,
+  report-capture 27 (real SQL + real September PDF), mi-b-api 11, shipto 17, mi-b.ui (Chromium, 360/390/768/1280), Phase B
+  mutants 35/35; report-inventory 28 (+29/29), mi1b 44/44, mi1a-compat 14/14, commission-coverage 43/43 mutants; all suites
+  pass except the pre-existing resources-render (documents.json). Installed-code fingerprint 12 functions: bea3b94e… (LF) /
+  89389ae0… (CRLF paste). Rollout queries: `supabase/mi_b_rollout_baseline.sql`, `…_postcheck.sql`; probe
+  `scripts/mi_b_public_probe_browser.js` (31 checks). STOP: awaiting Angelo's one approval of the consolidated rollout.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
