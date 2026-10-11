@@ -429,6 +429,33 @@ exports.handler = async (event)=>{
       return json(200,{ok:true,to,cc});
     }
 
+    /* MI Inbox Automation, Phase A — READ-ONLY manufacturer report inventory (_report_inventory.js).
+       Management only. One mailbox (default: the caller's own when it is a synced mailbox), one window of at most
+       62 days, every folder. Every Graph call it makes is a GET; it writes nothing, registers nothing, marks nothing
+       read, moves nothing, sends nothing and calls no importer. The answer is metadata + derived signals only. */
+    if(b.action==="report_inventory"){
+      if(!["president","admin","owner"].includes(me.role)) return json(403,{error:"management_only"});
+      if(!G_TENANT||!G_CLIENT||!G_SECRET) return json(200,{ok:false,error:"graph_env_missing"});
+      const mbox=String(b.mailbox||(MAILBOXES.includes(me.email)?me.email:MAILBOXES[0])||"").toLowerCase();
+      if(!MAILBOXES.includes(mbox)) return json(400,{error:"mailbox_not_synced",message:"Only a mailbox listed in GRAPH_MAILBOXES can be inventoried."});
+      const from=String(b.from||"").trim(), to=String(b.to||"").trim();
+      const fT=Date.parse(from), tT=Date.parse(to);
+      if(!/^\d{4}-\d{2}-\d{2}/.test(from)||!/^\d{4}-\d{2}-\d{2}/.test(to)||!isFinite(fT)||!isFinite(tT)) return json(400,{error:"from and to must be dates (YYYY-MM-DD)"});
+      if(tT<=fT) return json(400,{error:"to must be after from"});
+      if(tT-fT>62*864e5) return json(400,{error:"window_too_wide",message:"Inventory one month at a time."});
+      if(b.cursor!=null&&(typeof b.cursor!=="object"||Array.isArray(b.cursor))) return json(400,{error:"bad cursor"});
+      let mfrs=[]; try{ mfrs=await sbGet("manufacturers?select=slug,name"); }
+      catch(e){ return json(503,{error:"manufacturers_unreadable",message:"The manufacturer list could not be read — nothing was scanned."}); }
+      const esc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+      const nameRes=(mfrs||[]).filter(m=>m&&m.name&&String(m.name).trim().length>=5).map(m=>[new RegExp("\\b"+esc(String(m.name).trim())+"\\b","i"),m.slug]);
+      const RI=require("./_report_inventory.js");
+      const r=await RI.inventory({ mailbox:mbox, from:new Date(fT).toISOString(), to:new Date(tT).toISOString(), cursor:b.cursor||null,
+        budget_ms:b.budget_ms, max_attachment_bytes:b.max_attachment_bytes, internal_domains:INTERNAL_DOMAINS,
+        tableNames:t=>{ for(const [re,slug] of nameRes) if(re.test(t||"")) return slug; return null; } },
+        { getToken:force=>graphToken(!!force), fetch:(u,o)=>fetch(u,o) });
+      return json(r.ok===false&&r.error==="window_changed"?409:200, Object.assign({read_only:true}, r));
+    }
+
     if(me.role!=="president") return json(403,{error:"president only"});
 
     if(b.action==="status"){

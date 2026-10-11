@@ -10,6 +10,7 @@
     "@11ty/eleventy": "^3.0.0"
   },
   "dependencies": {
-    "pdfjs-dist": "3.11.174"
+    "pdfjs-dist": "3.11.174",
+    "xlsx": "0.18.5"
   }
 }

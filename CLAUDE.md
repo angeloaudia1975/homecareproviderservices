@@ -1810,6 +1810,39 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   into shared server modules with drift tests (no rewrite). Smallest first production change PROPOSED (not built/deployed):
   read-only `report_inventory` action in email-sync-api (management only; month window; all folders; attachment name /
   type / size / inline / in-memory SHA-256; stores, moves, marks or returns nothing else). Plan doc revised accordingly.
+  **Phase A completion APPROVED (Angelo, 2026-10-11 15:37 CT) — build, test, deploy `report_inventory`, then run it
+  Oct 1 2025 → Oct 11 2026 on Angelo's mailbox, then go straight to the Phase B design (no further option menus).**
+  Rules: reuse the existing Graph app + `graphToken`; no new integration. Angelo's mailbox, all folders; Greg's / Lori's
+  only later and narrowly (to find a missing report or confirm a duplicate), never a whole-mailbox scan. Identify by
+  known sender domains/addresses, subjects and the manufacturers table. Per item: Outlook received timestamp,
+  manufacturer, sender, subject, internetMessageId, attachment name / type / size / SHA-256, suggested classification;
+  email-body-only reports (Climbing Steps) included. Formats are verified by read-only in-memory content inspection
+  (CSV header, workbook sheets/columns via SheetJS 0.18.5 = the browser pages' version, PDF text via pdfjs) — the
+  Strongback order CSV is a SALES EXPORT whatever its subject says; AirAvant's PDF format is confirmed, never guessed.
+  Follow paging, honour Graph throttling (Retry-After), never drop a record silently: every month/file not fully checked
+  is reported as incomplete (resumable cursor). Management sign-in only; the response never carries attachment contents,
+  email bodies, credentials or unrelated mail (only manufacturer/report-keyword messages; raw column headers are reduced
+  to a fixed vocabulary). It registers nothing, writes nothing to Supabase, never marks read / moves / sends, invokes no
+  importer — tests prove every Graph call is a GET. Record 7 is never touched or duplicated. Financial imports, automatic
+  processing and intelligence publishing stay OFF.
+  **Ship-To Correction & Branch Assignment (Angelo, 2026-10-11 15:37 CT; part of Phase B/C of THIS plan — no separate
+  import system; not built yet, no production financial change or historical reassignment authorized):** before any
+  financial import of a captured report, find missing/ambiguous Ship-To details; resolve the branch from existing dealer
+  records, branches, manufacturer account numbers, known ship-to addresses, ZIPs and previously VERIFIED mappings;
+  auto-assign only on reliable evidence under an approved rule; otherwise the order goes to a **Needs Ship-To Review**
+  queue — never silently HQ or an arbitrary branch. Correction screen: original order + reported customer + any Ship-To
+  given; pick an EXISTING branch; add/correct ship-to name, address, city, state, ZIP; suggested locations and prior
+  verified assignments; one confirmation covers every line of the order; Save & Continue. The original attachment is
+  never altered; corrections are a separate versioned overlay (original value, corrected value, actor, timestamp,
+  reason). Verified mappings are remembered, scoped narrowly (manufacturer + account + ship-to identifier/address, never
+  "account → one branch" for a multi-branch account). Corrected report downloadable as Excel/CSV. Never create dealers,
+  change ownership, alter aliases or reassign historical financial records. If MI-1a cannot isolate unresolved orders
+  from clean ones, the WHOLE import is held — no partial financial writes. **Known defect:** `sales-import-api.js
+  pickBranch()` falls back to the HQ / first family member when ZIP / city / ship-to name don't match — the automated
+  path must instead return "needs ship-to review" (manual import kept compatible); regression tests must prove a
+  multi-branch account is never silently assigned to the wrong location. Cases: one account number over several
+  branches; no ship-to ZIP; corporate billing address ≠ delivery; several invoice lines of one order; a verified
+  recurring ship-to identifier; a new shipping location; a corporate / drop-ship sale explicitly confirmed as such.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
@@ -1952,22 +1985,86 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   The database checks only that an actor is named; the trust boundary is the server role. Every `op()` call passes
   `actorLabel()` of the actor `staffActor` / `learnerActor` returned; the A2C unit adds a test proving a request-body
   actor is ignored.
-- **A2C Part C1 — Academy Command Center (Angelo, 11 Oct 2026 08:27: design ACCEPTED; PR #5 not merged until his GO).**
+- **A2C Part C1 — Academy Command Center (Angelo, 11 Oct 2026 08:27: design ACCEPTED; PR #5 merged 11 Oct 2026, main 1a942ce).**
   `/admin/academy.html` (Connect 360 → Sales & Marketing; admins only — reps/Relations keep their menus unchanged) +
   `academy-admin-api.js`. Six tabs are fixed: Overview, Courses, Learners & Dealerships, Product Facts, Certifications,
   Activity. HCPS-issued and manufacturer-issued credentials are always shown apart. President-only: publish/retire a
   version, approval-required facts (the President is the recorded approver), edits to a course learners have seen.
-  Role assignments and credential verification go only through M1 operations. **Ordinary content writes record first:**
-  the audit row (with `_ref`) is written BEFORE the change and a failure to write it refuses the change (503); a change
-  that then fails gets `<action>_failed` with the same `_ref`; `audit_check` (records check) reconciles every course /
-  version / module / lesson with its latest effective audit row. **Before production authoring** these writes become
-  atomic database operations (M2, Option A in `docs/academy/A2C_C1_COMMAND_CENTER.md`) — awaiting Angelo's approval.
+  Role assignments and credential verification go only through M1 operations. Ordinary content writes (courses,
+  draft versions, modules, lessons) go only through the M2 content operations (next bullet); as merged in PR #5 they
+  were written audit-first (`_ref` / `<action>_failed`), which the records check (`audit_check`) still understands.
+  The switch never went on, so production has no audit-first rows.
   **Course record status** (`academy_courses.status`) is not changed in C1; the UI shows "Training available" from the
   versions so a course with a published version never looks unpublished; the permanent rule is a C2 decision (proposal
   in the doc). **TEST data:** TEST dealers (`is_test`), pilot learners (all active memberships at TEST dealers) and
   TEST-course (`test-…`) enrollments/credentials are excluded from real Academy figures and shown apart; every future
   Academy metric uses the same rule; a TEST course never issues a genuine certificate (M1). Do not begin A2D until
   Angelo approves it separately. All Academy switches stay OFF.
+- **PR #5 and PR #6 MERGED and VERIFIED in production (Angelo's approval 11 Oct 2026 11:22).** PR #5 (Command Center) →
+  main 1a942ce: Netlify Published; with `academy_admin` OFF the page says switched off, signed-in actions get 403
+  `flag_off`, no/forged token 401; site, Connect 360, crm-api, mfr-reports-api unchanged. PR #6 (Connect 360 mobile
+  masthead, rule 10) → main 2eceda2: 49 admin pages × 5 roles × 4 widths clean; desktop/tablet headers pixel-identical;
+  phone Lock and account controls on screen. All seven switches OFF.
+- **Ordinary Academy content is atomic with its audit row (RULE, Angelo 11 Oct 2026 — M2 design approved).** Creating
+  and editing courses, draft versions, modules and lessons, and moving a version draft ↔ in review, run ONLY as the
+  database functions `academy_content_op_*` (migration `supabase/academy_a2c_m2_content_ops.sql`; prefix chosen so
+  M1's `academy\_op\_%` fingerprint and rollback are untouched): one transaction — the change and its `academy_events`
+  row together or neither; each operation re-reads its row under the version lock and must change exactly one row
+  before it records. Guard trigger `academy_content_guard` on the four content tables refuses every other insert, edit
+  or delete (also the owner without an operation, and the server role even with a forged `academy.op`). The database
+  repeats every server check: active administrator named `staff:<email>` (from the verified sign-in, `contentOp()` in
+  `_academy.js`), the President for a course learners have seen, allowed fields only, drafts only (55000 → 409
+  `locked`). Published and retired content stays frozen (A1 triggers + M1 + M2). Not installed = 503, never a plain
+  write. Test setups that insert content directly set `academy.op` as the owner around those inserts (A1/M1 acceptance,
+  m1_hardening, atomicity — their sha256 changed for that reason only). **M2 is NOT run in production: Angelo approves
+  the exact file and runs it himself; the Command Center is not switched on until M2 is installed, tested and
+  separately approved for staff-only activation.** Expected fingerprint f24e4f88… (Unix) / 794f3c3e… (CRLF paste).
+  **Pre-M2 production baseline ACCEPTED by Angelo (11 Oct 2026 13:56 CT):** ready_for_m2 true; M1 19 / 6 / e70543ba…;
+  M2 absent; Academy content + audit rows 0; 1 active President; switches {} (all OFF); Academy grants 7af6d10e…/252,
+  columns ca214093…/179, 0 policies, RLS 18/18; outside grants 336bae11…/2860, columns add1e9f7…/115 tables, policies
+  219ac18e…/29, other functions 5ac72858…/79 (the +6 tables / +49 grants since M1 = MI-1b + MI-1c, authorized).
+  Production is Postgres 17.6: the M2 suite passes on a local 17.6 (pg-safeupdate is unavailable there; covered on 16
+  plus the static WHERE check). M2 files change no database setting.
+  **M2 RUN and VERIFIED in production (Angelo, 11 Oct 2026 ~14:23–15:27 CT):**
+  - Angelo pasted the approved file (sha256 b4e28fd0…) himself.
+  - **Postcheck:** 15 functions, 11 server-only operations, 0 / 0 callable helpers and public-key functions, both guards on
+    the 4 tables, fingerprint 794f3c3e… (CRLF, as precomputed); M1 19 / 6 / e70543ba… unchanged.
+  - **Tests:** M2 acceptance 21/21, A1 27/27, M1 43/43 (34 and 39 ran); second postcheck 0 rows.
+  - **Preflight after:** every fingerprint equals the accepted baseline. Only row counts product_content 103 /
+    history 2466 / sources 59 moved: Angelo's 7 Bemis Auto-Enrich drafts at 14:30 CT, attributed by query. The post-M2
+    baseline uses those counts.
+  - **Public-key probe:** ALL 26 BLOCKED. The first run's one "OPEN" was a probe bug: PATCH of a column the table lacks
+    gives PGRST204 before any permission check; fixed (sha256 71f42e7f…). A probe write must name a real column.
+  - Switches all OFF.
+  **M2 ACCEPTED by Angelo (11 Oct 2026 15:29 CT):** 15 functions, 21/27/43 tests, probe 26/26, M1 unchanged, no test rows,
+  fingerprints = baseline; the Bemis Auto-Enrich row counts accepted. The corrected probe
+  (`scripts/academy_m2_public_probe_browser.js`, sha256 71f42e7fdda4f5f4217cea8db693a01f6e46c58706c150f35d7620a5b19e2417)
+  is the authoritative version. The first run's invalid-column row (PATCH {title} on academy_course_versions →
+  PGRST204) tested nothing. **Never rerun or roll back M2.** PR #7 merge conditionally approved at the same time (checks:
+  mergeability, SQL byte-identical to the production run, API on M2 operations with no direct-write fallback,
+  regressions, switches OFF). Activating `academy_admin` (administrators only) needs Angelo's separate approval. A2D and C2
+  not started. Learner access, enrollment, real course publishing, certificates, payments and automatic Golden product
+  updates stay disabled.
+  **PR #7 MERGED and VERIFIED (11 Oct 2026 ~15:50 CT, merge commit main e50608a).**
+  - **Before the merge:** main merged in with no conflicts and no Academy files touched; the M2 SQL and test files
+    byte-identical to the production run (no SQL change since b64daf4); 11 content operations each called through
+    `contentOp`, with no `sbSend` and no fallback; regressions passed (79 suites, the only failure resources-render, which
+    fails identically on main); Academy mutants 39/39 and 32/32; 13 Postgres suites (MI-1c real-PDF test skipped
+    locally); browser 6/6; switches all OFF.
+  - **Live after the merge:** Netlify "Published main@e50608a"; site and Connect 360 pages 200; crm-api / mfr-reports-api
+    200; Academy whoami enabled false with all 7 switches false; President overview / create_course 403 `flag_off`;
+    no token / forged token 401; learner API 403; handoff `{enabled:false}`; `/academy/` 404.
+  - **Staff-only activation plan:** `docs/academy/A2C_ADMIN_ACTIVATION_PLAN.md`. NOT approved; `academy_admin` stays
+    OFF.
+  TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
+  the guard when a marker is set: any future cascade INTO the four content tables must be reviewed against it.
+- **Course publication rules (Angelo, 11 Oct 2026 — C2 design only, NOT implemented; `docs/academy/C2_COURSE_PUBLICATION_DESIGN.md`).**
+  Show clearly whether training is published and available. Only the President publishes or retires a course. Published
+  versions are immutable. Publishing a replacement version retires the previous one and publishes the new one in ONE
+  transaction. Manufacturer-hosted training gets its own controlled (President-only, audited) publication. Published
+  history and certification records are preserved. TEST courses never issue real certificates; every dashboard and
+  report keeps TEST apart. Do not begin A2D, A2F, A2B, A2E or C2 without separate approval; never enable learner access,
+  issue certificates, publish real courses, activate payments or modify Golden Ordering without it.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

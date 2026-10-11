@@ -1,0 +1,27 @@
+/* Mutants for test/report-inventory.test.js — each must make the suite FAIL. Applied in memory only. */
+const RI = '_report_inventory.js', API = 'email-sync-api.js';
+module.exports = {
+  reps_allowed: { file: API, from: '["president","admin","owner"].includes(me.role)', to: '["president","admin","owner","rep","relations"].includes(me.role)' },
+  any_mailbox: { file: API, from: 'if(!MAILBOXES.includes(mbox)) return', to: 'if(false) return' },
+  mfr_unreadable_ignored: { file: API, from: 'catch(e){ return json(503,{error:"manufacturers_unreadable"', to: 'catch(e){ mfrs=[]; } if(0){ return json(503,{error:"manufacturers_unreadable"' },
+  graph_not_get: { file: RI, from: 'method: "GET", headers', to: 'method: "PATCH", headers' },
+  no_immutable_ids: { file: RI, from: '[\'IdType="ImmutableId"\']', to: '[]' },
+  no_paging: { file: RI, from: 'pages++; path = j["@odata.nextLink"] || null;', to: 'pages++; path = null;' },
+  no_throttle_retry: { file: RI, from: 'if (r.status === 429 || r.status === 503 || r.status === 504) {', to: 'if (false) {' },
+  listing_failure_done: { file: RI, from: 'return { ok: true, done: false, listing: { complete: false', to: 'return { ok: true, done: true, listing: { complete: false' },
+  budget_skips: { file: RI, from: 'if (i > start) break;', to: 'if (i > start) continue;' },
+  no_window_check: { file: RI, from: '(start > 0 && keep[start - 1].m.id !== cur.last_id)', to: 'false' },
+  drafts_kept: { file: RI, from: 'if (m.isDraft) continue;', to: '' },
+  internal_kept: { file: RI, from: '} else if (!who.internal && STRONG_WORDS.test(subj))', to: '} else if (STRONG_WORDS.test(subj))' },
+  no_csv_content: { file: RI, from: 'if ((all.has("order") || all.has("invoice")) && (all.has("sku")', to: 'if (false && (all.has("sku")' },
+  pdf_by_name: { file: RI, from: 'if (s.has("commission")) return "commission_statement";', to: '' },
+  body_leak: { file: RI, from: 'rec.body = { checked: true, amounts,', to: 'rec.body = { text: t, checked: true, amounts,' },
+  header_leak: { file: RI, from: 'for (const [k, re] of VOCAB) if (re.test(s)) out.add(k); }', to: 'for (const [k, re] of VOCAB) if (re.test(s)) out.add(s); }' },
+  inline_kept: { file: RI, from: '{ rec.inline_skipped++; continue; }', to: '{ rec.inline_skipped++; }' },
+  too_large_hashed: { file: RI, from: 'if ((a.size || 0) > maxBytes) {', to: 'if ((a.size || 0) > maxBytes * 1000) {' },
+  shallow_downloads: { file: RI, from: 'if (!deep && !/^(commission', to: 'if (false && !/^(commission' },
+  no_dup_flag: { file: RI, from: 'if (seenMsg.has(r.internet_message_id)) r.duplicate_of_message', to: 'if (false) r.duplicate_of_message' },
+  read_error_silent: { file: RI, from: 'rec.incomplete.push(`attachment "${att.name}" could not be read: ${e.message}`);', to: '' },
+  subject_wins: { file: RI, from: 'if (byContent) { att.classification = byContent; att.basis = "content"; }', to: 'if (byContent && !classifyName(att.name)) { att.classification = byContent; att.basis = "content"; }' },
+  body_only_missed: { file: RI, from: 'looks_like_report: amounts >= 1 &&', to: 'looks_like_report: amounts >= 99 &&' },
+};

@@ -1,8 +1,9 @@
 # A2C Part C1 — Academy Command Center (foundation)
 
-Status: **draft PR #5, awaiting Angelo's final GO/NO-GO and merge approval.** Not merged, not deployed to production.
-All seven Academy switches OFF. Authorized 10 Oct 2026 23:12 (code, local testing, draft PR only). Final review
-requirements from Angelo, 11 Oct 2026 08:27 — addressed below.
+Status: **PR #5 merged 11 Oct 2026 (main 1a942ce) and verified in production with the switch OFF.** All seven Academy
+switches OFF. The Command Center is not switched on until M2 (atomic content operations, `docs/academy/A2C_M2_CONTENT_OPS.md`)
+is installed, tested and separately approved for staff-only activation. Course publication rules for C2:
+`docs/academy/C2_COURSE_PUBLICATION_DESIGN.md` (design only).
 
 ## What it is
 `/admin/academy.html` in Connect 360 → Sales & Marketing → **Academy Command Center**, served by
@@ -20,7 +21,7 @@ requirements from Angelo, 11 Oct 2026 08:27 — addressed below.
 ## Security (verified by tests)
 - **Access:** the `academy_admin` switch must be ON *and* the caller an active president, admin or owner. Reps and Relations get 403 for every action, including unknown ones. No sign-in, an inactive account or a learner cookie gets 401. `whoami` answers any active staff member, so the page can explain itself.
 - **Identity:** the actor is always `staff:<signed-in email>`. These request fields are ignored: `actor`, `p_actor`, `verified_by`, `approved_by`, `published_by`, `email`, `role` and `staff`.
-- **M1 audited operations:** the only road for:
+- **Audited database operations:** M2 (`academy_content_op_*`) is the only road for courses, draft versions, modules and lessons. M1 (`academy_op_*`) is the only road for:
   - publishing or retiring a version;
   - granting or removing the Training Manager role;
   - verifying or rejecting a manufacturer credential;
@@ -31,7 +32,7 @@ requirements from Angelo, 11 Oct 2026 08:27 — addressed below.
   - publishing or retiring a version;
   - recording an approval-required fact (the President is recorded as the approver);
   - changing details of a course learners have seen.
-- **Published or in-review content cannot change.** The server allows edits only on drafts. The write itself is limited to `status=eq.draft`, which makes it race-safe. The A1 triggers and the M1 guard refuse the same edits again.
+- **Published or in-review content cannot change.** The server allows edits only on drafts. With M2 the database checks again under a lock on the version (race-safe: 409 `locked`). The A1 triggers, the M1 guard and the M2 guard refuse the same edits again.
 - **Not in C1:**
   - issuing or revoking certificates;
   - exams and question authoring;
@@ -46,56 +47,24 @@ requirements from Angelo, 11 Oct 2026 08:27 — addressed below.
 
 ## Ordinary content writes: audit behaviour
 **Which writes are "ordinary":** draft courses, draft versions, modules, lessons, and version draft ↔ in-review moves.
-They are not M1 operations. The web API cannot write a change and its audit row in one transaction.
 
-**What C1 does (`recorded()` in academy-admin-api.js):**
-1. **Audit row first.** It holds the intended result and a reference (`after._ref`). If the activity history cannot be written, **nothing is changed**: the answer is 503 `audit_unavailable`. A change can never happen without its record.
-2. **Then the change.** If the change fails, a `<action>_failed` row with the same `_ref` is added and the error is returned. If that failure row also cannot be written, the server logs `academy audit: the failure record could not be written` with the reference.
+**With M2 (branch `academy/m2-content-ops`, approved design, awaiting review before merge or production run):** every
+ordinary write is ONE call to an `academy_content_op_*` database function, which saves the change and its audit row in
+one transaction or neither. A guard trigger refuses every other write to the four content tables. Details, tests and
+the production runbook: `docs/academy/A2C_M2_CONTENT_OPS.md`. If M2 is not installed, these writes answer 503 and never
+fall back to a plain write.
 
-**What can still go wrong:** the change fails *and* its failure row is lost. The history then claims a change that did not happen. That is the safe direction (never a silent change), and the records check finds it.
+**As merged in PR #5 (before M2), `recorded()` wrote audit-first:** the audit row with a `_ref`, then the change, and a
+`<action>_failed` row if the change failed. The switch was never turned on, so production has no such rows. The
+records check still understands `_ref` / `_failed` rows.
 
-**Records check (`audit_check`, Activity tab):** compares every course, version, module and lesson with its latest *effective* audit row. An action whose `_ref` has a matching `_failed` row counts as not done. It reports:
-- **unrecorded rows:** content that has no history;
-- **drift:** current values differ from the history, either because something was changed outside the Command Center or because a failure record was lost;
-- **missing rows:** recorded but not present.
+**Records check (`audit_check`, Activity tab):** compares every course, version, module and lesson with its latest
+*effective* audit row. It reports unrecorded rows, drift (current values differ from the history) and missing rows.
+It is read-only and stays as an independent safety net with M2.
 
-It is read-only. The rows created by the A1/M1 acceptance tests are gone, so production starts clean.
-
-## Proposal: make ordinary writes atomic (M2) — before production authoring
-**Recommended: Option A, audited content operations, built like M1.**
-- **New functions:** SECURITY DEFINER functions, executable by the server role only, with a pinned search path, for example:
-  - `academy_op_save_course(p_actor, p_course jsonb)`
-  - `academy_op_save_version(p_actor, p_version jsonb)`
-  - `academy_op_move_version(p_actor, p_id, p_to)` (draft ↔ in_review only)
-  - `academy_op_save_module(...)` / `academy_op_delete_module(...)`
-  - `academy_op_save_lesson(...)` / `academy_op_delete_lesson(...)`
-- **Checks inside each function:**
-  - `academy_op_actor_staff(p_actor)`;
-  - a per-entity field allow-list;
-  - draft-only checks against the version row, read `for update`;
-  - President-only for seen courses (needs an `academy_op_actor_president` helper);
-  - the `academy_events` row written in the **same transaction**.
-- **Guard:** extend `academy_audited_guard` to `academy_courses`, `academy_modules` and `academy_lessons`, and to non-status edits of `academy_course_versions`. Plain writes are then refused, exactly as in M1.
-- **Code:** `recorded()` becomes `A.op(...)`. The records check stays as an independent safety net.
-- **Tests:**
-  - a pg hardening file, with failing-before/passing-after;
-  - the A1/M1 acceptance suites rerun;
-  - a public-key probe (all BLOCKED);
-  - the code fingerprint computed for both line-ending forms.
-
-**Option B, an AFTER trigger on the content tables writing `academy_events`:** fewer functions, and the actor comes from a PostgREST request header the server sets. It is not recommended:
-- the actor would be any header the server role sends;
-- plain writes stay open;
-- draft rules would live in two places.
-
-**Sequence:**
-1. Angelo approves the design.
-2. Claude writes M2 with its tests.
-3. Angelo approves the exact SHA and runs it by hand.
-4. Code PR switches to the operations.
-5. Verification.
-
-Only then is `academy_admin` considered for production authoring.
+## M2 (atomic ordinary writes)
+Design approved by Angelo on 11 Oct 2026 (Option A, audited content operations built like M1). Built on branch
+`academy/m2-content-ops`; see `docs/academy/A2C_M2_CONTENT_OPS.md`.
 
 ## Course status
 **C1 (as built):** `academy_courses.status` is left as it is. C1 never writes it, so new courses stay `draft`.
@@ -147,7 +116,7 @@ A course with a published version therefore always reads **Published training (v
 ## Tests
 | Suite | Result |
 |---|---|
-| `node test/academy-c1.test.js` | 47 tests |
+| `node test/academy-c1.test.js` | 49 tests (with M2: the content operations are answered by `test/academy-content-ops.fake.js`) |
 | `node test/academy-c1.mutants.js` | 39 mutants, all killed; the control survives |
 | `test/academy-c1.browser.js` (Playwright + Chromium) | 6 tests |
 
@@ -171,7 +140,8 @@ order by k;
 Expected: 7 rows, `is_on = false` on every row.
 
 ## Open items
-- **M2** (atomic ordinary writes) and the **course-status rule**: for Angelo's decision before production authoring and C2.
+- **M2**: draft PR, waiting for Angelo's review. Not merged and not run in production.
+- **Course-status rule**: C2 design in `docs/academy/C2_COURSE_PUBLICATION_DESIGN.md`, with decisions A–E for Angelo.
 - **Pending in C2:** module reorder, question authoring and lesson blocks.
 - **Approval-required facts:** recorded by the President only. A two-person approval queue would need its own design.
-- **Mobile header:** the shared Connect 360 masthead overflowed phones. It is fixed in a separate PR (Connect 360 mobile header), not in PR #5.
+- **Mobile header:** fixed in PR #6 (merged 11 Oct 2026, main 2eceda2), not in PR #5.
