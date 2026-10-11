@@ -197,8 +197,14 @@ await t('an official source added in Review Issues is read on the re-run (Steadf
   r=await call(C,withWin({action:'enrich_page',page_key:pk})); eq(r.body.sources.map(s=>s.role),['product']);
   for(let i=0;i<6;i++){ const im=await call(C,withWin({action:'enrich_images',page_key:pk})); if(!im.body.remaining) break; }
   const p=(await call(C,{action:'enrich_plan'})).body.pages.find(x=>x.page_key===pk);
-  eq(p.status,'ready',JSON.stringify(p.issues)); ok(/E82350TC-000-P/.test(p.draft.image),p.draft.image);
+  /* Angelo 2026-10-11: the copy may use the manufacturer's Snap 2 Secure; the catalog's Stay-Tite is flagged, never chosen */
+  eq(p.status,'conflict',JSON.stringify(p.issues));
+  const c=p.issues.find(i=>i.kind==='catalog_name'); ok(c && /Stay-Tite/.test(c.title) && /Snap 2 Secure/.test(c.title),JSON.stringify(p.issues));
+  eq(c.resolution_key,'catalog_name'); eq(c.choices.map(x=>x.id),['use_source','keep_catalog_name']);
+  ok(/Snap 2 Secure/.test(p.draft.description) && !/Stay.?Tite/i.test(p.draft.description),'copy is the manufacturer\'s words only');
+  ok(!/3L2150T/.test(JSON.stringify(p.draft.gallery)),'photos named after another model are not used'); ok(!/benefit-thumbnail/.test(p.draft.image||''),'a badge is never the main photo');
   ok(/Retail Model E82350TC 000/.test(p.draft.provenance.retail_model),'alias recorded');
+  eq(W.db.product_skus.filter(r=>r.code==='7YE82350TC').length<=1,true);
 });
 await t('re-running is stable: same page keys, the same draft updated (no duplicate), the window stamped on every draft',async()=>{
   const keys=(await call(C,{action:'enrich_plan'})).body.pages.map(p=>p.page_key).sort();
