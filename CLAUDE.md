@@ -1720,6 +1720,45 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   (`scripts/mi1c_public_probe_browser.js`, run by Angelo 12:58 CT, key verified first): ALL 22 BLOCKED (401). Before the
   merge, main 0751266 (MC content-freeze SQL only) brought in; MI-1c SQL byte-identical; MI-1c 76/29/26 (real PDF),
   MI-1b 46/28, MI-1a 28/16, commission 42/11, MC content-freeze 19/18/3, guard 17, append 6, flow 13, gates 12, freeze 17.
+  **MI-1c DEPLOYED 2026-10-11 ~13:00 CT** (branch merged → main 86b4958, Netlify "Production: main@86b4958 Published").
+  Live: Dealer Intelligence Import opens for the President under Sales Data & Analytics and shows "No dealer-intelligence
+  report is registered yet"; API `sources` (signed in) → 200, no-store, 0 sources, reader strongback-mobility; no token /
+  forged token / junk token → 401 sign_in_required (XMLHttpRequest, not the wrapped fetch); rep / Relations → 403
+  management_only (code ADMIN = president/admin/owner + mi1c-api tests; no non-admin login used live); Report History
+  API list → 200. Nothing registered, imported, matched or published; `mi_intel_publish` absent; `mi_import_v2` ON,
+  `mi_commission_v2` off. Awaiting Angelo's MI-1c installation acceptance; the September PDF registration and the
+  25-dealer import each need their own approval.
+  **MI-1c installation + deployment ACCEPTED (Angelo, 2026-10-11 13:42 CT).** Next gate = the September PDF: registration,
+  then (separately approved) acceptance and a PREVIEW ONLY in Dealer Intelligence Import — never Import, match decisions,
+  publishing, contacts/CRM activity or financial changes until each is approved; switches stay mi_import_v2 ON /
+  mi_commission_v2 OFF / mi_intel_publish OFF.
+  **September PDF REGISTERED (approved by Angelo 13:52 CT; done 2026-10-11 18:54 UTC) — record 7.** Details Angelo
+  confirmed: Strongback Mobility, dealer_report, title "Strongback — September 2026 Dealer Report", file
+  Strongback_Report_Overview_September_2026.pdf, period 2026-09-01..2026-09-30, prepared 2026-10-08 (stated; the report
+  prints "prepared 8 October 2026"), HCPS received 2026-10-11 (Angelo's confirmation — the PDF itself was created
+  8 Oct 15:46 CDT), sha256 f708ebaf0290bb736c7499b818655167c436c8867f16142cf122fd663bd790b5, 515,614 bytes, 17 pages.
+  Registered through the Report History page (file attached with the browser tool, bytes hashed in the browser = the
+  approved sha256 before submitting). Result: status received ("Received — awaiting review"), publication unpublished,
+  not accepted; 1 audit event `registered` by angelo@; stored privately at
+  reports/strongback-mobility/dealer_report/<sha>.pdf (the first file in `mfr-sources`, bucket private, no storage
+  policy names the bucket, none applies to anon/authenticated without a bucket filter); the stored bytes downloaded
+  through the signed 2-minute link hash to the same sha256; orphan check 1 stored / 1 registered / 0 orphans. Baseline
+  before/after: identical except the expected report row / event / stored file, and mfr_decisions 15 → 16 = decision 320
+  (Bemis enrichment_window opened 18:53:59 UTC by the separately approved Manufacturer Center Release B work, not by the
+  registration). Outside public-key check: `scripts/mfr_sources_public_probe_browser.js` (11 checks; Angelo runs it).
+- **PRIORITY CHANGE — automated Outlook report processing (Angelo, 2026-10-11 13:59 CT).** Primary goal: manufacturer
+  reports arrive by Outlook email and are captured, identified (sender, attachment, file name, content: sales export /
+  commission statement / dealer report / price list), registered in the EXISTING Report History register (received
+  date = the Outlook received timestamp; duplicates refused by message identity + SHA-256) and processed through the
+  EXISTING importers; a dashboard shows who sent what, periods, arrival, processing and attention items; on the 15th of
+  every month a reconciliation reports completed imports, missing manufacturers, incomplete reports and exceptions, and
+  late reports keep processing. Rules: reuse MI-1a / MI-1b / MI-1c and the existing Graph sync (`email-sync-cron`) — no
+  new manufacturer database or import platform; approvals move from per-file to per-rule (a report profile per
+  manufacturer + type); alert only on real exceptions; commission v2 and unrestricted financial writes stay off without
+  separate approval; financial safeguards, dealer ownership and audit history kept; never create contacts, deals,
+  campaigns or send emails automatically. Strongback is the pilot, then other manufacturers. Plan: Claude Doc "MI Inbox
+  Automation — Pilot Plan (Strongback)" (claude.ai/code/artifact/4ca4e85c-1125-4521-92b3-051ed119bcf6). NO production
+  changes until Angelo agrees the pilot workflow (open decisions listed at the end of that doc).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
