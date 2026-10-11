@@ -1351,6 +1351,21 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   dealer_report, period, prepared_date, batch link); MI-1c = `mfr_dealer_snapshots` + `mfr_dealer_observations`
   (RULE 19 locked), match review queue, publish step. September expected matches: 15 auto, 7 review, Wyatt's held,
   GF Health + Nebcare unmatched (never created). Awaiting Angelo's decisions before SB-1.
+- **SB-0 APPROVED with refinements; MI-1b development authorized (Angelo, 2026-10-10 22:46 CT).** Branch only — no
+  production SQL, no deploy, no historical backfill, no September PDF import until separately approved. Decisions:
+  (1) MI-1b reuses the Manufacturer Center register `mfr_sources`. (2) Its unique `(manufacturer, file_sha256)` safeguard
+  stays; the report kinds (sales_export, commission_statement, dealer_report) coexist with the six existing catalog
+  rows/kinds, which keep their behaviour unchanged. (3) A report's received/accepted status is SEPARATE from whether its
+  intelligence is published to Dealer 360: registering or accepting a file never makes a manufacturer PDF visible or
+  triggers any action. (4) Keep the original file, SHA-256, received date, manufacturer-prepared date, report period,
+  supersession history and an audit trail of approvals; never invent a missing date or a link to a historical financial
+  import batch. (5) MI-1c observations use stable SOURCE-POSITION identities (report + page/block/line position), never
+  text/date alone, so identical legitimate notes are kept. (6) September matching: 15 automatic candidates, 7 manual
+  review, Wyatt's Pharmacy HELD, GF Health + Nebcare unmatched; an import never creates dealers or changes aliases.
+  (7) HCPS rep assignments stand: a report's owner field never overrides `dealers.rep_email`, and family-level or
+  sister-branch information must not leak across rep scopes. (8) The Strongback September CSV stays separate from the
+  PDF; no new sales or commission import is approved. (9) The 5% Premium Chair offer is stored only as unverified
+  manufacturer-supplied text — no pricing or campaign action. SB-1 / MI-1c needs its own authorization.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
