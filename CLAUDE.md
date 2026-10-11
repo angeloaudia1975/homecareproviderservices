@@ -1985,7 +1985,16 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     baseline uses those counts.
   - **Public-key probe:** ALL 26 BLOCKED. The first run's one "OPEN" was a probe bug: PATCH of a column the table lacks
     gives PGRST204 before any permission check; fixed (sha256 71f42e7f…). A probe write must name a real column.
-  - Switches all OFF. PR #7 still DRAFT; merging it and activating the Command Center each need Angelo's separate approval.
+  - Switches all OFF.
+  **M2 ACCEPTED by Angelo (11 Oct 2026 15:29 CT):** 15 functions, 21/27/43 tests, probe 26/26, M1 unchanged, no test rows,
+  fingerprints = baseline; the Bemis Auto-Enrich row counts accepted. The corrected probe
+  (`scripts/academy_m2_public_probe_browser.js`, sha256 71f42e7fdda4f5f4217cea8db693a01f6e46c58706c150f35d7620a5b19e2417)
+  is the authoritative version. The first run's invalid-column row (PATCH {title} on academy_course_versions →
+  PGRST204) tested nothing. **Never rerun or roll back M2.** PR #7 merge conditionally approved at the same time (checks:
+  mergeability, SQL byte-identical to the production run, API on M2 operations with no direct-write fallback,
+  regressions, switches OFF). Activating `academy_admin` (administrators only) needs Angelo's separate approval. A2D and C2
+  not started. Learner access, enrollment, real course publishing, certificates, payments and automatic Golden product
+  updates stay disabled.
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
   the guard when a marker is set: any future cascade INTO the four content tables must be reviewed against it.
 - **Course publication rules (Angelo, 11 Oct 2026 — C2 design only, NOT implemented; `docs/academy/C2_COURSE_PUBLICATION_DESIGN.md`).**
