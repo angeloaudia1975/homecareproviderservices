@@ -2087,6 +2087,14 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     approves the first course, it is the real Golden Technologies lift-chair course as a DRAFT, never published until
     he approves the publication rules and the content.
   - A2D: plan only (lesson engine). C2 implementation on hold until its publication decisions are approved.
+  **`academy_admin` ACTIVATED by Angelo (11 Oct 2026 ~16:45 CT)**, President-only pilot. Verified live in his session:
+  - whoami enabled; only `academy_admin` on, the other six off;
+  - all 10 read actions 200 and all six tabs render with empty states; no JS errors; no broken images;
+  - Overview 0 courses / versions / learners / certificates / facts; records check clean (0 checked, 0 events);
+  - a write sent as GET gets 405; no token / forged token 401; learner API 403 `flag_off`; handoff disabled;
+  - site, Connect 360, crm-api and mfr-reports-api normal.
+  Rep / Relations / dealer / learner refusals are covered by the role suite (academy-c1 49/49). No Academy records were
+  created. OFF line: `update app_settings set value = value || '{"academy_admin": false}' where key = 'phase2_flags';`
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
   the guard when a marker is set: any future cascade INTO the four content tables must be reviewed against it.
 - **Course publication rules (Angelo, 11 Oct 2026 — C2 design only, NOT implemented; `docs/academy/C2_COURSE_PUBLICATION_DESIGN.md`).**
