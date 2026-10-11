@@ -2075,6 +2075,18 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     no token / forged token 401; learner API 403; handoff `{enabled:false}`; `/academy/` 404.
   - **Staff-only activation plan:** `docs/academy/A2C_ADMIN_ACTIVATION_PLAN.md`. NOT approved; `academy_admin` stays
     OFF.
+  **M2 and PR #7 COMPLETE (Angelo, 11 Oct 2026 16:03 CT).** Never rerun or roll back A1, M1 or M2. The database and
+  security foundation is accepted.
+  **President-only pilot of `academy_admin` approved for PREPARATION** (same message):
+  - Angelo runs the one-line switch himself after reviewing it. Claude never runs it.
+  - Only `academy_admin` is switched on; the other six switches stay OFF.
+  - Post-activation tests never impersonate a real user or use anyone else's credentials. Rep, Relations, dealer and
+    learner refusals are proven by the role/session test suites, the staff_users role check and anonymous/forged-token
+    calls.
+  - Claude creates NO Academy records (courses, drafts, facts) on its own. Angelo reviews the interface first; once he
+    approves the first course, it is the real Golden Technologies lift-chair course as a DRAFT, never published until
+    he approves the publication rules and the content.
+  - A2D: plan only (lesson engine). C2 implementation on hold until its publication decisions are approved.
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
   the guard when a marker is set: any future cascade INTO the four content tables must be reviewed against it.
 - **Course publication rules (Angelo, 11 Oct 2026 — C2 design only, NOT implemented; `docs/academy/C2_COURSE_PUBLICATION_DESIGN.md`).**
