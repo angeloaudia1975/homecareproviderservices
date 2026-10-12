@@ -71,7 +71,7 @@ begin
   ok := r->>'title' = 'Draft course renamed';
   r := academy_content_op_update_lesson(ADM, v_l, '{"est_minutes":7}'); ok := ok and (r->>'est_minutes')::int = 7;
   perform set_config('academy.op', 'test-setup', true);
-  insert into academy_questions (version_id, kind, prompt, choices, answer_key, explanation) values (v_v, 'single', 'Q', '[{"id":"a"},{"id":"b"}]', '"a"', 'B');
+  insert into academy_questions (version_id, module_id, kind, prompt, choices, answer_key, explanation) values (v_v, v_m, 'single', 'Q', '[{"id":"a"},{"id":"b"}]', '"a"', 'B');   -- A2D M3: every module is represented in the exam
   perform set_config('academy.op', '', true);
   perform academy_op_publish_version(PRES, v_v);
   begin perform academy_content_op_update_course(ADM, v_c, '{"title":"x"}'); ok := false;
