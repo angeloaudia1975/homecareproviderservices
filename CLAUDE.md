@@ -2164,6 +2164,19 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     **M3 production preflight PASSED (Angelo, 18:40 CT):** ready_for_m3 true, PG 17.6, backup today, M1 e70543ba…, M2
     794f3c3e…, start-attempt 718f7cc5…, only academy_admin on, 0 Academy rows, Academy fingerprints = baseline; outside
     changes since M2 = MI Phase B (6 tables / 12 functions / +48 grants) and MC enrichment rows. Baseline recorded in the runbook.
+    **M3 RUN and VERIFIED in production (Angelo, 11 Oct 2026 ~20:20–20:57 CT):**
+    - Checksum `a7409b56…` confirmed first; Angelo pasted the file himself. A second Run was refused ("already exist") and
+      wrote nothing.
+    - Postcheck matched twice: M3 `9f41ee27…`, start-attempt `4ab3615a…`, other 18 M1 functions `30a6a689…`, M2 `794f3c3e…`,
+      24 functions / 12 server-only / 0 public.
+    - Tests: M3 acceptance 25/25; A1 27/27; M1 43/43; M2 21/21.
+    - Preflight again equals the 18:40 baseline. Only the expected M3 items changed, plus Angelo's Bemis Auto-Enrich history
+      row (+1, 20:24 CT). New full-M1 fingerprint after M3: `a809004b…` (CRLF; LF `2802eaad…`), reproduced locally.
+    - No leftover rows. Public-key probe ALL 32 BLOCKED.
+    - Production-skipped parts, covered locally: the non-President parts of M3 row 13 and M2 row 15, and the hardening
+      suite (local-only by design).
+    - **Never rerun or roll back M3.** PR #8 stays DRAFT until Angelo approves the merge; the lesson engine does not start
+      before M3 is accepted.
   - A1 check 27 and M1 check 43 need EMPTY Academy tables; if records exist in production they FAIL by design — use the
     before/after leftover checks (M2 21, M3 25) and discuss first.
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass

@@ -298,6 +298,42 @@ Only one table's columns change (`academy_modules`), and the preflight reports t
   product_content_history 2474 (+8) and product_content_sources 60 (+1) = Manufacturer Center enrichment work.
   Policies `219ac18e…` / 29 unchanged. These values are the baseline for the post-M3 comparison.
 
+### Production RUN and post-install verification (Angelo, 11 Oct 2026 ~20:20–20:57 CT) — PASS
+
+- **Run:** Angelo confirmed the committed migration (sha256 `a7409b56…4d92`) and pasted it into the SQL editor himself.
+  His second Run (~20:25) was refused with "M3 lesson-content operations already exist" and wrote nothing, which proves
+  the first run had installed M3. Nothing was rerun or rolled back.
+- **1. Postcheck (20:26, again at 20:56):** identical both times.
+  - Fingerprints: M3 `9f41ee27…` (Windows paste, as precomputed); start-attempt `4ab3615a…`; the other 18 M1 functions
+    `30a6a689…`; M2 `794f3c3e…`.
+  - Counts: 24 functions; 12 server-only operations; 0 helpers callable by the server; 0 callable with public keys.
+  - Guards on questions, media and fact links; publish check on course versions; `exam_quota` present.
+  - M1 19 / 6 and M2 15 / 8. Only `academy_admin` on.
+- **2. M3 acceptance 25/25 PASS.**
+  - Row 16: 8 attempts each drew exactly 2 / 2 / 2.
+  - Rows 17 and 19: questions on a replaced fact never reach a scored exam, and every module is represented. This proves
+    the approved start-attempt behaviour.
+  - Row 13: the non-President part was not run, because production has no second administrator. It is covered by the
+    local hardening suite.
+  - The hardening suite (`test/academy/m3_author.sql`, 12/12 locally) is local-only by design. It inserts staff and
+    switches roles, so it is NOT run in production.
+- **3. Compatibility:** A1 27/27; M1 43/43 (34 and 39 ran in full; check 43 shows no leftovers and switches unchanged);
+  M2 21/21 (row 3 M3-aware; row 15's non-President part covered locally).
+- **4. Preflight again (20:53):** equal to the 18:40 baseline on every Academy and outside fingerprint, and on 15 of 16
+  row counts.
+  - Changed as expected: the M3 objects (24 functions / 7 triggers); `exam_quota_column`; `start_attempt` (`4ab3615a…`,
+    server true, public keys false); `content_triggers`; `ready_for_m3` false.
+  - New value, not precomputed: the full M1 fingerprint `a809004b8fe77dce69cfc555ff984bdb`. It includes start-attempt.
+    Reproduced exactly on local PG 17.6 (A1 + M1 + M2 + M3 pasted with CRLF). The LF form is
+    `2802eaad1697750470f840f4b90d68d9`.
+  - `product_content_history` 2474 → 2475: Angelo's own Bemis Auto-Enrich (`steadfast-elongated-3-in-raised-toilet-seat-open-front`,
+    20:24:49 CT), unrelated to M3. Note for Bemis review: that run used a retailer source (toiletseats.com).
+- **5. No leftover test data:** 0 rows in every Academy content table and 0 audit rows (postcheck 20:56). A1 check 27 and
+  M1 check 43 showed every learner, enrollment, attempt and certificate table empty.
+- **6. Public-key probe (20:57):** ALL 32 CHECKS BLOCKED (key verified) — 22 M3 functions, start-attempt, 9 direct writes.
+- Nothing failed. Skipped in production, covered locally only: the non-President parts of M3 row 13 and M2 row 15, and the
+  hardening suite. Switches unchanged (`academy_admin` only). No Academy records were created.
+
 ## Rollback
 
 `supabase/academy_a2d_m3_rollback.sql` runs as one transaction. It:
@@ -315,7 +351,7 @@ Rule 19 applies: the rollback re-opens direct writes to questions, media and fac
 
 ## Next stages (not started; each needs Angelo's approval)
 
-1. **Production run of M3** (the plan above).
+1. ~~**Production run of M3**~~ — DONE and verified 11 Oct 2026 (above). Awaiting Angelo's acceptance and merge approval for PR #8.
 2. **Lesson engine PR:** block renderer, staff preview, five-width and accessibility tests.
 3. **Builder PR:** Courses-tab builder, question-bank editor, media upload, readiness check, and `_academy.js authorOp()` calling these operations.
 4. **Review gate before A2F:** Samples A and B, on desktop and on mobile.
