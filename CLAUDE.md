@@ -2125,6 +2125,11 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   ca3e97ff… (LF) / bdbd7982… (CRLF paste). Tests: mi-c-shipto.pg 26, shipto-review 44, shipto 26, mi-c.ui all pass (360–1280),
   Phase C mutants 52/52, Phase B 38/38, MI-1a compat 14/14, admin header 60/60 on the affected pages; full suite 103 files — only
   the known clock (phase1-visits, phase2-account-class, phase2-timeline) and documents.json (resources-render) failures.
+  **Phase C migration RUN by Angelo 2026-10-12 ~09:50 CT:** sha256 f759039d…aa78; all 10 install checks ok = true (3 tables,
+  RLS on, 0 policies, 0 public grants, service_role SELECT only, 2 of 3 functions executable by service_role, definer +
+  pinned search_path, 6 guard triggers, unique active-mapping index, 0 rows written, blank-account CHECK +
+  dealer_manufacturers columns present). Next: postcheck (fingerprint ca3e97ff… LF / bdbd7982… CRLF) + baseline, the
+  14-check public-key probe, then merge + deploy and the Shadow Check from the Ship-To Review page.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
