@@ -113,6 +113,10 @@ This does not change who runs production SQL: Angelo still runs every migration 
   patients roll up as drop-ship on the corporate.
 
 ## 7. Workflow
+- **Chrome (Angelo, 2026-10-11 20:44 CT): standing permission to use Claude in Chrome whenever a task needs it —
+  don't ask first.** This covers opening and reading pages, live checks and read-only verification. It does NOT
+  replace the per-action confirmations that stay required: submitting forms, sending messages, publishing, clicking
+  irreversible controls (delete/confirm), running SQL, changing settings or switches, entering credentials.
 - Work happens in the cloud session; deliver by committing to the device repo via the
   device bridge. `documents.json` excepted (admin-managed).
 - After changes, run **`npm run build`** before deploying. (A local full build currently
@@ -1445,6 +1449,66 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   so the preview shows them from ORDERING_BASE (display only), never as broken images on the admin site. Holds recorded:
   #326 Bidet, #327 Support Arms, #328 Steadfast, #329 444DISPLAY (issue "hold"; nothing superseded); Steadfast re-run:
   the Stay-Tite badge is withheld from the gallery, its catalog_name discrepancy stays listed.
+  **Release C PASS / COMPLETE (Angelo, 2026-10-11 ~20:55 CT).** Security follow-up CLOSED / PASS: anonymous listing of
+  `mfr-sources` refused with a real stored object (record 7), and of the draft photo folder.
+  (x) **Release D — Publish & Verify (approved to build 2026-10-11; nothing published until Angelo approves the dry run).**
+  Manufacturer Center → Continue Product Enrichment → 6 · Publish & Verify. product-content actions (President-only except
+  the dry run): publish_plan (read-only dry run) → publish_approve (records a content_publication decision holding the
+  EXACT plan: plan_hash, pages, every page's "before" row and "after" fields, the photo promotions, the held list and the
+  accounting) → publish_promote (copies each distinct approved photo to product-content/<line>/live/<page>/<sha>.<ext>,
+  x-upsert false, sha checked; old draft objects stay for audit) → publish_execute (every live copy must exist and match;
+  then supabase function mfr_content_publish publishes ALL approved pages in ONE transaction; then the live dealer view must
+  equal the approved one product by product, no draft link, exactly the approved pages visible, held drafts byte-identical,
+  accounting/commercial unchanged — any failure → mfr_content_publication_rollback + failed run recorded; never rolls
+  forward: the approval is spent, a new dry run is needed). Then the live storefront check, then catalog-api
+  mc_publish_finalize: full verifyLine with no baseline (becomes the new Gold Standard, phase post) incl. the CONTENT
+  fingerprint (verifyLine check N, blocking once a Gold Standard carries it; the price fingerprint M is unchanged), the
+  other frozen lines must read their Gold Standard fingerprints, no draft link / held page live; saves the run with a
+  "publication" check and spends the enrichment window; failure rolls back. mc_publish_rollback = manual undo before
+  finalize (reason required); refused once finalized (then a regression_fix). Every step re-derives the plan: any change
+  since the dry run (content, grouping, images, commercial record, readiness, held accounting, decisions) invalidates the
+  approval. Only status Ready pages are ever in a plan — never a held page merely because it is under the window.
+  Photo dedupe: an option photo that IS a gallery photo (same bytes, else the same file at another size) becomes ONE live
+  copy, so the storefront (which hides a thumbnail equal to the hero) never shows it twice; each option keeps its own photo.
+  Option names: no safe presentation-only label field exists, so the correct long names stay (no new architecture).
+  SQL supabase/mc_release_d_publication.sql: decision kind content_publication; mfr_live_media_problem; the guard lets only
+  the two definer functions through (transaction-local hcps.content_publication='<id>:publish|rollback', page must be named
+  by the decision); the line's next enrichment window may ADOPT hidden drafts a closed window left (they keep their old
+  window's photos); self-test 28 attempts per line. Planner: this enrichment's own published page is status "published"
+  (not a live-page conflict) and counts with the Ready pages in previews. Tests: test/mcpublish.test.js,
+  test/mc-publication.pg.test.js, test/mcpublish.ui.js, test/mcpublish.mutants.js (JS + SQL).
+  (y) **Approve Content & Images — Auto-Enrich PROPOSES, only the President DECIDES (RULE, Angelo 2026-10-12).** Bemis
+  publication #531 (Release D) went live with Auto-Enrich's photos on 7YA0AS100 / 7YR05310TSS / 7YE05310TSS / 7YA04505T
+  although Angelo meant to keep the originals: the Dealer Preview "Today/Proposed" toggle was only a view and recorded
+  nothing. Angelo rolled #531 back before finalizing (run #16, 2026-10-12; Bemis back at 3620a321933995db). The rule now:
+  · New stage **5 · Approve Content & Images** (Dealer Preview is 6, Publish & Verify 7). Per Ready page and area —
+    Title · Short description · Description · Features · Specs · Sizing · Warranty · Documents & videos · Category ·
+    Grouping · Images (main + gallery) · Option images (per SKU) — the Current Dealer View next to the proposal and an
+    explicit choice: Keep current / Use proposed / Edit; photos: keep the current dealer image / use this image (current,
+    suggested or uploaded) / no option-specific photo; the gallery picked photo by photo (tick, reorder, primary first,
+    duplicates flagged). Withheld promo art is never offered; an "upload" is only the President's own file in the page's
+    draft folder (never an Auto-Enrich /rehost/ copy).
+  · **NO SELECTION = KEEP CURRENT.** An undecided area publishes and previews as today's dealer view (page field empty →
+    the storefront shows the catalog's copy/photo); a suggested photo nobody picked can never reach a plan (also refused
+    by buildPlan: "a photo nobody approved would be published"). No "use proposed" fallback anywhere.
+  · A page is approved only when every area where current ≠ proposed carries an explicit choice (Keep current counts).
+    Review Issues ≠ approval: a page with no issue can be "Waiting for President Content Approval". A new grouping
+    (e.g. Assurance Round + Elongated on one card) publishes only after the President chooses it; Keep current grouping =
+    the page is NOT published (SKUs stay on today's cards).
+  · Selections are decisions of kind content_approval (append-only, latest per area/SKU wins, President only, open window
+    required, reason/who/window/basis recorded). Each carries a basis hash of what was on screen: if the proposal or the
+    current dealer view changes, the selection is stale and must be made again. An edit keeps the source's provenance.
+  · Dealer Preview views are "Current Dealer View" / "Approved New Dealer View" (renders ONLY recorded selections) with the
+    note "Preview only — switching views does not select content or images."
+  · Publish: only Ready + approved pages; the plan's "after" rows (content AND photos) are built from the selections; the
+    plan hash covers every content_approval decision — ANY selection change after the dry run invalidates the approval.
+    A kept current photo on a page that now has its own gallery is copied to live storage (same picture, live copy).
+  · Code: netlify/functions/_approval.js (pure); product-content actions approval_state (read) / approval_record
+    (President); _publish.js buildPlan(approvals, approved); SQL supabase/mc_release_d1_content_approval.sql (kind
+    content_approval; mfr_content_publish / rollback write and restore the approved content fields via
+    mfr_approved_content — 17 content columns, nothing else). Tests: test/mcapproval.test.js, test/mcapproval.ui.js,
+    test/mc-approval.pg.test.js, test/mcapproval.mutants.js (JS + SQL). Bemis restarts here with every selection empty
+    (= keep current); Angelo reviews alternatives himself. Do not republish or finalize Bemis until he says so.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
@@ -1972,6 +2036,8 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   mfr_decisions 15 → 21 (Bemis window #320 + Review Issues decisions), grants 3072 → 3112 (the MI-1c baseline left its 5
   tables out of the count; 5 × 8 = 40 — no other new table since, by object id). Outside probe (Angelo, 18:39 CT): ALL 31
   BLOCKED (401). Lesson: compare grant counts only between queries with the same exclusion list.
+  **Grant difference CONFIRMED by Angelo (2026-10-11 20:44 CT):** grants on the 5 MI-1c tables = 40 (read-only count),
+  exactly the 3072 → 3112 difference — closed.
   **Phase B DEPLOYED 2026-10-11 ~18:39 CT** (branch reconciled with main 1799842 — MC enrichment change only, migration
   byte-identical; mi-b-capture.pg 38, report-capture 27, mi-b-api 11, shipto 17, report-inventory 28, mi1b 46/28, mi1c 76/29,
   mi1a 28/16, commission 42, mcenrich 23, enrich.unit 22 → main b05b9e7, Netlify "Production: main@b05b9e7 Published").
@@ -1984,6 +2050,121 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   **Netlify production deploys are PAUSED (team build credits used up for the billing cycle, seen 2026-10-11):** main@99d604c
   (Manufacturer Center Release C preview work) was "Skipped". Phase B is unaffected (b05b9e7 is live); any later code change
   needs credits restored first. Turning `mi_report_capture` on needs no deploy (the hourly cron is already live).
+  **Switch ON (set by Angelo; verified true 2026-10-11 evening). First automatic capture 2026-10-11 20:20 CT:** Netlify
+  invoked the scheduled function twice (request ids 6dc3217a 18.5 s, ffdf34b5 1.2 s, 1 s apart) — the run lease kept them
+  apart: run #1 listed 675 emails (1–9 Oct), incomplete at its time budget, checkpoint → 9 Oct 19:36 UTC; run #2 listed 133,
+  4 already settled, complete, checkpoint → run start. 14 report-like emails recorded. Register: **#9** `2026-09 SR032.pdf`
+  commission_statement, Sep 2026 (file name), received 7 Oct, by system:report-capture — registered once, no import;
+  **#10 (item) → linked to record 7** (the 8 Oct dealer overview, same SHA-256; no second record, record 7 still received /
+  unpublished); **#8** `Angelo Sep Orders.csv` sales_export, received 2 Oct — registered with a WRONG period
+  2026-09-01..2026-10-31 (orders were created 4–25 Sep; the range was read from every column with "date" in its name,
+  incl. "Payment Due Date"). Draft profiles registered nothing (Access4U price list / QuickBooks activity / Golden order
+  PDFs → classified, not reports). 4 exceptions, all false: Golden order emails carrying an attached email
+  (cloud_attachment). No financial, dealer, CRM, intelligence or publication change by construction (capture writes only
+  its own tables + MI-1b register).
+  **Fixes (branch `mi-b-capture-fixes`, tested, NOT deployed — Netlify production deploys are paused):** (1) a file's
+  content period comes ONLY from a transaction-date column — order / created / invoice / sale / transaction / posting /
+  document date, else a plain "Date" (anchored patterns); due, paid, ship-by, close, expiry dates never set a period;
+  (2) an attached email / cloud link becomes a person's job only for a manufacturer with an ACTIVE profile — otherwise it is
+  classified "not a report". Tests: report-capture 29 (2 new, both fail on the deployed code), mi-b-capture.pg 38,
+  mi-b-api 11, shipto 17, report-inventory 28, mutants 38/38. **Open, Angelo's call:** record 8's stored period (a
+  period correction is its own approved step under the MI-1b rules); the 4 false Golden exceptions (dismiss on Needs
+  attention, or leave until the fix is live).
+  **Status reporting (Angelo, 2026-10-11 20:19 CT): every status report on Manufacturer Intelligence carries an updated
+  OVERALL completion percentage until the project is complete (55% at that message).** Once first capture passes, Phase C
+  comes first: shared Ship-To resolver, correction interface and shadow validation — no new large audit / planning cycle;
+  focus on functional results and real exceptions. Automatic financial imports and intelligence publishing stay OFF.
+- **Decisions after first capture (Angelo, 2026-10-11 20:53 CT; overall MI completion 57%).**
+  (1) **Record #8 period correction APPROVED** (Sep–Oct → 2026-09-01..30): keep the original file, SHA-256, received date
+  and full registration history; never disable MI-1b's general safeguards, delete/re-register the file or touch financial
+  records; a narrowly scoped audited metadata correction on record #8 only, original + corrected period recorded; exact
+  mechanism + SQL shown to Angelo BEFORE execution, Angelo runs it. Built: `supabase/mi1b_record8_period_correction.sql`
+  (one DO block, owner only, exact preconditions — id 8, file, SHA-256 42509f6b…98dc, size, received date, period, title,
+  status received, no supersession/batch, only its registration event; inside the one transaction the guard is replaced by
+  a copy with ONE record-8 exception, the row is corrected, the ORIGINAL guard definition is restored and verified
+  byte-for-byte; event action `period_corrected` added to the action list; post-check that the guard refuses again; a
+  second run is refused). Also corrects the title's period text. Test `test/mi1b-record8.pg.test.js` (17; MI-1b and the
+  script pasted with CRLF as in production). The capture item keeps its proposed period as history.
+  (2) **The four false Golden cloud_attachment exceptions (items #3, #5, #7, #12) are cleared** after the classification
+  fix is deployed, through `resolve` with an audit reason naming the corrected rule — never deleted; other genuine
+  exceptions untouched.
+  (3) **Capture fixes (`mi-b-capture-fixes`) are approved to merge + deploy when Netlify build credits return**, if tests
+  pass and nothing unexpected appears — no further approval. Capture stays ON; automatic financial imports OFF. Until the
+  fix is live, watch every newly captured Strongback sales export for a wrong period.
+  (4) **Phase C starts now (branch, tests, no deploy of new financial import behaviour, no change to historical commission
+  attribution without separate approval):** order-level Needs Ship-To Review queue (orders, not duplicate invoice lines);
+  simple correction screen (existing HCPS branch + missing ship-to details); versioned correction overlays that never
+  modify the manufacturer's file; verified manufacturer + account + ship-to mappings; Save & Continue revalidates; no
+  automatic HQ fallback for ambiguous multi-branch orders; shadow validation on Strongback order exports and Bemis's
+  hand-corrected reports; the manual import workflow and every MI-1a protection preserved. Deliver implementation, tests
+  and ONE consolidated rollout recommendation; no long planning documents or extra stop points.
+- **Capture fixes DEPLOYED + false exceptions cleared (2026-10-11 ~21:35 CT).** Netlify credits were restored; branch
+  `mi-b-capture-fixes` reconciled with main 3baa6c9 (Academy M3 only, no overlap), tests re-run (report-capture 29,
+  mi-b-capture.pg 38, mi-b-api 11, shipto 17, report-inventory 28, mi1b 46/28, mi1b-record8.pg 17, mi1c-api 29, mi1a-compat
+  16, Phase B mutants 38/38) → main 3b41b85, Netlify "Published". Items #3, #5, #7, #12 (Golden attached-email
+  exceptions, the only four open) resolved `ignore` (Not a report) with the reason naming the corrected rule; Needs
+  attention = 0; no record deleted. The record #8 correction SQL is on main as a FILE only — not run.
+- **Record #8 period correction RUN by Angelo 2026-10-11 21:54 CT (verified).** Result: record 8 = 2026-09-01..2026-09-30,
+  title "Strongback Mobility — order / sales export 2026-09", status received, file / SHA-256 42509f6b…98dc / received
+  2026-10-02 unchanged; events = #2 registered (system:report-capture) + #4 period_corrected (owner:sql-editor);
+  monthly_sales 11,997 / $10,802,558.50 / $493,077.06 unchanged; 3 report records. Guard restored exactly: prosrc md5
+  5b3caaaa… = the committed MI-1b guard pasted with Windows line endings (LF form b84957ba…), computed independently.
+- **Phase C BUILT on branch `mi-c-shipto` (2026-10-11; off `mi-b-capture-fixes`; NOT merged, NOT deployed, NO production
+  SQL).** Migration `supabase/mi_c_shipto.sql` (sha256 015675d6…1f26; rollback `…_rollback.sql` fffaf539…, refuses while any
+  decision exists): `mfr_shipto_corrections` (versioned, append-only overlay per order of a registered report: chosen
+  branch or explicit corporate, corrected ship-to fields, the file's own values in `reported`, the order fingerprint;
+  a save names the version the person saw — `shipto_stale` otherwise), `mfr_shipto_mappings` (verified manufacturer +
+  account + ship-to key from the FILE — ship-to id, or street + ZIP; never account alone; one active per key; a
+  different branch needs `replace_mapping`, which retires the old one; retire only, never delete), append-only
+  `mfr_shipto_events`; writes only through `hcps_mfr_shipto_correct` / `hcps_mfr_shipto_retire` (security definer,
+  service_role only); guard = marker + owner rights, no delete / truncate, mappings change only by one retirement;
+  never a TEST dealer; corporate only on an HQ; RULE 19 (RLS on, no policies, service_role SELECT only). Installed-code
+  fingerprint 3 functions: 3c6a02dc… (LF) / 76608c60… (CRLF paste). Code: `_report_rows.js` (server reader for stored
+  CSV / XLSX order exports; the Sales Report Import page's column patterns, drift-tested; text stays text — ZIPs keep
+  leading zeros), `_shipto_review.js` (orders not lines; resolved / corrected / needs_review with reasons zip_shared,
+  new_location, billing_address_only, no_ship_to, weak_evidence, mixed_lines, no_dealer_match, correction_stale; report
+  "held" as a WHOLE while any order needs review; corrected CSV = original columns untouched + HCPS columns; read-only
+  shadow vs monthly_sales history), `_shipto.js` (state names → codes; strict-only saved ZIP assignments `zipmap:<slug>`
+  inside their corporate; `makeMatcher` = the Sales Report Import identity rule, which sales-import-api now calls — its
+  picks unchanged), `shipto-review-api.js` (management only; actor, fingerprint, reported values and ship key always from
+  the server; branch outside the matched family needs `confirm_outside_family`; strict reads → 503; never writes outside
+  Phase C), page `/admin/shipto-review.html` + `.js` (HUBS: Sales Data & Analytics → Ship-To Review): Reports → orders
+  (needs review first) → panel (file's ship-to AND bill-to, reason, options with HQ offered but never pre-chosen, dealer
+  search, corporate tick, missing ship-to fields, reason, Remember) → Save & Continue (revalidates, next order); Verified
+  mappings tab; Shadow check tab. Tests: shipto-review 40, mi-c-shipto.pg 22 (pg-safeupdate), mi-c.ui (Chromium,
+  360/390/768/1280), Phase C mutants 32/32 (clean control), Phase B mutants 38/38, admin header 40/40; full regression
+  passes except the known clock / documents.json suites. Shadow on production data: read-only export
+  `supabase/mi_c_shadow_export.sql` + `scripts/shipto_shadow_local.js`, or the API's shadow action once deployed.
+  Probe: `scripts/mi_c_public_probe_browser.js` (14 checks). The manual Sales Report Import and every MI-1a protection are
+  unchanged; nothing imports automatically.
+- **Phase C CONDITIONALLY APPROVED with four corrections (Angelo, 2026-10-11 22:09 CT; MI 64%) — RULES:** (1) a remembered
+  decision (verified mapping of ANY scope, or a saved zipmap entry) is reused automatically ONLY when the order's own account
+  number is on record for this manufacturer (`dealer_manufacturers`) at the remembered dealer's FAMILY and that dealer is one of
+  the order's candidates; a corporate mapping must name the family HQ. Otherwise → Needs Ship-To Review (`mapping_unverified` /
+  `zip_assignment_unverified`), never another family's location, never a silent fall-through; a zipmap entry naming a dealer
+  outside the candidates is another family's and ignored. (2) An order can always be corrected without an account number, but
+  it is REMEMBERED only with a non-blank account number from the file that `dealer_manufacturers` ties to the chosen dealer's
+  family — enforced in the resolver (blank refs never match), the API (422 `shipto_no_account` / `shipto_no_ship_key` /
+  `shipto_account_family`), the database (`shipto_no_account`, `shipto_account_mismatch`, `shipto_account_family`; table CHECK
+  `account_ref <> ''`) and the page (Remember disabled with the reason). (3) The Shadow Check keeps SOURCE LANES apart with the
+  MI-1a rule: sales_report (`source='sales_report'`) · commission (`source='commission'`, or no source AND no external_ref) ·
+  other; grouped per lane + period + invoice, counted per lane, never added together; the booked branch is the baseline; the same
+  invoice booked to different branches in two lanes = a lane disagreement; read-only. Production (read-only, Angelo): Strongback
+  143 sales-report lines, Bemis 17 commission lines. (4) After installation the Shadow Check is run from the Ship-To Review page
+  (no manual export/upload). **Corrections BUILT (2026-10-11 ~23:30 CT, branch `mi-c-shipto`, NOT run / merged / deployed):**
+  migration sha256 f759039d…aa78 (10 install checks — #10 = blank-account CHECK + `dealer_manufacturers` columns), rollback
+  fffaf539… (unchanged), postcheck `supabase/mi_c_rollout_postcheck.sql` 7b20bff9…; installed-code fingerprint 3 functions
+  ca3e97ff… (LF) / bdbd7982… (CRLF paste). Tests: mi-c-shipto.pg 26, shipto-review 44, shipto 26, mi-c.ui all pass (360–1280),
+  Phase C mutants 52/52, Phase B 38/38, MI-1a compat 14/14, admin header 60/60 on the affected pages; full suite 103 files — only
+  the known clock (phase1-visits, phase2-account-class, phase2-timeline) and documents.json (resources-render) failures.
+  **Phase C migration RUN by Angelo 2026-10-12 ~09:50 CT:** sha256 f759039d…aa78; all 10 install checks ok = true (3 tables,
+  RLS on, 0 policies, 0 public grants, service_role SELECT only, 2 of 3 functions executable by service_role, definer +
+  pinned search_path, 6 guard triggers, unique active-mapping index, 0 rows written, blank-account CHECK +
+  dealer_manufacturers columns present). Next: postcheck (fingerprint ca3e97ff… LF / bdbd7982… CRLF) + baseline, the
+  14-check public-key probe, then merge + deploy and the Shadow Check from the Ship-To Review page.
+  **Postcheck PASSED (Angelo, 2026-10-12 10:00 CT):** code 3 / bdbd7982… (the CRLF form, as precomputed), 3 tables / 3 RLS /
+  0 policies, 0 public grants, blank-account CHECK present, 0 / 0 / 0 rows, monthly_sales 11,997 / $10,802,558.50 /
+  $493,077.06 unchanged. Awaiting the public-key probe before merge + deploy.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.

@@ -88,6 +88,17 @@ function periodOf(profile, att, msg) {
 
 /* ── Content: read-only, in memory. Returns derived signals only. ───────── */
 // The months covered by the date column(s) of a sales export (the most reliable period for an order export).
+const TXN_DATE = [/^(order|created|creation|invoice|inv|sale|sales|transaction|txn|posting|posted|document|doc)\s*(date|dt)$/i, /^date$/i];
+// The best transaction-date column(s) of a header row: the first pattern that matches any header wins; [] = none.
+// The patterns are anchored, so "Payment Due Date", "Ship By Date", "Close Date" etc. never qualify.
+function txnDateCols(r) {
+  const hs = r.map(h => String(h == null ? "" : h).replace(/[_"]+/g, " ").replace(/\s+/g, " ").trim());
+  for (const re of TXN_DATE) {
+    const c = hs.map((h, j) => (h.length < 40 && re.test(h)) ? j : -1).filter(j => j >= 0);
+    if (c.length) return c;
+  }
+  return [];
+}
 function dateRange(buf, asText) {
   try {
     const X = INV.xlsx();
@@ -96,8 +107,11 @@ function dateRange(buf, asText) {
     const months = [];
     for (const name of wb.SheetNames.slice(0, 3)) {
       const rows = X.utils.sheet_to_json(wb.Sheets[name], { header: 1, blankrows: false, defval: null, raw: true });
+      // The period comes from the TRANSACTION date only (order / created / invoice / sale / transaction / posting date, or
+      // a plain "Date"). Due, paid, ship-by, shipped and expiry dates describe later events and never set the period —
+      // the first live run read a September order export as Sep–Oct from its "Payment Due Date" column (2026-10-11).
       let hi = -1, cols = [];
-      rows.slice(0, 15).forEach((r, i) => { const c = (r || []).map((h, j) => /date/i.test(String(h || "")) && String(h || "").length < 40 ? j : -1).filter(j => j >= 0);
+      rows.slice(0, 15).forEach((r, i) => { const c = txnDateCols(r || []);
         if (hi < 0 && c.length) { hi = i; cols = c; } });
       if (hi < 0) continue;
       for (const r of rows.slice(hi + 1)) for (const j of cols) {
@@ -313,6 +327,15 @@ async function runCapture(o, deps) {
       if (it.state !== "discovered") { counts.skipped_settled++; continue; }
       if (it.part === "listing") { counts.exceptions++; await RPC("hcps_mfr_capture_fail", { item_id: it.id, attention: "listing_failed", detail: String(it._err || "the attachment list could not be read").slice(0, 300) }); continue; }
       if (it.part === "attachment" && it._kind && it._kind !== "file") {
+        // An attached email / cloud link can only be a report for a manufacturer with an ACTIVE profile; anywhere else
+        // (Golden order threads, newsletters) it is recorded as not a report, never queued for a person (first live run,
+        // 2026-10-11: four Golden order emails were flagged for nothing).
+        if (!profiles.some(p => p.status === "active" && p.manufacturer === who.slug)) {
+          counts.classified++;
+          await RPC("hcps_mfr_capture_classify", { item_id: it.id, outcome: "classified", suggested: "not_a_report", manufacturer: who.slug || "",
+            detail: (it._kind === "item" ? "an attached email" : "a cloud link") + " — no active report profile for this manufacturer" });
+          continue;
+        }
         counts.exceptions++;
         await RPC("hcps_mfr_capture_fail", { item_id: it.id, attention: "cloud_attachment", retryable: false,
           detail: it._kind === "item" ? "an attached email — open it in Outlook" : "a cloud link — download the file and register it" });

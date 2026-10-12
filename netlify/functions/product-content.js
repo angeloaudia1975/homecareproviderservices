@@ -35,6 +35,8 @@ const { computeMerge } = require('./_content-merge.js');
 const MC = require('./_mc.js');
 const ENRICH = require('./_enrich.js');
 const PREVIEW = require('./_preview.js');
+const PUBLISH = require('./_publish.js');
+const APPROVAL = require('./_approval.js');
 const PRICING = require('./_pricing.js');
 let EXCEPTION_HEADERS = {};
 let PC_REGRESSION = null;
@@ -378,7 +380,7 @@ async function enrichContext(m) {
     read(`custom_products?manufacturer=eq.${enc(m)}&select=code,name,category,image,description,active`),
     read(`product_overrides?manufacturer=eq.${enc(m)}&select=code,patch`),
     read(`product_content?manufacturer=eq.${enc(m)}&select=*&limit=5000`),
-    read(`mfr_decisions?manufacturer=eq.${enc(m)}&kind=in.(enrichment_window,content_resolution)&select=id,kind,field,hcps_value,reason,decided_by,decided_at,used_at,supersedes_id&order=id`),
+    read(`mfr_decisions?manufacturer=eq.${enc(m)}&kind=in.(enrichment_window,content_resolution,content_publication,content_approval)&select=id,kind,field,hcps_value,reason,decided_by,decided_at,used_at,supersedes_id&order=id`),
     read(`manufacturer_meta?slug=eq.${enc(m)}&select=slug,frozen,record_authoritative`)]);
   const cr = await fetch(`${ORDERING_BASE}/data/${enc(m)}.json`, { headers: { 'cache-control': 'no-cache' } });
   let catalog = [];
@@ -437,6 +439,94 @@ async function copyImage(m, pageKey, src, n) {
   } catch (e) { return { error: (e && e.name === 'AbortError') ? 'timed out' : String((e && e.message) || e).slice(0, 120) }; }
   finally { clearTimeout(tm); }
 }
+/* RELEASE C/D: the storefront's own merge, today and with a set of page rows treated as published (in memory). */
+async function dealerViews(m, X, S, rowsAsPublished, opts) {
+  opts = opts || {};
+  const keys = new Set(rowsAsPublished.map(r => r.page_key));
+  const read = async path => { const r = await fetch(rest(path), { headers: svcHeaders() }); if (!r.ok) throw new Error(path.split('?')[0] + ' ' + r.status); return r.json(); };
+  const sb = (method, path) => { if (method !== 'GET') throw new Error('the preview never writes'); return read(path); };
+  const sbProposed = async (method, path) => {
+    const rows = await sb(method, path);
+    if (!/^product_content\?/.test(path)) return rows;
+    const want = new RegExp('manufacturer=eq\\.' + enc(m).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(&|$)');
+    return want.test(path) ? PREVIEW.proposedContentRows(rows, rowsAsPublished, keys) : rows;
+  };
+  const files = PRICING.remoteFiles(ORDERING_BASE);
+  const mfrList = await files.manufacturersFile();
+  const freightCfg = {}; (Array.isArray(mfrList) ? mfrList : []).forEach(x => { if (x && x.slug) freightCfg[x.slug] = x; });
+  const T = opts.T || await PRICING.lineProducts({ slug: m, sb, catalogFile: files.catalogFile, contentFile: files.contentFile, contract: {}, cart: new Map(), freightCfg });
+  if (opts.todayOnly) return { T };
+  const P = await PRICING.lineProducts({ slug: m, sb: sbProposed, catalogFile: files.catalogFile, contentFile: files.contentFile, contract: {}, cart: new Map(), freightCfg });
+  const [records, metaRows] = await Promise.all([read(`product_skus?manufacturer=eq.${enc(m)}&select=*&limit=10000`), read(`manufacturer_meta?slug=eq.${enc(m)}&select=slug,enriched_only,frozen,category_map,freight_terms`)]);
+  const R = new Function('state', 'contractPrice', require('./_shop_render.js').SOURCE + ';return {priceHtml,freightRowsHtml,packOf,packNote,dealerPriceNote,money};')({ dealer: {} }, () => null);
+  const drafts = X.pages.map(r => rowsAsPublished.find(x => x.page_key === r.page_key) || r);
+  const pagesShown = S.pages.map(p => p.status === 'ready' && !keys.has(p.page_key) ? Object.assign({}, p, { status: 'waiting_for_approval' }) : p);
+  const out = PREVIEW.buildPreview({ slug: m, base: ORDERING_BASE, records, meta: (metaRows && metaRows[0]) || {}, pages: pagesShown, drafts,
+    today: { products: T.products, engine: T.engine }, proposed: { products: P.products, engine: P.engine }, R, PICK: require('./_shop_picker.js') });
+  return { T, P, records, meta: (metaRows && metaRows[0]) || {}, out, read };
+}
+/* RELEASE D: the publication plan for a line, exactly as the approval will record it. */
+const PUBLIC_PC = () => `${SUPABASE_URL}/storage/v1/object/public/product-content/`;
+/* APPROVE CONTENT & IMAGES (2026-10-12): every Ready page's approval state — today's dealer view (the storefront's own
+   merge, no draft involved) next to the proposal, area by area, with the President's recorded selections — and the page
+   a publication may write from those selections only (_approval.js). Read-only. */
+const safePageKey = k => String(k || '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'page';
+async function approvalContext(m, X, S) {
+  const V = await dealerViews(m, X, S, [], { todayOnly: true });
+  const R = new Function('state', 'contractPrice', require('./_shop_render.js').SOURCE + ';return {priceHtml,freightRowsHtml,packOf,packNote,dealerPriceNote,money};')({ dealer: {} }, () => null);
+  const cards = PREVIEW.cardsOf(V.T.products, { R, PICK: require('./_shop_picker.js'), engine: V.T.engine, heldCodes: new Set(), base: ORDERING_BASE });
+  const win = S.window ? S.window.id : null;
+  const states = {}, approved = {};
+  for (const p of S.pages.filter(q => q.status === 'ready')) {
+    const row = X.pages.find(r => r.page_key === p.page_key) || null;
+    if (!row) continue;
+    const codes = new Set(p.skus.map(s => ENRICH.codeNorm(s.code)));
+    const st = APPROVAL.approvalState({ page: p, row, products: V.T.products.filter(x => codes.has(ENRICH.codeNorm(x.code))), todayCards: cards.map(k => ({ name: k.name, codes: k.codes })),
+      decisions: X.decisions, uploadPrefix: win ? PUBLIC_PC() + MC.draftMediaPrefix(m, win) + safePageKey(p.page_key) + '/' : null });
+    states[p.page_key] = st; approved[p.page_key] = APPROVAL.approvedRow(row, st);
+  }
+  return { T: V.T, cards, states, approved };
+}
+const absUrl = u => /^https?:/i.test(String(u || '')) ? String(u) : ORDERING_BASE.replace(/\/+$/, '') + (String(u).startsWith('/') ? '' : '/') + String(u);
+async function publicationPlan(m, X, plan) {
+  const S = enrichSummary(m, X, plan);
+  const A = await approvalContext(m, X, S);
+  const merged = Object.keys(A.approved).map(k => Object.assign({}, X.pages.find(r => r.page_key === k), A.approved[k]));
+  /* every photo the approved pages name: draft copies from Auto-Enrich's copy records (else read and hashed now), and the
+     current dealer photos the President kept on a page that now has its own gallery (read from the storefront) — read-only */
+  const info = {};
+  const live = PUBLIC_PC() + m + '/live/';
+  for (const row of merged) {
+    const mc = (row.enrichment_flags && row.enrichment_flags.mc) || {};
+    (Array.isArray(mc.images) ? mc.images : []).forEach(d => { if (d && d.url && d.sha) info[d.url] = { sha: d.sha, src: d.src || d.url, bytes: d.bytes || null, type: d.type || null }; });
+    const named = [row.image].concat((row.images_gallery || []).map(g => g && g.url)).concat((row.skus || []).map(s => s && s.image)).filter(Boolean);
+    for (const u of [...new Set(named.concat(PUBLISH.draftUrlsOf(row)))]) {
+      if (info[u] || String(u).indexOf(live) === 0) continue;
+      const draft = PUBLISH.isDraftUrl(u), src = draft ? u : absUrl(u);
+      const r = await fetch(src); if (!r.ok) throw new Error((draft ? 'draft' : 'current') + ' photo unreadable (' + r.status + '): ' + u);
+      const buf = Buffer.from(await r.arrayBuffer());
+      info[u] = { sha: ENRICH.sha256(buf), src, bytes: buf.length, type: String(r.headers.get('content-type') || '').split(';')[0] };
+      if (!draft) Object.assign(info[u], { current: true, fetch_url: src });
+    }
+  }
+  const win = S.window ? S.window.id : null;
+  const base = { slug: m, window: win, publicBase: PUBLIC_PC(), pages: S.pages, drafts: X.pages, decisions: X.decisions, info, approvals: A.states, approved: A.approved };
+  const pre = PUBLISH.buildPlan(Object.assign({}, base, { records: [], meta: null, preview: null }));
+  const afterRows = pre.ready.map(r => Object.assign({}, r.before, r.after));
+  const V = await dealerViews(m, X, S, afterRows, { T: A.T });
+  const P = PUBLISH.buildPlan(Object.assign({}, base, { records: V.records, meta: V.meta, preview: V.out }));
+  return { S, plan: P, views: V, afterRows, approvals: A };
+}
+async function saveRun(row) {
+  const r = await fetch(rest('mfr_verification_runs'), { method: 'POST', headers: svcHeaders({ Prefer: 'return=representation' }), body: JSON.stringify(row) });
+  const j = await r.json().catch(() => null); if (!r.ok) throw new Error('run not saved: ' + JSON.stringify(j).slice(0, 200)); return Array.isArray(j) ? j[0] : j;
+}
+async function rpc(fn, args) {
+  const r = await fetch(rest('rpc/' + fn), { method: 'POST', headers: svcHeaders(), body: JSON.stringify(args) });
+  const j = await r.json().catch(() => null);
+  if (!r.ok) { const e = new Error((j && (j.message || j.hint)) || ('rpc ' + fn + ' ' + r.status)); e.status = r.status; throw e; }
+  return j;
+}
 /* The line as Review Issues sees it: every proposed page, its draft, status and open issues, and the totals. */
 function enrichSummary(m, X, plan) {
   const win = X.decisions.find(d => d.kind === 'enrichment_window' && !d.used_at) || null;
@@ -458,7 +548,8 @@ function enrichSummary(m, X, plan) {
   const counts = {}; pages.forEach(p => { counts[p.status] = (counts[p.status] || 0) + 1; });
   return { manufacturer: m, frozen: X.frozen, authoritative: X.authoritative, window: win ? { id: win.id, reason: win.reason, by: win.decided_by, at: win.decided_at } : null,
     active: plan.active, excluded: plan.excluded, pages, counts, ready: counts.ready || 0, open_issues: pages.reduce((n, p) => n + p.issues.length, 0),
-    visible_drafts: pages.filter(p => p.draft && p.draft.visible).length };
+    visible_drafts: pages.filter(p => p.draft && p.draft.visible).length,
+    publication: (() => { const d = X.decisions.filter(x => x.kind === 'content_publication').slice(-1)[0]; return d ? { id: d.id, at: d.decided_at, by: d.decided_by, used_at: d.used_at || null, pages: (d.hcps_value && d.hcps_value.pages) || [], plan_hash: d.hcps_value && d.hcps_value.plan_hash } : null; })() };
 }
 
 exports.handler = async (event) => {
@@ -706,7 +797,9 @@ async function handleContent(event) {
          On a frozen line every write needs the line's open enrichment window (the gate above, and the database).
          Nothing commercial is read for writing or written: prices, tiers, UOM/case qty, MSRP/MAP, freight and commercial
          status stay in product_skus, behind Phase 2's guard. */
-      if (action === 'enrich_plan' || action === 'enrich_page' || action === 'enrich_images' || action === 'enrich_resolve' || action === 'enrich_set_image' || action === 'enrich_preview') {
+      if (action === 'enrich_plan' || action === 'enrich_page' || action === 'enrich_images' || action === 'enrich_resolve' || action === 'enrich_set_image' || action === 'enrich_preview'
+          || action === 'approval_state' || action === 'approval_record'
+          || action === 'publish_plan' || action === 'publish_approve' || action === 'publish_promote' || action === 'publish_execute') {
         if (!m) return reply(400, { ok: false, error: 'manufacturer required' });
         let X; try { X = await enrichContext(m); }
         catch (e) { return reply(503, { ok: false, error: 'line_unreadable', message: 'The line could not be read, so nothing was enriched: ' + String((e && e.message) || e).slice(0, 300) }); }
@@ -716,28 +809,155 @@ async function handleContent(event) {
         /* RELEASE C — DEALER PREVIEW (read-only, staff-only). The storefront's own merge runs twice: today (live pages) and
            proposed (the line's Ready drafts treated as published, in memory). Nothing is written, published or copied. */
         if (action === 'enrich_preview') {
+          /* The "Approved New Dealer View" renders the President's RECORDED selections only: each Ready page as it would be
+             published from them (an area nobody decided shows today's dealer view; a suggested photo nobody picked never
+             appears). A page whose grouping was kept as today stays on its current cards. Switching views selects nothing. */
           try {
             const S = enrichSummary(m, X, plan);
-            const readyKeys = new Set(S.pages.filter(p => p.status === 'ready').map(p => p.page_key));
-            const read = async path => { const r = await fetch(rest(path), { headers: svcHeaders() }); if (!r.ok) throw new Error(path.split('?')[0] + ' ' + r.status); return r.json(); };
-            const sb = (method, path) => { if (method !== 'GET') throw new Error('the preview never writes'); return read(path); };
-            const sbProposed = async (method, path) => {
-              const rows = await sb(method, path);
-              if (!/^product_content\?/.test(path)) return rows;
-              const want = new RegExp('manufacturer=eq\\.' + enc(m).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(&|$)');
-              return want.test(path) ? PREVIEW.proposedContentRows(rows, X.pages, readyKeys) : rows;
-            };
-            const files = PRICING.remoteFiles(ORDERING_BASE);
-            const mfrList = await files.manufacturersFile();
-            const freightCfg = {}; (Array.isArray(mfrList) ? mfrList : []).forEach(x => { if (x && x.slug) freightCfg[x.slug] = x; });
-            const T = await PRICING.lineProducts({ slug: m, sb, catalogFile: files.catalogFile, contentFile: files.contentFile, contract: {}, cart: new Map(), freightCfg });
-            const P = await PRICING.lineProducts({ slug: m, sb: sbProposed, catalogFile: files.catalogFile, contentFile: files.contentFile, contract: {}, cart: new Map(), freightCfg });
-            const [records, metaRows] = await Promise.all([read(`product_skus?manufacturer=eq.${enc(m)}&select=*&limit=10000`), read(`manufacturer_meta?slug=eq.${enc(m)}&select=slug,enriched_only,frozen`)]);
-            const R = new Function('state', 'contractPrice', require('./_shop_render.js').SOURCE + ';return {priceHtml,freightRowsHtml,packOf,packNote,dealerPriceNote,money};')({ dealer: {} }, () => null);
-            const out = PREVIEW.buildPreview({ slug: m, base: ORDERING_BASE, records, meta: (metaRows && metaRows[0]) || {}, pages: S.pages, drafts: X.pages,
-              today: { products: T.products, engine: T.engine }, proposed: { products: P.products, engine: P.engine }, R, PICK: require('./_shop_picker.js') });
-            return reply(200, Object.assign({ ok: true, window: S.window }, out));
+            const A = await approvalContext(m, X, S);
+            const shown = Object.keys(A.approved).filter(k => A.states[k].publish).map(k => Object.assign({}, X.pages.find(r => r.page_key === k), A.approved[k]));
+            const V = await dealerViews(m, X, S, shown, { T: A.T });
+            return reply(200, Object.assign({ ok: true, window: S.window, views: { current: 'Current Dealer View', approved: 'Approved New Dealer View' },
+              note: 'Preview only — switching views does not select content or images.',
+              approval: Object.fromEntries(Object.keys(A.states).map(k => [k, { status: A.states[k].status, waiting: A.states[k].waiting, checklist: APPROVAL.checklist(A.states[k]) }])) }, V.out));
           } catch (e) { return reply(503, { ok: false, error: 'preview_unavailable', message: 'The dealer preview could not be built — nothing was changed: ' + String((e && e.message) || e).slice(0, 300) }); }
+        }
+        /* ================= APPROVE CONTENT & IMAGES (2026-10-12) =================
+           approval_state (read): every Ready page, area by area — Current Dealer View next to the proposal, the photos to choose
+           from, the President's recorded selections and what is still waiting. approval_record (President only, an open
+           enrichment window): records one selection — or several — as content_approval decisions (append-only; the latest
+           per area wins). Nothing on a page changes here: the selections are what a publication plan is built from. */
+        if (action === 'approval_state' || action === 'approval_record') {
+          const S = enrichSummary(m, X, plan);
+          let A; try { A = await approvalContext(m, X, S); }
+          catch (e) { return reply(503, { ok: false, error: 'approval_unavailable', message: 'The current dealer view could not be read — nothing was changed: ' + String((e && e.message) || e).slice(0, 300) }); }
+          const view = st => Object.assign({}, st, { checklist: APPROVAL.checklist(st), selections: undefined,
+            candidates: st.candidates.map(c => Object.assign({}, c, { display: absUrl(c.url) })),
+            current: st.current.map(c => Object.assign({}, c, { image_display: c.image ? absUrl(c.image) : '', media_display: c.media.map(absUrl) })) });
+          if (action === 'approval_state') {
+            const pages = S.pages.map(p => A.states[p.page_key] ? Object.assign({ review_status: p.status }, view(A.states[p.page_key]))
+              : { page_key: p.page_key, name: p.name, codes: p.skus.map(x => x.code), review_status: p.status, status: p.status === 'published' ? 'published' : 'not_ready',
+                  note: p.status === 'published' ? 'Already live.' : 'Not Ready in Review Issues — its SKUs keep their current catalog cards.' });
+            return reply(200, { ok: true, manufacturer: m, window: S.window, pages, ordering_base: ORDERING_BASE,
+              rule: 'Auto-Enrich proposes; only the President decides. No selection = keep the current dealer view.' });
+          }
+          /* approval_record */
+          const president = !!(me && String(me.role || '').toLowerCase() === 'president');
+          if (!president) return reply(403, { ok: false, error: 'president_only', message: 'Only the President approves dealer-facing content and images. Nothing was recorded.' });
+          if (!S.window) return reply(409, { ok: false, error: 'no_enrichment_window', message: 'Selections belong to an open enrichment window. Open one first. Nothing was recorded.' });
+          const list = Array.isArray(body.selections) ? body.selections : [body];
+          if (!list.length || list.length > 60) return reply(400, { ok: false, error: 'bad_selections', message: 'Send between 1 and 60 selections. Nothing was recorded.' });
+          const recs = [];
+          for (const x of list) {
+            const st = A.states[x.page_key];
+            if (!st) return reply(404, { ok: false, error: 'not_approvable', message: '“' + String(x.page_key || '') + '” is not a Ready page of ' + m + ' (only Ready pages are approved). Nothing was recorded.' });
+            const area = String(x.area || ''), choice = String(x.choice || ''), value = x.value || {};
+            const pb = APPROVAL.selectionProblem(st, area, choice, value, x.code);
+            if (pb) return reply(400, { ok: false, error: 'bad_selection', page_key: st.page_key, area, message: st.name + ' · ' + area + ': ' + pb + '. Nothing was recorded.' });
+            const hv = APPROVAL.selectionRecord(st, area, choice, value, x.code, S.window.id);
+            const prev = st.selections[area === 'option_image' ? 'option_image:' + ENRICH.codeNorm(x.code) : area] || null;
+            recs.push({ manufacturer: m, field: 'page:' + st.page_key, kind: 'content_approval', decided_by: who, hcps_value: hv, supersedes_id: prev ? prev.id : null,
+              reason: (String(x.reason || body.reason || '').trim() || ('Content approval: ' + st.name + ' · ' + (area === 'option_image' ? 'option photo ' + hv.code : area) + ' → ' + choice.replace(/_/g, ' '))).slice(0, 500) });
+          }
+          if (body.dry_run === true) return reply(200, { ok: true, dry_run: true, would_record: recs });
+          const r = await fetch(rest('mfr_decisions'), { method: 'POST', headers: svcHeaders({ Prefer: 'return=representation' }), body: JSON.stringify(recs) });
+          const j = await r.json().catch(() => null);
+          if (!r.ok) return reply(500, { ok: false, error: 'not_recorded', message: 'The selection could not be recorded: ' + JSON.stringify(j).slice(0, 200) });
+          const X2 = await enrichContext(m), S2 = enrichSummary(m, X2, ENRICH.planPages(X2)), A2 = await approvalContext(m, X2, S2);
+          const keys = [...new Set(recs.map(x => x.field.slice(5)))];
+          return reply(200, { ok: true, recorded: (Array.isArray(j) ? j : [j]).map(d => d && d.id), pages: keys.map(k => A2.states[k] ? view(A2.states[k]) : null).filter(Boolean) });
+        }
+        /* ================= RELEASE D — PUBLISH & VERIFY =================
+           publish_plan (dry run, read-only) → publish_approve (records the exact plan as a content_publication decision) →
+           publish_promote (live photo copies; nothing dealer-visible) → publish_execute (one database transaction publishes
+           exactly the approved pages, then the live dealer view is checked against the approved one; any failure rolls back
+           and is recorded) → catalog-api mc_publish_finalize (full verification, new Gold Standard, window spent).
+           Approve / promote / execute are President-only. Every step re-derives the plan: if anything changed since the dry
+           run, the approval is invalid and nothing is done. */
+        if (action === 'publish_plan' || action === 'publish_approve' || action === 'publish_promote' || action === 'publish_execute') {
+          const president = !!(me && String(me.role || '').toLowerCase() === 'president');
+          if (action !== 'publish_plan' && !president) return reply(403, { ok: false, error: 'president_only', message: 'Only the President approves and carries out a publication. Nothing was changed.' });
+          if (!X.frozen) return reply(409, { ok: false, error: 'not_frozen', message: 'Release D publishes a frozen (Gold Standard) line\'s approved enrichment. ' + m + ' is not frozen.' });
+          let C;
+          try { C = await publicationPlan(m, X, plan); }
+          catch (e) { return reply(503, { ok: false, error: 'plan_unavailable', message: 'The publication dry run could not be built — nothing was changed: ' + String((e && e.message) || e).slice(0, 300) }); }
+          const PL = C.plan;
+          if (action === 'publish_plan') return reply(200, Object.assign({ ok: true, dry_run: true, window: C.S.window, preview: { pass: C.views.out.pass, checks: C.views.out.checks, skus: C.views.out.skus } }, PUBLISH.planReport(PL)));
+          if (action === 'publish_approve') {
+            const reason = String(body.reason || '').trim();
+            if (!reason) return reply(400, { ok: false, error: 'reason_required', message: 'Say why, in a few words. Nothing was recorded.' });
+            if (String(body.plan_hash || '') !== PL.plan_hash) return reply(409, { ok: false, error: 'dry_run_stale', message: 'Something changed since the dry run you reviewed (plan ' + String(body.plan_hash || '').slice(0, 12) + ' → ' + PL.plan_hash.slice(0, 12) + '). Review the new dry run. Nothing was recorded.', plan_hash: PL.plan_hash });
+            if (!PL.publishable) return reply(409, { ok: false, error: 'not_publishable', problems: PL.problems, message: 'This dry run cannot be approved: ' + PL.problems.join('; ') });
+            const rec = { manufacturer: m, field: 'publication', kind: 'content_publication', reason: reason.slice(0, 500), decided_by: who, hcps_value: PL.approval };
+            if (body.dry_run === true) return reply(200, { ok: true, dry_run: true, would_record: { kind: rec.kind, plan_hash: PL.plan_hash, pages: PL.approval.pages, held: PL.approval.held.map(h => h.page_key), photos: PL.approval.promote.length, summary: PL.summary } });
+            const r = await fetch(rest('mfr_decisions'), { method: 'POST', headers: svcHeaders({ Prefer: 'return=representation' }), body: JSON.stringify(rec) });
+            const j = await r.json().catch(() => null);
+            if (!r.ok) return reply(500, { ok: false, error: 'not_recorded', message: 'The approval could not be recorded: ' + JSON.stringify(j).slice(0, 200) });
+            const d = Array.isArray(j) ? j[0] : j;
+            return reply(200, { ok: true, decision: { id: d.id, plan_hash: PL.plan_hash, pages: PL.approval.pages }, next: 'publish_promote' });
+          }
+          /* promote / execute: the approval must be this line's unspent content_publication for THIS exact plan */
+          const did = parseInt(body.decision_id, 10);
+          if (!(did > 0)) return reply(400, { ok: false, error: 'decision_required', message: 'Name the approval (decision_id). Nothing was changed.' });
+          const dec = X.decisionsAll ? X.decisionsAll.find(d => d.id === did) : null;
+          let D = dec; if (!D) { const r = await fetch(rest(`mfr_decisions?id=eq.${did}&select=id,manufacturer,kind,hcps_value,used_at`), { headers: svcHeaders() }); const j = await r.json().catch(() => []); D = j && j[0]; }
+          if (!D || D.kind !== 'content_publication' || D.manufacturer !== m) return reply(404, { ok: false, error: 'no_such_approval', message: 'Decision ' + did + ' is not a publication approval for ' + m + '. Nothing was changed.' });
+          if (D.used_at) return reply(409, { ok: false, error: 'approval_spent', message: 'Approval #' + did + ' was already carried out (' + D.used_at + '). A new dry run and approval are needed. Nothing was changed.' });
+          if (!D.hcps_value || D.hcps_value.plan_hash !== PL.plan_hash) return reply(409, { ok: false, error: 'approval_invalid', plan_hash: PL.plan_hash, message: 'Something changed since approval #' + did + ' (its dry run ' + String(D.hcps_value && D.hcps_value.plan_hash || '').slice(0, 12) + ', now ' + PL.plan_hash.slice(0, 12) + '). The approval is no longer valid: run a new dry run and approve that. Nothing was changed.' });
+          const items = D.hcps_value.promote || [];
+          const liveOk = async it => { try { const r = await fetch(it.to, { headers: { 'cache-control': 'no-cache' } }); if (!r.ok) return false; const buf = Buffer.from(await r.arrayBuffer()); return ENRICH.sha256(buf) === it.sha && /^image\//.test(String(r.headers.get('content-type') || '')); } catch (e) { return false; } };
+          if (action === 'publish_promote') {
+            const t0 = Date.now(), done = [], failed = [];
+            for (const it of items) {
+              if (Date.now() - t0 > 17000) break;
+              if (await liveOk(it)) { done.push({ to: it.to, already: true }); continue; }
+              try {
+                const r = await fetch(it.from); if (!r.ok) throw new Error('draft photo ' + r.status);
+                const ct = String(r.headers.get('content-type') || 'image/jpeg').split(';')[0];
+                const buf = Buffer.from(await r.arrayBuffer());
+                if (ENRICH.sha256(buf) !== it.sha) throw new Error('the draft photo changed since the dry run');
+                const up = await fetch(`${SUPABASE_URL}/storage/v1/object/product-content/${it.path}`, { method: 'POST', headers: { apikey: SERVICE_ROLE, authorization: 'Bearer ' + SERVICE_ROLE, 'content-type': ct, 'x-upsert': 'false' }, body: buf });
+                if (!up.ok && !(await liveOk(it))) throw new Error('storage ' + up.status);
+                done.push({ to: it.to });
+              } catch (e) { failed.push({ from: it.from, error: String((e && e.message) || e).slice(0, 160) }); }
+            }
+            const remaining = items.length - done.length - failed.length;
+            return reply(failed.length ? 502 : 200, { ok: !failed.length, promoted: done.length, of: items.length, remaining, failed, message: failed.length ? 'Some photos could not be copied; nothing is published. Fix and run again.' : undefined });
+          }
+          /* publish_execute */
+          const missing = []; for (const it of items) if (!(await liveOk(it))) missing.push(it.to);
+          if (missing.length) return reply(409, { ok: false, error: 'photos_not_live', missing, message: missing.length + ' live photo copy(ies) are missing or differ. Run publish_promote first. Nothing was published.' });
+          const expected = C.views.P.products, beforeProducts = C.views.T.products;
+          try { await rpc('mfr_content_publish', { p_decision: did, p_plan_hash: PL.plan_hash, p_by: who }); }
+          catch (e) { return reply(409, { ok: false, error: 'publication_refused', message: 'The database refused the publication — nothing was published: ' + e.message }); }
+          /* the live dealer view must be exactly the approved one */
+          const checks = [], add = (id, label, pass, detail) => checks.push({ id, label, pass: !!pass, detail: detail == null ? null : detail });
+          add('publication', 'Approved publication carried out', true, { decision: did, plan_hash: PL.plan_hash, pages: PL.approval.pages });
+          try {
+            const X2 = await enrichContext(m), S2 = enrichSummary(m, X2, ENRICH.planPages(X2));
+            const L2 = await dealerViews(m, X2, S2, []);
+            const cmp = PUBLISH.liveMatchesPlan(expected, L2.T.products);
+            add('live_equals_approved', 'Live dealer view = the approved dry run, product by product', cmp.same, cmp.same ? { products: expected.length } : cmp.diffs);
+            add('no_draft_links_live', 'No live product points at a draft-folder photo', !cmp.draft_links.length, cmp.draft_links.slice(0, 10));
+            const acc = PREVIEW.buildPreview({ slug: m, base: ORDERING_BASE, records: L2.records, meta: L2.meta, pages: S2.pages, drafts: X2.pages,
+              today: { products: beforeProducts, engine: C.views.T.engine }, proposed: { products: L2.T.products, engine: L2.T.engine },
+              R: new Function('state', 'contractPrice', require('./_shop_render.js').SOURCE + ';return {priceHtml,freightRowsHtml,packOf,packNote,dealerPriceNote,money};')({ dealer: {} }, () => null), PICK: require('./_shop_picker.js') });
+            add('accounting', 'Every active SKU on one card; held products unchanged; commercial unchanged; retired excluded', acc.pass, acc.pass ? acc.summary : acc.checks.filter(c => !c.pass));
+            const visible = X2.pages.filter(r => ENRICH.isVisibleRow(r)).map(r => r.page_key).sort();
+            add('only_approved_pages_visible', 'Exactly the approved pages are visible (no held page)', PUBLISH.canon(visible) === PUBLISH.canon(PL.approval.pages.slice().sort()), visible);
+            const heldNow = PL.held.map(h => X2.pages.find(r => r.page_key === h.page_key) || null);
+            add('held_rows_untouched', 'Held drafts untouched (hidden, issues and holds intact)', PL.held.every((h, n) => PUBLISH.canon(heldNow[n]) === PUBLISH.canon(h.row)), PL.held.map(h => h.page_key));
+            const waitNow = (PL.awaiting || []).map(h => X2.pages.find(r => r.page_key === h.page_key) || null);
+            add('awaiting_rows_untouched', 'Pages waiting for content approval untouched (hidden drafts)', (PL.awaiting || []).every((h, n) => PUBLISH.canon(waitNow[n]) === PUBLISH.canon(h.row)), (PL.awaiting || []).map(h => h.page_key));
+          } catch (e) { add('verification_ran', 'Post-publish verification ran', false, String((e && e.message) || e).slice(0, 300)); }
+          if (checks.every(c => c.pass)) {
+            await logHistory({ manufacturer: m, page_key: PL.approval.pages.join(','), action: 'publish', actor: who, summary: 'Approved publication #' + did + ' carried out: ' + PL.approval.pages.length + ' page(s) published; pending final verification', before: null, after: null });
+            return reply(200, { ok: true, published: PL.approval.pages, decision: did, checks, next: 'catalog-api mc_publish_finalize (after the live storefront check)' });
+          }
+          let rolled = null; try { rolled = await rpc('mfr_content_publication_rollback', { p_decision: did, p_by: who }); } catch (e) { rolled = { ok: false, error: e.message }; }
+          checks.push({ id: 'rolled_back', label: 'Rolled back to the previously safe dealer view', pass: !!(rolled && rolled.ok), detail: rolled });
+          try { await saveRun({ manufacturer: m, phase: 'release', result: 'fail', checks, fingerprint: null, run_by: String(who).slice(0, 80) }); } catch (e) {}
+          return reply(409, { ok: false, error: 'verification_failed', rolled_back: !!(rolled && rolled.ok), checks, message: 'The published result did not match the approved dry run, so it was rolled back and the failed run recorded. Nothing stays published.' });
         }
         const page = plan.pages.find(p => p.page_key === body.page_key);
         if (!page) return reply(404, { ok: false, error: 'no_such_page', message: 'No proposed page "' + String(body.page_key || '') + '" on ' + m + '.' });

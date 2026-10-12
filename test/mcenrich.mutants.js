@@ -37,7 +37,7 @@ const JS=[
  ['product-content.js','enrichment writes over a live page','        if (page.live_page || ENRICH.isVisibleRow(cur)) return reply(409','        if (false) return reply(409'],
  ['product-content.js','a rejected manufacturer page read again','.filter(u => u && u !== rejected))].slice(0, 2);','.filter(u => u))].slice(0, 2);'],
  ['product-content.js','a non-image copied as a photo',"    if (!/^image\\/(jpeg|jpg|png|webp|gif)$/.test(ct)) return { error: 'not an image (' + (ct || 'no type') + ')' };\n",""],
- ['product-content.js','a resolution recorded without a reason',"          if (!reason) return reply(400, { ok: false, error: 'reason_required'","          if (false) return reply(400, { ok: false, error: 'reason_required'"],
+ ['product-content.js','a resolution recorded without a reason',"          if (p) return reply(400, { ok: false, error: 'bad_resolution', message: p + '. Nothing was recorded.' });\n          if (!reason) return reply(400","          if (p) return reply(400, { ok: false, error: 'bad_resolution', message: p + '. Nothing was recorded.' });\n          if (false) return reply(400"],
  ['product-content.js','a later choice not linked to the earlier one',"supersedes_id: prev ? prev.id : null };","supersedes_id: null };"],
  ['product-content.js','a resolution dry run records it',"          if (body.dry_run === true) return reply(200, { ok: true, dry_run: true, would_record: rec });\n",""],
  ['product-content.js','a photo from elsewhere put on a draft',"          if (url.indexOf(own) !== 0 || /[?#\\s]/.test(url.slice(own.length))) return reply(400","          if (false) return reply(400"],
