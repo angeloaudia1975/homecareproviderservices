@@ -2010,6 +2010,30 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   OVERALL completion percentage until the project is complete (55% at that message).** Once first capture passes, Phase C
   comes first: shared Ship-To resolver, correction interface and shadow validation — no new large audit / planning cycle;
   focus on functional results and real exceptions. Automatic financial imports and intelligence publishing stay OFF.
+- **Decisions after first capture (Angelo, 2026-10-11 20:53 CT; overall MI completion 57%).**
+  (1) **Record #8 period correction APPROVED** (Sep–Oct → 2026-09-01..30): keep the original file, SHA-256, received date
+  and full registration history; never disable MI-1b's general safeguards, delete/re-register the file or touch financial
+  records; a narrowly scoped audited metadata correction on record #8 only, original + corrected period recorded; exact
+  mechanism + SQL shown to Angelo BEFORE execution, Angelo runs it. Built: `supabase/mi1b_record8_period_correction.sql`
+  (one DO block, owner only, exact preconditions — id 8, file, SHA-256 42509f6b…98dc, size, received date, period, title,
+  status received, no supersession/batch, only its registration event; inside the one transaction the guard is replaced by
+  a copy with ONE record-8 exception, the row is corrected, the ORIGINAL guard definition is restored and verified
+  byte-for-byte; event action `period_corrected` added to the action list; post-check that the guard refuses again; a
+  second run is refused). Also corrects the title's period text. Test `test/mi1b-record8.pg.test.js` (17; MI-1b and the
+  script pasted with CRLF as in production). The capture item keeps its proposed period as history.
+  (2) **The four false Golden cloud_attachment exceptions (items #3, #5, #7, #12) are cleared** after the classification
+  fix is deployed, through `resolve` with an audit reason naming the corrected rule — never deleted; other genuine
+  exceptions untouched.
+  (3) **Capture fixes (`mi-b-capture-fixes`) are approved to merge + deploy when Netlify build credits return**, if tests
+  pass and nothing unexpected appears — no further approval. Capture stays ON; automatic financial imports OFF. Until the
+  fix is live, watch every newly captured Strongback sales export for a wrong period.
+  (4) **Phase C starts now (branch, tests, no deploy of new financial import behaviour, no change to historical commission
+  attribution without separate approval):** order-level Needs Ship-To Review queue (orders, not duplicate invoice lines);
+  simple correction screen (existing HCPS branch + missing ship-to details); versioned correction overlays that never
+  modify the manufacturer's file; verified manufacturer + account + ship-to mappings; Save & Continue revalidates; no
+  automatic HQ fallback for ambiguous multi-branch orders; shadow validation on Strongback order exports and Bemis's
+  hand-corrected reports; the manual import workflow and every MI-1a protection preserved. Deliver implementation, tests
+  and ONE consolidated rollout recommendation; no long planning documents or extra stop points.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
