@@ -2130,6 +2130,9 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   pinned search_path, 6 guard triggers, unique active-mapping index, 0 rows written, blank-account CHECK +
   dealer_manufacturers columns present). Next: postcheck (fingerprint ca3e97ff… LF / bdbd7982… CRLF) + baseline, the
   14-check public-key probe, then merge + deploy and the Shadow Check from the Ship-To Review page.
+  **Postcheck PASSED (Angelo, 2026-10-12 10:00 CT):** code 3 / bdbd7982… (the CRLF form, as precomputed), 3 tables / 3 RLS /
+  0 policies, 0 public grants, blank-account CHECK present, 0 / 0 / 0 rows, monthly_sales 11,997 / $10,802,558.50 /
+  $493,077.06 unchanged. Awaiting the public-key probe before merge + deploy.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
