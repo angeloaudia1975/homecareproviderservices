@@ -2690,6 +2690,17 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     no unverified specifications, no exam questions on unverified facts; no TEST courses or dummy audit history. Then a
     guided builder acceptance test with Angelo, then an updated launch roadmap. C2, enrollment, certificates and other
     Academy development need separate approval; the six learner switches stay OFF. Academy ~65%.
+    **PR #11 MERGED (12 Oct 2026, main 1963539; restriction-only, implementing the instruction above).** Live: builder
+    returns `president_only: true`, page text carries the read-only note. Tests C1 50, builder pg 27, browser 13.
+    **Golden draft CREATED in production (12 Oct 2026 ~17:40 CT, through Angelo's signed-in session, actor = Angelo):**
+    course 374f6119-f008-4216-baf0-255b1d462513 (slug golden-lift-chair-sales-certification, hcps_certification,
+    golden-technologies), version 1 34a4ed42-5c62-4f04-bffc-2a4341182bea (draft; pass 80, 25 questions, 12 months);
+    11 modules / 17 lessons / 183 min per the approved outline; Sample A in 4.1 (15 screens, 22 fact links) and Sample B
+    in 6.1 (15 screens, 49 fact links); 7 PRACTICE questions (the samples' own), 0 exam questions; 0 product facts
+    recorded, 0 media, picture/video/document blocks are placeholders. Readiness 102 blocking (15 empty lessons,
+    unrecorded facts, placeholders, empty exam bank) + 2 advice. Not published; switches unchanged. The fact blocks show
+    "not recorded" until the President records each fact (with its Golden source) in Product Facts.
+    M3.1 design doc: claude.ai/code/artifact/58bc45d7-70b4-4449-a6b7-02a0f82aec2e (design only; no SQL).
   - A1 check 27 and M1 check 43 need EMPTY Academy tables; if records exist in production they FAIL by design — use the
     before/after leftover checks (M2 21, M3 25) and discuss first.
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
