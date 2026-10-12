@@ -2175,6 +2175,52 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   Bemis — 17 commission lines / 4 orders, 0 sales-report lines; 4 same, 0 different, 0 held. Record #8 (Angelo Sep
   Orders.csv): 6 orders / 7 lines / $2,159 — all 6 resolved (5 single-location dealers + Williams Brothers Princeton by
   ZIP 47670), report Ready, 0 need review. Nothing written.
+- **Phase C ACCEPTED; toward Phase D (Angelo, 2026-10-12 12:43 CT; MI 72%) — RULES:**
+  (1) **Historical vs actionable Ship-To findings.** The Ship-To Review queue edits ONLY registered order exports
+  (`mfr_sources` sales_export, received/accepted). The Shadow Check reads historical `monthly_sales`; its held orders
+  (Strongback 6629 Integrity Home Medical, 6339 + 6621 Glasgow Prescription Center) exist only in history (the YTD
+  workbook is not registered) — they are documented historical review findings, never presented as editable on a screen
+  that cannot edit them, and past dealer assignments are never changed automatically. A historical order is corrected only
+  if its specific original report is registered and corrected under control.
+  (2) **Glasgow rule:** never remember or reuse a decision on a ZIP alone when that ZIP belongs to more than one branch.
+  A remembered mapping needs a verified ship-to id or a SUFFICIENTLY SPECIFIC street address (house number + street name;
+  never a bare street, PO box or suite) — `_shipto.js specificAddress` / `shipKey`. A saved zipmap entry on a ZIP shared by
+  several branches of the family is never applied in strict mode (→ needs review `zip_shared`, the saved choice only
+  suggested); a zipmap entry naming another family is never even suggested.
+  (3) **Source-aware import path (strict):** starts from a REGISTERED file, never from browser rows: stored original →
+  `_report_rows.js` → Ship-To review (strict resolver + saved correction overlays, `_shipto_review.js`) → MI-1a rows
+  (`_source_import.js`, the manual importer's `mapRow` copied verbatim, drift-tested) → `hcps_sales_report_apply`
+  DRY RUN. A report with any unresolved order is HELD whole and never reaches MI-1a. The commission rate is only the
+  manufacturer's single sales-report-history rate, else blocked. The manual Sales Report Import is unchanged.
+  (4) **Automatic financial posting stays OFF.** `shipto-review-api` `import_check` forces `apply:false` (and no
+  cross-lane / paid confirmations) whatever the request says; eligibility is reported, never acted on.
+  (5) **September Strongback:** the 7 quarantined rows (2026-09) are never converted into sales automatically; a file
+  carrying the same order numbers is NOT eligible until Angelo decides; the SR032 commission statement (record #9) stays in
+  the commission lane.
+  (6) After the strict path passes shadow testing, automatic REGISTRATION extends to verified profiles in the order Bemis,
+  Ohio Medical, Access4U, AirAvant, Climbing Steps; commission posting stays restricted until approved.
+  (7) A practical MI dashboard (report arrivals, missing periods, import status, Ship-To issues, pending approvals); the
+  monthly reconciliation is ready on the 15th; late reports keep processing. Intelligence publishing stays OFF.
+- **Phase D work DEPLOYED 2026-10-12 (main b4a6c1d → d6d5731; read-only, no SQL run, no switch changed; MI 78%):**
+  `import_check` (Ship-To Review → "Import check (read-only)"), the Glasgow / specific-address rule, `profile_trial`
+  (mfr-reports-api; GET-only Graph, capture's own inspect/decide, nothing stored), the Manufacturer Intelligence dashboard
+  (`/admin/mi-dashboard.html`, HUBS Sales Data & Analytics; statuses registered / captured by draft / in HCPS only /
+  missing / not due / before capture / not expected), capture rule `ignore_file_name` (inactive until a profile has it).
+  **Rules learned:** a quarantined row in the same manufacturer + month BLOCKS a file even without matching order numbers
+  (the 7 September Strongback rows have blank order numbers — the first live check showed record #8 eligible until this
+  was fixed); every profile reports the PREVIOUS month (Ohio "through August" arrives Sep 21–29); a report due before email
+  capture began is "before capture", never "missing".
+  **Live record #8 check:** ready (6 orders strictly resolved), 7 lines / $2,159.00 / $194.31 at 9% (history rate),
+  MI-1a dry run 6 new / 0 unchanged / 0 changed / 0 retire / 0 cross-lane / 0 collisions / 0 locked months, no rows with
+  these order numbers in any lane, SR032 record #9 registered not imported (caution) → NOT eligible: `quarantined_period`
+  (7 rows, "Strongback Sept Commission Report 2026.csv"). Three orders are $0 lines (7191, 7192, 7196).
+  **Profile trial 1 Oct 2025 → 12 Oct 2026:** Bemis 3 would register (Jun–Aug 2026, resends = copies, 0 exceptions);
+  AirAvant 2 (Jun, Jul) + 1 exception (rep agreement PDF); Access4U 11 (combined months recognised; "Angelo Report.xlsx" a
+  second May file) + 2 exceptions; Ohio 12 (cumulative YTD period + a ZOL SPIFF exception every month → activation sets
+  period = through-month and ignores ZOL SPIFF); Climbing Steps NOT ready (reply threads would each register: 4 for Sep 2025,
+  4 for May 2026; "October 2025.xlsx" fails the file-name rule). Activation SQL `supabase/mi_d_profile_activation.sql`
+  (sha256 5dcbdd9c…88ce; owner only, the 4 reviewed draft rows only, second run refused; registration only, no backfill) —
+  NOT run, awaiting Angelo.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
@@ -2548,6 +2594,16 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     - question-bank management with configurable module distribution;
     - clear readiness warnings for missing images, unverified facts and incomplete content.
     Report as usual (testing, security, deployment) when ready for review.
+    **PR #9 MERGED and VERIFIED (12 Oct 2026 ~11:33 CT, merge `26fa5e0`; production deploy main@d526747 Published, which
+    adds only CLAUDE.md notes on top).**
+    - Before the merge: main brought in, no conflicts, no Academy file touched by it. Lesson 23, C1 49, A2A 31, server
+      mutants 22/22, samples through the real database rules PG16 and PG17 5/5, browser 11/11 (axe clean).
+      Regressions identical to main (only the PDF-dependent MI-1c tests and resources-render fail, as on main).
+      GitHub checks green.
+    - Live: the staff preview renders Sample B (15 screens) in Angelo's signed-in session. Sample A's payload has no
+      answer key; practice check graded on the server; unknown lesson 404; a forged token 401.
+    - Unchanged: switches (only `academy_admin` true); 0 courses, versions, facts and audit rows. Site pages,
+      Command Center and Report History 200; learner API 403; `/academy/` 404.
   - A1 check 27 and M1 check 43 need EMPTY Academy tables; if records exist in production they FAIL by design — use the
     before/after leftover checks (M2 21, M3 25) and discuss first.
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass

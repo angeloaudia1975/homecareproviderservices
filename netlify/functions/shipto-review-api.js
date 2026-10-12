@@ -27,10 +27,15 @@
 //   POST {action:"export", source_id}                        → the corrected report as CSV (original columns + HCPS columns)
 //   POST {action:"shadow", manufacturer, period_from?, period_to?}
 //                                                            → READ-ONLY: history in monthly_sales re-resolved strictly
+//   POST {action:"import_check", source_id}                  → READ-ONLY Phase D check: strict Ship-To + overlays → MI-1a
+//                                                              dry run (apply:false, always) + quarantine / statement / lane
+//                                                              facts + an eligibility verdict. Nothing is ever written.
 const crypto = require("crypto");
 const SH = require("./_shipto.js");
 const RV = require("./_shipto_review.js");
 const RR = require("./_report_rows.js");
+const SI = require("./_source_import.js");
+const SC = require("./_scope.js");
 const { NAME_FIRST } = require("./_mfr_rules.js");
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
@@ -56,6 +61,16 @@ async function rpc(fn, p) {
   const msg = String((body && body.message) || text || "").slice(0, 500);
   const m = msg.match(/\b(shipto_[a-z_]+|mfr_shipto_guard)\b/);
   return { ok: false, status: r.status, code: m ? m[1] : "database_error", message: msg };
+}
+// MI-1a dry run. apply is FALSE here by construction (Phase D: automatic financial posting is OFF); the caller cannot set it.
+async function miDryRun(p) {
+  const body = Object.assign({}, p, { apply: false });
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/hcps_sales_report_apply`, { method: "POST", headers: { ...H(), "content-type": "application/json" }, body: JSON.stringify({ p: body }) });
+  const text = await r.text(); let j; try { j = JSON.parse(text); } catch (x) { j = { message: text }; }
+  if (r.ok) return j;
+  const msg = String((j && j.message) || text || ""); const m = msg.match(/\b(mi1a_[a-z_]+)\b/);
+  if (m) return { refused: true, code: m[1], message: msg.slice(0, 400) };
+  throw new Error(`MI-1a dry run ${r.status}: ${msg.slice(0, 200)}`);
 }
 async function whoami(event) {
   const auth = event.headers["authorization"] || event.headers["Authorization"] || "";
@@ -222,6 +237,48 @@ exports.handler = async (event) => {
       return json(200, { ok: true, dealers: hits });
     }
 
+    if (b.action === "import_check") {
+      const r = await readSource(b.source_id); if (r.error) return json(r.error[0], r.error[1]);
+      const slug = r.src.manufacturer, ctx = await loadContext(slug);
+      const { review, nameOf } = await reviewOf(r.src, r.parsed, ctx);
+      const [enr, hist, dir] = await Promise.all([
+        sbGet(`mi1a_enrollment?manufacturer=in.(${e(slug)},*)&lane=eq.sales_report&select=manufacturer`),
+        sbGetAll(`monthly_sales?manufacturer=eq.${e(slug)}&source=eq.sales_report&select=id,commission_rate`, "id"),
+        SC.ownerIndex(sbGet)]);
+      const rate = SI.rateFromHistory(hist.map(h => h.commission_rate));
+      const repOf = id => id ? (dir.repOf(id) || dir.repOf((ctx.allById.get(id) || {}).parent_id || id) || null) : null;
+      const pl = SI.plan(review, r.parsed.rows, { slug, rate: rate.rate || 0, source_file: r.src.file_name, repOf });
+      const v2 = (pl.status === "ready" && enr.length && rate.rate)
+        ? await miDryRun({ manufacturer: slug, actor: actor, source_file: r.src.file_name, rows: pl.mi_rows, retire_orders: [], approve_paid: false, approve_reason: "", confirm_cross_lane: false })
+        : null;
+      // Facts beside the dry run (read-only): rows already holding these order numbers in ANY lane, quarantined rows, the
+      // registered commission statements and commission-lane rows of the same months.
+      const invs = [...new Set(r.parsed.rows.map(x => String(x.order_number || "").trim()).filter(Boolean))];
+      const months = [...new Set(r.parsed.rows.map(x => { const d = String(x.date || "").match(/(\d{4})-(\d{2})/); return d ? d[1] + "-" + d[2] : null; }).filter(Boolean))].sort();
+      const inList = invs.map(x => '"' + x.replace(/"/g, "") + '"').join(",");
+      const [existingRaw, quarantine, stmts, monthRows] = await Promise.all([
+        invs.length ? sbGetAll(`monthly_sales?manufacturer=eq.${e(slug)}&invoice_no=in.(${e(inList)})&select=id,invoice_no,period,source,external_ref,amount,commission,dealer_id,source_file`, "id") : [],
+        sbGetAll(`monthly_sales_quarantine?manufacturer=eq.${e(slug)}&select=id,sales_row_id,period,source,source_file,reason,row_data,quarantined_at`, "id"),
+        sbGetAll(`mfr_sources?manufacturer=eq.${e(slug)}&kind=eq.commission_statement&select=id,title,file_name,status,report_period_start,report_period_end,import_batch_id,received_date`, "id"),
+        months.length ? sbGetAll(`monthly_sales?manufacturer=eq.${e(slug)}&period=gte.${months[0]}-01&period=lte.${months[months.length - 1]}-28&select=id,source,external_ref,period`, "id") : []]);
+      const invSet = new Set(invs);
+      const existing = existingRaw.map(x => ({ ...x, lane: RV.laneOf(x), dealer: nameOf(x.dealer_id) }));
+      const quarantined = quarantine.map(q => ({ id: q.id, sales_row_id: q.sales_row_id, period: q.period, source: q.source, source_file: q.source_file, reason: q.reason,
+        invoice_no: String((q.row_data || {}).invoice_no || "").trim(), amount: (q.row_data || {}).amount, commission: (q.row_data || {}).commission, quarantined_at: q.quarantined_at }))
+        ;
+      // Two tests, both blocking: the same order numbers, AND any quarantined row in the same manufacturer + month — the
+      // quarantined September Strongback rows carry no usable order numbers, so the month itself is the evidence.
+      const quarantinedPeriod = quarantined.filter(q => months.includes(String(q.period || "").slice(0, 7)));
+      quarantined.splice(0, quarantined.length, ...quarantined.filter(q => invSet.has(q.invoice_no)));
+      const statements = stmts.filter(s => s.report_period_start && months.some(m => s.report_period_start.slice(0, 7) <= m && String(s.report_period_end || s.report_period_start).slice(0, 7) >= m))
+        .map(s => ({ id: s.id, title: s.title, file_name: s.file_name, status: s.status, period: String(s.report_period_start).slice(0, 7), imported: !!s.import_batch_id, received_date: s.received_date }));
+      const commissionLaneRows = monthRows.filter(x => RV.laneOf(x) === "commission").length;
+      const verdict = SI.verdict({ plan: pl, enrolled: enr.length > 0, rate, v2, existing, quarantined, quarantinedPeriod, statements, commissionLaneRows });
+      for (const o of pl.orders) { o.dealer = nameOf(o.dealer_id); o.recorded = existing.filter(x => x.invoice_no === o.order_number).map(x => ({ lane: x.lane, period: x.period, amount: x.amount })); }
+      for (const d of ((v2 && v2.nonfinancial_differences) || [])) if (d.field === "dealer_id") { d.field = "dealer"; d.hcps = nameOf(d.hcps) || d.hcps; d.file = nameOf(d.file) || d.file; }
+      return json(200, { ok: true, read_only: true, applied: false, source: summary(r.src, review), plan: { status: pl.status, held_orders: pl.held_orders, orders: pl.orders, totals: pl.totals },
+        rate, enrolled: enr.length > 0, months, v2, existing, quarantined, quarantined_in_period: quarantinedPeriod, statements, commission_lane_rows: commissionLaneRows, verdict });
+    }
     if (b.action === "shadow") {
       const mfr = clean(b.manufacturer, 80); if (!mfr) return json(400, { error: "manufacturer_required" });
       const f = clean(b.period_from, 7), t = clean(b.period_to, 7);

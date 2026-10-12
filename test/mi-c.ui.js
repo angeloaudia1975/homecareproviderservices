@@ -59,6 +59,12 @@ const server = http.createServer(async (req, res) => {
       lane_disagreement_list: [{ txn: '2026-07|A3', booked: { sales_report: { dealer_id: 'wja', name: 'Wilbur Brothers Jasper' }, commission: { dealer_id: 'wpr', name: 'Wilbur Brothers Princeton' } } }],
       list: [{ outcome: 'different', lane: 'commission', period: '2026-07', invoice: 'A3', key: 'commission|2026-07|A3', company: 'Wilbur Brothers Healthcare Pharmacy', ship_city: 'Jasper', ship_zip: '47546', booked_name: 'Wilbur Brothers Princeton', strict_name: 'Wilbur Brothers Jasper' },
         { outcome: 'held', lane: 'sales_report', period: '2026-07', invoice: 'A2', key: 'sales_report|2026-07|A2', company: 'Wilbur Brothers Healthcare Pharmacy', booked_name: 'Wilbur Brothers Healthcare Pharmacy', basis: 'no_ship_to' }] } };
+    else if (b.action === 'import_check') out = { ok: true, read_only: true, applied: false, rate: { rate: 0.09 }, v2: { orders: { new: 1, unchanged: 1, changed: 0, retire: 0 }, cross_lane_matches: 0 },
+      plan: { status: 'ready', held_orders: [], totals: { amount: 1658, commission: 149.22 }, orders: [
+        { order_number: '7139', date: '2026-09-10', dealer: 'Harmonia Medical Supply', basis: 'single', amount: 1041, commission: 93.69, recorded: [] },
+        { order_number: '7191', date: '2026-09-10', dealer: 'Wilbur Brothers Princeton (a long branch name that must wrap on a phone)', basis: 'zip', amount: 617, commission: 55.53, recorded: [{ lane: 'sales_report', period: '2026-09-01', amount: 617 }] }] },
+      quarantined: [{ invoice_no: '7191' }], verdict: { eligible: false, automatic_posting: 'off', blockers: [{ code: 'previously_quarantined', text: '1 quarantined row(s) carry the same order numbers (7191).' }],
+        cautions: [{ code: 'statement_registered', text: 'A commission statement is registered for 2026-09 (record #9).' }] } };
     else { st = 400; out = { error: 'unknown_action' }; }
     res.writeHead(st, { 'content-type': 'application/json' }); res.end(JSON.stringify(out)); return;
   }
@@ -144,6 +150,10 @@ const fails = []; const check = (c, w) => { if (!c) { fails.push(w); console.log
     await p.click('button.go[data-open]'); await p.waitForSelector('#panel');
     m = await measure();
     check(m.over <= 0 && (w > 760 || m.small.length === 0), `${w}px review + panel: no horizontal scroll (${m.over}px), controls ≥44px${m.small.length ? ' — too small: ' + m.small.join(', ') : ''}`);
+    await p.click('button[data-icheck]'); await p.waitForSelector('text=Import check — read only');
+    m = await measure();
+    check(m.over <= 0 && (w > 760 || m.small.length === 0), `${w}px import check: no horizontal scroll (${m.over}px), controls ≥44px`);
+    check(/Not eligible/.test(await p.locator('#body').textContent()) && /quarantined/.test(await p.locator('#body').textContent()), `${w}px import check: verdict and blockers shown`);
     const fs16 = await p.evaluate(() => [...document.querySelectorAll('#panel input:not([type=radio]):not([type=checkbox])')].every(el => parseFloat(getComputedStyle(el).fontSize) >= 16));
     check(w > 760 || fs16, `${w}px: panel inputs are 16px (no iOS zoom)`);
     await p.screenshot({ path: path.join(OUT, `review-${w}.png`), fullPage: true });

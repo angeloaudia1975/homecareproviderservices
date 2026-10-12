@@ -5,7 +5,7 @@ const { spawnSync } = require('child_process');
 const fs = require('fs'), os = require('os'), path = require('path');
 const TABLE = path.join(__dirname, 'mi-c.mutants.table.js'); const table = require(TABLE);
 const SQL = path.join(__dirname, '..', 'supabase', 'mi_c_shipto.sql');
-const SUITES = { review: 'shipto-review.test.js', shipto: 'shipto.test.js', pg: 'mi-c-shipto.pg.test.js' };
+const SUITES = { review: 'shipto-review.test.js', shipto: 'shipto.test.js', source: 'source-import.test.js', pg: 'mi-c-shipto.pg.test.js' };
 function run(suite, env) {
   const r = spawnSync(process.execPath, [path.join(__dirname, SUITES[suite])], { env, encoding: 'utf8', timeout: 900000 });
   const out = (r.stdout || '') + (r.stderr || '');

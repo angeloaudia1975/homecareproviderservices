@@ -93,10 +93,29 @@
     let h = `<div class="card2"><div class="hd"><div class="ttl">${esc(R.title || R.file_name)}</div><span class="chip c-${esc(R.review_status)}">${esc(ST[R.review_status])}</span></div>
       <div class="grid"><div><b>Orders</b>${c.orders}</div><div><b>Need review</b>${c.needs_review}</div><div><b>Corrected</b>${c.corrected}</div><div><b>Resolved</b>${c.resolved}</div>
       <div><b>Amount needing review</b>${money(R.totals.amount_needing_review)}</div></div>
-      <div class="btnrow"><button class="go sec" data-back="1">All reports</button><button class="go sec" data-export="1">Download corrected report (CSV)</button></div>
+      <div class="btnrow"><button class="go sec" data-back="1">All reports</button><button class="go sec" data-export="1">Download corrected report (CSV)</button><button class="go sec" data-icheck="1">Import check (read-only)</button></div>
+      ${S.check ? checkHtml(S.check) : ""}
       ${S.msg ? `<div class="okm">${esc(S.msg)}</div>` : ""}${S.err && !S.sel ? `<div class="err">${esc(S.err)}</div>` : ""}</div>`;
     const sel = S.rep.orders.find(o => o.order_key === S.sel);
     h += `<div class="split"><div>${S.rep.orders.map(orderLine).join("")}</div><div>${sel ? panelHtml(sel) : `<div class="panel"><div class="empty">${c.needs_review ? "Choose an order on the left." : "Every order has a branch. This report is ready."}</div></div>`}</div></div>`;
+    return h;
+  }
+
+  // Phase D: the read-only import check — strict Ship-To + overlays → MI-1a dry run. Nothing is imported from here.
+  const LANE = { sales_report: "Sales report", commission: "Commission", other: "Other" };
+  function checkHtml(c) {
+    if (c.loading) return `<div class="msg">Checking — nothing is written…</div>`;
+    if (c.error) return `<div class="err">${esc(c.error)}</div>`;
+    const v = c.verdict, o = (c.v2 && c.v2.orders) || {};
+    let h = `<div class="note"><b>Import check — read only.</b> Automatic financial posting is off; this never imports. ${v.eligible ? "<b>Financially eligible</b> for import (a person still imports it)." : "<b>Not eligible</b> for import yet."}</div>`;
+    if (c.v2 && !c.v2.refused) h += `<div class="grid"><div><b>New orders</b>${o.new || 0}</div><div><b>Already recorded, unchanged</b>${o.unchanged || 0}</div><div><b>Would change</b>${o.changed || 0}</div><div><b>Retire</b>${o.retire || 0}</div>
+      <div><b>Cross-lane matches</b>${c.v2.cross_lane_matches || 0}</div><div><b>Sales</b>${money(c.plan.totals.amount)}</div><div><b>Commission</b>${money(c.plan.totals.commission)}${c.rate && c.rate.rate ? " @ " + Math.round(c.rate.rate * 1000) / 10 + "%" : ""}</div></div>`;
+    if (v.blockers.length) h += `<div class="err"><b>Blocked by</b><ul>${v.blockers.map(b => `<li>${esc(b.text)}</li>`).join("")}</ul></div>`;
+    if (v.cautions.length) h += `<div class="note"><b>Notes</b><ul>${v.cautions.map(b => `<li>${esc(b.text)}</li>`).join("")}</ul></div>`;
+    if (c.plan.orders.length) h += `<div class="scroll"><table class="tbl"><thead><tr><th>Order</th><th>Date</th><th>HCPS branch</th><th>Basis</th><th>Sales</th><th>Commission</th><th>Already in HCPS</th></tr></thead><tbody>${c.plan.orders.map(r =>
+      `<tr><td>${esc(r.order_number)}</td><td>${esc(r.date)}</td><td>${esc(r.dealer)}</td><td>${esc(BASIS[r.basis] || r.basis)}</td><td>${money(r.amount)}</td><td>${money(r.commission)}</td><td>${r.recorded.length ? r.recorded.map(x => esc(LANE[x.lane] + " " + String(x.period).slice(0, 7))).join(", ") : "—"}</td></tr>`).join("")}</tbody></table></div>`;
+    if ((c.quarantined_in_period || []).length) h += `<div class="note"><b>${c.quarantined_in_period.length} quarantined row(s) on file for ${esc(c.months.join(", "))}</b> — that month's quarantined data is never converted into sales automatically.</div>`;
+    if (c.quarantined.length) h += `<div class="note"><b>Quarantined rows with these order numbers</b> (kept out of sales; never converted automatically): ${c.quarantined.map(q => esc(q.invoice_no)).join(", ")}</div>`;
     return h;
   }
 
@@ -226,6 +245,7 @@
   }
 
   async function openReport(id, sel) {
+    if (S.src !== id) S.check = null;
     S.view = "report"; S.src = id; if (!sel) { S.rep = null; render(); }
     const r = await api({ action: "report", source_id: id });
     S.rep = r.status === 200 ? r.body : { error: (r.body && (r.body.message || r.body.error)) || ("HTTP " + r.status) };
@@ -249,6 +269,9 @@
     const ex = document.querySelector("[data-export]"); if (ex) ex.onclick = async () => { const r = await api({ action: "export", source_id: S.src });
       if (r.status !== 200) { S.err = r.body.message || r.body.error; render(); return; }
       const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([r.body.csv], { type: "text/csv" })); a.download = r.body.file_name; document.body.appendChild(a); a.click(); a.remove(); };
+    const ic = document.querySelector("[data-icheck]"); if (ic) ic.onclick = async () => { S.check = { loading: true }; render();
+      const r = await api({ action: "import_check", source_id: S.src });
+      S.check = r.status === 200 ? r.body : { error: (r.body && (r.body.message || r.body.error)) || ("HTTP " + r.status) }; render(); };
     const ml = $("#mapload"); if (ml) ml.onclick = () => { S.mapsMfr = ($("#mapmfr").value || "").trim(); loadMaps(); };
     document.querySelectorAll("[data-retire]").forEach(b => b.onclick = async () => {
       const row = b.closest("td"); row.innerHTML = `<input id="rr${b.getAttribute("data-retire")}" placeholder="Reason" style="padding:8px;border:1px solid var(--line);border-radius:8px;min-height:40px"><button class="go sec" id="rg${b.getAttribute("data-retire")}">Retire</button>`;
