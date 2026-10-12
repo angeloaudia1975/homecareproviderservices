@@ -1441,6 +1441,34 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   so the preview shows them from ORDERING_BASE (display only), never as broken images on the admin site. Holds recorded:
   #326 Bidet, #327 Support Arms, #328 Steadfast, #329 444DISPLAY (issue "hold"; nothing superseded); Steadfast re-run:
   the Stay-Tite badge is withheld from the gallery, its catalog_name discrepancy stays listed.
+  **Release C PASS / COMPLETE (Angelo, 2026-10-11 ~20:55 CT).** Security follow-up CLOSED / PASS: anonymous listing of
+  `mfr-sources` refused with a real stored object (record 7), and of the draft photo folder.
+  (x) **Release D — Publish & Verify (approved to build 2026-10-11; nothing published until Angelo approves the dry run).**
+  Manufacturer Center → Continue Product Enrichment → 6 · Publish & Verify. product-content actions (President-only except
+  the dry run): publish_plan (read-only dry run) → publish_approve (records a content_publication decision holding the
+  EXACT plan: plan_hash, pages, every page's "before" row and "after" fields, the photo promotions, the held list and the
+  accounting) → publish_promote (copies each distinct approved photo to product-content/<line>/live/<page>/<sha>.<ext>,
+  x-upsert false, sha checked; old draft objects stay for audit) → publish_execute (every live copy must exist and match;
+  then supabase function mfr_content_publish publishes ALL approved pages in ONE transaction; then the live dealer view must
+  equal the approved one product by product, no draft link, exactly the approved pages visible, held drafts byte-identical,
+  accounting/commercial unchanged — any failure → mfr_content_publication_rollback + failed run recorded; never rolls
+  forward: the approval is spent, a new dry run is needed). Then the live storefront check, then catalog-api
+  mc_publish_finalize: full verifyLine with no baseline (becomes the new Gold Standard, phase post) incl. the CONTENT
+  fingerprint (verifyLine check N, blocking once a Gold Standard carries it; the price fingerprint M is unchanged), the
+  other frozen lines must read their Gold Standard fingerprints, no draft link / held page live; saves the run with a
+  "publication" check and spends the enrichment window; failure rolls back. mc_publish_rollback = manual undo before
+  finalize (reason required); refused once finalized (then a regression_fix). Every step re-derives the plan: any change
+  since the dry run (content, grouping, images, commercial record, readiness, held accounting, decisions) invalidates the
+  approval. Only status Ready pages are ever in a plan — never a held page merely because it is under the window.
+  Photo dedupe: an option photo that IS a gallery photo (same bytes, else the same file at another size) becomes ONE live
+  copy, so the storefront (which hides a thumbnail equal to the hero) never shows it twice; each option keeps its own photo.
+  Option names: no safe presentation-only label field exists, so the correct long names stay (no new architecture).
+  SQL supabase/mc_release_d_publication.sql: decision kind content_publication; mfr_live_media_problem; the guard lets only
+  the two definer functions through (transaction-local hcps.content_publication='<id>:publish|rollback', page must be named
+  by the decision); the line's next enrichment window may ADOPT hidden drafts a closed window left (they keep their old
+  window's photos); self-test 28 attempts per line. Planner: this enrichment's own published page is status "published"
+  (not a live-page conflict) and counts with the Ready pages in previews. Tests: test/mcpublish.test.js,
+  test/mc-publication.pg.test.js, test/mcpublish.ui.js, test/mcpublish.mutants.js (JS + SQL).
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.

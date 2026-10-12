@@ -82,7 +82,8 @@ function buildPreview(input){
   const T = input.today, P = input.proposed;
   const active = (records || []).filter(r => (r.status || "active") === "active");
   const retired = (records || []).filter(r => (r.status || "active") !== "active");
-  const ready = pages.filter(p => p.status === "ready"), held = pages.filter(p => p.status !== "ready");
+  /* a page already published by Release D counts with the Ready ones (its SKUs are on their enriched card) */
+  const ready = pages.filter(p => p.status === "ready" || p.status === "published"), held = pages.filter(p => p.status !== "ready" && p.status !== "published");
   const readyCodes = new Set(ready.flatMap(p => p.skus.map(s => norm(s.code))));
   const heldCodes = new Set(held.flatMap(p => p.skus.map(s => norm(s.code))));
   const pageOf = c => pages.find(p => p.skus.some(s => norm(s.code) === norm(c))) || null;

@@ -4536,6 +4536,79 @@ async function handleCatalog(event){
         catch(e2){ return json(502,{error:"window_not_closed",message:String((e2&&e2.message)||e2).slice(0,300)}); }
         return json(200,{ok:true,closed:open[0].id});
       }
+      /* ── RELEASE D: finish or undo a carried-out publication (approved to build 2026-10-11) ─────────────────────────
+         mc_publish_finalize: only after product-content publish_execute passed AND the live storefront was checked. Runs the
+         line's full verification (no baseline: this run becomes the new Gold Standard), proves the other frozen lines
+         still read their Gold Standard fingerprints, that exactly the approved pages are visible with no draft-folder
+         photo and the held pages stay hidden; then saves the run (with the publication and the content fingerprint) and
+         spends the line's enrichment window. Any failure rolls the publication back and records the failed run.
+         mc_publish_rollback: Angelo's manual undo before finalizing (e.g. the storefront check failed). */
+      if(b.action==="mc_publish_finalize"||b.action==="mc_publish_rollback"){
+        const slug=String(b.manufacturer||"").trim(), did=parseInt(b.decision_id,10), e=encodeURIComponent;
+        if(!slug||!(did>0)) return json(400,{error:"manufacturer and decision_id are required"});
+        let D, passRuns;
+        try{ [D, passRuns]=await Promise.all([
+          sb("GET",`mfr_decisions?id=eq.${did}&select=id,manufacturer,kind,hcps_value,used_at`).then(r=>r&&r[0]),
+          sb("GET",`mfr_verification_runs?manufacturer=eq.${e(slug)}&result=eq.pass&select=id,checks&order=run_at.desc&limit=100`)]); }
+        catch(e2){ return json(503,{error:"mc_unreadable",message:String((e2&&e2.message)||e2).slice(0,300)}); }
+        if(!D||D.kind!=="content_publication"||D.manufacturer!==slug) return json(404,{error:"no_such_publication",message:"Decision "+did+" is not a publication of "+slug+"."});
+        if(!D.used_at) return json(409,{error:"not_carried_out",message:"Publication #"+did+" has not been carried out (publish_execute). Nothing was changed."});
+        if((passRuns||[]).some(r=>(r.checks||[]).some(c=>c&&c.id==="publication"&&c.detail&&Number(c.detail.decision)===did)))
+          return json(409,{error:"already_finalized",message:"Publication #"+did+" is already the Gold Standard. A change now needs a regression_fix."});
+        const by=String((me&&me.email)||"president").slice(0,80);
+        const saveRun=async row=>{ const ins=await sb("POST","mfr_verification_runs",row,{Prefer:"return=representation"}); return ins&&ins[0]&&ins[0].id; };
+        const rollback=async why=>{ let rb=null; try{ rb=await sb("POST","rpc/mfr_content_publication_rollback",{p_decision:did,p_by:by}); }catch(e2){ rb={ok:false,error:String((e2&&e2.message)||e2).slice(0,300)}; } return rb; };
+        if(b.action==="mc_publish_rollback"){
+          const reason=String(b.reason||"").trim(); if(!reason) return json(400,{error:"reason_required",message:"Say why the publication is being undone."});
+          if(b.dry_run===true) return json(200,{ok:true,dry_run:true,would_restore:(D.hcps_value&&D.hcps_value.pages)||[]});
+          const rb=await rollback(reason);
+          let run=null; try{ run=await saveRun({manufacturer:slug,phase:"release",result:"fail",fingerprint:null,run_by:by,
+            checks:[{id:"publication",label:"Publication rolled back by the President",pass:false,severity:"blocking",detail:{decision:did,reason,rolled_back:!!(rb&&rb.ok),rollback:rb}}]}); }catch(e2){}
+          return json(rb&&rb.ok?200:502,{ok:!!(rb&&rb.ok),rolled_back:!!(rb&&rb.ok),run_id:run,rollback:rb});
+        }
+        /* finalize */
+        const PRICING=require("./_pricing.js"), ORDERS=require("./orders-api.js");
+        const verify=async(line, baseline, budget, liveIndexHtml, contentGold)=>MC.verifyLine({ slug:line, sb, PRICING, files:PRICING.remoteFiles(ORDERING_BASE), contentGold:!!contentGold,
+          ENGINE_SOURCE:require("./_shop_engine.js").SOURCE, RENDER_SOURCE:require("./_shop_render.js").SOURCE, EMAIL_SOURCE:require("./_hcps_email.js").SOURCE,
+          EXTRACT:MC_EXTRACT, liveIndexHtml, orderConfirmation:ORDERS._orderConfirmation, unitLabel:ORDERS._unitLabel, fetchImpl:fetch, ORDERING_BASE, baseline, imageBudgetMs:budget });
+        const extra=[], add=(id,label,pass,detail)=>extra.push({id,label,pass:!!pass,severity:"blocking",detail:detail==null?null:detail});
+        let rep=null;
+        try{
+          const lr=await fetch(`${ORDERING_BASE}/index.html`,{headers:{"cache-control":"no-cache"}}); if(!lr.ok) throw new Error("storefront page HTTP "+lr.status);
+          const liveIndexHtml=await lr.text();
+          const pages=(D.hcps_value&&D.hcps_value.pages)||[], held=((D.hcps_value&&D.hcps_value.held)||[]).map(h=>h.page_key);
+          const rows=await sb("GET",`product_content?manufacturer=eq.${e(slug)}&select=page_key,status,disabled,draft_window,image,images_gallery,skus`);
+          const vis=(rows||[]).filter(r=>["published","active","discontinued"].indexOf(r.status)>=0&&!r.disabled).map(r=>r.page_key).sort();
+          add("only_approved_pages_visible","Exactly the approved pages are live (no held page)",JSON.stringify(vis)===JSON.stringify(pages.slice().sort()),{live:vis,approved:pages});
+          const liveRows=(rows||[]).filter(r=>vis.indexOf(r.page_key)>=0), drafty=JSON.stringify(liveRows).match(/https?:[^"]*\/drafts\/w\d+\/[^"]*/g)||[];
+          add("no_draft_links_live","No live page points at a draft-folder photo",!drafty.length,drafty.slice(0,10));
+          add("live_pages_unstamped","No live page carries a draft_window",!liveRows.some(r=>r.draft_window!=null),liveRows.filter(r=>r.draft_window!=null).map(r=>r.page_key));
+          add("held_hidden","Held drafts stay hidden",!(rows||[]).some(r=>held.indexOf(r.page_key)>=0&&["published","active","discontinued"].indexOf(r.status)>=0),held);
+          const others=(await sb("GET","manufacturer_meta?frozen=eq.true&select=slug")).map(x=>x.slug).filter(x=>x!==slug);
+          const [mine, ...theirs]=await Promise.all([verify(slug,null,7000,liveIndexHtml,true)].concat(others.map(async o=>{
+            const br=await sb("GET",`mfr_verification_runs?manufacturer=eq.${e(o)}&result=eq.pass&phase=in.(baseline,post)&fingerprint=not.is.null&select=id,fingerprint,checks,run_at&order=run_at.desc&limit=1`);
+            const base=(br&&br[0])||null; const r=await verify(o,base,1500,liveIndexHtml); return {line:o, fingerprint:r.fingerprint, baseline:base&&base.fingerprint, baseline_run:base&&base.id}; })));
+          rep=mine;
+          add("other_gold_standards_unchanged","Every other frozen line still reads its Gold Standard fingerprint",theirs.every(t=>t.baseline&&t.fingerprint===t.baseline),theirs);
+        }catch(e2){ add("verification_ran","Final verification ran",false,String((e2&&e2.message)||e2).slice(0,300)); }
+        const pubCheck={id:"publication",label:"Approved publication carried out and verified",pass:true,severity:"blocking",detail:{decision:did,plan_hash:D.hcps_value&&D.hcps_value.plan_hash,pages:D.hcps_value&&D.hcps_value.pages}};
+        const checks=((rep&&rep.checks)||[]).concat(extra);
+        const ok=!!rep&&rep.result==="pass"&&extra.every(c=>c.pass);
+        if(b.dry_run===true) return json(200,{ok:true,dry_run:true,would_pass:ok,fingerprint:rep&&rep.fingerprint,failed:checks.filter(c=>!c.pass&&c.severity==="blocking").map(c=>c.id),checks});
+        if(!ok){
+          const rb=await rollback("final verification failed");
+          checks.push(Object.assign({},pubCheck,{pass:false,detail:Object.assign({},pubCheck.detail,{rolled_back:!!(rb&&rb.ok),rollback:rb})}));
+          let run=null; try{ run=await saveRun({manufacturer:slug,phase:"release",result:"fail",checks,fingerprint:rep&&rep.fingerprint||null,run_by:by}); }catch(e2){}
+          return json(409,{ok:false,error:"verification_failed",rolled_back:!!(rb&&rb.ok),run_id:run,failed:checks.filter(c=>!c.pass&&c.severity==="blocking").map(c=>c.id),checks});
+        }
+        checks.push(pubCheck);
+        let runId=null; try{ runId=await saveRun({manufacturer:slug,phase:"post",result:"pass",checks,fingerprint:rep.fingerprint,
+          engine_version:MC.sha(require("./_shop_engine.js").SOURCE+require("./_shop_render.js").SOURCE).slice(0,12),run_by:by}); }
+        catch(e2){ return json(502,{error:"run_not_saved",message:"Everything passed but the run could not be saved — the publication stays live; finalize again. "+String((e2&&e2.message)||e2).slice(0,200)}); }
+        let closed=null; try{ const open=await sb("GET",`mfr_decisions?manufacturer=eq.${e(slug)}&kind=eq.enrichment_window&used_at=is.null&select=id`);
+          if(open&&open[0]){ await sb("PATCH",`mfr_decisions?id=eq.${open[0].id}&used_at=is.null`,{used_at:new Date().toISOString(),used_by:by},{Prefer:"return=minimal"}); closed=open[0].id; } }catch(e2){}
+        return json(200,{ok:true,run_id:runId,fingerprint:rep.fingerprint,content_fingerprint:rep.content_fingerprint||null,window_closed:closed,checks});
+      }
       if(b.action==="mc_verify"){
         const slug=String(b.manufacturer||"").trim(); if(!slug) return json(400,{error:"manufacturer required"});
         const PHASES=["baseline","pre","post","regression","release"]; const phase=PHASES.indexOf(b.phase)>=0?b.phase:"release";

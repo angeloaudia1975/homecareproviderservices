@@ -24,7 +24,7 @@ const crypto = require("crypto");
 
 const STATUSES = ["conflict", "needs_grouping", "needs_content", "needs_image", "needs_category", "ready"];
 const STATUS_LABEL = { conflict: "Conflict", needs_grouping: "Needs grouping decision", needs_content: "Needs content",
-  needs_image: "Needs image", needs_category: "Needs category", ready: "Ready", held_back: "Held back", not_enriched: "Not enriched yet" };
+  needs_image: "Needs image", needs_category: "Needs category", ready: "Ready", held_back: "Held back", not_enriched: "Not enriched yet", published: "Published" };
 const VISIBLE = ["published", "active", "discontinued"];
 const isVisibleRow = r => !!r && VISIBLE.indexOf(String(r.status || "")) >= 0 && !r.disabled;
 
@@ -127,8 +127,12 @@ function planPages(ctx){
   for(const p of pages){
     const holders = [...new Set([].concat(...p.skus.map(s => onPage[codeNorm(s.code)] || [])))];
     const visible = holders.filter(isVisibleRow);
-    if(visible.length){ live.push({ page_key: p.page_key, codes: p.skus.map(s => s.code), live_pages: visible.map(h => h.page_key) }); p.live_page = visible[0].page_key; }
-    const draft = holders.find(h => !isVisibleRow(h));
+    /* Release D: this enrichment's own page, now published (same SKUs, same name or key) — not someone else's live page */
+    const own = visible.find(h => (h.page_key === p.page_key || String(h.name || "") === p.name)
+      && (Array.isArray(h.skus) ? h.skus : []).map(x => codeNorm(x && (x.sku || x.code))).sort().join("|") === p.skus.map(x => codeNorm(x.code)).sort().join("|"));
+    if(own){ p.published = own.page_key; p.page_key = own.page_key; }
+    else if(visible.length){ live.push({ page_key: p.page_key, codes: p.skus.map(s => s.code), live_pages: visible.map(h => h.page_key) }); p.live_page = visible[0].page_key; }
+    const draft = own ? null : holders.find(h => !isVisibleRow(h));
     if(draft) p.page_key = draft.page_key;
     let key = p.page_key || "page", n = 2; while(used.has(key)) key = (p.page_key || "page") + "-" + (n++);
     p.page_key = key; used.add(key);
@@ -551,6 +555,7 @@ function classify(page, row, decisions, opts){
   const res = resolutionsFor(decisions, page.page_key);
   const held = !!((res.hold && res.hold.choice === "hold_back") || (res.needs_content && res.needs_content.choice === "hold_back"));
   if(!row) return { status: held ? "held_back" : "not_enriched", label: STATUS_LABEL[held ? "held_back" : "not_enriched"], issues: [], resolutions: res, blocking: !held };
+  if(page.published && isVisibleRow(row)) return { status: "published", label: STATUS_LABEL.published, issues: [], resolutions: res, blocking: false };
   const mc = (row.enrichment_flags && row.enrichment_flags.mc) || {};
   const issues = [];
   const add = (type, title, detail, extra) => issues.push(Object.assign({ type, title, detail, choices: CHOICES[type] || [] }, extra || {}));

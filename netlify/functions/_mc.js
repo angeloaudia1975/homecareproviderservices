@@ -382,8 +382,24 @@ async function verifyLine(d){
     add(check("fingerprint", "Line fingerprint (first run — becomes the baseline)", true, { fingerprint: fp, products: lines.length, lines }, "advisory"));
   }
 
+  /* N. Content fingerprint (Release D): what a dealer reads on each product — page, names, option, copy, features, specs,
+     warranty, photos, documents — one short hash per product. Advisory until a baseline carries one; then it must hold.
+     The price fingerprint above (M) is unchanged, so no line's Gold Standard fingerprint moves because this was added. */
+  const contentLines = products.map(p => p.code + "|" + sha([p.name || "", p._encPage || "", p._pageKey || "", p._skuOption || "", p.description || "",
+    JSON.stringify(p._features || null), JSON.stringify(p._specs || null), p._warranty || "", p.image || "",
+    JSON.stringify((Array.isArray(p.media) ? p.media : []).filter(m => m && m.kind === "image").map(m => m.url)), JSON.stringify(p._documents || null)].join("\u0001")).slice(0, 12)).sort();
+  const cfp = sha(contentLines.join("\n")).slice(0, 16);
+  const wasC = d.baseline && (d.baseline.checks || []).find(c => c.id === "content_fingerprint");
+  if(wasC && wasC.detail && wasC.detail.fingerprint && wasC.severity !== "advisory"){
+    const old = wasC.detail.lines || [];
+    add(check("content_fingerprint", "Content fingerprint unchanged since baseline run #" + d.baseline.id, wasC.detail.fingerprint === cfp,
+      { fingerprint: cfp, baseline: wasC.detail.fingerprint, now: contentLines.filter(l => old.indexOf(l) < 0).slice(0, 20), was: old.filter(l => contentLines.indexOf(l) < 0).slice(0, 20), lines: contentLines }));
+  } else {
+    add(check("content_fingerprint", "Content fingerprint (pages, copy, photos, options) — the first run that carries it as a Gold Standard becomes its baseline",
+      true, { fingerprint: cfp, products: contentLines.length, lines: contentLines, gold: !!d.contentGold }, d.contentGold ? "blocking" : "advisory"));
+  }
   const failed = checks.filter(c => c.severity === "blocking" && !c.pass);
-  return { manufacturer: slug, result: failed.length ? "fail" : "pass", failed: failed.map(c => c.id), fingerprint: fp, checks, ms: Date.now() - t0 };
+  return { manufacturer: slug, result: failed.length ? "fail" : "pass", failed: failed.map(c => c.id), fingerprint: fp, content_fingerprint: cfp, checks, ms: Date.now() - t0 };
 }
 
 /* ── 4. GUIDED WORKFLOW (Manufacturer Center Phase 6, approved 2026-10-10) ───────────────────────
