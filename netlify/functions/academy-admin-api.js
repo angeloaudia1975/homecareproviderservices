@@ -591,7 +591,10 @@ READ.preview_check = async (staff, b, event) => {
     q = s.questions.find(x => String(x.id) === qid);
   } else {
     const { l, m } = await lessonContext(A.uuid(b.lesson_id, 'lesson'));
-    if (!LESSON.lessonHasQuestion(l.blocks, qid)) A.refuse(404, 'not_found', 'Question not found.');
+    // the Course Builder's live preview checks a question of the lesson's UNSAVED screens; still the same lesson's version,
+    // still practice only (below) — never more than the staff question bank of that version already shows
+    const shown = Array.isArray(b.blocks) && b.blocks.length <= 40 ? b.blocks : l.blocks;
+    if (!LESSON.lessonHasQuestion(shown, qid)) A.refuse(404, 'not_found', 'Question not found.');
     q = one(await A.sbGet(`academy_questions?id=eq.${enc(qid)}&version_id=eq.${enc(m.version_id)}&select=id,use,status,kind,answer_key,explanation`));
   }
   if (!q) A.refuse(404, 'not_found', 'Question not found.');

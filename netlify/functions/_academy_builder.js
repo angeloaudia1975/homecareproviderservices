@@ -143,8 +143,8 @@ function readiness(input) {
   const need = (version && version.exam_questions) || 0;
   if (usable.length < need) add('blocking', 'Question bank', `${usable.length} usable exam questions; each attempt draws ${need}.`);
   if (usable.length < 60) add('advice', 'Question bank', `The approved target is about 60 exam questions (${usable.length} so far).`);
-  const scen = usable.filter(q => q.kind === 'scenario').length;
-  if (usable.length && scen < Math.floor(usable.length / 2) - 2) add('advice', 'Question bank', `${scen} of ${usable.length} exam questions are customer scenarios; the target is about half.`);
+  const scen = usable.filter(q => q.kind === 'scenario').length;   // the approved target is about half; a reminder below 40 %
+  if (usable.length && scen < Math.round(usable.length * 0.4)) add('advice', 'Question bank', `${scen} of ${usable.length} exam questions are customer scenarios; the target is about half.`);
   const quotaSet = mods.some(m => m.exam_quota != null);
   const per = {}; for (const q of usable) per[String(q.module_id)] = (per[String(q.module_id)] || 0) + 1;
   if (quotaSet) {
@@ -232,16 +232,24 @@ WRITE.save_blocks = async (staff, b) => {
     if (blk.kind === 'comparison') for (const mc of blk.models || []) for (const f of blk.fields || []) want.add([blk.manufacturer_slug, String(mc || '').toUpperCase(), f && f.field].join('|'));
   }
   const have = new Set((await A.sbGet(`academy_content_refs?lesson_id=eq.${enc(l.id)}&select=manufacturer_slug,model_code,field`)).map(r => [r.manufacturer_slug, String(r.model_code).toUpperCase(), r.field].join('|')));
-  let linked = 0;
-  for (const k of want) {
-    if (have.has(k)) continue;
-    const [mfr, model, field] = k.split('|');
-    if (!SLUG.test(mfr || '') || !/^[A-Z0-9][A-Z0-9._/-]{0,39}$/.test(model || '') || !/^[a-z0-9_.]{1,60}$/.test(field || '')) continue;   // the block checker reports it
-    await A.authorOp('link_fact', { p_actor: actor(staff), p_id: null, p_link: { lesson_id: l.id, manufacturer_slug: mfr, model_code: model, field } });
-    linked++;
+  // Each link is its own audited operation (M3). If the screens are then refused, the links made for them are undone
+  // (each undo audited too), so a refused save leaves the lesson exactly as it was.
+  const made = [];
+  let saved;
+  try {
+    for (const k of want) {
+      if (have.has(k)) continue;
+      const [mfr, model, field] = k.split('|');
+      if (!SLUG.test(mfr || '') || !/^[A-Z0-9][A-Z0-9._/-]{0,39}$/.test(model || '') || !/^[a-z0-9_.]{1,60}$/.test(field || '')) continue;   // the block checker reports it
+      const link = await A.authorOp('link_fact', { p_actor: actor(staff), p_id: null, p_link: { lesson_id: l.id, manufacturer_slug: mfr, model_code: model, field } });
+      if (link && link.id) made.push(link.id);
+    }
+    saved = await A.authorOp('set_blocks', { p_actor: actor(staff), p_lesson_id: l.id, p_blocks: b.blocks });
+  } catch (e) {
+    for (const id of made.reverse()) { try { await A.authorOp('unlink_fact', { p_actor: actor(staff), p_id: id }); } catch (_) { console.error('academy builder: a fact link could not be undone', id); } }
+    throw e;
   }
-  const saved = await A.authorOp('set_blocks', { p_actor: actor(staff), p_lesson_id: l.id, p_blocks: b.blocks });
-  return { ok: true, audited: true, lesson: { id: saved.id, blocks: saved.blocks, hash: blocksHash(saved.blocks) }, facts_linked: linked };
+  return { ok: true, audited: true, lesson: { id: saved.id, blocks: saved.blocks, hash: blocksHash(saved.blocks) }, facts_linked: made.length };
 };
 const uuidList = (v, name) => { if (!Array.isArray(v) || !v.length || v.length > 200) A.refuse(400, 'invalid', `${name} is not valid.`); return v.map(x => A.uuid(x, name)); };
 WRITE.reorder_modules = async (staff, b) => {
