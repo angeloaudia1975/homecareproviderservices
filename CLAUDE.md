@@ -1414,6 +1414,37 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   draft copy is the manufacturer's words only; the catalog line and commercial record are not changed (Steadfast: copy
   says Snap 2 Secure, catalog says Stay-Tite, Angelo 2026-10-11 16:01). Option photos: confirm the picture itself shows
   the option (view it) before recording use_source_image — a file name alone is not confirmation.
+  **Release B PASS / COMPLETE — Auto-Enrich and Review Issues (Angelo, 2026-10-11 18:28 CT).** Evidence: 9 active SKUs →
+  7 proposed pages; 3 Ready (Assist, Assurance Round + Elongated with option-specific Bemis top views #324/#325, Rise);
+  4 held/open with 5 unresolved issues; 28 images copied, 0 failures; all drafts hidden; commercial record unchanged; the
+  four frozen fingerprints unchanged. Window #320 stays OPEN for Release C/D (no other Bemis window). Never manufacture a
+  resolution for an open issue. **Source holds** (decision kind content_resolution, issue "hold", choice hold_back — its
+  own key, so it never supersedes an added source): the page stays an unpublished draft, its issues stay LISTED (marked
+  held, not blocking) and its SKUs keep their current catalog cards. Held: Steadfast (Stay-Tite vs Snap 2 Secure, pending
+  Bemis — choose neither; no 3L2150T 000 photos), Support Arms (350 lb/arm unsupported + no product-specific source), Personal
+  Wash Bidet (no product-specific source), 444DISPLAY (no current source; DO5300RD444.jpg is not proof it still applies).
+  These are source holds, not failed products. Badge / banner / promo art is never dealer-facing (not a main photo, not a
+  thumbnail); it is kept in the report as withheld (enrichment_flags.mc.image_withheld).
+  (w) **Release C — Dealer Preview (approved 2026-10-11).** Manufacturer Center → Continue Product Enrichment → 5 · Dealer
+  Preview → "Preview <line> as Dealer" (product-content action enrich_preview; read-only; staff/admin only; never
+  writes, publishes or copies). It runs the storefront's OWN merge (_pricing.js lineProducts → _shop_engine.js) twice —
+  TODAY (live pages) and PROPOSED (the Ready drafts treated as published, in memory) — and builds dealer cards with the
+  storefront's picker (_shop_picker.js), price words (_shop_render.js) and cart wording (_preview.js, pure). Proof checks:
+  every active SKU on exactly one card (0 missing, 0 duplicates); orderable unchanged; retired SKUs off both; commercial
+  identical today/proposed and = the record (price, MSRP, MAP, tiers, UOM/case qty, basis, unit price at 1/2/6/11/21,
+  price words, freight); held/unpaged SKUs keep today's product byte for byte (_unlinked, merge bookkeeping the shop
+  never reads, is not compared); each Ready page = one card with exactly its SKUs as distinct options; no held draft's
+  NEW words or photos in the proposal; no draft photo in today's dealer view; enriched_only OFF (if ON, held SKUs would
+  disappear — the preview fails). The "STAFF ONLY — Using current catalog content — enrichment held for source review"
+  note exists only on the staff screen. Proposed enriched pages still point at draft photos (drafts/w<window>/): moving
+  them for dealers is Release D's job. Tests: test/mcpreview.test.js, test/mcpreview.ui.js (Playwright),
+  test/mcpreview.mutants.js.
+  Live run fixes (2026-10-11 evening): a bullet the manufacturer prints on a held product AND on a Ready product (Bemis
+  "Special ring bumpers for added security": Steadfast and Assurance) is the Ready page's own words, not a held leak —
+  only words found in NO Ready draft count; the storefront's catalog photos are storefront paths (/assets/products/…),
+  so the preview shows them from ORDERING_BASE (display only), never as broken images on the admin site. Holds recorded:
+  #326 Bidet, #327 Support Arms, #328 Steadfast, #329 444DISPLAY (issue "hold"; nothing superseded); Steadfast re-run:
+  the Stay-Tite badge is withheld from the gallery, its catalog_name discrepancy stays listed.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
@@ -1873,6 +1904,86 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   multi-branch account is never silently assigned to the wrong location. Cases: one account number over several
   branches; no ship-to ZIP; corporate billing address ≠ delivery; several invoice lines of one order; a verified
   recurring ship-to identifier; a new shipping location; a corporate / drop-ship sale explicitly confirmed as such.
+- **PHASE A ACCEPTED; Phase B1–B4 development APPROVED as ONE coordinated release (Angelo, 2026-10-11 16:44 CT).**
+  Build on a feature branch, behind `phase2_flags.mi_report_capture` (exactly `true` = on; default OFF): tables
+  `mfr_report_messages` + `mfr_report_profiles` (+ attachments, checkpoint state, run log), protected capture functions,
+  `_report_capture.js`, hourly `report-capture-cron`, Report History **Inbox** and **Needs Attention** screens
+  (searchable / filterable by manufacturer, period, status). Reuse Graph, the Netlify integration, MI-1b Report History and
+  its private storage — no second email system or manufacturer database. Rules: (1) three ACTIVE Strongback profiles —
+  commission statement = monthly `YYYY-MM SR032.pdf` (register as commission_statement, never a sales export, no
+  financial import); sales export = on-request CSV/XLSX with order/SKU/qty/amount content, whatever the subject; dealer
+  overview PDF = dealer_report. Verified sender/forwarder identities AND the file's actual content decide, never the
+  subject or extension alone. (2) The 8 Oct overview email LINKS to record #7 by its identical SHA-256 — never a duplicate.
+  (3) Reliable capture: all folders, paging, checkpoint + overlap, throttling retries, outage recovery; separate states
+  discovered → classified → registered (or linked) / exception (queued for retry) → processed by importer. A failed,
+  oversized or unreadable attachment goes to a DURABLE retry/exception queue and never blocks later valid email; the
+  checkpoint never passes a message that is not durably accounted for (completed capture or queued exception). Each
+  report attachment in a message is handled individually; Outlook identity = provenance, file SHA-256 = content dedupe,
+  and every email carrying the same file keeps its own source-email reference. (4) DRAFT (inactive) profiles for Ohio
+  Medical, Access4U, AirAvant, Climbing Steps, Bemis, Complete Medical, Ovation, PediFix, Golden; support cumulative,
+  combined-month, corrected, body-only and irregular reports. Rose Healthcare and Stellor Medical stay in an
+  unidentified-manufacturer review category until Angelo decides. The report period comes from the report's content /
+  file when it states one — never assumed from the received date when the content is more reliable. (5) Phase B =
+  automatic registration ONLY: no financial import, no automatic acceptance or intelligence import; `mi_import_v2` ON,
+  `mi_commission_v2` OFF, `mi_intel_publish` OFF; no dealer, rep, alias, contact, opportunity, campaign or historical
+  financial change; no outgoing email. (6) Ship-To next: the shared `_shipto.js` resolver + Needs Ship-To Review are the
+  prerequisite for any automatic sales-report import; the manual importer keeps working but its preview flags
+  questionable fallback assignments. (7) Deliver: branch reconciled with main, then ONE consolidated rollout proposal
+  (migration, switch settings, test results, verification). STOP before production SQL, merge, deploy or switch on.
+- **Phase B1–B4 BUILT on branch `mi-b-report-capture` (2026-10-11; NOT merged, NOT deployed, NO production SQL, switch not
+  created).** Migration `supabase/mi_b_report_capture.sql` (sha256 5de92842…; rollback `…_rollback.sql` 18b94a29…, refuses
+  while any captured email / item / event exists): tables `mfr_report_profiles` (3 ACTIVE Strongback: SR032 commission
+  statement, order export by content, dealer overview by the MI-1c reader; 9 DRAFT; `auto_import` CHECK = false),
+  `mfr_report_capture_state` (mailbox angelo@…, checkpoint 1 Oct 2026 00:00 CT, overlap 6 h, run lease), `_runs`,
+  `mfr_report_messages` (unique mailbox + internetMessageId; received time never edited), `mfr_report_items` (one per
+  attachment / body / listing placeholder; states discovered → classified | registered | linked | exception | ignored |
+  processed), append-only `mfr_report_capture_events`. Writes only through `hcps_mfr_capture_begin/record/classify/fail/
+  register/finish/resolve` (security definer, service_role only); guard trigger needs the session marker AND the owner's
+  rights; RULE 19 (RLS on, no policies, service_role SELECT only). The DATABASE checks `phase2_flags.mi_report_capture`
+  (exactly true) on every capture write (a person's resolve does not need it); `finish` refuses a checkpoint past an email
+  with an item still 'discovered' or items never listed; `register` calls MI-1b `hcps_mfr_report_register` in the same
+  transaction, only for an ACTIVE auto-registering profile and a request that matches the item exactly (Outlook received
+  date in Chicago, period, hash-named storage path, no supersession) — existing hash → 'linked' (record 7), a second
+  dealer report for a period → exception `correction_needs_decision`, same file as another kind → `duplicate_conflict`, a
+  second statement for the same period → registered + `possible_correction`. Retry queue backoff 15 min × 2^n (cap 24 h),
+  8 attempts then a person. Code: `_report_capture.js` (shares `_report_inventory.js` Graph client / identification /
+  inspection; period from file name / report text / content dates / MI-1c reader / subject before the received-date rule;
+  file-name vs text disagreement = conflict; every run handles at least one email newer than the old checkpoint; an
+  email that can't be handled in one run is queued, never blocks), `report-capture-cron.js` (hourly :20, does nothing
+  while the switch is off), `mfr-reports-api` actions capture_status / inbox / attention / resolve (actor = verified
+  sign-in) / capture_now (switch-gated); Report History tabs Report register · Inbox · Needs attention. Ship-To:
+  `_shipto.js` (strict = never HQ / first branch without evidence; legacy = the exact old picks, labelled);
+  `sales-import-api` previews now carry `ship_to_flags` (HQ fallback / shared ZIP / city / name guesses) shown on the Sales
+  Report Import page — picks unchanged; the v2 "Dealers" tile no longer shows "undefined". Tests: mi-b-capture.pg 38,
+  report-capture 27 (real SQL + real September PDF), mi-b-api 11, shipto 17, mi-b.ui (Chromium, 360/390/768/1280), Phase B
+  mutants 35/35; report-inventory 28 (+29/29), mi1b 44/44, mi1a-compat 14/14, commission-coverage 43/43 mutants; all suites
+  pass except the pre-existing resources-render (documents.json). Installed-code fingerprint 12 functions: bea3b94e… (LF) /
+  89389ae0… (CRLF paste). Rollout queries: `supabase/mi_b_rollout_baseline.sql`, `…_postcheck.sql`; probe
+  `scripts/mi_b_public_probe_browser.js` (31 checks). STOP: awaiting Angelo's one approval of the consolidated rollout.
+  **Phase B migration RUN by Angelo 2026-10-11 ~18:20 CT (verified):** sha256 5de92842…, all 9 install checks ok. Postcheck
+  11/11 (fixed first: check 8's label had unescaped quotes — commit 911d954): code 12 / 89389ae0… (the CRLF form, as
+  precomputed), 3 active Strongback + 9 draft profiles (rules 518a40c4 / 4edc244d / d4302bdd …), checkpoint 1 Oct 00:00 CT /
+  360 min / free, switch absent, 0 runs / messages / items / events, anon/authenticated/PUBLIC 0 grants, service_role SELECT,
+  execute 0 / 0 / 7, 10 of 12 security definer, RLS 6/6, 0 policies, 12 guard triggers, 0 capture-registered records.
+  Baseline after = the MI-1c post-install values on every financial / dealer / function row (11,997 / $10,802,558.50 /
+  $493,077.06, D7 dde7a2ce…, full-row 83fa3b5b…, Strongback 143, 0 / 0 / 7, catalog acf6e62b…, record 7 only report, 1 event,
+  dealers 3e27e8ce…, aliases 3da52cea…, dealer_manufacturers 597811b5…, 770 / 7 / 429, MI-1a 162f107a…, MI-1b 82cd50d8…,
+  MI-1c 887809bd…, policies 29 / 5fc16d5b…, 1 private file). Explained differences: flags md5 (academy_admin ON at 16:45),
+  mfr_decisions 15 → 21 (Bemis window #320 + Review Issues decisions), grants 3072 → 3112 (the MI-1c baseline left its 5
+  tables out of the count; 5 × 8 = 40 — no other new table since, by object id). Outside probe (Angelo, 18:39 CT): ALL 31
+  BLOCKED (401). Lesson: compare grant counts only between queries with the same exclusion list.
+  **Phase B DEPLOYED 2026-10-11 ~18:39 CT** (branch reconciled with main 1799842 — MC enrichment change only, migration
+  byte-identical; mi-b-capture.pg 38, report-capture 27, mi-b-api 11, shipto 17, report-inventory 28, mi1b 46/28, mi1c 76/29,
+  mi1a 28/16, commission 42, mcenrich 23, enrich.unit 22 → main b05b9e7, Netlify "Production: main@b05b9e7 Published").
+  Live, switch OFF: Report History shows Report register · Inbox · Needs attention; capture card "Off — nothing is captured",
+  mailbox angelo@, captured up to 1 Oct 2026 00:00 CT, last run never, 0 / 0 / 0, 3 active Strongback profiles, 12 profiles;
+  Inbox "No manufacturer report email captured yet". Signed in (the page's own api()): capture_status 200 switch_on false;
+  inbox / attention 200 with 0; list 200; orphans 200 (1 stored / 1 registered / 0 orphans); capture_now 403
+  capture_switch_off. No token / forged / junk token (XMLHttpRequest) → 401 sign_in_required. A plain fetch from an admin
+  page carries NO token (staff-session.js only refreshes a Bearer that is already there) — call the page's api() helper.
+  **Netlify production deploys are PAUSED (team build credits used up for the billing cycle, seen 2026-10-11):** main@99d604c
+  (Manufacturer Center Release C preview work) was "Skipped". Phase B is unaffected (b05b9e7 is live); any later code change
+  needs credits restored first. Turning `mi_report_capture` on needs no deploy (the hourly cron is already live).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.

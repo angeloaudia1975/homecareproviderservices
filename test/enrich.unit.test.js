@@ -94,7 +94,11 @@ t('statuses: Conflict > grouping > content > image > category > Ready; a held-ba
   eq(E.classify(page,conf,[{id:1,kind:'content_resolution',field:'page:p',hcps_value:{issue:'conflict',choice:'same_product'}}]).status,'ready');
   eq(E.classify({page_key:'p',name:'P',skus:[{code:'A',price_ok:false}]},good,[]).status,'conflict','no price on the record');
   const held=E.classify(page,Object.assign({},good,{features:[]}),[{id:2,kind:'content_resolution',field:'page:p',hcps_value:{issue:'needs_content',choice:'hold_back'}}]);
-  eq([held.status,held.blocking,held.issues.length],['held_back',false,0]);
+  /* Angelo 2026-10-11: a source hold keeps its issues listed (marked held), it just stops blocking */
+  eq([held.status,held.blocking,held.issues.length,held.issues[0].held,held.held],['held_back',false,1,true,true]);
+  const held2=E.classify(page,Object.assign({},good,{features:[]}),[{id:3,kind:'content_resolution',field:'page:p',hcps_value:{issue:'hold',choice:'hold_back'}}]);
+  eq([held2.status,held2.issues.map(i=>i.type)],['held_back',['needs_content']],'the hold has its own issue key: a source added later is not superseded');
+  eq(E.CHOICES.hold.map(c=>c.id),['hold_back']);
   eq(E.classify(page,null,[]).status,'not_enriched');
 });
 t('resolutions: the latest decision per issue wins; choices are validated, with the input each needs',()=>{
@@ -154,7 +158,8 @@ t('a catalog figure no manufacturer source states is left out of the draft (350 
 t('photos: promo art never leads; promo-only means no main photo; an official per-option photo wins over the catalog one',()=>{
   const page={skus:[{code:'R'},{code:'E'}]}, row={skus:[{sku:'R'},{sku:'E'}]};
   const a=E.assembleImages(page,row,[{role:'gallery',src:'https://m/assurance-landing-page-seat-fb.jpg',url:'u1',sha:'s1',bytes:5,promo:true},{role:'gallery',src:'https://m/E85-000-F.jpg',url:'u2',sha:'s2',bytes:5}]);
-  eq(a.image,'u2'); eq(a.images_gallery.map(g=>[g.url,g.primary]),[['u2',true],['u1',false]]);
+  /* Angelo 2026-10-11: badge / promo art is never dealer-facing — not even a thumbnail; it is kept as withheld */
+  eq(a.image,'u2'); eq(a.images_gallery.map(g=>[g.url,g.primary]),[['u2',true]]); eq(a.withheld_promo.map(w=>w.url),['u1']);
   const b=E.assembleImages({skus:[{code:'X'}]},{skus:[{sku:'X'}]},[{role:'gallery',src:'https://m/banner.jpg',url:'u1',sha:'s1',promo:true}]);
   eq([b.image,b.promo_only],[null,true]);
   const c=E.imageCandidates({skus:[{code:'R',catalog_image:'/a/R.jpg'},{code:'E',catalog_image:'/a/E.jpg'}]},[],'https://o',{R:{url:'https://m/R85-P.jpg',why:'round'}});

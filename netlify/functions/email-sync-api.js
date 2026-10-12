@@ -257,6 +257,7 @@ async function runSync(opts){
     truncated: truncated?`capped at ${CAP} of ${gathered.length} — narrow the window and run it again`:false, per_mailbox:perMailbox};
 }
 exports.runSync = runSync;
+exports.graphToken = graphToken;   // shared with the report capture (_report_capture.js) — the same Graph app
 
 exports.handler = async (event)=>{
   try{

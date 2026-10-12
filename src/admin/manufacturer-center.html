@@ -56,6 +56,24 @@
  .enst b{display:block;font-size:12px;color:var(--ink)}.enst span{font-size:11px;color:var(--gray)}
  .enst.on{border-color:var(--orange);background:#fff7ef;box-shadow:inset 0 -3px 0 var(--orange)}.enst.later{opacity:.55}
  .enissue{border-left:4px solid #f3d9a4}.enissue span,.enissue b{overflow-wrap:anywhere}
+ /* Release C — Dealer Preview (staff-only; the dealer-like cards use the storefront's own words and prices) */
+ .pvtiles{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:10px 0}
+ @media(max-width:900px){.pvtiles{grid-template-columns:repeat(2,1fr)}}
+ .pvtile{border:1px solid var(--silver);border-radius:10px;padding:9px 10px;background:#fff}.pvtile b{display:block;font-size:22px;line-height:1.1}.pvtile span{font-size:11.5px;color:var(--gray)}
+ .pvtile.good{border-color:#bfe3cf;background:#f3fbf6}.pvtile.bad{border-color:#f5b5b5;background:#fff3f3}
+ .pvgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin:10px 0}
+ .pvcard{border:1px solid #e3e8ef;border-radius:12px;padding:10px;background:#fff;cursor:pointer;text-align:left;font-family:inherit;min-width:0}
+ .pvcard:hover{border-color:var(--orange)}.pvcard .t{font-weight:700;font-size:13px;margin:6px 0 2px;overflow-wrap:anywhere}
+ .pvimg{width:100%;aspect-ratio:1/1;object-fit:contain;background:#fff;border-radius:8px;display:block}
+ .pvph{width:100%;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;background:#f3f5f8;color:var(--gray);border-radius:8px;font-size:12px}
+ .pvstaff{background:#fff4d6;border:1px dashed #d4a017;color:#6b4e00;font-size:11px;padding:4px 7px;border-radius:7px;margin-top:6px;line-height:1.35}
+ .pvstaff b{font-size:10px;letter-spacing:.4px}
+ .price{font-weight:800;font-size:17px;color:var(--ink)}.price.locked{font-size:13px;color:var(--gray)}.pnote{font-size:11.5px;color:var(--gray);margin-top:2px}
+ .pvdetail{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;border:1px solid #e3e8ef;border-radius:12px;padding:12px;background:#fff;margin:10px 0}
+ @media(max-width:760px){.pvdetail{grid-template-columns:1fr}}
+ .pvthumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.pvthumbs img{width:54px;height:54px;object-fit:contain;border:1px solid #e3e8ef;border-radius:6px;cursor:pointer;background:#fff}
+ .pvcart{background:#f7f9fc;border:1px solid #dfe6f0;border-radius:9px;padding:9px 11px;margin-top:8px;font-size:12.5px}
+ .pvtog{display:inline-flex;border:1px solid var(--silver);border-radius:9px;overflow:hidden}.pvtog button{border:0;background:#fff;padding:6px 12px;font-family:inherit;cursor:pointer}.pvtog button.on{background:var(--ink);color:#fff}
 </style><link rel="stylesheet" href="/admin/admin-shell.css"></head><body>
 <header id="ac-head"></header>
 <div class="wrap" id="wrap"><div class="msg">Loading…</div></div>
@@ -496,12 +514,13 @@ async function openEnrichment(slug, tab){
 async function enReload(){ try{ EN.plan=await papi({action:"enrich_plan",manufacturer:EN.slug}); }
   catch(e){ if(String(e.message)!=="unauthorized") $("#line").innerHTML=`<div class="card err">Product Enrichment could not load: ${esc(e.message)}</div>`; return; }
   if(!EN.tabPicked){ EN.tab=EN.plan.pages.some(p=>p.status!=="not_enriched")?"issues":"products"; EN.tabPicked=true; } enDraw(); }
-function enGo(t){ if(t==="preview"||t==="publish"){ toast("Comes with Release "+(t==="preview"?"C":"D")+" — not built yet"); return; } if(t==="sources"){ openLine(EN.slug); return; } EN.tab=t; enDraw(); }
+function enGo(t){ if(t==="publish"){ toast("Comes with Release D — not built yet"); return; } if(t==="sources"){ openLine(EN.slug); return; } EN.tab=t; enDraw(); }
 function enDraw(){
   const P=EN.plan, l=LINES.find(x=>x.slug===EN.slug)||{}, notEnr=P.pages.filter(p=>p.status==="not_enriched").length;
   const issues=P.pages.reduce((n,p)=>n+p.issues.filter(i=>!i.pending).length,0);
-  const sub={sources:"Done",products:P.pages.length+" pages",auto:notEnr?notEnr+" to go":(P.ready+" ready"),issues:issues?issues+" open":"none open",preview:"Release C",publish:"Release D"};
-  const stages=ENRICH_STAGES.map(([k,n])=>`<button class="enst ${EN.tab===k?'on':''} ${(k==='preview'||k==='publish')?'later':''}" onclick="enGo('${k}')"><b>${esc(n)}</b><span>${esc(sub[k]||'')}</span></button>`).join("");
+  const held=P.pages.filter(p=>p.status==="held_back").reduce((n,p)=>n+p.issues.length,0);
+  const sub={sources:"Done",products:P.pages.length+" pages",auto:notEnr?notEnr+" to go":(P.ready+" ready"),issues:(issues-held)?(issues-held)+" open":(held?held+" held for sources":"none open"),preview:EN.pv?(EN.pv.pass?"Previewed — all checks pass":"Previewed — see checks"):"Read-only",publish:"Release D"};
+  const stages=ENRICH_STAGES.map(([k,n])=>`<button class="enst ${EN.tab===k?'on':''} ${k==='publish'?'later':''}" onclick="enGo('${k}')"><b>${esc(n)}</b><span>${esc(sub[k]||'')}</span></button>`).join("");
   $("#line").innerHTML=`<div class="card"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">${esc(l.name||EN.slug)} — Product Enrichment</h2>
     ${P.frozen?pill("p-frozen","Frozen · prices locked"):""}<span style="flex:1"></span>
     <a class="btn ghost" href="/admin/product-content-review.html?manufacturer=${encodeURIComponent(EN.slug)}" target="_blank" title="The Advanced Product Editor: for unusual cases only. Prices are not edited there.">Open Advanced Editor</a>
@@ -527,7 +546,7 @@ async function enOpenWindow(dry){
     toast("Enrichment window #"+j.window.id+" opened"); EN.winDry=null; await enReload(); }
   catch(e){ toast("Not opened: "+e.message); }
 }
-function enBody(){ return EN.tab==="products"?enProducts():(EN.tab==="auto"?enAuto():enIssues()); }
+function enBody(){ return EN.tab==="products"?enProducts():(EN.tab==="auto"?enAuto():(EN.tab==="preview"?enPreview():enIssues())); }
 function unitOf(s){ return s.case_qty>1?("Case of "+s.case_qty):(s.uom||"Each"); }
 function enProducts(){
   const P=EN.plan;
@@ -575,7 +594,7 @@ async function enRun(all){
 }
 function enIssues(){
   const P=EN.plan, open=[], ready=[], held=[];
-  P.pages.forEach(p=>{ if(p.status==="ready") ready.push(p); else if(p.status==="held_back") held.push(p); p.issues.filter(i=>!i.pending).forEach((i,ix)=>open.push({p,i,ix})); });
+  P.pages.forEach(p=>{ if(p.status==="ready") ready.push(p); else if(p.status==="held_back") held.push(p); if(p.status!=="held_back") p.issues.filter(i=>!i.pending).forEach((i,ix)=>open.push({p,i,ix})); });
   const notEnr=P.pages.filter(p=>p.status==="not_enriched");
   const card=({p,i,ix})=>{ const id=p.page_key+"__"+ix; const ev=i.evidence?`<div class="grid2" style="margin:6px 0"><div class="dry" style="margin:0"><b>Manufacturer page says</b><div>${esc(i.evidence.page||'')}</div></div><div class="dry" style="margin:0"><b>Your record says</b><div>${esc(i.evidence.record||'')}</div></div></div>`:'';
     const choices=(i.choices||[]).map(c=>`<button class="btn ghost" onclick="enPick('${esc(id)}','${esc(c.id)}')">${esc(c.label)}</button>`).join(' ');
@@ -586,8 +605,9 @@ function enIssues(){
     ${notEnr.length?`<div class="rob">${notEnr.length} page(s) not enriched yet — run <a href="#" onclick="enGo('auto');return false">Auto-Enrich</a> first.</div>`:''}
     ${open.map(card).join('')||'<p class="ok"><b>No open issues.</b></p>'}
     ${ready.length?`<div class="card" style="background:#f3fbf6;border-color:#bfe3cf"><b>${ready.length} page${ready.length===1?'':'s'} ready — nothing to review:</b> ${ready.map(p=>esc(p.name)).join(' · ')}</div>`:''}
-    ${held.length?`<div class="card sub2"><b>Held back (not blocking):</b> ${held.map(p=>esc(p.name)).join(' · ')}</div>`:''}
-    <p class="mut" style="font-size:12px">Next: Dealer Preview (Release C) unlocks when every issue is resolved or held back. Unusual cases: <a href="/admin/product-content-review.html?manufacturer=${encodeURIComponent(EN.slug)}" target="_blank">Open Advanced Editor</a> for that page, then come back.</p>`;
+    ${held.length?`<div class="card sub2"><b>Held back for source review (${held.length}) — not blocking; issues kept open:</b>${held.map(p=>`<div style="margin-top:6px"><b>${esc(p.name)}</b> <span class="mut">· its SKUs keep their current catalog cards</span><ul style="margin:3px 0 0 18px;font-size:12.5px">${p.issues.map(i=>`<li>${esc(i.title)}</li>`).join('')}</ul></div>`).join('')}</div>`:''}
+    ${(!open.length&&!notEnr.length)?`<div style="margin-top:12px"><button class="btn" onclick="enGo('preview')">Next: Dealer Preview →</button></div>`:''}
+    <p class="mut" style="font-size:12px">Dealer Preview (Release C) is read-only: it shows what dealers would see if the Ready pages were published. Unusual cases: <a href="/admin/product-content-review.html?manufacturer=${encodeURIComponent(EN.slug)}" target="_blank">Open Advanced Editor</a> for that page, then come back.</p>`;
 }
 function enFind(id){ const [pk,ix]=id.split("__"); const p=EN.plan.pages.find(x=>x.page_key===pk); return {p, i:p&&p.issues.filter(x=>!x.pending)[+ix]}; }
 function enPick(id, choice){
@@ -621,6 +641,67 @@ async function enUpload(id){
   try{ const up=await papi(winBody({action:"upload_image",page_key:p.page_key,filename:file.name,content_type:file.type||"image/jpeg",content_base64:b64}));
     await papi(winBody({action:"enrich_set_image",page_key:p.page_key,code,url:up.url})); toast("Photo added to the draft"); await enReload(); }
   catch(e){ toast("Not uploaded: "+e.message); }
+}
+/* ── RELEASE C — DEALER PREVIEW (approved 2026-10-11). Read-only and staff-only: product-content enrich_preview runs the
+   storefront's own merge twice (today; and with the Ready drafts treated as published, in memory) and returns the
+   dealer cards, the storefront's price words and the accounting proof for every active SKU. Nothing is written or
+   published. The yellow "STAFF ONLY" notes exist only on this screen — they are not part of anything a dealer gets. */
+async function enPreviewRun(){
+  if(EN.pvBusy) return; EN.pvBusy=true; enDraw();
+  try{ EN.pv=await papi({action:"enrich_preview",manufacturer:EN.slug}); EN.pvMode="proposed"; EN.pvCard=null; EN.pvCart=null; }
+  catch(e){ toast("Preview not built: "+e.message); }
+  EN.pvBusy=false; enDraw();
+}
+function pvImg(u,alt){ return u?`<img class="pvimg" src="${esc(u)}" alt="${esc(alt||'')}" loading="lazy" onerror="this.outerHTML='<div class=&quot;pvph&quot;>No image</div>'">`:'<div class="pvph">No image</div>'; }
+function pvCards(){ return (EN.pv&&EN.pv[EN.pvMode==="today"?"today":"proposed"])||[]; }
+function enPreview(){
+  const l=LINES.find(x=>x.slug===EN.slug)||{}, nm=l.name||EN.slug;
+  if(!EN.pv) return `<h3>Dealer Preview</h3><p class="sub">See exactly what a dealer would see if the Ready pages were published — computed with Partner 360's own catalog merge, picker and price words. Held-back products are shown on the card dealers have today. <b>Read-only and staff-only: nothing is published, saved or copied.</b></p>
+    <button class="btn" id="pvgo" onclick="enPreviewRun()" ${EN.pvBusy?'disabled':''}>${EN.pvBusy?'Building the preview…':'Preview '+esc(nm)+' as Dealer'}</button>`;
+  const V=EN.pv, s=V.summary, cards=pvCards();
+  const tile=(n,lbl,good)=>`<div class="pvtile ${good===true?'good':(good===false?'bad':'')}"><b>${esc(n)}</b><span>${esc(lbl)}</span></div>`;
+  const tiles=tile(s.enriched_pages_ready,"enriched pages ready")+tile(s.held_back,"products/pages held back")+tile(s.accounted+" / "+s.active_skus,"active SKUs accounted for",s.accounted===s.active_skus)
+    +tile(s.missing,"missing",s.missing===0)+tile(s.duplicates,"duplicates",s.duplicates===0)+tile(s.commercial_changes,"commercial changes",s.commercial_changes===0);
+  const checks=V.checks.map(c=>`<div style="display:flex;gap:8px;align-items:flex-start;margin:3px 0">${pill(c.pass?'p-pass':'p-fail',c.pass?'Pass':'Fail')}<span style="font-size:12.5px">${esc(c.label)}${!c.pass&&c.detail?`<div class="needtxt">${esc(JSON.stringify(c.detail).slice(0,400))}</div>`:''}</span></div>`).join('');
+  const grid=cards.map((k,ix)=>{ const o=k.options[0]||{};
+    return `<button class="pvcard" onclick="pvOpen(${ix})">${pvImg(k.image,k.name)}<div class="t">${esc(k.name)}</div>${o.price_html||''}
+      ${k.options.length>1?`<div class="pnote">${k.options.length} options</div>`:''}${k.staff_note?`<div class="pvstaff"><b>STAFF ONLY</b> · ${esc(k.staff_note)}</div>`:''}</button>`; }).join('');
+  const acc=V.skus.map(x=>`<tr><td><code>${esc(x.code)}</code></td><td>${esc(x.page||'—')}</td><td style="font-size:12px">${esc(x.path)}</td><td style="font-size:12px">${esc(x.today_card.join(' / ')||'—')}</td><td style="font-size:12px">${esc(x.proposed_card.join(' / ')||'—')}</td><td>${esc(x.unit||'—')}</td><td style="font-size:12px">${esc(x.price_proposed||'—')} ${x.commercial_same?pill('p-pass','unchanged'):pill('p-fail','changed')}</td><td>${x.orderable_proposed?'✓':'<span class="needtxt">no</span>'}</td></tr>`).join('');
+  return `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h3 style="margin:0">${esc(nm)} as a dealer would see it</h3>${pill(V.pass?'p-pass':'p-fail',V.pass?'All checks pass':'Checks failing')}<span style="flex:1"></span>
+      <span class="pvtog"><button class="${EN.pvMode==='proposed'?'on':''}" onclick="pvMode('proposed')">Proposed</button><button class="${EN.pvMode==='today'?'on':''}" onclick="pvMode('today')">Today</button></span>
+      <button class="btn ghost" onclick="enPreviewRun()">Rebuild</button></div>
+    <p class="mut" style="font-size:12px;margin:4px 0">Read-only, staff-only. ${EN.pvMode==='proposed'?'Proposed: the '+s.enriched_pages_ready+' Ready pages as published; held-back products on the card dealers have today.':'Today: exactly what dealers see now.'} ${s.cards_today} cards today → ${s.cards_proposed} proposed. Nothing is published.</p>
+    <div class="pvtiles">${tiles}</div>
+    <div class="pvgrid">${grid}</div><div id="pvdetail">${EN.pvCard!=null?pvDetail():''}</div>
+    <details style="margin-top:10px" ${V.pass?'':'open'}><summary><b>Proof checks (${V.checks.filter(c=>c.pass).length}/${V.checks.length} pass)</b></summary><div style="margin-top:6px">${checks}</div></details>
+    <details style="margin-top:8px"><summary><b>Accounting — all ${s.active_skus} active SKUs</b> (retired, kept off: ${esc(s.retired_excluded.join(', ')||'none')})</summary>
+      <div style="overflow-x:auto"><table style="margin-top:6px"><thead><tr><th>SKU</th><th>Product page</th><th>Shown through</th><th>Today's card</th><th>Proposed card</th><th>Order unit</th><th>Price words</th><th>Orderable</th></tr></thead><tbody>${acc}</tbody></table></div></details>`;
+}
+function pvMode(m){ EN.pvMode=m; EN.pvCard=null; EN.pvCart=null; enDraw(); }
+function pvOpen(ix){ EN.pvCard=ix; EN.pvOpt=0; EN.pvMain=null; EN.pvCart=null; enDraw(); const d=$("#pvdetail"); if(d&&d.scrollIntoView) d.scrollIntoView({behavior:"smooth",block:"start"}); }
+function pvPick(v){ EN.pvOpt=+v; EN.pvMain=null; EN.pvCart=null; $("#pvdetail").innerHTML=pvDetail(); }
+function pvShow(u){ EN.pvMain=u; $("#pvdetail").innerHTML=pvDetail(); }
+function pvAdd(){ EN.pvCart=EN.pvOpt; $("#pvdetail").innerHTML=pvDetail(); }
+function pvDetail(){
+  const k=pvCards()[EN.pvCard]; if(!k) return ""; const o=k.options[EN.pvOpt]||k.options[0];
+  const main=EN.pvMain||o.image||k.image, pics=[...new Set([o.image].concat(k.media).filter(Boolean))];
+  const heldPg=k.staff_note&&EN.pv.held_pages.find(h=>h.skus.some(c=>k.codes.indexOf(c)>=0));
+  const specs=(k.specs||[]).filter(x=>x&&(x.label||x.value)).map(x=>`<tr><td><b>${esc(x.label||'')}</b></td><td>${esc(x.value||'')}</td></tr>`).join('');
+  const c=EN.pvCart!=null?(k.options[EN.pvCart]||o).cart:null;
+  return `<div class="pvdetail"><div>${pvImg(main,k.name)}${pics.length>1?`<div class="pvthumbs">${pics.map((u,i)=>`<img src="${esc(u)}" alt="" loading="lazy" data-i="${i}" onclick="pvShow(this.src)" onerror="this.remove()">`).join('')}</div>`:''}</div>
+    <div style="min-width:0">${k.staff_note?`<div class="pvstaff" style="margin:0 0 8px"><b>STAFF ONLY — dealers never see this</b> · ${esc(k.staff_note)}${heldPg&&heldPg.issues.length?`<div style="margin-top:3px">Held for: ${heldPg.issues.map(esc).join(' · ')}</div>`:''}</div>`:''}
+      <h3 style="margin:0 0 4px;overflow-wrap:anywhere">${esc(k.name)}</h3>
+      ${k.options.length>1?`<label>Option</label><div><select onchange="pvPick(this.value)" style="max-width:100%">${k.options.map((x,i)=>`<option value="${i}" ${i===(EN.pvOpt||0)?'selected':''}>${esc(x.label)}</option>`).join('')}</select></div>`:''}
+      <div style="margin:8px 0">${o.price_html||''}</div>
+      <div class="mut" style="font-size:12px">SKU <code>${esc(o.code)}</code> · ${esc(o.case_qty>1?'Case of '+o.case_qty:(o.uom||'Each'))}${o.orderable?'':' · <span class="needtxt">not orderable</span>'}</div>
+      <div style="margin-top:8px"><button class="btn" onclick="pvAdd()">Add to cart (preview only)</button></div>
+      ${c?`<div class="pvcart"><div class="mut" style="font-size:11px">The cart line a dealer would see — preview only, nothing was added to any cart</div><div><b>${esc(c.title)}</b></div><div class="mut">${esc(c.sub)}</div><div>${esc(c.money)}</div></div>`:''}
+      ${k.description?`<p style="font-size:13px;line-height:1.5;margin:10px 0">${esc(k.description)}</p>`:''}
+      ${(k.features||[]).length?`<ul style="font-size:12.5px;margin:6px 0 6px 18px">${k.features.map(f=>`<li>${esc(f)}</li>`).join('')}</ul>`:''}
+      ${specs?`<table style="font-size:12px;margin-top:6px"><tbody>${specs}</tbody></table>`:''}
+      ${k.warranty?`<p style="font-size:12px"><b>Warranty:</b> ${esc(k.warranty)}</p>`:''}
+      ${(k.documents||[]).length?`<p style="font-size:12px"><b>Documents:</b> ${k.documents.map(d=>`<a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.label||'Document')}</a>`).join(' · ')}</p>`:''}
+      <p class="mut" style="font-size:11.5px;margin-top:8px">${esc([k.category,k.subcategory].filter(Boolean).join(' › '))}${k.enriched?' · enriched page':' · current catalog content'}</p></div></div>`;
 }
 /* masthead provides Lock */
 if(TOKEN)boot();else gate();

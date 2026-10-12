@@ -433,3 +433,7 @@ async function inspectMessage(m, who, g, mb, maxBytes, folder, now, soft, deep) 
 }
 
 module.exports = { inventory, _internal: { identify, periodGuess, features, classifyContent, classifyName, magic, sheetSignals, pdfSignals, DOMAINS } };
+// Shared with the Phase B capture (_report_capture.js): the same Graph client (GET only, throttling, budget), the same
+// identification and the same read-only content inspection, so the inventory and the capture can never disagree.
+module.exports.shared = { graphClient, Budget, identify, periodGuess, features, bestHeader, VOCAB, classifyContent, classifyName, magic,
+  sheetSignals, pdfSignals, countLines, xlsx, REPORT_WORDS, STRONG_WORDS, MONTHS, DOMAINS };
