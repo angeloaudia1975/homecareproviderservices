@@ -2105,6 +2105,26 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   `supabase/mi_c_shadow_export.sql` + `scripts/shipto_shadow_local.js`, or the API's shadow action once deployed.
   Probe: `scripts/mi_c_public_probe_browser.js` (14 checks). The manual Sales Report Import and every MI-1a protection are
   unchanged; nothing imports automatically.
+- **Phase C CONDITIONALLY APPROVED with four corrections (Angelo, 2026-10-11 22:09 CT; MI 64%) — RULES:** (1) a remembered
+  decision (verified mapping of ANY scope, or a saved zipmap entry) is reused automatically ONLY when the order's own account
+  number is on record for this manufacturer (`dealer_manufacturers`) at the remembered dealer's FAMILY and that dealer is one of
+  the order's candidates; a corporate mapping must name the family HQ. Otherwise → Needs Ship-To Review (`mapping_unverified` /
+  `zip_assignment_unverified`), never another family's location, never a silent fall-through; a zipmap entry naming a dealer
+  outside the candidates is another family's and ignored. (2) An order can always be corrected without an account number, but
+  it is REMEMBERED only with a non-blank account number from the file that `dealer_manufacturers` ties to the chosen dealer's
+  family — enforced in the resolver (blank refs never match), the API (422 `shipto_no_account` / `shipto_no_ship_key` /
+  `shipto_account_family`), the database (`shipto_no_account`, `shipto_account_mismatch`, `shipto_account_family`; table CHECK
+  `account_ref <> ''`) and the page (Remember disabled with the reason). (3) The Shadow Check keeps SOURCE LANES apart with the
+  MI-1a rule: sales_report (`source='sales_report'`) · commission (`source='commission'`, or no source AND no external_ref) ·
+  other; grouped per lane + period + invoice, counted per lane, never added together; the booked branch is the baseline; the same
+  invoice booked to different branches in two lanes = a lane disagreement; read-only. Production (read-only, Angelo): Strongback
+  143 sales-report lines, Bemis 17 commission lines. (4) After installation the Shadow Check is run from the Ship-To Review page
+  (no manual export/upload). **Corrections BUILT (2026-10-11 ~23:30 CT, branch `mi-c-shipto`, NOT run / merged / deployed):**
+  migration sha256 f759039d…aa78 (10 install checks — #10 = blank-account CHECK + `dealer_manufacturers` columns), rollback
+  fffaf539… (unchanged), postcheck `supabase/mi_c_rollout_postcheck.sql` 7b20bff9…; installed-code fingerprint 3 functions
+  ca3e97ff… (LF) / bdbd7982… (CRLF paste). Tests: mi-c-shipto.pg 26, shipto-review 44, shipto 26, mi-c.ui all pass (360–1280),
+  Phase C mutants 52/52, Phase B 38/38, MI-1a compat 14/14, admin header 60/60 on the affected pages; full suite 103 files — only
+  the known clock (phase1-visits, phase2-account-class, phase2-timeline) and documents.json (resources-render) failures.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.

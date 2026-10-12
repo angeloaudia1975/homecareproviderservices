@@ -18,6 +18,8 @@
     mixed_lines: "Lines of this one order show different customers or ship-to places.",
     no_dealer_match: "No HCPS dealer matches this company or account number.",
     correction_stale: "An earlier correction was made on a different reading of this order — check it again.",
+    mapping_unverified: "A remembered decision exists for this ship-to, but the order's account number doesn't confirm it belongs to that location's dealer family — check it.",
+    zip_assignment_unverified: "A saved ZIP → branch assignment fits, but the order's account number doesn't confirm the dealer family — check it.",
   };
   const BASIS = { zip: "Ship-to ZIP matches one branch", address: "Ship-to street matches one branch", single: "The dealer has one location",
     verified_mapping: "Verified mapping (a person decided this ship-to before)", zip_assignment: "Saved ZIP → branch assignment",
@@ -108,7 +110,15 @@
     for (const cd of (o.candidates || [])) if (!seen.has(cd.dealer_id)) { seen.add(cd.dealer_id); opts.push({ id: cd.dealer_id, name: cd.name, sub: [cd.address, cd.city, cd.state, cd.zip].filter(Boolean).join(", "), tag: cd.branch ? "branch" : "headquarters" }); }
     for (const sd of (S.search || [])) if (!seen.has(sd.dealer_id)) { seen.add(sd.dealer_id); opts.push({ id: sd.dealer_id, name: sd.name, sub: [sd.parent ? "branch of " + sd.parent : "", sd.address, sd.city, sd.state, sd.zip].filter(Boolean).join(", "), tag: "search", outside: true }); }
     const hq = (o.candidates || []).find(x => !x.branch);
-    const canRemember = !!o.ship_key;
+    // Remember (automatic reuse) only with the order's account number on record for the chosen location's family.
+    const chosen = F.scope === "corporate" && hq ? hq.dealer_id : F.dealer_id;
+    const cRoot = chosen ? (((o.candidates || []).find(x => x.dealer_id === chosen) || (S.search || []).find(x => x.dealer_id === chosen) || {}).root || null) : null;
+    const remWhy = !o.ship_key ? "This order has no ship-to id or street + ZIP in the file, so the choice applies to this order only."
+      : !rep.account_ref ? "This order has no account number in the file, so the choice applies to this order only (nothing is remembered)."
+      : !chosen ? "Choose a location. Remember is offered when the order's account number is on record for that location's dealer family."
+      : !(o.remember_roots || []).includes(cRoot) ? `Account ${rep.account_ref} is not on record for this location's dealer family at this manufacturer, so the choice applies to this order only.`
+      : "";
+    const canRemember = !remWhy;
     return `<div class="panel" id="panel">
       <div class="ttl">Order ${esc(o.order_number || o.order_key)}</div>
       <div class="rep" style="margin-top:8px"><b>What the manufacturer's file says</b><br>
@@ -132,7 +142,7 @@
         <div class="wide"><label for="fs_reason">Reason (required)</label><input id="fs_reason" value="${esc(F.reason || "")}" placeholder="e.g. Princeton store — confirmed with the dealer"></div>
       </div>
       <label class="opt" style="margin-top:8px"><input type="checkbox" id="remember" ${canRemember ? (F.remember !== false ? "checked" : "") : "disabled"}>
-        <span>${canRemember ? "Remember: future orders from this account to this ship-to go to this location automatically" : "This order has no ship-to id or street + ZIP in the file, so the choice applies to this order only."}</span></label>
+        <span>${canRemember ? "Remember: future orders from this account to this ship-to go to this location automatically" : esc(remWhy)}</span></label>
       ${F.outside ? `<label class="opt"><input type="checkbox" id="confout" ${F.confirm_outside ? "checked" : ""}><span>The chosen location is outside the dealer family this account matched — I confirm it.</span></label>` : ""}
       ${F.conflict ? `<label class="opt"><input type="checkbox" id="replmap" ${F.replace ? "checked" : ""}><span>This ship-to is already mapped to another location — replace that mapping (the old one is kept, retired).</span></label>` : ""}
       <div class="btnrow"><button class="go" id="save" ${S.busy ? "disabled" : ""}>Save &amp; Continue</button><button class="go sec" id="skip">Next order</button></div>
@@ -159,10 +169,16 @@
     if (!S.shadow) return h;
     if (S.shadow.error) return h + `<div class="err">${esc(S.shadow.error)}</div>`;
     const x = S.shadow.shadow;
-    h += `<div class="card2"><div class="grid"><div><b>History rows</b>${S.shadow.rows}</div><div><b>Orders</b>${x.orders}</div><div><b>Same</b>${x.same}</div><div><b>Held</b>${x.held}</div><div><b>Different</b>${x.different}</div><div><b>Unmatched in history</b>${x.unmatched_history}</div><div><b>Split in history</b>${x.mixed_history}</div></div></div>`;
-    if (x.list.length) h += `<div class="scroll"><table class="tbl"><thead><tr><th>Outcome</th><th>Order</th><th>Company</th><th>Ship-to</th><th>History</th><th>Rules</th></tr></thead><tbody>${x.list.map(r => `<tr>
-      <td><span class="chip c-${r.outcome === "different" ? "held" : "empty"}">${esc(r.outcome)}</span></td><td>${esc(r.key)}</td><td>${esc(r.company)}</td><td>${esc([r.ship_city, r.ship_zip].filter(Boolean).join(" ") || "—")}</td>
-      <td>${esc(r.booked_name || "—")}</td><td>${esc(r.strict_name || (r.basis || ""))}</td></tr>`).join("")}</tbody></table></div>`;
+    const LN = { sales_report: "Sales report lines", commission: "Commission lines", other: "Other sources" };
+    h += `<div class="card2"><div class="grid"><div><b>History rows</b>${S.shadow.rows}</div><div><b>Orders</b>${x.orders}</div><div><b>Same</b>${x.same}</div><div><b>Held</b>${x.held}</div><div><b>Different</b>${x.different}</div><div><b>Lane disagreements</b>${x.lane_disagreements || 0}</div></div>
+      <div class="hint" style="margin-top:6px">Lanes are kept apart: sales-report lines (source sales_report) and commission lines (source commission, or older rows with no source and no reference) are separate transactions and never added together. The branch HCPS booked is the baseline; nothing is changed.</div></div>`;
+    if (x.by_lane) h += `<div class="scroll"><table class="tbl" style="margin-bottom:12px"><thead><tr><th>Lane</th><th>Lines</th><th>Orders</th><th>Same</th><th>Held</th><th>Different</th><th>Unmatched in history</th><th>Split in history</th></tr></thead><tbody>${
+      Object.keys(LN).filter(k => x.by_lane[k] && x.by_lane[k].lines).map(k => { const L = x.by_lane[k]; return `<tr><td><b>${LN[k]}</b></td><td>${L.lines}</td><td>${L.orders}</td><td>${L.same}</td><td>${L.held}</td><td>${L.different}</td><td>${L.unmatched_history}</td><td>${L.mixed_history}</td></tr>`; }).join("")
+      || `<tr><td colspan="8">No history for this manufacturer.</td></tr>`}</tbody></table></div>`;
+    if ((x.lane_disagreement_list || []).length) h += `<div class="note">The same invoice is booked to different locations in different lanes: ${x.lane_disagreement_list.slice(0, 20).map(d => esc(String(d.txn).replace("|", " · ")) + " (" + Object.entries(d.booked).map(([k, v]) => esc(LN[k] || k) + ": " + esc(v.name || v.dealer_id)).join("; ") + ")").join(" · ")}</div>`;
+    if (x.list.length) h += `<div class="scroll"><table class="tbl"><thead><tr><th>Outcome</th><th>Lane</th><th>Order</th><th>Company</th><th>Ship-to</th><th>History (baseline)</th><th>Rules</th></tr></thead><tbody>${x.list.map(r => `<tr>
+      <td><span class="chip c-${r.outcome === "different" ? "held" : "empty"}">${esc(r.outcome)}</span></td><td>${esc(LN[r.lane] || r.lane || "")}</td><td>${esc(r.period || "")} · ${esc(r.invoice || r.key)}</td><td>${esc(r.company)}</td><td>${esc([r.ship_city, r.ship_zip].filter(Boolean).join(" ") || "—")}</td>
+      <td>${esc(r.booked_name || "—")}</td><td>${esc(r.strict_name || r.basis || "")}</td></tr>`).join("")}</tbody></table></div>`;
     return h;
   }
 
@@ -173,7 +189,8 @@
     if (r) { f.dealer_id = r.value; f.outside = r.getAttribute("data-outside") === "1"; }
     f.ship_name = v("fs_name"); f.ship_address = v("fs_addr"); f.ship_city = v("fs_city"); f.ship_state = v("fs_state"); f.ship_zip = v("fs_zip"); f.reason = v("fs_reason");
     const corp = $("#corp"); f.scope = corp && corp.checked ? "corporate" : "branch";
-    const rem = $("#remember"); f.remember = !!(rem && rem.checked && !rem.disabled);
+    const rem = $("#remember"); if (rem && !rem.disabled) f.remember = rem.checked;   // a disabled box keeps the person's last choice
+    f.rememberNow = !!(rem && !rem.disabled && rem.checked);
     const co = $("#confout"); f.confirm_outside = !!(co && co.checked);
     const rp = $("#replmap"); f.replace = !!(rp && rp.checked);
     const q = $("#dsearch"); f.q = q ? q.value : "";
@@ -198,7 +215,7 @@
     if (!f.reason || f.reason.trim().length < 3) { S.err = "Give a short reason."; render(); return; }
     S.busy = true; render();
     const r = await api({ action: "correct", source_id: S.src, order_key: o.order_key, dealer_id: f.dealer_id, scope: f.scope, ship_name: f.ship_name, ship_address: f.ship_address,
-      ship_city: f.ship_city, ship_state: f.ship_state, ship_zip: f.ship_zip, reason: f.reason, expected_version: o.current_version || 0, remember: f.remember,
+      ship_city: f.ship_city, ship_state: f.ship_state, ship_zip: f.ship_zip, reason: f.reason, expected_version: o.current_version || 0, remember: f.rememberNow,
       replace_mapping: f.replace, confirm_outside_family: f.confirm_outside });
     S.busy = false;
     if (r.status === 409 && r.body.error === "outside_family") { f.outside = true; S.err = r.body.message; render(); return; }

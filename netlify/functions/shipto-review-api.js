@@ -170,6 +170,18 @@ exports.handler = async (event) => {
         return json(409, { error: "outside_family", message: `${dealer.business_name} is not in the dealer family this account / company matched. Confirm to assign it anyway.`,
           candidates: o.candidates });
       const remember = b.remember === true;
+      // Remembering = automatic reuse for later orders. Only with an account number this manufacturer's records tie to
+      // the chosen dealer's family, and a ship-to key (Angelo, 2026-10-11 22:09). The order itself can always be
+      // corrected without remembering. The database repeats both checks.
+      if (remember) {
+        if (!SH._internal.nref(o.reported.account_ref))
+          return json(422, { error: "shipto_no_account", message: "This order has no account number, so the choice can't be remembered for later orders. Untick Remember to correct this order only." });
+        if (!o.ship_key)
+          return json(422, { error: "shipto_no_ship_key", message: "This order has no ship-to id or street + ZIP, so the choice can't be remembered. Untick Remember to correct this order only." });
+        const root = dealer.parent_id || dealer.id;
+        if (!(o.remember_roots || []).includes(root))
+          return json(422, { error: "shipto_account_family", message: `Account ${o.reported.account_ref} is not on record for ${dealer.business_name}'s family at this manufacturer, so the choice can't be remembered. Untick Remember to correct this order only.` });
+      }
       const p = { source_id: r.src.id, order_key: o.order_key, order_fingerprint: o.fingerprint, reported: o.reported, dealer_id: dealer.id,
         scope: b.scope === "corporate" ? "corporate" : "branch", ship_name: clean(b.ship_name, 200), ship_address: clean(b.ship_address, 300),
         ship_city: clean(b.ship_city, 100), ship_state: clean(b.ship_state, 40), ship_zip: clean(b.ship_zip, 10), reason: clean(b.reason, 500),
@@ -205,7 +217,7 @@ exports.handler = async (event) => {
       const ds = await sbGetAll("dealers?select=id,business_name,parent_id,city,state,zip,address,is_test", "id");
       const byId = new Map(ds.map(d => [d.id, d]));
       const hits = ds.filter(d => d.is_test !== true && [d.business_name, d.city, d.zip, d.address].some(v => String(v || "").toUpperCase().includes(qq))).slice(0, 25)
-        .map(d => ({ dealer_id: d.id, name: d.business_name, branch: !!d.parent_id, parent: d.parent_id ? (byId.get(d.parent_id) || {}).business_name || null : null,
+        .map(d => ({ dealer_id: d.id, name: d.business_name, branch: !!d.parent_id, root: d.parent_id || d.id, parent: d.parent_id ? (byId.get(d.parent_id) || {}).business_name || null : null,
           city: d.city, state: d.state, zip: d.zip, address: d.address }));
       return json(200, { ok: true, dealers: hits });
     }
@@ -216,12 +228,14 @@ exports.handler = async (event) => {
       let filt = `monthly_sales?manufacturer=eq.${e(mfr)}`;
       if (/^\d{4}-\d{2}$/.test(f)) filt += `&period=gte.${f}-01`;
       if (/^\d{4}-\d{2}$/.test(t)) filt += `&period=lte.${t}-28`;
-      const hist = await sbGetAll(`${filt}&select=id,invoice_no,customer_name,customer_ref,ship_city,ship_state,ship_zip,dealer_id,amount,period,source`, "id");
+      const hist = await sbGetAll(`${filt}&select=id,invoice_no,customer_name,customer_ref,ship_city,ship_state,ship_zip,dealer_id,amount,period,source,external_ref`, "id");
       const ctx = await loadContext(mfr);
       const res = RV.shadow(hist, { matcher: ctx.matcher, mappings: ctx.active, zipmap: ctx.zipmap });
       const nm = id => id ? ((ctx.allById.get(id) || {}).business_name || id) : null;
       for (const x of res.list) { x.booked_name = nm(x.booked); x.strict_name = nm(x.strict); }
-      res.list.sort((a, b2) => ({ different: 0, held: 1, mixed_history: 2, unmatched_history: 3 }[a.outcome] - { different: 0, held: 1, mixed_history: 2, unmatched_history: 3 }[b2.outcome]));
+      for (const x of res.lane_disagreement_list) for (const k of Object.keys(x.booked)) x.booked[k] = { dealer_id: x.booked[k], name: nm(x.booked[k]) };
+      const RANK = { different: 0, held: 1, mixed_history: 2, unmatched_history: 3 }, LR = { sales_report: 0, commission: 1, other: 2 };
+      res.list.sort((a, b2) => LR[a.lane] - LR[b2.lane] || RANK[a.outcome] - RANK[b2.outcome]);
       res.list = res.list.slice(0, 500);
       return json(200, { ok: true, manufacturer: mfr, rows: hist.length, shadow: res, read_only: true });
     }

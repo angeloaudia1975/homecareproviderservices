@@ -49,13 +49,16 @@ const server = http.createServer(async (req, res) => {
         out = { ok: true, saved: { version: v, mapping: mres }, report: summary(rv), next_order_key: next ? next.order_key : null };
       }
     }
-    else if (b.action === 'dealer_search') out = { ok: true, dealers: real.filter(d => d.business_name.toUpperCase().includes(String(b.q).toUpperCase())).map(d => ({ dealer_id: d.id, name: d.business_name, branch: !!d.parent_id, city: d.city, state: d.state, zip: d.zip, address: d.address })) };
+    else if (b.action === 'dealer_search') out = { ok: true, dealers: real.filter(d => d.business_name.toUpperCase().includes(String(b.q).toUpperCase())).map(d => ({ dealer_id: d.id, name: d.business_name, branch: !!d.parent_id, root: d.parent_id || d.id, city: d.city, state: d.state, zip: d.zip, address: d.address })) };
     else if (b.action === 'export') out = { ok: true, file_name: 'x.csv', csv: RV.correctedCsv(parsed.headers, parsed.rows, review(), nameOf) };
     else if (b.action === 'mappings') out = { ok: true, mappings: mappings.map(m => ({ ...m, dealer: nameOf(m.dealer_id) })) };
     else if (b.action === 'retire_mapping') { const m = mappings.find(x => x.id === b.mapping_id); m.retired_at = 'now'; m.retire_reason = b.reason; out = { ok: true }; }
-    else if (b.action === 'shadow') out = { ok: true, rows: 3, read_only: true, shadow: { orders: 3, same: 1, held: 1, different: 1, unmatched_history: 0, mixed_history: 0, held_reasons: { no_ship_to: 1 },
-      list: [{ outcome: 'different', key: '2026-07|A3', company: 'Wilbur Brothers Healthcare Pharmacy', ship_city: 'Jasper', ship_zip: '47546', booked_name: 'Wilbur Brothers Princeton', strict_name: 'Wilbur Brothers Jasper' },
-        { outcome: 'held', key: '2026-07|A2', company: 'Wilbur Brothers Healthcare Pharmacy', booked_name: 'Wilbur Brothers Healthcare Pharmacy', basis: 'no_ship_to' }] } };
+    else if (b.action === 'shadow') out = { ok: true, rows: 3, read_only: true, shadow: { orders: 3, same: 1, held: 1, different: 1, unmatched_history: 0, mixed_history: 0, held_reasons: { no_ship_to: 1 }, lane_disagreements: 1,
+      by_lane: { sales_report: { lines: 2, orders: 2, same: 1, held: 1, different: 0, unmatched_history: 0, mixed_history: 0 }, commission: { lines: 1, orders: 1, same: 0, held: 0, different: 1, unmatched_history: 0, mixed_history: 0 },
+        other: { lines: 0, orders: 0, same: 0, held: 0, different: 0, unmatched_history: 0, mixed_history: 0 } },
+      lane_disagreement_list: [{ txn: '2026-07|A3', booked: { sales_report: { dealer_id: 'wja', name: 'Wilbur Brothers Jasper' }, commission: { dealer_id: 'wpr', name: 'Wilbur Brothers Princeton' } } }],
+      list: [{ outcome: 'different', lane: 'commission', period: '2026-07', invoice: 'A3', key: 'commission|2026-07|A3', company: 'Wilbur Brothers Healthcare Pharmacy', ship_city: 'Jasper', ship_zip: '47546', booked_name: 'Wilbur Brothers Princeton', strict_name: 'Wilbur Brothers Jasper' },
+        { outcome: 'held', lane: 'sales_report', period: '2026-07', invoice: 'A2', key: 'sales_report|2026-07|A2', company: 'Wilbur Brothers Healthcare Pharmacy', booked_name: 'Wilbur Brothers Healthcare Pharmacy', basis: 'no_ship_to' }] } };
     else { st = 400; out = { error: 'unknown_action' }; }
     res.writeHead(st, { 'content-type': 'application/json' }); res.end(JSON.stringify(out)); return;
   }
@@ -95,7 +98,7 @@ const fails = []; const check = (c, w) => { if (!c) { fails.push(w); console.log
   await page.click('#save');
   check(/reason/.test(await page.locator('.err').textContent()) && !calls.some(c => c.action === 'correct'), 'no reason → nothing sent');
   await page.fill('#fs_zip', '47546'); await page.fill('#fs_city', 'Jasper'); await page.fill('#fs_reason', 'New Jasper store — confirmed with the dealer');
-  check(await page.locator('#remember').isChecked(), 'Remember is on when the file has a ship-to key');
+  check(await page.locator('#remember').isChecked(), 'Remember is on when the file has a ship-to key and the account is on record for the chosen family');
   await page.screenshot({ path: path.join(OUT, 'panel-1280.png'), fullPage: true });
   await page.click('#save'); await page.waitForFunction(() => /Saved \(version 1/.test(document.body.textContent));
   const sent = calls.filter(c => c.action === 'correct').pop();
@@ -106,7 +109,9 @@ const fails = []; const check = (c, w) => { if (!c) { fails.push(w); console.log
   check(await page.locator('#remember').isDisabled() && /applies to this order only/.test(await page.locator('#panel').textContent()), 'no ship-to key in the file → Remember disabled, explained');
   // outside the family
   await page.fill('#dsearch', 'Boston'); await page.waitForSelector('#panel .opt:has-text("Boston Rehab")');
-  await page.check('#panel .opt:has-text("Boston Rehab") input'); await page.fill('#fs_reason', 'Ordered for the Boston affiliate'); await page.click('#save');
+  await page.check('#panel .opt:has-text("Boston Rehab") input');
+  check(await page.locator('#remember').isDisabled(), 'another family chosen → Remember disabled');
+  await page.fill('#fs_reason', 'Ordered for the Boston affiliate'); await page.click('#save');
   await page.waitForSelector('#confout');
   check(/not in the dealer family/.test(await page.locator('.err').textContent()), 'outside the family → confirmation asked');
   await page.check('#confout'); await page.click('#save'); await page.waitForFunction(() => /3 orders still need review/.test(document.body.textContent));
@@ -118,7 +123,11 @@ const fails = []; const check = (c, w) => { if (!c) { fails.push(w); console.log
   await page.click('button[data-retire]'); await page.fill('input[id^="rr"]', 'store closed'); await page.click('button[id^="rg"]'); await page.waitForSelector('text=Retired');
   check(calls.some(c => c.action === 'retire_mapping' && c.reason === 'store closed'), 'retiring a mapping sends its reason');
   await page.click('.tabs button:has-text("Shadow check")'); await page.click('#shrun'); await page.waitForSelector('text=Split in history');
-  const shRows = await page.locator('table.tbl tbody tr').count(); check(shRows === 2, 'shadow results listed (' + shRows + ')');
+  const laneRows = await page.locator('table.tbl').nth(0).locator('tbody tr').count(); check(laneRows === 2, 'shadow: one row per lane with history (' + laneRows + ')');
+  check(/Sales report lines/.test(await page.locator('table.tbl').nth(0).textContent()) && /Commission lines/.test(await page.locator('table.tbl').nth(0).textContent()), 'shadow: sales-report and commission lanes shown apart');
+  check(/booked to different locations in different lanes/.test(await page.locator('#body').textContent()), 'shadow: a lane disagreement is shown');
+  const shRows = await page.locator('table.tbl').nth(1).locator('tbody tr').count(); check(shRows === 2, 'shadow results listed (' + shRows + ')');
+  check(/Commission lines/.test(await page.locator('table.tbl').nth(1).locator('tbody tr').first().textContent()), 'shadow: each listed order names its lane');
   await page.screenshot({ path: path.join(OUT, 'shadow-1280.png'), fullPage: true });
   await page.close();
   // RULE 10: phone / tablet

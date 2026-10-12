@@ -15,6 +15,9 @@ const JAS = { id: 'jas', business_name: 'Williams Brothers Jasper', parent_id: '
 const TWIN = { id: 'twin', business_name: 'Williams Brothers Jasper East', parent_id: 'hq', city: 'Jasper', state: 'IN', zip: '47546', address: '900 3rd Ave' };
 const FAM = [HQ, PRN, JAS];
 const ONE = { id: 'solo', business_name: 'Solo Medical', parent_id: null, city: 'Nashville', state: 'TN', zip: '37201' };
+// Another family (its own HQ + branch) — remembered decisions must never cross into it.
+const OHQ = { id: 'ohq', business_name: 'Harmony Home Medical', parent_id: null, city: 'Evansville', state: 'IN', zip: '47708', address: '9 Main St' };
+const OBR = { id: 'obr', business_name: 'Harmony Home Medical Jasper', parent_id: 'ohq', city: 'Jasper', state: 'IN', zip: '47546', address: '7 Mill St' };
 // The old pickBranch, verbatim in behaviour (sales-import-api.js before 2026-10-11).
 const SUF = /\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
 const dnorm = n => String(n || '').toUpperCase().replace(/HEALTH ?CARE/g, 'HEALTHCARE').replace(/[.,'&/#-]/g, ' ').replace(SUF, ' ').replace(/\s+/g, ' ').trim();
@@ -35,7 +38,10 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
   // Load through the mock loader so a mutant of _shipto.js is the module under test.
   const w0 = createWorld(standardSeed({})); load('sales-import-api.js', w0);
   const S = SH();
-  const strict = (cands, row, o) => S.resolveBranch(cands, row, Object.assign({ mode: 'strict' }, o || {}));
+  // Account numbers on record for this manufacturer: A1 → the Williams family, H7 → Harmony.
+  const M = S.makeMatcher({ dealers: [HQ, PRN, JAS, TWIN, ONE, OHQ, OBR], accounts: [{ dealer_id: 'hq', account_ref: 'A1' }, { dealer_id: 'ohq', account_ref: 'H7' }] });
+  const ID = { rootOf: M.rootOf, accountRoots: M.accountRoots };
+  const strict = (cands, row, o) => S.resolveBranch(cands, row, Object.assign({ mode: 'strict' }, ID, o || {}));
 
   console.log('\n— strict (automated path): never HQ or the first branch without evidence —');
   await t('one account number over several branches, no ship-to at all → needs review ("no ship-to"), no dealer', async () => {
@@ -83,6 +89,65 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
     const r = strict(FAM, { account_ref: 'A1', ship_address: '44 Patient Lane', ship_zip: '47513' }, { mappings: maps });
     assert.strictEqual(r.dealer_id, 'hq'); assert.strictEqual(r.basis, 'corporate_confirmed');
     assert.strictEqual(strict(FAM, { account_ref: 'A1', ship_address: '44 Patient Lane', ship_zip: '47513' }).dealer_id, null);
+  });
+
+  console.log('\n— remembered decisions need independent account / family confirmation (2026-10-11 22:09) —');
+  await t("a CORPORATE mapping naming another family's HQ is never used → needs review, that dealer not even suggested", async () => {
+    const maps = [{ id: 9, account_ref: 'A1', ship_key: 'addr:44 PATIENT LN|47513', dealer_id: 'ohq', scope: 'corporate' }];
+    const r = strict(FAM, { account_ref: 'A1', ship_address: '44 Patient Lane', ship_zip: '47513' }, { mappings: maps });
+    assert.strictEqual(r.dealer_id, null); assert.strictEqual(r.review, true); assert.strictEqual(r.reason, 'mapping_unverified');
+    assert.ok(!r.suggestions.some(x => x.dealer_id === 'ohq'));
+  });
+  await t('a branch mapping naming a dealer outside the candidates is never used', async () => {
+    const maps = [{ account_ref: 'A1', ship_key: 'id:st-0042', dealer_id: 'obr', scope: 'branch' }];
+    const r = strict(FAM, { account_ref: 'A1', ship_to_id: 'ST-0042' }, { mappings: maps });
+    assert.strictEqual(r.dealer_id, null); assert.strictEqual(r.reason, 'mapping_unverified');
+  });
+  await t("a mapping whose account number belongs to ANOTHER family is not reused (even if its dealer is a candidate)", async () => {
+    const maps = [{ account_ref: 'H7', ship_key: 'id:st-0042', dealer_id: 'jas', scope: 'branch' }];
+    const r = strict(FAM, { account_ref: 'H7', ship_to_id: 'ST-0042' }, { mappings: maps });
+    assert.strictEqual(r.dealer_id, null); assert.strictEqual(r.reason, 'mapping_unverified');
+    assert.deepStrictEqual(r.suggestions.map(x => x.dealer_id), ['jas'], 'shown to the person as a suggestion only');
+  });
+  await t('a corporate mapping must name the family HQ — one on a branch is not reused', async () => {
+    const maps = [{ account_ref: 'A1', ship_key: 'addr:44 PATIENT LN|47513', dealer_id: 'prn', scope: 'corporate' }];
+    assert.strictEqual(strict(FAM, { account_ref: 'A1', ship_address: '44 Patient Lane', ship_zip: '47513' }, { mappings: maps }).reason, 'mapping_unverified');
+  });
+  await t('without an account number, or without the identity check, nothing remembered is reused', async () => {
+    const blank = [{ account_ref: '', ship_key: 'id:st-0042', dealer_id: 'jas', scope: 'branch' }];
+    const r = strict(FAM, { account_ref: '', ship_to_id: 'ST-0042' }, { mappings: blank });
+    assert.strictEqual(r.dealer_id, null); assert.notStrictEqual(r.basis, 'verified_mapping');
+    assert.strictEqual(r.reason, 'weak_evidence', 'a blank-account mapping is not even considered — the order is judged on its own evidence');
+    const maps = [{ account_ref: 'A1', ship_key: 'id:st-0042', dealer_id: 'jas', scope: 'branch' }];
+    const r2 = S.resolveBranch(FAM, { account_ref: 'A1', ship_to_id: 'ST-0042' }, { mode: 'strict', mappings: maps });   // no accountRoots given
+    assert.strictEqual(r2.dealer_id, null); assert.strictEqual(r2.reason, 'mapping_unverified');
+  });
+  await t('ZIP assignment (zipmap): reused only with the account confirmed and inside its corporate', async () => {
+    const zm = { 47546: { d: 'twin', c: 'hq' } }, F4 = [HQ, PRN, JAS, TWIN];
+    const ok = strict(F4, { account_ref: 'A1', ship_zip: '47546' }, { zipmap: zm });
+    assert.deepStrictEqual([ok.dealer_id, ok.basis], ['twin', 'zip_assignment']);
+    const noAcct = strict(F4, { ship_zip: '47546' }, { zipmap: zm });
+    assert.deepStrictEqual([noAcct.dealer_id, noAcct.reason], [null, 'zip_assignment_unverified']);
+    const wrongAcct = strict(F4, { account_ref: 'H7', ship_zip: '47546' }, { zipmap: zm });
+    assert.deepStrictEqual([wrongAcct.dealer_id, wrongAcct.reason], [null, 'zip_assignment_unverified']);
+    const wrongCorp = strict(F4, { account_ref: 'A1', ship_zip: '47546' }, { zipmap: { 47546: { d: 'twin', c: 'ohq' } } });
+    assert.strictEqual(wrongCorp.dealer_id, null);
+    const plain = strict(F4, { account_ref: 'A1', ship_zip: '47546' }, { zipmap: { 47546: 'twin' } });
+    assert.strictEqual(plain.dealer_id, 'twin', 'an unscoped entry inside the confirmed family is reused');
+  });
+  await t("ZIP assignment naming another family's dealer is ignored — never selected", async () => {
+    for (const zm of [{ 47546: { d: 'obr', c: 'ohq' } }, { 47546: 'obr' }, { 47546: { d: 'ohq', c: 'ohq' } }]) {
+      const r = strict([HQ, PRN, JAS, TWIN], { account_ref: 'A1', ship_zip: '47546' }, { zipmap: zm });
+      assert.notStrictEqual(r.dealer_id, 'obr'); assert.notStrictEqual(r.dealer_id, 'ohq'); assert.strictEqual(r.reason, 'zip_shared');
+    }
+  });
+  await t('a dealer without branches keeps its answer when a ZIP entry cannot be confirmed', async () => {
+    const r = strict([ONE], { ship_zip: '37201' }, { zipmap: { 37201: 'solo' } });
+    assert.deepStrictEqual([r.dealer_id, r.basis], ['solo', 'single']);
+  });
+  await t('makeMatcher.accountRoots: the families holding an account number, never another manufacturer / unknown', async () => {
+    assert.deepStrictEqual([...M.accountRoots(' a1 ')], ['hq']); assert.deepStrictEqual([...M.accountRoots('H7')], ['ohq']);
+    assert.strictEqual(M.accountRoots('').size, 0); assert.strictEqual(M.accountRoots('zzz').size, 0);
   });
   await t('a dealer without branches is assigned without ship-to evidence; no candidate = unmatched (not review)', async () => {
     assert.strictEqual(strict([ONE], {}).dealer_id, 'solo'); assert.strictEqual(strict([], {}).basis, 'unmatched'); assert.strictEqual(strict([], {}).review, false);

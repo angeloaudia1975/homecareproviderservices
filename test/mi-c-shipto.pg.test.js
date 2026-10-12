@@ -24,10 +24,11 @@ const as = (role, sql) => q(`begin; set local role ${role}; ${sql}; commit;`);
 const J = o => `'${JSON.stringify(o).replace(/'/g, "''")}'::jsonb`;
 const refused = (fn, re) => { try { fn(); } catch (e) { assert.ok(re.test(e.message), 'wrong refusal: ' + e.message.split('\n')[0]); return; } throw new Error('NOT refused'); };
 const HQ = '00000000-0000-0000-0000-00000000000a', VIN = '00000000-0000-0000-0000-00000000000c', PRIN = '00000000-0000-0000-0000-00000000000d', TEST = '00000000-0000-0000-0000-00000000000e';
+const OTH = '00000000-0000-0000-0000-00000000000f';   // another family's HQ
 const SHA = c => c.repeat(64), FP = 'a'.repeat(32);
 const ACT = 'staff:angelo@homecareproviderservices.us';
 const correct = o => JSON.parse(sr(`select public.hcps_mfr_shipto_correct(${J(Object.assign({ source_id: 1, order_key: 'o:7191', order_fingerprint: FP,
-  reported: { company: 'Williams Brothers Healthcare Pharmacy', ship_zip: '47670' }, dealer_id: PRIN, scope: 'branch', reason: 'ships to Princeton', actor: ACT,
+  reported: { company: 'Williams Brothers Healthcare Pharmacy', account_ref: 'WilliamsBrothersHealthcar', ship_zip: '47670' }, dealer_id: PRIN, scope: 'branch', reason: 'ships to Princeton', actor: ACT,
   expected_version: 0 }, o))})`).split('\n').pop());
 const OTHER_FP = `select md5(coalesce((select string_agg(t::text, ';' order by t.id) from monthly_sales t), '')) || md5(coalesce((select string_agg(t::text, ';' order by t.id) from dealers t), ''))
   || md5(coalesce((select string_agg(t::text, ';' order by t.id) from mfr_sources t), '')) || md5(coalesce((select string_agg(t::text, ';' order by t.id) from mfr_source_events t), ''))`;
@@ -44,7 +45,11 @@ try {
      alter default privileges in schema public grant all on functions to anon, authenticated, service_role`);
   q(`alter table dealers add column if not exists is_test boolean default false, add column if not exists address text`);
   q(`insert into dealers (id, business_name, parent_id, city, state, zip, address) values ('${PRIN}','Williams Brothers Princeton','${HQ}','Princeton','IN','47670','101 W Brumfield Ave'),
-     ('${TEST}','TEST Sandbox Dealer',null,'Dayton','OH','45402','1 Test St')`);
+     ('${TEST}','TEST Sandbox Dealer',null,'Dayton','OH','45402','1 Test St'), ('${OTH}','Harmony Home Medical',null,'Evansville','IN','47708','9 Main St')`);
+  // The manufacturer account numbers (production table; only the columns the function reads).
+  q(`create table if not exists dealer_manufacturers (dealer_id uuid, manufacturer text, account_ref text)`);
+  q(`insert into dealer_manufacturers values ('${HQ}','strongback-mobility','WilliamsBrothersHealthcar'), ('${OTH}','strongback-mobility','HARM-77'),
+     ('${HQ}','ovation-medical','ovation-wb')`);
   q(`update dealers set is_test = true where id = '${TEST}'`);
   const reg = o => JSON.parse(sr(`select public.hcps_mfr_report_register(${J(Object.assign({ manufacturer: 'strongback-mobility', kind: 'sales_export',
     title: 'Strongback orders', file_name: 'Angelo Sep Orders.csv', file_size: 4155, content_type: 'text/csv', received_date: '2026-10-02', prepared_date: '',
@@ -58,7 +63,7 @@ try {
   console.log('\n— install —');
   t('installs, and installs again; every install check ok', () => {
     for (let i = 0; i < 2; i++) { const out = file(DB, SB('mi_c_shipto.sql')).trim().split('\n').filter(l => /^\d+\|/.test(l));
-      assert.strictEqual(out.length, 9, out.join('\n')); for (const l of out) assert.ok(l.endsWith('|t'), 'check failed: ' + l); }
+      assert.strictEqual(out.length, 10, out.join('\n')); for (const l of out) assert.ok(l.endsWith('|t'), 'check failed: ' + l); }
   });
   t('RULE 19: anon / authenticated read nothing and run nothing', () => {
     for (const r of ['anon', 'authenticated']) {
@@ -119,6 +124,29 @@ try {
     refused(() => correct({ source_id: SRC, order_key: 'o:7300', remember: true, mapping_ship_key: 'acct:williams' }), /shipto_no_ship_key/);
     assert.strictEqual(q(`select count(*) from mfr_shipto_corrections`), n);
   });
+  t('remember: needs an account number from the file — the order itself can still be corrected', () => {
+    const n = q(`select count(*) from mfr_shipto_corrections`);
+    const R0 = { company: 'Williams Brothers Healthcare Pharmacy', account_ref: '', ship_zip: '47670' };
+    refused(() => correct({ source_id: SRC, order_key: 'o:7310', reported: R0, remember: true, mapping_account_ref: '', mapping_ship_key: KEY }), /shipto_no_account/);
+    assert.strictEqual(q(`select count(*) from mfr_shipto_corrections`), n);
+    const c = correct({ source_id: SRC, order_key: 'o:7310', reported: R0 });
+    assert.strictEqual(c.mapping, 'none'); assert.strictEqual(q(`select count(*) from mfr_shipto_mappings`), '0');
+  });
+  t('remember: the mapping account must be the one the report gives for this order', () =>
+    refused(() => correct({ source_id: SRC, order_key: 'o:7311', remember: true, mapping_account_ref: 'harm-77', mapping_ship_key: KEY }), /shipto_account_mismatch/));
+  t("remember: refused when the account is on record for ANOTHER family, or not on record at all (order still correctable)", () => {
+    const RH = { company: 'Harmony Home Medical', account_ref: 'HARM-77', ship_zip: '47670' };
+    refused(() => correct({ source_id: SRC, order_key: 'o:7312', reported: RH, remember: true, mapping_account_ref: 'harm-77', mapping_ship_key: KEY }), /shipto_account_family/);
+    const RX = { company: 'Williams Brothers Healthcare Pharmacy', account_ref: 'NOT-ON-RECORD', ship_zip: '47670' };
+    refused(() => correct({ source_id: SRC, order_key: 'o:7313', reported: RX, remember: true, mapping_account_ref: 'not-on-record', mapping_ship_key: KEY }), /shipto_account_family/);
+    // another manufacturer's account number for the same family does not count
+    const RO = { company: 'Williams Brothers Healthcare Pharmacy', account_ref: 'ovation-wb', ship_zip: '47670' };
+    refused(() => correct({ source_id: SRC, order_key: 'o:7314', reported: RO, remember: true, mapping_account_ref: 'ovation-wb', mapping_ship_key: KEY }), /shipto_account_family/);
+    assert.strictEqual(q(`select count(*) from mfr_shipto_mappings`), '0');
+  });
+  t('a blank account number can never be stored on a mapping (table check, even through the marker)', () =>
+    refused(() => q(`begin; select set_config('hcps.shipto_op','on',true); insert into mfr_shipto_mappings (manufacturer, account_ref, ship_key, scope, dealer_id, origin_correction_id, verified_by)
+      values ('strongback-mobility', '', '${KEY}', 'branch', '${PRIN}', ${c1.correction_id}, '${ACT}'); commit;`), /mfr_shipto_mappings_account_ref_check|check constraint/));
   t('remember: creates ONE active mapping (manufacturer + account + key) and logs it', () => {
     m1 = correct({ source_id: SRC, order_key: 'o:7301', remember: true, mapping_account_ref: ' WilliamsBrothersHealthcar ', mapping_ship_key: KEY });
     assert.strictEqual(m1.mapping, 'created');

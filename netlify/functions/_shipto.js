@@ -14,9 +14,11 @@
      0. (Phase C) states are compared as codes ("Indiana" = IN); identity comes from makeMatcher, the Sales Report
         Import's own account-number / name rule
      1. a VERIFIED mapping for this manufacturer + account number + ship-to key (the ship-to id, or street + ZIP) —
-        never an account number alone for a family with several branches
+        never an account number alone for a family with several branches, never without an account number, and only
+        when that account number belongs to the remembered dealer's family (otherwise: needs review)
      1b. a ZIP → branch assignment saved in Commission Review (app_settings zipmap:<slug>, RULE 6), only inside the
-        corporate it was saved for (strict only — the manual import's legacy picks never change)
+        corporate it was saved for and with the same account confirmation (strict only — the manual import's legacy
+        picks never change)
      2. exactly one candidate (a dealer without branches)
      3. a ship-to ZIP that matches exactly ONE branch
      4. a normalised street address that matches exactly ONE branch
@@ -57,25 +59,39 @@ function resolveBranch(cands, row, opts) {
   const out = (dealer, basis, extra) => Object.assign({ dealer_id: dealer ? dealer.id : null, basis, review: false, questionable: false, suggestions: [] }, extra || {});
   if (!cands.length) return out(null, "unmatched");
   const ids = new Set(cands.map(d => d.id));
-  // 1. A verified mapping (strict and legacy alike: a person already decided this one).
+  // 1 / 1b. Remembered decisions are reused ONLY when the order's own identity independently confirms them
+  //     (Angelo, 2026-10-11 22:09): the order carries an account number; that number belongs — for this manufacturer —
+  //     to the family of the remembered dealer (opts.accountRoots, from makeMatcher); and the remembered dealer is one
+  //     of this order's candidates. A corporate mapping must also name the family's headquarters. When a remembered
+  //     decision exists but that relationship cannot be established, the order goes to a person (never another
+  //     family's location, never a silent fall-through to a weaker rule).
   const key = shipKey(row), ref = nref(row.account_ref);
-  if (key && Array.isArray(opts.mappings)) {
-    const hit = opts.mappings.find(m => !m.retired_at && nref(m.account_ref) === ref && m.ship_key === key && (m.scope === "corporate" || ids.has(m.dealer_id)));
+  const root = id => (typeof opts.rootOf === "function" ? opts.rootOf(id) : null) || id;
+  const acctRoots = ref && typeof opts.accountRoots === "function" ? (opts.accountRoots(ref) || new Set()) : new Set();
+  const confirmed = id => !!id && ids.has(id) && acctRoots.has(root(id));
+  const nameOf = id => { const d = cands.find(c => c.id === id); return d ? d.business_name || null : null; };
+  const unverified = (reason, id) => out(null, null, { review: true, reason,
+    suggestions: id && ids.has(id) ? [{ dealer_id: id, name: nameOf(id), basis: reason === "zip_assignment_unverified" ? "zip_assignment" : "mapping" }] : [] });
+  // 1. A verified mapping for this manufacturer + account number + ship-to key.
+  if (key && ref && Array.isArray(opts.mappings)) {
+    const hit = opts.mappings.find(m => !m.retired_at && nref(m.account_ref) && nref(m.account_ref) === ref && m.ship_key === key);
     if (hit) {
-      const d = cands.find(c => c.id === hit.dealer_id) || { id: hit.dealer_id };
-      return out(d, hit.scope === "corporate" ? "corporate_confirmed" : "verified_mapping", { mapping_id: hit.id || null });
+      const corp = hit.scope === "corporate";
+      const d = cands.find(c => c.id === hit.dealer_id);
+      if (!confirmed(hit.dealer_id) || (corp && d && d.parent_id)) return unverified("mapping_unverified", hit.dealer_id);
+      return out(d, corp ? "corporate_confirmed" : "verified_mapping", { mapping_id: hit.id || null });
     }
   }
   // 1b. Strict only: a ZIP → branch assignment a person saved in Commission Review (app_settings zipmap:<slug>,
-  //     RULE 6 — "ZIP is the master key"). One scoped to a corporate applies only inside that corporate's family;
-  //     an unscoped one only to a dealer already among the candidates.
+  //     RULE 6 — "ZIP is the master key"). An entry naming a dealer outside this order's candidates belongs to another
+  //     family and is ignored. One inside the family is reused only with the same account confirmation as above (and,
+  //     when it was saved for a corporate, only inside that corporate); otherwise a person decides.
   if (mode === "strict" && opts.zipmap && typeof opts.zipmap === "object") {
     const z = znorm(row.ship_zip), ent = z ? opts.zipmap[z] : null;
     const d0 = ent && (typeof ent === "string" ? ent : ent.d), c0 = ent && typeof ent === "object" ? ent.c : null;
-    if (d0) {
-      const root = id => (typeof opts.rootOf === "function" ? opts.rootOf(id) : null) || id;
-      const roots = new Set(cands.map(c => root(c.id)));
-      if (c0 ? roots.has(c0) : ids.has(d0)) return out(cands.find(c => c.id === d0) || { id: d0 }, "zip_assignment");
+    if (d0 && ids.has(d0)) {
+      if (confirmed(d0) && (!c0 || root(d0) === c0)) return out(cands.find(c => c.id === d0), "zip_assignment");
+      if (cands.length > 1) return unverified("zip_assignment_unverified", d0);
     }
   }
   // 2. One candidate.
@@ -133,7 +149,10 @@ function makeMatcher(p) {
     if (ref && refToIds.has(ref)) { const cands = refToIds.get(ref).map(i => byId.get(i)).filter(Boolean); return cands.length === 1 ? family(cands[0].id) : cands; }
     return null; };
   const candidates = row => (p.nameFirst ? (byName(row) || byRef(row)) : (byRef(row) || byName(row))) || [];
-  return { candidates, byId, rootOf, family };
+  // The families (roots) that hold this account number for the manufacturer — the independent identity check the
+  // strict resolver needs before it reuses a remembered mapping.
+  const accountRoots = ref => { const k = nref(ref); return new Set(k && refToIds.has(k) ? refToIds.get(k).filter(i => byId.has(i)).map(rootOf) : []); };
+  return { candidates, byId, rootOf, family, accountRoots };
 }
 
 module.exports = { resolveBranch, makeMatcher, shipKey, _internal: { dnorm, znorm, naddr, ncity, nstate, nref } };

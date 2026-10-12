@@ -58,7 +58,7 @@ create index if not exists mfr_shipto_corrections_src_idx on public.mfr_shipto_c
 create table if not exists public.mfr_shipto_mappings (
   id                   bigserial primary key,
   manufacturer         text not null,
-  account_ref          text not null check (account_ref = lower(trim(account_ref))),   -- '' when the file has none
+  account_ref          text not null check (account_ref = lower(trim(account_ref)) and account_ref <> ''),   -- never blank: no account number = nothing remembered
   ship_key             text not null check (ship_key ~ '^(id:.+|addr:.+\|\d{5})$'),
   scope                text not null check (scope in ('branch','corporate')),
   dealer_id            uuid not null references public.dealers(id),
@@ -184,6 +184,17 @@ begin
   if v_remember then
     if v_sk !~ '^(id:.+|addr:.+\|\d{5})$' then
       raise exception 'shipto_no_ship_key: this order has no ship-to id or street + ZIP in the file — the choice applies to this order only'; end if;
+    -- Remembering = automatic reuse for later orders, so the identity must be specific AND independently confirmed
+    -- (Angelo, 2026-10-11 22:09): the order's own account number (from the FILE, never a different one), on record for
+    -- this manufacturer at a dealer in the chosen dealer's family. Otherwise the correction stands for this order only.
+    if v_acct = '' then
+      raise exception 'shipto_no_account: this order has no account number — the choice applies to this order only'; end if;
+    if v_acct <> lower(trim(coalesce(p->'reported'->>'account_ref', ''))) then
+      raise exception 'shipto_account_mismatch: the mapping must use the account number the report gives for this order'; end if;
+    if not exists (select 1 from public.dealer_manufacturers dm join public.dealers x on x.id = dm.dealer_id
+                    where dm.manufacturer = v_src.manufacturer and lower(trim(coalesce(dm.account_ref, ''))) = v_acct
+                      and coalesce(x.parent_id, x.id) = coalesce(v_d.parent_id, v_d.id)) then
+      raise exception 'shipto_account_family: account % is not on record for this dealer''s family at % — the choice applies to this order only', v_acct, v_src.manufacturer; end if;
     select * into v_map from public.mfr_shipto_mappings
      where manufacturer = v_src.manufacturer and account_ref = v_acct and ship_key = v_sk and retired_at is null for update;
     v_had := found;
@@ -272,4 +283,9 @@ select * from (
   union all select 9, 'nothing written by the install (corrections / mappings / events)',
          (select count(*) from public.mfr_shipto_corrections) || ' / ' || (select count(*) from public.mfr_shipto_mappings) || ' / ' || (select count(*) from public.mfr_shipto_events),
          (select count(*) from public.mfr_shipto_corrections) + (select count(*) from public.mfr_shipto_mappings) + (select count(*) from public.mfr_shipto_events) = 0
+  union all select 10, 'remembered mappings: account number required (blank refused) + account confirmed from dealer_manufacturers (manufacturer, dealer_id, account_ref)',
+         (select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'dealer_manufacturers' and column_name in ('manufacturer','dealer_id','account_ref'))
+           || ' of 3 columns; blank check ' || case when exists (select 1 from pg_constraint where conrelid = 'public.mfr_shipto_mappings'::regclass and pg_get_constraintdef(oid) like '%account_ref <> %') then 'present' else 'missing' end,
+         (select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'dealer_manufacturers' and column_name in ('manufacturer','dealer_id','account_ref')) = 3
+         and exists (select 1 from pg_constraint where conrelid = 'public.mfr_shipto_mappings'::regclass and pg_get_constraintdef(oid) like '%account_ref <> %')
 ) x order by n;

@@ -11,7 +11,7 @@ const { load, call } = require('./phase0-mock');
 const BASE = 'https://db.test';
 const F = f => require(path.join(__dirname, '..', 'netlify', 'functions', f));
 
-const { HEADER, COLS, W, CSV, BYTES, SHA, DEALERS, ACCOUNTS } = require('./fixtures/shipto-fixture.js');
+const { HEADER, COLS, line, W, CSV, BYTES, SHA, DEALERS, ACCOUNTS } = require('./fixtures/shipto-fixture.js');
 
 let pass = 0, fail = 0;
 async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + name); } catch (e) { fail++; console.log('  FAIL ' + name + '\n       ' + String(e && e.message || e).split('\n')[0]); } }
@@ -30,9 +30,10 @@ function world(o) {
       const s = { 'angelo@hcps.us': { role: 'president' }, 'ad@hcps.us': { role: 'admin' }, 'greg@hcps.us': { role: 'rep' }, 'lori@hcps.us': { role: 'relations' }, 'gone@hcps.us': { role: 'president', active: false } }[em];
       return res(200, s ? [{ email: em, ...s }] : []); }
     if (o.failRead && m === 'GET' && o.failRead(u)) return res(500, { message: 'forced' });
-    if (u.startsWith(BASE + '/storage/v1/object/mfr-sources/')) return res(200, o.bytes || BYTES);
+    const OB = o.csv ? Buffer.from(o.csv, 'utf8') : null, OS = OB ? require('crypto').createHash('sha256').update(OB).digest('hex') : SHA;
+    if (u.startsWith(BASE + '/storage/v1/object/mfr-sources/')) return res(200, OB || o.bytes || BYTES);
     if (u.startsWith(BASE + '/rest/v1/mfr_sources')) return res(200, page(u, [{ id: 8, manufacturer: 'strongback-mobility', kind: o.kind || 'sales_export', title: 'Strongback orders',
-      file_name: 'Angelo Sep Orders.csv', file_sha256: SHA, storage_path: `reports/strongback-mobility/sales_export/${SHA}.csv`, received_date: '2026-10-02',
+      file_name: 'Angelo Sep Orders.csv', file_sha256: OS, storage_path: `reports/strongback-mobility/sales_export/${OS}.csv`, received_date: '2026-10-02',
       report_period_start: '2026-09-01', report_period_end: '2026-09-30', status: 'received' }]));
     if (u.startsWith(BASE + '/rest/v1/dealers')) return res(200, page(u, DEALERS));
     if (u.startsWith(BASE + '/rest/v1/dealer_manufacturers')) return res(200, page(u, ACCOUNTS));
@@ -190,6 +191,32 @@ const writes = w => w.calls.filter(c => c.m !== 'GET' && !c.u.includes('/rpc/') 
     assert.strictEqual(s.list.find(x => x.outcome === 'different').strict, 'wja');
   });
 
+  await t('shadow keeps SOURCE LANES apart (MI-1a rule): sales-report lines vs commission lines (incl. legacy no-source rows) vs other', () => {
+    const W1 = { customer_name: 'Wilbur Brothers Healthcare Pharmacy', customer_ref: 'wilburbros', ship_zip: '47670', ship_city: 'Princeton', ship_state: 'IN', dealer_id: 'wpr', period: '2026-07-01' };
+    const hist = [];
+    for (let i = 0; i < 143; i++) hist.push(Object.assign({ id: i + 1, invoice_no: 'S' + (i % 50), amount: 10, source: 'sales_report', external_ref: 'strongback-mobility|S|' + i }, W1));
+    for (let i = 0; i < 12; i++) hist.push(Object.assign({ id: 500 + i, invoice_no: 'C' + i, amount: 5, source: 'commission', external_ref: null }, W1));
+    for (let i = 0; i < 5; i++) hist.push(Object.assign({ id: 600 + i, invoice_no: 'L' + i, amount: 5, source: null, external_ref: null }, W1));     // legacy commission lane
+    hist.push(Object.assign({ id: 700, invoice_no: 'X1', amount: 1, source: null, external_ref: 'portal|X1' }, W1));                                   // neither lane
+    const s = RV.shadow(hist, { matcher });
+    assert.deepStrictEqual([s.by_lane.sales_report.lines, s.by_lane.commission.lines, s.by_lane.other.lines], [143, 17, 1]);
+    assert.strictEqual(s.by_lane.sales_report.orders, 50, 'sales-report lines grouped into their own orders only');
+    assert.strictEqual(s.by_lane.commission.orders, 17);
+    assert.strictEqual(s.lines, 161); assert.strictEqual(s.same, 68);
+    assert.ok(Object.values(s.by_lane).every(L => L.different === 0));
+    assert.strictEqual(RV.laneOf({ source: 'sales_report', external_ref: null }), 'sales_report');
+    assert.strictEqual(RV.laneOf({ source: 'commission', external_ref: 'x' }), 'commission');
+    assert.strictEqual(RV.laneOf({}), 'commission'); assert.strictEqual(RV.laneOf({ source: null, external_ref: 'x' }), 'other');
+  });
+  await t('shadow: the SAME invoice in both lanes is two transactions, never merged; booked to different branches = a lane disagreement', () => {
+    const base = { invoice_no: 'Q1', customer_name: 'Wilbur Brothers Healthcare Pharmacy', customer_ref: 'wilburbros', ship_zip: '47670', ship_city: 'Princeton', ship_state: 'IN', amount: 10, period: '2026-06-01' };
+    const s = RV.shadow([Object.assign({ id: 1, source: 'sales_report', external_ref: 'k', dealer_id: 'wpr' }, base), Object.assign({ id: 2, source: 'commission', dealer_id: 'whq' }, base)], { matcher });
+    assert.strictEqual(s.orders, 2); assert.strictEqual(s.mixed_history, 0, 'not one order booked two ways');
+    assert.strictEqual(s.by_lane.sales_report.same, 1); assert.strictEqual(s.by_lane.commission.different, 1);
+    assert.strictEqual(s.lane_disagreements, 1); assert.deepStrictEqual(s.lane_disagreement_list[0].booked, { sales_report: 'wpr', commission: 'whq' });
+    const d = s.list.find(x => x.outcome === 'different'); assert.strictEqual(d.lane, 'commission'); assert.strictEqual(d.booked, 'whq'); assert.deepStrictEqual(d.row_ids, [2]);
+  });
+
   console.log('\n— API —');
   await t('sign-in required; management only (rep / Relations / inactive refused)', async () => {
     const { m } = boot();
@@ -234,6 +261,37 @@ const writes = w => w.calls.filter(c => c.m !== 'GET' && !c.u.includes('/rpc/') 
     assert.strictEqual(p.mapping_ship_key, SH.shipKey(O(7200).reported)); assert.strictEqual(p.mapping_account_ref, 'wilburbros'); assert.strictEqual(p.reported.company, W.company);
     assert.strictEqual(r.body.order.status, 'corrected'); assert.strictEqual(r.body.report.counts.needs_review, 4); assert.strictEqual(r.body.next_order_key, 'o:7201');
     assert.deepStrictEqual(writes(w), []);
+  });
+  await t('Remember needs the order\'s account number on record for the chosen family — the order itself can still be corrected', async () => {
+    // an order with no account number
+    const csv = CSV.replace(/\r\n$/, '') + '\r\n' + line(Object.assign({}, W, { n: 7300, user: '', sname: 'Wilbur Brothers', saddr: '9 New Plaza', scity: 'Evansville', sstate: 'IN', szip: '47999' })) + '\r\n';
+    const a = boot({ csv });
+    const r = await call(a.m, { action: 'correct', source_id: 8, order_key: 'o:7300', dealer_id: 'wja', reason: 'new store', expected_version: 0, remember: true }, { token: 'pres' });
+    assert.strictEqual(r.status, 422); assert.strictEqual(r.body.error, 'shipto_no_account'); assert.strictEqual(a.w.rpcs.length, 0);
+    const rep = await call(a.m, { action: 'report', source_id: 8 }, { token: 'pres' });
+    assert.deepStrictEqual(rep.body.orders.find(x => x.order_key === 'o:7300').remember_roots, []);
+    const ok = await call(a.m, { action: 'correct', source_id: 8, order_key: 'o:7300', dealer_id: 'wja', reason: 'new store', expected_version: 0 }, { token: 'pres' });
+    assert.strictEqual(ok.status, 200); assert.strictEqual(a.w.rpcs[0].p.remember, false); assert.strictEqual(a.w.mappings.length, 0);
+    // an account number on record for ANOTHER family (Wilbur's number, Boston chosen with confirmation)
+    const b = boot();
+    const r2 = await call(b.m, { action: 'correct', source_id: 8, order_key: 'o:7200', dealer_id: 'bos', reason: 'drop ship', expected_version: 0, remember: true, confirm_outside_family: true }, { token: 'pres' });
+    assert.strictEqual(r2.status, 422); assert.strictEqual(r2.body.error, 'shipto_account_family'); assert.strictEqual(b.w.rpcs.length, 0);
+    const r3 = await call(b.m, { action: 'report', source_id: 8 }, { token: 'pres' });
+    assert.deepStrictEqual(r3.body.orders.find(x => x.order_key === 'o:7200').remember_roots, ['whq']);
+    // the database refusals pass through too
+    for (const code of ['shipto_no_account', 'shipto_account_family', 'shipto_account_mismatch']) {
+      const c = boot({ rpc: () => ({ status: 400, body: { message: code + ': no' } }) });
+      const rr = await call(c.m, { action: 'correct', source_id: 8, order_key: 'o:7200', dealer_id: 'wja', reason: 'abc', expected_version: 0, remember: true }, { token: 'pres' });
+      assert.strictEqual(rr.status, 422, code); assert.strictEqual(rr.body.error, code);
+    }
+  });
+  await t('a mapping saved for ANOTHER family is never reused by the API (needs review, mapping_unverified)', async () => {
+    const key = SH.shipKey(O(7200).reported);
+    for (const mp of [{ scope: 'corporate', dealer_id: 'bos' }, { scope: 'branch', dealer_id: 'tb2' }]) {
+      const { m } = boot({ mappings: [Object.assign({ id: 7, account_ref: 'wilburbros', ship_key: key, retired_at: null }, mp)] });
+      const o = (await call(m, { action: 'report', source_id: 8 }, { token: 'pres' })).body.orders.find(x => x.order_key === 'o:7200');
+      assert.deepStrictEqual([o.status, o.reason, o.dealer_id], ['needs_review', 'mapping_unverified', null]);
+    }
   });
   await t('a branch outside the matched family needs an explicit confirmation (409 first)', async () => {
     const { w, m } = boot();
@@ -290,6 +348,8 @@ const writes = w => w.calls.filter(c => c.m !== 'GET' && !c.u.includes('/rpc/') 
       { id: 1, invoice_no: 'A3', customer_name: 'Wilbur Brothers Healthcare Pharmacy', customer_ref: 'wilburbros', ship_zip: '47546', ship_city: 'Jasper', dealer_id: 'wpr', amount: 30, period: '2026-07-01' }] });
     const r = await call(m, { action: 'shadow', manufacturer: 'strongback-mobility' }, { token: 'pres' });
     assert.strictEqual(r.status, 200); assert.strictEqual(r.body.shadow.different, 1); assert.strictEqual(r.body.read_only, true);
+    assert.ok(w.calls.some(c => c.u.includes('/rest/v1/monthly_sales') && /select=[^&]*source,external_ref/.test(c.u)), 'reads the lane columns');
+    assert.ok(r.body.shadow.by_lane && r.body.shadow.by_lane.commission.different === 1, 'a no-source, no-ref row is the commission lane');
     assert.deepStrictEqual(w.calls.filter(c => c.m !== 'GET'), []);
   });
   console.log(`\nshipto-review: ${pass} passed, ${fail} failed`);

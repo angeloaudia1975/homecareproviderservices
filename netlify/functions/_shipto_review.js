@@ -49,6 +49,14 @@ function orderFingerprint(lines) {
   return crypto.createHash("sha256").update(JSON.stringify(lines.map(l => [l.line, l.raw]))).digest("hex").slice(0, 32);
 }
 
+// The families (root dealer ids) an order's account number belongs to for this manufacturer; empty = nothing can be
+// remembered for this order (no account number, or one HCPS has no record of).
+function rememberRoots(matcher, reported) {
+  const ref = nref(reported && reported.account_ref);
+  if (!ref || !SH.shipKey(reported) || !matcher || typeof matcher.accountRoots !== "function") return [];
+  return [...matcher.accountRoots(ref)];
+}
+
 /* rows: canonical rows · ctx: { matcher (SH.makeMatcher), mappings:[…this manufacturer…], zipmap, corrections:[…this report…] }
    → { status:"ready"|"held"|"empty", counts, totals, orders:[…] } */
 function buildReview(rows, ctx) {
@@ -62,7 +70,10 @@ function buildReview(rows, ctx) {
     const cands = ctx.matcher ? ctx.matcher.candidates(reported) : [];
     const base = { order_key: o.order_key, order_number: o.order_number, lines: o.lines.length, file_lines: o.lines.map(l => l.line),
       amount, date: String(o.lines[0].date || "").trim(), reported, fingerprint: fp, ship_key: SH.shipKey(reported),
-      candidates: cands.map(c => ({ dealer_id: c.id, name: c.business_name || null, branch: !!c.parent_id, city: c.city || null, state: c.state || null, zip: c.zip || null, address: c.address || null })) };
+      candidates: cands.map(c => ({ dealer_id: c.id, name: c.business_name || null, branch: !!c.parent_id, root: c.parent_id || c.id, city: c.city || null, state: c.state || null, zip: c.zip || null, address: c.address || null })),
+      // A choice may be REMEMBERED (reused for later orders) only with an account number that this manufacturer's
+      // records tie to the chosen dealer's family, and a ship-to key — rememberRoots lists those families.
+      remember_roots: rememberRoots(ctx.matcher, reported) };
     const cor = latest.get(o.order_key);
     if (cor) {
       if (cor.order_fingerprint !== fp) return Object.assign(base, { status: "needs_review", reason: "correction_stale", correction: cor, dealer_id: null, basis: null, suggestions: [] });
@@ -70,7 +81,8 @@ function buildReview(rows, ctx) {
     }
     if (mixed) return Object.assign(base, { status: "needs_review", reason: "mixed_lines", dealer_id: null, basis: null, suggestions: [] });
     if (!cands.length) return Object.assign(base, { status: "needs_review", reason: "no_dealer_match", dealer_id: null, basis: null, suggestions: [] });
-    const r = SH.resolveBranch(cands, reported, { mode: "strict", mappings: ctx.mappings || [], zipmap: ctx.zipmap || null, rootOf: ctx.matcher && ctx.matcher.rootOf });
+    const r = SH.resolveBranch(cands, reported, { mode: "strict", mappings: ctx.mappings || [], zipmap: ctx.zipmap || null,
+      rootOf: ctx.matcher && ctx.matcher.rootOf, accountRoots: ctx.matcher && ctx.matcher.accountRoots });
     if (r.review || !r.dealer_id) return Object.assign(base, { status: "needs_review", reason: r.reason || "weak_evidence", dealer_id: null, basis: null, suggestions: r.suggestions || [] });
     return Object.assign(base, { status: "resolved", dealer_id: r.dealer_id, basis: r.basis, mapping_id: r.mapping_id || null, suggestions: [] });
   });
@@ -102,33 +114,58 @@ function correctedCsv(headers, rows, review, nameOf) {
 }
 
 /* Shadow validation against HISTORY (read-only): orders already in monthly_sales, with the branch HCPS booked them to
-   (manual imports, incl. hand-corrected reports), run through the strict resolver as the automated path would.
-   history rows: { invoice_no, customer_name, customer_ref, ship_name?, ship_address?, ship_city, ship_state, ship_zip, dealer_id, amount, period }
-   → { same, held, different, unmatched, mixed_history, orders:[…] }. "different" must be zero before automation. */
+   (manual imports, incl. hand-corrected reports), run through the strict resolver as the automated path would. The
+   booked branch is the BASELINE; nothing is ever written.
+   Source lanes are kept apart (Angelo, 2026-10-11 22:09) with the MI-1a rule (hcps_ms_is_commission_lane):
+     sales_report  source = 'sales_report'
+     commission    source = 'commission', or legacy rows with no source AND no external_ref
+     other         anything else
+   A commission line is never counted as a sales-report transaction; each lane has its own counts, and an order that
+   appears in two lanes booked to different branches is reported as a lane disagreement.
+   history rows: { invoice_no, customer_name, customer_ref, ship_*, dealer_id, amount, period, source, external_ref }
+   → { orders, same, held, different, unmatched_history, mixed_history, by_lane:{…}, lane_disagreements, list:[…] }.
+   "different" must be zero before automation. */
+const LANES = ["sales_report", "commission", "other"];
+function laneOf(h) {
+  const src = h.source == null ? null : String(h.source);
+  if (src === "sales_report") return "sales_report";
+  if (src === "commission" || (src == null && (h.external_ref == null))) return "commission";
+  return "other";
+}
 function shadow(history, ctx) {
   const rows = (history || []).map((h, i) => ({ line: i + 1, raw: [], order_number: h.invoice_no || "", company: h.customer_name || "", account_ref: h.customer_ref || "",
     ship_name: h.ship_name || "", ship_address: h.ship_address || "", ship_city: h.ship_city || "", ship_state: h.ship_state || "", ship_zip: h.ship_zip || "",
-    line_amount: h.amount, date: h.period || "", _dealer: h.dealer_id || null, _period: String(h.period || "").slice(0, 7) }));
+    line_amount: h.amount, date: h.period || "", _dealer: h.dealer_id || null, _period: String(h.period || "").slice(0, 7), _lane: laneOf(h), _id: h.id == null ? null : h.id }));
   const m = new Map();
-  for (const r of rows) { const k = (r._period || "") + "|" + (String(r.order_number).trim() || "l" + r.line); (m.get(k) || m.set(k, []).get(k)).push(r); }
-  const res = { orders: 0, same: 0, held: 0, different: 0, unmatched_history: 0, mixed_history: 0, held_reasons: {}, list: [] };
+  for (const r of rows) { const k = r._lane + "|" + (r._period || "") + "|" + (String(r.order_number).trim() || "l" + r.line); (m.get(k) || m.set(k, []).get(k)).push(r); }
+  const blank = () => ({ lines: 0, orders: 0, same: 0, held: 0, different: 0, unmatched_history: 0, mixed_history: 0, held_reasons: {} });
+  const res = Object.assign(blank(), { by_lane: {}, lane_disagreements: 0, list: [] });
+  for (const l of LANES) res.by_lane[l] = blank();
+  const bookedByTxn = new Map();      // period|invoice → { lane → booked dealer }
   for (const [k, lines] of m) {
-    res.orders++;
+    const lane = lines[0]._lane, L = res.by_lane[lane];
+    L.orders++; L.lines += lines.length; res.orders++; res.lines += lines.length;
     const booked = new Set(lines.map(l => l._dealer || ""));
     const r = buildReview(lines, { matcher: ctx.matcher, mappings: ctx.mappings, zipmap: ctx.zipmap }).orders;
     const strict = r.length === 1 ? r[0] : null;
     const was = booked.size === 1 ? [...booked][0] : null;
-    const row = { key: k, company: lines[0].company, account_ref: lines[0].account_ref, ship_zip: lines[0].ship_zip, ship_city: lines[0].ship_city,
-      lines: lines.length, amount: r2(lines.reduce((s, l) => s + (num(l.line_amount) || 0), 0)), booked: was, strict: strict ? strict.dealer_id : null,
-      basis: strict ? (strict.basis || strict.reason) : "split" };
-    if (booked.size > 1) { res.mixed_history++; row.outcome = "mixed_history"; }
-    else if (!was) { res.unmatched_history++; row.outcome = "unmatched_history"; }
-    else if (!strict || strict.status === "needs_review") { res.held++; row.outcome = "held"; const why = strict ? strict.reason : "split"; res.held_reasons[why] = (res.held_reasons[why] || 0) + 1; }
-    else if (strict.dealer_id === was) { res.same++; row.outcome = "same"; }
-    else { res.different++; row.outcome = "different"; }
-    if (row.outcome !== "same") res.list.push(row);
+    const row = { key: k, lane, period: lines[0]._period, invoice: String(lines[0].order_number || "").trim() || null, company: lines[0].company,
+      account_ref: lines[0].account_ref, ship_zip: lines[0].ship_zip, ship_city: lines[0].ship_city, lines: lines.length,
+      amount: r2(lines.reduce((s, l) => s + (num(l.line_amount) || 0), 0)), booked: was, strict: strict ? strict.dealer_id : null,
+      basis: strict ? (strict.basis || strict.reason) : "split", row_ids: lines.map(l => l._id).filter(x => x != null) };
+    let outcome;
+    if (booked.size > 1) outcome = "mixed_history";
+    else if (!was) outcome = "unmatched_history";
+    else if (!strict || strict.status === "needs_review") { outcome = "held"; const why = strict ? strict.reason : "split";
+      L.held_reasons[why] = (L.held_reasons[why] || 0) + 1; res.held_reasons[why] = (res.held_reasons[why] || 0) + 1; }
+    else outcome = strict.dealer_id === was ? "same" : "different";
+    row.outcome = outcome; L[outcome]++; res[outcome]++;
+    if (outcome !== "same") res.list.push(row);
+    if (row.invoice && was) { const t = row.period + "|" + row.invoice; (bookedByTxn.get(t) || bookedByTxn.set(t, {}).get(t))[lane] = was; }
   }
+  res.lane_disagreement_list = [];
+  for (const [t, by] of bookedByTxn) { const vals = Object.values(by); if (vals.length > 1 && new Set(vals).size > 1) { res.lane_disagreements++; res.lane_disagreement_list.push({ txn: t, booked: by }); } }
   return res;
 }
 
-module.exports = { buildReview, groupOrders, orderFingerprint, correctedCsv, shadow, lineAmount, SHIP_FIELDS, CSV_COLS };
+module.exports = { buildReview, groupOrders, orderFingerprint, correctedCsv, shadow, laneOf, rememberRoots, lineAmount, SHIP_FIELDS, CSV_COLS };
