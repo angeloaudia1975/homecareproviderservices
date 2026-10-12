@@ -2066,6 +2066,12 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   automatic HQ fallback for ambiguous multi-branch orders; shadow validation on Strongback order exports and Bemis's
   hand-corrected reports; the manual import workflow and every MI-1a protection preserved. Deliver implementation, tests
   and ONE consolidated rollout recommendation; no long planning documents or extra stop points.
+- **Capture fixes DEPLOYED + false exceptions cleared (2026-10-11 ~21:35 CT).** Netlify credits were restored; branch
+  `mi-b-capture-fixes` reconciled with main 3baa6c9 (Academy M3 only, no overlap), tests re-run (report-capture 29,
+  mi-b-capture.pg 38, mi-b-api 11, shipto 17, report-inventory 28, mi1b 46/28, mi1b-record8.pg 17, mi1c-api 29, mi1a-compat
+  16, Phase B mutants 38/38) → main 3b41b85, Netlify "Published". Items #3, #5, #7, #12 (Golden attached-email
+  exceptions, the only four open) resolved `ignore` (Not a report) with the reason naming the corrected rule; Needs
+  attention = 0; no record deleted. The record #8 correction SQL is on main as a FILE only — not run.
 - **Phase C BUILT on branch `mi-c-shipto` (2026-10-11; off `mi-b-capture-fixes`; NOT merged, NOT deployed, NO production
   SQL).** Migration `supabase/mi_c_shipto.sql` (sha256 015675d6…1f26; rollback `…_rollback.sql` fffaf539…, refuses while any
   decision exists): `mfr_shipto_corrections` (versioned, append-only overlay per order of a registered report: chosen
