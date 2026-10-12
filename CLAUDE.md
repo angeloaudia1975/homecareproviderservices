@@ -1477,6 +1477,38 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   window's photos); self-test 28 attempts per line. Planner: this enrichment's own published page is status "published"
   (not a live-page conflict) and counts with the Ready pages in previews. Tests: test/mcpublish.test.js,
   test/mc-publication.pg.test.js, test/mcpublish.ui.js, test/mcpublish.mutants.js (JS + SQL).
+  (y) **Approve Content & Images — Auto-Enrich PROPOSES, only the President DECIDES (RULE, Angelo 2026-10-12).** Bemis
+  publication #531 (Release D) went live with Auto-Enrich's photos on 7YA0AS100 / 7YR05310TSS / 7YE05310TSS / 7YA04505T
+  although Angelo meant to keep the originals: the Dealer Preview "Today/Proposed" toggle was only a view and recorded
+  nothing. Angelo rolled #531 back before finalizing (run #16, 2026-10-12; Bemis back at 3620a321933995db). The rule now:
+  · New stage **5 · Approve Content & Images** (Dealer Preview is 6, Publish & Verify 7). Per Ready page and area —
+    Title · Short description · Description · Features · Specs · Sizing · Warranty · Documents & videos · Category ·
+    Grouping · Images (main + gallery) · Option images (per SKU) — the Current Dealer View next to the proposal and an
+    explicit choice: Keep current / Use proposed / Edit; photos: keep the current dealer image / use this image (current,
+    suggested or uploaded) / no option-specific photo; the gallery picked photo by photo (tick, reorder, primary first,
+    duplicates flagged). Withheld promo art is never offered; an "upload" is only the President's own file in the page's
+    draft folder (never an Auto-Enrich /rehost/ copy).
+  · **NO SELECTION = KEEP CURRENT.** An undecided area publishes and previews as today's dealer view (page field empty →
+    the storefront shows the catalog's copy/photo); a suggested photo nobody picked can never reach a plan (also refused
+    by buildPlan: "a photo nobody approved would be published"). No "use proposed" fallback anywhere.
+  · A page is approved only when every area where current ≠ proposed carries an explicit choice (Keep current counts).
+    Review Issues ≠ approval: a page with no issue can be "Waiting for President Content Approval". A new grouping
+    (e.g. Assurance Round + Elongated on one card) publishes only after the President chooses it; Keep current grouping =
+    the page is NOT published (SKUs stay on today's cards).
+  · Selections are decisions of kind content_approval (append-only, latest per area/SKU wins, President only, open window
+    required, reason/who/window/basis recorded). Each carries a basis hash of what was on screen: if the proposal or the
+    current dealer view changes, the selection is stale and must be made again. An edit keeps the source's provenance.
+  · Dealer Preview views are "Current Dealer View" / "Approved New Dealer View" (renders ONLY recorded selections) with the
+    note "Preview only — switching views does not select content or images."
+  · Publish: only Ready + approved pages; the plan's "after" rows (content AND photos) are built from the selections; the
+    plan hash covers every content_approval decision — ANY selection change after the dry run invalidates the approval.
+    A kept current photo on a page that now has its own gallery is copied to live storage (same picture, live copy).
+  · Code: netlify/functions/_approval.js (pure); product-content actions approval_state (read) / approval_record
+    (President); _publish.js buildPlan(approvals, approved); SQL supabase/mc_release_d1_content_approval.sql (kind
+    content_approval; mfr_content_publish / rollback write and restore the approved content fields via
+    mfr_approved_content — 17 content columns, nothing else). Tests: test/mcapproval.test.js, test/mcapproval.ui.js,
+    test/mc-approval.pg.test.js, test/mcapproval.mutants.js (JS + SQL). Bemis restarts here with every selection empty
+    (= keep current); Angelo reviews alternatives himself. Do not republish or finalize Bemis until he says so.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.

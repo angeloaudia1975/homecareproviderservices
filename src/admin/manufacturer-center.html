@@ -50,7 +50,7 @@
  .sub2{background:#fbfcfe}
  tr.needrow td{background:#fffbeb}.needtxt{color:var(--amber);font-size:11.5px}
  td.facts{background:#fbfcfd}td.interp{background:#f8fbf8}
- .enstages{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin:12px 0}
+ .enstages{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin:12px 0}
  @media(max-width:900px){.enstages{grid-template-columns:repeat(2,1fr)}}
  .enst{background:#f7f9fc;border:1px solid var(--silver);border-radius:9px;padding:7px 9px;text-align:left;cursor:pointer;font-family:inherit}
  .enst b{display:block;font-size:12px;color:var(--ink)}.enst span{font-size:11px;color:var(--gray)}
@@ -74,6 +74,29 @@
  .pvthumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.pvthumbs img{width:54px;height:54px;object-fit:contain;border:1px solid #e3e8ef;border-radius:6px;cursor:pointer;background:#fff}
  .pvcart{background:#f7f9fc;border:1px solid #dfe6f0;border-radius:9px;padding:9px 11px;margin-top:8px;font-size:12.5px}
  .pvtog{display:inline-flex;border:1px solid var(--silver);border-radius:9px;overflow:hidden}.pvtog button{border:0;background:#fff;padding:6px 12px;font-family:inherit;cursor:pointer}.pvtog button.on{background:var(--ink);color:#fff}
+ /* Approve Content & Images (2026-10-12): Current Dealer View next to the proposal, area by area; nothing is chosen for you */
+ .apnote{background:#eef4ff;border:1px solid #c9d8f5;color:#1e3a6e;border-radius:9px;padding:8px 11px;font-size:12.5px;margin:8px 0}
+ .appages{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.appg{border:1px solid var(--silver);background:#fff;border-radius:9px;padding:7px 10px;text-align:left;cursor:pointer;font-family:inherit;max-width:100%}
+ .appg.on{border-color:var(--orange);background:#fff7ef}.appg b{display:block;font-size:12.5px;overflow-wrap:anywhere}.appg span{font-size:11px;color:var(--gray)}
+ .apcheck{display:flex;gap:5px;flex-wrap:wrap;margin:6px 0 10px}.apchip{font-size:11.5px;border-radius:12px;padding:3px 9px;border:1px solid var(--silver);background:#fff;max-width:100%;overflow-wrap:anywhere}
+ .apchip.ok{background:#eef8f1;border-color:#bfe3cf;color:#14532d}.apchip.wait{background:#fffbeb;border-color:#f3d9a4;color:#7a4b00}.apchip.stale{background:#fff3f3;border-color:#f5b5b5;color:#8a1c1c}
+ .aparea{border:1px solid #e3e8ef;border-radius:11px;padding:10px 12px;margin:10px 0;background:#fff;min-width:0}.aparea.done{border-left:4px solid #3aa76d}.aparea.todo{border-left:4px solid #e0a43a}
+ .aphead{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.aphead h4{margin:0;font-size:14px}
+ .apcols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin:8px 0}@media(max-width:760px){.apcols{grid-template-columns:1fr}}
+ .apcol{border:1px solid #edf0f5;border-radius:9px;padding:8px 10px;background:#fbfcfe;font-size:12.5px;line-height:1.45;min-width:0;overflow-wrap:anywhere}.apcol h5{margin:0 0 5px;font-size:11px;letter-spacing:.4px;text-transform:uppercase;color:var(--gray)}
+ .apcol.cur{background:#f7faf8}.apcol ul{margin:3px 0 0 16px;padding:0}
+ .apchoices{display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:12.5px}.apchoices label{display:inline-flex;gap:5px;align-items:center;font-weight:400;cursor:pointer}
+ .apedit textarea{width:100%;min-height:90px;font-family:inherit;font-size:12.5px}
+ .aparea input[type=file],.aparea input[type=text]{max-width:100%;box-sizing:border-box}
+ .apthumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin:6px 0}
+ .apimg{border:1px solid #e3e8ef;border-radius:9px;padding:5px;background:#fff;font-size:11px;position:relative;min-width:0}.apimg img{width:100%;aspect-ratio:1/1;object-fit:contain;display:block;border-radius:6px;background:#fff}
+ .apimg.sel{border-color:var(--orange);box-shadow:0 0 0 2px #ffd9b3}.apimg .tag{display:inline-block;font-size:10px;border-radius:5px;padding:1px 5px;margin:2px 2px 0 0;background:#eef1f6}
+ .apimg .tag.cur{background:#e7f6ec;color:#14532d}.apimg .tag.dup{background:#fff3f3;color:#8a1c1c}.apimg .ord{position:absolute;top:8px;left:8px;background:var(--orange);color:#fff;border-radius:999px;font-weight:700;font-size:11px;padding:1px 7px}
+ .apimg .ctl{display:flex;gap:4px;margin-top:4px;flex-wrap:wrap}.apimg .ctl button{font-size:11px;padding:2px 6px}
+ .apopt{display:grid;grid-template-columns:minmax(0,150px) minmax(0,110px) minmax(0,110px) minmax(0,1fr);gap:10px;align-items:start;border-top:1px solid #edf0f5;padding:8px 0}
+ @media(max-width:760px){.apopt{grid-template-columns:1fr 1fr}}
+ .apopt .pill,.aphead .pill{white-space:normal;max-width:100%}
+ .apopt img,.apopt .pvph{width:100%;aspect-ratio:1/1;object-fit:contain;border:1px solid #e3e8ef;border-radius:7px;background:#fff}
 </style><link rel="stylesheet" href="/admin/admin-shell.css"></head><body>
 <header id="ac-head"></header>
 <div class="wrap" id="wrap"><div class="msg">Loading…</div></div>
@@ -501,7 +524,7 @@ async function papi(body){ const h={"content-type":"application/json"}; if(TOKEN
   const r=await fetch(PAPI,{method:"POST",headers:h,body:JSON.stringify(body)});
   if(r.status===401){ gate(); throw new Error("unauthorized"); }
   const j=await r.json().catch(()=>({})); if(!r.ok||j.ok===false||j.error) { const e=new Error(j.message||j.error||("HTTP "+r.status)); e.status=r.status; e.body=j; throw e; } return j; }
-const ENRICH_STAGES=[["sources","1 · Manufacturer & Sources"],["products","2 · Products"],["auto","3 · Auto-Enrich"],["issues","4 · Review Issues"],["preview","5 · Dealer Preview"],["publish","6 · Publish & Verify"]];
+const ENRICH_STAGES=[["sources","1 · Manufacturer & Sources"],["products","2 · Products"],["auto","3 · Auto-Enrich"],["issues","4 · Review Issues"],["approve","5 · Approve Content & Images"],["preview","6 · Dealer Preview"],["publish","7 · Publish & Verify"]];
 const ST_PILL={ready:"p-pass",conflict:"p-fail",needs_grouping:"p-warn",needs_content:"p-warn",needs_image:"p-warn",needs_category:"p-warn",held_back:"p-adv",not_enriched:"p-adv"};
 function enWin(){ return EN&&EN.plan&&EN.plan.window; }
 function winBody(b){ const w=enWin(); return Object.assign({manufacturer:EN.slug}, w?{enrichment_window:{decision_id:w.id}}:{}, b); }
@@ -514,12 +537,15 @@ async function openEnrichment(slug, tab){
 async function enReload(){ try{ EN.plan=await papi({action:"enrich_plan",manufacturer:EN.slug}); }
   catch(e){ if(String(e.message)!=="unauthorized") $("#line").innerHTML=`<div class="card err">Product Enrichment could not load: ${esc(e.message)}</div>`; return; }
   if(!EN.tabPicked){ EN.tab=EN.plan.pages.some(p=>p.status!=="not_enriched")?"issues":"products"; EN.tabPicked=true; } enDraw(); }
-function enGo(t){ if(t==="sources"){ openLine(EN.slug); return; } EN.tab=t; enDraw(); }
+function enGo(t){ if(t==="sources"){ openLine(EN.slug); return; } EN.tab=t; enDraw(); if(t==="approve"&&!EN.ap&&!EN.apBusy) apLoad(); }
 function enDraw(){
   const P=EN.plan, l=LINES.find(x=>x.slug===EN.slug)||{}, notEnr=P.pages.filter(p=>p.status==="not_enriched").length;
   const issues=P.pages.reduce((n,p)=>n+p.issues.filter(i=>!i.pending).length,0);
   const held=P.pages.filter(p=>p.status==="held_back").reduce((n,p)=>n+p.issues.length,0);
-  const sub={sources:"Done",products:P.pages.length+" pages",auto:notEnr?notEnr+" to go":(P.ready+" ready"),issues:(issues-held)?(issues-held)+" open":(held?held+" held for sources":"none open"),preview:EN.pv?(EN.pv.pass?"Previewed — all checks pass":"Previewed — see checks"):"Read-only",publish:pubState()};
+  const apS=EN.ap?EN.ap.pages.filter(p=>p.areas):null;
+  const sub={sources:"Done",products:P.pages.length+" pages",auto:notEnr?notEnr+" to go":(P.ready+" ready"),issues:(issues-held)?(issues-held)+" open":(held?held+" held for sources":"none open"),
+    approve:apS?(apS.filter(p=>p.status==="approved").length+" of "+apS.length+" approved"):(P.ready?P.ready+" page"+(P.ready===1?"":"s")+" to approve":"Nothing Ready"),
+    preview:EN.pv?(EN.pv.pass?"Previewed — all checks pass":"Previewed — see checks"):"Read-only",publish:pubState()};
   const stages=ENRICH_STAGES.map(([k,n])=>`<button class="enst ${EN.tab===k?'on':''}" onclick="enGo('${k}')"><b>${esc(n)}</b><span>${esc(sub[k]||'')}</span></button>`).join("");
   $("#line").innerHTML=`<div class="card"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">${esc(l.name||EN.slug)} — Product Enrichment</h2>
     ${P.frozen?pill("p-frozen","Frozen · prices locked"):""}<span style="flex:1"></span>
@@ -546,7 +572,7 @@ async function enOpenWindow(dry){
     toast("Enrichment window #"+j.window.id+" opened"); EN.winDry=null; await enReload(); }
   catch(e){ toast("Not opened: "+e.message); }
 }
-function enBody(){ return EN.tab==="products"?enProducts():(EN.tab==="auto"?enAuto():(EN.tab==="preview"?enPreview():(EN.tab==="publish"?enPublish():enIssues()))); }
+function enBody(){ return EN.tab==="products"?enProducts():(EN.tab==="auto"?enAuto():(EN.tab==="approve"?enApprove():(EN.tab==="preview"?enPreview():(EN.tab==="publish"?enPublish():enIssues())))); }
 function unitOf(s){ return s.case_qty>1?("Case of "+s.case_qty):(s.uom||"Each"); }
 function enProducts(){
   const P=EN.plan;
@@ -606,8 +632,8 @@ function enIssues(){
     ${open.map(card).join('')||'<p class="ok"><b>No open issues.</b></p>'}
     ${ready.length?`<div class="card" style="background:#f3fbf6;border-color:#bfe3cf"><b>${ready.length} page${ready.length===1?'':'s'} ready — nothing to review:</b> ${ready.map(p=>esc(p.name)).join(' · ')}</div>`:''}
     ${held.length?`<div class="card sub2"><b>Held back for source review (${held.length}) — not blocking; issues kept open:</b>${held.map(p=>`<div style="margin-top:6px"><b>${esc(p.name)}</b> <span class="mut">· its SKUs keep their current catalog cards</span><ul style="margin:3px 0 0 18px;font-size:12.5px">${p.issues.map(i=>`<li>${esc(i.title)}</li>`).join('')}</ul></div>`).join('')}</div>`:''}
-    ${(!open.length&&!notEnr.length)?`<div style="margin-top:12px"><button class="btn" onclick="enGo('preview')">Next: Dealer Preview →</button></div>`:''}
-    <p class="mut" style="font-size:12px">Dealer Preview (Release C) is read-only: it shows what dealers would see if the Ready pages were published. Unusual cases: <a href="/admin/product-content-review.html?manufacturer=${encodeURIComponent(EN.slug)}" target="_blank">Open Advanced Editor</a> for that page, then come back.</p>`;
+    ${(!open.length&&!notEnr.length)?`<div style="margin-top:12px"><button class="btn" onclick="enGo('approve')">Next: Approve Content &amp; Images →</button></div>`:''}
+    <p class="mut" style="font-size:12px">A page with no open issue still needs your content &amp; image approval before it can be published: Auto-Enrich only proposes. Unusual cases: <a href="/admin/product-content-review.html?manufacturer=${encodeURIComponent(EN.slug)}" target="_blank">Open Advanced Editor</a> for that page, then come back.</p>`;
 }
 function enFind(id){ const [pk,ix]=id.split("__"); const p=EN.plan.pages.find(x=>x.page_key===pk); return {p, i:p&&p.issues.filter(x=>!x.pending)[+ix]}; }
 function enPick(id, choice){
@@ -642,13 +668,164 @@ async function enUpload(id){
     await papi(winBody({action:"enrich_set_image",page_key:p.page_key,code,url:up.url})); toast("Photo added to the draft"); await enReload(); }
   catch(e){ toast("Not uploaded: "+e.message); }
 }
+/* ── APPROVE CONTENT & IMAGES (Angelo 2026-10-12). Auto-Enrich proposes; only the President decides what becomes
+   dealer-facing. Per Ready page and area: the Current Dealer View next to the proposal, and an explicit choice — Keep
+   current · Use proposed · Edit; photos chosen one by one (keep the current dealer image · use this image · upload ·
+   none). NO SELECTION = KEEP CURRENT: nothing proposed is ever taken for you. Every choice is recorded (append-only)
+   with what was on screen; a page is approved only when every area that differs carries your choice. */
+const AP_LABEL={keep_current:"Keep current",use_proposed:"Use proposed",edit:"Edit",custom:"Choose photos",use_image:"Use this image",none:"No option-specific photo"};
+async function apLoad(keep){
+  if(EN.apBusy) return; EN.apBusy="Reading the current dealer view and the proposals…"; enDraw();
+  try{ EN.ap=await papi({action:"approval_state",manufacturer:EN.slug}); const rd=EN.ap.pages.filter(p=>p.areas);
+    if(!keep||!rd.some(p=>p.page_key===EN.apPage)) EN.apPage=(rd[0]||{}).page_key||null; EN.apPend={}; EN.apGal={}; }
+  catch(e){ toast("Approval screen not loaded: "+e.message); }
+  EN.apBusy=null; enDraw();
+}
+function apPg(){ return EN.ap&&EN.ap.pages.find(p=>p.page_key===EN.apPage); }
+function apStatusPill(p){ return p.status==="approved"?pill("p-pass","Approved — ready to publish"):(p.status==="kept_as_today"?pill("p-adv","Kept as today — not published"):pill("p-warn","Waiting for President Content Approval")); }
+function apVal(v,kind){
+  if(v==null||v===""||(Array.isArray(v)&&!v.length)) return '<span class="mut">— none —</span>';
+  if(kind==="features") return `<ul>${v.map(x=>`<li>${esc(typeof x==="string"?x:JSON.stringify(x))}</li>`).join('')}</ul>`;
+  if(kind==="specs") return `<table style="font-size:12px"><tbody>${v.map(x=>`<tr><td><b>${esc(x&&x.label||'')}</b></td><td>${esc(x&&x.value||'')}</td></tr>`).join('')}</tbody></table>`;
+  if(kind==="sizing") return (v.rows&&v.rows.length?`<div>${v.rows.length} sizing row(s)</div>`:'')+(v.note?`<div>${esc(v.note)}</div>`:'')||'<span class="mut">— none —</span>';
+  if(kind==="documents") return [].concat((v.documents||[]).map(d=>`<div>📄 <a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.label||String(d.url).split('/').pop())}</a></div>`),
+    (v.videos||[]).map(x=>{ const u=typeof x==="string"?x:(x&&x.url); return `<div>▶ <a href="${esc(u)}" target="_blank" rel="noopener">${esc(String(u).replace(/^https?:\/\//,'').slice(0,60))}</a></div>`; }),
+    v.source_url?[`<div>🔗 Manufacturer page: <a href="${esc(v.source_url)}" target="_blank" rel="noopener">${esc(String(v.source_url).replace(/^https?:\/\/(www\.)?/,'').slice(0,60))}</a></div>`]:[]).join('')||'<span class="mut">— none —</span>';
+  if(kind==="category") return esc([v.category,v.subcategory].filter(Boolean).join(' › '))||'<span class="mut">— none —</span>';
+  return esc(String(v));
+}
+function apSide(v,kind){ if(!v) return ''; if(v.all!==undefined) return apVal(v.all,kind);
+  return Object.keys(v.by_sku||{}).map(c=>`<div style="margin-bottom:5px"><code>${esc(c)}</code><div>${apVal(v.by_sku[c],kind)}</div></div>`).join(''); }
+function apChosen(a){ return a.selected?`${pill("p-pass","✓ "+(AP_LABEL[a.choice]||a.choice))}<span class="mut" style="font-size:11px">recorded${a.by?' by '+esc(a.by):''}${a.decision?' · #'+a.decision:''}</span>`:(a.same?pill("p-pass","✓ No difference"):(a.stale?pill("p-fail","Changed since you chose — choose again"):pill("p-warn","Not chosen — dealers keep today's"))); }
+function apRadios(id,a){ const cur=(EN.apPend[id]&&EN.apPend[id].choice)||(a.selected?a.choice:null);
+  return a.choices.map(c=>`<label><input type="radio" name="ap_${esc(id)}" value="${esc(c)}" ${cur===c?'checked':''} onchange="apPick('${esc(id)}','${esc(c)}')"> ${esc(AP_LABEL[c]||c)}</label>`).join(''); }
+function apPick(id,choice){ EN.apPend[id]=Object.assign({},EN.apPend[id]||{},{choice}); $("#enbody").innerHTML=enApprove(); }
+function apTextArea(p,a){
+  const kind=a.id, id=p.page_key+"__"+a.id, pend=EN.apPend[id]||{}, cur=pend.choice||(a.selected?a.choice:null);
+  const propText=v=>v&&v.all!==undefined?v.all:Object.values((v&&v.by_sku)||{})[0];
+  let edit='';
+  if(cur==="edit"){
+    const pv=propText(a.proposed), prev=a.selected&&a.choice==="edit"?a.value:null;
+    if(kind==="features") edit=`<div class="apedit"><div class="mut" style="font-size:11.5px">One feature per line.</div><textarea id="ape_${esc(id)}">${esc(((prev&&prev.items)||pv||[]).join('\n'))}</textarea></div>`;
+    else if(kind==="specs") edit=`<div class="apedit"><div class="mut" style="font-size:11.5px">One spec per line: <code>Label: value</code></div><textarea id="ape_${esc(id)}">${esc(((prev&&prev.items)||pv||[]).map(x=>(x.label||'')+': '+(x.value||'')).join('\n'))}</textarea></div>`;
+    else if(kind==="documents"){ const d=pv||{documents:[],videos:[]}; const keepD=prev?prev.documents:(d.documents||[]).map(x=>x.url), keepV=prev?prev.videos:(d.videos||[]).map(x=>typeof x==="string"?x:x.url);
+      edit=`<div class="apedit">${(d.documents||[]).map(x=>`<label style="display:block"><input type="checkbox" class="apdoc_${esc(id)}" value="${esc(x.url)}" ${keepD.indexOf(x.url)>=0?'checked':''}> 📄 ${esc(x.label||x.url)}</label>`).join('')}${(d.videos||[]).map(x=>{ const u=typeof x==="string"?x:x.url; return `<label style="display:block"><input type="checkbox" class="apvid_${esc(id)}" value="${esc(u)}" ${keepV.indexOf(u)>=0?'checked':''}> ▶ ${esc(u)}</label>`; }).join('')}</div>`; }
+    else if(kind==="category") edit=`<div class="apedit"><input type="text" id="ape_${esc(id)}" placeholder="Subcategory dealers browse (e.g. Toilet Seats)" value="${esc((prev&&prev.text)||((pv||{}).subcategory)||'')}" style="width:100%"></div>`;
+    else if(kind==="sizing") edit=`<div class="apedit"><div class="mut" style="font-size:11.5px">The sizing note (the table stays as proposed).</div><textarea id="ape_${esc(id)}">${esc((prev&&prev.text)||((pv||{}).note)||'')}</textarea></div>`;
+    else { const t=(prev&&prev.text)||(kind==="title"?(a.proposed&&a.proposed.card)||'':(typeof pv==="string"?pv:'')); edit=`<div class="apedit"><textarea id="ape_${esc(id)}" ${kind==="title"||kind==="tagline"||kind==="warranty"?'style="min-height:44px"':''}>${esc(t)}</textarea></div>`; }
+    edit+=`<div class="mut" style="font-size:11.5px;margin-top:3px">Your text becomes the approved version; the source that supported the facts stays recorded with it${a.provenance?` (${esc(typeof a.provenance==='string'?a.provenance:(a.provenance.source||a.provenance.url||JSON.stringify(a.provenance)).slice(0,90))})`:''}.</div>`;
+  }
+  const curHtml=kind==="title"?(a.current.card?esc(a.current.card):`<span class="mut">No single card today: ${(a.cards_today||[]).map(esc).join(' · ')}</span>`)+`<div class="mut" style="font-size:11.5px;margin-top:3px">Options: ${Object.keys(a.current.options||{}).map(c=>esc(c+' — '+a.current.options[c])).join(' · ')}</div>`:apSide(a.current,kind);
+  const propHtml=kind==="title"?esc(a.proposed.card||'')+`<div class="mut" style="font-size:11.5px;margin-top:3px">Options: ${Object.keys(a.proposed.options||{}).map(c=>esc(c+' — '+a.proposed.options[c])).join(' · ')}</div>`:apSide(a.proposed,kind);
+  return `<div class="aparea ${a.approved?'done':'todo'}" id="ap_${esc(id)}"><div class="aphead"><h4>${esc(a.label)}</h4>${apChosen(a)}</div>
+    ${a.note?`<div class="mut" style="font-size:12px;margin-top:4px">${esc(a.note)}</div>`:''}
+    <div class="apcols"><div class="apcol cur"><h5>Current dealer view</h5>${curHtml}</div><div class="apcol"><h5>Proposed by Auto-Enrich</h5>${propHtml}</div></div>
+    ${a.same?'':`<div class="apchoices">${apRadios(id,a)}<span style="flex:1"></span><button class="btn" onclick="apSave('${esc(id)}')" ${cur?'':'disabled'}>Save choice</button></div>${edit}`}</div>`;
+}
+function apGrouping(p,a){ const id=p.page_key+"__grouping", cur=(EN.apPend[id]&&EN.apPend[id].choice)||(a.selected?a.choice:null), D=a.display||{today:[],proposed:[]};
+  return `<div class="aparea ${a.approved?'done':'todo'}" id="ap_${esc(id)}"><div class="aphead"><h4>Grouping</h4>${apChosen(a)}</div>
+    <div class="apcols"><div class="apcol cur"><h5>Current dealer view</h5>${D.today.map(k=>`<div>${esc(k.name)} <span class="mut">(${k.codes.map(esc).join(', ')})</span></div>`).join('')}</div>
+      <div class="apcol"><h5>Proposed by Auto-Enrich</h5>${D.proposed.map(k=>`<div>One card: ${esc(k.name)}</div><div class="mut">Options: ${(k.options||[]).map(o=>esc(o.label||o.code)+' ('+esc(o.code)+')').join(' · ')}</div>`).join('')}</div></div>
+    ${a.same?'':`<div class="mut" style="font-size:12px">${esc(a.note||'')}</div><div class="apchoices">${apRadios(id,a)}<span style="flex:1"></span><button class="btn" onclick="apSave('${esc(id)}')" ${cur?'':'disabled'}>Save choice</button></div>`}</div>`; }
+function apTile(p,c,sel,extra){ const n=p.candidates.findIndex(x=>x.url===c.url)+1, dupOf=c.duplicate_of?p.candidates.findIndex(x=>x.url===c.duplicate_of)+1:0;
+  return `<div class="apimg ${sel?'sel':''}">${extra&&extra.ord?`<span class="ord">${extra.ord}</span>`:''}<img src="${esc(c.display)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;pvph&quot;>No image</div>'">
+    <div>#${n} ${c.kinds.map(k=>`<span class="tag ${k==='current'?'cur':''}">${esc(k==='current'?'current dealer':(k==='proposed'?'suggested':'uploaded'))}</span>`).join('')}${dupOf?`<span class="tag dup">same picture as #${dupOf}</span>`:''}</div>${extra&&extra.ctl?`<div class="ctl">${extra.ctl}</div>`:''}</div>`; }
+function apGalleryArea(p,a){
+  const id=p.page_key+"__images", cur=(EN.apPend[id]&&EN.apPend[id].choice)||(a.selected?a.choice:null);
+  const byUrl=u=>p.candidates.find(c=>c.url===u)||{url:u,display:u,kinds:[]};
+  if(cur==="custom"&&!EN.apGal[p.page_key]) EN.apGal[p.page_key]=(a.selected&&a.choice==="custom"&&a.value?a.value.gallery.map(g=>g.url):[]);
+  const G=EN.apGal[p.page_key]||[];
+  const curTiles=a.current.gallery.map(u=>apTile(p,byUrl(u),false)).join('')||'<span class="mut">No photo</span>';
+  const propTiles=a.proposed.gallery.map(u=>apTile(p,byUrl(u),false)).join('')||'<span class="mut">No photo</span>';
+  let picker='';
+  if(cur==="custom"){
+    picker=`<div class="dry" style="margin-top:8px"><b>Your gallery</b> <span class="mut" style="font-size:12px">— tick photos to include; #1 is the main photo; use ◀ ▶ to reorder. Only the photos you tick are ever published.</span>
+      <div class="apthumbs">${G.map((u,i)=>apTile(p,byUrl(u),true,{ord:i+1,ctl:`<button class="btn ghost" onclick="apGalMove('${esc(p.page_key)}',${i},-1)" ${i?'':'disabled'}>◀</button><button class="btn ghost" onclick="apGalMove('${esc(p.page_key)}',${i},1)" ${i<G.length-1?'':'disabled'}>▶</button><button class="btn ghost" onclick="apGalToggle('${esc(p.page_key)}',${p.candidates.findIndex(c=>c.url===u)})">Remove</button>`})).join('')||'<span class="mut">Nothing ticked yet.</span>'}</div>
+      <b style="font-size:12.5px">All photos for this page</b><div class="apthumbs">${p.candidates.map((c,ci)=>apTile(p,c,G.indexOf(c.url)>=0,{ctl:`<label style="font-size:11.5px"><input type="checkbox" ${G.indexOf(c.url)>=0?'checked':''} onchange="apGalToggle('${esc(p.page_key)}',${ci})"> include</label>`})).join('')}</div>
+      <div style="margin-top:6px"><input type="file" id="apup_${esc(p.page_key)}" accept="image/jpeg,image/png,image/webp"> <button class="btn ghost" onclick="apUpload('${esc(p.page_key)}',null)">Upload another photo</button></div></div>`;
+  }
+  return `<div class="aparea ${a.approved?'done':'todo'}" id="ap_${esc(id)}"><div class="aphead"><h4>Images — main photo &amp; gallery</h4>${apChosen(a)}</div>
+    <div class="apcols"><div class="apcol cur"><h5>Current dealer images</h5><div class="apthumbs">${curTiles}</div></div><div class="apcol"><h5>Suggested by Auto-Enrich</h5><div class="apthumbs">${propTiles}</div></div></div>
+    ${a.same?'':`<div class="apchoices">${apRadios(id,a)}<span style="flex:1"></span><button class="btn" onclick="apSave('${esc(id)}')" ${cur&&(cur!=="custom"||G.length)?'':'disabled'}>Save choice</button></div>${picker}`}</div>`;
+}
+function apOptionsArea(p,a){
+  const rows=a.options.map(o=>{ const id=p.page_key+"__opt__"+o.code, pend=EN.apPend[id]||{}, cur=pend.choice||(o.selected?o.choice:null), url=pend.url||(o.selected?o.url:null);
+    const cand=p.candidates;
+    const chooser=cur==="use_image"?`<div class="apthumbs">${cand.map((c,ci)=>`<div onclick="apOptUrl('${esc(id)}',${ci})" style="cursor:pointer">${apTile(p,c,c.url===url)}</div>`).join('')}</div>
+      <div><input type="file" id="apup_${esc(id)}" accept="image/jpeg,image/png,image/webp"> <button class="btn ghost" onclick="apUpload('${esc(p.page_key)}','${esc(o.code)}')">Upload a photo for this option</button></div>`:'';
+    return `<div class="apopt"><div><b><code>${esc(o.code)}</code></b>${o.option?`<div>${esc(o.option)}</div>`:''}<div style="margin-top:4px">${o.selected?pill("p-pass","✓ "+(AP_LABEL[o.choice]||o.choice)):(o.same?pill("p-pass","✓ No difference"):(o.stale?pill("p-fail","Changed — choose again"):pill("p-warn","Not chosen — keeps today's")))}</div></div>
+      <div><div class="mut" style="font-size:11px">Current</div>${o.current.image?`<img src="${esc((p.candidates.find(c=>c.url===o.current.image)||{}).display||o.current.image)}" alt="">`:'<div class="pvph">No image</div>'}</div>
+      <div><div class="mut" style="font-size:11px">Suggested</div>${o.proposed.image?`<img src="${esc((p.candidates.find(c=>c.url===o.proposed.image)||{}).display||o.proposed.image)}" alt="">`:'<div class="pvph">No image</div>'}</div>
+      <div style="min-width:0">${o.same?'':`<div class="apchoices" style="flex-direction:column;align-items:flex-start;gap:4px">${o.choices.map(c=>`<label><input type="radio" name="ap_${esc(id)}" ${cur===c?'checked':''} onchange="apPick('${esc(id)}','${esc(c)}')"> ${esc(c==="keep_current"?"Keep current dealer image":(c==="use_image"?"Use this image (pick below)":"No option-specific photo (shows the page's main photo)"))}</label>`).join('')}</div>
+        <button class="btn" style="margin-top:6px" onclick="apSaveOpt('${esc(p.page_key)}','${esc(o.code)}')" ${cur&&(cur!=="use_image"||url)?'':'disabled'}>Save choice</button>`}</div>
+      ${chooser?`<div style="grid-column:1/-1">${chooser}</div>`:''}</div>`; }).join('');
+  return `<div class="aparea ${a.approved?'done':'todo'}"><div class="aphead"><h4>Option images</h4>${a.approved?pill("p-pass","✓ Every option decided"):pill("p-warn","Waiting")}</div>
+    <div class="mut" style="font-size:12px;margin-top:3px">The photo a dealer sees when choosing each option. Assign a photo to a specific option (for example Round vs Elongated), keep today's, or let the option show the page's main photo.</div>${rows}</div>`;
+}
+function enApprove(){
+  if(EN.apBusy) return `<h3>Approve Content &amp; Images</h3><p class="mut">${esc(EN.apBusy)}</p>`;
+  if(!EN.ap) return `<h3>Approve Content &amp; Images</h3><button class="btn" onclick="apLoad()">Open the approval screen</button>`;
+  const ready=EN.ap.pages.filter(p=>p.areas), other=EN.ap.pages.filter(p=>!p.areas);
+  if(!ready.length) return `<h3>Approve Content &amp; Images</h3><p class="mut">No Ready page to approve. Pages become approvable once Review Issues has nothing open for them.</p>`;
+  const p=apPg()||ready[0]; EN.apPage=p.page_key;
+  const tabs=ready.map(x=>`<button class="appg ${x.page_key===p.page_key?'on':''}" onclick="EN.apPage='${esc(x.page_key)}';EN.apPend={};$('#enbody').innerHTML=enApprove()"><b>${esc(x.name)}</b><span>${esc(x.codes.join(', '))} · ${esc(x.status==='approved'?'approved':(x.status==='kept_as_today'?'kept as today':x.waiting.length+' to decide'))}</span></button>`).join('');
+  const chips=p.checklist.map(c=>`<span class="apchip ${c.approved?'ok':(c.stale?'stale':'wait')}">${esc(c.label)} ${c.approved?'✓':'○'}</span>`).join('');
+  const A=id=>p.areas.find(a=>a.id===id);
+  const text=["title","tagline","description","features","specs","sizing","warranty","documents","category"].map(id=>apTextArea(p,A(id))).join('');
+  const bulk=p.areas.filter(a=>!a.approved&&a.id!=="grouping"&&a.id!=="option_images"&&a.choices&&a.choices.indexOf("keep_current")>=0).length+A("option_images").options.filter(o=>!o.approved).length;
+  return `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h3 style="margin:0">Approve Content &amp; Images</h3><span style="flex:1"></span><button class="btn ghost" onclick="apLoad(true)">Refresh</button></div>
+    <div class="apnote"><b>Auto-Enrich proposes; only you decide what dealers see.</b> Each area shows the current dealer view next to the proposal. Nothing is taken for you: <b>if you make no selection, dealers keep today's content and photos.</b> A page is ready to publish only when every area that differs carries your choice (Keep current counts). Review Issues is separate — a page with no open issue can still be waiting for your approval.</div>
+    <div class="appages">${tabs}</div>
+    <div class="card" style="margin:6px 0"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:15px">${esc(p.name)}</b>${apStatusPill(p)}<span class="mut" style="font-size:12px">${esc(p.codes.join(' · '))}</span></div>
+      <div class="apcheck">${chips}</div>
+      ${bulk?`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn ghost" onclick="apKeepAll()">Keep current for the ${bulk} item${bulk===1?'':'s'} still waiting</button><span class="mut" style="font-size:11.5px">Records an explicit Keep current on each (grouping and a title with no current version are left for you).</span></div>`:''}</div>
+    ${apGalleryArea(p,A("images"))}${apOptionsArea(p,A("option_images"))}${apGrouping(p,A("grouping"))}${text}
+    ${other.length?`<div class="card sub2" style="margin-top:10px"><b>Not approvable yet</b>${other.map(x=>`<div style="font-size:12.5px;margin-top:3px">${esc(x.name)} <span class="mut">— ${esc(x.note||x.status)}</span></div>`).join('')}</div>`:''}
+    <div style="margin-top:12px"><button class="btn" onclick="enGo('preview')">Next: Dealer Preview →</button></div>`;
+}
+function apGalToggle(pk,ci){ const p=EN.ap.pages.find(x=>x.page_key===pk), u=p.candidates[ci].url, G=EN.apGal[pk]=EN.apGal[pk]||[]; const i=G.indexOf(u); if(i>=0) G.splice(i,1); else G.push(u); $("#enbody").innerHTML=enApprove(); }
+function apGalMove(pk,i,d){ const G=EN.apGal[pk]; const j=i+d; if(!G||j<0||j>=G.length) return; const t=G[i]; G[i]=G[j]; G[j]=t; $("#enbody").innerHTML=enApprove(); }
+function apOptUrl(id,ci){ const pk=id.split("__opt__")[0], p=EN.ap.pages.find(x=>x.page_key===pk); EN.apPend[id]=Object.assign({},EN.apPend[id]||{},{choice:"use_image",url:p.candidates[ci].url}); $("#enbody").innerHTML=enApprove(); }
+async function apSend(sel){
+  try{ const r=await papi(Object.assign({action:"approval_record",manufacturer:EN.slug},Array.isArray(sel)?{selections:sel}:sel));
+    (r.pages||[]).forEach(np=>{ const i=EN.ap.pages.findIndex(x=>x.page_key===np.page_key); if(i>=0) EN.ap.pages[i]=Object.assign({review_status:EN.ap.pages[i].review_status},np); });
+    toast("Recorded"+(r.recorded&&r.recorded.length>1?" ("+r.recorded.length+" choices)":"")); return true; }
+  catch(e){ toast("Not recorded: "+e.message); return false; }
+}
+async function apSave(id){
+  const [pk,area]=id.split("__"), p=EN.ap.pages.find(x=>x.page_key===pk), a=p.areas.find(x=>x.id===area), pend=EN.apPend[id]||{}, choice=pend.choice;
+  if(!choice){ toast("Choose first"); return; }
+  const value={};
+  if(area==="images"&&choice==="custom"){ const G=EN.apGal[pk]||[]; if(!G.length){ toast("Tick at least one photo"); return; } value.gallery=G.map(u=>({url:u})); }
+  if(choice==="edit"){ const el=$("#ape_"+CSS.escape(id));
+    if(area==="features") value.items=String(el.value||"").split("\n").map(x=>x.trim()).filter(Boolean);
+    else if(area==="specs") value.items=String(el.value||"").split("\n").map(x=>x.trim()).filter(Boolean).map(l=>{ const i=l.indexOf(":"); return i>0?{label:l.slice(0,i).trim(),value:l.slice(i+1).trim()}:{label:"",value:l}; });
+    else if(area==="documents"){ value.documents=[...document.querySelectorAll(".apdoc_"+CSS.escape(id))].filter(x=>x.checked).map(x=>x.value); value.videos=[...document.querySelectorAll(".apvid_"+CSS.escape(id))].filter(x=>x.checked).map(x=>x.value); }
+    else value.text=String((el&&el.value)||"").trim(); }
+  if(await apSend({page_key:pk,area,choice,value})){ delete EN.apPend[id]; if(area==="images") delete EN.apGal[pk]; $("#enbody").innerHTML=enApprove(); }
+}
+async function apSaveOpt(pk,code){ const id=pk+"__opt__"+code, pend=EN.apPend[id]||{}; if(!pend.choice){ toast("Choose first"); return; }
+  if(await apSend({page_key:pk,area:"option_image",code,choice:pend.choice,value:pend.choice==="use_image"?{url:pend.url}:{}})){ delete EN.apPend[id]; $("#enbody").innerHTML=enApprove(); } }
+async function apKeepAll(){ const p=apPg(); if(!p) return;
+  const sel=p.areas.filter(a=>!a.approved&&a.id!=="grouping"&&a.id!=="option_images"&&a.choices&&a.choices.indexOf("keep_current")>=0).map(a=>({page_key:p.page_key,area:a.id,choice:"keep_current"}))
+    .concat(p.areas.find(a=>a.id==="option_images").options.filter(o=>!o.approved).map(o=>({page_key:p.page_key,area:"option_image",code:o.code,choice:"keep_current"})));
+  if(!sel.length) return; if(await apSend(sel)){ EN.apPend={}; $("#enbody").innerHTML=enApprove(); } }
+async function apUpload(pk,code){
+  const id=code?pk+"__opt__"+code:pk, f=($("#apup_"+CSS.escape(id))||{}).files, file=f&&f[0]; if(!file){ toast("Choose a photo"); return; }
+  if(file.size>6*1024*1024){ toast("Photo larger than 6 MB"); return; }
+  const b64=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(",")[1]); r.onerror=rej; r.readAsDataURL(file); });
+  try{ const up=await papi(winBody({action:"upload_image",page_key:pk,filename:file.name,content_type:file.type||"image/jpeg",content_base64:b64}));
+    if(code){ EN.apPend[id]={choice:"use_image",url:up.url}; await apSaveOpt(pk,code); }
+    else { const G=EN.apGal[pk]=EN.apGal[pk]||[]; G.push(up.url); const p=EN.ap.pages.find(x=>x.page_key===pk); p.candidates.push({url:up.url,display:up.url,kinds:["uploaded"],codes:[],role:"uploaded"}); $("#enbody").innerHTML=enApprove(); toast("Uploaded — tick Save choice to record your gallery"); } }
+  catch(e){ toast("Not uploaded: "+e.message); }
+}
 /* ── RELEASE C — DEALER PREVIEW (approved 2026-10-11). Read-only and staff-only: product-content enrich_preview runs the
    storefront's own merge twice (today; and with the Ready drafts treated as published, in memory) and returns the
    dealer cards, the storefront's price words and the accounting proof for every active SKU. Nothing is written or
    published. The yellow "STAFF ONLY" notes exist only on this screen — they are not part of anything a dealer gets. */
 async function enPreviewRun(){
   if(EN.pvBusy) return; EN.pvBusy=true; enDraw();
-  try{ EN.pv=await papi({action:"enrich_preview",manufacturer:EN.slug}); EN.pvMode="proposed"; EN.pvCard=null; EN.pvCart=null; }
+  try{ EN.pv=await papi({action:"enrich_preview",manufacturer:EN.slug}); EN.pvMode=EN.pvMode||"proposed"; EN.pvCard=null; EN.pvCart=null; }
   catch(e){ toast("Preview not built: "+e.message); }
   EN.pvBusy=false; enDraw();
 }
@@ -656,7 +833,7 @@ function pvImg(u,alt){ return u?`<img class="pvimg" src="${esc(u)}" alt="${esc(a
 function pvCards(){ return (EN.pv&&EN.pv[EN.pvMode==="today"?"today":"proposed"])||[]; }
 function enPreview(){
   const l=LINES.find(x=>x.slug===EN.slug)||{}, nm=l.name||EN.slug;
-  if(!EN.pv) return `<h3>Dealer Preview</h3><p class="sub">See exactly what a dealer would see if the Ready pages were published — computed with Partner 360's own catalog merge, picker and price words. Held-back products are shown on the card dealers have today. <b>Read-only and staff-only: nothing is published, saved or copied.</b></p>
+  if(!EN.pv) return `<h3>Dealer Preview</h3><p class="sub">See exactly what a dealer would see if the Ready pages were published <b>with your recorded content &amp; image selections</b> — computed with Partner 360's own catalog merge, picker and price words. Held-back products are shown on the card dealers have today. <b>Read-only and staff-only: nothing is published, saved, copied or selected.</b></p>
     <button class="btn" id="pvgo" onclick="enPreviewRun()" ${EN.pvBusy?'disabled':''}>${EN.pvBusy?'Building the preview…':'Preview '+esc(nm)+' as Dealer'}</button>`;
   const V=EN.pv, s=V.summary, cards=pvCards();
   const tile=(n,lbl,good)=>`<div class="pvtile ${good===true?'good':(good===false?'bad':'')}"><b>${esc(n)}</b><span>${esc(lbl)}</span></div>`;
@@ -668,9 +845,11 @@ function enPreview(){
       ${k.options.length>1?`<div class="pnote">${k.options.length} options</div>`:''}${k.staff_note?`<div class="pvstaff"><b>STAFF ONLY</b> · ${esc(k.staff_note)}</div>`:''}</button>`; }).join('');
   const acc=V.skus.map(x=>`<tr><td><code>${esc(x.code)}</code></td><td>${esc(x.page||'—')}</td><td style="font-size:12px">${esc(x.path)}</td><td style="font-size:12px">${esc(x.today_card.join(' / ')||'—')}</td><td style="font-size:12px">${esc(x.proposed_card.join(' / ')||'—')}</td><td>${esc(x.unit||'—')}</td><td style="font-size:12px">${esc(x.price_proposed||'—')} ${x.commercial_same?pill('p-pass','unchanged'):pill('p-fail','changed')}</td><td>${x.orderable_proposed?'✓':'<span class="needtxt">no</span>'}</td></tr>`).join('');
   return `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h3 style="margin:0">${esc(nm)} as a dealer would see it</h3>${pill(V.pass?'p-pass':'p-fail',V.pass?'All checks pass':'Checks failing')}<span style="flex:1"></span>
-      <span class="pvtog"><button class="${EN.pvMode==='proposed'?'on':''}" onclick="pvMode('proposed')">Proposed</button><button class="${EN.pvMode==='today'?'on':''}" onclick="pvMode('today')">Today</button></span>
+      <span class="pvtog"><button class="${EN.pvMode==='today'?'on':''}" onclick="pvMode('today')">Current Dealer View</button><button class="${EN.pvMode==='proposed'?'on':''}" onclick="pvMode('proposed')">Approved New Dealer View</button></span>
       <button class="btn ghost" onclick="enPreviewRun()">Rebuild</button></div>
-    <p class="mut" style="font-size:12px;margin:4px 0">Read-only, staff-only. ${EN.pvMode==='proposed'?'Proposed: the '+s.enriched_pages_ready+' Ready pages as published; held-back products on the card dealers have today.':'Today: exactly what dealers see now.'} ${s.cards_today} cards today → ${s.cards_proposed} proposed. Nothing is published.</p>
+    <div class="apnote"><b>Preview only — switching views does not select content or images.</b> Your selections are made and recorded in <a href="#" onclick="enGo('approve');return false">5 · Approve Content &amp; Images</a>.</div>
+    <p class="mut" style="font-size:12px;margin:4px 0">Read-only, staff-only. ${EN.pvMode==='proposed'?'Approved New Dealer View: each Ready page built from your <b>recorded selections only</b> — an area you have not decided shows today\'s content and photos; a suggested photo you did not pick never appears. Held-back products stay on the card dealers have today.':'Current Dealer View: exactly what dealers see now.'} ${s.cards_today} cards today → ${s.cards_proposed} with your selections. Nothing is published.</p>
+    ${V.approval?`<div class="apcheck">${Object.keys(V.approval).map(k=>{ const a=V.approval[k], pg=(EN.plan.pages.find(p=>p.page_key===k)||{}).name||k; return `<span class="apchip ${a.status==='approved'?'ok':'wait'}">${esc(pg)}: ${esc(a.status==='approved'?'approved':(a.status==='kept_as_today'?'kept as today':'waiting for your approval — '+a.waiting.join(', ')))}</span>`; }).join('')}</div>`:''}
     <div class="pvtiles">${tiles}</div>
     <div class="pvgrid">${grid}</div><div id="pvdetail">${EN.pvCard!=null?pvDetail():''}</div>
     <details style="margin-top:10px" ${V.pass?'':'open'}><summary><b>Proof checks (${V.checks.filter(c=>c.pass).length}/${V.checks.length} pass)</b></summary><div style="margin-top:6px">${checks}</div></details>
@@ -727,7 +906,7 @@ function enPublish(){
         <input type="text" id="pub_rb_reason" placeholder="Why roll back? (required to roll back)" style="min-width:240px"> <button class="btn ghost" onclick="pubRollback(${d.id})" ${EN.pubBusy?'disabled':''}>Roll back</button>
         ${EN.pubBusy?`<div class="mut" style="margin-top:6px">${esc(EN.pubBusy)}</div>`:''}</div>`:''}`;
   }
-  if(!EN.pub) return `<h3>Publish &amp; Verify</h3><p class="sub">First a dry run: exactly which pages go live (only Ready ones — held products stay on their current catalog cards), every photo moved from the draft folder to the live folder, and the dealer result it must produce. Nothing is published by the dry run.</p>
+  if(!EN.pub) return `<h3>Publish &amp; Verify</h3><p class="sub">First a dry run: exactly which pages go live (only Ready pages whose content &amp; images you approved — everything else stays on its current catalog card), the content and photos <b>you selected</b> (nothing Auto-Enrich merely suggested), every approved photo copied to the live folder, and the dealer result it must produce. Nothing is published by the dry run.</p>
     <button class="btn" id="pubdry" onclick="pubPlan()" ${EN.pubBusy?'disabled':''}>${EN.pubBusy?esc(EN.pubBusy):'Run publication dry run'}</button>`;
   const R=EN.pub, s=R.summary;
   const tile=(n,lbl,good)=>`<div class="pvtile ${good===true?'good':(good===false?'bad':'')}"><b>${esc(n)}</b><span>${esc(lbl)}</span></div>`;
@@ -735,7 +914,8 @@ function enPublish(){
     +tile(s.enriched_pages_live,"enriched pages go live")+tile(s.held_on_current_cards,"held — current catalog cards")+tile(s.missing,"missing SKUs",s.missing===0)
     +tile(s.duplicates,"duplicate SKU cards",s.duplicates===0)+tile(s.commercial_changes,"commercial changes",s.commercial_changes===0)+tile(s.photos_promoted,"photos promoted to live");
   const pages=R.ready.map(p=>`<div class="card sub2" style="margin:8px 0"><b>${esc(p.name)}</b> <span class="mut">· ${p.skus.map(esc).join(', ')} · ${esc(p.changes.status)} · draft window ${esc(p.changes.draft_window)} · ${esc(p.changes.photos)}</span>
-      <div style="overflow-x:auto"><table style="margin-top:6px;font-size:12px"><thead><tr><th>Draft copy</th><th>→ live copy</th><th>Used as</th></tr></thead><tbody>${p.promote.map(x=>`<tr><td><code>${esc(fname(x.from))}</code></td><td><code>${esc(x.to.replace(/^.*\/product-content\//,''))}</code></td><td>${esc(x.uses.join(', '))}</td></tr>`).join('')}</tbody></table></div>
+      ${p.selections?`<div class="apcheck">${p.selections.map(c=>`<span class="apchip ok">${esc(c.label)} ✓ ${esc(c.no_change?'no change':(c.choice?c.choice.replace(/_/g,' '):'chosen'))}</span>`).join('')}</div>`:''}
+      ${p.promote.length?`<div style="overflow-x:auto"><table style="margin-top:6px;font-size:12px"><thead><tr><th>Approved photo</th><th>→ live copy</th><th>Used as</th></tr></thead><tbody>${p.promote.map(x=>`<tr><td><code>${esc(fname(x.from))}</code>${x.kept_current?' <span class="mut">(today\'s photo, kept)</span>':''}</td><td><code>${esc(x.to.replace(/^.*\/product-content\//,''))}</code></td><td>${esc(x.uses.join(', '))}</td></tr>`).join('')}</tbody></table></div>`:'<div class="mut" style="font-size:12px;margin-top:4px">No photo to copy: dealers keep today\'s photos.</div>'}
       ${p.deduped.length?`<div class="mut" style="font-size:12px;margin-top:4px">Same picture, one live copy: ${p.deduped.map(x=>`<code>${esc(fname(x.from))}</code> = <code>${esc(fname(x.same_as))}</code> (${esc(x.why)})`).join('; ')}</div>`:''}
       ${p.after_photos.options.length>1?`<div style="font-size:12px;margin-top:4px">Options: ${p.after_photos.options.map(o=>`${esc(o.option||o.sku)} → <code>${esc(fname(o.image))}</code>`).join(' · ')}</div>`:''}</div>`).join('');
   const held=R.held.map(h=>`<li><b>${esc(h.name)}</b> <span class="mut">(${h.skus.map(esc).join(', ')})</span> — stays on its current catalog card; open: ${h.issues.map(esc).join(' · ')||'—'}</li>`).join('');
@@ -744,6 +924,7 @@ function enPublish(){
     <div class="pvtiles" style="grid-template-columns:repeat(4,1fr)">${tiles}</div>
     ${R.problems.length?`<div class="card err">${R.problems.map(esc).join('<br>')}</div>`:''}
     <h3 style="margin-top:12px">Pages that will be published (${R.ready.length})</h3>${pages}
+    ${(R.awaiting||[]).length?`<h3 style="margin-top:12px">Waiting for your content &amp; image approval — not published (${R.awaiting.length})</h3><ul style="font-size:12.5px;margin:4px 0 0 18px">${R.awaiting.map(a=>`<li><b>${esc(a.name)}</b> <span class="mut">(${a.skus.map(esc).join(', ')})</span> — ${a.status==='kept_as_today'?'grouping kept as today: its SKUs stay on their current cards':'stays on its current catalog card until you approve: '+esc((a.waiting||[]).join(', '))} · <a href="#" onclick="enGo('approve');return false">Approve</a></li>`).join('')}</ul>`:''}
     <h3 style="margin-top:12px">Held — not published (${R.held.length})</h3><ul style="font-size:12.5px;margin:4px 0 0 18px">${held}</ul>
     ${EN.pubRes?pubChecks(EN.pubRes):''}
     ${R.publishable?`<div class="gatebox g-wait" style="margin-top:12px"><div class="gh"><span class="gn">Approval</span> <b>Approve &amp; Publish ${esc(nm)}</b></div>

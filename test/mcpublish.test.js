@@ -13,7 +13,7 @@
        fingerprint), the enrichment window is spent, rollback is then refused; the held drafts stay hidden with their
        issues for a future window. */
 const path=require('path');
-const {S,ROOT,world,PC,call,withWin}=require('./mcenrich.world.js');
+const {S,ROOT,world,PC,call,withWin,approvePages}=require('./mcenrich.world.js');
 const PUB=require(path.join(ROOT,'_publish.js'));
 let fail=0, pass=0;
 async function t(n,f){ try{ await f(); pass++; console.log('ok   '+n);}catch(e){ fail++; console.log('FAIL '+n+'\n     '+(e&&e.stack||e).toString().split('\n').slice(0,3).join('\n     ')); } }
@@ -30,6 +30,8 @@ async function releaseC(W,C){
   await call(C,withWin({action:'enrich_page',page_key:seat})); for(let i=0;i<10;i++){ const im=await call(C,withWin({action:'enrich_images',page_key:seat})); if(!im.body.remaining) break; }
   plan=(await call(C,{action:'enrich_plan'})).body;
   for(const p of plan.pages.filter(p=>p.status!=='ready')) await call(C,withWin({action:'enrich_resolve',page_key:p.page_key,issue:'hold',choice:'hold_back',reason:'source hold'}));
+  /* (2026-10-12) nothing publishes without the President's content & image approval: here he takes every proposal */
+  await approvePages(C,'proposed');
   return (await call(C,{action:'enrich_plan'})).body;
 }
 async function promoteAll(C,did){ let r; for(let i=0;i<20;i++){ r=await call(C,{action:'publish_promote',decision_id:did}); if(r.status!==200||!r.body.remaining) break; } return r; }

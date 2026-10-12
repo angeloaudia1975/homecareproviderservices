@@ -10,7 +10,7 @@
      · the preview writes nothing (the whole sandbox is byte-identical) and the line's verification fingerprint holds;
      · a line switched to 'enriched only' would drop held SKUs — the preview says so and fails. */
 const path=require('path');
-const {S,ROOT,WIN,world,PC,call,withWin}=require('./mcenrich.world.js');
+const {S,ROOT,WIN,world,PC,call,withWin,approvePages}=require('./mcenrich.world.js');
 const PV=require(path.join(ROOT,'_preview.js'));
 let fail=0, pass=0;
 async function t(n,f){ try{ await f(); pass++; console.log('ok   '+n);}catch(e){ fail++; console.log('FAIL '+n+'\n     '+(e&&e.stack||e).toString().split('\n').slice(0,3).join('\n     ')); } }
@@ -34,6 +34,9 @@ async function readyAndHeld(W,C){
   /* every page that is not Ready is held back for source review */
   for(const p of plan.pages.filter(p=>p.status!=='ready'))
     eq((await call(C,withWin({action:'enrich_resolve',page_key:p.page_key,issue:'hold',choice:'hold_back',reason:'source hold (Angelo)'}))).status,200);
+  /* (2026-10-12) the Approved New Dealer View renders the President's recorded selections only: here he takes every
+     proposal (test/mcapproval.test.js covers no selection = the current dealer view) */
+  await approvePages(C,'proposed');
   return (await call(C,{action:'enrich_plan'})).body;
 }
 

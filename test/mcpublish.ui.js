@@ -6,7 +6,7 @@
    Screenshots to MCUI_OUT (default ./mcui-shots). Needs Playwright; skipped without it. */
 const http=require('http'), path=require('path'), fs=require('fs');
 let pw; try{ pw=require(process.env.PLAYWRIGHT||'playwright'); }catch(e){ console.log('SKIP: Playwright not installed'); process.exit(0); }
-const {S,M,world,PC,call,withWin}=require('./mcenrich.world.js');
+const {S,M,world,PC,call,withWin,approvePages}=require('./mcenrich.world.js');
 const ADMIN=path.join(__dirname,'..','src','admin');
 const OUT=process.env.MCUI_OUT||path.join(process.cwd(),'mcui-shots'); fs.mkdirSync(OUT,{recursive:true});
 const fails=[]; const check=(c,w)=>{ if(!c){ fails.push(w); console.log('FAIL '+w); } else console.log('ok   '+w); };
@@ -20,6 +20,8 @@ const fails=[]; const check=(c,w)=>{ if(!c){ fails.push(w); console.log('FAIL '+
   await call(P,withWin({action:'enrich_page',page_key:seat})); for(let i=0;i<10;i++){ const im=await call(P,withWin({action:'enrich_images',page_key:seat})); if(!im.body.remaining) break; }
   const plan=(await call(P,{action:'enrich_plan'})).body;
   for(const p of plan.pages.filter(p=>p.status!=='ready')) await call(P,withWin({action:'enrich_resolve',page_key:p.page_key,issue:'hold',choice:'hold_back',reason:'source hold'}));
+  /* (2026-10-12) the President's content & image approval: here every proposal taken (test/mcapproval.ui.js covers the screen) */
+  await approvePages(P,'proposed');
   const C=S.mod(W); P=PC(W);
   const calls=[];
   const server=http.createServer(async(req,res)=>{
@@ -44,7 +46,7 @@ const fails=[]; const check=(c,w)=>{ if(!c){ fails.push(w); console.log('FAIL '+
     await page.goto(base+'/admin/manufacturer-center.html'); await page.waitForSelector('text=Manufacturer Center');
     await page.locator('tr',{hasText:'bemis'}).filter({hasNotText:'copy'}).locator('button',{hasText:'Continue Product Enrichment'}).click();
     await page.waitForSelector('text=Review Issues (');
-    await page.locator('.enst',{hasText:'6 · Publish & Verify'}).click();
+    await page.locator('.enst',{hasText:'7 · Publish & Verify'}).click();
     await page.locator('#pubdry').click(); await page.waitForSelector('text=Publication dry run',{timeout:120000});
     const tiles=await page.locator('.pvtile').allTextContents();
     check(/9 → 8/.test(tiles[0]) && /9 \/ 9/.test(tiles[1]) && /^3/.test(tiles[2].trim()) && /^4/.test(tiles[3].trim()) && /^0/.test(tiles[4].trim()) && /^0/.test(tiles[5].trim()) && /^0/.test(tiles[6].trim()),'dry run tiles: '+tiles.join(' | '));

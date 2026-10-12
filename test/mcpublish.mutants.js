@@ -4,7 +4,7 @@
 const fs=require('fs'),path=require('path'),os=require('os'),{execFileSync,spawnSync}=require('child_process');
 const DIR=path.join(__dirname,'..','netlify','functions'), SQL=path.join(__dirname,'..','supabase','mc_release_d_publication.sql');
 const JS=[
- ['_publish.js','a held page published','  const ready = (pages || []).filter(p => p.status === "ready"), held','  const ready = (pages || []).filter(p => p.status === "ready" || p.status === "held_back"), held'],
+ ['_publish.js','a held page published','  const isReady = p => p.status === "ready";','  const isReady = p => p.status === "ready" || p.status === "held_back";'],
  ['_publish.js','the same picture promoted twice (duplicate thumbnail)','    return same ? same.url : u;','    return u;'],
  ['_publish.js','an option photo left in the draft folder','    if(o.image) o.image = used(o.image, "option photo · " + o.sku);','    if(false) o.image = used(o.image, "option photo · " + o.sku);'],
  ['_publish.js','held drafts left out of the plan hash','    held: heldOut.map(h => ({ page_key: h.page_key, status: h.status, issues: h.issues, holds: h.holds, row: h.row })),','    held: [],'],

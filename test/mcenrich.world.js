@@ -16,6 +16,8 @@ const PAGES={
   'https://www.toiletseats.com/p/elongated-open-front-plastic-elevated-toilet-seat-with-3-inch-lift-in-white-never-loosens':'steadfast.html'};
 const bytes=(seed)=>{ const b=Buffer.alloc(/__Fill/.test(seed)?9000:4096); for(let i=0;i<b.length;i++) b[i]=(i*31+seed.length*7+seed.charCodeAt(i%seed.length))&255; return b; };
 const WIN=50;
+/* the content fields an approved publication writes (supabase/mc_release_d1_content_approval.sql, mirrored) */
+const CONTENT_FIELDS=['name','tagline','description','features','clinical_applications','specs','billing_codes','sizing_table','sizing_note','warranty','documents','videos','source_url','category','subcategory','options','field_provenance'];
 function world(opts){
   opts=opts||{};
   const W=S.world();
@@ -43,7 +45,9 @@ function world(opts){
       const bad=strings([a.image,a.images_gallery,a.skus]).find(u=>/^\s*(https?:|\/\/|\/)/i.test(u)&&(!LIVE_RE(d.manufacturer).test(u)||/\/drafts\//.test(u)));
       if(bad) return rpcErr('publication_refused: page '+k+' would point at an image that is not a live copy: '+bad); }
     if(W.failPublishAt){ const k=W.failPublishAt; W.failPublishAt=null; return rpcErr('publication_refused: forced failure at '+k); }
-    rows.forEach((r,i)=>{ const a=d.hcps_value.after[pages[i]]; Object.assign(r,{status:'published',disabled:false,draft_window:null,published_at:new Date().toISOString(),image:a.image,images_gallery:a.images_gallery,skus:a.skus,reviewed_by:String(b.p_by||'').slice(0,80)}); });
+    /* (2026-10-12) the approved content fields travel in "after" too: the function writes each one the approval names */
+    rows.forEach((r,i)=>{ const a=d.hcps_value.after[pages[i]]; CONTENT_FIELDS.forEach(f=>{ if(Object.prototype.hasOwnProperty.call(a,f)) r[f]=a[f]===undefined?null:JSON.parse(JSON.stringify(a[f])); });
+      Object.assign(r,{status:'published',disabled:false,draft_window:null,published_at:new Date().toISOString(),image:a.image,images_gallery:a.images_gallery,skus:a.skus,reviewed_by:String(b.p_by||'').slice(0,80)}); });
     d.used_at=new Date().toISOString(); d.used_by=String(b.p_by||'').slice(0,80);
     W.rpcs.push({fn:'publish',decision:d.id,pages}); return rpcOk({ok:true,decision:d.id,published:pages.length,pages}); }
   function rpcRollback(b){ const d=W.db.mfr_decisions.find(x=>x.id===Number(b.p_decision));
@@ -51,7 +55,7 @@ function world(opts){
     if(!d.used_at) return rpcErr('rollback_refused: never carried out');
     if((W.db.mfr_verification_runs||[]).some(r=>r.manufacturer===d.manufacturer&&r.result==='pass'&&(r.checks||[]).some(c=>c&&c.id==='publication'&&c.detail&&Number(c.detail.decision)===d.id))) return rpcErr('rollback_refused: Gold Standard');
     (d.hcps_value.pages||[]).forEach(k=>{ const r=W.db.product_content.find(x=>x.manufacturer===d.manufacturer&&x.page_key===k), bf=d.hcps_value.before[k];
-      if(r) ['status','disabled','draft_window','published_at','image','images_gallery','skus','reviewed_by'].forEach(f=>{ r[f]=bf[f]===undefined?null:JSON.parse(JSON.stringify(bf[f])); }); });
+      if(r) ['status','disabled','draft_window','published_at','image','images_gallery','skus','reviewed_by'].concat(CONTENT_FIELDS).forEach(f=>{ if(f in bf || !CONTENT_FIELDS.includes(f)) r[f]=bf[f]===undefined?null:JSON.parse(JSON.stringify(bf[f])); }); });
     W.rpcs.push({fn:'rollback',decision:d.id}); return rpcOk({ok:true,decision:d.id,restored:(d.hcps_value.pages||[]).length}); }
   const inner=W.fetch;
   W.fetch=async(u,o)=>{ const s=String(u), method=((o&&o.method)||'GET').toUpperCase();
@@ -87,4 +91,20 @@ function world(opts){
 const PC=W=>M.load('product-content.js',W,{CONTENT_ADMIN_TOKEN:'cat',ANALYTICS_TOKEN:'pass',ORDERING_BASE:S.OB},ROOT);   // (loading sets the world's fetch globally: one world at a time)
 const call=(C,b)=>M.call(C,Object.assign({manufacturer:S.REAL},b),{headers:{'x-admin-token':'cat'}});
 const withWin=b=>Object.assign({enrichment_window:{decision_id:WIN}},b);
-module.exports={S,M,ROOT,FX,PAGES,WIN,world,PC,call,withWin,bytes};
+/* The President's content & image approval, through the real handler. mode 'proposed' = take every proposal as it is
+   (the Release D end state: proposed copy, the proposed gallery, each option's proposed photo); 'current' = keep the
+   current dealer view everywhere (the explicit choice). */
+async function approvePages(C,mode,only){
+  const st=(await call(C,{action:'approval_state'})).body; const sel=[];
+  for(const p of st.pages.filter(p=>p.areas && (!only || only.includes(p.page_key)))){
+    for(const a of p.areas){ if(a.same || a.id==='option_images') continue;
+      if(a.id==='images') sel.push(mode==='proposed'?{page_key:p.page_key,area:'images',choice:'custom',value:{gallery:a.proposed.gallery.map(u=>({url:u}))}}:{page_key:p.page_key,area:'images',choice:'keep_current'});
+      else if(a.id==='grouping') sel.push({page_key:p.page_key,area:'grouping',choice:'use_proposed'});
+      else sel.push({page_key:p.page_key,area:a.id,choice:mode==='proposed'||!a.choices.includes('keep_current')?'use_proposed':'keep_current'}); }
+    for(const o of p.areas.find(a=>a.id==='option_images').options){ if(o.same) continue;
+      sel.push(mode==='proposed'&&o.proposed.image?{page_key:p.page_key,area:'option_image',code:o.code,choice:'use_image',value:{url:o.proposed.image}}:{page_key:p.page_key,area:'option_image',code:o.code,choice:'keep_current'}); } }
+  const r=await call(C,{action:'approval_record',selections:sel});
+  if(r.status!==200) throw new Error('approval_record '+r.status+' '+JSON.stringify(r.body).slice(0,300));
+  return r.body;
+}
+module.exports={S,M,ROOT,FX,PAGES,WIN,world,PC,call,withWin,bytes,approvePages,CONTENT_FIELDS};

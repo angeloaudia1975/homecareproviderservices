@@ -6,7 +6,7 @@
    Screenshots to MCUI_OUT (default ./mcui-shots). Needs Playwright; skipped without it. */
 const http=require('http'), path=require('path'), fs=require('fs');
 let pw; try{ pw=require(process.env.PLAYWRIGHT||'playwright'); }catch(e){ console.log('SKIP: Playwright not installed'); process.exit(0); }
-const {S,M,world,PC,call,withWin}=require('./mcenrich.world.js');
+const {S,M,world,PC,call,withWin,approvePages}=require('./mcenrich.world.js');
 const ADMIN=path.join(__dirname,'..','src','admin');
 const OUT=process.env.MCUI_OUT||path.join(process.cwd(),'mcui-shots'); fs.mkdirSync(OUT,{recursive:true});
 const fails=[]; const check=(c,w)=>{ if(!c){ fails.push(w); console.log('FAIL '+w); } else console.log('ok   '+w); };
@@ -20,6 +20,8 @@ const fails=[]; const check=(c,w)=>{ if(!c){ fails.push(w); console.log('FAIL '+
   await call(P,withWin({action:'enrich_page',page_key:seat})); for(let i=0;i<10;i++){ const im=await call(P,withWin({action:'enrich_images',page_key:seat})); if(!im.body.remaining) break; }
   const plan=(await call(P,{action:'enrich_plan'})).body;
   for(const p of plan.pages.filter(p=>p.status!=='ready')) await call(P,withWin({action:'enrich_resolve',page_key:p.page_key,issue:'hold',choice:'hold_back',reason:'source hold'}));
+  /* (2026-10-12) the President's content & image approval: here every proposal taken (test/mcapproval.ui.js covers the screen) */
+  await approvePages(P,'proposed');
   const C=S.mod(W); P=PC(W);
   const before=JSON.stringify(W.db), calls=[];
   const server=http.createServer(async(req,res)=>{
@@ -46,7 +48,7 @@ const fails=[]; const check=(c,w)=>{ if(!c){ fails.push(w); console.log('FAIL '+
     await page.waitForSelector('text=Review Issues (');
     check(await page.locator('text=Held back for source review (4)').count()===1,'Review Issues: 4 held back, their issues listed (not blocking)');
     await shot('issues-held');
-    await page.locator('.enst',{hasText:'5 · Dealer Preview'}).click();
+    await page.locator('.enst',{hasText:'6 · Dealer Preview'}).click();
     await page.locator('#pvgo').click(); await page.waitForSelector('text=as a dealer would see it',{timeout:120000});
     const tiles=await page.locator('.pvtile').allTextContents();
     check(/3\s*enriched pages ready/.test(tiles[0]) && /4\s*products\/pages held back/.test(tiles[1]) && /9 \/ 9\s*active SKUs accounted for/.test(tiles[2]) && /0\s*missing/.test(tiles[3]) && /0\s*duplicates/.test(tiles[4]) && /0\s*commercial changes/.test(tiles[5]),'summary tiles: 3 ready · 4 held · 9/9 accounted · 0 missing · 0 duplicates · 0 commercial changes ('+tiles.join(' | ')+')');
@@ -66,10 +68,10 @@ const fails=[]; const check=(c,w)=>{ if(!c){ fails.push(w); console.log('FAIL '+
     await page.locator('.pvcard',{hasText:'Steadfast'}).click(); await page.waitForSelector('.pvdetail');
     check(/STAFF ONLY/.test(await page.locator('.pvdetail').textContent()) && /enrichment held for source review/.test(await page.locator('.pvdetail').textContent()),'a held product shows the staff-only note on its current catalog card');
     await shot('detail-held');
-    await page.locator('.pvtog button',{hasText:'Today'}).click();
-    check(await page.locator('.pvstaff').count()===0,'Today: exactly what dealers see now — no staff notes');
+    await page.locator('.pvtog button',{hasText:'Current Dealer View'}).click();
+    check(await page.locator('.pvstaff').count()===0,'Current Dealer View: exactly what dealers see now — no staff notes');
     await shot('preview-today');
-    await page.locator('.pvtog button',{hasText:'Proposed'}).click();
+    await page.locator('.pvtog button',{hasText:'Approved New Dealer View'}).click();
     await page.setViewportSize({width:390,height:844}); await page.waitForTimeout(300);
     const wide=await page.evaluate(()=>[...document.querySelectorAll('#line *')].filter(e=>e.getBoundingClientRect().right>window.innerWidth+1&&!e.closest('table,details,.tabscroll')).slice(0,5).map(e=>e.tagName+'.'+e.className+' '+Math.round(e.getBoundingClientRect().right)));
     check(wide.length===0,'the preview fits a 390px phone (wider: '+(wide.join('; ')||'none')+')');
