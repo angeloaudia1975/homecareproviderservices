@@ -16,7 +16,7 @@
  .kpi b{display:block;font-size:24px;margin:2px 0}.kpi span{font-size:12px;color:var(--gray)}.kpi small{display:block;font-size:11.5px;color:var(--gray);margin-top:3px}
  .go{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer;font-size:13px}
  .go.dk{background:var(--blue-dk)}.go.ghost{background:#fff;border:1px solid var(--silver);color:var(--ink)}.go.warn{background:#fff;border:1px solid #f1c4c4;color:var(--red)}
- .go.sm{padding:5px 10px;font-size:12px}.go:disabled{opacity:.45;cursor:default}
+ .go.sm{padding:5px 10px;font-size:12px}.go:disabled{opacity:.45;cursor:default}a.go{display:inline-block;text-decoration:none}
  .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.bar.end{justify-content:flex-end}.grow{flex:1}
  .pill{display:inline-block;border-radius:20px;padding:2px 9px;font-size:11.5px;font-weight:700;white-space:nowrap}
  .p-hcps{background:#e8eefb;color:var(--blue-dk);border:1px solid #c6d3f0}.p-mfr{background:#fff4e8;color:#9a4a07;border:1px solid #f8d2ac}
@@ -211,7 +211,11 @@ async function viewCourses(){
       <td data-l="Credential">${credPill(c.issuer)}</td><td data-l="Manufacturer">${esc(mname(c.manufacturer_slug))}</td>
       <td data-l="Training available">${trainPill(c)}</td><td data-l="Versions" class="small">${vCounts(c)}</td><td data-l="Course record">${recPill(c.status)}</td></tr>`).join("")
       ||`<tr><td colspan="6" class="muted">No courses yet. Start with “New course”.</td></tr>`}
-    </tbody></table></div>`;
+    </tbody></table></div>
+    <div class="card"><div class="bar"><h2 class="grow" style="margin:0">Lesson player preview</h2>
+      <a class="go ghost sm" href="/admin/academy-preview.html?sample=A" target="_blank" rel="noopener">Sample A · Comfort Zones</a>
+      <a class="go ghost sm" href="/admin/academy-preview.html?sample=B" target="_blank" rel="noopener">Sample B · Cloud family</a></div>
+      <p class="muted small" style="margin-top:8px">The approved Sample Lessons A and B, rebuilt as lesson data and drawn by the same player learners will use. Staff only; nothing is saved and no course record is created. Preview your own lessons from a course version.</p></div>`;
   $("#cfilt").onchange=e=>{COURSE_FILTER=e.target.value;viewCourses();};
   $("#newc").onclick=newCourse;
   $("#view").querySelectorAll("tr.click").forEach(tr=>tr.onclick=()=>viewCourse(tr.dataset.id));
@@ -291,11 +295,11 @@ async function viewVersion(id){
       `<div class="note">${v.status==="published"?"Published":"Retired"} ${day(v.published_at)}${v.published_by?" by "+esc(String(v.published_by).replace("staff:","")):""}. This version can never change; create a new version to update the course.</div>`}
     ${(v.status==="draft"||v.status==="in_review")?`<div class="bar" style="margin-top:10px">${pres?`<button class="go dk sm" id="pub">Publish v${esc(v.version)}…</button>`:`<span class="muted small">Publishing is reserved for the President.</span>`}</div>`:""}
     ${v.status==="published"&&pres?`<div class="bar" style="margin-top:10px"><button class="go warn sm" id="retire">Retire v${esc(v.version)}…</button></div>`:""}
-    <p class="muted small" style="margin-top:10px">Exam questions and lesson content blocks are authored in the next part of the Command Center (C2). Answer keys are never shown on this screen.</p></div>
+    <p class="muted small" style="margin-top:10px">Lesson content blocks and exam questions are authored in the course builder (the next stage). <b>Preview</b> beside a lesson shows it in the learner lesson player, staff only; nothing is saved. Answer keys are never shown on this screen.</p></div>
    <div class="card"><div class="bar" style="margin-bottom:8px"><h2 class="grow" style="margin:0">Modules &amp; lessons</h2>${ed?`<button class="go dk sm" id="addm">+ Module</button>`:""}</div>
     ${mods.map(m=>`<div class="mod"><div class="bar"><b class="grow">${esc(m.position)}. ${esc(m.title)}</b>${ed?`<button class="go ghost sm" data-em="${esc(m.id)}">Edit</button><button class="go ghost sm" data-al="${esc(m.id)}">+ Lesson</button>${m.lessons.length?"":`<button class="go warn sm" data-dm="${esc(m.id)}">Remove</button>`}`:""}</div>
       ${(m.objectives||[]).length?`<ul class="muted small" style="margin:6px 0 4px 18px">${m.objectives.map(o=>`<li>${esc(o)}</li>`).join("")}</ul>`:""}
-      ${m.lessons.map(l=>`<div class="lesson"><span class="grow">${esc(m.position)}.${esc(l.position)} ${esc(l.title)} <span class="muted">· ${esc(l.est_minutes)} min · ${n(l.blocks)} block(s)</span></span>${ed?`<button class="go ghost sm" data-el="${esc(l.id)}">Edit</button><button class="go warn sm" data-dl="${esc(l.id)}">Remove</button>`:""}</div>`).join("")}</div>`).join("")
+      ${m.lessons.map(l=>`<div class="lesson"><span class="grow">${esc(m.position)}.${esc(l.position)} ${esc(l.title)} <span class="muted">· ${esc(l.est_minutes)} min · ${n(l.blocks)} block(s)</span></span><a class="go ghost sm" href="/admin/academy-preview.html?lesson=${esc(l.id)}" target="_blank" rel="noopener" aria-label="Preview lesson ${esc(m.position)}.${esc(l.position)} (opens in a new tab)">Preview</a>${ed?`<button class="go ghost sm" data-el="${esc(l.id)}">Edit</button><button class="go warn sm" data-dl="${esc(l.id)}">Remove</button>`:""}</div>`).join("")}</div>`).join("")
       ||`<p class="muted">No modules yet.</p>`}</div>`;
   $("#back").onclick=()=>viewCourse(v.course_id);
   const reload=()=>viewVersion(id);

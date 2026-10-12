@@ -13,7 +13,9 @@
        never a published or retired record) and the database refuses the same edits again (A1 triggers + M1 guard).
        Each is followed by an audit row; a failed audit write is reported (audited:false), never hidden.
      - Reads are strict (unreadable = 503, never "empty"). Exam questions, answer keys and learners' answers are never
-       read or returned here; audit history is scrubbed of answers before it leaves the server.
+       returned here; audit history is scrubbed of answers before it leaves the server. The one place an answer key is
+       READ is preview_check (A2D Stage 2): it grades a single PRACTICE answer on the server and returns only right/wrong
+       and the explanation; exam questions are refused there.
      - Changes are POST only. Nothing here issues or revokes an HCPS certificate, changes a switch, or touches ordering. */
 const A = require('./_academy.js');
 const enc = encodeURIComponent;
@@ -532,6 +534,69 @@ READ.audit_check = async () => {
            clean: !out.unrecorded.length && !out.drift.length && !out.missing.length,
            counts: { unrecorded: out.unrecorded.length, drift: out.drift.length, missing: out.missing.length },
            unrecorded: cap(out.unrecorded), drift: cap(out.drift), missing: cap(out.missing) };
+};
+
+/* ---------- lesson preview (A2D Stage 2) — READ ONLY ----------
+   The staff preview draws a lesson with the SAME payload builder (_academy_lesson.js) and the SAME renderer
+   (/assets/academy/lesson-player.js) the learner player will use. Nothing here writes: no progress is saved, no
+   record is created. Answer keys and explanations are never part of a preview payload; preview_check grades ONE
+   practice answer on the server and only then returns its explanation. Exam questions are never graded or explained. */
+const LESSON = require('./_academy_lesson.js');
+const { SAMPLES, MANUFACTURERS } = require('./_academy_samples.js');
+const sampleOf = k => { const s = Object.prototype.hasOwnProperty.call(SAMPLES, String(k)) ? SAMPLES[String(k)] : null; return need(s, 'Sample lesson'); };
+READ.preview_sample = async (staff, b) => {
+  const s = sampleOf(b.sample);
+  return { ok: true, samples: Object.values(SAMPLES).map(x => ({ key: x.key, label: x.label })),
+    lesson: LESSON.buildLesson({ mode: 'preview', sample: s.key, course: s.course, module: s.module, lesson: s.lesson, outline: s.outline,
+      facts: s.facts, media: [], questions: s.questions, manufacturers: MANUFACTURERS, version: { status: 'sample' } }) };
+};
+async function lessonContext(lessonId) {
+  const l = need(one(await A.sbGet(`academy_lessons?id=eq.${enc(lessonId)}&select=id,module_id,position,title,est_minutes,blocks`)), 'Lesson');
+  const m = need(one(await A.sbGet(`academy_modules?id=eq.${enc(l.module_id)}&select=id,version_id,position,title`)), 'Module');
+  const v = need(one(await A.sbGet(`academy_course_versions?id=eq.${enc(m.version_id)}&select=${VERSION_COLS}`)), 'Course version');
+  return { l, m, v };
+}
+READ.preview_lesson = async (staff, b) => {
+  const { l, m, v } = await lessonContext(A.uuid(b.lesson_id, 'lesson'));
+  const blocks = Array.isArray(l.blocks) ? l.blocks : [];
+  const refs = LESSON.references(blocks);
+  const models = [...new Set(refs.facts.map(f => f.model).filter(x => MODEL.test(x)))], mfrs = [...new Set(refs.facts.map(f => f.mfr).filter(x => SLUG.test(String(x || ''))))];
+  const [course, mods, mfrRows, facts, media, questions] = await Promise.all([
+    A.sbGet(`academy_courses?id=eq.${enc(v.course_id)}&select=${COURSE_COLS}`),
+    all(`academy_modules?version_id=eq.${enc(v.id)}&select=id,position,title`, 'position.asc'),
+    all(`manufacturers?select=slug,name`, 'slug.asc'),
+    models.length && mfrs.length ? all(`product_facts?valid_to=is.null&manufacturer_slug=${idsIn(mfrs)}&model_code=${idsIn(models)}&select=${FACT_COLS}`) : [],
+    byIds('academy_media', refs.media.filter(x => A_UUID.test(x)), 'id,kind,storage_path,external_url,alt_text'),
+    // never the answer key or the explanation: the preview payload is built without them
+    byIds('academy_questions', refs.questions.filter(x => A_UUID.test(x)), 'id,version_id,use,status,kind,prompt,choices'),
+  ]);
+  const lessons = mods.length ? await all(`academy_lessons?module_id=${idsIn(mods.map(x => x.id))}&select=id,module_id,position,title`, 'position.asc') : [];
+  for (const md of media) md.signed_url = md.storage_path ? await A.signPrivate(md.storage_path, 900) : null;
+  return { ok: true, lesson: LESSON.buildLesson({ mode: 'preview', course: course[0] || {}, version: v, module: m, lesson: l,
+    outline: mods.map(x => ({ position: x.position, title: x.title, lessons: lessons.filter(y => String(y.module_id) === String(x.id)) })),
+    facts, media, questions: questions.filter(q => String(q.version_id) === String(v.id)),
+    manufacturers: Object.fromEntries(mfrRows.map(r => [r.slug, r.name || r.slug])) }) };
+};
+const A_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+READ.preview_check = async (staff, b, event) => {
+  if (!event || event.httpMethod !== 'POST') A.refuse(405, 'method', 'Send answers as POST.');   // an answer never travels in a web address
+  const qid = A.uuid(b.question_id, 'question');
+  let q;
+  if (b.sample != null) {
+    const s = sampleOf(b.sample);
+    if (!LESSON.lessonHasQuestion(s.lesson.blocks, qid)) A.refuse(404, 'not_found', 'Question not found.');
+    q = s.questions.find(x => String(x.id) === qid);
+  } else {
+    const { l, m } = await lessonContext(A.uuid(b.lesson_id, 'lesson'));
+    if (!LESSON.lessonHasQuestion(l.blocks, qid)) A.refuse(404, 'not_found', 'Question not found.');
+    q = one(await A.sbGet(`academy_questions?id=eq.${enc(qid)}&version_id=eq.${enc(m.version_id)}&select=id,use,status,kind,answer_key,explanation`));
+  }
+  if (!q) A.refuse(404, 'not_found', 'Question not found.');
+  if (q.use !== 'practice') A.refuse(403, 'not_practice', 'Exam questions are never checked or explained in a lesson.');
+  if (q.status !== 'active') A.refuse(409, 'retired', 'This practice question has been retired.');
+  const r = LESSON.checkPractice(q, b.answer);
+  if (!r || r.invalid) A.refuse(400, 'invalid', 'Choose an answer first.');
+  return { ok: true, correct: r.correct, explanation: r.explanation };   // never the answer key
 };
 
 /* ================================== HANDLER ================================== */

@@ -1,0 +1,118 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Academy Lesson Preview</title>
+<meta name="robots" content="noindex,nofollow">
+<style>
+ :root{--ink:#1b2733;--blue:#3B599A;--blue-dk:#2B4071;--silver:#D8DEE4;--light:#F3F6FA;--gray:#5b6672;--red:#b42323}
+ *{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--light);color:var(--ink)}
+ .wrap{max-width:1280px;margin:18px auto;padding:0 16px}
+ .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+ .card{background:#fff;border:1px solid var(--silver);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+ h1{font-size:21px;margin:0 0 4px}.sub{color:var(--gray);font-size:13.5px;margin:0 0 10px;line-height:1.5}
+ .seg{display:flex;flex-wrap:wrap;gap:6px}.seg button,.go{font:inherit;font-weight:700;font-size:13px;min-height:40px;padding:0 14px;border-radius:20px;border:1px solid var(--silver);background:#fff;color:var(--blue-dk);cursor:pointer}
+ .seg button[aria-pressed="true"]{background:var(--blue-dk);border-color:var(--blue-dk);color:#fff}
+ .lbl{font-size:12px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.05em;margin-right:4px}
+ .frame{margin:0 auto;background:#fff;border:1px solid var(--silver);border-radius:14px;overflow:clip;transition:max-width .2s}
+ .note{background:#fff7e6;border:1px solid #f0c36d;border-radius:10px;padding:10px 12px;font-size:13.5px;line-height:1.5}
+ .err{color:var(--red)} a.back{color:var(--blue-dk);font-weight:700;font-size:13.5px}
+ .gate{max-width:380px;margin:40px auto;background:#fff;border:1px solid var(--silver);border-radius:12px;padding:20px}
+ .gate input{display:block;width:100%;margin:8px 0;padding:10px;border:1px solid var(--silver);border-radius:8px;font-size:16px}
+ @media (prefers-reduced-motion: reduce){.frame{transition:none}}
+</style>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<link rel="stylesheet" href="/assets/academy/lesson-player.css">
+</head><body>
+<header id="ac-head"></header>
+<div id="gate"></div>
+<div id="app" class="wrap" hidden>
+  <div class="card">
+    <div class="bar" style="justify-content:space-between"><h1>Lesson preview</h1><a class="back" href="/admin/academy.html#courses">← Academy Command Center</a></div>
+    <p class="sub">Staff only. This is the same lesson player learners will use, drawn from the lesson's saved blocks. Nothing here is saved: no progress, no answers, no records. Practice answers are checked on the server; exam questions never appear in a lesson.</p>
+    <div class="bar" style="gap:16px">
+      <div class="bar"><span class="lbl">Lesson</span><div class="seg" id="pick"></div></div>
+      <div class="bar"><span class="lbl">Width</span><div class="seg" id="widths" role="group" aria-label="Preview width"></div></div>
+    </div>
+  </div>
+  <div id="msg"></div>
+  <div class="frame" id="frame"><div id="player"></div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script src="/assets/academy/lesson-player.js"></script>
+<script>
+/* Academy lesson preview (A2D Stage 2). Talks ONLY to academy-admin-api (preview_sample / preview_lesson / preview_check)
+   with the Connect 360 sign-in. It writes nothing. The lesson itself is drawn by /assets/academy/lesson-player.js — the
+   same renderer the learner player will use. Text from the server is placed with textContent only. */
+(function(){
+  var $=function(s){return document.querySelector(s);};
+  var TOKEN=HCPS.token();
+  window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+  var q=new URLSearchParams(location.search);
+  var LESSON=/^[0-9a-f-]{36}$/i.test(q.get("lesson")||"")?q.get("lesson"):null;
+  var SAMPLE=LESSON?null:((q.get("sample")||"A").toUpperCase()==="B"?"B":"A");
+  var WIDTHS=[["desktop","Desktop",1240],["tablet","Tablet 820",820],["phone","Phone 390",390],["small","Phone 360",360]];
+  var width=WIDTHS.some(function(w){return w[0]===q.get("width");})?q.get("width"):"desktop";
+
+  function api(body){
+    var h={"content-type":"application/json"}; if(TOKEN)h.authorization="Bearer "+TOKEN;
+    return fetch("/.netlify/functions/academy-admin-api",{method:"POST",headers:h,body:JSON.stringify(body)}).then(function(r){
+      if(r.status===401){ HCPS.signOut(); location.reload(); throw new Error("unauthorized"); }
+      return r.json().catch(function(){return {};}).then(function(j){return {status:r.status,body:j};});
+    });
+  }
+  function note(text,isErr){ var d=document.createElement("div"); d.className="card"; var p=document.createElement("p"); p.className=isErr?"note err":"note"; p.textContent=text; d.appendChild(p); $("#msg").replaceChildren(d); }
+  function button(label,pressed,onclick){ var b=document.createElement("button"); b.type="button"; b.textContent=label; b.setAttribute("aria-pressed",String(!!pressed)); b.addEventListener("click",onclick); return b; }
+  function setWidth(k){ width=k; var w=WIDTHS.filter(function(x){return x[0]===k;})[0]; $("#frame").style.maxWidth=w[2]+"px";
+    Array.prototype.forEach.call($("#widths").children,function(b,i){ b.setAttribute("aria-pressed",String(WIDTHS[i][0]===k)); });
+    try{ var u=new URL(location.href); u.searchParams.set("width",k); history.replaceState(null,"",u); }catch(e){} }
+
+  function gate(msg){
+    var g=$("#gate"); g.replaceChildren(); var box=document.createElement("div"); box.className="gate";
+    var h=document.createElement("h2"); h.textContent="Staff sign-in"; box.appendChild(h);
+    var em=document.createElement("input"); em.type="email"; em.placeholder="Email"; em.autocomplete="username";
+    var pw=document.createElement("input"); pw.type="password"; pw.placeholder="Password"; pw.autocomplete="current-password";
+    var btn=document.createElement("button"); btn.className="go"; btn.textContent="Sign in";
+    var er=document.createElement("p"); er.className="err"; er.textContent=msg||"";
+    box.append(em,pw,btn,er); g.appendChild(box);
+    var go=function(){ er.textContent="Signing in…";
+      fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email:em.value.trim(),password:pw.value})})
+        .then(function(r){return r.json();}).then(function(j){ if(!j||!j.ok){ er.textContent=(j&&j.message)||"Could not sign in."; return; } HCPS.setSession(j); TOKEN=j.token; g.replaceChildren(); boot(); })
+        .catch(function(){ er.textContent="Could not reach the server. Try again."; }); };
+    btn.addEventListener("click",go); pw.addEventListener("keydown",function(e){ if(e.key==="Enter")go(); }); em.focus();
+  }
+
+  function load(){
+    note("Loading the lesson…");
+    var req=LESSON?{action:"preview_lesson",lesson_id:LESSON}:{action:"preview_sample",sample:SAMPLE};
+    api(req).then(function(r){
+      if(r.status!==200||!r.body||!r.body.lesson){ note((r.body&&r.body.message)||"The lesson could not be loaded.",true); return; }
+      $("#msg").replaceChildren();
+      if(r.body.lesson.sample){ note("Sample "+r.body.lesson.sample+": rebuilt as data from the approved mockup. Pictures are labelled placeholders until Golden files are approved; the facts are the sample's own, read from Golden sources on 10 Oct 2026 — not production records."); }
+      window.__player=HCPSLessonPlayer.mount($("#player"),r.body.lesson,{
+        check:function(questionId,answer){
+          var b={action:"preview_check",question_id:questionId,answer:answer}; if(LESSON)b.lesson_id=LESSON; else b.sample=SAMPLE;
+          return api(b).then(function(x){ if(x.status!==200)throw new Error((x.body&&x.body.message)||"check failed"); return x.body; });
+        }
+      });
+    }).catch(function(){ note("The lesson could not be loaded. Check your connection and try again.",true); });
+  }
+
+  function boot(){
+    api({action:"whoami"}).then(function(r){
+      var w=r.body||{};
+      if(r.status!==200){ $("#gate").replaceChildren(); note((w&&w.message)||"Not available.",true); $("#app").hidden=false; return; }
+      $("#app").hidden=false;
+      if(!w.may||!w.may.administer){ note("Lesson preview is limited to the President and HCPS administrators.",true); $("#frame").hidden=true; return; }
+      if(!w.enabled){ note("The Academy Command Center is switched off, so lessons cannot be previewed.",true); $("#frame").hidden=true; return; }
+      var pick=$("#pick");
+      if(LESSON){ var s=document.createElement("span"); s.textContent="Course lesson"; s.className="lbl"; pick.appendChild(s); }
+      [["A","Sample A · Comfort Zones"],["B","Sample B · Cloud family"]].forEach(function(x){
+        pick.appendChild(button(x[1],SAMPLE===x[0],function(){ location.search="?sample="+x[0]+"&width="+width; }));
+      });
+      WIDTHS.forEach(function(x){ $("#widths").appendChild(button(x[1],false,function(){ setWidth(x[0]); })); });
+      setWidth(width); load();
+    }).catch(function(){});
+  }
+  if(!TOKEN) gate(); else boot();
+})();
+</script>
+</body></html>

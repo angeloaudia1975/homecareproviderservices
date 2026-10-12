@@ -81,6 +81,23 @@ async function contentOp(name, args) {
   return rpc('academy_content_op_' + name, args);
 }
 
+/* A short-lived link to ONE file in the private Academy bucket (A2D Stage 2: lesson pictures and HCPS documents).
+   Only server-chosen media paths (media/<folder>/<file>, as M3 stores them) are ever signed. Any failure returns null:
+   the lesson then shows a labelled placeholder, never a broken image. */
+const MEDIA_PATH = /^media\/[a-z0-9-]{1,60}\/[a-z0-9][a-z0-9._-]{0,120}$/;
+async function signPrivate(storagePath, seconds) {
+  const p = String(storagePath || '');
+  if (!MEDIA_PATH.test(p) || p.includes('..')) return null;
+  try {
+    const r = await fetch(`${env().url}/storage/v1/object/sign/academy-private/${p.split('/').map(enc).join('/')}`,
+      { method: 'POST', headers: svc({ 'content-type': 'application/json' }), body: JSON.stringify({ expiresIn: Math.min(Math.max(seconds || 900, 60), 3600) }) });
+    if (!r.ok) return null;
+    const j = await r.json(); const s = j && (j.signedURL || j.signedUrl);
+    if (typeof s !== 'string' || !s.startsWith('/')) return null;
+    return `${env().url}/storage/v1${s}`;
+  } catch (e) { return null; }
+}
+
 /* ---------- switches ---------- */
 async function switchOn(name) {
   if (!SWITCHES.includes(name)) return false;
@@ -253,7 +270,7 @@ function handler(fn, opts) {
 
 module.exports = {
   SWITCHES, SITE_ORIGINS, PARTNER360_ORIGINS, MAX_BODY, AcademyError, refuse,
-  sbGet, sbSend, op, contentOp, switchOn, switches,
+  sbGet, sbSend, op, contentOp, switchOn, switches, signPrivate,
   bearer, bearerUser, staffActor, learnerActor,
   isAdmin, isRelations, isRep, family, dealerScope, canSeeDealer, canSeeScores, requireDealer, requireAdmin, actorLabel,
   audit, redact, body, uuid, oneOf, text, respond, handler, SESSION,
