@@ -18,6 +18,10 @@ module.exports = {
   no_body_items: { file: RC, suite: 'report-capture', from: '(bodyProfileFor(who.slug) || !who.slug)', to: '(!who.slug)' },
   any_sender: { file: RC, suite: 'report-capture', from: 'return (s.domains || []).map(x => x.toLowerCase()).includes(dom)', to: 'return true || (s.domains || []).map(x => x.toLowerCase()).includes(dom)' },
   conflict_guessed: { file: RC, suite: 'report-capture', from: 'if (found.file_name && found.content && found.file_name.start !== found.content.start)', to: 'if (false)' },
+  // first live run (2026-10-11)
+  any_date_column: { file: RC, suite: 'report-capture', from: '/^(order|created|creation|invoice', to: '/(date)|^(order|created|creation|invoice' },
+  attached_email_always_flagged: { file: RC, suite: 'report-capture', from: 'if (!profiles.some(p => p.status === "active" && p.manufacturer === who.slug)) {', to: 'if (false) {' },
+  attached_email_never_flagged: { file: RC, suite: 'report-capture', from: 'if (!profiles.some(p => p.status === "active" && p.manufacturer === who.slug)) {', to: 'if (true) {' },
   checkpoint_from_now: { file: RC, suite: 'report-capture', from: 'if (!stopped && !path) { complete = true; checkpoint = runStart; }', to: 'complete = true; checkpoint = runStart;' },
   // ── API (test/mi-b-api.test.js) ──
   actor_from_request: { file: API, suite: 'mi-b-api', from: 'actor: "staff:" + actor } }', to: 'actor: b.actor || ("staff:" + actor) } }' },

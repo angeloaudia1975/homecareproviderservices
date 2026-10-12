@@ -1974,6 +1974,30 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   **Netlify production deploys are PAUSED (team build credits used up for the billing cycle, seen 2026-10-11):** main@99d604c
   (Manufacturer Center Release C preview work) was "Skipped". Phase B is unaffected (b05b9e7 is live); any later code change
   needs credits restored first. Turning `mi_report_capture` on needs no deploy (the hourly cron is already live).
+  **Switch ON (set by Angelo; verified true 2026-10-11 evening). First automatic capture 2026-10-11 20:20 CT:** Netlify
+  invoked the scheduled function twice (request ids 6dc3217a 18.5 s, ffdf34b5 1.2 s, 1 s apart) — the run lease kept them
+  apart: run #1 listed 675 emails (1–9 Oct), incomplete at its time budget, checkpoint → 9 Oct 19:36 UTC; run #2 listed 133,
+  4 already settled, complete, checkpoint → run start. 14 report-like emails recorded. Register: **#9** `2026-09 SR032.pdf`
+  commission_statement, Sep 2026 (file name), received 7 Oct, by system:report-capture — registered once, no import;
+  **#10 (item) → linked to record 7** (the 8 Oct dealer overview, same SHA-256; no second record, record 7 still received /
+  unpublished); **#8** `Angelo Sep Orders.csv` sales_export, received 2 Oct — registered with a WRONG period
+  2026-09-01..2026-10-31 (orders were created 4–25 Sep; the range was read from every column with "date" in its name,
+  incl. "Payment Due Date"). Draft profiles registered nothing (Access4U price list / QuickBooks activity / Golden order
+  PDFs → classified, not reports). 4 exceptions, all false: Golden order emails carrying an attached email
+  (cloud_attachment). No financial, dealer, CRM, intelligence or publication change by construction (capture writes only
+  its own tables + MI-1b register).
+  **Fixes (branch `mi-b-capture-fixes`, tested, NOT deployed — Netlify production deploys are paused):** (1) a file's
+  content period comes ONLY from a transaction-date column — order / created / invoice / sale / transaction / posting /
+  document date, else a plain "Date" (anchored patterns); due, paid, ship-by, close, expiry dates never set a period;
+  (2) an attached email / cloud link becomes a person's job only for a manufacturer with an ACTIVE profile — otherwise it is
+  classified "not a report". Tests: report-capture 29 (2 new, both fail on the deployed code), mi-b-capture.pg 38,
+  mi-b-api 11, shipto 17, report-inventory 28, mutants 38/38. **Open, Angelo's call:** record 8's stored period (a
+  period correction is its own approved step under the MI-1b rules); the 4 false Golden exceptions (dismiss on Needs
+  attention, or leave until the fix is live).
+  **Status reporting (Angelo, 2026-10-11 20:19 CT): every status report on Manufacturer Intelligence carries an updated
+  OVERALL completion percentage until the project is complete (55% at that message).** Once first capture passes, Phase C
+  comes first: shared Ship-To resolver, correction interface and shadow validation — no new large audit / planning cycle;
+  focus on functional results and real exceptions. Automatic financial imports and intelligence publishing stay OFF.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
