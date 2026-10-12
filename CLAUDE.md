@@ -2494,6 +2494,50 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
       rendering, accessibility, security, mutation and regression results, and confirmation that no switch, production
       course record or database function changed.
     - Then wait for review before merging or starting the builder.
+    **PR #8 MERGED and VERIFIED (11 Oct 2026 ~21:05 CT, main `3baa6c9`).**
+    - Before the merge: the migration and every M3 file were byte-identical to the production run. The branch added
+      only those M3 and acceptance files, plus docs and tests (no site or function code).
+    - Checks: M3 PG16 and PG17 28/28; regressions identical to main. GitHub checks: Netlify deploy preview,
+      redirect/header rules.
+    - After the merge: Netlify "Production: main@3baa6c9 Published". Site and admin pages 200. The Command Center opens
+      for the President with only `admin` ON. Learner API `flag_off`; a forged token gets 401.
+    - Note: deploys run again (the credit pause seen earlier in the day is over).
+    **Stage 2 BUILT on branch `academy/a2d-lesson-engine` (draft PR; NOT merged).** Runbook
+    `docs/academy/A2D_STAGE2_LESSON_ENGINE.md`.
+    - **One renderer:** `src/assets/academy/lesson-player.js`/`.css`. The payload is built by
+      `netlify/functions/_academy_lesson.js`. Samples A and B as M3 block data are in `_academy_samples.js`.
+    - **Read-only preview actions** in `academy-admin-api`: `preview_sample`, `preview_lesson`, `preview_check`.
+      `preview_check` grades ONE practice answer on the server; exam questions are refused; POST only.
+    - **Private file links:** `_academy.js signPrivate()` signs only M3 media paths (`media/<folder>/<file>`), for 15
+      minutes.
+    - **Staff page** `/admin/academy-preview.html`, opened from Command Center → Courses (Samples A and B, and
+      "Preview" beside every lesson).
+    - **Rules from now on:**
+      - The player places all text as text (no `innerHTML` and similar; a test reads the source).
+      - Links are https only, and video uses the M3 host allow-list, checked on the server AND in the browser.
+      - A preview payload never holds an answer key or explanation.
+      - The player measures its own width (container queries, with a screen-width fallback for older iOS), so the
+        staff preview can show the phone layout on a desktop.
+      - The admin shell's styles must never leak into the player.
+    - **Unchanged:** no SQL, switch, `netlify.toml` or package change.
+    - **Samples are real lesson data:** both pass the real M3 block checker unchanged (PG16 and PG17.6).
+    - **Mapping vs the mockups:** Sample A's system-then-zone explorer became three explorers; Sample B's Cloud finder
+      became a tabs explorer; B gained a steps block (three fitting checks) and a document placeholder.
+    **Stage 2 APPROVED (Angelo, 12 Oct 2026 11:27 CT):** visual design and interactive presentation accepted, no
+    redesign. PR #9 merge authorized after the final security checks, required tests and GitHub merge requirements pass.
+    After the merge: verify the Netlify production deploy and the staff-only previews; the six learner-related switches
+    stay OFF; existing Academy database functions and protections are preserved; existing HCPS functionality unaffected.
+  - **A2D Stage 3 — Course Builder (authorized by Angelo 12 Oct 2026 11:27 CT, after Stage 2 production verification).**
+    Separate branch + DRAFT PR; never merged automatically; no Academy course records created by Claude; the Golden
+    course is NOT loaded until Angelo approves the builder. Priorities he set:
+    - easy visual lesson editing with no code;
+    - drag-and-drop ordering, with mobile-friendly move controls;
+    - live lesson previews (the Stage 2 player);
+    - Golden product image selection and approval under Angelo's control;
+    - interactive comparison and scenario editing;
+    - question-bank management with configurable module distribution;
+    - clear readiness warnings for missing images, unverified facts and incomplete content.
+    Report as usual (testing, security, deployment) when ready for review.
   - A1 check 27 and M1 check 43 need EMPTY Academy tables; if records exist in production they FAIL by design — use the
     before/after leftover checks (M2 21, M3 25) and discuss first.
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
