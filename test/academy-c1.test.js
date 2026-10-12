@@ -243,14 +243,14 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
   });
   await t('version workflow: draft -> in review -> draft by an admin (audited content operation; never to published/retired)', async () => {
     const w = world(); const m = mod(w);
-    const a = await call(m, { action: 'submit_for_review', id: V_DRAFT }, as('admin'));
+    const a = await call(m, { action: 'submit_for_review', id: V_DRAFT }, as('pres'));
     assert.strictEqual(a.status, 200); assert.strictEqual(w.db.academy_course_versions.find(v => v.id === V_DRAFT).status, 'in_review');
-    const b = await call(m, { action: 'return_to_draft', id: V_DRAFT }, as('admin'));
+    const b = await call(m, { action: 'return_to_draft', id: V_DRAFT }, as('pres'));
     assert.strictEqual(b.status, 200); assert.strictEqual(w.db.academy_course_versions.find(v => v.id === V_DRAFT).status, 'draft');
     assert.strictEqual((await call(m, { action: 'submit_for_review', id: V_PUB }, as('pres'))).status, 409);
     assert.strictEqual((await call(m, { action: 'return_to_draft', id: V_PUB }, as('pres'))).status, 409);
     const ev = w.db.academy_events.filter(e => e.entity === 'academy_course_versions');
-    assert.deepStrictEqual(ev.map(e => [e.action, e.actor]), [['submit_for_review', 'staff:ann@hcps.us'], ['return_to_draft', 'staff:ann@hcps.us']]);
+    assert.deepStrictEqual(ev.map(e => [e.action, e.actor]), [['submit_for_review', 'staff:angelo@hcps.us'], ['return_to_draft', 'staff:angelo@hcps.us']]);
     assert.deepStrictEqual(w.contentCalls.map(c => [c.name, c.args.p_to]), [['move_version', 'in_review'], ['move_version', 'draft']]);
     assert.deepStrictEqual(w.writes.filter(x => x.table), []);   // no plain table write
   });
@@ -281,17 +281,17 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
     assert.strictEqual(w.db.academy_course_versions.find(v => v.id === V_DRAFT).pass_mark, 80);
     assert.strictEqual(w.db.academy_events.filter(e => e.action === 'update_version').length, 0);
   });
-  await t('a course learners have seen (a published/retired version) changes only with the President; a draft course by any admin', async () => {
+  await t('a course learners have seen (a published/retired version) changes only with the President; a draft course by the President too; other admins are refused (president_only until M3.1)', async () => {
     const w = world(); const m = mod(w);
     const r1 = await call(m, { action: 'update_course', id: C_PUB, title: 'Renamed' }, as('admin'));
-    assert.strictEqual(r1.status, 403); assert.strictEqual(w.db.academy_courses.find(c => c.id === C_PUB).title, 'Golden Basics');
+    assert.strictEqual(r1.status, 403); assert.strictEqual(r1.body.error, 'president_only'); assert.strictEqual(w.db.academy_courses.find(c => c.id === C_PUB).title, 'Golden Basics');
     assert.strictEqual(w.contentCalls.length, 0);
     const r2 = await call(m, { action: 'update_course', id: C_PUB, title: 'Golden Basics (2026)' }, as('pres'));
     assert.strictEqual(r2.status, 200); assert.strictEqual(w.db.academy_courses.find(c => c.id === C_PUB).title, 'Golden Basics (2026)');
-    const r3 = await call(m, { action: 'update_course', id: C_CERT, title: 'Lift Chair Specialist I', category: 'Seating' }, as('admin'));
+    const r3 = await call(m, { action: 'update_course', id: C_CERT, title: 'Lift Chair Specialist I', category: 'Seating' }, as('pres'));
     assert.strictEqual(r3.status, 200);
     const ev = w.db.academy_events.filter(e => e.action === 'update_course');
-    assert.deepStrictEqual(ev.map(e => e.actor), ['staff:angelo@hcps.us', 'staff:ann@hcps.us']);
+    assert.deepStrictEqual(ev.map(e => e.actor), ['staff:angelo@hcps.us', 'staff:angelo@hcps.us']);
     assert.strictEqual(ev[1].before.title, 'Lift Chair Specialist'); assert.strictEqual(ev[1].after.title, 'Lift Chair Specialist I');
   });
   await t('a course\'s slug, type, issuer and status cannot be changed through update_course', async () => {
@@ -302,18 +302,33 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
     assert.deepStrictEqual([c.slug, c.course_type, c.issuer, c.status], ['golden-lift-chair-specialist', 'hcps_certification', 'hcps', 'draft']);
   });
 
+  await t('until M3.1: every content and builder write is President-only — admin and owner get 403 president_only and nothing is called or written; their reads still work', async () => {
+    const { PRESIDENT_ONLY_EDITING } = require('../netlify/functions/_academy_builder.js');
+    assert.ok(PRESIDENT_ONLY_EDITING.includes('save_blocks') && PRESIDENT_ONLY_EDITING.includes('upload_media') && PRESIDENT_ONLY_EDITING.includes('create_course'));
+    for (const a of ['publish_version', 'retire_version', 'set_training_manager', 'record_fact', 'withdraw_fact', 'review_external_cert']) assert.ok(!PRESIDENT_ONLY_EDITING.includes(a), a);
+    for (const tok of ['admin', 'owner']) {
+      const w = world(); const m = mod(w); const ops = withOps(w); const snap = () => JSON.stringify(['academy_courses', 'academy_course_versions', 'academy_modules', 'academy_lessons', 'academy_events', 'academy_questions', 'academy_media'].map(k => w.db[k])); const before = snap();
+      for (const action of PRESIDENT_ONLY_EDITING) {
+        const r = await call(m, { action, id: V_DRAFT, version_id: V_DRAFT, course_id: C_CERT, module_id: M_DRAFT, title: 'x' }, as(tok));
+        assert.strictEqual(r.status, 403, tok + ' ' + action); assert.strictEqual(r.body.error, 'president_only', tok + ' ' + action);
+      }
+      assert.strictEqual(w.contentCalls.length, 0); assert.strictEqual(ops.length, 0); assert.deepStrictEqual(w.writes, []); assert.strictEqual(snap(), before);
+      for (const action of ['overview', 'list_courses', 'list_events']) assert.strictEqual((await call(m, { action }, as(tok))).status, 200, tok + ' ' + action);
+    }
+  });
+
   // ---------- 5. building content ----------
   await t('create course: issuer follows the type (never the request), status is always draft, the manufacturer must exist', async () => {
     const w = world(); const m = mod(w);
-    const r = await call(m, { action: 'create_course', slug: 'pride-scooter-basics', title: 'Scooter Basics', course_type: 'training', issuer: 'hcps', status: 'published', manufacturer_slug: 'pride-mobility' }, as('admin'));
+    const r = await call(m, { action: 'create_course', slug: 'pride-scooter-basics', title: 'Scooter Basics', course_type: 'training', issuer: 'hcps', status: 'published', manufacturer_slug: 'pride-mobility' }, as('pres'));
     assert.strictEqual(r.status, 200, JSON.stringify(r.body));
     const c = w.db.academy_courses.find(x => x.slug === 'pride-scooter-basics');
     assert.deepStrictEqual([c.issuer, c.status, c.manufacturer_slug], ['none', 'draft', 'pride-mobility']);
     assert.strictEqual(r.body.course.credential.label, 'Training only');
-    const h = await call(m, { action: 'create_course', slug: 'hcps-seating', title: 'Seating', course_type: 'hcps_certification', issuer: 'manufacturer' }, as('admin'));
+    const h = await call(m, { action: 'create_course', slug: 'hcps-seating', title: 'Seating', course_type: 'hcps_certification', issuer: 'manufacturer' }, as('pres'));
     assert.strictEqual(h.status, 200); assert.strictEqual(w.db.academy_courses.find(x => x.slug === 'hcps-seating').issuer, 'hcps');
-    assert.strictEqual((await call(m, { action: 'create_course', slug: 'x-course', title: 'X', course_type: 'training', manufacturer_slug: 'not-a-maker' }, as('admin'))).status, 400);
-    const ev = w.db.academy_events.filter(e => e.action === 'create_course' && e.actor === 'staff:ann@hcps.us');
+    assert.strictEqual((await call(m, { action: 'create_course', slug: 'x-course', title: 'X', course_type: 'training', manufacturer_slug: 'not-a-maker' }, as('pres'))).status, 400);
+    const ev = w.db.academy_events.slice(3).filter(e => e.action === 'create_course' && e.actor === 'staff:angelo@hcps.us');
     assert.strictEqual(ev.length, 2);
     noForbiddenWrites(w);
   });
@@ -328,48 +343,48 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
       { slug: 'Bad Slug', title: 'G', course_type: 'training' }, { slug: 'ok-slug', title: '', course_type: 'training' },
       { slug: 'ok-slug', title: 'G', course_type: 'golden_certificate' }, { slug: '-lead', title: 'G', course_type: 'training' },
     ];
-    for (const b of bad) assert.strictEqual((await call(m, Object.assign({ action: 'create_course' }, b), as('admin'))).status, 400, JSON.stringify(b));
-    const ok = await call(m, { action: 'create_course', slug: 'golden-elite', title: 'Golden Elite', course_type: 'manufacturer_program', manufacturer_slug: 'golden-technologies', external_url: 'https://golden.example/elite' }, as('admin'));
+    for (const b of bad) assert.strictEqual((await call(m, Object.assign({ action: 'create_course' }, b), as('pres'))).status, 400, JSON.stringify(b));
+    const ok = await call(m, { action: 'create_course', slug: 'golden-elite', title: 'Golden Elite', course_type: 'manufacturer_program', manufacturer_slug: 'golden-technologies', external_url: 'https://golden.example/elite' }, as('pres'));
     assert.strictEqual(ok.status, 200);
     assert.strictEqual(ok.body.course.credential.label, 'Manufacturer-issued credential');
     assert.strictEqual(w.db.academy_courses.filter(c => /^gp|^ok-slug|^-lead|bad/i.test(c.slug)).length, 0);
   });
   await t('a duplicate slug is a plain 409', async () => {
     const w = world({ unique: { academy_courses: [['slug']] } }); const m = mod(w);
-    assert.strictEqual((await call(m, { action: 'create_course', slug: 'golden-basics', title: 'Again', course_type: 'training' }, as('admin'))).status, 409);
+    assert.strictEqual((await call(m, { action: 'create_course', slug: 'golden-basics', title: 'Again', course_type: 'training' }, as('pres'))).status, 409);
   });
   await t('versions: numbered in order, draft only, bounded settings; manufacturer programs have none', async () => {
     const w = world(); const m = mod(w);
-    const r = await call(m, { action: 'create_version', course_id: C_PUB, status: 'published', published_at: '2026-01-01', pass_mark: 85 }, as('admin'));
+    const r = await call(m, { action: 'create_version', course_id: C_PUB, status: 'published', published_at: '2026-01-01', pass_mark: 85 }, as('pres'));
     assert.strictEqual(r.status, 200); const v = w.db.academy_course_versions.find(x => x.course_id === C_PUB && x.version === 3);
     assert.ok(v); assert.deepStrictEqual([v.status, v.pass_mark, v.exam_questions, v.published_at], ['draft', 85, 25, null]);
-    assert.strictEqual((await call(m, { action: 'create_version', course_id: C_GOLD }, as('admin'))).status, 400);
+    assert.strictEqual((await call(m, { action: 'create_version', course_id: C_GOLD }, as('pres'))).status, 400);
     for (const b of [{ pass_mark: 0 }, { pass_mark: 101 }, { exam_questions: 0 }, { pass_mark: '80; drop' }, { validity_months: -1 }, { pass_mark: 79.5 }])
-      assert.strictEqual((await call(m, Object.assign({ action: 'update_version', id: V_DRAFT }, b), as('admin'))).status, 400, JSON.stringify(b));
-    const u = await call(m, { action: 'update_version', id: V_DRAFT, pass_mark: 75, validity_months: '', status: 'published' }, as('admin'));
+      assert.strictEqual((await call(m, Object.assign({ action: 'update_version', id: V_DRAFT }, b), as('pres'))).status, 400, JSON.stringify(b));
+    const u = await call(m, { action: 'update_version', id: V_DRAFT, pass_mark: 75, validity_months: '', status: 'published' }, as('pres'));
     assert.strictEqual(u.status, 200); const d = w.db.academy_course_versions.find(x => x.id === V_DRAFT);
     assert.deepStrictEqual([d.pass_mark, d.validity_months, d.status], [75, null, 'draft']);
   });
   await t('modules and lessons on a draft: add (next position), edit, remove; a module with lessons is not removed', async () => {
     const w = world(); const m = mod(w);
-    const a = await call(m, { action: 'create_module', version_id: V_DRAFT, title: 'Controls', objectives: ['Use the hand control'] }, as('admin'));
+    const a = await call(m, { action: 'create_module', version_id: V_DRAFT, title: 'Controls', objectives: ['Use the hand control'] }, as('pres'));
     assert.strictEqual(a.status, 200); assert.strictEqual(a.body.module.position, 3);
-    const l = await call(m, { action: 'create_lesson', module_id: a.body.module.id, title: 'Hand controls', est_minutes: 12 }, as('admin'));
+    const l = await call(m, { action: 'create_lesson', module_id: a.body.module.id, title: 'Hand controls', est_minutes: 12 }, as('pres'));
     assert.strictEqual(l.status, 200); assert.strictEqual(l.body.lesson.position, 1);
-    assert.strictEqual((await call(m, { action: 'create_lesson', module_id: M_DRAFT, title: 'Too long', est_minutes: 45 }, as('admin'))).status, 400);
-    assert.strictEqual((await call(m, { action: 'update_lesson', id: LS_DRAFT, title: 'Motors & actuators', blocks: [{ type: 'html', html: '<script>' }] }, as('admin'))).status, 200);
+    assert.strictEqual((await call(m, { action: 'create_lesson', module_id: M_DRAFT, title: 'Too long', est_minutes: 45 }, as('pres'))).status, 400);
+    assert.strictEqual((await call(m, { action: 'update_lesson', id: LS_DRAFT, title: 'Motors & actuators', blocks: [{ type: 'html', html: '<script>' }] }, as('pres'))).status, 200);
     assert.deepStrictEqual(w.db.academy_lessons.find(x => x.id === LS_DRAFT).blocks, [{ type: 'text' }]);   // blocks are not edited in C1
-    assert.strictEqual((await call(m, { action: 'delete_module', id: M_DRAFT }, as('admin'))).status, 409);
-    assert.strictEqual((await call(m, { action: 'delete_module', id: M_EMPTY }, as('admin'))).status, 200);
-    assert.strictEqual((await call(m, { action: 'delete_lesson', id: l.body.lesson.id }, as('admin'))).status, 200);
-    const acts = w.db.academy_events.slice(3).filter(e => e.actor === 'staff:ann@hcps.us').map(e => e.action);
+    assert.strictEqual((await call(m, { action: 'delete_module', id: M_DRAFT }, as('pres'))).status, 409);
+    assert.strictEqual((await call(m, { action: 'delete_module', id: M_EMPTY }, as('pres'))).status, 200);
+    assert.strictEqual((await call(m, { action: 'delete_lesson', id: l.body.lesson.id }, as('pres'))).status, 200);
+    const acts = w.db.academy_events.slice(3).filter(e => e.actor === 'staff:angelo@hcps.us').map(e => e.action);
     assert.deepStrictEqual(acts, ['create_module', 'create_lesson', 'update_lesson', 'delete_module', 'delete_lesson']);
     noForbiddenWrites(w);
   });
   await t('objectives: at most 12 short lines; anything else is refused', async () => {
     const w = world(); const m = mod(w);
     for (const objectives of ['one string', Array(13).fill('x'), ['x'.repeat(301)], [''], [{}]])
-      assert.strictEqual((await call(m, { action: 'create_module', version_id: V_DRAFT, title: 'M', objectives }, as('admin'))).status, 400, JSON.stringify(objectives).slice(0, 40));
+      assert.strictEqual((await call(m, { action: 'create_module', version_id: V_DRAFT, title: 'M', objectives }, as('pres'))).status, 400, JSON.stringify(objectives).slice(0, 40));
   });
 
   // ---------- 6. identity always from the sign-in ----------
@@ -427,9 +442,9 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
   });
   await t('ordinary writes record the signed-in admin in the audit row even when the request names someone else', async () => {
     const w = world(); const m = mod(w);
-    await call(m, Object.assign({ action: 'create_module', version_id: V_DRAFT, title: 'Spoofed?' }, IDENTITY_SPOOF), as('admin'));
+    await call(m, Object.assign({ action: 'create_module', version_id: V_DRAFT, title: 'Spoofed?' }, IDENTITY_SPOOF), as('pres'));
     const e = w.db.academy_events[w.db.academy_events.length - 1];
-    assert.strictEqual(e.actor, 'staff:ann@hcps.us'); assert.strictEqual(e.actor_type, 'staff');
+    assert.strictEqual(e.actor, 'staff:angelo@hcps.us'); assert.strictEqual(e.actor_type, 'staff');
     assert.ok(!JSON.stringify(w.db.academy_events).includes('evil@else.com'));
   });
   const ORDINARY = [
@@ -444,10 +459,10 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
   await t('M2: every ordinary write is ONE call to its academy_content_op_* operation, with the signed-in person as actor — never a plain table write', async () => {
     const w = world(); const m = mod(w);
     const seq = ORDINARY.filter(b => !/review|draft$/.test(b.action)).concat([{ action: 'submit_for_review', id: V_DRAFT }, { action: 'return_to_draft', id: V_DRAFT }]);
-    for (const b of seq) { const r = await call(m, Object.assign({}, b, IDENTITY_SPOOF), as('admin')); assert.strictEqual(r.status, 200, b.action + ' ' + JSON.stringify(r.body)); }
+    for (const b of seq) { const r = await call(m, Object.assign({}, b, IDENTITY_SPOOF), as('pres')); assert.strictEqual(r.status, 200, b.action + ' ' + JSON.stringify(r.body)); }
     assert.deepStrictEqual(w.contentCalls.map(c => c.name), ['create_course', 'update_course', 'create_version', 'update_version',
       'create_module', 'update_module', 'delete_module', 'create_lesson', 'update_lesson', 'delete_lesson', 'move_version', 'move_version']);
-    assert.ok(w.contentCalls.every(c => c.args.p_actor === 'staff:ann@hcps.us'), JSON.stringify(w.contentCalls.map(c => c.args.p_actor)));
+    assert.ok(w.contentCalls.every(c => c.args.p_actor === 'staff:angelo@hcps.us'), JSON.stringify(w.contentCalls.map(c => c.args.p_actor)));
     assert.deepStrictEqual(w.writes.filter(x => x.table), [], 'a plain table write was made');
     assert.strictEqual(w.writes.filter(x => x.kind === 'content_op').length, ORDINARY.length);
     // each call carried only the fields the operation accepts (no status, issuer, position, version number or id smuggled in)
@@ -456,12 +471,12 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
   });
   await t('M2: if the audit row cannot be written the database refuses the whole change — 502, nothing changed, nothing recorded', async () => {
     const w = world(null, { auditFails: true }); const m = mod(w); const before = snapshot(w);
-    for (const b of ORDINARY) { const r = await call(m, b, as('admin')); assert.strictEqual(r.status, 502, b.action); assert.strictEqual(r.body.error, 'write_failed'); }
+    for (const b of ORDINARY) { const r = await call(m, b, as('pres')); assert.strictEqual(r.status, 502, b.action); assert.strictEqual(r.body.error, 'write_failed'); }
     assert.strictEqual(snapshot(w), before); assert.deepStrictEqual(w.writes, []);
   });
   await t('M2 not installed: every ordinary write answers 503 "not available" and nothing is written (no fallback to a plain write)', async () => {
     const w = world(null, { missing: true }); const m = mod(w); const before = snapshot(w);
-    for (const b of ORDINARY) { const r = await call(m, b, as('admin')); assert.strictEqual(r.status, 503, b.action); assert.strictEqual(r.body.error, 'not_installed'); }
+    for (const b of ORDINARY) { const r = await call(m, b, as('pres')); assert.strictEqual(r.status, 503, b.action); assert.strictEqual(r.body.error, 'not_installed'); }
     assert.strictEqual(snapshot(w), before); assert.deepStrictEqual(w.writes, []);
   });
   await t('M2: the database\'s own refusals come back plainly — 403 with its reason, 404, 409 conflict / locked, 400 with its reason', async () => {
@@ -475,7 +490,7 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
                    [500, 'XX000', 'internal: secret detail', 502, 'write_failed', /nothing was changed/]];
     for (const [st, code, msg, want, err, re] of cases) {
       answer = [st, code, msg];
-      const r = await call(m, { action: 'update_lesson', id: LS_DRAFT, title: 'x' }, as('admin'));
+      const r = await call(m, { action: 'update_lesson', id: LS_DRAFT, title: 'x' }, as('pres'));
       assert.strictEqual(r.status, want, code); assert.strictEqual(r.body.error, err, code); assert.ok(re.test(r.body.message), r.body.message);
       assert.ok(!/secret detail|academy:/.test(r.body.message), r.body.message);
     }
@@ -488,11 +503,11 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
     // a fresh world where every row was made through the Command Center
     const w2 = world({ tables: Object.assign(seed().tables, { academy_courses: [], academy_course_versions: [], academy_modules: [], academy_lessons: [], academy_questions: [], academy_events: [] }) });
     const m2 = mod(w2);
-    const c = (await call(m2, { action: 'create_course', slug: 'clean-course', title: 'Clean', course_type: 'hcps_certification' }, as('admin'))).body.course;
-    const v = (await call(m2, { action: 'create_version', course_id: c.id }, as('admin'))).body.version;
-    const mo = (await call(m2, { action: 'create_module', version_id: v.id, title: 'M1', objectives: ['a'] }, as('admin'))).body.module;
-    const le = (await call(m2, { action: 'create_lesson', module_id: mo.id, title: 'L1', est_minutes: 5 }, as('admin'))).body.lesson;
-    await call(m2, { action: 'update_lesson', id: le.id, title: 'L1b' }, as('admin')); await call(m2, { action: 'update_version', id: v.id, pass_mark: 70 }, as('admin'));
+    const c = (await call(m2, { action: 'create_course', slug: 'clean-course', title: 'Clean', course_type: 'hcps_certification' }, as('pres'))).body.course;
+    const v = (await call(m2, { action: 'create_version', course_id: c.id }, as('pres'))).body.version;
+    const mo = (await call(m2, { action: 'create_module', version_id: v.id, title: 'M1', objectives: ['a'] }, as('pres'))).body.module;
+    const le = (await call(m2, { action: 'create_lesson', module_id: mo.id, title: 'L1', est_minutes: 5 }, as('pres'))).body.lesson;
+    await call(m2, { action: 'update_lesson', id: le.id, title: 'L1b' }, as('pres')); await call(m2, { action: 'update_version', id: v.id, pass_mark: 70 }, as('pres'));
     const ok = (await call(m2, { action: 'audit_check' }, as('admin'))).body;
     assert.strictEqual(ok.clean, true, JSON.stringify(ok)); assert.strictEqual(ok.checked, 4);
     // an edit made outside the Command Center

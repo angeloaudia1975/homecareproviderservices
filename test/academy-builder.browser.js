@@ -361,14 +361,21 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
       await pg.context().close();
     });
 
-    await t('pictures under the President\'s control: a second administrator uploads (waits for approval, cannot approve); the President approves with alt text; it appears in the library', async () => {
+    await t('pictures under the President\'s control: until M3.1 a second administrator sees the builder read only and cannot upload or approve; the President uploads, approves with alt text, and it appears in the library', async () => {
       const pa = await page(browser, origin, 1280, 'adm');
-      await openB(pa, origin, 'media'); await pa.waitForSelector('text=Add a picture or document');
-      await pa.setInputFiles('input[type=file]', { name: 'Cloud PR-515 front.png', mimeType: 'image/png', buffer: png(500, 350) });
-      await pa.click('button:has-text("Upload")'); await pa.waitForSelector('text=Waiting for the President to approve or discard it.');
+      await openB(pa, origin, 'lessons'); await pa.waitForSelector('text=only the President edits course content');
+      assert.strictEqual(await pa.$$eval('button:has-text("Save lesson"):not([disabled])', b => b.length), 0, 'no save for a non-President');
+      await pa.click('#tabs [role="tab"]:has-text("Pictures")'); await pa.waitForSelector('text=only the President adds pictures and documents');
+      assert.strictEqual(await pa.$$eval('input[type=file]', b => b.length), 0, 'no upload control for a non-President');
       assert.strictEqual(await pa.$$eval('button:has-text("Approve")', b => b.length), 0, 'no approval control for a non-President');
       assert.deepStrictEqual(await axe(pa), []);
+      assert.deepStrictEqual(pa.errors, []);
       await pa.context().close();
+      const pu = await page(browser, origin, 1280);
+      await openB(pu, origin, 'media'); await pu.waitForSelector('text=Add a picture or document');
+      await pu.setInputFiles('input[type=file]', { name: 'Cloud PR-515 front.png', mimeType: 'image/png', buffer: png(500, 350) });
+      await pu.click('button:has-text("Upload")'); await pu.waitForSelector('.sub-card:has-text("Approve for lessons")');
+      await pu.context().close();
       const pg = await page(browser, origin, 1280);
       await openB(pg, origin, 'media'); await pg.waitForSelector('.sub-card:has-text("Approve for lessons")');
       const c = pg.locator('.q:has(.sub-card:has-text("Approve for lessons"))').first();

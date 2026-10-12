@@ -636,6 +636,8 @@ exports.handler = A.handler(async event => {
   const a = Object.prototype.hasOwnProperty.call(ACTIONS, action) ? ACTIONS[action] : null;
   if (!a) return A.respond(event, 404, { error: 'unknown_action', message: 'Unknown action.' });
   if (a.write && event.httpMethod !== 'POST') return A.respond(event, 405, { error: 'method', message: 'Changes must be sent as POST.' });
+  // Until M3.1 is installed, only the President edits course content (Angelo, 12 Oct 2026).
+  if (BUILDER.PRESIDENT_ONLY_EDITING.includes(action) && !isPresident(staff)) return A.respond(event, 403, { error: 'president_only', message: 'Until the M3.1 save upgrade is installed, only the President edits course content.' });
   return A.respond(event, 200, await a.fn(staff, b, event));
 });
 exports._actions = ACTIONS;
