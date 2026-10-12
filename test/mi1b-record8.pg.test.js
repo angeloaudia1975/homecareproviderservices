@@ -32,6 +32,7 @@ const dbs = [];
 function setup(tag) {
   const DB = `hcps_rec8_${tag}_${process.pid}`; dbs.push(DB);
   run('postgres', `drop database if exists ${DB}`); run('postgres', `create database ${DB}`);
+  run(DB, `alter database ${DB} set session_preload_libraries = 'safeupdate'`);   // as on Supabase's API (pg-safeupdate)
   const q = sql => run(DB, sql), sr = sql => q(`begin; set local role service_role; ${sql}; commit;`);
   for (const f of [T('mi1a/fixture.sql'), SB('mi1a_part0_snapshot.sql'), SB('mi1a_part1_schema.sql'), T('mc-guard.stub.sql'), ROOTF('migrate-phase2-product-skus.sql'),
     T('mc-guard.data.sql'), SB('mc_phase1_foundation.sql'), SB('mc_phase1_backfill.sql'), SB('mc_phase2_freeze_guard.sql'), SB('mc_phase6_append_only.sql'),

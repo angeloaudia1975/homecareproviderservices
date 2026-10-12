@@ -2034,6 +2034,34 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   automatic HQ fallback for ambiguous multi-branch orders; shadow validation on Strongback order exports and Bemis's
   hand-corrected reports; the manual import workflow and every MI-1a protection preserved. Deliver implementation, tests
   and ONE consolidated rollout recommendation; no long planning documents or extra stop points.
+- **Phase C BUILT on branch `mi-c-shipto` (2026-10-11; off `mi-b-capture-fixes`; NOT merged, NOT deployed, NO production
+  SQL).** Migration `supabase/mi_c_shipto.sql` (sha256 015675d6…1f26; rollback `…_rollback.sql` fffaf539…, refuses while any
+  decision exists): `mfr_shipto_corrections` (versioned, append-only overlay per order of a registered report: chosen
+  branch or explicit corporate, corrected ship-to fields, the file's own values in `reported`, the order fingerprint;
+  a save names the version the person saw — `shipto_stale` otherwise), `mfr_shipto_mappings` (verified manufacturer +
+  account + ship-to key from the FILE — ship-to id, or street + ZIP; never account alone; one active per key; a
+  different branch needs `replace_mapping`, which retires the old one; retire only, never delete), append-only
+  `mfr_shipto_events`; writes only through `hcps_mfr_shipto_correct` / `hcps_mfr_shipto_retire` (security definer,
+  service_role only); guard = marker + owner rights, no delete / truncate, mappings change only by one retirement;
+  never a TEST dealer; corporate only on an HQ; RULE 19 (RLS on, no policies, service_role SELECT only). Installed-code
+  fingerprint 3 functions: 3c6a02dc… (LF) / 76608c60… (CRLF paste). Code: `_report_rows.js` (server reader for stored
+  CSV / XLSX order exports; the Sales Report Import page's column patterns, drift-tested; text stays text — ZIPs keep
+  leading zeros), `_shipto_review.js` (orders not lines; resolved / corrected / needs_review with reasons zip_shared,
+  new_location, billing_address_only, no_ship_to, weak_evidence, mixed_lines, no_dealer_match, correction_stale; report
+  "held" as a WHOLE while any order needs review; corrected CSV = original columns untouched + HCPS columns; read-only
+  shadow vs monthly_sales history), `_shipto.js` (state names → codes; strict-only saved ZIP assignments `zipmap:<slug>`
+  inside their corporate; `makeMatcher` = the Sales Report Import identity rule, which sales-import-api now calls — its
+  picks unchanged), `shipto-review-api.js` (management only; actor, fingerprint, reported values and ship key always from
+  the server; branch outside the matched family needs `confirm_outside_family`; strict reads → 503; never writes outside
+  Phase C), page `/admin/shipto-review.html` + `.js` (HUBS: Sales Data & Analytics → Ship-To Review): Reports → orders
+  (needs review first) → panel (file's ship-to AND bill-to, reason, options with HQ offered but never pre-chosen, dealer
+  search, corporate tick, missing ship-to fields, reason, Remember) → Save & Continue (revalidates, next order); Verified
+  mappings tab; Shadow check tab. Tests: shipto-review 40, mi-c-shipto.pg 22 (pg-safeupdate), mi-c.ui (Chromium,
+  360/390/768/1280), Phase C mutants 32/32 (clean control), Phase B mutants 38/38, admin header 40/40; full regression
+  passes except the known clock / documents.json suites. Shadow on production data: read-only export
+  `supabase/mi_c_shadow_export.sql` + `scripts/shipto_shadow_local.js`, or the API's shadow action once deployed.
+  Probe: `scripts/mi_c_public_probe_browser.js` (14 checks). The manual Sales Report Import and every MI-1a protection are
+  unchanged; nothing imports automatically.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.

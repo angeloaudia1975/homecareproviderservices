@@ -11,8 +11,12 @@
                preview can show them.
 
    Reliable evidence, in order (strict):
+     0. (Phase C) states are compared as codes ("Indiana" = IN); identity comes from makeMatcher, the Sales Report
+        Import's own account-number / name rule
      1. a VERIFIED mapping for this manufacturer + account number + ship-to key (the ship-to id, or street + ZIP) —
         never an account number alone for a family with several branches
+     1b. a ZIP → branch assignment saved in Commission Review (app_settings zipmap:<slug>, RULE 6), only inside the
+        corporate it was saved for (strict only — the manual import's legacy picks never change)
      2. exactly one candidate (a dealer without branches)
      3. a ship-to ZIP that matches exactly ONE branch
      4. a normalised street address that matches exactly ONE branch
@@ -27,6 +31,15 @@ const ABBR = { STREET: "ST", ST: "ST", AVENUE: "AVE", AVE: "AVE", ROAD: "RD", RD
 const naddr = a => String(a || "").toUpperCase().replace(/[.,#]/g, " ").split(/\s+/).filter(Boolean).map(w => ABBR[w] || w).join(" ").trim();
 const ncity = c => String(c || "").toUpperCase().replace(/[^A-Z ]/g, "").replace(/\s+/g, " ").trim();
 const nref = r => String(r || "").trim().toLowerCase();
+// US state: "Indiana" / "IN" / "in." → "IN" (manufacturer files spell states out; dealers hold the code).
+const STATES = { ALABAMA: "AL", ALASKA: "AK", ARIZONA: "AZ", ARKANSAS: "AR", CALIFORNIA: "CA", COLORADO: "CO", CONNECTICUT: "CT", DELAWARE: "DE",
+  "DISTRICT OF COLUMBIA": "DC", FLORIDA: "FL", GEORGIA: "GA", HAWAII: "HI", IDAHO: "ID", ILLINOIS: "IL", INDIANA: "IN", IOWA: "IA", KANSAS: "KS",
+  KENTUCKY: "KY", LOUISIANA: "LA", MAINE: "ME", MARYLAND: "MD", MASSACHUSETTS: "MA", MICHIGAN: "MI", MINNESOTA: "MN", MISSISSIPPI: "MS",
+  MISSOURI: "MO", MONTANA: "MT", NEBRASKA: "NE", NEVADA: "NV", "NEW HAMPSHIRE": "NH", "NEW JERSEY": "NJ", "NEW MEXICO": "NM", "NEW YORK": "NY",
+  "NORTH CAROLINA": "NC", "NORTH DAKOTA": "ND", OHIO: "OH", OKLAHOMA: "OK", OREGON: "OR", PENNSYLVANIA: "PA", "RHODE ISLAND": "RI",
+  "SOUTH CAROLINA": "SC", "SOUTH DAKOTA": "SD", TENNESSEE: "TN", TEXAS: "TX", UTAH: "UT", VERMONT: "VT", VIRGINIA: "VA", WASHINGTON: "WA",
+  "WEST VIRGINIA": "WV", WISCONSIN: "WI", WYOMING: "WY", "PUERTO RICO": "PR" };
+const nstate = s => { const u = String(s || "").toUpperCase().replace(/[^A-Z ]/g, " ").replace(/\s+/g, " ").trim(); return STATES[u] || u; };
 
 // The ship-to key a verified mapping is remembered under: the manufacturer's own ship-to id when the report gives one,
 // otherwise the delivery street + ZIP. Null when neither exists (nothing that narrow can be remembered).
@@ -53,12 +66,24 @@ function resolveBranch(cands, row, opts) {
       return out(d, hit.scope === "corporate" ? "corporate_confirmed" : "verified_mapping", { mapping_id: hit.id || null });
     }
   }
+  // 1b. Strict only: a ZIP → branch assignment a person saved in Commission Review (app_settings zipmap:<slug>,
+  //     RULE 6 — "ZIP is the master key"). One scoped to a corporate applies only inside that corporate's family;
+  //     an unscoped one only to a dealer already among the candidates.
+  if (mode === "strict" && opts.zipmap && typeof opts.zipmap === "object") {
+    const z = znorm(row.ship_zip), ent = z ? opts.zipmap[z] : null;
+    const d0 = ent && (typeof ent === "string" ? ent : ent.d), c0 = ent && typeof ent === "object" ? ent.c : null;
+    if (d0) {
+      const root = id => (typeof opts.rootOf === "function" ? opts.rootOf(id) : null) || id;
+      const roots = new Set(cands.map(c => root(c.id)));
+      if (c0 ? roots.has(c0) : ids.has(d0)) return out(cands.find(c => c.id === d0) || { id: d0 }, "zip_assignment");
+    }
+  }
   // 2. One candidate.
   if (cands.length === 1) return out(cands[0], "single");
   const zip = znorm(row.ship_zip), addr = naddr(row.ship_address), city = ncity(row.ship_city), name = dnorm(row.ship_name);
   const zipHits = zip ? cands.filter(d => znorm(d.zip) === zip) : [];
   const addrHits = addr ? cands.filter(d => naddr(d.address) === addr) : [];
-  const cityHits = city ? cands.filter(d => ncity(d.city) === city && (!row.ship_state || !d.state || String(d.state).toUpperCase() === String(row.ship_state).toUpperCase())) : [];
+  const cityHits = city ? cands.filter(d => ncity(d.city) === city && (!row.ship_state || !d.state || nstate(d.state) === nstate(row.ship_state))) : [];
   const nameHits = name ? cands.filter(d => dnorm(d.business_name) === name) : [];
   const hq = cands.find(d => !d.parent_id) || null;
   const sugg = [];
@@ -88,4 +113,27 @@ function resolveBranch(cands, row, opts) {
     reason: billingOnly ? "billing_address_only" : noShip ? "no_ship_to" : (zip || addr) ? "new_location" : "weak_evidence" });
 }
 
-module.exports = { resolveBranch, shipKey, _internal: { dnorm, znorm, naddr, ncity } };
+// Who the report line is: the dealer family found by account number (per manufacturer) or by name / alias — EXACTLY
+// the Sales Report Import's rule (sales-import-api buildResolver uses this same function): number first, then name;
+// a reused-number manufacturer (NAME_FIRST) name first. One account hit expands to its whole family so the branch
+// can be chosen; several hits stay as they are. Pure: built from rows the caller read.
+function makeMatcher(p) {
+  const dealers = p.dealers || [], byId = new Map();
+  for (const d of dealers) byId.set(d.id, d);
+  const rootOf = id => { const d = byId.get(id); return (d && d.parent_id) ? d.parent_id : id; };
+  const familyByRoot = new Map();
+  for (const d of dealers) { const r = rootOf(d.id); (familyByRoot.get(r) || familyByRoot.set(r, []).get(r)).push(d); }
+  const refToIds = new Map();
+  for (const x of (p.accounts || [])) { const k = nref(x.account_ref); if (!k) continue; (refToIds.get(k) || refToIds.set(k, []).get(k)).push(x.dealer_id); }
+  const norm2id = new Map(); for (const d of dealers) norm2id.set(dnorm(d.business_name), d.id);
+  for (const a of (p.aliases || [])) { if (a && a.alias_norm && !norm2id.has(a.alias_norm)) norm2id.set(a.alias_norm, a.dealer_id); }
+  const family = id => familyByRoot.get(rootOf(id)) || [byId.get(id)].filter(Boolean);
+  const byName = row => { if (!row.company) return null; const id = norm2id.get(dnorm(row.company)); return id ? family(id) : null; };
+  const byRef = row => { const ref = nref(row.account_ref);
+    if (ref && refToIds.has(ref)) { const cands = refToIds.get(ref).map(i => byId.get(i)).filter(Boolean); return cands.length === 1 ? family(cands[0].id) : cands; }
+    return null; };
+  const candidates = row => (p.nameFirst ? (byName(row) || byRef(row)) : (byRef(row) || byName(row))) || [];
+  return { candidates, byId, rootOf, family };
+}
+
+module.exports = { resolveBranch, makeMatcher, shipKey, _internal: { dnorm, znorm, naddr, ncity, nstate, nref } };
