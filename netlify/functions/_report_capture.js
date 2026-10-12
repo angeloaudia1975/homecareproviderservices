@@ -56,6 +56,7 @@ function fileOk(profile, att) {
   return { ok: true };
 }
 
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 /* ── Period: the report's own evidence first; the received date only as the last, labelled fallback ── */
 function periodOf(profile, att, msg) {
   const order = ((profile.rules || {}).period || {}).order || ["file_name", "content", "subject"];
@@ -67,6 +68,11 @@ function periodOf(profile, att, msg) {
   if (iso) found.file_name = one(`${iso[1]}-${iso[2]}`, "file_name");
   const yymm = String(att.name || "").match(/^(\d\d)(0[1-9]|1[0-2])\b/);
   if (yymm) found.file_name_yymm = one(`20${yymm[1]}-${yymm[2]}`, "file_name");
+  // A month NAME and year in the file name ("Homecare Providers Jan 2026 Commission.xlsx", "… Oct 25 Commission.xls",
+  // "October 2025.xlsx") — used only where a profile's period order names it (Phase D, Complete Medical).
+  const mn = String(att.name || "").match(/(?:^|[^a-z])(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?[\s_-]*'?(20\d\d|\d\d)(?![0-9])/i);
+  if (mn) { const mo = MONTHS.indexOf(mn[1].toLowerCase()) + 1; const yr = mn[2].length === 2 ? "20" + mn[2] : mn[2];
+    found.file_name_month = one(`${yr}-${String(mo).padStart(2, "0")}`, "file_name"); }
   if ((att.text_periods || []).length === 1) found.content = one(att.text_periods[0], "content");
   if (att.date_range) found.content_dates = { start: att.date_range.min + "-01", end: lastDay(att.date_range.max), basis: "content_dates" };
   if (att.reader && att.reader.ok && att.reader.period) found.reader = one(att.reader.period, "report");

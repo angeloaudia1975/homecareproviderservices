@@ -403,6 +403,13 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
       [{ id: 1, code: 'c', status: 'active', auto_register: true, manufacturer: 'strongback-mobility', kind: 'commission_statement', rules: { senders: { domains: ['strongbackmobility.com'] }, formats: ['pdf'], period: { order: ['file_name'] } } }],
       { slug: 'strongback-mobility' });
     assert.deepStrictEqual([d.outcome, d.attention], ['exception', 'period_unknown']);
+    // A month name in the file name (Complete Medical) beats a subject naming two months; only where the profile asks for it.
+    const cm = { rules: { period: { order: ['file_name_month', 'file_name', 'subject'] } } }, msg = { subject: 'RE: Any updates on Jan and Feb Commission Reports', received_at: '2026-04-17T14:00:00Z' };
+    assert.strictEqual(P(cm, { name: 'Homecare Providers Jan 2026 Commission.xlsx' }, msg).start, '2026-01-01');
+    assert.strictEqual(P(cm, { name: 'Homecare Providers Feb 2026 Commission.xlsx' }, msg).start, '2026-02-01');
+    assert.strictEqual(P(cm, { name: 'Homecare Providers Oct 25 Commission.xls' }, msg).start, '2025-10-01');
+    assert.strictEqual(P(cm, { name: 'Homecare Providers March 2026 Commission.xlsx' }, msg).end, '2026-03-31');
+    assert.strictEqual(P({ rules: { period: { order: ['file_name', 'subject'] } } }, { name: 'Homecare Providers Jan 2026 Commission.xlsx' }, msg).end, '2026-02-28', 'without the rule the subject decides (unchanged)');
   });
   await t('first live run (2026-10-11): an order export takes its period from the order date, never the payment-due date', async () => {
     const csv = Buffer.from('Number,Status,Total,"Payment Due Date","Created Date","Line Item Sku","Ship By Date","Close Date"\n' +
