@@ -98,6 +98,49 @@ async function signPrivate(storagePath, seconds) {
   } catch (e) { return null; }
 }
 
+/* Lesson content (A2D M3): lesson blocks, ordering, the exam distribution, questions, media records and fact links. Same
+   contract as op() and contentOp(): one database call = the change and its audit row, or neither; never a plain write. */
+async function authorOp(name, args) {
+  if (!/^[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
+  return rpc('academy_author_op_' + name, args);
+}
+/* The private bucket, for lesson files only (A2D Stage 3 builder). Every path is server-chosen media/<folder>/<file>,
+   exactly the form M3 accepts; nothing else in the bucket is ever listed, written or removed here. */
+async function putPrivate(storagePath, bytes, contentType) {
+  const p = String(storagePath || '');
+  if (!MEDIA_PATH.test(p) || p.includes('..')) refuse(400, 'invalid', 'That file path is not allowed.');
+  let r; try {
+    r = await fetch(`${env().url}/storage/v1/object/academy-private/${p.split('/').map(enc).join('/')}`,
+      { method: 'POST', headers: svc({ 'content-type': contentType, 'x-upsert': 'false', 'cache-control': 'no-store' }), body: bytes });
+  } catch (e) { refuse(502, 'upload_failed', 'The file could not be stored. Nothing was changed.'); }
+  if (r.ok) return { stored: true };
+  const t = await r.text().catch(() => '');
+  if (r.status === 409 || /already exists|Duplicate/i.test(t)) return { stored: false, existed: true };   // same name = same bytes (the name carries the hash)
+  refuse(502, 'upload_failed', 'The file could not be stored. Nothing was changed.');
+}
+async function listPrivate(prefix) {
+  if (!/^media\/([a-z0-9-]{1,60}\/)?$/.test(String(prefix))) refuse(400, 'invalid', 'That folder is not allowed.');
+  let out = [], offset = 0;
+  for (let i = 0; i < 20; i++) {
+    let r; try {
+      r = await fetch(`${env().url}/storage/v1/object/list/academy-private`, { method: 'POST', headers: svc({ 'content-type': 'application/json' }),
+        body: JSON.stringify({ prefix, limit: 1000, offset, sortBy: { column: 'name', order: 'asc' } }) });
+    } catch (e) { refuse(503, 'unreadable', 'The Academy could not read its files just now.'); }
+    if (!r.ok) refuse(503, 'unreadable', 'The Academy could not read its files just now.');
+    const rows = await r.json(); out = out.concat(rows); if (rows.length < 1000) return out; offset += 1000;
+  }
+  refuse(503, 'too_large', 'There are more files than this screen can show at once.');
+}
+async function removePrivate(storagePath) {
+  const p = String(storagePath || '');
+  if (!MEDIA_PATH.test(p) || p.includes('..')) refuse(400, 'invalid', 'That file path is not allowed.');
+  let r; try {
+    r = await fetch(`${env().url}/storage/v1/object/academy-private`, { method: 'DELETE', headers: svc({ 'content-type': 'application/json' }), body: JSON.stringify({ prefixes: [p] }) });
+  } catch (e) { refuse(502, 'remove_failed', 'The file could not be removed.'); }
+  if (!r.ok) refuse(502, 'remove_failed', 'The file could not be removed.');
+  return true;
+}
+
 /* ---------- switches ---------- */
 async function switchOn(name) {
   if (!SWITCHES.includes(name)) return false;
@@ -226,10 +269,11 @@ async function audit(actor, entity, entityId, action, before, after) {
 }
 
 /* ---------- input ---------- */
-function body(event) {
+/* max: a larger limit for the ONE caller that needs it (the builder's file upload); everything else keeps MAX_BODY. */
+function body(event, max) {
   const raw = event && event.body; if (!raw) return {};
   const text = event.isBase64Encoded ? Buffer.from(raw, 'base64').toString('utf8') : String(raw);
-  if (Buffer.byteLength(text) > MAX_BODY) refuse(413, 'too_large', 'That request is too large.');
+  if (Buffer.byteLength(text) > (max || MAX_BODY)) refuse(413, 'too_large', 'That request is too large.');
   let j; try { j = JSON.parse(text); } catch (e) { refuse(400, 'invalid', 'The request could not be read.'); }
   if (!j || typeof j !== 'object' || Array.isArray(j)) refuse(400, 'invalid', 'The request could not be read.');
   return j;
@@ -270,7 +314,7 @@ function handler(fn, opts) {
 
 module.exports = {
   SWITCHES, SITE_ORIGINS, PARTNER360_ORIGINS, MAX_BODY, AcademyError, refuse,
-  sbGet, sbSend, op, contentOp, switchOn, switches, signPrivate,
+  sbGet, sbSend, op, contentOp, authorOp, switchOn, switches, signPrivate, putPrivate, listPrivate, removePrivate, MEDIA_PATH,
   bearer, bearerUser, staffActor, learnerActor,
   isAdmin, isRelations, isRep, family, dealerScope, canSeeDealer, canSeeScores, requireDealer, requireAdmin, actorLabel,
   audit, redact, body, uuid, oneOf, text, respond, handler, SESSION,
