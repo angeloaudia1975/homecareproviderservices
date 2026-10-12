@@ -113,6 +113,10 @@ This does not change who runs production SQL: Angelo still runs every migration 
   patients roll up as drop-ship on the corporate.
 
 ## 7. Workflow
+- **Chrome (Angelo, 2026-10-11 20:44 CT): standing permission to use Claude in Chrome whenever a task needs it —
+  don't ask first.** This covers opening and reading pages, live checks and read-only verification. It does NOT
+  replace the per-action confirmations that stay required: submitting forms, sending messages, publishing, clicking
+  irreversible controls (delete/confirm), running SQL, changing settings or switches, entering credentials.
 - Work happens in the cloud session; deliver by committing to the device repo via the
   device bridge. `documents.json` excepted (admin-managed).
 - After changes, run **`npm run build`** before deploying. (A local full build currently
@@ -2000,6 +2004,8 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   mfr_decisions 15 → 21 (Bemis window #320 + Review Issues decisions), grants 3072 → 3112 (the MI-1c baseline left its 5
   tables out of the count; 5 × 8 = 40 — no other new table since, by object id). Outside probe (Angelo, 18:39 CT): ALL 31
   BLOCKED (401). Lesson: compare grant counts only between queries with the same exclusion list.
+  **Grant difference CONFIRMED by Angelo (2026-10-11 20:44 CT):** grants on the 5 MI-1c tables = 40 (read-only count),
+  exactly the 3072 → 3112 difference — closed.
   **Phase B DEPLOYED 2026-10-11 ~18:39 CT** (branch reconciled with main 1799842 — MC enrichment change only, migration
   byte-identical; mi-b-capture.pg 38, report-capture 27, mi-b-api 11, shipto 17, report-inventory 28, mi1b 46/28, mi1c 76/29,
   mi1a 28/16, commission 42, mcenrich 23, enrich.unit 22 → main b05b9e7, Netlify "Production: main@b05b9e7 Published").
@@ -2012,6 +2018,54 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   **Netlify production deploys are PAUSED (team build credits used up for the billing cycle, seen 2026-10-11):** main@99d604c
   (Manufacturer Center Release C preview work) was "Skipped". Phase B is unaffected (b05b9e7 is live); any later code change
   needs credits restored first. Turning `mi_report_capture` on needs no deploy (the hourly cron is already live).
+  **Switch ON (set by Angelo; verified true 2026-10-11 evening). First automatic capture 2026-10-11 20:20 CT:** Netlify
+  invoked the scheduled function twice (request ids 6dc3217a 18.5 s, ffdf34b5 1.2 s, 1 s apart) — the run lease kept them
+  apart: run #1 listed 675 emails (1–9 Oct), incomplete at its time budget, checkpoint → 9 Oct 19:36 UTC; run #2 listed 133,
+  4 already settled, complete, checkpoint → run start. 14 report-like emails recorded. Register: **#9** `2026-09 SR032.pdf`
+  commission_statement, Sep 2026 (file name), received 7 Oct, by system:report-capture — registered once, no import;
+  **#10 (item) → linked to record 7** (the 8 Oct dealer overview, same SHA-256; no second record, record 7 still received /
+  unpublished); **#8** `Angelo Sep Orders.csv` sales_export, received 2 Oct — registered with a WRONG period
+  2026-09-01..2026-10-31 (orders were created 4–25 Sep; the range was read from every column with "date" in its name,
+  incl. "Payment Due Date"). Draft profiles registered nothing (Access4U price list / QuickBooks activity / Golden order
+  PDFs → classified, not reports). 4 exceptions, all false: Golden order emails carrying an attached email
+  (cloud_attachment). No financial, dealer, CRM, intelligence or publication change by construction (capture writes only
+  its own tables + MI-1b register).
+  **Fixes (branch `mi-b-capture-fixes`, tested, NOT deployed — Netlify production deploys are paused):** (1) a file's
+  content period comes ONLY from a transaction-date column — order / created / invoice / sale / transaction / posting /
+  document date, else a plain "Date" (anchored patterns); due, paid, ship-by, close, expiry dates never set a period;
+  (2) an attached email / cloud link becomes a person's job only for a manufacturer with an ACTIVE profile — otherwise it is
+  classified "not a report". Tests: report-capture 29 (2 new, both fail on the deployed code), mi-b-capture.pg 38,
+  mi-b-api 11, shipto 17, report-inventory 28, mutants 38/38. **Open, Angelo's call:** record 8's stored period (a
+  period correction is its own approved step under the MI-1b rules); the 4 false Golden exceptions (dismiss on Needs
+  attention, or leave until the fix is live).
+  **Status reporting (Angelo, 2026-10-11 20:19 CT): every status report on Manufacturer Intelligence carries an updated
+  OVERALL completion percentage until the project is complete (55% at that message).** Once first capture passes, Phase C
+  comes first: shared Ship-To resolver, correction interface and shadow validation — no new large audit / planning cycle;
+  focus on functional results and real exceptions. Automatic financial imports and intelligence publishing stay OFF.
+- **Decisions after first capture (Angelo, 2026-10-11 20:53 CT; overall MI completion 57%).**
+  (1) **Record #8 period correction APPROVED** (Sep–Oct → 2026-09-01..30): keep the original file, SHA-256, received date
+  and full registration history; never disable MI-1b's general safeguards, delete/re-register the file or touch financial
+  records; a narrowly scoped audited metadata correction on record #8 only, original + corrected period recorded; exact
+  mechanism + SQL shown to Angelo BEFORE execution, Angelo runs it. Built: `supabase/mi1b_record8_period_correction.sql`
+  (one DO block, owner only, exact preconditions — id 8, file, SHA-256 42509f6b…98dc, size, received date, period, title,
+  status received, no supersession/batch, only its registration event; inside the one transaction the guard is replaced by
+  a copy with ONE record-8 exception, the row is corrected, the ORIGINAL guard definition is restored and verified
+  byte-for-byte; event action `period_corrected` added to the action list; post-check that the guard refuses again; a
+  second run is refused). Also corrects the title's period text. Test `test/mi1b-record8.pg.test.js` (17; MI-1b and the
+  script pasted with CRLF as in production). The capture item keeps its proposed period as history.
+  (2) **The four false Golden cloud_attachment exceptions (items #3, #5, #7, #12) are cleared** after the classification
+  fix is deployed, through `resolve` with an audit reason naming the corrected rule — never deleted; other genuine
+  exceptions untouched.
+  (3) **Capture fixes (`mi-b-capture-fixes`) are approved to merge + deploy when Netlify build credits return**, if tests
+  pass and nothing unexpected appears — no further approval. Capture stays ON; automatic financial imports OFF. Until the
+  fix is live, watch every newly captured Strongback sales export for a wrong period.
+  (4) **Phase C starts now (branch, tests, no deploy of new financial import behaviour, no change to historical commission
+  attribution without separate approval):** order-level Needs Ship-To Review queue (orders, not duplicate invoice lines);
+  simple correction screen (existing HCPS branch + missing ship-to details); versioned correction overlays that never
+  modify the manufacturer's file; verified manufacturer + account + ship-to mappings; Save & Continue revalidates; no
+  automatic HQ fallback for ambiguous multi-branch orders; shadow validation on Strongback order exports and Bemis's
+  hand-corrected reports; the manual import workflow and every MI-1a protection preserved. Deliver implementation, tests
+  and ONE consolidated rollout recommendation; no long planning documents or extra stop points.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.

@@ -397,6 +397,27 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
       { slug: 'strongback-mobility' });
     assert.deepStrictEqual([d.outcome, d.attention], ['exception', 'period_unknown']);
   });
+  await t('first live run (2026-10-11): an order export takes its period from the order date, never the payment-due date', async () => {
+    const csv = Buffer.from('Number,Status,Total,"Payment Due Date","Created Date","Line Item Sku","Ship By Date","Close Date"\n' +
+      '5801,open,536,10/04/2026,2026-09-04,1003AB,10/20/2026,12/01/2026\n5802,open,320,10/25/2026,2026-09-25,R0001,11/02/2026,12/15/2026\n');
+    assert.deepStrictEqual(RC._internal.dateRange(csv, true), { min: '2026-09', max: '2026-09', n: 2 });
+    // no transaction date at all → no content period (the subject / other rules decide, or a person does)
+    assert.strictEqual(RC._internal.dateRange(Buffer.from('Order,"Payment Due Date"\n1,10/04/2026\n'), true), null);
+    // plain "Date" and "Invoice Date" still count
+    assert.deepStrictEqual(RC._internal.dateRange(Buffer.from('Invoice Date,Amount\n08/12/2026,10\n'), true), { min: '2026-08', max: '2026-08', n: 1 });
+  });
+  await t('first live run (2026-10-11): an attached email is a person\'s job only for a manufacturer with an ACTIVE profile', async () => {
+    const box = mailbox().concat([
+      M({ extra: 1, subject: 'RE: Golden Consignment Inventory Report Update', from: em('rwright@goldentech.com'), receivedDateTime: '2026-10-11T15:00:00Z' },
+        [A('FW: Golden order needs picked up', 'message/rfc822', null, { type: '#microsoft.graph.itemAttachment', size: 9000 })]),
+      M({ extra: 1, subject: 'Commission report forwarded', from: em('amanda.erickson@strongbackmobility.com'), receivedDateTime: '2026-10-11T15:05:00Z' },
+        [A('FW: Commission report September 2026', 'message/rfc822', null, { type: '#microsoft.graph.itemAttachment', size: 9000 })])]);
+    owner(`update mfr_report_capture_state set checkpoint_at = '2026-10-11T14:30:00Z' where true`);
+    await cap({}, deps(box));
+    const g = byFile('FW: Golden order needs picked up')[0], s = byFile('FW: Commission report September 2026')[0];
+    assert.deepStrictEqual([g.state, g.attention], ['classified', null]);
+    assert.deepStrictEqual([s.state, s.attention], ['exception', 'cloud_attachment']);
+  });
   await t('every exception is in the event log; no capture row was ever deleted', async () => {
     assert.strictEqual(q(`select count(*) from mfr_report_items where state = 'exception' and id not in (select item_id from mfr_report_capture_events where action = 'exception' and item_id is not null)`), '0');
   });
