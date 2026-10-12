@@ -35,18 +35,21 @@ function world(o) {
   st.fetch = async (url, opts) => {
     opts = opts || {}; const u = decodeURIComponent(String(url)), m = (opts.method || 'GET').toUpperCase(); st.calls.push({ u, m, body: opts.body });
     if (u.startsWith(BASE + '/auth/v1/user')) { const tok = String((opts.headers || {}).Authorization || '').replace('Bearer ', '');
-      const em = { pres: 'angelo@hcps.us', greg: 'greg@hcps.us' }[tok]; return em ? res(200, { email: em }) : res(401, {}); }
+      const em = { pres: 'angelo@hcps.us', greg: 'greg@hcps.us', admin: 'ad@hcps.us' }[tok]; return em ? res(200, { email: em }) : res(401, {}); }
     if (u.startsWith(BASE + '/rest/v1/staff_users?email')) { const em = u.match(/email=eq\.([^&]+)/)[1];
-      const s = { 'angelo@hcps.us': { role: 'president' }, 'greg@hcps.us': { role: 'rep' } }[em]; return res(200, s ? [{ email: em, ...s }] : []); }
+      const s = { 'angelo@hcps.us': { role: 'president' }, 'greg@hcps.us': { role: 'rep' }, 'ad@hcps.us': { role: 'admin' } }[em]; return res(200, s ? [{ email: em, ...s }] : []); }
     if (u.startsWith(BASE + '/rest/v1/staff_users')) return res(200, []);
     if (o.failRead && m === 'GET' && o.failRead(u)) return res(500, { message: 'forced' });
     if (u.startsWith(BASE + '/storage/v1/object/mfr-sources/')) return res(200, BY);
     if (u.startsWith(BASE + '/rest/v1/mfr_sources') && u.includes('kind=eq.commission_statement')) return res(200, page(u, o.statements || []));
-    if (u.startsWith(BASE + '/rest/v1/mfr_sources')) return res(200, page(u, [src]));
+    if (u.startsWith(BASE + '/rest/v1/mfr_sources')) return res(200, page(u, [Object.assign({}, src, o.src || {})]));
     if (u.startsWith(BASE + '/rest/v1/dealers')) return res(200, page(u, DEALERS));
     if (u.startsWith(BASE + '/rest/v1/dealer_manufacturers')) return res(200, page(u, ACCOUNTS));
     if (u.startsWith(BASE + '/rest/v1/dealer_aliases') || u.startsWith(BASE + '/rest/v1/dealer_directory')) return res(200, page(u, []));
-    if (u.startsWith(BASE + '/rest/v1/app_settings')) return res(200, []);
+    if (u.startsWith(BASE + '/rest/v1/app_settings')) return res(200, o.flags ? [{ value: o.flags }] : []);
+    if (u.startsWith(BASE + '/rest/v1/mfr_quarantine_dispositions')) return o.phaseE ? res(200, page(u, o.phaseE.dispositions || [])) : res(404, { code: 'PGRST205' });
+    if (u.startsWith(BASE + '/rest/v1/mfr_auto_import_log')) return o.phaseE ? res(200, page(u, o.phaseE.log || [])) : res(404, { code: 'PGRST205' });
+    if (u.startsWith(BASE + '/rest/v1/mfr_import_approvals')) return o.phaseE ? res(200, page(u, (o.phaseE.approvals || []).filter(a => !u.includes('used_at=is.null') || !a.used_at))) : res(404, { code: 'PGRST205' });
     if (u.startsWith(BASE + '/rest/v1/mfr_shipto_mappings')) return res(200, page(u, []));
     if (u.startsWith(BASE + '/rest/v1/mfr_shipto_corrections')) return res(200, page(u, o.corrections || []));
     if (u.startsWith(BASE + '/rest/v1/mi1a_enrollment')) return res(200, o.enrolled === false ? [] : [{ manufacturer: 'strongback-mobility' }]);
@@ -149,7 +152,11 @@ const check = async (o, body) => { const { w, m } = boot(o); const r = await cal
       missing_from_file: [], semantic_collisions: [], nonfinancial_differences: [], locked_months_touched: [], needs_paid_approval: false, applied: false }, extra) }) });
     for (const [x, code] of [[{ cross_lane_matches: 2 }, 'cross_lane_duplicate'], [{ orders: { new: 2, unchanged: 0, changed: 1, retire: 0 } }, 'changes_existing_orders'],
       [{ semantic_collisions: [{}] }, 'semantic_collision'], [{ needs_paid_approval: true, locked_months_touched: ['2026-09'] }, 'paid_period']]) {
-      const { r } = await check(mk(x)); assert.ok(r.body.verdict.blockers.some(b => b.code === code), code); assert.strictEqual(r.body.verdict.eligible, false);
+      const { r } = await check(mk(x)); const v = r.body.verdict;
+      // Phase E: a collision is a blocker; changed orders, cross-lane matches and paid months are approvable exceptions.
+      if (code === 'semantic_collision') assert.ok(v.blockers.some(b => b.code === code), code);
+      else { assert.ok(v.approvals.some(b => b.code === code) && !v.blockers.some(b => b.code === code), code); assert.strictEqual(v.approvable, true, code); }
+      assert.strictEqual(v.eligible, false);
     }
     const { r } = await check({ rpc: () => ({ status: 400, body: { message: 'mi1a_identity_not_approved: x' } }) });
     assert.ok(r.body.verdict.blockers.some(b => b.code === 'mi1a_refused'));
@@ -162,6 +169,123 @@ const check = async (o, body) => { const { w, m } = boot(o); const r = await cal
     const { r } = await check({ statements: [{ id: 9, title: 'SR032', file_name: '2026-09 SR032.pdf', status: 'received', report_period_start: '2026-09-01', report_period_end: '2026-09-30', import_batch_id: null }] });
     assert.strictEqual(r.body.statements.length, 1); assert.ok(r.body.verdict.cautions.some(c => c.code === 'statement_registered'));
     assert.strictEqual(r.body.verdict.eligible, true);
+  });
+
+  console.log('\n— Phase E: quarantine disposition, approvals, automatic import (switch default OFF) —');
+  const md5 = t => crypto.createHash('md5').update(t).digest('hex');
+  const QROWS = [1, 2, 3].map(i => ({ id: i, sales_row_id: String(100 + i), manufacturer: 'strongback-mobility', period: '2026-09-01', source: 'commission',
+    source_file: 'Strongback Sept Commission Report 2026.csv', reason: 'blank', row_fp: 'fp' + i, row_data: { invoice_no: null, amount: null, commission: null } }));
+  const QFP = md5(QROWS.map(q => q.id + ':' + q.row_fp).join(';'));
+  const DISP = (o) => Object.assign({ id: 1, manufacturer: 'strongback-mobility', period: '2026-09-01', disposition: 'keep_quarantined', quarantine_ids: [1, 2, 3], quarantine_fp: QFP,
+    release_source_id: 8, reason: 'blank rows from a mis-mapped import', actor: 'staff:angelo@hcps.us', created_at: 'x' }, o || {});
+  const ON = { mi_auto_import: true };
+  // MI-1a fake: dry run as before; apply:true imports and answers like hcps_sales_report_apply.
+  const miFake = (extra) => (fn, p) => {
+    if (fn === 'hcps_sales_report_apply') { const ord = { new: new Set(p.rows.map(r => r.invoice_no)).size, unchanged: 0, changed: 0, retire: 0 };
+      const base = { rows: p.rows.length, cross_lane_matches: 0, orders: ord, missing_from_file: [], semantic_collisions: [], nonfinancial_differences: [], locked_months_touched: [], needs_paid_approval: false };
+      return { status: 200, body: p.apply ? Object.assign(base, { applied: true, batch_id: '11111111-2222-3333-4444-555555555555', inserted: p.rows.length, superseded: 0 }, (extra && extra.applied) || {}) : Object.assign(base, { applied: false }) }; }
+    if (fn === 'hcps_mfr_import_approve') return { status: 200, body: { ok: true, approval_id: 41 } };
+    if (extra && extra.fail && extra.fail[fn]) return { status: 400, body: { message: extra.fail[fn] } };
+    return { status: 200, body: { ok: true } };
+  };
+  const fns = w => w.rpcs.map(x => x.fn);
+  await t('no disposition: the quarantined month blocks as before; Phase E not installed is reported, never guessed', async () => {
+    const { r } = await check({ quarantine: QROWS });
+    assert.ok(r.body.verdict.blockers.some(b => b.code === 'quarantined_period')); assert.strictEqual(r.body.verdict.approvable, false);
+    assert.deepStrictEqual([r.body.auto_import.installed, r.body.auto_import.switch_on], [false, false]);
+  });
+  await t('a keep-quarantined disposition releasing THIS export turns the block into an approval item (never eligible on its own)', async () => {
+    const { r } = await check({ quarantine: QROWS, phaseE: { dispositions: [DISP()] } });
+    const v = r.body.verdict; assert.deepStrictEqual([v.eligible, v.approvable, v.blockers.length], [false, true, 0], JSON.stringify(v.blockers));
+    assert.ok(v.approvals.some(a => a.code === 'quarantine_released')); assert.match(r.body.plan_hash, /^[0-9a-f]{64}$/);
+  });
+  await t('a disposition for another file, or quarantined rows changed since it was recorded, releases nothing', async () => {
+    for (const d of [DISP({ release_source_id: 99 }), DISP({ release_source_id: null }), DISP({ quarantine_fp: md5('other') }), DISP({ quarantine_ids: [1, 2] })]) {
+      const { r } = await check({ quarantine: QROWS, phaseE: { dispositions: [d] } });
+      assert.ok(r.body.verdict.blockers.some(b => b.code === 'quarantined_period'), JSON.stringify(d)); assert.strictEqual(r.body.verdict.approvable, false);
+    }
+    const { r } = await check({ quarantine: QROWS.concat([{ ...QROWS[0], id: 4, row_fp: 'fp4' }]), phaseE: { dispositions: [DISP()] } });
+    assert.ok(r.body.verdict.blockers.some(b => b.code === 'quarantined_period'), 'a new quarantined row in the month');
+  });
+  await t('quarantine_dispose: President only; dry run writes nothing; the record carries the verified actor', async () => {
+    let x = boot({ phaseE: {} }); let r = await call(x.m, { action: 'quarantine_dispose', manufacturer: 'strongback-mobility', period: '2026-09', quarantine_fp: QFP, release_source_id: 8, reason: 'blank rows' }, { token: 'greg' });
+    assert.strictEqual(r.status, 403); assert.strictEqual(x.w.rpcs.length, 0);
+    x = boot({ phaseE: {}, rpc: miFake() }); r = await call(x.m, { action: 'quarantine_dispose', manufacturer: 'strongback-mobility', period: '2026-09', quarantine_fp: QFP, release_source_id: 8, reason: 'blank rows from a mis-mapped import' }, { token: 'admin' });
+    assert.deepStrictEqual([r.status, r.body.error], [403, 'president_only']); assert.strictEqual(x.w.rpcs.length, 0, 'an admin cannot record it');
+    x = boot({ phaseE: {} }); r = await call(x.m, { action: 'quarantine_dispose', manufacturer: 'strongback-mobility', period: '2026-09', quarantine_fp: QFP, release_source_id: 8, reason: 'blank rows from a mis-mapped import', dry_run: true, actor: 'staff:someone@x' }, { token: 'pres' });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body)); assert.strictEqual(r.body.dry_run, true); assert.strictEqual(x.w.rpcs.length, 0); assert.deepStrictEqual(writes(x.w), []);
+    x = boot({ phaseE: {}, rpc: miFake() }); r = await call(x.m, { action: 'quarantine_dispose', manufacturer: 'strongback-mobility', period: '2026-09', quarantine_fp: QFP, release_source_id: 8, reason: 'blank rows from a mis-mapped import', actor: 'staff:someone@x' }, { token: 'pres' });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body)); assert.deepStrictEqual(fns(x.w), ["hcps_mfr_quarantine_dispose"]);
+    assert.deepStrictEqual([x.w.rpcs[0].p.actor, x.w.rpcs[0].p.release_source_id, x.w.rpcs[0].p.period], ['staff:angelo@hcps.us', '8', '2026-09']);
+  });
+  await t('approve_import: President only; refused while the switch is OFF or Phase E is missing — nothing recorded or imported', async () => {
+    const body = { action: 'approve_import', source_id: 8, plan_hash: 'x'.repeat(64), reason: 'September orders approved' };
+    let x = boot({ quarantine: QROWS, phaseE: { dispositions: [DISP()] }, flags: ON }); let r = await call(x.m, body, { token: 'greg' }); assert.strictEqual(r.status, 403);
+    x = boot({ quarantine: QROWS, phaseE: { dispositions: [DISP()] }, flags: ON, rpc: miFake() }); r = await call(x.m, body, { token: 'admin' });
+    assert.deepStrictEqual([r.status, r.body.error], [403, 'president_only']); assert.ok(!x.w.rpcs.some(q => q.fn !== 'hcps_sales_report_apply'));
+    x = boot({ quarantine: QROWS, phaseE: { dispositions: [DISP()] } }); r = await call(x.m, body, { token: 'pres' });
+    assert.deepStrictEqual([r.status, r.body.error], [409, 'switch_off']); assert.ok(!fns(x.w).some(f => f !== 'hcps_sales_report_apply'));
+    x = boot({ quarantine: QROWS, flags: ON }); r = await call(x.m, body, { token: 'pres' }); assert.deepStrictEqual([r.status, r.body.error], [503, 'not_installed']);
+  });
+  await t('the plan hash covers every row: one changed line, one changed count or another approval set → another hash', () => {
+    const rows = [{ invoice_no: '1', amount: 10, dealer_id: 'a', imported_at: 'x' }, { invoice_no: '2', amount: 20, dealer_id: 'b', imported_at: 'y' }];
+    const base = { source_id: 8, sha256: 's', rows, v2: { orders: { new: 2 } }, approvals: [{ code: 'quarantine_released' }] };
+    const h = SI.planHash(base);
+    assert.strictEqual(SI.planHash(Object.assign({}, base, { rows: rows.map(r => Object.assign({}, r, { imported_at: 'later' })) })), h, 'the import timestamp is not part of the plan');
+    assert.notStrictEqual(SI.planHash(Object.assign({}, base, { rows: [rows[0], Object.assign({}, rows[1], { amount: 21 })] })), h);
+    assert.notStrictEqual(SI.planHash(Object.assign({}, base, { rows: [rows[0], Object.assign({}, rows[1], { dealer_id: 'c' })] })), h);
+    assert.notStrictEqual(SI.planHash(Object.assign({}, base, { v2: { orders: { new: 1, changed: 1 } } })), h);
+    assert.notStrictEqual(SI.planHash(Object.assign({}, base, { approvals: [] })), h);
+  });
+  await t('approve_import: a plan that changed since review is refused; blockers can never be approved', async () => {
+    let x = boot({ quarantine: QROWS, phaseE: { dispositions: [DISP()] }, flags: ON, rpc: miFake() });
+    let r = await call(x.m, { action: 'approve_import', source_id: 8, plan_hash: 'a'.repeat(64), reason: 'September orders approved' }, { token: 'pres' });
+    assert.deepStrictEqual([r.status, r.body.error], [409, 'plan_changed']); assert.ok(!fns(x.w).includes('hcps_mfr_import_approve'));
+    x = boot({ quarantine: QROWS, flags: ON, phaseE: {}, rpc: miFake() });
+    const c = await call(x.m, { action: 'import_check', source_id: 8 }, { token: 'pres' });
+    r = await call(x.m, { action: 'approve_import', source_id: 8, plan_hash: c.body.plan_hash, reason: 'September orders approved' }, { token: 'pres' });
+    assert.deepStrictEqual([r.status, r.body.error], [409, 'not_approvable']); assert.ok(!fns(x.w).includes('hcps_sales_report_apply') || x.w.rpcs.every(q => q.fn !== 'hcps_sales_report_apply' || q.p.apply === false));
+  });
+  await t('approved import of the released export: accept → MI-1a apply (one call, no extra confirmations) → link → log → approval used', async () => {
+    const o = { quarantine: QROWS, phaseE: { dispositions: [DISP()] }, flags: ON, rpc: miFake() };
+    const x = boot(o); const c = await call(x.m, { action: 'import_check', source_id: 8 }, { token: 'pres' });
+    const r = await call(x.m, { action: 'approve_import', source_id: 8, plan_hash: c.body.plan_hash, reason: 'September orders approved' }, { token: 'pres' });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body)); assert.strictEqual(r.body.outcome, 'imported');
+    const seq = fns(x.w).filter(f => !(f === 'hcps_sales_report_apply' && false));
+    const writesSeq = x.w.rpcs.filter(q => q.fn !== 'hcps_sales_report_apply' || q.p.apply === true).map(q => q.fn);
+    assert.deepStrictEqual(writesSeq, ['hcps_mfr_import_approve', 'hcps_mfr_report_decide', 'hcps_sales_report_apply', 'hcps_mfr_report_link_batch', 'hcps_mfr_auto_import_log', 'hcps_mfr_import_use'], seq.join(','));
+    const ap = x.w.rpcs.find(q => q.fn === 'hcps_sales_report_apply' && q.p.apply === true).p;
+    assert.deepStrictEqual([ap.confirm_cross_lane, ap.approve_paid, ap.retire_orders.length, ap.source_file], [false, false, 0, 'Angelo Sep Orders.csv']);
+    assert.strictEqual(x.w.rpcs.find(q => q.fn === 'hcps_mfr_import_use').p.outcome, 'imported');
+    assert.strictEqual(x.w.rpcs.find(q => q.fn === 'hcps_mfr_report_decide').p.decision, 'accepted');
+    assert.deepStrictEqual(writes(x.w), [], 'no direct table write — only the audited functions');
+  });
+  await t('an import that does not match the checked plan is rolled back at once; a failed link is rolled back too', async () => {
+    for (const extra of [{ applied: { orders: { new: 1, unchanged: 0, changed: 2, retire: 0 } } }, { fail: { hcps_mfr_report_link_batch: 'mi1b_bad_link: x' } }]) {
+      const x = boot({ quarantine: QROWS, phaseE: { dispositions: [DISP()] }, flags: ON, rpc: miFake(extra) });
+      const c = await call(x.m, { action: 'import_check', source_id: 8 }, { token: 'pres' });
+      const r = await call(x.m, { action: 'approve_import', source_id: 8, plan_hash: c.body.plan_hash, reason: 'September orders approved' }, { token: 'pres' });
+      assert.deepStrictEqual([r.status, r.body.outcome], [409, 'rolled_back'], JSON.stringify(r.body));
+      assert.ok(fns(x.w).includes('hcps_import_batch_rollback')); assert.strictEqual(x.w.rpcs.find(q => q.fn === 'hcps_mfr_import_use').p.outcome, 'rolled_back');
+    }
+  });
+  await t('automatic run: does nothing while the switch is off; a clean report is imported; an approval case is logged once and never applied', async () => {
+    const SR = F('shipto-review-api.js');
+    let x = boot({ phaseE: {}, rpc: miFake() }); let res = await x.m.runAutoImport(); assert.strictEqual(res.skipped, 'switch_off'); assert.strictEqual(x.w.rpcs.length, 0);
+    x = boot({ flags: ON, rpc: miFake() }); res = await x.m.runAutoImport(); assert.strictEqual(res.skipped, 'not_installed');
+    x = boot({ phaseE: {}, flags: ON, rpc: miFake() }); res = await x.m.runAutoImport();
+    assert.strictEqual(res.results[0].outcome, 'imported', JSON.stringify(res)); assert.ok(x.w.rpcs.some(q => q.fn === 'hcps_sales_report_apply' && q.p.apply === true));
+    assert.strictEqual(x.w.rpcs.find(q => q.fn === 'hcps_mfr_report_decide').p.actor, 'system:auto-import'); assert.ok(!fns(x.w).includes('hcps_mfr_import_use'));
+    x = boot({ quarantine: QROWS, phaseE: { dispositions: [DISP()] }, flags: ON, rpc: miFake() }); res = await x.m.runAutoImport();
+    assert.strictEqual(res.results[0].outcome, 'needs_approval'); assert.ok(!x.w.rpcs.some(q => q.fn === 'hcps_sales_report_apply' && q.p.apply === true));
+    assert.strictEqual(x.w.rpcs.filter(q => q.fn === 'hcps_mfr_auto_import_log').length, 1);
+    const ph = res.results[0].plan_hash;
+    x = boot({ quarantine: QROWS, phaseE: { dispositions: [DISP()], log: [{ id: 1, source_id: 8, outcome: 'needs_approval', plan_hash: ph }] }, flags: ON, rpc: miFake() });
+    res = await x.m.runAutoImport(); assert.strictEqual(x.w.rpcs.filter(q => q.fn === 'hcps_mfr_auto_import_log').length, 0, 'the same plan is not logged twice');
+    x = boot({ csv: HELD_CSV, phaseE: {}, flags: ON, rpc: miFake() }); res = await x.m.runAutoImport();
+    assert.strictEqual(res.results[0].outcome, 'held'); assert.ok(!x.w.rpcs.some(q => q.fn === 'hcps_sales_report_apply'));
+    x = boot({ phaseE: {}, flags: ON, rpc: miFake(), src: { import_batch_id: 'b' } });
+    assert.ok(SR);
   });
 
   console.log('\n— September quarantine review (read-only) —');

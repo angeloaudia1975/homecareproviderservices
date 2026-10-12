@@ -78,6 +78,15 @@ function plan(review, rows, opts) {
    Inputs (all read-only facts): plan, enrolled, rate, v2 (dry-run result or {refused}), existing (monthly_sales rows of
    the file's order numbers, any lane), quarantined (quarantine rows for the same orders), statements (registered
    commission statements covering the file's months), commissionLaneRows (commission-lane rows in those months). */
+/* Phase E (Angelo, 2026-10-12 18:40 CT): findings split three ways.
+     blockers   — never imported, approved or not (fix the cause: Ship-To, MI-1a refusal, collisions, rate, lanes…)
+     approvals  — genuine financial exceptions the President may approve for THIS exact plan: existing orders change,
+                  a cross-lane match, a paid / locked month, and a quarantined month whose rows he has disposed
+                  "keep quarantined" while releasing this one registered export to be considered on its own
+     cautions   — shown, never blocking
+   eligible = no blocker and no approval item → may be imported automatically (when the switch is on);
+   approvable = no blocker, ≥ 1 approval item → waits for the President's approval of this exact plan. */
+const APPROVABLE = new Set(["changes_existing_orders", "cross_lane_duplicate", "paid_period", "quarantine_released"]);
 function verdict(f) {
   const B = [], C = [];
   const block = (code, text, extra) => B.push(Object.assign({ code, text }, extra || {}));
@@ -102,14 +111,42 @@ function verdict(f) {
   const q = f.quarantined || [];
   if (q.length) block("previously_quarantined", `${q.length} quarantined row(s) carry the same order numbers (${[...new Set(q.map(x => x.invoice_no))].join(", ")}). They are never converted into sales automatically.`);
   const qp = (f.quarantinedPeriod || []).filter(x => !q.some(y => y.id === x.id));
-  if (qp.length) block("quarantined_period", `${qp.length} quarantined row(s) are on file for the same month(s) (${[...new Set(qp.map(x => String(x.period).slice(0, 7)))].join(", ")}, ${[...new Set(qp.map(x => x.source_file).filter(Boolean))].join(", ") || "no file name"}). That month's quarantined data is never converted into sales automatically — Angelo decides.`);
+  if (qp.length) {
+    // A disposition releases ONLY the export it names, ONLY while the quarantined rows are exactly the ones disposed of
+    // (same ids, same fingerprint). The rows themselves stay quarantined — permanently — and are never converted.
+    const months = [...new Set(qp.map(x => String(x.period).slice(0, 7)))];
+    const disp = f.dispositions || [];
+    const released = months.every(mo => { const d = disp.find(x => String(x.period).slice(0, 7) === mo);
+      const ids = qp.filter(x => String(x.period).slice(0, 7) === mo).map(x => Number(x.id));
+      return d && d.disposition === "keep_quarantined" && Number(d.release_source_id) === Number(f.sourceId) && d.fp_current === d.quarantine_fp
+        && ids.every(id => (d.quarantine_ids || []).map(Number).includes(id)); });
+    const files = [...new Set(qp.map(x => x.source_file).filter(Boolean))].join(", ") || "no file name";
+    if (released) block("quarantine_released", `${qp.length} quarantined row(s) of ${months.join(", ")} (${files}) are kept quarantined permanently by your disposition; this registered export was released to be considered on its own. Importing it still needs your approval.`,
+      { dispositions: disp.filter(d => months.includes(String(d.period).slice(0, 7))).map(d => d.id) });
+    else block("quarantined_period", `${qp.length} quarantined row(s) are on file for the same month(s) (${months.join(", ")}, ${files}). That month's quarantined data is never converted into sales automatically — Angelo decides.` +
+      (disp.some(d => months.includes(String(d.period).slice(0, 7))) ? " A disposition exists for the month, but it does not release this file or the quarantined rows have changed since it was recorded." : ""));
+  }
   const ex = f.existing || [];
   const otherLanes = ex.filter(r => r.lane !== "sales_report");
   if (otherLanes.length) block("other_lane_rows", `${otherLanes.length} row(s) with these order numbers are in another lane (${[...new Set(otherLanes.map(r => r.lane))].join(", ")}).`);
   for (const s of (f.statements || [])) caution("statement_registered", `A commission statement is registered for ${s.period} (record #${s.id}, ${s.status}${s.imported ? "" : ", not imported"}). Its figures stay in the commission lane; when it is imported the cross-lane check compares it with these sales.`, { source_id: s.id });
   if ((f.commissionLaneRows || 0) > 0) caution("commission_lane_rows", `${f.commissionLaneRows} commission-lane row(s) exist in the same month(s).`);
   if (f.rate && f.rate.rate) caution("rate_basis", `Commission computed at ${r2(f.rate.rate * 100)}% — the single rate in this manufacturer's sales-report history.`);
-  return { eligible: B.length === 0, blockers: B, cautions: C, automatic_posting: "off" };
+  const blockers = B.filter(b => !APPROVABLE.has(b.code)), approvals = B.filter(b => APPROVABLE.has(b.code));
+  return { eligible: blockers.length === 0 && approvals.length === 0, approvable: blockers.length === 0 && approvals.length > 0,
+    blockers, approvals, cautions: C, automatic_posting: f.automaticPosting || "off" };
 }
 
-module.exports = { plan, verdict, mapRow, rateFromHistory };
+/* The exact plan an approval covers: the source file, every MI-1a row (minus its import timestamp), the dry run's order
+   counts and the approval items. Any change → another hash → the approval no longer applies. */
+function planHash(o) {
+  const crypto = require("crypto");
+  const rows = (o.rows || []).map(r => { const x = Object.assign({}, r); delete x.imported_at; return Object.keys(x).sort().map(k => [k, x[k]]); });
+  const v = o.v2 || {}, ord = v.orders || {};
+  const body = JSON.stringify({ source_id: Number(o.source_id), sha256: o.sha256 || "", rows,
+    orders: ["new", "unchanged", "changed", "retire"].map(k => Number(ord[k] || 0)), cross_lane: Number(v.cross_lane_matches || 0),
+    locked: (v.locked_months_touched || []).slice().sort(), approvals: (o.approvals || []).map(a => a.code).sort() });
+  return crypto.createHash("sha256").update(body).digest("hex");
+}
+
+module.exports = { plan, verdict, planHash, mapRow, rateFromHistory, APPROVABLE };

@@ -17,7 +17,7 @@ const calls = [];
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');
   if (u.pathname.startsWith('/.netlify/functions/')) {
-    let body = ''; for await (const ch of req) body += ch; const b = JSON.parse(body || '{}'); calls.push([u.pathname, b.action]);
+    let body = ''; for await (const ch of req) body += ch; const b = JSON.parse(body || '{}'); calls.push([u.pathname, b.action, b.dry_run]);
     let out = {};
     if (u.pathname.endsWith('mfr-reports-api') && b.action === 'dashboard') out = Object.assign({ ok: true, read_only: true }, data);
     if (u.pathname.endsWith('shipto-review-api') && b.action === 'queue') out = { ok: true, held: 1, reports: [{ counts: { needs_review: 3 } }] };
@@ -26,7 +26,8 @@ const server = http.createServer(async (req, res) => {
         original: { customer_name: 'Harmon Medical Supply (a long dealer name that must wrap on a narrow phone)', dealer: 'Harmon Medical Supply', amount: null, commission: null },
         matches: [{ source_id: 8, order_number: '7139', amount: 1067, basis: 'customer' }] }],
       totals: { rows: 7, with_amount: 0, with_commission: 0 }, registered_reports: [{ id: 8, title: 'Strongback — order export 2026-09', status: 'received', imported: false }],
-      in_monthly_sales: { rows: 0 }, choices: [{ key: 'keep_quarantined', text: 'Keep the 7 rows quarantined.' }, { key: 'restore', text: 'Restore (not recommended).' }] };
+      in_monthly_sales: { rows: 0 }, quarantine_fp: 'f'.repeat(32), disposition: null, disposition_installed: true, release_candidates: [{ id: 8, file_name: 'Angelo Sep Orders.csv' }], choices: [{ key: 'keep_quarantined', text: 'Keep the 7 rows quarantined.' }, { key: 'restore', text: 'Restore (not recommended).' }] };
+    if (u.pathname.endsWith('shipto-review-api') && b.action === 'quarantine_dispose') out = { ok: true, dry_run: true, effect: 'The quarantined rows of this month are kept quarantined permanently.' };
     res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(out)); return;
   }
   const f = path.join(ADMIN, path.basename(u.pathname));
@@ -51,10 +52,13 @@ const fails = []; const check = (c, w) => { if (!c) { fails.push(w); console.log
     check(over <= 0, `${w}px: no horizontal page scroll (${over}px)`);
     check(/quarantined September 2026 Strongback rows/.test(txt) && /Your choices/.test(txt) && /order 7139/.test(txt), `${w}px: quarantine review card shown (read only)`);
     check(/Expected/.test(txt) && /Arrived/.test(txt), `${w}px: reconciliation shows expected window and arrival`);
+    check(await page.locator('#qdisp').count() === 1 && /keep these rows quarantined permanently/.test(txt) && /Release record #8/.test(txt), `${w}px: disposition form shown (release record #8 ticked)`);
+    if (w === 1280) { await page.fill('#qreason', 'Blank rows from a mis-mapped commission import'); await page.click('#qprev'); await page.waitForSelector('#qgo');
+      const t2 = await page.locator('#body').textContent(); check(/kept quarantined permanently/.test(t2), '1280px: preview shows what would be recorded; Confirm appears (not clicked)'); }
     check(/Not received — overdue/.test(txt) && /not received · 3 days late/.test(txt) && /Needs attention/.test(txt), `${w}px: overdue report counted in days; summary and attention column`);
     await page.close();
   }
-  check(calls.every(([p, a]) => (p.endsWith('mfr-reports-api') && a === 'dashboard') || (p.endsWith('shipto-review-api') && (a === 'queue' || a === 'quarantine_review')) || !/mfr-reports|shipto/.test(p)), 'read-only: only dashboard + queue are called');
+  check(calls.every(([p, a, dry]) => (p.endsWith('mfr-reports-api') && a === 'dashboard') || (p.endsWith('shipto-review-api') && (a === 'queue' || a === 'quarantine_review' || (a === 'quarantine_dispose' && dry === true))) || !/mfr-reports|shipto/.test(p)), 'read-only: only reads + a dispose DRY RUN were called (nothing recorded)');
   check(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await browser.close(); server.close();
   console.log(`\nmi-dashboard-ui: ${fails.length ? 'FAILED ' + fails.length : 'all checks passed'}`);

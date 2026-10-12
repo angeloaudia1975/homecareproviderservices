@@ -1,0 +1,35 @@
+/* Phase E mutants (quarantine disposition, approvals, automatic import). JS: test/source-import.test.js through the
+   phase0-mock loader; SQL: a temporary copy of supabase/mi_e_auto_import.sql run by test/mi-e-auto-import.pg.test.js. */
+const SI = '_source_import.js', API = 'shipto-review-api.js';
+module.exports = {
+  e_release_any_file:      { file: SI, suite: 'source', from: 'Number(d.release_source_id) === Number(f.sourceId)', to: 'true' },
+  e_release_rows_changed:  { file: SI, suite: 'source', from: '&& d.fp_current === d.quarantine_fp', to: '' },
+  e_release_ids_ignored:   { file: SI, suite: 'source', from: '&& ids.every(id => (d.quarantine_ids || []).map(Number).includes(id))', to: '' },
+  e_collision_approvable:  { file: SI, suite: 'source', from: 'const APPROVABLE = new Set(["changes_existing_orders",', to: 'const APPROVABLE = new Set(["semantic_collision", "changes_existing_orders",' },
+  e_approval_auto:         { file: SI, suite: 'source', from: 'eligible: blockers.length === 0 && approvals.length === 0,', to: 'eligible: blockers.length === 0,' },
+  e_hash_ignores_rows:     { file: SI, suite: 'source', from: 'sha256: o.sha256 || "", rows,', to: 'sha256: o.sha256 || "", rows: [],' },
+  e_switch_ignored:        { file: API, suite: 'source', from: 'if (!st.switch_on) return { ok: true, skipped: "switch_off" };', to: '' },
+  e_approve_switch_ignored:{ file: API, suite: 'source', from: 'if (!st.switch_on) return json(409, { error: "switch_off"', to: 'if (false) return json(409, { error: "switch_off"' },
+  e_approve_not_president: { file: API, suite: 'source', from: 'if (me.role !== "president") return json(403, { error: "president_only", message: "A financial import approval', to: 'if (false) return json(403, { error: "president_only", message: "A financial import approval' },
+  e_dispose_not_president: { file: API, suite: 'source', from: 'if (me.role !== "president") return json(403, { error: "president_only", message: "A quarantine disposition', to: 'if (false) return json(403, { error: "president_only", message: "A quarantine disposition' },
+  e_plan_not_checked:      { file: API, suite: 'source', from: 'if (c.out.plan_hash !== String(b.plan_hash || ""))', to: 'if (false)' },
+  e_blockers_approvable:   { file: API, suite: 'source', from: 'if (!(v.approvable || v.eligible)) return json(409', to: 'if (false) return json(409' },
+  e_no_verify:             { file: API, suite: 'source', from: 'if (!same) return rollback(', to: 'if (false) return rollback(' },
+  e_no_link_rollback:      { file: API, suite: 'source', from: 'if (!ln.ok) return rollback(', to: 'if (false) return rollback(' },
+  e_auto_imports_approvals:{ file: API, suite: 'source', from: 'if (v.eligible) { out.push(await executeImport(c, null, AUTO_ACTOR)); continue; }', to: 'if (v.eligible || v.approvable) { out.push(await executeImport(c, null, AUTO_ACTOR)); continue; }' },
+  e_log_every_run:         { file: API, suite: 'source', from: 'if (!last || last.outcome !== outcome || last.plan_hash !== c.out.plan_hash)', to: 'if (true)' },
+  e_dry_run_writes:        { file: API, suite: 'source', from: 'if (b.dry_run === true) return json(200, { ok: true, dry_run: true,', to: 'if (false) return json(200, { ok: true, dry_run: true,' },
+  e_actor_from_body:       { file: API, suite: 'source', from: 'quarantine_fp: clean(b.quarantine_fp, 40), reason: clean(b.reason, 1000), actor,', to: 'quarantine_fp: clean(b.quarantine_fp, 40), reason: clean(b.reason, 1000), actor: b.actor || actor,' },
+  e_extra_confirm:         { file: API, suite: 'source', from: 'confirm_cross_lane: items.includes("cross_lane_duplicate"),', to: 'confirm_cross_lane: true,' },
+  // ── SQL ──
+  sql_lock_off:            { file: 'sql', from: "  if exists (select 1 from public.mfr_quarantine_dispositions d\n             where d.manufacturer = old.manufacturer", to: "  if false and exists (select 1 from public.mfr_quarantine_dispositions d\n             where d.manufacturer = old.manufacturer" },
+  sql_truncate_open:       { file: 'sql', from: "    if exists (select 1 from public.mfr_quarantine_dispositions) then", to: "    if false then" },
+  sql_any_president:       { file: 'sql', from: "and s.role = 'president' and coalesce(s.active, true))", to: "and coalesce(s.active, true))" },
+  sql_no_fp_check:         { file: 'sql', from: "  if v_fp <> coalesce(p->>'quarantine_fp', '') then", to: "  if false then" },
+  sql_release_any:         { file: 'sql', from: "    if not found or v_src.kind <> 'sales_export' or v_src.manufacturer <> v_mfr then", to: "    if not found then" },
+  sql_release_other_month: { file: 'sql', from: "    if date_trunc('month', v_src.report_period_start)::date <> v_per or date_trunc('month', v_src.report_period_end)::date <> v_per then", to: "    if false then" },
+  sql_approval_reuse:      { file: 'sql', from: "  if v_a.used_at is not null then raise exception 'mi_e_approval_used", to: "  if false then raise exception 'mi_e_approval_used" },
+  sql_guard_no_marker:     { file: 'sql', from: "  if coalesce(current_setting('hcps.mi_e_op', true), '') <> 'on' or current_user <> v_owner then", to: "  if current_user <> v_owner then" },
+  sql_service_writes:      { file: 'sql', from: "    execute format('grant select on table public.%I to service_role', t);", to: "    execute format('grant select, insert, update on table public.%I to service_role', t);" },
+  sql_log_editable:        { file: 'sql', from: "  if tg_op = 'UPDATE' and tg_table_name <> 'mfr_import_approvals' then", to: "  if false then" },
+};

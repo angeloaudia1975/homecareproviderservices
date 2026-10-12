@@ -107,10 +107,21 @@
     if (c.loading) return `<div class="msg">Checking — nothing is written…</div>`;
     if (c.error) return `<div class="err">${esc(c.error)}</div>`;
     const v = c.verdict, o = (c.v2 && c.v2.orders) || {};
-    let h = `<div class="note"><b>Import check — read only.</b> Automatic financial posting is off; this never imports. ${v.eligible ? "<b>Financially eligible</b> for import (a person still imports it)." : "<b>Not eligible</b> for import yet."}</div>`;
+    const ai = c.auto_import || {};
+    const autoWord = !ai.installed ? "Automatic import is not installed yet." : ai.switch_on ? "Automatic import is ON for enrolled manufacturers." : "Automatic import is OFF (switch mi_auto_import).";
+    let h = `<div class="note"><b>Import check — read only.</b> ${esc(autoWord)} ${v.eligible ? "<b>Every check passes</b> — eligible for import." : v.approvable ? "<b>Needs your approval</b> — only approvable exceptions remain." : "<b>Not eligible</b> for import yet."}</div>`;
     if (c.v2 && !c.v2.refused) h += `<div class="grid"><div><b>New orders</b>${o.new || 0}</div><div><b>Already recorded, unchanged</b>${o.unchanged || 0}</div><div><b>Would change</b>${o.changed || 0}</div><div><b>Retire</b>${o.retire || 0}</div>
       <div><b>Cross-lane matches</b>${c.v2.cross_lane_matches || 0}</div><div><b>Sales</b>${money(c.plan.totals.amount)}</div><div><b>Commission</b>${money(c.plan.totals.commission)}${c.rate && c.rate.rate ? " @ " + Math.round(c.rate.rate * 1000) / 10 + "%" : ""}</div></div>`;
     if (v.blockers.length) h += `<div class="err"><b>Blocked by</b><ul>${v.blockers.map(b => `<li>${esc(b.text)}</li>`).join("")}</ul></div>`;
+    if ((v.approvals || []).length) {
+      h += `<div class="note"><b>Needs your approval</b> (financial exceptions — only the President approves, for this exact plan)<ul>${v.approvals.map(b => `<li>${esc(b.text)}</li>`).join("")}</ul></div>`;
+      if (ai.open_approval) h += `<div class="note">An approval is already open for this file (#${esc(ai.open_approval.id)}, ${esc(ai.open_approval.actor)}).</div>`;
+      const can = ai.installed && ai.switch_on && v.approvable;
+      h += `<div class="panel"><label for="aprs">Reason for approving this import (required)</label><textarea id="aprs" rows="2"></textarea>
+        <div class="btnrow"><button class="go" id="aprgo" ${can ? "" : "disabled"}>Approve &amp; import this plan</button></div>
+        <div class="hint">${can ? `Imports exactly what is shown above (plan ${esc(String(c.plan_hash || "").slice(0, 12))}…) in one MI-1a transaction, links it to the registered file and logs it. If anything differs from this check, it is rolled back.` : esc(!ai.installed ? "Not available until the Phase E tables are installed." : !ai.switch_on ? "Not available while automatic import (mi_auto_import) is OFF." : "Not available: blockers remain.")}</div>
+        ${S.aprMsg ? `<div class="${S.aprOk ? "okm" : "err"}">${esc(S.aprMsg)}</div>` : ""}</div>`;
+    }
     if (v.cautions.length) h += `<div class="note"><b>Notes</b><ul>${v.cautions.map(b => `<li>${esc(b.text)}</li>`).join("")}</ul></div>`;
     if (c.plan.orders.length) h += `<div class="scroll"><table class="tbl"><thead><tr><th>Order</th><th>Date</th><th>HCPS branch</th><th>Basis</th><th>Sales</th><th>Commission</th><th>Already in HCPS</th></tr></thead><tbody>${c.plan.orders.map(r =>
       `<tr><td>${esc(r.order_number)}</td><td>${esc(r.date)}</td><td>${esc(r.dealer)}</td><td>${esc(BASIS[r.basis] || r.basis)}</td><td>${money(r.amount)}</td><td>${money(r.commission)}</td><td>${r.recorded.length ? r.recorded.map(x => esc(LANE[x.lane] + " " + String(x.period).slice(0, 7))).join(", ") : "—"}</td></tr>`).join("")}</tbody></table></div>`;
@@ -272,6 +283,12 @@
     const ic = document.querySelector("[data-icheck]"); if (ic) ic.onclick = async () => { S.check = { loading: true }; render();
       const r = await api({ action: "import_check", source_id: S.src });
       S.check = r.status === 200 ? r.body : { error: (r.body && (r.body.message || r.body.error)) || ("HTTP " + r.status) }; render(); };
+    const ag = $("#aprgo"); if (ag) ag.onclick = async () => {
+      const reason = ($("#aprs").value || "").trim(); if (reason.length < 10) { S.aprOk = false; S.aprMsg = "Give the reason (10+ characters)."; render(); return; }
+      ag.disabled = true;
+      const r = await api({ action: "approve_import", source_id: S.src, plan_hash: S.check.plan_hash, reason });
+      S.aprOk = r.status === 200; S.aprMsg = r.status === 200 ? `Imported — batch ${r.body.batch_id}.` : ((r.body && (r.body.message || r.body.error || r.body.outcome)) || ("HTTP " + r.status));
+      const again = await api({ action: "import_check", source_id: S.src }); if (again.status === 200) S.check = again.body; render(); };
     const ml = $("#mapload"); if (ml) ml.onclick = () => { S.mapsMfr = ($("#mapmfr").value || "").trim(); loadMaps(); };
     document.querySelectorAll("[data-retire]").forEach(b => b.onclick = async () => {
       const row = b.closest("td"); row.innerHTML = `<input id="rr${b.getAttribute("data-retire")}" placeholder="Reason" style="padding:8px;border:1px solid var(--line);border-radius:8px;min-height:40px"><button class="go sec" id="rg${b.getAttribute("data-retire")}">Retire</button>`;

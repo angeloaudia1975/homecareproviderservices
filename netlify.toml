@@ -83,6 +83,10 @@
 [functions."report-capture-cron"]
   schedule = "20 * * * *"
 
+# MI Phase E — automatic import of registered Strongback order exports. Inert unless phase2_flags.mi_auto_import = true.
+[functions."report-import-cron"]
+  schedule = "40 * * * *"
+
 # Zoho two-way auto-sync — the outbound (portal→Zoho) engine + inbound pipeline-stage pull.
 # Every 15 min it pushes ONLY the dealers / contacts / opportunities whose content changed
 # since the last run (per-record hashes in app_settings.zoho_push_hashes), so it's cheap and

@@ -64,10 +64,26 @@
            <td>${r.matches.map(m => `#${m.source_id} order ${esc(m.order_number)} · $${esc(m.amount)} (${esc(m.basis)})`).join("<br>") || "—"}</td></tr>`).join("")}</tbody></table></div>
         <div class="note"><b>Also on file for ${esc(LONGMON(Q.period))}:</b> ${Q.registered_reports.map(x => `#${x.id} ${esc(x.title)} (${esc(x.status)}${x.imported ? ", imported" : ", not imported"})`).join(" · ") || "no registered reports"} · rows in sales for the month: ${Q.in_monthly_sales.rows}</div>
         <div class="note"><b>Your choices</b> (nothing happens until you decide):<ol>${Q.choices.map(c => `<li>${esc(c.text)}</li>`).join("")}</ol></div>`;
+      if (Q.disposition) h += `<div class="note"><b>Decided:</b> kept quarantined permanently on ${esc(DAY(String(Q.disposition.created_at).slice(0, 10)))} by ${esc(Q.disposition.actor)}${Q.disposition.release_source_id ? ` · record #${esc(Q.disposition.release_source_id)} released to be considered on its own (import still needs your approval)` : ""}. Reason: ${esc(Q.disposition.reason)}</div>`;
+      else if (Q.disposition_installed) h += `<div class="panel" id="qdisp"><b>Record your decision — keep these rows quarantined permanently</b>
+        ${(Q.release_candidates || []).length ? `<label class="chk"><input type="checkbox" id="qrel" checked> Release ${Q.release_candidates.map(r => `record #${esc(r.id)} (${esc(r.file_name)})`).join(", ")} to be considered for import on its own</label>` : ""}
+        <label for="qreason">Reason (required)</label><textarea id="qreason" rows="2"></textarea>
+        <div class="btnrow"><button class="go sec" id="qprev">Show what this records</button>${QD.preview ? ` <button class="go" id="qgo">Confirm — keep quarantined permanently</button>` : ""}</div>
+        ${QD.msg ? `<div class="${QD.ok ? "okm" : "err"}">${esc(QD.msg)}</div>` : ""}<div class="hint">President only. Permanent: these rows can never be restored, changed or deleted afterwards. Nothing is imported.</div></div>`;
+      else h += `<div class="note">Recording a decision becomes available once the Phase E tables are installed.</div>`;
     }
     $("#body").innerHTML = h;
+    const pv = $("#qprev"), go = $("#qgo");
+    const payload = dry => ({ action: "quarantine_dispose", manufacturer: Q.manufacturer, period: Q.period, quarantine_fp: Q.quarantine_fp, dry_run: dry,
+      release_source_id: $("#qrel") && $("#qrel").checked && (Q.release_candidates || [])[0] ? Q.release_candidates[0].id : "", reason: ($("#qreason").value || "").trim() });
+    if (pv) pv.onclick = async () => { QD.reason = $("#qreason").value; const r = await api("shipto-review-api", payload(true));
+      QD.preview = r.status === 200; QD.ok = r.status === 200; QD.msg = r.status === 200 ? r.body.effect : ((r.body && (r.body.message || r.body.error)) || "HTTP " + r.status); render(LAST.d, LAST.ship); if ($("#qreason")) $("#qreason").value = QD.reason || ""; };
+    if (go) go.onclick = async () => { const r = await api("shipto-review-api", payload(false));
+      QD.ok = r.status === 200; QD.preview = false; QD.msg = r.status === 200 ? "Recorded." : ((r.body && (r.body.message || r.body.error)) || "HTTP " + r.status);
+      if (r.status === 200) { const qr = await api("shipto-review-api", { action: "quarantine_review", manufacturer: Q.manufacturer, period: Q.period }); if (qr.status === 200) Q = qr.body; }
+      render(LAST.d, LAST.ship); };
   }
-  let Q = null;
+  let Q = null; const QD = {}; const LAST = {};
   async function boot() {
     if (!TOKEN) { gate(); return; }
     const [d, q, qr] = await Promise.all([api("mfr-reports-api", { action: "dashboard" }), api("shipto-review-api", { action: "queue" }),
@@ -76,7 +92,7 @@
     if (d.status === 401) { gate(); return; }
     if (d.status !== 200) { $("#body").innerHTML = `<div class="err">${esc((d.body && (d.body.message || d.body.error)) || "HTTP " + d.status)}</div>`; return; }
     const ship = q.status === 200 ? { held: q.body.held || 0, needs_review: (q.body.reports || []).reduce((s, r) => s + ((r.counts && r.counts.needs_review) || 0), 0) } : null;
-    render(d.body, ship);
+    LAST.d = d.body; LAST.ship = ship; render(d.body, ship);
   }
   boot();
 })();

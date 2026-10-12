@@ -61,7 +61,7 @@ async function rpc(fn, p) {
   const text = await r.text(); let body; try { body = JSON.parse(text); } catch (x) { body = { message: text }; }
   if (r.ok) return { ok: true, body };
   const msg = String((body && body.message) || text || "").slice(0, 500);
-  const m = msg.match(/\b(shipto_[a-z_]+|mfr_shipto_guard)\b/);
+  const m = msg.match(/\b(shipto_[a-z_]+|mfr_shipto_guard|mi_e_[a-z_]+|mi1a_[a-z_]+|mi1b_[a-z_]+|mfr_mi_e_guard|mfr_quarantine_locked)\b/);
   return { ok: false, status: r.status, code: m ? m[1] : "database_error", message: msg };
 }
 // MI-1a dry run. apply is FALSE here by construction (Phase D: automatic financial posting is OFF); the caller cannot set it.
@@ -73,6 +73,28 @@ async function miDryRun(p) {
   const msg = String((j && j.message) || text || ""); const m = msg.match(/\b(mi1a_[a-z_]+)\b/);
   if (m) return { refused: true, code: m[1], message: msg.slice(0, 400) };
   throw new Error(`MI-1a dry run ${r.status}: ${msg.slice(0, 200)}`);
+}
+// A Phase E table that is not installed yet (migration not run) reads as null — never as "no rows" for a decision.
+async function sbGetOptional(p) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${p}`, { headers: H() });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`Supabase ${r.status}: ${(await r.text()).slice(0, 300)}`);
+  return r.json();
+}
+const md5 = t => crypto.createHash("md5").update(t).digest("hex");
+// Same fingerprint as SQL hcps_mfr_quarantine_fp: md5 of "id:row_fp" joined by ";" in id order (open rows only).
+const quarantineFp = rows => md5(rows.filter(q => !q.restored_at).slice().sort((a, b) => Number(a.id) - Number(b.id)).map(q => q.id + ":" + q.row_fp).join(";"));
+const { flagOn } = require("./_flags.js");
+const AUTO_ACTOR = "system:auto-import";
+
+// MI-1a WRITE — only from executeImport below, only after a fresh check of the exact plan. apply:true is set here and
+// nowhere else in this file.
+async function miApply(p) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/hcps_sales_report_apply`, { method: "POST", headers: { ...H(), "content-type": "application/json" }, body: JSON.stringify({ p: Object.assign({}, p, { apply: true }) }) });
+  const text = await r.text(); let j; try { j = JSON.parse(text); } catch (x) { j = { message: text }; }
+  if (r.ok) return j;
+  const msg = String((j && j.message) || text || ""); const m = msg.match(/\b(mi1a_[a-z_]+)\b/);
+  return { refused: true, code: m ? m[1] : "database_error", message: msg.slice(0, 400) };
 }
 async function whoami(event) {
   const auth = event.headers["authorization"] || event.headers["Authorization"] || "";
@@ -135,6 +157,133 @@ const ORDER = { needs_review: 0, corrected: 1, resolved: 2 };
 const summary = (src, rv) => ({ source_id: src.id, manufacturer: src.manufacturer, title: src.title, file_name: src.file_name, status_register: src.status,
   received_date: src.received_date, period: [src.report_period_start, src.report_period_end], review_status: rv.status, counts: rv.counts,
   needs_review_by_reason: rv.needs_review_by_reason, totals: rv.totals });
+
+// The Phase D/E import check of one registered order export: strict Ship-To + overlays → MI-1a DRY RUN → quarantine /
+// disposition / statement / lane facts → verdict (+ the plan hash an approval must match). Never writes.
+async function checkSource(sourceId, actor) {
+      const r = await readSource(sourceId); if (r.error) return { error: r.error };
+      const slug = r.src.manufacturer, ctx = await loadContext(slug);
+      const { review, nameOf } = await reviewOf(r.src, r.parsed, ctx);
+      const [enr, hist, dir] = await Promise.all([
+        sbGet(`mi1a_enrollment?manufacturer=in.(${e(slug)},*)&lane=eq.sales_report&select=manufacturer`),
+        sbGetAll(`monthly_sales?manufacturer=eq.${e(slug)}&source=eq.sales_report&select=id,commission_rate`, "id"),
+        SC.ownerIndex(sbGet)]);
+      const rate = SI.rateFromHistory(hist.map(h => h.commission_rate));
+      const repOf = id => id ? (dir.repOf(id) || dir.repOf((ctx.allById.get(id) || {}).parent_id || id) || null) : null;
+      const pl = SI.plan(review, r.parsed.rows, { slug, rate: rate.rate || 0, source_file: r.src.file_name, repOf });
+      const v2 = (pl.status === "ready" && enr.length && rate.rate)
+        ? await miDryRun({ manufacturer: slug, actor: actor, source_file: r.src.file_name, rows: pl.mi_rows, retire_orders: [], approve_paid: false, approve_reason: "", confirm_cross_lane: false })
+        : null;
+      // Facts beside the dry run (read-only): rows already holding these order numbers in ANY lane, quarantined rows, the
+      // registered commission statements and commission-lane rows of the same months.
+      const invs = [...new Set(r.parsed.rows.map(x => String(x.order_number || "").trim()).filter(Boolean))];
+      const months = [...new Set(r.parsed.rows.map(x => { const d = String(x.date || "").match(/(\d{4})-(\d{2})/); return d ? d[1] + "-" + d[2] : null; }).filter(Boolean))].sort();
+      const inList = invs.map(x => '"' + x.replace(/"/g, "") + '"').join(",");
+      const [existingRaw, quarantine, stmts, monthRows] = await Promise.all([
+        invs.length ? sbGetAll(`monthly_sales?manufacturer=eq.${e(slug)}&invoice_no=in.(${e(inList)})&select=id,invoice_no,period,source,external_ref,amount,commission,dealer_id,source_file`, "id") : [],
+        sbGetAll(`monthly_sales_quarantine?manufacturer=eq.${e(slug)}&select=id,sales_row_id,period,source,source_file,reason,row_data,row_fp,restored_at,quarantined_at`, "id"),
+        sbGetAll(`mfr_sources?manufacturer=eq.${e(slug)}&kind=eq.commission_statement&select=id,title,file_name,status,report_period_start,report_period_end,import_batch_id,received_date`, "id"),
+        months.length ? sbGetAll(`monthly_sales?manufacturer=eq.${e(slug)}&period=gte.${months[0]}-01&period=lte.${months[months.length - 1]}-28&select=id,source,external_ref,period`, "id") : []]);
+      const invSet = new Set(invs);
+      const existing = existingRaw.map(x => ({ ...x, lane: RV.laneOf(x), dealer: nameOf(x.dealer_id) }));
+      const quarantined = quarantine.map(q => ({ id: q.id, sales_row_id: q.sales_row_id, period: q.period, source: q.source, source_file: q.source_file, reason: q.reason,
+        invoice_no: String((q.row_data || {}).invoice_no || "").trim(), amount: (q.row_data || {}).amount, commission: (q.row_data || {}).commission, quarantined_at: q.quarantined_at }))
+        ;
+      // Two tests, both blocking: the same order numbers, AND any quarantined row in the same manufacturer + month — the
+      // quarantined September Strongback rows carry no usable order numbers, so the month itself is the evidence.
+      const quarantinedPeriod = quarantined.filter(q => months.includes(String(q.period || "").slice(0, 7)));
+      quarantined.splice(0, quarantined.length, ...quarantined.filter(q => invSet.has(q.invoice_no)));
+      const statements = stmts.filter(s => s.report_period_start && months.some(m => s.report_period_start.slice(0, 7) <= m && String(s.report_period_end || s.report_period_start).slice(0, 7) >= m))
+        .map(s => ({ id: s.id, title: s.title, file_name: s.file_name, status: s.status, period: String(s.report_period_start).slice(0, 7), imported: !!s.import_batch_id, received_date: s.received_date }));
+      const commissionLaneRows = monthRows.filter(x => RV.laneOf(x) === "commission").length;
+      // Phase E dispositions of the file's months (none when the migration is not installed). fp_current = the fingerprint
+      // of the quarantined rows NOW, so a disposition recorded for other rows releases nothing.
+      const dispRaw = await sbGetOptional(`mfr_quarantine_dispositions?manufacturer=eq.${e(slug)}&select=*`) || [];
+      const dispositions = dispRaw.filter(d => months.includes(String(d.period).slice(0, 7))).map(d => Object.assign({}, d,
+        { fp_current: quarantineFp(quarantine.filter(q => String(q.period || "").slice(0, 7) === String(d.period).slice(0, 7))) }));
+      const verdict = SI.verdict({ plan: pl, enrolled: enr.length > 0, rate, v2, existing, quarantined, quarantinedPeriod, statements, commissionLaneRows, dispositions, sourceId: r.src.id });
+      for (const o of pl.orders) { o.dealer = nameOf(o.dealer_id); o.recorded = existing.filter(x => x.invoice_no === o.order_number).map(x => ({ lane: x.lane, period: x.period, amount: x.amount })); }
+      for (const d of ((v2 && v2.nonfinancial_differences) || [])) if (d.field === "dealer_id") { d.field = "dealer"; d.hcps = nameOf(d.hcps) || d.hcps; d.file = nameOf(d.file) || d.file; }
+      const st = await autoStatus();
+      const plan_hash = SI.planHash({ source_id: r.src.id, sha256: r.src.file_sha256, rows: pl.mi_rows, v2, approvals: verdict.approvals });
+      return { ctx: { src: r.src, pl, v2, slug }, out: { ok: true, read_only: true, applied: false, source: summary(r.src, review), plan: { status: pl.status, held_orders: pl.held_orders, orders: pl.orders, totals: pl.totals },
+        rate, enrolled: enr.length > 0, months, v2, existing, quarantined, quarantined_in_period: quarantinedPeriod, dispositions, statements, commission_lane_rows: commissionLaneRows, verdict,
+        plan_hash, auto_import: { installed: st.installed, switch_on: st.switch_on, open_approval: st.installed ? ((await sbGetOptional(`mfr_import_approvals?source_id=eq.${r.src.id}&used_at=is.null&select=id,plan_hash,actor,created_at`)) || [])[0] || null : null } } };
+}
+
+// Phase E: switch + install state + recent decisions (read-only).
+async function autoStatus() {
+  const on = await flagOn(sbGet, "mi_auto_import");
+  const log = await sbGetOptional("mfr_auto_import_log?select=id,source_id,outcome,plan_hash,approval_id,batch_id,detail,actor,created_at&order=id.desc&limit=50");
+  if (log === null) return { ok: true, installed: false, switch_on: on, log: [], approvals: [], dispositions: [] };
+  const [approvals, dispositions] = await Promise.all([
+    sbGet("mfr_import_approvals?select=id,source_id,plan_hash,items,totals,reason,actor,created_at,used_at,used_by,used_outcome,batch_id&order=id.desc&limit=50"),
+    sbGet("mfr_quarantine_dispositions?select=*&order=id.desc&limit=50")]);
+  return { ok: true, installed: true, switch_on: on, log, approvals, dispositions };
+}
+const logImport = (p) => rpc("hcps_mfr_auto_import_log", Object.assign({ detail: {} }, p));
+
+/* Import ONE checked plan. approval = { id, reason, items } when the President approved it, else null (eligible, automatic).
+   Order: accept the record (MI-1b) → MI-1a apply (one transaction) → the result must equal the dry run (else roll the batch
+   back) → link the batch to the record (else roll back) → log + stamp the approval. Every outcome is logged. */
+async function executeImport(c, approval, actor) {
+  const { src, pl, v2, slug } = c.ctx, plan_hash = c.out.plan_hash, items = (approval && approval.items) || [];
+  const use = async (outcome, batch_id) => approval ? rpc("hcps_mfr_import_use", { approval_id: String(approval.id), plan_hash, outcome, batch_id: batch_id || "", actor }) : null;
+  const finish = async (outcome, detail, batch_id) => {
+    await logImport({ source_id: String(src.id), outcome, plan_hash, approval_id: approval ? String(approval.id) : "", batch_id: batch_id || "", detail, actor });
+    if (outcome !== "held" && outcome !== "needs_approval") await use(outcome === "imported" ? "imported" : outcome === "rolled_back" ? "rolled_back" : "refused", batch_id);
+    return { ok: outcome === "imported", outcome, detail, batch_id: batch_id || null, source_id: src.id, plan_hash };
+  };
+  if (src.status === "received") {
+    const acc = await rpc("hcps_mfr_report_decide", { id: String(src.id), decision: "accepted", actor,
+      reason: approval ? "Accepted for import on the President's approval: " + approval.reason : "Accepted for automatic import: every check passed." });
+    if (!acc.ok) return finish("refused", { step: "accept", code: acc.code, message: acc.message });
+  }
+  const res = await miApply({ manufacturer: slug, actor, source_file: src.file_name, rows: pl.mi_rows, retire_orders: [],
+    approve_paid: items.includes("paid_period"), confirm_cross_lane: items.includes("cross_lane_duplicate"),
+    approve_reason: items.some(i => i === "paid_period" || i === "cross_lane_duplicate") ? approval.reason : "" });
+  if (res.refused) return finish("refused", { step: "apply", code: res.code, message: res.message });
+  if (res.noop || !res.batch_id) return finish("refused", { step: "apply", code: "nothing_to_import", message: "MI-1a found nothing new or changed to import." });
+  const want = (v2 && v2.orders) || {}, got = res.orders || {};
+  const same = ["new", "unchanged", "changed", "retire"].every(k => Number(want[k] || 0) === Number(got[k] || 0)) && Number(res.cross_lane_matches || 0) === Number((v2 || {}).cross_lane_matches || 0);
+  const rollback = async (why) => { const rb = await rpc("hcps_import_batch_rollback", { batch_id: res.batch_id, actor });
+    return finish(rb.ok ? "rolled_back" : "error", Object.assign({ step: "verify", why }, rb.ok ? { rollback: rb.body } : { rollback_failed: rb.message }), res.batch_id); };
+  if (!same) return rollback({ dry_run: want, applied: got, message: "The import did not match the checked plan — rolled back." });
+  const ln = await rpc("hcps_mfr_report_link_batch", { id: String(src.id), batch_id: res.batch_id, actor });
+  if (!ln.ok) return rollback({ message: "The batch could not be linked to its registered file — rolled back.", code: ln.code, detail: ln.message });
+  return finish("imported", { orders: got, inserted: res.inserted, superseded: res.superseded, totals: pl.totals, approved: !!approval }, res.batch_id);
+}
+
+/* The automatic run (hourly cron, or the President's "run now"). Does NOTHING unless phase2_flags.mi_auto_import is exactly
+   true and the Phase E tables exist. Only registered, not-yet-imported order exports of manufacturers ENROLLED in MI-1a.
+   Eligible → imported; anything else is logged once per plan (needs approval / held) and waits for a person. */
+async function runAutoImport() {
+  const st = await autoStatus();
+  if (!st.installed) return { ok: true, skipped: "not_installed" };
+  if (!st.switch_on) return { ok: true, skipped: "switch_off" };
+  const enr = await sbGet("mi1a_enrollment?lane=eq.sales_report&select=manufacturer");
+  const mfrs = enr.map(x => x.manufacturer);
+  if (!mfrs.length) return { ok: true, skipped: "nothing_enrolled" };
+  const srcs = await sbGetAll(`mfr_sources?kind=eq.sales_export&status=in.(received,accepted)&import_batch_id=is.null&manufacturer=in.(${mfrs.map(e).join(",")})&select=id`, "id");
+  const out = [];
+  for (const s of srcs) {
+    try {
+      const c = await checkSource(s.id, AUTO_ACTOR);
+      if (c.error) { out.push({ source_id: s.id, outcome: "error", detail: c.error[1] }); continue; }
+      const v = c.out.verdict;
+      if (v.eligible) { out.push(await executeImport(c, null, AUTO_ACTOR)); continue; }
+      const outcome = v.approvable ? "needs_approval" : "held";
+      const last = st.log.find(l => Number(l.source_id) === Number(s.id));
+      if (!last || last.outcome !== outcome || last.plan_hash !== c.out.plan_hash)
+        await logImport({ source_id: String(s.id), outcome, plan_hash: c.out.plan_hash, detail: { blockers: v.blockers, approvals: v.approvals }, actor: AUTO_ACTOR });
+      out.push({ source_id: s.id, outcome, plan_hash: c.out.plan_hash });
+    } catch (x) {
+      await logImport({ source_id: String(s.id), outcome: "error", detail: { message: String(x.message || x).slice(0, 300) }, actor: AUTO_ACTOR }).catch(() => null);
+      out.push({ source_id: s.id, outcome: "error", message: String(x.message || x).slice(0, 200) });
+    }
+  }
+  return { ok: true, ran: true, results: out };
+}
 
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers: { "cache-control": "no-store" } };
@@ -268,59 +417,58 @@ exports.handler = async (event) => {
             line_type: d.line_type || null, ship_zip: d.ship_zip || null, imported_at: d.imported_at || null, external_ref: d.external_ref || null },
           matches }; });
       const lane = x => RV.laneOf(x);
-      return json(200, { ok: true, read_only: true, manufacturer: mfr, period: per, quarantined: rows,
+      // Phase E: the fingerprint a disposition must name (what is on screen now) and any disposition already recorded.
+      const disp = await sbGetOptional(`mfr_quarantine_dispositions?manufacturer=eq.${e(mfr)}&period=eq.${per}-01&select=*`);
+      const release = srcs.filter(x => x.kind === "sales_export" && ["received", "accepted"].includes(x.status) && !x.import_batch_id).map(x => ({ id: x.id, file_name: x.file_name }));
+      return json(200, { ok: true, read_only: true, manufacturer: mfr, period: per, quarantined: rows, quarantine_fp: quarantineFp(qrows),
+        disposition: disp === null ? null : (disp[0] || null), disposition_installed: disp !== null, release_candidates: release,
         totals: { rows: rows.length, open: rows.filter(r => !r.restored_at).length, with_amount: rows.filter(r => r.original.amount != null).length, with_commission: rows.filter(r => r.original.commission != null).length },
         in_monthly_sales: { rows: inMonth.length, by_lane: inMonth.reduce((a, x) => (a[lane(x)] = (a[lane(x)] || 0) + 1, a), {}) },
         registered_reports: srcs.map(x => ({ id: x.id, kind: x.kind, title: x.title, file_name: x.file_name, status: x.status, received_date: x.received_date, imported: !!x.import_batch_id })),
         exports_read: exportsRead,
         choices: [
-          { key: "keep_quarantined", text: "Keep the 7 rows quarantined as they are (history). Nothing changes. Recommended: they hold no amounts or commission." },
+          { key: "keep_quarantined", text: "Keep the 7 rows quarantined permanently (history; they can never be restored), and release the registered September order export (record #8) to be considered on its own. Recommended: the rows hold no amounts or commission. Importing record #8 still needs your separate financial approval." },
           { key: "import_export", text: "Use the registered September order export (record #8, $2,159.00) as September's sales: once you approve, it is imported through the Sales Report Import (MI-1a, one transaction, undoable). The quarantined rows stay as history and are never converted." },
           { key: "import_statement", text: "Record September's commission from the SR032 statement (record #9) — only after the commission import (mi_commission_v2) is approved; it goes in the commission lane." },
           { key: "restore", text: "Restore the quarantined rows to monthly_sales (commission_sept2026_cleanup_rollback.sql). Not recommended: it brings back 7 rows with no amount and no commission." }],
         nothing_changed: true });
     }
     if (b.action === "import_check") {
-      const r = await readSource(b.source_id); if (r.error) return json(r.error[0], r.error[1]);
-      const slug = r.src.manufacturer, ctx = await loadContext(slug);
-      const { review, nameOf } = await reviewOf(r.src, r.parsed, ctx);
-      const [enr, hist, dir] = await Promise.all([
-        sbGet(`mi1a_enrollment?manufacturer=in.(${e(slug)},*)&lane=eq.sales_report&select=manufacturer`),
-        sbGetAll(`monthly_sales?manufacturer=eq.${e(slug)}&source=eq.sales_report&select=id,commission_rate`, "id"),
-        SC.ownerIndex(sbGet)]);
-      const rate = SI.rateFromHistory(hist.map(h => h.commission_rate));
-      const repOf = id => id ? (dir.repOf(id) || dir.repOf((ctx.allById.get(id) || {}).parent_id || id) || null) : null;
-      const pl = SI.plan(review, r.parsed.rows, { slug, rate: rate.rate || 0, source_file: r.src.file_name, repOf });
-      const v2 = (pl.status === "ready" && enr.length && rate.rate)
-        ? await miDryRun({ manufacturer: slug, actor: actor, source_file: r.src.file_name, rows: pl.mi_rows, retire_orders: [], approve_paid: false, approve_reason: "", confirm_cross_lane: false })
-        : null;
-      // Facts beside the dry run (read-only): rows already holding these order numbers in ANY lane, quarantined rows, the
-      // registered commission statements and commission-lane rows of the same months.
-      const invs = [...new Set(r.parsed.rows.map(x => String(x.order_number || "").trim()).filter(Boolean))];
-      const months = [...new Set(r.parsed.rows.map(x => { const d = String(x.date || "").match(/(\d{4})-(\d{2})/); return d ? d[1] + "-" + d[2] : null; }).filter(Boolean))].sort();
-      const inList = invs.map(x => '"' + x.replace(/"/g, "") + '"').join(",");
-      const [existingRaw, quarantine, stmts, monthRows] = await Promise.all([
-        invs.length ? sbGetAll(`monthly_sales?manufacturer=eq.${e(slug)}&invoice_no=in.(${e(inList)})&select=id,invoice_no,period,source,external_ref,amount,commission,dealer_id,source_file`, "id") : [],
-        sbGetAll(`monthly_sales_quarantine?manufacturer=eq.${e(slug)}&select=id,sales_row_id,period,source,source_file,reason,row_data,quarantined_at`, "id"),
-        sbGetAll(`mfr_sources?manufacturer=eq.${e(slug)}&kind=eq.commission_statement&select=id,title,file_name,status,report_period_start,report_period_end,import_batch_id,received_date`, "id"),
-        months.length ? sbGetAll(`monthly_sales?manufacturer=eq.${e(slug)}&period=gte.${months[0]}-01&period=lte.${months[months.length - 1]}-28&select=id,source,external_ref,period`, "id") : []]);
-      const invSet = new Set(invs);
-      const existing = existingRaw.map(x => ({ ...x, lane: RV.laneOf(x), dealer: nameOf(x.dealer_id) }));
-      const quarantined = quarantine.map(q => ({ id: q.id, sales_row_id: q.sales_row_id, period: q.period, source: q.source, source_file: q.source_file, reason: q.reason,
-        invoice_no: String((q.row_data || {}).invoice_no || "").trim(), amount: (q.row_data || {}).amount, commission: (q.row_data || {}).commission, quarantined_at: q.quarantined_at }))
-        ;
-      // Two tests, both blocking: the same order numbers, AND any quarantined row in the same manufacturer + month — the
-      // quarantined September Strongback rows carry no usable order numbers, so the month itself is the evidence.
-      const quarantinedPeriod = quarantined.filter(q => months.includes(String(q.period || "").slice(0, 7)));
-      quarantined.splice(0, quarantined.length, ...quarantined.filter(q => invSet.has(q.invoice_no)));
-      const statements = stmts.filter(s => s.report_period_start && months.some(m => s.report_period_start.slice(0, 7) <= m && String(s.report_period_end || s.report_period_start).slice(0, 7) >= m))
-        .map(s => ({ id: s.id, title: s.title, file_name: s.file_name, status: s.status, period: String(s.report_period_start).slice(0, 7), imported: !!s.import_batch_id, received_date: s.received_date }));
-      const commissionLaneRows = monthRows.filter(x => RV.laneOf(x) === "commission").length;
-      const verdict = SI.verdict({ plan: pl, enrolled: enr.length > 0, rate, v2, existing, quarantined, quarantinedPeriod, statements, commissionLaneRows });
-      for (const o of pl.orders) { o.dealer = nameOf(o.dealer_id); o.recorded = existing.filter(x => x.invoice_no === o.order_number).map(x => ({ lane: x.lane, period: x.period, amount: x.amount })); }
-      for (const d of ((v2 && v2.nonfinancial_differences) || [])) if (d.field === "dealer_id") { d.field = "dealer"; d.hcps = nameOf(d.hcps) || d.hcps; d.file = nameOf(d.file) || d.file; }
-      return json(200, { ok: true, read_only: true, applied: false, source: summary(r.src, review), plan: { status: pl.status, held_orders: pl.held_orders, orders: pl.orders, totals: pl.totals },
-        rate, enrolled: enr.length > 0, months, v2, existing, quarantined, quarantined_in_period: quarantinedPeriod, statements, commission_lane_rows: commissionLaneRows, verdict });
+      const c = await checkSource(b.source_id, actor); if (c.error) return json(c.error[0], c.error[1]);
+      return json(200, c.out);
+    }
+    if (b.action === "auto_import_status") return json(200, await autoStatus());
+    if (b.action === "quarantine_dispose") {
+      if (me.role !== "president") return json(403, { error: "president_only", message: "A quarantine disposition is the President's decision." });
+      const per = clean(b.period, 7), mfr = clean(b.manufacturer, 80);
+      if (!mfr || !/^\d{4}-\d{2}$/.test(per)) return json(400, { error: "bad_request", message: "manufacturer and period (YYYY-MM) required" });
+      const p = { manufacturer: mfr, period: per, quarantine_fp: clean(b.quarantine_fp, 40), reason: clean(b.reason, 1000), actor,
+        release_source_id: b.release_source_id == null || b.release_source_id === "" ? "" : String(parseInt(b.release_source_id, 10) || 0) };
+      if (b.dry_run === true) return json(200, { ok: true, dry_run: true, would_record: p, effect: "The quarantined rows of this month are kept quarantined permanently (never restored, changed or deleted)." +
+        (p.release_source_id ? ` Record #${p.release_source_id} may then be considered for import on its own; importing it still needs your separate approval.` : " No file is released.") });
+      const rr = await rpc("hcps_mfr_quarantine_dispose", p);
+      if (!rr.ok) return json(rr.status === 404 ? 503 : /already_disposed|quarantine_changed/.test(rr.code) ? 409 : rr.status >= 500 ? 502 : 422, { error: rr.code, message: rr.message });
+      return json(200, { ok: true, disposition: rr.body });
+    }
+    if (b.action === "approve_import") {
+      if (me.role !== "president") return json(403, { error: "president_only", message: "A financial import approval is the President's decision." });
+      const reason = clean(b.reason, 1000); if (reason.length < 10) return json(422, { error: "mi_e_reason_required", message: "Give the reason (10+ characters)." });
+      const st = await autoStatus();
+      if (!st.installed) return json(503, { error: "not_installed", message: "The Phase E tables are not installed yet (supabase/mi_e_auto_import.sql)." });
+      if (!st.switch_on) return json(409, { error: "switch_off", message: "Automatic financial processing (mi_auto_import) is OFF — nothing is imported, approved or not." });
+      const c = await checkSource(b.source_id, actor); if (c.error) return json(c.error[0], c.error[1]);
+      const v = c.out.verdict;
+      if (!(v.approvable || v.eligible)) return json(409, { error: "not_approvable", message: "This report has blockers an approval cannot clear.", blockers: v.blockers });
+      if (c.out.plan_hash !== String(b.plan_hash || "")) return json(409, { error: "plan_changed", message: "The report's import plan changed since you reviewed it — check it again.", plan_hash: c.out.plan_hash });
+      const ap = await rpc("hcps_mfr_import_approve", { source_id: String(c.ctx.src.id), plan_hash: c.out.plan_hash, items: v.approvals.map(a => a.code),
+        totals: c.out.plan.totals, reason, actor, replace: b.replace === true });
+      if (!ap.ok) return json(/pending/.test(ap.code) ? 409 : ap.status >= 500 ? 502 : 422, { error: ap.code, message: ap.message });
+      const done = await executeImport(c, { id: ap.body.approval_id, reason, items: v.approvals.map(a => a.code) }, actor);
+      return json(done.outcome === "imported" ? 200 : 409, Object.assign({ approval_id: ap.body.approval_id }, done));
+    }
+    if (b.action === "auto_import_run") {
+      if (me.role !== "president") return json(403, { error: "president_only" });
+      return json(200, await runAutoImport());
     }
     if (b.action === "shadow") {
       const mfr = clean(b.manufacturer, 80); if (!mfr) return json(400, { error: "manufacturer_required" });
@@ -344,3 +492,5 @@ exports.handler = async (event) => {
   }
   return json(400, { error: "unknown_action" });
 };
+
+exports.runAutoImport = runAutoImport;
