@@ -92,9 +92,9 @@ begin
     insert into academy_course_versions (course_id, version, exam_questions) values (v_course, 1, 1) returning id into v_ver;
     insert into academy_modules (version_id, position, title) values (v_ver, 1, 'M1') returning id into v_mod;
     insert into academy_lessons (module_id, position, title, est_minutes) values (v_mod, 1, 'L1', 5) returning id into v_les;
-    perform set_config('academy.op', '', true);
-    insert into academy_questions (version_id, module_id, kind, prompt, choices, answer_key, explanation)
+    insert into academy_questions (version_id, module_id, kind, prompt, choices, answer_key, explanation)   -- A2D M3: questions too
       values (v_ver, v_mod, 'single', 'Q?', '[{"id":"a","text":"A"},{"id":"b","text":"B"}]', '"a"', 'Because') returning id into v_q;
+    perform set_config('academy.op', '', true);
     if v_m1 then perform academy_op_publish_version(ADMIN, v_ver);
     else update academy_course_versions set status = 'published', published_at = now(), published_by = 'test' where id = v_ver; end if;
 
@@ -240,7 +240,9 @@ begin
     insert into t_results values (25, 'A Golden credential cannot be verified from an exam click or self-report alone', case when ok then 'PASS' else 'FAIL' end, '');
 
     begin
+      perform set_config('academy.op', 'test-setup', true);  -- A2D M3: media is written only by audited operations
       insert into academy_media (kind, storage_path, rights) values ('pdf', 'academy-private/test.pdf', 'hcps_owned') returning id into v_med;
+      perform set_config('academy.op', '', true);
       if v_m1 then
         insert into academy_external_certs (learner_id, course_id, manufacturer_slug, status, upload_media_id, certificate_uploaded_at)
           values (v_learner, v_course, 'golden-technologies', 'certificate_uploaded', v_med, now()) returning id into v_ext;

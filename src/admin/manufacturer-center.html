@@ -514,13 +514,13 @@ async function openEnrichment(slug, tab){
 async function enReload(){ try{ EN.plan=await papi({action:"enrich_plan",manufacturer:EN.slug}); }
   catch(e){ if(String(e.message)!=="unauthorized") $("#line").innerHTML=`<div class="card err">Product Enrichment could not load: ${esc(e.message)}</div>`; return; }
   if(!EN.tabPicked){ EN.tab=EN.plan.pages.some(p=>p.status!=="not_enriched")?"issues":"products"; EN.tabPicked=true; } enDraw(); }
-function enGo(t){ if(t==="publish"){ toast("Comes with Release D — not built yet"); return; } if(t==="sources"){ openLine(EN.slug); return; } EN.tab=t; enDraw(); }
+function enGo(t){ if(t==="sources"){ openLine(EN.slug); return; } EN.tab=t; enDraw(); }
 function enDraw(){
   const P=EN.plan, l=LINES.find(x=>x.slug===EN.slug)||{}, notEnr=P.pages.filter(p=>p.status==="not_enriched").length;
   const issues=P.pages.reduce((n,p)=>n+p.issues.filter(i=>!i.pending).length,0);
   const held=P.pages.filter(p=>p.status==="held_back").reduce((n,p)=>n+p.issues.length,0);
-  const sub={sources:"Done",products:P.pages.length+" pages",auto:notEnr?notEnr+" to go":(P.ready+" ready"),issues:(issues-held)?(issues-held)+" open":(held?held+" held for sources":"none open"),preview:EN.pv?(EN.pv.pass?"Previewed — all checks pass":"Previewed — see checks"):"Read-only",publish:"Release D"};
-  const stages=ENRICH_STAGES.map(([k,n])=>`<button class="enst ${EN.tab===k?'on':''} ${k==='publish'?'later':''}" onclick="enGo('${k}')"><b>${esc(n)}</b><span>${esc(sub[k]||'')}</span></button>`).join("");
+  const sub={sources:"Done",products:P.pages.length+" pages",auto:notEnr?notEnr+" to go":(P.ready+" ready"),issues:(issues-held)?(issues-held)+" open":(held?held+" held for sources":"none open"),preview:EN.pv?(EN.pv.pass?"Previewed — all checks pass":"Previewed — see checks"):"Read-only",publish:pubState()};
+  const stages=ENRICH_STAGES.map(([k,n])=>`<button class="enst ${EN.tab===k?'on':''}" onclick="enGo('${k}')"><b>${esc(n)}</b><span>${esc(sub[k]||'')}</span></button>`).join("");
   $("#line").innerHTML=`<div class="card"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">${esc(l.name||EN.slug)} — Product Enrichment</h2>
     ${P.frozen?pill("p-frozen","Frozen · prices locked"):""}<span style="flex:1"></span>
     <a class="btn ghost" href="/admin/product-content-review.html?manufacturer=${encodeURIComponent(EN.slug)}" target="_blank" title="The Advanced Product Editor: for unusual cases only. Prices are not edited there.">Open Advanced Editor</a>
@@ -546,7 +546,7 @@ async function enOpenWindow(dry){
     toast("Enrichment window #"+j.window.id+" opened"); EN.winDry=null; await enReload(); }
   catch(e){ toast("Not opened: "+e.message); }
 }
-function enBody(){ return EN.tab==="products"?enProducts():(EN.tab==="auto"?enAuto():(EN.tab==="preview"?enPreview():enIssues())); }
+function enBody(){ return EN.tab==="products"?enProducts():(EN.tab==="auto"?enAuto():(EN.tab==="preview"?enPreview():(EN.tab==="publish"?enPublish():enIssues()))); }
 function unitOf(s){ return s.case_qty>1?("Case of "+s.case_qty):(s.uom||"Each"); }
 function enProducts(){
   const P=EN.plan;
@@ -702,6 +702,82 @@ function pvDetail(){
       ${k.warranty?`<p style="font-size:12px"><b>Warranty:</b> ${esc(k.warranty)}</p>`:''}
       ${(k.documents||[]).length?`<p style="font-size:12px"><b>Documents:</b> ${k.documents.map(d=>`<a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.label||'Document')}</a>`).join(' · ')}</p>`:''}
       <p class="mut" style="font-size:11.5px;margin-top:8px">${esc([k.category,k.subcategory].filter(Boolean).join(' › '))}${k.enriched?' · enriched page':' · current catalog content'}</p></div></div>`;
+}
+/* ── RELEASE D — PUBLISH & VERIFY. The dry run lists exactly what will be published (only Ready pages), every photo that
+   moves from the draft folder to the live folder, and the dealer accounting it must produce. "Approve & Publish" records
+   the approval for THAT dry run (its plan hash), copies the photos, publishes the pages in one database transaction and
+   checks the live result against the approved one — rolling back by itself if anything differs. Making it the new Gold
+   Standard (Finalize) is a separate step after the live storefront check. Nothing here touches a price. */
+function pubState(){ const P=EN&&EN.plan, d=P&&P.publication; if(!d) return EN&&EN.pub?(EN.pub.publishable?"Dry run ready":"Dry run — see problems"):"Dry run first";
+  if(!d.used_at) return "Approved — not carried out"; return P.window?"Published — finalize pending":"Gold Standard"; }
+async function pubPlan(){ if(EN.pubBusy) return; EN.pubBusy="Running the publication dry run…"; enDraw();
+  try{ EN.pub=await papi({action:"publish_plan",manufacturer:EN.slug}); EN.pubRes=null; }catch(e){ toast("Dry run not built: "+e.message); }
+  EN.pubBusy=null; enDraw(); }
+function fname(u){ return String(u||"").split("/").pop(); }
+function enPublish(){
+  const P=EN.plan, l=LINES.find(x=>x.slug===EN.slug)||{}, nm=l.name||EN.slug, d=P.publication;
+  const live=P.pages.filter(p=>p.status==="published");
+  if(d&&d.used_at&&live.length){
+    return `<h3>${esc(nm)} — ${P.window?'published, final verification pending':'published · Gold Standard'}</h3>
+      <p class="sub">Approval #${d.id} carried out ${esc(fmtT(d.used_at))}: ${live.map(p=>esc(p.name)).join(' · ')}. ${P.window?'Check the live storefront (desktop and phone), then finalize — or roll back.':'The verification run is the line\'s Gold Standard.'}</p>
+      ${EN.pubRes?pubChecks(EN.pubRes):''}
+      ${P.window?`<div class="gatebox g-wait"><div class="gh"><span class="gn">Needs you</span> <b>Final verification</b></div>
+        <p style="font-size:12.5px;margin:0 0 8px">Finalize runs ${esc(nm)}'s full verification (no baseline — this run becomes the Gold Standard, with the content fingerprint), proves Climbing Steps, Strongback and Ovation still read their Gold Standard fingerprints, then spends enrichment window #${esc(P.window.id)}. Any failure rolls the publication back and records the run.</p>
+        <button class="btn" onclick="pubFinalize(${d.id})" ${EN.pubBusy?'disabled':''}>Finalize — make this the Gold Standard</button>
+        <input type="text" id="pub_rb_reason" placeholder="Why roll back? (required to roll back)" style="min-width:240px"> <button class="btn ghost" onclick="pubRollback(${d.id})" ${EN.pubBusy?'disabled':''}>Roll back</button>
+        ${EN.pubBusy?`<div class="mut" style="margin-top:6px">${esc(EN.pubBusy)}</div>`:''}</div>`:''}`;
+  }
+  if(!EN.pub) return `<h3>Publish &amp; Verify</h3><p class="sub">First a dry run: exactly which pages go live (only Ready ones — held products stay on their current catalog cards), every photo moved from the draft folder to the live folder, and the dealer result it must produce. Nothing is published by the dry run.</p>
+    <button class="btn" id="pubdry" onclick="pubPlan()" ${EN.pubBusy?'disabled':''}>${EN.pubBusy?esc(EN.pubBusy):'Run publication dry run'}</button>`;
+  const R=EN.pub, s=R.summary;
+  const tile=(n,lbl,good)=>`<div class="pvtile ${good===true?'good':(good===false?'bad':'')}"><b>${esc(n)}</b><span>${esc(lbl)}</span></div>`;
+  const tiles=tile(s.cards_today+" → "+s.cards_after,"dealer cards today → after")+tile(s.accounted+" / "+s.active_skus,"active SKUs represented",s.accounted===s.active_skus)
+    +tile(s.enriched_pages_live,"enriched pages go live")+tile(s.held_on_current_cards,"held — current catalog cards")+tile(s.missing,"missing SKUs",s.missing===0)
+    +tile(s.duplicates,"duplicate SKU cards",s.duplicates===0)+tile(s.commercial_changes,"commercial changes",s.commercial_changes===0)+tile(s.photos_promoted,"photos promoted to live");
+  const pages=R.ready.map(p=>`<div class="card sub2" style="margin:8px 0"><b>${esc(p.name)}</b> <span class="mut">· ${p.skus.map(esc).join(', ')} · ${esc(p.changes.status)} · draft window ${esc(p.changes.draft_window)} · ${esc(p.changes.photos)}</span>
+      <div style="overflow-x:auto"><table style="margin-top:6px;font-size:12px"><thead><tr><th>Draft copy</th><th>→ live copy</th><th>Used as</th></tr></thead><tbody>${p.promote.map(x=>`<tr><td><code>${esc(fname(x.from))}</code></td><td><code>${esc(x.to.replace(/^.*\/product-content\//,''))}</code></td><td>${esc(x.uses.join(', '))}</td></tr>`).join('')}</tbody></table></div>
+      ${p.deduped.length?`<div class="mut" style="font-size:12px;margin-top:4px">Same picture, one live copy: ${p.deduped.map(x=>`<code>${esc(fname(x.from))}</code> = <code>${esc(fname(x.same_as))}</code> (${esc(x.why)})`).join('; ')}</div>`:''}
+      ${p.after_photos.options.length>1?`<div style="font-size:12px;margin-top:4px">Options: ${p.after_photos.options.map(o=>`${esc(o.option||o.sku)} → <code>${esc(fname(o.image))}</code>`).join(' · ')}</div>`:''}</div>`).join('');
+  const held=R.held.map(h=>`<li><b>${esc(h.name)}</b> <span class="mut">(${h.skus.map(esc).join(', ')})</span> — stays on its current catalog card; open: ${h.issues.map(esc).join(' · ')||'—'}</li>`).join('');
+  return `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h3 style="margin:0">Publication dry run — ${esc(nm)}</h3>${pill(R.publishable?'p-pass':'p-fail',R.publishable?'Ready to approve':'Cannot be approved')}<span style="flex:1"></span><button class="btn ghost" onclick="pubPlan()">Run again</button></div>
+    <p class="mut" style="font-size:12px;margin:4px 0">Plan <code>${esc(R.plan_hash.slice(0,16))}</code> — the approval is tied to exactly this dry run; if anything changes, it becomes invalid and a new dry run is needed. Retired, kept off: ${esc(s.retired_excluded.join(', ')||'none')}. Prices, tiers, UOM/case qty, MSRP/MAP, freight and commercial status are not touched.</p>
+    <div class="pvtiles" style="grid-template-columns:repeat(4,1fr)">${tiles}</div>
+    ${R.problems.length?`<div class="card err">${R.problems.map(esc).join('<br>')}</div>`:''}
+    <h3 style="margin-top:12px">Pages that will be published (${R.ready.length})</h3>${pages}
+    <h3 style="margin-top:12px">Held — not published (${R.held.length})</h3><ul style="font-size:12.5px;margin:4px 0 0 18px">${held}</ul>
+    ${EN.pubRes?pubChecks(EN.pubRes):''}
+    ${R.publishable?`<div class="gatebox g-wait" style="margin-top:12px"><div class="gh"><span class="gn">Approval</span> <b>Approve &amp; Publish ${esc(nm)}</b></div>
+      <p style="font-size:12.5px;margin:0 0 8px">Records your approval of plan <code>${esc(R.plan_hash.slice(0,16))}</code>, copies the ${s.photos_promoted} photos to the live folder, publishes the ${R.ready.length} pages in one database transaction and checks the live dealer view against this dry run — rolling back by itself if anything differs. Final Gold Standard step comes after the live storefront check.</p>
+      <input type="text" id="pub_reason" placeholder="Reason (saved with the approval)" style="min-width:280px;width:60%"> <button class="btn" onclick="pubGo()" ${EN.pubBusy?'disabled':''}>Approve &amp; Publish ${esc(nm)}</button>
+      ${EN.pubBusy?`<div class="mut" style="margin-top:6px">${esc(EN.pubBusy)}</div>`:''}</div>`:''}`;
+}
+function pubChecks(r){ const cs=r.checks||[]; return `<div class="card ${r.ok?'':'err'}" style="margin-top:10px"><b>${esc(r.title||'Result')}</b>${cs.map(c=>`<div style="display:flex;gap:8px;margin:3px 0">${pill(c.pass?'p-pass':'p-fail',c.pass?'Pass':'Fail')}<span style="font-size:12.5px">${esc(c.label||c.id)}${!c.pass&&c.detail?`<div class="needtxt">${esc(JSON.stringify(c.detail).slice(0,300))}</div>`:''}</span></div>`).join('')}${r.message?`<p style="font-size:12.5px">${esc(r.message)}</p>`:''}</div>`; }
+async function pubGo(){
+  const R=EN.pub, reason=(($("#pub_reason")||{}).value||"").trim(); if(!reason){ toast("Give a reason — it is saved with the approval"); return; }
+  if(EN.pubBusy) return;
+  try{
+    EN.pubBusy="Recording your approval of this exact dry run…"; enDraw();
+    const a=await papi({action:"publish_approve",manufacturer:EN.slug,plan_hash:R.plan_hash,reason});
+    const did=a.decision.id;
+    for(let i=0;i<30;i++){ EN.pubBusy="Copying photos to the live folder…"; enDraw(); const p=await papi({action:"publish_promote",manufacturer:EN.slug,decision_id:did}); if(!p.remaining) break; }
+    EN.pubBusy="Publishing and checking the live dealer view…"; enDraw();
+    const x=await papi({action:"publish_execute",manufacturer:EN.slug,decision_id:did});
+    EN.pubRes={ok:true,title:"Published — the live dealer view matches the approved dry run",checks:x.checks}; toast("Published — now check the storefront, then finalize");
+  }catch(e){ EN.pubRes={ok:false,title:"Not published",checks:(e.body&&e.body.checks)||[],message:e.message}; toast("Not published: "+e.message); }
+  EN.pubBusy=null; await enReload();
+}
+async function pubFinalize(did){
+  if(EN.pubBusy) return; EN.pubBusy="Running the final verification…"; enDraw();
+  try{ const r=await api({action:"mc_publish_finalize",manufacturer:EN.slug,decision_id:did}); EN.pubRes={ok:true,title:"Gold Standard saved (run #"+r.run_id+") — enrichment window spent",checks:r.checks.filter(c=>c.severity==="blocking")}; toast("Gold Standard saved"); }
+  catch(e){ EN.pubRes={ok:false,title:"Final verification failed — rolled back",checks:(e.body&&e.body.checks)||[],message:e.message}; toast("Rolled back: "+e.message); }
+  EN.pubBusy=null; await enReload();
+}
+async function pubRollback(did){
+  const reason=(($("#pub_rb_reason")||{}).value||"").trim(); if(!reason){ toast("Say why — it is recorded"); return; }
+  if(EN.pubBusy) return; EN.pubBusy="Rolling back…"; enDraw();
+  try{ await api({action:"mc_publish_rollback",manufacturer:EN.slug,decision_id:did,reason}); EN.pubRes={ok:true,title:"Rolled back — the previous dealer view is restored and the run recorded",checks:[]}; EN.pub=null; }
+  catch(e){ toast("Not rolled back: "+e.message); }
+  EN.pubBusy=null; await enReload();
 }
 /* masthead provides Lock */
 if(TOKEN)boot();else gate();

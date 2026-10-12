@@ -24,11 +24,11 @@ begin
   insert into academy_course_versions (course_id, version, exam_questions) values (v_course2, 1, 1) returning id into v_ver2;
   insert into academy_modules (version_id, position, title) values (v_ver, 1, 'M') returning id into v_mod;
   insert into academy_modules (version_id, position, title) values (v_ver2, 1, 'M') returning id into v_mod2;
-  perform set_config('academy.op', '', true);
-  insert into academy_questions (version_id, module_id, kind, prompt, choices, answer_key, explanation, objective_tags)
+  insert into academy_questions (version_id, module_id, kind, prompt, choices, answer_key, explanation, objective_tags)   -- A2D M3: questions too
     values (v_ver, v_mod, 'single', 'Q', '[{"id":"a"},{"id":"b"}]', '"a"', 'B', '{t}') returning id into v_q;
   insert into academy_questions (version_id, module_id, kind, prompt, choices, answer_key, explanation, objective_tags)
     values (v_ver2, v_mod2, 'single', 'Q', '[{"id":"a"},{"id":"b"}]', '"a"', 'B', '{t}');
+  perform set_config('academy.op', '', true);
   perform academy_op_publish_version(ADMIN, v_ver);
   insert into academy_enrollments (learner_id, version_id, access_source) values (v_learner, v_ver, 'admin_grant') returning id into v_enr;
   v_att := (academy_op_start_attempt('learner:' || v_learner, v_enr)->>'id')::uuid;
@@ -37,7 +37,9 @@ begin
   v_att2 := (academy_op_start_attempt('learner:' || v_learner2, v_enr2)->>'id')::uuid;
   perform academy_op_submit_attempt('learner:' || v_learner2, v_att2, jsonb_build_object(v_q::text, 'a'));
   v_cert := (academy_op_issue_certificate('system:grader', v_att, 'HQ')->>'id')::uuid;
+  perform set_config('academy.op', 'test-setup', true);  -- A2D M3: media too
   insert into academy_media (kind, storage_path, rights) values ('pdf', 'academy-private/x.pdf', 'hcps_owned') returning id into v_med;
+  perform set_config('academy.op', '', true);
   insert into academy_external_certs (learner_id, course_id, manufacturer_slug, status, upload_media_id, certificate_uploaded_at)
     values (v_learner, v_course, 'golden-technologies', 'certificate_uploaded', v_med, now()) returning id into v_ext;
   v_fact := (academy_op_record_fact(ADMIN, jsonb_build_object('manufacturer_slug','golden-technologies','model_code','PR1','field','zones',

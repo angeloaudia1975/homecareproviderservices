@@ -18,7 +18,7 @@ const JS=[
  ['_preview.js','freight words not compared','m2(fT.fee) === m2(fP.fee) && fw(fT) === fw(fP)','true'],
  ['_preview.js','the staff note on every card','      staff_note: held ? HELD_NOTE : null,','      staff_note: HELD_NOTE,'],
  ['_preview.js','storefront photos shown from the admin site (broken)','      image: abs(lead.image), media,','      image: lead.image || "", media,'],
- ['product-content.js','the proposal shows nothing new','return want.test(path) ? PREVIEW.proposedContentRows(rows, X.pages, readyKeys) : rows;','return rows;'],
+ ['product-content.js','the proposal shows nothing new','return want.test(path) ? PREVIEW.proposedContentRows(rows, rowsAsPublished, keys) : rows;','return rows;'],
  ['_enrich.js','a source hold hides its issues','  return { status, label: STATUS_LABEL[status], issues, resolutions: res,','  return { status, label: STATUS_LABEL[status], issues: held ? [] : issues, resolutions: res,'],
  ['_enrich.js','a source hold not recognised','  const held = !!((res.hold && res.hold.choice === "hold_back") ||','  const held = !!((false) ||'],
  ['_enrich.js','badge art kept as a thumbnail','  pool = pool.filter(d => !d.promo);\n',''],
