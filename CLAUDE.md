@@ -109,6 +109,10 @@ Two files were once shipped to the wrong repo (the catalog workspace + its funct
   patients roll up as drop-ship on the corporate.
 
 ## 7. Workflow
+- **Chrome (Angelo, 2026-10-11 20:44 CT): standing permission to use Claude in Chrome whenever a task needs it —
+  don't ask first.** This covers opening and reading pages, live checks and read-only verification. It does NOT
+  replace the per-action confirmations that stay required: submitting forms, sending messages, publishing, clicking
+  irreversible controls (delete/confirm), running SQL, changing settings or switches, entering credentials.
 - Work happens in the cloud session; deliver by committing to the device repo via the
   device bridge. `documents.json` excepted (admin-managed).
 - After changes, run **`npm run build`** before deploying. (A local full build currently
@@ -1962,6 +1966,8 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   mfr_decisions 15 → 21 (Bemis window #320 + Review Issues decisions), grants 3072 → 3112 (the MI-1c baseline left its 5
   tables out of the count; 5 × 8 = 40 — no other new table since, by object id). Outside probe (Angelo, 18:39 CT): ALL 31
   BLOCKED (401). Lesson: compare grant counts only between queries with the same exclusion list.
+  **Grant difference CONFIRMED by Angelo (2026-10-11 20:44 CT):** grants on the 5 MI-1c tables = 40 (read-only count),
+  exactly the 3072 → 3112 difference — closed.
   **Phase B DEPLOYED 2026-10-11 ~18:39 CT** (branch reconciled with main 1799842 — MC enrichment change only, migration
   byte-identical; mi-b-capture.pg 38, report-capture 27, mi-b-api 11, shipto 17, report-inventory 28, mi1b 46/28, mi1c 76/29,
   mi1a 28/16, commission 42, mcenrich 23, enrich.unit 22 → main b05b9e7, Netlify "Production: main@b05b9e7 Published").
