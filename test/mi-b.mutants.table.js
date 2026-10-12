@@ -47,4 +47,11 @@ module.exports = {
   sql_events_editable: { file: 'sql', from: "  if tg_table_name = 'mfr_report_capture_events' and tg_op = 'UPDATE' then", to: '  if false then' },
   sql_service_role_inserts: { file: 'sql', from: "execute format('grant select on public.%I to service_role', t);", to: "execute format('grant select, insert, update, delete on public.%I to service_role', t);" },
   sql_items_replaced: { file: 'sql', from: "if jsonb_typeof(p->'items') = 'array' and not v_listed then", to: "if jsonb_typeof(p->'items') = 'array' then" },
+  // ── Phase D: reconsider on activation + reply threads (test/report-capture.test.js) ──
+  d_reconsider_off: { file: '_report_capture.js', suite: 'report-capture', from: 'if (activeAuto.length && now() <= soft) {', to: 'if (false) {' },
+  d_reconsider_forever: { file: '_report_capture.js', suite: 'report-capture', from: 'if (!prof || !(Date.parse(it.updated_at) < Date.parse(prof.updated_at))) continue;', to: 'if (!prof) continue;' },
+  d_reply_body_registers: { file: '_report_capture.js', suite: 'report-capture', from: 'if (o.format === "eml") return "a reply', to: 'if (false) return "a reply' },
+  d_reply_attachment_dup: { file: '_report_capture.js', suite: 'report-capture', from: 'if (o.kind === "commission_statement" && recs.length && !recs.some(r => r.file_sha256 === o.sha256))', to: 'if (false)' },
+  d_reply_person_ignored: { file: '_report_capture.js', suite: 'report-capture', from: 'o.person_asked || ', to: '' },
+  d_exception_then_register: { file: '_report_capture.js', suite: 'report-capture', from: 'if (c.state === "exception") { counts.exceptions++; return c; }', to: '' },
 };

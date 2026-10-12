@@ -27,6 +27,8 @@
 //   POST {action:"export", source_id}                        → the corrected report as CSV (original columns + HCPS columns)
 //   POST {action:"shadow", manufacturer, period_from?, period_to?}
 //                                                            → READ-ONLY: history in monthly_sales re-resolved strictly
+//   POST {action:"quarantine_review", manufacturer, period:"YYYY-MM"} → READ-ONLY: quarantined rows of that month with their
+//                                                              original source, amounts, overlaps and the resolution choices
 //   POST {action:"import_check", source_id}                  → READ-ONLY Phase D check: strict Ship-To + overlays → MI-1a
 //                                                              dry run (apply:false, always) + quarantine / statement / lane
 //                                                              facts + an eligibility verdict. Nothing is ever written.
@@ -237,6 +239,47 @@ exports.handler = async (event) => {
       return json(200, { ok: true, dealers: hits });
     }
 
+    if (b.action === "quarantine_review") {
+      const mfr = clean(b.manufacturer, 80) || "strongback-mobility", per = /^\d{4}-\d{2}$/.test(b.period || "") ? b.period : "2026-09";
+      const [qrows, inMonth, srcs, dls] = await Promise.all([
+        sbGetAll(`monthly_sales_quarantine?manufacturer=eq.${e(mfr)}&period=eq.${per}-01&select=*`, "id"),
+        sbGetAll(`monthly_sales?manufacturer=eq.${e(mfr)}&period=eq.${per}-01&select=id,source,external_ref,invoice_no,customer_name,amount,commission,dealer_id`, "id"),
+        sbGetAll(`mfr_sources?manufacturer=eq.${e(mfr)}&kind=in.(sales_export,commission_statement,dealer_report)&report_period_start=lte.${per}-28&report_period_end=gte.${per}-01&select=${SRC_COLS},import_batch_id`, "id"),
+        sbGetAll("dealers?select=id,business_name,parent_id", "id")]);
+      const dn = id => { const d = dls.find(x => x.id === id); return d ? d.business_name : null; };
+      // Registered order exports of that month, read from their stored originals (orders, not lines).
+      const exportsRead = [];
+      for (const src of srcs.filter(x => x.kind === "sales_export" && ["received", "accepted"].includes(x.status))) {
+        const r = await readSource(src.id);
+        if (r.error) { exportsRead.push({ source_id: src.id, file_name: src.file_name, error: r.error[1].error }); continue; }
+        const orders = RV.groupOrders(r.parsed.rows).map(o => ({ order_number: o.order_number, company: o.lines[0].company, account_ref: o.lines[0].account_ref,
+          lines: o.lines.length, amount: Math.round(o.lines.reduce((t, l) => t + RV.lineAmount(l), 0) * 100) / 100, ship_zip: o.lines[0].ship_zip }));
+        exportsRead.push({ source_id: src.id, file_name: src.file_name, received_date: src.received_date, orders });
+      }
+      const norm = x => String(x || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const rows = qrows.map(q => { const d = q.row_data || {};
+        const matches = []; for (const ex of exportsRead) for (const o of (ex.orders || []))
+          if ((d.invoice_no && String(o.order_number) === String(d.invoice_no)) || (norm(d.customer_name) && norm(o.company) === norm(d.customer_name)) || (norm(d.customer_ref) && norm(o.account_ref) === norm(d.customer_ref)))
+            matches.push({ source_id: ex.source_id, order_number: o.order_number, company: o.company, amount: o.amount, basis: d.invoice_no && String(o.order_number) === String(d.invoice_no) ? "order number" : "customer" });
+        return { quarantine_id: q.id, sales_row_id: q.sales_row_id, period: q.period, source: q.source, source_file: q.source_file, reason: q.reason,
+          quarantined_at: q.quarantined_at, quarantined_by: q.quarantined_by, restored_at: q.restored_at, fingerprint: q.row_fp,
+          original: { invoice_no: d.invoice_no || null, customer_name: d.customer_name || null, customer_ref: d.customer_ref || null, dealer: dn(d.dealer_id), dealer_id: d.dealer_id || null,
+            product_code: d.product_code || null, product_name: d.product_name || null, qty: d.qty, amount: d.amount, commission: d.commission, commission_rate: d.commission_rate,
+            line_type: d.line_type || null, ship_zip: d.ship_zip || null, imported_at: d.imported_at || null, external_ref: d.external_ref || null },
+          matches }; });
+      const lane = x => RV.laneOf(x);
+      return json(200, { ok: true, read_only: true, manufacturer: mfr, period: per, quarantined: rows,
+        totals: { rows: rows.length, open: rows.filter(r => !r.restored_at).length, with_amount: rows.filter(r => r.original.amount != null).length, with_commission: rows.filter(r => r.original.commission != null).length },
+        in_monthly_sales: { rows: inMonth.length, by_lane: inMonth.reduce((a, x) => (a[lane(x)] = (a[lane(x)] || 0) + 1, a), {}) },
+        registered_reports: srcs.map(x => ({ id: x.id, kind: x.kind, title: x.title, file_name: x.file_name, status: x.status, received_date: x.received_date, imported: !!x.import_batch_id })),
+        exports_read: exportsRead,
+        choices: [
+          { key: "keep_quarantined", text: "Keep the 7 rows quarantined as they are (history). Nothing changes. Recommended: they hold no amounts or commission." },
+          { key: "import_export", text: "Use the registered September order export (record #8, $2,159.00) as September's sales: once you approve, it is imported through the Sales Report Import (MI-1a, one transaction, undoable). The quarantined rows stay as history and are never converted." },
+          { key: "import_statement", text: "Record September's commission from the SR032 statement (record #9) — only after the commission import (mi_commission_v2) is approved; it goes in the commission lane." },
+          { key: "restore", text: "Restore the quarantined rows to monthly_sales (commission_sept2026_cleanup_rollback.sql). Not recommended: it brings back 7 rows with no amount and no commission." }],
+        nothing_changed: true });
+    }
     if (b.action === "import_check") {
       const r = await readSource(b.source_id); if (r.error) return json(r.error[0], r.error[1]);
       const slug = r.src.manufacturer, ctx = await loadContext(slug);

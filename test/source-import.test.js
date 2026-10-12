@@ -164,6 +164,21 @@ const check = async (o, body) => { const { w, m } = boot(o); const r = await cal
     assert.strictEqual(r.body.verdict.eligible, true);
   });
 
+  console.log('\n— September quarantine review (read-only) —');
+  await t('quarantine review: each quarantined row with its original source and amounts, matched to the registered export; choices; nothing written', async () => {
+    const qrow = (id, cust) => ({ id, sales_row_id: String(100 + id), manufacturer: 'strongback-mobility', period: '2026-09-01', source: 'commission',
+      source_file: 'Strongback Sept Commission Report 2026.csv', reason: 'blank amount and commission', row_fp: 'fp' + id, quarantined_at: '2026-10-11T02:43:00Z',
+      quarantined_by: 'owner:sql-editor', restored_at: null, row_data: { invoice_no: null, customer_name: cust, amount: null, commission: null, dealer_id: 'wpr' } });
+    const { w, r } = await check({ quarantine: [qrow(1, 'Harmonia Medical Supply'), qrow(2, 'Nobody Known')] }, { action: 'quarantine_review', manufacturer: 'strongback-mobility', period: '2026-09' });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body)); assert.strictEqual(r.body.read_only, true);
+    assert.strictEqual(r.body.quarantined.length, 2); assert.strictEqual(r.body.totals.with_amount, 0);
+    assert.strictEqual(r.body.quarantined[0].original.dealer, 'Wilbur Brothers Princeton');
+    assert.deepStrictEqual(r.body.quarantined[0].matches.map(m => [m.order_number, m.amount, m.basis]), [['7139', 1041, 'customer']]);
+    assert.strictEqual(r.body.quarantined[1].matches.length, 0);
+    assert.deepStrictEqual(r.body.choices.map(c => c.key), ['keep_quarantined', 'import_export', 'import_statement', 'restore']);
+    assert.deepStrictEqual(writes(w), []); assert.strictEqual(w.rpcs.length, 0);
+  });
+
   console.log('\n— API —');
   await t('management only; an unreadable source is a 503, never "no evidence"', async () => {
     const { m } = boot(); assert.strictEqual((await call(m, { action: 'import_check', source_id: 8 })).status, 401);

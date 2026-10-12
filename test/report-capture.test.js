@@ -151,6 +151,13 @@ function dbAdapter(log) {
           order by i.next_retry_at limit 10) x`));
       if ((x = p.match(/^mfr_sources\?manufacturer=eq\.([^&]+)&file_sha256=eq\.([0-9a-f]{64})&select=id,kind$/)))
         return JSON.parse(sr(`select coalesce(json_agg(json_build_object('id', id, 'kind', kind)), '[]') from mfr_sources where manufacturer = ${lit(decodeURIComponent(x[1]))} and file_sha256 = ${lit(x[2])}`));
+      if ((x = p.match(/^mfr_sources\?manufacturer=eq\.([^&]+)&kind=eq\.commission_statement&report_period_start=eq\.([0-9-]+)&report_period_end=eq\.([0-9-]+)&status=in\.\(received,accepted\)&select=id,file_sha256$/)))
+        return JSON.parse(sr(`select coalesce(json_agg(json_build_object('id', id, 'file_sha256', file_sha256) order by id), '[]') from mfr_sources where manufacturer = ${lit(decodeURIComponent(x[1]))}
+          and kind = 'commission_statement' and report_period_start = ${lit(x[2])} and report_period_end = ${lit(x[3])} and status in ('received','accepted')`));
+      if ((x = p.match(/^mfr_report_items\?state=eq\.classified&resolved_at=is\.null&source_id=is\.null&sha256=not\.is\.null&profile_id=in\.\(([0-9,]+)\)&.*msg\.mailbox=eq\.([^&]+)/)))
+        return JSON.parse(sr(`select coalesce(json_agg(x order by x.id), '[]') from (select i.*, to_jsonb(m) as msg from mfr_report_items i join mfr_report_messages m on m.id = i.message_id
+          where i.state = 'classified' and i.resolved_at is null and i.source_id is null and i.sha256 is not null and i.profile_id in (${x[1]}) and m.mailbox = ${lit(decodeURIComponent(x[2]))}
+          order by i.id limit 20) x`));
       if ((x = p.match(/^mfr_report_messages\?mailbox=eq\.([^&]+)&received_at=gte\.([^&]+)&/)))
         return JSON.parse(sr(`select coalesce(json_agg(json_build_object('internet_message_id', m.internet_message_id, 'items_listed', m.items_listed,
           'items', (select coalesce(json_agg(json_build_object('state', i.state)), '[]') from mfr_report_items i where i.message_id = m.id))), '[]')
@@ -417,6 +424,62 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
     const g = byFile('FW: Golden order needs picked up')[0], s = byFile('FW: Commission report September 2026')[0];
     assert.deepStrictEqual([g.state, g.attention], ['classified', null]);
     assert.deepStrictEqual([s.state, s.attention], ['exception', 'cloud_attachment']);
+  });
+  console.log('\n— Phase D: reconsider on activation, reply threads —');
+  await t('activating a profile: its earlier classified item is reconsidered ONCE, registers with its original received date and hash', async () => {
+    const [b0] = byFile('705-2026-09.csv'); assert.strictEqual(b0.state, 'classified');
+    const sha0 = q(`select sha256 from mfr_report_items where id = ${b0.id}`);
+    owner(`update mfr_report_profiles set status = 'active', auto_register = true, updated_at = now() where code = 'bemis:commission_statement:rep705'`);
+    const r = await cap({}, deps(mailbox())); assert.strictEqual(r.ok, true, r.error); assert.strictEqual(r.counts.reconsidered, 1);
+    const [b] = byFile('705-2026-09.csv'); assert.strictEqual(b.state, 'registered');
+    const rec = JSON.parse(q(`select row_to_json(s) from mfr_sources s where id = ${b.source}`));
+    assert.deepStrictEqual([rec.kind, rec.received_date, rec.file_sha256, rec.report_period_start, rec.created_by], ['commission_statement', '2026-10-05', sha0, '2026-09-01', 'system:report-capture']);
+    assert.ok(/Reconsidered after bemis:commission_statement:rep705/.test(rec.note));
+    const n = q(`select count(*) from mfr_sources`);
+    const r2 = await cap({}, deps(mailbox())); assert.strictEqual(r2.counts.reconsidered, 0); assert.strictEqual(q(`select count(*) from mfr_sources`), n, 'never twice');
+    assert.strictEqual(q(`select count(*) from mfr_report_capture_events where item_id = ${b.id} and action = 'registered'`), '1');
+  });
+  await t('not reconsidered: items of a still-draft profile, items classified after the activation, items with no profile', async () => {
+    const [o] = byFile('HomeCare Provider Services - commission detail 0926.xlsx'); assert.strictEqual(o.state, 'classified', 'Ohio is still draft');
+    const [pl] = byFile('SPARE PARTS PRICELIST 2026.pdf'); assert.strictEqual(pl.state, 'classified');
+  });
+  await t('a reconsidered file whose bytes changed is never registered — "content changed" for a person', async () => {
+    owner(`update mfr_report_profiles set status = 'active', auto_register = true, updated_at = now() where code = 'ohio-medical:commission_statement:through'`);
+    const box = mailbox(); const om = box.find(m => /Commissions through September/.test(m.subject)); om.att[0].bytes = Buffer.concat([om.att[0].bytes, Buffer.from('x')]);
+    const r = await cap({}, deps(box)); assert.strictEqual(r.ok, true, r.error);
+    const [o] = byFile('HomeCare Provider Services - commission detail 0926.xlsx');
+    assert.strictEqual(o.state, 'exception'); assert.ok(['content_changed', 'attachment_failed'].includes(o.attention), o.attention);
+    assert.strictEqual(q(`select count(*) from mfr_sources where manufacturer = 'ohio-medical'`), '0');
+  });
+  await t('Climbing Steps: the original email body registers; quoted replies / forwards and a reply re-attaching the same month do not', async () => {
+    file(DB, SB('mi_d_body_reports.sql'));      // body-only reports need .eml in the register (Climbing Steps prerequisite)
+    owner(`update mfr_report_profiles set status = 'active', auto_register = true, updated_at = now() - interval '1 day' where code = 'climbing-steps:commission_statement:monthly'`);
+    owner(`update mfr_report_capture_state set checkpoint_at = '2026-10-12T00:00:00Z' where true`);
+    const XLS = book([['Sheet1', [['Invoice', 'Customer', 'Amount', 'Commission'], ['1', 'A', 100, 10]]]]);
+    const box = mailbox().concat([
+      M({ extra: 1, subject: 'August 2026 Commissions - Climbing Steps', from: em('sdiamond@climbingsteps.com'), receivedDateTime: '2026-10-12T09:00:00Z', body: 'August commission: $300.00 on $3,000.00' }),
+      M({ extra: 1, subject: 'RE: August 2026 Commissions - Climbing Steps', from: em('sdiamond@climbingsteps.com'), receivedDateTime: '2026-10-12T10:00:00Z', body: 'Thanks!\n> August commission: $300.00 on $3,000.00' }),
+      M({ extra: 1, subject: 'FW: August 2026 Commissions - Climbing Steps', from: em('bfink@climbingsteps.com'), receivedDateTime: '2026-10-12T11:00:00Z', body: 'fyi\n> August commission: $300.00' }),
+      M({ extra: 1, subject: 'RE: August 2026 Commissions - Climbing Steps - report attached', from: em('sdiamond@climbingsteps.com'), receivedDateTime: '2026-10-12T12:00:00Z' },
+        [A('August 2026 Commision Report.xlsx', 'application/octet-stream', XLS)])]);
+    const r = await cap({}, deps(box)); assert.strictEqual(r.ok, true, r.error);
+    const cs = JSON.parse(q(`select json_agg(json_build_object('subj', m.subject, 'part', i.part, 'state', i.state, 'detail', i.attention_detail) order by m.received_at)
+      from mfr_report_items i join mfr_report_messages m on m.id = i.message_id where m.from_address like '%climbingsteps.com' and m.received_at >= '2026-10-12'`));
+    assert.deepStrictEqual(cs.map(x => x.state), ['registered', 'classified', 'classified', 'classified'], JSON.stringify(cs));
+    assert.ok(/quotes earlier figures/.test(cs[1].detail) && /quotes earlier figures/.test(cs[2].detail));
+    assert.ok(/already covers 2026-08 — Retry/.test(cs[3].detail), cs[3].detail);
+    assert.strictEqual(q(`select count(*) from mfr_sources where manufacturer = 'climbing-steps' and report_period_start = '2026-08-01'`), '1');
+    const r2 = await cap({}, deps(box)); assert.strictEqual(r2.counts.reconsidered, 0, 'items already judged by the active profile are not reconsidered again');
+  });
+  await t('reply rule (pure): body replies never; reply attachment only without a record for the period; same file links; a person\'s Retry overrides', () => {
+    const R = RC._internal.replyRule, base = { outcome: 'register', subject: 'RE: x', format: 'xlsx', kind: 'commission_statement', sha256: 'a', period: '2026-08' };
+    assert.ok(R(Object.assign({}, base, { format: 'eml' })));
+    assert.strictEqual(R(Object.assign({}, base, { existing: [] })), null);
+    assert.ok(R(Object.assign({}, base, { existing: [{ id: 3, file_sha256: 'b' }] })));
+    assert.strictEqual(R(Object.assign({}, base, { existing: [{ id: 3, file_sha256: 'a' }] })), null);
+    assert.strictEqual(R(Object.assign({}, base, { existing: [{ id: 3, file_sha256: 'b' }], person_asked: true })), null);
+    assert.strictEqual(R(Object.assign({}, base, { subject: 'August Commissions', existing: [{ id: 3, file_sha256: 'b' }] })), null);
+    for (const sj of ['Re: x', 'FW: x', 'Fwd: x', '  re : x']) assert.ok(R(Object.assign({}, base, { subject: sj, format: 'eml' })), sj);
   });
   await t('every exception is in the event log; no capture row was ever deleted', async () => {
     assert.strictEqual(q(`select count(*) from mfr_report_items where state = 'exception' and id not in (select item_id from mfr_report_capture_events where action = 'exception' and item_id is not null)`), '0');

@@ -63,6 +63,8 @@ module.exports = {
   si_cross_lane_ignored: { file: SI, suite: 'source', from: 'if (v2.cross_lane_matches > 0) block(', to: 'if (false) block(' },
   si_changed_ignored: { file: SI, suite: 'source', from: 'if ((o.changed || 0) > 0) block(', to: 'if (false) block(' },
   si_rate_any: { file: SI, suite: 'source', from: 'return set.length === 1 ?', to: 'return set.length >= 1 ?' },
+  qr_no_matches: { file: API, suite: 'source', from: 'matches.push({ source_id: ex.source_id', to: 'void ({ source_id: ex.source_id' },
+  qr_restore_first: { file: API, suite: 'source', from: '{ key: "keep_quarantined", text:', to: '{ key: "restore", text:' },
   // ── SQL (test/mi-c-shipto.pg.test.js) ──
   sql_no_stale_check: { file: 'sql', from: '  if coalesce(v_cur.version, 0) <> v_exp then', to: '  if false then' },
   sql_guard_no_marker: { file: 'sql', from: "if coalesce(current_setting('hcps.shipto_op', true), '') <> 'on' or current_user <> v_owner then", to: 'if current_user <> v_owner then' },

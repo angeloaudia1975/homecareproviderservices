@@ -2228,6 +2228,32 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   arrived 13:44 CT TODAY, before the activation, and was captured as classified by the then-draft profile (period 2026-09) —
   capture never re-processes a settled item; registering it needs a person's "retry" on Needs attention/Inbox (re-queues it
   for the next hourly run under the active profile) — awaiting Angelo's go-ahead.
+  **Access4U item #15 retried (Angelo's instruction 2026-10-12 16:39 CT; done ~16:41 CT):** audited Retry (reason kept) +
+  one capture run (#23) → record **#10** "Access4U — commission statement 2026-09", file "HomeCare September 2026 Commissions
+  Report.xlsx", SHA-256 34f59bb4…25e2 (= the item's recorded hash), received 2026-10-12 (Outlook), status received, by
+  system:report-capture, no import batch; exactly one record; orphans 4 stored / 4 registered / 0.
+- **Phase D rules (Angelo, 2026-10-12 16:39 CT; MI 80% → 84%):**
+  (1) **Reconsider on activation:** a capture item classified under a profile that was draft then and is active +
+  auto-registering now is judged again by the active profile ONCE (only when the item was classified before the profile's
+  last change, `updated_at`), from the original email; its bytes must still hash to the recorded SHA-256 (else "content
+  changed" for a person); an existing record is linked, never duplicated; the original Outlook received date is kept; the
+  decision is kept on the item (`attention_detail` "reconsidered after <profile> …", register note "Reconsidered after …") and
+  in the run's counts (`reconsidered`). Live at deploy: nothing to reconsider (the only profile-classified item is Ovation, draft).
+  (2) **Reply / forward threads:** a reply or forward (subject RE:/FW:/FWD:) quotes earlier figures — its email BODY is never
+  registered; an attachment in a reply registers only when no record of that manufacturer + kind + period exists (the same
+  file still links); a person's Retry overrides it (`_report_capture.js replyRule`, also used by the profile trial).
+  (3) **A classify that ends in an exception (e.g. content changed) never goes on to register** (fixed latent bug).
+  (4) **Body-only reports need SQL first:** the register's shape check allowed only pdf/xlsx/xls/csv and the private bucket
+  had no message/rfc822, so a body-only report could never register — `supabase/mi_d_body_reports.sql` (sha256 b0aa5872…edd6,
+  NOT run) adds .eml + message/rfc822, nothing else. Climbing Steps stays DRAFT until it is run and a re-run profile trial is
+  clean; its profile rule also needs month-name files ("October 2025.xlsx").
+  (5) **September quarantine review is read-only:** `shipto-review-api quarantine_review` + a card on the MI dashboard: the 7
+  rows with source file, reason, blank amount/commission, dealer, matching orders in registered exports (by order number or
+  customer), records on file and four choices (keep quarantined — recommended; import record #8 through the Sales Report
+  Import on approval; record SR032 #9 once commission import is approved; restore — not recommended). Nothing is deleted,
+  restored or imported without Angelo's decision.
+  (6) **Reconciliation shows expected window, due date, arrival date and days late** per manufacturer (late reports still
+  count as received).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.

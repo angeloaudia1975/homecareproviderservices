@@ -56,6 +56,8 @@ t('a report received after its due date is LATE and still received', () => {
   const late = sources.concat([{ id: 20, manufacturer: 'bemis', kind: 'commission_statement', status: 'received', received_date: '2026-10-25', report_period_start: '2026-09-01', report_period_end: '2026-09-30' }]);
   const r = D.build({ today: '2026-10-26', months: 3, profiles, sources: late, items, coverage, manufacturers: [], shipto: {} });
   const row = r.reconciliation.rows.find(x => x.slug === 'bemis'); assert.deepStrictEqual([row.status, row.late], ['registered', true]); assert.strictEqual(r.reconciliation.late, 1);
+  assert.deepStrictEqual([row.arrived, row.days_late, row.expected], ['2026-10-25', 8, { month: '2026-10', from: 17, to: 17 }]);
+  const sb = r.reconciliation.rows.find(x => x.slug === 'strongback-mobility'); assert.deepStrictEqual([sb.arrived, sb.days_late, sb.late], ['2026-10-07', 0, false]);
 });
 t('pending work: open capture exceptions only, awaiting acceptance / import, Ship-To, drafts', () => {
   const p = run('2026-10-12').pending;

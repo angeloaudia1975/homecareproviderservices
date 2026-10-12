@@ -48,7 +48,16 @@ async function trial(o, deps) {
   let i = Math.max(0, parseInt(o.cursor, 10) || 0), stopped = false;
   const bodyProfiles = profiles.filter(p => p.rules && p.rules.body_only);
   const verdictFor = (att, msg) => {
-    const d = RC.decide(att, msg, att.format === "eml" ? bodyProfiles : profiles, { slug: o.slug });
+    let d = RC.decide(att, msg, att.format === "eml" ? bodyProfiles : profiles, { slug: o.slug });
+    if (d.outcome === "register") {           // the capture's reply / forward rule, against records on file + this trial's own
+      const pk = `${d.profile.kind}|${d.period.start}|${d.period.end}`;
+      const existing = (o.known_periods || []).filter(r => `${r.kind}|${r.start}|${r.end}` === pk).map(r => ({ id: r.id, file_sha256: r.sha256 }))
+        .concat([...seen].filter(x => x.startsWith("p:" + pk + "|")).map(x => ({ id: "trial", file_sha256: x.split("|").pop() })));
+      const why = RC.replyRule({ outcome: "register", subject: msg.subject, format: att.format, kind: d.profile.kind, sha256: att.sha256,
+        period: d.period.start.slice(0, 7), existing });
+      if (why) d = { outcome: "classified", profile: d.profile, period: d.period, detail: why };
+      else seen.add(`p:${pk}|${att.sha256}`);
+    }
     const known = o.known && o.known[att.sha256];
     let outcome = d.outcome === "register" ? "would_register" : d.outcome;
     if (outcome === "would_register" && known) outcome = known.kind === d.profile.kind ? "would_link" : "exception";

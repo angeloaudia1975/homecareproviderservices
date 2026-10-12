@@ -21,6 +21,12 @@ const server = http.createServer(async (req, res) => {
     let out = {};
     if (u.pathname.endsWith('mfr-reports-api') && b.action === 'dashboard') out = Object.assign({ ok: true, read_only: true }, data);
     if (u.pathname.endsWith('shipto-review-api') && b.action === 'queue') out = { ok: true, held: 1, reports: [{ counts: { needs_review: 3 } }] };
+    if (u.pathname.endsWith('shipto-review-api') && b.action === 'quarantine_review') out = { ok: true, read_only: true, period: '2026-09',
+      quarantined: [{ quarantine_id: 1, source: 'commission', source_file: 'Strongback Sept Commission Report 2026.csv', reason: 'blank amount and commission',
+        original: { customer_name: 'Harmon Medical Supply (a long dealer name that must wrap on a narrow phone)', dealer: 'Harmon Medical Supply', amount: null, commission: null },
+        matches: [{ source_id: 8, order_number: '7139', amount: 1067, basis: 'customer' }] }],
+      totals: { rows: 7, with_amount: 0, with_commission: 0 }, registered_reports: [{ id: 8, title: 'Strongback — order export 2026-09', status: 'received', imported: false }],
+      in_monthly_sales: { rows: 0 }, choices: [{ key: 'keep_quarantined', text: 'Keep the 7 rows quarantined.' }, { key: 'restore', text: 'Restore (not recommended).' }] };
     res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(out)); return;
   }
   const f = path.join(ADMIN, path.basename(u.pathname));
@@ -43,9 +49,11 @@ const fails = []; const check = (c, w) => { if (!c) { fails.push(w); console.log
     const sh = await page.locator('.kpi', { hasText: 'Ship-To: orders needing review' }).locator('.v').textContent(); check(sh.trim() === '3', `${w}px: Ship-To count from the queue (${sh})`);
     const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     check(over <= 0, `${w}px: no horizontal page scroll (${over}px)`);
+    check(/quarantined September 2026 Strongback rows/.test(txt) && /Your choices/.test(txt) && /order 7139/.test(txt), `${w}px: quarantine review card shown (read only)`);
+    check(/Expected/.test(txt) && /Arrived/.test(txt), `${w}px: reconciliation shows expected window and arrival`);
     await page.close();
   }
-  check(calls.every(([p, a]) => (p.endsWith('mfr-reports-api') && a === 'dashboard') || (p.endsWith('shipto-review-api') && a === 'queue') || !/mfr-reports|shipto/.test(p)), 'read-only: only dashboard + queue are called');
+  check(calls.every(([p, a]) => (p.endsWith('mfr-reports-api') && a === 'dashboard') || (p.endsWith('shipto-review-api') && (a === 'queue' || a === 'quarantine_review')) || !/mfr-reports|shipto/.test(p)), 'read-only: only dashboard + queue are called');
   check(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await browser.close(); server.close();
   console.log(`\nmi-dashboard-ui: ${fails.length ? 'FAILED ' + fails.length : 'all checks passed'}`);

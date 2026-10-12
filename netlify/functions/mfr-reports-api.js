@@ -287,14 +287,15 @@ exports.handler = async (event) => {
     const from = isDate(b.from) ? b.from : "2025-10-01", to = isDate(b.to) ? b.to : "2026-12-31";
     const [profiles, srcs, state] = await Promise.all([
       sbGet(`mfr_report_profiles?manufacturer=eq.${e(slug)}&status=in.(active,draft)&select=id,code,manufacturer,kind,label,status,rules,auto_register&order=id`),
-      sbGetAll(`mfr_sources?manufacturer=eq.${e(slug)}&file_sha256=not.is.null&select=id,kind,file_sha256`, "id"),
+      sbGetAll(`mfr_sources?manufacturer=eq.${e(slug)}&file_sha256=not.is.null&select=id,kind,file_sha256,report_period_start,report_period_end,status`, "id"),
       sbGet("mfr_report_capture_state?select=mailbox&order=mailbox&limit=1")]);
     if (!profiles.length) return json(404, { error: "no_profiles", message: "This manufacturer has no report profile." });
     const known = {}; for (const s2 of srcs) known[s2.file_sha256] = { id: s2.id, kind: s2.kind };
+    const known_periods = srcs.filter(s2 => s2.report_period_start && ['received','accepted'].includes(s2.status)).map(s2 => ({ id: s2.id, kind: s2.kind, start: s2.report_period_start, end: s2.report_period_end, sha256: s2.file_sha256 }));
     const { liveDeps } = require("./_report_capture.js");
     const T = require("./_profile_trial.js");
     let r; try { r = await T.trial({ slug, profiles, mailbox: (state[0] || {}).mailbox, from, to, cursor: b.cursor, seen: Array.isArray(b.seen) ? b.seen.slice(0, 2000) : [],
-      budget_ms: b.budget_ms, known }, liveDeps(process.env)); }
+      budget_ms: b.budget_ms, known, known_periods }, liveDeps(process.env)); }
     catch (x) { return json(503, { error: "trial_failed", message: String(x.message || x).slice(0, 300), throttled: !!x.throttled }); }
     return json(200, { ok: true, read_only: true, manufacturer: slug, window: [from, to],
       profiles: profiles.map(p => ({ code: p.code, kind: p.kind, status: p.status, label: p.label, expected: (p.rules || {}).expected || null })), ...r });

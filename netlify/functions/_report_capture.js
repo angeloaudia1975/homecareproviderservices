@@ -186,6 +186,21 @@ function decide(att, msg, profiles, who) {
   return { outcome: "exception", attention: "unidentified_type", detail: `looks like a ${KIND_LABEL[att.suggested]}; no profile for it` };
 }
 
+/* ── Reply / forward threads (Phase D, Climbing Steps, Angelo 2026-10-12) ──────────────────────────────────────────
+   A reply or forward quotes the earlier email: its BODY is never a new statement, and an attachment in a reply is a new
+   statement only when no record of that manufacturer + kind + period exists yet (the same file is linked as before).
+   A person's Retry (resolution retry_requested) overrides it — then the register's own rules apply (possible correction).
+   Returns null (no objection) or the reason it is not registered. Pure. */
+const REPLY = /^\s*(re|fw|fwd)\s*:/i;
+function replyRule(o) {
+  if (!o || o.outcome !== "register" || o.person_asked || !REPLY.test(o.subject || "")) return null;
+  if (o.format === "eml") return "a reply / forward quotes earlier figures — its email body is not registered as a statement";
+  const recs = o.existing || [];
+  if (o.kind === "commission_statement" && recs.length && !recs.some(r => r.file_sha256 === o.sha256))
+    return `a file in a reply thread: record #${recs.map(r => r.id).join(", #")} already covers ${o.period} — Retry to register this file as a correction`;
+  return null;
+}
+
 /* ── The run ─────────────────────────────────────────────────────────────── */
 async function runCapture(o, deps) {
   const now = deps.now || Date.now;
@@ -194,7 +209,7 @@ async function runCapture(o, deps) {
   const deadline = started + budget, soft = deadline - Math.min(4000, Math.floor(budget / 3));
   const mailbox = String(o.mailbox || "").toLowerCase();
   const token = o.token || crypto.randomBytes(16).toString("hex");
-  const counts = { listed: 0, candidates: 0, recorded: 0, registered: 0, linked: 0, classified: 0, exceptions: 0, retried: 0, skipped_settled: 0 };
+  const counts = { listed: 0, candidates: 0, recorded: 0, registered: 0, linked: 0, classified: 0, exceptions: 0, retried: 0, skipped_settled: 0, reconsidered: 0 };
   const b = await deps.db.rpc("hcps_mfr_capture_begin", { mailbox, token, lease_seconds: Math.ceil(budget / 1000) + 30 });
   if (b.busy) return { ok: true, busy: true, mailbox };
   const runId = b.run_id;
@@ -252,7 +267,15 @@ async function runCapture(o, deps) {
   }
 
   async function finishItem(item, msg, who, att, buf, profs) {
-    const d = decide(att, msg, profs, who);
+    let d = decide(att, msg, profs, who);
+    if (d.outcome === "register" && REPLY.test(msg.subject || "")) {
+      const existing = d.profile.kind === "commission_statement" ? await deps.db.get(`mfr_sources?manufacturer=eq.${encodeURIComponent(d.profile.manufacturer)}`
+        + `&kind=eq.commission_statement&report_period_start=eq.${d.period.start}&report_period_end=eq.${d.period.end}&status=in.(received,accepted)&select=id,file_sha256`) : [];
+      const why = replyRule({ outcome: d.outcome, subject: msg.subject, format: att.format, kind: d.profile.kind, sha256: att.sha256,
+        period: d.period.start.slice(0, 7), existing: existing || [], person_asked: item.resolution === "retry_requested" });
+      if (why) d = { outcome: "classified", profile: d.profile, period: d.period, detail: why };
+    }
+    if (item._reconsider) d = Object.assign({}, d, { detail: `reconsidered after ${item._reconsider} was activated` + (d.detail ? "; " + d.detail : "") });
     const base = { item_id: item.id, sha256: att.sha256, format: att.format, suggested: att.suggested || "",
       signals: { signals: att.signals || [], text_periods: att.text_periods || [], sheets: (att.sheets || []).map(s => ({ name: s.name, columns: s.columns })),
         rows: att.rows, pages: att.pages, date_range: att.date_range || null, reader: att.reader ? { ok: att.reader.ok, errors: att.reader.errors } : undefined,
@@ -263,6 +286,7 @@ async function runCapture(o, deps) {
     if (d.outcome === "exception") { counts.exceptions++; return RPC("hcps_mfr_capture_classify", Object.assign(base, { outcome: "exception", attention: d.attention })); }
     const c = await RPC("hcps_mfr_capture_classify", Object.assign(base, { outcome: "classified" }));
     if (c.unchanged) return c;
+    if (c.state === "exception") { counts.exceptions++; return c; }     // e.g. content changed since it was recorded — a person decides
     if (d.outcome === "classified") { counts.classified++; return c; }
     // Register: keep the original first (private bucket, hash-named, never overwritten), then the register itself.
     const ext = att.format === "eml" ? "eml" : att.format;
@@ -279,7 +303,7 @@ async function runCapture(o, deps) {
       file_name: att.name.slice(0, 200), file_sha256: att.sha256, storage_path: storagePath, file_size: buf.length, content_type: MIME[ext],
       received_date: chicagoDate(msg.received_at), prepared_date: (att.reader && att.reader.prepared_date) || "",
       report_period_start: d.period.start, report_period_end: d.period.end, supersedes_id: "", supersede_reason: "",
-      note: `Captured automatically from Outlook (${mailbox}): ${msg.from_address} · "${String(msg.subject || "").slice(0, 200)}" · received ${msg.received_at}`.slice(0, 1000) } });
+      note: `${item._reconsider ? "Reconsidered after " + item._reconsider + " was activated. " : ""}Captured automatically from Outlook (${mailbox}): ${msg.from_address} · "${String(msg.subject || "").slice(0, 200)}" · received ${msg.received_at}`.slice(0, 1000) } });
     if (r.state === "registered") counts.registered++; else if (r.state === "linked") counts.linked++; else if (r.state === "exception") counts.exceptions++;
     return r;
   }
@@ -411,6 +435,32 @@ async function runCapture(o, deps) {
       await processItem(it, msg, who); counts.retried++;
     }
 
+    // 2b. Reconsider (Phase D, Angelo 2026-10-12): an item classified under a profile that was DRAFT then and is ACTIVE +
+    //     auto-registering now is judged again by the active profile — once (only when it was classified before the
+    //     profile's last change), from the original email, with its original received date. The bytes must still hash to
+    //     the recorded SHA-256 (otherwise the database records "content changed"); an existing record is linked, never
+    //     duplicated; the decision is kept on the item and in the run's counts.
+    const activeAuto = profiles.filter(p => p.status === "active" && p.auto_register && p.updated_at);
+    if (activeAuto.length && now() <= soft) {
+      const recon = await deps.db.get(`mfr_report_items?state=eq.classified&resolved_at=is.null&source_id=is.null&sha256=not.is.null`
+        + `&profile_id=in.(${activeAuto.map(p => p.id).join(",")})&select=*,msg:mfr_report_messages!inner(*)&msg.mailbox=eq.${encodeURIComponent(mailbox)}&order=id&limit=20`);
+      for (const it of recon || []) {
+        if (now() > soft) break;
+        const prof = activeAuto.find(p => String(p.id) === String(it.profile_id));
+        if (!prof || !(Date.parse(it.updated_at) < Date.parse(prof.updated_at))) continue;      // already judged by the active profile
+        const m = it.msg; const who = { slug: m.manufacturer || null, basis: m.match_basis };
+        if (it.part === "attachment") {
+          try { const j = await g.get(`/users/${mb}/messages/${encodeURIComponent(m.graph_id)}/attachments?$select=id,name,contentType,size,isInline`);
+            const a = (j.value || []).filter(x => !/^image\//i.test(x.contentType || "")).find(x => `${String(x.name || "").slice(0, 120)}:${x.size || 0}` === it.item_key.split(":").slice(2).join(":"));
+            if (!a) { await RPC("hcps_mfr_capture_fail", { item_id: it.id, attention: "attachment_failed", detail: "reconsider: the attachment is no longer on the email" }); counts.reconsidered++; continue; }
+            it.graph_attachment_id = a.id;
+          } catch (e) { if (e.code === "budget") throw e; await RPC("hcps_mfr_capture_fail", { item_id: it.id, attention: "attachment_failed", detail: "reconsider: " + e.message }); counts.reconsidered++; continue; }
+        }
+        it._reconsider = prof.code;
+        await processItem(it, Object.assign({}, m), who); counts.reconsidered++;
+      }
+    }
+
     // 3. Discovery: everything received from (checkpoint − overlap) up to this run's start, oldest first.
     const runStart = new Date(started).toISOString();
     const cpBefore = Date.parse(b.checkpoint_at);
@@ -482,4 +532,4 @@ function liveDeps(env) {
   };
 }
 
-module.exports = { runCapture, liveDeps, _internal: { senderOk, fileOk, periodOf, decide, inspect, dateRange, readDealerReport, chicagoDate, MAX_BYTES } };
+module.exports = { runCapture, liveDeps, _internal: { replyRule, REPLY, senderOk, fileOk, periodOf, decide, inspect, dateRange, readDealerReport, chicagoDate, MAX_BYTES } };

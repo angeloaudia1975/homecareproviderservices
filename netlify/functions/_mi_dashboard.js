@@ -56,7 +56,13 @@ function build(input) {
     else if (today > due) status = "missing";
     else status = "not_due";
     const late = recs.filter(s => due && s.received_date && s.received_date > due).map(s => s.id);
-    return { status, due, records: recs.map(s => ({ id: s.id, status: s.status, received_date: s.received_date, imported: !!s.import_batch_id, title: s.title })),
+    // Expected arrival = the profile's window in the month after (e.g. 2nd–7th); arrived = the first record's Outlook
+    // received date; days late are counted from the due date (late reports are still received, never turned away).
+    const days = monthly && Array.isArray(((monthly.rules || {}).expected || {}).days) ? monthly.rules.expected.days : null;
+    const arrived = recs.map(s => s.received_date).filter(Boolean).sort()[0] || null;
+    const daysLate = arrived && due && arrived > due ? Math.round((Date.parse(arrived) - Date.parse(due)) / 864e5) : 0;
+    return { status, due, expected: days ? { month: addM(m, 1), from: Math.min(...days), to: Math.max(...days) } : null, arrived, days_late: daysLate,
+      records: recs.map(s => ({ id: s.id, status: s.status, received_date: s.received_date, imported: !!s.import_batch_id, title: s.title })),
       captured: captured.length, coverage: cov ? cov.status : null, late, draft: monthly ? monthly.status !== "active" : null };
   }
 
@@ -71,7 +77,8 @@ function build(input) {
     const k = g.kinds.find(x => x.kind === "commission_statement"); if (!k) continue;
     const c = cell(g.slug, "commission_statement", recM);
     if (c.status === "not_expected" && !c.records.length) continue;
-    rec.push({ slug: g.slug, name: g.name, status: c.status, due: c.due, records: c.records, late: c.late.length > 0, coverage: c.coverage, draft_profile: c.draft });
+    rec.push({ slug: g.slug, name: g.name, status: c.status, due: c.due, expected: c.expected, arrived: c.arrived, days_late: c.days_late,
+      records: c.records, late: c.late.length > 0, coverage: c.coverage, draft_profile: c.draft });
   }
   const rc = { month: recM, ready, ready_on: readyOn, rows: rec,
     counts: rec.reduce((a, r) => (a[r.status] = (a[r.status] || 0) + 1, a), {}),

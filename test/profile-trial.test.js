@@ -61,6 +61,14 @@ const msg = (id, from, day, subject, atts, body) => ({ id, internetMessageId: '<
     const r = await T.trial({ slug: 'climbing-steps', profiles: [CS], mailbox: 'm@x', from: '2025-10-01', to: '2026-12-31', known: {} }, deps);
     assert.deepStrictEqual(r.files.map(f => [f.file, f.outcome, (f.period && f.period.start) || null]), [["(email body)", 'would_register', '2026-02-01'], ['(email body)', 'classified', null]]);
   });
+  await t('Climbing Steps threads: only the original body registers; quoted replies / forwards are classified (same rule as capture)', async () => {
+    const { deps } = graph([msg('a', 'sdiamond@climbingsteps.com', '2025-10-20', 'Up to Sept Commission', [], 'Sept commission $412.50'),
+      msg('b', 'sdiamond@climbingsteps.com', '2025-10-20', 'RE: Up to Sept Commission', [], 'see below > Sept commission $412.50'),
+      msg('c', 'bfink@climbingsteps.com', '2025-10-21', 'RE: Up to Sept Commission', [], 'ok > $412.50')]);
+    const CS2 = Object.assign({}, CS, { rules: Object.assign({}, CS.rules, { period: { order: ['subject', 'received_prior_month'] } }) });
+    const r = await T.trial({ slug: 'climbing-steps', profiles: [CS2], mailbox: 'm@x', from: '2025-10-01', to: '2026-12-31', known: {} }, deps);
+    assert.deepStrictEqual(r.files.map(f => f.outcome), ['would_register', 'classified', 'classified'], JSON.stringify(r.files.map(f => [f.outcome, f.detail])));
+  });
   await t('the time budget stops a page cleanly with a cursor; the next page resumes without repeating', async () => {
     const msgs = [1, 2, 3].map(n => msg('m' + n, 'faxstar03@bemismfg.com', `2026-0${n + 5}-17`, 'x', [{ id: 'f', name: `705-2026-0${n + 4}.csv`, contentType: 'text/csv', bytes: csv(['A,B,1,I' + n + ',1,0.1']) }]));
     const { deps } = graph(msgs); let clock = 0; deps.now = () => clock;
