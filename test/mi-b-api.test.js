@@ -130,6 +130,13 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
       assert.strictEqual(r.status, 403); assert.strictEqual(r.body.error, 'capture_switch_off'); assert.ok(!w.graph); assert.strictEqual(writes(w).length, 0);
     }
   });
+  console.log('\n— profile trial rule override (trial only) —');
+  await t('rules_override: refused for an active profile or an unknown profile; nothing written, no Graph call', async () => {
+    for (const [ov, code] of [[{ x: { file_name: 'a' } }, 'override_active_profile'], [{ nope: { file_name: 'a' } }, 'override_unknown_profile']]) {
+      const { w, m } = boot(); const r = await call(m, { action: 'profile_trial', manufacturer: 'strongback-mobility', rules_override: ov }, as('pres'));
+      assert.strictEqual(r.status, 422, JSON.stringify(r.body)); assert.strictEqual(r.body.error, code); assert.ok(!w.graph); assert.strictEqual(writes(w).length, 0);
+    }
+  });
   await t('the existing MI-1b actions are unchanged by Phase B (list still answers)', async () => {
     const { m } = boot(); const r = await call(m, { action: 'unknown_thing' }, as('pres')); assert.strictEqual(r.status, 400);
   });

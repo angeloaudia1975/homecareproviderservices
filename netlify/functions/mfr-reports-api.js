@@ -290,6 +290,17 @@ exports.handler = async (event) => {
       sbGetAll(`mfr_sources?manufacturer=eq.${e(slug)}&file_sha256=not.is.null&select=id,kind,file_sha256,report_period_start,report_period_end,status`, "id"),
       sbGet("mfr_report_capture_state?select=mailbox&order=mailbox&limit=1")]);
     if (!profiles.length) return json(404, { error: "no_profiles", message: "This manufacturer has no report profile." });
+    // Trial-only rule override for DRAFT profiles ({code: rules}) — tested in memory, never stored. Active profiles never change.
+    const overridden = [];
+    if (b.rules_override && typeof b.rules_override === "object" && !Array.isArray(b.rules_override)) {
+      for (const [code, rules] of Object.entries(b.rules_override)) {
+        const p = profiles.find(x => x.code === code);
+        if (!p) return json(422, { error: "override_unknown_profile", message: `No profile ${String(code).slice(0, 80)} for this manufacturer.` });
+        if (p.status !== "draft") return json(422, { error: "override_active_profile", message: "Only a draft profile's rules can be tried." });
+        if (!rules || typeof rules !== "object" || Array.isArray(rules) || JSON.stringify(rules).length > 8000) return json(422, { error: "override_bad_rules" });
+        p.rules = rules; overridden.push(code);
+      }
+    }
     const known = {}; for (const s2 of srcs) known[s2.file_sha256] = { id: s2.id, kind: s2.kind };
     const known_periods = srcs.filter(s2 => s2.report_period_start && ['received','accepted'].includes(s2.status)).map(s2 => ({ id: s2.id, kind: s2.kind, start: s2.report_period_start, end: s2.report_period_end, sha256: s2.file_sha256 }));
     const { liveDeps } = require("./_report_capture.js");
@@ -297,7 +308,7 @@ exports.handler = async (event) => {
     let r; try { r = await T.trial({ slug, profiles, mailbox: (state[0] || {}).mailbox, from, to, cursor: b.cursor, seen: Array.isArray(b.seen) ? b.seen.slice(0, 2000) : [],
       budget_ms: b.budget_ms, known, known_periods }, liveDeps(process.env)); }
     catch (x) { return json(503, { error: "trial_failed", message: String(x.message || x).slice(0, 300), throttled: !!x.throttled }); }
-    return json(200, { ok: true, read_only: true, manufacturer: slug, window: [from, to],
+    return json(200, { ok: true, read_only: true, manufacturer: slug, window: [from, to], rules_overridden: overridden,
       profiles: profiles.map(p => ({ code: p.code, kind: p.kind, status: p.status, label: p.label, expected: (p.rules || {}).expected || null })), ...r });
   }
 
