@@ -1410,6 +1410,31 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   draft copy is the manufacturer's words only; the catalog line and commercial record are not changed (Steadfast: copy
   says Snap 2 Secure, catalog says Stay-Tite, Angelo 2026-10-11 16:01). Option photos: confirm the picture itself shows
   the option (view it) before recording use_source_image — a file name alone is not confirmation.
+  **Release B PASS / COMPLETE — Auto-Enrich and Review Issues (Angelo, 2026-10-11 18:28 CT).** Evidence: 9 active SKUs →
+  7 proposed pages; 3 Ready (Assist, Assurance Round + Elongated with option-specific Bemis top views #324/#325, Rise);
+  4 held/open with 5 unresolved issues; 28 images copied, 0 failures; all drafts hidden; commercial record unchanged; the
+  four frozen fingerprints unchanged. Window #320 stays OPEN for Release C/D (no other Bemis window). Never manufacture a
+  resolution for an open issue. **Source holds** (decision kind content_resolution, issue "hold", choice hold_back — its
+  own key, so it never supersedes an added source): the page stays an unpublished draft, its issues stay LISTED (marked
+  held, not blocking) and its SKUs keep their current catalog cards. Held: Steadfast (Stay-Tite vs Snap 2 Secure, pending
+  Bemis — choose neither; no 3L2150T 000 photos), Support Arms (350 lb/arm unsupported + no product-specific source), Personal
+  Wash Bidet (no product-specific source), 444DISPLAY (no current source; DO5300RD444.jpg is not proof it still applies).
+  These are source holds, not failed products. Badge / banner / promo art is never dealer-facing (not a main photo, not a
+  thumbnail); it is kept in the report as withheld (enrichment_flags.mc.image_withheld).
+  (w) **Release C — Dealer Preview (approved 2026-10-11).** Manufacturer Center → Continue Product Enrichment → 5 · Dealer
+  Preview → "Preview <line> as Dealer" (product-content action enrich_preview; read-only; staff/admin only; never
+  writes, publishes or copies). It runs the storefront's OWN merge (_pricing.js lineProducts → _shop_engine.js) twice —
+  TODAY (live pages) and PROPOSED (the Ready drafts treated as published, in memory) — and builds dealer cards with the
+  storefront's picker (_shop_picker.js), price words (_shop_render.js) and cart wording (_preview.js, pure). Proof checks:
+  every active SKU on exactly one card (0 missing, 0 duplicates); orderable unchanged; retired SKUs off both; commercial
+  identical today/proposed and = the record (price, MSRP, MAP, tiers, UOM/case qty, basis, unit price at 1/2/6/11/21,
+  price words, freight); held/unpaged SKUs keep today's product byte for byte (_unlinked, merge bookkeeping the shop
+  never reads, is not compared); each Ready page = one card with exactly its SKUs as distinct options; no held draft's
+  NEW words or photos in the proposal; no draft photo in today's dealer view; enriched_only OFF (if ON, held SKUs would
+  disappear — the preview fails). The "STAFF ONLY — Using current catalog content — enrichment held for source review"
+  note exists only on the staff screen. Proposed enriched pages still point at draft photos (drafts/w<window>/): moving
+  them for dealers is Release D's job. Tests: test/mcpreview.test.js, test/mcpreview.ui.js (Playwright),
+  test/mcpreview.mutants.js.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.

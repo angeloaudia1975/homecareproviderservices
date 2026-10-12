@@ -34,6 +34,8 @@ const { computeMerge } = require('./_content-merge.js');
    Both are reset at the start of every request. */
 const MC = require('./_mc.js');
 const ENRICH = require('./_enrich.js');
+const PREVIEW = require('./_preview.js');
+const PRICING = require('./_pricing.js');
 let EXCEPTION_HEADERS = {};
 let PC_REGRESSION = null;
 /* Release B gate 1: the open enrichment window this request carries (set by the gate). Uploads and rehosts made under it
@@ -449,6 +451,7 @@ function enrichSummary(m, X, plan) {
         specs: row.specs || [], warranty: row.warranty || null, category: row.category || null, subcategory: row.subcategory || null, image: row.image || null,
         gallery: (row.images_gallery || []).map(g => g.url), sku_images: (row.skus || []).map(s => ({ code: s.sku, option: s.size, image: s.image || null })),
         documents: row.documents || [], provenance: row.field_provenance || {}, sources: mc ? mc.sources : [], notes: mc ? mc.notes : [], fetched: mc ? mc.fetched : [],
+        withheld_images: mc && Array.isArray(mc.image_withheld) ? mc.image_withheld.map(w => w.url) : [],
         images: mc ? { candidates: (mc.image_candidates || []).length, copied: (mc.images || []).filter(x => x.url).length, failed: (mc.images || []).filter(x => x.error).map(x => ({ src: x.src, error: x.error })), done: !!mc.images_done } : null,
         at: mc ? mc.at : null } : null };
   });
@@ -703,13 +706,39 @@ async function handleContent(event) {
          On a frozen line every write needs the line's open enrichment window (the gate above, and the database).
          Nothing commercial is read for writing or written: prices, tiers, UOM/case qty, MSRP/MAP, freight and commercial
          status stay in product_skus, behind Phase 2's guard. */
-      if (action === 'enrich_plan' || action === 'enrich_page' || action === 'enrich_images' || action === 'enrich_resolve' || action === 'enrich_set_image') {
+      if (action === 'enrich_plan' || action === 'enrich_page' || action === 'enrich_images' || action === 'enrich_resolve' || action === 'enrich_set_image' || action === 'enrich_preview') {
         if (!m) return reply(400, { ok: false, error: 'manufacturer required' });
         let X; try { X = await enrichContext(m); }
         catch (e) { return reply(503, { ok: false, error: 'line_unreadable', message: 'The line could not be read, so nothing was enriched: ' + String((e && e.message) || e).slice(0, 300) }); }
         const plan = ENRICH.planPages(X);
         const rowOf = k => X.pages.find(r => r.page_key === k) || null;
         if (action === 'enrich_plan') return reply(200, Object.assign({ ok: true }, enrichSummary(m, X, plan)));
+        /* RELEASE C — DEALER PREVIEW (read-only, staff-only). The storefront's own merge runs twice: today (live pages) and
+           proposed (the line's Ready drafts treated as published, in memory). Nothing is written, published or copied. */
+        if (action === 'enrich_preview') {
+          try {
+            const S = enrichSummary(m, X, plan);
+            const readyKeys = new Set(S.pages.filter(p => p.status === 'ready').map(p => p.page_key));
+            const read = async path => { const r = await fetch(rest(path), { headers: svcHeaders() }); if (!r.ok) throw new Error(path.split('?')[0] + ' ' + r.status); return r.json(); };
+            const sb = (method, path) => { if (method !== 'GET') throw new Error('the preview never writes'); return read(path); };
+            const sbProposed = async (method, path) => {
+              const rows = await sb(method, path);
+              if (!/^product_content\?/.test(path)) return rows;
+              const want = new RegExp('manufacturer=eq\\.' + enc(m).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(&|$)');
+              return want.test(path) ? PREVIEW.proposedContentRows(rows, X.pages, readyKeys) : rows;
+            };
+            const files = PRICING.remoteFiles(ORDERING_BASE);
+            const mfrList = await files.manufacturersFile();
+            const freightCfg = {}; (Array.isArray(mfrList) ? mfrList : []).forEach(x => { if (x && x.slug) freightCfg[x.slug] = x; });
+            const T = await PRICING.lineProducts({ slug: m, sb, catalogFile: files.catalogFile, contentFile: files.contentFile, contract: {}, cart: new Map(), freightCfg });
+            const P = await PRICING.lineProducts({ slug: m, sb: sbProposed, catalogFile: files.catalogFile, contentFile: files.contentFile, contract: {}, cart: new Map(), freightCfg });
+            const [records, metaRows] = await Promise.all([read(`product_skus?manufacturer=eq.${enc(m)}&select=*&limit=10000`), read(`manufacturer_meta?slug=eq.${enc(m)}&select=slug,enriched_only,frozen`)]);
+            const R = new Function('state', 'contractPrice', require('./_shop_render.js').SOURCE + ';return {priceHtml,freightRowsHtml,packOf,packNote,dealerPriceNote,money};')({ dealer: {} }, () => null);
+            const out = PREVIEW.buildPreview({ slug: m, records, meta: (metaRows && metaRows[0]) || {}, pages: S.pages, drafts: X.pages,
+              today: { products: T.products, engine: T.engine }, proposed: { products: P.products, engine: P.engine }, R, PICK: require('./_shop_picker.js') });
+            return reply(200, Object.assign({ ok: true, window: S.window }, out));
+          } catch (e) { return reply(503, { ok: false, error: 'preview_unavailable', message: 'The dealer preview could not be built — nothing was changed: ' + String((e && e.message) || e).slice(0, 300) }); }
+        }
         const page = plan.pages.find(p => p.page_key === body.page_key);
         if (!page) return reply(404, { ok: false, error: 'no_such_page', message: 'No proposed page "' + String(body.page_key || '') + '" on ' + m + '.' });
         const cur = rowOf(page.page_key);
@@ -783,7 +812,7 @@ async function handleContent(event) {
           if (remaining <= 0) {
             const a = ENRICH.assembleImages(page, cur, done);
             Object.assign(patch, { images_gallery: a.images_gallery, image: a.image, skus: a.skus });
-            mc.images_done = true; mc.image_shared = a.shared; mc.image_failures = a.failed; mc.image_promo_only = a.promo_only; mc.image_duplicates_dropped = a.dropped_duplicates;
+            mc.images_done = true; mc.image_shared = a.shared; mc.image_failures = a.failed; mc.image_promo_only = a.promo_only; mc.image_duplicates_dropped = a.dropped_duplicates; mc.image_withheld = a.withheld_promo;
           }
           const w = await patchRow(m, page.page_key, patch);
           if (!w.ok) return reply(500, { ok: false, error: 'images_not_written', rows: w.rows });

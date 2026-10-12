@@ -504,14 +504,17 @@ function assembleImages(page, row, done){
   let pool = uniq.slice();
   if(!pool.some(d => !d.promo)) ok.filter(d => d.role === "sku").forEach(d => { if(!pool.some(x => x.sha === d.sha)) pool.push(d); });
   /* banner / promo art is never the main photo: the first real product photo leads */
-  pool = pool.filter(d => !d.promo).concat(pool.filter(d => d.promo));
-  const lead = pool.findIndex(d => !d.promo);
-  const gallery = lead >= 0 ? pool.map((d, n) => ({ url: d.url, primary: n === lead, caption: "", source: d.from || "rehosted" })) : [];
+  /* Angelo 2026-10-11 (Steadfast): badge / banner / promo art is never dealer-facing at all — not the main photo, not
+     a thumbnail. It stays in the report as withheld, so the evidence is kept. */
+  const withheld = pool.filter(d => d.promo);
+  pool = pool.filter(d => !d.promo);
+  const lead = pool.length ? 0 : -1;
+  const gallery = pool.map((d, n) => ({ url: d.url, primary: n === lead, caption: "", source: d.from || "rehosted" }));
   const skus = (row.skus || []).map(s => { const d = skuImg[codeNorm(s.sku)]; return Object.assign({}, s, { image: d ? d.url : "" }); });
   const bySha = {}; ok.filter(d => d.role === "sku").forEach(d => { (bySha[d.sha] = bySha[d.sha] || []).push(d.code); });
   const shared = Object.entries(bySha).filter(([, c]) => c.length > 1).map(([sha, codes]) => ({ sha: sha.slice(0, 16), codes }));
   return { images_gallery: gallery, image: lead >= 0 ? gallery[lead].url : null, skus, shared,
-    promo_only: lead < 0 && pool.length > 0, dropped_duplicates: ok.filter(d => d.role === "gallery").length - uniq.length,
+    promo_only: lead < 0 && withheld.length > 0, withheld_promo: withheld.map(d => ({ url: d.url, src: d.src, from: d.from || "" })), dropped_duplicates: ok.filter(d => d.role === "gallery").length - uniq.length,
     failed: done.filter(d => d.error).map(d => ({ src: d.src, error: d.error })) };
 }
 
@@ -537,13 +540,16 @@ const CHOICES = {
   needs_grouping: [{ id: "own_page", label: "Its own page under its category (suggested)" }, { id: "hidden_order_by_code", label: "Hidden from browsing; dealers order it by code" }],
   needs_content: [{ id: "rerun_with_source", label: "Add a source (web page or PDF) and re-run this page", needs: "source_url" }, { id: "hold_back", label: "Hold this page back (its SKUs stay as they are today)" }],
   needs_image: [{ id: "upload", label: "Upload a photo for it", action: "upload" }, { id: "use_source_image", label: "Use an official manufacturer photo for this option", needs: "image_url" }, { id: "keep_one_photo", label: "Keep one photo for both" }],
-  needs_category: [{ id: "set_category", label: "Choose the category", needs: "category" }]
+  needs_category: [{ id: "set_category", label: "Choose the category", needs: "category" }],
+  /* Angelo 2026-10-11: a source hold. The page stays an unpublished draft, its issues stay open (listed, not blocking),
+     and its SKUs keep their current catalog cards until the hold is lifted. */
+  hold: [{ id: "hold_back", label: "Hold back for source review (its SKUs keep their current catalog cards)" }]
 };
 /* page: from planPages; row: its draft (product_content) or null; decisions: the line's decisions. */
 function classify(page, row, decisions, opts){
   opts = opts || {};
   const res = resolutionsFor(decisions, page.page_key);
-  const held = res.needs_content && res.needs_content.choice === "hold_back";
+  const held = !!((res.hold && res.hold.choice === "hold_back") || (res.needs_content && res.needs_content.choice === "hold_back"));
   if(!row) return { status: held ? "held_back" : "not_enriched", label: STATUS_LABEL[held ? "held_back" : "not_enriched"], issues: [], resolutions: res, blocking: !held };
   const mc = (row.enrichment_flags && row.enrichment_flags.mc) || {};
   const issues = [];
@@ -568,7 +574,7 @@ function classify(page, row, decisions, opts){
   const desc = norm(row.description), feats = Array.isArray(row.features) ? row.features.length : 0;
   const anySource = (mc.sources || []).some(s => s.role === "product" || s.role === "landing" || s.role === "related");
   const noSource = !(mc.sources || []).some(s => s.role === "product");
-  if(!held && !issues.some(i => i.rerun)){
+  if(!issues.some(i => i.rerun)){   // a source hold keeps its content issues listed
     if(noSource && anySource) add("needs_content", "No product-specific manufacturer source", "Bemis's " + [...new Set((mc.sources || []).filter(s => s.role !== "product").map(s => s.role === "related" ? "bundle page" : "landing page"))].join(" and ") + " show it exists, but a landing or bundle page is never a component's standalone description or specification source. Add an official source for this product and re-run.", {});
     else if(noSource) add("needs_content", "No manufacturer page found", "Only your catalog line exists" + (desc ? ": “" + desc.slice(0, 160) + "”" : "") + ". That is too thin for a product page.", {});
     else if(desc.length < 80 || feats < 3) add("needs_content", "Too little from the source", "The source says too little about this product to make a page: " + [desc.length < 80 ? (desc.length ? "a " + desc.length + "-character description" : "no description") : "", feats < 3 ? (feats ? "only " + feats + " feature" + (feats === 1 ? "" : "s") : "no features") : ""].filter(Boolean).join(" and ") + ". Add a better source, or hold the page back.", {});
@@ -583,11 +589,11 @@ function classify(page, row, decisions, opts){
   } else if(!hasGallery) add("needs_image", "Photos not copied yet", "Auto-Enrich copies the photos into HCPS storage in its next step.", { pending: true, choices: [] });
   /* Needs category */
   if(!row.subcategory && !row.category && !(res.needs_category)) add("needs_category", "No category", "Choose where dealers will find it.", {});
-  issues.forEach(i => { i.resolved = false; });
+  issues.forEach(i => { i.resolved = false; if(held) i.held = true; });
   let status = "ready";
   for(const s of STATUSES) if(issues.some(i => i.type === s)){ status = s; break; }
   if(held) status = "held_back";
-  return { status, label: STATUS_LABEL[status], issues: held ? [] : issues, resolutions: res, blocking: !held && status !== "ready" };
+  return { status, label: STATUS_LABEL[status], issues, resolutions: res, blocking: !held && status !== "ready", held };
 }
 
 /* What one resolution choice asks for — validated before anything is recorded. */
