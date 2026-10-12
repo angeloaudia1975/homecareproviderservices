@@ -2177,6 +2177,31 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
       suite (local-only by design).
     - **Never rerun or roll back M3.** PR #8 stays DRAFT until Angelo approves the merge; the lesson engine does not start
       before M3 is accepted.
+    **M3 ACCEPTED (Angelo, 11 Oct 2026 21:00 CT)**, including the documented full-M1 fingerprint change and the unrelated
+    Bemis history row. The recorded limitations (second-administrator parts, local-only hardening) stay on record.
+    **PR #8 merge conditionally approved:**
+    - first confirm the migration is byte-identical to the production run (`a7409b56…`);
+    - all required GitHub checks pass;
+    - no unreviewed database change on the branch;
+    - after the merge, verify Netlify, existing HCPS functionality and Academy administration access;
+    - the other six switches stay OFF.
+  - **A2D Stage 2 — lesson engine (authorized by Angelo 21:00 CT, development only, after PR #8 is merged and verified).**
+    - **Scope:** the 14 approved block kinds; responsive desktop and phone rendering; a slide-style presentation;
+      interactive comparisons and explorers; product facts shown with their verified source and date; images and video;
+      scenarios and practice checks; a STAFF-ONLY preview; accessibility and keyboard support; mobile layout tests; exam
+      answers never exposed.
+    - **One renderer** serves both the staff preview and the future learner experience, so there are never two lesson
+      implementations.
+    - Follow the approved A2D plan and Samples A and B.
+    - **Process:** a separate branch and a DRAFT PR; no merge without Angelo's approval.
+    - **Not allowed in this stage:** the course builder, uploading Golden training content, permanent course records,
+      learner access.
+    - **No new production SQL expected:** if a database requirement appears, STOP and ask. A1/M1/M2/M3 protections stay
+      intact.
+    - **Completion report:** draft PR link, changed files, desktop and mobile screenshots, Samples A and B demonstrated,
+      rendering, accessibility, security, mutation and regression results, and confirmation that no switch, production
+      course record or database function changed.
+    - Then wait for review before merging or starting the builder.
   - A1 check 27 and M1 check 43 need EMPTY Academy tables; if records exist in production they FAIL by design — use the
     before/after leftover checks (M2 21, M3 25) and discuss first.
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
