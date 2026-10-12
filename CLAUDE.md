@@ -2342,6 +2342,21 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     - **Samples are real lesson data:** both pass the real M3 block checker unchanged (PG16 and PG17.6).
     - **Mapping vs the mockups:** Sample A's system-then-zone explorer became three explorers; Sample B's Cloud finder
       became a tabs explorer; B gained a steps block (three fitting checks) and a document placeholder.
+    **Stage 2 APPROVED (Angelo, 12 Oct 2026 11:27 CT):** visual design and interactive presentation accepted, no
+    redesign. PR #9 merge authorized after the final security checks, required tests and GitHub merge requirements pass.
+    After the merge: verify the Netlify production deploy and the staff-only previews; the six learner-related switches
+    stay OFF; existing Academy database functions and protections are preserved; existing HCPS functionality unaffected.
+  - **A2D Stage 3 — Course Builder (authorized by Angelo 12 Oct 2026 11:27 CT, after Stage 2 production verification).**
+    Separate branch + DRAFT PR; never merged automatically; no Academy course records created by Claude; the Golden
+    course is NOT loaded until Angelo approves the builder. Priorities he set:
+    - easy visual lesson editing with no code;
+    - drag-and-drop ordering, with mobile-friendly move controls;
+    - live lesson previews (the Stage 2 player);
+    - Golden product image selection and approval under Angelo's control;
+    - interactive comparison and scenario editing;
+    - question-bank management with configurable module distribution;
+    - clear readiness warnings for missing images, unverified facts and incomplete content.
+    Report as usual (testing, security, deployment) when ready for review.
   - A1 check 27 and M1 check 43 need EMPTY Academy tables; if records exist in production they FAIL by design — use the
     before/after leftover checks (M2 21, M3 25) and discuss first.
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
