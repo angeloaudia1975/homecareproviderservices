@@ -81,9 +81,9 @@ It then reads the lesson back the way `preview_lesson` does, and checks the payl
 |---|---|
 | `test/academy-lesson.test.js`: payload, samples, preview actions, private links, renderer static checks | 23/23 |
 | `test/academy-lesson.pg.test.js`: samples through the real M1/M2/M3 operations, PG 16 and 17.6 | 5/5 and 5/5 |
-| `test/academy-lesson.browser.js` (Chromium; see below) | 10/10 |
+| `test/academy-lesson.browser.js` (Chromium; see below) | 11/11 |
 | `test/academy-lesson.mutants.js`: server and payload protections | 22/22 killed (one equivalent mutant documented in the table) |
-| `test/academy-lesson.mutants.js --browser`: renderer protections | see the PR |
+| `test/academy-lesson.mutants.js --browser`: renderer protections | 10/10 killed, control survives (one equivalent mutant documented) |
 | `academy-c1` 49, `academy-c1` mutants 39/39, `academy-c1.browser` 6, `academy-a2a` 31, admin masthead on phones (Academy pages) 40/40 | pass |
 
 What the browser suite checks:

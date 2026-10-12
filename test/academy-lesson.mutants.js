@@ -43,7 +43,9 @@ function report(results, total) {
   return survived.length || skipped.length || badControl.length;
 }
 
-if (!browser) {
+module.exports = { BROWSER };
+if (require.main !== module) { /* loaded for its table only */ }
+else if (!browser) {
   const table = require(TABLE);
   const clean = runNode('academy-lesson.test.js', {});
   console.log('clean run:', clean.failed === 0 ? 'all pass' : clean.failed + ' FAILURES');

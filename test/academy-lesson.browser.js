@@ -139,6 +139,7 @@ async function page(browser, origin, width, token) {
     return route.abort();
   });
   const pg = await ctx.newPage(); const errors = [];
+  pg.setDefaultTimeout(20000);   // a step that cannot happen fails in 20s instead of hanging the suite
   pg.on('pageerror', e => errors.push(String(e))); pg.on('dialog', d => { errors.push('dialog: ' + d.message()); d.dismiss(); });
   pg.errors = errors; return pg;
 }
@@ -241,7 +242,7 @@ const WIDTHS = QUICK ? [1440, 390] : [1440, 1024, 820, 390, 360];
         assert.deepStrictEqual(ph, ['Picture: A picture that will not load'], 'the broken file became a labelled placeholder');
         assert.strictEqual(await pg.$$eval('.hl-dot', d => d.length), 3);
         await pg.click('.hl-dot >> nth=1'); assert.strictEqual(await pg.textContent('.hl-k-explorer .hl-detail h3'), 'Recline');
-        assert.strictEqual(await pg.$('.hl-k-video iframe'), null, 'nothing loads before the tap');
+        assert.ok(!(await pg.$('.hl-k-video iframe')), 'nothing loads before the tap');
         await pg.click('.hl-play'); await pg.waitForSelector('.hl-k-video iframe');
         assert.ok((await pg.getAttribute('.hl-k-video iframe', 'src')).startsWith('https://www.youtube-nocookie.com/embed/'));
         assert.strictEqual(await pg.getAttribute('.hl-k-document a.hl-doc', 'href'), 'https://goldentech.com/manual');
@@ -374,14 +375,14 @@ const WIDTHS = QUICK ? [1440, 390] : [1440, 1024, 820, 390, 360];
       await withSite(dbLesson(false), async ({ origin, log }) => {
         const pg = await page(browser, origin, 1024, 'greg');
         await pg.goto(origin + '/admin/academy-preview.html?sample=A'); await pg.waitForSelector('#msg .note');
-        assert.ok((await pg.textContent('#msg')).includes('administrators')); assert.strictEqual(await pg.$('.hl-screen'), null);
+        assert.ok((await pg.textContent('#msg')).includes('administrators')); assert.ok(!(await pg.$('.hl-screen')));
         assert.ok(!log.some(b => /"lesson":/.test(b))); await pg.context().close();
       });
       const off = dbLesson(false); off.tables.app_settings = [{ key: 'phase2_flags', value: { academy_admin: false } }];
       await withSite(off, async ({ origin }) => {
         const pg = await page(browser, origin, 1024);
         await pg.goto(origin + '/admin/academy-preview.html?sample=A'); await pg.waitForSelector('#msg .note');
-        assert.ok((await pg.textContent('#msg')).includes('switched off')); assert.strictEqual(await pg.$('.hl-screen'), null); await pg.context().close();
+        assert.ok((await pg.textContent('#msg')).includes('switched off')); assert.ok(!(await pg.$('.hl-screen'))); await pg.context().close();
       });
     });
     if (!QUICK) await t('accessibility (axe-core, WCAG 2.2 A and AA): no violations in Samples A and B and the course lesson, desktop and phone, whole lesson and with answers shown', async () => {
