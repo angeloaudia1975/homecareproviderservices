@@ -42,6 +42,10 @@ Procedure, every time, before writing:
 Two files were once shipped to the wrong repo (the catalog workspace + its function landed in
 `homecareproviderservicesordering` when the live tool is in `homecareproviderservices`). Never again.
 
+## Standing permission — Claude in Chrome (Angelo, 2026-10-11)
+Angelo gives standing permission to use Claude in Chrome whenever a task needs it, without asking first each time.
+This does not change who runs production SQL: Angelo still runs every migration and write himself.
+
 ## How rules get set (the procedure)
 1. When we agree on a standard, it is **added to this file in the same session** — not
    left in conversation. A rule that isn't written here does not exist.
@@ -2248,6 +2252,97 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     The C2 publication migration is renumbered **M4**.
   - The outline keeps the approved 11 modules / 17 lessons (~183 min + 20-min exam) and a proposed 60-question bank
     (30 scenarios). Both wait for Angelo's decisions (A2D A–G, outline 1–4).
+  **A2D plan and Golden outline APPROVED; M3 development authorized (Angelo, 11 Oct 2026 17:23 CT).**
+  - A2D: (A) the 14 block kinds; (B) randomized final exam drawing from EVERY module, with the per-module
+    distribution CONFIGURABLE (stored per version, not hard-coded) — any change to M1's exam-attempt functions is
+    independently reviewed and tested; (C) descriptive alt text is mandatory for meaningful images, decorative images are
+    marked decorative (empty alt, hidden from screen readers); (D) opening a video counts for progress, and every
+    essential learning point is also in the lesson itself; (E) staged order M3 → lesson engine → builder, each with its
+    own review and merge approval; (F) Samples A and B are reviewed in desktop and mobile previews before the Golden
+    course is loaded; (G) Welcome lesson ~8 minutes.
+  - Golden course: 11 modules / 17 lessons and objectives approved; 60-question bank (initial target), 25 per attempt,
+    80% to pass; 6.4 (model finder) stays a full lesson; title "Golden Lift Chair Sales Certification".
+  - Certificate: HCPS-issued, valid 12 months, never represented as Golden-issued or Golden-endorsed.
+  - Lesson design: visual, slide-based (no PowerPoint, no voiceover): Golden photography/illustrations, side-by-side
+    comparisons, interactive feature/positioning explanations, scenarios, short checks, mobile layouts, progress saving
+    and resume; no long text-only pages; 10–15 minutes except the Welcome.
+  - Golden accuracy: never guess or invent a specification; keep the Golden verification tracker; label unverified
+    facts and keep questions that depend on them OUT of scored exams; discontinued models only as history / service /
+    replacement references; NO Golden photography downloaded until Angelo approves the specific files; HCPS sales
+    training stays separate from Golden's technical certifications.
+  - M3: design, development branch, local database tests and a DRAFT PR only. Must keep A1/M1/M2 protections and add:
+    atomic audited lesson-content operations, question-bank management, media + rights, product-fact references,
+    draft-only editing, published-content protection, administrator-only authoring, no exam-answer exposure, full
+    security / mutation / regression tests. Not run in production and not merged without Angelo's separate approval.
+    The six other switches stay OFF; no learner access; no real course published.
+  **M3 BUILT on branch `academy/m3-lesson-content-ops` (11 Oct 2026; draft PR; NOT run, NOT merged).** Runbook
+  `docs/academy/A2D_M3_AUTHOR_OPS.md`. Rules it adds (binding once installed):
+  - Lesson blocks, questions, media and fact links are written ONLY by `academy_author_op_*` (12 operations, server role
+    only; prefix chosen so M1/M2 fingerprints and rollbacks are untouched); guard `academy_author_guard` (+ `_truncate`) on
+    `academy_questions`, `academy_media`, `academy_content_refs`; publishing passes `academy_author_publish_check`.
+  - The exam draw (decision B) is `academy_author_exam_draw`, called by M1's `academy_op_start_attempt` — the ONE line of
+    M1 that changed (independently reviewed: approve). Only questions whose pinned facts are current and verified are
+    drawn; every module is represented (distribution in `academy_modules.exam_quota`, the one new column, or automatic).
+  - Every stored image, and every stored manufacturer file, is recorded or changed by the President only (Golden
+    photography rule). Answer keys never appear in an audit row. An exam question never appears in a lesson check.
+  - Production fingerprints to expect: M3 `9f41ee27…` (Windows paste) / `e48e4c27…`; start-attempt `4ab3615a…` /
+    `c433af0a…`; other 18 M1 functions `30a6a689…` / `e05951fc…`; M2 unchanged. The rollback cannot run once a version with
+    a distribution is published (deliberate).
+  - **M3 final development review (Angelo, 11 Oct 2026 18:34 CT):** design ACCEPTED (12 operations, 14 blocks,
+    configurable distribution, fact references, draft-only, media approval, answer-key isolation, guards, published
+    protection); `exam_quota` approved provided it preserves existing behaviour. **Facts decision APPROVED:** fact
+    eligibility is checked when an attempt BEGINS; an attempt keeps its drawn questions and their pinned verified fact
+    versions for its whole life; questions on later-withdrawn facts are excluded from NEW attempts. For serious safety or
+    material content errors a FUTURE audited, administrator-controlled "invalidate an open attempt and allow a restart
+    without using a retake" procedure is documented (runbook) but must NOT be built as an unreviewed M1 change.
+    Next gate: READ-ONLY production preflight only (Angelo runs it by hand). Then the complete migration SQL is pasted for
+    his separate authorization. Never run the isolated start-attempt line on its own again. PR #8 stays DRAFT until
+    installation + compatibility verification are complete; no merge and no lesson engine without separate approval.
+    After an approved install, report any failed / skipped / unverified check before moving on. Completion target: the
+    first-course (Golden) launch.
+    **M3 production preflight PASSED (Angelo, 18:40 CT):** ready_for_m3 true, PG 17.6, backup today, M1 e70543ba…, M2
+    794f3c3e…, start-attempt 718f7cc5…, only academy_admin on, 0 Academy rows, Academy fingerprints = baseline; outside
+    changes since M2 = MI Phase B (6 tables / 12 functions / +48 grants) and MC enrichment rows. Baseline recorded in the runbook.
+    **M3 RUN and VERIFIED in production (Angelo, 11 Oct 2026 ~20:20–20:57 CT):**
+    - Checksum `a7409b56…` confirmed first; Angelo pasted the file himself. A second Run was refused ("already exist") and
+      wrote nothing.
+    - Postcheck matched twice: M3 `9f41ee27…`, start-attempt `4ab3615a…`, other 18 M1 functions `30a6a689…`, M2 `794f3c3e…`,
+      24 functions / 12 server-only / 0 public.
+    - Tests: M3 acceptance 25/25; A1 27/27; M1 43/43; M2 21/21.
+    - Preflight again equals the 18:40 baseline. Only the expected M3 items changed, plus Angelo's Bemis Auto-Enrich history
+      row (+1, 20:24 CT). New full-M1 fingerprint after M3: `a809004b…` (CRLF; LF `2802eaad…`), reproduced locally.
+    - No leftover rows. Public-key probe ALL 32 BLOCKED.
+    - Production-skipped parts, covered locally: the non-President parts of M3 row 13 and M2 row 15, and the hardening
+      suite (local-only by design).
+    - **Never rerun or roll back M3.** PR #8 stays DRAFT until Angelo approves the merge; the lesson engine does not start
+      before M3 is accepted.
+    **M3 ACCEPTED (Angelo, 11 Oct 2026 21:00 CT)**, including the documented full-M1 fingerprint change and the unrelated
+    Bemis history row. The recorded limitations (second-administrator parts, local-only hardening) stay on record.
+    **PR #8 merge conditionally approved:**
+    - first confirm the migration is byte-identical to the production run (`a7409b56…`);
+    - all required GitHub checks pass;
+    - no unreviewed database change on the branch;
+    - after the merge, verify Netlify, existing HCPS functionality and Academy administration access;
+    - the other six switches stay OFF.
+  - **A2D Stage 2 — lesson engine (authorized by Angelo 21:00 CT, development only, after PR #8 is merged and verified).**
+    - **Scope:** the 14 approved block kinds; responsive desktop and phone rendering; a slide-style presentation;
+      interactive comparisons and explorers; product facts shown with their verified source and date; images and video;
+      scenarios and practice checks; a STAFF-ONLY preview; accessibility and keyboard support; mobile layout tests; exam
+      answers never exposed.
+    - **One renderer** serves both the staff preview and the future learner experience, so there are never two lesson
+      implementations.
+    - Follow the approved A2D plan and Samples A and B.
+    - **Process:** a separate branch and a DRAFT PR; no merge without Angelo's approval.
+    - **Not allowed in this stage:** the course builder, uploading Golden training content, permanent course records,
+      learner access.
+    - **No new production SQL expected:** if a database requirement appears, STOP and ask. A1/M1/M2/M3 protections stay
+      intact.
+    - **Completion report:** draft PR link, changed files, desktop and mobile screenshots, Samples A and B demonstrated,
+      rendering, accessibility, security, mutation and regression results, and confirmation that no switch, production
+      course record or database function changed.
+    - Then wait for review before merging or starting the builder.
+  - A1 check 27 and M1 check 43 need EMPTY Academy tables; if records exist in production they FAIL by design — use the
+    before/after leftover checks (M2 21, M3 25) and discuss first.
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
   the guard when a marker is set: any future cascade INTO the four content tables must be reviewed against it.
 - **Course publication rules (Angelo, 11 Oct 2026 — C2 design only, NOT implemented; `docs/academy/C2_COURSE_PUBLICATION_DESIGN.md`).**

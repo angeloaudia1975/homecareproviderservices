@@ -88,8 +88,7 @@ begin
     insert into academy_course_versions (course_id, version, exam_questions) values (v_c2, 1, 1) returning id into v_v2;
     insert into academy_course_versions (course_id, version, exam_questions) values (v_cd, 1, 1) returning id into v_vd;
     insert into academy_modules (version_id, position, title) values (v_ver, 1, 'M1') returning id into v_mod;
-    perform set_config('academy.op', '', true);
-    for i in 1..5 loop
+    for i in 1..5 loop                                      -- A2D M3: questions are written with the marker too
       insert into academy_questions (version_id, module_id, kind, prompt, choices, answer_key, explanation, objective_tags)
         values (v_ver, v_mod, case when i = 5 then 'multi' else 'single' end, 'Q' || i, '[{"id":"a"},{"id":"b"},{"id":"c"}]',
                 case when i = 5 then '["a","c"]'::jsonb else '"a"'::jsonb end, 'Because', array['topic-' || i]) returning id into v_qid;
@@ -101,6 +100,7 @@ begin
       values (v_v2, 'single', 'X', '[{"id":"a"},{"id":"b"}]', '"a"', 'Because') returning id into x1;
     insert into academy_questions (version_id, kind, prompt, choices, answer_key, explanation)
       values (v_vd, 'single', 'D', '[{"id":"a"},{"id":"b"}]', '"a"', 'Because') returning id into d1;
+    perform set_config('academy.op', '', true);
 
     -- 4-6 Training Manager role
     begin update academy_memberships set role = 'training_manager' where id = v_mem; ok := false;
@@ -146,8 +146,10 @@ begin
     begin update academy_course_versions set status = 'published', published_at = now(), published_by = 'x' where id = v_ver; ok := false;
     exception when insufficient_privilege then ok := true; end;
     insert into t_m1 values (11, 'A direct publish is refused', case when ok then 'PASS' else 'FAIL' end, '');
+    perform set_config('academy.op', 'test-setup', true);  -- A2D M3: fact links are written only by audited operations
     insert into academy_content_refs (version_id, question_id, manufacturer_slug, model_code, field)
       values (v_ver, v_q[1], 'golden-technologies', 'PR999', 'capacity.med');
+    perform set_config('academy.op', '', true);
     begin perform academy_op_publish_version(ADMIN, v_ver); ok := false;
     exception when others then ok := sqlstate = '22023' and sqlerrm like '%not verified%'; end;
     insert into t_m1 values (12, 'Publishing is refused while an exam question relies on an unverified fact', case when ok then 'PASS' else 'FAIL' end, '');
@@ -235,7 +237,9 @@ begin
     begin perform academy_op_review_external_cert(ADMIN, v_ext, 'rejected', null, null, ''); ok := false;
     exception when others then ok := sqlstate = '22023'; end;
     insert into t_m1 values (29, 'A rejection needs a note', case when ok then 'PASS' else 'FAIL' end, '');
+    perform set_config('academy.op', 'test-setup', true);  -- A2D M3: media is written only by audited operations
     insert into academy_media (kind, storage_path, rights) values ('pdf', 'academy-private/test.pdf', 'hcps_owned') returning id into v_media;
+    perform set_config('academy.op', '', true);
     update academy_external_certs set status = 'certificate_uploaded', upload_media_id = v_media, certificate_uploaded_at = now() where id = v_ext;
     v_res := academy_op_review_external_cert(ADMIN, v_ext, 'verified', 'golden_certificate', null, null);
     insert into t_m1 values (30, 'Verification with an uploaded Golden certificate works and records who verified',
