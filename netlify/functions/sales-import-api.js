@@ -57,35 +57,21 @@ async function buildResolver(slug, strict){
     soft(sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm"),[]),
     soft(SC.ownerIndex(sbGet),null),     // who owns each dealer (Phase 0D)
   ]);
-  const byId=new Map(); for(const d of dealers) byId.set(d.id,d);
-  const rootOf=id=>{ const d=byId.get(id); return (d&&d.parent_id)?d.parent_id:id; };
+  // Identity (account number / name → the dealer family) is the shared matcher, the one rule for every importer.
+  const M=SH.makeMatcher({ dealers, accounts:dms, aliases, nameFirst:NAME_FIRST.has(slug) });
+  const byId=M.byId, rootOf=M.rootOf;
   // The rep stamped on each imported sale is the dealer's owner from the shared resolver
   // (dealers.rep_email, then rep_name, then the legacy directory), falling back to the family HQ's
   // owner for a branch that has none of its own.
   function repOf(id){ if(!id || !dir) return null; if(!byId.get(id)) return null;
     return dir.repOf(id) || dir.repOf(rootOf(id)) || null; }
-  const familyByRoot=new Map();
-  for(const d of dealers){ const r=rootOf(d.id); (familyByRoot.get(r)||familyByRoot.set(r,[]).get(r)).push(d); }
-  const refToIds=new Map(); for(const x of dms){ const k=String(x.account_ref||"").trim().toLowerCase(); if(!k) continue; (refToIds.get(k)||refToIds.set(k,[]).get(k)).push(x.dealer_id); }
-  const norm2id=new Map(); for(const d of dealers) norm2id.set(dnorm(d.business_name), d.id);
-  for(const a of aliases){ if(a&&a.alias_norm&&!norm2id.has(a.alias_norm)) norm2id.set(a.alias_norm, a.dealer_id); }
-  function family(id){ const r=rootOf(id); return familyByRoot.get(r)||[byId.get(id)].filter(Boolean); }
   // Branch choice inside a family. The manual import keeps EXACTLY the old choice (ZIP → city → ship-to name → HQ /
   // first) through the shared resolver's legacy mode, which also says WHY — so the preview can flag a fallback.
-  // (The automated path will use the strict mode, which never falls back: CLAUDE.md §18, Ship-To Correction.)
-  function pickDetail(cands, row){ return SH.resolveBranch(cands, row, { mode:"legacy" }); }
-  const nameFirst=NAME_FIRST.has(slug);
-  function byName(row){ if(!row.company) return null; const id=norm2id.get(dnorm(row.company)); return id?family(id):null; }
-  function byRef(row){ const ref=String(row.account_ref||"").trim().toLowerCase();
-    if(ref&&refToIds.has(ref)){ const ids=refToIds.get(ref); const cands=ids.map(i=>byId.get(i)).filter(Boolean);
-      return cands.length===1?family(cands[0].id):cands; }               // expand a single hit to its family for branch pick
-    return null; }
+  // (The automated path uses the strict mode, which never falls back: CLAUDE.md §18, Ship-To Correction.)
   function resolveDetail(row){
-    // Reused-number manufacturers resolve by NAME first (a shared number can't misroute the sale);
-    // everyone else keeps number-first, then name.
-    let cands = nameFirst ? (byName(row)||byRef(row)) : (byRef(row)||byName(row));
-    if(!cands||!cands.length) return { dealer_id:null, basis:"unmatched", questionable:false };
-    return pickDetail(cands,row);
+    const cands=M.candidates(row);
+    if(!cands.length) return { dealer_id:null, basis:"unmatched", questionable:false };
+    return SH.resolveBranch(cands,row,{ mode:"legacy" });
   }
   function resolve(row){ return resolveDetail(row).dealer_id||null; }
   return { resolve, resolveDetail, byId, repOf };

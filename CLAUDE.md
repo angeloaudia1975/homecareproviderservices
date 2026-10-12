@@ -2077,6 +2077,62 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   2026-10-02 unchanged; events = #2 registered (system:report-capture) + #4 period_corrected (owner:sql-editor);
   monthly_sales 11,997 / $10,802,558.50 / $493,077.06 unchanged; 3 report records. Guard restored exactly: prosrc md5
   5b3caaaa… = the committed MI-1b guard pasted with Windows line endings (LF form b84957ba…), computed independently.
+- **Phase C BUILT on branch `mi-c-shipto` (2026-10-11; off `mi-b-capture-fixes`; NOT merged, NOT deployed, NO production
+  SQL).** Migration `supabase/mi_c_shipto.sql` (sha256 015675d6…1f26; rollback `…_rollback.sql` fffaf539…, refuses while any
+  decision exists): `mfr_shipto_corrections` (versioned, append-only overlay per order of a registered report: chosen
+  branch or explicit corporate, corrected ship-to fields, the file's own values in `reported`, the order fingerprint;
+  a save names the version the person saw — `shipto_stale` otherwise), `mfr_shipto_mappings` (verified manufacturer +
+  account + ship-to key from the FILE — ship-to id, or street + ZIP; never account alone; one active per key; a
+  different branch needs `replace_mapping`, which retires the old one; retire only, never delete), append-only
+  `mfr_shipto_events`; writes only through `hcps_mfr_shipto_correct` / `hcps_mfr_shipto_retire` (security definer,
+  service_role only); guard = marker + owner rights, no delete / truncate, mappings change only by one retirement;
+  never a TEST dealer; corporate only on an HQ; RULE 19 (RLS on, no policies, service_role SELECT only). Installed-code
+  fingerprint 3 functions: 3c6a02dc… (LF) / 76608c60… (CRLF paste). Code: `_report_rows.js` (server reader for stored
+  CSV / XLSX order exports; the Sales Report Import page's column patterns, drift-tested; text stays text — ZIPs keep
+  leading zeros), `_shipto_review.js` (orders not lines; resolved / corrected / needs_review with reasons zip_shared,
+  new_location, billing_address_only, no_ship_to, weak_evidence, mixed_lines, no_dealer_match, correction_stale; report
+  "held" as a WHOLE while any order needs review; corrected CSV = original columns untouched + HCPS columns; read-only
+  shadow vs monthly_sales history), `_shipto.js` (state names → codes; strict-only saved ZIP assignments `zipmap:<slug>`
+  inside their corporate; `makeMatcher` = the Sales Report Import identity rule, which sales-import-api now calls — its
+  picks unchanged), `shipto-review-api.js` (management only; actor, fingerprint, reported values and ship key always from
+  the server; branch outside the matched family needs `confirm_outside_family`; strict reads → 503; never writes outside
+  Phase C), page `/admin/shipto-review.html` + `.js` (HUBS: Sales Data & Analytics → Ship-To Review): Reports → orders
+  (needs review first) → panel (file's ship-to AND bill-to, reason, options with HQ offered but never pre-chosen, dealer
+  search, corporate tick, missing ship-to fields, reason, Remember) → Save & Continue (revalidates, next order); Verified
+  mappings tab; Shadow check tab. Tests: shipto-review 40, mi-c-shipto.pg 22 (pg-safeupdate), mi-c.ui (Chromium,
+  360/390/768/1280), Phase C mutants 32/32 (clean control), Phase B mutants 38/38, admin header 40/40; full regression
+  passes except the known clock / documents.json suites. Shadow on production data: read-only export
+  `supabase/mi_c_shadow_export.sql` + `scripts/shipto_shadow_local.js`, or the API's shadow action once deployed.
+  Probe: `scripts/mi_c_public_probe_browser.js` (14 checks). The manual Sales Report Import and every MI-1a protection are
+  unchanged; nothing imports automatically.
+- **Phase C CONDITIONALLY APPROVED with four corrections (Angelo, 2026-10-11 22:09 CT; MI 64%) — RULES:** (1) a remembered
+  decision (verified mapping of ANY scope, or a saved zipmap entry) is reused automatically ONLY when the order's own account
+  number is on record for this manufacturer (`dealer_manufacturers`) at the remembered dealer's FAMILY and that dealer is one of
+  the order's candidates; a corporate mapping must name the family HQ. Otherwise → Needs Ship-To Review (`mapping_unverified` /
+  `zip_assignment_unverified`), never another family's location, never a silent fall-through; a zipmap entry naming a dealer
+  outside the candidates is another family's and ignored. (2) An order can always be corrected without an account number, but
+  it is REMEMBERED only with a non-blank account number from the file that `dealer_manufacturers` ties to the chosen dealer's
+  family — enforced in the resolver (blank refs never match), the API (422 `shipto_no_account` / `shipto_no_ship_key` /
+  `shipto_account_family`), the database (`shipto_no_account`, `shipto_account_mismatch`, `shipto_account_family`; table CHECK
+  `account_ref <> ''`) and the page (Remember disabled with the reason). (3) The Shadow Check keeps SOURCE LANES apart with the
+  MI-1a rule: sales_report (`source='sales_report'`) · commission (`source='commission'`, or no source AND no external_ref) ·
+  other; grouped per lane + period + invoice, counted per lane, never added together; the booked branch is the baseline; the same
+  invoice booked to different branches in two lanes = a lane disagreement; read-only. Production (read-only, Angelo): Strongback
+  143 sales-report lines, Bemis 17 commission lines. (4) After installation the Shadow Check is run from the Ship-To Review page
+  (no manual export/upload). **Corrections BUILT (2026-10-11 ~23:30 CT, branch `mi-c-shipto`, NOT run / merged / deployed):**
+  migration sha256 f759039d…aa78 (10 install checks — #10 = blank-account CHECK + `dealer_manufacturers` columns), rollback
+  fffaf539… (unchanged), postcheck `supabase/mi_c_rollout_postcheck.sql` 7b20bff9…; installed-code fingerprint 3 functions
+  ca3e97ff… (LF) / bdbd7982… (CRLF paste). Tests: mi-c-shipto.pg 26, shipto-review 44, shipto 26, mi-c.ui all pass (360–1280),
+  Phase C mutants 52/52, Phase B 38/38, MI-1a compat 14/14, admin header 60/60 on the affected pages; full suite 103 files — only
+  the known clock (phase1-visits, phase2-account-class, phase2-timeline) and documents.json (resources-render) failures.
+  **Phase C migration RUN by Angelo 2026-10-12 ~09:50 CT:** sha256 f759039d…aa78; all 10 install checks ok = true (3 tables,
+  RLS on, 0 policies, 0 public grants, service_role SELECT only, 2 of 3 functions executable by service_role, definer +
+  pinned search_path, 6 guard triggers, unique active-mapping index, 0 rows written, blank-account CHECK +
+  dealer_manufacturers columns present). Next: postcheck (fingerprint ca3e97ff… LF / bdbd7982… CRLF) + baseline, the
+  14-check public-key probe, then merge + deploy and the Shadow Check from the Ship-To Review page.
+  **Postcheck PASSED (Angelo, 2026-10-12 10:00 CT):** code 3 / bdbd7982… (the CRLF form, as precomputed), 3 tables / 3 RLS /
+  0 policies, 0 public grants, blank-account CHECK present, 0 / 0 / 0 rows, monthly_sales 11,997 / $10,802,558.50 /
+  $493,077.06 unchanged. Awaiting the public-key probe before merge + deploy.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
