@@ -2165,6 +2165,16 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   **Postcheck PASSED (Angelo, 2026-10-12 10:00 CT):** code 3 / bdbd7982… (the CRLF form, as precomputed), 3 tables / 3 RLS /
   0 policies, 0 public grants, blank-account CHECK present, 0 / 0 / 0 rows, monthly_sales 11,997 / $10,802,558.50 /
   $493,077.06 unchanged. Awaiting the public-key probe before merge + deploy.
+  **Public-key probe ALL 14 BLOCKED (Angelo, 2026-10-12 10:00 CT). Phase C MERGED + DEPLOYED** (main 03e89e3, migration
+  byte-identical f759039d…; shipto-review 44, shipto 26, mi-c-shipto.pg 26, report-capture 29, mi-b-api 11, mi1a-compat 16).
+  Live: Ship-To Review page serves the new code; no token / forged token → 401; 0 mappings / 0 corrections.
+  **Shadow Check run from the page API (read-only, 2026-10-12 ~10:15 CT):** Strongback — 143 sales-report lines / 57 orders,
+  0 commission lines; 53 same, 0 different, 3 held (6629 Integrity Home Medical Memphis 38134 = new location; 6339 + 6621
+  Glasgow Prescription Center 42141 = ZIP shared by two branches, history booked to the Hosparus Warehouse branch),
+  1 unmatched in history (5804 GF Health Products, $320 — no HCPS dealer, as before); 0 lane disagreements.
+  Bemis — 17 commission lines / 4 orders, 0 sales-report lines; 4 same, 0 different, 0 held. Record #8 (Angelo Sep
+  Orders.csv): 6 orders / 7 lines / $2,159 — all 6 resolved (5 single-location dealers + Williams Brothers Princeton by
+  ZIP 47670), report Ready, 0 need review. Nothing written.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
