@@ -16,14 +16,15 @@ const JS=[
  ['_preview.js','a Ready page excused for words it never had','const readyJson = JSON.stringify(drafts.filter(d => d && ready.some(r => r.page_key === d.page_key))','const readyJson = JSON.stringify(drafts.filter(d => d)'],
  ['_preview.js','enriched-only ignored','!(meta && meta.enriched_only === true),','true,'],
  ['_preview.js','freight words not compared','m2(fT.fee) === m2(fP.fee) && fw(fT) === fw(fP)','true'],
- ['_preview.js','the staff note on every card','      staff_note: held ? HELD_NOTE : null,','      staff_note: HELD_NOTE,'],
+ ['_preview.js','the staff note on every card','      staff_note: held ? (waiting ? WAITING_NOTE : HELD_NOTE) : null,','      staff_note: HELD_NOTE,'],
+ ['_preview.js','a page waiting for approval labelled as held for source review','      staff_note: held ? (waiting ? WAITING_NOTE : HELD_NOTE) : null,','      staff_note: held ? HELD_NOTE : null,'],
  ['_preview.js','storefront photos shown from the admin site (broken)','      image: abs(lead.image), media,','      image: lead.image || "", media,'],
  ['product-content.js','the proposal shows nothing new','return want.test(path) ? PREVIEW.proposedContentRows(rows, rowsAsPublished, keys) : rows;','return rows;'],
  ['_enrich.js','a source hold hides its issues','  return { status, label: STATUS_LABEL[status], issues, resolutions: res,','  return { status, label: STATUS_LABEL[status], issues: held ? [] : issues, resolutions: res,'],
  ['_enrich.js','a source hold not recognised','  const held = !!((res.hold && res.hold.choice === "hold_back") ||','  const held = !!((false) ||'],
  ['_enrich.js','badge art kept as a thumbnail','  pool = pool.filter(d => !d.promo);\n',''],
 ];
-const TESTS=['enrich.unit.test.js','mcpreview.test.js'];
+const TESTS=['enrich.unit.test.js','mcpreview.test.js','mcapproval.test.js'];
 let surv=0, killed=0;
 function run(env){ for(const tf of TESTS){ try{ execFileSync('node',[path.join(__dirname,tf)],{stdio:'pipe',env,timeout:400000}); }catch(e){ return true; } } return false; }
 for(const [file,n,f,t] of JS){ const src=fs.readFileSync(path.join(DIR,file),'utf8'); const c=src.split(f).length-1; if(c!==1){console.log(`BAD ANCHOR(${c}) ${n}`);surv++;continue;}

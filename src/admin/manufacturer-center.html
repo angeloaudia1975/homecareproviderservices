@@ -837,7 +837,7 @@ function enPreview(){
     <button class="btn" id="pvgo" onclick="enPreviewRun()" ${EN.pvBusy?'disabled':''}>${EN.pvBusy?'Building the preview…':'Preview '+esc(nm)+' as Dealer'}</button>`;
   const V=EN.pv, s=V.summary, cards=pvCards();
   const tile=(n,lbl,good)=>`<div class="pvtile ${good===true?'good':(good===false?'bad':'')}"><b>${esc(n)}</b><span>${esc(lbl)}</span></div>`;
-  const tiles=tile(s.enriched_pages_ready,"enriched pages ready")+tile(s.held_back,"products/pages held back")+tile(s.accounted+" / "+s.active_skus,"active SKUs accounted for",s.accounted===s.active_skus)
+  const tiles=tile(s.enriched_pages_ready,"enriched pages shown with your selections")+tile(s.held_back,"products/pages held back")+(s.waiting_for_approval?tile(s.waiting_for_approval,"pages waiting for your approval (current cards)"):"")+tile(s.accounted+" / "+s.active_skus,"active SKUs accounted for",s.accounted===s.active_skus)
     +tile(s.missing,"missing",s.missing===0)+tile(s.duplicates,"duplicates",s.duplicates===0)+tile(s.commercial_changes,"commercial changes",s.commercial_changes===0);
   const checks=V.checks.map(c=>`<div style="display:flex;gap:8px;align-items:flex-start;margin:3px 0">${pill(c.pass?'p-pass':'p-fail',c.pass?'Pass':'Fail')}<span style="font-size:12.5px">${esc(c.label)}${!c.pass&&c.detail?`<div class="needtxt">${esc(JSON.stringify(c.detail).slice(0,400))}</div>`:''}</span></div>`).join('');
   const grid=cards.map((k,ix)=>{ const o=k.options[0]||{};
@@ -887,7 +887,8 @@ function pvDetail(){
    the approval for THAT dry run (its plan hash), copies the photos, publishes the pages in one database transaction and
    checks the live result against the approved one — rolling back by itself if anything differs. Making it the new Gold
    Standard (Finalize) is a separate step after the live storefront check. Nothing here touches a price. */
-function pubState(){ const P=EN&&EN.plan, d=P&&P.publication; if(!d) return EN&&EN.pub?(EN.pub.publishable?"Dry run ready":"Dry run — see problems"):"Dry run first";
+function pubState(){ const P=EN&&EN.plan, d=P&&P.publication, live=P&&P.pages.some(p=>p.status==="published");
+  if(!d||(d.used_at&&!live)) return EN&&EN.pub?(EN.pub.publishable?"Dry run ready":"Dry run — see problems"):(d?"Rolled back — dry run first":"Dry run first");
   if(!d.used_at) return "Approved — not carried out"; return P.window?"Published — finalize pending":"Gold Standard"; }
 async function pubPlan(){ if(EN.pubBusy) return; EN.pubBusy="Running the publication dry run…"; enDraw();
   try{ EN.pub=await papi({action:"publish_plan",manufacturer:EN.slug}); EN.pubRes=null; }catch(e){ toast("Dry run not built: "+e.message); }

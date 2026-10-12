@@ -93,6 +93,10 @@ await t('NO SELECTION: nothing is publishable, and the Approved New Dealer View 
   }
   ok(!DRAFT.test(JSON.stringify(pv.proposed)),'no draft photo in the Approved New Dealer View');
   eq(pv.proposed.filter(k=>k.codes.includes('7YR05310TSS')||k.codes.includes('7YE05310TSS')).length,2,'Assurance stays on its two cards until the grouping is chosen');
+  const PV=require(path.join(ROOT,'_preview.js'));
+  ok(pv.proposed.filter(k=>k.codes.includes('7YR05310TSS')||k.codes.includes('7YE05310TSS')).every(k=>k.staff_note===PV.WAITING_NOTE),'Assurance\'s cards say "waiting for the President\'s approval", not "held for source review"');
+  eq([pv.summary.enriched_pages_ready,pv.summary.waiting_for_approval,pv.summary.held_back],[2,1,4],'2 shown (no difference in grouping), Assurance waiting, 4 held');
+  ok(pv.proposed.filter(k=>k.codes.includes('7YE82350TC')).every(k=>k.staff_note===PV.HELD_NOTE),'a held page keeps the source-review note');
 });
 await t('only the President records, only under an open window; a photo that is not one of the page\'s own is refused; nothing recorded on refusal',async()=>{
   const n=W.db.mfr_decisions.length; const p=st.pages.find(p=>p.areas&&p.codes.includes('7YA0AS100'));

@@ -51,7 +51,7 @@ const fails=[]; const check=(c,w)=>{ if(!c){ fails.push(w); console.log('FAIL '+
     await page.locator('.enst',{hasText:'6 · Dealer Preview'}).click();
     await page.locator('#pvgo').click(); await page.waitForSelector('text=as a dealer would see it',{timeout:120000});
     const tiles=await page.locator('.pvtile').allTextContents();
-    check(/3\s*enriched pages ready/.test(tiles[0]) && /4\s*products\/pages held back/.test(tiles[1]) && /9 \/ 9\s*active SKUs accounted for/.test(tiles[2]) && /0\s*missing/.test(tiles[3]) && /0\s*duplicates/.test(tiles[4]) && /0\s*commercial changes/.test(tiles[5]),'summary tiles: 3 ready · 4 held · 9/9 accounted · 0 missing · 0 duplicates · 0 commercial changes ('+tiles.join(' | ')+')');
+    check(/3\s*enriched pages shown with your selections/.test(tiles[0]) && /4\s*products\/pages held back/.test(tiles[1]) && /9 \/ 9\s*active SKUs accounted for/.test(tiles[2]) && /0\s*missing/.test(tiles[3]) && /0\s*duplicates/.test(tiles[4]) && /0\s*commercial changes/.test(tiles[5]),'summary tiles: 3 ready · 4 held · 9/9 accounted · 0 missing · 0 duplicates · 0 commercial changes ('+tiles.join(' | ')+')');
     check(await page.locator('text=All checks pass').count()>=1,'all proof checks pass');
     check(await page.locator('.pvcard img').count()===0 && await page.locator('.pvcard .pvph').count()===await page.locator('.pvcard').count(),'every card shows a photo or the "No image" placeholder — never a broken image');
     await shot('preview-proposed');
