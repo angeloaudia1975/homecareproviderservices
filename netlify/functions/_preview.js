@@ -49,22 +49,25 @@ function cartLine(p, R, engine, PICK){
 /* Dealer cards, exactly as the storefront groups them (groupKeyOf: the page, else the catalog group, else the code). */
 function cardsOf(products, ctx){
   const { R, PICK, engine, heldCodes } = ctx;
+  /* The storefront's catalog photos are paths on the storefront ("/assets/products/bemis/…"): shown here they must be
+     read from the storefront, exactly where a dealer's browser reads them (display only — the proofs use the raw data). */
+  const abs = u => !u ? "" : (/^https?:/i.test(u) ? String(u) : String(ctx.base || "").replace(/\/+$/, "") + (String(u).startsWith("/") ? "" : "/") + u);
   const groups = new Map();
   (products || []).forEach(p => { const k = PICK.groupKeyOf(p); if(!groups.has(k)) groups.set(k, []); groups.get(k).push(p); });
   return [...groups].map(([key, list]) => {
     const G = PICK.sortVariants(list.slice()), lead = G[0];
-    const media = [...new Set([lead.image].concat((lead.media || []).filter(m => m && m.kind === "image").map(m => m.url)).filter(Boolean))];
+    const media = [...new Set([lead.image].concat((lead.media || []).filter(m => m && m.kind === "image").map(m => m.url)).filter(Boolean).map(abs))];
     const held = !lead._pageKey && G.some(p => heldCodes.has(norm(p.code)));
     return {
       key: String(key), name: PICK.groupDisplayName(lead), page_key: lead._pageKey || null, enriched: !!lead._pageKey,
       staff_note: held ? HELD_NOTE : null,
-      image: lead.image || "", media,
+      image: abs(lead.image), media,
       description: String(lead.description || ""), features: Array.isArray(lead._features) ? lead._features : [],
       specs: Array.isArray(lead._specs) ? lead._specs : [], warranty: lead._warranty || null,
       documents: Array.isArray(lead._documents) ? lead._documents : [], category: lead.category || "", subcategory: lead.subcategory || "",
       codes: G.map(p => String(p.code)),
       axes: G.length > 1 ? PICK.optionAxes(G) : null,
-      options: G.map(p => ({ code: String(p.code), label: G.length > 1 ? PICK.variantLabel(p) : "", image: p.image || "",
+      options: G.map(p => ({ code: String(p.code), label: G.length > 1 ? PICK.variantLabel(p) : "", image: abs(p.image),
         price_html: R.priceHtml(p), price_text: text(R.priceHtml(p)), uom: p.uom || "", case_qty: Number(p.case_qty) > 1 ? Number(p.case_qty) : 1,
         orderable: !p._discontinued, cart: cartLine(p, R, engine, PICK) }))
     };
@@ -83,8 +86,8 @@ function buildPreview(input){
   const readyCodes = new Set(ready.flatMap(p => p.skus.map(s => norm(s.code))));
   const heldCodes = new Set(held.flatMap(p => p.skus.map(s => norm(s.code))));
   const pageOf = c => pages.find(p => p.skus.some(s => norm(s.code) === norm(c))) || null;
-  const todayCards = cardsOf(T.products, { R, PICK, engine: T.engine, heldCodes: new Set() });
-  const propCards = cardsOf(P.products, { R, PICK, engine: P.engine, heldCodes });
+  const todayCards = cardsOf(T.products, { R, PICK, engine: T.engine, heldCodes: new Set(), base: input.base });
+  const propCards = cardsOf(P.products, { R, PICK, engine: P.engine, heldCodes, base: input.base });
   const byCode = list => { const m = {}; (list || []).forEach(p => { (m[norm(p.code)] = m[norm(p.code)] || []).push(p); }); return m; };
   const tBy = byCode(T.products), pBy = byCode(P.products);
   const cardsWith = (cards, c) => cards.filter(k => k.codes.some(x => norm(x) === norm(c)));
@@ -150,9 +153,13 @@ function buildPreview(input){
     (Array.isArray(d.features) ? d.features : []).forEach(f => { if(String(f).length > 30) leakNeedles.push(String(f).slice(0, 60)); });
     [d.image].concat((d.images_gallery || []).map(g => g && g.url)).concat((d.skus || []).map(s => s && s.image)).filter(Boolean).forEach(u => leakNeedles.push(String(u))); });
   /* a held draft built from the catalog line repeats words dealers already see today — only what is NEW is a leak */
+  /* ...and a sentence a Ready page states from its OWN source is that page's words, not a leak: manufacturers reuse
+     bullets across products (Bemis prints "Special ring bumpers for added security" on Steadfast and on Assurance). */
   const propJson = JSON.stringify(P.products), todayJson = JSON.stringify(T.products);
-  const leaks = [...new Set(leakNeedles.filter(n => propJson.indexOf(n) >= 0 && todayJson.indexOf(n) < 0))];
-  add("held_content_not_shown", "No held draft's copy or photos reach the proposed dealer view", !leaks.length, leaks.length ? leaks.slice(0, 10) : { checked: leakNeedles.length });
+  const readyJson = JSON.stringify(drafts.filter(d => d && ready.some(r => r.page_key === d.page_key)).map(d => [d.description, d.features, d.image, d.images_gallery, d.skus]));
+  const shared = leakNeedles.filter(n => propJson.indexOf(n) >= 0 && todayJson.indexOf(n) < 0 && readyJson.indexOf(n) >= 0);
+  const leaks = [...new Set(leakNeedles.filter(n => propJson.indexOf(n) >= 0 && todayJson.indexOf(n) < 0 && readyJson.indexOf(n) < 0))];
+  add("held_content_not_shown", "No held draft's copy or photos reach the proposed dealer view", !leaks.length, leaks.length ? leaks.slice(0, 10) : { checked: leakNeedles.length, also_on_a_ready_page_own_source: [...new Set(shared)] });
   const todayDraftMedia = JSON.stringify(T.products).match(new RegExp("https?:[^\"]*" + DRAFT_MEDIA.source + "[^\"]*", "g")) || [];
   add("no_draft_photos_today", "Today's dealer view carries no draft photo (drafts stay hidden until published)", !todayDraftMedia.length, todayDraftMedia.length ? todayDraftMedia.slice(0, 10) : null);
   add("enriched_only_off", "Line is not 'enriched only' — a SKU without a live page keeps its current catalog card", !(meta && meta.enriched_only === true),

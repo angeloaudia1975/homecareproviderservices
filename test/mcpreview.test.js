@@ -112,6 +112,10 @@ await t('unit: the accounting catches a duplicate card, a commercial change, a m
   const run=(proposed,drafts)=>PV.buildPreview({slug:'s',records:rec,meta:{},pages,drafts:drafts||[],R,PICK,today:{products:today,engine:eng},proposed:{products:proposed,engine:eng}});
   const bad=r=>r.checks.filter(c=>!c.pass).map(c=>c.id);
   eq(bad(run(good)),[]);
+  /* a storefront-relative photo is shown from the storefront (never broken on the staff screen) */
+  const rb=PV.buildPreview({slug:'s',base:'https://shop.example',records:rec,meta:{},pages,drafts:[],R,PICK,today:{products:[prod('A',10,{image:'/assets/a.jpg'}),prod('B',20),prod('H',5,{image:'https://cdn.example/h.jpg'})],engine:eng},proposed:{products:[prod('A',10,{_pageKey:'pa',_encPage:'Page A',_skuOption:'Round',image:'/assets/a.jpg'}),prod('B',20,{_pageKey:'pa',_encPage:'Page A',_skuOption:'Elongated'}),prod('H',5,{image:'https://cdn.example/h.jpg'})],engine:eng}});
+  eq(rb.today.find(c=>c.codes.includes('A')).image,'https://shop.example/assets/a.jpg'); eq(rb.proposed.find(c=>c.codes.includes('H')).image,'https://cdn.example/h.jpg');
+  eq(rb.proposed.find(c=>c.codes.includes('A')).options.find(o=>o.code==='A').image,'https://shop.example/assets/a.jpg');
   ok(bad(run(good.concat([prod('H',5,{group:'other'})]))).includes('no_duplicates'),'a SKU on two cards');
   ok(bad(run([good[0],prod('B',21,{_pageKey:'pa',_encPage:'Page A',_skuOption:'Elongated'}),good[2]])).includes('commercial_unchanged'),'a price moved');
   ok(bad(run([good[0],good[1],prod('H',5,{description:'new words'})])).includes('held_items_unchanged'),'a held SKU changed');
@@ -119,6 +123,11 @@ await t('unit: the accounting catches a duplicate card, a commercial change, a m
   ok(bad(run([good[0],prod('B',20,{_skuOption:'Elongated'}),good[2]])).includes('ready_pages_one_card'),'a Ready page split over two cards');
   ok(bad(run([good[0],good[1],prod('H',5,{description:'A held draft sentence that dealers have never seen before today'})],[{page_key:'ph',description:'A held draft sentence that dealers have never seen before today'}])).includes('held_content_not_shown'),'held words leaked');
   ok(bad(run(good.slice(0,2))).includes('all_active_skus_represented'),'a SKU missing');
+  /* a bullet the manufacturer prints on a held product AND on a Ready product is the Ready page's own words — not a leak */
+  const shared='Special ring bumpers for added security on every seat';
+  const sh=run([prod('A',10,{_pageKey:'pa',_encPage:'Page A',_skuOption:'Round',_features:[shared]}),good[1],good[2]],[{page_key:'ph',features:[shared]},{page_key:'pa',features:[shared]}]);
+  eq(bad(sh),[],'shared manufacturer bullet'); eq(sh.checks.find(c=>c.id==='held_content_not_shown').detail.also_on_a_ready_page_own_source,[shared.slice(0,60)]);
+  ok(bad(run([prod('A',10,{_pageKey:'pa',_encPage:'Page A',_skuOption:'Round',_features:[shared]}),good[1],good[2]],[{page_key:'ph',features:[shared]}])).includes('held_content_not_shown'),'held-only words on a Ready card are a leak');
   const f=PV.buildPreview({slug:'s',records:rec,meta:{},pages,drafts:[],R,PICK,today:{products:today,engine:eng},proposed:{products:good,engine:{unitPrice:eng.unitPrice,computeFreight:()=>({fee:9,rows:[]})}}});
   ok(bad(f).includes('freight_unchanged'),'freight moved');
 });

@@ -734,7 +734,7 @@ async function handleContent(event) {
             const P = await PRICING.lineProducts({ slug: m, sb: sbProposed, catalogFile: files.catalogFile, contentFile: files.contentFile, contract: {}, cart: new Map(), freightCfg });
             const [records, metaRows] = await Promise.all([read(`product_skus?manufacturer=eq.${enc(m)}&select=*&limit=10000`), read(`manufacturer_meta?slug=eq.${enc(m)}&select=slug,enriched_only,frozen`)]);
             const R = new Function('state', 'contractPrice', require('./_shop_render.js').SOURCE + ';return {priceHtml,freightRowsHtml,packOf,packNote,dealerPriceNote,money};')({ dealer: {} }, () => null);
-            const out = PREVIEW.buildPreview({ slug: m, records, meta: (metaRows && metaRows[0]) || {}, pages: S.pages, drafts: X.pages,
+            const out = PREVIEW.buildPreview({ slug: m, base: ORDERING_BASE, records, meta: (metaRows && metaRows[0]) || {}, pages: S.pages, drafts: X.pages,
               today: { products: T.products, engine: T.engine }, proposed: { products: P.products, engine: P.engine }, R, PICK: require('./_shop_picker.js') });
             return reply(200, Object.assign({ ok: true, window: S.window }, out));
           } catch (e) { return reply(503, { ok: false, error: 'preview_unavailable', message: 'The dealer preview could not be built — nothing was changed: ' + String((e && e.message) || e).slice(0, 300) }); }
