@@ -1439,6 +1439,12 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   note exists only on the staff screen. Proposed enriched pages still point at draft photos (drafts/w<window>/): moving
   them for dealers is Release D's job. Tests: test/mcpreview.test.js, test/mcpreview.ui.js (Playwright),
   test/mcpreview.mutants.js.
+  Live run fixes (2026-10-11 evening): a bullet the manufacturer prints on a held product AND on a Ready product (Bemis
+  "Special ring bumpers for added security": Steadfast and Assurance) is the Ready page's own words, not a held leak —
+  only words found in NO Ready draft count; the storefront's catalog photos are storefront paths (/assets/products/…),
+  so the preview shows them from ORDERING_BASE (display only), never as broken images on the admin site. Holds recorded:
+  #326 Bidet, #327 Support Arms, #328 Steadfast, #329 444DISPLAY (issue "hold"; nothing superseded); Steadfast re-run:
+  the Stay-Tite badge is withheld from the gallery, its catalog_name discrepancy stays listed.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
