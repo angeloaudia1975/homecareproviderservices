@@ -1,6 +1,6 @@
 /* HCPS Academy A2D Stage 3 — mutation testing of the Course Builder's server code. Each mutant undoes ONE protection or
    rule in a scratch copy of the committed tree (git archive HEAD); the unit test and the Postgres-backed API test must
-   then fail. A clean control run first must pass. Mutants marked `db` are protections the DATABASE repeats (M3): with the
+   then fail. A clean control run first must pass. Mutants marked `db` are protections repeated by a second layer (the M3 database rules, or the Stage 2 payload builder): with the
    server check removed the database still refuses, so they are expected to survive — they show the second line of
    defence holds — and are reported separately, never counted as killed.
      PGTEST_PSQL=/usr/lib/postgresql/16/bin/psql PGHOST=/tmp/pgt PGPORT=55432 PGUSER=postgres node test/academy-builder.mutants.js [from] [to] */
@@ -21,10 +21,10 @@ const MUTANTS = [
   { f: BLD, from: "try { await A.authorOp('unlink_fact', { p_actor: actor(staff), p_id: id }); }", to: "try { }", why: 'links made for a refused save are left behind' },
   { f: BLD, from: "      if (have.has(k)) continue;\n      const [mfr", to: "      continue;\n      const [mfr", why: 'facts on a screen not linked (the save fails)' },
   { f: BLD, from: "if (link && link.id) made.push(link.id);", to: "", why: 'facts_linked miscounted / links never undone' },
-  { f: BLD, from: "kind: q.kind, prompt: q.prompt, choices: q.choices })),", to: "kind: q.kind, prompt: q.prompt, choices: q.choices, answer_key: q.answer_key, explanation: q.explanation })),", why: 'the live preview carries answer keys' },
+  { f: BLD, from: "kind: q.kind, prompt: q.prompt, choices: q.choices })),", to: "kind: q.kind, prompt: q.prompt, choices: q.choices, answer_key: q.answer_key, explanation: q.explanation })),", why: 'the live preview asks for answer keys (the payload builder still strips them)', db: true },
   { f: BLD, from: "if (!Array.isArray(b.blocks) || b.blocks.length > 40) A.refuse(400, 'invalid', 'A lesson has at most 40 screens.');", to: "", why: 'preview of an oversize lesson' },
   { f: BLD, from: "save_blocks = async (staff, b) => {\n  const { l, m } = await lessonCtx(A.uuid(b.lesson_id, 'lesson'));\n  await draft(m.version_id);", to: "save_blocks = async (staff, b) => {\n  const { l, m } = await lessonCtx(A.uuid(b.lesson_id, 'lesson'));", why: 'save_blocks on a locked version (server check)', db: true },
-  { f: BLD, from: "const saved = await A.authorOp('set_blocks', { p_actor: actor(staff),", to: "const saved = await A.authorOp('set_blocks', { p_actor: b.p_actor || actor(staff),", why: 'the actor taken from the request' },
+  { f: BLD, from: "saved = await A.authorOp('set_blocks', { p_actor: actor(staff),", to: "saved = await A.authorOp('set_blocks', { p_actor: b.p_actor || actor(staff),", why: 'the actor taken from the request' },
   { f: BLD, from: "if (!isPresident(staff)) A.refuse(403, 'president_only', 'Only the President approves", to: "if (false) A.refuse(403, 'president_only', 'Only the President approves", why: 'a non-President approves a stored picture (server check)', db: true },
   { f: BLD, from: "if (!isPresident(staff)) A.refuse(403, 'president_only', 'Only the President discards", to: "if (false) A.refuse(403, 'president_only', 'Only the President discards", why: 'a non-President discards an upload' },
   { f: BLD, from: "if (one(await A.sbGet(`academy_media?storage_path=eq.${enc(path)}&select=id`))) A.refuse(409, 'in_use'", to: "if (false) A.refuse(409, 'in_use'", why: 'an approved file is discarded' },

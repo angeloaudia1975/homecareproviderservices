@@ -38,6 +38,9 @@ const NO_SAFEUPDATE = process.env.PGTEST_NO_SAFEUPDATE === '1';
 const J = v => `$j$${JSON.stringify(v)}$j$::jsonb`;
 const ACT = `'staff:admin@test.example'`;
 const G = 'golden-technologies';
+/* BUILDER_MUTANT='{"from":…,"to":…}': one page-script protection undone as this server sends the file. */
+const MUTANT = process.env.BUILDER_MUTANT ? JSON.parse(process.env.BUILDER_MUTANT) : null;
+if (MUTANT && !fs.readFileSync(path.join(__dirname, '..', 'src', 'admin', 'academy-builder.js'), 'utf8').includes(MUTANT.from)) { console.log('MUTANT ANCHOR NOT FOUND'); process.exit(1); }
 const XSS = `<img src=x onerror="window.__xss=1">`;
 
 function png(w, hgt) {
@@ -102,7 +105,9 @@ function server() {
     const f = path.resolve(ROOT, '.' + p);
     if (f.startsWith(ROOT + path.sep) && fs.existsSync(f) && fs.statSync(f).isFile()) {
       res.writeHead(200, { 'content-type': f.endsWith('.css') ? 'text/css' : f.endsWith('.js') ? 'application/javascript' : f.endsWith('.png') ? 'image/png' : 'text/html' });
-      return res.end(fs.readFileSync(f));
+      let data = fs.readFileSync(f);
+      if (MUTANT && p === '/admin/academy-builder.js') data = Buffer.from(String(data).split(MUTANT.from).join(MUTANT.to));
+      return res.end(data);
     }
     res.writeHead(404); res.end('');
   });
@@ -278,6 +283,10 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
       assert.deepStrictEqual(after.slice(1, 3), [before[2], before[1]], 'dragged above');
       await pg.focus('.blk[data-i="3"] button[aria-label="Move screen 4 down"]'); await pg.keyboard.press('Enter');
       assert.strictEqual(await pg.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Move screen 5 down', 'focus stays on the moved screen');
+      assert.deepStrictEqual((await kinds())[4], after[3]);
+      await pg.focus('.blk[data-i="4"] button[aria-label="Move screen 5 up"]'); await pg.keyboard.press('Enter');
+      assert.strictEqual(await pg.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Move screen 4 up', 'focus follows an upward move too');
+      await pg.keyboard.press('Tab'); await pg.keyboard.press('Enter');   // and down again: back where it was
       assert.deepStrictEqual((await kinds())[4], after[3]);
       await saved(pg);
       assert.strictEqual(blocksOf(W.lessonNew.id)[1].kind, before[2] === 'Tip or caution' ? 'callout' : blocksOf(W.lessonNew.id)[1].kind);
