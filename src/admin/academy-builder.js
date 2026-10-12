@@ -343,9 +343,9 @@
     add(fSelect('Manufacturer', b, 'manufacturer_slug', mfrOptions(), { onchange: function () { structural(); } }));
     // models as chips
     add(el('label', { cls: 'f', text: 'Models (2–6)' }));
-    var chips = el('div', { cls: 'chips' });
+    var chips = el('div', { cls: 'mchips' });
     b.models.forEach(function (m, i) {
-      chips.appendChild(el('span', { cls: 'chip' }, [m,
+      chips.appendChild(el('span', { cls: 'mchip' }, [m,
         btn('◀', function () { if (i > 0) { var t = b.models[i - 1]; b.models[i - 1] = m; b.models[i] = t; structural(fk + 'ml' + (i - 1)); } }, { 'aria-label': 'Move ' + m + ' left', disabled: i === 0, 'data-w': 1, 'data-fk': fk + 'ml' + i }),
         btn('▶', function () { if (i < b.models.length - 1) { var t = b.models[i + 1]; b.models[i + 1] = m; b.models[i] = t; structural(fk + 'ml' + (i + 1)); } }, { 'aria-label': 'Move ' + m + ' right', disabled: i === b.models.length - 1, 'data-w': 1 }),
         btn('×', function () { b.models.splice(i, 1); structural(fk + 'add'); }, { 'aria-label': 'Remove ' + m, 'data-w': 1 })]));
@@ -807,7 +807,7 @@
           refs.length ? pill(refs.length + ' fact link' + (refs.length > 1 ? 's' : ''), unverified ? 'bad' : 'ok') : null,
           unverified && q.use === 'exam' ? pill('Fact not verified — not drawn', 'bad') : null]),
         el('p', { style: 'margin:8px 0;font-weight:700', text: q.prompt }),
-        el('ul', { style: 'margin:0 0 6px 18px;padding:0' }, (q.choices || []).map(function (c) { var ok = keys.indexOf(c.id) >= 0; return el('li', { style: ok ? 'font-weight:700;color:var(--green)' : null, text: c.id.toUpperCase() + '. ' + c.text + (ok ? '  ✓ correct' : '') }); })),
+        el('ul', { style: 'margin:0 0 6px 18px;padding:0' }, (q.choices || []).map(function (c) { var ok = keys.indexOf(c.id) >= 0; return el('li', { style: ok ? 'font-weight:700;color:var(--b-green)' : null, text: c.id.toUpperCase() + '. ' + c.text + (ok ? '  ✓ correct' : '') }); })),
         el('p', { cls: 'small muted', style: 'margin:4px 0', text: 'Explanation: ' + q.explanation }),
         el('p', { cls: 'small muted', style: 'margin:4px 0', text: 'Topics: ' + tagsText(q.objective_tags) }),
         el('div', { cls: 'bar', style: 'margin-top:6px' }, [
