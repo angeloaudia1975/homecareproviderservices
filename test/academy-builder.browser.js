@@ -263,6 +263,10 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
       assert.strictEqual(b[9].media_id, W.pic.id); assert.ok(Math.abs(b[9].items[1].x - 75) <= 1 && Math.abs(b[9].items[1].y - 25) <= 1, JSON.stringify(b[9].items[1]));
       assert.strictEqual(b[11].choices.filter(c => c.best).length, 1); assert.strictEqual(b[12].question_ids.length, 2);
       assert.strictEqual(Number(run(DB, `select count(*) from academy_content_refs where lesson_id = '${W.lessonNew.id}'`)), 2, 'PR515 and PR510 capacity linked automatically');
+      // every one of the 14 kinds is drawn by the learner player (one screen each)
+      await pg.waitForFunction(() => document.querySelectorAll('#player .hl-screen:not(.hl-tail)').length === 14);
+      assert.deepStrictEqual(await pg.$$eval('#player .hl-screen:not(.hl-tail)', s => s.map(x => [...x.classList].find(c => c.startsWith('hl-k-')).slice(5))),
+        ['objectives', 'text', 'callout', 'quote', 'image', 'video', 'document', 'fact', 'comparison', 'explorer', 'steps', 'scenario', 'check', 'takeaways']);
       // the preview grades the check on the server
       await pg.click('.blk[data-i="12"] .blk-h .t');
       await pg.waitForFunction(() => { const s = document.querySelector('#player .hl-screen:not([hidden]).hl-k-check'); return !!s; });

@@ -32,21 +32,61 @@ The page is `/admin/academy-builder.html?version=<id>`. Open it from Command Cen
   - The single exception is the storage removal on a discard, which is preceded by its own audit row.
   - The acting person is always the signed-in staff member.
   - **No new SQL** and no database change.
-- **A save never overwrites someone else's work.** Each save names the content it started from; anything else gets 409 "changed".
-- **A refused save leaves the lesson exactly as it was.** The facts a save needs are linked first, each link audited. If the database then refuses the screens, those links are undone.
+- **A save never silently overwrites someone else's work, and a failure never leaves a silent partial change.** See "The save sequence" below.
 - **Unsaved screens are never lost silently.** Switching lessons asks first, and so does leaving the page.
 - **The upload size is limited.** The upload is the only request allowed above 256 KB, and only with its `x-academy-upload` header. Files are capped at 3 MB because Netlify limits a request to 6 MB, and base64 encoding inflates the file. That is lower than the 5 MB the plan proposed.
 - **Pages never build HTML.** Text is placed as text, and no browser dialogs are used.
 - **Still disabled:** learner access, invites, enrollment, certificates, payments and automatic Golden updates. Switches are unchanged.
+
+## The save sequence (review item 1, 12 Oct 2026)
+
+M3 has no single operation that links the facts, writes the screens and compares the starting point together. No new SQL is allowed without Angelo's approval, so a save is a short series of operations. Each operation is atomic with its own audit row:
+
+1. **Start check.** The save must start from the lesson's current content. Otherwise the answer is 409 "changed".
+2. **Fact links.** The facts the screens show are linked to the lesson (M3 shows a fact only when it is linked). Each link is audited.
+3. **Re-check.** The starting point is checked again just before the screens are written.
+4. **Write.** The screens are written through `academy_author_op_set_blocks`, which runs the database's own block checker.
+5. **Overwrite check.** The audit row of that write records the content it replaced. If that is not the content the save started from, someone saved in the gap. Their version is put back (audited), and this save answers 409. The history shows their save, ours, and the put-back.
+6. **Tidy-up.** Fact links the saved screens no longer use are removed (audited). Links always end up matching the screens.
+
+| Failure (tested by injection against real Postgres) | Result |
+|---|---|
+| The write fails after linking | The links are undone (link and undo both in the history); the lesson is unchanged |
+| The screens are refused and an undo also fails | The answer says a link is left; the next successful save removes it |
+| Someone saves while this save is linking | Caught at step 3; this attempt's links are undone; 409 |
+| Someone saves in the gap before step 4 | Caught at step 5; their version is put back; 409 |
+| The write succeeds but its answer is lost | 409 "reload"; nothing is undone, so the saved screens keep their facts |
+
+**What remains non-atomic.** For the moment between steps 4 and 5, the other person's version is replaced before it is put back. A learner never sees it, because there is no learner access and the version is a draft.
+
+**Proposed M3.1, for separate approval only, not built.** One database operation, `academy_author_op_save_lesson(p_actor, p_lesson_id, p_blocks, p_base_hash, p_links)`, would do steps 1–6 in one transaction under the lesson's row lock, comparing the hash of the stored blocks. It needs no new tables and no change to M1 or M2. It would replace this sequence; the builder would keep the same screens.
+
+## Uploads: today and later (review item 2)
+
+Approved for Stage 3: a **3 MB** limit, with these protections kept:
+- the contents are checked against the file type on the server;
+- the size limit;
+- a private, hash-named store that never overwrites;
+- the President's approval before use;
+- the President alone may discard, with a reason and the audit row first.
+
+**Future improvement (not built).** Large brochures and PDF manuals would go straight to private Supabase storage, so the whole file never passes through Netlify:
+1. The browser hashes the file (SHA-256) and asks the admin API for an upload slot. The request gives the name, type, size and hash.
+2. The server checks the person, the type and a larger limit (for example 50 MB for PDFs). It picks the hash-named path `media/<folder>/<sha16>-<name>` and returns a short-lived **signed upload URL** for that one path, with no overwrite allowed.
+3. The browser uploads directly to storage.
+4. The browser calls `finish_upload`. The server downloads or streams the stored object, re-checks the size, the file signature and the SHA-256, and removes the object (audited) if anything differs.
+5. The file is then a candidate like today: unusable until the President approves it.
+
+This needs the storage signed-upload endpoint and a limit setting only. There is no database change, and the bucket stays private.
 
 ## Tests
 
 | Test | What it covers | Result |
 |---|---|---|
 | `test/academy-builder.test.js` | Readiness rules, hashes, upload types; static page rules (no HTML building, no actor sent, only allowed actions, no dialogs) | 16 |
-| `test/academy-builder.pg.test.js` | The real handler against real Postgres with A1, M1, M2 and M3, through `test/academy-pgrest.js` | 21 |
+| `test/academy-builder.pg.test.js` | The real handler against real Postgres with A1, M1, M2 and M3, through `test/academy-pgrest.js`, including 6 failure-injection tests of the save sequence | 27 |
 | `test/academy-builder.browser.js` | Chromium against the real API and the real database rules (details below) | 13 |
-| `test/academy-builder.mutants.js` | Server mutants | 29/29 killed |
+| `test/academy-builder.mutants.js` | Server mutants | 33/33 killed |
 | Browser test with `BUILDER_MUTANT` | Page-script mutants | 5/5 killed |
 | Regression | C1 49, A2A 31 + pg 18, M2 pg 18, M3 pg 28, lesson 23 + pg 5 + browser 11, C1 browser 6; admin masthead on the Academy pages 60/60 | All pass |
 
@@ -64,7 +104,8 @@ The page is `/admin/academy-builder.html?version=<id>`. Open it from Command Cen
 - widths 1440, 1280, 1024, 820, 390 and 360;
 - axe WCAG 2.2 A/AA.
 
-**Mutants held by a second layer.** Five server mutants removed a check that a second layer repeats; that layer still refused, which shows the defence in depth holds:
+**Mutants held by a second layer.** Seven server mutants removed a check that a second layer repeats; that layer still refused, which shows the defence in depth holds:
+- the first starting-point check, twice (the re-check before the write still refuses);
 - the locked-version save;
 - President-only approval;
 - video embed hosts;
