@@ -2661,6 +2661,24 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     - PR #10 is not merged until Angelo approves the GO/NO-GO report. After merge + verification: create the real Golden
       Lift Chair Sales Certification as an UNPUBLISHED draft, Samples A and B first, validate editing on desktop and mobile,
       remaining lessons only after approval; all learner-related switches stay OFF.
+    **PR #10 MERGED (Angelo's GO, 12 Oct 2026 16:57 CT; main 01a3fc1 at the reviewed head 1d16e15, checks green).** Live:
+    builder page 200, the builder action answers (404 for an unknown version), only `academy_admin` on, 0 courses, no SQL
+    run; site / Dealer Hub / resources / admin / Report History / MI dashboard 200; Partner 360 dashboard renders;
+    learner API 403; forged token 401.
+    **M3.1 is a REQUIRED milestone (Angelo, 12 Oct 2026 16:57)** before expanding authoring access beyond the President
+    OR publishing the first course: ONE atomic database operation saves a lesson's screens and their product-fact links
+    together (no temporary overwrite, no partial write, no compensating clean-up), with concurrency and rollback tests.
+    Design + plan presented separately; no M3.1 SQL written into a migration or run until he approves.
+    **Until M3.1 is installed, only the President edits Academy content.** Every content write (course, version, module,
+    lesson, draft ↔ review) and every builder write (screens, order, distribution, questions, media incl. uploads, fact
+    links) answers 403 `president_only` for any other administrator (`_academy_builder.js PRESIDENT_ONLY_EDITING`,
+    checked in academy-admin-api before the action); their reads are unchanged and the builder opens read only for them.
+    Publishing, facts, Training Manager roles and credential review keep their own (existing) rules.
+    **First Golden draft authorized (same message):** ONE real unpublished course "Golden Lift Chair Sales Certification",
+    the approved 11 modules / 17 lessons, only Samples A and B populated; no publishing, no unapproved Golden photography,
+    no unverified specifications, no exam questions on unverified facts; no TEST courses or dummy audit history. Then a
+    guided builder acceptance test with Angelo, then an updated launch roadmap. C2, enrollment, certificates and other
+    Academy development need separate approval; the six learner switches stay OFF. Academy ~65%.
   - A1 check 27 and M1 check 43 need EMPTY Academy tables; if records exist in production they FAIL by design — use the
     before/after leftover checks (M2 21, M3 25) and discuss first.
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
