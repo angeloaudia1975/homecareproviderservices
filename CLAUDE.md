@@ -42,6 +42,10 @@ Procedure, every time, before writing:
 Two files were once shipped to the wrong repo (the catalog workspace + its function landed in
 `homecareproviderservicesordering` when the live tool is in `homecareproviderservices`). Never again.
 
+## Standing permission — Claude in Chrome (Angelo, 2026-10-11)
+Angelo gives standing permission to use Claude in Chrome whenever a task needs it, without asking first each time.
+This does not change who runs production SQL: Angelo still runs every migration and write himself.
+
 ## How rules get set (the procedure)
 1. When we agree on a standard, it is **added to this file in the same session** — not
    left in conversation. A rule that isn't written here does not exist.
