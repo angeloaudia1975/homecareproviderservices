@@ -2201,6 +2201,26 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   Ohio Medical, Access4U, AirAvant, Climbing Steps; commission posting stays restricted until approved.
   (7) A practical MI dashboard (report arrivals, missing periods, import status, Ship-To issues, pending approvals); the
   monthly reconciliation is ready on the 15th; late reports keep processing. Intelligence publishing stays OFF.
+- **Phase D work DEPLOYED 2026-10-12 (main b4a6c1d → d6d5731; read-only, no SQL run, no switch changed; MI 78%):**
+  `import_check` (Ship-To Review → "Import check (read-only)"), the Glasgow / specific-address rule, `profile_trial`
+  (mfr-reports-api; GET-only Graph, capture's own inspect/decide, nothing stored), the Manufacturer Intelligence dashboard
+  (`/admin/mi-dashboard.html`, HUBS Sales Data & Analytics; statuses registered / captured by draft / in HCPS only /
+  missing / not due / before capture / not expected), capture rule `ignore_file_name` (inactive until a profile has it).
+  **Rules learned:** a quarantined row in the same manufacturer + month BLOCKS a file even without matching order numbers
+  (the 7 September Strongback rows have blank order numbers — the first live check showed record #8 eligible until this
+  was fixed); every profile reports the PREVIOUS month (Ohio "through August" arrives Sep 21–29); a report due before email
+  capture began is "before capture", never "missing".
+  **Live record #8 check:** ready (6 orders strictly resolved), 7 lines / $2,159.00 / $194.31 at 9% (history rate),
+  MI-1a dry run 6 new / 0 unchanged / 0 changed / 0 retire / 0 cross-lane / 0 collisions / 0 locked months, no rows with
+  these order numbers in any lane, SR032 record #9 registered not imported (caution) → NOT eligible: `quarantined_period`
+  (7 rows, "Strongback Sept Commission Report 2026.csv"). Three orders are $0 lines (7191, 7192, 7196).
+  **Profile trial 1 Oct 2025 → 12 Oct 2026:** Bemis 3 would register (Jun–Aug 2026, resends = copies, 0 exceptions);
+  AirAvant 2 (Jun, Jul) + 1 exception (rep agreement PDF); Access4U 11 (combined months recognised; "Angelo Report.xlsx" a
+  second May file) + 2 exceptions; Ohio 12 (cumulative YTD period + a ZOL SPIFF exception every month → activation sets
+  period = through-month and ignores ZOL SPIFF); Climbing Steps NOT ready (reply threads would each register: 4 for Sep 2025,
+  4 for May 2026; "October 2025.xlsx" fails the file-name rule). Activation SQL `supabase/mi_d_profile_activation.sql`
+  (sha256 5dcbdd9c…88ce; owner only, the 4 reviewed draft rows only, second run refused; registration only, no backfill) —
+  NOT run, awaiting Angelo.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
