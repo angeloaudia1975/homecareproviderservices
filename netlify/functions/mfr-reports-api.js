@@ -280,6 +280,45 @@ exports.handler = async (event) => {
     const code = (String((j && j.message) || "").match(/\bcapture_[a-z_]+/) || ["database_error"])[0];
     return json(/capture_(nothing|cannot)/.test(code) ? 409 : /capture_(reason|actor|bad)/.test(code) ? 422 : 502, { error: code, message: String((j && j.message) || t).slice(0, 300) });
   }
+  // Phase D: READ-ONLY trial of a manufacturer's report profiles over the mailbox history — what activation WOULD register.
+  // GET-only Graph reads; nothing is stored, registered or recorded. Paged by cursor (each call stays inside its budget).
+  if (b.action === "profile_trial") {
+    const slug = clean(b.manufacturer, 80); if (!slug) return json(400, { error: "manufacturer_required" });
+    const from = isDate(b.from) ? b.from : "2025-10-01", to = isDate(b.to) ? b.to : "2026-12-31";
+    const [profiles, srcs, state] = await Promise.all([
+      sbGet(`mfr_report_profiles?manufacturer=eq.${e(slug)}&status=in.(active,draft)&select=id,code,manufacturer,kind,label,status,rules,auto_register&order=id`),
+      sbGetAll(`mfr_sources?manufacturer=eq.${e(slug)}&file_sha256=not.is.null&select=id,kind,file_sha256`, "id"),
+      sbGet("mfr_report_capture_state?select=mailbox&order=mailbox&limit=1")]);
+    if (!profiles.length) return json(404, { error: "no_profiles", message: "This manufacturer has no report profile." });
+    const known = {}; for (const s2 of srcs) known[s2.file_sha256] = { id: s2.id, kind: s2.kind };
+    const { liveDeps } = require("./_report_capture.js");
+    const T = require("./_profile_trial.js");
+    let r; try { r = await T.trial({ slug, profiles, mailbox: (state[0] || {}).mailbox, from, to, cursor: b.cursor, seen: Array.isArray(b.seen) ? b.seen.slice(0, 2000) : [],
+      budget_ms: b.budget_ms, known }, liveDeps(process.env)); }
+    catch (x) { return json(503, { error: "trial_failed", message: String(x.message || x).slice(0, 300), throttled: !!x.throttled }); }
+    return json(200, { ok: true, read_only: true, manufacturer: slug, window: [from, to],
+      profiles: profiles.map(p => ({ code: p.code, kind: p.kind, status: p.status, label: p.label, expected: (p.rules || {}).expected || null })), ...r });
+  }
+
+  // Phase D: the Manufacturer Intelligence dashboard (read-only) — arrivals, missing periods, import status, pending work,
+  // and the monthly reconciliation (previous month, ready on the 15th; late reports keep processing).
+  if (b.action === "dashboard") {
+    try {
+      const CC = require("./_commission_coverage.js"), D = require("./_mi_dashboard.js");
+      const [profiles, sources, items, mfrs, cfg, rows] = await Promise.all([
+        sbGet("mfr_report_profiles?select=id,code,manufacturer,kind,label,status,rules&order=manufacturer,id"),
+        sbGetAll("mfr_sources?kind=in.(sales_export,commission_statement,dealer_report)&select=id,manufacturer,kind,title,status,received_date,report_period_start,report_period_end,import_batch_id,publication_status", "id"),
+        sbGetAll("mfr_report_items?select=id,manufacturer,kind,state,attention,resolved_at,period_start,period_end,profile_id", "id"),
+        sbGet("manufacturers?select=slug,name"),
+        sbGet("app_settings?key=eq.commission_config&select=value"),
+        sbGetAll("monthly_sales?select=id,manufacturer,period,source,external_ref,line_type,amount,commission,billed_amount", "id")]);
+      const v = cfg && cfg[0] && cfg[0].value; const ssr = v && Array.isArray(v.statement_sales_reports) ? v.statement_sales_reports : CC.DEFAULT_STATEMENT_SALES_REPORTS;
+      const cov = CC.coverage(rows, { statement_sales_reports: ssr }).detail;
+      const shipto = { held: Math.max(0, parseInt(b.shipto_held, 10) || 0), needs_review: Math.max(0, parseInt(b.shipto_needs_review, 10) || 0) };
+      return json(200, Object.assign({ ok: true, read_only: true }, D.build({ today: today(), months: b.months, profiles, sources, items, coverage: cov, manufacturers: mfrs, shipto })));
+    } catch (x) { return json(503, { error: "unreadable", message: "The dashboard could not read its data just now: " + String(x.message || x).slice(0, 200) }); }
+  }
+
   if (b.action === "capture_now") {
     // A person may run the hourly capture now (e.g. to verify the rollout). Same switch, same lease, same rules.
     if (!(await flagOn(sbGet, "mi_report_capture"))) return json(403, { error: "capture_switch_off", message: "Automatic report capture is switched off." });

@@ -199,6 +199,16 @@ window.HUB_GUIDE = {
     connects: ["Reads accepted reports from Manufacturer Report History", "Matches against Dealer Manager records and Sales Report Import history — read-only", "Dealer 360 display and suggestions are later, separately approved units"],
     problems: "Turns a manufacturer's monthly PDF into dealer-level intelligence without letting the manufacturer's numbers or contacts leak into HCPS's own records.",
   },
+  "Manufacturer Intelligence": {
+    tagline: "One page for every manufacturer report: what arrived, what is missing, what is in HCPS and what waits for a person.",
+    what: "The management view of the manufacturer report automation. For each manufacturer and month it shows whether the report arrived and was registered, whether its commission data is in HCPS, and whether it is missing — a report is missing only when its profile expects it monthly and its due date has passed. The monthly reconciliation covers last month and is ready on the 15th; reports that arrive later are marked late and keep processing. Read-only: nothing is imported or published from this page.",
+    features: ["Monthly reconciliation (ready on the 15th)", "Report arrivals by month and report type", "Missing only when a profile expects it", "Late reports flagged, still processed", "Waiting-for-a-person counts with links", "Ship-To review counts"],
+    data: "Reads mfr_report_profiles, mfr_sources (report records), mfr_report_items (captured email), monthly_sales commission coverage and the Ship-To review queue.",
+    actions: ["See what is missing this month", "Open the item that needs a person"],
+    reports: ["Monthly reconciliation", "Arrivals by month", "Pending approvals"],
+    connects: ["Manufacturer Report History (Inbox, Needs attention, register)", "Ship-To Review", "Commission Report Import coverage"],
+    problems: "Replaces chasing manufacturer reports by memory: missing, late and stuck reports show up on their own.",
+  },
   "Ship-To Review": {
     tagline: "Every order in a manufacturer's order report goes to the right HCPS location — or waits for a person. Never the headquarters by default.",
     what: "Phase C of the manufacturer report automation. Reads each registered order export from its stored original (SHA-256 checked), groups the lines into orders and decides each order's HCPS branch with the strict rules: a verified mapping, a saved ZIP assignment, a single-location dealer, or a ship-to ZIP / street that matches exactly one branch. Anything weaker — a shared ZIP, a new location, a billing address only, no ship-to, lines that disagree, no dealer match — goes to Needs Ship-To Review. A person picks the location (and fills in missing ship-to details); Save & Continue stores a versioned correction beside the manufacturer's file, can remember the ship-to for future orders, revalidates the report and moves to the next order. A report is Ready only when every order has a branch; until then it is held as a whole. Nothing here imports sales or commissions.",
