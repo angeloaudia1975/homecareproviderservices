@@ -148,7 +148,8 @@ async function inspect(buf, name, deps) {
     if (att.format === "csv") { try { att.sheets = INV.sheetSignals(buf, true).slice(0, 1); att.rows = Math.max(0, INV.countLines(buf) - 1); att.date_range = dateRange(buf, true); }
       catch (e) { att.unreadable = String(e.message || e).slice(0, 160); } }
   } else att.format = kindOf;
-  att.suggested = INV.classifyContent(att) || INV.classifyName(name);
+  // A file NAMED as a price list / rate sheet is a price list whatever its columns hold (a rate sheet has commission columns).
+  att.suggested = INV.classifyName(name) === "price_list" ? "price_list" : (INV.classifyContent(att) || INV.classifyName(name));
   return att;
 }
 

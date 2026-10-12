@@ -220,8 +220,10 @@ function classifyContent(a) {
 function classifyName(text) {
   const t = String(text || "");
   if (/dealer (overview|report)|report[_ ]overview/i.test(t)) return "dealer_report";
+  // A price list / rate sheet is never a statement, even when its name also says "commission" ("2026 PriceList Commission
+  // Rate IREP.xlsx", "Ovation Pricing Commission Rates 2024") — Phase D profile trial, 2026-10-12.
+  if (/price ?list|pricing|pricelist|commi?ss?ion rates?\b/i.test(t)) return "price_list";
   if (/commi?ss?ion|\bcomms?\b/i.test(t)) return "commission_statement";   // "Commision", "March Comms"
-  if (/price ?list|pricing|pricelist/i.test(t)) return "price_list";
   if (/invoice|statement of account|remittance/i.test(t)) return "other";
   if (/\border|sales (report|summary)|monthly sales|\bytd\b/i.test(t)) return "sales_export";
   return null;

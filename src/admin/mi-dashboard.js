@@ -41,11 +41,13 @@
       ${k("Draft profiles (not automatic yet)", P.draft_profiles, "")}</div>`;
     h += `<h2 class="sec">Monthly reconciliation — ${esc(LONGMON(R.month))}</h2>`;
     h += `<div class="note">${R.ready ? `<b>Ready</b> since ${esc(DAY(R.ready_on))}.` : `<b>Draft</b> — becomes ready on ${esc(DAY(R.ready_on))}.`} Reports that arrive after their due date are marked late and keep processing.${R.late ? ` <b>${R.late} late.</b>` : ""}</div>`;
+    const S = R.summary || {};
+    if (R.summary) h += `<div class="kpis">${k("Received", S.received + (S.received_late ? ` <span class="hint">(${S.received_late} late)</span>` : ""), "")}${k("Not received — overdue", S.overdue, "")}${k("Not due yet", S.not_due, "")}${k("In HCPS by hand (no file)", S.in_hcps_only, "")}${k("Received, not imported", S.registered_not_imported, "/admin/report-history.html")}${k("Report email needing attention", S.open_exceptions, "/admin/report-history.html")}</div>`;
     const win = e => e ? `${esc(MON(e.month).split(" ")[0])} ${e.from === e.to ? e.from : e.from + "–" + e.to}` : "—";
-    h += R.rows.length ? `<div class="scroll"><table class="cal"><thead><tr><th>Manufacturer</th><th>Statement</th><th>Expected</th><th>Due</th><th>Arrived</th><th>Record</th><th>Commission data in HCPS</th></tr></thead><tbody>${R.rows.map(r =>
+    h += R.rows.length ? `<div class="scroll"><table class="cal"><thead><tr><th>Manufacturer</th><th>Statement</th><th>Expected</th><th>Due</th><th>Arrived</th><th>Record</th><th>Commission data in HCPS</th><th>Needs attention</th></tr></thead><tbody>${R.rows.map(r =>
       `<tr><td>${esc(r.name)}${r.draft_profile ? ` <span class="hint">(draft profile)</span>` : ""}</td><td>${badge(r.status, r.late ? " · late" : "")}</td><td>${win(r.expected)}</td><td>${esc(DAY(r.due))}</td>
-        <td>${r.arrived ? esc(DAY(r.arrived)) + (r.days_late ? ` <span class="s s-missing">${r.days_late} day${r.days_late === 1 ? "" : "s"} late</span>` : "") : "—"}</td>
-        <td>${r.records.map(x => `#${x.id} ${esc(x.status)}${x.imported ? " · imported" : " · not imported"}`).join("<br>") || "—"}</td><td>${esc(r.coverage || "—")}</td></tr>`).join("")}</tbody></table></div>`
+        <td>${r.arrived ? esc(DAY(r.arrived)) + (r.days_late ? ` <span class="s s-missing">${r.days_late} day${r.days_late === 1 ? "" : "s"} late</span>` : "") : (r.days_overdue ? `<span class="s s-missing">not received · ${r.days_overdue} day${r.days_overdue === 1 ? "" : "s"} late</span>` : "—")}</td>
+        <td>${r.records.map(x => `#${x.id} ${esc(x.status)}${x.imported ? " · imported" : " · not imported"}`).join("<br>") || "—"}</td><td>${esc(r.coverage || "—")}</td><td>${r.exceptions ? `<a href="/admin/report-history.html">${r.exceptions} open</a>` : "—"}</td></tr>`).join("")}</tbody></table></div>`
       : `<div class="empty">No manufacturer has a monthly statement profile yet.</div>`;
     h += `<h2 class="sec">Report arrivals by month</h2><div class="scroll"><table class="cal"><thead><tr><th>Manufacturer / report</th>${d.months.map(m => `<th>${esc(MON(m))}</th>`).join("")}</tr></thead><tbody>`;
     for (const g of d.grid) for (const kd of g.kinds) {

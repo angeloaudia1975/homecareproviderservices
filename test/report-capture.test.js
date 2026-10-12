@@ -410,6 +410,17 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
     assert.strictEqual(P(cm, { name: 'Homecare Providers Oct 25 Commission.xls' }, msg).start, '2025-10-01');
     assert.strictEqual(P(cm, { name: 'Homecare Providers March 2026 Commission.xlsx' }, msg).end, '2026-03-31');
     assert.strictEqual(P({ rules: { period: { order: ['file_name', 'subject'] } } }, { name: 'Homecare Providers Jan 2026 Commission.xlsx' }, msg).end, '2026-02-28', 'without the rule the subject decides (unchanged)');
+    // A price list whose name also says "Commission Rate" is never a statement and never an exception (Ovation, 2026-09-01).
+    const INV = require('../netlify/functions/_report_inventory.js');
+    const nm = '2026 PriceList  Commission Rate IREP.xlsx';
+    const ov = [{ id: 7, code: 'ovation-medical:commission_statement:summary', status: 'active', auto_register: true, manufacturer: 'ovation-medical', kind: 'commission_statement',
+      rules: { senders: { domains: ['ovationmed.com'] }, formats: ['xlsx'], file_name: '^\\d{4}\\s.*summary', period: { order: ['file_name_yymm', 'subject'] } } }];
+    const dv = RC._internal.decide({ name: nm, format: 'xlsx', suggested: INV._internal ? INV._internal.classifyName(nm) : 'price_list' },
+      { from_address: 'x@ovationmed.com', subject: 'RE: Ovation Medical Item Numbers Seem Invalid', received_at: '2026-09-01T14:00:00Z' }, ov, { slug: 'ovation-medical' });
+    assert.deepStrictEqual([dv.outcome, dv.attention], ['classified', undefined]);
+    const ds = RC._internal.decide({ name: '2606 Independent Monthly Sales Summary - Homecare Providers.xlsx', format: 'xlsx', suggested: 'commission_statement' },
+      { from_address: 'x@ovationmed.com', subject: '2606 June Comm Summary', received_at: '2026-07-13T14:00:00Z' }, ov, { slug: 'ovation-medical' });
+    assert.deepStrictEqual([ds.outcome, ds.period.start], ['register', '2026-06-01']);
   });
   await t('first live run (2026-10-11): an order export takes its period from the order date, never the payment-due date', async () => {
     const csv = Buffer.from('Number,Status,Total,"Payment Due Date","Created Date","Line Item Sku","Ship By Date","Close Date"\n' +

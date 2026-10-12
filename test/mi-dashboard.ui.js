@@ -6,7 +6,7 @@ let pw; try { pw = require(process.env.PLAYWRIGHT || 'playwright'); } catch (e) 
 const D = require('../netlify/functions/_mi_dashboard.js');
 const ADMIN = path.join(__dirname, '..', 'src', 'admin');
 const P = (id, slug, kind, status, expected) => ({ id, code: `${slug}:${kind}`, manufacturer: slug, kind, status, rules: { expected } });
-const data = D.build({ today: '2026-10-20', months: 6, manufacturers: [{ slug: 'strongback-mobility', name: 'Strongback Mobility' }, { slug: 'bemis', name: 'Bemis' }, { slug: 'complete-medical-supplies', name: 'Complete Medical Supplies (a long manufacturer name)' }],
+const data = D.build({ today: '2026-10-20', capture_start: '2026-09-01', months: 6, manufacturers: [{ slug: 'strongback-mobility', name: 'Strongback Mobility' }, { slug: 'bemis', name: 'Bemis' }, { slug: 'complete-medical-supplies', name: 'Complete Medical Supplies (a long manufacturer name)' }],
   profiles: [P(1, 'strongback-mobility', 'commission_statement', 'active', { cadence: 'monthly', days: [2, 7] }), P(2, 'strongback-mobility', 'sales_export', 'active', { cadence: 'on_request' }),
     P(3, 'strongback-mobility', 'dealer_report', 'active', { cadence: 'monthly', days: [6, 12] }), P(4, 'bemis', 'commission_statement', 'draft', { cadence: 'monthly', days: [17, 17] }),
     P(5, 'complete-medical-supplies', 'commission_statement', 'draft', { cadence: 'irregular' })],
@@ -51,6 +51,7 @@ const fails = []; const check = (c, w) => { if (!c) { fails.push(w); console.log
     check(over <= 0, `${w}px: no horizontal page scroll (${over}px)`);
     check(/quarantined September 2026 Strongback rows/.test(txt) && /Your choices/.test(txt) && /order 7139/.test(txt), `${w}px: quarantine review card shown (read only)`);
     check(/Expected/.test(txt) && /Arrived/.test(txt), `${w}px: reconciliation shows expected window and arrival`);
+    check(/Not received — overdue/.test(txt) && /not received · 3 days late/.test(txt) && /Needs attention/.test(txt), `${w}px: overdue report counted in days; summary and attention column`);
     await page.close();
   }
   check(calls.every(([p, a]) => (p.endsWith('mfr-reports-api') && a === 'dashboard') || (p.endsWith('shipto-review-api') && (a === 'queue' || a === 'quarantine_review')) || !/mfr-reports|shipto/.test(p)), 'read-only: only dashboard + queue are called');

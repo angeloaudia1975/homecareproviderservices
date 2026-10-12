@@ -71,5 +71,17 @@ t('before capture began: an overdue report is "before capture", not missing; reg
   assert.strictEqual(cellOf(r, 'strongback-mobility', 'commission_statement', '2026-09').status, 'registered');
 });
 
+t('reconciliation: a report not received after its window is overdue (days counted); open exceptions per manufacturer; summary', () => {
+  const its = items.concat([{ id: 9, manufacturer: 'bemis', state: 'exception', attention: 'period_unknown', resolved_at: null }]);
+  const r = D.build({ today: '2026-10-22', months: 3, profiles, sources, items: its, coverage, manufacturers: [], shipto: {}, capture_start: '2026-10-01' });
+  const b = r.reconciliation.rows.find(x => x.slug === 'bemis');
+  assert.deepStrictEqual([b.status, b.days_overdue, b.exceptions], ['missing', 5, 1], 'due Oct 17, today Oct 22');
+  const sb = r.reconciliation.rows.find(x => x.slug === 'strongback-mobility');
+  assert.deepStrictEqual([sb.status, sb.days_overdue, sb.imported, sb.exceptions], ['registered', 0, false, 0]);
+  assert.deepStrictEqual([r.reconciliation.summary.received, r.reconciliation.summary.overdue, r.reconciliation.summary.registered_not_imported, r.reconciliation.summary.open_exceptions, r.reconciliation.summary.in_hcps_only], [1, 1, 1, 2, 1]);
+  const early = D.build({ today: '2026-10-16', months: 3, profiles, sources, items, coverage, manufacturers: [], shipto: {}, capture_start: '2026-10-01' });
+  assert.deepStrictEqual([early.reconciliation.rows.find(x => x.slug === 'bemis').status, early.reconciliation.rows.find(x => x.slug === 'bemis').days_overdue], ['not_due', 0], 'inside its window: not late yet');
+});
+
 console.log(`\nmi-dashboard: ${pass} passed, ${fail} failed`);
 process.exitCode = fail ? 1 : 0;
