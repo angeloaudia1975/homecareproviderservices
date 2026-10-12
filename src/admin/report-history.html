@@ -28,7 +28,29 @@
  .err{color:#b42323;font-size:13px;margin-top:8px}.okm{color:#1f7a44;font-size:13px;margin-top:8px}
  .empty{border:1px dashed var(--line);border-radius:10px;padding:16px;color:var(--gray);font-size:13px;background:#fafbfc}
  button.go,.btn{min-height:40px}
+ .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
+ .tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer;min-height:40px;font-family:inherit;color:var(--navy)}
+ .tabs button[aria-selected="true"]{background:var(--navy);color:#fff;border-color:var(--navy)}
+ .tabs .n{display:inline-block;min-width:18px;border-radius:999px;background:#b42323;color:#fff;font-size:11px;padding:1px 6px;margin-left:6px}
+ .cap{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:6px 14px;font-size:12.5px}
+ .cap>div{min-width:0;overflow-wrap:anywhere}
+ .rep a.go{display:inline-flex;align-items:center;text-decoration:none;font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:8px;border:1px solid var(--line);color:var(--navy);background:#f5f8fc;min-height:36px;box-sizing:border-box}
+ .cap b{color:var(--gray);font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;display:block}
+ .filters input{padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:13px}
+ .it{border-top:1px dashed var(--line);padding:8px 0 4px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;font-size:12.5px}
+ .it .fn{font-weight:700;color:var(--navy2);overflow-wrap:anywhere}
+ .it .why{grid-column:1/-1;color:#7a4a00;background:#fff8ea;border-radius:8px;padding:6px 8px}
+ .it .res{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+ .it .res input{flex:1 1 220px;padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:13px}
+ .st-registered,.st-linked{background:#e9f7ef;color:#1f7a44;border-color:#a9dcbc}.st-classified{background:#f0f2f5;color:#55606c;border-color:#d5dbe2}
+ .st-exception{background:#fdecec;color:#b42323;border-color:#f3b4b4}.st-ignored{background:#f0f2f5;color:#8a939d}.st-discovered{background:#fff7e0;color:#8a5a00}
+ .st-processed{background:#e8f0fb;color:#1f4f8f}
  @media(max-width:760px){
+  .tabs button{min-height:44px}
+  .rep a.go{min-height:44px}
+  .it{grid-template-columns:minmax(0,1fr)}
+  .it>div:nth-child(2){display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .filters input,.it .res input{font-size:16px;min-height:44px}
   .form select,.form input,.form textarea,.filters select,.rep .acts input{font-size:16px;min-height:44px}
   button.go,.btn{min-height:44px}
   .wrap{padding:14px 14px 50px}
@@ -48,6 +70,26 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
 let TOKEN=HCPS.token(), DATA=null, FILTER={mfr:"",kind:""}, BUSY=false, MSG={};
+let TAB=(location.hash||"").replace("#","")||"register"; if(["register","inbox","attention"].indexOf(TAB)<0) TAB="register";
+let CAP=null, BOX=null, IF={mfr:"",status:"",period:"",q:"",days:"120"}, IMSG={};
+const ST_LABEL={discovered:"Being captured",classified:"Recognised — not registered",registered:"Registered",linked:"Linked to an existing record",
+  exception:"Needs attention",ignored:"Not a report",processed:"Processed by its importer"};
+const ATT_LABEL={unknown_sender:"Unknown sender — not a manufacturer HCPS has set up",unidentified_type:"Report type not recognised for this manufacturer",
+  format_changed:"The file no longer matches its approved format",ambiguous_profile:"Matches more than one report type",period_unknown:"The report does not state its period",
+  period_conflict:"File name and report text give different periods",duplicate_conflict:"This exact file is already registered as another kind",
+  correction_needs_decision:"A different report for a period that already has one — a correction needs a decision",
+  possible_correction:"Another report already covers this period — check it is not a correction",attachment_failed:"The attachment could not be read from Outlook",
+  listing_failed:"The email's attachment list could not be read",too_large:"Too large to capture automatically",unreadable:"The file could not be read",
+  storage_failed:"The original could not be stored",register_failed:"Registration failed",content_changed:"The Outlook attachment now holds a different file",
+  cloud_attachment:"An attached email or a cloud link — capture it by hand"};
+function tabs(){ const n=CAP&&CAP.needs_attention||0;
+  return `<div class="tabs" role="tablist">${[["register","Report register"],["inbox","Inbox"],["attention","Needs attention"]].map(([k,l])=>
+    `<button role="tab" aria-selected="${TAB===k}" onclick="go('${k}')">${l}${k==="attention"&&n?`<span class="n">${n}</span>`:""}</button>`).join("")}</div>`; }
+async function go(k){ TAB=k; try{ history.replaceState(null,"","#"+k); }catch(e){} if(k!=="register"){ BOX=null; render(); await loadBox(); } render(); }
+async function loadBox(){
+  const r=await api(Object.assign({action:TAB==="attention"?"attention":"inbox"},{manufacturer:IF.mfr,status:IF.status,period:IF.period,q:IF.q,days:IF.days}));
+  BOX=r.status===200?r.body:{error:(r.body&&(r.body.message||r.body.error))||("HTTP "+r.status)};
+}
 const KIND_LABEL={sales_export:"Order / sales export",commission_statement:"Commission statement",dealer_report:"Dealer-intelligence report"};
 const KIND_HELP={sales_export:"Transactions (orders, lines). Loaded later through Sales Report Import.",
   commission_statement:"The manufacturer's commission statement. Loaded later through Commission Report Import.",
@@ -80,17 +122,21 @@ async function boot(){
   if(r.status===401){ gate(); return; }
   if(r.status===403){ $("#body").innerHTML=`<div class="empty">Manufacturer report history is for President / Admin.</div>`; return; }
   if(r.status!==200){ $("#body").innerHTML=`<div class="empty err">${esc((r.body&&r.body.message)||"Report history could not be read just now.")} Nothing is shown rather than an incomplete list.</div>`; return; }
-  DATA=r.body; render();
+  DATA=r.body;
+  const c=await api({action:"capture_status"}); CAP=c.status===200?c.body:{unavailable:true,message:(c.body&&(c.body.message||c.body.error))||""};
+  if(TAB!=="register") await loadBox();
+  render();
 }
 function mfrName(slug){ const m=(DATA.manufacturers||[]).find(x=>x.slug===slug); return m?m.name:slug; }
 
-function render(){
+function render(){ if(TAB==="register") return renderRegister(); return renderInbox(); }
+function renderRegister(){
   const mf=(DATA.manufacturers||[]).slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   const mopts=mf.map(m=>`<option value="${esc(m.slug)}">${esc(m.name)}</option>`).join("");
   const reps=(DATA.reports||[]).filter(r=>(!FILTER.mfr||r.manufacturer===FILTER.mfr)&&(!FILTER.kind||r.kind===FILTER.kind));
-  $("#body").innerHTML=`
+  $("#body").innerHTML=`${tabs()}
   <div class="note">Separate on purpose: <b>received / accepted</b> says whether HCPS accepts the file as the manufacturer's report; <b>publication</b> (dealer reports only) says whether its intelligence is shown in Dealer 360. Accepting never publishes. A dealer report's intelligence is read and matched on the <a href="/admin/dealer-intel.html">Dealer Intelligence Import</a> page; publishing it to Dealer 360 is a separate step that is not enabled — so nothing here reaches Dealer 360, reps, tasks, deals, sales or commissions.<br><br>
-  <b>Not automatic yet:</b> files loaded through Sales Report Import or Commission Report Import are not registered here — only files registered on this page are listed. Several different exports or statements may cover the same period; only dealer-intelligence reports are one per period. A correction replaces one named record for the <b>same</b> period.</div>
+  <b>From email:</b> when automatic capture is on, report attachments from manufacturers' emails are registered here by <b>system:report-capture</b> — see the Inbox. Files loaded through Sales Report Import or Commission Report Import are not registered automatically. Several different exports or statements may cover the same period; only dealer-intelligence reports are one per period. A correction replaces one named record for the <b>same</b> period.</div>
   <div class="card"><h2>Register a report file</h2>
     <div class="form" id="regform">
       <div><label for="r_mfr">Manufacturer</label><select id="r_mfr" onchange="refreshSupersede()"><option value="">Choose…</option>${mopts}</select></div>
@@ -120,6 +166,77 @@ function render(){
   $("#r_kind").addEventListener("change",()=>{ $("#r_kindhelp").textContent=KIND_HELP[$("#r_kind").value]||""; });
   const clr=()=>{ const o=$("#r_msg"); if(o&&o.className==="err"){ o.textContent=""; o.className=""; } };
   $("#regform").addEventListener("input",clr); $("#regform").addEventListener("change",clr);
+}
+function capCard(){
+  if(!CAP||CAP.unavailable) return `<div class="note">Automatic capture is not installed yet${CAP&&CAP.message?" ("+esc(CAP.message)+")":""}. Files can still be registered by hand on the Report register tab.</div>`;
+  const s=(CAP.state||[])[0]||{}, last=(CAP.runs||[])[0];
+  const c=CAP.counts||{};
+  return `<div class="card"><h2>Automatic capture from Outlook</h2><div class="cap">
+    <div><b>Switch</b>${CAP.switch_on?"On — runs every hour":"Off — nothing is captured"}</div>
+    <div><b>Mailbox</b>${esc(s.mailbox||"—")}</div>
+    <div><b>Captured up to</b>${esc(fmtWhen(s.checkpoint_at))}</div>
+    <div><b>Last run</b>${last?esc(fmtWhen(last.started_at))+(last.error?" — error":last.complete?" — complete":" — continues next run"):"never"}</div>
+    <div><b>Registered / linked</b>${(c.registered||0)} / ${(c.linked||0)}</div>
+    <div><b>Recognised, not registered</b>${c.classified||0}</div>
+    <div><b>Needs attention</b>${CAP.needs_attention||0}</div>
+    <div><b>Active profiles</b>${(CAP.profiles||[]).filter(p=>p.status==="active").map(p=>esc(mfrName(p.manufacturer))+": "+esc(p.label)).join("<br>")||"none"}</div>
+  </div>${last&&last.error?`<div class="err">${esc(last.error)}</div>`:""}
+  <details class="ev"><summary>Report profiles (${(CAP.profiles||[]).length}) — draft profiles are recognised and shown, never registered</summary>
+    ${(CAP.profiles||[]).map(p=>`<div>${esc(mfrName(p.manufacturer))} · ${esc(p.label)} · <b>${esc(p.status)}</b>${p.auto_register?" · registers automatically":""}${p.note?` — <span class="hint">${esc(p.note)}</span>`:""}</div>`).join("")}</details></div>`;
+}
+function itemRow(m,i){
+  const per=i.period_start?(fmtMonth(i.period_start)===fmtMonth(i.period_end)?fmtMonth(i.period_start):fmtMonth(i.period_start)+" – "+fmtMonth(i.period_end)):"—";
+  const name=i.part==="body"?"Email body (no attachment)":i.part==="listing"?"Attachment list":(i.file_name||"—");
+  const open=i.attention&&!i.resolved_at; const k=m.id+"_"+i.id; const msg=IMSG[i.id]||"";
+  return `<div class="it"><div><div class="fn">${esc(name)}</div>
+      <div class="hint">${i.kind?esc(KIND_LABEL[i.kind]||i.kind):(i.suggested?esc(i.suggested.replace(/_/g," ")):"")}${i.period_start?" · "+esc(per):""}${i.period_basis?` <span title="where the period came from">(${esc(i.period_basis.replace(/_/g," "))})</span>`:""}${i.size?" · "+esc(size(i.size)):""}${i.sha256?` · <span class="mono" title="${esc(i.sha256)}">${esc(i.sha256.slice(0,12))}…</span>`:""}</div></div>
+    <div><span class="chip st-${esc(i.state)}">${esc(ST_LABEL[i.state]||i.state)}</span>${i.source?` <button class="go ghost sm" onclick="download(${i.source.id})">Original · record ${i.source.id}</button>`:""}</div>
+    ${i.attention?`<div class="why"><b>${esc(ATT_LABEL[i.attention]||i.attention)}</b>${i.attention_detail?" — "+esc(i.attention_detail):""}${i.retryable&&i.next_retry_at?` · next automatic try ${esc(fmtWhen(i.next_retry_at))}`:""}${i.resolved_at?` · ${esc(i.resolution)} by ${esc(i.resolved_by)}: ${esc(i.resolution_reason||"")}`:""}</div>`:""}
+    ${open||(i.state==="classified"&&TAB==="attention")?`<div class="res"><input id="why_${k}" maxlength="1000" placeholder="Reason (kept in the audit trail)">
+      <button class="go sm" onclick="resolve(${i.id},'retry','${k}')">Try again</button>
+      <button class="go ghost sm" onclick="resolve(${i.id},'dismiss','${k}')">Dismiss</button>
+      <button class="go ghost sm" onclick="resolve(${i.id},'ignore','${k}')">Not a report</button></div>`:""}
+    ${msg?`<div class="${/^ok:/.test(msg)?"okm":"err"}" style="grid-column:1/-1">${esc(msg.replace(/^(ok|er):/,""))}</div>`:""}
+  </div>`;
+}
+function msgCard(m){
+  return `<div class="rep"><div class="hd"><div><div class="ttl">${esc(m.subject||"(no subject)")}</div>
+      <div class="hint">${esc(m.manufacturer?mfrName(m.manufacturer):"Unknown sender")} · ${esc(m.from_name||"")} &lt;${esc(m.from_address||"")}&gt; · received ${esc(fmtWhen(m.received_at))}${m.folder?" · "+esc(m.folder):""}</div></div>
+    ${m.web_link?`<a class="go ghost sm" href="${esc(m.web_link)}" target="_blank" rel="noopener">Open in Outlook</a>`:""}</div>
+    ${(m.items||[]).map(i=>itemRow(m,i)).join("")||`<div class="hint">No report attachments.</div>`}
+    <div class="hint" style="margin-top:6px">Outlook message id <span class="mono">${esc(String(m.internet_message_id||"").slice(0,80))}</span></div></div>`;
+}
+function renderInbox(){
+  const mf=((DATA&&DATA.manufacturers)||[]).slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  const att=TAB==="attention";
+  const list=BOX&&BOX.messages||[];
+  $("#body").innerHTML=`${tabs()}${capCard()}
+  <div class="card"><h2>${att?"Needs attention":"Inbox — manufacturer report emails"}</h2>
+    <div class="note">${att?"Only what the capture could not settle on its own: unknown senders (e.g. Rose Healthcare, Stellor Medical until you decide), report types without a profile, changed formats, corrections, and files that could not be read. Routine verified registrations never appear here.":"Every manufacturer report email the capture has seen, each attachment on its own line: registered, linked to an existing record, recognised under a draft profile (not registered), or waiting for you. Nothing here imports sales or commissions or publishes anything."}</div>
+    <div class="filters">
+      <select id="i_mfr" aria-label="Manufacturer"><option value="">All manufacturers</option>${mf.map(m=>`<option value="${esc(m.slug)}">${esc(m.name)}</option>`).join("")}</select>
+      ${att?"":`<select id="i_st" aria-label="Status"><option value="">Any status</option>${Object.keys(ST_LABEL).map(k=>`<option value="${k}">${esc(ST_LABEL[k])}</option>`).join("")}<option value="attention">Needs attention</option></select>`}
+      <input id="i_per" type="month" aria-label="Reporting period">
+      <input id="i_q" type="search" placeholder="Search subject, sender, file" aria-label="Search">
+      ${att?"":`<select id="i_days" aria-label="Received"><option value="30">Last 30 days</option><option value="120">Last 120 days</option><option value="400">Last 400 days</option></select>`}
+      <button class="go sm" onclick="applyIF()">Show</button>
+      <span class="hint">${BOX&&!BOX.error?`${BOX.total} email(s)`:""}</span>
+    </div>
+    ${!BOX?`<div class="msg">Loading…</div>`:BOX.error?`<div class="empty err">${esc(BOX.error)} — nothing is shown rather than an incomplete list.</div>`:
+      list.length?list.map(msgCard).join(""):`<div class="empty">${att?"Nothing needs attention.":"No manufacturer report email captured"+(IF.mfr||IF.status||IF.period||IF.q?" for this filter":"")+" yet."}</div>`}
+  </div>`;
+  $("#i_mfr").value=IF.mfr; if($("#i_st")) $("#i_st").value=IF.status; $("#i_per").value=IF.period; $("#i_q").value=IF.q; if($("#i_days")) $("#i_days").value=IF.days;
+  $("#i_q").addEventListener("keydown",e=>{ if(e.key==="Enter") applyIF(); });
+}
+async function applyIF(){ IF={mfr:$("#i_mfr").value,status:$("#i_st")?$("#i_st").value:"",period:$("#i_per").value,q:$("#i_q").value.trim(),days:$("#i_days")?$("#i_days").value:IF.days};
+  BOX=null; render(); await loadBox(); render(); }
+async function resolve(id,decision,k){
+  const reason=(($("#why_"+k)||{}).value||"").trim();
+  if(reason.length<3){ IMSG[id]="er:Say why first — it is kept in the audit trail."; render(); return; }
+  const r=await api({action:"resolve",item_id:id,decision,reason});
+  IMSG[id]=r.status===200?"ok:"+({retry:"Queued — the next capture run tries it again.",dismiss:"Dismissed.",ignore:"Marked as not a report."}[decision]):"er:"+((r.body&&(r.body.message||r.body.error))||"Refused");
+  const c=await api({action:"capture_status"}); if(c.status===200) CAP=c.body;
+  await loadBox(); render();
 }
 function card(r){
   const by=id=>(DATA.reports||[]).find(x=>x.id===id);

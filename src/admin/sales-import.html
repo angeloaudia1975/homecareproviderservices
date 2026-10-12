@@ -240,7 +240,7 @@ function renderPreview(){
     <div class="kpi ${p.unmatched_lines?'w':''}"><div class="l">Unmatched lines</div><div class="v">${p.unmatched_lines}</div></div>
     <div class="kpi"><div class="l">Total sales</div><div class="v">${money(p.total_sales)}</div></div>
     <div class="kpi g"><div class="l">Commission @ ${Math.round(p.commission_rate*1000)/10}%</div><div class="v">${money(p.total_commission)}</div></div>
-    <div class="kpi"><div class="l">Dealers</div><div class="v">${p.dealers}</div></div>
+    <div class="kpi"><div class="l">Dealers</div><div class="v">${p.dealers!=null?p.dealers:new Set((p.v2&&p.v2.rows||[]).map(r=>r.dealer_id).filter(Boolean)).size||"—"}</div></div>
     ${acctKpi}
   </div>`;
   const pd=(p.per_dealer||[]).length?`<div class="step"><h3>By dealer branch</h3><div style="max-height:340px;overflow:auto"><table><thead><tr><th>Dealer / branch</th><th class="num">Orders</th><th class="num">Lines</th><th class="num">Sales</th><th class="num">Commission</th></tr></thead><tbody>
@@ -257,8 +257,17 @@ function renderPreview(){
     <div style="margin-top:8px"><button class="btn sm" onclick="doPreview()">Re-check matches</button> <span class="hint">— re-runs the match after your assignments</span></div>
     ${DEALERS.length?"":'<div class="hint warn" style="margin-top:4px">Dealer list didn\'t load — reload and try again.</div>'}</div>`:"";
   const v2=p.v2?v2Panel(p.v2):"";
+  // Ship-To check: lines whose branch rests on a fallback or a guess (the pick itself is unchanged — check it).
+  const SFB={hq_fallback:"No ship-to matched a branch — booked to the headquarters (fallback)",first_fallback:"No ship-to matched — booked to the first family member (fallback)",
+    zip_shared:"The ship-to ZIP belongs to more than one branch — the first was used",city:"Matched on city only",ship_name:"Matched on the ship-to name only"};
+  const sf=p.ship_to_flags&&p.ship_to_flags.lines?`<div class="step"><h3 class="warn">Check the branch (${p.ship_to_flags.lines} line${p.ship_to_flags.lines===1?"":"s"})</h3>
+    <div class="hint" style="margin-bottom:6px">These lines were placed on a branch without reliable ship-to evidence. The import still books them where shown (as it always has); confirm each before importing, or correct the report's ship-to first. Automatic imports will instead hold such orders for review.</div>
+    <div style="max-height:300px;overflow:auto"><table><thead><tr><th>Order</th><th>Company</th><th>Booked to</th><th>Why</th><th>Ship-to in report</th><th class="num">Lines</th></tr></thead><tbody>
+    ${p.ship_to_flags.groups.map(g=>`<tr><td>${esc(g.order||"—")}</td><td>${esc(g.company)}</td><td><a class="link" href="/admin/dealer.html?id=${encodeURIComponent(g.dealer_id||"")}">${esc(g.dealer||"—")}</a></td><td>${esc(SFB[g.basis]||g.basis)}</td><td>${esc([g.ship_city,g.ship_zip].filter(Boolean).join(" ")||"none")}</td><td class="num">${g.lines}</td></tr>`).join("")}
+    </tbody></table></div></div>`:"";
   const blocked=p.v2&&(p.v2.semantic_collisions||[]).length>0;
   $("#out").innerHTML=`<div class="card">${kpis}
+    ${sf}
     ${v2}
     <div style="display:flex;gap:8px;align-items:center;margin:4px 0 2px;flex-wrap:wrap"><button class="btn orange" onclick="doImport()" ${blocked?"disabled":""}>${p.v2?(blocked?"Resolve the order-number collisions first":"Apply this file (one transaction)"):`Load ${p.rows} lines into the platform`}</button><span id="imsg" class="hint" style="margin:0"></span></div>
     ${acctPanel}${pd}${un}</div>`;
