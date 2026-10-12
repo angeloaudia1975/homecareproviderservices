@@ -50,6 +50,9 @@ function build(input) {
     else if (captured.length) status = "captured_draft";
     else if (cov && ["received", "provisional", "partial"].includes(cov.status)) status = "in_hcps_only";
     else if (!monthly) status = "not_expected";
+    // Email capture started on a date (its first checkpoint); a report due before then was never looked for automatically,
+    // so it is "before capture" (the email may well be in Outlook), not missing.
+    else if (input.capture_start && due < input.capture_start) status = "before_capture";
     else if (today > due) status = "missing";
     else status = "not_due";
     const late = recs.filter(s => due && s.received_date && s.received_date > due).map(s => s.id);

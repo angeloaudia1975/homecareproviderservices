@@ -62,5 +62,12 @@ t('pending work: open capture exceptions only, awaiting acceptance / import, Shi
   assert.deepStrictEqual([p.capture_exceptions, p.reports_awaiting_acceptance, p.reports_awaiting_import, p.shipto_orders_needing_review, p.draft_profiles, p.captured_by_draft_profiles], [1, 2, 2, 3, 3, 1]);
 });
 
+t('before capture began: an overdue report is "before capture", not missing; registered / in-HCPS still win', () => {
+  const r = D.build({ today: '2026-10-20', months: 4, profiles, sources, items, coverage, manufacturers: [], shipto: {}, capture_start: '2026-10-01' });
+  assert.strictEqual(cellOf(r, 'strongback-mobility', 'commission_statement', '2026-08').status, 'before_capture', 'due Sep 7, capture began Oct 1');
+  assert.strictEqual(cellOf(r, 'bemis', 'commission_statement', '2026-09').status, 'missing', 'due Oct 17, after capture began');
+  assert.strictEqual(cellOf(r, 'strongback-mobility', 'commission_statement', '2026-09').status, 'registered');
+});
+
 console.log(`\nmi-dashboard: ${pass} passed, ${fail} failed`);
 process.exitCode = fail ? 1 : 0;

@@ -9,7 +9,7 @@
   const LONGMON = m => { const [y, mo] = m.split("-").map(Number); return new Date(Date.UTC(y, mo - 1, 1)).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }); };
   const DAY = d => d ? new Date(d + "T12:00:00Z").toLocaleString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : "";
   const KIND = { commission_statement: "Commission statement", sales_export: "Order / sales export", dealer_report: "Dealer report" };
-  const ST = { registered: "Received", missing: "Missing", captured_draft: "Captured (draft profile)", in_hcps_only: "In HCPS (manual)", not_due: "Not due yet", not_expected: "—" };
+  const ST = { registered: "Received", missing: "Missing", captured_draft: "Captured (draft profile)", in_hcps_only: "In HCPS (manual)", not_due: "Not due yet", not_expected: "—", before_capture: "Before capture" };
 
   async function api(fn, p) {
     const r = await fetch("/.netlify/functions/" + fn, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + TOKEN }, body: JSON.stringify(p) });
@@ -50,7 +50,7 @@
       h += `<tr><td><b>${esc(g.name)}</b><br><span class="hint">${esc(KIND[kd.kind] || kd.kind)}</span></td>${kd.months.map(c =>
         `<td>${badge(c.status, c.late.length ? " · late" : "")}${c.records.length ? `<div class="hint">${c.records.map(x => "#" + x.id + (x.imported ? " imported" : "")).join(", ")}</div>` : ""}${c.coverage && c.status !== "in_hcps_only" ? `<div class="hint">HCPS: ${esc(c.coverage)}</div>` : ""}</td>`).join("")}</tr>`;
     }
-    h += `</tbody></table></div><p class="hint">Missing = a profile expects this report monthly and its due date has passed. On-request and irregular reports are never missing. "In HCPS (manual)" = commission data imported by hand without a registered file.</p>`;
+    h += `</tbody></table></div><p class="hint">Missing = a profile expects this report monthly and its due date has passed. On-request and irregular reports are never missing. "Before capture" = due before automatic email capture began${d.capture_start ? " (" + esc(DAY(d.capture_start)) + ")" : ""} — the email may be in Outlook; it was never looked for automatically. "In HCPS (manual)" = commission data imported by hand without a registered file.</p>`;
     $("#body").innerHTML = h;
   }
   async function boot() {
