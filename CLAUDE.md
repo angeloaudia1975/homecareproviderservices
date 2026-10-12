@@ -2245,8 +2245,15 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   (3) **A classify that ends in an exception (e.g. content changed) never goes on to register** (fixed latent bug).
   (4) **Body-only reports need SQL first:** the register's shape check allowed only pdf/xlsx/xls/csv and the private bucket
   had no message/rfc822, so a body-only report could never register — `supabase/mi_d_body_reports.sql` (sha256 b0aa5872…edd6,
-  NOT run) adds .eml + message/rfc822, nothing else. Climbing Steps stays DRAFT until it is run and a re-run profile trial is
-  clean; its profile rule also needs month-name files ("October 2025.xlsx").
+  NOT run) adds .eml + message/rfc822, nothing else. **RUN by Angelo 2026-10-12 16:58 CT: all 3 checks true** (.eml allowed,
+  bucket private + message/rfc822, no report row changed).
+  **Climbing Steps trial PASSED (2026-10-12, live, read-only):** `profile_trial` now takes `rules_override` {code: rules} for
+  DRAFT profiles only (in memory, never stored; an active or unknown profile → 422). With the month-name file rule: one
+  statement per month — Sep 2025 (body), Oct ("October 2025.xlsx"), Nov, Dec 2025, Jan, Mar (.xlsb — content is a workbook,
+  so it would be stored as .xlsx; predates capture, no backfill), May, Aug 2026 (body); every reply / forward classified;
+  0 exceptions; Feb / Apr / Jun / Jul 2026 not in the mailbox. Activation file `supabase/mi_d_climbing_steps_activation.sql`
+  (sha256 9b1b9d82…5d84; owner only, refused unless the seeded draft, one row, second run refused; registration only) —
+  awaiting Angelo's run. Test: `test/mi-d-cs-activation.pg.test.js` (4).
   (5) **September quarantine review is read-only:** `shipto-review-api quarantine_review` + a card on the MI dashboard: the 7
   rows with source file, reason, blank amount/commission, dealer, matching orders in registered exports (by order number or
   customer), records on file and four choices (keep quarantined — recommended; import record #8 through the Sales Report
