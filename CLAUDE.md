@@ -2221,6 +2221,13 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   4 for May 2026; "October 2025.xlsx" fails the file-name rule). Activation SQL `supabase/mi_d_profile_activation.sql`
   (sha256 5dcbdd9c…88ce; owner only, the 4 reviewed draft rows only, second run refused; registration only, no backfill) —
   NOT run, awaiting Angelo.
+  **Activation RUN by Angelo 2026-10-12 ~15:05 CT (verified):** check result = Access4U, AirAvant, Bemis, Ohio Medical
+  active / auto_register true / auto_import false (Ohio period cumulative false + ignore `^ZOL SPIFF`); the 3 Strongback
+  profiles unchanged; Climbing Steps, Complete Medical, Golden, Ovation, PediFix still draft. Live: 7 active / 5 draft, capture
+  ON, last run #20 (14:20 CT) complete, 0 open exceptions. Found: Access4U's "HomeCare September 2026 Commissions Report.xlsx"
+  arrived 13:44 CT TODAY, before the activation, and was captured as classified by the then-draft profile (period 2026-09) —
+  capture never re-processes a settled item; registering it needs a person's "retry" on Needs attention/Inbox (re-queues it
+  for the next hourly run under the active profile) — awaiting Angelo's go-ahead.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
