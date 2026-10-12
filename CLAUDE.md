@@ -2548,6 +2548,16 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     - question-bank management with configurable module distribution;
     - clear readiness warnings for missing images, unverified facts and incomplete content.
     Report as usual (testing, security, deployment) when ready for review.
+    **PR #9 MERGED and VERIFIED (12 Oct 2026 ~11:33 CT, merge `26fa5e0`; production deploy main@d526747 Published, which
+    adds only CLAUDE.md notes on top).**
+    - Before the merge: main brought in, no conflicts, no Academy file touched by it. Lesson 23, C1 49, A2A 31, server
+      mutants 22/22, samples through the real database rules PG16 and PG17 5/5, browser 11/11 (axe clean).
+      Regressions identical to main (only the PDF-dependent MI-1c tests and resources-render fail, as on main).
+      GitHub checks green.
+    - Live: the staff preview renders Sample B (15 screens) in Angelo's signed-in session. Sample A's payload has no
+      answer key; practice check graded on the server; unknown lesson 404; a forged token 401.
+    - Unchanged: switches (only `academy_admin` true); 0 courses, versions, facts and audit rows. Site pages,
+      Command Center and Report History 200; learner API 403; `/academy/` 404.
   - A1 check 27 and M1 check 43 need EMPTY Academy tables; if records exist in production they FAIL by design — use the
     before/after leftover checks (M2 21, M3 25) and discuss first.
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
