@@ -161,6 +161,10 @@ async function readDealerReport(buf, deps) {
 function decide(att, msg, profiles, who) {
   if (att.unreadable && !att.format) return { outcome: "exception", attention: "unreadable", detail: att.unreadable };
   const cands = profiles.filter(p => p.status !== "retired" && (!who.slug || p.manufacturer === who.slug) && senderOk(p, msg.from_address));
+  // A manufacturer's recurring NON-report file (e.g. Ohio Medical's monthly "ZOL SPIFF" workbook beside its statement) is
+  // named in a profile's ignore_file_name rule: classified "not a report", never an exception (Phase D profile trial).
+  const ign = cands.find(p => p.rules && p.rules.ignore_file_name && (safeRe(p.rules.ignore_file_name) || { test: () => false }).test(att.name || ""));
+  if (ign && att.format !== "eml") return { outcome: "classified", detail: `not a report — ${ign.code} ignore rule` };
   const passes = cands.filter(p => fileOk(p, att).ok);
   const kinds = [...new Set(passes.map(p => p.kind))];
   if (kinds.length > 1) return { outcome: "exception", attention: "ambiguous_profile", detail: "matches " + passes.map(p => p.code).join(", ") };

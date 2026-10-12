@@ -71,6 +71,19 @@ const msg = (id, from, day, subject, atts, body) => ({ id, internetMessageId: '<
     const all = p1.files.concat(p2.files).map(f => f.file); assert.strictEqual(new Set(all).size, all.length); assert.ok(p2.done || p2.cursor > p1.cursor);
   });
 
+  await t('an ignore_file_name rule classifies a recurring non-report file instead of raising an exception', async () => {
+    const OH = { id: 4, code: 'ohio-medical:commission_statement:through', manufacturer: 'ohio-medical', kind: 'commission_statement', status: 'draft',
+      rules: { senders: { domains: ['ohiomedical.com'] }, formats: ['xlsx'], ignore_file_name: '^ZOL SPIFF', content: { sheet_names_any: ['Current month payment'] }, period: { order: ['subject'] } } };
+    const X = require('xlsx'); const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['Order', 'Customer', 'Qty', 'Amount'], ['1', 'A', 1, 5]]), 'Sheet1');
+    const buf = X.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const mk = rules => graph([msg('a', 'michael.belcaster@ohiomedical.com', '2026-09-23', 'Commissions through August', [{ id: 'f', name: 'ZOL SPIFF - HomeCare Provider Services.xlsx', contentType: 'application/x', bytes: buf }])]);
+    let { deps } = mk(); let r = await T.trial({ slug: 'ohio-medical', profiles: [OH], mailbox: 'm@x', from: '2025-10-01', to: '2026-12-31', known: {} }, deps);
+    assert.deepStrictEqual([r.files[0].outcome, /ignore rule/.test(r.files[0].detail)], ['classified', true]);
+    const OH2 = Object.assign({}, OH, { rules: Object.assign({}, OH.rules) }); delete OH2.rules.ignore_file_name;
+    ({ deps } = mk()); r = await T.trial({ slug: 'ohio-medical', profiles: [OH2], mailbox: 'm@x', from: '2025-10-01', to: '2026-12-31', known: {} }, deps);
+    assert.ok(!/ignore rule/.test(r.files[0].detail || ''), 'without the rule the file is judged on its content (live: an unidentified_type exception)');
+  });
+
   console.log(`\nprofile-trial: ${pass} passed, ${fail} failed`);
   process.exitCode = fail ? 1 : 0;
 })();

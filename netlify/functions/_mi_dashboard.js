@@ -16,15 +16,14 @@ const addM = (ym, k) => { let [y, m] = ym.split("-").map(Number); m += k; while 
 const ym = d => String(d || "").slice(0, 7);
 const covers = (s, e, m) => !!s && ym(s) <= m && ym(e || s) >= m;
 
-// When a monthly report for month M is due: the profile's last expected arrival day in the month after M (default 15th);
-// a report whose window ends in M itself (e.g. Ohio's "through <Month>", 21st–29th) is due at the end of that window.
+// When a monthly report for month M is due: the profile's last expected arrival day in the month after M (default 15th).
+// Every profile reports the PREVIOUS month — Ohio's "Commissions through August" arrives Sep 21–29 (profile trial,
+// 2026-10-12), Strongback's SR032 for September on Oct 2–7, Bemis's 705-2026-08 on Sep 17.
 function dueDate(profile, m) {
   const ex = (profile.rules || {}).expected || {};
   const days = Array.isArray(ex.days) ? ex.days : null;
   const last = days ? Math.max(...days) : 15;
-  const sameMonth = !!(profile.rules && profile.rules.period && profile.rules.period.cumulative);
-  const month = sameMonth ? m : addM(m, 1);
-  return `${month}-${pad(Math.min(last, 28))}`;
+  return `${addM(m, 1)}-${pad(Math.min(last, 28))}`;
 }
 
 function build(input) {

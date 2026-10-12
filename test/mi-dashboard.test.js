@@ -41,15 +41,16 @@ t('registered, captured by a draft profile, in HCPS only, missing, not due, not 
   assert.strictEqual(cellOf(r, 'strongback-mobility', 'sales_export', '2026-08').status, 'not_expected', 'on request is never missing');
   assert.strictEqual(cellOf(r, 'golden-technologies', 'commission_statement', '2026-08').status, 'not_expected', 'irregular is never missing');
 });
-t('due dates: next month by the last expected day; a cumulative "through <Month>" report is due in its own month', () => {
+t('due dates: the month after, by the last expected day (Ohio "through August" arrives Sep 21-29)', () => {
   assert.strictEqual(D.dueDate(profiles[0], '2026-09'), '2026-10-07'); assert.strictEqual(D.dueDate(profiles[2], '2026-09'), '2026-10-17');
-  assert.strictEqual(D.dueDate(profiles[3], '2026-09'), '2026-09-28'); assert.strictEqual(D.dueDate({ rules: {} }, '2026-12'), '2027-01-15');
+  assert.strictEqual(D.dueDate(profiles[3], '2026-09'), '2026-10-28'); assert.strictEqual(D.dueDate({ rules: {} }, '2026-12'), '2027-01-15');
 });
 t('reconciliation: previous month, ready on the 15th; not before', () => {
   const a = run('2026-10-14'), b = run('2026-10-15');
   assert.deepStrictEqual([a.reconciliation.month, a.reconciliation.ready, b.reconciliation.ready, b.reconciliation.ready_on], ['2026-09', false, true, '2026-10-15']);
   const rows = Object.fromEntries(b.reconciliation.rows.map(x => [x.slug, x.status]));
   assert.deepStrictEqual(rows, { bemis: 'not_due', 'ohio-medical': 'in_hcps_only', 'strongback-mobility': 'registered' }, 'golden (irregular) is not listed');
+  assert.strictEqual(b.reconciliation.rows.find(x => x.slug === 'ohio-medical').due, '2026-10-28');
 });
 t('a report received after its due date is LATE and still received', () => {
   const late = sources.concat([{ id: 20, manufacturer: 'bemis', kind: 'commission_statement', status: 'received', received_date: '2026-10-25', report_period_start: '2026-09-01', report_period_end: '2026-09-30' }]);
