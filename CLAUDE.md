@@ -1962,6 +1962,18 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   mfr_decisions 15 → 21 (Bemis window #320 + Review Issues decisions), grants 3072 → 3112 (the MI-1c baseline left its 5
   tables out of the count; 5 × 8 = 40 — no other new table since, by object id). Outside probe (Angelo, 18:39 CT): ALL 31
   BLOCKED (401). Lesson: compare grant counts only between queries with the same exclusion list.
+  **Phase B DEPLOYED 2026-10-11 ~18:39 CT** (branch reconciled with main 1799842 — MC enrichment change only, migration
+  byte-identical; mi-b-capture.pg 38, report-capture 27, mi-b-api 11, shipto 17, report-inventory 28, mi1b 46/28, mi1c 76/29,
+  mi1a 28/16, commission 42, mcenrich 23, enrich.unit 22 → main b05b9e7, Netlify "Production: main@b05b9e7 Published").
+  Live, switch OFF: Report History shows Report register · Inbox · Needs attention; capture card "Off — nothing is captured",
+  mailbox angelo@, captured up to 1 Oct 2026 00:00 CT, last run never, 0 / 0 / 0, 3 active Strongback profiles, 12 profiles;
+  Inbox "No manufacturer report email captured yet". Signed in (the page's own api()): capture_status 200 switch_on false;
+  inbox / attention 200 with 0; list 200; orphans 200 (1 stored / 1 registered / 0 orphans); capture_now 403
+  capture_switch_off. No token / forged / junk token (XMLHttpRequest) → 401 sign_in_required. A plain fetch from an admin
+  page carries NO token (staff-session.js only refreshes a Bearer that is already there) — call the page's api() helper.
+  **Netlify production deploys are PAUSED (team build credits used up for the billing cycle, seen 2026-10-11):** main@99d604c
+  (Manufacturer Center Release C preview work) was "Skipped". Phase B is unaffected (b05b9e7 is live); any later code change
+  needs credits restored first. Turning `mi_report_capture` on needs no deploy (the hourly cron is already live).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
