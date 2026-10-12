@@ -2175,6 +2175,32 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   Bemis — 17 commission lines / 4 orders, 0 sales-report lines; 4 same, 0 different, 0 held. Record #8 (Angelo Sep
   Orders.csv): 6 orders / 7 lines / $2,159 — all 6 resolved (5 single-location dealers + Williams Brothers Princeton by
   ZIP 47670), report Ready, 0 need review. Nothing written.
+- **Phase C ACCEPTED; toward Phase D (Angelo, 2026-10-12 12:43 CT; MI 72%) — RULES:**
+  (1) **Historical vs actionable Ship-To findings.** The Ship-To Review queue edits ONLY registered order exports
+  (`mfr_sources` sales_export, received/accepted). The Shadow Check reads historical `monthly_sales`; its held orders
+  (Strongback 6629 Integrity Home Medical, 6339 + 6621 Glasgow Prescription Center) exist only in history (the YTD
+  workbook is not registered) — they are documented historical review findings, never presented as editable on a screen
+  that cannot edit them, and past dealer assignments are never changed automatically. A historical order is corrected only
+  if its specific original report is registered and corrected under control.
+  (2) **Glasgow rule:** never remember or reuse a decision on a ZIP alone when that ZIP belongs to more than one branch.
+  A remembered mapping needs a verified ship-to id or a SUFFICIENTLY SPECIFIC street address (house number + street name;
+  never a bare street, PO box or suite) — `_shipto.js specificAddress` / `shipKey`. A saved zipmap entry on a ZIP shared by
+  several branches of the family is never applied in strict mode (→ needs review `zip_shared`, the saved choice only
+  suggested); a zipmap entry naming another family is never even suggested.
+  (3) **Source-aware import path (strict):** starts from a REGISTERED file, never from browser rows: stored original →
+  `_report_rows.js` → Ship-To review (strict resolver + saved correction overlays, `_shipto_review.js`) → MI-1a rows
+  (`_source_import.js`, the manual importer's `mapRow` copied verbatim, drift-tested) → `hcps_sales_report_apply`
+  DRY RUN. A report with any unresolved order is HELD whole and never reaches MI-1a. The commission rate is only the
+  manufacturer's single sales-report-history rate, else blocked. The manual Sales Report Import is unchanged.
+  (4) **Automatic financial posting stays OFF.** `shipto-review-api` `import_check` forces `apply:false` (and no
+  cross-lane / paid confirmations) whatever the request says; eligibility is reported, never acted on.
+  (5) **September Strongback:** the 7 quarantined rows (2026-09) are never converted into sales automatically; a file
+  carrying the same order numbers is NOT eligible until Angelo decides; the SR032 commission statement (record #9) stays in
+  the commission lane.
+  (6) After the strict path passes shadow testing, automatic REGISTRATION extends to verified profiles in the order Bemis,
+  Ohio Medical, Access4U, AirAvant, Climbing Steps; commission posting stays restricted until approved.
+  (7) A practical MI dashboard (report arrivals, missing periods, import status, Ship-To issues, pending approvals); the
+  monthly reconciliation is ready on the 15th; late reports keep processing. Intelligence publishing stays OFF.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.

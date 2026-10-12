@@ -1,6 +1,6 @@
 /* Mutants for the Phase C (Ship-To review) suites. Each must make its suite FAIL.
    file: a function file (applied in memory by phase0-mock) or 'sql' (a temporary copy of supabase/mi_c_shipto.sql). */
-const RV = '_shipto_review.js', RR = '_report_rows.js', SH = '_shipto.js', API = 'shipto-review-api.js';
+const SI = '_source_import.js', RV = '_shipto_review.js', RR = '_report_rows.js', SH = '_shipto.js', API = 'shipto-review-api.js';
 module.exports = {
   // ── review (test/shipto-review.test.js) ──
   mixed_lines_ignored: { file: RV, suite: 'review', from: 'if (mixed) return Object.assign(base, { status: "needs_review", reason: "mixed_lines"', to: 'if (false) return Object.assign(base, { status: "needs_review", reason: "mixed_lines"' },
@@ -20,7 +20,7 @@ module.exports = {
   no_ship_street: { file: RR, suite: 'review', from: 'ship_address: /^(shipping|ship to|ship-to|ship) ?(street|address)( ?1| line 1)?$/i,', to: 'ship_address: /^never$/,' },
   // ── resolver additions ──
   state_names_ignored: { file: SH, suite: 'review', from: 'return STATES[u] || u;', to: 'return u;' },
-  zipmap_any_corporate: { file: SH, suite: 'review', from: 'if (confirmed(d0) && (!c0 || root(d0) === c0))', to: 'if (confirmed(d0))' },
+  zipmap_any_corporate: { file: SH, suite: 'shipto', from: 'if (confirmed(d0) && (!c0 || root(d0) === c0))', to: 'if (confirmed(d0))' },
   // ── remembered decisions need account / family confirmation (2026-10-11 22:09; test/shipto.test.js) ──
   mapping_any_family: { file: SH, suite: 'shipto', from: 'const confirmed = id => !!id && ids.has(id) && acctRoots.has(root(id));', to: 'const confirmed = id => !!id;' },
   mapping_no_account_check: { file: SH, suite: 'shipto', from: 'const confirmed = id => !!id && ids.has(id) && acctRoots.has(root(id));', to: 'const confirmed = id => !!id && ids.has(id);' },
@@ -45,6 +45,22 @@ module.exports = {
   shadow_no_lane_columns: { file: API, suite: 'review', from: 'dealer_id,amount,period,source,external_ref`', to: 'dealer_id,amount,period`' },
   read_fails_open: { file: API, suite: 'review', from: '    sbGetAll("dealer_aliases?select=alias_norm,dealer_id", "alias_norm"),', to: '    sbGetAll("dealer_aliases?select=alias_norm,dealer_id", "alias_norm").catch(() => []),' },
   test_dealers_matched: { file: API, suite: 'review', from: 'const real = dealers.filter(d => d.is_test !== true);', to: 'const real = dealers;' },
+  // ── Phase D: Glasgow rule + specific addresses (Angelo 2026-10-12 12:43; test/shipto.test.js) ──
+  glasgow_shared_zip_reused: { file: SH, suite: 'shipto', from: 'if (cands.filter(c => znorm(c.zip) === z).length > 1) return out(', to: 'if (false) return out(' },
+  key_on_any_street: { file: SH, suite: 'shipto', from: 'return a && z && specificAddress(row.ship_address) ?', to: 'return a && z ?' },
+  key_without_house_number: { file: SH, suite: 'shipto', from: "if (t.length < 2 || !/^\\d+[A-Z]?$/.test(t[0])) return false;", to: 'if (t.length < 2) return false;' },
+  // ── Phase D: source-aware import check (test/source-import.test.js) ──
+  si_apply_requested: { file: API, suite: 'source', from: 'const body = Object.assign({}, p, { apply: false });', to: 'const body = Object.assign({}, p);' },
+  si_held_reaches_mi: { file: API, suite: 'source', from: '(pl.status === "ready" && enr.length && rate.rate)', to: '(enr.length && rate.rate)' },
+  si_confirm_from_body: { file: API, suite: 'source', from: 'approve_paid: false, approve_reason: "", confirm_cross_lane: false })', to: 'approve_paid: b.approve_paid === true, approve_reason: "", confirm_cross_lane: b.confirm_cross_lane === true })' },
+  si_quarantine_read_soft: { file: API, suite: 'source', from: 'select=id,sales_row_id,period,source,source_file,reason,row_data,quarantined_at`, "id"),', to: 'select=id,sales_row_id,period,source,source_file,reason,row_data,quarantined_at`, "id").catch(() => []),' },
+  si_overlay_ignored: { file: SI, suite: 'source', from: 'if (cor) for (const k of', to: 'if (false) for (const k of' },
+  si_held_rows_built: { file: SI, suite: 'source', from: 'if (status !== "ready") return {', to: 'if (status === "empty") return {' },
+  si_quarantine_ignored: { file: SI, suite: 'source', from: 'if (q.length) block("previously_quarantined"', to: 'if (false) block("previously_quarantined"' },
+  si_other_lane_ignored: { file: SI, suite: 'source', from: 'if (otherLanes.length) block(', to: 'if (false) block(' },
+  si_cross_lane_ignored: { file: SI, suite: 'source', from: 'if (v2.cross_lane_matches > 0) block(', to: 'if (false) block(' },
+  si_changed_ignored: { file: SI, suite: 'source', from: 'if ((o.changed || 0) > 0) block(', to: 'if (false) block(' },
+  si_rate_any: { file: SI, suite: 'source', from: 'return set.length === 1 ?', to: 'return set.length >= 1 ?' },
   // ── SQL (test/mi-c-shipto.pg.test.js) ──
   sql_no_stale_check: { file: 'sql', from: '  if coalesce(v_cur.version, 0) <> v_exp then', to: '  if false then' },
   sql_guard_no_marker: { file: 'sql', from: "if coalesce(current_setting('hcps.shipto_op', true), '') <> 'on' or current_user <> v_owner then", to: 'if current_user <> v_owner then' },
