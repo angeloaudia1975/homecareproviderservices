@@ -216,26 +216,50 @@ READ.preview_blocks = async (staff, b) => {
     manufacturers: Object.fromEntries(mfrRows.map(r => [r.slug, r.name || r.slug])) }) };
 };
 
-/* Saves a lesson's screens. The facts its fact and comparison screens show are linked to the lesson first (M3 shows a
-   fact only when it is linked), then the blocks are saved through academy_author_op_set_blocks, which runs the database's
-   own block checker. A save that does not start from the lesson's current content is refused (409) instead of
-   overwriting someone else's work. */
+/* Saves a lesson's screens (Stage 3 review, Angelo 12 Oct 2026: "atomic save review").
+   M3 offers no single operation that links facts AND saves blocks AND compares the starting point, and no new SQL is
+   allowed without separate approval, so the save is a short sequence of audited operations, each one atomic with its
+   own audit row, arranged so that no failure between them leaves a silent partial change:
+     1. the save must start from the lesson's current content (409 "changed" otherwise);
+     2. the facts the screens show are linked (M3 shows a fact only when it is linked) — each link audited;
+     3. the starting point is checked AGAIN just before the blocks are written (narrows the window to one round trip);
+     4. the blocks are written through academy_author_op_set_blocks (the database's own block checker);
+     5. that operation's audit row records the content it REPLACED: if that is not the content this save started
+        from, someone saved in between — their version is put back (audited) and the answer is 409, never a silent
+        overwrite;
+     6. fact links the saved screens no longer use are removed (audited), so leftovers from an interrupted save never
+        accumulate: links always end up matching the screens.
+   If the blocks are refused, the links made in step 2 are undone (audited). If an undo itself fails, the answer says
+   so (links_left) — and step 6 of the next successful save removes them. The truly atomic version (one database
+   operation with a compare-and-set on the starting point) is proposed as M3.1 in the runbook, for separate approval. */
+const linkKey = (mfr, model, field) => [mfr, String(model || '').toUpperCase(), field].join('|');
+function wantedLinks(blocks) {
+  const want = new Set();
+  for (const blk of Array.isArray(blocks) ? blocks : []) {
+    if (!blk || typeof blk !== 'object') continue;
+    if (blk.kind === 'fact') want.add(linkKey(blk.manufacturer_slug, blk.model_code, blk.field));
+    if (blk.kind === 'comparison') for (const mc of blk.models || []) for (const f of blk.fields || []) want.add(linkKey(blk.manufacturer_slug, mc, f && f.field));
+  }
+  return want;
+}
+const currentLesson = async id => need(one(await A.sbGet(`academy_lessons?id=eq.${enc(id)}&select=id,blocks`)), 'Lesson');
+const lessonLinks = async id => A.sbGet(`academy_content_refs?lesson_id=eq.${enc(id)}&select=id,manufacturer_slug,model_code,field`);
+const lastEventId = async id => { const r = await A.sbGet(`academy_events?entity=eq.academy_lessons&entity_id=eq.${enc(id)}&select=id&order=id.desc&limit=1`); return r[0] ? Number(r[0].id) : 0; };
+const CHANGED = 'This lesson was changed since you opened it. Reload it to see the latest version, then make your change again.';
+async function undoLinks(staff, ids) {
+  const left = [];
+  for (const id of ids.slice().reverse()) { try { await A.authorOp('unlink_fact', { p_actor: actor(staff), p_id: id }); } catch (_) { left.push(id); console.error('academy builder: a fact link could not be undone', id); } }
+  return left;
+}
 WRITE.save_blocks = async (staff, b) => {
   const { l, m } = await lessonCtx(A.uuid(b.lesson_id, 'lesson'));
   await draft(m.version_id);
   if (!Array.isArray(b.blocks)) A.refuse(400, 'invalid', 'The lesson content could not be read.');
-  if (typeof b.base_hash !== 'string' || b.base_hash !== blocksHash(l.blocks)) A.refuse(409, 'changed', 'This lesson was changed since you opened it. Reload it to see the latest version, then make your change again.');
-  const want = new Set();
-  for (const blk of b.blocks) {
-    if (!blk || typeof blk !== 'object') continue;
-    if (blk.kind === 'fact') want.add([blk.manufacturer_slug, String(blk.model_code || '').toUpperCase(), blk.field].join('|'));
-    if (blk.kind === 'comparison') for (const mc of blk.models || []) for (const f of blk.fields || []) want.add([blk.manufacturer_slug, String(mc || '').toUpperCase(), f && f.field].join('|'));
-  }
-  const have = new Set((await A.sbGet(`academy_content_refs?lesson_id=eq.${enc(l.id)}&select=manufacturer_slug,model_code,field`)).map(r => [r.manufacturer_slug, String(r.model_code).toUpperCase(), r.field].join('|')));
-  // Each link is its own audited operation (M3). If the screens are then refused, the links made for them are undone
-  // (each undo audited too), so a refused save leaves the lesson exactly as it was.
+  if (typeof b.base_hash !== 'string' || b.base_hash !== blocksHash(l.blocks)) A.refuse(409, 'changed', CHANGED);
+  const want = wantedLinks(b.blocks);
+  const have = new Set((await lessonLinks(l.id)).map(r => linkKey(r.manufacturer_slug, r.model_code, r.field)));
   const made = [];
-  let saved;
+  let saved, mark;
   try {
     for (const k of want) {
       if (have.has(k)) continue;
@@ -244,12 +268,45 @@ WRITE.save_blocks = async (staff, b) => {
       const link = await A.authorOp('link_fact', { p_actor: actor(staff), p_id: null, p_link: { lesson_id: l.id, manufacturer_slug: mfr, model_code: model, field } });
       if (link && link.id) made.push(link.id);
     }
+    mark = await lastEventId(l.id);
+    if (blocksHash((await currentLesson(l.id)).blocks) !== b.base_hash) A.refuse(409, 'changed', CHANGED);
     saved = await A.authorOp('set_blocks', { p_actor: actor(staff), p_lesson_id: l.id, p_blocks: b.blocks });
   } catch (e) {
-    for (const id of made.reverse()) { try { await A.authorOp('unlink_fact', { p_actor: actor(staff), p_id: id }); } catch (_) { console.error('academy builder: a fact link could not be undone', id); } }
+    // Did the blocks change anyway (the response was lost after the database saved them, or someone else saved)?
+    // Then the links may be in use: leave them (the next save tidies), and tell the person to reload.
+    let now = null; try { now = blocksHash((await currentLesson(l.id)).blocks); } catch (_) { /* unreadable: undo what we can */ }
+    if (now !== null && now !== b.base_hash) {
+      if (e instanceof A.AcademyError && e.code === 'changed') { const left = await undoLinks(staff, made); A.refuse(409, 'changed', CHANGED + (left.length ? ' (Some fact links from this attempt are tidied up at the next save.)' : '')); }
+      A.refuse(409, 'reload', 'The lesson changed while it was being saved. Reload it to see the version that was kept before changing anything else.');
+    }
+    const left = await undoLinks(staff, made);
+    if (left.length) e.message = e.message + ` (${left.length} fact link${left.length > 1 ? 's' : ''} made for this attempt could not be removed yet; the next save removes ${left.length > 1 ? 'them' : 'it'}.)`;
     throw e;
   }
-  return { ok: true, audited: true, lesson: { id: saved.id, blocks: saved.blocks, hash: blocksHash(saved.blocks) }, facts_linked: made.length };
+  // 5. Did this save replace exactly the content it started from? The database recorded what it replaced.
+  const evs = await A.sbGet(`academy_events?entity=eq.academy_lessons&entity_id=eq.${enc(l.id)}&action=eq.set_blocks&id=gt.${mark}&select=id,actor,before,after&order=id.asc&limit=50`);
+  const mine = evs.find(e => e.actor === actor(staff) && canon(e.after) === canon(saved));
+  if (!mine) console.error('academy builder: the saved lesson could not be matched to its audit row', l.id);
+  else if (blocksHash(mine.before && mine.before.blocks) !== b.base_hash) {
+    // Someone saved between the check and this save. Put their version back — only if nothing changed since.
+    const theirs = mine.before.blocks;
+    let restored = false;
+    if (blocksHash((await currentLesson(l.id)).blocks) === blocksHash(saved.blocks)) {
+      await A.authorOp('set_blocks', { p_actor: actor(staff), p_lesson_id: l.id, p_blocks: theirs });
+      restored = true;
+    }
+    A.refuse(409, 'changed', restored
+      ? 'Someone else saved this lesson at the same moment. Their version was kept and yours was not applied. Reload the lesson, then make your change again.'
+      : 'Several people saved this lesson at the same moment. Reload it and check the content before changing anything else.');
+  }
+  // 6. Links no longer used by the saved screens (an earlier interrupted save, or a removed fact) are removed.
+  const used = wantedLinks(saved.blocks);
+  let pruned = 0;
+  for (const r of await lessonLinks(l.id)) {
+    if (used.has(linkKey(r.manufacturer_slug, r.model_code, r.field))) continue;
+    try { await A.authorOp('unlink_fact', { p_actor: actor(staff), p_id: r.id }); pruned++; } catch (_) { /* in use by a newer save: kept */ }
+  }
+  return { ok: true, audited: true, lesson: { id: saved.id, blocks: saved.blocks, hash: blocksHash(saved.blocks) }, facts_linked: made.length, links_removed: pruned };
 };
 const uuidList = (v, name) => { if (!Array.isArray(v) || !v.length || v.length > 200) A.refuse(400, 'invalid', `${name} is not valid.`); return v.map(x => A.uuid(x, name)); };
 WRITE.reorder_modules = async (staff, b) => {

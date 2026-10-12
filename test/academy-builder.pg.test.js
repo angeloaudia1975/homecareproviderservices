@@ -150,6 +150,78 @@ const one = q => JSON.parse(run(DB, `select coalesce(row_to_json(x), 'null') fro
       assert.strictEqual(ev[ev.length - 1].actor, 'staff:admin2@test.example');
     });
 
+    /* ------------------------------------------------------------- failure injection: the save sequence (Stage 3 review item 1) */
+    let F;
+    const fblocks = (extra) => [{ kind: 'objectives', items: ['Fit the chair', 'Explain the fit'] }].concat(extra || []).concat([{ kind: 'takeaways', items: ['a', 'b', 'c'] }]);
+    const capFact = { kind: 'fact', manufacturer_slug: G, model_code: 'PR515', field: 'weight_capacity', label: 'Capacity' };
+    const refsOf = id => Number(run(DB, `select count(*) from academy_content_refs where lesson_id = '${id}'`));
+    const hashOf = id => B.blocksHash(one(`select blocks from academy_lessons where id = '${id}'`).blocks);
+    const setBlocksSql = (id, blocks, who) => S.sql(`select academy_author_op_set_blocks('staff:${who || 'admin@test.example'}', '${id}'::uuid, ${J(blocks)})`);
+    const once = (name, fn) => { let used = false; S.onRpc = async (f, a) => { if (f !== name || used) return null; used = true; return fn(a); }; };
+    await t('failure injection: the blocks write fails after the facts were linked -> the links are undone (each audited), the lesson is unchanged, nothing partial remains', async () => {
+      F = ok(await call('pres', { action: 'create_lesson', module_id: mods[2].id, title: 'Failure injection', est_minutes: 10 })).lesson;
+      const evBefore = events().length;
+      once('academy_author_op_set_blocks', () => ({ status: 502, body: { message: 'injected: connection reset' } }));
+      const r = await call('adm', { action: 'save_blocks', lesson_id: F.id, blocks: fblocks([capFact]), base_hash: B.blocksHash([]) });
+      S.onRpc = null;
+      assert.strictEqual(r.status, 502, JSON.stringify(r.body));
+      assert.strictEqual(refsOf(F.id), 0, 'the link made for this save was removed');
+      assert.deepStrictEqual(one(`select blocks from academy_lessons where id = '${F.id}'`).blocks, []);
+      const ev = events().slice(evBefore).map(e => e.action);
+      assert.deepStrictEqual(ev, ['link_fact', 'unlink_fact'], 'the history shows exactly what happened: link, then its undo');
+    });
+    await t('failure injection: the blocks are refused AND an undo fails -> the answer says a link is left; the next successful save removes it (audited); links end up matching the screens', async () => {
+      once('academy_author_op_unlink_fact', () => ({ status: 503, body: { message: 'injected: unavailable' } }));
+      const bad = [capFact].concat(fblocks());   // objectives not first: refused by the block checker
+      const r = await call('adm', { action: 'save_blocks', lesson_id: F.id, blocks: bad, base_hash: B.blocksHash([]) });
+      S.onRpc = null;
+      assert.strictEqual(r.status, 400); assert.match(r.body.message, /objectives come first/); assert.match(r.body.message, /could not be removed yet; the next save removes it/);
+      assert.strictEqual(refsOf(F.id), 1, 'the leftover link is reported, not hidden');
+      const ok2 = ok(await call('adm', { action: 'save_blocks', lesson_id: F.id, blocks: fblocks(), base_hash: B.blocksHash([]) }));
+      assert.strictEqual(ok2.links_removed, 1); assert.strictEqual(refsOf(F.id), 0);
+      assert.strictEqual(events(`action = 'unlink_fact' and before->>'lesson_id' = '${F.id}'`).length, 2, 'both removals are in the history');
+    });
+    await t('failure injection: someone saves between the final check and this save -> their version is put back (audited), this save answers 409 — never a silent overwrite', async () => {
+      const base = hashOf(F.id);
+      const theirs = fblocks([{ kind: 'text', heading: 'Theirs', body: 'Saved by the President at the same moment' }]);
+      once('academy_author_op_set_blocks', () => { setBlocksSql(F.id, theirs); return null; });   // their save lands first, then ours runs
+      const evBefore = events(`entity_id = '${F.id}' and action = 'set_blocks'`).length;
+      const r = await call('adm', { action: 'save_blocks', lesson_id: F.id, blocks: fblocks([{ kind: 'text', heading: 'Mine', body: 'Saved by the second administrator' }]), base_hash: base });
+      S.onRpc = null;
+      assert.strictEqual(r.status, 409, JSON.stringify(r.body)); assert.match(r.body.message, /Their version was kept/);
+      assert.strictEqual(one(`select blocks from academy_lessons where id = '${F.id}'`).blocks[1].heading, 'Theirs');
+      const ev = events(`entity_id = '${F.id}' and action = 'set_blocks'`).slice(evBefore);
+      assert.deepStrictEqual(ev.map(e => [e.actor, e.after.blocks[1] && e.after.blocks[1].heading]),
+        [['staff:admin@test.example', 'Theirs'], ['staff:admin2@test.example', 'Mine'], ['staff:admin2@test.example', 'Theirs']], 'their save, ours, the put-back — all recorded');
+    });
+    await t('failure injection: someone saves while this save is linking facts -> caught before the blocks are written; this attempt\'s links are undone; 409', async () => {
+      const base = hashOf(F.id);
+      const theirs = fblocks([{ kind: 'text', heading: 'Theirs again', body: 'x' }]);
+      once('academy_author_op_link_fact', () => { setBlocksSql(F.id, theirs); return null; });
+      const n = events(`entity_id = '${F.id}' and action = 'set_blocks'`).length;
+      const r = await call('adm', { action: 'save_blocks', lesson_id: F.id, blocks: fblocks([capFact]), base_hash: base });
+      S.onRpc = null;
+      assert.strictEqual(r.status, 409); assert.strictEqual(r.body.error, 'changed');
+      assert.strictEqual(one(`select blocks from academy_lessons where id = '${F.id}'`).blocks[1].heading, 'Theirs again');
+      assert.strictEqual(events(`entity_id = '${F.id}' and action = 'set_blocks'`).length, n + 1, 'only their save; ours never wrote');
+      assert.strictEqual(refsOf(F.id), 0);
+    });
+    await t('failure injection: the save succeeds but its answer is lost -> "reload", nothing undone (the saved screens keep their facts)', async () => {
+      const base = hashOf(F.id);
+      once('academy_author_op_set_blocks', a => { setBlocksSql(F.id, a.p_blocks, 'admin2@test.example'); return { status: 502, body: { message: 'injected: answer lost' } }; });
+      const r = await call('adm', { action: 'save_blocks', lesson_id: F.id, blocks: fblocks([capFact]), base_hash: base });
+      S.onRpc = null;
+      assert.strictEqual(r.status, 409); assert.strictEqual(r.body.error, 'reload');
+      assert.strictEqual(one(`select blocks from academy_lessons where id = '${F.id}'`).blocks[1].kind, 'fact');
+      assert.strictEqual(refsOf(F.id), 1, 'the link the saved fact needs is kept');
+    });
+    await t('a fact removed from the screens has its link removed by the save (links always match the screens)', async () => {
+      const r = ok(await call('adm', { action: 'save_blocks', lesson_id: F.id, blocks: fblocks(), base_hash: hashOf(F.id) }));
+      assert.strictEqual(r.links_removed, 1); assert.strictEqual(refsOf(F.id), 0);
+      ok(await call('pres', { action: 'save_blocks', lesson_id: F.id, blocks: [], base_hash: hashOf(F.id) }));
+      ok(await call('pres', { action: 'delete_lesson', id: F.id }));
+    });
+
     /* ------------------------------------------------------------- live preview */
     await t('preview_blocks draws UNSAVED screens with the learner payload builder: no answer key, no explanation, nothing saved', async () => {
       const blocks = SAMPLES.A.lesson.blocks.slice(); blocks.splice(1, 0, { kind: 'text', heading: 'Unsaved', body: 'Only in the editor' });

@@ -50,6 +50,7 @@ function shim(opts) {
       if (!IDENT.test(k)) return { status: 400, body: { code: 'PGRST100', message: 'bad filter' } };
       if (v.startsWith('eq.')) where.push(`${k}::text = ${lit(v.slice(3))}`);
       else if (v === 'is.null') where.push(`${k} is null`);
+      else if (/^(gt|lt|gte|lte)\.-?\d+$/.test(v)) { const [op, n] = v.split('.'); where.push(`${k} ${{ gt: '>', lt: '<', gte: '>=', lte: '<=' }[op]} ${Number(n)}`); }
       else if (v.startsWith('in.(') && v.endsWith(')')) { const items = v.slice(4, -1).split(',').filter(x => x !== ''); where.push(items.length ? `${k}::text in (${items.map(lit).join(',')})` : 'false'); }
       else return { status: 400, body: { code: 'PGRST100', message: 'unsupported filter ' + v } };
     }
@@ -85,6 +86,7 @@ function shim(opts) {
       if (!IDENT.test(fn)) return respond(404, { code: 'PGRST202', message: 'no function' });
       const t = types(fn); if (!t) return respond(404, { code: 'PGRST202', message: `Could not find the function public.${fn}` });
       const args = o.body ? JSON.parse(o.body) : {};
+      if (api.onRpc) { const forced = await api.onRpc(fn, args); if (forced) return respond(forced.status, forced.body); }
       for (const k of Object.keys(args)) if (!t[k]) return respond(404, { code: 'PGRST202', message: `no argument ${k} on ${fn}` });
       const r = sql(`select to_jsonb(public.${fn}(${Object.keys(args).map(k => `${k} => ${value(args[k], t[k])}`).join(', ')}))`);
       if (r.error) return respond(r.error.code === 'P0002' ? 404 : r.error.code === '42501' ? 403 : 400, r.error);
@@ -119,7 +121,8 @@ function shim(opts) {
     }
     return respond(404, { message: 'not emulated: ' + method + ' ' + p });
   }
-  return { fetch: fetchFn, storage, calls, sql, BASE };
+  const api = { fetch: fetchFn, storage, calls, sql, BASE, onRpc: null };
+  return api;
 }
 
 module.exports = { shim, BASE };
