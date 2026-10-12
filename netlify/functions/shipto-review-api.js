@@ -265,15 +265,19 @@ exports.handler = async (event) => {
       const existing = existingRaw.map(x => ({ ...x, lane: RV.laneOf(x), dealer: nameOf(x.dealer_id) }));
       const quarantined = quarantine.map(q => ({ id: q.id, sales_row_id: q.sales_row_id, period: q.period, source: q.source, source_file: q.source_file, reason: q.reason,
         invoice_no: String((q.row_data || {}).invoice_no || "").trim(), amount: (q.row_data || {}).amount, commission: (q.row_data || {}).commission, quarantined_at: q.quarantined_at }))
-        .filter(q => invSet.has(q.invoice_no));
+        ;
+      // Two tests, both blocking: the same order numbers, AND any quarantined row in the same manufacturer + month — the
+      // quarantined September Strongback rows carry no usable order numbers, so the month itself is the evidence.
+      const quarantinedPeriod = quarantined.filter(q => months.includes(String(q.period || "").slice(0, 7)));
+      quarantined.splice(0, quarantined.length, ...quarantined.filter(q => invSet.has(q.invoice_no)));
       const statements = stmts.filter(s => s.report_period_start && months.some(m => s.report_period_start.slice(0, 7) <= m && String(s.report_period_end || s.report_period_start).slice(0, 7) >= m))
         .map(s => ({ id: s.id, title: s.title, file_name: s.file_name, status: s.status, period: String(s.report_period_start).slice(0, 7), imported: !!s.import_batch_id, received_date: s.received_date }));
       const commissionLaneRows = monthRows.filter(x => RV.laneOf(x) === "commission").length;
-      const verdict = SI.verdict({ plan: pl, enrolled: enr.length > 0, rate, v2, existing, quarantined, statements, commissionLaneRows });
+      const verdict = SI.verdict({ plan: pl, enrolled: enr.length > 0, rate, v2, existing, quarantined, quarantinedPeriod, statements, commissionLaneRows });
       for (const o of pl.orders) { o.dealer = nameOf(o.dealer_id); o.recorded = existing.filter(x => x.invoice_no === o.order_number).map(x => ({ lane: x.lane, period: x.period, amount: x.amount })); }
       for (const d of ((v2 && v2.nonfinancial_differences) || [])) if (d.field === "dealer_id") { d.field = "dealer"; d.hcps = nameOf(d.hcps) || d.hcps; d.file = nameOf(d.file) || d.file; }
       return json(200, { ok: true, read_only: true, applied: false, source: summary(r.src, review), plan: { status: pl.status, held_orders: pl.held_orders, orders: pl.orders, totals: pl.totals },
-        rate, enrolled: enr.length > 0, months, v2, existing, quarantined, statements, commission_lane_rows: commissionLaneRows, verdict });
+        rate, enrolled: enr.length > 0, months, v2, existing, quarantined, quarantined_in_period: quarantinedPeriod, statements, commission_lane_rows: commissionLaneRows, verdict });
     }
     if (b.action === "shadow") {
       const mfr = clean(b.manufacturer, 80); if (!mfr) return json(400, { error: "manufacturer_required" });

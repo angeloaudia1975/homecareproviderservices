@@ -133,6 +133,12 @@ const check = async (o, body) => { const { w, m } = boot(o); const r = await cal
     assert.strictEqual(r.body.quarantined.length, 1); assert.strictEqual(r.body.verdict.eligible, false);
     assert.ok(r.body.verdict.blockers.some(b => b.code === 'previously_quarantined'));
   });
+  await t('quarantined rows in the same month block it even without matching order numbers (September Strongback)', async () => {
+    const { r } = await check({ quarantine: [{ id: 2, sales_row_id: '98', manufacturer: 'strongback-mobility', period: '2026-09-01', source: 'commission', source_file: 'Strongback Sept Commission Report 2026.csv',
+      reason: 'blank', row_data: { invoice_no: null, amount: null, commission: null } }, { id: 3, sales_row_id: '97', period: '2026-07-01', row_data: {} }] });
+    assert.strictEqual(r.body.quarantined.length, 0); assert.strictEqual(r.body.quarantined_in_period.length, 1);
+    assert.strictEqual(r.body.verdict.eligible, false); assert.ok(r.body.verdict.blockers.some(b => b.code === 'quarantined_period'));
+  });
   await t('rows in another lane with the same order numbers block it; sales-report rows of the same order are shown as recorded', async () => {
     const { r } = await check({ existing: [{ id: 5, invoice_no: '7191', period: '2026-09-01', source: 'commission', external_ref: null, amount: 320, commission: 28.8, dealer_id: 'wpr' }] });
     assert.ok(r.body.verdict.blockers.some(b => b.code === 'other_lane_rows'));

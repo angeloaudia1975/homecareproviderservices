@@ -114,6 +114,7 @@
     if (v.cautions.length) h += `<div class="note"><b>Notes</b><ul>${v.cautions.map(b => `<li>${esc(b.text)}</li>`).join("")}</ul></div>`;
     if (c.plan.orders.length) h += `<div class="scroll"><table class="tbl"><thead><tr><th>Order</th><th>Date</th><th>HCPS branch</th><th>Basis</th><th>Sales</th><th>Commission</th><th>Already in HCPS</th></tr></thead><tbody>${c.plan.orders.map(r =>
       `<tr><td>${esc(r.order_number)}</td><td>${esc(r.date)}</td><td>${esc(r.dealer)}</td><td>${esc(BASIS[r.basis] || r.basis)}</td><td>${money(r.amount)}</td><td>${money(r.commission)}</td><td>${r.recorded.length ? r.recorded.map(x => esc(LANE[x.lane] + " " + String(x.period).slice(0, 7))).join(", ") : "—"}</td></tr>`).join("")}</tbody></table></div>`;
+    if ((c.quarantined_in_period || []).length) h += `<div class="note"><b>${c.quarantined_in_period.length} quarantined row(s) on file for ${esc(c.months.join(", "))}</b> — that month's quarantined data is never converted into sales automatically.</div>`;
     if (c.quarantined.length) h += `<div class="note"><b>Quarantined rows with these order numbers</b> (kept out of sales; never converted automatically): ${c.quarantined.map(q => esc(q.invoice_no)).join(", ")}</div>`;
     return h;
   }

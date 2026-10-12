@@ -57,6 +57,8 @@ module.exports = {
   si_overlay_ignored: { file: SI, suite: 'source', from: 'if (cor) for (const k of', to: 'if (false) for (const k of' },
   si_held_rows_built: { file: SI, suite: 'source', from: 'if (status !== "ready") return {', to: 'if (status === "empty") return {' },
   si_quarantine_ignored: { file: SI, suite: 'source', from: 'if (q.length) block("previously_quarantined"', to: 'if (false) block("previously_quarantined"' },
+  si_quarantine_period_ignored: { file: SI, suite: 'source', from: 'if (qp.length) block("quarantined_period"', to: 'if (false) block("quarantined_period"' },
+  si_quarantine_period_unread: { file: API, suite: 'source', from: 'const quarantinedPeriod = quarantined.filter(q => months.includes(String(q.period || "").slice(0, 7)));', to: 'const quarantinedPeriod = [];' },
   si_other_lane_ignored: { file: SI, suite: 'source', from: 'if (otherLanes.length) block(', to: 'if (false) block(' },
   si_cross_lane_ignored: { file: SI, suite: 'source', from: 'if (v2.cross_lane_matches > 0) block(', to: 'if (false) block(' },
   si_changed_ignored: { file: SI, suite: 'source', from: 'if ((o.changed || 0) > 0) block(', to: 'if (false) block(' },

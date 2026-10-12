@@ -101,6 +101,8 @@ function verdict(f) {
   }
   const q = f.quarantined || [];
   if (q.length) block("previously_quarantined", `${q.length} quarantined row(s) carry the same order numbers (${[...new Set(q.map(x => x.invoice_no))].join(", ")}). They are never converted into sales automatically.`);
+  const qp = (f.quarantinedPeriod || []).filter(x => !q.some(y => y.id === x.id));
+  if (qp.length) block("quarantined_period", `${qp.length} quarantined row(s) are on file for the same month(s) (${[...new Set(qp.map(x => String(x.period).slice(0, 7)))].join(", ")}, ${[...new Set(qp.map(x => x.source_file).filter(Boolean))].join(", ") || "no file name"}). That month's quarantined data is never converted into sales automatically — Angelo decides.`);
   const ex = f.existing || [];
   const otherLanes = ex.filter(r => r.lane !== "sales_report");
   if (otherLanes.length) block("other_lane_rows", `${otherLanes.length} row(s) with these order numbers are in another lane (${[...new Set(otherLanes.map(r => r.lane))].join(", ")}).`);
