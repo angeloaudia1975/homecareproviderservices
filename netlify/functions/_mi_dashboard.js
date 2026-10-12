@@ -61,7 +61,9 @@ function build(input) {
     const days = monthly && Array.isArray(((monthly.rules || {}).expected || {}).days) ? monthly.rules.expected.days : null;
     const arrived = recs.map(s => s.received_date).filter(Boolean).sort()[0] || null;
     const daysLate = arrived && due && arrived > due ? Math.round((Date.parse(arrived) - Date.parse(due)) / 864e5) : 0;
-    return { status, due, expected: days ? { month: addM(m, 1), from: Math.min(...days), to: Math.max(...days) } : null, arrived, days_late: daysLate,
+    // Not received and past its due date: how many days overdue (the report is LATE — it still registers when it arrives).
+    const daysOverdue = status === "missing" ? Math.round((Date.parse(today) - Date.parse(due)) / 864e5) : 0;
+    return { status, due, expected: days ? { month: addM(m, 1), from: Math.min(...days), to: Math.max(...days) } : null, arrived, days_late: daysLate, days_overdue: daysOverdue,
       records: recs.map(s => ({ id: s.id, status: s.status, received_date: s.received_date, imported: !!s.import_batch_id, title: s.title })),
       captured: captured.length, coverage: cov ? cov.status : null, late, draft: monthly ? monthly.status !== "active" : null };
   }
@@ -77,12 +79,27 @@ function build(input) {
     const k = g.kinds.find(x => x.kind === "commission_statement"); if (!k) continue;
     const c = cell(g.slug, "commission_statement", recM);
     if (c.status === "not_expected" && !c.records.length) continue;
+    const open = items.filter(i => i.manufacturer === g.slug && i.attention && !i.resolved_at);
     rec.push({ slug: g.slug, name: g.name, status: c.status, due: c.due, expected: c.expected, arrived: c.arrived, days_late: c.days_late,
-      records: c.records, late: c.late.length > 0, coverage: c.coverage, draft_profile: c.draft });
+      days_overdue: c.days_overdue, records: c.records, late: c.late.length > 0, coverage: c.coverage, draft_profile: c.draft,
+      imported: c.records.some(r => r.imported), exceptions: open.length });
   }
   const rc = { month: recM, ready, ready_on: readyOn, rows: rec,
     counts: rec.reduce((a, r) => (a[r.status] = (a[r.status] || 0) + 1, a), {}),
-    late: rec.filter(r => r.late).length };
+    late: rec.filter(r => r.late).length,
+    // The summary a person reads first: received (on time / late), not received and overdue, not due yet, financial
+    // coverage, and the report email still waiting for a person.
+    summary: {
+      received: rec.filter(r => r.status === "registered").length,
+      received_late: rec.filter(r => r.status === "registered" && r.late).length,
+      overdue: rec.filter(r => r.status === "missing").length,
+      not_due: rec.filter(r => r.status === "not_due").length,
+      before_capture: rec.filter(r => r.status === "before_capture").length,
+      in_hcps_only: rec.filter(r => r.status === "in_hcps_only").length,
+      imported: rec.filter(r => r.imported).length,
+      registered_not_imported: rec.filter(r => r.status === "registered" && !r.imported).length,
+      coverage_received: rec.filter(r => r.coverage === "received").length,
+      open_exceptions: items.filter(i => i.attention && !i.resolved_at).length } };
 
   const openItems = items.filter(i => i.attention && !i.resolved_at);
   const pending = {
