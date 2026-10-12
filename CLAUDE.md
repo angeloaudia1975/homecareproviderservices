@@ -2618,6 +2618,16 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     - Admin pages must not reuse admin-shell.css names for their own CSS variables or classes (it defines --green,
       --gray, --blue, .chip, .ok …): the builder uses --b-* and .mchip.
     - Builder tests run the real handler against real Postgres via `test/academy-pgrest.js` (no project URL in fixtures).
+    **Stage 3 review (Angelo, 12 Oct 2026 15:07 CT; Academy ~62% toward the first Golden launch):** design ACCEPTED.
+    - 3 MB upload limit APPROVED for Stage 3; type/size/privacy/President-approval protections stay. Larger brochures and
+      manuals later go straight to private storage by signed upload + server re-check (runbook) — not built.
+    - Save sequence hardened without SQL: re-check before the write; the set_blocks audit row's `before` proves what was
+      replaced — a concurrent save is put back (audited) and the save answers 409; links undone on refusal, a failed undo
+      is reported, and every successful save removes unused links. Failure-injection tests in academy-builder.pg.
+      A truly atomic save = proposed M3.1 `academy_author_op_save_lesson` — NOT built, needs Angelo's separate approval.
+    - PR #10 is not merged until Angelo approves the GO/NO-GO report. After merge + verification: create the real Golden
+      Lift Chair Sales Certification as an UNPUBLISHED draft, Samples A and B first, validate editing on desktop and mobile,
+      remaining lessons only after approval; all learner-related switches stay OFF.
   - A1 check 27 and M1 check 43 need EMPTY Academy tables; if records exist in production they FAIL by design — use the
     before/after leftover checks (M2 21, M3 25) and discuss first.
   TRUNCATE is guarded too (`academy_content_guard_truncate`). Foreign-key cascades run as the table owner and so pass
