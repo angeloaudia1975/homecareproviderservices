@@ -2265,6 +2265,40 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   restored or imported without Angelo's decision.
   (6) **Reconciliation shows expected window, due date, arrival date and days late** per manufacturer (late reports still
   count as received).
+- **Phase D/E decisions (Angelo, 2026-10-12 18:40 CT; MI 87% at that message):** (1) the 7 quarantined September Strongback
+  rows stay quarantined PERMANENTLY (audit history kept); record #8 (the legitimate September order export) may be
+  considered on its own through a one-time, audited procedure — never by restoring the rows, never by removing the
+  quarantine safeguard globally, and never imported without his explicit financial approval. (2) Remaining profiles: trial
+  read-only, auto-register validated reports; order acknowledgments, price lists and dealer correspondence are never
+  statements. (3) Reconciliation: received / missing / late (overdue days after the delivery window), financial coverage,
+  unresolved exceptions; replies never create duplicates. (4) Strongback source-aware AUTOMATIC importer behind a
+  default-OFF switch: strict Ship-To, verified corrections, MI-1a dry run, duplicate + quarantine checks, rollback; normal
+  validated reports import automatically, genuine financial exceptions need his approval. (5) No new broad historical audit;
+  completion % in every update.
+  **Built (2026-10-12):** Trials: Complete Medical 10 statements (Aug 2025 → May 2026, one per month; the "Jan and Feb"
+  email splits by the file name's month — new period source `file_name_month`, profile opt-in), Ovation 2 (2605, 2606);
+  PediFix (one YTD export, no machine-readable period, on request) and Golden (no statement in 12 months — only order
+  acknowledgments, quotes, inventory lists) STAY DRAFT. A file NAMED as a price list / rate sheet ("PriceList Commission
+  Rate", "Pricing … Commission Rates") is a price list whatever its columns hold (`classifyName` + capture `inspect`).
+  Activation file `supabase/mi_d_profile_activation_2.sql` (Complete Medical + Ovation; test mi-d-p2-activation.pg 4).
+  Reconciliation rows carry `days_overdue` (not received after its due date = late), `exceptions` (open capture items) and
+  `imported`; `summary` = received (late) / overdue / not due / in HCPS by hand / received-not-imported / open exceptions.
+  **Phase E** `supabase/mi_e_auto_import.sql` (RULE 19; test mi-e-auto-import.pg 15; mutants test/mi-e.mutants.js 29/29;
+  probe scripts/mi_e_public_probe_browser.js 21 checks): `mfr_quarantine_dispositions` (President only, once per
+  manufacturer + month, names the exact quarantined rows by id + fingerprint `hcps_mfr_quarantine_fp`, optional ONE
+  released export of the same month, not yet imported); trigger `mfr_quarantine_lock` makes disposed rows permanent (no
+  restore / update / delete / truncate, owner included — other months unchanged); `mfr_import_approvals` (President only,
+  one exact `plan_hash`, single use, stamped imported / refused / rolled_back / superseded); append-only
+  `mfr_auto_import_log`. Verdict (`_source_import.js`): blockers (never importable) · approvals (changes_existing_orders,
+  cross_lane_duplicate, paid_period, quarantine_released — the President approves THIS plan) · cautions; a disposition
+  releases only the export it names and only while the quarantined rows are exactly the ones disposed. Plan hash = file
+  SHA-256 + every MI-1a row (minus imported_at) + dry-run counts + approval items. Import (`shipto-review-api`
+  executeImport): accept the record → `hcps_sales_report_apply` apply:true (confirm flags only for approved items) → result
+  must equal the dry run, else `hcps_import_batch_rollback` → `hcps_mfr_report_link_batch` (failure → rollback) → log →
+  approval stamped. Switch `phase2_flags.mi_auto_import` (exactly true) gates EVERY write of this path, automatic and
+  approved; `report-import-cron` (hourly :40) imports only eligible reports of MI-1a-enrolled manufacturers and logs a
+  waiting report once per plan. UI: MI dashboard quarantine card → disposition form (dry run, then Confirm); Ship-To
+  Review → Import check → "Approve & import this plan" (President, switch on). Code deployed; SQL NOT run.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
