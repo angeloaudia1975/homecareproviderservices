@@ -18,6 +18,7 @@
    part of a product a dealer would receive. */
 
 const HELD_NOTE = "Using current catalog content — enrichment held for source review";
+const WAITING_NOTE = "Using current catalog content — waiting for the President's content & image approval";
 const COMMERCIAL_FIELDS = ["base_price", "msrp", "map", "tiers", "uom", "case_qty", "msrp_basis", "map_basis", "msrp_each", "price_note", "group", "family"];
 const LADDER = [1, 2, 6, 11, 21];
 const upper = c => String(c == null ? "" : c).trim().toUpperCase();
@@ -58,9 +59,10 @@ function cardsOf(products, ctx){
     const G = PICK.sortVariants(list.slice()), lead = G[0];
     const media = [...new Set([lead.image].concat((lead.media || []).filter(m => m && m.kind === "image").map(m => m.url)).filter(Boolean).map(abs))];
     const held = !lead._pageKey && G.some(p => heldCodes.has(norm(p.code)));
+    const waiting = held && ctx.waitingCodes && G.some(p => ctx.waitingCodes.has(norm(p.code)));
     return {
       key: String(key), name: PICK.groupDisplayName(lead), page_key: lead._pageKey || null, enriched: !!lead._pageKey,
-      staff_note: held ? HELD_NOTE : null,
+      staff_note: held ? (waiting ? WAITING_NOTE : HELD_NOTE) : null,
       image: abs(lead.image), media,
       description: String(lead.description || ""), features: Array.isArray(lead._features) ? lead._features : [],
       specs: Array.isArray(lead._specs) ? lead._specs : [], warranty: lead._warranty || null,
@@ -86,9 +88,12 @@ function buildPreview(input){
   const ready = pages.filter(p => p.status === "ready" || p.status === "published"), held = pages.filter(p => p.status !== "ready" && p.status !== "published");
   const readyCodes = new Set(ready.flatMap(p => p.skus.map(s => norm(s.code))));
   const heldCodes = new Set(held.flatMap(p => p.skus.map(s => norm(s.code))));
+  /* a Ready page not shown as published (its content & image approval still open) keeps its current cards too — with its own note */
+  const waitingPages = held.filter(p => p.status === "waiting_for_approval");
+  const waitingCodes = new Set(waitingPages.flatMap(p => p.skus.map(s => norm(s.code))));
   const pageOf = c => pages.find(p => p.skus.some(s => norm(s.code) === norm(c))) || null;
   const todayCards = cardsOf(T.products, { R, PICK, engine: T.engine, heldCodes: new Set(), base: input.base });
-  const propCards = cardsOf(P.products, { R, PICK, engine: P.engine, heldCodes, base: input.base });
+  const propCards = cardsOf(P.products, { R, PICK, engine: P.engine, heldCodes, waitingCodes, base: input.base });
   const byCode = list => { const m = {}; (list || []).forEach(p => { (m[norm(p.code)] = m[norm(p.code)] || []).push(p); }); return m; };
   const tBy = byCode(T.products), pBy = byCode(P.products);
   const cardsWith = (cards, c) => cards.filter(k => k.codes.some(x => norm(x) === norm(c)));
@@ -171,7 +176,7 @@ function buildPreview(input){
   const fw = f => text(R.freightRowsHtml(f));
   add("freight_unchanged", "Freight for the same cart: identical fee and words", m2(fT.fee) === m2(fP.fee) && fw(fT) === fw(fP), { today: { fee: fT.fee, words: fw(fT) }, proposed: { fee: fP.fee, words: fw(fP) } });
 
-  const summary = { enriched_pages_ready: ready.length, held_back: held.length, active_skus: active.length,
+  const summary = { enriched_pages_ready: ready.length, held_back: held.length - waitingPages.length, waiting_for_approval: waitingPages.length, active_skus: active.length,
     accounted: active.length - missing.length, missing: missing.length, duplicates: dupes.length, commercial_changes: commercial.length,
     cards_today: todayCards.length, cards_proposed: propCards.length, retired_excluded: retired.map(r => r.code) };
   return { manufacturer: slug, read_only: true, summary, checks, pass: checks.every(c => c.pass), skus,
@@ -181,4 +186,4 @@ function buildPreview(input){
     held_note: HELD_NOTE };
 }
 
-module.exports = { buildPreview, cardsOf, proposedContentRows, cartLine, HELD_NOTE, DRAFT_MEDIA };
+module.exports = { buildPreview, cardsOf, proposedContentRows, cartLine, HELD_NOTE, WAITING_NOTE, DRAFT_MEDIA };

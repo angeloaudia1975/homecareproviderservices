@@ -122,24 +122,47 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
     const r2 = S.resolveBranch(FAM, { account_ref: 'A1', ship_to_id: 'ST-0042' }, { mode: 'strict', mappings: maps });   // no accountRoots given
     assert.strictEqual(r2.dealer_id, null); assert.strictEqual(r2.reason, 'mapping_unverified');
   });
-  await t('ZIP assignment (zipmap): reused only with the account confirmed and inside its corporate', async () => {
-    const zm = { 47546: { d: 'twin', c: 'hq' } }, F4 = [HQ, PRN, JAS, TWIN];
-    const ok = strict(F4, { account_ref: 'A1', ship_zip: '47546' }, { zipmap: zm });
+  await t('ZIP assignment (zipmap): reused only with the account confirmed, inside its corporate, and on a ZIP no two branches share', async () => {
+    // 47513 belongs to no branch (a delivery ZIP a person assigned in Commission Review) — the saved choice can be reused.
+    const zm = { 47513: { d: 'twin', c: 'hq' } }, F4 = [HQ, PRN, JAS, TWIN];
+    const ok = strict(F4, { account_ref: 'A1', ship_zip: '47513' }, { zipmap: zm });
     assert.deepStrictEqual([ok.dealer_id, ok.basis], ['twin', 'zip_assignment']);
-    const noAcct = strict(F4, { ship_zip: '47546' }, { zipmap: zm });
+    const noAcct = strict(F4, { ship_zip: '47513' }, { zipmap: zm });
     assert.deepStrictEqual([noAcct.dealer_id, noAcct.reason], [null, 'zip_assignment_unverified']);
-    const wrongAcct = strict(F4, { account_ref: 'H7', ship_zip: '47546' }, { zipmap: zm });
+    const wrongAcct = strict(F4, { account_ref: 'H7', ship_zip: '47513' }, { zipmap: zm });
     assert.deepStrictEqual([wrongAcct.dealer_id, wrongAcct.reason], [null, 'zip_assignment_unverified']);
-    const wrongCorp = strict(F4, { account_ref: 'A1', ship_zip: '47546' }, { zipmap: { 47546: { d: 'twin', c: 'ohq' } } });
+    const wrongCorp = strict(F4, { account_ref: 'A1', ship_zip: '47513' }, { zipmap: { 47513: { d: 'twin', c: 'ohq' } } });
     assert.strictEqual(wrongCorp.dealer_id, null);
-    const plain = strict(F4, { account_ref: 'A1', ship_zip: '47546' }, { zipmap: { 47546: 'twin' } });
+    const plain = strict(F4, { account_ref: 'A1', ship_zip: '47513' }, { zipmap: { 47513: 'twin' } });
     assert.strictEqual(plain.dealer_id, 'twin', 'an unscoped entry inside the confirmed family is reused');
+  });
+  await t('Glasgow rule: a saved ZIP choice on a ZIP two branches share is NEVER reused — a person decides (suggested)', async () => {
+    const F4 = [HQ, PRN, JAS, TWIN];
+    for (const zm of [{ 47546: { d: 'twin', c: 'hq' } }, { 47546: 'twin' }, { 47546: { d: 'jas', c: 'hq' } }]) {
+      const r = strict(F4, { account_ref: 'A1', ship_zip: '47546' }, { zipmap: zm });
+      assert.deepStrictEqual([r.dealer_id, r.reason, r.review], [null, 'zip_shared', true]);
+      assert.strictEqual(r.suggestions[0].basis, 'zip_assignment');
+    }
+    // a street address naming one branch still decides on its own merit
+    const byStreet = strict(F4, { account_ref: 'A1', ship_zip: '47546', ship_address: '900 3rd Avenue' }, { zipmap: { 47546: 'jas' } });
+    assert.strictEqual(byStreet.dealer_id, null, 'the saved ZIP choice is not applied; the shared ZIP still sends it to a person');
+  });
+  await t('a remembered ship-to key needs a ship-to id or a specific street address (house number + street)', async () => {
+    assert.strictEqual(S.shipKey({ ship_to_id: 'ST-9' }), 'id:st-9');
+    assert.strictEqual(S.shipKey({ ship_address: '200 N Hart St', ship_zip: '47670' }), 'addr:200 N HART ST|47670');
+    for (const a of ['Hart Street', 'PO Box 12', 'P.O. Box 77', '200', 'Suite 4', '12 Ste 4', '']) assert.strictEqual(S.shipKey({ ship_address: a, ship_zip: '42141' }), null, a);
+    assert.strictEqual(S.shipKey({ ship_zip: '42141' }), null, 'a ZIP alone is never a key');
+    assert.strictEqual(S.specificAddress('1012 W Main Street'), true); assert.strictEqual(S.specificAddress('7B Mill Rd'), true);
   });
   await t("ZIP assignment naming another family's dealer is ignored — never selected", async () => {
     for (const zm of [{ 47546: { d: 'obr', c: 'ohq' } }, { 47546: 'obr' }, { 47546: { d: 'ohq', c: 'ohq' } }]) {
       const r = strict([HQ, PRN, JAS, TWIN], { account_ref: 'A1', ship_zip: '47546' }, { zipmap: zm });
       assert.notStrictEqual(r.dealer_id, 'obr'); assert.notStrictEqual(r.dealer_id, 'ohq'); assert.strictEqual(r.reason, 'zip_shared');
+      assert.ok(!r.suggestions.some(x => x.dealer_id === 'obr' || x.dealer_id === 'ohq'), 'another family is never even suggested');
     }
+    const r2 = strict([HQ, PRN, JAS, TWIN], { account_ref: 'A1', ship_zip: '47513' }, { zipmap: { 47513: 'obr' } });
+    assert.deepStrictEqual([r2.dealer_id, r2.reason], [null, 'new_location']);
+    assert.ok(!r2.suggestions.some(x => x.dealer_id === 'obr'));
   });
   await t('a dealer without branches keeps its answer when a ZIP entry cannot be confirmed', async () => {
     const r = strict([ONE], { ship_zip: '37201' }, { zipmap: { 37201: 'solo' } });

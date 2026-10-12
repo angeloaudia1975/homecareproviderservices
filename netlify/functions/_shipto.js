@@ -45,11 +45,20 @@ const nstate = s => { const u = String(s || "").toUpperCase().replace(/[^A-Z ]/g
 
 // The ship-to key a verified mapping is remembered under: the manufacturer's own ship-to id when the report gives one,
 // otherwise the delivery street + ZIP. Null when neither exists (nothing that narrow can be remembered).
+// Phase D (Angelo, 2026-10-12 12:43): a choice is remembered only on a verified ship-to id or a SUFFICIENTLY SPECIFIC
+// street address — a house number followed by a street name ("123 MAIN ST"), never a bare street, a PO box, a suite or
+// a ZIP on its own. A ZIP shared by several branches is never enough (Glasgow).
+function specificAddress(a) {
+  const t = naddr(a).split(" ").filter(Boolean);
+  if (t.length < 2 || !/^\d+[A-Z]?$/.test(t[0])) return false;
+  if (/^(PO|P O|POST OFFICE) ?BOX\b/.test(t.slice(1).join(" "))) return false;
+  return t.slice(1).some(w => /[A-Z]{2,}/.test(w) && !/^(STE|SUITE|UNIT|APT|BOX|PO)$/.test(w));
+}
 function shipKey(row) {
   const id = String(row.ship_to_id || "").trim();
   if (id) return "id:" + id.toLowerCase();
   const a = naddr(row.ship_address), z = znorm(row.ship_zip);
-  return a && z ? `addr:${a}|${z}` : null;
+  return a && z && specificAddress(row.ship_address) ? `addr:${a}|${z}` : null;
 }
 
 function resolveBranch(cands, row, opts) {
@@ -90,6 +99,10 @@ function resolveBranch(cands, row, opts) {
     const z = znorm(row.ship_zip), ent = z ? opts.zipmap[z] : null;
     const d0 = ent && (typeof ent === "string" ? ent : ent.d), c0 = ent && typeof ent === "object" ? ent.c : null;
     if (d0 && ids.has(d0)) {
+      // A saved ZIP decision is never reused when that ZIP belongs to more than one of this family's branches: the ZIP
+      // alone cannot say which location shipped (Phase D, Glasgow). A person decides, with the saved choice suggested.
+      if (cands.filter(c => znorm(c.zip) === z).length > 1) return out(null, null, { review: true, reason: "zip_shared",
+        suggestions: [{ dealer_id: d0, name: nameOf(d0), basis: "zip_assignment" }] });
       if (confirmed(d0) && (!c0 || root(d0) === c0)) return out(cands.find(c => c.id === d0), "zip_assignment");
       if (cands.length > 1) return unverified("zip_assignment_unverified", d0);
     }
@@ -155,4 +168,4 @@ function makeMatcher(p) {
   return { candidates, byId, rootOf, family, accountRoots };
 }
 
-module.exports = { resolveBranch, makeMatcher, shipKey, _internal: { dnorm, znorm, naddr, ncity, nstate, nref } };
+module.exports = { resolveBranch, makeMatcher, shipKey, specificAddress, _internal: { dnorm, znorm, naddr, ncity, nstate, nref } };

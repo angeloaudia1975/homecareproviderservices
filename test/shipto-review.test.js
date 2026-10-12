@@ -156,9 +156,10 @@ const writes = w => w.calls.filter(c => c.m !== 'GET' && !c.u.includes('/rpc/') 
     const r2 = RV.buildReview(parsed.rows, { matcher, mappings: [{ id: 5, account_ref: 'wilburbros', ship_key: key, scope: 'branch', dealer_id: 'wja', retired_at: '2026-10-11' }] });
     assert.strictEqual(r2.orders.find(x => x.order_key === 'o:7200').status, 'needs_review');
   });
-  await t('a saved ZIP assignment (Commission Review, RULE 6) resolves a shared ZIP inside its corporate only', () => {
+  await t('Glasgow rule: a saved ZIP assignment never resolves a ZIP two branches share — the order waits for a person', () => {
     const r2 = RV.buildReview(parsed.rows, { matcher, zipmap: { '47546': { d: 'tb2', c: 'thq' } } });
-    const o = r2.orders.find(x => x.order_key === 'o:7202'); assert.strictEqual(o.dealer_id, 'tb2'); assert.strictEqual(o.basis, 'zip_assignment');
+    const o = r2.orders.find(x => x.order_key === 'o:7202'); assert.strictEqual(o.status, 'needs_review'); assert.strictEqual(o.reason, 'zip_shared');
+    assert.strictEqual(o.suggestions[0].dealer_id, 'tb2', 'the saved choice is offered as a suggestion only');
     const r3 = RV.buildReview(parsed.rows, { matcher, zipmap: { '47546': { d: 'tb2', c: 'whq' } } });         // another corporate's rule
     assert.strictEqual(r3.orders.find(x => x.order_key === 'o:7202').status, 'needs_review');
     const r4 = RV.buildReview(parsed.rows, { matcher, zipmap: { '47546': 'wja' } });                          // unscoped: only a candidate
