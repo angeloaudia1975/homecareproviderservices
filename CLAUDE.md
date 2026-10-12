@@ -2072,6 +2072,11 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   16, Phase B mutants 38/38) → main 3b41b85, Netlify "Published". Items #3, #5, #7, #12 (Golden attached-email
   exceptions, the only four open) resolved `ignore` (Not a report) with the reason naming the corrected rule; Needs
   attention = 0; no record deleted. The record #8 correction SQL is on main as a FILE only — not run.
+- **Record #8 period correction RUN by Angelo 2026-10-11 21:54 CT (verified).** Result: record 8 = 2026-09-01..2026-09-30,
+  title "Strongback Mobility — order / sales export 2026-09", status received, file / SHA-256 42509f6b…98dc / received
+  2026-10-02 unchanged; events = #2 registered (system:report-capture) + #4 period_corrected (owner:sql-editor);
+  monthly_sales 11,997 / $10,802,558.50 / $493,077.06 unchanged; 3 report records. Guard restored exactly: prosrc md5
+  5b3caaaa… = the committed MI-1b guard pasted with Windows line endings (LF form b84957ba…), computed independently.
 - **Phase C BUILT on branch `mi-c-shipto` (2026-10-11; off `mi-b-capture-fixes`; NOT merged, NOT deployed, NO production
   SQL).** Migration `supabase/mi_c_shipto.sql` (sha256 015675d6…1f26; rollback `…_rollback.sql` fffaf539…, refuses while any
   decision exists): `mfr_shipto_corrections` (versioned, append-only overlay per order of a registered report: chosen
