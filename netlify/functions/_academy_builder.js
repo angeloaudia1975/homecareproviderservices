@@ -188,7 +188,7 @@ READ.builder = async (staff, b) => {
   const d = await versionData(A.uuid(b.version_id, 'version'));
   const [library, mfrs] = await Promise.all([all(`academy_media?select=${MEDIA_COLS}`, 'created_at.desc'), all(`manufacturers?select=slug,name`, 'slug.asc')]);
   await signed(library.filter(m => m.kind === 'image'));
-  return { ok: true, version: d.v, course: d.course, editable: d.v.status === 'draft', president: isPresident(staff),
+  return { ok: true, version: d.v, course: d.course, editable: d.v.status === 'draft' && isPresident(staff), president: isPresident(staff), president_only: true,
     modules: d.modules, lessons: d.lessons.map(l => Object.assign({}, l, { hash: blocksHash(l.blocks), est_content_minutes: estimateMinutes(l.blocks) })),
     questions: d.questions, refs: d.refs, facts: d.facts, media: library, manufacturers: mfrs,
     readiness: readiness({ version: d.v, modules: d.modules, lessons: d.lessons, questions: d.questions, refs: d.refs, facts: d.facts, media: library }) };
@@ -441,4 +441,8 @@ WRITE.discard_upload = async (staff, b) => {
   return { ok: true, audited: true, discarded: path };
 };
 
-module.exports = { READ, WRITE, readiness, estimateMinutes, blocksHash, canon, TYPES, MAX_UPLOAD, UPLOAD_BODY };
+/* Until M3.1 (one atomic save operation) is approved and installed, course content is edited by the President only
+   (Angelo, 12 Oct 2026). academy-admin-api refuses these actions for every other administrator; reads stay open to them. */
+const PRESIDENT_ONLY_EDITING = ['create_course', 'update_course', 'create_version', 'update_version', 'submit_for_review', 'return_to_draft',
+  'create_module', 'update_module', 'delete_module', 'create_lesson', 'update_lesson', 'delete_lesson'].concat(Object.keys(WRITE));
+module.exports = { PRESIDENT_ONLY_EDITING, READ, WRITE, readiness, estimateMinutes, blocksHash, canon, TYPES, MAX_UPLOAD, UPLOAD_BODY };

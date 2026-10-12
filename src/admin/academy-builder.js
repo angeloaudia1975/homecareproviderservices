@@ -5,7 +5,7 @@
    - The live preview is drawn by /assets/academy/lesson-player.js — the same player learners will use — from the screens
      being edited (saved or not). Nothing in the preview is saved.
    - The question bank is the one staff screen that shows answer keys; lesson previews never carry them.
-   - Pictures: any administrator may upload a candidate; only the President approves (or discards) it. */
+   - Pictures: until M3.1 only the President uploads, approves or discards (other administrators see the builder read only). */
 (function () {
   'use strict';
   var $ = function (s) { return document.querySelector(s); };
@@ -614,7 +614,7 @@
     var R = d.readiness, p = $('#readyPill');
     p.textContent = R.ready ? 'Ready for review' : R.counts.blocking + ' to fix · ' + R.counts.advice + ' suggestion' + (R.counts.advice === 1 ? '' : 's');
     p.className = 'pill ' + (R.ready ? 'ok' : 'bad');
-    $('#lockNote').replaceChildren(editable() ? '' : note('This version is ' + v.status.replace('_', ' ') + ', so it is read only here. ' + (v.status === 'in_review' ? 'Return it to draft in the Command Center to change it.' : 'Create a new version in the Command Center to change the course.')));
+    $('#lockNote').replaceChildren(editable() ? '' : (v.status === 'draft' && !president()) ? note('Read only: until the M3.1 save upgrade is installed, only the President edits course content.') : note('This version is ' + v.status.replace('_', ' ') + ', so it is read only here. ' + (v.status === 'in_review' ? 'Return it to draft in the Command Center to change it.' : 'Create a new version in the Command Center to change the course.')));
     $('#backLink').setAttribute('href', '/admin/academy.html#courses');
   }
   function renderTabs() {
@@ -963,7 +963,9 @@
       rd.readAsDataURL(f);
     }, { cls: 'pri' });
     up.append(field('File', file), sel, el('div', { cls: 'bar', style: 'margin-top:10px' }, [go1]), status);
-    v.appendChild(up);
+    // Until M3.1 is installed only the President changes course content, uploads included (the server refuses others too).
+    if (pres) v.appendChild(up);
+    else v.appendChild(el('div', { cls: 'card' }, [el('h2', { text: 'Add a picture or document' }), note('Until the M3.1 save upgrade is installed, only the President adds pictures and documents.')]));
     // waiting for approval
     var wait = el('div', { cls: 'card' }, [el('h2', { text: 'Waiting for the President’s approval (' + L.candidates.length + ')' })]);
     if (!L.candidates.length) wait.appendChild(el('p', { cls: 'muted', text: 'Nothing is waiting.' }));

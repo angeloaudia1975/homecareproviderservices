@@ -86,6 +86,13 @@ const one = q => JSON.parse(run(DB, `select coalesce(row_to_json(x), 'null') fro
       lessons.B2 = ok(await call('pres', { action: 'create_lesson', module_id: mods[2].id, title: 'Fitting the chair', est_minutes: 10 })).lesson;
       r = ok(await call('adm', { action: 'builder', version_id: version.id }));
       assert.strictEqual(r.president, false, 'a non-President administrator is told so');
+      assert.strictEqual(r.editable, false, 'until M3.1 a non-President administrator opens a draft read only');
+      const evN = Number(run(DB, 'select count(*) from academy_events'));
+      for (const b of [{ action: 'save_blocks', lesson_id: lessons.A.id, blocks: [], base_hash: B.blocksHash([]) }, { action: 'create_module', version_id: version.id, title: 'Nope' },
+                       { action: 'reorder_modules', version_id: version.id, order: mods.map(m => m.id) }, { action: 'set_distribution', version_id: version.id, quotas: null }]) {
+        const x = await call('adm', b); assert.strictEqual(x.status, 403, b.action); assert.strictEqual(x.body.error, 'president_only', b.action);
+      }
+      assert.strictEqual(Number(run(DB, 'select count(*) from academy_events')), evN, 'a refused non-President write records nothing');
       assert.strictEqual(r.modules.length, 3); assert.strictEqual(r.lessons.length, 3);
       assert.ok(r.lessons.every(l => /^[0-9a-f]{32}$/.test(l.hash)));
     });
@@ -121,10 +128,10 @@ const one = q => JSON.parse(run(DB, `select coalesce(row_to_json(x), 'null') fro
     });
     await t('save_blocks: a save that does not start from the current content is refused 409 "changed" and changes nothing', async () => {
       const before = one(`select blocks from academy_lessons where id = '${lessons.A.id}'`).blocks;
-      const r = await call('adm', { action: 'save_blocks', lesson_id: lessons.A.id, blocks: [{ kind: 'objectives', items: ['a b', 'c d'] }], base_hash: B.blocksHash([]) });
+      const r = await call('pres', { action: 'save_blocks', lesson_id: lessons.A.id, blocks: [{ kind: 'objectives', items: ['a b', 'c d'] }], base_hash: B.blocksHash([]) });
       assert.strictEqual(r.status, 409); assert.strictEqual(r.body.error, 'changed');
       assert.deepStrictEqual(one(`select blocks from academy_lessons where id = '${lessons.A.id}'`).blocks, before);
-      const r2 = await call('adm', { action: 'save_blocks', lesson_id: lessons.A.id, blocks: [], base_hash: undefined });
+      const r2 = await call('pres', { action: 'save_blocks', lesson_id: lessons.A.id, blocks: [], base_hash: undefined });
       assert.strictEqual(r2.status, 409, 'no base hash = refused');
     });
     await t('save_blocks refused by the database (objectives not first) -> 400 with its message; the fact links made for it are undone; nothing else changes', async () => {
@@ -145,9 +152,9 @@ const one = q => JSON.parse(run(DB, `select coalesce(row_to_json(x), 'null') fro
     });
     await t('the acting person is the sign-in, never the request: actor / p_actor fields in a request are ignored', async () => {
       const cur = B.blocksHash(one(`select blocks from academy_lessons where id = '${lessons.B.id}'`).blocks);
-      ok(await call('adm', { action: 'save_blocks', lesson_id: lessons.B.id, blocks: SAMPLES.B.lesson.blocks, base_hash: cur, actor: 'staff:admin@test.example', p_actor: 'staff:admin@test.example' }));
+      ok(await call('pres', { action: 'save_blocks', lesson_id: lessons.B.id, blocks: SAMPLES.B.lesson.blocks, base_hash: cur, actor: 'staff:admin2@test.example', p_actor: 'staff:admin2@test.example' }));
       const ev = events(`entity_id = '${lessons.B.id}' and action = 'set_blocks'`);
-      assert.strictEqual(ev[ev.length - 1].actor, 'staff:admin2@test.example');
+      assert.strictEqual(ev[ev.length - 1].actor, 'staff:admin@test.example');
     });
 
     /* ------------------------------------------------------------- failure injection: the save sequence (Stage 3 review item 1) */
@@ -162,7 +169,7 @@ const one = q => JSON.parse(run(DB, `select coalesce(row_to_json(x), 'null') fro
       F = ok(await call('pres', { action: 'create_lesson', module_id: mods[2].id, title: 'Failure injection', est_minutes: 10 })).lesson;
       const evBefore = events().length;
       once('academy_author_op_set_blocks', () => ({ status: 502, body: { message: 'injected: connection reset' } }));
-      const r = await call('adm', { action: 'save_blocks', lesson_id: F.id, blocks: fblocks([capFact]), base_hash: B.blocksHash([]) });
+      const r = await call('pres', { action: 'save_blocks', lesson_id: F.id, blocks: fblocks([capFact]), base_hash: B.blocksHash([]) });
       S.onRpc = null;
       assert.strictEqual(r.status, 502, JSON.stringify(r.body));
       assert.strictEqual(refsOf(F.id), 0, 'the link made for this save was removed');
@@ -173,11 +180,11 @@ const one = q => JSON.parse(run(DB, `select coalesce(row_to_json(x), 'null') fro
     await t('failure injection: the blocks are refused AND an undo fails -> the answer says a link is left; the next successful save removes it (audited); links end up matching the screens', async () => {
       once('academy_author_op_unlink_fact', () => ({ status: 503, body: { message: 'injected: unavailable' } }));
       const bad = [capFact].concat(fblocks());   // objectives not first: refused by the block checker
-      const r = await call('adm', { action: 'save_blocks', lesson_id: F.id, blocks: bad, base_hash: B.blocksHash([]) });
+      const r = await call('pres', { action: 'save_blocks', lesson_id: F.id, blocks: bad, base_hash: B.blocksHash([]) });
       S.onRpc = null;
       assert.strictEqual(r.status, 400); assert.match(r.body.message, /objectives come first/); assert.match(r.body.message, /could not be removed yet; the next save removes it/);
       assert.strictEqual(refsOf(F.id), 1, 'the leftover link is reported, not hidden');
-      const ok2 = ok(await call('adm', { action: 'save_blocks', lesson_id: F.id, blocks: fblocks(), base_hash: B.blocksHash([]) }));
+      const ok2 = ok(await call('pres', { action: 'save_blocks', lesson_id: F.id, blocks: fblocks(), base_hash: B.blocksHash([]) }));
       assert.strictEqual(ok2.links_removed, 1); assert.strictEqual(refsOf(F.id), 0);
       assert.strictEqual(events(`action = 'unlink_fact' and before->>'lesson_id' = '${F.id}'`).length, 2, 'both removals are in the history');
     });
@@ -186,20 +193,20 @@ const one = q => JSON.parse(run(DB, `select coalesce(row_to_json(x), 'null') fro
       const theirs = fblocks([{ kind: 'text', heading: 'Theirs', body: 'Saved by the President at the same moment' }]);
       once('academy_author_op_set_blocks', () => { setBlocksSql(F.id, theirs); return null; });   // their save lands first, then ours runs
       const evBefore = events(`entity_id = '${F.id}' and action = 'set_blocks'`).length;
-      const r = await call('adm', { action: 'save_blocks', lesson_id: F.id, blocks: fblocks([{ kind: 'text', heading: 'Mine', body: 'Saved by the second administrator' }]), base_hash: base });
+      const r = await call('pres', { action: 'save_blocks', lesson_id: F.id, blocks: fblocks([{ kind: 'text', heading: 'Mine', body: 'Saved by the second administrator' }]), base_hash: base });
       S.onRpc = null;
       assert.strictEqual(r.status, 409, JSON.stringify(r.body)); assert.match(r.body.message, /Their version was kept/);
       assert.strictEqual(one(`select blocks from academy_lessons where id = '${F.id}'`).blocks[1].heading, 'Theirs');
       const ev = events(`entity_id = '${F.id}' and action = 'set_blocks'`).slice(evBefore);
       assert.deepStrictEqual(ev.map(e => [e.actor, e.after.blocks[1] && e.after.blocks[1].heading]),
-        [['staff:admin@test.example', 'Theirs'], ['staff:admin2@test.example', 'Mine'], ['staff:admin2@test.example', 'Theirs']], 'their save, ours, the put-back — all recorded');
+        [['staff:admin@test.example', 'Theirs'], ['staff:admin@test.example', 'Mine'], ['staff:admin@test.example', 'Theirs']], 'their save, ours, the put-back — all recorded');
     });
     await t('failure injection: someone saves while this save is linking facts -> caught before the blocks are written; this attempt\'s links are undone; 409', async () => {
       const base = hashOf(F.id);
       const theirs = fblocks([{ kind: 'text', heading: 'Theirs again', body: 'x' }]);
       once('academy_author_op_link_fact', () => { setBlocksSql(F.id, theirs); return null; });
       const n = events(`entity_id = '${F.id}' and action = 'set_blocks'`).length;
-      const r = await call('adm', { action: 'save_blocks', lesson_id: F.id, blocks: fblocks([capFact]), base_hash: base });
+      const r = await call('pres', { action: 'save_blocks', lesson_id: F.id, blocks: fblocks([capFact]), base_hash: base });
       S.onRpc = null;
       assert.strictEqual(r.status, 409); assert.strictEqual(r.body.error, 'changed');
       assert.strictEqual(one(`select blocks from academy_lessons where id = '${F.id}'`).blocks[1].heading, 'Theirs again');
@@ -208,15 +215,15 @@ const one = q => JSON.parse(run(DB, `select coalesce(row_to_json(x), 'null') fro
     });
     await t('failure injection: the save succeeds but its answer is lost -> "reload", nothing undone (the saved screens keep their facts)', async () => {
       const base = hashOf(F.id);
-      once('academy_author_op_set_blocks', a => { setBlocksSql(F.id, a.p_blocks, 'admin2@test.example'); return { status: 502, body: { message: 'injected: answer lost' } }; });
-      const r = await call('adm', { action: 'save_blocks', lesson_id: F.id, blocks: fblocks([capFact]), base_hash: base });
+      once('academy_author_op_set_blocks', a => { setBlocksSql(F.id, a.p_blocks, 'admin@test.example'); return { status: 502, body: { message: 'injected: answer lost' } }; });
+      const r = await call('pres', { action: 'save_blocks', lesson_id: F.id, blocks: fblocks([capFact]), base_hash: base });
       S.onRpc = null;
       assert.strictEqual(r.status, 409); assert.strictEqual(r.body.error, 'reload');
       assert.strictEqual(one(`select blocks from academy_lessons where id = '${F.id}'`).blocks[1].kind, 'fact');
       assert.strictEqual(refsOf(F.id), 1, 'the link the saved fact needs is kept');
     });
     await t('a fact removed from the screens has its link removed by the save (links always match the screens)', async () => {
-      const r = ok(await call('adm', { action: 'save_blocks', lesson_id: F.id, blocks: fblocks(), base_hash: hashOf(F.id) }));
+      const r = ok(await call('pres', { action: 'save_blocks', lesson_id: F.id, blocks: fblocks(), base_hash: hashOf(F.id) }));
       assert.strictEqual(r.links_removed, 1); assert.strictEqual(refsOf(F.id), 0);
       ok(await call('pres', { action: 'save_blocks', lesson_id: F.id, blocks: [], base_hash: hashOf(F.id) }));
       ok(await call('pres', { action: 'delete_lesson', id: F.id }));
@@ -253,60 +260,60 @@ const one = q => JSON.parse(run(DB, `select coalesce(row_to_json(x), 'null') fro
     /* ------------------------------------------------------------- order */
     await t('reorder_modules / reorder_lessons through M3; audited; an incomplete order is refused by the database', async () => {
       const order = [mods[0].id, mods[2].id, mods[1].id];
-      ok(await call('adm', { action: 'reorder_modules', version_id: version.id, order }));
+      ok(await call('pres', { action: 'reorder_modules', version_id: version.id, order }));
       const pos = JSON.parse(run(DB, `select json_agg(id order by position) from academy_modules where version_id = '${version.id}'`));
       assert.deepStrictEqual(pos, order);
       assert.ok(events(`action = 'reorder_modules'`).length >= 1);
-      const bad = await call('adm', { action: 'reorder_modules', version_id: version.id, order: [mods[0].id, mods[1].id] });
+      const bad = await call('pres', { action: 'reorder_modules', version_id: version.id, order: [mods[0].id, mods[1].id] });
       assert.strictEqual(bad.status, 400);
-      ok(await call('adm', { action: 'reorder_lessons', module_id: mods[2].id, order: [lessons.B2.id, lessons.B.id] }));
+      ok(await call('pres', { action: 'reorder_lessons', module_id: mods[2].id, order: [lessons.B2.id, lessons.B.id] }));
       assert.deepStrictEqual(JSON.parse(run(DB, `select json_agg(id order by position) from academy_lessons where module_id = '${mods[2].id}'`)), [lessons.B2.id, lessons.B.id]);
-      const cross = await call('adm', { action: 'reorder_lessons', module_id: mods[2].id, order: [lessons.B2.id, lessons.A.id] });
+      const cross = await call('pres', { action: 'reorder_lessons', module_id: mods[2].id, order: [lessons.B2.id, lessons.A.id] });
       assert.strictEqual(cross.status, 400, 'a lesson of another module cannot be moved in');
-      ok(await call('adm', { action: 'reorder_modules', version_id: version.id, order: mods.map(m => m.id) }));
+      ok(await call('pres', { action: 'reorder_modules', version_id: version.id, order: mods.map(m => m.id) }));
     });
 
     /* ------------------------------------------------------------- the question bank */
     await t('question bank: create / update / retire (reason required) / restore through M3; the builder read shows answer keys (staff editor) but the Command Center version view never does', async () => {
-      const q = ok(await call('adm', { action: 'create_question', version_id: version.id, question: { module_id: mods[0].id, kind: 'multi', use: 'exam', prompt: 'Which are Golden comfort features?', choices: [{ id: 'a', text: 'Zone 1' }, { id: 'b', text: 'Zone 2' }, { id: 'c', text: 'A cup holder' }], answer_key: ['b', 'a'], explanation: 'Zones 1 and 2.', objective_tags: ['comfort-zones'] } })).question;
+      const q = ok(await call('pres', { action: 'create_question', version_id: version.id, question: { module_id: mods[0].id, kind: 'multi', use: 'exam', prompt: 'Which are Golden comfort features?', choices: [{ id: 'a', text: 'Zone 1' }, { id: 'b', text: 'Zone 2' }, { id: 'c', text: 'A cup holder' }], answer_key: ['b', 'a'], explanation: 'Zones 1 and 2.', objective_tags: ['comfort-zones'] } })).question;
       assert.deepStrictEqual(q.answer_key, ['a', 'b'], 'normalized by the database');
-      ok(await call('adm', { action: 'update_question', id: q.id, changes: { prompt: 'Which two are Golden comfort zones?' } }));
-      const noReason = await call('adm', { action: 'question_status', id: q.id, status: 'retired' });
+      ok(await call('pres', { action: 'update_question', id: q.id, changes: { prompt: 'Which two are Golden comfort zones?' } }));
+      const noReason = await call('pres', { action: 'question_status', id: q.id, status: 'retired' });
       assert.strictEqual(noReason.status, 400);
-      ok(await call('adm', { action: 'question_status', id: q.id, status: 'retired', reason: 'Reworded below' }));
+      ok(await call('pres', { action: 'question_status', id: q.id, status: 'retired', reason: 'Reworded below' }));
       assert.strictEqual(one(`select status from academy_questions where id = '${q.id}'`).status, 'retired');
-      ok(await call('adm', { action: 'question_status', id: q.id, status: 'active' }));
+      ok(await call('pres', { action: 'question_status', id: q.id, status: 'active' }));
       const b = ok(await call('adm', { action: 'builder', version_id: version.id }));
       assert.deepStrictEqual(b.questions.find(x => x.id === q.id).answer_key, ['a', 'b']);
       const v = ok(await call('adm', { action: 'get_version', id: version.id }));
       assert.ok(!/answer_key|Zone 1|comfort zones/.test(JSON.stringify(v)), 'the version view carries counts only');
       assert.ok(!JSON.stringify(events()).includes('"answer_key":['), 'no answer key in any audit row');
-      const dup = await call('adm', { action: 'create_question', version_id: version.id, question: { module_id: mods[0].id, kind: 'single', use: 'practice', prompt: 'Which two are Golden  comfort zones?', choices: [{ id: 'a', text: 'x' }, { id: 'b', text: 'y' }], answer_key: 'a', explanation: 'x', objective_tags: ['x'] } });
+      const dup = await call('pres', { action: 'create_question', version_id: version.id, question: { module_id: mods[0].id, kind: 'single', use: 'practice', prompt: 'Which two are Golden  comfort zones?', choices: [{ id: 'a', text: 'x' }, { id: 'b', text: 'y' }], answer_key: 'a', explanation: 'x', objective_tags: ['x'] } });
       assert.strictEqual(dup.status, 400, 'the same question as practice and exam is refused (its answer would leak)');
     });
     await t('fact links on a question: an exam question on an unverified fact is listed as blocking by readiness and is not usable', async () => {
-      const q = ok(await call('adm', { action: 'create_question', version_id: version.id, question: { module_id: mods[2].id, kind: 'single', use: 'exam', prompt: 'What is the PR-515 capacity?', choices: [{ id: 'a', text: '375 lb' }, { id: 'b', text: '500 lb' }], answer_key: 'a', explanation: 'See the sell sheet.', objective_tags: ['capacity'] } })).question;
+      const q = ok(await call('pres', { action: 'create_question', version_id: version.id, question: { module_id: mods[2].id, kind: 'single', use: 'exam', prompt: 'What is the PR-515 capacity?', choices: [{ id: 'a', text: '375 lb' }, { id: 'b', text: '500 lb' }], answer_key: 'a', explanation: 'See the sell sheet.', objective_tags: ['capacity'] } })).question;
       const awaiting = SAMPLES.B.facts.find(f => f.status !== 'verified') || SAMPLES.A.facts.find(f => f.status !== 'verified');
       assert.ok(awaiting, 'the samples hold an awaiting fact');
-      const link = ok(await call('adm', { action: 'link_question_fact', question_id: q.id, manufacturer_slug: awaiting.manufacturer_slug, model_code: awaiting.model_code, field: awaiting.field })).link;
+      const link = ok(await call('pres', { action: 'link_question_fact', question_id: q.id, manufacturer_slug: awaiting.manufacturer_slug, model_code: awaiting.model_code, field: awaiting.field })).link;
       const r = ok(await call('adm', { action: 'readiness', version_id: version.id })).readiness;
       assert.ok(r.items.some(x => x.level === 'blocking' && x.question_id === q.id && /not verified/.test(x.message)));
-      ok(await call('adm', { action: 'unlink_fact', id: link.id }));
+      ok(await call('pres', { action: 'unlink_fact', id: link.id }));
       const r2 = ok(await call('adm', { action: 'readiness', version_id: version.id })).readiness;
       assert.ok(!r2.items.some(x => x.question_id === q.id));
     });
 
     /* ------------------------------------------------------------- distribution */
     await t('set_distribution: numbers that do not add up are refused by the database; correct numbers saved per module; null = automatic again', async () => {
-      const bad = await call('adm', { action: 'set_distribution', version_id: version.id, quotas: { [mods[0].id]: 1, [mods[1].id]: 1, [mods[2].id]: 5 } });
+      const bad = await call('pres', { action: 'set_distribution', version_id: version.id, quotas: { [mods[0].id]: 1, [mods[1].id]: 1, [mods[2].id]: 5 } });
       assert.strictEqual(bad.status, 400, JSON.stringify(bad.body));
-      ok(await call('adm', { action: 'set_distribution', version_id: version.id, quotas: { [mods[0].id]: 1, [mods[1].id]: 1, [mods[2].id]: 1 } }));
+      ok(await call('pres', { action: 'set_distribution', version_id: version.id, quotas: { [mods[0].id]: 1, [mods[1].id]: 1, [mods[2].id]: 1 } }));
       assert.deepStrictEqual(JSON.parse(run(DB, `select json_agg(exam_quota order by position) from academy_modules where version_id = '${version.id}'`)), [1, 1, 1]);
       const r = ok(await call('adm', { action: 'readiness', version_id: version.id })).readiness;
       assert.strictEqual(r.bank.mode, 'set');
-      ok(await call('adm', { action: 'set_distribution', version_id: version.id, quotas: null }));
+      ok(await call('pres', { action: 'set_distribution', version_id: version.id, quotas: null }));
       assert.strictEqual(run(DB, `select count(*) from academy_modules where version_id = '${version.id}' and exam_quota is not null`), '0');
-      const zero = await call('adm', { action: 'set_distribution', version_id: version.id, quotas: { [mods[0].id]: 0 } });
+      const zero = await call('pres', { action: 'set_distribution', version_id: version.id, quotas: { [mods[0].id]: 0 } });
       assert.strictEqual(zero.status, 400);
     });
 
@@ -314,43 +321,43 @@ const one = q => JSON.parse(run(DB, `select coalesce(row_to_json(x), 'null') fro
     const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
     const jpg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(200, 7)]);
     let upA, upB;
-    await t('upload_media: any administrator uploads a CANDIDATE (private, hash-named, never overwrites); it is not usable until approved', async () => {
-      const r = ok(await call('adm', { action: 'upload_media', file_name: 'PR-446 Side View.JPG', data: jpg.toString('base64'), manufacturer_slug: G }, { headers: { 'x-academy-upload': '1' } }));
+    await t('upload_media: the President uploads a CANDIDATE (until M3.1 other administrators are refused) (private, hash-named, never overwrites); it is not usable until approved', async () => {
+      const r = ok(await call('pres', { action: 'upload_media', file_name: 'PR-446 Side View.JPG', data: jpg.toString('base64'), manufacturer_slug: G }, { headers: { 'x-academy-upload': '1' } }));
       assert.match(r.storage_path, /^media\/golden-technologies\/[0-9a-f]{16}-pr-446-side-view\.jpg$/);
       assert.strictEqual(r.approved, false); assert.ok(S.storage.has(r.storage_path)); upA = r.storage_path;
       const again = ok(await call('pres', { action: 'upload_media', file_name: 'copy.jpg', data: jpg.toString('base64'), manufacturer_slug: G }, { headers: { 'x-academy-upload': '1' } }));
       assert.notStrictEqual(again.storage_path, upA, 'another name is another file');
       const same = ok(await call('pres', { action: 'upload_media', file_name: 'PR-446 Side View.JPG', data: jpg.toString('base64'), manufacturer_slug: G }, { headers: { 'x-academy-upload': '1' } }));
       assert.strictEqual(same.already_stored, true);
-      upB = ok(await call('adm', { action: 'upload_media', file_name: 'diagram.png', data: PNG.toString('base64') }, { headers: { 'x-academy-upload': '1' } })).storage_path;
+      upB = ok(await call('pres', { action: 'upload_media', file_name: 'diagram.png', data: PNG.toString('base64') }, { headers: { 'x-academy-upload': '1' } })).storage_path;
       assert.match(upB, /^media\/hcps\//);
       const lib = ok(await call('adm', { action: 'media_library' }));
       assert.ok(lib.candidates.some(c => c.storage_path === upA) && lib.candidates.some(c => c.storage_path === upB));
       assert.strictEqual(lib.records.length, 0);
       // a picture block cannot use a candidate: it has no media record
       const cur = B.blocksHash(one(`select blocks from academy_lessons where id = '${lessons.B2.id}'`).blocks);
-      const r2 = await call('adm', { action: 'save_blocks', lesson_id: lessons.B2.id, base_hash: cur, blocks: [{ kind: 'objectives', items: ['a b', 'c d'] }, { kind: 'image', media_id: '5a3e0000-0000-4000-8000-00000000ffff', caption: '' }, { kind: 'takeaways', items: ['a', 'b', 'c'] }] });
+      const r2 = await call('pres', { action: 'save_blocks', lesson_id: lessons.B2.id, base_hash: cur, blocks: [{ kind: 'objectives', items: ['a b', 'c d'] }, { kind: 'image', media_id: '5a3e0000-0000-4000-8000-00000000ffff', caption: '' }, { kind: 'takeaways', items: ['a', 'b', 'c'] }] });
       assert.strictEqual(r2.status, 400);
     });
     await t('upload_media refuses: a file that is not what its name says, a non-picture type, over 3 MB, a big body without the upload header, the header on another action', async () => {
-      const fake = await call('adm', { action: 'upload_media', file_name: 'evil.png', data: Buffer.from('<svg onload=alert(1)>').toString('base64') }, { headers: { 'x-academy-upload': '1' } });
+      const fake = await call('pres', { action: 'upload_media', file_name: 'evil.png', data: Buffer.from('<svg onload=alert(1)>').toString('base64') }, { headers: { 'x-academy-upload': '1' } });
       assert.strictEqual(fake.status, 400);
-      const svg = await call('adm', { action: 'upload_media', file_name: 'x.svg', data: Buffer.from('<svg/>').toString('base64') }, { headers: { 'x-academy-upload': '1' } });
+      const svg = await call('pres', { action: 'upload_media', file_name: 'x.svg', data: Buffer.from('<svg/>').toString('base64') }, { headers: { 'x-academy-upload': '1' } });
       assert.strictEqual(svg.status, 400);
       const big = Buffer.concat([jpg, Buffer.alloc(3 * 1024 * 1024)]);
-      const r = await call('adm', { action: 'upload_media', file_name: 'big.jpg', data: big.toString('base64') }, { headers: { 'x-academy-upload': '1' } });
+      const r = await call('pres', { action: 'upload_media', file_name: 'big.jpg', data: big.toString('base64') }, { headers: { 'x-academy-upload': '1' } });
       assert.ok(r.status === 413, r.status);
-      const noHeader = await call('adm', { action: 'upload_media', file_name: 'mid.jpg', data: Buffer.concat([jpg, Buffer.alloc(400 * 1024)]).toString('base64') });
+      const noHeader = await call('pres', { action: 'upload_media', file_name: 'mid.jpg', data: Buffer.concat([jpg, Buffer.alloc(400 * 1024)]).toString('base64') });
       assert.strictEqual(noHeader.status, 413, 'the usual 256 KB limit without the header');
       const misuse = await call('adm', { action: 'builder', version_id: version.id }, { headers: { 'x-academy-upload': '1' } });
       assert.strictEqual(misuse.status, 413, 'the larger limit is for the upload only');
-      const bad = await call('adm', { action: 'upload_media', file_name: 'x.jpg', data: 'not base64!!' }, { headers: { 'x-academy-upload': '1' } });
+      const bad = await call('pres', { action: 'upload_media', file_name: 'x.jpg', data: 'not base64!!' }, { headers: { 'x-academy-upload': '1' } });
       assert.strictEqual(bad.status, 400);
     });
     let rec;
     await t('approve_media: the President only (a second administrator gets 403, and the database refuses a stored picture from anyone else too); alt text required unless decorative', async () => {
       const r = await call('adm', { action: 'approve_media', storage_path: upA, rights: 'manufacturer_permitted', alt_text: 'The PR-446 lift chair seen from the side, fully reclined', manufacturer_slug: G, permission_ref: 'Golden confirmation 10 Oct 2026' });
-      assert.strictEqual(r.status, 403);
+      assert.strictEqual(r.status, 403); assert.strictEqual(r.body.error, 'president_only');
       const direct = await S.fetch(BASE + '/rest/v1/rpc/academy_author_op_create_media', { method: 'POST', body: JSON.stringify({ p_actor: 'staff:admin2@test.example', p_id: null, p_media: { kind: 'image', storage_path: upA, rights: 'hcps_owned', alt_text: 'The PR-446 lift chair seen from the side' } }) });
       assert.ok(direct.status === 403 || direct.status === 400, 'the database refuses a non-President too: ' + direct.status);
       const short = await call('pres', { action: 'approve_media', storage_path: upA, rights: 'hcps_owned', alt_text: 'chair' });
@@ -367,14 +374,14 @@ const one = q => JSON.parse(run(DB, `select coalesce(row_to_json(x), 'null') fro
     });
     await t('an approved picture is used in a lesson; then it cannot be removed (in use) or discarded; a candidate is discarded by the President only, with a reason, audit first', async () => {
       const cur = B.blocksHash(one(`select blocks from academy_lessons where id = '${lessons.B2.id}'`).blocks);
-      ok(await call('adm', { action: 'save_blocks', lesson_id: lessons.B2.id, base_hash: cur, blocks: [{ kind: 'objectives', items: ['Fit the chair', 'Explain the fit'] }, { kind: 'image', media_id: rec.id, caption: 'Side view' }, { kind: 'takeaways', items: ['a', 'b', 'c'] }] }));
+      ok(await call('pres', { action: 'save_blocks', lesson_id: lessons.B2.id, base_hash: cur, blocks: [{ kind: 'objectives', items: ['Fit the chair', 'Explain the fit'] }, { kind: 'image', media_id: rec.id, caption: 'Side view' }, { kind: 'takeaways', items: ['a', 'b', 'c'] }] }));
       const del = await call('pres', { action: 'delete_media', id: rec.id });
       assert.strictEqual(del.status, 409, JSON.stringify(del.body));
       const disc = await call('pres', { action: 'discard_upload', storage_path: upA, reason: 'x' });
       assert.strictEqual(disc.status, 409, 'an approved file is never discarded');
       const lib = ok(await call('adm', { action: 'media_library' }));
       const cand = lib.candidates[0].storage_path;
-      assert.strictEqual((await call('adm', { action: 'discard_upload', storage_path: cand, reason: 'duplicate' })).status, 403);
+      { const d2 = await call('adm', { action: 'discard_upload', storage_path: cand, reason: 'duplicate' }); assert.strictEqual(d2.status, 403); assert.strictEqual(d2.body.error, 'president_only'); }
       assert.strictEqual((await call('pres', { action: 'discard_upload', storage_path: cand })).status, 400, 'a reason is required');
       ok(await call('pres', { action: 'discard_upload', storage_path: cand, reason: 'Duplicate of the side view' }));
       assert.ok(!S.storage.has(cand));
@@ -383,10 +390,10 @@ const one = q => JSON.parse(run(DB, `select coalesce(row_to_json(x), 'null') fro
       assert.strictEqual((await call('pres', { action: 'discard_upload', storage_path: '../secret', reason: 'x' })).status, 400);
     });
     await t('add_link_media: a YouTube no-cookie / Vimeo embed only; a watch page or another host is refused', async () => {
-      const v = ok(await call('adm', { action: 'add_link_media', kind: 'video', url: 'https://www.youtube-nocookie.com/embed/abcdefgh12', title: 'AutoDrive overview', rights: 'link_only', manufacturer_slug: G })).media;
+      const v = ok(await call('pres', { action: 'add_link_media', kind: 'video', url: 'https://www.youtube-nocookie.com/embed/abcdefgh12', title: 'AutoDrive overview', rights: 'link_only', manufacturer_slug: G })).media;
       assert.strictEqual(v.kind, 'video');
-      assert.strictEqual((await call('adm', { action: 'add_link_media', kind: 'video', url: 'https://www.youtube.com/watch?v=abcdefgh12', title: 'x video', rights: 'link_only' })).status, 400);
-      assert.strictEqual((await call('adm', { action: 'add_link_media', kind: 'link', url: 'javascript:alert(1)', title: 'bad link', rights: 'link_only' })).status, 400);
+      assert.strictEqual((await call('pres', { action: 'add_link_media', kind: 'video', url: 'https://www.youtube.com/watch?v=abcdefgh12', title: 'x video', rights: 'link_only' })).status, 400);
+      assert.strictEqual((await call('pres', { action: 'add_link_media', kind: 'link', url: 'javascript:alert(1)', title: 'bad link', rights: 'link_only' })).status, 400);
     });
 
     /* ------------------------------------------------------------- readiness on real data */
@@ -397,10 +404,10 @@ const one = q => JSON.parse(run(DB, `select coalesce(row_to_json(x), 'null') fro
       assert.strictEqual(r.bank.usable, 3); assert.strictEqual(r.bank.needed, 3);
       assert.ok(!r.items.some(x => /usable exam questions; each attempt/.test(x.message)), 'three usable for three per attempt');
       const q = JSON.parse(run(DB, `select json_agg(id) from academy_questions where version_id = '${version.id}' and use = 'exam' and status = 'active'`))[0];
-      ok(await call('adm', { action: 'question_status', id: q, status: 'retired', reason: 'readiness test' }));
+      ok(await call('pres', { action: 'question_status', id: q, status: 'retired', reason: 'readiness test' }));
       const r2 = ok(await call('adm', { action: 'readiness', version_id: version.id })).readiness;
       assert.ok(r2.items.some(x => x.level === 'blocking' && /2 usable exam questions; each attempt draws 3/.test(x.message)));
-      ok(await call('adm', { action: 'question_status', id: q, status: 'active' }));
+      ok(await call('pres', { action: 'question_status', id: q, status: 'active' }));
       assert.ok(r.items.some(x => x.level === 'blocking' && /Module 1 has no lessons|no lessons yet/.test(x.where + ' ' + x.message)));
       assert.ok(r.items.every(x => ['blocking', 'advice'].includes(x.level)));
     });
