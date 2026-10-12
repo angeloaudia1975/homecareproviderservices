@@ -16,7 +16,10 @@
        returned here; audit history is scrubbed of answers before it leaves the server. The one place an answer key is
        READ is preview_check (A2D Stage 2): it grades a single PRACTICE answer on the server and returns only right/wrong
        and the explanation; exam questions are refused there.
-     - Changes are POST only. Nothing here issues or revokes an HCPS certificate, changes a switch, or touches ordering. */
+     - Changes are POST only. Nothing here issues or revokes an HCPS certificate, changes a switch, or touches ordering.
+     - A2D Stage 3 (Course Builder, _academy_builder.js) adds its actions to the same maps, behind the same gate. Its
+       question-bank editor is the one staff screen that READS answer keys (the staff editor, per the A2D plan); lesson
+       previews and audit rows never carry them. Every builder write is an audited M2/M3 database operation. */
 const A = require('./_academy.js');
 const enc = encodeURIComponent;
 const { randomUUID } = require('crypto');
@@ -588,7 +591,10 @@ READ.preview_check = async (staff, b, event) => {
     q = s.questions.find(x => String(x.id) === qid);
   } else {
     const { l, m } = await lessonContext(A.uuid(b.lesson_id, 'lesson'));
-    if (!LESSON.lessonHasQuestion(l.blocks, qid)) A.refuse(404, 'not_found', 'Question not found.');
+    // the Course Builder's live preview checks a question of the lesson's UNSAVED screens; still the same lesson's version,
+    // still practice only (below) — never more than the staff question bank of that version already shows
+    const shown = Array.isArray(b.blocks) && b.blocks.length <= 40 ? b.blocks : l.blocks;
+    if (!LESSON.lessonHasQuestion(shown, qid)) A.refuse(404, 'not_found', 'Question not found.');
     q = one(await A.sbGet(`academy_questions?id=eq.${enc(qid)}&version_id=eq.${enc(m.version_id)}&select=id,use,status,kind,answer_key,explanation`));
   }
   if (!q) A.refuse(404, 'not_found', 'Question not found.');
@@ -599,6 +605,11 @@ READ.preview_check = async (staff, b, event) => {
   return { ok: true, correct: r.correct, explanation: r.explanation };   // never the answer key
 };
 
+/* ---------- Course Builder (A2D Stage 3) ---------- */
+const BUILDER = require('./_academy_builder.js');
+for (const [k, fn] of Object.entries(BUILDER.READ)) { if (READ[k] || WRITE[k]) throw new Error('duplicate action ' + k); READ[k] = fn; }
+for (const [k, fn] of Object.entries(BUILDER.WRITE)) { if (READ[k] || WRITE[k]) throw new Error('duplicate action ' + k); WRITE[k] = fn; }
+
 /* ================================== HANDLER ================================== */
 const ACTIONS = {};
 for (const [k, fn] of Object.entries(READ)) ACTIONS[k] = { fn, write: false };
@@ -607,8 +618,11 @@ for (const [k, fn] of Object.entries(WRITE)) ACTIONS[k] = { fn, write: true };
 exports.handler = A.handler(async event => {
   const staff = await A.staffActor(event);
   if (!staff) return A.respond(event, 401, { error: 'unauthorized', message: 'Please sign in to Connect 360.' });
-  const b = event.httpMethod === 'GET' ? Object.assign({}, event.queryStringParameters || {}) : A.body(event);
+  // the builder's file upload is the one request allowed above the usual size, and only when it says so up front
+  const upload = event.httpMethod === 'POST' && String((event.headers || {})['x-academy-upload'] || '') === '1';
+  const b = event.httpMethod === 'GET' ? Object.assign({}, event.queryStringParameters || {}) : A.body(event, upload ? BUILDER.UPLOAD_BODY : undefined);
   const action = String(b.action || 'whoami');
+  if (upload && action !== 'upload_media') return A.respond(event, 413, { error: 'too_large', message: 'That request is too large.' });
   if (action === 'whoami') {
     const sw = await A.switches();
     return A.respond(event, 200, {
