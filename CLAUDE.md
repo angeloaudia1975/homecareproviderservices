@@ -2253,7 +2253,11 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   so it would be stored as .xlsx; predates capture, no backfill), May, Aug 2026 (body); every reply / forward classified;
   0 exceptions; Feb / Apr / Jun / Jul 2026 not in the mailbox. Activation file `supabase/mi_d_climbing_steps_activation.sql`
   (sha256 9b1b9d82…5d84; owner only, refused unless the seeded draft, one row, second run refused; registration only) —
-  awaiting Angelo's run. Test: `test/mi-d-cs-activation.pg.test.js` (4).
+  Test: `test/mi-d-cs-activation.pg.test.js` (4). **RUN by Angelo 2026-10-12 ~18:35 CT (verified):** climbing-steps active /
+  auto_register true / auto_import false with the month-name rule; 8 active (Access4U, AirAvant, Bemis, Climbing Steps, Ohio,
+  3 Strongback) / 4 draft (Complete Medical, Golden, Ovation, PediFix). Capture run #25 (18:20 CT) complete, 0 exceptions,
+  Needs attention 0; 4 report records (#7–#10). No Climbing Steps email since capture began (1 Oct) — its September 2026
+  statement (expected Oct 4–12) has not arrived; it will register on arrival and show late on the reconciliation.
   (5) **September quarantine review is read-only:** `shipto-review-api quarantine_review` + a card on the MI dashboard: the 7
   rows with source file, reason, blank amount/commission, dealer, matching orders in registered exports (by order number or
   customer), records on file and four choices (keep quarantined — recommended; import record #8 through the Sales Report
