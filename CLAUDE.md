@@ -2746,6 +2746,25 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   history and certification records are preserved. TEST courses never issue real certificates; every dashboard and
   report keeps TEST apart. Do not begin A2D, A2F, A2B, A2E or C2 without separate approval; never enable learner access,
   issue certificates, publish real courses, activate payments or modify Golden Ordering without it.
+- **No PR is merged without Angelo's explicit approval (RULE, Angelo 12 Oct 2026 21:00 CT) — permissions, security,
+  documentation and maintenance changes included.** Corollary: nothing is pushed straight to `main` either (that is a
+  merge without a PR); every change, CLAUDE.md notes included, rides a branch + PR and waits for his approval.
+- **M3.1 development APPROVED (Angelo, 12 Oct 2026 21:00 CT): branch, local tests and a DRAFT PR only.** One atomic
+  audited operation saves a lesson's screens and their product-fact links: lock the draft version and the lesson BEFORE
+  comparing the starting content; refuse a conflicting save without ever writing over the other editor's work; derive
+  the needed links from the screens; screens + link changes + ONE audit row in one transaction; any failure rolls back
+  everything; never delete exam-question links, other lessons' links or any product_facts row; M1/M2/M3 protections
+  kept; prove new links are created and pass the existing block checker's "linked fact" rule inside the same
+  transaction; President-only editing stays. Tests on PG16 and PG17.6 (simultaneous saves, conflicting versions,
+  interrupted writes, audit failure, rollback) + Academy acceptance / security / mutation / builder suites. The draft PR
+  carries the exact migration, rollback, checksums, preflight and postcheck. No production SQL, no merge, until approved.
+- **Golden product facts in lesson text (RULE, Angelo 12 Oct 2026 21:00 CT).** Never remove a potentially valid Golden
+  specification from a lesson just because it is not yet in Product Facts. Keep a verification worksheet: model ·
+  specification · value stated in the lesson · authoritative Golden source · source document or link · verification date
+  · status (verified / unresolved / contradictory). Unresolved values are flagged and kept OUT of scored exam questions.
+  Appearing in an earlier training document (Thinkific, the A0 audit, the samples) is never by itself verification.
+  The remaining 15 lessons and the full exam bank wait for his approval of the next content stage; the Golden course
+  stays unpublished and the six learner switches OFF.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
