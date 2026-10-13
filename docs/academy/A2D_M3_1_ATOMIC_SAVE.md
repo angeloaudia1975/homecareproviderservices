@@ -93,3 +93,5 @@ Backup: newest daily backup 12 Oct 2026 09:10 UTC (before the Golden draft was c
   rows, `lessons_fingerprint` `9bdb8f44…`, `content_refs_fingerprint` `7fbd3ca9…` and 110 audit rows identical to the preflight;
   only `academy_admin` on.
 - M3.1 acceptance tests: 17/17 PASS (check 17: nothing left behind, every lesson byte-identical) — 22:26 CT.
+- Public-key probe (`scripts/academy_m3_1_public_probe_browser.js`, Angelo, 22:31 CT): ALL 8 BLOCKED (401) — both M3.1 functions
+  and the direct insert / edit / delete on academy_lessons and academy_content_refs.
