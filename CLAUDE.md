@@ -2903,6 +2903,20 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   minimum manual step. **Access found 13 Oct 2026:** this workspace cannot reach Supabase at all (the network allowlist
   refuses the REST API and the database host) and holds no database credentials, so a production read-only check needs
   either Angelo's one paste or a separately approved read-only verification path.
+- **M3.1 FINAL ACCEPTANCE PASSED + Golden facts stage 1 applied (Angelo's approval 13 Oct 2026 10:49 CT; done ~11:08–11:15 CT
+  in his President session).** Acceptance save = lesson 4.1 through the live Course Builder: one `save_blocks` call, ONE
+  `save_lesson` audit row (#451, links added 0 / removed 0), only lesson 4.1 changed, 71 fact links unchanged, no question
+  changed, switches unchanged. Then: lesson 4.1 saved once more (4-Zone card: PR517 flag removed; audit #513); questions
+  "Twilight Zone 5" (explanation cites goldentech.com/comfort-zones) and the two-button question (answer now PR401
+  Cambridge, PR118 in the explanation) via `update_question`; 61 Product Facts recorded (verified, display, verified_on
+  2026-10-13, actor/approver Angelo) from the proposal doc claude.ai/code/artifact/f7730ed7-e6c8-419a-8f9a-e937d9031bb0.
+  Readiness blocking 102 → 47. RULES from the decisions: Golden's Comfort Zones page (Zone 1 lower body … Zone 5 Twilight
+  tilt) is the zone-numbering source; PR510 AutoDrive, PR104 control, 5-zone ZG/ZG+ label, Home/Sit, per-size dimensions,
+  PR527 Nirvana standard/optional, the PR511 sell-sheet revision and the PR401 "no presets" inference stay flagged and out of
+  scored exams; a general Golden statement never verifies a model-specific value. Records #47–55 (seat dimensions + weight
+  capacities) are HELD for Angelo's separate safety-specification approval; when recorded they are approval_required, and a
+  single published figure is never presented as confirmed for every size. Remaining 15 lessons and the exam bank wait for
+  his approval. Course unpublished; six learner switches OFF.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
