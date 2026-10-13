@@ -2822,6 +2822,19 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   history and certification records are preserved. TEST courses never issue real certificates; every dashboard and
   report keeps TEST apart. Do not begin A2D, A2F, A2B, A2E or C2 without separate approval; never enable learner access,
   issue certificates, publish real courses, activate payments or modify Golden Ordering without it.
+- **Automated testing and verification (RULE, Angelo 13 Oct 2026 10:00 CT) — for the rest of the Academy project.**
+  Claude runs, without asking each time: local PG16 + PG17.6 acceptance / security / regression / rollback / concurrency
+  tests; JavaScript, browser, accessibility and mutation tests; public-key probes (public key ONLY); GitHub PR, Netlify
+  deploy and deploy-preview checks; and production READ-ONLY preflights / postchecks / fingerprint comparisons — but only
+  through a genuinely read-only connection or role, never through unrestricted admin credentials just because the query
+  is a SELECT (the Supabase SQL editor in Angelo's browser session is admin: not used for this). Results go to Angelo as
+  ONE consolidated PASS/FAIL summary, not scripts to paste. Still needs his explicit approval: production migrations,
+  rollbacks, any INSERT / UPDATE / DELETE or other data change, PR merges, Academy switches, publishing, certificates,
+  permission grants. Test records stay out of production when a local check is equivalent. Never report a check as a
+  production pass when it ran only locally. If production access is missing, say exactly what is missing and give the
+  minimum manual step. **Access found 13 Oct 2026:** this workspace cannot reach Supabase at all (the network allowlist
+  refuses the REST API and the database host) and holds no database credentials, so a production read-only check needs
+  either Angelo's one paste or a separately approved read-only verification path.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
