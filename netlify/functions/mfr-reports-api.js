@@ -18,6 +18,8 @@
 //   POST {action:"link_batch", id, batch_id}
 //   POST {action:"download", id}                                          → short-lived signed URL (2 minutes)
 //   POST {action:"orphans"}  → READ-ONLY: stored report files no register record points to (see below)
+//   POST {action:"commission_recon", manufacturer?}  → READ-ONLY contractual commission reconciliation (Strongback)
+//   POST {action:"commission_event", kind:"payment"|"review", …}  → President only; payment evidence / review decision
 //
 // NOT in MI-1b: Sales Report Import and Commission Report Import do not register their files here yet. That is a
 // later, separately approved unit; until then this register holds only the files a person registers on the page.
@@ -49,6 +51,9 @@ const H = () => ({ apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`
 const e = encodeURIComponent;
 
 async function sbGet(p) { const r = await fetch(`${SUPABASE_URL}/rest/v1/${p}`, { headers: H() }); if (!r.ok) throw new Error(`Supabase ${r.status}: ${(await r.text()).slice(0, 300)}`); return r.json(); }
+// A table that may not be installed yet: 404 / PGRST205 → null (shown as "not installed"), any other failure throws.
+async function sbGetOptional(p) { const r = await fetch(`${SUPABASE_URL}/rest/v1/${p}`, { headers: H() }); if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`Supabase ${r.status}: ${(await r.text()).slice(0, 300)}`); return r.json(); }
 async function sbGetAll(base, order) {
   const PAGE = 1000; let from = 0, out = [];
   for (;;) { const sep = base.includes("?") ? "&" : "?"; const rows = await sbGet(`${base}${sep}order=${order}&limit=${PAGE}&offset=${from}`);
@@ -332,6 +337,35 @@ exports.handler = async (event) => {
       const shipto = { held: Math.max(0, parseInt(b.shipto_held, 10) || 0), needs_review: Math.max(0, parseInt(b.shipto_needs_review, 10) || 0) };
       return json(200, Object.assign({ ok: true, read_only: true, capture_start }, D.build({ today: today(), capture_start, months: b.months, profiles, sources, items, coverage: cov, manufacturers: mfrs, shipto })));
     } catch (x) { return json(503, { error: "unreadable", message: "The dashboard could not read its data just now: " + String(x.message || x).slice(0, 200) }); }
+  }
+
+  // Contractual commission reconciliation (Angelo, 2026-10-12 22:00 CT; CLAUDE.md §18). READ-ONLY: Earned (contract rate ×
+  // eligible sales) · Reported due (the manufacturer's statements) · Paid (recorded evidence only) · Outstanding, by order.
+  if (b.action === "commission_recon") {
+    const slug = clean(b.manufacturer, 80) || "strongback-mobility";
+    try {
+      const L = require("./_commission_recon_load.js");
+      const rec = await L.load(slug, { sbGet, sbGetAll, sbGetOptional, today,
+        fetchObject: async p => { const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${p}`, { headers: H() }); if (!r.ok) throw new Error("storage " + r.status); return Buffer.from(await r.arrayBuffer()); } });
+      return json(200, Object.assign({ ok: true, read_only: true, manufacturer: slug }, rec));
+    } catch (x) {
+      if (x.code === "no_contract") return json(422, { error: "no_contract", message: "No contract rate is recorded for this manufacturer — only Strongback is tracked this way." });
+      return json(503, { error: "unreadable", message: "The reconciliation could not read its data just now: " + String(x.message || x).slice(0, 200) });
+    }
+  }
+  // The President records payment evidence or a review decision. Never a sale, never a monthly_sales row.
+  if (b.action === "commission_event") {
+    if (me.role !== "president") return json(403, { error: "president_only", message: "Commission payments and review decisions are the President's." });
+    const slug = clean(b.manufacturer, 80) || "strongback-mobility";
+    const CT = require("./_contract_commission.js"); if (!CT.contractFor(slug)) return json(422, { error: "no_contract" });
+    const p = { manufacturer: slug, kind: clean(b.kind, 20), source_id: b.source_id || null, order_number: clean(b.order_number, 60), amount: b.amount == null || b.amount === "" ? null : Number(b.amount),
+      paid_on: clean(b.paid_on, 10), evidence: clean(b.evidence, 400), decision: clean(b.decision, 80), reason: clean(b.reason, 1000), supersedes_id: b.supersedes_id || null, actor: "staff:" + actor };
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/hcps_mfr_commission_event`, { method: "POST", headers: { ...H(), "content-type": "application/json" }, body: JSON.stringify({ p }) });
+    const text = await r.text(); let body; try { body = JSON.parse(text); } catch (x) { body = { message: text }; }
+    if (r.ok) return json(200, body);
+    if (r.status === 404) return json(503, { error: "not_installed", message: "Recording payments needs supabase/mi_f_commission_events.sql first." });
+    const msg = String((body && body.message) || text).slice(0, 400); const m = msg.match(/\b(mi_f_[a-z_]+|mfr_commission_events_[a-z_]+)\b/);
+    return json(r.status >= 500 ? 502 : 422, { error: m ? m[1] : "database_error", message: msg });
   }
 
   if (b.action === "capture_now") {

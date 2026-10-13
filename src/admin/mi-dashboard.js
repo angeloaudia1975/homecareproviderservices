@@ -9,6 +9,8 @@
   const LONGMON = m => { const [y, mo] = m.split("-").map(Number); return new Date(Date.UTC(y, mo - 1, 1)).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }); };
   const DAY = d => d ? new Date(d + "T12:00:00Z").toLocaleString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : "";
   const KIND = { commission_statement: "Commission statement", sales_export: "Order / sales export", dealer_report: "Dealer report" };
+  const COV = { received: "Statement received", provisional: "Provisional (sales report)", partial: "Received — incomplete", incomplete: "Not entered", estimated: "Sales report only — estimated", earned_contract: "Earned — contract rate (not a statement)" };
+  const cov = c => c ? (COV[c] || c) : "—";
   const ST = { registered: "Received", missing: "Missing", captured_draft: "Captured (draft profile)", in_hcps_only: "In HCPS (manual)", not_due: "Not due yet", not_expected: "—", before_capture: "Before capture" };
 
   async function api(fn, p) {
@@ -47,12 +49,12 @@
     h += R.rows.length ? `<div class="scroll"><table class="cal"><thead><tr><th>Manufacturer</th><th>Statement</th><th>Expected</th><th>Due</th><th>Arrived</th><th>Record</th><th>Commission data in HCPS</th><th>Needs attention</th></tr></thead><tbody>${R.rows.map(r =>
       `<tr><td>${esc(r.name)}${r.draft_profile ? ` <span class="hint">(draft profile)</span>` : ""}</td><td>${badge(r.status, r.late ? " · late" : "")}</td><td>${win(r.expected)}</td><td>${esc(DAY(r.due))}</td>
         <td>${r.arrived ? esc(DAY(r.arrived)) + (r.days_late ? ` <span class="s s-missing">${r.days_late} day${r.days_late === 1 ? "" : "s"} late</span>` : "") : (r.days_overdue ? `<span class="s s-missing">not received · ${r.days_overdue} day${r.days_overdue === 1 ? "" : "s"} late</span>` : "—")}</td>
-        <td>${r.records.map(x => `#${x.id} ${esc(x.status)}${x.imported ? " · imported" : " · not imported"}`).join("<br>") || "—"}</td><td>${esc(r.coverage || "—")}</td><td>${r.exceptions ? `<a href="/admin/report-history.html">${r.exceptions} open</a>` : "—"}</td></tr>`).join("")}</tbody></table></div>`
+        <td>${r.records.map(x => `#${x.id} ${esc(x.status)}${x.imported ? " · imported" : " · not imported"}`).join("<br>") || "—"}</td><td>${esc(cov(r.coverage))}</td><td>${r.exceptions ? `<a href="/admin/report-history.html">${r.exceptions} open</a>` : "—"}</td></tr>`).join("")}</tbody></table></div>`
       : `<div class="empty">No manufacturer has a monthly statement profile yet.</div>`;
     h += `<h2 class="sec">Report arrivals by month</h2><div class="scroll"><table class="cal"><thead><tr><th>Manufacturer / report</th>${d.months.map(m => `<th>${esc(MON(m))}</th>`).join("")}</tr></thead><tbody>`;
     for (const g of d.grid) for (const kd of g.kinds) {
       h += `<tr><td><b>${esc(g.name)}</b><br><span class="hint">${esc(KIND[kd.kind] || kd.kind)}</span></td>${kd.months.map(c =>
-        `<td>${badge(c.status, c.late.length ? " · late" : "")}${c.records.length ? `<div class="hint">${c.records.map(x => "#" + x.id + (x.imported ? " imported" : "")).join(", ")}</div>` : ""}${c.coverage && c.status !== "in_hcps_only" ? `<div class="hint">HCPS: ${esc(c.coverage)}</div>` : ""}</td>`).join("")}</tr>`;
+        `<td>${badge(c.status, c.late.length ? " · late" : "")}${c.records.length ? `<div class="hint">${c.records.map(x => "#" + x.id + (x.imported ? " imported" : "")).join(", ")}</div>` : ""}${c.coverage && c.status !== "in_hcps_only" ? `<div class="hint">HCPS: ${esc(cov(c.coverage))}</div>` : ""}</td>`).join("")}</tr>`;
     }
     h += `</tbody></table></div><p class="hint">Missing = a profile expects this report monthly and its due date has passed. On-request and irregular reports are never missing. "Before capture" = due before automatic email capture began${d.capture_start ? " (" + esc(DAY(d.capture_start)) + ")" : ""} — the email may be in Outlook; it was never looked for automatically. "In HCPS (manual)" = commission data imported by hand without a registered file.</p>`;
     if (Q && Q.quarantined && Q.quarantined.length) {

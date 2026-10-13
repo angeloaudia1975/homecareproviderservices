@@ -57,16 +57,27 @@ const LEGACY = [{ id: 'l-1', manufacturer: 'golden-technologies', period: '2025-
     const c = CCmod().coverage(CS_CASH);
     assert.deepStrictEqual(c.received, {}); assert.ok(/sales but no commission/.test(c.incomplete['climbing-steps'][0].reason));
   });
-  await t('a sales report alone is an ESTIMATE, never a received statement (Strongback 9%)', async () => {
+  await t('a sales report alone is never a received statement; Strongback at its 9% contract rate is EARNED, not estimated (Angelo 2026-10-12)', async () => {
     const c = CCmod().coverage(SB_SR);
-    assert.deepStrictEqual(c.received, {}); assert.deepStrictEqual(c.estimated, { 'strongback-mobility': ['2026-07'] });
+    assert.deepStrictEqual(c.received, {}); assert.deepStrictEqual(c.estimated, {}); assert.deepStrictEqual(c.provisional, {});
+    assert.deepStrictEqual(c.earned, { 'strongback-mobility': ['2026-07'] });
+    assert.strictEqual(c.detail['strongback-mobility']['2026-07'].status, 'earned_contract');
+  });
+  await t('contract rule: a Strongback line NOT at exactly 9% keeps the month "estimated"; no other manufacturer becomes "earned"', async () => {
+    const M = CCmod();
+    const off = M.coverage([{ manufacturer: 'strongback-mobility', period: '2026-07-01', source: 'sales_report', external_ref: 'x', amount: 536, commission: 53.6 }]);
+    assert.deepStrictEqual(off.earned, {}); assert.deepStrictEqual(off.estimated, { 'strongback-mobility': ['2026-07'] });
+    const abm = M.coverage([{ manufacturer: 'abm-respiratory-care', period: '2026-05-01', source: 'sales_report', external_ref: 'abm|1|x|0', amount: 100, commission: 9 }]);
+    assert.deepStrictEqual(abm.earned, {}); assert.deepStrictEqual(abm.estimated, { 'abm-respiratory-care': ['2026-05'] });
+    const mixed = M.coverage(SB_SR.concat([{ manufacturer: 'strongback-mobility', period: '2026-07-01', source: 'sales_report', external_ref: 'y', amount: 100, commission: 10 }]));
+    assert.deepStrictEqual(mixed.earned, {}); assert.deepStrictEqual(mixed.estimated, { 'strongback-mobility': ['2026-07'] });
   });
   await t('PediFix sales report counts as its statement only PROVISIONALLY (RULE 14 list) — never as a verified receipt, and only while on the list', async () => {
     const M = CCmod();
     const c = M.coverage(PF_SR);
     assert.deepStrictEqual(c.received, {}); assert.deepStrictEqual(c.provisional, { pedifix: ['2026-03'] });
     assert.strictEqual(c.detail.pedifix['2026-03'].status, 'provisional');
-    assert.deepStrictEqual(c.summary, { received: 0, provisional: 1, partial: 0, incomplete: 0, estimated: 0 });
+    assert.deepStrictEqual(c.summary, { received: 0, provisional: 1, partial: 0, incomplete: 0, estimated: 0, earned_contract: 0 });
     const off = M.coverage(PF_SR, { statement_sales_reports: [] });
     assert.deepStrictEqual(off.received, {}); assert.deepStrictEqual(off.estimated, { pedifix: ['2026-03'] });
   });
@@ -105,16 +116,16 @@ const LEGACY = [{ id: 'l-1', manufacturer: 'golden-technologies', period: '2025-
     assert.strictEqual(both.detail.pedifix['2026-03'].status, 'received');
     assert.ok(/PROVISIONAL/.test(M.STATEMENT_SALES_REPORT_EVIDENCE.pedifix) && /computed by HCPS/.test(M.STATEMENT_SALES_REPORT_EVIDENCE.pedifix));
   });
-  await t('provenance: a sales export with populated (estimated) commission never becomes a statement — ABM and Strongback stay estimated', async () => {
+  await t('provenance: a sales export with populated commission never becomes a statement — ABM stays estimated, Strongback is earned (contract), neither received', async () => {
     const c = CCmod().coverage([{ manufacturer: 'abm-respiratory-care', period: '2026-05-01', source: 'sales_report', external_ref: 'abm|1|x|0', amount: 664, commission: 66.4 }].concat(SB_SR));
     assert.deepStrictEqual(c.received, {}); assert.deepStrictEqual(c.provisional, {});
-    assert.deepStrictEqual(c.estimated, { 'abm-respiratory-care': ['2026-05'], 'strongback-mobility': ['2026-07'] });
+    assert.deepStrictEqual(c.estimated, { 'abm-respiratory-care': ['2026-05'] }); assert.deepStrictEqual(c.earned, { 'strongback-mobility': ['2026-07'] });
   });
   await t('summary counts each month once: verified received apart from provisional, partial, estimated, not entered', async () => {
     const c = CCmod().coverage(MIXED.concat(PF_SR, SB_SR, SB_SEPT, AIRAVANT));
-    assert.deepStrictEqual(c.summary, { received: 1, provisional: 1, partial: 1, incomplete: 1, estimated: 1 });
+    assert.deepStrictEqual(c.summary, { received: 1, provisional: 1, partial: 1, incomplete: 1, estimated: 0, earned_contract: 1 });
     const n = o => Object.values(o).reduce((a, x) => a + x.length, 0);
-    assert.strictEqual(c.summary.received, n(c.received)); assert.strictEqual(c.summary.estimated, n(c.estimated));
+    assert.strictEqual(c.summary.received, n(c.received)); assert.strictEqual(c.summary.estimated, n(c.estimated)); assert.strictEqual(c.summary.earned_contract, n(c.earned));
   });
   await t('legacy commission rows (no source, no external_ref) count; a no-source row WITH an external_ref is not commission-lane', async () => {
     const c = CCmod().coverage(LEGACY);
@@ -123,7 +134,7 @@ const LEGACY = [{ id: 'l-1', manufacturer: 'golden-technologies', period: '2025-
   });
   await t('received wins over estimate in the same month; a month is in exactly one bucket', async () => {
     const c = CCmod().coverage(SB_SR.concat([{ manufacturer: 'strongback-mobility', period: '2026-07-01', source: 'commission', amount: 536, commission: 48.24 }]));
-    assert.deepStrictEqual(c.received, { 'strongback-mobility': ['2026-07'] }); assert.deepStrictEqual(c.estimated, {});
+    assert.deepStrictEqual(c.received, { 'strongback-mobility': ['2026-07'] }); assert.deepStrictEqual(c.estimated, {}); assert.deepStrictEqual(c.earned, {});
   });
 
   /* ── A2. The import gate ── */
@@ -206,13 +217,13 @@ const LEGACY = [{ id: 'l-1', manufacturer: 'golden-technologies', period: '2025-
   const salesWrites = w => w.writes.filter(x => x.table === 'monthly_sales');
   const sept = [{ customer_name: 'Williams Brothers Healthcare Pharmacy', product_code: 'Brochure Trifold', qty: 25, ship_zip: '47670', order_date: '2026-09-12' }];
 
-  await t('endpoint: config marks Strongback Sept not received, a sales report as estimate, a real statement as received', async () => {
+  await t('endpoint: config marks Strongback Sept not received, a Strongback sales report as earned (contract), a real statement as received', async () => {
     const { m } = boot('commissions-api.js', { monthly_sales: SB_SEPT.concat(SB_SR, AIRAVANT) });
     const r = await call(m, { action: 'config' }, PRES);
     assert.strictEqual(r.status, 200);
     assert.ok(!(r.body.received['strongback-mobility'] || []).includes('2026-09'), JSON.stringify(r.body.received));
     assert.strictEqual(r.body.incomplete['strongback-mobility'][0].period, '2026-09');
-    assert.deepStrictEqual(r.body.estimated['strongback-mobility'], ['2026-07']);
+    assert.deepStrictEqual(r.body.earned['strongback-mobility'], ['2026-07']); assert.ok(!(r.body.estimated['strongback-mobility']));
     assert.deepStrictEqual(r.body.received['airavant-bongorx'], ['2026-06']);
   });
   await t('endpoint: config reports partial months, provisional months and the recorded statement evidence', async () => {
@@ -220,7 +231,7 @@ const LEGACY = [{ id: 'l-1', manufacturer: 'golden-technologies', period: '2025-
     const r = await call(m, { action: 'config' }, PRES);
     assert.strictEqual(r.body.partial.bemis[0].missing_rows, 1); assert.ok(!r.body.received.bemis);
     assert.deepStrictEqual(r.body.provisional, { pedifix: ['2026-03'] }); assert.ok(!r.body.received.pedifix, 'provisional is not a verified receipt');
-    assert.deepStrictEqual(r.body.summary, { received: 0, provisional: 1, partial: 1, incomplete: 0, estimated: 0 });
+    assert.deepStrictEqual(r.body.summary, { received: 0, provisional: 1, partial: 1, incomplete: 0, estimated: 0, earned_contract: 0 });
     assert.ok(/PROVISIONAL/.test(r.body.statement_evidence.pedifix) && /PediFix_ALL_2025-2026\.csv/.test(r.body.statement_evidence.pedifix), 'the recorded evidence, not a placeholder');
     assert.strictEqual(r.body.detail.bemis['2026-06'].status, 'partial');
   });
@@ -298,7 +309,8 @@ const LEGACY = [{ id: 'l-1', manufacturer: 'golden-technologies', period: '2025-
   const page = fs.readFileSync(path.join(__dirname, '..', 'src', 'admin', 'import-commissions.html'), 'utf8');
   await t('page: sales amount and commission are required mappings and the grid shows the three states', async () => {
     assert.ok(/\{k:"amount",label:"Sales amount \(\$\)",req:true\}/.test(page) && /\{k:"commission",label:"Commission \(\$\)",req:true\}/.test(page));
-    assert.ok(/const cls=\(on\?"on":pvOnly\?"on":pr\?"part":ix\?"inc":e\?"est"/.test(page), 'grid states');
+    assert.ok(/const cls=\(on\?"on":pvOnly\?"on":pr\?"part":ix\?"inc":ec\?"earn":e\?"est"/.test(page), 'grid states');
+    assert.ok(/Earned — Contract Rate/.test(page) && /earned at a contract rate \(not a statement\)/.test(page), 'contract-earned months labelled apart');
     assert.ok(/PROVISIONAL — not a verified commission statement/.test(page) && /CONFIG\.summary/.test(page) && /not counted as received/.test(page), 'provisional shown apart + summary line');
     assert.ok(/RECEIVED — INCOMPLETE, requires review/.test(page) && /onclick="recvTip\(/.test(page), 'partial wording + tap for touch');
     assert.ok(/mapped_fields:v\.mapped_fields/.test(page) && /refusalHtml\(r\)/.test(page));

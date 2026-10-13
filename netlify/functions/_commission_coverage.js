@@ -39,6 +39,9 @@ const isInvoiceLine = r => String(r.line_type || "").trim().toLowerCase() === "i
 // "Invoice" in their Type column but carry the sale and the commission — those are statement lines.
 const isOpenInvoice = r => isInvoiceLine(r) && !isNum(r.commission) && !isNum(r.amount);
 const monthOf = r => String(r.period || "").slice(0, 7);
+// Contract-rate manufacturers (Angelo 2026-10-12, CLAUDE.md §18): a sales-report month whose every line carries exactly
+// the contract rate is "Earned — Contract Rate", not an estimate. Every other manufacturer is unchanged.
+const CT = require("./_contract_commission.js");
 
 function statementSet(opts){
   const list = opts && Array.isArray(opts.statement_sales_reports) ? opts.statement_sales_reports : DEFAULT_STATEMENT_SALES_REPORTS;
@@ -71,7 +74,7 @@ function coverage(rows, opts){
     const k = r.manufacturer + "|" + p;
     const t = m.get(k) || { slug:r.manufacturer, p, stmt:0, laneStmt:0, zero:0, est:0, lane:0, blank:0, invoice:0, noComm:0, zeroSale:0 };
     if(rowIsStatement(r, stmtSR)){ t.stmt++; if(isCommissionLane(r)) t.laneStmt++; if(Number(String(r.commission).replace(/[$,\s]/g, "")) === 0) t.zero++; }
-    else if(rowIsEstimate(r, stmtSR)) t.est++;
+    else if(rowIsEstimate(r, stmtSR)){ t.est++; if(CT.contractFor(r.manufacturer)) (t.estRows || (t.estRows = [])).push(r); }
     if(isCommissionLane(r)){
       t.lane++;
       if(isNum(r.commission)) {}
@@ -82,9 +85,9 @@ function coverage(rows, opts){
     }
     m.set(k, t);
   }
-  const received = {}, partial = {}, estimated = {}, incomplete = {}, provisional = {}, detail = {};
+  const received = {}, partial = {}, estimated = {}, incomplete = {}, provisional = {}, earned = {}, detail = {};
   // Month counts by status — `received` = verified statements only; provisional months are counted apart.
-  const summary = { received:0, provisional:0, partial:0, incomplete:0, estimated:0 };
+  const summary = { received:0, provisional:0, partial:0, incomplete:0, estimated:0, earned_contract:0 };
   const add = (o, slug, v) => (o[slug] || (o[slug] = [])).push(v);
   const pl = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   for(const t of [...m.values()].sort((a, b) => (a.slug + a.p).localeCompare(b.slug + b.p))){
@@ -102,6 +105,7 @@ function coverage(rows, opts){
     else if(t.stmt > 0 && prov){ status = "provisional"; }
     else if(t.stmt > 0){ status = "received"; add(received, t.slug, t.p); }
     else if(t.lane > 0){ status = "incomplete"; add(incomplete, t.slug, { period:t.p, rows:t.lane, reason:why.concat(inv ? [inv] : []).join("; ") }); }
+    else if(t.est > 0 && CT.monthIsContractEarned(t.slug, t.estRows || [])){ status = "earned_contract"; add(earned, t.slug, t.p); }
     else if(t.est > 0){ status = "estimated"; add(estimated, t.slug, t.p); }
     else continue;
     if(prov) add(provisional, t.slug, t.p);
@@ -109,7 +113,7 @@ function coverage(rows, opts){
     (detail[t.slug] || (detail[t.slug] = {}))[t.p] = { status, statement_rows:t.stmt, zero_commission_rows:t.zero,
       missing_commission_rows:missing, open_invoices:t.invoice, estimate_rows:t.est, provisional:prov };
   }
-  return { received, partial, estimated, incomplete, provisional, detail, summary };
+  return { received, partial, estimated, incomplete, provisional, earned, detail, summary };
 }
 
 // ---- Import gate -------------------------------------------------------------------------------------

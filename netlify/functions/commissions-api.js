@@ -377,15 +377,15 @@ exports.handler = async (event)=>{
       // also carries commission, like PediFix / Ovation). Returns every YYYY-MM that qualifies.
       // AMENDED 2026-10-10 (_commission_coverage.js): only validated statement data marks a month received —
       // a row with a blank commission never does; sales-report commission is an estimate, reported apart.
-      let received={}, partial={}, estimated={}, incomplete={}, provisional={}, detail={}, summary=null, coverage_error=null, statement_sales_reports=CC.DEFAULT_STATEMENT_SALES_REPORTS;
+      let received={}, partial={}, estimated={}, incomplete={}, provisional={}, earned={}, detail={}, summary=null, coverage_error=null, statement_sales_reports=CC.DEFAULT_STATEMENT_SALES_REPORTS;
       try{
         const cc=await sbGet("app_settings?key=eq.commission_config&select=value");
         const v=cc&&cc[0]&&cc[0].value; if(v&&Array.isArray(v.statement_sales_reports)) statement_sales_reports=v.statement_sales_reports;
         const rows=await sbGetAll("monthly_sales?select=id,manufacturer,period,source,external_ref,line_type,amount,commission,billed_amount","id");
-        ({received,partial,estimated,incomplete,provisional,detail,summary}=CC.coverage(rows,{statement_sales_reports}));
+        ({received,partial,estimated,incomplete,provisional,earned,detail,summary}=CC.coverage(rows,{statement_sales_reports}));
       }catch(e){ coverage_error="Reports on file could not be read just now — nothing is shown as received until it can be."; }
       const statement_evidence={}; for(const k of statement_sales_reports) statement_evidence[k]=CC.STATEMENT_SALES_REPORT_EVIDENCE[k]||"PROVISIONAL — no source evidence recorded.";
-      return json(200,{ok:true,manufacturers,templates,dealers,received,partial,estimated,incomplete,provisional,detail,summary,coverage_error,statement_sales_reports,statement_evidence});
+      return json(200,{ok:true,manufacturers,templates,dealers,received,partial,estimated,incomplete,provisional,earned,detail,summary,coverage_error,statement_sales_reports,statement_evidence});
     }
 
     if(b.action==="save_template"){
