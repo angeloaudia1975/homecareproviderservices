@@ -2342,6 +2342,24 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   9% of its amount by contract — not a guess. Keep earned and paid apart (never interchangeable): earned = 9% of the
   sales-report order amounts; paid = the SR032 statement. Strongback's commission view should show earned (9% contract) vs
   paid (SR032) per order, and earned-but-not-yet-paid orders, instead of calling the 9% an "estimate". Not built yet.
+  **Strongback contractual commission tracking — APPROVED to build (Angelo, 2026-10-12 22:00 CT; MI 95%) — RULES:**
+  (1) Earned = 9% of ELIGIBLE wholesale sales, labelled **"Earned — Contract Rate 9%"**, never "Estimated". The export
+  needs no commission column. Use actual sales and their credits / reversals; the sale date is the order's created date,
+  never a payment-due date; an order whose status is not a completed sale is not eligible until its status is verified.
+  Strongback only — no other manufacturer's commission interpretation changes. (2) Three stages, never interchangeable:
+  **Earned** (contract 9% of eligible sales) · **Reported due** (the SR032 statement) · **Paid** (only with payment
+  confirmation / remittance or equivalent evidence — "commission due" on an SR032 is NOT proof of payment).
+  (3) Reconcile BY ORDER (order number + manufacturer + other reliable identifiers): sale date, dealer, eligible amount,
+  9% earned, statement reference, reported due, confirmed paid, remaining balance; later / partial payments, corrections and
+  credits supported without duplicating earned commission; an SR032 order with no matching sale goes to REVIEW, never
+  creates a sale. (4) No double counting: export-calculated commission and SR032 amounts are two views of the SAME
+  obligation — never added together; monthly_sales, MI-1a, quarantine and duplicate-import safeguards stay intact.
+  (5) September: record #8 = September's eligible sales + earned; record #9 = the four SR032 obligations; the 7 invalid rows
+  stay quarantined with history; no disposition, financial import or "paid" without his approval / evidence.
+  (6) Dashboard: Earned / Reported due / Paid / Outstanding with drilldown by dealer, order, manufacturer and reporting
+  month; unmatched orders, unverified payments and potentially overdue commissions clearly labelled. Existing MI
+  architecture only — no second financial ledger, no duplicated obligations. Deliver a validation report + financial
+  preview and ask approval BEFORE any posting is enabled.
   **Reconsider rule proven live (run #28, 21:20 CT):** Ovation's 2609 statement (received 12 Oct 11:10 CT, captured under the
   then-draft profile) was reconsidered once and registered as **record #11** (commission_statement 2026-09, received
   2026-10-12, no import); 0 exceptions; Needs attention 0.
