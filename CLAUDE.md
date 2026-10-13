@@ -2907,6 +2907,32 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
 
+## 21. Claude Code permission settings (RULE, approved by Angelo 2026-10-13 10:20 CT)
+Routine development runs without prompts; anything that reaches production or a credential keeps its gate. The one
+source is the committed `.claude/settings.json` (shared project settings; personal one-offs stay in the untracked
+`.claude/settings.local.json`, which is left as it is).
+- **Allowed without asking:** editing `src/ netlify/ test/ supabase/ scripts/ docs/ CLAUDE.md`; `node test/…`, `npm run build`,
+  `npm ci`, `npm ls`, Eleventy; git read commands + local add / commit / switch / `checkout -b` / merge; the LOCAL test
+  database (`psql -h 127.0.0.1|localhost`, `service postgresql start|status`, `pg_lsclusters`; env PGHOST=127.0.0.1,
+  PGUSER=postgres — no password in the repo); `sha256sum`, `md5sum`, `tail`; WebSearch; WebFetch of documentation domains
+  and the public site; read-only Chrome tools (tabs, navigate, read_page, get_page_text, find, console / network reads);
+  read-only memory / Docs / repo / scheduled-task lookups.
+- **Not pre-approved (unchanged):** `git push` (= production deploy), Chrome clicks / typing / javascript / forms /
+  uploads, Artifact publishing, memory and Docs writes, scheduled-task writes, adding repos, device tools.
+- **Always ask:** `psql` to any `postgres://` / `postgresql://` URL, `gh pr merge`, `netlify deploy`, `netlify env:set|unset`,
+  `supabase db push|reset`, `supabase migration up`. **Always refused:** force push (`--force`, `-f`); reading `.env*`,
+  `~/.ssh`, `~/.claude/.credentials.json`, the session ingress token; editing `src/_data/documents.json` (admin-managed).
+  `disableBypassPermissionsMode: "disable"` — bypass mode is locked off. Never add a production-write or credential rule.
+- **Not in the file on purpose:** `defaultMode` (auto / bypass can't be set from project settings and are not wanted);
+  sandbox (bubblewrap/socat absent in the cloud container, which is already isolated with an egress allowlist — enable it
+  on a local machine instead). Chrome site prompts are set in the Claude in Chrome extension, not here: always-allow
+  www.homecareproviderservices.org, app.netlify.com, github.com; keep supabase.com on ask (SQL editor = production writes).
+  The behavioural confirmations in §7 (SQL, forms, switches, irreversible clicks, credentials) are unchanged by this file.
+- **Where it applies:** Claude Code on Angelo's machine and cloud sessions opened on this ONE repository (after the folder
+  is trusted once). A cloud session that opens several repositories reads only plugin keys from it, not permissions.
+  Verified with a fresh headless process reading project settings only (`claude -p --setting-sources project
+  --permission-mode default`), before vs after.
+
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
 - [ ] Hero headline is short + single-row on desktop, wraps on mobile.
