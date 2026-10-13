@@ -84,3 +84,12 @@ Baseline to compare after the migration and the tests:
 - outside the Academy: grants `248be67b18fe1fdefe6c70d143afdfc1 / 2956`, columns `764813c5ddc56dd0c1cc8dc7e22b6691 / 127 tables`,
   policies `219ac18ed7a25a0db2d9a50c5b8a88e7 / 29`, other functions `b116ce12e0682238c373156d8fe8b944 / 106`.
 Backup: newest daily backup 12 Oct 2026 09:10 UTC (before the Golden draft was created); PITR not enabled.
+
+## Production installation — Angelo, 12 Oct 2026 ~22:24 CT
+
+- Migration run in the SQL editor ("Success. No rows returned").
+- Postcheck: M3.1 `1306b90bb29549c2c1e2aec0428cdb0f` (Windows paste, as precomputed); 2 functions; operation server-only; helper not
+  callable by the server; 0 for public keys; M1 `a809004b…` / M2 `794f3c3e…` / M3 `9f41ee27…` and their counts unchanged; content
+  rows, `lessons_fingerprint` `9bdb8f44…`, `content_refs_fingerprint` `7fbd3ca9…` and 110 audit rows identical to the preflight;
+  only `academy_admin` on.
+- M3.1 acceptance tests: 17/17 PASS (check 17: nothing left behind, every lesson byte-identical) — 22:26 CT.
