@@ -2890,6 +2890,19 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
 - **Golden facts worksheet (12 Oct 2026):** claude.ai/code/artifact/c763ada2-e1fe-432e-912c-36a1a9d84e47 — 52 values in
   Samples A/B re-checked on goldentech.com / the PR511 sell sheet: 39 verified, 11 unresolved, 2 contradictory (the
   five-zone definition vs Golden's FAQ; PR525 ZG+ now Yes). Lessons, Product Facts and the course were not changed.
+- **Automated testing and verification (RULE, Angelo 13 Oct 2026 10:00 CT) — for the rest of the Academy project.**
+  Claude runs, without asking each time: local PG16 + PG17.6 acceptance / security / regression / rollback / concurrency
+  tests; JavaScript, browser, accessibility and mutation tests; public-key probes (public key ONLY); GitHub PR, Netlify
+  deploy and deploy-preview checks; and production READ-ONLY preflights / postchecks / fingerprint comparisons — but only
+  through a genuinely read-only connection or role, never through unrestricted admin credentials just because the query
+  is a SELECT (the Supabase SQL editor in Angelo's browser session is admin: not used for this). Results go to Angelo as
+  ONE consolidated PASS/FAIL summary, not scripts to paste. Still needs his explicit approval: production migrations,
+  rollbacks, any INSERT / UPDATE / DELETE or other data change, PR merges, Academy switches, publishing, certificates,
+  permission grants. Test records stay out of production when a local check is equivalent. Never report a check as a
+  production pass when it ran only locally. If production access is missing, say exactly what is missing and give the
+  minimum manual step. **Access found 13 Oct 2026:** this workspace cannot reach Supabase at all (the network allowlist
+  refuses the REST API and the database host) and holds no database credentials, so a production read-only check needs
+  either Angelo's one paste or a separately approved read-only verification path.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
