@@ -2917,6 +2917,17 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   capacities) are HELD for Angelo's separate safety-specification approval; when recorded they are approval_required, and a
   single published figure is never presented as confirmed for every size. Remaining 15 lessons and the exam bank wait for
   his approval. Course unpublished; six learner switches OFF.
+- **Streamlined GitHub workflow (RULE, Angelo 13 Oct 2026 11:20 CT; amends the 12 Oct "no push to main" corollary).**
+  (1) No separate PRs for routine CLAUDE.md / development notes: they ride in the next substantive PR (an urgent security
+  requirement may still get its own). (2) Work from the cloud clone with git CLI + GitHub REST API (no GitHub Desktop).
+  (3) Significant code, SQL, authentication, security or architectural changes: tested PR, merged only with Angelo's
+  approval. (4) Ordinary low-risk UI fixes / styling may be committed and pushed straight to main after all relevant tests
+  pass, ONLY within a scope Angelo has explicitly authorized for direct deployment. (5) Inside an authorized milestone,
+  finish implementation and testing before asking for approval; resolve minor decisions from the agreed specifications
+  instead of interrupting. (6) Consolidate related changes into one logical PR. (7) Still separately authorized:
+  production SQL migrations, publishing Academy courses, enabling learners, protected ordering and pricing systems.
+  (8) Never bypass branch protection, required checks or security controls. PR #14 was closed unmerged; its note rides in
+  the next substantive Academy PR from branch `academy/golden-facts-record`.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
