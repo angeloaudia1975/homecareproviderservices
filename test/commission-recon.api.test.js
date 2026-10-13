@@ -87,7 +87,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
     assert.strictEqual(o('7174').earned, 49.14); assert.strictEqual(o('7191').earned, 0);
     assert.strictEqual(o('7240').earned, 0); assert.strictEqual(o('7240').eligibility, 'pending_status');
     assert.strictEqual(o('7060').earned, 93.33); assert.strictEqual(o('7060').reported_due, 93.33); assert.strictEqual(o('7060').stage, 'reported_due');
-    assert.strictEqual(o('5804').earned, 28.8); assert.ok(o('5804').labels.includes('potentially_overdue_unreported'));
+    assert.strictEqual(o('5804').earned, 28.8); assert.ok(o('5804').labels.includes('earlier_statements_not_on_file') && !o('5804').labels.some(l => l.startsWith('potentially')));
   });
   await t('totals: earned · reported due · paid · outstanding side by side, never added together', async () => {
     const s = R.summary;

@@ -23,6 +23,8 @@ const M = {
   due_date_as_sale:      ['js', 'const d = dateOnly(r.date); if (d && (!o.date || d < o.date)) o.date = d;', 'const d = "2026-10-04"; if (d && (!o.date || d < o.date)) o.date = d;'],
   other_mfr_contract:    ['js', 'const contractFor = slug => CONTRACTS[slug] || null;', 'const contractFor = slug => CONTRACTS[slug] || CONTRACTS["strongback-mobility"];'],
   overdue_never:         ['js', 'age > C.overdue_days.unreported) o.labels.push', 'age > 100000) o.labels.push'],
+  overdue_before_first:  ['js', 'if (firstStmt && o.date.slice(0, 7) >= firstStmt)', 'if (true)'],
+  overdue_no_label:      ['js', 'else o.labels.push("earlier_statements_not_on_file");', 'else;'],
   coverage_mixed_rate:   ['js', 'Math.abs(r2(Number(r.amount) * C.rate) - r2(Number(r.commission))) <= 0.01', 'true'],
   review_dismiss_lost:   ['js', 'review_lines: review.filter(r => !r.decision || r.decision === "investigate").length,', 'review_lines: review.length,'],
   sql_any_staff:         ['sql', "if not public.hcps_mfr_mi_e_president(v_actor) then", "if v_actor is null then"],

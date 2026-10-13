@@ -12,7 +12,8 @@
   const LABEL = {
     status_not_verified: ["Status not verified — not eligible yet", "l-warn"], status_not_in_record: ["Status not in HCPS record", "l-mute"],
     payment_unverified: ["Reported due — payment not confirmed", "l-warn"], potentially_overdue_unreported: ["Potentially overdue — not on a statement", "l-bad"],
-    potentially_overdue_unpaid: ["Potentially overdue — no payment evidence", "l-bad"] };
+    potentially_overdue_unpaid: ["Potentially overdue — no payment evidence", "l-bad"],
+    earlier_statements_not_on_file: ["Sold before the first statement on file — earlier statements not registered", "l-info"] };
   const STAGE = { earned: ["Earned", "l-info"], reported_due: ["Reported due", "l-warn"], paid: ["Paid", "l-ok"], not_eligible: ["Not eligible", "l-mute"] };
   const GROUPS = [["order", "Orders"], ["dealer", "Dealers"], ["month", "Sale month"], ["reporting_month", "Reporting month"], ["manufacturer", "Manufacturer"]];
   const FILTERS = [["all", "All orders"], ["unverified", "Payment not confirmed"], ["overdue", "Potentially overdue"], ["not_reported", "Earned, not reported yet"], ["not_eligible", "Not eligible / status"], ["flagged", "Differences flagged"]];
@@ -46,7 +47,8 @@
     h += `<div class="kpis">${k("Eligible sales", $$(S.eligible_sales), `${S.eligible_orders} order(s)`)}${k(R.contract.label, $$(S.earned))}${k("Reported due (" + R.contract.statement + ")", $$(S.reported_due), "not a payment")}
       ${k("Paid (with evidence)", $$(S.paid), R.evidence_store === "installed" ? "" : "evidence store not installed")}${k("Outstanding (earned − paid)", $$(S.outstanding))}
       ${k("Earned, not on a statement yet", $$(S.earned_not_reported))}${k("Statement lines to review", S.review_lines, S.review_lines ? $$(S.review_due) + " reported due" : "")}
-      ${k("Payment not confirmed", S.payment_unverified, "order(s)")}${k("Potentially overdue", S.potentially_overdue, "order(s)")}</div>`;
+      ${k("Payment not confirmed", S.payment_unverified, "order(s)")}${k("Potentially overdue", S.potentially_overdue, S.statements_on_file_from ? "statements on file from " + S.statements_on_file_from : "order(s)")}</div>`;
+    if (S.earlier_statements_not_on_file) h += `<div class="note">${S.earlier_statements_not_on_file} earned order(s) were sold before ${esc(S.statements_on_file_from || "the first statement on file")}. Statements for those months arrived before email capture began and are not registered, so these orders are <b>not</b> called overdue — they may already have been reported.</div>`;
     if (R.problems.length) h += `<div class="note" style="border-color:#f3b4b4;background:#fdf6f6"><b>Could not be read reliably:</b><ul>${R.problems.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>`;
     if (MSG) h += `<div class="${MSG.ok ? "okm" : "err"}">${esc(MSG.text)}</div>`;
     h += `<div class="tabs" role="tablist">${GROUPS.map(([g, l]) => `<button role="tab" data-g="${g}" aria-selected="${VIEW === g}">${esc(l)}</button>`).join("")}</div>`;
