@@ -2337,6 +2337,11 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   $39.60, 6737 Medmart $1,320 / $118.80, 6800 Mobility Plus Alpharetta $940 / $84.60 = $3,737 / $336.33 (9%). These are NOT the
   orders created in September (7139, 7174, 7191, 7192, 7196, 7238) — the statement pays on earlier orders, so a month's
   statement and that month's order export cover different orders; the 9% on an export is an estimate, never the paid figure.
+  **Strongback contract rate (Angelo, 2026-10-12 21:54 CT — RULE):** Strongback pays HCPS **9% commission on all sales**
+  (his contract). Sales reports often show no commission rate or payment; for Strongback the commission EARNED on a sale is
+  9% of its amount by contract — not a guess. Keep earned and paid apart (never interchangeable): earned = 9% of the
+  sales-report order amounts; paid = the SR032 statement. Strongback's commission view should show earned (9% contract) vs
+  paid (SR032) per order, and earned-but-not-yet-paid orders, instead of calling the 9% an "estimate". Not built yet.
   **Reconsider rule proven live (run #28, 21:20 CT):** Ovation's 2609 statement (received 12 Oct 11:10 CT, captured under the
   then-draft profile) was reconsidered once and registered as **record #11** (commission_statement 2026-09, received
   2026-10-12, no import); 0 exceptions; Needs attention 0.
