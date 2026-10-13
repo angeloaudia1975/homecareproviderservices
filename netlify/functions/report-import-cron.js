@@ -4,7 +4,8 @@
 //      else is logged once and waits for the President (Ship-To Review → Import check). See shipto-review-api.js.
 //   2. Commission statements (Angelo, 2026-10-13 11:54 CT): registered commission statements through the existing
 //      guarded importer (hcps_commission_file_apply), only when mi_commission_v2 is on. See _commission_auto.js.
-// The two parts run one after the other; a failure in one never stops the other.
+// Dealer intelligence and the notifications run at :50 in mi-ops-cron.js (their own time budget).
+// The parts run one after the other; a failure in one never stops the others.
 const { runAutoImport } = require("./shipto-review-api.js");
 const CA = require("./_commission_auto.js");
 const { flagOn } = require("./_flags.js");
@@ -42,7 +43,7 @@ exports.handler = async () => {
   if (!SUPABASE_URL || !SERVICE_ROLE) return { statusCode: 200, body: JSON.stringify({ skipped: "not configured" }) };
   const out = {};
   try { out.order_exports = await runAutoImport(); } catch (e) { out.order_exports = { ok: false, error: String((e && e.message) || e).slice(0, 300) }; }
-  try { out.commission_statements = await CA.make(commissionDeps()).processAll({ budgetMs: 15000 }); }
+  try { out.commission_statements = await CA.make(commissionDeps()).processAll({ budgetMs: 12000 }); }
   catch (e) { out.commission_statements = { ok: false, error: String((e && e.message) || e).slice(0, 300) }; }
   return { statusCode: 200, body: JSON.stringify(out) };
 };

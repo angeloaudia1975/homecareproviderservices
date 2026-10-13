@@ -322,21 +322,7 @@ exports.handler = async (event) => {
   // and the monthly reconciliation (previous month, ready on the 15th; late reports keep processing).
   if (b.action === "dashboard") {
     try {
-      const CC = require("./_commission_coverage.js"), D = require("./_mi_dashboard.js");
-      const [profiles, sources, items, mfrs, cfg, rows, firstRun] = await Promise.all([
-        sbGet("mfr_report_profiles?select=id,code,manufacturer,kind,label,status,rules&order=manufacturer,id"),
-        sbGetAll("mfr_sources?kind=in.(sales_export,commission_statement,dealer_report)&select=id,manufacturer,kind,title,status,received_date,report_period_start,report_period_end,import_batch_id,publication_status", "id"),
-        sbGetAll("mfr_report_items?select=id,manufacturer,kind,state,attention,resolved_at,period_start,period_end,profile_id", "id"),
-        sbGet("manufacturers?select=slug,name"),
-        sbGet("app_settings?key=eq.commission_config&select=value"),
-        sbGetAll("monthly_sales?select=id,manufacturer,period,source,external_ref,line_type,amount,commission,billed_amount", "id"),
-        sbGet("mfr_report_capture_runs?select=checkpoint_before&order=id&limit=1")]);
-      const capture_start = firstRun && firstRun[0] && firstRun[0].checkpoint_before
-        ? new Date(new Date(firstRun[0].checkpoint_before).toLocaleString("en-US", { timeZone: "America/Chicago" })).toISOString().slice(0, 10) : null;
-      const v = cfg && cfg[0] && cfg[0].value; const ssr = v && Array.isArray(v.statement_sales_reports) ? v.statement_sales_reports : CC.DEFAULT_STATEMENT_SALES_REPORTS;
-      const cov = CC.coverage(rows, { statement_sales_reports: ssr }).detail;
-      const shipto = { held: Math.max(0, parseInt(b.shipto_held, 10) || 0), needs_review: Math.max(0, parseInt(b.shipto_needs_review, 10) || 0) };
-      return json(200, Object.assign({ ok: true, read_only: true, capture_start }, D.build({ today: today(), capture_start, months: b.months, profiles, sources, items, coverage: cov, manufacturers: mfrs, shipto })));
+      return json(200, await dashboardData(b));
     } catch (x) { return json(503, { error: "unreadable", message: "The dashboard could not read its data just now: " + String(x.message || x).slice(0, 200) }); }
   }
 
@@ -398,3 +384,23 @@ exports.handler = async (event) => {
 };
 // For tests only.
 exports._internals = { TYPES, monthEnd, isDate, MAX_BYTES };
+
+// The Manufacturer Intelligence dashboard data (read-only) — also used by the monthly reconciliation email (mi-ops-cron).
+async function dashboardData(b) {
+  const CC = require("./_commission_coverage.js"), D = require("./_mi_dashboard.js");
+  const [profiles, sources, items, mfrs, cfg, rows, firstRun] = await Promise.all([
+    sbGet("mfr_report_profiles?select=id,code,manufacturer,kind,label,status,rules&order=manufacturer,id"),
+    sbGetAll("mfr_sources?kind=in.(sales_export,commission_statement,dealer_report)&select=id,manufacturer,kind,title,status,received_date,report_period_start,report_period_end,import_batch_id,publication_status", "id"),
+    sbGetAll("mfr_report_items?select=id,manufacturer,kind,state,attention,resolved_at,period_start,period_end,profile_id", "id"),
+    sbGet("manufacturers?select=slug,name"),
+    sbGet("app_settings?key=eq.commission_config&select=value"),
+    sbGetAll("monthly_sales?select=id,manufacturer,period,source,external_ref,line_type,amount,commission,billed_amount", "id"),
+    sbGet("mfr_report_capture_runs?select=checkpoint_before&order=id&limit=1")]);
+  const capture_start = firstRun && firstRun[0] && firstRun[0].checkpoint_before
+    ? new Date(new Date(firstRun[0].checkpoint_before).toLocaleString("en-US", { timeZone: "America/Chicago" })).toISOString().slice(0, 10) : null;
+  const v = cfg && cfg[0] && cfg[0].value; const ssr = v && Array.isArray(v.statement_sales_reports) ? v.statement_sales_reports : CC.DEFAULT_STATEMENT_SALES_REPORTS;
+  const cov = CC.coverage(rows, { statement_sales_reports: ssr }).detail;
+  const shipto = { held: Math.max(0, parseInt(b.shipto_held, 10) || 0), needs_review: Math.max(0, parseInt(b.shipto_needs_review, 10) || 0) };
+  return Object.assign({ ok: true, read_only: true, capture_start }, D.build({ today: today(), capture_start, months: b.months, profiles, sources, items, coverage: cov, manufacturers: mfrs, shipto }));
+}
+exports.dashboardData = dashboardData;
