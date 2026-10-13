@@ -71,3 +71,16 @@ two functions and refuses unless M1, M2 and M3 are intact. Lessons, links and `s
 | `test/academy-builder.pg.test.js` | The builder against real Postgres with M3.1: one call, one audit row, refused saves leave nothing, failure injection (write refused after links, audit refused, someone saves first, lost answer → "reload", connection failure, not installed → 503), question links untouched | 28/28 on PG16 and PG17.6 |
 | `test/academy-builder.mutants.js` | Builder server mutants incl. the new save | 30/30 killed, 6 held by a second layer |
 | Regression | builder browser 13, builder 16, C1 50, A2A 31 + pg 18, M2 pg 18, M3 pg 28 (PG16 and PG17.6), lesson 23 + pg 5 | All pass |
+
+## Production preflight (read-only) — PASSED, Angelo, 12 Oct 2026 22:19 CT
+
+`ready_for_m3_1: true`. M1 19 / 6 / `a809004b8fe77dce69cfc555ff984bdb`, M2 15 / 8 / `794f3c3e007bf3cc6d72b574aac614e3`,
+M3 24 / 7 / `9f41ee27d9ea6b271b35ea5ec1a25c7e`, start-attempt `4ab3615ae6825feac9ac27feaa09dbe2` (server only, draws through M3),
+no M3.1 object, PostgreSQL 17.6, 1 active President, switches `{academy_admin: true}` only.
+Baseline to compare after the migration and the tests:
+- content rows: courses 1, versions 1, modules 11, lessons 17, questions 7, media 0, content_refs 71, product_facts 0; audit rows 110;
+- `lessons_fingerprint` `9bdb8f44c5ee30d220d1a91a467ebb66`, `content_refs_fingerprint` `7fbd3ca991475ef34cdeb12b9bac390f`;
+- Academy grants `7af6d10ef284760d9fb9ca840fad04b7 / 252`, columns `162e4192ddd7b833caf836c9e5800844 / 180`, policies 0, RLS 18 / 18;
+- outside the Academy: grants `248be67b18fe1fdefe6c70d143afdfc1 / 2956`, columns `764813c5ddc56dd0c1cc8dc7e22b6691 / 127 tables`,
+  policies `219ac18ed7a25a0db2d9a50c5b8a88e7 / 29`, other functions `b116ce12e0682238c373156d8fe8b944 / 106`.
+Backup: newest daily backup 12 Oct 2026 09:10 UTC (before the Golden draft was created); PITR not enabled.
