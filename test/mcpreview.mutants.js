@@ -19,7 +19,7 @@ const JS=[
  ['_preview.js','the staff note on every card','      staff_note: held ? (waiting ? WAITING_NOTE : HELD_NOTE) : null,','      staff_note: HELD_NOTE,'],
  ['_preview.js','a page waiting for approval labelled as held for source review','      staff_note: held ? (waiting ? WAITING_NOTE : HELD_NOTE) : null,','      staff_note: held ? HELD_NOTE : null,'],
  ['_preview.js','storefront photos shown from the admin site (broken)','      image: abs(cardImage), card_image_chosen: ci, media,','      image: cardImage || "", card_image_chosen: ci, media,'],
- ['product-content.js','the proposal shows nothing new','return want.test(path) ? PREVIEW.proposedContentRows(rows, rowsAsPublished, keys) : rows;','return rows;'],
+ ['product-content.js','the proposal shows nothing new','return want.test(path) ? PREVIEW.proposedContentRows(rows, rowsAsPublished, keys, opts.replace) : rows;','return rows;'],
  ['_enrich.js','a source hold hides its issues','  return { status, label: STATUS_LABEL[status], issues, resolutions: res,','  return { status, label: STATUS_LABEL[status], issues: held ? [] : issues, resolutions: res,'],
  ['_enrich.js','a source hold not recognised','  const held = !!((res.hold && res.hold.choice === "hold_back") ||','  const held = !!((false) ||'],
  ['_enrich.js','badge art kept as a thumbnail','  pool = pool.filter(d => !d.promo);\n',''],

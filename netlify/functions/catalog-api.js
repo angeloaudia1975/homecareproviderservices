@@ -2095,11 +2095,13 @@ async function freezeGate(b, me){
   const id=parseInt(rf.decision_id,10), reason=String(rf.reason||"").trim();
   if(!(id>0) || !reason) return json(400,{error:"regression_fix_incomplete", message:"A regression fix needs decision_id and a reason. Nothing was changed."});
   let dec;
-  try{ dec=await sb("GET",`mfr_decisions?id=eq.${id}&select=id,manufacturer,kind,used_at`); }
+  try{ dec=await sb("GET",`mfr_decisions?id=eq.${id}&select=id,manufacturer,kind,used_at,hcps_value`); }
   catch(e){ return json(503,{error:"decision_unreadable", message:"The regression_fix decision could not be read. Nothing was changed."}); }
   const dd=dec&&dec[0];
   if(!dd || dd.kind!=="regression_fix" || dd.manufacturer!==slug || dd.used_at)
     return json(423,{error:"regression_fix_invalid", manufacturer:slug, message:"Decision "+id+" is not an unused regression_fix for "+slug+". Nothing was changed."});
+  const scoped=MC.scopedFixProblem(dd);   // (2026-10-12) a fix scoped to one published-page correction opens nothing here
+  if(scoped) return json(423,{error:"regression_fix_invalid", manufacturer:slug, message:scoped+". Nothing was changed."});
   REGRESSION={id, manufacturer:slug, reason, by:String((me&&me.email)||"president").slice(0,80)};
   return null;
 }
@@ -4442,7 +4444,8 @@ async function handleCatalog(event){
             deferrals:Array.isArray(m.deferrals)?m.deferrals:[], freight_traced:!!(m.freight_terms&&m.freight_terms.trace),
             source:cur?{id:cur.id,title:cur.title,received_date:cur.received_date,legacy:cur.legacy,effective_date_status:cur.effective_date_status,manufacturer_effective_date:cur.manufacturer_effective_date}:null,
             sources:src.length, decisions:dec.length, open_regression_fixes:dec.filter(x=>x.kind==="regression_fix"&&!x.used_at).length, enrichment_window:((dec.find(x=>x.kind==="enrichment_window"&&!x.used_at))||{}).id||null,
-            last_run:rr[0]?{id:rr[0].id,phase:rr[0].phase,result:rr[0].result,fingerprint:rr[0].fingerprint,run_at:rr[0].run_at}:null}; });
+            last_run:rr[0]?{id:rr[0].id,phase:rr[0].phase,result:rr[0].result,fingerprint:rr[0].fingerprint,run_at:rr[0].run_at}:null,
+            gold_standard:MC.goldStandardOf(rr)}; });
         return json(200,{ok:true, lines:out});
       }
       if(b.action==="mc_line"){
@@ -4455,7 +4458,7 @@ async function handleCatalog(event){
             sb("GET",`mfr_verification_runs?manufacturer=eq.${e(slug)}&select=id,phase,result,fingerprint,run_at,run_by,engine_version&order=run_at.desc&limit=100`),
             sb("GET",`manufacturer_meta?slug=eq.${e(slug)}&select=slug,record_authoritative,frozen,frozen_at,frozen_reason,deferrals,freight_terms`)]);
         }catch(e2){ return json(503,{error:"mc_unreadable", message:String((e2&&e2.message)||e2).slice(0,300)}); }
-        return json(200,{ok:true, manufacturer:slug, meta:(meta&&meta[0])||null, sources:sources||[], decisions:decisions||[], runs:runs||[]});
+        return json(200,{ok:true, manufacturer:slug, meta:(meta&&meta[0])||null, sources:sources||[], decisions:decisions||[], runs:runs||[], gold_standard:MC.goldStandardOf(runs||[])});
       }
       if(b.action==="mc_run"){
         const id=parseInt(b.id,10); if(!(id>0)) return json(400,{error:"id required"});
@@ -4471,6 +4474,17 @@ async function handleCatalog(event){
         if(kind==="enrichment_window") return json(400,{error:"window_not_here",message:"An enrichment window is opened only through mc_open_enrichment_window (one per frozen line, content drafts only). Nothing was recorded."});
         if(KINDS.indexOf(kind)<0) return json(400,{error:"kind must be one of "+KINDS.join(", ")});
         if(/^gate:/i.test(field)) return json(400,{error:"gate_not_here",message:"Approval gates are recorded only through mc_approve_gate, which checks what is being approved. Nothing was recorded."});
+        /* (2026-10-12) a regression_fix scoped to correcting one published page: the page and the content areas it may change */
+        if(kind==="regression_fix" && b.hcps_value && b.hcps_value.scope==="content_correction"){
+          const v=b.hcps_value, OK_AREAS=["description","features","specs"];
+          if(!v.page_key || !Array.isArray(v.areas) || !v.areas.length || v.areas.some(a=>OK_AREAS.indexOf(a)<0) || new Set(v.areas).size!==v.areas.length)
+            return json(400,{error:"bad_scope",message:"A correction regression_fix names one page_key and the areas it may correct ("+OK_AREAS.join(", ")+"). Nothing was recorded."});
+          let pg; try{ pg=await sb("GET",`product_content?manufacturer=eq.${encodeURIComponent(slug)}&page_key=eq.${encodeURIComponent(v.page_key)}&select=page_key,status,disabled`); }
+          catch(e2){ return json(503,{error:"mc_unreadable",message:String((e2&&e2.message)||e2).slice(0,300)}); }
+          const r0=pg&&pg[0]; if(!r0 || ["published","active","discontinued"].indexOf(r0.status)<0 || r0.disabled)
+            return json(400,{error:"not_a_live_page",message:"“"+v.page_key+"” is not a live page of "+slug+". A correction regression_fix is for a published page. Nothing was recorded."});
+          b.hcps_value={scope:"content_correction", page_key:String(v.page_key), areas:v.areas.slice(), page_name:v.page_name?String(v.page_name).slice(0,200):null, note:v.note?String(v.note).slice(0,1000):null};
+        }
         const row={manufacturer:slug, kind, field:field.slice(0,80), reason:reason.slice(0,2000), code:b.code?String(b.code).trim().slice(0,80):null,
           manufacturer_value:b.manufacturer_value===undefined?null:b.manufacturer_value, hcps_value:b.hcps_value===undefined?null:b.hcps_value,
           source_id:b.source_id!=null?parseInt(b.source_id,10):null, decided_by:String((me&&me.email)||b.reviewer||"president").slice(0,80)};
@@ -4579,7 +4593,8 @@ async function handleCatalog(event){
           const pages=(D.hcps_value&&D.hcps_value.pages)||[], held=((D.hcps_value&&D.hcps_value.held)||[]).map(h=>h.page_key);
           const rows=await sb("GET",`product_content?manufacturer=eq.${e(slug)}&select=page_key,status,disabled,draft_window,image,images_gallery,skus`);
           const vis=(rows||[]).filter(r=>["published","active","discontinued"].indexOf(r.status)>=0&&!r.disabled).map(r=>r.page_key).sort();
-          add("only_approved_pages_visible","Exactly the approved pages are live (no held page)",JSON.stringify(vis)===JSON.stringify(pages.slice().sort()),{live:vis,approved:pages});
+          const PUB=require("./_publish.js"), want=PUB.expectedVisible(D.hcps_value);   // (2026-10-12) + the pages already live before it
+          add("only_approved_pages_visible","Exactly the approved pages — and the pages already live before — are live (no held page)",JSON.stringify(vis)===JSON.stringify(want),{live:vis,approved:pages,live_before:(D.hcps_value&&D.hcps_value.live_before)||[]});
           const liveRows=(rows||[]).filter(r=>vis.indexOf(r.page_key)>=0), drafty=JSON.stringify(liveRows).match(/https?:[^"]*\/drafts\/w\d+\/[^"]*/g)||[];
           add("no_draft_links_live","No live page points at a draft-folder photo",!drafty.length,drafty.slice(0,10));
           add("live_pages_unstamped","No live page carries a draft_window",!liveRows.some(r=>r.draft_window!=null),liveRows.filter(r=>r.draft_window!=null).map(r=>r.page_key));
@@ -4591,7 +4606,9 @@ async function handleCatalog(event){
           rep=mine;
           add("other_gold_standards_unchanged","Every other frozen line still reads its Gold Standard fingerprint",theirs.every(t=>t.baseline&&t.fingerprint===t.baseline),theirs);
         }catch(e2){ add("verification_ran","Final verification ran",false,String((e2&&e2.message)||e2).slice(0,300)); }
-        const pubCheck={id:"publication",label:"Approved publication carried out and verified",pass:true,severity:"blocking",detail:{decision:did,plan_hash:D.hcps_value&&D.hcps_value.plan_hash,pages:D.hcps_value&&D.hcps_value.pages}};
+        const corr=D.hcps_value&&D.hcps_value.correction;
+        const pubCheck={id:"publication",label:corr?"Approved correction (regression fix #"+corr.regression_fix+") carried out and verified":"Approved publication carried out and verified",pass:true,severity:"blocking",
+          detail:Object.assign({decision:did,plan_hash:D.hcps_value&&D.hcps_value.plan_hash,pages:D.hcps_value&&D.hcps_value.pages},corr?{correction:{regression_fix:corr.regression_fix,areas:corr.areas}}:{})};
         const checks=((rep&&rep.checks)||[]).concat(extra);
         const ok=!!rep&&rep.result==="pass"&&extra.every(c=>c.pass);
         if(b.dry_run===true) return json(200,{ok:true,dry_run:true,would_pass:ok,fingerprint:rep&&rep.fingerprint,failed:checks.filter(c=>!c.pass&&c.severity==="blocking").map(c=>c.id),checks});
@@ -4605,7 +4622,8 @@ async function handleCatalog(event){
         let runId=null; try{ runId=await saveRun({manufacturer:slug,phase:"post",result:"pass",checks,fingerprint:rep.fingerprint,
           engine_version:MC.sha(require("./_shop_engine.js").SOURCE+require("./_shop_render.js").SOURCE).slice(0,12),run_by:by}); }
         catch(e2){ return json(502,{error:"run_not_saved",message:"Everything passed but the run could not be saved — the publication stays live; finalize again. "+String((e2&&e2.message)||e2).slice(0,200)}); }
-        let closed=null; try{ const open=await sb("GET",`mfr_decisions?manufacturer=eq.${e(slug)}&kind=eq.enrichment_window&used_at=is.null&select=id`);
+        /* a published-page correction (regression_fix) neither uses nor spends the line's enrichment window */
+        let closed=null; try{ const open=(D.hcps_value&&D.hcps_value.correction)?[]:await sb("GET",`mfr_decisions?manufacturer=eq.${e(slug)}&kind=eq.enrichment_window&used_at=is.null&select=id`);
           if(open&&open[0]){ await sb("PATCH",`mfr_decisions?id=eq.${open[0].id}&used_at=is.null`,{used_at:new Date().toISOString(),used_by:by},{Prefer:"return=minimal"}); closed=open[0].id; } }catch(e2){}
         return json(200,{ok:true,run_id:runId,fingerprint:rep.fingerprint,content_fingerprint:rep.content_fingerprint||null,window_closed:closed,checks});
       }

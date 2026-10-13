@@ -29,8 +29,11 @@ const DRAFT_MEDIA = /\/drafts\/w\d+\//;
 
 /* The rows the shop would read if the Ready drafts were published: today's live pages plus each Ready draft with a
    published status — in memory only. A Ready draft never takes a page key a live page already has. */
-function proposedContentRows(liveRows, drafts, readyKeys){
-  const live = Array.isArray(liveRows) ? liveRows : [];
+function proposedContentRows(liveRows, drafts, readyKeys, replace){
+  /* (2026-10-12) a published-page correction: the live row of that page as the correction would leave it (same columns) */
+  const rep = replace || {};
+  const live = (Array.isArray(liveRows) ? liveRows : []).map(r => r && rep[r.page_key]
+    ? Object.fromEntries(Object.keys(r).map(k => [k, rep[r.page_key][k] === undefined ? r[k] : rep[r.page_key][k]])) : r);
   const have = new Set(live.map(r => r && r.page_key));
   const add = (drafts || []).filter(r => r && readyKeys.has(r.page_key) && !have.has(r.page_key))
     .map(r => { const x = Object.assign({}, r, { status: "published", disabled: false }); delete x.enrichment_flags; return x; });

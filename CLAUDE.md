@@ -1527,6 +1527,41 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   homecareproviderservicesordering) — until both are live, engine_in_sync reads false for the frozen lines (not
   dealer-facing). Tests: test/mcapproval.test.js (card cases), test/mc-cardimage.pg.test.js, test/mcapproval.ui.js,
   test/mcapproval.mutants.js.
+  (aa) **A saved President edit is never hidden; replacing it needs confirmation (RULE, Angelo 2026-10-12).** After
+  Bemis publication #906 went live with Auto-Enrich's Assurance text instead of his edits #825–#827 (Use proposed was
+  saved over them minutes before publishing), every text area in Approve Content & Images shows Current dealer view ·
+  Proposed by Auto-Enrich · President edited (when one is saved) and "Selected for publication: …". The edited text
+  is kept (approval_state area.edit_saved — latest edit decision, with active / stale flags) whatever choice is active;
+  Edit always starts from it. Choosing Use proposed (or Keep current) over a saved edit shows, before anything is
+  recorded: "You already have a President-edited version for this section. Choosing Use Proposed will replace that
+  selection for publication. Continue?" — Save is disabled until Continue; Cancel records nothing.
+  (bb) **Partial publications and pages already live (RULE, Angelo 2026-10-12 — the bug behind runs #17–#19).** A Ready
+  page that is not in the publication being carried out is Waiting / unchanged (its SKUs on their current cards),
+  never "missing / 0 cards": dealerViews and the publish_execute post-check both pass the pages through
+  _publish.js pagesForPublication(pages, publishedKeys). A page an earlier publication made live is neither held nor
+  re-published: buildPlan lists it as live (row in the plan hash; post-check live_rows_untouched) and the approval
+  records live_before; the visibility checks (publish_execute and catalog-api mc_publish_finalize) expect
+  expectedVisible(approval) = the published pages + live_before. Verification judges only the pages in that exact
+  plan, the held/current fallback products and complete SKU accounting.
+  (cc) **Current Gold Standard vs history (RULE, Angelo 2026-10-12).** A line's status is its newest finalized Gold
+  Standard (newest passing baseline/post run with a fingerprint — _mc.js goldStandardOf, the same run finalize and
+  regression checks compare against). Failed or rolled-back runs after it are history: shown underneath ("History: N
+  later attempt(s) failed and were rolled back — Gold Standard unchanged"), never as the line's status (overview
+  column "Gold Standard / verification", the line header banner, Verify & activate, History marks the run). Runs are
+  never deleted or rewritten. mc_overview / mc_line return gold_standard.
+  (dd) **Correcting a published Gold Standard page (RULE, Angelo 2026-10-12).** Only under a regression_fix SCOPED to
+  that page: mc_record_decision kind regression_fix with hcps_value { scope: "content_correction", page_key (a live
+  page), areas ⊆ description · features · specs }. A scoped fix opens nothing else (contentGate / freezeGate refuse it
+  as a general pass — scopedFixProblem). Flow (product-content, President): correction_record (the corrected text per
+  area — from_decision copies a saved President edit exactly; recorded as content_approval with correction = fix id,
+  ignored by draft approvals) → correction_plan (dry run: "after" = the live row with ONLY those areas' fields
+  replaced — features also clears clinical_applications, specs also billing_codes; every other field, page, photo,
+  card image and commercial record identical; other pages' rows in the hash) → correction_approve (content_publication
+  with hcps_value.correction) → correction_execute (the same mfr_content_publish function; post-check: live = approved,
+  corrected fields only, other pages untouched, same pages live, accounting; any failure rolls back and the fix stays
+  unspent; success spends the fix) → mc_publish_finalize (new Gold Standard; a correction never uses or spends the
+  enrichment window). UI: Decisions → Correct a published page. No SQL change (the RPC also refreshes published_at and
+  reviewed_by). Tests: test/mccorrection.test.js, test/mccorrection.ui.js, test/mccorrection.mutants.js.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.

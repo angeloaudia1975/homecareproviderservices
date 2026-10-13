@@ -449,7 +449,7 @@ async function dealerViews(m, X, S, rowsAsPublished, opts) {
     const rows = await sb(method, path);
     if (!/^product_content\?/.test(path)) return rows;
     const want = new RegExp('manufacturer=eq\\.' + enc(m).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(&|$)');
-    return want.test(path) ? PREVIEW.proposedContentRows(rows, rowsAsPublished, keys) : rows;
+    return want.test(path) ? PREVIEW.proposedContentRows(rows, rowsAsPublished, keys, opts.replace) : rows;
   };
   const files = PRICING.remoteFiles(ORDERING_BASE);
   const mfrList = await files.manufacturersFile();
@@ -459,8 +459,8 @@ async function dealerViews(m, X, S, rowsAsPublished, opts) {
   const P = await PRICING.lineProducts({ slug: m, sb: sbProposed, catalogFile: files.catalogFile, contentFile: files.contentFile, contract: {}, cart: new Map(), freightCfg });
   const [records, metaRows] = await Promise.all([read(`product_skus?manufacturer=eq.${enc(m)}&select=*&limit=10000`), read(`manufacturer_meta?slug=eq.${enc(m)}&select=slug,enriched_only,frozen,category_map,freight_terms`)]);
   const R = new Function('state', 'contractPrice', require('./_shop_render.js').SOURCE + ';return {priceHtml,freightRowsHtml,packOf,packNote,dealerPriceNote,money};')({ dealer: {} }, () => null);
-  const drafts = X.pages.map(r => rowsAsPublished.find(x => x.page_key === r.page_key) || r);
-  const pagesShown = S.pages.map(p => p.status === 'ready' && !keys.has(p.page_key) ? Object.assign({}, p, { status: 'waiting_for_approval' }) : p);
+  const drafts = X.pages.map(r => rowsAsPublished.find(x => x.page_key === r.page_key) || (opts.replace && opts.replace[r.page_key]) || r);
+  const pagesShown = PUBLISH.pagesForPublication(S.pages, [...keys]);
   const out = PREVIEW.buildPreview({ slug: m, base: ORDERING_BASE, records, meta: (metaRows && metaRows[0]) || {}, pages: pagesShown, drafts,
     today: { products: T.products, engine: T.engine }, proposed: { products: P.products, engine: P.engine }, R, PICK: require('./_shop_picker.js') });
   return { T, P, records, meta: (metaRows && metaRows[0]) || {}, out, read };
@@ -799,7 +799,8 @@ async function handleContent(event) {
          status stay in product_skus, behind Phase 2's guard. */
       if (action === 'enrich_plan' || action === 'enrich_page' || action === 'enrich_images' || action === 'enrich_resolve' || action === 'enrich_set_image' || action === 'enrich_preview'
           || action === 'approval_state' || action === 'approval_record'
-          || action === 'publish_plan' || action === 'publish_approve' || action === 'publish_promote' || action === 'publish_execute') {
+          || action === 'publish_plan' || action === 'publish_approve' || action === 'publish_promote' || action === 'publish_execute'
+          || action === 'correction_state' || action === 'correction_record' || action === 'correction_plan' || action === 'correction_approve' || action === 'correction_execute') {
         if (!m) return reply(400, { ok: false, error: 'manufacturer required' });
         let X; try { X = await enrichContext(m); }
         catch (e) { return reply(503, { ok: false, error: 'line_unreadable', message: 'The line could not be read, so nothing was enriched: ' + String((e && e.message) || e).slice(0, 300) }); }
@@ -889,6 +890,140 @@ async function handleContent(event) {
           const keys = [...new Set(recs.map(x => x.field.slice(5)))];
           return reply(200, { ok: true, recorded: ids, pages: keys.map(k => A2.states[k] ? view(A2.states[k]) : null).filter(Boolean) });
         }
+        /* ================= CORRECT A PUBLISHED PAGE (Angelo 2026-10-12, the Assurance correction) =================
+           A Gold Standard page changes only under a regression_fix scoped to it (hcps_value { scope: "content_correction",
+           page_key, areas }). correction_state (read) → correction_record (President: the corrected text, one area at a time,
+           as content_approval decisions carrying correction = <fix id>) → correction_plan (dry run, read-only) →
+           correction_approve (President: records the exact plan as a content_publication) → correction_execute (President:
+           the same database function as a publication writes exactly the approved row; the live view is checked; any failure
+           rolls back) → catalog-api mc_publish_finalize (full verification, new Gold Standard). The fix is spent when the
+           correction is carried out and passes its check. No enrichment window is needed, used or spent. */
+        if (action === 'correction_state' || action === 'correction_record' || action === 'correction_plan' || action === 'correction_approve' || action === 'correction_execute') {
+          const president = !!(me && String(me.role || '').toLowerCase() === 'president');
+          if (action !== 'correction_state' && action !== 'correction_plan' && !president) return reply(403, { ok: false, error: 'president_only', message: 'Only the President corrects a published page. Nothing was changed.' });
+          if (!X.frozen) return reply(409, { ok: false, error: 'not_frozen', message: 'A published-page correction is for a frozen (Gold Standard) line. ' + m + ' is not frozen.' });
+          const rid = parseInt(body.regression_fix_id, 10);
+          if (!(rid > 0)) return reply(400, { ok: false, error: 'regression_fix_required', message: 'Name the regression fix (regression_fix_id). Nothing was changed.' });
+          let rf; try { const r = await fetch(rest(`mfr_decisions?id=eq.${rid}&select=id,manufacturer,kind,field,hcps_value,reason,decided_by,decided_at,used_at`), { headers: svcHeaders() });
+            if (!r.ok) throw new Error('mfr_decisions ' + r.status); rf = ((await r.json()) || [])[0] || null; }
+          catch (e) { return reply(503, { ok: false, error: 'decision_unreadable', message: 'The regression fix could not be read. Nothing was changed.' }); }
+          const rfp = PUBLISH.correctionFixProblem(rf, m);
+          if (rfp && !(action === 'correction_state' && rf && rf.manufacturer === m && rf.kind === 'regression_fix')) return reply(423, { ok: false, error: 'regression_fix_invalid', message: rfp + '. Nothing was changed.' });
+          const scope = rf.hcps_value || {}, pk = scope.page_key;
+          const S = enrichSummary(m, X, plan);
+          const page = S.pages.find(p => p.page_key === pk) || null, live = rowOf(pk);
+          const areaVal = (row, a) => !row ? null : (a === 'description' ? (row.description || null) : a === 'features' ? (row.features || []).concat(row.clinical_applications || []) : (row.specs || []).concat(row.billing_codes || []));
+          if (action === 'correction_state') {
+            const corr = PUBLISH.correctionsFor(X.decisions, rf.id, pk), edits = APPROVAL.editsFor(X.decisions, pk);
+            return reply(200, { ok: true, manufacturer: m, regression_fix: { id: rf.id, reason: rf.reason, by: rf.decided_by, at: rf.decided_at, used_at: rf.used_at || null, scope, problem: rfp || null },
+              page: page ? { page_key: pk, name: page.name, status: page.status, codes: page.skus.map(x => x.code) } : null,
+              areas: (scope.areas || []).map(a => ({ id: a, live: areaVal(live, a), corrected: corr[a] ? { decision: corr[a].id, value: corr[a].value, fields: PUBLISH.correctionFields(a, corr[a].value), by: corr[a].by, at: corr[a].at } : null,
+                saved_edit: edits[a] ? { decision: edits[a].decision, value: edits[a].value, by: edits[a].by, at: edits[a].at } : null })) });
+          }
+          if (action === 'correction_record') {
+            const list = Array.isArray(body.corrections) ? body.corrections : [body];
+            if (!list.length || list.length > 10) return reply(400, { ok: false, error: 'bad_corrections', message: 'Send between 1 and 10 corrections. Nothing was recorded.' });
+            const recs = [];
+            for (const x of list) {
+              const area = String(x.area || '');
+              if ((scope.areas || []).indexOf(area) < 0) return reply(400, { ok: false, error: 'outside_scope', area, message: area + ' is outside regression fix #' + rf.id + ' (' + (scope.areas || []).join(', ') + '). Nothing was recorded.' });
+              let value = x.value || null, from = null;
+              if (x.from_decision != null) {
+                const d = X.decisions.find(y => y.id === parseInt(x.from_decision, 10));
+                if (!d || d.kind !== 'content_approval' || d.field !== 'page:' + pk || !d.hcps_value || d.hcps_value.area !== area || d.hcps_value.choice !== 'edit' || d.hcps_value.value == null)
+                  return reply(400, { ok: false, error: 'bad_source', area, message: 'Decision ' + x.from_decision + ' is not a President edit of ' + area + ' on this page. Nothing was recorded.' });
+                if (value && PUBLISH.canon(value) !== PUBLISH.canon(d.hcps_value.value)) return reply(400, { ok: false, error: 'source_mismatch', area, message: 'The text sent differs from approval #' + d.id + '. Nothing was recorded.' });
+                value = JSON.parse(JSON.stringify(d.hcps_value.value)); from = d.id;
+              }
+              const f = PUBLISH.correctionFields(area, value);
+              const empty = !f || (area === 'description' ? !f.description : !(f[area] || []).length);
+              if (empty) return reply(400, { ok: false, error: 'bad_correction', area, message: 'The corrected ' + area + ' is empty. Nothing was recorded.' });
+              if (area === 'description' && f.description.length > 8000) return reply(400, { ok: false, error: 'bad_correction', area, message: 'The text is too long. Nothing was recorded.' });
+              const prev = PUBLISH.correctionsFor(X.decisions, rf.id, pk)[area] || null;
+              recs.push({ manufacturer: m, field: 'page:' + pk, kind: 'content_approval', decided_by: who, supersedes_id: prev ? prev.id : null,
+                hcps_value: { area, choice: 'edit', value, correction: rf.id, from_decision: from, page_name: page ? page.name : pk, window: null },
+                reason: (String(x.reason || body.reason || '').trim() || ('Correction under regression fix #' + rf.id + ': ' + (page ? page.name : pk) + ' · ' + area + (from ? ' ← approval #' + from : ''))).slice(0, 500) });
+            }
+            if (body.dry_run === true) return reply(200, { ok: true, dry_run: true, would_record: recs });
+            const r = await fetch(rest('mfr_decisions'), { method: 'POST', headers: svcHeaders({ Prefer: 'return=representation' }), body: JSON.stringify(recs) });
+            const j = await r.json().catch(() => null);
+            if (!r.ok) return reply(500, { ok: false, error: 'not_recorded', message: 'The correction could not be recorded: ' + JSON.stringify(j).slice(0, 200) });
+            return reply(200, { ok: true, recorded: (Array.isArray(j) ? j : [j]).map(d => d && d.id), next: 'correction_plan' });
+          }
+          /* the dry run, re-derived on every step */
+          let CP, V;
+          try {
+            const pre = PUBLISH.correctionPlan({ slug: m, rf, pages: S.pages, drafts: X.pages, records: [], meta: null, decisions: X.decisions, preview: null });
+            V = pre.after ? await dealerViews(m, X, S, [], { replace: { [pk]: pre.after } }) : null;
+            CP = PUBLISH.correctionPlan({ slug: m, rf, pages: S.pages, drafts: X.pages, records: V ? V.records : [], meta: V ? V.meta : null, decisions: X.decisions, preview: V ? V.out : null });
+          } catch (e) { return reply(503, { ok: false, error: 'plan_unavailable', message: 'The correction dry run could not be built — nothing was changed: ' + String((e && e.message) || e).slice(0, 300) }); }
+          const IMG_FIELDS = ['image', 'images_gallery', 'skus', 'options', 'card_image', 'documents', 'videos', 'name', 'tagline', 'category', 'subcategory', 'field_provenance'];
+          if (action === 'correction_plan') {
+            const imgSame = !!(CP.before && CP.after) && IMG_FIELDS.every(k => PUBLISH.canon(CP.before[k]) === PUBLISH.canon(CP.after[k]));
+            return reply(200, { ok: true, dry_run: true, publishable: CP.publishable, problems: CP.problems, plan_hash: CP.plan_hash, summary: CP.summary,
+              regression_fix: { id: rf.id, scope }, page: { page_key: pk, name: CP.name }, changes: CP.changes,
+              unchanged: { fields: IMG_FIELDS, identical: imgSame, other_pages: CP.others.map(o => ({ page_key: o.page_key, status: o.row.status })) },
+              preview: V ? { pass: V.out.pass, checks: V.out.checks, skus: V.out.skus } : null });
+          }
+          if (action === 'correction_approve') {
+            const reason = String(body.reason || '').trim();
+            if (!reason) return reply(400, { ok: false, error: 'reason_required', message: 'Say why, in a few words. Nothing was recorded.' });
+            if (String(body.plan_hash || '') !== CP.plan_hash) return reply(409, { ok: false, error: 'dry_run_stale', plan_hash: CP.plan_hash, message: 'Something changed since the dry run you reviewed (plan ' + String(body.plan_hash || '').slice(0, 12) + ' → ' + CP.plan_hash.slice(0, 12) + '). Review the new dry run. Nothing was recorded.' });
+            if (!CP.publishable) return reply(409, { ok: false, error: 'not_publishable', problems: CP.problems, message: 'This correction cannot be approved: ' + CP.problems.join('; ') });
+            const rec = { manufacturer: m, field: 'publication', kind: 'content_publication', reason: reason.slice(0, 500), decided_by: who, hcps_value: CP.approval };
+            if (body.dry_run === true) return reply(200, { ok: true, dry_run: true, would_record: { kind: rec.kind, plan_hash: CP.plan_hash, pages: CP.approval.pages, correction: CP.approval.correction, summary: CP.summary } });
+            const r = await fetch(rest('mfr_decisions'), { method: 'POST', headers: svcHeaders({ Prefer: 'return=representation' }), body: JSON.stringify(rec) });
+            const j = await r.json().catch(() => null);
+            if (!r.ok) return reply(500, { ok: false, error: 'not_recorded', message: 'The approval could not be recorded: ' + JSON.stringify(j).slice(0, 200) });
+            const d = Array.isArray(j) ? j[0] : j;
+            return reply(200, { ok: true, decision: { id: d.id, plan_hash: CP.plan_hash, pages: CP.approval.pages, correction: CP.approval.correction }, next: 'correction_execute' });
+          }
+          /* correction_execute */
+          const did = parseInt(body.decision_id, 10);
+          if (!(did > 0)) return reply(400, { ok: false, error: 'decision_required', message: 'Name the approval (decision_id). Nothing was changed.' });
+          const D = X.decisions.find(d => d.id === did) || null;
+          if (!D || D.kind !== 'content_publication' || !D.hcps_value || !D.hcps_value.correction || Number(D.hcps_value.correction.regression_fix) !== rf.id)
+            return reply(404, { ok: false, error: 'no_such_approval', message: 'Decision ' + did + ' is not an approved correction under regression fix #' + rf.id + '. Nothing was changed.' });
+          if (D.used_at) return reply(409, { ok: false, error: 'approval_spent', message: 'Approval #' + did + ' was already carried out (' + D.used_at + '). Nothing was changed.' });
+          if (D.hcps_value.plan_hash !== CP.plan_hash) return reply(409, { ok: false, error: 'approval_invalid', plan_hash: CP.plan_hash, message: 'Something changed since approval #' + did + ' (its dry run ' + String(D.hcps_value.plan_hash || '').slice(0, 12) + ', now ' + CP.plan_hash.slice(0, 12) + '). Run a new dry run and approve that. Nothing was changed.' });
+          if (!CP.publishable) return reply(409, { ok: false, error: 'not_publishable', problems: CP.problems, message: 'This correction cannot be carried out: ' + CP.problems.join('; ') + '. Nothing was changed.' });
+          const expected = V.P.products, beforeProducts = V.T.products;
+          try { await rpc('mfr_content_publish', { p_decision: did, p_plan_hash: CP.plan_hash, p_by: who }); }
+          catch (e) { return reply(409, { ok: false, error: 'publication_refused', message: 'The database refused the correction — nothing was changed: ' + e.message }); }
+          const checks = [], add = (id, label, pass, detail) => checks.push({ id, label, pass: !!pass, detail: detail == null ? null : detail });
+          add('publication', 'Approved correction carried out', true, { decision: did, plan_hash: CP.plan_hash, pages: CP.approval.pages, regression_fix: rf.id });
+          try {
+            const X2 = await enrichContext(m), S2 = enrichSummary(m, X2, ENRICH.planPages(X2));
+            const L2 = await dealerViews(m, X2, S2, []);
+            const cmp = PUBLISH.liveMatchesPlan(expected, L2.T.products);
+            add('live_equals_approved', 'Live dealer view = the approved correction, product by product', cmp.same, cmp.same ? { products: expected.length } : cmp.diffs);
+            add('no_draft_links_live', 'No live product points at a draft-folder photo', !cmp.draft_links.length, cmp.draft_links.slice(0, 10));
+            const row2 = X2.pages.find(r => r.page_key === pk) || {};
+            const allowed = new Set((scope.areas || []).flatMap(a => PUBLISH.CORRECTION_FIELDS[a] || []).concat(['published_at', 'reviewed_by', 'updated_at']));
+            const changed = [...new Set(Object.keys(CP.before).concat(Object.keys(row2)))].filter(k => PUBLISH.canon(CP.before[k]) !== PUBLISH.canon(row2[k]));
+            const wrong = changed.filter(k => !allowed.has(k)).concat([...allowed].filter(k => CP.after[k] !== undefined && !/^(published_at|reviewed_by|updated_at)$/.test(k) && PUBLISH.canon(row2[k]) !== PUBLISH.canon(CP.after[k])));
+            add('corrected_fields_only', 'Only the corrected areas changed on ' + (CP.name || pk) + ' (photos, option photos, card image, title, documents untouched)', !wrong.length, wrong.length ? wrong : { changed });
+            const othersNow = CP.others.map(o => X2.pages.find(r => r.page_key === o.page_key) || null);
+            add('other_pages_untouched', 'Every other page of the line untouched', CP.others.every((o, n) => PUBLISH.canon(othersNow[n]) === PUBLISH.canon(o.row)), CP.others.map(o => o.page_key));
+            const visible = X2.pages.filter(r => ENRICH.isVisibleRow(r)).map(r => r.page_key).sort();
+            add('only_approved_pages_visible', 'The same pages are live as before the correction', PUBLISH.canon(visible) === PUBLISH.canon(PUBLISH.expectedVisible(CP.approval)), { visible, expected: PUBLISH.expectedVisible(CP.approval) });
+            const acc = PREVIEW.buildPreview({ slug: m, base: ORDERING_BASE, records: L2.records, meta: L2.meta, pages: PUBLISH.pagesForPublication(S2.pages, []), drafts: X2.pages,
+              today: { products: beforeProducts, engine: V.T.engine }, proposed: { products: L2.T.products, engine: L2.T.engine },
+              R: new Function('state', 'contractPrice', require('./_shop_render.js').SOURCE + ';return {priceHtml,freightRowsHtml,packOf,packNote,dealerPriceNote,money};')({ dealer: {} }, () => null), PICK: require('./_shop_picker.js') });
+            add('accounting', 'Every active SKU on one card; held products unchanged; commercial unchanged; retired excluded', acc.pass, acc.pass ? acc.summary : acc.checks.filter(c => !c.pass));
+          } catch (e) { add('verification_ran', 'Post-correction verification ran', false, String((e && e.message) || e).slice(0, 300)); }
+          if (checks.every(c => c.pass)) {
+            try { await fetch(rest(`mfr_decisions?id=eq.${rf.id}&used_at=is.null`), { method: 'PATCH', headers: svcHeaders({ Prefer: 'return=minimal' }), body: JSON.stringify({ used_at: new Date().toISOString(), used_by: String(who).slice(0, 80) }) }); }
+            catch (e) { try { console.error('[HCPS] could not mark regression_fix ' + rf.id + ' used: ' + String((e && e.message) || e)); } catch (_) {} }
+            await logHistory({ manufacturer: m, page_key: pk, action: 'correct', actor: who, summary: 'Approved correction #' + did + ' (regression fix #' + rf.id + ') carried out: ' + (scope.areas || []).join(', ') + ' on ' + (CP.name || pk) + '; pending final verification', before: null, after: null });
+            return reply(200, { ok: true, corrected: pk, decision: did, regression_fix: rf.id, checks, next: 'catalog-api mc_publish_finalize (after the live storefront check)' });
+          }
+          let undone = null; try { undone = await rpc('mfr_content_publication_rollback', { p_decision: did, p_by: who }); } catch (e) { undone = { ok: false, error: e.message }; }
+          const rolled = undone;
+          checks.push({ id: 'rolled_back', label: 'Rolled back to the page as it was', pass: !!(rolled && rolled.ok), detail: rolled });
+          try { await saveRun({ manufacturer: m, phase: 'release', result: 'fail', checks, fingerprint: null, run_by: String(who).slice(0, 80) }); } catch (e) {}
+          return reply(409, { ok: false, error: 'verification_failed', rolled_back: !!(rolled && rolled.ok), checks, message: 'The corrected page did not match the approved dry run, so it was rolled back and the failed run recorded. The regression fix stays unspent.' });
+        }
         /* ================= RELEASE D — PUBLISH & VERIFY =================
            publish_plan (dry run, read-only) → publish_approve (records the exact plan as a content_publication decision) →
            publish_promote (live photo copies; nothing dealer-visible) → publish_execute (one database transaction publishes
@@ -961,12 +1096,15 @@ async function handleContent(event) {
             const cmp = PUBLISH.liveMatchesPlan(expected, L2.T.products);
             add('live_equals_approved', 'Live dealer view = the approved dry run, product by product', cmp.same, cmp.same ? { products: expected.length } : cmp.diffs);
             add('no_draft_links_live', 'No live product points at a draft-folder photo', !cmp.draft_links.length, cmp.draft_links.slice(0, 10));
-            const acc = PREVIEW.buildPreview({ slug: m, base: ORDERING_BASE, records: L2.records, meta: L2.meta, pages: S2.pages, drafts: X2.pages,
+            /* (2026-10-12, runs #17–#19) a Ready page that is not in this publication is Waiting / unchanged — never "0 cards" */
+            const acc = PREVIEW.buildPreview({ slug: m, base: ORDERING_BASE, records: L2.records, meta: L2.meta, pages: PUBLISH.pagesForPublication(S2.pages, PL.approval.pages), drafts: X2.pages,
               today: { products: beforeProducts, engine: C.views.T.engine }, proposed: { products: L2.T.products, engine: L2.T.engine },
               R: new Function('state', 'contractPrice', require('./_shop_render.js').SOURCE + ';return {priceHtml,freightRowsHtml,packOf,packNote,dealerPriceNote,money};')({ dealer: {} }, () => null), PICK: require('./_shop_picker.js') });
             add('accounting', 'Every active SKU on one card; held products unchanged; commercial unchanged; retired excluded', acc.pass, acc.pass ? acc.summary : acc.checks.filter(c => !c.pass));
             const visible = X2.pages.filter(r => ENRICH.isVisibleRow(r)).map(r => r.page_key).sort();
-            add('only_approved_pages_visible', 'Exactly the approved pages are visible (no held page)', PUBLISH.canon(visible) === PUBLISH.canon(PL.approval.pages.slice().sort()), visible);
+            add('only_approved_pages_visible', 'Exactly the approved pages — and the pages already live before — are visible (no held page)', PUBLISH.canon(visible) === PUBLISH.canon(PUBLISH.expectedVisible(PL.approval)), { visible, expected: PUBLISH.expectedVisible(PL.approval) });
+            const liveNow = (PL.live || []).map(h => X2.pages.find(r => r.page_key === h.page_key) || null);
+            add('live_rows_untouched', 'Pages already live before this publication untouched', (PL.live || []).every((h, n) => PUBLISH.canon(liveNow[n]) === PUBLISH.canon(h.row)), (PL.live || []).map(h => h.page_key));
             const heldNow = PL.held.map(h => X2.pages.find(r => r.page_key === h.page_key) || null);
             add('held_rows_untouched', 'Held drafts untouched (hidden, issues and holds intact)', PL.held.every((h, n) => PUBLISH.canon(heldNow[n]) === PUBLISH.canon(h.row)), PL.held.map(h => h.page_key));
             const waitNow = (PL.awaiting || []).map(h => X2.pages.find(r => r.page_key === h.page_key) || null);
