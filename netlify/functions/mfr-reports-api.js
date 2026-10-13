@@ -19,7 +19,8 @@
 //   POST {action:"download", id}                                          → short-lived signed URL (2 minutes)
 //   POST {action:"orphans"}  → READ-ONLY: stored report files no register record points to (see below)
 //   POST {action:"commission_recon", manufacturer?}  → READ-ONLY contractual commission reconciliation (Strongback)
-//   POST {action:"commission_event", kind:"payment"|"review", …}  → President only; payment evidence / review decision
+//   POST {action:"commission_event", kind:"payment"|"review", …}  → President only; payment evidence (payment_ref required:
+//        one remittance counted once; duplicates / target-changing corrections / over-allocation refused) or review decision
 //
 // NOT in MI-1b: Sales Report Import and Commission Report Import do not register their files here yet. That is a
 // later, separately approved unit; until then this register holds only the files a person registers on the page.
@@ -237,7 +238,11 @@ exports.handler = async (event) => {
       const by = {}; let open = 0;
       for (const i of items) { by[i.state] = (by[i.state] || 0) + 1; if (i.attention && !i.resolved_at) open++; }
       const f = (flags && flags[0] && flags[0].value) || {};
-      return json(200, { ok: true, switch_on: f.mi_report_capture === true, state, runs, profiles, counts: by, needs_attention: open });
+      let notifications = null;
+      try { const ns = await sbGet("app_settings?key=eq.mi_notify_state&select=value,updated_at"); const v = (ns && ns[0] && ns[0].value) || null;
+        if (v) notifications = { to: ((v.sent_log || []).slice(-1)[0] || {}).to || null, last: (v.sent_log || []).slice(-5).reverse(), digest_day: v.digest_day || null, reconciliation_month: v.recon_month || null, checked_at: ns[0].updated_at }; }
+      catch (x) { notifications = { unreadable: true }; }
+      return json(200, { ok: true, switch_on: f.mi_report_capture === true, state, runs, profiles, counts: by, needs_attention: open, notifications });
     } catch (x) { return json(503, { error: "capture_not_installed_or_unreadable", message: String(x.message || x).slice(0, 300) }); }
   }
   if (b.action === "inbox" || b.action === "attention") {
@@ -321,32 +326,19 @@ exports.handler = async (event) => {
   // and the monthly reconciliation (previous month, ready on the 15th; late reports keep processing).
   if (b.action === "dashboard") {
     try {
-      const CC = require("./_commission_coverage.js"), D = require("./_mi_dashboard.js");
-      const [profiles, sources, items, mfrs, cfg, rows, firstRun] = await Promise.all([
-        sbGet("mfr_report_profiles?select=id,code,manufacturer,kind,label,status,rules&order=manufacturer,id"),
-        sbGetAll("mfr_sources?kind=in.(sales_export,commission_statement,dealer_report)&select=id,manufacturer,kind,title,status,received_date,report_period_start,report_period_end,import_batch_id,publication_status", "id"),
-        sbGetAll("mfr_report_items?select=id,manufacturer,kind,state,attention,resolved_at,period_start,period_end,profile_id", "id"),
-        sbGet("manufacturers?select=slug,name"),
-        sbGet("app_settings?key=eq.commission_config&select=value"),
-        sbGetAll("monthly_sales?select=id,manufacturer,period,source,external_ref,line_type,amount,commission,billed_amount", "id"),
-        sbGet("mfr_report_capture_runs?select=checkpoint_before&order=id&limit=1")]);
-      const capture_start = firstRun && firstRun[0] && firstRun[0].checkpoint_before
-        ? new Date(new Date(firstRun[0].checkpoint_before).toLocaleString("en-US", { timeZone: "America/Chicago" })).toISOString().slice(0, 10) : null;
-      const v = cfg && cfg[0] && cfg[0].value; const ssr = v && Array.isArray(v.statement_sales_reports) ? v.statement_sales_reports : CC.DEFAULT_STATEMENT_SALES_REPORTS;
-      const cov = CC.coverage(rows, { statement_sales_reports: ssr }).detail;
-      const shipto = { held: Math.max(0, parseInt(b.shipto_held, 10) || 0), needs_review: Math.max(0, parseInt(b.shipto_needs_review, 10) || 0) };
-      return json(200, Object.assign({ ok: true, read_only: true, capture_start }, D.build({ today: today(), capture_start, months: b.months, profiles, sources, items, coverage: cov, manufacturers: mfrs, shipto })));
+      return json(200, await dashboardData(b));
     } catch (x) { return json(503, { error: "unreadable", message: "The dashboard could not read its data just now: " + String(x.message || x).slice(0, 200) }); }
   }
 
   // Contractual commission reconciliation (Angelo, 2026-10-12 22:00 CT; CLAUDE.md §18). READ-ONLY: Earned (contract rate ×
   // eligible sales) · Reported due (the manufacturer's statements) · Paid (recorded evidence only) · Outstanding, by order.
+  const reconDeps = () => ({ sbGet, sbGetAll, sbGetOptional, today,
+    fetchObject: async p => { const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${p}`, { headers: H() }); if (!r.ok) throw new Error("storage " + r.status); return Buffer.from(await r.arrayBuffer()); } });
   if (b.action === "commission_recon") {
     const slug = clean(b.manufacturer, 80) || "strongback-mobility";
     try {
       const L = require("./_commission_recon_load.js");
-      const rec = await L.load(slug, { sbGet, sbGetAll, sbGetOptional, today,
-        fetchObject: async p => { const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${p}`, { headers: H() }); if (!r.ok) throw new Error("storage " + r.status); return Buffer.from(await r.arrayBuffer()); } });
+      const rec = await L.load(slug, reconDeps());
       return json(200, Object.assign({ ok: true, read_only: true, manufacturer: slug }, rec));
     } catch (x) {
       if (x.code === "no_contract") return json(422, { error: "no_contract", message: "No contract rate is recorded for this manufacturer — only Strongback is tracked this way." });
@@ -359,7 +351,19 @@ exports.handler = async (event) => {
     const slug = clean(b.manufacturer, 80) || "strongback-mobility";
     const CT = require("./_contract_commission.js"); if (!CT.contractFor(slug)) return json(422, { error: "no_contract" });
     const p = { manufacturer: slug, kind: clean(b.kind, 20), source_id: b.source_id || null, order_number: clean(b.order_number, 60), amount: b.amount == null || b.amount === "" ? null : Number(b.amount),
-      paid_on: clean(b.paid_on, 10), evidence: clean(b.evidence, 400), decision: clean(b.decision, 80), reason: clean(b.reason, 1000), supersedes_id: b.supersedes_id || null, actor: "staff:" + actor };
+      paid_on: clean(b.paid_on, 10), evidence: clean(b.evidence, 300), decision: clean(b.decision, 80), reason: clean(b.reason, 1000), supersedes_id: b.supersedes_id || null, actor: "staff:" + actor };
+    if (p.kind === "payment") {
+      // Payment identity + idempotency (2026-10-13): every payment names its remittance; the same remittance against the same
+      // statement/order is refused, allocations must be orders on that remittance's statement and may not exceed it, and a
+      // correction stays on its original target. Checked against the current reconciliation before anything is written.
+      let rec, evs;
+      try { rec = await require("./_commission_recon_load.js").load(slug, reconDeps()); evs = await sbGetOptional(`mfr_commission_events?manufacturer=eq.${encodeURIComponent(slug)}&select=*&order=id`); }
+      catch (x) { return json(503, { error: "unreadable", message: "The current records could not be read — nothing was written." }); }
+      if (evs === null) return json(503, { error: "not_installed", message: "Recording payments needs supabase/mi_f_commission_events.sql first." });
+      const bad = CT.paymentGuard(rec, evs, { source_id: p.source_id, order_number: p.order_number, amount: p.amount, payment_ref: b.payment_ref, supersedes_id: p.supersedes_id });
+      if (bad) return json(bad.status, { error: bad.error, message: bad.message });
+      p.evidence = CT.evidenceWithRef(b.payment_ref, p.evidence);
+    }
     const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/hcps_mfr_commission_event`, { method: "POST", headers: { ...H(), "content-type": "application/json" }, body: JSON.stringify({ p }) });
     const text = await r.text(); let body; try { body = JSON.parse(text); } catch (x) { body = { message: text }; }
     if (r.ok) return json(200, body);
@@ -384,3 +388,23 @@ exports.handler = async (event) => {
 };
 // For tests only.
 exports._internals = { TYPES, monthEnd, isDate, MAX_BYTES };
+
+// The Manufacturer Intelligence dashboard data (read-only) — also used by the monthly reconciliation email (mi-ops-cron).
+async function dashboardData(b) {
+  const CC = require("./_commission_coverage.js"), D = require("./_mi_dashboard.js");
+  const [profiles, sources, items, mfrs, cfg, rows, firstRun] = await Promise.all([
+    sbGet("mfr_report_profiles?select=id,code,manufacturer,kind,label,status,rules&order=manufacturer,id"),
+    sbGetAll("mfr_sources?kind=in.(sales_export,commission_statement,dealer_report)&select=id,manufacturer,kind,title,status,received_date,report_period_start,report_period_end,import_batch_id,publication_status", "id"),
+    sbGetAll("mfr_report_items?select=id,manufacturer,kind,state,attention,resolved_at,period_start,period_end,profile_id", "id"),
+    sbGet("manufacturers?select=slug,name"),
+    sbGet("app_settings?key=eq.commission_config&select=value"),
+    sbGetAll("monthly_sales?select=id,manufacturer,period,source,external_ref,line_type,amount,commission,billed_amount", "id"),
+    sbGet("mfr_report_capture_runs?select=checkpoint_before&order=id&limit=1")]);
+  const capture_start = firstRun && firstRun[0] && firstRun[0].checkpoint_before
+    ? new Date(new Date(firstRun[0].checkpoint_before).toLocaleString("en-US", { timeZone: "America/Chicago" })).toISOString().slice(0, 10) : null;
+  const v = cfg && cfg[0] && cfg[0].value; const ssr = v && Array.isArray(v.statement_sales_reports) ? v.statement_sales_reports : CC.DEFAULT_STATEMENT_SALES_REPORTS;
+  const cov = CC.coverage(rows, { statement_sales_reports: ssr }).detail;
+  const shipto = { held: Math.max(0, parseInt(b.shipto_held, 10) || 0), needs_review: Math.max(0, parseInt(b.shipto_needs_review, 10) || 0) };
+  return Object.assign({ ok: true, read_only: true, capture_start }, D.build({ today: today(), capture_start, months: b.months, profiles, sources, items, coverage: cov, manufacturers: mfrs, shipto }));
+}
+exports.dashboardData = dashboardData;

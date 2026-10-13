@@ -327,6 +327,7 @@ function render(D,A){
   const notesCard=`<div class="card"><h2>Notes</h2><div id="notes"><div class="hint">Loading…</div></div></div>`;
   const acctCard=`<div class="card"><h2>Manufacturer account numbers</h2><div id="acctcard"><div class="hint">Loading…</div></div></div>`;
   const intelCard=`<div class="card"><h2>Digital activity &amp; interest</h2><div id="intel"><div class="hint">Loading activity…</div></div></div>`;
+  const mfrIntelCard=`<div class="card" id="mfrIntelCard" style="display:none"><h2>Manufacturer-reported intelligence</h2><div id="mfrintel"></div></div>`;
   const salesCard=`<div class="card" id="salesCard"><h2>Monthly sales &amp; product detail</h2><div id="sales"><div class="hint">Loading sales…</div></div></div>`;
   const commCard=`<div class="card"><h2>Commission — paid vs. outstanding</h2><div id="commled"><div class="hint">Loading…</div></div></div>`;
   const emailCard=`<div class="card" id="emailCard"><h2>Outlook email <span id="emailCount" style="float:right;font-size:11px;color:var(--gray);font-weight:600"></span></h2>
@@ -364,9 +365,9 @@ function render(D,A){
   $("#body").innerHTML=`${header}${nextBanner}
     <div class="d360">
       <div>${notesCard}${contactsCard}${emailCard}${callCard}${touchCard}${visitsCard}${handoutCard}${intelCard}${history}${salesCard}${commCard}</div>
-      <div>${tasksCard}${signals}${addrCard}${acctCard}</div>
+      <div>${tasksCard}${signals}${addrCard}${acctCard}${mfrIntelCard}</div>
     </div>`;
-  CUR=d.id; DPHONE=d.phone||""; VLIM=25; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails(); loadVisits(); loadHandout();
+  CUR=d.id; DPHONE=d.phone||""; VLIM=25; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails(); loadVisits(); loadHandout(); loadMfrIntel();
 }
 function nextBestAction(d,lines,monthsSince,cart,sess){
   const due=(lines||[]).filter(l=>l.status==="due");
@@ -1734,6 +1735,27 @@ let VISITS=null, VLIM=25;
 const VM_FU={pending:"Follow-up pending",complete:"Follow-up complete",none:"No follow-up required"};
 const VM_LISTS=[["products_discussed","Products discussed"],["dealer_interests","Dealer interests"],["dealer_concerns","Dealer concerns"],["objections","Objections"],
   ["competitors","Competitors mentioned"],["pricing_requests","Pricing requested"],["samples_requested","Samples requested"],["literature_requested","Literature requested"],["training_requested","Training requested"]];
+/* Manufacturer-reported intelligence (MI-1c): what a manufacturer's own dealer report says about THIS dealer — shown only
+   from a published report and only for a verified match (crm-api mfr_intel). The manufacturer's words and figures, as
+   printed; never HCPS sales or commission. The card stays hidden when there is nothing to show. */
+async function loadMfrIntel(){
+  const card=document.getElementById("mfrIntelCard"), box=document.getElementById("mfrintel"); if(!card||!box) return;
+  let j=null; try{ j=await crm({action:"mfr_intel",dealer_id:CUR}); }catch(e){ j=null; }
+  const reps=(j&&j.reports)||[]; if(!reps.length){ card.style.display="none"; return; }
+  const mname=s=>String(s||"").replace(/-/g," ").replace(/\b\w/g,c=>c.toUpperCase());
+  const KIND={contact_person:"Contact",product_line:"Product line",told_us:"Told the manufacturer",contact_log:"Contact log"};
+  box.innerHTML=reps.map(r=>{
+    const per=String(r.report_period_end||"").slice(0,7);
+    const rows=[["Tier",r.tier],["Trend",r.trend],["Last 12 months",r.l12m_text],["Prior 12 months",r.prior12_text],["This month",r.month_text],["Last order",r.last_order_text],["ErgoSteel",r.ergosteel_text],["Chair on the floor",r.floor_text]].filter(x=>x[1]);
+    const obs=(r.observations||[]).slice(0,12).map(o=>`<li><b>${esc(KIND[o.kind]||o.kind)}:</b> ${esc(o.text)}${o.observed_on?` <span class="hint">(${esc(o.observed_on)})</span>`:""}</li>`).join("");
+    return `<div style="margin-bottom:10px">
+      <div style="font-weight:700;color:var(--navy)">${esc(mname(r.manufacturer))} · ${esc(per)}${r.group_heading?` · ${esc(r.group_heading)}`:""}</div>
+      <div class="hint" style="margin:2px 0 6px">Printed as “${esc(r.printed_name)}${r.printed_city?", "+esc(r.printed_city):""}” in ${esc((r.report&&r.report.title)||"the manufacturer's report")}. Manufacturer-reported, not HCPS sales or commission.</div>
+      <table style="width:100%;font-size:12px;border-collapse:collapse">${rows.map(x=>`<tr><td style="color:var(--gray);padding:2px 6px 2px 0;white-space:nowrap">${esc(x[0])}</td><td style="padding:2px 0">${esc(x[1])}</td></tr>`).join("")}</table>
+      ${obs?`<ul style="margin:6px 0 0 16px;padding:0;font-size:12px">${obs}</ul>`:""}
+    </div>`;}).join("");
+  card.style.display="";
+}
 async function loadVisits(){
   const el=$("#visits"); if(!el||!CUR) return;
   let j=null; try{ j=await crm({action:"visits",dealer_id:CUR,limit:VLIM}); }catch(e){ j=null; }

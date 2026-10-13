@@ -216,3 +216,62 @@ exports.handler = async (event) => {
   return json(400, { error: "unknown_action" });
 };
 exports._internals = { previewHash, stable };
+
+/* Automatic dealer-intelligence processing (Angelo, 2026-10-13 11:54 CT; CLAUDE.md §18 OPERATIONAL ACTIVATION). Runs in the
+   hourly report-import-cron, only while phase2_flags.mi_intel_publish is exactly true. For every registered dealer report
+   that has a reader: the SAME preview and payload a person's import uses (buildPreview / previewBody) → when it has no
+   reading error and the prepared date matches the register: accept the record, import it (hcps_mfr_intel_import, one
+   transaction, idempotent) and publish it (hcps_mfr_report_publication; the database gate checks the switch again).
+   Publishing makes the report readable; Dealer 360 shows a dealer's intelligence ONLY for a VERIFIED match (matched
+   automatically under the matcher's strict rule, or by a person) — review, held (recorded holds such as Wyatt's) and
+   unmatched dealers, and two printed dealers landing on one HCPS dealer, never appear and wait for Angelo in Dealer
+   Intelligence Import. Nothing here creates, merges or re-assigns a dealer, an alias or a contact. Every outcome is a
+   row in mfr_auto_import_log (detail.lane = "intel"). */
+const AUTO = "system:auto-import";
+async function runAutoIntel(opts) {
+  const flagsRow = (await sbGet("app_settings?key=eq.phase2_flags&select=value"))[0];
+  if (!(flagsRow && flagsRow.value && flagsRow.value.mi_intel_publish === true)) return { ok: true, skipped: "switch_off" };
+  const srcs = await sbGetAll(`mfr_sources?kind=eq.dealer_report&status=in.(received,accepted)&select=${SRC_COLS}`, "id");
+  const todo = srcs.filter(s => DI.PARSERS[s.manufacturer] && s.publication_status !== "published");
+  if (!todo.length) return { ok: true, ran: true, results: [] };
+  const logs = await sbGetAll(`mfr_auto_import_log?source_id=in.(${todo.map(s => s.id).join(",")})&select=id,source_id,outcome,plan_hash,detail`, "id.desc");
+  const out = [];
+  const logIt = async (src, outcome, code, detail, hash) => {
+    const last = logs.find(l => Number(l.source_id) === Number(src.id) && l.detail && l.detail.lane === "intel");
+    if (last && last.outcome === outcome && (last.detail || {}).code === code && (last.plan_hash || "") === (hash || "")) return false;
+    const r = await rpc("hcps_mfr_auto_import_log", { source_id: String(src.id), outcome, plan_hash: hash || "", approval_id: "", batch_id: "", actor: AUTO,
+      detail: Object.assign({ lane: "intel", kind: src.kind, sha: src.file_sha256, code, file_name: src.file_name, period: String(src.report_period_start || "").slice(0, 7) }, detail) });
+    if (!r.ok) throw new Error("the auto-import log could not be written: " + r.message);
+    return true;
+  };
+  for (const src of todo) {
+    try {
+      const pb = await buildPreview(src.id, AUTO);
+      if (pb.status !== 200) { await logIt(src, "held", pb.body.error || "unreadable", { message: pb.body.message || pb.body.error }); out.push({ source_id: src.id, outcome: "held", code: pb.body.error }); continue; }
+      const body = previewBody(pb), hash = body.preview_hash;
+      const counts = body.counts, unresolved = body.unresolved.filter(u => u.row_no != null).map(u => ({ printed_name: u.printed_name, status: u.status, why: (u.why || []).slice(0, 2) }));
+      if (!pb.prepared.ok) { await logIt(src, "held", "prepared_date_mismatch", { message: pb.prepared.message }, hash); out.push({ source_id: src.id, outcome: "held", code: "prepared_date_mismatch" }); continue; }
+      if (body.errors.length) { await logIt(src, "held", "parse_errors", { message: `The report has ${body.errors.length} reading error(s); nothing is imported.`, errors: body.errors.slice(0, 10) }, hash); out.push({ source_id: src.id, outcome: "held", code: "parse_errors" }); continue; }
+      if (src.status === "received") {
+        const acc = await rpc("hcps_mfr_report_decide", { id: String(src.id), decision: "accepted", actor: AUTO,
+          reason: "Accepted automatically: the report reads without errors and its prepared date matches the register." });
+        if (!acc.ok) { await logIt(src, "held", "accept_refused", { message: acc.message }, hash); out.push({ source_id: src.id, outcome: "held", code: "accept_refused" }); continue; }
+      }
+      if (!pb.imported) {
+        const imp = await rpc("hcps_mfr_intel_import", pb.payload);
+        if (!imp.ok) { await logIt(src, "refused", imp.code, { message: imp.message }, hash); out.push({ source_id: src.id, outcome: "refused", code: imp.code }); continue; }
+      }
+      const pub = await rpc("hcps_mfr_report_publication", { id: String(src.id), action: "publish", actor: AUTO,
+        reason: "Published automatically: Dealer 360 shows only dealers whose match is verified." });
+      if (!pub.ok) { await logIt(src, "refused", pub.code, { message: pub.message, counts }, hash); out.push({ source_id: src.id, outcome: "refused", code: pub.code }); continue; }
+      await logIt(src, "imported", "intel_published", { final: true, counts, needs_review: unresolved,
+        message: `Imported and published: ${counts.matched || 0} dealer(s) applied to Dealer 360 on verified matches; ${unresolved.length} wait for your review.` }, hash);
+      out.push({ source_id: src.id, outcome: "imported", code: "intel_published", counts });
+    } catch (x) {
+      out.push({ source_id: src.id, outcome: "error", message: String(x.message || x).slice(0, 200) });
+      await logIt(src, "error", "error", { message: String(x.message || x).slice(0, 300) }).catch(() => null);
+    }
+  }
+  return { ok: true, ran: true, results: out };
+}
+exports.runAutoIntel = runAutoIntel;

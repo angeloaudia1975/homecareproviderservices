@@ -7,7 +7,8 @@
      Reported due  what the manufacturer's statement lists for that order (Strongback: the monthly SR032 PDF).
                    "Commission due" on a statement is NOT a payment.
      Paid          only with payment evidence a person recorded (remittance, bank deposit, cheque …).
-   Outstanding = Earned − Paid. A statement order with no matching sale goes to REVIEW; it never creates a sale and is
+   Earned splits into confirmed paid + confirmed unpaid (only where a remittance shows a shortfall) + payment status
+   unknown — never presented as collectible or overdue debt. A statement order with no matching sale goes to REVIEW; it never creates a sale and is
    never counted as earned. Export-calculated commission and statement amounts are two views of the same obligation.
 
    Only manufacturers listed in CONTRACTS are treated this way; nothing else changes for any other manufacturer. */
@@ -184,11 +185,16 @@ function reconcile(input) {
       if (!o.eligible_amount) o.flags.push({ code: "reported_not_eligible", text: `Statement #${s.source_id} reports $${L.due} due, but the order is not an eligible sale here (${o.eligibility_text}).` });
     }
   }
-  // 4. Payment evidence (recorded by the President). Order-level payments apply to that order. A statement-level payment
-  //    pays every line of that statement only when it covers the statement's whole total; otherwise it stays unallocated.
-  //    Review decisions (latest per statement line wins) can tie an unmatched line to a sale or dismiss it.
-  const ev = (input.events || []).slice().sort((a, b) => a.id - b.id);
-  const superseded = new Set(ev.map(x => x.supersedes_id).filter(Boolean));
+  // 4. Review decisions (latest per statement line wins) can tie an unmatched line to a sale already on file, or dismiss
+  //    it. A decision never creates a sale: "matched_to" a number with no sale on file leaves the line in review.
+  // Stored rows carry order_number (the table's column); tests and the UI may say order — both mean the same.
+  const ev = (input.events || []).map(x => Object.assign({}, x, { order: x.order != null && x.order !== "" ? x.order : (x.order_number || null) })).sort((a, b) => a.id - b.id);
+  const byId = new Map(ev.map(x => [x.id, x]));
+  const target = x => x.order ? "O:" + orderKey(x.order) : x.source_id != null ? "S:" + Number(x.source_id) : null;
+  // A payment correction must stay on its original's statement or order. One that moves it is refused: not counted, and it
+  // does NOT cancel the original (which keeps counting) — so a bad correction can never make money disappear or move.
+  const badCorrection = new Set(ev.filter(x => x.kind === "payment" && x.supersedes_id && byId.has(x.supersedes_id) && target(byId.get(x.supersedes_id)) !== target(x)).map(x => x.id));
+  const superseded = new Set(ev.filter(x => !badCorrection.has(x.id)).map(x => x.supersedes_id).filter(Boolean));
   const live = ev.filter(x => !superseded.has(x.id));
   for (const x of live.filter(x => x.kind === "review")) {
     const i = review.findIndex(r => r.source_id === Number(x.source_id) && r.order_key === orderKey(x.order));
@@ -196,39 +202,101 @@ function reconcile(input) {
     const r = review[i]; r.decision = x.decision; r.decision_reason = x.reason; r.decided_by = x.actor; r.decided_at = x.created_at;
     const m = String(x.decision || "").match(/^matched_to:(.+)$/);
     if (m) { const o = orders.get(orderKey(m[1]));
-      if (o) { o.reported_due = r2(o.reported_due + r.due); o.statement_refs.push({ source_id: r.source_id, period: r.period, line: r.line, due: r.due, subtotal: r.subtotal, company: r.company, matched_by_review: x.id });
-        o.flags.push({ code: "matched_by_review", text: `Statement #${r.source_id} line ${r.line} (order ${r.order}) tied to this sale by ${x.actor}: ${x.reason}` }); review.splice(i, 1); } }
+      if (!o) { r.decision_problem = `Decision names order ${m[1]}, which has no sale on file — the line stays in review.`; continue; }
+      o.reported_due = r2(o.reported_due + r.due); o.statement_refs.push({ source_id: r.source_id, period: r.period, line: r.line, due: r.due, subtotal: r.subtotal, company: r.company, matched_by_review: x.id });
+      o.flags.push({ code: "matched_by_review", text: `Statement #${r.source_id} line ${r.line} (order ${r.order}) tied to this sale by ${x.actor}: ${x.reason}` }); review.splice(i, 1); }
   }
-  const unallocated = [];
+  // 5. Payment evidence — counted ONCE per remittance (CLAUDE.md §18, Angelo 2026-10-13).
+  //    Every payment names its remittance (paymentRef: cheque / ACH trace / deposit id). One remittance is one sum of money:
+  //    · a statement-level entry is the remittance against that statement; order-level entries under the SAME reference are
+  //      ALLOCATIONS of it (they must be orders on that statement) — never extra money;
+  //    · the same reference + target + sign recorded twice is ONE payment (the later entry is listed as a duplicate, not added);
+  //    · a correction supersedes its original and must keep the same target; a negative amount is a reversal;
+  //    · a statement is paid in full only when its remittances cover its whole total — then each line counts as paid. A partial
+  //      remittance pays only what it allocates; its unallocated part stays unallocated and the shortfall is CONFIRMED short.
+  const unallocated = [], payProblems = [], duplicates = [];
+  const pays = [];
   for (const x of live.filter(x => x.kind === "payment")) {
-    const amt = r2(x.amount);
-    if (x.order) { const o = orders.get(orderKey(x.order));
-      if (!o) { unallocated.push({ event: x.id, amount: amt, text: `Payment of $${amt} names order ${x.order}, which is not on file.` }); continue; }
-      o.paid = r2(o.paid + amt); o.payments.push({ event: x.id, amount: amt, evidence: x.evidence, by: x.actor, at: x.created_at }); continue; }
-    const S = stmts.find(s => s.source_id === Number(x.source_id));
-    if (!S) { unallocated.push({ event: x.id, amount: amt, text: `Payment of $${amt} names statement #${x.source_id}, which is not on file.` }); continue; }
-    S.paid = r2(S.paid + amt);
+    const t = target(x);
+    if (badCorrection.has(x.id)) { const orig = byId.get(x.supersedes_id);
+      payProblems.push({ event: x.id, text: `Correction #${x.id} would move payment #${orig.id} from ${target(orig)} to ${t} — a correction must stay on its original statement or order. Not counted; #${orig.id} still counts. Record a reversal instead.` }); continue; }
+    const ref = paymentRef(x);
+    pays.push({ x, t, ref: ref || "#event" + x.id, has_ref: !!ref, amount: r2(x.amount), sign: Math.sign(Number(x.amount) || 0) });
   }
+  const groups = new Map();
+  for (const p of pays) { const k = p.ref + "|" + p.t + "|" + p.sign; const g = groups.get(k);
+    if (g) { duplicates.push({ event: g.x.id, duplicate_of: p.x.id, ref: p.ref, target: p.t, amount: g.amount,
+      text: `Payment #${g.x.id} and #${p.x.id} record the same remittance ${p.ref} against ${p.t} — counted once (#${p.x.id}). Use a correction to change an amount.` }); }
+    groups.set(k, p); }
+  const counted = [...groups.values()];
+  for (const p of counted) if (!p.has_ref) payProblems.push({ event: p.x.id, text: `Payment #${p.x.id} has no remittance reference — counted on its own; add the reference with a correction so it can be matched.` });
+  const byRef = new Map(); for (const p of counted) { const a = byRef.get(p.ref) || []; a.push(p); byRef.set(p.ref, a); }
+  const S_ = id => stmts.find(s => s.source_id === id);
+  const credit = new Map();       // order_key → [{event, amount, statement?, ref}]
+  const explicitOnStmt = new Map(); // "S|order_key" → amount explicitly allocated
+  const addCredit = (k, c) => { const a = credit.get(k) || []; a.push(c); credit.set(k, a); };
+  for (const [ref, ps] of byRef) {
+    const stParts = ps.filter(p => p.t.startsWith("S:")), orParts = ps.filter(p => p.t.startsWith("O:"));
+    for (const p of stParts) { const S = S_(Number(p.t.slice(2)));
+      if (!S) { unallocated.push({ event: p.x.id, amount: p.amount, text: `Payment #${p.x.id} (${ref}, $${p.amount}) names statement #${p.t.slice(2)}, which is not on file.` }); continue; }
+      S.paid = r2(S.paid + p.amount); (S.remittances = S.remittances || []).push({ event: p.x.id, ref, amount: p.amount, paid_on: p.x.paid_on || null }); }
+    const stIds = stParts.map(p => Number(p.t.slice(2))).filter(id => S_(id));
+    for (const p of orParts) { const k = p.t.slice(2); const o = orders.get(k);
+      if (!o) { unallocated.push({ event: p.x.id, amount: p.amount, text: `Payment #${p.x.id} (${ref}, $${p.amount}) names order ${k}, which has no sale on file — not counted.` }); continue; }
+      if (stIds.length) {   // an allocation of this remittance's statement payment
+        const sid = stIds.find(id => o.statement_refs.some(r => r.source_id === id && !r.repeated));
+        if (sid == null) { payProblems.push({ event: p.x.id, text: `Payment #${p.x.id} allocates remittance ${ref} to order ${o.order}, which is not on statement #${stIds.join(", #")} — not counted (it would count the same money twice).` }); continue; }
+        const ek = sid + "|" + k; explicitOnStmt.set(ek, r2((explicitOnStmt.get(ek) || 0) + p.amount));
+        addCredit(k, { event: p.x.id, amount: p.amount, statement: sid, ref, allocation: true, evidence: p.x.evidence, by: p.x.actor, at: p.x.created_at });
+      } else addCredit(k, { event: p.x.id, amount: p.amount, ref, evidence: p.x.evidence, by: p.x.actor, at: p.x.created_at });
+    }
+  }
+  // Statement-level settlement.
   for (const S of stmts) {
-    if (!S.paid) continue;
-    if (S.total_due != null && S.paid >= S.total_due) {
-      S.payment_state = S.paid > S.total_due ? "overpaid" : "paid_in_full";
-      for (const o of orders.values()) for (const ref of o.statement_refs.filter(r => r.source_id === S.source_id && !r.repeated)) {
-        o.paid = r2(o.paid + ref.due); o.payments.push({ statement: S.source_id, amount: ref.due, evidence: "statement paid in full" }); }
-      if (S.paid > S.total_due) unallocated.push({ statement: S.source_id, amount: r2(S.paid - S.total_due), text: `Statement #${S.source_id}: $${r2(S.paid - S.total_due)} more was paid than it lists.` });
-    } else { S.payment_state = "partial"; unallocated.push({ statement: S.source_id, amount: S.paid,
-      text: `Statement #${S.source_id}: partial payment of $${S.paid} of $${S.total_due} — not allocated to individual orders.` }); }
+    const lines = []; for (const o of orders.values()) for (const r of o.statement_refs) if (r.source_id === S.source_id && !r.repeated) lines.push({ o, due: r.due });
+    let explicit = 0; for (const L of lines) explicit = r2(explicit + (explicitOnStmt.get(S.source_id + "|" + L.o.order_key) || 0));
+    S.allocated = explicit; S.short_unassigned = 0;
+    if (!S.paid && !explicit) continue;
+    if (explicit > S.paid + 0.005) payProblems.push({ statement: S.source_id, text: `Statement #${S.source_id}: $${explicit} is allocated to orders but its remittances total $${S.paid} — the allocations above the remittance are not counted.` });
+    if (S.total_due != null && S.paid >= S.total_due - 0.005) {
+      S.payment_state = S.paid > S.total_due + 0.005 ? "overpaid" : "paid_in_full";
+      for (const L of lines) { const ex = explicitOnStmt.get(S.source_id + "|" + L.o.order_key) || 0;
+        if (L.due - ex > 0.005) addCredit(L.o.order_key, { amount: r2(L.due - ex), statement: S.source_id, evidence: "statement paid in full by its recorded remittance(s)", settled: true }); }
+      if (S.paid > S.total_due + 0.005) unallocated.push({ statement: S.source_id, amount: r2(S.paid - S.total_due), text: `Statement #${S.source_id}: $${r2(S.paid - S.total_due)} more was paid than it lists.` });
+      const onSales = r2(lines.reduce((t, L) => t + L.due, 0)), noSale = r2(Math.min(S.paid, S.total_due) - onSales);
+      if (noSale > 0.005) unallocated.push({ statement: S.source_id, amount: noSale, no_sale: true, text: `Statement #${S.source_id}: $${noSale} was paid for line(s) with no sale on file (see review) — received, not credited to any sale.` });
+    } else {
+      S.payment_state = S.paid > 0 ? "partial" : "no_evidence";
+      // allocations beyond what was actually remitted are not credited
+      if (explicit > S.paid + 0.005) { let room = S.paid;
+        for (const [k, cs] of credit) for (const c of cs) if (c.statement === S.source_id && c.allocation) { const keep = Math.max(0, Math.min(c.amount, room)); c.cut = r2(c.amount - keep); c.amount = r2(keep); room = r2(room - keep); } }
+      const allocated = Math.min(explicit, S.paid);
+      if (S.paid - allocated > 0.005) unallocated.push({ statement: S.source_id, amount: r2(S.paid - allocated), text: `Statement #${S.source_id}: $${r2(S.paid - allocated)} of a partial payment ($${S.paid} of $${S.total_due}) is not allocated to individual orders.` });
+    }
   }
-  // 5. Per-order state and labels.
+  for (const [k, cs] of credit) { const o = orders.get(k); if (!o) continue;
+    for (const c of cs) { o.paid = r2(o.paid + c.amount); o.payments.push(c); } }
+  // Possible duplicates the reference cannot catch: the same target, amount and date under two different references.
+  const sig = new Map();
+  for (const p of counted) { const k = p.t + "|" + p.amount + "|" + (p.x.paid_on || ""); const prev = sig.get(k);
+    if (prev && prev.ref !== p.ref) payProblems.push({ event: p.x.id, text: `Payments #${prev.x.id} (${prev.ref}) and #${p.x.id} (${p.ref}) are the same amount, target and date under different references — check they are two remittances.` });
+    sig.set(k, p); }
+  // 6. Per-order state and labels.
   const firstStmt = (input.statements || []).filter(x => x.parsed && x.parsed.ok && x.period).map(x => x.period).sort()[0] || null;
   const list = [];
   for (const o of orders.values()) {
-    o.outstanding = r2(o.earned - o.paid);
     o.reported_not_paid = r2(Math.max(0, o.reported_due - o.paid));
+    // Confirmed unpaid ONLY where a recorded remittance establishes it: the order received an explicit payment / allocation
+    // for less than the statement lists, and its statement is not paid in full.
+    const evidenced = o.payments.some(c => !c.settled);
+    o.confirmed_unpaid = evidenced && o.reported_due > o.paid ? r2(o.reported_due - o.paid) : 0;
+    o.payment_unknown = r2(Math.max(0, o.earned - o.paid - o.confirmed_unpaid));
     o.labels = [];
     if (o.eligibility === "pending_status") o.labels.push("status_not_verified");
     if (o.eligibility === "eligible_unverified_status") o.labels.push("status_not_in_record");
-    if (o.reported_due && o.paid < o.reported_due) o.labels.push("payment_unverified");
+    if (o.reported_due && o.paid < o.reported_due && !o.confirmed_unpaid) o.labels.push("payment_unverified");
+    if (o.confirmed_unpaid) o.labels.push("confirmed_short_paid");
+    if (o.paid > Math.max(o.earned, o.reported_due) + 0.005) o.labels.push("paid_more_than_due");
     const age = o.date ? daysBetween(o.date, today) : null;
     // Overdue-unreported only when every statement that could have listed the sale is on file: the sale month is on or
     // after the earliest readable statement's period. Earlier sales may sit on statements HCPS never registered (they
@@ -239,22 +307,33 @@ function reconcile(input) {
     }
     const lastStmt = o.statement_refs.length ? o.statement_refs[o.statement_refs.length - 1] : null;
     const st = lastStmt ? (input.statements || []).find(s => s.source_id === lastStmt.source_id) : null;
-    if (o.reported_not_paid > 0 && st && st.received_date && daysBetween(st.received_date, today) > C.overdue_days.unpaid) o.labels.push("potentially_overdue_unpaid");
+    if (o.reported_not_paid > 0 && !o.confirmed_unpaid && st && st.received_date && daysBetween(st.received_date, today) > C.overdue_days.unpaid) o.labels.push("potentially_overdue_unpaid");
     o.age_days = age; o.month = o.date ? o.date.slice(0, 7) : null;
     o.stage = o.paid >= o.earned && o.earned > 0 ? "paid" : o.reported_due > 0 ? "reported_due" : o.earned > 0 ? "earned" : "not_eligible";
     list.push(o);
   }
+  // A partial statement payment not allocated to orders: its shortfall is confirmed at statement level only.
+  for (const S of stmts) if (S.payment_state === "partial") {
+    let onOrders = 0; for (const o of list) if (o.confirmed_unpaid && o.statement_refs.some(r => r.source_id === S.source_id)) onOrders = r2(onOrders + o.confirmed_unpaid);
+    S.short_unassigned = r2(Math.max(0, (S.total_due - S.paid) - onOrders));
+  }
   list.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(b.order).localeCompare(String(a.order)));
-  // 6. Totals — the stages are reported side by side, never added together.
+  // 7. Totals — earned, reported due and paid are three views of the same commission, never added together. Earned splits
+  //    into: confirmed paid + confirmed unpaid + payment status unknown. Nothing here is called collectible or overdue debt.
   const sum = (arr, k) => r2(arr.reduce((s, o) => s + (Number(o[k]) || 0), 0));
+  const stmtShort = r2(stmts.reduce((s, S) => s + (S.short_unassigned || 0), 0));
+  const confirmedUnpaid = r2(sum(list, "confirmed_unpaid") + stmtShort);
   const summary = {
     contract: C.label, rate: C.rate, orders: list.length,
     eligible_orders: list.filter(o => o.earned > 0).length, eligible_sales: sum(list, "eligible_amount"),
-    earned: sum(list, "earned"), reported_due: sum(list, "reported_due"), paid: sum(list, "paid"), outstanding: sum(list, "outstanding"),
+    earned: sum(list, "earned"), reported_due: sum(list, "reported_due"), paid: sum(list, "paid"),
+    confirmed_unpaid: confirmedUnpaid, confirmed_unpaid_statement_level: stmtShort,
+    payment_unknown: r2(Math.max(0, sum(list, "payment_unknown") - stmtShort)),
     reported_not_paid: sum(list, "reported_not_paid"),
     earned_not_reported: r2(list.filter(o => o.earned > 0 && !o.statement_refs.length).reduce((s, o) => s + o.earned, 0)),
-    review_lines: review.filter(r => !r.decision || r.decision === "investigate").length,
-    review_due: r2(review.filter(r => !r.decision || r.decision === "investigate").reduce((s, r) => s + r.due, 0)),
+    earned_status_not_captured: r2(list.filter(o => o.eligibility === "eligible_unverified_status").reduce((s, o) => s + o.earned, 0)),
+    review_lines: review.filter(r => !r.decision || r.decision === "investigate" || r.decision_problem).length,
+    review_due: r2(review.filter(r => !r.decision || r.decision === "investigate" || r.decision_problem).reduce((s, r) => s + r.due, 0)),
     not_eligible_orders: list.filter(o => o.eligibility === "pending_status" || o.eligibility === "reversed").length,
     status_not_in_record: list.filter(o => o.eligibility === "eligible_unverified_status").length,
     payment_unverified: list.filter(o => o.labels.includes("payment_unverified")).length,
@@ -262,12 +341,54 @@ function reconcile(input) {
     earlier_statements_not_on_file: list.filter(o => o.labels.includes("earlier_statements_not_on_file")).length,
     statements_on_file_from: firstStmt,
     unallocated_payments: r2(unallocated.reduce((s, u) => s + u.amount, 0)),
-    note: "Earned, reported due and paid are three views of the same commission — never added together.",
+    duplicate_payment_entries: duplicates.length, payment_problems: payProblems.length,
+    note: "Earned, reported due and paid are three views of the same commission — never added together. Earned = confirmed paid + confirmed unpaid + payment status unknown; none of it is presented as collectible debt.",
   };
-  checks.push({ name: "no double counting", ok: true, text: "Each order is counted once; statement amounts are compared with earned, never added to it." });
+  checks.push({ name: "no double counting", ok: true, text: "Each order is counted once; statement amounts are compared with earned, never added to it; each remittance is counted once." });
+  checks.push({ name: "earned splits exactly", ok: Math.abs(r2(summary.paid + summary.confirmed_unpaid + summary.payment_unknown) - summary.earned) <= 0.01 || summary.paid > summary.earned,
+    text: "Confirmed paid + confirmed unpaid + payment status unknown = earned (unless more was paid than earned)." });
   return { contract: { slug: input.slug, label: C.label, rate: C.rate, basis: C.basis, statement: C.statement, overdue_days: C.overdue_days },
-    orders: list, review, statements: stmts, unallocated, summary, checks, problems };
+    orders: list, review, statements: stmts, unallocated, duplicates, payment_problems: payProblems, summary, checks, problems };
 }
+
+/* Guard for a NEW payment entry, checked by the API before anything is written (the reconciliation counts safely either
+   way; this stops the mistake at the door). rec = reconcile(...) of the current records; events = stored events;
+   p = { source_id?, order_number?, amount, payment_ref, supersedes_id? }. → null when fine, else { status, error, message }. */
+function paymentGuard(rec, events, p) {
+  const ref = String(p.payment_ref || "").trim().toUpperCase();
+  if (!/^[A-Za-z0-9._\/#-]{2,80}$/.test(ref)) return { status: 422, error: "payment_ref_required", message: "Give the remittance reference (cheque number, ACH trace, deposit id) — 2–80 letters, digits or . _ / # -. It is how one payment is recognised everywhere it is recorded." };
+  const all = (events || []).map(x => Object.assign({}, x, { order: x.order != null && x.order !== "" ? x.order : (x.order_number || null) }));
+  const supersededIds = new Set(all.map(x => x.supersedes_id).filter(Boolean));
+  const live = all.filter(x => x.kind === "payment" && !supersededIds.has(x.id));
+  const tgt = x => x.order ? "O:" + orderKey(x.order) : x.source_id != null ? "S:" + Number(x.source_id) : null;
+  const t = tgt({ order: p.order_number, source_id: p.source_id });
+  const sign = Math.sign(Number(p.amount) || 0);
+  if (p.supersedes_id) {
+    const orig = all.find(x => x.id === Number(p.supersedes_id));
+    if (!orig || orig.kind !== "payment") return { status: 422, error: "bad_supersede", message: `Event #${p.supersedes_id} is not a payment.` };
+    if (tgt(orig) !== t) return { status: 422, error: "correction_target_changed", message: `A correction must stay on the original payment's ${orig.order ? "order " + orig.order : "statement #" + orig.source_id}. To move money, record a reversal on the original and a new payment.` };
+    return null;
+  }
+  const same = live.find(x => paymentRef(x) === ref && tgt(x) === t && Math.sign(Number(x.amount) || 0) === sign);
+  if (same) return { status: 409, error: "duplicate_payment", message: `Remittance ${ref} is already recorded against ${same.order ? "order " + same.order : "statement #" + same.source_id} (payment #${same.id}). To change it, record a correction of #${same.id}.` };
+  const refRows = live.filter(x => paymentRef(x) === ref);
+  const stIds = [...new Set(refRows.filter(x => !x.order).map(x => Number(x.source_id)).concat(t.startsWith("S:") ? [Number(t.slice(2))] : []))];
+  const onStatement = (k, ids) => rec.orders.some(o => o.order_key === k && o.statement_refs.some(r => ids.includes(r.source_id) && !r.repeated));
+  const orderRows = refRows.filter(x => x.order).concat(t.startsWith("O:") ? [{ order: t.slice(2), amount: p.amount }] : []);
+  if (stIds.length) {
+    for (const x of orderRows) if (!onStatement(orderKey(x.order), stIds))
+      return { status: 422, error: "allocation_not_on_statement", message: `Remittance ${ref} pays statement #${stIds.join(", #")}; order ${x.order} is not on it, so this would count the same money twice. Use a different reference if it is a separate payment.` };
+    const stAmt = r2(refRows.filter(x => !x.order).reduce((s, x) => s + Number(x.amount || 0), 0) + (t.startsWith("S:") ? Number(p.amount) : 0));
+    const alloc = r2(orderRows.reduce((s, x) => s + Number(x.amount || 0), 0));
+    if (alloc > stAmt + 0.005) return { status: 422, error: "over_allocated", message: `Remittance ${ref} is $${stAmt} against statement #${stIds.join(", #")}, but $${alloc} would be allocated to orders.` };
+  }
+  return null;
+}
+
+/* A payment's remittance reference — the API stores it at the start of the evidence text as "ref:<REF> — …". */
+const REF_RE = /^ref:([A-Za-z0-9._\/#-]{2,80})(?:\s+[—-]\s+|$)/;
+function paymentRef(x) { const m = String(x && x.evidence || "").match(REF_RE); return m ? m[1].toUpperCase() : null; }
+function evidenceWithRef(ref, text) { return `ref:${String(ref).trim().toUpperCase()} — ${String(text || "").trim()}`; }
 
 /* Drilldown: group orders by dealer / sale month / reporting month / manufacturer. */
 function groupBy(rec, by) {
@@ -275,8 +396,8 @@ function groupBy(rec, by) {
     : by === "reporting_month" ? (o.statement_refs.length ? o.statement_refs.map(r => r.period).sort()[0] : "not reported yet")
     : by === "manufacturer" ? rec.contract.slug : o.order;
   const g = new Map();
-  for (const o of rec.orders) { const k = key(o); const t = g.get(k) || { key: k, orders: 0, eligible_sales: 0, earned: 0, reported_due: 0, paid: 0, outstanding: 0, flagged: 0 };
-    t.orders++; for (const f of ["eligible_sales", "earned", "reported_due", "paid", "outstanding"]) t[f] = r2(t[f] + (f === "eligible_sales" ? o.eligible_amount : o[f]));
+  for (const o of rec.orders) { const k = key(o); const t = g.get(k) || { key: k, orders: 0, eligible_sales: 0, earned: 0, reported_due: 0, paid: 0, confirmed_unpaid: 0, payment_unknown: 0, flagged: 0 };
+    t.orders++; for (const f of ["eligible_sales", "earned", "reported_due", "paid", "confirmed_unpaid", "payment_unknown"]) t[f] = r2(t[f] + (f === "eligible_sales" ? o.eligible_amount : o[f]));
     if (o.labels.length || o.flags.length) t.flagged++; g.set(k, t); }
   return [...g.values()].sort((a, b) => String(b.key).localeCompare(String(a.key)));
 }
@@ -289,4 +410,4 @@ function monthIsContractEarned(slug, rows) {
     && Math.abs(r2(Number(r.amount) * C.rate) - r2(Number(r.commission))) <= 0.01);
 }
 
-module.exports = { CONTRACTS, contractFor, parseSr032, salesFromExport, salesFromHistory, reconcile, groupBy, monthIsContractEarned, money, orderKey };
+module.exports = { CONTRACTS, contractFor, parseSr032, salesFromExport, salesFromHistory, reconcile, groupBy, monthIsContractEarned, money, orderKey, paymentRef, evidenceWithRef, REF_RE, paymentGuard };

@@ -50,6 +50,8 @@ function world(o) {
     if (o.failRead && m === 'GET' && o.failRead(u)) return res(500, { message: 'forced' });
     if (u.startsWith(BASE + '/storage/v1/object/mfr-sources/')) { const p = u.split('/mfr-sources/')[1];
       if (/\.csv$/.test(p)) return res(200, '', o.tamper ? Buffer.concat([CSV, Buffer.from('x')]) : CSV); if (/\.pdf$/.test(p)) return res(200, '', SR); return res(404, {}); }
+    if (u.startsWith(BASE + '/rest/v1/monthly_sales_quarantine')) return res(200, o.quar || []);
+    if (u.startsWith(BASE + '/rest/v1/mfr_quarantine_dispositions')) return res(200, o.dispo || []);
     if (u.startsWith(BASE + '/rest/v1/monthly_sales')) { if (/offset=([1-9])/.test(u)) return res(200, []);
       if (/source=eq\.sales_report/.test(u)) return res(200, HIST); return res(200, o.laneRows || []); }
     if (u.startsWith(BASE + '/rest/v1/mfr_sources')) { if (/offset=([1-9])/.test(u)) return res(200, []); return res(200, SOURCES); }
@@ -89,10 +91,10 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
     assert.strictEqual(o('7060').earned, 93.33); assert.strictEqual(o('7060').reported_due, 93.33); assert.strictEqual(o('7060').stage, 'reported_due');
     assert.strictEqual(o('5804').earned, 28.8); assert.ok(o('5804').labels.includes('earlier_statements_not_on_file') && !o('5804').labels.some(l => l.startsWith('potentially')));
   });
-  await t('totals: earned · reported due · paid · outstanding side by side, never added together', async () => {
+  await t('totals: earned · reported due · paid · confirmed unpaid · unknown side by side, never added together', async () => {
     const s = R.summary;
     assert.strictEqual(s.earned, 510.3);
-    assert.strictEqual(s.reported_due, 336.33); assert.strictEqual(s.paid, 0); assert.strictEqual(s.outstanding, s.earned);
+    assert.strictEqual(s.reported_due, 336.33); assert.strictEqual(s.paid, 0); assert.strictEqual(s.payment_unknown, s.earned); assert.strictEqual(s.confirmed_unpaid, 0); assert.ok(!('outstanding' in s), 'no "outstanding" figure');
     assert.strictEqual(s.earned_not_reported, Math.round((96.03 + 49.14 + 28.8) * 100) / 100);
     assert.strictEqual(s.payment_unverified, 4, 'SR032 "due" is not a payment');
   });
@@ -126,14 +128,30 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
   await t('commission_event: President only; the actor is the sign-in; only the RPC is written; "not installed" is a 503', async () => {
     const a = boot(); const r = await call(a.m, { action: 'commission_event', kind: 'payment', source_id: 9, amount: 336.33, paid_on: '2026-10-15', evidence: 'ACH', reason: 'paid in full', actor: 'staff:someone@x' }, { token: 'admin' });
     assert.strictEqual(r.status, 403); assert.deepStrictEqual(writes(a.w), []);
-    const b = boot(); const ok = await call(b.m, { action: 'commission_event', kind: 'payment', source_id: 9, amount: 336.33, paid_on: '2026-10-15', evidence: 'ACH 1', reason: 'paid in full', actor: 'staff:someone@x' }, { token: 'pres' });
+    const b = boot({ events: [] }); const ok = await call(b.m, { action: 'commission_event', kind: 'payment', source_id: 9, amount: 336.33, paid_on: '2026-10-15', payment_ref: 'ach-1015', evidence: 'ACH 1', reason: 'paid in full', actor: 'staff:someone@x' }, { token: 'pres' });
     assert.strictEqual(ok.status, 200); assert.strictEqual(b.w.rpcs.length, 1); assert.strictEqual(b.w.rpcs[0].fn, 'hcps_mfr_commission_event'); assert.strictEqual(b.w.rpcs[0].p.actor, 'staff:angelo@hcps.us');
+    assert.strictEqual(b.w.rpcs[0].p.evidence, 'ref:ACH-1015 — ACH 1', 'the remittance reference is stored with the evidence');
     assert.strictEqual(writes(b.w).length, 1);
     const c = boot({ rpc: () => ({ status: 404, body: { code: 'PGRST202' } }) }); const ni = await call(c.m, { action: 'commission_event', kind: 'review', source_id: 9, order_number: '1', decision: 'investigate', reason: 'check with Strongback' }, { token: 'pres' });
     assert.strictEqual(ni.status, 503); assert.strictEqual(ni.body.error, 'not_installed');
-    const d = boot({ rpc: () => ({ status: 400, body: { message: 'new row violates check constraint "mfr_commission_events_payment_ck"' } }) });
-    const bad = await call(d.m, { action: 'commission_event', kind: 'payment', source_id: 9, amount: 1, reason: 'no evidence given here' }, { token: 'pres' });
+    const d = boot({ events: [], rpc: () => ({ status: 400, body: { message: 'new row violates check constraint "mfr_commission_events_payment_ck"' } }) });
+    const bad = await call(d.m, { action: 'commission_event', kind: 'payment', source_id: 9, amount: 1, payment_ref: 'X1', reason: 'no evidence given here' }, { token: 'pres' });
     assert.strictEqual(bad.status, 422); assert.strictEqual(bad.body.error, 'mfr_commission_events_payment_ck');
+  });
+  await t('payment safeguards: no reference / a duplicate remittance / an allocation off the statement are refused BEFORE any write', async () => {
+    const evs = [{ id: 1, kind: 'payment', manufacturer: 'strongback-mobility', source_id: 9, order_number: null, amount: 336.33, evidence: 'ref:ACH-1015 — ACH', reason: 'paid', actor: 'staff:angelo@hcps.us' }];
+    for (const [body, code, err] of [[{ source_id: 9, amount: 5 }, 422, 'payment_ref_required'], [{ source_id: 9, amount: 336.33, payment_ref: 'ach-1015' }, 409, 'duplicate_payment'],
+      [{ order_number: '5804', amount: 28.8, payment_ref: 'ACH-1015' }, 422, 'allocation_not_on_statement']]) {
+      const { w, m } = boot({ events: evs }); const r = await call(m, Object.assign({ action: 'commission_event', kind: 'payment', paid_on: '2026-10-15', evidence: 'ACH', reason: 'recording the payment' }, body), { token: 'pres' });
+      assert.strictEqual(r.status, code, err); assert.strictEqual(r.body.error, err); assert.deepStrictEqual(writes(w), [], 'nothing written'); }
+    const { w, m } = boot({ events: evs }); const r = await call(m, { action: 'commission_recon' }, { token: 'pres' });
+    assert.strictEqual(r.body.summary.paid, 336.33); assert.strictEqual(r.body.statements.find(s => s.source_id === 9).payment_state, 'paid_in_full'); assert.deepStrictEqual(writes(w), []);
+  });
+  await t('September: an export of a month holding quarantined rows is shown BLOCKED in the posting preview; statements never posted', async () => {
+    const { m } = boot({ quar: [1, 2, 3, 4, 5, 6, 7].map(i => ({ id: i, period: '2026-09-01', source_file: 'Strongback Sept Commission Report 2026.csv' })) });
+    const r = await call(m, { action: 'commission_recon' }, { token: 'pres' }); const x = r.body.posting_preview.exports.find(e => e.source_id === 8);
+    assert.ok(x.blocked && x.blocked.quarantined_rows === 7 && x.blocked.disposition === 'not recorded'); assert.strictEqual(r.body.posting_preview.statements_posted, false);
+    const ok = await call(boot().m, { action: 'commission_recon' }, { token: 'pres' }); assert.strictEqual(ok.body.posting_preview.exports.find(e => e.source_id === 8).blocked, null);
   });
   console.log(`\ncommission-recon api: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })();

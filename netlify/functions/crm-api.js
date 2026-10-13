@@ -158,6 +158,34 @@ exports.handler = async (event)=>{
       return json(200,Object.assign({ok:true,dealer_id:String(b.dealer_id)},out));
     }
 
+    /* ---- Manufacturer-reported intelligence (MI-1c, published 2026-10-13) -------------------------------------
+       What a manufacturer's dealer report says about THIS dealer, read-only. Who may read it = who may open this
+       Dealer 360 (the scope check above). Shown ONLY from a PUBLISHED report and ONLY where the printed dealer was
+       matched to exactly this HCPS dealer (automatically under the matcher's strict rule, or by a person); never a
+       sister branch, never a review / held / unmatched line, and never when two printed dealers of one report land on
+       this same dealer (a conflicting assignment waits for Angelo). Figures are the manufacturer's, as printed — never
+       HCPS sales or commission. */
+    if(b.action==="mfr_intel"){
+      if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+      const did=String(b.dealer_id);
+      if(!/^[A-Za-z0-9-]{1,64}$/.test(did)) return json(400,{error:"bad dealer_id"});
+      let snaps;
+      try{ snaps=await sbGet(`mfr_dealer_snapshots?dealer_id=eq.${did}&match_status=eq.matched&select=id,source_id,manufacturer,report_period_start,report_period_end,printed_name,printed_city,printed_state,group_heading,tier,trend,l12m_text,prior12_text,month_text,last_order_text,ergosteel_text,floor_text,display_status,match_method,matched_by,matched_at&order=report_period_end.desc`); }
+      catch(e){ if(/PGRST205|42P01|does not exist/i.test(String(e.message))) return json(200,{ok:true,reports:[]}); throw e; }
+      if(!snaps.length) return json(200,{ok:true,reports:[]});
+      const sids=[...new Set(snaps.map(s=>s.source_id))];
+      const [srcs, dupes]=await Promise.all([
+        sbGet(`mfr_sources?id=in.(${sids.join(",")})&publication_status=eq.published&select=id,title,file_name,prepared_date,published_at`),
+        sbGet(`mfr_dealer_snapshots?source_id=in.(${sids.join(",")})&dealer_id=eq.${did}&match_status=eq.matched&select=id,source_id`)]);
+      const pub=new Map(srcs.map(s=>[s.id,s]));
+      const perReport={}; for(const x of dupes) perReport[x.source_id]=(perReport[x.source_id]||0)+1;
+      const show=snaps.filter(s=>pub.has(s.source_id) && perReport[s.source_id]===1);
+      if(!show.length) return json(200,{ok:true,reports:[]});
+      const obs=await sbGet(`mfr_dealer_observations?snapshot_id=in.(${show.map(s=>s.id).join(",")})&kind=in.(contact_person,product_line,told_us,contact_log)&select=snapshot_id,kind,observed_on,text,structured&order=id.asc`);
+      return json(200,{ok:true,reports:show.map(s=>({ ...s, report:pub.get(s.source_id),
+        observations:obs.filter(o=>o.snapshot_id===s.id).map(o=>({kind:o.kind,observed_on:o.observed_on,text:o.text})) }))});
+    }
+
     /* ---- Visits & Meetings (Phase 1) — the Dealer 360 card, in ONE dealer-scoped call ----------
        Visits are seen by dealer, like notes and tasks: whoever may work this dealer (the scope check
        above) sees its visits, and nobody sees visits on a dealer outside their book.

@@ -135,7 +135,7 @@ function renderRegister(){
   const mopts=mf.map(m=>`<option value="${esc(m.slug)}">${esc(m.name)}</option>`).join("");
   const reps=(DATA.reports||[]).filter(r=>(!FILTER.mfr||r.manufacturer===FILTER.mfr)&&(!FILTER.kind||r.kind===FILTER.kind));
   $("#body").innerHTML=`${tabs()}
-  <div class="note">Separate on purpose: <b>received / accepted</b> says whether HCPS accepts the file as the manufacturer's report; <b>publication</b> (dealer reports only) says whether its intelligence is shown in Dealer 360. Accepting never publishes. A dealer report's intelligence is read and matched on the <a href="/admin/dealer-intel.html">Dealer Intelligence Import</a> page; publishing it to Dealer 360 is a separate step that is not enabled — so nothing here reaches Dealer 360, reps, tasks, deals, sales or commissions.<br><br>
+  <div class="note">Separate on purpose: <b>received / accepted</b> says whether HCPS accepts the file as the manufacturer's report; <b>publication</b> (dealer reports only) says whether its intelligence is shown in Dealer 360. Accepting never publishes. A dealer report's intelligence is read and matched on the <a href="/admin/dealer-intel.html">Dealer Intelligence Import</a> page; an accepted dealer report is imported and published automatically (hourly at :50), and Dealer 360 shows a dealer's intelligence only where its match is verified — review, held and unmatched dealers wait on that page. Nothing here reaches tasks, deals, sales or commissions.<br><br>
   <b>From email:</b> when automatic capture is on, report attachments from manufacturers' emails are registered here by <b>system:report-capture</b> — see the Inbox. Files loaded through Sales Report Import or Commission Report Import are not registered automatically. Several different exports or statements may cover the same period; only dealer-intelligence reports are one per period. A correction replaces one named record for the <b>same</b> period.</div>
   <div class="card"><h2>Register a report file</h2>
     <div class="form" id="regform">
@@ -179,6 +179,7 @@ function capCard(){
     <div><b>Registered / linked</b>${(c.registered||0)} / ${(c.linked||0)}</div>
     <div><b>Recognised, not registered</b>${c.classified||0}</div>
     <div><b>Needs attention</b>${CAP.needs_attention||0}</div>
+    <div><b>Notifications</b>${(()=>{const n=CAP.notifications;if(!n)return"none sent yet";if(n.unreadable)return"status unreadable";const l=(n.last||[])[0];return (l?"Last sent "+esc(fmtWhen(l.at))+" — "+esc(l.subject):"none sent yet")+(n.digest_day?"<br>Daily digest: "+esc(n.digest_day):"")+(n.reconciliation_month?"<br>Reconciliation: "+esc(n.reconciliation_month):"");})()}</div>
     <div><b>Active profiles</b>${(CAP.profiles||[]).filter(p=>p.status==="active").map(p=>esc(mfrName(p.manufacturer))+": "+esc(p.label)).join("<br>")||"none"}</div>
   </div>${last&&last.error?`<div class="err">${esc(last.error)}</div>`:""}
   <details class="ev"><summary>Report profiles (${(CAP.profiles||[]).length}) — draft profiles are recognised and shown, never registered</summary>
@@ -245,7 +246,7 @@ function card(r){
   let acts=`<button class="go ghost sm" onclick="download(${r.id})">Download original</button>`;
   if(r.status==="received") acts+=`<button class="go sm" onclick="decide(${r.id},'accepted')">Accept</button><input id="rr_${r.id}" placeholder="Reason (required to reject; optional to accept)" maxlength="1000"><button class="go ghost sm" onclick="decide(${r.id},'rejected')">Reject</button>`;
   if(r.kind==="dealer_report"&&r.status==="accepted"&&r.publication_status!=="published")
-    acts+=`<button class="go ghost sm" disabled title="Publishing to Dealer 360 is a separate, not-yet-approved step">Publish to Dealer 360 — not enabled</button>`;
+    acts+=`<span class="hint">Publishes automatically at the next :50 run — Dealer 360 shows verified matches only.</span>`;
   if(r.kind==="dealer_report"&&r.publication_status==="published")
     acts+=`<input id="rw_${r.id}" placeholder="Reason to withdraw" maxlength="1000"><button class="go ghost sm" onclick="withdraw(${r.id})">Withdraw</button>`;
   const ev=(r.events||[]).map(x=>`<div>${esc(fmtWhen(x.at))} · <b>${esc(x.action)}</b> by ${esc(x.actor)}${x.reason?` — ${esc(x.reason)}`:""}</div>`).join("");

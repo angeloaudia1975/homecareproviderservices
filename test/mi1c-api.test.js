@@ -32,7 +32,7 @@ function world(o) {
   const tables = { dealers, dealer_aliases: FX.aliases, monthly_sales: sales, mfr_dealer_snapshots: o.snapshots || [], mfr_intel_reports: o.reports || [],
     dealer_manufacturers: [{ dealer_id: dealers[0].id, manufacturer: 'strongback-mobility', active: true, account_ref: 'SB-1' }],
     staff_users_all: [{ email: 'angelo@hcps.us', name: 'Angelo Audia' }, { email: 'greg@hcps.us', name: 'Greg Campbell' }],
-    mfr_dealer_observations: [], mfr_intel_events: [], mfr_intel_holds: o.holds || HOLDS.map((h, i) => ({ id: i + 1, ...h })) };
+    mfr_dealer_observations: [], mfr_intel_events: [], app_settings: o.app_settings || [], mfr_auto_import_log: o.logs || [], mfr_intel_holds: o.holds || HOLDS.map((h, i) => ({ id: i + 1, ...h })) };
   const snapById = o.snapById || { 5: { id: 5, manufacturer: 'strongback-mobility', printed_name: 'Larco Medical' },
     6: { id: 6, manufacturer: 'strongback-mobility', printed_name: "Wyatt's Pharmacy Inc" }, 8: { id: 8, manufacturer: 'strongback-mobility', printed_name: 'WYATTS PHARMACY' } };
   const res = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body, text: async () => typeof body === 'string' ? body : JSON.stringify(body),
@@ -269,12 +269,58 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
     let b = boot(); assert.strictEqual((await call(b.m, { action: 'report', source_id: 7 }, as('pres'))).status, 404);
     b = boot(); assert.strictEqual((await call(b.m, { action: 'publish', source_id: 7 }, as('pres'))).status, 400);
   });
-  await t('the API never writes to any table directly (only the two MI-1c functions), across every action above', async () => {
+  await t('the API never writes to any table directly (only its database functions), across every action above', async () => {
     const src = fs.readFileSync(require('path').join(__dirname, '..', 'netlify', 'functions', 'mfr-intel-api.js'), 'utf8');
     assert.ok(!/method:\s*"(PATCH|DELETE|PUT)"/.test(src), 'no PATCH/DELETE/PUT');
-    assert.deepStrictEqual([...src.matchAll(/rpc\("([a-z_0-9]+)"/g)].map(x => x[1]).sort(), ['hcps_mfr_intel_import', 'hcps_mfr_intel_match']);
+    // The automatic run (Angelo's activation, 2026-10-13) adds exactly three: accept the record, publish it, and the audit log.
+    assert.deepStrictEqual([...new Set([...src.matchAll(/rpc\("([a-z_0-9]+)"/g)].map(x => x[1]))].sort(), ['hcps_mfr_auto_import_log', 'hcps_mfr_intel_import', 'hcps_mfr_intel_match', 'hcps_mfr_report_decide', 'hcps_mfr_report_publication']);
     assert.ok(!/zoho|dealer_contacts|dealer_tasks|opportunit|campaign|dealer_aliases"\s*,\s*\{|monthly_sales\?[^"]*method/i.test(src.replace(/\/\/.*$/gm, '')), 'no reach into other stores');
   });
+
+  console.log('\n— automatic processing (runAutoIntel, 2026-10-13) —');
+  const autoWorld = (o) => { o = o || {};
+    const rpcs = (fn, p) => { if (o.rpc) { const r = o.rpc(fn, p); if (r) return r; }
+      if (fn === 'hcps_mfr_report_decide') return { status: 200, body: { ok: true, id: p.id, status: 'accepted' } };
+      if (fn === 'hcps_mfr_report_publication') return { status: 200, body: { ok: true, id: p.id, publication_status: 'published' } };
+      if (fn === 'hcps_mfr_auto_import_log') return { status: 200, body: { ok: true, log_id: 1 } }; return null; };
+    return boot(Object.assign({}, o, { rpc: rpcs, app_settings: [{ key: 'phase2_flags', value: { mi_intel_publish: !o.off } }] })); };
+  const srcRec = (x) => [Object.assign({ id: 7, manufacturer: 'strongback-mobility', kind: 'dealer_report', title: 'Strongback — September 2026', file_name: 'Strongback_Report_Overview_September_2026.pdf',
+    file_sha256: sha(PDF), storage_path: `reports/strongback-mobility/dealer_report/${sha(PDF)}.pdf`, received_date: '2026-10-11', prepared_date: '2026-10-08', prepared_date_status: 'stated',
+    report_period_start: '2026-09-01', report_period_end: '2026-09-30', status: 'received', publication_status: 'unpublished' }, x || {})];
+  await t('switch off: nothing is read, accepted, imported or published', async () => {
+    const { w, m } = autoWorld({ off: true, sources: srcRec() }); const r = await m.runAutoIntel();
+    assert.strictEqual(r.skipped, 'switch_off'); assert.strictEqual(w.rpcs.length, 0);
+  });
+  if (HAVE_PDF) {
+    await t('received report: accepted → imported (the same payload a person imports) → published; logged final with the counts', async () => {
+      const { w, m } = autoWorld({ sources: srcRec() }); const r = await m.runAutoIntel();
+      assert.deepStrictEqual(w.rpcs.map(x => x.fn), ['hcps_mfr_report_decide', 'hcps_mfr_intel_import', 'hcps_mfr_report_publication', 'hcps_mfr_auto_import_log']);
+      assert.strictEqual(w.rpcs[0].p.actor, 'system:auto-import'); assert.strictEqual(w.rpcs[1].p.actor, 'system:auto-import'); assert.strictEqual(w.rpcs[2].p.action, 'publish');
+      const lg = w.rpcs[3].p; assert.strictEqual(lg.outcome, 'imported'); assert.strictEqual(lg.detail.code, 'intel_published'); assert.strictEqual(lg.detail.final, true);
+      assert.deepStrictEqual(lg.detail.counts, { matched: 15, review: 7, unmatched: 2, held: 1 });
+      assert.ok(lg.detail.needs_review.some(x => /wyatt/i.test(x.printed_name) && x.status === 'held'), 'the recorded hold waits for Angelo');
+      assert.strictEqual(lg.detail.needs_review.length, 10); assert.strictEqual(r.results[0].code, 'intel_published');
+      const imp = w.rpcs[1].p; assert.ok(imp.dealers.filter(d => d.match_status === 'matched').every(d => d.dealer_id), 'matched rows carry a dealer');
+      assert.ok(imp.dealers.filter(d => d.match_status !== 'matched').every(d => !d.dealer_id), 'review / held / unmatched rows carry no dealer');
+    });
+    await t('already imported: not imported twice — only published', async () => {
+      const { w, m } = autoWorld({ sources: srcRec({ status: 'accepted' }), reports: [{ id: 1, source_id: 7, imported_by: 'x', imported_at: 'x', match_summary: {}, content_hash: 'h' }] });
+      await m.runAutoIntel(); assert.deepStrictEqual(w.rpcs.map(x => x.fn), ['hcps_mfr_report_publication', 'hcps_mfr_auto_import_log']);
+    });
+    await t('prepared date differs from the register: held, nothing accepted, imported or published', async () => {
+      const { w, m } = autoWorld({ sources: srcRec({ prepared_date: '2026-10-09' }) }); await m.runAutoIntel();
+      assert.deepStrictEqual(w.rpcs.map(x => x.fn), ['hcps_mfr_auto_import_log']); assert.strictEqual(w.rpcs[0].p.detail.code, 'prepared_date_mismatch');
+    });
+    await t('the database refuses the import: logged as refused and NOT published', async () => {
+      const { w, m } = autoWorld({ sources: srcRec(), rpc: fn => fn === 'hcps_mfr_intel_import' ? { status: 400, body: { message: 'mi1c_held_locked: test' } } : null });
+      await m.runAutoIntel(); assert.ok(!w.rpcs.some(x => x.fn === 'hcps_mfr_report_publication'));
+      const lg = w.rpcs.find(x => x.fn === 'hcps_mfr_auto_import_log').p; assert.strictEqual(lg.outcome, 'refused'); assert.strictEqual(lg.detail.code, 'mi1c_held_locked');
+    });
+    await t('a report already published is left alone', async () => {
+      const { w, m } = autoWorld({ sources: srcRec({ status: 'accepted', publication_status: 'published' }) }); const r = await m.runAutoIntel();
+      assert.strictEqual(w.rpcs.length, 0); assert.deepStrictEqual(r.results, []);
+    });
+  }
   console.log(`\nmi1c-api: ${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

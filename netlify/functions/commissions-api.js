@@ -605,3 +605,7 @@ exports.handler = async (event)=>{
     return json(400,{error:"unknown action"});
   }catch(e){ return json(500,{error:String(e.message||e)}); }
 };
+
+// The automatic statement processor (_commission_auto.js) uses the importer's OWN functions, so a statement processed
+// unattended is mapped, gated and reviewed exactly as when Angelo imports it here by hand.
+exports.internal = { buildCtx, mapRows, commissionMonths, statementGate, orgAccounts, NAME_AS_ACCOUNT, NO_ACCOUNT_CAPTURE };

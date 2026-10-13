@@ -16,6 +16,7 @@ const SALE = (o, amount, date, extra) => Object.assign({ order: String(o), order
 const HIST = (o, amount, date, extra) => Object.assign({ order: String(o), order_key: CT.orderKey(o), date, company: 'Co ' + o, dealer_id: 'd' + o, lines: 1,
   amount, ledger_commission: Math.round(amount * 9) / 100, status: null, sources: [{ kind: 'hcps_sales', rows: [1] }] }, extra || {});
 const STMT = (id, period, lines, received) => ({ source_id: id, file_name: period + ' SR032.pdf', period, received_date: received || '2026-10-07', parsed: CT.parseSr032(lines) });
+const r2x = n => Math.round(n * 100) / 100;
 const run = o => CT.reconcile(Object.assign({ slug: 'strongback-mobility', today: '2026-10-12', history: [], exports: [], statements: [], events: [] }, o));
 
 (async () => {
@@ -88,7 +89,7 @@ const run = o => CT.reconcile(Object.assign({ slug: 'strongback-mobility', today
     const r = run({ history: [HIST(7060, 1037, '2026-08-20'), HIST(6698, 440, '2026-06-10'), HIST(6737, 1320, '2026-07-01'), HIST(6800, 940, '2026-07-15')],
       statements: [STMT(9, '2026-09', SEPT)] });
     assert.strictEqual(r.summary.earned, 336.33); assert.strictEqual(r.summary.reported_due, 336.33); assert.strictEqual(r.summary.paid, 0);
-    assert.strictEqual(r.summary.outstanding, 336.33, 'outstanding = earned − paid, not earned + reported');
+    assert.strictEqual(r.summary.payment_unknown, 336.33, 'no payment record either way: unknown, not debt'); assert.strictEqual(r.summary.confirmed_unpaid, 0, 'a statement saying "due" is not evidence of non-payment');
     assert.strictEqual(r.review.length, 0); assert.strictEqual(r.statements[0].matched, 4);
     for (const o of r.orders) { assert.strictEqual(o.stage, 'reported_due'); assert.ok(o.labels.includes('payment_unverified')); }
     assert.ok(/never added together/.test(r.summary.note));
@@ -123,7 +124,7 @@ const run = o => CT.reconcile(Object.assign({ slug: 'strongback-mobility', today
   await t('payments: SR032 "due" is not paid; a full statement payment pays its lines; a partial one stays unallocated; order payments apply', async () => {
     const H = [HIST(7060, 1037, '2026-08-20'), HIST(6698, 440, '2026-06-10'), HIST(6737, 1320, '2026-07-01'), HIST(6800, 940, '2026-07-15')];
     const full = run({ history: H, statements: [STMT(9, '2026-09', SEPT)], events: [{ id: 1, kind: 'payment', source_id: 9, amount: 336.33, evidence: 'ACH 10/15', actor: 'staff:a@b', created_at: 'x' }] });
-    assert.strictEqual(full.summary.paid, 336.33); assert.strictEqual(full.summary.outstanding, 0); assert.ok(full.orders.every(o => o.stage === 'paid' && !o.labels.includes('payment_unverified')));
+    assert.strictEqual(full.summary.paid, 336.33); assert.strictEqual(full.summary.payment_unknown, 0); assert.strictEqual(full.summary.confirmed_unpaid, 0); assert.ok(full.orders.every(o => o.stage === 'paid' && !o.labels.includes('payment_unverified')));
     assert.strictEqual(full.statements[0].payment_state, 'paid_in_full');
     const part = run({ history: H, statements: [STMT(9, '2026-09', SEPT)], events: [{ id: 1, kind: 'payment', source_id: 9, amount: 200, evidence: 'cheque 1001', actor: 'x', created_at: 'x' }] });
     assert.strictEqual(part.summary.paid, 0); assert.strictEqual(part.summary.unallocated_payments, 200); assert.strictEqual(part.statements[0].payment_state, 'partial');
@@ -165,6 +166,88 @@ const run = o => CT.reconcile(Object.assign({ slug: 'strongback-mobility', today
     assert.strictEqual(CT.monthIsContractEarned('strongback-mobility', [{ source: 'sales_report', amount: 536, commission: 53.6 }]), false);
     assert.strictEqual(CT.monthIsContractEarned('strongback-mobility', []), false);
     assert.strictEqual(CT.monthIsContractEarned('bemis', [{ source: 'sales_report', amount: 100, commission: 9 }]), false);
+  });
+  // ---- Payment integrity (2026-10-13): one remittance counted once; confirmed unpaid only with evidence ----
+  const H4 = () => [HIST(7060, 1037, '2026-08-20'), HIST(6698, 440, '2026-06-10'), HIST(6737, 1320, '2026-07-01'), HIST(6800, 940, '2026-07-15')];
+  const P = (id, o) => Object.assign({ id, kind: 'payment', actor: 'staff:a@b', created_at: 'x', paid_on: '2026-10-15' }, o);
+  const ev = (ref, text) => CT.evidenceWithRef(ref, text || 'ACH deposit');
+  await t('payment identity: the reference is read back from the evidence; no reference is flagged, not dropped', async () => {
+    assert.strictEqual(CT.paymentRef({ evidence: ev('ach-123', 'x') }), 'ACH-123');
+    assert.strictEqual(CT.paymentRef({ evidence: 'cheque 1001' }), null);
+    assert.strictEqual(CT.paymentRef({ evidence: 'ref:ach-9 — typed by hand' }), 'ACH-9', 'references compare without case');
+    const twice = run({ history: H4(), statements: [STMT(9, '2026-09', SEPT)], events: [P(1, { source_id: 9, amount: 336.33, evidence: 'ref:ach-9 — a' }), P(2, { source_id: 9, amount: 336.33, evidence: 'ref:ACH-9 — b' })] });
+    assert.strictEqual(twice.summary.paid, 336.33, 'ach-9 and ACH-9 are one remittance');
+    const r = run({ history: H4(), statements: [STMT(9, '2026-09', SEPT)], events: [P(1, { source_id: 9, amount: 336.33, evidence: 'cheque 1001' })] });
+    assert.strictEqual(r.summary.paid, 336.33); assert.ok(r.payment_problems.some(p => /no remittance reference/.test(p.text)));
+  });
+  await t('statement payment + the same remittance recorded against an order = ONE payment (allocation, never extra money)', async () => {
+    const r = run({ history: H4(), statements: [STMT(9, '2026-09', SEPT)], events: [P(1, { source_id: 9, amount: 336.33, evidence: ev('ACH1') }), P(2, { order_number: '6698', amount: 39.6, evidence: ev('ACH1') })] });
+    assert.strictEqual(r.summary.paid, 336.33, 'not 375.93');
+    assert.strictEqual(r.orders.find(o => o.order === '6698').paid, 39.6); assert.strictEqual(r.statements[0].payment_state, 'paid_in_full');
+    assert.strictEqual(r.unallocated.length, 0);
+    const H3 = H4().filter(h => h.order !== '7060');
+    const nos = run({ history: H3, statements: [STMT(9, '2026-09', SEPT)], events: [P(1, { source_id: 9, amount: 336.33, evidence: ev('ACH1') })] });
+    assert.strictEqual(nos.summary.paid, 243); assert.strictEqual(nos.unallocated.length, 1); assert.strictEqual(nos.unallocated[0].amount, 93.33, 'paid for a line with no sale: shown, not credited');
+  });
+  await t('the same remittance entered twice for the same target is counted once and listed', async () => {
+    const r = run({ history: H4(), statements: [STMT(9, '2026-09', SEPT)], events: [P(1, { source_id: 9, amount: 336.33, evidence: ev('ACH1') }), P(2, { source_id: 9, amount: 336.33, evidence: ev('ach1', 'again') })] });
+    assert.strictEqual(r.summary.paid, 336.33); assert.strictEqual(r.statements[0].paid, 336.33); assert.strictEqual(r.duplicates.length, 1);
+    const o = run({ history: H4(), statements: [STMT(9, '2026-09', SEPT)], events: [P(1, { order_number: '6698', amount: 39.6, evidence: ev('R7') }), P(2, { order_number: '6698', amount: 39.6, evidence: ev('R7') })] });
+    assert.strictEqual(o.orders.find(x => x.order === '6698').paid, 39.6);
+  });
+  await t('an order not on the remittance\'s statement is refused as an allocation (not counted twice)', async () => {
+    const r = run({ history: H4().concat([HIST(5804, 320, '2026-05-02')]), statements: [STMT(9, '2026-09', SEPT)], events: [P(1, { source_id: 9, amount: 336.33, evidence: ev('ACH1') }), P(2, { order_number: '5804', amount: 28.8, evidence: ev('ACH1') })] });
+    assert.strictEqual(r.summary.paid, 336.33); assert.strictEqual(r.orders.find(o => o.order === '5804').paid, 0); assert.ok(r.payment_problems.some(p => /not on statement/.test(p.text)));
+  });
+  await t('partial remittance: allocations count, the rest of the payment stays unallocated, the shortfall is confirmed (statement level)', async () => {
+    const r = run({ history: H4(), statements: [STMT(9, '2026-09', SEPT)], events: [P(1, { source_id: 9, amount: 200, evidence: ev('CHK55') }), P(2, { order_number: '6737', amount: 118.8, evidence: ev('CHK55') })] });
+    const S = r.summary; assert.strictEqual(S.paid, 118.8); assert.strictEqual(r.statements[0].payment_state, 'partial');
+    assert.strictEqual(r.unallocated[0].amount, 81.2); assert.strictEqual(S.confirmed_unpaid, 136.33, '336.33 − 200');
+    assert.strictEqual(r2x(S.paid + S.confirmed_unpaid + S.payment_unknown), S.earned, 'earned splits exactly');
+    // allocations above the remittance are not credited
+    const over = run({ history: H4(), statements: [STMT(9, '2026-09', SEPT)], events: [P(1, { source_id: 9, amount: 100, evidence: ev('C1') }), P(2, { order_number: '6737', amount: 118.8, evidence: ev('C1') })] });
+    assert.strictEqual(over.summary.paid, 100); assert.ok(over.payment_problems.some(p => /above the remittance|allocated to orders/.test(p.text)));
+  });
+  await t('order-level partial payment: the order shows confirmed short-paid; nothing else is called unpaid', async () => {
+    const r = run({ history: H4(), statements: [STMT(9, '2026-09', SEPT)], events: [P(1, { order_number: '6737', amount: 100, evidence: ev('R1') })] });
+    const o = r.orders.find(x => x.order === '6737'); assert.strictEqual(o.confirmed_unpaid, 18.8); assert.ok(o.labels.includes('confirmed_short_paid'));
+    assert.strictEqual(r.summary.confirmed_unpaid, 18.8); assert.strictEqual(r.orders.find(x => x.order === '6698').confirmed_unpaid, 0);
+  });
+  await t('corrections and reversals: a correction replaces, a reversal subtracts, a correction cannot move to another target', async () => {
+    const c = run({ history: H4(), statements: [STMT(9, '2026-09', SEPT)], events: [P(1, { order_number: '6698', amount: 39.6, evidence: ev('R1') }), P(2, { order_number: '6698', amount: 30, evidence: ev('R1', 'typo fixed'), supersedes_id: 1 })] });
+    assert.strictEqual(c.orders.find(o => o.order === '6698').paid, 30); assert.strictEqual(c.duplicates.length, 0);
+    const rv = run({ history: H4(), statements: [STMT(9, '2026-09', SEPT)], events: [P(1, { source_id: 9, amount: 336.33, evidence: ev('ACH1') }), P(2, { source_id: 9, amount: -336.33, evidence: ev('ACH1', 'returned') })] });
+    assert.strictEqual(rv.summary.paid, 0); assert.strictEqual(rv.statements[0].paid, 0);
+    const mv = run({ history: H4(), statements: [STMT(9, '2026-09', SEPT)], events: [P(1, { order_number: '6698', amount: 39.6, evidence: ev('R1') }), P(2, { order_number: '6737', amount: 39.6, evidence: ev('R1'), supersedes_id: 1 })] });
+    assert.ok(mv.payment_problems.some(p => /must stay on its original/.test(p.text))); assert.strictEqual(mv.orders.find(o => o.order === '6737').paid, 0);
+    assert.strictEqual(mv.orders.find(o => o.order === '6698').paid, 39.6, 'a refused correction does not cancel the original');
+  });
+  await t('guard: no reference, duplicate, allocation off the statement, over-allocation and a moved correction are refused before writing', async () => {
+    const rec = run({ history: H4().concat([HIST(5804, 320, '2026-05-02')]), statements: [STMT(9, '2026-09', SEPT)] });
+    const evs = [{ id: 1, kind: 'payment', source_id: 9, amount: 200, evidence: ev('ACH1') }, { id: 2, kind: 'payment', order_number: '6698', amount: 39.6, evidence: ev('R9') }];
+    assert.strictEqual(CT.paymentGuard(rec, evs, { source_id: 9, amount: 1 }).error, 'payment_ref_required');
+    assert.strictEqual(CT.paymentGuard(rec, evs, { source_id: 9, amount: 200, payment_ref: 'ach1' }).error, 'duplicate_payment');
+    assert.strictEqual(CT.paymentGuard(rec, evs, { order_number: '6698', amount: 39.6, payment_ref: 'R9' }).error, 'duplicate_payment');
+    assert.strictEqual(CT.paymentGuard(rec, evs, { order_number: '5804', amount: 28.8, payment_ref: 'ACH1' }).error, 'allocation_not_on_statement');
+    assert.strictEqual(CT.paymentGuard(rec, evs, { order_number: '6737', amount: 250, payment_ref: 'ACH1' }).error, 'over_allocated');
+    assert.strictEqual(CT.paymentGuard(rec, evs, { order_number: '6737', amount: 39.6, payment_ref: 'R9', supersedes_id: 2 }).error, 'correction_target_changed');
+    assert.strictEqual(CT.paymentGuard(rec, evs, { order_number: '6737', amount: 118.8, payment_ref: 'ACH1' }), null, 'a valid allocation passes');
+    assert.strictEqual(CT.paymentGuard(rec, evs, { source_id: 9, amount: -200, payment_ref: 'ACH1' }), null, 'a reversal of the same remittance passes');
+    assert.strictEqual(CT.paymentGuard(rec, evs, { order_number: '6698', amount: 30, payment_ref: 'R9', supersedes_id: 2 }), null, 'a correction on the same order passes');
+  });
+  await t('stored rows say order_number: review decisions and order payments still find their order', async () => {
+    const r = run({ history: H4(), statements: [STMT(9, '2026-09', SEPT)], events: [{ id: 1, kind: 'payment', order_number: '6698', amount: 39.6, evidence: ev('R1'), actor: 'x', created_at: 'x' }] });
+    assert.strictEqual(r.orders.find(o => o.order === '6698').paid, 39.6);
+  });
+  await t('#7060: an unmatched statement line stays in review; a decision naming a sale not on file creates nothing', async () => {
+    const H3 = [HIST(6698, 440, '2026-06-10'), HIST(6737, 1320, '2026-07-01'), HIST(6800, 940, '2026-07-15')];
+    const r = run({ history: H3, statements: [STMT(9, '2026-09', SEPT)], events: [{ id: 1, kind: 'review', source_id: 9, order_number: '7060', decision: 'matched_to:7060', reason: 'it is the August order', actor: 'x', created_at: 'x' }] });
+    assert.strictEqual(r.review.length, 1); assert.ok(r.review[0].decision_problem); assert.strictEqual(r.summary.review_lines, 1);
+    assert.ok(!r.orders.some(o => o.order === '7060'), 'no sale created'); assert.strictEqual(r.summary.earned, r2x(2700 * 0.09));
+  });
+  await t('zero-dollar orders earn nothing, are never "short-paid" and never "unknown"', async () => {
+    const r = run({ exports: [SALE(7191, 0, '2026-09-18'), SALE(7139, 1067, '2026-09-04')], statements: [STMT(9, '2026-09', SEPT)] });
+    const z = r.orders.find(o => o.order === '7191'); assert.strictEqual(z.earned, 0); assert.strictEqual(z.payment_unknown, 0); assert.strictEqual(z.confirmed_unpaid, 0);
   });
   console.log(`contract-commission: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })();

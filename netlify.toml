@@ -87,6 +87,11 @@
 [functions."report-import-cron"]
   schedule = "40 * * * *"
 
+# MI operations (2026-10-13): dealer intelligence (import + publish, verified matches only) and Angelo's notifications
+# (hourly activity when something happened, daily digest ~07:50 CT, monthly reconciliation on the 15th).
+[functions."mi-ops-cron"]
+  schedule = "50 * * * *"
+
 # Zoho two-way auto-sync — the outbound (portal→Zoho) engine + inbound pipeline-stage pull.
 # Every 15 min it pushes ONLY the dealers / contacts / opportunities whose content changed
 # since the last run (per-record hashes in app_settings.zoho_push_hashes), so it's cheap and

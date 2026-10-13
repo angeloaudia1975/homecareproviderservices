@@ -123,6 +123,20 @@ This does not change who runs production SQL: Angelo still runs every migration 
   trips on an unrelated missing include `blocks/hero.njk`; verify pages by rendering
   in isolation if needed.)
 - Scheduled tasks use the `create_trigger` MCP, never the local Cron tools.
+- **Standing development workflow — direct to main (RULE, Angelo 2026-10-13 11:11 CT; applies across his projects;
+  supersedes the "No PR is merged without Angelo's explicit approval" rule in §20 for routine code).** Pull requests are
+  no longer the default. Steps: (1) identify the repo, remote, branch, working tree; (2) fetch + pull the latest main,
+  never overwriting others' work; (3) change the code; (4) run all relevant tests, build, regression and security checks;
+  (5) if green, commit directly to main and push; (6) confirm Netlify publishes that commit; (7) test the live app and
+  report; (8) a failing check is fixed BEFORE pushing. Never force-push or bypass repository protections. Standing
+  authorization covers tested application code, bug fixes, UI improvements, documentation and maintenance. A branch / PR
+  only when Angelo asks, repository protection requires one, or there is substantial risk. Reports: concise results,
+  deploy status, exceptions, completion % — no merge-approval requests.
+  **Still NOT authorized by it (separate approval each time):** destructive or financial database migrations (Angelo still
+  runs all production SQL); importing, deleting, restoring or reassigning financial records; turning on financial
+  posting / payment switches; publishing or replacing manufacturer product content or images; changing dealer ownership
+  or verified account assignments; disabling production security protections. Code may ship with those operations still
+  disabled. All data-protection rules (RULE 0.1, 14, 17, 18, 19, 20) are unchanged.
 
 ---
 
@@ -2407,9 +2421,74 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   Live 22:30 CT: 63 orders, 57 eligible, $45,180.50 sales → $4,066.25 earned; $243.00 reported due matched (6698, 6737,
   6800) + $93.33 in review (7060 Williams Brothers — no sale on file); paid $0; 0 overdue, 51 before the first statement;
   record #8 preview 6 orders / 7 lines / $2,159.00 / $194.31 earned; 0 commission-lane rows.
+  **Phase F installed (Angelo verified production 2026-10-13 10:50 CT: table, RLS, no public access, both guard triggers,
+  0 events) — never ask him to run mi_f_commission_events.sql again.** Public-key probe run by Claude 2026-10-13 (public
+  storefront key only, verified first): ALL 5 BLOCKED (401).
+  **Final financial-integrity rules (Angelo, 2026-10-13 10:50 CT — RULES):** (1) **No "Outstanding".** Earned splits into
+  Confirmed paid (evidence) + Confirmed unpaid (ONLY where a recorded remittance shows a shortfall: an order paid less than
+  its statement line, or a partial statement remittance — statement level when not allocated) + Payment status unknown
+  (no record either way). Never present earned as collectible or overdue debt. Historical sales HCPS entered still count
+  as contractual earnings, labelled "original order status not captured". (2) **One remittance is counted once.** Every
+  payment carries a remittance reference (stored as `ref:<REF> — <evidence>`; case-insensitive). Order-level entries under
+  the same reference as a statement payment are ALLOCATIONS of it (must be orders on that statement; may not exceed it);
+  the same reference + target + sign twice = one payment (listed, not added); a negative amount is a reversal; a correction
+  supersedes and must stay on its original statement/order — a correction that moves it is refused, not counted, and does
+  NOT cancel the original. The API refuses (before writing) a missing reference, a duplicate, an allocation off the
+  statement, over-allocation and a moved correction (`paymentGuard`); the reconciliation counts safely regardless. Money paid
+  for a statement line with no sale is shown as received but credited to no sale. (3) **#7060** ($93.33 on SR032 #9) stays
+  in Needs Review until the original sale is verified; a "matched_to" decision naming an order with no sale changes nothing.
+  (4) **September stays separate:** the 7 quarantined rows stay quarantined; record #8 is shown BLOCKED in the posting
+  preview until the disposition AND that exact import plan are approved; SR032 #9 stays statement evidence only.
+  Built on branch `mi-f2-commission-integrity` (not merged): `_contract_commission.js` (payment model, `paymentGuard`,
+  order_number fix — stored rows say order_number, the reconciliation read only `order`), `_commission_recon_load.js`
+  (quarantine block), mfr-reports-api (guard + reference), Commission Reconciliation page (five figures, remittance field,
+  order-level payment, duplicates / problems lists). Tests: contract-commission 30, commission-recon api 14, ui 4 widths,
+  mutants 43/43, mi-f pg 9; live-data scenarios on the real 63 Strongback orders 17/17 (scratch only — real figures are
+  never committed: the repo is public).
   **Reconsider rule proven live (run #28, 21:20 CT):** Ovation's 2609 statement (received 12 Oct 11:10 CT, captured under the
   then-draft profile) was reconsidered once and registered as **record #11** (commission_statement 2026-09, received
   2026-10-12, no import); 0 exceptions; Needs attention 0.
+- **OPERATIONAL ACTIVATION (Angelo, 2026-10-13 11:54 CT) — supersedes the earlier "switch stays OFF" activation
+  restrictions, NOT the financial-integrity, security or exception safeguards.** Angelo turned ON and verified
+  `mi_report_capture`, `mi_import_v2`, `mi_auto_import`, `mi_commission_v2`, `mi_intel_publish`. Never turn one back off
+  just because an earlier rule said it should stay off. Goal: AUTOMATE EVERYTHING RELIABLE; NOTIFY HIM OF ACTIVITY;
+  ESCALATE ONLY GENUINE EXCEPTIONS — not a dashboard that waits for manual imports. Rules:
+  (1) Order exports import automatically when every check passes; record #8 still needs its exact-plan approval (never
+  bypassed). (2) Commission statements are processed automatically through the EXISTING guarded importer
+  (`hcps_commission_file_apply`), with the importer's own parsing, duplicate, cross-lane, paid-period and control checks:
+  a clean dry run with no decisions needed is applied and linked to its register record; a statement identical to rows
+  already in HCPS is recorded as already imported (no write); anything else (existing month, unmatched dealers, no saved
+  column mapping, multi-month file, unreadable file) is an exception for Angelo. Strongback: earned = contract 9%,
+  reported due = SR032, paid = payment evidence only; SR032 is never posted to monthly_sales; one commission is never
+  counted twice. (3) Dealer intelligence: reliable, validated intelligence is applied automatically and published only
+  on VERIFIED dealer matches; uncertain dealers, protected relationships (holds), conflicting assignments and
+  unverified information wait for Angelo. (4) Native HCPS notifications: report arrived/registered, records applied,
+  processing failed, exception needs action — batched, deduplicated, with links; one daily operational digest; the
+  monthly reconciliation on the 15th. (5) Manufacturer coverage: trial and activate each validated report type; never
+  treat price lists, acknowledgments or correspondence as statements. (6) Manufacturer Center never automatically
+  chooses, replaces or publishes product images or manufacturer product content — those stay Angelo's. (7) "100%
+  operational" only after automatic commission processing, dealer-intelligence processing and notifications are
+  DEMONSTRATED on real scheduled runs. Financial baseline to reconcile against: 12,575 rows / $11,381,594.85 /
+  $519,934.40.
+- **Operational activation — live results 2026-10-13 (main 9d4c471 → 97a2543, Published).** Commission statements go
+  through `_commission_auto.js` (hourly :40 in report-import-cron, after order exports): the existing guarded
+  `hcps_commission_file_apply` dry run → apply only with no problems and no unmatched dealers → result must equal the dry
+  run (else batch rollback) → link to the register record (else rollback). A statement identical to rows already in HCPS
+  = "already in HCPS" (accepted, nothing written); a record whose file was loaded by hand = linked to that one batch;
+  Strongback SR032 = accepted as reported-due evidence only. Readers: `_commission_rows.js` (verbatim copies of the
+  Commission Report Import page's Ohio / Access4U readers, drift-extracted by `test/commission-rows.extract.js`, + saved
+  `ctpl:<slug>` templates; no template = held). Dealer intelligence: `mfr-intel-api runAutoIntel` (hourly :50 in
+  mi-ops-cron): accept → import → publish when the report reads cleanly and its prepared date matches; Dealer 360 card
+  (crm-api `mfr_intel`) shows only matched snapshots of PUBLISHED reports, never a dealer two printed lines point at.
+  Notifications: `_mi_notify.js` from GRAPH_SENDER to MI_NOTIFY_TO — hourly activity mail only when something happened,
+  daily digest ≥ 07:00 CT, reconciliation on the 15th; state in app_settings `mi_notify_state` (moves only after Graph
+  accepts; `sent_log` kept; copies saved to Sent Items); Report History capture card shows the last send.
+  First runs: 12:40 — #9 SR032 accepted as evidence ($3,737 / $336.33), #10 Access4U already in HCPS (identical to the
+  by-hand import), #11 Ovation HELD (no saved column template), #8 still needs its plan approval; nothing written to
+  monthly_sales. 12:50 — record 7 accepted + published: 15 verified dealers on Dealer 360, 7 review, Wyatt's held,
+  2 not HCPS dealers; daily digest for 2026-10-13 accepted by Graph. Tests: commission-auto.pg 20 (+ mutants 14/14),
+  commission-rows 7, mi-notify 9, mfr-intel-d360 5, mi1c-api 35. Golden + PediFix stay draft (no statement in the
+  mailbox to trial).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
@@ -2860,6 +2939,8 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
 - **No PR is merged without Angelo's explicit approval (RULE, Angelo 12 Oct 2026 21:00 CT) — permissions, security,
   documentation and maintenance changes included.** Corollary: nothing is pushed straight to `main` either (that is a
   merge without a PR); every change, CLAUDE.md notes included, rides a branch + PR and waits for his approval.
+  **SUPERSEDED for routine code on 13 Oct 2026 11:11 CT** by the direct-to-main workflow (§7 "Standing development
+  workflow"); kept here as history.
 - **M3.1 development APPROVED (Angelo, 12 Oct 2026 21:00 CT): branch, local tests and a DRAFT PR only.** One atomic
   audited operation saves a lesson's screens and their product-fact links: lock the draft version and the lesson BEFORE
   comparing the starting content; refuse a conflicting save without ever writing over the other editor's work; derive
@@ -2917,7 +2998,8 @@ source is the committed `.claude/settings.json` (shared project settings; person
   PGUSER=postgres — no password in the repo); `sha256sum`, `md5sum`, `tail`; WebSearch; WebFetch of documentation domains
   and the public site; read-only Chrome tools (tabs, navigate, read_page, get_page_text, find, console / network reads);
   read-only memory / Docs / repo / scheduled-task lookups.
-- **Not pre-approved (unchanged):** `git push` (= production deploy), Chrome clicks / typing / javascript / forms /
+- **Not pre-approved in the settings file:** `git push` (= production deploy; since 13 Oct 2026 11:11 CT Angelo's standing
+  authorization covers pushing TESTED routine code to main — §7 — but the permission prompt is kept as a last check), Chrome clicks / typing / javascript / forms /
   uploads, Artifact publishing, memory and Docs writes, scheduled-task writes, adding repos, device tools.
 - **Always ask:** `psql` to any `postgres://` / `postgresql://` URL, `gh pr merge`, `netlify deploy`, `netlify env:set|unset`,
   `supabase db push|reset`, `supabase migration up`. **Always refused:** force push (`--force`, `-f`); reading `.env*`,
