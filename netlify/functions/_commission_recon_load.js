@@ -21,6 +21,12 @@ async function load(slug, deps) {
     deps.sbGetAll(`monthly_sales?manufacturer=eq.${e(slug)}&or=(source.eq.commission,and(source.is.null,external_ref.is.null))&select=id,period,amount,commission,invoice_no`, "id"),
     deps.sbGetAll(`mfr_sources?manufacturer=eq.${e(slug)}&kind=in.(sales_export,commission_statement)&status=in.(received,accepted)&select=id,kind,title,file_name,file_sha256,storage_path,received_date,report_period_start,report_period_end,status,import_batch_id`, "id"),
     deps.sbGetOptional(`mfr_commission_events?manufacturer=eq.${e(slug)}&select=*&order=id`)]);
+  // September safeguard: an export of a month that holds quarantined rows is never postable here — it needs the
+  // President's disposition AND his approval of that exact import plan (Phase E). Read-only; nothing is changed.
+  const [quar, dispo] = await Promise.all([
+    deps.sbGetOptional(`monthly_sales_quarantine?manufacturer=eq.${e(slug)}&restored_at=is.null&select=id,period,source_file`),
+    deps.sbGetOptional(`mfr_quarantine_dispositions?manufacturer=eq.${e(slug)}&select=id,period,release_source_id`)]);
+  if (quar === null) { const x = new Error("monthly_sales_quarantine could not be read"); throw x; }
   const problems = [];
   const read = async s => {
     if (!s.storage_path || !s.file_sha256) return { error: "no stored file" };
@@ -65,7 +71,12 @@ async function load(slug, deps) {
     exports: exportInfo.filter(x => !x.source.import_batch_id).map(x => {
       const fresh = x.sales.filter(o => !inLedger.has(o.order_key));
       const eligible = fresh.map(o => rec.orders.find(r => r.order_key === o.order_key)).filter(Boolean);
-      return { source_id: x.source.id, file_name: x.source.file_name, period: String(x.source.report_period_start || "").slice(0, 7),
+      const per = String(x.source.report_period_start || "").slice(0, 7);
+      const q = (quar || []).filter(r => String(r.period || "").slice(0, 7) === per);
+      const d = (dispo || []).find(r => String(r.period || "").slice(0, 7) === per);
+      const blocked = q.length ? { quarantined_rows: q.length, disposition: d ? (d.release_source_id === x.source.id ? "recorded — releases this export" : "recorded — does not release this export") : "not recorded",
+        text: `${q.length} quarantined row(s) sit in ${per}. This export is not posted until the President records the quarantine disposition AND approves this exact import plan (Ship-To Review → Import check). The quarantined rows stay quarantined.` } : null;
+      return { source_id: x.source.id, file_name: x.source.file_name, period: per, blocked,
         orders: fresh.length, lines: fresh.reduce((s, o) => s + o.lines, 0), amount: Math.round(fresh.reduce((s, o) => s + o.amount, 0) * 100) / 100,
         earned: Math.round(eligible.reduce((s, o) => s + o.earned, 0) * 100) / 100,
         not_eligible: eligible.filter(o => !o.earned && o.amount).map(o => ({ order: o.order, why: o.eligibility_text })),

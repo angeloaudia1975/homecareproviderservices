@@ -45,7 +45,8 @@ const fails = []; const check = (c, w) => { if (!c) { fails.push(w); console.log
   for (const w of [1280, 768, 390, 360]) {
     const page = await open(w, 'president');
     const txt = await page.locator('#body').textContent();
-    check(/Earned — Contract Rate 9%/.test(txt) && /Reported due \(SR032\)/.test(txt) && /Paid \(with evidence\)/.test(txt) && /Outstanding/.test(txt), `${w}px: four stages shown`);
+    check(/Earned — Contract Rate 9%/.test(txt) && /Reported due \(SR032\)/.test(txt) && /Confirmed paid \(with evidence\)/.test(txt) && /Confirmed unpaid/.test(txt) && /Payment status unknown/.test(txt) && !/Outstanding/i.test(txt), `${w}px: earned, reported due, confirmed paid, confirmed unpaid, unknown — no "Outstanding"`);
+    check(/None of it is shown as collectible or overdue debt/.test(txt) && /original order status was not captured/.test(txt), `${w}px: unknown is not debt; historical sales' status not captured`);
     check(/never added together/.test(txt) && !/Estimated/.test(txt), `${w}px: "never added together"; nothing called an estimate`);
     check(/Needs review/.test(txt) && /9999/.test(txt), `${w}px: the unmatched statement line is in review`);
     check(/Posting preview — nothing is posted/.test(txt) && /stay out of monthly_sales/.test(txt), `${w}px: posting preview, statements not posted`);
@@ -59,10 +60,10 @@ const fails = []; const check = (c, w) => { if (!c) { fails.push(w); console.log
     check(/strongback-mobility/.test(t2), `${w}px: drilldown by manufacturer`);
     const over2 = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth); check(over2 <= 0, `${w}px: still no horizontal scroll after drilldowns (${over2}px)`);
     if (w === 390) {
-      const n0 = calls.length; await page.click('[data-pay="0"]'); await page.fill('#pa', '336.33'); await page.fill('#pd', '2026-10-15'); await page.fill('#pe', 'ACH ref 1'); await page.fill('#pr', 'Strongback paid September in full');
+      const n0 = calls.length; await page.click('[data-pay="0"]'); await page.fill('#pref', 'ACH-1015'); await page.fill('#pa', '336.33'); await page.fill('#pd', '2026-10-15'); await page.fill('#pe', 'ACH ref 1'); await page.fill('#pr', 'Strongback paid September in full');
       const box = await page.locator('#pgo').boundingBox(); check(box && box.height >= 44, '390px: payment button ≥ 44px tall');
       await page.click('#pgo'); await page.waitForTimeout(200);
-      const ev = calls.slice(n0).filter(c => c[1] === 'commission_event'); check(ev.length === 1 && ev[0][2].kind === 'payment' && ev[0][2].source_id === 9 && ev[0][2].amount === '336.33', '390px: exactly one payment event, for statement #9');
+      const ev = calls.slice(n0).filter(c => c[1] === 'commission_event'); check(ev.length === 1 && ev[0][2].kind === 'payment' && ev[0][2].source_id === 9 && ev[0][2].amount === '336.33' && ev[0][2].payment_ref === 'ACH-1015', '390px: exactly one payment event, for statement #9, with its remittance reference');
     }
     await page.close();
   }

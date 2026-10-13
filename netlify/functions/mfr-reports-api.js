@@ -19,7 +19,8 @@
 //   POST {action:"download", id}                                          → short-lived signed URL (2 minutes)
 //   POST {action:"orphans"}  → READ-ONLY: stored report files no register record points to (see below)
 //   POST {action:"commission_recon", manufacturer?}  → READ-ONLY contractual commission reconciliation (Strongback)
-//   POST {action:"commission_event", kind:"payment"|"review", …}  → President only; payment evidence / review decision
+//   POST {action:"commission_event", kind:"payment"|"review", …}  → President only; payment evidence (payment_ref required:
+//        one remittance counted once; duplicates / target-changing corrections / over-allocation refused) or review decision
 //
 // NOT in MI-1b: Sales Report Import and Commission Report Import do not register their files here yet. That is a
 // later, separately approved unit; until then this register holds only the files a person registers on the page.
@@ -341,12 +342,13 @@ exports.handler = async (event) => {
 
   // Contractual commission reconciliation (Angelo, 2026-10-12 22:00 CT; CLAUDE.md §18). READ-ONLY: Earned (contract rate ×
   // eligible sales) · Reported due (the manufacturer's statements) · Paid (recorded evidence only) · Outstanding, by order.
+  const reconDeps = () => ({ sbGet, sbGetAll, sbGetOptional, today,
+    fetchObject: async p => { const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${p}`, { headers: H() }); if (!r.ok) throw new Error("storage " + r.status); return Buffer.from(await r.arrayBuffer()); } });
   if (b.action === "commission_recon") {
     const slug = clean(b.manufacturer, 80) || "strongback-mobility";
     try {
       const L = require("./_commission_recon_load.js");
-      const rec = await L.load(slug, { sbGet, sbGetAll, sbGetOptional, today,
-        fetchObject: async p => { const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${p}`, { headers: H() }); if (!r.ok) throw new Error("storage " + r.status); return Buffer.from(await r.arrayBuffer()); } });
+      const rec = await L.load(slug, reconDeps());
       return json(200, Object.assign({ ok: true, read_only: true, manufacturer: slug }, rec));
     } catch (x) {
       if (x.code === "no_contract") return json(422, { error: "no_contract", message: "No contract rate is recorded for this manufacturer — only Strongback is tracked this way." });
@@ -359,7 +361,19 @@ exports.handler = async (event) => {
     const slug = clean(b.manufacturer, 80) || "strongback-mobility";
     const CT = require("./_contract_commission.js"); if (!CT.contractFor(slug)) return json(422, { error: "no_contract" });
     const p = { manufacturer: slug, kind: clean(b.kind, 20), source_id: b.source_id || null, order_number: clean(b.order_number, 60), amount: b.amount == null || b.amount === "" ? null : Number(b.amount),
-      paid_on: clean(b.paid_on, 10), evidence: clean(b.evidence, 400), decision: clean(b.decision, 80), reason: clean(b.reason, 1000), supersedes_id: b.supersedes_id || null, actor: "staff:" + actor };
+      paid_on: clean(b.paid_on, 10), evidence: clean(b.evidence, 300), decision: clean(b.decision, 80), reason: clean(b.reason, 1000), supersedes_id: b.supersedes_id || null, actor: "staff:" + actor };
+    if (p.kind === "payment") {
+      // Payment identity + idempotency (2026-10-13): every payment names its remittance; the same remittance against the same
+      // statement/order is refused, allocations must be orders on that remittance's statement and may not exceed it, and a
+      // correction stays on its original target. Checked against the current reconciliation before anything is written.
+      let rec, evs;
+      try { rec = await require("./_commission_recon_load.js").load(slug, reconDeps()); evs = await sbGetOptional(`mfr_commission_events?manufacturer=eq.${encodeURIComponent(slug)}&select=*&order=id`); }
+      catch (x) { return json(503, { error: "unreadable", message: "The current records could not be read — nothing was written." }); }
+      if (evs === null) return json(503, { error: "not_installed", message: "Recording payments needs supabase/mi_f_commission_events.sql first." });
+      const bad = CT.paymentGuard(rec, evs, { source_id: p.source_id, order_number: p.order_number, amount: p.amount, payment_ref: b.payment_ref, supersedes_id: p.supersedes_id });
+      if (bad) return json(bad.status, { error: bad.error, message: bad.message });
+      p.evidence = CT.evidenceWithRef(b.payment_ref, p.evidence);
+    }
     const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/hcps_mfr_commission_event`, { method: "POST", headers: { ...H(), "content-type": "application/json" }, body: JSON.stringify({ p }) });
     const text = await r.text(); let body; try { body = JSON.parse(text); } catch (x) { body = { message: text }; }
     if (r.ok) return json(200, body);

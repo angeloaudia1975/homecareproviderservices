@@ -2407,6 +2407,30 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   Live 22:30 CT: 63 orders, 57 eligible, $45,180.50 sales → $4,066.25 earned; $243.00 reported due matched (6698, 6737,
   6800) + $93.33 in review (7060 Williams Brothers — no sale on file); paid $0; 0 overdue, 51 before the first statement;
   record #8 preview 6 orders / 7 lines / $2,159.00 / $194.31 earned; 0 commission-lane rows.
+  **Phase F installed (Angelo verified production 2026-10-13 10:50 CT: table, RLS, no public access, both guard triggers,
+  0 events) — never ask him to run mi_f_commission_events.sql again.** Public-key probe run by Claude 2026-10-13 (public
+  storefront key only, verified first): ALL 5 BLOCKED (401).
+  **Final financial-integrity rules (Angelo, 2026-10-13 10:50 CT — RULES):** (1) **No "Outstanding".** Earned splits into
+  Confirmed paid (evidence) + Confirmed unpaid (ONLY where a recorded remittance shows a shortfall: an order paid less than
+  its statement line, or a partial statement remittance — statement level when not allocated) + Payment status unknown
+  (no record either way). Never present earned as collectible or overdue debt. Historical sales HCPS entered still count
+  as contractual earnings, labelled "original order status not captured". (2) **One remittance is counted once.** Every
+  payment carries a remittance reference (stored as `ref:<REF> — <evidence>`; case-insensitive). Order-level entries under
+  the same reference as a statement payment are ALLOCATIONS of it (must be orders on that statement; may not exceed it);
+  the same reference + target + sign twice = one payment (listed, not added); a negative amount is a reversal; a correction
+  supersedes and must stay on its original statement/order — a correction that moves it is refused, not counted, and does
+  NOT cancel the original. The API refuses (before writing) a missing reference, a duplicate, an allocation off the
+  statement, over-allocation and a moved correction (`paymentGuard`); the reconciliation counts safely regardless. Money paid
+  for a statement line with no sale is shown as received but credited to no sale. (3) **#7060** ($93.33 on SR032 #9) stays
+  in Needs Review until the original sale is verified; a "matched_to" decision naming an order with no sale changes nothing.
+  (4) **September stays separate:** the 7 quarantined rows stay quarantined; record #8 is shown BLOCKED in the posting
+  preview until the disposition AND that exact import plan are approved; SR032 #9 stays statement evidence only.
+  Built on branch `mi-f2-commission-integrity` (not merged): `_contract_commission.js` (payment model, `paymentGuard`,
+  order_number fix — stored rows say order_number, the reconciliation read only `order`), `_commission_recon_load.js`
+  (quarantine block), mfr-reports-api (guard + reference), Commission Reconciliation page (five figures, remittance field,
+  order-level payment, duplicates / problems lists). Tests: contract-commission 30, commission-recon api 14, ui 4 widths,
+  mutants 43/43, mi-f pg 9; live-data scenarios on the real 63 Strongback orders 17/17 (scratch only — real figures are
+  never committed: the repo is public).
   **Reconsider rule proven live (run #28, 21:20 CT):** Ovation's 2609 statement (received 12 Oct 11:10 CT, captured under the
   then-draft profile) was reconsidered once and registered as **record #11** (commission_statement 2026-09, received
   2026-10-12, no import); 0 exceptions; Needs attention 0.
