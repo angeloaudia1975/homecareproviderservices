@@ -2330,6 +2330,13 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   so #10 stays "registered, not imported" while the month shows in HCPS (legacy imports never link to the register). `mi_auto_import` still OFF.
   **Phase E public-key probe ALL 21 BLOCKED (Angelo, 2026-10-12 21:42 CT; key verified first; every check 401):** the 4
   tables (dispositions, approvals, auto-import log, monthly_sales_quarantine) × read/insert/update/delete + the 5 RPCs. MI 95%.
+  **Strongback statement vs order export (read 2026-10-12 22:00 CT, Angelo's question):** the order export (record #8,
+  "Angelo Sep Orders.csv") has NO commission column — order, status, subtotal, wholesale price, ship-to only; that is why
+  loading it through the Commission Report Import on Oct 10 produced 7 blank rows. Strongback's commission is ONLY on the
+  monthly SR032 statement (record #9, "2026-09 SR032.pdf"): orders 7060 Williams Brothers $1,037 / $93.33, 6698 Medmart $440 /
+  $39.60, 6737 Medmart $1,320 / $118.80, 6800 Mobility Plus Alpharetta $940 / $84.60 = $3,737 / $336.33 (9%). These are NOT the
+  orders created in September (7139, 7174, 7191, 7192, 7196, 7238) — the statement pays on earlier orders, so a month's
+  statement and that month's order export cover different orders; the 9% on an export is an estimate, never the paid figure.
   **Reconsider rule proven live (run #28, 21:20 CT):** Ovation's 2609 statement (received 12 Oct 11:10 CT, captured under the
   then-draft profile) was reconsidered once and registered as **record #11** (commission_statement 2026-09, received
   2026-10-12, no import); 0 exceptions; Needs attention 0.
