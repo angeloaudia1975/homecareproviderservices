@@ -99,7 +99,11 @@ function buildPlan(input){
   const approvedFor = p => { const a = approvals[p.page_key]; return !!(a && a.complete && a.publish && approved[p.page_key]); };
   const ready = (pages || []).filter(p => isReady(p) && approvedFor(p));
   const awaiting = (pages || []).filter(p => isReady(p) && !approvedFor(p));
-  const held = (pages || []).filter(p => !isReady(p));
+  /* (2026-10-12) a page an earlier publication already made live is neither held nor part of this plan: it stays live
+     exactly as it is (its row is in the hash, so a change to it invalidates the plan) */
+  const isLive = p => p.status === "published";
+  const live = (pages || []).filter(isLive);
+  const held = (pages || []).filter(p => !isReady(p) && !isLive(p));
   const rowOf = k => (drafts || []).find(r => r && r.page_key === k) || null;
   const readyOut = [];
   for(const p of ready){
@@ -130,6 +134,8 @@ function buildPlan(input){
   const heldOut = held.map(p => ({ page_key: p.page_key, name: p.name, status: p.status, skus: p.skus.map(s => s.code),
     issues: (p.issues || []).map(i => i.title), holds: Object.keys(p.resolutions || {}).map(k => k + ":" + p.resolutions[k].choice + "#" + p.resolutions[k].id),
     row: rowOf(p.page_key) }));
+  const liveOut = live.map(p => ({ page_key: p.page_key, name: p.name, skus: p.skus.map(s => s.code), row: rowOf(p.page_key) }));
+  liveOut.forEach(h => { if(!h.row || !ENRICH.isVisibleRow(h.row)) problems.push(h.name + ": shown as published but its page is not visible"); });
   const awaitOut = awaiting.map(p => { const a = approvals[p.page_key];
     return { page_key: p.page_key, name: p.name, skus: p.skus.map(s => s.code), status: a ? a.status : "waiting_for_approval", waiting: a ? a.waiting : ["(not reviewed)"], row: rowOf(p.page_key) }; });
   if(!readyOut.length) problems.push(awaitOut.length ? "no page has the President's content & image approval yet (" + awaitOut.map(a => a.name).join(", ") + ")" : "no Ready page to publish");
@@ -140,7 +146,7 @@ function buildPlan(input){
   const s = preview ? preview.summary : {};
   const summary = { cards_today: s.cards_today, cards_after: s.cards_proposed, active_skus: s.active_skus, accounted: s.accounted, missing: s.missing,
     duplicates: s.duplicates, commercial_changes: s.commercial_changes, retired_excluded: s.retired_excluded || [],
-    enriched_pages_live: readyOut.length, held_on_current_cards: heldOut.length, waiting_for_approval: awaitOut.length,
+    enriched_pages_live: readyOut.length, already_live_unchanged: liveOut.length, held_on_current_cards: heldOut.length, waiting_for_approval: awaitOut.length,
     photos_promoted: readyOut.reduce((n, r) => n + r.promote.length, 0), duplicates_removed: readyOut.reduce((n, r) => n + r.deduped.length, 0) };
   const lineDecisions = (decisions || []).filter(d => d && (d.kind === "content_resolution" || d.kind === "enrichment_window" || d.kind === "content_approval"))
     .map(d => [d.id, d.kind, d.field, d.hcps_value, d.used_at || null]).sort((a, b) => a[0] - b[0]);
@@ -148,6 +154,7 @@ function buildPlan(input){
     ready: readyOut.map(r => ({ page_key: r.page_key, before: r.before, after: r.after, promote: r.promote.map(x => [x.from, x.path, x.sha]) })),
     held: heldOut.map(h => ({ page_key: h.page_key, status: h.status, issues: h.issues, holds: h.holds, row: h.row })),
     awaiting: awaitOut.map(h => ({ page_key: h.page_key, waiting: h.waiting, row: h.row })),
+    live: liveOut.map(h => ({ page_key: h.page_key, row: h.row })),
     decisions: lineDecisions, records: (records || []).slice().sort((a, b) => String(a.code).localeCompare(String(b.code))),
     meta: meta ? { enriched_only: meta.enriched_only === true, category_map: meta.category_map || null, freight_terms: meta.freight_terms || null, frozen: meta.frozen === true } : null,
     preview: preview ? { summary: preview.summary, skus: preview.skus, checks: preview.checks.map(c => [c.id, c.pass]) } : null };
@@ -157,8 +164,9 @@ function buildPlan(input){
     promote: readyOut.flatMap(r => r.promote.map(x => ({ page_key: r.page_key, from: x.from, to: x.to, path: x.path, sha: x.sha }))),
     held: heldOut.map(h => ({ page_key: h.page_key, name: h.name, skus: h.skus, issues: h.issues, holds: h.holds })),
     awaiting: awaitOut.map(h => ({ page_key: h.page_key, name: h.name, skus: h.skus, waiting: h.waiting })),
+    live_before: liveOut.map(h => h.page_key),
     selections: Object.fromEntries(readyOut.map(r => [r.page_key, r.selections])), summary };
-  return { publishable: !problems.length, problems, ready: readyOut, held: heldOut, awaiting: awaitOut, summary, plan_hash, approval };
+  return { publishable: !problems.length, problems, ready: readyOut, held: heldOut, awaiting: awaitOut, live: liveOut, summary, plan_hash, approval };
 }
 
 /* The report Angelo reads (no raw rows). */
@@ -168,7 +176,128 @@ function planReport(plan){
       promote: r.promote.map(x => ({ from: x.from, to: x.to, sha: x.sha.slice(0, 16), uses: x.uses, kept_current: !!x.kept_current })), deduped: r.deduped,
       after_photos: { main: r.after.image, gallery: r.after.images_gallery.map(g => g.url), card: r.after.card_image == null ? null : r.after.card_image, options: r.after.skus.filter(s => s.image).map(s => ({ sku: s.sku, option: s.size || "", image: s.image })) } })),
     held: plan.held.map(h => ({ page_key: h.page_key, name: h.name, status: h.status, skus: h.skus, issues: h.issues, holds: h.holds })),
-    awaiting: (plan.awaiting || []).map(h => ({ page_key: h.page_key, name: h.name, status: h.status, skus: h.skus, waiting: h.waiting })) };
+    awaiting: (plan.awaiting || []).map(h => ({ page_key: h.page_key, name: h.name, status: h.status, skus: h.skus, waiting: h.waiting })),
+    live_unchanged: (plan.live || []).map(h => ({ page_key: h.page_key, name: h.name, skus: h.skus })) };
+}
+
+/* ── CORRECTING A PUBLISHED PAGE (Angelo 2026-10-12, the Assurance correction) ────────────────────────────────────────
+   Once a line is the Gold Standard a published page changes only under a regression_fix. This plan is the dry run of
+   such a correction, built exactly like a publication (the same approval → execute → finalize path and database
+   function) but scoped by the regression_fix itself:
+     · the regression_fix names ONE page and the content areas it may correct (hcps_value: { scope: "content_correction",
+       page_key, areas }); it must be this line's, unspent;
+     · the corrected text is the President's, recorded as content_approval decisions that carry correction = <fix id>;
+     · "after" is the live row with ONLY those areas' fields replaced — every other field (title, photos, option photos,
+       catalog card image, documents, grouping/options, category, provenance) byte-for-byte as it is live;
+     · every other page of the line is in the hash: if any page changes, the approval is invalid;
+     · nothing commercial is touched (the dealer preview of the corrected line must show 0 commercial changes).
+   It never needs, uses or spends an enrichment window. */
+const CORRECTION_FIELDS = { description: ["description"], features: ["features", "clinical_applications"], specs: ["specs", "billing_codes"] };
+const strv = v => String(v == null ? "" : v).trim();
+function correctionFields(area, value){
+  const v = value || {};
+  if(area === "description") return { description: strv(v.text) || null };
+  if(area === "features") return { features: (Array.isArray(v.items) ? v.items : []).map(strv).filter(Boolean), clinical_applications: [] };
+  if(area === "specs") return { specs: (Array.isArray(v.items) ? v.items : []).filter(x => x && (strv(x.label) || strv(x.value))).map(x => ({ label: strv(x.label), value: strv(x.value) })), billing_codes: [] };
+  return null;
+}
+/* Is this decision a usable correction regression_fix for this line? (null = yes) */
+function correctionFixProblem(rf, slug){
+  if(!rf) return "no such regression_fix";
+  if(rf.kind !== "regression_fix") return "decision " + rf.id + " is a " + rf.kind + ", not a regression_fix";
+  if(rf.manufacturer !== slug) return "regression_fix " + rf.id + " belongs to " + rf.manufacturer + ", not " + slug;
+  if(rf.used_at) return "regression_fix " + rf.id + " is already used";
+  const v = rf.hcps_value || {};
+  if(v.scope !== "content_correction" || !v.page_key || !Array.isArray(v.areas) || !v.areas.length) return "regression_fix " + rf.id + " is not scoped to a published-page content correction";
+  if(v.areas.some(a => !CORRECTION_FIELDS[a])) return "regression_fix " + rf.id + " names an area a correction cannot change";
+  return null;
+}
+/* The latest correction text per area recorded under this regression_fix. */
+function correctionsFor(decisions, rfId, pageKey){
+  const out = {};
+  (decisions || []).filter(d => d && d.kind === "content_approval" && d.field === "page:" + pageKey && d.hcps_value && Number(d.hcps_value.correction) === Number(rfId))
+    .sort((a, b) => a.id - b.id).forEach(d => { out[d.hcps_value.area] = { id: d.id, value: d.hcps_value.value, from: d.hcps_value.from_decision || null, by: d.decided_by || null, at: d.decided_at || null }; });
+  return out;
+}
+/* input: { slug, rf (the regression_fix decision), pages (enrichSummary pages), drafts (every product_content row of the
+            line), records, meta, decisions, preview (buildPreview of the corrected line) }
+   → { publishable, problems, page_key, name, before, after, changes, others, summary, plan_hash, approval } */
+function correctionPlan(input){
+  const { slug, rf, pages, drafts, records, meta, decisions, preview } = input;
+  const problems = [];
+  const rfp = correctionFixProblem(rf, slug);
+  const scope = (rf && rf.hcps_value) || {};
+  const pk = scope.page_key || null, areas = Array.isArray(scope.areas) ? scope.areas.slice() : [];
+  const page = (pages || []).find(p => p.page_key === pk) || null;
+  const row = (drafts || []).find(r => r && r.page_key === pk) || null;
+  if(rfp) problems.push(rfp);
+  if(!page) problems.push("the page " + pk + " is not one of this line's pages");
+  else if(page.status !== "published") problems.push(page.name + " is not a published page (" + page.status + ")");
+  if(!row) problems.push("no live row for " + pk);
+  else if(!ENRICH.isVisibleRow(row)) problems.push(pk + ": the page is not visible — a correction changes a live page only");
+  const corr = correctionsFor(decisions, rf && rf.id, pk);
+  Object.keys(corr).forEach(a => { if(areas.indexOf(a) < 0) problems.push("a correction for " + a + " is outside regression_fix " + (rf && rf.id) + "'s scope"); });
+  const after = row ? JSON.parse(JSON.stringify(row)) : null, changes = [];
+  if(row){
+    for(const a of areas){
+      const c = corr[a];
+      if(!c){ problems.push("no corrected text recorded for " + a); continue; }
+      const f = correctionFields(a, c.value);
+      if(!f){ problems.push("cannot correct " + a); continue; }
+      if(a === "description" && !f.description) problems.push("the corrected description is empty");
+      if(a === "features" && !f.features.length) problems.push("the corrected features are empty");
+      if(a === "specs" && !f.specs.length) problems.push("the corrected specs are empty");
+      Object.assign(after, f);
+      changes.push({ area: a, decision: c.id, from: c.from, by: c.by, at: c.at, before: Object.fromEntries(Object.keys(f).map(k => [k, row[k] === undefined ? null : row[k]])), after: f });
+    }
+    /* the scope, proved on the rows themselves: only the named areas' fields differ */
+    const allowed = new Set(areas.flatMap(a => CORRECTION_FIELDS[a] || []));
+    const changed = [...new Set(Object.keys(row).concat(Object.keys(after)))].filter(k => canon(row[k]) !== canon(after[k]));
+    const outside = changed.filter(k => !allowed.has(k));
+    if(outside.length) problems.push("the correction would change fields outside its scope: " + outside.join(", "));
+    const left = draftUrlsOf(after); if(left.length) problems.push("a draft-folder link is on the live page (" + left.length + ")");
+  }
+  const others = (drafts || []).filter(r => r && r.page_key !== pk).map(r => ({ page_key: r.page_key, row: r }));
+  const visible = (drafts || []).filter(r => r && ENRICH.isVisibleRow(r)).map(r => r.page_key).sort();
+  const held = (pages || []).filter(p => p.page_key !== pk && p.status !== "published" && p.status !== "ready");
+  const awaiting = (pages || []).filter(p => p.page_key !== pk && p.status === "ready");
+  if(!preview) problems.push("no dealer preview of the correction");
+  else if(preview.pass !== true) problems.push("the dealer preview of the correction fails: " + preview.checks.filter(c => !c.pass).map(c => c.id).join(", "));
+  const s = preview ? preview.summary : {};
+  const summary = { cards_today: s.cards_today, cards_after: s.cards_proposed, active_skus: s.active_skus, accounted: s.accounted, missing: s.missing,
+    duplicates: s.duplicates, commercial_changes: s.commercial_changes, retired_excluded: s.retired_excluded || [],
+    pages_corrected: row ? 1 : 0, other_pages_unchanged: others.length, live_pages: visible.length, photos_promoted: 0 };
+  /* (the approval itself and its regression_fix are not hashed as decisions: the approval is recorded after the dry run,
+     and the fix is checked unspent on every step; its scope is hashed) */
+  const HASHED_KINDS = ["content_resolution", "enrichment_window", "content_approval"];
+  const lineDecisions = (decisions || []).filter(d => d && HASHED_KINDS.indexOf(d.kind) >= 0)
+    .map(d => [d.id, d.kind, d.field, d.hcps_value, d.used_at || null]).sort((a, b) => a[0] - b[0]);
+  const hashed = { v: "correction-1", slug, regression_fix: rf ? [rf.id, rf.hcps_value || null] : null, page_key: pk, areas, before: row, after,
+    others: others.map(o => [o.page_key, o.row]), decisions: lineDecisions,
+    records: (records || []).slice().sort((a, b) => String(a.code).localeCompare(String(b.code))),
+    meta: meta ? { enriched_only: meta.enriched_only === true, category_map: meta.category_map || null, freight_terms: meta.freight_terms || null, frozen: meta.frozen === true } : null,
+    preview: preview ? { summary: preview.summary, skus: preview.skus, checks: preview.checks.map(c => [c.id, c.pass]) } : null };
+  const plan_hash = sha256(canon(hashed));
+  const approval = { plan_hash, window: null, pages: pk ? [pk] : [],
+    correction: { regression_fix: rf ? rf.id : null, page_key: pk, page_name: page ? page.name : null, areas, from: Object.fromEntries(changes.map(c => [c.area, c.decision])) },
+    before: pk && row ? { [pk]: row } : {}, after: pk && after ? { [pk]: after } : {}, promote: [],
+    held: held.map(h => ({ page_key: h.page_key, name: h.name, skus: h.skus.map(x => x.code), issues: (h.issues || []).map(i => i.title), holds: [] })),
+    awaiting: awaiting.map(h => ({ page_key: h.page_key, name: h.name, skus: h.skus.map(x => x.code), waiting: ["(not in this correction)"] })),
+    live_before: visible.filter(k => k !== pk), summary };
+  return { publishable: !problems.length, problems, page_key: pk, name: page ? page.name : null, before: row, after, changes, others, summary, plan_hash, approval };
+}
+
+/* The pages that must be visible after a publication (or correction) is carried out: the ones it publishes plus the
+   ones that were already live before it (an approval recorded before 2026-10-12 has no live_before: its pages only). */
+function expectedVisible(approval){
+  const a = approval || {};
+  return [...new Set((Array.isArray(a.pages) ? a.pages : []).concat(Array.isArray(a.live_before) ? a.live_before : []))].sort();
+}
+/* The plan pages as the dealer preview of a publication must read them (Angelo 2026-10-12, runs #17–#19): a Ready page
+   that is NOT in this publication keeps its current catalog cards — Waiting / unchanged, never "missing / 0 cards". */
+function pagesForPublication(pages, publishedKeys){
+  const keys = new Set(publishedKeys || []);
+  return (pages || []).map(p => p && p.status === "ready" && !keys.has(p.page_key) ? Object.assign({}, p, { status: "waiting_for_approval" }) : p);
 }
 
 /* After publishing: the live dealer view must be exactly the approved one. */
@@ -185,4 +314,4 @@ function liveMatchesPlan(expectedProducts, liveProducts){
   return { same: !diffs.length, diffs, draft_links: draftLinks };
 }
 
-module.exports = { buildPlan, planReport, planImages, draftUrlsOf, isDraftUrl, livePath, liveMatchesPlan, canon, sha256, DRAFT_RE };
+module.exports = { buildPlan, planReport, expectedVisible, pagesForPublication, correctionPlan, correctionFields, correctionFixProblem, correctionsFor, CORRECTION_FIELDS, planImages, draftUrlsOf, isDraftUrl, livePath, liveMatchesPlan, canon, sha256, DRAFT_RE };

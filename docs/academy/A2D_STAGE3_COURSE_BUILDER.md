@@ -40,6 +40,8 @@ The page is `/admin/academy-builder.html?version=<id>`. Open it from Command Cen
 
 ## The save sequence (review item 1, 12 Oct 2026)
 
+> **Superseded on branch `academy/m3_1-atomic-save` (M3.1, development):** once M3.1 is installed and that branch is merged, the builder saves through ONE database operation instead of the sequence below. See `docs/academy/A2D_M3_1_ATOMIC_SAVE.md`. The sequence below describes production until then.
+
 M3 has no single operation that links the facts, writes the screens and compares the starting point together. No new SQL is allowed without Angelo's approval, so a save is a short series of operations. Each operation is atomic with its own audit row:
 
 1. **Start check.** The save must start from the lesson's current content. Otherwise the answer is 409 "changed".

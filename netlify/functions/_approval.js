@@ -53,11 +53,24 @@ const GROUPING_CHOICES = ["use_proposed", "keep_current"];
 const CARD_CHOICES = ["use_option", "use_image", "none"];
 
 /* The latest selection per area (per SKU for option images). */
+/* (2026-10-12, Assurance correction) a content_approval that carries hcps_value.correction belongs to a published-page
+   correction under a regression_fix (correctionPlan in _publish.js) — never to a draft page's approval. */
+const isCorrection = d => !!(d && d.hcps_value && d.hcps_value.correction != null);
 function selectionsFor(decisions, pageKey){
   const out = {};
-  arr(decisions).filter(d => d && d.kind === "content_approval" && d.field === "page:" + pageKey).sort((a, b) => a.id - b.id)
+  arr(decisions).filter(d => d && d.kind === "content_approval" && d.field === "page:" + pageKey && !isCorrection(d)).sort((a, b) => a.id - b.id)
     .forEach(d => { const v = d.hcps_value || {}; if(!v.area) return; const k = v.area === "option_image" ? "option_image:" + norm(v.code) : v.area;
       out[k] = Object.assign({ id: d.id, by: d.decided_by || null, at: d.decided_at || null, reason: d.reason || null }, v); });
+  return out;
+}
+
+/* The President's latest SAVED EDIT per text area (Angelo 2026-10-12): kept and shown whatever choice is active later —
+   choosing Use proposed or Keep current never destroys the edited text; choosing Edit again starts from it. */
+function editsFor(decisions, pageKey){
+  const out = {};
+  arr(decisions).filter(d => d && d.kind === "content_approval" && d.field === "page:" + pageKey && !isCorrection(d)).sort((a, b) => a.id - b.id)
+    .forEach(d => { const v = d.hcps_value || {}; if(!v.area || v.choice !== "edit" || v.value == null) return;
+      out[v.area] = { decision: d.id, by: d.decided_by || null, at: d.decided_at || null, basis: v.basis || null, value: v.value }; });
   return out;
 }
 
@@ -129,7 +142,7 @@ function approvalState(input){
   const prodBy = {}; arr(input.products).forEach(p => { if(p && p.code && !prodBy[norm(p.code)]) prodBy[norm(p.code)] = p; });
   const current = codes.map(c => currentOf(prodBy[norm(c)] || { code: c }));
   const proposed = current.map(cu => proposedOf(row, cu));
-  const sel = selectionsFor(input.decisions, page.page_key);
+  const sel = selectionsFor(input.decisions, page.page_key), edits = editsFor(input.decisions, page.page_key);
   const candidates = imageCandidates({ page, row, current, decisions: input.decisions, uploadPrefix: input.uploadPrefix });
   const candUrls = new Set(candidates.map(c => c.url));
   const todayCards = arr(input.todayCards).filter(k => k && arr(k.codes).some(c => codes.some(x => norm(x) === norm(c))));
@@ -144,6 +157,10 @@ function approvalState(input){
       choice: chosen ? chosen.choice : (same ? "no_change" : (choices.indexOf("keep_current") >= 0 ? "keep_current" : null)), selected: !!chosen, decision: chosen ? chosen.id : null, stale,
       value: chosen && chosen.value != null ? chosen.value : null, by: chosen ? chosen.by : null, at: chosen ? chosen.at : null }, extra || {});
     a.approved = same || !!chosen;
+    /* the saved President edit for this area, active or not (stale = made against an earlier proposal / current view) */
+    const es = choices.indexOf("edit") >= 0 ? edits[id] : null;
+    a.edit_saved = es ? { value: es.value, decision: es.decision, by: es.by, at: es.at, stale: !!(es.basis && es.basis !== basis),
+      active: !!(chosen && chosen.choice === "edit" && chosen.id === es.decision) } : null;
     areas.push(a); return a;
   };
   /* Title: the card name and each option's name */
@@ -321,5 +338,5 @@ function selectionRecord(st, area, choice, value, code, windowId){
 /* The checklist line Angelo reads: Title ✓ · Description … */
 function checklist(st){ return st.areas.map(a => ({ id: a.id, label: a.label, approved: a.approved, no_change: !!a.same, choice: a.id === "option_images" ? null : a.choice, stale: !!a.stale })); }
 
-module.exports = { isUpload, AREAS, TEXT_CHOICES, IMAGE_CHOICES, OPTION_CHOICES, GROUPING_CHOICES, CARD_CHOICES, WRITE_FIELDS, selectionsFor, currentOf, proposedOf, imageCandidates,
+module.exports = { isUpload, isCorrection, editsFor, AREAS, TEXT_CHOICES, IMAGE_CHOICES, OPTION_CHOICES, GROUPING_CHOICES, CARD_CHOICES, WRITE_FIELDS, selectionsFor, currentOf, proposedOf, imageCandidates,
   approvalState, approvedRow, selectionProblem, selectionRecord, checklist, canon };

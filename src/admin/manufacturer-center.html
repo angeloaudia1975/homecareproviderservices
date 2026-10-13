@@ -84,6 +84,10 @@
  .aphead{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.aphead h4{margin:0;font-size:14px}
  .apcols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin:8px 0}@media(max-width:760px){.apcols{grid-template-columns:1fr}}
  .apcol{border:1px solid #edf0f5;border-radius:9px;padding:8px 10px;background:#fbfcfe;font-size:12.5px;line-height:1.45;min-width:0;overflow-wrap:anywhere}.apcol h5{margin:0 0 5px;font-size:11px;letter-spacing:.4px;text-transform:uppercase;color:var(--gray)}
+ .gsban{margin:2px 0 10px;padding:7px 10px;border:1px solid #cfe9d8;background:#f4fbf6;border-radius:9px}.gsban .gshist{margin-top:3px}tr.gsrow td{background:#f4fbf6}
+ .apcols.three{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)}@media(max-width:760px){.apcols.three{grid-template-columns:1fr}}
+ .apcol.on{border-color:#2e7d4f;box-shadow:inset 0 0 0 1px #2e7d4f}.apcol.ed{background:#fbf9f2}
+ .apselected{font-size:12px;margin:2px 0 4px}.apwarn{margin:8px 0;padding:8px 10px;border:1px solid #e3b341;background:#fff8e6;border-radius:9px;font-size:12.5px;line-height:1.45}
  .apcol.cur{background:#f7faf8}.apcol ul{margin:3px 0 0 16px;padding:0}
  .apchoices{display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:12.5px}.apchoices label{display:inline-flex;gap:5px;align-items:center;font-weight:400;cursor:pointer}
  .apedit textarea{width:100%;min-height:90px;font-family:inherit;font-size:12.5px}
@@ -145,6 +149,15 @@ async function boot(){
     else if(OPEN) await openLine(OPEN,true); }
   catch(e){ if(String(e.message)!=="unauthorized") $("#wrap").innerHTML=`<div class="msg err">Manufacturer Center could not load: ${esc(e.message)}</div>`; }
 }
+/* (Angelo 2026-10-12) The newest finalized Gold Standard is the line's status; failed or rolled-back runs after it are
+   history and never make the line read as failing. A line with no Gold Standard yet shows its last verification. */
+function gsHistory(g){ return g&&g.later_failed?`<div class="mut gshist" style="font-size:11px;margin-top:2px">History: ${g.later_failed} later attempt${g.later_failed===1?'':'s'} failed and ${g.later_failed===1?'was':'were'} rolled back — Gold Standard unchanged</div>`:''; }
+function statusCell(l){
+  const g=l.gold_standard;
+  if(g) return `<span class="pill p-pass" title="The newest finalized Gold Standard run">Gold Standard · pass</span> <span class="mut" style="font-size:11.5px">#${esc(g.id)} ${esc(g.phase)} · ${esc(fmtT(g.run_at))}</span>${gsHistory(g)}`;
+  return l.last_run?`<span class="pill ${l.last_run.result==='pass'?'p-pass':'p-fail'}">${esc(l.last_run.result)}</span> <span class="mut" style="font-size:11.5px">${esc(l.last_run.phase)} · ${esc(fmtT(l.last_run.run_at))}</span>`:'<span class="mut">never</span>';
+}
+function gsBanner(g){ return g?`<div class="gsban"><span class="pill p-pass">Current Gold Standard: PASS</span> <span class="mut" style="font-size:12px">run #${esc(g.id)} · ${esc(g.phase)} · ${esc(fmtT(g.run_at))} · fingerprint <code>${esc(g.fingerprint||'')}</code></span>${gsHistory(g)}</div>`:''; }
 function render(){
   const rows=LINES.map(l=>`<tr class="${OPEN===l.slug?'sel':''}">
     <td><b>${esc(l.name)}</b><div class="mut" style="font-size:11px">${esc(l.slug)}</div></td>
@@ -152,14 +165,14 @@ function render(){
     <td>${sourceCell(l.source)}</td><td>${effCell(l.source)}</td>
     <td>${l.decisions||0}${l.open_regression_fixes?` <span class="pill p-warn">${l.open_regression_fixes} open fix</span>`:''}</td>
     <td>${(l.deferrals||[]).map(d=>`<span class="pill p-adv" title="${esc(d.note||'')}">${esc(String(d.item||'').replace(/_/g,' '))} deferred</span>`).join(' ')||'<span class="mut">—</span>'}</td>
-    <td>${l.last_run?`<span class="pill ${l.last_run.result==='pass'?'p-pass':'p-fail'}">${esc(l.last_run.result)}</span> <span class="mut" style="font-size:11.5px">${esc(l.last_run.phase)} · ${esc(fmtT(l.last_run.run_at))}</span>`:'<span class="mut">never</span>'}</td>
+    <td>${statusCell(l)}</td>
     <td style="white-space:nowrap"><button class="btn ghost" onclick="openLine('${esc(l.slug)}')">Open</button> ${(l.enrichment_window||(l.deferrals||[]).some(d=>d&&d.item==="enrichment_pages"))?`<button class="btn" onclick="openEnrichment('${esc(l.slug)}')" title="Products → Auto-Enrich → Review Issues. Drafts only; dealers see nothing until the line is published.">Continue Product Enrichment</button>`:''}</td></tr>`).join("");
   $("#wrap").innerHTML=`<h1>Manufacturer Center</h1>
   <p class="sub">From a manufacturer's files to a verified, record-authoritative line. Manufacturer Center coordinates the Structure Map, Product Content Enrichment, the commercial master (<code>product_skus</code>) and Partner 360 — it does not hold products or set prices itself.</p>
   <div class="infobar"><b>Guided workflow:</b> Sources → Match &amp; decide → Structure &amp; content → Commercial &amp; freight → Stage (<b>Approval 1</b>) → Verify &amp; activate (<b>Approval 2</b>). Every write shows a dry run first. <b>Frozen lines</b> (Climbing Steps, Strongback, Ovation, Bemis) open read-only and refuse every change — in catalog-api and in the database — unless a <b>regression_fix</b> decision is recorded and sent with it. Bemis product pages are an <b>approved deferral</b>, not a regression.</div>
   <div class="bar"><button class="btn ghost" id="stbtn" onclick="selftest()">Test the freeze guard</button><span class="mut" style="font-size:12px">Tries one commercial write per table on every frozen line; each attempt is rolled back.</span></div>
   <div id="st"></div>
-  <div class="card"><table><thead><tr><th>Line</th><th>Status</th><th>Accepted source</th><th>Mfr effective date</th><th>Decisions</th><th>Deferrals</th><th>Last verification</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="8" class="mut">No lines.</td></tr>'}</tbody></table></div>
+  <div class="card"><table><thead><tr><th>Line</th><th>Status</th><th>Accepted source</th><th>Mfr effective date</th><th>Decisions</th><th>Deferrals</th><th>Gold Standard / verification</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="8" class="mut">No lines.</td></tr>'}</tbody></table></div>
   <div id="line"></div>`;
 }
 async function selftest(){
@@ -204,7 +217,7 @@ async function apiq(body){ try{ return {ok:true, j:await api(body)}; }catch(e){ 
 function renderLine(){
   const L=LINE, m=L.meta||{}, l=LINES.find(x=>x.slug===L.manufacturer)||{};
   const tabs=STEPS.map(([k,n])=>`<button class="${TAB===k?'on':''}" onclick="go('${k}')">${n}</button>`).join("");
-  $("#line").innerHTML=`<div class="card"><h2>${esc(l.name||L.manufacturer)} ${m.frozen?pill("p-frozen","Frozen · read-only"):""} ${m.record_authoritative?pill("p-auth","Record authority"):pill("p-adv","Layers")}</h2>${m.frozen_reason?`<p class="mut" style="font-size:12px;margin:-4px 0 8px">${esc(m.frozen_reason)}</p>`:''}<div class="tabs wf">${tabs}</div><div id="wfbody"></div></div>`;
+  $("#line").innerHTML=`<div class="card"><h2>${esc(l.name||L.manufacturer)} ${m.frozen?pill("p-frozen","Frozen · read-only"):""} ${m.record_authoritative?pill("p-auth","Record authority"):pill("p-adv","Layers")}</h2>${m.frozen_reason?`<p class="mut" style="font-size:12px;margin:-4px 0 8px">${esc(m.frozen_reason)}</p>`:''}${gsBanner(L.gold_standard)}<div class="tabs wf">${tabs}</div><div id="wfbody"></div></div>`;
   drawStep();
 }
 function go(k){ TAB=k; renderLine(); }
@@ -448,7 +461,8 @@ function stepActivate(){
   return `${frozen()?ro("You can still run the verification — it changes no product data."):''}
   <p class="sub">${live?'This line already prices from the master record. Verification checks everything a dealer sees against its baseline.':'The full verification suite on the staged record — cards, cart, server pricing, freight at every threshold, both emails, images and the fingerprint. Then Approval 2, an activation dry run, and activation; a post-activation verification runs straight after.'}</p>
   ${verifyBar}<div id="runview">${pre?runHtml(pre):(RUN?runHtml(RUN):'')}</div>${gate}
-  ${last&&!pre?`<p class="mut" style="font-size:12px">Last run: #${last.id} ${esc(last.phase)} ${esc(last.result)} · ${esc(fmtT(last.run_at))}</p>`:''}`;
+  ${LINE.gold_standard&&!pre?`<p style="font-size:12px"><b>Current Gold Standard:</b> ${pill('p-pass','pass')} run #${esc(LINE.gold_standard.id)} ${esc(LINE.gold_standard.phase)} · ${esc(fmtT(LINE.gold_standard.run_at))}</p>`:''}
+  ${last&&!pre&&(!LINE.gold_standard||last.id!==LINE.gold_standard.id)?`<p class="mut" style="font-size:12px">${LINE.gold_standard?'History — latest run':'Last run'}: #${last.id} ${esc(last.phase)} ${esc(last.result)} · ${esc(fmtT(last.run_at))}</p>`:''}`;
 }
 async function verifyWF(phase){
   if(BUSY) return; BUSY=true; const b=$("#vbtn"); if(b){ b.disabled=true; b.textContent="Verifying… (up to a minute)"; }
@@ -468,9 +482,10 @@ async function activate(dry){
 
 /* ── HISTORY ────────────────────────────────────────────────────────────────────────────────────── */
 function stepHistory(){
-  const runs=(LINE.runs||[]).map(r=>`<tr class="${RUN&&RUN.id===r.id?'sel':''}"><td><input type="checkbox" class="cmpk" value="${r.id}"></td><td>${r.id}</td><td>${esc(fmtT(r.run_at))}<div class="mut" style="font-size:11px">${esc(r.run_by||'')}</div></td><td>${esc(r.phase)}</td><td>${pill(r.result==='pass'?'p-pass':'p-fail',r.result)}</td><td><code>${esc(r.fingerprint||'')}</code></td><td><button class="btn ghost" onclick="showRun(${r.id})">View</button></td></tr>`).join("");
+  const G=LINE.gold_standard;
+  const runs=(LINE.runs||[]).map(r=>`<tr class="${RUN&&RUN.id===r.id?'sel':''}${G&&G.id===r.id?' gsrow':''}"><td><input type="checkbox" class="cmpk" value="${r.id}"></td><td>${r.id}</td><td>${esc(fmtT(r.run_at))}<div class="mut" style="font-size:11px">${esc(r.run_by||'')}</div></td><td>${esc(r.phase)}</td><td>${pill(r.result==='pass'?'p-pass':'p-fail',r.result)}${G&&G.id===r.id?' '+pill('p-pass','Current Gold Standard'):(G&&r.result!=='pass'?' <span class="mut" style="font-size:11px">history</span>':'')}</td><td><code>${esc(r.fingerprint||'')}</code></td><td><button class="btn ghost" onclick="showRun(${r.id})">View</button></td></tr>`).join("");
   const c=WF.cmp;
-  return `<p class="sub">Every verification run of this line — kept as evidence, never deleted or rewritten. Tick two runs to compare them check by check (values compared with keys sorted, never as raw text).</p>
+  return `${gsBanner(G)}<p class="sub">Every verification run of this line — kept as evidence, never deleted or rewritten. Tick two runs to compare them check by check (values compared with keys sorted, never as raw text).</p>
   <div class="bar"><button class="btn ghost" onclick="compare()">Compare the two ticked runs</button></div>
   ${c?`<div class="card"><h3 style="margin-top:0">Run #${c.a} vs #${c.b} — fingerprint ${c.fingerprint_same?pill('p-pass','same'):pill('p-fail','different')}</h3><table><thead><tr><th>Check</th><th>#${c.a}</th><th>#${c.b}</th><th>Evidence</th></tr></thead><tbody>${c.checks.map(x=>`<tr><td>${esc(x.label)}</td><td>${x.in_a?pill(x.pass_a?'p-pass':'p-fail',x.pass_a?'pass':'fail'):'<span class="mut">—</span>'}</td><td>${x.in_b?pill(x.pass_b?'p-pass':'p-fail',x.pass_b?'pass':'fail'):'<span class="mut">—</span>'}</td><td>${x.in_a&&x.in_b?(x.same_detail?'<span class="ok">identical</span>':'<span class="err">differs</span>'):'<span class="mut">only in one run</span>'}</td></tr>`).join('')}</tbody></table>
     ${(c.lines_only_in_a.length||c.lines_only_in_b.length)?`<details><summary>Product lines that differ</summary><pre>${esc(c.lines_only_in_a.map(l=>'- '+l).concat(c.lines_only_in_b.map(l=>'+ '+l)).join('\n'))}</pre></details>`:''}</div>`:''}
@@ -482,9 +497,64 @@ async function compare(){ const ids=[...document.querySelectorAll(".cmpk:checked
 async function showRun(id){ try{ const j=await api({action:"mc_run",id}); RUN=j.run; drawStep(); }catch(e){ toast(e.message); } }
 
 /* ── DECISIONS LOG (and the regression path for a frozen line) ─────────────────────────────────── */
+/* ── CORRECT A PUBLISHED PAGE (Angelo 2026-10-12) ── a regression_fix scoped to one live page and named content areas:
+   corrected text → dry run → Approve (plan number) → Carry out (checked; rolls back on any difference) → storefront check
+   → Finalize (new Gold Standard). No enrichment window is used or spent. */
+function corrFixes(){ return (LINE.decisions||[]).filter(d=>d.kind==="regression_fix"&&d.hcps_value&&d.hcps_value.scope==="content_correction"); }
+function corrPending(){ const g=LINE.gold_standard; return (LINE.decisions||[]).filter(d=>d.kind==="content_publication"&&d.hcps_value&&d.hcps_value.correction&&d.used_at&&(!g||String(d.used_at)>String(g.run_at))); }
+function corrCard(){
+  const open=corrFixes().filter(d=>!d.used_at), pend=corrPending(), C=WF.corr||null;
+  if(!open.length&&!pend.length&&!C) return '';
+  const list=open.map(d=>`<div style="margin:4px 0"><b>Regression fix #${d.id}</b> — ${esc(d.hcps_value.page_name||d.hcps_value.page_key)} · ${esc((d.hcps_value.areas||[]).join(', '))} <button class="btn ghost" onclick="corrOpen(${d.id})">Open correction</button></div>`).join('');
+  const fin=pend.map(d=>`<div style="margin:4px 0">Correction #${d.id} (regression fix #${esc(d.hcps_value.correction.regression_fix)}) is live — check the storefront, then <button class="btn warn" onclick="corrFinalize(${d.id})">Finalize (new Gold Standard)</button></div>`).join('');
+  return `<div class="card corrcard"><h3 style="margin-top:0">Correct a published page</h3><p class="mut" style="font-size:12px">A Gold Standard page changes only under a regression fix scoped to that page and the areas it names. Every other field, page, photo and price stays exactly as it is. No enrichment window is used.</p>${list}${fin}${C?corrHtml(C):''}</div>`;
+}
+function corrVal(a,v){ if(v==null) return '<span class="mut">— none —</span>'; if(a==="description") return `<div style="white-space:pre-wrap">${esc(v)}</div>`; if(a==="features") return apVal(v,"features"); return apVal(v,"specs"); }
+function corrHtml(C){
+  if(C.busy) return `<p class="mut">${esc(C.busy)}</p>`;
+  if(C.err) return `<div class="msg err">${esc(C.err)}</div>`;
+  const st=C.st, pl=C.pl, s=pl.summary||{};
+  const rows=(pl.changes||[]).map(ch=>{ const f=ch.area==="features"?"features":(ch.area==="specs"?"specs":"description");
+    return `<div class="aparea"><div class="aphead"><h4>${esc(ch.area[0].toUpperCase()+ch.area.slice(1))}</h4><span class="mut" style="font-size:11px">correction #${esc(ch.decision)}${ch.from?' · the text of approval #'+esc(ch.from):''}</span></div>
+      <div class="apcols"><div class="apcol cur"><h5>Live now</h5>${corrVal(ch.area,f==="description"?ch.before.description:(ch.before[f]||[]).concat(ch.before[f==="features"?"clinical_applications":"billing_codes"]||[]))}</div><div class="apcol on"><h5>After the correction</h5>${corrVal(ch.area,f==="description"?ch.after.description:ch.after[f])}</div></div></div>`; }).join('');
+  const prev=pl.preview||{};
+  const head=`<h4 style="margin:10px 0 4px">${esc(pl.page.name||pl.page.page_key)} — regression fix #${esc(pl.regression_fix.id)}</h4>
+    <p style="font-size:12.5px">Plan <code>${esc(String(pl.plan_hash).slice(0,16))}</code> · ${pl.publishable?pill('p-pass','ready to approve'):pill('p-fail','cannot be approved')} · SKUs ${esc(s.accounted)}/${esc(s.active_skus)} · missing ${esc(s.missing)} · duplicates ${esc(s.duplicates)} · commercial changes ${esc(s.commercial_changes)} · cards ${esc(s.cards_today)} → ${esc(s.cards_after)} · other pages unchanged ${esc(s.other_pages_unchanged)}</p>
+    ${pl.problems&&pl.problems.length?`<div class="msg err">${pl.problems.map(esc).join('<br>')}</div>`:''}
+    <p class="mut" style="font-size:12px">Unchanged on this page: ${esc((pl.unchanged&&pl.unchanged.fields||[]).join(', '))} — ${pl.unchanged&&pl.unchanged.identical?'identical':'DIFFERENT'}. Dealer preview: ${prev.pass?'pass':'FAIL'}.</p>`;
+  let act='';
+  if(C.exec) act=`<div class="msg ${C.exec.ok?'ok':'err'}"><b>${C.exec.ok?'Correction carried out — the live page matches the approved dry run. Check the storefront, then Finalize.':'Not carried out'}</b>${C.exec.message?' — '+esc(C.exec.message):''}<div style="font-size:11.5px">${(C.exec.checks||[]).map(c=>(c.pass?'✓ ':'✗ ')+esc(c.label)).join('<br>')}</div></div>${C.exec.ok?`<button class="btn warn" onclick="corrFinalize(${C.approval.id})">Finalize (new Gold Standard)</button>`:''}`;
+  else if(C.approval) act=`<div class="msg ok">Approved as decision #${esc(C.approval.id)} (plan <code>${esc(String(C.approval.plan_hash).slice(0,16))}</code>).</div><button class="btn warn" onclick="corrExecute()">Carry out the correction</button>`;
+  else if(pl.publishable) act=`<input type="text" id="corr_reason" placeholder="Why this correction is right (required)" style="width:60%"> <button class="btn warn" onclick="corrApprove()">Approve exactly this correction</button>`;
+  return head+rows+`<div style="margin-top:8px">${act}</div>`;
+}
+async function corrOpen(rid){
+  WF.corr={rid,busy:"Building the correction dry run…"}; drawStep();
+  try{ const [st,pl]=await Promise.all([papi({action:"correction_state",manufacturer:OPEN,regression_fix_id:rid}),papi({action:"correction_plan",manufacturer:OPEN,regression_fix_id:rid})]); WF.corr={rid,st,pl}; }
+  catch(e){ WF.corr={rid,err:"The correction could not be read: "+e.message}; }
+  drawStep();
+}
+async function corrApprove(){
+  const C=WF.corr, reason=(($("#corr_reason")||{}).value||"").trim(); if(!reason){ toast("Say why — it is recorded"); return; }
+  try{ const r=await papi({action:"correction_approve",manufacturer:OPEN,regression_fix_id:C.rid,plan_hash:C.pl.plan_hash,reason}); C.approval=r.decision; toast("Correction approved #"+r.decision.id); }
+  catch(e){ toast("Not approved: "+e.message); }
+  drawStep();
+}
+async function corrExecute(){
+  const C=WF.corr; if(C.running) return; C.running=true; toast("Carrying out the correction and checking the live page…");
+  try{ const r=await papi({action:"correction_execute",manufacturer:OPEN,regression_fix_id:C.rid,decision_id:C.approval.id}); C.exec=Object.assign({ok:true},r); }
+  catch(e){ C.exec={ok:false,message:e.message,checks:(e.body&&e.body.checks)||[]}; }
+  C.running=false; LINE=await api({action:"mc_line",manufacturer:OPEN}); drawStep();
+}
+async function corrFinalize(did){
+  toast("Running the final verification…");
+  try{ const r=await api({action:"mc_publish_finalize",manufacturer:OPEN,decision_id:did}); toast("Gold Standard saved — run #"+r.run_id); WF.corr=null; }
+  catch(e){ toast("Final verification failed — rolled back: "+e.message); }
+  LINE=await api({action:"mc_line",manufacturer:OPEN}); const j=await api({action:"mc_overview"}); LINES=j.lines||[]; render(); renderLine();
+}
 function stepDecisions(){
   const L=LINE, m=L.meta||{};
-  return `${m.frozen?`<div class="card" style="background:#fffaf0;border-color:#f3d9a4"><h3 style="margin-top:0">Report a regression</h3><p class="mut" style="font-size:12px;margin-bottom:8px">A frozen line accepts a commercial change only with a recorded <b>regression_fix</b>. Recording it changes nothing by itself; it is single-use and must be sent with the fix.</p>
+  return `${m.frozen?corrCard():''}${m.frozen?`<div class="card" style="background:#fffaf0;border-color:#f3d9a4"><h3 style="margin-top:0">Report a regression</h3><p class="mut" style="font-size:12px;margin-bottom:8px">A frozen line accepts a commercial change only with a recorded <b>regression_fix</b>. Recording it changes nothing by itself; it is single-use and must be sent with the fix.</p>
       <div class="grid2"><input type="text" id="rf_field" placeholder="Field (e.g. base_price, uom, map)"><input type="text" id="rf_code" placeholder="SKU code (blank = whole line)"></div>
       <textarea id="rf_reason" placeholder="What regression was found, and how it was seen (required)" style="margin-top:8px"></textarea>
       <div style="margin-top:8px"><button class="btn warn" onclick="recordFix()">Record regression_fix decision</button></div></div>`:''}
@@ -699,13 +769,15 @@ function apSide(v,kind){ if(!v) return ''; if(v.all!==undefined) return apVal(v.
 function apChosen(a){ return a.selected?`${pill("p-pass","✓ "+(AP_LABEL[a.choice]||a.choice))}<span class="mut" style="font-size:11px">recorded${a.by?' by '+esc(a.by):''}${a.decision?' · #'+a.decision:''}</span>`:(a.same?pill("p-pass","✓ No difference"):(a.stale?pill("p-fail","Changed since you chose — choose again"):pill("p-warn","Not chosen — dealers keep today's"))); }
 function apRadios(id,a){ const cur=(EN.apPend[id]&&EN.apPend[id].choice)||(a.selected?a.choice:null);
   return a.choices.map(c=>`<label><input type="radio" name="ap_${esc(id)}" value="${esc(c)}" ${cur===c?'checked':''} onchange="apPick('${esc(id)}','${esc(c)}')"> ${esc(AP_LABEL[c]||c)}</label>`).join(''); }
+function apCancel(id){ delete EN.apPend[id]; $("#enbody").innerHTML=enApprove(); }
 function apPick(id,choice){ EN.apPend[id]=Object.assign({},EN.apPend[id]||{},{choice}); $("#enbody").innerHTML=enApprove(); }
 function apTextArea(p,a){
   const kind=a.id, id=p.page_key+"__"+a.id, pend=EN.apPend[id]||{}, cur=pend.choice||(a.selected?a.choice:null);
   const propText=v=>v&&v.all!==undefined?v.all:Object.values((v&&v.by_sku)||{})[0];
   let edit='';
   if(cur==="edit"){
-    const pv=propText(a.proposed), prev=a.selected&&a.choice==="edit"?a.value:null;
+    /* start from the President's saved edit whenever one exists — even while another choice is active */
+    const pv=propText(a.proposed), prev=a.selected&&a.choice==="edit"?a.value:(a.edit_saved?a.edit_saved.value:null);
     if(kind==="features") edit=`<div class="apedit"><div class="mut" style="font-size:11.5px">One feature per line.</div><textarea id="ape_${esc(id)}">${esc(((prev&&prev.items)||pv||[]).join('\n'))}</textarea></div>`;
     else if(kind==="specs") edit=`<div class="apedit"><div class="mut" style="font-size:11.5px">One spec per line: <code>Label: value</code></div><textarea id="ape_${esc(id)}">${esc(((prev&&prev.items)||pv||[]).map(x=>(x.label||'')+': '+(x.value||'')).join('\n'))}</textarea></div>`;
     else if(kind==="documents"){ const d=pv||{documents:[],videos:[]}; const keepD=prev?prev.documents:(d.documents||[]).map(x=>x.url), keepV=prev?prev.videos:(d.videos||[]).map(x=>typeof x==="string"?x:x.url);
@@ -717,10 +789,35 @@ function apTextArea(p,a){
   }
   const curHtml=kind==="title"?(a.current.card?esc(a.current.card):`<span class="mut">No single card today: ${(a.cards_today||[]).map(esc).join(' · ')}</span>`)+`<div class="mut" style="font-size:11.5px;margin-top:3px">Options: ${Object.keys(a.current.options||{}).map(c=>esc(c+' — '+a.current.options[c])).join(' · ')}</div>`:apSide(a.current,kind);
   const propHtml=kind==="title"?esc(a.proposed.card||'')+`<div class="mut" style="font-size:11.5px;margin-top:3px">Options: ${Object.keys(a.proposed.options||{}).map(c=>esc(c+' — '+a.proposed.options[c])).join(' · ')}</div>`:apSide(a.proposed,kind);
+  /* Current · Auto-Enrich proposed · President edited (when one is saved) — and which one publication would use */
+  const es=a.edit_saved, active=a.selected?a.choice:null;
+  const selCol=a.same?null:(active==="use_proposed"?"prop":(active==="edit"?"edit":"cur"));
+  const edHtml=es?`<div class="apcol ed ${selCol==='edit'?'on':''}"><h5>President edited <span class="mut" style="text-transform:none;letter-spacing:0">#${esc(es.decision)}</span></h5>${apEditVal(kind,es.value)}
+      <div class="mut" style="font-size:11px;margin-top:4px">Saved${es.by?' by '+esc(es.by):''}${es.at?' · '+esc(fmtT(es.at)):''}${es.active?'':' · kept, not the active choice'}${es.stale?' · made against an earlier proposal':''}</div></div>`:'';
+  const warn=apNeedsWarn(a,id,cur)?`<div class="apwarn" id="apwarn_${esc(id)}"><b>⚠</b> You already have a President-edited version for this section. Choosing ${cur==="keep_current"?"Keep current":"Use Proposed"} will replace that selection for publication. Continue?
+      <div class="mut" style="font-size:11.5px;margin-top:3px">Your edited text (#${esc(es.decision)}) stays saved and can be chosen again with Edit.</div>
+      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn warn" onclick="apSave('${esc(id)}',true)">Continue — ${cur==="keep_current"?"keep current":"use proposed"}</button><button class="btn ghost" onclick="apCancel('${esc(id)}')">Cancel</button></div></div>`:'';
   return `<div class="aparea ${a.approved?'done':'todo'}" id="ap_${esc(id)}"><div class="aphead"><h4>${esc(a.label)}</h4>${apChosen(a)}</div>
     ${a.note?`<div class="mut" style="font-size:12px;margin-top:4px">${esc(a.note)}</div>`:''}
-    <div class="apcols"><div class="apcol cur"><h5>Current dealer view</h5>${curHtml}</div><div class="apcol"><h5>Proposed by Auto-Enrich</h5>${propHtml}</div></div>
-    ${a.same?'':`<div class="apchoices">${apRadios(id,a)}<span style="flex:1"></span><button class="btn" onclick="apSave('${esc(id)}')" ${cur?'':'disabled'}>Save choice</button></div>${edit}`}</div>`;
+    <div class="apcols ${es?'three':''}"><div class="apcol cur ${selCol==='cur'?'on':''}"><h5>Current dealer view</h5>${curHtml}</div><div class="apcol ${selCol==='prop'?'on':''}"><h5>Proposed by Auto-Enrich</h5>${propHtml}</div>${edHtml}</div>
+    ${a.same?'':`<div class="apselected">Selected for publication: <b>${apSelectedLabel(a)}</b></div>`}
+    ${a.same?'':`<div class="apchoices">${apRadios(id,a)}<span style="flex:1"></span><button class="btn" onclick="apSave('${esc(id)}')" ${cur&&!warn?'':'disabled'}>Save choice</button></div>${warn}${edit}`}</div>`;
+}
+/* a saved edit exists and the President picked (not yet saved) a choice that would replace it for publication */
+function apNeedsWarn(a,id,cur){ const pend=EN.apPend[id]||{}; return !!(a.edit_saved&&pend.choice&&(cur==="use_proposed"||cur==="keep_current")&&!(a.selected&&a.choice===cur)); }
+function apSelectedLabel(a){
+  if(!a.selected) return a.stale?"Current dealer view — your earlier choice no longer applies; choose again":"Current dealer view (nothing chosen yet)";
+  if(a.choice==="edit") return "President edited version"+(a.decision?" (#"+esc(a.decision)+")":"");
+  if(a.choice==="use_proposed") return "Auto-Enrich proposed"+(a.decision?" (#"+esc(a.decision)+")":"");
+  if(a.choice==="keep_current") return "Current dealer view (Keep current"+(a.decision?" #"+esc(a.decision):"")+")";
+  return esc(AP_LABEL[a.choice]||a.choice);
+}
+function apEditVal(kind,v){
+  if(!v) return '<span class="mut">— none —</span>';
+  if(kind==="features") return apVal(v.items||[],"features");
+  if(kind==="specs") return apVal(v.items||[],"specs");
+  if(kind==="documents") return [].concat((v.documents||[]).map(u=>`<div>📄 ${esc(String(u).split('/').pop())}</div>`),(v.videos||[]).map(u=>`<div>▶ ${esc(String(u).replace(/^https?:\/\//,'').slice(0,60))}</div>`)).join('')||'<span class="mut">— none —</span>';
+  return v.text?`<div style="white-space:pre-wrap">${esc(v.text)}</div>`:'<span class="mut">— none —</span>';
 }
 function apGrouping(p,a){ const id=p.page_key+"__grouping", cur=(EN.apPend[id]&&EN.apPend[id].choice)||(a.selected?a.choice:null), D=a.display||{today:[],proposed:[]};
   return `<div class="aparea ${a.approved?'done':'todo'}" id="ap_${esc(id)}"><div class="aphead"><h4>Grouping</h4>${apChosen(a)}</div>
@@ -818,9 +915,11 @@ async function apSend(sel){
     toast("Recorded"+(r.recorded&&r.recorded.length>1?" ("+r.recorded.length+" choices)":"")); return true; }
   catch(e){ toast("Not recorded: "+e.message); return false; }
 }
-async function apSave(id){
+async function apSave(id,confirmed){
   const [pk,area]=id.split("__"), p=EN.ap.pages.find(x=>x.page_key===pk), a=p.areas.find(x=>x.id===area), pend=EN.apPend[id]||{}, choice=pend.choice;
   if(!choice){ toast("Choose first"); return; }
+  /* never replace a saved President edit without an explicit confirmation */
+  if(!confirmed&&apNeedsWarn(a,id,choice)){ $("#enbody").innerHTML=enApprove(); toast("Confirm first: this replaces your edited version for publication"); return; }
   const value={};
   if(area==="images"&&choice==="custom"){ const G=EN.apGal[pk]||[]; if(!G.length){ toast("Tick at least one photo"); return; } value.gallery=G.map(u=>({url:u})); }
   if(choice==="edit"){ const el=$("#ape_"+CSS.escape(id));

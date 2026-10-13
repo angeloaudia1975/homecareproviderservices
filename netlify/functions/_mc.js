@@ -616,6 +616,26 @@ function exceptionProblem(d, kind, slug){
   if(d.used_at != null) return kind === "enrichment_window" ? "the enrichment window " + d.id + " is closed" : "decision " + d.id + " is already used";
   return null;
 }
+/* (Angelo 2026-10-12) The line's CURRENT Gold Standard: its newest passing baseline / post run with a fingerprint — the
+   same run finalize and every regression check compare against. Runs after it (a failed or rolled-back attempt) are
+   history: they never make the line read as failing while a newer finalized Gold Standard PASS stands. */
+function goldStandardOf(runs){
+  const list = (runs || []).filter(Boolean).slice().sort((a, b) => String(b.run_at || "").localeCompare(String(a.run_at || "")) || (Number(b.id) || 0) - (Number(a.id) || 0));
+  const g = list.find(r => r.result === "pass" && (r.phase === "baseline" || r.phase === "post") && r.fingerprint);
+  if(!g) return null;
+  const later = list.filter(r => r !== g && (String(r.run_at || "") > String(g.run_at || "") || (String(r.run_at || "") === String(g.run_at || "") && Number(r.id) > Number(g.id))));
+  return { id: g.id, phase: g.phase, result: "pass", fingerprint: g.fingerprint, run_at: g.run_at,
+    later_runs: later.length, later_failed: later.filter(r => r.result !== "pass").length,
+    latest_attempt: later[0] ? { id: later[0].id, phase: later[0].phase, result: later[0].result, run_at: later[0].run_at } : null };
+}
+/* (Angelo 2026-10-12) A regression_fix scoped to one published-page correction (hcps_value.scope "content_correction")
+   opens nothing else: it is carried out only by product-content's correction actions, never as a general pass. */
+function scopedFixProblem(d){
+  const v = d && d.hcps_value;
+  if(v && v.scope === "content_correction") return "regression_fix " + d.id + " is scoped to correcting " + (v.page_key || "one page") + " (" + (Array.isArray(v.areas) ? v.areas.join(", ") : "") +
+    ") through Manufacturer Center's published-page correction; it cannot authorise any other change";
+  return null;
+}
 /* THE ONE GATE for product-content and images-api (catalog-api has freezeGate, same rules).
    read(path) returns rows and throws when it can't read — a freeze state that can't be read refuses.
    Returns { refusal:{status, body} } or { headers, regression, window } to send with the writes. */
@@ -629,7 +649,7 @@ async function contentGate({ body, lines, read, windowRule }){
     message: "Whether " + L.join(", ") + " is frozen could not be read, so nothing was changed: " + String((e && e.message) || e).slice(0, 200) } } }; }
   const frozen = L.filter(s => (rows || []).some(r => r && r.slug === s && r.frozen === true));
   const rf = body && body.regression_fix, ew = body && body.enrichment_window;
-  const readDecision = async id => { const r = await read("mfr_decisions?id=eq." + id + "&select=id,manufacturer,kind,used_at"); return r && r[0]; };
+  const readDecision = async id => { const r = await read("mfr_decisions?id=eq." + id + "&select=id,manufacturer,kind,used_at,hcps_value"); return r && r[0]; };
   /* Release B: a window presented with a request must be that line's own open window, whatever the line — it is
      never carried to another line (frozen or not), never across several lines, and never to images-api. */
   if(ew && !rf){
@@ -654,7 +674,7 @@ async function contentGate({ body, lines, read, windowRule }){
     const id = parseInt(rf.decision_id, 10), reason = String(rf.reason || "").trim();
     if(!(id > 0) || !reason) return { refusal: { status: 400, body: { ok: false, error: "regression_fix_incomplete", message: "A regression fix needs decision_id and a reason. Nothing was changed." } } };
     let d; try{ d = await readDecision(id); } catch(e){ return { refusal: { status: 503, body: { ok: false, error: "decision_unreadable", message: "The regression_fix decision could not be read. Nothing was changed." } } }; }
-    const p = exceptionProblem(d, "regression_fix", slug);
+    const p = exceptionProblem(d, "regression_fix", slug) || scopedFixProblem(d);
     if(p) return { refusal: { status: 423, body: { ok: false, error: "regression_fix_invalid", manufacturer: slug, message: p + ". Nothing was changed." } } };
     return { headers: { "x-hcps-regression-fix": String(id) }, regression: { id, manufacturer: slug, reason }, window: null };
   }
@@ -691,4 +711,4 @@ function rowMediaUrls(row){
 module.exports = { COMMERCIAL_ACTIONS, OVERRIDE_COMMERCIAL_KEYS, isCommercialAction, lineOf, STAGE_FIELDS, planStage, verifyLine, text, expectedFreightWords, sha,
   canon, planHash, parseCaseQty, decisionValues, appliesTo, interpretationFor, matchLine, gateProblem, activationRunProblem, freightPreview, compareRuns,
   CONTENT_ACTIONS, MEDIA_ID_ACTIONS, isFrozenProtected, VISIBLE_STATUSES, isVisibleStatus, PC_WRITE_ACTIONS, PC_WINDOW_ACTIONS, isImageWrite,
-  windowProblem, exceptionProblem, contentGate, DRAFT_MEDIA_BUCKET, draftMediaPrefix, isDraftMediaUrl, rowMediaUrls };
+  windowProblem, exceptionProblem, scopedFixProblem, goldStandardOf, contentGate, DRAFT_MEDIA_BUCKET, draftMediaPrefix, isDraftMediaUrl, rowMediaUrls };
