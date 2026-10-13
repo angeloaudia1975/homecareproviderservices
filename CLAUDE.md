@@ -2322,8 +2322,12 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   (3 tables RLS / 0 policies, 0 public grants, service_role SELECT only, 5 of 8 functions for service_role, 8 guard
   triggers, 0 rows written, Strongback 2026-09 quarantine 7 rows fp 6277ddcf…). Its check 9 showed monthly_sales at
   12,575 / $11,381,594.85 / $519,934.40 vs the last recorded baseline 11,997 / $10,802,558.50 / $493,077.06 — written by
-  something else since (Phase E writes nothing; its switch is off); identification query handed to Angelo, unexplained
-  until he runs it. `mi_auto_import` still OFF; probe (21 checks) not yet run.
+  something else since (Phase E writes nothing; its switch is off). **EXPLAINED (Angelo's read-only query, 21:37 CT):** two
+  manual legacy Commission Report Imports on 2026-10-12, no MI-1a batch — Access4U "Access4u Sept commission report
+  2026.xlsx" 39 rows / $55,625.29 / $2,323.01 and Golden "Golden Commission Reports Sept 2026.xlsx" 539 rows / $523,411.06 /
+  $24,534.33 = exactly +578 / +$579,036.35 / +$26,857.34. New baseline: 12,575 / $11,381,594.85 / $519,934.40. Note: register
+  record #10 (Access4U, "HomeCare September 2026 Commissions Report.xlsx") is a different file name from the one imported,
+  so #10 stays "registered, not imported" while the month shows in HCPS (legacy imports never link to the register). `mi_auto_import` still OFF; probe (21 checks) not yet run.
   **Reconsider rule proven live (run #28, 21:20 CT):** Ovation's 2609 statement (received 12 Oct 11:10 CT, captured under the
   then-draft profile) was reconsidered once and registered as **record #11** (commission_statement 2026-09, received
   2026-10-12, no import); 0 exceptions; Needs attention 0.
