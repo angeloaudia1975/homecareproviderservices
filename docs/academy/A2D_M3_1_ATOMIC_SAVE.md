@@ -95,3 +95,12 @@ Backup: newest daily backup 12 Oct 2026 09:10 UTC (before the Golden draft was c
 - M3.1 acceptance tests: 17/17 PASS (check 17: nothing left behind, every lesson byte-identical) — 22:26 CT.
 - Public-key probe (`scripts/academy_m3_1_public_probe_browser.js`, Angelo, 22:31 CT): ALL 8 BLOCKED (401) — both M3.1 functions
   and the direct insert / edit / delete on academy_lessons and academy_content_refs.
+- Preflight again (Angelo, 13 Oct 2026 ~10:02 CT): identical to the 22:19 baseline on every recorded value — M1 19 / 6 /
+  `a809004b…`, M2 15 / 8 / `794f3c3e…`, M3 24 / 7 / `9f41ee27…`, start-attempt `4ab3615a…` (server only, draws through M3),
+  content rows 1 / 1 / 11 / 17 / 7 / 0 / 71 / 0, `lessons_fingerprint` `9bdb8f44…`, `content_refs_fingerprint` `7fbd3ca9…`,
+  110 audit rows, 1 active President, switches `{academy_admin: true}` only, Academy grants `7af6d10e… / 252`, columns
+  `162e4192… / 180`, 0 policies, RLS 18 / 18; outside grants `248be67b… / 2956`, columns `764813c5… / 127`, policies
+  `219ac18e… / 29`, other functions `b116ce12… / 106`. Only `m3_1_installed` (true), `m3_1_objects` (the two functions) and
+  `ready_for_m3_1` (false) changed, as expected. The 20 content triggers are the A1 / M1 / M2 / M3 set (M3.1 adds none).
+  Outside row counts (monthly_sales 12,575 = the 12 Oct 21:37 CT recorded baseline) were not part of the 22:19 record.
+  **Record-integrity comparison PASSED.** PR #12 waits for Angelo's merge approval.

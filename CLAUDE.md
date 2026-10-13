@@ -2772,6 +2772,10 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   the SQL BEFORE deploying the builder. Tests: m3_1.pg 16 (PG16 + PG17.6), acceptance 17/17, SQL mutants 13/13, builder pg
   28 (PG16 + PG17.6), builder mutants 30/30 (+6 layered), browser 13. A1 #27 / M1 #43 now fail by design in production
   (the Golden draft exists) — use the M2/M3/M3.1 leftover checks.
+- **M3.1 PRODUCTION verified (12–13 Oct 2026):** run by Angelo ~22:24 CT; postcheck matched (1306b90b…), acceptance
+  17/17, public-key probe 8/8 BLOCKED, preflight re-run 13 Oct ~10:02 CT identical to the 22:19 baseline except the three
+  M3.1 fields (Golden draft rows, lesson / fact-link fingerprints, 110 audit rows, M1/M2/M3, switches, grants, columns,
+  policies, RLS, outside fingerprints). Never rerun or roll back M3.1. PR #12 merge waits for Angelo's approval.
 - **Golden facts worksheet (12 Oct 2026):** claude.ai/code/artifact/c763ada2-e1fe-432e-912c-36a1a9d84e47 — 52 values in
   Samples A/B re-checked on goldentech.com / the PR511 sell sheet: 39 verified, 11 unresolved, 2 contradictory (the
   five-zone definition vs Golden's FAQ; PR525 ZG+ now Yes). Lessons, Product Facts and the course were not changed.
