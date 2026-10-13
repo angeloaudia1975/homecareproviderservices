@@ -2765,6 +2765,16 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   Appearing in an earlier training document (Thinkific, the A0 audit, the samples) is never by itself verification.
   The remaining 15 lessons and the full exam bank wait for his approval of the next content stage; the Golden course
   stays unpublished and the six learner switches OFF.
+- **M3.1 BUILT on branch `academy/m3_1-atomic-save` (12 Oct 2026; DRAFT PR; NOT run, NOT merged).** Runbook
+  `docs/academy/A2D_M3_1_ATOMIC_SAVE.md` (checksums, procedure). `academy_save_op_lesson` + helper
+  `academy_save_lesson_links` (prefix academy_save_: M1/M2/M3 fingerprints untouched); fingerprint 17088d81… (Unix) /
+  1306b90b… (Windows paste). Builder save = that one call (503 if not installed, 409 "reload" on a lost answer). Install
+  the SQL BEFORE deploying the builder. Tests: m3_1.pg 16 (PG16 + PG17.6), acceptance 17/17, SQL mutants 13/13, builder pg
+  28 (PG16 + PG17.6), builder mutants 30/30 (+6 layered), browser 13. A1 #27 / M1 #43 now fail by design in production
+  (the Golden draft exists) — use the M2/M3/M3.1 leftover checks.
+- **Golden facts worksheet (12 Oct 2026):** claude.ai/code/artifact/c763ada2-e1fe-432e-912c-36a1a9d84e47 — 52 values in
+  Samples A/B re-checked on goldentech.com / the PR511 sell sheet: 39 verified, 11 unresolved, 2 contradictory (the
+  five-zone definition vs Golden's FAQ; PR525 ZG+ now Yes). Lessons, Product Facts and the course were not changed.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
