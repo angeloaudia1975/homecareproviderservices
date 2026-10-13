@@ -2857,6 +2857,39 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   history and certification records are preserved. TEST courses never issue real certificates; every dashboard and
   report keeps TEST apart. Do not begin A2D, A2F, A2B, A2E or C2 without separate approval; never enable learner access,
   issue certificates, publish real courses, activate payments or modify Golden Ordering without it.
+- **No PR is merged without Angelo's explicit approval (RULE, Angelo 12 Oct 2026 21:00 CT) — permissions, security,
+  documentation and maintenance changes included.** Corollary: nothing is pushed straight to `main` either (that is a
+  merge without a PR); every change, CLAUDE.md notes included, rides a branch + PR and waits for his approval.
+- **M3.1 development APPROVED (Angelo, 12 Oct 2026 21:00 CT): branch, local tests and a DRAFT PR only.** One atomic
+  audited operation saves a lesson's screens and their product-fact links: lock the draft version and the lesson BEFORE
+  comparing the starting content; refuse a conflicting save without ever writing over the other editor's work; derive
+  the needed links from the screens; screens + link changes + ONE audit row in one transaction; any failure rolls back
+  everything; never delete exam-question links, other lessons' links or any product_facts row; M1/M2/M3 protections
+  kept; prove new links are created and pass the existing block checker's "linked fact" rule inside the same
+  transaction; President-only editing stays. Tests on PG16 and PG17.6 (simultaneous saves, conflicting versions,
+  interrupted writes, audit failure, rollback) + Academy acceptance / security / mutation / builder suites. The draft PR
+  carries the exact migration, rollback, checksums, preflight and postcheck. No production SQL, no merge, until approved.
+- **Golden product facts in lesson text (RULE, Angelo 12 Oct 2026 21:00 CT).** Never remove a potentially valid Golden
+  specification from a lesson just because it is not yet in Product Facts. Keep a verification worksheet: model ·
+  specification · value stated in the lesson · authoritative Golden source · source document or link · verification date
+  · status (verified / unresolved / contradictory). Unresolved values are flagged and kept OUT of scored exam questions.
+  Appearing in an earlier training document (Thinkific, the A0 audit, the samples) is never by itself verification.
+  The remaining 15 lessons and the full exam bank wait for his approval of the next content stage; the Golden course
+  stays unpublished and the six learner switches OFF.
+- **M3.1 BUILT on branch `academy/m3_1-atomic-save` (12 Oct 2026; DRAFT PR; NOT run, NOT merged).** Runbook
+  `docs/academy/A2D_M3_1_ATOMIC_SAVE.md` (checksums, procedure). `academy_save_op_lesson` + helper
+  `academy_save_lesson_links` (prefix academy_save_: M1/M2/M3 fingerprints untouched); fingerprint 17088d81… (Unix) /
+  1306b90b… (Windows paste). Builder save = that one call (503 if not installed, 409 "reload" on a lost answer). Install
+  the SQL BEFORE deploying the builder. Tests: m3_1.pg 16 (PG16 + PG17.6), acceptance 17/17, SQL mutants 13/13, builder pg
+  28 (PG16 + PG17.6), builder mutants 30/30 (+6 layered), browser 13. A1 #27 / M1 #43 now fail by design in production
+  (the Golden draft exists) — use the M2/M3/M3.1 leftover checks.
+- **M3.1 PRODUCTION verified (12–13 Oct 2026):** run by Angelo ~22:24 CT; postcheck matched (1306b90b…), acceptance
+  17/17, public-key probe 8/8 BLOCKED, preflight re-run 13 Oct ~10:02 CT identical to the 22:19 baseline except the three
+  M3.1 fields (Golden draft rows, lesson / fact-link fingerprints, 110 audit rows, M1/M2/M3, switches, grants, columns,
+  policies, RLS, outside fingerprints). Never rerun or roll back M3.1. PR #12 merge waits for Angelo's approval.
+- **Golden facts worksheet (12 Oct 2026):** claude.ai/code/artifact/c763ada2-e1fe-432e-912c-36a1a9d84e47 — 52 values in
+  Samples A/B re-checked on goldentech.com / the PR511 sell sheet: 39 verified, 11 unresolved, 2 contradictory (the
+  five-zone definition vs Golden's FAQ; PR525 ZG+ now Yes). Lessons, Product Facts and the course were not changed.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

@@ -67,6 +67,7 @@ async function rpc(fn, args) {
   if (code === '23505') refuse(409, 'conflict', 'That already exists.');
   if (code === '55000') refuse(409, 'locked', msg || 'This can no longer change.');
   if (code === '42501') refuse(403, 'forbidden', msg || 'Not allowed.');
+  if (code === '40001') refuse(409, 'changed', msg.replace(/^changed:\s*/, '') || 'This was changed by someone else. Reload it.');
   if (code === 'PGRST202' || r.status === 404) refuse(503, 'not_installed', 'This Academy step is not available yet.');
   refuse(502, 'write_failed', 'The change could not be saved, and nothing was changed.');
 }
@@ -103,6 +104,12 @@ async function signPrivate(storagePath, seconds) {
 async function authorOp(name, args) {
   if (!/^[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
   return rpc('academy_author_op_' + name, args);
+}
+/* M3.1: the atomic lesson save (screens + their fact links + one audit row, compare-and-set under the lock). Same
+   contract: one database call, all or nothing; not installed = 503, never a fallback. */
+async function saveOp(name, args) {
+  if (!/^[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
+  return rpc('academy_save_op_' + name, args);
 }
 /* The private bucket, for lesson files only (A2D Stage 3 builder). Every path is server-chosen media/<folder>/<file>,
    exactly the form M3 accepts; nothing else in the bucket is ever listed, written or removed here. */
@@ -314,7 +321,7 @@ function handler(fn, opts) {
 
 module.exports = {
   SWITCHES, SITE_ORIGINS, PARTNER360_ORIGINS, MAX_BODY, AcademyError, refuse,
-  sbGet, sbSend, op, contentOp, authorOp, switchOn, switches, signPrivate, putPrivate, listPrivate, removePrivate, MEDIA_PATH,
+  sbGet, sbSend, op, contentOp, authorOp, saveOp, switchOn, switches, signPrivate, putPrivate, listPrivate, removePrivate, MEDIA_PATH,
   bearer, bearerUser, staffActor, learnerActor,
   isAdmin, isRelations, isRep, family, dealerScope, canSeeDealer, canSeeScores, requireDealer, requireAdmin, actorLabel,
   audit, redact, body, uuid, oneOf, text, respond, handler, SESSION,
