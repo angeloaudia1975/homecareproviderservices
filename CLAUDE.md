@@ -2298,7 +2298,14 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   approval stamped. Switch `phase2_flags.mi_auto_import` (exactly true) gates EVERY write of this path, automatic and
   approved; `report-import-cron` (hourly :40) imports only eligible reports of MI-1a-enrolled manufacturers and logs a
   waiting report once per plan. UI: MI dashboard quarantine card → disposition form (dry run, then Confirm); Ship-To
-  Review → Import check → "Approve & import this plan" (President, switch on). Code deployed; SQL NOT run.
+  Review → Import check → "Approve & import this plan" (President, switch on). Code deployed.
+  **SQL 1 (`mi_d_profile_activation_2.sql`) RUN by Angelo 2026-10-12 ~20:57 CT:** 10 active (Complete Medical + Ovation
+  added, registration only) / 2 draft (Golden, PediFix). **SQL 2 (`mi_e_auto_import.sql`) RUN 20:58 CT: 9/9 checks true**
+  (3 tables RLS / 0 policies, 0 public grants, service_role SELECT only, 5 of 8 functions for service_role, 8 guard
+  triggers, 0 rows written, Strongback 2026-09 quarantine 7 rows fp 6277ddcf…). Its check 9 showed monthly_sales at
+  12,575 / $11,381,594.85 / $519,934.40 vs the last recorded baseline 11,997 / $10,802,558.50 / $493,077.06 — written by
+  something else since (Phase E writes nothing; its switch is off); identification query handed to Angelo, unexplained
+  until he runs it. `mi_auto_import` still OFF; probe (21 checks) not yet run.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
