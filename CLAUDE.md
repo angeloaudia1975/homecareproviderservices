@@ -2395,6 +2395,18 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   month; unmatched orders, unverified payments and potentially overdue commissions clearly labelled. Existing MI
   architecture only — no second financial ledger, no duplicated obligations. Deliver a validation report + financial
   preview and ask approval BEFORE any posting is enabled.
+  **Built + DEPLOYED read-only (main 3130065 + b178574, 2026-10-12):** `_contract_commission.js` (contract table, SR032
+  reader — lines must sum to both printed totals or the statement is refused —, reconcile, groupBy), `_commission_recon_load.js`
+  (strict reads, SHA-256 re-checked files), mfr-reports-api `commission_recon` (admin, read-only) + `commission_event`
+  (President → Phase F RPC), page `/admin/commission-recon.html` (HUBS Sales Data & Analytics), coverage status
+  `earned_contract` (a month counts only when every sales-report line is exactly 9%). Phase F SQL
+  `supabase/mi_f_commission_events.sql` (append-only payment / review evidence; NOT run). **Overdue rule:** a sale is
+  "potentially overdue — not on a statement" only when its month is on/after the first readable statement on file; earlier
+  sales are labelled "earlier statements not on file" (their statements predate email capture). Posting = importing an
+  order export into the sales-report lane (commission = earned); statements are NEVER posted to monthly_sales.
+  Live 22:30 CT: 63 orders, 57 eligible, $45,180.50 sales → $4,066.25 earned; $243.00 reported due matched (6698, 6737,
+  6800) + $93.33 in review (7060 Williams Brothers — no sale on file); paid $0; 0 overdue, 51 before the first statement;
+  record #8 preview 6 orders / 7 lines / $2,159.00 / $194.31 earned; 0 commission-lane rows.
   **Reconsider rule proven live (run #28, 21:20 CT):** Ovation's 2609 statement (received 12 Oct 11:10 CT, captured under the
   then-draft profile) was reconsidered once and registered as **record #11** (commission_statement 2026-09, received
   2026-10-12, no import); 0 exceptions; Needs attention 0.

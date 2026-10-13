@@ -220,6 +220,7 @@ function reconcile(input) {
       text: `Statement #${S.source_id}: partial payment of $${S.paid} of $${S.total_due} — not allocated to individual orders.` }); }
   }
   // 5. Per-order state and labels.
+  const firstStmt = (input.statements || []).filter(x => x.parsed && x.parsed.ok && x.period).map(x => x.period).sort()[0] || null;
   const list = [];
   for (const o of orders.values()) {
     o.outstanding = r2(o.earned - o.paid);
@@ -229,7 +230,13 @@ function reconcile(input) {
     if (o.eligibility === "eligible_unverified_status") o.labels.push("status_not_in_record");
     if (o.reported_due && o.paid < o.reported_due) o.labels.push("payment_unverified");
     const age = o.date ? daysBetween(o.date, today) : null;
-    if (o.earned > 0 && !o.statement_refs.length && age != null && age > C.overdue_days.unreported) o.labels.push("potentially_overdue_unreported");
+    // Overdue-unreported only when every statement that could have listed the sale is on file: the sale month is on or
+    // after the earliest readable statement's period. Earlier sales may sit on statements HCPS never registered (they
+    // predate email capture) — labelled as such, never called overdue.
+    if (o.earned > 0 && !o.statement_refs.length && o.date) {
+      if (firstStmt && o.date.slice(0, 7) >= firstStmt) { if (age != null && age > C.overdue_days.unreported) o.labels.push("potentially_overdue_unreported"); }
+      else o.labels.push("earlier_statements_not_on_file");
+    }
     const lastStmt = o.statement_refs.length ? o.statement_refs[o.statement_refs.length - 1] : null;
     const st = lastStmt ? (input.statements || []).find(s => s.source_id === lastStmt.source_id) : null;
     if (o.reported_not_paid > 0 && st && st.received_date && daysBetween(st.received_date, today) > C.overdue_days.unpaid) o.labels.push("potentially_overdue_unpaid");
@@ -252,6 +259,8 @@ function reconcile(input) {
     status_not_in_record: list.filter(o => o.eligibility === "eligible_unverified_status").length,
     payment_unverified: list.filter(o => o.labels.includes("payment_unverified")).length,
     potentially_overdue: list.filter(o => o.labels.some(l => l.startsWith("potentially_overdue"))).length,
+    earlier_statements_not_on_file: list.filter(o => o.labels.includes("earlier_statements_not_on_file")).length,
+    statements_on_file_from: firstStmt,
     unallocated_payments: r2(unallocated.reduce((s, u) => s + u.amount, 0)),
     note: "Earned, reported due and paid are three views of the same commission — never added together.",
   };

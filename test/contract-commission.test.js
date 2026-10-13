@@ -143,8 +143,13 @@ const run = o => CT.reconcile(Object.assign({ slug: 'strongback-mobility', today
     assert.strictEqual(r.summary.earned, 93.33);
   });
   await t('potentially overdue: earned but never reported after 90 days; reported but no payment evidence 45 days after the statement arrived', async () => {
-    const r = run({ today: '2026-12-01', history: [HIST(1, 100, '2026-07-01'), HIST(7060, 1037, '2026-08-20')], statements: [STMT(9, '2026-09', SEPT, '2026-10-07')] });
-    assert.ok(r.orders.find(o => o.order === '1').labels.includes('potentially_overdue_unreported'));
+    const r = run({ today: '2027-01-15', history: [HIST(1, 100, '2026-07-01'), HIST(2, 200, '2026-09-02'), HIST(7060, 1037, '2026-08-20')], statements: [STMT(9, '2026-09', SEPT, '2026-10-07')] });
+    assert.ok(r.orders.find(o => o.order === '2').labels.includes('potentially_overdue_unreported'), 'sold in a month whose statements are all on file');
+    const o1 = r.orders.find(o => o.order === '1');
+    assert.ok(o1.labels.includes('earlier_statements_not_on_file') && !o1.labels.some(l => l.startsWith('potentially')), 'sold before the first statement on file: never called overdue');
+    assert.strictEqual(r.summary.earlier_statements_not_on_file, 1); assert.strictEqual(r.summary.statements_on_file_from, '2026-09');
+    const none = run({ today: '2027-01-15', history: [HIST(2, 200, '2026-09-02')] });
+    assert.ok(none.orders[0].labels.includes('earlier_statements_not_on_file') && none.summary.potentially_overdue === 0, 'no statement on file at all: nothing is overdue');
     assert.ok(r.orders.find(o => o.order === '7060').labels.includes('potentially_overdue_unpaid'));
     const n = run({ today: '2026-10-12', history: [HIST(1, 100, '2026-09-20')] }); assert.ok(!n.orders[0].labels.length || !n.orders[0].labels.some(l => l.startsWith('potentially')));
   });
