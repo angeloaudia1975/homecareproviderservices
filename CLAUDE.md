@@ -2448,6 +2448,28 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   **Reconsider rule proven live (run #28, 21:20 CT):** Ovation's 2609 statement (received 12 Oct 11:10 CT, captured under the
   then-draft profile) was reconsidered once and registered as **record #11** (commission_statement 2026-09, received
   2026-10-12, no import); 0 exceptions; Needs attention 0.
+- **OPERATIONAL ACTIVATION (Angelo, 2026-10-13 11:54 CT) — supersedes the earlier "switch stays OFF" activation
+  restrictions, NOT the financial-integrity, security or exception safeguards.** Angelo turned ON and verified
+  `mi_report_capture`, `mi_import_v2`, `mi_auto_import`, `mi_commission_v2`, `mi_intel_publish`. Never turn one back off
+  just because an earlier rule said it should stay off. Goal: AUTOMATE EVERYTHING RELIABLE; NOTIFY HIM OF ACTIVITY;
+  ESCALATE ONLY GENUINE EXCEPTIONS — not a dashboard that waits for manual imports. Rules:
+  (1) Order exports import automatically when every check passes; record #8 still needs its exact-plan approval (never
+  bypassed). (2) Commission statements are processed automatically through the EXISTING guarded importer
+  (`hcps_commission_file_apply`), with the importer's own parsing, duplicate, cross-lane, paid-period and control checks:
+  a clean dry run with no decisions needed is applied and linked to its register record; a statement identical to rows
+  already in HCPS is recorded as already imported (no write); anything else (existing month, unmatched dealers, no saved
+  column mapping, multi-month file, unreadable file) is an exception for Angelo. Strongback: earned = contract 9%,
+  reported due = SR032, paid = payment evidence only; SR032 is never posted to monthly_sales; one commission is never
+  counted twice. (3) Dealer intelligence: reliable, validated intelligence is applied automatically and published only
+  on VERIFIED dealer matches; uncertain dealers, protected relationships (holds), conflicting assignments and
+  unverified information wait for Angelo. (4) Native HCPS notifications: report arrived/registered, records applied,
+  processing failed, exception needs action — batched, deduplicated, with links; one daily operational digest; the
+  monthly reconciliation on the 15th. (5) Manufacturer coverage: trial and activate each validated report type; never
+  treat price lists, acknowledgments or correspondence as statements. (6) Manufacturer Center never automatically
+  chooses, replaces or publishes product images or manufacturer product content — those stay Angelo's. (7) "100%
+  operational" only after automatic commission processing, dealer-intelligence processing and notifications are
+  DEMONSTRATED on real scheduled runs. Financial baseline to reconcile against: 12,575 rows / $11,381,594.85 /
+  $519,934.40.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
