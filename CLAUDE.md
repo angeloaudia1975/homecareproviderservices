@@ -123,6 +123,20 @@ This does not change who runs production SQL: Angelo still runs every migration 
   trips on an unrelated missing include `blocks/hero.njk`; verify pages by rendering
   in isolation if needed.)
 - Scheduled tasks use the `create_trigger` MCP, never the local Cron tools.
+- **Standing development workflow — direct to main (RULE, Angelo 2026-10-13 11:11 CT; applies across his projects;
+  supersedes the "No PR is merged without Angelo's explicit approval" rule in §20 for routine code).** Pull requests are
+  no longer the default. Steps: (1) identify the repo, remote, branch, working tree; (2) fetch + pull the latest main,
+  never overwriting others' work; (3) change the code; (4) run all relevant tests, build, regression and security checks;
+  (5) if green, commit directly to main and push; (6) confirm Netlify publishes that commit; (7) test the live app and
+  report; (8) a failing check is fixed BEFORE pushing. Never force-push or bypass repository protections. Standing
+  authorization covers tested application code, bug fixes, UI improvements, documentation and maintenance. A branch / PR
+  only when Angelo asks, repository protection requires one, or there is substantial risk. Reports: concise results,
+  deploy status, exceptions, completion % — no merge-approval requests.
+  **Still NOT authorized by it (separate approval each time):** destructive or financial database migrations (Angelo still
+  runs all production SQL); importing, deleting, restoring or reassigning financial records; turning on financial
+  posting / payment switches; publishing or replacing manufacturer product content or images; changing dealer ownership
+  or verified account assignments; disabling production security protections. Code may ship with those operations still
+  disabled. All data-protection rules (RULE 0.1, 14, 17, 18, 19, 20) are unchanged.
 
 ---
 
@@ -2884,6 +2898,8 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
 - **No PR is merged without Angelo's explicit approval (RULE, Angelo 12 Oct 2026 21:00 CT) — permissions, security,
   documentation and maintenance changes included.** Corollary: nothing is pushed straight to `main` either (that is a
   merge without a PR); every change, CLAUDE.md notes included, rides a branch + PR and waits for his approval.
+  **SUPERSEDED for routine code on 13 Oct 2026 11:11 CT** by the direct-to-main workflow (§7 "Standing development
+  workflow"); kept here as history.
 - **M3.1 development APPROVED (Angelo, 12 Oct 2026 21:00 CT): branch, local tests and a DRAFT PR only.** One atomic
   audited operation saves a lesson's screens and their product-fact links: lock the draft version and the lesson BEFORE
   comparing the starting content; refuse a conflicting save without ever writing over the other editor's work; derive
@@ -2941,7 +2957,8 @@ source is the committed `.claude/settings.json` (shared project settings; person
   PGUSER=postgres — no password in the repo); `sha256sum`, `md5sum`, `tail`; WebSearch; WebFetch of documentation domains
   and the public site; read-only Chrome tools (tabs, navigate, read_page, get_page_text, find, console / network reads);
   read-only memory / Docs / repo / scheduled-task lookups.
-- **Not pre-approved (unchanged):** `git push` (= production deploy), Chrome clicks / typing / javascript / forms /
+- **Not pre-approved in the settings file:** `git push` (= production deploy; since 13 Oct 2026 11:11 CT Angelo's standing
+  authorization covers pushing TESTED routine code to main — §7 — but the permission prompt is kept as a last check), Chrome clicks / typing / javascript / forms /
   uploads, Artifact publishing, memory and Docs writes, scheduled-task writes, adding repos, device tools.
 - **Always ask:** `psql` to any `postgres://` / `postgresql://` URL, `gh pr merge`, `netlify deploy`, `netlify env:set|unset`,
   `supabase db push|reset`, `supabase migration up`. **Always refused:** force push (`--force`, `-f`); reading `.env*`,
