@@ -2470,6 +2470,25 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   operational" only after automatic commission processing, dealer-intelligence processing and notifications are
   DEMONSTRATED on real scheduled runs. Financial baseline to reconcile against: 12,575 rows / $11,381,594.85 /
   $519,934.40.
+- **Operational activation — live results 2026-10-13 (main 9d4c471 → 97a2543, Published).** Commission statements go
+  through `_commission_auto.js` (hourly :40 in report-import-cron, after order exports): the existing guarded
+  `hcps_commission_file_apply` dry run → apply only with no problems and no unmatched dealers → result must equal the dry
+  run (else batch rollback) → link to the register record (else rollback). A statement identical to rows already in HCPS
+  = "already in HCPS" (accepted, nothing written); a record whose file was loaded by hand = linked to that one batch;
+  Strongback SR032 = accepted as reported-due evidence only. Readers: `_commission_rows.js` (verbatim copies of the
+  Commission Report Import page's Ohio / Access4U readers, drift-extracted by `test/commission-rows.extract.js`, + saved
+  `ctpl:<slug>` templates; no template = held). Dealer intelligence: `mfr-intel-api runAutoIntel` (hourly :50 in
+  mi-ops-cron): accept → import → publish when the report reads cleanly and its prepared date matches; Dealer 360 card
+  (crm-api `mfr_intel`) shows only matched snapshots of PUBLISHED reports, never a dealer two printed lines point at.
+  Notifications: `_mi_notify.js` from GRAPH_SENDER to MI_NOTIFY_TO — hourly activity mail only when something happened,
+  daily digest ≥ 07:00 CT, reconciliation on the 15th; state in app_settings `mi_notify_state` (moves only after Graph
+  accepts; `sent_log` kept; copies saved to Sent Items); Report History capture card shows the last send.
+  First runs: 12:40 — #9 SR032 accepted as evidence ($3,737 / $336.33), #10 Access4U already in HCPS (identical to the
+  by-hand import), #11 Ovation HELD (no saved column template), #8 still needs its plan approval; nothing written to
+  monthly_sales. 12:50 — record 7 accepted + published: 15 verified dealers on Dealer 360, 7 review, Wyatt's held,
+  2 not HCPS dealers; daily digest for 2026-10-13 accepted by Graph. Tests: commission-auto.pg 20 (+ mutants 14/14),
+  commission-rows 7, mi-notify 9, mfr-intel-d360 5, mi1c-api 35. Golden + PediFix stay draft (no statement in the
+  mailbox to trial).
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
