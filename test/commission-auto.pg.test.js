@@ -24,7 +24,7 @@ const { shim, BASE } = require('./academy-pgrest.js');
 process.env.SUPABASE_URL = BASE; process.env.SUPABASE_SERVICE_ROLE = 'test-service-role';
 const api = shim({ db: DB, psql: PSQL });
 global.fetch = api.fetch;
-const CA = require('../netlify/functions/_commission_auto.js');
+const CA = require(process.env.COMMISSION_AUTO_PATH || '../netlify/functions/_commission_auto.js');
 const internal = require('../netlify/functions/commissions-api.js').internal;
 const { flagOn } = require('../netlify/functions/_flags.js');
 
@@ -71,7 +71,9 @@ const { flagOn } = require('../netlify/functions/_flags.js');
   const sr032 = { 'sr': ['September 2026', 'Staff Member: Angelo Audia', 'Order Number Company Subtotal Commission Due', '6698 Medmart $440.00 $39.60', '7060 Williams Brothers $1,037.00 $93.33',
     'Total Orders: $1,477.00', 'Total Commission Due: $132.93'] };
   const rpcHooks = {};
+  const rpcCalls = [];
   async function rpc(fn, p) {
+    rpcCalls.push(fn + ':' + ((p && p.source_file) || ''));
     if (rpcHooks[fn]) { const forced = await rpcHooks[fn](p); if (forced) return forced; }
     const r = await fetch(`${BASE}/rest/v1/rpc/${fn}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ p }) });
     const text = await r.text(); let body; try { body = JSON.parse(text); } catch (x) { body = { message: text }; }
@@ -110,8 +112,9 @@ const { flagOn } = require('../netlify/functions/_flags.js');
     assert.strictEqual(accountCalls.length, 2);
   });
   t('a second run does nothing for a finished record (no write, no new log row)', async () => {
-    const n = logCount(G1), ms = MS('golden-technologies'); await P();
+    const n = logCount(G1), ms = MS('golden-technologies'); rpcCalls.length = 0; await P();
     assert.strictEqual(logCount(G1), n); assert.strictEqual(MS('golden-technologies'), ms);
+    assert.ok(!rpcCalls.some(c => /^hcps_commission_file_apply:Golden Sept 2026\.csv$/.test(c)), 'finished records are not looked at again: ' + rpcCalls.join(','));
   });
   t('same lines under another file name: "already in HCPS", nothing written, record accepted', async () => {
     const id = register('golden-technologies', 'Golden September statement (copy).csv',
@@ -119,6 +122,17 @@ const { flagOn } = require('../netlify/functions/_flags.js');
     const ms = MS('golden-technologies'); const r = await P();
     assert.strictEqual(result(r, id).code, 'already_in_hcps'); assert.strictEqual(MS('golden-technologies'), ms);
     assert.strictEqual(rec(id).status, 'accepted'); assert.strictEqual(rec(id).import_batch_id, null); assert.deepStrictEqual(lastLog(id).detail.identical_to, ['Golden Sept 2026.csv']);
+    rpcCalls.length = 0; const n = logCount(id); await P();
+    assert.ok(!rpcCalls.includes('hcps_commission_file_apply:Golden September statement (copy).csv'), 'a finished no-write record is not processed again'); assert.strictEqual(logCount(id), n);
+  });
+  t('identical lines but ANOTHER problem (a cross-lane duplicate): never waived — needs Angelo', async () => {
+    q(`insert into monthly_sales(manufacturer, period, amount, qty, commission, source, external_ref) values ('golden-technologies','2026-09-01',1500,1,0,'sales_report','x-sep')`);
+    const id = register('golden-technologies', 'Golden Sept 2026 (third copy).csv',
+      golden([['Mobility Plus', 'C1', 'PR-118', '1', '1500.00', '75.00', '09/02/2026', 'I-1'], ['Med Mart', 'C2', 'PR-401', '2', '2000.00', '100.00', '09/15/2026', 'I-2']], [['', '', '', '', '', '', '', ''], ['', '', '', '', '', '', '', '']]), 'csv', ['2026-09-01', '2026-09-30']);
+    const ms = MS('golden-technologies'); const r = await P();
+    assert.strictEqual(result(r, id).code, 'needs_decision'); assert.ok(lastLog(id).detail.problems.some(p => p.error === 'cross_lane_duplicate'));
+    assert.strictEqual(rec(id).status, 'received'); assert.strictEqual(MS('golden-technologies').split('|')[0] * 1, ms.split('|')[0] * 1);
+    q(`delete from monthly_sales where external_ref='x-sep'`);
   });
   let G3;
   t('different lines for a month already on file: needs Angelo\'s decision, nothing written; logged once per plan', async () => {
@@ -176,6 +190,12 @@ const { flagOn } = require('../netlify/functions/_flags.js');
     const b = JSON.parse(call('hcps_commission_file_apply', { manufacturer: 'golden-technologies', source_file: 'Golden May 2026.csv', apply: true, actor: 'angelo@hcps.us', months, decisions: {} })).batch_id;
     const ms = MS('golden-technologies'); const r = await P();
     assert.strictEqual(result(r, id).code, 'linked_manual_import'); assert.strictEqual(rec(id).import_batch_id, b); assert.strictEqual(MS('golden-technologies'), ms);
+  });
+  t("two by-hand imports with the record's file name: which one belongs to it is a person's call (held, nothing linked)", async () => {
+    const id = register('golden-technologies', 'Golden Apr 2026.csv', golden([['Med Mart', 'C2', 'PR-1', '1', '50.00', '2.50', '04/02/2026', 'I-45']]), 'csv', ['2026-04-01', '2026-04-30']);
+    for (const per of ['2026-04-01', '2025-04-01']) call('hcps_commission_file_apply', { manufacturer: 'golden-technologies', source_file: 'Golden Apr 2026.csv', apply: true, actor: 'angelo@hcps.us',
+      months: [{ period: per, rows: [{ manufacturer: 'golden-technologies', period: per, customer_name: 'Med Mart', amount: 51, commission: 2.55, source: 'commission' }] }], decisions: {} });
+    const r = await P(); assert.strictEqual(result(r, id).code, 'several_manual_imports'); assert.strictEqual(rec(id).import_batch_id, null);
   });
   t('a paid / locked month needs approval (nothing written)', async () => {
     q(`insert into commission_period_locks(manufacturer, period, locked_by, note) values ('golden-technologies','2026-03-01','angelo','paid')`);

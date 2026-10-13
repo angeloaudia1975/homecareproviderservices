@@ -73,6 +73,7 @@ function make(deps) {
     const mname = new Map(mfrs.map(m => [m.slug, m.name]));
     const srcById = new Map(srcs.map(s => [Number(s.id), Object.assign({ manufacturer_name: mname.get(s.manufacturer) }, s)]));
     const sent = [];
+    const note = (kind, subject) => { state.sent_log = (Array.isArray(state.sent_log) ? state.sent_log : []).concat([{ kind, subject, to, at: t.toISOString() }]).slice(-30); };
 
     // ---- activity -------------------------------------------------------------------------------------------------
     const newLogs = logs.filter(l => first ? l.created_at >= since24 : Number(l.id) > Number(state.last_log_id));
@@ -89,8 +90,9 @@ function make(deps) {
       const html = wrap("Manufacturer report activity", (first ? `<p style="color:#667">First notification — covering the last 24 hours.</p>` : "")
         + section("Needs your action", action.concat(caps), "#b45309") + section("Failed — nothing was written", failed, "#b42323")
         + section("Applied automatically", applied, "#1f7a44") + section("Arrived and registered", reg, "#0f5c8f"));
-      if (await sendMail({ to, subject: `MI: ${parts.join(" · ")}`, html })) {
-        sent.push("activity");
+      const subj = `MI: ${parts.join(" · ")}`;
+      if (await sendMail({ to, subject: subj, html })) {
+        sent.push("activity"); note("activity", subj);
         state.last_log_id = Math.max(Number(state.last_log_id) || 0, ...logs.map(l => Number(l.id)), 0);
         state.last_source_id = Math.max(Number(state.last_source_id) || 0, ...srcs.map(s => Number(s.id)), 0);
         state.cap_keys = items.map(capKey).slice(-500);
@@ -120,13 +122,15 @@ function make(deps) {
           `<p>${open.length + capOpen.length ? `<b>${open.length + capOpen.length} item(s) need you.</b>` : "<b>All clear</b> — nothing is waiting for you."} Last 24 hours: ${dayReg.length} report(s) registered, ${day.filter(l => classify(l).group === "applied").length} applied automatically, ${day.filter(l => classify(l).group === "failed").length} failed.</p>`
           + section("Waiting for you", open.concat(capOpen), "#b45309")
           + `<h3 style="margin:16px 0 6px;font:600 15px system-ui">Statements for ${esc(rc.month || "")} so far</h3><p>${sm.received || 0} received${sm.received_late ? ` (${sm.received_late} late)` : ""} · ${sm.overdue || 0} overdue · ${sm.not_due || 0} not due yet · ${sm.imported || 0} imported.</p>`);
-        if (await sendMail({ to, subject: `MI daily digest ${local.day}: ${open.length + capOpen.length ? (open.length + capOpen.length) + " need you" : "all clear"}`, html })) { sent.push("digest"); state.digest_day = local.day; }
+        const subj = `MI daily digest ${local.day}: ${open.length + capOpen.length ? (open.length + capOpen.length) + " need you" : "all clear"}`;
+        if (await sendMail({ to, subject: subj, html })) { sent.push("digest"); state.digest_day = local.day; note("digest", subj); }
         else return Object.assign({ ok: false, error: "send_failed", kind: "digest" }, await persist());
       }
       if (dueRecon) {
         const html = wrap(`Monthly reconciliation — statements for ${rc.month || ""}`,
           `<p>${sm.received || 0} received${sm.received_late ? ` (${sm.received_late} late)` : ""} · ${sm.overdue || 0} missing / overdue · ${sm.not_due || 0} not due yet · ${sm.in_hcps_only || 0} in HCPS by hand · ${sm.imported || 0} imported · ${sm.open_exceptions || 0} open exception(s). Late reports keep processing when they arrive.</p>${recTable}`);
-        if (await sendMail({ to, subject: `MI monthly reconciliation ${rc.month || ""}: ${sm.received || 0} received, ${sm.overdue || 0} missing`, html })) { sent.push("reconciliation"); state.recon_month = local.month; }
+        const subj = `MI monthly reconciliation ${rc.month || ""}: ${sm.received || 0} received, ${sm.overdue || 0} missing`;
+        if (await sendMail({ to, subject: subj, html })) { sent.push("reconciliation"); state.recon_month = local.month; note("reconciliation", subj); }
         else return Object.assign({ ok: false, error: "send_failed", kind: "reconciliation" }, await persist());
       }
     }

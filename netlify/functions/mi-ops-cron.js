@@ -35,7 +35,7 @@ async function sendMail({ to, subject, html }) {
   const tok = await graphToken();
   const r = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(FROM)}/sendMail`, { method: "POST",
     headers: { Authorization: "Bearer " + tok, "content-type": "application/json" },
-    body: JSON.stringify({ message: { subject, body: { contentType: "HTML", content: html }, toRecipients: [{ emailAddress: { address: to } }] }, saveToSentItems: false }) });
+    body: JSON.stringify({ message: { subject, body: { contentType: "HTML", content: html }, toRecipients: [{ emailAddress: { address: to } }] }, saveToSentItems: true }) });
   return r.ok;
 }
 function notifier() {
@@ -49,6 +49,7 @@ exports.handler = async () => {
   catch (e) { out.dealer_intelligence = { ok: false, error: String((e && e.message) || e).slice(0, 300) }; }
   try { const r = await notifier().run(); out.notifications = { ok: r.ok, sent: r.sent, error: r.error, counts: r.counts }; }
   catch (e) { out.notifications = { ok: false, error: String((e && e.message) || e).slice(0, 300) }; }
+  console.log("mi-ops-cron " + JSON.stringify({ intel: out.dealer_intelligence && { ok: out.dealer_intelligence.ok, published: out.dealer_intelligence.published, held: out.dealer_intelligence.held, skipped: out.dealer_intelligence.skipped }, notifications: out.notifications }));
   return { statusCode: 200, body: JSON.stringify(out) };
 };
 exports.notifier = notifier;

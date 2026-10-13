@@ -238,7 +238,11 @@ exports.handler = async (event) => {
       const by = {}; let open = 0;
       for (const i of items) { by[i.state] = (by[i.state] || 0) + 1; if (i.attention && !i.resolved_at) open++; }
       const f = (flags && flags[0] && flags[0].value) || {};
-      return json(200, { ok: true, switch_on: f.mi_report_capture === true, state, runs, profiles, counts: by, needs_attention: open });
+      let notifications = null;
+      try { const ns = await sbGet("app_settings?key=eq.mi_notify_state&select=value,updated_at"); const v = (ns && ns[0] && ns[0].value) || null;
+        if (v) notifications = { to: ((v.sent_log || []).slice(-1)[0] || {}).to || null, last: (v.sent_log || []).slice(-5).reverse(), digest_day: v.digest_day || null, reconciliation_month: v.recon_month || null, checked_at: ns[0].updated_at }; }
+      catch (x) { notifications = { unreadable: true }; }
+      return json(200, { ok: true, switch_on: f.mi_report_capture === true, state, runs, profiles, counts: by, needs_attention: open, notifications });
     } catch (x) { return json(503, { error: "capture_not_installed_or_unreadable", message: String(x.message || x).slice(0, 300) }); }
   }
   if (b.action === "inbox" || b.action === "attention") {
