@@ -762,6 +762,32 @@ function apOptionsArea(p,a){
   return `<div class="aparea ${a.approved?'done':'todo'}"><div class="aphead"><h4>Option images</h4>${a.approved?pill("p-pass","✓ Every option decided"):pill("p-warn","Waiting")}</div>
     <div class="mut" style="font-size:12px;margin-top:3px">The photo a dealer sees when choosing each option. Assign a photo to a specific option (for example Round vs Elongated), keep today's, or let the option show the page's main photo.</div>${rows}</div>`;
 }
+/* Catalog card / default image of a grouped page (2026-10-12): what dealers see on the catalog card before choosing an
+   option. Never taken from the option order and never pre-selected. Presentation only. */
+function apCardArea(p,a){
+  const id=p.page_key+"__card_image", pend=EN.apPend[id]||{}, cur=pend.choice||(a.selected?a.choice:null);
+  const curCode=pend.code||(a.selected&&a.choice==="use_option"?a.code:null), curUrl=pend.url||(a.selected&&a.choice==="use_image"?a.url:null);
+  const disp=u=>(p.candidates.find(c=>c.url===u)||{}).display||u;
+  const lab=o=>o.option||o.code;
+  const opt=o=>{ const on=cur==="use_option"&&curCode===o.code; return `<label class="apimg ${on?'sel':''}" style="cursor:${o.image?'pointer':'not-allowed'};opacity:${o.image?1:.55}">
+      <input type="radio" name="ap_${esc(id)}" ${on?'checked':''} ${o.image?'':'disabled'} onchange="apCardPick('${esc(id)}','use_option','${esc(o.code)}')">
+      ${o.image?`<img src="${esc(disp(o.image))}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;pvph&quot;>No image</div>'">`:'<div class="pvph">No option photo</div>'}
+      <div><b>Use ${esc(lab(o))} option image</b> <span class="mut">(${esc(o.code)})</span></div></label>`; };
+  const picker=cur==="use_image"?`<div class="apthumbs">${p.candidates.map((c,ci)=>`<div onclick="apCardUrl('${esc(id)}',${ci})" style="cursor:pointer">${apTile(p,c,c.url===curUrl)}</div>`).join('')}</div>`:'';
+  const status=a.selected?pill("p-pass","✓ "+(a.choice==="use_option"?"Use "+lab(a.options.find(o=>o.code===a.code)||{code:a.code})+" option image":(a.choice==="none"?"No image":"Another approved image"))):(a.stale?pill("p-fail","Option photos changed — choose again"):pill("p-warn","Not chosen — required for a grouped page"));
+  return `<div class="aparea ${a.approved?'done':'todo'}" id="ap_${esc(id)}"><div class="aphead"><h4>Catalog card / default image</h4>${status}</div>
+    <div class="mut" style="font-size:12px;margin-top:3px">${esc(a.note||'')}</div>
+    <div class="apthumbs" style="margin-top:8px">${a.options.map(opt).join('')}
+      <label class="apimg ${cur==='use_image'?'sel':''}" style="cursor:pointer"><input type="radio" name="ap_${esc(id)}" ${cur==='use_image'?'checked':''} onchange="apCardPick('${esc(id)}','use_image')"><div class="pvph">${curUrl?'':'Pick below'}</div><div><b>Choose another approved image</b></div></label>
+      <label class="apimg ${cur==='none'?'sel':''}" style="cursor:pointer"><input type="radio" name="ap_${esc(id)}" ${cur==='none'?'checked':''} onchange="apCardPick('${esc(id)}','none')"><div class="pvph">No image</div><div><b>No image</b> <span class="mut">(the card shows the "No image" placeholder)</span></div></label></div>
+    ${picker}
+    <div class="apchoices"><span style="flex:1"></span><button class="btn" onclick="apSaveCard('${esc(p.page_key)}')" ${cur&&(cur!=='use_option'||curCode)&&(cur!=='use_image'||curUrl)?'':'disabled'}>Save choice</button></div></div>`;
+}
+function apCardPick(id,choice,code){ EN.apPend[id]=Object.assign({},{choice},code?{code}:{}); $("#enbody").innerHTML=enApprove(); }
+function apCardUrl(id,ci){ const pk=id.split("__card_image")[0], p=EN.ap.pages.find(x=>x.page_key===pk); EN.apPend[id]={choice:"use_image",url:p.candidates[ci].url}; $("#enbody").innerHTML=enApprove(); }
+async function apSaveCard(pk){ const id=pk+"__card_image", pend=EN.apPend[id]||{}; if(!pend.choice){ toast("Choose first"); return; }
+  const value=pend.choice==="use_option"?{code:pend.code}:(pend.choice==="use_image"?{url:pend.url}:{});
+  if(await apSend({page_key:pk,area:"card_image",choice:pend.choice,value})){ delete EN.apPend[id]; $("#enbody").innerHTML=enApprove(); } }
 function enApprove(){
   if(EN.apBusy) return `<h3>Approve Content &amp; Images</h3><p class="mut">${esc(EN.apBusy)}</p>`;
   if(!EN.ap) return `<h3>Approve Content &amp; Images</h3><button class="btn" onclick="apLoad()">Open the approval screen</button>`;
@@ -779,7 +805,7 @@ function enApprove(){
     <div class="card" style="margin:6px 0"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:15px">${esc(p.name)}</b>${apStatusPill(p)}<span class="mut" style="font-size:12px">${esc(p.codes.join(' · '))}</span></div>
       <div class="apcheck">${chips}</div>
       ${bulk?`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn ghost" onclick="apKeepAll()">Keep current for the ${bulk} item${bulk===1?'':'s'} still waiting</button><span class="mut" style="font-size:11.5px">Records an explicit Keep current on each (grouping and a title with no current version are left for you).</span></div>`:''}</div>
-    ${apGalleryArea(p,A("images"))}${apOptionsArea(p,A("option_images"))}${apGrouping(p,A("grouping"))}${text}
+    ${apGalleryArea(p,A("images"))}${apOptionsArea(p,A("option_images"))}${A("card_image")?apCardArea(p,A("card_image")):''}${apGrouping(p,A("grouping"))}${text}
     ${other.length?`<div class="card sub2" style="margin-top:10px"><b>Not approvable yet</b>${other.map(x=>`<div style="font-size:12.5px;margin-top:3px">${esc(x.name)} <span class="mut">— ${esc(x.note||x.status)}</span></div>`).join('')}</div>`:''}
     <div style="margin-top:12px"><button class="btn" onclick="enGo('preview')">Next: Dealer Preview →</button></div>`;
 }
@@ -918,7 +944,8 @@ function enPublish(){
       ${p.selections?`<div class="apcheck">${p.selections.map(c=>`<span class="apchip ok">${esc(c.label)} ✓ ${esc(c.no_change?'no change':(c.choice?c.choice.replace(/_/g,' '):'chosen'))}</span>`).join('')}</div>`:''}
       ${p.promote.length?`<div style="overflow-x:auto"><table style="margin-top:6px;font-size:12px"><thead><tr><th>Approved photo</th><th>→ live copy</th><th>Used as</th></tr></thead><tbody>${p.promote.map(x=>`<tr><td><code>${esc(fname(x.from))}</code>${x.kept_current?' <span class="mut">(today\'s photo, kept)</span>':''}</td><td><code>${esc(x.to.replace(/^.*\/product-content\//,''))}</code></td><td>${esc(x.uses.join(', '))}</td></tr>`).join('')}</tbody></table></div>`:'<div class="mut" style="font-size:12px;margin-top:4px">No photo to copy: dealers keep today\'s photos.</div>'}
       ${p.deduped.length?`<div class="mut" style="font-size:12px;margin-top:4px">Same picture, one live copy: ${p.deduped.map(x=>`<code>${esc(fname(x.from))}</code> = <code>${esc(fname(x.same_as))}</code> (${esc(x.why)})`).join('; ')}</div>`:''}
-      ${p.after_photos.options.length>1?`<div style="font-size:12px;margin-top:4px">Options: ${p.after_photos.options.map(o=>`${esc(o.option||o.sku)} → <code>${esc(fname(o.image))}</code>`).join(' · ')}</div>`:''}</div>`).join('');
+      ${p.after_photos.options.length>1?`<div style="font-size:12px;margin-top:4px">Options: ${p.after_photos.options.map(o=>`${esc(o.option||o.sku)} → <code>${esc(fname(o.image))}</code>`).join(' · ')}</div>`:''}
+      ${p.after_photos.card?`<div style="font-size:12px;margin-top:4px">Catalog card image: ${p.after_photos.card==='none'?'<b>No image</b> (placeholder)':`<code>${esc(fname(p.after_photos.card))}</code>`}</div>`:''}</div>`).join('');
   const held=R.held.map(h=>`<li><b>${esc(h.name)}</b> <span class="mut">(${h.skus.map(esc).join(', ')})</span> — stays on its current catalog card; open: ${h.issues.map(esc).join(' · ')||'—'}</li>`).join('');
   return `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h3 style="margin:0">Publication dry run — ${esc(nm)}</h3>${pill(R.publishable?'p-pass':'p-fail',R.publishable?'Ready to approve':'Cannot be approved')}<span style="flex:1"></span><button class="btn ghost" onclick="pubPlan()">Run again</button></div>
     <p class="mut" style="font-size:12px;margin:4px 0">Plan <code>${esc(R.plan_hash.slice(0,16))}</code> — the approval is tied to exactly this dry run; if anything changes, it becomes invalid and a new dry run is needed. Retired, kept off: ${esc(s.retired_excluded.join(', ')||'none')}. Prices, tiers, UOM/case qty, MSRP/MAP, freight and commercial status are not touched.</p>

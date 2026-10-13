@@ -40,12 +40,17 @@ const AREAS = [
   { id: "category", label: "Category", edit: "text" },
   { id: "grouping", label: "Grouping" },
   { id: "images", label: "Images" },
-  { id: "option_images", label: "Option images" }
+  { id: "option_images", label: "Option images" },
+  { id: "card_image", label: "Catalog card image" }   // grouped pages only (2026-10-12)
 ];
 const TEXT_CHOICES = ["keep_current", "use_proposed", "edit"];
 const IMAGE_CHOICES = ["keep_current", "custom"];
 const OPTION_CHOICES = ["keep_current", "use_image", "none"];
 const GROUPING_CHOICES = ["use_proposed", "keep_current"];
+/* Catalog card / default image of a grouped page (Angelo 2026-10-12): the photo a dealer sees on the catalog card before
+   choosing an option. Never inferred from option order; no default; presentation only (no option, price, order or
+   grouping changes). "use_option" = that option's approved photo; "use_image" = another photo of the page; "none". */
+const CARD_CHOICES = ["use_option", "use_image", "none"];
 
 /* The latest selection per area (per SKU for option images). */
 function selectionsFor(decisions, pageKey){
@@ -181,13 +186,30 @@ function approvalState(input){
       selected: !!chosen, decision: chosen ? chosen.id : null, stale, invalid, approved: same || !!chosen, by: chosen ? chosen.by : null, at: chosen ? chosen.at : null };
   });
   areas.push({ id: "option_images", label: "Option images", options: opts, same: opts.every(o => o.same), selected: opts.every(o => o.selected || o.same), approved: opts.every(o => o.approved) });
+  /* Catalog card image — a page with more than one option only. Nothing is pre-selected; the page is not approved
+     until the President chooses. The choice is tied to the option photos it was made against. */
+  let cardUrl = null;
+  if(codes.length > 1){
+    const imgOf = o => !o ? null : (o.choice === "use_image" ? o.url : (o.choice === "none" ? null : (o.current.image || null)));
+    const shown = opts.map(o => ({ code: o.code, option: o.option, image: imgOf(o) }));
+    const basis = basisOf({ options: shown }, null), s = sel.card_image || null;
+    const stale = !!(s && s.basis && s.basis !== basis);
+    let chosen = s && !stale && CARD_CHOICES.indexOf(s.choice) >= 0 ? s : null, invalid = null;
+    if(chosen && chosen.choice === "use_option"){ const o = shown.find(x => norm(x.code) === norm(chosen.code)); if(!o || !o.image){ invalid = "that option has no photo"; chosen = null; } else cardUrl = o.image; }
+    else if(chosen && chosen.choice === "use_image"){ if(!candUrls.has(chosen.url)){ invalid = "the chosen photo is no longer available"; chosen = null; } else cardUrl = chosen.url; }
+    else if(chosen && chosen.choice === "none") cardUrl = "none";
+    areas.push({ id: "card_image", label: "Catalog card image", options: shown, choices: CARD_CHOICES, basis, same: false,
+      choice: chosen ? chosen.choice : null, code: chosen && chosen.choice === "use_option" ? chosen.code : null, url: chosen && chosen.choice === "use_image" ? chosen.url : null,
+      resolved: cardUrl, selected: !!chosen, approved: !!chosen, decision: chosen ? chosen.id : null, stale, invalid, by: chosen ? chosen.by : null, at: chosen ? chosen.at : null,
+      note: "What dealers see on the catalog card before choosing an option. It is never taken from the option order: choose one option's photo, another approved photo, or no photo. Presentation only — no option, price, order or grouping changes." });
+  }
   /* a page that combines SKUs into a new card is shown and published only once the President chose that grouping;
      until then (no selection = keep current) its SKUs stay on today's cards */
   const grouping = areas.find(a => a.id === "grouping");
   const publish = grouping.same || (grouping.selected && grouping.choice === "use_proposed");
   const keptAsToday = grouping.selected && grouping.choice === "keep_current";
   const waiting = areas.filter(a => !a.approved).map(a => a.label);
-  return { page_key: page.page_key, name: page.name, codes, areas, complete: !waiting.length, publish, waiting, upload_prefix: input.uploadPrefix || null,
+  return { page_key: page.page_key, name: page.name, codes, areas, complete: !waiting.length, publish, waiting, upload_prefix: input.uploadPrefix || null, card_image: cardUrl,
     status: keptAsToday ? "kept_as_today" : (waiting.length ? "waiting_for_approval" : "approved"),
     candidates, current, proposed, selections: sel };
 }
@@ -196,7 +218,7 @@ function approvalState(input){
    everywhere else. Draft photo links stay as draft links here (the publication plan copies the chosen ones to live
    storage); a current dealer photo the page must name explicitly is returned as-is and copied the same way. */
 const WRITE_FIELDS = ["name", "tagline", "description", "features", "clinical_applications", "specs", "billing_codes", "sizing_table", "sizing_note",
-  "warranty", "documents", "videos", "source_url", "category", "subcategory", "options", "field_provenance", "image", "images_gallery", "skus"];
+  "warranty", "documents", "videos", "source_url", "category", "subcategory", "options", "field_provenance", "image", "images_gallery", "skus", "card_image"];
 function approvedRow(row, st){
   row = row || {};
   const A = id => st.areas.find(a => a.id === id);
@@ -240,9 +262,11 @@ function approvedRow(row, st){
     else o.image = gallery.length ? (op.current.image || null) : null;
     if(o.image == null) delete o.image;
     return o; });
+  /* the catalog card image: a grouped page's explicit choice (an approved photo, or "none"); a single-SKU page has none */
+  out.card_image = st.codes.length > 1 && A("card_image") && A("card_image").selected ? A("card_image").resolved : null;
   /* provenance: the source's, plus what the President approved (an edit keeps the facts' source) */
   const prov = Object.assign({}, row.field_provenance || {});
-  prov.president_approval = Object.fromEntries(st.areas.filter(a => a.id !== "option_images").map(a => [a.id, { choice: a.choice, decision: a.decision, source: (row.field_provenance || {})[a.id] || null }])
+  prov.president_approval = Object.fromEntries(st.areas.filter(a => a.id !== "option_images").map(a => [a.id, { choice: a.choice, decision: a.decision, source: a.id === "card_image" ? null : ((row.field_provenance || {})[a.id] || null) }])
     .concat(A("option_images").options.map(o => ["option_image:" + o.code, { choice: o.choice, decision: o.decision }])));
   out.field_provenance = prov;
   return out;
@@ -258,8 +282,13 @@ function selectionProblem(st, area, choice, value, code){
     return null;
   }
   const a = st.areas.find(x => x.id === area);
-  if(!a || area === "option_images") return "“" + area + "” is not an approval area";
+  if(!a || area === "option_images") return "“" + area + "” is not an approval area" + (area === "card_image" ? " (only a page with more than one option has a catalog card image)" : "");
   if(a.choices.indexOf(choice) < 0) return "“" + choice + "” is not a choice for " + a.label;
+  if(area === "card_image"){
+    if(choice === "use_option"){ const o = a.options.find(x => norm(x.code) === norm(value && value.code)); if(!o) return "name one of this page's options"; if(!o.image) return "that option has no photo"; }
+    if(choice === "use_image" && !st.candidates.some(c => c.url === str(value && value.url))) return "that photo is not one of this page's photos (current, suggested or uploaded here)";
+    return null;
+  }
   if(area === "images" && choice === "custom"){
     const g = arr(value && value.gallery);
     if(!g.length) return "choose at least one photo for the gallery (or Keep current)";
@@ -282,6 +311,7 @@ function selectionRecord(st, area, choice, value, code, windowId){
   if(area === "option_image"){ const o = st.areas.find(a => a.id === "option_images").options.find(x => norm(x.code) === norm(code));
     hv.code = o.code; hv.basis = o.basis; if(choice === "use_image") hv.url = str(value.url); }
   else { const a = st.areas.find(x => x.id === area); hv.basis = a.basis;
+    if(area === "card_image"){ if(choice === "use_option") hv.code = a.options.find(x => norm(x.code) === norm(value.code)).code; if(choice === "use_image") hv.url = str(value.url); return hv; }
     if(area === "images" && choice === "custom") hv.value = { gallery: arr(value.gallery).map(g => ({ url: str(g.url), caption: str(g.caption).slice(0, 200) })) };
     else if(choice === "edit") hv.value = JSON.parse(JSON.stringify(value));
     if(choice === "edit" && a.provenance) hv.provenance = a.provenance; }
@@ -291,5 +321,5 @@ function selectionRecord(st, area, choice, value, code, windowId){
 /* The checklist line Angelo reads: Title ✓ · Description … */
 function checklist(st){ return st.areas.map(a => ({ id: a.id, label: a.label, approved: a.approved, no_change: !!a.same, choice: a.id === "option_images" ? null : a.choice, stale: !!a.stale })); }
 
-module.exports = { isUpload, AREAS, TEXT_CHOICES, IMAGE_CHOICES, OPTION_CHOICES, GROUPING_CHOICES, WRITE_FIELDS, selectionsFor, currentOf, proposedOf, imageCandidates,
+module.exports = { isUpload, AREAS, TEXT_CHOICES, IMAGE_CHOICES, OPTION_CHOICES, GROUPING_CHOICES, CARD_CHOICES, WRITE_FIELDS, selectionsFor, currentOf, proposedOf, imageCandidates,
   approvalState, approvedRow, selectionProblem, selectionRecord, checklist, canon };

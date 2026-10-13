@@ -64,7 +64,12 @@ const tileSvg=u=>{ const name=decodeURIComponent(String(u).split('?')[0].split('
     await shot('assist-waiting');
     await page.locator('.appg',{hasText:'Clean Shield'}).click();
     const opts=await page.locator('.apopt').allTextContents(); check(opts.length===2 && /7YR05310TSS/.test(opts.join()) && /7YE05310TSS/.test(opts.join()),'Assurance: one row per option (Round, Elongated)');
-    check(await page.locator('.aparea',{hasText:'Grouping'}).locator('text=Not chosen').count()===1,'Assurance grouping: not chosen — stays two cards');
+    check(await page.locator('.aparea').filter({has:page.locator('h4',{hasText:/^Grouping$/})}).locator('text=Not chosen').count()===1,'Assurance grouping: not chosen — stays two cards');
+    const cardArea=page.locator('.aparea',{hasText:'Catalog card / default image'});
+    check(await cardArea.count()===1,'Assurance (grouped): a Catalog card / default image area');
+    const cardText=await cardArea.textContent();
+    check(/Use Round option image/.test(cardText) && /Use Elongated option image/.test(cardText) && /Choose another approved image/.test(cardText) && /No image/.test(cardText),'card choices: Round option image · Elongated option image · another approved image · No image');
+    check(await cardArea.locator('input[type=radio]:checked').count()===0 && /Not chosen — required for a grouped page/.test(cardText),'the card image is NOT pre-selected and is required');
     await shot('assurance-waiting');
     await page.locator('.appg',{hasText:'Assist'}).click();
     /* the option photo: pick a suggestion */

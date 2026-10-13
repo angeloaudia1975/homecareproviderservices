@@ -57,13 +57,19 @@ function cardsOf(products, ctx){
   (products || []).forEach(p => { const k = PICK.groupKeyOf(p); if(!groups.has(k)) groups.set(k, []); groups.get(k).push(p); });
   return [...groups].map(([key, list]) => {
     const G = PICK.sortVariants(list.slice()), lead = G[0];
-    const media = [...new Set([lead.image].concat((lead.media || []).filter(m => m && m.kind === "image").map(m => m.url)).filter(Boolean).map(abs))];
+    /* the catalog card's photo, exactly as the storefront's groupLeads() picks it: the President's chosen card image for a
+       grouped page (2026-10-12: an approved photo, or "none"), else the first product — in catalog order — with a photo */
+    const cardLead = list.find(x => x.image || (Array.isArray(x._features) && x._features.length)) || list[0];
+    const ci = (list.find(x => x._cardImage) || {})._cardImage || null;
+    const cardImage = ci ? (ci === "none" ? "" : ci) : cardLead.image;
+    const media = ci ? (cardImage ? [abs(cardImage)] : [])
+      : [...new Set([cardLead.image].concat((cardLead.media || []).filter(m => m && m.kind === "image").map(m => m.url)).filter(Boolean).map(abs))];
     const held = !lead._pageKey && G.some(p => heldCodes.has(norm(p.code)));
     const waiting = held && ctx.waitingCodes && G.some(p => ctx.waitingCodes.has(norm(p.code)));
     return {
       key: String(key), name: PICK.groupDisplayName(lead), page_key: lead._pageKey || null, enriched: !!lead._pageKey,
       staff_note: held ? (waiting ? WAITING_NOTE : HELD_NOTE) : null,
-      image: abs(lead.image), media,
+      image: abs(cardImage), card_image_chosen: ci, media,
       description: String(lead.description || ""), features: Array.isArray(lead._features) ? lead._features : [],
       specs: Array.isArray(lead._specs) ? lead._specs : [], warranty: lead._warranty || null,
       documents: Array.isArray(lead._documents) ? lead._documents : [], category: lead.category || "", subcategory: lead.subcategory || "",

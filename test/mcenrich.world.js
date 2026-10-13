@@ -17,7 +17,7 @@ const PAGES={
 const bytes=(seed)=>{ const b=Buffer.alloc(/__Fill/.test(seed)?9000:4096); for(let i=0;i<b.length;i++) b[i]=(i*31+seed.length*7+seed.charCodeAt(i%seed.length))&255; return b; };
 const WIN=50;
 /* the content fields an approved publication writes (supabase/mc_release_d1_content_approval.sql, mirrored) */
-const CONTENT_FIELDS=['name','tagline','description','features','clinical_applications','specs','billing_codes','sizing_table','sizing_note','warranty','documents','videos','source_url','category','subcategory','options','field_provenance'];
+const CONTENT_FIELDS=['name','tagline','description','features','clinical_applications','specs','billing_codes','sizing_table','sizing_note','warranty','documents','videos','source_url','category','subcategory','options','field_provenance','card_image'];
 function world(opts){
   opts=opts||{};
   const W=S.world();
@@ -100,6 +100,7 @@ async function approvePages(C,mode,only){
     for(const a of p.areas){ if(a.same || a.id==='option_images') continue;
       if(a.id==='images') sel.push(mode==='proposed'?{page_key:p.page_key,area:'images',choice:'custom',value:{gallery:a.proposed.gallery.map(u=>({url:u}))}}:{page_key:p.page_key,area:'images',choice:'keep_current'});
       else if(a.id==='grouping') sel.push({page_key:p.page_key,area:'grouping',choice:'use_proposed'});
+      else if(a.id==='card_image') sel.push(mode==='proposed'?{page_key:p.page_key,area:'card_image',choice:'use_option',value:{code:a.options[0].code}}:{page_key:p.page_key,area:'card_image',choice:'none'});
       else sel.push({page_key:p.page_key,area:a.id,choice:mode==='proposed'||!a.choices.includes('keep_current')?'use_proposed':'keep_current'}); }
     for(const o of p.areas.find(a=>a.id==='option_images').options){ if(o.same) continue;
       sel.push(mode==='proposed'&&o.proposed.image?{page_key:p.page_key,area:'option_image',code:o.code,choice:'use_image',value:{url:o.proposed.image}}:{page_key:p.page_key,area:'option_image',code:o.code,choice:'keep_current'}); } }

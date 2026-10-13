@@ -499,7 +499,7 @@ async function publicationPlan(m, X, plan) {
   for (const row of merged) {
     const mc = (row.enrichment_flags && row.enrichment_flags.mc) || {};
     (Array.isArray(mc.images) ? mc.images : []).forEach(d => { if (d && d.url && d.sha) info[d.url] = { sha: d.sha, src: d.src || d.url, bytes: d.bytes || null, type: d.type || null }; });
-    const named = [row.image].concat((row.images_gallery || []).map(g => g && g.url)).concat((row.skus || []).map(s => s && s.image)).filter(Boolean);
+    const named = [row.image, row.card_image === 'none' ? null : row.card_image].concat((row.images_gallery || []).map(g => g && g.url)).concat((row.skus || []).map(s => s && s.image)).filter(Boolean);
     for (const u of [...new Set(named.concat(PUBLISH.draftUrlsOf(row)))]) {
       if (info[u] || String(u).indexOf(live) === 0) continue;
       const draft = PUBLISH.isDraftUrl(u), src = draft ? u : absUrl(u);
@@ -847,8 +847,12 @@ async function handleContent(event) {
           if (!S.window) return reply(409, { ok: false, error: 'no_enrichment_window', message: 'Selections belong to an open enrichment window. Open one first. Nothing was recorded.' });
           const list = Array.isArray(body.selections) ? body.selections : [body];
           if (!list.length || list.length > 60) return reply(400, { ok: false, error: 'bad_selections', message: 'Send between 1 and 60 selections. Nothing was recorded.' });
+          /* a catalog card image is tied to the option photos it was chosen against: when the same request also sets option
+             photos, those are recorded first and the card image is checked against the result */
+          const cardsLater = Array.isArray(body.selections) && list.some(x => x && x.area === 'card_image') && list.some(x => x && x.area !== 'card_image') && body.dry_run !== true;
+          const firstPass = cardsLater ? list.filter(x => x && x.area !== 'card_image') : list;
           const recs = [];
-          for (const x of list) {
+          for (const x of firstPass) {
             const st = A.states[x.page_key];
             if (!st) return reply(404, { ok: false, error: 'not_approvable', message: '“' + String(x.page_key || '') + '” is not a Ready page of ' + m + ' (only Ready pages are approved). Nothing was recorded.' });
             const area = String(x.area || ''), choice = String(x.choice || ''), value = x.value || {};
@@ -863,9 +867,27 @@ async function handleContent(event) {
           const r = await fetch(rest('mfr_decisions'), { method: 'POST', headers: svcHeaders({ Prefer: 'return=representation' }), body: JSON.stringify(recs) });
           const j = await r.json().catch(() => null);
           if (!r.ok) return reply(500, { ok: false, error: 'not_recorded', message: 'The selection could not be recorded: ' + JSON.stringify(j).slice(0, 200) });
-          const X2 = await enrichContext(m), S2 = enrichSummary(m, X2, ENRICH.planPages(X2)), A2 = await approvalContext(m, X2, S2);
+          let X2 = await enrichContext(m), S2 = enrichSummary(m, X2, ENRICH.planPages(X2)), A2 = await approvalContext(m, X2, S2);
+          const ids = (Array.isArray(j) ? j : [j]).map(d => d && d.id);
+          if (cardsLater) {
+            const recs2 = [];
+            for (const x of list.filter(x => x && x.area === 'card_image')) {
+              const st = A2.states[x.page_key];
+              if (!st) return reply(404, { ok: false, error: 'not_approvable', recorded: ids, message: 'The other selections were recorded; the card image was not: “' + String(x.page_key || '') + '” is not a Ready page.' });
+              const pb = APPROVAL.selectionProblem(st, 'card_image', String(x.choice || ''), x.value || {}, x.code);
+              if (pb) return reply(400, { ok: false, error: 'bad_selection', recorded: ids, page_key: st.page_key, area: 'card_image', message: 'The other selections were recorded; the card image was not: ' + pb + '.' });
+              const prev = st.selections.card_image || null;
+              recs2.push({ manufacturer: m, field: 'page:' + st.page_key, kind: 'content_approval', decided_by: who, hcps_value: APPROVAL.selectionRecord(st, 'card_image', String(x.choice), x.value || {}, x.code, S.window.id),
+                supersedes_id: prev ? prev.id : null, reason: (String(x.reason || body.reason || '').trim() || ('Content approval: ' + st.name + ' · catalog card image → ' + String(x.choice).replace(/_/g, ' '))).slice(0, 500) });
+            }
+            const r2 = await fetch(rest('mfr_decisions'), { method: 'POST', headers: svcHeaders({ Prefer: 'return=representation' }), body: JSON.stringify(recs2) });
+            const j2 = await r2.json().catch(() => null);
+            if (!r2.ok) return reply(500, { ok: false, error: 'not_recorded', recorded: ids, message: 'The other selections were recorded; the card image could not be: ' + JSON.stringify(j2).slice(0, 200) });
+            (Array.isArray(j2) ? j2 : [j2]).forEach(d => ids.push(d && d.id)); recs.push(...recs2);
+            X2 = await enrichContext(m); S2 = enrichSummary(m, X2, ENRICH.planPages(X2)); A2 = await approvalContext(m, X2, S2);
+          }
           const keys = [...new Set(recs.map(x => x.field.slice(5)))];
-          return reply(200, { ok: true, recorded: (Array.isArray(j) ? j : [j]).map(d => d && d.id), pages: keys.map(k => A2.states[k] ? view(A2.states[k]) : null).filter(Boolean) });
+          return reply(200, { ok: true, recorded: ids, pages: keys.map(k => A2.states[k] ? view(A2.states[k]) : null).filter(Boolean) });
         }
         /* ================= RELEASE D — PUBLISH & VERIFY =================
            publish_plan (dry run, read-only) → publish_approve (records the exact plan as a content_publication decision) →

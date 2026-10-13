@@ -1509,6 +1509,24 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     mfr_approved_content — 17 content columns, nothing else). Tests: test/mcapproval.test.js, test/mcapproval.ui.js,
     test/mc-approval.pg.test.js, test/mcapproval.mutants.js (JS + SQL). Bemis restarts here with every selection empty
     (= keep current); Angelo reviews alternatives himself. Do not republish or finalize Bemis until he says so.
+  (z) **Catalog card / default image of a grouped page — chosen, never inferred (RULE, Angelo 2026-10-12).** A page
+  with more than one SKU option (Assurance Round + Elongated) shows ONE catalog card before an option is chosen. The
+  storefront used to give it the photo of the first option with a photo in catalog-file order (groupLeads) — option
+  order silently decided what dealers saw. Now: approval area "Catalog card image" (grouped pages only) with choices
+  Use <option> option image / Choose another approved image / No image; never pre-selected; the page is not approved
+  (not publishable) until it is chosen. The choice is tied to the option photos (basis): if an option photo changes,
+  it is stale. Presentation only — no SKU order, grouping, option photo, price or pooling change. Stored in
+  product_content.card_image (a live copy of the line, or "none"), written by the approved publication (in the plan
+  "after" rows → covered by the plan hash; any change makes the dry run stale) and restored by rollback.
+  Storefront (homecareproviderservicesordering/public/index.html): mergeCatalogEdits selects card_image (falls back
+  to the old select if the column is missing) and sets p._cardImage; groupLeads() uses it for the card photo ("none"
+  → "No image" placeholder; the lead's gallery photos are then not shown on the card). The server engine copy
+  (_shop_engine.js) is re-extracted from the shop (test/extract-engine.js); _pricing.js answers a missing column the
+  same way; _preview.js cardsOf mirrors groupLeads (catalog-order lead + card image). SQL:
+  supabase/mc_release_d2_card_image.sql. DEPLOY ORDER: run the SQL, then push BOTH repos (homecareproviderservices and
+  homecareproviderservicesordering) — until both are live, engine_in_sync reads false for the frozen lines (not
+  dealer-facing). Tests: test/mcapproval.test.js (card cases), test/mc-cardimage.pg.test.js, test/mcapproval.ui.js,
+  test/mcapproval.mutants.js.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.

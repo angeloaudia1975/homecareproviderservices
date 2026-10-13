@@ -94,7 +94,14 @@ async function lineProducts({ slug, sb, catalogFile, contentFile, contract, cart
         /* The shop reads with the public key, which row-level security limits to pages that are
            not disabled; the service key is not limited, so the same filter is added here. */
         if (/^product_content\?/.test(path)) path += "&disabled=eq.false";
-        const rows = await sb("GET", path);
+        /* The shop asks for card_image first and, if the database has no such column yet, asks again without
+           it (index.html, 2026-10-12). The server answers the same way, so a missing column is never a
+           "layer unreadable" failure. */
+        let rows;
+        if (/^product_content\?[^#]*select=[^&]*,card_image/.test(path)) {
+          try { rows = await sb("GET", path); }
+          catch (e) { return { ok: false, status: 400, json: async () => ({ message: "card_image not available" }) }; }
+        } else rows = await sb("GET", path);
         return { ok: true, status: 200, json: async () => rows || [] };
       }
       if (u.startsWith("/.netlify/functions/catalog-feed")) {

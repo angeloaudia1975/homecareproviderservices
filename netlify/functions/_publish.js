@@ -76,7 +76,9 @@ function planImages(slug, row, info, publicBase){
     if(Array.isArray(o.images)) o.images = o.images.map(u => used(u, "option photo · " + o.sku));
     return o; });
   /* the approved content fields travel with the photos (the publication writes exactly these) */
-  const fields = {}; (APPROVAL.WRITE_FIELDS).forEach(f => { if(f !== "image" && f !== "images_gallery" && f !== "skus" && Object.prototype.hasOwnProperty.call(row, f)) fields[f] = row[f] === undefined ? null : row[f]; });
+  const fields = {}; (APPROVAL.WRITE_FIELDS).forEach(f => { if(f !== "image" && f !== "images_gallery" && f !== "skus" && f !== "card_image" && Object.prototype.hasOwnProperty.call(row, f)) fields[f] = row[f] === undefined ? null : row[f]; });
+  /* a grouped page's catalog card image (the President's explicit choice): a live copy like every photo, or "none" */
+  if(Object.prototype.hasOwnProperty.call(row, "card_image")) fields.card_image = !row.card_image ? null : (row.card_image === "none" ? "none" : used(row.card_image, "catalog card image"));
   return { after: Object.assign(fields, { status: "published", disabled: false, draft_window: null, image, images_gallery: gallery, skus }),
     promote: Object.values(promote), deduped, mapping: toLive };
 }
@@ -110,8 +112,9 @@ function buildPlan(input){
     const st = approvals[p.page_key];
     const chosen = new Set(st.areas.filter(a => a.id === "images" && a.selected && a.choice === "custom").flatMap(a => (a.value && a.value.gallery || []).map(g => g.url))
       .concat(st.areas.find(a => a.id === "option_images").options.filter(o => o.selected && o.choice === "use_image").map(o => o.url)));
+    if(st.card_image && st.card_image !== "none") chosen.add(st.card_image);
     const today = new Set(st.current.flatMap(c => c.media));
-    const named = [ap.image].concat((ap.images_gallery || []).map(g => g && g.url)).concat((ap.skus || []).map(s => s && s.image)).filter(Boolean);
+    const named = [ap.image, ap.card_image === "none" ? null : ap.card_image].concat((ap.images_gallery || []).map(g => g && g.url)).concat((ap.skus || []).map(s => s && s.image)).filter(Boolean);
     const unapproved = named.filter(u => !chosen.has(u) && !today.has(u));
     if(unapproved.length){ problems.push(p.name + ": a photo nobody approved would be published (" + unapproved.length + ")"); continue; }
     let im; try{ im = planImages(slug, ap, info || {}, input.publicBase); }catch(e){ problems.push(p.name + ": " + e.message); continue; }
@@ -163,7 +166,7 @@ function planReport(plan){
   return { publishable: plan.publishable, problems: plan.problems, plan_hash: plan.plan_hash, summary: plan.summary,
     ready: plan.ready.map(r => ({ page_key: r.page_key, name: r.name, skus: r.skus, changes: r.changes, selections: r.selections,
       promote: r.promote.map(x => ({ from: x.from, to: x.to, sha: x.sha.slice(0, 16), uses: x.uses, kept_current: !!x.kept_current })), deduped: r.deduped,
-      after_photos: { main: r.after.image, gallery: r.after.images_gallery.map(g => g.url), options: r.after.skus.filter(s => s.image).map(s => ({ sku: s.sku, option: s.size || "", image: s.image })) } })),
+      after_photos: { main: r.after.image, gallery: r.after.images_gallery.map(g => g.url), card: r.after.card_image == null ? null : r.after.card_image, options: r.after.skus.filter(s => s.image).map(s => ({ sku: s.sku, option: s.size || "", image: s.image })) } })),
     held: plan.held.map(h => ({ page_key: h.page_key, name: h.name, status: h.status, skus: h.skus, issues: h.issues, holds: h.holds })),
     awaiting: (plan.awaiting || []).map(h => ({ page_key: h.page_key, name: h.name, status: h.status, skus: h.skus, waiting: h.waiting })) };
 }

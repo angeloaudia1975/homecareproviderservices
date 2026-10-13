@@ -22,6 +22,14 @@ const JS=[
  ['product-content.js','anyone records an approval','          if (!president) return reply(403, { ok: false, error: \'president_only\', message: \'Only the President approves dealer-facing content and images.','          if (false) return reply(403, { ok: false, error: \'president_only\', message: \'Only the President approves dealer-facing content and images.'],
  ['product-content.js','an approval recorded with no window','          if (!S.window) return reply(409, { ok: false, error: \'no_enrichment_window\'','          if (false) return reply(409, { ok: false, error: \'no_enrichment_window\''],
  ['product-content.js','the preview shows the raw proposals','map(k => Object.assign({}, X.pages.find(r => r.page_key === k), A.approved[k]));\n            const V = await dealerViews(m, X, S, shown','map(k => X.pages.find(r => r.page_key === k));\n            const V = await dealerViews(m, X, S, shown'],
+ ['_approval.js','a grouped page approved without a catalog card image','      resolved: cardUrl, selected: !!chosen, approved: !!chosen,','      resolved: cardUrl, selected: !!chosen, approved: true,'],
+ ['_approval.js','the card image taken from the option order','  out.card_image = st.codes.length > 1 && A("card_image") && A("card_image").selected ? A("card_image").resolved : null;','  out.card_image = st.codes.length > 1 && A("card_image") ? (A("card_image").resolved || A("card_image").options[0].image) : null;'],
+ ['_approval.js','a card image kept after the option photos changed','    const stale = !!(s && s.basis && s.basis !== basis);\n    let chosen = s && !stale && CARD_CHOICES','    const stale = false;\n    let chosen = s && !stale && CARD_CHOICES'],
+ ['_approval.js','a foreign card image accepted','    if(choice === "use_image" && !st.candidates.some(c => c.url === str(value && value.url))) return "that photo is not one of this page\'s photos (current, suggested or uploaded here)";\n    return null;','    return null;'],
+ ['_publish.js','the card image left out of the publication','  if(Object.prototype.hasOwnProperty.call(row, "card_image")) fields.card_image =','  if(false) fields.card_image ='],
+ ['_preview.js','the preview card follows the option order','    const ci = (list.find(x => x._cardImage) || {})._cardImage || null;','    const ci = null;'],
+ ['_shop_engine.js','the storefront ignores the chosen card image','if(pg.card_image) p._cardImage=String(pg.card_image).trim();','if(false) p._cardImage=String(pg.card_image).trim();'],
+ ['product-content.js','a card image checked against option photos it will not have','          const cardsLater = Array.isArray(body.selections) &&','          const cardsLater = false &&'],
  ['product-content.js','the plan built from the raw drafts','  const base = { slug: m, window: win, publicBase: PUBLIC_PC(), pages: S.pages, drafts: X.pages, decisions: X.decisions, info, approvals: A.states, approved: A.approved };','  const base = { slug: m, window: win, publicBase: PUBLIC_PC(), pages: S.pages, drafts: X.pages, decisions: X.decisions, info, approvals: A.states, approved: Object.fromEntries(Object.keys(A.approved).map(k => [k, X.pages.find(r => r.page_key === k)])) };'],
 ];
 const SQLM=[
@@ -31,6 +39,12 @@ const SQLM=[
  ['content_approval not a decision kind',",'content_publication','content_approval'));",",'content_publication'));"],
  ['the content filter executable by anon',"    execute 'revoke all on function public.mfr_approved_content(jsonb) from anon';","    execute 'grant execute on function public.mfr_approved_content(jsonb) to anon';"],
  ['a draft photo published with approved content','    bad := public.mfr_live_media_problem(aft, d.manufacturer);','    bad := null;'],
+];
+const SQL2=path.join(__dirname,'..','supabase','mc_release_d2_card_image.sql');
+const SQLM2=[
+ ['the card image never written',"           options = nw.options, field_provenance = nw.field_provenance, card_image = nw.card_image\n     where pc.manufacturer = d.manufacturer and pc.page_key = k;\n    n := n + 1;\n  end loop;\n  perform set_config('hcps.content_publication', '', true);\n  update public.mfr_decisions","           options = nw.options, field_provenance = nw.field_provenance\n     where pc.manufacturer = d.manufacturer and pc.page_key = k;\n    n := n + 1;\n  end loop;\n  perform set_config('hcps.content_publication', '', true);\n  update public.mfr_decisions"],
+ ['a draft card image published',"p_row -> 'skus', p_row -> 'card_image')","p_row -> 'skus')"],
+ ['the card image dropped by the content filter',"'options','field_provenance','card_image'])","'options','field_provenance'])"],
 ];
 let surv=0, killed=0;
 const TESTS=['mcapproval.test.js','mcpublish.test.js'];
@@ -45,4 +59,8 @@ else for(const [n,f,t] of SQLM){ const src=fs.readFileSync(SQL,'utf8'); const c=
   const tmp=path.join(fs.mkdtempSync(path.join(os.tmpdir(),'mcapr-s-')),'d1.sql'); fs.writeFileSync(tmp,src.split(f).join(t));
   let k=false; try{ execFileSync('node',[path.join(__dirname,'mc-approval.pg.test.js')],{stdio:'pipe',env:Object.assign({},process.env,{MC_D1_SQL:tmp}),timeout:300000}); }catch(e){ k=true; }
   console.log((k?'killed  ':'SURVIVED')+' sql: '+n); if(k) killed++; else surv++; }
+if(pg.status===0) for(const [n,f,t] of SQLM2){ const src=fs.readFileSync(SQL2,'utf8'); const c=src.split(f).length-1; if(c<1){console.log(`BAD ANCHOR(${c}) sql2: ${n}`);surv++;continue;}
+  const tmp=path.join(fs.mkdtempSync(path.join(os.tmpdir(),'mcapr-s2-')),'d2.sql'); fs.writeFileSync(tmp,src.split(f).join(t));
+  let k=false; try{ execFileSync('node',[path.join(__dirname,'mc-cardimage.pg.test.js')],{stdio:'pipe',env:Object.assign({},process.env,{MC_D2_SQL:tmp}),timeout:300000}); }catch(e){ k=true; }
+  console.log((k?'killed  ':'SURVIVED')+' sql2: '+n); if(k) killed++; else surv++; }
 console.log(surv?`${surv} survived (${killed} killed)`:`all ${killed} mutants killed`); process.exit(surv?1:0);

@@ -45,7 +45,7 @@ const opt=(pg,code)=>A(pg,'option_images').options.find(o=>o.code===code);
 const planUrls=d=>JSON.stringify(d.ready.map(r=>[r.after_photos,r.promote]));
 async function promoteAll(C,did){ let r; for(let i=0;i<20;i++){ r=await call(C,{action:'publish_promote',decision_id:did}); if(r.status!==200||!r.body.remaining) break; } return r; }
 /* Keep current, explicitly, on every area that differs (grouping: the proposal, so the page is published at all) */
-const keepAll=(pg,grouping)=>pg.areas.filter(a=>!a.same && a.id!=='option_images').map(a=>({page_key:pg.page_key,area:a.id,
+const keepAll=(pg,grouping)=>pg.areas.filter(a=>!a.same && a.id!=='option_images').map(a=>a.id==='card_image'?{page_key:pg.page_key,area:'card_image',choice:'none'}:({page_key:pg.page_key,area:a.id,
     choice:a.id==='grouping'?(grouping||'use_proposed'):(a.choices.includes('keep_current')?'keep_current':'use_proposed')}))
   .concat(A(pg,'option_images').options.filter(o=>!o.same).map(o=>({page_key:pg.page_key,area:'option_image',code:o.code,choice:'keep_current'})));
 
@@ -62,7 +62,7 @@ await t('the approval screen is read-only: per Ready page, every area with the C
   st=await state(C); eq(JSON.stringify(W.db),before,'nothing written'); eq(W.store.length,stored,'nothing copied');
   const ready=st.pages.filter(p=>p.areas); eq(ready.map(p=>p.codes.slice().sort().join('+')).sort(),['7YA04505T','7YA0AS100','7YE05310TSS+7YR05310TSS']);
   for(const p of ready){
-    eq(p.areas.map(a=>a.id),AP.AREAS.map(a=>a.id),p.name+': every area');
+    eq(p.areas.map(a=>a.id),AP.AREAS.map(a=>a.id).filter(id=>id!=='card_image'||p.codes.length>1),p.name+': every area (a catalog card image only where the page has more than one option)');
     eq([p.status,p.complete],['waiting_for_approval',false],p.name);
     ok(p.checklist.every(c=>typeof c.approved==='boolean'),'checklist');
     ok(p.areas.filter(a=>a.id!=='option_images').every(a=>!a.selected && (a.same ? a.choice==='no_change' : (a.choices.includes('keep_current') ? a.choice==='keep_current' : a.choice===null))),p.name+': no selection = keep current (nothing chosen for the combined card\'s title)');
@@ -207,7 +207,8 @@ await t('a mix of choices publishes exactly those choices: an edit keeps its pro
     {page_key:pg.page_key,area:'documents',choice:'keep_current'},
     {page_key:pg.page_key,area:'images',choice:'custom',value:{gallery:[{url:prop[1]},{url:prop[0]}]}},
     {page_key:pg.page_key,area:'option_image',code:'7YR05310TSS',choice:'keep_current'},
-    {page_key:pg.page_key,area:'option_image',code:'7YE05310TSS',choice:'use_image',value:{url:opt(pg,'7YE05310TSS').proposed.image}}]);
+    {page_key:pg.page_key,area:'option_image',code:'7YE05310TSS',choice:'use_image',value:{url:opt(pg,'7YE05310TSS').proposed.image}},
+    {page_key:pg.page_key,area:'card_image',choice:'use_option',value:{code:'7YR05310TSS'}}]);
   eq((await record(C5,sel)).status,200);
   const s6=(await state(C5)).pages.find(p=>p.page_key===pg.page_key); ok(s6.complete,JSON.stringify(s6.waiting));
   const d=(await call(C5,{action:'publish_plan'})).body; eq(d.publishable,true,JSON.stringify(d.problems));
@@ -217,6 +218,7 @@ await t('a mix of choices publishes exactly those choices: an edit keeps its pro
   const live=r.promote.filter(x=>!x.kept_current), kept=r.promote.filter(x=>x.kept_current);
   ok(live.every(x=>[prop[0],prop[1],opt(pg,'7YE05310TSS').proposed.image].includes(x.from)),'only chosen suggestions copied: '+JSON.stringify(live.map(x=>x.from)));
   eq(kept.length,1,'the Round option keeps today\'s photo, copied live because the page now has its own gallery'); ok(/\/assets\/products\/bemis\/7YR05310TSS\.jpg$/.test(kept[0].from),kept[0].from);
+  eq(r.after_photos.options.find(o=>o.sku==='7YR05310TSS').image,kept[0].to,'the Round option names that live copy of today\'s photo');
   eq(live.length,2,'two new live copies: the two gallery photos'); ok(r.deduped.some(x=>x.why==='same bytes'),'the Elongated option photo IS a gallery photo: one copy, '+JSON.stringify(r.deduped));
   const ap=(await call(C5,{action:'publish_approve',plan_hash:d.plan_hash,reason:'mixed'})).body; const after=W5.db.mfr_decisions.find(x=>x.id===ap.decision.id).hcps_value.after[pg.page_key];
   eq([after.name,after.description,after.specs],['Assurance Raised Toilet Seat, 3" (approved)','The President\'s own description of the Assurance seat.',[]]);
@@ -238,6 +240,81 @@ await t('grouping kept as today: Assurance stays on its two current cards and is
   const d=(await call(C6,{action:'publish_plan'})).body; eq(d.publishable,true,JSON.stringify(d.problems));
   ok(!d.ready.some(r=>r.page_key===seat.page_key),'Assurance not in the plan'); ok(d.awaiting.some(a=>a.page_key===seat.page_key),'listed as not published');
   eq([d.summary.cards_today,d.summary.cards_after,d.summary.missing,d.summary.duplicates],[9,9,0,0],'two Assurance cards remain');
+});
+await t('CATALOG CARD IMAGE (grouped pages): never inferred from option order — no default, the page waits; Round / Elongated / another photo / none each give exactly that card; presentation only',async()=>{
+  const W8=world(), C8=PC(W8); await releaseC(C8);
+  let s8=await state(C8); const seat=s8.pages.find(p=>p.areas&&p.codes.includes('7YR05310TSS'));
+  const card=A(seat,'card_image'); ok(card,'a grouped page has a catalog card image area');
+  eq([card.selected,card.choice,card.approved],[false,null,false],'nothing pre-selected');
+  ok(s8.pages.filter(p=>p.areas&&p.codes.length===1).every(p=>!A(p,'card_image')),'a single-SKU page has none');
+  const single=s8.pages.find(p=>p.areas&&p.codes.length===1);
+  eq((await record(C8,{page_key:single.page_key,area:'card_image',choice:'none'})).status,400,'refused on a single-SKU page');
+  /* everything else on Assurance decided, with the two option photos — the card still waits */
+  const R=opt(seat,'7YR05310TSS').proposed.image, E=opt(seat,'7YE05310TSS').proposed.image;
+  const rest=keepAll(seat).filter(x=>x.area!=='card_image'&&x.area!=='option_image').concat([
+    {page_key:seat.page_key,area:'option_image',code:'7YR05310TSS',choice:'use_image',value:{url:R}},{page_key:seat.page_key,area:'option_image',code:'7YE05310TSS',choice:'use_image',value:{url:E}}]);
+  eq((await record(C8,rest)).status,200);
+  s8=await state(C8); let pg=s8.pages.find(p=>p.page_key===seat.page_key);
+  eq([pg.complete,pg.waiting],[false,['Catalog card image']],'waiting for the card image only');
+  let d=(await call(C8,{action:'publish_plan'})).body; ok(!d.ready.some(r=>r.page_key===seat.page_key),'not in the plan without it');
+  eq((await record(C8,{page_key:seat.page_key,area:'card_image',choice:'use_image',value:{url:'https://www.toiletseats.com/assets/E85320TSS-000-L.jpg'}})).status,400,'a photo that is not the page\'s own is refused');
+  eq((await record(C8,{page_key:seat.page_key,area:'card_image',choice:'use_option',value:{code:'NOPE'}})).status,400,'an unknown option is refused');
+  const cardOf=pv=>pv.proposed.find(k=>k.codes.includes('7YR05310TSS'));
+  const results={};
+  for(const [label,sel] of [['round',{choice:'use_option',value:{code:'7YR05310TSS'}}],['elongated',{choice:'use_option',value:{code:'7YE05310TSS'}}],['none',{choice:'none'}]]){
+    eq((await record(C8,Object.assign({page_key:seat.page_key,area:'card_image'},sel))).status,200,label);
+    s8=await state(C8); pg=s8.pages.find(p=>p.page_key===seat.page_key); eq([pg.complete,A(pg,'card_image').choice],[true,sel.choice],label+': approved');
+    const pv=(await call(C8,{action:'enrich_preview'})).body; eq(pv.pass,true,label+' preview'); const k=cardOf(pv);
+    d=(await call(C8,{action:'publish_plan'})).body; eq(d.publishable,true,label+': '+JSON.stringify(d.problems));
+    const r=d.ready.find(x=>x.page_key===seat.page_key);
+    results[label]={tile:k.image,media:k.media,codes:k.codes,opts:k.options.map(o=>[o.code,o.image,o.price_text]),hash:d.plan_hash,card:r.after_photos.card,
+      planOpt:Object.fromEntries(r.after_photos.options.map(o=>[o.sku,o.image])),summary:d.summary};
+  }
+  const live=u=>/\/bemis\/live\//.test(String(u||''));
+  ok(live(results.round.card) && results.round.card===results.round.planOpt['7YR05310TSS'],'Round: the card is the Round option photo\'s live copy');
+  ok(/R85320TSS-000-F/.test(results.round.tile),'Round card tile in the preview: '+results.round.tile);
+  ok(live(results.elongated.card) && results.elongated.card===results.elongated.planOpt['7YE05310TSS'],'Elongated: the card is the Elongated option photo\'s live copy');
+  ok(/E85320TSS-000-F/.test(results.elongated.tile),'Elongated card tile in the preview: '+results.elongated.tile);
+  eq(results.round.planOpt,results.elongated.planOpt,'the option photos themselves never change with the card');
+  eq([results.none.card,results.none.tile,results.none.media],['none','',[]],'No image: the card shows no photo (the storefront placeholder)');
+  eq(new Set([results.round.hash,results.elongated.hash,results.none.hash]).size,3,'every card choice is its own plan (the choice is in the fingerprint)');
+  /* presentation only: same SKUs, same options (photos, words, prices), same accounting, whichever card */
+  eq(results.round.opts,results.elongated.opts,'options unchanged'); eq(results.round.opts,results.none.opts,'options unchanged');
+  eq(results.round.codes,results.none.codes,'SKU order unchanged'); eq(results.round.summary.cards_after,results.none.summary.cards_after);
+  ok(['round','elongated','none'].every(k=>results[k].summary.commercial_changes===0&&results[k].summary.missing===0&&results[k].summary.duplicates===0),'0 commercial changes / missing / duplicates');
+  /* a dry run approved, then the card changed: the approval is invalid */
+  const a=(await call(C8,{action:'publish_approve',plan_hash:d.plan_hash,reason:'x'})).body.decision.id;
+  eq((await record(C8,{page_key:seat.page_key,area:'card_image',choice:'use_option',value:{code:'7YR05310TSS'}})).status,200);
+  eq((await call(C8,{action:'publish_promote',decision_id:a})).body.error,'approval_invalid','a changed card image makes the dry run stale');
+  /* the card choice is tied to the option photos: change Round's photo and the card must be chosen again */
+  eq((await record(C8,{page_key:seat.page_key,area:'option_image',code:'7YR05310TSS',choice:'keep_current'})).status,200);
+  pg=(await state(C8)).pages.find(p=>p.page_key===seat.page_key); eq([A(pg,'card_image').stale,pg.complete],[true,false],'stale after an option photo changed');
+});
+await t('CATALOG CARD IMAGE published: the database writes it as a live copy; the storefront card shows exactly it',async()=>{
+  const W9=world(), C9=PC(W9); await releaseC(C9);
+  const s9=await state(C9); const seat=s9.pages.find(p=>p.areas&&p.codes.includes('7YR05310TSS'));
+  const R=opt(seat,'7YR05310TSS').proposed.image, E=opt(seat,'7YE05310TSS').proposed.image;
+  const sel=s9.pages.filter(p=>p.areas).flatMap(p=>keepAll(p)).filter(x=>!(x.page_key===seat.page_key&&(x.area==='option_image'||x.area==='card_image'))).concat([
+    {page_key:seat.page_key,area:'option_image',code:'7YR05310TSS',choice:'use_image',value:{url:R}},{page_key:seat.page_key,area:'option_image',code:'7YE05310TSS',choice:'use_image',value:{url:E}},
+    {page_key:seat.page_key,area:'card_image',choice:'use_option',value:{code:'7YR05310TSS'}}]);
+  eq((await record(C9,sel)).status,200,'option photos and the card in one request (the card checked after the option photos)');
+  const d=(await call(C9,{action:'publish_plan'})).body; eq(d.publishable,true,JSON.stringify(d.problems));
+  const a=(await call(C9,{action:'publish_approve',plan_hash:d.plan_hash,reason:'x'})).body.decision.id;
+  await promoteAll(C9,a); const ex=await call(C9,{action:'publish_execute',decision_id:a}); eq(ex.status,200,JSON.stringify(ex.body).slice(0,600));
+  const row=W9.db.product_content.find(x=>x.page_key===seat.page_key);
+  ok(/\/bemis\/live\//.test(row.card_image),'card_image written as a live copy: '+row.card_image);
+  eq(row.card_image,row.skus.find(s=>s.sku==='7YR05310TSS').image,'the same live copy as the Round option photo');
+  const pv=(await call(C9,{action:'enrich_preview'})).body; const k=pv.today.find(c=>c.codes.includes('7YR05310TSS'));
+  ok(k.image.endsWith(row.card_image.split('/').pop()),'the live card shows the chosen image: '+k.image);
+});
+await t('unit: a grouped page with no card choice publishes no card image — it is never filled in from an option',async()=>{
+  const D='https://h.supabase.co/storage/v1/object/public/product-content/bemis/drafts/w7/p/';
+  const row={page_key:'p',name:'P',skus:[{sku:'A1',size:'Round',image:D+'rehost/1-a.jpg'},{sku:'B1',size:'Elongated',image:D+'rehost/2-b.jpg'}],enrichment_flags:{mc:{images:[{url:D+'rehost/1-a.jpg',sha:'a',code:'A1'},{url:D+'rehost/2-b.jpg',sha:'b',code:'B1'}]}}};
+  const dec=[{id:1,kind:'content_approval',field:'page:p',hcps_value:{area:'option_image',code:'A1',choice:'use_image',url:D+'rehost/1-a.jpg'}},{id:2,kind:'content_approval',field:'page:p',hcps_value:{area:'option_image',code:'B1',choice:'use_image',url:D+'rehost/2-b.jpg'}}];
+  const st=AP.approvalState({page:{page_key:'p',name:'P',skus:[{code:'A1'},{code:'B1'}]},row,products:[{code:'A1',name:'A',image:'/a.jpg'},{code:'B1',name:'B',image:'/b.jpg'}],todayCards:[{name:'P',codes:['A1','B1']}],decisions:dec});
+  const c=st.areas.find(a=>a.id==='card_image'); eq([c.selected,c.choice,c.resolved],[false,null,null]);
+  eq(AP.approvedRow(row,st).card_image,null,'no card image without the President\'s choice');
+  ok(st.waiting.includes('Catalog card image'),'and the page waits for it');
 });
 await t('unit: approvedRow — no selection keeps every area as today (null / empty), never a proposal; checklist reads Title ✓ …',async()=>{
   const row={page_key:'p',name:'Proposed name',description:'Proposed description long enough',features:['f1'],specs:[{label:'a',value:'b'}],warranty:'w',documents:[{url:'https://d/x.pdf'}],videos:['v'],source_url:'https://s',
