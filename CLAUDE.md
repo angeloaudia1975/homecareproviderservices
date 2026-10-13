@@ -2306,6 +2306,9 @@ Report Import — no second importer, no Strongback-only system. MI-1a is the fi
   12,575 / $11,381,594.85 / $519,934.40 vs the last recorded baseline 11,997 / $10,802,558.50 / $493,077.06 — written by
   something else since (Phase E writes nothing; its switch is off); identification query handed to Angelo, unexplained
   until he runs it. `mi_auto_import` still OFF; probe (21 checks) not yet run.
+  **Reconsider rule proven live (run #28, 21:20 CT):** Ovation's 2609 statement (received 12 Oct 11:10 CT, captured under the
+  then-draft profile) was reconsidered once and registered as **record #11** (commission_statement 2026-09, received
+  2026-10-12, no import); 0 exceptions; Needs attention 0.
 - **Scope after MI-1a acceptance:** MI-1b report history → MI-1c Strongback September dealer-intelligence import
   into Dealer 360 → MI-2 (Dealer 360, opportunities, task suggestions reps approve, campaign targeting; no auto
   tasks/deals/sends/promotions; opt-outs, exclusions, caps kept) → MI-3 Outlook report discovery.
