@@ -51,14 +51,17 @@ module.exports = function (sbGet, sbSend) {
     if (ids.length <= 1) return;
     const inlist = ids.map(encodeURIComponent).join(",");
     const cur = await sbGet(
-      `dealer_manufacturers?manufacturer=eq.${encodeURIComponent(slug)}&dealer_id=in.(${inlist})&select=dealer_id,account_ref`
+      `dealer_manufacturers?manufacturer=eq.${encodeURIComponent(slug)}&dealer_id=in.(${inlist})&select=dealer_id,account_ref,active`
     ).catch(() => []);
-    const byId = {};
-    for (const r of cur || []) byId[r.dealer_id] = String(r.account_ref || "").trim();
+    const byId = {}, accessById = {};
+    for (const r of cur || []) {
+      byId[r.dealer_id] = String(r.account_ref || "").trim();
+      accessById[r.dealer_id] = r.active !== false;
+    }
     const orgPrimary = byId[root] || ref; // prefer the parent org's number
     const fill = [];
     for (const id of ids) {
-      if (!byId[id]) fill.push({ dealer_id: id, manufacturer: slug, account_ref: orgPrimary, active: true });
+      if (!byId[id]) fill.push({ dealer_id: id, manufacturer: slug, account_ref: orgPrimary, active: accessById[id] !== false });
     }
     if (fill.length)
       await sbSend(

@@ -13,6 +13,7 @@ function seed(){
    dealer_manufacturers:[
      {dealer_id:"hq-family",manufacturer:m,account_ref:"HQ-777",active:true},
      {dealer_id:"child-blank",manufacturer:m,account_ref:null,active:false},
+     {dealer_id:"child-blank",manufacturer:"bemis",account_ref:null,active:false},
      {dealer_id:"child-special",manufacturer:m,account_ref:"BRANCH-123",active:true},
      {dealer_id:"unrelated",manufacturer:m,account_ref:null,active:true},
    ],
@@ -48,6 +49,7 @@ const ref=(w,id,manufacturer=m)=>(w.db.dealer_manufacturers||[]).find(r=>r.deale
   assert.equal(r.status,200,JSON.stringify(r.body));
   assert.equal(ref(w,"hq-family","bemis").account_ref,"B-456");
   assert.equal(ref(w,"child-blank","bemis").account_ref,"B-456");
+  assert.equal(ref(w,"child-blank","bemis").active,false,"inherit account number but preserve branch ordering switch");
   assert.equal(ref(w,"child-new","bemis").account_ref,"B-456");
   assert.equal(ref(w,"child-special","bemis").account_ref,"B-456");
  });
