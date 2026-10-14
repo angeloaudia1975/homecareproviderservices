@@ -270,7 +270,7 @@ async function buildState(){
     const per=[...a.periods].sort();
     const since = (latest&&per.length)? pm(latest)-pm(per[per.length-1]) : null;
     return {
-      id:d.id, name:d.business_name, hcps_account:d.hcps_account||"", status:d.status||"", active:d.active!==false,
+      id:d.id, name:d.business_name, hcps_account:d.hcps_account||"", status:d.status||"", active:d.active!==false, parent_id:d.parent_id||null,
       contact_name:d.contact_name||"", email:d.email||"", email_verified: evSupported?!!evById[d.id]:null, phone:d.phone||"", website:webById[d.id]||"",
       golden_url:(goldById[d.id]&&goldById[d.id].url)||"", golden_status:(goldById[d.id]&&goldById[d.id].status)||"",
       account_class: classSupported ? (classById[d.id]||"") : null,
