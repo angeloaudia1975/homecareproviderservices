@@ -69,6 +69,7 @@ const { dealerScope, isAdmin, seesAllDealers } = require("./_scope.js");
 const SC=require("./_scope.js");
 const FL=require("./_flags.js");
 const UP=require("./_upsert.js");
+const DS=require("./_dealer_status.js");
 const TK=require("./_tasks.js");     // Phase 1: the one way to create a task
 const VI=require("./_visits.js");    // Phase 1: visit follow-up status
 const TL=require("./_timeline.js");  // Phase 2D: the Dealer 360 Relationship Timeline
@@ -656,6 +657,8 @@ exports.handler = async (event)=>{
       let tasks=[];
       if(seesAll) tasks=await sbGetAll(`dealer_tasks?status=eq.${status}&select=*`,"id").catch(()=>[]);
       else tasks=await repTasks(me,status,"*");
+      // Retain completed history; omit inactive dealers from open work.
+      if(status==="open"){ const eligible=await DS.activeIds(sbGetAll); tasks=tasks.filter(t=>eligible.has(String(t.dealer_id))); }
       // Order: priority high → normal → low (the column is text, so the database sorted it
       // alphabetically and put "high" LAST), then the nearest due date, then the newest.
       const PRANK={high:0,normal:1,medium:1,low:2};
@@ -732,6 +735,7 @@ exports.handler = async (event)=>{
     // sends via Resend with an unsubscribe link, and logs the send to the activity timeline.
     if(b.action==="send_reengagement"){
       if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+      if(!(await DS.isDealerActive(sbGet,b.dealer_id))) return json(409,{error:"Inactive dealer: re-engagement disabled."});
       const did=encodeURIComponent(b.dealer_id);
       const drows=await sbGet(`dealers?id=eq.${did}&select=business_name,email`).catch(()=>[]); const d=drows&&drows[0];
       if(!d) return json(404,{error:"dealer not found"});

@@ -544,7 +544,7 @@ module.exports.handler = async (event) => {
 async function worklist(me){
   const g=(p,f)=>sbGet(p).catch(()=>f);
   const [dealers, eng, intent, lines, carts, sess] = await Promise.all([
-    sbGetAll("dealers?select=id,business_name,city,state,rep_name").catch(()=>[]),
+    sbGetAll("dealers?select=id,business_name,city,state,rep_name,active").catch(()=>[]),
     g("dealer_engagement?select=dealer_id,status,score,churn_score,months_since,trend,total_sales,recent_sales,last_period&limit=5000", []),
     g("dealer_intent?select=dealer_id,score_total,top_manufacturer,top_product,last_event_at&limit=5000", []),
     g("dealer_line_status?select=dealer_id,manufacturer,relationship,months_since&limit=20000", []),
@@ -575,6 +575,7 @@ async function worklist(me){
 
   const out=[];
   for(const d of dealers){
+    if(d.active===false) continue;
     if(allowed && !allowed.has(String(d.id))) continue;
     const e=engBy[d.id]||{}, i=intBy[d.id]||{};
     const reasons=[]; let score=0;

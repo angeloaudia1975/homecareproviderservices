@@ -63,6 +63,7 @@ function tierFor(score,tiers){ const s=Number(score)||0; const t=tiers||INTENT_D
 // ---- 1. intent scoring ------------------------------------------------------
 // Decayed rolling sum over the window: an event worth W points, D days old,
 // contributes W * (1 - decay)^(D/7). Recomputed hourly (fresh) + nightly (full).
+const DS=require("./_dealer_status");
 async function computeIntent(){
   const cfg=await getConfig();
   if(cfg.intent_enabled===false) return {skipped:"intent disabled"};
@@ -72,8 +73,9 @@ async function computeIntent(){
   const now=Date.now(); const stamp=new Date(now).toISOString();
   const sinceIso=new Date(now-windowDays*864e5).toISOString();
   let ev=[]; try{ ev=await sbGetAll(`intent_events?occurred_at=gte.${encodeURIComponent(sinceIso)}${P.scoringEnvClause(st.mode)}&select=dealer_id,manufacturer,product_code,weight,occurred_at`,"id"); }catch(e){ return {error:String(e&&e.message||e)}; }
+  const eligible=await DS.activeIds(sbGetAll);
   const DL=new Map();
-  for(const e of ev){ if(!e.dealer_id) continue;
+  for(const e of ev){ if(!eligible.has(String(e.dealer_id))) continue;
     const w=Number(e.weight)||0; if(w===0) continue;
     const ageDays=Math.max(0,(now-new Date(e.occurred_at).getTime())/864e5);
     const dw=w*Math.pow(1-decay, ageDays/7);
@@ -112,12 +114,12 @@ async function computeLineStatus(){
   const cfg=await getConfig();
   const [mfrs,dealers,aliases,xsell]=await Promise.all([
     sbGet("manufacturers?select=slug,name").catch(()=>[]),
-    sbGetAll("dealers?select=id,business_name,parent_id"),
+    sbGetAll("dealers?select=id,business_name,parent_id,active"),
     sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]),
     sbGet("cross_sell?select=dealer_id,rec_slug,rec_name,basis_name,score,rank").catch(()=>[]),
   ]);
   const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
-  const nameById={}; for(const d of dealers) nameById[d.id]=d.business_name;
+  const nameById={}; for(const d of dealers) if(DS.isActive(d)) nameById[d.id]=d.business_name;
   const idByAlias={}; for(const a of aliases) idByAlias[a.alias_norm]=a.dealer_id;
   const exMfr=new Set((cfg.exclude_manufacturers||[]).map(mnorm));
   const isEx=slug=>exMfr.has(mnorm(slug))||exMfr.has(mnorm(mfrName[slug]));
@@ -168,10 +170,10 @@ async function computeRelationships(){
     sbGetAll("dealer_line_status?select=dealer_id,manufacturer,relationship,months_since,last_order_period,status_since","dealer_id").catch(()=>[]),
     sbGetAll("dealer_manufacturers?select=dealer_id,manufacturer,account_ref,active","dealer_id").catch(()=>[]),
     sbGet("manufacturers?select=slug,name").catch(()=>[]),
-    sbGetAll("dealers?select=id,parent_id").catch(()=>[]),
+    sbGetAll("dealers?select=id,parent_id,active").catch(()=>[]),
   ]);
   const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
-  const realDealer=new Set(dealers.map(d=>d.id));
+  const realDealer=new Set(dealers.filter(DS.isActive).map(d=>d.id));
   // Restriction sources — all config-driven, additive. 'restricted' overrides all.
   const exDealers=new Set((cfg.exclude_dealers||[]).map(String));           // whole dealer, every line
   const exMfr=new Set((cfg.exclude_manufacturers||[]).map(mnorm));          // whole line, every dealer
@@ -233,11 +235,11 @@ async function syncIntentTasks(){
   const st=await P.getState();
   const [hot,dealers,mfrs,dir]=await Promise.all([
     sbGet(`dealer_intent?score_total=gte.${th}&select=dealer_id,score_total,by_manufacturer,top_manufacturer,top_product,last_event_at`).catch(()=>[]),
-    sbGetAll("dealers?select=id,business_name"),
+    sbGetAll("dealers?select=id,business_name,active"),
     sbGet("manufacturers?select=slug,name").catch(()=>[]),
     SC.ownerIndex(sbGet).then(o=>o.repByName).catch(()=>({})),   // dealer name -> real owner (Phase 0D)
   ]);
-  const nameById={}; for(const d of dealers) nameById[d.id]=d.business_name;
+  const nameById={}; for(const d of dealers) if(DS.isActive(d)) nameById[d.id]=d.business_name;
   const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
   const repByName=dir||{};
   // enrich with months-since-last-order for the hot line (for the evidence line)
@@ -248,7 +250,7 @@ async function syncIntentTasks(){
       const ls=await sbGet(`dealer_line_status?dealer_id=in.(${part.join(",")})&select=dealer_id,manufacturer,months_since`).catch(()=>[]);
       for(const r of (ls||[])){ (lineMs[r.dealer_id]=lineMs[r.dealer_id]||{})[r.manufacturer]=r.months_since; } } }catch(e){} }
   const desired=new Map();
-  for(const h of (hot||[])){ const name=nameById[h.dealer_id]||"This dealer";
+  for(const h of (hot||[])){ if(!nameById[h.dealer_id]) continue; const name=nameById[h.dealer_id];
     const topM=h.top_manufacturer; const mfrD=topM?(mfrName[topM]||topM):null;
     const ms=(topM&&lineMs[h.dealer_id])?lineMs[h.dealer_id][topM]:null;
     const line=mfrD?` in ${mfrD}`:""; const since=(ms!=null)?` Last ${mfrD} order ${ms} month(s) ago.`:"";
@@ -287,12 +289,12 @@ async function enqueueIntentEmails(){
     sbGet("email_optout?select=email").catch(()=>[]),
     sbGet("email_queue?status=eq.queued&template=eq.product&select=dealer_id").catch(()=>[]),
     sbGet("manufacturers?select=slug,name").catch(()=>[]),
-    sbGetAll("dealers?select=id,business_name,email"),
+    sbGetAll("dealers?select=id,business_name,email,active"),
   ]);
   const opted=new Set((optRows||[]).map(r=>String(r.email||"").toLowerCase()));
   const live=new Set((liveRows||[]).map(r=>r.dealer_id));
   const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
-  const nameById={},emailById={}; for(const d of dealers){ nameById[d.id]=d.business_name; emailById[d.id]=d.email||null; }
+  const nameById={},emailById={}; for(const d of dealers){ if(!DS.isActive(d))continue; nameById[d.id]=d.business_name; emailById[d.id]=d.email||null; }
   const cut=new Date(Date.now()-7*864e5).toISOString();
   const sentRows=await sbGet(`email_sends?template=eq.product&sent_at=gte.${cut}&select=dealer_id`).catch(()=>[]);
   const sentRecent=new Set((sentRows||[]).map(r=>r.dealer_id));
@@ -303,6 +305,7 @@ async function enqueueIntentEmails(){
     for(const r of (ls||[])) (lineMs[r.dealer_id]=lineMs[r.dealer_id]||{})[r.manufacturer]=r.months_since; }
   const insert=[]; let considered=0;
   for(const h of hot){ considered++; const id=h.dealer_id; const mfr=h.top_manufacturer;
+    if(!nameById[id]) continue;
     if(live.has(id)||sentRecent.has(id)) continue;
     if(mfr && (exMfr.has(mnorm(mfr))||exMfr.has(mnorm(mfrName[mfr])))) continue;
     const ms=(mfr&&lineMs[id])?lineMs[id][mfr]:null; if(ms!=null && ms<1) continue; // just ordered — skip
@@ -337,17 +340,18 @@ async function enqueuePostOrder(){
     sbGet("email_optout?select=email").catch(()=>[]),
     sbGet("email_queue?status=eq.queued&template=eq.postorder&select=dealer_id").catch(()=>[]),
     sbGet("manufacturers?select=slug,name").catch(()=>[]),
-    sbGetAll("dealers?select=id,business_name,email"),
+    sbGetAll("dealers?select=id,business_name,email,active"),
   ]);
   const opted=new Set((optRows||[]).map(r=>String(r.email||"").toLowerCase()));
   const live=new Set((liveRows||[]).map(r=>r.dealer_id));
   const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
-  const nameById={},emailById={}; for(const d of dealers){ nameById[d.id]=d.business_name; emailById[d.id]=d.email||null; }
+  const nameById={},emailById={}; for(const d of dealers){ if(!DS.isActive(d))continue; nameById[d.id]=d.business_name; emailById[d.id]=d.email||null; }
   const cut=new Date(now-30*864e5).toISOString();
   const sentRows=await sbGet(`email_sends?template=eq.postorder&sent_at=gte.${cut}&select=dealer_id`).catch(()=>[]);
   const sentRecent=new Set((sentRows||[]).map(r=>r.dealer_id));
   const insert=[]; let considered=0;
   for(const [id,o] of perDealer){ considered++;
+    if(!nameById[id]) continue;
     if(live.has(id)||sentRecent.has(id)) continue;
     let to=String(o.contact_email||emailById[id]||"").trim();
     if(!EMAIL_RE.test(to)||opted.has(to.toLowerCase())) continue;
@@ -388,15 +392,16 @@ async function enqueueReengagement(){
   const [optRows,liveRows,dealers,dir]=await Promise.all([
     sbGet("email_optout?select=email").catch(()=>[]),
     sbGet("email_queue?status=eq.queued&template=eq.reengage&select=dealer_id").catch(()=>[]),
-    sbGetAll("dealers?select=id,business_name,email"),
+    sbGetAll("dealers?select=id,business_name,email,active"),
     SC.ownerIndex(sbGet).then(o=>o.repByName).catch(()=>({})),   // dealer name -> real owner (Phase 0D)
   ]);
   const opted=new Set((optRows||[]).map(r=>String(r.email||"").toLowerCase()));
   const live=new Set((liveRows||[]).map(r=>r.dealer_id));
-  const nameById={},emailById={}; for(const d of dealers){ nameById[d.id]=d.business_name; emailById[d.id]=d.email||null; }
+  const nameById={},emailById={}; for(const d of dealers){ if(!DS.isActive(d))continue; nameById[d.id]=d.business_name; emailById[d.id]=d.email||null; }
   const repBy=dir||{};
   const insert=[]; const flagTasks=[]; let considered=0;
   for(const id of candidates){ considered++;
+    if(!nameById[id]) continue;
     if(re30.has(id)||live.has(id)) continue;                        // 1 per 30d
     if((re180[id]||0)>=2){                                          // rested after 2 tries → flag, stop emailing
       flagTasks.push({dealer_id:id,title:`Email-cold — ${nameById[id]||"dealer"}`,detail:`No email opens/clicks in 60+ days after ${re180[id]} re-engagement attempts. Consider a call or pausing marketing to this dealer.`,priority:"normal",source:"auto",reason:"low_engagement",assigned_rep:repBy[nameById[id]]||null,created_by:"Re-engagement",status:"open",env:P.envFor(st.mode,false)});

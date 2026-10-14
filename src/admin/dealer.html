@@ -488,7 +488,7 @@ function indexDealer(d){
 }
 function renderPicker(dealers){
   // Index every dealer ONCE so every keystroke is instant.
-  PICKER=[...(dealers||[])].map(indexDealer)
+  PICKER=[...(dealers||[])].filter(d=>d.active!==false).map(indexDealer)
     .sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"en",{sensitivity:"base"}));
   $("#body").innerHTML=`<div class="card">
     <h1 style="margin:0 0 4px;font-size:24px">Dealer 360 &amp; CRM</h1>

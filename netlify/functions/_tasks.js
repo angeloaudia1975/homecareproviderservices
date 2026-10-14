@@ -62,8 +62,17 @@ function taskRow(t, ctx){
 }
 
 async function createTasks(list, ctx){
-  const rows = (list || []).map(t => taskRow(t, ctx)).filter(r => r.dealer_id && r.title);
-  if(!rows.length) return { created: [], skipped: 0 };
+  const candidates = (list || []).map(t => taskRow(t, ctx)).filter(r => r.dealer_id && r.title);
+  if(!candidates.length) return { created: [], skipped: 0 };
+  // Prevent new tasks for inactive dealers, even when a manual or visit flow writes.
+  const ids=[...new Set(candidates.map(r=>r.dealer_id))];
+  const eligible=new Set();
+  for(let i=0;i<ids.length;i+=100){ const part=ids.slice(i,i+100);
+    const found=await ctx.sbGet(`dealers?id=in.(${part.map(encodeURIComponent).join(",")})&select=id,active`);
+    for(const d of (found||[])) if(d.active!==false) eligible.add(String(d.id));
+  }
+  const rows=candidates.filter(r=>eligible.has(String(r.dealer_id)));
+  if(!rows.length) return { created: [], skipped: candidates.length };
   const keyed = !!ctx.origin && rows.every(r => r.origin_type && r.origin_id && r.origin_key);
   if(keyed){
     try{

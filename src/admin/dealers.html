@@ -24,7 +24,7 @@ const isPres=()=>!!(ME&&ME.role==="president");
 const ADMIN_ROLES={president:1,admin:1,owner:1};
 const isAdminRole=()=>!!(ME&&ADMIN_ROLES[String(ME.role||"").toLowerCase()]);
 const isRelations=()=>!!(ME&&String(ME.role||"").toLowerCase()==="relations");
-let DATA=null,TOKEN=HCPS.token(),TAB=(location.hash==="#logins"?"logins":"all"),SEL=new Set(),SELP=new Set(),DETAIL=null,SORT={key:"sales",dir:-1};
+let DATA=null,TOKEN=HCPS.token(),TAB=(location.hash==="#logins"?"logins":"all"),SEL=new Set(),SELP=new Set(),DETAIL=null,STATUS_FILTER="active",SORT={key:"sales",dir:-1};
 // Deep-link: /admin/dealers.html?dealer=<id> opens that dealer's record directly
 // (used by the Map's "Open in Dealer Manager" link). Applied once, after data loads.
 let FOCUS=new URLSearchParams(location.search).get("dealer")||null;
@@ -55,6 +55,7 @@ async function submitTok(){
 function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
 function showErr(m){$("#body").innerHTML=`<div class="msg err"><b>Couldn't load.</b><br>${esc(m)}<br><br><button class="go" onclick="load()">Retry</button></div>`;}
 function setTab(t){TAB=t;DETAIL=null;render();}
+function setStatusFilter(value){if(!["active","inactive","all"].includes(value))return;STATUS_FILTER=value;SEL.clear();render();}
 
 function reviewList(){return DATA.dealers.filter(d=>d.status==="review");}
 function suggestedPairs(){
@@ -79,7 +80,7 @@ function suggestedPairs(){
   return out.sort((x,y)=>y.score-x.score||(y.a.sales+y.b.sales)-(x.a.sales+x.b.sales));
 }
 function filtered(){const q=($("#q")?.value||"").trim().toLowerCase();
-  const ds=DATA.dealers;
+  const ds=DATA.dealers.filter(d=>STATUS_FILTER==="all"||(STATUS_FILTER==="active"?d.active!==false:d.active===false));
   if(!q) return sortDealers(ds);
   // Relevance rank so a single keystroke surfaces the accounts that START with it: name-prefix first,
   // then a word in the name starting with it, then name-contains, then alias / other fields.
@@ -136,7 +137,7 @@ function render(){
   const N=DATA.dealers.length||1;
   const withEmail=DATA.dealers.filter(d=>d.email).length, withAddr=DATA.dealers.filter(d=>d.address||d.city).length;
   const kpis=`<div class="kpis">
-    <div class="kpi"><div class="l">Dealers</div><div class="v">${DATA.dealers.length}</div></div>
+    <div class="kpi"><div class="l">Active dealers</div><div class="v">${DATA.dealers.filter(d=>d.active!==false).length}</div></div>
     <div class="kpi"><div class="l">Emails on file</div><div class="v ${withEmail<N?'warn':''}">${withEmail}<span style="font-size:12px;color:var(--gray)">/${DATA.dealers.length}</span></div></div>
     <div class="kpi"><div class="l">Addresses on file</div><div class="v ${withAddr<N?'warn':''}">${withAddr}<span style="font-size:12px;color:var(--gray)">/${DATA.dealers.length}</span></div></div>
     <div class="kpi"><div class="l">Review queue</div><div class="v warn">${rev}</div></div>
@@ -203,8 +204,8 @@ function renderAll(){
   const ds=filtered();
   const sortSel=Object.keys(SORTLBL).map(k=>`<option value="${k}" ${SORT.key===k?"selected":""}>${SORTLBL[k]}${SORT.key===k?(SORT.dir>0?" ▲":" ▼"):""}</option>`).join("");
   let h=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-      <h2 style="margin:0">All dealers <span class="hint" style="text-transform:none">(${ds.length} shown — ${isPres()?"tick 2+ (or “Select all”) then “Merge selected”, or ":""}click a dealer to manage)</span></h2>
-      <label class="hint" style="text-transform:none">Sort: <select onchange="setSort(this.value)">${sortSel}</select></label></div>
+      <h2 style="margin:0">Dealer accounts <span class="hint" style="text-transform:none">(${ds.length} shown — ${isPres()?"tick 2+ (or “Select all”) then “Merge selected”, or ":""}click a dealer to manage)</span></h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><label class="hint" style="text-transform:none">Status: <select id="dealer_status_filter" aria-label="Filter dealer account status" onchange="setStatusFilter(this.value)"><option value="active" ${STATUS_FILTER==="active"?"selected":""}>Active</option><option value="inactive" ${STATUS_FILTER==="inactive"?"selected":""}>Inactive</option><option value="all" ${STATUS_FILTER==="all"?"selected":""}>All accounts</option></select></label><label class="hint" style="text-transform:none">Sort: <select onchange="setSort(this.value)">${sortSel}</select></label></div></div>
     <div class="dtable"><table style="margin-top:8px"><thead><tr><th>${isPres()?`<input type="checkbox" ${allSelected()?"checked":""} onclick="toggleAll(this)" title="Select all shown">`:""}</th>
       <th class="link" onclick="setSort('name')" style="cursor:pointer">Dealer${sortArrow('name')}</th>
       <th>Address / email</th><th class="buys">Buys</th>
@@ -217,7 +218,7 @@ function renderAll(){
         ${d.email?`✉ <a href="mailto:${esc(d.email)}" style="color:var(--blue)">${esc(d.email)}</a>${emailStatus(d)}`:`<span class="chip rev">no email</span>`}${d.phone?` · ${esc(d.phone)}`:""}</div>`;
     h+=`<tr class="drow" style="cursor:pointer" onclick="if(!event.target.closest('input,a,button,select,label'))openDetail('${d.id}')" title="Click to manage ${esc(d.name)}"><td>${isPres()?`<input type="checkbox" ${SEL.has(d.id)?"checked":""} onclick="toggleSel('${d.id}')">`:""}</td>
       <td class="lbl"><a class="link" style="cursor:pointer" onclick="openDetail('${d.id}')">${esc(d.name)}</a> ${d.status==="review"?`<span class="chip rev">review</span>`:""}${d.status==="prospect"?`<span class="chip al">prospect</span>`:""}
-        ${d.aliases.filter(a=>a!==d.name).slice(0,3).map(a=>`<span class="chip al">${esc(a)}</span>`).join("")}
+        ${d.active===false?`<span class="chip rev">inactive</span>`:""}${d.aliases.filter(a=>a!==d.name).slice(0,3).map(a=>`<span class="chip al">${esc(a)}</span>`).join("")}
         ${(d.accounts&&d.accounts.length)?`<div class="hint" style="margin:2px 0 0">acct: ${d.accounts.slice(0,6).map(esc).join(", ")}</div>`:""}</td>
       <td>${contact}</td>
       <td class="buys">${d.buysLines.map(l=>`<span class="chip">${esc(DATA.mfrName[l]||l)}</span>`).join("")||`<span class="dim">—</span>`}</td>
@@ -333,6 +334,43 @@ function dedupeMfrs(mfrs,d){
     out.push({slug:pick, name, slugs:g.slugs, checked:g.slugs.some(s=>acc.has(s)), buys:g.slugs.some(s=>buys.has(s))}); }
   return out.sort((a,b)=>String(a.name).localeCompare(b.name));
 }
+function accountStatusPanel(d){
+  const active=d.active!==false;
+  return `<div class="card" style="margin:0 0 14px">
+    <h2>Account status <span class="chip ${active?"acc":"rev"}">${active?"Active":"Inactive"}</span></h2>
+    <div class="hint" style="text-transform:none;margin-bottom:10px">${active
+      ?"Active accounts appear in CRM worklists and are eligible for follow-up and outreach."
+      :"Inactive accounts are excluded from current tasks, engagement and marketing; old records remain accessible."}</div>
+    ${isAdminRole()?`<button class="go sm ${active?"orange":"blue"}" onclick="openStatusChange('${d.id}',${active?"false":"true"})">${active?"Deactivate account":"Reactivate account"}</button>`
+      :`<span class="hint">Account status is changed by management.</span>`}
+    <div class="hint" style="margin-top:8px;text-transform:none">Sales history and manufacturer ordering access are managed separately; this action does not revoke portal logins or deactivate other locations.</div>
+  </div>`;
+}
+function openStatusChange(id,nextActive){
+  if(!isAdminRole())return;
+  const d=(DATA.dealers||[]).find(x=>x.id===id);if(!d)return;
+  const verb=nextActive?"Reactivate":"Deactivate";
+  showDlg(`<h3>${verb} ${esc(d.name)}?</h3>
+    <p class="hint" style="text-transform:none">${nextActive?"The dealer will again be eligible for open work queues and automated outreach.":"This specific dealer will leave active tasks, follow-ups, worklists and campaigns. Historical transactions and other locations are preserved."}</p>
+    <div class="fld"><label>Reason (required)</label><select id="status_reason">
+      <option value="">Choose a reason…</option>
+      ${nextActive?`<option value="Account reactivated">Account reactivated</option>`:
+        `<option value="Closed business">Closed business</option><option value="No longer a customer">No longer a customer</option><option value="Invalid / duplicate account">Invalid / duplicate account</option><option value="Other">Other</option>`}
+    </select></div>
+    <div class="fld"><label>Additional notes (optional unless Other)</label><textarea id="status_notes" rows="3" maxlength="300"></textarea></div>
+    <div id="status_feedback" class="st"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="go sm" onclick="closeDlg()">Cancel</button><button id="status_confirm" class="go sm ${nextActive?"blue":"orange"}" onclick="saveStatusChange('${id}',${nextActive})">Confirm ${verb.toLowerCase()}</button></div>`);
+}
+async function saveStatusChange(id,nextActive){
+  const choice=String($("#status_reason")?.value||"").trim(),notes=String($("#status_notes")?.value||"").trim();
+  const msg=$("#status_feedback");if(!choice||(choice==="Other"&&!notes)){if(msg)msg.textContent="Select a reason and add details if Other.";return;}
+  const btn=$("#status_confirm");if(btn)btn.disabled=true;
+  try{ const r=await post({action:"set_active",dealer_id:id,active:nextActive,reason:choice+(notes?": "+notes:"")});
+    closeDlg();await load();DETAIL=id;render();
+    if(r.warnings&&r.warnings.length)alertDlg("Status saved, but cleanup needs review: "+r.warnings.join("; "));
+  }catch(e){const f=$("#status_feedback");if(f)f.textContent=String(e.message||e);}
+  finally{const b=$("#status_confirm");if(b)b.disabled=false;}
+}
 function renderDetail(){
   const d=DATA.dealers.find(x=>x.id===DETAIL); if(!d){DETAIL=null;return render();}
   const mfrs=dedupeMfrs(DATA.manufacturers,d);   // collapse duplicate manufacturer rows (Golden ×2, Bongo/AIRAVANT…)
@@ -350,6 +388,7 @@ function renderDetail(){
   $("#body").innerHTML=`
    <div class="backbar"><button class="go" onclick="backList()">← All dealers</button><div class="lbl" style="font-size:18px">${esc(d.name)} ${d.status==="review"?`<span class="chip rev">review</span>`:""}</div>${(isPres()&&!d.master)?`<button class="go sm orange" onclick="addBranchTo('${d.id}')" title="Add a branch location under this dealer">＋ Add branch</button>`:""}<a class="go sm blue" href="/admin/dealer.html?id=${d.id}">📇 360 Profile</a></div>
    ${relBanner}
+   ${accountStatusPanel(d)}
    <div class="grid2">
      <div class="card"><h2>Account details</h2>
        ${fld("business_name","Dealer name",d.name)}

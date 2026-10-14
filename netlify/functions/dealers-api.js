@@ -270,7 +270,7 @@ async function buildState(){
     const per=[...a.periods].sort();
     const since = (latest&&per.length)? pm(latest)-pm(per[per.length-1]) : null;
     return {
-      id:d.id, name:d.business_name, hcps_account:d.hcps_account||"", status:d.status||"",
+      id:d.id, name:d.business_name, hcps_account:d.hcps_account||"", status:d.status||"", active:d.active!==false,
       contact_name:d.contact_name||"", email:d.email||"", email_verified: evSupported?!!evById[d.id]:null, phone:d.phone||"", website:webById[d.id]||"",
       golden_url:(goldById[d.id]&&goldById[d.id].url)||"", golden_status:(goldById[d.id]&&goldById[d.id].status)||"",
       account_class: classSupported ? (classById[d.id]||"") : null,
@@ -437,6 +437,37 @@ exports.handler = async (event)=>{
         try{ await sbSend("PATCH",`dealers?id=eq.${encodeURIComponent(b.dealer_id)}`,patch,{Prefer:"return=minimal"}); }
         catch(e){ if(/account_class/i.test(String(e.message||""))) return json(200,{ok:false,error:"needs_migration",message:"Run supabase/phase2_account_class.sql in Supabase first."}); throw e; }
         return json(200,{ok:true,dealer_id:b.dealer_id,account_class:raw||null,signal_eligible:AC.signalEligible(raw)});
+      }
+      // Management-only dealer lifecycle: does not alter logins, line access or history.
+      if(act==="set_active"){
+        if(!isAdminRole) return json(403,{error:"Only management can change account status."});
+        const id=String(b.dealer_id||"").trim();
+        if(!/^[0-9a-f-]{36}$/i.test(id)||typeof b.active!=="boolean") return json(400,{error:"Valid dealer_id and boolean active required"});
+        const reason=String(b.reason||"").trim().slice(0,500);
+        if(!reason) return json(400,{error:"Reason is required for status changes."});
+        const found=await sbGet(`dealers?id=eq.${encodeURIComponent(id)}&select=id,business_name,active`);
+        const dealer=found&&found[0]; if(!dealer) return json(404,{error:"Dealer not found"});
+        if((dealer.active!==false)===b.active) return json(200,{ok:true,unchanged:true,active:b.active});
+        const updated=await sbSend("PATCH",`dealers?id=eq.${encodeURIComponent(id)}`,
+          {active:b.active,updated_at:new Date().toISOString()},{Prefer:"return=representation"});
+        if(!updated||updated.length!==1) return json(409,{error:"Account status was not updated"});
+        const warnings=[]; let tasksDismissed=0,emailsCanceled=0;
+        if(!b.active){
+          try{ const rows=await sbSend("PATCH",`dealer_tasks?dealer_id=eq.${encodeURIComponent(id)}&status=eq.open&source=in.(auto,intent)`,
+            {status:"dismissed",done_at:new Date().toISOString(),completed_by:"system"},{Prefer:"return=representation"});
+            tasksDismissed=(rows||[]).length;
+          }catch(e){warnings.push("Automated task cleanup needs retry");}
+          try{ const rows=await sbSend("PATCH",`email_queue?dealer_id=eq.${encodeURIComponent(id)}&status=eq.queued`,
+            {status:"skipped",error:"Dealer deactivated"},{Prefer:"return=representation"});
+            emailsCanceled=(rows||[]).length;
+          }catch(e){warnings.push("Queued email cleanup needs retry");}
+        }
+        try{ await sbSend("POST","dealer_activity",{
+          dealer_id:id,kind:"system",subject:b.active?"Dealer account reactivated":"Dealer account deactivated",
+          detail:`Reason: ${reason}. Automated tasks dismissed: ${tasksDismissed}; queued emails canceled: ${emailsCanceled}. Ordering access and sales history unchanged.`,
+          actor:me.name||me.email||"Management",actor_email:me.email||null
+        },{Prefer:"return=minimal"}); }catch(e){warnings.push("Status audit activity needs retry");}
+        return json(200,{ok:true,active:b.active,tasks_dismissed:tasksDismissed,emails_canceled:emailsCanceled,warnings});
       }
       if(act==="edit"){
         if(!b.dealer_id) return json(400,{error:"dealer_id required"});
