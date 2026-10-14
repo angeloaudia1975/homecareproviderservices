@@ -92,6 +92,7 @@ const pm=p=>{const[y,m]=p.split("-").map(Number);return y*12+(m-1);};
 
 // ---- territory ACCESS RULES (shared with the ordering portal's dealer-auth). ----
 const { computeAccess } = require("./_access.js");
+const orgAccounts=require("./_accountorg.js")(sbGet,sbSend);
 const P = require("./_platform.js");
 const ACT_ORDERING = process.env.ORDERING_BASE || "https://hcpsonlineordering.netlify.app";
 // #2 Manufacturer Activated — when a dealer is newly approved to order a line, queue a
@@ -270,7 +271,7 @@ async function buildState(){
     const per=[...a.periods].sort();
     const since = (latest&&per.length)? pm(latest)-pm(per[per.length-1]) : null;
     return {
-      id:d.id, name:d.business_name, hcps_account:d.hcps_account||"", status:d.status||"", active:d.active!==false,
+      id:d.id, name:d.business_name, hcps_account:d.hcps_account||"", status:d.status||"", active:d.active!==false, parent_id:d.parent_id||null,
       contact_name:d.contact_name||"", email:d.email||"", email_verified: evSupported?!!evById[d.id]:null, phone:d.phone||"", website:webById[d.id]||"",
       golden_url:(goldById[d.id]&&goldById[d.id].url)||"", golden_status:(goldById[d.id]&&goldById[d.id].status)||"",
       account_class: classSupported ? (classById[d.id]||"") : null,
@@ -580,7 +581,16 @@ exports.handler = async (event)=>{
         const hadBefore=new Set((existing||[]).map(r=>r.manufacturer));
         const newlyGranted=b.manufacturers.filter(m=>!hadBefore.has(m));
         if(newlyGranted.length) await enqueueActivation(b.dealer_id,newlyGranted);
-        return json(200,{ok:true});
+        // Sync known HQ manufacturer refs to blank branch rows. Independent branch
+        // numbers remain untouched; the sync never propagates an unknown/blank ref.
+        let branch_sync=null, branch_warning=null;
+        try{
+          branch_sync=await orgAccounts.fillHeadquartersBlanks(b.dealer_id,b.manufacturers);
+          if(branch_sync.concurrent) branch_warning="Some branches changed during the save; review their manufacturer account numbers.";
+        }catch(e){
+          branch_warning="Manufacturer access was saved, but HQ account-number inheritance needs review: "+String(e.message||e);
+        }
+        return json(200,{ok:true,branch_sync,branch_warning});
       }
       if(act==="rep"){
         const rep=(b.rep_name||"").trim()||null;

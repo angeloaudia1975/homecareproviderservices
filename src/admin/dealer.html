@@ -153,6 +153,18 @@
  /* Reps reach Dealer 360 from the field app on a phone, where the pinned rep menu (~380px tall)
     would cover half the screen. On a phone it scrolls away with the page instead. */
  @media(max-width:760px){ header#ac-head{position:static} }
+.family-nav{margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#f7f9fc}
+.family-nav-title{font-size:13px;font-weight:800;color:var(--navy);margin-bottom:9px}
+.family-nav-count{font-size:12px;font-weight:500;color:var(--gray)}
+.family-nav-items{display:flex;gap:8px;flex-wrap:wrap}
+.family-location{display:flex;flex-direction:column;gap:3px;padding:9px 12px;min-width:160px;max-width:300px;border-radius:8px;border:1px solid #d7e0eb;background:#fff;color:var(--navy);text-decoration:none;font-size:12px}
+a.family-location:hover,a.family-location:focus-visible{border-color:var(--blue);background:#eaf2ff;outline-offset:2px}
+.family-selected{background:#e9eff9;border-color:#8ca6d0}
+.family-location-name{font-size:12.5px;font-weight:750;overflow-wrap:anywhere}
+.family-location-meta{color:#5f6c7d;font-size:11px;overflow-wrap:anywhere}
+.family-inactive,.family-current{font-size:10px;font-weight:700;color:#895014;background:#fff1d9;padding:2px 5px;border-radius:5px}
+.family-current{color:#245278;background:#dcecff}
+@media(max-width:600px){.family-location{width:100%;max-width:none}}
 </style>
 </head><body>
 <header id="ac-head"></header>
@@ -164,6 +176,7 @@
 <script src="/admin/staff-session.js"></script>
 <script src="/admin/admin-chrome.js"></script>
 <script src="/admin/dealer-handout.js"></script>
+<script src="/admin/dealer-family.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -276,6 +289,7 @@ function render(D,A){
           ${website?`<span>🌐 <a class="link" href="${esc(/^https?:/i.test(website)?website:'https://'+website)}" target="_blank">${esc(website.replace(/^https?:\/\//,''))}</a></span>`:""}
         </div>
         <div class="idrow">${[d.address,d.city,[d.state,d.zip].filter(Boolean).join(" ")].filter(Boolean).map(esc).join(", ")}</div>
+         ${HCPSDealerFamily.render(d,dealers)}
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">${!isMgmt()?"":`<button class="btn ghost sm" onclick="editCompany()">✎ Edit company info</button>`}<button class="btn ghost sm" onclick="openDealerPortal(this)" title="Preview this dealer's HCPS Partner 360 ordering experience — pricing, manufacturers, products, account & order history — read-only, no login required">🔎 View Dealer Partner 360 Portal →</button>${(d.golden_url||d.golden_status==='Account'||d.golden_status==='Prospect')?`<button class="btn ghost sm" onclick="openGolden(this)" title="Open this dealer's Golden ordering portal (signed one-click sign-in)">🟡 Open Golden portal →</button>`:""}<a class="btn ghost sm" href="/admin/dealers.html?dealer=${encodeURIComponent(d.id)}">Dealer Manager →</a></div>
     </div>
