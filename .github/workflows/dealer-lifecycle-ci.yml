@@ -1,0 +1,24 @@
+name: Dealer lifecycle checks
+on:
+  pull_request:
+    paths:
+      - "netlify/functions/**"
+      - "src/admin/dealer*.html"
+      - "test/dealer*.test.js"
+      - ".github/workflows/dealer-lifecycle-ci.yml"
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check modified JavaScript syntax
+        run: |
+          for f in netlify/functions/_dealer_status.js netlify/functions/_engine.js netlify/functions/_intent.js netlify/functions/_tasks.js netlify/functions/dealers-api.js netlify/functions/crm-api.js netlify/functions/marketing-api.js netlify/functions/campaign-api.js netlify/functions/audiences-api.js netlify/functions/_audiences.js netlify/functions/call-brief-api.js; do node --check "$f"; done
+      - name: Unit and lifecycle acceptance
+        run: |
+          node --test test/dealer-status.test.js
+          node test/dealer-lifecycle.test.js
+          node test/phase0-tasks.test.js
