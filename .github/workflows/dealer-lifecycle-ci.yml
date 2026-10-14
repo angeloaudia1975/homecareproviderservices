@@ -21,4 +21,5 @@ jobs:
         run: |
           node --test test/dealer-status.test.js
           node test/dealer-lifecycle.test.js
+          node test/dealer-inactive-counts.test.js
           node test/phase0-tasks.test.js

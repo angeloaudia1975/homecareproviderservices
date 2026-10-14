@@ -369,15 +369,14 @@ exports.handler = async (event)=>{
     // Lightweight open-task count for the masthead badge. Scoped the same way the queue
     // itself is (see my_tasks): whoever works the whole territory counts the whole queue.
     if(b.action==="task_count"){
-      if(seesAllDealers(me) && !SC.workspaceMine(event, me)){   // in My Sales Workspace: his own count
-        try{ const r=await fetch(`${SUPABASE_URL}/rest/v1/dealer_tasks?status=eq.open&select=id`,{headers:{...H(),Prefer:"count=exact",Range:"0-0"}}); const cr=r.headers.get("content-range")||""; const n=cr.includes("/")?parseInt(cr.split("/")[1],10):0; return json(200,{ok:true,count:Number.isFinite(n)?n:0}); }
-        catch(e){ return json(200,{ok:true,count:0}); }
-      }
-      // An empty rep_name must match nothing. Without the `!!rn` guard it compares "" to ""
-      // and silently counts every UNASSIGNED task as this rep's own.
-      // The same rule as the my_tasks list (repTasks), so the badge never disagrees with the page.
-      const n=(await repTasks(me,"open","id,assigned_rep,assigned_email")).length;
-      return json(200,{ok:true,count:n});
+      // Same active-account filter as my_tasks (including manually-created open tasks).
+      // Don't use a raw database count: it includes inactive-account tasks hidden from the list.
+      const eligible=await DS.activeIds(sbGetAll);
+      const wholeBook=seesAllDealers(me) && !SC.workspaceMine(event, me);
+      const tasks=wholeBook
+        ? await sbGetAll("dealer_tasks?status=eq.open&select=id,dealer_id","id")
+        : await repTasks(me,"open","id,dealer_id,assigned_rep,assigned_email");
+      return json(200,{ok:true,count:tasks.filter(t=>eligible.has(String(t.dealer_id))).length});
     }
 
     /* ── The rep's cross-sell plan ───────────────────────────────────────────
@@ -703,10 +702,16 @@ exports.handler = async (event)=>{
       const [q,sent7,eng]=await Promise.all([
         sbGet("email_queue?status=eq.queued&select=id,template&limit=2000").catch(()=>[]),
         sbGet(`email_sends?sent_at=gte.${cut7}&select=id,template`).catch(()=>[]),
-        sbGet("dealer_engagement?select=status").catch(()=>[]),
+        sbGet("dealer_engagement?select=dealer_id,status").catch(()=>[]),
       ]);
+      const eligible=await DS.activeIds(sbGetAll);
       const byTmpl={}; for(const r of (q||[])) byTmpl[r.template]=(byTmpl[r.template]||0)+1;
-      const byStatus={}; for(const r of (eng||[])) byStatus[r.status]=(byStatus[r.status]||0)+1;
+      // Cached engagement rows are historical and deliberately retained. An inactive
+      // account is not part of the *current* automation-status distribution.
+      const byStatus={}; for(const r of (eng||[])){
+        if(!eligible.has(String(r.dealer_id))) continue;
+        byStatus[r.status]=(byStatus[r.status]||0)+1;
+      }
       return json(200,{ok:true,config:cfg,queued:(q||[]).length,queued_by_template:byTmpl,sent_7d:(sent7||[]).length,engagement:byStatus});
     }
 
