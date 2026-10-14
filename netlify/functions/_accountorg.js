@@ -69,6 +69,50 @@ module.exports = function (sbGet, sbSend) {
       ).catch(() => {});
   }
 
+
+  // A Dealer Manager grid save may grant a NEW manufacturer line with an existing
+  // HQ account number. Fill branch BLANKS only; never change an independently assigned
+  // branch number, and never re-enable an intentionally disabled branch line.
+  // Conditional PATCH / insert-ignore protect against concurrent branch edits.
+  async function fillHeadquartersBlanks(dealerId, selectedSlugs) {
+    const rows = await sbGet('dealers?id=eq.'+enc(dealerId)+'&select=id,parent_id');
+    if (!rows || !rows[0]) throw new Error("Dealer missing while syncing HQ accounts");
+    if (rows[0].parent_id) return {filled:0,branches:0,reason:"branch"};
+    const children = await sbGet('dealers?parent_id=eq.'+enc(dealerId)+'&select=id');
+    if (!children || !children.length) return {filled:0,branches:0};
+    const permitted = new Set((selectedSlugs||[]).map(String));
+    if (!permitted.size) return {filled:0,branches:children.length};
+    const hq = await sbGet('dealer_manufacturers?dealer_id=eq.'+enc(dealerId)+'&select=manufacturer,account_ref,active');
+    const toInherit=(hq||[]).filter(r=>permitted.has(String(r.manufacturer)) && r.active!==false && String(r.account_ref||"").trim());
+    if (!toInherit.length) return {filled:0,branches:children.length};
+    const childIds=children.map(c=>String(c.id));
+    const childRows=await sbGet('dealer_manufacturers?dealer_id=in.('+childIds.map(enc).join(',')+')&select=dealer_id,manufacturer,account_ref,active');
+    const byKey=new Map((childRows||[]).map(r=>[String(r.dealer_id)+'|'+String(r.manufacturer),r]));
+    let filled=0,preserved=0,concurrent=0;
+    for(const h of toInherit){
+      const ref=String(h.account_ref).trim(),slug=String(h.manufacturer);
+      for(const id of childIds){
+        const prior=byKey.get(id+'|'+slug);
+        if(prior&&String(prior.account_ref||"").trim()){preserved++;continue;}
+        if(prior){
+          // Preserve existing active=false and avoid overwriting a new branch number.
+          const empty=prior.account_ref==null?"is.null":"eq.";
+          const patched=await sbSend("PATCH",
+            'dealer_manufacturers?dealer_id=eq.'+enc(id)+'&manufacturer=eq.'+enc(slug)+'&account_ref='+empty,
+            {account_ref:ref},{Prefer:"return=representation"});
+          if(Array.isArray(patched)&&patched.length) filled++; else concurrent++;
+        } else {
+          const inserted=await sbSend("POST",
+            "dealer_manufacturers?on_conflict=dealer_id,manufacturer",
+            {dealer_id:id,manufacturer:slug,account_ref:ref,active:true},
+            {Prefer:"resolution=ignore-duplicates,return=representation"});
+          if(Array.isArray(inserted)&&inserted.length) filled++; else concurrent++;
+        }
+      }
+    }
+    return {filled,branches:children.length,preserved,concurrent};
+  }
+
   const enc = encodeURIComponent;
   const norm = (s) => String(s == null ? "" : s).trim().toLowerCase();
 
@@ -121,5 +165,5 @@ module.exports = function (sbGet, sbSend) {
     return { status: "conflict", existing, incoming: incomingRef };
   }
 
-  return { family, propagateAccountRef, markActive, reconcileAccountRef };
+  return { family, propagateAccountRef, fillHeadquartersBlanks, markActive, reconcileAccountRef };
 };

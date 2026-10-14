@@ -593,8 +593,10 @@ async function saveAccess(id){
   // when we merged duplicate manufacturer rows, carry the account number onto the surviving slug
   const canonOf={}; dedupeMfrs(DATA.manufacturers,d).forEach(g=>g.slugs.forEach(s=>canonOf[s]=g.slug));
   const refCarry={}; (d.accounts||[]).forEach(a=>{const p=String(a).split(":");const slug=p[0],ref=p.slice(1).join(":");if(slug&&ref){refCarry[canonOf[slug]||slug]=ref;}});
-  await post({action:"access",dealer_id:id,manufacturers:sel,refCarry},"Saving…","#stA");
-  $("#stA").textContent="Saved ✓";$("#stA").className="st ok";
+  const result=await post({action:"access",dealer_id:id,manufacturers:sel,refCarry},"Saving…","#stA");
+  $("#stA").textContent=result.branch_warning?"Access saved; branch sync needs review":("Saved ✓"+(result.branch_sync&&result.branch_sync.filled?" · "+result.branch_sync.filled+" branch account(s) inherited":""));
+  $("#stA").className=result.branch_warning?"st warn":"st ok";
+  if(result.branch_warning) alertDlg(result.branch_warning);
   if(d)d.access=sel;
 }
 async function post(body,working,stSel){
