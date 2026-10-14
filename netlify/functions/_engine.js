@@ -65,16 +65,17 @@ function inBusiness(cfg){
 // ---- Signal computation (single source of truth) ----------------------------
 // Reads sales history + portal activity, returns Map dealer_id -> {name,email,rep,
 // sales,first,last,monthsSince,signals:[{reason,title,detail,priority,template,payload}]}
+const DS=require("./_dealer_status");
 async function computeSignals(){
   const cfg=await getConfig();
   const [mfrs,dealers,aliases,OI]=await Promise.all([
     sbGet("manufacturers?select=slug,name").catch(()=>[]),
-    sbGetAll("dealers?select=id,business_name,parent_id,email"),
+    sbGetAll("dealers?select=id,business_name,parent_id,email,active"),
     sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]),
     SC.ownerIndex(sbGet).catch(()=>null),   // who owns each dealer (Phase 0D)
   ]);
   const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
-  const nameById={},emailById={}; for(const d of dealers){ nameById[d.id]=d.business_name; emailById[d.id]=d.email||null; }
+  const nameById={},emailById={}; for(const d of dealers){ if(!DS.isActive(d))continue; nameById[d.id]=d.business_name; emailById[d.id]=d.email||null; }
   const idByAlias={}; for(const a of aliases) idByAlias[a.alias_norm]=a.dealer_id;
   const repOfId=id=>(OI&&OI.repOf(id))||"";
   const rows=await sbGetAll("monthly_sales?select=dealer_id,manufacturer,period,customer_name,amount");
@@ -256,6 +257,9 @@ async function drainQueue(cfg,winKey){
   const capN=Number(cfg.cap_per_7d)||2, gapMs=(Number(cfg.min_gap_hours)||48)*3600e3;
   const cut7=new Date(Date.now()-7*864e5).toISOString();
   for(const q of (due||[])){
+    // Final send-time guard: queued email must not send after deactivation.
+    let eligible=false; try{ eligible=await DS.isDealerActive(sbGet,q.dealer_id); }catch(e){ failed++; continue; }
+    if(!eligible){ await mark(q.id,"skipped","Dealer inactive"); skipped++; continue; }
     const to=String(q.contact_email||"").trim().toLowerCase();
     if(!EMAIL_RE.test(to)){ await mark(q.id,"skipped","no valid email"); skipped++; continue; }
     const opt=await sbGet(`email_optout?email=eq.${encodeURIComponent(to)}&select=email`).catch(()=>[]);
@@ -290,12 +294,12 @@ async function recomputeEngagement(){
   const cfg=await getConfig();
   const [mfrs,dealers,aliases,OI]=await Promise.all([
     sbGet("manufacturers?select=slug,name").catch(()=>[]),
-    sbGetAll("dealers?select=id,business_name,parent_id"),
+    sbGetAll("dealers?select=id,business_name,parent_id,active"),
     sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]),
     SC.ownerIndex(sbGet).catch(()=>null),   // who owns each dealer (Phase 0D)
   ]);
   const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
-  const nameById={}; for(const d of dealers) nameById[d.id]=d.business_name;
+  const nameById={}; for(const d of dealers) if(DS.isActive(d)) nameById[d.id]=d.business_name;
   const idByAlias={}; for(const a of aliases) idByAlias[a.alias_norm]=a.dealer_id;
   const repOfId=id=>(OI&&OI.repOf(id))||"";
   const mnorm=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
@@ -350,11 +354,11 @@ function isoDate(d){ return d.toISOString().slice(0,10); }
 async function computeCrossSell(){
   const cfg=await getConfig();
   const [dealers,aliases,mfrs]=await Promise.all([
-    sbGetAll("dealers?select=id,business_name,parent_id"),
+    sbGetAll("dealers?select=id,business_name,parent_id,active"),
     sbGetAll("dealer_aliases?select=alias_norm,dealer_id","alias_norm").catch(()=>[]),
     sbGet("manufacturers?select=slug,name").catch(()=>[]),
   ]);
-  const nameById={}; for(const d of dealers) nameById[d.id]=d.business_name;
+  const nameById={}; for(const d of dealers) if(DS.isActive(d)) nameById[d.id]=d.business_name;
   const idByAlias={}; for(const a of aliases) idByAlias[a.alias_norm]=a.dealer_id;
   const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
   const mnorm=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
