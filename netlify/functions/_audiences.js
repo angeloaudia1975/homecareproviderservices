@@ -5,11 +5,12 @@ const SUPABASE_URL=process.env.SUPABASE_URL, SERVICE_ROLE=process.env.SUPABASE_S
 const H=()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}`); return r.json(); }
 async function sbGetAll(base,col="id"){ const PAGE=1000; let from=0,out=[]; for(;;){ const sep=base.includes("?")?"&":"?"; const rows=await sbGet(`${base}${sep}order=${col}&limit=${PAGE}&offset=${from}`); out=out.concat(rows); if(rows.length<PAGE)break; from+=PAGE; } return out; }
+const DS=require("./_dealer_status");
 const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 async function assembleContacts(){
   const [dealers,contacts,eng,lines,mfrs,opt,relRows]=await Promise.all([
-    sbGetAll("dealers?select=id,business_name,email,state,city,parent_id","id"),
+    sbGetAll("dealers?select=id,business_name,email,state,city,parent_id,active","id"),
     sbGetAll("dealer_contacts?select=dealer_id,name,email,title,role","dealer_id").catch(()=>[]),
     sbGetAll("dealer_engagement?select=dealer_id,status,rep_name,last_period,months_since","dealer_id").catch(()=>[]),
     sbGetAll("dealer_line_status?select=dealer_id,manufacturer,relationship","dealer_id").catch(()=>[]),
@@ -26,7 +27,7 @@ async function assembleContacts(){
   const cByD={}; (contacts||[]).forEach(c=>{ (cByD[c.dealer_id]=cByD[c.dealer_id]||[]).push(c); });
   const lByD={}; (lines||[]).forEach(l=>{ (lByD[l.dealer_id]=lByD[l.dealer_id]||[]).push(l); });
   const companies=[];
-  for(const d of dealers){
+  for(const d of dealers){ if(!DS.isActive(d)) continue;
     const e=engById[d.id]||{};
     const rels=(lByD[d.id]||[]).map(l=>({slug:l.manufacturer,name:mfrName[l.manufacturer]||l.manufacturer,relationship:(relByD[d.id]&&relByD[d.id][l.manufacturer])||l.relationship}));
     const seen=new Set(), cs=[];
@@ -62,9 +63,11 @@ async function resolveById(id){
   const opt=new Set((await sbGet("email_optout?select=email").catch(()=>[])).map(o=>String(o.email||"").toLowerCase()));
   // Global do-not-target list (whole-dealer restriction) — never receives any send.
   let exD=new Set(); try{ const cr=await sbGet("app_settings?key=eq.automation_config&select=value"); exD=new Set(((cr&&cr[0]&&cr[0].value&&cr[0].value.exclude_dealers)||[]).map(String)); }catch(e){}
+  // Static audiences can outlive account deactivation: validate on every resolve.
+  const active=await DS.activeIds(sbGetAll);
   const send=[]; let valid=0,unsub=0,invalid=0,restricted=0; const cos=new Set();
   for(const m of members){ const em=String(m.contact_email||"").trim(); const lo=em.toLowerCase();
-    if(exD.has(String(m.dealer_id))){ restricted++; continue; }
+    if(!active.has(String(m.dealer_id)) || exD.has(String(m.dealer_id))){ restricted++; continue; }
     cos.add(m.dealer_id);
     if(!EMAIL_RE.test(em)){invalid++;continue;} if(opt.has(lo)){unsub++;continue;} valid++; send.push({dealer_id:m.dealer_id,company:m.company||"",name:m.contact_name||"",email:em}); }
   return {audience:a, breakdown:{companies:cos.size,contacts:members.length,valid,unsubscribed:unsub,invalid,restricted,send:send.length}, send};

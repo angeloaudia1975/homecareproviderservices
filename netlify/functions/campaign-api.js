@@ -80,8 +80,8 @@ async function resolveAudience(segment,mfr,filters){
   filters=filters||{};
   let ids=[...new Set(await dealerIdsFor(segment,mfr))];
   if(!ids.length) return {count:0,dealer_ids:[],sample:[]};
-  const dealers=await sbGetAll("dealers?select=id,business_name,email,state","id");
-  const byId={}; dealers.forEach(d=>byId[d.id]=d);
+  const dealers=await sbGetAll("dealers?select=id,business_name,email,state,active","id");
+  const byId={}; dealers.filter(d=>d.active!==false).forEach(d=>byId[d.id]=d);
   // Company-level targeting: narrow by state and/or rep.
   const st=String(filters.state||"").toUpperCase().trim();
   let repById={};
@@ -465,7 +465,14 @@ exports.handler=async(event)=>{
         c.audience.sample=c.audience.sample.filter(s=>!T.dealer(s.dealer_id));   // recipients carry their dealer
         if(c.audience.sample.length!==before) c.audience.count=c.audience.sample.length;
       }
-      if(c.audience && !(c.audience.sample&&c.audience.sample.length)) return json(200,{ok:false,message:"No recipients left to send — every contact was excluded."});
+      // Recheck account eligibility at Zoho push time; draft audiences can be stale.
+      let eligible; try{ eligible=await require("./_dealer_status").activeIds(sbGetAll); }
+      catch(e){ return json(503,{ok:false,error:"dealer_status_unavailable",message:"Cannot verify active accounts; nothing pushed."}); }
+      if(c.audience && Array.isArray(c.audience.sample)){
+        c.audience.sample=c.audience.sample.filter(s=>eligible.has(String(s.dealer_id)));
+        c.audience.count=c.audience.sample.length;
+      }
+      if(c.audience && !(c.audience.sample&&c.audience.sample.length)) return json(200,{ok:false,message:"No active recipients left to send."});
       const res=await ZC.pushCampaign(c,CAMPAIGN_FROM,CAMPAIGN_FROM_NAME);
       if(!res.ok) return json(200,{ok:false,message:res.error||"Zoho push failed",step:res.step||null});
       await sbSend("PATCH",`marketing_campaigns?id=eq.${encodeURIComponent(b.id)}`,{status:"pushed",zoho_list_key:res.zoho_list_key||null,zoho_campaign_key:res.zoho_campaign_key||null,updated_at:new Date().toISOString()},{Prefer:"return=minimal"});

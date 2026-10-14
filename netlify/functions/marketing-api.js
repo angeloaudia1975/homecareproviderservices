@@ -33,10 +33,10 @@ exports.handler=async(event)=>{
       sbGet("dealer_intent?tier=in.(high,opportunity)&select=dealer_id,score_total,tier,top_manufacturer").catch(()=>[]),
       sbGetAll("dealer_engagement?select=dealer_id,status,months_since,churn_score,trend,rep_name,cycle_json","dealer_id").catch(()=>[]),
       sbGet("cross_sell?rank=eq.1&select=dealer_id,rec_name,basis_name,score").catch(()=>[]),
-      sbGetAll("dealers?select=id,business_name","id").catch(()=>[]),
+      sbGetAll("dealers?select=id,business_name,active","id").catch(()=>[]),
       sbGet("manufacturers?select=slug,name").catch(()=>[]),
     ]);
-    const nameById={}; dealers.forEach(d=>nameById[d.id]=d.business_name);
+    const nameById={}; dealers.filter(d=>d.active!==false).forEach(d=>nameById[d.id]=d.business_name);
     const mfrName={}; mfrs.forEach(m=>mfrName[m.slug]=m.name||m.slug);
     const engById={}; eng.forEach(e=>engById[e.dealer_id]=e);
     const intentById={}; intent.forEach(it=>intentById[it.dealer_id]=it);
@@ -90,7 +90,7 @@ exports.handler=async(event)=>{
     const taskFilt = meRep ? `&assigned_rep=eq.${encodeURIComponent(meRep)}` : "";
     const oppFilt  = meRep ? `&owner_rep=eq.${encodeURIComponent(meRep)}` : "";
     const [tasks,sends,opps,attr,cfgRow]=await Promise.all([
-      sbGet(`dealer_tasks?status=eq.open&select=id${taskFilt}`).catch(()=>[]),
+      sbGet(`dealer_tasks?status=eq.open&select=id,dealer_id${taskFilt}`).catch(()=>[]),
       sbGet(`email_sends?sent_at=gte.${cut7}&select=dealer_id`).catch(()=>[]),
       sbGet(`opportunities?status=eq.open&select=value${oppFilt}`).catch(()=>[]),
       sbGet(`email_attribution?env=eq.live&created_at=gte.${cut30}&select=amount,kind,manufacturer&limit=5000`).catch(()=>[]),
@@ -115,7 +115,7 @@ exports.handler=async(event)=>{
       reorder_due: eng.filter(e=>e.status==="overdue"&&inScope(e.dealer_id)).length,
       cross_sell: Object.keys(xsById).filter(inScope).length,
       dormant: eng.filter(e=>e.status==="dormant"&&inScope(e.dealer_id)).length,
-      open_tasks: (tasks||[]).length,
+      open_tasks: (tasks||[]).filter(t=>inScope(t.dealer_id)).length,
       emails_7d: (sends||[]).length,
       dealers_emailed_7d: new Set((sends||[]).map(s=>s.dealer_id)).size,
       opps_open: (opps||[]).length,

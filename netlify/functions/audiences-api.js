@@ -31,7 +31,7 @@ async function whoami(event){
 // Build every company with its marketing contacts + attributes.
 async function assembleContacts(){
   const [dealers,contacts,eng,lines,mfrs,opt,relRows]=await Promise.all([
-    sbGetAll("dealers?select=id,business_name,email,state,city,parent_id","id"),
+    sbGetAll("dealers?select=id,business_name,email,state,city,parent_id,active","id"),
     sbGetAll("dealer_contacts?select=dealer_id,name,email,title,role","dealer_id").catch(()=>[]),
     sbGetAll("dealer_engagement?select=dealer_id,status,rep_name,last_period,months_since","dealer_id").catch(()=>[]),
     sbGetAll("dealer_line_status?select=dealer_id,manufacturer,relationship","dealer_id").catch(()=>[]),
@@ -47,7 +47,7 @@ async function assembleContacts(){
   const cByD={}; (contacts||[]).forEach(c=>{ (cByD[c.dealer_id]=cByD[c.dealer_id]||[]).push(c); });
   const lByD={}; (lines||[]).forEach(l=>{ (lByD[l.dealer_id]=lByD[l.dealer_id]||[]).push(l); });
   const companies=[];
-  for(const d of dealers){
+  for(const d of dealers){ if(d.active===false) continue;
     const e=engById[d.id]||{};
     const rels=(lByD[d.id]||[]).map(l=>({slug:l.manufacturer,name:mfrName[l.manufacturer]||l.manufacturer,relationship:(relByD[d.id]&&relByD[d.id][l.manufacturer])||l.relationship}));
     const seen=new Set(), cs=[];
@@ -135,6 +135,8 @@ exports.handler=async(event)=>{
       let members=[];
       if(a.type==="static") members=await sbGetAll(`audience_members?audience_id=eq.${encodeURIComponent(a.id)}&select=dealer_id,company,contact_name,contact_email`,"contact_email").catch(()=>[]);
       else { const {companies}=await assembleContacts(); members=flattenMembers(applyRules(companies,a.rules||{})); }
+      const eligible=await require("./_dealer_status").activeIds(sbGetAll);
+      members=members.filter(m=>eligible.has(String(m.dealer_id)));
       const optSet=new Set((await sbGet("email_optout?select=email").catch(()=>[])).map(o=>String(o.email||"").toLowerCase()));
       const bd=breakdown(members,optSet);
       const list=members.filter(m=>{ const em=String(m.contact_email||"").trim().toLowerCase(); return EMAIL_RE.test(em)&&!optSet.has(em); });
