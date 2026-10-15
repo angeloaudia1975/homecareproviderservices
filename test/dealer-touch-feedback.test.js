@@ -135,6 +135,20 @@ test('switching dealers clears prior-account confirmation',()=>{
   assert.match(html, /if\(CUR!==d\.id\) TOUCH_LAST_STATUS=""/);
 });
 
+test('dealer 360 boot restores the current dealer and starts all loaders',()=>{
+  const marker='if(CUR!==d.id) TOUCH_LAST_STATUS=""';
+  const at=html.indexOf(marker);
+  assert.ok(at>0,'account-switch status reset is present');
+  const line=html.slice(html.lastIndexOf('\n',at)+1,html.indexOf('\n',at));
+  assert.equal(line.includes(String.fromCharCode(92)+'n'),false, 'no escaped newline hidden inside JS comment');
+  assert.match(line,/TOUCH_LAST_STATUS="";/, 'dealer status reset is a complete statement');
+  const next=html.slice(html.indexOf('\n',at)+1).split('\n')[0];
+  assert.match(next,/^\s*CUR=d\.id;\s*DPHONE=d\.phone\|\|"";/, 'dealer ID and phone initialized on executable line');
+  for(const fn of ['loadCRM','loadIntel','loadContacts','loadSales','loadEmails','loadVisits','loadHandout','loadMfrIntel']){
+    assert.ok(next.includes(fn+'()'),fn+' invoked after selecting a dealer');
+  }
+});
+
 test('touch feedback code compiles as an inline browser script',()=>{
   const all=html.match(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)||[];
   assert.ok(all.length>=1);
