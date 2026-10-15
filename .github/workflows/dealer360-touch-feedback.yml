@@ -1,0 +1,24 @@
+name: Dealer 360 activity feedback tests
+
+on:
+  pull_request:
+    paths:
+      - 'src/admin/dealer.html'
+      - 'test/dealer-touch-feedback.test.js'
+      - 'test/dealer-family-navigation.test.js'
+      - '.github/workflows/dealer360-touch-feedback.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  feedback-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dealer 360 activity and navigation tests
+        run: node --test test/dealer-touch-feedback.test.js test/dealer-family-navigation.test.js
