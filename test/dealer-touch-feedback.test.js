@@ -25,7 +25,7 @@ function fixture(response = {ok:true}) {
   elements.la_det.value='Customer requested an update';
   elements.la_submit.textContent='Log activity';
 
-  const sent=[]; let reloaded=0;let request=()=>Promise.resolve(response);
+  const sent=[]; let reloaded=0;let request=()=>Promise.resolve(response);let refresh=async()=>{};
   const document={
     getElementById(id){return elements[id]||null},
     createElement(){return mk({id:null})},
@@ -36,12 +36,13 @@ function fixture(response = {ok:true}) {
     setTimeout:()=>1, clearTimeout:()=>{},
     CUR:'dealer-a',
     crm:body=>{sent.push(body);return request(body);},
-    loadCRM:async()=>{reloaded++}
+    loadCRM:async()=>{reloaded++;return refresh()}
   });
   vm.runInContext(feedbackCode+'\nthis.API={logActivity, saving:()=>TOUCH_SAVING, notice:()=>TOUCH_LAST_STATUS};',ctx);
   return {
     elements, sent, api:ctx.API, get reloaded(){return reloaded},
     setResponse(fn){request=fn},
+    setReload(fn){refresh=fn},
     toast(){return elements['touch-toast']}
   };
 }
@@ -117,6 +118,21 @@ test('follow-up task fields are sent only when checked and success is truthful',
   assert.equal(x.sent[0].followup_title,'Call Thursday');
   assert.equal(x.sent[0].followup_due,'2026-10-22');
   assert.match(x.api.notice(),/follow-up task created/);
+});
+
+test('save stays confirmed even when refreshing CRM view throws',async()=>{
+  const x=fixture({ok:true});
+  x.setReload(async()=>{throw Error('timeline temporarily unavailable')});
+  await x.api.logActivity();
+  assert.equal(x.reloaded,1);
+  assert.match(x.api.notice(),/Call logged successfully/);
+  assert.match(x.api.notice(),/Refresh the timeline/);
+  assert.equal(x.toast().attrs.role,'status');
+  assert.doesNotMatch(x.api.notice(),/Couldn't confirm/);
+});
+
+test('switching dealers clears prior-account confirmation',()=>{
+  assert.match(html, /if\(CUR!==d\.id\) TOUCH_LAST_STATUS=""/);
 });
 
 test('touch feedback code compiles as an inline browser script',()=>{
