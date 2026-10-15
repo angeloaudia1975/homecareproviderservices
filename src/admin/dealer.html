@@ -381,7 +381,7 @@ function render(D,A){
       <div>${notesCard}${contactsCard}${emailCard}${callCard}${touchCard}${visitsCard}${handoutCard}${intelCard}${history}${salesCard}${commCard}</div>
       <div>${tasksCard}${signals}${addrCard}${acctCard}${mfrIntelCard}</div>
     </div>`;
-  CUR=d.id; DPHONE=d.phone||""; VLIM=25; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails(); loadVisits(); loadHandout(); loadMfrIntel();
+  if(CUR!==d.id) TOUCH_LAST_STATUS=""; // Do not carry a previous dealer\'s save notice to a different account.\n  CUR=d.id; DPHONE=d.phone||""; VLIM=25; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails(); loadVisits(); loadHandout(); loadMfrIntel();
 }
 function nextBestAction(d,lines,monthsSince,cart,sess){
   const due=(lines||[]).filter(l=>l.status==="due");
@@ -1612,7 +1612,10 @@ async function logActivity(){
     const kindLabel={call:"Call",visit:"Visit",email:"Email",meeting:"Meeting",note:"Note"}[kind]||"Activity";
     const suffix=body.followup_title&&result.task?" and follow-up task created":"";
     touchStatus("✓ "+kindLabel+" logged successfully"+suffix+".","success");
-    if(CUR===dealerId) await loadCRM();
+    if(CUR===dealerId){
+      try{ await loadCRM(); }
+      catch(_){ touchStatus("✓ "+kindLabel+" logged successfully. Refresh the timeline to see it.","success"); }
+    }
   }catch(err){
     // A failed or interrupted request might still have reached the server.
     // Keep the entered text; do not create a duplicate by automatically retrying.
