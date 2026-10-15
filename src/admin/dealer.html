@@ -1382,7 +1382,8 @@ async function loadCRM(){
       <textarea id="la_det" rows="2" placeholder="Outcome / details (optional)" style="width:100%;margin-top:6px"></textarea>
       <label class="hint" style="display:flex;align-items:center;gap:6px;margin:4px 0"><input type="checkbox" id="la_fu" style="width:auto" onchange="var b=document.getElementById('la_fubox');if(b)b.style.display=this.checked?'flex':'none'"> Add a follow-up task</label>
       <div id="la_fubox" style="display:none;gap:6px;flex-wrap:wrap"><input id="la_futitle" placeholder="Follow-up task…" style="flex:1;min-width:180px"><input id="la_fudue" type="date" style="width:auto"></div>
-      <button class="btn sm orange" style="margin-top:6px" onclick="logActivity()">Log activity</button>
+      <button type="button" class="btn sm orange" id="la_submit" style="margin-top:6px" onclick="logActivity()">Log activity</button>
+      <div id="la_msg" class="hint" role="status" aria-live="polite" style="margin:6px 0 0;min-height:18px">${esc(TOUCH_LAST_STATUS)}</div>
     </div>`;
   // Notes live in their own card (left column, top).
   const nel=$("#notes");
@@ -1567,13 +1568,59 @@ async function addNote(){
   if(!r||r.error||!r.ok){ if(msg){ msg.style.color="#b42323"; msg.textContent=noteErr(r); } return; }
   loadCRM();
 }
+// Keep feedback visible even when the CRM cards re-render after a successful save.
+let TOUCH_SAVING=false, TOUCH_LAST_STATUS="", TOUCH_TOAST_TIMER=null;
+function touchNotify(message,kind){
+  let el=document.getElementById("touch-toast");
+  if(!el){
+    el=document.createElement("div");
+    el.id="touch-toast"; el.className="toast";
+    document.body.appendChild(el);
+  }
+  if(TOUCH_TOAST_TIMER) clearTimeout(TOUCH_TOAST_TIMER);
+  el.textContent=message;
+  el.style.background=kind==="error"?"#b42323":kind==="success"?"#1f7a44":"#0b1f33";
+  el.setAttribute("role",kind==="error"?"alert":"status");
+  el.setAttribute("aria-live",kind==="error"?"assertive":"polite");
+  el.classList.add("show");
+  if(kind!=="saving") TOUCH_TOAST_TIMER=setTimeout(()=>el.classList.remove("show"),kind==="error"?6500:4500);
+}
+function touchStatus(message,kind){
+  TOUCH_LAST_STATUS=message;
+  const el=$("#la_msg");
+  if(el){el.textContent=message;el.style.color=kind==="error"?"#b42323":kind==="success"?"#1f7a44":"var(--gray)";}
+  touchNotify(message,kind);
+}
 async function logActivity(){
+  // Prevent double-clicks (or a second submit during a slow network request).
+  if(TOUCH_SAVING) return;
   const kind=($("#la_kind")||{}).value||"note";
-  const summary=(($("#la_sum")||{}).value||"").trim(); if(!summary){ toast&&toast("Enter what happened"); return; }
+  const summary=(($("#la_sum")||{}).value||"").trim();
+  if(!summary){touchStatus("Enter what happened before logging activity.","error");const input=$("#la_sum");if(input)input.focus();return;}
+  if(!CUR){touchStatus("Choose a dealer before logging activity.","error");return;}
   const detail=(($("#la_det")||{}).value||"").trim();
-  const body={action:"log_activity",dealer_id:CUR,kind,summary,detail};
-  if($("#la_fu")&&$("#la_fu").checked){ const ft=(($("#la_futitle")||{}).value||"").trim(); if(ft){ body.followup_title=ft; body.followup_due=($("#la_fudue")||{}).value||""; } }
-  await crm(body); loadCRM();
+  const dealerId=CUR;
+  const body={action:"log_activity",dealer_id:dealerId,kind,summary,detail};
+  if($("#la_fu")&&$("#la_fu").checked){const ft=(($("#la_futitle")||{}).value||"").trim();if(ft){body.followup_title=ft;body.followup_due=($("#la_fudue")||{}).value||"";}}
+  const btn=$("#la_submit"), label=btn?btn.textContent:"Log activity";
+  TOUCH_SAVING=true;
+  if(btn){btn.disabled=true;btn.textContent="Saving…";}
+  touchStatus("Saving activity…","saving");
+  try{
+    const result=await crm(body);
+    if(!result||result.ok!==true) throw new Error("Activity save was not confirmed");
+    const kindLabel={call:"Call",visit:"Visit",email:"Email",meeting:"Meeting",note:"Note"}[kind]||"Activity";
+    const suffix=body.followup_title&&result.task?" and follow-up task created":"";
+    touchStatus("✓ "+kindLabel+" logged successfully"+suffix+".","success");
+    if(CUR===dealerId) await loadCRM();
+  }catch(err){
+    // A failed or interrupted request might still have reached the server.
+    // Keep the entered text; do not create a duplicate by automatically retrying.
+    touchStatus("Couldn't confirm activity was saved. Check the timeline before retrying.","error");
+  }finally{
+    TOUCH_SAVING=false;
+    if(btn&&btn.isConnected){btn.disabled=false;btn.textContent=label;}
+  }
 }
 /* ── Cross-sell: the rep's plan, and the platform's suggestions ──────────────
    Two different things, deliberately shown as two different things. The plan is what
