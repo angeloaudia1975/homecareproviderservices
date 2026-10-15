@@ -140,12 +140,12 @@ test('dealer 360 boot restores the current dealer and starts all loaders',()=>{
   const at=html.indexOf(marker);
   assert.ok(at>0,'account-switch status reset is present');
   const line=html.slice(html.lastIndexOf('\n',at)+1,html.indexOf('\n',at));
-  assert.doesNotMatch(line,/\\\\n/, 'no literal backslash-n escapes are accidentally inserted into a JS comment');
+  assert.equal(line.includes(String.fromCharCode(92)+'n'),false, 'no escaped newline hidden inside JS comment');
   assert.match(line,/TOUCH_LAST_STATUS="";/, 'dealer status reset is a complete statement');
   const next=html.slice(html.indexOf('\n',at)+1).split('\n')[0];
-  assert.match(next,/^\s*CUR=d\.id;\s*DPHONE=d\.phone\|\|"";/, 'dealer ID and phone are initialized on an executable line');
+  assert.match(next,/^\s*CUR=d\.id;\s*DPHONE=d\.phone\|\|"";/, 'dealer ID and phone initialized on executable line');
   for(const fn of ['loadCRM','loadIntel','loadContacts','loadSales','loadEmails','loadVisits','loadHandout','loadMfrIntel']){
-    assert.match(next,new RegExp('\\\\b'+fn+'\\\\\\(\\\\\\)'),fn+' is invoked after selecting a dealer');
+    assert.ok(next.includes(fn+'()'),fn+' invoked after selecting a dealer');
   }
 });
 
