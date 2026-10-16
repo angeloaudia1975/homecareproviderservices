@@ -15,7 +15,8 @@
    Pictures under Angelo's control: any administrator may UPLOAD a candidate file into the private bucket; it is not usable
    in a lesson until the PRESIDENT approves it (creates its media record with alt text, rights and the permission). The
    database enforces that a stored picture or manufacturer file is recorded by the President only (M3 check_media). Only
-   the President may discard a candidate, and only one no media record names. No file is ever fetched from outside. */
+   the President may discard a candidate, and only one no media record names. The one outside fetch is import_media_url:
+   President only, a fixed list of the manufacturer's own file-server addresses, no redirects. */
 const crypto = require('crypto');
 const A = require('./_academy.js');
 const LESSON = require('./_academy_lesson.js');
@@ -308,16 +309,45 @@ WRITE.unlink_fact = async (staff, b) => ({ ok: true, audited: true, result: awai
 /* ---------- pictures, videos and documents ---------- */
 /* Upload a CANDIDATE file (any administrator). It is stored privately under a server-chosen name that carries its own
    SHA-256, never overwrites anything, and is not usable in a lesson until the President approves it. */
-WRITE.upload_media = async (staff, b) => {
-  const name = A.text(b.file_name, 200, 'File name');
+function fileType(name) {
   const ext = (/\.([a-z0-9]{2,5})$/i.exec(name) || [])[1]; const key = ext && ext.toLowerCase() === 'jpeg' ? 'jpg' : ext && ext.toLowerCase();
   const T = TYPES[key]; if (!T) A.refuse(400, 'invalid', 'Upload a JPEG, PNG or WebP picture, or a PDF.');
-  if (typeof b.data !== 'string' || !/^[A-Za-z0-9+/=]+$/.test(b.data)) A.refuse(400, 'invalid', 'The file could not be read.');
-  const bytes = Buffer.from(b.data, 'base64');
+  return { key, T };
+}
+WRITE.upload_media = async (staff, b) => {
+  const name = A.text(b.file_name, 200, 'File name');
+  if (typeof b.data !== 'string' || !/^[A-Za-z0-9+/=]+$/.test(b.data)) { fileType(name); A.refuse(400, 'invalid', 'The file could not be read.'); }
+  return storeCandidate(name, Buffer.from(b.data, 'base64'), b.manufacturer_slug);
+};
+/* Copy ONE file the President approved straight from the manufacturer's own file server into private storage (Golden's
+   site blocks browsers from downloading its files for another site). President only; https only; only the hosts below,
+   only their uploads folder, no redirects; the same type / size / content checks as an upload. The file is a CANDIDATE
+   like any upload: it is usable in a lesson only after approve_media. The source address is returned for the record. */
+const IMPORT_HOSTS = { 'golden-technologies': [/^https:\/\/d3325uqufdmhie\.cloudfront\.net\/wp-content\/uploads\/[A-Za-z0-9/_.-]+$/, /^https:\/\/goldentech\.com\/wp-content\/uploads\/[A-Za-z0-9/_.-]+$/] };
+WRITE.import_media_url = async (staff, b) => {
+  if (!isPresident(staff)) A.refuse(403, 'president_only', 'Only the President copies a manufacturer file into HCPS storage.');
+  const folder = A.text(b.manufacturer_slug, 60, 'Manufacturer');
+  const url = A.text(b.url, 1000, 'Link');
+  if (!(IMPORT_HOSTS[folder] || []).some(re => re.test(url)) || url.includes('..')) A.refuse(400, 'invalid', "That link is not on the manufacturer's own file server.");
+  const name = A.text(b.file_name || url.split('/').pop(), 200, 'File name'); fileType(name);
+  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 8000);
+  let res;
+  try { res = await fetch(url, { redirect: 'error', signal: ctl.signal }); }
+  catch (e) { A.refuse(502, 'fetch_failed', "The manufacturer's file could not be downloaded."); }
+  finally { clearTimeout(timer); }
+  if (!res.ok) A.refuse(502, 'fetch_failed', `The manufacturer's server answered ${res.status}.`);
+  if (Number(res.headers && res.headers.get && res.headers.get('content-length')) > MAX_UPLOAD) A.refuse(413, 'too_large', 'Files are limited to 3 MB here.');
+  const bytes = Buffer.from(await res.arrayBuffer());
+  const out = await storeCandidate(name, bytes, folder);
+  out.source_url = url;
+  return out;
+};
+async function storeCandidate(name, bytes, manufacturerSlug) {
+  const { key, T } = fileType(name);
   if (!bytes.length) A.refuse(400, 'invalid', 'The file is empty.');
   if (bytes.length > MAX_UPLOAD) A.refuse(413, 'too_large', 'Files are limited to 3 MB here. Export a smaller version and try again.');
   if (!T.magic(bytes)) A.refuse(400, 'invalid', `That file is not really a ${key.toUpperCase()} (its contents do not match its name).`);
-  const folder = b.manufacturer_slug ? A.text(b.manufacturer_slug, 60, 'Manufacturer') : 'hcps';
+  const folder = manufacturerSlug ? A.text(manufacturerSlug, 60, 'Manufacturer') : 'hcps';
   if (!/^[a-z0-9-]{1,60}$/.test(folder)) A.refuse(400, 'invalid', 'Manufacturer is not valid.');
   if (folder !== 'hcps' && !one(await A.sbGet(`manufacturers?slug=eq.${enc(folder)}&select=slug`))) A.refuse(400, 'invalid', 'That manufacturer is not in the HCPS manufacturer list.');
   const sha = crypto.createHash('sha256').update(bytes).digest('hex');
@@ -327,7 +357,7 @@ WRITE.upload_media = async (staff, b) => {
   const rec = one(await A.sbGet(`academy_media?storage_path=eq.${enc(path)}&select=${MEDIA_COLS}`));
   return { ok: true, storage_path: path, kind: T.kind, sha256: sha, size: bytes.length, already_stored: !!res.existed, record: rec,
     preview_url: await A.signPrivate(path, 600), approved: !!rec, note: rec ? 'This exact file is already approved.' : 'Stored privately. It cannot be used in a lesson until the President approves it.' };
-};
+}
 /* Candidates waiting for the President, and every approved record. */
 READ.media_library = async () => {
   const [records, folders] = await Promise.all([all(`academy_media?select=${MEDIA_COLS}`, 'created_at.desc'), A.listPrivate('media/')]);

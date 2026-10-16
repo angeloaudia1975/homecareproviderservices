@@ -12,6 +12,11 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const BLD = 'netlify/functions/_academy_builder.js', API = 'netlify/functions/academy-admin-api.js';
 const MUTANTS = [
+  { f: BLD, from: "if (!isPresident(staff)) A.refuse(403, 'president_only', 'Only the President copies", to: "if (false) A.refuse(403, 'president_only', 'Only the President copies", why: 'a non-President copies a manufacturer file in (held by the President-only editing gate)', db: true },
+  { f: BLD, from: "if (!(IMPORT_HOSTS[folder] || []).some(re => re.test(url)) || url.includes('..'))", to: "if (false)", why: 'a file copied from any host' },
+  { f: BLD, from: "|| url.includes('..')) A.refuse(400, 'invalid', \"That link", to: ") A.refuse(400, 'invalid', \"That link", why: 'a ../ path on the allowed host' },
+  { f: BLD, from: "res = await fetch(url, { redirect: 'error', signal: ctl.signal });", to: "res = await fetch(url, { signal: ctl.signal });", why: 'redirects followed off the allowed host' },
+  { f: BLD, from: "if (!res.ok) A.refuse(502,", to: "if (false) A.refuse(502,", why: 'a failed download stored' },
   { f: API, from: "WRITE[k] = fn; }", to: "READ[k] = fn; }", why: 'builder writes accepted as GET' },
   { f: API, from: "if (upload && action !== 'upload_media') return", to: "if (false) return", why: 'the large-body allowance usable by any action' },
   { f: API, from: "A.body(event, upload ? BUILDER.UPLOAD_BODY : undefined)", to: "A.body(event, BUILDER.UPLOAD_BODY)", why: 'every request may be 4 MB' },

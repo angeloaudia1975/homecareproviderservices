@@ -359,6 +359,40 @@ const one = q => JSON.parse(run(DB, `select coalesce(row_to_json(x), 'null') fro
       const bad = await call('pres', { action: 'upload_media', file_name: 'x.jpg', data: 'not base64!!' }, { headers: { 'x-academy-upload': '1' } });
       assert.strictEqual(bad.status, 400);
     });
+    await t('import_media_url: the President copies a file from the manufacturer\'s own file server (allow-listed, no redirects); anyone else, any other host or path, a fake file and a failed download are refused', async () => {
+      const CF = 'https://d3325uqufdmhie.cloudfront.net/wp-content/uploads/2023/01/18121532/1-44.jpg';
+      const real = global.fetch; const seen = [];
+      global.fetch = async (u, o) => {
+        if (String(u).startsWith('https://d3325uqufdmhie.cloudfront.net/') || String(u).startsWith('https://goldentech.com/')) {
+          seen.push({ u: String(u), redirect: o && o.redirect });
+          if (/missing/.test(u)) return { ok: false, status: 404, headers: new Map(), arrayBuffer: async () => new ArrayBuffer(0) };
+          const body = /fake/.test(u) ? Buffer.from('<html>not a picture</html>') : jpg;
+          return { ok: true, status: 200, headers: new Map([['content-length', String(body.length)]]), arrayBuffer: async () => body };
+        }
+        return real(u, o);
+      };
+      try {
+        const r = ok(await call('pres', { action: 'import_media_url', url: CF, manufacturer_slug: G }));
+        assert.match(r.storage_path, /^media\/golden-technologies\/[0-9a-f]{16}-1-44\.jpg$/); assert.strictEqual(r.source_url, CF); assert.strictEqual(r.approved, false);
+        assert.ok(S.storage.has(r.storage_path)); assert.strictEqual(seen[0].redirect, 'error', 'redirects are never followed');
+        const adm = await call('adm', { action: 'import_media_url', url: CF, manufacturer_slug: G });
+        assert.strictEqual(adm.status, 403);
+        for (const bad of ['https://evil.example/wp-content/uploads/x.jpg', 'http://d3325uqufdmhie.cloudfront.net/wp-content/uploads/x.jpg', 'https://d3325uqufdmhie.cloudfront.net/other/x.jpg', 'https://d3325uqufdmhie.cloudfront.net/wp-content/uploads/../x.jpg', 'https://d3325uqufdmhie.cloudfront.net.evil.example/wp-content/uploads/x.jpg']) {
+          const x = await call('pres', { action: 'import_media_url', url: bad, manufacturer_slug: G });
+          assert.strictEqual(x.status, 400, bad);
+        }
+        const other = await call('pres', { action: 'import_media_url', url: CF, manufacturer_slug: 'hcps' });
+        assert.strictEqual(other.status, 400, 'no host list for other folders');
+        const fake = await call('pres', { action: 'import_media_url', url: 'https://goldentech.com/wp-content/uploads/fake.jpg', manufacturer_slug: G });
+        assert.strictEqual(fake.status, 400, 'contents must match the type');
+        const svg = await call('pres', { action: 'import_media_url', url: 'https://goldentech.com/wp-content/uploads/x.svg', manufacturer_slug: G });
+        assert.strictEqual(svg.status, 400);
+        const miss = await call('pres', { action: 'import_media_url', url: 'https://goldentech.com/wp-content/uploads/missing.jpg', manufacturer_slug: G });
+        assert.strictEqual(miss.status, 502);
+        assert.strictEqual(seen.filter(x => /evil|other\/x|\.\./.test(x.u)).length, 0, 'refused links are never fetched');
+        S.storage.delete(r.storage_path);   // leave the later candidate counts as they were
+      } finally { global.fetch = real; }
+    });
     let rec;
     await t('approve_media: the President only (a second administrator gets 403, and the database refuses a stored picture from anyone else too); alt text required unless decorative', async () => {
       const r = await call('adm', { action: 'approve_media', storage_path: upA, rights: 'manufacturer_permitted', alt_text: 'The PR-446 lift chair seen from the side, fully reclined', manufacturer_slug: G, permission_ref: 'Golden confirmation 10 Oct 2026' });
