@@ -2984,6 +2984,28 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   minimum manual step. **Access found 13 Oct 2026:** this workspace cannot reach Supabase at all (the network allowlist
   refuses the REST API and the database host) and holds no database credentials, so a production read-only check needs
   either Angelo's one paste or a separately approved read-only verification path.
+- **Golden media (Angelo's approvals gallery, 16 Oct 2026).** Golden photographs are copied into HCPS storage only by the
+  builder action `import_media_url` (President only; allow-listed hosts — Golden's own file server
+  d3325uqufdmhie.cloudfront.net and goldentech.com `/wp-content/uploads/` — no `..`, no redirects, 8 s limit, same size and
+  type checks as an upload; the result is a CANDIDATE that the President still approves with its rights). Never transfer
+  file bytes by retyping them (base64 through a browser tool corrupted a file once; it was discarded with a reason).
+  Approved Golden photos carry rights `manufacturer_permitted` and a permission_ref naming the 10 Oct confirmation, the
+  approval date and the source URL. Golden videos and PDFs are linked (`add_link_media`, rights link_only), not rehosted.
+  A GIF is not accepted (jpeg/png/webp only). Placed: 28 pictures, 3 videos, 2 documents in 11 lessons; still open:
+  2.1 factory photo + warranty document (decision), 3.1 two-button photo, PR511 still, 10.2 SmartTek instructions,
+  6.2 PR764/PR750 zones (Golden). The course stays an unpublished draft; learner switches OFF.
+- **C2 / M4 — publication controls (built 16 Oct 2026; migration NOT run).** `supabase/academy_c2_m4_publish_ops.sql`
+  (+ rollback): `academy_publish_op_publish_version` (President only; the version must be in review; a live version of the
+  same course is retired in the SAME transaction through M1; the course record then reads published),
+  `_retire_version` (reason required; course back to draft when nothing is live), `_retire_course`,
+  `_publish_course` (manufacturer programs only: https link + listed manufacturer), `academy_publish_consistency()`
+  (read). Course status is written only by `academy_publish_set_course` under the operation marker, with an audit row.
+  The server role loses EXECUTE on M1's publish/retire, so every publication goes through M4. Decisions A–E as
+  recommended in the C2 design (enrollments and certificates untouched by a replacement). Code: `_academy.js publishOp`,
+  academy-admin-api publish_version / retire_version / retire_course / publish_course (President only) and the read
+  `publish_preview` (readiness, replaced version, can_publish); the Command Center shows Publish only for a version in
+  review and lists the blocking items first. Until M4 is installed the publication actions answer 503 — publishing is
+  not authorized anyway. Tests: academy-m4.pg 16, C1 52 (+ mutants 42/42), C1 browser 6.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

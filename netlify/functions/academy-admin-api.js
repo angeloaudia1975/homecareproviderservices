@@ -302,13 +302,38 @@ WRITE.return_to_draft = (staff, b) => moveVersion(staff, b, 'in_review', 'draft'
 /* Publishing and retiring: the President only, and only through the audited database operations. */
 WRITE.publish_version = async (staff, b) => {
   requirePresident(staff);
-  const v = await A.op('publish_version', { p_actor: A.actorLabel(staff), p_version_id: A.uuid(b.id, 'version') });
-  return { ok: true, audited: true, version: v };
+  // C2 / M4: the version must be in review; a published version of the same course is retired in the same transaction
+  const r = await A.publishOp('publish_version', { p_actor: A.actorLabel(staff), p_version_id: A.uuid(b.id, 'version'),
+    p_reason: b.reason ? A.text(b.reason, 500, 'Reason') : null });
+  return { ok: true, audited: true, version: r && r.version, retired: r && r.retired, course: r && r.course };
 };
 WRITE.retire_version = async (staff, b) => {
   requirePresident(staff);
-  const v = await A.op('retire_version', { p_actor: A.actorLabel(staff), p_version_id: A.uuid(b.id, 'version'), p_reason: A.text(b.reason, 500, 'Reason') });
-  return { ok: true, audited: true, version: v };
+  const r = await A.publishOp('retire_version', { p_actor: A.actorLabel(staff), p_version_id: A.uuid(b.id, 'version'), p_reason: A.text(b.reason, 500, 'Reason') });
+  return { ok: true, audited: true, version: r && r.version, course: r && r.course };
+};
+WRITE.retire_course = async (staff, b) => {
+  requirePresident(staff);
+  const r = await A.publishOp('retire_course', { p_actor: A.actorLabel(staff), p_course_id: A.uuid(b.id, 'course'), p_reason: A.text(b.reason, 500, 'Reason') });
+  return { ok: true, audited: true, course: r && r.course, retired_version: r && r.retired_version };
+};
+WRITE.publish_course = async (staff, b) => {
+  requirePresident(staff);
+  const r = await A.publishOp('publish_course', { p_actor: A.actorLabel(staff), p_course_id: A.uuid(b.id, 'course') });
+  return { ok: true, audited: true, course: r && r.course };
+};
+/* What publishing this version would do, before anyone presses Publish (read only): its readiness, the version it would
+   replace, and whether the database will accept it (in review, nothing blocking). */
+READ.publish_preview = async (staff, b) => {
+  const id = A.uuid(b.id, 'version');
+  const v = need(one(await A.sbGet(`academy_course_versions?id=eq.${enc(id)}&select=${VERSION_COLS}`)), 'Course version');
+  const current = one(await A.sbGet(`academy_course_versions?course_id=eq.${enc(v.course_id)}&status=eq.published&select=id,version,published_at`));
+  const rd = await BUILDER.READ.readiness(staff, { version_id: id });
+  const r = rd && rd.readiness || {};
+  const blocking = (r.items || []).filter(x => x.level === 'blocking');
+  return { ok: true, version: v, replaces: current, counts: r.counts, bank: r.bank, blocking: blocking.slice(0, 50),
+    can_publish: v.status === 'in_review' && blocking.length === 0,
+    reason: v.status !== 'in_review' ? 'Submit the version for review first.' : blocking.length ? `${blocking.length} blocking item(s) must be resolved first.` : null };
 };
 
 /* ---------- modules and lessons (draft versions only) ---------- */
@@ -533,8 +558,12 @@ READ.audit_check = async () => {
   });
   for (const [k, e] of Object.entries(latest)) if (!seen.has(k) && !/^delete_/.test(e.action)) out.missing.push({ entity: e.entity, id: e.entity_id, event_id: e.id, action: e.action });
   const cap = l => l.slice(0, 200);
+  // C2 / M4: every course's status must agree with its versions (null = M4 not installed yet, nothing to compare)
+  let courses = null;
+  try { courses = await A.publishConsistency(); } catch (e) { if (!(e && e.status === 503)) throw e; }
   return { ok: true, checked: rows.reduce((a, r) => a + r.length, 0), events: events.length, failed_actions: failed.size,
-           clean: !out.unrecorded.length && !out.drift.length && !out.missing.length,
+           clean: !out.unrecorded.length && !out.drift.length && !out.missing.length && !(courses && courses.length),
+           course_status: courses === null ? 'not_checked' : (courses.length ? cap(courses) : 'consistent'),
            counts: { unrecorded: out.unrecorded.length, drift: out.drift.length, missing: out.missing.length },
            unrecorded: cap(out.unrecorded), drift: cap(out.drift), missing: cap(out.missing) };
 };

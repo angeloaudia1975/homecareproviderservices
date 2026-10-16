@@ -71,6 +71,13 @@ async function rpc(fn, args) {
   if (code === 'PGRST202' || r.status === 404) refuse(503, 'not_installed', 'This Academy step is not available yet.');
   refuse(502, 'write_failed', 'The change could not be saved, and nothing was changed.');
 }
+/* C2 / M4 publication controls: the President check, the replace-and-retire and the course record's status happen in
+   ONE database transaction (academy_publish_op_*); the server role can no longer call M1's publish / retire directly. */
+async function publishOp(name, args) {
+  if (!/^[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
+  return rpc('academy_publish_op_' + name, args);
+}
+async function publishConsistency() { return rpc('academy_publish_consistency', {}); }
 async function op(name, args) {
   if (!/^[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
   return rpc('academy_op_' + name, args);
@@ -321,7 +328,7 @@ function handler(fn, opts) {
 
 module.exports = {
   SWITCHES, SITE_ORIGINS, PARTNER360_ORIGINS, MAX_BODY, AcademyError, refuse,
-  sbGet, sbSend, op, contentOp, authorOp, saveOp, switchOn, switches, signPrivate, putPrivate, listPrivate, removePrivate, MEDIA_PATH,
+  sbGet, sbSend, op, publishOp, publishConsistency, contentOp, authorOp, saveOp, switchOn, switches, signPrivate, putPrivate, listPrivate, removePrivate, MEDIA_PATH,
   bearer, bearerUser, staffActor, learnerActor,
   isAdmin, isRelations, isRep, family, dealerScope, canSeeDealer, canSeeScores, requireDealer, requireAdmin, actorLabel,
   audit, redact, body, uuid, oneOf, text, respond, handler, SESSION,

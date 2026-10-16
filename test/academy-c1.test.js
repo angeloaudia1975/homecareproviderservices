@@ -112,8 +112,10 @@ function withOps(w, answers) {
   const base = global.fetch; const sent = [];
   global.fetch = async (url, opts) => {
     const u = String(url);
-    if (u.startsWith(BASE + '/rest/v1/rpc/academy_op_')) {
-      const name = u.slice((BASE + '/rest/v1/rpc/academy_op_').length); const args = JSON.parse(opts.body); sent.push({ name, args });
+    const pre = u.startsWith(BASE + '/rest/v1/rpc/academy_op_') ? 'academy_op_' : u.startsWith(BASE + '/rest/v1/rpc/academy_publish_op_') ? 'academy_publish_op_' : null;
+    if (pre) {
+      // C2 / M4: publishing and retiring go through academy_publish_op_* (recorded as "M4:<name>"); the rest through M1
+      const name = (pre === 'academy_publish_op_' ? 'M4:' : '') + u.slice((BASE + '/rest/v1/rpc/' + pre).length); const args = JSON.parse(opts.body); sent.push({ name, args });
       const a = (answers || {})[name]; const out = typeof a === 'function' ? a(args) : (a || { status: 200, body: { id: 'row', ok: true } });
       return { ok: out.status < 300, status: out.status, text: async () => JSON.stringify(out.body) };
     }
@@ -187,7 +189,7 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
   });
   await t('nothing in C1 can issue or revoke a certificate, start/submit/correct an exam, or change a switch', async () => {
     const w = world(); const m = mod(w); const ops = withOps(w);
-    for (const action of ['issue_certificate', 'revoke_certificate', 'start_attempt', 'submit_attempt', 'correct_attempt', 'set_switch', 'set_flag', 'publish_course', 'delete_course', 'list_questions', 'get_question'])
+    for (const action of ['issue_certificate', 'revoke_certificate', 'start_attempt', 'submit_attempt', 'correct_attempt', 'set_switch', 'set_flag', 'delete_course', 'list_questions', 'get_question'])
       assert.strictEqual((await call(m, { action, id: CERT1 }, as('pres'))).status, 404, action);
     assert.strictEqual(ops.length, 0); assert.strictEqual(w.writes.length, 0);
   });
@@ -206,22 +208,31 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
   await t('publish/retire: an admin or owner is refused (403 president_only) and the operation is never called', async () => {
     const w = world(); const m = mod(w); const ops = withOps(w);
     for (const tok of ['admin', 'owner']) {
-      for (const [action, b] of [['publish_version', { id: V_DRAFT }], ['retire_version', { id: V_PUB, reason: 'old' }]]) {
+      for (const [action, b] of [['publish_version', { id: V_DRAFT }], ['retire_version', { id: V_PUB, reason: 'old' }], ['retire_course', { id: C_CERT, reason: 'old' }], ['publish_course', { id: C_GOLD }]]) {
         const r = await call(m, Object.assign({ action }, b, IDENTITY_SPOOF), as(tok));
         assert.strictEqual(r.status, 403, tok + action); assert.strictEqual(r.body.error, 'president_only');
       }
     }
     assert.strictEqual(ops.length, 0); assert.strictEqual(w.writes.length, 0);
   });
-  await t('publish/retire by the President go ONLY through academy_op_* with the signed-in President as actor (request fields ignored)', async () => {
+  await t('publish/retire by the President go ONLY through the M4 operations (academy_publish_op_*) with the signed-in President as actor (request fields ignored)', async () => {
     const w = world(); const m = mod(w); const ops = withOps(w);
     const p = await call(m, Object.assign({ action: 'publish_version', id: V_DRAFT }, IDENTITY_SPOOF), as('pres'));
     assert.strictEqual(p.status, 200); assert.strictEqual(p.body.audited, true);
     const r = await call(m, Object.assign({ action: 'retire_version', id: V_PUB, reason: 'Superseded by v2' }, IDENTITY_SPOOF), as('pres'));
     assert.strictEqual(r.status, 200);
-    assert.deepStrictEqual(ops, [{ name: 'publish_version', args: { p_actor: 'staff:angelo@hcps.us', p_version_id: V_DRAFT } },
-                                 { name: 'retire_version', args: { p_actor: 'staff:angelo@hcps.us', p_version_id: V_PUB, p_reason: 'Superseded by v2' } }]);
+    assert.deepStrictEqual(ops, [{ name: 'M4:publish_version', args: { p_actor: 'staff:angelo@hcps.us', p_version_id: V_DRAFT, p_reason: null } },
+                                 { name: 'M4:retire_version', args: { p_actor: 'staff:angelo@hcps.us', p_version_id: V_PUB, p_reason: 'Superseded by v2' } }]);
     assert.strictEqual(w.writes.length, 0);   // no plain table write: the database operation is the only road
+  });
+  await t('C2 / M4: retire_course and publish_course go only through the M4 operations, actor = the signed-in President; retire_course needs a reason', async () => {
+    const w = world(); const m = mod(w); const ops = withOps(w);
+    assert.strictEqual((await call(m, { action: 'retire_course', id: C_CERT }, as('pres'))).status, 400);
+    assert.strictEqual((await call(m, Object.assign({ action: 'retire_course', id: C_CERT, reason: 'Course withdrawn' }, IDENTITY_SPOOF), as('pres'))).status, 200);
+    assert.strictEqual((await call(m, Object.assign({ action: 'publish_course', id: C_GOLD }, IDENTITY_SPOOF), as('pres'))).status, 200);
+    assert.deepStrictEqual(ops, [{ name: 'M4:retire_course', args: { p_actor: 'staff:angelo@hcps.us', p_course_id: C_CERT, p_reason: 'Course withdrawn' } },
+                                 { name: 'M4:publish_course', args: { p_actor: 'staff:angelo@hcps.us', p_course_id: C_GOLD } }]);
+    assert.strictEqual(w.writes.length, 0);
   });
   await t('retire needs a reason; a bad version id is refused before the database is asked', async () => {
     const w = world(); const m = mod(w); const ops = withOps(w);
@@ -231,13 +242,13 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
   });
   await t('the database refusing a publish (too few exam questions / unverified facts) comes back as a plain 400 with its reason', async () => {
     const w = world(); const m = mod(w);
-    withOps(w, { publish_version: { status: 400, body: { code: '22023', message: 'academy: 1 active exam questions; at least 3 are needed to publish' } } });
+    withOps(w, { 'M4:publish_version': { status: 400, body: { code: '22023', message: 'academy: 1 active exam questions; at least 3 are needed to publish' } } });
     const r = await call(m, { action: 'publish_version', id: V_DRAFT }, as('pres'));
     assert.strictEqual(r.status, 400); assert.ok(/at least 3/.test(r.body.message), r.body.message);
   });
   await t('if the audited operations are missing, publishing says "not available" (503) — it never falls back to a plain write', async () => {
     const w = world(); const m = mod(w);
-    withOps(w, { publish_version: { status: 404, body: { code: 'PGRST202', message: 'Could not find the function' } } });
+    withOps(w, { 'M4:publish_version': { status: 404, body: { code: 'PGRST202', message: 'Could not find the function' } } });
     assert.strictEqual((await call(m, { action: 'publish_version', id: V_DRAFT }, as('pres'))).status, 503);
     assert.strictEqual(w.writes.length, 0);
   });
@@ -293,6 +304,17 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
     const ev = w.db.academy_events.filter(e => e.action === 'update_course');
     assert.deepStrictEqual(ev.map(e => e.actor), ['staff:angelo@hcps.us', 'staff:angelo@hcps.us']);
     assert.strictEqual(ev[1].before.title, 'Lift Chair Specialist'); assert.strictEqual(ev[1].after.title, 'Lift Chair Specialist I');
+  });
+  await t('layered: with the temporary President-only gate lifted (as after M3.1), a course learners have seen still refuses an admin', async () => {
+    const w = world(); const m = mod(w);
+    const { PRESIDENT_ONLY_EDITING } = require('../netlify/functions/_academy_builder.js');   // the copy this handler loaded
+    const saved = PRESIDENT_ONLY_EDITING.splice(0, PRESIDENT_ONLY_EDITING.length);
+    try {
+      const r = await call(m, { action: 'update_course', id: C_PUB, title: 'Renamed' }, as('admin'));
+      assert.strictEqual(r.status, 403);
+      assert.strictEqual(w.db.academy_courses.find(c => c.id === C_PUB).title, 'Golden Basics');
+      assert.strictEqual(w.contentCalls.length, 0);
+    } finally { PRESIDENT_ONLY_EDITING.push(...saved); }
   });
   await t('a course\'s slug, type, issuer and status cannot be changed through update_course', async () => {
     const w = world(); const m = mod(w);
@@ -656,7 +678,7 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
       'academy_content_op_create_version', 'academy_content_op_move_version', 'academy_content_op_update_course', 'academy_content_op_update_lesson',
       'academy_content_op_update_module', 'academy_content_op_update_version']);
     noForbiddenWrites(w);
-    assert.deepStrictEqual(ops.map(o => o.name), ['publish_version', 'set_training_manager', 'withdraw_fact', 'review_external_cert']);
+    assert.deepStrictEqual(ops.map(o => o.name), ['M4:publish_version', 'set_training_manager', 'withdraw_fact', 'review_external_cert']);
     assert.ok(ops.every(o => o.args.p_actor === 'staff:angelo@hcps.us'));
     assert.deepStrictEqual(w.db.app_settings[0].value, { academy_admin: true });
   });

@@ -90,11 +90,13 @@ function server(world, opsLog, opts) {
     const base = global.fetch;
     global.fetch = async (url, opts) => {
       const s = String(url);
-      if (s.startsWith(BASE + '/rest/v1/rpc/academy_op_')) {   // stand-in for the audited operations: same visible change
-        const name = s.slice((BASE + '/rest/v1/rpc/academy_op_').length), a = JSON.parse(opts.body); opsLog.push({ name, args: a });
+      const m4 = s.startsWith(BASE + '/rest/v1/rpc/academy_publish_op_');
+      if (m4 || s.startsWith(BASE + '/rest/v1/rpc/academy_op_')) {   // stand-in for the audited operations (M1, and M4 publication): same visible change
+        const name = s.slice((BASE + (m4 ? '/rest/v1/rpc/academy_publish_op_' : '/rest/v1/rpc/academy_op_')).length), a = JSON.parse(opts.body); opsLog.push({ name, args: a });
         const db = world.db; let row = { ok: true };
-        if (name === 'publish_version') { for (const v of db.academy_course_versions) if (v.course_id === (db.academy_course_versions.find(x => x.id === a.p_version_id) || {}).course_id && v.status === 'published') v.status = 'retired';
-          row = Object.assign(db.academy_course_versions.find(x => x.id === a.p_version_id), { status: 'published', published_at: new Date().toISOString(), published_by: a.p_actor }); }
+        if (name === 'publish_version') { let retired = null; for (const v of db.academy_course_versions) if (v.course_id === (db.academy_course_versions.find(x => x.id === a.p_version_id) || {}).course_id && v.status === 'published') { v.status = 'retired'; retired = v; }
+          const ver = Object.assign(db.academy_course_versions.find(x => x.id === a.p_version_id), { status: 'published', published_at: new Date().toISOString(), published_by: a.p_actor });
+          row = m4 ? { version: ver, retired, course: null } : ver; }
         db.academy_events.push({ id: db.academy_events.length + 100, at: new Date().toISOString(), actor_type: 'staff', actor: a.p_actor, entity: 'op', entity_id: null, action: name, before: null, after: null });
         return { ok: true, status: 200, text: async () => JSON.stringify(row) };
       }
@@ -166,12 +168,17 @@ async function t(name, fn) { try { await fn(); pass++; console.log('ok   ' + nam
         assert.deepStrictEqual(pg.errors, []); await pg.context().close();
       }
     }));
-    await t('version screen: the President sees Publish; an admin does not (and is told why)', async () => withSite(demo(false), async ({ origin }) => {
+    await t('version screen: a draft offers no Publish (submit for review first); in review the President sees Publish, an admin does not (and is told why)', async () => withSite((() => { const d = demo(false); return d; })(), async ({ origin, world }) => {
       for (const [tok, expect] of [['pres', true], ['admin', false]]) {
+        const v2 = world.db.academy_course_versions.find(v => v.version === 2); v2.status = 'draft';
         const pg = await page(browser, origin, tok);
         await pg.goto(origin + '/admin/academy.html#courses'); await pg.waitForSelector('tr.click');
         await pg.click('tr.click >> text=Golden Lift Chair Specialist'); await pg.waitForSelector('#newv');
         await pg.click('tr.click >> text=v2'); await pg.waitForSelector('#addm');
+        assert.strictEqual(await pg.$('#pub'), null, tok + ' draft');
+        assert.ok((await pg.textContent('#view')).includes('Submit this version for review before it can be published'));
+        v2.status = 'in_review';
+        await pg.click('#back'); await pg.click('tr.click >> text=v2'); await pg.waitForSelector(expect ? '#pub' : '#view span.muted >> text=Publishing is reserved for the President.');
         assert.strictEqual(await pg.$('#pub') != null, expect, tok);
         if (!expect) assert.ok((await pg.textContent('#view')).includes('Publishing is reserved for the President'));
         await shot(pg, `desktop-version-${tok}`);
@@ -190,11 +197,12 @@ async function t(name, fn) { try { await fn(); pass++; console.log('ok   ' + nam
       await pg.click('#addm'); await pg.fill('#mt', 'Scooter controls'); await pg.fill('#mo', 'Use the tiller\nSet the speed'); await pg.click('#msave');
       await pg.waitForSelector('[data-al]'); await pg.click('[data-al]'); await pg.fill('#lt', 'Tiller and throttle'); await pg.fill('#lm', '7'); await pg.click('#msave');
       await pg.waitForSelector('text=Tiller and throttle'); await shot(pg, 'desktop-draft-built');
-      await pg.click('#pub'); await pg.click('#msave'); assert.ok((await pg.textContent('#mmsg')).includes('Type PUBLISH'));
+      await pg.click('#review'); await pg.click('#msave'); await pg.waitForSelector('#pub');
+      await pg.click('#pub'); await pg.waitForSelector('#pubconf'); await pg.click('#msave'); assert.ok((await pg.textContent('#mmsg')).includes('Type PUBLISH'));
       await pg.fill('#pubconf', 'PUBLISH'); await pg.click('#msave'); await pg.waitForSelector('text=can never change');
       assert.deepStrictEqual(ops.map(o => [o.name, o.args.p_actor]), [['publish_version', 'staff:angelo@hcps.us']]);
       const acts = world.db.academy_events.filter(e => e.id === undefined || typeof e.id === 'string').map(e => [e.action, e.actor]);
-      assert.deepStrictEqual(acts, [['create_course', 'staff:angelo@hcps.us'], ['create_version', 'staff:angelo@hcps.us'], ['create_module', 'staff:angelo@hcps.us'], ['create_lesson', 'staff:angelo@hcps.us']]);
+      assert.deepStrictEqual(acts, [['create_course', 'staff:angelo@hcps.us'], ['create_version', 'staff:angelo@hcps.us'], ['create_module', 'staff:angelo@hcps.us'], ['create_lesson', 'staff:angelo@hcps.us'], ['submit_for_review', 'staff:angelo@hcps.us']]);
       assert.deepStrictEqual(pg.errors, []); await pg.context().close();
     }));
     await t('switched OFF: the page shows the notice and no data; a rep sees "administrators only"', async () => {

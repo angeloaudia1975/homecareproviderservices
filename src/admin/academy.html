@@ -293,7 +293,8 @@ async function viewVersion(id){
     ${ed?`<div class="bar"><button class="go ghost sm" id="editv">Edit settings</button><button class="go ghost sm" id="review">Submit for review</button></div>`:
       v.status==="in_review"?`<div class="note">In review: content is locked. ${pres?"Publish it, or return it to draft for changes.":"The President publishes it, or you can return it to draft for changes."}</div><div class="bar" style="margin-top:8px"><button class="go ghost sm" id="todraft">Return to draft</button></div>`:
       `<div class="note">${v.status==="published"?"Published":"Retired"} ${day(v.published_at)}${v.published_by?" by "+esc(String(v.published_by).replace("staff:","")):""}. This version can never change; create a new version to update the course.</div>`}
-    ${(v.status==="draft"||v.status==="in_review")?`<div class="bar" style="margin-top:10px">${pres?`<button class="go dk sm" id="pub">Publish v${esc(v.version)}…</button>`:`<span class="muted small">Publishing is reserved for the President.</span>`}</div>`:""}
+    ${v.status==="in_review"?`<div class="bar" style="margin-top:10px">${pres?`<button class="go dk sm" id="pub">Publish v${esc(v.version)}…</button>`:`<span class="muted small">Publishing is reserved for the President.</span>`}</div>`:""}
+    ${v.status==="draft"?`<p class="muted small" style="margin-top:10px">Submit this version for review before it can be published.</p>`:""}
     ${v.status==="published"&&pres?`<div class="bar" style="margin-top:10px"><button class="go warn sm" id="retire">Retire v${esc(v.version)}…</button></div>`:""}
     <div class="bar" style="margin-top:10px"><a class="go dk sm" id="builder" href="/admin/academy-builder.html?version=${esc(v.id)}">${ed?"Open course builder":"Open course builder (read only)"}</a></div>
     <p class="muted small" style="margin-top:10px">Lesson screens, pictures, the question bank and the exam distribution are edited in the <b>course builder</b>. <b>Preview</b> beside a lesson shows it in the learner lesson player, staff only; nothing is saved. Answer keys are never shown on this screen.</p></div>
@@ -323,10 +324,18 @@ async function viewVersion(id){
     q1("[data-dl]").forEach(b=>b.onclick=()=>formModal("Remove lesson","<p>Remove this lesson from the draft?</p>","Remove",async()=>{ await change({action:"delete_lesson",id:b.dataset.dl},"mmsg",reload); },{danger:true}));
   }
   if($("#todraft")) $("#todraft").onclick=()=>formModal("Return to draft","<p>Unlock this version for editing?</p>","Return to draft",async()=>{ await change({action:"return_to_draft",id},"mmsg",reload); });
-  if($("#pub")) $("#pub").onclick=()=>formModal("Publish v"+n(v.version),`<div class="note warn">Publishing makes this version live for enrolled learners and freezes it permanently. The database checks it has at least ${esc(q.needed)} active exam questions and that every product fact its exam relies on is verified.</div>
+  if($("#pub")) $("#pub").onclick=async()=>{
+    let pv=null; try{ const pr=await api({action:"publish_preview",id}); pv=pr.status===200&&pr.body&&pr.body.ok?pr.body:{error:true}; }catch(e){ pv={error:true}; }
+    const blk=pv&&pv.blocking||[];
+    const summary=pv&&!pv.error?`<div class="note ${pv.can_publish?"ok":"warn"}"><b>${pv.can_publish?"Ready to publish.":"Not ready: "+esc(pv.reason||"")}</b>
+      ${pv.replaces?`<br>Publishing retires the current live version v${esc(pv.replaces.version)} in the same step; learners part-way through it keep it, and certificates already issued stay valid.`:""}
+      ${blk.length?`<ul class="small" style="margin:6px 0 0 18px">${blk.slice(0,12).map(x=>`<li>${esc(x.message)}</li>`).join("")}${blk.length>12?`<li>… and ${esc(blk.length-12)} more</li>`:""}</ul>`:""}</div>`:`<div class="note warn">The publish check could not be read just now.</div>`;
+    formModal("Publish v"+n(v.version),`${summary}<div class="note warn">Publishing makes this version live for enrolled learners and freezes it permanently. The database re-checks everything when you confirm.</div>
+      ${pv&&pv.replaces?area("pubwhy","Reason for replacing the live version (recorded in the activity history)"):""}
       ${field("pubconf",'Type PUBLISH to confirm','autocomplete="off"')}`,"Publish",async()=>{
       if(val("pubconf").trim()!=="PUBLISH"){ const m=$("#mmsg"); m.className="msg err"; m.textContent="Type PUBLISH to confirm."; return; }
-      await change({action:"publish_version",id},"mmsg",reload); });
+      const body={action:"publish_version",id}; if(pv&&pv.replaces&&val("pubwhy").trim()) body.reason=val("pubwhy").trim();
+      await change(body,"mmsg",reload); }); };
   if($("#retire")) $("#retire").onclick=()=>formModal("Retire v"+n(v.version),`<p class="muted">Learners can no longer start this version. Certificates already issued stay valid.</p>${area("rr","Reason (recorded in the activity history)")}`,"Retire",async()=>{
       await change({action:"retire_version",id,reason:val("rr")},"mmsg",reload); },{danger:true});
 }
