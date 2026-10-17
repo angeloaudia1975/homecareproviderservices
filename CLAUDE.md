@@ -2535,6 +2535,8 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   `academy_external_certs` checks). Discontinued: PR515 (→ PR519), PR763 (→ PR750), PR735, PR545, PR504, PR632 —
   archive only. Zones = motors. Product checks use Golden's website, catalogs, sell sheets, brochures, manuals,
   warranty documents and approved videos; spec/explanation/exam/certification changes need admin approval.
+  **Angelo, 17 Oct 2026:** the PR750 EZ Sleeper Slim is DISCONTINUED (so the PR763's named replacement is gone too — show the
+  PR761 or PR764); the PR764 is a five-zone chair (fact recorded as verified with his confirmation).
 - **Phase A1 database foundation LIVE (10 Oct 2026, approved by Angelo).** Migration `supabase/academy_a1_foundation.sql`
   (sha256 a3d6b1f9…cacf4) run in the SQL editor: 18 tables, 5 rule functions, 7 triggers, private bucket
   `academy-private`, app_settings `academy` (monitoring/auto-update off). Verified: acceptance tests 26/26 + no-leftover
@@ -2994,6 +2996,9 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   A GIF is not accepted (jpeg/png/webp only). Placed: 28 pictures, 3 videos, 2 documents in 11 lessons; still open:
   2.1 factory photo + warranty document (decision), 3.1 two-button photo, PR511 still, 10.2 SmartTek instructions,
   6.2 PR764/PR750 zones (Golden). The course stays an unpublished draft; learner switches OFF.
+  Chrome's file_upload refuses files from this workspace AND from a folder granted on Angelo's computer, and Netlify
+  cannot be reached with bytes any other way: a file Angelo attaches in chat goes in through the builder (Media →
+  Upload) by him; Claude then approves and places it.
 - **C2 / M4 — publication controls (built 16 Oct 2026; migration NOT run).** `supabase/academy_c2_m4_publish_ops.sql`
   (+ rollback): `academy_publish_op_publish_version` (President only; the version must be in review; a live version of the
   same course is retired in the SAME transaction through M1; the course record then reads published),
