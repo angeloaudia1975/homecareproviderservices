@@ -5,6 +5,7 @@
 const { spawnSync, execSync } = require('child_process');
 const fs = require('fs'); const os = require('os'); const path = require('path');
 const ROOT = path.join(__dirname, '..');
+const WRK = 'netlify/functions/academy-mail-background.js';
 const SQL = 'supabase/academy_a2b_m5_learner_access.sql', LRN = 'netlify/functions/_academy_learner.js', AC = 'netlify/functions/_academy.js',
       APIF = 'netlify/functions/academy-api.js', HAND = 'netlify/functions/academy-handoff.js', SES = 'netlify/functions/_academy_session.js';
 const MUTANTS = [
@@ -51,6 +52,20 @@ const MUTANTS = [
   { f: HAND, from: "  const on = (await A.switchOn('academy_learner')) && (await A.switchOn('academy_handoff'));", to: "  const on = await A.switchOn('academy_learner');", why: 'the Partner 360 entry opens without its switch' },
   { f: APIF, from: "  if (!(await A.switchOn('academy_learner'))) return", to: "  if (false) return", why: 'the learner API open with its switch off' },
   { f: SES, from: "    if (!c || c.v !== 2 || typeof c.sub !== 'string' || typeof c.sid !== 'string') return null;", to: "    if (!c || typeof c.sub !== 'string') return null;", why: 'a cookie with no session row id' },
+  // ---- security review (S1–S3, delivery failure, cross-dealership history)
+  { f: SQL, from: "  perform pg_advisory_xact_lock(hashtext('academy-ip:' || p_ip_hash));\n  perform pg_advisory_xact_lock(hashtext('academy-code:' || v_email));\n  if (select count(*)", to: "  perform pg_advisory_xact_lock(hashtext('academy-code:' || v_email));\n  if (select count(*)", why: 'S3: concurrent codes from one network address race the limit' },
+  { f: SQL, from: "  perform pg_advisory_xact_lock(hashtext('academy-ip:' || p_ip_hash));\n  perform pg_advisory_xact_lock(hashtext('academy-code:' || v_email));\n  -- a network", to: "  perform pg_advisory_xact_lock(hashtext('academy-code:' || v_email));\n  -- a network", why: 'S3: concurrent guesses from one network address race the try limit' },
+  { f: SQL, from: "where email = v_email and not undelivered and created_at > now() - interval '15 minutes') >= 3", to: "where email = v_email and created_at > now() - interval '15 minutes') >= 3", why: 'an undelivered code still counts (the person is stranded)' },
+  { f: SQL, from: "  select * into v_c from academy_login_codes where id = p_code_id and code_hash = p_code_hash for update;", to: "  select * into v_c from academy_login_codes where id = p_code_id for update;", why: 'anyone with a code id can burn it' },
+  { f: SQL, from: "    if v_e.status <> 'withdrawn' and v_kind <> 'staff' and not exists (", to: "    if false and not exists (", why: 'a TM pulls another dealership\'s training history' },
+  { f: LRN, from: "  const v = String(h['x-nf-client-connection-ip'] || '').trim();", to: "  const v = String(h['x-nf-client-connection-ip'] || String(h['x-forwarded-for'] || '').split(',')[0] || '').trim();", why: 'S2: a forwarded header buys a new rate-limit bucket' },
+  { f: LRN, from: "  const accepted = await MAIL.dispatch(A.SESSION.sealJob(job));", to: "  const accepted = real ? (await MAIL.send(addr, MAIL.codeMessage(code))).sent : true;", why: 'S1: the answer waits for the email provider' },
+  { f: LRN, from: "  await holdUntil(t0);\n  return A.respond(event, 200", to: "  return A.respond(event, 200", why: 'S1: no minimum answer time' },
+  { f: LRN, from: "  if (real && !accepted) {", to: "  if (false) {", why: 'worker unreachable: the code stays live and counted' },
+  { f: WRK, from: "  if (!c || c.used_at || c.burned_at || c.undelivered || !(Date.parse(c.expires_at) > Date.now()) || c.email !== job.to) return 'stale';", to: "  if (!c) return 'stale';", why: 'a replayed envelope re-sends a used code' },
+  { f: WRK, from: "  await A.accessOp('access_op_code_undelivered', { p_code_id: job.id, p_code_hash: job.h });", to: "", why: 'a failed email strands the person' },
+  { f: WRK, from: "  if (job.k !== 'code') return 'decoy';", to: "", why: 'a decoy is mailed' },
+  { f: SES, from: "    if (!job || typeof job.iat !== 'number' || job.iat > t + 60 || t - job.iat > (maxAge || 120)) return null;", to: "    if (!job) return null;", why: 'an old envelope is still acted on' },
 ];
 const SUITES = ['test/academy-m5.pg.test.js', 'test/academy-a2b.pg.test.js'];
 function tree() {

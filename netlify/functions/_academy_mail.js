@@ -35,4 +35,17 @@ async function send(to, msg, fetchImpl) {
   } catch (e) { return { sent: false, reason: 'unreachable' }; }
 }
 
-module.exports = { configured, codeMessage, inviteMessage, send, SIGN_IN_URL };
+/* Hands a sealed job to the mail worker (academy-mail-background, a Netlify background function: it answers 202 at
+   once and sends afterwards). Used for EVERY sign-in code request, known address or not, so the visitor's wait does
+   not depend on the email provider. Returns true when the worker accepted the job. Never throws. */
+const WORKER_PATH = '/.netlify/functions/academy-mail-background';
+function workerUrl() { return String(process.env.URL || 'https://www.homecareproviderservices.org').replace(/\/+$/, '') + WORKER_PATH; }
+async function dispatch(sealed, fetchImpl) {
+  if (!sealed) return false;
+  try {
+    const r = await (fetchImpl || fetch)(workerUrl(), { method: 'POST', headers: { 'content-type': 'text/plain' }, body: sealed });
+    return r.status === 202 || r.ok;
+  } catch (e) { return false; }
+}
+
+module.exports = { configured, codeMessage, inviteMessage, send, dispatch, workerUrl, WORKER_PATH, SIGN_IN_URL };

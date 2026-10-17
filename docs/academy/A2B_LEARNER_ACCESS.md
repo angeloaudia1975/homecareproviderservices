@@ -33,24 +33,40 @@ Switches: `academy_learner` (whole learner API), `academy_invites` (invitations,
 
 | File | sha256 |
 |---|---|
-| migration (as committed, LF) | `cd04087a8c3cff722f9be221436bc49eb9a41318d035c5d1ce88090844c6b287` |
-| migration pasted with Windows line endings | `e512849ef6d16dd962f3cd13bfeb3943c964fac58eac7561729ca14eb6a4c0c2` |
+| migration (as committed, LF) | `de1c95e85f7af43e1a284e1d536f2f9af514fe731acbd936a58c2520c53be55b` |
+| migration pasted with Windows line endings | `26855ee229cd7d7619480dddbe7263dcc2b10209d37de1418a9881334098e919` |
 | rollback | `47e070c8e00d7fcf271c5ee5745441a13b4089d5cdf9eac78f4671a96afb28e1` |
 
-Installed-code fingerprint (postcheck `m5_code_fingerprint`): `45068089db7de18fdf0d63be888d18aa` (Unix) /
-`81dbf1a23dd7b625429c922c9f1fc24e` (Windows paste) — both reproduced on PG16; M1–M4 fingerprints unchanged by M5.
+Installed-code fingerprint (postcheck `m5_code_fingerprint`): `9f3f3e513d9193f7a900bf48259e7a7e` (Unix) /
+`be531f1040f384b011364ac483144b6d` (Windows paste) — both reproduced on PG16; M1–M4 fingerprints unchanged by M5.
 
 Restoring access (`reactivate`) brings back the learner's courses and progress at that same dealership; after a move to
-another dealership, enrolling again re-attaches the SAME enrollment (`re_attach`, audited) — never a second one.
+another dealership, enrolling again re-attaches the SAME enrollment (`re_attach`, audited) — never a second one. Moving
+training that was earned at ANOTHER dealership family is HCPS-only: a Training Manager is refused ("ask HCPS to move it"),
+so no Training Manager can pull another dealership's training history into their team view.
+
+## Security review corrections (ChatGPT review of d9b9022, PR #20 comment 6243057953)
+
+| Finding | Fix | Tests |
+|---|---|---|
+| S1 enumeration by timing | Every code request — known address or not — hands ONE sealed, fixed-size envelope (AES-256-GCM, key from ACADEMY_SESSION_SECRET) to the background function `academy-mail-background` (202 at once) and never waits for the email provider; the answer is held to a minimum time (900 ms, `ACADEMY_SIGNIN_FLOOR_MS`) | a2b.pg "S1 timing" (provider 700 ms slow: known = unknown, one envelope each, same length, nothing readable) |
+| S2 spoofed IP | Only Netlify's `x-nf-client-connection-ip` is read; X-Forwarded-For / Client-IP never; no header = one shared bucket | a2b.pg "S2" (spoofed headers never buy a new bucket) |
+| S3 quota race | request_code and verify_code take a network-address lock, then the address lock (fixed order) | m5.pg "S3 simultaneous" (15 at once → exactly 10 codes; 40 guesses → ≤ 25 tries) |
+| Delivery failure | The worker sends only a live code; if the email (or the hand-off to the worker) fails, `academy_access_op_code_undelivered` burns the code and it stops counting, so asking again works | a2b.pg "S1 delivery failure", m5.pg "Undelivered codes" |
+| Cross-dealership history | Re-attaching training from another dealership family = HCPS only | m5.pg "Cross-dealership training history" |
+
+The worker accepts only an envelope sealed with the Academy secret and at most 2 minutes old, re-checks the code row
+(not used, burned, expired or undelivered, same address) before sending, and never throws (Netlify retries a failed
+background run).
 
 ## Production procedure (NOT authorized yet)
 
 1. Read-only preflight (`academy_a2b_m5_postcheck.sql` before: `m5_functions` 0; record M1–M4 fingerprints, switches,
    rows).
 2. Angelo checks the sha256 in the editor and runs the migration himself; all 8 install checks `ok = true`.
-3. Postcheck: M5 fingerprint = the precomputed Unix or Windows-paste value; M1–M4 fingerprints unchanged; 20 / 13 / 0;
+3. Postcheck: M5 fingerprint = the precomputed Unix or Windows-paste value; M1–M4 fingerprints unchanged; 21 / 14 / 0;
    learner rows 0; switches unchanged.
-4. Public-key probe of the two new tables and the 13 operations — all BLOCKED.
+4. Public-key probe of the two new tables and the 21 functions — all BLOCKED.
 5. Only then merge + deploy (deploying the code without M5 leaves the learner API off: it is switch-gated and the
    operations answer 503).
 6. Switches, the sender address and the pilot each need their own approval.

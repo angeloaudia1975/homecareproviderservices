@@ -83,4 +83,30 @@ function keyedHash(purpose, value) {
   return crypto.createHmac('sha256', key).update('hcps-academy.' + purpose + '.' + String(value)).digest('hex');
 }
 
-module.exports = { COOKIE, TTL_SECONDS, configured: () => !!secret(), issue, verify, readCookie, setCookie, clearCookie, sameSiteRequest, keyedHash };
+/* Sealed mail jobs (A2B security review S1). The sign-in action hands every request — a real code or a decoy — to the
+   mail worker in the same sealed, fixed-length envelope (AES-256-GCM, key derived from ACADEMY_SESSION_SECRET), so the
+   answer takes the same path whether or not the address is known, and the code is never readable in transit or logs. */
+const JOB_LEN = 640;
+const jobKey = key => crypto.createHmac('sha256', key).update('hcps-academy-mail-key.v1').digest();
+function sealJob(job, now) {
+  const key = secret(); if (!key) return null;
+  const body = JSON.stringify(Object.assign({}, job, { iat: Math.floor((now || Date.now()) / 1000) }));
+  if (body.length > JOB_LEN) throw new Error('sealJob: job too long');
+  const iv = crypto.randomBytes(12), c = crypto.createCipheriv('aes-256-gcm', jobKey(key), iv);
+  const ct = Buffer.concat([c.update(body.padEnd(JOB_LEN, ' '), 'utf8'), c.final()]);
+  return b64u(Buffer.concat([iv, ct, c.getAuthTag()]));
+}
+/* The job, or null if it was not sealed with this secret, was changed, or is older than maxAge seconds. Never throws. */
+function openJob(value, maxAge, now) {
+  try {
+    const key = secret(); if (!key || typeof value !== 'string' || value.length > 2048) return null;
+    const raw = unb64u(value); if (raw.length !== 12 + JOB_LEN + 16) return null;
+    const d = crypto.createDecipheriv('aes-256-gcm', jobKey(key), raw.subarray(0, 12)); d.setAuthTag(raw.subarray(raw.length - 16));
+    const job = JSON.parse(Buffer.concat([d.update(raw.subarray(12, raw.length - 16)), d.final()]).toString('utf8').trim());
+    const t = Math.floor((now || Date.now()) / 1000);
+    if (!job || typeof job.iat !== 'number' || job.iat > t + 60 || t - job.iat > (maxAge || 120)) return null;
+    return job;
+  } catch (e) { return null; }
+}
+
+module.exports = { COOKIE, TTL_SECONDS, configured: () => !!secret(), issue, verify, readCookie, setCookie, clearCookie, sameSiteRequest, keyedHash, sealJob, openJob, JOB_LEN };

@@ -65,10 +65,10 @@ run(DB, `select academy_access_op_invite(${PRES}, '${HQ}', 'tm@hqmed.example', '
 /* ------------------------------------------------------------------ server */
 const mails = [];
 const S = shim({ db: DB, psql: PSQL, tokens: { buyer: { id: DUID, email: 'buyer@hqmed.example' } },
-  passthrough: async (url, o) => { if (String(url) === 'https://api.resend.com/emails') { mails.push(JSON.parse(o.body)); return new Response('{}', { status: 200 }); } return new Response('{}', { status: 599 }); } });
+  passthrough: async (url, o) => { if (String(url) === 'https://api.resend.com/emails') { mails.push(JSON.parse(o.body)); return new Response('{}', { status: 200 }); } if (String(url).endsWith('/.netlify/functions/academy-mail-background')) { await require('../netlify/functions/academy-mail-background.js').handler({ httpMethod: 'POST', body: o.body }); return new Response(null, { status: 202 }); } return new Response('{}', { status: 599 }); } });
 process.env.SUPABASE_URL = BASE; process.env.SUPABASE_SERVICE_ROLE = 'svc-test-key';
 process.env.ACADEMY_SESSION_SECRET = 'test-secret-0123456789-abcdefghijklmnopqrstuvwxyz-0123';
-process.env.RESEND_API_KEY = 're_test'; process.env.ACADEMY_MAIL_FROM = 'HCPS Academy <academy@test.example>';
+process.env.RESEND_API_KEY = 're_test'; process.env.ACADEMY_SIGNIN_FLOOR_MS = process.env.ACADEMY_SIGNIN_FLOOR_MS || '40'; process.env.ACADEMY_MAIL_FROM = 'HCPS Academy <academy@test.example>';
 global.fetch = S.fetch;
 const API = require('../netlify/functions/academy-api.js');
 const HAND = require('../netlify/functions/academy-handoff.js');

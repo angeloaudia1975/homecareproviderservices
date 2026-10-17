@@ -27,7 +27,14 @@ async function byIds(table, ids, select) {
   return out;
 }
 const email = v => { const s = String(v == null ? '' : v).trim().toLowerCase(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) || s.length > 254) A.refuse(400, 'invalid', 'Enter a valid email address.'); return s; };
-const clientIp = event => { const h = (event && event.headers) || {}; return String(h['x-nf-client-connection-ip'] || String(h['x-forwarded-for'] || '').split(',')[0] || 'unknown').trim(); };
+/* The caller's network address for rate limits (A2B security review S2): ONLY Netlify's own x-nf-client-connection-ip,
+   which its edge sets for every request. X-Forwarded-For, Client-IP and the like can be written by the caller and are
+   never read. Without the Netlify header every such request shares one bucket (fail closed, never one bucket each). */
+const clientIp = event => {
+  const h = (event && event.headers) || {};
+  const v = String(h['x-nf-client-connection-ip'] || '').trim();
+  return /^[0-9A-Fa-f:.]{2,45}$/.test(v) ? v.toLowerCase() : 'unknown';
+};
 const ipHash = event => A.SESSION.keyedHash('ip', clientIp(event));
 const reason = v => A.text(v, 500, 'Reason');
 const actorOf = learner => 'learner:' + learner.learner_id;
@@ -41,16 +48,30 @@ function signedIn(event, learnerId, sessionId, payload) {
 /* ================================ PUBLIC: signing in ================================ */
 const PUBLIC = {};
 const SENT = 'If this address can use the HCPS Academy, a 6-digit code is on its way. It works once, for 10 minutes.';
+/* A2B security review S1: the answer must not reveal — by its words OR its timing — whether an address can use the
+   Academy. So (1) every request, known or unknown, hands exactly one sealed job of the same size to the mail worker and
+   never waits for the email provider; (2) the answer is held to a fixed minimum time, so the database work for a known
+   address (an audit row) cannot be timed either. */
+const FLOOR_MS = () => { const n = Number(process.env.ACADEMY_SIGNIN_FLOOR_MS); return Number.isFinite(n) && n >= 0 ? n : 900; };
+const holdUntil = async t0 => { const wait = FLOOR_MS() - (Date.now() - t0); if (wait > 0) await new Promise(r => setTimeout(r, wait)); };
 PUBLIC.request_code = async (event, b) => {
+  const t0 = Date.now();
   needSecret();
   const addr = email(b.email);
   const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
-  const r = await A.accessOp('access_op_request_code', { p_email: addr, p_code_hash: A.SESSION.keyedHash('code', addr + ':' + code), p_ip_hash: ipHash(event) });
-  if (r && r.limited) return A.respond(event, 429, { error: 'too_many', message: 'Too many codes were asked for. Wait 15 minutes and try again.' });
-  if (r && r.send) {
-    const sent = await MAIL.send(addr, MAIL.codeMessage(code));
-    if (!sent.sent) console.warn('[academy] sign-in code not sent:', sent.reason);   // never the code, never the address
+  const codeHash = A.SESSION.keyedHash('code', addr + ':' + code);
+  const r = await A.accessOp('access_op_request_code', { p_email: addr, p_code_hash: codeHash, p_ip_hash: ipHash(event) });
+  if (r && r.limited) { await holdUntil(t0); return A.respond(event, 429, { error: 'too_many', message: 'Too many codes were asked for. Wait 15 minutes and try again.' }); }
+  const real = !!(r && r.send);
+  // a decoy carries a dummy code of the same shape and a random id, so the two envelopes cannot be told apart
+  const job = real ? { k: 'code', to: addr, code, id: String(r.code_id), h: codeHash }
+                   : { k: 'none', to: 'x'.repeat(addr.length) + '@decoy', code: '000000', id: crypto.randomUUID(), h: '0'.repeat(64) };
+  const accepted = await MAIL.dispatch(A.SESSION.sealJob(job));
+  if (real && !accepted) {   // the worker could not take it: burn the code and stop it counting, so asking again works
+    try { await A.accessOp('access_op_code_undelivered', { p_code_id: String(r.code_id), p_code_hash: codeHash }); } catch (e) { /* logged below */ }
+    console.warn('[academy] sign-in code could not be handed to the mail worker');   // never the code, never the address
   }
+  await holdUntil(t0);
   return A.respond(event, 200, { ok: true, message: SENT });   // the same answer whether or not the address is known
 };
 PUBLIC.verify_code = async (event, b) => {

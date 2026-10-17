@@ -1,9 +1,9 @@
 // HCPS Academy — A2B M5 external probe (browser console). Uses ONLY the PUBLIC key, as a stranger could.
 // Paste into the console of a blank tab (about:blank); it asks for the public key, stores nothing, sends nothing elsewhere.
-// Calls all 20 M5 functions through the public API with correctly named arguments (so "not found" can only mean the
+// Calls all 21 M5 functions through the public API with correctly named arguments (so "not found" can only mean the
 // function is not installed, never a wrong signature), then tries a direct read, insert, edit and delete on the two new
 // tables. Every argument is a random id / an address on example.invalid: even a broken permission could only reach "not found".
-//   Before M5: the 20 function lines say NOT INSTALLED (the tables do not exist yet).
+//   Before M5: the 21 function lines say NOT INSTALLED (the tables do not exist yet).
 //   After M5: every line must say BLOCKED.   OPEN!! = stop and report.
 (async () => {
   const REF = 'ycqmztthwldytkzyvmiv';                       // built from the ref (Netlify's secret scanner, see A1 probe)
@@ -24,6 +24,7 @@
     academy_access_new_session: { p_learner: Z, p_via: 'code', p_ip_hash: X },
     academy_access_op_request_code: { p_email: E, p_code_hash: X, p_ip_hash: X },
     academy_access_op_verify_code: { p_email: E, p_code_hash: X, p_ip_hash: X },
+    academy_access_op_code_undelivered: { p_code_id: Z, p_code_hash: X },
     academy_access_op_handoff_mint: { p_auth_user_id: Z, p_code_hash: X },
     academy_access_op_handoff_redeem: { p_code_hash: X, p_ip_hash: X },
     academy_access_op_end_session: { p_actor: A, p_session_id: Z },
@@ -59,7 +60,7 @@
   }
   console.table(rows);
   const n = Object.keys(calls).length;
-  console.log(open && notInstalled === n ? `M5 NOT INSTALLED — the 20 functions and the 2 tables are absent (key verified)`
+  console.log(open && notInstalled === n ? `M5 NOT INSTALLED — the 21 functions and the 2 tables are absent (key verified)`
     : open ? `${open} CHECK(S) OPEN — stop and send this table`
     : notInstalled === 0 ? `ALL ${rows.length} CHECKS BLOCKED (key verified)`
     : `MIXED: ${notInstalled} not installed, ${blocked} blocked — M5 is partly installed; stop and send this table`);

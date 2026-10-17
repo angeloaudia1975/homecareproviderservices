@@ -148,6 +148,36 @@ try {
     assert.strictEqual(rs.filter(r => r.ok && json(r.out).ok).length, 1, rs.map(r => r.out || r.err).join('\n'));
     assert.strictEqual(count(DB, 'academy_sessions', `learner_id = '${LEARNER}'`), before + 1);
   });
+  await t('S3 simultaneous: 15 requests from ONE network address for 15 different addresses at the same instant create exactly 10 codes (the network limit cannot be raced)', async () => {
+    run(DB, `delete from academy_login_codes where ip_hash = '${H('ipRace')}'`);
+    const rs = await Promise.all(Array.from({ length: 15 }, (_, i) => bg(DB, `select academy_access_op_request_code('race${i}@example.com', '${H('race' + i)}', '${H('ipRace')}')`)));
+    assert.ok(rs.every(r => r.ok), rs.map(r => r.err).join('\n'));
+    assert.strictEqual(count(DB, 'academy_login_codes', `ip_hash = '${H('ipRace')}'`), 10);
+    assert.strictEqual(rs.filter(r => json(r.out).limited === 'network').length, 5);
+    // and 40 simultaneous WRONG guesses from one network address stop at the 25-try limit
+    run(DB, `delete from academy_login_codes where ip_hash = '${H('ipRace')}'`);
+    for (let i = 0; i < 9; i++) req(DB, `guess${i}@example.com`, '000000', 'ipRace');
+    const gs = await Promise.all(Array.from({ length: 40 }, (_, i) => bg(DB, `select academy_access_op_verify_code('guess${i % 9}@example.com', '${H('guess' + (i % 9) + '@example.com111111')}', '${H('ipRace')}')`)));
+    assert.ok(gs.every(r => r.ok), gs.map(r => r.err).join('\n'));
+    assert.ok(Number(run(DB, `select coalesce(sum(tries), 0) from academy_login_codes where ip_hash = '${H('ipRace')}'`)) <= 25, 'never more than 25 tries counted');
+    assert.ok(gs.filter(r => json(r.out).reason === 'limited').length >= 15);
+    run(DB, `delete from academy_login_codes where ip_hash = '${H('ipRace')}'`);
+  });
+  await t('Undelivered codes: the mail worker burns a code it could not send (id AND hash must match), it stops counting toward the limits, and it never signs anyone in', () => {
+    run(DB, `delete from academy_login_codes where email = 'learner@test.example'`);
+    const ids = [];
+    for (const c of ['301301', '302302', '303303']) ids.push(req(DB, 'learner@test.example', c, 'ipU').code_id);
+    assert.strictEqual(req(DB, 'learner@test.example', '304304', 'ipU').limited, 'email', 'three per 15 minutes');
+    assert.strictEqual(json(run(DB, `select academy_access_op_code_undelivered('${ids[2]}', '${H('nobody')}')`)).ok, false, 'wrong hash: nothing');
+    for (const [i, c] of [[0, '301301'], [1, '302302'], [2, '303303']]) assert.strictEqual(json(run(DB, `select academy_access_op_code_undelivered('${ids[i]}', '${H('learner@test.example' + c)}')`)).ok, true);
+    assert.strictEqual(json(run(DB, `select academy_access_op_code_undelivered('${ids[2]}', '${H('learner@test.example303303')}')`)).ok, false, 'only once');
+    assert.strictEqual(ver(DB, 'learner@test.example', '303303', 'ipU').ok, false, 'an undelivered code never works');
+    assert.strictEqual(req(DB, 'learner@test.example', '305305', 'ipU').send, true, 'undelivered codes no longer count: asking again works');
+    assert.strictEqual(ver(DB, 'learner@test.example', '305305', 'ipU').ok, true);
+    assert.strictEqual(events(DB, `action = 'sign_in_code_undelivered'`), 3);
+    assert.strictEqual(tryRun(DB, `set role anon; select academy_access_op_code_undelivered('${ids[0]}', '${H('x')}')`).ok, false);
+    run(DB, `delete from academy_login_codes where email = 'learner@test.example'`);
+  });
   await t('HCPS staff are never learners: no invite, no code, no handoff (D6)', () => {
     assert.strictEqual(tryRun(DB, `select academy_access_op_invite(${PRES}, '${HQ}', 'rep@test.example', 'Rep', 'learner')`).ok, false);
     assert.strictEqual(req(DB, 'admin@test.example', '121212').send, false);
@@ -236,6 +266,22 @@ try {
     run(DB, `select academy_access_op_deactivate(${PRES}, '${o}', 'test: back to HQ')`);
     run(DB, `select academy_access_op_reactivate(${PRES}, '${LEARNER}', '${HQ}')`);
     run(DB, `select academy_enroll_op_enroll(${PRES}, '${LEARNER}', '${V1.v}', null)`);
+  });
+  await t('Cross-dealership training history: a Training Manager can never pull a person\'s earlier training from ANOTHER dealership into their own view; only HCPS can move it (audited)', () => {
+    invite(DB, PRES, OTHER, 'mover@other.example'); req(DB, 'mover@other.example', '414141', 'ipM'); const mv = ver(DB, 'mover@other.example', '414141', 'ipM').learner_id; assert.ok(mv);
+    const oe = json(run(DB, `select academy_enroll_op_enroll(${PRES}, '${mv}', '${V1.v}', null)`));
+    run(DB, `select academy_progress_op_save('learner:${mv}', '${oe.id}', '${V1.lessons[0]}', 'completed', 2)`);
+    const om = q1(DB, `select id from academy_memberships where learner_id = '${mv}' and status = 'active'`).id;
+    run(DB, `select academy_access_op_deactivate(${PRES}, '${om}', 'joined HQ Medical')`);
+    assert.match(tryRun(DB, `select academy_access_op_reactivate('learner:${TM}', '${mv}', '${HQ}')`).err, /never part of your dealership/);
+    run(DB, `select academy_access_op_reactivate(${PRES}, '${mv}', '${HQ}')`);
+    assert.strictEqual(q1(DB, `select membership_id from academy_enrollments where id = '${oe.id}'`).membership_id, om, 'restoring access at HQ does not move OTHER\'s training');
+    const tmTry = tryRun(DB, `select academy_enroll_op_enroll('learner:${TM}', '${mv}', '${V1.v}', null)`);
+    assert.strictEqual(tmTry.ok, false); assert.match(tmTry.err, /earlier training from another dealership; ask HCPS/);
+    assert.strictEqual(q1(DB, `select membership_id from academy_enrollments where id = '${oe.id}'`).membership_id, om, 'nothing moved');
+    const moved = json(run(DB, `select academy_enroll_op_enroll(${PRES}, '${mv}', '${V1.v}', null)`));
+    assert.strictEqual(moved.id, oe.id); assert.notStrictEqual(moved.membership_id, om);
+    assert.strictEqual(events(DB, `action = 're_attach' and entity_id = '${oe.id}' and actor = 'staff:admin@test.example'`), 1);
   });
   await t('Partner 360 handoff: approved login only; 60-second single use; a new code replaces the old; the learner is linked to the login (no duplicate identity); replay refused', async () => {
     run(DB, `insert into dealer_users values ('${UID}', 'learner@test.example', '${HQ}', 'pending')`);

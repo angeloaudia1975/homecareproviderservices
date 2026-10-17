@@ -3024,12 +3024,17 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   browser tests, a GitHub PR for review; NOT authorized: running M5 in production, merging, learner switches, inviting
   dealers, the pilot).** Runbook `docs/academy/A2B_LEARNER_ACCESS.md`. Rules (binding once installed):
   - Learner-side tables (learners, memberships, invites, handoff codes, enrollments, progress, login codes, sessions) are
-    written ONLY by the 13 M5 operations `academy_access_op_*` / `academy_enroll_op_*` / `academy_progress_op_*`
+    written ONLY by the 14 M5 operations `academy_access_op_*` / `academy_enroll_op_*` / `academy_progress_op_*`
     (SECURITY DEFINER, pinned path, service_role only; the server role loses INSERT/UPDATE/DELETE on those tables), each
     atomic with its audit row through M1's op_begin / op_audit / op_end. Server calls go through `_academy.js accessOp()`.
   - Sign-in: Academy-only 6-digit email codes (10 min, 5 tries; 3 per address per 15 min, 10 a day; 10 per network address
     per 15 min, 25 tries) — stored only as HMAC keyed with ACADEMY_SESSION_SECRET; the answer never tells a known address
-    from an unknown one; HCPS staff addresses never get a code; no active membership = no session. Cookie v2 names a row
+    from an unknown one — by words OR timing: every request hands one sealed fixed-size envelope to the background
+    function `academy-mail-background` (never waits for the email provider) and the answer is held to a 900 ms floor;
+    the rate-limit network address is ONLY Netlify's `x-nf-client-connection-ip` (never X-Forwarded-For; missing = one
+    shared bucket); request/verify lock the network address then the email (fixed order) so limits cannot be raced; a
+    code that could not be sent is burned and stops counting. HCPS staff addresses never get a code; no active
+    membership = no session. Cookie v2 names a row
     in `academy_sessions`; `learnerActor` needs that row open and unexpired, an active non-staff learner and an active
     membership. Sign-out, ending access and suspension close sessions at once.
   - Partner 360 handoff: minted only from a PARTNER360 origin with the dealer's own bearer token, approved dealer user,
@@ -3037,7 +3042,7 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     Partner 360 logins. Needs `academy_learner` AND `academy_handoff`.
   - Training Managers invite, end / restore access and enroll ONLY within their dealer + its direct branches, never appoint
     Training Managers and never end another Training Manager; only HCPS staff appoint them. Invitations need
-    `academy_invites`.
+    `academy_invites`. Training earned at ANOTHER dealership family is moved (re-attached) only by HCPS.
   - Enrollment only into a PUBLISHED version; a TEST course only at a TEST dealer; completion is never undone; only the
     learner saves their own progress. Lesson payloads for learners never carry answer keys, explanations or staff warnings;
     practice checks refuse exam questions.

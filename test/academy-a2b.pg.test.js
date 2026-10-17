@@ -50,13 +50,13 @@ const L1 = JSON.parse(run(DB, `select academy_content_op_create_lesson(${PRES}, 
 run(DB, `select academy_author_op_set_blocks(${PRES}, '${L1}', ${J([{ kind: 'text', heading: 'Hello', body: 'Welcome.' }, { kind: 'check', question_ids: [QP, QP2] }, { kind: 'text', heading: 'Bye', body: 'Done.' }])})`);
 run(DB, `select academy_content_op_move_version(${PRES}, '${V}', 'in_review')`); run(DB, `select academy_publish_op_publish_version(${PRES}, '${V}', null)`);
 
-const mails = [];
+const mails = [], jobs = [], pendingJobs = [], outcomes = []; let providerDelay = 0, providerFails = false, workerDown = false;
 const S = shim({ db: DB, psql: PSQL, tokens: { pres: 'admin@test.example', adm: 'admin2@test.example', buyer: { id: DUID, email: 'buyer@hqmed.example' } },
-  passthrough: async (url, o) => { if (String(url) === 'https://api.resend.com/emails') { mails.push(JSON.parse(o.body)); return new Response('{"id":"x"}', { status: 200 }); } return new Response('{}', { status: 599 }); } });
+  passthrough: async (url, o) => { if (String(url) === 'https://api.resend.com/emails') { if (providerDelay) await new Promise(r => setTimeout(r, providerDelay)); if (providerFails) return new Response('{}', { status: 500 }); mails.push(JSON.parse(o.body)); return new Response('{"id":"x"}', { status: 200 }); } if (String(url).endsWith('/.netlify/functions/academy-mail-background')) { jobs.push(o.body); if (workerDown) return new Response('', { status: 503 }); pendingJobs.push(require('../netlify/functions/academy-mail-background.js')._run({ httpMethod: 'POST', body: o.body }).then(x => { outcomes.push(x); return x; })); return new Response(null, { status: 202 }); } return new Response('{}', { status: 599 }); } });
 run(DB, "insert into staff_users (email, name, role, active) values ('admin2@test.example', 'Second Admin', 'admin', true)");
 process.env.SUPABASE_URL = BASE; process.env.SUPABASE_SERVICE_ROLE = 'svc-test-key';
 process.env.ACADEMY_SESSION_SECRET = 'test-secret-0123456789-abcdefghijklmnopqrstuvwxyz-0123';
-process.env.RESEND_API_KEY = 're_test'; process.env.ACADEMY_MAIL_FROM = 'HCPS Academy <academy@test.example>';
+process.env.RESEND_API_KEY = 're_test'; process.env.ACADEMY_SIGNIN_FLOOR_MS = process.env.ACADEMY_SIGNIN_FLOOR_MS || '40'; process.env.ACADEMY_MAIL_FROM = 'HCPS Academy <academy@test.example>';
 global.fetch = S.fetch;
 const API = require('../netlify/functions/academy-api.js');
 const HAND = require('../netlify/functions/academy-handoff.js');
@@ -66,9 +66,12 @@ const cookieOf = out => { const c = ((out.multiValueHeaders || {})['set-cookie']
 async function call(handler, body, o) {
   o = o || {};
   const headers = Object.assign({ origin: ORIGIN, 'x-academy-request': '1', 'x-nf-client-connection-ip': o.ip || '203.0.113.7' }, o.cookie ? { cookie: o.cookie } : {}, o.headers || {});
+  const t0 = Date.now();
   const out = await handler({ httpMethod: o.method || 'POST', headers, body: JSON.stringify(body || {}), queryStringParameters: o.query || {} });
+  const ms = Date.now() - t0;
+  await Promise.all(pendingJobs.splice(0));   // the background mail worker finishes AFTER the answer, as on Netlify
   let j = null; try { j = out.body ? JSON.parse(out.body) : null; } catch (e) { j = out.body; }
-  return { status: out.statusCode, body: j, cookie: cookieOf(out), raw: out };
+  return { status: out.statusCode, body: j, cookie: cookieOf(out), raw: out, ms };
 }
 const learner = (body, cookie, o) => call(API.handler, body, Object.assign({ cookie }, o || {}));
 const admin = (tok, body) => call(ADMIN.handler, body, { headers: { authorization: 'Bearer ' + tok, 'x-academy-request': undefined } });
@@ -235,6 +238,76 @@ async function signIn(addr, ip) {
         const ex = await learner({ action: 'practice_check', enrollment_id: ENR, lesson_id: L1, question_id: QX, answer: 'b' }, LC);
         assert.strictEqual(ex.status, 403); assert.strictEqual(ex.body.error, 'not_practice');
       } finally { LESSON.buildLesson = realBuild; LESSON.lessonHasQuestion = realHas; }
+    });
+    await t('S1 timing: the email provider never sits in the sign-in answer — a known and an unknown address answer in the same time (floor) even with a slow provider; every request hands the worker one sealed envelope of the same size', async () => {
+      run(DB, `delete from academy_login_codes where true`);
+      process.env.ACADEMY_SIGNIN_FLOOR_MS = '300'; providerDelay = 700; jobs.length = 0; mails.length = 0;
+      const known = [], unknown = [];
+      try {
+        for (let i = 0; i < 2; i++) {
+          known.push(await learner({ action: 'request_code', email: 'tm@hqmed.example' }, null, { ip: '198.51.100.' + (40 + i) }));
+          unknown.push(await learner({ action: 'request_code', email: 'nobody' + i + '@example.com' }, null, { ip: '198.51.100.' + (50 + i) }));
+        }
+      } finally { process.env.ACADEMY_SIGNIN_FLOOR_MS = '40'; providerDelay = 0; }
+      for (const r of known.concat(unknown)) { assert.strictEqual(r.status, 200); assert.ok(r.ms >= 295 && r.ms < 650, 'answered in ' + r.ms + ' ms (floor 300, provider 700)'); }
+      const avg = a => a.reduce((x, r) => x + r.ms, 0) / a.length;
+      assert.ok(Math.abs(avg(known) - avg(unknown)) < 120, `known ${avg(known)} ms vs unknown ${avg(unknown)} ms`);
+      assert.strictEqual(jobs.length, 4, 'one envelope per request, known or not');
+      assert.strictEqual(new Set(jobs.map(j => j.length)).size, 1, 'every envelope has the same length');
+      assert.ok(jobs.every(j => { const raw = Buffer.from(j, 'base64url'); return !raw.includes('hqmed') && !raw.includes('nobody'); }), 'nothing readable in an envelope');
+      assert.strictEqual(mails.filter(m => m.to[0] === 'tm@hqmed.example').length, 2, 'the known address still gets its code (after the answer)');
+      assert.ok(!mails.some(m => /nobody/.test(m.to[0])), 'the unknown address gets nothing');
+    });
+    await t('S1 delivery failure: a code the provider (or the worker) could not send is burned and does not count, so asking again works; the person is never stranded', async () => {
+      run(DB, `delete from academy_login_codes where true`); mails.length = 0;
+      providerFails = true;
+      try { for (let i = 0; i < 3; i++) assert.strictEqual((await learner({ action: 'request_code', email: 'tm@hqmed.example' }, null, { ip: '198.51.100.60' })).status, 200); }
+      finally { providerFails = false; }
+      assert.strictEqual(Number(run(DB, `select count(*) from academy_login_codes where email = 'tm@hqmed.example' and undelivered and burned_at is not null`)), 3);
+      assert.strictEqual(Number(run(DB, `select count(*) from academy_events where action = 'sign_in_code_undelivered'`)) >= 3, true);
+      workerDown = true;
+      try { assert.strictEqual((await learner({ action: 'request_code', email: 'tm@hqmed.example' }, null, { ip: '198.51.100.60' })).status, 200); }
+      finally { workerDown = false; }
+      assert.strictEqual(Number(run(DB, `select count(*) from academy_login_codes where email = 'tm@hqmed.example' and undelivered`)), 4, 'worker unreachable: burned at once too');
+      TMC = await signIn('tm@hqmed.example', '198.51.100.60');   // past the 3-per-15-minutes limit only because failures do not count
+    });
+    await t('S1 worker: only a fresh envelope sealed with the Academy secret is acted on; tampered, foreign, old, replayed envelopes, decoys and GETs send nothing', async () => {
+      const W = require('../netlify/functions/academy-mail-background.js'), SS = require('../netlify/functions/_academy_session.js');
+      run(DB, `delete from academy_login_codes where true`); mails.length = 0; jobs.length = 0;
+      await learner({ action: 'request_code', email: 'tm@hqmed.example' }, null, { ip: '198.51.100.71' });
+      const good = jobs[0]; assert.strictEqual(mails.length, 1); const code = lastCode('tm@hqmed.example');
+      mails.length = 0;
+      const flip = good.slice(0, 40) + (good[40] === 'A' ? 'B' : 'A') + good.slice(41);
+      assert.strictEqual(await W._run({ httpMethod: 'POST', body: flip }), 'rejected');
+      assert.strictEqual(await W._run({ httpMethod: 'GET', body: good }), 'method');
+      const real = process.env.ACADEMY_SESSION_SECRET;
+      process.env.ACADEMY_SESSION_SECRET = 'another-secret-0123456789-abcdefghijklmnopqrstuvwxyz';
+      const foreign = SS.sealJob({ k: 'code', to: 'tm@hqmed.example', code: '123456', id: '00000000-0000-0000-0000-000000000001', h: '0'.repeat(64) });
+      process.env.ACADEMY_SESSION_SECRET = real;
+      assert.strictEqual(await W._run({ httpMethod: 'POST', body: foreign }), 'rejected');
+      const old = SS.sealJob({ k: 'code', to: 'tm@hqmed.example', code: '123456', id: '00000000-0000-0000-0000-000000000001', h: '0'.repeat(64) }, Date.now() - 10 * 60000);
+      assert.strictEqual(await W._run({ httpMethod: 'POST', body: old }), 'rejected');
+      assert.strictEqual(await W._run({ httpMethod: 'POST', body: SS.sealJob({ k: 'none', to: 'x', code: '000000', id: '00000000-0000-0000-0000-000000000002', h: '0'.repeat(64) }) }), 'decoy');
+      assert.strictEqual(mails.length, 0, 'none of those sent anything');
+      assert.strictEqual((await learner({ action: 'verify_code', email: 'tm@hqmed.example', code }, null, { ip: '198.51.100.71' })).status, 200);
+      assert.strictEqual(await W._run({ httpMethod: 'POST', body: good }), 'stale', 'a replayed envelope never re-sends a used code');
+      assert.strictEqual(mails.length, 0);
+      const h = SS.keyedHash('code', 'tm@hqmed.example:999999');
+      assert.strictEqual(await W._run({ httpMethod: 'POST', body: SS.sealJob({ k: 'code', to: 'someone@else.example', code: '999999', id: '00000000-0000-0000-0000-000000000003', h }) }), 'stale', 'an envelope for a code that does not exist sends nothing');
+    });
+    await t('S2 network address: only Netlify\'s x-nf-client-connection-ip counts; X-Forwarded-For / Client-IP never change the bucket; without the Netlify header every request shares one bucket', async () => {
+      const L = require('../netlify/functions/_academy_learner.js');
+      assert.strictEqual(L.clientIp({ headers: { 'x-forwarded-for': '1.2.3.4', 'client-ip': '5.6.7.8' } }), 'unknown');
+      assert.strictEqual(L.clientIp({ headers: { 'x-nf-client-connection-ip': '203.0.113.9', 'x-forwarded-for': '1.2.3.4' } }), '203.0.113.9');
+      assert.strictEqual(L.clientIp({ headers: { 'x-nf-client-connection-ip': '1.2.3.4, 5.6.7.8' } }), 'unknown', 'a list is not an address');
+      run(DB, `delete from academy_login_codes where true`);
+      const spoof = i => ({ headers: { 'x-nf-client-connection-ip': undefined, 'x-forwarded-for': `10.0.${i}.1`, 'client-ip': `10.1.${i}.1` } });
+      for (let i = 0; i < 10; i++) assert.strictEqual((await learner({ action: 'request_code', email: `spoof${i}@example.com` }, null, spoof(i))).status, 200);
+      assert.strictEqual((await learner({ action: 'request_code', email: 'spoof99@example.com' }, null, spoof(99))).status, 429, 'a new forwarded address does not buy a new bucket');
+      run(DB, `delete from academy_login_codes where true`);
+      for (let i = 0; i < 10; i++) await learner({ action: 'request_code', email: `same${i}@example.com` }, null, { ip: '198.51.100.80', headers: { 'x-forwarded-for': `10.9.${i}.1` } });
+      assert.strictEqual((await learner({ action: 'request_code', email: 'same99@example.com' }, null, { ip: '198.51.100.80', headers: { 'x-forwarded-for': '10.9.99.1' } })).status, 429);
+      run(DB, `delete from academy_login_codes where true`);
     });
   } finally {
     try { run('postgres', `drop database if exists ${DB}`); } catch (e) { /* ignore */ }
