@@ -1,13 +1,31 @@
-/* HCPS Academy — Partner 360 entry (A2A shell). The single-use entry code is built in A2B, after its security review
-   is approved. Until then:
-     GET/POST {action:"status"} -> {enabled:false}   (Partner 360 shows no Training button)
-     anything else              -> 403 flag_off       (nothing is minted or redeemed)
-   Partner 360's origin is allowed to read the status answer; nothing here creates or accepts any credential. */
+/* HCPS Academy — Partner 360 entry (A2B). A dealer signed in to Partner 360 opens Training:
+     GET/POST {action:"status"}  -> {enabled}   (Partner 360 shows its Training button only when enabled)
+     POST {action:"mint"} + Authorization: Bearer <the dealer's Partner 360 login>
+                                 -> {url}       a single-use, 60-second code, carried in the URL FRAGMENT (never sent to a
+                                                server or in a Referer) to the Academy's own page, which redeems it with
+                                                academy-api handoff_redeem and receives the Academy's own session.
+   The code is 32 random bytes; only its keyed hash is stored (M5 academy_access_op_handoff_mint). The Partner 360 token
+   is only READ here to learn who is signed in; it is never stored, forwarded or exchanged for anything that orders or
+   prices. Off (403 flag_off) unless both academy_learner and academy_handoff are on. */
+const crypto = require('crypto');
 const A = require('./_academy.js');
 const OPTS = { origins: A.SITE_ORIGINS.concat(A.PARTNER360_ORIGINS) };
+const ENTRY = 'https://www.homecareproviderservices.org/academy/#handoff=';
 
 exports.handler = A.handler(async event => {
-  const b = event.httpMethod === 'GET' ? Object.assign({}, event.queryStringParameters || {}) : A.body(event);
-  if (String(b.action || 'status') === 'status') return A.respond(event, 200, { enabled: false }, OPTS);
-  return A.respond(event, 403, { error: 'flag_off', message: 'Academy entry from Partner 360 is not available yet.' }, OPTS);
+  const isGet = event.httpMethod === 'GET';
+  const b = isGet ? Object.assign({}, event.queryStringParameters || {}) : A.body(event);
+  const on = (await A.switchOn('academy_learner')) && (await A.switchOn('academy_handoff'));
+  if (String(b.action || 'status') === 'status') return A.respond(event, 200, { enabled: on }, OPTS);
+  if (!on) return A.respond(event, 403, { error: 'flag_off', message: 'Academy entry from Partner 360 is not available yet.' }, OPTS);
+  if (String(b.action) !== 'mint') return A.respond(event, 404, { error: 'unknown_action', message: 'Unknown action.' }, OPTS);
+  if (isGet) return A.respond(event, 405, { error: 'method', message: 'That needs a POST.' }, OPTS);
+  const origin = String((event.headers || {}).origin || (event.headers || {}).Origin || '').toLowerCase();
+  if (!A.PARTNER360_ORIGINS.includes(origin)) return A.respond(event, 403, { error: 'forbidden', message: 'Not allowed.' }, OPTS);
+  if (!A.SESSION.configured()) return A.respond(event, 503, { error: 'session_unavailable', message: 'Academy sign-in is not available just now.' }, OPTS);
+  const u = await A.bearerUser(event);
+  if (!u || !u.id) return A.respond(event, 401, { error: 'unauthorized', message: 'Please sign in to Partner 360 first.' }, OPTS);
+  const code = crypto.randomBytes(32).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  await A.accessOp('access_op_handoff_mint', { p_auth_user_id: u.id, p_code_hash: A.SESSION.keyedHash('handoff', code) });
+  return A.respond(event, 200, { ok: true, url: ENTRY + code, expires_in: 60 }, OPTS);
 }, OPTS);
