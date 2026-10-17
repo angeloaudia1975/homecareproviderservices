@@ -33,6 +33,8 @@ const MUTANTS = [
   { f: BLD, from: "links_removed: Number(r.links_removed) || 0", to: "links_removed: 0", why: 'links_removed not reported' },
   { f: 'netlify/functions/_academy.js', from: "  if (code === '40001') refuse(409, 'changed',", to: "  if (false) refuse(409, 'changed',", why: 'a conflicting save reported as a server failure instead of "changed"' },
   { f: BLD, from: "if (!isPresident(staff)) A.refuse(403, 'president_only', 'Only the President approves", to: "if (false) A.refuse(403, 'president_only', 'Only the President approves", why: 'a non-President approves a stored picture (server check)', db: true },
+  { f: BLD, from: "if (!(await A.listPrivate(folderPath)).some(x => x.id && x.name === fileName)) A.refuse(404", to: "if (false) A.refuse(404", why: 'a record approved for a file that is not in storage' },
+  { f: BLD, from: "String(b.alt_text == null ? '' : b.alt_text).trim().length < 10) {", to: "false) {", why: 'a missing alt text answered with an unclear message' },
   { f: BLD, from: "if (!isPresident(staff)) A.refuse(403, 'president_only', 'Only the President discards", to: "if (false) A.refuse(403, 'president_only', 'Only the President discards", why: 'a non-President discards an upload (held by the President-only editing gate until M3.1)', db: true },
   { f: BLD, from: "if (one(await A.sbGet(`academy_media?storage_path=eq.${enc(path)}&select=id`))) A.refuse(409, 'in_use'", to: "if (false) A.refuse(409, 'in_use'", why: 'an approved file is discarded' },
   { f: BLD, from: "const reason = A.text(b.reason, 300, 'Reason');", to: "const reason = String(b.reason || '');", why: 'a discard without a reason' },

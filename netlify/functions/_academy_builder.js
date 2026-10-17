@@ -376,6 +376,9 @@ WRITE.approve_media = async (staff, b) => {
   const path = A.text(b.storage_path, 200, 'File'); if (!A.MEDIA_PATH.test(path)) A.refuse(400, 'invalid', 'That file is not an Academy upload.');
   const kind = /\.pdf$/.test(path) ? 'pdf' : 'image';
   const rights = A.oneOf(b.rights, ['hcps_owned', 'manufacturer_permitted'], 'Rights');
+  // Only a file that is actually waiting in private storage can be approved (never a record for a missing file).
+  const slash = path.lastIndexOf('/'), folderPath = path.slice(0, slash + 1), fileName = path.slice(slash + 1);
+  if (!(await A.listPrivate(folderPath)).some(x => x.id && x.name === fileName)) A.refuse(404, 'not_found', 'That file is not in the Academy’s storage (it may have been discarded). Upload it again.');
   const media = { kind, storage_path: path, rights };
   if (kind === 'image' && b.decorative !== true && String(b.alt_text == null ? '' : b.alt_text).trim().length < 10) {
     A.refuse(400, 'invalid', 'Describe what the picture shows in the alt text (at least 10 characters), or mark it decorative.');

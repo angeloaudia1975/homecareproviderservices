@@ -399,6 +399,8 @@ const one = q => JSON.parse(run(DB, `select coalesce(row_to_json(x), 'null') fro
       assert.strictEqual(r.status, 403); assert.strictEqual(r.body.error, 'president_only');
       const direct = await S.fetch(BASE + '/rest/v1/rpc/academy_author_op_create_media', { method: 'POST', body: JSON.stringify({ p_actor: 'staff:admin2@test.example', p_id: null, p_media: { kind: 'image', storage_path: upA, rights: 'hcps_owned', alt_text: 'The PR-446 lift chair seen from the side' } }) });
       assert.ok(direct.status === 403 || direct.status === 400, 'the database refuses a non-President too: ' + direct.status);
+      const ghost = await call('pres', { action: 'approve_media', storage_path: 'media/hcps/0000000000000000-not-uploaded.jpg', rights: 'hcps_owned', alt_text: 'A picture that was never uploaded to storage' });
+      assert.strictEqual(ghost.status, 404, 'a file that is not in storage is never approved'); assert.strictEqual(+run(DB, `select count(*) from academy_media where storage_path like '%not-uploaded%'`).trim(), 0);
       const empty = await call('pres', { action: 'approve_media', storage_path: upA, rights: 'hcps_owned', alt_text: '' });
       assert.strictEqual(empty.status, 400); assert.match(empty.body.message, /Describe what the picture shows/, 'a missing alt text says what to do');
       const noPerm = await call('pres', { action: 'approve_media', storage_path: upA, rights: 'manufacturer_permitted', alt_text: 'The PR-446 lift chair seen from the side', manufacturer_slug: G });
