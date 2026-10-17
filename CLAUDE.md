@@ -3006,6 +3006,10 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   `publish_preview` (readiness, replaced version, can_publish); the Command Center shows Publish only for a version in
   review and lists the blocking items first. Until M4 is installed the publication actions answer 503 — publishing is
   not authorized anyway. Tests: academy-m4.pg 16, C1 52 (+ mutants 42/42), C1 browser 6.
+  **M4 RUN by Angelo 16 Oct 2026 ~20:05 CT (sha256 84bc7020…6b78): all 5 install checks true.** Verified live: records
+  check course_status "consistent" and clean; Golden v1 still draft (6 blocking / 3 advice); switches unchanged (only
+  academy_admin). Public-key probe (storefront key, verified first): all 8 BLOCKED (401 / 42501) — the 6 M4 functions and
+  M1's publish / retire. Never rerun or roll back M4. Publishing the Golden course still needs Angelo's approval.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
