@@ -2999,6 +2999,11 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   Chrome's file_upload refuses files from this workspace AND from a folder granted on Angelo's computer, and Netlify
   cannot be reached with bytes any other way: a file Angelo attaches in chat goes in through the builder (Media →
   Upload) by him; Claude then approves and places it.
+  **Approve (17 Oct 2026):** the builder's Approve checks alt text (10+ characters, not a file name), manufacturer and
+  permission first and shows the result under the button (busy state, one request per click); the server approves only a
+  file that is actually waiting in private storage (404 otherwise). Root cause of "nothing happens": an incomplete form
+  was refused with a vague message ("Alt text is not valid.") shown only in a short toast. All Golden media placed;
+  readiness 0 blocking.
 - **C2 / M4 — publication controls (built 16 Oct 2026; migration NOT run).** `supabase/academy_c2_m4_publish_ops.sql`
   (+ rollback): `academy_publish_op_publish_version` (President only; the version must be in review; a live version of the
   same course is retired in the SAME transaction through M1; the course record then reads published),
