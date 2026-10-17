@@ -379,16 +379,31 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
       const pg = await page(browser, origin, 1280);
       await openB(pg, origin, 'media'); await pg.waitForSelector('.sub-card:has-text("Approve for lessons")');
       const c = pg.locator('.q:has(.sub-card:has-text("Approve for lessons"))').first();
+      // an incomplete form: the reason appears NEXT TO the button (not only in a passing toast) and nothing is sent
+      const before = +run(DB, `select count(*) from academy_media`).trim();
+      await c.locator('button:has-text("Approve")').click();
+      await c.locator('[role=status] >> text=Describe what the picture shows').waitFor();
+      assert.strictEqual(+run(DB, `select count(*) from academy_media`).trim(), before, 'nothing recorded for an incomplete approval');
       await c.locator('select').first().selectOption('manufacturer_permitted');
       await c.locator('textarea, input[type=text]').first().fill('The Golden Cloud PR-515 lift chair from the front');
       await c.locator('select').nth(1).selectOption(G);
-      await c.locator('input[type=text]').last().fill('Golden confirmation 10 Oct 2026');
+      await c.locator('input[type=text]').last().fill('');
       await c.locator('button:has-text("Approve")').click();
+      await c.locator('[role=status] >> text=Record the permission').waitFor();
+      await c.locator('input[type=text]').last().fill('Golden confirmation 10 Oct 2026');
+      // a double click sends ONE approval: the button is busy until the answer comes back
+      let approvals = 0; pg.on('request', rq => { if (rq.method() === 'POST' && /academy-admin-api/.test(rq.url()) && /"approve_media"/.test(rq.postData() || '')) approvals++; });
+      await c.locator('button:has-text("Approve")').dblclick();
       await pg.waitForSelector('text=Approved — it can now be used in lessons.');
+      assert.strictEqual(approvals, 1, 'one approval request for a double click');
+      assert.strictEqual(+run(DB, `select count(*) from academy_media`).trim(), before + 1, 'exactly one record');
       const rec = JSON.parse(run(DB, `select row_to_json(m) from academy_media m where alt_text = 'The Golden Cloud PR-515 lift chair from the front'`));
       assert.strictEqual(rec.rights, 'manufacturer_permitted'); assert.match(rec.storage_path, /^media\/hcps\/[0-9a-f]{16}-cloud-pr-515-front\.png$/);
       assert.ok(JSON.parse(run(DB, `select json_agg(actor) from academy_events where action = 'create_media'`)).every(a => a === 'staff:admin@test.example'));
       await pg.waitForSelector('text=Nothing is waiting.');
+      // persists after a reload: it is in the approved library, no longer waiting
+      await pg.reload(); await pg.click('#tabs [role="tab"]:has-text("Pictures")'); await pg.waitForSelector('text=Nothing is waiting.');
+      await pg.waitForSelector('text=The Golden Cloud PR-515 lift chair from the front');
       assert.deepStrictEqual(await brokenImages(pg), []);
       await shot(pg, 'builder-1280-media');
       assert.deepStrictEqual(pg.errors, []);

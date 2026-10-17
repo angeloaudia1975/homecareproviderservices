@@ -377,8 +377,13 @@ WRITE.approve_media = async (staff, b) => {
   const kind = /\.pdf$/.test(path) ? 'pdf' : 'image';
   const rights = A.oneOf(b.rights, ['hcps_owned', 'manufacturer_permitted'], 'Rights');
   const media = { kind, storage_path: path, rights };
+  if (kind === 'image' && b.decorative !== true && String(b.alt_text == null ? '' : b.alt_text).trim().length < 10) {
+    A.refuse(400, 'invalid', 'Describe what the picture shows in the alt text (at least 10 characters), or mark it decorative.');
+  }
   if (kind === 'image') media.alt_text = b.decorative === true ? '' : A.text(b.alt_text, 300, 'Alt text');
   else media.alt_text = b.alt_text ? A.text(b.alt_text, 300, 'Document title') : '';
+  if (rights === 'manufacturer_permitted' && !String(b.manufacturer_slug || '').trim()) A.refuse(400, 'invalid', 'Choose the manufacturer that gave permission.');
+  if (rights === 'manufacturer_permitted' && !String(b.permission_ref || '').trim()) A.refuse(400, 'invalid', 'Record the manufacturer permission for this file.');
   if (rights === 'manufacturer_permitted') { media.manufacturer_slug = A.text(b.manufacturer_slug, 80, 'Manufacturer'); media.permission_ref = A.text(b.permission_ref, 300, 'Permission'); }
   return { ok: true, audited: true, media: await A.authorOp('create_media', { p_actor: actor(staff), p_id: crypto.randomUUID(), p_media: media }) };
 };

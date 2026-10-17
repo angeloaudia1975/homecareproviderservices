@@ -1003,9 +1003,26 @@
     });
     v.appendChild(lib);
   }
+  /* What is missing before a file can be approved — checked here first so the President sees the reason next to the
+     button (the server checks the same again). Returns a message, or null when the form is complete. */
+  function approveProblem(c, a) {
+    var alt = String(a.alt_text || '').trim();
+    if (c.kind === 'image' && !a.decorative) {
+      if (alt.length < 10) return 'Describe what the picture shows in the alt text (at least 10 characters), or tick “Decorative only”.';
+      if (/\.(jpe?g|png|webp|gif|svg|pdf)$/i.test(alt) || /^(img|dsc|image|photo|picture)[ _-]?[0-9]*$/i.test(alt)) return 'The alt text must describe what the picture shows, not name the file.';
+    }
+    if (a.rights === 'manufacturer_permitted') {
+      if (!a.manufacturer_slug) return 'Choose the manufacturer that gave permission.';
+      if (!String(a.permission_ref || '').trim()) return 'Record the permission (for example “Golden confirmation 10 Oct 2026: approved photography”).';
+    }
+    return null;
+  }
   function approveForm(c) {
     var a = { rights: 'manufacturer_permitted', decorative: false, alt_text: '', manufacturer_slug: c.folder === 'hcps' ? '' : c.folder, permission_ref: '' };
     var box = el('div', { cls: 'sub-card' }, [el('b', { text: 'Approve for lessons' })]);
+    var busy = false, last = null;   // last = { text, bad } shown under the buttons until the next action
+    var status = el('div', { role: 'status', 'aria-live': 'polite', cls: 'small', style: 'margin-top:8px;min-height:1.2em' });
+    var setStatus = function (text, bad) { last = text ? { text: text, bad: !!bad } : null; status.replaceChildren(text ? note(text, bad ? 'err' : 'ok') : ''); };
     var draw = function () {
       box.replaceChildren(el('b', { text: 'Approve for lessons' }));
       box.appendChild(fSelect('Rights', a, 'rights', [['hcps_owned', 'HCPS owned'], ['manufacturer_permitted', 'Manufacturer permitted (e.g. approved Golden photography)']], { onchange: draw }));
@@ -1019,9 +1036,34 @@
         box.appendChild(fSelect('Manufacturer', a, 'manufacturer_slug', [['', '— choose —']].concat(mfrOptions()), { onchange: function () {} }));
         box.appendChild(fText('Permission (e.g. “Golden confirmation 10 Oct 2026: approved photography”)', a, 'permission_ref', { max: 300, onchange: function () {} }));
       }
-      box.appendChild(el('div', { cls: 'bar', style: 'margin-top:10px' }, [
-        btn('Approve', function () { var body = { action: 'approve_media', storage_path: c.storage_path, rights: a.rights, decorative: a.decorative, alt_text: a.alt_text }; if (a.rights === 'manufacturer_permitted') { body.manufacturer_slug = a.manufacturer_slug; body.permission_ref = a.permission_ref; } api(body).then(function (x) { if (x.status !== 200) { toast(msgOf(x), true); return; } toast('Approved — it can now be used in lessons.'); refreshData().then(renderMedia); }); }, { cls: 'pri' }),
-        btn('Discard…', function () { box.appendChild(inlineForm([{ label: 'Why is it discarded?', max: 300, required: true }], 'Discard file', function (vals) { api({ action: 'discard_upload', storage_path: c.storage_path, reason: vals[0] }).then(function (x) { if (x.status !== 200) { toast(msgOf(x), true); return; } toast('Discarded.'); renderMedia(); }); }, draw)); }, { cls: 'warn' })]));
+      var go = btn(busy ? 'Approving…' : 'Approve', function () {
+        if (busy) return;   // one request at a time: a second click never sends a second approval
+        var problem = approveProblem(c, a);
+        if (problem) { setStatus(problem, true); toast(problem, true); return; }
+        var body = { action: 'approve_media', storage_path: c.storage_path, rights: a.rights, decorative: a.decorative, alt_text: a.alt_text };
+        if (a.rights === 'manufacturer_permitted') { body.manufacturer_slug = a.manufacturer_slug; body.permission_ref = a.permission_ref; }
+        busy = true; draw(); setStatus('Approving…');
+        api(body).then(function (x) {
+          busy = false;
+          if (x.status !== 200) { draw(); var m = msgOf(x, 'The file could not be approved. Nothing was changed.'); setStatus(m, true); toast(m, true); return; }
+          setStatus('Approved — it can now be used in lessons.'); toast('Approved — it can now be used in lessons.');
+          refreshData().then(renderMedia);
+        });
+      }, { cls: 'pri', disabled: busy || null, 'aria-busy': busy ? 'true' : null });
+      var discard = btn('Discard…', function () {
+        if (busy) return;
+        box.appendChild(inlineForm([{ label: 'Why is it discarded?', max: 300, required: true }], 'Discard file', function (vals) {
+          if (busy) return; busy = true; setStatus('Discarding…');
+          api({ action: 'discard_upload', storage_path: c.storage_path, reason: vals[0] }).then(function (x) {
+            busy = false;
+            if (x.status !== 200) { draw(); var m = msgOf(x, 'The file could not be discarded. Nothing was changed.'); setStatus(m, true); toast(m, true); return; }
+            setStatus('Discarded.'); toast('Discarded.'); renderMedia();
+          });
+        }, draw));
+      }, { cls: 'warn', disabled: busy || null });
+      box.appendChild(el('div', { cls: 'bar', style: 'margin-top:10px' }, [go, discard]));
+      box.appendChild(status);
+      if (last) setStatus(last.text, last.bad);
     };
     draw();
     return box;
