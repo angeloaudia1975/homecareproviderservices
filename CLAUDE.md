@@ -3049,8 +3049,13 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     learner saves their own progress. Lesson payloads for learners never carry answer keys, explanations or staff warnings;
     practice checks refuse exam questions.
   - Emails are sent only when RESEND_API_KEY and ACADEMY_MAIL_FROM are set (sender + wording = Angelo's decision; unset).
-  - Order when approved: preflight (postcheck file, m5_functions 0) → Angelo runs M5 → postcheck (fingerprints in the PR)
+  - Order when approved: preflight (`academy_a2b_m5_preflight.sql`) → Angelo runs M5 → postcheck (fingerprints in the PR)
     → public-key probe → merge + deploy → switches each separately.
+  - **M5 RUN and ACCEPTED in production (Angelo, 18 Oct 2026 08:54 CT):** migration sha256 71ce248b…a9ae (LF) /
+    5a881d18…1b67 (Windows paste); preflight 08:40 CT ready_for_m5 true (baseline in the runbook); postcheck PASS
+    (fingerprint 8ab57055… / cec33a5e…, 22 functions, 15 for the server); before/after fingerprints PASS; public-key
+    probe 30/30 BLOCKED; Golden v1 draft; six learner switches OFF. Never rerun or roll back M5. PR #20 merge needs his
+    separate authorization; after merge + deploy comes A2E (examinations).
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

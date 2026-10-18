@@ -63,7 +63,7 @@ The worker accepts only an envelope sealed with the Academy secret and at most 2
 (by claiming its single email atomically: not used, burned, expired, undelivered or already mailed) before sending, and never throws (Netlify retries a failed
 background run).
 
-## Production procedure (NOT authorized yet)
+## Production procedure
 
 1. Read-only preflight `academy_a2b_m5_preflight.sql`: `ready_for_m5` = true; record M1–M4 and outside-the-Academy
    fingerprints, switches and row counts (run it again after M5: those must be identical).
@@ -96,6 +96,13 @@ Golden v1 `draft`.
 Expected to change with M5 only: academy grants (252 · `7af6d10e…` → fewer: the server role loses INSERT/UPDATE/DELETE
 on the learner-side tables), academy columns (180 / 18 tables → + the 2 new tables and their columns), RLS 18/18 → 20/20
 with 0 policies.
+
+## Production installation — ACCEPTED (Angelo, 18 Oct 2026 08:54 CT)
+
+M5 installed by Angelo in the Supabase SQL editor (approved file, sha256 above). Reported by Angelo: M5 postcheck PASS;
+preflight before/after fingerprints PASS (M1–M4 and everything outside the Academy unchanged); public-key probe
+30/30 BLOCKED; Golden v1 still `draft`; all six learner switches OFF. **Never rerun or roll back M5.** The merge of PR #20
+needs Angelo's separate authorization; learner access, email delivery and course publication stay off.
 
 ## Tests
 
